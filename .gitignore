@@ -1,0 +1,33 @@
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+vendor/
+
+# Go test artifacts
+*.test
+*.out
+cover.html
+
+# Go build cache (not needed in repo)
+/tmp/
+
+# Node / UI
+ui/node_modules/
+ui/dist/
+ui/.env.local
+ui/.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Kubeconfig (never commit)
+kubeconfig
+*.kubeconfig
