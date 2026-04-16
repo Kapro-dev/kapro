@@ -1,0 +1,28 @@
+apiVersion: v2
+name: kapro-operator
+description: The Canonical Promotion Layer for Kubernetes — control plane operator
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/vinnxcapital-gif/kapro
+sources:
+  - https://github.com/vinnxcapital-gif/kapro
+maintainers:
+  - name: Vinayaka Krishnamurthy
+    email: vinnxcapital@gmail.com
+    url: https://github.com/vinnxcapital-gif
+icon: https://raw.githubusercontent.com/vinnxcapital-gif/kapro/main/docs/logo.png
+keywords:
+  - kubernetes
+  - progressive-delivery
+  - gitops
+  - flux
+  - multi-cluster
+  - promotion
+annotations:
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/operator: "true"
+  artifacthub.io/operatorCapabilities: Basic Install
+  artifacthub.io/signKey: |
+    fingerprint: <cosign-public-key>
+    url: https://github.com/vinnxcapital-gif/kapro/releases

@@ -1,0 +1,54 @@
+# Default values for kapro-cluster-controller.
+
+# REQUIRED — must be set at install time
+# The name of the Environment CRD on the control plane that this cluster maps to.
+environmentRef: ""
+
+# REQUIRED — URL of the control plane cluster's K8s API server
+controlPlane:
+  url: ""
+  # Optional: kubeconfig secret name if not using in-cluster SA token
+  kubeconfigSecret: ""
+
+fluxNamespace: flux-system
+
+image:
+  repository: ghcr.io/vinnxcapital-gif/kapro-cluster-controller
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+    # GKE Workload Identity example:
+    # iam.gke.io/gcp-service-account: kapro-cc@<project>.iam.gserviceaccount.com
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+
+# Heartbeat interval in seconds
+heartbeatIntervalSeconds: 30
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

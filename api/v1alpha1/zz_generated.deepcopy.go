@@ -193,3 +193,55 @@ func (in *ApprovalList) DeepCopy() *ApprovalList {
 	*out = *in
 	return out
 }
+
+func (in *Promotion) DeepCopyObject() runtime.Object {
+	out := in.DeepCopy()
+	return out
+}
+func (in *Promotion) DeepCopy() *Promotion {
+	if in == nil {
+		return nil
+	}
+	out := new(Promotion)
+	*out = *in
+	return out
+}
+
+func (in *PromotionList) DeepCopyObject() runtime.Object {
+	out := in.DeepCopy()
+	return out
+}
+func (in *PromotionList) DeepCopy() *PromotionList {
+	if in == nil {
+		return nil
+	}
+	out := new(PromotionList)
+	*out = *in
+	return out
+}
+
+func (in *BatchRun) DeepCopyObject() runtime.Object {
+	out := in.DeepCopy()
+	return out
+}
+func (in *BatchRun) DeepCopy() *BatchRun {
+	if in == nil {
+		return nil
+	}
+	out := new(BatchRun)
+	*out = *in
+	return out
+}
+
+func (in *BatchRunList) DeepCopyObject() runtime.Object {
+	out := in.DeepCopy()
+	return out
+}
+func (in *BatchRunList) DeepCopy() *BatchRunList {
+	if in == nil {
+		return nil
+	}
+	out := new(BatchRunList)
+	*out = *in
+	return out
+}

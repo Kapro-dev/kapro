@@ -19,6 +19,8 @@ func init() {
 		&PromotionPolicy{}, &PromotionPolicyList{},
 		&Pipeline{}, &PipelineList{},
 		&Release{}, &ReleaseList{},
+		&Promotion{}, &PromotionList{},
+		&BatchRun{}, &BatchRunList{},
 		&Approval{}, &ApprovalList{},
 	)
 }

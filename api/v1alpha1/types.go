@@ -6,6 +6,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Finalizer constants — prevents premature deletion of stateful resources.
+const (
+	// ReleaseFinalizer is added to Release objects to allow cleanup of Promotions and BatchRuns.
+	ReleaseFinalizer = "kapro.io/release-finalizer"
+	// BatchRunFinalizer is added to BatchRun objects to allow cleanup of in-progress cluster applies.
+	BatchRunFinalizer = "kapro.io/batchrun-finalizer"
+)
+
 // ---- Artifact ---------------------------------------------------------------
 
 // ArtifactSpec defines the desired state of Artifact.
@@ -74,12 +82,14 @@ type EnvironmentStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster
-// +kubebuilder:printcolumn:name="Country",type=string,JSONPath=`.metadata.labels.country`
-// +kubebuilder:printcolumn:name="Env",type=string,JSONPath=`.metadata.labels.env`
+// +kubebuilder:printcolumn:name="Tier",type=string,JSONPath=`.metadata.labels.tier`
+// +kubebuilder:printcolumn:name="Region",type=string,JSONPath=`.metadata.labels.region`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Active Release",type=string,JSONPath=`.status.activeRelease`
 
-// Environment represents one cluster (dev or prod) managed by Kapro.
+// Environment represents one cluster managed by Kapro.
+// Clusters can be GKE, EKS, AKS, OpenShift, on-prem, or any Kubernetes distribution.
+// Labels on Environment are arbitrary — tier, region, cloud, wave, customer, etc.
 type Environment struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -291,12 +301,13 @@ const (
 )
 
 type ApprovalSpec struct {
-	Kind       ApprovalKind `json:"kind"`
-	Ref        string       `json:"ref"`
-	Release    string       `json:"release"`
-	ApprovedBy string       `json:"approvedBy"`
-	Bypass     bool         `json:"bypass,omitempty"`
-	Comment    string       `json:"comment,omitempty"`
+	Kind           ApprovalKind `json:"kind"`
+	Ref            string       `json:"ref"`
+	Release        string       `json:"release"`
+	EnvironmentRef string       `json:"environmentRef,omitempty"`
+	ApprovedBy     string       `json:"approvedBy"`
+	Bypass         bool         `json:"bypass,omitempty"`
+	Comment        string       `json:"comment,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -306,6 +317,117 @@ type Approval struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 	Spec              ApprovalSpec `json:"spec,omitempty"`
+}
+
+
+// ---- Promotion --------------------------------------------------------------
+
+type PromotionPhase string
+
+const (
+	PromotionPhasePending         PromotionPhase = "Pending"
+	PromotionPhaseHealthCheck     PromotionPhase = "HealthCheck"
+	PromotionPhaseSoaking         PromotionPhase = "Soaking"
+	PromotionPhaseMetricsCheck    PromotionPhase = "MetricsCheck"
+	PromotionPhaseWaitingApproval PromotionPhase = "WaitingApproval"
+	PromotionPhaseApplying        PromotionPhase = "Applying"
+	PromotionPhaseConverged       PromotionPhase = "Converged"
+	PromotionPhaseFailed          PromotionPhase = "Failed"
+)
+
+type PromotionSpec struct {
+	ReleaseRef     string `json:"releaseRef"`
+	EnvironmentRef string `json:"environmentRef"`
+	Version        string `json:"version"`
+	PolicyRef      string `json:"policyRef,omitempty"`
+}
+
+type PromotionStatus struct {
+	Phase      PromotionPhase     `json:"phase,omitempty"`
+	StartedAt  string             `json:"startedAt,omitempty"`
+	FinishedAt string             `json:"finishedAt,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	Message    string             `json:"message,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Environment",type=string,JSONPath=`.spec.environmentRef`
+// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.spec.version`
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+
+// Promotion drives a single cluster through the gate -> apply -> converge cycle.
+type Promotion struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              PromotionSpec   `json:"spec,omitempty"`
+	Status            PromotionStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+type PromotionList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []Promotion `json:"items"`
+}
+
+// ---- BatchRun ---------------------------------------------------------------
+
+type BatchPhase string
+
+const (
+	BatchPhasePending            BatchPhase = "Pending"
+	BatchPhaseResolving          BatchPhase = "Resolving"
+	BatchPhaseApplying           BatchPhase = "Applying"
+	BatchPhaseWaitingConvergence BatchPhase = "WaitingConvergence"
+	BatchPhaseGateCheck          BatchPhase = "GateCheck"
+	BatchPhaseWaitingApproval    BatchPhase = "WaitingApproval"
+	BatchPhaseComplete           BatchPhase = "Complete"
+	BatchPhaseFailed             BatchPhase = "Failed"
+)
+
+type BatchRunSpec struct {
+	ReleaseRef string                 `json:"releaseRef"`
+	BatchName  string                 `json:"batchName"`
+	Selectors  []metav1.LabelSelector `json:"selectors"`
+	PolicyRef  string                 `json:"policyRef,omitempty"`
+	DependsOn  []string               `json:"dependsOn,omitempty"`
+}
+
+type ClusterStatus struct {
+	EnvironmentRef string       `json:"environmentRef"`
+	Phase          ClusterPhase `json:"phase"`
+	Version        string       `json:"version,omitempty"`
+	Message        string       `json:"message,omitempty"`
+}
+
+type BatchRunStatus struct {
+	Phase      BatchPhase         `json:"phase,omitempty"`
+	Clusters   []ClusterStatus    `json:"clusters,omitempty"`
+	StartedAt  string             `json:"startedAt,omitempty"`
+	FinishedAt string             `json:"finishedAt,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Release",type=string,JSONPath=`.spec.releaseRef`
+// +kubebuilder:printcolumn:name="Batch",type=string,JSONPath=`.spec.batchName`
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+
+// BatchRun executes one batch of clusters from a Pipeline progression step.
+type BatchRun struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              BatchRunSpec   `json:"spec,omitempty"`
+	Status            BatchRunStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+type BatchRunList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []BatchRun `json:"items"`
 }
 
 // ---- List types (required for controller-runtime scheme registration) --------

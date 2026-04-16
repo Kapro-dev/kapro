@@ -1,0 +1,48 @@
+{{- if .Values.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "kapro-operator.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kapro-operator.labels" . | nindent 4 }}
+  {{- with .Values.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kapro-operator.fullname" . }}
+  labels:
+    {{- include "kapro-operator.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [kapro.io]
+    resources: [artifacts, environments, clusterregistrations, promotionpolicies, pipelines, releases, promotions, batchruns, approvals]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [kapro.io]
+    resources: [releases/status, promotions/status, batchruns/status, environments/status, clusterregistrations/status]
+    verbs: [get, update, patch]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kapro-operator.fullname" . }}
+  labels:
+    {{- include "kapro-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kapro-operator.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kapro-operator.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}

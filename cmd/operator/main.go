@@ -9,6 +9,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	"kapro.io/kapro/internal/controller"
 )
 
 var scheme = runtime.NewScheme()
@@ -28,6 +29,26 @@ func main() {
 	})
 	if err != nil {
 		log.Error(err, "unable to start manager")
+		os.Exit(1)
+	}
+
+	if err := (&controller.ReleaseReconciler{Client: mgr.GetClient()}).SetupWithManager(mgr); err != nil {
+		log.Error(err, "unable to create Release controller")
+		os.Exit(1)
+	}
+
+	if err := (&controller.PromotionReconciler{Client: mgr.GetClient()}).SetupWithManager(mgr); err != nil {
+		log.Error(err, "unable to create Promotion controller")
+		os.Exit(1)
+	}
+
+	if err := (&controller.BatchRunReconciler{Client: mgr.GetClient()}).SetupWithManager(mgr); err != nil {
+		log.Error(err, "unable to create BatchRun controller")
+		os.Exit(1)
+	}
+
+	if err := (&controller.ApprovalReconciler{Client: mgr.GetClient()}).SetupWithManager(mgr); err != nil {
+		log.Error(err, "unable to create Approval controller")
 		os.Exit(1)
 	}
 

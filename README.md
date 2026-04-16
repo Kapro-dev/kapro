@@ -1,7 +1,7 @@
 # 🦘 Kapro
 
 > **The Canonical Promotion Layer for Kubernetes.**
-> Passes versions forward. Through environments. Across countries. In waves.
+> Passes versions forward. Through environments. Across clusters. In waves.
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![API Group](https://img.shields.io/badge/API-kapro.io%2Fv1alpha1-purple)](api/v1alpha1)
@@ -10,7 +10,7 @@
 
 ## What is Kapro?
 
-Kapro is a **Flux-native, OCI-first, multi-cluster progressive delivery engine** for country-scale Kubernetes platforms.
+Kapro is a **Flux-native, OCI-first, multi-cluster progressive delivery engine** for any Kubernetes platform — GKE, EKS, AKS, OpenShift, on-prem, KubeVirt — anything.
 
 It sits between [Kargo](https://kargo.io) (pre-prod promotion) and [Flux](https://fluxcd.io) (deployment) — the missing horizontal wave layer neither provides.
 
@@ -36,7 +36,7 @@ It sits between [Kargo](https://kargo.io) (pre-prod promotion) and [Flux](https:
 
 - **8 CRDs** — clean, composable API across 3 layers
 - **CRD-native cluster connectivity** — one controller pod per cluster, outbound only, no gRPC
-- **DAG batch progression** — wave-based rollout across 33+ countries
+- **DAG batch progression** — wave-based rollout across N clusters via label selectors
 - **Manual + auto promotion** — soak time, metrics gates, human approval
 - **Flux actuator** — mutates OCI tag, Flux delivers
 - **Full `kubectl` observability** — no custom tooling needed
@@ -77,17 +77,36 @@ helm install kapro-cluster charts/kapro-cluster-controller -n kapro-system \
 ## API Example
 
 ```yaml
+# 1. Register a cluster (runs on each workload cluster)
+apiVersion: kapro.io/v1alpha1
+kind: Environment
+metadata:
+  name: prod-eu-west-01
+  labels:
+    tier: prod
+    region: eu-west
+    wave: pilot
+spec:
+  actuator:
+    type: flux
+    flux:
+      namespace: flux-system
+      ociRepository: myapp
+      kustomizationPath: ./overlays/prod
+
+---
+# 2. Trigger a release (runs on control plane)
 apiVersion: kapro.io/v1alpha1
 kind: Release
 metadata:
-  name: ocs-v1.2.4
+  name: myapp-v1.2.4
 spec:
-  artifact: ocs-v1.2.4
+  artifact: myapp-v1.2.4
   scope:
     selector:
       matchLabels:
-        country: de
-  pipelineRef: standard-global-rollout
+        tier: prod          # targets ALL prod clusters
+  pipelineRef: standard-rollout
 ```
 
 ---

@@ -1,0 +1,49 @@
+run:
+  timeout: 5m
+  go: "1.22"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - revive
+    - unused
+    - exhaustive
+    - gofmt
+    - goimports
+    - misspell
+    - unconvert
+    - unparam
+    - gosec
+    - prealloc
+    - noctx
+    - bodyclose
+    - contextcheck
+
+linters-settings:
+  goimports:
+    local-prefixes: kapro.io/kapro
+  revive:
+    rules:
+      - name: exported
+        arguments:
+          - disableStutteringCheck
+  gosec:
+    excludes:
+      - G115  # integer overflow — not relevant for controller code
+  exhaustive:
+    default-signifies-exhaustive: true
+
+issues:
+  exclude-rules:
+    # Allow dot imports in test files (envtest pattern)
+    - path: _test\.go
+      linters:
+        - revive
+    # Allow unused in generated files
+    - path: zz_generated\.
+      linters:
+        - unused
+  max-issues-per-linter: 0
+  max-same-issues: 0
