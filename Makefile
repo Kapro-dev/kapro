@@ -63,6 +63,12 @@ test: generate manifests $(ENVTEST) ## Run unit + integration tests with envtest
 build: generate ## Build operator and cluster-controller binaries
 	go build -trimpath -ldflags="-s -w" -o bin/kapro-operator ./cmd/operator
 	go build -trimpath -ldflags="-s -w" -o bin/kapro-cluster-controller ./cmd/cluster-controller
+	go build -trimpath -ldflags="-s -w" -o bin/kapro ./cmd/kapro
+
+.PHONY: sync-crds
+sync-crds: manifests ## Sync generated CRDs into Helm chart crds/ directory
+	cp config/crd/bases/*.yaml charts/kapro-operator/crds/
+	@echo "✅ Helm chart CRDs synced"
 
 .PHONY: docker-build
 docker-build: ## Build multi-arch Docker images (no push)

@@ -73,6 +73,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := (&controller.BootstrapTokenReconciler{Client: mgr.GetClient()}).SetupWithManager(mgr); err != nil {
+		log.Error(err, "unable to create BootstrapToken controller")
+		os.Exit(1)
+	}
+
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		log.Error(err, "problem running manager")
 		os.Exit(1)

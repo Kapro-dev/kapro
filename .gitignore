@@ -31,3 +31,4 @@ ui/.env.*.local
 # Kubeconfig (never commit)
 kubeconfig
 *.kubeconfig
+kapro

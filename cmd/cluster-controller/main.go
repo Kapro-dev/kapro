@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/rest"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -65,10 +66,23 @@ func main() {
 	}
 
 	// cpClient writes ClusterRegistration.status to the control plane.
-	// In single-cluster dev mode this is the same kubeconfig.
-	// In production: mount a kubeconfig Secret for the control plane.
-	controlPlaneCfg := ctrl.GetConfigOrDie()
-	cpClient, err := client.New(controlPlaneCfg, client.Options{Scheme: scheme})
+	// In bootstrap mode: KAPRO_CONTROL_PLANE_TOKEN is a SA token issued by the BootstrapToken controller.
+	// In dev mode (no token): falls back to local kubeconfig.
+	controlPlaneToken := os.Getenv("KAPRO_CONTROL_PLANE_TOKEN")
+	var cpClient client.Client
+	if controlPlaneToken != "" && controlPlaneURL != "" {
+		cpCfg := &rest.Config{
+			Host:        controlPlaneURL,
+			BearerToken: controlPlaneToken,
+			TLSClientConfig: rest.TLSClientConfig{
+				Insecure: os.Getenv("KAPRO_CONTROL_PLANE_TLS_INSECURE") == "true",
+			},
+		}
+		cpClient, err = client.New(cpCfg, client.Options{Scheme: scheme})
+	} else {
+		log.Info("KAPRO_CONTROL_PLANE_TOKEN not set — using local kubeconfig for control plane (dev mode)")
+		cpClient, err = client.New(ctrl.GetConfigOrDie(), client.Options{Scheme: scheme})
+	}
 	if err != nil {
 		log.Error(err, "unable to create control plane client")
 		os.Exit(1)

@@ -1,0 +1,110 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+  name: bootstraptokens.kapro.io
+spec:
+  group: kapro.io
+  names:
+    kind: BootstrapToken
+    listKind: BootstrapTokenList
+    plural: bootstraptokens
+    singular: bootstraptoken
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.clusterName
+      name: Cluster
+      type: string
+    - jsonPath: .status.used
+      name: Used
+      type: boolean
+    - jsonPath: .spec.expiresAt
+      name: Expires
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          BootstrapToken is a one-time credential that allows a workload cluster's
+          cluster-controller to self-register with the Kapro control plane.
+          Created by `kapro cluster bootstrap`. Consumed once; then auto-deleted.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              BootstrapTokenSpec defines a one-time token used by a workload cluster to
+              self-register with the Kapro control plane.
+              Inspired by: Kubernetes TLS bootstrap tokens, OCM klusterlet CSR bootstrap.
+              Security model:
+                - Token is stored as SHA-256 hash only — plaintext never persisted
+                - 24h TTL enforced by expiresAt
+                - One-time use: status.used=true is set atomically on first use
+                - After use, the issued credential (SA token) rotates every hour via TokenRequest API
+            properties:
+              clusterName:
+                description: ClusterName is the name of the ClusterRegistration that
+                  will be created.
+                type: string
+              expiresAt:
+                description: ExpiresAt is the time after which this token is no longer
+                  valid.
+                format: date-time
+                type: string
+              labels:
+                additionalProperties:
+                  type: string
+                description: Labels are the labels to apply to the created ClusterRegistration.
+                type: object
+              tokenHash:
+                description: |-
+                  TokenHash is the SHA-256 hex digest of the raw bootstrap token.
+                  The plaintext token is NEVER stored. Only this hash is stored for validation.
+                type: string
+            required:
+            - clusterName
+            - expiresAt
+            - tokenHash
+            type: object
+          status:
+            description: BootstrapTokenStatus tracks the one-time-use state of a bootstrap
+              token.
+            properties:
+              issuedCredentialFor:
+                description: IssuedCredentialFor is the ServiceAccount name created
+                  for this cluster.
+                type: string
+              used:
+                description: Used is set to true when the token has been consumed
+                  by a cluster-controller.
+                type: boolean
+              usedAt:
+                description: UsedAt is the timestamp when the token was consumed.
+                format: date-time
+                type: string
+            required:
+            - used
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

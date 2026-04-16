@@ -579,8 +579,8 @@ type BootstrapTokenSpec struct {
 	// The plaintext token is NEVER stored. Only this hash is stored for validation.
 	TokenHash string `json:"tokenHash"`
 
-	// ExpiresAt is the RFC3339 time after which this token is no longer valid.
-	ExpiresAt string `json:"expiresAt"`
+	// ExpiresAt is the time after which this token is no longer valid.
+	ExpiresAt metav1.Time `json:"expiresAt"`
 
 	// Labels are the labels to apply to the created ClusterRegistration.
 	// +optional
@@ -592,9 +592,9 @@ type BootstrapTokenStatus struct {
 	// Used is set to true when the token has been consumed by a cluster-controller.
 	Used bool `json:"used"`
 
-	// UsedAt is the RFC3339 timestamp when the token was consumed.
+	// UsedAt is the timestamp when the token was consumed.
 	// +optional
-	UsedAt string `json:"usedAt,omitempty"`
+	UsedAt *metav1.Time `json:"usedAt,omitempty"`
 
 	// IssuedCredentialFor is the ServiceAccount name created for this cluster.
 	// +optional
