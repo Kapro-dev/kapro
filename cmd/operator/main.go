@@ -9,8 +9,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
-	"kapro.io/kapro/internal/controller"
 	fluxactuator "kapro.io/kapro/internal/actuator/flux"
+	"kapro.io/kapro/internal/controller"
+	"kapro.io/kapro/internal/gate"
 	crdprovider "kapro.io/kapro/internal/provider/crd"
 )
 
@@ -38,15 +39,21 @@ func main() {
 	actuator := &fluxactuator.FluxActuator{Client: mgr.GetClient()}
 	provider := &crdprovider.CRDProvider{Client: mgr.GetClient()}
 
+	// Gate engine — injected into PromotionReconciler.
+	approvalGate := &gate.ApprovalGate{Client: mgr.GetClient()}
+
 	if err := (&controller.ReleaseReconciler{Client: mgr.GetClient()}).SetupWithManager(mgr); err != nil {
 		log.Error(err, "unable to create Release controller")
 		os.Exit(1)
 	}
 
 	if err := (&controller.PromotionReconciler{
-		Client:   mgr.GetClient(),
-		Actuator: actuator,
-		Provider: provider,
+		Client:       mgr.GetClient(),
+		Actuator:     actuator,
+		Provider:     provider,
+		SoakGate:     &gate.SoakGate{},
+		MetricsGate:  &gate.MetricsGate{},
+		ApprovalGate: approvalGate,
 	}).SetupWithManager(mgr); err != nil {
 		log.Error(err, "unable to create Promotion controller")
 		os.Exit(1)

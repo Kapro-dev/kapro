@@ -12,6 +12,7 @@ import (
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	fluxactuator "kapro.io/kapro/internal/actuator/flux"
+	"kapro.io/kapro/internal/gate"
 	crdprovider "kapro.io/kapro/internal/provider/crd"
 )
 
@@ -22,8 +23,11 @@ import (
 //	Pending → HealthCheck → Soaking → MetricsCheck → WaitingApproval → Applying → Converged | Failed
 type PromotionReconciler struct {
 	client.Client
-	Actuator *fluxactuator.FluxActuator
-	Provider *crdprovider.CRDProvider
+	Actuator     *fluxactuator.FluxActuator
+	Provider     *crdprovider.CRDProvider
+	SoakGate     *gate.SoakGate
+	MetricsGate  *gate.MetricsGate
+	ApprovalGate *gate.ApprovalGate
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=promotions,verbs=get;list;watch;create;update;patch;delete
@@ -106,26 +110,33 @@ func (r *PromotionReconciler) handleSoaking(ctx context.Context, promo *kaprov1a
 		return r.transitionTo(ctx, promo, kaprov1alpha1.PromotionPhaseMetricsCheck)
 	}
 
-	soakDuration, err := time.ParseDuration(policy.Spec.Gate.SoakTime)
-	if err != nil {
-		return r.transitionTo(ctx, promo, kaprov1alpha1.PromotionPhaseMetricsCheck)
-	}
-
+	// Initialise soak clock on first entry.
 	if promo.Status.StartedAt == "" {
 		patch := client.MergeFrom(promo.DeepCopy())
 		promo.Status.StartedAt = time.Now().UTC().Format(time.RFC3339)
-		return ctrl.Result{RequeueAfter: soakDuration}, r.Status().Patch(ctx, promo, patch)
+		if err := r.Status().Patch(ctx, promo, patch); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
-	startedAt, _ := time.Parse(time.RFC3339, promo.Status.StartedAt)
-	elapsed := time.Since(startedAt)
-	if elapsed < soakDuration {
-		remaining := soakDuration - elapsed
-		log.FromContext(ctx).Info("soaking", "remaining", remaining)
-		return ctrl.Result{RequeueAfter: remaining}, nil
+	g := r.SoakGate
+	if g == nil {
+		g = &gate.SoakGate{}
 	}
 
-	return r.transitionTo(ctx, promo, kaprov1alpha1.PromotionPhaseMetricsCheck)
+	result, err := g.Evaluate(ctx, gate.Request{Promotion: promo, Policy: policy})
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	log.FromContext(ctx).Info("soak gate", "passed", result.Passed, "message", result.Message)
+
+	if result.Passed {
+		return r.transitionTo(ctx, promo, kaprov1alpha1.PromotionPhaseMetricsCheck)
+	}
+
+	after := parseDurationOrDefault(result.RetryAfter, 30*time.Second)
+	return ctrl.Result{RequeueAfter: after}, nil
 }
 
 func (r *PromotionReconciler) handleMetricsCheck(ctx context.Context, promo *kaprov1alpha1.Promotion) (ctrl.Result, error) {
@@ -134,9 +145,25 @@ func (r *PromotionReconciler) handleMetricsCheck(ctx context.Context, promo *kap
 		return r.nextAfterMetrics(ctx, promo, policy)
 	}
 
-	// Metrics evaluation — currently passes through (implement Prometheus query in gate package)
-	// TODO: integrate internal/gate/prometheus.go
-	log.FromContext(ctx).Info("metrics check: gate package not yet wired, passing")
+	g := r.MetricsGate
+	if g == nil {
+		g = &gate.MetricsGate{}
+	}
+
+	// Evaluate each metric in order; block on the first failure.
+	for i := range policy.Spec.Gate.Metrics {
+		result, err := g.Evaluate(ctx, gate.Request{Promotion: promo, Policy: policy, MetricIndex: i})
+		if err != nil {
+			// Non-fatal: log and retry — don't fail the promotion on transient errors.
+			log.FromContext(ctx).Error(err, "metrics gate error, will retry", "index", i)
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+		log.FromContext(ctx).Info("metrics gate", "index", i, "passed", result.Passed, "message", result.Message)
+		if !result.Passed {
+			after := parseDurationOrDefault(result.RetryAfter, 30*time.Second)
+			return ctrl.Result{RequeueAfter: after}, nil
+		}
+	}
 
 	return r.nextAfterMetrics(ctx, promo, policy)
 }
@@ -149,24 +176,23 @@ func (r *PromotionReconciler) nextAfterMetrics(ctx context.Context, promo *kapro
 }
 
 func (r *PromotionReconciler) handleWaitingApproval(ctx context.Context, promo *kaprov1alpha1.Promotion) (ctrl.Result, error) {
-	// Look for an Approval object for this promotion
-	var approvalList kaprov1alpha1.ApprovalList
-	if err := r.List(ctx, &approvalList, client.MatchingLabels{
-		"kapro.io/release":     promo.Spec.ReleaseRef,
-		"kapro.io/environment": promo.Spec.EnvironmentRef,
-	}); err != nil {
+	g := r.ApprovalGate
+	if g == nil {
+		g = &gate.ApprovalGate{Client: r.Client}
+	}
+
+	policy, _ := r.getPolicy(ctx, promo.Spec.PolicyRef)
+	result, err := g.Evaluate(ctx, gate.Request{Promotion: promo, Policy: policy})
+	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	for _, approval := range approvalList.Items {
-		if approval.Spec.Kind == kaprov1alpha1.ApprovalKindPromotion &&
-			approval.Spec.EnvironmentRef == promo.Spec.EnvironmentRef {
-			log.FromContext(ctx).Info("approval received", "approvedBy", approval.Spec.ApprovedBy, "bypass", approval.Spec.Bypass)
-			return r.transitionTo(ctx, promo, kaprov1alpha1.PromotionPhaseApplying)
-		}
+	log.FromContext(ctx).Info("approval gate", "passed", result.Passed, "message", result.Message)
+
+	if result.Passed {
+		return r.transitionTo(ctx, promo, kaprov1alpha1.PromotionPhaseApplying)
 	}
 
-	// No approval yet
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 
@@ -290,4 +316,15 @@ func (r *PromotionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kaprov1alpha1.Promotion{}).
 		Complete(r)
+}
+
+func parseDurationOrDefault(s string, def time.Duration) time.Duration {
+	if s == "" {
+		return def
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return def
+	}
+	return d
 }
