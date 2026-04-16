@@ -11,6 +11,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	fluxactuator "kapro.io/kapro/internal/actuator/flux"
+	crdprovider "kapro.io/kapro/internal/provider/crd"
 )
 
 // PromotionReconciler drives a single cluster through the gate pipeline.
@@ -20,6 +22,8 @@ import (
 //	Pending → HealthCheck → Soaking → MetricsCheck → WaitingApproval → Applying → Converged | Failed
 type PromotionReconciler struct {
 	client.Client
+	Actuator *fluxactuator.FluxActuator
+	Provider *crdprovider.CRDProvider
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=promotions,verbs=get;list;watch;create;update;patch;delete
@@ -169,23 +173,30 @@ func (r *PromotionReconciler) handleWaitingApproval(ctx context.Context, promo *
 func (r *PromotionReconciler) handleApplying(ctx context.Context, promo *kaprov1alpha1.Promotion) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	// Get the Environment to find actuator config
 	var env kaprov1alpha1.Environment
 	if err := r.Get(ctx, client.ObjectKey{Name: promo.Spec.EnvironmentRef}, &env); err != nil {
 		return ctrl.Result{}, fmt.Errorf("environment %s not found: %w", promo.Spec.EnvironmentRef, err)
 	}
 
-	// Apply via actuator (Flux: mutate OCIRepository tag)
-	if env.Spec.Actuator.Type == "flux" && env.Spec.Actuator.Flux != nil {
-		// TODO: wire FluxActuator.Apply() here
-		log.Info("applying version via Flux actuator",
+	// Apply: set ClusterRegistration.spec.desiredVersion.
+	// The cluster-controller on the workload cluster will pick this up and patch OCIRepository.
+	if r.Actuator != nil && env.Spec.Actuator.Type == "flux" && env.Spec.Actuator.Flux != nil {
+		if err := r.Actuator.Apply(ctx, fluxactuator.ApplyRequest{
+			Environment:     &env,
+			Version:         promo.Spec.Version,
+			PreviousVersion: promo.Status.PreviousVersion,
+		}); err != nil {
+			log.Error(err, "FluxActuator.Apply failed, will retry")
+			return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+		}
+		log.Info("FluxActuator.Apply succeeded — waiting for cluster convergence",
 			"env", promo.Spec.EnvironmentRef,
 			"version", promo.Spec.Version,
 			"ociRepo", env.Spec.Actuator.Flux.OCIRepository,
 		)
 	}
 
-	// Poll ClusterRegistration for convergence
+	// Poll ClusterRegistration for convergence (set by cluster-controller).
 	reg, err := r.getRegistration(ctx, promo.Spec.EnvironmentRef)
 	if err != nil {
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
@@ -205,6 +216,12 @@ func (r *PromotionReconciler) handleApplying(ctx context.Context, promo *kaprov1
 			fmt.Sprintf("cluster %s reported Failed phase", promo.Spec.EnvironmentRef))
 	}
 
+	log.Info("waiting for convergence",
+		"env", promo.Spec.EnvironmentRef,
+		"clusterPhase", reg.Status.Phase,
+		"currentVersion", reg.Status.CurrentVersion,
+		"wantVersion", promo.Spec.Version,
+	)
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 

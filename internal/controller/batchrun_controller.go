@@ -11,6 +11,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	fluxactuator "kapro.io/kapro/internal/actuator/flux"
+	crdprovider "kapro.io/kapro/internal/provider/crd"
 )
 
 // BatchRunReconciler drives one batch of clusters through apply + convergence + gate.
@@ -20,6 +22,8 @@ import (
 //	Pending → Resolving → Applying → WaitingConvergence → GateCheck → WaitingApproval → Complete | Failed
 type BatchRunReconciler struct {
 	client.Client
+	Actuator *fluxactuator.FluxActuator
+	Provider *crdprovider.CRDProvider
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=batchruns,verbs=get;list;watch;create;update;patch;delete
@@ -131,24 +135,36 @@ func (r *BatchRunReconciler) handleApplying(ctx context.Context, br *kaprov1alph
 	}
 
 	version := release.Spec.Artifact
+	var applyErrors []string
 
-	// Apply version to all clusters in this batch (in parallel — all at once)
+	// Apply version to all clusters in this batch in parallel (fire and forget — convergence checked next phase).
 	for _, cs := range br.Status.Clusters {
 		var env kaprov1alpha1.Environment
 		if err := r.Get(ctx, client.ObjectKey{Name: cs.EnvironmentRef}, &env); err != nil {
-			log.Error(err, "environment not found", "env", cs.EnvironmentRef)
+			log.Error(err, "environment not found, skipping", "env", cs.EnvironmentRef)
+			applyErrors = append(applyErrors, fmt.Sprintf("%s: environment not found", cs.EnvironmentRef))
 			continue
 		}
 
-		// Flux actuator: mutate OCIRepository tag
-		if env.Spec.Actuator.Type == "flux" && env.Spec.Actuator.Flux != nil {
-			log.Info("applying via Flux actuator",
+		if r.Actuator != nil && env.Spec.Actuator.Type == "flux" && env.Spec.Actuator.Flux != nil {
+			if err := r.Actuator.Apply(ctx, fluxactuator.ApplyRequest{
+				Environment: &env,
+				Version:     version,
+			}); err != nil {
+				log.Error(err, "FluxActuator.Apply failed", "env", cs.EnvironmentRef)
+				applyErrors = append(applyErrors, fmt.Sprintf("%s: %v", cs.EnvironmentRef, err))
+				continue
+			}
+			log.Info("FluxActuator.Apply succeeded",
 				"env", cs.EnvironmentRef,
 				"version", version,
 				"ociRepo", env.Spec.Actuator.Flux.OCIRepository,
 			)
-			// TODO: wire FluxActuator.Apply()
 		}
+	}
+
+	if len(applyErrors) == len(br.Status.Clusters) {
+		return ctrl.Result{}, r.failBatch(ctx, br, fmt.Sprintf("all cluster applies failed: %v", applyErrors))
 	}
 
 	return r.setBatchPhase(ctx, br, kaprov1alpha1.BatchPhaseWaitingConvergence)

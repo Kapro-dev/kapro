@@ -10,6 +10,8 @@ import (
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	"kapro.io/kapro/internal/controller"
+	fluxactuator "kapro.io/kapro/internal/actuator/flux"
+	crdprovider "kapro.io/kapro/internal/provider/crd"
 )
 
 var scheme = runtime.NewScheme()
@@ -32,17 +34,29 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Shared actuator + provider — both use the control-plane client.
+	actuator := &fluxactuator.FluxActuator{Client: mgr.GetClient()}
+	provider := &crdprovider.CRDProvider{Client: mgr.GetClient()}
+
 	if err := (&controller.ReleaseReconciler{Client: mgr.GetClient()}).SetupWithManager(mgr); err != nil {
 		log.Error(err, "unable to create Release controller")
 		os.Exit(1)
 	}
 
-	if err := (&controller.PromotionReconciler{Client: mgr.GetClient()}).SetupWithManager(mgr); err != nil {
+	if err := (&controller.PromotionReconciler{
+		Client:   mgr.GetClient(),
+		Actuator: actuator,
+		Provider: provider,
+	}).SetupWithManager(mgr); err != nil {
 		log.Error(err, "unable to create Promotion controller")
 		os.Exit(1)
 	}
 
-	if err := (&controller.BatchRunReconciler{Client: mgr.GetClient()}).SetupWithManager(mgr); err != nil {
+	if err := (&controller.BatchRunReconciler{
+		Client:   mgr.GetClient(),
+		Actuator: actuator,
+		Provider: provider,
+	}).SetupWithManager(mgr); err != nil {
 		log.Error(err, "unable to create BatchRun controller")
 		os.Exit(1)
 	}

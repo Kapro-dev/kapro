@@ -99,10 +99,17 @@ type Environment struct {
 
 // ---- ClusterRegistration ----------------------------------------------------
 
-// ClusterRegistrationSpec defines static info about the registered cluster.
+// ClusterRegistrationSpec defines static info about the registered cluster,
+// plus the desired version written by the control-plane operator.
 type ClusterRegistrationSpec struct {
 	EnvironmentRef    string `json:"environmentRef"`
 	ControllerVersion string `json:"controllerVersion,omitempty"`
+
+	// DesiredVersion is written by the kapro-operator (via FluxActuator.Apply).
+	// The kapro-cluster-controller on the workload cluster polls this field and,
+	// when it changes, patches the local OCIRepository tag to trigger Flux reconciliation.
+	// +optional
+	DesiredVersion string `json:"desiredVersion,omitempty"`
 }
 
 // ClusterRegistrationStatus is written by kapro-cluster-controller on the workload cluster.
@@ -343,11 +350,13 @@ type PromotionSpec struct {
 }
 
 type PromotionStatus struct {
-	Phase      PromotionPhase     `json:"phase,omitempty"`
-	StartedAt  string             `json:"startedAt,omitempty"`
-	FinishedAt string             `json:"finishedAt,omitempty"`
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
-	Message    string             `json:"message,omitempty"`
+	Phase           PromotionPhase     `json:"phase,omitempty"`
+	StartedAt       string             `json:"startedAt,omitempty"`
+	FinishedAt      string             `json:"finishedAt,omitempty"`
+	Conditions      []metav1.Condition `json:"conditions,omitempty"`
+	Message         string             `json:"message,omitempty"`
+	// PreviousVersion holds the version before this promotion, used for rollback.
+	PreviousVersion string             `json:"previousVersion,omitempty"`
 }
 
 // +kubebuilder:object:root=true
