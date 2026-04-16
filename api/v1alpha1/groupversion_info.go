@@ -22,5 +22,7 @@ func init() {
 		&Promotion{}, &PromotionList{},
 		&BatchRun{}, &BatchRunList{},
 		&Approval{}, &ApprovalList{},
+		&BootstrapToken{}, &BootstrapTokenList{},
+		&PluginRegistration{}, &PluginRegistrationList{},
 	)
 }

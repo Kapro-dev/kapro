@@ -78,12 +78,12 @@ func (a *FluxActuator) IsConverged(ctx context.Context, env *kaprov1alpha1.Envir
 	}
 
 	converged := reg.Status.Phase == kaprov1alpha1.ClusterPhaseConverged &&
-		reg.Status.CurrentVersion == version
+		reg.Status.CurrentVersions["ocs"] == version
 
 	log.FromContext(ctx).Info("convergence check",
 		"environment", env.Name,
 		"phase", reg.Status.Phase,
-		"currentVersion", reg.Status.CurrentVersion,
+		"currentVersion", reg.Status.CurrentVersions["ocs"],
 		"wantVersion", version,
 		"converged", converged,
 	)

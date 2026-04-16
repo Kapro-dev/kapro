@@ -74,6 +74,13 @@ func (in *ClusterRegistration) DeepCopy() *ClusterRegistration {
 	}
 	out := new(ClusterRegistration)
 	*out = *in
+	// DeepCopy map field in Status
+	if in.Status.CurrentVersions != nil {
+		out.Status.CurrentVersions = make(map[string]string, len(in.Status.CurrentVersions))
+		for k, v := range in.Status.CurrentVersions {
+			out.Status.CurrentVersions[k] = v
+		}
+	}
 	return out
 }
 
@@ -244,4 +251,80 @@ func (in *BatchRunList) DeepCopy() *BatchRunList {
 	out := new(BatchRunList)
 	*out = *in
 	return out
+}
+
+func (in *BootstrapToken) DeepCopyObject() runtime.Object {
+out := in.DeepCopy()
+return out
+}
+func (in *BootstrapToken) DeepCopy() *BootstrapToken {
+if in == nil {
+return nil
+}
+out := new(BootstrapToken)
+*out = *in
+if in.Spec.Labels != nil {
+out.Spec.Labels = make(map[string]string, len(in.Spec.Labels))
+for k, v := range in.Spec.Labels {
+out.Spec.Labels[k] = v
+}
+}
+return out
+}
+
+func (in *BootstrapTokenList) DeepCopyObject() runtime.Object {
+out := in.DeepCopy()
+return out
+}
+func (in *BootstrapTokenList) DeepCopy() *BootstrapTokenList {
+if in == nil {
+return nil
+}
+out := new(BootstrapTokenList)
+*out = *in
+return out
+}
+
+func (in *PluginRegistration) DeepCopyObject() runtime.Object {
+out := in.DeepCopy()
+return out
+}
+func (in *PluginRegistration) DeepCopy() *PluginRegistration {
+if in == nil {
+return nil
+}
+out := new(PluginRegistration)
+*out = *in
+return out
+}
+
+func (in *PluginRegistrationList) DeepCopyObject() runtime.Object {
+out := in.DeepCopy()
+return out
+}
+func (in *PluginRegistrationList) DeepCopy() *PluginRegistrationList {
+if in == nil {
+return nil
+}
+out := new(PluginRegistrationList)
+*out = *in
+return out
+}
+
+func (in *ClusterCapabilities) DeepCopy() *ClusterCapabilities {
+if in == nil {
+return nil
+}
+out := new(ClusterCapabilities)
+*out = *in
+return out
+}
+
+func (in *ClusterHealth) DeepCopy() *ClusterHealth {
+if in == nil {
+return nil
+}
+out := new(ClusterHealth)
+*out = *in
+return out
 }

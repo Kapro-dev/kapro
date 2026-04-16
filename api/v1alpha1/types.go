@@ -99,51 +99,122 @@ type Environment struct {
 
 // ---- ClusterRegistration ----------------------------------------------------
 
-// ClusterRegistrationSpec defines static info about the registered cluster,
-// plus the desired version written by the control-plane operator.
+// ClusterRegistrationSpec defines the desired state for a registered workload cluster.
+// spec.desiredVersion is written by the kapro-operator; all other spec fields are
+// written once by the cluster-controller at bootstrap time and never changed.
 type ClusterRegistrationSpec struct {
-	EnvironmentRef    string `json:"environmentRef"`
+	// EnvironmentRef names the Environment CRD this cluster belongs to.
+	EnvironmentRef string `json:"environmentRef"`
+
+	// ControllerVersion is the version of kapro-cluster-controller running on this cluster.
 	ControllerVersion string `json:"controllerVersion,omitempty"`
 
-	// DesiredVersion is written by the kapro-operator (via FluxActuator.Apply).
-	// The kapro-cluster-controller on the workload cluster polls this field and,
-	// when it changes, patches the local OCIRepository tag to trigger Flux reconciliation.
+	// DesiredVersion is written by the kapro-operator (via ActuatorPlugin.Apply).
+	// cluster-controller polls this field; on change, patches the local delivery system
+	// (OCIRepository tag for Flux, Application revision for ArgoCD, etc.)
 	// +optional
 	DesiredVersion string `json:"desiredVersion,omitempty"`
+
+	// Capabilities is written by cluster-controller at registration time.
+	// Declares which delivery systems are available on this cluster.
+	// +optional
+	Capabilities ClusterCapabilities `json:"capabilities,omitempty"`
 }
 
-// ClusterRegistrationStatus is written by kapro-cluster-controller on the workload cluster.
+// ClusterCapabilities describes what delivery systems and K8s capabilities are
+// available on a registered cluster. Used by the operator to select the right actuator.
+type ClusterCapabilities struct {
+	// K8sVersion is the Kubernetes server version (e.g. "v1.30.2").
+	K8sVersion string `json:"k8sVersion,omitempty"`
+	// FluxVersion is the installed Flux version, or empty if Flux is not present.
+	FluxVersion string `json:"fluxVersion,omitempty"`
+	// ArgoCDVersion is the installed ArgoCD version, or empty if ArgoCD is not present.
+	ArgoCDVersion string `json:"argoCDVersion,omitempty"`
+	// SveltosVersion is the installed Sveltos version, or empty if Sveltos is not present.
+	SveltosVersion string `json:"sveltosVersion,omitempty"`
+	// NodeCount is the number of nodes in the cluster at registration time.
+	NodeCount int `json:"nodeCount,omitempty"`
+	// Region is the cloud region or datacenter label for this cluster.
+	Region string `json:"region,omitempty"`
+}
+
+// ClusterRegistrationStatus is the fleet registry entry — written by kapro-cluster-controller.
+// This is the single authoritative source of truth for "what is running where."
+// Think of it as a Kubernetes Node object but for clusters, not nodes.
 type ClusterRegistrationStatus struct {
-	LastHeartbeat  string             `json:"lastHeartbeat,omitempty"`
-	Healthy        bool               `json:"healthy"`
-	FluxVersion    string             `json:"fluxVersion,omitempty"`
-	FluxReady      bool               `json:"fluxReady"`
-	CurrentVersion string             `json:"currentVersion,omitempty"`
-	Phase          ClusterPhase       `json:"phase,omitempty"`
-	Conditions     []metav1.Condition `json:"conditions,omitempty"`
+	// CurrentVersions is a map of component → deployed version.
+	// e.g. {"ocs": "v1.2.4", "keycloak": "24.0.1"}
+	// Populated by cluster-controller from the local delivery system's status.
+	// +optional
+	CurrentVersions map[string]string `json:"currentVersions,omitempty"`
+
+	// DeliverySystem reports which actuator is managing this cluster.
+	// Written by cluster-controller based on what delivery system it detects locally.
+	// One of: flux, argocd, sveltos, ocm, helm
+	DeliverySystem string `json:"deliverySystem,omitempty"`
+
+	// Health is the aggregated workload health from the local delivery system.
+	Health ClusterHealth `json:"health,omitempty"`
+
+	// ActiveRelease is the name of the Release currently being applied to this cluster.
+	// Set by kapro-operator when a Promotion transitions to Applying.
+	// +optional
+	ActiveRelease string `json:"activeRelease,omitempty"`
+
+	// LastHeartbeat is the RFC3339 timestamp of the last cluster-controller write.
+	// Used by CRDProvider.IsReachable() to determine if the cluster is still live.
+	LastHeartbeat string `json:"lastHeartbeat,omitempty"`
+
+	// Phase is the current convergence state of this cluster.
+	Phase ClusterPhase `json:"phase,omitempty"`
+
+	// Conditions follow KEP-1623: Ready, Synced, Degraded, Unreachable.
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// ClusterHealth aggregates workload health from the local delivery system.
+type ClusterHealth struct {
+	// AllWorkloadsReady is true when every tracked workload is in a ready state.
+	AllWorkloadsReady bool `json:"allWorkloadsReady"`
+	// ReadyWorkloads is the count of workloads in Ready state.
+	ReadyWorkloads int `json:"readyWorkloads"`
+	// FailedWorkloads is the count of workloads in a failed/degraded state.
+	FailedWorkloads int `json:"failedWorkloads"`
+	// TotalWorkloads is the total count of tracked workloads.
+	TotalWorkloads int `json:"totalWorkloads"`
+	// Message is a human-readable summary from the delivery system.
+	// +optional
+	Message string `json:"message,omitempty"`
 }
 
 // ClusterPhase represents the convergence state of a workload cluster.
-// +kubebuilder:validation:Enum=Pending;Applying;Converging;Converged;Failed
+// +kubebuilder:validation:Enum=Pending;Applying;Converging;Converged;Failed;Unreachable
 type ClusterPhase string
 
 const (
-	ClusterPhasePending    ClusterPhase = "Pending"
-	ClusterPhaseApplying   ClusterPhase = "Applying"
-	ClusterPhaseConverging ClusterPhase = "Converging"
-	ClusterPhaseConverged  ClusterPhase = "Converged"
-	ClusterPhaseFailed     ClusterPhase = "Failed"
+	ClusterPhasePending     ClusterPhase = "Pending"
+	ClusterPhaseApplying    ClusterPhase = "Applying"
+	ClusterPhaseConverging  ClusterPhase = "Converging"
+	ClusterPhaseConverged   ClusterPhase = "Converged"
+	ClusterPhaseFailed      ClusterPhase = "Failed"
+	ClusterPhaseUnreachable ClusterPhase = "Unreachable"
 )
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Cluster
 // +kubebuilder:printcolumn:name="Environment",type=string,JSONPath=`.spec.environmentRef`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
-// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.currentVersion`
-// +kubebuilder:printcolumn:name="Healthy",type=boolean,JSONPath=`.status.healthy`
-// +kubebuilder:printcolumn:name="Last Heartbeat",type=string,JSONPath=`.status.lastHeartbeat`
+// +kubebuilder:printcolumn:name="Delivery",type=string,JSONPath=`.status.deliverySystem`
+// +kubebuilder:printcolumn:name="Healthy",type=boolean,JSONPath=`.status.health.allWorkloadsReady`
+// +kubebuilder:printcolumn:name="Active Release",type=string,JSONPath=`.status.activeRelease`
+// +kubebuilder:printcolumn:name="Heartbeat",type=string,JSONPath=`.status.lastHeartbeat`
 
-// ClusterRegistration is written by kapro-cluster-controller. The control plane reads it.
+// ClusterRegistration is the fleet registry entry for a workload cluster.
+// One object per cluster, cluster-scoped on the Kapro control plane.
+// The control plane writes spec.desiredVersion; cluster-controller writes status.
+// Together they form the canonical read model for "what is running where."
 type ClusterRegistration struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -488,4 +559,172 @@ type ApprovalList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Approval `json:"items"`
+}
+
+// ---- BootstrapToken ---------------------------------------------------------
+
+// BootstrapTokenSpec defines a one-time token used by a workload cluster to
+// self-register with the Kapro control plane.
+// Inspired by: Kubernetes TLS bootstrap tokens, OCM klusterlet CSR bootstrap.
+// Security model:
+//   - Token is stored as SHA-256 hash only — plaintext never persisted
+//   - 24h TTL enforced by expiresAt
+//   - One-time use: status.used=true is set atomically on first use
+//   - After use, the issued credential (SA token) rotates every hour via TokenRequest API
+type BootstrapTokenSpec struct {
+	// ClusterName is the name of the ClusterRegistration that will be created.
+	ClusterName string `json:"clusterName"`
+
+	// TokenHash is the SHA-256 hex digest of the raw bootstrap token.
+	// The plaintext token is NEVER stored. Only this hash is stored for validation.
+	TokenHash string `json:"tokenHash"`
+
+	// ExpiresAt is the RFC3339 time after which this token is no longer valid.
+	ExpiresAt string `json:"expiresAt"`
+
+	// Labels are the labels to apply to the created ClusterRegistration.
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+}
+
+// BootstrapTokenStatus tracks the one-time-use state of a bootstrap token.
+type BootstrapTokenStatus struct {
+	// Used is set to true when the token has been consumed by a cluster-controller.
+	Used bool `json:"used"`
+
+	// UsedAt is the RFC3339 timestamp when the token was consumed.
+	// +optional
+	UsedAt string `json:"usedAt,omitempty"`
+
+	// IssuedCredentialFor is the ServiceAccount name created for this cluster.
+	// +optional
+	IssuedCredentialFor string `json:"issuedCredentialFor,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Namespaced
+// +kubebuilder:printcolumn:name="Cluster",type=string,JSONPath=`.spec.clusterName`
+// +kubebuilder:printcolumn:name="Used",type=boolean,JSONPath=`.status.used`
+// +kubebuilder:printcolumn:name="Expires",type=string,JSONPath=`.spec.expiresAt`
+
+// BootstrapToken is a one-time credential that allows a workload cluster's
+// cluster-controller to self-register with the Kapro control plane.
+// Created by `kapro cluster bootstrap`. Consumed once; then auto-deleted.
+type BootstrapToken struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              BootstrapTokenSpec   `json:"spec,omitempty"`
+	Status            BootstrapTokenStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+type BootstrapTokenList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []BootstrapToken `json:"items"`
+}
+
+// ---- PluginRegistration -----------------------------------------------------
+
+// PluginType identifies which PCL interface this plugin implements.
+// +kubebuilder:validation:Enum=Actuator;Provider;Gate
+type PluginType string
+
+const (
+	PluginTypeActuator PluginType = "Actuator"
+	PluginTypeProvider PluginType = "Provider"
+	PluginTypeGate     PluginType = "Gate"
+)
+
+// PluginRegistrationSpec defines how to locate and connect to a Kapro plugin.
+// Plugins implement one of: ActuatorService, ProviderService, GateService (gRPC).
+type PluginRegistrationSpec struct {
+	// Type declares which PCL interface this plugin implements.
+	Type PluginType `json:"type"`
+
+	// SocketPath is the path to the Unix domain socket for local (sidecar) plugins.
+	// Convention: /var/run/kapro-plugins/<plugin-name>.sock
+	// Mutually exclusive with Endpoint.
+	// +optional
+	SocketPath string `json:"socketPath,omitempty"`
+
+	// Endpoint is the gRPC endpoint for remote plugins (e.g. grpc://host:port).
+	// Used for plugins that run as a separate service (not a sidecar).
+	// Mutually exclusive with SocketPath.
+	// +optional
+	Endpoint string `json:"endpoint,omitempty"`
+
+	// TLS configures mTLS for remote endpoint plugins.
+	// +optional
+	TLS *PluginTLSConfig `json:"tls,omitempty"`
+
+	// HealthCheck configures how the operator probes plugin liveness.
+	// +optional
+	HealthCheck *PluginHealthCheck `json:"healthCheck,omitempty"`
+
+	// Metadata is informational metadata about the plugin.
+	// +optional
+	Metadata PluginMeta `json:"metadata,omitempty"`
+}
+
+// PluginTLSConfig specifies mTLS configuration for remote plugin endpoints.
+type PluginTLSConfig struct {
+	// SecretRef names a K8s Secret with keys: tls.crt, tls.key, ca.crt
+	SecretRef string `json:"secretRef"`
+}
+
+// PluginHealthCheck configures liveness probing for a plugin.
+type PluginHealthCheck struct {
+	// IntervalSeconds is how often to probe the plugin's gRPC health service.
+	IntervalSeconds int `json:"intervalSeconds,omitempty"`
+	// TimeoutSeconds is the probe timeout.
+	TimeoutSeconds int `json:"timeoutSeconds,omitempty"`
+}
+
+// PluginMeta contains informational metadata about a plugin.
+type PluginMeta struct {
+	Vendor      string `json:"vendor,omitempty"`
+	Version     string `json:"version,omitempty"`
+	Description string `json:"description,omitempty"`
+	Homepage    string `json:"homepage,omitempty"`
+}
+
+// PluginRegistrationStatus is written by the operator after it connects to the plugin.
+type PluginRegistrationStatus struct {
+	// Connected is true when the operator has established a gRPC connection.
+	Connected bool `json:"connected"`
+	// LastPing is the RFC3339 timestamp of the last successful health check.
+	// +optional
+	LastPing string `json:"lastPing,omitempty"`
+	// Capabilities lists the capabilities reported by the plugin via GetCapabilities RPC.
+	// +optional
+	Capabilities []string `json:"capabilities,omitempty"`
+	// Message is a human-readable status or error message.
+	// +optional
+	Message string `json:"message,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Cluster
+// +kubebuilder:printcolumn:name="Type",type=string,JSONPath=`.spec.type`
+// +kubebuilder:printcolumn:name="Connected",type=boolean,JSONPath=`.status.connected`
+// +kubebuilder:printcolumn:name="Last Ping",type=string,JSONPath=`.status.lastPing`
+
+// PluginRegistration registers an external gRPC plugin with the Kapro operator.
+// The plugin implements one of: ActuatorService, ProviderService, GateService.
+// See: proto/actuator.proto, proto/provider.proto, proto/gate.proto
+type PluginRegistration struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              PluginRegistrationSpec   `json:"spec,omitempty"`
+	Status            PluginRegistrationStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+type PluginRegistrationList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []PluginRegistration `json:"items"`
 }

@@ -79,7 +79,7 @@ func (p *CRDProvider) IsHealthy(ctx context.Context, env *kaprov1alpha1.Environm
 		return false, nil
 	}
 
-	return reg.Status.Healthy && reg.Status.FluxReady, nil
+	return reg.Status.Health.AllWorkloadsReady, nil
 }
 
 // CurrentVersion returns the version currently reported by the workload cluster.
@@ -88,6 +88,6 @@ func (p *CRDProvider) CurrentVersion(ctx context.Context, env *kaprov1alpha1.Env
 	if err != nil {
 		return "", err
 	}
-	return reg.Status.CurrentVersion, nil
+	return reg.Status.CurrentVersions["ocs"], nil
 }
 

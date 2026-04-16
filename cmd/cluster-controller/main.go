@@ -197,10 +197,15 @@ func reconcile(
 	// ── 7. Write status to control plane ──────────────────────────────────────
 	patch := client.MergeFrom(reg.DeepCopy())
 	reg.Status.LastHeartbeat = time.Now().UTC().Format(time.RFC3339)
-	reg.Status.Healthy = fluxReady
-	reg.Status.FluxReady = fluxReady
-	reg.Status.FluxVersion = fluxVersion
-	reg.Status.CurrentVersion = currentTag
+	reg.Status.Health = kaprov1alpha1.ClusterHealth{
+		AllWorkloadsReady: fluxReady,
+		Message:           fmt.Sprintf("FluxVersion=%s", fluxVersion),
+	}
+	reg.Status.DeliverySystem = "flux"
+	if reg.Status.CurrentVersions == nil {
+		reg.Status.CurrentVersions = make(map[string]string)
+	}
+	reg.Status.CurrentVersions["ocs"] = currentTag
 	reg.Status.Phase = phase
 
 	if patchErr := cpClient.Status().Patch(ctx, &reg, patch); patchErr != nil {

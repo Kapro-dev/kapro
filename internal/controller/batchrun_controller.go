@@ -199,10 +199,10 @@ func (r *BatchRunReconciler) handleWaitingConvergence(ctx context.Context, br *k
 				continue
 			}
 			updatedClusters[i].Phase = reg.Status.Phase
-			updatedClusters[i].Version = reg.Status.CurrentVersion
+			updatedClusters[i].Version = reg.Status.CurrentVersions["ocs"]
 
 			if reg.Status.Phase == kaprov1alpha1.ClusterPhaseConverged &&
-				reg.Status.CurrentVersion == targetVersion {
+				reg.Status.CurrentVersions["ocs"] == targetVersion {
 				log.Info("cluster converged", "env", cs.EnvironmentRef, "version", targetVersion)
 			} else if reg.Status.Phase == kaprov1alpha1.ClusterPhaseFailed {
 				anyFailed = true

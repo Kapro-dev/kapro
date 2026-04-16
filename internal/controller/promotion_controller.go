@@ -90,8 +90,8 @@ func (r *PromotionReconciler) handleHealthCheck(ctx context.Context, promo *kapr
 		return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 	}
 
-	if !reg.Status.Healthy || !reg.Status.FluxReady {
-		log.FromContext(ctx).Info("cluster not healthy yet", "healthy", reg.Status.Healthy, "fluxReady", reg.Status.FluxReady)
+	if !reg.Status.Health.AllWorkloadsReady {
+		log.FromContext(ctx).Info("cluster not healthy yet", "healthy", reg.Status.Health.AllWorkloadsReady, "deliverySystem", reg.Status.DeliverySystem)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
@@ -229,7 +229,7 @@ func (r *PromotionReconciler) handleApplying(ctx context.Context, promo *kaprov1
 	}
 
 	if reg.Status.Phase == kaprov1alpha1.ClusterPhaseConverged &&
-		reg.Status.CurrentVersion == promo.Spec.Version {
+		reg.Status.CurrentVersions["ocs"] == promo.Spec.Version {
 		log.Info("cluster converged", "env", promo.Spec.EnvironmentRef, "version", promo.Spec.Version)
 		patch := client.MergeFrom(promo.DeepCopy())
 		promo.Status.Phase = kaprov1alpha1.PromotionPhaseConverged
@@ -245,7 +245,7 @@ func (r *PromotionReconciler) handleApplying(ctx context.Context, promo *kaprov1
 	log.Info("waiting for convergence",
 		"env", promo.Spec.EnvironmentRef,
 		"clusterPhase", reg.Status.Phase,
-		"currentVersion", reg.Status.CurrentVersion,
+		"currentVersion", reg.Status.CurrentVersions["ocs"],
 		"wantVersion", promo.Spec.Version,
 	)
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
