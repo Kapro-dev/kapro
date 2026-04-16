@@ -3,47 +3,39 @@ package controller
 import (
 	"context"
 	"fmt"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	authv1 "k8s.io/api/authentication/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	"kapro.io/kapro/internal/registration"
 )
 
-const (
-	// kaproSystemNamespace is where operator-managed service accounts are created.
-	kaproSystemNamespace = "kapro-system"
-	// tokenExpirySeconds — issued SA tokens are valid for 1 hour; cluster-controller renews before expiry.
-	tokenExpirySeconds = int64(3600)
-)
+const bootstrapTokenFinalizer = "kapro.io/bootstrap-token-finalizer"
 
-// BootstrapTokenReconciler provisions per-cluster credentials from a BootstrapToken CR.
-//
-// Flow:
-//  1. Developer runs `kapro cluster bootstrap --name <cluster>` → BootstrapToken CR created.
-//  2. This controller sees the CR (status.used == false, not expired).
-//  3. Creates a ServiceAccount + ClusterRole (scoped to one ClusterRegistration) + ClusterRoleBinding.
-//  4. Issues a short-lived token via TokenRequest API.
-//  5. Writes a kubeconfig-compatible Secret so the cluster-controller can authenticate back.
-//  6. Marks BootstrapToken as used — one-time, no replay.
+// BootstrapTokenReconciler manages the lifecycle of BootstrapToken CRs.
+// Credential issuance is handled by the registration.Server HTTP endpoint.
+// This controller handles: finalizer, expiry cleanup, RBAC cleanup on delete.
 type BootstrapTokenReconciler struct {
 	client.Client
+	Recorder record.EventRecorder
 }
 
-// +kubebuilder:rbac:groups=kapro.io,resources=bootstraptokens,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=bootstraptokens,verbs=get;list;watch;update;patch;delete
 // +kubebuilder:rbac:groups=kapro.io,resources=bootstraptokens/status,verbs=update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=bootstraptokens/finalizers,verbs=update
 // +kubebuilder:rbac:groups=kapro.io,resources=clusterregistrations,verbs=get;list;watch;create;update;patch
-// +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch
-// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles;clusterrolebindings,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles;clusterrolebindings,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=authentication.k8s.io,resources=serviceaccounts/token,verbs=create
 
 func (r *BootstrapTokenReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -54,232 +46,103 @@ func (r *BootstrapTokenReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Already used — nothing to do.
-	if token.Status.Used {
+	log.Info("reconciling BootstrapToken", "name", token.Name, "used", token.Status.Used)
+
+	// Handle deletion — clean up owned RBAC resources.
+	if !token.DeletionTimestamp.IsZero() {
+		return r.handleDeletion(ctx, &token)
+	}
+
+	// Ensure finalizer is present.
+	if !controllerutil.ContainsFinalizer(&token, bootstrapTokenFinalizer) {
+		controllerutil.AddFinalizer(&token, bootstrapTokenFinalizer)
+		if err := r.Update(ctx, &token); err != nil {
+			return ctrl.Result{}, fmt.Errorf("add finalizer: %w", err)
+		}
+		log.Info("added finalizer", "token", token.Name)
 		return ctrl.Result{}, nil
 	}
 
-	// Expired — mark as used to prevent lingering tokens.
-	if time.Now().After(token.Spec.ExpiresAt.Time) {
-		log.Info("BootstrapToken expired, marking used", "name", token.Name)
-		return r.markUsed(ctx, &token, "")
+	// Mark expired tokens — passive cleanup so they show as used in kubectl.
+	if !token.Status.Used && isExpired(&token) {
+		log.Info("BootstrapToken expired", "token", token.Name)
+		r.Recorder.Event(&token, corev1.EventTypeWarning, "Expired", "BootstrapToken expired without being used")
+		now := metav1.Now()
+		token.Status.Used = true
+		token.Status.UsedAt = &now
+		if err := r.Status().Update(ctx, &token); err != nil {
+			return ctrl.Result{}, fmt.Errorf("mark expired: %w", err)
+		}
 	}
 
+	return ctrl.Result{}, nil
+}
+
+// handleDeletion cleans up the ServiceAccount, ClusterRole, and ClusterRoleBinding
+// created for this cluster when the BootstrapToken was consumed.
+func (r *BootstrapTokenReconciler) handleDeletion(ctx context.Context, token *kaprov1alpha1.BootstrapToken) (ctrl.Result, error) {
+	log := log.FromContext(ctx)
 	clusterName := token.Spec.ClusterName
-	saName := "kapro-cluster-" + clusterName
 
-	// Ensure ClusterRegistration placeholder exists so the new cluster can write to it.
-	if err := r.ensureClusterRegistration(ctx, clusterName, token.Spec.Labels); err != nil {
-		return ctrl.Result{}, fmt.Errorf("ensure ClusterRegistration: %w", err)
+	if err := r.deleteServiceAccount(ctx, "kapro-cluster-"+clusterName); err != nil {
+		return ctrl.Result{}, fmt.Errorf("delete SA: %w", err)
 	}
-
-	// Ensure ServiceAccount.
-	if err := r.ensureServiceAccount(ctx, saName, clusterName); err != nil {
-		return ctrl.Result{}, fmt.Errorf("ensure SA: %w", err)
-	}
-
-	// Ensure ClusterRole — only allows updating its own ClusterRegistration.
 	roleName := "kapro:cluster-controller:" + clusterName
-	if err := r.ensureClusterRole(ctx, roleName, clusterName); err != nil {
-		return ctrl.Result{}, fmt.Errorf("ensure ClusterRole: %w", err)
+	if err := r.deleteClusterRole(ctx, roleName); err != nil {
+		return ctrl.Result{}, fmt.Errorf("delete ClusterRole: %w", err)
+	}
+	if err := r.deleteClusterRoleBinding(ctx, roleName); err != nil {
+		return ctrl.Result{}, fmt.Errorf("delete ClusterRoleBinding: %w", err)
 	}
 
-	// Ensure ClusterRoleBinding.
-	if err := r.ensureClusterRoleBinding(ctx, roleName, saName); err != nil {
-		return ctrl.Result{}, fmt.Errorf("ensure ClusterRoleBinding: %w", err)
+	controllerutil.RemoveFinalizer(token, bootstrapTokenFinalizer)
+	if err := r.Update(ctx, token); err != nil {
+		return ctrl.Result{}, fmt.Errorf("remove finalizer: %w", err)
 	}
 
-	// Issue token via TokenRequest API.
-	issuedToken, err := r.issueToken(ctx, saName)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("issue token: %w", err)
-	}
-
-	// Write credentials Secret — cluster-controller mounts this to authenticate back.
-	secretName := "kapro-cluster-" + clusterName + "-credentials"
-	if err := r.ensureCredentialsSecret(ctx, secretName, clusterName, issuedToken); err != nil {
-		return ctrl.Result{}, fmt.Errorf("ensure credentials secret: %w", err)
-	}
-
-	log.Info("bootstrap complete",
-		"cluster", clusterName,
-		"serviceAccount", saName,
-		"credentialsSecret", secretName,
-	)
-
-	return r.markUsed(ctx, &token, saName)
+	log.Info("BootstrapToken deleted, RBAC cleaned up", "cluster", clusterName)
+	r.Recorder.Event(token, corev1.EventTypeNormal, "Deleted", "RBAC resources cleaned up for cluster "+clusterName)
+	return ctrl.Result{}, nil
 }
 
-func (r *BootstrapTokenReconciler) ensureClusterRegistration(ctx context.Context, clusterName string, labels map[string]string) error {
-	reg := &kaprov1alpha1.ClusterRegistration{}
-	err := r.Get(ctx, types.NamespacedName{Name: clusterName}, reg)
-	if err == nil {
-		return nil // already exists
-	}
-	if !apierrors.IsNotFound(err) {
-		return err
-	}
-
-	reg = &kaprov1alpha1.ClusterRegistration{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   clusterName,
-			Labels: labels,
-		},
-		Spec: kaprov1alpha1.ClusterRegistrationSpec{},
-	}
-	return r.Create(ctx, reg)
-}
-
-func (r *BootstrapTokenReconciler) ensureServiceAccount(ctx context.Context, saName, clusterName string) error {
+func (r *BootstrapTokenReconciler) deleteServiceAccount(ctx context.Context, saName string) error {
 	sa := &corev1.ServiceAccount{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: kaproSystemNamespace, Name: saName}, sa)
-	if err == nil {
+	err := r.Get(ctx, types.NamespacedName{Namespace: registration.KaproSystemNamespace, Name: saName}, sa)
+	if apierrors.IsNotFound(err) {
 		return nil
 	}
-	if !apierrors.IsNotFound(err) {
+	if err != nil {
 		return err
 	}
-	sa = &corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      saName,
-			Namespace: kaproSystemNamespace,
-			Labels: map[string]string{
-				"kapro.io/cluster": clusterName,
-			},
-		},
-	}
-	return r.Create(ctx, sa)
+	return r.Delete(ctx, sa)
 }
 
-func (r *BootstrapTokenReconciler) ensureClusterRole(ctx context.Context, roleName, clusterName string) error {
+func (r *BootstrapTokenReconciler) deleteClusterRole(ctx context.Context, roleName string) error {
 	role := &rbacv1.ClusterRole{}
 	err := r.Get(ctx, types.NamespacedName{Name: roleName}, role)
-	if err == nil {
+	if apierrors.IsNotFound(err) {
 		return nil
 	}
-	if !apierrors.IsNotFound(err) {
+	if err != nil {
 		return err
 	}
-	role = &rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: roleName,
-			Labels: map[string]string{
-				"kapro.io/cluster": clusterName,
-			},
-		},
-		Rules: []rbacv1.PolicyRule{
-			{
-				APIGroups:     []string{"kapro.io"},
-				Resources:     []string{"clusterregistrations"},
-				ResourceNames: []string{clusterName}, // blast-radius isolation
-				Verbs:         []string{"get", "update", "patch"},
-			},
-			{
-				APIGroups:     []string{"kapro.io"},
-				Resources:     []string{"clusterregistrations/status"},
-				ResourceNames: []string{clusterName},
-				Verbs:         []string{"update", "patch"},
-			},
-		},
-	}
-	return r.Create(ctx, role)
+	return r.Delete(ctx, role)
 }
 
-func (r *BootstrapTokenReconciler) ensureClusterRoleBinding(ctx context.Context, roleName, saName string) error {
-	bindingName := roleName
+func (r *BootstrapTokenReconciler) deleteClusterRoleBinding(ctx context.Context, bindingName string) error {
 	binding := &rbacv1.ClusterRoleBinding{}
 	err := r.Get(ctx, types.NamespacedName{Name: bindingName}, binding)
-	if err == nil {
+	if apierrors.IsNotFound(err) {
 		return nil
 	}
-	if !apierrors.IsNotFound(err) {
+	if err != nil {
 		return err
 	}
-	binding = &rbacv1.ClusterRoleBinding{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: bindingName,
-		},
-		RoleRef: rbacv1.RoleRef{
-			APIGroup: "rbac.authorization.k8s.io",
-			Kind:     "ClusterRole",
-			Name:     roleName,
-		},
-		Subjects: []rbacv1.Subject{
-			{
-				Kind:      "ServiceAccount",
-				Name:      saName,
-				Namespace: kaproSystemNamespace,
-			},
-		},
-	}
-	return r.Create(ctx, binding)
+	return r.Delete(ctx, binding)
 }
 
-func (r *BootstrapTokenReconciler) issueToken(ctx context.Context, saName string) (string, error) {
-	expiry := tokenExpirySeconds
-	treq := &authv1.TokenRequest{
-		Spec: authv1.TokenRequestSpec{
-			ExpirationSeconds: &expiry,
-		},
-	}
-
-	sa := &corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      saName,
-			Namespace: kaproSystemNamespace,
-		},
-	}
-
-	if err := r.SubResource("token").Create(ctx, sa, treq); err != nil {
-		return "", err
-	}
-	return treq.Status.Token, nil
-}
-
-func (r *BootstrapTokenReconciler) ensureCredentialsSecret(ctx context.Context, secretName, clusterName, token string) error {
-	secret := &corev1.Secret{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: kaproSystemNamespace, Name: secretName}, secret)
-	if err == nil {
-		// Update existing — token was refreshed.
-		secret.Data["token"] = []byte(token)
-		return r.Update(ctx, secret)
-	}
-	if !apierrors.IsNotFound(err) {
-		return err
-	}
-
-	secret = &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: kaproSystemNamespace,
-			Labels: map[string]string{
-				"kapro.io/cluster":     clusterName,
-				"kapro.io/secret-type": "cluster-credentials",
-			},
-			Annotations: map[string]string{
-				"kapro.io/issued-at": time.Now().UTC().Format(time.RFC3339),
-			},
-		},
-		Type: corev1.SecretTypeOpaque,
-		Data: map[string][]byte{
-			"cluster-name": []byte(clusterName),
-			"token":        []byte(token),
-		},
-	}
-	return r.Create(ctx, secret)
-}
-
-func (r *BootstrapTokenReconciler) markUsed(ctx context.Context, token *kaprov1alpha1.BootstrapToken, saName string) (ctrl.Result, error) {
-	now := metav1.Now()
-	token.Status.Used = true
-	token.Status.UsedAt = &now
-	if saName != "" {
-		token.Status.IssuedCredentialFor = saName
-	}
-	if err := r.Status().Update(ctx, token); err != nil {
-		return ctrl.Result{}, err
-	}
-	return ctrl.Result{}, nil
+func isExpired(token *kaprov1alpha1.BootstrapToken) bool {
+	return metav1.Now().After(token.Spec.ExpiresAt.Time)
 }
 
 func (r *BootstrapTokenReconciler) SetupWithManager(mgr ctrl.Manager) error {

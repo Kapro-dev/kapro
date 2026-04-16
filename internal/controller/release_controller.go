@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -23,6 +25,7 @@ import (
 //	Pending → Promoting → Progressing → Complete | Failed
 type ReleaseReconciler struct {
 	client.Client
+	Recorder record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=releases,verbs=get;list;watch;create;update;patch;delete
@@ -105,6 +108,7 @@ func (r *ReleaseReconciler) handlePending(ctx context.Context, release *kaprov1a
 	// Transition to Promoting
 	patch := client.MergeFrom(release.DeepCopy())
 	release.Status.Phase = kaprov1alpha1.ReleasePhasePromoting
+	r.Recorder.Event(release, corev1.EventTypeNormal, "PhaseTransition", "Release → Promoting")
 	if err := r.Status().Patch(ctx, release, patch); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -184,6 +188,7 @@ func (r *ReleaseReconciler) handlePromoting(ctx context.Context, release *kaprov
 	}
 
 	log.Info("all promotions converged — transitioning to Progressing")
+	r.Recorder.Event(release, corev1.EventTypeNormal, "PhaseTransition", "Promoting → Progressing")
 	patch := client.MergeFrom(release.DeepCopy())
 	release.Status.Phase = kaprov1alpha1.ReleasePhaseProgressing
 	if err := r.Status().Patch(ctx, release, patch); err != nil {
@@ -275,6 +280,7 @@ func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kapr
 	}
 
 	log.Info("all batches complete — Release is Complete")
+	r.Recorder.Event(release, corev1.EventTypeNormal, "Applied", "All batches complete")
 	patch := client.MergeFrom(release.DeepCopy())
 	release.Status.Phase = kaprov1alpha1.ReleasePhaseComplete
 	// Clear activeRelease on all environments
@@ -292,6 +298,7 @@ func (r *ReleaseReconciler) failRelease(ctx context.Context, release *kaprov1alp
 		Message:            msg,
 		LastTransitionTime: metav1.Now(),
 	})
+	r.Recorder.Event(release, corev1.EventTypeWarning, "Failed", msg)
 	r.clearActiveRelease(ctx, release)
 	return r.Status().Patch(ctx, release, patch)
 }

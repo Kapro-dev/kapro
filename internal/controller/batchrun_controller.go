@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -22,6 +24,7 @@ import (
 //	Pending → Resolving → Applying → WaitingConvergence → GateCheck → WaitingApproval → Complete | Failed
 type BatchRunReconciler struct {
 	client.Client
+	Recorder record.EventRecorder
 	Actuator *fluxactuator.FluxActuator
 	Provider *crdprovider.CRDProvider
 }
@@ -267,6 +270,7 @@ func (r *BatchRunReconciler) handleWaitingApproval(ctx context.Context, br *kapr
 				"approvedBy", approval.Spec.ApprovedBy,
 				"bypass", approval.Spec.Bypass,
 			)
+			r.Recorder.Event(br, corev1.EventTypeNormal, "ApprovalReceived", "Batch approval received")
 			return r.setBatchPhase(ctx, br, kaprov1alpha1.BatchPhaseComplete)
 		}
 	}
@@ -280,6 +284,7 @@ func (r *BatchRunReconciler) setBatchPhase(ctx context.Context, br *kaprov1alpha
 	if phase == kaprov1alpha1.BatchPhaseComplete || phase == kaprov1alpha1.BatchPhaseFailed {
 		br.Status.FinishedAt = time.Now().UTC().Format(time.RFC3339)
 	}
+	r.Recorder.Event(br, corev1.EventTypeNormal, "PhaseTransition", fmt.Sprintf("→ %s", phase))
 	return ctrl.Result{Requeue: true}, r.Status().Patch(ctx, br, patch)
 }
 
@@ -294,6 +299,7 @@ func (r *BatchRunReconciler) failBatch(ctx context.Context, br *kaprov1alpha1.Ba
 		Message:            msg,
 		LastTransitionTime: metav1.Now(),
 	})
+	r.Recorder.Event(br, corev1.EventTypeWarning, "Failed", msg)
 	return r.Status().Patch(ctx, br, patch)
 }
 

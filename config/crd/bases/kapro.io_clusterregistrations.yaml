@@ -206,7 +206,12 @@ spec:
                 description: |-
                   DeliverySystem reports which actuator is managing this cluster.
                   Written by cluster-controller based on what delivery system it detects locally.
-                  One of: flux, argocd, sveltos, ocm, helm
+                enum:
+                - flux
+                - argocd
+                - sveltos
+                - ocm
+                - helm
                 type: string
               health:
                 description: Health is the aggregated workload health from the local

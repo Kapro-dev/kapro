@@ -47,6 +47,9 @@ spec:
               environmentRef:
                 type: string
               kind:
+                enum:
+                - Promotion
+                - Batch
                 type: string
               ref:
                 type: string

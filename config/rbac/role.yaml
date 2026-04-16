@@ -10,6 +10,7 @@ rules:
   - secrets
   verbs:
   - create
+  - delete
   - get
   - list
   - patch
@@ -21,6 +22,7 @@ rules:
   - serviceaccounts
   verbs:
   - create
+  - delete
   - get
   - list
   - watch
@@ -67,11 +69,18 @@ rules:
   resources:
   - bootstraptokens
   verbs:
+  - delete
   - get
   - list
   - patch
   - update
   - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - bootstraptokens/finalizers
+  verbs:
+  - update
 - apiGroups:
   - kapro.io
   resources:
@@ -165,6 +174,7 @@ rules:
   - clusterroles
   verbs:
   - create
+  - delete
   - get
   - list
   - patch

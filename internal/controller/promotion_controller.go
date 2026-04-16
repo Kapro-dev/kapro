@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -23,6 +25,7 @@ import (
 //	Pending → HealthCheck → Soaking → MetricsCheck → WaitingApproval → Applying → Converged | Failed
 type PromotionReconciler struct {
 	client.Client
+	Recorder     record.EventRecorder
 	Actuator     *fluxactuator.FluxActuator
 	Provider     *crdprovider.CRDProvider
 	SoakGate     *gate.SoakGate
@@ -132,6 +135,7 @@ func (r *PromotionReconciler) handleSoaking(ctx context.Context, promo *kaprov1a
 	log.FromContext(ctx).Info("soak gate", "passed", result.Passed, "message", result.Message)
 
 	if result.Passed {
+		r.Recorder.Event(promo, corev1.EventTypeNormal, "GatePassed", "SoakGate: "+result.Message)
 		return r.transitionTo(ctx, promo, kaprov1alpha1.PromotionPhaseMetricsCheck)
 	}
 
@@ -160,6 +164,7 @@ func (r *PromotionReconciler) handleMetricsCheck(ctx context.Context, promo *kap
 		}
 		log.FromContext(ctx).Info("metrics gate", "index", i, "passed", result.Passed, "message", result.Message)
 		if !result.Passed {
+			r.Recorder.Event(promo, corev1.EventTypeWarning, "GateFailed", result.Message)
 			after := parseDurationOrDefault(result.RetryAfter, 30*time.Second)
 			return ctrl.Result{RequeueAfter: after}, nil
 		}
@@ -193,6 +198,7 @@ func (r *PromotionReconciler) handleWaitingApproval(ctx context.Context, promo *
 		return r.transitionTo(ctx, promo, kaprov1alpha1.PromotionPhaseApplying)
 	}
 
+	r.Recorder.Event(promo, corev1.EventTypeNormal, "WaitingApproval", "Waiting for Approval CR")
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 
@@ -231,6 +237,7 @@ func (r *PromotionReconciler) handleApplying(ctx context.Context, promo *kaprov1
 	if reg.Status.Phase == kaprov1alpha1.ClusterPhaseConverged &&
 		reg.Status.CurrentVersions["ocs"] == promo.Spec.Version {
 		log.Info("cluster converged", "env", promo.Spec.EnvironmentRef, "version", promo.Spec.Version)
+		r.Recorder.Event(promo, corev1.EventTypeNormal, "Applied", fmt.Sprintf("Version %s applied to %s", promo.Spec.Version, promo.Spec.EnvironmentRef))
 		patch := client.MergeFrom(promo.DeepCopy())
 		promo.Status.Phase = kaprov1alpha1.PromotionPhaseConverged
 		promo.Status.FinishedAt = time.Now().UTC().Format(time.RFC3339)
@@ -257,6 +264,7 @@ func (r *PromotionReconciler) transitionTo(ctx context.Context, promo *kaprov1al
 	if phase == kaprov1alpha1.PromotionPhasePending && promo.Status.StartedAt == "" {
 		promo.Status.StartedAt = time.Now().UTC().Format(time.RFC3339)
 	}
+	r.Recorder.Event(promo, corev1.EventTypeNormal, "PhaseTransition", fmt.Sprintf("→ %s", phase))
 	return ctrl.Result{Requeue: true}, r.Status().Patch(ctx, promo, patch)
 }
 
@@ -272,6 +280,7 @@ func (r *PromotionReconciler) failPromotion(ctx context.Context, promo *kaprov1a
 		Message:            msg,
 		LastTransitionTime: metav1.Now(),
 	})
+	r.Recorder.Event(promo, corev1.EventTypeWarning, "Failed", msg)
 	return r.Status().Patch(ctx, promo, patch)
 }
 

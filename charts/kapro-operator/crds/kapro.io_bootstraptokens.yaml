@@ -78,6 +78,9 @@ spec:
                 description: |-
                   TokenHash is the SHA-256 hex digest of the raw bootstrap token.
                   The plaintext token is NEVER stored. Only this hash is stored for validation.
+                maxLength: 64
+                minLength: 64
+                pattern: ^[0-9a-f]{64}$
                 type: string
             required:
             - clusterName

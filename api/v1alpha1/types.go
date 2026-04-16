@@ -12,6 +12,8 @@ const (
 	ReleaseFinalizer = "kapro.io/release-finalizer"
 	// BatchRunFinalizer is added to BatchRun objects to allow cleanup of in-progress cluster applies.
 	BatchRunFinalizer = "kapro.io/batchrun-finalizer"
+	// BootstrapTokenFinalizer is added to BootstrapToken objects to allow RBAC cleanup on deletion.
+	BootstrapTokenFinalizer = "kapro.io/bootstrap-token-finalizer"
 )
 
 // ---- Artifact ---------------------------------------------------------------
@@ -58,7 +60,8 @@ type EnvironmentSpec struct {
 }
 
 type ActuatorSpec struct {
-	Type string       `json:"type"` // flux | argocd
+	// +kubebuilder:validation:Enum=flux;argocd;sveltos;ocm
+	Type string       `json:"type"`
 	Flux *FluxActuator `json:"flux,omitempty"`
 }
 
@@ -150,7 +153,7 @@ type ClusterRegistrationStatus struct {
 
 	// DeliverySystem reports which actuator is managing this cluster.
 	// Written by cluster-controller based on what delivery system it detects locally.
-	// One of: flux, argocd, sveltos, ocm, helm
+	// +kubebuilder:validation:Enum=flux;argocd;sveltos;ocm;helm
 	DeliverySystem string `json:"deliverySystem,omitempty"`
 
 	// Health is the aggregated workload health from the local delivery system.
@@ -233,10 +236,12 @@ const (
 )
 
 type PromotionPolicySpec struct {
+	// +kubebuilder:validation:Enum=auto;manual;scheduled
 	Mode     PromotionMode   `json:"mode"`
 	Gate     GateSpec        `json:"gate,omitempty"`
 	Approval *ApprovalConfig `json:"approval,omitempty"`
-	OnFailure string         `json:"onFailure,omitempty"` // halt | rollback | continue
+	// +kubebuilder:validation:Enum=halt;rollback;continue
+	OnFailure string         `json:"onFailure,omitempty"`
 	Notifications []NotificationSpec `json:"notifications,omitempty"`
 }
 
@@ -379,6 +384,7 @@ const (
 )
 
 type ApprovalSpec struct {
+	// +kubebuilder:validation:Enum=Promotion;Batch
 	Kind           ApprovalKind `json:"kind"`
 	Ref            string       `json:"ref"`
 	Release        string       `json:"release"`
@@ -396,7 +402,6 @@ type Approval struct {
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 	Spec              ApprovalSpec `json:"spec,omitempty"`
 }
-
 
 // ---- Promotion --------------------------------------------------------------
 
@@ -577,6 +582,9 @@ type BootstrapTokenSpec struct {
 
 	// TokenHash is the SHA-256 hex digest of the raw bootstrap token.
 	// The plaintext token is NEVER stored. Only this hash is stored for validation.
+	// +kubebuilder:validation:Pattern=`^[0-9a-f]{64}$`
+	// +kubebuilder:validation:MinLength=64
+	// +kubebuilder:validation:MaxLength=64
 	TokenHash string `json:"tokenHash"`
 
 	// ExpiresAt is the time after which this token is no longer valid.

@@ -73,6 +73,10 @@ spec:
                     type: string
                 type: object
               mode:
+                enum:
+                - auto
+                - manual
+                - scheduled
                 type: string
               notifications:
                 items:
@@ -88,6 +92,10 @@ spec:
                   type: object
                 type: array
               onFailure:
+                enum:
+                - halt
+                - rollback
+                - continue
                 type: string
             required:
             - mode

@@ -1,8 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"time"
 
@@ -18,6 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	"kapro.io/kapro/internal/registration"
 )
 
 var scheme = runtime.NewScheme()
@@ -51,6 +59,8 @@ func main() {
 		fluxNamespace = "flux-system"
 	}
 
+	caBundle := os.Getenv("KAPRO_CONTROL_PLANE_CA_BUNDLE")
+
 	log.Info("starting kapro-cluster-controller",
 		"environment", environmentRef,
 		"controlPlane", controlPlaneURL,
@@ -65,22 +75,46 @@ func main() {
 		os.Exit(1)
 	}
 
-	// cpClient writes ClusterRegistration.status to the control plane.
-	// In bootstrap mode: KAPRO_CONTROL_PLANE_TOKEN is a SA token issued by the BootstrapToken controller.
-	// In dev mode (no token): falls back to local kubeconfig.
-	controlPlaneToken := os.Getenv("KAPRO_CONTROL_PLANE_TOKEN")
+	ctx := ctrl.SetupSignalHandler()
+
+	// Determine control plane token.
+	// Priority: KAPRO_BOOTSTRAP_TOKEN (exchange for SA token) > KAPRO_CONTROL_PLANE_TOKEN (direct) > dev mode
+	var controlPlaneToken string
+	var tokenExpiry time.Time
+
+	bootstrapToken := os.Getenv("KAPRO_BOOTSTRAP_TOKEN")
+	if bootstrapToken != "" {
+		log.Info("exchanging bootstrap token for SA token")
+		token, expiry, exchangeErr := exchangeBootstrapToken(ctx, controlPlaneURL, environmentRef, bootstrapToken, caBundle)
+		if exchangeErr != nil {
+			log.Error(exchangeErr, "bootstrap token exchange failed")
+			os.Exit(1)
+		}
+		controlPlaneToken = token
+		tokenExpiry = expiry
+		log.Info("bootstrap exchange successful", "expiresAt", tokenExpiry.Format(time.RFC3339))
+	} else {
+		controlPlaneToken = os.Getenv("KAPRO_CONTROL_PLANE_TOKEN")
+	}
+
+	// Build control plane client.
 	var cpClient client.Client
-	if controlPlaneToken != "" && controlPlaneURL != "" {
+	if controlPlaneToken != "" {
 		cpCfg := &rest.Config{
 			Host:        controlPlaneURL,
 			BearerToken: controlPlaneToken,
-			TLSClientConfig: rest.TLSClientConfig{
-				Insecure: os.Getenv("KAPRO_CONTROL_PLANE_TLS_INSECURE") == "true",
-			},
+		}
+		if caBundle != "" {
+			caCert, decodeErr := base64.StdEncoding.DecodeString(caBundle)
+			if decodeErr != nil {
+				log.Error(decodeErr, "invalid KAPRO_CONTROL_PLANE_CA_BUNDLE")
+				os.Exit(1)
+			}
+			cpCfg.TLSClientConfig = rest.TLSClientConfig{CAData: caCert}
 		}
 		cpClient, err = client.New(cpCfg, client.Options{Scheme: scheme})
 	} else {
-		log.Info("KAPRO_CONTROL_PLANE_TOKEN not set — using local kubeconfig for control plane (dev mode)")
+		log.Info("no control plane token — using local kubeconfig (dev mode)")
 		cpClient, err = client.New(ctrl.GetConfigOrDie(), client.Options{Scheme: scheme})
 	}
 	if err != nil {
@@ -88,10 +122,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx := ctrl.SetupSignalHandler()
-
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
+
+	// Schedule token refresh 5 minutes before expiry.
+	var refreshTimer <-chan time.Time
+	if bootstrapToken != "" && !tokenExpiry.IsZero() {
+		refreshIn := time.Until(tokenExpiry) - 5*time.Minute
+		if refreshIn < 0 {
+			refreshIn = 0
+		}
+		refreshTimer = time.After(refreshIn)
+	}
 
 	// Run once immediately on startup.
 	if err := reconcile(ctx, localClient, cpClient, environmentRef, fluxNamespace); err != nil {
@@ -103,11 +145,91 @@ func main() {
 		case <-ctx.Done():
 			log.Info("shutting down")
 			return
+		case <-refreshTimer:
+			log.Info("refreshing SA token before expiry")
+			token, expiry, refreshErr := exchangeBootstrapToken(ctx, controlPlaneURL, environmentRef, bootstrapToken, caBundle)
+			if refreshErr != nil {
+				log.Error(refreshErr, "token refresh failed — will retry in 30s")
+			} else {
+				controlPlaneToken = token
+				tokenExpiry = expiry
+				// Rebuild cpClient with new token.
+				cpCfg := &rest.Config{Host: controlPlaneURL, BearerToken: controlPlaneToken}
+				if caBundle != "" {
+					caCert, _ := base64.StdEncoding.DecodeString(caBundle)
+					cpCfg.TLSClientConfig = rest.TLSClientConfig{CAData: caCert}
+				}
+				if newClient, newErr := client.New(cpCfg, client.Options{Scheme: scheme}); newErr == nil {
+					cpClient = newClient
+				}
+				// Schedule next refresh.
+				refreshIn := time.Until(tokenExpiry) - 5*time.Minute
+				if refreshIn < 0 {
+					refreshIn = 30 * time.Second
+				}
+				refreshTimer = time.After(refreshIn)
+			}
 		case <-ticker.C:
 			if err := reconcile(ctx, localClient, cpClient, environmentRef, fluxNamespace); err != nil {
 				log.Error(err, "reconcile failed")
 			}
 		}
+	}
+}
+
+// exchangeBootstrapToken POSTs the raw bootstrap token to /register and returns the issued SA token.
+func exchangeBootstrapToken(ctx context.Context, controlPlaneURL, clusterName, bootstrapToken, caBundle string) (string, time.Time, error) {
+	body, err := json.Marshal(registration.RegisterRequest{
+		ClusterName: clusterName,
+		Token:       bootstrapToken,
+	})
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("marshal request: %w", err)
+	}
+
+	httpClient := buildHTTPClient(caBundle)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, controlPlaneURL+"/register", bytes.NewReader(body))
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("registration request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return "", time.Time{}, fmt.Errorf("registration failed %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var regResp registration.RegisterResponse
+	if err := json.NewDecoder(resp.Body).Decode(&regResp); err != nil {
+		return "", time.Time{}, fmt.Errorf("decode response: %w", err)
+	}
+
+	expiresAt, _ := time.Parse(time.RFC3339, regResp.ExpiresAt)
+	return regResp.SAToken, expiresAt, nil
+}
+
+// buildHTTPClient builds an HTTP client with optional CA bundle for TLS verification.
+func buildHTTPClient(caBundle string) *http.Client {
+	if caBundle == "" {
+		return &http.Client{Timeout: 30 * time.Second}
+	}
+	caCert, err := base64.StdEncoding.DecodeString(caBundle)
+	if err != nil {
+		return &http.Client{Timeout: 30 * time.Second}
+	}
+	pool := x509.NewCertPool()
+	pool.AppendCertsFromPEM(caCert)
+	return &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12},
+		},
 	}
 }
 
@@ -147,7 +269,7 @@ func reconcile(
 
 	// ── 2. Read the Environment to get the OCIRepository name ──────────────────
 	var env kaprov1alpha1.Environment
-	ociRepoName := environmentRef // fallback: same name as environment
+	ociRepoName := environmentRef
 	if err := cpClient.Get(ctx, types.NamespacedName{Name: environmentRef}, &env); err == nil {
 		if env.Spec.Actuator.Flux != nil && env.Spec.Actuator.Flux.OCIRepository != "" {
 			ociRepoName = env.Spec.Actuator.Flux.OCIRepository
@@ -179,7 +301,6 @@ func reconcile(
 		if err := patchOCIRepositoryTag(ctx, localClient, &ociRepo, fluxNamespace, desiredVersion); err != nil {
 			return fmt.Errorf("patch OCIRepository tag: %w", err)
 		}
-		// Re-read after patch so phase calculation uses the new tag.
 		_ = localClient.Get(ctx, types.NamespacedName{Name: ociRepoName, Namespace: fluxNamespace}, &ociRepo)
 		if ociRepo.Spec.Reference != nil {
 			currentTag = ociRepo.Spec.Reference.Tag
@@ -199,7 +320,6 @@ func reconcile(
 				break
 			}
 		}
-		// Use revision from the first kustomization as proxy for deployed version.
 		if fluxVersion == "" && ks.Status.LastAppliedRevision != "" {
 			fluxVersion = ks.Status.LastAppliedRevision
 		}
@@ -210,7 +330,8 @@ func reconcile(
 
 	// ── 7. Write status to control plane ──────────────────────────────────────
 	patch := client.MergeFrom(reg.DeepCopy())
-	reg.Status.LastHeartbeat = time.Now().UTC().Format(time.RFC3339)
+	now := metav1.Now()
+	reg.Status.LastHeartbeat = now.UTC().Format(time.RFC3339)
 	reg.Status.Health = kaprov1alpha1.ClusterHealth{
 		AllWorkloadsReady: fluxReady,
 		Message:           fmt.Sprintf("FluxVersion=%s", fluxVersion),
@@ -245,32 +366,24 @@ func patchOCIRepositoryTag(
 	tag string,
 ) error {
 	patch := client.MergeFrom(ociRepo.DeepCopy())
-
 	if ociRepo.Spec.Reference == nil {
 		ociRepo.Spec.Reference = &sourcev1.OCIRepositoryRef{}
 	}
 	ociRepo.Spec.Reference.Tag = tag
-
-	// Force Flux to reconcile immediately instead of waiting for interval.
 	if ociRepo.Annotations == nil {
 		ociRepo.Annotations = map[string]string{}
 	}
 	ociRepo.Annotations["reconcile.fluxcd.io/requestedAt"] = time.Now().UTC().Format(time.RFC3339Nano)
-
 	return localClient.Patch(ctx, ociRepo, patch)
 }
 
 // derivePhase maps Flux readiness + version state to a ClusterPhase.
 func derivePhase(fluxReady bool, currentTag, desiredVersion string) kaprov1alpha1.ClusterPhase {
 	if desiredVersion != "" && currentTag != desiredVersion {
-		// We know the desired tag, but it hasn't propagated yet.
 		return kaprov1alpha1.ClusterPhaseApplying
 	}
 	if !fluxReady {
 		return kaprov1alpha1.ClusterPhaseConverging
-	}
-	if desiredVersion != "" && currentTag == desiredVersion {
-		return kaprov1alpha1.ClusterPhaseConverged
 	}
 	return kaprov1alpha1.ClusterPhaseConverged
 }
