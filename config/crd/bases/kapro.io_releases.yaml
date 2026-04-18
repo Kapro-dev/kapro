@@ -12,7 +12,7 @@ spec:
     listKind: ReleaseList
     plural: releases
     singular: release
-  scope: Namespaced
+  scope: Cluster
   versions:
   - additionalPrinterColumns:
     - jsonPath: .spec.artifact
@@ -47,6 +47,16 @@ spec:
             properties:
               artifact:
                 type: string
+              appKey:
+                description: AppKey is the key used to look up the current version
+                  in ClusterRegistration.status.currentVersions. Defaults to "default"
+                  when not set.
+                type: string
+              suspended:
+                description: Suspended pauses all FSM advancement for this Release
+                  when true.
+                type: boolean
+                default: false
               pipelineOverrides:
                 properties:
                   gatePolicy:

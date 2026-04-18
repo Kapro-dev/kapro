@@ -1,0 +1,128 @@
+{{- if .Values.webhook.enabled }}
+---
+# Service for the admission webhook server.
+# The kube-apiserver calls this Service; it must be in the same cluster as the operator.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kapro-operator.fullname" . }}-webhook
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kapro-operator.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "kapro-operator.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: webhook
+      port: 443
+      targetPort: {{ .Values.webhook.port }}
+---
+# ValidatingWebhookConfiguration — enforces CRD invariants at admission time.
+# caBundle is injected by cert-manager (cert-manager.io/inject-ca-from annotation)
+# or set manually when certmanager.enabled=false.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ include "kapro-operator.fullname" . }}
+  labels:
+    {{- include "kapro-operator.labels" . | nindent 4 }}
+  {{- if .Values.webhook.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "kapro-operator.fullname" . }}-webhook-cert
+  {{- end }}
+webhooks:
+  - name: validate.environment.kapro.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ .Values.webhook.failurePolicy }}
+    matchPolicy: Equivalent
+    rules:
+      - apiGroups: ["kapro.io"]
+        apiVersions: ["v1alpha1"]
+        resources: ["environments"]
+        operations: ["CREATE", "UPDATE"]
+    clientConfig:
+      service:
+        namespace: {{ .Release.Namespace }}
+        name: {{ include "kapro-operator.fullname" . }}-webhook
+        path: /validate-kapro-io-v1alpha1-environment
+        port: 443
+      {{- if not .Values.webhook.certManager.enabled }}
+      caBundle: {{ .Values.webhook.caBundle | default "" | b64enc | quote }}
+      {{- end }}
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values: [kube-system]
+
+  - name: validate.release.kapro.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ .Values.webhook.failurePolicy }}
+    matchPolicy: Equivalent
+    rules:
+      - apiGroups: ["kapro.io"]
+        apiVersions: ["v1alpha1"]
+        resources: ["releases"]
+        operations: ["CREATE", "UPDATE"]
+    clientConfig:
+      service:
+        namespace: {{ .Release.Namespace }}
+        name: {{ include "kapro-operator.fullname" . }}-webhook
+        path: /validate-kapro-io-v1alpha1-release
+        port: 443
+      {{- if not .Values.webhook.certManager.enabled }}
+      caBundle: {{ .Values.webhook.caBundle | default "" | b64enc | quote }}
+      {{- end }}
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values: [kube-system]
+
+  - name: validate.pipeline.kapro.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ .Values.webhook.failurePolicy }}
+    matchPolicy: Equivalent
+    rules:
+      - apiGroups: ["kapro.io"]
+        apiVersions: ["v1alpha1"]
+        resources: ["pipelines"]
+        operations: ["CREATE", "UPDATE"]
+    clientConfig:
+      service:
+        namespace: {{ .Release.Namespace }}
+        name: {{ include "kapro-operator.fullname" . }}-webhook
+        path: /validate-kapro-io-v1alpha1-pipeline
+        port: 443
+      {{- if not .Values.webhook.certManager.enabled }}
+      caBundle: {{ .Values.webhook.caBundle | default "" | b64enc | quote }}
+      {{- end }}
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values: [kube-system]
+
+  - name: mutate.approval.kapro.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: Ignore
+    matchPolicy: Equivalent
+    rules:
+      - apiGroups: ["kapro.io"]
+        apiVersions: ["v1alpha1"]
+        resources: ["approvals"]
+        operations: ["CREATE", "UPDATE"]
+    clientConfig:
+      service:
+        namespace: {{ .Release.Namespace }}
+        name: {{ include "kapro-operator.fullname" . }}-webhook
+        path: /mutate-kapro-io-v1alpha1-approval
+        port: 443
+      {{- if not .Values.webhook.certManager.enabled }}
+      caBundle: {{ .Values.webhook.caBundle | default "" | b64enc | quote }}
+      {{- end }}
+{{- end }}

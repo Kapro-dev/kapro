@@ -33,6 +33,9 @@ func (g *ApprovalGate) Evaluate(ctx context.Context, req Request) (Result, error
 	if g.Client == nil {
 		return Result{}, fmt.Errorf("ApprovalGate.Client is nil")
 	}
+	if req.Promotion == nil {
+		return Result{}, fmt.Errorf("ApprovalGate.Evaluate: promotion is nil")
+	}
 
 	var approvalList kaprov1alpha1.ApprovalList
 	if err := g.Client.List(ctx, &approvalList, client.MatchingLabels{

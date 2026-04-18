@@ -39,12 +39,29 @@ spec:
             - name: health
               containerPort: 8081
               protocol: TCP
+            {{- if .Values.webhook.enabled }}
+            - name: webhook
+              containerPort: {{ .Values.webhook.port }}
+              protocol: TCP
+            {{- end }}
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
           readinessProbe:
             {{- toYaml .Values.readinessProbe | nindent 12 }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          {{- if and .Values.webhook.enabled .Values.webhook.certManager.enabled }}
+          volumeMounts:
+            - name: webhook-tls
+              mountPath: /tmp/k8s-webhook-server/serving-certs
+              readOnly: true
+          {{- end }}
+      {{- if and .Values.webhook.enabled .Values.webhook.certManager.enabled }}
+      volumes:
+        - name: webhook-tls
+          secret:
+            secretName: {{ include "kapro-operator.fullname" . }}-webhook-tls
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

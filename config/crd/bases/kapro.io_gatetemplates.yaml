@@ -1,0 +1,170 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.0
+  name: gatetemplates.kapro.io
+spec:
+  group: kapro.io
+  names:
+    kind: GateTemplate
+    listKind: GateTemplateList
+    plural: gatetemplates
+    singular: gatetemplate
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.type
+      name: Type
+      type: string
+    - jsonPath: .spec.failurePolicy
+      name: Failure Policy
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: GateTemplate is a reusable, parameterised gate evaluation config.
+          Referenced by PromotionPolicy.spec.gate.templates[]. Kapro evaluates it
+          via Gate.Evaluate() without knowing the runner behind it.
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: GateTemplateSpec defines a reusable, parameterised gate
+              evaluation config.
+            properties:
+              type:
+                description: 'Type selects the gate runner: cel | job | webhook |
+                  argo-analysis | opa | plugin-gateway'
+                enum:
+                - cel
+                - job
+                - webhook
+                - argo-analysis
+                - opa
+                - plugin-gateway
+                type: string
+              args:
+                description: Args declares parameters that can be injected at evaluation
+                  time. Values here are defaults; policy-level and runtime args override
+                  them.
+                items:
+                  properties:
+                    name:
+                      type: string
+                    value:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+              failurePolicy:
+                default: halt
+                description: FailurePolicy controls promotion behaviour when this
+                  gate fails.
+                enum:
+                - halt
+                - retry
+                - skip
+                type: string
+              inconclusivePolicy:
+                default: retry
+                description: InconclusivePolicy controls behaviour when the gate cannot
+                  determine pass/fail.
+                enum:
+                - retry
+                - skip
+                - halt
+                type: string
+              timeout:
+                description: Timeout is the maximum time to wait before declaring
+                  the gate failed. Defaults to 30m.
+                type: string
+              maxAttempts:
+                default: 3
+                description: MaxAttempts is the maximum retry count before failing.
+                type: integer
+              cel:
+                description: CEL configures the built-in CEL expression gate. Used
+                  when type == "cel".
+                properties:
+                  expression:
+                    description: Expression is the CEL boolean expression to evaluate.
+                    type: string
+                required:
+                - expression
+                type: object
+              argoAnalysis:
+                description: ArgoAnalysis configures the Argo Rollouts AnalysisRun
+                  gate. Used when type == "argo-analysis".
+                properties:
+                  templateName:
+                    description: TemplateName is the name of the AnalysisTemplate
+                      in the target namespace.
+                    type: string
+                  namespace:
+                    description: Namespace where the AnalysisTemplate lives and AnalysisRuns
+                      are created. Defaults to "argo-rollouts".
+                    type: string
+                required:
+                - templateName
+                type: object
+              job:
+                description: Job configures the Kubernetes Job gate. Used when type
+                  == "job".
+                properties:
+                  image:
+                    description: Image is the container image to run.
+                    type: string
+                  command:
+                    description: Command overrides the container entrypoint.
+                    items:
+                      type: string
+                    type: array
+                  args:
+                    description: Args are passed to the container command.
+                    items:
+                      type: string
+                    type: array
+                required:
+                - image
+                type: object
+              webhook:
+                description: Webhook configures the HTTP webhook gate. Used when
+                  type == "webhook".
+                properties:
+                  url:
+                    description: URL is the HTTP endpoint to POST to.
+                    type: string
+                  pollInterval:
+                    description: PollInterval controls how often to poll. Defaults
+                      to 30s.
+                    type: string
+                required:
+                - url
+                type: object
+              pluginGatewayRef:
+                description: PluginGateway references a namespace-scoped PluginGateway
+                  resource. Used when type == "plugin-gateway".
+                properties:
+                  name:
+                    description: Name of the PluginGateway CR (namespace-scoped).
+                    type: string
+                required:
+                - name
+                type: object
+            required:
+            - type
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources: {}

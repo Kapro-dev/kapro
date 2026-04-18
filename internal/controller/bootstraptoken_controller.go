@@ -19,7 +19,7 @@ import (
 	"kapro.io/kapro/internal/registration"
 )
 
-const bootstrapTokenFinalizer = "kapro.io/bootstrap-token-finalizer"
+const bootstrapTokenFinalizer = "kapro.io/bootstrap-token-finalizer" //nolint:gosec // not a credential — it's a Kubernetes finalizer annotation key
 
 // BootstrapTokenReconciler manages the lifecycle of BootstrapToken CRs.
 // Credential issuance is handled by the registration.Server HTTP endpoint.
@@ -67,10 +67,11 @@ func (r *BootstrapTokenReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if !token.Status.Used && isExpired(&token) {
 		log.Info("BootstrapToken expired", "token", token.Name)
 		r.Recorder.Event(&token, corev1.EventTypeWarning, "Expired", "BootstrapToken expired without being used")
+		patch := client.MergeFrom(token.DeepCopy())
 		now := metav1.Now()
 		token.Status.Used = true
 		token.Status.UsedAt = &now
-		if err := r.Status().Update(ctx, &token); err != nil {
+		if err := r.Status().Patch(ctx, &token, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("mark expired: %w", err)
 		}
 	}

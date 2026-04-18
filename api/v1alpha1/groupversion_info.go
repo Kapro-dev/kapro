@@ -17,6 +17,7 @@ func init() {
 		&Environment{}, &EnvironmentList{},
 		&ClusterRegistration{}, &ClusterRegistrationList{},
 		&PromotionPolicy{}, &PromotionPolicyList{},
+		&ProgressionPolicy{}, &ProgressionPolicyList{},
 		&Pipeline{}, &PipelineList{},
 		&Release{}, &ReleaseList{},
 		&Promotion{}, &PromotionList{},
@@ -24,5 +25,8 @@ func init() {
 		&Approval{}, &ApprovalList{},
 		&BootstrapToken{}, &BootstrapTokenList{},
 		&PluginRegistration{}, &PluginRegistrationList{},
+		&PluginGateway{}, &PluginGatewayList{},
+		&GateTemplate{}, &GateTemplateList{},
+		&KAgent{}, &KAgentList{},
 	)
 }

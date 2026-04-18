@@ -70,3 +70,23 @@ readinessProbe:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# Admission webhooks — validating + mutating
+webhook:
+  enabled: true
+  port: 9443
+  # failurePolicy: Fail blocks invalid CRDs from being created.
+  # Use Ignore during initial rollout, switch to Fail once stable.
+  failurePolicy: Fail
+  certManager:
+    # When true, cert-manager injects the caBundle via the
+    # cert-manager.io/inject-ca-from annotation on the webhook config.
+    # Requires cert-manager >= 1.5 to be installed in the cluster.
+    enabled: true
+    issuerRef:
+      name: selfsigned-issuer
+      kind: ClusterIssuer
+  # caBundle is used only when certManager.enabled=false.
+  # Set to the base64-encoded CA certificate that signed the webhook TLS cert.
+  caBundle: ""
+

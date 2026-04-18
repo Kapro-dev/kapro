@@ -12,7 +12,7 @@ spec:
     listKind: PromotionList
     plural: promotions
     singular: promotion
-  scope: Namespaced
+  scope: Cluster
   versions:
   - additionalPrinterColumns:
     - jsonPath: .spec.environmentRef
@@ -49,6 +49,11 @@ spec:
             type: object
           spec:
             properties:
+              appKey:
+                description: AppKey is the key used to look up the current version
+                  in ClusterRegistration.status.currentVersions. Copied from Release.Spec.AppKey
+                  at Promotion creation time. Defaults to "default".
+                type: string
               environmentRef:
                 type: string
               policyRef:

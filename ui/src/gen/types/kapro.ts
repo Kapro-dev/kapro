@@ -116,3 +116,45 @@ export interface Approval {
     comment?: string;
   };
 }
+
+// ---- Promotion --------------------------------------------------------------
+
+export type PromotionPhase =
+  | 'Pending' | 'Verification' | 'HealthCheck' | 'Soaking' | 'MetricsCheck'
+  | 'WaitingApproval' | 'Applying' | 'Converged' | 'Complete' | 'Failed';
+
+export interface Promotion {
+  metadata: KaproMeta;
+  spec: {
+    releaseRef: string;
+    environmentRef: string;
+    version?: string;
+  };
+  status?: {
+    phase?: PromotionPhase;
+    message?: string;
+    conditions?: { type: string; status: string; message?: string }[];
+    gateStatus?: {
+      soakRemaining?: string;
+      metricsPass?: boolean;
+      healthStatus?: string;
+    };
+  };
+}
+
+// ---- BatchRun ---------------------------------------------------------------
+
+export type BatchPhase = 'Pending' | 'Resolving' | 'WaitingPromotions' | 'GateCheck' | 'WaitingApproval' | 'Complete' | 'Failed';
+
+export interface BatchRun {
+  metadata: KaproMeta;
+  spec: {
+    releaseRef: string;
+    batchName: string;
+  };
+  status?: {
+    phase?: BatchPhase;
+    message?: string;
+    conditions?: { type: string; status: string; message?: string }[];
+  };
+}

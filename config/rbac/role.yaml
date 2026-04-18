@@ -102,11 +102,47 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
+  - artifacts
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kapro.io
+  resources:
   - environments
   verbs:
   - get
   - list
   - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - gatetemplates
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - kagents
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - kagents/status
+  verbs:
+  - get
+  - patch
+  - update
 - apiGroups:
   - kapro.io
   resources:
@@ -118,6 +154,22 @@ rules:
   - list
   - patch
   - update
+  - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - pipelines/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - kapro.io
+  resources:
+  - progressionpolicies
+  verbs:
+  - get
+  - list
   - watch
 - apiGroups:
   - kapro.io

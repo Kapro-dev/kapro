@@ -99,6 +99,11 @@ spec:
                 description: ControllerVersion is the version of kapro-cluster-controller
                   running on this cluster.
                 type: string
+              desiredAppKey:
+                description: DesiredAppKey is the key the cluster-controller uses
+                  when writing convergence state into status.currentVersions. Defaults
+                  to "default" when empty. Must match the key used by IsConverged.
+                type: string
               desiredVersion:
                 description: |-
                   DesiredVersion is written by the kapro-operator (via ActuatorPlugin.Apply).

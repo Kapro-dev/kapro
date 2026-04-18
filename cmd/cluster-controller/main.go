@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	kustomizev1 "github.com/fluxcd/kustomize-controller/api/v1"
@@ -18,8 +19,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/rest"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -278,7 +279,7 @@ func reconcile(
 
 	// ── 3. Read local OCIRepository for current tag ────────────────────────────
 	var ociRepo sourcev1.OCIRepository
-	currentTag := ""
+	currentRef := ""
 	ociFound := false
 	if err := localClient.Get(ctx, types.NamespacedName{
 		Name:      ociRepoName,
@@ -286,16 +287,20 @@ func reconcile(
 	}, &ociRepo); err == nil {
 		ociFound = true
 		if ociRepo.Spec.Reference != nil {
-			currentTag = ociRepo.Spec.Reference.Tag
+			if ociRepo.Spec.Reference.Digest != "" {
+				currentRef = ociRepo.Spec.Reference.Digest
+			} else {
+				currentRef = ociRepo.Spec.Reference.Tag
+			}
 		}
 	}
 
 	// ── 4. Apply desired version if it has changed ─────────────────────────────
 	desiredVersion := reg.Spec.DesiredVersion
-	if ociFound && desiredVersion != "" && desiredVersion != currentTag {
-		log.Info("desired version differs from current tag — patching OCIRepository",
+	if ociFound && desiredVersion != "" && desiredVersion != currentRef {
+		log.Info("desired version differs from current ref — patching OCIRepository",
 			"ociRepo", ociRepoName,
-			"current", currentTag,
+			"current", currentRef,
 			"desired", desiredVersion,
 		)
 		if err := patchOCIRepositoryTag(ctx, localClient, &ociRepo, fluxNamespace, desiredVersion); err != nil {
@@ -303,7 +308,11 @@ func reconcile(
 		}
 		_ = localClient.Get(ctx, types.NamespacedName{Name: ociRepoName, Namespace: fluxNamespace}, &ociRepo)
 		if ociRepo.Spec.Reference != nil {
-			currentTag = ociRepo.Spec.Reference.Tag
+			if ociRepo.Spec.Reference.Digest != "" {
+				currentRef = ociRepo.Spec.Reference.Digest
+			} else {
+				currentRef = ociRepo.Spec.Reference.Tag
+			}
 		}
 	}
 
@@ -326,9 +335,15 @@ func reconcile(
 	}
 
 	// ── 6. Derive cluster phase ────────────────────────────────────────────────
-	phase := derivePhase(fluxReady, currentTag, desiredVersion)
+	phase := derivePhase(fluxReady, currentRef, desiredVersion)
 
 	// ── 7. Write status to control plane ──────────────────────────────────────
+	// Use DesiredAppKey so convergence checks in the operator use the same key.
+	// Default to "default" when not set — never hardcode an app name.
+	appKey := reg.Spec.DesiredAppKey
+	if appKey == "" {
+		appKey = "default"
+	}
 	patch := client.MergeFrom(reg.DeepCopy())
 	now := metav1.Now()
 	reg.Status.LastHeartbeat = now.UTC().Format(time.RFC3339)
@@ -340,7 +355,7 @@ func reconcile(
 	if reg.Status.CurrentVersions == nil {
 		reg.Status.CurrentVersions = make(map[string]string)
 	}
-	reg.Status.CurrentVersions["ocs"] = currentTag
+	reg.Status.CurrentVersions[appKey] = currentRef
 	reg.Status.Phase = phase
 
 	if patchErr := cpClient.Status().Patch(ctx, &reg, patch); patchErr != nil {
@@ -349,27 +364,39 @@ func reconcile(
 
 	log.Info("heartbeat written",
 		"phase", phase,
-		"currentVersion", currentTag,
+		"appKey", appKey,
+		"currentVersion", currentRef,
 		"desiredVersion", desiredVersion,
 		"fluxReady", fluxReady,
 	)
 	return nil
 }
 
-// patchOCIRepositoryTag sets OCIRepository.spec.reference.tag and annotates
+// patchOCIRepositoryTag sets OCIRepository.spec.reference and annotates
 // with reconcile.fluxcd.io/requestedAt to force an immediate Flux reconciliation.
+// If version contains "@sha256:", it is treated as a digest reference and
+// OCIRepository.spec.reference.digest is set (not .tag) — preserving the
+// immutability guarantee from the Artifact CR.
 func patchOCIRepositoryTag(
 	ctx context.Context,
 	localClient client.Client,
 	ociRepo *sourcev1.OCIRepository,
 	_ string,
-	tag string,
+	version string,
 ) error {
 	patch := client.MergeFrom(ociRepo.DeepCopy())
 	if ociRepo.Spec.Reference == nil {
 		ociRepo.Spec.Reference = &sourcev1.OCIRepositoryRef{}
 	}
-	ociRepo.Spec.Reference.Tag = tag
+	if idx := strings.Index(version, "@sha256:"); idx != -1 {
+		// Digest reference: registry.io/repo@sha256:abc123
+		// Set .digest and clear .tag so Flux pins by digest, not mutable tag.
+		ociRepo.Spec.Reference.Digest = version[idx+1:] // "sha256:..."
+		ociRepo.Spec.Reference.Tag = ""
+	} else {
+		ociRepo.Spec.Reference.Tag = version
+		ociRepo.Spec.Reference.Digest = ""
+	}
 	if ociRepo.Annotations == nil {
 		ociRepo.Annotations = map[string]string{}
 	}
@@ -378,8 +405,8 @@ func patchOCIRepositoryTag(
 }
 
 // derivePhase maps Flux readiness + version state to a ClusterPhase.
-func derivePhase(fluxReady bool, currentTag, desiredVersion string) kaprov1alpha1.ClusterPhase {
-	if desiredVersion != "" && currentTag != desiredVersion {
+func derivePhase(fluxReady bool, currentRef, desiredVersion string) kaprov1alpha1.ClusterPhase {
+	if desiredVersion != "" && currentRef != desiredVersion {
 		return kaprov1alpha1.ClusterPhaseApplying
 	}
 	if !fluxReady {
@@ -387,4 +414,3 @@ func derivePhase(fluxReady bool, currentTag, desiredVersion string) kaprov1alpha
 	}
 	return kaprov1alpha1.ClusterPhaseConverged
 }
-

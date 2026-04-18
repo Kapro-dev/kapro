@@ -13,7 +13,9 @@ export type KaproResource =
   | 'promotionpolicies'
   | 'pipelines'
   | 'releases'
-  | 'approvals';
+  | 'approvals'
+  | 'promotions'
+  | 'batchruns';
 
 // List a cluster-scoped resource
 export async function listResource<T>(resource: KaproResource): Promise<T[]> {
@@ -70,13 +72,15 @@ export function watchResource<T>(
     });
 }
 
-// Create an Approval to unblock a Promotion or Batch
+// Create an Approval to unblock a Promotion or Batch.
+// spec.environmentRef must be the environment name (e.g. "de-prod"), NOT the promotion name.
+// Labels kapro.io/release + kapro.io/environment are required for the gate list query.
 export async function createApproval(approval: {
   name: string;
   namespace: string;
   kind: 'Promotion' | 'Batch';
-  ref: string;
-  release: string;
+  environmentRef: string;   // environment name: e.g. "de-prod"
+  release: string;          // release name: e.g. "ocs-v1.2.4"
   approvedBy: string;
   bypass?: boolean;
   comment?: string;
@@ -84,11 +88,18 @@ export async function createApproval(approval: {
   const body = {
     apiVersion: `${API_GROUP}/${API_VERSION}`,
     kind: 'Approval',
-    metadata: { name: approval.name, namespace: approval.namespace },
+    metadata: {
+      name: approval.name,
+      labels: {
+        'kapro.io/release': approval.release,
+        'kapro.io/environment': approval.environmentRef,
+      },
+    },
     spec: {
       kind: approval.kind,
-      ref: approval.ref,
+      ref: approval.environmentRef,
       release: approval.release,
+      environmentRef: approval.environmentRef,
       approvedBy: approval.approvedBy,
       bypass: approval.bypass ?? false,
       comment: approval.comment ?? '',
@@ -96,7 +107,7 @@ export async function createApproval(approval: {
   };
 
   const res = await fetch(
-    `/api/v1/namespaces/${approval.namespace}/approvals`,
+    `${BASE}/approvals`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -104,5 +115,8 @@ export async function createApproval(approval: {
     }
   );
 
-  if (!res.ok) throw new Error(`Failed to create Approval: ${res.statusText}`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Failed to create Approval: ${text}`);
+  }
 }

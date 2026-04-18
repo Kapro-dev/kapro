@@ -1,0 +1,12 @@
+apiVersion: relay.io/v1alpha1
+kind: Release
+metadata:
+  name: llm-retail-v2.1.0
+  namespace: kapro-system
+spec:
+  artifact: llm-retail-v2.1.0
+  scope:
+    selector:
+      matchLabels:
+        tier: ai-prod
+  pipelineRef: llm-retail-global-rollout

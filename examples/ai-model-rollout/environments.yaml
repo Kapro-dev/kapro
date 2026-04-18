@@ -1,0 +1,87 @@
+# DE development cluster — AI model validation environment
+apiVersion: relay.io/v1alpha1
+kind: Environment
+metadata:
+  name: de-llm-dev
+  labels:
+    country: de
+    env: dev
+    tier: ai-dev
+    wave: pilot
+    cloud: gcp
+spec:
+  actuator:
+    type: kserve
+    kserve:
+      namespace: ai-workloads
+      inferenceServiceName: retail-llm
+      storageURITemplate: "oci://registry.schwarz.io/ai/retail-llm:{{.Version}}"
+  healthCheck:
+    endpoint: /v1/health/ready
+    interval: 30s
+---
+# DE production cluster — pilot wave
+apiVersion: relay.io/v1alpha1
+kind: Environment
+metadata:
+  name: de-llm-prod
+  labels:
+    country: de
+    env: prod
+    tier: ai-prod
+    wave: pilot
+    cloud: gcp
+spec:
+  actuator:
+    type: kserve
+    kserve:
+      namespace: ai-workloads
+      inferenceServiceName: retail-llm
+      storageURITemplate: "oci://registry.schwarz.io/ai/retail-llm:{{.Version}}"
+  healthCheck:
+    endpoint: /v1/health/ready
+    interval: 30s
+---
+# FR production cluster — nordics wave
+apiVersion: relay.io/v1alpha1
+kind: Environment
+metadata:
+  name: fr-llm-prod
+  labels:
+    country: fr
+    env: prod
+    tier: ai-prod
+    wave: nordics
+    cloud: gcp
+spec:
+  actuator:
+    type: kserve
+    kserve:
+      namespace: ai-workloads
+      inferenceServiceName: retail-llm
+      storageURITemplate: "oci://registry.schwarz.io/ai/retail-llm:{{.Version}}"
+  healthCheck:
+    endpoint: /v1/health/ready
+    interval: 30s
+---
+# FI production cluster — nordics wave
+apiVersion: relay.io/v1alpha1
+kind: Environment
+metadata:
+  name: fi-llm-prod
+  labels:
+    country: fi
+    env: prod
+    tier: ai-prod
+    wave: nordics
+    cloud: azure
+spec:
+  actuator:
+    type: kserve
+    kserve:
+      namespace: ai-workloads
+      inferenceServiceName: retail-llm
+      storageURITemplate: "oci://registry.schwarz.io/ai/retail-llm:{{.Version}}"
+  healthCheck:
+    endpoint: /v1/health/ready
+    interval: 30s

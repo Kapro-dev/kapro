@@ -1,0 +1,95 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+  name: progressionpolicies.kapro.io
+spec:
+  group: kapro.io
+  names:
+    kind: ProgressionPolicy
+    listKind: ProgressionPolicyList
+    plural: progressionpolicies
+    singular: progressionpolicy
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    additionalPrinterColumns:
+    - jsonPath: .spec.batchSoak
+      name: BatchSoak
+      type: string
+    - jsonPath: .spec.onFailure
+      name: OnFailure
+      type: string
+    schema:
+      openAPIV3Schema:
+        description: ProgressionPolicy defines batch-level gate rules for pipeline
+          progression. It is evaluated by the BatchRun controller after all clusters
+          in the batch are Converged, before the pipeline advances to the next batch.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              approval:
+                description: Approval requires a human Approval object to unblock
+                  advancement.
+                properties:
+                  approvers:
+                    items:
+                      type: string
+                    type: array
+                  required:
+                    type: boolean
+                required:
+                - required
+                type: object
+              batchSoak:
+                description: BatchSoak is the duration to wait after the final cluster
+                  in the batch reaches Converged before advancing to the next batch.
+                  Example "30m", "1h".
+                type: string
+              metrics:
+                description: Metrics are aggregate metrics to evaluate across the
+                  batch after convergence. All metrics must pass for the gate to succeed.
+                items:
+                  properties:
+                    provider:
+                      type: string
+                    query:
+                      type: string
+                    window:
+                      type: string
+                  required:
+                  - provider
+                  - query
+                  - window
+                  type: object
+                type: array
+              onFailure:
+                default: Halt
+                description: OnFailure defines the behaviour when a gate fails. Defaults
+                  to Halt.
+                enum:
+                - Halt
+                - Skip
+                - Retry
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true

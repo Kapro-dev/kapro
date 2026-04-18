@@ -8,9 +8,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	pkgprovider "kapro.io/kapro/pkg/provider"
 )
 
 const heartbeatStaleThreshold = 2 * time.Minute
+
+// compile-time check: CRDProvider implements KCI RegistrationReader.
+var _ pkgprovider.RegistrationReader = &CRDProvider{}
 
 // CRDProvider reads ClusterRegistration CRDs from the control plane to determine
 // cluster connectivity and health. No direct network connection to workload clusters.
@@ -90,4 +94,3 @@ func (p *CRDProvider) CurrentVersion(ctx context.Context, env *kaprov1alpha1.Env
 	}
 	return reg.Status.CurrentVersions["ocs"], nil
 }
-

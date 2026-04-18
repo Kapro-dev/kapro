@@ -1,0 +1,15 @@
+apiVersion: relay.io/v1alpha1
+kind: Artifact
+metadata:
+  name: llm-retail-v2.1.0
+  namespace: kapro-system
+spec:
+  sources:
+    - type: oci
+      oci:
+        repository: registry.schwarz.io/ai/retail-llm
+        tag: v2.1.0
+        digest: sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
+  metadata:
+    releasedBy: mlops-team
+    description: "Retail LLM v2.1.0 — improved checkout intent accuracy +3.2%"

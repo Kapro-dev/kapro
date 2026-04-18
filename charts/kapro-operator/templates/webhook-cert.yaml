@@ -1,0 +1,35 @@
+{{- if and .Values.webhook.enabled .Values.webhook.certManager.enabled }}
+---
+# Self-signed Issuer used to mint the webhook serving certificate.
+# cert-manager rotates this automatically — no manual secret management needed.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "kapro-operator.fullname" . }}-selfsigned
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kapro-operator.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+# Certificate for the webhook server TLS.
+# The Secret named here is mounted into the operator Deployment and referenced
+# by the ValidatingWebhookConfiguration CA bundle injection annotation.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "kapro-operator.fullname" . }}-webhook-cert
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kapro-operator.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "kapro-operator.fullname" . }}-webhook-tls
+  issuerRef:
+    name: {{ include "kapro-operator.fullname" . }}-selfsigned
+    kind: Issuer
+  dnsNames:
+    - {{ include "kapro-operator.fullname" . }}-webhook.{{ .Release.Namespace }}.svc
+    - {{ include "kapro-operator.fullname" . }}-webhook.{{ .Release.Namespace }}.svc.cluster.local
+  duration: 8760h   # 1 year
+  renewBefore: 720h # renew 30 days before expiry
+{{- end }}

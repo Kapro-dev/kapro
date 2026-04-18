@@ -32,3 +32,8 @@ ui/.env.*.local
 kubeconfig
 *.kubeconfig
 kapro
+
+# Built binaries in root
+/operator
+/operator-core
+/kapro-operator

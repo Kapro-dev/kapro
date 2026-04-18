@@ -12,7 +12,7 @@ spec:
     listKind: BatchRunList
     plural: batchruns
     singular: batchrun
-  scope: Namespaced
+  scope: Cluster
   versions:
   - additionalPrinterColumns:
     - jsonPath: .spec.releaseRef
