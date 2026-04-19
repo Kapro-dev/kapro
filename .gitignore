@@ -26,14 +26,21 @@ ui/.env.*.local
 .vscode/
 *.swp
 *.swo
-.DS_Store
 
 # Kubeconfig (never commit)
 kubeconfig
 *.kubeconfig
-kapro
 
-# Built binaries in root
 /operator
 /operator-core
 /kapro-operator
+/cluster-controller
+/kapro
+
+# AI agent workspaces (never commit)
+.claude/
+memory/
+
+# macOS
+.DS_Store
+**/.DS_Store

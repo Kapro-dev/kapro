@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package kapro.v1alpha1;
+
+option go_package = "kapro.io/kapro/proto/gen/notification/v1alpha1";
+
+import "google/protobuf/timestamp.proto";
+
+// NotificationService fans out promotion lifecycle events to external systems.
+// Built-in implementation delegates to argoproj/notifications-engine, which
+// ships 15+ providers: Slack, MS Teams, SMTP, Telegram, PagerDuty, OpsGenie,
+// Grafana, GitHub commit status, Mattermost, Webhook.
+//
+// External notification plugins implement this interface and register via
+// PluginRegistration CRD.
+service NotificationService {
+  // Send delivers a single notification event.
+  rpc Send(SendRequest) returns (SendResponse);
+
+  // SendBatch delivers multiple events in one call.
+  rpc SendBatch(SendBatchRequest) returns (SendBatchResponse);
+}
+
+enum EventSeverity {
+  SEVERITY_UNSPECIFIED = 0;
+  INFO = 1;
+  WARNING = 2;
+  ERROR = 3;
+}
+
+message PromotionEvent {
+  // phase is the FSM phase being entered: Pending | HealthCheck | Soaking |
+  // MetricsCheck | WaitingApproval | Applying | Converged | Failed
+  string phase = 1;
+  string promotion_ref = 2;
+  string environment_ref = 3;
+  string release_ref = 4;
+  string version = 5;
+  string message = 6;
+  EventSeverity severity = 7;
+  google.protobuf.Timestamp occurred_at = 8;
+  // labels carries arbitrary metadata from the Promotion/Release for template rendering.
+  map<string, string> labels = 9;
+}
+
+message NotificationTarget {
+  // provider identifies the notification backend: slack | teams | smtp | pagerduty | webhook
+  string provider = 1;
+  // recipient is provider-specific: Slack channel, email address, webhook URL.
+  string recipient = 2;
+  // template_name references a notification template (argoproj/notifications-engine style).
+  string template_name = 3;
+}
+
+message SendRequest {
+  PromotionEvent event = 1;
+  repeated NotificationTarget targets = 2;
+}
+
+message SendResponse {
+  bool sent = 1;
+  // errors contains per-target send errors (if any).
+  repeated string errors = 2;
+}
+
+message SendBatchRequest {
+  repeated SendRequest requests = 1;
+}
+
+message SendBatchResponse {
+  int32 sent_count = 1;
+  int32 failed_count = 2;
+  repeated string errors = 3;
+}

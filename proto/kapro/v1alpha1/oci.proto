@@ -1,0 +1,105 @@
+syntax = "proto3";
+
+package kapro.v1alpha1;
+
+option go_package = "kapro.io/kapro/proto/gen/oci/v1alpha1";
+
+import "google/protobuf/timestamp.proto";
+
+// OCIService is the contract for OCI registry operations.
+// OCI is the artifact transport layer for Kapro — not git.
+//
+// Built-in implementation uses oras.land/oras-go/v2 for registry operations
+// and fluxcd/pkg/auth for cloud-native authentication (GKE WI, AWS IRSA, Azure WI).
+//
+// Any OCI registry works: JFrog Artifactory, Harbor, GHCR, GAR, ECR, ACR.
+service OCIService {
+  // Exists checks whether a specific digest or tag exists in the registry.
+  rpc Exists(ExistsRequest) returns (ExistsResponse);
+
+  // Inspect returns metadata and annotations for an OCI artifact.
+  rpc Inspect(InspectRequest) returns (InspectResponse);
+
+  // Tag applies a new tag to an existing digest. Used by the Flux actuator
+  // to advance an OCIRepository to a new version.
+  rpc Tag(TagRequest) returns (TagResponse);
+
+  // Copy copies an artifact from one repository/tag to another.
+  // Used for cross-environment promotion: dev-registry → prod-registry.
+  rpc Copy(CopyRequest) returns (CopyResponse);
+
+  // ListTags returns all tags for a repository, newest first.
+  rpc ListTags(ListTagsRequest) returns (ListTagsResponse);
+}
+
+message OCIRef {
+  // repository is the full repository path: registry.example.com/org/repo
+  string repository = 1;
+  // tag is the mutable tag (e.g. v1.2.4 or latest).
+  string tag = 2;
+  // digest is the immutable SHA256 digest. Takes precedence over tag if set.
+  string digest = 3;
+}
+
+message ExistsRequest {
+  OCIRef ref = 1;
+}
+
+message ExistsResponse {
+  bool exists = 1;
+  // digest of the artifact if it exists.
+  string digest = 2;
+}
+
+message InspectRequest {
+  OCIRef ref = 1;
+}
+
+message InspectResponse {
+  string digest = 1;
+  string media_type = 2;
+  // annotations are OCI manifest annotations: org.opencontainers.image.*
+  map<string, string> annotations = 3;
+  // labels are image config labels.
+  map<string, string> labels = 4;
+  int64 size_bytes = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message TagRequest {
+  OCIRef source = 1;
+  // new_tag is the tag to apply to the source artifact.
+  string new_tag = 2;
+}
+
+message TagResponse {
+  string digest = 1;
+  string message = 2;
+}
+
+message CopyRequest {
+  OCIRef source = 1;
+  OCIRef destination = 2;
+}
+
+message CopyResponse {
+  string destination_digest = 1;
+  string message = 2;
+}
+
+message ListTagsRequest {
+  string repository = 1;
+  // prefix filters tags by prefix (e.g. "v1.2." returns v1.2.0, v1.2.1, etc.)
+  string prefix = 2;
+  int32 limit = 3;
+}
+
+message ListTagsResponse {
+  repeated TagEntry tags = 1;
+}
+
+message TagEntry {
+  string tag = 1;
+  string digest = 2;
+  google.protobuf.Timestamp pushed_at = 3;
+}

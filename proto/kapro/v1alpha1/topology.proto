@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package kapro.v1alpha1;
+
+option go_package = "kapro.io/kapro/proto/gen/topology/v1alpha1";
+
+import "google/protobuf/timestamp.proto";
+
+// ClusterTopologyService provides cluster fleet discovery and placement resolution
+// for the Pipeline progression engine.
+//
+// Kapro's Pipeline.progression.batches[].selectors resolve clusters at runtime.
+// This service is the source of truth for "which clusters match these labels".
+//
+// Built-in implementations:
+//   - internal: reads ClusterRegistration CRDs directly (default, no deps)
+//   - ocm:      reads OCM ManagedCluster objects and delegates Placement to OCM
+//   - capi:     reads CAPI Cluster objects for lifecycle-aware placement
+service ClusterTopologyService {
+  // ListClusters returns all clusters matching the given label selector.
+  rpc ListClusters(ListClustersRequest) returns (ListClustersResponse);
+
+  // WatchClusters streams cluster registration/deregistration events.
+  // Used by the Release controller to detect new clusters joining mid-rollout.
+  rpc WatchClusters(WatchClustersRequest) returns (stream ClusterEvent);
+
+  // GetPlacement resolves a batch selector to a concrete list of cluster refs.
+  // Delegates to OCM Placement API if ocm impl is active.
+  rpc GetPlacement(GetPlacementRequest) returns (GetPlacementResponse);
+
+  // RegisterCluster registers a new cluster (called by cluster-controller on join).
+  rpc RegisterCluster(RegisterClusterRequest) returns (RegisterClusterResponse);
+
+  // DeregisterCluster removes a cluster from the topology.
+  rpc DeregisterCluster(DeregisterClusterRequest) returns (DeregisterClusterResponse);
+}
+
+message ClusterRef {
+  string name = 1;
+  // labels are the topology labels: country, env, wave, region, tier
+  map<string, string> labels = 2;
+  string phase = 3;   // Registered | Unreachable | Draining | Deregistered
+  string version = 4; // currently deployed version
+  google.protobuf.Timestamp last_heartbeat = 5;
+}
+
+message LabelSelector {
+  map<string, string> match_labels = 1;
+  // match_expressions support set-based requirements (In, NotIn, Exists)
+  repeated LabelSelectorRequirement match_expressions = 2;
+}
+
+message LabelSelectorRequirement {
+  string key = 1;
+  string operator = 2; // In | NotIn | Exists | DoesNotExist
+  repeated string values = 3;
+}
+
+message ListClustersRequest {
+  LabelSelector selector = 1;
+  // phases filters by cluster phase. Empty = all phases.
+  repeated string phases = 2;
+}
+
+message ListClustersResponse {
+  repeated ClusterRef clusters = 1;
+}
+
+message WatchClustersRequest {
+  LabelSelector selector = 1;
+}
+
+message ClusterEvent {
+  enum EventType {
+    EVENT_TYPE_UNSPECIFIED = 0;
+    REGISTERED = 1;
+    UPDATED = 2;
+    DEREGISTERED = 3;
+    HEARTBEAT = 4;
+  }
+  EventType type = 1;
+  ClusterRef cluster = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+}
+
+message GetPlacementRequest {
+  LabelSelector selector = 1;
+  // max_clusters limits the result set size (0 = unlimited).
+  int32 max_clusters = 2;
+  // spread_policy controls how clusters are ordered: none | wave | region | random
+  string spread_policy = 3;
+}
+
+message GetPlacementResponse {
+  repeated ClusterRef clusters = 1;
+  // placement_ref is the OCM PlacementDecision name (if ocm impl active).
+  string placement_ref = 2;
+}
+
+message RegisterClusterRequest {
+  string name = 1;
+  map<string, string> labels = 2;
+  string api_endpoint = 3;
+  // ca_bundle is the PEM-encoded CA bundle for the cluster's API server.
+  bytes ca_bundle = 4;
+}
+
+message RegisterClusterResponse {
+  bool accepted = 1;
+  string message = 2;
+}
+
+message DeregisterClusterRequest {
+  string name = 1;
+  string reason = 2;
+}
+
+message DeregisterClusterResponse {
+  bool accepted = 1;
+}

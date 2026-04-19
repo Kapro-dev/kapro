@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package kapro.v1alpha1;
+
+option go_package = "kapro.io/kapro/proto/gen/gate/v1alpha1";
+
+import "google/protobuf/duration.proto";
+
+// GateService is the contract for any condition that must pass before a
+// promotion advances. KEDA external scaler protocol compatible — any KEDA
+// scaler can implement GateService and become a promotion gate.
+//
+// Built-in implementations:
+//   - prometheus: evaluates PromQL query against a window
+//   - soak:       time-based gate (minimum elapsed time since apply)
+//   - approval:   waits for Approval CRD to be created
+//   - keda:       proxies to KEDA external scaler gRPC
+//   - chaos-mesh: runs a chaos workflow and evaluates outcome
+//   - opa:        evaluates a Rego policy bundle
+//   - falco:      checks for runtime security anomalies
+service GateService {
+  // Evaluate runs the gate check and returns pass/fail with retry guidance.
+  // Implementations must be idempotent.
+  rpc Evaluate(GateRequest) returns (GateResponse);
+
+  // StreamEvaluate streams gate results until the gate passes or context cancels.
+  // Useful for long-running gates (e.g. chaos experiments).
+  rpc StreamEvaluate(GateRequest) returns (stream GateResponse);
+}
+
+message GateRequest {
+  // promotion_ref is the name of the Promotion CRD being evaluated.
+  string promotion_ref = 1;
+  // environment_ref is the target environment.
+  string environment_ref = 2;
+  // version is the version under evaluation.
+  string version = 3;
+  // release_ref links back to the Release that triggered this promotion.
+  string release_ref = 4;
+  // gate_type identifies which built-in gate to use: prometheus | soak | approval | keda | opa | falco
+  string gate_type = 5;
+  // metric_index identifies which metric in PromotionPolicy.gate.metrics[] this is.
+  int32 metric_index = 6;
+  // config carries gate-specific configuration (JSON-encoded).
+  // For prometheus: {"query":"...","window":"5m","threshold":0.995}
+  // For keda: {"endpoint":"grpc://keda:9090","scaler_id":"kafka-lag"}
+  // For opa: {"bundle_url":"...","policy_path":"kapro/promotion/allow"}
+  bytes config = 7;
+}
+
+message GateResponse {
+  bool passed = 1;
+  string message = 2;
+  // retry_after tells the caller how long to wait before re-evaluating.
+  // Empty means the gate is terminal (passed or permanently failed).
+  google.protobuf.Duration retry_after = 3;
+  // consecutive_passes tracks how many consecutive evaluations passed.
+  // Used by the MetricEvaluator sliding window.
+  int32 consecutive_passes = 4;
+  // details carries gate-specific result data (JSON-encoded).
+  bytes details = 5;
+}
