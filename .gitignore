@@ -40,6 +40,7 @@ kubeconfig
 # AI agent workspaces (never commit)
 .claude/
 memory/
+CLAUDE.md
 
 # macOS
 .DS_Store
