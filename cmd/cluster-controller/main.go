@@ -229,9 +229,10 @@ func submitAndWaitForCSR(ctx context.Context, cfg *rest.Config, envRef string) (
 	csr := &certificatesv1.CertificateSigningRequest{
 		ObjectMeta: metav1.ObjectMeta{Name: csrName},
 		Spec: certificatesv1.CertificateSigningRequestSpec{
-			Request:    csrPEMBytes,
-			SignerName: "kubernetes.io/kube-apiserver-client",
-			Usages:     []certificatesv1.KeyUsage{certificatesv1.UsageClientAuth},
+			Request:           csrPEMBytes,
+			SignerName:        "kubernetes.io/kube-apiserver-client",
+			Usages:            []certificatesv1.KeyUsage{certificatesv1.UsageClientAuth},
+			ExpirationSeconds: int32Ptr(365 * 24 * 60 * 60), // 1 year; explicit per CAPI/kubelet pattern
 		},
 	}
 	if _, err := kubeClient.CertificatesV1().CertificateSigningRequests().Create(ctx, csr, metav1.CreateOptions{}); err != nil {
@@ -377,9 +378,22 @@ func reconcile(
 	log := ctrl.Log.WithName("reconcile").WithValues("env", environmentRef)
 
 	// 1. GET ManagedCluster from hub.
+	// Retry on NotFound: covers the race where the first heartbeat fires before
+	// CSRApprovalReconciler has created the ManagedCluster (OCM klusterlet pattern).
 	var mc kaprov1alpha1.ManagedCluster
-	if err := hubClient.Get(ctx, types.NamespacedName{Name: environmentRef}, &mc); err != nil {
-		return fmt.Errorf("get ManagedCluster %q from hub: %w", environmentRef, err)
+	for attempt := 1; attempt <= 3; attempt++ {
+		err := hubClient.Get(ctx, types.NamespacedName{Name: environmentRef}, &mc)
+		if err == nil {
+			break
+		}
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("get ManagedCluster %q from hub: %w", environmentRef, err)
+		}
+		if attempt == 3 {
+			return fmt.Errorf("get ManagedCluster %q from hub: not found after %d attempts", environmentRef, attempt)
+		}
+		log.Info("ManagedCluster not yet visible on hub, retrying", "attempt", attempt)
+		time.Sleep(5 * time.Second)
 	}
 
 	desiredVersion := mc.Spec.DesiredVersion
@@ -515,4 +529,7 @@ func derivePhase(fluxReady bool, currentRef, desiredVersion string) kaprov1alpha
 	}
 	return kaprov1alpha1.ClusterPhaseConverged
 }
+
+
+func int32Ptr(v int32) *int32 { return &v }
 

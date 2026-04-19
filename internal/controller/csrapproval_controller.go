@@ -12,6 +12,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	certificatesv1client "k8s.io/client-go/kubernetes/typed/certificates/v1"
 	"k8s.io/client-go/tools/record"
@@ -63,7 +64,9 @@ type CSRApprovalReconciler struct {
 // +kubebuilder:rbac:groups=kapro.io,resources=bootstraptokens,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=bootstraptokens/status,verbs=update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=managedclusters,verbs=get;list;watch;create;update;patch
-// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles;clusterrolebindings,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=managedclusters/finalizers,verbs=update
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles;clusterrolebindings,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;delete
 
 func (r *CSRApprovalReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
@@ -166,6 +169,11 @@ func (r *CSRApprovalReconciler) handleBootstrap(ctx context.Context, csr *certif
 		return fmt.Errorf("approve CSR: %w", err)
 	}
 
+	// Clean up bootstrap credentials immediately after cert issuance (OCM pattern).
+	// Bootstrap SA token becomes useless once the cluster has its x509 cert.
+	// Deleting the SA revokes all outstanding tokens, closing the bootstrap kubeconfig as a credential.
+	r.cleanupBootstrapCredentials(ctx, clusterName)
+
 	log.Info("bootstrap CSR approved", "cluster", clusterName, "csr", csr.Name)
 	r.Recorder.Eventf(csr, corev1.EventTypeNormal, "Approved", "Bootstrap CSR approved for cluster %s", clusterName)
 	return nil
@@ -206,6 +214,7 @@ func (r *CSRApprovalReconciler) findValidBootstrapToken(ctx context.Context, clu
 }
 
 // ensureManagedCluster creates the ManagedCluster if it doesn't exist.
+// Adds a finalizer so that cluster de-registration cleans up long-lived RBAC.
 func (r *CSRApprovalReconciler) ensureManagedCluster(ctx context.Context, clusterName, envRef string) error {
 	mc := &kaprov1alpha1.ManagedCluster{}
 	err := r.Get(ctx, types.NamespacedName{Name: clusterName}, mc)
@@ -222,6 +231,7 @@ func (r *CSRApprovalReconciler) ensureManagedCluster(ctx context.Context, cluste
 				"kapro.io/cluster":     clusterName,
 				"kapro.io/environment": envRef,
 			},
+			Finalizers: []string{managedClusterFinalizer},
 		},
 		Spec: kaprov1alpha1.ManagedClusterSpec{
 			EnvironmentRef: envRef,
@@ -439,4 +449,106 @@ func (r *CSRApprovalReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&certificatesv1.CertificateSigningRequest{}).
 		Complete(r)
+}
+
+// cleanupBootstrapCredentials deletes the bootstrap SA, its ClusterRole, and ClusterRoleBinding
+// immediately after a bootstrap CSR is approved. This matches the OCM klusterlet pattern:
+// once the cluster holds a valid x509 cert, the SA token in the bootstrap kubeconfig is useless,
+// and deleting the SA revokes all outstanding tokens immediately.
+// Errors are logged but non-fatal — BootstrapTokenReconciler.handleDeletion will clean up on token GC.
+func (r *CSRApprovalReconciler) cleanupBootstrapCredentials(ctx context.Context, clusterName string) {
+	log := log.FromContext(ctx)
+	saName := "kapro-bootstrap-" + clusterName
+	roleName := "kapro:bootstrap:" + clusterName
+
+	for _, fn := range []struct {
+		name string
+		obj  client.Object
+	}{
+		{"bootstrap SA", &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Namespace: kaproSystemNamespace, Name: saName}}},
+		{"bootstrap ClusterRole", &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: roleName}}},
+		{"bootstrap ClusterRoleBinding", &rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: roleName}}},
+	} {
+		if err := r.Delete(ctx, fn.obj); err != nil && !apierrors.IsNotFound(err) {
+			log.Info("non-fatal: bootstrap credential cleanup failed", "resource", fn.name, "cluster", clusterName, "error", err)
+		}
+	}
+}
+
+const managedClusterFinalizer = "kapro.io/managed-cluster-finalizer"
+
+// ManagedClusterReconciler handles ManagedCluster deletion: removes the long-lived
+// cluster-controller ClusterRole and ClusterRoleBinding, then clears the finalizer.
+// This ensures complete de-registration when a cluster is decommissioned.
+//
+// +kubebuilder:rbac:groups=kapro.io,resources=managedclusters,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=managedclusters/finalizers,verbs=update
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles;clusterrolebindings,verbs=delete
+type ManagedClusterReconciler struct {
+	client.Client
+	Scheme *runtime.Scheme
+}
+
+func (r *ManagedClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := log.FromContext(ctx)
+
+	mc := &kaprov1alpha1.ManagedCluster{}
+	if err := r.Get(ctx, req.NamespacedName, mc); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	if mc.DeletionTimestamp.IsZero() {
+		return ctrl.Result{}, nil
+	}
+
+	if !containsString(mc.Finalizers, managedClusterFinalizer) {
+		return ctrl.Result{}, nil
+	}
+
+	// Delete long-lived cluster-controller RBAC (created during bootstrap CSR approval).
+	clusterName := mc.Name
+	roleName := "kapro:cluster-controller:" + clusterName
+	for _, obj := range []client.Object{
+		&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: roleName}},
+		&rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: roleName}},
+	} {
+		if err := r.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
+			log.Error(err, "failed to delete cluster RBAC during deregistration", "cluster", clusterName, "resource", obj.GetName())
+			return ctrl.Result{}, err
+		}
+	}
+
+	// Remove finalizer to allow deletion to proceed.
+	mc.Finalizers = removeString(mc.Finalizers, managedClusterFinalizer)
+	if err := r.Update(ctx, mc); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	log.Info("cluster deregistered — RBAC cleaned up", "cluster", clusterName)
+	return ctrl.Result{}, nil
+}
+
+func (r *ManagedClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&kaprov1alpha1.ManagedCluster{}).
+		Complete(r)
+}
+
+func containsString(slice []string, s string) bool {
+	for _, v := range slice {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+func removeString(slice []string, s string) []string {
+	out := make([]string, 0, len(slice))
+	for _, v := range slice {
+		if v != s {
+			out = append(out, v)
+		}
+	}
+	return out
 }

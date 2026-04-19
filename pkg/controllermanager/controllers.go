@@ -29,6 +29,7 @@ func init() {
 	Register("approval", startApprovalController)
 	Register("bootstraptoken", startBootstrapTokenController)
 	Register("csrapproval", startCSRApprovalController)
+	Register("managedcluster", startManagedClusterController)
 }
 
 // startReleaseController starts the Release reconciler.
@@ -143,6 +144,18 @@ func startCSRApprovalController(_ context.Context, cc ControllerContext) (bool, 
 		Client:     cc.Manager.GetClient(),
 		CertClient: kubeClient.CertificatesV1(),
 		Recorder:   cc.Recorder,
+	}).SetupWithManager(cc.Manager); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// startManagedClusterController starts the ManagedCluster deregistration reconciler.
+// Handles finalizer-based cleanup of long-lived cluster RBAC when a ManagedCluster is deleted.
+func startManagedClusterController(_ context.Context, cc ControllerContext) (bool, error) {
+	if err := (&controller.ManagedClusterReconciler{
+		Client: cc.Manager.GetClient(),
+		Scheme: cc.Manager.GetScheme(),
 	}).SetupWithManager(cc.Manager); err != nil {
 		return false, err
 	}
