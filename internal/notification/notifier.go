@@ -3,7 +3,6 @@
 //
 // Built-in notifiers: Slack, Webhook (zero extra deps).
 // Rich notifier:      engine/ using argoproj/notifications-engine (15+ providers).
-// External notifiers: gRPC plugins via PluginRegistration CRD.
 package notification
 
 import (
@@ -16,51 +15,54 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	pkgnotification "kapro.io/kapro/pkg/notification"
 )
 
 // Re-export KNI types for backward compat within the module.
 type (
-	Event    = pkgnotification.Event
-	Notifier = pkgnotification.Notifier
+	Event              = pkgnotification.Event
+	Notifier           = pkgnotification.Notifier
+	NotificationPolicy = pkgnotification.NotificationPolicy
+	Channel            = pkgnotification.Channel
 )
 
 // compile-time check: Dispatcher must satisfy Notifier.
 var _ Notifier = &Dispatcher{}
 
-// Dispatcher fans out a promotion event to all channels configured in the policy.
+// Dispatcher fans out a promotion event to all channels in the NotificationPolicy.
+// It handles the two built-in types (slack, webhook) — zero extra dependencies.
+// For richer providers (PagerDuty, OpsGenie, Teams, email) use engine.Notifier.
 type Dispatcher struct {
 	// HTTPClient is used for Slack and webhook calls. Defaults to a 10s timeout client.
 	HTTPClient *http.Client
 }
 
-// Notify sends the event to all notification channels in the policy.
+// Notify sends the event to all channels in the policy.
 // Errors are logged but not returned — a notification failure must never block a promotion.
-func (d *Dispatcher) Notify(ctx context.Context, event Event, policy *kaprov1alpha1.PromotionPolicy) {
-	if policy == nil || len(policy.Spec.Notifications) == 0 {
+func (d *Dispatcher) Notify(ctx context.Context, event Event, policy NotificationPolicy) {
+	if len(policy.Channels) == 0 {
 		return
 	}
 
 	log := log.FromContext(ctx)
 	client := d.httpClient()
 
-	for _, spec := range policy.Spec.Notifications {
+	for _, ch := range policy.Channels {
 		var err error
-		switch spec.Type {
+		switch ch.Type {
 		case "slack":
-			err = sendSlack(ctx, client, spec.Channel, event)
+			err = sendSlack(ctx, client, ch.Target, event)
 		case "webhook":
-			err = sendWebhook(ctx, client, spec.URL, event)
+			err = sendWebhook(ctx, client, ch.Target, event)
 		default:
-			log.Info("unknown notification type, skipping", "type", spec.Type)
+			log.Info("unknown notification type, skipping", "type", ch.Type)
 			continue
 		}
 		if err != nil {
 			// Never block on notification failure.
-			log.Error(err, "notification failed", "type", spec.Type, "channel", spec.Channel)
+			log.Error(err, "notification failed", "type", ch.Type, "target", ch.Target)
 		} else {
-			log.Info("notification sent", "type", spec.Type, "phase", event.Phase)
+			log.Info("notification sent", "type", ch.Type, "phase", event.Phase)
 		}
 	}
 }

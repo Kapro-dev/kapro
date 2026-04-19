@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -17,19 +18,16 @@ import (
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	fluxactuator "kapro.io/kapro/internal/actuator/flux"
-	kserveactuator "kapro.io/kapro/internal/actuator/kserve"
-	internalgate "kapro.io/kapro/internal/gate"
 	gitopshealth "kapro.io/kapro/internal/health/gitops"
 	_ "kapro.io/kapro/internal/metrics" // register custom Prometheus metrics at init
 	"kapro.io/kapro/internal/mcp"
 	enginenotifier "kapro.io/kapro/internal/notification/engine"
 	orasoci "kapro.io/kapro/internal/oci/oras"
-	"kapro.io/kapro/internal/registration"
-	cosignverifier "kapro.io/kapro/internal/verification/cosign"
 	kaploadmission "kapro.io/kapro/internal/webhook/admission"
 	"kapro.io/kapro/internal/webhook"
 	"kapro.io/kapro/pkg/actuator"
 	cm "kapro.io/kapro/pkg/controllermanager"
+	"kapro.io/kapro/pkg/provider"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
@@ -91,12 +89,7 @@ func main() {
 
 	recorder := mgr.GetEventRecorderFor("kapro-operator")
 
-	gates := cm.BuildFullGateSet()
-	gates.Approval = &internalgate.ApprovalGate{Client: mgr.GetClient()}
-	gates.Verification = &internalgate.VerificationGate{
-		Verifier:  &cosignverifier.Verifier{},
-		KeyReader: &internalgate.ClientSecretKeyReader{Client: mgr.GetClient()},
-	}
+	gates := cm.BuildGateSet(mgr.GetClient())
 
 	// Build actuator registry — resolves per-Environment actuator at apply time.
 	actuatorReg := actuator.NewRegistry()
@@ -104,25 +97,31 @@ func main() {
 		log.Error(err, "failed to register flux actuator")
 		os.Exit(1)
 	}
-	if err := actuatorReg.Register("kserve", &kserveactuator.Actuator{}); err != nil {
-		log.Error(err, "failed to register kserve actuator")
-		os.Exit(1)
-	}
+
+	// Build provider registry — resolves per-Environment cluster connector at reconcile time.
+	// Path A (CRD provider / heartbeat) is the default for all topologies and needs no registration.
+	// Cloud-specific Path B connectors (GKE, EKS, AKS…) will be added in v0.3 as optional plugins.
+	// See docs/ROADMAP.md.
+	providerReg := provider.NewRegistry()
 
 	cc := cm.ControllerContext{
-		Manager:         mgr,
-		Recorder:        recorder,
+		Manager:          mgr,
+		Recorder:         recorder,
 		ActuatorRegistry: actuatorReg,
-		Gates:           gates,
-		HealthAssessor:  &gitopshealth.Assessor{Client: mgr.GetClient()},
+		ProviderRegistry: providerReg,
+		Gates:            gates,
+		GateRegistry:     cm.BuildGateRegistry(mgr.GetClient()),
+		HealthAssessor:   &gitopshealth.Assessor{Client: mgr.GetClient()},
 		Notifier: &enginenotifier.Notifier{
 			SecretName: "kapro-notifications-secret",
 			Namespace:  "kapro-system",
 			Client:     mgr.GetClient(),
 		},
 		OCIService:     &orasoci.Service{},
-		ApprovalSecret: []byte(os.Getenv("KAPRO_APPROVAL_SECRET")),
+		ApprovalSecret: loadSecret("approval-secret"),
 		ExternalURL:    os.Getenv("KAPRO_EXTERNAL_URL"),
+		HubAPIURL:      os.Getenv("KAPRO_HUB_API_URL"),
+		HubCAData:      mgr.GetConfig().CAData,
 	}
 
 	// Register mutating admission webhook: Approval.spec.approvedBy ← real k8s username.
@@ -132,6 +131,12 @@ func main() {
 	mgr.GetWebhookServer().Register(
 		"/mutate-kapro-io-v1alpha1-approval",
 		&crwebhook.Admission{Handler: kaploadmission.NewApprovalMutator(decoder)},
+	)
+
+	// Register mutating admission webhook: Environment topology → kapro.io/accelerator label.
+	mgr.GetWebhookServer().Register(
+		"/mutate-kapro-io-v1alpha1-environment",
+		&crwebhook.Admission{Handler: kaploadmission.NewEnvironmentMutator(decoder)},
 	)
 
 	// Register validating admission webhooks for core CRDs.
@@ -168,13 +173,6 @@ func main() {
 	// Register mutating HTTP servers as leader-only runnables.
 	// controller-runtime calls NeedLeaderElection()=true runnables only on the
 	// elected leader — prevents split-brain when running 2+ replicas.
-
-	regServer := &registration.Server{Client: mgr.GetClient()}
-	if err := mgr.Add(leaderOnlyHTTP(":9090", regServer, 10*time.Second)); err != nil {
-		log.Error(err, "unable to add registration server")
-		os.Exit(1)
-	}
-
 	mcpAddr := os.Getenv("KAPRO_MCP_ADDR")
 	if mcpAddr == "" {
 		mcpAddr = ":8090"
@@ -191,7 +189,7 @@ func main() {
 	}
 	approvalHandler := (&webhook.Server{
 		Client:      mgr.GetClient(),
-		TokenSecret: []byte(os.Getenv("KAPRO_APPROVAL_SECRET")),
+		TokenSecret: loadSecret("approval-secret"),
 	}).Handler()
 	if err := mgr.Add(leaderOnlyHTTP(approvalAddr, approvalHandler, 10*time.Second)); err != nil {
 		log.Error(err, "unable to add approval server")
@@ -204,7 +202,16 @@ func main() {
 	}
 }
 
-// leaderOnlyHTTP wraps an http.Handler as a leader-election-gated manager.Runnable.
+// loadSecret reads a secret value from a mounted file (preferred) or falls back to an env var.
+// The mounted-file path is /etc/kapro/secrets/<name> — injected by Helm via secretKeyRef volume.
+// This is the production path; the env var fallback is for local dev only.
+func loadSecret(name string) []byte {
+	path := "/etc/kapro/secrets/" + name
+	if data, err := os.ReadFile(path); err == nil {
+		return []byte(strings.TrimSpace(string(data)))
+	}
+	return []byte(os.Getenv(strings.ToUpper(strings.ReplaceAll("KAPRO_"+name, "-", "_"))))
+}
 // The server only starts when this instance holds the leader lock.
 func leaderOnlyHTTP(addr string, handler http.Handler, timeout time.Duration) *httpRunnable {
 	return &httpRunnable{

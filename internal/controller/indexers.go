@@ -5,20 +5,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// IndexKeyRelease is the field index key for Promotion, BatchRun, and Approval
-// objects.  The index value is the owning Release name.
+// IndexKeyRelease is the field index key for Sync and Approval objects.
+// The index value is the owning Release name.
 //
 // Registration: ReleaseReconciler.SetupWithManager registers the index once.
 // Usage: client.MatchingFields{IndexKeyRelease: release.Name}
 const IndexKeyRelease = "kapro.io/release"
 
-// IndexKeyEnvironment is the field index key for Promotion objects, indexed by
-// Promotion.Spec.EnvironmentRef.  Used by the ClusterRegistration watch in
-// PromotionReconciler to wake up all Promotions targeting a cluster that just
+// IndexKeyEnvironment is the field index key for Sync objects, indexed by
+// Sync.Spec.EnvironmentRef.  Used by the ManagedCluster watch in
+// SyncReconciler to wake up all Syncs targeting a cluster that just
 // changed phase (e.g. became Converged).
 //
 // Registration: ReleaseReconciler.SetupWithManager registers the index once.
-// Usage: client.MatchingFields{IndexKeyEnvironment: reg.Spec.EnvironmentRef}
+// Usage: client.MatchingFields{IndexKeyEnvironment: cluster.Spec.EnvironmentRef}
 const IndexKeyEnvironment = "kapro.io/environment"
 
 // labelExtractor returns an IndexerFunc that extracts a single label value.
@@ -34,16 +34,16 @@ func labelExtractor(key string) client.IndexerFunc {
 }
 
 // environmentRefExtractor returns an IndexerFunc that extracts
-// Promotion.Spec.EnvironmentRef for the IndexKeyEnvironment index.
+// Sync.Spec.EnvironmentRef for the IndexKeyEnvironment index.
 func environmentRefExtractor() client.IndexerFunc {
 	return func(obj client.Object) []string {
-		promo, ok := obj.(*kaprov1alpha1.Promotion)
+		sync, ok := obj.(*kaprov1alpha1.Sync)
 		if !ok {
 			return nil
 		}
-		if promo.Spec.EnvironmentRef == "" {
+		if sync.Spec.EnvironmentRef == "" {
 			return nil
 		}
-		return []string{promo.Spec.EnvironmentRef}
+		return []string{sync.Spec.EnvironmentRef}
 	}
 }

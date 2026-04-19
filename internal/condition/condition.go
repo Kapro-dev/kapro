@@ -38,4 +38,13 @@ const (
 	ReasonSubResourceFailed  = "SubResourceFailed"
 	ReasonScopeEmpty         = "ScopeEmpty"
 	ReasonPipelineNotFound   = "PipelineNotFound"
+
+	// Progressive delivery specific reasons.
+	ReasonComplete          = "Complete"
+	ReasonProgressing       = "Progressing"
+	ReasonRolledBack        = "RolledBack"
+	ReasonStageSkipped      = "StageSkipped"
+	ReasonRollbackTriggered = "RollbackTriggered"
+	ReasonArtifactNotFound  = "ArtifactNotFound"
+	ReasonComponentMissing  = "ComponentMissing"
 )

@@ -16,5 +16,5 @@
 //
 // The suites use only the standard testing package — no framework dependency.
 // Implementations that pass the suite are Kapro-compatible and can be
-// distributed as PluginRegistration plugins.
+// wired into the operator at startup via the actuator.Registry or gate wiring.
 package conformance

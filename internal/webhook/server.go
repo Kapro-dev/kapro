@@ -1,15 +1,15 @@
-// Package webhook provides an HTTP server for human approval of Kapro Promotions.
+// Package webhook provides an HTTP server for human approval of Kapro Syncs.
 //
 // The server exposes three endpoints:
 //
-//   POST /approve/{name}?token=<t>   — creates an Approval CR to unblock the Promotion
-//   POST /reject/{name}?token=<t>    — patches the Promotion with a rejection annotation;
-//                                      the PromotionReconciler will call failPromotion() on
+//   POST /approve/{name}?token=<t>   — creates an Approval CR to unblock the Sync
+//   POST /reject/{name}?token=<t>    — patches the Sync with a rejection annotation;
+//                                      the SyncReconciler will call failSync() on
 //                                      the next reconcile, preserving all controller invariants.
-//   GET  /status/{name}?ns=<ns>      — returns public Promotion phase/version (no auth required)
+//   GET  /status/{name}?ns=<ns>      — returns public Sync phase/version (no auth required)
 //
 // Token format is defined in internal/webhook/token. Tokens are HMAC-SHA256 signed,
-// scoped to a single Promotion UID, and expire after 48 hours by default.
+// scoped to a single Sync UID, and expire after 48 hours by default.
 //
 // The server creates Approval objects directly — no gRPC or extra dependencies.
 // Any notification channel (email, Teams, webhook, etc.) delivers the approve/reject
@@ -31,19 +31,19 @@ import (
 	"kapro.io/kapro/internal/webhook/token"
 )
 
-// AnnotationRejected is patched on a Promotion when a human POSTs to /reject.
-// The PromotionReconciler checks this in handleWaitingApproval and calls failPromotion.
+// AnnotationRejected is patched on a Sync when a human POSTs to /reject.
+// The SyncReconciler checks this in handleWaitingApproval and calls failSync.
 const (
 	AnnotationRejected   = "kapro.io/rejected"
 	AnnotationRejectedBy = "kapro.io/rejected-by"
 )
 
-// Server handles approve/reject/status HTTP requests for Kapro Promotions.
+// Server handles approve/reject/status HTTP requests for Kapro Syncs.
 type Server struct {
-	// Client is used to look up Promotions and create Approval CRs.
+	// Client is used to look up Syncs and create Approval CRs.
 	Client client.Client
 	// TokenSecret is the HMAC key used to verify approval tokens.
-	// Must match the secret used by PromotionReconciler to sign tokens.
+	// Must match the secret used by SyncReconciler to sign tokens.
 	TokenSecret []byte
 }
 
@@ -67,9 +67,9 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	promotionName := r.PathValue("name")
-	if promotionName == "" {
-		promotionName = trimPrefix(r.URL.Path, "/approve/")
+	syncName := r.PathValue("name")
+	if syncName == "" {
+		syncName = trimPrefix(r.URL.Path, "/approve/")
 	}
 
 	claims, err := s.verifyToken(r, "approve")
@@ -78,14 +78,14 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Look up the Promotion to get its namespace and validate UID.
-	promo, err := s.getPromotion(r.Context(), promotionName, claims.Namespace)
+	// Look up the Sync to get its namespace and validate UID.
+	sync, err := s.getSync(r.Context(), syncName, claims.Namespace)
 	if err != nil {
-		http.Error(w, "promotion not found", http.StatusNotFound)
+		http.Error(w, "sync not found", http.StatusNotFound)
 		return
 	}
-	if string(promo.UID) != claims.UID {
-		http.Error(w, "token bound to different promotion instance", http.StatusConflict)
+	if string(sync.UID) != claims.UID {
+		http.Error(w, "token bound to different sync instance", http.StatusConflict)
 		return
 	}
 
@@ -103,21 +103,21 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.FromContext(r.Context()).Info("Approval CR created",
-		"promotion", promotionName,
+		"sync", syncName,
 		"approvedBy", claims.UID,
 		"environment", claims.Environment,
 	)
 
 	writeJSON(w, http.StatusOK, map[string]string{
 		"status":      "approved",
-		"promotion":   promotionName,
+		"sync":        syncName,
 		"environment": claims.Environment,
 		"version":     claims.Version,
 	})
 }
 
-// handleReject patches the Promotion with a rejection annotation.
-// The PromotionReconciler will call failPromotion() on next reconcile.
+// handleReject patches the Sync with a rejection annotation.
+// The SyncReconciler will call failSync() on next reconcile.
 // POST /reject/{name}?token=<t>
 func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -125,9 +125,9 @@ func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	promotionName := r.PathValue("name")
-	if promotionName == "" {
-		promotionName = trimPrefix(r.URL.Path, "/reject/")
+	syncName := r.PathValue("name")
+	if syncName == "" {
+		syncName = trimPrefix(r.URL.Path, "/reject/")
 	}
 
 	claims, err := s.verifyToken(r, "reject")
@@ -136,48 +136,48 @@ func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	promo, err := s.getPromotion(r.Context(), promotionName, claims.Namespace)
+	sync, err := s.getSync(r.Context(), syncName, claims.Namespace)
 	if err != nil {
-		http.Error(w, "promotion not found", http.StatusNotFound)
+		http.Error(w, "sync not found", http.StatusNotFound)
 		return
 	}
-	if string(promo.UID) != claims.UID {
-		http.Error(w, "token bound to different promotion instance", http.StatusConflict)
+	if string(sync.UID) != claims.UID {
+		http.Error(w, "token bound to different sync instance", http.StatusConflict)
 		return
 	}
 
 	// Patch annotations — the controller owns the status transition.
-	patch := client.MergeFrom(promo.DeepCopy())
-	if promo.Annotations == nil {
-		promo.Annotations = make(map[string]string)
+	patch := client.MergeFrom(sync.DeepCopy())
+	if sync.Annotations == nil {
+		sync.Annotations = make(map[string]string)
 	}
-	promo.Annotations[AnnotationRejected] = "true"
+	sync.Annotations[AnnotationRejected] = "true"
 	// Use a query param ?by=<name> for the approver identity if provided.
 	rejectedBy := r.URL.Query().Get("by")
 	if rejectedBy == "" {
 		rejectedBy = "webhook"
 	}
-	promo.Annotations[AnnotationRejectedBy] = rejectedBy
+	sync.Annotations[AnnotationRejectedBy] = rejectedBy
 
-	if err := s.Client.Patch(r.Context(), promo, patch); err != nil {
-		log.FromContext(r.Context()).Error(err, "patch Promotion rejection annotation failed")
+	if err := s.Client.Patch(r.Context(), sync, patch); err != nil {
+		log.FromContext(r.Context()).Error(err, "patch Sync rejection annotation failed")
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
-	log.FromContext(r.Context()).Info("Promotion rejection annotated",
-		"promotion", promotionName,
+	log.FromContext(r.Context()).Info("Sync rejection annotated",
+		"sync", syncName,
 		"rejectedBy", rejectedBy,
 	)
 
 	writeJSON(w, http.StatusOK, map[string]string{
 		"status":      "rejected",
-		"promotion":   promotionName,
+		"sync":        syncName,
 		"environment": claims.Environment,
 	})
 }
 
-// handleStatus returns the public promotion phase. No auth required.
+// handleStatus returns the public sync phase. No auth required.
 // GET /status/{name}?ns=<namespace>
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -185,26 +185,26 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	promotionName := r.PathValue("name")
-	if promotionName == "" {
-		promotionName = trimPrefix(r.URL.Path, "/status/")
+	syncName := r.PathValue("name")
+	if syncName == "" {
+		syncName = trimPrefix(r.URL.Path, "/status/")
 	}
 	ns := r.URL.Query().Get("ns")
 	if ns == "" {
 		ns = "kapro-system"
 	}
 
-	promo, err := s.getPromotion(r.Context(), promotionName, ns)
+	sync, err := s.getSync(r.Context(), syncName, ns)
 	if err != nil {
-		http.Error(w, "promotion not found", http.StatusNotFound)
+		http.Error(w, "sync not found", http.StatusNotFound)
 		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{
-		"phase":       string(promo.Status.Phase),
-		"version":     promo.Spec.Version,
-		"environment": promo.Spec.EnvironmentRef,
-		"release":     promo.Spec.ReleaseRef,
+		"phase":       string(sync.Status.Phase),
+		"version":     sync.Spec.Version,
+		"environment": sync.Spec.EnvironmentRef,
+		"release":     sync.Spec.ReleaseRef,
 	})
 }
 
@@ -223,12 +223,12 @@ func (s *Server) verifyToken(r *http.Request, expectedAction string) (*token.Cla
 	return claims, nil
 }
 
-func (s *Server) getPromotion(ctx context.Context, name, namespace string) (*kaprov1alpha1.Promotion, error) {
-	var promo kaprov1alpha1.Promotion
-	if err := s.Client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, &promo); err != nil {
+func (s *Server) getSync(ctx context.Context, name, namespace string) (*kaprov1alpha1.Sync, error) {
+	var sync kaprov1alpha1.Sync
+	if err := s.Client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, &sync); err != nil {
 		return nil, err
 	}
-	return &promo, nil
+	return &sync, nil
 }
 
 func (s *Server) buildApproval(claims *token.Claims) *kaprov1alpha1.Approval {
@@ -247,7 +247,7 @@ func (s *Server) buildApproval(claims *token.Claims) *kaprov1alpha1.Approval {
 			},
 		},
 		Spec: kaprov1alpha1.ApprovalSpec{
-			Kind:           kaprov1alpha1.ApprovalKindPromotion,
+			Kind:           kaprov1alpha1.ApprovalKindSync,
 			Ref:            claims.Environment,
 			Release:        claims.Release,
 			EnvironmentRef: claims.Environment,

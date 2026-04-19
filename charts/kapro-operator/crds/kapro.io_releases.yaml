@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: releases.kapro.io
 spec:
   group: kapro.io
@@ -12,7 +12,7 @@ spec:
     listKind: ReleaseList
     plural: releases
     singular: release
-  scope: Namespaced
+  scope: Cluster
   versions:
   - additionalPrinterColumns:
     - jsonPath: .spec.artifact
@@ -24,7 +24,10 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Release is the developer trigger for a progressive delivery rollout.
+        description: |-
+          Release is the trigger for a progressive delivery rollout across the cluster fleet.
+          It references an Artifact and a DAG of Pipelines that define the delivery path.
+          The Release controller drives the pipeline DAG, creating Sync objects per environment.
         properties:
           apiVersion:
             description: |-
@@ -45,92 +48,60 @@ spec:
             type: object
           spec:
             properties:
+              appKey:
+                description: |-
+                  AppKey is the key used in ManagedCluster.status.currentVersions.
+                  Defaults to the Artifact name when not set.
+                type: string
               artifact:
+                description: Artifact is the OCI artifact name to deliver across the
+                  fleet.
                 type: string
-              pipelineOverrides:
-                properties:
-                  gatePolicy:
-                    properties:
-                      bakePeriod:
+              pipelines:
+                description: |-
+                  Pipelines is the DAG of pipeline nodes that this Release executes.
+                  Each node references a Pipeline CRD and may depend on other nodes.
+                items:
+                  description: |-
+                    ReleasePipelineRef is one node in the Release's pipeline DAG.
+                    Multiple pipelines can run in parallel; DependsOn declares ordering between them.
+                  properties:
+                    dependsOn:
+                      description: DependsOn lists pipeline node names that must reach
+                        Complete before this one starts.
+                      items:
                         type: string
-                    type: object
-                type: object
-              pipelineRef:
-                type: string
-              scope:
-                properties:
-                  selector:
-                    description: |-
-                      A label selector is a label query over a set of resources. The result of matchLabels and
-                      matchExpressions are ANDed. An empty label selector matches all objects. A null
-                      label selector matches no objects.
-                    properties:
-                      matchExpressions:
-                        description: matchExpressions is a list of label selector
-                          requirements. The requirements are ANDed.
-                        items:
-                          description: |-
-                            A label selector requirement is a selector that contains values, a key, and an operator that
-                            relates the key and values.
-                          properties:
-                            key:
-                              description: key is the label key that the selector
-                                applies to.
-                              type: string
-                            operator:
-                              description: |-
-                                operator represents a key's relationship to a set of values.
-                                Valid operators are In, NotIn, Exists and DoesNotExist.
-                              type: string
-                            values:
-                              description: |-
-                                values is an array of string values. If the operator is In or NotIn,
-                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
-                                the values array must be empty. This array is replaced during a strategic
-                                merge patch.
-                              items:
-                                type: string
-                              type: array
-                              x-kubernetes-list-type: atomic
-                          required:
-                          - key
-                          - operator
-                          type: object
-                        type: array
-                        x-kubernetes-list-type: atomic
-                      matchLabels:
-                        additionalProperties:
-                          type: string
-                        description: |-
-                          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
-                          map is equivalent to an element of matchExpressions, whose key field is "key", the
-                          operator is "In", and the values array contains only "value". The requirements are ANDed.
-                        type: object
-                    type: object
-                    x-kubernetes-map-type: atomic
-                required:
-                - selector
-                type: object
+                      type: array
+                    name:
+                      description: Name uniquely identifies this pipeline node within
+                        the Release.
+                      type: string
+                    pipeline:
+                      description: Pipeline is the name of the Pipeline CRD to execute.
+                      type: string
+                  required:
+                  - name
+                  - pipeline
+                  type: object
+                minItems: 1
+                type: array
+              suspended:
+                default: false
+                description: Suspended pauses all advancement when true.
+                type: boolean
             required:
             - artifact
-            - pipelineRef
-            - scope
+            - pipelines
             type: object
           status:
             description: ReleaseStatus defines the observed state of Release.
             properties:
+              completedAt:
+                type: string
               conditions:
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource.\n---\nThis struct is intended for
-                    direct use as an array at the field path .status.conditions.  For
-                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                    observations of a foo's current state.\n\t    // Known .status.conditions.type
-                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                    \   // other fields\n\t}"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -171,12 +142,7 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        ---
-                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
-                        useful (see .node.status.conditions), the ability to deconflict is important.
-                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -188,9 +154,78 @@ spec:
                   - type
                   type: object
                 type: array
+              observedGeneration:
+                format: int64
+                type: integer
               phase:
                 type: string
-              pipelineRef:
+              pipelineProgress:
+                description: PipelineProgress tracks execution state of each pipeline
+                  node in the DAG.
+                items:
+                  description: PipelineProgress tracks the execution state of one
+                    pipeline node in a Release.
+                  properties:
+                    name:
+                      description: Name matches ReleasePipelineRef.name.
+                      type: string
+                    phase:
+                      description: Phase is the current execution state of this pipeline
+                        node.
+                      enum:
+                      - Pending
+                      - Progressing
+                      - Complete
+                      - Failed
+                      type: string
+                    pipeline:
+                      description: Pipeline is the Pipeline CRD name.
+                      type: string
+                    stageProgress:
+                      description: StageProgress summarises the state of each stage
+                        in this pipeline.
+                      items:
+                        description: StageProgress tracks the execution state of one
+                          Stage within a pipeline.
+                        properties:
+                          failed:
+                            description: Failed is the number of environments that
+                              have reached Failed.
+                            type: integer
+                          name:
+                            description: Name is the stage name from Pipeline.spec.stages[].name.
+                            type: string
+                          phase:
+                            description: Phase is the current state of this stage.
+                            enum:
+                            - Pending
+                            - Progressing
+                            - Complete
+                            - Failed
+                            type: string
+                          synced:
+                            description: Synced is the number of environments that
+                              have reached Converged.
+                            type: integer
+                          total:
+                            description: Total is the number of environments selected
+                              by this stage.
+                            type: integer
+                        required:
+                        - name
+                        type: object
+                      type: array
+                  required:
+                  - name
+                  - pipeline
+                  type: object
+                type: array
+              resolvedVersion:
+                description: |-
+                  ResolvedVersion is the OCI digest resolved from the Artifact CR.
+                  Format: <repository>@sha256:<digest>. Set once in Pending and never changed.
+                type: string
+              startedAt:
                 type: string
             type: object
         type: object

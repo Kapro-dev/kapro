@@ -90,3 +90,19 @@ webhook:
   # Set to the base64-encoded CA certificate that signed the webhook TLS cert.
   caBundle: ""
 
+
+# The public URL of this hub's Kubernetes API server as reachable from spoke clusters.
+# Example: https://hub.example.com:6443
+# Required for CSR bootstrap — the hub operator passes this URL into the bootstrap kubeconfig
+# it issues to new clusters so they know how to reach the hub.
+hubAPIURL: ""
+
+# Approval webhook HMAC secret.
+# approvalSecret.value is base64-encoded and stored in a K8s Secret.
+# The operator reads it from a volume mount (never from a plain env var).
+approvalSecret:
+  # value: base64-encoded secret value. Set via --set or in a sealed secret.
+  # Example: printf 'my-secret' | base64
+  value: ""
+  # secretName: override the Secret name if you manage the Secret externally.
+  secretName: ""

@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+
+	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
 
 // MetricsGate evaluates a single PromQL expression against a Prometheus-compatible
@@ -23,7 +25,7 @@ import (
 // means the gate is blocked.
 //
 // The PrometheusURL is derived from the MetricGate.Provider field by convention:
-// providers named "prometheus" use the URL stored in the PromotionPolicy
+// providers named "prometheus" use the URL stored in the GatePolicy
 // annotation `kapro.io/prometheus-url`. When the annotation is absent the
 // gate falls back to the in-cluster Prometheus default
 // http://prometheus-operated.monitoring.svc:9090.
@@ -44,10 +46,10 @@ func (g *MetricsGate) httpClient() *http.Client {
 }
 
 // Evaluate queries the Prometheus instant-query endpoint for the metric at
-// req.MetricIndex. Returns Passed=true when the query yields a non-zero value.
+// req.MetricIndex. Returns Passed when the query yields a non-zero value.
 func (g *MetricsGate) Evaluate(ctx context.Context, req Request) (Result, error) {
 	if req.Policy == nil || req.MetricIndex >= len(req.Policy.Spec.Gate.Metrics) {
-		return Result{Passed: true, Message: "no metrics configured"}, nil
+		return Result{Phase: kaprov1alpha1.GatePhasePassed, Message: "no metrics configured"}, nil
 	}
 
 	metric := req.Policy.Spec.Gate.Metrics[req.MetricIndex]
@@ -62,7 +64,7 @@ func (g *MetricsGate) Evaluate(ctx context.Context, req Request) (Result, error)
 	passed, val, err := g.queryInstant(ctx, baseURL, metric.Query)
 	if err != nil {
 		return Result{
-			Passed:     false,
+			Phase:      kaprov1alpha1.GatePhaseInconclusive,
 			Message:    fmt.Sprintf("prometheus query error: %v", err),
 			RetryAfter: "30s",
 		}, nil // don't propagate — retry is safer than blocking the pipeline
@@ -70,13 +72,13 @@ func (g *MetricsGate) Evaluate(ctx context.Context, req Request) (Result, error)
 
 	if passed {
 		return Result{
-			Passed:  true,
+			Phase:   kaprov1alpha1.GatePhasePassed,
 			Message: fmt.Sprintf("metric query passed (value=%.4f): %s", val, metric.Query),
 		}, nil
 	}
 
 	return Result{
-		Passed:     false,
+		Phase:      kaprov1alpha1.GatePhaseInconclusive,
 		Message:    fmt.Sprintf("metric gate blocked (value=%.4f): %s", val, metric.Query),
 		RetryAfter: "30s",
 	}, nil

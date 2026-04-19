@@ -13,11 +13,10 @@ import (
 // PipelineValidator validates Pipeline objects on CREATE and UPDATE.
 //
 // Rules enforced:
-//  1. At least one batch must be defined.
-//  2. All batch dependsOn references must name existing batches.
-//  3. The batch DAG must be acyclic (DFS cycle detection).
-//  4. All promotion step dependsOn references must name existing steps.
-//  5. The promotion step DAG must be acyclic (DFS cycle detection).
+//  1. At least one stage must be defined.
+//  2. All stage names must be unique.
+//  3. All stage dependsOn references must name existing stages.
+//  4. The stage DAG must be acyclic (DFS cycle detection).
 type PipelineValidator struct {
 	decoder admission.Decoder
 }
@@ -40,80 +39,40 @@ func (v *PipelineValidator) Handle(_ context.Context, req admission.Request) adm
 }
 
 func validatePipeline(p *kaprov1alpha1.Pipeline) error {
-	if err := validateBatchDAG(p.Spec.Progression.Batches); err != nil {
-		return err
-	}
-	if err := validatePromotionStepDAG(p.Spec.Promotion.Steps); err != nil {
-		return err
-	}
-	return nil
+	return validateStageDAG(p.Spec.Stages)
 }
 
-// validateBatchDAG checks that the batch progression graph is a valid DAG.
-func validateBatchDAG(batches []kaprov1alpha1.Batch) error {
-	if len(batches) == 0 {
-		return fmt.Errorf("pipeline.spec.progression.batches must contain at least one batch")
+// validateStageDAG checks that the flat Stage DAG is a valid directed acyclic graph.
+func validateStageDAG(stages []kaprov1alpha1.Stage) error {
+	if len(stages) == 0 {
+		return fmt.Errorf("pipeline.spec.stages must contain at least one stage")
 	}
 
-	index := make(map[string]int, len(batches))
-	for i, b := range batches {
-		if b.Name == "" {
-			return fmt.Errorf("pipeline.spec.progression.batches[%d].name must be set", i)
-		}
-		if _, exists := index[b.Name]; exists {
-			return fmt.Errorf("pipeline.spec.progression.batches: duplicate batch name %q", b.Name)
-		}
-		index[b.Name] = i
-	}
-
-	// Validate all dependsOn references exist.
-	for _, b := range batches {
-		for _, dep := range b.DependsOn {
-			if _, exists := index[dep]; !exists {
-				return fmt.Errorf("pipeline.spec.progression.batches[%q].dependsOn: unknown batch %q", b.Name, dep)
-			}
-		}
-	}
-
-	// DFS cycle detection on batch DAG.
-	if cycle := detectCycle(index, func(name string) []string {
-		return batches[index[name]].DependsOn
-	}); cycle != "" {
-		return fmt.Errorf("pipeline.spec.progression.batches: cycle detected: %s", cycle)
-	}
-
-	return nil
-}
-
-// validatePromotionStepDAG checks that the promotion step graph is a valid DAG.
-func validatePromotionStepDAG(steps []kaprov1alpha1.PromotionStep) error {
-	if len(steps) == 0 {
-		return nil // promotion steps are optional
-	}
-
-	index := make(map[string]int, len(steps))
-	for i, s := range steps {
+	index := make(map[string]int, len(stages))
+	for i, s := range stages {
 		if s.Name == "" {
-			return fmt.Errorf("pipeline.spec.promotion.steps[%d].name must be set", i)
+			return fmt.Errorf("pipeline.spec.stages[%d].name must be set", i)
 		}
 		if _, exists := index[s.Name]; exists {
-			return fmt.Errorf("pipeline.spec.promotion.steps: duplicate step name %q", s.Name)
+			return fmt.Errorf("pipeline.spec.stages: duplicate stage name %q", s.Name)
 		}
 		index[s.Name] = i
 	}
 
-	for _, s := range steps {
+	// Validate all dependsOn references name existing stages.
+	for _, s := range stages {
 		for _, dep := range s.DependsOn {
 			if _, exists := index[dep]; !exists {
-				return fmt.Errorf("pipeline.spec.promotion.steps[%q].dependsOn: unknown step %q", s.Name, dep)
+				return fmt.Errorf("pipeline.spec.stages[%q].dependsOn: unknown stage %q", s.Name, dep)
 			}
 		}
 	}
 
+	// DFS cycle detection on the stage DAG.
 	if cycle := detectCycle(index, func(name string) []string {
-		return steps[index[name]].DependsOn
+		return stages[index[name]].DependsOn
 	}); cycle != "" {
-		return fmt.Errorf("pipeline.spec.promotion.steps: cycle detected: %s", cycle)
+		return fmt.Errorf("pipeline.spec.stages: cycle detected: %s", cycle)
 	}
 
 	return nil
@@ -165,5 +124,5 @@ func detectCycle(nodes map[string]int, deps func(string) []string) string {
 
 // ValidatePipeline is an exported test helper that exposes the internal validation logic.
 func ValidatePipeline(p *kaprov1alpha1.Pipeline) error {
-return validatePipeline(p)
+	return validatePipeline(p)
 }

@@ -50,17 +50,39 @@ spec:
             {{- toYaml .Values.readinessProbe | nindent 12 }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          {{- if and .Values.webhook.enabled .Values.webhook.certManager.enabled }}
+          env:
+            - name: KAPRO_EXTERNAL_URL
+              value: {{ .Values.externalURL | default "" | quote }}
+            - name: KAPRO_HUB_API_URL
+              value: {{ .Values.hubAPIURL | default "" | quote }}
+          {{- if or (and .Values.webhook.enabled .Values.webhook.certManager.enabled) (or .Values.approvalSecret.value .Values.approvalSecret.secretName) }}
           volumeMounts:
+            {{- if and .Values.webhook.enabled .Values.webhook.certManager.enabled }}
             - name: webhook-tls
               mountPath: /tmp/k8s-webhook-server/serving-certs
               readOnly: true
+            {{- end }}
+            {{- if or .Values.approvalSecret.value .Values.approvalSecret.secretName }}
+            - name: approval-secret
+              mountPath: /etc/kapro/secrets
+              readOnly: true
+            {{- end }}
           {{- end }}
-      {{- if and .Values.webhook.enabled .Values.webhook.certManager.enabled }}
+      {{- if or (and .Values.webhook.enabled .Values.webhook.certManager.enabled) (or .Values.approvalSecret.value .Values.approvalSecret.secretName) }}
       volumes:
+        {{- if and .Values.webhook.enabled .Values.webhook.certManager.enabled }}
         - name: webhook-tls
           secret:
             secretName: {{ include "kapro-operator.fullname" . }}-webhook-tls
+        {{- end }}
+        {{- if or .Values.approvalSecret.value .Values.approvalSecret.secretName }}
+        - name: approval-secret
+          secret:
+            secretName: {{ .Values.approvalSecret.secretName | default "kapro-approval-secret" }}
+            items:
+              - key: approval-secret
+                path: approval-secret
+        {{- end }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

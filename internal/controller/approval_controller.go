@@ -14,17 +14,16 @@ import (
 )
 
 // ApprovalReconciler watches Approval objects and triggers the waiting
-// Promotion or BatchRun to recheck its gate.
-// The actual gate check happens in PromotionReconciler/BatchRunReconciler —
-// this controller just ensures they get re-queued immediately on approval.
+// Sync to recheck its gate.
+// The actual gate check happens in SyncReconciler — this controller just
+// ensures it gets re-queued immediately on approval, recording an Event for audit.
 type ApprovalReconciler struct {
 	client.Client
 	Recorder record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=approvals,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=kapro.io,resources=promotions,verbs=get;list;watch
-// +kubebuilder:rbac:groups=kapro.io,resources=batchruns,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=syncs,verbs=get;list;watch
 
 func (r *ApprovalReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
@@ -47,16 +46,19 @@ func (r *ApprovalReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		fmt.Sprintf("Approval by %s for %s/%s", approval.Spec.ApprovedBy, approval.Spec.Kind, approval.Spec.Ref))
 
 	switch approval.Spec.Kind {
-	case kaprov1alpha1.ApprovalKindPromotion:
-		// Trigger re-reconcile of the waiting Promotion
-		promoName := approval.Spec.Release + "-" + approval.Spec.Ref
-		log.Info("triggering Promotion recheck", "promotion", promoName)
-		// The PromotionReconciler will pick up the Approval via label selector on next reconcile
+	case kaprov1alpha1.ApprovalKindSync:
+		// SyncReconciler watches Approvals via Watches() in SetupWithManager —
+		// it maps the Approval to the waiting Sync and re-queues it immediately.
+		syncName := approval.Spec.Release + "-" + approval.Spec.Ref
+		log.Info("triggering Sync recheck", "sync", syncName)
 
-	case kaprov1alpha1.ApprovalKindBatch:
-		// Trigger re-reconcile of the waiting BatchRun
-		batchRunName := approval.Spec.Release + "-" + approval.Spec.Ref
-		log.Info("triggering BatchRun recheck", "batchRun", batchRunName)
+	case kaprov1alpha1.ApprovalKindStage:
+		// Stage-level approvals unblock an entire stage. SyncReconciler watches
+		// Approvals and wakes up all Syncs for the matching stage.
+		log.Info("triggering stage Sync recheck",
+			"release", approval.Spec.Release,
+			"stage", approval.Spec.Ref,
+		)
 	}
 
 	return ctrl.Result{}, nil

@@ -17,10 +17,10 @@ var _ actuator.Actuator = (*FluxActuator)(nil)
 
 // FluxActuator implements promotion via the CRD-native outbound pattern:
 //
-//  1. Apply() writes ClusterRegistration.spec.desiredVersion on the control plane.
+//  1. Apply() writes ManagedCluster.spec.desiredVersion on the control plane.
 //  2. kapro-cluster-controller on the workload cluster polls spec.desiredVersion
 //     and patches the local OCIRepository — triggering Flux reconciliation.
-//  3. IsConverged() reads ClusterRegistration.status.phase + currentVersions
+//  3. IsConverged() reads ManagedCluster.status.phase + currentVersions
 //     to determine whether Flux has converged.
 //
 // No kubeconfig or inbound connection to workload clusters is needed.
@@ -29,7 +29,7 @@ type FluxActuator struct {
 	Client client.Client
 }
 
-// Apply sets ClusterRegistration.spec.desiredVersion (and desiredAppKey),
+// Apply sets ManagedCluster.spec.desiredVersion (and desiredAppKey),
 // signalling the cluster-controller to update the local OCIRepository.
 func (a *FluxActuator) Apply(ctx context.Context, req actuator.ApplyRequest) error {
 	if req.Environment == nil {
@@ -56,10 +56,10 @@ func (a *FluxActuator) Apply(ctx context.Context, req actuator.ApplyRequest) err
 	reg.Spec.DesiredVersion = req.Version
 	reg.Spec.DesiredAppKey = appKey
 	if err := a.Client.Patch(ctx, reg, patch); err != nil {
-		return fmt.Errorf("FluxActuator.Apply: patch ClusterRegistration %s: %w", reg.Name, err)
+		return fmt.Errorf("FluxActuator.Apply: patch ManagedCluster %s: %w", reg.Name, err)
 	}
 
-	log.Info("patched ClusterRegistration.spec.desiredVersion",
+	log.Info("patched ManagedCluster.spec.desiredVersion",
 		"registration", reg.Name,
 		"ociRepo", req.Environment.Spec.Actuator.Flux.OCIRepository,
 	)
@@ -68,7 +68,11 @@ func (a *FluxActuator) Apply(ctx context.Context, req actuator.ApplyRequest) err
 
 // IsConverged returns true when the workload cluster's cluster-controller
 // has reconciled the desired version and Flux has converged.
-func (a *FluxActuator) IsConverged(ctx context.Context, env *kaprov1alpha1.Environment, version string) (bool, error) {
+//
+// appKey is the key in ManagedCluster.status.currentVersions to inspect.
+// Use "default" for single-app environments. Callers must supply this explicitly
+// (v0.2 change) — previously IsConverged re-read it from ManagedCluster.spec.desiredAppKey.
+func (a *FluxActuator) IsConverged(ctx context.Context, env *kaprov1alpha1.Environment, version, appKey string) (bool, error) {
 	reg, err := a.getRegistration(ctx, env.Name)
 	if err != nil {
 		return false, fmt.Errorf("FluxActuator.IsConverged: %w", err)
@@ -79,15 +83,17 @@ func (a *FluxActuator) IsConverged(ctx context.Context, env *kaprov1alpha1.Envir
 		return false, fmt.Errorf("cluster %s heartbeat is stale (last seen: %s)", env.Name, reg.Status.LastHeartbeat)
 	}
 
-	appKey := resolveAppKey(reg.Spec.DesiredAppKey)
+	// Use caller-supplied appKey; fall back to "default" if caller passed empty string.
+	// This maintains backward compatibility while keeping the interface explicit.
+	resolvedKey := resolveAppKey(appKey)
 	converged := reg.Status.Phase == kaprov1alpha1.ClusterPhaseConverged &&
-		reg.Status.CurrentVersions[appKey] == version
+		reg.Status.CurrentVersions[resolvedKey] == version
 
 	log.FromContext(ctx).Info("convergence check",
 		"environment", env.Name,
-		"appKey", appKey,
+		"appKey", resolvedKey,
 		"phase", reg.Status.Phase,
-		"currentVersion", reg.Status.CurrentVersions[appKey],
+		"currentVersion", reg.Status.CurrentVersions[resolvedKey],
 		"wantVersion", version,
 		"converged", converged,
 	)
@@ -115,13 +121,13 @@ func (a *FluxActuator) Rollback(ctx context.Context, env *kaprov1alpha1.Environm
 	})
 }
 
-// getRegistration returns the ClusterRegistration for the given environment name.
-func (a *FluxActuator) getRegistration(ctx context.Context, envName string) (*kaprov1alpha1.ClusterRegistration, error) {
-	var regList kaprov1alpha1.ClusterRegistrationList
+// getRegistration returns the ManagedCluster for the given environment name.
+func (a *FluxActuator) getRegistration(ctx context.Context, envName string) (*kaprov1alpha1.ManagedCluster, error) {
+	var regList kaprov1alpha1.ManagedClusterList
 	if err := a.Client.List(ctx, &regList, client.MatchingLabels{
 		"kapro.io/environment": envName,
 	}); err != nil {
-		return nil, fmt.Errorf("list ClusterRegistrations: %w", err)
+		return nil, fmt.Errorf("list ManagedClusters: %w", err)
 	}
 
 	for i := range regList.Items {
@@ -130,7 +136,7 @@ func (a *FluxActuator) getRegistration(ctx context.Context, envName string) (*ka
 		}
 	}
 
-	return nil, fmt.Errorf("no ClusterRegistration found for environment %q", envName)
+	return nil, fmt.Errorf("no ManagedCluster found for environment %q", envName)
 }
 
 // resolveAppKey returns appKey if non-empty, otherwise "default".

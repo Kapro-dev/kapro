@@ -90,7 +90,7 @@ func testIsConvergedReturnsBool(t *testing.T, a pkgactuator.Actuator) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	// Both true and false are valid — external actuators may not be converged yet.
-	_, _ = a.IsConverged(ctx, minimalEnv(), "v0.0.1")
+	_, _ = a.IsConverged(ctx, minimalEnv(), "v0.0.1", "default")
 }
 
 // testRollbackNilEnvironment verifies Rollback handles nil Environment without panicking.
@@ -113,7 +113,7 @@ func testConcurrentSafe(t *testing.T, a pkgactuator.Actuator) {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			a.IsConverged(ctx, minimalEnv(), "v0.0.1") //nolint:errcheck
+			a.IsConverged(ctx, minimalEnv(), "v0.0.1", "default") //nolint:errcheck
 			done <- struct{}{}
 		}()
 	}

@@ -28,7 +28,7 @@ func allResources() []Resource {
 		{
 			URI:         "kapro://promotions/pending-approval",
 			Name:        "promotions-pending-approval",
-			Description: "All Promotion objects currently in WaitingApproval phase.",
+			Description: "All Sync objects currently in WaitingApproval phase.",
 			MimeType:    "application/json",
 		},
 	}
@@ -67,20 +67,24 @@ func (r *resources) readReleases(ctx context.Context, uri string) (*ResourceCont
 	}
 
 	type row struct {
-		Name      string `json:"name"`
-		Namespace string `json:"namespace"`
-		Artifact  string `json:"artifact"`
-		Phase     string `json:"phase"`
-		Pipeline  string `json:"pipeline"`
+		Name      string   `json:"name"`
+		Namespace string   `json:"namespace"`
+		Artifact  string   `json:"artifact"`
+		Phase     string   `json:"phase"`
+		Pipelines []string `json:"pipelines"`
 	}
 	rows := make([]row, 0, len(list.Items))
 	for _, rel := range list.Items {
+		pipelineNames := make([]string, 0, len(rel.Spec.Pipelines))
+		for _, p := range rel.Spec.Pipelines {
+			pipelineNames = append(pipelineNames, p.Name)
+		}
 		rows = append(rows, row{
 			Name:      rel.Name,
 			Namespace: rel.Namespace,
 			Artifact:  rel.Spec.Artifact,
 			Phase:     string(rel.Status.Phase),
-			Pipeline:  rel.Spec.PipelineRef,
+			Pipelines: pipelineNames,
 		})
 	}
 	text, err := toJSON(rows)
@@ -131,7 +135,7 @@ func (r *resources) readEnvironments(ctx context.Context, uri string) (*Resource
 }
 
 func (r *resources) readPendingApprovals(ctx context.Context, uri string) (*ResourceContent, error) {
-	var list kaprov1alpha1.PromotionList
+	var list kaprov1alpha1.SyncList
 	if err := r.client.List(ctx, &list); err != nil {
 		return nil, fmt.Errorf("list promotions: %w", err)
 	}
@@ -145,7 +149,7 @@ func (r *resources) readPendingApprovals(ctx context.Context, uri string) (*Reso
 	}
 	rows := make([]row, 0)
 	for _, p := range list.Items {
-		if p.Status.Phase == kaprov1alpha1.PromotionPhaseWaitingApproval {
+		if p.Status.Phase == kaprov1alpha1.SyncPhaseWaitingApproval {
 			rows = append(rows, row{
 				Name:        p.Name,
 				Namespace:   p.Namespace,

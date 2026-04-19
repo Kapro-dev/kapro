@@ -12,20 +12,20 @@ import (
 )
 
 var (
-	// PromotionTransitions counts FSM phase transitions per Promotion.
+	// SyncTransitions counts FSM phase transitions per Sync.
 	// Labels: phase (destination), result (success|failed).
-	PromotionTransitions = prometheus.NewCounterVec(
+	SyncTransitions = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "kapro",
-			Subsystem: "promotion",
+			Subsystem: "sync",
 			Name:      "transitions_total",
-			Help:      "Total FSM phase transitions for Promotions.",
+			Help:      "Total FSM phase transitions for Syncs.",
 		},
 		[]string{"phase", "result"},
 	)
 
 	// GateEvaluations counts gate evaluations across all gate types.
-	// Labels: gate_type (cel|job|webhook|argo-analysis|soak|metrics|approval|verification),
+	// Labels: gate_type (cel|job|webhook|soak|metrics|approval|verification),
 	//         result (passed|failed|inconclusive|error).
 	GateEvaluations = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -37,13 +37,13 @@ var (
 		[]string{"gate_type", "result"},
 	)
 
-	// BatchDuration measures end-to-end batch duration from Pending to Complete.
-	BatchDuration = prometheus.NewHistogramVec(
+	// StageDuration measures end-to-end stage duration from Pending to Complete.
+	StageDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: "kapro",
-			Subsystem: "batch",
+			Subsystem: "stage",
 			Name:      "duration_seconds",
-			Help:      "Duration in seconds from batch Pending to Complete.",
+			Help:      "Duration in seconds from stage Pending to Complete.",
 			Buckets:   prometheus.ExponentialBuckets(30, 2, 10), // 30s → ~8h
 		},
 		[]string{"pipeline"},
@@ -60,23 +60,23 @@ var (
 	)
 
 	// WaveProgress tracks how many Environments have been successfully
-	// promoted in the current wave.
+	// promoted per release stage.
 	WaveProgress = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "kapro",
 			Subsystem: "wave",
 			Name:      "environments_promoted_total",
-			Help:      "Number of Environments successfully promoted per wave batch.",
+			Help:      "Number of Environments successfully promoted per release stage.",
 		},
-		[]string{"release", "batch"},
+		[]string{"release", "stage"},
 	)
 )
 
 func init() {
 	ctrlmetrics.Registry.MustRegister(
-		PromotionTransitions,
+		SyncTransitions,
 		GateEvaluations,
-		BatchDuration,
+		StageDuration,
 		ActiveReleases,
 		WaveProgress,
 	)

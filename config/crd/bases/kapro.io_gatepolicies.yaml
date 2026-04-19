@@ -1,0 +1,203 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+  name: gatepolicies.kapro.io
+spec:
+  group: kapro.io
+  names:
+    kind: GatePolicy
+    listKind: GatePolicyList
+    plural: gatepolicies
+    singular: gatepolicy
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          GatePolicy defines reusable gate rules evaluated before advancing a stage.
+          Referenced by Pipeline.spec.stages[].gate.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              approval:
+                properties:
+                  approvers:
+                    items:
+                      type: string
+                    type: array
+                  required:
+                    type: boolean
+                required:
+                - required
+                type: object
+              gate:
+                properties:
+                  healthCheck:
+                    type: boolean
+                  metrics:
+                    items:
+                      properties:
+                        config:
+                          format: byte
+                          type: string
+                          x-kubernetes-preserve-unknown-fields: true
+                        endpoint:
+                          type: string
+                        provider:
+                          type: string
+                        query:
+                          type: string
+                        threshold:
+                          type: number
+                        window:
+                          type: string
+                      required:
+                      - provider
+                      - query
+                      - window
+                      type: object
+                    type: array
+                  soakTime:
+                    type: string
+                  templates:
+                    items:
+                      description: GateTemplateRef references a GateTemplate with
+                        optional arg overrides.
+                      properties:
+                        args:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        name:
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                  verification:
+                    description: VerificationGateSpec configures per-policy artifact
+                      signature verification.
+                    properties:
+                      cosignPolicy:
+                        description: CosignPolicySpec specifies how cosign should
+                          verify the artifact signature.
+                        properties:
+                          key:
+                            description: KeyVerificationSpec configures static public
+                              key cosign verification.
+                            properties:
+                              secretRef:
+                                description: CosignKeySecretRef identifies a cosign
+                                  public key stored in a Kubernetes Secret.
+                                properties:
+                                  key:
+                                    default: cosign.pub
+                                    type: string
+                                  name:
+                                    type: string
+                                  namespace:
+                                    default: kapro-system
+                                    type: string
+                                required:
+                                - name
+                                type: object
+                            required:
+                            - secretRef
+                            type: object
+                          keyless:
+                            description: KeylessVerificationSpec configures OIDC keyless
+                              cosign verification.
+                            properties:
+                              issuer:
+                                type: string
+                              rekorURL:
+                                type: string
+                              subject:
+                                type: string
+                            type: object
+                        type: object
+                    type: object
+                type: object
+              mode:
+                enum:
+                - auto
+                - manual
+                - scheduled
+                type: string
+              notifications:
+                items:
+                  properties:
+                    channel:
+                      type: string
+                    email:
+                      description: EmailNotifierSpec configures SMTP email delivery
+                        for gate notifications.
+                      properties:
+                        from:
+                          type: string
+                        smtpSecretRef:
+                          description: |-
+                            LocalObjectReference contains enough information to let you locate the
+                            referenced object inside the same namespace.
+                          properties:
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        to:
+                          items:
+                            type: string
+                          minItems: 1
+                          type: array
+                      required:
+                      - smtpSecretRef
+                      - to
+                      type: object
+                    type:
+                      type: string
+                    url:
+                      type: string
+                  required:
+                  - type
+                  type: object
+                type: array
+              onFailure:
+                enum:
+                - halt
+                - rollback
+                - continue
+                type: string
+            required:
+            - mode
+            type: object
+        type: object
+    served: true
+    storage: true

@@ -21,7 +21,7 @@ func RunSuite(t *testing.T, g pkggate.Gate) {
 	t.Helper()
 	t.Run("KGI/NotNil", func(t *testing.T) { testNotNil(t, g) })
 	t.Run("KGI/ContextCancellation", func(t *testing.T) { testContextCancellation(t, g) })
-	t.Run("KGI/NilPromotion", func(t *testing.T) { testNilPromotion(t, g) })
+	t.Run("KGI/NilSync", func(t *testing.T) { testNilPromotion(t, g) })
 	t.Run("KGI/NilPolicy", func(t *testing.T) { testNilPolicy(t, g) })
 	t.Run("KGI/ValidRequest", func(t *testing.T) { testValidRequest(t, g) })
 	t.Run("KGI/ResultShape", func(t *testing.T) { testResultShape(t, g) })
@@ -57,16 +57,16 @@ func testContextCancellation(t *testing.T, g pkggate.Gate) {
 	}
 }
 
-// testNilPromotion verifies the gate handles a nil Promotion without panicking.
+// testNilPromotion verifies the gate handles a nil Sync without panicking.
 func testNilPromotion(t *testing.T, g pkggate.Gate) {
 	t.Helper()
 	defer func() {
 		if r := recover(); r != nil {
-			t.Errorf("Gate.Evaluate panicked on nil Promotion: %v", r)
+			t.Errorf("Gate.Evaluate panicked on nil Sync: %v", r)
 		}
 	}()
 	req := minimalRequest()
-	req.Promotion = nil
+	req.Sync = nil
 	g.Evaluate(context.Background(), req) //nolint:errcheck
 }
 
@@ -98,9 +98,9 @@ func testValidRequest(t *testing.T, g pkggate.Gate) {
 		t.Logf("Gate.Evaluate returned error (acceptable in unit context): %v", err)
 		return
 	}
-	// Result must have a non-empty message if it failed — helps operator debugging.
-	if !result.Passed && result.Message == "" {
-		t.Error("Gate.Evaluate returned Passed=false with empty Message — must explain why")
+	// Result must have a non-empty message when the gate didn't pass — helps operator debugging.
+	if !result.IsPassed() && result.Message == "" {
+		t.Error("Gate.Evaluate returned a non-Passed Phase with empty Message — must explain why")
 	}
 }
 
@@ -150,19 +150,19 @@ func testConcurrentSafe(t *testing.T, g pkggate.Gate) {
 // minimalRequest returns a well-formed Request with all required fields set.
 func minimalRequest() pkggate.Request {
 	return pkggate.Request{
-		Promotion: &kaprov1alpha1.Promotion{
-			ObjectMeta: metav1.ObjectMeta{Name: "conformance-test-promotion"},
-			Spec: kaprov1alpha1.PromotionSpec{
+		Sync: &kaprov1alpha1.Sync{
+			ObjectMeta: metav1.ObjectMeta{Name: "conformance-test-sync"},
+			Spec: kaprov1alpha1.SyncSpec{
 				ReleaseRef:     "conformance-release",
 				EnvironmentRef: "conformance-env",
 				Version:        "v0.0.1",
 				PolicyRef:      "conformance-policy",
 			},
 		},
-		Policy: &kaprov1alpha1.PromotionPolicy{
+		Policy: &kaprov1alpha1.GatePolicy{
 			ObjectMeta: metav1.ObjectMeta{Name: "conformance-policy"},
-			Spec: kaprov1alpha1.PromotionPolicySpec{
-				Mode: kaprov1alpha1.PromotionModeAuto,
+			Spec: kaprov1alpha1.GatePolicySpec{
+				Mode: kaprov1alpha1.GateModeAuto,
 				Gate: kaprov1alpha1.GateSpec{
 					Metrics: []kaprov1alpha1.MetricGate{
 						{Provider: "conformance", Query: "up", Window: "5m"},

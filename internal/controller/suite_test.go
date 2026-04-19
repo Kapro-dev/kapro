@@ -24,7 +24,7 @@ import (
 
 // TestMain ensures envtest binaries are available; if not present we skip integration tests gracefully.
 func TestMain(m *testing.M) {
-	// Allow unit tests (promotion_fsm_test.go) to run without envtest binaries.
+	// Allow unit tests (sync_fsm_test.go) to run without envtest binaries.
 	if os.Getenv("KUBEBUILDER_ASSETS") == "" {
 		defaultPath := filepath.Join("..", "..", "bin", "k8s")
 		if _, err := os.Stat(defaultPath); err == nil {
@@ -36,7 +36,7 @@ func TestMain(m *testing.M) {
 
 // setupEnv starts an envtest environment and returns a cancel function.
 // It registers ReleaseReconciler FIRST (owns IndexField registrations) then
-// BatchRunReconciler and PromotionReconciler.
+// SyncReconciler.
 //
 // Callers must defer the returned cancel func:
 //
@@ -91,23 +91,14 @@ func setupEnv(t *testing.T) (context.Context, context.CancelFunc, client.Client)
 		t.Fatalf("ReleaseReconciler.SetupWithManager: %v", err)
 	}
 
-	batchReconciler := &controller.BatchRunReconciler{
-		Client:       mgr.GetClient(),
-		Recorder:     recorder,
-		ApprovalGate: &internalgate.ApprovalGate{Client: mgr.GetClient()},
-	}
-	if err := batchReconciler.SetupWithManager(mgr); err != nil {
-		t.Fatalf("BatchRunReconciler.SetupWithManager: %v", err)
-	}
-
-	promotionReconciler := &controller.PromotionReconciler{
+	syncReconciler := &controller.SyncReconciler{
 		Client:           mgr.GetClient(),
 		Recorder:         recorder,
 		ActuatorRegistry: fakeActuators,
 		ApprovalGate:     &internalgate.ApprovalGate{Client: mgr.GetClient()},
 	}
-	if err := promotionReconciler.SetupWithManager(mgr); err != nil {
-		t.Fatalf("PromotionReconciler.SetupWithManager: %v", err)
+	if err := syncReconciler.SetupWithManager(mgr); err != nil {
+		t.Fatalf("SyncReconciler.SetupWithManager: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -167,7 +158,7 @@ type fakeActuator struct {
 }
 
 func (f *fakeActuator) Apply(_ context.Context, _ actuator.ApplyRequest) error { return f.applyErr }
-func (f *fakeActuator) IsConverged(_ context.Context, _ *kaprov1alpha1.Environment, _ string) (bool, error) {
+func (f *fakeActuator) IsConverged(_ context.Context, _ *kaprov1alpha1.Environment, _, _ string) (bool, error) {
 	return f.converged, f.convErr
 }
 func (f *fakeActuator) Rollback(_ context.Context, _ *kaprov1alpha1.Environment, _ string) error {

@@ -13,8 +13,8 @@ import (
 // EnvironmentValidator validates Environment objects on CREATE and UPDATE.
 //
 // Rules enforced:
-//  1. actuator.type must match the populated actuator sub-spec.
-//  2. At most one provider sub-spec may be set.
+//  1. actuator.type must be "flux" (MVP) and actuator.flux sub-spec must be populated.
+//  2. provider, if set, must not specify conflicting sub-types (reserved for future use).
 type EnvironmentValidator struct {
 	decoder admission.Decoder
 }
@@ -38,33 +38,16 @@ func (v *EnvironmentValidator) Handle(_ context.Context, req admission.Request) 
 
 func validateEnvironment(env *kaprov1alpha1.Environment) error {
 	act := env.Spec.Actuator
+
 	switch act.Type {
 	case "flux":
 		if act.Flux == nil {
 			return fmt.Errorf("environment.spec.actuator.flux must be set when type=flux")
 		}
-	case "argocd", "sveltos", "ocm", "kserve":
-		// sub-spec validation deferred to plugin registration
 	case "":
 		return fmt.Errorf("environment.spec.actuator.type must be set")
-	}
-
-	// At most one provider sub-spec may be populated.
-	if env.Spec.Provider != nil {
-		populated := 0
-		prov := env.Spec.Provider
-		if prov.CAPI != nil {
-			populated++
-		}
-		if prov.OCM != nil {
-			populated++
-		}
-		if prov.Rancher != nil {
-			populated++
-		}
-		if populated > 1 {
-			return fmt.Errorf("environment.spec.provider: at most one provider sub-spec may be set (got %d)", populated)
-		}
+	default:
+		return fmt.Errorf("environment.spec.actuator.type %q is not supported in this release; supported: flux", act.Type)
 	}
 
 	return nil
@@ -72,5 +55,5 @@ func validateEnvironment(env *kaprov1alpha1.Environment) error {
 
 // ValidateEnvironment is an exported test helper that exposes the internal validation logic.
 func ValidateEnvironment(env *kaprov1alpha1.Environment) error {
-return validateEnvironment(env)
+	return validateEnvironment(env)
 }

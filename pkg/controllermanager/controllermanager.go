@@ -7,9 +7,9 @@
 //
 // Usage:
 //
-//	kapro-operator --controllers=release,promotion,batch,approval
-//	kapro-operator --controllers=*                    # all (default)
-//	kapro-operator --controllers=*,-kagent            # all except kagent
+//	KAPRO_CONTROLLERS=*                  # all (default)
+//	KAPRO_CONTROLLERS=*,-releasereport   # all except releasereport
+//	KAPRO_CONTROLLERS=release,sync       # only specified controllers
 package controllermanager
 
 import (
@@ -24,6 +24,7 @@ import (
 	pkghealth "kapro.io/kapro/pkg/health"
 	"kapro.io/kapro/pkg/notification"
 	"kapro.io/kapro/pkg/oci"
+	"kapro.io/kapro/pkg/provider"
 )
 
 // InitFunc is the initialisation signature every controller must satisfy.
@@ -44,14 +45,27 @@ type ControllerContext struct {
 	// Recorder is the shared event recorder for all controllers.
 	Recorder record.EventRecorder
 
-	// ActuatorRegistry resolves per-Environment actuator implementations.
+	// ActuatorRegistry resolves KAI implementations by Environment.spec.actuator.type.
 	// Controllers call ActuatorRegistry.Resolve(env.Spec.Actuator.Type) to get
-	// the correct Actuator — Flux, KServe, ArgoCD, or a plugin actuator.
+	// the correct Actuator — Flux or any registered actuator.
 	ActuatorRegistry *actuator.Registry
 
-	// Gates — built-in gate implementations.  Any gate field may be nil;
-	// each controller documents which gates it requires vs treats as optional.
+	// ProviderRegistry resolves KCI Connector implementations by Environment.spec.provider.type.
+	// When the type is "" or "crd", the CRD outbound path is used instead (via CRDProvider).
+	// In MVP this registry is empty; cloud connectors are registered in v0.3+.
+	// Never nil — call provider.NewRegistry() to initialise.
+	ProviderRegistry *provider.Registry
+
+	// Gates — FSM-phase gate implementations (Soak, Metrics, Approval, Verification, CEL).
+	// These are fixed to specific FSM phases and are not dispatched by type string.
+	// Any gate field may be nil; nil gates pass immediately (useful in tests).
 	Gates GateSet
+
+	// GateRegistry resolves GateTemplate.spec.type → Gate for template-dispatch.
+	// Built-in types (cel, job, webhook) are registered by BuildGateRegistry.
+	// External gate types register at startup: cc.GateRegistry.MustRegister("my-type", impl).
+	// Never nil in production — initialise with BuildGateRegistry.
+	GateRegistry *gate.Registry
 
 	// HealthAssessor evaluates workload health in the target namespace.
 	HealthAssessor pkghealth.Assessor
@@ -67,21 +81,53 @@ type ControllerContext struct {
 
 	// ExternalURL is the base URL of this operator (used in approval links).
 	ExternalURL string
+
+	// HubAPIURL is the externally-reachable kube-apiserver URL for this hub cluster.
+	// Embedded in bootstrap kubeconfigs so spoke clusters can connect.
+	// Required in production.
+	HubAPIURL string
+
+	// HubCAData is the PEM-encoded CA certificate for the hub kube-apiserver.
+	// Embedded in bootstrap kubeconfigs alongside HubAPIURL.
+	HubCAData []byte
 }
 
-// GateSet holds every named gate implementation that can be injected into
-// controllers.  Nil values are treated as pass-through by all consumers.
+// GateSet holds all KGI gate implementations injected into the SyncReconciler.
+//
+// All fields follow the same contract:
+//   - Nil means the gate always passes (useful in tests or when a phase is disabled)
+//   - All implementations are stateless and safe for concurrent use
+//   - All are constructed once in BuildGateSet and reused across all reconciles
+//
+// FSM-phase gates (called directly from phase handlers):
+//   Verification → Soak → Metrics → Approval
+//
+// Template gates (dispatched by gateForTemplate via GateTemplate.spec.type):
+//   CEL, Job, Webhook — all constructed in BuildGateSet, dispatched by type name.
+//
+// All five gates live here so the wiring is symmetric: BuildGateSet is the
+// single construction point for every gate the SyncReconciler uses.
 type GateSet struct {
-	Soak         gate.Gate
-	Metrics      gate.Gate
-	Approval     gate.Gate
-	Keda         gate.Gate
-	MLflow       gate.Gate
-	Shadow       gate.Gate
-	KGateway     gate.Gate
+	// Soak blocks until the configured duration has elapsed since StartedAt.
+	// Called in the Soaking FSM phase.
+	Soak gate.Gate
+
+	// Metrics queries Prometheus and evaluates metric thresholds.
+	// Called in the MetricsCheck FSM phase.
+	Metrics gate.Gate
+
+	// Approval blocks until a human creates a matching Approval CR.
+	// Called in the WaitingApproval FSM phase.
+	Approval gate.Gate
+
+	// Verification checks OCI artifact signatures via cosign.
+	// Called in the Verification FSM phase.
 	Verification gate.Gate
-	CEL          gate.Gate
-	Argo         gate.Gate
+
+	// CEL evaluates CEL expression GateTemplates (type: "cel").
+	// Called from gateForTemplate — not a fixed FSM phase.
+	// Constructed in BuildGateSet alongside the other gates for symmetry.
+	CEL gate.Gate
 }
 
 // Registry maps controller names to their InitFunc.
@@ -109,7 +155,7 @@ func KnownControllers() []string {
 //
 //	"*"           → all registered controllers
 //	"a,b,c"       → only a, b, c
-//	"*,-kagent"   → all except kagent
+//	"*,-releasetrigger"   → all except releasetrigger
 func ParseControllerNames(flag string) map[string]bool {
 	selected := map[string]bool{}
 	tokens := strings.Split(flag, ",")

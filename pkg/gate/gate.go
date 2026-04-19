@@ -1,29 +1,33 @@
 // Package gate defines KGI — the Kapro Gate Interface.
 //
-// KGI is the pluggable evaluation contract for promotion gates.
-// A gate answers one question: "is it safe to promote right now?"
+// KGI v1alpha1 is the pluggable evaluation contract for delivery gates.
+// A gate answers one question: "is it safe to sync right now?"
 //
 // Built-in implementations live in internal/gate/:
 //   - soak.go              — time-based bake period
-//   - metrics.go           — Prometheus / Datadog query evaluation
-//   - cel/                 — CEL expression gate (built-in, no external dep)
-//   - keda/                — KEDA ScaledObject lag gate
-//   - mlflow/              — MLflow model registry gate
-//   - argo/                — Argo Rollouts AnalysisRun gate
-//   - verification_gate.go — OCI signature verification gate
+//   - metrics.go           — Prometheus query evaluation
+//   - approval.go          — human approval gate
+//   - verification_gate.go — OCI artifact signature verification (cosign)
+//   - cel/                 — CEL expression gate
+//   - job/                 — Kubernetes Job gate
+//   - webhook/             — HTTP webhook gate
 //
-// External implementations register via PluginRegistration CRD and communicate
-// over proto/kapro/v1alpha1/gate.proto (gRPC).
+// External implementations can implement this interface and wire in at startup
+// via the gateForTemplate dispatch function in the SyncReconciler.
 //
 // # The CRI analogy
 //
 // Kapro is to gates what Kubernetes is to containers:
 //   - Kapro manages gate lifecycle (when, timeout, retry, failure policy)
-//   - Gate.Evaluate() is the CRI contract
-//   - Built-in gates (cel, job) are like runc — always available
-//   - Plugin gates (argo, opa) are like containerd — out-of-process
-//   - Promotion.Status.Gates[] is like PodStatus.ContainerStatuses[]
-//     — Kapro's authoritative snapshot; vendor resource is the source of truth
+//   - Gate.Evaluate() is the KGI contract — analogous to CRI's RunPodSandbox
+//   - Built-in gates (cel, job, webhook) are like runc — always available
+//   - Sync.Status.Gates[] is like PodStatus.ContainerStatuses[]
+//     — Kapro's authoritative state; gates are stateless evaluators only
+//
+// # Stability
+//
+// KGI v1alpha1 is stable. The Gate interface and all exported types in this
+// package have backwards-compatibility guarantees within a major version.
 package gate
 
 import (
@@ -34,6 +38,8 @@ import (
 )
 
 // ConditionResult is the per-metric/condition breakdown within a Result.
+// Returned when a gate evaluates multiple sub-conditions (e.g. multiple
+// Prometheus queries in a MetricsGate).
 type ConditionResult struct {
 	Name    string                  `json:"name"`
 	Phase   kaprov1alpha1.GatePhase `json:"phase"`
@@ -42,51 +48,97 @@ type ConditionResult struct {
 }
 
 // Result carries the outcome of a gate evaluation.
+//
+// # Phase is the authoritative outcome field
+//
+// Implementations MUST set Phase. The controller drives all gate state
+// transitions from Result.Phase.
+//
+// Phase values:
+//   - Passed       — gate condition satisfied; Sync may advance
+//   - Inconclusive — gate needs more time; controller requeues after RetryAfter
+//   - Failed       — gate condition not met; failure policy applies
+//   - Running      — gate-managed resource (e.g. Job) is still executing
 type Result struct {
-	// Passed is true when the gate condition is satisfied and the promotion
-	// may advance to the next phase.
-	Passed bool
-	// Message is a human-readable explanation (shown in status conditions).
+	// Phase is the gate outcome. Always set this field.
+	// The controller uses Phase as the authoritative state.
+	Phase kaprov1alpha1.GatePhase
+
+	// Message is a human-readable explanation shown in Sync.status.conditions
+	// and in notifications. Be specific: include metric values, threshold,
+	// actual vs expected. Good: "p99 latency 48ms > threshold 40ms".
 	Message string
-	// RetryAfter is a hint for how long to wait before re-evaluating.
-	// Empty string means requeue with default backoff.
+
+	// RetryAfter is the recommended requeue delay for Inconclusive results.
+	// Format: Go duration string (e.g. "30s", "5m").
+	// Empty means requeue with the controller's default backoff.
 	RetryAfter string
 
-	// Phase is the normalised gate phase — populated on the GateTemplate path.
-	// Legacy gates that only set Passed/Message may leave this empty;
-	// the controller normalises it from Passed.
-	Phase kaprov1alpha1.GatePhase
-	// VendorRef points to the vendor-managed resource (e.g., AnalysisRun, Job).
-	// Nil for in-process gates (cel, webhook).
+	// VendorRef points to the vendor-managed resource created by this gate
+	// (e.g. a Kubernetes Job, a Prometheus recording rule, an AnalysisRun).
+	// Nil for in-process gates (cel, webhook, soak).
+	// Stored in Sync.Status.Gates[].vendorRef for observability.
 	VendorRef *corev1.ObjectReference
-	// Results contains per-condition breakdowns from the runner.
+
+	// Results contains per-condition breakdowns for multi-condition gates
+	// (e.g. multiple Prometheus queries in one MetricsGate evaluation).
 	Results []ConditionResult
 }
 
+// IsPassed returns true when Phase is Passed.
+// This is the canonical way to test a gate result.
+func (r Result) IsPassed() bool {
+	return r.Phase == kaprov1alpha1.GatePhasePassed
+}
+
+// IsInconclusive returns true when Phase is Inconclusive.
+// The controller requeues after RetryAfter when this returns true.
+func (r Result) IsInconclusive() bool {
+	return r.Phase == kaprov1alpha1.GatePhaseInconclusive
+}
+
+// IsFailed returns true when Phase is Failed.
+func (r Result) IsFailed() bool {
+	return r.Phase == kaprov1alpha1.GatePhaseFailed
+}
+
 // Request carries everything a gate needs to evaluate its condition.
+// Gates must not modify any field of Request.
 type Request struct {
-	// Promotion is the object being gated.
-	Promotion *kaprov1alpha1.Promotion
-	// Policy is the resolved PromotionPolicy for this promotion.
-	Policy *kaprov1alpha1.PromotionPolicy
+	// Sync is the per-environment delivery object being gated.
+	// Never nil.
+	Sync *kaprov1alpha1.Sync
+
+	// Policy is the resolved GatePolicy for this sync.
+	// May be nil when no GatePolicy is configured for the environment.
+	Policy *kaprov1alpha1.GatePolicy
+
 	// MetricIndex addresses a specific metric in Policy.Spec.Gate.Metrics.
-	// Used on the legacy Metrics[] path only.
+	// Meaningful only on the Metrics[] evaluation path.
 	MetricIndex int
 
 	// Template is the resolved GateTemplate for template-based evaluation.
-	// Nil on the legacy Metrics[] path.
+	// Nil on the Metrics[] path; non-nil on the GateTemplate path.
 	Template *kaprov1alpha1.GateTemplate
-	// Args carries runtime-injected parameters:
-	//   template defaults < policy overrides < promotion context (version, env, country)
-	// Nil on the legacy Metrics[] path.
+
+	// Args carries runtime-injected parameters merged with this precedence:
+	//   GateTemplate defaults < GatePolicy overrides < sync context (version, env, stage)
+	// Nil on the Metrics[] path.
 	Args map[string]string
 }
 
-// Gate is KGI: the Kapro Gate Interface.
+// Gate is KGI v1alpha1: the Kapro Gate Interface.
 //
-// Gates are intentionally stateless — all timing/run state is stored on
-// Promotion.Status.Gates[] so it survives controller restarts.
-// Implementations must be safe for concurrent use.
+// Evaluate returns a Result indicating whether the Sync may advance.
+// The controller persists gate state to Sync.Status.Gates[] after each
+// evaluation — implementations must not attempt to store state themselves.
+//
+// Contract:
+//   - Implementations MUST set Result.Phase
+//   - Evaluate MUST respect ctx.Done() — do not block indefinitely
+//   - Evaluate MUST NOT mutate any field of req
+//   - Evaluate MUST be safe for concurrent use from multiple goroutines
+//   - Evaluate MUST be idempotent for a given (Sync.UID, gate state) pair
 type Gate interface {
 	Evaluate(ctx context.Context, req Request) (Result, error)
 }

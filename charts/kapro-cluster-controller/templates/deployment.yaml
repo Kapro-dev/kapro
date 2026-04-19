@@ -1,0 +1,76 @@
+{{- if not .Values.environmentRef }}
+{{- fail "environmentRef is required — set to the Environment CR name on the control plane" }}
+{{- end }}
+{{- if not .Values.controlPlane.url }}
+{{- fail "controlPlane.url is required — hub kube-apiserver URL, e.g. https://hub.example.com:6443" }}
+{{- end }}
+{{- if not .Values.bootstrapKubeconfigSecret }}
+{{- fail "bootstrapKubeconfigSecret is required — name of the Secret containing the one-time bootstrap kubeconfig issued by BootstrapTokenReconciler" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kapro-cluster-controller.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kapro-cluster-controller.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kapro-cluster-controller.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kapro-cluster-controller.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "kapro-cluster-controller.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: cluster-controller
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: KAPRO_ENVIRONMENT_REF
+              value: {{ .Values.environmentRef | quote }}
+            - name: KAPRO_CONTROL_PLANE_URL
+              value: {{ .Values.controlPlane.url | quote }}
+            {{- if .Values.controlPlane.caBundle }}
+            - name: KAPRO_CONTROL_PLANE_CA_BUNDLE
+              value: {{ .Values.controlPlane.caBundle | quote }}
+            {{- end }}
+            - name: KAPRO_FLUX_NAMESPACE
+              value: {{ .Values.fluxNamespace | default "flux-system" | quote }}
+            - name: KAPRO_HEARTBEAT_INTERVAL
+              value: {{ .Values.heartbeatIntervalSeconds | default 30 | quote }}
+            - name: KAPRO_BOOTSTRAP_KUBECONFIG_PATH
+              value: /etc/kapro/bootstrap/kubeconfig
+          volumeMounts:
+            - name: bootstrap-kubeconfig
+              mountPath: /etc/kapro/bootstrap
+              readOnly: true
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: bootstrap-kubeconfig
+          secret:
+            secretName: {{ .Values.bootstrapKubeconfigSecret }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

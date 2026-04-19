@@ -11,8 +11,8 @@ import (
 )
 
 // VerificationGate is a Gate that verifies artifact signatures before a
-// promotion is allowed to proceed.  It uses the injected Verifier
-// (default: cosign v2) to check that the image referenced by the Promotion
+// sync is allowed to proceed.  It uses the injected Verifier
+// (default: cosign v2) to check that the image referenced by the Sync
 // has a valid cryptographic signature.
 //
 // Policy precedence:
@@ -34,27 +34,27 @@ type SecretKeyReader interface {
 
 var _ Gate = &VerificationGate{}
 
-// Evaluate builds a VerifyRequest from the Promotion spec and calls the
+// Evaluate builds a VerifyRequest from the Sync spec and calls the
 // configured Verifier.  The image reference is taken from
-// Promotion.Spec.Version, which must be a digest-pinned OCI ref
+// Sync.Spec.Version, which must be a digest-pinned OCI ref
 // (registry/repo@sha256:...).
 func (g *VerificationGate) Evaluate(ctx context.Context, req Request) (Result, error) {
 	logger := log.FromContext(ctx)
 
 	if g.Verifier == nil {
 		logger.Info("VerificationGate: verifier is nil — pass-through")
-		return Result{Passed: true, Message: "verification skipped: no verifier configured"}, nil
+		return Result{Phase: kaprov1alpha1.GatePhasePassed, Message: "verification skipped: no verifier configured"}, nil
 	}
-	if req.Promotion == nil {
-		return Result{}, fmt.Errorf("verification gate: nil Promotion in request")
+	if req.Sync == nil {
+		return Result{}, fmt.Errorf("verification gate: nil Sync in request")
 	}
 
-	imageRef := req.Promotion.Spec.Version
+	imageRef := req.Sync.Spec.Version
 	if imageRef == "" {
 		logger.Info("VerificationGate: empty Version field — pass-through",
-			"promotion", req.Promotion.Name,
+			"sync", req.Sync.Name,
 		)
-		return Result{Passed: true, Message: "verification skipped: no image reference in Promotion.Spec.Version"}, nil
+		return Result{Phase: kaprov1alpha1.GatePhasePassed, Message: "verification skipped: no image reference in Sync.Spec.Version"}, nil
 	}
 
 	vreq, err := g.buildVerifyRequest(ctx, req.Policy, imageRef)
@@ -65,7 +65,7 @@ func (g *VerificationGate) Evaluate(ctx context.Context, req Request) (Result, e
 	result, err := g.Verifier.Verify(ctx, vreq)
 	if err != nil {
 		logger.Error(err, "VerificationGate: verifier returned error",
-			"promotion", req.Promotion.Name,
+			"sync", req.Sync.Name,
 			"image", imageRef,
 		)
 		return Result{}, fmt.Errorf("verification gate: %w", err)
@@ -73,16 +73,16 @@ func (g *VerificationGate) Evaluate(ctx context.Context, req Request) (Result, e
 
 	if result.Verified {
 		logger.Info("VerificationGate: PASS",
-			"promotion", req.Promotion.Name,
+			"sync", req.Sync.Name,
 			"image", imageRef,
 			"signatures", result.Signatures,
 		)
-		return Result{Passed: true, Message: result.Message}, nil
+		return Result{Phase: kaprov1alpha1.GatePhasePassed, Message: result.Message}, nil
 	}
 
-	logger.Info("VerificationGate: FAIL", "promotion", req.Promotion.Name, "image", imageRef)
+	logger.Info("VerificationGate: FAIL", "sync", req.Sync.Name, "image", imageRef)
 	return Result{
-		Passed:     false,
+		Phase:      kaprov1alpha1.GatePhaseFailed,
 		Message:    fmt.Sprintf("signature verification failed: %s", result.Message),
 		RetryAfter: "0",
 	}, nil
@@ -92,7 +92,7 @@ func (g *VerificationGate) Evaluate(ctx context.Context, req Request) (Result, e
 // Falls back to default keyless when no policy is set.
 func (g *VerificationGate) buildVerifyRequest(
 	ctx context.Context,
-	policy *kaprov1alpha1.PromotionPolicy,
+	policy *kaprov1alpha1.GatePolicy,
 	imageRef string,
 ) (verification.VerifyRequest, error) {
 	base := verification.VerifyRequest{ImageRef: imageRef}

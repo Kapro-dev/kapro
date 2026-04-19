@@ -9,8 +9,23 @@ import (
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
 
+// makePipeline creates a minimal Pipeline with one stage targeting the given label selector.
+func makePipeline(name string, selectorLabels map[string]string) *kaprov1alpha1.Pipeline {
+	return &kaprov1alpha1.Pipeline{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: kaprov1alpha1.PipelineSpec{
+			Stages: []kaprov1alpha1.Stage{
+				{
+					Name:     "deploy",
+					Selector: metav1.LabelSelector{MatchLabels: selectorLabels},
+				},
+			},
+		},
+	}
+}
+
 // TestReleaseReconciler_PendingToPromoting verifies that a Release transitions
-// from Pending to Promoting after the required Artifact and scope Environments exist.
+// from Pending to Progressing after the required Artifact and target Environments exist.
 func TestReleaseReconciler_PendingToPromoting(t *testing.T) {
 	ctx, cancel, c := setupEnv(t)
 	defer cancel()
@@ -26,15 +41,19 @@ func TestReleaseReconciler_PendingToPromoting(t *testing.T) {
 	env := makeEnvironment("de-dev", ns, map[string]string{"tier": "dev", "country": "de"})
 	mustCreate(t, ctx, c, env)
 
-	// 3. Create Release scoped to country=de.
+	// 3. Create Pipeline with one stage targeting country=de.
+	pipeline := makePipeline("standard-rollout-ptp", map[string]string{"country": "de"})
+	mustCreate(t, ctx, c, pipeline)
+
+	// 4. Create Release with a single pipeline node referencing the pipeline.
 	release := &kaprov1alpha1.Release{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-release", Namespace: ns},
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Artifact:    artifactName,
-			PipelineRef: "standard-rollout",
-			Scope: kaprov1alpha1.ReleaseScope{
-				Selector: metav1.LabelSelector{
-					MatchLabels: map[string]string{"country": "de"},
+			Artifact: artifactName,
+			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
+				{
+					Name:     "initial",
+					Pipeline: pipeline.Name,
 				},
 			},
 		},
@@ -43,7 +62,7 @@ func TestReleaseReconciler_PendingToPromoting(t *testing.T) {
 
 	key := types.NamespacedName{Name: "test-release", Namespace: ns}
 
-	// 4. Expect Release to leave Pending.
+	// 5. Expect Release to leave Pending.
 	eventually(t, func() bool {
 		r := getRelease(ctx, c, key)
 		return r.Status.Phase != "" && r.Status.Phase != kaprov1alpha1.ReleasePhasePending
@@ -58,13 +77,18 @@ func TestReleaseReconciler_MissingArtifact_StaysOrFailsPending(t *testing.T) {
 	ctx, cancel, c := setupEnv(t)
 	defer cancel()
 
+	pipeline := makePipeline("standard-rollout-ma", map[string]string{"x": "y"})
+	mustCreate(t, ctx, c, pipeline)
+
 	release := &kaprov1alpha1.Release{
 		ObjectMeta: metav1.ObjectMeta{Name: "missing-art-release", Namespace: "default"},
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Artifact:    "does-not-exist",
-			PipelineRef: "standard-rollout",
-			Scope: kaprov1alpha1.ReleaseScope{
-				Selector: metav1.LabelSelector{MatchLabels: map[string]string{"x": "y"}},
+			Artifact: "does-not-exist",
+			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
+				{
+					Name:     "initial",
+					Pipeline: pipeline.Name,
+				},
 			},
 		},
 	}
@@ -82,7 +106,7 @@ func TestReleaseReconciler_MissingArtifact_StaysOrFailsPending(t *testing.T) {
 	}, "release with missing artifact should stay pending or fail")
 }
 
-// TestReleaseReconciler_OwnerRef verifies that Promotions created by the Release
+// TestReleaseReconciler_OwnerRef verifies that Syncs created by the Release
 // have ownerReferences pointing back to the Release.
 func TestReleaseReconciler_OwnerRef(t *testing.T) {
 	ctx, cancel, c := setupEnv(t)
@@ -96,32 +120,34 @@ func TestReleaseReconciler_OwnerRef(t *testing.T) {
 	env := makeEnvironment("de-dev-ownerref", ns, map[string]string{"country": "de2"})
 	mustCreate(t, ctx, c, env)
 
+	pipeline := makePipeline("standard-rollout-or", map[string]string{"country": "de2"})
+	mustCreate(t, ctx, c, pipeline)
+
 	release := &kaprov1alpha1.Release{
 		ObjectMeta: metav1.ObjectMeta{Name: "ownerref-release", Namespace: ns},
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Artifact:    "art-ownerref",
-			PipelineRef: "standard-rollout",
-			Scope: kaprov1alpha1.ReleaseScope{
-				Selector: metav1.LabelSelector{
-					MatchLabels: map[string]string{"country": "de2"},
+			Artifact: "art-ownerref",
+			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
+				{
+					Name:     "initial",
+					Pipeline: pipeline.Name,
 				},
 			},
 		},
 	}
 	mustCreate(t, ctx, c, release)
 
-	// Wait until at least one Promotion is created.
+	// Wait until at least one Sync is created and owned by the Release.
 	eventually(t, func() bool {
-		var promos kaprov1alpha1.PromotionList
-		_ = c.List(ctx, &promos)
-		for _, p := range promos.Items {
-			for _, ref := range p.OwnerReferences {
+		var syncs kaprov1alpha1.SyncList
+		_ = c.List(ctx, &syncs)
+		for _, s := range syncs.Items {
+			for _, ref := range s.OwnerReferences {
 				if ref.Kind == "Release" && ref.Name == "ownerref-release" {
 					return true
 				}
 			}
 		}
 		return false
-	}, "a Promotion owned by the Release should exist")
+	}, "a Sync owned by the Release should exist")
 }
-

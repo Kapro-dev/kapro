@@ -16,7 +16,7 @@ const heartbeatStaleThreshold = 2 * time.Minute
 // compile-time check: CRDProvider implements KCI RegistrationReader.
 var _ pkgprovider.RegistrationReader = &CRDProvider{}
 
-// CRDProvider reads ClusterRegistration CRDs from the control plane to determine
+// CRDProvider reads ManagedCluster CRDs from the control plane to determine
 // cluster connectivity and health. No direct network connection to workload clusters.
 // The kapro-cluster-controller on each workload cluster writes these CRDs outbound.
 type CRDProvider struct {
@@ -24,11 +24,11 @@ type CRDProvider struct {
 	Client client.Client
 }
 
-// GetRegistration returns the ClusterRegistration for the given Environment.
-// The label kapro.io/environment must be set on the ClusterRegistration,
+// GetRegistration returns the ManagedCluster for the given Environment.
+// The label kapro.io/environment must be set on the ManagedCluster,
 // and spec.environmentRef must match.
-func (p *CRDProvider) GetRegistration(ctx context.Context, env *kaprov1alpha1.Environment) (*kaprov1alpha1.ClusterRegistration, error) {
-	var regList kaprov1alpha1.ClusterRegistrationList
+func (p *CRDProvider) GetRegistration(ctx context.Context, env *kaprov1alpha1.Environment) (*kaprov1alpha1.ManagedCluster, error) {
+	var regList kaprov1alpha1.ManagedClusterList
 	if err := p.Client.List(ctx, &regList, client.MatchingLabels{
 		"kapro.io/environment": env.Name,
 	}); err != nil {
@@ -41,7 +41,7 @@ func (p *CRDProvider) GetRegistration(ctx context.Context, env *kaprov1alpha1.En
 		}
 	}
 
-	return nil, fmt.Errorf("CRDProvider.GetRegistration: no ClusterRegistration for environment %q — is kapro-cluster-controller running on that cluster?", env.Name)
+	return nil, fmt.Errorf("CRDProvider.GetRegistration: no ManagedCluster for environment %q — is kapro-cluster-controller running on that cluster?", env.Name)
 }
 
 // IsReachable returns true when the workload cluster's cluster-controller has
@@ -87,10 +87,21 @@ func (p *CRDProvider) IsHealthy(ctx context.Context, env *kaprov1alpha1.Environm
 }
 
 // CurrentVersion returns the version currently reported by the workload cluster.
+// It resolves the appKey using the same precedence as FluxActuator:
+//
+//  1. reg.Spec.DesiredAppKey (written by the operator alongside desiredVersion)
+//  2. "default" — the fallback used when no explicit appKey is configured
+//
+// Never hardcodes an application name. Callers that need a specific appKey
+// should access reg.Status.CurrentVersions[appKey] directly.
 func (p *CRDProvider) CurrentVersion(ctx context.Context, env *kaprov1alpha1.Environment) (string, error) {
 	reg, err := p.GetRegistration(ctx, env)
 	if err != nil {
 		return "", err
 	}
-	return reg.Status.CurrentVersions["ocs"], nil
+	appKey := reg.Spec.DesiredAppKey
+	if appKey == "" {
+		appKey = "default"
+	}
+	return reg.Status.CurrentVersions[appKey], nil
 }

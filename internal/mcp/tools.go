@@ -38,7 +38,7 @@ func allTools() []Tool {
 		},
 		{
 			Name:        "kapro_list_promotions",
-			Description: "List Promotion objects. Filter by release or show only pending-approval ones.",
+			Description: "List Sync objects. Filter by release or show only pending-approval ones.",
 			InputSchema: jsonSchema{
 				Type: "object",
 				Properties: map[string]schemaProp{
@@ -107,7 +107,7 @@ func (t *tools) call(ctx context.Context, name string, args map[string]interface
 	case "kapro_list_promotions":
 		return t.listPromotions(ctx, strArg(args, "namespace"), strArg(args, "release"), strArg(args, "pending_approval") == "true")
 	case "kapro_approve_promotion":
-		return t.approvePromotion(ctx, args)
+		return t.approveSync(ctx, args)
 	case "kapro_get_environment_health":
 		return t.getEnvironmentHealth(ctx, strArg(args, "name"), strArg(args, "namespace"))
 	case "kapro_rollback":
@@ -157,18 +157,22 @@ func (t *tools) getReleaseStatus(ctx context.Context, name, namespace string) (s
 		return "", fmt.Errorf("get release %s/%s: %w", namespace, name, err)
 	}
 
+	deploymentNames := make([]string, 0, len(rel.Spec.Pipelines))
+	for _, d := range rel.Spec.Pipelines {
+		deploymentNames = append(deploymentNames, d.Name)
+	}
 	result := map[string]interface{}{
-		"name":      rel.Name,
-		"namespace": rel.Namespace,
-		"artifact":  rel.Spec.Artifact,
-		"phase":     string(rel.Status.Phase),
-		"pipeline":  rel.Spec.PipelineRef,
+		"name":        rel.Name,
+		"namespace":   rel.Namespace,
+		"artifact":    rel.Spec.Artifact,
+		"phase":       string(rel.Status.Phase),
+		"deployments": deploymentNames,
 	}
 	return toJSON(result)
 }
 
 func (t *tools) listPromotions(ctx context.Context, namespace, release string, pendingApprovalOnly bool) (string, error) {
-	var list kaprov1alpha1.PromotionList
+	var list kaprov1alpha1.SyncList
 	opts := []client.ListOption{}
 	if namespace != "" {
 		opts = append(opts, client.InNamespace(namespace))
@@ -203,7 +207,7 @@ func (t *tools) listPromotions(ctx context.Context, namespace, release string, p
 	return toJSON(rows)
 }
 
-func (t *tools) approvePromotion(ctx context.Context, args map[string]interface{}) (string, error) {
+func (t *tools) approveSync(ctx context.Context, args map[string]interface{}) (string, error) {
 	name := strArg(args, "name")
 	release := strArg(args, "release")
 	approvedBy := strArg(args, "approved_by")
@@ -222,7 +226,7 @@ func (t *tools) approvePromotion(ctx context.Context, args map[string]interface{
 			Namespace: namespace,
 		},
 		Spec: kaprov1alpha1.ApprovalSpec{
-			Kind:       kaprov1alpha1.ApprovalKindPromotion,
+			Kind:       kaprov1alpha1.ApprovalKindSync,
 			Ref:        name,
 			Release:    release,
 			ApprovedBy: approvedBy,
@@ -277,7 +281,7 @@ func (t *tools) rollback(ctx context.Context, args map[string]interface{}) (stri
 			Namespace: namespace,
 		},
 		Spec: kaprov1alpha1.ApprovalSpec{
-			Kind:       kaprov1alpha1.ApprovalKindPromotion,
+			Kind:       kaprov1alpha1.ApprovalKindSync,
 			Ref:        environment,
 			Release:    release,
 			ApprovedBy: "mcp-rollback",

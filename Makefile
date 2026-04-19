@@ -45,9 +45,16 @@ tidy: ## Run go mod tidy
 generate: $(CONTROLLER_GEN) ## Generate DeepCopy methods
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
+.PHONY: check-deepcopy
+check-deepcopy: $(CONTROLLER_GEN) ## Verify zz_generated.deepcopy.go is up to date
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	@git diff --exit-code api/v1alpha1/zz_generated.deepcopy.go || \
+		(echo "ERROR: zz_generated.deepcopy.go is out of date. Run 'make generate'." && exit 1)
+
 .PHONY: manifests
 manifests: $(CONTROLLER_GEN) ## Generate CRD YAML manifests and RBAC
-	$(CONTROLLER_GEN) rbac:roleName=kapro-operator crd webhook paths="./..." \
+	$(CONTROLLER_GEN) rbac:roleName=kapro-operator "crd:allowDangerousTypes=true" webhook \
+		paths="./api/..." paths="./internal/..." paths="./cmd/..." \
 		output:crd:artifacts:config=config/crd/bases \
 		output:rbac:artifacts:config=config/rbac
 

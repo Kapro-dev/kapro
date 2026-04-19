@@ -21,17 +21,17 @@ import (
 
 // Claims encodes the context for a single approve or reject action.
 type Claims struct {
-	// PromotionName is the Promotion object name.
-	PromotionName string `json:"n"`
-	// Namespace is the Promotion's namespace.
+	// SyncName is the Sync object name.
+	SyncName string `json:"n"`
+	// Namespace is the Sync's namespace.
 	Namespace string `json:"ns"`
-	// Release is the ReleaseRef from the PromotionSpec.
+	// Release is the ReleaseRef from the SyncSpec.
 	Release string `json:"r"`
-	// Environment is the EnvironmentRef from the PromotionSpec.
+	// Environment is the EnvironmentRef from the SyncSpec.
 	Environment string `json:"e"`
-	// Version is the artifact version being promoted.
+	// Version is the artifact version being synced.
 	Version string `json:"v"`
-	// UID is the Promotion object UID — prevents replay across name reuse.
+	// UID is the Sync object UID — prevents replay across name reuse.
 	UID string `json:"uid"`
 	// Action is "approve" or "reject".
 	Action string `json:"a"`

@@ -57,11 +57,11 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 	}
 
 	var promotion, environment, version, release string
-	if req.Promotion != nil {
-		promotion = req.Promotion.Name
-		environment = req.Promotion.Spec.EnvironmentRef
-		version = req.Promotion.Spec.Version
-		release = req.Promotion.Spec.ReleaseRef
+	if req.Sync != nil {
+		promotion = req.Sync.Name
+		environment = req.Sync.Spec.EnvironmentRef
+		version = req.Sync.Spec.Version
+		release = req.Sync.Spec.ReleaseRef
 	}
 
 	payload := webhookPayload{
@@ -107,11 +107,9 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 		return pkggate.Result{}, fmt.Errorf("webhook gate: unmarshal response: %w", err)
 	}
 
-	passed := wr.Phase == "Passed"
 	return pkggate.Result{
-		Passed:     passed,
+		Phase:      kaprov1alpha1.GatePhase(wr.Phase),
 		Message:    wr.Message,
 		RetryAfter: wr.RetryAfter,
-		Phase:      kaprov1alpha1.GatePhase(wr.Phase),
 	}, nil
 }

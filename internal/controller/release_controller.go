@@ -26,27 +26,33 @@ import (
 
 const releaseFinalizer = "kapro.io/release-cleanup"
 
-// ReleaseReconciler reconciles Release objects.
-// It resolves the scope (label selector → Environments), creates a Pipeline,
-// and drives Promotion and BatchRun state machines.
+// ReleaseReconciler is the main brain of Kapro.
+// It drives two DAG levels:
+//
+//  1. Pipeline DAG — Release.spec.pipelines[].dependsOn orders which pipelines
+//     run in sequence (or parallel when no deps). Useful when the same fleet is
+//     partitioned into logical "apps" that must be released in a fixed order.
+//
+//  2. Stage DAG — Pipeline.spec.stages[].dependsOn orders stages within each
+//     pipeline (pilot → canary → global). Each stage expands to N Syncs — one
+//     per matching Environment — which run in parallel.
 //
 // State machine:
 //
-//	Pending → Promoting → Progressing → Complete | Failed
+//	Pending → Progressing → Complete | Failed
 type ReleaseReconciler struct {
 	client.Client
 	Recorder record.EventRecorder
-	Scheme   *runtime.Scheme // required for SetControllerReference on owned objects
+	Scheme   *runtime.Scheme
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=releases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kapro.io,resources=releases/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=artifacts,verbs=get;list;watch
-// +kubebuilder:rbac:groups=kapro.io,resources=environments,verbs=get;list;watch
-// +kubebuilder:rbac:groups=kapro.io,resources=clusterregistrations,verbs=get;list;watch
-// +kubebuilder:rbac:groups=kapro.io,resources=pipelines,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=kapro.io,resources=promotions,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=kapro.io,resources=batchruns,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=kapro.io,resources=environments,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=environments/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=pipelines,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=syncs,verbs=get;list;watch;create;update;patch;delete
 
 func (r *ReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
@@ -62,12 +68,10 @@ func (r *ReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		"artifact", release.Spec.Artifact,
 	)
 
-	// Handle deletion: clean up owned resources, then remove finalizer.
 	if !release.DeletionTimestamp.IsZero() {
 		return r.handleDeletion(ctx, &release)
 	}
 
-	// Ensure finalizer is registered before we touch any external state.
 	if !controllerutil.ContainsFinalizer(&release, releaseFinalizer) {
 		patch := client.MergeFrom(release.DeepCopy())
 		controllerutil.AddFinalizer(&release, releaseFinalizer)
@@ -77,9 +81,6 @@ func (r *ReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	// Suspended: pause all FSM advancement.  In-flight Promotions/BatchRuns
-	// are not cancelled — they finish their current phase, but the Release
-	// will not move to the next step until spec.suspended is cleared.
 	if release.Spec.Suspended {
 		log.Info("Release is suspended — skipping FSM advancement")
 		return ctrl.Result{}, nil
@@ -88,8 +89,6 @@ func (r *ReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	switch release.Status.Phase {
 	case "", kaprov1alpha1.ReleasePhasePending:
 		return r.handlePending(ctx, &release)
-	case kaprov1alpha1.ReleasePhasePromoting:
-		return r.handlePromoting(ctx, &release)
 	case kaprov1alpha1.ReleasePhaseProgressing:
 		return r.handleProgressing(ctx, &release)
 	case kaprov1alpha1.ReleasePhaseComplete, kaprov1alpha1.ReleasePhaseFailed:
@@ -99,20 +98,20 @@ func (r *ReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	return ctrl.Result{}, nil
 }
 
-// handlePending resolves the label selector to Environments, then transitions to Promoting.
+// handlePending resolves the Artifact OCI digest and transitions to Progressing.
+// It also initialises PipelineProgress entries so the status table is populated
+// before any Syncs are created.
 func (r *ReleaseReconciler) handlePending(ctx context.Context, release *kaprov1alpha1.Release) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	// Step 1: Resolve Artifact CR → extract OCI digest as the canonical version.
-	// This makes Artifact a real participant in the flow, not just a label.
 	resolvedVersion := release.Status.ResolvedVersion
-	if resolvedVersion == "" {
+
+	if resolvedVersion == "" && release.Spec.Artifact != "" {
 		var artifact kaprov1alpha1.Artifact
 		if err := r.Get(ctx, client.ObjectKey{Name: release.Spec.Artifact}, &artifact); err != nil {
 			return ctrl.Result{RequeueAfter: requeueNormal},
 				fmt.Errorf("artifact %s not found: %w", release.Spec.Artifact, err)
 		}
-		// Pick the first OCI source with a digest.
 		for _, src := range artifact.Spec.Sources {
 			if src.OCI != nil && src.OCI.Digest != "" {
 				resolvedVersion = src.OCI.Repository + "@" + src.OCI.Digest
@@ -126,59 +125,23 @@ func (r *ReleaseReconciler) handlePending(ctx context.Context, release *kaprov1a
 		log.Info("resolved artifact OCI digest", "artifact", release.Spec.Artifact, "resolved", resolvedVersion)
 	}
 
-	// Resolve scope: label selector → list matching Environments
-	selector, err := metav1.LabelSelectorAsSelector(&release.Spec.Scope.Selector)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("invalid scope selector: %w", err)
+	// Initialise pipeline progress entries so the status table is pre-populated.
+	progress := make([]kaprov1alpha1.PipelineProgress, 0, len(release.Spec.Pipelines))
+	for _, ref := range release.Spec.Pipelines {
+		progress = append(progress, kaprov1alpha1.PipelineProgress{
+			Name:     ref.Name,
+			Pipeline: ref.Pipeline,
+			Phase:    "Pending",
+		})
 	}
 
-	var envList kaprov1alpha1.EnvironmentList
-	if err := r.List(ctx, &envList, &client.ListOptions{LabelSelector: selector, Limit: 500}); err != nil {
-		return ctrl.Result{}, fmt.Errorf("list Environments: %w", err)
-	}
-
-	if len(envList.Items) == 0 {
-		log.Info("no Environments matched scope selector — requeueing", "selector", release.Spec.Scope.Selector)
-		return ctrl.Result{RequeueAfter: requeueNormal}, nil
-	}
-
-	log.Info("resolved scope", "environments", len(envList.Items))
-
-	// Enforce: one active Release per Environment (optimistic concurrency).
-	// We skip the pre-check read — instead we patch directly and let the API
-	// server enforce via resourceVersion conflict.  If two Releases race to
-	// claim the same Environment, one will succeed and the other will get a
-	// 409 Conflict from Status().Patch(), causing a requeue and a second pass
-	// through handlePending where it will see the conflicting activeRelease and
-	// return an error.  This is the correct Kubernetes-native TOCTOU fix.
-	for i := range envList.Items {
-		env := &envList.Items[i]
-		// Already claimed by this Release — idempotent.
-		if env.Status.ActiveRelease == release.Name {
-			continue
-		}
-		// Claimed by another Release — hard error, do not proceed.
-		if env.Status.ActiveRelease != "" {
-			return ctrl.Result{}, fmt.Errorf(
-				"environment %s already has active release %s — cannot start %s",
-				env.Name, env.Status.ActiveRelease, release.Name,
-			)
-		}
-		patch := client.MergeFrom(env.DeepCopy())
-		env.Status.ActiveRelease = release.Name
-		if err := r.Status().Patch(ctx, env, patch); err != nil {
-			// Conflict means another controller just claimed this env — requeue
-			// and re-read to surface the conflict on next pass.
-			return ctrl.Result{}, fmt.Errorf("claim Environment %s activeRelease: %w", env.Name, err)
-		}
-	}
-
-	// Transition to Promoting, storing the resolved OCI digest.
 	patch := client.MergeFrom(release.DeepCopy())
-	release.Status.Phase = kaprov1alpha1.ReleasePhasePromoting
+	release.Status.Phase = kaprov1alpha1.ReleasePhaseProgressing
 	release.Status.ResolvedVersion = resolvedVersion
+	release.Status.PipelineProgress = progress
 	release.Status.ObservedGeneration = release.Generation
-	r.Recorder.Event(release, corev1.EventTypeNormal, "PhaseTransition", "Release → Promoting")
+	release.Status.StartedAt = time.Now().UTC().Format(time.RFC3339)
+	r.Recorder.Event(release, corev1.EventTypeNormal, "PhaseTransition", "Release → Progressing")
 	if err := r.Status().Patch(ctx, release, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch Release phase: %w", err)
 	}
@@ -186,211 +149,488 @@ func (r *ReleaseReconciler) handlePending(ctx context.Context, release *kaprov1a
 	return ctrl.Result{Requeue: true}, nil
 }
 
-// handlePromoting creates Promotion objects for each matched Environment and waits for all to converge.
-func (r *ReleaseReconciler) handlePromoting(ctx context.Context, release *kaprov1alpha1.Release) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
-
-	// Lookup the Pipeline template
-	var pipeline kaprov1alpha1.Pipeline
-	if err := r.Get(ctx, client.ObjectKey{Name: release.Spec.PipelineRef}, &pipeline); err != nil {
-		return ctrl.Result{}, fmt.Errorf("pipeline %s not found: %w", release.Spec.PipelineRef, err)
-	}
-
-	allConverged := true
-
-	for _, step := range pipeline.Spec.Promotion.Steps {
-		selector, err := metav1.LabelSelectorAsSelector(&step.Selector)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("invalid step selector: %w", err)
-		}
-
-		var envList kaprov1alpha1.EnvironmentList
-		if err := r.List(ctx, &envList, &client.ListOptions{LabelSelector: selector}); err != nil {
-			return ctrl.Result{}, fmt.Errorf("list Environments for step: %w", err)
-		}
-
-		for _, env := range envList.Items {
-			promoName := fmt.Sprintf("%s-%s", release.Name, env.Name)
-			var promo kaprov1alpha1.Promotion
-			err := r.Get(ctx, client.ObjectKey{Name: promoName, Namespace: release.Namespace}, &promo)
-			if client.IgnoreNotFound(err) != nil {
-				return ctrl.Result{}, fmt.Errorf("get Promotion %s: %w", promoName, err)
-			}
-
-			if err != nil {
-				// Create Promotion
-				newPromo := kaprov1alpha1.Promotion{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      promoName,
-						Namespace: release.Namespace,
-						Labels: map[string]string{
-							"kapro.io/release":     release.Name,
-							"kapro.io/environment": env.Name,
-						},
-					},
-					Spec: kaprov1alpha1.PromotionSpec{
-						ReleaseRef:     release.Name,
-						EnvironmentRef: env.Name,
-						Version:        release.Status.ResolvedVersion,
-						PolicyRef:      step.Policy,
-						AppKey:         resolveAppKey(release),
-					},
-				}
-				// ownerRef: Release owns Promotion — Owns() watch in SetupWithManager
-				// re-triggers Release reconcile on every Promotion phase change.
-				if err := controllerutil.SetControllerReference(release, &newPromo, r.Scheme); err != nil {
-					return ctrl.Result{}, fmt.Errorf("set owner ref on Promotion %s: %w", promoName, err)
-				}
-				if err := r.Create(ctx, &newPromo); err != nil {
-					return ctrl.Result{}, fmt.Errorf("create Promotion %s: %w", promoName, err)
-				}
-				log.Info("created Promotion", "name", promoName, "env", env.Name)
-				allConverged = false
-				continue
-			}
-
-			if promo.Status.Phase != kaprov1alpha1.PromotionPhaseConverged {
-				if promo.Status.Phase == kaprov1alpha1.PromotionPhaseFailed {
-					return ctrl.Result{}, r.failRelease(ctx, release,
-						fmt.Sprintf("promotion %s failed", promoName))
-				}
-				allConverged = false
-			}
-		}
-	}
-
-	if !allConverged {
-		return ctrl.Result{RequeueAfter: requeueNormal}, nil
-	}
-
-	log.Info("all promotions converged — transitioning to Progressing")
-	r.Recorder.Event(release, corev1.EventTypeNormal, "PhaseTransition", "Promoting → Progressing")
-	patch := client.MergeFrom(release.DeepCopy())
-	release.Status.Phase = kaprov1alpha1.ReleasePhaseProgressing
-	release.Status.ObservedGeneration = release.Generation
-	if err := r.Status().Patch(ctx, release, patch); err != nil {
-		return ctrl.Result{}, fmt.Errorf("patch Release phase Progressing: %w", err)
-	}
-
-	return ctrl.Result{Requeue: true}, nil
-}
-
-// handleProgressing drives the DAG of BatchRuns.
+// handleProgressing drives the two-level DAG:
+//
+//	Pipeline DAG (outer) → Stage DAG (inner) → Syncs per Environment
+//
+// For each pipeline whose dependencies are complete, we walk its stages in
+// dependsOn order. For each eligible stage we list the matching Environments,
+// ensure a Sync exists for each, and observe their phases. Once all Syncs
+// for a stage are Converged the stage is marked complete and the next stage
+// (if any) becomes eligible.
 func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kaprov1alpha1.Release) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	var pipeline kaprov1alpha1.Pipeline
-	if err := r.Get(ctx, client.ObjectKey{Name: release.Spec.PipelineRef}, &pipeline); err != nil {
-		return ctrl.Result{}, fmt.Errorf("pipeline %s not found: %w", release.Spec.PipelineRef, err)
+	// List all Syncs owned by this Release, indexed by release label.
+	var syncList kaprov1alpha1.SyncList
+	if err := r.List(ctx, &syncList,
+		client.InNamespace(release.Namespace),
+		client.MatchingFields{IndexKeyRelease: release.Name},
+		client.Limit(2000),
+	); err != nil {
+		return ctrl.Result{}, fmt.Errorf("list Syncs: %w", err)
 	}
 
-	// Track completion state for all batches
-	batchPhases := map[string]kaprov1alpha1.BatchPhase{}
-	var batchRunList kaprov1alpha1.BatchRunList
-	if err := r.List(ctx, &batchRunList, client.InNamespace(release.Namespace),
-		client.MatchingFields{IndexKeyRelease: release.Name},
-		client.Limit(500),
-	); err != nil {
-		return ctrl.Result{}, fmt.Errorf("list BatchRuns: %w", err)
+	// Build lookup: "<pipelineRefName>/<stage>/<envName>" → SyncPhase
+	syncPhases := make(map[string]kaprov1alpha1.SyncPhase, len(syncList.Items))
+	for _, s := range syncList.Items {
+		key := syncKey(
+			s.Labels["kapro.io/pipeline-ref"],
+			s.Labels["kapro.io/stage"],
+			s.Labels["kapro.io/environment"],
+		)
+		syncPhases[key] = s.Status.Phase
 	}
-	for _, br := range batchRunList.Items {
-		batchPhases[br.Spec.BatchName] = br.Status.Phase
+
+	// Build pipeline phase map from current PipelineProgress.
+	pipelinePhase := make(map[string]string, len(release.Status.PipelineProgress))
+	for _, p := range release.Status.PipelineProgress {
+		pipelinePhase[p.Name] = p.Phase
 	}
+
+	// Track updated progress (we'll write back once at the end).
+	updatedPipelines := make([]kaprov1alpha1.PipelineProgress, 0, len(release.Spec.Pipelines))
+	allPipelinesComplete := true
+
+	for _, pipelineRef := range release.Spec.Pipelines {
+		currentPhase := pipelinePhase[pipelineRef.Name]
+
+		if currentPhase == "Complete" {
+			updatedPipelines = append(updatedPipelines, kaprov1alpha1.PipelineProgress{
+				Name: pipelineRef.Name, Pipeline: pipelineRef.Pipeline, Phase: "Complete",
+			})
+			continue
+		}
+		if currentPhase == "Failed" {
+			allPipelinesComplete = false
+			updatedPipelines = append(updatedPipelines, kaprov1alpha1.PipelineProgress{
+				Name: pipelineRef.Name, Pipeline: pipelineRef.Pipeline, Phase: "Failed",
+			})
+			continue
+		}
+
+		// Check pipeline-level dependencies.
+		depsComplete := true
+		for _, dep := range pipelineRef.DependsOn {
+			if pipelinePhase[dep] != "Complete" {
+				depsComplete = false
+				break
+			}
+		}
+		if !depsComplete {
+			allPipelinesComplete = false
+			updatedPipelines = append(updatedPipelines, kaprov1alpha1.PipelineProgress{
+				Name: pipelineRef.Name, Pipeline: pipelineRef.Pipeline, Phase: "Pending",
+			})
+			continue
+		}
+
+		// Pipeline is eligible — resolve its stage DAG.
+		var pipeline kaprov1alpha1.Pipeline
+		if err := r.Get(ctx, client.ObjectKey{Name: pipelineRef.Pipeline}, &pipeline); err != nil {
+			return ctrl.Result{}, fmt.Errorf("pipeline %s not found: %w", pipelineRef.Pipeline, err)
+		}
+
+		stageProgress, pipelineDone, pipelineFailed, err := r.reconcilePipelineStages(
+			ctx, release, pipelineRef.Name, &pipeline, syncPhases,
+		)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		newPhase := "Progressing"
+		if pipelineFailed {
+			newPhase = "Failed"
+			allPipelinesComplete = false
+		} else if pipelineDone {
+			newPhase = "Complete"
+			log.Info("pipeline complete", "pipelineRef", pipelineRef.Name)
+		} else {
+			allPipelinesComplete = false
+		}
+
+		updatedPipelines = append(updatedPipelines, kaprov1alpha1.PipelineProgress{
+			Name:          pipelineRef.Name,
+			Pipeline:      pipelineRef.Pipeline,
+			Phase:         newPhase,
+			StageProgress: stageProgress,
+		})
+
+		if pipelineFailed {
+			// Fail fast: stop processing further pipelines.
+			return ctrl.Result{}, r.failRelease(ctx, release,
+				fmt.Sprintf("pipeline %s (%s) failed", pipelineRef.Name, pipelineRef.Pipeline))
+		}
+	}
+
+	// Write updated progress + optionally mark Release complete.
+	patch := client.MergeFrom(release.DeepCopy())
+	release.Status.PipelineProgress = updatedPipelines
+	release.Status.ObservedGeneration = release.Generation
+
+	if allPipelinesComplete {
+		release.Status.Phase = kaprov1alpha1.ReleasePhaseComplete
+		release.Status.CompletedAt = time.Now().UTC().Format(time.RFC3339)
+		apimeta.SetStatusCondition(&release.Status.Conditions, metav1.Condition{
+			Type:               "Ready",
+			Status:             metav1.ConditionTrue,
+			Reason:             "Complete",
+			ObservedGeneration: release.Generation,
+			Message:            "all pipelines complete",
+			LastTransitionTime: metav1.Now(),
+		})
+		r.Recorder.Event(release, corev1.EventTypeNormal, "Complete", "All pipelines complete")
+		r.clearActiveRelease(ctx, release)
+		// Annotate so future Releases can use this version for rollback.
+		annPatch := client.MergeFrom(release.DeepCopy())
+		if release.Annotations == nil {
+			release.Annotations = make(map[string]string)
+		}
+		release.Annotations["kapro.io/previous-version"] = release.Status.ResolvedVersion
+		if annErr := r.Patch(ctx, release, annPatch); annErr != nil {
+			log.Error(annErr, "failed to annotate previous-version on Release")
+		}
+		log.Info("Release complete", "name", release.Name)
+	}
+
+	if err := r.Status().Patch(ctx, release, patch); err != nil {
+		return ctrl.Result{}, fmt.Errorf("patch Release status: %w", err)
+	}
+
+	if !allPipelinesComplete {
+		return ctrl.Result{RequeueAfter: requeueNormal}, nil
+	}
+	return ctrl.Result{}, nil
+}
+
+// reconcilePipelineStages walks the stage DAG for one pipeline instance.
+//
+// For each stage whose dependencies are satisfied it:
+//  1. Lists Environments matching the stage selector.
+//  2. Ensures a Sync exists for each Environment (idempotent create).
+//  3. Observes all Syncs for this stage → derives stage phase.
+//
+// Returns (stageProgress, allComplete, anyFailed, error).
+func (r *ReleaseReconciler) reconcilePipelineStages(
+	ctx context.Context,
+	release *kaprov1alpha1.Release,
+	pipelineRefName string,
+	pipeline *kaprov1alpha1.Pipeline,
+	syncPhases map[string]kaprov1alpha1.SyncPhase,
+) ([]kaprov1alpha1.StageProgress, bool, bool, error) {
+	log := log.FromContext(ctx)
+
+	// stagePhase maps stage name → "Pending"|"Progressing"|"Complete"|"Failed"
+	stagePhase := make(map[string]string, len(pipeline.Spec.Stages))
+	stageProgress := make([]kaprov1alpha1.StageProgress, 0, len(pipeline.Spec.Stages))
 
 	allComplete := true
+	anyFailed := false
 
-	for _, batch := range pipeline.Spec.Progression.Batches {
-		// Check dependencies are complete
+	for _, stage := range pipeline.Spec.Stages {
+		// Check stage-level dependencies.
 		depsComplete := true
-		for _, dep := range batch.DependsOn {
-			if batchPhases[dep] != kaprov1alpha1.BatchPhaseComplete {
+		for _, dep := range stage.DependsOn {
+			if stagePhase[dep] != "Complete" {
 				depsComplete = false
 				break
 			}
 		}
 		if !depsComplete {
 			allComplete = false
+			stagePhase[stage.Name] = "Pending"
+			stageProgress = append(stageProgress, kaprov1alpha1.StageProgress{
+				Name: stage.Name, Phase: "Pending",
+			})
 			continue
 		}
 
-		batchRunName := fmt.Sprintf("%s-%s", release.Name, batch.Name)
-		phase, exists := batchPhases[batch.Name]
-
-		if !exists {
-			// Create BatchRun
-			br := kaprov1alpha1.BatchRun{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      batchRunName,
-					Namespace: release.Namespace,
-					Labels: map[string]string{
-						"kapro.io/release":  release.Name,
-						"kapro.io/batch":    batch.Name,
-						"kapro.io/pipeline": release.Spec.PipelineRef,
-					},
-				},
-				Spec: kaprov1alpha1.BatchRunSpec{
-					ReleaseRef:           release.Name,
-					BatchName:            batch.Name,
-					Selectors:            batch.Selectors,
-					PolicyRef:            batch.PolicyRef,
-					PromotionPolicyRef:   batch.PromotionPolicyRef,
-					ProgressionPolicyRef: batch.ProgressionPolicyRef,
-					DependsOn:            batch.DependsOn,
-				},
-			}
-			// ownerRef: Release owns BatchRun — Owns() watch in SetupWithManager
-			// re-triggers Release reconcile on every BatchRun phase change.
-			if err := controllerutil.SetControllerReference(release, &br, r.Scheme); err != nil {
-				return ctrl.Result{}, fmt.Errorf("set owner ref on BatchRun %s: %w", batchRunName, err)
-			}
-			if err := r.Create(ctx, &br); err != nil {
-				return ctrl.Result{}, fmt.Errorf("create BatchRun %s: %w", batchRunName, err)
-			}
-			log.Info("created BatchRun", "name", batchRunName)
-			allComplete = false
+		// List environments matching this stage's selector.
+		envList, err := r.listEnvironmentsForStage(ctx, stage)
+		if err != nil {
+			return nil, false, false, fmt.Errorf("list environments for stage %s: %w", stage.Name, err)
+		}
+		if len(envList) == 0 {
+			log.Info("stage has no matching environments — treating as complete",
+				"stage", stage.Name, "pipeline", pipeline.Name, "pipelineRef", pipelineRefName)
+			stagePhase[stage.Name] = "Complete"
+			stageProgress = append(stageProgress, kaprov1alpha1.StageProgress{
+				Name: stage.Name, Phase: "Complete", Total: 0,
+			})
 			continue
 		}
 
-		switch phase {
-		case kaprov1alpha1.BatchPhaseFailed:
-			return ctrl.Result{}, r.failRelease(ctx, release,
-				fmt.Sprintf("batch %s failed", batch.Name))
-		case kaprov1alpha1.BatchPhaseComplete:
-			// good
-		default:
+		// Ensure a Sync exists for each Environment; observe phases.
+		total, synced, failed := 0, 0, 0
+		for _, env := range envList {
+			total++
+			key := syncKey(pipelineRefName, stage.Name, env.Name)
+			phase, exists := syncPhases[key]
+
+			if !exists {
+				// Create the Sync — idempotent (IgnoreAlreadyExists).
+				if err := r.ensureSync(ctx, release, pipelineRefName, pipeline, stage, env); err != nil {
+					return nil, false, false, err
+				}
+				continue
+			}
+
+			switch phase {
+			case kaprov1alpha1.SyncPhaseConverged:
+				synced++
+			case kaprov1alpha1.SyncPhaseFailed:
+				failed++
+			}
+		}
+
+		// Derive stage phase from Sync observations.
+		var sp kaprov1alpha1.StageProgress
+		sp.Name = stage.Name
+		sp.Total = total
+		sp.Synced = synced
+		sp.Failed = failed
+
+		if failed > 0 {
+			onFailure := stage.OnFailure
+			switch onFailure {
+			case kaprov1alpha1.StageFailurePolicySkip:
+				log.Info("stage has failed syncs with OnFailure=skip, treating as complete",
+					"stage", stage.Name, "pipelineRef", pipelineRefName, "failed", failed)
+				sp.Phase = "Complete"
+				stagePhase[stage.Name] = "Complete"
+			case kaprov1alpha1.StageFailurePolicyRollback:
+				log.Info("stage has failed syncs with OnFailure=rollback",
+					"stage", stage.Name, "pipelineRef", pipelineRefName)
+				_ = r.triggerRollbackSyncs(ctx, release, pipelineRefName, stage.Name, syncPhases)
+				sp.Phase = "Failed"
+				stagePhase[stage.Name] = "Failed"
+				anyFailed = true
+				allComplete = false
+			default: // halt
+				sp.Phase = "Failed"
+				stagePhase[stage.Name] = "Failed"
+				anyFailed = true
+				allComplete = false
+				// Cancel every non-terminal Sync in this stage so they don't
+				// keep running (consuming cluster resources) after the stage
+				// has been halted by a peer failure.
+				if cancelErr := r.cancelPendingStageSyncs(ctx, release, pipelineRefName, stage.Name); cancelErr != nil {
+					log.Error(cancelErr, "cancelPendingStageSyncs failed — in-flight Syncs may continue briefly",
+						"stage", stage.Name, "pipelineRef", pipelineRefName)
+				}
+			}
+		} else if synced == total {
+			sp.Phase = "Complete"
+			stagePhase[stage.Name] = "Complete"
+		} else {
+			sp.Phase = "Progressing"
+			stagePhase[stage.Name] = "Progressing"
 			allComplete = false
+		}
+
+		stageProgress = append(stageProgress, sp)
+
+		if anyFailed {
+			break // fail fast within a pipeline
 		}
 	}
 
-	if !allComplete {
-		return ctrl.Result{RequeueAfter: requeueNormal}, nil
+	return stageProgress, allComplete, anyFailed, nil
+}
+
+// listEnvironmentsForStage returns all Environments that match the stage selector.
+func (r *ReleaseReconciler) listEnvironmentsForStage(ctx context.Context, stage kaprov1alpha1.Stage) ([]kaprov1alpha1.Environment, error) {
+	var envList kaprov1alpha1.EnvironmentList
+	listOpts := []client.ListOption{client.Limit(500)}
+	sel, err := metav1.LabelSelectorAsSelector(&stage.Selector)
+	if err != nil {
+		return nil, fmt.Errorf("invalid stage selector: %w", err)
+	}
+	listOpts = append(listOpts, client.MatchingLabelsSelector{Selector: sel})
+	if err := r.List(ctx, &envList, listOpts...); err != nil {
+		return nil, err
+	}
+	return envList.Items, nil
+}
+
+// ensureSync creates a Sync for the given (release, pipelineRef, stage, environment) tuple.
+// Uses IgnoreAlreadyExists for idempotency — safe to call on every reconcile loop.
+func (r *ReleaseReconciler) ensureSync(
+	ctx context.Context,
+	release *kaprov1alpha1.Release,
+	pipelineRefName string,
+	pipeline *kaprov1alpha1.Pipeline,
+	stage kaprov1alpha1.Stage,
+	env kaprov1alpha1.Environment,
+) error {
+	log := log.FromContext(ctx)
+
+	name := syncName(release.Name, pipelineRefName, stage.Name, env.Name)
+	sync := &kaprov1alpha1.Sync{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: release.Namespace,
+			Labels: map[string]string{
+				"kapro.io/release":       release.Name,
+				"kapro.io/pipeline-ref":  pipelineRefName,
+				"kapro.io/pipeline":      pipeline.Name,
+				"kapro.io/stage":         stage.Name,
+				"kapro.io/environment":   env.Name,
+			},
+		},
+		Spec: kaprov1alpha1.SyncSpec{
+			ReleaseRef:     release.Name,
+			EnvironmentRef: env.Name,
+			Pipeline:       pipeline.Name,
+			Stage:          stage.Name,
+			Version:        release.Status.ResolvedVersion,
+			PolicyRef:      stage.Gate, // stage.Gate is the GatePolicy ref name
+			AppKey:         releaseAppKey(release),
+		},
 	}
 
-	log.Info("all batches complete — Release is Complete")
-	r.Recorder.Event(release, corev1.EventTypeNormal, "Applied", "All batches complete")
-	patch := client.MergeFrom(release.DeepCopy())
-	release.Status.Phase = kaprov1alpha1.ReleasePhaseComplete
-	release.Status.ObservedGeneration = release.Generation
-	apimeta.SetStatusCondition(&release.Status.Conditions, metav1.Condition{
-		Type:               "Ready",
-		Status:             metav1.ConditionTrue,
-		Reason:             "Complete",
-		ObservedGeneration: release.Generation,
-		Message:            "all batches progressed successfully",
-		LastTransitionTime: metav1.Now(),
-	})
-	r.clearActiveRelease(ctx, release)
-	if err := r.Status().Patch(ctx, release, patch); err != nil {
-		return ctrl.Result{}, fmt.Errorf("patch release complete: %w", err)
+	if err := controllerutil.SetControllerReference(release, sync, r.Scheme); err != nil {
+		return fmt.Errorf("set owner ref on Sync %s: %w", name, err)
 	}
-	return ctrl.Result{}, nil
+	if err := r.Create(ctx, sync); client.IgnoreAlreadyExists(err) != nil {
+		return fmt.Errorf("create Sync %s: %w", name, err)
+	}
+
+	log.Info("ensured Sync", "name", name, "env", env.Name, "stage", stage.Name, "pipelineRef", pipelineRefName)
+	return nil
+}
+
+// triggerRollbackSyncs creates rollback Syncs for every Converged environment
+// in this pipeline/stage, targeting the previous resolved version.
+func (r *ReleaseReconciler) triggerRollbackSyncs(
+	ctx context.Context,
+	release *kaprov1alpha1.Release,
+	pipelineRefName, stageName string,
+	syncPhases map[string]kaprov1alpha1.SyncPhase,
+) error {
+	log := log.FromContext(ctx)
+
+	prevVersion := release.Annotations["kapro.io/previous-version"]
+	if prevVersion == "" {
+		log.Info("no previous-version annotation, skipping rollback")
+		return nil
+	}
+
+	// Find all Syncs in this pipeline/stage that have Converged.
+	var syncList kaprov1alpha1.SyncList
+	if err := r.List(ctx, &syncList,
+		client.InNamespace(release.Namespace),
+		client.MatchingLabels{
+			"kapro.io/release":      release.Name,
+			"kapro.io/pipeline-ref": pipelineRefName,
+			"kapro.io/stage":        stageName,
+		},
+		client.Limit(500),
+	); err != nil {
+		return err
+	}
+
+	for _, s := range syncList.Items {
+		if s.Status.Phase != kaprov1alpha1.SyncPhaseConverged {
+			continue
+		}
+		envRef := s.Spec.EnvironmentRef
+		rollbackName := fmt.Sprintf("%s-rollback-%s", release.Name, envRef)
+		rollback := &kaprov1alpha1.Sync{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      rollbackName,
+				Namespace: release.Namespace,
+				Labels: map[string]string{
+					"kapro.io/release":      release.Name,
+					"kapro.io/rollback":     "true",
+					"kapro.io/pipeline-ref": pipelineRefName,
+					"kapro.io/stage":        stageName,
+					"kapro.io/environment":  envRef,
+				},
+			},
+			Spec: kaprov1alpha1.SyncSpec{
+				ReleaseRef:     release.Name,
+				EnvironmentRef: envRef,
+				Pipeline:       s.Spec.Pipeline,
+				Stage:          stageName,
+				Version:        prevVersion,
+				PolicyRef:      s.Spec.PolicyRef,
+				AppKey:         s.Spec.AppKey,
+			},
+		}
+		if err := controllerutil.SetControllerReference(release, rollback, r.Scheme); err != nil {
+			return fmt.Errorf("set owner ref on rollback Sync: %w", err)
+		}
+		if err := r.Create(ctx, rollback); client.IgnoreAlreadyExists(err) != nil {
+			log.Error(err, "create rollback Sync", "name", rollbackName)
+		} else {
+			log.Info("created rollback Sync", "name", rollbackName, "env", envRef, "version", prevVersion)
+		}
+	}
+	return nil
+}
+
+// cancelPendingStageSyncs marks every non-terminal Sync in the given stage as
+// Failed with a descriptive cancellation message.
+//
+// This is the enforcement half of failurePolicy: halt. When one Sync in a
+// stage fails, the stage decision is immediate — but sibling Syncs that were
+// already created (and are still Pending / Verification / HealthCheck / etc.)
+// must be explicitly cancelled so they stop consuming cluster resources and
+// don't cause a false "still progressing" read on the next reconcile.
+//
+// Already-terminal Syncs (Converged, Failed) are left untouched — their result
+// is final and should not be overwritten.
+func (r *ReleaseReconciler) cancelPendingStageSyncs(
+	ctx context.Context,
+	release *kaprov1alpha1.Release,
+	pipelineRefName, stageName string,
+) error {
+	log := log.FromContext(ctx)
+
+	var syncList kaprov1alpha1.SyncList
+	if err := r.List(ctx, &syncList,
+		client.InNamespace(release.Namespace),
+		client.MatchingLabels{
+			"kapro.io/release":      release.Name,
+			"kapro.io/pipeline-ref": pipelineRefName,
+			"kapro.io/stage":        stageName,
+		},
+		client.Limit(500),
+	); err != nil {
+		return fmt.Errorf("list stage Syncs for cancellation: %w", err)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	for i := range syncList.Items {
+		s := &syncList.Items[i]
+		switch s.Status.Phase {
+		case kaprov1alpha1.SyncPhaseConverged, kaprov1alpha1.SyncPhaseFailed:
+			continue // already terminal — leave the record untouched
+		}
+		log.Info("cancelling Sync due to halt policy",
+			"sync", s.Name,
+			"phase", s.Status.Phase,
+			"stage", stageName,
+			"pipelineRef", pipelineRefName,
+		)
+		patch := client.MergeFrom(s.DeepCopy())
+		s.Status.Phase = kaprov1alpha1.SyncPhaseFailed
+		s.Status.Message = "cancelled: stage halted due to peer Sync failure (failurePolicy: halt)"
+		s.Status.FinishedAt = now
+		if err := r.Status().Patch(ctx, s, patch); err != nil {
+			// Log and continue — partial cancellation is better than blocking the reconcile.
+			log.Error(err, "failed to cancel Sync", "sync", s.Name)
+		}
+	}
+	return nil
 }
 
 func (r *ReleaseReconciler) failRelease(ctx context.Context, release *kaprov1alpha1.Release, msg string) error {
 	patch := client.MergeFrom(release.DeepCopy())
 	release.Status.Phase = kaprov1alpha1.ReleasePhaseFailed
 	release.Status.ObservedGeneration = release.Generation
-	release.Status.Conditions = nil // clear stale conditions before SetStatusCondition
+	release.Status.CompletedAt = time.Now().UTC().Format(time.RFC3339)
 	apimeta.SetStatusCondition(&release.Status.Conditions, metav1.Condition{
 		Type:               "Ready",
 		Status:             metav1.ConditionFalse,
@@ -404,11 +644,26 @@ func (r *ReleaseReconciler) failRelease(ctx context.Context, release *kaprov1alp
 	return r.Status().Patch(ctx, release, patch)
 }
 
+// clearActiveRelease clears env.status.activeRelease for all environments
+// that were claimed by this Release, found via owned Syncs.
 func (r *ReleaseReconciler) clearActiveRelease(ctx context.Context, release *kaprov1alpha1.Release) {
-	selector, _ := metav1.LabelSelectorAsSelector(&release.Spec.Scope.Selector)
-	var envList kaprov1alpha1.EnvironmentList
-	_ = r.List(ctx, &envList, &client.ListOptions{LabelSelector: selector})
-	for _, env := range envList.Items {
+	var syncList kaprov1alpha1.SyncList
+	_ = r.List(ctx, &syncList,
+		client.InNamespace(release.Namespace),
+		client.MatchingFields{IndexKeyRelease: release.Name},
+		client.Limit(500),
+	)
+	seen := make(map[string]bool)
+	for _, s := range syncList.Items {
+		envName := s.Spec.EnvironmentRef
+		if seen[envName] {
+			continue
+		}
+		seen[envName] = true
+		var env kaprov1alpha1.Environment
+		if err := r.Get(ctx, client.ObjectKey{Name: envName}, &env); err != nil {
+			continue
+		}
 		if env.Status.ActiveRelease == release.Name {
 			patch := client.MergeFrom(env.DeepCopy())
 			env.Status.ActiveRelease = ""
@@ -417,40 +672,25 @@ func (r *ReleaseReconciler) clearActiveRelease(ctx context.Context, release *kap
 	}
 }
 
-// handleDeletion cleans up all resources owned by this Release and removes the finalizer.
-// This prevents orphaned Promotions/BatchRuns and stuck activeRelease pointers.
+// handleDeletion cleans up all Syncs owned by this Release.
 func (r *ReleaseReconciler) handleDeletion(ctx context.Context, release *kaprov1alpha1.Release) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 	log.Info("handling Release deletion", "name", release.Name)
 
 	releaseFields := client.MatchingFields{IndexKeyRelease: release.Name}
 
-	// Delete all owned Promotions.
-	var promoList kaprov1alpha1.PromotionList
-	if err := r.List(ctx, &promoList, client.InNamespace(release.Namespace), releaseFields, client.Limit(500)); err != nil {
-		return ctrl.Result{}, fmt.Errorf("list Promotions for cleanup: %w", err)
+	var syncList kaprov1alpha1.SyncList
+	if err := r.List(ctx, &syncList, client.InNamespace(release.Namespace), releaseFields, client.Limit(500)); err != nil {
+		return ctrl.Result{}, fmt.Errorf("list Syncs for cleanup: %w", err)
 	}
-	for i := range promoList.Items {
-		if err := r.Delete(ctx, &promoList.Items[i]); client.IgnoreNotFound(err) != nil {
-			return ctrl.Result{}, fmt.Errorf("delete Promotion %s: %w", promoList.Items[i].Name, err)
+	for i := range syncList.Items {
+		if err := r.Delete(ctx, &syncList.Items[i]); client.IgnoreNotFound(err) != nil {
+			return ctrl.Result{}, fmt.Errorf("delete Sync %s: %w", syncList.Items[i].Name, err)
 		}
 	}
 
-	// Delete all owned BatchRuns.
-	var batchList kaprov1alpha1.BatchRunList
-	if err := r.List(ctx, &batchList, client.InNamespace(release.Namespace), releaseFields, client.Limit(500)); err != nil {
-		return ctrl.Result{}, fmt.Errorf("list BatchRuns for cleanup: %w", err)
-	}
-	for i := range batchList.Items {
-		if err := r.Delete(ctx, &batchList.Items[i]); client.IgnoreNotFound(err) != nil {
-			return ctrl.Result{}, fmt.Errorf("delete BatchRun %s: %w", batchList.Items[i].Name, err)
-		}
-	}
-
-	// Clear activeRelease on all Environments this Release was managing.
 	r.clearActiveRelease(ctx, release)
 
-	// Remove the finalizer to allow Kubernetes to delete the Release.
 	patch := client.MergeFrom(release.DeepCopy())
 	controllerutil.RemoveFinalizer(release, releaseFinalizer)
 	if err := r.Patch(ctx, release, patch); err != nil {
@@ -464,51 +704,37 @@ func (r *ReleaseReconciler) handleDeletion(ctx context.Context, release *kaprov1
 func (r *ReleaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	ctx := context.Background()
 
-	// Register field indexes for hot-path List calls.
-	// Only the ReleaseReconciler registers these — registering the same index
-	// twice in controller-runtime panics.  BatchRunReconciler uses the same
-	// indexes but does NOT register them.
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &kaprov1alpha1.Promotion{}, IndexKeyRelease,
+	// Index Syncs by release label — used for listing all Syncs owned by a Release.
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &kaprov1alpha1.Sync{}, IndexKeyRelease,
 		labelExtractor(IndexKeyRelease),
 	); err != nil {
-		return fmt.Errorf("index Promotion by %s: %w", IndexKeyRelease, err)
+		return fmt.Errorf("index Sync by %s: %w", IndexKeyRelease, err)
 	}
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &kaprov1alpha1.BatchRun{}, IndexKeyRelease,
-		labelExtractor(IndexKeyRelease),
+	// Index Syncs by environment ref — used by SyncReconciler's ManagedCluster watch.
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &kaprov1alpha1.Sync{}, IndexKeyEnvironment,
+		environmentRefExtractor(),
 	); err != nil {
-		return fmt.Errorf("index BatchRun by %s: %w", IndexKeyRelease, err)
+		return fmt.Errorf("index Sync by %s: %w", IndexKeyEnvironment, err)
 	}
+	// Index Approvals by release label — used for listing Approvals during cleanup.
 	if err := mgr.GetFieldIndexer().IndexField(ctx, &kaprov1alpha1.Approval{}, IndexKeyRelease,
 		labelExtractor(IndexKeyRelease),
 	); err != nil {
 		return fmt.Errorf("index Approval by %s: %w", IndexKeyRelease, err)
-	}
-	// IndexKeyEnvironment: used by PromotionReconciler's ClusterRegistration watch
-	// to find Promotions targeting a cluster that just changed phase.
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &kaprov1alpha1.Promotion{}, IndexKeyEnvironment,
-		environmentRefExtractor(),
-	); err != nil {
-		return fmt.Errorf("index Promotion by %s: %w", IndexKeyEnvironment, err)
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(controller.Options{
 			RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](50*time.Millisecond, 10*time.Minute),
 		}).
-		// Only re-reconcile on spec changes (GenerationChanged) — prevents the
-		// controller reconciling itself after every status patch it writes.
 		For(&kaprov1alpha1.Release{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
-		// Owns() triggers a Release reconcile when an owned Promotion or BatchRun
-		// changes.  This works because we now set ownerReferences on creation via
-		// controllerutil.SetControllerReference.  Without ownerRefs, Owns() is a
-		// no-op and Release only learns of completion via 30s polling.
-		Owns(&kaprov1alpha1.Pipeline{}).
-		Owns(&kaprov1alpha1.Promotion{}).
-		Owns(&kaprov1alpha1.BatchRun{}).
-		// Watch Environments: if an Environment's health or activeRelease changes,
-		// re-evaluate any in-flight Release scoped to that Environment.
+		// Owns Syncs — when any Sync status changes (Converged, Failed) the owning
+		// Release is re-queued so the DAG can advance to the next stage.
+		Owns(&kaprov1alpha1.Sync{}).
+		// Watch Environments — if a new Environment is registered whose labels match
+		// an in-progress stage, wake up the Release so a new Sync is created.
 		Watches(
 			&kaprov1alpha1.Environment{},
 			handler.EnqueueRequestsFromMapFunc(r.releasesForEnvironment),
@@ -516,10 +742,6 @@ func (r *ReleaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-// releasesForEnvironment returns reconcile.Requests for all Releases whose
-// scope selector matches the changed Environment.  Used by the Environment
-// Watch above so that Release reacts to health/activeRelease updates without
-// polling.
 func (r *ReleaseReconciler) releasesForEnvironment(ctx context.Context, obj client.Object) []ctrl.Request {
 	env, ok := obj.(*kaprov1alpha1.Environment)
 	if !ok {
@@ -533,20 +755,26 @@ func (r *ReleaseReconciler) releasesForEnvironment(ctx context.Context, obj clie
 	for i := range releaseList.Items {
 		rel := &releaseList.Items[i]
 		if rel.Status.Phase == kaprov1alpha1.ReleasePhaseComplete || rel.Status.Phase == kaprov1alpha1.ReleasePhaseFailed {
-			continue // terminal — no need to wake up
+			continue
 		}
 		reqs = append(reqs, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(rel)})
 	}
 	return reqs
 }
 
-// resolveAppKey returns the key used to look up versions in
-// ClusterRegistration.status.currentVersions.
-// resolveAppKey returns the key used to look up versions in
-// ClusterRegistration.status.currentVersions.
-// Falls back to the Artifact name when AppKey is not set — this preserves
-// backward compatibility for single-app deployments.
-func resolveAppKey(release *kaprov1alpha1.Release) string {
+// syncKey builds a unique map key for a Sync: <pipelineRefName>/<stage>/<env>.
+func syncKey(pipelineRefName, stage, env string) string {
+	return pipelineRefName + "/" + stage + "/" + env
+}
+
+// syncName builds the deterministic name for a Sync object.
+// Format: <release>-<pipelineRef>-<stage>-<env>
+func syncName(release, pipelineRef, stage, env string) string {
+	return fmt.Sprintf("%s-%s-%s-%s", release, pipelineRef, stage, env)
+}
+
+// releaseAppKey returns the key used in ManagedCluster.status.currentVersions.
+func releaseAppKey(release *kaprov1alpha1.Release) string {
 	if release.Spec.AppKey != "" {
 		return release.Spec.AppKey
 	}

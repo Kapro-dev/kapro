@@ -13,20 +13,20 @@ var (
 
 func init() {
 	SchemeBuilder.Register(
+		// User-facing delivery objects
 		&Artifact{}, &ArtifactList{},
 		&Environment{}, &EnvironmentList{},
-		&ClusterRegistration{}, &ClusterRegistrationList{},
-		&PromotionPolicy{}, &PromotionPolicyList{},
-		&ProgressionPolicy{}, &ProgressionPolicyList{},
 		&Pipeline{}, &PipelineList{},
 		&Release{}, &ReleaseList{},
-		&Promotion{}, &PromotionList{},
-		&BatchRun{}, &BatchRunList{},
-		&Approval{}, &ApprovalList{},
-		&BootstrapToken{}, &BootstrapTokenList{},
-		&PluginRegistration{}, &PluginRegistrationList{},
-		&PluginGateway{}, &PluginGatewayList{},
+		// Gate configuration
+		&GatePolicy{}, &GatePolicyList{},
 		&GateTemplate{}, &GateTemplateList{},
-		&KAgent{}, &KAgentList{},
+		// Fleet registry — written by kapro-cluster-controller
+		&ManagedCluster{}, &ManagedClusterList{},
+		// Internal / system objects
+		&Sync{}, &SyncList{},
+		&Approval{}, &ApprovalList{},
+		&ReleaseReport{}, &ReleaseReportList{},
+		&BootstrapToken{}, &BootstrapTokenList{},
 	)
 }

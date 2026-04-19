@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: pipelines.kapro.io
 spec:
   group: kapro.io
@@ -12,13 +12,15 @@ spec:
     listKind: PipelineList
     plural: pipelines
     singular: pipeline
-  scope: Namespaced
+  scope: Cluster
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Pipeline defines the promotion DAG and batch progression owned
-          by a Release.
+        description: |-
+          Pipeline defines a reusable progressive delivery path as a DAG of stages.
+          Each stage selects a fleet subset via label selectors and optionally gates
+          advancement with a GatePolicy. Referenced by Release.spec.pipelines[].
         properties:
           apiVersion:
             description: |-
@@ -38,159 +40,197 @@ spec:
           metadata:
             type: object
           spec:
+            description: |-
+              PipelineSpec defines a reusable progressive delivery path as a flat DAG of stages.
+              A Pipeline is a template — referenced by Release.spec.pipelines[].
             properties:
-              progression:
-                properties:
-                  batches:
-                    items:
+              stages:
+                description: |-
+                  Stages is the flat DAG of delivery stages.
+                  Order is declared via DependsOn, not list position.
+                items:
+                  description: |-
+                    Stage is one node in a Pipeline's delivery DAG.
+                    It selects a set of Environments by label selector, optionally gates them
+                    with a GatePolicy, and declares ordering via DependsOn.
+
+                    A single stage can target one or many clusters — the selector determines the
+                    fleet subset. Add a cluster to a wave by labeling its Environment object;
+                    no Pipeline changes required.
+                  properties:
+                    dependsOn:
+                      description: DependsOn lists stage names that must reach Complete
+                        before this stage starts.
+                      items:
+                        type: string
+                      type: array
+                    gate:
+                      description: |-
+                        Gate is the name of a GatePolicy evaluated after all environments in this
+                        stage converge. If empty, the stage advances immediately on convergence.
+                      type: string
+                    name:
+                      description: Name uniquely identifies this stage within the
+                        pipeline.
+                      type: string
+                    onFailure:
+                      default: halt
+                      description: |-
+                        OnFailure controls what Kapro does when this stage fails.
+                        halt (default): stop the pipeline, mark Release Failed.
+                        skip: continue to downstream stages.
+                        rollback: stop AND revert all environments promoted by earlier stages.
+                      enum:
+                      - halt
+                      - skip
+                      - rollback
+                      type: string
+                    selector:
+                      description: Selector matches the Environments (clusters) that
+                        belong to this stage.
                       properties:
-                        dependsOn:
-                          items:
-                            type: string
-                          type: array
-                        name:
-                          type: string
-                        selectors:
+                        matchExpressions:
+                          description: matchExpressions is a list of label selector
+                            requirements. The requirements are ANDed.
                           items:
                             description: |-
-                              A label selector is a label query over a set of resources. The result of matchLabels and
-                              matchExpressions are ANDed. An empty label selector matches all objects. A null
-                              label selector matches no objects.
+                              A label selector requirement is a selector that contains values, a key, and an operator that
+                              relates the key and values.
                             properties:
-                              matchExpressions:
-                                description: matchExpressions is a list of label selector
-                                  requirements. The requirements are ANDed.
+                              key:
+                                description: key is the label key that the selector
+                                  applies to.
+                                type: string
+                              operator:
+                                description: |-
+                                  operator represents a key's relationship to a set of values.
+                                  Valid operators are In, NotIn, Exists and DoesNotExist.
+                                type: string
+                              values:
+                                description: |-
+                                  values is an array of string values. If the operator is In or NotIn,
+                                  the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                  the values array must be empty. This array is replaced during a strategic
+                                  merge patch.
                                 items:
-                                  description: |-
-                                    A label selector requirement is a selector that contains values, a key, and an operator that
-                                    relates the key and values.
-                                  properties:
-                                    key:
-                                      description: key is the label key that the selector
-                                        applies to.
-                                      type: string
-                                    operator:
-                                      description: |-
-                                        operator represents a key's relationship to a set of values.
-                                        Valid operators are In, NotIn, Exists and DoesNotExist.
-                                      type: string
-                                    values:
-                                      description: |-
-                                        values is an array of string values. If the operator is In or NotIn,
-                                        the values array must be non-empty. If the operator is Exists or DoesNotExist,
-                                        the values array must be empty. This array is replaced during a strategic
-                                        merge patch.
-                                      items:
-                                        type: string
-                                      type: array
-                                      x-kubernetes-list-type: atomic
-                                  required:
-                                  - key
-                                  - operator
-                                  type: object
+                                  type: string
                                 type: array
                                 x-kubernetes-list-type: atomic
-                              matchLabels:
-                                additionalProperties:
-                                  type: string
-                                description: |-
-                                  matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
-                                  map is equivalent to an element of matchExpressions, whose key field is "key", the
-                                  operator is "In", and the values array contains only "value". The requirements are ANDed.
-                                type: object
+                            required:
+                            - key
+                            - operator
                             type: object
-                            x-kubernetes-map-type: atomic
                           type: array
-                      required:
-                      - name
-                      - selectors
-                      type: object
-                    type: array
-                required:
-                - batches
-                type: object
-              promotion:
-                properties:
-                  steps:
-                    items:
-                      properties:
-                        dependsOn:
-                          items:
+                          x-kubernetes-list-type: atomic
+                        matchLabels:
+                          additionalProperties:
                             type: string
-                          type: array
-                        name:
-                          type: string
-                        policy:
-                          type: string
-                        selector:
                           description: |-
-                            A label selector is a label query over a set of resources. The result of matchLabels and
-                            matchExpressions are ANDed. An empty label selector matches all objects. A null
-                            label selector matches no objects.
-                          properties:
-                            matchExpressions:
-                              description: matchExpressions is a list of label selector
-                                requirements. The requirements are ANDed.
-                              items:
-                                description: |-
-                                  A label selector requirement is a selector that contains values, a key, and an operator that
-                                  relates the key and values.
-                                properties:
-                                  key:
-                                    description: key is the label key that the selector
-                                      applies to.
-                                    type: string
-                                  operator:
-                                    description: |-
-                                      operator represents a key's relationship to a set of values.
-                                      Valid operators are In, NotIn, Exists and DoesNotExist.
-                                    type: string
-                                  values:
-                                    description: |-
-                                      values is an array of string values. If the operator is In or NotIn,
-                                      the values array must be non-empty. If the operator is Exists or DoesNotExist,
-                                      the values array must be empty. This array is replaced during a strategic
-                                      merge patch.
-                                    items:
-                                      type: string
-                                    type: array
-                                    x-kubernetes-list-type: atomic
-                                required:
-                                - key
-                                - operator
-                                type: object
-                              type: array
-                              x-kubernetes-list-type: atomic
-                            matchLabels:
-                              additionalProperties:
-                                type: string
-                              description: |-
-                                matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
-                                map is equivalent to an element of matchExpressions, whose key field is "key", the
-                                operator is "In", and the values array contains only "value". The requirements are ANDed.
-                              type: object
+                            matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                            map is equivalent to an element of matchExpressions, whose key field is "key", the
+                            operator is "In", and the values array contains only "value". The requirements are ANDed.
                           type: object
-                          x-kubernetes-map-type: atomic
-                      required:
-                      - name
-                      - policy
-                      - selector
                       type: object
-                    type: array
-                required:
-                - steps
-                type: object
+                      x-kubernetes-map-type: atomic
+                  required:
+                  - name
+                  - selector
+                  type: object
+                minItems: 1
+                type: array
             required:
-            - progression
-            - promotion
+            - stages
             type: object
           status:
-            description: PipelineStatus defines the observed state of Pipeline.
+            description: PipelineStatus defines the observed state of a Pipeline.
             properties:
-              activeStep:
+              activeStage:
                 type: string
+              completedStages:
+                type: integer
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              observedGeneration:
+                format: int64
+                type: integer
               phase:
+                description: Phase reflects the overall state of this Pipeline in
+                  the current Release.
+                enum:
+                - Pending
+                - Progressing
+                - Complete
+                - Failed
                 type: string
+              stageProgress:
+                items:
+                  description: StageProgressEntry is a per-stage phase summary stored
+                    in Pipeline.status.
+                  properties:
+                    name:
+                      type: string
+                    phase:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+              totalStages:
+                type: integer
             type: object
         type: object
     served: true

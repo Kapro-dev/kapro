@@ -7,7 +7,7 @@
 //
 //	args         — map[string]string of resolved gate args
 //	environment  — kapro Environment object (labels, name, tier, region)
-//	promotion    — kapro Promotion object (version, environmentRef, releaseRef)
+//	sync         — kapro Sync object (version, environmentRef, releaseRef)
 //
 // Example expression:
 //
@@ -29,8 +29,8 @@ import (
 	pkggate "kapro.io/kapro/pkg/gate"
 )
 
-// Gate evaluates a CEL expression against promotion context.
-// Stateless — all state lives in Promotion.Status.Gates[].
+// Gate evaluates a CEL expression against sync context.
+// Stateless — all state lives in Sync.Status.Gates[].
 type Gate struct {
 	Client client.Client
 }
@@ -50,14 +50,14 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 	}
 
 	// Resolve the Environment object for context variables.
-	var env kaprov1alpha1.Environment
-	if req.Promotion != nil && req.Promotion.Spec.EnvironmentRef != "" && g.Client != nil {
-		if err := g.Client.Get(ctx, client.ObjectKey{Name: req.Promotion.Spec.EnvironmentRef}, &env); err != nil {
-			log.Info("cel gate: could not fetch Environment, proceeding with empty env", "name", req.Promotion.Spec.EnvironmentRef)
+	var envObj kaprov1alpha1.Environment
+	if req.Sync != nil && req.Sync.Spec.EnvironmentRef != "" && g.Client != nil {
+		if err := g.Client.Get(ctx, client.ObjectKey{Name: req.Sync.Spec.EnvironmentRef}, &envObj); err != nil {
+			log.Info("cel gate: could not fetch Environment, proceeding with empty env", "name", req.Sync.Spec.EnvironmentRef)
 		}
 	}
 
-	activation, err := buildActivation(req.Args, &env, req.Promotion)
+	activation, err := buildActivation(req.Args, &envObj, req.Sync)
 	if err != nil {
 		return pkggate.Result{}, fmt.Errorf("cel gate: build activation: %w", err)
 	}
@@ -72,21 +72,19 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 
 	if passed {
 		return pkggate.Result{
-			Passed:  true,
 			Phase:   kaprov1alpha1.GatePhasePassed,
 			Message: fmt.Sprintf("CEL expression passed: %s", expr),
 		}, nil
 	}
 
 	return pkggate.Result{
-		Passed:  false,
 		Phase:   kaprov1alpha1.GatePhaseFailed,
 		Message: fmt.Sprintf("CEL expression failed: %s — %s", expr, msg),
 	}, nil
 }
 
-// buildActivation constructs the CEL variable map from resolved args + environment + promotion.
-func buildActivation(args map[string]string, env *kaprov1alpha1.Environment, promo *kaprov1alpha1.Promotion) (map[string]any, error) {
+// buildActivation constructs the CEL variable map from resolved args + environment + sync.
+func buildActivation(args map[string]string, env *kaprov1alpha1.Environment, sync *kaprov1alpha1.Sync) (map[string]any, error) {
 	// args: map[string]string — directly accessible as args.key
 	argsMap := map[string]any{}
 	for k, v := range args {
@@ -107,24 +105,24 @@ func buildActivation(args map[string]string, env *kaprov1alpha1.Environment, pro
 		envMap["labels"] = labelMap
 	}
 
-	// promotion: key fields
-	promoMap := map[string]any{
+	// sync: key fields
+	syncMap := map[string]any{
 		"name":           "",
 		"version":        "",
 		"environmentRef": "",
 		"releaseRef":     "",
 	}
-	if promo != nil {
-		promoMap["name"] = promo.Name
-		promoMap["version"] = promo.Spec.Version
-		promoMap["environmentRef"] = promo.Spec.EnvironmentRef
-		promoMap["releaseRef"] = promo.Spec.ReleaseRef
+	if sync != nil {
+		syncMap["name"] = sync.Name
+		syncMap["version"] = sync.Spec.Version
+		syncMap["environmentRef"] = sync.Spec.EnvironmentRef
+		syncMap["releaseRef"] = sync.Spec.ReleaseRef
 	}
 
 	return map[string]any{
 		"args":        argsMap,
 		"environment": envMap,
-		"promotion":   promoMap,
+		"sync":        syncMap,
 	}, nil
 }
 
@@ -133,7 +131,7 @@ func evaluate(expr string, activation map[string]any) (bool, string, error) {
 	env, err := cel.NewEnv(
 		cel.Variable("args", cel.MapType(cel.StringType, cel.StringType)),
 		cel.Variable("environment", cel.MapType(cel.StringType, cel.DynType)),
-		cel.Variable("promotion", cel.MapType(cel.StringType, cel.StringType)),
+		cel.Variable("sync", cel.MapType(cel.StringType, cel.StringType)),
 	)
 	if err != nil {
 		return false, "", fmt.Errorf("create CEL env: %w", err)

@@ -8,19 +8,31 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	"kapro.io/kapro/internal/notification"
+	pkgnotification "kapro.io/kapro/pkg/notification"
 )
 
-func TestDispatcher_Notify_NilPolicy_NoPanic(t *testing.T) {
-	d := &notification.Dispatcher{}
-	d.Notify(context.Background(), notification.Event{Phase: "Pending"}, nil)
+// helpers — build NotificationPolicy values without any api/v1alpha1 import.
+func slackPolicy(url string) pkgnotification.NotificationPolicy {
+	return pkgnotification.NotificationPolicy{
+		Channels: []pkgnotification.Channel{{Type: "slack", Target: url}},
+	}
 }
 
-func TestDispatcher_Notify_EmptyNotifications_NoPanic(t *testing.T) {
+func webhookPolicy(url string) pkgnotification.NotificationPolicy {
+	return pkgnotification.NotificationPolicy{
+		Channels: []pkgnotification.Channel{{Type: "webhook", Target: url}},
+	}
+}
+
+func TestDispatcher_Notify_EmptyPolicy_NoPanic(t *testing.T) {
 	d := &notification.Dispatcher{}
-	policy := &kaprov1alpha1.PromotionPolicy{}
-	d.Notify(context.Background(), notification.Event{Phase: "Pending"}, policy)
+	d.Notify(context.Background(), notification.Event{Phase: "Pending"}, pkgnotification.EmptyPolicy)
+}
+
+func TestDispatcher_Notify_EmptyChannels_NoPanic(t *testing.T) {
+	d := &notification.Dispatcher{}
+	d.Notify(context.Background(), notification.Event{Phase: "Pending"}, pkgnotification.NotificationPolicy{})
 }
 
 func TestDispatcher_Notify_Slack_SendsPayload(t *testing.T) {
@@ -32,19 +44,12 @@ func TestDispatcher_Notify_Slack_SendsPayload(t *testing.T) {
 	defer srv.Close()
 
 	d := &notification.Dispatcher{HTTPClient: srv.Client()}
-	policy := &kaprov1alpha1.PromotionPolicy{
-		Spec: kaprov1alpha1.PromotionPolicySpec{
-			Notifications: []kaprov1alpha1.NotificationSpec{
-				{Type: "slack", Channel: srv.URL},
-			},
-		},
-	}
 	d.Notify(context.Background(), notification.Event{
 		Phase:       "Converged",
 		Version:     "v1.2.0",
 		Environment: "staging",
 		Release:     "rel-1",
-	}, policy)
+	}, slackPolicy(srv.URL))
 
 	if len(received) == 0 {
 		t.Fatal("expected Slack webhook to receive a payload")
@@ -67,21 +72,13 @@ func TestDispatcher_Notify_Slack_FailureEmoji(t *testing.T) {
 	defer srv.Close()
 
 	d := &notification.Dispatcher{HTTPClient: srv.Client()}
-	policy := &kaprov1alpha1.PromotionPolicy{
-		Spec: kaprov1alpha1.PromotionPolicySpec{
-			Notifications: []kaprov1alpha1.NotificationSpec{
-				{Type: "slack", Channel: srv.URL},
-			},
-		},
-	}
 	d.Notify(context.Background(), notification.Event{
 		Phase:     "Failed",
 		IsFailure: true,
-	}, policy)
+	}, slackPolicy(srv.URL))
 
 	var payload map[string]string
 	_ = json.Unmarshal(received, &payload)
-	// Failure events use :x: emoji — verify text contains it.
 	if text := payload["text"]; len(text) == 0 {
 		t.Error("expected non-empty text for failure notification")
 	}
@@ -94,15 +91,8 @@ func TestDispatcher_Notify_Slack_ServerError_NoPanic(t *testing.T) {
 	defer srv.Close()
 
 	d := &notification.Dispatcher{HTTPClient: srv.Client()}
-	policy := &kaprov1alpha1.PromotionPolicy{
-		Spec: kaprov1alpha1.PromotionPolicySpec{
-			Notifications: []kaprov1alpha1.NotificationSpec{
-				{Type: "slack", Channel: srv.URL},
-			},
-		},
-	}
 	// A notification failure must never block or panic.
-	d.Notify(context.Background(), notification.Event{Phase: "Failed", IsFailure: true}, policy)
+	d.Notify(context.Background(), notification.Event{Phase: "Failed", IsFailure: true}, slackPolicy(srv.URL))
 }
 
 func TestDispatcher_Notify_Webhook_SendsJSON(t *testing.T) {
@@ -114,19 +104,12 @@ func TestDispatcher_Notify_Webhook_SendsJSON(t *testing.T) {
 	defer srv.Close()
 
 	d := &notification.Dispatcher{HTTPClient: srv.Client()}
-	policy := &kaprov1alpha1.PromotionPolicy{
-		Spec: kaprov1alpha1.PromotionPolicySpec{
-			Notifications: []kaprov1alpha1.NotificationSpec{
-				{Type: "webhook", URL: srv.URL},
-			},
-		},
-	}
 	d.Notify(context.Background(), notification.Event{
 		Phase:       "Applying",
 		Version:     "v1.0.0",
 		Environment: "prod",
 		Release:     "rel-2",
-	}, policy)
+	}, webhookPolicy(srv.URL))
 
 	if len(received) == 0 {
 		t.Fatal("expected webhook to receive a payload")
@@ -150,15 +133,8 @@ func TestDispatcher_Notify_Webhook_ServerError_NoPanic(t *testing.T) {
 	defer srv.Close()
 
 	d := &notification.Dispatcher{HTTPClient: srv.Client()}
-	policy := &kaprov1alpha1.PromotionPolicy{
-		Spec: kaprov1alpha1.PromotionPolicySpec{
-			Notifications: []kaprov1alpha1.NotificationSpec{
-				{Type: "webhook", URL: srv.URL},
-			},
-		},
-	}
 	// Non-2xx response must not panic — just logs the error.
-	d.Notify(context.Background(), notification.Event{Phase: "Failed"}, policy)
+	d.Notify(context.Background(), notification.Event{Phase: "Failed"}, webhookPolicy(srv.URL))
 }
 
 func TestDispatcher_Notify_MultipleChannels_AllCalled(t *testing.T) {
@@ -170,12 +146,10 @@ func TestDispatcher_Notify_MultipleChannels_AllCalled(t *testing.T) {
 	defer srv.Close()
 
 	d := &notification.Dispatcher{HTTPClient: srv.Client()}
-	policy := &kaprov1alpha1.PromotionPolicy{
-		Spec: kaprov1alpha1.PromotionPolicySpec{
-			Notifications: []kaprov1alpha1.NotificationSpec{
-				{Type: "slack", Channel: srv.URL},
-				{Type: "webhook", URL: srv.URL},
-			},
+	policy := pkgnotification.NotificationPolicy{
+		Channels: []pkgnotification.Channel{
+			{Type: "slack", Target: srv.URL},
+			{Type: "webhook", Target: srv.URL},
 		},
 	}
 	d.Notify(context.Background(), notification.Event{Phase: "Converged"}, policy)
@@ -187,13 +161,11 @@ func TestDispatcher_Notify_MultipleChannels_AllCalled(t *testing.T) {
 
 func TestDispatcher_Notify_UnknownType_NoPanic(t *testing.T) {
 	d := &notification.Dispatcher{}
-	policy := &kaprov1alpha1.PromotionPolicy{
-		Spec: kaprov1alpha1.PromotionPolicySpec{
-			Notifications: []kaprov1alpha1.NotificationSpec{
-				{Type: "pagerduty", URL: "https://example.com"},
-			},
+	policy := pkgnotification.NotificationPolicy{
+		Channels: []pkgnotification.Channel{
+			{Type: "pagerduty", Target: "svc-id-123"},
 		},
 	}
-	// Unknown types are silently skipped.
+	// pagerduty requires the engine notifier; Dispatcher skips it without panicking.
 	d.Notify(context.Background(), notification.Event{Phase: "Converged"}, policy)
 }

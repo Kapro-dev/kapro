@@ -7,7 +7,26 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
   - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
   verbs:
   - create
   - delete
@@ -36,6 +55,9 @@ rules:
   - kapro.io
   resources:
   - approvals
+  - releasereports
+  - releases
+  - syncs
   verbs:
   - create
   - delete
@@ -47,23 +69,14 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - batchruns
+  - artifacts
+  - gatepolicies
+  - gatetemplates
+  - pipelines
   verbs:
-  - create
-  - delete
   - get
   - list
-  - patch
-  - update
   - watch
-- apiGroups:
-  - kapro.io
-  resources:
-  - batchruns/status
-  verbs:
-  - get
-  - patch
-  - update
 - apiGroups:
   - kapro.io
   resources:
@@ -79,6 +92,7 @@ rules:
   - kapro.io
   resources:
   - bootstraptokens/finalizers
+  - syncs/finalizers
   verbs:
   - update
 - apiGroups:
@@ -91,134 +105,36 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - clusterregistrations
-  verbs:
-  - create
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
-  - artifacts
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
   - environments
   verbs:
   - get
   - list
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
-  - gatetemplates
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
-  - kagents
-  verbs:
-  - create
-  - delete
-  - get
-  - list
   - patch
   - update
   - watch
 - apiGroups:
   - kapro.io
   resources:
-  - kagents/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - kapro.io
-  resources:
-  - pipelines
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
+  - environments/status
   - pipelines/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - kapro.io
-  resources:
-  - progressionpolicies
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
-  - promotionpolicies
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
-  - promotions
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
-  - promotions/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - kapro.io
-  resources:
-  - releases
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
+  - releasereports/status
   - releases/status
+  - syncs/status
   verbs:
   - get
   - patch
   - update
+- apiGroups:
+  - kapro.io
+  resources:
+  - managedclusters
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
 - apiGroups:
   - rbac.authorization.k8s.io
   resources:
@@ -232,3 +148,26 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - certificates.k8s.io
+  resources:
+  - certificatesigningrequests
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+- apiGroups:
+  - certificates.k8s.io
+  resources:
+  - certificatesigningrequests/approval
+  verbs:
+  - update
+- apiGroups:
+  - certificates.k8s.io
+  resources:
+  - signers
+  resourceNames:
+  - kubernetes.io/kube-apiserver-client
+  verbs:
+  - approve

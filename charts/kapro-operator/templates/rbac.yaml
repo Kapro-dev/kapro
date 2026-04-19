@@ -19,18 +19,61 @@ metadata:
   labels:
     {{- include "kapro-operator.labels" . | nindent 4 }}
 rules:
-  - apiGroups: [kapro.io]
-    resources: [artifacts, environments, clusterregistrations, promotionpolicies, pipelines, releases, promotions, batchruns, approvals]
+  # Core resources
+  - apiGroups: [""]
+    resources: [secrets]
     verbs: [get, list, watch, create, update, patch, delete]
-  - apiGroups: [kapro.io]
-    resources: [releases/status, promotions/status, batchruns/status, environments/status, clusterregistrations/status]
-    verbs: [get, update, patch]
+  - apiGroups: [""]
+    resources: [serviceaccounts]
+    verbs: [get, list, watch, create, delete]
+  - apiGroups: [authentication.k8s.io]
+    resources: [serviceaccounts/token]
+    verbs: [create]
   - apiGroups: [""]
     resources: [events]
     verbs: [create, patch]
   - apiGroups: [coordination.k8s.io]
     resources: [leases]
     verbs: [get, list, watch, create, update, patch, delete]
+  # Kapro CRDs — full control
+  - apiGroups: [kapro.io]
+    resources: [approvals, releasereports, releases, syncs]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [kapro.io]
+    resources: [managedclusters]
+    verbs: [get, list, watch, create, update, patch]
+  - apiGroups: [kapro.io]
+    resources: [bootstraptokens]
+    verbs: [get, list, watch, update, patch, delete]
+  # Kapro CRDs — read-only
+  - apiGroups: [kapro.io]
+    resources: [artifacts, gatepolicies, gatetemplates, pipelines]
+    verbs: [get, list, watch]
+  - apiGroups: [kapro.io]
+    resources: [environments]
+    verbs: [get, list, watch, update, patch]
+  # Status + finalizers
+  - apiGroups: [kapro.io]
+    resources: [environments/status, pipelines/status, releasereports/status, releases/status, syncs/status, bootstraptokens/status]
+    verbs: [get, update, patch]
+  - apiGroups: [kapro.io]
+    resources: [bootstraptokens/finalizers, syncs/finalizers]
+    verbs: [update]
+  # Cluster-scoped RBAC (for per-cluster SA provisioning)
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [clusterroles, clusterrolebindings]
+    verbs: [get, list, watch, create, update, patch, delete]
+  # CSR approval (cluster registration bootstrap)
+  - apiGroups: [certificates.k8s.io]
+    resources: [certificatesigningrequests]
+    verbs: [get, list, watch, update]
+  - apiGroups: [certificates.k8s.io]
+    resources: [certificatesigningrequests/approval]
+    verbs: [update]
+  - apiGroups: [certificates.k8s.io]
+    resources: [signers]
+    resourceNames: ["kubernetes.io/kube-apiserver-client"]
+    verbs: [approve]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

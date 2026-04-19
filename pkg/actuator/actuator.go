@@ -5,13 +5,10 @@
 // or Pulumi — it calls the same three methods.
 //
 // Built-in implementations live in internal/actuator/:
-//   - flux/    — patches OCIRepository tag
-//   - argocd/  — patches Application.spec.source.targetRevision
-//   - helm/    — runs helm upgrade --set image.tag=VERSION
-//   - kserve/  — patches InferenceService.spec.predictor.model.storageUri
+//   - flux/ — patches OCIRepository tag + triggers Flux reconciliation
 //
-// External implementations register via PluginRegistration CRD and communicate
-// over proto/kapro/v1alpha1/actuator.proto (gRPC).
+// External implementations (ArgoCD, Helm, KServe) can implement this interface
+// and register via actuator.Registry at startup.
 package actuator
 
 import (
@@ -28,7 +25,7 @@ type ApplyRequest struct {
 	Version string
 	// PreviousVersion is the currently running version — for rollback tracking.
 	PreviousVersion string
-	// AppKey is the key used in ClusterRegistration.status.currentVersions.
+	// AppKey is the key used in ManagedCluster.status.currentVersions.
 	// Actuators must propagate this so the cluster-controller writes convergence
 	// state under the correct key. Defaults to "default" when empty.
 	AppKey string
@@ -45,9 +42,19 @@ type Actuator interface {
 
 	// IsConverged returns true when the delivery system confirms the target
 	// version is fully rolled out and all workloads are healthy.
-	IsConverged(ctx context.Context, env *kaprov1alpha1.Environment, version string) (bool, error)
+	//
+	// appKey identifies which application within the cluster to check — it is the
+	// key used in ManagedCluster.status.currentVersions. Pass "default" for single-app
+	// environments. This parameter makes the caller's intent explicit and symmetric
+	// with Apply(ApplyRequest{AppKey: ...}), removing the implicit coupling that existed
+	// when IsConverged had to re-read spec.desiredAppKey from the ManagedCluster itself.
+	//
+	// v0.2 change: appKey was added to this signature. Implementations that previously
+	// resolved appKey internally (e.g. reading ManagedCluster.spec.desiredAppKey) should
+	// now use the caller-supplied appKey directly.
+	IsConverged(ctx context.Context, env *kaprov1alpha1.Environment, version, appKey string) (bool, error)
 
 	// Rollback instructs the delivery system to revert to the given previous version.
-	// Called when PromotionPolicy.onFailure == rollback.
+	// Called when GatePolicy.onFailure == rollback.
 	Rollback(ctx context.Context, env *kaprov1alpha1.Environment, previousVersion string) error
 }

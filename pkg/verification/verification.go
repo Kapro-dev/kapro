@@ -7,7 +7,7 @@
 //   - cosign/ — sigstore/cosign v2, keyless + static-key + attestation
 //
 // External implementations (Notary, in-toto, TUF, enterprise PKI) register via
-// PluginRegistration CRD and communicate over proto/kapro/v1alpha1/verification.proto.
+// Implementations can use the Verifier interface and wire in at startup.
 //
 // The NopVerifier in this package skips all verification — for dev/test only.
 package verification

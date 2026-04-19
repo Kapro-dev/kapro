@@ -8,7 +8,7 @@
 //   - oras/ — oras.land/oras-go/v2 with cloud Workload Identity auto-detection
 //
 // External implementations (Crane, Skopeo, Harbor-native, ECR-native) register via
-// PluginRegistration CRD and communicate over proto/kapro/v1alpha1/oci.proto.
+// Implementations can use the OCI interface and wire in at startup.
 //
 // The NopOCIService in this package returns sensible no-op responses for testing.
 package oci

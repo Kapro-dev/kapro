@@ -1,32 +1,45 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"crypto/tls"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/pem"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"strings"
 	"time"
 
-	kustomizev1 "github.com/fluxcd/kustomize-controller/api/v1"
-	sourcev1 "github.com/fluxcd/source-controller/api/v1beta2"
+	certificatesv1 "k8s.io/api/certificates/v1"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	kustomizev1 "github.com/fluxcd/kustomize-controller/api/v1"
+	sourcev1 "github.com/fluxcd/source-controller/api/v1beta2"
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
-	"kapro.io/kapro/internal/registration"
+)
+
+const (
+	hubCredentialsSecret  = "kapro-hub-credentials"
+	credentialsCertKey    = "tls.crt"
+	credentialsKeyKey     = "tls.key"
+	spokeKaproNamespace   = "kapro-system"
+	certRenewalThreshold  = 30 * 24 * time.Hour
+	csrPollInterval       = 5 * time.Second
+	csrPollTimeout        = 5 * time.Minute
 )
 
 var scheme = runtime.NewScheme()
@@ -49,8 +62,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	controlPlaneURL := os.Getenv("KAPRO_CONTROL_PLANE_URL")
-	if controlPlaneURL == "" {
+	hubURL := os.Getenv("KAPRO_CONTROL_PLANE_URL")
+	if hubURL == "" {
 		log.Error(nil, "KAPRO_CONTROL_PLANE_URL env var required")
 		os.Exit(1)
 	}
@@ -60,15 +73,14 @@ func main() {
 		fluxNamespace = "flux-system"
 	}
 
-	caBundle := os.Getenv("KAPRO_CONTROL_PLANE_CA_BUNDLE")
+	hubCAData := decodeCABundle(os.Getenv("KAPRO_CONTROL_PLANE_CA_BUNDLE"))
 
 	log.Info("starting kapro-cluster-controller",
 		"environment", environmentRef,
-		"controlPlane", controlPlaneURL,
+		"controlPlane", hubURL,
 		"fluxNamespace", fluxNamespace,
 	)
 
-	// localClient reads Flux Kustomizations + OCIRepositories on this cluster.
 	localCfg := ctrl.GetConfigOrDie()
 	localClient, err := client.New(localCfg, client.Options{Scheme: scheme})
 	if err != nil {
@@ -78,66 +90,23 @@ func main() {
 
 	ctx := ctrl.SetupSignalHandler()
 
-	// Determine control plane token.
-	// Priority: KAPRO_BOOTSTRAP_TOKEN (exchange for SA token) > KAPRO_CONTROL_PLANE_TOKEN (direct) > dev mode
-	var controlPlaneToken string
-	var tokenExpiry time.Time
-
-	bootstrapToken := os.Getenv("KAPRO_BOOTSTRAP_TOKEN")
-	if bootstrapToken != "" {
-		log.Info("exchanging bootstrap token for SA token")
-		token, expiry, exchangeErr := exchangeBootstrapToken(ctx, controlPlaneURL, environmentRef, bootstrapToken, caBundle)
-		if exchangeErr != nil {
-			log.Error(exchangeErr, "bootstrap token exchange failed")
-			os.Exit(1)
-		}
-		controlPlaneToken = token
-		tokenExpiry = expiry
-		log.Info("bootstrap exchange successful", "expiresAt", tokenExpiry.Format(time.RFC3339))
-	} else {
-		controlPlaneToken = os.Getenv("KAPRO_CONTROL_PLANE_TOKEN")
-	}
-
-	// Build control plane client.
-	var cpClient client.Client
-	if controlPlaneToken != "" {
-		cpCfg := &rest.Config{
-			Host:        controlPlaneURL,
-			BearerToken: controlPlaneToken,
-		}
-		if caBundle != "" {
-			caCert, decodeErr := base64.StdEncoding.DecodeString(caBundle)
-			if decodeErr != nil {
-				log.Error(decodeErr, "invalid KAPRO_CONTROL_PLANE_CA_BUNDLE")
-				os.Exit(1)
-			}
-			cpCfg.TLSClientConfig = rest.TLSClientConfig{CAData: caCert}
-		}
-		cpClient, err = client.New(cpCfg, client.Options{Scheme: scheme})
-	} else {
-		log.Info("no control plane token — using local kubeconfig (dev mode)")
-		cpClient, err = client.New(ctrl.GetConfigOrDie(), client.Options{Scheme: scheme})
-	}
+	hubClient, err := loadOrBootstrapHubClient(ctx, localClient, environmentRef, hubURL, hubCAData)
 	if err != nil {
-		log.Error(err, "unable to create control plane client")
+		log.Error(err, "failed to bootstrap hub credentials")
 		os.Exit(1)
 	}
 
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	// Schedule token refresh 5 minutes before expiry.
-	var refreshTimer <-chan time.Time
-	if bootstrapToken != "" && !tokenExpiry.IsZero() {
-		refreshIn := time.Until(tokenExpiry) - 5*time.Minute
-		if refreshIn < 0 {
-			refreshIn = 0
-		}
-		refreshTimer = time.After(refreshIn)
-	}
+	renewTicker := time.NewTicker(time.Hour)
+	defer renewTicker.Stop()
 
-	// Run once immediately on startup.
-	if err := reconcile(ctx, localClient, cpClient, environmentRef, fluxNamespace); err != nil {
+	// renewResultCh receives a rebuilt hub client after background cert renewal.
+	// Buffered so the renewal goroutine never blocks if main loop is busy.
+	renewResultCh := make(chan client.Client, 1)
+
+	if err := reconcile(ctx, localClient, hubClient, environmentRef, fluxNamespace); err != nil {
 		log.Error(err, "initial reconcile failed")
 	}
 
@@ -146,145 +115,289 @@ func main() {
 		case <-ctx.Done():
 			log.Info("shutting down")
 			return
-		case <-refreshTimer:
-			log.Info("refreshing SA token before expiry")
-			token, expiry, refreshErr := exchangeBootstrapToken(ctx, controlPlaneURL, environmentRef, bootstrapToken, caBundle)
-			if refreshErr != nil {
-				log.Error(refreshErr, "token refresh failed — will retry in 30s")
-			} else {
-				controlPlaneToken = token
-				tokenExpiry = expiry
-				// Rebuild cpClient with new token.
-				cpCfg := &rest.Config{Host: controlPlaneURL, BearerToken: controlPlaneToken}
-				if caBundle != "" {
-					caCert, _ := base64.StdEncoding.DecodeString(caBundle)
-					cpCfg.TLSClientConfig = rest.TLSClientConfig{CAData: caCert}
-				}
-				if newClient, newErr := client.New(cpCfg, client.Options{Scheme: scheme}); newErr == nil {
-					cpClient = newClient
-				}
-				// Schedule next refresh.
-				refreshIn := time.Until(tokenExpiry) - 5*time.Minute
-				if refreshIn < 0 {
-					refreshIn = 30 * time.Second
-				}
-				refreshTimer = time.After(refreshIn)
+		case newHub := <-renewResultCh:
+			// Background renewal completed — swap in the new hub client.
+			hubClient = newHub
+			log.Info("cert renewed and hub client updated")
+		case <-renewTicker.C:
+			certPEM, keyPEM, loadErr := loadLocalCredentials(ctx, localClient)
+			if loadErr == nil && certExpiresSoon(certPEM) {
+				log.Info("cert expiring soon — renewing via CSR in background")
+				// Run renewal in a goroutine so heartbeats are never blocked.
+				go func(cp, kp []byte) {
+					newCertPEM, newKeyPEM, renewErr := renewWithCSR(ctx, hubURL, hubCAData, cp, kp, environmentRef)
+					if renewErr != nil {
+						log.Error(renewErr, "cert renewal failed — will retry next hour")
+						return
+					}
+					if storeErr := storeLocalCredentials(ctx, localClient, newCertPEM, newKeyPEM); storeErr != nil {
+						log.Error(storeErr, "failed to persist renewed credentials (non-fatal)")
+					}
+					hubCfg := buildHubConfig(hubURL, hubCAData, newCertPEM, newKeyPEM)
+					newHub, clientErr := client.New(hubCfg, client.Options{Scheme: scheme})
+					if clientErr != nil {
+						log.Error(clientErr, "failed to rebuild hub client after renewal")
+						return
+					}
+					renewResultCh <- newHub
+				}(certPEM, keyPEM)
 			}
 		case <-ticker.C:
-			if err := reconcile(ctx, localClient, cpClient, environmentRef, fluxNamespace); err != nil {
+			if err := reconcile(ctx, localClient, hubClient, environmentRef, fluxNamespace); err != nil {
 				log.Error(err, "reconcile failed")
 			}
 		}
 	}
 }
 
-// exchangeBootstrapToken POSTs the raw bootstrap token to /register and returns the issued SA token.
-func exchangeBootstrapToken(ctx context.Context, controlPlaneURL, clusterName, bootstrapToken, caBundle string) (string, time.Time, error) {
-	body, err := json.Marshal(registration.RegisterRequest{
-		ClusterName: clusterName,
-		Token:       bootstrapToken,
-	})
+// loadOrBootstrapHubClient returns a hub client backed by a valid mTLS cert.
+// If no cert exists locally → first bootstrap via KAPRO_BOOTSTRAP_KUBECONFIG_PATH.
+// If cert is expiring soon → renew via CSR using the existing cert.
+func loadOrBootstrapHubClient(ctx context.Context, localClient client.Client, envRef, hubURL string, hubCAData []byte) (client.Client, error) {
+	certPEM, keyPEM, err := loadLocalCredentials(ctx, localClient)
+	if err == nil && !certExpiresSoon(certPEM) {
+		return client.New(buildHubConfig(hubURL, hubCAData, certPEM, keyPEM), client.Options{Scheme: scheme})
+	}
+
+	var newCertPEM, newKeyPEM []byte
+	if err == nil {
+		// Cert found but expiring — renew using existing cert.
+		newCertPEM, newKeyPEM, err = renewWithCSR(ctx, hubURL, hubCAData, certPEM, keyPEM, envRef)
+	} else {
+		// No cert — first bootstrap via kubeconfig SA token.
+		newCertPEM, newKeyPEM, err = firstBootstrapWithCSR(ctx, envRef)
+	}
 	if err != nil {
-		return "", time.Time{}, fmt.Errorf("marshal request: %w", err)
+		return nil, err
 	}
 
-	httpClient := buildHTTPClient(caBundle)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, controlPlaneURL+"/register", bytes.NewReader(body))
-	if err != nil {
-		return "", time.Time{}, fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return "", time.Time{}, fmt.Errorf("registration request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return "", time.Time{}, fmt.Errorf("registration failed %d: %s", resp.StatusCode, string(bodyBytes))
+	if storeErr := storeLocalCredentials(ctx, localClient, newCertPEM, newKeyPEM); storeErr != nil {
+		ctrl.Log.Error(storeErr, "warning: failed to persist hub credentials (non-fatal)")
 	}
 
-	var regResp registration.RegisterResponse
-	if err := json.NewDecoder(resp.Body).Decode(&regResp); err != nil {
-		return "", time.Time{}, fmt.Errorf("decode response: %w", err)
-	}
-
-	expiresAt, _ := time.Parse(time.RFC3339, regResp.ExpiresAt)
-	return regResp.SAToken, expiresAt, nil
+	return client.New(buildHubConfig(hubURL, hubCAData, newCertPEM, newKeyPEM), client.Options{Scheme: scheme})
 }
 
-// buildHTTPClient builds an HTTP client with optional CA bundle for TLS verification.
-func buildHTTPClient(caBundle string) *http.Client {
-	if caBundle == "" {
-		return &http.Client{Timeout: 30 * time.Second}
+// firstBootstrapWithCSR submits a CSR using the bootstrap kubeconfig SA token (one-time).
+func firstBootstrapWithCSR(ctx context.Context, envRef string) (certPEM, keyPEM []byte, err error) {
+	kubeconfigPath := os.Getenv("KAPRO_BOOTSTRAP_KUBECONFIG_PATH")
+	if kubeconfigPath == "" {
+		return nil, nil, fmt.Errorf("KAPRO_BOOTSTRAP_KUBECONFIG_PATH is required for first-time bootstrap (no existing hub credentials found)")
 	}
-	caCert, err := base64.StdEncoding.DecodeString(caBundle)
+	bootstrapCfg, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
-		return &http.Client{Timeout: 30 * time.Second}
+		return nil, nil, fmt.Errorf("load bootstrap kubeconfig from %q: %w", kubeconfigPath, err)
 	}
-	pool := x509.NewCertPool()
-	pool.AppendCertsFromPEM(caCert)
-	return &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12},
+	return submitAndWaitForCSR(ctx, bootstrapCfg, envRef)
+}
+
+// renewWithCSR submits a CSR using the existing client cert for authentication.
+func renewWithCSR(ctx context.Context, hubURL string, hubCAData, certPEM, keyPEM []byte, envRef string) ([]byte, []byte, error) {
+	existingCfg := buildHubConfig(hubURL, hubCAData, certPEM, keyPEM)
+	return submitAndWaitForCSR(ctx, existingCfg, envRef)
+}
+
+// submitAndWaitForCSR generates an RSA-2048 key, submits a CSR to the hub,
+// and polls until the CSR is approved and a certificate is issued.
+func submitAndWaitForCSR(ctx context.Context, cfg *rest.Config, envRef string) (certPEM, keyPEM []byte, err error) {
+	log := ctrl.Log.WithName("csr-bootstrap")
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate private key: %w", err)
+	}
+
+	csrTemplate := &x509.CertificateRequest{
+		Subject: pkix.Name{
+			CommonName:   "kapro-cluster:" + envRef,
+			Organization: []string{"kapro:cluster-controllers"},
+		},
+	}
+	csrDER, err := x509.CreateCertificateRequest(rand.Reader, csrTemplate, privateKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create CSR template: %w", err)
+	}
+	csrPEMBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER})
+
+	csrName := fmt.Sprintf("kapro-cluster-%s-%d", strings.ToLower(envRef), time.Now().UnixMilli())
+
+	kubeClient, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("build kube client for CSR: %w", err)
+	}
+
+	csr := &certificatesv1.CertificateSigningRequest{
+		ObjectMeta: metav1.ObjectMeta{Name: csrName},
+		Spec: certificatesv1.CertificateSigningRequestSpec{
+			Request:    csrPEMBytes,
+			SignerName: "kubernetes.io/kube-apiserver-client",
+			Usages:     []certificatesv1.KeyUsage{certificatesv1.UsageClientAuth},
+		},
+	}
+	if _, err := kubeClient.CertificatesV1().CertificateSigningRequests().Create(ctx, csr, metav1.CreateOptions{}); err != nil {
+		return nil, nil, fmt.Errorf("create CSR %q: %w", csrName, err)
+	}
+
+	log.Info("CSR submitted, waiting for hub approval", "csr", csrName, "cluster", envRef)
+
+	deadline := time.Now().Add(csrPollTimeout)
+	for {
+		if time.Now().After(deadline) {
+			return nil, nil, fmt.Errorf("CSR %q not approved within %v — check hub BootstrapToken and CSR approval controller", csrName, csrPollTimeout)
+		}
+		select {
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		case <-time.After(csrPollInterval):
+		}
+
+		approved, pollErr := kubeClient.CertificatesV1().CertificateSigningRequests().Get(ctx, csrName, metav1.GetOptions{})
+		if pollErr != nil {
+			log.Error(pollErr, "polling CSR (will retry)", "csr", csrName)
+			continue
+		}
+		for _, c := range approved.Status.Conditions {
+			if c.Type == certificatesv1.CertificateDenied {
+				return nil, nil, fmt.Errorf("CSR %q denied: %s", csrName, c.Message)
+			}
+		}
+		if len(approved.Status.Certificate) == 0 {
+			continue
+		}
+
+		keyPEM = pem.EncodeToMemory(&pem.Block{
+			Type:  "RSA PRIVATE KEY",
+			Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+		})
+		log.Info("CSR approved, certificate issued", "csr", csrName)
+		return approved.Status.Certificate, keyPEM, nil
+	}
+}
+
+// loadLocalCredentials reads the hub mTLS cert+key from the local spoke cluster.
+func loadLocalCredentials(ctx context.Context, localClient client.Client) (certPEM, keyPEM []byte, err error) {
+	var secret corev1.Secret
+	if err := localClient.Get(ctx, types.NamespacedName{
+		Namespace: spokeKaproNamespace,
+		Name:      hubCredentialsSecret,
+	}, &secret); err != nil {
+		return nil, nil, err
+	}
+	certPEM = secret.Data[credentialsCertKey]
+	keyPEM = secret.Data[credentialsKeyKey]
+	if len(certPEM) == 0 || len(keyPEM) == 0 {
+		return nil, nil, fmt.Errorf("credentials secret %s/%s is missing cert or key", spokeKaproNamespace, hubCredentialsSecret)
+	}
+	return certPEM, keyPEM, nil
+}
+
+// storeLocalCredentials saves the hub mTLS cert+key to a local Secret on the spoke.
+func storeLocalCredentials(ctx context.Context, localClient client.Client, certPEM, keyPEM []byte) error {
+	secret := &corev1.Secret{}
+	err := localClient.Get(ctx, types.NamespacedName{
+		Namespace: spokeKaproNamespace,
+		Name:      hubCredentialsSecret,
+	}, secret)
+
+	if apierrors.IsNotFound(err) {
+		return localClient.Create(ctx, &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      hubCredentialsSecret,
+				Namespace: spokeKaproNamespace,
+				Labels:    map[string]string{"kapro.io/role": "hub-credentials"},
+			},
+			Data: map[string][]byte{
+				credentialsCertKey: certPEM,
+				credentialsKeyKey:  keyPEM,
+			},
+		})
+	}
+	if err != nil {
+		return err
+	}
+	patch := client.MergeFrom(secret.DeepCopy())
+	if secret.Data == nil {
+		secret.Data = map[string][]byte{}
+	}
+	secret.Data[credentialsCertKey] = certPEM
+	secret.Data[credentialsKeyKey] = keyPEM
+	return localClient.Patch(ctx, secret, patch)
+}
+
+// certExpiresSoon returns true if the certificate in certPEM expires within certRenewalThreshold.
+func certExpiresSoon(certPEM []byte) bool {
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return true
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return true
+	}
+	return time.Until(cert.NotAfter) < certRenewalThreshold
+}
+
+// buildHubConfig constructs a rest.Config for mTLS connections to the hub kube-apiserver.
+func buildHubConfig(hubURL string, hubCAData, certPEM, keyPEM []byte) *rest.Config {
+	return &rest.Config{
+		Host: hubURL,
+		TLSClientConfig: rest.TLSClientConfig{
+			CAData:   hubCAData,
+			CertData: certPEM,
+			KeyData:  keyPEM,
 		},
 	}
 }
 
-// reconcile is the main loop tick:
-//  1. Read ClusterRegistration from control plane.
-//  2. If spec.desiredVersion has changed → patch local OCIRepository tag.
-//  3. Read local Flux status → derive cluster phase.
-//  4. Write status back to control plane.
+// decodeCABundle accepts either a raw PEM string or a base64-encoded PEM string.
+func decodeCABundle(caBundle string) []byte {
+	if caBundle == "" {
+		return nil
+	}
+	if strings.HasPrefix(caBundle, "-----") {
+		return []byte(caBundle)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(caBundle)
+	if err != nil {
+		return []byte(caBundle)
+	}
+	return decoded
+}
+
+// reconcile is the main heartbeat tick:
+//  1. GET ManagedCluster from hub to read desired state.
+//  2. Read local Flux state (OCIRepository + Kustomization status).
+//  3. PATCH ManagedCluster/status on hub with current state.
+//  4. Apply desired version to local OCIRepository if it has changed.
 func reconcile(
 	ctx context.Context,
-	localClient client.Client,
-	cpClient client.Client,
-	environmentRef string,
-	fluxNamespace string,
+	localClient, hubClient client.Client,
+	environmentRef, fluxNamespace string,
 ) error {
 	log := ctrl.Log.WithName("reconcile").WithValues("env", environmentRef)
 
-	// ── 1. Ensure ClusterRegistration exists on control plane ──────────────────
-	var reg kaprov1alpha1.ClusterRegistration
-	if err := cpClient.Get(ctx, types.NamespacedName{Name: environmentRef}, &reg); err != nil {
-		reg = kaprov1alpha1.ClusterRegistration{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: environmentRef,
-				Labels: map[string]string{
-					"kapro.io/environment": environmentRef,
-				},
-			},
-			Spec: kaprov1alpha1.ClusterRegistrationSpec{
-				EnvironmentRef: environmentRef,
-			},
-		}
-		if createErr := cpClient.Create(ctx, &reg); createErr != nil {
-			return fmt.Errorf("create ClusterRegistration: %w", createErr)
-		}
-		log.Info("created ClusterRegistration")
+	// 1. GET ManagedCluster from hub.
+	var mc kaprov1alpha1.ManagedCluster
+	if err := hubClient.Get(ctx, types.NamespacedName{Name: environmentRef}, &mc); err != nil {
+		return fmt.Errorf("get ManagedCluster %q from hub: %w", environmentRef, err)
 	}
 
-	// ── 2. Read the Environment to get the OCIRepository name ──────────────────
-	var env kaprov1alpha1.Environment
-	ociRepoName := environmentRef
-	if err := cpClient.Get(ctx, types.NamespacedName{Name: environmentRef}, &env); err == nil {
-		if env.Spec.Actuator.Flux != nil && env.Spec.Actuator.Flux.OCIRepository != "" {
-			ociRepoName = env.Spec.Actuator.Flux.OCIRepository
-		}
+	desiredVersion := mc.Spec.DesiredVersion
+	appKey := mc.Spec.DesiredAppKey
+	if appKey == "" {
+		appKey = "default"
 	}
 
-	// ── 3. Read local OCIRepository for current tag ────────────────────────────
+	// 2. Read local OCIRepository (name = EnvironmentRef, or environmentRef as fallback).
+	ociRepoName := mc.Spec.EnvironmentRef
+	if ociRepoName == "" {
+		ociRepoName = environmentRef
+	}
+
 	var ociRepo sourcev1.OCIRepository
 	currentRef := ""
 	ociFound := false
-	if err := localClient.Get(ctx, types.NamespacedName{
-		Name:      ociRepoName,
-		Namespace: fluxNamespace,
-	}, &ociRepo); err == nil {
+	if err := localClient.Get(ctx, types.NamespacedName{Name: ociRepoName, Namespace: fluxNamespace}, &ociRepo); err == nil {
 		ociFound = true
 		if ociRepo.Spec.Reference != nil {
 			if ociRepo.Spec.Reference.Digest != "" {
@@ -295,71 +408,65 @@ func reconcile(
 		}
 	}
 
-	// ── 4. Apply desired version if it has changed ─────────────────────────────
-	desiredVersion := reg.Spec.DesiredVersion
-	if ociFound && desiredVersion != "" && desiredVersion != currentRef {
-		log.Info("desired version differs from current ref — patching OCIRepository",
-			"ociRepo", ociRepoName,
-			"current", currentRef,
-			"desired", desiredVersion,
-		)
-		if err := patchOCIRepositoryTag(ctx, localClient, &ociRepo, fluxNamespace, desiredVersion); err != nil {
-			return fmt.Errorf("patch OCIRepository tag: %w", err)
-		}
-		_ = localClient.Get(ctx, types.NamespacedName{Name: ociRepoName, Namespace: fluxNamespace}, &ociRepo)
-		if ociRepo.Spec.Reference != nil {
-			if ociRepo.Spec.Reference.Digest != "" {
-				currentRef = ociRepo.Spec.Reference.Digest
-			} else {
-				currentRef = ociRepo.Spec.Reference.Tag
-			}
-		}
-	}
-
-	// ── 5. Read Flux Kustomization status ──────────────────────────────────────
+	// 3. Read Flux Kustomization health.
 	var ksList kustomizev1.KustomizationList
 	_ = localClient.List(ctx, &ksList, client.InNamespace(fluxNamespace))
 
 	fluxReady := true
 	fluxVersion := ""
+	readyCount, failedCount, totalCount := 0, 0, 0
 	for _, ks := range ksList.Items {
+		totalCount++
+		isReady := true
 		for _, cond := range ks.Status.Conditions {
 			if cond.Type == "Ready" && cond.Status != metav1.ConditionTrue {
 				fluxReady = false
+				isReady = false
 				break
 			}
+		}
+		if isReady {
+			readyCount++
+		} else {
+			failedCount++
 		}
 		if fluxVersion == "" && ks.Status.LastAppliedRevision != "" {
 			fluxVersion = ks.Status.LastAppliedRevision
 		}
 	}
 
-	// ── 6. Derive cluster phase ────────────────────────────────────────────────
+	// 4. PATCH ManagedCluster/status on hub.
 	phase := derivePhase(fluxReady, currentRef, desiredVersion)
-
-	// ── 7. Write status to control plane ──────────────────────────────────────
-	// Use DesiredAppKey so convergence checks in the operator use the same key.
-	// Default to "default" when not set — never hardcode an app name.
-	appKey := reg.Spec.DesiredAppKey
-	if appKey == "" {
-		appKey = "default"
+	statusPatch := client.MergeFrom(mc.DeepCopy())
+	mc.Status.LastHeartbeat = metav1.Now().UTC().Format(time.RFC3339)
+	mc.Status.Phase = phase
+	mc.Status.DeliverySystem = "flux"
+	if mc.Status.CurrentVersions == nil {
+		mc.Status.CurrentVersions = map[string]string{}
 	}
-	patch := client.MergeFrom(reg.DeepCopy())
-	now := metav1.Now()
-	reg.Status.LastHeartbeat = now.UTC().Format(time.RFC3339)
-	reg.Status.Health = kaprov1alpha1.ClusterHealth{
+	mc.Status.CurrentVersions[appKey] = currentRef
+	mc.Status.Health = kaprov1alpha1.ClusterHealth{
 		AllWorkloadsReady: fluxReady,
+		ReadyWorkloads:    readyCount,
+		FailedWorkloads:   failedCount,
+		TotalWorkloads:    totalCount,
 		Message:           fmt.Sprintf("FluxVersion=%s", fluxVersion),
 	}
-	reg.Status.DeliverySystem = "flux"
-	if reg.Status.CurrentVersions == nil {
-		reg.Status.CurrentVersions = make(map[string]string)
-	}
-	reg.Status.CurrentVersions[appKey] = currentRef
-	reg.Status.Phase = phase
 
-	if patchErr := cpClient.Status().Patch(ctx, &reg, patch); patchErr != nil {
-		return fmt.Errorf("patch ClusterRegistration status: %w", patchErr)
+	if err := hubClient.Status().Patch(ctx, &mc, statusPatch); err != nil {
+		return fmt.Errorf("patch ManagedCluster status: %w", err)
+	}
+
+	// 5. Apply desired version if it has changed.
+	if ociFound && desiredVersion != "" && desiredVersion != currentRef {
+		log.Info("desired version differs from current ref — patching OCIRepository",
+			"ociRepo", ociRepoName,
+			"current", currentRef,
+			"desired", desiredVersion,
+		)
+		if err := patchOCIRepositoryTag(ctx, localClient, &ociRepo, desiredVersion); err != nil {
+			return fmt.Errorf("patch OCIRepository %q: %w", ociRepoName, err)
+		}
 	}
 
 	log.Info("heartbeat written",
@@ -372,16 +479,12 @@ func reconcile(
 	return nil
 }
 
-// patchOCIRepositoryTag sets OCIRepository.spec.reference and annotates
-// with reconcile.fluxcd.io/requestedAt to force an immediate Flux reconciliation.
-// If version contains "@sha256:", it is treated as a digest reference and
-// OCIRepository.spec.reference.digest is set (not .tag) — preserving the
-// immutability guarantee from the Artifact CR.
+// patchOCIRepositoryTag sets the OCIRepository reference and forces an immediate Flux reconciliation.
+// If version contains "@sha256:", it is treated as a digest reference.
 func patchOCIRepositoryTag(
 	ctx context.Context,
 	localClient client.Client,
 	ociRepo *sourcev1.OCIRepository,
-	_ string,
 	version string,
 ) error {
 	patch := client.MergeFrom(ociRepo.DeepCopy())
@@ -389,8 +492,6 @@ func patchOCIRepositoryTag(
 		ociRepo.Spec.Reference = &sourcev1.OCIRepositoryRef{}
 	}
 	if idx := strings.Index(version, "@sha256:"); idx != -1 {
-		// Digest reference: registry.io/repo@sha256:abc123
-		// Set .digest and clear .tag so Flux pins by digest, not mutable tag.
 		ociRepo.Spec.Reference.Digest = version[idx+1:] // "sha256:..."
 		ociRepo.Spec.Reference.Tag = ""
 	} else {
@@ -414,3 +515,4 @@ func derivePhase(fluxReady bool, currentRef, desiredVersion string) kaprov1alpha
 	}
 	return kaprov1alpha1.ClusterPhaseConverged
 }
+

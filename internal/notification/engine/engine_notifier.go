@@ -2,7 +2,7 @@
 // events to 15+ providers (Slack, Teams, PagerDuty, OpsGenie, Webhook, etc.).
 //
 // Provider credentials live in a K8s Secret (default: kapro-notifications-secret).
-// Channel destinations still come from PromotionPolicy.spec.notifications, keeping
+// Channel destinations still come from GatePolicy.spec.notifications, keeping
 // the policy as the single source of truth for *where* to notify.
 //
 // Secret key convention:
@@ -33,7 +33,6 @@ import (
 
 	"github.com/argoproj/notifications-engine/pkg/services"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	"kapro.io/kapro/pkg/notification"
 )
 
@@ -68,11 +67,11 @@ type Notifier struct {
 // compile-time check: Notifier must satisfy notification.Notifier.
 var _ notification.Notifier = &Notifier{}
 
-// Notify fans out the event to all channels configured in the policy.
+// Notify fans out the event to all channels in the NotificationPolicy.
 // It spawns goroutines for each provider and never blocks the caller.
 // All errors are logged; none propagate.
-func (n *Notifier) Notify(ctx context.Context, event notification.Event, policy *kaprov1alpha1.PromotionPolicy) {
-	if policy == nil || len(policy.Spec.Notifications) == 0 {
+func (n *Notifier) Notify(ctx context.Context, event notification.Event, policy notification.NotificationPolicy) {
+	if len(policy.Channels) == 0 {
 		return
 	}
 
@@ -86,45 +85,42 @@ func (n *Notifier) Notify(ctx context.Context, event notification.Event, policy 
 
 	msg := buildMessage(event)
 
-	for _, spec := range policy.Spec.Notifications {
-		spec := spec // capture for goroutine
+	for _, ch := range policy.Channels {
+		ch := ch // capture for goroutine
 		go func() {
 			sendCtx, cancel := context.WithTimeout(context.Background(), sendTimeout)
 			defer cancel()
 
-			if err := dispatch(sendCtx, spec, secretData, msg, event); err != nil {
+			if err := dispatch(sendCtx, ch, secretData, msg, event); err != nil {
 				logger.Error(fmt.Errorf("notification: %w", err),
-					"provider send failed", "type", spec.Type)
+					"provider send failed", "type", ch.Type)
 			} else {
-				logger.Info("notification sent", "type", spec.Type, "phase", event.Phase)
+				logger.Info("notification sent", "type", ch.Type, "phase", event.Phase)
 			}
 		}()
 	}
 }
 
-// dispatch routes a single NotificationSpec to the appropriate engine service.
-func dispatch(ctx context.Context, spec kaprov1alpha1.NotificationSpec, secret map[string]string, msg string, event notification.Event) error {
+// dispatch routes a single Channel to the appropriate engine service.
+func dispatch(ctx context.Context, ch notification.Channel, secret map[string]string, msg string, event notification.Event) error {
 	notif := services.Notification{Message: msg}
 
-	switch spec.Type {
+	switch ch.Type {
 	case "slack":
 		token := secret["slack-token"]
 		if token == "" {
 			return fmt.Errorf("slack-token not found in notifications secret")
 		}
-		svc := services.NewSlackService(services.SlackOptions{
-			Token: token,
-		})
-		dest := services.Destination{Service: "slack", Recipient: spec.Channel}
-		return svc.Send(notif, dest)
+		svc := services.NewSlackService(services.SlackOptions{Token: token})
+		return svc.Send(notif, services.Destination{Service: "slack", Recipient: ch.Target})
 
 	case "teams":
-		url := spec.URL
+		url := ch.Target
 		if url == "" {
 			url = secret["teams-webhook"]
 		}
 		if url == "" {
-			return fmt.Errorf("teams notification requires spec.url or teams-webhook in secret")
+			return fmt.Errorf("teams notification requires channel.target or teams-webhook in secret")
 		}
 		svc := services.NewTeamsService(services.TeamsOptions{
 			RecipientUrls: map[string]string{"default": url},
@@ -132,27 +128,26 @@ func dispatch(ctx context.Context, spec kaprov1alpha1.NotificationSpec, secret m
 		return svc.Send(notif, services.Destination{Service: "teams", Recipient: "default"})
 
 	case "webhook":
-		url := spec.URL
-		if url == "" {
-			return fmt.Errorf("webhook notification requires spec.url")
+		if ch.Target == "" {
+			return fmt.Errorf("webhook notification requires a target URL")
 		}
-		svc := services.NewWebhookService(services.WebhookOptions{URL: url})
+		svc := services.NewWebhookService(services.WebhookOptions{URL: ch.Target})
 		return svc.Send(notif, services.Destination{Service: "webhook", Recipient: ""})
 
 	case "email":
-		if spec.Email == nil {
-			return fmt.Errorf("email notification requires spec.email configuration")
+		if ch.Email == nil {
+			return fmt.Errorf("email notification requires EmailConfig")
 		}
-		return sendEmail(ctx, spec.Email, secret, event)
+		return sendEmailFromConfig(ctx, ch.Email, secret, event)
 
 	case "pagerduty":
 		token := secret["pagerduty-token"]
 		if token == "" {
 			return fmt.Errorf("pagerduty-token not found in notifications secret")
 		}
-		serviceID := spec.Channel
+		serviceID := ch.Target
 		if serviceID == "" {
-			return fmt.Errorf("pagerduty notification requires spec.channel (PagerDuty service ID)")
+			return fmt.Errorf("pagerduty notification requires channel.target (PagerDuty service ID)")
 		}
 		svc := services.NewPagerdutyService(services.PagerdutyOptions{
 			Token:     token,
@@ -174,7 +169,7 @@ func dispatch(ctx context.Context, spec kaprov1alpha1.NotificationSpec, secret m
 		if apiKey == "" {
 			return fmt.Errorf("opsgenie-api-key not found in notifications secret")
 		}
-		team := spec.Channel
+		team := ch.Target
 		if team == "" {
 			team = "default"
 		}
@@ -192,7 +187,7 @@ func dispatch(ctx context.Context, spec kaprov1alpha1.NotificationSpec, secret m
 		return svc.Send(notif, services.Destination{Service: "opsgenie", Recipient: team})
 
 	default:
-		return fmt.Errorf("unknown notification type %q", spec.Type)
+		return fmt.Errorf("unknown notification type %q", ch.Type)
 	}
 }
 
@@ -241,17 +236,18 @@ func buildMessage(e notification.Event) string {
 	return msg
 }
 
-// sendEmail delivers an HTML approval email via SMTP.
-// Reads SMTP config from the secret referenced in spec.email.smtpSecretRef.
+// sendEmailFromConfig delivers an HTML approval email via SMTP.
+// SMTP host/port/credentials come from the Secret named by cfg.SMTPSecretRef
+// (already loaded into secret map by loadSecret). Email addresses come from cfg.
 // Secret keys: host, port (default 587), username, password, from, tls (optional "true").
-func sendEmail(ctx context.Context, spec *kaprov1alpha1.EmailNotifierSpec, secret map[string]string, event notification.Event) error {
-	if len(spec.To) == 0 {
+func sendEmailFromConfig(ctx context.Context, cfg *notification.EmailConfig, secret map[string]string, event notification.Event) error {
+	if len(cfg.To) == 0 {
 		return fmt.Errorf("email: no recipients configured")
 	}
 
 	host := secret["host"]
 	if host == "" {
-		return fmt.Errorf("email: 'host' key missing from SMTP secret")
+		return fmt.Errorf("email: 'host' key missing from SMTP secret %q", cfg.SMTPSecretRef)
 	}
 	port := secret["port"]
 	if port == "" {
@@ -259,7 +255,7 @@ func sendEmail(ctx context.Context, spec *kaprov1alpha1.EmailNotifierSpec, secre
 	}
 	username := secret["username"]
 	password := secret["password"]
-	from := spec.From
+	from := cfg.From
 	if from == "" {
 		from = secret["from"]
 	}
@@ -272,7 +268,7 @@ func sendEmail(ctx context.Context, spec *kaprov1alpha1.EmailNotifierSpec, secre
 
 	var buf bytes.Buffer
 	buf.WriteString("From: " + from + "\r\n")
-	buf.WriteString("To: " + joinStrings(spec.To, ", ") + "\r\n")
+	buf.WriteString("To: " + joinStrings(cfg.To, ", ") + "\r\n")
 	buf.WriteString("Subject: " + subject + "\r\n")
 	buf.WriteString("MIME-Version: 1.0\r\n")
 	buf.WriteString("Content-Type: text/html; charset=UTF-8\r\n")
@@ -303,11 +299,11 @@ func sendEmail(ctx context.Context, spec *kaprov1alpha1.EmailNotifierSpec, secre
 				return fmt.Errorf("email: SMTP auth: %w", err)
 			}
 		}
-		return smtpSend(c, from, spec.To, buf.Bytes())
+		return smtpSend(c, from, cfg.To, buf.Bytes())
 	}
 
 	// STARTTLS (port 587) — standard corporate relay
-	return smtp.SendMail(addr, auth, from, spec.To, buf.Bytes())
+	return smtp.SendMail(addr, auth, from, cfg.To, buf.Bytes())
 }
 
 func smtpSend(c *smtp.Client, from string, to []string, msg []byte) error {

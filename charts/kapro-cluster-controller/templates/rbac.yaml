@@ -1,0 +1,38 @@
+# ClusterRole grants the cluster-controller read access to Flux resources
+# needed to report health and current versions back to the hub.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kapro-cluster-controller.fullname" . }}
+  labels:
+    {{- include "kapro-cluster-controller.labels" . | nindent 4 }}
+rules:
+  # Read Flux delivery resources to determine convergence status.
+  - apiGroups: [source.toolkit.fluxcd.io]
+    resources: [ocirepositories, helmrepositories, gitrepositories]
+    verbs: [get, list, watch]
+  - apiGroups: [kustomize.toolkit.fluxcd.io]
+    resources: [kustomizations]
+    verbs: [get, list, watch]
+  - apiGroups: [helm.toolkit.fluxcd.io]
+    resources: [helmreleases]
+    verbs: [get, list, watch]
+  # Read pod/node health for health check reporting.
+  - apiGroups: [""]
+    resources: [pods, nodes]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kapro-cluster-controller.fullname" . }}
+  labels:
+    {{- include "kapro-cluster-controller.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kapro-cluster-controller.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kapro-cluster-controller.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}

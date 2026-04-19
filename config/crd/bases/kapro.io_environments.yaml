@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: environments.kapro.io
 spec:
   group: kapro.io
@@ -31,9 +31,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Environment represents one cluster managed by Kapro.
+          Environment represents one cluster in the fleet managed by Kapro.
           Clusters can be GKE, EKS, AKS, OpenShift, on-prem, or any Kubernetes distribution.
-          Labels on Environment are arbitrary — tier, region, cloud, wave, customer, etc.
+          Labels on Environment drive stage selection — tier, region, wave, cloud, etc.
         properties:
           apiVersion:
             description: |-
@@ -56,6 +56,10 @@ spec:
             description: EnvironmentSpec defines the desired state of Environment.
             properties:
               actuator:
+                description: |-
+                  ActuatorSpec selects and configures the delivery backend for this Environment.
+                  MVP ships Flux only. Additional actuators (ArgoCD, Sveltos) can be registered
+                  at startup via actuator.Registry without changing this type.
                 properties:
                   flux:
                     properties:
@@ -73,9 +77,6 @@ spec:
                   type:
                     enum:
                     - flux
-                    - argocd
-                    - sveltos
-                    - ocm
                     type: string
                 required:
                 - type
@@ -90,6 +91,189 @@ spec:
                 - endpoint
                 - interval
                 type: object
+              provider:
+                description: Provider configures how Kapro discovers and connects
+                  to the workload cluster.
+                properties:
+                  aks:
+                    description: 'AKS configures AKS Managed Identity direct-connect
+                      (type: aks, v0.4).'
+                    properties:
+                      clientID:
+                        description: ClientID is the Managed Identity client ID. Uses
+                          system-assigned identity when empty.
+                        type: string
+                      clusterName:
+                        description: ClusterName is the AKS cluster name.
+                        type: string
+                      resourceGroup:
+                        description: ResourceGroup is the Azure resource group containing
+                          the AKS cluster.
+                        type: string
+                      subscriptionID:
+                        description: SubscriptionID is the Azure subscription UUID.
+                        type: string
+                      tenantID:
+                        description: TenantID is the Azure AD tenant ID.
+                        type: string
+                    required:
+                    - clusterName
+                    - resourceGroup
+                    - subscriptionID
+                    type: object
+                  digitalOcean:
+                    description: 'DigitalOcean configures DOKS direct-connect (type:
+                      digitalocean, v0.4).'
+                    properties:
+                      clusterID:
+                        description: |-
+                          ClusterID is the DigitalOcean Kubernetes cluster UUID.
+                          Find it at cloud.digitalocean.com/kubernetes or `doctl kubernetes cluster list`.
+                        type: string
+                      region:
+                        description: |-
+                          Region is the DigitalOcean region slug (e.g. nyc1, fra1, ams3).
+                          Used for topology metadata only.
+                        type: string
+                      tokenSecretRef:
+                        description: |-
+                          TokenSecretRef names a Secret in kapro-system containing the DigitalOcean
+                          API token under key "token".
+                        type: string
+                    required:
+                    - clusterID
+                    - tokenSecretRef
+                    type: object
+                  eks:
+                    description: 'EKS configures EKS IRSA direct-connect (type: eks,
+                      v0.3).'
+                    properties:
+                      accountID:
+                        description: AccountID is the AWS account ID. Used for audit
+                          logging.
+                        type: string
+                      clusterName:
+                        description: ClusterName is the EKS cluster name.
+                        type: string
+                      region:
+                        description: Region is the AWS region (e.g. us-east-1, eu-west-1).
+                        type: string
+                      roleARN:
+                        description: |-
+                          RoleARN is the IAM role Kapro assumes via IRSA.
+                          Format: arn:aws:iam::ACCOUNT_ID:role/ROLE_NAME
+                        type: string
+                    required:
+                    - clusterName
+                    - region
+                    type: object
+                  gke:
+                    description: 'GKE configures GKE Workload Identity direct-connect
+                      (type: gke, v0.3).'
+                    properties:
+                      clusterName:
+                        description: ClusterName is the GKE cluster name as shown
+                          in the GCP console.
+                        type: string
+                      location:
+                        description: Location is the cluster region (e.g. europe-west1)
+                          or zone (e.g. europe-west1-b).
+                        type: string
+                      project:
+                        description: Project is the GCP project ID (not project number).
+                        type: string
+                      serviceAccountRef:
+                        description: |-
+                          ServiceAccountRef names the hub K8s SA annotated with
+                          iam.gke.io/gcp-service-account. Defaults to the kapro-operator SA.
+                        type: string
+                      workloadIdentityPool:
+                        description: |-
+                          WorkloadIdentityPool is the GCP Workload Identity pool for this hub.
+                          Format: PROJECT_ID.svc.id.goog
+                        type: string
+                    required:
+                    - clusterName
+                    - location
+                    - project
+                    type: object
+                  stackit:
+                    description: 'StackIT configures SKE direct-connect (type: stackit,
+                      v0.4).'
+                    properties:
+                      clusterName:
+                        description: ClusterName is the SKE cluster name.
+                        type: string
+                      projectID:
+                        description: ProjectID is the STACKIT project UUID.
+                        type: string
+                      region:
+                        description: Region is the STACKIT region slug (e.g. eu01).
+                        type: string
+                      serviceAccountKeySecretRef:
+                        description: |-
+                          ServiceAccountKeySecretRef names a Secret in kapro-system containing a
+                          STACKIT Service Account key JSON under key "key.json".
+                        type: string
+                    required:
+                    - clusterName
+                    - projectID
+                    - region
+                    - serviceAccountKeySecretRef
+                    type: object
+                  type:
+                    description: |-
+                      Type selects the connectivity backend.
+
+                      ""  or "crd"    → CRD outbound path (default, all clouds, air-gap)
+                      "gke"           → GKE Workload Identity + Connect Gateway (v0.3)
+                      "eks"           → EKS IRSA + STS AssumeRoleWithWebIdentity (v0.3)
+                      "aks"           → AKS Managed Identity + AAD OIDC federation (v0.4)
+                      "digitalocean"  → DigitalOcean API token in Secret (v0.4)
+                      "stackit"       → StackIT Service Account key in Secret (v0.4)
+                    enum:
+                    - ""
+                    - crd
+                    - gke
+                    - eks
+                    - aks
+                    - digitalocean
+                    - stackit
+                    type: string
+                type: object
+              topology:
+                description: |-
+                  Topology holds hardware and scheduling metadata for this Environment.
+                  Used by Pipeline stage selectors for GPU-aware promotion waves.
+                properties:
+                  accelerator:
+                    description: |-
+                      Accelerator is the GPU/accelerator type in this cluster.
+                      Well-known values: nvidia-h100, nvidia-a100, nvidia-l40s, amd-mi300x, tpu-v5e.
+                    type: string
+                  gpuCount:
+                    description: GPUCount is the total number of GPU devices across
+                      all nodes in this cluster.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  gpuMemoryGb:
+                    description: GPUMemoryGB is the memory per GPU device in gigabytes
+                      (e.g. 80 for H100 SXM).
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  nodeCount:
+                    description: NodeCount is the number of GPU nodes (not total devices).
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  tier:
+                    description: |-
+                      Tier classifies the cluster's role in the delivery wave.
+                      Well-known values: canary, shadow, prod.
+                    type: string
+                type: object
             required:
             - actuator
             type: object
@@ -98,6 +282,9 @@ spec:
             properties:
               activeRelease:
                 type: string
+              observedGeneration:
+                format: int64
+                type: integer
               phase:
                 type: string
             type: object
