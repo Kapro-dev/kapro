@@ -4,7 +4,7 @@ OPERATOR_IMG    ?= $(REGISTRY)/kapro-operator:latest
 CC_IMG          ?= $(REGISTRY)/kapro-cluster-controller:latest
 
 # Tool versions
-CONTROLLER_GEN_VERSION ?= v0.14.0
+CONTROLLER_GEN_VERSION ?= v0.17.0
 ENVTEST_VERSION        ?= release-0.17
 GOLANGCI_LINT_VERSION  ?= v1.57.2
 

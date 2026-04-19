@@ -7,7 +7,7 @@ import (
 // Registry resolves KCI (Kapro Cluster Interface) Connector implementations
 // by provider type name.
 //
-// Type names match Environment.spec.provider.type (e.g. "gke", "eks", "aks").
+// Type names match Environment.spec.provider.type (e.g. "gke", "aks").
 // The registry is the runtime dispatch table between the connectivity backend
 // declared in an Environment and the Connector implementation that handles it.
 //
@@ -42,7 +42,7 @@ type Registry struct {
 
 // NewRegistry returns a new, empty provider Registry.
 // In MVP, no connectors are registered — all environments use the CRD path.
-// Cloud connectors (gke, eks, aks, digitalocean, stackit) are registered in v0.3+.
+// Cloud connectors (gke, aks, digitalocean, stackit) are registered in v0.3+.
 func NewRegistry() *Registry {
 	return &Registry{Registry: pkgregistry.New[Connector]("provider")}
 }

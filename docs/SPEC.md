@@ -294,7 +294,7 @@ All core abstractions live in `pkg/` as pure Go interfaces. `internal/` holds im
 |-----|---------|-------------------|-----|
 | KGI `gate.Gate` | `pkg/gate` | SoakGate, MetricsGate, ApprovalGate, VerificationGate, CELGate, JobGate, WebhookGate | — |
 | KAI `actuator.Actuator` | `pkg/actuator` | FluxActuator | — |
-| KCI `provider.Connector` | `pkg/provider` | GKEConnector (Workload Identity) | NopConnector ✅ |
+| KCI `provider.Connector` | `pkg/provider` | — (all Path B connectors in ROADMAP.md) | NopConnector ✅ |
 | KCI `provider.RegistrationReader` | `pkg/provider` | CRDProvider | — |
 | KNI `notification.Notifier` | `pkg/notification` | Dispatcher, EngineNotifier | NopNotifier ✅ |
 | KHI `health.Assessor` | `pkg/health` | GitopsHealthAssessor | NopAssessor ✅ |
@@ -546,7 +546,7 @@ Path B: Direct Connect / KCI Connector      ← PUBLIC CLOUD ONLY (no-agent opti
 Hub authenticates to cloud API using cloud IAM (Workload Identity / IRSA / Managed Identity).
 Hub fetches cluster credentials on demand — no cluster-controller agent needed on spoke.
 Requires:   Hub-to-spoke network access + cloud IAM binding (not available for private clusters).
-Environment spec: spec.provider.type: gke | eks | aks | digitalocean | stackit
+Environment spec: spec.provider.type: gke | aks | digitalocean | stackit
 
 ⚠️  Path B CANNOT be used for:
     - Private GKE clusters (no public endpoint on API server)
@@ -564,7 +564,7 @@ Path A (CRD provider) is fully implemented for all clouds. Path B (direct-connec
 
 | Cloud | Path A | Path B | Auth (Path B) |
 |-------|--------|--------|----------------|
-| GCP / GKE | ✅ | ✅ `internal/provider/gke` | Workload Identity (keyless) |
+| GCP / GKE | ✅ | ROADMAP.md | Workload Identity (keyless) |
 | AWS / EKS | ✅ | ROADMAP.md | IRSA + STS (keyless) |
 | Azure / AKS | ✅ | ROADMAP.md | Managed Identity + AAD OIDC (keyless) |
 | DigitalOcean | ✅ | ROADMAP.md | API token in Secret |
@@ -633,7 +633,7 @@ spec:
   provider: {}   # resolves to CRD provider
 ```
 
-Path B `ProviderSpec` fields (`gke`, `eks`, `aks`, `digitalOcean`, `stackit`) are defined in `api/v1alpha1/types.go` and the CRD schema is ready. Connector implementations are tracked in `docs/ROADMAP.md`.
+Path B `ProviderSpec` fields (`gke`, `aks`, `digitalOcean`, `stackit`) are defined in `api/v1alpha1/types.go` and the CRD schema is ready. Connector implementations are tracked in `docs/ROADMAP.md`.
 
 **Security invariant:** Credentials (API tokens, SA keys) are **never stored in CRD fields**. Always referenced by Secret name in `kapro-system`. Workload Identity / IRSA (keyless) is preferred where available.
 
@@ -684,8 +684,8 @@ Path B `ProviderSpec` fields (`gke`, `eks`, `aks`, `digitalOcean`, `stackit`) ar
 
 ```
 type = ""    → CRDProvider.GetRegistration()  (Path A — fully implemented)
-type = "gke" → GKEConnector.Connect()         (Path B — connector in ROADMAP.md)
-type = "eks" → EKSConnector.Connect()         (Path B — connector in ROADMAP.md)
+type = "gke" → GKEConnector.Connect()         (Path B — ROADMAP.md v0.3)
+type = "aks" → AKSConnector.Connect()         (Path B — ROADMAP.md v0.4)
 ...
 ```
 
@@ -814,7 +814,6 @@ The URLs are embedded in Slack messages, emails, and webhook payloads. Tokens ex
 | **CLI** | `kapro get`, `kapro approve`, `kapro rollback` |
 | **Admission** | Mutating (Approval.approvedBy), Validating (Release, Environment, Pipeline) |
 | **Observability** | Prometheus metrics (`kapro_sync_transitions_total`, `kapro_gate_evaluations_total`, `kapro_stage_duration_seconds`) |
-| **MCP server** | AI assistant integration (list releases, syncs, approve) |
 | **Audit** | ReleaseReport per Release |
 
 ### What is explicitly cut from MVP
@@ -879,7 +878,6 @@ The URLs are embedded in Slack messages, emails, and webhook payloads. Tokens ex
 
 - [ ] `kapro rollback <release> --to <digest>` creates a new Release pointing at prior OCI digest.
 - [ ] Automatic rollback: when a gate fails after `Applying`, create rollback Sync automatically.
-- [ ] MCP server: AI assistant can query releases, approve syncs, and explain gate status.
 - [ ] GateTemplate refs in `GatePolicy.spec.gate.templates[]` — parameterised gate chains.
 - [ ] argoproj/notifications-engine integration for PagerDuty, Teams, OpsGenie.
 - [ ] `KAPRO_CONTROLLERS=*,-releasereport` selective controller enabling.
@@ -891,7 +889,7 @@ The URLs are embedded in Slack messages, emails, and webhook payloads. Tokens ex
 See `docs/ROADMAP.md` for the full list. The architecture constraints that apply here:
 - `ReleaseTrigger`, `PluginGateway`, `PluginRegistration` CRDs are explicitly cut from MVP — do not add them.
 - Additional actuators (ArgoCD, Helm, KServe) and gates (KEDA, MLflow, OPA) register via existing `actuator.Registry` / `gate.Registry` — no FSM changes required.
-- Cloud direct-connect connectors (GKE, EKS, AKS, DigitalOcean, StackIT) register via `provider.Registry` — `ProviderSpec` CRD fields already exist. See ADR-006.
+- Cloud direct-connect connectors (GKE, AKS, DigitalOcean, StackIT) register via `provider.Registry` — `ProviderSpec` CRD fields already exist. See ADR-006.
 - Multi-tenancy and web dashboard are post-GA concerns.
 
 ---
@@ -989,7 +987,7 @@ Full review: `docs/ARCHITECTURE_REVIEW.md`
 |-----------|-------|-------|
 | KGI (`pkg/gate`) | 10/10 | `Result.Phase` authoritative; `Result.Passed` deprecated (removal tracked in ROADMAP.md); `IsPassed/IsInconclusive/NormalisePhase` helpers |
 | KAI (`pkg/actuator`) | 10/10 | `IsConverged(ctx, env, version, appKey)` — explicit and symmetric with `Apply(ApplyRequest{AppKey})`; `resolveAppKey("default")` fallback |
-| KCI (`pkg/provider`) | 10/10 | `provider.Registry`, `ProviderSpec` with GKE/EKS/AKS/DO/StackIT, `NopConnector` (fails loudly), two-path CRD+direct model; GKE Connector shipped (Workload Identity, keyless) |
+| KCI (`pkg/provider`) | 10/10 | `provider.Registry`, `ProviderSpec` with GKE/AKS/DO/StackIT, `NopConnector` (fails loudly), two-path CRD+direct model; Path B connectors tracked in ROADMAP.md |
 
 All 7 architecture gaps identified in the initial review (G1–G7) have been resolved in v0.2. All KXI interfaces score 10/10. The codebase is gap-free at the interface layer.
 
@@ -1000,14 +998,14 @@ All 7 architecture gaps identified in the initial review (G1–G7) have been res
 | `KNI`: `Notifier.Notify(*GatePolicy)` → `Notifier.Notify(NotificationPolicy)` — zero CRD coupling | ✅ Done |
 | `KGI`: `GateRegistry` — open extension point; `gateForTemplate` switch replaced with registry lookup | ✅ Done |
 | `KGI`: `gate.Registry` — third registry alongside `actuator.Registry` and `provider.Registry` | ✅ Done |
-| `KCI`: `internal/provider/gke` — GKE Connector (Workload Identity, keyless); registered as `"gke"` in `cmd/operator/main.go` | ✅ Done |
+| `KCI`: `internal/provider/gke` — GKE Connector (Workload Identity, keyless); registered as `"gke"` in `cmd/operator/main.go` | ✅ Interface done; implementation moved to ROADMAP.md v0.3 |
 | Heartbeat architecture: `POST /heartbeat` endpoint on hub; spoke sends `HeartbeatRequest`, hub patches `ManagedCluster.status`, responds with `HeartbeatResponse` | ✅ Done |
 | cluster-controller refactored: removed hub K8s API calls; HTTP-only communication; SA Bearer token via K8s TokenReview | ✅ Done |
 | Build fixed: `zz_generated.deepcopy.go` — 4 stale field references removed; `go build ./...` clean | ✅ Done |
-| All tests pass: `go test ./...` — 7 packages, 0 failures | ✅ Done |
+| All tests pass: `go test ./...` — 6 packages, 0 failures | ✅ Done |
 
 Planned implementation work is tracked in `docs/ROADMAP.md`.
 
 ---
 
-*Last updated: 2026-04-19. All KXI interfaces 10/10. G1–G7 gaps closed. Heartbeat architecture (NameNode/DataNode pattern) implemented. Path A canonical for all cluster topologies. Build clean. All tests pass. Freeze: Flux + GKE + CEL gate + full interface layer + HTTP heartbeat.*
+*Last updated: 2026-04-19. All KXI interfaces 10/10. G1–G7 gaps closed. Heartbeat architecture (NameNode/DataNode pattern) implemented. Path A canonical for all cluster topologies. EKS removed (ROADMAP.md). Build clean (Go 1.25, controller-gen v0.17.0). All tests pass. Freeze: Flux + CRD provider + CEL gate + full interface layer + HTTP heartbeat.*

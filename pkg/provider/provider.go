@@ -11,7 +11,7 @@
 //	Connector (Path B — direct connect)
 //	  The hub establishes a direct HTTPS connection to the spoke API server.
 //	  Implementations use cloud IAM (Workload Identity, IRSA, Managed Identity)
-//	  — no static credentials. Used for GKE, EKS, AKS, DigitalOcean, StackIT.
+//	  — no static credentials. Used for GKE, AKS, DigitalOcean, StackIT.
 //
 //	RegistrationReader (Path A — outbound/CRD)
 //	  Kapro reads cluster state from ManagedCluster CRDs written by the
@@ -33,9 +33,9 @@
 //
 // Shipped:
 //   - internal/provider/crd/ — RegistrationReader via ManagedCluster CRDs (Path A, all clouds)
-//   - internal/provider/gke/ — Connector via Workload Identity (Path B, GKE)
 //
 // Tracked in docs/ROADMAP.md:
+//   - internal/provider/gke/          — GKE Workload Identity (Path B, v0.3)
 //   - internal/provider/aks/          — Azure Managed Identity + AAD OIDC federation
 //   - internal/provider/digitalocean/ — DigitalOcean API token (Secret-referenced)
 //   - internal/provider/stackit/      — StackIT Service Account key (Secret-referenced)
@@ -62,7 +62,7 @@ import (
 // Managed Identity) — never store static credentials in CRD fields.
 // Credentials are always read from Secrets referenced by name.
 //
-// Shipped: gke (Workload Identity). Tracked in ROADMAP.md: aks, digitalocean, stackit.
+// Tracked in ROADMAP.md: gke (v0.3), aks, digitalocean, stackit.
 // Register implementations at startup in cmd/operator/main.go via provider.Registry.
 type Connector interface {
 	// Connect returns a *rest.Config for the given Environment's workload cluster.
