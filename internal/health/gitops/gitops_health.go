@@ -59,8 +59,6 @@ case "DaemonSet":
 kindResources, err = a.assessDaemonSets(ctx, req.Namespace)
 case "Job":
 kindResources, err = a.assessJobs(ctx, req.Namespace)
-case "LeaderWorkerSet":
-kindResources, err = AssessLWS(ctx, a.Client, req.Namespace)
 default:
 log.Info("unknown kind, skipping", "kind", kind)
 continue

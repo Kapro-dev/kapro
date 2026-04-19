@@ -20,7 +20,6 @@ import (
 	fluxactuator "kapro.io/kapro/internal/actuator/flux"
 	gitopshealth "kapro.io/kapro/internal/health/gitops"
 	_ "kapro.io/kapro/internal/metrics" // register custom Prometheus metrics at init
-	"kapro.io/kapro/internal/mcp"
 	enginenotifier "kapro.io/kapro/internal/notification/engine"
 	orasoci "kapro.io/kapro/internal/oci/oras"
 	kaploadmission "kapro.io/kapro/internal/webhook/admission"
@@ -173,16 +172,6 @@ func main() {
 	// Register mutating HTTP servers as leader-only runnables.
 	// controller-runtime calls NeedLeaderElection()=true runnables only on the
 	// elected leader — prevents split-brain when running 2+ replicas.
-	mcpAddr := os.Getenv("KAPRO_MCP_ADDR")
-	if mcpAddr == "" {
-		mcpAddr = ":8090"
-	}
-	mcpServer := mcp.New(mgr.GetClient())
-	if err := mgr.Add(&mcpRunnable{server: mcpServer, addr: mcpAddr}); err != nil {
-		log.Error(err, "unable to add MCP server")
-		os.Exit(1)
-	}
-
 	approvalAddr := os.Getenv("KAPRO_APPROVAL_ADDR")
 	if approvalAddr == "" {
 		approvalAddr = ":8091"
@@ -250,14 +239,4 @@ func (h *httpRunnable) Start(ctx context.Context) error {
 	}
 }
 
-// mcpRunnable wraps the MCP server as a leader-election-gated Runnable.
-type mcpRunnable struct {
-	server *mcp.Server
-	addr   string
-}
-
-func (m *mcpRunnable) NeedLeaderElection() bool { return true }
-
-func (m *mcpRunnable) Start(ctx context.Context) error {
-	return m.server.Start(ctx, m.addr)
-}
+// mcpRunnable and its methods have been removed — MCP server is not part of MVP.
