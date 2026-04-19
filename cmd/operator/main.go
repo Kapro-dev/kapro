@@ -22,6 +22,7 @@ import (
 	_ "kapro.io/kapro/internal/metrics" // register custom Prometheus metrics at init
 	enginenotifier "kapro.io/kapro/internal/notification/engine"
 	orasoci "kapro.io/kapro/internal/oci/oras"
+	"kapro.io/kapro/internal/version"
 	kaploadmission "kapro.io/kapro/internal/webhook/admission"
 	"kapro.io/kapro/internal/webhook"
 	"kapro.io/kapro/pkg/actuator"
@@ -42,6 +43,7 @@ func main() {
 	opts := zap.Options{Development: true}
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	log := ctrl.Log.WithName("kapro-operator")
+	log.Info("starting kapro-operator", "version", version.Version, "commit", version.Commit, "date", version.Date)
 
 	// KAPRO_CONTROLLERS selects which controllers to run (CCM-style).
 	controllersFlag := os.Getenv("KAPRO_CONTROLLERS")
@@ -99,7 +101,7 @@ func main() {
 
 	// Build provider registry — resolves per-Environment cluster connector at reconcile time.
 	// Path A (CRD provider / heartbeat) is the default for all topologies and needs no registration.
-	// Cloud-specific Path B connectors (GKE, EKS, AKS…) will be added in v0.3 as optional plugins.
+	// Cloud-specific Path B connectors (GKE, AKS…) will be added in v0.3 as optional plugins.
 	// See docs/ROADMAP.md.
 	providerReg := provider.NewRegistry()
 

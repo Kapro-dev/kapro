@@ -32,7 +32,7 @@ spec:
       openAPIV3Schema:
         description: |-
           Environment represents one cluster in the fleet managed by Kapro.
-          Clusters can be GKE, EKS, AKS, OpenShift, on-prem, or any Kubernetes distribution.
+          Clusters can be GKE, AKS, OpenShift, on-prem, or any Kubernetes distribution.
           Labels on Environment drive stage selection — tier, region, wave, cloud, etc.
         properties:
           apiVersion:
@@ -144,29 +144,6 @@ spec:
                     - clusterID
                     - tokenSecretRef
                     type: object
-                  eks:
-                    description: 'EKS configures EKS IRSA direct-connect (type: eks,
-                      v0.3).'
-                    properties:
-                      accountID:
-                        description: AccountID is the AWS account ID. Used for audit
-                          logging.
-                        type: string
-                      clusterName:
-                        description: ClusterName is the EKS cluster name.
-                        type: string
-                      region:
-                        description: Region is the AWS region (e.g. us-east-1, eu-west-1).
-                        type: string
-                      roleARN:
-                        description: |-
-                          RoleARN is the IAM role Kapro assumes via IRSA.
-                          Format: arn:aws:iam::ACCOUNT_ID:role/ROLE_NAME
-                        type: string
-                    required:
-                    - clusterName
-                    - region
-                    type: object
                   gke:
                     description: 'GKE configures GKE Workload Identity direct-connect
                       (type: gke, v0.3).'
@@ -227,7 +204,6 @@ spec:
 
                       ""  or "crd"    → CRD outbound path (default, all clouds, air-gap)
                       "gke"           → GKE Workload Identity + Connect Gateway (v0.3)
-                      "eks"           → EKS IRSA + STS AssumeRoleWithWebIdentity (v0.3)
                       "aks"           → AKS Managed Identity + AAD OIDC federation (v0.4)
                       "digitalocean"  → DigitalOcean API token in Secret (v0.4)
                       "stackit"       → StackIT Service Account key in Secret (v0.4)
@@ -235,7 +211,6 @@ spec:
                     - ""
                     - crd
                     - gke
-                    - eks
                     - aks
                     - digitalocean
                     - stackit

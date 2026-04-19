@@ -36,7 +36,6 @@
 //   - internal/provider/gke/ — Connector via Workload Identity (Path B, GKE)
 //
 // Tracked in docs/ROADMAP.md:
-//   - internal/provider/eks/          — IRSA + STS AssumeRoleWithWebIdentity
 //   - internal/provider/aks/          — Azure Managed Identity + AAD OIDC federation
 //   - internal/provider/digitalocean/ — DigitalOcean API token (Secret-referenced)
 //   - internal/provider/stackit/      — StackIT Service Account key (Secret-referenced)
@@ -63,7 +62,7 @@ import (
 // Managed Identity) — never store static credentials in CRD fields.
 // Credentials are always read from Secrets referenced by name.
 //
-// Shipped: gke (Workload Identity). Tracked in ROADMAP.md: eks, aks, digitalocean, stackit.
+// Shipped: gke (Workload Identity). Tracked in ROADMAP.md: aks, digitalocean, stackit.
 // Register implementations at startup in cmd/operator/main.go via provider.Registry.
 type Connector interface {
 	// Connect returns a *rest.Config for the given Environment's workload cluster.

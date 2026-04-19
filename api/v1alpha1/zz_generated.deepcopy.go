@@ -1268,11 +1268,6 @@ func (in *ProviderSpec) DeepCopyInto(out *ProviderSpec) {
 		*out = new(GKEProviderSpec)
 		**out = **in
 	}
-	if in.EKS != nil {
-		in, out := &in.EKS, &out.EKS
-		*out = new(EKSProviderSpec)
-		**out = **in
-	}
 	if in.AKS != nil {
 		in, out := &in.AKS, &out.AKS
 		*out = new(AKSProviderSpec)
@@ -1308,19 +1303,6 @@ func (in *GKEProviderSpec) DeepCopy() *GKEProviderSpec {
 		return nil
 	}
 	out := new(GKEProviderSpec)
-	*out = *in
-	return out
-}
-
-// EKSProviderSpec — all string fields, value copy is sufficient.
-
-func (in *EKSProviderSpec) DeepCopyInto(out *EKSProviderSpec) { *out = *in }
-
-func (in *EKSProviderSpec) DeepCopy() *EKSProviderSpec {
-	if in == nil {
-		return nil
-	}
-	out := new(EKSProviderSpec)
 	*out = *in
 	return out
 }

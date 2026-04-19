@@ -119,22 +119,17 @@ type ProviderSpec struct {
 	//
 	// ""  or "crd"    → CRD outbound path (default, all clouds, air-gap)
 	// "gke"           → GKE Workload Identity + Connect Gateway (v0.3)
-	// "eks"           → EKS IRSA + STS AssumeRoleWithWebIdentity (v0.3)
 	// "aks"           → AKS Managed Identity + AAD OIDC federation (v0.4)
 	// "digitalocean"  → DigitalOcean API token in Secret (v0.4)
 	// "stackit"       → StackIT Service Account key in Secret (v0.4)
 	//
-	// +kubebuilder:validation:Enum="";crd;gke;eks;aks;digitalocean;stackit
+	// +kubebuilder:validation:Enum="";crd;gke;aks;digitalocean;stackit
 	// +optional
 	Type string `json:"type,omitempty"`
 
 	// GKE configures GKE Workload Identity direct-connect (type: gke, v0.3).
 	// +optional
 	GKE *GKEProviderSpec `json:"gke,omitempty"`
-
-	// EKS configures EKS IRSA direct-connect (type: eks, v0.3).
-	// +optional
-	EKS *EKSProviderSpec `json:"eks,omitempty"`
 
 	// AKS configures AKS Managed Identity direct-connect (type: aks, v0.4).
 	// +optional
@@ -173,28 +168,6 @@ type GKEProviderSpec struct {
 	// iam.gke.io/gcp-service-account. Defaults to the kapro-operator SA.
 	// +optional
 	ServiceAccountRef string `json:"serviceAccountRef,omitempty"`
-}
-
-// EKSProviderSpec configures KCI direct-connect to an EKS cluster via IRSA
-// (IAM Roles for Service Accounts) and STS AssumeRoleWithWebIdentity.
-//
-// The hub Kubernetes ServiceAccount must be annotated with
-// eks.amazonaws.com/role-arn pointing to an IAM role with eks:DescribeCluster.
-// STS issues short-lived credentials — no long-lived AWS credentials stored anywhere.
-type EKSProviderSpec struct {
-	// Region is the AWS region (e.g. us-east-1, eu-west-1).
-	// +kubebuilder:validation:Required
-	Region string `json:"region"`
-	// ClusterName is the EKS cluster name.
-	// +kubebuilder:validation:Required
-	ClusterName string `json:"clusterName"`
-	// RoleARN is the IAM role Kapro assumes via IRSA.
-	// Format: arn:aws:iam::ACCOUNT_ID:role/ROLE_NAME
-	// +optional
-	RoleARN string `json:"roleARN,omitempty"`
-	// AccountID is the AWS account ID. Used for audit logging.
-	// +optional
-	AccountID string `json:"accountID,omitempty"`
 }
 
 // AKSProviderSpec configures KCI direct-connect to an AKS cluster via

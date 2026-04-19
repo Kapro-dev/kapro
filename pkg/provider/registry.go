@@ -20,7 +20,6 @@ import (
 //
 //	"" or "crd"   → CRDProvider.GetRegistration() (RegistrationReader)
 //	"gke"         → GKEConnector.Connect()          (Connector, v0.3)
-//	"eks"         → EKSConnector.Connect()          (Connector, v0.3)
 //	"aks"         → AKSConnector.Connect()          (Connector, v0.4)
 //	"digitalocean"→ DOConnector.Connect()           (Connector, v0.4)
 //	"stackit"     → StackITConnector.Connect()      (Connector, v0.4)
@@ -30,7 +29,6 @@ import (
 //	reg := provider.NewRegistry()
 //	// v0.3+:
 //	reg.MustRegister("gke", &gkeprovider.Connector{Client: mgr.GetClient()})
-//	reg.MustRegister("eks", &eksprovider.Connector{Client: mgr.GetClient()})
 //
 // # Resolving a connector at reconcile time
 //
