@@ -5,7 +5,8 @@ CC_IMG          ?= $(REGISTRY)/kapro-cluster-controller:latest
 
 # Tool versions
 CONTROLLER_GEN_VERSION ?= v0.17.0
-ENVTEST_VERSION        ?= release-0.17
+ENVTEST_VERSION        ?= release-0.19
+ENVTEST_K8S_VERSION    ?= 1.31.x
 GOLANGCI_LINT_VERSION  ?= v1.57.2
 
 # Tool paths
@@ -60,7 +61,7 @@ manifests: $(CONTROLLER_GEN) ## Generate CRD YAML manifests and RBAC
 
 .PHONY: test
 test: generate manifests $(ENVTEST) ## Run unit + integration tests with envtest
-	KUBEBUILDER_ASSETS="$$($(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-path $(LOCALBIN) -p path)" \
+	KUBEBUILDER_ASSETS="$$($(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" \
 		go test ./... -coverprofile cover.out -covermode=atomic
 	go tool cover -func cover.out
 
