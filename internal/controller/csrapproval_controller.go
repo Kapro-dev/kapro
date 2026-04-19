@@ -201,7 +201,7 @@ func (r *CSRApprovalReconciler) handleRenewal(ctx context.Context, csr *certific
 // findValidBootstrapToken returns the first non-expired, unused BootstrapToken for clusterName.
 func (r *CSRApprovalReconciler) findValidBootstrapToken(ctx context.Context, clusterName string) (*kaprov1alpha1.BootstrapToken, error) {
 	var list kaprov1alpha1.BootstrapTokenList
-	if err := r.List(ctx, &list, client.InNamespace(kaproSystemNamespace)); err != nil {
+	if err := r.List(ctx, &list, client.InNamespace(kaproSystemNamespace), client.Limit(200)); err != nil {
 		return nil, err
 	}
 	for i := range list.Items {
@@ -322,7 +322,7 @@ func (r *CSRApprovalReconciler) markTokenUsed(ctx context.Context, bt *kaprov1al
 // Used to enable idempotent retry when the CSR approval call fails transiently.
 func (r *CSRApprovalReconciler) findUsedTokenForCSR(ctx context.Context, clusterName, csrName string) (*kaprov1alpha1.BootstrapToken, error) {
 	var list kaprov1alpha1.BootstrapTokenList
-	if err := r.List(ctx, &list, client.InNamespace(kaproSystemNamespace)); err != nil {
+	if err := r.List(ctx, &list, client.InNamespace(kaproSystemNamespace), client.Limit(200)); err != nil {
 		return nil, err
 	}
 	for i := range list.Items {

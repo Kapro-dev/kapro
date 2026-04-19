@@ -103,13 +103,19 @@ func main() {
 	// See docs/ROADMAP.md.
 	providerReg := provider.NewRegistry()
 
+	gateRegistry, err := cm.BuildGateRegistry(mgr.GetClient())
+	if err != nil {
+		log.Error(err, "failed to register built-in gates")
+		os.Exit(1)
+	}
+
 	cc := cm.ControllerContext{
 		Manager:          mgr,
 		Recorder:         recorder,
 		ActuatorRegistry: actuatorReg,
 		ProviderRegistry: providerReg,
 		Gates:            gates,
-		GateRegistry:     cm.BuildGateRegistry(mgr.GetClient()),
+		GateRegistry:     gateRegistry,
 		HealthAssessor:   &gitopshealth.Assessor{Client: mgr.GetClient()},
 		Notifier: &enginenotifier.Notifier{
 			SecretName: "kapro-notifications-secret",

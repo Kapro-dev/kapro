@@ -7,6 +7,7 @@ package controllermanager
 
 import (
 	"context"
+	"fmt"
 
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -18,7 +19,7 @@ import (
 	webhookgate "kapro.io/kapro/internal/gate/webhook"
 	cosignverifier "kapro.io/kapro/internal/verification/cosign"
 	crdprovider "kapro.io/kapro/internal/provider/crd"
-	"kapro.io/kapro/pkg/gate"
+	pkggate "kapro.io/kapro/pkg/gate"
 )
 
 func init() {
@@ -62,18 +63,25 @@ func startReleaseReportController(_ context.Context, cc ControllerContext) (bool
 // BuildGateRegistry registers all built-in template-dispatch gate types.
 // External gate types register after this call in main.go:
 //
-//	reg := BuildGateRegistry(c)
-//	reg.MustRegister("argo-analysis", &mygate.ArgoAnalysisGate{...})
+//	reg, err := BuildGateRegistry(c)
+//	if err != nil { return err }
+//	if err := reg.Register("argo-analysis", &mygate.ArgoAnalysisGate{...}); err != nil { return err }
 //
 // The registry is intentionally separate from BuildGateSet: GateSet holds the
 // FSM-phase gates (bound to fixed phases), while GateRegistry holds the
 // template-dispatch gates (looked up by GateTemplate.spec.type at runtime).
-func BuildGateRegistry(c client.Client) *gate.Registry {
-	reg := gate.NewRegistry()
-	reg.MustRegister("cel", &celgate.Gate{Client: c})
-	reg.MustRegister("job", &jobgate.Gate{Client: c})
-	reg.MustRegister("webhook", &webhookgate.Gate{})
-	return reg
+func BuildGateRegistry(c client.Client) (*pkggate.Registry, error) {
+	reg := pkggate.NewRegistry()
+	for typeName, impl := range map[string]pkggate.Gate{
+		"cel":     &celgate.Gate{Client: c},
+		"job":     &jobgate.Gate{Client: c},
+		"webhook": &webhookgate.Gate{},
+	} {
+		if err := reg.Register(typeName, impl); err != nil {
+			return nil, fmt.Errorf("register built-in gate %q: %w", typeName, err)
+		}
+	}
+	return reg, nil
 }
 
 // startSyncController starts the Sync FSM reconciler.
@@ -201,12 +209,12 @@ func BuildGateSet(c client.Client) GateSet {
 // Add a line here whenever a new built-in gate is added to BuildGateSet or BuildGateRegistry.
 var (
 	// FSM-phase gates (BuildGateSet)
-	_ gate.Gate = (*internalgate.SoakGate)(nil)
-	_ gate.Gate = (*internalgate.MetricsGate)(nil)
-	_ gate.Gate = (*internalgate.ApprovalGate)(nil)
-	_ gate.Gate = (*internalgate.VerificationGate)(nil)
-	_ gate.Gate = (*celgate.Gate)(nil)
+	_ pkggate.Gate = (*internalgate.SoakGate)(nil)
+	_ pkggate.Gate = (*internalgate.MetricsGate)(nil)
+	_ pkggate.Gate = (*internalgate.ApprovalGate)(nil)
+	_ pkggate.Gate = (*internalgate.VerificationGate)(nil)
+	_ pkggate.Gate = (*celgate.Gate)(nil)
 	// Template-dispatch gates (BuildGateRegistry)
-	_ gate.Gate = (*jobgate.Gate)(nil)
-	_ gate.Gate = (*webhookgate.Gate)(nil)
+	_ pkggate.Gate = (*jobgate.Gate)(nil)
+	_ pkggate.Gate = (*webhookgate.Gate)(nil)
 )
