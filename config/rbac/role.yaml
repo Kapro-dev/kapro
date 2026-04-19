@@ -136,6 +136,20 @@ rules:
   - update
   - watch
 - apiGroups:
+  - kapro.io
+  resources:
+  - managedclusters/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - kapro.io
+  resources:
+  - managedclusters/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - rbac.authorization.k8s.io
   resources:
   - clusterrolebindings
