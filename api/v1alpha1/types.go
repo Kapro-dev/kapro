@@ -556,6 +556,7 @@ type EmailNotifierSpec struct {
 	// +kubebuilder:validation:MinItems=1
 	To            []string                    `json:"to"`
 	From          string                      `json:"from,omitempty"`
+	// +kubebuilder:pruning:PreserveUnknownFields
 	SmtpSecretRef corev1.LocalObjectReference `json:"smtpSecretRef"`
 }
 
@@ -607,6 +608,7 @@ type JobGateSpec struct {
 	Image   string           `json:"image"`
 	Command []string         `json:"command,omitempty"`
 	Args    []string         `json:"args,omitempty"`
+	// +kubebuilder:pruning:PreserveUnknownFields
 	Env     []corev1.EnvVar  `json:"env,omitempty"`
 }
 
@@ -624,6 +626,7 @@ type GateRunStatus struct {
 	StartedAt  string                  `json:"startedAt,omitempty"`
 	FinishedAt string                  `json:"finishedAt,omitempty"`
 	Attempts   int                     `json:"attempts,omitempty"`
+	// +kubebuilder:pruning:PreserveUnknownFields
 	VendorRef  *corev1.ObjectReference `json:"vendorRef,omitempty"`
 	Results    []GateConditionResult   `json:"results,omitempty"`
 }

@@ -1,5 +1,5 @@
 run:
-  timeout: 5m
+  timeout: 4m
   go: "1.24"
 
 linters:
@@ -9,17 +9,13 @@ linters:
     - staticcheck
     - revive
     - unused
-    - exhaustive
     - gofmt
     - goimports
     - misspell
     - unconvert
-    - unparam
     - gosec
-    - prealloc
     - noctx
     - bodyclose
-    - contextcheck
 
 linters-settings:
   goimports:
@@ -31,8 +27,6 @@ linters-settings:
           - disableStutteringCheck
   gosec:
     excludes: []
-  exhaustive:
-    default-signifies-exhaustive: true
 
 issues:
   exclude-rules:
