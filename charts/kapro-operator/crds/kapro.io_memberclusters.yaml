@@ -3,33 +3,36 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.0
-  name: environments.kapro.io
+    controller-gen.kubebuilder.io/version: v0.20.1
+  name: memberclusters.kapro.io
 spec:
   group: kapro.io
   names:
     categories:
     - kapro-all
-    kind: Environment
-    listKind: EnvironmentList
-    plural: environments
+    kind: MemberCluster
+    listKind: MemberClusterList
+    plural: memberclusters
     shortNames:
-    - env
-    singular: environment
+    - mc
+    singular: membercluster
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .metadata.labels.tier
-      name: Tier
-      type: string
-    - jsonPath: .metadata.labels.region
-      name: Region
-      type: string
     - jsonPath: .status.phase
       name: Phase
       type: string
+    - jsonPath: .status.deliverySystem
+      name: Delivery
+      type: string
+    - jsonPath: .status.health.allWorkloadsReady
+      name: Healthy
+      type: boolean
     - jsonPath: .status.activeRelease
       name: Active Release
+      type: string
+    - jsonPath: .status.lastHeartbeat
+      name: Heartbeat
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -38,9 +41,11 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Environment represents one cluster in the fleet managed by Kapro.
-          Clusters can be GKE, EKS, AKS, OpenShift, on-prem, or any Kubernetes distribution.
-          Labels on Environment drive stage selection — tier, region, wave, cloud, etc.
+          MemberCluster represents one physical cluster in the Kapro fleet.
+          It merges Environment (delivery config), ManagedCluster (registration state),
+          and BootstrapToken (one-time registration credential) into a single resource.
+
+          Labels on MemberCluster drive Pipeline stage selection (tier, region, wave, cloud, etc.).
         properties:
           apiVersion:
             description: |-
@@ -60,13 +65,11 @@ spec:
           metadata:
             type: object
           spec:
-            description: EnvironmentSpec defines the desired state of Environment.
+            description: MemberClusterSpec defines the desired state of a cluster
+              in the Kapro fleet.
             properties:
               actuator:
-                description: |-
-                  ActuatorSpec selects and configures the delivery backend for this Environment.
-                  MVP ships Flux only. Additional actuators (ArgoCD, Sveltos) can be registered
-                  at startup via actuator.Registry without changing this type.
+                description: Actuator configures the delivery backend for this cluster.
                 properties:
                   flux:
                     properties:
@@ -88,7 +91,56 @@ spec:
                 required:
                 - type
                 type: object
+              bootstrap:
+                description: |-
+                  Bootstrap configures one-time cluster self-registration.
+                  Platform engineers set tokenHash + expiresAt (or ttl); the cluster-controller
+                  presents the pre-image token in a CSR to prove identity.
+                  One bootstrap slot per cluster. To re-bootstrap, update tokenHash + expiresAt
+                  and the hub resets the slot automatically.
+                properties:
+                  expiresAt:
+                    description: |-
+                      ExpiresAt is the absolute UTC time after which this bootstrap slot is invalid.
+                      Set explicitly by the platform team for auditability.
+                      If empty and TTL is set, the MemberCluster controller computes it on first reconcile.
+                    format: date-time
+                    type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are applied to bootstrap resources created during registration
+                      (ServiceAccount, kubeconfig Secret). Not used for stage selection — use
+                      MemberCluster.metadata.labels for that.
+                    type: object
+                  tokenHash:
+                    description: |-
+                      TokenHash is the SHA-256 hex hash of the pre-image bootstrap token (exactly 64 lowercase hex chars).
+                      Platform team hashes the raw token and stores only the hash here; the cluster-controller
+                      presents the plaintext pre-image. This ensures tokenHash cannot be used directly.
+                    pattern: ^[0-9a-f]{64}$
+                    type: string
+                  ttl:
+                    description: |-
+                      TTL is a convenience duration (e.g. "24h") used when ExpiresAt is not set explicitly.
+                      The MemberCluster controller writes spec.bootstrap.expiresAt from
+                      metadata.creationTimestamp + TTL at creation time and leaves it immutable.
+                    type: string
+                type: object
+              desiredAppKey:
+                description: |-
+                  DesiredAppKey is the key the cluster-controller uses when writing
+                  status.currentVersions. Defaults to "default".
+                type: string
+              desiredVersion:
+                description: |-
+                  DesiredVersion is written by the kapro-operator (release/sync controller).
+                  The cluster-controller polls this field and patches the local delivery system.
+                type: string
               healthCheck:
+                description: HealthCheck configures active health polling for this
+                  cluster.
                 properties:
                   endpoint:
                     type: string
@@ -223,10 +275,12 @@ spec:
                     - stackit
                     type: string
                 type: object
+              suspend:
+                description: Suspend pauses all reconciliation for this cluster.
+                type: boolean
               topology:
-                description: |-
-                  Topology holds hardware and scheduling metadata for this Environment.
-                  Used by Pipeline stage selectors for GPU-aware promotion waves.
+                description: Topology holds hardware and scheduling metadata used
+                  by Pipeline stage selectors.
                 properties:
                   accelerator:
                     description: |-
@@ -260,10 +314,97 @@ spec:
             - actuator
             type: object
           status:
-            description: EnvironmentStatus defines the observed state of Environment.
+            description: MemberClusterStatus is the observed state — written by cluster-controller
+              and hub.
             properties:
               activeRelease:
+                description: ActiveRelease is the Release currently being processed
+                  for this cluster.
                 type: string
+              bootstrap:
+                description: Bootstrap tracks the one-time registration state. Written
+                  by the hub.
+                properties:
+                  boundCSRName:
+                    description: |-
+                      BoundCSRName is the CSR that consumed this bootstrap slot.
+                      Enables idempotent retry: if CSR approval fails transiently, the next reconcile
+                      recognises the same CSR and re-approves rather than denying as replay.
+                    type: string
+                  issuedBootstrapKubeconfig:
+                    description: |-
+                      IssuedBootstrapKubeconfig is the name of the Secret in kapro-system that
+                      contains the bootstrap kubeconfig. Operators copy this to the spoke cluster.
+                    type: string
+                  issuedCredentialFor:
+                    description: IssuedCredentialFor is the cluster name the bootstrap
+                      credential was issued for.
+                    type: string
+                  used:
+                    description: Used is true once the bootstrap token has been consumed
+                      by a successful CSR.
+                    type: boolean
+                  usedAt:
+                    description: UsedAt is when the bootstrap token was consumed.
+                    format: date-time
+                    type: string
+                type: object
+              capabilities:
+                description: Capabilities is the self-reported capability profile
+                  written at registration time.
+                properties:
+                  accountID:
+                    description: |-
+                      AccountID is the cloud account or project identifier.
+                      GCP: project ID. AWS: account ID. Azure: subscription UUID.
+                      DigitalOcean: team ID. StackIT: project UUID.
+                      Used for cost attribution, audit, and cross-account routing.
+                    type: string
+                  argoCDVersion:
+                    description: |-
+                      ArgoCDVersion is the ArgoCD version installed on this cluster (e.g. "2.11.0").
+                      Empty when ArgoCD is not installed.
+                    type: string
+                  cloud:
+                    description: |-
+                      Cloud identifies the cloud provider hosting this cluster.
+                      Well-known values: gcp, aws, azure, digitalocean, stackit, on-prem.
+                      Written by kapro-cluster-controller based on IMDS detection.
+                    type: string
+                  clusterID:
+                    description: |-
+                      ClusterID is the cloud-provider-assigned cluster identifier.
+                      GCP: cluster resource name. AWS: cluster ARN. Azure: resource ID.
+                      DigitalOcean: cluster UUID. StackIT: cluster UUID.
+                    type: string
+                  fluxVersion:
+                    description: |-
+                      FluxVersion is the Flux version installed on this cluster (e.g. "2.3.0").
+                      Empty when Flux is not installed.
+                    type: string
+                  k8sVersion:
+                    description: K8sVersion is the Kubernetes server version (e.g.
+                      "1.30.2").
+                    type: string
+                  nodeCount:
+                    description: NodeCount is the total number of nodes in the cluster
+                      at registration time.
+                    type: integer
+                  region:
+                    description: Region is the cloud region of this cluster (e.g.
+                      europe-west1, us-east-1, westeurope).
+                    type: string
+                  sveltosVersion:
+                    description: |-
+                      SveltosVersion is the Sveltos version installed on this cluster.
+                      Empty when Sveltos is not installed.
+                    type: string
+                  zone:
+                    description: |-
+                      Zone is the cloud availability zone of the primary node pool
+                      (e.g. europe-west1-b, us-east-1a, 1). Empty for regional clusters.
+                    type: string
+                type: object
               conditions:
                 items:
                   description: Condition contains details for one aspect of the current
@@ -320,10 +461,51 @@ spec:
                   - type
                   type: object
                 type: array
+              controllerVersion:
+                description: ControllerVersion is the kapro-cluster-controller version
+                  running on this cluster.
+                type: string
+              currentVersions:
+                additionalProperties:
+                  type: string
+                description: CurrentVersions maps app keys to deployed versions. Written
+                  by cluster-controller.
+                type: object
+              deliverySystem:
+                description: DeliverySystem is the delivery system detected by the
+                  cluster-controller (e.g. "flux").
+                type: string
+              health:
+                description: Health aggregates workload health. Written by cluster-controller.
+                properties:
+                  allWorkloadsReady:
+                    type: boolean
+                  failedWorkloads:
+                    type: integer
+                  message:
+                    type: string
+                  readyWorkloads:
+                    type: integer
+                  totalWorkloads:
+                    type: integer
+                type: object
+              lastHeartbeat:
+                description: LastHeartbeat is the RFC3339 timestamp of the last cluster-controller
+                  heartbeat.
+                type: string
               observedGeneration:
                 format: int64
                 type: integer
               phase:
+                description: ClusterPhase represents the convergence state of a workload
+                  cluster.
+                enum:
+                - Pending
+                - Applying
+                - Converging
+                - Converged
+                - Failed
+                - Unreachable
                 type: string
             type: object
         type: object

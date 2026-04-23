@@ -109,20 +109,20 @@ type Request struct {
 	// Never nil.
 	Sync *kaprov1alpha1.Sync
 
-	// Policy is the resolved GatePolicy for this sync.
-	// May be nil when no GatePolicy is configured for the environment.
-	Policy *kaprov1alpha1.GatePolicy
+	// Policy is the resolved gate policy for this sync.
+	// May be nil when no gate is configured for the stage.
+	Policy *kaprov1alpha1.GatePolicySpec
 
-	// MetricIndex addresses a specific metric in Policy.Spec.Gate.Metrics.
+	// MetricIndex addresses a specific metric in Policy.Gate.Metrics.
 	// Meaningful only on the Metrics[] evaluation path.
 	MetricIndex int
 
-	// Template is the resolved GateTemplate for template-based evaluation.
+	// Template is the inline gate template for template-based evaluation.
 	// Nil on the Metrics[] path; non-nil on the GateTemplate path.
-	Template *kaprov1alpha1.GateTemplate
+	Template *kaprov1alpha1.GateTemplateSpec
 
 	// Args carries runtime-injected parameters merged with this precedence:
-	//   GateTemplate defaults < GatePolicy overrides < sync context (version, env, stage)
+	//   GateTemplateSpec defaults < sync context (version, env, stage)
 	// Nil on the Metrics[] path.
 	Args map[string]string
 }

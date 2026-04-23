@@ -48,14 +48,14 @@ func TestReleaseReconciler_HaltPolicy_CancelsSiblingSync(t *testing.T) {
 		stageName    = "deploy"
 	)
 
-	// Two environments that match the stage selector.
-	env1 := &kaprov1alpha1.Environment{
+	// Two MemberClusters that match the stage selector.
+	env1 := &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "halt-env1", Labels: map[string]string{"tier": "halt"}},
-		Spec:       kaprov1alpha1.EnvironmentSpec{Actuator: kaprov1alpha1.ActuatorSpec{Type: "flux"}},
+		Spec:       kaprov1alpha1.MemberClusterSpec{Actuator: kaprov1alpha1.ActuatorSpec{Type: "flux"}},
 	}
-	env2 := &kaprov1alpha1.Environment{
+	env2 := &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "halt-env2", Labels: map[string]string{"tier": "halt"}},
-		Spec:       kaprov1alpha1.EnvironmentSpec{Actuator: kaprov1alpha1.ActuatorSpec{Type: "flux"}},
+		Spec:       kaprov1alpha1.MemberClusterSpec{Actuator: kaprov1alpha1.ActuatorSpec{Type: "flux"}},
 	}
 	pipeline := &kaprov1alpha1.Pipeline{
 		ObjectMeta: metav1.ObjectMeta{Name: pipelineName},
@@ -228,45 +228,33 @@ func (g *alwaysPassGate) Evaluate(_ context.Context, _ gate.Request) (gate.Resul
 func TestSyncReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetrics(t *testing.T) {
 	const tmplName = "mock-gate-template"
 
-	// GateTemplate with type "mock" (resolved via GateRegistry, not built-in).
-	tmpl := &kaprov1alpha1.GateTemplate{
-		ObjectMeta: metav1.ObjectMeta{Name: tmplName},
-		Spec: kaprov1alpha1.GateTemplateSpec{
-			// "mock" is not a built-in type; it's registered in the test registry below.
-			// The kubebuilder enum validation (cel|job|webhook) is not enforced by
-			// the fake client, so this is fine for unit testing.
-			Type: "mock",
-		},
-	}
-
-	// Policy: GateTemplates only — intentionally zero Prometheus metrics.
-	// This is the exact scenario the bug prevented from working.
-	policy := &kaprov1alpha1.GatePolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "tmpl-only-policy"},
-		Spec: kaprov1alpha1.GatePolicySpec{
-			Mode: kaprov1alpha1.GateModeAuto,
-			Gate: kaprov1alpha1.GateSpec{
-				Templates: []kaprov1alpha1.GateTemplateRef{{Name: tmplName}},
-				// Metrics field is intentionally absent — this triggered the bug.
-			},
-		},
-	}
-
-	// Sync already in MetricsCheck, referencing the templates-only policy.
+	// Sync already in MetricsCheck, with an inline GatePolicySpec carrying a GateTemplateSpec.
 	sync := &kaprov1alpha1.Sync{
 		ObjectMeta: metav1.ObjectMeta{Name: "tmpl-sync", Namespace: "default"},
 		Spec: kaprov1alpha1.SyncSpec{
 			ReleaseRef:     "rel-1",
 			EnvironmentRef: "env-tmpl",
 			Version:        "v1.0.0",
-			PolicyRef:      policy.Name,
+			Gate: &kaprov1alpha1.GatePolicySpec{
+				Mode: kaprov1alpha1.GateModeAuto,
+				Gate: kaprov1alpha1.GateSpec{
+					Templates: []kaprov1alpha1.GateTemplateSpec{
+						{
+							Name: tmplName,
+							// "mock" is not a built-in type; it's registered in the test registry below.
+							Type: "mock",
+						},
+					},
+					// Metrics field is intentionally absent — this triggered the bug.
+				},
+			},
 		},
 		Status: kaprov1alpha1.SyncStatus{Phase: kaprov1alpha1.SyncPhaseMetricsCheck},
 	}
 
 	// Use buildFSMClient so the finalizer is pre-injected; otherwise the first
 	// reconcile burns a round-trip adding it and never reaches handleMetricsCheck.
-	c := buildFSMClient(t, tmpl, policy, sync)
+	c := buildFSMClient(t, sync)
 
 	// Wire a GateRegistry with our always-passing mock gate.
 	reg := gate.NewRegistry()

@@ -28,9 +28,8 @@ func init() {
 	Register("sync", startSyncController)
 	Register("pipeline", startPipelineController)
 	Register("approval", startApprovalController)
-	Register("bootstraptoken", startBootstrapTokenController)
 	Register("csrapproval", startCSRApprovalController)
-	Register("managedcluster", startManagedClusterController)
+	Register("membercluster", startMemberClusterController)
 }
 
 // startReleaseController starts the Release reconciler.
@@ -89,7 +88,7 @@ func BuildGateRegistry(c client.Client) (*pkggate.Registry, error) {
 // MetricsCheck → WaitingApproval → Applying → Converged | Failed.
 // Built-in gates: soak, metrics (Prometheus), approval, health, verification (cosign), CEL.
 func startSyncController(_ context.Context, cc ControllerContext) (bool, error) {
-	provider := &crdprovider.CRDProvider{Client: cc.Manager.GetClient()}
+	provider := &crdprovider.CRDProvider{}
 
 	if err := (&controller.SyncReconciler{
 		Client:           cc.Manager.GetClient(),
@@ -126,20 +125,6 @@ func startApprovalController(_ context.Context, cc ControllerContext) (bool, err
 	return true, nil
 }
 
-// startBootstrapTokenController starts the BootstrapToken reconciler.
-// Creates bootstrap SA + kubeconfig Secret so spoke clusters can submit CSRs.
-func startBootstrapTokenController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.BootstrapTokenReconciler{
-		Client:    cc.Manager.GetClient(),
-		Recorder:  cc.Recorder,
-		HubAPIURL: cc.HubAPIURL,
-		HubCAData: cc.HubCAData,
-	}).SetupWithManager(cc.Manager); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
 // startCSRApprovalController starts the CSR approval controller.
 // Approves bootstrap CSRs (first registration) and renewal CSRs (cert rotation)
 // from Kapro cluster-controllers using the kubernetes.io/kube-apiserver-client signer.
@@ -158,10 +143,10 @@ func startCSRApprovalController(_ context.Context, cc ControllerContext) (bool, 
 	return true, nil
 }
 
-// startManagedClusterController starts the ManagedCluster deregistration reconciler.
-// Handles finalizer-based cleanup of long-lived cluster RBAC when a ManagedCluster is deleted.
-func startManagedClusterController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.ManagedClusterReconciler{
+// startMemberClusterController starts the MemberCluster deregistration reconciler.
+// Handles finalizer-based cleanup of long-lived cluster RBAC when a MemberCluster is deleted.
+func startMemberClusterController(_ context.Context, cc ControllerContext) (bool, error) {
+	if err := (&controller.MemberClusterReconciler{
 		Client: cc.Manager.GetClient(),
 		Scheme: cc.Manager.GetScheme(),
 	}).SetupWithManager(cc.Manager); err != nil {

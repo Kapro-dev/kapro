@@ -9,51 +9,51 @@ import (
 	"kapro.io/kapro/internal/webhook/admission"
 )
 
-// ---- EnvironmentValidator ---------------------------------------------------
+// ---- MemberClusterValidator ---------------------------------------------------
 
-func TestValidateEnvironment_MissingActuatorType(t *testing.T) {
-	env := &kaprov1alpha1.Environment{
-		Spec: kaprov1alpha1.EnvironmentSpec{
+func TestValidateMemberCluster_MissingActuatorType(t *testing.T) {
+	mc := &kaprov1alpha1.MemberCluster{
+		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{Type: ""},
 		},
 	}
-	if err := envValidate(env); err == nil {
+	if err := mcValidate(mc); err == nil {
 		t.Fatal("expected error for missing actuator type")
 	}
 }
 
-func TestValidateEnvironment_FluxMissingSubSpec(t *testing.T) {
-	env := &kaprov1alpha1.Environment{
-		Spec: kaprov1alpha1.EnvironmentSpec{
+func TestValidateMemberCluster_FluxMissingSubSpec(t *testing.T) {
+	mc := &kaprov1alpha1.MemberCluster{
+		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{Type: "flux", Flux: nil},
 		},
 	}
-	if err := envValidate(env); err == nil {
+	if err := mcValidate(mc); err == nil {
 		t.Fatal("expected error for flux type without flux sub-spec")
 	}
 }
 
-func TestValidateEnvironment_FluxValid(t *testing.T) {
-	env := &kaprov1alpha1.Environment{
-		Spec: kaprov1alpha1.EnvironmentSpec{
+func TestValidateMemberCluster_FluxValid(t *testing.T) {
+	mc := &kaprov1alpha1.MemberCluster{
+		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{
 				Type: "flux",
 				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},
 			},
 		},
 	}
-	if err := envValidate(env); err != nil {
+	if err := mcValidate(mc); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestValidateEnvironment_UnsupportedActuatorType(t *testing.T) {
-	env := &kaprov1alpha1.Environment{
-		Spec: kaprov1alpha1.EnvironmentSpec{
+func TestValidateMemberCluster_UnsupportedActuatorType(t *testing.T) {
+	mc := &kaprov1alpha1.MemberCluster{
+		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{Type: "kserve"},
 		},
 	}
-	if err := envValidate(env); err == nil {
+	if err := mcValidate(mc); err == nil {
 		t.Fatal("expected error for unsupported actuator type")
 	}
 }
@@ -216,8 +216,8 @@ func TestValidatePipeline_DuplicateStageName(t *testing.T) {
 
 // ---- helpers ----------------------------------------------------------------
 
-func envValidate(env *kaprov1alpha1.Environment) error {
-	return admission.ValidateEnvironment(env)
+func mcValidate(mc *kaprov1alpha1.MemberCluster) error {
+	return admission.ValidateMemberCluster(mc)
 }
 
 func releaseValidate(r *kaprov1alpha1.Release) error {

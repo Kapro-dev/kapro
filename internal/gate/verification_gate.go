@@ -16,7 +16,7 @@ import (
 // has a valid cryptographic signature.
 //
 // Policy precedence:
-//  1. If req.Policy.Spec.Gate.Verification.CosignPolicy is set — use it.
+//  1. If req.Policy.Gate.Verification.CosignPolicy is set — use it.
 //  2. Otherwise fall back to default keyless with Sigstore public infrastructure.
 //
 // Nil-safe: when Verifier is nil the gate passes through.
@@ -92,20 +92,20 @@ func (g *VerificationGate) Evaluate(ctx context.Context, req Request) (Result, e
 // Falls back to default keyless when no policy is set.
 func (g *VerificationGate) buildVerifyRequest(
 	ctx context.Context,
-	policy *kaprov1alpha1.GatePolicy,
+	policy *kaprov1alpha1.GatePolicySpec,
 	imageRef string,
 ) (verification.VerifyRequest, error) {
 	base := verification.VerifyRequest{ImageRef: imageRef}
 
 	// No policy or no cosign override → default keyless.
 	if policy == nil ||
-		policy.Spec.Gate.Verification == nil ||
-		policy.Spec.Gate.Verification.CosignPolicy == nil {
+		policy.Gate.Verification == nil ||
+		policy.Gate.Verification.CosignPolicy == nil {
 		base.Keyless = &verification.KeylessConfig{}
 		return base, nil
 	}
 
-	cp := policy.Spec.Gate.Verification.CosignPolicy
+	cp := policy.Gate.Verification.CosignPolicy
 
 	if cp.Keyless != nil {
 		base.Keyless = &verification.KeylessConfig{

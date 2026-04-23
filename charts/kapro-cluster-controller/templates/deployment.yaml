@@ -1,11 +1,11 @@
 {{- if not .Values.environmentRef }}
-{{- fail "environmentRef is required — set to the Environment CR name on the control plane" }}
+{{- fail "environmentRef is required — set to the MemberCluster CR name on the control plane" }}
 {{- end }}
 {{- if not .Values.controlPlane.url }}
 {{- fail "controlPlane.url is required — hub kube-apiserver URL, e.g. https://hub.example.com:6443" }}
 {{- end }}
 {{- if not .Values.bootstrapKubeconfigSecret }}
-{{- fail "bootstrapKubeconfigSecret is required — name of the Secret containing the one-time bootstrap kubeconfig issued by BootstrapTokenReconciler" }}
+{{- fail "bootstrapKubeconfigSecret is required — name of the Secret containing the bootstrap kubeconfig from the hub MemberCluster CR" }}
 {{- end }}
 apiVersion: apps/v1
 kind: Deployment

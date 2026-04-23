@@ -37,15 +37,15 @@ import (
 	crdprovider "kapro.io/kapro/internal/provider/crd"
 )
 
-// notificationPolicyFrom converts a *GatePolicy into the KNI-clean value type.
+// notificationPolicyFrom converts a *GatePolicySpec into the KNI-clean value type.
 // This is the single conversion point that keeps api/v1alpha1 out of pkg/notification.
 // Returns notification.EmptyPolicy when policy is nil or has no channels configured.
-func notificationPolicyFrom(policy *kaprov1alpha1.GatePolicy) notification.NotificationPolicy {
-	if policy == nil || len(policy.Spec.Notifications) == 0 {
+func notificationPolicyFrom(policy *kaprov1alpha1.GatePolicySpec) notification.NotificationPolicy {
+	if policy == nil || len(policy.Notifications) == 0 {
 		return notification.EmptyPolicy
 	}
-	channels := make([]notification.Channel, 0, len(policy.Spec.Notifications))
-	for _, spec := range policy.Spec.Notifications {
+	channels := make([]notification.Channel, 0, len(policy.Notifications))
+	for _, spec := range policy.Notifications {
 		ch := notification.Channel{
 			Type:   spec.Type,
 			Target: spec.Channel, // Slack uses Channel as webhook URL
@@ -122,11 +122,9 @@ type SyncReconciler struct {
 // +kubebuilder:rbac:groups=kapro.io,resources=syncs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kapro.io,resources=syncs/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=syncs/finalizers,verbs=update
-// +kubebuilder:rbac:groups=kapro.io,resources=gatepolicies,verbs=get;list;watch
-// +kubebuilder:rbac:groups=kapro.io,resources=gatetemplates,verbs=get;list;watch
-// +kubebuilder:rbac:groups=kapro.io,resources=environments,verbs=get;list;watch
-// +kubebuilder:rbac:groups=kapro.io,resources=managedclusters,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=memberclusters,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kapro.io,resources=approvals,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=releases,verbs=get
 
 const syncFinalizer = "kapro.io/sync-cleanup"
 
@@ -189,14 +187,14 @@ func (r *SyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 }
 
 func (r *SyncReconciler) handlePending(ctx context.Context, sync *kaprov1alpha1.Sync) (ctrl.Result, error) {
-	// Check cluster is reachable via ManagedCluster heartbeat.
-	mc, err := r.getManagedCluster(ctx, sync.Spec.EnvironmentRef)
-	if err != nil {
+	// Check cluster is reachable via MemberCluster heartbeat.
+	var mc kaprov1alpha1.MemberCluster
+	if err := r.Get(ctx, client.ObjectKey{Name: sync.Spec.EnvironmentRef}, &mc); err != nil {
 		return ctrl.Result{RequeueAfter: requeueFast}, nil
 	}
 
 	if !isHeartbeatFresh(mc.Status.LastHeartbeat) {
-		log.FromContext(ctx).Info("cluster heartbeat stale, waiting", "env", sync.Spec.EnvironmentRef)
+		log.FromContext(ctx).Info("cluster heartbeat stale, waiting", "cluster", sync.Spec.EnvironmentRef)
 		return ctrl.Result{RequeueAfter: requeueNormal}, nil
 	}
 
@@ -215,7 +213,7 @@ func (r *SyncReconciler) handleVerification(ctx context.Context, sync *kaprov1al
 		return r.transitionTo(ctx, sync, kaprov1alpha1.SyncPhaseHealthCheck)
 	}
 
-	policy, _ := r.getPolicy(ctx, sync.Spec.PolicyRef)
+	policy := sync.Spec.Gate
 	result, err := g.Evaluate(ctx, gate.Request{Sync: sync, Policy: policy})
 	if err != nil {
 		// Hard error — surface to the controller for exponential back-off.
@@ -258,7 +256,7 @@ func (r *SyncReconciler) handleHealthCheck(ctx context.Context, sync *kaprov1alp
 
 	switch result.Overall {
 	case pkghealth.StatusDegraded:
-		policy, _ := r.getPolicy(ctx, sync.Spec.PolicyRef)
+		policy := sync.Spec.Gate
 		return ctrl.Result{}, r.failSync(ctx, sync, policy, "health check failed: "+result.Message)
 	case pkghealth.StatusProgressing, pkghealth.StatusUnknown, pkghealth.StatusMissing:
 		return ctrl.Result{RequeueAfter: requeueNormal}, nil
@@ -271,16 +269,16 @@ func (r *SyncReconciler) handleHealthCheck(ctx context.Context, sync *kaprov1alp
 // transitionToSoakOrMetrics advances past HealthCheck: to Soaking if a soak is configured,
 // otherwise straight to MetricsCheck.
 func (r *SyncReconciler) transitionToSoakOrMetrics(ctx context.Context, sync *kaprov1alpha1.Sync) (ctrl.Result, error) {
-	policy, err := r.getPolicy(ctx, sync.Spec.PolicyRef)
-	if err != nil || policy == nil || policy.Spec.Gate.SoakTime == "" {
+	policy := sync.Spec.Gate
+	if policy == nil || policy.Gate.SoakTime == "" {
 		return r.transitionTo(ctx, sync, kaprov1alpha1.SyncPhaseMetricsCheck)
 	}
 	return r.transitionTo(ctx, sync, kaprov1alpha1.SyncPhaseSoaking)
 }
 
 func (r *SyncReconciler) handleSoaking(ctx context.Context, sync *kaprov1alpha1.Sync) (ctrl.Result, error) {
-	policy, err := r.getPolicy(ctx, sync.Spec.PolicyRef)
-	if err != nil || policy == nil {
+	policy := sync.Spec.Gate
+	if policy == nil {
 		return r.transitionTo(ctx, sync, kaprov1alpha1.SyncPhaseMetricsCheck)
 	}
 
@@ -306,14 +304,14 @@ func (r *SyncReconciler) handleSoaking(ctx context.Context, sync *kaprov1alpha1.
 }
 
 func (r *SyncReconciler) handleMetricsCheck(ctx context.Context, sync *kaprov1alpha1.Sync) (ctrl.Result, error) {
-	policy, err := r.getPolicy(ctx, sync.Spec.PolicyRef)
-	if err != nil || policy == nil {
+	policy := sync.Spec.Gate
+	if policy == nil {
 		return r.nextAfterMetrics(ctx, sync, policy)
 	}
 
 	// Fast path: nothing to evaluate — skip straight through.
 	// Checked explicitly so a policy with only Templates does NOT hit this return.
-	if len(policy.Spec.Gate.Metrics) == 0 && len(policy.Spec.Gate.Templates) == 0 {
+	if len(policy.Gate.Metrics) == 0 && len(policy.Gate.Templates) == 0 {
 		return r.nextAfterMetrics(ctx, sync, policy)
 	}
 
@@ -321,12 +319,12 @@ func (r *SyncReconciler) handleMetricsCheck(ctx context.Context, sync *kaprov1al
 	//    GateTemplate evaluation always follows — even when there are no metrics —
 	//    so a templates-only policy works correctly.
 	gatePassed := true
-	if len(policy.Spec.Gate.Metrics) > 0 {
+	if len(policy.Gate.Metrics) > 0 {
 		metricsGate := r.MetricsGate
 		if metricsGate == nil {
 			metricsGate = &internalgate.MetricsGate{}
 		}
-		for i, metric := range policy.Spec.Gate.Metrics {
+		for i, metric := range policy.Gate.Metrics {
 			result, err := metricsGate.Evaluate(ctx, gate.Request{Sync: sync, Policy: policy, MetricIndex: i})
 			if err != nil {
 				// Infrastructure error (e.g. Prometheus unreachable) — retry but do NOT
@@ -354,7 +352,7 @@ func (r *SyncReconciler) handleMetricsCheck(ctx context.Context, sync *kaprov1al
 	//    no metrics are configured (templates-only policy). Previously this block
 	//    was unreachable when Metrics was empty due to an early return — that bug
 	//    is fixed by the restructure above.
-	if len(policy.Spec.Gate.Templates) > 0 {
+	if len(policy.Gate.Templates) > 0 {
 		allPassed, requeueAfter, err := r.evaluateGateTemplates(ctx, sync, policy)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("evaluateGateTemplates: %w", err)
@@ -375,11 +373,11 @@ func (r *SyncReconciler) handleMetricsCheck(ctx context.Context, sync *kaprov1al
 // metricsGateTimedOut returns true when the Sync has been in MetricsCheck longer
 // than policy.Spec.Gate.GateTimeout. Returns (false, "") if no timeout is configured
 // or the deadline has not yet passed.
-func (r *SyncReconciler) metricsGateTimedOut(sync *kaprov1alpha1.Sync, policy *kaprov1alpha1.GatePolicy) (bool, string) {
-	if policy.Spec.Gate.GateTimeout == "" || sync.Status.PhaseEnteredAt == "" {
+func (r *SyncReconciler) metricsGateTimedOut(sync *kaprov1alpha1.Sync, policy *kaprov1alpha1.GatePolicySpec) (bool, string) {
+	if policy.Gate.GateTimeout == "" || sync.Status.PhaseEnteredAt == "" {
 		return false, ""
 	}
-	timeout, err := time.ParseDuration(policy.Spec.Gate.GateTimeout)
+	timeout, err := time.ParseDuration(policy.Gate.GateTimeout)
 	if err != nil {
 		return false, ""
 	}
@@ -390,33 +388,34 @@ func (r *SyncReconciler) metricsGateTimedOut(sync *kaprov1alpha1.Sync, policy *k
 	if time.Since(enteredAt) < timeout {
 		return false, ""
 	}
-	return true, fmt.Sprintf("metrics gate timed out after %s (onFailure=%s)", policy.Spec.Gate.GateTimeout, policy.Spec.OnFailure)
+	return true, fmt.Sprintf("metrics gate timed out after %s (onFailure=%s)", policy.Gate.GateTimeout, policy.OnFailure)
 }
 
-// evaluateGateTemplates evaluates all GateTemplate refs from the policy.
+// evaluateGateTemplates evaluates all inline gate templates from the policy.
 // Results are written to Sync.Status.Gates[] (Kapro's authoritative snapshot).
 // Returns: (allPassed, requeueAfter, error).
-func (r *SyncReconciler) evaluateGateTemplates(ctx context.Context, sync *kaprov1alpha1.Sync, policy *kaprov1alpha1.GatePolicy) (bool, time.Duration, error) {
+func (r *SyncReconciler) evaluateGateTemplates(ctx context.Context, sync *kaprov1alpha1.Sync, policy *kaprov1alpha1.GatePolicySpec) (bool, time.Duration, error) {
 	log := log.FromContext(ctx)
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	gates := sync.Status.Gates
 	if gates == nil {
-		gates = make([]kaprov1alpha1.GateRunStatus, 0, len(policy.Spec.Gate.Templates))
+		gates = make([]kaprov1alpha1.GateRunStatus, 0, len(policy.Gate.Templates))
 	}
 
 	allPassed := true
 	requeueAfter := requeueNormal
 
-	for _, ref := range policy.Spec.Gate.Templates {
-		// Fetch the GateTemplate CR (cluster-scoped).
-		var tmpl kaprov1alpha1.GateTemplate
-		if err := r.Get(ctx, client.ObjectKey{Name: ref.Name}, &tmpl); err != nil {
-			return false, 0, fmt.Errorf("fetch GateTemplate %q: %w", ref.Name, err)
+	for i := range policy.Gate.Templates {
+		tmpl := &policy.Gate.Templates[i]
+		// Use Name if set; otherwise fall back to index-based key.
+		gateName := tmpl.Name
+		if gateName == "" {
+			gateName = fmt.Sprintf("gate-%d", i)
 		}
 
 		// Find or create the status entry for this gate.
-		gateStatus := findOrCreateGateStatus(gates, ref.Name, now)
+		gateStatus := findOrCreateGateStatus(gates, gateName, now)
 
 		// Skip already-terminal gates.
 		if gateStatus.Phase == kaprov1alpha1.GatePhasePassed {
@@ -427,27 +426,27 @@ func (r *SyncReconciler) evaluateGateTemplates(ctx context.Context, sync *kaprov
 			continue
 		}
 
-		// Resolve args: template defaults < policy overrides < sync context.
-		args := resolveSyncArgs(&tmpl, ref.Args, sync)
+		// Resolve args: template defaults < sync context.
+		args := resolveSyncArgs(tmpl, sync)
 
 		// Dispatch to the correct gate impl based on type.
-		g, err := r.gateForTemplate(&tmpl)
+		g, err := r.gateForTemplate(tmpl)
 		if err != nil {
-			return false, 0, fmt.Errorf("gate for template %q: %w", ref.Name, err)
+			return false, 0, fmt.Errorf("gate for template %q: %w", gateName, err)
 		}
 
 		result, err := g.Evaluate(ctx, gate.Request{
-			Sync:        sync,
-			Template:    &tmpl,
-			Args:        args,
+			Sync:     sync,
+			Template: tmpl,
+			Args:     args,
 		})
 		if err != nil {
-			log.Error(err, "gate template evaluation error, will retry", "gate", ref.Name)
+			log.Error(err, "gate template evaluation error, will retry", "gate", gateName)
 			gateStatus.Phase = kaprov1alpha1.GatePhaseRunning
 			gateStatus.Message = err.Error()
 			gateStatus.Attempts++
 			setGateStatus(&gates, gateStatus)
-			kaprometrics.GateEvaluations.WithLabelValues(tmpl.Spec.Type, "error").Inc()
+			kaprometrics.GateEvaluations.WithLabelValues(tmpl.Type, "error").Inc()
 			allPassed = false
 			continue
 		}
@@ -457,7 +456,7 @@ func (r *SyncReconciler) evaluateGateTemplates(ctx context.Context, sync *kaprov
 			// Gate returned no Phase — default to Inconclusive (safe: retry, don't advance).
 			phase = kaprov1alpha1.GatePhaseInconclusive
 		}
-		kaprometrics.GateEvaluations.WithLabelValues(tmpl.Spec.Type, strings.ToLower(string(phase))).Inc()
+		kaprometrics.GateEvaluations.WithLabelValues(tmpl.Type, strings.ToLower(string(phase))).Inc()
 
 		gateStatus.Phase = phase
 		gateStatus.Message = result.Message
@@ -471,22 +470,22 @@ func (r *SyncReconciler) evaluateGateTemplates(ctx context.Context, sync *kaprov
 		}
 		setGateStatus(&gates, gateStatus)
 
-		log.Info("gate template evaluated", "gate", ref.Name, "phase", phase, "message", result.Message)
+		log.Info("gate template evaluated", "gate", gateName, "phase", phase, "message", result.Message)
 		r.Recorder.Event(sync, corev1.EventTypeNormal, "GateEvaluated",
-			fmt.Sprintf("gate %s: %s — %s", ref.Name, phase, result.Message))
+			fmt.Sprintf("gate %s: %s — %s", gateName, phase, result.Message))
 
 		switch phase {
 		case kaprov1alpha1.GatePhaseFailed:
 			allPassed = false
 			// failurePolicy == skip: treat as passed and continue
-			if tmpl.Spec.FailurePolicy == "skip" {
+			if tmpl.FailurePolicy == "skip" {
 				gateStatus.Phase = kaprov1alpha1.GatePhasePassed
 				gateStatus.Message = "skipped (failurePolicy=skip)"
 				setGateStatus(&gates, gateStatus)
 			}
 		case kaprov1alpha1.GatePhaseInconclusive:
 			allPassed = false
-			if tmpl.Spec.InconclusivePolicy == "halt" {
+			if tmpl.InconclusivePolicy == "halt" {
 				gateStatus.Phase = kaprov1alpha1.GatePhaseFailed
 				setGateStatus(&gates, gateStatus)
 			}
@@ -518,19 +517,19 @@ func (r *SyncReconciler) evaluateGateTemplates(ctx context.Context, sync *kaprov
 //
 // This design mirrors how Kubernetes resolves CRI implementations:
 // the registry is the open extension point; the fallback exists for tests only.
-func (r *SyncReconciler) gateForTemplate(tmpl *kaprov1alpha1.GateTemplate) (gate.Gate, error) {
+func (r *SyncReconciler) gateForTemplate(tmpl *kaprov1alpha1.GateTemplateSpec) (gate.Gate, error) {
 	// Path 1: registry-based dispatch (production path).
 	if r.GateRegistry != nil {
-		g, err := r.GateRegistry.Resolve(tmpl.Spec.Type)
+		g, err := r.GateRegistry.Resolve(tmpl.Type)
 		if err != nil {
 			return nil, fmt.Errorf("gate type %q not registered — add it to BuildGateRegistry or register in main.go: %w",
-				tmpl.Spec.Type, err)
+				tmpl.Type, err)
 		}
 		return g, nil
 	}
 
 	// Path 2: built-in fallback for tests that don't wire a GateRegistry.
-	switch tmpl.Spec.Type {
+	switch tmpl.Type {
 	case "cel":
 		if r.CELGate != nil {
 			return r.CELGate, nil
@@ -541,24 +540,20 @@ func (r *SyncReconciler) gateForTemplate(tmpl *kaprov1alpha1.GateTemplate) (gate
 	case "job":
 		return &jobgate.Gate{Client: r.Client}, nil
 	default:
-		return nil, fmt.Errorf("unknown gate type %q — supported types: cel|job|webhook (or wire a GateRegistry)", tmpl.Spec.Type)
+		return nil, fmt.Errorf("unknown gate type %q — supported types: cel|job|webhook (or wire a GateRegistry)", tmpl.Type)
 	}
 }
 
-// resolveSyncArgs builds the final args map: template defaults < policy overrides < sync context.
-func resolveSyncArgs(tmpl *kaprov1alpha1.GateTemplate, policyOverrides map[string]string, sync *kaprov1alpha1.Sync) map[string]string {
+// resolveSyncArgs builds the final args map: template defaults < sync context.
+func resolveSyncArgs(tmpl *kaprov1alpha1.GateTemplateSpec, sync *kaprov1alpha1.Sync) map[string]string {
 	args := make(map[string]string)
 	// 1. Template defaults.
-	for _, a := range tmpl.Spec.Args {
+	for _, a := range tmpl.Args {
 		if a.Value != "" {
 			args[a.Name] = a.Value
 		}
 	}
-	// 2. Policy-level overrides.
-	for k, v := range policyOverrides {
-		args[k] = v
-	}
-	// 3. Sync context — always injected.
+	// 2. Sync context — always injected.
 	if sync != nil {
 		args["version"] = sync.Spec.Version
 		args["environment"] = sync.Spec.EnvironmentRef
@@ -569,8 +564,8 @@ func resolveSyncArgs(tmpl *kaprov1alpha1.GateTemplate, policyOverrides map[strin
 	return args
 }
 
-func (r *SyncReconciler) nextAfterMetrics(ctx context.Context, sync *kaprov1alpha1.Sync, policy *kaprov1alpha1.GatePolicy) (ctrl.Result, error) {
-	if policy != nil && policy.Spec.Approval != nil && policy.Spec.Approval.Required {
+func (r *SyncReconciler) nextAfterMetrics(ctx context.Context, sync *kaprov1alpha1.Sync, policy *kaprov1alpha1.GatePolicySpec) (ctrl.Result, error) {
+	if policy != nil && policy.Approval != nil && policy.Approval.Required {
 		return r.transitionTo(ctx, sync, kaprov1alpha1.SyncPhaseWaitingApproval)
 	}
 	return r.transitionTo(ctx, sync, kaprov1alpha1.SyncPhaseApplying)
@@ -583,7 +578,7 @@ func (r *SyncReconciler) handleWaitingApproval(ctx context.Context, sync *kaprov
 		if rejectedBy == "" {
 			rejectedBy = "unknown"
 		}
-		policy, _ := r.getPolicy(ctx, sync.Spec.PolicyRef)
+		policy := sync.Spec.Gate
 		return ctrl.Result{}, r.failSync(ctx, sync, policy,
 			fmt.Sprintf("rejected by %s", rejectedBy))
 	}
@@ -600,7 +595,7 @@ func (r *SyncReconciler) handleWaitingApproval(ctx context.Context, sync *kaprov
 		approvalGate = &internalgate.ApprovalGate{Client: r.Client}
 	}
 
-	policy, _ := r.getPolicy(ctx, sync.Spec.PolicyRef)
+	policy := sync.Spec.Gate
 	result, err := approvalGate.Evaluate(ctx, gate.Request{Sync: sync, Policy: policy})
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("approval gate: %w", err)
@@ -639,7 +634,7 @@ func (r *SyncReconciler) sendApprovalNotification(ctx context.Context, sync *kap
 	}
 
 	if r.Notifier != nil {
-		policy, _ := r.getPolicy(ctx, sync.Spec.PolicyRef)
+		policy := sync.Spec.Gate
 		r.Notifier.Notify(ctx, notification.Event{
 			Phase:       string(kaprov1alpha1.SyncPhaseWaitingApproval),
 			Version:     sync.Spec.Version,
@@ -697,33 +692,32 @@ func (r *SyncReconciler) buildApprovalURLs(sync *kaprov1alpha1.Sync) (approveURL
 func (r *SyncReconciler) handleApplying(ctx context.Context, sync *kaprov1alpha1.Sync) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	var env kaprov1alpha1.Environment
-	if err := r.Get(ctx, client.ObjectKey{Name: sync.Spec.EnvironmentRef}, &env); err != nil {
-		return ctrl.Result{}, fmt.Errorf("environment %s not found: %w", sync.Spec.EnvironmentRef, err)
+	var mc kaprov1alpha1.MemberCluster
+	if err := r.Get(ctx, client.ObjectKey{Name: sync.Spec.EnvironmentRef}, &mc); err != nil {
+		return ctrl.Result{}, fmt.Errorf("membercluster %s not found: %w", sync.Spec.EnvironmentRef, err)
 	}
 
 	// Capture current version for rollback before we change anything.
 	if sync.Status.PreviousVersion == "" {
-		mc, _ := r.getManagedCluster(ctx, sync.Spec.EnvironmentRef)
-		if mc != nil && mc.Status.CurrentVersions[syncAppKey(sync)] != "" {
+		if current := mc.Status.CurrentVersions[syncAppKey(sync)]; current != "" {
 			patch := client.MergeFrom(sync.DeepCopy())
-			sync.Status.PreviousVersion = mc.Status.CurrentVersions[syncAppKey(sync)]
+			sync.Status.PreviousVersion = current
 			if err := r.Status().Patch(ctx, sync, patch); err != nil {
 				return ctrl.Result{}, fmt.Errorf("capture PreviousVersion: %w", err)
 			}
 		}
 	}
 
-	// Resolve actuator from Environment spec — this is what makes pluggability real.
+	// Resolve actuator from MemberCluster spec — this is what makes pluggability real.
 	if r.ActuatorRegistry != nil {
-		act, err := r.ActuatorRegistry.Resolve(env.Spec.Actuator.Type)
+		act, err := r.ActuatorRegistry.Resolve(mc.Spec.Actuator.Type)
 		if err != nil {
-			log.Error(err, "failed to resolve actuator — check Environment.spec.actuator.type")
+			log.Error(err, "failed to resolve actuator — check MemberCluster.spec.actuator.type")
 			r.Recorder.Event(sync, corev1.EventTypeWarning, "ActuatorResolveFailed", err.Error())
 			return ctrl.Result{RequeueAfter: requeueFast}, nil
 		}
 		if err := act.Apply(ctx, actuator.ApplyRequest{
-			Environment:     &env,
+			Cluster:         &mc,
 			Version:         sync.Spec.Version,
 			PreviousVersion: sync.Status.PreviousVersion,
 			AppKey:          syncAppKey(sync),
@@ -733,21 +727,16 @@ func (r *SyncReconciler) handleApplying(ctx context.Context, sync *kaprov1alpha1
 			return ctrl.Result{RequeueAfter: requeueFast}, nil
 		}
 		log.Info("Actuator.Apply succeeded — waiting for convergence",
-			"env", sync.Spec.EnvironmentRef,
-			"actuator", env.Spec.Actuator.Type,
+			"cluster", sync.Spec.EnvironmentRef,
+			"actuator", mc.Spec.Actuator.Type,
 			"version", sync.Spec.Version,
 		)
 	}
 
-	// Poll ManagedCluster for convergence (set by the cluster agent).
-	mc, err := r.getManagedCluster(ctx, sync.Spec.EnvironmentRef)
-	if err != nil {
-		return ctrl.Result{RequeueAfter: requeueFast}, nil
-	}
-
+	// Poll MemberCluster for convergence (set by the cluster agent).
 	if mc.Status.Phase == kaprov1alpha1.ClusterPhaseConverged &&
 		mc.Status.CurrentVersions[syncAppKey(sync)] == sync.Spec.Version {
-		log.Info("cluster converged", "env", sync.Spec.EnvironmentRef, "version", sync.Spec.Version)
+		log.Info("cluster converged", "cluster", sync.Spec.EnvironmentRef, "version", sync.Spec.Version)
 		r.Recorder.Event(sync, corev1.EventTypeNormal, "Applied", fmt.Sprintf("Version %s applied to %s", sync.Spec.Version, sync.Spec.EnvironmentRef))
 		patch := client.MergeFrom(sync.DeepCopy())
 		sync.Status.Phase = kaprov1alpha1.SyncPhaseConverged
@@ -768,13 +757,13 @@ func (r *SyncReconciler) handleApplying(ctx context.Context, sync *kaprov1alpha1
 	}
 
 	if mc.Status.Phase == kaprov1alpha1.ClusterPhaseFailed {
-		policy, _ := r.getPolicy(ctx, sync.Spec.PolicyRef)
+		policy := sync.Spec.Gate
 		return ctrl.Result{}, r.failSync(ctx, sync, policy,
 			fmt.Sprintf("cluster %s reported Failed phase", sync.Spec.EnvironmentRef))
 	}
 
 	log.Info("waiting for convergence",
-		"env", sync.Spec.EnvironmentRef,
+		"cluster", sync.Spec.EnvironmentRef,
 		"clusterPhase", mc.Status.Phase,
 		"currentVersion", mc.Status.CurrentVersions[syncAppKey(sync)],
 		"wantVersion", sync.Spec.Version,
@@ -809,7 +798,7 @@ func (r *SyncReconciler) transitionTo(ctx context.Context, sync *kaprov1alpha1.S
 	// WaitingApproval is skipped here — sendApprovalNotification sends a richer
 	// actionable notification (with approve/reject URLs) exactly once from handleWaitingApproval.
 	if r.Notifier != nil && phase != kaprov1alpha1.SyncPhaseWaitingApproval {
-		policy, _ := r.getPolicy(ctx, sync.Spec.PolicyRef)
+		policy := sync.Spec.Gate
 		r.Notifier.Notify(ctx, notification.Event{
 			Phase:       string(phase),
 			Version:     sync.Spec.Version,
@@ -821,7 +810,7 @@ func (r *SyncReconciler) transitionTo(ctx context.Context, sync *kaprov1alpha1.S
 	return ctrl.Result{Requeue: true}, nil
 }
 
-func (r *SyncReconciler) failSync(ctx context.Context, sync *kaprov1alpha1.Sync, policy *kaprov1alpha1.GatePolicy, msg string) error {
+func (r *SyncReconciler) failSync(ctx context.Context, sync *kaprov1alpha1.Sync, policy *kaprov1alpha1.GatePolicySpec, msg string) error {
 	patch := client.MergeFrom(sync.DeepCopy())
 	sync.Status.Phase = kaprov1alpha1.SyncPhaseFailed
 	sync.Status.ObservedGeneration = sync.Generation
@@ -838,8 +827,8 @@ func (r *SyncReconciler) failSync(ctx context.Context, sync *kaprov1alpha1.Sync,
 	})
 
 	onFailure := "halt"
-	if policy != nil && policy.Spec.OnFailure != "" {
-		onFailure = policy.Spec.OnFailure
+	if policy != nil && policy.OnFailure != "" {
+		onFailure = policy.OnFailure
 	}
 
 	// When not rolling back automatically, surface rollback availability as a
@@ -894,16 +883,16 @@ func (r *SyncReconciler) triggerRollback(ctx context.Context, failed *kaprov1alp
 
 	// 1. Immediately call actuator.Rollback() so the delivery system starts
 	//    reverting without waiting for the new Sync to reconcile.
-	var env kaprov1alpha1.Environment
-	if err := r.Get(ctx, client.ObjectKey{Name: failed.Spec.EnvironmentRef}, &env); err == nil {
+	var mc kaprov1alpha1.MemberCluster
+	if err := r.Get(ctx, client.ObjectKey{Name: failed.Spec.EnvironmentRef}, &mc); err == nil {
 		if r.ActuatorRegistry != nil {
-			if act, actErr := r.ActuatorRegistry.Resolve(env.Spec.Actuator.Type); actErr == nil {
-				if rbErr := act.Rollback(ctx, &env, failed.Status.PreviousVersion); rbErr != nil {
+			if act, actErr := r.ActuatorRegistry.Resolve(mc.Spec.Actuator.Type); actErr == nil {
+				if rbErr := act.Rollback(ctx, &mc, failed.Status.PreviousVersion); rbErr != nil {
 					log.Error(rbErr, "actuator Rollback() failed — rollback Sync will re-apply it")
 					r.Recorder.Event(failed, corev1.EventTypeWarning, "ActuatorRollbackFailed", rbErr.Error())
 				} else {
 					log.Info("actuator Rollback() succeeded",
-						"env", failed.Spec.EnvironmentRef,
+						"cluster", failed.Spec.EnvironmentRef,
 						"previousVersion", failed.Status.PreviousVersion,
 					)
 				}
@@ -935,7 +924,7 @@ func (r *SyncReconciler) triggerRollback(ctx context.Context, failed *kaprov1alp
 			Pipeline:       failed.Spec.Pipeline,
 			Stage:          failed.Spec.Stage,
 			Version:        failed.Status.PreviousVersion,
-			PolicyRef:      failed.Spec.PolicyRef,
+			Gate:           failed.Spec.Gate,
 			AppKey:         failed.Spec.AppKey,
 		},
 	}
@@ -964,32 +953,6 @@ func (r *SyncReconciler) triggerRollback(ctx context.Context, failed *kaprov1alp
 	return nil
 }
 
-func (r *SyncReconciler) getManagedCluster(ctx context.Context, envRef string) (*kaprov1alpha1.ManagedCluster, error) {
-	var mcList kaprov1alpha1.ManagedClusterList
-	if err := r.List(ctx, &mcList, client.MatchingLabels{
-		"kapro.io/environment": envRef,
-	}, client.Limit(100)); err != nil {
-		return nil, err
-	}
-	for _, mc := range mcList.Items {
-		if mc.Spec.EnvironmentRef == envRef {
-			return &mc, nil
-		}
-	}
-	return nil, fmt.Errorf("no ManagedCluster found for environment %s", envRef)
-}
-
-func (r *SyncReconciler) getPolicy(ctx context.Context, policyRef string) (*kaprov1alpha1.GatePolicy, error) {
-	if policyRef == "" {
-		return nil, nil
-	}
-	var policy kaprov1alpha1.GatePolicy
-	if err := r.Get(ctx, client.ObjectKey{Name: policyRef}, &policy); err != nil {
-		return nil, err
-	}
-	return &policy, nil
-}
-
 func (r *SyncReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(controller.Options{
@@ -1002,12 +965,12 @@ func (r *SyncReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&kaprov1alpha1.Sync{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
-		// Watch ManagedClusters so convergence is event-driven, not poll-driven.
+		// Watch MemberClusters so convergence is event-driven, not poll-driven.
 		// When a cluster agent writes status.phase=Converged, the owning
 		// Sync is woken up immediately rather than waiting for RequeueAfter.
 		Watches(
-			&kaprov1alpha1.ManagedCluster{},
-			handler.EnqueueRequestsFromMapFunc(r.syncsForManagedCluster),
+			&kaprov1alpha1.MemberCluster{},
+			handler.EnqueueRequestsFromMapFunc(r.syncsForMemberCluster),
 		).
 		// Watch Approvals so that a manual approval immediately wakes up the
 		// Sync that is stuck in WaitingApproval — without this watch the
@@ -1019,16 +982,16 @@ func (r *SyncReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-// syncsForManagedCluster returns reconcile.Requests for all in-flight Syncs
-// that target the changed ManagedCluster's environment.
-func (r *SyncReconciler) syncsForManagedCluster(ctx context.Context, obj client.Object) []ctrl.Request {
-	mc, ok := obj.(*kaprov1alpha1.ManagedCluster)
+// syncsForMemberCluster returns reconcile.Requests for all in-flight Syncs
+// that target the changed MemberCluster.
+func (r *SyncReconciler) syncsForMemberCluster(ctx context.Context, obj client.Object) []ctrl.Request {
+	mc, ok := obj.(*kaprov1alpha1.MemberCluster)
 	if !ok {
 		return nil
 	}
 	var syncList kaprov1alpha1.SyncList
 	if err := r.List(ctx, &syncList,
-		client.MatchingFields{IndexKeyEnvironment: mc.Spec.EnvironmentRef},
+		client.MatchingFields{IndexKeyEnvironment: mc.Name},
 		client.Limit(500),
 	); err != nil {
 		return nil

@@ -14,7 +14,7 @@
 //	  — no static credentials. Used for GKE, AKS, DigitalOcean, StackIT.
 //
 //	RegistrationReader (Path A — outbound/CRD)
-//	  Kapro reads cluster state from ManagedCluster CRDs written by the
+//	  Kapro reads cluster state from MemberCluster CRDs written by the
 //	  kapro-cluster-controller running on each spoke. No hub→spoke network
 //	  path required. The default for all clouds; works air-gapped.
 //
@@ -65,7 +65,7 @@ import (
 // Tracked in ROADMAP.md: gke (v0.3), aks, digitalocean, stackit.
 // Register implementations at startup in cmd/operator/main.go via provider.Registry.
 type Connector interface {
-	// Connect returns a *rest.Config for the given Environment's workload cluster.
+	// Connect returns a *rest.Config for the given MemberCluster's workload cluster.
 	//
 	// The returned config is short-lived: implementations that obtain tokens
 	// via cloud IAM (STS, GKE token exchange) return a config whose token
@@ -73,43 +73,57 @@ type Connector interface {
 	// rather than caching the result.
 	//
 	// Must return (nil, error) — never (nil, nil).
-	// Must return error when env is nil.
-	Connect(ctx context.Context, env *kaprov1alpha1.Environment) (*rest.Config, error)
+	// Must return error when cluster is nil.
+	Connect(ctx context.Context, cluster *kaprov1alpha1.MemberCluster) (*rest.Config, error)
 
 	// IsReachable returns true when the cluster API server responds to a
 	// lightweight liveness probe. Called during HealthCheck before Apply.
 	// Returns (false, nil) — not an error — when the cluster is temporarily
 	// unreachable; the controller will retry on next reconcile.
-	IsReachable(ctx context.Context, env *kaprov1alpha1.Environment) (bool, error)
+	IsReachable(ctx context.Context, cluster *kaprov1alpha1.MemberCluster) (bool, error)
 }
 
-// RegistrationReader is KCI-Register: reads cluster state from ManagedCluster
+// RegistrationReader is KCI-Register: reads cluster state from MemberCluster
 // CRDs written by kapro-cluster-controller (the outbound/CRD path).
 //
 // No direct network connection from hub to spoke is required.
-// Used by internal/provider/crd/ — the default for all environments.
+// Used by internal/provider/crd/ — the default for all clusters.
+//
+// Note: most controllers can use the MemberCluster object they already hold directly.
+// RegistrationReader is preserved for provider implementations that need additional
+// lookups or staleness checks beyond raw CRD access.
 type RegistrationReader interface {
-	// GetRegistration returns the ManagedCluster for the given Environment.
-	// Returns an error if no ManagedCluster is found or if the heartbeat is stale.
-	GetRegistration(ctx context.Context, env *kaprov1alpha1.Environment) (*kaprov1alpha1.ManagedCluster, error)
+	// IsReachable returns true when the cluster-controller has sent a heartbeat
+	// within the staleness threshold. No network connection needed.
+	IsReachable(ctx context.Context, cluster *kaprov1alpha1.MemberCluster) (bool, error)
+
+	// IsHealthy returns true when the cluster is reachable AND all workloads report ready.
+	IsHealthy(ctx context.Context, cluster *kaprov1alpha1.MemberCluster) (bool, error)
+
+	// CurrentVersion returns the version currently reported for the given appKey.
+	CurrentVersion(ctx context.Context, cluster *kaprov1alpha1.MemberCluster, appKey string) (string, error)
 }
 
-// NopConnector satisfies Connector for testing and environments that do not
+// NopConnector satisfies Connector for testing and clusters that do not
 // use the direct-connect path. Connect always returns an error — callers that
 // reach it with a NopConnector have a configuration bug.
 type NopConnector struct{}
 
-func (NopConnector) Connect(_ context.Context, env *kaprov1alpha1.Environment) (*rest.Config, error) {
-	if env == nil {
-		return nil, fmt.Errorf("KCI NopConnector: environment is nil")
+func (NopConnector) Connect(_ context.Context, cluster *kaprov1alpha1.MemberCluster) (*rest.Config, error) {
+	if cluster == nil {
+		return nil, fmt.Errorf("KCI NopConnector: cluster is nil")
 	}
-	return nil, fmt.Errorf("KCI NopConnector: no Connector registered for environment %q (type %q) — register a cloud provider in cmd/operator/main.go",
-		env.Name, env.Spec.Provider.Type)
+	providerType := ""
+	if cluster.Spec.Provider != nil {
+		providerType = cluster.Spec.Provider.Type
+	}
+	return nil, fmt.Errorf("KCI NopConnector: no Connector registered for cluster %q (type %q) — register a cloud provider in cmd/operator/main.go",
+		cluster.Name, providerType)
 }
 
-func (NopConnector) IsReachable(_ context.Context, env *kaprov1alpha1.Environment) (bool, error) {
-	if env == nil {
-		return false, fmt.Errorf("KCI NopConnector: environment is nil")
+func (NopConnector) IsReachable(_ context.Context, cluster *kaprov1alpha1.MemberCluster) (bool, error) {
+	if cluster == nil {
+		return false, fmt.Errorf("KCI NopConnector: cluster is nil")
 	}
 	return false, nil
 }

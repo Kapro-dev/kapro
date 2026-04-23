@@ -49,10 +49,10 @@ func jobName(syncName, tmplName string) string {
 func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Result, error) {
 	log := log.FromContext(ctx)
 
-	if req.Template == nil || req.Template.Spec.Job == nil {
-		return pkggate.Result{}, fmt.Errorf("job gate: GateTemplate.Spec.Job is nil")
+	if req.Template == nil || req.Template.Job == nil {
+		return pkggate.Result{}, fmt.Errorf("job gate: template Job spec is nil")
 	}
-	spec := req.Template.Spec.Job
+	spec := req.Template.Job
 
 	if req.Sync == nil {
 		return pkggate.Result{}, fmt.Errorf("job gate: Sync is nil in request")
@@ -74,7 +74,7 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 
 	if apierrors.IsNotFound(err) {
 		// Create the Job.
-		job, buildErr := buildJob(name, namespace, sync, spec, req.Args, req.Template.Spec.Timeout)
+		job, buildErr := buildJob(name, namespace, sync, spec, req.Args, req.Template.Timeout)
 		if buildErr != nil {
 			return pkggate.Result{}, fmt.Errorf("job gate: build job spec: %w", buildErr)
 		}

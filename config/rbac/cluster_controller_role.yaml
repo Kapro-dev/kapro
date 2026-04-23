@@ -4,5 +4,5 @@ metadata:
   name: kapro-cluster-controller
 rules:
 - apiGroups: ["kapro.io"]
-  resources: ["managedclusters", "managedclusters/status"]
+  resources: ["memberclusters", "memberclusters/status"]
   verbs: ["get", "list", "patch", "update", "watch"]

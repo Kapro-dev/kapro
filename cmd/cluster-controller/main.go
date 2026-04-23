@@ -366,33 +366,33 @@ func decodeCABundle(caBundle string) []byte {
 }
 
 // reconcile is the main heartbeat tick:
-//  1. GET ManagedCluster from hub to read desired state.
+//  1. GET MemberCluster from hub to read desired state.
 //  2. Read local Flux state (OCIRepository + Kustomization status).
-//  3. PATCH ManagedCluster/status on hub with current state.
+//  3. PATCH MemberCluster/status on hub with current state.
 //  4. Apply desired version to local OCIRepository if it has changed.
 func reconcile(
 	ctx context.Context,
 	localClient, hubClient client.Client,
 	environmentRef, fluxNamespace string,
 ) error {
-	log := ctrl.Log.WithName("reconcile").WithValues("env", environmentRef)
+	log := ctrl.Log.WithName("reconcile").WithValues("cluster", environmentRef)
 
-	// 1. GET ManagedCluster from hub.
+	// 1. GET MemberCluster from hub.
 	// Retry on NotFound: covers the race where the first heartbeat fires before
-	// CSRApprovalReconciler has created the ManagedCluster (OCM klusterlet pattern).
-	var mc kaprov1alpha1.ManagedCluster
+	// CSRApprovalReconciler has approved the cluster bootstrap (OCM klusterlet pattern).
+	var mc kaprov1alpha1.MemberCluster
 	for attempt := 1; attempt <= 3; attempt++ {
 		err := hubClient.Get(ctx, types.NamespacedName{Name: environmentRef}, &mc)
 		if err == nil {
 			break
 		}
 		if !apierrors.IsNotFound(err) {
-			return fmt.Errorf("get ManagedCluster %q from hub: %w", environmentRef, err)
+			return fmt.Errorf("get MemberCluster %q from hub: %w", environmentRef, err)
 		}
 		if attempt == 3 {
-			return fmt.Errorf("get ManagedCluster %q from hub: not found after %d attempts", environmentRef, attempt)
+			return fmt.Errorf("get MemberCluster %q from hub: not found after %d attempts", environmentRef, attempt)
 		}
-		log.Info("ManagedCluster not yet visible on hub, retrying", "attempt", attempt)
+		log.Info("MemberCluster not yet visible on hub, retrying", "attempt", attempt)
 		time.Sleep(5 * time.Second)
 	}
 
@@ -402,11 +402,8 @@ func reconcile(
 		appKey = "default"
 	}
 
-	// 2. Read local OCIRepository (name = EnvironmentRef, or environmentRef as fallback).
-	ociRepoName := mc.Spec.EnvironmentRef
-	if ociRepoName == "" {
-		ociRepoName = environmentRef
-	}
+	// 2. Read local OCIRepository (name = cluster name).
+	ociRepoName := environmentRef
 
 	var ociRepo sourcev1.OCIRepository
 	currentRef := ""
@@ -468,7 +465,7 @@ func reconcile(
 	}
 
 	if err := hubClient.Status().Patch(ctx, &mc, statusPatch); err != nil {
-		return fmt.Errorf("patch ManagedCluster status: %w", err)
+		return fmt.Errorf("patch MemberCluster status: %w", err)
 	}
 
 	// 5. Apply desired version if it has changed.

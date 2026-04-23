@@ -15,6 +15,8 @@ const (
 	SyncFinalizer = "kapro.io/sync-finalizer"
 	// BootstrapTokenFinalizer is added to BootstrapToken objects to allow RBAC cleanup on deletion.
 	BootstrapTokenFinalizer = "kapro.io/bootstrap-token-finalizer" //nolint:gosec // not a credential
+	// MemberClusterFinalizer is added to MemberCluster objects to allow bootstrap RBAC cleanup on deletion.
+	MemberClusterFinalizer = "kapro.io/member-cluster-finalizer" //nolint:gosec // not a credential
 )
 
 // ---- Artifact ---------------------------------------------------------------
@@ -68,21 +70,9 @@ type ArtifactList struct {
 	Items           []Artifact `json:"items"`
 }
 
-// ---- Environment ------------------------------------------------------------
+// ---- Shared cluster types ---------------------------------------------------
 
-// EnvironmentSpec defines the desired state of Environment.
-type EnvironmentSpec struct {
-	Actuator    ActuatorSpec     `json:"actuator"`
-	HealthCheck *HealthCheckSpec `json:"healthCheck,omitempty"`
-	// Provider configures how Kapro discovers and connects to the workload cluster.
-	Provider *ProviderSpec `json:"provider,omitempty"`
-	// Topology holds hardware and scheduling metadata for this Environment.
-	// Used by Pipeline stage selectors for GPU-aware promotion waves.
-	// +optional
-	Topology *EnvironmentTopology `json:"topology,omitempty"`
-}
-
-// EnvironmentTopology holds hardware and scheduling metadata for an Environment.
+// ActuatorSpec selects and configures the delivery backend for this cluster.
 type EnvironmentTopology struct {
 	// Accelerator is the GPU/accelerator type in this cluster.
 	// Well-known values: nvidia-h100, nvidia-a100, nvidia-l40s, amd-mi300x, tpu-v5e.
@@ -244,9 +234,7 @@ type StackITProviderSpec struct {
 	ServiceAccountKeySecretRef string `json:"serviceAccountKeySecretRef"`
 }
 
-// ActuatorSpec selects and configures the delivery backend for this Environment.
-// MVP ships Flux only. Additional actuators (ArgoCD, Sveltos) can be registered
-// at startup via actuator.Registry without changing this type.
+// ActuatorSpec selects and configures the delivery backend for this cluster.
 type ActuatorSpec struct {
 	// +kubebuilder:validation:Enum=flux
 	Type string        `json:"type"`
@@ -264,68 +252,7 @@ type HealthCheckSpec struct {
 	Interval string `json:"interval"`
 }
 
-// EnvironmentStatus defines the observed state of Environment.
-type EnvironmentStatus struct {
-	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
-	ActiveRelease      string             `json:"activeRelease,omitempty"`
-	Phase              string             `json:"phase,omitempty"`
-	Conditions         []metav1.Condition `json:"conditions,omitempty"`
-}
-
-// +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=env,categories=kapro-all
-// +kubebuilder:printcolumn:name="Tier",type=string,JSONPath=`.metadata.labels.tier`
-// +kubebuilder:printcolumn:name="Region",type=string,JSONPath=`.metadata.labels.region`
-// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
-// +kubebuilder:printcolumn:name="Active Release",type=string,JSONPath=`.status.activeRelease`
-// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
-
-// Environment represents one cluster in the fleet managed by Kapro.
-// Clusters can be GKE, EKS, AKS, OpenShift, on-prem, or any Kubernetes distribution.
-// Labels on Environment drive stage selection — tier, region, wave, cloud, etc.
-type Environment struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              EnvironmentSpec   `json:"spec,omitempty"`
-	Status            EnvironmentStatus `json:"status,omitempty"`
-}
-
-// +kubebuilder:object:root=true
-type EnvironmentList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Environment `json:"items"`
-}
-
-// ---- ManagedCluster ---------------------------------------------------------
-
-// ManagedClusterSpec defines the desired state for a registered workload cluster.
-// spec.desiredVersion is written by the kapro-operator; all other spec fields are
-// written once by the cluster-controller at bootstrap time and never changed.
-type ManagedClusterSpec struct {
-	// EnvironmentRef names the Environment this cluster belongs to.
-	EnvironmentRef string `json:"environmentRef"`
-
-	// ControllerVersion is the version of kapro-cluster-controller running on this cluster.
-	ControllerVersion string `json:"controllerVersion,omitempty"`
-
-	// DesiredVersion is written by the kapro-operator.
-	// cluster-controller polls this field; on change, patches the local delivery system.
-	// +optional
-	DesiredVersion string `json:"desiredVersion,omitempty"`
-
-	// DesiredAppKey is the key the cluster-controller uses when writing
-	// ManagedCluster.status.currentVersions.
-	// +optional
-	DesiredAppKey string `json:"desiredAppKey,omitempty"`
-
-	// Capabilities is written by cluster-controller at registration time.
-	// +optional
-	Capabilities ClusterCapabilities `json:"capabilities,omitempty"`
-}
-
-// ClusterCapabilities is the self-reported identity and capability profile of a
+// ---- ManagedCluster shared types -------------------------------------------
 // registered workload cluster. Written by kapro-cluster-controller at bootstrap
 // time and refreshed on each heartbeat.
 //
@@ -392,18 +319,6 @@ type ClusterCapabilities struct {
 	ClusterID string `json:"clusterID,omitempty"`
 }
 
-// ManagedClusterStatus is the fleet registry entry — written by kapro-cluster-controller.
-type ManagedClusterStatus struct {
-	ObservedGeneration int64             `json:"observedGeneration,omitempty"`
-	CurrentVersions    map[string]string `json:"currentVersions,omitempty"`
-	DeliverySystem     string            `json:"deliverySystem,omitempty"`
-	Health             ClusterHealth     `json:"health,omitempty"`
-	ActiveRelease      string            `json:"activeRelease,omitempty"`
-	LastHeartbeat      string            `json:"lastHeartbeat,omitempty"`
-	Phase              ClusterPhase      `json:"phase,omitempty"`
-	Conditions         []metav1.Condition `json:"conditions,omitempty"`
-}
-
 // ClusterHealth aggregates workload health from the local delivery system.
 type ClusterHealth struct {
 	AllWorkloadsReady bool   `json:"allWorkloadsReady,omitempty"`
@@ -425,35 +340,6 @@ const (
 	ClusterPhaseFailed      ClusterPhase = "Failed"
 	ClusterPhaseUnreachable ClusterPhase = "Unreachable"
 )
-
-// +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=mc,categories=kapro-all
-// +kubebuilder:printcolumn:name="Environment",type=string,JSONPath=`.spec.environmentRef`
-// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
-// +kubebuilder:printcolumn:name="Delivery",type=string,JSONPath=`.status.deliverySystem`
-// +kubebuilder:printcolumn:name="Healthy",type=boolean,JSONPath=`.status.health.allWorkloadsReady`
-// +kubebuilder:printcolumn:name="Active Release",type=string,JSONPath=`.status.activeRelease`
-// +kubebuilder:printcolumn:name="Heartbeat",type=string,JSONPath=`.status.lastHeartbeat`
-// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
-
-// ManagedCluster is the fleet registry entry for a workload cluster.
-// One object per cluster. The control plane writes spec.desiredVersion;
-// cluster-controller writes status. Together they form the canonical read model
-// for "what is running where."
-type ManagedCluster struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              ManagedClusterSpec   `json:"spec,omitempty"`
-	Status            ManagedClusterStatus `json:"status,omitempty"`
-}
-
-// +kubebuilder:object:root=true
-type ManagedClusterList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []ManagedCluster `json:"items"`
-}
 
 // ---- GatePolicy -------------------------------------------------------------
 
@@ -482,28 +368,7 @@ type GatePolicySpec struct {
 	Notifications []NotificationSpec `json:"notifications,omitempty"`
 }
 
-// +kubebuilder:object:root=true
-// +kubebuilder:resource:scope=Cluster,shortName=gp,categories=kapro-all
-// +kubebuilder:printcolumn:name="Mode",type=string,JSONPath=`.spec.mode`
-// +kubebuilder:printcolumn:name="On Failure",type=string,JSONPath=`.spec.onFailure`
-// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
-
-// GatePolicy defines reusable gate rules evaluated before advancing a stage.
-// Referenced by Pipeline.spec.stages[].gate.
-type GatePolicy struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              GatePolicySpec `json:"spec,omitempty"`
-}
-
-// +kubebuilder:object:root=true
-type GatePolicyList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []GatePolicy `json:"items"`
-}
-
-// ---- GateSpec (shared by GatePolicy and inline Stage gates) -----------------
+// ---- GateSpec (embedded in Stage.gate and Sync.spec.gate) -------------------
 
 type GateSpec struct {
 	SoakTime    string            `json:"soakTime,omitempty"`
@@ -514,7 +379,7 @@ type GateSpec struct {
 	GateTimeout string            `json:"gateTimeout,omitempty"`
 	HealthCheck bool              `json:"healthCheck,omitempty"`
 	Metrics     []MetricGate      `json:"metrics,omitempty"`
-	Templates   []GateTemplateRef `json:"templates,omitempty"`
+	Templates   []GateTemplateSpec `json:"templates,omitempty"`
 	Verification *VerificationGateSpec `json:"verification,omitempty"`
 }
 
@@ -550,11 +415,6 @@ type CosignKeySecretRef struct {
 	Key       string `json:"key,omitempty"`
 }
 
-// GateTemplateRef references a GateTemplate with optional arg overrides.
-type GateTemplateRef struct {
-	Name string            `json:"name"`
-	Args map[string]string `json:"args,omitempty"`
-}
 
 type MetricGate struct {
 	Provider string `json:"provider"`
@@ -615,8 +475,12 @@ const (
 	GatePhaseInconclusive GatePhase = "Inconclusive"
 )
 
-// GateTemplateSpec defines a reusable, parameterised gate evaluation config.
+// GateTemplateSpec defines an inline, parameterised gate evaluation config.
+// Embedded directly in GateSpec.Templates — no separate CRD needed.
 type GateTemplateSpec struct {
+	// Name uniquely identifies this template within the gate for status tracking
+	// and Job naming. Required when type == "job" (used to generate Job name).
+	Name               string           `json:"name,omitempty"`
 	// +kubebuilder:validation:Enum=cel;job;webhook
 	Type               string           `json:"type"`
 	Args               []GateArg        `json:"args,omitempty"`
@@ -681,27 +545,6 @@ type GateConditionResult struct {
 	Message string    `json:"message,omitempty"`
 }
 
-// +kubebuilder:object:root=true
-// +kubebuilder:resource:scope=Cluster,shortName=gt,categories=kapro-all
-// +kubebuilder:printcolumn:name="Type",type=string,JSONPath=`.spec.type`
-// +kubebuilder:printcolumn:name="Failure Policy",type=string,JSONPath=`.spec.failurePolicy`
-// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
-
-// GateTemplate is a reusable, parameterised gate evaluation config.
-// Referenced by GatePolicy.spec.gate.templates[].
-type GateTemplate struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              GateTemplateSpec `json:"spec,omitempty"`
-}
-
-// +kubebuilder:object:root=true
-type GateTemplateList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []GateTemplate `json:"items"`
-}
-
 // ---- Pipeline ---------------------------------------------------------------
 
 // StageFailurePolicy controls what Kapro does when a stage fails.
@@ -729,10 +572,10 @@ type Stage struct {
 	// DependsOn lists stage names that must reach Complete before this stage starts.
 	// +optional
 	DependsOn []string `json:"dependsOn,omitempty"`
-	// Gate is the name of a GatePolicy evaluated after all environments in this
-	// stage converge. If empty, the stage advances immediately on convergence.
+	// Gate is the inline gate policy evaluated after all environments in this
+	// stage converge. If nil, the stage advances immediately on convergence.
 	// +optional
-	Gate string `json:"gate,omitempty"`
+	Gate *GatePolicySpec `json:"gate,omitempty"`
 	// OnFailure controls what Kapro does when this stage fails.
 	// halt (default): stop the pipeline, mark Release Failed.
 	// skip: continue to downstream stages.
@@ -947,9 +790,10 @@ type SyncSpec struct {
 	Stage string `json:"stage"`
 	// Version is the OCI digest being delivered.
 	Version string `json:"version"`
-	// PolicyRef is the GatePolicy name applied to this Sync.
+	// Gate is the inline gate policy applied to this Sync. Copied from the
+	// Pipeline stage at Sync creation time (snapshot semantics).
 	// +optional
-	PolicyRef string `json:"policyRef,omitempty"`
+	Gate *GatePolicySpec `json:"gate,omitempty"`
 	// AppKey is the key used to look up the current version in ManagedCluster.status.currentVersions.
 	// +optional
 	AppKey string `json:"appKey,omitempty"`
@@ -1118,64 +962,176 @@ type ApprovalList struct {
 	Items           []Approval `json:"items"`
 }
 
-// ---- BootstrapToken ---------------------------------------------------------
+// ---- MemberCluster ----------------------------------------------------------
+//
+// MemberCluster is the lean replacement for Environment + ManagedCluster + BootstrapToken.
+// One object per physical cluster in the Kapro fleet.
+//
+// Ownership split:
+//   - spec (except desiredVersion/desiredAppKey): written by the platform team
+//   - spec.desiredVersion, spec.desiredAppKey: written by the release/sync controller
+//   - status: written by the cluster-controller (kapro-cluster-controller on the spoke)
+//   - status.bootstrap: written by the hub csrapproval controller during registration
 
-// BootstrapTokenSpec defines a one-time token used by a workload cluster to
-// self-register with the Kapro control plane.
-type BootstrapTokenSpec struct {
-	ClusterName string      `json:"clusterName"`
-	// +kubebuilder:validation:Pattern=`^[0-9a-f]{64}$`
-	// +kubebuilder:validation:MinLength=64
-	// +kubebuilder:validation:MaxLength=64
-	TokenHash   string      `json:"tokenHash"`
-	ExpiresAt   metav1.Time `json:"expiresAt"`
-	Labels      map[string]string `json:"labels,omitempty"`
-	// EnvironmentRef names the Environment this cluster belongs to.
-	// If empty, defaults to ClusterName.
+// MemberClusterSpec defines the desired state of a cluster in the Kapro fleet.
+type MemberClusterSpec struct {
+	// Actuator configures the delivery backend for this cluster.
+	Actuator ActuatorSpec `json:"actuator"`
+
+	// HealthCheck configures active health polling for this cluster.
 	// +optional
-	EnvironmentRef string `json:"environmentRef,omitempty"`
+	HealthCheck *HealthCheckSpec `json:"healthCheck,omitempty"`
+
+	// Provider configures how Kapro discovers and connects to the workload cluster.
+	// +optional
+	Provider *ProviderSpec `json:"provider,omitempty"`
+
+	// Topology holds hardware and scheduling metadata used by Pipeline stage selectors.
+	// +optional
+	Topology *EnvironmentTopology `json:"topology,omitempty"`
+
+	// DesiredVersion is written by the kapro-operator (release/sync controller).
+	// The cluster-controller polls this field and patches the local delivery system.
+	// +optional
+	DesiredVersion string `json:"desiredVersion,omitempty"`
+
+	// DesiredAppKey is the key the cluster-controller uses when writing
+	// status.currentVersions. Defaults to "default".
+	// +optional
+	DesiredAppKey string `json:"desiredAppKey,omitempty"`
+
+	// Suspend pauses all reconciliation for this cluster.
+	// +optional
+	Suspend bool `json:"suspend,omitempty"`
+
+	// Bootstrap configures one-time cluster self-registration.
+	// Platform engineers set tokenHash + expiresAt (or ttl); the cluster-controller
+	// presents the pre-image token in a CSR to prove identity.
+	// One bootstrap slot per cluster. To re-bootstrap, update tokenHash + expiresAt
+	// and the hub resets the slot automatically.
+	// +optional
+	Bootstrap *MemberClusterBootstrapSpec `json:"bootstrap,omitempty"`
 }
 
-// BootstrapTokenStatus tracks the one-time-use state of a bootstrap token.
-type BootstrapTokenStatus struct {
-	Used                bool         `json:"used"`
-	UsedAt              *metav1.Time `json:"usedAt,omitempty"`
-	IssuedCredentialFor string       `json:"issuedCredentialFor,omitempty"`
+// MemberClusterBootstrapSpec holds the one-time registration credential.
+type MemberClusterBootstrapSpec struct {
+	// TokenHash is the SHA-256 hex hash of the pre-image bootstrap token (exactly 64 lowercase hex chars).
+	// Platform team hashes the raw token and stores only the hash here; the cluster-controller
+	// presents the plaintext pre-image. This ensures tokenHash cannot be used directly.
+	// +kubebuilder:validation:Pattern=`^[0-9a-f]{64}$`
+	// +optional
+	TokenHash string `json:"tokenHash,omitempty"`
+
+	// ExpiresAt is the absolute UTC time after which this bootstrap slot is invalid.
+	// Set explicitly by the platform team for auditability.
+	// If empty and TTL is set, the MemberCluster controller computes it on first reconcile.
+	// +optional
+	ExpiresAt *metav1.Time `json:"expiresAt,omitempty"`
+
+	// TTL is a convenience duration (e.g. "24h") used when ExpiresAt is not set explicitly.
+	// The MemberCluster controller writes spec.bootstrap.expiresAt from
+	// metadata.creationTimestamp + TTL at creation time and leaves it immutable.
+	// +optional
+	TTL string `json:"ttl,omitempty"`
+
+	// Labels are applied to bootstrap resources created during registration
+	// (ServiceAccount, kubeconfig Secret). Not used for stage selection — use
+	// MemberCluster.metadata.labels for that.
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+}
+
+// MemberClusterStatus is the observed state — written by cluster-controller and hub.
+type MemberClusterStatus struct {
+	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
+	Phase              ClusterPhase       `json:"phase,omitempty"`
+	Conditions         []metav1.Condition `json:"conditions,omitempty"`
+
+	// CurrentVersions maps app keys to deployed versions. Written by cluster-controller.
+	// +optional
+	CurrentVersions map[string]string `json:"currentVersions,omitempty"`
+
+	// DeliverySystem is the delivery system detected by the cluster-controller (e.g. "flux").
+	// +optional
+	DeliverySystem string `json:"deliverySystem,omitempty"`
+
+	// Health aggregates workload health. Written by cluster-controller.
+	// +optional
+	Health ClusterHealth `json:"health,omitempty"`
+
+	// ActiveRelease is the Release currently being processed for this cluster.
+	// +optional
+	ActiveRelease string `json:"activeRelease,omitempty"`
+
+	// LastHeartbeat is the RFC3339 timestamp of the last cluster-controller heartbeat.
+	// +optional
+	LastHeartbeat string `json:"lastHeartbeat,omitempty"`
+
+	// ControllerVersion is the kapro-cluster-controller version running on this cluster.
+	// +optional
+	ControllerVersion string `json:"controllerVersion,omitempty"`
+
+	// Capabilities is the self-reported capability profile written at registration time.
+	// +optional
+	Capabilities ClusterCapabilities `json:"capabilities,omitempty"`
+
+	// Bootstrap tracks the one-time registration state. Written by the hub.
+	// +optional
+	Bootstrap *MemberClusterBootstrapStatus `json:"bootstrap,omitempty"`
+}
+
+// MemberClusterBootstrapStatus tracks the one-time bootstrap registration state.
+type MemberClusterBootstrapStatus struct {
+	// Used is true once the bootstrap token has been consumed by a successful CSR.
+	Used bool `json:"used,omitempty"`
+
+	// UsedAt is when the bootstrap token was consumed.
+	// +optional
+	UsedAt *metav1.Time `json:"usedAt,omitempty"`
+
+	// IssuedCredentialFor is the cluster name the bootstrap credential was issued for.
+	// +optional
+	IssuedCredentialFor string `json:"issuedCredentialFor,omitempty"`
+
 	// IssuedBootstrapKubeconfig is the name of the Secret in kapro-system that
-	// contains the bootstrap kubeconfig for this cluster. Set automatically by
-	// the hub operator when the BootstrapToken CR is created.
-	// Operators copy this Secret to the spoke cluster for cluster-controller bootstrap.
+	// contains the bootstrap kubeconfig. Operators copy this to the spoke cluster.
+	// +optional
 	IssuedBootstrapKubeconfig string `json:"issuedBootstrapKubeconfig,omitempty"`
-	// BoundCSRName is the name of the CertificateSigningRequest that consumed this token.
-	// Set atomically with Used=true to enable idempotent retries: if the CSR approval call
-	// fails transiently, the next reconcile can recognise the same CSR and re-approve it
-	// rather than denying it as a replay.
-	BoundCSRName string             `json:"boundCSRName,omitempty"`
-	Conditions   []metav1.Condition `json:"conditions,omitempty"`
+
+	// BoundCSRName is the CSR that consumed this bootstrap slot.
+	// Enables idempotent retry: if CSR approval fails transiently, the next reconcile
+	// recognises the same CSR and re-approves rather than denying as replay.
+	// +optional
+	BoundCSRName string `json:"boundCSRName,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,shortName=bt,categories=kapro-all
-// +kubebuilder:printcolumn:name="Cluster",type=string,JSONPath=`.spec.clusterName`
-// +kubebuilder:printcolumn:name="Used",type=boolean,JSONPath=`.status.used`
-// +kubebuilder:printcolumn:name="Expires",type=string,JSONPath=`.spec.expiresAt`
+// +kubebuilder:resource:scope=Cluster,shortName=mc,categories=kapro-all
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Delivery",type=string,JSONPath=`.status.deliverySystem`
+// +kubebuilder:printcolumn:name="Healthy",type=boolean,JSONPath=`.status.health.allWorkloadsReady`
+// +kubebuilder:printcolumn:name="Active Release",type=string,JSONPath=`.status.activeRelease`
+// +kubebuilder:printcolumn:name="Heartbeat",type=string,JSONPath=`.status.lastHeartbeat`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// BootstrapToken is a one-time credential that allows a workload cluster's
-// cluster-controller to self-register with the Kapro control plane.
-type BootstrapToken struct {
+// MemberCluster represents one physical cluster in the Kapro fleet.
+// It merges Environment (delivery config), ManagedCluster (registration state),
+// and BootstrapToken (one-time registration credential) into a single resource.
+//
+// Labels on MemberCluster drive Pipeline stage selection (tier, region, wave, cloud, etc.).
+type MemberCluster struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              BootstrapTokenSpec   `json:"spec,omitempty"`
-	Status            BootstrapTokenStatus `json:"status,omitempty"`
+	Spec              MemberClusterSpec   `json:"spec,omitempty"`
+	Status            MemberClusterStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
-type BootstrapTokenList struct {
+type MemberClusterList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []BootstrapToken `json:"items"`
+	Items           []MemberCluster `json:"items"`
 }
 
 // ---- ReleaseRevision --------------------------------------------------------

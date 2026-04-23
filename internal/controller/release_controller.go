@@ -52,8 +52,8 @@ type ReleaseReconciler struct {
 // +kubebuilder:rbac:groups=kapro.io,resources=releases/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=releases/finalizers,verbs=update
 // +kubebuilder:rbac:groups=kapro.io,resources=artifacts,verbs=get;list;watch
-// +kubebuilder:rbac:groups=kapro.io,resources=environments,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=environments/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=memberclusters,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=memberclusters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=pipelines,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kapro.io,resources=syncs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kapro.io,resources=approvals,verbs=get;list;watch
@@ -364,13 +364,13 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 			continue
 		}
 
-		// List environments matching this stage's selector.
+		// List clusters matching this stage's selector.
 		envList, err := r.listEnvironmentsForStage(ctx, stage, release)
 		if err != nil {
 			return nil, false, false, fmt.Errorf("list environments for stage %s: %w", stage.Name, err)
 		}
 		if len(envList) == 0 {
-			log.Info("stage has no matching environments — treating as complete",
+			log.Info("stage has no matching clusters — treating as complete",
 				"stage", stage.Name, "pipeline", pipeline.Name, "pipelineRef", pipelineRefName)
 			stagePhase[stage.Name] = "Complete"
 			stageProgress = append(stageProgress, kaprov1alpha1.StageProgress{
@@ -379,7 +379,7 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 			continue
 		}
 
-		// Ensure a Sync exists for each Environment; observe phases.
+		// Ensure a Sync exists for each MemberCluster; observe phases.
 		total, synced, failed := 0, 0, 0
 		for _, env := range envList {
 			total++
@@ -457,44 +457,44 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 	return stageProgress, allComplete, anyFailed, nil
 }
 
-// listEnvironmentsForStage returns all Environments that match the stage selector,
+// listEnvironmentsForStage returns all MemberClusters that match the stage selector,
 // filtered to spec.scope.environments when a scope is set on the Release.
-func (r *ReleaseReconciler) listEnvironmentsForStage(ctx context.Context, stage kaprov1alpha1.Stage, release *kaprov1alpha1.Release) ([]kaprov1alpha1.Environment, error) {
-	var envList kaprov1alpha1.EnvironmentList
+func (r *ReleaseReconciler) listEnvironmentsForStage(ctx context.Context, stage kaprov1alpha1.Stage, release *kaprov1alpha1.Release) ([]kaprov1alpha1.MemberCluster, error) {
+	var mcList kaprov1alpha1.MemberClusterList
 	listOpts := []client.ListOption{client.Limit(500)}
 	sel, err := metav1.LabelSelectorAsSelector(&stage.Selector)
 	if err != nil {
 		return nil, fmt.Errorf("invalid stage selector: %w", err)
 	}
 	listOpts = append(listOpts, client.MatchingLabelsSelector{Selector: sel})
-	if err := r.List(ctx, &envList, listOpts...); err != nil {
+	if err := r.List(ctx, &mcList, listOpts...); err != nil {
 		return nil, err
 	}
-	envs := envList.Items
+	clusters := mcList.Items
 
-	// Apply scope filter when an explicit environment allowlist is provided.
+	// Apply scope filter when an explicit cluster allowlist is provided.
 	if release.Spec.Scope != nil && len(release.Spec.Scope.Environments) > 0 {
 		allowed := make(map[string]struct{}, len(release.Spec.Scope.Environments))
 		for _, e := range release.Spec.Scope.Environments {
 			allowed[e] = struct{}{}
 		}
-		filtered := envs[:0]
-		for _, env := range envs {
-			if _, ok := allowed[env.Name]; ok {
-				filtered = append(filtered, env)
+		filtered := clusters[:0]
+		for _, mc := range clusters {
+			if _, ok := allowed[mc.Name]; ok {
+				filtered = append(filtered, mc)
 			}
 		}
-		if len(filtered) == 0 && len(envs) > 0 {
-			log.FromContext(ctx).Info("scope filter eliminated all environments for stage — treating as no-op",
+		if len(filtered) == 0 && len(clusters) > 0 {
+			log.FromContext(ctx).Info("scope filter eliminated all clusters for stage — treating as no-op",
 				"stage", stage.Name, "scopeEnvironments", release.Spec.Scope.Environments)
 		}
-		envs = filtered
+		clusters = filtered
 	}
 
-	return envs, nil
+	return clusters, nil
 }
 
-// ensureSync creates a Sync for the given (release, pipelineRef, stage, environment) tuple.
+// ensureSync creates a Sync for the given (release, pipelineRef, stage, cluster) tuple.
 // Uses IgnoreAlreadyExists for idempotency — safe to call on every reconcile loop.
 func (r *ReleaseReconciler) ensureSync(
 	ctx context.Context,
@@ -502,11 +502,11 @@ func (r *ReleaseReconciler) ensureSync(
 	pipelineRefName string,
 	pipeline *kaprov1alpha1.Pipeline,
 	stage kaprov1alpha1.Stage,
-	env kaprov1alpha1.Environment,
+	mc kaprov1alpha1.MemberCluster,
 ) error {
 	log := log.FromContext(ctx)
 
-	name := syncName(release.Name, pipelineRefName, stage.Name, env.Name)
+	name := syncName(release.Name, pipelineRefName, stage.Name, mc.Name)
 	sync := &kaprov1alpha1.Sync{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -516,16 +516,16 @@ func (r *ReleaseReconciler) ensureSync(
 				"kapro.io/pipeline-ref":  pipelineRefName,
 				"kapro.io/pipeline":      pipeline.Name,
 				"kapro.io/stage":         stage.Name,
-				"kapro.io/environment":   env.Name,
+				"kapro.io/environment":   mc.Name,
 			},
 		},
 		Spec: kaprov1alpha1.SyncSpec{
 			ReleaseRef:     release.Name,
-			EnvironmentRef: env.Name,
+			EnvironmentRef: mc.Name,
 			Pipeline:       pipeline.Name,
 			Stage:          stage.Name,
 			Version:        release.Status.ResolvedVersion,
-			PolicyRef:      stage.Gate, // stage.Gate is the GatePolicy ref name
+			Gate:           stage.Gate, // inline GatePolicySpec snapshot
 			AppKey:         releaseAppKey(release),
 		},
 	}
@@ -537,7 +537,7 @@ func (r *ReleaseReconciler) ensureSync(
 		return fmt.Errorf("create Sync %s: %w", name, err)
 	}
 
-	log.Info("ensured Sync", "name", name, "env", env.Name, "stage", stage.Name, "pipelineRef", pipelineRefName)
+	log.Info("ensured Sync", "name", name, "cluster", mc.Name, "stage", stage.Name, "pipelineRef", pipelineRefName)
 	return nil
 }
 
@@ -595,7 +595,7 @@ func (r *ReleaseReconciler) triggerRollbackSyncs(
 				Pipeline:       s.Spec.Pipeline,
 				Stage:          stageName,
 				Version:        prevVersion,
-				PolicyRef:      s.Spec.PolicyRef,
+				Gate:           s.Spec.Gate,
 				AppKey:         s.Spec.AppKey,
 			},
 		}
@@ -684,8 +684,8 @@ func (r *ReleaseReconciler) failRelease(ctx context.Context, release *kaprov1alp
 	return r.Status().Patch(ctx, release, patch)
 }
 
-// clearActiveRelease clears env.status.activeRelease for all environments
-// that were claimed by this Release, found via owned Syncs.
+// clearActiveRelease clears mc.status.activeRelease for all MemberClusters
+// that were targeted by this Release, found via owned Syncs.
 func (r *ReleaseReconciler) clearActiveRelease(ctx context.Context, release *kaprov1alpha1.Release) {
 	log := log.FromContext(ctx)
 	var syncList kaprov1alpha1.SyncList
@@ -693,25 +693,25 @@ func (r *ReleaseReconciler) clearActiveRelease(ctx context.Context, release *kap
 		client.MatchingLabels{"kapro.io/release": release.Name},
 		client.Limit(500),
 	); err != nil {
-		log.Error(err, "clearActiveRelease: failed to list Syncs — environment activeRelease fields may not be cleared")
+		log.Error(err, "clearActiveRelease: failed to list Syncs — MemberCluster activeRelease fields may not be cleared")
 		return
 	}
 	seen := make(map[string]bool)
 	for _, s := range syncList.Items {
-		envName := s.Spec.EnvironmentRef
-		if seen[envName] {
+		mcName := s.Spec.EnvironmentRef
+		if seen[mcName] {
 			continue
 		}
-		seen[envName] = true
-		var env kaprov1alpha1.Environment
-		if err := r.Get(ctx, client.ObjectKey{Name: envName}, &env); err != nil {
+		seen[mcName] = true
+		var mc kaprov1alpha1.MemberCluster
+		if err := r.Get(ctx, client.ObjectKey{Name: mcName}, &mc); err != nil {
 			continue
 		}
-		if env.Status.ActiveRelease == release.Name {
-			patch := client.MergeFrom(env.DeepCopy())
-			env.Status.ActiveRelease = ""
-			if err := r.Status().Patch(ctx, &env, patch); err != nil {
-				log.Error(err, "clearActiveRelease: failed to clear activeRelease", "environment", envName)
+		if mc.Status.ActiveRelease == release.Name {
+			patch := client.MergeFrom(mc.DeepCopy())
+			mc.Status.ActiveRelease = ""
+			if err := r.Status().Patch(ctx, &mc, patch); err != nil {
+				log.Error(err, "clearActiveRelease: failed to clear activeRelease", "cluster", mcName)
 			}
 		}
 	}
@@ -778,22 +778,23 @@ func (r *ReleaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// Owns Syncs — when any Sync status changes (Converged, Failed) the owning
 		// Release is re-queued so the DAG can advance to the next stage.
 		Owns(&kaprov1alpha1.Sync{}).
-		// Watch Environments — if a new Environment is registered whose labels match
+		// Watch MemberClusters — if a new cluster is registered whose labels match
 		// an in-progress stage, wake up the Release so a new Sync is created.
 		Watches(
-			&kaprov1alpha1.Environment{},
-			handler.EnqueueRequestsFromMapFunc(r.releasesForEnvironment),
+			&kaprov1alpha1.MemberCluster{},
+			handler.EnqueueRequestsFromMapFunc(r.releasesForMemberCluster),
 		).
 		Complete(r)
 }
 
-func (r *ReleaseReconciler) releasesForEnvironment(ctx context.Context, obj client.Object) []ctrl.Request {
-	env, ok := obj.(*kaprov1alpha1.Environment)
+func (r *ReleaseReconciler) releasesForMemberCluster(ctx context.Context, obj client.Object) []ctrl.Request {
+	mc, ok := obj.(*kaprov1alpha1.MemberCluster)
 	if !ok {
 		return nil
 	}
+	_ = mc
 	var releaseList kaprov1alpha1.ReleaseList
-	if err := r.List(ctx, &releaseList, client.InNamespace(env.Namespace), client.Limit(500)); err != nil {
+	if err := r.List(ctx, &releaseList, client.Limit(500)); err != nil {
 		return nil
 	}
 	var reqs []ctrl.Request

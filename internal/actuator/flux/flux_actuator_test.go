@@ -32,86 +32,65 @@ func TestFluxActuator_ImplementsInterface(t *testing.T) {
 	t.Log("FluxActuator satisfies actuator.Actuator at compile time")
 }
 
-func TestFluxActuator_Apply_NoRegistration(t *testing.T) {
+func TestFluxActuator_Apply_NoCluster(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().WithScheme(fluxScheme(t)).Build()
 	a := &flux.FluxActuator{Client: fakeClient}
 
-	env := &kaprov1alpha1.Environment{
-		ObjectMeta: metav1.ObjectMeta{Name: "env-dev"},
-	}
 	err := a.Apply(context.Background(), actuator.ApplyRequest{
-		Environment: env,
-		Version:     "v1.0.0",
+		Cluster: nil,
+		Version: "v1.0.0",
 	})
 	if err == nil {
-		t.Error("expected error when no ManagedCluster exists for environment")
+		t.Error("expected error when Cluster is nil")
 	}
 }
 
 func TestFluxActuator_Apply_AlreadyAtDesiredVersion(t *testing.T) {
-	reg := &kaprov1alpha1.ManagedCluster{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "reg-dev",
-			Labels: map[string]string{"kapro.io/environment": "env-dev"},
-		},
-		Spec: kaprov1alpha1.ManagedClusterSpec{
-			EnvironmentRef: "env-dev",
-			DesiredVersion: "v1.0.0", // already at desired version
-		},
-	}
-	fakeClient := fake.NewClientBuilder().WithScheme(fluxScheme(t)).WithObjects(reg).Build()
-	a := &flux.FluxActuator{Client: fakeClient}
-
-	env := &kaprov1alpha1.Environment{
-		ObjectMeta: metav1.ObjectMeta{Name: "env-dev"},
-		Spec: kaprov1alpha1.EnvironmentSpec{
+	mc := &kaprov1alpha1.MemberCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "de-prod"},
+		Spec: kaprov1alpha1.MemberClusterSpec{
+			DesiredVersion: "v1.0.0",
 			Actuator: kaprov1alpha1.ActuatorSpec{
 				Type: "flux",
 				Flux: &kaprov1alpha1.FluxActuator{OCIRepository: "oci-repo"},
 			},
 		},
 	}
+	fakeClient := fake.NewClientBuilder().WithScheme(fluxScheme(t)).WithObjects(mc).Build()
+	a := &flux.FluxActuator{Client: fakeClient}
+
 	if err := a.Apply(context.Background(), actuator.ApplyRequest{
-		Environment: env,
-		Version:     "v1.0.0",
+		Cluster: mc,
+		Version: "v1.0.0",
 	}); err != nil {
 		t.Fatalf("unexpected error when version already set: %v", err)
 	}
 }
 
 func TestFluxActuator_Apply_PatchesDesiredVersion(t *testing.T) {
-	reg := &kaprov1alpha1.ManagedCluster{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "reg-prod",
-			Labels: map[string]string{"kapro.io/environment": "env-prod"},
-		},
-		Spec: kaprov1alpha1.ManagedClusterSpec{
-			EnvironmentRef: "env-prod",
+	mc := &kaprov1alpha1.MemberCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "de-prod"},
+		Spec: kaprov1alpha1.MemberClusterSpec{
 			DesiredVersion: "v1.0.0",
-		},
-	}
-	fakeClient := fake.NewClientBuilder().WithScheme(fluxScheme(t)).WithObjects(reg).Build()
-	a := &flux.FluxActuator{Client: fakeClient}
-
-	env := &kaprov1alpha1.Environment{
-		ObjectMeta: metav1.ObjectMeta{Name: "env-prod"},
-		Spec: kaprov1alpha1.EnvironmentSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{
 				Type: "flux",
 				Flux: &kaprov1alpha1.FluxActuator{OCIRepository: "oci-repo"},
 			},
 		},
 	}
+	fakeClient := fake.NewClientBuilder().WithScheme(fluxScheme(t)).WithObjects(mc).Build()
+	a := &flux.FluxActuator{Client: fakeClient}
+
 	if err := a.Apply(context.Background(), actuator.ApplyRequest{
-		Environment: env,
-		Version:     "v2.0.0",
+		Cluster: mc,
+		Version: "v2.0.0",
 	}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var updated kaprov1alpha1.ManagedCluster
-	if err := fakeClient.Get(context.Background(), client.ObjectKey{Name: "reg-prod"}, &updated); err != nil {
-		t.Fatalf("get updated registration: %v", err)
+	var updated kaprov1alpha1.MemberCluster
+	if err := fakeClient.Get(context.Background(), client.ObjectKey{Name: "de-prod"}, &updated); err != nil {
+		t.Fatalf("get updated MemberCluster: %v", err)
 	}
 	if updated.Spec.DesiredVersion != "v2.0.0" {
 		t.Errorf("expected DesiredVersion=v2.0.0, got %s", updated.Spec.DesiredVersion)
@@ -119,48 +98,34 @@ func TestFluxActuator_Apply_PatchesDesiredVersion(t *testing.T) {
 }
 
 func TestFluxActuator_IsConverged_StaleHeartbeat_ReturnsError(t *testing.T) {
-	reg := &kaprov1alpha1.ManagedCluster{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "reg-stale",
-			Labels: map[string]string{"kapro.io/environment": "env-stale"},
-		},
-		Spec: kaprov1alpha1.ManagedClusterSpec{
-			EnvironmentRef: "env-stale",
-		},
-		Status: kaprov1alpha1.ManagedClusterStatus{
+	mc := &kaprov1alpha1.MemberCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "de-stale"},
+		Status: kaprov1alpha1.MemberClusterStatus{
 			LastHeartbeat: time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339),
 		},
 	}
-	fakeClient := fake.NewClientBuilder().WithScheme(fluxScheme(t)).WithObjects(reg).Build()
+	fakeClient := fake.NewClientBuilder().WithScheme(fluxScheme(t)).WithStatusSubresource(mc).WithObjects(mc).Build()
 	a := &flux.FluxActuator{Client: fakeClient}
 
-	env := &kaprov1alpha1.Environment{ObjectMeta: metav1.ObjectMeta{Name: "env-stale"}}
-	_, err := a.IsConverged(context.Background(), env, "v1.0.0", "default")
+	_, err := a.IsConverged(context.Background(), mc, "v1.0.0", "default")
 	if err == nil {
 		t.Error("expected error for stale heartbeat")
 	}
 }
 
 func TestFluxActuator_IsConverged_FreshHeartbeat_MatchingVersion(t *testing.T) {
-	reg := &kaprov1alpha1.ManagedCluster{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "reg-conv",
-			Labels: map[string]string{"kapro.io/environment": "env-conv"},
-		},
-		Spec: kaprov1alpha1.ManagedClusterSpec{
-			EnvironmentRef: "env-conv",
-		},
-		Status: kaprov1alpha1.ManagedClusterStatus{
+	mc := &kaprov1alpha1.MemberCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "de-conv"},
+		Status: kaprov1alpha1.MemberClusterStatus{
 			LastHeartbeat:   time.Now().UTC().Format(time.RFC3339),
 			Phase:           kaprov1alpha1.ClusterPhaseConverged,
 			CurrentVersions: map[string]string{"default": "v2.0.0"},
 		},
 	}
-	fakeClient := fake.NewClientBuilder().WithScheme(fluxScheme(t)).WithObjects(reg).Build()
+	fakeClient := fake.NewClientBuilder().WithScheme(fluxScheme(t)).WithObjects(mc).Build()
 	a := &flux.FluxActuator{Client: fakeClient}
 
-	env := &kaprov1alpha1.Environment{ObjectMeta: metav1.ObjectMeta{Name: "env-conv"}}
-	converged, err := a.IsConverged(context.Background(), env, "v2.0.0", "default")
+	converged, err := a.IsConverged(context.Background(), mc, "v2.0.0", "default")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -170,25 +135,18 @@ func TestFluxActuator_IsConverged_FreshHeartbeat_MatchingVersion(t *testing.T) {
 }
 
 func TestFluxActuator_IsConverged_FreshHeartbeat_WrongVersion(t *testing.T) {
-	reg := &kaprov1alpha1.ManagedCluster{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "reg-wrong",
-			Labels: map[string]string{"kapro.io/environment": "env-wrong"},
-		},
-		Spec: kaprov1alpha1.ManagedClusterSpec{
-			EnvironmentRef: "env-wrong",
-		},
-		Status: kaprov1alpha1.ManagedClusterStatus{
+	mc := &kaprov1alpha1.MemberCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "de-wrong"},
+		Status: kaprov1alpha1.MemberClusterStatus{
 			LastHeartbeat:   time.Now().UTC().Format(time.RFC3339),
 			Phase:           kaprov1alpha1.ClusterPhaseConverged,
 			CurrentVersions: map[string]string{"default": "v1.0.0"},
 		},
 	}
-	fakeClient := fake.NewClientBuilder().WithScheme(fluxScheme(t)).WithObjects(reg).Build()
+	fakeClient := fake.NewClientBuilder().WithScheme(fluxScheme(t)).WithObjects(mc).Build()
 	a := &flux.FluxActuator{Client: fakeClient}
 
-	env := &kaprov1alpha1.Environment{ObjectMeta: metav1.ObjectMeta{Name: "env-wrong"}}
-	converged, err := a.IsConverged(context.Background(), env, "v2.0.0", "default")
+	converged, err := a.IsConverged(context.Background(), mc, "v2.0.0", "default")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -198,34 +156,25 @@ func TestFluxActuator_IsConverged_FreshHeartbeat_WrongVersion(t *testing.T) {
 }
 
 func TestFluxActuator_Rollback_SetsDesiredVersionToPrevious(t *testing.T) {
-	reg := &kaprov1alpha1.ManagedCluster{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "reg-rbk",
-			Labels: map[string]string{"kapro.io/environment": "env-rbk"},
-		},
-		Spec: kaprov1alpha1.ManagedClusterSpec{
-			EnvironmentRef: "env-rbk",
+	mc := &kaprov1alpha1.MemberCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "de-rbk"},
+		Spec: kaprov1alpha1.MemberClusterSpec{
 			DesiredVersion: "v2.0.0",
-		},
-	}
-	fakeClient := fake.NewClientBuilder().WithScheme(fluxScheme(t)).WithObjects(reg).Build()
-	a := &flux.FluxActuator{Client: fakeClient}
-
-	env := &kaprov1alpha1.Environment{
-		ObjectMeta: metav1.ObjectMeta{Name: "env-rbk"},
-		Spec: kaprov1alpha1.EnvironmentSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{
 				Type: "flux",
 				Flux: &kaprov1alpha1.FluxActuator{OCIRepository: "oci-repo"},
 			},
 		},
 	}
-	if err := a.Rollback(context.Background(), env, "v1.0.0"); err != nil {
+	fakeClient := fake.NewClientBuilder().WithScheme(fluxScheme(t)).WithObjects(mc).Build()
+	a := &flux.FluxActuator{Client: fakeClient}
+
+	if err := a.Rollback(context.Background(), mc, "v1.0.0"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var updated kaprov1alpha1.ManagedCluster
-	_ = fakeClient.Get(context.Background(), client.ObjectKey{Name: "reg-rbk"}, &updated)
+	var updated kaprov1alpha1.MemberCluster
+	_ = fakeClient.Get(context.Background(), client.ObjectKey{Name: "de-rbk"}, &updated)
 	if updated.Spec.DesiredVersion != "v1.0.0" {
 		t.Errorf("expected rollback to set DesiredVersion=v1.0.0, got %s", updated.Spec.DesiredVersion)
 	}

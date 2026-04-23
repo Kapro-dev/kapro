@@ -31,7 +31,7 @@ const (
 	csrOrganization = "kapro:cluster-controllers"
 	// csrSigner is the signer name we handle.
 	csrSigner = "kubernetes.io/kube-apiserver-client"
-	// bootstrapSAPrefix is the prefix of bootstrap ServiceAccounts created by BootstrapTokenReconciler.
+	// bootstrapSAPrefix is the prefix of bootstrap ServiceAccounts created by MemberClusterReconciler.
 	bootstrapSAPrefix = "system:serviceaccount:" + kaproSystemNamespace + ":kapro-bootstrap-"
 )
 
@@ -40,10 +40,10 @@ const (
 //
 // Bootstrap (first registration):
 //  1. CSR CN = "kapro-cluster:<cluster>", O = ["kapro:cluster-controllers"]
-//  2. Requester = bootstrap SA created by BootstrapTokenReconciler
-//  3. Validates a non-expired, unused BootstrapToken for the cluster
-//  4. Creates ManagedCluster + long-lived RBAC for the cluster identity
-//  5. Marks BootstrapToken used BEFORE approving (prevents replay race)
+//  2. Requester = bootstrap SA created by MemberClusterReconciler
+//  3. Validates a non-expired, unused MemberCluster bootstrap token
+//  4. Creates MemberCluster + long-lived RBAC for the cluster identity
+//  5. Marks MemberCluster bootstrap used BEFORE approving (prevents replay race)
 //  6. Approves CSR
 //
 // Renewal (cert rotation):
@@ -61,10 +61,9 @@ type CSRApprovalReconciler struct {
 // +kubebuilder:rbac:groups=certificates.k8s.io,resources=certificatesigningrequests,verbs=get;list;watch;update
 // +kubebuilder:rbac:groups=certificates.k8s.io,resources=certificatesigningrequests/approval,verbs=update
 // +kubebuilder:rbac:groups=certificates.k8s.io,resources=signers,resourceNames=kubernetes.io/kube-apiserver-client,verbs=approve
-// +kubebuilder:rbac:groups=kapro.io,resources=bootstraptokens,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=bootstraptokens/status,verbs=update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=managedclusters,verbs=get;list;watch;create;update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=managedclusters/finalizers,verbs=update
+// +kubebuilder:rbac:groups=kapro.io,resources=memberclusters,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=memberclusters/status,verbs=update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=memberclusters/finalizers,verbs=update
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles;clusterrolebindings,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;delete
 
@@ -130,25 +129,16 @@ func (r *CSRApprovalReconciler) handleBootstrap(ctx context.Context, csr *certif
 		))
 	}
 
-	// Find and validate the BootstrapToken.
-	bt, err := r.findValidBootstrapToken(ctx, clusterName)
+	// Find the MemberCluster — it must already exist (platform created it with spec.bootstrap.tokenHash).
+	mc, err := r.findValidMemberCluster(ctx, clusterName)
 	if err != nil {
-		// Check for idempotent retry: token already used by THIS exact CSR (transient approval failure).
-		if btUsed, retryErr := r.findUsedTokenForCSR(ctx, clusterName, csr.Name); retryErr == nil {
-			log.Info("retrying CSR approval for previously-bound CSR", "csr", csr.Name, "cluster", clusterName)
-			bt = btUsed
+		// Check for idempotent retry: bootstrap was already claimed by THIS exact CSR.
+		if retry, retryErr := r.findUsedMemberClusterForCSR(ctx, clusterName, csr.Name); retryErr == nil {
+			log.Info("retrying CSR approval for previously-bound MemberCluster", "csr", csr.Name, "cluster", clusterName)
+			mc = retry
 		} else {
-			return r.denyCSRErr(ctx, csr, fmt.Sprintf("no valid BootstrapToken found for cluster %s: %v", clusterName, err))
+			return r.denyCSRErr(ctx, csr, fmt.Sprintf("no valid MemberCluster bootstrap for cluster %s: %v", clusterName, err))
 		}
-	}
-
-	// Ensure the ManagedCluster exists.
-	envRef := bt.Spec.EnvironmentRef
-	if envRef == "" {
-		envRef = clusterName
-	}
-	if err := r.ensureManagedCluster(ctx, clusterName, envRef); err != nil {
-		return fmt.Errorf("ensure ManagedCluster: %w", err)
 	}
 
 	// Ensure long-lived RBAC (cluster user = CN of the x509 cert).
@@ -157,11 +147,11 @@ func (r *CSRApprovalReconciler) handleBootstrap(ctx context.Context, csr *certif
 		return fmt.Errorf("ensure cluster RBAC: %w", err)
 	}
 
-	// Mark token used (with BoundCSRName) BEFORE approving — prevents replay race.
-	// BoundCSRName enables idempotent retry if approval fails transiently.
-	if !bt.Status.Used {
-		if err := r.markTokenUsed(ctx, bt, clusterName, csr.Name); err != nil {
-			return fmt.Errorf("mark token used: %w", err)
+	// Mark bootstrap used (with BoundCSRName) BEFORE approving — prevents replay race.
+	// Uses Status().Update() (not Patch) so the resourceVersion check catches concurrent reconciles.
+	if mc.Status.Bootstrap == nil || !mc.Status.Bootstrap.Used {
+		if err := r.markBootstrapUsed(ctx, mc, clusterName, csr.Name); err != nil {
+			return fmt.Errorf("mark bootstrap used: %w", err)
 		}
 	}
 
@@ -171,7 +161,6 @@ func (r *CSRApprovalReconciler) handleBootstrap(ctx context.Context, csr *certif
 
 	// Clean up bootstrap credentials immediately after cert issuance (OCM pattern).
 	// Bootstrap SA token becomes useless once the cluster has its x509 cert.
-	// Deleting the SA revokes all outstanding tokens, closing the bootstrap kubeconfig as a credential.
 	r.cleanupBootstrapCredentials(ctx, clusterName)
 
 	log.Info("bootstrap CSR approved", "cluster", clusterName, "csr", csr.Name)
@@ -183,10 +172,10 @@ func (r *CSRApprovalReconciler) handleBootstrap(ctx context.Context, csr *certif
 func (r *CSRApprovalReconciler) handleRenewal(ctx context.Context, csr *certificatesv1.CertificateSigningRequest, clusterName string) error {
 	log := log.FromContext(ctx)
 
-	// The ManagedCluster must already exist — no token needed.
-	var mc kaprov1alpha1.ManagedCluster
+	// The MemberCluster must already exist — no token needed.
+	var mc kaprov1alpha1.MemberCluster
 	if err := r.Get(ctx, types.NamespacedName{Name: clusterName}, &mc); err != nil {
-		return r.denyCSRErr(ctx, csr, fmt.Sprintf("ManagedCluster %s not found for renewal: %v", clusterName, err))
+		return r.denyCSRErr(ctx, csr, fmt.Sprintf("MemberCluster %s not found for renewal: %v", clusterName, err))
 	}
 
 	if err := r.approveCSR(ctx, csr); err != nil {
@@ -198,51 +187,41 @@ func (r *CSRApprovalReconciler) handleRenewal(ctx context.Context, csr *certific
 	return nil
 }
 
-// findValidBootstrapToken returns the first non-expired, unused BootstrapToken for clusterName.
-func (r *CSRApprovalReconciler) findValidBootstrapToken(ctx context.Context, clusterName string) (*kaprov1alpha1.BootstrapToken, error) {
-	var list kaprov1alpha1.BootstrapTokenList
-	if err := r.List(ctx, &list, client.InNamespace(kaproSystemNamespace), client.Limit(200)); err != nil {
+// findValidMemberCluster returns the MemberCluster for clusterName if bootstrap is valid
+// (tokenHash set, not used, not expired).
+func (r *CSRApprovalReconciler) findValidMemberCluster(ctx context.Context, clusterName string) (*kaprov1alpha1.MemberCluster, error) {
+	var mc kaprov1alpha1.MemberCluster
+	if err := r.Get(ctx, types.NamespacedName{Name: clusterName}, &mc); err != nil {
 		return nil, err
 	}
-	for i := range list.Items {
-		bt := &list.Items[i]
-		if bt.Spec.ClusterName == clusterName && !bt.Status.Used && !isExpired(bt) {
-			return bt, nil
-		}
+	if mc.Spec.Bootstrap.TokenHash == "" {
+		return nil, fmt.Errorf("MemberCluster %q has no bootstrap token configured", clusterName)
 	}
-	return nil, fmt.Errorf("no valid BootstrapToken found for cluster %q", clusterName)
+	if mc.Status.Bootstrap != nil && mc.Status.Bootstrap.Used {
+		return nil, fmt.Errorf("bootstrap for MemberCluster %q is already used", clusterName)
+	}
+	if mc.Spec.Bootstrap.ExpiresAt != nil && metav1.Now().After(mc.Spec.Bootstrap.ExpiresAt.Time) {
+		return nil, fmt.Errorf("bootstrap for MemberCluster %q has expired", clusterName)
+	}
+	return &mc, nil
 }
 
-// ensureManagedCluster creates the ManagedCluster if it doesn't exist.
-// Adds a finalizer so that cluster de-registration cleans up long-lived RBAC.
-func (r *CSRApprovalReconciler) ensureManagedCluster(ctx context.Context, clusterName, envRef string) error {
-	mc := &kaprov1alpha1.ManagedCluster{}
-	err := r.Get(ctx, types.NamespacedName{Name: clusterName}, mc)
-	if err == nil {
-		return nil
+// findUsedMemberClusterForCSR returns the MemberCluster if bootstrap was already claimed by the given CSR.
+// Used to enable idempotent retry when the CSR approval call fails transiently.
+func (r *CSRApprovalReconciler) findUsedMemberClusterForCSR(ctx context.Context, clusterName, csrName string) (*kaprov1alpha1.MemberCluster, error) {
+	var mc kaprov1alpha1.MemberCluster
+	if err := r.Get(ctx, types.NamespacedName{Name: clusterName}, &mc); err != nil {
+		return nil, err
 	}
-	if !apierrors.IsNotFound(err) {
-		return err
+	if mc.Status.Bootstrap != nil && mc.Status.Bootstrap.Used && mc.Status.Bootstrap.BoundCSRName == csrName {
+		return &mc, nil
 	}
-	mc = &kaprov1alpha1.ManagedCluster{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: clusterName,
-			Labels: map[string]string{
-				"kapro.io/cluster":     clusterName,
-				"kapro.io/environment": envRef,
-			},
-			Finalizers: []string{managedClusterFinalizer},
-		},
-		Spec: kaprov1alpha1.ManagedClusterSpec{
-			EnvironmentRef: envRef,
-		},
-	}
-	return r.Create(ctx, mc)
+	return nil, fmt.Errorf("MemberCluster %q bootstrap not bound to CSR %q", clusterName, csrName)
 }
 
 // ensureClusterRBAC creates the long-lived ClusterRole + ClusterRoleBinding for the cluster user.
 // The cluster user identity is the x509 CN: "kapro-cluster:<clusterName>".
-// Grants: ManagedCluster get/patch, Environment list, and CSR create/get/watch for self-renewal.
+// Grants: MemberCluster get/patch, and CSR create/get/watch for self-renewal.
 func (r *CSRApprovalReconciler) ensureClusterRBAC(ctx context.Context, clusterName, clusterUser string) error {
 	roleName := "kapro:cluster-controller:" + clusterName
 
@@ -256,20 +235,15 @@ func (r *CSRApprovalReconciler) ensureClusterRBAC(ctx context.Context, clusterNa
 			Rules: []rbacv1.PolicyRule{
 				{
 					APIGroups:     []string{"kapro.io"},
-					Resources:     []string{"managedclusters"},
+					Resources:     []string{"memberclusters"},
 					ResourceNames: []string{clusterName},
 					Verbs:         []string{"get", "update", "patch"},
 				},
 				{
 					APIGroups:     []string{"kapro.io"},
-					Resources:     []string{"managedclusters/status"},
+					Resources:     []string{"memberclusters/status"},
 					ResourceNames: []string{clusterName},
 					Verbs:         []string{"update", "patch"},
-				},
-				{
-					APIGroups: []string{"kapro.io"},
-					Resources: []string{"environments"},
-					Verbs:     []string{"get", "list"},
 				},
 				// Self-renewal: cluster-controller submits its own renewal CSRs.
 				{
@@ -305,33 +279,18 @@ func (r *CSRApprovalReconciler) ensureClusterRBAC(ctx context.Context, clusterNa
 	return nil
 }
 
-// markTokenUsed patches the BootstrapToken status to used=true BEFORE approving.
-// BoundCSRName is recorded so transient approval failures can be retried idempotently.
-// This is intentional: approving first then marking used creates a replay window.
-func (r *CSRApprovalReconciler) markTokenUsed(ctx context.Context, bt *kaprov1alpha1.BootstrapToken, clusterName, csrName string) error {
-	patch := client.MergeFrom(bt.DeepCopy())
+// markBootstrapUsed updates the MemberCluster status to mark bootstrap as used.
+// Uses Status().Update() (full object with resourceVersion) — NOT Status().Patch() —
+// so the resourceVersion check catches concurrent reconciles attempting double-claim.
+func (r *CSRApprovalReconciler) markBootstrapUsed(ctx context.Context, mc *kaprov1alpha1.MemberCluster, clusterName, csrName string) error {
 	now := metav1.Now()
-	bt.Status.Used = true
-	bt.Status.UsedAt = &now
-	bt.Status.IssuedCredentialFor = clusterName
-	bt.Status.BoundCSRName = csrName
-	return r.Status().Patch(ctx, bt, patch)
-}
-
-// findUsedTokenForCSR finds a BootstrapToken that was already used by the given CSR.
-// Used to enable idempotent retry when the CSR approval call fails transiently.
-func (r *CSRApprovalReconciler) findUsedTokenForCSR(ctx context.Context, clusterName, csrName string) (*kaprov1alpha1.BootstrapToken, error) {
-	var list kaprov1alpha1.BootstrapTokenList
-	if err := r.List(ctx, &list, client.InNamespace(kaproSystemNamespace), client.Limit(200)); err != nil {
-		return nil, err
+	mc.Status.Bootstrap = &kaprov1alpha1.MemberClusterBootstrapStatus{
+		Used:                true,
+		UsedAt:              &now,
+		IssuedCredentialFor: clusterName,
+		BoundCSRName:        csrName,
 	}
-	for i := range list.Items {
-		bt := &list.Items[i]
-		if bt.Spec.ClusterName == clusterName && bt.Status.Used && bt.Status.BoundCSRName == csrName {
-			return bt, nil
-		}
-	}
-	return nil, fmt.Errorf("no token bound to CSR %q for cluster %q", csrName, clusterName)
+	return r.Status().Update(ctx, mc)
 }
 
 // approveCSR appends an Approved condition and calls the approval subresource.
@@ -455,7 +414,7 @@ func (r *CSRApprovalReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // immediately after a bootstrap CSR is approved. This matches the OCM klusterlet pattern:
 // once the cluster holds a valid x509 cert, the SA token in the bootstrap kubeconfig is useless,
 // and deleting the SA revokes all outstanding tokens immediately.
-// Errors are logged but non-fatal — BootstrapTokenReconciler.handleDeletion will clean up on token GC.
+// Errors are logged but non-fatal — MemberCluster cleanup will handle SA GC on token expiry.
 func (r *CSRApprovalReconciler) cleanupBootstrapCredentials(ctx context.Context, clusterName string) {
 	log := log.FromContext(ctx)
 	saName := "kapro-bootstrap-" + clusterName
@@ -475,24 +434,22 @@ func (r *CSRApprovalReconciler) cleanupBootstrapCredentials(ctx context.Context,
 	}
 }
 
-const managedClusterFinalizer = "kapro.io/managed-cluster-finalizer"
-
-// ManagedClusterReconciler handles ManagedCluster deletion: removes the long-lived
+// MemberClusterReconciler handles MemberCluster deletion: removes the long-lived
 // cluster-controller ClusterRole and ClusterRoleBinding, then clears the finalizer.
 // This ensures complete de-registration when a cluster is decommissioned.
 //
-// +kubebuilder:rbac:groups=kapro.io,resources=managedclusters,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=managedclusters/finalizers,verbs=update
+// +kubebuilder:rbac:groups=kapro.io,resources=memberclusters,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=memberclusters/finalizers,verbs=update
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles;clusterrolebindings,verbs=delete
-type ManagedClusterReconciler struct {
+type MemberClusterReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-func (r *ManagedClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *MemberClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	mc := &kaprov1alpha1.ManagedCluster{}
+	mc := &kaprov1alpha1.MemberCluster{}
 	if err := r.Get(ctx, req.NamespacedName, mc); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -501,7 +458,7 @@ func (r *ManagedClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, nil
 	}
 
-	if !containsString(mc.Finalizers, managedClusterFinalizer) {
+	if !containsString(mc.Finalizers, kaprov1alpha1.MemberClusterFinalizer) {
 		return ctrl.Result{}, nil
 	}
 
@@ -519,7 +476,7 @@ func (r *ManagedClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// Remove finalizer to allow deletion to proceed.
-	mc.Finalizers = removeString(mc.Finalizers, managedClusterFinalizer)
+	mc.Finalizers = removeString(mc.Finalizers, kaprov1alpha1.MemberClusterFinalizer)
 	if err := r.Update(ctx, mc); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -528,9 +485,9 @@ func (r *ManagedClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	return ctrl.Result{}, nil
 }
 
-func (r *ManagedClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *MemberClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kaprov1alpha1.ManagedCluster{}).
+		For(&kaprov1alpha1.MemberCluster{}).
 		Complete(r)
 }
 

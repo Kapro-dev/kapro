@@ -143,12 +143,12 @@ func main() {
 			&crwebhook.Admission{Handler: kaploadmission.NewApprovalMutator(decoder)},
 		)
 		mgr.GetWebhookServer().Register(
-			"/mutate-kapro-io-v1alpha1-environment",
-			&crwebhook.Admission{Handler: kaploadmission.NewEnvironmentMutator(decoder)},
+			"/mutate-kapro-io-v1alpha1-membercluster",
+			&crwebhook.Admission{Handler: kaploadmission.NewMemberClusterMutator(decoder)},
 		)
 		mgr.GetWebhookServer().Register(
-			"/validate-kapro-io-v1alpha1-environment",
-			&crwebhook.Admission{Handler: kaploadmission.NewEnvironmentValidator(decoder)},
+			"/validate-kapro-io-v1alpha1-membercluster",
+			&crwebhook.Admission{Handler: kaploadmission.NewMemberClusterValidator(decoder)},
 		)
 		mgr.GetWebhookServer().Register(
 			"/validate-kapro-io-v1alpha1-release",

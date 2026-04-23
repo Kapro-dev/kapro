@@ -88,7 +88,7 @@ func (r *Registry[T]) Register(typeName string, impl T) error {
 // a programming error that should crash the process immediately.
 func (r *Registry[T]) MustRegister(typeName string, impl T) {
 	if err := r.Register(typeName, impl); err != nil {
-		panic(fmt.Sprintf("kapro/registry: MustRegister: %v", err))
+		panic(fmt.Sprintf("kapro/registry: MustRegister: %v", err)) // intentional startup panic — duplicate registration is always a programming error
 	}
 }
 

@@ -48,12 +48,12 @@ type webhookResponse struct {
 
 // Evaluate sends the gate request to the configured webhook URL and returns a GateResult.
 func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Result, error) {
-	if req.Template == nil || req.Template.Spec.Webhook == nil {
-		return pkggate.Result{}, fmt.Errorf("webhook gate: GateTemplate.Spec.Webhook is nil")
+	if req.Template == nil || req.Template.Webhook == nil {
+		return pkggate.Result{}, fmt.Errorf("webhook gate: template Webhook spec is nil")
 	}
-	url := req.Template.Spec.Webhook.URL
+	url := req.Template.Webhook.URL
 	if url == "" {
-		return pkggate.Result{}, fmt.Errorf("webhook gate: GateTemplate.Spec.Webhook.URL is empty")
+		return pkggate.Result{}, fmt.Errorf("webhook gate: template Webhook URL is empty")
 	}
 
 	var promotion, environment, version, release string

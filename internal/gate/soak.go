@@ -18,18 +18,18 @@ type SoakGate struct{}
 
 // Evaluate returns Passed when the soak period has elapsed.
 //
-// If Policy.Spec.Gate.SoakTime is empty or un-parseable the gate is
+// If Policy.Gate.SoakTime is empty or un-parseable the gate is
 // considered satisfied immediately — callers should guard against calling
 // this gate when no soak is configured.
 func (g *SoakGate) Evaluate(_ context.Context, req Request) (Result, error) {
-	if req.Policy == nil || req.Policy.Spec.Gate.SoakTime == "" {
+	if req.Policy == nil || req.Policy.Gate.SoakTime == "" {
 		return Result{Phase: kaprov1alpha1.GatePhasePassed, Message: "no soak configured"}, nil
 	}
 
-	soakDuration, err := time.ParseDuration(req.Policy.Spec.Gate.SoakTime)
+	soakDuration, err := time.ParseDuration(req.Policy.Gate.SoakTime)
 	if err != nil {
 		return Result{}, fmt.Errorf("soakTime %q is not a valid duration: %w",
-			req.Policy.Spec.Gate.SoakTime, err)
+			req.Policy.Gate.SoakTime, err)
 	}
 
 	if req.Sync.Status.StartedAt == "" {

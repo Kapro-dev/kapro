@@ -6,7 +6,7 @@
 // The CEL expression is evaluated against a structured activation:
 //
 //	args         — map[string]string of resolved gate args
-//	environment  — kapro Environment object (labels, name, tier, region)
+//	environment  — kapro MemberCluster object (labels, name)
 //	sync         — kapro Sync object (version, environmentRef, releaseRef)
 //
 // Example expression:
@@ -40,24 +40,24 @@ type Gate struct {
 func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Result, error) {
 	log := log.FromContext(ctx)
 
-	if req.Template == nil || req.Template.Spec.CEL == nil {
+	if req.Template == nil || req.Template.CEL == nil {
 		return pkggate.Result{}, fmt.Errorf("cel gate: template or cel spec is nil")
 	}
 
-	expr := req.Template.Spec.CEL.Expression
+	expr := req.Template.CEL.Expression
 	if expr == "" {
 		return pkggate.Result{}, fmt.Errorf("cel gate: expression is empty")
 	}
 
-	// Resolve the Environment object for context variables.
-	var envObj kaprov1alpha1.Environment
+	// Resolve the MemberCluster object for context variables.
+	var mcObj kaprov1alpha1.MemberCluster
 	if req.Sync != nil && req.Sync.Spec.EnvironmentRef != "" && g.Client != nil {
-		if err := g.Client.Get(ctx, client.ObjectKey{Name: req.Sync.Spec.EnvironmentRef}, &envObj); err != nil {
-			log.Info("cel gate: could not fetch Environment, proceeding with empty env", "name", req.Sync.Spec.EnvironmentRef)
+		if err := g.Client.Get(ctx, client.ObjectKey{Name: req.Sync.Spec.EnvironmentRef}, &mcObj); err != nil {
+			log.Info("cel gate: could not fetch MemberCluster, proceeding with empty cluster context", "name", req.Sync.Spec.EnvironmentRef)
 		}
 	}
 
-	activation, err := buildActivation(req.Args, &envObj, req.Sync)
+	activation, err := buildActivation(req.Args, &mcObj, req.Sync)
 	if err != nil {
 		return pkggate.Result{}, fmt.Errorf("cel gate: build activation: %w", err)
 	}
@@ -83,25 +83,25 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 	}, nil
 }
 
-// buildActivation constructs the CEL variable map from resolved args + environment + sync.
-func buildActivation(args map[string]string, env *kaprov1alpha1.Environment, sync *kaprov1alpha1.Sync) (map[string]any, error) {
+// buildActivation constructs the CEL variable map from resolved args + cluster + sync.
+func buildActivation(args map[string]string, mc *kaprov1alpha1.MemberCluster, sync *kaprov1alpha1.Sync) (map[string]any, error) {
 	// args: map[string]string — directly accessible as args.key
 	argsMap := map[string]any{}
 	for k, v := range args {
 		argsMap[k] = v
 	}
 
-	// environment: flattened fields
+	// environment: flattened fields (keyed as "environment" for backward-compat with existing CEL expressions)
 	envMap := map[string]any{
 		"name":   "",
 		"labels": map[string]any{},
 	}
-	if env != nil && env.Name != "" {
+	if mc != nil && mc.Name != "" {
 		labelMap := map[string]any{}
-		for k, v := range env.Labels {
+		for k, v := range mc.Labels {
 			labelMap[k] = v
 		}
-		envMap["name"] = env.Name
+		envMap["name"] = mc.Name
 		envMap["labels"] = labelMap
 	}
 

@@ -31,10 +31,10 @@ type mockActuator struct {
 func (m *mockActuator) Apply(_ context.Context, _ actuator.ApplyRequest) error {
 	return m.applyErr
 }
-func (m *mockActuator) IsConverged(_ context.Context, _ *kaprov1alpha1.Environment, _, _ string) (bool, error) {
+func (m *mockActuator) IsConverged(_ context.Context, _ *kaprov1alpha1.MemberCluster, _, _ string) (bool, error) {
 	return m.converged, m.convergedErr
 }
-func (m *mockActuator) Rollback(_ context.Context, _ *kaprov1alpha1.Environment, _ string) error {
+func (m *mockActuator) Rollback(_ context.Context, _ *kaprov1alpha1.MemberCluster, _ string) error {
 	return m.applyErr
 }
 
@@ -60,7 +60,7 @@ func buildFSMClient(t *testing.T, objs ...client.Object) client.Client {
 	}
 	return fake.NewClientBuilder().
 		WithScheme(fsmScheme(t)).
-		WithStatusSubresource(&kaprov1alpha1.Sync{}, &kaprov1alpha1.ManagedCluster{}).
+		WithStatusSubresource(&kaprov1alpha1.Sync{}, &kaprov1alpha1.MemberCluster{}).
 		WithObjects(objs...).
 		Build()
 }
@@ -128,7 +128,7 @@ func TestSyncReconciler_EmptyPhase_TransitionsToPending(t *testing.T) {
 }
 
 // TestSyncReconciler_Pending_NoRegistration_Requeues verifies that when
-// no ManagedCluster is found for the environment, the reconciler requeues
+// no MemberCluster is found for the environment, the reconciler requeues
 // without advancing the phase.
 func TestSyncReconciler_Pending_NoRegistration_Requeues(t *testing.T) {
 	promo := &kaprov1alpha1.Sync{
@@ -148,7 +148,7 @@ func TestSyncReconciler_Pending_NoRegistration_Requeues(t *testing.T) {
 	res := reconcilePromo(t, r, "default", "promo-noreg")
 
 	if res.RequeueAfter == 0 {
-		t.Error("expected RequeueAfter > 0 when no ManagedCluster found")
+		t.Error("expected RequeueAfter > 0 when no MemberCluster found")
 	}
 	updated := getPromo(t, c, "default", "promo-noreg")
 	if updated.Status.Phase != kaprov1alpha1.SyncPhasePending {
@@ -159,13 +159,9 @@ func TestSyncReconciler_Pending_NoRegistration_Requeues(t *testing.T) {
 // TestSyncReconciler_Pending_StaleHeartbeat_Requeues verifies that a
 // stale cluster heartbeat keeps the promotion in Pending.
 func TestSyncReconciler_Pending_StaleHeartbeat_Requeues(t *testing.T) {
-	reg := &kaprov1alpha1.ManagedCluster{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "reg-stale",
-			Labels: map[string]string{"kapro.io/environment": "env-stale"},
-		},
-		Spec: kaprov1alpha1.ManagedClusterSpec{EnvironmentRef: "env-stale"},
-		Status: kaprov1alpha1.ManagedClusterStatus{
+	mc := &kaprov1alpha1.MemberCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "env-stale"},
+		Status: kaprov1alpha1.MemberClusterStatus{
 			LastHeartbeat: time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339),
 		},
 	}
@@ -178,7 +174,7 @@ func TestSyncReconciler_Pending_StaleHeartbeat_Requeues(t *testing.T) {
 		},
 		Status: kaprov1alpha1.SyncStatus{Phase: kaprov1alpha1.SyncPhasePending},
 	}
-	c := buildFSMClient(t, reg, promo)
+	c := buildFSMClient(t, mc, promo)
 	r := newReconciler(c, nil)
 
 	res := reconcilePromo(t, r, "default", "promo-stale")
@@ -196,13 +192,9 @@ func TestSyncReconciler_Pending_StaleHeartbeat_Requeues(t *testing.T) {
 // verifies that a Promotion with a fresh heartbeat advances from Pending to
 // HealthCheck.
 func TestSyncReconciler_Pending_FreshHeartbeat_TransitionsToHealthCheck(t *testing.T) {
-	reg := &kaprov1alpha1.ManagedCluster{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "reg-fresh",
-			Labels: map[string]string{"kapro.io/environment": "env-fresh"},
-		},
-		Spec: kaprov1alpha1.ManagedClusterSpec{EnvironmentRef: "env-fresh"},
-		Status: kaprov1alpha1.ManagedClusterStatus{
+	mc := &kaprov1alpha1.MemberCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "env-fresh"},
+		Status: kaprov1alpha1.MemberClusterStatus{
 			LastHeartbeat: time.Now().UTC().Format(time.RFC3339),
 		},
 	}
@@ -215,7 +207,7 @@ func TestSyncReconciler_Pending_FreshHeartbeat_TransitionsToHealthCheck(t *testi
 		},
 		Status: kaprov1alpha1.SyncStatus{Phase: kaprov1alpha1.SyncPhasePending},
 	}
-	c := buildFSMClient(t, reg, promo)
+	c := buildFSMClient(t, mc, promo)
 	r := newReconciler(c, nil)
 
 	// First reconcile: Pending → Verification (VerificationGate is nil — skip immediately)
@@ -236,19 +228,12 @@ func TestSyncReconciler_Pending_FreshHeartbeat_TransitionsToHealthCheck(t *testi
 // that when the cluster converges at the desired version, the Promotion moves to
 // Converged.
 func TestSyncReconciler_Applying_ClusterConverged_SetsConvergedPhase(t *testing.T) {
-	env := &kaprov1alpha1.Environment{
+	mc := &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "env-conv"},
-		Spec: kaprov1alpha1.EnvironmentSpec{
+		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{Type: "flux"},
 		},
-	}
-	reg := &kaprov1alpha1.ManagedCluster{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "reg-conv",
-			Labels: map[string]string{"kapro.io/environment": "env-conv"},
-		},
-		Spec: kaprov1alpha1.ManagedClusterSpec{EnvironmentRef: "env-conv"},
-		Status: kaprov1alpha1.ManagedClusterStatus{
+		Status: kaprov1alpha1.MemberClusterStatus{
 			Phase:           kaprov1alpha1.ClusterPhaseConverged,
 			CurrentVersions: map[string]string{"rel-1": "v2.0.0"},
 			LastHeartbeat:   time.Now().UTC().Format(time.RFC3339),
@@ -266,7 +251,7 @@ func TestSyncReconciler_Applying_ClusterConverged_SetsConvergedPhase(t *testing.
 			PreviousVersion: "v1.0.0",
 		},
 	}
-	c := buildFSMClient(t, env, reg, promo)
+	c := buildFSMClient(t, mc, promo)
 	r := newReconciler(c, &mockActuator{})
 
 	reconcilePromo(t, r, "default", "promo-conv")
@@ -284,27 +269,13 @@ func TestSyncReconciler_Applying_ClusterConverged_SetsConvergedPhase(t *testing.
 // that when a cluster reports Failed and the policy is onFailure=rollback, a
 // new rollback Promotion is created targeting the previous version.
 func TestSyncReconciler_OnFailureRollback_CreatesRollbackPromotion(t *testing.T) {
-	env := &kaprov1alpha1.Environment{
+	mc := &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "env-rollback"},
-		Spec: kaprov1alpha1.EnvironmentSpec{
+		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{Type: "flux"},
 		},
-	}
-	reg := &kaprov1alpha1.ManagedCluster{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "reg-rollback",
-			Labels: map[string]string{"kapro.io/environment": "env-rollback"},
-		},
-		Spec: kaprov1alpha1.ManagedClusterSpec{EnvironmentRef: "env-rollback"},
-		Status: kaprov1alpha1.ManagedClusterStatus{
+		Status: kaprov1alpha1.MemberClusterStatus{
 			Phase: kaprov1alpha1.ClusterPhaseFailed,
-		},
-	}
-	policy := &kaprov1alpha1.GatePolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-policy"},
-		Spec: kaprov1alpha1.GatePolicySpec{
-			Mode:      kaprov1alpha1.GateModeAuto,
-			OnFailure: "rollback",
 		},
 	}
 	promo := &kaprov1alpha1.Sync{
@@ -313,14 +284,17 @@ func TestSyncReconciler_OnFailureRollback_CreatesRollbackPromotion(t *testing.T)
 			ReleaseRef:     "rel-1",
 			EnvironmentRef: "env-rollback",
 			Version:        "v2.0.0",
-			PolicyRef:      "test-policy",
+			Gate: &kaprov1alpha1.GatePolicySpec{
+				Mode:      kaprov1alpha1.GateModeAuto,
+				OnFailure: "rollback",
+			},
 		},
 		Status: kaprov1alpha1.SyncStatus{
 			Phase:           kaprov1alpha1.SyncPhaseApplying,
 			PreviousVersion: "v1.0.0",
 		},
 	}
-	c := buildFSMClient(t, env, reg, policy, promo)
+	c := buildFSMClient(t, mc, promo)
 	r := newReconciler(c, &mockActuator{})
 
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
@@ -355,25 +329,13 @@ func TestSyncReconciler_OnFailureRollback_CreatesRollbackPromotion(t *testing.T)
 // reconcile twice when a rollback is triggered does not create a second rollback
 // Promotion.
 func TestSyncReconciler_TriggerRollback_Idempotent(t *testing.T) {
-	env := &kaprov1alpha1.Environment{
+	mc := &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "env-idem"},
-		Spec:       kaprov1alpha1.EnvironmentSpec{Actuator: kaprov1alpha1.ActuatorSpec{Type: "flux"}},
-	}
-	reg := &kaprov1alpha1.ManagedCluster{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "reg-idem",
-			Labels: map[string]string{"kapro.io/environment": "env-idem"},
+		Spec: kaprov1alpha1.MemberClusterSpec{
+			Actuator: kaprov1alpha1.ActuatorSpec{Type: "flux"},
 		},
-		Spec: kaprov1alpha1.ManagedClusterSpec{EnvironmentRef: "env-idem"},
-		Status: kaprov1alpha1.ManagedClusterStatus{
+		Status: kaprov1alpha1.MemberClusterStatus{
 			Phase: kaprov1alpha1.ClusterPhaseFailed,
-		},
-	}
-	policy := &kaprov1alpha1.GatePolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "policy-idem"},
-		Spec: kaprov1alpha1.GatePolicySpec{
-			Mode:      kaprov1alpha1.GateModeAuto,
-			OnFailure: "rollback",
 		},
 	}
 	promo := &kaprov1alpha1.Sync{
@@ -382,19 +344,20 @@ func TestSyncReconciler_TriggerRollback_Idempotent(t *testing.T) {
 			ReleaseRef:     "rel-1",
 			EnvironmentRef: "env-idem",
 			Version:        "v2.0.0",
-			PolicyRef:      "policy-idem",
+			Gate: &kaprov1alpha1.GatePolicySpec{
+				Mode:      kaprov1alpha1.GateModeAuto,
+				OnFailure: "rollback",
+			},
 		},
 		Status: kaprov1alpha1.SyncStatus{
 			Phase:           kaprov1alpha1.SyncPhaseApplying,
 			PreviousVersion: "v1.0.0",
 		},
 	}
-	c := buildFSMClient(t, env, reg, policy, promo)
+	c := buildFSMClient(t, mc, promo)
 	r := newReconciler(c, &mockActuator{})
 
 	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "promo-idem"}}
-
-	// First reconcile — creates rollback Promotion.
 	if _, err := r.Reconcile(context.Background(), req); err != nil {
 		t.Fatalf("first Reconcile error: %v", err)
 	}
@@ -425,25 +388,13 @@ func TestSyncReconciler_TriggerRollback_Idempotent(t *testing.T) {
 // that when OnFailure is NOT "rollback", failPromotion just sets Failed phase
 // without creating a rollback Promotion.
 func TestSyncReconciler_FailPromotion_SetsFailedPhase_NoRollback(t *testing.T) {
-	env := &kaprov1alpha1.Environment{
+	mc := &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "env-halt"},
-		Spec:       kaprov1alpha1.EnvironmentSpec{Actuator: kaprov1alpha1.ActuatorSpec{Type: "flux"}},
-	}
-	reg := &kaprov1alpha1.ManagedCluster{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "reg-halt",
-			Labels: map[string]string{"kapro.io/environment": "env-halt"},
+		Spec: kaprov1alpha1.MemberClusterSpec{
+			Actuator: kaprov1alpha1.ActuatorSpec{Type: "flux"},
 		},
-		Spec: kaprov1alpha1.ManagedClusterSpec{EnvironmentRef: "env-halt"},
-		Status: kaprov1alpha1.ManagedClusterStatus{
+		Status: kaprov1alpha1.MemberClusterStatus{
 			Phase: kaprov1alpha1.ClusterPhaseFailed,
-		},
-	}
-	policy := &kaprov1alpha1.GatePolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "policy-halt"},
-		Spec: kaprov1alpha1.GatePolicySpec{
-			Mode:      kaprov1alpha1.GateModeAuto,
-			OnFailure: "halt", // not rollback
 		},
 	}
 	promo := &kaprov1alpha1.Sync{
@@ -452,14 +403,17 @@ func TestSyncReconciler_FailPromotion_SetsFailedPhase_NoRollback(t *testing.T) {
 			ReleaseRef:     "rel-1",
 			EnvironmentRef: "env-halt",
 			Version:        "v2.0.0",
-			PolicyRef:      "policy-halt",
+			Gate: &kaprov1alpha1.GatePolicySpec{
+				Mode:      kaprov1alpha1.GateModeAuto,
+				OnFailure: "halt",
+			},
 		},
 		Status: kaprov1alpha1.SyncStatus{
 			Phase:           kaprov1alpha1.SyncPhaseApplying,
 			PreviousVersion: "v1.0.0",
 		},
 	}
-	c := buildFSMClient(t, env, reg, policy, promo)
+	c := buildFSMClient(t, mc, promo)
 	r := newReconciler(c, &mockActuator{})
 
 	if _, err := r.Reconcile(context.Background(), ctrl.Request{

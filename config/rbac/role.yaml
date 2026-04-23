@@ -2,49 +2,22 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kapro-operator
+  name: kapro-manager-role
 rules:
-- apiGroups:
-  - ""
-  resources:
-  - events
-  verbs:
-  - create
-  - patch
-- apiGroups:
-  - ""
-  resources:
-  - secrets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
 - apiGroups:
   - ""
   resources:
   - serviceaccounts
   verbs:
-  - create
   - delete
   - get
   - list
   - watch
 - apiGroups:
-  - authentication.k8s.io
-  resources:
-  - serviceaccounts/token
-  verbs:
-  - create
-- apiGroups:
   - certificates.k8s.io
   resources:
   - certificatesigningrequests
   verbs:
-  - create
   - get
   - list
   - update
@@ -64,18 +37,6 @@ rules:
   verbs:
   - approve
 - apiGroups:
-  - coordination.k8s.io
-  resources:
-  - leases
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
   - kapro.io
   resources:
   - approvals
@@ -94,8 +55,6 @@ rules:
   - kapro.io
   resources:
   - artifacts
-  - gatepolicies
-  - gatetemplates
   - pipelines
   verbs:
   - get
@@ -104,9 +63,8 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - bootstraptokens
+  - memberclusters
   verbs:
-  - delete
   - get
   - list
   - patch
@@ -115,8 +73,7 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - bootstraptokens/finalizers
-  - managedclusters/finalizers
+  - memberclusters/finalizers
   - releases/finalizers
   - syncs/finalizers
   verbs:
@@ -124,24 +81,7 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - bootstraptokens/status
-  verbs:
-  - patch
-  - update
-- apiGroups:
-  - kapro.io
-  resources:
-  - environments
-  verbs:
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
-  - environments/status
+  - memberclusters/status
   - pipelines/status
   - releasereports/status
   - releases/status
@@ -150,17 +90,6 @@ rules:
   - get
   - patch
   - update
-- apiGroups:
-  - kapro.io
-  resources:
-  - managedclusters
-  verbs:
-  - create
-  - get
-  - list
-  - patch
-  - update
-  - watch
 - apiGroups:
   - kapro.io
   resources:

@@ -47,65 +47,42 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 	}
 	mustCreate(t, ctx, c, art)
 
-	// ── 2. Create Environments ────────────────────────────────────────────────
-	// dev env — matched by the "dev" stage selector.
-	devEnv := &kaprov1alpha1.Environment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "e2e-dev-" + suffix,
-			Labels: map[string]string{"tier": "dev", "e2e": suffix},
-		},
-		Spec: kaprov1alpha1.EnvironmentSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{
-				Type: "flux",
-				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},
-			},
-		},
-	}
-	mustCreate(t, ctx, c, devEnv)
-
-	// prod env — matched by the "prod" stage selector.
-	prodEnv := &kaprov1alpha1.Environment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "e2e-prod-" + suffix,
-			Labels: map[string]string{"tier": "prod", "e2e": suffix},
-		},
-		Spec: kaprov1alpha1.EnvironmentSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{
-				Type: "flux",
-				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},
-			},
-		},
-	}
-	mustCreate(t, ctx, c, prodEnv)
-
 	// resolve the version and app key the Syncs will carry, so we can
-	// reflect them back in the ManagedCluster status for convergence checks.
+	// reflect them back in the MemberCluster status for convergence checks.
 	resolvedVersion := art.Spec.Sources[0].OCI.Repository + "@" + art.Spec.Sources[0].OCI.Digest
 	appKey := art.Name
 	versions := map[string]string{appKey: resolvedVersion}
 
-	// ── 3. Create ManagedClusters with a live heartbeat ─────────────────────
+	// ── 2 + 3. Create MemberClusters with tier labels and live heartbeat ─────
+	// MemberCluster.Name must match Sync.Spec.EnvironmentRef (looked up by name).
+	// Tier labels are used by pipeline stage selectors.
 	// SyncReconciler.handlePending checks LastHeartbeat freshness.
 	// handleApplying checks CurrentVersions[appKey] == sync.Spec.Version.
-	devReg := &kaprov1alpha1.ManagedCluster{
+	devReg := &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   "e2e-reg-dev-" + suffix,
-			Labels: map[string]string{"kapro.io/environment": "e2e-dev-" + suffix},
+			Name:   "e2e-dev-" + suffix,
+			Labels: map[string]string{"tier": "dev", "e2e": suffix},
 		},
-		Spec: kaprov1alpha1.ManagedClusterSpec{
-			EnvironmentRef: "e2e-dev-" + suffix,
+		Spec: kaprov1alpha1.MemberClusterSpec{
+			Actuator: kaprov1alpha1.ActuatorSpec{
+				Type: "flux",
+				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},
+			},
 		},
 	}
 	mustCreate(t, ctx, c, devReg)
 	patchRegistrationConverged(t, ctx, c, devReg, versions)
 
-	prodReg := &kaprov1alpha1.ManagedCluster{
+	prodReg := &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   "e2e-reg-prod-" + suffix,
-			Labels: map[string]string{"kapro.io/environment": "e2e-prod-" + suffix},
+			Name:   "e2e-prod-" + suffix,
+			Labels: map[string]string{"tier": "prod", "e2e": suffix},
 		},
-		Spec: kaprov1alpha1.ManagedClusterSpec{
-			EnvironmentRef: "e2e-prod-" + suffix,
+		Spec: kaprov1alpha1.MemberClusterSpec{
+			Actuator: kaprov1alpha1.ActuatorSpec{
+				Type: "flux",
+				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},
+			},
 		},
 	}
 	mustCreate(t, ctx, c, prodReg)
@@ -164,7 +141,7 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 		return len(syncs.Items) > 0
 	}, "at least one Sync should be created")
 
-	// ── 8. Keep ManagedClusters fresh so Syncs can converge ──────────────────
+	// ── 8. Keep MemberClusters fresh so Syncs can converge ──────────────────
 	patchRegistrationConverged(t, ctx, c, devReg, versions)
 	patchRegistrationConverged(t, ctx, c, prodReg, versions)
 
@@ -187,22 +164,22 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 }
 
 // patchRegistrationConverged sets a fresh heartbeat + Converged phase on a
-// ManagedCluster, simulating what cluster-controller writes after deployment.
+// MemberCluster, simulating what cluster-controller writes after deployment.
 // currentVersions should map appKey→version for all syncs that should converge.
-func patchRegistrationConverged(t *testing.T, ctx context.Context, c client.Client, reg *kaprov1alpha1.ManagedCluster, currentVersions map[string]string) {
+func patchRegistrationConverged(t *testing.T, ctx context.Context, c client.Client, reg *kaprov1alpha1.MemberCluster, currentVersions map[string]string) {
 	t.Helper()
 	// Retry Get — caching client may not have synced immediately after Create.
-	latest := &kaprov1alpha1.ManagedCluster{}
+	latest := &kaprov1alpha1.MemberCluster{}
 	eventually(t, func() bool {
-		err := c.Get(ctx, types.NamespacedName{Name: reg.Name, Namespace: reg.Namespace}, latest)
+		err := c.Get(ctx, types.NamespacedName{Name: reg.Name}, latest)
 		return err == nil
-	}, "ManagedCluster "+reg.Name+" to appear in cache")
+	}, "MemberCluster "+reg.Name+" to appear in cache")
 	patch := client.MergeFrom(latest.DeepCopy())
 	latest.Status.LastHeartbeat = time.Now().UTC().Format(time.RFC3339)
 	latest.Status.Phase = kaprov1alpha1.ClusterPhaseConverged
 	latest.Status.CurrentVersions = currentVersions
 	latest.Status.Health = kaprov1alpha1.ClusterHealth{AllWorkloadsReady: true}
 	if err := c.Status().Patch(ctx, latest, patch); err != nil {
-		t.Fatalf("patch ManagedCluster status %s: %v", reg.Name, err)
+		t.Fatalf("patch MemberCluster status %s: %v", reg.Name, err)
 	}
 }

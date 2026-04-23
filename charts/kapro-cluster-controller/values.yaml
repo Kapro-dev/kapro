@@ -1,7 +1,7 @@
 # Default values for kapro-cluster-controller.
 
 # REQUIRED — must be set at install time
-# The name of the Environment CRD on the control plane that this cluster maps to.
+# The name of the MemberCluster CRD on the control plane that this cluster maps to.
 environmentRef: ""
 
 # REQUIRED — URL of the hub cluster's Kubernetes API server (used for CSR bootstrap + heartbeat)
@@ -12,9 +12,9 @@ controlPlane:
   # Leave blank to use the system trust store (only works when CA is publicly trusted).
   caBundle: ""
 
-# REQUIRED — name of the Secret containing the bootstrap kubeconfig issued by the hub's
-# BootstrapTokenReconciler. Create the BootstrapToken CR on the hub first, then copy the
-# Secret it creates (status.issuedBootstrapKubeconfig) to this spoke cluster.
+# REQUIRED — name of the Secret containing the bootstrap kubeconfig issued by the hub operator.
+# Create the MemberCluster CR on the hub first, then copy the Secret it creates
+# (status.bootstrap.issuedBootstrapKubeconfig) to this spoke cluster.
 # The cluster-controller reads it once during first boot to submit its CSR.
 # After bootstrap, credentials are stored in 'kapro-hub-credentials' and this Secret is no
 # longer needed (but safe to leave mounted).

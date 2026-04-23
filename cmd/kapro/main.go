@@ -82,7 +82,7 @@ func newBootstrapCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bootstrap",
 		Short: "Register a workload cluster with Kapro",
-		Long: `Bootstrap creates a BootstrapToken CR on the management cluster.
+		Long: `Bootstrap creates a MemberCluster CR on the management cluster with a bootstrap token.
 The Kapro operator processes it, creates a scoped ServiceAccount + RBAC, and
 writes the cluster credentials to a Secret named kapro-cluster-<name>-credentials.
 
@@ -99,9 +99,9 @@ Example:
 		},
 	}
 
-	cmd.Flags().StringVar(&clusterName, "name", "", "Cluster name (required, must match ManagedCluster name)")
-	cmd.Flags().StringVar(&namespace, "namespace", "kapro-system", "Namespace for the BootstrapToken CR")
-	cmd.Flags().StringArrayVar(&labelsRaw, "labels", nil, "Labels for the ManagedCluster (key=value)")
+	cmd.Flags().StringVar(&clusterName, "name", "", "Cluster name (required, must match MemberCluster name)")
+	cmd.Flags().StringVar(&namespace, "namespace", "kapro-system", "Namespace for bootstrap (unused — MemberCluster is cluster-scoped)")
+	cmd.Flags().StringArrayVar(&labelsRaw, "labels", nil, "Labels for the MemberCluster (key=value)")
 	cmd.Flags().DurationVar(&ttl, "ttl", 24*time.Hour, "Token TTL (default 24h)")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig (defaults to KUBECONFIG env / ~/.kube/config)")
 	_ = cmd.MarkFlagRequired("name")
@@ -147,27 +147,26 @@ func runBootstrap(ctx context.Context, clusterName, namespace string, labelsRaw 
 	tokenHash := hex.EncodeToString(hash[:])
 
 	expiresAt := metav1.NewTime(time.Now().Add(ttl))
-	btName := clusterName + "-bootstrap"
 
-	bt := &kaprov1alpha1.BootstrapToken{
+	mc := &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      btName,
-			Namespace: namespace,
+			Name:   clusterName,
+			Labels: labels,
 		},
-		Spec: kaprov1alpha1.BootstrapTokenSpec{
-			ClusterName: clusterName,
-			TokenHash:   tokenHash,
-			ExpiresAt:   expiresAt,
-			Labels:      labels,
+		Spec: kaprov1alpha1.MemberClusterSpec{
+			Bootstrap: &kaprov1alpha1.MemberClusterBootstrapSpec{
+				TokenHash: tokenHash,
+				ExpiresAt: &expiresAt,
+			},
 		},
 	}
 
-	if err := c.Create(ctx, bt); err != nil {
-		return fmt.Errorf("create BootstrapToken: %w", err)
+	if err := c.Create(ctx, mc); err != nil {
+		return fmt.Errorf("create MemberCluster: %w", err)
 	}
 
 	fmt.Printf(`
-✅ BootstrapToken created: %s/%s
+✅ MemberCluster created: %s
 
 Cluster:    %s
 Token hash: %s (stored — plaintext never persisted)
@@ -182,15 +181,15 @@ Next steps:
        --management-cluster-url=%s
   
   2. The operator will:
-       • Create a scoped ServiceAccount (kapro-cluster-%s)
-       • Create ClusterRole scoped to ManagedCluster/%s only
+       • Create a scoped ServiceAccount (kapro-bootstrap-%s)
+       • Create ClusterRole scoped to MemberCluster/%s only
        • Issue a short-lived SA token (1h, auto-renewing)
        • Write credentials to Secret: kapro-system/kapro-cluster-%s-credentials
 
   3. Check bootstrap status:
-       kubectl get bootstraptoken %s -n %s -o yaml
+       kubectl get membercluster %s -o yaml
 `,
-		namespace, btName,
+		clusterName,
 		clusterName,
 		tokenHash[:16]+"...",
 		expiresAt.Format(time.RFC3339),
@@ -198,26 +197,26 @@ Next steps:
 		rawToken,
 		cfg.Host,
 		clusterName, clusterName, clusterName,
-		btName, namespace,
+		clusterName,
 	)
 
 	// Wait briefly and check if operator has already processed it.
-	fmt.Print("⏳ Waiting for operator to process token")
+	fmt.Print("⏳ Waiting for operator to process bootstrap token")
 	for i := 0; i < 10; i++ {
 		time.Sleep(2 * time.Second)
 		fmt.Print(".")
 
-		var check kaprov1alpha1.BootstrapToken
-		if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: btName}, &check); err != nil {
+		var check kaprov1alpha1.MemberCluster
+		if err := c.Get(ctx, types.NamespacedName{Name: clusterName}, &check); err != nil {
 			continue
 		}
-		if check.Status.Used {
-			fmt.Printf("\n✅ Token consumed by operator. SA: %s\n", check.Status.IssuedCredentialFor)
+		if check.Status.Bootstrap.Used {
+			fmt.Printf("\n✅ Bootstrap consumed by operator. Credential for: %s\n", check.Status.Bootstrap.IssuedCredentialFor)
 			fmt.Printf("   Credentials secret: kapro-system/kapro-cluster-%s-credentials\n", clusterName)
 			return nil
 		}
 	}
-	fmt.Println("\n⏳ Operator has not processed the token yet — it will be processed on next reconcile.")
+	fmt.Println("\n⏳ Operator has not processed the bootstrap yet — it will be processed on next reconcile.")
 	return nil
 }
 
@@ -716,7 +715,7 @@ Examples:
 	cmd.Flags().StringArrayVar(&scope, "scope", nil, "Restrict to environment (repeatable: --scope de-prod --scope fi-prod)")
 	cmd.Flags().StringVar(&derivedFrom, "derived-from", "", "Parent Release name (for hotfix lineage)")
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace for the Release")
-	cmd.Flags().StringVar(&appKey, "app-key", "", "App key for ManagedCluster version tracking (defaults to artifact name)")
+	cmd.Flags().StringVar(&appKey, "app-key", "", "App key for MemberCluster version tracking (defaults to artifact name)")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("artifact")
@@ -908,9 +907,9 @@ func newWorldCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "world",
 		Short: "Fleet-wide status: all clusters, versions, and health",
-		Long: `Show a table of every ManagedCluster with its current version, phase, and health.
+		Long: `Show a table of every MemberCluster with its current version, phase, and health.
 
-Equivalent to 'kubectl get managedclusters' but formatted for delivery monitoring.
+Equivalent to 'kubectl get memberclusters' but formatted for delivery monitoring.
 
 Examples:
   kapro world
@@ -930,21 +929,21 @@ func runWorld(ctx context.Context, envFilter, kubeconfigPath string) error {
 		return err
 	}
 
-	var list kaprov1alpha1.ManagedClusterList
+	var list kaprov1alpha1.MemberClusterList
 	opts := []client.ListOption{client.Limit(2000)}
 	if envFilter != "" {
 		opts = append(opts, client.MatchingLabels{"kapro.io/environment": envFilter})
 	}
 	if err := c.List(ctx, &list, opts...); err != nil {
-		return fmt.Errorf("list managed clusters: %w", err)
+		return fmt.Errorf("list member clusters: %w", err)
 	}
 	if len(list.Items) == 0 {
-		fmt.Println("No managed clusters found.")
+		fmt.Println("No member clusters found.")
 		return nil
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "CLUSTER\tENVIRONMENT\tPHASE\tHEALTHY\tACTIVE RELEASE\tHEARTBEAT\tAGE")
+	fmt.Fprintln(w, "CLUSTER\tPHASE\tHEALTHY\tACTIVE RELEASE\tHEARTBEAT\tAGE")
 	for _, mc := range list.Items {
 		healthy := "?"
 		if mc.Status.Health.AllWorkloadsReady {
@@ -956,9 +955,8 @@ func runWorld(ctx context.Context, envFilter, kubeconfigPath string) error {
 		if mc.Status.LastHeartbeat != "" {
 			heartbeat = mc.Status.LastHeartbeat
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 			mc.Name,
-			mc.Spec.EnvironmentRef,
 			mc.Status.Phase,
 			healthy,
 			mc.Status.ActiveRelease,

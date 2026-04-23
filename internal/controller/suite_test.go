@@ -193,10 +193,10 @@ type fakeActuator struct {
 }
 
 func (f *fakeActuator) Apply(_ context.Context, _ actuator.ApplyRequest) error { return f.applyErr }
-func (f *fakeActuator) IsConverged(_ context.Context, _ *kaprov1alpha1.Environment, _, _ string) (bool, error) {
+func (f *fakeActuator) IsConverged(_ context.Context, _ *kaprov1alpha1.MemberCluster, _, _ string) (bool, error) {
 	return f.converged, f.convErr
 }
-func (f *fakeActuator) Rollback(_ context.Context, _ *kaprov1alpha1.Environment, _ string) error {
+func (f *fakeActuator) Rollback(_ context.Context, _ *kaprov1alpha1.MemberCluster, _ string) error {
 	return f.applyErr
 }
 
@@ -220,10 +220,10 @@ func makeArtifact(name, ns string) *kaprov1alpha1.Artifact {
 	}
 }
 
-func makeEnvironment(name, ns string, labels map[string]string) *kaprov1alpha1.Environment {
-	return &kaprov1alpha1.Environment{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Labels: labels},
-		Spec: kaprov1alpha1.EnvironmentSpec{
+func makeMemberCluster(name string, labels map[string]string) *kaprov1alpha1.MemberCluster {
+	return &kaprov1alpha1.MemberCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels},
+		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{
 				Type: "flux",
 				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},

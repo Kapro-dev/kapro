@@ -211,7 +211,7 @@ func (r *ReleaseReportReconciler) buildStatus(
 	// Build gate reports from Sync gate statuses.
 	gateReports := make([]kaprov1alpha1.GateReport, 0)
 	for _, s := range syncs {
-		if s.Spec.PolicyRef == "" {
+		if s.Spec.Gate == nil {
 			continue
 		}
 		var result string
@@ -227,7 +227,7 @@ func (r *ReleaseReportReconciler) buildStatus(
 			result = "Pending"
 		}
 		gateReports = append(gateReports, kaprov1alpha1.GateReport{
-			Type:        s.Spec.PolicyRef,
+			Type:        s.Spec.Stage,
 			PipelineRef: s.Labels["kapro.io/pipeline-ref"],
 			Stage:       s.Spec.Stage,
 			Environment: s.Spec.EnvironmentRef,

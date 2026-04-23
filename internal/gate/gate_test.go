@@ -34,10 +34,8 @@ func TestSoakGate_NoPolicy(t *testing.T) {
 
 func TestSoakGate_NoSoakTime(t *testing.T) {
 	g := &gate.SoakGate{}
-	policy := &kaprov1alpha1.GatePolicy{
-		Spec: kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{SoakTime: ""},
-		},
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{SoakTime: ""},
 	}
 	result, err := g.Evaluate(context.Background(), gate.Request{
 		Sync: &kaprov1alpha1.Sync{},
@@ -53,10 +51,8 @@ func TestSoakGate_NoSoakTime(t *testing.T) {
 
 func TestSoakGate_ClockNotStarted(t *testing.T) {
 	g := &gate.SoakGate{}
-	policy := &kaprov1alpha1.GatePolicy{
-		Spec: kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{SoakTime: "5m"},
-		},
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{SoakTime: "5m"},
 	}
 	result, err := g.Evaluate(context.Background(), gate.Request{
 		Sync: &kaprov1alpha1.Sync{},
@@ -72,10 +68,8 @@ func TestSoakGate_ClockNotStarted(t *testing.T) {
 
 func TestSoakGate_Elapsed(t *testing.T) {
 	g := &gate.SoakGate{}
-	policy := &kaprov1alpha1.GatePolicy{
-		Spec: kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{SoakTime: "1ms"},
-		},
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{SoakTime: "1ms"},
 	}
 	time.Sleep(5 * time.Millisecond) // ensure soak elapsed
 	promo := &kaprov1alpha1.Sync{
@@ -94,10 +88,8 @@ func TestSoakGate_Elapsed(t *testing.T) {
 
 func TestSoakGate_NotElapsed(t *testing.T) {
 	g := &gate.SoakGate{}
-	policy := &kaprov1alpha1.GatePolicy{
-		Spec: kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{SoakTime: "1h"},
-		},
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{SoakTime: "1h"},
 	}
 	promo := &kaprov1alpha1.Sync{
 		Status: kaprov1alpha1.SyncStatus{
@@ -118,10 +110,8 @@ func TestSoakGate_NotElapsed(t *testing.T) {
 
 func TestSoakGate_InvalidDuration(t *testing.T) {
 	g := &gate.SoakGate{}
-	policy := &kaprov1alpha1.GatePolicy{
-		Spec: kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{SoakTime: "not-a-duration"},
-		},
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{SoakTime: "not-a-duration"},
 	}
 	_, err := g.Evaluate(context.Background(), gate.Request{
 		Sync: &kaprov1alpha1.Sync{},
@@ -168,7 +158,7 @@ func TestMetricsGate_NoMetrics(t *testing.T) {
 	g := &gate.MetricsGate{}
 	result, err := g.Evaluate(context.Background(), gate.Request{
 		Sync:       &kaprov1alpha1.Sync{},
-		Policy:      &kaprov1alpha1.GatePolicy{},
+		Policy:      &kaprov1alpha1.GatePolicySpec{},
 		MetricIndex: 0,
 	})
 	if err != nil {
@@ -186,17 +176,10 @@ func TestMetricsGate_Passed(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	policy := &kaprov1alpha1.GatePolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Annotations: map[string]string{
-				"kapro.io/prometheus-url": srv.URL,
-			},
-		},
-		Spec: kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{
-				Metrics: []kaprov1alpha1.MetricGate{
-					{Provider: "prometheus", Query: "up", Window: "5m"},
-				},
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{
+				{Provider: "prometheus", Query: "up", Window: "5m", Endpoint: srv.URL},
 			},
 		},
 	}
@@ -222,17 +205,10 @@ func TestMetricsGate_Blocked(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	policy := &kaprov1alpha1.GatePolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Annotations: map[string]string{
-				"kapro.io/prometheus-url": srv.URL,
-			},
-		},
-		Spec: kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{
-				Metrics: []kaprov1alpha1.MetricGate{
-					{Provider: "prometheus", Query: "up == 0", Window: "5m"},
-				},
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{
+				{Provider: "prometheus", Query: "up == 0", Window: "5m", Endpoint: srv.URL},
 			},
 		},
 	}
@@ -257,14 +233,9 @@ func TestMetricsGate_PrometheusError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	policy := &kaprov1alpha1.GatePolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Annotations: map[string]string{"kapro.io/prometheus-url": srv.URL},
-		},
-		Spec: kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{
-				Metrics: []kaprov1alpha1.MetricGate{{Provider: "prometheus", Query: "up"}},
-			},
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{{Provider: "prometheus", Query: "up", Endpoint: srv.URL}},
 		},
 	}
 

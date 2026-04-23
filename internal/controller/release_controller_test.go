@@ -38,7 +38,7 @@ func TestReleaseReconciler_PendingToPromoting(t *testing.T) {
 	mustCreate(t, ctx, c, art)
 
 	// 2. Create target Environment.
-	env := makeEnvironment("de-dev", ns, map[string]string{"tier": "dev", "country": "de"})
+	env := makeMemberCluster("de-dev", map[string]string{"tier": "dev", "country": "de"})
 	mustCreate(t, ctx, c, env)
 
 	// 3. Create Pipeline with one stage targeting country=de.
@@ -117,7 +117,7 @@ func TestReleaseReconciler_OwnerRef(t *testing.T) {
 	art := makeArtifact("art-ownerref", ns)
 	mustCreate(t, ctx, c, art)
 
-	env := makeEnvironment("de-dev-ownerref", ns, map[string]string{"country": "de2"})
+	env := makeMemberCluster("de-dev-ownerref", map[string]string{"country": "de2"})
 	mustCreate(t, ctx, c, env)
 
 	pipeline := makePipeline("standard-rollout-or", map[string]string{"country": "de2"})

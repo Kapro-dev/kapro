@@ -156,17 +156,21 @@ func minimalRequest() pkggate.Request {
 				ReleaseRef:     "conformance-release",
 				EnvironmentRef: "conformance-env",
 				Version:        "v0.0.1",
-				PolicyRef:      "conformance-policy",
+				Gate: &kaprov1alpha1.GatePolicySpec{
+					Mode: kaprov1alpha1.GateModeAuto,
+					Gate: kaprov1alpha1.GateSpec{
+						Metrics: []kaprov1alpha1.MetricGate{
+							{Provider: "conformance", Query: "up", Window: "5m"},
+						},
+					},
+				},
 			},
 		},
-		Policy: &kaprov1alpha1.GatePolicy{
-			ObjectMeta: metav1.ObjectMeta{Name: "conformance-policy"},
-			Spec: kaprov1alpha1.GatePolicySpec{
-				Mode: kaprov1alpha1.GateModeAuto,
-				Gate: kaprov1alpha1.GateSpec{
-					Metrics: []kaprov1alpha1.MetricGate{
-						{Provider: "conformance", Query: "up", Window: "5m"},
-					},
+		Policy: &kaprov1alpha1.GatePolicySpec{
+			Mode: kaprov1alpha1.GateModeAuto,
+			Gate: kaprov1alpha1.GateSpec{
+				Metrics: []kaprov1alpha1.MetricGate{
+					{Provider: "conformance", Query: "up", Window: "5m"},
 				},
 			},
 		},
