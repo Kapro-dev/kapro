@@ -48,11 +48,13 @@ type ReleaseReconciler struct {
 
 // +kubebuilder:rbac:groups=kapro.io,resources=releases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kapro.io,resources=releases/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=releases/finalizers,verbs=update
 // +kubebuilder:rbac:groups=kapro.io,resources=artifacts,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kapro.io,resources=environments,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=environments/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=pipelines,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kapro.io,resources=syncs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=kapro.io,resources=approvals,verbs=get;list;watch
 
 func (r *ReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
@@ -161,11 +163,12 @@ func (r *ReleaseReconciler) handlePending(ctx context.Context, release *kaprov1a
 func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kaprov1alpha1.Release) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	// List all Syncs owned by this Release, indexed by release label.
+	// List all Syncs owned by this Release.
+	// Sync is cluster-scoped — use label matching (field indexes behave
+	// differently for cluster-scoped resources in some controller-runtime versions).
 	var syncList kaprov1alpha1.SyncList
 	if err := r.List(ctx, &syncList,
-		client.InNamespace(release.Namespace),
-		client.MatchingFields{IndexKeyRelease: release.Name},
+		client.MatchingLabels{"kapro.io/release": release.Name},
 		client.Limit(2000),
 	); err != nil {
 		return ctrl.Result{}, fmt.Errorf("list Syncs: %w", err)
@@ -280,8 +283,19 @@ func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kapr
 			LastTransitionTime: metav1.Now(),
 		})
 		r.Recorder.Event(release, corev1.EventTypeNormal, "Complete", "All pipelines complete")
+	}
+
+	// Status patch MUST happen before any metadata patch: a non-status Patch()
+	// call returns the server object (status still Progressing) and overwrites
+	// the in-memory status changes, making the subsequent Status().Patch a no-op.
+	if err := r.Status().Patch(ctx, release, patch); err != nil {
+		return ctrl.Result{}, fmt.Errorf("patch Release status: %w", err)
+	}
+
+	if allPipelinesComplete {
 		r.clearActiveRelease(ctx, release)
 		// Annotate so future Releases can use this version for rollback.
+		// Done AFTER the status patch to avoid the in-memory reset described above.
 		annPatch := client.MergeFrom(release.DeepCopy())
 		if release.Annotations == nil {
 			release.Annotations = make(map[string]string)
@@ -291,10 +305,6 @@ func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kapr
 			log.Error(annErr, "failed to annotate previous-version on Release")
 		}
 		log.Info("Release complete", "name", release.Name)
-	}
-
-	if err := r.Status().Patch(ctx, release, patch); err != nil {
-		return ctrl.Result{}, fmt.Errorf("patch Release status: %w", err)
 	}
 
 	if !allPipelinesComplete {
@@ -517,9 +527,9 @@ func (r *ReleaseReconciler) triggerRollbackSyncs(
 	}
 
 	// Find all Syncs in this pipeline/stage that have Converged.
+	// Sync is cluster-scoped — do NOT filter by namespace.
 	var syncList kaprov1alpha1.SyncList
 	if err := r.List(ctx, &syncList,
-		client.InNamespace(release.Namespace),
 		client.MatchingLabels{
 			"kapro.io/release":      release.Name,
 			"kapro.io/pipeline-ref": pipelineRefName,
@@ -590,7 +600,6 @@ func (r *ReleaseReconciler) cancelPendingStageSyncs(
 
 	var syncList kaprov1alpha1.SyncList
 	if err := r.List(ctx, &syncList,
-		client.InNamespace(release.Namespace),
 		client.MatchingLabels{
 			"kapro.io/release":      release.Name,
 			"kapro.io/pipeline-ref": pipelineRefName,
@@ -649,8 +658,7 @@ func (r *ReleaseReconciler) failRelease(ctx context.Context, release *kaprov1alp
 func (r *ReleaseReconciler) clearActiveRelease(ctx context.Context, release *kaprov1alpha1.Release) {
 	var syncList kaprov1alpha1.SyncList
 	_ = r.List(ctx, &syncList,
-		client.InNamespace(release.Namespace),
-		client.MatchingFields{IndexKeyRelease: release.Name},
+		client.MatchingLabels{"kapro.io/release": release.Name},
 		client.Limit(500),
 	)
 	seen := make(map[string]bool)
@@ -677,10 +685,10 @@ func (r *ReleaseReconciler) handleDeletion(ctx context.Context, release *kaprov1
 	log := log.FromContext(ctx)
 	log.Info("handling Release deletion", "name", release.Name)
 
-	releaseFields := client.MatchingFields{IndexKeyRelease: release.Name}
+	releaseLabel := client.MatchingLabels{"kapro.io/release": release.Name}
 
 	var syncList kaprov1alpha1.SyncList
-	if err := r.List(ctx, &syncList, client.InNamespace(release.Namespace), releaseFields, client.Limit(500)); err != nil {
+	if err := r.List(ctx, &syncList, releaseLabel, client.Limit(500)); err != nil {
 		return ctrl.Result{}, fmt.Errorf("list Syncs for cleanup: %w", err)
 	}
 	for i := range syncList.Items {

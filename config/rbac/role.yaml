@@ -7,13 +7,6 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - events
-  verbs:
-  - create
-  - patch
-- apiGroups:
-  - ""
-  resources:
   - secrets
   verbs:
   - create
@@ -24,17 +17,12 @@ rules:
   - update
   - watch
 - apiGroups:
-  - coordination.k8s.io
+  - ""
   resources:
-  - leases
+  - events
   verbs:
   - create
-  - delete
-  - get
-  - list
   - patch
-  - update
-  - watch
 - apiGroups:
   - ""
   resources:
@@ -51,6 +39,30 @@ rules:
   - serviceaccounts/token
   verbs:
   - create
+- apiGroups:
+  - certificates.k8s.io
+  resources:
+  - certificatesigningrequests
+  verbs:
+  - create
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - certificates.k8s.io
+  resources:
+  - certificatesigningrequests/approval
+  verbs:
+  - update
+- apiGroups:
+  - certificates.k8s.io
+  resourceNames:
+  - kubernetes.io/kube-apiserver-client
+  resources:
+  - signers
+  verbs:
+  - approve
 - apiGroups:
   - kapro.io
   resources:
@@ -92,6 +104,8 @@ rules:
   - kapro.io
   resources:
   - bootstraptokens/finalizers
+  - managedclusters/finalizers
+  - releases/finalizers
   - syncs/finalizers
   verbs:
   - update
@@ -116,6 +130,7 @@ rules:
   - kapro.io
   resources:
   - environments/status
+  - managedclusters/status
   - pipelines/status
   - releasereports/status
   - releases/status
@@ -136,19 +151,17 @@ rules:
   - update
   - watch
 - apiGroups:
-  - kapro.io
+  - coordination.k8s.io
   resources:
-  - managedclusters/finalizers
+  - leases
   verbs:
-  - update
-- apiGroups:
-  - kapro.io
-  resources:
-  - managedclusters/status
-  verbs:
+  - create
+  - delete
   - get
+  - list
   - patch
   - update
+  - watch
 - apiGroups:
   - rbac.authorization.k8s.io
   resources:
@@ -162,26 +175,3 @@ rules:
   - patch
   - update
   - watch
-- apiGroups:
-  - certificates.k8s.io
-  resources:
-  - certificatesigningrequests
-  verbs:
-  - get
-  - list
-  - watch
-  - update
-- apiGroups:
-  - certificates.k8s.io
-  resources:
-  - certificatesigningrequests/approval
-  verbs:
-  - update
-- apiGroups:
-  - certificates.k8s.io
-  resources:
-  - signers
-  resourceNames:
-  - kubernetes.io/kube-apiserver-client
-  verbs:
-  - approve

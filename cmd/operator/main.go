@@ -39,6 +39,10 @@ func init() {
 	_ = kaprov1alpha1.AddToScheme(scheme)
 }
 
+// Manager-level RBAC requirements not tied to a specific controller.
+// +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+
 func main() {
 	opts := zap.Options{Development: true}
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
@@ -131,34 +135,30 @@ func main() {
 		HubCAData:      mgr.GetConfig().CAData,
 	}
 
-	// Register mutating admission webhook: Approval.spec.approvedBy ← real k8s username.
-	// Admission webhooks run on ALL replicas (not leader-only) — kube-apiserver
-	// load-balances across them. They only mutate the object being admitted, not cluster state.
-	decoder := admission.NewDecoder(mgr.GetScheme())
-	mgr.GetWebhookServer().Register(
-		"/mutate-kapro-io-v1alpha1-approval",
-		&crwebhook.Admission{Handler: kaploadmission.NewApprovalMutator(decoder)},
-	)
-
-	// Register mutating admission webhook: Environment topology → kapro.io/accelerator label.
-	mgr.GetWebhookServer().Register(
-		"/mutate-kapro-io-v1alpha1-environment",
-		&crwebhook.Admission{Handler: kaploadmission.NewEnvironmentMutator(decoder)},
-	)
-
-	// Register validating admission webhooks for core CRDs.
-	mgr.GetWebhookServer().Register(
-		"/validate-kapro-io-v1alpha1-environment",
-		&crwebhook.Admission{Handler: kaploadmission.NewEnvironmentValidator(decoder)},
-	)
-	mgr.GetWebhookServer().Register(
-		"/validate-kapro-io-v1alpha1-release",
-		&crwebhook.Admission{Handler: kaploadmission.NewReleaseValidator(decoder)},
-	)
-	mgr.GetWebhookServer().Register(
-		"/validate-kapro-io-v1alpha1-pipeline",
-		&crwebhook.Admission{Handler: kaploadmission.NewPipelineValidator(decoder)},
-	)
+	// Register admission webhooks unless KAPRO_DISABLE_WEBHOOKS=true (used in local dev / kind).
+	if os.Getenv("KAPRO_DISABLE_WEBHOOKS") != "true" {
+		decoder := admission.NewDecoder(mgr.GetScheme())
+		mgr.GetWebhookServer().Register(
+			"/mutate-kapro-io-v1alpha1-approval",
+			&crwebhook.Admission{Handler: kaploadmission.NewApprovalMutator(decoder)},
+		)
+		mgr.GetWebhookServer().Register(
+			"/mutate-kapro-io-v1alpha1-environment",
+			&crwebhook.Admission{Handler: kaploadmission.NewEnvironmentMutator(decoder)},
+		)
+		mgr.GetWebhookServer().Register(
+			"/validate-kapro-io-v1alpha1-environment",
+			&crwebhook.Admission{Handler: kaploadmission.NewEnvironmentValidator(decoder)},
+		)
+		mgr.GetWebhookServer().Register(
+			"/validate-kapro-io-v1alpha1-release",
+			&crwebhook.Admission{Handler: kaploadmission.NewReleaseValidator(decoder)},
+		)
+		mgr.GetWebhookServer().Register(
+			"/validate-kapro-io-v1alpha1-pipeline",
+			&crwebhook.Admission{Handler: kaploadmission.NewPipelineValidator(decoder)},
+		)
+	}
 
 	ctx := context.Background()
 

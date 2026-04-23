@@ -60,10 +60,10 @@ rules:
     verbs: [get, list, watch, update, patch]
   # Status + finalizers
   - apiGroups: [kapro.io]
-    resources: [environments/status, pipelines/status, releasereports/status, releases/status, syncs/status, bootstraptokens/status]
+    resources: [environments/status, managedclusters/status, pipelines/status, releasereports/status, releases/status, syncs/status, bootstraptokens/status]
     verbs: [get, update, patch]
   - apiGroups: [kapro.io]
-    resources: [bootstraptokens/finalizers, syncs/finalizers]
+    resources: [bootstraptokens/finalizers, releases/finalizers, syncs/finalizers]
     verbs: [update]
   # Cluster-scoped RBAC (for per-cluster SA provisioning)
   - apiGroups: [rbac.authorization.k8s.io]
