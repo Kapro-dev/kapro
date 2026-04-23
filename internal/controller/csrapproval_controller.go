@@ -6,7 +6,9 @@ import (
 	"encoding/pem"
 	"fmt"
 	"strings"
+	"time"
 
+	authenticationv1 "k8s.io/api/authentication/v1"
 	certificatesv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -14,7 +16,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	certificatesv1client "k8s.io/client-go/kubernetes/typed/certificates/v1"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -159,9 +164,11 @@ func (r *CSRApprovalReconciler) handleBootstrap(ctx context.Context, csr *certif
 		return fmt.Errorf("approve CSR: %w", err)
 	}
 
-	// Clean up bootstrap credentials immediately after cert issuance (OCM pattern).
-	// Bootstrap SA token becomes useless once the cluster has its x509 cert.
-	r.cleanupBootstrapCredentials(ctx, clusterName)
+	// Bootstrap credentials are intentionally left alive here.
+	// cleanupBootstrapCredentials removes the SA token immediately, which races with the
+	// cluster-controller polling the CSR for the signed certificate.
+	// The bootstrap SA is scoped to create/get CSRs only, and used=true prevents replay.
+	// Cleanup happens via cleanupBootstrapResources on MemberCluster deletion or token TTL expiry.
 
 	log.Info("bootstrap CSR approved", "cluster", clusterName, "csr", csr.Name)
 	r.Recorder.Eventf(csr, corev1.EventTypeNormal, "Approved", "Bootstrap CSR approved for cluster %s", clusterName)
@@ -282,14 +289,16 @@ func (r *CSRApprovalReconciler) ensureClusterRBAC(ctx context.Context, clusterNa
 // markBootstrapUsed updates the MemberCluster status to mark bootstrap as used.
 // Uses Status().Update() (full object with resourceVersion) — NOT Status().Patch() —
 // so the resourceVersion check catches concurrent reconciles attempting double-claim.
+// Merges into the existing bootstrap status so IssuedBootstrapKubeconfig is preserved.
 func (r *CSRApprovalReconciler) markBootstrapUsed(ctx context.Context, mc *kaprov1alpha1.MemberCluster, clusterName, csrName string) error {
 	now := metav1.Now()
-	mc.Status.Bootstrap = &kaprov1alpha1.MemberClusterBootstrapStatus{
-		Used:                true,
-		UsedAt:              &now,
-		IssuedCredentialFor: clusterName,
-		BoundCSRName:        csrName,
+	if mc.Status.Bootstrap == nil {
+		mc.Status.Bootstrap = &kaprov1alpha1.MemberClusterBootstrapStatus{}
 	}
+	mc.Status.Bootstrap.Used = true
+	mc.Status.Bootstrap.UsedAt = &now
+	mc.Status.Bootstrap.IssuedCredentialFor = clusterName
+	mc.Status.Bootstrap.BoundCSRName = csrName
 	return r.Status().Update(ctx, mc)
 }
 
@@ -410,15 +419,17 @@ func (r *CSRApprovalReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-// cleanupBootstrapCredentials deletes the bootstrap SA, its ClusterRole, and ClusterRoleBinding
-// immediately after a bootstrap CSR is approved. This matches the OCM klusterlet pattern:
-// once the cluster holds a valid x509 cert, the SA token in the bootstrap kubeconfig is useless,
-// and deleting the SA revokes all outstanding tokens immediately.
+// cleanupBootstrapCredentials deletes the bootstrap SA, its ClusterRole, ClusterRoleBinding,
+// and kubeconfig Secret immediately after a bootstrap CSR is approved.
+// This matches the OCM klusterlet pattern: once the cluster holds a valid x509 cert,
+// the SA token in the bootstrap kubeconfig is useless, and deleting the SA revokes
+// all outstanding tokens immediately.
 // Errors are logged but non-fatal — MemberCluster cleanup will handle SA GC on token expiry.
 func (r *CSRApprovalReconciler) cleanupBootstrapCredentials(ctx context.Context, clusterName string) {
 	log := log.FromContext(ctx)
 	saName := "kapro-bootstrap-" + clusterName
 	roleName := "kapro:bootstrap:" + clusterName
+	secretName := "kapro-bootstrap-kubeconfig-" + clusterName
 
 	for _, fn := range []struct {
 		name string
@@ -427,6 +438,7 @@ func (r *CSRApprovalReconciler) cleanupBootstrapCredentials(ctx context.Context,
 		{"bootstrap SA", &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Namespace: kaproSystemNamespace, Name: saName}}},
 		{"bootstrap ClusterRole", &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: roleName}}},
 		{"bootstrap ClusterRoleBinding", &rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: roleName}}},
+		{"bootstrap kubeconfig Secret", &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: kaproSystemNamespace, Name: secretName}}},
 	} {
 		if err := r.Delete(ctx, fn.obj); err != nil && !apierrors.IsNotFound(err) {
 			log.Info("non-fatal: bootstrap credential cleanup failed", "resource", fn.name, "cluster", clusterName, "error", err)
@@ -434,35 +446,58 @@ func (r *CSRApprovalReconciler) cleanupBootstrapCredentials(ctx context.Context,
 	}
 }
 
-// MemberClusterReconciler handles MemberCluster deletion: removes the long-lived
-// cluster-controller ClusterRole and ClusterRoleBinding, then clears the finalizer.
-// This ensures complete de-registration when a cluster is decommissioned.
+// MemberClusterReconciler handles two duties:
+//  1. Bootstrap provisioning: when spec.bootstrap.tokenHash is set, creates a scoped
+//     ServiceAccount, ClusterRole, ClusterRoleBinding, and kubeconfig Secret so the
+//     cluster-controller can submit its first CSR to the hub (KAPRO_BOOTSTRAP_KUBECONFIG_PATH).
+//  2. Deregistration: on deletion, removes the long-lived cluster-controller ClusterRole and
+//     ClusterRoleBinding, then clears the finalizer.
 //
 // +kubebuilder:rbac:groups=kapro.io,resources=memberclusters,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=memberclusters/status,verbs=update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=memberclusters/finalizers,verbs=update
-// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles;clusterrolebindings,verbs=delete
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles;clusterrolebindings,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups="",resources=serviceaccounts/token,verbs=create
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 type MemberClusterReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme     *runtime.Scheme
+	KubeClient kubernetes.Interface
+	// HubAPIURL is the externally-reachable URL of the hub kube-apiserver.
+	// Written into bootstrap kubeconfigs so spoke cluster-controllers can connect.
+	// Set from KAPRO_HUB_API_URL; must be reachable from within the spoke cluster network.
+	HubAPIURL string
+	// HubCAData is the PEM-encoded CA certificate for the hub kube-apiserver.
+	HubCAData []byte
 }
 
 func (r *MemberClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
-
 	mc := &kaprov1alpha1.MemberCluster{}
 	if err := r.Get(ctx, req.NamespacedName, mc); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	if mc.DeletionTimestamp.IsZero() {
-		return ctrl.Result{}, nil
+	if !mc.DeletionTimestamp.IsZero() {
+		return r.handleDeletion(ctx, mc)
 	}
+
+	if mc.Spec.Bootstrap != nil && mc.Spec.Bootstrap.TokenHash != "" {
+		return r.ensureBootstrapProvisioned(ctx, mc)
+	}
+
+	return ctrl.Result{}, nil
+}
+
+// handleDeletion removes long-lived cluster-controller RBAC and any remaining bootstrap
+// resources, then clears the finalizer to allow Kubernetes to delete the object.
+func (r *MemberClusterReconciler) handleDeletion(ctx context.Context, mc *kaprov1alpha1.MemberCluster) (ctrl.Result, error) {
+	log := log.FromContext(ctx)
 
 	if !containsString(mc.Finalizers, kaprov1alpha1.MemberClusterFinalizer) {
 		return ctrl.Result{}, nil
 	}
 
-	// Delete long-lived cluster-controller RBAC (created during bootstrap CSR approval).
 	clusterName := mc.Name
 	roleName := "kapro:cluster-controller:" + clusterName
 	for _, obj := range []client.Object{
@@ -475,7 +510,9 @@ func (r *MemberClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
-	// Remove finalizer to allow deletion to proceed.
+	// Also clean up any bootstrap resources that were not yet consumed by a CSR.
+	r.cleanupBootstrapResources(ctx, clusterName)
+
 	mc.Finalizers = removeString(mc.Finalizers, kaprov1alpha1.MemberClusterFinalizer)
 	if err := r.Update(ctx, mc); err != nil {
 		return ctrl.Result{}, err
@@ -483,6 +520,210 @@ func (r *MemberClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	log.Info("cluster deregistered — RBAC cleaned up", "cluster", clusterName)
 	return ctrl.Result{}, nil
+}
+
+// ensureBootstrapProvisioned creates the bootstrap SA, RBAC, and kubeconfig Secret
+// so that the spoke cluster-controller can submit its first registration CSR.
+// It is idempotent: a second reconcile after the kubeconfig Secret exists is a no-op.
+func (r *MemberClusterReconciler) ensureBootstrapProvisioned(ctx context.Context, mc *kaprov1alpha1.MemberCluster) (ctrl.Result, error) {
+	log := log.FromContext(ctx)
+	clusterName := mc.Name
+
+	// Add finalizer before creating any resources so deletion always triggers cleanup.
+	if !containsString(mc.Finalizers, kaprov1alpha1.MemberClusterFinalizer) {
+		mc.Finalizers = append(mc.Finalizers, kaprov1alpha1.MemberClusterFinalizer)
+		if err := r.Update(ctx, mc); err != nil {
+			return ctrl.Result{}, err
+		}
+		// Re-fetch after update to get the latest resourceVersion.
+		return ctrl.Result{Requeue: true}, nil
+	}
+
+	// Idempotent guard: kubeconfig secret already provisioned.
+	if mc.Status.Bootstrap != nil && mc.Status.Bootstrap.IssuedBootstrapKubeconfig != "" {
+		return ctrl.Result{}, nil
+	}
+
+	// Don't provision if the bootstrap slot has already expired.
+	if mc.Spec.Bootstrap.ExpiresAt != nil && metav1.Now().After(mc.Spec.Bootstrap.ExpiresAt.Time) {
+		log.Info("bootstrap slot expired — skipping provisioning", "cluster", clusterName, "expiredAt", mc.Spec.Bootstrap.ExpiresAt)
+		return ctrl.Result{}, nil
+	}
+
+	if r.HubAPIURL == "" {
+		return ctrl.Result{}, fmt.Errorf("KAPRO_HUB_API_URL is not set — cannot build bootstrap kubeconfig for cluster %q", clusterName)
+	}
+
+	saName := "kapro-bootstrap-" + clusterName
+	roleName := "kapro:bootstrap:" + clusterName
+
+	// Create bootstrap ServiceAccount.
+	sa := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      saName,
+			Namespace: kaproSystemNamespace,
+			Labels:    map[string]string{"kapro.io/cluster": clusterName, "kapro.io/managed-by": "kapro-operator"},
+		},
+	}
+	if err := r.Create(ctx, sa); err != nil && !apierrors.IsAlreadyExists(err) {
+		return ctrl.Result{}, fmt.Errorf("create bootstrap SA %q: %w", saName, err)
+	}
+
+	// Create bootstrap ClusterRole — only allows submitting CSRs (one-time bootstrap action).
+	role := &rbacv1.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   roleName,
+			Labels: map[string]string{"kapro.io/cluster": clusterName},
+		},
+		Rules: []rbacv1.PolicyRule{
+			{
+				APIGroups: []string{"certificates.k8s.io"},
+				Resources: []string{"certificatesigningrequests"},
+				Verbs:     []string{"create", "get", "watch"},
+			},
+		},
+	}
+	if err := r.Create(ctx, role); err != nil && !apierrors.IsAlreadyExists(err) {
+		return ctrl.Result{}, fmt.Errorf("create bootstrap ClusterRole %q: %w", roleName, err)
+	}
+
+	// Create bootstrap ClusterRoleBinding.
+	binding := &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   roleName,
+			Labels: map[string]string{"kapro.io/cluster": clusterName},
+		},
+		RoleRef: rbacv1.RoleRef{APIGroup: "rbac.authorization.k8s.io", Kind: "ClusterRole", Name: roleName},
+		Subjects: []rbacv1.Subject{
+			{Kind: "ServiceAccount", Name: saName, Namespace: kaproSystemNamespace},
+		},
+	}
+	if err := r.Create(ctx, binding); err != nil && !apierrors.IsAlreadyExists(err) {
+		return ctrl.Result{}, fmt.Errorf("create bootstrap ClusterRoleBinding %q: %w", roleName, err)
+	}
+
+	// Compute token TTL: use expiresAt if set, else default to 24h.
+	// Cap to 48h and reject if less than 10 minutes remain (token would be useless).
+	const defaultTTL = 24 * time.Hour
+	const maxTTL = 48 * time.Hour
+	const minTTL = 10 * time.Minute
+	tokenTTL := defaultTTL
+	if mc.Spec.Bootstrap.ExpiresAt != nil {
+		remaining := time.Until(mc.Spec.Bootstrap.ExpiresAt.Time)
+		if remaining < minTTL {
+			return ctrl.Result{}, fmt.Errorf("bootstrap slot for %q expires in %v — too soon to issue kubeconfig token", clusterName, remaining.Round(time.Second))
+		}
+		if remaining < tokenTTL {
+			tokenTTL = remaining
+		}
+	}
+	if tokenTTL > maxTTL {
+		tokenTTL = maxTTL
+	}
+	tokenTTLSeconds := int64(tokenTTL.Seconds())
+
+	// Issue a TokenRequest for the bootstrap SA.
+	tokenReq, err := r.KubeClient.CoreV1().ServiceAccounts(kaproSystemNamespace).CreateToken(
+		ctx, saName,
+		&authenticationv1.TokenRequest{
+			Spec: authenticationv1.TokenRequestSpec{
+				ExpirationSeconds: &tokenTTLSeconds,
+			},
+		},
+		metav1.CreateOptions{},
+	)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("create token for bootstrap SA %q: %w", saName, err)
+	}
+
+	// Build and write the bootstrap kubeconfig Secret.
+	kubeconfigData, err := r.buildBootstrapKubeconfig(clusterName, tokenReq.Status.Token)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("build bootstrap kubeconfig for cluster %q: %w", clusterName, err)
+	}
+
+	secretName := "kapro-bootstrap-kubeconfig-" + clusterName
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: kaproSystemNamespace,
+			Labels:    map[string]string{"kapro.io/cluster": clusterName, "kapro.io/bootstrap-kubeconfig": "true"},
+		},
+		Data: map[string][]byte{"kubeconfig": kubeconfigData},
+	}
+	if err := r.Create(ctx, secret); apierrors.IsAlreadyExists(err) {
+		existing := &corev1.Secret{}
+		if err := r.Get(ctx, types.NamespacedName{Namespace: kaproSystemNamespace, Name: secretName}, existing); err != nil {
+			return ctrl.Result{}, err
+		}
+		existing.Data = map[string][]byte{"kubeconfig": kubeconfigData}
+		if err := r.Update(ctx, existing); err != nil {
+			return ctrl.Result{}, fmt.Errorf("update bootstrap kubeconfig secret: %w", err)
+		}
+	} else if err != nil {
+		return ctrl.Result{}, fmt.Errorf("create bootstrap kubeconfig secret: %w", err)
+	}
+
+	// Update status: merge, preserving any existing fields (e.g. Used/BoundCSRName from a retry).
+	fresh := &kaprov1alpha1.MemberCluster{}
+	if err := r.Get(ctx, types.NamespacedName{Name: clusterName}, fresh); err != nil {
+		return ctrl.Result{}, err
+	}
+	if fresh.Status.Bootstrap == nil {
+		fresh.Status.Bootstrap = &kaprov1alpha1.MemberClusterBootstrapStatus{}
+	}
+	fresh.Status.Bootstrap.IssuedBootstrapKubeconfig = secretName
+	if err := r.Status().Update(ctx, fresh); err != nil {
+		return ctrl.Result{}, fmt.Errorf("update MemberCluster bootstrap status: %w", err)
+	}
+
+	log.Info("bootstrap credentials provisioned", "cluster", clusterName, "secret", secretName)
+	return ctrl.Result{}, nil
+}
+
+// buildBootstrapKubeconfig produces a kubeconfig YAML for the bootstrap SA token.
+// The server URL must be reachable from within the spoke cluster network (KAPRO_HUB_API_URL).
+func (r *MemberClusterReconciler) buildBootstrapKubeconfig(clusterName, token string) ([]byte, error) {
+	cfg := clientcmdapi.NewConfig()
+	cfg.Clusters[clusterName] = &clientcmdapi.Cluster{
+		Server:                   r.HubAPIURL,
+		CertificateAuthorityData: r.HubCAData,
+		// Skip TLS only when no CA data is available — dev/test only.
+		InsecureSkipTLSVerify: len(r.HubCAData) == 0,
+	}
+	cfg.AuthInfos["kapro-bootstrap-"+clusterName] = &clientcmdapi.AuthInfo{
+		Token: token,
+	}
+	cfg.Contexts[clusterName] = &clientcmdapi.Context{
+		Cluster:  clusterName,
+		AuthInfo: "kapro-bootstrap-" + clusterName,
+	}
+	cfg.CurrentContext = clusterName
+	return clientcmd.Write(*cfg)
+}
+
+// cleanupBootstrapResources removes the bootstrap SA, ClusterRole, ClusterRoleBinding,
+// and kubeconfig Secret. Called on MemberCluster deletion if the bootstrap CSR was never
+// submitted, or if the CSR approval controller has already cleaned up after success.
+func (r *MemberClusterReconciler) cleanupBootstrapResources(ctx context.Context, clusterName string) {
+	log := log.FromContext(ctx)
+	saName := "kapro-bootstrap-" + clusterName
+	roleName := "kapro:bootstrap:" + clusterName
+	secretName := "kapro-bootstrap-kubeconfig-" + clusterName
+
+	for _, fn := range []struct {
+		name string
+		obj  client.Object
+	}{
+		{"bootstrap SA", &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Namespace: kaproSystemNamespace, Name: saName}}},
+		{"bootstrap ClusterRole", &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: roleName}}},
+		{"bootstrap ClusterRoleBinding", &rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: roleName}}},
+		{"bootstrap kubeconfig Secret", &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: kaproSystemNamespace, Name: secretName}}},
+	} {
+		if err := r.Delete(ctx, fn.obj); err != nil && !apierrors.IsNotFound(err) {
+			log.Info("non-fatal: bootstrap resource cleanup failed", "resource", fn.name, "cluster", clusterName, "error", err)
+		}
+	}
 }
 
 func (r *MemberClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {

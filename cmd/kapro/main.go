@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -21,6 +22,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -48,6 +50,7 @@ Passes versions forward. Through environments. Across clusters. In waves.`,
 	}
 
 	root.AddCommand(newClusterCmd())
+	root.AddCommand(newSpokeCmd())
 	root.AddCommand(newGetCmd())
 	root.AddCommand(newApproveCmd())
 	root.AddCommand(newRollbackCmd())
@@ -67,6 +70,7 @@ func newClusterCmd() *cobra.Command {
 		Short: "Manage cluster registrations",
 	}
 	cmd.AddCommand(newBootstrapCmd())
+	cmd.AddCommand(newClusterJoinCmd())
 	return cmd
 }
 
@@ -154,6 +158,7 @@ func runBootstrap(ctx context.Context, clusterName, namespace string, labelsRaw 
 			Labels: labels,
 		},
 		Spec: kaprov1alpha1.MemberClusterSpec{
+			Actuator: kaprov1alpha1.ActuatorSpec{Type: "flux"},
 			Bootstrap: &kaprov1alpha1.MemberClusterBootstrapSpec{
 				TokenHash: tokenHash,
 				ExpiresAt: &expiresAt,
@@ -168,41 +173,19 @@ func runBootstrap(ctx context.Context, clusterName, namespace string, labelsRaw 
 	fmt.Printf(`
 ✅ MemberCluster created: %s
 
-Cluster:    %s
-Token hash: %s (stored — plaintext never persisted)
-Expires:    %s
+Cluster: %s
+Expires: %s
 
-🔑 Bootstrap Token (keep secret — one-time use):
-   %s
-
-Next steps:
-  1. On the WORKLOAD cluster, start kapro-cluster-controller with:
-       --bootstrap-token=%s
-       --management-cluster-url=%s
-  
-  2. The operator will:
-       • Create a scoped ServiceAccount (kapro-bootstrap-%s)
-       • Create ClusterRole scoped to MemberCluster/%s only
-       • Issue a short-lived SA token (1h, auto-renewing)
-       • Write credentials to Secret: kapro-system/kapro-cluster-%s-credentials
-
-  3. Check bootstrap status:
-       kubectl get membercluster %s -o yaml
-`,
+⏳ Waiting for operator to provision bootstrap credentials...`,
 		clusterName,
 		clusterName,
-		tokenHash[:16]+"...",
 		expiresAt.Format(time.RFC3339),
-		rawToken,
-		rawToken,
-		cfg.Host,
-		clusterName, clusterName, clusterName,
-		clusterName,
 	)
 
-	// Wait briefly and check if operator has already processed it.
-	fmt.Print("⏳ Waiting for operator to process bootstrap token")
-	for i := 0; i < 10; i++ {
+	// Poll for the operator to provision the bootstrap Secret.
+	// The operator sets status.bootstrap.issuedBootstrapKubeconfig once the SA token Secret is ready.
+	secretName, token, caBundle := "", "", ""
+	for i := 0; i < 15; i++ {
 		time.Sleep(2 * time.Second)
 		fmt.Print(".")
 
@@ -210,13 +193,279 @@ Next steps:
 		if err := c.Get(ctx, types.NamespacedName{Name: clusterName}, &check); err != nil {
 			continue
 		}
-		if check.Status.Bootstrap.Used {
-			fmt.Printf("\n✅ Bootstrap consumed by operator. Credential for: %s\n", check.Status.Bootstrap.IssuedCredentialFor)
-			fmt.Printf("   Credentials secret: kapro-system/kapro-cluster-%s-credentials\n", clusterName)
-			return nil
+		if check.Status.Bootstrap != nil && check.Status.Bootstrap.IssuedBootstrapKubeconfig != "" {
+			secretName = check.Status.Bootstrap.IssuedBootstrapKubeconfig
+			break
 		}
 	}
-	fmt.Println("\n⏳ Operator has not processed the bootstrap yet — it will be processed on next reconcile.")
+	fmt.Println()
+
+	if secretName != "" {
+		// Read bootstrap kubeconfig Secret and extract SA token for the join command.
+		var bsSecret corev1.Secret
+		if err := c.Get(ctx, types.NamespacedName{Namespace: "kapro-system", Name: secretName}, &bsSecret); err == nil {
+			if t, parseErr := extractTokenFromKubeconfig(bsSecret.Data["kubeconfig"]); parseErr == nil {
+				token = t
+			}
+		}
+		// Build CA bundle from hub config.
+		hubRawCA := cfg.CAData
+		if len(hubRawCA) == 0 && cfg.CAFile != "" {
+			hubRawCA, _ = os.ReadFile(cfg.CAFile)
+		}
+		caBundle = base64.StdEncoding.EncodeToString(hubRawCA)
+	}
+
+	if token != "" {
+		fmt.Printf(`✅ Bootstrap credentials provisioned.
+
+🔗 Join command (paste on the spoke cluster):
+
+   kubectl config use-context <spoke-context>
+   kapro spoke join \
+     --name %s \
+     --hub %s \
+     --token %s \
+     --ca-bundle %s
+
+⚠️  If --hub URL is not reachable from the spoke, override with the spoke-reachable URL.
+    Check spoke registration: kubectl get membercluster %s
+`,
+			clusterName, cfg.Host, token, caBundle, clusterName)
+	} else {
+		fmt.Printf(`⏳ Operator has not provisioned bootstrap credentials yet.
+   Run once it does:
+     kapro spoke install --cluster-name %s --hub-url <spoke-reachable-hub-url>
+   Or check: kubectl get membercluster %s -o yaml
+`, clusterName, clusterName)
+	}
+	return nil
+}
+
+// ─── kapro cluster join ───────────────────────────────────────────────────────
+
+// newClusterJoinCmd is the one-shot pipeline command:
+// registers the cluster on hub AND installs the controller on spoke in one call.
+func newClusterJoinCmd() *cobra.Command {
+	var (
+		clusterName      string
+		hubKubeconfig    string
+		spokeKubeconfig  string
+		hubURL           string
+		labelsRaw        []string
+		ttl              time.Duration
+		image            string
+		gcpServiceAccount string
+		wait             bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "join",
+		Short: "Register a cluster on hub and install the controller on spoke in one step",
+		Long: `Join is the one-shot command for pipelines.
+
+It combines:
+  1. kapro cluster bootstrap  — creates MemberCluster on hub
+  2. kapro spoke install      — installs cluster-controller on spoke
+  3. Wait for phase=Converged (with --wait)
+
+Both hub and spoke kubeconfigs are required (or use current context + KUBECONFIG).
+Use 'kapro spoke join' instead when the pipeline only has access to one cluster.
+
+Example (Azure DevOps / GitHub Actions):
+  kapro cluster join \
+    --name spoke-de \
+    --hub-kubeconfig $HUB_KUBECONFIG \
+    --spoke-kubeconfig $SPOKE_KUBECONFIG \
+    --hub-url https://hub.internal.com \
+    --labels tier=prod,country=de \
+    --wait`,
+
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runClusterJoin(cmd.Context(), clusterName, hubKubeconfig, spokeKubeconfig, hubURL, image, gcpServiceAccount, labelsRaw, ttl, wait)
+		},
+	}
+
+	cmd.Flags().StringVar(&clusterName, "name", "", "Cluster name (must be unique; used as MemberCluster name)")
+	cmd.Flags().StringVar(&hubKubeconfig, "hub-kubeconfig", "", "Hub kubeconfig (defaults to KUBECONFIG / ~/.kube/config)")
+	cmd.Flags().StringVar(&spokeKubeconfig, "spoke-kubeconfig", "", "Spoke kubeconfig (defaults to current KUBECONFIG context)")
+	cmd.Flags().StringVar(&hubURL, "hub-url", "", "Spoke-reachable hub API URL (overrides kubeconfig host; required for kind)")
+	cmd.Flags().StringSliceVar(&labelsRaw, "labels", nil, "Labels to add to MemberCluster (key=value, comma-separated)")
+	cmd.Flags().DurationVar(&ttl, "ttl", 1*time.Hour, "Bootstrap token TTL")
+	cmd.Flags().StringVar(&image, "image", "ghcr.io/vinnxcapital-gif/kapro/cluster-controller:latest", "cluster-controller image")
+	cmd.Flags().StringVar(&gcpServiceAccount, "gcp-service-account", "", "GCP service account email for Workload Identity (GKE only, e.g. kapro-cc@project.iam.gserviceaccount.com)")
+	cmd.Flags().BoolVar(&wait, "wait", true, "Wait for MemberCluster phase=Converged")
+
+	_ = cmd.MarkFlagRequired("name")
+
+	return cmd
+}
+
+func runClusterJoin(ctx context.Context, clusterName, hubKubeconfigPath, spokeKubeconfigPath, hubURL, image, gcpServiceAccount string, labelsRaw []string, ttl time.Duration, waitConverged bool) error {
+	// ── 1. Build hub client ──────────────────────────────────────────────────────
+	hubLoadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	if hubKubeconfigPath != "" {
+		hubLoadingRules.ExplicitPath = hubKubeconfigPath
+	}
+	hubClientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		hubLoadingRules, &clientcmd.ConfigOverrides{},
+	)
+	hubCfg, err := hubClientConfig.ClientConfig()
+	if err != nil {
+		return fmt.Errorf("load hub kubeconfig: %w", err)
+	}
+	hubClient, err := client.New(hubCfg, client.Options{Scheme: scheme})
+	if err != nil {
+		return fmt.Errorf("create hub client: %w", err)
+	}
+
+	// ── 2. Parse labels ──────────────────────────────────────────────────────────
+	labels := map[string]string{}
+	for _, kv := range labelsRaw {
+		parts := strings.SplitN(kv, "=", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid label %q (expected key=value)", kv)
+		}
+		labels[parts[0]] = parts[1]
+	}
+
+	// ── 3. Create MemberCluster on hub ───────────────────────────────────────────
+	rawBytes := make([]byte, 32)
+	if _, err := rand.Read(rawBytes); err != nil {
+		return fmt.Errorf("generate bootstrap nonce: %w", err)
+	}
+	hash := sha256.Sum256(rawBytes)
+	tokenHash := hex.EncodeToString(hash[:])
+	expiresAt := metav1.NewTime(time.Now().Add(ttl))
+
+	mc := &kaprov1alpha1.MemberCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterName, Labels: labels},
+		Spec: kaprov1alpha1.MemberClusterSpec{
+			Actuator: kaprov1alpha1.ActuatorSpec{Type: "flux"},
+			Bootstrap: &kaprov1alpha1.MemberClusterBootstrapSpec{
+				TokenHash: tokenHash,
+				ExpiresAt: &expiresAt,
+			},
+		},
+	}
+	if err := hubClient.Create(ctx, mc); err != nil {
+		return fmt.Errorf("create MemberCluster %q: %w", clusterName, err)
+	}
+	fmt.Printf("✅ MemberCluster %q created on hub\n", clusterName)
+
+	var bootstrapToken string
+	if gcpServiceAccount != "" {
+		// ── GCP mode: apply hub-side RBAC; skip bootstrap polling and token extraction ─
+		fmt.Printf("⚡ GCP mode: applying hub RBAC for GSA %q (skipping bootstrap credentials poll)\n", gcpServiceAccount)
+		for _, obj := range buildHubGCPManifests(clusterName, gcpServiceAccount) {
+			if err := applyObject(ctx, hubClient, obj); err != nil {
+				return fmt.Errorf("apply hub GCP RBAC %T %q: %w", obj, obj.(metav1.Object).GetName(), err)
+			}
+			fmt.Printf("  ✅ hub: %T/%s\n", obj, obj.(metav1.Object).GetName())
+		}
+	} else {
+		// ── 4. Poll for bootstrap Secret provisioned (operator-driven) ───────────────
+		fmt.Print("⏳ Waiting for operator to provision bootstrap credentials")
+		var bootstrapSecretName string
+		for i := 0; i < 30; i++ {
+			time.Sleep(2 * time.Second)
+			fmt.Print(".")
+			var check kaprov1alpha1.MemberCluster
+			if err := hubClient.Get(ctx, types.NamespacedName{Name: clusterName}, &check); err != nil {
+				continue
+			}
+			if check.Status.Bootstrap != nil && check.Status.Bootstrap.IssuedBootstrapKubeconfig != "" {
+				bootstrapSecretName = check.Status.Bootstrap.IssuedBootstrapKubeconfig
+				break
+			}
+		}
+		fmt.Println()
+		if bootstrapSecretName == "" {
+			return fmt.Errorf("timed out waiting for bootstrap credentials — is the kapro operator running?\n" +
+				"  Check: kubectl get deploy kapro-operator -n kapro-system")
+		}
+		fmt.Printf("✅ Bootstrap credentials provisioned: %s\n", bootstrapSecretName)
+
+		// ── 5. Extract SA token ───────────────────────────────────────────────────────
+		var bsSecret corev1.Secret
+		if err := hubClient.Get(ctx, types.NamespacedName{
+			Namespace: "kapro-system",
+			Name:      bootstrapSecretName,
+		}, &bsSecret); err != nil {
+			return fmt.Errorf("read bootstrap Secret %q: %w", bootstrapSecretName, err)
+		}
+		bootstrapToken, err = extractTokenFromKubeconfig(bsSecret.Data["kubeconfig"])
+		if err != nil {
+			return fmt.Errorf("extract bootstrap token: %w", err)
+		}
+	}
+
+	hubRawCA := hubCfg.CAData
+	if len(hubRawCA) == 0 && hubCfg.CAFile != "" {
+		hubRawCA, _ = os.ReadFile(hubCfg.CAFile)
+	}
+	hubCABundle := base64.StdEncoding.EncodeToString(hubRawCA)
+
+	effectiveHubURL := hubURL
+	if effectiveHubURL == "" {
+		effectiveHubURL = hubCfg.Host
+	}
+
+	// ── 6. Build + apply spoke manifests ────────────────────────────────────────
+	manifests := buildSpokeManifests(clusterName, effectiveHubURL, hubCABundle, bootstrapToken, image, gcpServiceAccount)
+
+	spokeLoadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	if spokeKubeconfigPath != "" {
+		spokeLoadingRules.ExplicitPath = spokeKubeconfigPath
+	}
+	spokeCfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		spokeLoadingRules, &clientcmd.ConfigOverrides{},
+	).ClientConfig()
+	if err != nil {
+		return fmt.Errorf("load spoke kubeconfig: %w", err)
+	}
+
+	spokeScheme := runtime.NewScheme()
+	_ = clientgoSchemeForSpoke(spokeScheme)
+
+	spokeClient, err := client.New(spokeCfg, client.Options{Scheme: spokeScheme})
+	if err != nil {
+		return fmt.Errorf("create spoke client: %w", err)
+	}
+
+	fmt.Println("🚀 Installing cluster-controller on spoke...")
+	for _, obj := range manifests {
+		if err := applyObject(ctx, spokeClient, obj); err != nil {
+			return fmt.Errorf("apply %T %q: %w", obj, obj.(metav1.Object).GetName(), err)
+		}
+		fmt.Printf("  ✅ %T/%s\n", obj, obj.(metav1.Object).GetName())
+	}
+	fmt.Printf("✅ kapro-cluster-controller installed on %s\n", clusterName)
+
+	if !waitConverged {
+		fmt.Printf("   Monitor: kubectl get membercluster %s\n", clusterName)
+		return nil
+	}
+
+	// ── 7. Wait for phase=Converged ──────────────────────────────────────────────
+	fmt.Printf("⏳ Waiting for %s to converge", clusterName)
+	for i := 0; i < 60; i++ {
+		time.Sleep(5 * time.Second)
+		fmt.Print(".")
+		var latest kaprov1alpha1.MemberCluster
+		if err := hubClient.Get(ctx, types.NamespacedName{Name: clusterName}, &latest); err != nil {
+			continue
+		}
+		if latest.Status.Phase == kaprov1alpha1.ClusterPhaseConverged {
+			fmt.Printf("\n✅ %s is Converged 🎉\n", clusterName)
+			return nil
+		}
+		if latest.Status.Phase == kaprov1alpha1.ClusterPhaseFailed {
+			fmt.Printf("\n❌ %s entered Failed phase\n", clusterName)
+			return fmt.Errorf("cluster %q failed to converge: check operator and cluster-controller logs", clusterName)
+		}
+	}
+	fmt.Printf("\n⚠️  Timed out waiting for Converged — check: kubectl get membercluster %s\n", clusterName)
 	return nil
 }
 

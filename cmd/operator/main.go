@@ -9,6 +9,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlcfg "sigs.k8s.io/controller-runtime/pkg/config"
@@ -132,7 +133,7 @@ func main() {
 		ApprovalSecret: loadSecret("approval-secret"),
 		ExternalURL:    os.Getenv("KAPRO_EXTERNAL_URL"),
 		HubAPIURL:      os.Getenv("KAPRO_HUB_API_URL"),
-		HubCAData:      mgr.GetConfig().CAData,
+		HubCAData:      loadHubCAData(mgr.GetConfig()),
 	}
 
 	// Register admission webhooks unless KAPRO_DISABLE_WEBHOOKS=true (used in local dev / kind).
@@ -208,6 +209,20 @@ func loadSecret(name string) []byte {
 		return []byte(strings.TrimSpace(string(data)))
 	}
 	return []byte(os.Getenv(strings.ToUpper(strings.ReplaceAll("KAPRO_"+name, "-", "_"))))
+}
+
+// loadHubCAData returns the PEM-encoded CA certificate for the hub kube-apiserver.
+// rest.Config.CAData is inline PEM; if empty, reads from CAFile (kubeconfig path-based config).
+func loadHubCAData(cfg *rest.Config) []byte {
+	if len(cfg.CAData) > 0 {
+		return cfg.CAData
+	}
+	if cfg.CAFile != "" {
+		if data, err := os.ReadFile(cfg.CAFile); err == nil {
+			return data
+		}
+	}
+	return nil
 }
 // The server only starts when this instance holds the leader lock.
 func leaderOnlyHTTP(addr string, handler http.Handler, timeout time.Duration) *httpRunnable {

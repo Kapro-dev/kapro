@@ -143,12 +143,19 @@ func startCSRApprovalController(_ context.Context, cc ControllerContext) (bool, 
 	return true, nil
 }
 
-// startMemberClusterController starts the MemberCluster deregistration reconciler.
-// Handles finalizer-based cleanup of long-lived cluster RBAC when a MemberCluster is deleted.
+// startMemberClusterController starts the MemberCluster reconciler.
+// Handles bootstrap SA/kubeconfig provisioning on creation, and RBAC cleanup on deletion.
 func startMemberClusterController(_ context.Context, cc ControllerContext) (bool, error) {
+	kubeClient, err := kubernetes.NewForConfig(cc.Manager.GetConfig())
+	if err != nil {
+		return false, err
+	}
 	if err := (&controller.MemberClusterReconciler{
-		Client: cc.Manager.GetClient(),
-		Scheme: cc.Manager.GetScheme(),
+		Client:     cc.Manager.GetClient(),
+		Scheme:     cc.Manager.GetScheme(),
+		KubeClient: kubeClient,
+		HubAPIURL:  cc.HubAPIURL,
+		HubCAData:  cc.HubCAData,
 	}).SetupWithManager(cc.Manager); err != nil {
 		return false, err
 	}

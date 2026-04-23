@@ -28,6 +28,13 @@ spec:
         env:
         - name: KAPRO_DISABLE_WEBHOOKS
           value: "true"
+        # KAPRO_HUB_API_URL must be set to the hub kube-apiserver URL reachable
+        # from within the spoke cluster network (not localhost).
+        # For kind-on-docker: use the hub control-plane container IP, e.g.
+        #   https://$(kubectl get node kapro-hub-control-plane -o jsonpath='{.status.addresses[0].address}'):6443
+        # For production: use the external LB / ingress URL of the hub apiserver.
+        - name: KAPRO_HUB_API_URL
+          value: ""
         resources:
           limits:
             cpu: 500m
