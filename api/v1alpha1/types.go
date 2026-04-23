@@ -43,7 +43,8 @@ type ArtifactMeta struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster
+// +kubebuilder:resource:scope=Cluster,shortName=art,categories=kapro-all
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Artifact is an immutable OCI bundle, digest-pinned, created by CI.
 type Artifact struct {
@@ -257,18 +258,20 @@ type HealthCheckSpec struct {
 
 // EnvironmentStatus defines the observed state of Environment.
 type EnvironmentStatus struct {
-	ObservedGeneration int64  `json:"observedGeneration,omitempty"`
-	ActiveRelease      string `json:"activeRelease,omitempty"`
-	Phase              string `json:"phase,omitempty"`
+	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
+	ActiveRelease      string             `json:"activeRelease,omitempty"`
+	Phase              string             `json:"phase,omitempty"`
+	Conditions         []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster
+// +kubebuilder:resource:scope=Cluster,shortName=env,categories=kapro-all
 // +kubebuilder:printcolumn:name="Tier",type=string,JSONPath=`.metadata.labels.tier`
 // +kubebuilder:printcolumn:name="Region",type=string,JSONPath=`.metadata.labels.region`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Active Release",type=string,JSONPath=`.status.activeRelease`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Environment represents one cluster in the fleet managed by Kapro.
 // Clusters can be GKE, EKS, AKS, OpenShift, on-prem, or any Kubernetes distribution.
@@ -395,10 +398,10 @@ type ManagedClusterStatus struct {
 
 // ClusterHealth aggregates workload health from the local delivery system.
 type ClusterHealth struct {
-	AllWorkloadsReady bool   `json:"allWorkloadsReady"`
-	ReadyWorkloads    int    `json:"readyWorkloads"`
-	FailedWorkloads   int    `json:"failedWorkloads"`
-	TotalWorkloads    int    `json:"totalWorkloads"`
+	AllWorkloadsReady bool   `json:"allWorkloadsReady,omitempty"`
+	ReadyWorkloads    int    `json:"readyWorkloads,omitempty"`
+	FailedWorkloads   int    `json:"failedWorkloads,omitempty"`
+	TotalWorkloads    int    `json:"totalWorkloads,omitempty"`
 	Message           string `json:"message,omitempty"`
 }
 
@@ -417,13 +420,14 @@ const (
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster
+// +kubebuilder:resource:scope=Cluster,shortName=mc,categories=kapro-all
 // +kubebuilder:printcolumn:name="Environment",type=string,JSONPath=`.spec.environmentRef`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Delivery",type=string,JSONPath=`.status.deliverySystem`
 // +kubebuilder:printcolumn:name="Healthy",type=boolean,JSONPath=`.status.health.allWorkloadsReady`
 // +kubebuilder:printcolumn:name="Active Release",type=string,JSONPath=`.status.activeRelease`
 // +kubebuilder:printcolumn:name="Heartbeat",type=string,JSONPath=`.status.lastHeartbeat`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // ManagedCluster is the fleet registry entry for a workload cluster.
 // One object per cluster. The control plane writes spec.desiredVersion;
@@ -458,13 +462,23 @@ type GatePolicySpec struct {
 	Mode          GateMode           `json:"mode"`
 	Gate          GateSpec           `json:"gate,omitempty"`
 	Approval      *ApprovalConfig    `json:"approval,omitempty"`
+	// OnFailure controls what Kapro does when a gate fails or times out.
+	//   halt (default): stop the Sync and wait for human intervention.
+	//     Use for checkout systems where automated rollback is too risky.
+	//   rollback: automatically revert to the previous version.
+	//     Only effective when a previous successful apply exists (PreviousVersion is set).
+	//   continue: mark the gate as skipped and advance to the next phase.
 	// +kubebuilder:validation:Enum=halt;rollback;continue
+	// +kubebuilder:default=halt
 	OnFailure     string             `json:"onFailure,omitempty"`
 	Notifications []NotificationSpec `json:"notifications,omitempty"`
 }
 
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:scope=Cluster
+// +kubebuilder:resource:scope=Cluster,shortName=gp,categories=kapro-all
+// +kubebuilder:printcolumn:name="Mode",type=string,JSONPath=`.spec.mode`
+// +kubebuilder:printcolumn:name="On Failure",type=string,JSONPath=`.spec.onFailure`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // GatePolicy defines reusable gate rules evaluated before advancing a stage.
 // Referenced by Pipeline.spec.stages[].gate.
@@ -485,6 +499,11 @@ type GatePolicyList struct {
 
 type GateSpec struct {
 	SoakTime    string            `json:"soakTime,omitempty"`
+	// GateTimeout is the maximum duration the metrics gate may remain un-passed
+	// before the Sync is failed. Only applies to MetricsCheck; infrastructure
+	// errors (e.g. Prometheus unreachable) do not consume this budget.
+	// Uses Go duration format, e.g. "30m", "1h". Empty means retry indefinitely.
+	GateTimeout string            `json:"gateTimeout,omitempty"`
 	HealthCheck bool              `json:"healthCheck,omitempty"`
 	Metrics     []MetricGate      `json:"metrics,omitempty"`
 	Templates   []GateTemplateRef `json:"templates,omitempty"`
@@ -640,9 +659,10 @@ type GateConditionResult struct {
 }
 
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:scope=Cluster
+// +kubebuilder:resource:scope=Cluster,shortName=gt,categories=kapro-all
 // +kubebuilder:printcolumn:name="Type",type=string,JSONPath=`.spec.type`
 // +kubebuilder:printcolumn:name="Failure Policy",type=string,JSONPath=`.spec.failurePolicy`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // GateTemplate is a reusable, parameterised gate evaluation config.
 // Referenced by GatePolicy.spec.gate.templates[].
@@ -729,7 +749,9 @@ type PipelineStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster
+// +kubebuilder:resource:scope=Cluster,shortName=pl,categories=kapro-all
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Pipeline defines a reusable progressive delivery path as a DAG of stages.
 // Each stage selects a fleet subset via label selectors and optionally gates
@@ -831,9 +853,10 @@ type ReleaseStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster
+// +kubebuilder:resource:scope=Cluster,shortName=rel,categories=kapro-all
 // +kubebuilder:printcolumn:name="Artifact",type=string,JSONPath=`.spec.artifact`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Release is the trigger for a progressive delivery rollout across the cluster fleet.
 // It references an Artifact and a DAG of Pipelines that define the delivery path.
@@ -896,6 +919,9 @@ type SyncStatus struct {
 	Phase              SyncPhase          `json:"phase,omitempty"`
 	StartedAt          string             `json:"startedAt,omitempty"`
 	FinishedAt         string             `json:"finishedAt,omitempty"`
+	// PhaseEnteredAt records when the current phase was entered.
+	// Used by gate timeout logic to determine how long a gate has been un-passed.
+	PhaseEnteredAt     string             `json:"phaseEnteredAt,omitempty"`
 	Conditions         []metav1.Condition `json:"conditions,omitempty"`
 	Message            string             `json:"message,omitempty"`
 	// PreviousVersion holds the version before this sync, used for rollback.
@@ -908,12 +934,13 @@ type SyncStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster
+// +kubebuilder:resource:scope=Cluster,shortName=syn,categories=kapro-all
 // +kubebuilder:printcolumn:name="Environment",type=string,JSONPath=`.spec.environmentRef`
 // +kubebuilder:printcolumn:name="Pipeline",type=string,JSONPath=`.spec.pipeline`
 // +kubebuilder:printcolumn:name="Stage",type=string,JSONPath=`.spec.stage`
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.spec.version`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Sync drives one Environment through the apply → converge cycle for a Release stage.
 // Created internally by the Release controller — users inspect but never create Sync objects.
@@ -981,12 +1008,13 @@ type ReleaseReportStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster
+// +kubebuilder:resource:scope=Cluster,shortName=rr,categories=kapro-all
 // +kubebuilder:printcolumn:name="Release",type=string,JSONPath=`.spec.releaseRef`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Synced",type=integer,JSONPath=`.status.syncedEnvironments`
 // +kubebuilder:printcolumn:name="Total",type=integer,JSONPath=`.status.totalEnvironments`
 // +kubebuilder:printcolumn:name="Duration",type=string,JSONPath=`.status.duration`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // ReleaseReport is a live, persistent delivery summary for one Release.
 type ReleaseReport struct {
@@ -1024,7 +1052,12 @@ type ApprovalSpec struct {
 }
 
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:scope=Cluster
+// +kubebuilder:resource:scope=Cluster,shortName=ap,categories=kapro-all
+// +kubebuilder:printcolumn:name="Kind",type=string,JSONPath=`.spec.kind`
+// +kubebuilder:printcolumn:name="Ref",type=string,JSONPath=`.spec.ref`
+// +kubebuilder:printcolumn:name="Approved By",type=string,JSONPath=`.spec.approvedBy`
+// +kubebuilder:printcolumn:name="Bypass",type=boolean,JSONPath=`.spec.bypass`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Approval is a human gate signal to unblock a Sync or Stage.
 type Approval struct {
@@ -1072,15 +1105,17 @@ type BootstrapTokenStatus struct {
 	// Set atomically with Used=true to enable idempotent retries: if the CSR approval call
 	// fails transiently, the next reconcile can recognise the same CSR and re-approve it
 	// rather than denying it as a replay.
-	BoundCSRName string `json:"boundCSRName,omitempty"`
+	BoundCSRName string             `json:"boundCSRName,omitempty"`
+	Conditions   []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced
+// +kubebuilder:resource:scope=Namespaced,shortName=bt,categories=kapro-all
 // +kubebuilder:printcolumn:name="Cluster",type=string,JSONPath=`.spec.clusterName`
 // +kubebuilder:printcolumn:name="Used",type=boolean,JSONPath=`.status.used`
 // +kubebuilder:printcolumn:name="Expires",type=string,JSONPath=`.spec.expiresAt`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // BootstrapToken is a one-time credential that allows a workload cluster's
 // cluster-controller to self-register with the Kapro control plane.

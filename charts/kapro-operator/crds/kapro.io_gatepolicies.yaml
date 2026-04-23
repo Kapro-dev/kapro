@@ -3,18 +3,32 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.17.0
   name: gatepolicies.kapro.io
 spec:
   group: kapro.io
   names:
+    categories:
+    - kapro-all
     kind: GatePolicy
     listKind: GatePolicyList
     plural: gatepolicies
+    shortNames:
+    - gp
     singular: gatepolicy
   scope: Cluster
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.mode
+      name: Mode
+      type: string
+    - jsonPath: .spec.onFailure
+      name: On Failure
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: |-
@@ -53,6 +67,13 @@ spec:
                 type: object
               gate:
                 properties:
+                  gateTimeout:
+                    description: |-
+                      GateTimeout is the maximum duration the metrics gate may remain un-passed
+                      before the Sync is failed. Only applies to MetricsCheck; infrastructure
+                      errors (e.g. Prometheus unreachable) do not consume this budget.
+                      Uses Go duration format, e.g. "30m", "1h". Empty means retry indefinitely.
+                    type: string
                   healthCheck:
                     type: boolean
                   metrics:
@@ -172,6 +193,7 @@ spec:
                               type: string
                           type: object
                           x-kubernetes-map-type: atomic
+                          x-kubernetes-preserve-unknown-fields: true
                         to:
                           items:
                             type: string
@@ -190,6 +212,14 @@ spec:
                   type: object
                 type: array
               onFailure:
+                default: halt
+                description: |-
+                  OnFailure controls what Kapro does when a gate fails or times out.
+                    halt (default): stop the Sync and wait for human intervention.
+                      Use for checkout systems where automated rollback is too risky.
+                    rollback: automatically revert to the previous version.
+                      Only effective when a previous successful apply exists (PreviousVersion is set).
+                    continue: mark the gate as skipped and advance to the next phase.
                 enum:
                 - halt
                 - rollback
@@ -201,3 +231,4 @@ spec:
         type: object
     served: true
     storage: true
+    subresources: {}

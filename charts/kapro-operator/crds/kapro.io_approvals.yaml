@@ -3,18 +3,38 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.17.0
   name: approvals.kapro.io
 spec:
   group: kapro.io
   names:
+    categories:
+    - kapro-all
     kind: Approval
     listKind: ApprovalList
     plural: approvals
+    shortNames:
+    - ap
     singular: approval
   scope: Cluster
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.kind
+      name: Kind
+      type: string
+    - jsonPath: .spec.ref
+      name: Ref
+      type: string
+    - jsonPath: .spec.approvedBy
+      name: Approved By
+      type: string
+    - jsonPath: .spec.bypass
+      name: Bypass
+      type: boolean
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Approval is a human gate signal to unblock a Sync or Stage.
@@ -64,3 +84,4 @@ spec:
         type: object
     served: true
     storage: true
+    subresources: {}

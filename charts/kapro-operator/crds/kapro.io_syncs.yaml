@@ -3,14 +3,18 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.17.0
   name: syncs.kapro.io
 spec:
   group: kapro.io
   names:
+    categories:
+    - kapro-all
     kind: Sync
     listKind: SyncList
     plural: syncs
+    shortNames:
+    - syn
     singular: sync
   scope: Cluster
   versions:
@@ -30,6 +34,9 @@ spec:
     - jsonPath: .status.phase
       name: Phase
       type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -237,6 +244,7 @@ spec:
                           type: string
                       type: object
                       x-kubernetes-map-type: atomic
+                      x-kubernetes-preserve-unknown-fields: true
                   required:
                   - name
                   - phase
@@ -259,6 +267,11 @@ spec:
                 - Applying
                 - Converged
                 - Failed
+                type: string
+              phaseEnteredAt:
+                description: |-
+                  PhaseEnteredAt records when the current phase was entered.
+                  Used by gate timeout logic to determine how long a gate has been un-passed.
                 type: string
               previousVersion:
                 description: PreviousVersion holds the version before this sync, used
