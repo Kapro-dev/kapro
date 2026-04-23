@@ -41,7 +41,7 @@ Kapro implements a clean three-layer abstraction:
 |-------|------|------|
 | **Artifact** | `Artifact` | Immutable, digest-pinned OCI bundle |
 | **Topology** | `Environment`, `EnvironmentGroup`, `ClusterRegistration` | Where versions go |
-| **Strategy** | `PromotionPolicy`, `Pipeline`, `Release`, `Approval` | How versions move |
+| **Strategy** | `Pipeline`, `Release`, `Approval` | How versions move |
 
 This separation is architecturally sound and mirrors established Kubernetes patterns. Each layer has a single, clear concern.
 
@@ -69,13 +69,14 @@ Built-in implementations are substantial:
 
 ### State Machines
 
-All core objects (Release, Promotion, BatchRun) are driven by explicit state machines:
+All core objects are driven by explicit state machines:
 
 - `Release`: `Pending → Promoting → Progressing → Complete | Failed`
-- `Promotion`: `Pending → HealthCheck → Soaking → MetricsCheck → WaitingApproval → Applying → Converged | Failed`
-- `BatchRun`: `Pending → Resolving → Applying → WaitingConvergence → GateCheck → Complete`
+- `Sync`: `Pending → Verification → HealthCheck → MetricsCheck → Applying → Converged | Failed`
 
-This is a production-grade design. State is stored in Kubernetes (etcd). Controllers are stateless and crash-safe. Every transition is observable via `kubectl get promotions`.
+Stage promotion is handled by the Pipeline stage chain (`dependsOn` DAG). Each stage fans out `Sync` objects to all matching clusters in parallel — this is the batch run. Progressive promotion is the stage-chain itself: dev must reach Converged before staging is started, staging before prod. No separate `Promotion` or `BatchRun` CRDs are needed — the `Release → Pipeline → Stage → Sync` hierarchy covers both concepts natively.
+
+This is a production-grade design. State is stored in Kubernetes (etcd). Controllers are stateless and crash-safe. Every transition is observable via `kubectl get releases` and `kubectl get syncs`.
 
 ### Multi-cluster Connectivity Model
 
@@ -217,13 +218,13 @@ These are the minimum changes needed before filing the CNCF Due Diligence docume
 
 - [ ] **Add a second maintainer** — CNCF TOC will not accept a single-maintainer project; recruit at least one external contributor and promote them
 - [ ] **Write GOVERNANCE.md** — document decision-making process, maintainer ladder, voting, conflict resolution
-- [ ] **Increase test coverage to ≥40%** — focus on `release_controller`, `promotion_controller`, `batchrun_controller`
+- [ ] **Increase test coverage to ≥40%** — focus on `release_controller`, `sync_controller`, `pipeline_controller`
 - [ ] **Add Prometheus metrics** — expose promotion state, gate evaluation results, and wave progress as metrics; this is expected of any CNCF-ecosystem tool
 - [ ] **Document at least one real-world usage scenario** — even a controlled POC at a real organization (can be the submitter's own) demonstrates viability
 
 ### Strongly Recommended
 
-- [ ] **Structured logging with correlation IDs** — correlate Release → Pipeline → Promotion → BatchRun across log lines
+- [ ] **Structured logging with correlation IDs** — correlate Release → Pipeline → Stage → Sync across log lines
 - [ ] **Health check / readiness endpoints** — required for production Kubernetes deployments
 - [ ] **Tag a v0.1.0 release** — gives the project a concrete version anchor for due diligence
 - [ ] **Add a ROADMAP.md** — shows TOC the project has a vision beyond current scope
