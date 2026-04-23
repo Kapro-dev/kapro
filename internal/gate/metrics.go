@@ -1,6 +1,7 @@
 package gate
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
+	"text/template"
 	"time"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
@@ -45,14 +48,56 @@ func (g *MetricsGate) httpClient() *http.Client {
 	return &http.Client{Timeout: 10 * time.Second}
 }
 
+const defaultWindow   = "5m"
+const defaultInterval = "30s"
+const minInterval     = 10 * time.Second
+
+// retryAfter returns the poll interval for a metric gate, clamped to minInterval.
+func retryAfter(metric kaprov1alpha1.MetricGate) string {
+	iv := strings.TrimSpace(metric.Interval)
+	if iv == "" {
+		return defaultInterval
+	}
+	d, err := time.ParseDuration(iv)
+	if err != nil || d < minInterval {
+		return defaultInterval
+	}
+	return iv
+}
+
+// resolveQuery substitutes {{.Window}} in the query template with the
+// configured window (defaulting to defaultWindow).
+func resolveQuery(metric kaprov1alpha1.MetricGate) (string, error) {
+	w := strings.TrimSpace(metric.Window)
+	if w == "" {
+		w = defaultWindow
+	}
+	// Fast path: no template markers — return as-is.
+	if !strings.Contains(metric.Query, "{{") {
+		return metric.Query, nil
+	}
+	tmpl, err := template.New("query").Parse(metric.Query)
+	if err != nil {
+		return "", fmt.Errorf("parse query template: %w", err)
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, map[string]string{"Window": w}); err != nil {
+		return "", fmt.Errorf("execute query template: %w", err)
+	}
+	return buf.String(), nil
+}
+
 // Evaluate queries the Prometheus instant-query endpoint for the metric at
 // req.MetricIndex. Returns Passed when the query yields a non-zero value.
+// The poll interval is controlled by MetricGate.Interval (default 30s, min 10s).
+// The query window is injected via {{.Window}} template substitution using MetricGate.Window.
 func (g *MetricsGate) Evaluate(ctx context.Context, req Request) (Result, error) {
 	if req.Policy == nil || req.MetricIndex >= len(req.Policy.Spec.Gate.Metrics) {
 		return Result{Phase: kaprov1alpha1.GatePhasePassed, Message: "no metrics configured"}, nil
 	}
 
 	metric := req.Policy.Spec.Gate.Metrics[req.MetricIndex]
+	interval := retryAfter(metric)
 
 	baseURL := defaultPrometheusURL
 	if req.Policy.Annotations != nil {
@@ -60,27 +105,39 @@ func (g *MetricsGate) Evaluate(ctx context.Context, req Request) (Result, error)
 			baseURL = u
 		}
 	}
+	if metric.Endpoint != "" {
+		baseURL = metric.Endpoint
+	}
 
-	passed, val, err := g.queryInstant(ctx, baseURL, metric.Query)
+	query, err := resolveQuery(metric)
+	if err != nil {
+		return Result{
+			Phase:      kaprov1alpha1.GatePhaseInconclusive,
+			Message:    fmt.Sprintf("query template error: %v", err),
+			RetryAfter: interval,
+		}, nil
+	}
+
+	passed, val, err := g.queryInstant(ctx, baseURL, query)
 	if err != nil {
 		return Result{
 			Phase:      kaprov1alpha1.GatePhaseInconclusive,
 			Message:    fmt.Sprintf("prometheus query error: %v", err),
-			RetryAfter: "30s",
+			RetryAfter: interval,
 		}, nil // don't propagate — retry is safer than blocking the pipeline
 	}
 
 	if passed {
 		return Result{
 			Phase:   kaprov1alpha1.GatePhasePassed,
-			Message: fmt.Sprintf("metric query passed (value=%.4f): %s", val, metric.Query),
+			Message: fmt.Sprintf("metric query passed (value=%.4f): %s", val, query),
 		}, nil
 	}
 
 	return Result{
 		Phase:      kaprov1alpha1.GatePhaseInconclusive,
-		Message:    fmt.Sprintf("metric gate blocked (value=%.4f): %s", val, metric.Query),
-		RetryAfter: "30s",
+		Message:    fmt.Sprintf("metric gate blocked (value=%.4f, interval=%s): %s", val, interval, query),
+		RetryAfter: interval,
 	}, nil
 }
 

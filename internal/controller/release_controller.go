@@ -687,11 +687,15 @@ func (r *ReleaseReconciler) failRelease(ctx context.Context, release *kaprov1alp
 // clearActiveRelease clears env.status.activeRelease for all environments
 // that were claimed by this Release, found via owned Syncs.
 func (r *ReleaseReconciler) clearActiveRelease(ctx context.Context, release *kaprov1alpha1.Release) {
+	log := log.FromContext(ctx)
 	var syncList kaprov1alpha1.SyncList
-	_ = r.List(ctx, &syncList,
+	if err := r.List(ctx, &syncList,
 		client.MatchingLabels{"kapro.io/release": release.Name},
 		client.Limit(500),
-	)
+	); err != nil {
+		log.Error(err, "clearActiveRelease: failed to list Syncs — environment activeRelease fields may not be cleared")
+		return
+	}
 	seen := make(map[string]bool)
 	for _, s := range syncList.Items {
 		envName := s.Spec.EnvironmentRef
@@ -706,7 +710,9 @@ func (r *ReleaseReconciler) clearActiveRelease(ctx context.Context, release *kap
 		if env.Status.ActiveRelease == release.Name {
 			patch := client.MergeFrom(env.DeepCopy())
 			env.Status.ActiveRelease = ""
-			_ = r.Status().Patch(ctx, &env, patch)
+			if err := r.Status().Patch(ctx, &env, patch); err != nil {
+				log.Error(err, "clearActiveRelease: failed to clear activeRelease", "environment", envName)
+			}
 		}
 	}
 }

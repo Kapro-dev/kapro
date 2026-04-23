@@ -557,9 +557,24 @@ type GateTemplateRef struct {
 }
 
 type MetricGate struct {
-	Provider  string  `json:"provider"`
-	Query     string  `json:"query"`
-	Window    string  `json:"window"`
+	Provider string `json:"provider"`
+	// Query is a PromQL expression. The gate passes when the query returns a non-zero value.
+	// Use range functions directly in the query for window-based checks, e.g.:
+	//   min_over_time(error_rate[30m]) < 0.01
+	// Or reference the Window field as a template: {{.Window}} is substituted at evaluation time.
+	Query string `json:"query"`
+	// Window is the lookback duration injected into the query template as {{.Window}}.
+	// When Query already contains a hardcoded range (e.g. [5m]), this field is ignored.
+	// Defaults to "5m".
+	// +kubebuilder:default="5m"
+	// +optional
+	Window string `json:"window,omitempty"`
+	// Interval controls how often the metric is re-evaluated while the gate is blocking.
+	// Equivalent to Grafana's "Evaluate every" setting.
+	// Defaults to "30s". Minimum "10s".
+	// +kubebuilder:default="30s"
+	// +optional
+	Interval string `json:"interval,omitempty"`
 	Endpoint  string  `json:"endpoint,omitempty"`
 	Threshold float64 `json:"threshold,omitempty"`
 	// +kubebuilder:pruning:PreserveUnknownFields
