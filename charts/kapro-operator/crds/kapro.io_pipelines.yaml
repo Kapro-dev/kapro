@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.1
+    controller-gen.kubebuilder.io/version: v0.17.0
   name: pipelines.kapro.io
 spec:
   group: kapro.io
@@ -19,9 +19,6 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.phase
-      name: Phase
-      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -54,6 +51,8 @@ spec:
             description: |-
               PipelineSpec defines a reusable progressive delivery path as a flat DAG of stages.
               A Pipeline is a template — referenced by Release.spec.pipelines[].
+              Uniqueness and dependency-reference validation is enforced by the admission webhook,
+              which can perform DAG checks without the quadratic CEL cost budget constraints.
             properties:
               stages:
                 description: |-
@@ -62,11 +61,11 @@ spec:
                 items:
                   description: |-
                     Stage is one node in a Pipeline's delivery DAG.
-                    It selects a set of Environments by label selector, optionally gates them
+                    It selects a set of target clusters by label selector, optionally gates them
                     with a GatePolicy, and declares ordering via DependsOn.
 
                     A single stage can target one or many clusters — the selector determines the
-                    fleet subset. Add a cluster to a wave by labeling its Environment object;
+                    fleet subset. Add a cluster to a wave by labeling its MemberCluster object;
                     no Pipeline changes required.
                   properties:
                     dependsOn:
@@ -74,10 +73,11 @@ spec:
                         before this stage starts.
                       items:
                         type: string
+                      maxItems: 64
                       type: array
                     gate:
                       description: |-
-                        Gate is the inline gate policy evaluated after all environments in this
+                        Gate is the inline gate policy evaluated after all targets in this
                         stage converge. If nil, the stage advances immediately on convergence.
                       properties:
                         approval:
@@ -525,15 +525,15 @@ spec:
                         OnFailure controls what Kapro does when this stage fails.
                         halt (default): stop the pipeline, mark Release Failed.
                         skip: continue to downstream stages.
-                        rollback: stop AND revert all environments promoted by earlier stages.
+                        rollback: stop AND revert all targets promoted by earlier stages.
                       enum:
                       - halt
                       - skip
                       - rollback
                       type: string
                     selector:
-                      description: Selector matches the Environments (clusters) that
-                        belong to this stage.
+                      description: Selector matches the target clusters that belong
+                        to this stage.
                       properties:
                         matchExpressions:
                           description: matchExpressions is a list of label selector
@@ -582,104 +582,13 @@ spec:
                   - name
                   - selector
                   type: object
+                maxItems: 64
                 minItems: 1
                 type: array
             required:
             - stages
             type: object
-          status:
-            description: PipelineStatus defines the observed state of a Pipeline.
-            properties:
-              activeStage:
-                type: string
-              completedStages:
-                type: integer
-              conditions:
-                items:
-                  description: Condition contains details for one aspect of the current
-                    state of this API Resource.
-                  properties:
-                    lastTransitionTime:
-                      description: |-
-                        lastTransitionTime is the last time the condition transitioned from one status to another.
-                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
-                      format: date-time
-                      type: string
-                    message:
-                      description: |-
-                        message is a human readable message indicating details about the transition.
-                        This may be an empty string.
-                      maxLength: 32768
-                      type: string
-                    observedGeneration:
-                      description: |-
-                        observedGeneration represents the .metadata.generation that the condition was set based upon.
-                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
-                        with respect to the current state of the instance.
-                      format: int64
-                      minimum: 0
-                      type: integer
-                    reason:
-                      description: |-
-                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
-                        Producers of specific condition types may define expected values and meanings for this field,
-                        and whether the values are considered a guaranteed API.
-                        The value should be a CamelCase string.
-                        This field may not be empty.
-                      maxLength: 1024
-                      minLength: 1
-                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
-                      type: string
-                    status:
-                      description: status of the condition, one of True, False, Unknown.
-                      enum:
-                      - "True"
-                      - "False"
-                      - Unknown
-                      type: string
-                    type:
-                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
-                      maxLength: 316
-                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
-                      type: string
-                  required:
-                  - lastTransitionTime
-                  - message
-                  - reason
-                  - status
-                  - type
-                  type: object
-                type: array
-              observedGeneration:
-                format: int64
-                type: integer
-              phase:
-                description: Phase reflects the overall state of this Pipeline in
-                  the current Release.
-                enum:
-                - Pending
-                - Progressing
-                - Complete
-                - Failed
-                type: string
-              stageProgress:
-                items:
-                  description: StageProgressEntry is a per-stage phase summary stored
-                    in Pipeline.status.
-                  properties:
-                    name:
-                      type: string
-                    phase:
-                      type: string
-                  required:
-                  - name
-                  type: object
-                type: array
-              totalStages:
-                type: integer
-            type: object
         type: object
     served: true
     storage: true
-    subresources:
-      status: {}
+    subresources: {}

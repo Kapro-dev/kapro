@@ -40,7 +40,7 @@ Kapro implements a clean three-layer abstraction:
 | Layer | CRDs | Role |
 |-------|------|------|
 | **Artifact** | `Artifact` | Immutable, digest-pinned OCI bundle |
-| **Topology** | `Environment`, `EnvironmentGroup`, `ClusterRegistration` | Where versions go |
+| **Topology** | `Target`, `TargetGroup`, `ClusterRegistration` | Where versions go |
 | **Strategy** | `Pipeline`, `Release`, `Approval` | How versions move |
 
 This separation is architecturally sound and mirrors established Kubernetes patterns. Each layer has a single, clear concern.

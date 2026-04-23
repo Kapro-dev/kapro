@@ -4,19 +4,15 @@
 // Version:   v1alpha1
 //
 // User-facing CRDs:
-//   - Artifact        — immutable OCI bundle, digest-pinned
-//   - Environment     — one target cluster managed by Kapro
-//   - Pipeline        — DAG of Stages; each Stage selects Environments by label selector
-//   - Release         — developer trigger; owns a two-level DAG (Pipeline nodes → Stages → Environments)
-//   - GatePolicy      — reusable gate rules (soak, metrics, approval, notification)
-//   - GateTemplate    — reusable parameterised gate evaluation config (cel, job, webhook)
-//   - ManagedCluster  — fleet registry entry, written by kapro-cluster-controller
+//   - Artifact       — immutable OCI bundle, digest-pinned
+//   - Pipeline       — reusable rollout template composed of ordered stages
+//   - Release        — one rollout execution of an Artifact through one or more Pipelines
+//   - MemberCluster  — fleet inventory and observed cluster state reported to the hub
+//   - Approval       — human gate signal to unblock one target-cluster rollout or stage
+//   - BootstrapToken — short-lived token for first registration of spoke agents
 //
-// Internal / system CRDs:
-//   - Sync          — one gate→apply→converge cycle per (Release, Pipeline, Stage, Environment)
-//   - Approval      — human gate signal to unblock a Sync
-//   - ReleaseReport — audit trail aggregated from all Syncs for a Release
-//   - BootstrapToken — short-lived token for kapro-cluster-controller first registration
+// Delivery execution state is stored inline in Release.status.targets
+// rather than in a standalone execution CRD.
 //
 // +kubebuilder:object:generate=true
 // +groupName=kapro.io

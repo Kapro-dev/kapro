@@ -4,8 +4,8 @@
 //
 //	kapro cluster bootstrap --name <cluster-name> [--labels key=value,...]
 //	kapro get releases [-n namespace]
-//	kapro get syncs [-n namespace]
-//	kapro approve <sync-name> [-n namespace] [--comment text]
+//	kapro get targets [-n namespace]
+//	kapro approve <release>/<target> [-n namespace] [--comment text]
 //	kapro rollback <release-name> --to <digest> [-n namespace]
 package main
 
@@ -46,7 +46,7 @@ func main() {
 		Short: "The Canonical Promotion Layer for Kubernetes",
 		Long: `kapro — multi-cluster progressive delivery engine.
 
-Passes versions forward. Through environments. Across clusters. In waves.`,
+Passes versions forward. Across targets. Across clusters. In waves.`,
 	}
 
 	root.AddCommand(newClusterCmd())
@@ -248,15 +248,15 @@ Expires: %s
 // registers the cluster on hub AND installs the controller on spoke in one call.
 func newClusterJoinCmd() *cobra.Command {
 	var (
-		clusterName      string
-		hubKubeconfig    string
-		spokeKubeconfig  string
-		hubURL           string
-		labelsRaw        []string
-		ttl              time.Duration
-		image            string
+		clusterName       string
+		hubKubeconfig     string
+		spokeKubeconfig   string
+		hubURL            string
+		labelsRaw         []string
+		ttl               time.Duration
+		image             string
 		gcpServiceAccount string
-		wait             bool
+		wait              bool
 	)
 
 	cmd := &cobra.Command{
@@ -473,11 +473,11 @@ func runClusterJoin(ctx context.Context, clusterName, hubKubeconfigPath, spokeKu
 
 func newGetCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "get <releases|syncs>",
+		Use:   "get <releases|targets>",
 		Short: "Display Kapro resources",
 	}
 	cmd.AddCommand(newGetReleasesCmd())
-	cmd.AddCommand(newGetSyncsCmd())
+	cmd.AddCommand(newGetTargetsCmd())
 	return cmd
 }
 
@@ -525,46 +525,59 @@ func runGetReleases(ctx context.Context, namespace string, allNamespaces bool, k
 	return w.Flush()
 }
 
-func newGetSyncsCmd() *cobra.Command {
+func newGetTargetsCmd() *cobra.Command {
 	var (
 		namespace     string
 		allNamespaces bool
+		phase         string
 		kubeconfig    string
 	)
 	cmd := &cobra.Command{
-		Use:   "syncs",
-		Short: "List Sync objects",
+		Use:   "targets",
+		Short: "List target cluster rollout status across all Releases",
+		Long: `List target cluster rollout entries from Release.status.targets.
+
+After Phase 3, Sync objects no longer exist as standalone CRDs.
+Target rollout state is stored inline in Release.status.targets.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runGetSyncs(cmd.Context(), namespace, allNamespaces, kubeconfig)
+			return runGetTargets(cmd.Context(), namespace, allNamespaces, phase, kubeconfig)
 		},
 	}
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (empty = all namespaces)")
 	cmd.Flags().BoolVarP(&allNamespaces, "all-namespaces", "A", false, "List across all namespaces")
+	cmd.Flags().StringVar(&phase, "phase", "", "Filter by phase (e.g. WaitingApproval, Applying, Converged)")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	return cmd
 }
 
-func runGetSyncs(ctx context.Context, namespace string, allNamespaces bool, kubeconfigPath string) error {
+func runGetTargets(ctx context.Context, namespace string, allNamespaces bool, phase, kubeconfigPath string) error {
 	c, err := buildClient(kubeconfigPath)
 	if err != nil {
 		return err
 	}
 
-	var list kaprov1alpha1.SyncList
 	opts := listOpts(namespace, allNamespaces)
-	if err := c.List(ctx, &list, opts...); err != nil {
-		return fmt.Errorf("list syncs: %w", err)
-	}
-	if len(list.Items) == 0 {
-		fmt.Println("No syncs found.")
-		return nil
+	var releaseList kaprov1alpha1.ReleaseList
+	if err := c.List(ctx, &releaseList, opts...); err != nil {
+		return fmt.Errorf("list releases: %w", err)
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tRELEASE\tENVIRONMENT\tPHASE\tAGE")
-	for _, s := range list.Items {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-			s.Name, s.Spec.ReleaseRef, s.Spec.EnvironmentRef, s.Status.Phase, age(s.CreationTimestamp.Time))
+	fmt.Fprintln(w, "RELEASE\tTARGET\tPIPELINE\tSTAGE\tPHASE\tAGE")
+	count := 0
+	for _, rel := range releaseList.Items {
+		for _, target := range rel.Status.Targets {
+			if phase != "" && string(target.Phase) != phase {
+				continue
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+				rel.Name, target.Target, target.Pipeline, target.Stage,
+				target.Phase, age(rel.CreationTimestamp.Time))
+			count++
+		}
+	}
+	if count == 0 {
+		fmt.Fprintln(w, "(no targets found)")
 	}
 	return w.Flush()
 }
@@ -578,52 +591,69 @@ func newApproveCmd() *cobra.Command {
 		kubeconfig string
 	)
 	cmd := &cobra.Command{
-		Use:   "approve <sync-name>",
-		Short: "Approve a Sync waiting for human gate",
-		Args:  cobra.ExactArgs(1),
+		Use:   "approve <release>/<target>",
+		Short: "Approve a target cluster waiting for human gate",
+		Long: `Create an Approval for a specific target cluster in WaitingApproval phase.
+
+The argument format is <release-name>/<target-cluster>.
+
+Examples:
+  kapro approve v1.2.3/de-prod
+  kapro approve v1.2.3/de-prod --comment "checked canary metrics, all green"`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runApprove(cmd.Context(), args[0], namespace, comment, kubeconfig)
 		},
 	}
-	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace of the Sync")
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace of the Release")
 	cmd.Flags().StringVar(&comment, "comment", "", "Optional approval comment (required for bypass)")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	return cmd
 }
 
-func runApprove(ctx context.Context, syncName, namespace, comment, kubeconfigPath string) error {
+func runApprove(ctx context.Context, releaseTarget, namespace, comment, kubeconfigPath string) error {
+	parts := strings.SplitN(releaseTarget, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return fmt.Errorf("argument must be <release>/<target>, got %q", releaseTarget)
+	}
+	releaseName, targetName := parts[0], parts[1]
+
 	c, err := buildClient(kubeconfigPath)
 	if err != nil {
 		return err
 	}
 
-	var sync kaprov1alpha1.Sync
-	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: syncName}, &sync); err != nil {
-		return fmt.Errorf("get sync %q: %w", syncName, err)
+	var rel kaprov1alpha1.Release
+	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: releaseName}, &rel); err != nil {
+		return fmt.Errorf("get release %q: %w", releaseName, err)
 	}
 
-	if sync.Status.Phase != kaprov1alpha1.SyncPhaseWaitingApproval {
-		fmt.Printf("⚠️  Sync %q is in phase %q (not WaitingApproval) — approving anyway.\n",
-			syncName, sync.Status.Phase)
+	// Warn if the target is not in WaitingApproval — allow approval anyway (operator override).
+	for _, target := range rel.Status.Targets {
+		if target.Target == targetName && target.Phase != kaprov1alpha1.SyncPhaseWaitingApproval {
+			fmt.Printf("⚠️  Target %q is in phase %q (not WaitingApproval) — approving anyway.\n",
+				targetName, target.Phase)
+			break
+		}
 	}
 
-	approvalName := syncName + "-approval"
+	approvalName := releaseName + "-" + targetName + "-approval"
 	approval := &kaprov1alpha1.Approval{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      approvalName,
 			Namespace: namespace,
 			// Labels required by ApprovalGate's client.MatchingLabels query.
 			Labels: map[string]string{
-				"kapro.io/release":     sync.Spec.ReleaseRef,
-				"kapro.io/environment": sync.Spec.EnvironmentRef,
+				"kapro.io/release": releaseName,
+				"kapro.io/target":  targetName,
 			},
 		},
 		Spec: kaprov1alpha1.ApprovalSpec{
-			Kind:           kaprov1alpha1.ApprovalKindSync,
-			Ref:            syncName,
-			Release:        sync.Spec.ReleaseRef,
-			EnvironmentRef: sync.Spec.EnvironmentRef,
-			Comment:        comment,
+			Kind:    kaprov1alpha1.ApprovalKindSync,
+			Ref:     releaseTarget,
+			Release: releaseName,
+			Target:  targetName,
+			Comment: comment,
 			// approvedBy will be overwritten by the ApprovalMutator webhook
 			// with the real Kubernetes username from the admission request.
 		},
@@ -634,9 +664,8 @@ func runApprove(ctx context.Context, syncName, namespace, comment, kubeconfigPat
 	}
 
 	fmt.Printf("✅ Approval created: %s/%s\n", namespace, approvalName)
-	fmt.Printf("   Sync:        %s\n", syncName)
-	fmt.Printf("   Release:     %s\n", sync.Spec.ReleaseRef)
-	fmt.Printf("   Environment: %s\n", sync.Spec.EnvironmentRef)
+	fmt.Printf("   Release:     %s\n", releaseName)
+	fmt.Printf("   Target:      %s\n", targetName)
 	return nil
 }
 
@@ -646,7 +675,7 @@ func newRollbackCmd() *cobra.Command {
 	var (
 		toDigest   string
 		namespace  string
-		envs       []string
+		targets    []string
 		kubeconfig string
 	)
 	cmd := &cobra.Command{
@@ -657,25 +686,27 @@ func newRollbackCmd() *cobra.Command {
 The original Release is never modified (immutable). A new Artifact CR is
 created with the provided digest and a new Release is created referencing it.
 
-Use --env to target only specific clusters (hotfix / partial rollback).
+Use --target to scope rollback to specific clusters (hotfix / partial rollback).
 
 Examples:
   kapro rollback my-release --to sha256:abc123def456
-  kapro rollback my-release --to sha256:abc123def456 --env de-prod,fi-prod`,
+  kapro rollback my-release --to sha256:abc123def456 --target de-prod --target fi-prod`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRollback(cmd.Context(), args[0], toDigest, namespace, envs, kubeconfig)
+			return runRollback(cmd.Context(), args[0], toDigest, namespace, targets, kubeconfig)
 		},
 	}
 	cmd.Flags().StringVar(&toDigest, "to", "", "OCI digest to roll back to (required)")
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace of the Release")
-	cmd.Flags().StringArrayVar(&envs, "env", nil, "Restrict rollback to specific environments (repeatable: --env de-prod --env fi-prod)")
+	cmd.Flags().StringArrayVar(&targets, "target", nil, "Restrict rollback to specific target clusters (repeatable)")
+	cmd.Flags().StringArrayVar(&targets, "env", nil, "Deprecated alias for --target")
+	_ = cmd.Flags().MarkHidden("env")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	_ = cmd.MarkFlagRequired("to")
 	return cmd
 }
 
-func runRollback(ctx context.Context, releaseName, toDigest, namespace string, envs []string, kubeconfigPath string) error {
+func runRollback(ctx context.Context, releaseName, toDigest, namespace string, targets []string, kubeconfigPath string) error {
 	c, err := buildClient(kubeconfigPath)
 	if err != nil {
 		return err
@@ -733,8 +764,8 @@ func runRollback(ctx context.Context, releaseName, toDigest, namespace string, e
 		AppKey:      orig.Spec.AppKey,
 		DerivedFrom: releaseName,
 	}
-	if len(envs) > 0 {
-		rbSpec.Scope = &kaprov1alpha1.ReleaseScope{Environments: envs}
+	if len(targets) > 0 {
+		rbSpec.Scope = &kaprov1alpha1.ReleaseScope{Targets: targets}
 	}
 	rbRelease := &kaprov1alpha1.Release{
 		ObjectMeta: metav1.ObjectMeta{
@@ -757,10 +788,10 @@ func runRollback(ctx context.Context, releaseName, toDigest, namespace string, e
 	fmt.Printf("   Original release: %s\n", releaseName)
 	fmt.Printf("   Rollback digest:  %s\n", toDigest)
 	fmt.Printf("   Rollback artifact: %s\n", rbArtifactName)
-	if len(envs) > 0 {
-		fmt.Printf("   Scoped to envs:   %s\n", strings.Join(envs, ", "))
+	if len(targets) > 0 {
+		fmt.Printf("   Scoped to targets: %s\n", strings.Join(targets, ", "))
 	}
-	fmt.Printf("\nMonitor progress:\n  kapro get syncs -n %s\n", namespace)
+	fmt.Printf("\nMonitor progress:\n  kapro get targets -n %s\n", namespace)
 	return nil
 }
 
@@ -961,7 +992,7 @@ Examples:
 	cmd.Flags().StringVar(&name, "name", "", "Release name (required)")
 	cmd.Flags().StringVar(&artifact, "artifact", "", "Artifact CR name to deliver (required)")
 	cmd.Flags().StringArrayVar(&pipelines, "pipeline", nil, "Pipeline name (repeatable; required at least once)")
-	cmd.Flags().StringArrayVar(&scope, "scope", nil, "Restrict to environment (repeatable: --scope de-prod --scope fi-prod)")
+	cmd.Flags().StringArrayVar(&scope, "scope", nil, "Restrict to target cluster (repeatable: --scope de-prod --scope fi-prod)")
 	cmd.Flags().StringVar(&derivedFrom, "derived-from", "", "Parent Release name (for hotfix lineage)")
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace for the Release")
 	cmd.Flags().StringVar(&appKey, "app-key", "", "App key for MemberCluster version tracking (defaults to artifact name)")
@@ -997,7 +1028,7 @@ func runReleaseCreate(ctx context.Context, name, artifact string, pipelines, sco
 		DerivedFrom: derivedFrom,
 	}
 	if len(scope) > 0 {
-		spec.Scope = &kaprov1alpha1.ReleaseScope{Environments: scope}
+		spec.Scope = &kaprov1alpha1.ReleaseScope{Targets: scope}
 	}
 
 	rel := &kaprov1alpha1.Release{
@@ -1034,7 +1065,7 @@ func newPromoteCmd() *cobra.Command {
 		releaseName string
 		pipeline    string
 		stage       string
-		envs        []string
+		targets     []string
 		comment     string
 		namespace   string
 		kubeconfig  string
@@ -1044,24 +1075,26 @@ func newPromoteCmd() *cobra.Command {
 		Short: "Manually advance a stage past its gate",
 		Long: `Create Approval CRs for all Syncs in a stage that are waiting for human approval.
 
-This is the bulk equivalent of 'kapro approve' — it targets every environment
+This is the bulk equivalent of 'kapro approve' — it targets every cluster
 in a stage rather than a single Sync by name.
 
 Examples:
-  # Approve all environments in canary stage
+  # Approve all targets in canary stage
   kapro promote --release v1.2.3 --pipeline global --stage canary --comment "LGTM"
 
-  # Approve specific environments only
+  # Approve specific targets only
   kapro promote --release v1.2.3 --pipeline global --stage canary \
-    --env de-prod --env fi-prod --comment "approved for EU first"`,
+    --target de-prod --target fi-prod --comment "approved for EU first"`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runPromote(cmd.Context(), releaseName, pipeline, stage, envs, comment, namespace, kubeconfig)
+			return runPromote(cmd.Context(), releaseName, pipeline, stage, targets, comment, namespace, kubeconfig)
 		},
 	}
 	cmd.Flags().StringVar(&releaseName, "release", "", "Release name (required)")
 	cmd.Flags().StringVar(&pipeline, "pipeline", "", "Pipeline name the stage belongs to")
 	cmd.Flags().StringVar(&stage, "stage", "", "Stage name (required)")
-	cmd.Flags().StringArrayVar(&envs, "env", nil, "Target specific environments only (repeatable)")
+	cmd.Flags().StringArrayVar(&targets, "target", nil, "Target specific clusters only (repeatable)")
+	cmd.Flags().StringArrayVar(&targets, "env", nil, "Deprecated alias for --target")
+	_ = cmd.Flags().MarkHidden("env")
 	cmd.Flags().StringVar(&comment, "comment", "", "Approval comment (required if bypass was requested)")
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
@@ -1070,79 +1103,82 @@ Examples:
 	return cmd
 }
 
-func runPromote(ctx context.Context, releaseName, pipeline, stage string, envs []string,
+func runPromote(ctx context.Context, releaseName, pipeline, stage string, targets []string,
 	comment, namespace, kubeconfigPath string) error {
 	c, err := buildClient(kubeconfigPath)
 	if err != nil {
 		return err
 	}
 
-	// List Syncs for this release+stage that are WaitingApproval.
-	matchLabels := client.MatchingLabels{
-		"kapro.io/release": releaseName,
-		"kapro.io/stage":   stage,
-	}
-	if pipeline != "" {
-		matchLabels["kapro.io/pipeline"] = pipeline
+	// Get the Release and filter its inline targets by stage/pipeline.
+	var rel kaprov1alpha1.Release
+	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: releaseName}, &rel); err != nil {
+		return fmt.Errorf("get release %q: %w", releaseName, err)
 	}
 
-	var syncList kaprov1alpha1.SyncList
-	if err := c.List(ctx, &syncList, matchLabels, client.Limit(500)); err != nil {
-		return fmt.Errorf("list syncs: %w", err)
-	}
-
-	// Filter by environment allowlist if provided.
-	envSet := make(map[string]struct{}, len(envs))
-	for _, e := range envs {
-		envSet[e] = struct{}{}
+	// Build target allowlist if provided.
+	targetSet := make(map[string]struct{}, len(targets))
+	for _, target := range targets {
+		targetSet[target] = struct{}{}
 	}
 
 	approved := 0
 	skipped := 0
-	for i := range syncList.Items {
-		s := &syncList.Items[i]
-		if s.Status.Phase != kaprov1alpha1.SyncPhaseWaitingApproval {
+	total := 0
+	for _, target := range rel.Status.Targets {
+		if target.Stage != stage {
+			continue
+		}
+		if pipeline != "" && target.Pipeline != pipeline {
+			continue
+		}
+		total++
+		if target.Phase != kaprov1alpha1.SyncPhaseWaitingApproval {
 			skipped++
 			continue
 		}
-		if len(envSet) > 0 {
-			if _, ok := envSet[s.Spec.EnvironmentRef]; !ok {
+		if len(targetSet) > 0 {
+			if _, ok := targetSet[target.Target]; !ok {
 				skipped++
 				continue
 			}
 		}
 
-		approvalName := s.Name + "-approval"
+		approvalName := releaseName + "-" + target.Target + "-approval"
 		approval := &kaprov1alpha1.Approval{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      approvalName,
 				Namespace: namespace,
 				Labels: map[string]string{
-					"kapro.io/release":     releaseName,
-					"kapro.io/environment": s.Spec.EnvironmentRef,
+					"kapro.io/release": releaseName,
+					"kapro.io/target":  target.Target,
 				},
 			},
 			Spec: kaprov1alpha1.ApprovalSpec{
-				Kind:           kaprov1alpha1.ApprovalKindSync,
-				Ref:            s.Name,
-				Release:        releaseName,
-				EnvironmentRef: s.Spec.EnvironmentRef,
-				Comment:        comment,
+				Kind:    kaprov1alpha1.ApprovalKindSync,
+				Ref:     releaseName + "/" + target.Target,
+				Release: releaseName,
+				Target:  target.Target,
+				Comment: comment,
 			},
 		}
 		if err := c.Create(ctx, approval); client.IgnoreAlreadyExists(err) != nil {
-			fmt.Printf("⚠️  Failed to create approval for %s: %v\n", s.Spec.EnvironmentRef, err)
+			fmt.Printf("⚠️  Failed to create approval for %s: %v\n", target.Target, err)
 			continue
 		}
-		fmt.Printf("✅ Approved: %s (env: %s)\n", s.Name, s.Spec.EnvironmentRef)
+		fmt.Printf("✅ Approved: %s/%s (stage: %s)\n", releaseName, target.Target, stage)
 		approved++
 	}
 
-	if approved == 0 && skipped == len(syncList.Items) {
-		fmt.Printf("ℹ️  No Syncs in WaitingApproval for release=%s stage=%s\n", releaseName, stage)
+	if approved == 0 && total == 0 {
+		fmt.Printf("ℹ️  No targets in stage=%s for release=%s\n", stage, releaseName)
 		return nil
 	}
-	fmt.Printf("\n%d approval(s) created, %d skipped (not WaitingApproval)\n", approved, skipped)
+	if approved == 0 {
+		fmt.Printf("ℹ️  No targets in WaitingApproval for release=%s stage=%s\n", releaseName, stage)
+		return nil
+	}
+	fmt.Printf("\n%d approval(s) created, %d skipped\n", approved, skipped)
 	return nil
 }
 
@@ -1167,7 +1203,7 @@ Examples:
 			return runWorld(cmd.Context(), env, kubeconfig)
 		},
 	}
-	cmd.Flags().StringVar(&env, "env", "", "Filter by Environment name")
+	cmd.Flags().StringVar(&env, "target", "", "Filter by target cluster name")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	return cmd
 }
@@ -1181,7 +1217,7 @@ func runWorld(ctx context.Context, envFilter, kubeconfigPath string) error {
 	var list kaprov1alpha1.MemberClusterList
 	opts := []client.ListOption{client.Limit(2000)}
 	if envFilter != "" {
-		opts = append(opts, client.MatchingLabels{"kapro.io/environment": envFilter})
+		opts = append(opts, client.MatchingLabels{"kapro.io/target": envFilter})
 	}
 	if err := c.List(ctx, &list, opts...); err != nil {
 		return fmt.Errorf("list member clusters: %w", err)

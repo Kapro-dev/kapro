@@ -45,10 +45,10 @@ func TestDispatcher_Notify_Slack_SendsPayload(t *testing.T) {
 
 	d := &notification.Dispatcher{HTTPClient: srv.Client()}
 	d.Notify(context.Background(), notification.Event{
-		Phase:       "Converged",
-		Version:     "v1.2.0",
-		Environment: "staging",
-		Release:     "rel-1",
+		Phase:   "Converged",
+		Version: "v1.2.0",
+		Target:  "staging",
+		Release: "rel-1",
 	}, slackPolicy(srv.URL))
 
 	if len(received) == 0 {
@@ -105,10 +105,10 @@ func TestDispatcher_Notify_Webhook_SendsJSON(t *testing.T) {
 
 	d := &notification.Dispatcher{HTTPClient: srv.Client()}
 	d.Notify(context.Background(), notification.Event{
-		Phase:       "Applying",
-		Version:     "v1.0.0",
-		Environment: "prod",
-		Release:     "rel-2",
+		Phase:   "Applying",
+		Version: "v1.0.0",
+		Target:  "prod",
+		Release: "rel-2",
 	}, webhookPolicy(srv.URL))
 
 	if len(received) == 0 {

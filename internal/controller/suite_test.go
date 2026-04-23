@@ -20,13 +20,12 @@ import (
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	"kapro.io/kapro/internal/controller"
-	internalgate "kapro.io/kapro/internal/gate"
 	"kapro.io/kapro/pkg/actuator"
 )
 
 // TestMain ensures envtest binaries are available; if not present we skip integration tests gracefully.
 func TestMain(m *testing.M) {
-	// Allow unit tests (sync_fsm_test.go) to run without envtest binaries.
+	// Allow unit tests (fake-client tests) to run without envtest binaries.
 	if os.Getenv("KUBEBUILDER_ASSETS") == "" {
 		// Binaries may be directly in bin/k8s or in a versioned subdirectory (e.g. bin/k8s/1.31.0-darwin-arm64).
 		base := filepath.Join("..", "..", "bin", "k8s")
@@ -52,8 +51,7 @@ func TestMain(m *testing.M) {
 }
 
 // setupEnv starts an envtest environment and returns a cancel function.
-// It registers ReleaseReconciler FIRST (owns IndexField registrations) then
-// SyncReconciler.
+// It registers the ReleaseReconciler and starts the manager.
 //
 // Callers must defer the returned cancel func:
 //
@@ -104,22 +102,13 @@ func setupEnv(t *testing.T) (context.Context, context.CancelFunc, client.Client)
 
 	// IMPORTANT: ReleaseReconciler MUST be registered first — it owns IndexField registrations.
 	releaseReconciler := &controller.ReleaseReconciler{
-		Client:   mgr.GetClient(),
-		Recorder: recorder,
-		Scheme:   mgr.GetScheme(),
+		Client:           mgr.GetClient(),
+		Recorder:         recorder,
+		Scheme:           mgr.GetScheme(),
+		ActuatorRegistry: fakeActuators,
 	}
 	if err := releaseReconciler.SetupWithManager(mgr); err != nil {
 		t.Fatalf("ReleaseReconciler.SetupWithManager: %v", err)
-	}
-
-	syncReconciler := &controller.SyncReconciler{
-		Client:           mgr.GetClient(),
-		Recorder:         recorder,
-		ActuatorRegistry: fakeActuators,
-		ApprovalGate:     &internalgate.ApprovalGate{Client: mgr.GetClient()},
-	}
-	if err := syncReconciler.SetupWithManager(mgr); err != nil {
-		t.Fatalf("SyncReconciler.SetupWithManager: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

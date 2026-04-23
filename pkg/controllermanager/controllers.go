@@ -18,41 +18,34 @@ import (
 	jobgate "kapro.io/kapro/internal/gate/job"
 	webhookgate "kapro.io/kapro/internal/gate/webhook"
 	cosignverifier "kapro.io/kapro/internal/verification/cosign"
-	crdprovider "kapro.io/kapro/internal/provider/crd"
 	pkggate "kapro.io/kapro/pkg/gate"
 )
 
 func init() {
 	Register("release", startReleaseController)
-	Register("releasereport", startReleaseReportController)
-	Register("sync", startSyncController)
-	Register("pipeline", startPipelineController)
 	Register("approval", startApprovalController)
 	Register("csrapproval", startCSRApprovalController)
 	Register("membercluster", startMemberClusterController)
 }
 
 // startReleaseController starts the Release reconciler.
-// Owns the two-level DAG orchestration — walks Pipeline nodes then Stages,
-// creates one Sync per (Release, Pipeline, Stage, Environment).
+// Drives the two-level DAG orchestration — walks Pipeline nodes then Stages,
+// upserts one TargetStatus per (Release, Pipeline, Stage, Target)
+// inline in release.status.targets, and advances each target through the FSM.
 func startReleaseController(_ context.Context, cc ControllerContext) (bool, error) {
 	if err := (&controller.ReleaseReconciler{
-		Client:   cc.Manager.GetClient(),
-		Recorder: cc.Recorder,
-		Scheme:   cc.Manager.GetScheme(),
-	}).SetupWithManager(cc.Manager); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-// startReleaseReportController starts the ReleaseReport aggregation reconciler.
-// Purely observational — never mutates Syncs or Releases.
-// Disable with KAPRO_CONTROLLERS=*,-releasereport if audit reports are not needed.
-func startReleaseReportController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.ReleaseReportReconciler{
-		Client:   cc.Manager.GetClient(),
-		Recorder: cc.Recorder,
+		Client:           cc.Manager.GetClient(),
+		Recorder:         cc.Recorder,
+		Scheme:           cc.Manager.GetScheme(),
+		ActuatorRegistry: cc.ActuatorRegistry,
+		SoakGate:         cc.Gates.Soak,
+		MetricsGate:      cc.Gates.Metrics,
+		ApprovalGate:     cc.Gates.Approval,
+		VerificationGate: cc.Gates.Verification,
+		Notifier:         cc.Notifier,
+		ApprovalSecret:   cc.ApprovalSecret,
+		ExternalURL:      cc.ExternalURL,
+		GateRegistry:     cc.GateRegistry,
 	}).SetupWithManager(cc.Manager); err != nil {
 		return false, err
 	}
@@ -83,38 +76,8 @@ func BuildGateRegistry(c client.Client) (*pkggate.Registry, error) {
 	return reg, nil
 }
 
-// startSyncController starts the Sync FSM reconciler.
-// Drives one environment through: Verification → HealthCheck → Soaking →
-// MetricsCheck → WaitingApproval → Applying → Converged | Failed.
-// Built-in gates: soak, metrics (Prometheus), approval, health, verification (cosign), CEL.
-func startSyncController(_ context.Context, cc ControllerContext) (bool, error) {
-	provider := &crdprovider.CRDProvider{}
-
-	if err := (&controller.SyncReconciler{
-		Client:           cc.Manager.GetClient(),
-		Scheme:           cc.Manager.GetScheme(),
-		Recorder:         cc.Recorder,
-		ActuatorRegistry: cc.ActuatorRegistry,
-		Provider:         provider,
-		SoakGate:         cc.Gates.Soak,
-		MetricsGate:      cc.Gates.Metrics,
-		ApprovalGate:     cc.Gates.Approval,
-		VerificationGate: cc.Gates.Verification,
-		HealthAssessor:   cc.HealthAssessor,
-		Notifier:         cc.Notifier,
-		OCIService:       cc.OCIService,
-		ApprovalSecret:   cc.ApprovalSecret,
-		ExternalURL:      cc.ExternalURL,
-		CELGate:          cc.Gates.CEL,
-		GateRegistry:     cc.GateRegistry,
-	}).SetupWithManager(cc.Manager); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
 // startApprovalController starts the Approval reconciler.
-// Watches Approval objects and unblocks Syncs waiting in WaitingApproval phase.
+// Watches Approval objects and unblocks targets waiting in WaitingApproval phase.
 func startApprovalController(_ context.Context, cc ControllerContext) (bool, error) {
 	if err := (&controller.ApprovalReconciler{
 		Client:   cc.Manager.GetClient(),
@@ -162,38 +125,18 @@ func startMemberClusterController(_ context.Context, cc ControllerContext) (bool
 	return true, nil
 }
 
-// startPipelineController starts the Pipeline status-aggregation reconciler.
-// Read-only from a scheduling standpoint — only updates Pipeline.status
-// (phase, stageProgress) by watching Sync objects it owns.
-func startPipelineController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.PipelineReconciler{
-		Client:   cc.Manager.GetClient(),
-		Recorder: cc.Recorder,
-	}).SetupWithManager(cc.Manager); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-// BuildGateSet constructs the full MVP gate set.
-// c is the controller-runtime client used by ApprovalGate, VerificationGate, and CELGate.
-// All five gates are wired and ready — callers do not need to set fields after calling this.
-//
-// Symmetry invariant: every gate that SyncReconciler uses must be constructed here,
-// including CEL (used for GateTemplate dispatch, not a fixed FSM phase). This makes
-// BuildGateSet the single source of truth for gate wiring across the entire operator.
+// BuildGateSet constructs the FSM-phase gate set.
+// c is the controller-runtime client used by ApprovalGate and VerificationGate.
+// Template-dispatch gates (cel, job, webhook) are registered separately in BuildGateRegistry.
 func BuildGateSet(c client.Client) GateSet {
 	return GateSet{
-		Soak:    &internalgate.SoakGate{},
-		Metrics: &internalgate.MetricsGate{},
+		Soak:     &internalgate.SoakGate{},
+		Metrics:  &internalgate.MetricsGate{},
 		Approval: &internalgate.ApprovalGate{Client: c},
 		Verification: &internalgate.VerificationGate{
 			Verifier:  &cosignverifier.Verifier{},
 			KeyReader: &internalgate.ClientSecretKeyReader{Client: c},
 		},
-		// CEL is dispatched via gateForTemplate (type=="cel"), not a fixed FSM phase,
-		// but lives here for symmetry: all gate construction happens in one place.
-		CEL: &celgate.Gate{Client: c},
 	}
 }
 

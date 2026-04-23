@@ -54,7 +54,7 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 	versions := map[string]string{appKey: resolvedVersion}
 
 	// ── 2 + 3. Create MemberClusters with tier labels and live heartbeat ─────
-	// MemberCluster.Name must match Sync.Spec.EnvironmentRef (looked up by name).
+	// MemberCluster.Name must match Sync.Spec.Target (looked up by name).
 	// Tier labels are used by pipeline stage selectors.
 	// SyncReconciler.handlePending checks LastHeartbeat freshness.
 	// handleApplying checks CurrentVersions[appKey] == sync.Spec.Version.
@@ -133,32 +133,30 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 	}, "release should leave Pending")
 	t.Logf("release phase after Pending: %s", getRelease(ctx, c, releaseKey).Status.Phase)
 
-	// ── 7. Wait: at least one Sync created ───────────────────────────────────
-	// Sync is cluster-scoped — do not filter by namespace.
+	// ── 7. Wait: at least one target entry created in release.Status.Targets ─
+	// After the Sync CRD fold, ReleaseReconciler tracks target progress
+	// inline in release.Status.Targets — no standalone Sync objects.
 	eventually(t, func() bool {
-		var syncs kaprov1alpha1.SyncList
-		_ = c.List(ctx, &syncs, client.MatchingLabels{"kapro.io/release": release.Name})
-		return len(syncs.Items) > 0
-	}, "at least one Sync should be created")
+		r := getRelease(ctx, c, releaseKey)
+		return len(r.Status.Targets) > 0
+	}, "at least one TargetStatus should be created in release.Status.Targets")
 
 	// ── 8. Keep MemberClusters fresh so Syncs can converge ──────────────────
 	patchRegistrationConverged(t, ctx, c, devReg, versions)
 	patchRegistrationConverged(t, ctx, c, prodReg, versions)
 
 	// ── 9. Wait: Release reaches Complete ────────────────────────────────────
-	// The full chain (dev stage + prod stage, each going Pending→Applying→Converged)
+	// The full chain (dev stage + prod stage, each going through env FSM states)
 	// can take >20s; use a longer deadline here.
 	eventuallyLong(t, func() bool {
-		// Log Sync phases to aid debugging.
-		var syncs kaprov1alpha1.SyncList
-		_ = c.List(ctx, &syncs, client.MatchingLabels{"kapro.io/release": release.Name})
-		for _, s := range syncs.Items {
-			t.Logf("  Sync %s phase=%s env=%s", s.Name, s.Status.Phase, s.Spec.EnvironmentRef)
-		}
+		// Log target phases to aid debugging.
 		r := getRelease(ctx, c, releaseKey)
+		for _, target := range r.Status.Targets {
+			t.Logf("  Target %s/%s/%s phase=%s", target.PipelineRef, target.Stage, target.Target, target.Phase)
+		}
 		t.Logf("  Release phase=%s", r.Status.Phase)
 		return r.Status.Phase == kaprov1alpha1.ReleasePhaseComplete
-	}, "release should reach Complete — full chain Release→Sync→Converged→Complete")
+	}, "release should reach Complete — full chain Release→Env FSM→Converged→Complete")
 
 	t.Logf("✅ E2E chain complete — Release %s reached Complete", release.Name)
 }

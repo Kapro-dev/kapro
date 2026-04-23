@@ -1,15 +1,14 @@
-// Package webhook provides an HTTP server for human approval of Kapro Syncs.
+// Package webhook provides an HTTP server for human approval of Kapro releases.
 //
 // The server exposes three endpoints:
 //
-//   POST /approve/{name}?token=<t>   — creates an Approval CR to unblock the Sync
-//   POST /reject/{name}?token=<t>    — patches the Sync with a rejection annotation;
-//                                      the SyncReconciler will call failSync() on
-//                                      the next reconcile, preserving all controller invariants.
-//   GET  /status/{name}?ns=<ns>      — returns public Sync phase/version (no auth required)
+//	POST /approve/{targetKey}?token=<t>   — creates an Approval CR to unblock the target
+//	POST /reject/{targetKey}?token=<t>    — sets rejected=true on the inline target status entry;
+//	                                        ReleaseReconciler will fail the target on next reconcile.
+//	GET  /status/{targetKey}?ns=<ns>      — returns public target phase/version (no auth required)
 //
 // Token format is defined in internal/webhook/token. Tokens are HMAC-SHA256 signed,
-// scoped to a single Sync UID, and expire after 48 hours by default.
+// scoped to a single Release UID + target key, and expire after 48 hours by default.
 //
 // The server creates Approval objects directly — no gRPC or extra dependencies.
 // Any notification channel (email, Teams, webhook, etc.) delivers the approve/reject
@@ -31,19 +30,12 @@ import (
 	"kapro.io/kapro/internal/webhook/token"
 )
 
-// AnnotationRejected is patched on a Sync when a human POSTs to /reject.
-// The SyncReconciler checks this in handleWaitingApproval and calls failSync.
-const (
-	AnnotationRejected   = "kapro.io/rejected"
-	AnnotationRejectedBy = "kapro.io/rejected-by"
-)
-
-// Server handles approve/reject/status HTTP requests for Kapro Syncs.
+// Server handles approve/reject/status HTTP requests for Kapro release approvals.
 type Server struct {
-	// Client is used to look up Syncs and create Approval CRs.
+	// Client is used to look up Releases and create Approval CRs.
 	Client client.Client
 	// TokenSecret is the HMAC key used to verify approval tokens.
-	// Must match the secret used by SyncReconciler to sign tokens.
+	// Must match the secret used by ReleaseReconciler to sign tokens.
 	TokenSecret []byte
 }
 
@@ -60,16 +52,16 @@ func (s *Server) Handler() http.Handler {
 }
 
 // handleApprove verifies the token and creates an Approval CR.
-// POST /approve/{name}?token=<t>
+// POST /approve/{targetKey}?token=<t>
 func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	syncName := r.PathValue("name")
-	if syncName == "" {
-		syncName = trimPrefix(r.URL.Path, "/approve/")
+	targetKey := r.PathValue("name")
+	if targetKey == "" {
+		targetKey = trimPrefix(r.URL.Path, "/approve/")
 	}
 
 	claims, err := s.verifyToken(r, "approve")
@@ -78,14 +70,15 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Look up the Sync to get its namespace and validate UID.
-	sync, err := s.getSync(r.Context(), syncName, claims.Namespace)
+	// Look up the Release and validate UID.
+	release, err := s.getRelease(r.Context(), claims.Release, claims.Namespace)
 	if err != nil {
-		http.Error(w, "sync not found", http.StatusNotFound)
+		http.Error(w, "release not found", http.StatusNotFound)
 		return
 	}
-	if string(sync.UID) != claims.UID {
-		http.Error(w, "token bound to different sync instance", http.StatusConflict)
+	expectedUID := string(release.UID) + "/" + targetKey
+	if expectedUID != claims.UID {
+		http.Error(w, "token bound to different release instance", http.StatusConflict)
 		return
 	}
 
@@ -103,31 +96,31 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.FromContext(r.Context()).Info("Approval CR created",
-		"sync", syncName,
-		"approvedBy", claims.UID,
-		"environment", claims.Environment,
+		"targetKey", targetKey,
+		"release", claims.Release,
+		"target", claims.Target,
 	)
 
 	writeJSON(w, http.StatusOK, map[string]string{
-		"status":      "approved",
-		"sync":        syncName,
-		"environment": claims.Environment,
-		"version":     claims.Version,
+		"status":    "approved",
+		"targetKey": targetKey,
+		"target":    claims.Target,
+		"version":   claims.Version,
 	})
 }
 
-// handleReject patches the Sync with a rejection annotation.
-// The SyncReconciler will call failSync() on next reconcile.
-// POST /reject/{name}?token=<t>
+// handleReject sets rejected=true on the inline env entry so ReleaseReconciler
+// fails it on the next reconcile.
+// POST /reject/{envKey}?token=<t>
 func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	syncName := r.PathValue("name")
-	if syncName == "" {
-		syncName = trimPrefix(r.URL.Path, "/reject/")
+	targetKey := r.PathValue("name")
+	if targetKey == "" {
+		targetKey = trimPrefix(r.URL.Path, "/reject/")
 	}
 
 	claims, err := s.verifyToken(r, "reject")
@@ -136,76 +129,93 @@ func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sync, err := s.getSync(r.Context(), syncName, claims.Namespace)
+	release, err := s.getRelease(r.Context(), claims.Release, claims.Namespace)
 	if err != nil {
-		http.Error(w, "sync not found", http.StatusNotFound)
+		http.Error(w, "release not found", http.StatusNotFound)
 		return
 	}
-	if string(sync.UID) != claims.UID {
-		http.Error(w, "token bound to different sync instance", http.StatusConflict)
+	expectedUID := string(release.UID) + "/" + targetKey
+	if expectedUID != claims.UID {
+		http.Error(w, "token bound to different release instance", http.StatusConflict)
 		return
 	}
 
-	// Patch annotations — the controller owns the status transition.
-	patch := client.MergeFrom(sync.DeepCopy())
-	if sync.Annotations == nil {
-		sync.Annotations = make(map[string]string)
+	// Find the target entry and mark it rejected.
+	i := findTargetByKey(release, targetKey)
+	if i < 0 {
+		http.Error(w, "target entry not found in release status", http.StatusNotFound)
+		return
 	}
-	sync.Annotations[AnnotationRejected] = "true"
-	// Use a query param ?by=<name> for the approver identity if provided.
+
 	rejectedBy := r.URL.Query().Get("by")
 	if rejectedBy == "" {
 		rejectedBy = "webhook"
 	}
-	sync.Annotations[AnnotationRejectedBy] = rejectedBy
 
-	if err := s.Client.Patch(r.Context(), sync, patch); err != nil {
-		log.FromContext(r.Context()).Error(err, "patch Sync rejection annotation failed")
+	// Patch only the target status fields.
+	patch := client.MergeFrom(release.DeepCopy())
+	release.Status.Targets[i].Rejected = true
+	release.Status.Targets[i].RejectedBy = rejectedBy
+	if err := s.Client.Status().Patch(r.Context(), release, patch); err != nil {
+		log.FromContext(r.Context()).Error(err, "patch Release target rejection failed")
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
-	log.FromContext(r.Context()).Info("Sync rejection annotated",
-		"sync", syncName,
+	log.FromContext(r.Context()).Info("target rejection set",
+		"targetKey", targetKey,
 		"rejectedBy", rejectedBy,
 	)
 
 	writeJSON(w, http.StatusOK, map[string]string{
-		"status":      "rejected",
-		"sync":        syncName,
-		"environment": claims.Environment,
+		"status":    "rejected",
+		"targetKey": targetKey,
+		"target":    claims.Target,
 	})
 }
 
-// handleStatus returns the public sync phase. No auth required.
-// GET /status/{name}?ns=<namespace>
+// handleStatus returns the public target phase. No auth required.
+// GET /status/{targetKey}?ns=<namespace>
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	syncName := r.PathValue("name")
-	if syncName == "" {
-		syncName = trimPrefix(r.URL.Path, "/status/")
+	targetKey := r.PathValue("name")
+	if targetKey == "" {
+		targetKey = trimPrefix(r.URL.Path, "/status/")
 	}
 	ns := r.URL.Query().Get("ns")
 	if ns == "" {
 		ns = "kapro-system"
 	}
 
-	sync, err := s.getSync(r.Context(), syncName, ns)
-	if err != nil {
-		http.Error(w, "sync not found", http.StatusNotFound)
+	// Scan all Releases in the namespace for a target entry matching targetKey.
+	var releaseList kaprov1alpha1.ReleaseList
+	if err := s.Client.List(r.Context(), &releaseList,
+		client.InNamespace(ns), client.Limit(500),
+	); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	for i := range releaseList.Items {
+		rel := &releaseList.Items[i]
+		idx := findTargetByKey(rel, targetKey)
+		if idx < 0 {
+			continue
+		}
+		target := rel.Status.Targets[idx]
+		writeJSON(w, http.StatusOK, map[string]string{
+			"phase":   string(target.Phase),
+			"version": target.Version,
+			"target":  target.Target,
+			"release": rel.Name,
+		})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{
-		"phase":       string(sync.Status.Phase),
-		"version":     sync.Spec.Version,
-		"environment": sync.Spec.EnvironmentRef,
-		"release":     sync.Spec.ReleaseRef,
-	})
+	http.Error(w, "target not found", http.StatusNotFound)
 }
 
 func (s *Server) verifyToken(r *http.Request, expectedAction string) (*token.Claims, error) {
@@ -223,36 +233,48 @@ func (s *Server) verifyToken(r *http.Request, expectedAction string) (*token.Cla
 	return claims, nil
 }
 
-func (s *Server) getSync(ctx context.Context, name, namespace string) (*kaprov1alpha1.Sync, error) {
-	var sync kaprov1alpha1.Sync
-	if err := s.Client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, &sync); err != nil {
+func (s *Server) getRelease(ctx context.Context, name, namespace string) (*kaprov1alpha1.Release, error) {
+	var release kaprov1alpha1.Release
+	if err := s.Client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, &release); err != nil {
 		return nil, err
 	}
-	return &sync, nil
+	return &release, nil
+}
+
+// findTargetByKey finds the index of the target entry in release.Status.Targets
+// whose computed key matches targetKey. Returns -1 if not found.
+func findTargetByKey(release *kaprov1alpha1.Release, targetKey string) int {
+	for i, target := range release.Status.Targets {
+		k := fmt.Sprintf("%s-%s-%s-%s", release.Name, target.PipelineRef, target.Stage, target.Target)
+		if k == targetKey {
+			return i
+		}
+	}
+	return -1
 }
 
 func (s *Server) buildApproval(claims *token.Claims) *kaprov1alpha1.Approval {
 	approvedBy := claims.ApprovedBy
 	if approvedBy == "" {
-		approvedBy = "webhook" // fallback for tokens minted before ApprovedBy was added
+		approvedBy = "webhook"
 	}
 	return &kaprov1alpha1.Approval{
 		ObjectMeta: metav1.ObjectMeta{
-			// Name is deterministic: one approval per release+env combination.
-			Name:      fmt.Sprintf("%s-%s", claims.Release, claims.Environment),
+			// Name is deterministic: one approval per release+target combination.
+			Name:      fmt.Sprintf("%s-%s", claims.Release, claims.Target),
 			Namespace: claims.Namespace,
 			Labels: map[string]string{
-				"kapro.io/release":     claims.Release,
-				"kapro.io/environment": claims.Environment,
+				"kapro.io/release": claims.Release,
+				"kapro.io/target":  claims.Target,
 			},
 		},
 		Spec: kaprov1alpha1.ApprovalSpec{
-			Kind:           kaprov1alpha1.ApprovalKindSync,
-			Ref:            claims.Environment,
-			Release:        claims.Release,
-			EnvironmentRef: claims.Environment,
-			ApprovedBy:     approvedBy,
-			Comment:        fmt.Sprintf("approved via webhook for version %s", claims.Version),
+			Kind:       kaprov1alpha1.ApprovalKindSync,
+			Ref:        claims.Target,
+			Release:    claims.Release,
+			Target:     claims.Target,
+			ApprovedBy: approvedBy,
+			Comment:    fmt.Sprintf("approved via webhook for version %s", claims.Version),
 		},
 	}
 }
@@ -273,3 +295,19 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
+
+//
+// The server exposes three endpoints:
+//
+//   POST /approve/{name}?token=<t>   — creates an Approval CR to unblock a target rollout
+//   POST /reject/{name}?token=<t>    — patches the owning Release with a rejection annotation;
+//                                      the release controller will fail the rollout on the next
+//                                      reconcile, preserving controller invariants.
+//   GET  /status/{name}?ns=<ns>      — returns public rollout phase/version (no auth required)
+//
+// Token format is defined in internal/webhook/token. Tokens are HMAC-SHA256 signed,
+// scoped to a single rollout entry UID surrogate, and expire after 48 hours by default.
+//
+// The server creates Approval objects directly — no gRPC or extra dependencies.
+// Any notification channel (email, Teams, webhook, etc.) delivers the approve/reject
+// URLs; the channel is irrelevant to this server.

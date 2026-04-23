@@ -1,6 +1,6 @@
-# cluster-vars.yaml — per-country/per-environment cluster configuration.
+# cluster-vars.yaml — per-country/per-target cluster configuration.
 #
-# One file per environment. Committed to the monorepo.
+# One file per target. Committed to the monorepo.
 # The cluster-controller reads this ConfigMap from the management cluster
 # and exposes it to the Flux Kustomizations running on each leaf cluster.
 #
@@ -13,7 +13,7 @@ metadata:
   name: cluster-vars-de-prod
   namespace: flux-system
   labels:
-    kapro.io/environment: de-prod
+    kapro.io/target: de-prod
     kapro.io/country: de
     kapro.io/tier: prod
 data:

@@ -19,16 +19,13 @@ import (
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	fluxactuator "kapro.io/kapro/internal/actuator/flux"
-	gitopshealth "kapro.io/kapro/internal/health/gitops"
 	_ "kapro.io/kapro/internal/metrics" // register custom Prometheus metrics at init
 	enginenotifier "kapro.io/kapro/internal/notification/engine"
-	orasoci "kapro.io/kapro/internal/oci/oras"
 	"kapro.io/kapro/internal/version"
-	kaploadmission "kapro.io/kapro/internal/webhook/admission"
 	"kapro.io/kapro/internal/webhook"
+	kaploadmission "kapro.io/kapro/internal/webhook/admission"
 	"kapro.io/kapro/pkg/actuator"
 	cm "kapro.io/kapro/pkg/controllermanager"
-	"kapro.io/kapro/pkg/provider"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
@@ -97,18 +94,12 @@ func main() {
 
 	gates := cm.BuildGateSet(mgr.GetClient())
 
-	// Build actuator registry — resolves per-Environment actuator at apply time.
+	// Build actuator registry — resolves per-target actuator at apply time.
 	actuatorReg := actuator.NewRegistry()
 	if err := actuatorReg.Register("flux", &fluxactuator.FluxActuator{Client: mgr.GetClient()}); err != nil {
 		log.Error(err, "failed to register flux actuator")
 		os.Exit(1)
 	}
-
-	// Build provider registry — resolves per-Environment cluster connector at reconcile time.
-	// Path A (CRD provider / heartbeat) is the default for all topologies and needs no registration.
-	// Cloud-specific Path B connectors (GKE, AKS…) will be added in v0.3 as optional plugins.
-	// See docs/ROADMAP.md.
-	providerReg := provider.NewRegistry()
 
 	gateRegistry, err := cm.BuildGateRegistry(mgr.GetClient())
 	if err != nil {
@@ -120,16 +111,13 @@ func main() {
 		Manager:          mgr,
 		Recorder:         recorder,
 		ActuatorRegistry: actuatorReg,
-		ProviderRegistry: providerReg,
 		Gates:            gates,
 		GateRegistry:     gateRegistry,
-		HealthAssessor:   &gitopshealth.Assessor{Client: mgr.GetClient()},
 		Notifier: &enginenotifier.Notifier{
 			SecretName: "kapro-notifications-secret",
 			Namespace:  "kapro-system",
 			Client:     mgr.GetClient(),
 		},
-		OCIService:     &orasoci.Service{},
 		ApprovalSecret: loadSecret("approval-secret"),
 		ExternalURL:    os.Getenv("KAPRO_EXTERNAL_URL"),
 		HubAPIURL:      os.Getenv("KAPRO_HUB_API_URL"),
@@ -224,6 +212,7 @@ func loadHubCAData(cfg *rest.Config) []byte {
 	}
 	return nil
 }
+
 // The server only starts when this instance holds the leader lock.
 func leaderOnlyHTTP(addr string, handler http.Handler, timeout time.Duration) *httpRunnable {
 	return &httpRunnable{

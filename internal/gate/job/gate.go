@@ -27,16 +27,16 @@ import (
 )
 
 // Gate implements the job gate type.
-// It creates a Kubernetes Job in the same namespace as the Sync and polls
+// It creates a Kubernetes Job in the same namespace as the delivery context and polls
 // its status on each reconcile cycle.
 type Gate struct {
 	Client client.Client
 }
 
-// jobName returns a deterministic Job name for a (sync, template) pair.
-// Using the Sync name + template name keeps it idempotent across reconcile loops.
-func jobName(syncName, tmplName string) string {
-	name := fmt.Sprintf("kapro-gate-%s-%s", syncName, tmplName)
+// jobName returns a deterministic Job name for a (context, template) pair.
+// Using the gate context name + template name keeps it idempotent across reconcile loops.
+func jobName(ctxName, tmplName string) string {
+	name := fmt.Sprintf("kapro-gate-%s-%s", ctxName, tmplName)
 	if len(name) > 63 {
 		name = name[:63]
 	}
@@ -54,16 +54,16 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 	}
 	spec := req.Template.Job
 
-	if req.Sync == nil {
-		return pkggate.Result{}, fmt.Errorf("job gate: Sync is nil in request")
+	if req.Context == nil {
+		return pkggate.Result{}, fmt.Errorf("job gate: context is nil in request")
 	}
-	sync := req.Sync
-	namespace := sync.Namespace
+	gateCtx := req.Context
+	namespace := gateCtx.Namespace
 	if namespace == "" {
 		namespace = "default"
 	}
 
-	name := jobName(sync.Name, req.Template.Name)
+	name := jobName(gateCtx.Name, req.Template.Name)
 
 	// Check if the Job already exists.
 	var existing batchv1.Job
@@ -74,7 +74,7 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 
 	if apierrors.IsNotFound(err) {
 		// Create the Job.
-		job, buildErr := buildJob(name, namespace, sync, spec, req.Args, req.Template.Timeout)
+		job, buildErr := buildJob(name, namespace, gateCtx, spec, req.Args, req.Template.Timeout)
 		if buildErr != nil {
 			return pkggate.Result{}, fmt.Errorf("job gate: build job spec: %w", buildErr)
 		}
@@ -122,19 +122,19 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 // Kubernetes Job controller if it runs longer than the configured limit.
 func buildJob(
 	name, namespace string,
-	sync *kaprov1alpha1.Sync,
+	gateCtx *pkggate.Context,
 	spec *kaprov1alpha1.JobGateSpec,
 	args map[string]string,
 	timeout string,
 ) (*batchv1.Job, error) {
 	// Inject standard context env vars so the job knows what it is evaluating.
 	extraEnv := []corev1.EnvVar{
-		{Name: "KAPRO_SYNC", Value: sync.Name},
-		{Name: "KAPRO_ENVIRONMENT", Value: sync.Spec.EnvironmentRef},
-		{Name: "KAPRO_VERSION", Value: sync.Spec.Version},
-		{Name: "KAPRO_RELEASE", Value: sync.Spec.ReleaseRef},
-		{Name: "KAPRO_PIPELINE", Value: sync.Spec.Pipeline},
-		{Name: "KAPRO_STAGE", Value: sync.Spec.Stage},
+		{Name: "KAPRO_SYNC", Value: gateCtx.Name},
+		{Name: "KAPRO_TARGET", Value: gateCtx.Target},
+		{Name: "KAPRO_VERSION", Value: gateCtx.Version},
+		{Name: "KAPRO_RELEASE", Value: gateCtx.ReleaseRef},
+		{Name: "KAPRO_PIPELINE", Value: gateCtx.Pipeline},
+		{Name: "KAPRO_STAGE", Value: gateCtx.Stage},
 	}
 	for k, v := range args {
 		extraEnv = append(extraEnv, corev1.EnvVar{Name: "KAPRO_ARG_" + k, Value: v})
@@ -166,7 +166,7 @@ func buildJob(
 			Namespace: namespace,
 			Labels: map[string]string{
 				"kapro.io/gate-type": "job",
-				"kapro.io/sync":      sync.Name,
+				"kapro.io/sync":      gateCtx.Name,
 			},
 		},
 		Spec: batchv1.JobSpec{
@@ -177,7 +177,7 @@ func buildJob(
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
 						"kapro.io/gate-type": "job",
-						"kapro.io/sync":      sync.Name,
+						"kapro.io/sync":      gateCtx.Name,
 					},
 				},
 				Spec: corev1.PodSpec{

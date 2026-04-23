@@ -59,14 +59,14 @@ var (
 		},
 	)
 
-	// WaveProgress tracks how many Environments have been successfully
+	// WaveProgress tracks how many Targets have been successfully
 	// promoted per release stage.
 	WaveProgress = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "kapro",
 			Subsystem: "wave",
 			Name:      "environments_promoted_total",
-			Help:      "Number of Environments successfully promoted per release stage.",
+			Help:      "Number of Targets successfully promoted per release stage.",
 		},
 		[]string{"release", "stage"},
 	)

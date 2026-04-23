@@ -30,11 +30,11 @@ type Gate struct {
 
 // webhookPayload is the JSON body sent to the webhook endpoint.
 type webhookPayload struct {
-	Promotion   string            `json:"promotion"`
-	Environment string            `json:"environment"`
-	Version     string            `json:"version"`
-	Release     string            `json:"release"`
-	Args        map[string]string `json:"args"`
+	Promotion string            `json:"promotion"`
+	Target    string            `json:"target"`
+	Version   string            `json:"version"`
+	Release   string            `json:"release"`
+	Args      map[string]string `json:"args"`
 }
 
 // webhookResponse is the expected JSON response from the webhook endpoint.
@@ -56,20 +56,20 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 		return pkggate.Result{}, fmt.Errorf("webhook gate: template Webhook URL is empty")
 	}
 
-	var promotion, environment, version, release string
-	if req.Sync != nil {
-		promotion = req.Sync.Name
-		environment = req.Sync.Spec.EnvironmentRef
-		version = req.Sync.Spec.Version
-		release = req.Sync.Spec.ReleaseRef
+	var promotion, target, version, release string
+	if req.Context != nil {
+		promotion = req.Context.Name
+		target = req.Context.Target
+		version = req.Context.Version
+		release = req.Context.ReleaseRef
 	}
 
 	payload := webhookPayload{
-		Promotion:   promotion,
-		Environment: environment,
-		Version:     version,
-		Release:     release,
-		Args:        req.Args,
+		Promotion: promotion,
+		Target:    target,
+		Version:   version,
+		Release:   release,
+		Args:      req.Args,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

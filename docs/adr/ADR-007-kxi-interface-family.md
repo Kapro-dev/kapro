@@ -136,7 +136,7 @@ type Gate interface {
 - v0.2: `Result.Passed` deprecated with godoc warning
 - v0.3: `Result.Passed` removed; only `Result.Phase` used
 
-**CEL variables**: `args.*`, `environment.*`, `sync.*` (not `promotion.*`)
+**CEL variables**: `args.*`, `target.*`, `sync.*` (not `promotion.*`)
 
 **Dispatch**: Type-switched by `GateTemplate.spec.type` in `gateForTemplate()`. Built-in: `cel`, `job`, `webhook`. Registered at startup.
 
@@ -150,8 +150,8 @@ type Gate interface {
 // pkg/actuator/actuator.go
 type Actuator interface {
     Apply(ctx context.Context, req ApplyRequest) error
-    IsConverged(ctx context.Context, env *v1alpha1.Environment, version string) (bool, error)
-    Rollback(ctx context.Context, env *v1alpha1.Environment, previousVersion string) error
+    IsConverged(ctx context.Context, env *v1alpha1.Target, version string) (bool, error)
+    Rollback(ctx context.Context, env *v1alpha1.Target, previousVersion string) error
 }
 ```
 
@@ -180,13 +180,13 @@ KCI is deliberately split into two sub-interfaces matching the two onboarding pa
 
 // KCI-Connect: hub → spoke direct connection
 type Connector interface {
-    Connect(ctx context.Context, env *v1alpha1.Environment) (*rest.Config, error)
-    IsReachable(ctx context.Context, env *v1alpha1.Environment) (bool, error)
+    Connect(ctx context.Context, env *v1alpha1.Target) (*rest.Config, error)
+    IsReachable(ctx context.Context, env *v1alpha1.Target) (bool, error)
 }
 
 // KCI-Register: hub reads cluster state from CRDs (no network path needed)
 type RegistrationReader interface {
-    GetRegistration(ctx context.Context, env *v1alpha1.Environment) (*v1alpha1.ManagedCluster, error)
+    GetRegistration(ctx context.Context, env *v1alpha1.Target) (*v1alpha1.ManagedCluster, error)
 }
 ```
 

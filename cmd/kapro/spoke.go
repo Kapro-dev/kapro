@@ -41,13 +41,13 @@ func newSpokeCmd() *cobra.Command {
 
 func newSpokeInstallCmd() *cobra.Command {
 	var (
-		clusterName        string
-		hubKubeconfig      string
-		spokeKubeconfig    string
-		hubURL             string
-		image              string
-		gcpServiceAccount  string
-		export             bool
+		clusterName       string
+		hubKubeconfig     string
+		spokeKubeconfig   string
+		hubURL            string
+		image             string
+		gcpServiceAccount string
+		export            bool
 	)
 
 	cmd := &cobra.Command{
@@ -332,7 +332,7 @@ func buildSpokeManifests(clusterName, hubURL, hubCABundle, bootstrapToken, image
 								Name:  "cluster-controller",
 								Image: image,
 								Env: []corev1.EnvVar{
-									{Name: "KAPRO_ENVIRONMENT_REF", ValueFrom: &corev1.EnvVarSource{
+									{Name: "KAPRO_TARGET", ValueFrom: &corev1.EnvVarSource{
 										ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
 											LocalObjectReference: corev1.LocalObjectReference{Name: "kapro-hub-config"},
 											Key:                  "clusterName",
@@ -461,7 +461,7 @@ func newSpokeJoinCmd() *cobra.Command {
 provided directly — no access to the hub cluster is required.
 
 This is the manual fallback for:
-  - Air-gapped environments
+  - Air-gapped fleets
   - Different teams managing hub vs spoke
   - CI pipelines without hub kubeconfig access
 

@@ -12,7 +12,7 @@ metadata:
   name: workloads-de-prod
   namespace: flux-system
   labels:
-    kapro.io/environment: de-prod
+    kapro.io/target: de-prod
 spec:
   interval: 5m
   # Kapro updates path on each Sync to point at the correct overlay.

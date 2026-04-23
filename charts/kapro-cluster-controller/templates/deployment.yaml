@@ -1,5 +1,5 @@
-{{- if not .Values.environmentRef }}
-{{- fail "environmentRef is required — set to the MemberCluster CR name on the control plane" }}
+{{- if not .Values.target }}
+{{- fail "target is required — set to the MemberCluster name on the control plane" }}
 {{- end }}
 {{- if not .Values.controlPlane.url }}
 {{- fail "controlPlane.url is required — hub kube-apiserver URL, e.g. https://hub.example.com:6443" }}
@@ -38,8 +38,8 @@ spec:
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           env:
-            - name: KAPRO_ENVIRONMENT_REF
-              value: {{ .Values.environmentRef | quote }}
+            - name: KAPRO_TARGET
+              value: {{ .Values.target | quote }}
             - name: KAPRO_CONTROL_PLANE_URL
               value: {{ .Values.controlPlane.url | quote }}
             {{- if .Values.controlPlane.caBundle }}

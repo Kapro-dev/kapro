@@ -5,6 +5,7 @@ package gate
 import pkggate "kapro.io/kapro/pkg/gate"
 
 type (
+Context = pkggate.Context
 Gate    = pkggate.Gate
 Request = pkggate.Request
 Result  = pkggate.Result

@@ -13,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -38,6 +39,7 @@ const (
 	csrSigner = "kubernetes.io/kube-apiserver-client"
 	// bootstrapSAPrefix is the prefix of bootstrap ServiceAccounts created by MemberClusterReconciler.
 	bootstrapSAPrefix = "system:serviceaccount:" + kaproSystemNamespace + ":kapro-bootstrap-"
+	kaproManagedBy    = "kapro-operator"
 )
 
 // CSRApprovalReconciler watches CertificateSigningRequests and automatically
@@ -237,7 +239,7 @@ func (r *CSRApprovalReconciler) ensureClusterRBAC(ctx context.Context, clusterNa
 		role = &rbacv1.ClusterRole{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   roleName,
-				Labels: map[string]string{"kapro.io/cluster": clusterName},
+				Labels: managedResourceLabels(clusterName, "cluster-controller-rbac"),
 			},
 			Rules: []rbacv1.PolicyRule{
 				{
@@ -270,8 +272,11 @@ func (r *CSRApprovalReconciler) ensureClusterRBAC(ctx context.Context, clusterNa
 	binding := &rbacv1.ClusterRoleBinding{}
 	if err := r.Get(ctx, types.NamespacedName{Name: roleName}, binding); apierrors.IsNotFound(err) {
 		binding = &rbacv1.ClusterRoleBinding{
-			ObjectMeta: metav1.ObjectMeta{Name: roleName},
-			RoleRef:    rbacv1.RoleRef{APIGroup: "rbac.authorization.k8s.io", Kind: "ClusterRole", Name: roleName},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   roleName,
+				Labels: managedResourceLabels(clusterName, "cluster-controller-rbac"),
+			},
+			RoleRef: rbacv1.RoleRef{APIGroup: "rbac.authorization.k8s.io", Kind: "ClusterRole", Name: roleName},
 			Subjects: []rbacv1.Subject{
 				// Subject is a User — the x509 CN becomes the username.
 				{Kind: "User", Name: clusterUser},
@@ -299,17 +304,20 @@ func (r *CSRApprovalReconciler) markBootstrapUsed(ctx context.Context, mc *kapro
 	mc.Status.Bootstrap.UsedAt = &now
 	mc.Status.Bootstrap.IssuedCredentialFor = clusterName
 	mc.Status.Bootstrap.BoundCSRName = csrName
+	mc.Status.ObservedGeneration = mc.Generation
+	setMemberClusterCondition(mc, "BootstrapReady", metav1.ConditionFalse, "Consumed", "bootstrap credential has been consumed by a successful CSR")
+	setMemberClusterCondition(mc, "BootstrapUsed", metav1.ConditionTrue, "CSRBound", fmt.Sprintf("bootstrap credential consumed by CSR %s", csrName))
 	return r.Status().Update(ctx, mc)
 }
 
 // approveCSR appends an Approved condition and calls the approval subresource.
 func (r *CSRApprovalReconciler) approveCSR(ctx context.Context, csr *certificatesv1.CertificateSigningRequest) error {
 	csr.Status.Conditions = append(csr.Status.Conditions, certificatesv1.CertificateSigningRequestCondition{
-		Type:               certificatesv1.CertificateApproved,
-		Status:             corev1.ConditionTrue,
-		Reason:             "KaproApproved",
-		Message:            "Approved by Kapro CSR approval controller",
-		LastUpdateTime:     metav1.Now(),
+		Type:           certificatesv1.CertificateApproved,
+		Status:         corev1.ConditionTrue,
+		Reason:         "KaproApproved",
+		Message:        "Approved by Kapro CSR approval controller",
+		LastUpdateTime: metav1.Now(),
 	})
 	// Must use typed client UpdateApproval — controller-runtime Status().Update() does not
 	// route through the /approval subresource and will silently not approve the CSR.
@@ -327,11 +335,11 @@ func (r *CSRApprovalReconciler) denyCSRErr(ctx context.Context, csr *certificate
 	log.Info("denying CSR", "csr", csr.Name, "reason", reason)
 	r.Recorder.Eventf(csr, corev1.EventTypeWarning, "Denied", reason)
 	csr.Status.Conditions = append(csr.Status.Conditions, certificatesv1.CertificateSigningRequestCondition{
-		Type:               certificatesv1.CertificateDenied,
-		Status:             corev1.ConditionTrue,
-		Reason:             "KaproDenied",
-		Message:            reason,
-		LastUpdateTime:     metav1.Now(),
+		Type:           certificatesv1.CertificateDenied,
+		Status:         corev1.ConditionTrue,
+		Reason:         "KaproDenied",
+		Message:        reason,
+		LastUpdateTime: metav1.Now(),
 	})
 	_, err := r.CertClient.CertificateSigningRequests().UpdateApproval(ctx, csr.Name, csr, metav1.UpdateOptions{})
 	return err
@@ -541,12 +549,24 @@ func (r *MemberClusterReconciler) ensureBootstrapProvisioned(ctx context.Context
 
 	// Idempotent guard: kubeconfig secret already provisioned.
 	if mc.Status.Bootstrap != nil && mc.Status.Bootstrap.IssuedBootstrapKubeconfig != "" {
+		patch := client.MergeFrom(mc.DeepCopy())
+		mc.Status.ObservedGeneration = mc.Generation
+		setMemberClusterCondition(mc, "BootstrapReady", metav1.ConditionTrue, "CredentialsIssued", "bootstrap credential is ready for first registration")
+		if err := r.Status().Patch(ctx, mc, patch); err != nil {
+			return ctrl.Result{}, fmt.Errorf("patch MemberCluster bootstrap ready condition: %w", err)
+		}
 		return ctrl.Result{}, nil
 	}
 
 	// Don't provision if the bootstrap slot has already expired.
 	if mc.Spec.Bootstrap.ExpiresAt != nil && metav1.Now().After(mc.Spec.Bootstrap.ExpiresAt.Time) {
 		log.Info("bootstrap slot expired — skipping provisioning", "cluster", clusterName, "expiredAt", mc.Spec.Bootstrap.ExpiresAt)
+		patch := client.MergeFrom(mc.DeepCopy())
+		mc.Status.ObservedGeneration = mc.Generation
+		setMemberClusterCondition(mc, "BootstrapReady", metav1.ConditionFalse, "Expired", "bootstrap credential expired before provisioning")
+		if err := r.Status().Patch(ctx, mc, patch); err != nil {
+			return ctrl.Result{}, fmt.Errorf("patch expired bootstrap condition: %w", err)
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -562,7 +582,7 @@ func (r *MemberClusterReconciler) ensureBootstrapProvisioned(ctx context.Context
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      saName,
 			Namespace: kaproSystemNamespace,
-			Labels:    map[string]string{"kapro.io/cluster": clusterName, "kapro.io/managed-by": "kapro-operator"},
+			Labels:    managedResourceLabels(clusterName, "bootstrap"),
 		},
 	}
 	if err := r.Create(ctx, sa); err != nil && !apierrors.IsAlreadyExists(err) {
@@ -573,7 +593,7 @@ func (r *MemberClusterReconciler) ensureBootstrapProvisioned(ctx context.Context
 	role := &rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   roleName,
-			Labels: map[string]string{"kapro.io/cluster": clusterName},
+			Labels: managedResourceLabels(clusterName, "bootstrap"),
 		},
 		Rules: []rbacv1.PolicyRule{
 			{
@@ -591,7 +611,7 @@ func (r *MemberClusterReconciler) ensureBootstrapProvisioned(ctx context.Context
 	binding := &rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   roleName,
-			Labels: map[string]string{"kapro.io/cluster": clusterName},
+			Labels: managedResourceLabels(clusterName, "bootstrap"),
 		},
 		RoleRef: rbacv1.RoleRef{APIGroup: "rbac.authorization.k8s.io", Kind: "ClusterRole", Name: roleName},
 		Subjects: []rbacv1.Subject{
@@ -647,7 +667,7 @@ func (r *MemberClusterReconciler) ensureBootstrapProvisioned(ctx context.Context
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
 			Namespace: kaproSystemNamespace,
-			Labels:    map[string]string{"kapro.io/cluster": clusterName, "kapro.io/bootstrap-kubeconfig": "true"},
+			Labels:    bootstrapSecretLabels(clusterName),
 		},
 		Data: map[string][]byte{"kubeconfig": kubeconfigData},
 	}
@@ -673,6 +693,8 @@ func (r *MemberClusterReconciler) ensureBootstrapProvisioned(ctx context.Context
 		fresh.Status.Bootstrap = &kaprov1alpha1.MemberClusterBootstrapStatus{}
 	}
 	fresh.Status.Bootstrap.IssuedBootstrapKubeconfig = secretName
+	fresh.Status.ObservedGeneration = fresh.Generation
+	setMemberClusterCondition(fresh, "BootstrapReady", metav1.ConditionTrue, "CredentialsIssued", fmt.Sprintf("bootstrap kubeconfig secret %s is ready", secretName))
 	if err := r.Status().Update(ctx, fresh); err != nil {
 		return ctrl.Result{}, fmt.Errorf("update MemberCluster bootstrap status: %w", err)
 	}
@@ -749,4 +771,32 @@ func removeString(slice []string, s string) []string {
 		}
 	}
 	return out
+}
+
+func setMemberClusterCondition(mc *kaprov1alpha1.MemberCluster, conditionType string, status metav1.ConditionStatus, reason, message string) {
+	apimeta.SetStatusCondition(&mc.Status.Conditions, metav1.Condition{
+		Type:               conditionType,
+		Status:             status,
+		Reason:             reason,
+		Message:            message,
+		ObservedGeneration: mc.Generation,
+		LastTransitionTime: metav1.Now(),
+	})
+}
+
+func managedResourceLabels(clusterName, component string) map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/name":       "kapro",
+		"app.kubernetes.io/part-of":    "kapro",
+		"app.kubernetes.io/component":  component,
+		"app.kubernetes.io/managed-by": kaproManagedBy,
+		"kapro.io/cluster":             clusterName,
+		"kapro.io/managed-by":          kaproManagedBy,
+	}
+}
+
+func bootstrapSecretLabels(clusterName string) map[string]string {
+	labels := managedResourceLabels(clusterName, "bootstrap")
+	labels["kapro.io/bootstrap-kubeconfig"] = "true"
+	return labels
 }

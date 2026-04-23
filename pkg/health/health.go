@@ -1,8 +1,9 @@
 // Package health defines KHI — the Kapro Health Interface.
 //
 // KHI v1alpha1 is the contract for assessing the health of workloads on a
-// target cluster. The SyncReconciler calls AssessHealth during the HealthCheck
-// phase to determine whether the cluster is in a state suitable for delivery.
+// target cluster. The release rollout FSM calls AssessHealth during the
+// HealthCheck phase to determine whether the cluster is in a state suitable
+// for delivery.
 //
 // # Two-path health assessment
 //

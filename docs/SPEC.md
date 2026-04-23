@@ -32,7 +32,7 @@
 
 Kapro is a **Kubernetes-native progressive delivery orchestrator for cluster fleets**.
 
-It answers one question deterministically: *"Is it safe to deliver this artifact version to this environment right now?"*
+It answers one question deterministically: *"Is it safe to deliver this artifact version to this target right now?"*
 
 Kapro does not replace GitOps tools (Flux, ArgoCD). It orchestrates them — sitting above delivery systems as the choreographer that decides *when* and *in what order* environments receive new versions, based on configurable gate policies: time soaks, Prometheus metrics, human approval, health checks, OCI signature verification, and custom CEL expressions.
 
@@ -47,17 +47,17 @@ Kapro does not replace GitOps tools (Flux, ArgoCD). It orchestrates them — sit
 Platform engineering teams operating 10–500 Kubernetes clusters across environments (dev, staging, canary, regional prod). Today, progressive delivery across a fleet is either:
 
 - **Manual**: engineers hand-deploy between environments with no guardrails, no audit trail, and no automatic rollback.
-- **Bespoke**: each team scripts their own promotion pipeline in CI (GitHub Actions, Tekton, Jenkins) with hard-coded environment sequences, no reusable gate logic, and brittle failure modes.
+- **Bespoke**: each team scripts their own promotion pipeline in CI (GitHub Actions, Tekton, Jenkins) with hard-coded target sequences, no reusable gate logic, and brittle failure modes.
 - **Partial**: tools like Argo Rollouts handle in-cluster canary but not cross-cluster waves. Flux handles GitOps apply but not the "should I apply?" decision.
 
 ### The gap
 
-No CNCF-native tool manages the **full pipeline**: artifact → gates → multi-environment wave → convergence verification → rollback — across a fleet of heterogeneous clusters, with an auditable history per release.
+No CNCF-native tool manages the **full pipeline**: artifact → gates → multi-target wave → convergence verification → rollback — across a fleet of heterogeneous clusters, with an auditable history per release.
 
 ### Cost of not solving it
 
 - Production incidents from under-gated promotions (missing soak period, no metric check).
-- Engineering time wasted hand-managing environment sequences.
+- Engineering time wasted hand-managing target sequences.
 - No audit trail for compliance (who approved, what gate passed, when each cluster got which version).
 - Rollback is a fire drill: no first-class rollback primitive, no record of prior states.
 
@@ -70,7 +70,7 @@ No CNCF-native tool manages the **full pipeline**: artifact → gates → multi-
 | Kubernetes | Kapro |
 |---|---|
 | `Node` | `ManagedCluster` — a cluster registered in the fleet |
-| `Pod` | `Environment` — lifecycle owner; selects clusters like Pod selects nodes |
+| `Pod` | `Target` — lifecycle owner; selects clusters like Pod selects nodes |
 | `Container` | Workload running inside a cluster |
 | `init container` | `Sync` in gate phases (Verification → HealthCheck → Soaking → ...) |
 | `PodSpec.nodeSelector` | `Stage.clusterSelector` — selects which clusters a stage targets |
@@ -92,7 +92,7 @@ Release
 
 - **Pipeline DAG**: `Release.spec.pipelines[].dependsOn` — pipelines run in dependency order.
 - **Stage DAG**: `Pipeline.spec.stages[].dependsOn` — stages within a pipeline run in dependency order.
-- **Sync**: one per `(Release, Pipeline, Stage, Environment)` tuple. All Syncs within a stage fan-out in parallel.
+- **Sync**: one per `(Release, Pipeline, Stage, Target)` tuple. All Syncs within a stage fan-out in parallel.
 
 ### Immutable delivery
 
@@ -105,12 +105,12 @@ Releases are immutable records of intent. A `Release` declares "deliver artifact
 | Term | Definition |
 |---|---|
 | **Artifact** | An OCI bundle (image, Helm chart, kustomize overlay) at a specific digest. Immutable once created. |
-| **Environment** | A named delivery target owning one cluster's lifecycle. Analogous to a Pod — it manages the cluster like a Pod manages containers. |
+| **Target** | A named delivery target owning one cluster's lifecycle. Analogous to a Pod — it manages the cluster like a Pod manages containers. |
 | **ManagedCluster** | Fleet registry entry for a registered cluster. Written by `kapro-cluster-controller` running on the spoke cluster. Analogous to a Node object. |
 | **Pipeline** | A DAG of Stages. Defines the delivery sequence. Reusable across Releases. |
-| **Stage** | One wave inside a Pipeline. Selects target Environments via `clusterSelector` labels. Creates one Sync per matched Environment. |
+| **Stage** | One wave inside a Pipeline. Selects target clusters via `clusterSelector` labels. Creates one Sync per matched Target. |
 | **Release** | The user-facing delivery trigger. Owns the full two-level DAG. Immutable once created. Terminal states: `Complete` or `Failed`. |
-| **Sync** | System-managed object for one `(Release, Pipeline, Stage, Environment)`. Drives the gate FSM from `Pending` → `Converged` or `Failed`. |
+| **Sync** | System-managed object for one `(Release, Pipeline, Stage, Target)`. Drives the gate FSM from `Pending` → `Converged` or `Failed`. |
 | **GatePolicy** | Reusable rules applied to a Stage: soak time, metric thresholds, approval config, notification channels. |
 | **GateTemplate** | Reusable parameterised gate evaluation unit. Types: `cel`, `job`, `webhook`. |
 | **Approval** | Human (or automation) signal to unblock a `Sync` in `WaitingApproval`. |
@@ -129,7 +129,7 @@ Releases are immutable records of intent. A `Release` declares "deliver artifact
 | CRD | Kind | Description |
 |---|---|---|
 | `artifacts.kapro.io` | `Artifact` | Immutable OCI bundle reference |
-| `environments.kapro.io` | `Environment` | Delivery target; owns cluster lifecycle |
+| `memberclusters.kapro.io` | `Target` | Delivery target; owns cluster lifecycle |
 | `pipelines.kapro.io` | `Pipeline` | DAG of Stages defining delivery sequence |
 | `releases.kapro.io` | `Release` | Delivery trigger; owns the two-level DAG |
 | `gatepolicies.kapro.io` | `GatePolicy` | Reusable gate rules (soak, metrics, approval, notifications) |
@@ -178,7 +178,7 @@ The following types were considered and **deliberately removed** from the MVP:
 │  │  Admission Webhooks:                                          │   │
 │  │    /mutate-approval    (injects approvedBy from k8s identity) │   │
 │  │    /validate-release   (artifact + pipelines required)        │   │
-│  │    /validate-environment (actuator type must be flux)         │   │
+│  │    /validate-target (actuator type must be flux)         │   │
 │  │    /validate-pipeline  (stage names unique, no cycles)        │   │
 │  │                                                               │   │
 │  │  Approval Webhook Server  :8091                               │   │
@@ -400,15 +400,15 @@ Available variables in CEL expressions:
 
 ```
 args.my_param          // GateTemplate args, policy overrides, sync context
-environment.name       // Environment name
-environment.labels.*   // Environment labels (GPU type, region, tier)
+target.name       // Target name
+target.labels.*   // target labels (GPU type, region, tier)
 sync.name              // Sync name
 sync.version           // Artifact version string
-sync.environmentRef    // Environment name
+sync.target    // Target name
 sync.releaseRef        // Release name
 ```
 
-Example: `sync.version.startsWith("v") && environment.labels["tier"] != "prod"`
+Example: `sync.version.startsWith("v") && target.labels["tier"] != "prod"`
 
 ### GateTemplate parameterisation
 
@@ -437,7 +437,7 @@ Every gate implementation must pass `conformance/gate.RunSuite(t, gate)`. The su
 
 ### What an actuator does
 
-An `Actuator` applies a version to an environment and reports convergence:
+An `Actuator` applies a version to an target and reports convergence:
 
 ```go
 type Actuator interface {
@@ -445,8 +445,8 @@ type Actuator interface {
     // IsConverged polls whether the target cluster has applied version under appKey.
     // appKey is the key in ManagedCluster.status.currentVersions (e.g. "default").
     // v0.2: appKey added explicitly; previously resolved internally from ManagedCluster.spec.
-    IsConverged(ctx context.Context, env *Environment, version, appKey string) (bool, error)
-    Rollback(ctx context.Context, env *Environment, previousVersion string) error
+    IsConverged(ctx context.Context, env *Target, version, appKey string) (bool, error)
+    Rollback(ctx context.Context, env *Target, previousVersion string) error
 }
 ```
 
@@ -505,7 +505,7 @@ Spoke cluster-controller                         Hub kapro-operator
          │                                               │  2. Extract cluster name from SA username:
          │                                               │     kapro-cluster-<clusterName>
          │                                               │  3. Patch ManagedCluster.status
-         │                                               │  4. Read ManagedCluster.spec + Environment
+         │                                               │  4. Read ManagedCluster.spec + Target
          │  {                                            │
          │    "desiredVersion": "v1.3.0",                │
          │    "desiredAppKey": "default",                │
@@ -539,14 +539,14 @@ Works for:  GKE (any project, private or public), EKS, AKS, on-prem, air-gap,
             cross-project, cross-account, hybrid cloud, no VPN required.
 Requires:   Outbound HTTPS from spoke to ONE endpoint (hub LoadBalancer port 9090).
 Bootstrap:  BootstrapToken HMAC (1-hour TTL, single use).
-Environment spec: spec.provider.type: "" (or "crd")
+MemberCluster spec: spec.provider.type: "" (or "crd")
 
 Path B: Direct Connect / KCI Connector      ← PUBLIC CLOUD ONLY (no-agent option)
 ──────────────────────────────────────────────────────────────────────────────────────
 Hub authenticates to cloud API using cloud IAM (Workload Identity / IRSA / Managed Identity).
 Hub fetches cluster credentials on demand — no cluster-controller agent needed on spoke.
 Requires:   Hub-to-spoke network access + cloud IAM binding (not available for private clusters).
-Environment spec: spec.provider.type: gke | aks | digitalocean | stackit
+MemberCluster spec: spec.provider.type: gke | aks | digitalocean | stackit
 
 ⚠️  Path B CANNOT be used for:
     - Private GKE clusters (no public endpoint on API server)
@@ -585,15 +585,15 @@ The hub's registration server (`internal/registration/server.go`) handles heartb
 - Validates the Bearer token via K8s TokenReview API
 - Extracts cluster identity from SA username (`kapro-cluster-<clusterName>`)
 - Patches `ManagedCluster.status` with received health/version data
-- Returns desired state from `ManagedCluster.spec` + `Environment.spec.actuator.flux`
+- Returns desired state from `ManagedCluster.spec` + `Target.spec.actuator.flux`
 
 **Key property:** The hub writes `ManagedCluster.status` itself — the spoke never writes directly to the hub's K8s API. The spoke only needs outbound HTTPS to one endpoint.
 
-### Environment ↔ ManagedCluster binding
+### target ↔ ManagedCluster binding
 
 ```yaml
-# Environment selects clusters by label
-kind: Environment
+# target selects clusters by label
+kind: MemberCluster
 spec:
   clusterSelector:
     matchLabels:
@@ -601,7 +601,7 @@ spec:
       tier: canary
 ```
 
-The `ReleaseReconciler` resolves `Environment → ManagedCluster` at sync creation time. If no ManagedCluster matches the selector, the Sync waits in `Pending` with a `NoClusterFound` condition.
+The `ReleaseReconciler` resolves `Target → ManagedCluster` at sync creation time. If no ManagedCluster matches the selector, the Sync waits in `Pending` with a `NoClusterFound` condition.
 
 ### Cluster topology metadata `[MVP]`
 
@@ -622,13 +622,13 @@ spec:
 
 Pipeline stages use this for cloud-aware and accelerator-aware delivery waves (e.g. "promote to EU clusters before US clusters", "promote to H100 before A100").
 
-### Environment provider config
+### target provider config
 
 Path A is the default and requires no provider fields. `spec.provider.type: ""` resolves to CRD provider (backward compatible).
 
 ```yaml
 # Path A (default) — no provider fields needed
-kind: Environment
+kind: MemberCluster
 spec:
   provider: {}   # resolves to CRD provider
 ```
@@ -648,7 +648,7 @@ Path B `ProviderSpec` fields (`gke`, `aks`, `digitalOcean`, `stackit`) are defin
      name: gke-prod-eu
      namespace: kapro-system
    spec:
-     environmentRef: gke-prod-eu
+     target: gke-prod-eu
      ttl: 1h
    EOF
 
@@ -658,7 +658,7 @@ Path B `ProviderSpec` fields (`gke`, `aks`, `digitalOcean`, `stackit`) are defin
    helm install kapro-cc kapro/cluster-controller \
      --set hub.url=https://kapro.internal \
      --set hub.bootstrapToken=<token-from-secret> \
-     --set cluster.environmentRef=gke-prod-eu \
+     --set cluster.target=gke-prod-eu \
      --set cluster.cloud=gcp \
      --set cluster.region=europe-west1
 
@@ -675,7 +675,7 @@ Path B `ProviderSpec` fields (`gke`, `aks`, `digitalOcean`, `stackit`) are defin
 8. cluster-controller begins 30s heartbeat loop:
    POST /heartbeat → hub patches ManagedCluster.status → controller applies desired version
 
-9. Environment is live. Create your first Release.
+9. target is live. Create your first Release.
 ```
 
 ### Provider dispatch (runtime)
@@ -741,7 +741,7 @@ The Sync state machine is the core of Kapro. Every state transition is persisted
 | `HealthCheck` | Entered from Verification | All workloads `Healthy` (or `healthCheck` not configured) |
 | `Soaking` | Entered from HealthCheck | `now - StartedAt >= soakTime` (or no soakTime) |
 | `MetricsCheck` | Entered from Soaking | All metric gates + GateTemplates pass (or none configured) |
-| `WaitingApproval` | Entered from MetricsCheck | Approval CR with matching Release + Environment exists |
+| `WaitingApproval` | Entered from MetricsCheck | Approval CR with matching Release + target exists |
 | `Applying` | Entered from WaitingApproval (or MetricsCheck if no approval required) | `actuator.IsConverged()` returns true |
 | `Converged` | Terminal success | — |
 | `Failed` | Any gate returns `Failed`, or approval rejected, or timeout | — |
@@ -805,14 +805,14 @@ The URLs are embedded in Slack messages, emails, and webhook payloads. Tokens ex
 
 | Category | What's included |
 |---|---|
-| **CRDs** | Artifact, Environment, Pipeline, Release, GatePolicy, GateTemplate, ManagedCluster, Sync, Approval, ReleaseReport, BootstrapToken |
+| **CRDs** | Artifact, Target, Pipeline, Release, GatePolicy, GateTemplate, ManagedCluster, Sync, Approval, ReleaseReport, BootstrapToken |
 | **Gate types** | Soak, Metrics (Prometheus), Approval (human), Health (k8s workloads), Verification (cosign), CEL, Job, Webhook |
 | **Actuator** | Flux only (`type: flux`) |
 | **Provider** | CRD provider (kapro-cluster-controller heartbeat) |
 | **Fleet** | ManagedCluster registration + BootstrapToken auth |
 | **Notifications** | Slack, Webhook, + argoproj/notifications-engine (15+ channels) |
 | **CLI** | `kapro get`, `kapro approve`, `kapro rollback` |
-| **Admission** | Mutating (Approval.approvedBy), Validating (Release, Environment, Pipeline) |
+| **Admission** | Mutating (Approval.approvedBy), Validating (Release, Target, Pipeline) |
 | **Observability** | Prometheus metrics (`kapro_sync_transitions_total`, `kapro_gate_evaluations_total`, `kapro_stage_duration_seconds`) |
 | **Audit** | ReleaseReport per Release |
 
@@ -857,19 +857,19 @@ The URLs are embedded in Slack messages, emails, and webhook payloads. Tokens ex
 
 ### P0 — Must have (MVP cannot ship without these)
 
-- [ ] `Release` creation triggers DAG walk, creates `Sync` per `(Pipeline, Stage, Environment)`.
+- [ ] `Release` creation triggers DAG walk, creates `Sync` per `(Pipeline, Stage, Target)`.
 - [ ] `Sync` drives FSM from `Pending` through all configured gates to `Converged` or `Failed`.
 - [ ] SoakGate blocks until configured `soakTime` elapses from `Sync.Status.StartedAt`.
 - [ ] MetricsGate queries Prometheus and passes only when query returns non-empty vector.
 - [ ] ApprovalGate blocks until matching `Approval` CR exists; webhook generates approve/reject URLs.
 - [ ] VerificationGate verifies OCI artifact cosign signature before advancing.
-- [ ] CELGate evaluates user expression with sync, environment, and args context.
+- [ ] CELGate evaluates user expression with sync, target, and args context.
 - [ ] JobGate creates a Kubernetes Job and polls for exit 0.
 - [ ] WebhookGate POSTs to configured URL and interprets JSON response.
 - [ ] FluxActuator patches `OCIRepository` and waits for Flux `Kustomization` convergence.
 - [ ] `kapro-cluster-controller` writes `ManagedCluster` heartbeat every 30s.
 - [ ] `ReleaseReport` aggregates all Syncs into an auditable per-Release record.
-- [ ] Admission webhooks prevent creation of invalid `Release` (no artifact, no pipelines) and `Environment` (unknown actuator type).
+- [ ] Admission webhooks prevent creation of invalid `Release` (no artifact, no pipelines) and `Target` (unknown actuator type).
 - [ ] Prometheus metrics exported: `kapro_sync_transitions_total`, `kapro_gate_evaluations_total`, `kapro_stage_duration_seconds`.
 - [ ] `BuildGateSet(client.Client)` is the single gate construction point; all four built-in gates wired.
 - [ ] All gate implementations pass the conformance suite (`conformance/gate.RunSuite`).
@@ -882,7 +882,7 @@ The URLs are embedded in Slack messages, emails, and webhook payloads. Tokens ex
 - [ ] argoproj/notifications-engine integration for PagerDuty, Teams, OpsGenie.
 - [ ] `KAPRO_CONTROLLERS=*,-releasereport` selective controller enabling.
 - [ ] `ReleaseReconciler` halts pipeline stages on `failurePolicy: halt`.
-- [ ] Topology-aware stage routing via `Environment.spec.topology.accelerator` labels.
+- [ ] Topology-aware stage routing via `Target.spec.topology.accelerator` labels.
 
 ### P2 — Future considerations (design must not prevent these)
 
@@ -949,13 +949,13 @@ See `docs/ROADMAP.md` for the full list. The architecture constraints that apply
 
 ### A1. Why Sync, not Promotion?
 
-`Promotion` implies one-directional movement. `Sync` is the precise Kubernetes term: reconcile the actual state of an environment to match the desired state declared in a `Release`. A `Sync` may promote, rollback, or re-apply — it is directional by the artifact version in the `Release`, not by the word.
+`Promotion` implies one-directional movement. `Sync` is the precise Kubernetes term: reconcile the actual state of an target to match the desired state declared in a `Release`. A `Sync` may promote, rollback, or re-apply — it is directional by the artifact version in the `Release`, not by the word.
 
 ### A2. Why CRD provider as default, with optional direct-connect?
 
 Requiring the control plane to have network access to every spoke cluster is an unrealistic operational constraint for air-gapped, multi-cloud, or enterprise environments. The heartbeat pattern (spoke writes to hub) inverts the trust model: spoke clusters only need outbound HTTPS to the hub. No VPN, no peering, no firewall holes.
 
-Cloud-native direct-connect providers (GKE, EKS, AKS, DigitalOcean, StackIT) are additive: they use cloud IAM (Workload Identity, IRSA, Managed Identity) to eliminate the cluster-controller agent for teams that prefer zero-agent operation. Both paths coexist per-environment. See ADR-006 for the full analysis and auth matrix.
+Cloud-native direct-connect providers (GKE, EKS, AKS, DigitalOcean, StackIT) are additive: they use cloud IAM (Workload Identity, IRSA, Managed Identity) to eliminate the cluster-controller agent for teams that prefer zero-agent operation. Both paths coexist per-target. See ADR-006 for the full analysis and auth matrix.
 
 ### A3. Why immutable Releases?
 
@@ -973,7 +973,7 @@ The previous design called `BuildGateSet()` with no arguments, then manually set
 
 The CRD provider is non-negotiable for air-gapped and on-prem deployments — it requires only outbound HTTPS from spoke to hub, which is achievable in almost any network topology. Direct-connect providers (GKE, EKS, AKS, etc.) require hub-to-spoke network access and cloud IAM bindings, which are richer but not universally available.
 
-Making both paths available and selecting them per-environment via `spec.provider.type` means operators are not forced to compromise: air-gapped clusters use Path A; cloud-managed clusters can optionally use Path B for zero-agent operation. The `provider.Registry` pattern (mirroring `actuator.Registry`) provides the runtime dispatch with no changes to the FSM. See ADR-006 for full analysis, auth matrix, and per-cloud bootstrap flows.
+Making both paths available and selecting them per-target via `spec.provider.type` means operators are not forced to compromise: air-gapped clusters use Path A; cloud-managed clusters can optionally use Path B for zero-agent operation. The `provider.Registry` pattern (mirroring `actuator.Registry`) provides the runtime dispatch with no changes to the FSM. See ADR-006 for full analysis, auth matrix, and per-cloud bootstrap flows.
 
 ---
 

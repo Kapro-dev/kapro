@@ -21,7 +21,7 @@ func RunSuite(t *testing.T, g pkggate.Gate) {
 	t.Helper()
 	t.Run("KGI/NotNil", func(t *testing.T) { testNotNil(t, g) })
 	t.Run("KGI/ContextCancellation", func(t *testing.T) { testContextCancellation(t, g) })
-	t.Run("KGI/NilSync", func(t *testing.T) { testNilPromotion(t, g) })
+	t.Run("KGI/NilContext", func(t *testing.T) { testNilContext(t, g) })
 	t.Run("KGI/NilPolicy", func(t *testing.T) { testNilPolicy(t, g) })
 	t.Run("KGI/ValidRequest", func(t *testing.T) { testValidRequest(t, g) })
 	t.Run("KGI/ResultShape", func(t *testing.T) { testResultShape(t, g) })
@@ -57,16 +57,16 @@ func testContextCancellation(t *testing.T, g pkggate.Gate) {
 	}
 }
 
-// testNilPromotion verifies the gate handles a nil Sync without panicking.
-func testNilPromotion(t *testing.T, g pkggate.Gate) {
+// testNilContext verifies the gate handles a nil Context without panicking.
+func testNilContext(t *testing.T, g pkggate.Gate) {
 	t.Helper()
 	defer func() {
 		if r := recover(); r != nil {
-			t.Errorf("Gate.Evaluate panicked on nil Sync: %v", r)
+			t.Errorf("Gate.Evaluate panicked on nil Context: %v", r)
 		}
 	}()
 	req := minimalRequest()
-	req.Sync = nil
+	req.Context = nil
 	g.Evaluate(context.Background(), req) //nolint:errcheck
 }
 
@@ -150,21 +150,12 @@ func testConcurrentSafe(t *testing.T, g pkggate.Gate) {
 // minimalRequest returns a well-formed Request with all required fields set.
 func minimalRequest() pkggate.Request {
 	return pkggate.Request{
-		Sync: &kaprov1alpha1.Sync{
-			ObjectMeta: metav1.ObjectMeta{Name: "conformance-test-sync"},
-			Spec: kaprov1alpha1.SyncSpec{
-				ReleaseRef:     "conformance-release",
-				EnvironmentRef: "conformance-env",
-				Version:        "v0.0.1",
-				Gate: &kaprov1alpha1.GatePolicySpec{
-					Mode: kaprov1alpha1.GateModeAuto,
-					Gate: kaprov1alpha1.GateSpec{
-						Metrics: []kaprov1alpha1.MetricGate{
-							{Provider: "conformance", Query: "up", Window: "5m"},
-						},
-					},
-				},
-			},
+		Context: &pkggate.Context{
+			Name:       "conformance-test-sync",
+			Namespace:  metav1.NamespaceDefault,
+			ReleaseRef: "conformance-release",
+			Target:     "conformance-target",
+			Version:    "v0.0.1",
 		},
 		Policy: &kaprov1alpha1.GatePolicySpec{
 			Mode: kaprov1alpha1.GateModeAuto,

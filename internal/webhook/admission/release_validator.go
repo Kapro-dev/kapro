@@ -45,6 +45,8 @@ func validateRelease(r *kaprov1alpha1.Release) error {
 	if len(r.Spec.Pipelines) == 0 {
 		return fmt.Errorf("release.spec.pipelines must have at least one pipeline reference")
 	}
+
+	index := make(map[string]int, len(r.Spec.Pipelines))
 	for i, ref := range r.Spec.Pipelines {
 		if ref.Name == "" {
 			return fmt.Errorf("release.spec.pipelines[%d].name must be set", i)
@@ -52,7 +54,28 @@ func validateRelease(r *kaprov1alpha1.Release) error {
 		if ref.Pipeline == "" {
 			return fmt.Errorf("release.spec.pipelines[%d].pipeline must be set", i)
 		}
+		if _, exists := index[ref.Name]; exists {
+			return fmt.Errorf("release.spec.pipelines: duplicate pipeline node name %q", ref.Name)
+		}
+		index[ref.Name] = i
 	}
+
+	// Validate all dependsOn references name existing pipeline nodes.
+	for _, ref := range r.Spec.Pipelines {
+		for _, dep := range ref.DependsOn {
+			if _, exists := index[dep]; !exists {
+				return fmt.Errorf("release.spec.pipelines[%q].dependsOn: unknown pipeline node %q", ref.Name, dep)
+			}
+		}
+	}
+
+	// DFS cycle detection on the pipeline node DAG.
+	if cycle := detectCycle(index, func(name string) []string {
+		return r.Spec.Pipelines[index[name]].DependsOn
+	}); cycle != "" {
+		return fmt.Errorf("release.spec.pipelines: cycle detected: %s", cycle)
+	}
+
 	return nil
 }
 

@@ -18,13 +18,13 @@ We need to decide:
 1. When to build direct-connect connectors and in what order
 2. How the hub dispatches to the right connector at runtime
 3. What cloud-specific config lives in the CRD vs in Secrets
-4. Whether Path A (outbound) and Path B (direct) can coexist per-environment
+4. Whether Path A (outbound) and Path B (direct) can coexist per-target
 
 ---
 
 ## Decision
 
-### Two-path model — both supported, coexist per environment
+### Two-path model — both supported, coexist per target
 
 ```
 Path A: Outbound (CRD Provider)          Path B: Direct Connect (KCI Connector)
@@ -102,7 +102,7 @@ Replace CRD provider with cloud-native connectors everywhere.
 
 ### Option C (Chosen): Both paths, runtime-selectable
 
-Per-Environment choice: `spec.provider.type` selects the backend. Existing environments default to CRD provider.
+Per-Target choice: `spec.provider.type` selects the backend. Existing environments default to CRD provider.
 
 | Dimension | Assessment |
 |-----------|------------|
@@ -226,10 +226,10 @@ Connector binaries compiled with build tags or enabled via env var — no recomp
 ## Consequences
 
 **What becomes easier:**
-- Onboarding a new GKE/EKS/AKS cluster: apply one Environment YAML, no Helm install needed (Path B)
+- Onboarding a new GKE/EKS/AKS cluster: apply one MemberCluster YAML, no Helm install needed (Path B)
 - Air-gapped clusters: unaffected, CRD provider still works (Path A)
 - Audit: `ClusterCapabilities.cloud` + `accountID` make every delivery traceable to a cloud account
-- Multi-cloud pipeline waves: `spec.topology.cloud` field on Environment enables cloud-aware stage selectors
+- Multi-cloud pipeline waves: `spec.topology.cloud` field on target enables cloud-aware stage selectors
 
 **What becomes harder:**
 - Testing: need to mock cloud SDK calls in unit tests (use `Connector` interface for testability)

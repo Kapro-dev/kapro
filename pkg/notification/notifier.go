@@ -11,7 +11,7 @@
 //
 // # Decoupling from CRD types
 //
-// KNI deliberately has zero dependency on api/v1alpha1. The SyncReconciler
+// KNI deliberately has zero dependency on api/v1alpha1. The release controller
 // converts *GatePolicy → NotificationPolicy before calling Notify, so external
 // notifier implementations never need to import Kapro's CRD package.
 // This mirrors how Kubernetes events carry resource metadata as plain strings,
@@ -29,8 +29,8 @@ type Event struct {
 	Phase string
 	// Version is the artifact version being promoted.
 	Version string
-	// Environment is the target environment name.
-	Environment string
+	// Target is the target cluster name.
+	Target string
 	// Release is the release name.
 	Release string
 	// Message is additional context (e.g. error details).
@@ -48,7 +48,7 @@ type Event struct {
 // NotificationPolicy carries the notification routing config for a delivery operation.
 // It is a plain value type — no dependency on api/v1alpha1 CRD types.
 //
-// The SyncReconciler converts *GatePolicy → NotificationPolicy using
+// The release controller converts *GatePolicy → NotificationPolicy using
 // notificationPolicyFrom() before calling Notify. External Notifier
 // implementations receive only this clean value type.
 type NotificationPolicy struct {

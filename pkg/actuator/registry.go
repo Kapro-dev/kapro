@@ -6,14 +6,14 @@ import (
 
 // Registry resolves KAI (Kapro Actuator Interface) implementations by type name.
 //
-// Type names match Environment.spec.actuator.type (e.g. "flux", "argocd").
+// Type names match MemberCluster.spec.actuator.type (e.g. "flux", "argocd").
 // The registry is the runtime dispatch table between the delivery type declared
-// in an Environment and the Actuator implementation that handles it.
+// in an target and the Actuator implementation that handles it.
 //
 // This is analogous to the kubelet's container runtime registry: Kubernetes does
 // not hard-code Docker or containerd; it resolves the runtime from the node
 // config at pod-scheduling time. Kapro does not hard-code Flux or ArgoCD; it
-// resolves the actuator from Environment.spec.actuator.type at sync time.
+// resolves the actuator from MemberCluster.spec.actuator.type at sync time.
 //
 // # Registering an actuator
 //

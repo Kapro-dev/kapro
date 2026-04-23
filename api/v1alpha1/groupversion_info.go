@@ -17,13 +17,9 @@ func init() {
 		&Artifact{}, &ArtifactList{},
 		&Pipeline{}, &PipelineList{},
 		&Release{}, &ReleaseList{},
-		// Lean fleet registry (MemberCluster = Environment + ManagedCluster + BootstrapToken)
+		// Lean fleet registry (MemberCluster = legacy target inventory split)
 		&MemberCluster{}, &MemberClusterList{},
 		// Internal / system objects
-		&Sync{}, &SyncList{},
 		&Approval{}, &ApprovalList{},
-		&ReleaseReport{}, &ReleaseReportList{},
-		// Immutable audit records
-		&ReleaseRevision{}, &ReleaseRevisionList{},
 	)
 }

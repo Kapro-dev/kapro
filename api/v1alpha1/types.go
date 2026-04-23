@@ -9,14 +9,22 @@ import (
 
 // Finalizer constants — prevents premature deletion of stateful resources.
 const (
-	// ReleaseFinalizer is added to Release objects to allow cleanup of Syncs.
+	// ReleaseFinalizer is added to Release objects to allow cleanup of owned rollout state.
 	ReleaseFinalizer = "kapro.io/release-finalizer"
-	// SyncFinalizer is added to Sync objects to allow cleanup of in-progress cluster applies.
-	SyncFinalizer = "kapro.io/sync-finalizer"
 	// BootstrapTokenFinalizer is added to BootstrapToken objects to allow RBAC cleanup on deletion.
 	BootstrapTokenFinalizer = "kapro.io/bootstrap-token-finalizer" //nolint:gosec // not a credential
 	// MemberClusterFinalizer is added to MemberCluster objects to allow bootstrap RBAC cleanup on deletion.
 	MemberClusterFinalizer = "kapro.io/member-cluster-finalizer" //nolint:gosec // not a credential
+)
+
+// Condition type constants — Flux three-condition framework for operator status reporting.
+const (
+	// ConditionTypeReconciling indicates the controller is actively working on the object.
+	// True while progressing, False when the object is terminal or suspended.
+	ConditionTypeReconciling = "Reconciling"
+	// ConditionTypeStalled indicates the object cannot progress without external intervention.
+	// True when stuck (e.g. missing artifact, gate failure), False when healthy or recovering.
+	ConditionTypeStalled = "Stalled"
 )
 
 // ---- Artifact ---------------------------------------------------------------
@@ -52,7 +60,6 @@ type ArtifactMeta struct {
 }
 
 // +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=art,categories=kapro-all
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
@@ -73,7 +80,7 @@ type ArtifactList struct {
 // ---- Shared cluster types ---------------------------------------------------
 
 // ActuatorSpec selects and configures the delivery backend for this cluster.
-type EnvironmentTopology struct {
+type TargetTopology struct {
 	// Accelerator is the GPU/accelerator type in this cluster.
 	// Well-known values: nvidia-h100, nvidia-a100, nvidia-l40s, amd-mi300x, tpu-v5e.
 	// +optional
@@ -96,12 +103,12 @@ type EnvironmentTopology struct {
 	Tier string `json:"tier,omitempty"`
 }
 
-// ProviderSpec selects the cluster connectivity backend for this Environment.
+// ProviderSpec selects the cluster connectivity backend for this Target.
 //
 // # Two-path model (see ADR-006, ADR-007)
 //
 // Path A (default): set Type to "" or "crd". The kapro-cluster-controller agent
-// on the spoke cluster writes ManagedCluster heartbeats outbound to the hub.
+// on the spoke cluster writes MemberCluster heartbeats outbound to the hub.
 // No hub→spoke network required. Works on all clouds and air-gapped fleets.
 //
 // Path B (v0.3+): set Type to the cloud identifier and populate the matching
@@ -113,6 +120,7 @@ type EnvironmentTopology struct {
 // specs reference Secrets by name only. Keyless IAM is strongly preferred.
 //
 // +kubebuilder:validation:Optional
+// +kubebuilder:validation:XValidation:rule="self.type != 'gke' || has(self.gke)",message="provider.gke must be set when type is gke"
 type ProviderSpec struct {
 	// Type selects the connectivity backend.
 	//
@@ -235,6 +243,7 @@ type StackITProviderSpec struct {
 }
 
 // ActuatorSpec selects and configures the delivery backend for this cluster.
+// +kubebuilder:validation:XValidation:rule="self.type != 'flux' || has(self.flux)",message="actuator.flux must be set when type is flux"
 type ActuatorSpec struct {
 	// +kubebuilder:validation:Enum=flux
 	Type string        `json:"type"`
@@ -252,7 +261,7 @@ type HealthCheckSpec struct {
 	Interval string `json:"interval"`
 }
 
-// ---- ManagedCluster shared types -------------------------------------------
+// ---- MemberCluster shared types --------------------------------------------
 // registered workload cluster. Written by kapro-cluster-controller at bootstrap
 // time and refreshed on each heartbeat.
 //
@@ -353,9 +362,9 @@ const (
 
 type GatePolicySpec struct {
 	// +kubebuilder:validation:Enum=auto;manual;scheduled
-	Mode          GateMode           `json:"mode"`
-	Gate          GateSpec           `json:"gate,omitempty"`
-	Approval      *ApprovalConfig    `json:"approval,omitempty"`
+	Mode     GateMode        `json:"mode"`
+	Gate     GateSpec        `json:"gate,omitempty"`
+	Approval *ApprovalConfig `json:"approval,omitempty"`
 	// OnFailure controls what Kapro does when a gate fails or times out.
 	//   halt (default): stop the Sync and wait for human intervention.
 	//     Use for checkout systems where automated rollback is too risky.
@@ -371,15 +380,15 @@ type GatePolicySpec struct {
 // ---- GateSpec (embedded in Stage.gate and Sync.spec.gate) -------------------
 
 type GateSpec struct {
-	SoakTime    string            `json:"soakTime,omitempty"`
+	SoakTime string `json:"soakTime,omitempty"`
 	// GateTimeout is the maximum duration the metrics gate may remain un-passed
 	// before the Sync is failed. Only applies to MetricsCheck; infrastructure
 	// errors (e.g. Prometheus unreachable) do not consume this budget.
 	// Uses Go duration format, e.g. "30m", "1h". Empty means retry indefinitely.
-	GateTimeout string            `json:"gateTimeout,omitempty"`
-	HealthCheck bool              `json:"healthCheck,omitempty"`
-	Metrics     []MetricGate      `json:"metrics,omitempty"`
-	Templates   []GateTemplateSpec `json:"templates,omitempty"`
+	GateTimeout  string                `json:"gateTimeout,omitempty"`
+	HealthCheck  bool                  `json:"healthCheck,omitempty"`
+	Metrics      []MetricGate          `json:"metrics,omitempty"`
+	Templates    []GateTemplateSpec    `json:"templates,omitempty"`
 	Verification *VerificationGateSpec `json:"verification,omitempty"`
 }
 
@@ -408,13 +417,12 @@ type KeyVerificationSpec struct {
 
 // CosignKeySecretRef identifies a cosign public key stored in a Kubernetes Secret.
 type CosignKeySecretRef struct {
-	Name      string `json:"name"`
+	Name string `json:"name"`
 	// +kubebuilder:default=kapro-system
 	Namespace string `json:"namespace,omitempty"`
 	// +kubebuilder:default=cosign.pub
-	Key       string `json:"key,omitempty"`
+	Key string `json:"key,omitempty"`
 }
-
 
 type MetricGate struct {
 	Provider string `json:"provider"`
@@ -434,7 +442,7 @@ type MetricGate struct {
 	// Defaults to "30s". Minimum "10s".
 	// +kubebuilder:default="30s"
 	// +optional
-	Interval string `json:"interval,omitempty"`
+	Interval  string  `json:"interval,omitempty"`
 	Endpoint  string  `json:"endpoint,omitempty"`
 	Threshold float64 `json:"threshold,omitempty"`
 	// +kubebuilder:pruning:PreserveUnknownFields
@@ -456,8 +464,8 @@ type NotificationSpec struct {
 // EmailNotifierSpec configures SMTP email delivery for gate notifications.
 type EmailNotifierSpec struct {
 	// +kubebuilder:validation:MinItems=1
-	To            []string                    `json:"to"`
-	From          string                      `json:"from,omitempty"`
+	To   []string `json:"to"`
+	From string   `json:"from,omitempty"`
 	// +kubebuilder:pruning:PreserveUnknownFields
 	SmtpSecretRef corev1.LocalObjectReference `json:"smtpSecretRef"`
 }
@@ -480,22 +488,22 @@ const (
 type GateTemplateSpec struct {
 	// Name uniquely identifies this template within the gate for status tracking
 	// and Job naming. Required when type == "job" (used to generate Job name).
-	Name               string           `json:"name,omitempty"`
+	Name string `json:"name,omitempty"`
 	// +kubebuilder:validation:Enum=cel;job;webhook
-	Type               string           `json:"type"`
-	Args               []GateArg        `json:"args,omitempty"`
+	Type string    `json:"type"`
+	Args []GateArg `json:"args,omitempty"`
 	// +kubebuilder:validation:Enum=halt;retry;skip
 	// +kubebuilder:default=halt
-	FailurePolicy      string           `json:"failurePolicy,omitempty"`
+	FailurePolicy string `json:"failurePolicy,omitempty"`
 	// +kubebuilder:validation:Enum=retry;skip;halt
 	// +kubebuilder:default=retry
-	InconclusivePolicy string           `json:"inconclusivePolicy,omitempty"`
-	Timeout            string           `json:"timeout,omitempty"`
+	InconclusivePolicy string `json:"inconclusivePolicy,omitempty"`
+	Timeout            string `json:"timeout,omitempty"`
 	// +kubebuilder:default=3
-	MaxAttempts        int              `json:"maxAttempts,omitempty"`
-	CEL                *CELGateSpec     `json:"cel,omitempty"`
-	Job                *JobGateSpec     `json:"job,omitempty"`
-	Webhook            *WebhookGateSpec `json:"webhook,omitempty"`
+	MaxAttempts int              `json:"maxAttempts,omitempty"`
+	CEL         *CELGateSpec     `json:"cel,omitempty"`
+	Job         *JobGateSpec     `json:"job,omitempty"`
+	Webhook     *WebhookGateSpec `json:"webhook,omitempty"`
 }
 
 // GateArg declares a named parameter with an optional default value.
@@ -511,11 +519,11 @@ type CELGateSpec struct {
 
 // JobGateSpec configures the Kubernetes Job gate.
 type JobGateSpec struct {
-	Image   string           `json:"image"`
-	Command []string         `json:"command,omitempty"`
-	Args    []string         `json:"args,omitempty"`
+	Image   string   `json:"image"`
+	Command []string `json:"command,omitempty"`
+	Args    []string `json:"args,omitempty"`
 	// +kubebuilder:pruning:PreserveUnknownFields
-	Env     []corev1.EnvVar  `json:"env,omitempty"`
+	Env []corev1.EnvVar `json:"env,omitempty"`
 }
 
 // WebhookGateSpec configures the HTTP webhook gate.
@@ -526,15 +534,15 @@ type WebhookGateSpec struct {
 
 // GateRunStatus is Kapro's authoritative snapshot of one gate evaluation.
 type GateRunStatus struct {
-	Name       string                  `json:"name"`
-	Phase      GatePhase               `json:"phase"`
-	Message    string                  `json:"message,omitempty"`
-	StartedAt  string                  `json:"startedAt,omitempty"`
-	FinishedAt string                  `json:"finishedAt,omitempty"`
-	Attempts   int                     `json:"attempts,omitempty"`
+	Name       string    `json:"name"`
+	Phase      GatePhase `json:"phase"`
+	Message    string    `json:"message,omitempty"`
+	StartedAt  string    `json:"startedAt,omitempty"`
+	FinishedAt string    `json:"finishedAt,omitempty"`
+	Attempts   int       `json:"attempts,omitempty"`
 	// +kubebuilder:pruning:PreserveUnknownFields
-	VendorRef  *corev1.ObjectReference `json:"vendorRef,omitempty"`
-	Results    []GateConditionResult   `json:"results,omitempty"`
+	VendorRef *corev1.ObjectReference `json:"vendorRef,omitempty"`
+	Results   []GateConditionResult   `json:"results,omitempty"`
 }
 
 // GateConditionResult is the per-metric/condition result within a GateRunStatus.
@@ -558,28 +566,29 @@ const (
 )
 
 // Stage is one node in a Pipeline's delivery DAG.
-// It selects a set of Environments by label selector, optionally gates them
+// It selects a set of target clusters by label selector, optionally gates them
 // with a GatePolicy, and declares ordering via DependsOn.
 //
 // A single stage can target one or many clusters — the selector determines the
-// fleet subset. Add a cluster to a wave by labeling its Environment object;
+// fleet subset. Add a cluster to a wave by labeling its MemberCluster object;
 // no Pipeline changes required.
 type Stage struct {
 	// Name uniquely identifies this stage within the pipeline.
 	Name string `json:"name"`
-	// Selector matches the Environments (clusters) that belong to this stage.
+	// Selector matches the target clusters that belong to this stage.
 	Selector metav1.LabelSelector `json:"selector"`
 	// DependsOn lists stage names that must reach Complete before this stage starts.
 	// +optional
+	// +kubebuilder:validation:MaxItems=64
 	DependsOn []string `json:"dependsOn,omitempty"`
-	// Gate is the inline gate policy evaluated after all environments in this
+	// Gate is the inline gate policy evaluated after all targets in this
 	// stage converge. If nil, the stage advances immediately on convergence.
 	// +optional
 	Gate *GatePolicySpec `json:"gate,omitempty"`
 	// OnFailure controls what Kapro does when this stage fails.
 	// halt (default): stop the pipeline, mark Release Failed.
 	// skip: continue to downstream stages.
-	// rollback: stop AND revert all environments promoted by earlier stages.
+	// rollback: stop AND revert all targets promoted by earlier stages.
 	// +kubebuilder:default=halt
 	// +optional
 	OnFailure StageFailurePolicy `json:"onFailure,omitempty"`
@@ -587,36 +596,18 @@ type Stage struct {
 
 // PipelineSpec defines a reusable progressive delivery path as a flat DAG of stages.
 // A Pipeline is a template — referenced by Release.spec.pipelines[].
+// Uniqueness and dependency-reference validation is enforced by the admission webhook,
+// which can perform DAG checks without the quadratic CEL cost budget constraints.
 type PipelineSpec struct {
 	// Stages is the flat DAG of delivery stages.
 	// Order is declared via DependsOn, not list position.
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=64
 	Stages []Stage `json:"stages"`
 }
 
-// StageProgressEntry is a per-stage phase summary stored in Pipeline.status.
-type StageProgressEntry struct {
-	Name  string `json:"name"`
-	Phase string `json:"phase,omitempty"`
-}
-
-// PipelineStatus defines the observed state of a Pipeline.
-type PipelineStatus struct {
-	// Phase reflects the overall state of this Pipeline in the current Release.
-	// +kubebuilder:validation:Enum=Pending;Progressing;Complete;Failed
-	Phase           string               `json:"phase,omitempty"`
-	ActiveStage     string               `json:"activeStage,omitempty"`
-	TotalStages     int                  `json:"totalStages,omitempty"`
-	CompletedStages int                  `json:"completedStages,omitempty"`
-	StageProgress   []StageProgressEntry `json:"stageProgress,omitempty"`
-	ObservedGeneration int64             `json:"observedGeneration,omitempty"`
-	Conditions      []metav1.Condition   `json:"conditions,omitempty"`
-}
-
 // +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=pl,categories=kapro-all
-// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Pipeline defines a reusable progressive delivery path as a DAG of stages.
@@ -625,8 +616,7 @@ type PipelineStatus struct {
 type Pipeline struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              PipelineSpec   `json:"spec,omitempty"`
-	Status            PipelineStatus `json:"status,omitempty"`
+	Spec              PipelineSpec `json:"spec,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -647,6 +637,7 @@ type ReleasePipelineRef struct {
 	Pipeline string `json:"pipeline"`
 	// DependsOn lists pipeline node names that must reach Complete before this one starts.
 	// +optional
+	// +kubebuilder:validation:MaxItems=64
 	DependsOn []string `json:"dependsOn,omitempty"`
 }
 
@@ -657,11 +648,11 @@ type StageProgress struct {
 	// Phase is the current state of this stage.
 	// +kubebuilder:validation:Enum=Pending;Progressing;Complete;Failed
 	Phase string `json:"phase,omitempty"`
-	// Total is the number of environments selected by this stage.
+	// Total is the number of targets selected by this stage.
 	Total int `json:"total,omitempty"`
-	// Synced is the number of environments that have reached Converged.
+	// Synced is the number of targets that have reached Converged.
 	Synced int `json:"synced,omitempty"`
-	// Failed is the number of environments that have reached Failed.
+	// Failed is the number of targets that have reached Failed.
 	Failed int `json:"failed,omitempty"`
 }
 
@@ -679,21 +670,24 @@ type PipelineProgress struct {
 }
 
 // ReleaseScope restricts a Release to an explicit subset of clusters.
-// Only environments listed in Environments will receive Syncs.
+// Only clusters listed in Targets will receive rollout entries.
 type ReleaseScope struct {
-	// Environments is the allowlist of Environment names.
+	// Targets is the allowlist of target cluster names.
 	// Must be non-empty when Scope is set — an empty list is ignored.
-	Environments []string `json:"environments,omitempty"`
+	Targets []string `json:"targets,omitempty"`
 }
 
+// Uniqueness and dependency-reference validation is enforced by the admission webhook,
+// which can perform DAG checks without the quadratic CEL cost budget constraints.
 type ReleaseSpec struct {
 	// Artifact is the OCI artifact name to deliver across the fleet.
 	Artifact string `json:"artifact"`
 	// Pipelines is the DAG of pipeline nodes that this Release executes.
 	// Each node references a Pipeline CRD and may depend on other nodes.
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=64
 	Pipelines []ReleasePipelineRef `json:"pipelines"`
-	// AppKey is the key used in ManagedCluster.status.currentVersions.
+	// AppKey is the key used in MemberCluster.status.currentVersions.
 	// Defaults to the Artifact name when not set.
 	// +optional
 	AppKey string `json:"appKey,omitempty"`
@@ -706,7 +700,7 @@ type ReleaseSpec struct {
 	// +optional
 	DerivedFrom string `json:"derivedFrom,omitempty"`
 	// Scope restricts this Release to a subset of clusters.
-	// When set, Syncs are only created for the named environments.
+	// When set, rollout entries are only created for the named target clusters.
 	// Nil or empty = full-fleet rollout (normal behaviour).
 	// Immutable after creation — set scope before the Release is created.
 	// +optional
@@ -724,16 +718,23 @@ const (
 
 // ReleaseStatus defines the observed state of Release.
 type ReleaseStatus struct {
-	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
-	Phase              ReleasePhase       `json:"phase,omitempty"`
+	ObservedGeneration int64        `json:"observedGeneration,omitempty"`
+	Phase              ReleasePhase `json:"phase,omitempty"`
 	// ResolvedVersion is the OCI digest resolved from the Artifact CR.
 	// Format: <repository>@sha256:<digest>. Set once in Pending and never changed.
-	ResolvedVersion    string             `json:"resolvedVersion,omitempty"`
-	StartedAt          string             `json:"startedAt,omitempty"`
-	CompletedAt        string             `json:"completedAt,omitempty"`
+	ResolvedVersion string `json:"resolvedVersion,omitempty"`
+	StartedAt       string `json:"startedAt,omitempty"`
+	CompletedAt     string `json:"completedAt,omitempty"`
 	// PipelineProgress tracks execution state of each pipeline node in the DAG.
-	PipelineProgress   []PipelineProgress `json:"pipelineProgress,omitempty"`
-	Conditions         []metav1.Condition `json:"conditions,omitempty"`
+	PipelineProgress []PipelineProgress `json:"pipelineProgress,omitempty"`
+	// Targets tracks per-target rollout state. Replaces the Sync CRD.
+	Targets []TargetStatus `json:"targets,omitempty"`
+	// Report is the inline delivery summary. Replaces the ReleaseReport CRD.
+	Report ReleaseReportSummary `json:"report,omitempty"`
+	// AuditTrail records immutable delivery provenance. Capped at 50 entries.
+	// Replaces the ReleaseRevision CRD.
+	AuditTrail []AuditEntry       `json:"auditTrail,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -741,11 +742,16 @@ type ReleaseStatus struct {
 // +kubebuilder:resource:scope=Cluster,shortName=rel,categories=kapro-all
 // +kubebuilder:printcolumn:name="Artifact",type=string,JSONPath=`.spec.artifact`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
+// +kubebuilder:printcolumn:name="Synced",type=integer,JSONPath=`.status.report.syncedTargets`
+// +kubebuilder:printcolumn:name="Pending",type=integer,JSONPath=`.status.report.pendingTargets`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Release is the trigger for a progressive delivery rollout across the cluster fleet.
 // It references an Artifact and a DAG of Pipelines that define the delivery path.
-// The Release controller drives the pipeline DAG, creating Sync objects per environment.
+// The Release controller drives the pipeline DAG, advancing each target cluster
+// through the delivery FSM (MetricsCheck → WaitingApproval → Applying → Applied).
+// Target rollout state is stored inline in Release.status.targets.
 type Release struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -760,9 +766,99 @@ type ReleaseList struct {
 	Items           []Release `json:"items"`
 }
 
-// ---- Sync -------------------------------------------------------------------
+// ---- Inline status types (folded from former CRDs) -------------------------
 
-// SyncPhase is the execution state of a Sync object.
+// TargetStatus records the rollout state of one target cluster within a Release.
+type TargetStatus struct {
+	// ReleaseRef is the owning Release name.
+	ReleaseRef string `json:"releaseRef,omitempty"`
+	// Target is the target cluster name.
+	Target string `json:"target"`
+	// PipelineRef is the logical pipeline reference name from Release.spec.pipelines[i].name.
+	// Used to disambiguate when the same Pipeline CRD is referenced multiple times.
+	PipelineRef string `json:"pipelineRef,omitempty"`
+	// Pipeline is the Pipeline CRD name this entry belongs to.
+	Pipeline string `json:"pipeline"`
+	// Stage is the stage name within the Pipeline.
+	Stage string `json:"stage"`
+	// Version is the OCI digest being delivered.
+	Version string `json:"version,omitempty"`
+	// Gate is the inline gate policy snapshot applied to this target cluster.
+	// +optional
+	Gate *GatePolicySpec `json:"gate,omitempty"`
+	// AppKey is the key used to look up the current version in MemberCluster.status.currentVersions.
+	// +optional
+	AppKey string `json:"appKey,omitempty"`
+	// Phase is the FSM state of this target rollout.
+	Phase      SyncPhase `json:"phase,omitempty"`
+	StartedAt  string    `json:"startedAt,omitempty"`
+	FinishedAt string    `json:"finishedAt,omitempty"`
+	// PhaseEnteredAt records when the current phase was entered (used by gate timeouts).
+	PhaseEnteredAt string `json:"phaseEnteredAt,omitempty"`
+	Message        string `json:"message,omitempty"`
+	// PreviousVersion holds the version before this sync, used for rollback.
+	PreviousVersion string `json:"previousVersion,omitempty"`
+	// ApprovalSentAt records when the approval notification was last dispatched.
+	ApprovalSentAt string `json:"approvalSentAt,omitempty"`
+	// Gates is the authoritative snapshot of GateTemplate evaluation state.
+	Gates []GateRunStatus `json:"gates,omitempty"`
+	// Rollback is true when this entry was created by a rollback trigger.
+	Rollback bool `json:"rollback,omitempty"`
+	// Rejected is set when a user rejects the approval via the webhook.
+	Rejected bool `json:"rejected,omitempty"`
+	// RejectedBy is the identity of the user who rejected the approval.
+	RejectedBy string `json:"rejectedBy,omitempty"`
+	// ApplyIssued is set once Actuator.Apply() has been called for this delivery
+	// cycle. Guards against duplicate Apply() calls on subsequent reconciles while
+	// the cluster is converging. Reset automatically on each transition into Applying.
+	ApplyIssued bool `json:"applyIssued,omitempty"`
+}
+
+// ReleaseReportSummary is the inline delivery summary stored in
+// Release.status.report. It replaces the standalone ReleaseReport CRD.
+type ReleaseReportSummary struct {
+	Phase             ReleasePhase   `json:"phase,omitempty"`
+	Artifact          string         `json:"artifact,omitempty"`
+	ResolvedVersion   string         `json:"resolvedVersion,omitempty"`
+	StartedAt         string         `json:"startedAt,omitempty"`
+	CompletedAt       string         `json:"completedAt,omitempty"`
+	Duration          string         `json:"duration,omitempty"`
+	TotalTargets      int            `json:"totalTargets,omitempty"`
+	SyncedTargets     int            `json:"syncedTargets,omitempty"`
+	FailedTargets     int            `json:"failedTargets,omitempty"`
+	PendingTargets    int            `json:"pendingTargets,omitempty"`
+	RolledBackTargets int            `json:"rolledBackTargets,omitempty"`
+	Targets           []TargetReport `json:"targets,omitempty"`
+	Gates             []GateReport   `json:"gates,omitempty"`
+	PendingApprovals  []string       `json:"pendingApprovals,omitempty"`
+}
+
+// AuditEntry records the immutable delivery provenance of a completed Release.
+// It replaces the standalone ReleaseRevision CRD. Stored in Release.status.auditTrail.
+type AuditEntry struct {
+	// Artifact is the OCI artifact that was delivered.
+	Artifact string `json:"artifact"`
+	// Release is the Release name.
+	Release string `json:"release"`
+	// DerivedFrom is the parent Artifact name.
+	// +optional
+	DerivedFrom string `json:"derivedFrom,omitempty"`
+	// ReleaseDerivedFrom is the parent Release name.
+	// +optional
+	ReleaseDerivedFrom string `json:"releaseDerivedFrom,omitempty"`
+	// ChangedComponents lists the components that changed relative to the parent artifact.
+	// +optional
+	ChangedComponents []string `json:"changedComponents,omitempty"`
+	// Scope lists the target cluster names that were targeted. Nil = full-fleet rollout.
+	// +optional
+	Scope []string `json:"scope,omitempty"`
+	// CompletedAt is when the Release completed.
+	CompletedAt string `json:"completedAt,omitempty"`
+}
+
+// ---- Rollout execution ------------------------------------------------------
+
+// SyncPhase is the execution state of one target cluster rollout within a Release.
 // +kubebuilder:validation:Enum=Pending;Verification;HealthCheck;Soaking;MetricsCheck;WaitingApproval;Applying;Converged;Failed
 type SyncPhase string
 
@@ -778,77 +874,10 @@ const (
 	SyncPhaseFailed          SyncPhase = "Failed"
 )
 
-// SyncSpec defines the desired state of a Sync.
-type SyncSpec struct {
-	// ReleaseRef is the owning Release name.
-	ReleaseRef string `json:"releaseRef"`
-	// EnvironmentRef is the target Environment (cluster) name.
-	EnvironmentRef string `json:"environmentRef"`
-	// Pipeline is the Pipeline CRD name this Sync belongs to.
-	Pipeline string `json:"pipeline"`
-	// Stage is the stage name within the Pipeline.
-	Stage string `json:"stage"`
-	// Version is the OCI digest being delivered.
-	Version string `json:"version"`
-	// Gate is the inline gate policy applied to this Sync. Copied from the
-	// Pipeline stage at Sync creation time (snapshot semantics).
-	// +optional
-	Gate *GatePolicySpec `json:"gate,omitempty"`
-	// AppKey is the key used to look up the current version in ManagedCluster.status.currentVersions.
-	// +optional
-	AppKey string `json:"appKey,omitempty"`
-}
+// ---- Report helper types ----------------------------------------------------
 
-// SyncStatus defines the observed state of a Sync.
-type SyncStatus struct {
-	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
-	Phase              SyncPhase          `json:"phase,omitempty"`
-	StartedAt          string             `json:"startedAt,omitempty"`
-	FinishedAt         string             `json:"finishedAt,omitempty"`
-	// PhaseEnteredAt records when the current phase was entered.
-	// Used by gate timeout logic to determine how long a gate has been un-passed.
-	PhaseEnteredAt     string             `json:"phaseEnteredAt,omitempty"`
-	Conditions         []metav1.Condition `json:"conditions,omitempty"`
-	Message            string             `json:"message,omitempty"`
-	// PreviousVersion holds the version before this sync, used for rollback.
-	PreviousVersion string         `json:"previousVersion,omitempty"`
-	// ApprovalSentAt records when the approval notification was last dispatched.
-	ApprovalSentAt  string         `json:"approvalSentAt,omitempty"`
-	// Gates is Kapro's authoritative snapshot of GateTemplate evaluation state.
-	Gates           []GateRunStatus `json:"gates,omitempty"`
-}
-
-// +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=syn,categories=kapro-all
-// +kubebuilder:printcolumn:name="Environment",type=string,JSONPath=`.spec.environmentRef`
-// +kubebuilder:printcolumn:name="Pipeline",type=string,JSONPath=`.spec.pipeline`
-// +kubebuilder:printcolumn:name="Stage",type=string,JSONPath=`.spec.stage`
-// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.spec.version`
-// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
-// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
-
-// Sync drives one Environment through the apply → converge cycle for a Release stage.
-// Created internally by the Release controller — users inspect but never create Sync objects.
-// One Sync exists per (Release, Pipeline, Stage, Environment) tuple.
-type Sync struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              SyncSpec   `json:"spec,omitempty"`
-	Status            SyncStatus `json:"status,omitempty"`
-}
-
-// +kubebuilder:object:root=true
-type SyncList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Sync `json:"items"`
-}
-
-// ---- ReleaseReport ----------------------------------------------------------
-
-// EnvironmentReport is a per-environment delivery summary within a ReleaseReport.
-type EnvironmentReport struct {
+// TargetReport is a per-target delivery summary within a ReleaseReportSummary.
+type TargetReport struct {
 	Name        string `json:"name"`
 	PipelineRef string `json:"pipelineRef,omitempty"` // logical pipeline instance name in Release.spec.pipelines
 	Stage       string `json:"stage,omitempty"`
@@ -863,61 +892,9 @@ type GateReport struct {
 	Type        string `json:"type"`
 	PipelineRef string `json:"pipelineRef,omitempty"` // logical pipeline instance name
 	Stage       string `json:"stage,omitempty"`
-	Environment string `json:"environment,omitempty"`
+	Target      string `json:"target,omitempty"`
 	Result      string `json:"result"`
 	Message     string `json:"message,omitempty"`
-}
-
-// ReleaseReportSpec names the Release this report tracks.
-type ReleaseReportSpec struct {
-	ReleaseRef string `json:"releaseRef"`
-}
-
-// ReleaseReportStatus is the live delivery summary for one Release.
-type ReleaseReportStatus struct {
-	// ObservedGeneration is the last generation of the ReleaseReport that was
-	// reconciled. Used by tooling to detect stale status.
-	ObservedGeneration int64               `json:"observedGeneration,omitempty"`
-	Phase              ReleasePhase        `json:"phase,omitempty"`
-	Artifact           string              `json:"artifact,omitempty"`
-	ResolvedVersion    string              `json:"resolvedVersion,omitempty"`
-	StartedAt          string              `json:"startedAt,omitempty"`
-	CompletedAt        string              `json:"completedAt,omitempty"`
-	Duration           string              `json:"duration,omitempty"`
-	TotalEnvironments  int                 `json:"totalEnvironments,omitempty"`
-	SyncedEnvironments int                 `json:"syncedEnvironments,omitempty"`
-	FailedEnvironments int                 `json:"failedEnvironments,omitempty"`
-	PendingEnvironments int                `json:"pendingEnvironments,omitempty"`
-	RolledBackEnvironments int             `json:"rolledBackEnvironments,omitempty"`
-	Environments       []EnvironmentReport `json:"environments,omitempty"`
-	Gates              []GateReport        `json:"gates,omitempty"`
-	PendingApprovals   []string            `json:"pendingApprovals,omitempty"`
-	Conditions         []metav1.Condition  `json:"conditions,omitempty"`
-}
-
-// +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=rr,categories=kapro-all
-// +kubebuilder:printcolumn:name="Release",type=string,JSONPath=`.spec.releaseRef`
-// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
-// +kubebuilder:printcolumn:name="Synced",type=integer,JSONPath=`.status.syncedEnvironments`
-// +kubebuilder:printcolumn:name="Total",type=integer,JSONPath=`.status.totalEnvironments`
-// +kubebuilder:printcolumn:name="Duration",type=string,JSONPath=`.status.duration`
-// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
-
-// ReleaseReport is a live, persistent delivery summary for one Release.
-type ReleaseReport struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              ReleaseReportSpec   `json:"spec,omitempty"`
-	Status            ReleaseReportStatus `json:"status,omitempty"`
-}
-
-// +kubebuilder:object:root=true
-type ReleaseReportList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []ReleaseReport `json:"items"`
 }
 
 // ---- Approval ---------------------------------------------------------------
@@ -931,18 +908,37 @@ const (
 
 type ApprovalSpec struct {
 	// +kubebuilder:validation:Enum=Sync;Stage
-	Kind           ApprovalKind `json:"kind"`
-	Ref            string       `json:"ref"`
-	Release        string       `json:"release"`
-	EnvironmentRef string       `json:"environmentRef,omitempty"`
-	ApprovedBy     string       `json:"approvedBy"`
-	Bypass         bool         `json:"bypass,omitempty"`
-	Comment        string       `json:"comment,omitempty"`
+	Kind       ApprovalKind `json:"kind"`
+	Ref        string       `json:"ref"`
+	Release    string       `json:"release"`
+	Target     string       `json:"target,omitempty"`
+	ApprovedBy string       `json:"approvedBy"`
+	Bypass     bool         `json:"bypass,omitempty"`
+	Comment    string       `json:"comment,omitempty"`
+}
+
+type ApprovalPhase string
+
+const (
+	ApprovalPhasePending  ApprovalPhase = "Pending"
+	ApprovalPhaseRecorded ApprovalPhase = "Recorded"
+)
+
+type ApprovalStatus struct {
+	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
+	Phase              ApprovalPhase      `json:"phase,omitempty"`
+	ProcessedAt        string             `json:"processedAt,omitempty"`
+	Conditions         []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=ap,categories=kapro-all
 // +kubebuilder:printcolumn:name="Kind",type=string,JSONPath=`.spec.kind`
+// +kubebuilder:printcolumn:name="Release",type=string,JSONPath=`.spec.release`
+// +kubebuilder:printcolumn:name="Target",type=string,JSONPath=`.spec.target`
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Recorded",type=string,JSONPath=`.status.conditions[?(@.type=="Recorded")].status`
 // +kubebuilder:printcolumn:name="Ref",type=string,JSONPath=`.spec.ref`
 // +kubebuilder:printcolumn:name="Approved By",type=string,JSONPath=`.spec.approvedBy`
 // +kubebuilder:printcolumn:name="Bypass",type=boolean,JSONPath=`.spec.bypass`
@@ -952,7 +948,8 @@ type ApprovalSpec struct {
 type Approval struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              ApprovalSpec `json:"spec,omitempty"`
+	Spec              ApprovalSpec   `json:"spec,omitempty"`
+	Status            ApprovalStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -964,7 +961,7 @@ type ApprovalList struct {
 
 // ---- MemberCluster ----------------------------------------------------------
 //
-// MemberCluster is the lean replacement for Environment + ManagedCluster + BootstrapToken.
+// MemberCluster is the lean replacement for legacy target inventory split.
 // One object per physical cluster in the Kapro fleet.
 //
 // Ownership split:
@@ -988,7 +985,7 @@ type MemberClusterSpec struct {
 
 	// Topology holds hardware and scheduling metadata used by Pipeline stage selectors.
 	// +optional
-	Topology *EnvironmentTopology `json:"topology,omitempty"`
+	Topology *TargetTopology `json:"topology,omitempty"`
 
 	// DesiredVersion is written by the kapro-operator (release/sync controller).
 	// The cluster-controller polls this field and patches the local delivery system.
@@ -1109,6 +1106,8 @@ type MemberClusterBootstrapStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=mc,categories=kapro-all
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
+// +kubebuilder:printcolumn:name="BootstrapReady",type=string,JSONPath=`.status.conditions[?(@.type=="BootstrapReady")].status`
 // +kubebuilder:printcolumn:name="Delivery",type=string,JSONPath=`.status.deliverySystem`
 // +kubebuilder:printcolumn:name="Healthy",type=boolean,JSONPath=`.status.health.allWorkloadsReady`
 // +kubebuilder:printcolumn:name="Active Release",type=string,JSONPath=`.status.activeRelease`
@@ -1116,7 +1115,7 @@ type MemberClusterBootstrapStatus struct {
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // MemberCluster represents one physical cluster in the Kapro fleet.
-// It merges Environment (delivery config), ManagedCluster (registration state),
+// It merges delivery config, fleet registration state,
 // and BootstrapToken (one-time registration credential) into a single resource.
 //
 // Labels on MemberCluster drive Pipeline stage selection (tier, region, wave, cloud, etc.).
@@ -1133,50 +1132,3 @@ type MemberClusterList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []MemberCluster `json:"items"`
 }
-
-// ---- ReleaseRevision --------------------------------------------------------
-
-// ReleaseRevisionSpec records the immutable delivery provenance of a completed Release.
-type ReleaseRevisionSpec struct {
-	// Artifact is the OCI artifact that was delivered.
-	Artifact string `json:"artifact"`
-	// Release is the Release name that created this revision.
-	Release string `json:"release"`
-	// DerivedFrom is the parent Artifact name (populated from artifact.spec.metadata.derivedFrom).
-	// +optional
-	DerivedFrom string `json:"derivedFrom,omitempty"`
-	// ReleaseDerivedFrom is the parent Release name (populated from release.spec.derivedFrom).
-	// +optional
-	ReleaseDerivedFrom string `json:"releaseDerivedFrom,omitempty"`
-	// ChangedComponents lists the components that changed relative to the parent artifact.
-	// +optional
-	ChangedComponents []string `json:"changedComponents,omitempty"`
-	// Scope lists the environment names that were targeted.
-	// Nil or empty = full-fleet rollout.
-	// +optional
-	Scope []string `json:"scope,omitempty"`
-}
-
-// +kubebuilder:object:root=true
-// +kubebuilder:resource:scope=Cluster,shortName=rrev,categories=kapro-all
-// +kubebuilder:printcolumn:name="Release",type=string,JSONPath=`.spec.release`
-// +kubebuilder:printcolumn:name="Artifact",type=string,JSONPath=`.spec.artifact`
-// +kubebuilder:printcolumn:name="Derived From",type=string,JSONPath=`.spec.releaseDerivedFrom`
-// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
-
-// ReleaseRevision is an immutable audit record written by Kapro when a Release
-// reaches Complete. It captures artifact lineage, scope, and changed components
-// for every completed delivery. Never modify or delete — it is the audit trail.
-type ReleaseRevision struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              ReleaseRevisionSpec `json:"spec,omitempty"`
-}
-
-// +kubebuilder:object:root=true
-type ReleaseRevisionList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []ReleaseRevision `json:"items"`
-}
-

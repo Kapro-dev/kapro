@@ -37,8 +37,14 @@ func (v *MemberClusterValidator) Handle(_ context.Context, req admission.Request
 }
 
 func validateMemberCluster(mc *kaprov1alpha1.MemberCluster) error {
-	act := mc.Spec.Actuator
+	if err := validateActuator(mc); err != nil {
+		return err
+	}
+	return validateProvider(mc)
+}
 
+func validateActuator(mc *kaprov1alpha1.MemberCluster) error {
+	act := mc.Spec.Actuator
 	switch act.Type {
 	case "flux":
 		if act.Flux == nil {
@@ -49,7 +55,36 @@ func validateMemberCluster(mc *kaprov1alpha1.MemberCluster) error {
 	default:
 		return fmt.Errorf("membercluster.spec.actuator.type %q is not supported in this release; supported: flux", act.Type)
 	}
+	return nil
+}
 
+func validateProvider(mc *kaprov1alpha1.MemberCluster) error {
+	p := mc.Spec.Provider
+	if p == nil {
+		// Provider block is optional; absence means CRD path (Path A).
+		return nil
+	}
+
+	switch p.Type {
+	case "", "crd":
+		// Path A: no further validation needed.
+	case "gke":
+		gke := p.GKE
+		if gke == nil {
+			return fmt.Errorf("membercluster.spec.provider.gke must be set when type=gke")
+		}
+		if gke.Project == "" {
+			return fmt.Errorf("membercluster.spec.provider.gke.project must be set when type=gke")
+		}
+		if gke.Location == "" {
+			return fmt.Errorf("membercluster.spec.provider.gke.location must be set when type=gke")
+		}
+		if gke.ClusterName == "" {
+			return fmt.Errorf("membercluster.spec.provider.gke.clusterName must be set when type=gke")
+		}
+	default:
+		return fmt.Errorf("membercluster.spec.provider.type %q is not supported in this release; supported: \"\", crd, gke", p.Type)
+	}
 	return nil
 }
 

@@ -26,7 +26,7 @@
 //   - Be safe for concurrent use
 //   - Respect context cancellation and deadlines
 //   - Return a descriptive error when the cluster is unreachable (not nil, nil)
-//   - Never panic on a nil Environment argument (return error instead)
+//   - Never panic on a nil target argument (return error instead)
 //   - Pass conformance/provider.RunSuite(t, impl)
 //
 // # Implementations

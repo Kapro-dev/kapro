@@ -25,7 +25,7 @@ func makePipeline(name string, selectorLabels map[string]string) *kaprov1alpha1.
 }
 
 // TestReleaseReconciler_PendingToPromoting verifies that a Release transitions
-// from Pending to Progressing after the required Artifact and target Environments exist.
+// from Pending to Progressing after the required Artifact and target clusters exist.
 func TestReleaseReconciler_PendingToPromoting(t *testing.T) {
 	ctx, cancel, c := setupEnv(t)
 	defer cancel()
@@ -37,7 +37,7 @@ func TestReleaseReconciler_PendingToPromoting(t *testing.T) {
 	art := makeArtifact(artifactName, ns)
 	mustCreate(t, ctx, c, art)
 
-	// 2. Create target Environment.
+	// 2. Create target Target.
 	env := makeMemberCluster("de-dev", map[string]string{"tier": "dev", "country": "de"})
 	mustCreate(t, ctx, c, env)
 
@@ -106,9 +106,11 @@ func TestReleaseReconciler_MissingArtifact_StaysOrFailsPending(t *testing.T) {
 	}, "release with missing artifact should stay pending or fail")
 }
 
-// TestReleaseReconciler_OwnerRef verifies that Syncs created by the Release
-// have ownerReferences pointing back to the Release.
-func TestReleaseReconciler_OwnerRef(t *testing.T) {
+// TestReleaseReconciler_EnvStatus_Populated verifies that a Release populates
+// release.Status.Targets once it starts progressing. After the Sync CRD
+// fold there are no standalone Sync objects — target progress is tracked
+// inline in the Release status.
+func TestReleaseReconciler_EnvStatus_Populated(t *testing.T) {
 	ctx, cancel, c := setupEnv(t)
 	defer cancel()
 
@@ -137,17 +139,11 @@ func TestReleaseReconciler_OwnerRef(t *testing.T) {
 	}
 	mustCreate(t, ctx, c, release)
 
-	// Wait until at least one Sync is created and owned by the Release.
+	releaseKey := types.NamespacedName{Name: release.Name, Namespace: ns}
+
+	// Wait until the Release has at least one TargetStatus entry.
 	eventually(t, func() bool {
-		var syncs kaprov1alpha1.SyncList
-		_ = c.List(ctx, &syncs)
-		for _, s := range syncs.Items {
-			for _, ref := range s.OwnerReferences {
-				if ref.Kind == "Release" && ref.Name == "ownerref-release" {
-					return true
-				}
-			}
-		}
-		return false
-	}, "a Sync owned by the Release should exist")
+		r := getRelease(ctx, c, releaseKey)
+		return len(r.Status.Targets) > 0
+	}, "release.Status.Targets should be populated after progressing starts")
 }

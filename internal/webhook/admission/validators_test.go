@@ -58,6 +58,91 @@ func TestValidateMemberCluster_UnsupportedActuatorType(t *testing.T) {
 	}
 }
 
+func TestValidateMemberCluster_GKEMissingSubSpec(t *testing.T) {
+	mc := &kaprov1alpha1.MemberCluster{
+		Spec: kaprov1alpha1.MemberClusterSpec{
+			Actuator: kaprov1alpha1.ActuatorSpec{
+				Type: "flux",
+				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},
+			},
+			Provider: &kaprov1alpha1.ProviderSpec{Type: "gke"},
+		},
+	}
+	if err := mcValidate(mc); err == nil {
+		t.Fatal("expected error for type=gke without provider.gke sub-spec")
+	}
+}
+
+func TestValidateMemberCluster_GKEMissingProject(t *testing.T) {
+	mc := &kaprov1alpha1.MemberCluster{
+		Spec: kaprov1alpha1.MemberClusterSpec{
+			Actuator: kaprov1alpha1.ActuatorSpec{
+				Type: "flux",
+				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},
+			},
+			Provider: &kaprov1alpha1.ProviderSpec{
+				Type: "gke",
+				GKE:  &kaprov1alpha1.GKEProviderSpec{Location: "europe-west3", ClusterName: "spoke-de"},
+			},
+		},
+	}
+	if err := mcValidate(mc); err == nil {
+		t.Fatal("expected error for type=gke with empty project")
+	}
+}
+
+func TestValidateMemberCluster_GKEValid(t *testing.T) {
+	mc := &kaprov1alpha1.MemberCluster{
+		Spec: kaprov1alpha1.MemberClusterSpec{
+			Actuator: kaprov1alpha1.ActuatorSpec{
+				Type: "flux",
+				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},
+			},
+			Provider: &kaprov1alpha1.ProviderSpec{
+				Type: "gke",
+				GKE: &kaprov1alpha1.GKEProviderSpec{
+					Project:     "lidl-de-spoke",
+					Location:    "europe-west3",
+					ClusterName: "spoke-de",
+				},
+			},
+		},
+	}
+	if err := mcValidate(mc); err != nil {
+		t.Fatalf("unexpected error for valid type=gke: %v", err)
+	}
+}
+
+func TestValidateMemberCluster_UnsupportedProviderType(t *testing.T) {
+	mc := &kaprov1alpha1.MemberCluster{
+		Spec: kaprov1alpha1.MemberClusterSpec{
+			Actuator: kaprov1alpha1.ActuatorSpec{
+				Type: "flux",
+				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},
+			},
+			Provider: &kaprov1alpha1.ProviderSpec{Type: "eks"},
+		},
+	}
+	if err := mcValidate(mc); err == nil {
+		t.Fatal("expected error for unsupported provider type eks")
+	}
+}
+
+func TestValidateMemberCluster_CRDProviderValid(t *testing.T) {
+	mc := &kaprov1alpha1.MemberCluster{
+		Spec: kaprov1alpha1.MemberClusterSpec{
+			Actuator: kaprov1alpha1.ActuatorSpec{
+				Type: "flux",
+				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},
+			},
+			Provider: &kaprov1alpha1.ProviderSpec{Type: "crd"},
+		},
+	}
+	if err := mcValidate(mc); err != nil {
+		t.Fatalf("unexpected error for type=crd: %v", err)
+	}
+}
+
 // ---- ReleaseValidator -------------------------------------------------------
 
 func TestValidateRelease_MissingArtifact(t *testing.T) {
@@ -140,6 +225,64 @@ func TestValidateRelease_ValidMultiPipelineDAG(t *testing.T) {
 	}
 	if err := releaseValidate(r); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateRelease_DuplicatePipelineName(t *testing.T) {
+	r := &kaprov1alpha1.Release{
+		Spec: kaprov1alpha1.ReleaseSpec{
+			Artifact: "art-v1",
+			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
+				{Name: "wave1", Pipeline: "rollout"},
+				{Name: "wave1", Pipeline: "rollout"},
+			},
+		},
+	}
+	if err := releaseValidate(r); err == nil {
+		t.Fatal("expected error for duplicate pipeline node name")
+	}
+}
+
+func TestValidateRelease_UnknownDependency(t *testing.T) {
+	r := &kaprov1alpha1.Release{
+		Spec: kaprov1alpha1.ReleaseSpec{
+			Artifact: "art-v1",
+			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
+				{Name: "wave1", Pipeline: "rollout", DependsOn: []string{"does-not-exist"}},
+			},
+		},
+	}
+	if err := releaseValidate(r); err == nil {
+		t.Fatal("expected error for unknown pipeline node dependency")
+	}
+}
+
+func TestValidateRelease_PipelineCycle(t *testing.T) {
+	r := &kaprov1alpha1.Release{
+		Spec: kaprov1alpha1.ReleaseSpec{
+			Artifact: "art-v1",
+			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
+				{Name: "a", Pipeline: "rollout", DependsOn: []string{"b"}},
+				{Name: "b", Pipeline: "rollout", DependsOn: []string{"a"}},
+			},
+		},
+	}
+	if err := releaseValidate(r); err == nil {
+		t.Fatal("expected error for cycle in pipeline DAG")
+	}
+}
+
+func TestValidateRelease_SelfCycle(t *testing.T) {
+	r := &kaprov1alpha1.Release{
+		Spec: kaprov1alpha1.ReleaseSpec{
+			Artifact: "art-v1",
+			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
+				{Name: "wave1", Pipeline: "rollout", DependsOn: []string{"wave1"}},
+			},
+		},
+	}
+	if err := releaseValidate(r); err == nil {
+		t.Fatal("expected error for self-cycle in pipeline DAG")
 	}
 }
 

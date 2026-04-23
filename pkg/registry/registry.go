@@ -6,9 +6,9 @@
 // Every Kapro extension interface (KGI, KAI, KCI, KNI, KHI, KRI, KVI) follows
 // the same lifecycle:
 //
-//	1. Startup: operator binary registers implementations by name.
-//	2. Runtime: controllers resolve implementations by name from the Environment spec.
-//	3. Reconcile: implementation is called through its interface.
+//  1. Startup: operator binary registers implementations by name.
+//  2. Runtime: controllers resolve implementations by name from the MemberCluster spec.
+//  3. Reconcile: implementation is called through its interface.
 //
 // The Registry type provides this lifecycle for any interface T.  All Kapro
 // per-type registries (actuator.Registry, provider.Registry) embed Registry[T]
@@ -19,7 +19,7 @@
 // Registry[T] is to Kapro what the kubelet plugin registry is to Kubernetes:
 // a named, runtime-resolved dispatch table for extension implementations.
 // Just as the kubelet resolves a CSI driver by name in a PersistentVolume spec,
-// Kapro resolves an Actuator by name in an Environment.spec.actuator.type field.
+// Kapro resolves an Actuator by name in an MemberCluster.spec.actuator.type field.
 //
 // # Usage
 //

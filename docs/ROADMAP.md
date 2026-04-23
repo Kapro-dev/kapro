@@ -45,7 +45,7 @@ GKE is **shipped** (see SPEC.md §9 and `internal/provider/gke/`). Remaining:
 - `Rollback` patches back to `previousVersion`
 - Register as `"argocd"` in `cmd/operator/main.go`
 
-**Acceptance criteria:** conformance suite passes; `Environment.spec.actuator.type: argocd` works end-to-end in integration test.
+**Acceptance criteria:** conformance suite passes; `MemberCluster.spec.actuator.type: argocd` works end-to-end in integration test.
 
 ---
 

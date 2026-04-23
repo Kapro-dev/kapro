@@ -1,8 +1,8 @@
 # Default values for kapro-cluster-controller.
 
 # REQUIRED — must be set at install time
-# The name of the MemberCluster CRD on the control plane that this cluster maps to.
-environmentRef: ""
+# The name of the MemberCluster on the control plane that this cluster maps to.
+target: ""
 
 # REQUIRED — URL of the hub cluster's Kubernetes API server (used for CSR bootstrap + heartbeat)
 # Example: https://hub.example.com:6443

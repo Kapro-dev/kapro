@@ -6,12 +6,12 @@
 // The CEL expression is evaluated against a structured activation:
 //
 //	args         — map[string]string of resolved gate args
-//	environment  — kapro MemberCluster object (labels, name)
-//	sync         — kapro Sync object (version, environmentRef, releaseRef)
+//	target       — kapro MemberCluster object (labels, name)
+//	sync         — Kapro delivery context (version, target, releaseRef)
 //
 // Example expression:
 //
-//	args.error_rate <= "0.01" && environment.labels.wave == "pilot"
+//	args.error_rate <= "0.01" && target.labels.wave == "pilot"
 package cel
 
 import (
@@ -51,13 +51,13 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 
 	// Resolve the MemberCluster object for context variables.
 	var mcObj kaprov1alpha1.MemberCluster
-	if req.Sync != nil && req.Sync.Spec.EnvironmentRef != "" && g.Client != nil {
-		if err := g.Client.Get(ctx, client.ObjectKey{Name: req.Sync.Spec.EnvironmentRef}, &mcObj); err != nil {
-			log.Info("cel gate: could not fetch MemberCluster, proceeding with empty cluster context", "name", req.Sync.Spec.EnvironmentRef)
+	if req.Context != nil && req.Context.Target != "" && g.Client != nil {
+		if err := g.Client.Get(ctx, client.ObjectKey{Name: req.Context.Target}, &mcObj); err != nil {
+			log.Info("cel gate: could not fetch MemberCluster, proceeding with empty cluster context", "name", req.Context.Target)
 		}
 	}
 
-	activation, err := buildActivation(req.Args, &mcObj, req.Sync)
+	activation, err := buildActivation(req.Args, &mcObj, req.Context)
 	if err != nil {
 		return pkggate.Result{}, fmt.Errorf("cel gate: build activation: %w", err)
 	}
@@ -83,16 +83,16 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 	}, nil
 }
 
-// buildActivation constructs the CEL variable map from resolved args + cluster + sync.
-func buildActivation(args map[string]string, mc *kaprov1alpha1.MemberCluster, sync *kaprov1alpha1.Sync) (map[string]any, error) {
+// buildActivation constructs the CEL variable map from resolved args + cluster + gate context.
+func buildActivation(args map[string]string, mc *kaprov1alpha1.MemberCluster, gateCtx *pkggate.Context) (map[string]any, error) {
 	// args: map[string]string — directly accessible as args.key
 	argsMap := map[string]any{}
 	for k, v := range args {
 		argsMap[k] = v
 	}
 
-	// environment: flattened fields (keyed as "environment" for backward-compat with existing CEL expressions)
-	envMap := map[string]any{
+	// target: flattened fields
+	targetMap := map[string]any{
 		"name":   "",
 		"labels": map[string]any{},
 	}
@@ -101,28 +101,28 @@ func buildActivation(args map[string]string, mc *kaprov1alpha1.MemberCluster, sy
 		for k, v := range mc.Labels {
 			labelMap[k] = v
 		}
-		envMap["name"] = mc.Name
-		envMap["labels"] = labelMap
+		targetMap["name"] = mc.Name
+		targetMap["labels"] = labelMap
 	}
 
 	// sync: key fields
 	syncMap := map[string]any{
-		"name":           "",
-		"version":        "",
-		"environmentRef": "",
-		"releaseRef":     "",
+		"name":       "",
+		"version":    "",
+		"target":     "",
+		"releaseRef": "",
 	}
-	if sync != nil {
-		syncMap["name"] = sync.Name
-		syncMap["version"] = sync.Spec.Version
-		syncMap["environmentRef"] = sync.Spec.EnvironmentRef
-		syncMap["releaseRef"] = sync.Spec.ReleaseRef
+	if gateCtx != nil {
+		syncMap["name"] = gateCtx.Name
+		syncMap["version"] = gateCtx.Version
+		syncMap["target"] = gateCtx.Target
+		syncMap["releaseRef"] = gateCtx.ReleaseRef
 	}
 
 	return map[string]any{
-		"args":        argsMap,
-		"environment": envMap,
-		"sync":        syncMap,
+		"args":   argsMap,
+		"target": targetMap,
+		"sync":   syncMap,
 	}, nil
 }
 
@@ -130,7 +130,7 @@ func buildActivation(args map[string]string, mc *kaprov1alpha1.MemberCluster, sy
 func evaluate(expr string, activation map[string]any) (bool, string, error) {
 	env, err := cel.NewEnv(
 		cel.Variable("args", cel.MapType(cel.StringType, cel.StringType)),
-		cel.Variable("environment", cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable("target", cel.MapType(cel.StringType, cel.DynType)),
 		cel.Variable("sync", cel.MapType(cel.StringType, cel.StringType)),
 	)
 	if err != nil {
