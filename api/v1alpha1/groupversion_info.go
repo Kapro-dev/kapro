@@ -28,5 +28,7 @@ func init() {
 		&Approval{}, &ApprovalList{},
 		&ReleaseReport{}, &ReleaseReportList{},
 		&BootstrapToken{}, &BootstrapTokenList{},
+		// Immutable audit records
+		&ReleaseRevision{}, &ReleaseRevisionList{},
 	)
 }

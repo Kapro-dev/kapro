@@ -50,6 +50,18 @@ spec:
             properties:
               metadata:
                 properties:
+                  changedComponents:
+                    description: |-
+                      ChangedComponents lists the app components that changed relative to the
+                      parent artifact (when DerivedFrom is set).
+                    items:
+                      type: string
+                    type: array
+                  derivedFrom:
+                    description: |-
+                      DerivedFrom is the name of the parent Artifact this was derived from.
+                      Set by CI for hotfix bundles that replace only a subset of components.
+                    type: string
                   description:
                     type: string
                   releasedBy:

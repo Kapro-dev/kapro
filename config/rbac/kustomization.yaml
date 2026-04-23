@@ -1,0 +1,5 @@
+resources:
+- role.yaml
+- role_binding.yaml
+- cluster_controller_role.yaml
+- cluster_controller_role_binding.yaml

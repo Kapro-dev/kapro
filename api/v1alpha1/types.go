@@ -39,6 +39,14 @@ type OCIRef struct {
 type ArtifactMeta struct {
 	ReleasedBy  string `json:"releasedBy,omitempty"`
 	Description string `json:"description,omitempty"`
+	// DerivedFrom is the name of the parent Artifact this was derived from.
+	// Set by CI for hotfix bundles that replace only a subset of components.
+	// +optional
+	DerivedFrom string `json:"derivedFrom,omitempty"`
+	// ChangedComponents lists the app components that changed relative to the
+	// parent artifact (when DerivedFrom is set).
+	// +optional
+	ChangedComponents []string `json:"changedComponents,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -812,6 +820,14 @@ type PipelineProgress struct {
 	StageProgress []StageProgress `json:"stageProgress,omitempty"`
 }
 
+// ReleaseScope restricts a Release to an explicit subset of clusters.
+// Only environments listed in Environments will receive Syncs.
+type ReleaseScope struct {
+	// Environments is the allowlist of Environment names.
+	// Must be non-empty when Scope is set — an empty list is ignored.
+	Environments []string `json:"environments,omitempty"`
+}
+
 type ReleaseSpec struct {
 	// Artifact is the OCI artifact name to deliver across the fleet.
 	Artifact string `json:"artifact"`
@@ -826,6 +842,17 @@ type ReleaseSpec struct {
 	// Suspended pauses all advancement when true.
 	// +kubebuilder:default=false
 	Suspended bool `json:"suspended,omitempty"`
+	// DerivedFrom is the name of the parent Release this hotfix was derived from.
+	// Set by CI for hotfix Releases that target a subset of clusters.
+	// Immutable after creation — changing it has no effect on a running rollout.
+	// +optional
+	DerivedFrom string `json:"derivedFrom,omitempty"`
+	// Scope restricts this Release to a subset of clusters.
+	// When set, Syncs are only created for the named environments.
+	// Nil or empty = full-fleet rollout (normal behaviour).
+	// Immutable after creation — set scope before the Release is created.
+	// +optional
+	Scope *ReleaseScope `json:"scope,omitempty"`
 }
 
 type ReleasePhase string
@@ -989,6 +1016,9 @@ type ReleaseReportSpec struct {
 
 // ReleaseReportStatus is the live delivery summary for one Release.
 type ReleaseReportStatus struct {
+	// ObservedGeneration is the last generation of the ReleaseReport that was
+	// reconciled. Used by tooling to detect stale status.
+	ObservedGeneration int64               `json:"observedGeneration,omitempty"`
 	Phase              ReleasePhase        `json:"phase,omitempty"`
 	Artifact           string              `json:"artifact,omitempty"`
 	ResolvedVersion    string              `json:"resolvedVersion,omitempty"`
@@ -1131,5 +1161,51 @@ type BootstrapTokenList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []BootstrapToken `json:"items"`
+}
+
+// ---- ReleaseRevision --------------------------------------------------------
+
+// ReleaseRevisionSpec records the immutable delivery provenance of a completed Release.
+type ReleaseRevisionSpec struct {
+	// Artifact is the OCI artifact that was delivered.
+	Artifact string `json:"artifact"`
+	// Release is the Release name that created this revision.
+	Release string `json:"release"`
+	// DerivedFrom is the parent Artifact name (populated from artifact.spec.metadata.derivedFrom).
+	// +optional
+	DerivedFrom string `json:"derivedFrom,omitempty"`
+	// ReleaseDerivedFrom is the parent Release name (populated from release.spec.derivedFrom).
+	// +optional
+	ReleaseDerivedFrom string `json:"releaseDerivedFrom,omitempty"`
+	// ChangedComponents lists the components that changed relative to the parent artifact.
+	// +optional
+	ChangedComponents []string `json:"changedComponents,omitempty"`
+	// Scope lists the environment names that were targeted.
+	// Nil or empty = full-fleet rollout.
+	// +optional
+	Scope []string `json:"scope,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:scope=Cluster,shortName=rrev,categories=kapro-all
+// +kubebuilder:printcolumn:name="Release",type=string,JSONPath=`.spec.release`
+// +kubebuilder:printcolumn:name="Artifact",type=string,JSONPath=`.spec.artifact`
+// +kubebuilder:printcolumn:name="Derived From",type=string,JSONPath=`.spec.releaseDerivedFrom`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+
+// ReleaseRevision is an immutable audit record written by Kapro when a Release
+// reaches Complete. It captures artifact lineage, scope, and changed components
+// for every completed delivery. Never modify or delete — it is the audit trail.
+type ReleaseRevision struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              ReleaseRevisionSpec `json:"spec,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+type ReleaseRevisionList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []ReleaseRevision `json:"items"`
 }
 

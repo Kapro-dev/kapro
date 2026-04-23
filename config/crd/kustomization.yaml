@@ -1,0 +1,12 @@
+resources:
+- bases/kapro.io_approvals.yaml
+- bases/kapro.io_artifacts.yaml
+- bases/kapro.io_bootstraptokens.yaml
+- bases/kapro.io_environments.yaml
+- bases/kapro.io_gatepolicies.yaml
+- bases/kapro.io_gatetemplates.yaml
+- bases/kapro.io_managedclusters.yaml
+- bases/kapro.io_pipelines.yaml
+- bases/kapro.io_releasereports.yaml
+- bases/kapro.io_releases.yaml
+- bases/kapro.io_syncs.yaml

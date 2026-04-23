@@ -1,0 +1,80 @@
+# Release CI pipeline — triggered on merge to main.
+#
+# This pipeline:
+# 1. Builds and pushes the OCI bundle to the registry
+# 2. Creates the Kapro Artifact CR
+# 3. Creates the Kapro Release CR (progressive delivery begins)
+#
+# Assumes:
+#   - KUBECONFIG_MGMT is a CI secret with access to the management cluster
+#   - REGISTRY is the OCI registry URL (e.g., registry.example.com)
+---
+# GitHub Actions example
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flux CLI
+        uses: fluxcd/flux2/action@main
+
+      - name: Setup Kapro CLI
+        run: |
+          curl -sSL https://github.com/your-org/kapro/releases/latest/download/kapro-linux-amd64 \
+            -o /usr/local/bin/kapro && chmod +x /usr/local/bin/kapro
+
+      - name: Build application image
+        run: |
+          docker build -t ${{ env.REGISTRY }}/my-app:${{ github.sha }} .
+          docker push ${{ env.REGISTRY }}/my-app:${{ github.sha }}
+
+      - name: Build and push OCI bundle
+        run: |
+          # Package Kustomize overlays + app-versions into an OCI bundle
+          flux push artifact oci://${{ env.REGISTRY }}/fleet-bundles:${{ github.sha }} \
+            --path=./deploy \
+            --source="$(git remote get-url origin)" \
+            --revision="${GITHUB_REF_NAME}@sha1:${GITHUB_SHA}"
+
+          # Capture the digest
+          DIGEST=$(flux tag artifact oci://${{ env.REGISTRY }}/fleet-bundles:${{ github.sha }} \
+            --tag=latest --output=digest)
+          echo "BUNDLE_DIGEST=$DIGEST" >> $GITHUB_ENV
+
+      - name: Register Kapro Artifact
+        run: |
+          kapro artifact push \
+            --name=my-app-${{ github.sha }} \
+            --repository=${{ env.REGISTRY }}/fleet-bundles \
+            --tag=${{ github.sha }} \
+            --digest=${{ env.BUNDLE_DIGEST }} \
+            --released-by=${{ github.actor }}
+        env:
+          KUBECONFIG: ${{ secrets.KUBECONFIG_MGMT }}
+
+      - name: Create Kapro Release
+        run: |
+          kapro release create \
+            --name=my-app-${{ github.sha }} \
+            --artifact=my-app-${{ github.sha }} \
+            --pipeline=global
+        env:
+          KUBECONFIG: ${{ secrets.KUBECONFIG_MGMT }}
+
+      - name: Monitor delivery
+        run: |
+          # Wait for pilot stage to complete
+          for i in $(seq 1 30); do
+            kapro get releases | grep -q "Complete" && echo "✅ Release complete" && exit 0
+            sleep 30
+          done
+          echo "⏳ Release still progressing (timeout is normal for multi-stage pipelines)"
+        env:
+          KUBECONFIG: ${{ secrets.KUBECONFIG_MGMT }}

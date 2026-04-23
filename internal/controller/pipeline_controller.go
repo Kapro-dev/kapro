@@ -45,9 +45,9 @@ func (r *PipelineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	// List all Syncs that reference this Pipeline (by Pipeline CR name).
 	// Syncs are labelled kapro.io/pipeline=<pipeline-name>.
+	// Sync is cluster-scoped — do NOT filter by namespace.
 	var syncList kaprov1alpha1.SyncList
 	if err := r.List(ctx, &syncList,
-		client.InNamespace(pipeline.Namespace),
 		client.MatchingLabels{"kapro.io/pipeline": pipeline.Name},
 		client.Limit(2000),
 	); err != nil {

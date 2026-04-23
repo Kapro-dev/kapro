@@ -1,0 +1,60 @@
+# Hotfix CI pipeline — triggered on push to hotfix/* branches.
+#
+# Hotfix releases use derivedFrom + changedComponents to express
+# lineage: "this bundle is my-app-v1.2.3 with only payment-service changed".
+#
+# Kapro uses this to determine which environments actually need syncing,
+# and ReleaseRevision captures it for auditability.
+---
+name: Hotfix Release
+
+on:
+  push:
+    branches: [hotfix/*]
+
+jobs:
+  hotfix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect changed components
+        id: changes
+        run: |
+          # Determine which services changed relative to the base release
+          CHANGED=$(git diff --name-only HEAD~1 HEAD -- services/ \
+            | cut -d/ -f2 | sort -u | tr '\n' ',' | sed 's/,$//')
+          echo "components=$CHANGED" >> $GITHUB_OUTPUT
+
+      - name: Build and push OCI bundle
+        run: |
+          flux push artifact oci://${{ env.REGISTRY }}/fleet-bundles:hotfix-${{ github.sha }} \
+            --path=./deploy
+          DIGEST=$(flux tag artifact oci://${{ env.REGISTRY }}/fleet-bundles:hotfix-${{ github.sha }} \
+            --tag=hotfix-latest --output=digest)
+          echo "BUNDLE_DIGEST=$DIGEST" >> $GITHUB_ENV
+
+      - name: Register Kapro Hotfix Artifact
+        run: |
+          # --derived-from links this to the base release Artifact
+          # --changed lists only the services that changed
+          kapro artifact push \
+            --name=my-app-hotfix-${{ github.sha }} \
+            --repository=${{ env.REGISTRY }}/fleet-bundles \
+            --tag=hotfix-${{ github.sha }} \
+            --digest=${{ env.BUNDLE_DIGEST }} \
+            --released-by=${{ github.actor }} \
+            --derived-from=my-app-${{ env.BASE_SHA }} \
+            --changed=${{ steps.changes.outputs.components }}
+        env:
+          KUBECONFIG: ${{ secrets.KUBECONFIG_MGMT }}
+
+      - name: Create Kapro Hotfix Release
+        run: |
+          kapro release create \
+            --name=my-app-hotfix-${{ github.sha }} \
+            --artifact=my-app-hotfix-${{ github.sha }} \
+            --pipeline=global \
+            --derived-from=my-app-${{ env.BASE_SHA }}
+        env:
+          KUBECONFIG: ${{ secrets.KUBECONFIG_MGMT }}

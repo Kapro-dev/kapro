@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kapro-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kapro-operator
+  namespace: kapro-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kapro-operator
+  template:
+    metadata:
+      labels:
+        app: kapro-operator
+    spec:
+      serviceAccountName: kapro-operator
+      containers:
+      - name: manager
+        image: kapro-operator:dev
+        imagePullPolicy: Never
+        command: ["/manager"]
+        args: ["--leader-elect=false"]
+        env:
+        - name: KAPRO_DISABLE_WEBHOOKS
+          value: "true"
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kapro-operator
+  namespace: kapro-system

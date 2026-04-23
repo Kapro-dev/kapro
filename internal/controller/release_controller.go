@@ -3,12 +3,14 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -55,6 +57,7 @@ type ReleaseReconciler struct {
 // +kubebuilder:rbac:groups=kapro.io,resources=pipelines,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kapro.io,resources=syncs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kapro.io,resources=approvals,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=releaserevisions,verbs=get;list;watch;create
 
 func (r *ReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
@@ -272,6 +275,12 @@ func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kapr
 	release.Status.ObservedGeneration = release.Generation
 
 	if allPipelinesComplete {
+		// Ensure the audit record BEFORE transitioning to Complete.
+		// If this fails, the Release stays Progressing and we retry next reconcile.
+		if err := r.ensureReleaseRevision(ctx, release); err != nil {
+			log.Error(err, "failed to ensure ReleaseRevision — will retry on next reconcile")
+			return ctrl.Result{RequeueAfter: requeueNormal}, err
+		}
 		release.Status.Phase = kaprov1alpha1.ReleasePhaseComplete
 		release.Status.CompletedAt = time.Now().UTC().Format(time.RFC3339)
 		apimeta.SetStatusCondition(&release.Status.Conditions, metav1.Condition{
@@ -356,7 +365,7 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 		}
 
 		// List environments matching this stage's selector.
-		envList, err := r.listEnvironmentsForStage(ctx, stage)
+		envList, err := r.listEnvironmentsForStage(ctx, stage, release)
 		if err != nil {
 			return nil, false, false, fmt.Errorf("list environments for stage %s: %w", stage.Name, err)
 		}
@@ -448,8 +457,9 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 	return stageProgress, allComplete, anyFailed, nil
 }
 
-// listEnvironmentsForStage returns all Environments that match the stage selector.
-func (r *ReleaseReconciler) listEnvironmentsForStage(ctx context.Context, stage kaprov1alpha1.Stage) ([]kaprov1alpha1.Environment, error) {
+// listEnvironmentsForStage returns all Environments that match the stage selector,
+// filtered to spec.scope.environments when a scope is set on the Release.
+func (r *ReleaseReconciler) listEnvironmentsForStage(ctx context.Context, stage kaprov1alpha1.Stage, release *kaprov1alpha1.Release) ([]kaprov1alpha1.Environment, error) {
 	var envList kaprov1alpha1.EnvironmentList
 	listOpts := []client.ListOption{client.Limit(500)}
 	sel, err := metav1.LabelSelectorAsSelector(&stage.Selector)
@@ -460,7 +470,28 @@ func (r *ReleaseReconciler) listEnvironmentsForStage(ctx context.Context, stage 
 	if err := r.List(ctx, &envList, listOpts...); err != nil {
 		return nil, err
 	}
-	return envList.Items, nil
+	envs := envList.Items
+
+	// Apply scope filter when an explicit environment allowlist is provided.
+	if release.Spec.Scope != nil && len(release.Spec.Scope.Environments) > 0 {
+		allowed := make(map[string]struct{}, len(release.Spec.Scope.Environments))
+		for _, e := range release.Spec.Scope.Environments {
+			allowed[e] = struct{}{}
+		}
+		filtered := envs[:0]
+		for _, env := range envs {
+			if _, ok := allowed[env.Name]; ok {
+				filtered = append(filtered, env)
+			}
+		}
+		if len(filtered) == 0 && len(envs) > 0 {
+			log.FromContext(ctx).Info("scope filter eliminated all environments for stage — treating as no-op",
+				"stage", stage.Name, "scopeEnvironments", release.Spec.Scope.Environments)
+		}
+		envs = filtered
+	}
+
+	return envs, nil
 }
 
 // ensureSync creates a Sync for the given (release, pipelineRef, stage, environment) tuple.
@@ -787,4 +818,53 @@ func releaseAppKey(release *kaprov1alpha1.Release) string {
 		return release.Spec.AppKey
 	}
 	return release.Spec.Artifact
+}
+
+// ensureReleaseRevision writes an immutable audit record for a completed Release.
+// The name is deterministic: <release.Name>-<first 8 chars of UID without dashes>.
+// Using release.UID ensures uniqueness across recreations with the same name.
+// IgnoreAlreadyExists makes this safe to call on every reconcile — the record
+// is written at most once.
+func (r *ReleaseReconciler) ensureReleaseRevision(ctx context.Context, release *kaprov1alpha1.Release) error {
+	uidShort := strings.ReplaceAll(string(release.UID), "-", "")
+	if len(uidShort) > 8 {
+		uidShort = uidShort[:8]
+	}
+	name := release.Name + "-" + uidShort
+
+	// Fetch the artifact to capture lineage fields.
+	var derivedFrom string
+	var changedComponents []string
+	if release.Spec.Artifact != "" {
+		var artifact kaprov1alpha1.Artifact
+		if err := r.Get(ctx, types.NamespacedName{Name: release.Spec.Artifact}, &artifact); err == nil {
+			derivedFrom = artifact.Spec.Metadata.DerivedFrom
+			changedComponents = artifact.Spec.Metadata.ChangedComponents
+		}
+	}
+
+	var scope []string
+	if release.Spec.Scope != nil {
+		scope = release.Spec.Scope.Environments
+	}
+
+	rrev := &kaprov1alpha1.ReleaseRevision{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+			Labels: map[string]string{
+				"kapro.io/release":  release.Name,
+				"kapro.io/artifact": release.Spec.Artifact,
+			},
+		},
+		Spec: kaprov1alpha1.ReleaseRevisionSpec{
+			Artifact:           release.Spec.Artifact,
+			Release:            release.Name,
+			DerivedFrom:        derivedFrom,
+			ReleaseDerivedFrom: release.Spec.DerivedFrom,
+			ChangedComponents:  changedComponents,
+			Scope:              scope,
+		},
+	}
+
+	return client.IgnoreAlreadyExists(r.Create(ctx, rrev))
 }

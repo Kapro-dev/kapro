@@ -320,6 +320,7 @@ func (r *SyncReconciler) handleMetricsCheck(ctx context.Context, sync *kaprov1al
 	// 1. Evaluate Prometheus metric gates in order; block on the first failure.
 	//    GateTemplate evaluation always follows — even when there are no metrics —
 	//    so a templates-only policy works correctly.
+	gatePassed := true
 	if len(policy.Spec.Gate.Metrics) > 0 {
 		metricsGate := r.MetricsGate
 		if metricsGate == nil {
@@ -328,13 +329,21 @@ func (r *SyncReconciler) handleMetricsCheck(ctx context.Context, sync *kaprov1al
 		for i, metric := range policy.Spec.Gate.Metrics {
 			result, err := metricsGate.Evaluate(ctx, gate.Request{Sync: sync, Policy: policy, MetricIndex: i})
 			if err != nil {
-				// Non-fatal: log and retry — don't fail the sync on transient errors.
+				// Infrastructure error (e.g. Prometheus unreachable) — retry but do NOT
+				// count this against the gate timeout budget. Real threshold breaches
+				// must come from a valid result, not a backend outage.
 				log.FromContext(ctx).Error(err, "metrics gate error, will retry", "index", i)
 				return ctrl.Result{RequeueAfter: requeueNormal}, nil
 			}
 			log.FromContext(ctx).Info("metrics gate", "index", i, "provider", metric.Provider, "phase", result.Phase, "message", result.Message)
 			if !result.IsPassed() {
 				r.Recorder.Event(sync, corev1.EventTypeWarning, "GateFailed", result.Message)
+				gatePassed = false
+				// Check gate timeout before retrying. Infrastructure errors are excluded
+				// (handled above), so a timeout here means a genuine threshold breach.
+				if timedOut, failMsg := r.metricsGateTimedOut(sync, policy); timedOut {
+					return ctrl.Result{}, r.failSync(ctx, sync, policy, failMsg)
+				}
 				after := parseDurationOrDefault(result.RetryAfter)
 				return ctrl.Result{RequeueAfter: after}, nil
 			}
@@ -351,11 +360,37 @@ func (r *SyncReconciler) handleMetricsCheck(ctx context.Context, sync *kaprov1al
 			return ctrl.Result{}, fmt.Errorf("evaluateGateTemplates: %w", err)
 		}
 		if !allPassed {
+			gatePassed = false
+			if timedOut, failMsg := r.metricsGateTimedOut(sync, policy); timedOut {
+				return ctrl.Result{}, r.failSync(ctx, sync, policy, failMsg)
+			}
 			return ctrl.Result{RequeueAfter: requeueAfter}, nil
 		}
 	}
 
+	_ = gatePassed
 	return r.nextAfterMetrics(ctx, sync, policy)
+}
+
+// metricsGateTimedOut returns true when the Sync has been in MetricsCheck longer
+// than policy.Spec.Gate.GateTimeout. Returns (false, "") if no timeout is configured
+// or the deadline has not yet passed.
+func (r *SyncReconciler) metricsGateTimedOut(sync *kaprov1alpha1.Sync, policy *kaprov1alpha1.GatePolicy) (bool, string) {
+	if policy.Spec.Gate.GateTimeout == "" || sync.Status.PhaseEnteredAt == "" {
+		return false, ""
+	}
+	timeout, err := time.ParseDuration(policy.Spec.Gate.GateTimeout)
+	if err != nil {
+		return false, ""
+	}
+	enteredAt, err := time.Parse(time.RFC3339, sync.Status.PhaseEnteredAt)
+	if err != nil {
+		return false, ""
+	}
+	if time.Since(enteredAt) < timeout {
+		return false, ""
+	}
+	return true, fmt.Sprintf("metrics gate timed out after %s (onFailure=%s)", policy.Spec.Gate.GateTimeout, policy.Spec.OnFailure)
 }
 
 // evaluateGateTemplates evaluates all GateTemplate refs from the policy.
@@ -757,6 +792,9 @@ func (r *SyncReconciler) transitionTo(ctx context.Context, sync *kaprov1alpha1.S
 	if phase == kaprov1alpha1.SyncPhaseSoaking && sync.Status.StartedAt == "" {
 		sync.Status.StartedAt = time.Now().UTC().Format(time.RFC3339)
 	}
+	// PhaseEnteredAt is reset on every transition so gate timeout logic
+	// can measure how long the Sync has been stuck in a given phase.
+	sync.Status.PhaseEnteredAt = time.Now().UTC().Format(time.RFC3339)
 	r.Recorder.Event(sync, corev1.EventTypeNormal, "PhaseTransition", fmt.Sprintf("→ %s", phase))
 	if err := r.Status().Patch(ctx, sync, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch phase %s: %w", phase, err)
@@ -798,6 +836,27 @@ func (r *SyncReconciler) failSync(ctx context.Context, sync *kaprov1alpha1.Sync,
 		Message:            msg,
 		LastTransitionTime: metav1.Now(),
 	})
+
+	onFailure := "halt"
+	if policy != nil && policy.Spec.OnFailure != "" {
+		onFailure = policy.Spec.OnFailure
+	}
+
+	// When not rolling back automatically, surface rollback availability as a
+	// condition so operators can make an informed manual decision.
+	// Note: PreviousVersion is only set after at least one successful apply, so
+	// this condition is absent for pre-apply gate failures (expected behaviour).
+	if onFailure != "rollback" && sync.Status.PreviousVersion != "" {
+		apimeta.SetStatusCondition(&sync.Status.Conditions, metav1.Condition{
+			Type:               "RollbackAvailable",
+			Status:             metav1.ConditionTrue,
+			Reason:             "PreviousVersionKnown",
+			ObservedGeneration: sync.Generation,
+			Message:            fmt.Sprintf("Previous version %s is available. To roll back: kapro rollback %s --to %s", sync.Status.PreviousVersion, sync.Name, sync.Status.PreviousVersion),
+			LastTransitionTime: metav1.Now(),
+		})
+	}
+
 	r.Recorder.Event(sync, corev1.EventTypeWarning, "Failed", msg)
 
 	if err := r.Status().Patch(ctx, sync, patch); err != nil {
@@ -816,8 +875,11 @@ func (r *SyncReconciler) failSync(ctx context.Context, sync *kaprov1alpha1.Sync,
 		}, notificationPolicyFrom(policy))
 	}
 
-	// Trigger auto-rollback if policy says so and there's a previous version to roll back to.
-	if policy != nil && policy.Spec.OnFailure == "rollback" && sync.Status.PreviousVersion != "" {
+	// Auto-rollback: only when explicitly opted in AND a previous version exists.
+	// Default (halt) deliberately requires manual operator action — automated
+	// rollback of checkout systems across 33 countries carries too much risk
+	// without human oversight.
+	if onFailure == "rollback" && sync.Status.PreviousVersion != "" {
 		return r.triggerRollback(ctx, sync)
 	}
 

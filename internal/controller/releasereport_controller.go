@@ -87,9 +87,9 @@ func (r *ReleaseReportReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// Collect all Syncs for this Release.
+	// Sync is cluster-scoped — do NOT filter by namespace.
 	var syncList kaprov1alpha1.SyncList
 	if err := r.List(ctx, &syncList,
-		client.InNamespace(release.Namespace),
 		client.MatchingLabels{"kapro.io/release": release.Name},
 		client.Limit(2000),
 	); err != nil {
@@ -107,6 +107,7 @@ func (r *ReleaseReportReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	// Build the updated status.
 	newStatus := r.buildStatus(&release, syncList.Items, approvalList.Items)
+	newStatus.ObservedGeneration = report.Generation
 
 	patch := client.MergeFrom(report.DeepCopy())
 	report.Status = newStatus
@@ -289,6 +290,7 @@ func (r *ReleaseReportReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// ReleaseReport reconciles on Release changes and on Sync changes
 	// that affect a Release.
 	return ctrl.NewControllerManagedBy(mgr).
+		Named("releasereport").
 		For(&kaprov1alpha1.Release{}).
 		Watches(
 			&kaprov1alpha1.Sync{},

@@ -35,7 +35,14 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 	art := &kaprov1alpha1.Artifact{
 		ObjectMeta: metav1.ObjectMeta{Name: "e2e-art-" + suffix, Namespace: ns},
 		Spec: kaprov1alpha1.ArtifactSpec{
-			Sources: []kaprov1alpha1.ArtifactSource{{Type: "oci"}},
+			Sources: []kaprov1alpha1.ArtifactSource{{
+				Type: "oci",
+				OCI: &kaprov1alpha1.OCIRef{
+					Repository: "172.17.0.1:5000/fleet-bundle",
+					Tag:        "v1.0.0",
+					Digest:     "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				},
+			}},
 		},
 	}
 	mustCreate(t, ctx, c, art)
@@ -71,8 +78,15 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 	}
 	mustCreate(t, ctx, c, prodEnv)
 
+	// resolve the version and app key the Syncs will carry, so we can
+	// reflect them back in the ManagedCluster status for convergence checks.
+	resolvedVersion := art.Spec.Sources[0].OCI.Repository + "@" + art.Spec.Sources[0].OCI.Digest
+	appKey := art.Name
+	versions := map[string]string{appKey: resolvedVersion}
+
 	// ── 3. Create ManagedClusters with a live heartbeat ─────────────────────
 	// SyncReconciler.handlePending checks LastHeartbeat freshness.
+	// handleApplying checks CurrentVersions[appKey] == sync.Spec.Version.
 	devReg := &kaprov1alpha1.ManagedCluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "e2e-reg-dev-" + suffix,
@@ -83,7 +97,7 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 		},
 	}
 	mustCreate(t, ctx, c, devReg)
-	patchRegistrationConverged(t, ctx, c, devReg)
+	patchRegistrationConverged(t, ctx, c, devReg, versions)
 
 	prodReg := &kaprov1alpha1.ManagedCluster{
 		ObjectMeta: metav1.ObjectMeta{
@@ -95,7 +109,7 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 		},
 	}
 	mustCreate(t, ctx, c, prodReg)
-	patchRegistrationConverged(t, ctx, c, prodReg)
+	patchRegistrationConverged(t, ctx, c, prodReg, versions)
 
 	// ── 4. Create Pipeline ────────────────────────────────────────────────────
 	// Two stages: "dev" runs first, "prod" depends on it.
@@ -143,20 +157,29 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 	t.Logf("release phase after Pending: %s", getRelease(ctx, c, releaseKey).Status.Phase)
 
 	// ── 7. Wait: at least one Sync created ───────────────────────────────────
+	// Sync is cluster-scoped — do not filter by namespace.
 	eventually(t, func() bool {
 		var syncs kaprov1alpha1.SyncList
-		_ = c.List(ctx, &syncs, client.InNamespace(ns),
-			client.MatchingLabels{"kapro.io/release": release.Name})
+		_ = c.List(ctx, &syncs, client.MatchingLabels{"kapro.io/release": release.Name})
 		return len(syncs.Items) > 0
 	}, "at least one Sync should be created")
 
 	// ── 8. Keep ManagedClusters fresh so Syncs can converge ──────────────────
-	patchRegistrationConverged(t, ctx, c, devReg)
-	patchRegistrationConverged(t, ctx, c, prodReg)
+	patchRegistrationConverged(t, ctx, c, devReg, versions)
+	patchRegistrationConverged(t, ctx, c, prodReg, versions)
 
 	// ── 9. Wait: Release reaches Complete ────────────────────────────────────
-	eventually(t, func() bool {
+	// The full chain (dev stage + prod stage, each going Pending→Applying→Converged)
+	// can take >20s; use a longer deadline here.
+	eventuallyLong(t, func() bool {
+		// Log Sync phases to aid debugging.
+		var syncs kaprov1alpha1.SyncList
+		_ = c.List(ctx, &syncs, client.MatchingLabels{"kapro.io/release": release.Name})
+		for _, s := range syncs.Items {
+			t.Logf("  Sync %s phase=%s env=%s", s.Name, s.Status.Phase, s.Spec.EnvironmentRef)
+		}
 		r := getRelease(ctx, c, releaseKey)
+		t.Logf("  Release phase=%s", r.Status.Phase)
 		return r.Status.Phase == kaprov1alpha1.ReleasePhaseComplete
 	}, "release should reach Complete — full chain Release→Sync→Converged→Complete")
 
@@ -165,17 +188,19 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 
 // patchRegistrationConverged sets a fresh heartbeat + Converged phase on a
 // ManagedCluster, simulating what cluster-controller writes after deployment.
-func patchRegistrationConverged(t *testing.T, ctx context.Context, c client.Client, reg *kaprov1alpha1.ManagedCluster) {
+// currentVersions should map appKey→version for all syncs that should converge.
+func patchRegistrationConverged(t *testing.T, ctx context.Context, c client.Client, reg *kaprov1alpha1.ManagedCluster, currentVersions map[string]string) {
 	t.Helper()
-	// Re-fetch to get latest resource version before patching.
+	// Retry Get — caching client may not have synced immediately after Create.
 	latest := &kaprov1alpha1.ManagedCluster{}
-	if err := c.Get(ctx, types.NamespacedName{Name: reg.Name, Namespace: reg.Namespace}, latest); err != nil {
-		t.Fatalf("get ManagedCluster %s: %v", reg.Name, err)
-	}
+	eventually(t, func() bool {
+		err := c.Get(ctx, types.NamespacedName{Name: reg.Name, Namespace: reg.Namespace}, latest)
+		return err == nil
+	}, "ManagedCluster "+reg.Name+" to appear in cache")
 	patch := client.MergeFrom(latest.DeepCopy())
 	latest.Status.LastHeartbeat = time.Now().UTC().Format(time.RFC3339)
 	latest.Status.Phase = kaprov1alpha1.ClusterPhaseConverged
-	latest.Status.CurrentVersions = map[string]string{"default": "v1.0.0"}
+	latest.Status.CurrentVersions = currentVersions
 	latest.Status.Health = kaprov1alpha1.ClusterHealth{AllWorkloadsReady: true}
 	if err := c.Status().Patch(ctx, latest, patch); err != nil {
 		t.Fatalf("patch ManagedCluster status %s: %v", reg.Name, err)

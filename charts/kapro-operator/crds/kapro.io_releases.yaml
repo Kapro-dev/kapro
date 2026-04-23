@@ -64,6 +64,12 @@ spec:
                 description: Artifact is the OCI artifact name to deliver across the
                   fleet.
                 type: string
+              derivedFrom:
+                description: |-
+                  DerivedFrom is the name of the parent Release this hotfix was derived from.
+                  Set by CI for hotfix Releases that target a subset of clusters.
+                  Immutable after creation — changing it has no effect on a running rollout.
+                type: string
               pipelines:
                 description: |-
                   Pipelines is the DAG of pipeline nodes that this Release executes.
@@ -92,6 +98,21 @@ spec:
                   type: object
                 minItems: 1
                 type: array
+              scope:
+                description: |-
+                  Scope restricts this Release to a subset of clusters.
+                  When set, Syncs are only created for the named environments.
+                  Nil or empty = full-fleet rollout (normal behaviour).
+                  Immutable after creation — set scope before the Release is created.
+                properties:
+                  environments:
+                    description: |-
+                      Environments is the allowlist of Environment names.
+                      Must be non-empty when Scope is set — an empty list is ignored.
+                    items:
+                      type: string
+                    type: array
+                type: object
               suspended:
                 default: false
                 description: Suspended pauses all advancement when true.
