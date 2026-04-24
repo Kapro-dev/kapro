@@ -47,15 +47,13 @@ type ControllerContext struct {
 	// the correct Actuator — Flux or any registered actuator.
 	ActuatorRegistry *actuator.Registry
 
-	// Gates — FSM-phase gate implementations (Soak, Metrics, Approval, Verification, CEL).
-	// These are fixed to specific FSM phases and are not dispatched by type string.
-	// Any gate field may be nil; nil gates pass immediately (useful in tests).
-	Gates GateSet
-
-	// GateRegistry resolves GateTemplate.spec.type → Gate for template-dispatch.
-	// Built-in types (cel, job, webhook) are registered by BuildGateRegistry.
-	// External gate types register at startup: cc.GateRegistry.MustRegister("my-type", impl).
-	// Never nil in production — initialise with BuildGateRegistry.
+	// GateRegistry resolves gate names to pkg/gate.Gate implementations.
+	// Registry holds BOTH FSM-phase gates (soak, metrics, approval,
+	// verification — resolved by fixed name from FSM handlers) AND
+	// template-dispatch gates (cel, job, webhook, etc. — resolved by
+	// GateTemplate.spec.type). Built-ins are registered by BuildGateRegistry.
+	// External gate types register at startup:
+	// cc.GateRegistry.Register("my-type", impl). Never nil in production.
 	GateRegistry *gate.Registry
 
 	// Notifier sends promotion lifecycle events to external channels.
@@ -75,41 +73,6 @@ type ControllerContext struct {
 	// HubCAData is the PEM-encoded CA certificate for the hub kube-apiserver.
 	// Embedded in bootstrap kubeconfigs alongside HubAPIURL.
 	HubCAData []byte
-}
-
-// GateSet holds all KGI gate implementations injected into the release rollout FSM.
-//
-// All fields follow the same contract:
-//   - Nil means the gate always passes (useful in tests or when a phase is disabled)
-//   - All implementations are stateless and safe for concurrent use
-//   - All are constructed once in BuildGateSet and reused across all reconciles
-//
-// FSM-phase gates (called directly from phase handlers):
-//
-//	Verification → Soak → Metrics → Approval
-//
-// Template gates (dispatched by gateForTemplate via GateTemplate.spec.type):
-//
-//	CEL, Job, Webhook — all constructed in BuildGateSet, dispatched by type name.
-//
-// All five gates live here so the wiring is symmetric: BuildGateSet is the
-// single construction point for every gate the release controller uses.
-type GateSet struct {
-	// Soak blocks until the configured duration has elapsed since StartedAt.
-	// Called in the Soaking FSM phase.
-	Soak gate.Gate
-
-	// Metrics queries Prometheus and evaluates metric thresholds.
-	// Called in the MetricsCheck FSM phase.
-	Metrics gate.Gate
-
-	// Approval blocks until a human creates a matching Approval CR.
-	// Called in the WaitingApproval FSM phase.
-	Approval gate.Gate
-
-	// Verification checks OCI artifact signatures via cosign.
-	// Called in the Verification FSM phase.
-	Verification gate.Gate
 }
 
 // Registry maps controller names to their InitFunc.

@@ -1,24 +1,11 @@
 package controller
 
 import (
-	"time"
+	"reflect"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	"kapro.io/kapro/pkg/gate"
 )
-
-// isHeartbeatFresh returns true when the cluster last reported a heartbeat
-// within the staleness window (2 × heartbeat interval = 2 min).
-func isHeartbeatFresh(lastHeartbeat string) bool {
-	if lastHeartbeat == "" {
-		return false
-	}
-	t, err := time.Parse(time.RFC3339, lastHeartbeat)
-	if err != nil {
-		return false
-	}
-	return time.Since(t) < 2*time.Minute
-}
 
 // findOrCreateGateStatus returns the existing GateRunStatus for the named gate,
 // or a freshly initialised one with StartedAt = now if none exists yet.
@@ -58,4 +45,15 @@ func toAPIConditionResults(results []gate.ConditionResult) []kaprov1alpha1.GateC
 		}
 	}
 	return out
+}
+
+func memberClusterStatusEqualForRollouts(a, b kaprov1alpha1.MemberClusterStatus) bool {
+	return a.Phase == b.Phase &&
+		reflect.DeepEqual(a.CurrentVersions, b.CurrentVersions) &&
+		a.DeliverySystem == b.DeliverySystem &&
+		reflect.DeepEqual(a.Health, b.Health) &&
+		a.ActiveRelease == b.ActiveRelease &&
+		a.ControllerVersion == b.ControllerVersion &&
+		reflect.DeepEqual(a.Capabilities, b.Capabilities) &&
+		reflect.DeepEqual(a.Bootstrap, b.Bootstrap)
 }

@@ -55,11 +55,21 @@ func main() {
 	selected := cm.ParseControllerNames(controllersFlag)
 	log.Info("controller selection", "controllers", controllersFlag)
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	// POD_NAMESPACE is projected from the downward API in both the Helm chart
+	// and the dev kustomize manifest. It drives leader election, notification
+	// secret lookup, and the trusted SA identity for admission webhooks.
+	podNS := os.Getenv("POD_NAMESPACE")
+	if podNS == "" {
+		podNS = "kapro-system"
+	}
+
+	cfg := ctrl.GetConfigOrDie()
+
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:                        scheme,
 		LeaderElection:                true,
 		LeaderElectionID:              "kapro-operator-leader.kapro.io",
-		LeaderElectionNamespace:       "kapro-system",
+		LeaderElectionNamespace:       podNS,
 		LeaderElectionReleaseOnCancel: true,
 		Metrics: metricsserver.Options{
 			BindAddress: ":8080", // scraped by Prometheus; expose on /metrics
@@ -92,11 +102,19 @@ func main() {
 
 	recorder := mgr.GetEventRecorderFor("kapro-operator")
 
-	gates := cm.BuildGateSet(mgr.GetClient())
-
 	// Build actuator registry — resolves per-target actuator at apply time.
 	actuatorReg := actuator.NewRegistry()
-	if err := actuatorReg.Register("flux", &fluxactuator.FluxActuator{Client: mgr.GetClient()}); err != nil {
+	fluxAct := &fluxactuator.FluxActuator{Client: mgr.GetClient()}
+
+	// Actuator-specific preflight: each backend checks its own prerequisites.
+	// This replaces the old global requireFlux() — when ArgoCD is added, only
+	// its actuator checks for ArgoCD CRDs, not the entire operator.
+	if err := fluxAct.Preflight(cfg); err != nil {
+		log.Error(err, "Flux actuator preflight failed — install Flux or remove the Flux actuator")
+		os.Exit(1)
+	}
+
+	if err := actuatorReg.Register("flux", fluxAct); err != nil {
 		log.Error(err, "failed to register flux actuator")
 		os.Exit(1)
 	}
@@ -111,11 +129,10 @@ func main() {
 		Manager:          mgr,
 		Recorder:         recorder,
 		ActuatorRegistry: actuatorReg,
-		Gates:            gates,
 		GateRegistry:     gateRegistry,
 		Notifier: &enginenotifier.Notifier{
 			SecretName: "kapro-notifications-secret",
-			Namespace:  "kapro-system",
+			Namespace:  podNS,
 			Client:     mgr.GetClient(),
 		},
 		ApprovalSecret: loadSecret("approval-secret"),
@@ -124,12 +141,29 @@ func main() {
 		HubCAData:      loadHubCAData(mgr.GetConfig()),
 	}
 
+	// Fail hard if the HMAC secret is missing — a zero-length secret means any token
+	// passes verification, which is a critical security hole.
+	if len(cc.ApprovalSecret) == 0 {
+		log.Error(nil, "approval-secret is empty; set the approval-secret Kubernetes Secret or KAPRO_APPROVAL_SECRET env var")
+		os.Exit(1)
+	}
+
 	// Register admission webhooks unless KAPRO_DISABLE_WEBHOOKS=true (used in local dev / kind).
 	if os.Getenv("KAPRO_DISABLE_WEBHOOKS") != "true" {
 		decoder := admission.NewDecoder(mgr.GetScheme())
+
+		// Build the trusted SA identity from the pod's own namespace + SA name.
+		// podNS is defined at the top of main(); POD_SERVICE_ACCOUNT is projected
+		// via the downward API in both the Helm chart and dev manifest.
+		podSA := os.Getenv("POD_SERVICE_ACCOUNT")
+		if podSA == "" {
+			podSA = "kapro-operator"
+		}
+		trustedSA := "system:serviceaccount:" + podNS + ":" + podSA
+
 		mgr.GetWebhookServer().Register(
 			"/mutate-kapro-io-v1alpha1-approval",
-			&crwebhook.Admission{Handler: kaploadmission.NewApprovalMutator(decoder)},
+			&crwebhook.Admission{Handler: kaploadmission.NewApprovalMutator(decoder, trustedSA)},
 		)
 		mgr.GetWebhookServer().Register(
 			"/mutate-kapro-io-v1alpha1-membercluster",
@@ -146,6 +180,10 @@ func main() {
 		mgr.GetWebhookServer().Register(
 			"/validate-kapro-io-v1alpha1-pipeline",
 			&crwebhook.Admission{Handler: kaploadmission.NewPipelineValidator(decoder)},
+		)
+		mgr.GetWebhookServer().Register(
+			"/validate-kapro-io-v1alpha1-approval",
+			&crwebhook.Admission{Handler: kaploadmission.NewApprovalValidator(decoder)},
 		)
 	}
 
@@ -174,8 +212,9 @@ func main() {
 		approvalAddr = ":8091"
 	}
 	approvalHandler := (&webhook.Server{
-		Client:      mgr.GetClient(),
-		TokenSecret: loadSecret("approval-secret"),
+		Client:            mgr.GetClient(),
+		TokenSecret:       cc.ApprovalSecret, // reuse already-validated secret
+		OperatorNamespace: podNS,
 	}).Handler()
 	if err := mgr.Add(leaderOnlyHTTP(approvalAddr, approvalHandler, 10*time.Second)); err != nil {
 		log.Error(err, "unable to add approval server")

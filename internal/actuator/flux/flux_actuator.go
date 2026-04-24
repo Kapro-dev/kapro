@@ -3,8 +3,12 @@ package flux
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -35,34 +39,13 @@ func (a *FluxActuator) Apply(ctx context.Context, req actuator.ApplyRequest) err
 	if req.Cluster == nil {
 		return fmt.Errorf("FluxActuator.Apply: cluster is nil")
 	}
-	appKey := resolveAppKey(req.AppKey)
-	log := log.FromContext(ctx).WithValues(
-		"cluster", req.Cluster.Name,
-		"version", req.Version,
-		"appKey", appKey,
-	)
-
-	mc := req.Cluster
-	if mc.Spec.DesiredVersion == req.Version && mc.Spec.DesiredAppKey == appKey {
-		log.Info("desiredVersion+appKey already set, skipping patch")
-		return nil
-	}
-
-	patch := client.MergeFrom(mc.DeepCopy())
-	mc.Spec.DesiredVersion = req.Version
-	mc.Spec.DesiredAppKey = appKey
-	if err := a.Client.Patch(ctx, mc, patch); err != nil {
-		return fmt.Errorf("FluxActuator.Apply: patch MemberCluster %s: %w", mc.Name, err)
-	}
-
-	ociRepo := ""
-	if mc.Spec.Actuator.Flux != nil {
-		ociRepo = mc.Spec.Actuator.Flux.OCIRepository
-	}
-	log.Info("patched MemberCluster.spec.desiredVersion",
-		"ociRepo", ociRepo,
-	)
-	return nil
+	_, err := a.ApplyDelta(ctx, actuator.DeltaApplyRequest{
+		Cluster: req.Cluster,
+		DesiredVersions: map[string]string{
+			resolveAppKey(req.AppKey): req.Version,
+		},
+	})
+	return err
 }
 
 // IsConverged returns true when the workload cluster's cluster-controller
@@ -76,7 +59,7 @@ func (a *FluxActuator) IsConverged(ctx context.Context, cluster *kaprov1alpha1.M
 	}
 
 	// Heartbeat must be fresh — stale means the cluster-controller is down.
-	if !isHeartbeatFresh(cluster.Status.LastHeartbeat) {
+	if !cluster.Status.IsHeartbeatFresh(2 * time.Minute) {
 		return false, fmt.Errorf("cluster %s heartbeat is stale (last seen: %s)", cluster.Name, cluster.Status.LastHeartbeat)
 	}
 
@@ -97,19 +80,106 @@ func (a *FluxActuator) IsConverged(ctx context.Context, cluster *kaprov1alpha1.M
 }
 
 // Rollback sets the desired version back to the given (previous) version.
-func (a *FluxActuator) Rollback(ctx context.Context, cluster *kaprov1alpha1.MemberCluster, previousVersion string) error {
+func (a *FluxActuator) Rollback(ctx context.Context, cluster *kaprov1alpha1.MemberCluster, previousVersion, appKey string) error {
 	if cluster == nil {
 		return fmt.Errorf("FluxActuator.Rollback: cluster is nil")
 	}
 	log.FromContext(ctx).Info("rolling back",
 		"cluster", cluster.Name,
 		"previousVersion", previousVersion,
+		"appKey", resolveAppKey(appKey),
 	)
 	return a.Apply(ctx, actuator.ApplyRequest{
-		Cluster:  cluster,
-		Version:  previousVersion,
-		AppKey:   cluster.Spec.DesiredAppKey,
+		Cluster: cluster,
+		Version: previousVersion,
+		AppKey:  appKey,
 	})
+}
+
+// ApplyDelta compares desiredVersions against MemberCluster.status.currentVersions
+// and only applies artifacts that actually changed. Returns the delta count.
+func (a *FluxActuator) ApplyDelta(ctx context.Context, req actuator.DeltaApplyRequest) (int, error) {
+	if req.Cluster == nil {
+		return 0, fmt.Errorf("FluxActuator.ApplyDelta: cluster is nil")
+	}
+	desired := normalizedDesiredVersions(req.DesiredVersions)
+	if len(desired) == 0 {
+		return 0, nil
+	}
+	if err := validateDesiredVersionTopology(req.Cluster, desired); err != nil {
+		return 0, err
+	}
+
+	current := req.Cluster.Status.CurrentVersions
+	if current == nil {
+		current = make(map[string]string)
+	}
+
+	deltaCount := 0
+	for appKey, version := range desired {
+		if current[appKey] == version {
+			log.FromContext(ctx).Info("artifact already converged, skipping",
+				"cluster", req.Cluster.Name,
+				"appKey", appKey,
+				"version", version,
+			)
+			continue
+		}
+		deltaCount++
+	}
+
+	mc := req.Cluster
+	if desiredVersionsEqual(mc.Spec.DesiredVersions, desired) && desiredVersionCompatibilityMatches(mc, desired) {
+		log.FromContext(ctx).Info("desiredVersions already set, skipping patch", "cluster", mc.Name)
+		return deltaCount, nil
+	}
+
+	patch := client.MergeFrom(mc.DeepCopy())
+	mc.Spec.DesiredVersions = copyStringMap(desired)
+	setLegacyDesiredVersionFields(mc, desired)
+	if err := a.Client.Patch(ctx, mc, patch); err != nil {
+		return deltaCount, fmt.Errorf("FluxActuator.ApplyDelta: patch MemberCluster %s: %w", mc.Name, err)
+	}
+
+	log.FromContext(ctx).Info("delta delivery complete",
+		"cluster", req.Cluster.Name,
+		"totalArtifacts", len(desired),
+		"deltaApplied", deltaCount,
+	)
+	return deltaCount, nil
+}
+
+// IsAllConverged returns true when ALL artifacts in desiredVersions match
+// the cluster's currentVersions.
+func (a *FluxActuator) IsAllConverged(ctx context.Context, cluster *kaprov1alpha1.MemberCluster, desiredVersions map[string]string) (bool, error) {
+	if cluster == nil {
+		return false, fmt.Errorf("FluxActuator.IsAllConverged: cluster is nil")
+	}
+	desired := normalizedDesiredVersions(desiredVersions)
+	if len(desired) == 0 {
+		return false, fmt.Errorf("FluxActuator.IsAllConverged: desiredVersions is empty")
+	}
+	if err := validateDesiredVersionTopology(cluster, desired); err != nil {
+		return false, err
+	}
+
+	if !cluster.Status.IsHeartbeatFresh(2 * time.Minute) {
+		return false, fmt.Errorf("cluster %s heartbeat is stale (last seen: %s)", cluster.Name, cluster.Status.LastHeartbeat)
+	}
+
+	for appKey, version := range desired {
+		if cluster.Status.CurrentVersions[appKey] != version {
+			log.FromContext(ctx).Info("artifact not converged",
+				"cluster", cluster.Name,
+				"appKey", appKey,
+				"want", version,
+				"have", cluster.Status.CurrentVersions[appKey],
+			)
+			return false, nil
+		}
+	}
+
+	return cluster.Status.Phase == kaprov1alpha1.ClusterPhaseConverged, nil
 }
 
 // resolveAppKey returns appKey if non-empty, otherwise "default".
@@ -120,13 +190,120 @@ func resolveAppKey(appKey string) string {
 	return "default"
 }
 
-func isHeartbeatFresh(lastHeartbeat string) bool {
-	if lastHeartbeat == "" {
+func normalizedDesiredVersions(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for appKey, version := range in {
+		key := resolveAppKey(appKey)
+		if version == "" {
+			continue
+		}
+		out[key] = version
+	}
+	return out
+}
+
+func validateDesiredVersionTopology(cluster *kaprov1alpha1.MemberCluster, desired map[string]string) error {
+	if len(desired) <= 1 {
+		return nil
+	}
+	flux := cluster.Spec.Actuator.Flux
+	if flux == nil {
+		return fmt.Errorf("cluster %s actuator %q does not support multi-artifact delivery", cluster.Name, cluster.Spec.Actuator.Type)
+	}
+	if len(flux.OCIRepositories) == 0 {
+		return fmt.Errorf("cluster %s flux actuator requires spec.actuator.flux.ociRepositories for multi-artifact delivery", cluster.Name)
+	}
+	var missing []string
+	for appKey := range desired {
+		if flux.OCIRepositories[appKey] == "" {
+			missing = append(missing, appKey)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	sort.Strings(missing)
+	return fmt.Errorf("cluster %s flux actuator is missing OCIRepository mappings for appKeys: %v", cluster.Name, missing)
+}
+
+func desiredVersionsEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
 		return false
 	}
-	t, err := time.Parse(time.RFC3339, lastHeartbeat)
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+func desiredVersionCompatibilityMatches(mc *kaprov1alpha1.MemberCluster, desired map[string]string) bool {
+	if len(desired) != 1 {
+		return mc.Spec.DesiredVersion == "" && mc.Spec.DesiredAppKey == ""
+	}
+	for appKey, version := range desired {
+		return mc.Spec.DesiredVersion == version && resolveAppKey(mc.Spec.DesiredAppKey) == appKey
+	}
+	return false
+}
+
+func setLegacyDesiredVersionFields(mc *kaprov1alpha1.MemberCluster, desired map[string]string) {
+	if len(desired) != 1 {
+		mc.Spec.DesiredVersion = ""
+		mc.Spec.DesiredAppKey = ""
+		return
+	}
+	for appKey, version := range desired {
+		mc.Spec.DesiredVersion = version
+		mc.Spec.DesiredAppKey = appKey
+		return
+	}
+}
+
+// Preflight checks that the Flux CRDs are installed on the cluster.
+// Called at startup — fails fast with a clear message rather than
+// letting reconcilers hit missing-resource errors at runtime.
+func (a *FluxActuator) Preflight(cfg *rest.Config) error {
+	disc, err := discovery.NewDiscoveryClientForConfig(cfg)
 	if err != nil {
-		return false
+		return fmt.Errorf("build discovery client: %w", err)
 	}
-	return time.Since(t) < 2*time.Minute
+	groups, err := disc.ServerGroups()
+	if err != nil {
+		return fmt.Errorf("list API groups: %w", err)
+	}
+
+	required := map[string]bool{
+		"source.toolkit.fluxcd.io":    false,
+		"kustomize.toolkit.fluxcd.io": false,
+	}
+	for _, g := range groups.Groups {
+		if _, ok := required[g.Name]; ok {
+			required[g.Name] = true
+		}
+	}
+
+	var missing []string
+	for group, found := range required {
+		if !found {
+			missing = append(missing, group)
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return fmt.Errorf("flux actuator requires Flux CRDs: %s — run `flux install` first", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+func copyStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }

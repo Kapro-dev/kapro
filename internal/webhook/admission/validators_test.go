@@ -9,6 +9,15 @@ import (
 	"kapro.io/kapro/internal/webhook/admission"
 )
 
+// deps converts a list of stage names into StageDependency values for test brevity.
+func deps(names ...string) []kaprov1alpha1.StageDependency {
+	out := make([]kaprov1alpha1.StageDependency, len(names))
+	for i, n := range names {
+		out[i] = kaprov1alpha1.StageDependency{Stage: n}
+	}
+	return out
+}
+
 // ---- MemberClusterValidator ---------------------------------------------------
 
 func TestValidateMemberCluster_MissingActuatorType(t *testing.T) {
@@ -38,7 +47,7 @@ func TestValidateMemberCluster_FluxValid(t *testing.T) {
 		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{
 				Type: "flux",
-				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},
+				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system", OCIRepository: "cluster-a"},
 			},
 		},
 	}
@@ -55,91 +64,6 @@ func TestValidateMemberCluster_UnsupportedActuatorType(t *testing.T) {
 	}
 	if err := mcValidate(mc); err == nil {
 		t.Fatal("expected error for unsupported actuator type")
-	}
-}
-
-func TestValidateMemberCluster_GKEMissingSubSpec(t *testing.T) {
-	mc := &kaprov1alpha1.MemberCluster{
-		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{
-				Type: "flux",
-				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},
-			},
-			Provider: &kaprov1alpha1.ProviderSpec{Type: "gke"},
-		},
-	}
-	if err := mcValidate(mc); err == nil {
-		t.Fatal("expected error for type=gke without provider.gke sub-spec")
-	}
-}
-
-func TestValidateMemberCluster_GKEMissingProject(t *testing.T) {
-	mc := &kaprov1alpha1.MemberCluster{
-		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{
-				Type: "flux",
-				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},
-			},
-			Provider: &kaprov1alpha1.ProviderSpec{
-				Type: "gke",
-				GKE:  &kaprov1alpha1.GKEProviderSpec{Location: "europe-west3", ClusterName: "spoke-de"},
-			},
-		},
-	}
-	if err := mcValidate(mc); err == nil {
-		t.Fatal("expected error for type=gke with empty project")
-	}
-}
-
-func TestValidateMemberCluster_GKEValid(t *testing.T) {
-	mc := &kaprov1alpha1.MemberCluster{
-		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{
-				Type: "flux",
-				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},
-			},
-			Provider: &kaprov1alpha1.ProviderSpec{
-				Type: "gke",
-				GKE: &kaprov1alpha1.GKEProviderSpec{
-					Project:     "lidl-de-spoke",
-					Location:    "europe-west3",
-					ClusterName: "spoke-de",
-				},
-			},
-		},
-	}
-	if err := mcValidate(mc); err != nil {
-		t.Fatalf("unexpected error for valid type=gke: %v", err)
-	}
-}
-
-func TestValidateMemberCluster_UnsupportedProviderType(t *testing.T) {
-	mc := &kaprov1alpha1.MemberCluster{
-		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{
-				Type: "flux",
-				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},
-			},
-			Provider: &kaprov1alpha1.ProviderSpec{Type: "eks"},
-		},
-	}
-	if err := mcValidate(mc); err == nil {
-		t.Fatal("expected error for unsupported provider type eks")
-	}
-}
-
-func TestValidateMemberCluster_CRDProviderValid(t *testing.T) {
-	mc := &kaprov1alpha1.MemberCluster{
-		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{
-				Type: "flux",
-				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},
-			},
-			Provider: &kaprov1alpha1.ProviderSpec{Type: "crd"},
-		},
-	}
-	if err := mcValidate(mc); err != nil {
-		t.Fatalf("unexpected error for type=crd: %v", err)
 	}
 }
 
@@ -286,6 +210,71 @@ func TestValidateRelease_SelfCycle(t *testing.T) {
 	}
 }
 
+func TestValidateReleaseUpdate_ArtifactImmutable(t *testing.T) {
+	old := &kaprov1alpha1.Release{
+		Spec: kaprov1alpha1.ReleaseSpec{
+			Artifact: "art-v1",
+			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
+				{Name: "wave1", Pipeline: "rollout"},
+			},
+		},
+	}
+	new := old.DeepCopy()
+	new.Spec.Artifact = "art-v2"
+	if err := admission.ValidateReleaseUpdate(old, new); err == nil {
+		t.Fatal("expected error for immutable artifact update")
+	}
+}
+
+func TestValidateReleaseUpdate_PipelinesImmutable(t *testing.T) {
+	old := &kaprov1alpha1.Release{
+		Spec: kaprov1alpha1.ReleaseSpec{
+			Artifact: "art-v1",
+			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
+				{Name: "wave1", Pipeline: "rollout"},
+			},
+		},
+	}
+	new := old.DeepCopy()
+	new.Spec.Pipelines = append(new.Spec.Pipelines, kaprov1alpha1.ReleasePipelineRef{Name: "wave2", Pipeline: "rollout-2"})
+	if err := admission.ValidateReleaseUpdate(old, new); err == nil {
+		t.Fatal("expected error for immutable pipelines update")
+	}
+}
+
+func TestValidateReleaseUpdate_ScopeImmutable(t *testing.T) {
+	old := &kaprov1alpha1.Release{
+		Spec: kaprov1alpha1.ReleaseSpec{
+			Artifact: "art-v1",
+			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
+				{Name: "wave1", Pipeline: "rollout"},
+			},
+			Scope: &kaprov1alpha1.ReleaseScope{Targets: []string{"cluster-a"}},
+		},
+	}
+	new := old.DeepCopy()
+	new.Spec.Scope = &kaprov1alpha1.ReleaseScope{Targets: []string{"cluster-b"}}
+	if err := admission.ValidateReleaseUpdate(old, new); err == nil {
+		t.Fatal("expected error for immutable scope update")
+	}
+}
+
+func TestValidateReleaseUpdate_SuspendedMutable(t *testing.T) {
+	old := &kaprov1alpha1.Release{
+		Spec: kaprov1alpha1.ReleaseSpec{
+			Artifact: "art-v1",
+			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
+				{Name: "wave1", Pipeline: "rollout"},
+			},
+		},
+	}
+	new := old.DeepCopy()
+	new.Spec.Suspended = true
+	if err := admission.ValidateReleaseUpdate(old, new); err != nil {
+		t.Fatalf("unexpected error for mutable suspended update: %v", err)
+	}
+}
+
 // ---- PipelineValidator -------------------------------------------------------
 
 func TestValidatePipeline_EmptyStages(t *testing.T) {
@@ -297,17 +286,49 @@ func TestValidatePipeline_EmptyStages(t *testing.T) {
 
 func TestValidatePipeline_UnknownDependency(t *testing.T) {
 	p := buildPipeline([]kaprov1alpha1.Stage{
-		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}, DependsOn: []string{"does-not-exist"}},
+		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}, DependsOn: deps("does-not-exist")},
 	})
 	if err := pipelineValidate(p); err == nil {
 		t.Fatal("expected error for unknown stage dependency")
 	}
 }
 
+func TestValidatePipeline_InvalidDependencyStrategy(t *testing.T) {
+	p := buildPipeline([]kaprov1alpha1.Stage{
+		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}},
+		{
+			Name:     "s2",
+			Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}},
+			DependsOn: []kaprov1alpha1.StageDependency{
+				{Stage: "s1", Strategy: "some"},
+			},
+		},
+	})
+	if err := pipelineValidate(p); err == nil {
+		t.Fatal("expected error for invalid dependency strategy")
+	}
+}
+
+func TestValidatePipeline_NegativeDependencySoak(t *testing.T) {
+	p := buildPipeline([]kaprov1alpha1.Stage{
+		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}},
+		{
+			Name:     "s2",
+			Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}},
+			DependsOn: []kaprov1alpha1.StageDependency{
+				{Stage: "s1", RequiredSoakTime: &metav1.Duration{Duration: -1}},
+			},
+		},
+	})
+	if err := pipelineValidate(p); err == nil {
+		t.Fatal("expected error for negative dependency soak")
+	}
+}
+
 func TestValidatePipeline_StageCycle(t *testing.T) {
 	p := buildPipeline([]kaprov1alpha1.Stage{
-		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}, DependsOn: []string{"s2"}},
-		{Name: "s2", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}}, DependsOn: []string{"s1"}},
+		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}, DependsOn: deps("s2")},
+		{Name: "s2", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}}, DependsOn: deps("s1")},
 	})
 	if err := pipelineValidate(p); err == nil {
 		t.Fatal("expected error for cycle in stage DAG")
@@ -316,7 +337,7 @@ func TestValidatePipeline_StageCycle(t *testing.T) {
 
 func TestValidatePipeline_SelfCycle(t *testing.T) {
 	p := buildPipeline([]kaprov1alpha1.Stage{
-		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}, DependsOn: []string{"s1"}},
+		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}, DependsOn: deps("s1")},
 	})
 	if err := pipelineValidate(p); err == nil {
 		t.Fatal("expected error for self-cycle")
@@ -326,8 +347,8 @@ func TestValidatePipeline_SelfCycle(t *testing.T) {
 func TestValidatePipeline_ValidLinearDAG(t *testing.T) {
 	p := buildPipeline([]kaprov1alpha1.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}},
-		{Name: "s2", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "staging"}}, DependsOn: []string{"s1"}},
-		{Name: "s3", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}}, DependsOn: []string{"s2"}},
+		{Name: "s2", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "staging"}}, DependsOn: deps("s1")},
+		{Name: "s3", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}}, DependsOn: deps("s2")},
 	})
 	if err := pipelineValidate(p); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -338,9 +359,9 @@ func TestValidatePipeline_ValidDiamondDAG(t *testing.T) {
 	// s1 → s2, s1 → s3, s2+s3 → s4
 	p := buildPipeline([]kaprov1alpha1.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}}},
-		{Name: "s2", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"region": "eu"}}, DependsOn: []string{"s1"}},
-		{Name: "s3", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"region": "us"}}, DependsOn: []string{"s1"}},
-		{Name: "s4", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "global"}}, DependsOn: []string{"s2", "s3"}},
+		{Name: "s2", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"region": "eu"}}, DependsOn: deps("s1")},
+		{Name: "s3", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"region": "us"}}, DependsOn: deps("s1")},
+		{Name: "s4", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "global"}}, DependsOn: deps("s2", "s3")},
 	})
 	if err := pipelineValidate(p); err != nil {
 		t.Fatalf("unexpected error for diamond DAG: %v", err)
@@ -357,6 +378,35 @@ func TestValidatePipeline_DuplicateStageName(t *testing.T) {
 	}
 }
 
+func TestValidateApproval_RefRequired(t *testing.T) {
+	approval := &kaprov1alpha1.Approval{
+		ObjectMeta: metav1.ObjectMeta{Name: "rel-1-target-a"},
+		Spec: kaprov1alpha1.ApprovalSpec{
+			Release:    "rel-1",
+			Target:     "target-a",
+			ApprovedBy: "alice",
+		},
+	}
+	if err := approvalValidate(approval); err == nil {
+		t.Fatal("expected error for missing approval ref")
+	}
+}
+
+func TestValidateApproval_NameMatchesReleaseAndRef(t *testing.T) {
+	approval := &kaprov1alpha1.Approval{
+		ObjectMeta: metav1.ObjectMeta{Name: "rel-1-ref-a"},
+		Spec: kaprov1alpha1.ApprovalSpec{
+			Release:    "rel-1",
+			Target:     "target-a",
+			Ref:        "ref-a",
+			ApprovedBy: "alice",
+		},
+	}
+	if err := approvalValidate(approval); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 // ---- helpers ----------------------------------------------------------------
 
 func mcValidate(mc *kaprov1alpha1.MemberCluster) error {
@@ -369,6 +419,10 @@ func releaseValidate(r *kaprov1alpha1.Release) error {
 
 func pipelineValidate(p *kaprov1alpha1.Pipeline) error {
 	return admission.ValidatePipeline(p)
+}
+
+func approvalValidate(a *kaprov1alpha1.Approval) error {
+	return admission.ValidateApproval(a)
 }
 
 func buildPipeline(stages []kaprov1alpha1.Stage) *kaprov1alpha1.Pipeline {

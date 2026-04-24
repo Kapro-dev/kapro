@@ -50,7 +50,11 @@ const DefaultTTL = 48 * time.Hour
 
 // Sign encodes claims as JSON and appends an HMAC-SHA256 signature.
 // Returns a URL-safe token with no padding.
+// Returns an error if secret is empty — callers must not mint tokens without a real key.
 func Sign(c Claims, secret []byte) (string, error) {
+	if len(secret) == 0 {
+		return "", fmt.Errorf("token: Sign called with empty secret — configure approval-secret")
+	}
 	payload, err := json.Marshal(c)
 	if err != nil {
 		return "", fmt.Errorf("token: marshal claims: %w", err)
@@ -62,7 +66,11 @@ func Sign(c Claims, secret []byte) (string, error) {
 
 // Verify parses and validates a token. Returns the claims if the signature
 // is valid and the token has not expired.
+// Returns an error if secret is empty — a zero-length secret accepts any token.
 func Verify(token string, secret []byte) (*Claims, error) {
+	if len(secret) == 0 {
+		return nil, fmt.Errorf("token: Verify called with empty secret — configure approval-secret")
+	}
 	dot := strings.LastIndex(token, ".")
 	if dot < 0 {
 		return nil, fmt.Errorf("token: malformed — missing separator")

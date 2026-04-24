@@ -1,10 +1,12 @@
 package controller_test
 
 import (
+	"context"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
@@ -106,10 +108,8 @@ func TestReleaseReconciler_MissingArtifact_StaysOrFailsPending(t *testing.T) {
 	}, "release with missing artifact should stay pending or fail")
 }
 
-// TestReleaseReconciler_EnvStatus_Populated verifies that a Release populates
-// release.Status.Targets once it starts progressing. After the Sync CRD
-// fold there are no standalone Sync objects — target progress is tracked
-// inline in the Release status.
+// TestReleaseReconciler_EnvStatus_Populated verifies that a Release creates
+// child ReleaseTarget execution objects once it starts progressing.
 func TestReleaseReconciler_EnvStatus_Populated(t *testing.T) {
 	ctx, cancel, c := setupEnv(t)
 	defer cancel()
@@ -139,11 +139,23 @@ func TestReleaseReconciler_EnvStatus_Populated(t *testing.T) {
 	}
 	mustCreate(t, ctx, c, release)
 
-	releaseKey := types.NamespacedName{Name: release.Name, Namespace: ns}
-
-	// Wait until the Release has at least one TargetStatus entry.
+	// Wait until the Release has at least one ReleaseTarget child.
 	eventually(t, func() bool {
-		r := getRelease(ctx, c, releaseKey)
-		return len(r.Status.Targets) > 0
-	}, "release.Status.Targets should be populated after progressing starts")
+		return len(listReleaseTargets(t, ctx, c, release.Name, release.Namespace)) > 0
+	}, "ReleaseTarget children should be populated after progressing starts")
+}
+
+func listReleaseTargets(t *testing.T, ctx context.Context, c client.Client, releaseName, _ string) []kaprov1alpha1.ReleaseTarget {
+	t.Helper()
+	var list kaprov1alpha1.ReleaseTargetList
+	if err := c.List(ctx, &list); err != nil {
+		t.Fatalf("list ReleaseTargets: %v", err)
+	}
+	targets := make([]kaprov1alpha1.ReleaseTarget, 0)
+	for _, target := range list.Items {
+		if target.Spec.ReleaseRef == releaseName {
+			targets = append(targets, target)
+		}
+	}
+	return targets
 }

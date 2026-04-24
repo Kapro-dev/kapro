@@ -27,7 +27,7 @@ service TelemetryService {
 
 message TransitionEvent {
   string promotion_ref = 1;
-  string environment_ref = 2;
+  string target_ref = 2;
   string release_ref = 3;
   string version = 4;
   string from_phase = 5;
@@ -40,7 +40,7 @@ message TransitionEvent {
 
 message GateResultEvent {
   string promotion_ref = 1;
-  string environment_ref = 2;
+  string target_ref = 2;
   string gate_type = 3;
   int32 metric_index = 4;
   bool passed = 5;
@@ -53,7 +53,7 @@ message GateResultEvent {
 
 message PromotionTelemetryEvent {
   string promotion_ref = 1;
-  string environment_ref = 2;
+  string target_ref = 2;
   string release_ref = 3;
   string version = 4;
   string outcome = 5; // Converged | Failed | RolledBack

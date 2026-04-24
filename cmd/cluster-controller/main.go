@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
@@ -22,9 +23,12 @@ import (
 	sourcev1 "github.com/fluxcd/source-controller/api/v1beta2"
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	"kapro.io/kapro/internal/bootstrap"
+	kaprometrics "kapro.io/kapro/internal/metrics"
 )
 
 var scheme = runtime.NewScheme()
+
+const heartbeatStatusWriteInterval = time.Minute
 
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
@@ -72,15 +76,15 @@ func main() {
 
 	ctx := ctrl.SetupSignalHandler()
 
-	// Select provider via KAPRO_PROVIDER env var.
+	// Select bootstrap mode via KAPRO_BOOTSTRAP_MODE env var.
 	var provider bootstrap.Provider
-	switch strings.ToLower(os.Getenv("KAPRO_PROVIDER")) {
+	switch strings.ToLower(os.Getenv("KAPRO_BOOTSTRAP_MODE")) {
 	case "gcp":
 		provider = bootstrap.NewGCP(hubURL, hubCAData)
-		log.Info("using GCP Workload Identity provider")
+		log.Info("using GCP Workload Identity bootstrap mode")
 	default:
 		provider = bootstrap.NewGeneric(localClient, hubURL, hubCAData, targetName)
-		log.Info("using generic CSR bootstrap provider")
+		log.Info("using generic CSR bootstrap mode")
 	}
 
 	hubCfg, err := provider.HubConfig(ctx)
@@ -132,7 +136,12 @@ func main() {
 						log.Error(clientErr, "failed to rebuild hub client after renewal")
 						return
 					}
-					renewResultCh <- newHub
+					// Non-blocking send: discard result if channel is full or ctx
+					// is done so the goroutine never leaks on shutdown.
+					select {
+					case renewResultCh <- newHub:
+					case <-ctx.Done():
+					}
 				}()
 			}
 		case <-ticker.C:
@@ -168,6 +177,11 @@ func reconcile(
 	localClient, hubClient client.Client,
 	targetName, fluxNamespace string,
 ) error {
+	// Bound all API calls and retry sleeps to 25 s so a network partition never
+	// causes this goroutine to accumulate across ticks.
+	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
+
 	log := ctrl.Log.WithName("reconcile").WithValues("cluster", targetName)
 
 	// 1. GET MemberCluster from hub.
@@ -186,7 +200,12 @@ func reconcile(
 			return fmt.Errorf("get MemberCluster %q from hub: not found after %d attempts", targetName, attempt)
 		}
 		log.Info("MemberCluster not yet visible on hub, retrying", "attempt", attempt)
-		time.Sleep(5 * time.Second)
+		// Cancellable sleep so SIGTERM / deadline unblocks immediately.
+		select {
+		case <-time.After(5 * time.Second):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 
 	desiredVersion := mc.Spec.DesiredVersion
@@ -195,26 +214,20 @@ func reconcile(
 		appKey = "default"
 	}
 
-	// 2. Read local OCIRepository (name = cluster name).
-	ociRepoName := targetName
-
-	var ociRepo sourcev1.OCIRepository
-	currentRef := ""
-	ociFound := false
-	if err := localClient.Get(ctx, types.NamespacedName{Name: ociRepoName, Namespace: fluxNamespace}, &ociRepo); err == nil {
-		ociFound = true
-		if ociRepo.Spec.Reference != nil {
-			if ociRepo.Spec.Reference.Digest != "" {
-				currentRef = ociRepo.Spec.Reference.Digest
-			} else {
-				currentRef = ociRepo.Spec.Reference.Tag
-			}
-		}
+	// Build effective desired versions map: merge legacy single-version with new multi-version.
+	effectiveDesiredVersions := make(map[string]string)
+	if desiredVersion != "" {
+		effectiveDesiredVersions[appKey] = desiredVersion
+	}
+	for k, v := range mc.Spec.DesiredVersions {
+		effectiveDesiredVersions[k] = v // multi-version map takes precedence
 	}
 
 	// 3. Read Flux Kustomization health.
 	var ksList kustomizev1.KustomizationList
-	_ = localClient.List(ctx, &ksList, client.InNamespace(fluxNamespace))
+	if err := localClient.List(ctx, &ksList, client.InNamespace(fluxNamespace)); err != nil {
+		return fmt.Errorf("list Kustomizations from spoke: %w", err)
+	}
 
 	fluxReady := true
 	fluxVersion := ""
@@ -239,17 +252,59 @@ func reconcile(
 		}
 	}
 
+	currentVersions := copyStringMap(mc.Status.CurrentVersions)
+	if currentVersions == nil {
+		currentVersions = make(map[string]string)
+	}
+	desiredRepoStates := make([]desiredRepoState, 0, len(effectiveDesiredVersions))
+	for desiredAppKey := range effectiveDesiredVersions {
+		repoName, err := resolveOCIRepositoryName(&mc, targetName, desiredAppKey, len(effectiveDesiredVersions) > 1)
+		if err != nil {
+			desiredRepoStates = append(desiredRepoStates, desiredRepoState{
+				appKey:  desiredAppKey,
+				repoErr: err,
+			})
+			continue
+		}
+		currentRef, found, err := readOCIRepositoryRef(ctx, localClient, fluxNamespace, repoName)
+		if err != nil {
+			return fmt.Errorf("get OCIRepository %q from spoke: %w", repoName, err)
+		}
+		if found {
+			currentVersions[desiredAppKey] = currentRef
+		}
+		desiredRepoStates = append(desiredRepoStates, desiredRepoState{
+			appKey:     desiredAppKey,
+			repoName:   repoName,
+			currentRef: currentRef,
+			found:      found,
+		})
+	}
+
+	defaultCurrentRef := currentVersions[appKey]
+	if defaultCurrentRef == "" {
+		repoName, err := resolveOCIRepositoryName(&mc, targetName, appKey, false)
+		if err == nil {
+			currentRef, found, err := readOCIRepositoryRef(ctx, localClient, fluxNamespace, repoName)
+			if err != nil {
+				return fmt.Errorf("get OCIRepository %q from spoke: %w", repoName, err)
+			}
+			if found {
+				defaultCurrentRef = currentRef
+				currentVersions[appKey] = currentRef
+			}
+		}
+	}
+
 	// 4. PATCH ManagedCluster/status on hub.
-	phase := derivePhase(fluxReady, currentRef, desiredVersion)
-	statusPatch := client.MergeFrom(mc.DeepCopy())
+	phase, phaseMessage := derivePhaseFromDesiredVersions(fluxReady, desiredVersion, effectiveDesiredVersions, currentVersions, desiredRepoStates)
+	original := mc.DeepCopy()
+	statusPatch := client.MergeFrom(original)
 	mc.Status.LastHeartbeat = metav1.Now().UTC().Format(time.RFC3339)
 	mc.Status.Phase = phase
 	mc.Status.ObservedGeneration = mc.Generation
 	mc.Status.DeliverySystem = "flux"
-	if mc.Status.CurrentVersions == nil {
-		mc.Status.CurrentVersions = map[string]string{}
-	}
-	mc.Status.CurrentVersions[appKey] = currentRef
+	mc.Status.CurrentVersions = currentVersions
 	mc.Status.Health = kaprov1alpha1.ClusterHealth{
 		AllWorkloadsReady: fluxReady,
 		ReadyWorkloads:    readyCount,
@@ -257,32 +312,120 @@ func reconcile(
 		TotalWorkloads:    totalCount,
 		Message:           fmt.Sprintf("FluxVersion=%s", fluxVersion),
 	}
-	setMemberClusterReadyCondition(&mc, phase, fluxReady, currentRef, desiredVersion)
+	setMemberClusterReadyCondition(&mc, phase, fluxReady, defaultCurrentRef, desiredVersion, phaseMessage)
 
-	if err := hubClient.Status().Patch(ctx, &mc, statusPatch); err != nil {
-		return fmt.Errorf("patch MemberCluster status: %w", err)
+	if shouldPatchMemberClusterStatus(original.Status, mc.Status) {
+		if err := hubClient.Status().Patch(ctx, &mc, statusPatch); err != nil {
+			kaprometrics.StatusWrites.WithLabelValues("membercluster", "error").Inc()
+			return fmt.Errorf("patch MemberCluster status: %w", err)
+		}
+		kaprometrics.StatusWrites.WithLabelValues("membercluster", "success").Inc()
 	}
 
-	// 5. Apply desired version if it has changed.
-	if ociFound && desiredVersion != "" && desiredVersion != currentRef {
-		log.Info("desired version differs from current ref — patching OCIRepository",
-			"ociRepo", ociRepoName,
-			"current", currentRef,
-			"desired", desiredVersion,
-		)
-		if err := patchOCIRepositoryTag(ctx, localClient, &ociRepo, desiredVersion); err != nil {
-			return fmt.Errorf("patch OCIRepository %q: %w", ociRepoName, err)
+	// 5. Apply desired versions to their mapped OCIRepositories.
+	if phase != kaprov1alpha1.ClusterPhaseFailed {
+		for _, repoState := range desiredRepoStates {
+			dvVersion := effectiveDesiredVersions[repoState.appKey]
+			if dvVersion == "" || repoState.repoErr != nil || !repoState.found {
+				continue
+			}
+			currentForKey := mc.Status.CurrentVersions[repoState.appKey]
+			if dvVersion == currentForKey {
+				continue
+			}
+			log.Info("desired version differs from current — patching OCIRepository",
+				"ociRepo", repoState.repoName,
+				"appKey", repoState.appKey,
+				"current", currentForKey,
+				"desired", dvVersion,
+			)
+			var ociRepo sourcev1.OCIRepository
+			if err := localClient.Get(ctx, types.NamespacedName{Name: repoState.repoName, Namespace: fluxNamespace}, &ociRepo); err != nil {
+				return fmt.Errorf("get OCIRepository %q for appKey %s: %w", repoState.repoName, repoState.appKey, err)
+			}
+			if err := patchOCIRepositoryTag(ctx, localClient, &ociRepo, dvVersion); err != nil {
+				return fmt.Errorf("patch OCIRepository %q for appKey %s: %w", repoState.repoName, repoState.appKey, err)
+			}
 		}
 	}
 
 	log.Info("heartbeat written",
 		"phase", phase,
 		"appKey", appKey,
-		"currentVersion", currentRef,
+		"currentVersion", defaultCurrentRef,
 		"desiredVersion", desiredVersion,
+		"desiredVersions", effectiveDesiredVersions,
 		"fluxReady", fluxReady,
+		"phaseMessage", phaseMessage,
 	)
 	return nil
+}
+
+type desiredRepoState struct {
+	appKey     string
+	repoName   string
+	currentRef string
+	found      bool
+	repoErr    error
+}
+
+func readOCIRepositoryRef(ctx context.Context, localClient client.Client, fluxNamespace, repoName string) (string, bool, error) {
+	var ociRepo sourcev1.OCIRepository
+	if err := localClient.Get(ctx, types.NamespacedName{Name: repoName, Namespace: fluxNamespace}, &ociRepo); err == nil {
+		if ociRepo.Spec.Reference != nil {
+			if ociRepo.Spec.Reference.Digest != "" {
+				return ociRepo.Spec.Reference.Digest, true, nil
+			}
+			return ociRepo.Spec.Reference.Tag, true, nil
+		}
+		return "", true, nil
+	} else if !apierrors.IsNotFound(err) {
+		return "", false, err
+	}
+	return "", false, nil
+}
+
+func resolveOCIRepositoryName(mc *kaprov1alpha1.MemberCluster, defaultName, appKey string, requireMapped bool) (string, error) {
+	flux := mc.Spec.Actuator.Flux
+	if flux != nil && flux.OCIRepositories[appKey] != "" {
+		return flux.OCIRepositories[appKey], nil
+	}
+	if requireMapped && (flux == nil || len(flux.OCIRepositories) == 0) {
+		return "", fmt.Errorf("multi-artifact delivery requires spec.actuator.flux.ociRepositories")
+	}
+	if flux != nil && len(flux.OCIRepositories) > 0 && flux.OCIRepositories[appKey] == "" {
+		return "", fmt.Errorf("missing OCIRepository mapping for appKey %q", appKey)
+	}
+	if flux != nil && flux.OCIRepository != "" {
+		return flux.OCIRepository, nil
+	}
+	return defaultName, nil
+}
+
+func derivePhaseFromDesiredVersions(fluxReady bool, desiredVersion string, desiredVersions, currentVersions map[string]string, repoStates []desiredRepoState) (kaprov1alpha1.ClusterPhase, string) {
+	for _, repoState := range repoStates {
+		if repoState.repoErr != nil {
+			return kaprov1alpha1.ClusterPhaseFailed, repoState.repoErr.Error()
+		}
+		if !repoState.found {
+			return kaprov1alpha1.ClusterPhaseFailed, fmt.Sprintf("required OCIRepository %q for appKey %q was not found", repoState.repoName, repoState.appKey)
+		}
+	}
+	for appKey, want := range desiredVersions {
+		if want == "" {
+			continue
+		}
+		if currentVersions[appKey] != want {
+			return kaprov1alpha1.ClusterPhaseApplying, fmt.Sprintf("applying desired version for appKey %s", appKey)
+		}
+	}
+	if !fluxReady {
+		return kaprov1alpha1.ClusterPhaseConverging, "delivery system reports workloads are not yet ready"
+	}
+	if desiredVersion == "" && len(desiredVersions) == 0 {
+		return kaprov1alpha1.ClusterPhaseConverged, "cluster converged with no desired version set"
+	}
+	return kaprov1alpha1.ClusterPhaseConverged, "cluster converged"
 }
 
 // patchOCIRepositoryTag sets the OCIRepository reference and forces an immediate Flux reconciliation.
@@ -311,36 +454,34 @@ func patchOCIRepositoryTag(
 	return localClient.Patch(ctx, ociRepo, patch)
 }
 
-// derivePhase maps Flux readiness + version state to a ClusterPhase.
-func derivePhase(fluxReady bool, currentRef, desiredVersion string) kaprov1alpha1.ClusterPhase {
-	if desiredVersion != "" && currentRef != desiredVersion {
-		return kaprov1alpha1.ClusterPhaseApplying
-	}
-	if !fluxReady {
-		return kaprov1alpha1.ClusterPhaseConverging
-	}
-	return kaprov1alpha1.ClusterPhaseConverged
-}
-
-func setMemberClusterReadyCondition(mc *kaprov1alpha1.MemberCluster, phase kaprov1alpha1.ClusterPhase, fluxReady bool, currentRef, desiredVersion string) {
+func setMemberClusterReadyCondition(mc *kaprov1alpha1.MemberCluster, phase kaprov1alpha1.ClusterPhase, fluxReady bool, currentRef, desiredVersion, phaseMessage string) {
 	status := metav1.ConditionFalse
 	reason := string(phase)
-	message := "cluster is progressing"
+	message := phaseMessage
+	if message == "" {
+		message = "cluster is progressing"
+	}
 
 	switch phase {
 	case kaprov1alpha1.ClusterPhaseConverged:
 		status = metav1.ConditionTrue
 		reason = "Converged"
-		message = fmt.Sprintf("cluster converged at version %s", currentRef)
+		if currentRef != "" {
+			message = fmt.Sprintf("cluster converged at version %s", currentRef)
+		}
 	case kaprov1alpha1.ClusterPhaseApplying:
-		message = fmt.Sprintf("applying desired version %s", desiredVersion)
+		if message == "" && desiredVersion != "" {
+			message = fmt.Sprintf("applying desired version %s", desiredVersion)
+		}
 	case kaprov1alpha1.ClusterPhaseConverging:
-		if !fluxReady {
+		if !fluxReady && message == "" {
 			message = "delivery system reports workloads are not yet ready"
 		}
 	case kaprov1alpha1.ClusterPhaseFailed:
 		reason = "Failed"
-		message = "cluster reported a failed rollout"
+		if message == "" {
+			message = "cluster reported a failed rollout"
+		}
 	case kaprov1alpha1.ClusterPhaseUnreachable:
 		reason = "Unreachable"
 		message = "cluster heartbeat is stale or unreachable"
@@ -354,4 +495,40 @@ func setMemberClusterReadyCondition(mc *kaprov1alpha1.MemberCluster, phase kapro
 		ObservedGeneration: mc.Generation,
 		LastTransitionTime: metav1.Now(),
 	})
+}
+
+func copyStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func shouldPatchMemberClusterStatus(oldStatus, newStatus kaprov1alpha1.MemberClusterStatus) bool {
+	if oldStatus.Phase != newStatus.Phase ||
+		oldStatus.ObservedGeneration != newStatus.ObservedGeneration ||
+		!reflect.DeepEqual(oldStatus.CurrentVersions, newStatus.CurrentVersions) ||
+		oldStatus.DeliverySystem != newStatus.DeliverySystem ||
+		!reflect.DeepEqual(oldStatus.Health, newStatus.Health) {
+		return true
+	}
+
+	oldReady := apimeta.FindStatusCondition(oldStatus.Conditions, "Ready")
+	newReady := apimeta.FindStatusCondition(newStatus.Conditions, "Ready")
+	if !reflect.DeepEqual(oldReady, newReady) {
+		return true
+	}
+
+	if oldStatus.LastHeartbeat == "" {
+		return true
+	}
+	t, err := time.Parse(time.RFC3339, oldStatus.LastHeartbeat)
+	if err != nil {
+		return true
+	}
+	return time.Since(t) >= heartbeatStatusWriteInterval
 }

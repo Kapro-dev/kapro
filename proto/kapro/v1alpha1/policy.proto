@@ -5,8 +5,8 @@ package kapro.v1alpha1;
 option go_package = "kapro.io/kapro/proto/gen/policy/v1alpha1";
 
 // PolicyService evaluates whether a release is permitted to advance to a
-// given environment. This is a pre-flight check that runs before the
-// Promotion FSM starts.
+// given target cluster. This is a pre-flight check that runs before the
+// rollout FSM starts.
 //
 // Example policies:
 //   - "No promotions to prod on Fridays"
@@ -22,20 +22,20 @@ service PolicyService {
   // Evaluate checks whether the promotion is permitted.
   rpc Evaluate(PolicyRequest) returns (PolicyResponse);
 
-  // ListPolicies returns all active policies for an environment.
+  // ListPolicies returns all active policies for a target cluster.
   rpc ListPolicies(ListPoliciesRequest) returns (ListPoliciesResponse);
 }
 
 message PromotionContext {
   string release_ref = 1;
-  string environment_ref = 2;
+  string target_ref = 2;
   string version = 3;
   string artifact_digest = 4;
   // requester is the K8s identity (ServiceAccount or user) who created the Release.
   string requester = 5;
-  // labels from the Release and Environment for policy evaluation.
+  // labels from the Release and target cluster for policy evaluation.
   map<string, string> release_labels = 6;
-  map<string, string> environment_labels = 7;
+  map<string, string> target_labels = 7;
 }
 
 message PolicyRequest {
@@ -62,7 +62,7 @@ message PolicyViolation {
 }
 
 message ListPoliciesRequest {
-  string environment_ref = 1;
+  string target_ref = 1;
 }
 
 message ListPoliciesResponse {

@@ -14,7 +14,6 @@ import (
 //
 // Rules enforced:
 //  1. actuator.type must be "flux" (MVP) and actuator.flux sub-spec must be populated.
-//  2. provider, if set, must not specify conflicting sub-types (reserved for future use).
 type MemberClusterValidator struct {
 	decoder admission.Decoder
 }
@@ -37,10 +36,7 @@ func (v *MemberClusterValidator) Handle(_ context.Context, req admission.Request
 }
 
 func validateMemberCluster(mc *kaprov1alpha1.MemberCluster) error {
-	if err := validateActuator(mc); err != nil {
-		return err
-	}
-	return validateProvider(mc)
+	return validateActuator(mc)
 }
 
 func validateActuator(mc *kaprov1alpha1.MemberCluster) error {
@@ -50,40 +46,13 @@ func validateActuator(mc *kaprov1alpha1.MemberCluster) error {
 		if act.Flux == nil {
 			return fmt.Errorf("membercluster.spec.actuator.flux must be set when type=flux")
 		}
+		if act.Flux.OCIRepository == "" && len(act.Flux.OCIRepositories) == 0 {
+			return fmt.Errorf("membercluster.spec.actuator.flux.ociRepository or membercluster.spec.actuator.flux.ociRepositories must be set when type=flux")
+		}
 	case "":
 		return fmt.Errorf("membercluster.spec.actuator.type must be set")
 	default:
 		return fmt.Errorf("membercluster.spec.actuator.type %q is not supported in this release; supported: flux", act.Type)
-	}
-	return nil
-}
-
-func validateProvider(mc *kaprov1alpha1.MemberCluster) error {
-	p := mc.Spec.Provider
-	if p == nil {
-		// Provider block is optional; absence means CRD path (Path A).
-		return nil
-	}
-
-	switch p.Type {
-	case "", "crd":
-		// Path A: no further validation needed.
-	case "gke":
-		gke := p.GKE
-		if gke == nil {
-			return fmt.Errorf("membercluster.spec.provider.gke must be set when type=gke")
-		}
-		if gke.Project == "" {
-			return fmt.Errorf("membercluster.spec.provider.gke.project must be set when type=gke")
-		}
-		if gke.Location == "" {
-			return fmt.Errorf("membercluster.spec.provider.gke.location must be set when type=gke")
-		}
-		if gke.ClusterName == "" {
-			return fmt.Errorf("membercluster.spec.provider.gke.clusterName must be set when type=gke")
-		}
-	default:
-		return fmt.Errorf("membercluster.spec.provider.type %q is not supported in this release; supported: \"\", crd, gke", p.Type)
 	}
 	return nil
 }

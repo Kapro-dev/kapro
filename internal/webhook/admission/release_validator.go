@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
@@ -34,12 +36,37 @@ func (v *ReleaseValidator) Handle(_ context.Context, req admission.Request) admi
 	if err := validateRelease(&release); err != nil {
 		return admission.Denied(err.Error())
 	}
+	if req.Operation == admissionv1.Update {
+		var old kaprov1alpha1.Release
+		if err := v.decoder.DecodeRaw(req.OldObject, &old); err != nil {
+			return admission.Errored(http.StatusBadRequest, err)
+		}
+		if err := validateReleaseUpdate(&old, &release); err != nil {
+			return admission.Denied(err.Error())
+		}
+	}
 	return admission.Allowed("")
 }
 
 func validateRelease(r *kaprov1alpha1.Release) error {
-	if r.Spec.Artifact == "" {
-		return fmt.Errorf("release.spec.artifact must be set")
+	// At least one of artifact or artifacts must be set (unless derivedFrom is set, which inherits).
+	if r.Spec.Artifact == "" && len(r.Spec.Artifacts) == 0 && r.Spec.DerivedFrom == "" {
+		return fmt.Errorf("release.spec.artifact or release.spec.artifacts must be set (or derivedFrom for inheritance)")
+	}
+
+	// Validate multi-artifact list: each entry needs appKey and artifact.
+	appKeys := make(map[string]bool, len(r.Spec.Artifacts))
+	for i, ref := range r.Spec.Artifacts {
+		if ref.AppKey == "" {
+			return fmt.Errorf("release.spec.artifacts[%d].appKey must be set", i)
+		}
+		if ref.Artifact == "" {
+			return fmt.Errorf("release.spec.artifacts[%d].artifact must be set", i)
+		}
+		if appKeys[ref.AppKey] {
+			return fmt.Errorf("release.spec.artifacts: duplicate appKey %q", ref.AppKey)
+		}
+		appKeys[ref.AppKey] = true
 	}
 
 	if len(r.Spec.Pipelines) == 0 {
@@ -79,7 +106,34 @@ func validateRelease(r *kaprov1alpha1.Release) error {
 	return nil
 }
 
+func validateReleaseUpdate(old, new *kaprov1alpha1.Release) error {
+	if old.Spec.Artifact != new.Spec.Artifact {
+		return fmt.Errorf("release.spec.artifact is immutable after creation")
+	}
+	if !reflect.DeepEqual(old.Spec.Artifacts, new.Spec.Artifacts) {
+		return fmt.Errorf("release.spec.artifacts is immutable after creation")
+	}
+	if !reflect.DeepEqual(old.Spec.Pipelines, new.Spec.Pipelines) {
+		return fmt.Errorf("release.spec.pipelines is immutable after creation")
+	}
+	if old.Spec.AppKey != new.Spec.AppKey {
+		return fmt.Errorf("release.spec.appKey is immutable after creation")
+	}
+	if old.Spec.DerivedFrom != new.Spec.DerivedFrom {
+		return fmt.Errorf("release.spec.derivedFrom is immutable after creation")
+	}
+	if !reflect.DeepEqual(old.Spec.Scope, new.Spec.Scope) {
+		return fmt.Errorf("release.spec.scope is immutable after creation")
+	}
+	return nil
+}
+
 // ValidateRelease is an exported test helper that exposes the internal validation logic.
 func ValidateRelease(r *kaprov1alpha1.Release) error {
 	return validateRelease(r)
+}
+
+// ValidateReleaseUpdate is an exported test helper for update immutability rules.
+func ValidateReleaseUpdate(old, new *kaprov1alpha1.Release) error {
+	return validateReleaseUpdate(old, new)
 }

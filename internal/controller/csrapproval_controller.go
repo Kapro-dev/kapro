@@ -490,6 +490,19 @@ func (r *MemberClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return r.handleDeletion(ctx, mc)
 	}
 
+	// Honor spec.suspend — skip all reconciliation for this cluster.
+	if mc.Spec.Suspend {
+		log.FromContext(ctx).Info("MemberCluster is suspended — skipping reconciliation", "cluster", mc.Name)
+		patch := client.MergeFrom(mc.DeepCopy())
+		mc.Status.ObservedGeneration = mc.Generation
+		setMemberClusterCondition(mc, kaprov1alpha1.ConditionTypeReconciling, metav1.ConditionFalse, "Suspended", "cluster is suspended")
+		apimeta.RemoveStatusCondition(&mc.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
+		if err := r.Status().Patch(ctx, mc, patch); err != nil {
+			return ctrl.Result{}, fmt.Errorf("patch suspended conditions: %w", err)
+		}
+		return ctrl.Result{}, nil
+	}
+
 	if mc.Spec.Bootstrap != nil && mc.Spec.Bootstrap.TokenHash != "" {
 		return r.ensureBootstrapProvisioned(ctx, mc)
 	}
@@ -552,6 +565,8 @@ func (r *MemberClusterReconciler) ensureBootstrapProvisioned(ctx context.Context
 		patch := client.MergeFrom(mc.DeepCopy())
 		mc.Status.ObservedGeneration = mc.Generation
 		setMemberClusterCondition(mc, "BootstrapReady", metav1.ConditionTrue, "CredentialsIssued", "bootstrap credential is ready for first registration")
+		setMemberClusterCondition(mc, kaprov1alpha1.ConditionTypeReconciling, metav1.ConditionFalse, "BootstrapComplete", "bootstrap provisioning complete")
+		apimeta.RemoveStatusCondition(&mc.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
 		if err := r.Status().Patch(ctx, mc, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("patch MemberCluster bootstrap ready condition: %w", err)
 		}
@@ -564,6 +579,8 @@ func (r *MemberClusterReconciler) ensureBootstrapProvisioned(ctx context.Context
 		patch := client.MergeFrom(mc.DeepCopy())
 		mc.Status.ObservedGeneration = mc.Generation
 		setMemberClusterCondition(mc, "BootstrapReady", metav1.ConditionFalse, "Expired", "bootstrap credential expired before provisioning")
+		setMemberClusterCondition(mc, kaprov1alpha1.ConditionTypeStalled, metav1.ConditionTrue, "BootstrapExpired", "bootstrap slot expired — update spec.bootstrap.expiresAt to retry")
+		setMemberClusterCondition(mc, kaprov1alpha1.ConditionTypeReconciling, metav1.ConditionFalse, "BootstrapExpired", "stalled: bootstrap expired")
 		if err := r.Status().Patch(ctx, mc, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("patch expired bootstrap condition: %w", err)
 		}
@@ -676,8 +693,12 @@ func (r *MemberClusterReconciler) ensureBootstrapProvisioned(ctx context.Context
 		if err := r.Get(ctx, types.NamespacedName{Namespace: kaproSystemNamespace, Name: secretName}, existing); err != nil {
 			return ctrl.Result{}, err
 		}
-		existing.Data = map[string][]byte{"kubeconfig": kubeconfigData}
-		if err := r.Update(ctx, existing); err != nil {
+		patch := client.MergeFrom(existing.DeepCopy())
+		if existing.Data == nil {
+			existing.Data = map[string][]byte{}
+		}
+		existing.Data["kubeconfig"] = kubeconfigData
+		if err := r.Patch(ctx, existing, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("update bootstrap kubeconfig secret: %w", err)
 		}
 	} else if err != nil {
@@ -695,6 +716,8 @@ func (r *MemberClusterReconciler) ensureBootstrapProvisioned(ctx context.Context
 	fresh.Status.Bootstrap.IssuedBootstrapKubeconfig = secretName
 	fresh.Status.ObservedGeneration = fresh.Generation
 	setMemberClusterCondition(fresh, "BootstrapReady", metav1.ConditionTrue, "CredentialsIssued", fmt.Sprintf("bootstrap kubeconfig secret %s is ready", secretName))
+	setMemberClusterCondition(fresh, kaprov1alpha1.ConditionTypeReconciling, metav1.ConditionFalse, "BootstrapComplete", "bootstrap provisioning complete")
+	apimeta.RemoveStatusCondition(&fresh.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
 	if err := r.Status().Update(ctx, fresh); err != nil {
 		return ctrl.Result{}, fmt.Errorf("update MemberCluster bootstrap status: %w", err)
 	}

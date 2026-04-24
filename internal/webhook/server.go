@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,6 +38,9 @@ type Server struct {
 	// TokenSecret is the HMAC key used to verify approval tokens.
 	// Must match the secret used by ReleaseReconciler to sign tokens.
 	TokenSecret []byte
+	// OperatorNamespace is the namespace in which Releases are managed.
+	// Defaults to "kapro-system" if empty.
+	OperatorNamespace string
 }
 
 // Handler returns the HTTP mux for all approval endpoints.
@@ -59,6 +63,10 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Bound all Kubernetes API calls so a slow hub never hangs the goroutine.
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
 	targetKey := r.PathValue("name")
 	if targetKey == "" {
 		targetKey = trimPrefix(r.URL.Path, "/approve/")
@@ -66,12 +74,13 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 
 	claims, err := s.verifyToken(r, "approve")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		log.FromContext(ctx).Info("approve: invalid token", "error", err)
+		http.Error(w, "invalid token", http.StatusUnauthorized)
 		return
 	}
 
 	// Look up the Release and validate UID.
-	release, err := s.getRelease(r.Context(), claims.Release, claims.Namespace)
+	release, err := s.getRelease(ctx, claims.Release, claims.Namespace)
 	if err != nil {
 		http.Error(w, "release not found", http.StatusNotFound)
 		return
@@ -81,21 +90,30 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "token bound to different release instance", http.StatusConflict)
 		return
 	}
+	var target kaprov1alpha1.ReleaseTarget
+	if err := s.Client.Get(ctx, client.ObjectKey{Name: targetKey}, &target); err != nil {
+		http.Error(w, "target entry not found", http.StatusNotFound)
+		return
+	}
+	if target.Spec.ReleaseRef != claims.Release {
+		http.Error(w, "target/release mismatch", http.StatusConflict)
+		return
+	}
 
 	approval := s.buildApproval(claims)
-	if err := s.Client.Create(r.Context(), approval); err != nil {
+	if err := s.Client.Create(ctx, approval); err != nil {
 		if isAlreadyExists(err) {
 			writeJSON(w, http.StatusConflict, map[string]string{
 				"status": "already_approved",
 			})
 			return
 		}
-		log.FromContext(r.Context()).Error(err, "create Approval CR failed")
+		log.FromContext(ctx).Error(err, "create Approval CR failed")
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
-	log.FromContext(r.Context()).Info("Approval CR created",
+	log.FromContext(ctx).Info("Approval CR created",
 		"targetKey", targetKey,
 		"release", claims.Release,
 		"target", claims.Target,
@@ -118,6 +136,10 @@ func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Bound all Kubernetes API calls so a slow hub never hangs the goroutine.
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
 	targetKey := r.PathValue("name")
 	if targetKey == "" {
 		targetKey = trimPrefix(r.URL.Path, "/reject/")
@@ -125,11 +147,12 @@ func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
 
 	claims, err := s.verifyToken(r, "reject")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		log.FromContext(ctx).Info("reject: invalid token", "error", err)
+		http.Error(w, "invalid token", http.StatusUnauthorized)
 		return
 	}
 
-	release, err := s.getRelease(r.Context(), claims.Release, claims.Namespace)
+	release, err := s.getRelease(ctx, claims.Release, claims.Namespace)
 	if err != nil {
 		http.Error(w, "release not found", http.StatusNotFound)
 		return
@@ -139,30 +162,44 @@ func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "token bound to different release instance", http.StatusConflict)
 		return
 	}
-
-	// Find the target entry and mark it rejected.
-	i := findTargetByKey(release, targetKey)
-	if i < 0 {
-		http.Error(w, "target entry not found in release status", http.StatusNotFound)
+	var target kaprov1alpha1.ReleaseTarget
+	if err := s.Client.Get(ctx, client.ObjectKey{Name: targetKey}, &target); err != nil {
+		http.Error(w, "target entry not found", http.StatusNotFound)
+		return
+	}
+	if target.Spec.ReleaseRef != claims.Release {
+		http.Error(w, "target/release mismatch", http.StatusConflict)
 		return
 	}
 
-	rejectedBy := r.URL.Query().Get("by")
+	// Use the identity embedded in the verified HMAC token — not the raw query string.
+	// The query string ?by= parameter is unauthenticated and can be trivially spoofed.
+	rejectedBy := claims.ApprovedBy
 	if rejectedBy == "" {
 		rejectedBy = "webhook"
 	}
 
+	// Idempotency: return 409 if already rejected (mirrors the approve endpoint).
+	if target.Status.Rejected {
+		writeJSON(w, http.StatusConflict, map[string]string{
+			"status":    "already-rejected",
+			"targetKey": targetKey,
+			"target":    claims.Target,
+		})
+		return
+	}
+
 	// Patch only the target status fields.
-	patch := client.MergeFrom(release.DeepCopy())
-	release.Status.Targets[i].Rejected = true
-	release.Status.Targets[i].RejectedBy = rejectedBy
-	if err := s.Client.Status().Patch(r.Context(), release, patch); err != nil {
-		log.FromContext(r.Context()).Error(err, "patch Release target rejection failed")
+	patch := client.MergeFrom(target.DeepCopy())
+	target.Status.Rejected = true
+	target.Status.RejectedBy = rejectedBy
+	if err := s.Client.Status().Patch(ctx, &target, patch); err != nil {
+		log.FromContext(ctx).Error(err, "patch ReleaseTarget rejection failed")
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
-	log.FromContext(r.Context()).Info("target rejection set",
+	log.FromContext(ctx).Info("target rejection set",
 		"targetKey", targetKey,
 		"rejectedBy", rejectedBy,
 	)
@@ -174,8 +211,12 @@ func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleStatus returns the public target phase. No auth required.
-// GET /status/{targetKey}?ns=<namespace>
+// handleStatus returns the public target phase. No authentication required — only
+// phase and version are exposed (no secrets or user data).
+// GET /status/{targetKey}
+//
+// The operator namespace is fixed at startup. The endpoint verifies that the
+// target belongs to a Release in that namespace before returning public status.
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -186,36 +227,31 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if targetKey == "" {
 		targetKey = trimPrefix(r.URL.Path, "/status/")
 	}
-	ns := r.URL.Query().Get("ns")
+
+	ns := s.OperatorNamespace
 	if ns == "" {
 		ns = "kapro-system"
 	}
 
-	// Scan all Releases in the namespace for a target entry matching targetKey.
-	var releaseList kaprov1alpha1.ReleaseList
-	if err := s.Client.List(r.Context(), &releaseList,
-		client.InNamespace(ns), client.Limit(500),
-	); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+	var target kaprov1alpha1.ReleaseTarget
+	if err := s.Client.Get(r.Context(), client.ObjectKey{Name: targetKey}, &target); err != nil {
+		http.Error(w, "target not found", http.StatusNotFound)
 		return
 	}
-	for i := range releaseList.Items {
-		rel := &releaseList.Items[i]
-		idx := findTargetByKey(rel, targetKey)
-		if idx < 0 {
-			continue
-		}
-		target := rel.Status.Targets[idx]
-		writeJSON(w, http.StatusOK, map[string]string{
-			"phase":   string(target.Phase),
-			"version": target.Version,
-			"target":  target.Target,
-			"release": rel.Name,
-		})
+	if target.Spec.ReleaseRef == "" {
+		http.Error(w, "target not found", http.StatusNotFound)
 		return
 	}
-
-	http.Error(w, "target not found", http.StatusNotFound)
+	if _, err := s.getRelease(r.Context(), target.Spec.ReleaseRef, ns); err != nil {
+		http.Error(w, "target not found", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"phase":   string(target.Status.Phase),
+		"version": target.Spec.Version,
+		"target":  target.Spec.Target,
+		"release": target.Spec.ReleaseRef,
+	})
 }
 
 func (s *Server) verifyToken(r *http.Request, expectedAction string) (*token.Claims, error) {
@@ -241,18 +277,6 @@ func (s *Server) getRelease(ctx context.Context, name, namespace string) (*kapro
 	return &release, nil
 }
 
-// findTargetByKey finds the index of the target entry in release.Status.Targets
-// whose computed key matches targetKey. Returns -1 if not found.
-func findTargetByKey(release *kaprov1alpha1.Release, targetKey string) int {
-	for i, target := range release.Status.Targets {
-		k := fmt.Sprintf("%s-%s-%s-%s", release.Name, target.PipelineRef, target.Stage, target.Target)
-		if k == targetKey {
-			return i
-		}
-	}
-	return -1
-}
-
 func (s *Server) buildApproval(claims *token.Claims) *kaprov1alpha1.Approval {
 	approvedBy := claims.ApprovedBy
 	if approvedBy == "" {
@@ -260,19 +284,14 @@ func (s *Server) buildApproval(claims *token.Claims) *kaprov1alpha1.Approval {
 	}
 	return &kaprov1alpha1.Approval{
 		ObjectMeta: metav1.ObjectMeta{
-			// Name is deterministic: one approval per release+target combination.
-			Name:      fmt.Sprintf("%s-%s", claims.Release, claims.Target),
-			Namespace: claims.Namespace,
-			Labels: map[string]string{
-				"kapro.io/release": claims.Release,
-				"kapro.io/target":  claims.Target,
-			},
+			// Name is deterministic: one cluster-scoped Approval per
+			// (release, ref) pair, where ref is the rollout entry sync name.
+			Name: fmt.Sprintf("%s-%s", claims.Release, claims.SyncName),
 		},
 		Spec: kaprov1alpha1.ApprovalSpec{
-			Kind:       kaprov1alpha1.ApprovalKindSync,
-			Ref:        claims.Target,
 			Release:    claims.Release,
 			Target:     claims.Target,
+			Ref:        claims.SyncName,
 			ApprovedBy: approvedBy,
 			Comment:    fmt.Sprintf("approved via webhook for version %s", claims.Version),
 		},
@@ -295,19 +314,3 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
-
-//
-// The server exposes three endpoints:
-//
-//   POST /approve/{name}?token=<t>   — creates an Approval CR to unblock a target rollout
-//   POST /reject/{name}?token=<t>    — patches the owning Release with a rejection annotation;
-//                                      the release controller will fail the rollout on the next
-//                                      reconcile, preserving controller invariants.
-//   GET  /status/{name}?ns=<ns>      — returns public rollout phase/version (no auth required)
-//
-// Token format is defined in internal/webhook/token. Tokens are HMAC-SHA256 signed,
-// scoped to a single rollout entry UID surrogate, and expire after 48 hours by default.
-//
-// The server creates Approval objects directly — no gRPC or extra dependencies.
-// Any notification channel (email, Teams, webhook, etc.) delivers the approve/reject
-// URLs; the channel is irrelevant to this server.

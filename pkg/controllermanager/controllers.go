@@ -23,25 +23,23 @@ import (
 
 func init() {
 	Register("release", startReleaseController)
+	Register("release-target", startReleaseTargetController)
 	Register("approval", startApprovalController)
 	Register("csrapproval", startCSRApprovalController)
 	Register("membercluster", startMemberClusterController)
+	Register("source", startSourceController)
 }
 
 // startReleaseController starts the Release reconciler.
 // Drives the two-level DAG orchestration — walks Pipeline nodes then Stages,
-// upserts one TargetStatus per (Release, Pipeline, Stage, Target)
-// inline in release.status.targets, and advances each target through the FSM.
+// upserts one ReleaseTarget per (Release, Pipeline, Stage, Target),
+// and aggregates child execution state into Release status.
 func startReleaseController(_ context.Context, cc ControllerContext) (bool, error) {
 	if err := (&controller.ReleaseReconciler{
 		Client:           cc.Manager.GetClient(),
 		Recorder:         cc.Recorder,
 		Scheme:           cc.Manager.GetScheme(),
 		ActuatorRegistry: cc.ActuatorRegistry,
-		SoakGate:         cc.Gates.Soak,
-		MetricsGate:      cc.Gates.Metrics,
-		ApprovalGate:     cc.Gates.Approval,
-		VerificationGate: cc.Gates.Verification,
 		Notifier:         cc.Notifier,
 		ApprovalSecret:   cc.ApprovalSecret,
 		ExternalURL:      cc.ExternalURL,
@@ -52,19 +50,48 @@ func startReleaseController(_ context.Context, cc ControllerContext) (bool, erro
 	return true, nil
 }
 
-// BuildGateRegistry registers all built-in template-dispatch gate types.
+func startReleaseTargetController(_ context.Context, cc ControllerContext) (bool, error) {
+	if err := (&controller.ReleaseTargetReconciler{
+		Client:           cc.Manager.GetClient(),
+		Recorder:         cc.Recorder,
+		Scheme:           cc.Manager.GetScheme(),
+		ActuatorRegistry: cc.ActuatorRegistry,
+		Notifier:         cc.Notifier,
+		ApprovalSecret:   cc.ApprovalSecret,
+		ExternalURL:      cc.ExternalURL,
+		GateRegistry:     cc.GateRegistry,
+	}).SetupWithManager(cc.Manager); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// BuildGateRegistry registers every built-in Gate into a single registry.
+//
+// One mental model: every gate — FSM-phase gates AND template-dispatch gates —
+// is a pkg/gate.Gate resolved by name through this registry. The FSM calls
+// r.GateRegistry.Resolve("soak" | "metrics" | "approval" | "verification"),
+// and GateTemplate evaluation calls Resolve(template.spec.type) for
+// user-extensible types (cel, job, webhook, or anything registered by name
+// at startup).
+//
 // External gate types register after this call in main.go:
 //
 //	reg, err := BuildGateRegistry(c)
 //	if err != nil { return err }
 //	if err := reg.Register("argo-analysis", &mygate.ArgoAnalysisGate{...}); err != nil { return err }
-//
-// The registry is intentionally separate from BuildGateSet: GateSet holds the
-// FSM-phase gates (bound to fixed phases), while GateRegistry holds the
-// template-dispatch gates (looked up by GateTemplate.spec.type at runtime).
 func BuildGateRegistry(c client.Client) (*pkggate.Registry, error) {
 	reg := pkggate.NewRegistry()
 	for typeName, impl := range map[string]pkggate.Gate{
+		// FSM-phase gates (resolved by fixed name from target_fsm.go handlers).
+		"soak":     &internalgate.SoakGate{},
+		"metrics":  &internalgate.MetricsGate{},
+		"approval": &internalgate.ApprovalGate{Client: c},
+		"verification": &internalgate.VerificationGate{
+			Verifier:  &cosignverifier.Verifier{},
+			KeyReader: &internalgate.ClientSecretKeyReader{Client: c},
+		},
+		// Template-dispatch gates (resolved by GateTemplate.spec.type).
 		"cel":     &celgate.Gate{Client: c},
 		"job":     &jobgate.Gate{Client: c},
 		"webhook": &webhookgate.Gate{},
@@ -125,31 +152,27 @@ func startMemberClusterController(_ context.Context, cc ControllerContext) (bool
 	return true, nil
 }
 
-// BuildGateSet constructs the FSM-phase gate set.
-// c is the controller-runtime client used by ApprovalGate and VerificationGate.
-// Template-dispatch gates (cel, job, webhook) are registered separately in BuildGateRegistry.
-func BuildGateSet(c client.Client) GateSet {
-	return GateSet{
-		Soak:     &internalgate.SoakGate{},
-		Metrics:  &internalgate.MetricsGate{},
-		Approval: &internalgate.ApprovalGate{Client: c},
-		Verification: &internalgate.VerificationGate{
-			Verifier:  &cosignverifier.Verifier{},
-			KeyReader: &internalgate.ClientSecretKeyReader{Client: c},
-		},
+// startSourceController starts the Source reconciler.
+// Polls OCI registries for new semver-matching tags and auto-creates Artifact objects.
+func startSourceController(_ context.Context, cc ControllerContext) (bool, error) {
+	if err := (&controller.SourceReconciler{
+		Client:   cc.Manager.GetClient(),
+		Recorder: cc.Recorder,
+		Scheme:   cc.Manager.GetScheme(),
+	}).SetupWithManager(cc.Manager); err != nil {
+		return false, err
 	}
+	return true, nil
 }
 
 // compile-time checks: all built-in gate implementations satisfy gate.Gate.
-// Add a line here whenever a new built-in gate is added to BuildGateSet or BuildGateRegistry.
+// Add a line here whenever a new built-in gate is added to BuildGateRegistry.
 var (
-	// FSM-phase gates (BuildGateSet)
 	_ pkggate.Gate = (*internalgate.SoakGate)(nil)
 	_ pkggate.Gate = (*internalgate.MetricsGate)(nil)
 	_ pkggate.Gate = (*internalgate.ApprovalGate)(nil)
 	_ pkggate.Gate = (*internalgate.VerificationGate)(nil)
 	_ pkggate.Gate = (*celgate.Gate)(nil)
-	// Template-dispatch gates (BuildGateRegistry)
 	_ pkggate.Gate = (*jobgate.Gate)(nil)
 	_ pkggate.Gate = (*webhookgate.Gate)(nil)
 )

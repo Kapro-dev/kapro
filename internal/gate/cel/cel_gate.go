@@ -17,6 +17,7 @@ package cel
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
@@ -34,6 +35,18 @@ import (
 type Gate struct {
 	Client client.Client
 }
+
+var (
+	celEnvOnce sync.Once
+	celEnv     *cel.Env
+	celEnvErr  error
+
+	// celProgramCache is a bounded cache of compiled CEL programs keyed by expression.
+	// Max size prevents OOM when many unique expressions are submitted by Release objects.
+	celProgramCache    = map[string]cel.Program{}
+	celProgramCacheMu  sync.RWMutex
+	celProgramCacheMax = 1000
+)
 
 // Evaluate compiles and evaluates the CEL expression in the GateTemplate.
 // Returns Passed=true when the expression evaluates to boolean true.
@@ -128,23 +141,14 @@ func buildActivation(args map[string]string, mc *kaprov1alpha1.MemberCluster, ga
 
 // evaluate compiles the CEL expression and evaluates it against the activation.
 func evaluate(expr string, activation map[string]any) (bool, string, error) {
-	env, err := cel.NewEnv(
-		cel.Variable("args", cel.MapType(cel.StringType, cel.StringType)),
-		cel.Variable("target", cel.MapType(cel.StringType, cel.DynType)),
-		cel.Variable("sync", cel.MapType(cel.StringType, cel.StringType)),
-	)
+	env, err := sharedCELEnv()
 	if err != nil {
-		return false, "", fmt.Errorf("create CEL env: %w", err)
+		return false, "", err
 	}
 
-	ast, issues := env.Compile(expr)
-	if issues != nil && issues.Err() != nil {
-		return false, "", fmt.Errorf("compile: %w", issues.Err())
-	}
-
-	prg, err := env.Program(ast)
+	prg, err := cachedCELProgram(env, expr)
 	if err != nil {
-		return false, "", fmt.Errorf("program: %w", err)
+		return false, "", err
 	}
 
 	out, _, err := prg.Eval(activation)
@@ -153,6 +157,48 @@ func evaluate(expr string, activation map[string]any) (bool, string, error) {
 	}
 
 	return isTruthy(out), fmt.Sprintf("result=%v", out), nil
+}
+
+func sharedCELEnv() (*cel.Env, error) {
+	celEnvOnce.Do(func() {
+		celEnv, celEnvErr = cel.NewEnv(
+			cel.Variable("args", cel.MapType(cel.StringType, cel.StringType)),
+			cel.Variable("target", cel.MapType(cel.StringType, cel.DynType)),
+			cel.Variable("sync", cel.MapType(cel.StringType, cel.StringType)),
+		)
+	})
+	if celEnvErr != nil {
+		return nil, fmt.Errorf("create CEL env: %w", celEnvErr)
+	}
+	return celEnv, nil
+}
+
+func cachedCELProgram(env *cel.Env, expr string) (cel.Program, error) {
+	celProgramCacheMu.RLock()
+	prg, ok := celProgramCache[expr]
+	celProgramCacheMu.RUnlock()
+	if ok {
+		return prg, nil
+	}
+
+	ast, issues := env.Compile(expr)
+	if issues != nil && issues.Err() != nil {
+		return nil, fmt.Errorf("compile: %w", issues.Err())
+	}
+
+	prg, err := env.Program(ast)
+	if err != nil {
+		return nil, fmt.Errorf("program: %w", err)
+	}
+
+	// Only cache if below the size limit; if at limit, return the compiled
+	// program for this call without storing it to prevent unbounded growth.
+	celProgramCacheMu.Lock()
+	if len(celProgramCache) < celProgramCacheMax {
+		celProgramCache[expr] = prg
+	}
+	celProgramCacheMu.Unlock()
+	return prg, nil
 }
 
 func isTruthy(v ref.Val) bool {

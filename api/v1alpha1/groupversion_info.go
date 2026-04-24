@@ -17,6 +17,9 @@ func init() {
 		&Artifact{}, &ArtifactList{},
 		&Pipeline{}, &PipelineList{},
 		&Release{}, &ReleaseList{},
+		&ReleaseTarget{}, &ReleaseTargetList{},
+		// Discovery layer
+		&Source{}, &SourceList{},
 		// Lean fleet registry (MemberCluster = legacy target inventory split)
 		&MemberCluster{}, &MemberClusterList{},
 		// Internal / system objects

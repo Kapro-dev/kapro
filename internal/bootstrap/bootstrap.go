@@ -1,15 +1,19 @@
-// Package bootstrap provides Provider implementations for kapro-cluster-controller
-// to authenticate to the hub Kubernetes API server.
+// Package bootstrap provides credential-acquisition modes for
+// kapro-cluster-controller to authenticate to the hub Kubernetes API server.
 //
-// Two implementations live side-by-side in this file for easy comparison:
+// Two bootstrap modes live side-by-side in this file for easy comparison:
 //
 //   - Generic — Kubernetes-native CSR bootstrap (any distribution, any cloud)
 //   - GCP     — GKE Workload Identity token from GCE metadata server (GKE only)
 //
-// Select at runtime via the KAPRO_PROVIDER environment variable:
+// Select at runtime via the KAPRO_BOOTSTRAP_MODE environment variable:
 //
 //	"" or "generic" → Generic (default)
 //	"gcp"           → GCP
+//
+// This is a fixed, code-level auth path — not a pluggable runtime extension
+// interface. The removed generic cluster-provider abstraction is unrelated
+// (see docs/adr/ADR-006-multi-cloud-provider-onboarding.md).
 package bootstrap
 
 import (
@@ -251,6 +255,19 @@ func (g *Generic) submitAndWaitForCSR(ctx context.Context, cfg *rest.Config) (ce
 		if len(approved.Status.Certificate) == 0 {
 			continue
 		}
+		// Defense-in-depth: the certificate field is non-empty, but require an explicit
+		// CertificateApproved condition before trusting the bytes.
+		var isApproved bool
+		for _, c := range approved.Status.Conditions {
+			if c.Type == certificatesv1.CertificateApproved && c.Status == corev1.ConditionTrue {
+				isApproved = true
+				break
+			}
+		}
+		if !isApproved {
+			log.Info("CSR has certificate bytes but CertificateApproved condition not yet set — waiting", "csr", csrName)
+			continue
+		}
 
 		log.Info("CSR approved, certificate issued", "csr", csrName)
 		return approved.Status.Certificate, pem.EncodeToMemory(&pem.Block{
@@ -387,16 +404,21 @@ func (g *GCP) HubConfig(ctx context.Context) (*rest.Config, error) {
 	}
 	g.mu.RUnlock()
 
+	// Slow path: fetch a new token. Re-check under write lock (double-checked
+	// locking) to prevent multiple goroutines from fetching simultaneously.
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.token != "" && time.Now().Add(gcpRenewalLeeway).Before(g.expiresAt) {
+		return g.buildConfig(g.token), nil
+	}
+
 	token, expiresAt, err := fetchGCPToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("GCP provider: %w", err)
 	}
 
-	g.mu.Lock()
 	g.token = token
 	g.expiresAt = expiresAt
-	g.mu.Unlock()
-
 	ctrl.Log.WithName("gcp-provider").Info("access token refreshed",
 		"expiresAt", expiresAt.Format(time.RFC3339))
 	return g.buildConfig(token), nil
@@ -420,6 +442,9 @@ func (g *GCP) buildConfig(token string) *rest.Config {
 	}
 }
 
+// gcpHTTPClient is reused across token fetches to allow connection pooling.
+var gcpHTTPClient = &http.Client{Timeout: gcpHTTPTimeout}
+
 func fetchGCPToken(ctx context.Context) (token string, expiresAt time.Time, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, gcpMetadataURL, nil)
 	if err != nil {
@@ -427,13 +452,17 @@ func fetchGCPToken(ctx context.Context) (token string, expiresAt time.Time, err 
 	}
 	req.Header.Set("Metadata-Flavor", "Google")
 
-	resp, err := (&http.Client{Timeout: gcpHTTPTimeout}).Do(req)
+	resp, err := gcpHTTPClient.Do(req)
 	if err != nil {
-		return "", time.Time{}, fmt.Errorf("metadata server unreachable (not running on GCP? unset KAPRO_PROVIDER=gcp): %w", err)
+		return "", time.Time{}, fmt.Errorf("metadata server unreachable (not running on GCP? unset KAPRO_BOOTSTRAP_MODE=gcp): %w", err)
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	// B33: propagate read errors instead of silently discarding them.
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("metadata server: read response body: %w", err)
+	}
 	switch resp.StatusCode {
 	case http.StatusOK:
 		// handled below
@@ -452,6 +481,10 @@ func fetchGCPToken(ctx context.Context) (token string, expiresAt time.Time, err 
 	if tr.AccessToken == "" {
 		return "", time.Time{}, fmt.Errorf("metadata server returned empty access_token")
 	}
-
-	return tr.AccessToken, time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second), nil
+	// B46: reject tiny/malformed ExpiresIn; subtract safety margin to account for hub clock skew.
+	if tr.ExpiresIn <= 60 {
+		return "", time.Time{}, fmt.Errorf("metadata server returned suspiciously short ExpiresIn=%d", tr.ExpiresIn)
+	}
+	effective := time.Duration(tr.ExpiresIn-30) * time.Second
+	return tr.AccessToken, time.Now().Add(effective), nil
 }

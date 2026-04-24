@@ -12,12 +12,60 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
+	"net/url"
 	"time"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	pkggate "kapro.io/kapro/pkg/gate"
 )
+
+// isForbiddenIP returns true for addresses that must not be reached via the webhook gate:
+// loopback, private, link-local, unspecified (0.0.0.0 / ::), and multicast.
+// Addresses are first unmapped (IPv4-in-IPv6 → IPv4) so every check is canonical.
+func isForbiddenIP(addr netip.Addr) bool {
+	addr = addr.Unmap()
+	return addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() ||
+		addr.IsUnspecified() || addr.IsMulticast() || addr.IsLinkLocalMulticast()
+}
+
+// safeDial resolves host and rejects connections to any private / forbidden address.
+// It tries all valid resolved IPs in order so that public multi-homed endpoints still work.
+func safeDial(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, fmt.Errorf("ssrf guard: parse addr %q: %w", addr, err)
+	}
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("ssrf guard: resolve %q: %w", host, err)
+	}
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("ssrf guard: no addresses for %q", host)
+	}
+	for _, ip := range ips {
+		a, ok := netip.AddrFromSlice(ip.IP)
+		if !ok {
+			return nil, fmt.Errorf("ssrf guard: invalid IP %v", ip.IP)
+		}
+		if isForbiddenIP(a) {
+			return nil, fmt.Errorf("ssrf guard: %q resolves to forbidden address %s", host, ip.IP)
+		}
+	}
+	// All IPs cleared; try them in order.
+	d := &net.Dialer{}
+	var lastErr error
+	for _, ip := range ips {
+		conn, dialErr := d.DialContext(ctx, network, net.JoinHostPort(ip.IP.String(), port))
+		if dialErr == nil {
+			return conn, nil
+		}
+		lastErr = dialErr
+	}
+	return nil, lastErr
+}
 
 // Gate implements the webhook gate type.
 // It sends a POST request to the configured URL with the gate request payload
@@ -51,9 +99,14 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 	if req.Template == nil || req.Template.Webhook == nil {
 		return pkggate.Result{}, fmt.Errorf("webhook gate: template Webhook spec is nil")
 	}
-	url := req.Template.Webhook.URL
-	if url == "" {
+	rawURL := req.Template.Webhook.URL
+	if rawURL == "" {
 		return pkggate.Result{}, fmt.Errorf("webhook gate: template Webhook URL is empty")
+	}
+	// Validate scheme and host before dialing.
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") || parsedURL.Host == "" {
+		return pkggate.Result{}, fmt.Errorf("webhook gate: URL must be http or https with a non-empty host: %q", rawURL)
 	}
 
 	var promotion, target, version, release string
@@ -78,10 +131,16 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 
 	hc := g.HTTPClient
 	if hc == nil {
-		hc = &http.Client{Timeout: 30 * time.Second}
+		// Clone the default transport (preserves HTTP/2, keep-alive, etc.) but
+		// override DialContext to block SSRF targets and clear the proxy so private
+		// addresses cannot be reached via environment proxy variables.
+		t := http.DefaultTransport.(*http.Transport).Clone()
+		t.DialContext = safeDial
+		t.Proxy = nil
+		hc = &http.Client{Timeout: 30 * time.Second, Transport: t}
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, bytes.NewReader(body))
 	if err != nil {
 		return pkggate.Result{}, fmt.Errorf("webhook gate: build request: %w", err)
 	}
@@ -89,12 +148,12 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 
 	resp, err := hc.Do(httpReq)
 	if err != nil {
-		return pkggate.Result{}, fmt.Errorf("webhook gate: call %s: %w", url, err)
+		return pkggate.Result{}, fmt.Errorf("webhook gate: call %s: %w", rawURL, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 500 {
-		return pkggate.Result{}, fmt.Errorf("webhook gate: server error %d from %s", resp.StatusCode, url)
+		return pkggate.Result{}, fmt.Errorf("webhook gate: server error %d from %s", resp.StatusCode, rawURL)
 	}
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))

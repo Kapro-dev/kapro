@@ -29,6 +29,8 @@ spec:
           Pipeline defines a reusable progressive delivery path as a DAG of stages.
           Each stage selects a fleet subset via label selectors and optionally gates
           advancement with a GatePolicy. Referenced by Release.spec.pipelines[].
+          Pipeline is a pure template — it has no controller, no status, no reconciler.
+          Validation is enforced by the admission webhook. Execution state lives in Release.
         properties:
           apiVersion:
             description: |-
@@ -69,16 +71,55 @@ spec:
                     no Pipeline changes required.
                   properties:
                     dependsOn:
-                      description: DependsOn lists stage names that must reach Complete
-                        before this stage starts.
+                      description: |-
+                        DependsOn declares upstream stage dependencies with optional soak time
+                        and availability strategy. Each entry names an upstream stage and
+                        optionally specifies how long it must be healthy (RequiredSoakTime)
+                        and whether all or any upstream targets must pass (Strategy).
                       items:
-                        type: string
+                        description: |-
+                          StageDependency declares that a stage depends on an upstream stage,
+                          with optional soak time and availability strategy.
+                          This replaces bare stage name strings — enabling canary-unlock and
+                          soak-time patterns without heavyweight GateTemplate configuration.
+                        properties:
+                          requiredSoakTime:
+                            description: |-
+                              RequiredSoakTime is how long ALL (or ANY, per Strategy) targets in the
+                              upstream stage must have been continuously healthy before this stage
+                              becomes eligible. Replaces GateTemplate for the most common gate pattern.
+                              Zero or nil means no soak — advance as soon as the upstream stage completes.
+                            type: string
+                          stage:
+                            description: Stage is the upstream stage name that must
+                              be satisfied.
+                            type: string
+                          strategy:
+                            allOf:
+                            - enum:
+                              - all
+                              - any
+                            - enum:
+                              - all
+                              - any
+                            default: all
+                            description: |-
+                              Strategy controls when this dependency is considered satisfied.
+                                "all" (default): every target in the upstream stage must be verified.
+                                "any": at least one target in the upstream stage must be verified
+                                       (canary-unlock pattern).
+                            type: string
+                        required:
+                        - stage
+                        type: object
                       maxItems: 64
                       type: array
                     gate:
                       description: |-
                         Gate is the inline gate policy evaluated after all targets in this
                         stage converge. If nil, the stage advances immediately on convergence.
+                        Use for complex gates (webhook, job, approval). For simple soak time,
+                        prefer StageDependency.RequiredSoakTime instead.
                       properties:
                         approval:
                           properties:
@@ -96,7 +137,7 @@ spec:
                             gateTimeout:
                               description: |-
                                 GateTimeout is the maximum duration the metrics gate may remain un-passed
-                                before the Sync is failed. Only applies to MetricsCheck; infrastructure
+                                before the target is failed. Only applies to MetricsCheck; infrastructure
                                 errors (e.g. Prometheus unreachable) do not consume this budget.
                                 Uses Go duration format, e.g. "30m", "1h". Empty means retry indefinitely.
                               type: string
@@ -502,7 +543,7 @@ spec:
                           default: halt
                           description: |-
                             OnFailure controls what Kapro does when a gate fails or times out.
-                              halt (default): stop the Sync and wait for human intervention.
+                              halt (default): stop the rollout for this target and wait for human intervention.
                                 Use for checkout systems where automated rollback is too risky.
                               rollback: automatically revert to the previous version.
                                 Only effective when a previous successful apply exists (PreviousVersion is set).
@@ -591,4 +632,3 @@ spec:
         type: object
     served: true
     storage: true
-    subresources: {}

@@ -7,11 +7,37 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
   - serviceaccounts
   verbs:
+  - create
   - delete
   - get
   - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts/token
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - certificates.k8s.io
@@ -37,12 +63,9 @@ rules:
   verbs:
   - approve
 - apiGroups:
-  - kapro.io
+  - coordination.k8s.io
   resources:
-  - approvals
-  - releasereports
-  - releases
-  - syncs
+  - leases
   verbs:
   - create
   - delete
@@ -54,9 +77,36 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - artifacts
-  - pipelines
+  - approvals
+  - releases
+  - releasetargets
+  - sources
   verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - approvals/status
+  - memberclusters/status
+  - releases/status
+  - releasetargets/status
+  - sources/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - kapro.io
+  resources:
+  - artifacts
+  verbs:
+  - create
   - get
   - list
   - watch
@@ -75,27 +125,14 @@ rules:
   resources:
   - memberclusters/finalizers
   - releases/finalizers
-  - syncs/finalizers
+  - sources/finalizers
   verbs:
   - update
 - apiGroups:
   - kapro.io
   resources:
-  - memberclusters/status
-  - pipelines/status
-  - releasereports/status
-  - releases/status
-  - syncs/status
+  - pipelines
   verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - kapro.io
-  resources:
-  - releaserevisions
-  verbs:
-  - create
   - get
   - list
   - watch
@@ -112,3 +149,18 @@ rules:
   - patch
   - update
   - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kapro-manager-role-binding
+  labels:
+    {{- include "kapro-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kapro-manager-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "kapro-operator.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}

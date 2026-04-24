@@ -19,9 +19,9 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.artifact
-      name: Artifact
-      type: string
+    - jsonPath: .status.report.totalArtifacts
+      name: Artifacts
+      type: integer
     - jsonPath: .status.phase
       name: Phase
       type: string
@@ -45,7 +45,8 @@ spec:
           It references an Artifact and a DAG of Pipelines that define the delivery path.
           The Release controller drives the pipeline DAG, advancing each target cluster
           through the delivery FSM (MetricsCheck → WaitingApproval → Applying → Applied).
-          Target rollout state is stored inline in Release.status.targets.
+          Per-target execution state lives in child ReleaseTarget objects; Release.status
+          stores only rollout summary, pipeline progress, and audit metadata.
         properties:
           apiVersion:
             description: |-
@@ -73,15 +74,45 @@ spec:
                 description: |-
                   AppKey is the key used in MemberCluster.status.currentVersions.
                   Defaults to the Artifact name when not set.
+                  Deprecated: use ReleaseArtifactRef.AppKey per artifact instead.
                 type: string
               artifact:
-                description: Artifact is the OCI artifact name to deliver across the
-                  fleet.
+                description: |-
+                  Artifact is the OCI artifact name to deliver across the fleet.
+                  Deprecated: use Artifacts[] for multi-artifact releases. When both are set,
+                  Artifacts takes precedence. Kept for backward compatibility with single-artifact releases.
                 type: string
+              artifacts:
+                description: |-
+                  Artifacts is the composable list of artifacts to deliver across the fleet.
+                  Each artifact has an AppKey used for delta-aware delivery (only changed versions are deployed).
+                  When derivedFrom is set, this list is merged with the parent Release's artifacts
+                  (Kustomize-style: child overrides parent by AppKey).
+                items:
+                  description: |-
+                    ReleaseArtifactRef is one artifact in a Release's composable artifact list.
+                    AppKey is the key used in MemberCluster.status.currentVersions to track this artifact.
+                  properties:
+                    appKey:
+                      description: |-
+                        AppKey identifies this artifact in the release (e.g. "auth-service", "config-service").
+                        Used as the key in MemberCluster.status.currentVersions for delta-aware delivery.
+                      type: string
+                    artifact:
+                      description: Artifact is the name of the Artifact CRD object.
+                      type: string
+                  required:
+                  - appKey
+                  - artifact
+                  type: object
+                maxItems: 256
+                type: array
               derivedFrom:
                 description: |-
                   DerivedFrom is the name of the parent Release this hotfix was derived from.
-                  Set by CI for hotfix Releases that target a subset of clusters.
+                  When set, the parent's artifacts are inherited and this Release's artifacts
+                  are overlaid on top (merge by AppKey). Only changed artifacts are delivered
+                  to target clusters (delta-aware delivery).
                   Immutable after creation — changing it has no effect on a running rollout.
                 type: string
               pipelines:
@@ -134,20 +165,18 @@ spec:
                 description: Suspended pauses all advancement when true.
                 type: boolean
             required:
-            - artifact
             - pipelines
             type: object
           status:
             description: ReleaseStatus defines the observed state of Release.
             properties:
               auditTrail:
-                description: |-
-                  AuditTrail records immutable delivery provenance. Capped at 50 entries.
-                  Replaces the ReleaseRevision CRD.
+                description: AuditTrail records immutable delivery provenance. Capped
+                  at 50 entries.
                 items:
                   description: |-
                     AuditEntry records the immutable delivery provenance of a completed Release.
-                    It replaces the standalone ReleaseRevision CRD. Stored in Release.status.auditTrail.
+                    Stored in Release.status.auditTrail.
                   properties:
                     artifact:
                       description: Artifact is the OCI artifact that was delivered.
@@ -306,40 +335,25 @@ spec:
                   type: object
                 type: array
               report:
-                description: Report is the inline delivery summary. Replaces the ReleaseReport
-                  CRD.
+                description: Report is the inline delivery summary.
                 properties:
                   artifact:
                     type: string
                   completedAt:
                     type: string
+                  deltaArtifacts:
+                    description: |-
+                      DeltaArtifacts is the number of artifacts explicitly changed by this Release.
+                      For derivedFrom releases, inherited artifacts are excluded.
+                    type: integer
                   duration:
                     type: string
                   failedTargets:
                     type: integer
-                  gates:
-                    items:
-                      description: GateReport is a summary of one gate evaluation
-                        within a ReleaseReport.
-                      properties:
-                        message:
-                          type: string
-                        pipelineRef:
-                          type: string
-                        result:
-                          type: string
-                        stage:
-                          type: string
-                        target:
-                          type: string
-                        type:
-                          type: string
-                      required:
-                      - result
-                      - type
-                      type: object
-                    type: array
                   pendingApprovals:
+                    description: |-
+                      PendingApprovals lists "<release>-<ref>" Approval names that are
+                      awaiting human signal. Derived from ReleaseTarget objects.
                     items:
                       type: string
                     type: array
@@ -355,45 +369,58 @@ spec:
                     type: string
                   syncedTargets:
                     type: integer
-                  targets:
-                    items:
-                      description: TargetReport is a per-target delivery summary within
-                        a ReleaseReportSummary.
-                      properties:
-                        message:
-                          type: string
-                        name:
-                          type: string
-                        phase:
-                          type: string
-                        pipelineRef:
-                          type: string
-                        stage:
-                          type: string
-                        syncedAt:
-                          type: string
-                        version:
-                          type: string
-                      required:
-                      - name
-                      type: object
-                    type: array
+                  totalArtifacts:
+                    description: TotalArtifacts is the number of artifacts in the
+                      resolved (merged) artifact list.
+                    type: integer
                   totalTargets:
                     type: integer
                 type: object
+              resolvedArtifacts:
+                description: |-
+                  ResolvedArtifacts is the merged artifact list after derivedFrom resolution.
+                  For hotfix Releases, this contains the parent's artifacts with overrides applied.
+                  Set once in Pending and never changed.
+                items:
+                  description: ResolvedArtifact is one resolved artifact in a Release's
+                    merged artifact list.
+                  properties:
+                    appKey:
+                      description: AppKey identifies this artifact (e.g. "auth-service").
+                      type: string
+                    artifact:
+                      description: Artifact is the Artifact CRD name.
+                      type: string
+                    inherited:
+                      description: |-
+                        Inherited is true when this artifact came from the parent Release (derivedFrom).
+                        False when explicitly listed in this Release's spec.artifacts.
+                      type: boolean
+                    version:
+                      description: Version is the resolved OCI digest (repository@sha256:...).
+                      type: string
+                  required:
+                  - appKey
+                  - artifact
+                  type: object
+                type: array
               resolvedVersion:
                 description: |-
                   ResolvedVersion is the OCI digest resolved from the Artifact CR.
                   Format: <repository>@sha256:<digest>. Set once in Pending and never changed.
+                  Deprecated: use ResolvedArtifacts for multi-artifact releases.
                 type: string
               startedAt:
                 type: string
               targets:
-                description: Targets tracks per-target rollout state. Replaces the
-                  Sync CRD.
+                description: |-
+                  Targets is deprecated compatibility state. The authoritative per-target
+                  rollout state lives in child ReleaseTarget objects.
                 items:
-                  description: TargetStatus records the rollout state of one target
-                    cluster within a Release.
+                  description: |-
+                    TargetStatus records the rollout state of one target cluster rollout. It is
+                    used as the status payload of ReleaseTarget and retained here as the
+                    controller's in-memory execution shape.
                   properties:
                     appKey:
                       description: AppKey is the key used to look up the current version
@@ -409,6 +436,13 @@ spec:
                       description: ApprovalSentAt records when the approval notification
                         was last dispatched.
                       type: string
+                    desiredVersions:
+                      additionalProperties:
+                        type: string
+                      description: |-
+                        DesiredVersions is the full appKey -> version map for this target rollout.
+                        When set, the actuator must converge all of these versions before the target completes.
+                      type: object
                     finishedAt:
                       type: string
                     gate:
@@ -431,7 +465,7 @@ spec:
                             gateTimeout:
                               description: |-
                                 GateTimeout is the maximum duration the metrics gate may remain un-passed
-                                before the Sync is failed. Only applies to MetricsCheck; infrastructure
+                                before the target is failed. Only applies to MetricsCheck; infrastructure
                                 errors (e.g. Prometheus unreachable) do not consume this budget.
                                 Uses Go duration format, e.g. "30m", "1h". Empty means retry indefinitely.
                               type: string
@@ -837,7 +871,7 @@ spec:
                           default: halt
                           description: |-
                             OnFailure controls what Kapro does when a gate fails or times out.
-                              halt (default): stop the Sync and wait for human intervention.
+                              halt (default): stop the rollout for this target and wait for human intervention.
                                 Use for checkout systems where automated rollback is too risky.
                               rollback: automatically revert to the previous version.
                                 Only effective when a previous successful apply exists (PreviousVersion is set).
@@ -943,6 +977,11 @@ spec:
                       type: array
                     message:
                       type: string
+                    missingMCCount:
+                      description: |-
+                        MissingMCCount tracks consecutive reconciles where the MemberCluster was not found.
+                        When it reaches missingMCFailThreshold the target is transitioned to Failed.
+                      type: integer
                     phase:
                       description: Phase is the FSM state of this target rollout.
                       enum:
@@ -970,9 +1009,15 @@ spec:
                         Used to disambiguate when the same Pipeline CRD is referenced multiple times.
                       type: string
                     previousVersion:
-                      description: PreviousVersion holds the version before this sync,
+                      description: PreviousVersion holds the version before this rollout,
                         used for rollback.
                       type: string
+                    previousVersions:
+                      additionalProperties:
+                        type: string
+                      description: PreviousVersions holds the pre-rollout appKey ->
+                        version snapshot used for rollback.
+                      type: object
                     rejected:
                       description: Rejected is set when a user rejects the approval
                         via the webhook.

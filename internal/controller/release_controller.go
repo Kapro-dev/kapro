@@ -3,6 +3,8 @@ package controller
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
+	"sort"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -19,21 +21,25 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	internalgate "kapro.io/kapro/internal/gate"
+	kaprometrics "kapro.io/kapro/internal/metrics"
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
 	"kapro.io/kapro/pkg/notification"
 )
 
-const releaseFinalizer = "kapro.io/release-cleanup"
+// releaseFinalizer uses the canonical constant from the API package
+// to avoid mismatch between controller and external tooling.
+const releaseFinalizer = kaprov1alpha1.ReleaseFinalizer
 
 const (
-	maxReleaseTargetRows       = 1024
 	maxGateRunsPerTarget       = 16
 	maxGateResultsPerGateRun   = 16
 	maxReleaseReadyMessageSize = 256
@@ -55,18 +61,17 @@ const (
 //	Pending → Progressing → Complete | Failed
 type ReleaseReconciler struct {
 	client.Client
-	Recorder record.EventRecorder
-	Scheme   *runtime.Scheme
-	// Gate dependencies (migrated from SyncReconciler after Sync CRD fold).
+	Recorder         record.EventRecorder
+	Scheme           *runtime.Scheme
 	ActuatorRegistry *actuator.Registry
-	SoakGate         gate.Gate
-	MetricsGate      gate.Gate
-	ApprovalGate     gate.Gate
-	VerificationGate gate.Gate
 	Notifier         notification.Notifier
 	ApprovalSecret   []byte
 	ExternalURL      string
-	GateRegistry     *gate.Registry
+
+	// GateRegistry resolves every gate by name — both FSM-phase gates
+	// ("soak", "metrics", "approval", "verification") and template-dispatch
+	// gates (GateTemplate.spec.type). Never nil in production.
+	GateRegistry *gate.Registry
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=releases,verbs=get;list;watch;create;update;patch;delete
@@ -79,10 +84,18 @@ type ReleaseReconciler struct {
 // +kubebuilder:rbac:groups=kapro.io,resources=approvals,verbs=get;list;watch
 
 func (r *ReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	start := time.Now()
+	resultLabel := "success"
+	defer func() {
+		kaprometrics.ControllerReconciles.WithLabelValues("release", resultLabel).Inc()
+		kaprometrics.ControllerReconcileDuration.WithLabelValues("release").Observe(time.Since(start).Seconds())
+	}()
+
 	log := log.FromContext(ctx)
 
 	var release kaprov1alpha1.Release
 	if err := r.Get(ctx, req.NamespacedName, &release); err != nil {
+		resultLabel = "error"
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -112,7 +125,8 @@ func (r *ReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		r.setReconcilingCondition(&release, metav1.ConditionFalse, "Suspended", "Release is suspended")
 		apimeta.RemoveStatusCondition(&release.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
 		release.Status.ObservedGeneration = release.Generation
-		if patchErr := r.Status().Patch(ctx, &release, patch); patchErr != nil {
+		if patchErr := r.patchReleaseStatus(ctx, &release, patch); patchErr != nil {
+			resultLabel = "error"
 			return ctrl.Result{}, fmt.Errorf("patch suspended conditions: %w", patchErr)
 		}
 		return ctrl.Result{}, nil
@@ -123,11 +137,25 @@ func (r *ReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return r.handlePending(ctx, &release)
 	case kaprov1alpha1.ReleasePhaseProgressing:
 		return r.handleProgressing(ctx, &release)
-	case kaprov1alpha1.ReleasePhaseComplete, kaprov1alpha1.ReleasePhaseFailed:
+	case kaprov1alpha1.ReleasePhaseFailed:
+		if r.hasActiveRollbackTargets(&release) {
+			return r.handleFailed(ctx, &release)
+		}
+		return ctrl.Result{}, nil
+	case kaprov1alpha1.ReleasePhaseComplete:
 		return ctrl.Result{}, nil
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *ReleaseReconciler) patchReleaseStatus(ctx context.Context, release *kaprov1alpha1.Release, patch client.Patch) error {
+	if err := r.Status().Patch(ctx, release, patch); err != nil {
+		kaprometrics.StatusWrites.WithLabelValues("release", "error").Inc()
+		return err
+	}
+	kaprometrics.StatusWrites.WithLabelValues("release", "success").Inc()
+	return nil
 }
 
 // handlePending resolves the Artifact OCI digest and transitions to Progressing.
@@ -136,44 +164,45 @@ func (r *ReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 func (r *ReleaseReconciler) handlePending(ctx context.Context, release *kaprov1alpha1.Release) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	resolvedVersion := release.Status.ResolvedVersion
-
-	if resolvedVersion == "" && release.Spec.Artifact != "" {
-		var artifact kaprov1alpha1.Artifact
-		if err := r.Get(ctx, client.ObjectKey{Name: release.Spec.Artifact}, &artifact); err != nil {
-			if apierrors.IsNotFound(err) {
-				patch := client.MergeFrom(release.DeepCopy())
-				r.setReleaseReadyCondition(release, metav1.ConditionFalse, "ArtifactNotFound", "artifact "+release.Spec.Artifact+" not found")
-				r.setStalledCondition(release, "ArtifactNotFound", "waiting for artifact "+release.Spec.Artifact+" to be created")
-				r.setReconcilingCondition(release, metav1.ConditionFalse, "ArtifactNotFound", "stalled: artifact not found")
-				release.Status.ObservedGeneration = release.Generation
-				if patchErr := r.Status().Patch(ctx, release, patch); patchErr != nil {
-					return ctrl.Result{}, fmt.Errorf("patch stalled condition: %w", patchErr)
-				}
-				return ctrl.Result{RequeueAfter: requeueNormal}, nil
-			}
-			return ctrl.Result{RequeueAfter: requeueNormal},
-				fmt.Errorf("get artifact %s: %w", release.Spec.Artifact, err)
-		}
-		for _, src := range artifact.Spec.Sources {
-			if src.OCI != nil && src.OCI.Digest != "" {
-				resolvedVersion = src.OCI.Repository + "@" + src.OCI.Digest
-				break
-			}
-		}
-		if resolvedVersion == "" {
+	// Resolve all artifacts (multi-artifact + derivedFrom merge).
+	resolvedArtifacts, err := r.resolveReleaseArtifacts(ctx, release)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
 			patch := client.MergeFrom(release.DeepCopy())
-			r.setReleaseReadyCondition(release, metav1.ConditionFalse, "ArtifactNotReady", "artifact "+release.Spec.Artifact+" has no OCI source with digest")
-			r.setStalledCondition(release, "ArtifactNotReady", "artifact "+release.Spec.Artifact+" has no OCI digest")
-			r.setReconcilingCondition(release, metav1.ConditionFalse, "ArtifactNotReady", "stalled: artifact not ready")
+			r.setReleaseReadyCondition(release, metav1.ConditionFalse, "ArtifactNotFound", err.Error())
+			r.setStalledCondition(release, "ArtifactNotFound", err.Error())
+			r.setReconcilingCondition(release, metav1.ConditionFalse, "ArtifactNotFound", "stalled: artifact not found")
 			release.Status.ObservedGeneration = release.Generation
-			if patchErr := r.Status().Patch(ctx, release, patch); patchErr != nil {
+			if patchErr := r.patchReleaseStatus(ctx, release, patch); patchErr != nil {
 				return ctrl.Result{}, fmt.Errorf("patch stalled condition: %w", patchErr)
 			}
 			return ctrl.Result{RequeueAfter: requeueNormal}, nil
 		}
-		log.Info("resolved artifact OCI digest", "artifact", release.Spec.Artifact, "resolved", resolvedVersion)
+		return ctrl.Result{RequeueAfter: requeueNormal}, fmt.Errorf("resolve artifacts: %w", err)
 	}
+
+	if len(resolvedArtifacts) == 0 {
+		patch := client.MergeFrom(release.DeepCopy())
+		r.setReleaseReadyCondition(release, metav1.ConditionFalse, "NoArtifacts", "release has no artifacts to deliver")
+		r.setStalledCondition(release, "NoArtifacts", "no artifacts specified and no parent to inherit from")
+		r.setReconcilingCondition(release, metav1.ConditionFalse, "NoArtifacts", "stalled: no artifacts")
+		release.Status.ObservedGeneration = release.Generation
+		if patchErr := r.patchReleaseStatus(ctx, release, patch); patchErr != nil {
+			return ctrl.Result{}, fmt.Errorf("patch stalled condition: %w", patchErr)
+		}
+		return ctrl.Result{RequeueAfter: requeueNormal}, nil
+	}
+
+	// Backward compat: set ResolvedVersion from first artifact for legacy consumers.
+	resolvedVersion := release.Status.ResolvedVersion
+	if resolvedVersion == "" && len(resolvedArtifacts) > 0 {
+		resolvedVersion = resolvedArtifacts[0].Version
+	}
+
+	log.Info("artifacts resolved",
+		"total", len(resolvedArtifacts),
+		"derivedFrom", release.Spec.DerivedFrom,
+	)
 
 	// Initialise pipeline progress entries so the status table is pre-populated.
 	progress := make([]kaprov1alpha1.PipelineProgress, 0, len(release.Spec.Pipelines))
@@ -188,6 +217,7 @@ func (r *ReleaseReconciler) handlePending(ctx context.Context, release *kaprov1a
 	patch := client.MergeFrom(release.DeepCopy())
 	release.Status.Phase = kaprov1alpha1.ReleasePhaseProgressing
 	release.Status.ResolvedVersion = resolvedVersion
+	release.Status.ResolvedArtifacts = resolvedArtifacts
 	release.Status.PipelineProgress = progress
 	release.Status.ObservedGeneration = release.Generation
 	release.Status.StartedAt = time.Now().UTC().Format(time.RFC3339)
@@ -195,7 +225,7 @@ func (r *ReleaseReconciler) handlePending(ctx context.Context, release *kaprov1a
 	r.clearStalledCondition(release)
 	r.setReconcilingCondition(release, metav1.ConditionTrue, "Progressing", "release is advancing through pipeline DAG")
 	r.Recorder.Event(release, corev1.EventTypeNormal, "PhaseTransition", "Release → Progressing")
-	if err := r.Status().Patch(ctx, release, patch); err != nil {
+	if err := r.patchReleaseStatus(ctx, release, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch Release phase: %w", err)
 	}
 
@@ -220,6 +250,10 @@ func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kapr
 	// bottom persists the full diff.
 	patch := client.MergeFrom(release.DeepCopy())
 
+	if err := r.loadReleaseTargets(ctx, release); err != nil {
+		return ctrl.Result{}, fmt.Errorf("load release targets: %w", err)
+	}
+
 	// Build pipeline phase map from current PipelineProgress.
 	pipelinePhase := make(map[string]string, len(release.Status.PipelineProgress))
 	for _, p := range release.Status.PipelineProgress {
@@ -230,6 +264,7 @@ func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kapr
 	updatedPipelines := make([]kaprov1alpha1.PipelineProgress, 0, len(release.Spec.Pipelines))
 	allPipelinesComplete := true
 	var failureMsg string
+	var nextRequeue time.Duration
 
 	for _, pipelineRef := range release.Spec.Pipelines {
 		currentPhase := pipelinePhase[pipelineRef.Name]
@@ -270,11 +305,14 @@ func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kapr
 			return ctrl.Result{}, fmt.Errorf("pipeline %s not found: %w", pipelineRef.Pipeline, err)
 		}
 
-		stageProgress, pipelineDone, pipelineFailed, err := r.reconcilePipelineStages(
+		stageProgress, pipelineDone, pipelineFailed, requeueAfter, err := r.reconcilePipelineStages(
 			ctx, release, pipelineRef.Name, &pipeline,
 		)
 		if err != nil {
 			return ctrl.Result{}, err
+		}
+		if requeueAfter > 0 && (nextRequeue == 0 || requeueAfter < nextRequeue) {
+			nextRequeue = requeueAfter
 		}
 
 		newPhase := "Progressing"
@@ -303,37 +341,54 @@ func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kapr
 			release.Status.ObservedGeneration = release.Generation
 			release.Status.CompletedAt = time.Now().UTC().Format(time.RFC3339)
 			release.Status.PipelineProgress = updatedPipelines
+			release.Status.Report = r.computeReport(release)
 			r.normalizeReleaseStatus(release)
+			if err := r.persistReleaseTargets(ctx, release); err != nil {
+				return ctrl.Result{}, fmt.Errorf("persist release targets: %w", err)
+			}
+			hasRollbacks := r.hasActiveRollbackTargets(release)
+			release.Status.Targets = nil
 			r.setReleaseReadyCondition(release, metav1.ConditionFalse, "SubResourceFailed", failureMsg)
 			r.setStalledCondition(release, "SubResourceFailed", failureMsg)
-			r.setReconcilingCondition(release, metav1.ConditionFalse, "SubResourceFailed", failureMsg)
+			if hasRollbacks {
+				r.setReconcilingCondition(release, metav1.ConditionTrue, "RollbackInProgress", "release failed and rollback targets are still progressing")
+			} else {
+				r.setReconcilingCondition(release, metav1.ConditionFalse, "SubResourceFailed", failureMsg)
+			}
 			r.Recorder.Event(release, corev1.EventTypeWarning, "Failed", failureMsg)
-			release.Status.Report = r.computeReport(release, nil)
-			if patchErr := r.Status().Patch(ctx, release, patch); patchErr != nil {
+			if patchErr := r.patchReleaseStatus(ctx, release, patch); patchErr != nil {
 				return ctrl.Result{}, fmt.Errorf("patch Release status on failure: %w", patchErr)
+			}
+			if hasRollbacks {
+				return ctrl.Result{Requeue: true}, nil
 			}
 			r.clearActiveRelease(ctx, release)
 			return ctrl.Result{}, nil
 		}
 	}
 
-	// Advance every non-terminal target by one FSM step (mutations are in-memory).
-	// Capture the result — target transitions return Requeue:true so we propagate
-	// the urgency instead of always waiting requeueNormal (30s).
-	advResult, err := r.advanceAllTargets(ctx, release)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("advanceAllTargets: %w", err)
-	}
-
-	// Single status patch persists pipeline progress + all target FSM mutations.
+	// Child ReleaseTarget reconciles advance per-target FSM state; the Release
+	// reconcile only persists orchestration-side mutations (upserts, cancels,
+	// rollback target creation) and aggregates child state.
 	release.Status.PipelineProgress = updatedPipelines
 	release.Status.ObservedGeneration = release.Generation
-	r.normalizeReleaseStatus(release)
-
+	// Set terminal phase fields BEFORE computeReport so the report captures the
+	// correct Phase and CompletedAt (B50: previously set after targets were cleared).
 	if allPipelinesComplete {
 		r.appendAuditEntry(ctx, release)
 		release.Status.Phase = kaprov1alpha1.ReleasePhaseComplete
 		release.Status.CompletedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	// Compute report while targets are still in memory; normalization and
+	// persistence happen after so the report reflects the full target set.
+	release.Status.Report = r.computeReport(release)
+	r.normalizeReleaseStatus(release)
+	if err := r.persistReleaseTargets(ctx, release); err != nil {
+		return ctrl.Result{}, fmt.Errorf("persist release targets: %w", err)
+	}
+	release.Status.Targets = nil
+
+	if allPipelinesComplete {
 		r.setReleaseReadyCondition(release, metav1.ConditionTrue, "Complete", "all pipelines complete")
 		r.clearStalledCondition(release)
 		r.setReconcilingCondition(release, metav1.ConditionFalse, "Complete", "all pipelines complete")
@@ -343,9 +398,7 @@ func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kapr
 		r.clearStalledCondition(release)
 		r.setReconcilingCondition(release, metav1.ConditionTrue, "Progressing", "release is advancing through pipeline DAG")
 	}
-
-	release.Status.Report = r.computeReport(release, nil)
-	if err := r.Status().Patch(ctx, release, patch); err != nil {
+	if err := r.patchReleaseStatus(ctx, release, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch Release status: %w", err)
 	}
 
@@ -360,15 +413,49 @@ func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kapr
 			log.Error(annErr, "failed to annotate previous-version on Release")
 		}
 		log.Info("Release complete", "name", release.Name)
+		if nextRequeue > 0 {
+			return ctrl.Result{RequeueAfter: nextRequeue}, nil
+		}
 		return ctrl.Result{}, nil
 	}
-
-	// Propagate the target FSM urgency: immediate requeue when a target just
-	// transitioned, or the shortest poll interval across all active targets.
-	if advResult.Requeue || (advResult.RequeueAfter > 0 && advResult.RequeueAfter < requeueNormal) {
-		return advResult, nil
-	}
+	// Not all pipelines complete — requeue as a safety net in case a
+	// ReleaseTarget watch event is missed (cache lag, informer backpressure).
 	return ctrl.Result{RequeueAfter: requeueNormal}, nil
+}
+
+func (r *ReleaseReconciler) handleFailed(ctx context.Context, release *kaprov1alpha1.Release) (ctrl.Result, error) {
+	patch := client.MergeFrom(release.DeepCopy())
+
+	if err := r.loadReleaseTargets(ctx, release); err != nil {
+		return ctrl.Result{}, fmt.Errorf("load release targets: %w", err)
+	}
+
+	release.Status.ObservedGeneration = release.Generation
+	release.Status.Report = r.computeReport(release)
+	r.normalizeReleaseStatus(release)
+	if err := r.persistReleaseTargets(ctx, release); err != nil {
+		return ctrl.Result{}, fmt.Errorf("persist release targets: %w", err)
+	}
+	hasRollbacks := r.hasActiveRollbackTargets(release)
+	release.Status.Targets = nil
+	r.setReleaseReadyCondition(release, metav1.ConditionFalse, "Failed", "release failed")
+
+	if hasRollbacks {
+		r.setReconcilingCondition(release, metav1.ConditionTrue, "RollbackInProgress", "release failed and rollback targets are still progressing")
+		r.setStalledCondition(release, "Failed", "release failed and rollback is in progress")
+	} else {
+		r.setReconcilingCondition(release, metav1.ConditionFalse, "Failed", "release failed")
+		r.setStalledCondition(release, "Failed", "release failed")
+	}
+
+	if err := r.patchReleaseStatus(ctx, release, patch); err != nil {
+		return ctrl.Result{}, fmt.Errorf("patch failed Release status: %w", err)
+	}
+
+	if !hasRollbacks {
+		r.clearActiveRelease(ctx, release)
+	}
+	return ctrl.Result{}, nil
 }
 
 // reconcilePipelineStages walks the stage DAG for one pipeline instance.
@@ -384,7 +471,7 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 	release *kaprov1alpha1.Release,
 	pipelineRefName string,
 	pipeline *kaprov1alpha1.Pipeline,
-) ([]kaprov1alpha1.StageProgress, bool, bool, error) {
+) ([]kaprov1alpha1.StageProgress, bool, bool, time.Duration, error) {
 	log := log.FromContext(ctx)
 
 	// stagePhase maps stage name → "Pending"|"Progressing"|"Complete"|"Failed"
@@ -393,13 +480,21 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 
 	allComplete := true
 	anyFailed := false
+	var nextRequeue time.Duration
 
 	for _, stage := range pipeline.Spec.Stages {
-		// Check stage-level dependencies.
+		// Check stage-level dependencies (with optional soak time and strategy).
 		depsComplete := true
 		for _, dep := range stage.DependsOn {
-			if stagePhase[dep] != "Complete" {
+			satisfied, wait, err := r.stageDependencySatisfied(ctx, release, pipelineRefName, pipeline, dep)
+			if err != nil {
+				return nil, false, false, 0, err
+			}
+			if !satisfied {
 				depsComplete = false
+				if wait > 0 && (nextRequeue == 0 || wait < nextRequeue) {
+					nextRequeue = wait
+				}
 				break
 			}
 		}
@@ -415,7 +510,7 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 		// List clusters matching this stage's selector.
 		envList, err := r.listTargetsForStage(ctx, stage, release)
 		if err != nil {
-			return nil, false, false, fmt.Errorf("list targets for stage %s: %w", stage.Name, err)
+			return nil, false, false, 0, fmt.Errorf("list targets for stage %s: %w", stage.Name, err)
 		}
 		if len(envList) == 0 {
 			log.Info("stage has no matching clusters — treating as complete",
@@ -435,9 +530,13 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 			phase := release.Status.Targets[i].Phase
 
 			switch phase {
-			case kaprov1alpha1.SyncPhaseConverged:
+			case kaprov1alpha1.TargetPhaseConverged:
 				synced++
-			case kaprov1alpha1.SyncPhaseFailed:
+			case kaprov1alpha1.TargetPhaseSkipped:
+				// Skipped targets (onFailure=continue) are terminal — count them
+				// as synced so the stage can complete instead of deadlocking.
+				synced++
+			case kaprov1alpha1.TargetPhaseFailed:
 				failed++
 			}
 		}
@@ -457,10 +556,18 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 					"stage", stage.Name, "pipelineRef", pipelineRefName, "failed", failed)
 				sp.Phase = "Complete"
 				stagePhase[stage.Name] = "Complete"
+				// Transition Failed targets to Skipped so they are properly terminal
+				// and don't pollute the release report with stale failure counts.
+				for idx := range release.Status.Targets {
+					t := &release.Status.Targets[idx]
+					if t.Stage == stage.Name && t.PipelineRef == pipelineRefName && t.Phase == kaprov1alpha1.TargetPhaseFailed {
+						t.Phase = kaprov1alpha1.TargetPhaseSkipped
+					}
+				}
 			case kaprov1alpha1.StageFailurePolicyRollback:
 				log.Info("stage has failed targets with OnFailure=rollback",
 					"stage", stage.Name, "pipelineRef", pipelineRefName)
-				r.triggerRollbackTargets(ctx, release, pipelineRefName, stage.Name)
+				r.triggerRollbackTargets(ctx, release, pipelineRefName, pipeline, stage.Name)
 				sp.Phase = "Failed"
 				stagePhase[stage.Name] = "Failed"
 				anyFailed = true
@@ -488,23 +595,146 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 		}
 	}
 
-	return stageProgress, allComplete, anyFailed, nil
+	return stageProgress, allComplete, anyFailed, nextRequeue, nil
+}
+
+func (r *ReleaseReconciler) stageDependencySatisfied(
+	ctx context.Context,
+	release *kaprov1alpha1.Release,
+	pipelineRefName string,
+	pipeline *kaprov1alpha1.Pipeline,
+	dep kaprov1alpha1.StageDependency,
+) (bool, time.Duration, error) {
+	depStage, ok := pipelineStageByName(pipeline, dep.Stage)
+	if !ok {
+		return false, 0, fmt.Errorf("stage dependency %q not found in pipeline %s", dep.Stage, pipeline.Name)
+	}
+
+	targets, err := r.listTargetsForStage(ctx, depStage, release)
+	if err != nil {
+		return false, 0, fmt.Errorf("list dependency targets for stage %s: %w", dep.Stage, err)
+	}
+	if len(targets) == 0 {
+		return true, 0, nil
+	}
+
+	expected := make(map[string]struct{}, len(targets))
+	for _, target := range targets {
+		expected[target.Name] = struct{}{}
+	}
+
+	strategy := dep.Strategy
+	if strategy == "" {
+		strategy = kaprov1alpha1.StageDependencyAll
+	}
+
+	soak := time.Duration(0)
+	if dep.RequiredSoakTime != nil {
+		soak = dep.RequiredSoakTime.Duration
+	}
+
+	now := time.Now().UTC()
+	successful := 0
+	var shortestWait time.Duration
+
+	for idx := range release.Status.Targets {
+		target := &release.Status.Targets[idx]
+		if target.PipelineRef != pipelineRefName || target.Stage != dep.Stage {
+			continue
+		}
+		if _, ok := expected[target.Target]; !ok {
+			continue
+		}
+		if !dependencyTargetSucceeded(target.Phase) {
+			continue
+		}
+
+		successful++
+		if soak == 0 {
+			if strategy == kaprov1alpha1.StageDependencyAny {
+				return true, 0, nil
+			}
+			continue
+		}
+
+		remaining := dependencySoakRemaining(target.FinishedAt, now, soak)
+		if remaining <= 0 {
+			if strategy == kaprov1alpha1.StageDependencyAny {
+				return true, 0, nil
+			}
+			continue
+		}
+		if shortestWait == 0 || remaining < shortestWait {
+			shortestWait = remaining
+		}
+	}
+
+	switch strategy {
+	case kaprov1alpha1.StageDependencyAny:
+		return false, shortestWait, nil
+	case kaprov1alpha1.StageDependencyAll:
+		if successful < len(expected) {
+			return false, 0, nil
+		}
+		return shortestWait == 0, shortestWait, nil
+	default:
+		return false, 0, fmt.Errorf("stage dependency %q has unsupported strategy %q", dep.Stage, dep.Strategy)
+	}
+}
+
+func pipelineStageByName(pipeline *kaprov1alpha1.Pipeline, name string) (kaprov1alpha1.Stage, bool) {
+	for _, stage := range pipeline.Spec.Stages {
+		if stage.Name == name {
+			return stage, true
+		}
+	}
+	return kaprov1alpha1.Stage{}, false
+}
+
+func dependencyTargetSucceeded(phase kaprov1alpha1.TargetPhase) bool {
+	return phase == kaprov1alpha1.TargetPhaseConverged || phase == kaprov1alpha1.TargetPhaseSkipped
+}
+
+func dependencySoakRemaining(finishedAt string, now time.Time, soak time.Duration) time.Duration {
+	if finishedAt == "" {
+		return soak
+	}
+	finished, err := time.Parse(time.RFC3339, finishedAt)
+	if err != nil {
+		return soak
+	}
+	if elapsed := now.Sub(finished); elapsed < soak {
+		return soak - elapsed
+	}
+	return 0
 }
 
 // listTargetsForStage returns all MemberClusters that match the stage selector,
 // filtered to spec.scope.targets when a scope is set on the Release.
 func (r *ReleaseReconciler) listTargetsForStage(ctx context.Context, stage kaprov1alpha1.Stage, release *kaprov1alpha1.Release) ([]kaprov1alpha1.MemberCluster, error) {
 	var mcList kaprov1alpha1.MemberClusterList
-	listOpts := []client.ListOption{}
 	sel, err := metav1.LabelSelectorAsSelector(&stage.Selector)
 	if err != nil {
 		return nil, fmt.Errorf("invalid stage selector: %w", err)
 	}
-	listOpts = append(listOpts, client.MatchingLabelsSelector{Selector: sel})
+	listOpts := []client.ListOption{
+		client.MatchingLabelsSelector{Selector: sel},
+	}
 	if err := r.List(ctx, &mcList, listOpts...); err != nil {
 		return nil, err
 	}
 	clusters := mcList.Items
+
+	// Filter out suspended clusters — spec.suspend means "do not deploy to this cluster".
+	filtered := clusters[:0]
+	for _, mc := range clusters {
+		if mc.Spec.Suspend {
+			log.FromContext(ctx).Info("skipping suspended cluster", "cluster", mc.Name, "stage", stage.Name)
+			continue
+		}
+		filtered = append(filtered, mc)
+	}
+	clusters = filtered
 
 	// Apply scope filter when an explicit cluster allowlist is provided.
 	if release.Spec.Scope != nil && len(release.Spec.Scope.Targets) > 0 {
@@ -512,17 +742,17 @@ func (r *ReleaseReconciler) listTargetsForStage(ctx context.Context, stage kapro
 		for _, t := range release.Spec.Scope.Targets {
 			allowed[t] = struct{}{}
 		}
-		filtered := clusters[:0]
+		scopeFiltered := clusters[:0]
 		for _, mc := range clusters {
 			if _, ok := allowed[mc.Name]; ok {
-				filtered = append(filtered, mc)
+				scopeFiltered = append(scopeFiltered, mc)
 			}
 		}
-		if len(filtered) == 0 && len(clusters) > 0 {
+		if len(scopeFiltered) == 0 && len(clusters) > 0 {
 			log.FromContext(ctx).Info("scope filter eliminated all clusters for stage — treating as no-op",
 				"stage", stage.Name, "scopeTargets", release.Spec.Scope.Targets)
 		}
-		clusters = filtered
+		clusters = scopeFiltered
 	}
 
 	return clusters, nil
@@ -538,58 +768,125 @@ func (r *ReleaseReconciler) upsertTarget(
 	stage kaprov1alpha1.Stage,
 	mc kaprov1alpha1.MemberCluster,
 ) int {
+	desiredVersions := releaseDesiredVersions(release)
+	version, appKey := primaryDesiredVersion(desiredVersions, release.Status.ResolvedVersion, releaseAppKey(release))
 	key := syncKey(pipelineRefName, stage.Name, mc.Name)
 	for i, target := range release.Status.Targets {
 		if syncKey(target.PipelineRef, target.Stage, target.Target) == key {
+			target := &release.Status.Targets[i]
+			target.Version = version
+			target.AppKey = appKey
+			target.DesiredVersions = copyStringMap(desiredVersions)
 			return i
 		}
 	}
 	newTarget := kaprov1alpha1.TargetStatus{
-		ReleaseRef:  release.Name,
-		Target:      mc.Name,
-		PipelineRef: pipelineRefName,
-		Pipeline:    pipeline.Name,
-		Stage:       stage.Name,
-		Version:     release.Status.ResolvedVersion,
-		Gate:        stage.Gate,
-		AppKey:      releaseAppKey(release),
+		ReleaseRef:      release.Name,
+		Target:          mc.Name,
+		PipelineRef:     pipelineRefName,
+		Pipeline:        pipeline.Name,
+		Stage:           stage.Name,
+		Version:         version,
+		Gate:            stage.Gate,
+		AppKey:          appKey,
+		DesiredVersions: copyStringMap(desiredVersions),
 	}
 	release.Status.Targets = append(release.Status.Targets, newTarget)
 	return len(release.Status.Targets) - 1
 }
 
 // triggerRollbackTargets appends rollback TargetStatus entries for every
-// Converged target in the given pipeline/stage. In-memory only; caller patches.
-func (r *ReleaseReconciler) triggerRollbackTargets(ctx context.Context, release *kaprov1alpha1.Release, pipelineRefName, stageName string) {
+// converged target in the failed stage and all earlier stages in the same
+// pipeline instance. In-memory only; caller patches.
+func (r *ReleaseReconciler) triggerRollbackTargets(ctx context.Context, release *kaprov1alpha1.Release, pipelineRefName string, pipeline *kaprov1alpha1.Pipeline, stageName string) {
+	eligibleStages := make(map[string]struct{}, len(pipeline.Spec.Stages))
+	for _, stage := range pipeline.Spec.Stages {
+		eligibleStages[stage.Name] = struct{}{}
+		if stage.Name == stageName {
+			break
+		}
+	}
 	n := len(release.Status.Targets) // capture length before appending
 	for i := 0; i < n; i++ {
 		target := &release.Status.Targets[i]
-		if target.PipelineRef != pipelineRefName || target.Stage != stageName {
+		if target.PipelineRef != pipelineRefName {
 			continue
 		}
-		if target.Phase != kaprov1alpha1.SyncPhaseConverged {
+		if _, ok := eligibleStages[target.Stage]; !ok {
 			continue
 		}
-		r.triggerEnvRollback(ctx, release, i)
+		if target.Phase != kaprov1alpha1.TargetPhaseConverged {
+			continue
+		}
+		r.triggerTargetRollback(ctx, release, i)
 	}
 }
 
-// cancelPendingStageTargets marks every non-terminal target in the stage as Failed
-// in-memory. This implements failurePolicy: halt — sibling targets stop advancing.
-func (r *ReleaseReconciler) cancelPendingStageTargets(_ context.Context, release *kaprov1alpha1.Release, pipelineRefName, stageName string) {
-	now := time.Now().UTC().Format(time.RFC3339)
-	for i := range release.Status.Targets {
-		target := &release.Status.Targets[i]
-		if target.PipelineRef != pipelineRefName || target.Stage != stageName {
+func (r *ReleaseReconciler) hasActiveRollbackTargets(release *kaprov1alpha1.Release) bool {
+	for _, target := range release.Status.Targets {
+		if !target.Rollback {
 			continue
 		}
 		switch target.Phase {
-		case kaprov1alpha1.SyncPhaseConverged, kaprov1alpha1.SyncPhaseFailed:
+		case kaprov1alpha1.TargetPhaseConverged, kaprov1alpha1.TargetPhaseFailed, kaprov1alpha1.TargetPhaseSkipped:
+			continue
+		default:
+			return true
+		}
+	}
+	return false
+}
+
+// cancelPendingStageTargets signals non-terminal targets in the stage to stop.
+// This implements failurePolicy: halt — sibling targets stop advancing.
+//
+// Ownership contract: the parent writes spec.cancelled (parent owns spec),
+// the child ReleaseTargetReconciler observes it and transitions to Failed
+// (child owns status). This avoids cross-controller status writes.
+func (r *ReleaseReconciler) cancelPendingStageTargets(ctx context.Context, release *kaprov1alpha1.Release, pipelineRefName, stageName string) {
+	log := log.FromContext(ctx)
+
+	// List ReleaseTarget objects for this release.
+	var list kaprov1alpha1.ReleaseTargetList
+	if err := r.List(ctx, &list); err != nil {
+		log.Error(err, "cancel: failed to list ReleaseTargets")
+		return
+	}
+
+	for i := range list.Items {
+		rt := &list.Items[i]
+		if rt.Spec.ReleaseRef != release.Name || rt.Spec.PipelineRef != pipelineRefName || rt.Spec.Stage != stageName {
 			continue
 		}
-		target.Phase = kaprov1alpha1.SyncPhaseFailed
-		target.Message = "cancelled: stage halted due to peer failure (failurePolicy: halt)"
-		target.FinishedAt = now
+		// Skip terminal targets.
+		switch kaprov1alpha1.TargetPhase(rt.Status.Phase) {
+		case kaprov1alpha1.TargetPhaseConverged, kaprov1alpha1.TargetPhaseFailed, kaprov1alpha1.TargetPhaseSkipped:
+			continue
+		}
+		if rt.Spec.Cancelled {
+			continue
+		}
+
+		// Signal cancellation via spec — the child reconciler observes this
+		// and transitions status to Failed on its next reconcile.
+		rt.Spec.Cancelled = true
+		rt.Spec.CancelledReason = "stage halted due to peer failure (failurePolicy: halt)"
+		if err := r.Update(ctx, rt); err != nil {
+			log.Error(err, "cancel: failed to update ReleaseTarget spec", "name", rt.Name)
+			continue
+		}
+		log.Info("cancel: signalled cancellation", "target", rt.Name)
+
+		// Also update inline targets for immediate aggregation so the parent
+		// can compute the correct Release phase without waiting for child reconcile.
+		for j := range release.Status.Targets {
+			t := &release.Status.Targets[j]
+			if t.Target == rt.Spec.Target && t.PipelineRef == pipelineRefName && t.Stage == stageName {
+				t.Phase = kaprov1alpha1.TargetPhaseFailed
+				t.Message = "cancelled: " + rt.Spec.CancelledReason
+				break
+			}
+		}
 	}
 }
 
@@ -597,6 +894,12 @@ func (r *ReleaseReconciler) cancelPendingStageTargets(_ context.Context, release
 // targeted by this Release, found via release.Status.Targets.
 func (r *ReleaseReconciler) clearActiveRelease(ctx context.Context, release *kaprov1alpha1.Release) {
 	log := log.FromContext(ctx)
+	if len(release.Status.Targets) == 0 {
+		if err := r.loadReleaseTargets(ctx, release); err != nil {
+			log.Error(err, "clearActiveRelease: failed to load release targets")
+			return
+		}
+	}
 	seen := make(map[string]bool)
 	for _, target := range release.Status.Targets {
 		mcName := target.Target
@@ -618,12 +921,140 @@ func (r *ReleaseReconciler) clearActiveRelease(ctx context.Context, release *kap
 	}
 }
 
+func releaseTargetObjectName(target kaprov1alpha1.TargetStatus) string {
+	name := syncName(target.ReleaseRef, target.PipelineRef, target.Stage, target.Target)
+	if target.Rollback {
+		return name + "-rollback"
+	}
+	return name
+}
+
+// ReleaseTargetObjectNameForTest exposes the deterministic child-object naming
+// contract to external tests without widening production behavior.
+func ReleaseTargetObjectNameForTest(target kaprov1alpha1.TargetStatus) string {
+	return releaseTargetObjectName(target)
+}
+
+func (r *ReleaseReconciler) releaseTargetFromStatus(release *kaprov1alpha1.Release, target kaprov1alpha1.TargetStatus) *kaprov1alpha1.ReleaseTarget {
+	rt := &kaprov1alpha1.ReleaseTarget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: releaseTargetObjectName(target),
+			Labels: map[string]string{
+				IndexKeyRelease:   release.Name,
+				"kapro.io/target": target.Target,
+			},
+		},
+		Spec: kaprov1alpha1.ReleaseTargetSpec{
+			ReleaseRef:      target.ReleaseRef,
+			Target:          target.Target,
+			PipelineRef:     target.PipelineRef,
+			Pipeline:        target.Pipeline,
+			Stage:           target.Stage,
+			Version:         target.Version,
+			Gate:            target.Gate,
+			AppKey:          target.AppKey,
+			DesiredVersions: copyStringMap(target.DesiredVersions),
+			Rollback:        target.Rollback,
+		},
+		Status: kaprov1alpha1.ReleaseTargetStatus{TargetStatus: target},
+	}
+	if err := ctrl.SetControllerReference(release, rt, r.Scheme); err == nil {
+		return rt
+	}
+	return rt
+}
+
+func targetStatusFromReleaseTarget(rt *kaprov1alpha1.ReleaseTarget) kaprov1alpha1.TargetStatus {
+	target := rt.Status.TargetStatus
+	target.ReleaseRef = rt.Spec.ReleaseRef
+	target.Target = rt.Spec.Target
+	target.PipelineRef = rt.Spec.PipelineRef
+	target.Pipeline = rt.Spec.Pipeline
+	target.Stage = rt.Spec.Stage
+	target.Version = rt.Spec.Version
+	target.Gate = rt.Spec.Gate
+	target.AppKey = rt.Spec.AppKey
+	target.DesiredVersions = copyStringMap(rt.Spec.DesiredVersions)
+	target.Rollback = rt.Spec.Rollback
+	return target
+}
+
+func (r *ReleaseReconciler) loadReleaseTargets(ctx context.Context, release *kaprov1alpha1.Release) error {
+	var list kaprov1alpha1.ReleaseTargetList
+	if err := r.List(ctx, &list,
+		client.MatchingFields{IndexKeyReleaseTargetRelease: release.Name},
+	); err != nil {
+		return err
+	}
+	targets := make([]kaprov1alpha1.TargetStatus, 0, len(list.Items))
+	for i := range list.Items {
+		rt := &list.Items[i]
+		targets = append(targets, targetStatusFromReleaseTarget(rt))
+	}
+	sort.Slice(targets, func(i, j int) bool {
+		ai := releaseTargetObjectName(targets[i])
+		aj := releaseTargetObjectName(targets[j])
+		return ai < aj
+	})
+	release.Status.Targets = targets
+	return nil
+}
+
+// persistReleaseTargets ensures a ReleaseTarget CRD exists for each in-memory
+// target entry. The parent creates new children and updates their specs/labels/
+// ownerRefs, but NEVER writes child status — that's owned by ReleaseTargetReconciler.
+func (r *ReleaseReconciler) persistReleaseTargets(ctx context.Context, release *kaprov1alpha1.Release) error {
+	var existingList kaprov1alpha1.ReleaseTargetList
+	if err := r.List(ctx, &existingList,
+		client.MatchingFields{IndexKeyReleaseTargetRelease: release.Name},
+	); err != nil {
+		return err
+	}
+	existing := make(map[string]*kaprov1alpha1.ReleaseTarget, len(existingList.Items))
+	for i := range existingList.Items {
+		rt := existingList.Items[i]
+		existing[rt.Name] = rt.DeepCopy()
+	}
+
+	for _, target := range release.Status.Targets {
+		name := releaseTargetObjectName(target)
+		desired := r.releaseTargetFromStatus(release, target)
+		if _, ok := existing[name]; !ok {
+			// Create new child — status starts empty, ReleaseTargetReconciler will drive it.
+			toCreate := desired.DeepCopy()
+			toCreate.Status = kaprov1alpha1.ReleaseTargetStatus{}
+			if err := r.Create(ctx, toCreate); err != nil && !apierrors.IsAlreadyExists(err) {
+				return fmt.Errorf("create ReleaseTarget %s: %w", name, err)
+			}
+		} else {
+			// Update spec/labels/ownerRefs only — never touch status.
+			current := existing[name]
+			specPatch := client.MergeFrom(current.DeepCopy())
+			current.Labels = desired.Labels
+			current.Spec = desired.Spec
+			current.OwnerReferences = desired.OwnerReferences
+			if err := r.Patch(ctx, current, specPatch); err != nil {
+				return fmt.Errorf("patch ReleaseTarget %s: %w", name, err)
+			}
+		}
+	}
+	return nil
+}
+
 // handleDeletion clears MemberCluster activeRelease references and removes the finalizer.
 // Targets are inline status — nothing to delete externally.
 func (r *ReleaseReconciler) handleDeletion(ctx context.Context, release *kaprov1alpha1.Release) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 	log.Info("handling Release deletion", "name", release.Name)
 
+	// Ensure targets are loaded so clearActiveRelease can find all clusters to
+	// clear. If this fails, retry deletion rather than removing the finalizer
+	// with stale activeRelease claims still pointing at this Release.
+	if len(release.Status.Targets) == 0 {
+		if err := r.loadReleaseTargets(ctx, release); err != nil {
+			return ctrl.Result{}, fmt.Errorf("handleDeletion: load release targets for cleanup: %w", err)
+		}
+	}
 	r.clearActiveRelease(ctx, release)
 
 	patch := client.MergeFrom(release.DeepCopy())
@@ -647,12 +1078,22 @@ func (r *ReleaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return fmt.Errorf("index Approval by %s: %w", IndexKeyRelease, err)
 	}
 
-	// Index Releases by every active cluster in status.targets — used to
-	// map MemberCluster changes back to only the affected Release(s).
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &kaprov1alpha1.Release{}, IndexKeyActiveCluster,
-		activeClusterExtractor,
+	// Index ReleaseTargets by owning Release and target cluster so MemberCluster
+	// and ReleaseTarget watches can route directly to affected Releases.
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &kaprov1alpha1.ReleaseTarget{}, IndexKeyActiveCluster,
+		ActiveClusterExtractor,
 	); err != nil {
-		return fmt.Errorf("index Release by %s: %w", IndexKeyActiveCluster, err)
+		return fmt.Errorf("index ReleaseTarget by %s: %w", IndexKeyActiveCluster, err)
+	}
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &kaprov1alpha1.ReleaseTarget{}, IndexKeyReleaseTargetRelease,
+		ReleaseTargetReleaseExtractor,
+	); err != nil {
+		return fmt.Errorf("index ReleaseTarget by %s: %w", IndexKeyReleaseTargetRelease, err)
+	}
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &kaprov1alpha1.Release{}, IndexKeyReleaseProgressing,
+		ReleaseProgressingExtractor,
+	); err != nil {
+		return fmt.Errorf("index Release by %s: %w", IndexKeyReleaseProgressing, err)
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
@@ -667,6 +1108,7 @@ func (r *ReleaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&kaprov1alpha1.MemberCluster{},
 			handler.EnqueueRequestsFromMapFunc(r.releasesForMemberCluster),
+			builder.WithPredicates(releaseMemberClusterPredicates()),
 		).
 		// Watch Approvals — when an Approval CR is created for a WaitingApproval target,
 		// wake up the Release so the target can advance to Applying.
@@ -674,7 +1116,39 @@ func (r *ReleaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&kaprov1alpha1.Approval{},
 			handler.EnqueueRequestsFromMapFunc(approvalForRelease),
 		).
+		Watches(
+			&kaprov1alpha1.ReleaseTarget{},
+			handler.EnqueueRequestsFromMapFunc(releaseForTarget),
+		).
 		Complete(r)
+}
+
+func releaseMemberClusterPredicates() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(_ event.CreateEvent) bool {
+			return true
+		},
+		DeleteFunc: func(_ event.DeleteEvent) bool {
+			return true
+		},
+		GenericFunc: func(_ event.GenericEvent) bool {
+			return true
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldMC, okOld := e.ObjectOld.(*kaprov1alpha1.MemberCluster)
+			newMC, okNew := e.ObjectNew.(*kaprov1alpha1.MemberCluster)
+			if !okOld || !okNew {
+				return true
+			}
+			if oldMC.GetGeneration() != newMC.GetGeneration() {
+				return true
+			}
+			if !labels.Equals(labels.Set(oldMC.GetLabels()), labels.Set(newMC.GetLabels())) {
+				return true
+			}
+			return false
+		},
+	}
 }
 
 func (r *ReleaseReconciler) releasesForMemberCluster(ctx context.Context, obj client.Object) []ctrl.Request {
@@ -682,25 +1156,36 @@ func (r *ReleaseReconciler) releasesForMemberCluster(ctx context.Context, obj cl
 	if !ok {
 		return nil
 	}
-	// Use the active-cluster field index to find only releases that reference this
-	// specific cluster. This avoids scanning the entire Release fleet on every
-	// MemberCluster status update.
-	var releaseList kaprov1alpha1.ReleaseList
-	if err := r.List(ctx, &releaseList,
+	// Use the active-cluster field index to find only release targets that
+	// reference this specific cluster. This avoids scanning the entire Release
+	// fleet on every MemberCluster status update.
+	var targetList kaprov1alpha1.ReleaseTargetList
+	if err := r.List(ctx, &targetList,
 		client.MatchingFields{IndexKeyActiveCluster: mc.Name},
 	); err != nil {
+		log.FromContext(ctx).Error(err, "failed to list release targets for member cluster", "cluster", mc.Name)
 		return nil
 	}
-	if len(releaseList.Items) == 0 {
+	if len(targetList.Items) == 0 {
 		return r.progressingReleasesForNewCluster(ctx, mc)
 	}
-	reqs := make([]ctrl.Request, 0, len(releaseList.Items))
-	for i := range releaseList.Items {
-		rel := &releaseList.Items[i]
+	seen := make(map[client.ObjectKey]struct{}, len(targetList.Items))
+	reqs := make([]ctrl.Request, 0, len(targetList.Items))
+	for i := range targetList.Items {
+		rt := &targetList.Items[i]
+		key := client.ObjectKey{Name: rt.Spec.ReleaseRef, Namespace: rt.Namespace}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		var rel kaprov1alpha1.Release
+		if err := r.Get(ctx, key, &rel); err != nil {
+			continue
+		}
 		if rel.Status.Phase == kaprov1alpha1.ReleasePhaseComplete || rel.Status.Phase == kaprov1alpha1.ReleasePhaseFailed {
 			continue
 		}
-		reqs = append(reqs, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(rel)})
+		reqs = append(reqs, ctrl.Request{NamespacedName: key})
 	}
 	return reqs
 }
@@ -724,8 +1209,13 @@ func (r *ReleaseReconciler) ProgressingReleasesForNewClusterForTest(ctx context.
 // target the cluster.
 func (r *ReleaseReconciler) progressingReleasesForNewCluster(ctx context.Context, mc *kaprov1alpha1.MemberCluster) []ctrl.Request {
 	var releaseList kaprov1alpha1.ReleaseList
-	if err := r.List(ctx, &releaseList); err != nil {
-		return nil
+	if err := r.List(ctx, &releaseList, client.MatchingFields{IndexKeyReleaseProgressing: "true"}); err != nil {
+		// Some tests and ad-hoc fake clients do not register field indexes. Fall back
+		// to a full list there; production SetupWithManager always installs the index.
+		if err := r.List(ctx, &releaseList); err != nil {
+			log.FromContext(ctx).Error(err, "failed to list releases for new cluster fallback", "cluster", mc.Name)
+			return nil
+		}
 	}
 
 	pipelineCache := make(map[string]*kaprov1alpha1.Pipeline)
@@ -788,6 +1278,22 @@ func (r *ReleaseReconciler) releaseCouldTargetCluster(
 	return false
 }
 
+func releaseForTarget(_ context.Context, obj client.Object) []ctrl.Request {
+	rt, ok := obj.(*kaprov1alpha1.ReleaseTarget)
+	if !ok {
+		return nil
+	}
+	if rt.Spec.ReleaseRef == "" {
+		return nil
+	}
+	return []ctrl.Request{{
+		NamespacedName: client.ObjectKey{
+			Name:      rt.Spec.ReleaseRef,
+			Namespace: rt.Namespace,
+		},
+	}}
+}
+
 // syncKey builds a unique map key for one target rollout entry:
 // <pipelineRefName>/<stage>/<target>.
 func syncKey(pipelineRefName, stage, target string) string {
@@ -795,17 +1301,198 @@ func syncKey(pipelineRefName, stage, target string) string {
 }
 
 // syncName builds the deterministic name for one target rollout entry.
-// Format: <release>-<pipelineRef>-<stage>-<target>
+// Format: <release-prefix>-<hashed logical key>. The hash makes the name
+// collision-safe even when individual components contain hyphens.
 func syncName(release, pipelineRef, stage, target string) string {
-	return fmt.Sprintf("%s-%s-%s-%s", release, pipelineRef, stage, target)
+	key := fmt.Sprintf("%s/%s", release, syncKey(pipelineRef, stage, target))
+	h := fnv.New32a()
+	_, _ = fmt.Fprint(h, key)
+	prefix := release
+	if len(prefix) > 40 {
+		prefix = prefix[:40]
+	}
+	return fmt.Sprintf("%s-%08x", prefix, h.Sum32())
 }
 
 // releaseAppKey returns the key used in MemberCluster.status.currentVersions.
+// For legacy single-artifact releases only.
 func releaseAppKey(release *kaprov1alpha1.Release) string {
 	if release.Spec.AppKey != "" {
 		return release.Spec.AppKey
 	}
 	return release.Spec.Artifact
+}
+
+func releaseDesiredVersions(release *kaprov1alpha1.Release) map[string]string {
+	if len(release.Status.ResolvedArtifacts) == 0 {
+		if release.Status.ResolvedVersion == "" {
+			return nil
+		}
+		return map[string]string{releaseAppKey(release): release.Status.ResolvedVersion}
+	}
+	desired := make(map[string]string, len(release.Status.ResolvedArtifacts))
+	for _, artifact := range release.Status.ResolvedArtifacts {
+		if artifact.Version == "" {
+			continue
+		}
+		desired[artifact.AppKey] = artifact.Version
+	}
+	return desired
+}
+
+func primaryDesiredVersion(desired map[string]string, fallbackVersion, fallbackAppKey string) (string, string) {
+	if len(desired) == 0 {
+		return fallbackVersion, fallbackAppKey
+	}
+	keys := make([]string, 0, len(desired))
+	for appKey := range desired {
+		keys = append(keys, appKey)
+	}
+	sort.Strings(keys)
+	appKey := keys[0]
+	return desired[appKey], appKey
+}
+
+func changedArtifactCount(artifacts []kaprov1alpha1.ResolvedArtifact) int {
+	if len(artifacts) == 0 {
+		return 0
+	}
+	changed := 0
+	for _, artifact := range artifacts {
+		if !artifact.Inherited {
+			changed++
+		}
+	}
+	if changed == 0 {
+		return len(artifacts)
+	}
+	return changed
+}
+
+func copyStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+// resolveReleaseArtifacts resolves the full artifact list for a Release.
+// For hotfix Releases (derivedFrom set), it loads the parent's resolved artifacts
+// and overlays the child's artifacts on top (Kustomize-style merge by AppKey).
+// Returns the merged list and per-artifact resolved versions.
+func (r *ReleaseReconciler) resolveReleaseArtifacts(ctx context.Context, release *kaprov1alpha1.Release) ([]kaprov1alpha1.ResolvedArtifact, error) {
+	log := log.FromContext(ctx)
+
+	// Start with the parent's artifacts if derivedFrom is set.
+	parentArtifacts := make(map[string]kaprov1alpha1.ResolvedArtifact)
+	if release.Spec.DerivedFrom != "" {
+		var parent kaprov1alpha1.Release
+		if err := r.Get(ctx, client.ObjectKey{Name: release.Spec.DerivedFrom}, &parent); err != nil {
+			return nil, fmt.Errorf("get parent release %s: %w", release.Spec.DerivedFrom, err)
+		}
+		parentResolved := parent.Status.ResolvedArtifacts
+		if len(parentResolved) == 0 && parent.Status.ResolvedVersion != "" {
+			parentResolved = []kaprov1alpha1.ResolvedArtifact{{
+				AppKey:   releaseAppKey(&parent),
+				Artifact: parent.Spec.Artifact,
+				Version:  parent.Status.ResolvedVersion,
+			}}
+		}
+		if len(parentResolved) == 0 && parent.Spec.Artifact != "" {
+			resolved, err := r.resolveArtifactVersion(ctx, parent.Spec.Artifact)
+			if err != nil {
+				return nil, fmt.Errorf("resolve parent release %s legacy artifact: %w", release.Spec.DerivedFrom, err)
+			}
+			parentResolved = []kaprov1alpha1.ResolvedArtifact{{
+				AppKey:   releaseAppKey(&parent),
+				Artifact: parent.Spec.Artifact,
+				Version:  resolved,
+			}}
+		}
+		if len(parentResolved) == 0 {
+			return nil, fmt.Errorf("parent release %s has no resolved artifacts (phase=%s)", release.Spec.DerivedFrom, parent.Status.Phase)
+		}
+		for _, ra := range parentResolved {
+			ra.Inherited = true
+			parentArtifacts[ra.AppKey] = ra
+		}
+		log.Info("loaded parent artifacts for merge", "parent", release.Spec.DerivedFrom, "count", len(parentArtifacts))
+	}
+
+	// Resolve each artifact in this Release's spec.
+	childArtifacts := make(map[string]kaprov1alpha1.ResolvedArtifact)
+
+	// Handle multi-artifact list.
+	for _, ref := range release.Spec.Artifacts {
+		resolved, err := r.resolveArtifactVersion(ctx, ref.Artifact)
+		if err != nil {
+			return nil, fmt.Errorf("resolve artifact %s (appKey=%s): %w", ref.Artifact, ref.AppKey, err)
+		}
+		childArtifacts[ref.AppKey] = kaprov1alpha1.ResolvedArtifact{
+			AppKey:    ref.AppKey,
+			Artifact:  ref.Artifact,
+			Version:   resolved,
+			Inherited: false,
+		}
+	}
+
+	// Handle legacy single-artifact field.
+	if release.Spec.Artifact != "" && len(release.Spec.Artifacts) == 0 {
+		appKey := releaseAppKey(release)
+		resolved, err := r.resolveArtifactVersion(ctx, release.Spec.Artifact)
+		if err != nil {
+			return nil, fmt.Errorf("resolve legacy artifact %s: %w", release.Spec.Artifact, err)
+		}
+		childArtifacts[appKey] = kaprov1alpha1.ResolvedArtifact{
+			AppKey:    appKey,
+			Artifact:  release.Spec.Artifact,
+			Version:   resolved,
+			Inherited: false,
+		}
+	}
+
+	// Merge: parent artifacts as base, child artifacts override by AppKey.
+	merged := make(map[string]kaprov1alpha1.ResolvedArtifact, len(parentArtifacts)+len(childArtifacts))
+	for k, v := range parentArtifacts {
+		merged[k] = v
+	}
+	for k, v := range childArtifacts {
+		merged[k] = v // child overrides parent
+	}
+
+	// Convert to sorted slice for deterministic output.
+	result := make([]kaprov1alpha1.ResolvedArtifact, 0, len(merged))
+	for _, v := range merged {
+		result = append(result, v)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].AppKey < result[j].AppKey
+	})
+
+	log.Info("resolved artifacts",
+		"total", len(result),
+		"inherited", len(parentArtifacts),
+		"overridden", len(childArtifacts),
+	)
+	return result, nil
+}
+
+// resolveArtifactVersion looks up an Artifact CR and returns its resolved OCI digest.
+func (r *ReleaseReconciler) resolveArtifactVersion(ctx context.Context, artifactName string) (string, error) {
+	var artifact kaprov1alpha1.Artifact
+	if err := r.Get(ctx, client.ObjectKey{Name: artifactName}, &artifact); err != nil {
+		return "", err
+	}
+	for _, src := range artifact.Spec.Sources {
+		if src.OCI != nil && src.OCI.Digest != "" {
+			return src.OCI.Repository + "@" + src.OCI.Digest, nil
+		}
+	}
+	return "", fmt.Errorf("artifact %s has no OCI source with digest", artifactName)
 }
 
 func (r *ReleaseReconciler) setReleaseReadyCondition(release *kaprov1alpha1.Release, status metav1.ConditionStatus, reason, message string) {
@@ -861,7 +1548,7 @@ func releaseProgressSummary(release *kaprov1alpha1.Release) string {
 		if target.Rollback {
 			continue
 		}
-		if target.Phase != kaprov1alpha1.SyncPhaseConverged && target.Phase != kaprov1alpha1.SyncPhaseFailed {
+		if target.Phase != kaprov1alpha1.TargetPhaseConverged && target.Phase != kaprov1alpha1.TargetPhaseFailed {
 			activeTargets++
 		}
 	}
@@ -869,6 +1556,9 @@ func releaseProgressSummary(release *kaprov1alpha1.Release) string {
 	return fmt.Sprintf("release progressing: %d active pipelines, %d active targets", activePipelines, activeTargets)
 }
 
+// normalizeReleaseStatus deduplicates Release.status.targets and bounds per-target
+// gate history. It never drops target execution rows, because those rows are the
+// source of truth for in-flight rollout state.
 func (r *ReleaseReconciler) normalizeReleaseStatus(release *kaprov1alpha1.Release) {
 	if len(release.Status.Targets) == 0 {
 		return
@@ -896,9 +1586,6 @@ func (r *ReleaseReconciler) normalizeReleaseStatus(release *kaprov1alpha1.Releas
 		normalized[i], normalized[j] = normalized[j], normalized[i]
 	}
 
-	if len(normalized) > maxReleaseTargetRows {
-		normalized = normalized[len(normalized)-maxReleaseTargetRows:]
-	}
 	release.Status.Targets = normalized
 }
 
@@ -908,7 +1595,7 @@ func (r *ReleaseReconciler) normalizeTargetEntry(target *kaprov1alpha1.TargetSta
 	}
 	for i := range target.Gates {
 		if len(target.Gates[i].Results) > maxGateResultsPerGateRun {
-			target.Gates[i].Results = target.Gates[i].Results[:maxGateResultsPerGateRun]
+			target.Gates[i].Results = target.Gates[i].Results[len(target.Gates[i].Results)-maxGateResultsPerGateRun:]
 		}
 	}
 }
@@ -960,9 +1647,8 @@ func (r *ReleaseReconciler) appendAuditEntry(ctx context.Context, release *kapro
 }
 
 // computeReport builds the inline ReleaseReportSummary from Release.status.targets.
-// It replaces the standalone ReleaseReport CRD/controller. The result should be stored
-// in release.Status.Report before the status patch.
-func (r *ReleaseReconciler) computeReport(release *kaprov1alpha1.Release, approvals []kaprov1alpha1.Approval) kaprov1alpha1.ReleaseReportSummary {
+// It is a bounded, counter-only summary; per-target detail lives in status.targets.
+func (r *ReleaseReconciler) computeReport(release *kaprov1alpha1.Release) kaprov1alpha1.ReleaseReportSummary {
 	now := time.Now().UTC()
 
 	st := kaprov1alpha1.ReleaseReportSummary{
@@ -972,6 +1658,8 @@ func (r *ReleaseReconciler) computeReport(release *kaprov1alpha1.Release, approv
 		StartedAt:       release.Status.StartedAt,
 		CompletedAt:     release.Status.CompletedAt,
 	}
+	st.TotalArtifacts = len(release.Status.ResolvedArtifacts)
+	st.DeltaArtifacts = changedArtifactCount(release.Status.ResolvedArtifacts)
 
 	if st.StartedAt != "" {
 		if started, err := time.Parse(time.RFC3339, st.StartedAt); err == nil {
@@ -985,24 +1673,31 @@ func (r *ReleaseReconciler) computeReport(release *kaprov1alpha1.Release, approv
 		}
 	}
 
-	// Count targets from inline status.
-	targetPhases := make(map[string]kaprov1alpha1.SyncPhase, len(release.Status.Targets))
+	// Count targets from inline status; list pending approvals by deterministic name.
+	// Key by (pipelineRef, stage, cluster) to avoid undercounting when the same cluster
+	// is targeted by multiple pipelines or stages.
+	targetPhases := make(map[string]kaprov1alpha1.TargetPhase, len(release.Status.Targets))
 	var rolledBack int
+	var pendingApprovals []string
 	for _, target := range release.Status.Targets {
 		if target.Rollback {
 			rolledBack++
 			continue
 		}
-		targetPhases[target.Target] = target.Phase
+		key := target.PipelineRef + "\x00" + target.Stage + "\x00" + target.Target
+		targetPhases[key] = target.Phase
+		if target.Phase == kaprov1alpha1.TargetPhaseWaitingApproval {
+			pendingApprovals = append(pendingApprovals, internalgate.ApprovalName(release.Name, syncName(release.Name, target.PipelineRef, target.Stage, target.Target)))
+		}
 	}
 
 	var totalTargets, synced, failed, pending int
 	for _, phase := range targetPhases {
 		totalTargets++
 		switch phase {
-		case kaprov1alpha1.SyncPhaseConverged:
+		case kaprov1alpha1.TargetPhaseConverged, kaprov1alpha1.TargetPhaseSkipped:
 			synced++
-		case kaprov1alpha1.SyncPhaseFailed:
+		case kaprov1alpha1.TargetPhaseFailed:
 			failed++
 		default:
 			pending++
@@ -1013,58 +1708,6 @@ func (r *ReleaseReconciler) computeReport(release *kaprov1alpha1.Release, approv
 	st.FailedTargets = failed
 	st.PendingTargets = pending
 	st.RolledBackTargets = rolledBack
-
-	targetReports := make([]kaprov1alpha1.TargetReport, 0, len(release.Status.Targets))
-	seen := make(map[string]bool)
-	for _, target := range release.Status.Targets {
-		if target.Rollback || seen[target.Target] {
-			continue
-		}
-		seen[target.Target] = true
-		targetReports = append(targetReports, kaprov1alpha1.TargetReport{
-			Name:        target.Target,
-			Phase:       string(target.Phase),
-			PipelineRef: target.Pipeline,
-			Stage:       target.Stage,
-			Version:     target.Version,
-			SyncedAt:    target.FinishedAt,
-		})
-	}
-	st.Targets = targetReports
-
-	gateReports := make([]kaprov1alpha1.GateReport, 0)
-	for _, target := range release.Status.Targets {
-		if target.Gate == nil {
-			continue
-		}
-		var result string
-		switch target.Phase {
-		case kaprov1alpha1.SyncPhaseConverged:
-			result = "Passed"
-		case kaprov1alpha1.SyncPhaseFailed:
-			result = "Failed"
-		case kaprov1alpha1.SyncPhaseMetricsCheck, kaprov1alpha1.SyncPhaseSoaking,
-			kaprov1alpha1.SyncPhaseVerification, kaprov1alpha1.SyncPhaseHealthCheck:
-			result = "Running"
-		default:
-			result = "Pending"
-		}
-		gateReports = append(gateReports, kaprov1alpha1.GateReport{
-			Type:        target.Stage,
-			PipelineRef: target.Pipeline,
-			Stage:       target.Stage,
-			Target:      target.Target,
-			Result:      result,
-		})
-	}
-	st.Gates = gateReports
-
-	pendingApprovals := make([]string, 0)
-	for _, a := range approvals {
-		if a.Spec.Kind == kaprov1alpha1.ApprovalKindStage || a.Spec.Kind == kaprov1alpha1.ApprovalKindSync {
-			pendingApprovals = append(pendingApprovals, a.Name)
-		}
-	}
 	st.PendingApprovals = pendingApprovals
 
 	return st

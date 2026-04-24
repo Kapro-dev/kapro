@@ -34,6 +34,7 @@ import (
 	"context"
 
 	corev1 "k8s.io/api/core/v1"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
 
@@ -113,6 +114,13 @@ type Context struct {
 	Stage      string
 	Version    string
 	StartedAt  string
+
+	// OwnerUID and OwnerName identify the ReleaseTarget that triggered this gate
+	// evaluation. Gates that create Kubernetes resources (e.g. Job gate) must set
+	// OwnerReferences using these fields so created resources are garbage-collected
+	// when the ReleaseTarget is deleted.
+	OwnerUID  k8stypes.UID
+	OwnerName string
 }
 
 // Request carries everything a gate needs to evaluate its condition.

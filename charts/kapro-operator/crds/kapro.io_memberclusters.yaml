@@ -80,14 +80,29 @@ spec:
                   flux:
                     properties:
                       kustomizationPath:
+                        default: .
+                        description: KustomizationPath is the path within the OCI
+                          artifact to the kustomization root.
                         type: string
                       namespace:
+                        default: flux-system
+                        description: Namespace is the Flux namespace on the target
+                          cluster.
                         type: string
+                      ociRepositories:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          OCIRepositories maps appKey -> Flux OCIRepository name for multi-artifact delivery.
+                          When multiple artifacts are delivered to a cluster, every appKey in the rollout
+                          must resolve to a repository name here.
+                        type: object
                       ociRepository:
+                        description: |-
+                          OCIRepository is the Flux OCIRepository name that pulls the artifact.
+                          Deprecated: use OCIRepositories for multi-artifact delivery.
                         type: string
                     required:
-                    - kustomizationPath
-                    - namespace
                     - ociRepository
                     type: object
                   type:
@@ -141,12 +156,22 @@ spec:
                 description: |-
                   DesiredAppKey is the key the cluster-controller uses when writing
                   status.currentVersions. Defaults to "default".
+                  Deprecated: use DesiredVersions map for multi-artifact releases.
                 type: string
               desiredVersion:
                 description: |-
-                  DesiredVersion is written by the kapro-operator (release/sync controller).
+                  DesiredVersion is written by the kapro-operator (ReleaseReconciler).
                   The cluster-controller polls this field and patches the local delivery system.
+                  Deprecated: use DesiredVersions map for multi-artifact releases.
                 type: string
+              desiredVersions:
+                additionalProperties:
+                  type: string
+                description: |-
+                  DesiredVersions is a map of appKey → version written by the kapro-operator.
+                  The cluster-controller iterates this map and patches local delivery for each changed entry.
+                  This replaces the single DesiredVersion/DesiredAppKey pair for multi-artifact releases.
+                type: object
               healthCheck:
                 description: HealthCheck configures active health polling for this
                   cluster.
@@ -159,134 +184,6 @@ spec:
                 - endpoint
                 - interval
                 type: object
-              provider:
-                description: Provider configures how Kapro discovers and connects
-                  to the workload cluster.
-                properties:
-                  aks:
-                    description: 'AKS configures AKS Managed Identity direct-connect
-                      (type: aks, v0.4).'
-                    properties:
-                      clientID:
-                        description: ClientID is the Managed Identity client ID. Uses
-                          system-assigned identity when empty.
-                        type: string
-                      clusterName:
-                        description: ClusterName is the AKS cluster name.
-                        type: string
-                      resourceGroup:
-                        description: ResourceGroup is the Azure resource group containing
-                          the AKS cluster.
-                        type: string
-                      subscriptionID:
-                        description: SubscriptionID is the Azure subscription UUID.
-                        type: string
-                      tenantID:
-                        description: TenantID is the Azure AD tenant ID.
-                        type: string
-                    required:
-                    - clusterName
-                    - resourceGroup
-                    - subscriptionID
-                    type: object
-                  digitalOcean:
-                    description: 'DigitalOcean configures DOKS direct-connect (type:
-                      digitalocean, v0.4).'
-                    properties:
-                      clusterID:
-                        description: |-
-                          ClusterID is the DigitalOcean Kubernetes cluster UUID.
-                          Find it at cloud.digitalocean.com/kubernetes or `doctl kubernetes cluster list`.
-                        type: string
-                      region:
-                        description: |-
-                          Region is the DigitalOcean region slug (e.g. nyc1, fra1, ams3).
-                          Used for topology metadata only.
-                        type: string
-                      tokenSecretRef:
-                        description: |-
-                          TokenSecretRef names a Secret in kapro-system containing the DigitalOcean
-                          API token under key "token".
-                        type: string
-                    required:
-                    - clusterID
-                    - tokenSecretRef
-                    type: object
-                  gke:
-                    description: 'GKE configures GKE Workload Identity direct-connect
-                      (type: gke, v0.3).'
-                    properties:
-                      clusterName:
-                        description: ClusterName is the GKE cluster name as shown
-                          in the GCP console.
-                        type: string
-                      location:
-                        description: Location is the cluster region (e.g. europe-west1)
-                          or zone (e.g. europe-west1-b).
-                        type: string
-                      project:
-                        description: Project is the GCP project ID (not project number).
-                        type: string
-                      serviceAccountRef:
-                        description: |-
-                          ServiceAccountRef names the hub K8s SA annotated with
-                          iam.gke.io/gcp-service-account. Defaults to the kapro-operator SA.
-                        type: string
-                      workloadIdentityPool:
-                        description: |-
-                          WorkloadIdentityPool is the GCP Workload Identity pool for this hub.
-                          Format: PROJECT_ID.svc.id.goog
-                        type: string
-                    required:
-                    - clusterName
-                    - location
-                    - project
-                    type: object
-                  stackit:
-                    description: 'StackIT configures SKE direct-connect (type: stackit,
-                      v0.4).'
-                    properties:
-                      clusterName:
-                        description: ClusterName is the SKE cluster name.
-                        type: string
-                      projectID:
-                        description: ProjectID is the STACKIT project UUID.
-                        type: string
-                      region:
-                        description: Region is the STACKIT region slug (e.g. eu01).
-                        type: string
-                      serviceAccountKeySecretRef:
-                        description: |-
-                          ServiceAccountKeySecretRef names a Secret in kapro-system containing a
-                          STACKIT Service Account key JSON under key "key.json".
-                        type: string
-                    required:
-                    - clusterName
-                    - projectID
-                    - region
-                    - serviceAccountKeySecretRef
-                    type: object
-                  type:
-                    description: |-
-                      Type selects the connectivity backend.
-
-                      ""  or "crd"    → CRD outbound path (default, all clouds, air-gap)
-                      "gke"           → GKE Workload Identity + Connect Gateway (v0.3)
-                      "aks"           → AKS Managed Identity + AAD OIDC federation (v0.4)
-                      "digitalocean"  → DigitalOcean API token in Secret (v0.4)
-                      "stackit"       → StackIT Service Account key in Secret (v0.4)
-                    enum:
-                    - ""
-                    - crd
-                    - gke
-                    - aks
-                    - digitalocean
-                    - stackit
-                    type: string
-                type: object
-                x-kubernetes-validations:
-                - message: provider.gke must be set when type is gke
-                  rule: self.type != 'gke' || has(self.gke)
               suspend:
                 description: Suspend pauses all reconciliation for this cluster.
                 type: boolean

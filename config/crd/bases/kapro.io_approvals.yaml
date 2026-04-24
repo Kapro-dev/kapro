@@ -19,9 +19,6 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.kind
-      name: Kind
-      type: string
     - jsonPath: .spec.release
       name: Release
       type: string
@@ -33,9 +30,6 @@ spec:
       type: string
     - jsonPath: .status.conditions[?(@.type=="Recorded")].status
       name: Recorded
-      type: string
-    - jsonPath: .spec.ref
-      name: Ref
       type: string
     - jsonPath: .spec.approvedBy
       name: Approved By
@@ -49,7 +43,9 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Approval is a human gate signal to unblock a Sync or Stage.
+        description: |-
+          Approval is the human gate signal that unblocks a waiting target rollout.
+          Object name convention: "<release>-<ref>" as a cluster-scoped object.
         properties:
           apiVersion:
             description: |-
@@ -69,29 +65,45 @@ spec:
           metadata:
             type: object
           spec:
+            description: |-
+              ApprovalSpec is the human signal that unblocks a waiting target.
+
+              Identity is deterministic: one cluster-scoped Approval per (release, ref)
+              pair. The object name is "<release>-<ref>". For target FSM approvals, ref is
+              the stable sync key "<release>-<pipelineRef>-<stage>-<target>", so each
+              waiting-approval step requires its own approval object.
             properties:
               approvedBy:
+                description: |-
+                  ApprovedBy identifies the human approver. Populated by the admission
+                  webhook from the request UserInfo when empty.
                 type: string
               bypass:
+                description: |-
+                  Bypass skips subsequent gate conditions for the target. Reserved for
+                  P0 hotfix escalations; audited via the ApprovalRecorded Event.
                 type: boolean
               comment:
-                type: string
-              kind:
-                enum:
-                - Sync
-                - Stage
+                description: Comment is optional free-form justification.
                 type: string
               ref:
+                description: |-
+                  Ref identifies the exact approval scope within the Release. For target FSM
+                  approvals this is the stable sync key "<release>-<pipelineRef>-<stage>-<target>".
+                  External integrators may use another deterministic ref as long as
+                  metadata.name is "<release>-<ref>".
                 type: string
               release:
+                description: Release is the name of the Release this approval unblocks.
                 type: string
               target:
+                description: Target is the MemberCluster name this approval is for.
                 type: string
             required:
             - approvedBy
-            - kind
             - ref
             - release
+            - target
             type: object
           status:
             properties:

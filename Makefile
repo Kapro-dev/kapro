@@ -58,6 +58,12 @@ manifests: $(CONTROLLER_GEN) ## Generate CRD YAML manifests and RBAC
 		paths="./api/..." paths="./internal/..." paths="./cmd/..." \
 		output:crd:artifacts:config=config/crd/bases \
 		output:rbac:artifacts:config=config/rbac
+	@# controller-gen v0.17 emits an empty `subresources: {}` block for CRDs
+	@# without a +kubebuilder:subresource:status marker (Artifact, Pipeline are
+	@# spec-only). Strip it so the install surface matches the Go API intent.
+	@for f in config/crd/bases/kapro.io_artifacts.yaml config/crd/bases/kapro.io_pipelines.yaml; do \
+		sed -i.bak '/^    subresources: {}$$/d' $$f && rm -f $$f.bak; \
+	done
 
 .PHONY: test
 test: generate manifests $(ENVTEST) ## Run unit + integration tests with envtest

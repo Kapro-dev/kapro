@@ -62,15 +62,24 @@ func validateStageDAG(stages []kaprov1alpha1.Stage) error {
 	// Validate all dependsOn references name existing stages.
 	for _, s := range stages {
 		for _, dep := range s.DependsOn {
-			if _, exists := index[dep]; !exists {
-				return fmt.Errorf("pipeline.spec.stages[%q].dependsOn: unknown stage %q", s.Name, dep)
+			if dep.Stage == "" {
+				return fmt.Errorf("pipeline.spec.stages[%q].dependsOn.stage must be set", s.Name)
+			}
+			if _, exists := index[dep.Stage]; !exists {
+				return fmt.Errorf("pipeline.spec.stages[%q].dependsOn: unknown stage %q", s.Name, dep.Stage)
+			}
+			if dep.Strategy != "" && dep.Strategy != kaprov1alpha1.StageDependencyAll && dep.Strategy != kaprov1alpha1.StageDependencyAny {
+				return fmt.Errorf("pipeline.spec.stages[%q].dependsOn[%q].strategy: unsupported value %q", s.Name, dep.Stage, dep.Strategy)
+			}
+			if dep.RequiredSoakTime != nil && dep.RequiredSoakTime.Duration < 0 {
+				return fmt.Errorf("pipeline.spec.stages[%q].dependsOn[%q].requiredSoakTime must be non-negative", s.Name, dep.Stage)
 			}
 		}
 	}
 
 	// DFS cycle detection on the stage DAG.
 	if cycle := detectCycle(index, func(name string) []string {
-		return stages[index[name]].DependsOn
+		return stageDependencyNames(stages[index[name]].DependsOn)
 	}); cycle != "" {
 		return fmt.Errorf("pipeline.spec.stages: cycle detected: %s", cycle)
 	}
@@ -120,6 +129,15 @@ func detectCycle(nodes map[string]int, deps func(string) []string) string {
 		}
 	}
 	return ""
+}
+
+// stageDependencyNames extracts stage names from StageDependency for DAG traversal.
+func stageDependencyNames(deps []kaprov1alpha1.StageDependency) []string {
+	names := make([]string, len(deps))
+	for i, d := range deps {
+		names[i] = d.Stage
+	}
+	return names
 }
 
 // ValidatePipeline is an exported test helper that exposes the internal validation logic.

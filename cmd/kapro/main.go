@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	internalgate "kapro.io/kapro/internal/gate"
 )
 
 var scheme = runtime.NewScheme()
@@ -158,7 +159,14 @@ func runBootstrap(ctx context.Context, clusterName, namespace string, labelsRaw 
 			Labels: labels,
 		},
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{Type: "flux"},
+			Actuator: kaprov1alpha1.ActuatorSpec{
+				Type: "flux",
+				Flux: &kaprov1alpha1.FluxActuator{
+					Namespace:         "flux-system",
+					OCIRepository:     clusterName,
+					KustomizationPath: ".",
+				},
+			},
 			Bootstrap: &kaprov1alpha1.MemberClusterBootstrapSpec{
 				TokenHash: tokenHash,
 				ExpiresAt: &expiresAt,
@@ -341,7 +349,14 @@ func runClusterJoin(ctx context.Context, clusterName, hubKubeconfigPath, spokeKu
 	mc := &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: clusterName, Labels: labels},
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{Type: "flux"},
+			Actuator: kaprov1alpha1.ActuatorSpec{
+				Type: "flux",
+				Flux: &kaprov1alpha1.FluxActuator{
+					Namespace:         "flux-system",
+					OCIRepository:     clusterName,
+					KustomizationPath: ".",
+				},
+			},
 			Bootstrap: &kaprov1alpha1.MemberClusterBootstrapSpec{
 				TokenHash: tokenHash,
 				ExpiresAt: &expiresAt,
@@ -535,10 +550,9 @@ func newGetTargetsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "targets",
 		Short: "List target cluster rollout status across all Releases",
-		Long: `List target cluster rollout entries from Release.status.targets.
+		Long: `List target cluster rollout entries from ReleaseTarget objects.
 
-After Phase 3, Sync objects no longer exist as standalone CRDs.
-Target rollout state is stored inline in Release.status.targets.`,
+ReleaseTarget is the authoritative per-target execution state store.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runGetTargets(cmd.Context(), namespace, allNamespaces, phase, kubeconfig)
 		},
@@ -556,25 +570,22 @@ func runGetTargets(ctx context.Context, namespace string, allNamespaces bool, ph
 		return err
 	}
 
-	opts := listOpts(namespace, allNamespaces)
-	var releaseList kaprov1alpha1.ReleaseList
-	if err := c.List(ctx, &releaseList, opts...); err != nil {
-		return fmt.Errorf("list releases: %w", err)
+	var targetList kaprov1alpha1.ReleaseTargetList
+	if err := c.List(ctx, &targetList); err != nil {
+		return fmt.Errorf("list release targets: %w", err)
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "RELEASE\tTARGET\tPIPELINE\tSTAGE\tPHASE\tAGE")
 	count := 0
-	for _, rel := range releaseList.Items {
-		for _, target := range rel.Status.Targets {
-			if phase != "" && string(target.Phase) != phase {
-				continue
-			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-				rel.Name, target.Target, target.Pipeline, target.Stage,
-				target.Phase, age(rel.CreationTimestamp.Time))
-			count++
+	for _, target := range targetList.Items {
+		if phase != "" && string(target.Status.Phase) != phase {
+			continue
 		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			target.Spec.ReleaseRef, target.Spec.Target, target.Spec.Pipeline, target.Spec.Stage,
+			target.Status.Phase, age(target.CreationTimestamp.Time))
+		count++
 	}
 	if count == 0 {
 		fmt.Fprintln(w, "(no targets found)")
@@ -628,29 +639,27 @@ func runApprove(ctx context.Context, releaseTarget, namespace, comment, kubeconf
 		return fmt.Errorf("get release %q: %w", releaseName, err)
 	}
 
-	// Warn if the target is not in WaitingApproval — allow approval anyway (operator override).
-	for _, target := range rel.Status.Targets {
-		if target.Target == targetName && target.Phase != kaprov1alpha1.SyncPhaseWaitingApproval {
-			fmt.Printf("⚠️  Target %q is in phase %q (not WaitingApproval) — approving anyway.\n",
-				targetName, target.Phase)
-			break
-		}
+	targets, err := listReleaseTargetsForRelease(ctx, c, namespace, releaseName)
+	if err != nil {
+		return err
+	}
+	selected := selectApprovalTarget(targets, targetName)
+	if selected == nil {
+		return fmt.Errorf("target %q not found in release %q", targetName, releaseName)
+	}
+	if selected.Status.Phase != kaprov1alpha1.TargetPhaseWaitingApproval {
+		fmt.Printf("⚠️  Target %q is in phase %q (not WaitingApproval) — approving anyway.\n",
+			targetName, selected.Status.Phase)
 	}
 
-	approvalName := releaseName + "-" + targetName + "-approval"
+	ref := approvalRefForTarget(*selected)
+	approvalName := internalgate.ApprovalName(releaseName, ref)
 	approval := &kaprov1alpha1.Approval{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      approvalName,
-			Namespace: namespace,
-			// Labels required by ApprovalGate's client.MatchingLabels query.
-			Labels: map[string]string{
-				"kapro.io/release": releaseName,
-				"kapro.io/target":  targetName,
-			},
+			Name: approvalName,
 		},
 		Spec: kaprov1alpha1.ApprovalSpec{
-			Kind:    kaprov1alpha1.ApprovalKindSync,
-			Ref:     releaseTarget,
+			Ref:     ref,
 			Release: releaseName,
 			Target:  targetName,
 			Comment: comment,
@@ -663,7 +672,7 @@ func runApprove(ctx context.Context, releaseTarget, namespace, comment, kubeconf
 		return fmt.Errorf("create approval: %w", err)
 	}
 
-	fmt.Printf("✅ Approval created: %s/%s\n", namespace, approvalName)
+	fmt.Printf("✅ Approval created: %s\n", approvalName)
 	fmt.Printf("   Release:     %s\n", releaseName)
 	fmt.Printf("   Target:      %s\n", targetName)
 	return nil
@@ -839,6 +848,40 @@ func age(t time.Time) string {
 func shortHash(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])[:8]
+}
+
+func approvalRefForTarget(target kaprov1alpha1.ReleaseTarget) string {
+	return target.Name
+}
+
+func selectApprovalTarget(targets []kaprov1alpha1.ReleaseTarget, targetName string) *kaprov1alpha1.ReleaseTarget {
+	for i := range targets {
+		target := &targets[i]
+		if target.Spec.Target == targetName && target.Status.Phase == kaprov1alpha1.TargetPhaseWaitingApproval {
+			return target
+		}
+	}
+	for i := range targets {
+		target := &targets[i]
+		if target.Spec.Target == targetName {
+			return target
+		}
+	}
+	return nil
+}
+
+func listReleaseTargetsForRelease(ctx context.Context, c client.Client, namespace, releaseName string) ([]kaprov1alpha1.ReleaseTarget, error) {
+	var targetList kaprov1alpha1.ReleaseTargetList
+	if err := c.List(ctx, &targetList); err != nil {
+		return nil, fmt.Errorf("list release targets: %w", err)
+	}
+	targets := make([]kaprov1alpha1.ReleaseTarget, 0)
+	for _, target := range targetList.Items {
+		if target.Spec.ReleaseRef == releaseName {
+			targets = append(targets, target)
+		}
+	}
+	return targets, nil
 }
 
 // ─── kapro artifact ───────────────────────────────────────────────────────────
@@ -1110,10 +1153,9 @@ func runPromote(ctx context.Context, releaseName, pipeline, stage string, target
 		return err
 	}
 
-	// Get the Release and filter its inline targets by stage/pipeline.
-	var rel kaprov1alpha1.Release
-	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: releaseName}, &rel); err != nil {
-		return fmt.Errorf("get release %q: %w", releaseName, err)
+	targetsForRelease, err := listReleaseTargetsForRelease(ctx, c, namespace, releaseName)
+	if err != nil {
+		return err
 	}
 
 	// Build target allowlist if provided.
@@ -1125,48 +1167,43 @@ func runPromote(ctx context.Context, releaseName, pipeline, stage string, target
 	approved := 0
 	skipped := 0
 	total := 0
-	for _, target := range rel.Status.Targets {
-		if target.Stage != stage {
+	for _, target := range targetsForRelease {
+		if target.Spec.Stage != stage {
 			continue
 		}
-		if pipeline != "" && target.Pipeline != pipeline {
+		if pipeline != "" && target.Spec.Pipeline != pipeline {
 			continue
 		}
 		total++
-		if target.Phase != kaprov1alpha1.SyncPhaseWaitingApproval {
+		if target.Status.Phase != kaprov1alpha1.TargetPhaseWaitingApproval {
 			skipped++
 			continue
 		}
 		if len(targetSet) > 0 {
-			if _, ok := targetSet[target.Target]; !ok {
+			if _, ok := targetSet[target.Spec.Target]; !ok {
 				skipped++
 				continue
 			}
 		}
 
-		approvalName := releaseName + "-" + target.Target + "-approval"
+		ref := approvalRefForTarget(target)
+		approvalName := internalgate.ApprovalName(releaseName, ref)
 		approval := &kaprov1alpha1.Approval{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      approvalName,
-				Namespace: namespace,
-				Labels: map[string]string{
-					"kapro.io/release": releaseName,
-					"kapro.io/target":  target.Target,
-				},
+				Name: approvalName,
 			},
 			Spec: kaprov1alpha1.ApprovalSpec{
-				Kind:    kaprov1alpha1.ApprovalKindSync,
-				Ref:     releaseName + "/" + target.Target,
+				Ref:     ref,
 				Release: releaseName,
-				Target:  target.Target,
+				Target:  target.Spec.Target,
 				Comment: comment,
 			},
 		}
 		if err := c.Create(ctx, approval); client.IgnoreAlreadyExists(err) != nil {
-			fmt.Printf("⚠️  Failed to create approval for %s: %v\n", target.Target, err)
+			fmt.Printf("⚠️  Failed to create approval for %s: %v\n", target.Spec.Target, err)
 			continue
 		}
-		fmt.Printf("✅ Approved: %s/%s (stage: %s)\n", releaseName, target.Target, stage)
+		fmt.Printf("✅ Approved: %s/%s (stage: %s)\n", releaseName, target.Spec.Target, stage)
 		approved++
 	}
 

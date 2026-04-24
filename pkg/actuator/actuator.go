@@ -31,13 +31,23 @@ type ApplyRequest struct {
 	AppKey string
 }
 
+// DeltaApplyRequest carries a map of appKey → version for multi-artifact delta delivery.
+type DeltaApplyRequest struct {
+	// Cluster is the target member cluster.
+	Cluster *kaprov1alpha1.MemberCluster
+	// DesiredVersions maps appKey → version for all artifacts in this release.
+	DesiredVersions map[string]string
+}
+
 // Actuator is KAI: the Kapro Actuator Interface.
 //
 // Any delivery system that can apply a version to a cluster implements this interface.
 // Implementations must be safe for concurrent use from multiple goroutines.
 type Actuator interface {
 	// Apply instructs the delivery system to roll out the given version.
-	// Idempotent — calling Apply twice with the same version is safe.
+	// It MUST be idempotent: calling Apply twice with the same version must not
+	// trigger a double rollout, corrupt state, or return an error solely because
+	// the request was replayed after a reconciliation retry.
 	Apply(ctx context.Context, req ApplyRequest) error
 
 	// IsConverged returns true when the delivery system confirms the target
@@ -51,6 +61,17 @@ type Actuator interface {
 	IsConverged(ctx context.Context, cluster *kaprov1alpha1.MemberCluster, version, appKey string) (bool, error)
 
 	// Rollback instructs the delivery system to revert to the given previous version.
-	// Called when GatePolicy.onFailure == rollback.
-	Rollback(ctx context.Context, cluster *kaprov1alpha1.MemberCluster, previousVersion string) error
+	// appKey identifies which application stream within the cluster should be
+	// rolled back; implementations must not implicitly reuse a possibly-mutated
+	// desiredAppKey from current cluster state.
+	Rollback(ctx context.Context, cluster *kaprov1alpha1.MemberCluster, previousVersion, appKey string) error
+
+	// ApplyDelta compares desiredVersions against MemberCluster.status.currentVersions
+	// and only applies artifacts that changed. Returns the number of artifacts that
+	// required delivery (delta count). Idempotent.
+	ApplyDelta(ctx context.Context, req DeltaApplyRequest) (int, error)
+
+	// IsAllConverged returns true when ALL artifacts in desiredVersions match
+	// the cluster's currentVersions and Flux has converged.
+	IsAllConverged(ctx context.Context, cluster *kaprov1alpha1.MemberCluster, desiredVersions map[string]string) (bool, error)
 }

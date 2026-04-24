@@ -66,7 +66,7 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{
 				Type: "flux",
-				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},
+				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system", OCIRepository: "test-repo", KustomizationPath: "."},
 			},
 		},
 	}
@@ -81,7 +81,7 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{
 				Type: "flux",
-				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},
+				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system", OCIRepository: "test-repo", KustomizationPath: "."},
 			},
 		},
 	}
@@ -101,7 +101,7 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 				{
 					Name:      "prod",
 					Selector:  metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod", "e2e": suffix}},
-					DependsOn: []string{"dev"},
+					DependsOn: []kaprov1alpha1.StageDependency{{Stage: "dev"}},
 				},
 			},
 		},
@@ -133,13 +133,10 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 	}, "release should leave Pending")
 	t.Logf("release phase after Pending: %s", getRelease(ctx, c, releaseKey).Status.Phase)
 
-	// ── 7. Wait: at least one target entry created in release.Status.Targets ─
-	// After the Sync CRD fold, ReleaseReconciler tracks target progress
-	// inline in release.Status.Targets — no standalone Sync objects.
+	// ── 7. Wait: at least one ReleaseTarget child is created ─
 	eventually(t, func() bool {
-		r := getRelease(ctx, c, releaseKey)
-		return len(r.Status.Targets) > 0
-	}, "at least one TargetStatus should be created in release.Status.Targets")
+		return len(listReleaseTargets(t, ctx, c, release.Name, release.Namespace)) > 0
+	}, "at least one ReleaseTarget should be created")
 
 	// ── 8. Keep MemberClusters fresh so Syncs can converge ──────────────────
 	patchRegistrationConverged(t, ctx, c, devReg, versions)
@@ -150,10 +147,10 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 	// can take >20s; use a longer deadline here.
 	eventuallyLong(t, func() bool {
 		// Log target phases to aid debugging.
-		r := getRelease(ctx, c, releaseKey)
-		for _, target := range r.Status.Targets {
-			t.Logf("  Target %s/%s/%s phase=%s", target.PipelineRef, target.Stage, target.Target, target.Phase)
+		for _, target := range listReleaseTargets(t, ctx, c, release.Name, release.Namespace) {
+			t.Logf("  Target %s/%s/%s phase=%s", target.Spec.PipelineRef, target.Spec.Stage, target.Spec.Target, target.Status.Phase)
 		}
+		r := getRelease(ctx, c, releaseKey)
 		t.Logf("  Release phase=%s", r.Status.Phase)
 		return r.Status.Phase == kaprov1alpha1.ReleasePhaseComplete
 	}, "release should reach Complete — full chain Release→Env FSM→Converged→Complete")

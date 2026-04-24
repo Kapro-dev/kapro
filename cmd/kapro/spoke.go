@@ -204,7 +204,7 @@ func runSpokeInstall(ctx context.Context, clusterName, hubKubeconfigPath, spokeK
 //
 // GCP / Workload Identity mode (gcpServiceAccount != ""):
 //   - Omits the bootstrap token Secret entirely (no sensitive credential on spoke).
-//   - Deployment uses KAPRO_PROVIDER=gcp; KSA is annotated for WI federation.
+//   - Deployment uses KAPRO_BOOTSTRAP_MODE=gcp; KSA is annotated for WI federation.
 func buildSpokeManifests(clusterName, hubURL, hubCABundle, bootstrapToken, image, gcpServiceAccount string) []client.Object {
 	labels := map[string]string{
 		"app.kubernetes.io/name":       "kapro-cluster-controller",
@@ -228,7 +228,7 @@ func buildSpokeManifests(clusterName, hubURL, hubCABundle, bootstrapToken, image
 	// Provider-specific Deployment env var: bootstrap token (generic) or provider tag (gcp).
 	var providerEnv corev1.EnvVar
 	if gcpServiceAccount != "" {
-		providerEnv = corev1.EnvVar{Name: "KAPRO_PROVIDER", Value: "gcp"}
+		providerEnv = corev1.EnvVar{Name: "KAPRO_BOOTSTRAP_MODE", Value: "gcp"}
 	} else {
 		providerEnv = corev1.EnvVar{
 			Name: "KAPRO_BOOTSTRAP_TOKEN",

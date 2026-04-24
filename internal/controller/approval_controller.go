@@ -66,6 +66,16 @@ func (r *ApprovalReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			ObservedGeneration: approval.Generation,
 			LastTransitionTime: metav1.Now(),
 		})
+		// Flux three-condition: Reconciling=False (one-shot, done), Stalled removed.
+		apimeta.SetStatusCondition(&approval.Status.Conditions, metav1.Condition{
+			Type:               kaprov1alpha1.ConditionTypeReconciling,
+			Status:             metav1.ConditionFalse,
+			Reason:             "Recorded",
+			Message:            "approval processed",
+			ObservedGeneration: approval.Generation,
+			LastTransitionTime: metav1.Now(),
+		})
+		apimeta.RemoveStatusCondition(&approval.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
 		if err := r.Status().Patch(ctx, &approval, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("patch approval status: %w", err)
 		}

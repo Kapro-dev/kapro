@@ -11,8 +11,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
-	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/internal/actuator/flux"
+	"kapro.io/kapro/pkg/actuator"
 )
 
 // Compile-time assertion: FluxActuator must satisfy actuator.Actuator.
@@ -169,7 +169,7 @@ func TestFluxActuator_Rollback_SetsDesiredVersionToPrevious(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().WithScheme(fluxScheme(t)).WithObjects(mc).Build()
 	a := &flux.FluxActuator{Client: fakeClient}
 
-	if err := a.Rollback(context.Background(), mc, "v1.0.0"); err != nil {
+	if err := a.Rollback(context.Background(), mc, "v1.0.0", "some-app"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -177,5 +177,8 @@ func TestFluxActuator_Rollback_SetsDesiredVersionToPrevious(t *testing.T) {
 	_ = fakeClient.Get(context.Background(), client.ObjectKey{Name: "de-rbk"}, &updated)
 	if updated.Spec.DesiredVersion != "v1.0.0" {
 		t.Errorf("expected rollback to set DesiredVersion=v1.0.0, got %s", updated.Spec.DesiredVersion)
+	}
+	if updated.Spec.DesiredAppKey != "some-app" {
+		t.Errorf("expected rollback to preserve explicit app key, got %s", updated.Spec.DesiredAppKey)
 	}
 }

@@ -24,6 +24,8 @@ func RunSuite(t *testing.T, a pkgactuator.Actuator) {
 	t.Run("KAI/IsConvergedReturnsBool", func(t *testing.T) { testIsConvergedReturnsBool(t, a) })
 	t.Run("KAI/RollbackNilCluster", func(t *testing.T) { testRollbackNilCluster(t, a) })
 	t.Run("KAI/ConcurrentSafe", func(t *testing.T) { testConcurrentSafe(t, a) })
+	t.Run("KAI/ApplyDeltaNilCluster", func(t *testing.T) { testApplyDeltaNilCluster(t, a) })
+	t.Run("KAI/IsAllConvergedNilCluster", func(t *testing.T) { testIsAllConvergedNilCluster(t, a) })
 }
 
 func testNotNil(t *testing.T, a pkgactuator.Actuator) {
@@ -101,7 +103,7 @@ func testRollbackNilCluster(t *testing.T, a pkgactuator.Actuator) {
 			t.Errorf("Actuator.Rollback panicked on nil Cluster: %v", r)
 		}
 	}()
-	a.Rollback(context.Background(), nil, "v0.0.0") //nolint:errcheck
+	a.Rollback(context.Background(), nil, "v0.0.0", "default") //nolint:errcheck
 }
 
 // testConcurrentSafe verifies the actuator can be called concurrently.
@@ -125,6 +127,31 @@ func testConcurrentSafe(t *testing.T, a pkgactuator.Actuator) {
 			return
 		}
 	}
+}
+
+// testApplyDeltaNilCluster verifies ApplyDelta handles nil Cluster without panicking.
+func testApplyDeltaNilCluster(t *testing.T, a pkgactuator.Actuator) {
+	t.Helper()
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Actuator.ApplyDelta panicked on nil Cluster: %v", r)
+		}
+	}()
+	a.ApplyDelta(context.Background(), pkgactuator.DeltaApplyRequest{ //nolint:errcheck
+		Cluster:         nil,
+		DesiredVersions: map[string]string{"app": "v1.0.0"},
+	})
+}
+
+// testIsAllConvergedNilCluster verifies IsAllConverged handles nil Cluster without panicking.
+func testIsAllConvergedNilCluster(t *testing.T, a pkgactuator.Actuator) {
+	t.Helper()
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Actuator.IsAllConverged panicked on nil Cluster: %v", r)
+		}
+	}()
+	a.IsAllConverged(context.Background(), nil, map[string]string{"app": "v1.0.0"}) //nolint:errcheck
 }
 
 func minimalCluster() *kaprov1alpha1.MemberCluster {

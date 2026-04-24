@@ -1,32 +1,26 @@
-// Package health defines KHI — the Kapro Health Interface.
+// Package health defines the contract for assessing the health of workloads
+// on a target cluster.
 //
-// KHI v1alpha1 is the contract for assessing the health of workloads on a
-// target cluster. The release rollout FSM calls AssessHealth during the
-// HealthCheck phase to determine whether the cluster is in a state suitable
-// for delivery.
+// The release rollout FSM calls AssessHealth during the HealthCheck phase to
+// determine whether a target cluster is in a state suitable for delivery.
 //
-// # Two-path health assessment
-//
-// Path A (CRD provider — default): health is read from
-// ManagedCluster.status.health written by kapro-cluster-controller.
-// The AssessRequest.KubeConfig is nil on this path; the assessor reads the
-// pre-computed health snapshot from the CRD.
-//
-// Path B (direct-connect — v0.3+): the controller provides a *rest.Config
-// obtained from the KCI Connector. The assessor opens a short-lived client,
-// lists workloads, and returns live health.
+// # Runtime model
 //
 // Built-in implementations live in internal/health/:
 //   - gitops/ — argoproj/gitops-engine health assessment (Deployments, StatefulSets, DaemonSets)
 //   - lws/    — LeaderWorkerSet health handler (AI/ML training jobs)
 //
+// An assessor may read a pre-computed health snapshot from the control plane
+// (for example MemberCluster.status written by kapro-cluster-controller) or,
+// when a *rest.Config is supplied, open a short-lived client against the
+// target cluster directly. The choice is up to the assessor implementation;
+// this package stays agnostic.
+//
 // External implementations can satisfy the Assessor interface and register
-// at startup.
+// at startup via pkg/registry.
 //
-// # Stability
-//
-// KHI v1alpha1 is stable. The Assessor interface has backwards-compatibility
-// guarantees within a major version.
+// Health is not a pluggable CRD-level extension point today. The primary
+// extension surfaces for Kapro are pkg/actuator and pkg/gate; see docs/SPEC.md.
 package health
 
 import (
@@ -70,9 +64,11 @@ type AssessRequest struct {
 	// Kinds lists the resource kinds to assess.
 	// Empty = [Deployment, StatefulSet, DaemonSet] (sensible defaults).
 	Kinds []string
-	// KubeConfig is the *rest.Config for the target cluster.
-	// Nil on the CRD-provider path (health is read from ManagedCluster.status.health).
-	// Non-nil on the direct-connect path (Connector.Connect() returns this).
+	// KubeConfig is an optional *rest.Config for the target cluster.
+	// When nil, the assessor is expected to read a pre-computed health
+	// snapshot from the control plane (for example MemberCluster.status).
+	// When non-nil, the assessor may open a short-lived client against the
+	// target cluster and compute health live.
 	KubeConfig *rest.Config
 }
 
@@ -83,7 +79,7 @@ type AssessResult struct {
 	Message   string
 }
 
-// Assessor is KHI v1alpha1: the Kapro Health Interface.
+// Assessor is the health-assessment contract.
 //
 // AssessHealth must be idempotent and must not mutate cluster state.
 // Implementations must be safe for concurrent use.

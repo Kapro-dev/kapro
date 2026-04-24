@@ -21,6 +21,7 @@ import (
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	"kapro.io/kapro/internal/controller"
 	"kapro.io/kapro/pkg/actuator"
+	"kapro.io/kapro/pkg/gate"
 )
 
 // TestMain ensures envtest binaries are available; if not present we skip integration tests gracefully.
@@ -106,9 +107,20 @@ func setupEnv(t *testing.T) (context.Context, context.CancelFunc, client.Client)
 		Recorder:         recorder,
 		Scheme:           mgr.GetScheme(),
 		ActuatorRegistry: fakeActuators,
+		GateRegistry:     newNoopGateRegistry(t),
 	}
 	if err := releaseReconciler.SetupWithManager(mgr); err != nil {
 		t.Fatalf("ReleaseReconciler.SetupWithManager: %v", err)
+	}
+	releaseTargetReconciler := &controller.ReleaseTargetReconciler{
+		Client:           mgr.GetClient(),
+		Recorder:         recorder,
+		Scheme:           mgr.GetScheme(),
+		ActuatorRegistry: fakeActuators,
+		GateRegistry:     newNoopGateRegistry(t),
+	}
+	if err := releaseTargetReconciler.SetupWithManager(mgr); err != nil {
+		t.Fatalf("ReleaseTargetReconciler.SetupWithManager: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -185,8 +197,14 @@ func (f *fakeActuator) Apply(_ context.Context, _ actuator.ApplyRequest) error {
 func (f *fakeActuator) IsConverged(_ context.Context, _ *kaprov1alpha1.MemberCluster, _, _ string) (bool, error) {
 	return f.converged, f.convErr
 }
-func (f *fakeActuator) Rollback(_ context.Context, _ *kaprov1alpha1.MemberCluster, _ string) error {
+func (f *fakeActuator) Rollback(_ context.Context, _ *kaprov1alpha1.MemberCluster, _, _ string) error {
 	return f.applyErr
+}
+func (f *fakeActuator) ApplyDelta(_ context.Context, req actuator.DeltaApplyRequest) (int, error) {
+	return len(req.DesiredVersions), f.applyErr
+}
+func (f *fakeActuator) IsAllConverged(_ context.Context, _ *kaprov1alpha1.MemberCluster, _ map[string]string) (bool, error) {
+	return f.converged, f.convErr
 }
 
 // ---- shared fixture builders ------------------------------------------------
@@ -215,8 +233,34 @@ func makeMemberCluster(name string, labels map[string]string) *kaprov1alpha1.Mem
 		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{
 				Type: "flux",
-				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},
+				Flux: &kaprov1alpha1.FluxActuator{
+					Namespace:         "flux-system",
+					OCIRepository:     "test-repo",
+					KustomizationPath: ".",
+				},
 			},
 		},
 	}
+}
+
+// passGate is a pass-through Gate used in tests — always returns Passed.
+type passGate struct{}
+
+func (passGate) Evaluate(_ context.Context, _ gate.Request) (gate.Result, error) {
+	return gate.Result{Phase: kaprov1alpha1.GatePhasePassed}, nil
+}
+
+// newNoopGateRegistry returns a gate.Registry with every built-in name
+// (soak, metrics, approval, verification, cel, job, webhook) wired to a
+// pass-through Gate. Tests that need specific gate behaviour should override
+// by registering a real gate before running.
+func newNoopGateRegistry(t *testing.T) *gate.Registry {
+	t.Helper()
+	reg := gate.NewRegistry()
+	for _, name := range []string{"soak", "metrics", "approval", "verification", "cel", "job", "webhook"} {
+		if err := reg.Register(name, passGate{}); err != nil {
+			t.Fatalf("register %s gate: %v", name, err)
+		}
+	}
+	return reg
 }

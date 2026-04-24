@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
@@ -43,9 +44,17 @@ func (m *MemberClusterMutator) Handle(_ context.Context, req admission.Request) 
 
 	if mc.Spec.Topology != nil && mc.Spec.Topology.Accelerator != "" {
 		mc.Labels[labelAccelerator] = mc.Spec.Topology.Accelerator
-	} else {
-		// Remove the managed label when the topology field is cleared.
-		delete(mc.Labels, labelAccelerator)
+	} else if req.Operation == admissionv1.Update {
+		var old kaprov1alpha1.MemberCluster
+		if err := m.decoder.DecodeRaw(req.OldObject, &old); err != nil {
+			return admission.Errored(http.StatusBadRequest, err)
+		}
+		// Remove the label only when the webhook previously managed it.
+		if old.Spec.Topology != nil &&
+			old.Spec.Topology.Accelerator != "" &&
+			old.Labels[labelAccelerator] == old.Spec.Topology.Accelerator {
+			delete(mc.Labels, labelAccelerator)
+		}
 	}
 
 	marshaled, err := json.Marshal(mc)

@@ -88,7 +88,7 @@ func (n *Notifier) Notify(ctx context.Context, event notification.Event, policy 
 	for _, ch := range policy.Channels {
 		ch := ch // capture for goroutine
 		go func() {
-			sendCtx, cancel := context.WithTimeout(context.Background(), sendTimeout)
+			sendCtx, cancel := context.WithTimeout(ctx, sendTimeout)
 			defer cancel()
 
 			if err := dispatch(sendCtx, ch, secretData, msg, event); err != nil {
