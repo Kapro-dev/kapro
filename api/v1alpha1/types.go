@@ -1515,3 +1515,246 @@ type SourceList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Source `json:"items"`
 }
+
+// ---- AgentPolicy ---------------------------------------------------------------
+
+// AgentPolicyMode controls the agent's authority level.
+// +kubebuilder:validation:Enum=auto;recommend;disabled
+type AgentPolicyMode string
+
+const (
+	// AgentPolicyModeAuto allows the agent to create Approval objects autonomously
+	// when confidence meets the threshold.
+	AgentPolicyModeAuto AgentPolicyMode = "auto"
+	// AgentPolicyModeRecommend allows the agent to post a recommendation
+	// but a human must still create the Approval object.
+	AgentPolicyModeRecommend AgentPolicyMode = "recommend"
+	// AgentPolicyModeDisabled suspends the agent entirely.
+	AgentPolicyModeDisabled AgentPolicyMode = "disabled"
+)
+
+// EscalationAction controls behavior when confidence is below threshold.
+// +kubebuilder:validation:Enum=reject;hold;escalate
+type EscalationAction string
+
+const (
+	EscalationReject   EscalationAction = "reject"
+	EscalationHold     EscalationAction = "hold"
+	EscalationEscalate EscalationAction = "escalate"
+)
+
+// AgentPolicySpec defines the trust boundary for one AI agent identity.
+type AgentPolicySpec struct {
+	// Identity binds this policy to a specific agent ServiceAccount.
+	Identity AgentPolicyIdentity `json:"identity"`
+	// Mode controls the agent's authority level.
+	// +kubebuilder:default=recommend
+	Mode AgentPolicyMode `json:"mode"`
+	// Scope restricts which stages and clusters this agent may act on.
+	Scope AgentScope `json:"scope"`
+	// Confidence defines minimum confidence thresholds.
+	Confidence AgentConfidencePolicy `json:"confidence"`
+	// Escalation controls behavior when confidence is insufficient.
+	Escalation AgentEscalationPolicy `json:"escalation"`
+	// RateLimits caps the agent's decision throughput.
+	// +optional
+	RateLimits *AgentRateLimits `json:"rateLimits,omitempty"`
+	// BlastRadius caps the maximum fleet impact per Release.
+	// +optional
+	BlastRadius *AgentBlastRadius `json:"blastRadius,omitempty"`
+	// Audit defines what the agent must provide with each decision.
+	Audit AgentAuditRequirements `json:"audit"`
+	// TimeWindows restricts when the agent may issue decisions.
+	// +optional
+	TimeWindows []AgentTimeWindow `json:"timeWindows,omitempty"`
+	// Priority determines precedence when multiple policies overlap.
+	// Lower number = higher priority.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=1000
+	// +kubebuilder:default=100
+	Priority int32 `json:"priority,omitempty"`
+	// Suspended pauses this agent policy.
+	// +kubebuilder:default=false
+	Suspended bool `json:"suspended,omitempty"`
+}
+
+// AgentPolicyIdentity binds a policy to a ServiceAccount.
+type AgentPolicyIdentity struct {
+	// ServiceAccountName is the Kubernetes ServiceAccount the agent authenticates as.
+	ServiceAccountName string `json:"serviceAccountName"`
+	// ServiceAccountNamespace is the namespace of the ServiceAccount.
+	// +kubebuilder:default=kapro-system
+	ServiceAccountNamespace string `json:"serviceAccountNamespace,omitempty"`
+}
+
+// AgentScope defines what the agent can see and act on.
+type AgentScope struct {
+	// Stages lists stage names the agent may approve. Empty means all stages.
+	// +optional
+	Stages []string `json:"stages,omitempty"`
+	// ExcludeStages lists stage names explicitly denied. Takes precedence over Stages.
+	// +optional
+	ExcludeStages []string `json:"excludeStages,omitempty"`
+	// ClusterSelector restricts to targets matching these labels.
+	// +optional
+	ClusterSelector *metav1.LabelSelector `json:"clusterSelector,omitempty"`
+	// ExcludeClusters is an explicit denylist of MemberCluster names.
+	// +optional
+	ExcludeClusters []string `json:"excludeClusters,omitempty"`
+	// CountryProfiles assigns risk tiers and confidence overrides per geography.
+	// +optional
+	CountryProfiles []CountryRiskProfile `json:"countryProfiles,omitempty"`
+}
+
+// CountryRiskProfile assigns a risk tier to a set of countries.
+type CountryRiskProfile struct {
+	// Countries is a list of ISO 3166-1 alpha-2 country codes.
+	Countries []string `json:"countries"`
+	// RiskTier classifies the regulatory/operational risk.
+	// +kubebuilder:validation:Enum=low;medium;high;critical
+	RiskTier string `json:"riskTier"`
+	// MinConfidence overrides the base threshold for these countries.
+	// Effective threshold is max(base, this).
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=1
+	MinConfidence float64 `json:"minConfidence"`
+	// Mode overrides the agent mode for these countries.
+	// +optional
+	Mode *AgentPolicyMode `json:"mode,omitempty"`
+	// RequireHumanCosign requires human Approval in addition to agent decision.
+	// +optional
+	RequireHumanCosign bool `json:"requireHumanCosign,omitempty"`
+}
+
+// AgentConfidencePolicy defines confidence thresholds per scope tier.
+type AgentConfidencePolicy struct {
+	// Default is the baseline confidence threshold.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=1
+	Default float64 `json:"default"`
+	// TierOverrides sets thresholds keyed by kapro.io/tier label value.
+	// +optional
+	TierOverrides map[string]float64 `json:"tierOverrides,omitempty"`
+	// StageOverrides sets thresholds keyed by stage name.
+	// +optional
+	StageOverrides map[string]float64 `json:"stageOverrides,omitempty"`
+}
+
+// AgentEscalationPolicy controls behavior when confidence is insufficient.
+type AgentEscalationPolicy struct {
+	// Action is the default escalation behavior.
+	// +kubebuilder:default=hold
+	Action EscalationAction `json:"action"`
+	// HoldDuration is how long to hold before auto-rejecting.
+	// Only used when Action is "hold". Empty means hold indefinitely.
+	// +optional
+	HoldDuration string `json:"holdDuration,omitempty"`
+}
+
+// AgentRateLimits caps the agent's throughput.
+type AgentRateLimits struct {
+	// MaxApprovalsPerHour is the maximum approve decisions per hour.
+	// +optional
+	MaxApprovalsPerHour int32 `json:"maxApprovalsPerHour,omitempty"`
+	// MaxApprovalsPerDay is the maximum approve decisions per day.
+	// +optional
+	MaxApprovalsPerDay int32 `json:"maxApprovalsPerDay,omitempty"`
+	// MaxConcurrent is the maximum in-flight approvals at any time.
+	// +optional
+	MaxConcurrent int32 `json:"maxConcurrent,omitempty"`
+	// Cooldown is the minimum duration between consecutive approvals.
+	// +optional
+	Cooldown string `json:"cooldown,omitempty"`
+}
+
+// AgentBlastRadius caps the fleet impact of agent decisions.
+type AgentBlastRadius struct {
+	// MaxPercentOfFleet is the maximum percentage of total clusters
+	// the agent may approve in a single Release.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=100
+	// +optional
+	MaxPercentOfFleet int32 `json:"maxPercentOfFleet,omitempty"`
+	// MaxPercentPerTier caps per-tier, keyed by kapro.io/tier label.
+	// +optional
+	MaxPercentPerTier map[string]int32 `json:"maxPercentPerTier,omitempty"`
+	// MaxAbsoluteClusters is the hard cap regardless of percentages.
+	// +optional
+	MaxAbsoluteClusters int32 `json:"maxAbsoluteClusters,omitempty"`
+}
+
+// AgentAuditRequirements defines what the agent must provide with each decision.
+type AgentAuditRequirements struct {
+	// RequireReasoning mandates human-readable reasoning.
+	// +kubebuilder:default=true
+	RequireReasoning bool `json:"requireReasoning"`
+	// RequireMetricReferences mandates the reasoning reference specific metrics.
+	// +optional
+	RequireMetricReferences bool `json:"requireMetricReferences,omitempty"`
+	// RequireConfidenceScore mandates a numeric confidence score.
+	// +kubebuilder:default=true
+	RequireConfidenceScore bool `json:"requireConfidenceScore"`
+	// MinReasoningLength is the minimum character count for reasoning.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default=50
+	// +optional
+	MinReasoningLength int32 `json:"minReasoningLength,omitempty"`
+}
+
+// AgentTimeWindow restricts when the agent may issue decisions.
+type AgentTimeWindow struct {
+	// Name identifies this window for audit purposes.
+	Name string `json:"name"`
+	// Timezone is an IANA timezone string.
+	// +kubebuilder:default="UTC"
+	Timezone string `json:"timezone,omitempty"`
+	// DaysOfWeek restricts to specific days. Empty means all days.
+	// +optional
+	DaysOfWeek []string `json:"daysOfWeek,omitempty"`
+	// StartTime is the daily start time in HH:MM format (24h).
+	StartTime string `json:"startTime"`
+	// EndTime is the daily end time in HH:MM format (24h).
+	EndTime string `json:"endTime"`
+	// Deny inverts the window: the agent is BLOCKED during this window.
+	// +optional
+	Deny bool `json:"deny,omitempty"`
+}
+
+// AgentPolicyStatus is the observed state of the AgentPolicy.
+type AgentPolicyStatus struct {
+	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
+	Conditions         []metav1.Condition `json:"conditions,omitempty"`
+	// ActiveDecisions is the count of in-flight decisions by this agent.
+	ActiveDecisions int32 `json:"activeDecisions,omitempty"`
+	// DecisionsToday is the count of decisions made in the current UTC day.
+	DecisionsToday int32 `json:"decisionsToday,omitempty"`
+	// LastDecisionAt is the timestamp of the last decision.
+	// +optional
+	LastDecisionAt string `json:"lastDecisionAt,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Cluster,shortName=agp,categories=kapro-all
+// +kubebuilder:printcolumn:name="Mode",type=string,JSONPath=`.spec.mode`
+// +kubebuilder:printcolumn:name="SA",type=string,JSONPath=`.spec.identity.serviceAccountName`
+// +kubebuilder:printcolumn:name="Priority",type=integer,JSONPath=`.spec.priority`
+// +kubebuilder:printcolumn:name="Active",type=integer,JSONPath=`.status.activeDecisions`
+// +kubebuilder:printcolumn:name="Suspended",type=boolean,JSONPath=`.spec.suspended`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+
+// AgentPolicy defines the trust boundary, scope, and guardrails for one AI
+// agent identity within the Kapro progressive delivery system.
+type AgentPolicy struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              AgentPolicySpec   `json:"spec,omitempty"`
+	Status            AgentPolicyStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+type AgentPolicyList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []AgentPolicy `json:"items"`
+}

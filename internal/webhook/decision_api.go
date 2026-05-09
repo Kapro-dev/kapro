@@ -460,13 +460,46 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, releaseNam
 	agentName := extractAgentName(r)
 	jwtFP := extractJWTFingerprint(r)
 
+	// Resolve and enforce AgentPolicy if one exists.
+	effectiveDecision := req.Decision
+	trustLevel := "none"
+
+	policy, err := s.resolveAgentPolicy(ctx, agentName)
+	if err != nil {
+		l.Error(err, "failed to resolve AgentPolicy")
+	}
+	if policy != nil {
+		// Fetch cluster for label-based checks.
+		var mc kaprov1alpha1.MemberCluster
+		var cluster *kaprov1alpha1.MemberCluster
+		if err := s.Client.Get(ctx, client.ObjectKey{Name: target.Spec.Target}, &mc); err == nil {
+			cluster = &mc
+		}
+		pd := enforceAgentPolicy(policy, &target, cluster, req.Confidence, len(req.Reasoning))
+		if !pd.Allowed {
+			writeJSON(w, http.StatusForbidden, DecisionResponse{
+				Accepted: false,
+				Reason:   fmt.Sprintf("AgentPolicy denied: %s", pd.DenyReason),
+			})
+			return
+		}
+		trustLevel = string(pd.EffectiveMode)
+		if pd.EffectiveMode == kaprov1alpha1.AgentPolicyModeRecommend {
+			effectiveDecision = "Recommended"
+		}
+		if pd.RequireHumanCosign && req.Decision == "Approve" {
+			effectiveDecision = "PendingHumanConfirm"
+		}
+	}
+
 	entry := kaprov1alpha1.DecisionEntry{
 		DecisionID:        req.IdempotencyKey,
 		Decision:          req.Decision,
-		EffectiveDecision: req.Decision, // may be overridden by trust level in v0.4
+		EffectiveDecision: effectiveDecision,
 		Identity: kaprov1alpha1.DecisionIdentity{
 			Name:           agentName,
 			Type:           "ServiceAccount",
+			TrustLevel:     trustLevel,
 			JWTFingerprint: jwtFP,
 		},
 		Confidence: req.Confidence,
@@ -507,8 +540,9 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, releaseNam
 		"decision", req.Decision, "confidence", req.Confidence,
 		"agent", agentName)
 
-	// If decision is Approve, create an Approval CR.
-	if req.Decision == "Approve" {
+	// If decision is Approve and effective mode allows it, create an Approval CR.
+	// Recommend mode and PendingHumanConfirm do NOT auto-create Approvals.
+	if req.Decision == "Approve" && effectiveDecision == "Approve" {
 		approval := &kaprov1alpha1.Approval{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: fmt.Sprintf("%s-%s", releaseName, targetKey),
@@ -528,6 +562,11 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, releaseNam
 				return
 			}
 		}
+	}
+
+	// Update AgentPolicy status counters.
+	if policy != nil {
+		s.updateAgentPolicyStatus(ctx, policy)
 	}
 
 	writeJSON(w, http.StatusOK, DecisionResponse{
