@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -31,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	"kapro.io/kapro/internal/cli"
 	internalgate "kapro.io/kapro/internal/gate"
 )
 
@@ -50,10 +50,14 @@ func main() {
 Passes versions forward. Across targets. Across clusters. In waves.`,
 	}
 
+	root.PersistentFlags().StringVarP(&cli.OutputFormat, "output", "o", "", "Output format (json for machine-readable)")
+
 	root.AddCommand(newClusterCmd())
 	root.AddCommand(newSpokeCmd())
 	root.AddCommand(newGetCmd())
+	root.AddCommand(newFleetCmd())
 	root.AddCommand(newApproveCmd())
+	root.AddCommand(newRejectCmd())
 	root.AddCommand(newRollbackCmd())
 	root.AddCommand(newArtifactCmd())
 	root.AddCommand(newReleaseCmd())
@@ -516,28 +520,65 @@ func newGetReleasesCmd() *cobra.Command {
 }
 
 func runGetReleases(ctx context.Context, namespace string, allNamespaces bool, kubeconfigPath string) error {
+	sp := cli.NewSpinner("Fetching releases")
+	sp.Start()
+
 	c, err := buildClient(kubeconfigPath)
 	if err != nil {
+		sp.StopFail("Failed to connect to cluster")
 		return err
 	}
 
 	var list kaprov1alpha1.ReleaseList
 	opts := listOpts(namespace, allNamespaces)
 	if err := c.List(ctx, &list, opts...); err != nil {
+		sp.StopFail("Failed to list releases")
 		return fmt.Errorf("list releases: %w", err)
 	}
+	sp.Stop()
+
+	if cli.IsJSON() {
+		return cli.JSON(list.Items)
+	}
+
 	if len(list.Items) == 0 {
-		fmt.Println("No releases found.")
+		cli.Muted("No releases found.")
 		return nil
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tARTIFACT\tPHASE\tAGE")
+	// Count summary.
+	progressing, complete, failed := 0, 0, 0
 	for _, r := range list.Items {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
-			r.Name, r.Spec.Artifact, r.Status.Phase, age(r.CreationTimestamp.Time))
+		switch r.Status.Phase {
+		case kaprov1alpha1.ReleasePhaseProgressing:
+			progressing++
+		case kaprov1alpha1.ReleasePhaseComplete:
+			complete++
+		case kaprov1alpha1.ReleasePhaseFailed:
+			failed++
+		}
 	}
-	return w.Flush()
+	cli.Header("Releases")
+	cli.Infof("%d total  %s  %s  %s",
+		len(list.Items),
+		cli.Theme.PhaseProgressing.Render(fmt.Sprintf("%d progressing", progressing)),
+		cli.Theme.PhaseComplete.Render(fmt.Sprintf("%d complete", complete)),
+		cli.Theme.PhaseFailed.Render(fmt.Sprintf("%d failed", failed)),
+	)
+
+	tbl := cli.NewTable("NAME", "ARTIFACT", "PHASE", "PIPELINES", "AGE")
+	for _, r := range list.Items {
+		pipelines := ""
+		for i, p := range r.Spec.Pipelines {
+			if i > 0 {
+				pipelines += ", "
+			}
+			pipelines += p.Pipeline
+		}
+		tbl.AddRow(r.Name, r.Spec.Artifact, string(r.Status.Phase), pipelines, cli.Age(r.CreationTimestamp.Time))
+	}
+	tbl.Render()
+	return nil
 }
 
 func newGetTargetsCmd() *cobra.Command {
@@ -565,32 +606,54 @@ ReleaseTarget is the authoritative per-target execution state store.`,
 }
 
 func runGetTargets(ctx context.Context, namespace string, allNamespaces bool, phase, kubeconfigPath string) error {
+	sp := cli.NewSpinner("Fetching targets")
+	sp.Start()
+
 	c, err := buildClient(kubeconfigPath)
 	if err != nil {
+		sp.StopFail("Failed to connect to cluster")
 		return err
 	}
 
 	var targetList kaprov1alpha1.ReleaseTargetList
 	if err := c.List(ctx, &targetList); err != nil {
+		sp.StopFail("Failed to list targets")
 		return fmt.Errorf("list release targets: %w", err)
 	}
+	sp.Stop()
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "RELEASE\tTARGET\tPIPELINE\tSTAGE\tPHASE\tAGE")
-	count := 0
-	for _, target := range targetList.Items {
-		if phase != "" && string(target.Status.Phase) != phase {
-			continue
+	// Filter by phase if specified.
+	var filtered []kaprov1alpha1.ReleaseTarget
+	for _, t := range targetList.Items {
+		if phase == "" || string(t.Status.Phase) == phase {
+			filtered = append(filtered, t)
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-			target.Spec.ReleaseRef, target.Spec.Target, target.Spec.Pipeline, target.Spec.Stage,
-			target.Status.Phase, age(target.CreationTimestamp.Time))
-		count++
 	}
-	if count == 0 {
-		fmt.Fprintln(w, "(no targets found)")
+
+	if cli.IsJSON() {
+		return cli.JSON(filtered)
 	}
-	return w.Flush()
+
+	if len(filtered) == 0 {
+		cli.Muted("No targets found.")
+		return nil
+	}
+
+	cli.Header("Release Targets")
+
+	tbl := cli.NewTable("RELEASE", "TARGET", "STAGE", "PHASE", "VERSION", "AGE")
+	for _, t := range filtered {
+		version := t.Spec.Version
+		if len(version) > 20 {
+			version = version[:17] + "..."
+		}
+		tbl.AddRow(
+			t.Spec.ReleaseRef, t.Spec.Target, t.Spec.Stage,
+			string(t.Status.Phase), version, cli.Age(t.CreationTimestamp.Time),
+		)
+	}
+	tbl.Render()
+	return nil
 }
 
 // ─── kapro approve ────────────────────────────────────────────────────────────
@@ -668,13 +731,20 @@ func runApprove(ctx context.Context, releaseTarget, namespace, comment, kubeconf
 		},
 	}
 
+	sp := cli.NewSpinner("Creating approval")
+	sp.Start()
 	if err := c.Create(ctx, approval); err != nil {
+		sp.StopFail("Failed to create approval")
 		return fmt.Errorf("create approval: %w", err)
 	}
+	sp.StopSuccess("Approval created")
 
-	fmt.Printf("✅ Approval created: %s\n", approvalName)
-	fmt.Printf("   Release:     %s\n", releaseName)
-	fmt.Printf("   Target:      %s\n", targetName)
+	cli.KV("Approval", approvalName)
+	cli.KV("Release", releaseName)
+	cli.KV("Target", targetName)
+	if comment != "" {
+		cli.KV("Comment", comment)
+	}
 	return nil
 }
 
@@ -1246,8 +1316,12 @@ Examples:
 }
 
 func runWorld(ctx context.Context, envFilter, kubeconfigPath string) error {
+	sp := cli.NewSpinner("Fetching fleet status")
+	sp.Start()
+
 	c, err := buildClient(kubeconfigPath)
 	if err != nil {
+		sp.StopFail("Failed to connect to cluster")
 		return err
 	}
 
@@ -1257,34 +1331,215 @@ func runWorld(ctx context.Context, envFilter, kubeconfigPath string) error {
 		opts = append(opts, client.MatchingLabels{"kapro.io/target": envFilter})
 	}
 	if err := c.List(ctx, &list, opts...); err != nil {
+		sp.StopFail("Failed to list clusters")
 		return fmt.Errorf("list member clusters: %w", err)
 	}
+	sp.Stop()
+
+	if cli.IsJSON() {
+		return cli.JSON(list.Items)
+	}
+
 	if len(list.Items) == 0 {
-		fmt.Println("No member clusters found.")
+		cli.Muted("No member clusters found.")
 		return nil
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "CLUSTER\tPHASE\tHEALTHY\tACTIVE RELEASE\tHEARTBEAT\tAGE")
+	healthy, degraded, unknown := 0, 0, 0
 	for _, mc := range list.Items {
-		healthy := "?"
+		switch {
+		case mc.Status.Health.AllWorkloadsReady:
+			healthy++
+		case mc.Status.LastHeartbeat != "":
+			degraded++
+		default:
+			unknown++
+		}
+	}
+
+	cli.Header("Fleet")
+	cli.Infof("%d clusters  %s  %s  %s",
+		len(list.Items),
+		cli.Theme.PhaseComplete.Render(fmt.Sprintf("%d healthy", healthy)),
+		cli.Theme.PhaseFailed.Render(fmt.Sprintf("%d degraded", degraded)),
+		cli.Theme.Muted.Render(fmt.Sprintf("%d unknown", unknown)),
+	)
+
+	tbl := cli.NewTable("CLUSTER", "PHASE", "HEALTHY", "ACTIVE RELEASE", "HEARTBEAT", "AGE")
+	for _, mc := range list.Items {
+		healthStr := "?"
 		if mc.Status.Health.AllWorkloadsReady {
-			healthy = "true"
+			healthStr = "Healthy"
 		} else if mc.Status.LastHeartbeat != "" {
-			healthy = "false"
+			healthStr = "Degraded"
 		}
 		heartbeat := "-"
 		if mc.Status.LastHeartbeat != "" {
-			heartbeat = mc.Status.LastHeartbeat
+			if t, err := time.Parse(time.RFC3339, mc.Status.LastHeartbeat); err == nil {
+				heartbeat = cli.Age(t) + " ago"
+			}
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-			mc.Name,
-			mc.Status.Phase,
-			healthy,
-			mc.Status.ActiveRelease,
-			heartbeat,
-			age(mc.CreationTimestamp.Time),
-		)
+		activeRelease := mc.Status.ActiveRelease
+		if activeRelease == "" {
+			activeRelease = "-"
+		}
+		tbl.AddRow(mc.Name, string(mc.Status.Phase), healthStr, activeRelease, heartbeat, cli.Age(mc.CreationTimestamp.Time))
 	}
-	return w.Flush()
+	tbl.Render()
+	return nil
+}
+
+// ─── kapro fleet ─────────────────────────────────────────────────────────────
+
+func newFleetCmd() *cobra.Command {
+	var kubeconfig string
+	cmd := &cobra.Command{
+		Use:   "fleet",
+		Short: "Fleet summary: clusters, releases, and pending decisions",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runFleet(cmd.Context(), kubeconfig)
+		},
+	}
+	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
+	return cmd
+}
+
+func runFleet(ctx context.Context, kubeconfigPath string) error {
+	sp := cli.NewSpinner("Loading fleet state")
+	sp.Start()
+
+	c, err := buildClient(kubeconfigPath)
+	if err != nil {
+		sp.StopFail("Failed to connect")
+		return err
+	}
+
+	var clusters kaprov1alpha1.MemberClusterList
+	var releases kaprov1alpha1.ReleaseList
+	var targets kaprov1alpha1.ReleaseTargetList
+	if err := c.List(ctx, &clusters); err != nil {
+		sp.StopFail("Failed to list clusters")
+		return err
+	}
+	if err := c.List(ctx, &releases); err != nil {
+		sp.StopFail("Failed to list releases")
+		return err
+	}
+	if err := c.List(ctx, &targets); err != nil {
+		sp.StopFail("Failed to list targets")
+		return err
+	}
+	sp.Stop()
+
+	healthy, degraded := 0, 0
+	for _, mc := range clusters.Items {
+		if mc.Status.Health.AllWorkloadsReady {
+			healthy++
+		} else {
+			degraded++
+		}
+	}
+	activeReleases, pendingDecisions := 0, 0
+	for _, r := range releases.Items {
+		if r.Status.Phase == kaprov1alpha1.ReleasePhaseProgressing {
+			activeReleases++
+		}
+	}
+	for _, t := range targets.Items {
+		if t.Status.Phase == kaprov1alpha1.TargetPhaseWaitingApproval {
+			pendingDecisions++
+		}
+	}
+
+	if cli.IsJSON() {
+		return cli.JSON(map[string]any{
+			"clusters":         len(clusters.Items),
+			"healthyClusters":  healthy,
+			"degradedClusters": degraded,
+			"activeReleases":   activeReleases,
+			"pendingDecisions": pendingDecisions,
+			"totalReleases":    len(releases.Items),
+			"totalTargets":     len(targets.Items),
+		})
+	}
+
+	cli.Header("Fleet Overview")
+	fmt.Fprintln(cli.Out)
+	cli.KV("Clusters", fmt.Sprintf("%d total, %s, %s",
+		len(clusters.Items),
+		cli.Theme.PhaseComplete.Render(fmt.Sprintf("%d healthy", healthy)),
+		cli.Theme.PhaseFailed.Render(fmt.Sprintf("%d degraded", degraded)),
+	))
+	cli.KV("Releases", fmt.Sprintf("%d total, %s",
+		len(releases.Items),
+		cli.Theme.PhaseProgressing.Render(fmt.Sprintf("%d active", activeReleases)),
+	))
+	if pendingDecisions > 0 {
+		cli.KV("Pending", cli.Theme.PhaseWaiting.Render(fmt.Sprintf("%d targets waiting for approval", pendingDecisions)))
+	} else {
+		cli.KV("Pending", cli.Theme.Muted.Render("none"))
+	}
+	fmt.Fprintln(cli.Out)
+	return nil
+}
+
+// ─── kapro reject ────────────────────────────────────────────────────────────
+
+func newRejectCmd() *cobra.Command {
+	var (
+		reason     string
+		kubeconfig string
+	)
+	cmd := &cobra.Command{
+		Use:   "reject <release>/<target>",
+		Short: "Reject a target cluster waiting for approval",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runReject(cmd.Context(), args[0], reason, kubeconfig)
+		},
+	}
+	cmd.Flags().StringVar(&reason, "reason", "", "Reason for rejection (required)")
+	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
+	_ = cmd.MarkFlagRequired("reason")
+	return cmd
+}
+
+func runReject(ctx context.Context, releaseTarget, reason, kubeconfigPath string) error {
+	parts := strings.SplitN(releaseTarget, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return fmt.Errorf("argument must be <release>/<target>, got %q", releaseTarget)
+	}
+	releaseName, targetName := parts[0], parts[1]
+
+	c, err := buildClient(kubeconfigPath)
+	if err != nil {
+		return err
+	}
+
+	targets, err := listReleaseTargetsForRelease(ctx, c, "", releaseName)
+	if err != nil {
+		return err
+	}
+	selected := selectApprovalTarget(targets, targetName)
+	if selected == nil {
+		return fmt.Errorf("target %q not found in release %q", targetName, releaseName)
+	}
+
+	sp := cli.NewSpinner("Rejecting target")
+	sp.Start()
+
+	patch := client.MergeFrom(selected.DeepCopy())
+	selected.Status.Rejected = true
+	selected.Status.RejectedBy = "cli"
+	selected.Status.Message = "rejected: " + reason
+	if err := c.Status().Patch(ctx, selected, patch); err != nil {
+		sp.StopFail("Failed to reject target")
+		return fmt.Errorf("patch rejection: %w", err)
+	}
+	sp.StopSuccess("Target rejected")
+
+	cli.KV("Release", releaseName)
+	cli.KV("Target", targetName)
+	cli.KV("Reason", reason)
+	return nil
 }
