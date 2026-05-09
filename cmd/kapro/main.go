@@ -50,6 +50,7 @@ Passes versions forward. Across targets. Across clusters. In waves.`,
 
 	root.PersistentFlags().StringVarP(&cli.OutputFormat, "output", "o", "", "Output format (json for machine-readable)")
 
+	root.AddCommand(newDemoCmd())
 	root.AddCommand(newClusterCmd())
 	root.AddCommand(newGetCmd())
 	root.AddCommand(newFleetCmd())
