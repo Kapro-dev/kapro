@@ -281,6 +281,7 @@ func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kapr
 	updatedPipelines := make([]kaprov1alpha1.PipelineProgress, 0, len(release.Spec.Pipelines))
 	allPipelinesComplete := true
 	var failureMsg string
+	var pendingCancels []cancelRequest
 	var nextRequeue time.Duration
 
 	for _, pipelineRef := range release.Spec.Pipelines {
@@ -322,12 +323,13 @@ func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kapr
 			return ctrl.Result{}, fmt.Errorf("pipeline %s not found: %w", pipelineRef.Pipeline, err)
 		}
 
-		stageProgress, pipelineDone, pipelineFailed, requeueAfter, err := r.reconcilePipelineStages(
+		stageProgress, pipelineDone, pipelineFailed, requeueAfter, cancels, err := r.reconcilePipelineStages(
 			ctx, release, pipelineRef.Name, &pipeline,
 		)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+		pendingCancels = append(pendingCancels, cancels...)
 		if requeueAfter > 0 && (nextRequeue == 0 || requeueAfter < nextRequeue) {
 			nextRequeue = requeueAfter
 		}
@@ -362,6 +364,11 @@ func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kapr
 			r.normalizeReleaseStatus(release)
 			if err := r.persistReleaseTargets(ctx, release); err != nil {
 				return ctrl.Result{}, fmt.Errorf("persist release targets: %w", err)
+			}
+			// Apply deferred cancellations AFTER persistReleaseTargets so the
+			// cache-based spec writes don't overwrite spec.cancelled.
+			for _, c := range pendingCancels {
+				r.cancelPendingStageTargets(ctx, release, c.pipelineRef, c.stage)
 			}
 			hasRollbacks := r.hasActiveRollbackTargets(release)
 			release.Status.Targets = nil
@@ -402,6 +409,9 @@ func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kapr
 	r.normalizeReleaseStatus(release)
 	if err := r.persistReleaseTargets(ctx, release); err != nil {
 		return ctrl.Result{}, fmt.Errorf("persist release targets: %w", err)
+	}
+	for _, c := range pendingCancels {
+		r.cancelPendingStageTargets(ctx, release, c.pipelineRef, c.stage)
 	}
 	release.Status.Targets = nil
 
@@ -498,12 +508,19 @@ func (r *ReleaseReconciler) handleFailed(ctx context.Context, release *kaprov1al
 //  3. Observes current target phases → derives stage phase.
 //
 // Returns (stageProgress, allComplete, anyFailed, error).
+// cancelRequest records a stage that needs its pending targets cancelled after
+// persistReleaseTargets has run (to avoid the cache overwriting the patch).
+type cancelRequest struct {
+	pipelineRef string
+	stage       string
+}
+
 func (r *ReleaseReconciler) reconcilePipelineStages(
 	ctx context.Context,
 	release *kaprov1alpha1.Release,
 	pipelineRefName string,
 	pipeline *kaprov1alpha1.Pipeline,
-) ([]kaprov1alpha1.StageProgress, bool, bool, time.Duration, error) {
+) ([]kaprov1alpha1.StageProgress, bool, bool, time.Duration, []cancelRequest, error) {
 	log := log.FromContext(ctx)
 
 	// stagePhase maps stage name → "Pending"|"Progressing"|"Complete"|"Failed"
@@ -513,6 +530,7 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 	allComplete := true
 	anyFailed := false
 	var nextRequeue time.Duration
+	var cancels []cancelRequest
 
 	for _, stage := range pipeline.Spec.Stages {
 		// Check stage-level dependencies (with optional soak time and strategy).
@@ -520,7 +538,7 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 		for _, dep := range stage.DependsOn {
 			satisfied, wait, err := r.stageDependencySatisfied(ctx, release, pipelineRefName, pipeline, dep)
 			if err != nil {
-				return nil, false, false, 0, err
+				return nil, false, false, 0, nil, err
 			}
 			if !satisfied {
 				depsComplete = false
@@ -542,7 +560,7 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 		// List clusters matching this stage's selector.
 		envList, err := r.listTargetsForStage(ctx, stage, release)
 		if err != nil {
-			return nil, false, false, 0, fmt.Errorf("list targets for stage %s: %w", stage.Name, err)
+			return nil, false, false, 0, nil, fmt.Errorf("list targets for stage %s: %w", stage.Name, err)
 		}
 		if len(envList) == 0 {
 			log.Info("stage has no matching clusters — treating as complete",
@@ -609,7 +627,9 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 				stagePhase[stage.Name] = "Failed"
 				anyFailed = true
 				allComplete = false
-				r.cancelPendingStageTargets(ctx, release, pipelineRefName, stage.Name)
+				// Defer cancellation until after persistReleaseTargets to avoid
+				// the stale-cache overwriting spec.cancelled.
+				cancels = append(cancels, cancelRequest{pipelineRef: pipelineRefName, stage: stage.Name})
 			}
 		} else if synced == total {
 			sp.Phase = "Complete"
@@ -627,7 +647,7 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 		}
 	}
 
-	return stageProgress, allComplete, anyFailed, nextRequeue, nil
+	return stageProgress, allComplete, anyFailed, nextRequeue, cancels, nil
 }
 
 func (r *ReleaseReconciler) stageDependencySatisfied(
@@ -901,10 +921,12 @@ func (r *ReleaseReconciler) cancelPendingStageTargets(ctx context.Context, relea
 
 		// Signal cancellation via spec — the child reconciler observes this
 		// and transitions status to Failed on its next reconcile.
-		rt.Spec.Cancelled = true
-		rt.Spec.CancelledReason = "stage halted due to peer failure (failurePolicy: halt)"
-		if err := r.Update(ctx, rt); err != nil {
-			log.Error(err, "cancel: failed to update ReleaseTarget spec", "name", rt.Name)
+		// Use a raw JSON merge patch to set spec.cancelled directly, avoiding
+		// resourceVersion conflicts with concurrent status writes.
+		rawPatch := client.RawPatch(types.MergePatchType,
+			[]byte(`{"spec":{"cancelled":true,"cancelledReason":"stage halted due to peer failure (failurePolicy: halt)"}}`))
+		if err := r.Patch(ctx, rt, rawPatch); err != nil {
+			log.Error(err, "cancel: failed to patch ReleaseTarget spec", "name", rt.Name)
 			continue
 		}
 		log.Info("cancel: signalled cancellation", "target", rt.Name)

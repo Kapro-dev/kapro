@@ -71,6 +71,16 @@ spec:
                 description: AppKey is the key used to look up the current version
                   in MemberCluster.status.currentVersions.
                 type: string
+              cancelled:
+                description: |-
+                  Cancelled is set by the parent ReleaseReconciler to signal that this
+                  target should stop progressing (e.g., stage halted due to peer failure).
+                  The child ReleaseTargetReconciler observes this and transitions to Failed.
+                  This avoids cross-controller status writes — parent owns spec, child owns status.
+                type: boolean
+              cancelledReason:
+                description: CancelledReason explains why the target was cancelled.
+                type: string
               desiredVersions:
                 additionalProperties:
                   type: string
@@ -1146,6 +1156,13 @@ spec:
                   - phase
                   type: object
                 type: array
+              heartbeatStaleSince:
+                description: |-
+                  HeartbeatStaleSince records when the target's MemberCluster heartbeat first
+                  became stale. Used to implement a configurable timeout — if the heartbeat
+                  remains stale for longer than the threshold, the target is failed.
+                  Reset when the heartbeat becomes fresh again.
+                type: string
               message:
                 type: string
               missingMCCount:
@@ -1171,6 +1188,7 @@ spec:
                 - Applying
                 - Converged
                 - Failed
+                - Skipped
                 type: string
               phaseEnteredAt:
                 description: PhaseEnteredAt records when the current phase was entered

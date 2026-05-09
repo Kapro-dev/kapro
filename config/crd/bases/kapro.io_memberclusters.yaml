@@ -399,8 +399,11 @@ spec:
                     type: integer
                 type: object
               lastHeartbeat:
-                description: LastHeartbeat is the RFC3339 timestamp of the last cluster-controller
-                  heartbeat.
+                description: |-
+                  LastHeartbeat is the RFC3339 timestamp of the last cluster-controller heartbeat.
+                  Deprecated: the authoritative heartbeat source is now the coordination.k8s.io/v1
+                  Lease "kapro-heartbeat-<cluster>" in kapro-system. This field is still written
+                  for backward compatibility but should not be relied upon for freshness checks.
                 type: string
               observedGeneration:
                 format: int64
