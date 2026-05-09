@@ -43,7 +43,7 @@ type Server struct {
 	OperatorNamespace string
 }
 
-// Handler returns the HTTP mux for all approval endpoints.
+// Handler returns the HTTP mux for all approval and Decision API endpoints.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/approve/", s.handleApprove)
@@ -52,6 +52,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
+	s.RegisterDecisionAPI(mux)
 	return mux
 }
 

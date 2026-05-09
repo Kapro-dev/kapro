@@ -859,6 +859,151 @@ type ReleaseTargetStatus struct {
 	// Conditions provide the Kubernetes-native readiness/reconciling/stalled contract
 	// for this execution object.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	// DecisionTrace stores the audit trail of AI agent and human decisions
+	// for this target's approval gates. Written by the Decision API (webhook
+	// server), never by the ReleaseTargetReconciler.
+	// +optional
+	DecisionTrace *DecisionTrace `json:"decisionTrace,omitempty"`
+}
+
+// DecisionTrace is the full audit trail of deployment decisions for one target.
+// It stores the current decision, historical decisions, and human overrides.
+type DecisionTrace struct {
+	// Current is the active decision for this target's gate.
+	// +optional
+	Current *DecisionEntry `json:"current,omitempty"`
+	// History is the list of previous decisions (Defer, superseded).
+	// Capped at 10 entries; oldest are evicted.
+	// +optional
+	History []DecisionEntry `json:"history,omitempty"`
+	// HumanOverrides records human overrides of AI decisions.
+	// +optional
+	HumanOverrides []HumanOverride `json:"humanOverrides,omitempty"`
+}
+
+// DecisionEntry records one AI agent decision with full reasoning.
+type DecisionEntry struct {
+	// DecisionID is a unique identifier for this decision.
+	DecisionID string `json:"decisionId"`
+	// Decision is the agent's verdict: Approve, Reject, or Defer.
+	// +kubebuilder:validation:Enum=Approve;Reject;Defer
+	Decision string `json:"decision"`
+	// EffectiveDecision is the outcome after trust level evaluation.
+	// May differ from Decision (e.g. Approve → PendingHumanConfirm).
+	EffectiveDecision string `json:"effectiveDecision,omitempty"`
+	// Identity identifies the agent that made this decision.
+	Identity DecisionIdentity `json:"identity"`
+	// Confidence is the agent's self-reported confidence score (0.0-1.0).
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=1
+	Confidence float64 `json:"confidence"`
+	// Reasoning is the agent's human-readable explanation of the decision.
+	Reasoning string `json:"reasoning"`
+	// Factors are the weighted inputs the agent considered.
+	// +optional
+	Factors []DecisionFactor `json:"factors,omitempty"`
+	// Conditions are post-decision checks that must hold for the approval
+	// to remain valid (e.g. "error rate stays below 1% for 30m").
+	// +optional
+	Conditions []DecisionCondition `json:"conditions,omitempty"`
+	// DecidedAt is the RFC3339 timestamp of the decision.
+	DecidedAt string `json:"decidedAt"`
+	// ExpiresAt is the RFC3339 timestamp after which the decision is void.
+	// +optional
+	ExpiresAt string `json:"expiresAt,omitempty"`
+	// SupersededBy is the DecisionID that replaced this entry.
+	// +optional
+	SupersededBy string `json:"supersededBy,omitempty"`
+	// SupersededReason explains why this entry was superseded.
+	// +optional
+	SupersededReason string `json:"supersededReason,omitempty"`
+	// HumanConfirmation records a human's confirmation of this AI decision.
+	// Only populated when the trust level is human-confirm.
+	// +optional
+	HumanConfirmation *HumanConfirmation `json:"humanConfirmation,omitempty"`
+}
+
+// DecisionIdentity identifies who made a decision.
+type DecisionIdentity struct {
+	// Name is the ServiceAccount name or human username.
+	Name string `json:"name"`
+	// Type is "ServiceAccount" for agents or "User" for humans.
+	Type string `json:"type"`
+	// Namespace is the ServiceAccount namespace (empty for users).
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+	// TrustLevel is the resolved trust level from the AgentPolicy.
+	// +optional
+	TrustLevel string `json:"trustLevel,omitempty"`
+	// JWTFingerprint is the SHA-256 fingerprint of the JWT used for authentication.
+	// +optional
+	JWTFingerprint string `json:"jwtFingerprint,omitempty"`
+}
+
+// DecisionFactor is one weighted input the agent considered.
+type DecisionFactor struct {
+	// Name identifies the factor (e.g. "canary_error_rate").
+	Name string `json:"name"`
+	// Value is the observed value.
+	Value float64 `json:"value"`
+	// Weight is the relative importance (0.0-1.0).
+	Weight float64 `json:"weight"`
+	// Assessment is the agent's evaluation: pass, fail, or inconclusive.
+	// +kubebuilder:validation:Enum=pass;fail;inconclusive
+	Assessment string `json:"assessment"`
+}
+
+// DecisionCondition is a post-decision check that must hold.
+type DecisionCondition struct {
+	// Type identifies the condition (e.g. "MetricHold").
+	Type string `json:"type"`
+	// Metric is the metric to watch.
+	// +optional
+	Metric string `json:"metric,omitempty"`
+	// Operator is the comparison operator (lt, gt, eq).
+	// +optional
+	Operator string `json:"operator,omitempty"`
+	// Threshold is the metric threshold.
+	// +optional
+	Threshold float64 `json:"threshold,omitempty"`
+	// Duration is how long the condition must hold.
+	// +optional
+	Duration string `json:"duration,omitempty"`
+	// FailAction is what happens if the condition is violated.
+	// +kubebuilder:validation:Enum=Rollback;Reject;Hold
+	// +optional
+	FailAction string `json:"failAction,omitempty"`
+}
+
+// HumanConfirmation records a human's sign-off on an AI decision.
+type HumanConfirmation struct {
+	// ConfirmedBy is the username of the confirming human.
+	ConfirmedBy string `json:"confirmedBy"`
+	// ConfirmedAt is the RFC3339 timestamp.
+	ConfirmedAt string `json:"confirmedAt"`
+	// Action is Confirmed or Rejected.
+	// +kubebuilder:validation:Enum=Confirmed;Rejected
+	Action string `json:"action"`
+	// Comment is an optional human comment.
+	// +optional
+	Comment string `json:"comment,omitempty"`
+}
+
+// HumanOverride records a human overriding an AI decision.
+type HumanOverride struct {
+	// OverrideID is a unique identifier.
+	OverrideID string `json:"overrideId"`
+	// OverriddenDecisionID is the DecisionID being overridden.
+	OverriddenDecisionID string `json:"overriddenDecisionId"`
+	// Action is Approve or Reject.
+	// +kubebuilder:validation:Enum=Approve;Reject
+	Action string `json:"action"`
+	// Identity is the human who issued the override.
+	Identity string `json:"identity"`
+	// Reason explains the override.
+	Reason string `json:"reason"`
+	// OverriddenAt is the RFC3339 timestamp.
+	OverriddenAt string `json:"overriddenAt"`
 }
 
 // +kubebuilder:object:root=true

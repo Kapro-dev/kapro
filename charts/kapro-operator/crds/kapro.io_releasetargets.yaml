@@ -625,6 +625,404 @@ spec:
                   - type
                   type: object
                 type: array
+              decisionTrace:
+                description: |-
+                  DecisionTrace stores the audit trail of AI agent and human decisions
+                  for this target's approval gates. Written by the Decision API (webhook
+                  server), never by the ReleaseTargetReconciler.
+                properties:
+                  current:
+                    description: Current is the active decision for this target's
+                      gate.
+                    properties:
+                      conditions:
+                        description: |-
+                          Conditions are post-decision checks that must hold for the approval
+                          to remain valid (e.g. "error rate stays below 1% for 30m").
+                        items:
+                          description: DecisionCondition is a post-decision check
+                            that must hold.
+                          properties:
+                            duration:
+                              description: Duration is how long the condition must
+                                hold.
+                              type: string
+                            failAction:
+                              description: FailAction is what happens if the condition
+                                is violated.
+                              enum:
+                              - Rollback
+                              - Reject
+                              - Hold
+                              type: string
+                            metric:
+                              description: Metric is the metric to watch.
+                              type: string
+                            operator:
+                              description: Operator is the comparison operator (lt,
+                                gt, eq).
+                              type: string
+                            threshold:
+                              description: Threshold is the metric threshold.
+                              type: number
+                            type:
+                              description: Type identifies the condition (e.g. "MetricHold").
+                              type: string
+                          required:
+                          - type
+                          type: object
+                        type: array
+                      confidence:
+                        description: Confidence is the agent's self-reported confidence
+                          score (0.0-1.0).
+                        maximum: 1
+                        minimum: 0
+                        type: number
+                      decidedAt:
+                        description: DecidedAt is the RFC3339 timestamp of the decision.
+                        type: string
+                      decision:
+                        description: 'Decision is the agent''s verdict: Approve, Reject,
+                          or Defer.'
+                        enum:
+                        - Approve
+                        - Reject
+                        - Defer
+                        type: string
+                      decisionId:
+                        description: DecisionID is a unique identifier for this decision.
+                        type: string
+                      effectiveDecision:
+                        description: |-
+                          EffectiveDecision is the outcome after trust level evaluation.
+                          May differ from Decision (e.g. Approve → PendingHumanConfirm).
+                        type: string
+                      expiresAt:
+                        description: ExpiresAt is the RFC3339 timestamp after which
+                          the decision is void.
+                        type: string
+                      factors:
+                        description: Factors are the weighted inputs the agent considered.
+                        items:
+                          description: DecisionFactor is one weighted input the agent
+                            considered.
+                          properties:
+                            assessment:
+                              description: 'Assessment is the agent''s evaluation:
+                                pass, fail, or inconclusive.'
+                              enum:
+                              - pass
+                              - fail
+                              - inconclusive
+                              type: string
+                            name:
+                              description: Name identifies the factor (e.g. "canary_error_rate").
+                              type: string
+                            value:
+                              description: Value is the observed value.
+                              type: number
+                            weight:
+                              description: Weight is the relative importance (0.0-1.0).
+                              type: number
+                          required:
+                          - assessment
+                          - name
+                          - value
+                          - weight
+                          type: object
+                        type: array
+                      humanConfirmation:
+                        description: |-
+                          HumanConfirmation records a human's confirmation of this AI decision.
+                          Only populated when the trust level is human-confirm.
+                        properties:
+                          action:
+                            description: Action is Confirmed or Rejected.
+                            enum:
+                            - Confirmed
+                            - Rejected
+                            type: string
+                          comment:
+                            description: Comment is an optional human comment.
+                            type: string
+                          confirmedAt:
+                            description: ConfirmedAt is the RFC3339 timestamp.
+                            type: string
+                          confirmedBy:
+                            description: ConfirmedBy is the username of the confirming
+                              human.
+                            type: string
+                        required:
+                        - action
+                        - confirmedAt
+                        - confirmedBy
+                        type: object
+                      identity:
+                        description: Identity identifies the agent that made this
+                          decision.
+                        properties:
+                          jwtFingerprint:
+                            description: JWTFingerprint is the SHA-256 fingerprint
+                              of the JWT used for authentication.
+                            type: string
+                          name:
+                            description: Name is the ServiceAccount name or human
+                              username.
+                            type: string
+                          namespace:
+                            description: Namespace is the ServiceAccount namespace
+                              (empty for users).
+                            type: string
+                          trustLevel:
+                            description: TrustLevel is the resolved trust level from
+                              the AgentPolicy.
+                            type: string
+                          type:
+                            description: Type is "ServiceAccount" for agents or "User"
+                              for humans.
+                            type: string
+                        required:
+                        - name
+                        - type
+                        type: object
+                      reasoning:
+                        description: Reasoning is the agent's human-readable explanation
+                          of the decision.
+                        type: string
+                      supersededBy:
+                        description: SupersededBy is the DecisionID that replaced
+                          this entry.
+                        type: string
+                      supersededReason:
+                        description: SupersededReason explains why this entry was
+                          superseded.
+                        type: string
+                    required:
+                    - confidence
+                    - decidedAt
+                    - decision
+                    - decisionId
+                    - identity
+                    - reasoning
+                    type: object
+                  history:
+                    description: |-
+                      History is the list of previous decisions (Defer, superseded).
+                      Capped at 10 entries; oldest are evicted.
+                    items:
+                      description: DecisionEntry records one AI agent decision with
+                        full reasoning.
+                      properties:
+                        conditions:
+                          description: |-
+                            Conditions are post-decision checks that must hold for the approval
+                            to remain valid (e.g. "error rate stays below 1% for 30m").
+                          items:
+                            description: DecisionCondition is a post-decision check
+                              that must hold.
+                            properties:
+                              duration:
+                                description: Duration is how long the condition must
+                                  hold.
+                                type: string
+                              failAction:
+                                description: FailAction is what happens if the condition
+                                  is violated.
+                                enum:
+                                - Rollback
+                                - Reject
+                                - Hold
+                                type: string
+                              metric:
+                                description: Metric is the metric to watch.
+                                type: string
+                              operator:
+                                description: Operator is the comparison operator (lt,
+                                  gt, eq).
+                                type: string
+                              threshold:
+                                description: Threshold is the metric threshold.
+                                type: number
+                              type:
+                                description: Type identifies the condition (e.g. "MetricHold").
+                                type: string
+                            required:
+                            - type
+                            type: object
+                          type: array
+                        confidence:
+                          description: Confidence is the agent's self-reported confidence
+                            score (0.0-1.0).
+                          maximum: 1
+                          minimum: 0
+                          type: number
+                        decidedAt:
+                          description: DecidedAt is the RFC3339 timestamp of the decision.
+                          type: string
+                        decision:
+                          description: 'Decision is the agent''s verdict: Approve,
+                            Reject, or Defer.'
+                          enum:
+                          - Approve
+                          - Reject
+                          - Defer
+                          type: string
+                        decisionId:
+                          description: DecisionID is a unique identifier for this
+                            decision.
+                          type: string
+                        effectiveDecision:
+                          description: |-
+                            EffectiveDecision is the outcome after trust level evaluation.
+                            May differ from Decision (e.g. Approve → PendingHumanConfirm).
+                          type: string
+                        expiresAt:
+                          description: ExpiresAt is the RFC3339 timestamp after which
+                            the decision is void.
+                          type: string
+                        factors:
+                          description: Factors are the weighted inputs the agent considered.
+                          items:
+                            description: DecisionFactor is one weighted input the
+                              agent considered.
+                            properties:
+                              assessment:
+                                description: 'Assessment is the agent''s evaluation:
+                                  pass, fail, or inconclusive.'
+                                enum:
+                                - pass
+                                - fail
+                                - inconclusive
+                                type: string
+                              name:
+                                description: Name identifies the factor (e.g. "canary_error_rate").
+                                type: string
+                              value:
+                                description: Value is the observed value.
+                                type: number
+                              weight:
+                                description: Weight is the relative importance (0.0-1.0).
+                                type: number
+                            required:
+                            - assessment
+                            - name
+                            - value
+                            - weight
+                            type: object
+                          type: array
+                        humanConfirmation:
+                          description: |-
+                            HumanConfirmation records a human's confirmation of this AI decision.
+                            Only populated when the trust level is human-confirm.
+                          properties:
+                            action:
+                              description: Action is Confirmed or Rejected.
+                              enum:
+                              - Confirmed
+                              - Rejected
+                              type: string
+                            comment:
+                              description: Comment is an optional human comment.
+                              type: string
+                            confirmedAt:
+                              description: ConfirmedAt is the RFC3339 timestamp.
+                              type: string
+                            confirmedBy:
+                              description: ConfirmedBy is the username of the confirming
+                                human.
+                              type: string
+                          required:
+                          - action
+                          - confirmedAt
+                          - confirmedBy
+                          type: object
+                        identity:
+                          description: Identity identifies the agent that made this
+                            decision.
+                          properties:
+                            jwtFingerprint:
+                              description: JWTFingerprint is the SHA-256 fingerprint
+                                of the JWT used for authentication.
+                              type: string
+                            name:
+                              description: Name is the ServiceAccount name or human
+                                username.
+                              type: string
+                            namespace:
+                              description: Namespace is the ServiceAccount namespace
+                                (empty for users).
+                              type: string
+                            trustLevel:
+                              description: TrustLevel is the resolved trust level
+                                from the AgentPolicy.
+                              type: string
+                            type:
+                              description: Type is "ServiceAccount" for agents or
+                                "User" for humans.
+                              type: string
+                          required:
+                          - name
+                          - type
+                          type: object
+                        reasoning:
+                          description: Reasoning is the agent's human-readable explanation
+                            of the decision.
+                          type: string
+                        supersededBy:
+                          description: SupersededBy is the DecisionID that replaced
+                            this entry.
+                          type: string
+                        supersededReason:
+                          description: SupersededReason explains why this entry was
+                            superseded.
+                          type: string
+                      required:
+                      - confidence
+                      - decidedAt
+                      - decision
+                      - decisionId
+                      - identity
+                      - reasoning
+                      type: object
+                    type: array
+                  humanOverrides:
+                    description: HumanOverrides records human overrides of AI decisions.
+                    items:
+                      description: HumanOverride records a human overriding an AI
+                        decision.
+                      properties:
+                        action:
+                          description: Action is Approve or Reject.
+                          enum:
+                          - Approve
+                          - Reject
+                          type: string
+                        identity:
+                          description: Identity is the human who issued the override.
+                          type: string
+                        overriddenAt:
+                          description: OverriddenAt is the RFC3339 timestamp.
+                          type: string
+                        overriddenDecisionId:
+                          description: OverriddenDecisionID is the DecisionID being
+                            overridden.
+                          type: string
+                        overrideId:
+                          description: OverrideID is a unique identifier.
+                          type: string
+                        reason:
+                          description: Reason explains the override.
+                          type: string
+                      required:
+                      - action
+                      - identity
+                      - overriddenAt
+                      - overriddenDecisionId
+                      - overrideId
+                      - reason
+                      type: object
+                    type: array
+                type: object
               desiredVersions:
                 additionalProperties:
                   type: string
