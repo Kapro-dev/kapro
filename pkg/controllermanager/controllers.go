@@ -26,7 +26,6 @@ func init() {
 	Register("release-target", startReleaseTargetController)
 	Register("approval", startApprovalController)
 	// csrapproval and membercluster bootstrap removed — Flux Operator handles spoke setup.
-	Register("source", startSourceController)
 }
 
 // startReleaseController starts the Release reconciler.
@@ -124,23 +123,6 @@ func startApprovalController(_ context.Context, cc ControllerContext) (bool, err
 
 // CSR approval and MemberCluster bootstrap controllers removed.
 // Flux Operator handles spoke setup — no kapro component on spokes.
-
-// startSourceController starts the Source reconciler.
-// Polls OCI registries for new semver-matching tags and auto-creates Artifact objects.
-func startSourceController(_ context.Context, cc ControllerContext) (bool, error) {
-	r := &controller.SourceReconciler{
-		Client:   cc.Manager.GetClient(),
-		Recorder: cc.Recorder,
-		Scheme:   cc.Manager.GetScheme(),
-	}
-	if cc.ShardName != "" {
-		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: true}
-	}
-	if err := r.SetupWithManager(cc.Manager); err != nil {
-		return false, err
-	}
-	return true, nil
-}
 
 // compile-time checks: all built-in gate implementations satisfy gate.Gate.
 // Add a line here whenever a new built-in gate is added to BuildGateRegistry.

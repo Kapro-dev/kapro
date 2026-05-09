@@ -209,24 +209,6 @@ func (f *fakeActuator) IsAllConverged(_ context.Context, _ *kaprov1alpha1.Member
 
 // ---- shared fixture builders ------------------------------------------------
 
-func makeArtifact(name, ns string) *kaprov1alpha1.Artifact {
-	return &kaprov1alpha1.Artifact{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
-		Spec: kaprov1alpha1.ArtifactSpec{
-			Sources: []kaprov1alpha1.ArtifactSource{
-				{
-					Type: "oci",
-					OCI: &kaprov1alpha1.OCIRef{
-						Repository: "172.17.0.1:5000/fleet-bundle",
-						Tag:        "v1.2.4",
-						Digest:     "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-					},
-				},
-			},
-		},
-	}
-}
-
 func makeMemberCluster(name string, labels map[string]string) *kaprov1alpha1.MemberCluster {
 	return &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels},

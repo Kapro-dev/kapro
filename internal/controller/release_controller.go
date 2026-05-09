@@ -81,7 +81,6 @@ type ReleaseReconciler struct {
 // +kubebuilder:rbac:groups=kapro.io,resources=releases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kapro.io,resources=releases/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=releases/finalizers,verbs=update
-// +kubebuilder:rbac:groups=kapro.io,resources=artifacts,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kapro.io,resources=memberclusters,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=memberclusters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=pipelines,verbs=get;list;watch
@@ -106,7 +105,7 @@ func (r *ReleaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	log.Info("reconciling Release",
 		"name", release.Name,
 		"phase", release.Status.Phase,
-		"artifact", release.Spec.Artifact,
+		"version", release.Spec.Version,
 	)
 
 	if !release.DeletionTimestamp.IsZero() {
@@ -162,77 +161,43 @@ func (r *ReleaseReconciler) patchReleaseStatus(ctx context.Context, release *kap
 	return nil
 }
 
-// handlePending resolves the Artifact OCI digest and transitions to Progressing.
-// It also initialises PipelineProgress entries so the status table is populated
-// before any target rollout entries are created.
+// handlePending validates spec.version and transitions to Progressing.
 func (r *ReleaseReconciler) handlePending(ctx context.Context, release *kaprov1alpha1.Release) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	// Resolve all artifacts (multi-artifact + derivedFrom merge).
-	resolvedArtifacts, err := r.resolveReleaseArtifacts(ctx, release)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			patch := client.MergeFrom(release.DeepCopy())
-			r.setReleaseReadyCondition(release, metav1.ConditionFalse, "ArtifactNotFound", err.Error())
-			r.setStalledCondition(release, "ArtifactNotFound", err.Error())
-			r.setReconcilingCondition(release, metav1.ConditionFalse, "ArtifactNotFound", "stalled: artifact not found")
-			release.Status.ObservedGeneration = release.Generation
-			if patchErr := r.patchReleaseStatus(ctx, release, patch); patchErr != nil {
-				return ctrl.Result{}, fmt.Errorf("patch stalled condition: %w", patchErr)
-			}
-			return ctrl.Result{RequeueAfter: requeueNormal}, nil
-		}
-		return ctrl.Result{RequeueAfter: requeueNormal}, fmt.Errorf("resolve artifacts: %w", err)
-	}
-
-	if len(resolvedArtifacts) == 0 {
+	if release.Spec.Version == "" {
 		patch := client.MergeFrom(release.DeepCopy())
-		r.setReleaseReadyCondition(release, metav1.ConditionFalse, "NoArtifacts", "release has no artifacts to deliver")
-		r.setStalledCondition(release, "NoArtifacts", "no artifacts specified and no parent to inherit from")
-		r.setReconcilingCondition(release, metav1.ConditionFalse, "NoArtifacts", "stalled: no artifacts")
+		r.setReleaseReadyCondition(release, metav1.ConditionFalse, "NoVersion", "spec.version is required")
+		r.setStalledCondition(release, "NoVersion", "spec.version is required")
 		release.Status.ObservedGeneration = release.Generation
-		if patchErr := r.patchReleaseStatus(ctx, release, patch); patchErr != nil {
-			return ctrl.Result{}, fmt.Errorf("patch stalled condition: %w", patchErr)
+		if err := r.patchReleaseStatus(ctx, release, patch); err != nil {
+			return ctrl.Result{}, fmt.Errorf("patch stalled: %w", err)
 		}
-		return ctrl.Result{RequeueAfter: requeueNormal}, nil
+		return ctrl.Result{}, nil
 	}
 
-	// Backward compat: set ResolvedVersion from first artifact for legacy consumers.
-	resolvedVersion := release.Status.ResolvedVersion
-	if resolvedVersion == "" && len(resolvedArtifacts) > 0 {
-		resolvedVersion = resolvedArtifacts[0].Version
-	}
+	log.Info("version resolved", "version", release.Spec.Version)
 
-	log.Info("artifacts resolved",
-		"total", len(resolvedArtifacts),
-		"derivedFrom", release.Spec.DerivedFrom,
-	)
-
-	// Initialise pipeline progress entries so the status table is pre-populated.
 	progress := make([]kaprov1alpha1.PipelineProgress, 0, len(release.Spec.Pipelines))
 	for _, ref := range release.Spec.Pipelines {
 		progress = append(progress, kaprov1alpha1.PipelineProgress{
-			Name:     ref.Name,
-			Pipeline: ref.Pipeline,
-			Phase:    "Pending",
+			Name: ref.Name, Pipeline: ref.Pipeline, Phase: "Pending",
 		})
 	}
 
 	patch := client.MergeFrom(release.DeepCopy())
 	release.Status.Phase = kaprov1alpha1.ReleasePhaseProgressing
-	release.Status.ResolvedVersion = resolvedVersion
-	release.Status.ResolvedArtifacts = resolvedArtifacts
+	release.Status.ResolvedVersion = release.Spec.Version
 	release.Status.PipelineProgress = progress
 	release.Status.ObservedGeneration = release.Generation
 	release.Status.StartedAt = time.Now().UTC().Format(time.RFC3339)
-	r.setReleaseReadyCondition(release, metav1.ConditionFalse, "Progressing", "release is resolving pipelines and targets")
+	r.setReleaseReadyCondition(release, metav1.ConditionFalse, "Progressing", "release is advancing")
 	r.clearStalledCondition(release)
-	r.setReconcilingCondition(release, metav1.ConditionTrue, "Progressing", "release is advancing through pipeline DAG")
+	r.setReconcilingCondition(release, metav1.ConditionTrue, "Progressing", "advancing through pipeline DAG")
 	r.Recorder.Event(release, corev1.EventTypeNormal, "PhaseTransition", "Release → Progressing")
 	if err := r.patchReleaseStatus(ctx, release, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch Release phase: %w", err)
 	}
-
 	return ctrl.Result{Requeue: true}, nil
 }
 
@@ -1379,29 +1344,15 @@ func syncName(release, pipelineRef, stage, target string) string {
 }
 
 // releaseAppKey returns the key used in MemberCluster.status.currentVersions.
-// For legacy single-artifact releases only.
 func releaseAppKey(release *kaprov1alpha1.Release) string {
-	if release.Spec.AppKey != "" {
-		return release.Spec.AppKey
-	}
-	return release.Spec.Artifact
+	return "default"
 }
 
 func releaseDesiredVersions(release *kaprov1alpha1.Release) map[string]string {
-	if len(release.Status.ResolvedArtifacts) == 0 {
-		if release.Status.ResolvedVersion == "" {
-			return nil
-		}
-		return map[string]string{releaseAppKey(release): release.Status.ResolvedVersion}
+	if release.Status.ResolvedVersion == "" {
+		return nil
 	}
-	desired := make(map[string]string, len(release.Status.ResolvedArtifacts))
-	for _, artifact := range release.Status.ResolvedArtifacts {
-		if artifact.Version == "" {
-			continue
-		}
-		desired[artifact.AppKey] = artifact.Version
-	}
-	return desired
+	return map[string]string{"default": release.Status.ResolvedVersion}
 }
 
 func primaryDesiredVersion(desired map[string]string, fallbackVersion, fallbackAppKey string) (string, string) {
@@ -1417,22 +1368,6 @@ func primaryDesiredVersion(desired map[string]string, fallbackVersion, fallbackA
 	return desired[appKey], appKey
 }
 
-func changedArtifactCount(artifacts []kaprov1alpha1.ResolvedArtifact) int {
-	if len(artifacts) == 0 {
-		return 0
-	}
-	changed := 0
-	for _, artifact := range artifacts {
-		if !artifact.Inherited {
-			changed++
-		}
-	}
-	if changed == 0 {
-		return len(artifacts)
-	}
-	return changed
-}
-
 func copyStringMap(in map[string]string) map[string]string {
 	if len(in) == 0 {
 		return nil
@@ -1444,120 +1379,6 @@ func copyStringMap(in map[string]string) map[string]string {
 	return out
 }
 
-// resolveReleaseArtifacts resolves the full artifact list for a Release.
-// For hotfix Releases (derivedFrom set), it loads the parent's resolved artifacts
-// and overlays the child's artifacts on top (Kustomize-style merge by AppKey).
-// Returns the merged list and per-artifact resolved versions.
-func (r *ReleaseReconciler) resolveReleaseArtifacts(ctx context.Context, release *kaprov1alpha1.Release) ([]kaprov1alpha1.ResolvedArtifact, error) {
-	log := log.FromContext(ctx)
-
-	// Start with the parent's artifacts if derivedFrom is set.
-	parentArtifacts := make(map[string]kaprov1alpha1.ResolvedArtifact)
-	if release.Spec.DerivedFrom != "" {
-		var parent kaprov1alpha1.Release
-		if err := r.Get(ctx, client.ObjectKey{Name: release.Spec.DerivedFrom}, &parent); err != nil {
-			return nil, fmt.Errorf("get parent release %s: %w", release.Spec.DerivedFrom, err)
-		}
-		parentResolved := parent.Status.ResolvedArtifacts
-		if len(parentResolved) == 0 && parent.Status.ResolvedVersion != "" {
-			parentResolved = []kaprov1alpha1.ResolvedArtifact{{
-				AppKey:   releaseAppKey(&parent),
-				Artifact: parent.Spec.Artifact,
-				Version:  parent.Status.ResolvedVersion,
-			}}
-		}
-		if len(parentResolved) == 0 && parent.Spec.Artifact != "" {
-			resolved, err := r.resolveArtifactVersion(ctx, parent.Spec.Artifact)
-			if err != nil {
-				return nil, fmt.Errorf("resolve parent release %s legacy artifact: %w", release.Spec.DerivedFrom, err)
-			}
-			parentResolved = []kaprov1alpha1.ResolvedArtifact{{
-				AppKey:   releaseAppKey(&parent),
-				Artifact: parent.Spec.Artifact,
-				Version:  resolved,
-			}}
-		}
-		if len(parentResolved) == 0 {
-			return nil, fmt.Errorf("parent release %s has no resolved artifacts (phase=%s)", release.Spec.DerivedFrom, parent.Status.Phase)
-		}
-		for _, ra := range parentResolved {
-			ra.Inherited = true
-			parentArtifacts[ra.AppKey] = ra
-		}
-		log.Info("loaded parent artifacts for merge", "parent", release.Spec.DerivedFrom, "count", len(parentArtifacts))
-	}
-
-	// Resolve each artifact in this Release's spec.
-	childArtifacts := make(map[string]kaprov1alpha1.ResolvedArtifact)
-
-	// Handle multi-artifact list.
-	for _, ref := range release.Spec.Artifacts {
-		resolved, err := r.resolveArtifactVersion(ctx, ref.Artifact)
-		if err != nil {
-			return nil, fmt.Errorf("resolve artifact %s (appKey=%s): %w", ref.Artifact, ref.AppKey, err)
-		}
-		childArtifacts[ref.AppKey] = kaprov1alpha1.ResolvedArtifact{
-			AppKey:    ref.AppKey,
-			Artifact:  ref.Artifact,
-			Version:   resolved,
-			Inherited: false,
-		}
-	}
-
-	// Handle legacy single-artifact field.
-	if release.Spec.Artifact != "" && len(release.Spec.Artifacts) == 0 {
-		appKey := releaseAppKey(release)
-		resolved, err := r.resolveArtifactVersion(ctx, release.Spec.Artifact)
-		if err != nil {
-			return nil, fmt.Errorf("resolve legacy artifact %s: %w", release.Spec.Artifact, err)
-		}
-		childArtifacts[appKey] = kaprov1alpha1.ResolvedArtifact{
-			AppKey:    appKey,
-			Artifact:  release.Spec.Artifact,
-			Version:   resolved,
-			Inherited: false,
-		}
-	}
-
-	// Merge: parent artifacts as base, child artifacts override by AppKey.
-	merged := make(map[string]kaprov1alpha1.ResolvedArtifact, len(parentArtifacts)+len(childArtifacts))
-	for k, v := range parentArtifacts {
-		merged[k] = v
-	}
-	for k, v := range childArtifacts {
-		merged[k] = v // child overrides parent
-	}
-
-	// Convert to sorted slice for deterministic output.
-	result := make([]kaprov1alpha1.ResolvedArtifact, 0, len(merged))
-	for _, v := range merged {
-		result = append(result, v)
-	}
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].AppKey < result[j].AppKey
-	})
-
-	log.Info("resolved artifacts",
-		"total", len(result),
-		"inherited", len(parentArtifacts),
-		"overridden", len(childArtifacts),
-	)
-	return result, nil
-}
-
-// resolveArtifactVersion looks up an Artifact CR and returns its resolved OCI digest.
-func (r *ReleaseReconciler) resolveArtifactVersion(ctx context.Context, artifactName string) (string, error) {
-	var artifact kaprov1alpha1.Artifact
-	if err := r.Get(ctx, client.ObjectKey{Name: artifactName}, &artifact); err != nil {
-		return "", err
-	}
-	for _, src := range artifact.Spec.Sources {
-		if src.OCI != nil && src.OCI.Digest != "" {
-			return src.OCI.Repository + "@" + src.OCI.Digest, nil
-		}
-	}
-	return "", fmt.Errorf("artifact %s has no OCI source with digest", artifactName)
-}
 
 func (r *ReleaseReconciler) setReleaseReadyCondition(release *kaprov1alpha1.Release, status metav1.ConditionStatus, reason, message string) {
 	if len(message) > maxReleaseReadyMessageSize {
@@ -1666,25 +1487,14 @@ func (r *ReleaseReconciler) normalizeTargetEntry(target *kaprov1alpha1.TargetSta
 
 // appendAuditEntry records the delivery provenance of a completed Release in
 // Release.status.auditTrail. It is idempotent — an entry for the same Release
-// artifact is only appended once. AuditTrail is capped at 50 entries (oldest trimmed).
+// version is only appended once. AuditTrail is capped at 50 entries (oldest trimmed).
 // This method modifies release.Status.AuditTrail in-place; the caller must include
 // release in a status patch for the change to persist.
-func (r *ReleaseReconciler) appendAuditEntry(ctx context.Context, release *kaprov1alpha1.Release) {
-	// Idempotency: already have an entry for this artifact.
+func (r *ReleaseReconciler) appendAuditEntry(_ context.Context, release *kaprov1alpha1.Release) {
+	// Idempotency: already have an entry for this release.
 	for _, e := range release.Status.AuditTrail {
-		if e.Release == release.Name && e.Artifact == release.Spec.Artifact {
+		if e.Release == release.Name && e.Artifact == release.Spec.Version {
 			return
-		}
-	}
-
-	// Fetch the artifact to capture lineage fields (best-effort).
-	var derivedFrom string
-	var changedComponents []string
-	if release.Spec.Artifact != "" {
-		var artifact kaprov1alpha1.Artifact
-		if err := r.Get(ctx, types.NamespacedName{Name: release.Spec.Artifact}, &artifact); err == nil {
-			derivedFrom = artifact.Spec.Metadata.DerivedFrom
-			changedComponents = artifact.Spec.Metadata.ChangedComponents
 		}
 	}
 
@@ -1694,13 +1504,10 @@ func (r *ReleaseReconciler) appendAuditEntry(ctx context.Context, release *kapro
 	}
 
 	entry := kaprov1alpha1.AuditEntry{
-		Artifact:           release.Spec.Artifact,
-		Release:            release.Name,
-		DerivedFrom:        derivedFrom,
-		ReleaseDerivedFrom: release.Spec.DerivedFrom,
-		ChangedComponents:  changedComponents,
-		Scope:              scope,
-		CompletedAt:        time.Now().UTC().Format(time.RFC3339),
+		Artifact:    release.Spec.Version,
+		Release:     release.Name,
+		Scope:       scope,
+		CompletedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 	release.Status.AuditTrail = append(release.Status.AuditTrail, entry)
 
@@ -1717,13 +1524,13 @@ func (r *ReleaseReconciler) computeReport(release *kaprov1alpha1.Release) kaprov
 
 	st := kaprov1alpha1.ReleaseReportSummary{
 		Phase:           release.Status.Phase,
-		Artifact:        release.Spec.Artifact,
+		Artifact:        release.Spec.Version,
 		ResolvedVersion: release.Status.ResolvedVersion,
 		StartedAt:       release.Status.StartedAt,
 		CompletedAt:     release.Status.CompletedAt,
 	}
-	st.TotalArtifacts = len(release.Status.ResolvedArtifacts)
-	st.DeltaArtifacts = changedArtifactCount(release.Status.ResolvedArtifacts)
+	st.TotalArtifacts = 1
+	st.DeltaArtifacts = 1
 
 	if st.StartedAt != "" {
 		if started, err := time.Parse(time.RFC3339, st.StartedAt); err == nil {

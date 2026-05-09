@@ -29,7 +29,6 @@ rules:
   - approvals
   - releases
   - releasetargets
-  - sources
   verbs:
   - create
   - delete
@@ -45,20 +44,10 @@ rules:
   - memberclusters/status
   - releases/status
   - releasetargets/status
-  - sources/status
   verbs:
   - get
   - patch
   - update
-- apiGroups:
-  - kapro.io
-  resources:
-  - artifacts
-  verbs:
-  - create
-  - get
-  - list
-  - watch
 - apiGroups:
   - kapro.io
   resources:
@@ -81,6 +70,5 @@ rules:
   - kapro.io
   resources:
   - releases/finalizers
-  - sources/finalizers
   verbs:
   - update

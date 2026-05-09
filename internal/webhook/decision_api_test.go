@@ -36,7 +36,7 @@ func decisionFixtures() (*kaprov1alpha1.Release, *kaprov1alpha1.MemberCluster, *
 	release := &kaprov1alpha1.Release{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", UID: "uid-1"},
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Artifact:  "myapp-v1",
+			Version:   "registry.example.com/myapp@sha256:v1",
 			Pipelines: []kaprov1alpha1.ReleasePipelineRef{{Name: "main", Pipeline: "std-pipeline"}},
 		},
 		Status: kaprov1alpha1.ReleaseStatus{

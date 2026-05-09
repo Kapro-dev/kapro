@@ -17,8 +17,6 @@ const (
 	BootstrapTokenFinalizer = "kapro.io/bootstrap-token-finalizer" //nolint:gosec // not a credential
 	// MemberClusterFinalizer is added to MemberCluster objects to allow bootstrap RBAC cleanup on deletion.
 	MemberClusterFinalizer = "kapro.io/member-cluster-finalizer" //nolint:gosec // not a credential
-	// SourceFinalizer is added to Source objects to prevent deletion while Artifacts reference them.
-	SourceFinalizer = "kapro.io/source-finalizer"
 )
 
 // Condition type constants — Flux three-condition framework for operator status reporting.
@@ -30,69 +28,6 @@ const (
 	// True when stuck (e.g. missing artifact, gate failure), False when healthy or recovering.
 	ConditionTypeStalled = "Stalled"
 )
-
-// ---- Artifact ---------------------------------------------------------------
-
-// SourceRef is a cross-namespace reference to a Flux source object
-// (OCIRepository, GitRepository, etc.) that produced this Artifact.
-type SourceRef struct {
-	APIVersion string `json:"apiVersion"`
-	Kind       string `json:"kind"`
-	Name       string `json:"name"`
-	Namespace  string `json:"namespace,omitempty"`
-}
-
-// ArtifactSpec defines the desired state of Artifact.
-type ArtifactSpec struct {
-	Sources  []ArtifactSource `json:"sources"`
-	Metadata ArtifactMeta     `json:"metadata,omitempty"`
-	// SourceRef points to the Flux source (OCIRepository, GitRepository, etc.)
-	// that produced this artifact. Enables provenance tracing.
-	// +optional
-	SourceRef *SourceRef `json:"sourceRef,omitempty"`
-}
-
-type ArtifactSource struct {
-	Type string  `json:"type"` // oci
-	OCI  *OCIRef `json:"oci,omitempty"`
-}
-
-type OCIRef struct {
-	Repository string `json:"repository"`
-	Tag        string `json:"tag"`
-	Digest     string `json:"digest"`
-}
-
-type ArtifactMeta struct {
-	ReleasedBy  string `json:"releasedBy,omitempty"`
-	Description string `json:"description,omitempty"`
-	// DerivedFrom is the name of the parent Artifact this was derived from.
-	// Set by CI for hotfix bundles that replace only a subset of components.
-	// +optional
-	DerivedFrom string `json:"derivedFrom,omitempty"`
-	// ChangedComponents lists the app components that changed relative to the
-	// parent artifact (when DerivedFrom is set).
-	// +optional
-	ChangedComponents []string `json:"changedComponents,omitempty"`
-}
-
-// +kubebuilder:object:root=true
-// +kubebuilder:resource:scope=Cluster,shortName=art,categories=kapro-all
-// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
-
-// Artifact is an immutable OCI bundle, digest-pinned, created by CI.
-type Artifact struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              ArtifactSpec `json:"spec,omitempty"`
-}
-
-// +kubebuilder:object:root=true
-type ArtifactList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Artifact `json:"items"`
-}
 
 // ---- Shared cluster types ---------------------------------------------------
 
@@ -623,63 +558,22 @@ type ReleaseScope struct {
 	Targets []string `json:"targets,omitempty"`
 }
 
-// ReleaseArtifactRef is one artifact in a Release's composable artifact list.
-// AppKey is the key used in MemberCluster.status.currentVersions to track this artifact.
-type ReleaseArtifactRef struct {
-	// AppKey identifies this artifact in the release (e.g. "auth-service", "config-service").
-	// Used as the key in MemberCluster.status.currentVersions for delta-aware delivery.
-	AppKey string `json:"appKey"`
-	// Artifact is the name of the Artifact CRD object.
-	Artifact string `json:"artifact"`
-}
-
 // Uniqueness and dependency-reference validation is enforced by the admission webhook,
 // which can perform DAG checks without the quadratic CEL cost budget constraints.
 type ReleaseSpec struct {
-	// Artifact is the OCI artifact name to deliver across the fleet.
-	// Deprecated: use Artifacts[] for multi-artifact releases. When both are set,
-	// Artifacts takes precedence. Kept for backward compatibility with single-artifact releases.
-	// +optional
-	Artifact string `json:"artifact,omitempty"`
-	// Artifacts is the composable list of artifacts to deliver across the fleet.
-	// Each artifact has an AppKey used for delta-aware delivery (only changed versions are deployed).
-	// When derivedFrom is set, this list is merged with the parent Release's artifacts
-	// (Kustomize-style: child overrides parent by AppKey).
-	// +optional
-	// +kubebuilder:validation:MaxItems=256
-	Artifacts []ReleaseArtifactRef `json:"artifacts,omitempty"`
-	// Pipelines is the DAG of pipeline nodes that this Release executes.
-	// Each node references a Pipeline CRD and may depend on other nodes.
+	// Version is the OCI digest or tag to deliver across the fleet.
+	Version string `json:"version"`
+	// Pipelines is the DAG of pipeline nodes.
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=64
 	Pipelines []ReleasePipelineRef `json:"pipelines"`
-	// AppKey is the key used in MemberCluster.status.currentVersions.
-	// Defaults to the Artifact name when not set.
-	// Deprecated: use ReleaseArtifactRef.AppKey per artifact instead.
-	// +optional
-	AppKey string `json:"appKey,omitempty"`
 	// Suspended pauses all advancement when true.
 	// +kubebuilder:default=false
 	Suspended bool `json:"suspended,omitempty"`
-	// DerivedFrom is the name of the parent Release this hotfix was derived from.
-	// When set, the parent's artifacts are inherited and this Release's artifacts
-	// are overlaid on top (merge by AppKey). Only changed artifacts are delivered
-	// to target clusters (delta-aware delivery).
-	// Immutable after creation — changing it has no effect on a running rollout.
-	// +optional
-	DerivedFrom string `json:"derivedFrom,omitempty"`
 	// Scope restricts this Release to a subset of clusters.
-	// When set, rollout entries are only created for the named target clusters.
-	// Nil or empty = full-fleet rollout (normal behaviour).
-	// Immutable after creation — set scope before the Release is created.
 	// +optional
 	Scope *ReleaseScope `json:"scope,omitempty"`
-	// Timeout is the maximum duration for the entire Release to complete.
-	// If the Release has not reached Complete or Failed within this duration,
-	// it is automatically failed. Prevents stuck Releases from blocking the
-	// pipeline forever (e.g., forgotten approval, unreachable spoke).
-	// Format: Go duration string (e.g., "4h", "30m", "2h30m").
-	// Default: no timeout (backward compatible). Strongly recommended to set.
+	// Timeout is the maximum duration for the entire Release.
 	// +optional
 	Timeout string `json:"timeout,omitempty"`
 }
@@ -693,32 +587,13 @@ const (
 	ReleasePhaseFailed      ReleasePhase = "Failed"
 )
 
-// ResolvedArtifact is one resolved artifact in a Release's merged artifact list.
-type ResolvedArtifact struct {
-	// AppKey identifies this artifact (e.g. "auth-service").
-	AppKey string `json:"appKey"`
-	// Artifact is the Artifact CRD name.
-	Artifact string `json:"artifact"`
-	// Version is the resolved OCI digest (repository@sha256:...).
-	Version string `json:"version,omitempty"`
-	// Inherited is true when this artifact came from the parent Release (derivedFrom).
-	// False when explicitly listed in this Release's spec.artifacts.
-	Inherited bool `json:"inherited,omitempty"`
-}
-
 // ReleaseStatus defines the observed state of Release.
 type ReleaseStatus struct {
 	ObservedGeneration int64        `json:"observedGeneration,omitempty"`
 	Phase              ReleasePhase `json:"phase,omitempty"`
-	// ResolvedVersion is the OCI digest resolved from the Artifact CR.
-	// Format: <repository>@sha256:<digest>. Set once in Pending and never changed.
-	// Deprecated: use ResolvedArtifacts for multi-artifact releases.
-	ResolvedVersion string `json:"resolvedVersion,omitempty"`
-	// ResolvedArtifacts is the merged artifact list after derivedFrom resolution.
-	// For hotfix Releases, this contains the parent's artifacts with overrides applied.
+	// ResolvedVersion is the OCI digest or tag resolved from spec.version.
 	// Set once in Pending and never changed.
-	// +optional
-	ResolvedArtifacts []ResolvedArtifact `json:"resolvedArtifacts,omitempty"`
+	ResolvedVersion string `json:"resolvedVersion,omitempty"`
 	StartedAt         string             `json:"startedAt,omitempty"`
 	CompletedAt       string             `json:"completedAt,omitempty"`
 	// PipelineProgress tracks execution state of each pipeline node in the DAG.
@@ -1385,151 +1260,6 @@ type MemberClusterList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []MemberCluster `json:"items"`
-}
-
-// ---- Source -----------------------------------------------------------------
-
-// SourcePhase represents the reconciliation state of a Source.
-// +kubebuilder:validation:Enum=Ready;Failed;Discovering
-type SourcePhase string
-
-const (
-	SourcePhaseReady       SourcePhase = "Ready"
-	SourcePhaseFailed      SourcePhase = "Failed"
-	SourcePhaseDiscovering SourcePhase = "Discovering"
-)
-
-// OCIRegistrySpec configures an OCI registry to watch for new tags.
-type OCIRegistrySpec struct {
-	// Repository is the OCI repository URL to watch (e.g. europe-west1-docker.pkg.dev/my-project/auth-service).
-	Repository string `json:"repository"`
-	// Provider configures authentication. Well-known values: gcp, aws, azure, generic.
-	// +kubebuilder:validation:Enum=gcp;aws;azure;generic
-	// +kubebuilder:default=generic
-	Provider string `json:"provider,omitempty"`
-	// SecretRef is a reference to a Secret containing registry credentials.
-	// Not needed when provider is gcp/aws/azure (uses workload identity).
-	// +optional
-	SecretRef *corev1.LocalObjectReference `json:"secretRef,omitempty"`
-}
-
-// SourceArtifactTemplate configures how auto-discovered Artifacts are created.
-type SourceArtifactTemplate struct {
-	// Labels applied to auto-created Artifact objects.
-	// +optional
-	Labels map[string]string `json:"labels,omitempty"`
-	// Metadata applied to auto-created Artifact objects.
-	// +optional
-	Metadata ArtifactMeta `json:"metadata,omitempty"`
-}
-
-// SourceDiscoveryStrategy controls how many matching OCI tags are materialized as Artifact CRs.
-// +kubebuilder:validation:Enum=Latest;LastN
-type SourceDiscoveryStrategy string
-
-const (
-	// SourceDiscoveryLatest materializes only the latest matching tag.
-	SourceDiscoveryLatest SourceDiscoveryStrategy = "Latest"
-	// SourceDiscoveryLastN materializes the latest N matching tags.
-	SourceDiscoveryLastN SourceDiscoveryStrategy = "LastN"
-)
-
-// SourceDiscoverySpec bounds how much OCI history is materialized into Kubernetes objects.
-type SourceDiscoverySpec struct {
-	// Strategy selects which matching tags should become Artifact objects.
-	// Latest is the default and creates at most one Artifact per Source.
-	// +kubebuilder:validation:Enum=Latest;LastN
-	// +kubebuilder:default=Latest
-	// +optional
-	Strategy SourceDiscoveryStrategy `json:"strategy,omitempty"`
-	// Limit caps the number of recent matching tags materialized as Artifact CRs.
-	// Defaults to 1. Values above 50 are rejected by the API schema.
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=50
-	// +kubebuilder:default=1
-	// +optional
-	Limit int `json:"limit,omitempty"`
-}
-
-// SourceSpec defines the desired state of Source.
-type SourceSpec struct {
-	// Registry configures the OCI registry to watch.
-	Registry OCIRegistrySpec `json:"registry"`
-	// SemverConstraint filters discovered tags by semver (e.g. "^5.27.0", ">=6.0.0").
-	// Uses Go semver library constraints. Empty means accept all valid semver tags.
-	// +optional
-	SemverConstraint string `json:"semverConstraint,omitempty"`
-	// Interval is how often to poll the registry for new tags.
-	// +kubebuilder:default="5m"
-	Interval string `json:"interval,omitempty"`
-	// ArtifactTemplate configures the Artifact objects created on discovery.
-	// +optional
-	ArtifactTemplate *SourceArtifactTemplate `json:"artifactTemplate,omitempty"`
-	// Discovery controls the bounded set of OCI tags materialized as Artifact CRs.
-	// Empty means Latest with limit 1.
-	// +optional
-	Discovery *SourceDiscoverySpec `json:"discovery,omitempty"`
-	// AppKey is the key used in Release.spec.artifacts and MemberCluster.status.currentVersions.
-	// Defaults to the Source name when not set.
-	// +optional
-	AppKey string `json:"appKey,omitempty"`
-	// Suspended pauses all polling when true.
-	// +kubebuilder:default=false
-	Suspended bool `json:"suspended,omitempty"`
-}
-
-// DiscoveredVersion records a tag found during registry polling.
-type DiscoveredVersion struct {
-	// Tag is the OCI tag discovered.
-	Tag string `json:"tag"`
-	// Digest is the OCI digest for this tag.
-	Digest string `json:"digest,omitempty"`
-	// DiscoveredAt is when this tag was first seen.
-	DiscoveredAt string `json:"discoveredAt,omitempty"`
-	// ArtifactRef is the name of the Artifact created for this tag.
-	ArtifactRef string `json:"artifactRef,omitempty"`
-}
-
-// SourceStatus defines the observed state of Source.
-type SourceStatus struct {
-	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
-	Phase              SourcePhase        `json:"phase,omitempty"`
-	Conditions         []metav1.Condition `json:"conditions,omitempty"`
-	// LatestVersion is the most recent semver-matching tag discovered.
-	// +optional
-	LatestVersion *DiscoveredVersion `json:"latestVersion,omitempty"`
-	// DiscoveredVersions is the bounded history of discovered tags.
-	// +optional
-	// +kubebuilder:validation:MaxItems=50
-	DiscoveredVersions []DiscoveredVersion `json:"discoveredVersions,omitempty"`
-	// LastPolledAt is the timestamp of the last registry poll.
-	// +optional
-	LastPolledAt string `json:"lastPolledAt,omitempty"`
-}
-
-// +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=src,categories=kapro-all
-// +kubebuilder:printcolumn:name="Repository",type=string,JSONPath=`.spec.registry.repository`
-// +kubebuilder:printcolumn:name="Latest",type=string,JSONPath=`.status.latestVersion.tag`
-// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
-// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
-
-// Source watches an OCI registry for new tags and auto-creates Artifact objects.
-// It is the discovery layer — the equivalent of Kargo's Warehouse but Flux-native.
-// One Source per service (e.g. one Source for auth-service, one for config-service).
-type Source struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              SourceSpec   `json:"spec,omitempty"`
-	Status            SourceStatus `json:"status,omitempty"`
-}
-
-// +kubebuilder:object:root=true
-type SourceList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Source `json:"items"`
 }
 
 // ---- AgentPolicy ---------------------------------------------------------------

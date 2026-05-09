@@ -70,55 +70,8 @@ spec:
               Uniqueness and dependency-reference validation is enforced by the admission webhook,
               which can perform DAG checks without the quadratic CEL cost budget constraints.
             properties:
-              appKey:
-                description: |-
-                  AppKey is the key used in MemberCluster.status.currentVersions.
-                  Defaults to the Artifact name when not set.
-                  Deprecated: use ReleaseArtifactRef.AppKey per artifact instead.
-                type: string
-              artifact:
-                description: |-
-                  Artifact is the OCI artifact name to deliver across the fleet.
-                  Deprecated: use Artifacts[] for multi-artifact releases. When both are set,
-                  Artifacts takes precedence. Kept for backward compatibility with single-artifact releases.
-                type: string
-              artifacts:
-                description: |-
-                  Artifacts is the composable list of artifacts to deliver across the fleet.
-                  Each artifact has an AppKey used for delta-aware delivery (only changed versions are deployed).
-                  When derivedFrom is set, this list is merged with the parent Release's artifacts
-                  (Kustomize-style: child overrides parent by AppKey).
-                items:
-                  description: |-
-                    ReleaseArtifactRef is one artifact in a Release's composable artifact list.
-                    AppKey is the key used in MemberCluster.status.currentVersions to track this artifact.
-                  properties:
-                    appKey:
-                      description: |-
-                        AppKey identifies this artifact in the release (e.g. "auth-service", "config-service").
-                        Used as the key in MemberCluster.status.currentVersions for delta-aware delivery.
-                      type: string
-                    artifact:
-                      description: Artifact is the name of the Artifact CRD object.
-                      type: string
-                  required:
-                  - appKey
-                  - artifact
-                  type: object
-                maxItems: 256
-                type: array
-              derivedFrom:
-                description: |-
-                  DerivedFrom is the name of the parent Release this hotfix was derived from.
-                  When set, the parent's artifacts are inherited and this Release's artifacts
-                  are overlaid on top (merge by AppKey). Only changed artifacts are delivered
-                  to target clusters (delta-aware delivery).
-                  Immutable after creation — changing it has no effect on a running rollout.
-                type: string
               pipelines:
-                description: |-
-                  Pipelines is the DAG of pipeline nodes that this Release executes.
-                  Each node references a Pipeline CRD and may depend on other nodes.
+                description: Pipelines is the DAG of pipeline nodes.
                 items:
                   description: |-
                     ReleasePipelineRef is one node in the Release's pipeline DAG.
@@ -146,11 +99,7 @@ spec:
                 minItems: 1
                 type: array
               scope:
-                description: |-
-                  Scope restricts this Release to a subset of clusters.
-                  When set, rollout entries are only created for the named target clusters.
-                  Nil or empty = full-fleet rollout (normal behaviour).
-                  Immutable after creation — set scope before the Release is created.
+                description: Scope restricts this Release to a subset of clusters.
                 properties:
                   targets:
                     description: |-
@@ -165,16 +114,15 @@ spec:
                 description: Suspended pauses all advancement when true.
                 type: boolean
               timeout:
-                description: |-
-                  Timeout is the maximum duration for the entire Release to complete.
-                  If the Release has not reached Complete or Failed within this duration,
-                  it is automatically failed. Prevents stuck Releases from blocking the
-                  pipeline forever (e.g., forgotten approval, unreachable spoke).
-                  Format: Go duration string (e.g., "4h", "30m", "2h30m").
-                  Default: no timeout (backward compatible). Strongly recommended to set.
+                description: Timeout is the maximum duration for the entire Release.
+                type: string
+              version:
+                description: Version is the OCI digest or tag to deliver across the
+                  fleet.
                 type: string
             required:
             - pipelines
+            - version
             type: object
           status:
             description: ReleaseStatus defines the observed state of Release.
@@ -385,39 +333,10 @@ spec:
                   totalTargets:
                     type: integer
                 type: object
-              resolvedArtifacts:
-                description: |-
-                  ResolvedArtifacts is the merged artifact list after derivedFrom resolution.
-                  For hotfix Releases, this contains the parent's artifacts with overrides applied.
-                  Set once in Pending and never changed.
-                items:
-                  description: ResolvedArtifact is one resolved artifact in a Release's
-                    merged artifact list.
-                  properties:
-                    appKey:
-                      description: AppKey identifies this artifact (e.g. "auth-service").
-                      type: string
-                    artifact:
-                      description: Artifact is the Artifact CRD name.
-                      type: string
-                    inherited:
-                      description: |-
-                        Inherited is true when this artifact came from the parent Release (derivedFrom).
-                        False when explicitly listed in this Release's spec.artifacts.
-                      type: boolean
-                    version:
-                      description: Version is the resolved OCI digest (repository@sha256:...).
-                      type: string
-                  required:
-                  - appKey
-                  - artifact
-                  type: object
-                type: array
               resolvedVersion:
                 description: |-
-                  ResolvedVersion is the OCI digest resolved from the Artifact CR.
-                  Format: <repository>@sha256:<digest>. Set once in Pending and never changed.
-                  Deprecated: use ResolvedArtifacts for multi-artifact releases.
+                  ResolvedVersion is the OCI digest or tag resolved from spec.version.
+                  Set once in Pending and never changed.
                 type: string
               startedAt:
                 type: string

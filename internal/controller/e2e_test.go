@@ -31,26 +31,9 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 	ns := "default"
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano()%1_000_000)
 
-	// ── 1. Create Artifact ────────────────────────────────────────────────────
-	art := &kaprov1alpha1.Artifact{
-		ObjectMeta: metav1.ObjectMeta{Name: "e2e-art-" + suffix, Namespace: ns},
-		Spec: kaprov1alpha1.ArtifactSpec{
-			Sources: []kaprov1alpha1.ArtifactSource{{
-				Type: "oci",
-				OCI: &kaprov1alpha1.OCIRef{
-					Repository: "172.17.0.1:5000/fleet-bundle",
-					Tag:        "v1.0.0",
-					Digest:     "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-				},
-			}},
-		},
-	}
-	mustCreate(t, ctx, c, art)
-
-	// resolve the version and app key the Syncs will carry, so we can
-	// reflect them back in the MemberCluster status for convergence checks.
-	resolvedVersion := art.Spec.Sources[0].OCI.Repository + "@" + art.Spec.Sources[0].OCI.Digest
-	appKey := art.Name
+	// ── 1. Define version ────────────────────────────────────────────────────
+	resolvedVersion := "172.17.0.1:5000/fleet-bundle@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	appKey := "default"
 	versions := map[string]string{appKey: resolvedVersion}
 
 	// ── 2 + 3. Create MemberClusters with tier labels and live heartbeat ─────
@@ -113,7 +96,7 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 	release := &kaprov1alpha1.Release{
 		ObjectMeta: metav1.ObjectMeta{Name: "e2e-release-" + suffix, Namespace: ns},
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Artifact: art.Name,
+			Version: resolvedVersion,
 			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
 				{
 					Name:     "initial",
@@ -177,21 +160,8 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 	ns := "default"
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano()%1_000_000)
 
-	// ── 1. Create Artifact ───────────────────────────────────────────────────
-	art := &kaprov1alpha1.Artifact{
-		ObjectMeta: metav1.ObjectMeta{Name: "halt-art-" + suffix, Namespace: ns},
-		Spec: kaprov1alpha1.ArtifactSpec{
-			Sources: []kaprov1alpha1.ArtifactSource{{
-				Type: "oci",
-				OCI: &kaprov1alpha1.OCIRef{
-					Repository: "172.17.0.1:5000/halt-bundle",
-					Tag:        "v1.0.0",
-					Digest:     "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-				},
-			}},
-		},
-	}
-	mustCreate(t, ctx, c, art)
+	// ── 1. Define version ───────────────────────────────────────────────────
+	haltVersion := "172.17.0.1:5000/halt-bundle@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 	// ── 2. Create two MemberClusters matching the same stage ─────────────────
 	mc1 := &kaprov1alpha1.MemberCluster{
@@ -240,7 +210,7 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 	release := &kaprov1alpha1.Release{
 		ObjectMeta: metav1.ObjectMeta{Name: "halt-release-" + suffix, Namespace: ns},
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Artifact: art.Name,
+			Version: haltVersion,
 			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
 				{Name: "initial", Pipeline: pipeline.Name},
 			},

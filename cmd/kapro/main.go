@@ -57,7 +57,6 @@ Passes versions forward. Across targets. Across clusters. In waves.`,
 	root.AddCommand(newApproveCmd())
 	root.AddCommand(newRejectCmd())
 	root.AddCommand(newRollbackCmd())
-	root.AddCommand(newArtifactCmd())
 	root.AddCommand(newReleaseCmd())
 	root.AddCommand(newPromoteCmd())
 	root.AddCommand(newWorldCmd())
@@ -270,7 +269,7 @@ func runGetReleases(ctx context.Context, namespace string, allNamespaces bool, k
 		cli.Theme.PhaseFailed.Render(fmt.Sprintf("%d failed", failed)),
 	)
 
-	tbl := cli.NewTable("NAME", "ARTIFACT", "PHASE", "PIPELINES", "AGE")
+	tbl := cli.NewTable("NAME", "VERSION", "PHASE", "PIPELINES", "AGE")
 	for _, r := range list.Items {
 		pipelines := ""
 		for i, p := range r.Spec.Pipelines {
@@ -279,7 +278,7 @@ func runGetReleases(ctx context.Context, namespace string, allNamespaces bool, k
 			}
 			pipelines += p.Pipeline
 		}
-		tbl.AddRow(r.Name, r.Spec.Artifact, string(r.Status.Phase), pipelines, cli.Age(r.CreationTimestamp.Time))
+		tbl.AddRow(r.Name, r.Spec.Version, string(r.Status.Phase), pipelines, cli.Age(r.CreationTimestamp.Time))
 	}
 	tbl.Render()
 	return nil
@@ -501,51 +500,14 @@ func runRollback(ctx context.Context, releaseName, toDigest, namespace string, t
 		return fmt.Errorf("get release %q: %w", releaseName, err)
 	}
 
-	// Fetch the Artifact to extract the OCI repository URL.
-	var origArtifact kaprov1alpha1.Artifact
-	if err := c.Get(ctx, types.NamespacedName{Name: orig.Spec.Artifact}, &origArtifact); err != nil {
-		return fmt.Errorf("get artifact %q: %w", orig.Spec.Artifact, err)
-	}
-	if len(origArtifact.Spec.Sources) == 0 || origArtifact.Spec.Sources[0].OCI == nil {
-		return fmt.Errorf("artifact %q has no OCI source", orig.Spec.Artifact)
-	}
-	repo := origArtifact.Spec.Sources[0].OCI.Repository
-
 	// Derive short suffix from digest for readable names.
 	suffix := shortHash(toDigest)
 
-	// Create a rollback Artifact CR pinned at the requested digest.
-	rbArtifactName := orig.Spec.Artifact + "-rb-" + suffix
-	rbArtifact := &kaprov1alpha1.Artifact{
-		ObjectMeta: metav1.ObjectMeta{Name: rbArtifactName},
-		Spec: kaprov1alpha1.ArtifactSpec{
-			Sources: []kaprov1alpha1.ArtifactSource{
-				{
-					Type: "oci",
-					OCI: &kaprov1alpha1.OCIRef{
-						Repository: repo,
-						Tag:        "rollback-" + suffix,
-						Digest:     toDigest,
-					},
-				},
-			},
-			Metadata: kaprov1alpha1.ArtifactMeta{
-				ReleasedBy:  "kapro-cli-rollback",
-				Description: "Rollback from " + releaseName + " to " + toDigest,
-			},
-		},
-	}
-	if err := c.Create(ctx, rbArtifact); err != nil {
-		return fmt.Errorf("create rollback artifact: %w", err)
-	}
-
-	// Create a rollback Release with the same pipelines but the rollback Artifact.
+	// Create a rollback Release with the same pipelines but the rollback version.
 	rbReleaseName := releaseName + "-rb-" + suffix
 	rbSpec := kaprov1alpha1.ReleaseSpec{
-		Artifact:    rbArtifactName,
-		Pipelines:   orig.Spec.Pipelines,
-		AppKey:      orig.Spec.AppKey,
-		DerivedFrom: releaseName,
+		Version:   toDigest,
+		Pipelines: orig.Spec.Pipelines,
 	}
 	if len(targets) > 0 {
 		rbSpec.Scope = &kaprov1alpha1.ReleaseScope{Targets: targets}
@@ -562,15 +524,12 @@ func runRollback(ctx context.Context, releaseName, toDigest, namespace string, t
 		Spec: rbSpec,
 	}
 	if err := c.Create(ctx, rbRelease); err != nil {
-		// Clean up the artifact we just created to avoid orphan objects.
-		_ = c.Delete(ctx, rbArtifact)
 		return fmt.Errorf("create rollback release: %w", err)
 	}
 
 	fmt.Printf("✅ Rollback release created: %s/%s\n", namespace, rbReleaseName)
 	fmt.Printf("   Original release: %s\n", releaseName)
-	fmt.Printf("   Rollback digest:  %s\n", toDigest)
-	fmt.Printf("   Rollback artifact: %s\n", rbArtifactName)
+	fmt.Printf("   Rollback version: %s\n", toDigest)
 	if len(targets) > 0 {
 		fmt.Printf("   Scoped to targets: %s\n", strings.Join(targets, ", "))
 	}
@@ -658,115 +617,6 @@ func listReleaseTargetsForRelease(ctx context.Context, c client.Client, namespac
 	return targets, nil
 }
 
-// ─── kapro artifact ───────────────────────────────────────────────────────────
-
-func newArtifactCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "artifact",
-		Short: "Manage Kapro Artifact CRs",
-	}
-	cmd.AddCommand(newArtifactPushCmd())
-	return cmd
-}
-
-func newArtifactPushCmd() *cobra.Command {
-	var (
-		name        string
-		repository  string
-		tag         string
-		digest      string
-		releasedBy  string
-		desc        string
-		derivedFrom string
-		changed     []string
-		kubeconfig  string
-	)
-	cmd := &cobra.Command{
-		Use:   "push",
-		Short: "Create an Artifact CR from an OCI bundle",
-		Long: `Register an OCI bundle as a Kapro Artifact CR.
-
-Run 'flux push artifact' first to push the bundle to the registry, then use
-this command to create the Artifact CR that Kapro releases reference.
-
-Example:
-  # Step 1 — push the bundle (flux CLI)
-  flux push artifact oci://registry.example.com/my-app:v1.2.3 --path=./bundle
-
-  # Step 2 — register with Kapro
-  kapro artifact push \
-    --name=my-app-v1.2.3 \
-    --repository=registry.example.com/my-app \
-    --tag=v1.2.3 \
-    --digest=sha256:abc123 \
-    --released-by=ci-pipeline`,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runArtifactPush(cmd.Context(), name, repository, tag, digest,
-				releasedBy, desc, derivedFrom, changed, kubeconfig)
-		},
-	}
-	cmd.Flags().StringVar(&name, "name", "", "Artifact CR name (required)")
-	cmd.Flags().StringVar(&repository, "repository", "", "OCI repository URL (required)")
-	cmd.Flags().StringVar(&tag, "tag", "", "OCI tag (required)")
-	cmd.Flags().StringVar(&digest, "digest", "", "OCI digest sha256:... (required)")
-	cmd.Flags().StringVar(&releasedBy, "released-by", "ci", "Who/what released this artifact")
-	cmd.Flags().StringVar(&desc, "description", "", "Human-readable description")
-	cmd.Flags().StringVar(&derivedFrom, "derived-from", "", "Parent Artifact name (for hotfix lineage)")
-	cmd.Flags().StringArrayVar(&changed, "changed", nil, "Changed component (repeatable: --changed svc-a --changed svc-b)")
-	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
-	_ = cmd.MarkFlagRequired("name")
-	_ = cmd.MarkFlagRequired("repository")
-	_ = cmd.MarkFlagRequired("tag")
-	_ = cmd.MarkFlagRequired("digest")
-	return cmd
-}
-
-func runArtifactPush(ctx context.Context, name, repository, tag, digest,
-	releasedBy, description, derivedFrom string, changed []string, kubeconfigPath string) error {
-	c, err := buildClient(kubeconfigPath)
-	if err != nil {
-		return err
-	}
-
-	artifact := &kaprov1alpha1.Artifact{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec: kaprov1alpha1.ArtifactSpec{
-			Sources: []kaprov1alpha1.ArtifactSource{
-				{
-					Type: "oci",
-					OCI: &kaprov1alpha1.OCIRef{
-						Repository: repository,
-						Tag:        tag,
-						Digest:     digest,
-					},
-				},
-			},
-			Metadata: kaprov1alpha1.ArtifactMeta{
-				ReleasedBy:        releasedBy,
-				Description:       description,
-				DerivedFrom:       derivedFrom,
-				ChangedComponents: changed,
-			},
-		},
-	}
-
-	if err := c.Create(ctx, artifact); err != nil {
-		return fmt.Errorf("create Artifact: %w", err)
-	}
-
-	fmt.Printf("✅ Artifact created: %s\n", name)
-	fmt.Printf("   Repository: %s\n", repository)
-	fmt.Printf("   Tag:        %s\n", tag)
-	fmt.Printf("   Digest:     %s\n", digest)
-	if derivedFrom != "" {
-		fmt.Printf("   Derived from: %s\n", derivedFrom)
-	}
-	if len(changed) > 0 {
-		fmt.Printf("   Changed:    %s\n", strings.Join(changed, ", "))
-	}
-	return nil
-}
-
 // ─── kapro release ────────────────────────────────────────────────────────────
 
 func newReleaseCmd() *cobra.Command {
@@ -780,47 +630,42 @@ func newReleaseCmd() *cobra.Command {
 
 func newReleaseCreateCmd() *cobra.Command {
 	var (
-		name        string
-		artifact    string
-		pipelines   []string
-		scope       []string
-		derivedFrom string
-		namespace   string
-		appKey      string
-		kubeconfig  string
+		name       string
+		version    string
+		pipelines  []string
+		scope      []string
+		namespace  string
+		kubeconfig string
 	)
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "Create a Release to deliver an artifact across the fleet",
+		Short: "Create a Release to deliver a version across the fleet",
 		Long: `Create a Kapro Release CR that drives progressive delivery.
 
 Examples:
   # Full-fleet release
-  kapro release create --name v1.2.3 --artifact my-app-v1.2.3 --pipeline global
+  kapro release create --name v1.2.3 --version sha256:abc123 --pipeline global
 
   # Hotfix targeting specific clusters only
-  kapro release create --name v1.2.3-hotfix --artifact my-app-v1.2.3-hotfix \
-    --pipeline global --scope de-prod --scope fi-prod \
-    --derived-from v1.2.3`,
+  kapro release create --name v1.2.3-hotfix --version sha256:def456 \
+    --pipeline global --scope de-prod --scope fi-prod`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runReleaseCreate(cmd.Context(), name, artifact, pipelines, scope, derivedFrom, namespace, appKey, kubeconfig)
+			return runReleaseCreate(cmd.Context(), name, version, pipelines, scope, namespace, kubeconfig)
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "Release name (required)")
-	cmd.Flags().StringVar(&artifact, "artifact", "", "Artifact CR name to deliver (required)")
+	cmd.Flags().StringVar(&version, "version", "", "OCI digest or tag to deliver (required)")
 	cmd.Flags().StringArrayVar(&pipelines, "pipeline", nil, "Pipeline name (repeatable; required at least once)")
 	cmd.Flags().StringArrayVar(&scope, "scope", nil, "Restrict to target cluster (repeatable: --scope de-prod --scope fi-prod)")
-	cmd.Flags().StringVar(&derivedFrom, "derived-from", "", "Parent Release name (for hotfix lineage)")
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace for the Release")
-	cmd.Flags().StringVar(&appKey, "app-key", "", "App key for MemberCluster version tracking (defaults to artifact name)")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	_ = cmd.MarkFlagRequired("name")
-	_ = cmd.MarkFlagRequired("artifact")
+	_ = cmd.MarkFlagRequired("version")
 	return cmd
 }
 
-func runReleaseCreate(ctx context.Context, name, artifact string, pipelines, scope []string,
-	derivedFrom, namespace, appKey, kubeconfigPath string) error {
+func runReleaseCreate(ctx context.Context, name, version string, pipelines, scope []string,
+	namespace, kubeconfigPath string) error {
 	c, err := buildClient(kubeconfigPath)
 	if err != nil {
 		return err
@@ -839,10 +684,8 @@ func runReleaseCreate(ctx context.Context, name, artifact string, pipelines, sco
 	}
 
 	spec := kaprov1alpha1.ReleaseSpec{
-		Artifact:    artifact,
-		Pipelines:   refs,
-		AppKey:      appKey,
-		DerivedFrom: derivedFrom,
+		Version:   version,
+		Pipelines: refs,
 	}
 	if len(scope) > 0 {
 		spec.Scope = &kaprov1alpha1.ReleaseScope{Targets: scope}
@@ -861,15 +704,12 @@ func runReleaseCreate(ctx context.Context, name, artifact string, pipelines, sco
 	}
 
 	fmt.Printf("✅ Release created: %s/%s\n", namespace, name)
-	fmt.Printf("   Artifact:  %s\n", artifact)
+	fmt.Printf("   Version:   %s\n", version)
 	pipelineNames := make([]string, len(pipelines))
 	copy(pipelineNames, pipelines)
 	fmt.Printf("   Pipelines: %s\n", strings.Join(pipelineNames, ", "))
 	if len(scope) > 0 {
 		fmt.Printf("   Scope:     %s\n", strings.Join(scope, ", "))
-	}
-	if derivedFrom != "" {
-		fmt.Printf("   Derived from: %s\n", derivedFrom)
 	}
 	fmt.Printf("\nMonitor progress:\n  kapro get releases -n %s\n", namespace)
 	return nil

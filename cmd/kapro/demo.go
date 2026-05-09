@@ -274,30 +274,11 @@ spec:
 		return err
 	}
 
-	// Artifact.
-	artifact := &kaprov1alpha1.Artifact{
-		ObjectMeta: metav1.ObjectMeta{Name: "myapp-v2.0.0"},
-		Spec: kaprov1alpha1.ArtifactSpec{
-			Sources: []kaprov1alpha1.ArtifactSource{{
-				Type: "oci",
-				OCI: &kaprov1alpha1.OCIRef{
-					Repository: "registry.example.com/myapp",
-					Tag:        "v2.0.0",
-					Digest:     "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-				},
-			}},
-		},
-	}
-	if err := c.Create(ctx, artifact); err != nil && !isAlreadyExists(err) {
-		sp.StopFail("Failed to create Artifact")
-		return err
-	}
-
 	// Release.
 	release := &kaprov1alpha1.Release{
 		ObjectMeta: metav1.ObjectMeta{Name: "myapp-v2.0.0"},
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Artifact: "myapp-v2.0.0",
+			Version: "registry.example.com/myapp@sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
 				{Name: "initial", Pipeline: "standard-rollout"},
 			},
@@ -320,7 +301,6 @@ spec:
 	tbl.AddRow("MemberCluster", "prod-eu-west", "tier=prod, region=eu-west")
 	tbl.AddRow("MemberCluster", "prod-eu-east", "tier=prod, region=eu-east")
 	tbl.AddRow("Pipeline", "standard-rollout", "canary -> prod (manual gate)")
-	tbl.AddRow("Artifact", "myapp-v2.0.0", "registry.example.com/myapp:v2.0.0")
 	tbl.AddRow("Release", "myapp-v2.0.0", "pipeline: standard-rollout")
 	tbl.Render()
 

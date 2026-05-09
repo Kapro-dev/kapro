@@ -100,7 +100,7 @@ func TestReleaseReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetrics(t *
 			Finalizers: []string{kaprov1alpha1.ReleaseFinalizer},
 		},
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Artifact: "some-art",
+			Version: "v1.0.0",
 			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
 				{Name: pipelineRef, Pipeline: pipelineName},
 			},
@@ -130,7 +130,7 @@ func TestReleaseReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetrics(t *
 			Stage:       stageName,
 			Version:     "v1.0.0",
 			Gate:        gatePolicy,
-			AppKey:      "some-art",
+			AppKey:      "default",
 		},
 		Status: kaprov1alpha1.ReleaseTargetStatus{TargetStatus: kaprov1alpha1.TargetStatus{
 			ReleaseRef:  releaseName,
@@ -141,7 +141,7 @@ func TestReleaseReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetrics(t *
 			Version:     "v1.0.0",
 			Phase:       kaprov1alpha1.TargetPhaseMetricsCheck,
 			Gate:        gatePolicy,
-			AppKey:      "some-art",
+			AppKey:      "default",
 		}},
 	}
 
@@ -237,7 +237,7 @@ func TestReleaseReconciler_ReleasesForNewMatchingCluster(t *testing.T) {
 	release := &kaprov1alpha1.Release{
 		ObjectMeta: metav1.ObjectMeta{Name: releaseName, Namespace: "default"},
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Artifact: "bundle",
+			Version: "registry.example.com/bundle@sha256:cccc",
 			Pipelines: []kaprov1alpha1.ReleasePipelineRef{{
 				Name:     "main",
 				Pipeline: pipelineName,
