@@ -73,6 +73,13 @@ type ControllerContext struct {
 	// HubCAData is the PEM-encoded CA certificate for the hub kube-apiserver.
 	// Embedded in bootstrap kubeconfigs alongside HubAPIURL.
 	HubCAData []byte
+
+	// ShardName partitions objects across controller replicas for horizontal scaling.
+	// When empty, all objects are processed (backward compatible — no sharding).
+	// When set (e.g. "shard-1"), only objects with label kapro.io/shard=<ShardName>
+	// are processed (plus unlabeled objects on the default shard).
+	// Populated from KAPRO_SHARD env var in cmd/operator/main.go.
+	ShardName string
 }
 
 // Registry maps controller names to their InitFunc.

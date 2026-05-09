@@ -47,6 +47,15 @@ func toAPIConditionResults(results []gate.ConditionResult) []kaprov1alpha1.GateC
 	return out
 }
 
+// releaseTargetSpecEqual returns true if two ReleaseTargets have identical spec,
+// labels, and owner references — meaning no API patch is needed.
+// Used by persistReleaseTargets to skip no-op writes.
+func releaseTargetSpecEqual(current, desired *kaprov1alpha1.ReleaseTarget) bool {
+	return reflect.DeepEqual(current.Spec, desired.Spec) &&
+		reflect.DeepEqual(current.Labels, desired.Labels) &&
+		reflect.DeepEqual(current.OwnerReferences, desired.OwnerReferences)
+}
+
 func memberClusterStatusEqualForRollouts(a, b kaprov1alpha1.MemberClusterStatus) bool {
 	return a.Phase == b.Phase &&
 		reflect.DeepEqual(a.CurrentVersions, b.CurrentVersions) &&

@@ -658,6 +658,14 @@ type ReleaseSpec struct {
 	// Immutable after creation — set scope before the Release is created.
 	// +optional
 	Scope *ReleaseScope `json:"scope,omitempty"`
+	// Timeout is the maximum duration for the entire Release to complete.
+	// If the Release has not reached Complete or Failed within this duration,
+	// it is automatically failed. Prevents stuck Releases from blocking the
+	// pipeline forever (e.g., forgotten approval, unreachable spoke).
+	// Format: Go duration string (e.g., "4h", "30m", "2h30m").
+	// Default: no timeout (backward compatible). Strongly recommended to set.
+	// +optional
+	Timeout string `json:"timeout,omitempty"`
 }
 
 type ReleasePhase string
@@ -797,6 +805,12 @@ type TargetStatus struct {
 	// MissingMCCount tracks consecutive reconciles where the MemberCluster was not found.
 	// When it reaches missingMCFailThreshold the target is transitioned to Failed.
 	MissingMCCount int `json:"missingMCCount,omitempty"`
+	// HeartbeatStaleSince records when the target's MemberCluster heartbeat first
+	// became stale. Used to implement a configurable timeout — if the heartbeat
+	// remains stale for longer than the threshold, the target is failed.
+	// Reset when the heartbeat becomes fresh again.
+	// +optional
+	HeartbeatStaleSince string `json:"heartbeatStaleSince,omitempty"`
 }
 
 // ReleaseTargetSpec defines the immutable identity and desired intent for one
@@ -1124,6 +1138,9 @@ type MemberClusterStatus struct {
 	ActiveRelease string `json:"activeRelease,omitempty"`
 
 	// LastHeartbeat is the RFC3339 timestamp of the last cluster-controller heartbeat.
+	// Deprecated: the authoritative heartbeat source is now the coordination.k8s.io/v1
+	// Lease "kapro-heartbeat-<cluster>" in kapro-system. This field is still written
+	// for backward compatibility but should not be relied upon for freshness checks.
 	// +optional
 	LastHeartbeat string `json:"lastHeartbeat,omitempty"`
 

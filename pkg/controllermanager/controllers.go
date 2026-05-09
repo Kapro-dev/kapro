@@ -13,6 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"kapro.io/kapro/internal/controller"
+	"kapro.io/kapro/internal/shard"
 	internalgate "kapro.io/kapro/internal/gate"
 	celgate "kapro.io/kapro/internal/gate/cel"
 	jobgate "kapro.io/kapro/internal/gate/job"
@@ -35,7 +36,7 @@ func init() {
 // upserts one ReleaseTarget per (Release, Pipeline, Stage, Target),
 // and aggregates child execution state into Release status.
 func startReleaseController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.ReleaseReconciler{
+	r := &controller.ReleaseReconciler{
 		Client:           cc.Manager.GetClient(),
 		Recorder:         cc.Recorder,
 		Scheme:           cc.Manager.GetScheme(),
@@ -44,14 +45,18 @@ func startReleaseController(_ context.Context, cc ControllerContext) (bool, erro
 		ApprovalSecret:   cc.ApprovalSecret,
 		ExternalURL:      cc.ExternalURL,
 		GateRegistry:     cc.GateRegistry,
-	}).SetupWithManager(cc.Manager); err != nil {
+	}
+	if cc.ShardName != "" {
+		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: true}
+	}
+	if err := r.SetupWithManager(cc.Manager); err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
 func startReleaseTargetController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.ReleaseTargetReconciler{
+	r := &controller.ReleaseTargetReconciler{
 		Client:           cc.Manager.GetClient(),
 		Recorder:         cc.Recorder,
 		Scheme:           cc.Manager.GetScheme(),
@@ -60,7 +65,11 @@ func startReleaseTargetController(_ context.Context, cc ControllerContext) (bool
 		ApprovalSecret:   cc.ApprovalSecret,
 		ExternalURL:      cc.ExternalURL,
 		GateRegistry:     cc.GateRegistry,
-	}).SetupWithManager(cc.Manager); err != nil {
+	}
+	if cc.ShardName != "" {
+		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: true}
+	}
+	if err := r.SetupWithManager(cc.Manager); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -155,11 +164,15 @@ func startMemberClusterController(_ context.Context, cc ControllerContext) (bool
 // startSourceController starts the Source reconciler.
 // Polls OCI registries for new semver-matching tags and auto-creates Artifact objects.
 func startSourceController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.SourceReconciler{
+	r := &controller.SourceReconciler{
 		Client:   cc.Manager.GetClient(),
 		Recorder: cc.Recorder,
 		Scheme:   cc.Manager.GetScheme(),
-	}).SetupWithManager(cc.Manager); err != nil {
+	}
+	if cc.ShardName != "" {
+		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: true}
+	}
+	if err := r.SetupWithManager(cc.Manager); err != nil {
 		return false, err
 	}
 	return true, nil

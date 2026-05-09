@@ -104,6 +104,27 @@ var (
 		},
 		[]string{"release", "stage"},
 	)
+
+	// SpokeReconciles counts cluster-controller reconcile invocations by result.
+	SpokeReconciles = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "kapro",
+			Subsystem: "spoke",
+			Name:      "reconciles_total",
+			Help:      "Total spoke reconcile invocations by result.",
+		},
+		[]string{"result"},
+	)
+
+	// SpokeReconcilesSkipped counts reconciles skipped because no spec change was detected.
+	SpokeReconcilesSkipped = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: "kapro",
+			Subsystem: "spoke",
+			Name:      "reconciles_skipped_total",
+			Help:      "Total reconciles skipped due to no spec change.",
+		},
+	)
 )
 
 func init() {
@@ -116,5 +137,7 @@ func init() {
 		StageDuration,
 		ActiveReleases,
 		WaveProgress,
+		SpokeReconciles,
+		SpokeReconcilesSkipped,
 	)
 }

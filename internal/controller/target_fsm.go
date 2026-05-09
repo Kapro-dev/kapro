@@ -33,6 +33,11 @@ import (
 // MemberCluster is not found before the target is transitioned to Failed.
 const missingMCFailThreshold = 10
 
+// heartbeatStaleTimeout is the maximum duration a target tolerates a stale
+// MemberCluster heartbeat before failing. Prevents a single unreachable spoke
+// from blocking an entire Release pipeline indefinitely.
+const heartbeatStaleTimeout = 10 * time.Minute
+
 // --- Shared helpers ---
 
 // notificationPolicyFrom converts a *GatePolicySpec into the value type expected

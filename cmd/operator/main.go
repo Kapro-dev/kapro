@@ -139,6 +139,11 @@ func main() {
 		ExternalURL:    os.Getenv("KAPRO_EXTERNAL_URL"),
 		HubAPIURL:      os.Getenv("KAPRO_HUB_API_URL"),
 		HubCAData:      loadHubCAData(mgr.GetConfig()),
+		ShardName:      os.Getenv("KAPRO_SHARD"),
+	}
+
+	if cc.ShardName != "" {
+		log.Info("controller sharding enabled", "shard", cc.ShardName)
 	}
 
 	// Fail hard if the HMAC secret is missing — a zero-length secret means any token

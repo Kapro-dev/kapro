@@ -72,6 +72,10 @@ type ReleaseReconciler struct {
 	// ("soak", "metrics", "approval", "verification") and template-dispatch
 	// gates (GateTemplate.spec.type). Never nil in production.
 	GateRegistry *gate.Registry
+
+	// ShardPredicate optionally filters objects by shard label for horizontal scaling.
+	// When nil, all objects are processed.
+	ShardPredicate predicate.Predicate
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=releases,verbs=get;list;watch;create;update;patch;delete
@@ -243,6 +247,19 @@ func (r *ReleaseReconciler) handlePending(ctx context.Context, release *kaprov1a
 // env one FSM step forward. A single Status().Patch() persists everything.
 func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kaprov1alpha1.Release) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
+
+	// Check global Release timeout — fail the entire Release if it exceeded.
+	if release.Spec.Timeout != "" && release.Status.StartedAt != "" {
+		timeout, err := time.ParseDuration(release.Spec.Timeout)
+		if err == nil {
+			startedAt, parseErr := time.Parse(time.RFC3339, release.Status.StartedAt)
+			if parseErr == nil && time.Since(startedAt) > timeout {
+				log.Info("Release exceeded timeout", "timeout", release.Spec.Timeout,
+					"startedAt", release.Status.StartedAt, "elapsed", time.Since(startedAt))
+				return r.handleTimeout(ctx, release)
+			}
+		}
+	}
 
 	// CRITICAL: take snapshot BEFORE any mutations to release.Status.
 	// advanceAllTargets, upsertTarget, cancelPendingStageTargets, and
@@ -421,6 +438,21 @@ func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kapr
 	// Not all pipelines complete — requeue as a safety net in case a
 	// ReleaseTarget watch event is missed (cache lag, informer backpressure).
 	return ctrl.Result{RequeueAfter: requeueNormal}, nil
+}
+
+func (r *ReleaseReconciler) handleTimeout(ctx context.Context, release *kaprov1alpha1.Release) (ctrl.Result, error) {
+	patch := client.MergeFrom(release.DeepCopy())
+	release.Status.Phase = kaprov1alpha1.ReleasePhaseFailed
+	release.Status.CompletedAt = time.Now().UTC().Format(time.RFC3339)
+	msg := fmt.Sprintf("release exceeded timeout (%s)", release.Spec.Timeout)
+	r.setReleaseReadyCondition(release, metav1.ConditionFalse, "Timeout", msg)
+	r.setStalledCondition(release, "Timeout", msg)
+	if err := r.patchReleaseStatus(ctx, release, patch); err != nil {
+		return ctrl.Result{}, fmt.Errorf("patch Release status (timeout): %w", err)
+	}
+	r.Recorder.Eventf(release, corev1.EventTypeWarning, "Timeout", msg)
+	log.FromContext(ctx).Info(msg)
+	return ctrl.Result{}, nil
 }
 
 func (r *ReleaseReconciler) handleFailed(ctx context.Context, release *kaprov1alpha1.Release) (ctrl.Result, error) {
@@ -846,16 +878,16 @@ func (r *ReleaseReconciler) hasActiveRollbackTargets(release *kaprov1alpha1.Rele
 func (r *ReleaseReconciler) cancelPendingStageTargets(ctx context.Context, release *kaprov1alpha1.Release, pipelineRefName, stageName string) {
 	log := log.FromContext(ctx)
 
-	// List ReleaseTarget objects for this release.
+	// List ReleaseTarget objects for this release (indexed, not full scan).
 	var list kaprov1alpha1.ReleaseTargetList
-	if err := r.List(ctx, &list); err != nil {
+	if err := r.List(ctx, &list, client.MatchingFields{IndexKeyReleaseTargetRelease: release.Name}); err != nil {
 		log.Error(err, "cancel: failed to list ReleaseTargets")
 		return
 	}
 
 	for i := range list.Items {
 		rt := &list.Items[i]
-		if rt.Spec.ReleaseRef != release.Name || rt.Spec.PipelineRef != pipelineRefName || rt.Spec.Stage != stageName {
+		if rt.Spec.PipelineRef != pipelineRefName || rt.Spec.Stage != stageName {
 			continue
 		}
 		// Skip terminal targets.
@@ -1028,7 +1060,12 @@ func (r *ReleaseReconciler) persistReleaseTargets(ctx context.Context, release *
 			}
 		} else {
 			// Update spec/labels/ownerRefs only — never touch status.
+			// Skip the patch if nothing actually changed (avoids O(N) API writes
+			// per reconcile when targets are stable).
 			current := existing[name]
+			if releaseTargetSpecEqual(current, desired) {
+				continue
+			}
 			specPatch := client.MergeFrom(current.DeepCopy())
 			current.Labels = desired.Labels
 			current.Spec = desired.Spec
@@ -1096,12 +1133,17 @@ func (r *ReleaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return fmt.Errorf("index Release by %s: %w", IndexKeyReleaseProgressing, err)
 	}
 
+	forPredicates := []predicate.Predicate{predicate.GenerationChangedPredicate{}}
+	if r.ShardPredicate != nil {
+		forPredicates = append(forPredicates, r.ShardPredicate)
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(controller.Options{
 			RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](50*time.Millisecond, 10*time.Minute),
 		}).
 		For(&kaprov1alpha1.Release{},
-			builder.WithPredicates(predicate.GenerationChangedPredicate{}),
+			builder.WithPredicates(forPredicates...),
 		).
 		// Watch MemberClusters — if a new cluster is registered whose labels match
 		// an in-progress stage, wake up the Release so a new target entry is created.

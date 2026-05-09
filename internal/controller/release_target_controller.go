@@ -47,6 +47,10 @@ type ReleaseTargetReconciler struct {
 	ApprovalSecret   []byte
 	ExternalURL      string
 	GateRegistry     *gate.Registry
+
+	// ShardPredicate optionally filters objects by shard label for horizontal scaling.
+	// When nil, all objects are processed.
+	ShardPredicate predicate.Predicate
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=releasetargets,verbs=get;list;watch;create;update;patch;delete
@@ -194,10 +198,33 @@ func (r *ReleaseTargetReconciler) handlePending(ctx context.Context, release *ka
 	}
 	target.MissingMCCount = 0
 
-	if !mc.Status.IsHeartbeatFresh(2 * time.Minute) {
-		log.FromContext(ctx).Info("cluster heartbeat stale, waiting", "cluster", target.Target)
+	if !isClusterHeartbeatFresh(ctx, r.Client, target.Target, 2*time.Minute) {
+		now := time.Now().UTC().Format(time.RFC3339)
+
+		// Track when heartbeat first became stale.
+		if target.HeartbeatStaleSince == "" {
+			target.HeartbeatStaleSince = now
+		}
+
+		// Fail the target if heartbeat has been stale too long.
+		staleSince, parseErr := time.Parse(time.RFC3339, target.HeartbeatStaleSince)
+		if parseErr == nil && time.Since(staleSince) > heartbeatStaleTimeout {
+			log.FromContext(ctx).Info("cluster heartbeat stale beyond timeout, failing target",
+				"cluster", target.Target, "staleSince", target.HeartbeatStaleSince,
+				"timeout", heartbeatStaleTimeout)
+			r.transitionTo(ctx, release, target,
+				kaprov1alpha1.TargetPhaseFailed)
+			target.Message = fmt.Sprintf("cluster %s heartbeat stale for %s (timeout: %s)",
+				target.Target, time.Since(staleSince).Truncate(time.Second), heartbeatStaleTimeout)
+			return ctrl.Result{}, nil
+		}
+
+		log.FromContext(ctx).Info("cluster heartbeat stale, waiting",
+			"cluster", target.Target, "staleSince", target.HeartbeatStaleSince)
 		return ctrl.Result{RequeueAfter: requeueNormal}, nil
 	}
+	// Heartbeat is fresh — reset stale tracker.
+	target.HeartbeatStaleSince = ""
 
 	r.transitionTo(ctx, release, target, kaprov1alpha1.TargetPhaseVerification)
 	return ctrl.Result{Requeue: true}, nil
@@ -249,7 +276,7 @@ func (r *ReleaseTargetReconciler) handleHealthCheck(ctx context.Context, release
 
 	// Guard against stale cluster status: if the heartbeat is not fresh the
 	// health snapshot may be hours old and unsafe to act on.
-	if !mc.Status.IsHeartbeatFresh(2 * time.Minute) {
+	if !isClusterHeartbeatFresh(ctx, r.Client, target.Target, 2*time.Minute) {
 		l.Info("cluster heartbeat stale, waiting before health check", "cluster", target.Target)
 		return ctrl.Result{RequeueAfter: requeueNormal}, nil
 	}
@@ -820,11 +847,16 @@ func (r *ReleaseTargetReconciler) notifyApprovalRequest(ctx context.Context, rel
 // --- SetupWithManager & watch mappers ---
 
 func (r *ReleaseTargetReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	forPredicates := []predicate.Predicate{releaseTargetPredicates()}
+	if r.ShardPredicate != nil {
+		forPredicates = append(forPredicates, r.ShardPredicate)
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(controller.Options{
 			RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](50*time.Millisecond, 5*time.Minute),
 		}).
-		For(&kaprov1alpha1.ReleaseTarget{}, builder.WithPredicates(releaseTargetPredicates())).
+		For(&kaprov1alpha1.ReleaseTarget{}, builder.WithPredicates(forPredicates...)).
 		Watches(
 			&kaprov1alpha1.Approval{},
 			handler.EnqueueRequestsFromMapFunc(releaseTargetsForApproval),

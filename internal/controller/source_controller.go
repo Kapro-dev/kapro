@@ -42,6 +42,10 @@ type SourceReconciler struct {
 	ListTags func(repo string, opts ...crane.Option) ([]string, error)
 	// ResolveDigest allows injecting a fake for testing. Defaults to crane.Digest.
 	ResolveDigest func(ref string, opts ...crane.Option) (string, error)
+
+	// ShardPredicate optionally filters objects by shard label for horizontal scaling.
+	// When nil, all objects are processed.
+	ShardPredicate predicate.Predicate
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=sources,verbs=get;list;watch;create;update;patch;delete
@@ -237,9 +241,14 @@ func (r *SourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 }
 
 func (r *SourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	predicates := []predicate.Predicate{sourcePredicates()}
+	if r.ShardPredicate != nil {
+		predicates = append(predicates, r.ShardPredicate)
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kaprov1alpha1.Source{}).
-		WithEventFilter(sourcePredicates()).
+		WithEventFilter(predicate.And(predicates...)).
 		Complete(r)
 }
 
