@@ -12,12 +12,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"kapro.io/kapro/internal/controller"
-	"kapro.io/kapro/internal/shard"
 	internalgate "kapro.io/kapro/internal/gate"
 	celgate "kapro.io/kapro/internal/gate/cel"
 	jobgate "kapro.io/kapro/internal/gate/job"
 	webhookgate "kapro.io/kapro/internal/gate/webhook"
-	cosignverifier "kapro.io/kapro/internal/verification/cosign"
+	"kapro.io/kapro/internal/shard"
 	pkggate "kapro.io/kapro/pkg/gate"
 )
 
@@ -93,10 +92,7 @@ func BuildGateRegistry(c client.Client) (*pkggate.Registry, error) {
 		"soak":     &internalgate.SoakGate{},
 		"metrics":  &internalgate.MetricsGate{},
 		"approval": &internalgate.ApprovalGate{Client: c},
-		"verification": &internalgate.VerificationGate{
-			Verifier:  &cosignverifier.Verifier{},
-			KeyReader: &internalgate.ClientSecretKeyReader{Client: c},
-		},
+		"verification": &internalgate.VerificationGate{},
 		// Template-dispatch gates (resolved by GateTemplate.spec.type).
 		"cel":     &celgate.Gate{Client: c},
 		"job":     &jobgate.Gate{Client: c},

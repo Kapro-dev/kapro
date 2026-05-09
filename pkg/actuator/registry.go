@@ -1,37 +1,39 @@
 package actuator
 
 import (
-	pkgregistry "kapro.io/kapro/pkg/registry"
+	"fmt"
+	"sync"
 )
 
-// Registry resolves KAI (Kapro Actuator Interface) implementations by type name.
-//
-// Type names match MemberCluster.spec.actuator.type (e.g. "flux", "argocd").
-// The registry is the runtime dispatch table between the delivery type declared
-// in an target and the Actuator implementation that handles it.
-//
-// This is analogous to the kubelet's container runtime registry: Kubernetes does
-// not hard-code Docker or containerd; it resolves the runtime from the node
-// config at pod-scheduling time. Kapro does not hard-code Flux or ArgoCD; it
-// resolves the actuator from MemberCluster.spec.actuator.type at sync time.
-//
-// # Registering an actuator
-//
-//	reg := actuator.NewRegistry()
-//	reg.MustRegister("flux", &fluxactuator.FluxActuator{Client: mgr.GetClient()})
-//	// v0.3+:
-//	reg.MustRegister("argocd", &argocdactuator.Actuator{Client: mgr.GetClient()})
-//
-// # Resolving an actuator at reconcile time
-//
-//	impl, err := reg.Resolve(env.Spec.Actuator.Type)
-//
-// All methods are safe for concurrent use.
+// Registry resolves KAI implementations by type name.
 type Registry struct {
-	*pkgregistry.Registry[Actuator]
+	mu        sync.RWMutex
+	actuators map[string]Actuator
 }
 
 // NewRegistry returns a new, empty actuator Registry.
 func NewRegistry() *Registry {
-	return &Registry{Registry: pkgregistry.New[Actuator]("actuator")}
+	return &Registry{actuators: make(map[string]Actuator)}
+}
+
+// Register adds an actuator under the given name.
+func (r *Registry) Register(name string, a Actuator) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.actuators[name]; ok {
+		return fmt.Errorf("actuator %q already registered", name)
+	}
+	r.actuators[name] = a
+	return nil
+}
+
+// Resolve returns the actuator registered under the given name.
+func (r *Registry) Resolve(name string) (Actuator, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	a, ok := r.actuators[name]
+	if !ok {
+		return nil, fmt.Errorf("unknown actuator type %q", name)
+	}
+	return a, nil
 }
