@@ -31,8 +31,8 @@ service GateService {
 message GateRequest {
   // promotion_ref is the name of the Promotion CRD being evaluated.
   string promotion_ref = 1;
-  // environment_ref is the target environment.
-  string environment_ref = 2;
+  // target_ref is the target cluster (MemberCluster name).
+  string target_ref = 2;
   // version is the version under evaluation.
   string version = 3;
   // release_ref links back to the Release that triggered this promotion.

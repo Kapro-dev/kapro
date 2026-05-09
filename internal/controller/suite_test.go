@@ -20,13 +20,13 @@ import (
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	"kapro.io/kapro/internal/controller"
-	internalgate "kapro.io/kapro/internal/gate"
 	"kapro.io/kapro/pkg/actuator"
+	"kapro.io/kapro/pkg/gate"
 )
 
 // TestMain ensures envtest binaries are available; if not present we skip integration tests gracefully.
 func TestMain(m *testing.M) {
-	// Allow unit tests (sync_fsm_test.go) to run without envtest binaries.
+	// Allow unit tests (fake-client tests) to run without envtest binaries.
 	if os.Getenv("KUBEBUILDER_ASSETS") == "" {
 		// Binaries may be directly in bin/k8s or in a versioned subdirectory (e.g. bin/k8s/1.31.0-darwin-arm64).
 		base := filepath.Join("..", "..", "bin", "k8s")
@@ -52,8 +52,7 @@ func TestMain(m *testing.M) {
 }
 
 // setupEnv starts an envtest environment and returns a cancel function.
-// It registers ReleaseReconciler FIRST (owns IndexField registrations) then
-// SyncReconciler.
+// It registers the ReleaseReconciler and starts the manager.
 //
 // Callers must defer the returned cancel func:
 //
@@ -104,22 +103,24 @@ func setupEnv(t *testing.T) (context.Context, context.CancelFunc, client.Client)
 
 	// IMPORTANT: ReleaseReconciler MUST be registered first — it owns IndexField registrations.
 	releaseReconciler := &controller.ReleaseReconciler{
-		Client:   mgr.GetClient(),
-		Recorder: recorder,
-		Scheme:   mgr.GetScheme(),
+		Client:           mgr.GetClient(),
+		Recorder:         recorder,
+		Scheme:           mgr.GetScheme(),
+		ActuatorRegistry: fakeActuators,
+		GateRegistry:     newNoopGateRegistry(t),
 	}
 	if err := releaseReconciler.SetupWithManager(mgr); err != nil {
 		t.Fatalf("ReleaseReconciler.SetupWithManager: %v", err)
 	}
-
-	syncReconciler := &controller.SyncReconciler{
+	releaseTargetReconciler := &controller.ReleaseTargetReconciler{
 		Client:           mgr.GetClient(),
 		Recorder:         recorder,
+		Scheme:           mgr.GetScheme(),
 		ActuatorRegistry: fakeActuators,
-		ApprovalGate:     &internalgate.ApprovalGate{Client: mgr.GetClient()},
+		GateRegistry:     newNoopGateRegistry(t),
 	}
-	if err := syncReconciler.SetupWithManager(mgr); err != nil {
-		t.Fatalf("SyncReconciler.SetupWithManager: %v", err)
+	if err := releaseTargetReconciler.SetupWithManager(mgr); err != nil {
+		t.Fatalf("ReleaseTargetReconciler.SetupWithManager: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -193,11 +194,17 @@ type fakeActuator struct {
 }
 
 func (f *fakeActuator) Apply(_ context.Context, _ actuator.ApplyRequest) error { return f.applyErr }
-func (f *fakeActuator) IsConverged(_ context.Context, _ *kaprov1alpha1.Environment, _, _ string) (bool, error) {
+func (f *fakeActuator) IsConverged(_ context.Context, _ *kaprov1alpha1.MemberCluster, _, _ string) (bool, error) {
 	return f.converged, f.convErr
 }
-func (f *fakeActuator) Rollback(_ context.Context, _ *kaprov1alpha1.Environment, _ string) error {
+func (f *fakeActuator) Rollback(_ context.Context, _ *kaprov1alpha1.MemberCluster, _, _ string) error {
 	return f.applyErr
+}
+func (f *fakeActuator) ApplyDelta(_ context.Context, req actuator.DeltaApplyRequest) (int, error) {
+	return len(req.DesiredVersions), f.applyErr
+}
+func (f *fakeActuator) IsAllConverged(_ context.Context, _ *kaprov1alpha1.MemberCluster, _ map[string]string) (bool, error) {
+	return f.converged, f.convErr
 }
 
 // ---- shared fixture builders ------------------------------------------------
@@ -220,14 +227,40 @@ func makeArtifact(name, ns string) *kaprov1alpha1.Artifact {
 	}
 }
 
-func makeEnvironment(name, ns string, labels map[string]string) *kaprov1alpha1.Environment {
-	return &kaprov1alpha1.Environment{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Labels: labels},
-		Spec: kaprov1alpha1.EnvironmentSpec{
+func makeMemberCluster(name string, labels map[string]string) *kaprov1alpha1.MemberCluster {
+	return &kaprov1alpha1.MemberCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels},
+		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{
 				Type: "flux",
-				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system"},
+				Flux: &kaprov1alpha1.FluxActuator{
+					Namespace:         "flux-system",
+					OCIRepository:     "test-repo",
+					KustomizationPath: ".",
+				},
 			},
 		},
 	}
+}
+
+// passGate is a pass-through Gate used in tests — always returns Passed.
+type passGate struct{}
+
+func (passGate) Evaluate(_ context.Context, _ gate.Request) (gate.Result, error) {
+	return gate.Result{Phase: kaprov1alpha1.GatePhasePassed}, nil
+}
+
+// newNoopGateRegistry returns a gate.Registry with every built-in name
+// (soak, metrics, approval, verification, cel, job, webhook) wired to a
+// pass-through Gate. Tests that need specific gate behaviour should override
+// by registering a real gate before running.
+func newNoopGateRegistry(t *testing.T) *gate.Registry {
+	t.Helper()
+	reg := gate.NewRegistry()
+	for _, name := range []string{"soak", "metrics", "approval", "verification", "cel", "job", "webhook"} {
+		if err := reg.Register(name, passGate{}); err != nil {
+			t.Fatalf("register %s gate: %v", name, err)
+		}
+	}
+	return reg
 }

@@ -67,6 +67,24 @@ spec:
                   releasedBy:
                     type: string
                 type: object
+              sourceRef:
+                description: |-
+                  SourceRef points to the Flux source (OCIRepository, GitRepository, etc.)
+                  that produced this artifact. Enables provenance tracing.
+                properties:
+                  apiVersion:
+                    type: string
+                  kind:
+                    type: string
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+                required:
+                - apiVersion
+                - kind
+                - name
+                type: object
               sources:
                 items:
                   properties:
@@ -95,5 +113,3 @@ spec:
         type: object
     served: true
     storage: true
-    subresources:
-      status: {}

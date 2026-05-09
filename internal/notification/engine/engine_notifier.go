@@ -88,7 +88,7 @@ func (n *Notifier) Notify(ctx context.Context, event notification.Event, policy 
 	for _, ch := range policy.Channels {
 		ch := ch // capture for goroutine
 		go func() {
-			sendCtx, cancel := context.WithTimeout(context.Background(), sendTimeout)
+			sendCtx, cancel := context.WithTimeout(ctx, sendTimeout)
 			defer cancel()
 
 			if err := dispatch(sendCtx, ch, secretData, msg, event); err != nil {
@@ -158,7 +158,7 @@ func dispatch(ctx context.Context, ch notification.Channel, secret map[string]st
 			severity = "critical"
 		}
 		notif.Pagerduty = &services.PagerDutyNotification{
-			Title:   fmt.Sprintf("Kapro | %s | %s", event.Environment, event.Phase),
+			Title:   fmt.Sprintf("Kapro | %s | %s", event.Target, event.Phase),
 			Body:    msg,
 			Urgency: severity,
 		}
@@ -223,7 +223,7 @@ func buildMessage(e notification.Event) string {
 	if e.IsFailure {
 		emoji = "❌"
 	}
-	msg := fmt.Sprintf("%s Kapro | %s → %s | version %s", emoji, e.Environment, e.Phase, e.Version)
+	msg := fmt.Sprintf("%s Kapro | %s → %s | version %s", emoji, e.Target, e.Phase, e.Version)
 	if e.Release != "" {
 		msg += " | release " + e.Release
 	}
@@ -327,7 +327,7 @@ func smtpSend(c *smtp.Client, from string, to []string, msg []byte) error {
 
 // buildEmailContent returns a subject line and an HTML body for the event.
 func buildEmailContent(e notification.Event) (subject, body string) {
-	subject = fmt.Sprintf("[Kapro] %s: %s → %s requires approval", e.Release, e.Environment, e.Version)
+	subject = fmt.Sprintf("[Kapro] %s: %s → %s requires approval", e.Release, e.Target, e.Version)
 
 	approveSection := ""
 	if e.ApproveURL != "" {
@@ -349,11 +349,11 @@ func buildEmailContent(e notification.Event) (subject, body string) {
 <h2 style="color:#1d4ed8">Kapro — Approval Required</h2>
 <table style="border-collapse:collapse;width:100%%">
   <tr><td style="padding:8px;color:#6b7280">Release</td><td style="padding:8px;font-weight:bold">%s</td></tr>
-  <tr><td style="padding:8px;color:#6b7280">Environment</td><td style="padding:8px;font-weight:bold">%s</td></tr>
+  <tr><td style="padding:8px;color:#6b7280">Target</td><td style="padding:8px;font-weight:bold">%s</td></tr>
   <tr><td style="padding:8px;color:#6b7280">Version</td><td style="padding:8px;font-weight:bold">%s</td></tr>
 </table>
 %s
-</body></html>`, e.Release, e.Environment, e.Version, approveSection)
+</body></html>`, e.Release, e.Target, e.Version, approveSection)
 
 	return subject, body
 }

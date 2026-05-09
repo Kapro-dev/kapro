@@ -1,97 +1,166 @@
-{{- if .Values.serviceAccount.create }}
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: {{ include "kapro-operator.serviceAccountName" . }}
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "kapro-operator.labels" . | nindent 4 }}
-  {{- with .Values.serviceAccount.annotations }}
-  annotations:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
-{{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "kapro-operator.fullname" . }}
-  labels:
-    {{- include "kapro-operator.labels" . | nindent 4 }}
+  name: kapro-manager-role
 rules:
-  # Core resources
-  - apiGroups: [""]
-    resources: [secrets]
-    verbs: [get, list, watch, create, update, patch, delete]
-  - apiGroups: [""]
-    resources: [serviceaccounts]
-    verbs: [get, list, watch, create, delete]
-  - apiGroups: [authentication.k8s.io]
-    resources: [serviceaccounts/token]
-    verbs: [create]
-  - apiGroups: [""]
-    resources: [events]
-    verbs: [create, patch]
-  - apiGroups: [coordination.k8s.io]
-    resources: [leases]
-    verbs: [get, list, watch, create, update, patch, delete]
-  # Kapro CRDs — full control
-  - apiGroups: [kapro.io]
-    resources: [approvals, releasereports, releases, syncs]
-    verbs: [get, list, watch, create, update, patch, delete]
-  - apiGroups: [kapro.io]
-    resources: [managedclusters]
-    verbs: [get, list, watch, create, update, patch]
-  - apiGroups: [kapro.io]
-    resources: [managedclusters/finalizers]
-    verbs: [update]
-  - apiGroups: [kapro.io]
-    resources: [managedclusters/status]
-    verbs: [get, patch, update]
-  - apiGroups: [kapro.io]
-    resources: [bootstraptokens]
-    verbs: [get, list, watch, update, patch, delete]
-  # Kapro CRDs — read-only
-  - apiGroups: [kapro.io]
-    resources: [artifacts, gatepolicies, gatetemplates, pipelines]
-    verbs: [get, list, watch]
-  - apiGroups: [kapro.io]
-    resources: [environments]
-    verbs: [get, list, watch, update, patch]
-  # Status + finalizers
-  - apiGroups: [kapro.io]
-    resources: [environments/status, managedclusters/status, pipelines/status, releasereports/status, releases/status, syncs/status, bootstraptokens/status]
-    verbs: [get, update, patch]
-  - apiGroups: [kapro.io]
-    resources: [bootstraptokens/finalizers, releases/finalizers, syncs/finalizers]
-    verbs: [update]
-  # Cluster-scoped RBAC (for per-cluster SA provisioning)
-  - apiGroups: [rbac.authorization.k8s.io]
-    resources: [clusterroles, clusterrolebindings]
-    verbs: [get, list, watch, create, update, patch, delete]
-  # CSR approval (cluster registration bootstrap)
-  - apiGroups: [certificates.k8s.io]
-    resources: [certificatesigningrequests]
-    verbs: [get, list, watch, update]
-  - apiGroups: [certificates.k8s.io]
-    resources: [certificatesigningrequests/approval]
-    verbs: [update]
-  - apiGroups: [certificates.k8s.io]
-    resources: [signers]
-    resourceNames: ["kubernetes.io/kube-apiserver-client"]
-    verbs: [approve]
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts/token
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - certificates.k8s.io
+  resources:
+  - certificatesigningrequests
+  verbs:
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - certificates.k8s.io
+  resources:
+  - certificatesigningrequests/approval
+  verbs:
+  - update
+- apiGroups:
+  - certificates.k8s.io
+  resourceNames:
+  - kubernetes.io/kube-apiserver-client
+  resources:
+  - signers
+  verbs:
+  - approve
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - approvals
+  - releases
+  - releasetargets
+  - sources
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - approvals/status
+  - memberclusters/status
+  - releases/status
+  - releasetargets/status
+  - sources/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - kapro.io
+  resources:
+  - artifacts
+  verbs:
+  - create
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - memberclusters
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - memberclusters/finalizers
+  - releases/finalizers
+  - sources/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - kapro.io
+  resources:
+  - pipelines
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterrolebindings
+  - clusterroles
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "kapro-operator.fullname" . }}
+  name: kapro-manager-role-binding
   labels:
     {{- include "kapro-operator.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ include "kapro-operator.fullname" . }}
+  name: kapro-manager-role
 subjects:
-  - kind: ServiceAccount
-    name: {{ include "kapro-operator.serviceAccountName" . }}
-    namespace: {{ .Release.Namespace }}
+- kind: ServiceAccount
+  name: {{ include "kapro-operator.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}

@@ -19,11 +19,13 @@ func RunSuite(t *testing.T, a pkgactuator.Actuator) {
 	t.Helper()
 	t.Run("KAI/NotNil", func(t *testing.T) { testNotNil(t, a) })
 	t.Run("KAI/ContextCancellation", func(t *testing.T) { testContextCancellation(t, a) })
-	t.Run("KAI/ApplyNilEnvironment", func(t *testing.T) { testApplyNilEnvironment(t, a) })
+	t.Run("KAI/ApplyNilCluster", func(t *testing.T) { testApplyNilCluster(t, a) })
 	t.Run("KAI/ApplyEmptyVersion", func(t *testing.T) { testApplyEmptyVersion(t, a) })
 	t.Run("KAI/IsConvergedReturnsBool", func(t *testing.T) { testIsConvergedReturnsBool(t, a) })
-	t.Run("KAI/RollbackNilEnvironment", func(t *testing.T) { testRollbackNilEnvironment(t, a) })
+	t.Run("KAI/RollbackNilCluster", func(t *testing.T) { testRollbackNilCluster(t, a) })
 	t.Run("KAI/ConcurrentSafe", func(t *testing.T) { testConcurrentSafe(t, a) })
+	t.Run("KAI/ApplyDeltaNilCluster", func(t *testing.T) { testApplyDeltaNilCluster(t, a) })
+	t.Run("KAI/IsAllConvergedNilCluster", func(t *testing.T) { testIsAllConvergedNilCluster(t, a) })
 }
 
 func testNotNil(t *testing.T, a pkgactuator.Actuator) {
@@ -52,16 +54,16 @@ func testContextCancellation(t *testing.T, a pkgactuator.Actuator) {
 	}
 }
 
-// testApplyNilEnvironment verifies Apply handles nil Environment gracefully (no panic).
-func testApplyNilEnvironment(t *testing.T, a pkgactuator.Actuator) {
+// testApplyNilCluster verifies Apply handles nil Cluster gracefully (no panic).
+func testApplyNilCluster(t *testing.T, a pkgactuator.Actuator) {
 	t.Helper()
 	defer func() {
 		if r := recover(); r != nil {
-			t.Errorf("Actuator.Apply panicked on nil Environment: %v", r)
+			t.Errorf("Actuator.Apply panicked on nil Cluster: %v", r)
 		}
 	}()
 	req := minimalApplyRequest()
-	req.Environment = nil
+	req.Cluster = nil
 	a.Apply(context.Background(), req) //nolint:errcheck
 }
 
@@ -90,18 +92,18 @@ func testIsConvergedReturnsBool(t *testing.T, a pkgactuator.Actuator) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	// Both true and false are valid — external actuators may not be converged yet.
-	_, _ = a.IsConverged(ctx, minimalEnv(), "v0.0.1", "default")
+	_, _ = a.IsConverged(ctx, minimalCluster(), "v0.0.1", "default")
 }
 
-// testRollbackNilEnvironment verifies Rollback handles nil Environment without panicking.
-func testRollbackNilEnvironment(t *testing.T, a pkgactuator.Actuator) {
+// testRollbackNilCluster verifies Rollback handles nil Cluster without panicking.
+func testRollbackNilCluster(t *testing.T, a pkgactuator.Actuator) {
 	t.Helper()
 	defer func() {
 		if r := recover(); r != nil {
-			t.Errorf("Actuator.Rollback panicked on nil Environment: %v", r)
+			t.Errorf("Actuator.Rollback panicked on nil Cluster: %v", r)
 		}
 	}()
-	a.Rollback(context.Background(), nil, "v0.0.0") //nolint:errcheck
+	a.Rollback(context.Background(), nil, "v0.0.0", "default") //nolint:errcheck
 }
 
 // testConcurrentSafe verifies the actuator can be called concurrently.
@@ -113,7 +115,7 @@ func testConcurrentSafe(t *testing.T, a pkgactuator.Actuator) {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			a.IsConverged(ctx, minimalEnv(), "v0.0.1", "default") //nolint:errcheck
+			a.IsConverged(ctx, minimalCluster(), "v0.0.1", "default") //nolint:errcheck
 			done <- struct{}{}
 		}()
 	}
@@ -127,17 +129,41 @@ func testConcurrentSafe(t *testing.T, a pkgactuator.Actuator) {
 	}
 }
 
-func minimalEnv() *kaprov1alpha1.Environment {
-	env := &kaprov1alpha1.Environment{}
-	env.Name = "conformance-env"
-	env.Namespace = "kapro-system"
-	return env
+// testApplyDeltaNilCluster verifies ApplyDelta handles nil Cluster without panicking.
+func testApplyDeltaNilCluster(t *testing.T, a pkgactuator.Actuator) {
+	t.Helper()
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Actuator.ApplyDelta panicked on nil Cluster: %v", r)
+		}
+	}()
+	a.ApplyDelta(context.Background(), pkgactuator.DeltaApplyRequest{ //nolint:errcheck
+		Cluster:         nil,
+		DesiredVersions: map[string]string{"app": "v1.0.0"},
+	})
+}
+
+// testIsAllConvergedNilCluster verifies IsAllConverged handles nil Cluster without panicking.
+func testIsAllConvergedNilCluster(t *testing.T, a pkgactuator.Actuator) {
+	t.Helper()
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Actuator.IsAllConverged panicked on nil Cluster: %v", r)
+		}
+	}()
+	a.IsAllConverged(context.Background(), nil, map[string]string{"app": "v1.0.0"}) //nolint:errcheck
+}
+
+func minimalCluster() *kaprov1alpha1.MemberCluster {
+	mc := &kaprov1alpha1.MemberCluster{}
+	mc.Name = "conformance-cluster"
+	return mc
 }
 
 func minimalApplyRequest() pkgactuator.ApplyRequest {
 	return pkgactuator.ApplyRequest{
-		Environment: &kaprov1alpha1.Environment{
-			ObjectMeta: metav1.ObjectMeta{Name: "conformance-env", Namespace: "kapro-system"},
+		Cluster: &kaprov1alpha1.MemberCluster{
+			ObjectMeta: metav1.ObjectMeta{Name: "conformance-cluster"},
 		},
 		Version:         "v0.0.1",
 		PreviousVersion: "v0.0.0",

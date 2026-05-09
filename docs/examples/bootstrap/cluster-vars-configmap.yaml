@@ -8,7 +8,7 @@
 #   1. kubectl apply -f cluster-vars-configmap.yaml      # cluster identity
 #   2. kubectl apply -f oci-repository.yaml              # Flux OCI source
 #   3. kubectl apply -f root-kustomization.yaml          # Flux root Ks
-#   4. kubectl apply -f environment.yaml                 # Kapro Environment CR
+#   4. kubectl apply -f membercluster.yaml                 # Kapro MemberCluster CR
 #
 # After step 4, the cluster automatically joins the fleet and receives
 # the current release on the next pipeline reconcile.
@@ -20,7 +20,7 @@ metadata:
   name: cluster-vars-de-prod
   namespace: flux-system
   labels:
-    kapro.io/environment: de-prod
+    kapro.io/target: de-prod
 data:
   ENVIRONMENT: de-prod
   COUNTRY: de

@@ -19,16 +19,24 @@ import (
 
 // ApplyRequest carries everything an actuator needs to apply a version.
 type ApplyRequest struct {
-	// Environment is the target environment.
-	Environment *kaprov1alpha1.Environment
+	// Cluster is the target member cluster.
+	Cluster *kaprov1alpha1.MemberCluster
 	// Version is the version string to apply (OCI tag or repo@sha256:digest).
 	Version string
 	// PreviousVersion is the currently running version — for rollback tracking.
 	PreviousVersion string
-	// AppKey is the key used in ManagedCluster.status.currentVersions.
+	// AppKey is the key used in MemberCluster.status.currentVersions.
 	// Actuators must propagate this so the cluster-controller writes convergence
 	// state under the correct key. Defaults to "default" when empty.
 	AppKey string
+}
+
+// DeltaApplyRequest carries a map of appKey → version for multi-artifact delta delivery.
+type DeltaApplyRequest struct {
+	// Cluster is the target member cluster.
+	Cluster *kaprov1alpha1.MemberCluster
+	// DesiredVersions maps appKey → version for all artifacts in this release.
+	DesiredVersions map[string]string
 }
 
 // Actuator is KAI: the Kapro Actuator Interface.
@@ -37,24 +45,33 @@ type ApplyRequest struct {
 // Implementations must be safe for concurrent use from multiple goroutines.
 type Actuator interface {
 	// Apply instructs the delivery system to roll out the given version.
-	// Idempotent — calling Apply twice with the same version is safe.
+	// It MUST be idempotent: calling Apply twice with the same version must not
+	// trigger a double rollout, corrupt state, or return an error solely because
+	// the request was replayed after a reconciliation retry.
 	Apply(ctx context.Context, req ApplyRequest) error
 
 	// IsConverged returns true when the delivery system confirms the target
 	// version is fully rolled out and all workloads are healthy.
 	//
 	// appKey identifies which application within the cluster to check — it is the
-	// key used in ManagedCluster.status.currentVersions. Pass "default" for single-app
-	// environments. This parameter makes the caller's intent explicit and symmetric
+	// key used in MemberCluster.status.currentVersions. Pass "default" for single-app
+	// clusters. This parameter makes the caller's intent explicit and symmetric
 	// with Apply(ApplyRequest{AppKey: ...}), removing the implicit coupling that existed
-	// when IsConverged had to re-read spec.desiredAppKey from the ManagedCluster itself.
-	//
-	// v0.2 change: appKey was added to this signature. Implementations that previously
-	// resolved appKey internally (e.g. reading ManagedCluster.spec.desiredAppKey) should
-	// now use the caller-supplied appKey directly.
-	IsConverged(ctx context.Context, env *kaprov1alpha1.Environment, version, appKey string) (bool, error)
+	// when IsConverged had to re-read spec.desiredAppKey from the cluster itself.
+	IsConverged(ctx context.Context, cluster *kaprov1alpha1.MemberCluster, version, appKey string) (bool, error)
 
 	// Rollback instructs the delivery system to revert to the given previous version.
-	// Called when GatePolicy.onFailure == rollback.
-	Rollback(ctx context.Context, env *kaprov1alpha1.Environment, previousVersion string) error
+	// appKey identifies which application stream within the cluster should be
+	// rolled back; implementations must not implicitly reuse a possibly-mutated
+	// desiredAppKey from current cluster state.
+	Rollback(ctx context.Context, cluster *kaprov1alpha1.MemberCluster, previousVersion, appKey string) error
+
+	// ApplyDelta compares desiredVersions against MemberCluster.status.currentVersions
+	// and only applies artifacts that changed. Returns the number of artifacts that
+	// required delivery (delta count). Idempotent.
+	ApplyDelta(ctx context.Context, req DeltaApplyRequest) (int, error)
+
+	// IsAllConverged returns true when ALL artifacts in desiredVersions match
+	// the cluster's currentVersions and Flux has converged.
+	IsAllConverged(ctx context.Context, cluster *kaprov1alpha1.MemberCluster, desiredVersions map[string]string) (bool, error)
 }

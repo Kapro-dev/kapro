@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -27,10 +28,8 @@ import (
 // A non-zero scalar result means the condition holds; 0 (or an empty result)
 // means the gate is blocked.
 //
-// The PrometheusURL is derived from the MetricGate.Provider field by convention:
-// providers named "prometheus" use the URL stored in the GatePolicy
-// annotation `kapro.io/prometheus-url`. When the annotation is absent the
-// gate falls back to the in-cluster Prometheus default
+// The PrometheusURL is derived from MetricGate.Endpoint. When empty, the gate
+// falls back to the in-cluster Prometheus default
 // http://prometheus-operated.monitoring.svc:9090.
 type MetricsGate struct {
 	// HTTPClient is used for Prometheus API calls. Defaults to a 10-second
@@ -39,7 +38,6 @@ type MetricsGate struct {
 }
 
 const defaultPrometheusURL = "http://prometheus-operated.monitoring.svc:9090"
-const prometheusURLAnnotation = "kapro.io/prometheus-url"
 
 func (g *MetricsGate) httpClient() *http.Client {
 	if g.HTTPClient != nil {
@@ -48,9 +46,9 @@ func (g *MetricsGate) httpClient() *http.Client {
 	return &http.Client{Timeout: 10 * time.Second}
 }
 
-const defaultWindow   = "5m"
+const defaultWindow = "5m"
 const defaultInterval = "30s"
-const minInterval     = 10 * time.Second
+const minInterval = 10 * time.Second
 
 // retryAfter returns the poll interval for a metric gate, clamped to minInterval.
 func retryAfter(metric kaprov1alpha1.MetricGate) string {
@@ -92,19 +90,14 @@ func resolveQuery(metric kaprov1alpha1.MetricGate) (string, error) {
 // The poll interval is controlled by MetricGate.Interval (default 30s, min 10s).
 // The query window is injected via {{.Window}} template substitution using MetricGate.Window.
 func (g *MetricsGate) Evaluate(ctx context.Context, req Request) (Result, error) {
-	if req.Policy == nil || req.MetricIndex >= len(req.Policy.Spec.Gate.Metrics) {
+	if req.Policy == nil || req.MetricIndex >= len(req.Policy.Gate.Metrics) {
 		return Result{Phase: kaprov1alpha1.GatePhasePassed, Message: "no metrics configured"}, nil
 	}
 
-	metric := req.Policy.Spec.Gate.Metrics[req.MetricIndex]
+	metric := req.Policy.Gate.Metrics[req.MetricIndex]
 	interval := retryAfter(metric)
 
 	baseURL := defaultPrometheusURL
-	if req.Policy.Annotations != nil {
-		if u, ok := req.Policy.Annotations[prometheusURLAnnotation]; ok && u != "" {
-			baseURL = u
-		}
-	}
 	if metric.Endpoint != "" {
 		baseURL = metric.Endpoint
 	}
@@ -112,9 +105,8 @@ func (g *MetricsGate) Evaluate(ctx context.Context, req Request) (Result, error)
 	query, err := resolveQuery(metric)
 	if err != nil {
 		return Result{
-			Phase:      kaprov1alpha1.GatePhaseInconclusive,
-			Message:    fmt.Sprintf("query template error: %v", err),
-			RetryAfter: interval,
+			Phase:   kaprov1alpha1.GatePhaseFailed,
+			Message: fmt.Sprintf("query template error: %v", err),
 		}, nil
 	}
 
@@ -127,17 +119,18 @@ func (g *MetricsGate) Evaluate(ctx context.Context, req Request) (Result, error)
 		}, nil // don't propagate — retry is safer than blocking the pipeline
 	}
 
-	if passed {
+	threshold := metric.Threshold
+	if !passed || val <= threshold {
 		return Result{
-			Phase:   kaprov1alpha1.GatePhasePassed,
-			Message: fmt.Sprintf("metric query passed (value=%.4f): %s", val, query),
+			Phase:      kaprov1alpha1.GatePhaseInconclusive,
+			Message:    fmt.Sprintf("metric gate blocked (value=%.4f, threshold=%.4f, interval=%s): %s", val, threshold, interval, query),
+			RetryAfter: interval,
 		}, nil
 	}
 
 	return Result{
-		Phase:      kaprov1alpha1.GatePhaseInconclusive,
-		Message:    fmt.Sprintf("metric gate blocked (value=%.4f, interval=%s): %s", val, interval, query),
-		RetryAfter: interval,
+		Phase:   kaprov1alpha1.GatePhasePassed,
+		Message: fmt.Sprintf("metric query passed (value=%.4f, threshold=%.4f): %s", val, threshold, query),
 	}, nil
 }
 
@@ -204,6 +197,12 @@ func (g *MetricsGate) queryInstant(ctx context.Context, baseURL, query string) (
 			// Empty result → condition not satisfied
 			return false, 0, nil
 		}
+		if len(results) > 1 {
+			// Ambiguous: multiple series returned. The gate cannot make a safe decision
+			// without knowing which series to evaluate. Callers should tighten their
+			// PromQL selector so it returns exactly one series.
+			return false, 0, fmt.Errorf("prometheus query returned %d series — use a more specific selector to return exactly one series", len(results))
+		}
 		if len(results[0].Value) < 2 {
 			return false, 0, fmt.Errorf("unexpected value array length")
 		}
@@ -238,5 +237,12 @@ func parsePromValue(raw json.RawMessage) (float64, error) {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		return 0, fmt.Errorf("parse prom value: %w", err)
 	}
-	return strconv.ParseFloat(s, 64)
+	val, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, err
+	}
+	if math.IsNaN(val) || math.IsInf(val, 0) {
+		return 0, fmt.Errorf("prometheus returned non-finite value: %v", val)
+	}
+	return val, nil
 }

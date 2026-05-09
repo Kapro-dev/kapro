@@ -18,8 +18,6 @@ import "context"
 type KeylessConfig struct {
 	// RekorURL is the transparency log. Default: https://rekor.sigstore.dev
 	RekorURL string
-	// FulcioURL is the certificate authority. Default: https://fulcio.sigstore.dev
-	FulcioURL string
 	// ExpectedIdentity is the OIDC identity that signed the image.
 	ExpectedIdentity string
 	// ExpectedIssuer is the OIDC issuer.

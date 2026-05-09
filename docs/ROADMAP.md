@@ -22,19 +22,15 @@
 
 ---
 
-### KCI — Cloud connector implementations
+### KCI — Deferred / reconsidered
 
-The registry slot and ProviderSpec CRD fields exist for all clouds — only the `internal/provider/*/` implementation packages are missing.
-
-GKE is **shipped** (see SPEC.md §9 and `internal/provider/gke/`). Remaining:
-
-#### EKS — IRSA + STS (keyless)
-- Package: `internal/provider/eks/`
-- Auth: IAM Roles for Service Accounts → `github.com/aws/aws-sdk-go-v2`
-- `AssumeRoleWithWebIdentity` using projected SA token at `/var/run/secrets`
-- `Connect(ctx, env)` → calls `eks.DescribeCluster` for CA + endpoint, then signs requests with STS token
-
-**Acceptance criteria:** `conformance/provider.RunSuite(t, connector)` passes against a live cluster; CI uses a mock.
+A generic cluster-provider abstraction (`pkg/provider`, `ProviderSpec` on
+`MemberCluster`) was prototyped and then removed — see
+`docs/adr/ADR-006-multi-cloud-provider-onboarding.md` and
+`docs/adr/ADR-007-kxi-interface-family.md`. Multi-cloud support is now a
+question of (a) actuator implementations (`pkg/actuator`) and
+(b) spoke-side bootstrap code in `internal/bootstrap`. There is no plan to
+re-introduce a generic provider registry.
 
 ---
 
@@ -45,7 +41,7 @@ GKE is **shipped** (see SPEC.md §9 and `internal/provider/gke/`). Remaining:
 - `Rollback` patches back to `previousVersion`
 - Register as `"argocd"` in `cmd/operator/main.go`
 
-**Acceptance criteria:** conformance suite passes; `Environment.spec.actuator.type: argocd` works end-to-end in integration test.
+**Acceptance criteria:** conformance suite passes; `MemberCluster.spec.actuator.type: argocd` works end-to-end in integration test.
 
 ---
 
@@ -57,10 +53,8 @@ GKE is **shipped** (see SPEC.md §9 and `internal/provider/gke/`). Remaining:
 
 ## v0.4 — AI/ML Delivery, More Cloud Providers, gRPC Plugin Gateway
 
-### KCI — Remaining cloud connectors
-- **AKS** (`internal/provider/aks/`): Azure Managed Identity + AAD OIDC federation
-- **DigitalOcean** (`internal/provider/digitalocean/`): API token from referenced Secret
-- **StackIT** (`internal/provider/stackit/`): Service Account key from referenced Secret
+### KCI — (superseded)
+See ADR-006/ADR-007. No per-cloud connector packages planned.
 
 ### KAI/KGI — gRPC plugin gateway
 This is the CRI equivalent for Kapro — enables out-of-process gate and actuator plugins.
@@ -95,6 +89,13 @@ Design the `scheduler.Plugin` interface so pipeline ordering can be customised w
 
 - Multi-tenancy: RBAC isolation per team
 - Web dashboard
+- Authenticated approval attribution:
+  front `/approve` and `/reject` with an SSO-aware reverse proxy or ingress
+  (for example oauth2-proxy, Pomerium, IAP, ALB auth), trust only the
+  injected identity header from that proxy, and record the authenticated
+  human identity instead of relying on token-packed `ApprovedBy`. This is
+  the simple correct path for real per-click audit attribution when approval
+  links may be shared across multiple approvers.
 - CDEvents integration via webhook sinks
 - SLA tracking and burn rate gates
 - `ReleaseTrigger` CRD for autonomous triggers (MLflow model registered, OCI image pushed, Prometheus alert fired)

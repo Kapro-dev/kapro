@@ -1,10 +1,12 @@
 package controller_test
 
 import (
+	"context"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
@@ -25,7 +27,7 @@ func makePipeline(name string, selectorLabels map[string]string) *kaprov1alpha1.
 }
 
 // TestReleaseReconciler_PendingToPromoting verifies that a Release transitions
-// from Pending to Progressing after the required Artifact and target Environments exist.
+// from Pending to Progressing after the required Artifact and target clusters exist.
 func TestReleaseReconciler_PendingToPromoting(t *testing.T) {
 	ctx, cancel, c := setupEnv(t)
 	defer cancel()
@@ -37,8 +39,8 @@ func TestReleaseReconciler_PendingToPromoting(t *testing.T) {
 	art := makeArtifact(artifactName, ns)
 	mustCreate(t, ctx, c, art)
 
-	// 2. Create target Environment.
-	env := makeEnvironment("de-dev", ns, map[string]string{"tier": "dev", "country": "de"})
+	// 2. Create target Target.
+	env := makeMemberCluster("de-dev", map[string]string{"tier": "dev", "country": "de"})
 	mustCreate(t, ctx, c, env)
 
 	// 3. Create Pipeline with one stage targeting country=de.
@@ -106,9 +108,9 @@ func TestReleaseReconciler_MissingArtifact_StaysOrFailsPending(t *testing.T) {
 	}, "release with missing artifact should stay pending or fail")
 }
 
-// TestReleaseReconciler_OwnerRef verifies that Syncs created by the Release
-// have ownerReferences pointing back to the Release.
-func TestReleaseReconciler_OwnerRef(t *testing.T) {
+// TestReleaseReconciler_EnvStatus_Populated verifies that a Release creates
+// child ReleaseTarget execution objects once it starts progressing.
+func TestReleaseReconciler_EnvStatus_Populated(t *testing.T) {
 	ctx, cancel, c := setupEnv(t)
 	defer cancel()
 
@@ -117,7 +119,7 @@ func TestReleaseReconciler_OwnerRef(t *testing.T) {
 	art := makeArtifact("art-ownerref", ns)
 	mustCreate(t, ctx, c, art)
 
-	env := makeEnvironment("de-dev-ownerref", ns, map[string]string{"country": "de2"})
+	env := makeMemberCluster("de-dev-ownerref", map[string]string{"country": "de2"})
 	mustCreate(t, ctx, c, env)
 
 	pipeline := makePipeline("standard-rollout-or", map[string]string{"country": "de2"})
@@ -137,17 +139,23 @@ func TestReleaseReconciler_OwnerRef(t *testing.T) {
 	}
 	mustCreate(t, ctx, c, release)
 
-	// Wait until at least one Sync is created and owned by the Release.
+	// Wait until the Release has at least one ReleaseTarget child.
 	eventually(t, func() bool {
-		var syncs kaprov1alpha1.SyncList
-		_ = c.List(ctx, &syncs)
-		for _, s := range syncs.Items {
-			for _, ref := range s.OwnerReferences {
-				if ref.Kind == "Release" && ref.Name == "ownerref-release" {
-					return true
-				}
-			}
+		return len(listReleaseTargets(t, ctx, c, release.Name, release.Namespace)) > 0
+	}, "ReleaseTarget children should be populated after progressing starts")
+}
+
+func listReleaseTargets(t *testing.T, ctx context.Context, c client.Client, releaseName, _ string) []kaprov1alpha1.ReleaseTarget {
+	t.Helper()
+	var list kaprov1alpha1.ReleaseTargetList
+	if err := c.List(ctx, &list); err != nil {
+		t.Fatalf("list ReleaseTargets: %v", err)
+	}
+	targets := make([]kaprov1alpha1.ReleaseTarget, 0)
+	for _, target := range list.Items {
+		if target.Spec.ReleaseRef == releaseName {
+			targets = append(targets, target)
 		}
-		return false
-	}, "a Sync owned by the Release should exist")
+	}
+	return targets
 }

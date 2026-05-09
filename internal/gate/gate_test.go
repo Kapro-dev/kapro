@@ -21,8 +21,8 @@ import (
 func TestSoakGate_NoPolicy(t *testing.T) {
 	g := &gate.SoakGate{}
 	result, err := g.Evaluate(context.Background(), gate.Request{
-		Sync: &kaprov1alpha1.Sync{},
-		Policy:    nil,
+		Context: &gate.Context{},
+		Policy:  nil,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -34,14 +34,12 @@ func TestSoakGate_NoPolicy(t *testing.T) {
 
 func TestSoakGate_NoSoakTime(t *testing.T) {
 	g := &gate.SoakGate{}
-	policy := &kaprov1alpha1.GatePolicy{
-		Spec: kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{SoakTime: ""},
-		},
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{SoakTime: ""},
 	}
 	result, err := g.Evaluate(context.Background(), gate.Request{
-		Sync: &kaprov1alpha1.Sync{},
-		Policy:    policy,
+		Context: &gate.Context{},
+		Policy:  policy,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -53,14 +51,12 @@ func TestSoakGate_NoSoakTime(t *testing.T) {
 
 func TestSoakGate_ClockNotStarted(t *testing.T) {
 	g := &gate.SoakGate{}
-	policy := &kaprov1alpha1.GatePolicy{
-		Spec: kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{SoakTime: "5m"},
-		},
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{SoakTime: "5m"},
 	}
 	result, err := g.Evaluate(context.Background(), gate.Request{
-		Sync: &kaprov1alpha1.Sync{},
-		Policy:    policy,
+		Context: &gate.Context{},
+		Policy:  policy,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -72,18 +68,12 @@ func TestSoakGate_ClockNotStarted(t *testing.T) {
 
 func TestSoakGate_Elapsed(t *testing.T) {
 	g := &gate.SoakGate{}
-	policy := &kaprov1alpha1.GatePolicy{
-		Spec: kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{SoakTime: "1ms"},
-		},
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{SoakTime: "1ms"},
 	}
 	time.Sleep(5 * time.Millisecond) // ensure soak elapsed
-	promo := &kaprov1alpha1.Sync{
-		Status: kaprov1alpha1.SyncStatus{
-			StartedAt: time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339),
-		},
-	}
-	result, err := g.Evaluate(context.Background(), gate.Request{Sync: promo, Policy: policy})
+	promo := &gate.Context{StartedAt: time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339)}
+	result, err := g.Evaluate(context.Background(), gate.Request{Context: promo, Policy: policy})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -94,17 +84,11 @@ func TestSoakGate_Elapsed(t *testing.T) {
 
 func TestSoakGate_NotElapsed(t *testing.T) {
 	g := &gate.SoakGate{}
-	policy := &kaprov1alpha1.GatePolicy{
-		Spec: kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{SoakTime: "1h"},
-		},
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{SoakTime: "1h"},
 	}
-	promo := &kaprov1alpha1.Sync{
-		Status: kaprov1alpha1.SyncStatus{
-			StartedAt: time.Now().UTC().Format(time.RFC3339),
-		},
-	}
-	result, err := g.Evaluate(context.Background(), gate.Request{Sync: promo, Policy: policy})
+	promo := &gate.Context{StartedAt: time.Now().UTC().Format(time.RFC3339)}
+	result, err := g.Evaluate(context.Background(), gate.Request{Context: promo, Policy: policy})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -118,14 +102,12 @@ func TestSoakGate_NotElapsed(t *testing.T) {
 
 func TestSoakGate_InvalidDuration(t *testing.T) {
 	g := &gate.SoakGate{}
-	policy := &kaprov1alpha1.GatePolicy{
-		Spec: kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{SoakTime: "not-a-duration"},
-		},
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{SoakTime: "not-a-duration"},
 	}
 	_, err := g.Evaluate(context.Background(), gate.Request{
-		Sync: &kaprov1alpha1.Sync{},
-		Policy:    policy,
+		Context: &gate.Context{},
+		Policy:  policy,
 	})
 	if err == nil {
 		t.Error("expected error for invalid soakTime duration")
@@ -167,8 +149,8 @@ func prometheusEmptyVectorResponse() []byte {
 func TestMetricsGate_NoMetrics(t *testing.T) {
 	g := &gate.MetricsGate{}
 	result, err := g.Evaluate(context.Background(), gate.Request{
-		Sync:       &kaprov1alpha1.Sync{},
-		Policy:      &kaprov1alpha1.GatePolicy{},
+		Context:     &gate.Context{},
+		Policy:      &kaprov1alpha1.GatePolicySpec{},
 		MetricIndex: 0,
 	})
 	if err != nil {
@@ -186,24 +168,17 @@ func TestMetricsGate_Passed(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	policy := &kaprov1alpha1.GatePolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Annotations: map[string]string{
-				"kapro.io/prometheus-url": srv.URL,
-			},
-		},
-		Spec: kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{
-				Metrics: []kaprov1alpha1.MetricGate{
-					{Provider: "prometheus", Query: "up", Window: "5m"},
-				},
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{
+				{Provider: "prometheus", Query: "up", Window: "5m", Endpoint: srv.URL},
 			},
 		},
 	}
 
 	g := &gate.MetricsGate{HTTPClient: srv.Client()}
 	result, err := g.Evaluate(context.Background(), gate.Request{
-		Sync:       &kaprov1alpha1.Sync{},
+		Context:     &gate.Context{},
 		Policy:      policy,
 		MetricIndex: 0,
 	})
@@ -222,24 +197,17 @@ func TestMetricsGate_Blocked(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	policy := &kaprov1alpha1.GatePolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Annotations: map[string]string{
-				"kapro.io/prometheus-url": srv.URL,
-			},
-		},
-		Spec: kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{
-				Metrics: []kaprov1alpha1.MetricGate{
-					{Provider: "prometheus", Query: "up == 0", Window: "5m"},
-				},
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{
+				{Provider: "prometheus", Query: "up == 0", Window: "5m", Endpoint: srv.URL},
 			},
 		},
 	}
 
 	g := &gate.MetricsGate{HTTPClient: srv.Client()}
 	result, err := g.Evaluate(context.Background(), gate.Request{
-		Sync:       &kaprov1alpha1.Sync{},
+		Context:     &gate.Context{},
 		Policy:      policy,
 		MetricIndex: 0,
 	})
@@ -257,20 +225,15 @@ func TestMetricsGate_PrometheusError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	policy := &kaprov1alpha1.GatePolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Annotations: map[string]string{"kapro.io/prometheus-url": srv.URL},
-		},
-		Spec: kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{
-				Metrics: []kaprov1alpha1.MetricGate{{Provider: "prometheus", Query: "up"}},
-			},
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{{Provider: "prometheus", Query: "up", Endpoint: srv.URL}},
 		},
 	}
 
 	g := &gate.MetricsGate{HTTPClient: srv.Client()}
 	result, err := g.Evaluate(context.Background(), gate.Request{
-		Sync: &kaprov1alpha1.Sync{}, Policy: policy, MetricIndex: 0,
+		Context: &gate.Context{}, Policy: policy, MetricIndex: 0,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -281,6 +244,49 @@ func TestMetricsGate_PrometheusError(t *testing.T) {
 	}
 	if result.RetryAfter == "" {
 		t.Error("expected RetryAfter on prometheus error")
+	}
+}
+
+func TestMetricsGate_NonFiniteValueBlocked(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(prometheusVectorResponse("NaN"))
+	}))
+	defer srv.Close()
+
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{{Provider: "prometheus", Query: "up", Endpoint: srv.URL}},
+		},
+	}
+
+	g := &gate.MetricsGate{HTTPClient: srv.Client()}
+	result, err := g.Evaluate(context.Background(), gate.Request{
+		Context: &gate.Context{}, Policy: policy, MetricIndex: 0,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsPassed() {
+		t.Fatal("expected NaN result to block the gate")
+	}
+}
+
+func TestMetricsGate_TemplateErrorFails(t *testing.T) {
+	g := &gate.MetricsGate{}
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{{Provider: "prometheus", Query: "{{"}},
+		},
+	}
+	result, err := g.Evaluate(context.Background(), gate.Request{
+		Context: &gate.Context{}, Policy: policy, MetricIndex: 0,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Phase != kaprov1alpha1.GatePhaseFailed {
+		t.Fatalf("expected template error to fail, got %q", result.Phase)
 	}
 }
 
@@ -298,7 +304,7 @@ func approvalScheme(t *testing.T) *runtime.Scheme {
 func TestApprovalGate_NilClient_ReturnsError(t *testing.T) {
 	g := &gate.ApprovalGate{Client: nil}
 	_, err := g.Evaluate(context.Background(), gate.Request{
-		Sync: &kaprov1alpha1.Sync{},
+		Context: &gate.Context{},
 	})
 	if err == nil {
 		t.Error("expected error when Client is nil")
@@ -309,13 +315,8 @@ func TestApprovalGate_NoApproval_Pending(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().WithScheme(approvalScheme(t)).Build()
 	g := &gate.ApprovalGate{Client: fakeClient}
 
-	promo := &kaprov1alpha1.Sync{
-		Spec: kaprov1alpha1.SyncSpec{
-			ReleaseRef:     "rel-1",
-			EnvironmentRef: "env-staging",
-		},
-	}
-	result, err := g.Evaluate(context.Background(), gate.Request{Sync: promo})
+	promo := &gate.Context{ReleaseRef: "rel-1", Target: "target-staging"}
+	result, err := g.Evaluate(context.Background(), gate.Request{Context: promo})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -330,31 +331,20 @@ func TestApprovalGate_NoApproval_Pending(t *testing.T) {
 func TestApprovalGate_MatchingApproval_Passes(t *testing.T) {
 	approval := &kaprov1alpha1.Approval{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "approve-rel1-staging",
-			Namespace: "default",
-			Labels: map[string]string{
-				"kapro.io/release":     "rel-1",
-				"kapro.io/environment": "env-staging",
-			},
+			Name: gate.ApprovalName("rel-1", "target-staging"),
 		},
 		Spec: kaprov1alpha1.ApprovalSpec{
-			Kind:           kaprov1alpha1.ApprovalKindSync,
-			Release:        "rel-1",
-			EnvironmentRef: "env-staging",
-			ApprovedBy:     "alice",
-			Comment:        "LGTM",
+			Release:    "rel-1",
+			Target:     "target-staging",
+			ApprovedBy: "alice",
+			Comment:    "LGTM",
 		},
 	}
 
 	fakeClient := fake.NewClientBuilder().WithScheme(approvalScheme(t)).WithObjects(approval).Build()
 	g := &gate.ApprovalGate{Client: fakeClient}
-	promo := &kaprov1alpha1.Sync{
-		Spec: kaprov1alpha1.SyncSpec{
-			ReleaseRef:     "rel-1",
-			EnvironmentRef: "env-staging",
-		},
-	}
-	result, err := g.Evaluate(context.Background(), gate.Request{Sync: promo})
+	promo := &gate.Context{ReleaseRef: "rel-1", Target: "target-staging", Namespace: "default"}
+	result, err := g.Evaluate(context.Background(), gate.Request{Context: promo})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -366,31 +356,20 @@ func TestApprovalGate_MatchingApproval_Passes(t *testing.T) {
 func TestApprovalGate_BypassApproval_Passes(t *testing.T) {
 	approval := &kaprov1alpha1.Approval{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "bypass-rel1-staging",
-			Namespace: "default",
-			Labels: map[string]string{
-				"kapro.io/release":     "rel-1",
-				"kapro.io/environment": "env-staging",
-			},
+			Name: gate.ApprovalName("rel-1", "target-staging"),
 		},
 		Spec: kaprov1alpha1.ApprovalSpec{
-			Kind:           kaprov1alpha1.ApprovalKindSync,
-			Release:        "rel-1",
-			EnvironmentRef: "env-staging",
-			ApprovedBy:     "bob",
-			Bypass:         true,
+			Release:    "rel-1",
+			Target:     "target-staging",
+			ApprovedBy: "bob",
+			Bypass:     true,
 		},
 	}
 
 	fakeClient := fake.NewClientBuilder().WithScheme(approvalScheme(t)).WithObjects(approval).Build()
 	g := &gate.ApprovalGate{Client: fakeClient}
-	promo := &kaprov1alpha1.Sync{
-		Spec: kaprov1alpha1.SyncSpec{
-			ReleaseRef:     "rel-1",
-			EnvironmentRef: "env-staging",
-		},
-	}
-	result, err := g.Evaluate(context.Background(), gate.Request{Sync: promo})
+	promo := &gate.Context{ReleaseRef: "rel-1", Target: "target-staging", Namespace: "default"}
+	result, err := g.Evaluate(context.Background(), gate.Request{Context: promo})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -399,38 +378,95 @@ func TestApprovalGate_BypassApproval_Passes(t *testing.T) {
 	}
 }
 
-func TestApprovalGate_WrongKind_Pending(t *testing.T) {
-	// Approval exists but is for a Stage, not a Promotion — should not unblock.
+func TestApprovalGate_WrongName_Pending(t *testing.T) {
+	// Approval exists but its name doesn't match ApprovalName(release, target) —
+	// the gate must not unblock on label matches.
 	approval := &kaprov1alpha1.Approval{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "batch-approval",
-			Namespace: "default",
-			Labels: map[string]string{
-				"kapro.io/release":     "rel-1",
-				"kapro.io/environment": "env-staging",
-			},
+			Name: "some-other-name",
 		},
 		Spec: kaprov1alpha1.ApprovalSpec{
-			Kind:           kaprov1alpha1.ApprovalKindStage,
-			Release:        "rel-1",
-			EnvironmentRef: "env-staging",
-			ApprovedBy:     "carol",
+			Release:    "rel-1",
+			Target:     "target-staging",
+			ApprovedBy: "carol",
 		},
 	}
 
 	fakeClient := fake.NewClientBuilder().WithScheme(approvalScheme(t)).WithObjects(approval).Build()
 	g := &gate.ApprovalGate{Client: fakeClient}
-	promo := &kaprov1alpha1.Sync{
-		Spec: kaprov1alpha1.SyncSpec{
-			ReleaseRef:     "rel-1",
-			EnvironmentRef: "env-staging",
-		},
-	}
-	result, err := g.Evaluate(context.Background(), gate.Request{Sync: promo})
+	promo := &gate.Context{ReleaseRef: "rel-1", Target: "target-staging", Namespace: "default"}
+	result, err := g.Evaluate(context.Background(), gate.Request{Context: promo})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result.IsPassed() {
-		t.Error("expected Passed=false for approval with wrong Kind")
+		t.Error("expected Passed=false when Approval name does not match ApprovalName")
+	}
+}
+
+func TestApprovalGate_ContextNameScopesApproval(t *testing.T) {
+	ref := "rel-1-pipeline-stage-target-staging"
+	approval := &kaprov1alpha1.Approval{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: gate.ApprovalName("rel-1", ref),
+		},
+		Spec: kaprov1alpha1.ApprovalSpec{
+			Release:    "rel-1",
+			Target:     "target-staging",
+			Ref:        ref,
+			ApprovedBy: "dana",
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().WithScheme(approvalScheme(t)).WithObjects(approval).Build()
+	g := &gate.ApprovalGate{Client: fakeClient}
+	promo := &gate.Context{
+		Name:       ref,
+		ReleaseRef: "rel-1",
+		Target:     "target-staging",
+		Namespace:  "default",
+	}
+	result, err := g.Evaluate(context.Background(), gate.Request{Context: promo})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsPassed() {
+		t.Fatalf("expected scoped approval to pass, got %q", result.Message)
+	}
+}
+
+func TestApprovalGate_ApproverAllowlistEnforced(t *testing.T) {
+	ref := "rel-1-pipeline-stage-target-staging"
+	approval := &kaprov1alpha1.Approval{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: gate.ApprovalName("rel-1", ref),
+		},
+		Spec: kaprov1alpha1.ApprovalSpec{
+			Release:    "rel-1",
+			Target:     "target-staging",
+			Ref:        ref,
+			ApprovedBy: "mallory",
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().WithScheme(approvalScheme(t)).WithObjects(approval).Build()
+	g := &gate.ApprovalGate{Client: fakeClient}
+	promo := &gate.Context{
+		Name:       ref,
+		ReleaseRef: "rel-1",
+		Target:     "target-staging",
+		Namespace:  "default",
+	}
+	result, err := g.Evaluate(context.Background(), gate.Request{
+		Context: promo,
+		Policy: &kaprov1alpha1.GatePolicySpec{
+			Approval: &kaprov1alpha1.ApprovalConfig{Approvers: []string{"alice", "bob"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Phase != kaprov1alpha1.GatePhaseFailed {
+		t.Fatalf("expected failed result for disallowed approver, got %q", result.Phase)
 	}
 }

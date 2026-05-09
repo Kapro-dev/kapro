@@ -14,37 +14,17 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - secrets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
   - serviceaccounts
   verbs:
-  - create
   - delete
   - get
   - list
   - watch
-- apiGroups:
-  - authentication.k8s.io
-  resources:
-  - serviceaccounts/token
-  verbs:
-  - create
 - apiGroups:
   - certificates.k8s.io
   resources:
   - certificatesigningrequests
   verbs:
-  - create
   - get
   - list
   - update
@@ -79,9 +59,9 @@ rules:
   - kapro.io
   resources:
   - approvals
-  - releasereports
   - releases
-  - syncs
+  - releasetargets
+  - sources
   verbs:
   - create
   - delete
@@ -90,83 +70,50 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - approvals/status
+  - memberclusters/status
+  - releases/status
+  - releasetargets/status
+  - sources/status
+  verbs:
+  - get
+  - patch
+  - update
 - apiGroups:
   - kapro.io
   resources:
   - artifacts
-  - gatepolicies
-  - gatetemplates
+  verbs:
+  - create
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - memberclusters
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - memberclusters/finalizers
+  - releases/finalizers
+  - sources/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - kapro.io
+  resources:
   - pipelines
   verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
-  - bootstraptokens
-  verbs:
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
-  - bootstraptokens/finalizers
-  - managedclusters/finalizers
-  - releases/finalizers
-  - syncs/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - kapro.io
-  resources:
-  - bootstraptokens/status
-  verbs:
-  - patch
-  - update
-- apiGroups:
-  - kapro.io
-  resources:
-  - environments
-  verbs:
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
-  - environments/status
-  - pipelines/status
-  - releasereports/status
-  - releases/status
-  - syncs/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - kapro.io
-  resources:
-  - managedclusters
-  verbs:
-  - create
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
-  - releaserevisions
-  verbs:
-  - create
   - get
   - list
   - watch

@@ -1,7 +1,7 @@
 // Package gate defines KGI — the Kapro Gate Interface.
 //
 // KGI v1alpha1 is the pluggable evaluation contract for delivery gates.
-// A gate answers one question: "is it safe to sync right now?"
+// A gate answers one question: "is it safe to advance this target-cluster rollout right now?"
 //
 // Built-in implementations live in internal/gate/:
 //   - soak.go              — time-based bake period
@@ -13,7 +13,7 @@
 //   - webhook/             — HTTP webhook gate
 //
 // External implementations can implement this interface and wire in at startup
-// via the gateForTemplate dispatch function in the SyncReconciler.
+// via the gate registry used by the release controller.
 //
 // # The CRI analogy
 //
@@ -21,7 +21,7 @@
 //   - Kapro manages gate lifecycle (when, timeout, retry, failure policy)
 //   - Gate.Evaluate() is the KGI contract — analogous to CRI's RunPodSandbox
 //   - Built-in gates (cel, job, webhook) are like runc — always available
-//   - Sync.Status.Gates[] is like PodStatus.ContainerStatuses[]
+//   - Release.Status.Targets[].Gates[] is like PodStatus.ContainerStatuses[]
 //     — Kapro's authoritative state; gates are stateless evaluators only
 //
 // # Stability
@@ -34,6 +34,7 @@ import (
 	"context"
 
 	corev1 "k8s.io/api/core/v1"
+	k8stypes "k8s.io/apimachinery/pkg/types"
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
 
@@ -55,7 +56,7 @@ type ConditionResult struct {
 // transitions from Result.Phase.
 //
 // Phase values:
-//   - Passed       — gate condition satisfied; Sync may advance
+//   - Passed       — gate condition satisfied; rollout may advance
 //   - Inconclusive — gate needs more time; controller requeues after RetryAfter
 //   - Failed       — gate condition not met; failure policy applies
 //   - Running      — gate-managed resource (e.g. Job) is still executing
@@ -64,8 +65,8 @@ type Result struct {
 	// The controller uses Phase as the authoritative state.
 	Phase kaprov1alpha1.GatePhase
 
-	// Message is a human-readable explanation shown in Sync.status.conditions
-	// and in notifications. Be specific: include metric values, threshold,
+	// Message is a human-readable explanation shown in rollout status and
+	// notifications. Be specific: include metric values, threshold,
 	// actual vs expected. Good: "p99 latency 48ms > threshold 40ms".
 	Message string
 
@@ -77,7 +78,7 @@ type Result struct {
 	// VendorRef points to the vendor-managed resource created by this gate
 	// (e.g. a Kubernetes Job, a Prometheus recording rule, an AnalysisRun).
 	// Nil for in-process gates (cel, webhook, soak).
-	// Stored in Sync.Status.Gates[].vendorRef for observability.
+	// Stored in Release.Status.Targets[].Gates[].VendorRef for observability.
 	VendorRef *corev1.ObjectReference
 
 	// Results contains per-condition breakdowns for multi-condition gates
@@ -102,35 +103,55 @@ func (r Result) IsFailed() bool {
 	return r.Phase == kaprov1alpha1.GatePhaseFailed
 }
 
+// Context is the per-target rollout context passed into gate evaluation.
+// It is a runtime value owned by the release controller, not a Kubernetes API object.
+type Context struct {
+	Name       string
+	Namespace  string
+	ReleaseRef string
+	Target     string
+	Pipeline   string
+	Stage      string
+	Version    string
+	StartedAt  string
+
+	// OwnerUID and OwnerName identify the ReleaseTarget that triggered this gate
+	// evaluation. Gates that create Kubernetes resources (e.g. Job gate) must set
+	// OwnerReferences using these fields so created resources are garbage-collected
+	// when the ReleaseTarget is deleted.
+	OwnerUID  k8stypes.UID
+	OwnerName string
+}
+
 // Request carries everything a gate needs to evaluate its condition.
 // Gates must not modify any field of Request.
 type Request struct {
-	// Sync is the per-environment delivery object being gated.
+	// Context is the per-target rollout state being gated.
 	// Never nil.
-	Sync *kaprov1alpha1.Sync
+	Context *Context
 
-	// Policy is the resolved GatePolicy for this sync.
-	// May be nil when no GatePolicy is configured for the environment.
-	Policy *kaprov1alpha1.GatePolicy
+	// Policy is the resolved gate policy for this sync.
+	// May be nil when no gate is configured for the stage.
+	Policy *kaprov1alpha1.GatePolicySpec
 
-	// MetricIndex addresses a specific metric in Policy.Spec.Gate.Metrics.
+	// MetricIndex addresses a specific metric in Policy.Gate.Metrics.
 	// Meaningful only on the Metrics[] evaluation path.
 	MetricIndex int
 
-	// Template is the resolved GateTemplate for template-based evaluation.
+	// Template is the inline gate template for template-based evaluation.
 	// Nil on the Metrics[] path; non-nil on the GateTemplate path.
-	Template *kaprov1alpha1.GateTemplate
+	Template *kaprov1alpha1.GateTemplateSpec
 
 	// Args carries runtime-injected parameters merged with this precedence:
-	//   GateTemplate defaults < GatePolicy overrides < sync context (version, env, stage)
+	//   GateTemplateSpec defaults < sync context (version, target, stage)
 	// Nil on the Metrics[] path.
 	Args map[string]string
 }
 
 // Gate is KGI v1alpha1: the Kapro Gate Interface.
 //
-// Evaluate returns a Result indicating whether the Sync may advance.
-// The controller persists gate state to Sync.Status.Gates[] after each
+// Evaluate returns a Result indicating whether the target rollout may advance.
+// The controller persists gate state to Release.status.targets[].gates after each
 // evaluation — implementations must not attempt to store state themselves.
 //
 // Contract:
@@ -138,7 +159,7 @@ type Request struct {
 //   - Evaluate MUST respect ctx.Done() — do not block indefinitely
 //   - Evaluate MUST NOT mutate any field of req
 //   - Evaluate MUST be safe for concurrent use from multiple goroutines
-//   - Evaluate MUST be idempotent for a given (Sync.UID, gate state) pair
+//   - Evaluate MUST be idempotent for a given (release/env/stage, gate state) tuple
 type Gate interface {
 	Evaluate(ctx context.Context, req Request) (Result, error)
 }

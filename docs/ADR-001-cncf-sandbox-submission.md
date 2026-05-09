@@ -40,43 +40,38 @@ Kapro implements a clean three-layer abstraction:
 | Layer | CRDs | Role |
 |-------|------|------|
 | **Artifact** | `Artifact` | Immutable, digest-pinned OCI bundle |
-| **Topology** | `Environment`, `EnvironmentGroup`, `ClusterRegistration` | Where versions go |
+| **Topology** | `Target`, `TargetGroup`, `ClusterRegistration` | Where versions go |
 | **Strategy** | `Pipeline`, `Release`, `Approval` | How versions move |
 
 This separation is architecturally sound and mirrors established Kubernetes patterns. Each layer has a single, clear concern.
 
 ### KSI — Kapro Standard Interfaces
 
-The most significant architectural decision in Kapro is the **Kapro Standard Interface (KSI)** system — seven stable interface contracts modeled directly on Kubernetes' own CRI/CSI/CNI pattern:
+Kapro exposes two stable, pluggable extension interfaces today, modelled on the Kubernetes CRI/CSI/CNI pattern:
 
-| KSI | Interface | Abstracts |
-|-----|-----------|-----------|
-| KAI | `pkg/actuator` | How a version is deployed |
-| KGI | `pkg/gate` | Whether it is safe to promote |
-| KHI | `pkg/health` | Whether a target is healthy |
-| KVI | `pkg/verification` | Whether an artifact is signed |
-| KRI | `pkg/oci` | How artifacts are fetched |
-| KNI | `pkg/notification` | How stakeholders are notified |
-| KCI | `pkg/provider` | How clusters are discovered and connected |
+| KSI | Interface      | Abstracts                          |
+|-----|----------------|------------------------------------|
+| KAI | `pkg/actuator` | How a version is applied to a cluster |
+| KGI | `pkg/gate`     | Whether it is safe to advance a rollout |
 
-This is architecturally novel in the GitOps/CD ecosystem. No current CNCF project defines stable, gRPC-backed, language-agnostic interfaces at this layer. A Python or Rust team can implement a custom gate or actuator without touching Go. This matters enormously for extensibility and ecosystem growth.
+Both are backed by a named `Registry[T]` (`pkg/registry`) and validated by a conformance suite in `conformance/`. A Python, Rust, or Go team can ship a custom actuator or gate and register it at operator startup by name.
 
-Built-in implementations are substantial:
-- **Actuators**: Flux, ArgoCD, Helm, KServe — covering the dominant delivery runtimes
-- **Gates**: Soak timer, Prometheus metrics, KEDA consumer lag, MLflow model metrics, job-based gates, shadow traffic, webhook
-- **Providers**: Cluster API (CAPI), Open Cluster Management (OCM), CRD-based registration
-- **Verification**: Sigstore/cosign v2 — supply chain security built in
+Built-in implementations:
+- **Actuators**: Flux (reference implementation)
+- **Gates**: Soak timer, Prometheus metrics, cosign signature verification, human approval, plus template-dispatch gates (`cel`, `job`, `webhook`)
+
+Cluster onboarding (CSR + optional GCP Workload Identity Federation) and cluster inventory (`MemberCluster`) are deliberately **not** pluggable extension points — they live in `internal/bootstrap` and the `MemberCluster` CRD respectively. Past iterations included a generic cluster-provider interface (KCI); it has been removed in favour of the simpler `MemberCluster` object.
 
 ### State Machines
 
 All core objects are driven by explicit state machines:
 
 - `Release`: `Pending → Promoting → Progressing → Complete | Failed`
-- `Sync`: `Pending → Verification → HealthCheck → MetricsCheck → Applying → Converged | Failed`
+- Per-target (inline in `Release.status.targets[].phase`): `Pending → Verification → HealthCheck → MetricsCheck → Applying → Converged | Failed`
 
-Stage promotion is handled by the Pipeline stage chain (`dependsOn` DAG). Each stage fans out `Sync` objects to all matching clusters in parallel — this is the batch run. Progressive promotion is the stage-chain itself: dev must reach Converged before staging is started, staging before prod. No separate `Promotion` or `BatchRun` CRDs are needed — the `Release → Pipeline → Stage → Sync` hierarchy covers both concepts natively.
+Stage promotion is handled by the Pipeline stage chain (`dependsOn` DAG). Each stage selects matching clusters and fans out rollout in parallel — per-cluster execution state lives inline in `Release.status.targets[]`. Progressive promotion is the stage-chain itself: dev must reach Converged before staging is started, staging before prod. No separate `Promotion`, `BatchRun`, or `Sync` CRDs — the `Release → Pipeline → Stage → target-status` model covers both concepts natively.
 
-This is a production-grade design. State is stored in Kubernetes (etcd). Controllers are stateless and crash-safe. Every transition is observable via `kubectl get releases` and `kubectl get syncs`.
+State is stored in Kubernetes (etcd). Controllers are stateless and crash-safe. Every transition is observable via `kubectl get releases` and `kubectl describe release <name>`.
 
 ### Multi-cluster Connectivity Model
 

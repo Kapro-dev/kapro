@@ -14,25 +14,35 @@ import (
 
 // ApprovalMutator is a mutating admission webhook for Approval objects.
 //
-// Security contract: spec.approvedBy is ALWAYS overwritten with the Kubernetes
-// UserInfo.Username from the admission request. This prevents users from creating
-// Approval objects with a forged approver identity via kubectl or the API.
+// Security contract: spec.approvedBy is overwritten with the Kubernetes
+// UserInfo.Username from the admission request, UNLESS the caller is the
+// exact trusted service account (the webhook server's SA). This prevents
+// users and arbitrary in-cluster SAs from forging approver identities.
 //
-// The only trusted path to set approvedBy is the HMAC-signed webhook token
-// (internal/webhook/server.go), which uses the ApprovedBy claim from the token.
-// That path bypasses this webhook because the webhook server creates the Approval
-// object using its own service account — the service account identity is set here.
+// The trusted SA is injected at construction time so it adapts to any
+// namespace or service account name (Helm installs, custom namespaces, etc.).
 //
-// For human approvals via the webhook URL, approvedBy comes from the signed token
-// (the token was minted by the notification system with the SSO identity).
+// For human approvals via the webhook URL, the webhook server creates the
+// Approval with approvedBy from the HMAC-signed token (carrying the SSO identity).
 // For direct kubectl approval, approvedBy is set to the kubectl user's identity.
 type ApprovalMutator struct {
-	decoder admission.Decoder
+	decoder           admission.Decoder
+	trustedServiceAcc string
 }
 
 // NewApprovalMutator returns a configured ApprovalMutator.
-func NewApprovalMutator(decoder admission.Decoder) *ApprovalMutator {
-	return &ApprovalMutator{decoder: decoder}
+// trustedSA is the full Kubernetes username of the operator's service account
+// (e.g. "system:serviceaccount:kapro-system:kapro-operator"). Only this SA
+// is allowed to supply a pre-filled spec.approvedBy from HMAC-signed tokens.
+func NewApprovalMutator(decoder admission.Decoder, trustedSA string) *ApprovalMutator {
+	return &ApprovalMutator{decoder: decoder, trustedServiceAcc: trustedSA}
+}
+
+func validateApprovalBypassComment(approval *kaprov1alpha1.Approval) admission.Response {
+	if approval != nil && approval.Spec.Bypass && approval.Spec.Comment == "" {
+		return admission.Denied("approval.spec.bypass requires a non-empty spec.comment (P0 justification)")
+	}
+	return admission.Allowed("")
 }
 
 // Handle implements admission.Handler.
@@ -46,18 +56,25 @@ func (m *ApprovalMutator) Handle(ctx context.Context, req admission.Request) adm
 
 	switch req.Operation {
 	case admissionv1.Create:
-		// Overwrite whatever the client sent — the real identity is in UserInfo.
-		approval.Spec.ApprovedBy = req.UserInfo.Username
+		// Only the operator's own SA is trusted to supply approvedBy
+		// (it comes from the HMAC-signed token with the human's SSO identity).
+		// All other callers — including other service accounts — get overwritten.
+		if req.UserInfo.Username != m.trustedServiceAcc || approval.Spec.ApprovedBy == "" {
+			approval.Spec.ApprovedBy = req.UserInfo.Username
+		}
 		// bypass=true is a privileged escape hatch (P0 hotfix). Require a non-empty
 		// comment so there is always an audit trail in the object.
-		if approval.Spec.Bypass && approval.Spec.Comment == "" {
-			return admission.Denied("approval.spec.bypass requires a non-empty spec.comment (P0 justification)")
+		if resp := validateApprovalBypassComment(&approval); !resp.Allowed {
+			return resp
 		}
 
 	case admissionv1.Update:
 		var old kaprov1alpha1.Approval
 		if err := m.decoder.DecodeRaw(req.OldObject, &old); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
+		}
+		if resp := validateApprovalBypassComment(&approval); !resp.Allowed {
+			return resp
 		}
 		// approvedBy is immutable once set — reject changes.
 		if old.Spec.ApprovedBy != "" && approval.Spec.ApprovedBy != old.Spec.ApprovedBy {

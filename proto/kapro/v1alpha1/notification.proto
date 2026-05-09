@@ -33,7 +33,7 @@ message PromotionEvent {
   // MetricsCheck | WaitingApproval | Applying | Converged | Failed
   string phase = 1;
   string promotion_ref = 2;
-  string environment_ref = 3;
+  string target_ref = 3;
   string release_ref = 4;
   string version = 5;
   string message = 6;

@@ -12,14 +12,48 @@ import (
 )
 
 var (
-	// SyncTransitions counts FSM phase transitions per Sync.
+	// ControllerReconciles counts reconcile invocations by controller and result.
+	ControllerReconciles = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "kapro",
+			Subsystem: "controller",
+			Name:      "reconciles_total",
+			Help:      "Total controller reconcile invocations by controller and result.",
+		},
+		[]string{"controller", "result"},
+	)
+
+	// ControllerReconcileDuration measures end-to-end reconcile latency.
+	ControllerReconcileDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "kapro",
+			Subsystem: "controller",
+			Name:      "reconcile_duration_seconds",
+			Help:      "Controller reconcile duration in seconds.",
+			Buckets:   prometheus.DefBuckets,
+		},
+		[]string{"controller"},
+	)
+
+	// StatusWrites counts status patch/update attempts by resource and result.
+	StatusWrites = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "kapro",
+			Subsystem: "controller",
+			Name:      "status_writes_total",
+			Help:      "Total status write operations by resource and result.",
+		},
+		[]string{"resource", "result"},
+	)
+
+	// SyncTransitions counts target-rollout FSM phase transitions.
 	// Labels: phase (destination), result (success|failed).
 	SyncTransitions = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "kapro",
 			Subsystem: "sync",
 			Name:      "transitions_total",
-			Help:      "Total FSM phase transitions for Syncs.",
+			Help:      "Total FSM phase transitions for target rollouts.",
 		},
 		[]string{"phase", "result"},
 	)
@@ -59,25 +93,51 @@ var (
 		},
 	)
 
-	// WaveProgress tracks how many Environments have been successfully
+	// WaveProgress tracks how many Targets have been successfully
 	// promoted per release stage.
 	WaveProgress = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "kapro",
 			Subsystem: "wave",
 			Name:      "environments_promoted_total",
-			Help:      "Number of Environments successfully promoted per release stage.",
+			Help:      "Number of Targets successfully promoted per release stage.",
 		},
 		[]string{"release", "stage"},
+	)
+
+	// SpokeReconciles counts cluster-controller reconcile invocations by result.
+	SpokeReconciles = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "kapro",
+			Subsystem: "spoke",
+			Name:      "reconciles_total",
+			Help:      "Total spoke reconcile invocations by result.",
+		},
+		[]string{"result"},
+	)
+
+	// SpokeReconcilesSkipped counts reconciles skipped because no spec change was detected.
+	SpokeReconcilesSkipped = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: "kapro",
+			Subsystem: "spoke",
+			Name:      "reconciles_skipped_total",
+			Help:      "Total reconciles skipped due to no spec change.",
+		},
 	)
 )
 
 func init() {
 	ctrlmetrics.Registry.MustRegister(
+		ControllerReconciles,
+		ControllerReconcileDuration,
+		StatusWrites,
 		SyncTransitions,
 		GateEvaluations,
 		StageDuration,
 		ActiveReleases,
 		WaveProgress,
+		SpokeReconciles,
+		SpokeReconcilesSkipped,
 	)
 }

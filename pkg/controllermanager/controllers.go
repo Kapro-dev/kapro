@@ -13,66 +13,94 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"kapro.io/kapro/internal/controller"
+	"kapro.io/kapro/internal/shard"
 	internalgate "kapro.io/kapro/internal/gate"
 	celgate "kapro.io/kapro/internal/gate/cel"
 	jobgate "kapro.io/kapro/internal/gate/job"
 	webhookgate "kapro.io/kapro/internal/gate/webhook"
 	cosignverifier "kapro.io/kapro/internal/verification/cosign"
-	crdprovider "kapro.io/kapro/internal/provider/crd"
 	pkggate "kapro.io/kapro/pkg/gate"
 )
 
 func init() {
 	Register("release", startReleaseController)
-	Register("releasereport", startReleaseReportController)
-	Register("sync", startSyncController)
-	Register("pipeline", startPipelineController)
+	Register("release-target", startReleaseTargetController)
 	Register("approval", startApprovalController)
-	Register("bootstraptoken", startBootstrapTokenController)
 	Register("csrapproval", startCSRApprovalController)
-	Register("managedcluster", startManagedClusterController)
+	Register("membercluster", startMemberClusterController)
+	Register("source", startSourceController)
 }
 
 // startReleaseController starts the Release reconciler.
-// Owns the two-level DAG orchestration — walks Pipeline nodes then Stages,
-// creates one Sync per (Release, Pipeline, Stage, Environment).
+// Drives the two-level DAG orchestration — walks Pipeline nodes then Stages,
+// upserts one ReleaseTarget per (Release, Pipeline, Stage, Target),
+// and aggregates child execution state into Release status.
 func startReleaseController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.ReleaseReconciler{
-		Client:   cc.Manager.GetClient(),
-		Recorder: cc.Recorder,
-		Scheme:   cc.Manager.GetScheme(),
-	}).SetupWithManager(cc.Manager); err != nil {
+	r := &controller.ReleaseReconciler{
+		Client:           cc.Manager.GetClient(),
+		Recorder:         cc.Recorder,
+		Scheme:           cc.Manager.GetScheme(),
+		ActuatorRegistry: cc.ActuatorRegistry,
+		Notifier:         cc.Notifier,
+		ApprovalSecret:   cc.ApprovalSecret,
+		ExternalURL:      cc.ExternalURL,
+		GateRegistry:     cc.GateRegistry,
+	}
+	if cc.ShardName != "" {
+		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: true}
+	}
+	if err := r.SetupWithManager(cc.Manager); err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
-// startReleaseReportController starts the ReleaseReport aggregation reconciler.
-// Purely observational — never mutates Syncs or Releases.
-// Disable with KAPRO_CONTROLLERS=*,-releasereport if audit reports are not needed.
-func startReleaseReportController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.ReleaseReportReconciler{
-		Client:   cc.Manager.GetClient(),
-		Recorder: cc.Recorder,
-	}).SetupWithManager(cc.Manager); err != nil {
+func startReleaseTargetController(_ context.Context, cc ControllerContext) (bool, error) {
+	r := &controller.ReleaseTargetReconciler{
+		Client:           cc.Manager.GetClient(),
+		Recorder:         cc.Recorder,
+		Scheme:           cc.Manager.GetScheme(),
+		ActuatorRegistry: cc.ActuatorRegistry,
+		Notifier:         cc.Notifier,
+		ApprovalSecret:   cc.ApprovalSecret,
+		ExternalURL:      cc.ExternalURL,
+		GateRegistry:     cc.GateRegistry,
+	}
+	if cc.ShardName != "" {
+		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: true}
+	}
+	if err := r.SetupWithManager(cc.Manager); err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
-// BuildGateRegistry registers all built-in template-dispatch gate types.
+// BuildGateRegistry registers every built-in Gate into a single registry.
+//
+// One mental model: every gate — FSM-phase gates AND template-dispatch gates —
+// is a pkg/gate.Gate resolved by name through this registry. The FSM calls
+// r.GateRegistry.Resolve("soak" | "metrics" | "approval" | "verification"),
+// and GateTemplate evaluation calls Resolve(template.spec.type) for
+// user-extensible types (cel, job, webhook, or anything registered by name
+// at startup).
+//
 // External gate types register after this call in main.go:
 //
 //	reg, err := BuildGateRegistry(c)
 //	if err != nil { return err }
 //	if err := reg.Register("argo-analysis", &mygate.ArgoAnalysisGate{...}); err != nil { return err }
-//
-// The registry is intentionally separate from BuildGateSet: GateSet holds the
-// FSM-phase gates (bound to fixed phases), while GateRegistry holds the
-// template-dispatch gates (looked up by GateTemplate.spec.type at runtime).
 func BuildGateRegistry(c client.Client) (*pkggate.Registry, error) {
 	reg := pkggate.NewRegistry()
 	for typeName, impl := range map[string]pkggate.Gate{
+		// FSM-phase gates (resolved by fixed name from target_fsm.go handlers).
+		"soak":     &internalgate.SoakGate{},
+		"metrics":  &internalgate.MetricsGate{},
+		"approval": &internalgate.ApprovalGate{Client: c},
+		"verification": &internalgate.VerificationGate{
+			Verifier:  &cosignverifier.Verifier{},
+			KeyReader: &internalgate.ClientSecretKeyReader{Client: c},
+		},
+		// Template-dispatch gates (resolved by GateTemplate.spec.type).
 		"cel":     &celgate.Gate{Client: c},
 		"job":     &jobgate.Gate{Client: c},
 		"webhook": &webhookgate.Gate{},
@@ -84,56 +112,12 @@ func BuildGateRegistry(c client.Client) (*pkggate.Registry, error) {
 	return reg, nil
 }
 
-// startSyncController starts the Sync FSM reconciler.
-// Drives one environment through: Verification → HealthCheck → Soaking →
-// MetricsCheck → WaitingApproval → Applying → Converged | Failed.
-// Built-in gates: soak, metrics (Prometheus), approval, health, verification (cosign), CEL.
-func startSyncController(_ context.Context, cc ControllerContext) (bool, error) {
-	provider := &crdprovider.CRDProvider{Client: cc.Manager.GetClient()}
-
-	if err := (&controller.SyncReconciler{
-		Client:           cc.Manager.GetClient(),
-		Scheme:           cc.Manager.GetScheme(),
-		Recorder:         cc.Recorder,
-		ActuatorRegistry: cc.ActuatorRegistry,
-		Provider:         provider,
-		SoakGate:         cc.Gates.Soak,
-		MetricsGate:      cc.Gates.Metrics,
-		ApprovalGate:     cc.Gates.Approval,
-		VerificationGate: cc.Gates.Verification,
-		HealthAssessor:   cc.HealthAssessor,
-		Notifier:         cc.Notifier,
-		OCIService:       cc.OCIService,
-		ApprovalSecret:   cc.ApprovalSecret,
-		ExternalURL:      cc.ExternalURL,
-		CELGate:          cc.Gates.CEL,
-		GateRegistry:     cc.GateRegistry,
-	}).SetupWithManager(cc.Manager); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
 // startApprovalController starts the Approval reconciler.
-// Watches Approval objects and unblocks Syncs waiting in WaitingApproval phase.
+// Watches Approval objects and unblocks targets waiting in WaitingApproval phase.
 func startApprovalController(_ context.Context, cc ControllerContext) (bool, error) {
 	if err := (&controller.ApprovalReconciler{
 		Client:   cc.Manager.GetClient(),
 		Recorder: cc.Recorder,
-	}).SetupWithManager(cc.Manager); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-// startBootstrapTokenController starts the BootstrapToken reconciler.
-// Creates bootstrap SA + kubeconfig Secret so spoke clusters can submit CSRs.
-func startBootstrapTokenController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.BootstrapTokenReconciler{
-		Client:    cc.Manager.GetClient(),
-		Recorder:  cc.Recorder,
-		HubAPIURL: cc.HubAPIURL,
-		HubCAData: cc.HubCAData,
 	}).SetupWithManager(cc.Manager); err != nil {
 		return false, err
 	}
@@ -158,63 +142,50 @@ func startCSRApprovalController(_ context.Context, cc ControllerContext) (bool, 
 	return true, nil
 }
 
-// startManagedClusterController starts the ManagedCluster deregistration reconciler.
-// Handles finalizer-based cleanup of long-lived cluster RBAC when a ManagedCluster is deleted.
-func startManagedClusterController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.ManagedClusterReconciler{
-		Client: cc.Manager.GetClient(),
-		Scheme: cc.Manager.GetScheme(),
+// startMemberClusterController starts the MemberCluster reconciler.
+// Handles bootstrap SA/kubeconfig provisioning on creation, and RBAC cleanup on deletion.
+func startMemberClusterController(_ context.Context, cc ControllerContext) (bool, error) {
+	kubeClient, err := kubernetes.NewForConfig(cc.Manager.GetConfig())
+	if err != nil {
+		return false, err
+	}
+	if err := (&controller.MemberClusterReconciler{
+		Client:     cc.Manager.GetClient(),
+		Scheme:     cc.Manager.GetScheme(),
+		KubeClient: kubeClient,
+		HubAPIURL:  cc.HubAPIURL,
+		HubCAData:  cc.HubCAData,
 	}).SetupWithManager(cc.Manager); err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
-// startPipelineController starts the Pipeline status-aggregation reconciler.
-// Read-only from a scheduling standpoint — only updates Pipeline.status
-// (phase, stageProgress) by watching Sync objects it owns.
-func startPipelineController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.PipelineReconciler{
+// startSourceController starts the Source reconciler.
+// Polls OCI registries for new semver-matching tags and auto-creates Artifact objects.
+func startSourceController(_ context.Context, cc ControllerContext) (bool, error) {
+	r := &controller.SourceReconciler{
 		Client:   cc.Manager.GetClient(),
 		Recorder: cc.Recorder,
-	}).SetupWithManager(cc.Manager); err != nil {
+		Scheme:   cc.Manager.GetScheme(),
+	}
+	if cc.ShardName != "" {
+		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: true}
+	}
+	if err := r.SetupWithManager(cc.Manager); err != nil {
 		return false, err
 	}
 	return true, nil
-}
-
-// BuildGateSet constructs the full MVP gate set.
-// c is the controller-runtime client used by ApprovalGate, VerificationGate, and CELGate.
-// All five gates are wired and ready — callers do not need to set fields after calling this.
-//
-// Symmetry invariant: every gate that SyncReconciler uses must be constructed here,
-// including CEL (used for GateTemplate dispatch, not a fixed FSM phase). This makes
-// BuildGateSet the single source of truth for gate wiring across the entire operator.
-func BuildGateSet(c client.Client) GateSet {
-	return GateSet{
-		Soak:    &internalgate.SoakGate{},
-		Metrics: &internalgate.MetricsGate{},
-		Approval: &internalgate.ApprovalGate{Client: c},
-		Verification: &internalgate.VerificationGate{
-			Verifier:  &cosignverifier.Verifier{},
-			KeyReader: &internalgate.ClientSecretKeyReader{Client: c},
-		},
-		// CEL is dispatched via gateForTemplate (type=="cel"), not a fixed FSM phase,
-		// but lives here for symmetry: all gate construction happens in one place.
-		CEL: &celgate.Gate{Client: c},
-	}
 }
 
 // compile-time checks: all built-in gate implementations satisfy gate.Gate.
-// Add a line here whenever a new built-in gate is added to BuildGateSet or BuildGateRegistry.
+// Add a line here whenever a new built-in gate is added to BuildGateRegistry.
 var (
-	// FSM-phase gates (BuildGateSet)
 	_ pkggate.Gate = (*internalgate.SoakGate)(nil)
 	_ pkggate.Gate = (*internalgate.MetricsGate)(nil)
 	_ pkggate.Gate = (*internalgate.ApprovalGate)(nil)
 	_ pkggate.Gate = (*internalgate.VerificationGate)(nil)
 	_ pkggate.Gate = (*celgate.Gate)(nil)
-	// Template-dispatch gates (BuildGateRegistry)
 	_ pkggate.Gate = (*jobgate.Gate)(nil)
 	_ pkggate.Gate = (*webhookgate.Gate)(nil)
 )

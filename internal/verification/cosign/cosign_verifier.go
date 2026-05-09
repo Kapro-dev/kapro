@@ -14,10 +14,13 @@ import (
 	"encoding/pem"
 	"fmt"
 
+	"net/url"
+
 	"github.com/google/go-containerregistry/pkg/name"
 	cosignpkg "github.com/sigstore/cosign/v2/pkg/cosign"
 	cosignoci "github.com/sigstore/cosign/v2/pkg/oci"
 	cosignsig "github.com/sigstore/cosign/v2/pkg/signature"
+	rekorclient "github.com/sigstore/rekor/pkg/generated/client"
 	sigsig "github.com/sigstore/sigstore/pkg/signature"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -64,6 +67,13 @@ func (v *Verifier) Verify(ctx context.Context, req verification.VerifyRequest) (
 		}, nil
 	}
 
+	if len(sigs) == 0 {
+		return verification.VerifyResult{
+			Verified: false,
+			Message:  fmt.Sprintf("cosign: no signatures found for %s", req.ImageRef),
+		}, nil
+	}
+
 	cert := certFromSigs(sigs)
 	msg := fmt.Sprintf("verified %d signature(s) for %s", len(sigs), req.ImageRef)
 	logger.Info("cosign: verification passed",
@@ -98,12 +108,30 @@ func buildCheckOpts(ctx context.Context, req verification.VerifyRequest) (*cosig
 	cfg := req.Keyless
 	if cfg == nil {
 		cfg = &verification.KeylessConfig{}
+	} else if cfg.ExpectedIssuer == "" && cfg.ExpectedIdentity == "" {
+		// Explicit keyless config with no identity constraints is TOFUS: any
+		// Fulcio-signed image from any principal would pass. Require at least
+		// one constraint so operators are intentional about trust boundaries.
+		return nil, fmt.Errorf("keyless verification: at least one of expectedIssuer or expectedIdentity must be configured")
 	}
 	if cfg.ExpectedIssuer != "" || cfg.ExpectedIdentity != "" {
 		co.Identities = []cosignpkg.Identity{{
 			Issuer:  cfg.ExpectedIssuer,
 			Subject: cfg.ExpectedIdentity,
 		}}
+	}
+
+	// Wire custom Rekor URL when specified (e.g. private Rekor instance).
+	if cfg.RekorURL != "" {
+		u, err := url.Parse(cfg.RekorURL)
+		if err != nil {
+			return nil, fmt.Errorf("invalid rekorURL %q: %w", cfg.RekorURL, err)
+		}
+		tc := rekorclient.DefaultTransportConfig().
+			WithHost(u.Host).
+			WithSchemes([]string{u.Scheme}).
+			WithBasePath(u.Path)
+		co.RekorClient = rekorclient.NewHTTPClientWithConfig(nil, tc)
 	}
 
 	return co, nil

@@ -19,19 +19,19 @@ import (
 	"time"
 )
 
-// Claims encodes the context for a single approve or reject action.
+// Claims encodes the context for a single target approval or rejection action.
 type Claims struct {
-	// SyncName is the Sync object name.
+	// SyncName is the deterministic rollout entry name (<release>-<target>).
 	SyncName string `json:"n"`
-	// Namespace is the Sync's namespace.
+	// Namespace is the Release namespace.
 	Namespace string `json:"ns"`
-	// Release is the ReleaseRef from the SyncSpec.
+	// Release is the owning Release name.
 	Release string `json:"r"`
-	// Environment is the EnvironmentRef from the SyncSpec.
-	Environment string `json:"e"`
-	// Version is the artifact version being synced.
+	// Target is the target cluster name.
+	Target string `json:"t"`
+	// Version is the artifact version being promoted.
 	Version string `json:"v"`
-	// UID is the Sync object UID — prevents replay across name reuse.
+	// UID is the release-scoped rollout entry UID surrogate, preventing replay across name reuse.
 	UID string `json:"uid"`
 	// Action is "approve" or "reject".
 	Action string `json:"a"`
@@ -50,7 +50,11 @@ const DefaultTTL = 48 * time.Hour
 
 // Sign encodes claims as JSON and appends an HMAC-SHA256 signature.
 // Returns a URL-safe token with no padding.
+// Returns an error if secret is empty — callers must not mint tokens without a real key.
 func Sign(c Claims, secret []byte) (string, error) {
+	if len(secret) == 0 {
+		return "", fmt.Errorf("token: Sign called with empty secret — configure approval-secret")
+	}
 	payload, err := json.Marshal(c)
 	if err != nil {
 		return "", fmt.Errorf("token: marshal claims: %w", err)
@@ -62,7 +66,11 @@ func Sign(c Claims, secret []byte) (string, error) {
 
 // Verify parses and validates a token. Returns the claims if the signature
 // is valid and the token has not expired.
+// Returns an error if secret is empty — a zero-length secret accepts any token.
 func Verify(token string, secret []byte) (*Claims, error) {
+	if len(secret) == 0 {
+		return nil, fmt.Errorf("token: Verify called with empty secret — configure approval-secret")
+	}
 	dot := strings.LastIndex(token, ".")
 	if dot < 0 {
 		return nil, fmt.Errorf("token: malformed — missing separator")

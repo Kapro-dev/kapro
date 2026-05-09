@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
@@ -12,7 +13,7 @@ import (
 
 const labelAccelerator = "kapro.io/accelerator"
 
-// EnvironmentMutator is a mutating admission webhook for Environment objects.
+// MemberClusterMutator is a mutating admission webhook for MemberCluster objects.
 //
 // Topology label injection: when spec.topology.accelerator is set, the webhook
 // ensures metadata.labels["kapro.io/accelerator"] mirrors that value so that
@@ -21,34 +22,42 @@ const labelAccelerator = "kapro.io/accelerator"
 //
 // Removing spec.topology.accelerator removes the managed label on the next
 // CREATE/UPDATE — labels set by users directly are never touched.
-type EnvironmentMutator struct {
+type MemberClusterMutator struct {
 	decoder admission.Decoder
 }
 
-// NewEnvironmentMutator returns a configured EnvironmentMutator.
-func NewEnvironmentMutator(decoder admission.Decoder) *EnvironmentMutator {
-	return &EnvironmentMutator{decoder: decoder}
+// NewMemberClusterMutator returns a configured MemberClusterMutator.
+func NewMemberClusterMutator(decoder admission.Decoder) *MemberClusterMutator {
+	return &MemberClusterMutator{decoder: decoder}
 }
 
 // Handle implements admission.Handler.
-func (m *EnvironmentMutator) Handle(_ context.Context, req admission.Request) admission.Response {
-	var env kaprov1alpha1.Environment
-	if err := m.decoder.DecodeRaw(req.Object, &env); err != nil {
+func (m *MemberClusterMutator) Handle(_ context.Context, req admission.Request) admission.Response {
+	var mc kaprov1alpha1.MemberCluster
+	if err := m.decoder.DecodeRaw(req.Object, &mc); err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	if env.Labels == nil {
-		env.Labels = map[string]string{}
+	if mc.Labels == nil {
+		mc.Labels = map[string]string{}
 	}
 
-	if env.Spec.Topology != nil && env.Spec.Topology.Accelerator != "" {
-		env.Labels[labelAccelerator] = env.Spec.Topology.Accelerator
-	} else {
-		// Remove the managed label when the topology field is cleared.
-		delete(env.Labels, labelAccelerator)
+	if mc.Spec.Topology != nil && mc.Spec.Topology.Accelerator != "" {
+		mc.Labels[labelAccelerator] = mc.Spec.Topology.Accelerator
+	} else if req.Operation == admissionv1.Update {
+		var old kaprov1alpha1.MemberCluster
+		if err := m.decoder.DecodeRaw(req.OldObject, &old); err != nil {
+			return admission.Errored(http.StatusBadRequest, err)
+		}
+		// Remove the label only when the webhook previously managed it.
+		if old.Spec.Topology != nil &&
+			old.Spec.Topology.Accelerator != "" &&
+			old.Labels[labelAccelerator] == old.Spec.Topology.Accelerator {
+			delete(mc.Labels, labelAccelerator)
+		}
 	}
 
-	marshaled, err := json.Marshal(env)
+	marshaled, err := json.Marshal(mc)
 	if err != nil {
 		return admission.Errored(http.StatusInternalServerError, err)
 	}

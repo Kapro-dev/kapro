@@ -21,10 +21,7 @@ import (
 
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
-	pkghealth "kapro.io/kapro/pkg/health"
 	"kapro.io/kapro/pkg/notification"
-	"kapro.io/kapro/pkg/oci"
-	"kapro.io/kapro/pkg/provider"
 )
 
 // InitFunc is the initialisation signature every controller must satisfy.
@@ -45,36 +42,22 @@ type ControllerContext struct {
 	// Recorder is the shared event recorder for all controllers.
 	Recorder record.EventRecorder
 
-	// ActuatorRegistry resolves KAI implementations by Environment.spec.actuator.type.
+	// ActuatorRegistry resolves KAI implementations by MemberCluster.spec.actuator.type.
 	// Controllers call ActuatorRegistry.Resolve(env.Spec.Actuator.Type) to get
 	// the correct Actuator — Flux or any registered actuator.
 	ActuatorRegistry *actuator.Registry
 
-	// ProviderRegistry resolves KCI Connector implementations by Environment.spec.provider.type.
-	// When the type is "" or "crd", the CRD outbound path is used instead (via CRDProvider).
-	// In MVP this registry is empty; cloud connectors are registered in v0.3+.
-	// Never nil — call provider.NewRegistry() to initialise.
-	ProviderRegistry *provider.Registry
-
-	// Gates — FSM-phase gate implementations (Soak, Metrics, Approval, Verification, CEL).
-	// These are fixed to specific FSM phases and are not dispatched by type string.
-	// Any gate field may be nil; nil gates pass immediately (useful in tests).
-	Gates GateSet
-
-	// GateRegistry resolves GateTemplate.spec.type → Gate for template-dispatch.
-	// Built-in types (cel, job, webhook) are registered by BuildGateRegistry.
-	// External gate types register at startup: cc.GateRegistry.MustRegister("my-type", impl).
-	// Never nil in production — initialise with BuildGateRegistry.
+	// GateRegistry resolves gate names to pkg/gate.Gate implementations.
+	// Registry holds BOTH FSM-phase gates (soak, metrics, approval,
+	// verification — resolved by fixed name from FSM handlers) AND
+	// template-dispatch gates (cel, job, webhook, etc. — resolved by
+	// GateTemplate.spec.type). Built-ins are registered by BuildGateRegistry.
+	// External gate types register at startup:
+	// cc.GateRegistry.Register("my-type", impl). Never nil in production.
 	GateRegistry *gate.Registry
-
-	// HealthAssessor evaluates workload health in the target namespace.
-	HealthAssessor pkghealth.Assessor
 
 	// Notifier sends promotion lifecycle events to external channels.
 	Notifier notification.Notifier
-
-	// OCIService enables artifact inspection and promotion operations.
-	OCIService oci.Service
 
 	// ApprovalSecret is the HMAC secret used to sign/verify approval tokens.
 	ApprovalSecret []byte
@@ -90,44 +73,13 @@ type ControllerContext struct {
 	// HubCAData is the PEM-encoded CA certificate for the hub kube-apiserver.
 	// Embedded in bootstrap kubeconfigs alongside HubAPIURL.
 	HubCAData []byte
-}
 
-// GateSet holds all KGI gate implementations injected into the SyncReconciler.
-//
-// All fields follow the same contract:
-//   - Nil means the gate always passes (useful in tests or when a phase is disabled)
-//   - All implementations are stateless and safe for concurrent use
-//   - All are constructed once in BuildGateSet and reused across all reconciles
-//
-// FSM-phase gates (called directly from phase handlers):
-//   Verification → Soak → Metrics → Approval
-//
-// Template gates (dispatched by gateForTemplate via GateTemplate.spec.type):
-//   CEL, Job, Webhook — all constructed in BuildGateSet, dispatched by type name.
-//
-// All five gates live here so the wiring is symmetric: BuildGateSet is the
-// single construction point for every gate the SyncReconciler uses.
-type GateSet struct {
-	// Soak blocks until the configured duration has elapsed since StartedAt.
-	// Called in the Soaking FSM phase.
-	Soak gate.Gate
-
-	// Metrics queries Prometheus and evaluates metric thresholds.
-	// Called in the MetricsCheck FSM phase.
-	Metrics gate.Gate
-
-	// Approval blocks until a human creates a matching Approval CR.
-	// Called in the WaitingApproval FSM phase.
-	Approval gate.Gate
-
-	// Verification checks OCI artifact signatures via cosign.
-	// Called in the Verification FSM phase.
-	Verification gate.Gate
-
-	// CEL evaluates CEL expression GateTemplates (type: "cel").
-	// Called from gateForTemplate — not a fixed FSM phase.
-	// Constructed in BuildGateSet alongside the other gates for symmetry.
-	CEL gate.Gate
+	// ShardName partitions objects across controller replicas for horizontal scaling.
+	// When empty, all objects are processed (backward compatible — no sharding).
+	// When set (e.g. "shard-1"), only objects with label kapro.io/shard=<ShardName>
+	// are processed (plus unlabeled objects on the default shard).
+	// Populated from KAPRO_SHARD env var in cmd/operator/main.go.
+	ShardName string
 }
 
 // Registry maps controller names to their InitFunc.

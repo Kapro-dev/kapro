@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"strings"
 	oraslib "oras.land/oras-go/v2"
@@ -154,40 +155,47 @@ func (s *Service) newRepo(ctx context.Context, repo string) (*remote.Repository,
 	plainHTTP := s.PlainHTTP || (s.Auth != nil && s.Auth.Insecure)
 	r.PlainHTTP = plainHTTP
 
+	// Snapshot Auth at repository creation time so the closure does not capture
+	// a pointer to s.Auth that may be mutated by a concurrent credential rotation
+	// (B37: ORAS auth credential capture).
+	authSnapshot := s.Auth
 	r.Client = &orasauth.Client{
 		Cache: orasauth.DefaultCache,
 		Credential: func(ctx context.Context, hostport string) (orasauth.Credential, error) {
-			return s.resolveCredential(ctx, hostport)
+			return resolveCredentialFrom(ctx, hostport, authSnapshot)
 		},
 	}
 	return r, nil
 }
 
-// resolveCredential returns the best available credential for the given registry host:port.
+// resolveCredentialFrom returns the best available credential for the given registry host:port
+// using the provided auth snapshot. The auth pointer is intentionally a value snapshot, not
+// a live pointer into Service, so concurrent credential rotations cannot affect in-flight pulls.
 //
 // Resolution order:
 //  1. Explicit static AuthConfig (Token or Username+Password).
 //  2. GCP Workload Identity — attempted when GOOGLE_APPLICATION_CREDENTIALS or
 //     GOOGLE_CLOUD_PROJECT is set, indicating a GCP/GKE environment.
 //  3. Anonymous — orasauth.EmptyCredential.
-func (s *Service) resolveCredential(ctx context.Context, hostport string) (orasauth.Credential, error) {
+func resolveCredentialFrom(ctx context.Context, hostport string, auth *oci.AuthConfig) (orasauth.Credential, error) {
 	log := ctrllog.FromContext(ctx)
 
 	// 1. Static credentials take full precedence.
-	if s.Auth != nil {
-		if s.Auth.Token != "" {
-			return orasauth.Credential{AccessToken: s.Auth.Token}, nil
+	if auth != nil {
+		if auth.Token != "" {
+			return orasauth.Credential{AccessToken: auth.Token}, nil
 		}
-		if s.Auth.Username != "" {
+		if auth.Username != "" {
 			return orasauth.Credential{
-				Username: s.Auth.Username,
-				Password: s.Auth.Password,
+				Username: auth.Username,
+				Password: auth.Password,
 			}, nil
 		}
 	}
 
-	// 2. GCP Workload Identity (GKE IRSA-equivalent via metadata server or ADC).
-	if isGCPEnvironment() {
+	// 2. GCP Workload Identity — only for Google-owned registries.
+	// Sending a GCP access token to a non-Google registry is a token leak.
+	if isGCPEnvironment() && isGCPRegistry(hostport) {
 		tok, err := gcpauth.Provider{}.NewControllerToken(ctx)
 		if err == nil {
 			gcpTok, ok := tok.(*gcpauth.Token)
@@ -202,6 +210,11 @@ func (s *Service) resolveCredential(ctx context.Context, hostport string) (orasa
 
 	// 3. Anonymous.
 	return orasauth.EmptyCredential, nil
+}
+
+// resolveCredential is kept for backward compatibility with existing call sites outside newRepo.
+func (s *Service) resolveCredential(ctx context.Context, hostport string) (orasauth.Credential, error) {
+	return resolveCredentialFrom(ctx, hostport, s.Auth)
 }
 
 // isGCPEnvironment returns true when the process is running in a GCP/GKE environment.
@@ -220,6 +233,20 @@ func isGCPEnvironment() bool {
 		return true
 	}
 	return false
+}
+
+// isGCPRegistry reports whether hostport is a Google-owned container registry host.
+// GCP access tokens must only be sent to Google registries to avoid token leaks.
+func isGCPRegistry(hostport string) bool {
+	// Strip port if present.
+	host := hostport
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		host = h
+	}
+	return strings.HasSuffix(host, ".gcr.io") ||
+		host == "gcr.io" ||
+		strings.HasSuffix(host, ".pkg.dev") ||
+		strings.HasSuffix(host, ".artifact.registry.googleapis.com")
 }
 
 // parseAnnotations parses the OCI manifest JSON and returns its annotations map.

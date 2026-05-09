@@ -15,20 +15,14 @@ func init() {
 	SchemeBuilder.Register(
 		// User-facing delivery objects
 		&Artifact{}, &ArtifactList{},
-		&Environment{}, &EnvironmentList{},
 		&Pipeline{}, &PipelineList{},
 		&Release{}, &ReleaseList{},
-		// Gate configuration
-		&GatePolicy{}, &GatePolicyList{},
-		&GateTemplate{}, &GateTemplateList{},
-		// Fleet registry — written by kapro-cluster-controller
-		&ManagedCluster{}, &ManagedClusterList{},
+		&ReleaseTarget{}, &ReleaseTargetList{},
+		// Discovery layer
+		&Source{}, &SourceList{},
+		// Lean fleet registry (MemberCluster = legacy target inventory split)
+		&MemberCluster{}, &MemberClusterList{},
 		// Internal / system objects
-		&Sync{}, &SyncList{},
 		&Approval{}, &ApprovalList{},
-		&ReleaseReport{}, &ReleaseReportList{},
-		&BootstrapToken{}, &BootstrapTokenList{},
-		// Immutable audit records
-		&ReleaseRevision{}, &ReleaseRevisionList{},
 	)
 }

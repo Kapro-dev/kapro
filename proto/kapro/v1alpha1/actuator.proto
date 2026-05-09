@@ -15,7 +15,7 @@ import "google/protobuf/timestamp.proto";
 // External implementations register via PluginRegistration CRD and communicate
 // over this gRPC interface.
 service ActuatorService {
-  // Apply instructs the delivery system to roll out version to environment.
+  // Apply instructs the delivery system to roll out version to a target cluster.
   // Idempotent — calling Apply twice with the same version is safe.
   rpc Apply(ApplyRequest) returns (ApplyResponse);
 
@@ -23,17 +23,17 @@ service ActuatorService {
   // version is fully rolled out and all workloads are healthy.
   rpc IsConverged(IsConvergedRequest) returns (IsConvergedResponse);
 
-  // Rollback reverts the environment to the given previous version.
+  // Rollback reverts the target cluster to the given previous version.
   // Called by the rollback engine when PromotionPolicy.onFailure == rollback.
   rpc Rollback(RollbackRequest) returns (RollbackResponse);
 
-  // GetStatus returns the current observed state of an environment.
+  // GetStatus returns the current observed state of a target cluster.
   rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
 }
 
 message ApplyRequest {
-  // environment_ref is the name of the Environment CRD.
-  string environment_ref = 1;
+  // target_ref is the name of the MemberCluster.
+  string target_ref = 1;
   // version is the OCI tag / Helm chart version / git ref to apply.
   string version = 2;
   // previous_version is the currently running version — captured for rollback.
@@ -50,7 +50,7 @@ message ApplyResponse {
 }
 
 message IsConvergedRequest {
-  string environment_ref = 1;
+  string target_ref = 1;
   string version = 2;
   string delivery_system = 3;
 }
@@ -72,7 +72,7 @@ message WorkloadStatus {
 }
 
 message RollbackRequest {
-  string environment_ref = 1;
+  string target_ref = 1;
   string previous_version = 2;
   string delivery_system = 3;
 }
@@ -83,7 +83,7 @@ message RollbackResponse {
 }
 
 message GetStatusRequest {
-  string environment_ref = 1;
+  string target_ref = 1;
   string delivery_system = 2;
 }
 

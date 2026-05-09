@@ -87,7 +87,7 @@ func sendSlack(ctx context.Context, client *http.Client, webhookURL string, even
 	}
 
 	text := fmt.Sprintf("%s *Kapro* | `%s` → `%s` | version `%s` | %s",
-		emoji, event.Environment, event.Phase, event.Version, event.Message)
+		emoji, event.Target, event.Phase, event.Version, event.Message)
 
 	payload := map[string]string{"text": text}
 	body, _ := json.Marshal(payload)

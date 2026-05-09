@@ -3,8 +3,8 @@
 # Hotfix releases use derivedFrom + changedComponents to express
 # lineage: "this bundle is my-app-v1.2.3 with only payment-service changed".
 #
-# Kapro uses this to determine which environments actually need syncing,
-# and ReleaseRevision captures it for auditability.
+# Kapro uses this to determine which target clusters actually need rolling,
+# and the Release audit trail captures it for auditability.
 ---
 name: Hotfix Release
 

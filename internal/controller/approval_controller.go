@@ -3,8 +3,11 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -13,16 +16,20 @@ import (
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
 
-// ApprovalReconciler watches Approval objects and triggers the waiting
-// Sync to recheck its gate.
-// The actual gate check happens in SyncReconciler — this controller just
-// ensures it gets re-queued immediately on approval, recording an Event for audit.
+// ApprovalReconciler records an audit Event when an Approval is created or
+// updated. The actual gate-unblock happens in ReleaseReconciler, which watches
+// Approval objects via Watches(Approval, approvalForRelease) in SetupWithManager.
+//
+// This controller exists solely for audit: the Kubernetes Event stream gives
+// operators an immutable, time-ordered record of every human approval without
+// having to parse Release.status.targets.
 type ApprovalReconciler struct {
 	client.Client
 	Recorder record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=approvals,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=kapro.io,resources=approvals/status,verbs=get;update;patch
 
 func (r *ApprovalReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
@@ -32,32 +39,46 @@ func (r *ApprovalReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	log.Info("processing Approval",
+	log.Info("approval recorded",
 		"name", approval.Name,
-		"kind", approval.Spec.Kind,
-		"ref", approval.Spec.Ref,
 		"release", approval.Spec.Release,
+		"target", approval.Spec.Target,
 		"approvedBy", approval.Spec.ApprovedBy,
 		"bypass", approval.Spec.Bypass,
 	)
 
-	r.Recorder.Event(&approval, corev1.EventTypeNormal, "Approved",
-		fmt.Sprintf("Approval by %s for %s/%s", approval.Spec.ApprovedBy, approval.Spec.Kind, approval.Spec.Ref))
+	// Fire an immutable audit Event on the Approval object. ReleaseReconciler
+	// will wake up independently via its Approval watch and advance the gate.
+	r.Recorder.Event(&approval, corev1.EventTypeNormal, "ApprovalRecorded",
+		fmt.Sprintf("approved by %s for release=%s target=%s",
+			approval.Spec.ApprovedBy, approval.Spec.Release, approval.Spec.Target))
 
-	switch approval.Spec.Kind {
-	case kaprov1alpha1.ApprovalKindSync:
-		// SyncReconciler watches Approvals via Watches() in SetupWithManager —
-		// it maps the Approval to the waiting Sync and re-queues it immediately.
-		syncName := approval.Spec.Release + "-" + approval.Spec.Ref
-		log.Info("triggering Sync recheck", "sync", syncName)
-
-	case kaprov1alpha1.ApprovalKindStage:
-		// Stage-level approvals unblock an entire stage. SyncReconciler watches
-		// Approvals and wakes up all Syncs for the matching stage.
-		log.Info("triggering stage Sync recheck",
-			"release", approval.Spec.Release,
-			"stage", approval.Spec.Ref,
-		)
+	if approval.Status.Phase != kaprov1alpha1.ApprovalPhaseRecorded || approval.Status.ObservedGeneration != approval.Generation {
+		patch := client.MergeFrom(approval.DeepCopy())
+		approval.Status.Phase = kaprov1alpha1.ApprovalPhaseRecorded
+		approval.Status.ProcessedAt = metav1.Now().UTC().Format(time.RFC3339)
+		approval.Status.ObservedGeneration = approval.Generation
+		apimeta.SetStatusCondition(&approval.Status.Conditions, metav1.Condition{
+			Type:               "Recorded",
+			Status:             metav1.ConditionTrue,
+			Reason:             "ObservedByController",
+			Message:            "approval has been recorded and is available to release reconciliation",
+			ObservedGeneration: approval.Generation,
+			LastTransitionTime: metav1.Now(),
+		})
+		// Flux three-condition: Reconciling=False (one-shot, done), Stalled removed.
+		apimeta.SetStatusCondition(&approval.Status.Conditions, metav1.Condition{
+			Type:               kaprov1alpha1.ConditionTypeReconciling,
+			Status:             metav1.ConditionFalse,
+			Reason:             "Recorded",
+			Message:            "approval processed",
+			ObservedGeneration: approval.Generation,
+			LastTransitionTime: metav1.Now(),
+		})
+		apimeta.RemoveStatusCondition(&approval.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
+		if err := r.Status().Patch(ctx, &approval, patch); err != nil {
+			return ctrl.Result{}, fmt.Errorf("patch approval status: %w", err)
+		}
 	}
 
 	return ctrl.Result{}, nil

@@ -1,7 +1,7 @@
 # 🦘 Kapro
 
 > **The Canonical Promotion Layer for Kubernetes.**
-> Passes versions forward. Through environments. Across clusters. In waves.
+> Passes versions forward. Across targets. Across clusters. In waves.
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![API Group](https://img.shields.io/badge/API-kapro.io%2Fv1alpha1-purple)](api/v1alpha1)
@@ -27,7 +27,7 @@ It sits between [Kargo](https://kargo.io) (pre-prod promotion) and [Flux](https:
 | Layer | Concern | CRDs |
 |---|---|---|
 | **ARTIFACT** | what travels | `Artifact` |
-| **TOPOLOGY** | where it goes | `Environment`, `EnvironmentGroup`, `ClusterRegistration` |
+| **TOPOLOGY** | where it goes | `Target`, `TargetGroup`, `ClusterRegistration` |
 | **STRATEGY** | how it moves | `PromotionPolicy`, `Pipeline`, `Release`, `Approval` |
 
 ---
@@ -69,7 +69,7 @@ helm install kapro-operator charts/kapro-operator -n kapro-system --create-names
 # Register a workload cluster
 helm install kapro-cluster charts/kapro-cluster-controller -n kapro-system \
   --set controlPlane.url=https://kapro.example.com \
-  --set environment=de-prod
+  --set target=de-prod
 ```
 
 ---
@@ -79,7 +79,7 @@ helm install kapro-cluster charts/kapro-cluster-controller -n kapro-system \
 ```yaml
 # 1. Register a cluster (runs on each workload cluster)
 apiVersion: kapro.io/v1alpha1
-kind: Environment
+kind: MemberCluster
 metadata:
   name: prod-eu-west-01
   labels:
@@ -114,15 +114,13 @@ spec:
 ## Development
 
 ```bash
-# Prerequisites: Go 1.22+, Node 20+, controller-gen, helm
+# Prerequisites: Go 1.22+, controller-gen, helm
 
 # Backend
 go mod tidy
 make generate   # generate CRD manifests + DeepCopy
 make run        # run operator locally
 
-# Frontend
-cd ui && npm install && npm run dev
 ```
 
 ---

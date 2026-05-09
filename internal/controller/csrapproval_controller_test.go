@@ -104,7 +104,7 @@ func newCSRReconciler(scheme *runtime.Scheme, objs ...runtime.Object) (
 	clientObjs = append(clientObjs, objs...)
 	fc := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha1.BootstrapToken{}, &kaprov1alpha1.ManagedCluster{}).
+		WithStatusSubresource(&kaprov1alpha1.MemberCluster{}).
 		WithRuntimeObjects(clientObjs...).
 		Build()
 	fcc := &fakeCSRClientRec{}
@@ -129,35 +129,34 @@ func reconcileCSR(t *testing.T, r *controller.CSRApprovalReconciler, csrName str
 
 // ---- helpers to build test objects ------------------------------------------
 
-func validBootstrapToken(clusterName string) *kaprov1alpha1.BootstrapToken {
-	return &kaprov1alpha1.BootstrapToken{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "bt-" + clusterName,
-			Namespace: kaproSystem,
+func validMemberCluster(clusterName string) *kaprov1alpha1.MemberCluster {
+	expiresAt := metav1.NewTime(time.Now().Add(24 * time.Hour))
+	return &kaprov1alpha1.MemberCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterName},
+		Spec: kaprov1alpha1.MemberClusterSpec{
+			Bootstrap: &kaprov1alpha1.MemberClusterBootstrapSpec{
+				TokenHash: "aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccdd",
+				ExpiresAt: &expiresAt,
+			},
 		},
-		Spec: kaprov1alpha1.BootstrapTokenSpec{
-			ClusterName: clusterName,
-			TokenHash:   "aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccdd",
-			ExpiresAt:   metav1.NewTime(time.Now().Add(24 * time.Hour)),
-		},
-		Status: kaprov1alpha1.BootstrapTokenStatus{Used: false},
 	}
 }
 
-func expiredBootstrapToken(clusterName string) *kaprov1alpha1.BootstrapToken {
-	bt := validBootstrapToken(clusterName)
-	bt.Name = "bt-expired-" + clusterName
-	bt.Spec.ExpiresAt = metav1.NewTime(time.Now().Add(-1 * time.Hour))
-	return bt
+func expiredMemberCluster(clusterName string) *kaprov1alpha1.MemberCluster {
+	mc := validMemberCluster(clusterName)
+	expired := metav1.NewTime(time.Now().Add(-1 * time.Hour))
+	mc.Spec.Bootstrap.ExpiresAt = &expired
+	return mc
 }
 
-func usedBootstrapToken(clusterName string) *kaprov1alpha1.BootstrapToken {
-	bt := validBootstrapToken(clusterName)
-	bt.Name = "bt-used-" + clusterName
+func usedMemberCluster(clusterName string) *kaprov1alpha1.MemberCluster {
+	mc := validMemberCluster(clusterName)
 	now := metav1.Now()
-	bt.Status.Used = true
-	bt.Status.UsedAt = &now
-	return bt
+	mc.Status.Bootstrap = &kaprov1alpha1.MemberClusterBootstrapStatus{
+		Used:   true,
+		UsedAt: &now,
+	}
+	return mc
 }
 
 func bootstrapCSR(t *testing.T, name, clusterName string) *certificatesv1.CertificateSigningRequest {
@@ -190,10 +189,9 @@ func renewalCSR(t *testing.T, name, clusterName string) *certificatesv1.Certific
 	}
 }
 
-func managedCluster(name string) *kaprov1alpha1.ManagedCluster {
-	return &kaprov1alpha1.ManagedCluster{
+func memberCluster(name string) *kaprov1alpha1.MemberCluster {
+	return &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec:       kaprov1alpha1.ManagedClusterSpec{EnvironmentRef: name},
 	}
 }
 
@@ -265,10 +263,10 @@ func TestCSRApproval_DeniesExtraUsages(t *testing.T) {
 func TestCSRApproval_BootstrapHappyPath(t *testing.T) {
 	const clusterName = "prod-eu"
 	scheme := buildCSRScheme(t)
-	bt := validBootstrapToken(clusterName)
+	mc := validMemberCluster(clusterName)
 	csr := bootstrapCSR(t, "csr-boot-prod-eu", clusterName)
 
-	r, fcc := newCSRReconciler(scheme, bt, csr)
+	r, fcc := newCSRReconciler(scheme, mc, csr)
 	reconcileCSR(t, r, "csr-boot-prod-eu")
 
 	if fcc.lastApproval == nil {
@@ -278,30 +276,23 @@ func TestCSRApproval_BootstrapHappyPath(t *testing.T) {
 		t.Error("bootstrap CSR should not be denied")
 	}
 
-	// Verify ManagedCluster was created.
-	mc := &kaprov1alpha1.ManagedCluster{}
-	if err := r.Get(context.Background(), types.NamespacedName{Name: clusterName}, mc); err != nil {
-		t.Errorf("ManagedCluster %q should have been created: %v", clusterName, err)
+	// Verify MemberCluster bootstrap was marked used.
+	var latestMC kaprov1alpha1.MemberCluster
+	if err := r.Get(context.Background(), types.NamespacedName{Name: clusterName}, &latestMC); err != nil {
+		t.Fatalf("get MemberCluster %q: %v", clusterName, err)
 	}
-
-	// Verify BootstrapToken was marked used.
-	var latestBT kaprov1alpha1.BootstrapToken
-	if err := r.Get(context.Background(), types.NamespacedName{
-		Name: bt.Name, Namespace: kaproSystem}, &latestBT); err != nil {
-		t.Fatalf("get BootstrapToken: %v", err)
-	}
-	if !latestBT.Status.Used {
-		t.Error("BootstrapToken should be marked used after bootstrap")
+	if !latestMC.Status.Bootstrap.Used {
+		t.Error("MemberCluster bootstrap should be marked used after bootstrap")
 	}
 }
 
 func TestCSRApproval_BootstrapExpiredToken(t *testing.T) {
 	const clusterName = "prod-us"
 	scheme := buildCSRScheme(t)
-	bt := expiredBootstrapToken(clusterName)
+	mc := expiredMemberCluster(clusterName)
 	csr := bootstrapCSR(t, "csr-expired", clusterName)
 
-	r, fcc := newCSRReconciler(scheme, bt, csr)
+	r, fcc := newCSRReconciler(scheme, mc, csr)
 	reconcileCSR(t, r, "csr-expired")
 
 	if fcc.lastApproval != nil {
@@ -315,10 +306,10 @@ func TestCSRApproval_BootstrapExpiredToken(t *testing.T) {
 func TestCSRApproval_BootstrapUsedToken(t *testing.T) {
 	const clusterName = "prod-as"
 	scheme := buildCSRScheme(t)
-	bt := usedBootstrapToken(clusterName)
+	mc := usedMemberCluster(clusterName)
 	csr := bootstrapCSR(t, "csr-used-token", clusterName)
 
-	r, fcc := newCSRReconciler(scheme, bt, csr)
+	r, fcc := newCSRReconciler(scheme, mc, csr)
 	reconcileCSR(t, r, "csr-used-token")
 
 	if fcc.lastApproval != nil {
@@ -332,7 +323,7 @@ func TestCSRApproval_BootstrapUsedToken(t *testing.T) {
 func TestCSRApproval_RenewalHappyPath(t *testing.T) {
 	const clusterName = "staging-eu"
 	scheme := buildCSRScheme(t)
-	mc := managedCluster(clusterName)
+	mc := memberCluster(clusterName)
 	csr := renewalCSR(t, "csr-renew-staging", clusterName)
 
 	r, fcc := newCSRReconciler(scheme, mc, csr)
@@ -349,7 +340,7 @@ func TestCSRApproval_RenewalHappyPath(t *testing.T) {
 func TestCSRApproval_RenewalMissingManagedCluster(t *testing.T) {
 	const clusterName = "ghost-cluster"
 	scheme := buildCSRScheme(t)
-	// No ManagedCluster in the fake client.
+	// No MemberCluster in the fake client.
 	csr := renewalCSR(t, "csr-renew-ghost", clusterName)
 
 	r, fcc := newCSRReconciler(scheme, csr)
@@ -406,8 +397,8 @@ func TestCSRApproval_BootstrapSAMismatch(t *testing.T) {
 	const clusterB = "cluster-b"
 	scheme := buildCSRScheme(t)
 
-	// BootstrapToken exists for cluster-b.
-	btB := validBootstrapToken(clusterB)
+	// MemberCluster exists for cluster-b.
+	mcB := validMemberCluster(clusterB)
 
 	// CSR claims CN=kapro-cluster:cluster-b but is signed by cluster-a's bootstrap SA.
 	csrPEM := makeCSRPEM(t, "kapro-cluster:"+clusterB, []string{"kapro:cluster-controllers"})
@@ -421,7 +412,7 @@ func TestCSRApproval_BootstrapSAMismatch(t *testing.T) {
 			Usages:   []certificatesv1.KeyUsage{certificatesv1.UsageClientAuth},
 		},
 	}
-	r, fcc := newCSRReconciler(scheme, btB, csr)
+	r, fcc := newCSRReconciler(scheme, mcB, csr)
 	reconcileCSR(t, r, "csr-sa-mismatch")
 
 	if fcc.lastApproval != nil {
@@ -439,27 +430,28 @@ func TestCSRApproval_BoundCSRRetryIsIdempotent(t *testing.T) {
 	const csrName = "csr-retry"
 	scheme := buildCSRScheme(t)
 
-	// Token already marked used, with BoundCSRName pointing at this CSR.
+	// MemberCluster already marked used, with BoundCSRName pointing at this CSR.
 	now := metav1.Now()
-	bt := &kaprov1alpha1.BootstrapToken{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "bt-retry",
-			Namespace: kaproSystem,
+	expiresAt := metav1.NewTime(time.Now().Add(24 * time.Hour))
+	mc := &kaprov1alpha1.MemberCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterName},
+		Spec: kaprov1alpha1.MemberClusterSpec{
+			Bootstrap: &kaprov1alpha1.MemberClusterBootstrapSpec{
+				TokenHash: "aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccdd",
+				ExpiresAt: &expiresAt,
+			},
 		},
-		Spec: kaprov1alpha1.BootstrapTokenSpec{
-			ClusterName: clusterName,
-			TokenHash:   "aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccdd",
-			ExpiresAt:   metav1.NewTime(time.Now().Add(24 * time.Hour)),
-		},
-		Status: kaprov1alpha1.BootstrapTokenStatus{
-			Used:         true,
-			UsedAt:       &now,
-			BoundCSRName: csrName, // bound to this exact CSR
+		Status: kaprov1alpha1.MemberClusterStatus{
+			Bootstrap: &kaprov1alpha1.MemberClusterBootstrapStatus{
+				Used:         true,
+				UsedAt:       &now,
+				BoundCSRName: csrName, // bound to this exact CSR
+			},
 		},
 	}
 	csr := bootstrapCSR(t, csrName, clusterName)
 
-	r, fcc := newCSRReconciler(scheme, bt, csr)
+	r, fcc := newCSRReconciler(scheme, mc, csr)
 	reconcileCSR(t, r, csrName)
 
 	if fcc.lastApproval == nil {

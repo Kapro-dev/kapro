@@ -11,6 +11,8 @@ package job
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
+	"strings"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -27,20 +29,35 @@ import (
 )
 
 // Gate implements the job gate type.
-// It creates a Kubernetes Job in the same namespace as the Sync and polls
+// It creates a Kubernetes Job in the same namespace as the delivery context and polls
 // its status on each reconcile cycle.
 type Gate struct {
 	Client client.Client
 }
 
-// jobName returns a deterministic Job name for a (sync, template) pair.
-// Using the Sync name + template name keeps it idempotent across reconcile loops.
-func jobName(syncName, tmplName string) string {
-	name := fmt.Sprintf("kapro-gate-%s-%s", syncName, tmplName)
-	if len(name) > 63 {
-		name = name[:63]
+// jobName returns a deterministic Job name for a (context, template) pair.
+// Names are truncated to fit Kubernetes' 63-character DNS label limit.
+// A hash suffix is appended before truncation so that different long names cannot
+// collide after truncation — a pure prefix truncate is not collision-free.
+func jobName(ctxName, tmplName string) string {
+	full := fmt.Sprintf("kapro-gate-%s-%s", ctxName, tmplName)
+	if len(full) <= 63 {
+		return full
 	}
-	return name
+	// Hash the full name for uniqueness, keep first 52 chars + "-" + 8-char hex.
+	h := fnv.New32a()
+	_, _ = fmt.Fprint(h, full)
+	return fmt.Sprintf("%s-%08x", full[:52], h.Sum32())
+}
+
+func syncLabelValue(ctxName string) string {
+	if len(ctxName) <= 63 {
+		return ctxName
+	}
+	h := fnv.New32a()
+	_, _ = fmt.Fprint(h, ctxName)
+	trimmed := strings.TrimRight(ctxName[:54], "-")
+	return fmt.Sprintf("%s-%08x", trimmed, h.Sum32())
 }
 
 // Evaluate creates or polls a Job for the configured GateTemplate.
@@ -49,21 +66,21 @@ func jobName(syncName, tmplName string) string {
 func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Result, error) {
 	log := log.FromContext(ctx)
 
-	if req.Template == nil || req.Template.Spec.Job == nil {
-		return pkggate.Result{}, fmt.Errorf("job gate: GateTemplate.Spec.Job is nil")
+	if req.Template == nil || req.Template.Job == nil {
+		return pkggate.Result{}, fmt.Errorf("job gate: template Job spec is nil")
 	}
-	spec := req.Template.Spec.Job
+	spec := req.Template.Job
 
-	if req.Sync == nil {
-		return pkggate.Result{}, fmt.Errorf("job gate: Sync is nil in request")
+	if req.Context == nil {
+		return pkggate.Result{}, fmt.Errorf("job gate: context is nil in request")
 	}
-	sync := req.Sync
-	namespace := sync.Namespace
+	gateCtx := req.Context
+	namespace := gateCtx.Namespace
 	if namespace == "" {
 		namespace = "default"
 	}
 
-	name := jobName(sync.Name, req.Template.Name)
+	name := jobName(gateCtx.Name, req.Template.Name)
 
 	// Check if the Job already exists.
 	var existing batchv1.Job
@@ -74,7 +91,7 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 
 	if apierrors.IsNotFound(err) {
 		// Create the Job.
-		job, buildErr := buildJob(name, namespace, sync, spec, req.Args, req.Template.Spec.Timeout)
+		job, buildErr := buildJob(name, namespace, gateCtx, spec, req.Args, req.Template.Timeout)
 		if buildErr != nil {
 			return pkggate.Result{}, fmt.Errorf("job gate: build job spec: %w", buildErr)
 		}
@@ -122,19 +139,19 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 // Kubernetes Job controller if it runs longer than the configured limit.
 func buildJob(
 	name, namespace string,
-	sync *kaprov1alpha1.Sync,
+	gateCtx *pkggate.Context,
 	spec *kaprov1alpha1.JobGateSpec,
 	args map[string]string,
 	timeout string,
 ) (*batchv1.Job, error) {
 	// Inject standard context env vars so the job knows what it is evaluating.
 	extraEnv := []corev1.EnvVar{
-		{Name: "KAPRO_SYNC", Value: sync.Name},
-		{Name: "KAPRO_ENVIRONMENT", Value: sync.Spec.EnvironmentRef},
-		{Name: "KAPRO_VERSION", Value: sync.Spec.Version},
-		{Name: "KAPRO_RELEASE", Value: sync.Spec.ReleaseRef},
-		{Name: "KAPRO_PIPELINE", Value: sync.Spec.Pipeline},
-		{Name: "KAPRO_STAGE", Value: sync.Spec.Stage},
+		{Name: "KAPRO_SYNC", Value: gateCtx.Name},
+		{Name: "KAPRO_TARGET", Value: gateCtx.Target},
+		{Name: "KAPRO_VERSION", Value: gateCtx.Version},
+		{Name: "KAPRO_RELEASE", Value: gateCtx.ReleaseRef},
+		{Name: "KAPRO_PIPELINE", Value: gateCtx.Pipeline},
+		{Name: "KAPRO_STAGE", Value: gateCtx.Stage},
 	}
 	for k, v := range args {
 		extraEnv = append(extraEnv, corev1.EnvVar{Name: "KAPRO_ARG_" + k, Value: v})
@@ -160,39 +177,51 @@ func buildJob(
 		activeDeadlineSeconds = &secs
 	}
 
-	return &batchv1.Job{
+	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 			Labels: map[string]string{
 				"kapro.io/gate-type": "job",
-				"kapro.io/sync":      sync.Name,
+				"kapro.io/sync":      syncLabelValue(gateCtx.Name),
 			},
 		},
-		Spec: batchv1.JobSpec{
-			BackoffLimit:            ptr.To(int32(3)),
-			TTLSecondsAfterFinished: &ttl,
-			ActiveDeadlineSeconds:   activeDeadlineSeconds,
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"kapro.io/gate-type": "job",
-						"kapro.io/sync":      sync.Name,
-					},
+	}
+	// Set OwnerReference to the ReleaseTarget so the Job is garbage-collected
+	// when the ReleaseTarget is deleted. Both fields must be present for GC to work.
+	if gateCtx.OwnerUID != "" && gateCtx.OwnerName != "" {
+		job.OwnerReferences = []metav1.OwnerReference{{
+			APIVersion:         kaprov1alpha1.GroupVersion.String(),
+			Kind:               "ReleaseTarget",
+			Name:               gateCtx.OwnerName,
+			UID:                gateCtx.OwnerUID,
+			BlockOwnerDeletion: ptr.To(true),
+		}}
+	}
+	job.Spec = batchv1.JobSpec{
+		BackoffLimit:            ptr.To(int32(3)),
+		TTLSecondsAfterFinished: &ttl,
+		ActiveDeadlineSeconds:   activeDeadlineSeconds,
+		Template: corev1.PodTemplateSpec{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{
+					"kapro.io/gate-type": "job",
+					"kapro.io/sync":      syncLabelValue(gateCtx.Name),
 				},
-				Spec: corev1.PodSpec{
-					RestartPolicy: corev1.RestartPolicyNever,
-					Containers: []corev1.Container{
-						{
-							Name:    "gate",
-							Image:   spec.Image,
-							Command: spec.Command,
-							Args:    spec.Args,
-							Env:     env,
-						},
+			},
+			Spec: corev1.PodSpec{
+				RestartPolicy: corev1.RestartPolicyNever,
+				Containers: []corev1.Container{
+					{
+						Name:    "gate",
+						Image:   spec.Image,
+						Command: spec.Command,
+						Args:    spec.Args,
+						Env:     env,
 					},
 				},
 			},
 		},
-	}, nil
+	}
+	return job, nil
 }

@@ -1,11 +1,11 @@
-# environment.yaml — Kapro Environment CR for de-prod cluster.
+# membercluster.yaml — Kapro MemberCluster CR for de-prod cluster.
 #
 # Apply to the management cluster AFTER the Flux bootstrap resources above.
 # Once created, this cluster is eligible to receive the next Release that
 # includes a pipeline stage whose selector matches its labels.
 ---
 apiVersion: kapro.io/v1alpha1
-kind: Environment
+kind: MemberCluster
 metadata:
   name: de-prod
   labels:

@@ -12,7 +12,7 @@ option go_package = "kapro.io/kapro/proto/gen/health/v1alpha1";
 // which understands Deployment, StatefulSet, DaemonSet, Job, PVC, Ingress,
 // Service, Pod, and 15+ CRDs including Argo Rollouts and Flux.
 service HealthService {
-  // AssessHealth returns the aggregate health of a cluster/environment.
+  // AssessHealth returns the aggregate health of a target cluster.
   rpc AssessHealth(AssessHealthRequest) returns (AssessHealthResponse);
 
   // ListWorkloads returns per-workload health for a given namespace or label selector.
@@ -34,7 +34,7 @@ enum HealthStatus {
 }
 
 message AssessHealthRequest {
-  string environment_ref = 1;
+  string target_ref = 1;
   string version = 2;
   // namespace_selector limits assessment to specific namespaces.
   repeated string namespaces = 3;
@@ -49,7 +49,7 @@ message AssessHealthResponse {
 }
 
 message ListWorkloadsRequest {
-  string environment_ref = 1;
+  string target_ref = 1;
   repeated string namespaces = 2;
   // label_selector is a K8s label selector string.
   string label_selector = 3;
@@ -69,14 +69,14 @@ message WorkloadHealth {
 }
 
 message WatchHealthRequest {
-  string environment_ref = 1;
+  string target_ref = 1;
   repeated string namespaces = 2;
   // poll_interval_seconds is how often to re-check. Default 15.
   int32 poll_interval_seconds = 3;
 }
 
 message HealthUpdate {
-  string environment_ref = 1;
+  string target_ref = 1;
   HealthStatus status = 2;
   string message = 3;
   repeated WorkloadHealth changed_workloads = 4;
