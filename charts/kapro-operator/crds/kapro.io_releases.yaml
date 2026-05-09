@@ -164,6 +164,15 @@ spec:
                 default: false
                 description: Suspended pauses all advancement when true.
                 type: boolean
+              timeout:
+                description: |-
+                  Timeout is the maximum duration for the entire Release to complete.
+                  If the Release has not reached Complete or Failed within this duration,
+                  it is automatically failed. Prevents stuck Releases from blocking the
+                  pipeline forever (e.g., forgotten approval, unreachable spoke).
+                  Format: Go duration string (e.g., "4h", "30m", "2h30m").
+                  Default: no timeout (backward compatible). Strongly recommended to set.
+                type: string
             required:
             - pipelines
             type: object
@@ -975,6 +984,13 @@ spec:
                         - phase
                         type: object
                       type: array
+                    heartbeatStaleSince:
+                      description: |-
+                        HeartbeatStaleSince records when the target's MemberCluster heartbeat first
+                        became stale. Used to implement a configurable timeout — if the heartbeat
+                        remains stale for longer than the threshold, the target is failed.
+                        Reset when the heartbeat becomes fresh again.
+                      type: string
                     message:
                       type: string
                     missingMCCount:
@@ -994,6 +1010,7 @@ spec:
                       - Applying
                       - Converged
                       - Failed
+                      - Skipped
                       type: string
                     phaseEnteredAt:
                       description: PhaseEnteredAt records when the current phase was

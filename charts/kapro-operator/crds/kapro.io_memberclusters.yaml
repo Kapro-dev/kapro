@@ -105,16 +105,40 @@ spec:
                     required:
                     - ociRepository
                     type: object
+                  fluxOperator:
+                    description: |-
+                      FluxOperatorConfig configures the Flux Operator actuator.
+                      Kapro patches ResourceSet inputs instead of individual Flux resources.
+                    properties:
+                      inputField:
+                        default: tag
+                        description: InputField is the ResourceSet input field that
+                          holds the version/tag.
+                        type: string
+                      namespace:
+                        default: flux-system
+                        description: Namespace is the namespace of the ResourceSet.
+                        type: string
+                      resourceSet:
+                        description: ResourceSet is the name of the Flux Operator
+                          ResourceSet to patch.
+                        type: string
+                      tenantField:
+                        default: tenant
+                        description: TenantField is the ResourceSet input field that
+                          identifies the cluster.
+                        type: string
+                    required:
+                    - resourceSet
+                    type: object
                   type:
                     enum:
                     - flux
+                    - flux-operator
                     type: string
                 required:
                 - type
                 type: object
-                x-kubernetes-validations:
-                - message: actuator.flux must be set when type is flux
-                  rule: self.type != 'flux' || has(self.flux)
               bootstrap:
                 description: |-
                   Bootstrap configures one-time cluster self-registration.
@@ -399,8 +423,11 @@ spec:
                     type: integer
                 type: object
               lastHeartbeat:
-                description: LastHeartbeat is the RFC3339 timestamp of the last cluster-controller
-                  heartbeat.
+                description: |-
+                  LastHeartbeat is the RFC3339 timestamp of the last cluster-controller heartbeat.
+                  Deprecated: the authoritative heartbeat source is now the coordination.k8s.io/v1
+                  Lease "kapro-heartbeat-<cluster>" in kapro-system. This field is still written
+                  for backward compatibility but should not be relied upon for freshness checks.
                 type: string
               observedGeneration:
                 format: int64
