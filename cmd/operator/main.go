@@ -18,7 +18,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
-	fluxactuator "kapro.io/kapro/internal/actuator/flux"
+	fluxopactuator "kapro.io/kapro/internal/actuator/fluxoperator"
 	_ "kapro.io/kapro/internal/metrics" // register custom Prometheus metrics at init
 	enginenotifier "kapro.io/kapro/internal/notification/engine"
 	"kapro.io/kapro/internal/version"
@@ -104,18 +104,14 @@ func main() {
 
 	// Build actuator registry — resolves per-target actuator at apply time.
 	actuatorReg := actuator.NewRegistry()
-	fluxAct := &fluxactuator.FluxActuator{Client: mgr.GetClient()}
-
-	// Actuator-specific preflight: each backend checks its own prerequisites.
-	// This replaces the old global requireFlux() — when ArgoCD is added, only
-	// its actuator checks for ArgoCD CRDs, not the entire operator.
-	if err := fluxAct.Preflight(cfg); err != nil {
-		log.Error(err, "Flux actuator preflight failed — install Flux or remove the Flux actuator")
+	foAct := &fluxopactuator.FluxOperatorActuator{Client: mgr.GetClient()}
+	if err := actuatorReg.Register("flux-operator", foAct); err != nil {
+		log.Error(err, "failed to register flux-operator actuator")
 		os.Exit(1)
 	}
-
-	if err := actuatorReg.Register("flux", fluxAct); err != nil {
-		log.Error(err, "failed to register flux actuator")
+	// Also register as "flux" for backward compatibility.
+	if err := actuatorReg.Register("flux", foAct); err != nil {
+		log.Error(err, "failed to register flux actuator alias")
 		os.Exit(1)
 	}
 

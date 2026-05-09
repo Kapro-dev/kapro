@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 
-	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"kapro.io/kapro/internal/controller"
@@ -26,8 +25,7 @@ func init() {
 	Register("release", startReleaseController)
 	Register("release-target", startReleaseTargetController)
 	Register("approval", startApprovalController)
-	Register("csrapproval", startCSRApprovalController)
-	Register("membercluster", startMemberClusterController)
+	// csrapproval and membercluster bootstrap removed — Flux Operator handles spoke setup.
 	Register("source", startSourceController)
 }
 
@@ -124,42 +122,8 @@ func startApprovalController(_ context.Context, cc ControllerContext) (bool, err
 	return true, nil
 }
 
-// startCSRApprovalController starts the CSR approval controller.
-// Approves bootstrap CSRs (first registration) and renewal CSRs (cert rotation)
-// from Kapro cluster-controllers using the kubernetes.io/kube-apiserver-client signer.
-func startCSRApprovalController(_ context.Context, cc ControllerContext) (bool, error) {
-	kubeClient, err := kubernetes.NewForConfig(cc.Manager.GetConfig())
-	if err != nil {
-		return false, err
-	}
-	if err := (&controller.CSRApprovalReconciler{
-		Client:     cc.Manager.GetClient(),
-		CertClient: kubeClient.CertificatesV1(),
-		Recorder:   cc.Recorder,
-	}).SetupWithManager(cc.Manager); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-// startMemberClusterController starts the MemberCluster reconciler.
-// Handles bootstrap SA/kubeconfig provisioning on creation, and RBAC cleanup on deletion.
-func startMemberClusterController(_ context.Context, cc ControllerContext) (bool, error) {
-	kubeClient, err := kubernetes.NewForConfig(cc.Manager.GetConfig())
-	if err != nil {
-		return false, err
-	}
-	if err := (&controller.MemberClusterReconciler{
-		Client:     cc.Manager.GetClient(),
-		Scheme:     cc.Manager.GetScheme(),
-		KubeClient: kubeClient,
-		HubAPIURL:  cc.HubAPIURL,
-		HubCAData:  cc.HubCAData,
-	}).SetupWithManager(cc.Manager); err != nil {
-		return false, err
-	}
-	return true, nil
-}
+// CSR approval and MemberCluster bootstrap controllers removed.
+// Flux Operator handles spoke setup — no kapro component on spokes.
 
 // startSourceController starts the Source reconciler.
 // Polls OCI registries for new semver-matching tags and auto-creates Artifact objects.

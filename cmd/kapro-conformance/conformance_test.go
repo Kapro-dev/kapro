@@ -25,7 +25,7 @@ import (
 	conformanceactuator "kapro.io/kapro/conformance/actuator"
 	conformancegate "kapro.io/kapro/conformance/gate"
 
-	fluxactuator "kapro.io/kapro/internal/actuator/flux"
+	fluxopactuator "kapro.io/kapro/internal/actuator/fluxoperator"
 	internalgate "kapro.io/kapro/internal/gate"
 )
 
@@ -56,6 +56,6 @@ func TestVerificationGate_Conformance(t *testing.T) {
 
 // ---- Actuator conformance ---------------------------------------------------
 
-func TestFluxActuator_Conformance(t *testing.T) {
-	conformanceactuator.RunSuite(t, &fluxactuator.FluxActuator{Client: fakeClient().Build()})
+func TestFluxOperatorActuator_Conformance(t *testing.T) {
+	conformanceactuator.RunSuite(t, &fluxopactuator.FluxOperatorActuator{Client: fakeClient().Build()})
 }

@@ -121,11 +121,27 @@ type TargetTopology struct {
 }
 
 // ActuatorSpec selects and configures the delivery backend for this cluster.
-// +kubebuilder:validation:XValidation:rule="self.type != 'flux' || has(self.flux)",message="actuator.flux must be set when type is flux"
 type ActuatorSpec struct {
-	// +kubebuilder:validation:Enum=flux
-	Type string        `json:"type"`
-	Flux *FluxActuator `json:"flux,omitempty"`
+	// +kubebuilder:validation:Enum=flux;flux-operator
+	Type         string              `json:"type"`
+	Flux         *FluxActuator       `json:"flux,omitempty"`
+	FluxOperator *FluxOperatorConfig `json:"fluxOperator,omitempty"`
+}
+
+// FluxOperatorConfig configures the Flux Operator actuator.
+// Kapro patches ResourceSet inputs instead of individual Flux resources.
+type FluxOperatorConfig struct {
+	// ResourceSet is the name of the Flux Operator ResourceSet to patch.
+	ResourceSet string `json:"resourceSet"`
+	// Namespace is the namespace of the ResourceSet.
+	// +kubebuilder:default="flux-system"
+	Namespace string `json:"namespace,omitempty"`
+	// InputField is the ResourceSet input field that holds the version/tag.
+	// +kubebuilder:default="tag"
+	InputField string `json:"inputField,omitempty"`
+	// TenantField is the ResourceSet input field that identifies the cluster.
+	// +kubebuilder:default="tenant"
+	TenantField string `json:"tenantField,omitempty"`
 }
 
 type FluxActuator struct {
