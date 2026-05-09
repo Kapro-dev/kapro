@@ -220,9 +220,8 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 	}
 	mustCreate(t, ctx, c, mc1)
 	mustCreate(t, ctx, c, mc2)
-	// Deliberately do NOT call patchRegistrationConverged — without a fresh
-	// heartbeat, both targets stay in Pending (non-terminal). This gives us
-	// time to inject a failure before the fake actuator converges everything.
+	// Don't converge either cluster — targets will stay in early FSM states.
+	// We'll patch one target to Failed manually after it's created.
 
 	// ── 3. Create Pipeline: one stage, default onFailure (halt) ──────────────
 	pipeline := &kaprov1alpha1.Pipeline{
@@ -257,7 +256,9 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 		return len(targets) >= 2
 	}, "two ReleaseTargets should be created")
 
-	// ── 6. Patch one ReleaseTarget status to Failed (simulate actuator failure)
+	// ── 6. Patch one ReleaseTarget status to Failed (simulate failure)
+	// Wait a moment for the controller to process, then patch.
+	time.Sleep(500 * time.Millisecond)
 	targets := listReleaseTargets(t, ctx, c, release.Name, ns)
 	var victim *kaprov1alpha1.ReleaseTarget
 	for i := range targets {
@@ -269,10 +270,9 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 	if victim == nil {
 		t.Fatal("could not find ReleaseTarget for " + mc1.Name)
 	}
-
 	patch := client.MergeFrom(victim.DeepCopy())
 	victim.Status.Phase = kaprov1alpha1.TargetPhaseFailed
-	victim.Status.Message = "deploy failed: simulated timeout"
+	victim.Status.Message = "deploy failed: simulated"
 	victim.Status.FinishedAt = time.Now().UTC().Format(time.RFC3339)
 	if err := c.Status().Patch(ctx, victim, patch); err != nil {
 		t.Fatalf("patch ReleaseTarget to Failed: %v", err)
@@ -291,8 +291,8 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 	}, "sibling ReleaseTarget should have spec.cancelled=true")
 
 	// ── 8. Verify sibling's cancellation reason is set ───────────────────────
-	targets = listReleaseTargets(t, ctx, c, release.Name, ns)
-	for _, rt := range targets {
+	cancelTargets := listReleaseTargets(t, ctx, c, release.Name, ns)
+	for _, rt := range cancelTargets {
 		if rt.Spec.Target == mc2.Name {
 			if rt.Spec.CancelledReason == "" {
 				t.Error("expected cancellation reason on cancelled sibling")
@@ -320,8 +320,8 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 	}, "release should reach Failed after halt policy")
 
 	// ── 11. Verify the trigger target is still Failed (not overwritten) ──────
-	targets = listReleaseTargets(t, ctx, c, release.Name, ns)
-	for _, rt := range targets {
+	finalTargets := listReleaseTargets(t, ctx, c, release.Name, ns)
+	for _, rt := range finalTargets {
 		if rt.Spec.Target == mc1.Name {
 			if rt.Status.Phase != kaprov1alpha1.TargetPhaseFailed {
 				t.Errorf("trigger target phase changed to %s — expected Failed", rt.Status.Phase)
@@ -332,6 +332,22 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 
 	t.Logf("halt policy verified: trigger=%s(Failed), sibling=%s(cancelled→Failed), Release=Failed",
 		mc1.Name, mc2.Name)
+}
+
+// patchMCFailed sets a MemberCluster to Failed phase so the target FSM
+// detects it in handleApplying and fails the target naturally.
+func patchMCFailed(t *testing.T, ctx context.Context, c client.Client, reg *kaprov1alpha1.MemberCluster) {
+	t.Helper()
+	latest := &kaprov1alpha1.MemberCluster{}
+	eventually(t, func() bool {
+		return c.Get(ctx, types.NamespacedName{Name: reg.Name}, latest) == nil
+	}, "MemberCluster "+reg.Name+" to appear")
+	patch := client.MergeFrom(latest.DeepCopy())
+	latest.Status.Phase = kaprov1alpha1.ClusterPhaseFailed
+	latest.Status.Health = kaprov1alpha1.ClusterHealth{AllWorkloadsReady: false, FailedWorkloads: 1, TotalWorkloads: 1}
+	if err := c.Status().Patch(ctx, latest, patch); err != nil {
+		t.Fatalf("patch MemberCluster Failed %s: %v", reg.Name, err)
+	}
 }
 
 // patchRegistrationConverged sets a fresh heartbeat + Converged phase on a
