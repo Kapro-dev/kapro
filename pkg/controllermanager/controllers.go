@@ -24,6 +24,7 @@ func init() {
 	Register("release", startReleaseController)
 	Register("release-target", startReleaseTargetController)
 	Register("approval", startApprovalController)
+	Register("fleet", startFleetController)
 	// csrapproval and membercluster bootstrap removed — Flux Operator handles spoke setup.
 }
 
@@ -109,6 +110,18 @@ func BuildGateRegistry(c client.Client) (*pkggate.Registry, error) {
 // Watches Approval objects and unblocks targets waiting in WaitingApproval phase.
 func startApprovalController(_ context.Context, cc ControllerContext) (bool, error) {
 	if err := (&controller.ApprovalReconciler{
+		Client:   cc.Manager.GetClient(),
+		Recorder: cc.Recorder,
+	}).SetupWithManager(cc.Manager); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// startFleetController starts the Fleet reconciler.
+// Generates ResourceSet, MemberClusters, and Pipeline from the Fleet spec.
+func startFleetController(_ context.Context, cc ControllerContext) (bool, error) {
+	if err := (&controller.FleetReconciler{
 		Client:   cc.Manager.GetClient(),
 		Recorder: cc.Recorder,
 	}).SetupWithManager(cc.Manager); err != nil {
