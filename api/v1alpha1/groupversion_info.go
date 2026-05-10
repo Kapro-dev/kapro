@@ -25,7 +25,8 @@ func init() {
 		// AI agent trust boundaries
 		&AgentPolicy{}, &AgentPolicyList{},
 
-		// Fleet entry point
-		&Fleet{}, &FleetList{},
+		// Kapro entry point + app bundle
+		&Kapro{}, &KaproList{},
+		&KaproApp{}, &KaproAppList{},
 	)
 }

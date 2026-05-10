@@ -24,7 +24,7 @@ func init() {
 	Register("release", startReleaseController)
 	Register("release-target", startReleaseTargetController)
 	Register("approval", startApprovalController)
-	Register("fleet", startFleetController)
+	Register("kapro", startKaproController)
 	// csrapproval and membercluster bootstrap removed — Flux Operator handles spoke setup.
 }
 
@@ -118,10 +118,10 @@ func startApprovalController(_ context.Context, cc ControllerContext) (bool, err
 	return true, nil
 }
 
-// startFleetController starts the Fleet reconciler.
-// Generates ResourceSet, MemberClusters, and Pipeline from the Fleet spec.
-func startFleetController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.FleetReconciler{
+// startKaproController starts the Kapro reconciler.
+// Pushes FluxInstance + OCIRepository to spokes, generates MemberClusters and Pipeline on the hub.
+func startKaproController(_ context.Context, cc ControllerContext) (bool, error) {
+	if err := (&controller.KaproReconciler{
 		Client:   cc.Manager.GetClient(),
 		Recorder: cc.Recorder,
 	}).SetupWithManager(cc.Manager); err != nil {

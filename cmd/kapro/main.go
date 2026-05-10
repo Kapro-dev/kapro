@@ -63,6 +63,7 @@ Passes versions forward. Across targets. Across clusters. In waves.`,
 	root.AddCommand(newReleaseCmd())
 	root.AddCommand(newPromoteCmd())
 	root.AddCommand(newWorldCmd())
+	// bootstrap is under "kapro cluster bootstrap" — no separate root command
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
@@ -325,44 +326,60 @@ func runClusterSync(ctx context.Context, project string) error {
 
 func newBootstrapCmd() *cobra.Command {
 	var (
-		clusterName string
-		namespace   string
-		labelsRaw   []string
-		ttl         time.Duration
-		kubeconfig  string
+		clusterName    string
+		namespace      string
+		labelsRaw      []string
+		ttl            time.Duration
+		kubeconfig     string
+		spokeKubeconf  string
+		providerName   string
+		project        string
+		location       string
+		setupSpoke     bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "bootstrap",
-		Short: "Register a workload cluster with Kapro",
-		Long: `Bootstrap creates a MemberCluster CR on the management cluster with a bootstrap token.
-The Kapro operator processes it, creates a scoped ServiceAccount + RBAC, and
-writes the cluster credentials to a Secret named kapro-cluster-<name>-credentials.
+		Short: "Register a workload cluster with Kapro and set up delivery",
+		Long: `Bootstrap registers a cluster on the hub and optionally sets up
+the delivery system on the spoke. Kapro detects which delivery system
+to install based on the actuator type.
 
 Steps:
-  1. Run this command on a machine with access to the MANAGEMENT cluster kubeconfig.
-  2. Copy the printed token to the WORKLOAD cluster.
-  3. Start kapro-cluster-controller with --bootstrap-token=<token>.
+  1. Creates a MemberCluster CR on the hub with a bootstrap token.
+  2. (with --setup-spoke) Connects to the spoke and installs the delivery system.
 
-Example:
-  kapro cluster bootstrap --name de-prod --labels env=prod,region=eu-west`,
+Examples:
+  kapro cluster bootstrap --name de-prod --labels tier=prod
+  kapro cluster bootstrap --name de-prod --labels tier=prod --setup-spoke --spoke-kubeconfig /path/to/spoke
+  kapro cluster bootstrap --name de-prod --setup-spoke --provider gcp --project my-project`,
 
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runBootstrap(cmd.Context(), clusterName, namespace, labelsRaw, ttl, kubeconfig)
+			return runBootstrap(cmd.Context(), clusterName, namespace, labelsRaw, ttl, kubeconfig, setupSpoke, spokeBootstrapOpts{
+				kubeconfig:   spokeKubeconf,
+				providerName: providerName,
+				project:      project,
+				location:     location,
+			})
 		},
 	}
 
-	cmd.Flags().StringVar(&clusterName, "name", "", "Cluster name (required, must match MemberCluster name)")
-	cmd.Flags().StringVar(&namespace, "namespace", "kapro-system", "Namespace for bootstrap (unused — MemberCluster is cluster-scoped)")
+	cmd.Flags().StringVar(&clusterName, "name", "", "Cluster name (required)")
+	cmd.Flags().StringVar(&namespace, "namespace", "kapro-system", "Namespace for bootstrap")
 	cmd.Flags().StringArrayVar(&labelsRaw, "labels", nil, "Labels for the MemberCluster (key=value)")
 	cmd.Flags().DurationVar(&ttl, "ttl", 24*time.Hour, "Token TTL (default 24h)")
-	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig (defaults to KUBECONFIG env / ~/.kube/config)")
+	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Hub kubeconfig path")
+	cmd.Flags().BoolVar(&setupSpoke, "setup-spoke", false, "Also set up delivery system on the spoke cluster")
+	cmd.Flags().StringVar(&spokeKubeconf, "spoke-kubeconfig", "", "Spoke kubeconfig path (for --setup-spoke)")
+	cmd.Flags().StringVar(&providerName, "provider", "", "Provider for spoke access (kubeconfig, gcp-basic, gcp-fleet)")
+	cmd.Flags().StringVar(&project, "project", "", "GCP project (for gcp providers)")
+	cmd.Flags().StringVar(&location, "location", "", "GCP region (for gcp-basic)")
 	_ = cmd.MarkFlagRequired("name")
 
 	return cmd
 }
 
-func runBootstrap(ctx context.Context, clusterName, namespace string, labelsRaw []string, ttl time.Duration, kubeconfigPath string) error {
+func runBootstrap(ctx context.Context, clusterName, namespace string, labelsRaw []string, ttl time.Duration, kubeconfigPath string, setupSpoke bool, spokeOpts spokeBootstrapOpts) error {
 	// Build management-cluster client.
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	if kubeconfigPath != "" {
@@ -434,7 +451,17 @@ func runBootstrap(ctx context.Context, clusterName, namespace string, labelsRaw 
 	cli.KV("Actuator", "flux-operator")
 	cli.KV("Labels", fmt.Sprintf("%v", labels))
 	fmt.Fprintln(cli.Out)
-	cli.Info("Flux Operator handles spoke delivery — no kapro component needed on the spoke.")
+
+	if setupSpoke {
+		if err := spokeBootstrap(ctx, clusterName, spokeOpts); err != nil {
+			return fmt.Errorf("spoke setup: %w", err)
+		}
+		fmt.Fprintln(cli.Out)
+		cli.Successf("Cluster %q registered and delivery system installed", clusterName)
+	} else {
+		cli.Info("Delivery system not set up. Run again with --setup-spoke to install on the spoke.")
+	}
+
 	cli.Muted("Check status: kubectl get membercluster " + clusterName)
 	return nil
 }

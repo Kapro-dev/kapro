@@ -1,0 +1,245 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.0
+  name: kaproapps.kapro.io
+spec:
+  group: kapro.io
+  names:
+    categories:
+    - kapro-all
+    kind: KaproApp
+    listKind: KaproAppList
+    plural: kaproapps
+    shortNames:
+    - ka
+    singular: kaproapp
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .metadata.annotations.kapro\.io/component-count
+      name: Components
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          KaproApp is an application bundle defining what to deploy across the fleet.
+          It is a pure template — no controller, no status. Referenced by Kapro.spec.appRef.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              KaproAppSpec defines an application bundle deployed across the fleet.
+              Components, versions, defaults, and per-cluster overrides live here.
+              Referenced by Kapro.spec.appRef.
+            properties:
+              components:
+                description: Components defines the set of Helm charts or kustomize
+                  artifacts to deploy.
+                items:
+                  description: AppComponent is one deployable unit within a KaproApp.
+                  properties:
+                    chart:
+                      description: Chart overrides the default chart source (for third-party
+                        charts).
+                      properties:
+                        name:
+                          description: Name of the chart (if different from component
+                            name).
+                          type: string
+                        url:
+                          description: URL is the OCI or Helm repository URL.
+                          type: string
+                      required:
+                      - url
+                      type: object
+                    name:
+                      description: Name is the component/chart name.
+                      type: string
+                    namespace:
+                      default: flux-system
+                      description: Namespace is where the HelmRelease CR lives on
+                        spokes.
+                      type: string
+                    shared:
+                      description: |-
+                        Shared marks this component as cluster-wide infrastructure that is NOT
+                        duplicated per slot in blue-green deployments. Shared components (operators,
+                        kafka, cert-manager) exist once and serve all slots.
+                      type: boolean
+                    targetNamespace:
+                      description: |-
+                        TargetNamespace is where the workload pods actually run.
+                        When empty, uses the KaproApp.spec.namespaces.workloadNamespace template.
+                        When set, overrides the template for this component (e.g. "kafka" for shared infra).
+                      type: string
+                    version:
+                      description: Version is the chart version or OCI tag.
+                      type: string
+                    wave:
+                      description: |-
+                        Wave controls deployment ordering within a slot (lower = earlier).
+                        Maps to Flux Kustomization dependsOn ordering.
+                      format: int32
+                      minimum: 0
+                      type: integer
+                  required:
+                  - name
+                  - version
+                  type: object
+                minItems: 1
+                type: array
+              defaults:
+                description: Defaults are base Helm values applied to every component
+                  on every cluster.
+                x-kubernetes-preserve-unknown-fields: true
+              namespaces:
+                description: |-
+                  Namespaces configures how workload namespaces are generated on spokes.
+                  When set, enables namespace-based deployment strategies (blue-green, canary).
+                properties:
+                  helmReleaseNamespace:
+                    default: flux-system
+                    description: |-
+                      HelmReleaseNamespace is where HelmRelease CRs live (not the workloads).
+                      Default: "flux-system"
+                    type: string
+                  slots:
+                    description: |-
+                      Slots enables blue-green namespace deployment.
+                      When set, Kapro maintains two workload namespaces and switches traffic between them.
+                    properties:
+                      slotNames:
+                        description: |-
+                          SlotNames are the two slot identifiers used in namespace templating.
+                          Default: ["blue", "green"]
+                          Example with WorkloadNamespace "{{.Env}}-{{.Slot}}-workloads":
+                            → "p528-blue-workloads" (active)
+                            → "p528-green-workloads" (standby, receiving new version)
+                        items:
+                          type: string
+                        maxItems: 2
+                        minItems: 2
+                        type: array
+                      trafficRouting:
+                        description: TrafficRouting configures how traffic switches
+                          between slots.
+                        properties:
+                          canaryWeight:
+                            default: 0
+                            description: |-
+                              CanaryWeight is the initial traffic percentage to the new slot (0-100).
+                              0 means no canary — full switch after verification.
+                            format: int32
+                            type: integer
+                          ingressRef:
+                            description: |-
+                              IngressRef identifies the routing resource to modify.
+                              For traefik: an IngressRoute. For nginx: an Ingress.
+                              For gateway-api: an HTTPRoute. For istio: a VirtualService.
+                            properties:
+                              apiVersion:
+                                description: APIVersion of the routing resource (e.g.
+                                  gateway.networking.k8s.io/v1).
+                                type: string
+                              kind:
+                                description: Kind of the routing resource (e.g. HTTPRoute,
+                                  Ingress, VirtualService).
+                                type: string
+                              name:
+                                description: Name of the resource.
+                                type: string
+                              namespace:
+                                description: Namespace of the resource.
+                                type: string
+                            required:
+                            - apiVersion
+                            - kind
+                            - name
+                            type: object
+                          provider:
+                            description: Provider is the traffic routing backend.
+                            enum:
+                            - gateway-api
+                            - istio
+                            - nginx
+                            - traefik
+                            - manual
+                            type: string
+                          stepWeight:
+                            default: 20
+                            description: StepWeight is the traffic increment per step.
+                              Only used when canaryWeight > 0.
+                            format: int32
+                            type: integer
+                        required:
+                        - provider
+                        type: object
+                    required:
+                    - trafficRouting
+                    type: object
+                  workloadNamespace:
+                    description: |-
+                      WorkloadNamespace is the template for the workload namespace.
+                      Supports substitution: {{.Env}}, {{.Slot}} (for blue-green).
+                      Example: "{{.Env}}-workloads" → "p528-workloads"
+                      Default: the component's Namespace field is used as-is.
+                    type: string
+                type: object
+              overrides:
+                description: Overrides are per-cluster or per-label value patches
+                  layered on top of defaults.
+                items:
+                  description: AppOverride patches Helm values for a subset of clusters.
+                  properties:
+                    clusters:
+                      description: Clusters is an explicit list of cluster names.
+                        Takes precedence over selector.
+                      items:
+                        type: string
+                      type: array
+                    component:
+                      description: Component restricts this override to a single component.
+                        Empty means all.
+                      type: string
+                    selector:
+                      additionalProperties:
+                        type: string
+                      description: Selector matches clusters by labels. Applied to
+                        all matching clusters.
+                      type: object
+                    values:
+                      description: Values are Helm value patches merged on top of
+                        defaults.
+                      x-kubernetes-preserve-unknown-fields: true
+                  type: object
+                type: array
+            required:
+            - components
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources: {}

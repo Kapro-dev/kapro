@@ -134,8 +134,8 @@ func runDemo(ctx context.Context) error {
 	}
 	sp.StopSuccess(fmt.Sprintf("Installed %d CRDs", len(crdFiles)))
 
-	// Step 4: Create Fleet CR — the ONLY resource users need to write.
-	sp = cli.NewSpinner("Creating Fleet")
+	// Step 4: Create KaproApp + Kapro CRs.
+	sp = cli.NewSpinner("Creating Kapro resources")
 	sp.Start()
 
 	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
@@ -149,40 +149,53 @@ func runDemo(ctx context.Context) error {
 		return err
 	}
 
-	fleet := &kaprov1alpha1.Fleet{
-		ObjectMeta: metav1.ObjectMeta{Name: "demo"},
-		Spec: kaprov1alpha1.FleetSpec{
-			Registry: kaprov1alpha1.FleetRegistry{
-				URL:  "oci://registry.example.com/charts",
-				Name: "product-charts",
-			},
-			Components: []kaprov1alpha1.FleetComponent{
+	// KaproApp — defines what to deploy.
+	app := &kaprov1alpha1.KaproApp{
+		ObjectMeta: metav1.ObjectMeta{Name: "demo-app"},
+		Spec: kaprov1alpha1.KaproAppSpec{
+			Components: []kaprov1alpha1.AppComponent{
 				{Name: "pos-server", Version: "5.28.0"},
-				{Name: "auth-service", Version: "5.28.0", DependsOn: "keycloak"},
+				{Name: "auth-service", Version: "5.28.0"},
 				{Name: "sdc", Version: "5.28.0"},
 				{Name: "keycloak", Version: "6.5.0"},
 			},
-			Clusters: []kaprov1alpha1.FleetCluster{
+		},
+	}
+	if err := c.Create(ctx, app); err != nil && !isAlreadyExists(err) {
+		sp.StopFail("Failed to create KaproApp")
+		return err
+	}
+
+	// Kapro — defines where to deploy.
+	kapro := &kaprov1alpha1.Kapro{
+		ObjectMeta: metav1.ObjectMeta{Name: "demo"},
+		Spec: kaprov1alpha1.KaproSpec{
+			Registry: kaprov1alpha1.KaproRegistry{
+				URL: "oci://registry.example.com/charts",
+			},
+			AppRef: "demo-app",
+			Clusters: []kaprov1alpha1.KaproCluster{
 				{Name: "canary-eu", Labels: map[string]string{"tier": "canary", "region": "eu-west"}},
 				{Name: "prod-eu-west", Labels: map[string]string{"tier": "prod", "region": "eu-west"}},
 				{Name: "prod-eu-east", Labels: map[string]string{"tier": "prod", "region": "eu-east"}},
 			},
-			Pipeline: kaprov1alpha1.FleetPipeline{
-				Stages: []kaprov1alpha1.FleetStage{
+			Pipeline: kaprov1alpha1.KaproPipeline{
+				Stages: []kaprov1alpha1.KaproStage{
 					{Name: "canary", Selector: map[string]string{"tier": "canary"}},
-					{Name: "prod", Selector: map[string]string{"tier": "prod"}, DependsOn: []string{"canary"}},
+					{Name: "prod", Selector: map[string]string{"tier": "prod"},
+						DependsOn: []kaprov1alpha1.StageDependency{{Stage: "canary"}}},
 				},
 			},
 		},
 	}
-	if err := c.Create(ctx, fleet); err != nil && !isAlreadyExists(err) {
-		sp.StopFail("Failed to create Fleet")
+	if err := c.Create(ctx, kapro); err != nil && !isAlreadyExists(err) {
+		sp.StopFail("Failed to create Kapro")
 		return err
 	}
 
-	// Simulate healthy clusters (in production, Flux Operator reports this).
+	// Simulate healthy clusters (in production, Flux reports this).
 	now := time.Now().UTC().Format(time.RFC3339)
-	for _, cluster := range fleet.Spec.Clusters {
+	for _, cluster := range kapro.Spec.Clusters {
 		mc := &kaprov1alpha1.MemberCluster{}
 		if err := c.Get(ctx, client.ObjectKey{Name: cluster.Name}, mc); err == nil {
 			patch := client.MergeFrom(mc.DeepCopy())
@@ -214,12 +227,13 @@ func runDemo(ctx context.Context) error {
 	fmt.Fprintln(cli.Out)
 
 	tbl := cli.NewTable("RESOURCE", "NAME", "DETAILS")
-	tbl.AddRow("Fleet", "demo", "4 components, 3 clusters, 2 stages")
-	tbl.AddRow("  MemberCluster", "canary-eu", "tier=canary (generated)")
-	tbl.AddRow("  MemberCluster", "prod-eu-west", "tier=prod (generated)")
-	tbl.AddRow("  MemberCluster", "prod-eu-east", "tier=prod (generated)")
-	tbl.AddRow("  Pipeline", "demo-pipeline", "canary → prod (generated)")
-	tbl.AddRow("  ResourceSet", "demo-workloads", "4 HelmReleases (generated)")
+	tbl.AddRow("KaproApp", "demo-app", "4 components (pos-server, auth-service, sdc, keycloak)")
+	tbl.AddRow("Kapro", "demo", "3 clusters, 2 stages, appRef=demo-app")
+	tbl.AddRow("  MemberCluster", "canary-eu", "tier=canary (generated on hub)")
+	tbl.AddRow("  MemberCluster", "prod-eu-west", "tier=prod (generated on hub)")
+	tbl.AddRow("  MemberCluster", "prod-eu-east", "tier=prod (generated on hub)")
+	tbl.AddRow("  Pipeline", "demo-pipeline", "canary → prod (generated on hub)")
+	tbl.AddRow("  ResourceSet", "demo-workloads", "4 HelmReleases × 3 clusters (hub)")
 	tbl.AddRow("Release", "platform-v5.28", "triggers pipeline")
 	tbl.Render()
 
@@ -230,7 +244,8 @@ func runDemo(ctx context.Context) error {
 	cli.Info("kapro approve platform-v5.28/prod-eu-west   # approve production")
 	cli.Info("kapro fleet                                 # fleet overview")
 	cli.Info("kapro world                                 # all clusters")
-	cli.Info("kubectl get fleet demo -o yaml              # see the Fleet CRD")
+	cli.Info("kubectl get kapro demo -o yaml              # see the Kapro CRD")
+	cli.Info("kubectl get kaproapp demo-app -o yaml       # see the KaproApp CRD")
 	fmt.Fprintln(cli.Out)
 	cli.Muted("Clean up:  kapro demo --cleanup")
 	cli.Muted("Kubeconfig: export KUBECONFIG=" + kubeconfigPath)

@@ -1506,88 +1506,202 @@ type AgentPolicyList struct {
 	Items           []AgentPolicy `json:"items"`
 }
 
-// ---- Fleet ------------------------------------------------------------------
+// ---- KaproApp ---------------------------------------------------------------
 
-// FleetSpec defines the desired state of a Fleet.
-type FleetSpec struct {
-	// Registry is the OCI registry URL for Helm charts.
-	Registry FleetRegistry `json:"registry"`
-	// Components defines the applications to deploy across the fleet.
+// KaproAppSpec defines an application bundle deployed across the fleet.
+// Components, versions, defaults, and per-cluster overrides live here.
+// Referenced by Kapro.spec.appRef.
+type KaproAppSpec struct {
+	// Components defines the set of Helm charts or kustomize artifacts to deploy.
 	// +kubebuilder:validation:MinItems=1
-	Components []FleetComponent `json:"components"`
-	// Clusters defines the target clusters in the fleet.
-	// +kubebuilder:validation:MinItems=1
-	Clusters []FleetCluster `json:"clusters"`
-	// Pipeline defines the progressive delivery stages.
-	Pipeline FleetPipeline `json:"pipeline"`
-	// Suspended pauses Fleet reconciliation.
-	// +kubebuilder:default=false
-	Suspended bool `json:"suspended,omitempty"`
-}
-
-type FleetRegistry struct {
-	// URL is the OCI registry URL (e.g. oci://europe-west1-docker.pkg.dev/project/repo)
-	URL string `json:"url"`
-	// Name is the HelmRepository name to create. Defaults to "product-charts".
-	// +kubebuilder:default="product-charts"
-	Name string `json:"name,omitempty"`
-	// Provider is the auth provider (generic, gcp, aws, azure).
-	// +kubebuilder:default="generic"
-	Provider string `json:"provider,omitempty"`
-	// SecretRef references a Secret for registry auth.
+	Components []AppComponent `json:"components"`
+	// Defaults are base Helm values applied to every component on every cluster.
 	// +optional
-	SecretRef string `json:"secretRef,omitempty"`
+	// +kubebuilder:pruning:PreserveUnknownFields
+	Defaults *apiextensionsv1.JSON `json:"defaults,omitempty"`
+	// Overrides are per-cluster or per-label value patches layered on top of defaults.
+	// +optional
+	Overrides []AppOverride `json:"overrides,omitempty"`
+	// Namespaces configures how workload namespaces are generated on spokes.
+	// When set, enables namespace-based deployment strategies (blue-green, canary).
+	// +optional
+	Namespaces *NamespaceStrategy `json:"namespaces,omitempty"`
 }
 
-type FleetComponent struct {
+// NamespaceStrategy controls how workloads are deployed to namespaces on spokes.
+// Models the SIT monorepo pattern: environment-prefixed workload namespace
+// with shared infrastructure namespaces.
+type NamespaceStrategy struct {
+	// WorkloadNamespace is the template for the workload namespace.
+	// Supports substitution: {{.Env}}, {{.Slot}} (for blue-green).
+	// Example: "{{.Env}}-workloads" → "p528-workloads"
+	// Default: the component's Namespace field is used as-is.
+	// +optional
+	WorkloadNamespace string `json:"workloadNamespace,omitempty"`
+	// HelmReleaseNamespace is where HelmRelease CRs live (not the workloads).
+	// Default: "flux-system"
+	// +kubebuilder:default="flux-system"
+	HelmReleaseNamespace string `json:"helmReleaseNamespace,omitempty"`
+	// Slots enables blue-green namespace deployment.
+	// When set, Kapro maintains two workload namespaces and switches traffic between them.
+	// +optional
+	Slots *SlotStrategy `json:"slots,omitempty"`
+}
+
+// SlotStrategy configures blue-green namespace deployment.
+// Two workload namespaces exist on each spoke. The active slot serves traffic,
+// the standby slot receives the next version. After verification, Kapro switches.
+type SlotStrategy struct {
+	// SlotNames are the two slot identifiers used in namespace templating.
+	// Default: ["blue", "green"]
+	// Example with WorkloadNamespace "{{.Env}}-{{.Slot}}-workloads":
+	//   → "p528-blue-workloads" (active)
+	//   → "p528-green-workloads" (standby, receiving new version)
+	// +kubebuilder:validation:MinItems=2
+	// +kubebuilder:validation:MaxItems=2
+	SlotNames []string `json:"slotNames,omitempty"`
+	// TrafficRouting configures how traffic switches between slots.
+	TrafficRouting TrafficRouting `json:"trafficRouting"`
+}
+
+// TrafficRouting configures traffic shifting between namespace slots.
+type TrafficRouting struct {
+	// Provider is the traffic routing backend.
+	// +kubebuilder:validation:Enum=gateway-api;istio;nginx;traefik;manual
+	Provider string `json:"provider"`
+	// IngressRef identifies the routing resource to modify.
+	// For traefik: an IngressRoute. For nginx: an Ingress.
+	// For gateway-api: an HTTPRoute. For istio: a VirtualService.
+	// +optional
+	IngressRef *IngressReference `json:"ingressRef,omitempty"`
+	// CanaryWeight is the initial traffic percentage to the new slot (0-100).
+	// 0 means no canary — full switch after verification.
+	// +kubebuilder:default=0
+	CanaryWeight int32 `json:"canaryWeight,omitempty"`
+	// StepWeight is the traffic increment per step. Only used when canaryWeight > 0.
+	// +kubebuilder:default=20
+	StepWeight int32 `json:"stepWeight,omitempty"`
+}
+
+// IngressReference identifies the traffic routing resource to modify.
+type IngressReference struct {
+	// APIVersion of the routing resource (e.g. gateway.networking.k8s.io/v1).
+	APIVersion string `json:"apiVersion"`
+	// Kind of the routing resource (e.g. HTTPRoute, Ingress, VirtualService).
+	Kind string `json:"kind"`
+	// Name of the resource.
+	Name string `json:"name"`
+	// Namespace of the resource.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+}
+
+// AppComponent is one deployable unit within a KaproApp.
+type AppComponent struct {
 	// Name is the component/chart name.
 	Name string `json:"name"`
-	// Version is the chart version.
+	// Version is the chart version or OCI tag.
 	Version string `json:"version"`
-	// Type is "helm" (default) or "kustomize".
-	// +kubebuilder:validation:Enum=helm;kustomize
-	// +kubebuilder:default="helm"
-	Type string `json:"type,omitempty"`
-	// DependsOn is the name of another component that must deploy first.
+	// Namespace is where the HelmRelease CR lives on spokes.
+	// +kubebuilder:default="flux-system"
+	Namespace string `json:"namespace,omitempty"`
+	// TargetNamespace is where the workload pods actually run.
+	// When empty, uses the KaproApp.spec.namespaces.workloadNamespace template.
+	// When set, overrides the template for this component (e.g. "kafka" for shared infra).
 	// +optional
-	DependsOn string `json:"dependsOn,omitempty"`
-	// Values are inline Helm values for this component.
+	TargetNamespace string `json:"targetNamespace,omitempty"`
+	// Shared marks this component as cluster-wide infrastructure that is NOT
+	// duplicated per slot in blue-green deployments. Shared components (operators,
+	// kafka, cert-manager) exist once and serve all slots.
 	// +optional
-	// +kubebuilder:pruning:PreserveUnknownFields
-	Values *apiextensionsv1.JSON `json:"values,omitempty"`
-	// ValuesFrom references ConfigMaps/Secrets for values.
+	Shared bool `json:"shared,omitempty"`
+	// Wave controls deployment ordering within a slot (lower = earlier).
+	// Maps to Flux Kustomization dependsOn ordering.
 	// +optional
-	ValuesFrom []ValuesReference `json:"valuesFrom,omitempty"`
-	// Chart overrides the default chart source (for non-product charts like strimzi).
+	// +kubebuilder:validation:Minimum=0
+	Wave int32 `json:"wave,omitempty"`
+	// Chart overrides the default chart source (for third-party charts).
 	// +optional
-	Chart *ChartOverride `json:"chart,omitempty"`
-	// Path is used when type=kustomize. The path within the OCI artifact.
-	// +optional
-	Path string `json:"path,omitempty"`
-	// PostRenderers are kustomize patches applied after Helm renders.
-	// +optional
-	// +kubebuilder:pruning:PreserveUnknownFields
-	PostRenderers *apiextensionsv1.JSON `json:"postRenderers,omitempty"`
+	Chart *AppChartSource `json:"chart,omitempty"`
 }
 
-type ValuesReference struct {
-	Kind string `json:"kind"`
-	Name string `json:"name"`
-	// +optional
-	ValuesKey string `json:"valuesKey,omitempty"`
-	// +optional
-	Optional bool `json:"optional,omitempty"`
-}
-
-type ChartOverride struct {
-	// Repository URL (for non-default chart sources).
-	Repository string `json:"repository"`
+// AppChartSource overrides the registry-level chart source for one component.
+type AppChartSource struct {
+	// URL is the OCI or Helm repository URL.
+	URL string `json:"url"`
 	// Name of the chart (if different from component name).
 	// +optional
 	Name string `json:"name,omitempty"`
 }
 
-type FleetCluster struct {
+// AppOverride patches Helm values for a subset of clusters.
+type AppOverride struct {
+	// Selector matches clusters by labels. Applied to all matching clusters.
+	// +optional
+	Selector map[string]string `json:"selector,omitempty"`
+	// Clusters is an explicit list of cluster names. Takes precedence over selector.
+	// +optional
+	Clusters []string `json:"clusters,omitempty"`
+	// Component restricts this override to a single component. Empty means all.
+	// +optional
+	Component string `json:"component,omitempty"`
+	// Values are Helm value patches merged on top of defaults.
+	// +kubebuilder:pruning:PreserveUnknownFields
+	Values *apiextensionsv1.JSON `json:"values,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:scope=Cluster,shortName=ka,categories=kapro-all
+// +kubebuilder:printcolumn:name="Components",type=integer,JSONPath=`.metadata.annotations.kapro\.io/component-count`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+
+// KaproApp is an application bundle defining what to deploy across the fleet.
+// It is a pure template — no controller, no status. Referenced by Kapro.spec.appRef.
+type KaproApp struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              KaproAppSpec `json:"spec,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+type KaproAppList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []KaproApp `json:"items"`
+}
+
+// ---- Kapro ------------------------------------------------------------------
+
+// KaproSpec defines the desired state of a Kapro fleet.
+type KaproSpec struct {
+	// Registry is the OCI registry URL for Helm charts.
+	Registry KaproRegistry `json:"registry"`
+	// AppRef is the name of the KaproApp that defines components to deploy.
+	AppRef string `json:"appRef"`
+	// Clusters defines the target clusters in the fleet.
+	// +kubebuilder:validation:MinItems=1
+	Clusters []KaproCluster `json:"clusters"`
+	// Pipeline defines the progressive delivery stages.
+	Pipeline KaproPipeline `json:"pipeline"`
+	// Suspended pauses Kapro reconciliation.
+	// +kubebuilder:default=false
+	Suspended bool `json:"suspended,omitempty"`
+}
+
+// KaproRegistry configures the OCI registry used by FluxInstance on spokes.
+type KaproRegistry struct {
+	// URL is the OCI registry URL (e.g. oci://europe-west1-docker.pkg.dev/project/repo)
+	URL string `json:"url"`
+	// Provider is the auth provider (generic, gcp, aws, azure).
+	// +kubebuilder:default="generic"
+	Provider string `json:"provider,omitempty"`
+	// SecretRef references a Secret for registry auth (pushed to spokes).
+	// +optional
+	SecretRef string `json:"secretRef,omitempty"`
+}
+
+// KaproCluster defines a spoke cluster in the fleet.
+type KaproCluster struct {
 	// Name is the cluster identifier.
 	Name string `json:"name"`
 	// Labels for stage selection.
@@ -1601,67 +1715,71 @@ type FleetCluster struct {
 	KubeconfigSecret string `json:"kubeconfigSecret,omitempty"`
 	// GCP config (provider=gcp).
 	// +optional
-	GCP *FleetClusterGCP `json:"gcp,omitempty"`
+	GCP *KaproClusterGCP `json:"gcp,omitempty"`
 }
 
-type FleetClusterGCP struct {
+// KaproClusterGCP holds GCP-specific cluster config.
+type KaproClusterGCP struct {
 	Project     string `json:"project"`
 	ClusterName string `json:"clusterName"`
 	Region      string `json:"region"`
 }
 
-type FleetPipeline struct {
+// KaproPipeline defines the progressive delivery stages.
+type KaproPipeline struct {
 	// Stages defines the progressive delivery wave ordering.
-	Stages []FleetStage `json:"stages"`
+	Stages []KaproStage `json:"stages"`
 }
 
-type FleetStage struct {
+// KaproStage is one wave in the delivery pipeline.
+type KaproStage struct {
 	// Name of the stage.
 	Name string `json:"name"`
 	// Selector matches clusters by labels.
 	Selector map[string]string `json:"selector"`
-	// DependsOn is the list of stages that must complete first.
+	// DependsOn declares upstream stage dependencies.
 	// +optional
-	DependsOn []string `json:"dependsOn,omitempty"`
-	// Gate defines approval/soak/metrics requirements between stages.
+	DependsOn []StageDependency `json:"dependsOn,omitempty"`
+	// Gate defines approval/soak/metrics requirements for this stage.
 	// +optional
-	// +kubebuilder:pruning:PreserveUnknownFields
-	Gate *apiextensionsv1.JSON `json:"gate,omitempty"`
+	Gate *GatePolicySpec `json:"gate,omitempty"`
 }
 
-// FleetStatus defines the observed state of Fleet.
-type FleetStatus struct {
+// KaproStatus defines the observed state of Kapro.
+type KaproStatus struct {
 	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
 	Conditions         []metav1.Condition `json:"conditions,omitempty"`
 	// ClusterCount is the number of clusters in the fleet.
 	ClusterCount int32 `json:"clusterCount,omitempty"`
-	// ComponentCount is the number of components.
+	// ComponentCount is the number of components from the resolved KaproApp.
 	ComponentCount int32 `json:"componentCount,omitempty"`
-	// Inventory lists the generated resources.
+	// Inventory lists the generated spoke resources (FluxInstance, OCIRepository names).
 	// +optional
 	Inventory []string `json:"inventory,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=fl,categories=kapro-all
+// +kubebuilder:resource:scope=Cluster,shortName=kp,categories=kapro-all
+// +kubebuilder:printcolumn:name="AppRef",type=string,JSONPath=`.spec.appRef`
 // +kubebuilder:printcolumn:name="Clusters",type=integer,JSONPath=`.status.clusterCount`
 // +kubebuilder:printcolumn:name="Components",type=integer,JSONPath=`.status.componentCount`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// Fleet is the single entry point for fleet delivery. Users define components
-// and clusters; Kapro generates FluxInstance, ResourceSet, MemberClusters, and Pipeline.
-type Fleet struct {
+// Kapro is the single entry point for fleet delivery. Users reference a KaproApp
+// and define clusters; the controller pushes FluxInstance + OCIRepository to spokes
+// and generates MemberClusters + Pipeline on the hub.
+type Kapro struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              FleetSpec   `json:"spec,omitempty"`
-	Status            FleetStatus `json:"status,omitempty"`
+	Spec              KaproSpec   `json:"spec,omitempty"`
+	Status            KaproStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
-type FleetList struct {
+type KaproList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Fleet `json:"items"`
+	Items           []Kapro `json:"items"`
 }
