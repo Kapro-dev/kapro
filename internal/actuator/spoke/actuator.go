@@ -15,6 +15,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -39,12 +41,23 @@ var (
 	}
 )
 
+// clientCacheTTL is how long a cached spoke client is reused before rebuilding.
+const clientCacheTTL = 5 * time.Minute
+
+type cachedClient struct {
+	client    client.Client
+	createdAt time.Time
+}
+
 // SpokeFluxActuator implements the Actuator interface by patching the
 // OCIRepository tag on spoke clusters and checking local Flux status.
 type SpokeFluxActuator struct {
 	// HubClient is the controller-runtime client for the hub cluster.
 	// Used to read kubeconfig secrets.
 	HubClient client.Client
+
+	// clientCache caches spoke clients by cluster name. TTL = clientCacheTTL.
+	clientCache sync.Map // map[string]*cachedClient
 }
 
 var _ actuator.Actuator = (*SpokeFluxActuator)(nil)
@@ -209,54 +222,65 @@ func (a *SpokeFluxActuator) isAllSpokeReady(ctx context.Context, mc *kaprov1alph
 	return true, nil
 }
 
-// spokeClient builds a controller-runtime client for the spoke cluster
-// using the kubeconfig secret referenced by the MemberCluster.
+// spokeClient returns a cached controller-runtime client for the spoke cluster.
+// Clients are cached for clientCacheTTL to avoid repeated kubeconfig parsing
+// and REST client creation (expensive at 150 clusters).
 func (a *SpokeFluxActuator) spokeClient(ctx context.Context, mc *kaprov1alpha1.MemberCluster) (client.Client, error) {
-	// Find the kubeconfig secret name from the FluxOperator config (backward compat)
-	// or from the Flux config.
-	secretName := ""
-	if mc.Spec.Actuator.FluxOperator != nil {
-		// In spoke-local mode, the MemberCluster might still reference the old config.
-		// The kubeconfig secret is named {kapro}-{cluster}-kubeconfig by convention.
-		secretName = mc.Name + "-kubeconfig"
+	// Check cache.
+	if cached, ok := a.clientCache.Load(mc.Name); ok {
+		cc := cached.(*cachedClient)
+		if time.Since(cc.createdAt) < clientCacheTTL {
+			return cc.client, nil
+		}
+		a.clientCache.Delete(mc.Name)
 	}
 
-	// Read kubeconfig secret from hub.
+	// Build new client.
+	c, err := a.buildSpokeClient(ctx, mc)
+	if err != nil {
+		return nil, err
+	}
+
+	a.clientCache.Store(mc.Name, &cachedClient{
+		client:    c,
+		createdAt: time.Now(),
+	})
+	return c, nil
+}
+
+func (a *SpokeFluxActuator) buildSpokeClient(ctx context.Context, mc *kaprov1alpha1.MemberCluster) (client.Client, error) {
+	// Find kubeconfig secret by label or convention.
+	secretList := &corev1.SecretList{}
+	if err := a.HubClient.List(ctx, secretList,
+		client.InNamespace("flux-system"),
+		client.MatchingLabels{"kapro.io/cluster": mc.Name},
+	); err == nil && len(secretList.Items) > 0 {
+		return clientFromSecret(&secretList.Items[0], mc.Name)
+	}
+
+	// Fallback: convention-based name.
 	var secret corev1.Secret
 	if err := a.HubClient.Get(ctx, client.ObjectKey{
-		Name:      secretName,
+		Name:      mc.Name + "-kubeconfig",
 		Namespace: "flux-system",
 	}, &secret); err != nil {
-		// Try with kapro prefix pattern.
-		var secret2 corev1.Secret
-		secretList := &corev1.SecretList{}
-		if listErr := a.HubClient.List(ctx, secretList,
-			client.InNamespace("flux-system"),
-			client.MatchingLabels{"kapro.io/cluster": mc.Name},
-		); listErr == nil && len(secretList.Items) > 0 {
-			secret2 = secretList.Items[0]
-			secret = secret2
-		} else {
-			return nil, fmt.Errorf("kubeconfig secret for %s not found: %w", mc.Name, err)
-		}
+		return nil, fmt.Errorf("kubeconfig secret for %s not found: %w", mc.Name, err)
 	}
+	return clientFromSecret(&secret, mc.Name)
+}
 
+func clientFromSecret(secret *corev1.Secret, clusterName string) (client.Client, error) {
 	kubeconfigData := secret.Data["value"]
 	if len(kubeconfigData) == 0 {
-		return nil, fmt.Errorf("kubeconfig secret %s has no 'value' key", secretName)
+		return nil, fmt.Errorf("kubeconfig secret %s has no 'value' key", secret.Name)
 	}
 
 	restConfig, err := clientcmd.RESTConfigFromKubeConfig(kubeconfigData)
 	if err != nil {
-		return nil, fmt.Errorf("parse kubeconfig for %s: %w", mc.Name, err)
+		return nil, fmt.Errorf("parse kubeconfig for %s: %w", clusterName, err)
 	}
 
-	spokeClient, err := client.New(restConfig, client.Options{})
-	if err != nil {
-		return nil, fmt.Errorf("create spoke client for %s: %w", mc.Name, err)
-	}
-
-	return spokeClient, nil
+	return client.New(restConfig, client.Options{})
 }
 
 // hasReadyCondition checks if an unstructured object has Ready=True.

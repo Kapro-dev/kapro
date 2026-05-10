@@ -70,6 +70,15 @@ Examples:
 }
 
 func runHubInit(ctx context.Context, kubeconfigPath, project, clusterName, location string) error {
+	// Auto-detect location if needed (before connecting).
+	if project != "" && clusterName != "" && location == "" {
+		detected, err := detectClusterLocation(ctx, project, clusterName)
+		if err != nil {
+			return fmt.Errorf("auto-detect location: %w", err)
+		}
+		location = detected
+	}
+
 	c, err := resolveHubClient(ctx, kubeconfigPath, project, clusterName, location)
 	if err != nil {
 		return fmt.Errorf("connect to hub: %w", err)
@@ -77,7 +86,7 @@ func runHubInit(ctx context.Context, kubeconfigPath, project, clusterName, locat
 
 	target := "current context"
 	if clusterName != "" {
-		target = fmt.Sprintf("%s/%s", project, clusterName)
+		target = fmt.Sprintf("%s/%s/%s", project, location, clusterName)
 	} else if kubeconfigPath != "" {
 		target = kubeconfigPath
 	}

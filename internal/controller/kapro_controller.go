@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -148,13 +149,14 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	inventory = append(inventory, "Pipeline/"+kapro.Name+"-pipeline")
 
 	if spokeLocal {
-		// 3a. Spoke-local mode: bootstrap each spoke directly.
+		// 3a. Spoke-local mode: bootstrap each spoke in parallel.
 		// Bundle generation + push is done by CI via `kapro bundle generate --push`.
 		// The operator only creates the spoke-side Flux resources (OCIRepository + wave Kustomizations).
 		primaryVersion := app.Spec.Components[0].Version
-		for _, cluster := range kapro.Spec.Clusters {
-			if err := r.bootstrapSpoke(ctx, &kapro, &app, cluster, primaryVersion); err != nil {
-				l.Error(err, "failed to bootstrap spoke", "cluster", cluster.Name)
+		bootstrapResults := r.bootstrapSpokesParallel(ctx, &kapro, &app, primaryVersion)
+		for clusterName, err := range bootstrapResults {
+			if err != nil {
+				l.Error(err, "spoke bootstrap failed (skipping)", "cluster", clusterName)
 			}
 		}
 		inventory = append(inventory, "SpokeBootstrap/"+kapro.Name)
@@ -595,6 +597,56 @@ func isSpokeLocalMode(kapro *kaprov1alpha1.Kapro) bool {
 		return true
 	}
 	return false
+}
+
+const maxConcurrentBootstraps = 10
+
+// bootstrapSpokesParallel bootstraps all spokes concurrently with bounded parallelism.
+// Each spoke is independent — a failing spoke doesn't block others.
+// Returns a map of cluster name → error (nil = success).
+func (r *KaproReconciler) bootstrapSpokesParallel(ctx context.Context, kapro *kaprov1alpha1.Kapro, app *kaprov1alpha1.KaproApp, version string) map[string]error {
+	l := log.FromContext(ctx)
+	results := make(map[string]error, len(kapro.Spec.Clusters))
+	var mu sync.Mutex
+
+	sem := make(chan struct{}, maxConcurrentBootstraps)
+	var wg sync.WaitGroup
+
+	for _, cluster := range kapro.Spec.Clusters {
+		cluster := cluster // capture loop variable
+
+		// Version-change detection: skip if spoke already has this version.
+		if r.spokeAlreadyBootstrapped(ctx, cluster.Name, version) {
+			l.V(1).Info("spoke already at target version, skipping bootstrap",
+				"cluster", cluster.Name, "version", version)
+			continue
+		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}        // acquire
+			defer func() { <-sem }() // release
+
+			err := r.bootstrapSpoke(ctx, kapro, app, cluster, version)
+			mu.Lock()
+			results[cluster.Name] = err
+			mu.Unlock()
+		}()
+	}
+
+	wg.Wait()
+	return results
+}
+
+// spokeAlreadyBootstrapped checks if the spoke's MemberCluster already reports
+// the target version. Avoids redundant bootstrap calls on every reconcile.
+func (r *KaproReconciler) spokeAlreadyBootstrapped(ctx context.Context, clusterName, targetVersion string) bool {
+	var mc kaprov1alpha1.MemberCluster
+	if err := r.Get(ctx, client.ObjectKey{Name: clusterName}, &mc); err != nil {
+		return false
+	}
+	return mc.Status.Version == targetVersion && mc.Status.Phase == kaprov1alpha1.ClusterPhaseConverged
 }
 
 // bootstrapSpoke connects to a spoke cluster via its kubeconfig secret and

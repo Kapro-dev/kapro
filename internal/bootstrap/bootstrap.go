@@ -4,13 +4,24 @@
 package bootstrap
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"embed"
 	"fmt"
+	"io"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+//go:embed crds/*.yaml
+var fluxCRDs embed.FS
+
+//go:embed kaprocrds/*.yaml
+var kaproCRDs embed.FS
 
 const fieldOwner = "kapro-bootstrap"
 
@@ -21,9 +32,14 @@ const FluxOperatorVersion = "v0.48.0"
 const FluxDistributionVersion = "2.x"
 
 // InstallFluxOperator installs the flux-operator on a cluster.
-// This creates the namespace, CRDs, RBAC, and deployment.
+// This creates the namespace, CRDs (FluxInstance, ResourceSet), RBAC, and deployment.
 // Idempotent: applies with server-side apply, updates if exists.
 func InstallFluxOperator(ctx context.Context, c client.Client) error {
+	// Apply embedded Flux Operator CRDs first (FluxInstance, ResourceSet).
+	if err := applyEmbeddedCRDs(ctx, c, fluxCRDs, "crds"); err != nil {
+		return fmt.Errorf("apply Flux Operator CRDs: %w", err)
+	}
+
 	objects := fluxOperatorManifests()
 	for _, obj := range objects {
 		if err := c.Patch(ctx, obj,
@@ -69,18 +85,9 @@ func InstallFluxInstance(ctx context.Context, c client.Client) error {
 
 // InstallKaproCRDs installs the Kapro CRDs on a cluster.
 // Used for hub init — spokes don't need Kapro CRDs.
+// CRDs are embedded from config/crd/bases/ at build time.
 func InstallKaproCRDs(ctx context.Context, c client.Client) error {
-	crds := kaproCRDManifests()
-	for _, obj := range crds {
-		if err := c.Patch(ctx, obj,
-			client.Apply,
-			client.FieldOwner(fieldOwner),
-			client.ForceOwnership,
-		); err != nil {
-			return fmt.Errorf("apply CRD %s: %w", obj.GetName(), err)
-		}
-	}
-	return nil
+	return applyEmbeddedCRDs(ctx, c, kaproCRDs, "kaprocrds")
 }
 
 // EnsureNamespace creates a namespace if it doesn't exist.
@@ -238,15 +245,55 @@ func fluxInstanceManifest() *unstructured.Unstructured {
 	})
 }
 
-func kaproCRDManifests() []*unstructured.Unstructured {
-	// Kapro CRDs are applied from config/crd/bases/ at build time.
-	// For the CLI, we generate minimal CRD stubs that the operator's
-	// Helm chart or kustomize overlay will fully populate.
-	// Here we just ensure the API groups exist so the operator can start.
-	//
-	// In practice, `kapro hub init` applies the full CRDs from the
-	// operator Helm chart or from the config/ directory.
-	// This is a placeholder — the real CRDs are too large to embed inline.
+// applyEmbeddedCRDs parses multi-document YAML files from an embedded FS and
+// applies each document as an unstructured object.
+func applyEmbeddedCRDs(ctx context.Context, c client.Client, fsys embed.FS, dir string) error {
+	entries, err := fsys.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("read embedded dir %s: %w", dir, err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		data, err := fsys.ReadFile(dir + "/" + entry.Name())
+		if err != nil {
+			return fmt.Errorf("read %s: %w", entry.Name(), err)
+		}
+
+		// Parse multi-document YAML.
+		reader := yaml.NewYAMLReader(bufio.NewReader(bytes.NewReader(data)))
+		for {
+			doc, err := reader.Read()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				return fmt.Errorf("parse %s: %w", entry.Name(), err)
+			}
+			if len(bytes.TrimSpace(doc)) == 0 {
+				continue
+			}
+
+			obj := &unstructured.Unstructured{}
+			if err := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(doc), 4096).Decode(obj); err != nil {
+				return fmt.Errorf("decode %s: %w", entry.Name(), err)
+			}
+
+			if err := c.Patch(ctx, obj,
+				client.Apply,
+				client.FieldOwner(fieldOwner),
+				client.ForceOwnership,
+			); err != nil {
+				if errors.IsInvalid(err) {
+					// CRD might already exist with incompatible version — skip.
+					continue
+				}
+				return fmt.Errorf("apply CRD %s: %w", obj.GetName(), err)
+			}
+		}
+	}
 	return nil
 }
 
