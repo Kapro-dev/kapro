@@ -219,32 +219,28 @@ func (r *KaproReconciler) buildPipeline(kapro *kaprov1alpha1.Kapro) *kaprov1alph
 }
 
 // buildResourceSet creates a Flux Operator ResourceSet on the hub.
-// It contains:
-//   - inputs[]: one entry per cluster with tenant name + per-component versions + merged values
-//   - resources[]: HelmRelease template per component using << inputs.X >> substitution
+// From the KaproApp component spec, it generates:
+//   - inputs[]: one entry per cluster (tenant, kubeconfig_secret, per-component versions)
+//   - resources[]: HelmRepositories + HelmReleases with dependsOn, timeout, retries, prune
 //
-// Flux Operator renders one set of HelmReleases per input entry and distributes
-// them to the matching spoke cluster.
+// Flux Operator renders one set of resources per input and distributes to spokes.
 func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha1.Kapro, app *kaprov1alpha1.KaproApp) *unstructured.Unstructured {
+	defaults := app.Spec.Defaults
+	if defaults == nil {
+		defaults = &kaprov1alpha1.AppDefaults{}
+	}
+
 	// Build inputs: one entry per cluster.
-	// The "version" field is the primary version promoted by Release.
-	// For single-component apps, it's the component version.
-	// For multi-component apps, it's the Release.spec.version (bundle version).
-	// Per-component versions are embedded in the values_override JSON.
 	primaryVersion := app.Spec.Components[0].Version
-	inputs := make([]interface{}, 0, len(kapro.Spec.Clusters))
+	inputs := make([]any, 0, len(kapro.Spec.Clusters))
 	for _, cluster := range kapro.Spec.Clusters {
-		input := map[string]interface{}{
+		input := map[string]any{
 			"tenant":  cluster.Name,
 			"version": primaryVersion,
 		}
-		// Set kubeconfig secret name for cross-cluster delivery.
-		// If the cluster has a kubeconfigSecret, Flux helm-controller uses it
-		// to deploy HelmReleases to the remote spoke instead of locally.
 		if cluster.KubeconfigSecret != "" {
 			input["kubeconfig_secret"] = cluster.KubeconfigSecret
 		}
-		// Merge defaults + per-component versions + matching overrides.
 		mergedValues := r.mergeValues(app, cluster.Name, cluster.Labels)
 		if mergedValues != "" {
 			input["values_override"] = mergedValues
@@ -252,75 +248,54 @@ func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha1.Kapro, app *kapr
 		inputs = append(inputs, input)
 	}
 
-	// Build HelmRelease template resources — one per component.
-	resources := make([]interface{}, 0, len(app.Spec.Components))
-	for _, comp := range app.Spec.Components {
-		ns := "flux-system"
-		chartName := comp.Name
-		if comp.ChartName != "" {
-			chartName = comp.ChartName
-		}
+	resources := make([]any, 0, len(app.Spec.Components)+len(app.Spec.Registries))
 
-		hrSpec := map[string]interface{}{
-			"interval": "10m",
-			"chart": map[string]interface{}{
-				"spec": map[string]interface{}{
-					"chart":   chartName,
-					"version": "<< inputs.version >>",
-					"sourceRef": map[string]interface{}{
-						"kind": "HelmRepository",
-						"name": kapro.Name + "-registry",
-					},
-				},
-			},
-			"targetNamespace": ns,
-			"releaseName":     comp.Name,
-			"install": map[string]interface{}{
-				"timeout":     "5m",
-				"remediation": map[string]interface{}{"retries": 3},
-			},
-			"upgrade": map[string]interface{}{
-				"timeout":     "5m",
-				"remediation": map[string]interface{}{"retries": 3},
-			},
+	// Build HelmRepositories from registries.
+	for _, reg := range app.Spec.Registries {
+		repoSpec := map[string]any{
+			"interval": resolveDefault(reg.Interval, "5m"),
+			"url":      reg.URL,
 		}
-		// When clusters have kubeconfigSecret, add kubeConfig to HelmRelease
-		// so Flux helm-controller deploys to the remote spoke, not locally.
-		if hasKubeconfigClusters(kapro) {
-			hrSpec["kubeConfig"] = map[string]interface{}{
-				"secretRef": map[string]interface{}{
-					"name": "<< inputs.kubeconfig_secret >>",
-				},
-			}
+		if reg.Provider != "" && reg.Provider != "generic" {
+			repoSpec["provider"] = reg.Provider
 		}
-		helmRelease := map[string]interface{}{
-			"apiVersion": "helm.toolkit.fluxcd.io/v2",
-			"kind":       "HelmRelease",
-			"metadata": map[string]interface{}{
-				"name":      comp.Name + "-<< inputs.tenant >>",
+		if reg.Type == "oci" || strings.HasPrefix(reg.URL, "oci://") {
+			repoSpec["type"] = "oci"
+		}
+		resources = append(resources, map[string]any{
+			"apiVersion": "source.toolkit.fluxcd.io/v1",
+			"kind":       "HelmRepository",
+			"metadata": map[string]any{
+				"name":      reg.Name,
+				"namespace": "flux-system",
+				"labels":    map[string]any{"kapro.io/managed-by": kapro.Name},
+			},
+			"spec": repoSpec,
+		})
+	}
+
+	// Fallback: if no registries defined, use kapro.spec.registry (backward compat).
+	if len(app.Spec.Registries) == 0 && kapro.Spec.Registry.URL != "" {
+		resources = append(resources, map[string]any{
+			"apiVersion": "source.toolkit.fluxcd.io/v1",
+			"kind":       "HelmRepository",
+			"metadata": map[string]any{
+				"name":      kapro.Name + "-registry",
 				"namespace": "flux-system",
 			},
-			"spec": hrSpec,
-		}
-		resources = append(resources, helmRelease)
+			"spec": map[string]any{
+				"type":     "oci",
+				"interval": "5m",
+				"url":      kapro.Spec.Registry.URL,
+				"provider": kapro.Spec.Registry.Provider,
+			},
+		})
 	}
 
-	// Build the HelmRepository source resource (registry config).
-	helmRepo := map[string]interface{}{
-		"apiVersion": "source.toolkit.fluxcd.io/v1",
-		"kind":       "HelmRepository",
-		"metadata": map[string]interface{}{
-			"name":      kapro.Name + "-registry",
-			"namespace": "flux-system",
-		},
-		"spec": map[string]interface{}{
-			"type":     "oci",
-			"interval": "5m",
-			"url":      kapro.Spec.Registry.URL,
-			"provider": kapro.Spec.Registry.Provider,
-		},
+	// Build HelmReleases — one per component.
+	for _, comp := range app.Spec.Components {
+		resources = append(resources, r.buildHelmRelease(kapro, defaults, comp))
 	}
-	resources = append(resources, helmRepo)
 
 	rs := &unstructured.Unstructured{}
 	rs.SetGroupVersionKind(kaproResourceSetGVK)
@@ -332,12 +307,172 @@ func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha1.Kapro, app *kapr
 	})
 	rs.Object["apiVersion"] = "fluxcd.controlplane.io/v1"
 	rs.Object["kind"] = "ResourceSet"
-	rs.Object["spec"] = map[string]interface{}{
+	rs.Object["spec"] = map[string]any{
 		"inputs":    inputs,
 		"resources": resources,
 	}
-
 	return rs
+}
+
+// buildHelmRelease generates one HelmRelease from a component spec + defaults.
+// Output matches the exact structure from the integration monorepo.
+func (r *KaproReconciler) buildHelmRelease(kapro *kaprov1alpha1.Kapro, defaults *kaprov1alpha1.AppDefaults, comp kaprov1alpha1.AppComponent) map[string]any {
+	// Resolve fields: component overrides defaults.
+	chartName := comp.Name
+	if comp.ChartName != "" {
+		chartName = comp.ChartName
+	}
+	repo := resolveDefault(comp.Repo, defaults.Repo)
+	if repo == "" {
+		repo = kapro.Name + "-registry"
+	}
+	targetNS := resolveDefault(comp.TargetNamespace, defaults.TargetNamespace)
+	if targetNS == "" {
+		targetNS = "flux-system"
+	}
+	timeout := resolveDefault(comp.Timeout, defaults.Timeout)
+	if timeout == "" {
+		timeout = "10m"
+	}
+	retries := defaults.Retries
+	if comp.Retries != nil {
+		retries = *comp.Retries
+	}
+	if retries == 0 {
+		retries = 3
+	}
+
+	// Build the HelmRelease spec.
+	hrSpec := map[string]any{
+		"interval": "5m",
+		"chart": map[string]any{
+			"spec": map[string]any{
+				"chart":   chartName,
+				"version": comp.Version,
+				"sourceRef": map[string]any{
+					"kind": "HelmRepository",
+					"name": repo,
+				},
+			},
+		},
+		"targetNamespace": targetNS,
+		"releaseName":     comp.Name,
+		"install": map[string]any{
+			"timeout":     timeout,
+			"remediation": map[string]any{"retries": retries},
+		},
+		"upgrade": map[string]any{
+			"timeout":     timeout,
+			"remediation": map[string]any{"retries": retries},
+		},
+	}
+
+	// CRD install policy.
+	if comp.CRDs == "Create" || comp.CRDs == "CreateReplace" {
+		hrSpec["install"].(map[string]any)["crds"] = comp.CRDs
+		if comp.CRDs == "Create" {
+			hrSpec["upgrade"].(map[string]any)["crds"] = "CreateReplace"
+		} else {
+			hrSpec["upgrade"].(map[string]any)["crds"] = comp.CRDs
+		}
+	}
+
+	// Merge values: defaults.values deep-merged with component.values.
+	mergedValues := r.mergeComponentValues(defaults, comp)
+	if len(mergedValues) > 0 {
+		hrSpec["values"] = mergedValues
+	}
+
+	// ValuesFrom: component replaces defaults if set.
+	valuesFrom := r.resolveValuesFrom(defaults, comp)
+	if len(valuesFrom) > 0 {
+		hrSpec["valuesFrom"] = valuesFrom
+	}
+
+	// DependsOn: component-level dependencies (HelmRelease within same wave).
+	if len(comp.DependsOn) > 0 {
+		deps := make([]any, 0, len(comp.DependsOn))
+		for _, d := range comp.DependsOn {
+			deps = append(deps, map[string]any{"name": d + "-<< inputs.tenant >>"})
+		}
+		hrSpec["dependsOn"] = deps
+	}
+
+	// Suspend.
+	if comp.Suspend {
+		hrSpec["suspend"] = true
+	}
+
+	// KubeConfig for cross-cluster delivery (hub→spoke push).
+	if hasKubeconfigClusters(kapro) {
+		hrSpec["kubeConfig"] = map[string]any{
+			"secretRef": map[string]any{
+				"name": "<< inputs.kubeconfig_secret >>",
+			},
+		}
+	}
+
+	return map[string]any{
+		"apiVersion": "helm.toolkit.fluxcd.io/v2",
+		"kind":       "HelmRelease",
+		"metadata": map[string]any{
+			"name":      comp.Name + "-<< inputs.tenant >>",
+			"namespace": "flux-system",
+			"labels": map[string]any{
+				"kapro.io/managed-by": kapro.Name,
+				"kapro.io/wave":       fmt.Sprintf("%d", comp.Wave),
+			},
+		},
+		"spec": hrSpec,
+	}
+}
+
+// mergeComponentValues deep-merges defaults.values + component.values.
+func (r *KaproReconciler) mergeComponentValues(defaults *kaprov1alpha1.AppDefaults, comp kaprov1alpha1.AppComponent) map[string]any {
+	merged := map[string]any{}
+	if defaults.Values != nil && defaults.Values.Raw != nil {
+		_ = json.Unmarshal(defaults.Values.Raw, &merged)
+	}
+	if comp.Values != nil && comp.Values.Raw != nil {
+		var compVals map[string]any
+		if err := json.Unmarshal(comp.Values.Raw, &compVals); err == nil {
+			deepMerge(merged, compVals)
+		}
+	}
+	return merged
+}
+
+// resolveValuesFrom returns component's valuesFrom if set, otherwise defaults'.
+func (r *KaproReconciler) resolveValuesFrom(defaults *kaprov1alpha1.AppDefaults, comp kaprov1alpha1.AppComponent) []any {
+	refs := defaults.ValuesFrom
+	if len(comp.ValuesFrom) > 0 {
+		refs = comp.ValuesFrom
+	}
+	if len(refs) == 0 {
+		return nil
+	}
+	result := make([]any, 0, len(refs))
+	for _, vf := range refs {
+		entry := map[string]any{
+			"kind": resolveDefault(vf.Kind, "ConfigMap"),
+			"name": vf.Name,
+		}
+		if vf.ValuesKey != "" {
+			entry["valuesKey"] = vf.ValuesKey
+		}
+		if vf.Optional {
+			entry["optional"] = true
+		}
+		result = append(result, entry)
+	}
+	return result
+}
+
+func resolveDefault(value, fallback string) string {
+	if value != "" {
+		return value
+	}
+	return fallback
 }
 
 // mergeValues resolves KaproApp defaults + matching overrides for a specific cluster.
