@@ -58,7 +58,7 @@ type TargetTopology struct {
 
 // ActuatorSpec selects and configures the delivery backend for this cluster.
 type ActuatorSpec struct {
-	// +kubebuilder:validation:Enum=flux;flux-operator
+	// +kubebuilder:validation:Enum=flux;flux-operator;spoke
 	Type         string              `json:"type"`
 	Flux         *FluxActuator       `json:"flux,omitempty"`
 	FluxOperator *FluxOperatorConfig `json:"fluxOperator,omitempty"`
@@ -1757,6 +1757,14 @@ type KaproSpec struct {
 	Clusters []KaproCluster `json:"clusters"`
 	// Pipeline defines the progressive delivery stages.
 	Pipeline KaproPipeline `json:"pipeline"`
+	// DeliveryMode selects how workloads reach spoke clusters.
+	// "push" (default): hub renders HelmReleases with kubeConfig, hub's controllers install remotely.
+	// "spoke": hub pushes OCI bundle, spoke's own Flux controllers reconcile locally.
+	// Spoke mode gives per-cluster k9s visibility (Kustomizations, HelmReleases, wave DAG).
+	// +kubebuilder:validation:Enum=push;spoke
+	// +kubebuilder:default="push"
+	// +optional
+	DeliveryMode string `json:"deliveryMode,omitempty"`
 	// Suspended pauses Kapro reconciliation.
 	// +kubebuilder:default=false
 	Suspended bool `json:"suspended,omitempty"`

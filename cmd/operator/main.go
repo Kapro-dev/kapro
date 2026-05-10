@@ -28,6 +28,7 @@ import (
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	kaproSecret "kapro.io/kapro/internal/secret"
 	fluxopactuator "kapro.io/kapro/internal/actuator/fluxoperator"
+	spokeactuator "kapro.io/kapro/internal/actuator/spoke"
 	_ "kapro.io/kapro/internal/metrics" // register custom Prometheus metrics at init
 	enginenotifier "kapro.io/kapro/internal/notification/engine"
 	"kapro.io/kapro/internal/version"
@@ -133,6 +134,12 @@ func main() {
 	// Also register as "flux" for backward compatibility.
 	if err := actuatorReg.Register("flux", foAct); err != nil {
 		log.Error(err, "failed to register flux actuator alias")
+		os.Exit(1)
+	}
+	// Spoke-local actuator: patches OCIRepository on spoke, reads Flux status directly.
+	spokeAct := &spokeactuator.SpokeFluxActuator{HubClient: mgr.GetClient()}
+	if err := actuatorReg.Register("spoke", spokeAct); err != nil {
+		log.Error(err, "failed to register spoke actuator")
 		os.Exit(1)
 	}
 

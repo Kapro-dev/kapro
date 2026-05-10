@@ -20,6 +20,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	"kapro.io/kapro/internal/bundle"
 	"kapro.io/kapro/internal/provider"
 )
 
@@ -92,8 +93,28 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		cluster.KubeconfigSecret = secretName
 	}
 
+	spokeLocal := isSpokeLocalMode(&kapro)
+
 	// 2. Generate MemberClusters on the hub.
 	for _, cluster := range kapro.Spec.Clusters {
+		actuatorSpec := kaprov1alpha1.ActuatorSpec{
+			Type: "flux-operator",
+			FluxOperator: &kaprov1alpha1.FluxOperatorConfig{
+				ResourceSet: kapro.Name + "-workloads",
+				Namespace:   "flux-system",
+				InputField:  "version",
+				TenantField: "tenant",
+			},
+		}
+		if spokeLocal {
+			actuatorSpec = kaprov1alpha1.ActuatorSpec{
+				Type: "spoke",
+				Flux: &kaprov1alpha1.FluxActuator{
+					Namespace:     "flux-system",
+					OCIRepository: kapro.Name + "-bundle",
+				},
+			}
+		}
 		mc := &kaprov1alpha1.MemberCluster{
 			TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "MemberCluster"},
 			ObjectMeta: metav1.ObjectMeta{
@@ -101,15 +122,7 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				Labels: cluster.Labels,
 			},
 			Spec: kaprov1alpha1.MemberClusterSpec{
-				Actuator: kaprov1alpha1.ActuatorSpec{
-					Type: "flux-operator",
-					FluxOperator: &kaprov1alpha1.FluxOperatorConfig{
-						ResourceSet: kapro.Name + "-workloads",
-						Namespace:   "flux-system",
-						InputField:  "version",
-						TenantField: "tenant",
-					},
-				},
+				Actuator: actuatorSpec,
 			},
 		}
 		if err := r.Patch(ctx, mc,
@@ -133,33 +146,71 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 	inventory = append(inventory, "Pipeline/"+kapro.Name+"-pipeline")
 
-	// 3. Generate ResourceSet on the hub (Flux Operator distributes to spokes).
-	rs := r.buildResourceSet(&kapro, &app)
-	if err := r.Patch(ctx, rs,
-		client.Apply,
-		client.FieldOwner("kapro-controller"),
-		client.ForceOwnership,
-	); err != nil {
-		// If Flux Operator CRD is not installed, set status and requeue slowly
-		// instead of crash-looping.
-		if isNoMatchError(err) {
-			l.Info("Flux Operator CRD (ResourceSet) not found — install Flux Operator on the hub")
-			patch := client.MergeFrom(kapro.DeepCopy())
-			apimeta.SetStatusCondition(&kapro.Status.Conditions, metav1.Condition{
-				Type:               "Ready",
-				Status:             metav1.ConditionFalse,
-				ObservedGeneration: kapro.Generation,
-				Reason:             "FluxOperatorNotInstalled",
-				Message:            "ResourceSet CRD not found. Install Flux Operator on the hub cluster.",
-			})
-			_ = r.Status().Patch(ctx, &kapro, patch)
-			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	if spokeLocal {
+		// 3a. Spoke-local mode: generate OCI bundle + spoke bootstrap ResourceSet.
+		primaryVersion := app.Spec.Components[0].Version
+		bundleReq := bundle.BundleRequest{
+			KaproName: kapro.Name,
+			App:       &app,
+			Version:   primaryVersion,
+			Registry:  kapro.Spec.Registry.URL,
 		}
-		return ctrl.Result{}, fmt.Errorf("apply ResourceSet: %w", err)
+		if _, err := bundle.GenerateAndPush(ctx, bundleReq); err != nil {
+			l.Error(err, "failed to push OCI bundle")
+			// Non-fatal: bundle might already exist at this version.
+		}
+
+		// Generate spoke bootstrap ResourceSet (OCIRepository + root Kustomization per cluster).
+		rs := r.buildSpokeBootstrapResourceSet(&kapro, &app)
+		if err := r.Patch(ctx, rs,
+			client.Apply,
+			client.FieldOwner("kapro-controller"),
+			client.ForceOwnership,
+		); err != nil {
+			if isNoMatchError(err) {
+				l.Info("Flux Operator CRD (ResourceSet) not found — install Flux Operator on the hub")
+				patch := client.MergeFrom(kapro.DeepCopy())
+				apimeta.SetStatusCondition(&kapro.Status.Conditions, metav1.Condition{
+					Type:               "Ready",
+					Status:             metav1.ConditionFalse,
+					ObservedGeneration: kapro.Generation,
+					Reason:             "FluxOperatorNotInstalled",
+					Message:            "ResourceSet CRD not found. Install Flux Operator on the hub cluster.",
+				})
+				_ = r.Status().Patch(ctx, &kapro, patch)
+				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+			}
+			return ctrl.Result{}, fmt.Errorf("apply spoke bootstrap ResourceSet: %w", err)
+		}
+		inventory = append(inventory, "ResourceSet/"+kapro.Name+"-spoke-bootstrap")
+	} else {
+		// 3b. Push mode: generate ResourceSet on the hub (Flux Operator distributes to spokes).
+		rs := r.buildResourceSet(&kapro, &app)
+		if err := r.Patch(ctx, rs,
+			client.Apply,
+			client.FieldOwner("kapro-controller"),
+			client.ForceOwnership,
+		); err != nil {
+			if isNoMatchError(err) {
+				l.Info("Flux Operator CRD (ResourceSet) not found — install Flux Operator on the hub")
+				patch := client.MergeFrom(kapro.DeepCopy())
+				apimeta.SetStatusCondition(&kapro.Status.Conditions, metav1.Condition{
+					Type:               "Ready",
+					Status:             metav1.ConditionFalse,
+					ObservedGeneration: kapro.Generation,
+					Reason:             "FluxOperatorNotInstalled",
+					Message:            "ResourceSet CRD not found. Install Flux Operator on the hub cluster.",
+				})
+				_ = r.Status().Patch(ctx, &kapro, patch)
+				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+			}
+			return ctrl.Result{}, fmt.Errorf("apply ResourceSet: %w", err)
+		}
+		inventory = append(inventory, "ResourceSet/"+kapro.Name+"-workloads")
 	}
-	inventory = append(inventory, "ResourceSet/"+kapro.Name+"-workloads")
 
 	// 4. Sync MemberCluster status from HelmRelease status (push model observability).
+	// For spoke-local mode, this reads from spoke Flux resources directly.
 	convergedCount := int32(0)
 	for _, cluster := range kapro.Spec.Clusters {
 		converged := r.syncMemberClusterStatus(ctx, &kapro, &app, cluster)
@@ -559,6 +610,115 @@ func overrideMatches(ov kaprov1alpha1.AppOverride, clusterName string, clusterLa
 	}
 	// No selector and no clusters = matches everything.
 	return true
+}
+
+// isSpokeLocalMode returns true if the Kapro spec declares spoke-local delivery.
+// Convention: if Kapro.Spec.DeliveryMode == "spoke" OR any cluster has Provider == "gcp-fleet",
+// use spoke-local mode. Otherwise, use the push model.
+func isSpokeLocalMode(kapro *kaprov1alpha1.Kapro) bool {
+	if kapro.Spec.DeliveryMode == "spoke" {
+		return true
+	}
+	return false
+}
+
+// buildSpokeBootstrapResourceSet creates a ResourceSet that bootstraps each spoke
+// with an OCIRepository and root Kustomization. The spoke's local Flux controllers
+// pull the bundle and reconcile HelmReleases + wave Kustomizations locally.
+func (r *KaproReconciler) buildSpokeBootstrapResourceSet(kapro *kaprov1alpha1.Kapro, app *kaprov1alpha1.KaproApp) *unstructured.Unstructured {
+	primaryVersion := app.Spec.Components[0].Version
+	bundleURL := kapro.Spec.Registry.URL + "/" + kapro.Name + "-bundle"
+
+	// Build inputs: one entry per cluster.
+	inputs := make([]any, 0, len(kapro.Spec.Clusters))
+	for _, cluster := range kapro.Spec.Clusters {
+		input := map[string]any{
+			"tenant":  cluster.Name,
+			"version": primaryVersion,
+		}
+		if cluster.KubeconfigSecret != "" {
+			input["kubeconfig_secret"] = cluster.KubeconfigSecret
+		}
+		inputs = append(inputs, input)
+	}
+
+	// Provider for OCI auth.
+	ociProvider := "generic"
+	if kapro.Spec.Registry.Provider != "" {
+		ociProvider = kapro.Spec.Registry.Provider
+	}
+
+	resources := []any{
+		// OCIRepository on spoke — pulls the bundle.
+		map[string]any{
+			"apiVersion": "source.toolkit.fluxcd.io/v1",
+			"kind":       "OCIRepository",
+			"metadata": map[string]any{
+				"name":      kapro.Name + "-bundle",
+				"namespace": "flux-system",
+				"labels":    map[string]any{"kapro.io/managed-by": kapro.Name},
+			},
+			"spec": map[string]any{
+				"interval": "5m",
+				"url":      bundleURL,
+				"provider": ociProvider,
+				"ref": map[string]any{
+					"tag": "<< inputs.version >>",
+				},
+			},
+		},
+		// Root Kustomization on spoke — unpacks the bundle.
+		map[string]any{
+			"apiVersion": "kustomize.toolkit.fluxcd.io/v1",
+			"kind":       "Kustomization",
+			"metadata": map[string]any{
+				"name":      kapro.Name + "-root",
+				"namespace": "flux-system",
+				"labels":    map[string]any{"kapro.io/managed-by": kapro.Name},
+			},
+			"spec": map[string]any{
+				"interval": "5m",
+				"path":     "./flux-system",
+				"prune":    true,
+				"sourceRef": map[string]any{
+					"kind": "OCIRepository",
+					"name": kapro.Name + "-bundle",
+				},
+			},
+		},
+		// HelmRepository on spoke — charts source (same as hub).
+		map[string]any{
+			"apiVersion": "source.toolkit.fluxcd.io/v1",
+			"kind":       "HelmRepository",
+			"metadata": map[string]any{
+				"name":      app.Spec.Registries[0].Name,
+				"namespace": "flux-system",
+				"labels":    map[string]any{"kapro.io/managed-by": kapro.Name},
+			},
+			"spec": map[string]any{
+				"type":     "oci",
+				"interval": "5m",
+				"url":      app.Spec.Registries[0].URL,
+				"provider": resolveDefault(app.Spec.Registries[0].Provider, "generic"),
+			},
+		},
+	}
+
+	rs := &unstructured.Unstructured{}
+	rs.SetGroupVersionKind(kaproResourceSetGVK)
+	rs.SetName(kapro.Name + "-spoke-bootstrap")
+	rs.SetNamespace("flux-system")
+	rs.SetAnnotations(map[string]string{
+		"fluxcd.controlplane.io/reconcile":      "enabled",
+		"fluxcd.controlplane.io/reconcileEvery": "5m",
+	})
+	rs.Object["apiVersion"] = "fluxcd.controlplane.io/v1"
+	rs.Object["kind"] = "ResourceSet"
+	rs.Object["spec"] = map[string]any{
+		"inputs":    inputs,
+		"resources": resources,
+	}
+	return rs
 }
 
 // hasKubeconfigClusters returns true if any cluster in the Kapro has a kubeconfigSecret.
