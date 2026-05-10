@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -19,6 +20,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	"kapro.io/kapro/internal/provider"
 )
 
 var kaproResourceSetGVK = schema.GroupVersionKind{
@@ -76,7 +78,21 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	var inventory []string
 
-	// 1. Generate MemberClusters on the hub.
+	// 1. For gcp/gcp-fleet clusters, auto-generate kubeconfig secrets.
+	for i := range kapro.Spec.Clusters {
+		cluster := &kapro.Spec.Clusters[i]
+		if cluster.Provider != "gcp" && cluster.Provider != "gcp-fleet" {
+			continue
+		}
+		secretName, err := r.ensureKubeconfigSecret(ctx, &kapro, cluster)
+		if err != nil {
+			l.Error(err, "failed to generate kubeconfig secret", "cluster", cluster.Name)
+			continue
+		}
+		cluster.KubeconfigSecret = secretName
+	}
+
+	// 2. Generate MemberClusters on the hub.
 	for _, cluster := range kapro.Spec.Clusters {
 		mc := &kaprov1alpha1.MemberCluster{
 			TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "MemberCluster"},
@@ -411,6 +427,57 @@ func hasKubeconfigClusters(kapro *kaprov1alpha1.Kapro) bool {
 // isNoMatchError returns true when the error indicates a missing CRD/API group.
 func isNoMatchError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "no matches for kind")
+}
+
+// ensureKubeconfigSecret creates or updates a kubeconfig Secret for a GCP spoke cluster.
+// The kubeconfig uses gke-gcloud-auth-plugin for auth — WI tokens auto-refresh.
+// For gcp-fleet: resolves cluster endpoint from Fleet membership.
+// For gcp: uses the provided GCP config directly.
+func (r *KaproReconciler) ensureKubeconfigSecret(ctx context.Context, kapro *kaprov1alpha1.Kapro, cluster *kaprov1alpha1.KaproCluster) (string, error) {
+	if cluster.GCP == nil {
+		return "", fmt.Errorf("cluster %q has provider=%s but no gcp config", cluster.Name, cluster.Provider)
+	}
+
+	p, err := provider.New(cluster.Provider, provider.Options{
+		Project:  cluster.GCP.Project,
+		Location: cluster.GCP.Region,
+	})
+	if err != nil {
+		return "", fmt.Errorf("create provider for %s: %w", cluster.Name, err)
+	}
+
+	kubeconfigData, err := p.GenerateKubeConfig(ctx, cluster.Name)
+	if err != nil {
+		return "", fmt.Errorf("generate kubeconfig for %s: %w", cluster.Name, err)
+	}
+
+	secretName := kapro.Name + "-" + cluster.Name + "-kubeconfig"
+	secret := &corev1.Secret{
+		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Secret"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: "flux-system",
+			Labels: map[string]string{
+				"kapro.io/managed-by": kapro.Name,
+				"kapro.io/cluster":    cluster.Name,
+			},
+		},
+		Data: map[string][]byte{
+			"value": kubeconfigData,
+		},
+	}
+
+	if err := r.Patch(ctx, secret,
+		client.Apply,
+		client.FieldOwner("kapro-controller"),
+		client.ForceOwnership,
+	); err != nil {
+		return "", fmt.Errorf("apply kubeconfig secret %s: %w", secretName, err)
+	}
+
+	l := log.FromContext(ctx)
+	l.Info("ensured kubeconfig secret", "secret", secretName, "cluster", cluster.Name, "provider", cluster.Provider)
+	return secretName, nil
 }
 
 func (r *KaproReconciler) SetupWithManager(mgr ctrl.Manager) error {

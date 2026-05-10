@@ -6,9 +6,9 @@ import (
 	"strings"
 )
 
-// GCPBasicProvider uses GKE API endpoint + Workload Identity.
+// GCPBasicProvider uses GKE DNS endpoint + Workload Identity.
 // No Fleet API or Connect Gateway needed — just direct GKE cluster access.
-// Auth is via gke-gcloud-auth-plugin (Workload Identity, auto-refreshing).
+// Generates kubeconfig with a GCP access token (for Flux helm-controller).
 type GCPBasicProvider struct {
 	Project  string
 	Location string
@@ -25,38 +25,84 @@ func (p *GCPBasicProvider) GenerateKubeConfig(_ context.Context, clusterName str
 
 	location := p.Location
 	if location == "" {
-		// Try to detect from cluster name or default.
 		location = "europe-west3"
 	}
 
-	// Get the GKE cluster endpoint.
+	// Get the GKE DNS endpoint — no CA cert needed, uses public PKI.
 	endpoint, err := execOutput("gcloud", "container", "clusters", "describe", clusterName,
 		"--project", p.Project,
-		"--region", location,
+		"--location", location,
+		"--format=value(controlPlaneEndpointsConfig.dnsEndpointConfig.endpoint)",
+	)
+	if err != nil || strings.TrimSpace(endpoint) == "" {
+		// Fallback to private endpoint + CA if DNS endpoint not available.
+		return p.generateWithPrivateEndpoint(clusterName, location)
+	}
+	endpoint = "https://" + strings.TrimSpace(endpoint)
+
+	token, err := getAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("get access token: %w", err)
+	}
+
+	return []byte(gcpKubeconfig(clusterName, endpoint, "", token)), nil
+}
+
+// generateWithPrivateEndpoint falls back to private IP + CA cert.
+func (p *GCPBasicProvider) generateWithPrivateEndpoint(clusterName, location string) ([]byte, error) {
+	endpoint, err := execOutput("gcloud", "container", "clusters", "describe", clusterName,
+		"--project", p.Project,
+		"--location", location,
 		"--format=value(endpoint)",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get GKE endpoint for %s: %w", clusterName, err)
 	}
-	endpoint = strings.TrimSpace(endpoint)
+	endpoint = "https://" + strings.TrimSpace(endpoint)
 
-	// Get the CA certificate.
 	ca, err := execOutput("gcloud", "container", "clusters", "describe", clusterName,
 		"--project", p.Project,
-		"--region", location,
+		"--location", location,
 		"--format=value(masterAuth.clusterCaCertificate)",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get GKE CA for %s: %w", clusterName, err)
 	}
-	ca = strings.TrimSpace(ca)
 
-	kubeconfig := fmt.Sprintf(`apiVersion: v1
+	token, err := getAccessToken()
+	if err != nil {
+		return nil, fmt.Errorf("get access token: %w", err)
+	}
+
+	return []byte(gcpKubeconfig(clusterName, endpoint, strings.TrimSpace(ca), token)), nil
+}
+
+func (p *GCPBasicProvider) ListClusters(_ context.Context) ([]ClusterInfo, error) {
+	return nil, fmt.Errorf("gcp-basic provider does not support cluster discovery — use gcp-fleet or kapro cluster add")
+}
+
+// getAccessToken gets a GCP access token using the default credentials.
+// On GKE with WI, this returns the GSA's token. Locally, it uses ADC.
+func getAccessToken() (string, error) {
+	token, err := execOutput("gcloud", "auth", "print-access-token")
+	if err != nil {
+		return "", fmt.Errorf("gcloud auth print-access-token: %w", err)
+	}
+	return strings.TrimSpace(token), nil
+}
+
+// gcpKubeconfig generates a kubeconfig YAML with a bearer token.
+// If caData is empty, no certificate-authority-data is set (DNS endpoint uses public PKI).
+func gcpKubeconfig(clusterName, server, caData, token string) string {
+	caLine := ""
+	if caData != "" {
+		caLine = fmt.Sprintf("\n      certificate-authority-data: %s", caData)
+	}
+	return fmt.Sprintf(`apiVersion: v1
 kind: Config
 clusters:
   - cluster:
-      server: "https://%s"
-      certificate-authority-data: %s
+      server: %s%s
     name: %s
 contexts:
   - context:
@@ -67,16 +113,6 @@ current-context: %s
 users:
   - name: %s
     user:
-      exec:
-        apiVersion: client.authentication.k8s.io/v1beta1
-        command: gke-gcloud-auth-plugin
-        installHint: Install gke-gcloud-auth-plugin for use with kubectl by following https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl
-        provideClusterInfo: true
-`, endpoint, ca, clusterName, clusterName, clusterName, clusterName, clusterName, clusterName)
-
-	return []byte(kubeconfig), nil
-}
-
-func (p *GCPBasicProvider) ListClusters(_ context.Context) ([]ClusterInfo, error) {
-	return nil, fmt.Errorf("gcp-basic provider does not support cluster discovery — use gcp-fleet or kapro cluster add")
+      token: %s
+`, server, caLine, clusterName, clusterName, clusterName, clusterName, clusterName, clusterName, token)
 }
