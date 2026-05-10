@@ -286,7 +286,7 @@ func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha1.Kapro, app *kapr
 			"kind":       "HelmRelease",
 			"metadata": map[string]interface{}{
 				"name":      comp.Name + "-<< inputs.tenant >>",
-				"namespace": ns,
+				"namespace": "flux-system",
 			},
 			"spec": hrSpec,
 		}
