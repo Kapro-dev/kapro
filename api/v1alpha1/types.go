@@ -1519,23 +1519,18 @@ type AgentPolicyList struct {
 // Components, versions, defaults, and per-cluster overrides live here.
 // Referenced by Kapro.spec.appRef.
 type KaproAppSpec struct {
-	// Components defines the set of Helm charts or kustomize artifacts to deploy.
+	// Registries defines HelmRepository sources. Each becomes a HelmRepository on spoke.
+	// +optional
+	Registries []AppRegistry `json:"registries,omitempty"`
+	// Components defines the deployable units (one HelmRelease per component).
 	// +kubebuilder:validation:MinItems=1
 	Components []AppComponent `json:"components"`
-	// Defaults are base Helm values applied to every component on every cluster.
+	// Defaults are inherited by every component unless overridden.
 	// +optional
-	// +kubebuilder:pruning:PreserveUnknownFields
-	Defaults *apiextensionsv1.JSON `json:"defaults,omitempty"`
+	Defaults *AppDefaults `json:"defaults,omitempty"`
 	// Overrides are per-cluster or per-label value patches layered on top of defaults.
 	// +optional
 	Overrides []AppOverride `json:"overrides,omitempty"`
-	// WorkloadNamespace is the default namespace where workload pods run on spokes.
-	// Supports substitution: {{.Env}} (environment name).
-	// Example: "{{.Env}}-workloads" → "p528-workloads"
-	// Components with explicit targetNamespace override this (e.g. kafka → "kafka").
-	// When empty, uses each component's Namespace field as-is.
-	// +optional
-	WorkloadNamespace string `json:"workloadNamespace,omitempty"`
 	// HelmReleaseNamespace is where HelmRelease CRs live on spokes (not the workloads).
 	// +kubebuilder:default="flux-system"
 	HelmReleaseNamespace string `json:"helmReleaseNamespace,omitempty"`
@@ -1544,6 +1539,53 @@ type KaproAppSpec struct {
 	// in-place upgrades — no extra namespaces, no OPA/Kyverno changes needed.
 	// +optional
 	MultiVersion *MultiVersionStrategy `json:"multiVersion,omitempty"`
+}
+
+// AppRegistry defines a Helm chart source. Generates a HelmRepository on spoke.
+type AppRegistry struct {
+	// Name is the registry identifier referenced by components via repo field.
+	Name string `json:"name"`
+	// URL is the Helm repository URL (OCI or HTTPS).
+	// Supports ${variable} substitution (e.g. oci://${gcpArtifactRegistry}/helm/ldl).
+	URL string `json:"url"`
+	// Type is "oci" (auto-detected for oci:// URLs) or "default" (HTTPS).
+	// +optional
+	Type string `json:"type,omitempty"`
+	// Provider is the auth provider: "generic" (default), "gcp", "aws", "azure".
+	// "gcp" uses Workload Identity — no credentials needed.
+	// +kubebuilder:default="generic"
+	// +optional
+	Provider string `json:"provider,omitempty"`
+	// Interval is how often to check for new chart versions.
+	// +kubebuilder:default="5m"
+	// +optional
+	Interval string `json:"interval,omitempty"`
+}
+
+// AppDefaults are inherited by every component unless overridden at component level.
+type AppDefaults struct {
+	// Repo is the default registry name (from spec.registries).
+	// +optional
+	Repo string `json:"repo,omitempty"`
+	// TargetNamespace is where workload pods run. Supports ${variable} substitution.
+	// +optional
+	TargetNamespace string `json:"targetNamespace,omitempty"`
+	// Timeout for install and upgrade operations.
+	// +kubebuilder:default="10m"
+	// +optional
+	Timeout string `json:"timeout,omitempty"`
+	// Retries is the number of install/upgrade retry attempts.
+	// +kubebuilder:default=3
+	// +optional
+	Retries int32 `json:"retries,omitempty"`
+	// ValuesFrom references ConfigMaps/Secrets with Helm values applied to all components.
+	// +optional
+	ValuesFrom []ValuesReference `json:"valuesFrom,omitempty"`
+	// Values are base Helm values applied to every component (deep-merged with component values).
+	// +optional
+	// +optional
+	// +kubebuilder:pruning:PreserveUnknownFields
+	Values *apiextensionsv1.JSON `json:"values,omitempty"`
 }
 
 // MultiVersionStrategy enables namespace-based version isolation on spokes.
@@ -1593,41 +1635,77 @@ type IngressReference struct {
 }
 
 // AppComponent is one deployable unit within a KaproApp.
+// Generates one HelmRelease on the spoke. Inherits from AppDefaults unless overridden.
 type AppComponent struct {
-	// Name is the component/chart name.
+	// Name is the component identifier. Used as HelmRelease name and chart name (unless chartName is set).
 	Name string `json:"name"`
-	// Version is the chart version or OCI tag.
+	// Version is the chart version. Supports ${VARIABLE} substitution from cluster-vars.
 	Version string `json:"version"`
-	// Namespace is where the HelmRelease CR lives on spokes.
-	// +kubebuilder:default="flux-system"
-	Namespace string `json:"namespace,omitempty"`
-	// TargetNamespace is where the workload pods actually run.
-	// When empty, uses the KaproApp.spec.namespaces.workloadNamespace template.
-	// When set, overrides the template for this component (e.g. "kafka" for shared infra).
+	// Repo references a registry from spec.registries by name. Inherits from defaults if empty.
+	// +optional
+	Repo string `json:"repo,omitempty"`
+	// ChartName overrides the Helm chart name when different from component name.
+	// Example: component "keycloak" uses chart "keycloakx".
+	// +optional
+	ChartName string `json:"chartName,omitempty"`
+	// TargetNamespace is where workload pods run on spoke. Inherits from defaults if empty.
+	// Supports ${variable} substitution.
 	// +optional
 	TargetNamespace string `json:"targetNamespace,omitempty"`
-	// Shared marks this component as cluster-wide infrastructure that is NOT
-	// duplicated per slot in blue-green deployments. Shared components (operators,
-	// kafka, cert-manager) exist once and serve all slots.
-	// +optional
-	Shared bool `json:"shared,omitempty"`
-	// Wave controls deployment ordering within a slot (lower = earlier).
-	// Maps to Flux Kustomization dependsOn ordering.
+	// Wave controls deployment ordering (lower = earlier). Components in the same wave
+	// deploy in parallel. Wave N waits for wave N-1 to be Ready.
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	Wave int32 `json:"wave,omitempty"`
-	// Chart overrides the default chart source (for third-party charts).
+	// DependsOn lists component names that must be Ready before this one starts.
+	// Creates HelmRelease-level dependsOn within the same wave.
 	// +optional
-	Chart *AppChartSource `json:"chart,omitempty"`
+	DependsOn []string `json:"dependsOn,omitempty"`
+	// Values are inline Helm values. Deep-merged with defaults.values (component wins on conflict).
+	// +optional
+	// +optional
+	// +kubebuilder:pruning:PreserveUnknownFields
+	Values *apiextensionsv1.JSON `json:"values,omitempty"`
+	// ValuesFrom references ConfigMaps/Secrets with Helm values.
+	// When set, REPLACES defaults.valuesFrom (not appended).
+	// +optional
+	ValuesFrom []ValuesReference `json:"valuesFrom,omitempty"`
+	// Timeout for install and upgrade. Inherits from defaults if empty.
+	// +optional
+	Timeout string `json:"timeout,omitempty"`
+	// Retries for install/upgrade remediation. Inherits from defaults if empty.
+	// +optional
+	Retries *int32 `json:"retries,omitempty"`
+	// Prune controls whether Flux deletes resources when removed. Default: true.
+	// Set to false for databases, Kafka, PVCs.
+	// +optional
+	Prune *bool `json:"prune,omitempty"`
+	// CRDs controls CRD install policy: "Skip" (default), "Create", "CreateReplace".
+	// +kubebuilder:validation:Enum=Skip;Create;CreateReplace
+	// +optional
+	CRDs string `json:"crds,omitempty"`
+	// Suspend pauses reconciliation for this component.
+	// +optional
+	Suspend bool `json:"suspend,omitempty"`
+	// Shared marks this as infrastructure NOT duplicated in blue-green slots.
+	// +optional
+	Shared bool `json:"shared,omitempty"`
 }
 
-// AppChartSource overrides the registry-level chart source for one component.
-type AppChartSource struct {
-	// URL is the OCI or Helm repository URL.
-	URL string `json:"url"`
-	// Name of the chart (if different from component name).
+// ValuesReference references a ConfigMap or Secret for Helm values.
+type ValuesReference struct {
+	// Kind is "ConfigMap" (default) or "Secret".
+	// +kubebuilder:default="ConfigMap"
 	// +optional
-	Name string `json:"name,omitempty"`
+	Kind string `json:"kind,omitempty"`
+	// Name of the ConfigMap or Secret.
+	Name string `json:"name"`
+	// ValuesKey is the data key to use. Default: "values.yaml".
+	// +optional
+	ValuesKey string `json:"valuesKey,omitempty"`
+	// Optional marks this values source as non-required.
+	// +optional
+	Optional bool `json:"optional,omitempty"`
 }
 
 // AppOverride patches Helm values for a subset of clusters.

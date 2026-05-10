@@ -255,13 +255,10 @@ func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha1.Kapro, app *kapr
 	// Build HelmRelease template resources — one per component.
 	resources := make([]interface{}, 0, len(app.Spec.Components))
 	for _, comp := range app.Spec.Components {
-		ns := comp.Namespace
-		if ns == "" {
-			ns = "flux-system"
-		}
+		ns := "flux-system"
 		chartName := comp.Name
-		if comp.Chart != nil && comp.Chart.Name != "" {
-			chartName = comp.Chart.Name
+		if comp.ChartName != "" {
+			chartName = comp.ChartName
 		}
 
 		hrSpec := map[string]interface{}{
@@ -348,8 +345,8 @@ func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha1.Kapro, app *kapr
 func (r *KaproReconciler) mergeValues(app *kaprov1alpha1.KaproApp, clusterName string, clusterLabels map[string]string) string {
 	// Start with defaults.
 	merged := map[string]interface{}{}
-	if app.Spec.Defaults != nil && app.Spec.Defaults.Raw != nil {
-		_ = json.Unmarshal(app.Spec.Defaults.Raw, &merged)
+	if app.Spec.Defaults != nil && app.Spec.Defaults.Values != nil && app.Spec.Defaults.Values.Raw != nil {
+		_ = json.Unmarshal(app.Spec.Defaults.Values.Raw, &merged)
 	}
 
 	// Layer matching overrides (order matters — later overrides win).

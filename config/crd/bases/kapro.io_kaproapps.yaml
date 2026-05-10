@@ -56,52 +56,105 @@ spec:
               Referenced by Kapro.spec.appRef.
             properties:
               components:
-                description: Components defines the set of Helm charts or kustomize
-                  artifacts to deploy.
+                description: Components defines the deployable units (one HelmRelease
+                  per component).
                 items:
-                  description: AppComponent is one deployable unit within a KaproApp.
+                  description: |-
+                    AppComponent is one deployable unit within a KaproApp.
+                    Generates one HelmRelease on the spoke. Inherits from AppDefaults unless overridden.
                   properties:
-                    chart:
-                      description: Chart overrides the default chart source (for third-party
-                        charts).
-                      properties:
-                        name:
-                          description: Name of the chart (if different from component
-                            name).
-                          type: string
-                        url:
-                          description: URL is the OCI or Helm repository URL.
-                          type: string
-                      required:
-                      - url
-                      type: object
-                    name:
-                      description: Name is the component/chart name.
-                      type: string
-                    namespace:
-                      default: flux-system
-                      description: Namespace is where the HelmRelease CR lives on
-                        spokes.
-                      type: string
-                    shared:
+                    chartName:
                       description: |-
-                        Shared marks this component as cluster-wide infrastructure that is NOT
-                        duplicated per slot in blue-green deployments. Shared components (operators,
-                        kafka, cert-manager) exist once and serve all slots.
+                        ChartName overrides the Helm chart name when different from component name.
+                        Example: component "keycloak" uses chart "keycloakx".
+                      type: string
+                    crds:
+                      description: 'CRDs controls CRD install policy: "Skip" (default),
+                        "Create", "CreateReplace".'
+                      enum:
+                      - Skip
+                      - Create
+                      - CreateReplace
+                      type: string
+                    dependsOn:
+                      description: |-
+                        DependsOn lists component names that must be Ready before this one starts.
+                        Creates HelmRelease-level dependsOn within the same wave.
+                      items:
+                        type: string
+                      type: array
+                    name:
+                      description: Name is the component identifier. Used as HelmRelease
+                        name and chart name (unless chartName is set).
+                      type: string
+                    prune:
+                      description: |-
+                        Prune controls whether Flux deletes resources when removed. Default: true.
+                        Set to false for databases, Kafka, PVCs.
+                      type: boolean
+                    repo:
+                      description: Repo references a registry from spec.registries
+                        by name. Inherits from defaults if empty.
+                      type: string
+                    retries:
+                      description: Retries for install/upgrade remediation. Inherits
+                        from defaults if empty.
+                      format: int32
+                      type: integer
+                    shared:
+                      description: Shared marks this as infrastructure NOT duplicated
+                        in blue-green slots.
+                      type: boolean
+                    suspend:
+                      description: Suspend pauses reconciliation for this component.
                       type: boolean
                     targetNamespace:
                       description: |-
-                        TargetNamespace is where the workload pods actually run.
-                        When empty, uses the KaproApp.spec.namespaces.workloadNamespace template.
-                        When set, overrides the template for this component (e.g. "kafka" for shared infra).
+                        TargetNamespace is where workload pods run on spoke. Inherits from defaults if empty.
+                        Supports ${variable} substitution.
                       type: string
+                    timeout:
+                      description: Timeout for install and upgrade. Inherits from
+                        defaults if empty.
+                      type: string
+                    values:
+                      description: Values are inline Helm values. Deep-merged with
+                        defaults.values (component wins on conflict).
+                      x-kubernetes-preserve-unknown-fields: true
+                    valuesFrom:
+                      description: |-
+                        ValuesFrom references ConfigMaps/Secrets with Helm values.
+                        When set, REPLACES defaults.valuesFrom (not appended).
+                      items:
+                        description: ValuesReference references a ConfigMap or Secret
+                          for Helm values.
+                        properties:
+                          kind:
+                            default: ConfigMap
+                            description: Kind is "ConfigMap" (default) or "Secret".
+                            type: string
+                          name:
+                            description: Name of the ConfigMap or Secret.
+                            type: string
+                          optional:
+                            description: Optional marks this values source as non-required.
+                            type: boolean
+                          valuesKey:
+                            description: 'ValuesKey is the data key to use. Default:
+                              "values.yaml".'
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      type: array
                     version:
-                      description: Version is the chart version or OCI tag.
+                      description: Version is the chart version. Supports ${VARIABLE}
+                        substitution from cluster-vars.
                       type: string
                     wave:
                       description: |-
-                        Wave controls deployment ordering within a slot (lower = earlier).
-                        Maps to Flux Kustomization dependsOn ordering.
+                        Wave controls deployment ordering (lower = earlier). Components in the same wave
+                        deploy in parallel. Wave N waits for wave N-1 to be Ready.
                       format: int32
                       minimum: 0
                       type: integer
@@ -112,9 +165,54 @@ spec:
                 minItems: 1
                 type: array
               defaults:
-                description: Defaults are base Helm values applied to every component
-                  on every cluster.
-                x-kubernetes-preserve-unknown-fields: true
+                description: Defaults are inherited by every component unless overridden.
+                properties:
+                  repo:
+                    description: Repo is the default registry name (from spec.registries).
+                    type: string
+                  retries:
+                    default: 3
+                    description: Retries is the number of install/upgrade retry attempts.
+                    format: int32
+                    type: integer
+                  targetNamespace:
+                    description: TargetNamespace is where workload pods run. Supports
+                      ${variable} substitution.
+                    type: string
+                  timeout:
+                    default: 10m
+                    description: Timeout for install and upgrade operations.
+                    type: string
+                  values:
+                    description: Values are base Helm values applied to every component
+                      (deep-merged with component values).
+                    x-kubernetes-preserve-unknown-fields: true
+                  valuesFrom:
+                    description: ValuesFrom references ConfigMaps/Secrets with Helm
+                      values applied to all components.
+                    items:
+                      description: ValuesReference references a ConfigMap or Secret
+                        for Helm values.
+                      properties:
+                        kind:
+                          default: ConfigMap
+                          description: Kind is "ConfigMap" (default) or "Secret".
+                          type: string
+                        name:
+                          description: Name of the ConfigMap or Secret.
+                          type: string
+                        optional:
+                          description: Optional marks this values source as non-required.
+                          type: boolean
+                        valuesKey:
+                          description: 'ValuesKey is the data key to use. Default:
+                            "values.yaml".'
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                type: object
               helmReleaseNamespace:
                 default: flux-system
                 description: HelmReleaseNamespace is where HelmRelease CRs live on
@@ -210,14 +308,41 @@ spec:
                       x-kubernetes-preserve-unknown-fields: true
                   type: object
                 type: array
-              workloadNamespace:
-                description: |-
-                  WorkloadNamespace is the default namespace where workload pods run on spokes.
-                  Supports substitution: {{.Env}} (environment name).
-                  Example: "{{.Env}}-workloads" → "p528-workloads"
-                  Components with explicit targetNamespace override this (e.g. kafka → "kafka").
-                  When empty, uses each component's Namespace field as-is.
-                type: string
+              registries:
+                description: Registries defines HelmRepository sources. Each becomes
+                  a HelmRepository on spoke.
+                items:
+                  description: AppRegistry defines a Helm chart source. Generates
+                    a HelmRepository on spoke.
+                  properties:
+                    interval:
+                      default: 5m
+                      description: Interval is how often to check for new chart versions.
+                      type: string
+                    name:
+                      description: Name is the registry identifier referenced by components
+                        via repo field.
+                      type: string
+                    provider:
+                      default: generic
+                      description: |-
+                        Provider is the auth provider: "generic" (default), "gcp", "aws", "azure".
+                        "gcp" uses Workload Identity — no credentials needed.
+                      type: string
+                    type:
+                      description: Type is "oci" (auto-detected for oci:// URLs) or
+                        "default" (HTTPS).
+                      type: string
+                    url:
+                      description: |-
+                        URL is the Helm repository URL (OCI or HTTPS).
+                        Supports ${variable} substitution (e.g. oci://${gcpArtifactRegistry}/helm/ldl).
+                      type: string
+                  required:
+                  - name
+                  - url
+                  type: object
+                type: array
             required:
             - components
             type: object

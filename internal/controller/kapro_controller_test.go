@@ -123,8 +123,10 @@ func TestBuildResourceSet_OverrideMerging(t *testing.T) {
 			Components: []kaprov1alpha1.AppComponent{
 				{Name: "app", Version: "1.0"},
 			},
-			Defaults: &apiextensionsv1.JSON{
-				Raw: []byte(`{"replicaCount":3,"logging":{"level":"info","format":"json"}}`),
+			Defaults: &kaprov1alpha1.AppDefaults{
+				Values: &apiextensionsv1.JSON{
+					Raw: []byte(`{"replicaCount":3,"logging":{"level":"info","format":"json"}}`),
+				},
 			},
 			Overrides: []kaprov1alpha1.AppOverride{
 				{
