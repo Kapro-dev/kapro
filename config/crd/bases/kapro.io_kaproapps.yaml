@@ -120,40 +120,29 @@ spec:
                   Namespaces configures how workload namespaces are generated on spokes.
                   When set, enables namespace-based deployment strategies (blue-green, canary).
                 properties:
-                  helmReleaseNamespace:
-                    default: flux-system
+                  blueGreen:
                     description: |-
-                      HelmReleaseNamespace is where HelmRelease CRs live (not the workloads).
-                      Default: "flux-system"
-                    type: string
-                  slots:
-                    description: |-
-                      Slots enables blue-green namespace deployment.
-                      When set, Kapro maintains two workload namespaces and switches traffic between them.
+                      BlueGreen enables blue-green namespace deployment (intra-country).
+                      When set, Kapro maintains two workload namespaces per spoke and
+                      switches all traffic at once after verification.
+                      Inter-country canary is handled by Pipeline stages with soak time.
                     properties:
                       slotNames:
                         description: |-
                           SlotNames are the two slot identifiers used in namespace templating.
                           Default: ["blue", "green"]
                           Example with WorkloadNamespace "{{.Env}}-{{.Slot}}-workloads":
-                            → "p528-blue-workloads" (active)
-                            → "p528-green-workloads" (standby, receiving new version)
+                            → "p528-blue-workloads" (active, all store traffic)
+                            → "p528-green-workloads" (standby, deploying + verifying)
                         items:
                           type: string
                         maxItems: 2
                         minItems: 2
                         type: array
-                      trafficRouting:
-                        description: TrafficRouting configures how traffic switches
-                          between slots.
+                      trafficSwitch:
+                        description: TrafficSwitch configures how traffic flips between
+                          slots.
                         properties:
-                          canaryWeight:
-                            default: 0
-                            description: |-
-                              CanaryWeight is the initial traffic percentage to the new slot (0-100).
-                              0 means no canary — full switch after verification.
-                            format: int32
-                            type: integer
                           ingressRef:
                             description: |-
                               IngressRef identifies the routing resource to modify.
@@ -180,7 +169,8 @@ spec:
                             - name
                             type: object
                           provider:
-                            description: Provider is the traffic routing backend.
+                            description: Provider is the traffic routing backend that
+                              performs the switch.
                             enum:
                             - gateway-api
                             - istio
@@ -188,18 +178,18 @@ spec:
                             - traefik
                             - manual
                             type: string
-                          stepWeight:
-                            default: 20
-                            description: StepWeight is the traffic increment per step.
-                              Only used when canaryWeight > 0.
-                            format: int32
-                            type: integer
                         required:
                         - provider
                         type: object
                     required:
-                    - trafficRouting
+                    - trafficSwitch
                     type: object
+                  helmReleaseNamespace:
+                    default: flux-system
+                    description: |-
+                      HelmReleaseNamespace is where HelmRelease CRs live (not the workloads).
+                      Default: "flux-system"
+                    type: string
                   workloadNamespace:
                     description: |-
                       WorkloadNamespace is the template for the workload namespace.

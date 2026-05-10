@@ -1542,31 +1542,37 @@ type NamespaceStrategy struct {
 	// Default: "flux-system"
 	// +kubebuilder:default="flux-system"
 	HelmReleaseNamespace string `json:"helmReleaseNamespace,omitempty"`
-	// Slots enables blue-green namespace deployment.
-	// When set, Kapro maintains two workload namespaces and switches traffic between them.
+	// BlueGreen enables blue-green namespace deployment (intra-country).
+	// When set, Kapro maintains two workload namespaces per spoke and
+	// switches all traffic at once after verification.
+	// Inter-country canary is handled by Pipeline stages with soak time.
 	// +optional
-	Slots *SlotStrategy `json:"slots,omitempty"`
+	BlueGreen *BlueGreenStrategy `json:"blueGreen,omitempty"`
 }
 
-// SlotStrategy configures blue-green namespace deployment.
-// Two workload namespaces exist on each spoke. The active slot serves traffic,
-// the standby slot receives the next version. After verification, Kapro switches.
-type SlotStrategy struct {
+// BlueGreenStrategy configures blue-green namespace deployment (intra-country).
+// Two workload namespaces exist on each spoke. The active slot serves all store
+// traffic, the standby slot receives the next version. After verification,
+// Kapro switches all traffic at once — no gradual rollout within a country.
+// Gradual rollout happens inter-country via Pipeline stages with soak time.
+type BlueGreenStrategy struct {
 	// SlotNames are the two slot identifiers used in namespace templating.
 	// Default: ["blue", "green"]
 	// Example with WorkloadNamespace "{{.Env}}-{{.Slot}}-workloads":
-	//   → "p528-blue-workloads" (active)
-	//   → "p528-green-workloads" (standby, receiving new version)
+	//   → "p528-blue-workloads" (active, all store traffic)
+	//   → "p528-green-workloads" (standby, deploying + verifying)
 	// +kubebuilder:validation:MinItems=2
 	// +kubebuilder:validation:MaxItems=2
 	SlotNames []string `json:"slotNames,omitempty"`
-	// TrafficRouting configures how traffic switches between slots.
-	TrafficRouting TrafficRouting `json:"trafficRouting"`
+	// TrafficSwitch configures how traffic flips between slots.
+	TrafficSwitch TrafficSwitch `json:"trafficSwitch"`
 }
 
-// TrafficRouting configures traffic shifting between namespace slots.
-type TrafficRouting struct {
-	// Provider is the traffic routing backend.
+// TrafficSwitch configures the full traffic flip between blue-green namespace slots.
+// This is always all-or-nothing — no weighted routing. POS checkout sessions
+// cannot be split across versions.
+type TrafficSwitch struct {
+	// Provider is the traffic routing backend that performs the switch.
 	// +kubebuilder:validation:Enum=gateway-api;istio;nginx;traefik;manual
 	Provider string `json:"provider"`
 	// IngressRef identifies the routing resource to modify.
@@ -1574,13 +1580,6 @@ type TrafficRouting struct {
 	// For gateway-api: an HTTPRoute. For istio: a VirtualService.
 	// +optional
 	IngressRef *IngressReference `json:"ingressRef,omitempty"`
-	// CanaryWeight is the initial traffic percentage to the new slot (0-100).
-	// 0 means no canary — full switch after verification.
-	// +kubebuilder:default=0
-	CanaryWeight int32 `json:"canaryWeight,omitempty"`
-	// StepWeight is the traffic increment per step. Only used when canaryWeight > 0.
-	// +kubebuilder:default=20
-	StepWeight int32 `json:"stepWeight,omitempty"`
 }
 
 // IngressReference identifies the traffic routing resource to modify.
