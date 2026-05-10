@@ -134,8 +134,8 @@ func runDemo(ctx context.Context) error {
 	}
 	sp.StopSuccess(fmt.Sprintf("Installed %d CRDs", len(crdFiles)))
 
-	// Step 4: Create demo resources via client.
-	sp = cli.NewSpinner("Creating demo fleet")
+	// Step 4: Create Fleet CR — the ONLY resource users need to write.
+	sp = cli.NewSpinner("Creating Fleet")
 	sp.Start()
 
 	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
@@ -149,139 +149,56 @@ func runDemo(ctx context.Context) error {
 		return err
 	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
-
-	// MemberClusters.
-	clusters := []*kaprov1alpha1.MemberCluster{
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   "canary-eu",
-				Labels: map[string]string{"tier": "canary", "region": "eu-west", "country": "de"},
+	fleet := &kaprov1alpha1.Fleet{
+		ObjectMeta: metav1.ObjectMeta{Name: "demo"},
+		Spec: kaprov1alpha1.FleetSpec{
+			Registry: kaprov1alpha1.FleetRegistry{
+				URL:  "oci://registry.example.com/charts",
+				Name: "product-charts",
 			},
-			Spec: kaprov1alpha1.MemberClusterSpec{
-				Actuator: kaprov1alpha1.ActuatorSpec{
-					Type: "flux-operator",
-					FluxOperator: &kaprov1alpha1.FluxOperatorConfig{
-						ResourceSet: "demo-apps",
-						Namespace:   "flux-system",
-						InputField:  "tag",
-						TenantField: "tenant",
-					},
-				},
+			Components: []kaprov1alpha1.FleetComponent{
+				{Name: "pos-server", Version: "5.28.0"},
+				{Name: "auth-service", Version: "5.28.0", DependsOn: "keycloak"},
+				{Name: "sdc", Version: "5.28.0"},
+				{Name: "keycloak", Version: "6.5.0"},
 			},
-		},
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   "prod-eu-west",
-				Labels: map[string]string{"tier": "prod", "region": "eu-west", "country": "de"},
+			Clusters: []kaprov1alpha1.FleetCluster{
+				{Name: "canary-eu", Labels: map[string]string{"tier": "canary", "region": "eu-west"}},
+				{Name: "prod-eu-west", Labels: map[string]string{"tier": "prod", "region": "eu-west"}},
+				{Name: "prod-eu-east", Labels: map[string]string{"tier": "prod", "region": "eu-east"}},
 			},
-			Spec: kaprov1alpha1.MemberClusterSpec{
-				Actuator: kaprov1alpha1.ActuatorSpec{
-					Type: "flux-operator",
-					FluxOperator: &kaprov1alpha1.FluxOperatorConfig{
-						ResourceSet: "demo-apps",
-						Namespace:   "flux-system",
-						InputField:  "tag",
-						TenantField: "tenant",
-					},
-				},
-			},
-		},
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   "prod-eu-east",
-				Labels: map[string]string{"tier": "prod", "region": "eu-east", "country": "fi"},
-			},
-			Spec: kaprov1alpha1.MemberClusterSpec{
-				Actuator: kaprov1alpha1.ActuatorSpec{
-					Type: "flux-operator",
-					FluxOperator: &kaprov1alpha1.FluxOperatorConfig{
-						ResourceSet: "demo-apps",
-						Namespace:   "flux-system",
-						InputField:  "tag",
-						TenantField: "tenant",
-					},
+			Pipeline: kaprov1alpha1.FleetPipeline{
+				Stages: []kaprov1alpha1.FleetStage{
+					{Name: "canary", Selector: map[string]string{"tier": "canary"}},
+					{Name: "prod", Selector: map[string]string{"tier": "prod"}, DependsOn: []string{"canary"}},
 				},
 			},
 		},
 	}
-
-	for _, mc := range clusters {
-		if err := c.Create(ctx, mc); err != nil {
-			if !isAlreadyExists(err) {
-				sp.StopFail("Failed to create MemberCluster " + mc.Name)
-				return err
-			}
-		}
-		// Patch status to simulate healthy clusters.
-		latest := &kaprov1alpha1.MemberCluster{}
-		if err := c.Get(ctx, client.ObjectKey{Name: mc.Name}, latest); err == nil {
-			patch := client.MergeFrom(latest.DeepCopy())
-			latest.Status.Phase = kaprov1alpha1.ClusterPhaseConverged
-			latest.Status.LastHeartbeat = now
-			latest.Status.Health = kaprov1alpha1.ClusterHealth{
-				AllWorkloadsReady: true,
-				ReadyWorkloads:    8,
-				TotalWorkloads:    8,
-			}
-			latest.Status.CurrentVersions = map[string]string{"default": "v1.9.0"}
-			_ = c.Status().Patch(ctx, latest, patch)
-		}
-	}
-
-	// ResourceSet (Flux Operator) — simulated for demo.
-	// In production, this is created by the platform team.
-	rsYAML := `apiVersion: fluxcd.controlplane.io/v1
-kind: ResourceSet
-metadata:
-  name: demo-apps
-  namespace: flux-system
-spec:
-  inputs:
-    - tenant: canary-eu
-      tag: v1.9.0
-    - tenant: prod-eu-west
-      tag: v1.9.0
-    - tenant: prod-eu-east
-      tag: v1.9.0
-  resources: []
-`
-	// Install ResourceSet CRD + create the ResourceSet via kubectl.
-	rsPath := filepath.Join(os.TempDir(), "kapro-demo-resourceset.yaml")
-	os.WriteFile(rsPath, []byte(rsYAML), 0644)
-	exec.Command("kubectl", "--kubeconfig", kubeconfigPath,
-		"apply", "-f", rsPath).CombinedOutput()
-
-	// Pipeline.
-	pipeline := &kaprov1alpha1.Pipeline{
-		ObjectMeta: metav1.ObjectMeta{Name: "standard-rollout"},
-		Spec: kaprov1alpha1.PipelineSpec{
-			Stages: []kaprov1alpha1.Stage{
-				{
-					Name:     "canary",
-					Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
-				},
-				{
-					Name:      "prod",
-					Selector:  metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}},
-					DependsOn: []kaprov1alpha1.StageDependency{{Stage: "canary"}},
-				},
-			},
-		},
-	}
-	if err := c.Create(ctx, pipeline); err != nil && !isAlreadyExists(err) {
-		sp.StopFail("Failed to create Pipeline")
+	if err := c.Create(ctx, fleet); err != nil && !isAlreadyExists(err) {
+		sp.StopFail("Failed to create Fleet")
 		return err
 	}
 
-	// Release.
+	// Simulate healthy clusters (in production, Flux Operator reports this).
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, cluster := range fleet.Spec.Clusters {
+		mc := &kaprov1alpha1.MemberCluster{}
+		if err := c.Get(ctx, client.ObjectKey{Name: cluster.Name}, mc); err == nil {
+			patch := client.MergeFrom(mc.DeepCopy())
+			mc.Status.Phase = kaprov1alpha1.ClusterPhaseConverged
+			mc.Status.LastHeartbeat = now
+			mc.Status.Health = kaprov1alpha1.ClusterHealth{AllWorkloadsReady: true, ReadyWorkloads: 8, TotalWorkloads: 8}
+			_ = c.Status().Patch(ctx, mc, patch)
+		}
+	}
+
+	// Create a Release to trigger the pipeline.
 	release := &kaprov1alpha1.Release{
-		ObjectMeta: metav1.ObjectMeta{Name: "myapp-v2.0.0"},
+		ObjectMeta: metav1.ObjectMeta{Name: "platform-v5.28"},
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Version: "registry.example.com/myapp@sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
-				{Name: "initial", Pipeline: "standard-rollout"},
-			},
+			Version:   "sha256:abc123",
+			Pipelines: []kaprov1alpha1.ReleasePipelineRef{{Name: "initial", Pipeline: "demo-pipeline"}},
 		},
 	}
 	if err := c.Create(ctx, release); err != nil && !isAlreadyExists(err) {
@@ -297,20 +214,23 @@ spec:
 	fmt.Fprintln(cli.Out)
 
 	tbl := cli.NewTable("RESOURCE", "NAME", "DETAILS")
-	tbl.AddRow("MemberCluster", "canary-eu", "tier=canary, region=eu-west")
-	tbl.AddRow("MemberCluster", "prod-eu-west", "tier=prod, region=eu-west")
-	tbl.AddRow("MemberCluster", "prod-eu-east", "tier=prod, region=eu-east")
-	tbl.AddRow("Pipeline", "standard-rollout", "canary -> prod (manual gate)")
-	tbl.AddRow("Release", "myapp-v2.0.0", "pipeline: standard-rollout")
+	tbl.AddRow("Fleet", "demo", "4 components, 3 clusters, 2 stages")
+	tbl.AddRow("  MemberCluster", "canary-eu", "tier=canary (generated)")
+	tbl.AddRow("  MemberCluster", "prod-eu-west", "tier=prod (generated)")
+	tbl.AddRow("  MemberCluster", "prod-eu-east", "tier=prod (generated)")
+	tbl.AddRow("  Pipeline", "demo-pipeline", "canary → prod (generated)")
+	tbl.AddRow("  ResourceSet", "demo-workloads", "4 HelmReleases (generated)")
+	tbl.AddRow("Release", "platform-v5.28", "triggers pipeline")
 	tbl.Render()
 
 	cli.Header("Try these commands")
 	fmt.Fprintln(cli.Out)
 	cli.Info("kapro get releases                          # list releases")
 	cli.Info("kapro get targets                           # see rollout status")
-	cli.Info("kapro approve myapp-v2.0.0/prod-eu-west     # approve production")
+	cli.Info("kapro approve platform-v5.28/prod-eu-west   # approve production")
 	cli.Info("kapro fleet                                 # fleet overview")
 	cli.Info("kapro world                                 # all clusters")
+	cli.Info("kubectl get fleet demo -o yaml              # see the Fleet CRD")
 	fmt.Fprintln(cli.Out)
 	cli.Muted("Clean up:  kapro demo --cleanup")
 	cli.Muted("Kubeconfig: export KUBECONFIG=" + kubeconfigPath)
