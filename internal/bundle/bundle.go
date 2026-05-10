@@ -23,11 +23,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/yaml"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
@@ -41,31 +39,11 @@ type BundleRequest struct {
 	Registry  string // OCI registry URL (e.g. oci://europe-west1-docker.pkg.dev/project/repo)
 }
 
-// GenerateAndPush builds the spoke manifests, writes them to a temp directory,
-// and pushes the directory as an OCI artifact using `flux push artifact`.
+// Push pushes an already-generated bundle directory to an OCI registry
+// using `flux push artifact`. The dir should contain wave-NN/ subdirectories.
 // Returns the full OCI URL with tag.
-func GenerateAndPush(ctx context.Context, req BundleRequest) (string, error) {
-	l := log.FromContext(ctx)
-
-	dir, err := os.MkdirTemp("", "kapro-bundle-*")
-	if err != nil {
-		return "", fmt.Errorf("create temp dir: %w", err)
-	}
-	defer os.RemoveAll(dir)
-
-	manifests := Generate(req)
-	for relPath, content := range manifests {
-		absPath := filepath.Join(dir, relPath)
-		if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
-			return "", fmt.Errorf("create dir for %s: %w", relPath, err)
-		}
-		if err := os.WriteFile(absPath, []byte(content), 0644); err != nil {
-			return "", fmt.Errorf("write %s: %w", relPath, err)
-		}
-	}
-
+func Push(ctx context.Context, dir string, req BundleRequest) (string, error) {
 	ociURL := fmt.Sprintf("%s/%s-bundle:%s", req.Registry, req.KaproName, req.Version)
-	l.Info("pushing OCI bundle", "url", ociURL, "files", len(manifests))
 
 	cmd := exec.CommandContext(ctx, "flux", "push", "artifact",
 		ociURL,
@@ -79,7 +57,6 @@ func GenerateAndPush(ctx context.Context, req BundleRequest) (string, error) {
 		return "", fmt.Errorf("flux push artifact: %s: %w", string(out), err)
 	}
 
-	l.Info("OCI bundle pushed", "url", ociURL)
 	return ociURL, nil
 }
 

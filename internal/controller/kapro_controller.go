@@ -148,21 +148,10 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	inventory = append(inventory, "Pipeline/"+kapro.Name+"-pipeline")
 
 	if spokeLocal {
-		// 3a. Spoke-local mode: generate OCI bundle + bootstrap each spoke directly.
+		// 3a. Spoke-local mode: bootstrap each spoke directly.
+		// Bundle generation + push is done by CI via `kapro bundle generate --push`.
+		// The operator only creates the spoke-side Flux resources (OCIRepository + wave Kustomizations).
 		primaryVersion := app.Spec.Components[0].Version
-		bundleReq := bundle.BundleRequest{
-			KaproName: kapro.Name,
-			App:       &app,
-			Version:   primaryVersion,
-			Registry:  kapro.Spec.Registry.URL,
-		}
-		if _, err := bundle.GenerateAndPush(ctx, bundleReq); err != nil {
-			l.Error(err, "failed to push OCI bundle")
-			// Non-fatal: bundle might already exist at this version.
-		}
-
-		// Bootstrap each spoke: apply OCIRepository + wave Kustomizations directly.
-		// OCIRepository has no kubeConfig field, so we must use the spoke's API directly.
 		for _, cluster := range kapro.Spec.Clusters {
 			if err := r.bootstrapSpoke(ctx, &kapro, &app, cluster, primaryVersion); err != nil {
 				l.Error(err, "failed to bootstrap spoke", "cluster", cluster.Name)
