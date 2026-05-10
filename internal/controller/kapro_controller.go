@@ -348,7 +348,7 @@ func (r *KaproReconciler) buildHelmRelease(kapro *kaprov1alpha1.Kapro, defaults 
 		"chart": map[string]any{
 			"spec": map[string]any{
 				"chart":   chartName,
-				"version": comp.Version,
+				"version": "<< inputs.version >>",
 				"sourceRef": map[string]any{
 					"kind": "HelmRepository",
 					"name": repo,
@@ -616,7 +616,19 @@ func (r *KaproReconciler) syncMemberClusterStatus(ctx context.Context, kapro *ka
 		}
 
 		if ready {
-			versions[comp.Name] = comp.Version
+			// Read the actual deployed version from the HelmRelease status.
+			deployedVersion := comp.Version
+			if status != nil {
+				if lar, ok := status["lastAppliedRevision"].(string); ok && lar != "" {
+					deployedVersion = lar
+				}
+				// Also try lastAttemptedRevision for the chart version.
+				if latv, ok := status["lastAttemptedRevision"].(string); ok && latv != "" {
+					deployedVersion = latv
+				}
+			}
+			versions["default"] = deployedVersion
+			versions[comp.Name] = deployedVersion
 		} else {
 			allReady = false
 		}
@@ -632,7 +644,10 @@ func (r *KaproReconciler) syncMemberClusterStatus(ctx context.Context, kapro *ka
 	mcPatch := client.MergeFrom(mc.DeepCopy())
 	mc.Status.Phase = phase
 	mc.Status.CurrentVersions = versions
-	mc.Status.Version = app.Spec.Components[0].Version
+	mc.Status.Version = versions["default"]
+	if mc.Status.Version == "" {
+		mc.Status.Version = app.Spec.Components[0].Version
+	}
 	mc.Status.Provider = cluster.Provider
 	mc.Status.DeliverySystem = "flux-operator"
 	mc.Status.Health = kaprov1alpha1.ClusterHealth{

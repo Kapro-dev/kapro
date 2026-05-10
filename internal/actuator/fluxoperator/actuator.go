@@ -9,6 +9,7 @@ package fluxoperator
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -197,9 +198,15 @@ func (a *FluxOperatorActuator) IsConverged(ctx context.Context, mc *kaprov1alpha
 		return false, nil
 	}
 
-	// Check the rendered HelmRelease is actually Ready on the spoke.
-	hrName := resolveHelmReleaseName(appKey, mc.Name)
-	return a.isHelmReleaseReady(ctx, hrName, ns)
+	// Check the rendered HelmRelease is Ready.
+	// Try to find it by scanning ResourceSet inventory.
+	hrReady, err := a.checkHelmReleaseFromInventory(ctx, foSpec.ResourceSet, ns, mc.Name)
+	if err != nil {
+		// Can't determine HR name — fall through to MemberCluster status check
+		// in the ReleaseTargetReconciler fallback.
+		return false, nil
+	}
+	return hrReady, nil
 }
 
 // IsAllConverged checks convergence for all desired versions.
@@ -236,13 +243,10 @@ func (a *FluxOperatorActuator) IsAllConverged(ctx context.Context, mc *kaprov1al
 			}
 		}
 
-		// All inputs match — now check all HelmReleases are Ready.
-		for appKey := range desiredVersions {
-			hrName := resolveHelmReleaseName(appKey, mc.Name)
-			ready, err := a.isHelmReleaseReady(ctx, hrName, ns)
-			if err != nil || !ready {
-				return false, err
-			}
+		// All inputs match — now check HelmReleases are Ready via inventory.
+		hrReady, err := a.checkHelmReleaseFromInventory(ctx, foSpec.ResourceSet, ns, mc.Name)
+		if err != nil || !hrReady {
+			return false, nil
 		}
 		return true, nil
 	}
@@ -362,12 +366,61 @@ var helmReleaseGVK = schema.GroupVersionKind{
 }
 
 // resolveHelmReleaseName returns the HelmRelease name for a component on a cluster.
-// Convention: {appKey}-{clusterName} (matches KaproReconciler.buildResourceSet).
+// Convention from buildHelmRelease: {componentName}-{clusterName}
+// The appKey "default" maps to the first component name, but the HelmRelease
+// is always named {componentName}-{clusterName}. Since the actuator doesn't know
+// the component name (only appKey), we scan the ResourceSet inputs to find the
+// rendered HelmRelease name pattern.
+// For single-component apps: appKey is typically the component name itself.
 func resolveHelmReleaseName(appKey, clusterName string) string {
+	// For "default" appKey with single-component apps, the HelmRelease name
+	// follows {componentName}-{clusterName}. Since we don't know componentName
+	// here, we can't resolve it. The caller should use the ResourceSet inventory
+	// or fall back to checking MemberCluster status directly.
 	if appKey == "" || appKey == "default" {
 		return clusterName
 	}
 	return appKey + "-" + clusterName
+}
+
+// checkHelmReleaseFromInventory finds the HelmRelease for a cluster in the ResourceSet inventory.
+func (a *FluxOperatorActuator) checkHelmReleaseFromInventory(ctx context.Context, rsName, ns, clusterName string) (bool, error) {
+	rs, err := a.getResourceSet(ctx, rsName, ns)
+	if err != nil {
+		return false, err
+	}
+	// Scan inventory for HelmRelease entries matching this cluster.
+	status, _ := rs.Object["status"].(map[string]any)
+	if status == nil {
+		return false, fmt.Errorf("no ResourceSet status")
+	}
+	inv, _ := status["inventory"].(map[string]any)
+	if inv == nil {
+		return false, fmt.Errorf("no inventory")
+	}
+	entries, _ := inv["entries"].([]any)
+	for _, e := range entries {
+		entry, _ := e.(map[string]any)
+		if entry == nil {
+			continue
+		}
+		id, _ := entry["id"].(string)
+		// Inventory ID format: namespace_name_group_kind
+		if !strings.Contains(id, "HelmRelease") {
+			continue
+		}
+		if !strings.Contains(id, clusterName) {
+			continue
+		}
+		// Extract name: flux-system_hello-kapro-spoke_helm.toolkit.fluxcd.io_HelmRelease
+		parts := strings.SplitN(id, "_", 3)
+		if len(parts) < 2 {
+			continue
+		}
+		hrName := parts[1]
+		return a.isHelmReleaseReady(ctx, hrName, ns)
+	}
+	return false, fmt.Errorf("no HelmRelease found for %s in inventory", clusterName)
 }
 
 // isHelmReleaseReady checks if the rendered HelmRelease has Ready=True.
