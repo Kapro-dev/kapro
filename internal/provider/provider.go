@@ -12,6 +12,10 @@ package provider
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"time"
+
+	"golang.org/x/oauth2/google"
 )
 
 // ClusterInfo represents a discovered or registered cluster.
@@ -57,16 +61,23 @@ func Detect() string {
 }
 
 func hasFleetAccess() bool {
-	// Check if gcloud is available and Fleet API is accessible.
-	// This is a best-effort check — returns false on any error.
-	return execQuiet("gcloud", "container", "fleet", "memberships", "list", "--format=value(name)", "--limit=1") == nil
+	// Check if GCP default credentials are available and can list Fleet memberships.
+	_, err := google.FindDefaultCredentials(context.Background(), "https://www.googleapis.com/auth/cloud-platform")
+	return err == nil
 }
 
 func hasWorkloadIdentity() bool {
 	// Check GKE metadata server for Workload Identity.
-	return execQuiet("curl", "-sf", "--max-time", "1",
-		"http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=kapro",
-		"-H", "Metadata-Flavor: Google") == nil
+	client := &http.Client{Timeout: 1 * time.Second}
+	req, _ := http.NewRequest("GET",
+		"http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email", nil)
+	req.Header.Set("Metadata-Flavor", "Google")
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == 200
 }
 
 // New creates a provider by name.
