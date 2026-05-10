@@ -162,7 +162,9 @@ func (a *FluxOperatorActuator) ApplyDelta(ctx context.Context, req actuator.Delt
 	return count, nil
 }
 
-// IsConverged checks if the ResourceSet is Ready and the input matches desired version.
+// IsConverged checks if the ResourceSet input matches AND the rendered HelmRelease is Ready.
+// ResourceSet Ready only means "YAML was applied" — we also need to verify the spoke
+// HelmRelease actually succeeded (Ready=True on the HelmRelease itself).
 func (a *FluxOperatorActuator) IsConverged(ctx context.Context, mc *kaprov1alpha1.MemberCluster, appKey, version string) (bool, error) {
 	foSpec := mc.Spec.Actuator.FluxOperator
 	if foSpec == nil {
@@ -181,15 +183,27 @@ func (a *FluxOperatorActuator) IsConverged(ctx context.Context, mc *kaprov1alpha
 		return false, nil
 	}
 
+	// Check ResourceSet input has the right version.
+	inputMatch := false
 	for _, input := range getInputs(rs) {
 		if getStr(input, tenantField) == mc.Name {
-			return getStr(input, versionField) == version, nil
+			if getStr(input, versionField) == version {
+				inputMatch = true
+			}
+			break
 		}
 	}
-	return false, nil
+	if !inputMatch {
+		return false, nil
+	}
+
+	// Check the rendered HelmRelease is actually Ready on the spoke.
+	hrName := resolveHelmReleaseName(appKey, mc.Name)
+	return a.isHelmReleaseReady(ctx, hrName, ns)
 }
 
 // IsAllConverged checks convergence for all desired versions.
+// Verifies both ResourceSet inputs AND rendered HelmRelease Ready status.
 func (a *FluxOperatorActuator) IsAllConverged(ctx context.Context, mc *kaprov1alpha1.MemberCluster, desiredVersions map[string]string) (bool, error) {
 	if mc == nil {
 		return false, fmt.Errorf("cluster is nil")
@@ -210,6 +224,7 @@ func (a *FluxOperatorActuator) IsAllConverged(ctx context.Context, mc *kaprov1al
 		return false, nil
 	}
 
+	// Check all inputs match.
 	for _, input := range getInputs(rs) {
 		if getStr(input, tenantField) != mc.Name {
 			continue
@@ -218,6 +233,15 @@ func (a *FluxOperatorActuator) IsAllConverged(ctx context.Context, mc *kaprov1al
 			field := resolveVersionField(foSpec, appKey)
 			if getStr(input, field) != version {
 				return false, nil
+			}
+		}
+
+		// All inputs match — now check all HelmReleases are Ready.
+		for appKey := range desiredVersions {
+			hrName := resolveHelmReleaseName(appKey, mc.Name)
+			ready, err := a.isHelmReleaseReady(ctx, hrName, ns)
+			if err != nil || !ready {
+				return false, err
 			}
 		}
 		return true, nil
@@ -308,8 +332,13 @@ func getStr(m map[string]any, key string) string {
 	return v
 }
 
-func isReady(rs *unstructured.Unstructured) bool {
-	status, _ := rs.Object["status"].(map[string]any)
+func isReady(obj *unstructured.Unstructured) bool {
+	return hasReadyCondition(obj)
+}
+
+// hasReadyCondition checks if an unstructured object has condition type=Ready, status=True.
+func hasReadyCondition(obj *unstructured.Unstructured) bool {
+	status, _ := obj.Object["status"].(map[string]any)
 	if status == nil {
 		return false
 	}
@@ -324,4 +353,29 @@ func isReady(rs *unstructured.Unstructured) bool {
 		}
 	}
 	return false
+}
+
+var helmReleaseGVK = schema.GroupVersionKind{
+	Group:   "helm.toolkit.fluxcd.io",
+	Version: "v2",
+	Kind:    "HelmRelease",
+}
+
+// resolveHelmReleaseName returns the HelmRelease name for a component on a cluster.
+// Convention: {appKey}-{clusterName} (matches KaproReconciler.buildResourceSet).
+func resolveHelmReleaseName(appKey, clusterName string) string {
+	if appKey == "" || appKey == "default" {
+		return clusterName
+	}
+	return appKey + "-" + clusterName
+}
+
+// isHelmReleaseReady checks if the rendered HelmRelease has Ready=True.
+func (a *FluxOperatorActuator) isHelmReleaseReady(ctx context.Context, name, ns string) (bool, error) {
+	hr := &unstructured.Unstructured{}
+	hr.SetGroupVersionKind(helmReleaseGVK)
+	if err := a.Client.Get(ctx, client.ObjectKey{Name: name, Namespace: ns}, hr); err != nil {
+		return false, fmt.Errorf("get HelmRelease %s/%s: %w", ns, name, err)
+	}
+	return hasReadyCondition(hr), nil
 }

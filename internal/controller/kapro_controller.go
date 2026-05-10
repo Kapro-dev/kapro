@@ -159,7 +159,10 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 	inventory = append(inventory, "ResourceSet/"+kapro.Name+"-workloads")
 
-	// 4. Update Kapro status.
+	// 4. Clean up orphaned resources for removed clusters.
+	r.cleanupRemovedClusters(ctx, &kapro)
+
+	// 5. Update Kapro status.
 	patch := client.MergeFrom(kapro.DeepCopy())
 	kapro.Status.ClusterCount = int32(len(kapro.Spec.Clusters))
 	kapro.Status.ComponentCount = int32(len(app.Spec.Components))
@@ -427,6 +430,63 @@ func hasKubeconfigClusters(kapro *kaprov1alpha1.Kapro) bool {
 // isNoMatchError returns true when the error indicates a missing CRD/API group.
 func isNoMatchError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "no matches for kind")
+}
+
+// cleanupRemovedClusters deletes MemberClusters and kubeconfig Secrets
+// for clusters that were removed from the Kapro spec.
+func (r *KaproReconciler) cleanupRemovedClusters(ctx context.Context, kapro *kaprov1alpha1.Kapro) {
+	l := log.FromContext(ctx)
+
+	// Build set of current cluster names.
+	current := map[string]bool{}
+	for _, c := range kapro.Spec.Clusters {
+		current[c.Name] = true
+	}
+
+	// Delete orphaned MemberClusters.
+	var mcList kaprov1alpha1.MemberClusterList
+	if err := r.List(ctx, &mcList); err == nil {
+		for i := range mcList.Items {
+			mc := &mcList.Items[i]
+			// Only clean up MemberClusters that were created by this Kapro
+			// (check if it's in our inventory).
+			if !current[mc.Name] && isInInventory(kapro, "MemberCluster/"+mc.Name) {
+				if err := r.Delete(ctx, mc); err != nil {
+					l.Error(err, "failed to delete orphaned MemberCluster", "cluster", mc.Name)
+				} else {
+					l.Info("deleted orphaned MemberCluster", "cluster", mc.Name)
+				}
+			}
+		}
+	}
+
+	// Delete orphaned kubeconfig Secrets.
+	var secretList corev1.SecretList
+	if err := r.List(ctx, &secretList,
+		client.InNamespace("flux-system"),
+		client.MatchingLabels{"kapro.io/managed-by": kapro.Name},
+	); err == nil {
+		for i := range secretList.Items {
+			s := &secretList.Items[i]
+			clusterName := s.Labels["kapro.io/cluster"]
+			if clusterName != "" && !current[clusterName] {
+				if err := r.Delete(ctx, s); err != nil {
+					l.Error(err, "failed to delete orphaned kubeconfig secret", "secret", s.Name)
+				} else {
+					l.Info("deleted orphaned kubeconfig secret", "secret", s.Name)
+				}
+			}
+		}
+	}
+}
+
+func isInInventory(kapro *kaprov1alpha1.Kapro, item string) bool {
+	for _, inv := range kapro.Status.Inventory {
+		if inv == item {
+			return true
+		}
+	}
+	return false
 }
 
 // ensureKubeconfigSecret creates or updates a kubeconfig Secret for a GCP spoke cluster.
