@@ -14,10 +14,15 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/utils/ptr"
+	"github.com/go-logr/logr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlcfg "sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -150,7 +155,7 @@ func main() {
 			Namespace:  podNS,
 			Client:     mgr.GetClient(),
 		},
-		ApprovalSecret: loadSecret("approval-secret"),
+		ApprovalSecret: ensureApprovalSecret(cfg, podNS, log),
 		ExternalURL:    os.Getenv("KAPRO_EXTERNAL_URL"),
 		HubAPIURL:      os.Getenv("KAPRO_HUB_API_URL"),
 		HubCAData:      loadHubCAData(mgr.GetConfig()),
@@ -161,10 +166,10 @@ func main() {
 		log.Info("controller sharding enabled", "shard", cc.ShardName)
 	}
 
-	// Fail hard if the HMAC secret is missing — a zero-length secret means any token
-	// passes verification, which is a critical security hole.
+	// ApprovalSecret is loaded by ensureApprovalSecret — it either reads the existing
+	// K8s Secret, creates one with a random key, or falls back to env var/file mount.
 	if len(cc.ApprovalSecret) == 0 {
-		log.Error(nil, "approval-secret is empty; set the approval-secret Kubernetes Secret or KAPRO_APPROVAL_SECRET env var")
+		log.Error(nil, "approval-secret could not be loaded or generated")
 		os.Exit(1)
 	}
 
@@ -247,15 +252,86 @@ func main() {
 	}
 }
 
-// loadSecret reads a secret value from a mounted file (preferred) or falls back to an env var.
-// The mounted-file path is /etc/kapro/secrets/<name> — injected by Helm via secretKeyRef volume.
-// This is the production path; the env var fallback is for local dev only.
-func loadSecret(name string) []byte {
-	path := "/etc/kapro/secrets/" + name
-	if data, err := os.ReadFile(path); err == nil {
-		return []byte(strings.TrimSpace(string(data)))
+// ensureApprovalSecret loads the HMAC approval secret with this priority:
+//  1. Mounted file at /etc/kapro/secrets/approval-secret (Helm production path)
+//  2. KAPRO_APPROVAL_SECRET env var (local dev)
+//  3. K8s Secret "kapro-approval-hmac" in the operator namespace (auto-generated)
+//
+// If none exist, it auto-generates a 32-byte random key, stores it as a K8s Secret,
+// and returns it. This makes Kapro self-bootstrapping — no manual secret setup needed.
+func ensureApprovalSecret(cfg *rest.Config, namespace string, log logr.Logger) []byte {
+	// 1. Try mounted file (production Helm path).
+	if data, err := os.ReadFile("/etc/kapro/secrets/approval-secret"); err == nil {
+		v := strings.TrimSpace(string(data))
+		if v != "" {
+			return []byte(v)
+		}
 	}
-	return []byte(os.Getenv(strings.ToUpper(strings.ReplaceAll("KAPRO_"+name, "-", "_"))))
+
+	// 2. Try env var (local dev).
+	if v := os.Getenv("KAPRO_APPROVAL_SECRET"); v != "" {
+		return []byte(v)
+	}
+
+	// 3. Try reading existing K8s Secret (cert-manager pattern: read → create if missing).
+	clientset, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		log.Error(err, "failed to create clientset for approval secret")
+		return nil
+	}
+
+	const secretName = "kapro-approval-hmac"
+	existing, err := clientset.CoreV1().Secrets(namespace).Get(context.Background(), secretName, metav1.GetOptions{})
+	if err == nil {
+		if v, ok := existing.Data["hmac-key"]; ok && len(v) > 0 {
+			log.Info("loaded approval secret from K8s Secret", "secret", secretName)
+			return v
+		}
+	}
+	if err != nil && !apierrors.IsNotFound(err) {
+		log.Error(err, "failed to read approval secret", "secret", secretName)
+		return nil
+	}
+
+	// 4. Auto-generate a 32-byte random HMAC key and persist as K8s Secret.
+	// Same pattern as cert-manager's CA key bootstrap — generate once, reuse forever.
+	key := make([]byte, 32)
+	if _, err := crypto_rand.Read(key); err != nil {
+		log.Error(err, "failed to generate random approval secret")
+		return nil
+	}
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: namespace,
+			Labels: map[string]string{
+				"app.kubernetes.io/managed-by": "kapro-operator",
+				"app.kubernetes.io/component":  "approval-hmac",
+			},
+		},
+		Data: map[string][]byte{
+			"hmac-key": key,
+		},
+	}
+
+	if _, err := clientset.CoreV1().Secrets(namespace).Create(context.Background(), secret, metav1.CreateOptions{}); err != nil {
+		// Another replica might have created it concurrently — try reading it.
+		if apierrors.IsAlreadyExists(err) {
+			existing, getErr := clientset.CoreV1().Secrets(namespace).Get(context.Background(), secretName, metav1.GetOptions{})
+			if getErr == nil {
+				if v, ok := existing.Data["hmac-key"]; ok && len(v) > 0 {
+					log.Info("loaded approval secret created by another replica", "secret", secretName)
+					return v
+				}
+			}
+		}
+		log.Error(err, "failed to create approval secret", "secret", secretName)
+		return nil
+	}
+
+	log.Info("auto-generated approval HMAC secret", "secret", secretName, "namespace", namespace)
+	return key
 }
 
 // loadHubCAData returns the PEM-encoded CA certificate for the hub kube-apiserver.
