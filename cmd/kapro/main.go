@@ -30,6 +30,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	"kapro.io/kapro/internal/bootstrap"
 	"kapro.io/kapro/internal/cli"
 	internalgate "kapro.io/kapro/internal/gate"
 	"kapro.io/kapro/internal/provider"
@@ -64,6 +65,7 @@ Passes versions forward. Across targets. Across clusters. In waves.`,
 	root.AddCommand(newPromoteCmd())
 	root.AddCommand(newWorldCmd())
 	root.AddCommand(newBundleCmd())
+	root.AddCommand(newHubCmd())
 	// bootstrap is under "kapro cluster bootstrap" — no separate root command
 
 	if err := root.Execute(); err != nil {
@@ -187,7 +189,7 @@ func runClusterAdd(ctx context.Context, clusterName, providerName string, labels
 		_ = c.Patch(ctx, secret, patch)
 	}
 
-	// Create MemberCluster.
+	// Create MemberCluster with spoke-local actuator.
 	mc := &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   clusterName,
@@ -195,10 +197,10 @@ func runClusterAdd(ctx context.Context, clusterName, providerName string, labels
 		},
 		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{
-				Type: "flux-operator",
-				FluxOperator: &kaprov1alpha1.FluxOperatorConfig{
-					ResourceSet: "fleet-workloads",
-					Namespace:   "flux-system",
+				Type: "spoke",
+				Flux: &kaprov1alpha1.FluxActuator{
+					Namespace:     "flux-system",
+					OCIRepository: clusterName + "-bundle",
 				},
 			},
 		},
@@ -210,12 +212,66 @@ func runClusterAdd(ctx context.Context, clusterName, providerName string, labels
 		}
 	}
 
-	sp.StopSuccess("Cluster registered")
+	sp.StopSuccess("Cluster registered on hub")
+
+	// Bootstrap spoke: install flux-operator + FluxInstance.
+	sp2 := cli.NewSpinner("Bootstrapping spoke Flux controllers")
+	sp2.Start()
+
+	spokeClient, err := buildSpokeClient(kubeconfigData)
+	if err != nil {
+		sp2.StopFail("Failed to connect to spoke")
+		return err
+	}
+
+	if err := bootstrap.EnsureNamespace(ctx, spokeClient, "flux-system"); err != nil {
+		sp2.StopFail("Failed to create flux-system namespace")
+		return err
+	}
+	if err := bootstrap.InstallFluxOperator(ctx, spokeClient); err != nil {
+		sp2.StopFail("Failed to install flux-operator")
+		return err
+	}
+	if err := bootstrap.InstallFluxInstance(ctx, spokeClient); err != nil {
+		sp2.StopFail("Failed to create FluxInstance")
+		return err
+	}
+
+	sp2.StopSuccess("Spoke bootstrapped")
+
+	// GCP-specific setup (if applicable).
+	if providerName == "gcp" || providerName == "gcp-fleet" || providerName == "gcp-basic" {
+		sp3 := cli.NewSpinner("Configuring GCP (IAM, Workload Identity)")
+		sp3.Start()
+		gcpOpts := bootstrap.GCPSetupOptions{
+			HubProject:    project,
+			SpokeProject:  project,
+			SpokeCluster:  clusterName,
+			SpokeLocation: location,
+		}
+		if err := bootstrap.SetupGCPSpoke(ctx, gcpOpts); err != nil {
+			sp3.StopFail(fmt.Sprintf("GCP setup warning: %v", err))
+			// Non-fatal — might already be configured.
+		} else {
+			sp3.StopSuccess("GCP configured")
+		}
+	}
+
 	cli.KV("Cluster", clusterName)
 	cli.KV("Provider", p.Name())
 	cli.KV("Secret", secretName)
 	cli.KV("Labels", fmt.Sprintf("%v", labels))
+	cli.KV("Flux", "flux-operator + FluxInstance installed on spoke")
+	cli.KV("Actuator", "spoke (spoke-local Flux)")
 	return nil
+}
+
+func buildSpokeClient(kubeconfigData []byte) (client.Client, error) {
+	restConfig, err := clientcmd.RESTConfigFromKubeConfig(kubeconfigData)
+	if err != nil {
+		return nil, fmt.Errorf("parse kubeconfig: %w", err)
+	}
+	return client.New(restConfig, client.Options{})
 }
 
 func newClusterSyncCmd() *cobra.Command {
