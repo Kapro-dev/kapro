@@ -1,0 +1,92 @@
+// Package provider abstracts how Kapro connects to spoke clusters.
+//
+// Three modes:
+//   - kubeconfig: static kubeconfig file (any cloud, kind, on-prem)
+//   - gcp-basic: GKE Workload Identity + API endpoint (no Fleet)
+//   - gcp-fleet: GKE Fleet API + Connect Gateway (auto-discovery)
+//
+// The provider interface is used by the actuator to reach spoke clusters
+// and by the CLI to register clusters.
+package provider
+
+import (
+	"context"
+	"fmt"
+)
+
+// ClusterInfo represents a discovered or registered cluster.
+type ClusterInfo struct {
+	Name     string
+	Labels   map[string]string
+	Project  string
+	Location string
+	// Endpoint is the API server URL (for gcp-basic) or Connect Gateway URL (for gcp-fleet).
+	Endpoint string
+	// Provider is the mode that discovered this cluster.
+	Provider string
+}
+
+// Provider abstracts spoke cluster access.
+type Provider interface {
+	// Name returns the provider identifier (kubeconfig, gcp-basic, gcp-fleet).
+	Name() string
+
+	// GenerateKubeConfig creates a kubeconfig YAML for the given cluster.
+	// For kubeconfig mode: reads from the file path.
+	// For gcp-basic: generates kubeconfig with GKE API endpoint + exec auth.
+	// For gcp-fleet: generates kubeconfig with Connect Gateway URL + exec auth.
+	GenerateKubeConfig(ctx context.Context, clusterName string) ([]byte, error)
+
+	// ListClusters discovers clusters from the backend.
+	// Only gcp-fleet implements real discovery.
+	// kubeconfig and gcp-basic return an error (manual registration only).
+	ListClusters(ctx context.Context) ([]ClusterInfo, error)
+}
+
+// Detect auto-detects the best available provider.
+func Detect() string {
+	// Check for GKE Fleet API access.
+	if hasFleetAccess() {
+		return "gcp-fleet"
+	}
+	// Check for Workload Identity (running on GKE).
+	if hasWorkloadIdentity() {
+		return "gcp-basic"
+	}
+	return "kubeconfig"
+}
+
+func hasFleetAccess() bool {
+	// Check if gcloud is available and Fleet API is accessible.
+	// This is a best-effort check — returns false on any error.
+	return execQuiet("gcloud", "container", "fleet", "memberships", "list", "--format=value(name)", "--limit=1") == nil
+}
+
+func hasWorkloadIdentity() bool {
+	// Check GKE metadata server for Workload Identity.
+	return execQuiet("curl", "-sf", "--max-time", "1",
+		"http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=kapro",
+		"-H", "Metadata-Flavor: Google") == nil
+}
+
+// New creates a provider by name.
+func New(name string, opts Options) (Provider, error) {
+	switch name {
+	case "kubeconfig":
+		return &KubeconfigProvider{KubeconfigPath: opts.KubeconfigPath}, nil
+	case "gcp-basic", "gcp":
+		return &GCPBasicProvider{Project: opts.Project, Location: opts.Location}, nil
+	case "gcp-fleet":
+		return &GCPFleetProvider{Project: opts.Project}, nil
+	default:
+		return nil, fmt.Errorf("unknown provider %q (supported: kubeconfig, gcp-basic, gcp-fleet)", name)
+	}
+}
+
+// Options for provider creation.
+type Options struct {
+	KubeconfigPath string
+	Project        string
+	Location       string
+	ClusterName    string
+}

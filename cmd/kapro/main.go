@@ -27,9 +27,12 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	corev1 "k8s.io/api/core/v1"
+
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	"kapro.io/kapro/internal/cli"
 	internalgate "kapro.io/kapro/internal/gate"
+	"kapro.io/kapro/internal/provider"
 )
 
 var scheme = runtime.NewScheme()
@@ -72,7 +75,252 @@ func newClusterCmd() *cobra.Command {
 		Short: "Manage cluster registrations",
 	}
 	cmd.AddCommand(newBootstrapCmd())
+	cmd.AddCommand(newClusterAddCmd())
+	cmd.AddCommand(newClusterSyncCmd())
 	return cmd
+}
+
+func newClusterAddCmd() *cobra.Command {
+	var (
+		providerName string
+		labelsRaw    []string
+		kubeconfig   string
+		project      string
+		location     string
+	)
+	cmd := &cobra.Command{
+		Use:   "add <cluster-name>",
+		Short: "Register a cluster with Kapro",
+		Long: `Register a cluster using one of three provider modes:
+
+  kubeconfig:  Static kubeconfig (any cloud, kind, on-prem)
+  gcp:         GKE Workload Identity + API endpoint
+  gcp-fleet:   GKE Fleet API + Connect Gateway (auto-discovery)
+
+Examples:
+  kapro cluster add de-prod --kubeconfig /path/to/config --labels tier=prod
+  kapro cluster add de-prod --provider gcp --project my-project --labels tier=prod
+  kapro cluster sync --project my-project  (auto-discover all Fleet clusters)`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runClusterAdd(cmd.Context(), args[0], providerName, labelsRaw, kubeconfig, project, location)
+		},
+	}
+	cmd.Flags().StringVar(&providerName, "provider", "", "Provider mode: kubeconfig, gcp, gcp-fleet (auto-detected if empty)")
+	cmd.Flags().StringSliceVar(&labelsRaw, "labels", nil, "Labels (key=value)")
+	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig (provider=kubeconfig)")
+	cmd.Flags().StringVar(&project, "project", "", "GCP project (provider=gcp or gcp-fleet)")
+	cmd.Flags().StringVar(&location, "location", "", "GKE region (provider=gcp)")
+	return cmd
+}
+
+func runClusterAdd(ctx context.Context, clusterName, providerName string, labelsRaw []string, kubeconfigPath, project, location string) error {
+	// Auto-detect provider if not specified.
+	if providerName == "" {
+		if kubeconfigPath != "" {
+			providerName = "kubeconfig"
+		} else if project != "" {
+			providerName = "gcp"
+		} else {
+			providerName = provider.Detect()
+		}
+	}
+
+	p, err := provider.New(providerName, provider.Options{
+		KubeconfigPath: kubeconfigPath,
+		Project:        project,
+		Location:       location,
+		ClusterName:    clusterName,
+	})
+	if err != nil {
+		return err
+	}
+
+	sp := cli.NewSpinner(fmt.Sprintf("Registering cluster %s (provider: %s)", clusterName, p.Name()))
+	sp.Start()
+
+	// Generate kubeConfig for this cluster.
+	kubeconfigData, err := p.GenerateKubeConfig(ctx, clusterName)
+	if err != nil {
+		sp.StopFail("Failed to generate kubeconfig")
+		return err
+	}
+
+	// Build hub client.
+	c, err := buildClient("")
+	if err != nil {
+		sp.StopFail("Failed to connect to hub")
+		return err
+	}
+
+	// Parse labels.
+	labels := map[string]string{}
+	for _, kv := range labelsRaw {
+		parts := strings.SplitN(kv, "=", 2)
+		if len(parts) == 2 {
+			labels[parts[0]] = parts[1]
+		}
+	}
+
+	// Create kubeConfig Secret.
+	secretName := clusterName + "-kubeconfig"
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: "flux-system",
+		},
+		Type: corev1.SecretTypeOpaque,
+		Data: map[string][]byte{
+			"value": kubeconfigData,
+		},
+	}
+	if err := c.Create(ctx, secret); err != nil {
+		if !strings.Contains(err.Error(), "already exists") {
+			sp.StopFail("Failed to create kubeconfig Secret")
+			return err
+		}
+		// Update existing.
+		patch := client.MergeFrom(secret.DeepCopy())
+		secret.Data = map[string][]byte{"value": kubeconfigData}
+		_ = c.Patch(ctx, secret, patch)
+	}
+
+	// Create MemberCluster.
+	mc := &kaprov1alpha1.MemberCluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   clusterName,
+			Labels: labels,
+		},
+		Spec: kaprov1alpha1.MemberClusterSpec{
+			Actuator: kaprov1alpha1.ActuatorSpec{
+				Type: "flux-operator",
+				FluxOperator: &kaprov1alpha1.FluxOperatorConfig{
+					ResourceSet: "fleet-workloads",
+					Namespace:   "flux-system",
+				},
+			},
+		},
+	}
+	if err := c.Create(ctx, mc); err != nil {
+		if !strings.Contains(err.Error(), "already exists") {
+			sp.StopFail("Failed to create MemberCluster")
+			return err
+		}
+	}
+
+	sp.StopSuccess("Cluster registered")
+	cli.KV("Cluster", clusterName)
+	cli.KV("Provider", p.Name())
+	cli.KV("Secret", secretName)
+	cli.KV("Labels", fmt.Sprintf("%v", labels))
+	return nil
+}
+
+func newClusterSyncCmd() *cobra.Command {
+	var project string
+	cmd := &cobra.Command{
+		Use:   "sync",
+		Short: "Auto-discover and register all GKE Fleet clusters",
+		Long: `Reads all cluster memberships from GKE Fleet API and creates
+MemberCluster CRDs + kubeConfig Secrets for each. Fleet labels
+are synced to MemberCluster labels.
+
+Requires: GKE Fleet API access + Workload Identity.
+Migrate from gcp-basic: run this to upgrade all clusters to gcp-fleet mode.`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runClusterSync(cmd.Context(), project)
+		},
+	}
+	cmd.Flags().StringVar(&project, "project", "", "GCP project (required)")
+	_ = cmd.MarkFlagRequired("project")
+	return cmd
+}
+
+func runClusterSync(ctx context.Context, project string) error {
+	p, err := provider.New("gcp-fleet", provider.Options{Project: project})
+	if err != nil {
+		return err
+	}
+
+	sp := cli.NewSpinner("Discovering Fleet clusters")
+	sp.Start()
+
+	clusters, err := p.ListClusters(ctx)
+	if err != nil {
+		sp.StopFail("Failed to list Fleet clusters")
+		return err
+	}
+	sp.StopSuccess(fmt.Sprintf("Found %d clusters", len(clusters)))
+
+	c, err := buildClient("")
+	if err != nil {
+		return err
+	}
+
+	registered := 0
+	for _, cluster := range clusters {
+		sp := cli.NewSpinner(fmt.Sprintf("Registering %s", cluster.Name))
+		sp.Start()
+
+		// Generate kubeConfig via Connect Gateway.
+		kubeconfigData, err := p.GenerateKubeConfig(ctx, cluster.Name)
+		if err != nil {
+			sp.StopFail("Failed: " + err.Error())
+			continue
+		}
+
+		// Create/update kubeConfig Secret.
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      cluster.Name + "-kubeconfig",
+				Namespace: "flux-system",
+			},
+			Type: corev1.SecretTypeOpaque,
+			Data: map[string][]byte{"value": kubeconfigData},
+		}
+		if err := c.Create(ctx, secret); err != nil {
+			if strings.Contains(err.Error(), "already exists") {
+				patch := client.MergeFrom(secret.DeepCopy())
+				secret.Data = map[string][]byte{"value": kubeconfigData}
+				_ = c.Patch(ctx, secret, patch)
+			}
+		}
+
+		// Create/update MemberCluster with Fleet labels.
+		mc := &kaprov1alpha1.MemberCluster{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   cluster.Name,
+				Labels: cluster.Labels,
+			},
+			Spec: kaprov1alpha1.MemberClusterSpec{
+				Actuator: kaprov1alpha1.ActuatorSpec{
+					Type: "flux-operator",
+					FluxOperator: &kaprov1alpha1.FluxOperatorConfig{
+						ResourceSet: "fleet-workloads",
+						Namespace:   "flux-system",
+					},
+				},
+			},
+		}
+		if err := c.Create(ctx, mc); err != nil {
+			if strings.Contains(err.Error(), "already exists") {
+				existing := &kaprov1alpha1.MemberCluster{}
+				if getErr := c.Get(ctx, client.ObjectKey{Name: cluster.Name}, existing); getErr == nil {
+					patch := client.MergeFrom(existing.DeepCopy())
+					existing.Labels = cluster.Labels
+					_ = c.Patch(ctx, existing, patch)
+				}
+			}
+		}
+
+		sp.StopSuccess(cluster.Name)
+		registered++
+	}
+
+	fmt.Fprintln(cli.Out)
+	cli.Successf("%d clusters registered from GKE Fleet", registered)
+	cli.Muted("Run: kapro fleet")
+	return nil
 }
 
 func newBootstrapCmd() *cobra.Command {
