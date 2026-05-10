@@ -303,14 +303,10 @@ func (r *KaproReconciler) mergeValues(app *kaprov1alpha1.KaproApp, clusterName s
 				merged[ov.Component] = map[string]interface{}{}
 			}
 			if compMap, ok := merged[ov.Component].(map[string]interface{}); ok {
-				for k, v := range patch {
-					compMap[k] = v
-				}
+				deepMerge(compMap, patch)
 			}
 		} else {
-			for k, v := range patch {
-				merged[k] = v
-			}
+			deepMerge(merged, patch)
 		}
 	}
 
@@ -322,6 +318,24 @@ func (r *KaproReconciler) mergeValues(app *kaprov1alpha1.KaproApp, clusterName s
 		return ""
 	}
 	return string(b)
+}
+
+// deepMerge recursively merges src into dst. Nested maps are merged, not replaced.
+func deepMerge(dst, src map[string]interface{}) {
+	for k, srcVal := range src {
+		dstVal, exists := dst[k]
+		if !exists {
+			dst[k] = srcVal
+			continue
+		}
+		srcMap, srcOk := srcVal.(map[string]interface{})
+		dstMap, dstOk := dstVal.(map[string]interface{})
+		if srcOk && dstOk {
+			deepMerge(dstMap, srcMap)
+		} else {
+			dst[k] = srcVal
+		}
+	}
 }
 
 // overrideMatches returns true if the override applies to the given cluster.

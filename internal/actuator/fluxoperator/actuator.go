@@ -27,6 +27,14 @@ var resourceSetGVK = schema.GroupVersionKind{
 
 // FluxOperatorActuator implements the KAI interface by patching Flux Operator
 // ResourceSet inputs. Each MemberCluster maps to one input entry in a ResourceSet.
+//
+// Input field naming convention:
+//   - Single-app: inputField (default "tag") holds the version
+//   - Multi-app (KaproApp): "{appKey}_version" per component (e.g. "pos-server_version")
+//
+// The actuator resolves the field name from appKey: if appKey is non-empty and
+// the input entry has a matching "{appKey}_version" field, it patches that.
+// Otherwise falls back to the configured inputField for backward compatibility.
 type FluxOperatorActuator struct {
 	Client client.Client
 }
@@ -34,6 +42,9 @@ type FluxOperatorActuator struct {
 var _ actuator.Actuator = (*FluxOperatorActuator)(nil)
 
 // Apply patches the ResourceSet input for the target cluster with the desired version.
+// appKey determines which version field to patch:
+//   - appKey="pos-server" → patches "pos-server_version" field
+//   - appKey="" or "default" → patches the configured inputField (backward compat)
 func (a *FluxOperatorActuator) Apply(ctx context.Context, req actuator.ApplyRequest) error {
 	l := log.FromContext(ctx)
 	mc := req.Cluster
@@ -45,35 +56,20 @@ func (a *FluxOperatorActuator) Apply(ctx context.Context, req actuator.ApplyRequ
 		return fmt.Errorf("MemberCluster %q has no fluxOperator actuator config", mc.Name)
 	}
 
-	ns := foSpec.Namespace
-	if ns == "" {
-		ns = "flux-system"
-	}
-	inputField := foSpec.InputField
-	if inputField == "" {
-		inputField = "tag"
-	}
-	tenantField := foSpec.TenantField
-	if tenantField == "" {
-		tenantField = "tenant"
+	ns, tenantField := resolveConfig(foSpec)
+	versionField := resolveVersionField(foSpec, req.AppKey)
+
+	rs, err := a.getResourceSet(ctx, foSpec.ResourceSet, ns)
+	if err != nil {
+		return err
 	}
 
-	version := req.Version
-
-	// Get the ResourceSet (unstructured to avoid hard flux-operator dependency).
-	rs := &unstructured.Unstructured{}
-	rs.SetGroupVersionKind(resourceSetGVK)
-	if err := a.Client.Get(ctx, client.ObjectKey{Name: foSpec.ResourceSet, Namespace: ns}, rs); err != nil {
-		return fmt.Errorf("get ResourceSet %s/%s: %w", ns, foSpec.ResourceSet, err)
-	}
-
-	// Parse and update inputs.
 	patch := client.MergeFrom(rs.DeepCopy())
 	inputs := getInputs(rs)
 	found := false
 	for i, input := range inputs {
 		if getStr(input, tenantField) == mc.Name {
-			input[inputField] = version
+			input[versionField] = req.Version
 			inputs[i] = input
 			found = true
 			break
@@ -81,8 +77,8 @@ func (a *FluxOperatorActuator) Apply(ctx context.Context, req actuator.ApplyRequ
 	}
 	if !found {
 		inputs = append(inputs, map[string]any{
-			tenantField: mc.Name,
-			inputField:  version,
+			tenantField:  mc.Name,
+			versionField: req.Version,
 		})
 	}
 	setInputs(rs, inputs)
@@ -92,8 +88,78 @@ func (a *FluxOperatorActuator) Apply(ctx context.Context, req actuator.ApplyRequ
 	}
 
 	l.Info("patched ResourceSet input",
-		"resourceSet", foSpec.ResourceSet, "cluster", mc.Name, "version", version)
+		"resourceSet", foSpec.ResourceSet, "cluster", mc.Name,
+		"field", versionField, "version", req.Version)
 	return nil
+}
+
+// ApplyDelta applies version changes for multiple artifacts in a single ResourceSet patch.
+// More efficient than calling Apply per artifact — one GET + one PATCH.
+func (a *FluxOperatorActuator) ApplyDelta(ctx context.Context, req actuator.DeltaApplyRequest) (int, error) {
+	if req.Cluster == nil {
+		return 0, fmt.Errorf("cluster is nil")
+	}
+	mc := req.Cluster
+	foSpec := mc.Spec.Actuator.FluxOperator
+	if foSpec == nil {
+		return 0, fmt.Errorf("MemberCluster %q has no fluxOperator actuator config", mc.Name)
+	}
+
+	ns, tenantField := resolveConfig(foSpec)
+
+	rs, err := a.getResourceSet(ctx, foSpec.ResourceSet, ns)
+	if err != nil {
+		return 0, err
+	}
+
+	patch := client.MergeFrom(rs.DeepCopy())
+	inputs := getInputs(rs)
+
+	// Find the input entry for this cluster.
+	idx := -1
+	for i, input := range inputs {
+		if getStr(input, tenantField) == mc.Name {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		// Create new entry.
+		entry := map[string]any{tenantField: mc.Name}
+		for appKey, version := range req.DesiredVersions {
+			entry[resolveVersionField(foSpec, appKey)] = version
+		}
+		inputs = append(inputs, entry)
+		setInputs(rs, inputs)
+		if err := a.Client.Patch(ctx, rs, patch); err != nil {
+			return 0, fmt.Errorf("patch ResourceSet %s: %w", foSpec.ResourceSet, err)
+		}
+		return len(req.DesiredVersions), nil
+	}
+
+	// Update existing entry — patch all changed version fields at once.
+	count := 0
+	for appKey, version := range req.DesiredVersions {
+		field := resolveVersionField(foSpec, appKey)
+		if getStr(inputs[idx], field) != version {
+			inputs[idx][field] = version
+			count++
+		}
+	}
+
+	if count == 0 {
+		return 0, nil
+	}
+
+	setInputs(rs, inputs)
+	if err := a.Client.Patch(ctx, rs, patch); err != nil {
+		return 0, fmt.Errorf("patch ResourceSet %s: %w", foSpec.ResourceSet, err)
+	}
+
+	l := log.FromContext(ctx)
+	l.Info("patched ResourceSet inputs (delta)",
+		"resourceSet", foSpec.ResourceSet, "cluster", mc.Name, "changed", count)
+	return count, nil
 }
 
 // IsConverged checks if the ResourceSet is Ready and the input matches desired version.
@@ -102,34 +168,22 @@ func (a *FluxOperatorActuator) IsConverged(ctx context.Context, mc *kaprov1alpha
 	if foSpec == nil {
 		return false, fmt.Errorf("no fluxOperator config on %s", mc.Name)
 	}
-	ns := foSpec.Namespace
-	if ns == "" {
-		ns = "flux-system"
-	}
-	inputField := foSpec.InputField
-	if inputField == "" {
-		inputField = "tag"
-	}
-	tenantField := foSpec.TenantField
-	if tenantField == "" {
-		tenantField = "tenant"
-	}
 
-	rs := &unstructured.Unstructured{}
-	rs.SetGroupVersionKind(resourceSetGVK)
-	if err := a.Client.Get(ctx, client.ObjectKey{Name: foSpec.ResourceSet, Namespace: ns}, rs); err != nil {
+	ns, tenantField := resolveConfig(foSpec)
+	versionField := resolveVersionField(foSpec, appKey)
+
+	rs, err := a.getResourceSet(ctx, foSpec.ResourceSet, ns)
+	if err != nil {
 		return false, err
 	}
 
-	// Check Ready condition.
 	if !isReady(rs) {
 		return false, nil
 	}
 
-	// Check that the input for this cluster has the desired version.
 	for _, input := range getInputs(rs) {
 		if getStr(input, tenantField) == mc.Name {
-			return getStr(input, inputField) == version, nil
+			return getStr(input, versionField) == version, nil
 		}
 	}
 	return false, nil
@@ -140,36 +194,83 @@ func (a *FluxOperatorActuator) IsAllConverged(ctx context.Context, mc *kaprov1al
 	if mc == nil {
 		return false, fmt.Errorf("cluster is nil")
 	}
-	for _, version := range desiredVersions {
-		converged, err := a.IsConverged(ctx, mc, "", version)
-		if err != nil || !converged {
-			return false, err
-		}
+	foSpec := mc.Spec.Actuator.FluxOperator
+	if foSpec == nil {
+		return false, fmt.Errorf("no fluxOperator config on %s", mc.Name)
 	}
-	return true, nil
+
+	ns, tenantField := resolveConfig(foSpec)
+
+	rs, err := a.getResourceSet(ctx, foSpec.ResourceSet, ns)
+	if err != nil {
+		return false, err
+	}
+
+	if !isReady(rs) {
+		return false, nil
+	}
+
+	for _, input := range getInputs(rs) {
+		if getStr(input, tenantField) != mc.Name {
+			continue
+		}
+		for appKey, version := range desiredVersions {
+			field := resolveVersionField(foSpec, appKey)
+			if getStr(input, field) != version {
+				return false, nil
+			}
+		}
+		return true, nil
+	}
+	return false, nil
 }
 
 // Rollback sets the ResourceSet input back to a previous version.
-func (a *FluxOperatorActuator) Rollback(ctx context.Context, mc *kaprov1alpha1.MemberCluster, appKey, previousVersion string) error {
+func (a *FluxOperatorActuator) Rollback(ctx context.Context, mc *kaprov1alpha1.MemberCluster, previousVersion, appKey string) error {
 	if mc == nil {
 		return fmt.Errorf("cluster is nil")
 	}
-	return a.Apply(ctx, actuator.ApplyRequest{Cluster: mc, Version: previousVersion})
+	return a.Apply(ctx, actuator.ApplyRequest{
+		Cluster: mc,
+		Version: previousVersion,
+		AppKey:  appKey,
+	})
 }
 
-// ApplyDelta applies version changes for multiple artifacts.
-func (a *FluxOperatorActuator) ApplyDelta(ctx context.Context, req actuator.DeltaApplyRequest) (int, error) {
-	if req.Cluster == nil {
-		return 0, fmt.Errorf("cluster is nil")
+// --- Config helpers ---
+
+func resolveConfig(foSpec *kaprov1alpha1.FluxOperatorConfig) (ns, tenantField string) {
+	ns = foSpec.Namespace
+	if ns == "" {
+		ns = "flux-system"
 	}
-	count := 0
-	for _, version := range req.DesiredVersions {
-		if err := a.Apply(ctx, actuator.ApplyRequest{Cluster: req.Cluster, Version: version}); err != nil {
-			return count, err
-		}
-		count++
+	tenantField = foSpec.TenantField
+	if tenantField == "" {
+		tenantField = "tenant"
 	}
-	return count, nil
+	return
+}
+
+// resolveVersionField maps an appKey to the ResourceSet input field name.
+// For multi-component KaproApp: "pos-server" → "pos-server_version"
+// For single-app (backward compat): "" or "default" → configured inputField
+func resolveVersionField(foSpec *kaprov1alpha1.FluxOperatorConfig, appKey string) string {
+	if appKey != "" && appKey != "default" {
+		return appKey + "_version"
+	}
+	if foSpec.InputField != "" {
+		return foSpec.InputField
+	}
+	return "tag"
+}
+
+func (a *FluxOperatorActuator) getResourceSet(ctx context.Context, name, ns string) (*unstructured.Unstructured, error) {
+	rs := &unstructured.Unstructured{}
+	rs.SetGroupVersionKind(resourceSetGVK)
+	if err := a.Client.Get(ctx, client.ObjectKey{Name: name, Namespace: ns}, rs); err != nil {
+		return nil, fmt.Errorf("get ResourceSet %s/%s: %w", ns, name, err)
+	}
+	return rs, nil
 }
 
 // --- Unstructured helpers ---
