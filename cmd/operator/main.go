@@ -14,11 +14,7 @@ import (
 	"strings"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/utils/ptr"
@@ -30,6 +26,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaproSecret "kapro.io/kapro/internal/secret"
 	fluxopactuator "kapro.io/kapro/internal/actuator/fluxoperator"
 	_ "kapro.io/kapro/internal/metrics" // register custom Prometheus metrics at init
 	enginenotifier "kapro.io/kapro/internal/notification/engine"
@@ -155,7 +152,7 @@ func main() {
 			Namespace:  podNS,
 			Client:     mgr.GetClient(),
 		},
-		ApprovalSecret: ensureApprovalSecret(cfg, podNS, log),
+		ApprovalSecret: loadApprovalSecret(cfg, podNS, log),
 		ExternalURL:    os.Getenv("KAPRO_EXTERNAL_URL"),
 		HubAPIURL:      os.Getenv("KAPRO_HUB_API_URL"),
 		HubCAData:      loadHubCAData(mgr.GetConfig()),
@@ -252,14 +249,14 @@ func main() {
 	}
 }
 
-// ensureApprovalSecret loads the HMAC approval secret with this priority:
+// loadApprovalSecret loads the HMAC approval secret with this priority:
 //  1. Mounted file at /etc/kapro/secrets/approval-secret (Helm production path)
 //  2. KAPRO_APPROVAL_SECRET env var (local dev)
-//  3. K8s Secret "kapro-approval-hmac" in the operator namespace (auto-generated)
+//  3. K8s Secret "kapro-approval-hmac" — auto-generated if missing, watched for deletion
 //
-// If none exist, it auto-generates a 32-byte random key, stores it as a K8s Secret,
-// and returns it. This makes Kapro self-bootstrapping — no manual secret setup needed.
-func ensureApprovalSecret(cfg *rest.Config, namespace string, log logr.Logger) []byte {
+// Uses the cert-manager DynamicAuthority pattern: generate on first run, persist as
+// K8s Secret, informer watch recreates if deleted, mutex for concurrent replicas.
+func loadApprovalSecret(cfg *rest.Config, namespace string, log logr.Logger) []byte {
 	// 1. Try mounted file (production Helm path).
 	if data, err := os.ReadFile("/etc/kapro/secrets/approval-secret"); err == nil {
 		v := strings.TrimSpace(string(data))
@@ -273,64 +270,16 @@ func ensureApprovalSecret(cfg *rest.Config, namespace string, log logr.Logger) [
 		return []byte(v)
 	}
 
-	// 3. Try reading existing K8s Secret (cert-manager pattern: read → create if missing).
-	clientset, err := kubernetes.NewForConfig(cfg)
+	// 3. Bootstrap from K8s Secret with informer watch (cert-manager pattern).
+	provider := &kaproSecret.HMACKeyProvider{
+		Namespace: namespace,
+		Log:       log.WithName("approval-hmac"),
+	}
+	key, err := provider.Bootstrap(cfg)
 	if err != nil {
-		log.Error(err, "failed to create clientset for approval secret")
+		log.Error(err, "failed to bootstrap approval HMAC secret")
 		return nil
 	}
-
-	const secretName = "kapro-approval-hmac"
-	existing, err := clientset.CoreV1().Secrets(namespace).Get(context.Background(), secretName, metav1.GetOptions{})
-	if err == nil {
-		if v, ok := existing.Data["hmac-key"]; ok && len(v) > 0 {
-			log.Info("loaded approval secret from K8s Secret", "secret", secretName)
-			return v
-		}
-	}
-	if err != nil && !apierrors.IsNotFound(err) {
-		log.Error(err, "failed to read approval secret", "secret", secretName)
-		return nil
-	}
-
-	// 4. Auto-generate a 32-byte random HMAC key and persist as K8s Secret.
-	// Same pattern as cert-manager's CA key bootstrap — generate once, reuse forever.
-	key := make([]byte, 32)
-	if _, err := crypto_rand.Read(key); err != nil {
-		log.Error(err, "failed to generate random approval secret")
-		return nil
-	}
-
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: namespace,
-			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "kapro-operator",
-				"app.kubernetes.io/component":  "approval-hmac",
-			},
-		},
-		Data: map[string][]byte{
-			"hmac-key": key,
-		},
-	}
-
-	if _, err := clientset.CoreV1().Secrets(namespace).Create(context.Background(), secret, metav1.CreateOptions{}); err != nil {
-		// Another replica might have created it concurrently — try reading it.
-		if apierrors.IsAlreadyExists(err) {
-			existing, getErr := clientset.CoreV1().Secrets(namespace).Get(context.Background(), secretName, metav1.GetOptions{})
-			if getErr == nil {
-				if v, ok := existing.Data["hmac-key"]; ok && len(v) > 0 {
-					log.Info("loaded approval secret created by another replica", "secret", secretName)
-					return v
-				}
-			}
-		}
-		log.Error(err, "failed to create approval secret", "secret", secretName)
-		return nil
-	}
-
-	log.Info("auto-generated approval HMAC secret", "secret", secretName, "namespace", namespace)
 	return key
 }
 
