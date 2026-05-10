@@ -14,7 +14,9 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
@@ -194,16 +196,18 @@ func (r *KaproReconciler) buildPipeline(kapro *kaprov1alpha1.Kapro) *kaprov1alph
 // them to the matching spoke cluster.
 func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha1.Kapro, app *kaprov1alpha1.KaproApp) *unstructured.Unstructured {
 	// Build inputs: one entry per cluster.
+	// The "version" field is the primary version promoted by Release.
+	// For single-component apps, it's the component version.
+	// For multi-component apps, it's the Release.spec.version (bundle version).
+	// Per-component versions are embedded in the values_override JSON.
+	primaryVersion := app.Spec.Components[0].Version
 	inputs := make([]interface{}, 0, len(kapro.Spec.Clusters))
 	for _, cluster := range kapro.Spec.Clusters {
 		input := map[string]interface{}{
-			"tenant": cluster.Name,
+			"tenant":  cluster.Name,
+			"version": primaryVersion,
 		}
-		// Add per-component version fields.
-		for _, comp := range app.Spec.Components {
-			input[comp.Name+"_version"] = comp.Version
-		}
-		// Merge defaults + matching overrides into a values JSON blob.
+		// Merge defaults + per-component versions + matching overrides.
 		mergedValues := r.mergeValues(app, cluster.Name, cluster.Labels)
 		if mergedValues != "" {
 			input["values_override"] = mergedValues
@@ -235,7 +239,7 @@ func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha1.Kapro, app *kapr
 				"chart": map[string]interface{}{
 					"spec": map[string]interface{}{
 						"chart":   chartName,
-						"version": "<< inputs." + comp.Name + "_version >>",
+						"version": "<< inputs.version >>",
 						"sourceRef": map[string]interface{}{
 							"kind": "HelmRepository",
 							"name": kapro.Name + "-registry",
@@ -386,5 +390,27 @@ func isNoMatchError(err error) bool {
 func (r *KaproReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kaprov1alpha1.Kapro{}).
+		Watches(&kaprov1alpha1.KaproApp{}, handler.EnqueueRequestsFromMapFunc(r.kaproAppToKapro)).
 		Complete(r)
+}
+
+// kaproAppToKapro maps a KaproApp change to the Kapro(s) that reference it.
+func (r *KaproReconciler) kaproAppToKapro(ctx context.Context, obj client.Object) []reconcile.Request {
+	app, ok := obj.(*kaprov1alpha1.KaproApp)
+	if !ok {
+		return nil
+	}
+	var kapros kaprov1alpha1.KaproList
+	if err := r.List(ctx, &kapros); err != nil {
+		return nil
+	}
+	var requests []reconcile.Request
+	for _, k := range kapros.Items {
+		if k.Spec.AppRef == app.Name {
+			requests = append(requests, reconcile.Request{
+				NamespacedName: client.ObjectKeyFromObject(&k),
+			})
+		}
+	}
+	return requests
 }

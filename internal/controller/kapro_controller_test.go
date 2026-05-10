@@ -64,14 +64,9 @@ func TestBuildResourceSet_Components(t *testing.T) {
 	if input0["tenant"] != "canary-eu" {
 		t.Errorf("input[0].tenant = %v, want canary-eu", input0["tenant"])
 	}
-	if input0["pos-server_version"] != "5.28.0" {
-		t.Errorf("input[0].pos-server_version = %v, want 5.28.0", input0["pos-server_version"])
-	}
-	if input0["sdc_version"] != "5.28.0" {
-		t.Errorf("input[0].sdc_version = %v, want 5.28.0", input0["sdc_version"])
-	}
-	if input0["keycloak_version"] != "6.5.0" {
-		t.Errorf("input[0].keycloak_version = %v, want 6.5.0", input0["keycloak_version"])
+	// Primary version comes from first component.
+	if input0["version"] != "5.28.0" {
+		t.Errorf("input[0].version = %v, want 5.28.0", input0["version"])
 	}
 
 	// Verify resources: one HelmRelease per component + one HelmRepository.
@@ -96,8 +91,8 @@ func TestBuildResourceSet_Components(t *testing.T) {
 	hrSpec, _ := hr0["spec"].(map[string]interface{})
 	chart, _ := hrSpec["chart"].(map[string]interface{})
 	chartSpec, _ := chart["spec"].(map[string]interface{})
-	if chartSpec["version"] != "<< inputs.pos-server_version >>" {
-		t.Errorf("chart version = %v, want << inputs.pos-server_version >>", chartSpec["version"])
+	if chartSpec["version"] != "<< inputs.version >>" {
+		t.Errorf("chart version = %v, want << inputs.version >>", chartSpec["version"])
 	}
 
 	// Verify HelmRepository is the last resource.
