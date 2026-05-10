@@ -19,16 +19,31 @@
 package bundle
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"oras.land/oras-go/v2"
+	"oras.land/oras-go/v2/content/memory"
+	"oras.land/oras-go/v2/registry/remote"
+	"oras.land/oras-go/v2/registry/remote/auth"
 	"sigs.k8s.io/yaml"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	"kapro.io/kapro/internal/provider"
 )
 
 // BundleRequest holds the inputs for bundle generation.
@@ -39,25 +54,168 @@ type BundleRequest struct {
 	Registry  string // OCI registry URL (e.g. oci://europe-west1-docker.pkg.dev/project/repo)
 }
 
-// Push pushes an already-generated bundle directory to an OCI registry
-// using `flux push artifact`. The dir should contain wave-NN/ subdirectories.
+// Push pushes an already-generated bundle directory to an OCI registry.
+// Uses ORAS Go SDK with GCP Workload Identity — no flux CLI or gcloud dependency.
 // Returns the full OCI URL with tag.
 func Push(ctx context.Context, dir string, req BundleRequest) (string, error) {
-	ociURL := fmt.Sprintf("%s/%s-bundle:%s", req.Registry, req.KaproName, req.Version)
+	registryURL := strings.TrimPrefix(req.Registry, "oci://")
+	repoRef := fmt.Sprintf("%s/%s-bundle", registryURL, req.KaproName)
+	tag := req.Version
 
-	cmd := exec.CommandContext(ctx, "flux", "push", "artifact",
-		ociURL,
-		"--path", dir,
-		"--source", "kapro://"+req.KaproName,
-		"--revision", req.Version,
-	)
-	cmd.Env = append(os.Environ(), "FLUX_SYSTEM_NAMESPACE=flux-system")
-	out, err := cmd.CombinedOutput()
+	// Create a tar.gz of the bundle directory.
+	layerData, err := tarGzDir(dir)
 	if err != nil {
-		return "", fmt.Errorf("flux push artifact: %s: %w", string(out), err)
+		return "", fmt.Errorf("create tar.gz: %w", err)
 	}
 
-	return ociURL, nil
+	// Build OCI manifest using ORAS.
+	store := memory.New()
+
+	// Push the layer.
+	layerDesc := ocispec.Descriptor{
+		MediaType: "application/vnd.cncf.flux.content.v1.tar+gzip",
+		Digest:    digestOf(layerData),
+		Size:      int64(len(layerData)),
+		Annotations: map[string]string{
+			ocispec.AnnotationTitle: "bundle.tar.gz",
+		},
+	}
+	if err := store.Push(ctx, layerDesc, bytes.NewReader(layerData)); err != nil {
+		return "", fmt.Errorf("push layer to memory store: %w", err)
+	}
+
+	// Build config.
+	configData := []byte("{}")
+	configDesc := ocispec.Descriptor{
+		MediaType: "application/vnd.cncf.flux.config.v1+json",
+		Digest:    digestOf(configData),
+		Size:      int64(len(configData)),
+	}
+	if err := store.Push(ctx, configDesc, bytes.NewReader(configData)); err != nil {
+		return "", fmt.Errorf("push config to memory store: %w", err)
+	}
+
+	// Build manifest.
+	manifest := ocispec.Manifest{
+		Versioned: specs.Versioned{SchemaVersion: 2},
+		MediaType: ocispec.MediaTypeImageManifest,
+		Config:    configDesc,
+		Layers:    []ocispec.Descriptor{layerDesc},
+		Annotations: map[string]string{
+			"org.opencontainers.image.source":   "kapro://" + req.KaproName,
+			"org.opencontainers.image.revision": req.Version,
+			"org.opencontainers.image.created":  time.Now().UTC().Format(time.RFC3339),
+		},
+	}
+	manifestData, err := json.Marshal(manifest)
+	if err != nil {
+		return "", fmt.Errorf("marshal manifest: %w", err)
+	}
+	manifestDesc := ocispec.Descriptor{
+		MediaType: ocispec.MediaTypeImageManifest,
+		Digest:    digestOf(manifestData),
+		Size:      int64(len(manifestData)),
+	}
+	if err := store.Push(ctx, manifestDesc, bytes.NewReader(manifestData)); err != nil {
+		return "", fmt.Errorf("push manifest to memory store: %w", err)
+	}
+	if err := store.Tag(ctx, manifestDesc, tag); err != nil {
+		return "", fmt.Errorf("tag manifest: %w", err)
+	}
+
+	// Connect to remote registry with GCP auth.
+	repo, err := remote.NewRepository(repoRef)
+	if err != nil {
+		return "", fmt.Errorf("create remote repository %s: %w", repoRef, err)
+	}
+
+	// GCP auth: use WI/ADC token as password with "oauth2accesstoken" as username.
+	token, err := provider.GetAccessToken(ctx)
+	if err != nil {
+		return "", fmt.Errorf("get GCP access token: %w", err)
+	}
+	repo.Client = &auth.Client{
+		Credential: auth.StaticCredential(registryHost(registryURL), auth.Credential{
+			Username: "oauth2accesstoken",
+			Password: token,
+		}),
+	}
+
+	// Copy from memory store to remote.
+	if _, err := oras.Copy(ctx, store, tag, repo, tag, oras.DefaultCopyOptions); err != nil {
+		return "", fmt.Errorf("push to %s:%s: %w", repoRef, tag, err)
+	}
+
+	return fmt.Sprintf("oci://%s:%s", repoRef, tag), nil
+}
+
+// registryHost extracts the host from a registry URL.
+// "europe-west1-docker.pkg.dev/project/repo" → "europe-west1-docker.pkg.dev"
+func registryHost(url string) string {
+	parts := strings.SplitN(url, "/", 2)
+	return parts[0]
+}
+
+// tarGzDir creates a tar.gz archive of a directory.
+func tarGzDir(dir string) ([]byte, error) {
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gw)
+
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+
+		header, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return err
+		}
+		header.Name = rel
+
+		if err := tw.WriteHeader(header); err != nil {
+			return err
+		}
+
+		if d.IsDir() {
+			return nil
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		_, err = tw.Write(data)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tw.Close(); err != nil {
+		return nil, err
+	}
+	if err := gw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func digestOf(data []byte) digest.Digest {
+	h := sha256.Sum256(data)
+	return digest.NewDigestFromBytes(digest.SHA256, h[:])
 }
 
 // Generate produces the spoke manifest files as a map of relative path → YAML content.

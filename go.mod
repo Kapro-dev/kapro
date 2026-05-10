@@ -11,6 +11,8 @@ require (
 	github.com/fatih/color v1.19.0
 	github.com/go-logr/logr v1.4.3
 	github.com/google/cel-go v0.28.0
+	github.com/opencontainers/go-digest v1.0.0
+	github.com/opencontainers/image-spec v1.1.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/oauth2 v0.36.0
@@ -20,6 +22,7 @@ require (
 	k8s.io/apimachinery v0.35.2
 	k8s.io/client-go v0.35.2
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
+	oras.land/oras-go/v2 v2.6.0
 	sigs.k8s.io/controller-runtime v0.23.3
 	sigs.k8s.io/yaml v1.6.0
 )

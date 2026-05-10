@@ -43,7 +43,7 @@ func (p *GCPBasicProvider) GenerateKubeConfig(ctx context.Context, clusterName s
 	}
 
 	// Get access token (cached, auto-refreshed via WI or ADC).
-	token, err := getAccessToken(ctx)
+	token, err := GetAccessToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("get access token: %w", err)
 	}
@@ -87,7 +87,9 @@ func initTokenSource(ctx context.Context) {
 // On GKE with WI: gets token from metadata server via Go SDK. Zero gcloud dependency.
 // Locally: tries ADC first, falls back to gcloud auth print-access-token.
 // Token is cached and auto-refreshed — one token serves ALL clusters in the same project.
-func getAccessToken(ctx context.Context) (string, error) {
+// GetAccessToken returns a GCP access token for API authentication.
+// Priority: ADC/WI (Go SDK, cached) → gcloud CLI fallback (local dev).
+func GetAccessToken(ctx context.Context) (string, error) {
 	initTokenSource(ctx)
 
 	tok, err := cachedTS.Token()
