@@ -12,6 +12,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	container "cloud.google.com/go/container/apiv1"
+	"cloud.google.com/go/container/apiv1/containerpb"
+	"google.golang.org/api/option"
+
 	"kapro.io/kapro/internal/bootstrap"
 	"kapro.io/kapro/internal/provider"
 )
@@ -73,7 +77,7 @@ func runHubInit(ctx context.Context, kubeconfigPath, project, clusterName, locat
 
 	target := "current context"
 	if clusterName != "" {
-		target = fmt.Sprintf("%s/%s/%s", project, location, clusterName)
+		target = fmt.Sprintf("%s/%s", project, clusterName)
 	} else if kubeconfigPath != "" {
 		target = kubeconfigPath
 	}
@@ -118,18 +122,13 @@ func resolveHubClient(ctx context.Context, kubeconfigPath, project, clusterName,
 
 	// GCP mode: resolve cluster via SDK, generate kubeconfig in memory.
 	if project != "" && clusterName != "" {
-		// Auto-detect location from Fleet API if not provided.
+		// Auto-detect location if not provided.
 		if location == "" {
-			fleetProvider := &provider.GCPFleetProvider{Project: project}
-			kubeconfigData, err := fleetProvider.GenerateKubeConfig(ctx, clusterName)
+			var err error
+			location, err = detectClusterLocation(ctx, project, clusterName)
 			if err != nil {
-				return nil, fmt.Errorf("auto-detect cluster location via Fleet API: %w (use --location to specify manually)", err)
+				return nil, fmt.Errorf("auto-detect location for %s: %w (use --location to specify manually)", clusterName, err)
 			}
-			restConfig, err := clientcmd.RESTConfigFromKubeConfig(kubeconfigData)
-			if err != nil {
-				return nil, fmt.Errorf("parse kubeconfig: %w", err)
-			}
-			return client.New(restConfig, client.Options{Scheme: scheme})
 		}
 		p := &provider.GCPBasicProvider{
 			Project:  project,
@@ -160,4 +159,41 @@ func resolveHubClient(ctx context.Context, kubeconfigPath, project, clusterName,
 	}
 
 	return client.New(cfg, client.Options{Scheme: scheme})
+}
+
+// detectClusterLocation finds a GKE cluster's location by listing all clusters
+// in the project. Tries Fleet API first (faster, label-aware), then falls back
+// to the GKE Container API (lists all locations).
+func detectClusterLocation(ctx context.Context, project, clusterName string) (string, error) {
+	// Try Fleet API first.
+	fleetProvider := &provider.GCPFleetProvider{Project: project}
+	clusters, err := fleetProvider.ListClusters(ctx)
+	if err == nil {
+		for _, c := range clusters {
+			if c.Name == clusterName {
+				return c.Location, nil
+			}
+		}
+	}
+
+	// Fallback: list all GKE clusters in all locations.
+	ts := provider.GCPTokenSource(ctx)
+	clusterClient, err := container.NewClusterManagerClient(ctx, option.WithTokenSource(ts))
+	if err != nil {
+		return "", fmt.Errorf("create GKE client: %w", err)
+	}
+	defer clusterClient.Close()
+
+	parent := fmt.Sprintf("projects/%s/locations/-", project)
+	resp, err := clusterClient.ListClusters(ctx, &containerpb.ListClustersRequest{Parent: parent})
+	if err != nil {
+		return "", fmt.Errorf("list GKE clusters: %w", err)
+	}
+	for _, cluster := range resp.GetClusters() {
+		if cluster.GetName() == clusterName {
+			return cluster.GetLocation(), nil
+		}
+	}
+
+	return "", fmt.Errorf("cluster %q not found in project %s", clusterName, project)
 }
