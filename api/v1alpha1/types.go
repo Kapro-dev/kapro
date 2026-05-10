@@ -1522,43 +1522,33 @@ type KaproAppSpec struct {
 	// Overrides are per-cluster or per-label value patches layered on top of defaults.
 	// +optional
 	Overrides []AppOverride `json:"overrides,omitempty"`
-	// Namespaces configures how workload namespaces are generated on spokes.
-	// When set, enables namespace-based deployment strategies (blue-green, canary).
-	// +optional
-	Namespaces *NamespaceStrategy `json:"namespaces,omitempty"`
-}
-
-// NamespaceStrategy controls how workloads are deployed to namespaces on spokes.
-// Models the SIT monorepo pattern: environment-prefixed workload namespace
-// with shared infrastructure namespaces.
-type NamespaceStrategy struct {
-	// WorkloadNamespace is the template for the workload namespace.
-	// Supports substitution: {{.Env}}, {{.Slot}} (for blue-green).
+	// WorkloadNamespace is the default namespace where workload pods run on spokes.
+	// Supports substitution: {{.Env}} (environment name).
 	// Example: "{{.Env}}-workloads" → "p528-workloads"
-	// Default: the component's Namespace field is used as-is.
+	// Components with explicit targetNamespace override this (e.g. kafka → "kafka").
+	// When empty, uses each component's Namespace field as-is.
 	// +optional
 	WorkloadNamespace string `json:"workloadNamespace,omitempty"`
-	// HelmReleaseNamespace is where HelmRelease CRs live (not the workloads).
-	// Default: "flux-system"
+	// HelmReleaseNamespace is where HelmRelease CRs live on spokes (not the workloads).
 	// +kubebuilder:default="flux-system"
 	HelmReleaseNamespace string `json:"helmReleaseNamespace,omitempty"`
-	// BlueGreen enables blue-green namespace deployment (intra-country).
-	// When set, Kapro maintains two workload namespaces per spoke and
-	// switches all traffic at once after verification.
-	// Inter-country canary is handled by Pipeline stages with soak time.
+	// MultiVersion enables running multiple versions simultaneously on a spoke
+	// using namespace-based isolation. When nil (default), Kapro does single-namespace
+	// in-place upgrades — no extra namespaces, no OPA/Kyverno changes needed.
 	// +optional
-	BlueGreen *BlueGreenStrategy `json:"blueGreen,omitempty"`
+	MultiVersion *MultiVersionStrategy `json:"multiVersion,omitempty"`
 }
 
-// BlueGreenStrategy configures blue-green namespace deployment (intra-country).
-// Two workload namespaces exist on each spoke. The active slot serves all store
-// traffic, the standby slot receives the next version. After verification,
-// Kapro switches all traffic at once — no gradual rollout within a country.
-// Gradual rollout happens inter-country via Pipeline stages with soak time.
-type BlueGreenStrategy struct {
-	// SlotNames are the two slot identifiers used in namespace templating.
-	// Default: ["blue", "green"]
-	// Example with WorkloadNamespace "{{.Env}}-{{.Slot}}-workloads":
+// MultiVersionStrategy enables namespace-based version isolation on spokes.
+// When enabled, two workload namespaces coexist: active (serving traffic)
+// and standby (deploying next version). Shared infrastructure (kafka,
+// postgres, mongo) exists once and serves both.
+//
+// This is an opt-in feature. When not set, Kapro uses single-namespace
+// in-place upgrades with no policy changes required.
+type MultiVersionStrategy struct {
+	// SlotNames are the two namespace slot identifiers appended to workloadNamespace.
+	// Example with workloadNamespace "{{.Env}}-workloads" and slotNames ["blue","green"]:
 	//   → "p528-blue-workloads" (active, all store traffic)
 	//   → "p528-green-workloads" (standby, deploying + verifying)
 	// +kubebuilder:validation:MinItems=2
@@ -1568,7 +1558,7 @@ type BlueGreenStrategy struct {
 	TrafficSwitch TrafficSwitch `json:"trafficSwitch"`
 }
 
-// TrafficSwitch configures the full traffic flip between blue-green namespace slots.
+// TrafficSwitch configures the full traffic flip between namespace slots.
 // This is always all-or-nothing — no weighted routing. POS checkout sessions
 // cannot be split across versions.
 type TrafficSwitch struct {

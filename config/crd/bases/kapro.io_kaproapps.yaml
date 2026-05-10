@@ -115,88 +115,72 @@ spec:
                 description: Defaults are base Helm values applied to every component
                   on every cluster.
                 x-kubernetes-preserve-unknown-fields: true
-              namespaces:
+              helmReleaseNamespace:
+                default: flux-system
+                description: HelmReleaseNamespace is where HelmRelease CRs live on
+                  spokes (not the workloads).
+                type: string
+              multiVersion:
                 description: |-
-                  Namespaces configures how workload namespaces are generated on spokes.
-                  When set, enables namespace-based deployment strategies (blue-green, canary).
+                  MultiVersion enables running multiple versions simultaneously on a spoke
+                  using namespace-based isolation. When nil (default), Kapro does single-namespace
+                  in-place upgrades — no extra namespaces, no OPA/Kyverno changes needed.
                 properties:
-                  blueGreen:
+                  slotNames:
                     description: |-
-                      BlueGreen enables blue-green namespace deployment (intra-country).
-                      When set, Kapro maintains two workload namespaces per spoke and
-                      switches all traffic at once after verification.
-                      Inter-country canary is handled by Pipeline stages with soak time.
+                      SlotNames are the two namespace slot identifiers appended to workloadNamespace.
+                      Example with workloadNamespace "{{.Env}}-workloads" and slotNames ["blue","green"]:
+                        → "p528-blue-workloads" (active, all store traffic)
+                        → "p528-green-workloads" (standby, deploying + verifying)
+                    items:
+                      type: string
+                    maxItems: 2
+                    minItems: 2
+                    type: array
+                  trafficSwitch:
+                    description: TrafficSwitch configures how traffic flips between
+                      slots.
                     properties:
-                      slotNames:
+                      ingressRef:
                         description: |-
-                          SlotNames are the two slot identifiers used in namespace templating.
-                          Default: ["blue", "green"]
-                          Example with WorkloadNamespace "{{.Env}}-{{.Slot}}-workloads":
-                            → "p528-blue-workloads" (active, all store traffic)
-                            → "p528-green-workloads" (standby, deploying + verifying)
-                        items:
-                          type: string
-                        maxItems: 2
-                        minItems: 2
-                        type: array
-                      trafficSwitch:
-                        description: TrafficSwitch configures how traffic flips between
-                          slots.
+                          IngressRef identifies the routing resource to modify.
+                          For traefik: an IngressRoute. For nginx: an Ingress.
+                          For gateway-api: an HTTPRoute. For istio: a VirtualService.
                         properties:
-                          ingressRef:
-                            description: |-
-                              IngressRef identifies the routing resource to modify.
-                              For traefik: an IngressRoute. For nginx: an Ingress.
-                              For gateway-api: an HTTPRoute. For istio: a VirtualService.
-                            properties:
-                              apiVersion:
-                                description: APIVersion of the routing resource (e.g.
-                                  gateway.networking.k8s.io/v1).
-                                type: string
-                              kind:
-                                description: Kind of the routing resource (e.g. HTTPRoute,
-                                  Ingress, VirtualService).
-                                type: string
-                              name:
-                                description: Name of the resource.
-                                type: string
-                              namespace:
-                                description: Namespace of the resource.
-                                type: string
-                            required:
-                            - apiVersion
-                            - kind
-                            - name
-                            type: object
-                          provider:
-                            description: Provider is the traffic routing backend that
-                              performs the switch.
-                            enum:
-                            - gateway-api
-                            - istio
-                            - nginx
-                            - traefik
-                            - manual
+                          apiVersion:
+                            description: APIVersion of the routing resource (e.g.
+                              gateway.networking.k8s.io/v1).
+                            type: string
+                          kind:
+                            description: Kind of the routing resource (e.g. HTTPRoute,
+                              Ingress, VirtualService).
+                            type: string
+                          name:
+                            description: Name of the resource.
+                            type: string
+                          namespace:
+                            description: Namespace of the resource.
                             type: string
                         required:
-                        - provider
+                        - apiVersion
+                        - kind
+                        - name
                         type: object
+                      provider:
+                        description: Provider is the traffic routing backend that
+                          performs the switch.
+                        enum:
+                        - gateway-api
+                        - istio
+                        - nginx
+                        - traefik
+                        - manual
+                        type: string
                     required:
-                    - trafficSwitch
+                    - provider
                     type: object
-                  helmReleaseNamespace:
-                    default: flux-system
-                    description: |-
-                      HelmReleaseNamespace is where HelmRelease CRs live (not the workloads).
-                      Default: "flux-system"
-                    type: string
-                  workloadNamespace:
-                    description: |-
-                      WorkloadNamespace is the template for the workload namespace.
-                      Supports substitution: {{.Env}}, {{.Slot}} (for blue-green).
-                      Example: "{{.Env}}-workloads" → "p528-workloads"
-                      Default: the component's Namespace field is used as-is.
-                    type: string
+                required:
+                - trafficSwitch
                 type: object
               overrides:
                 description: Overrides are per-cluster or per-label value patches
@@ -226,6 +210,14 @@ spec:
                       x-kubernetes-preserve-unknown-fields: true
                   type: object
                 type: array
+              workloadNamespace:
+                description: |-
+                  WorkloadNamespace is the default namespace where workload pods run on spokes.
+                  Supports substitution: {{.Env}} (environment name).
+                  Example: "{{.Env}}-workloads" → "p528-workloads"
+                  Components with explicit targetNamespace override this (e.g. kafka → "kafka").
+                  When empty, uses each component's Namespace field as-is.
+                type: string
             required:
             - components
             type: object
