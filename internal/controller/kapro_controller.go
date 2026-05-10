@@ -623,8 +623,17 @@ func isSpokeLocalMode(kapro *kaprov1alpha1.Kapro) bool {
 }
 
 // buildSpokeBootstrapResourceSet creates a ResourceSet that bootstraps each spoke
-// with an OCIRepository and root Kustomization. The spoke's local Flux controllers
-// pull the bundle and reconcile HelmReleases + wave Kustomizations locally.
+// with an OCIRepository and per-wave Kustomizations. The spoke's local Flux
+// controllers pull the bundle and reconcile HelmReleases locally.
+//
+// Bundle structure (per-wave directories):
+//
+//	wave-00/  ← HelmRepository + wave 0 HelmReleases
+//	wave-01/  ← wave 1 HelmReleases
+//	wave-02/  ← wave 2 HelmReleases
+//
+// Each wave Kustomization points to its wave-NN/ path and has dependsOn
+// to the previous wave, creating a visible DAG in k9s.
 func (r *KaproReconciler) buildSpokeBootstrapResourceSet(kapro *kaprov1alpha1.Kapro, app *kaprov1alpha1.KaproApp) *unstructured.Unstructured {
 	primaryVersion := app.Spec.Components[0].Version
 	bundleURL := kapro.Spec.Registry.URL + "/" + kapro.Name + "-bundle"
@@ -667,41 +676,12 @@ func (r *KaproReconciler) buildSpokeBootstrapResourceSet(kapro *kaprov1alpha1.Ka
 				},
 			},
 		},
-		// Root Kustomization on spoke — unpacks the bundle.
-		map[string]any{
-			"apiVersion": "kustomize.toolkit.fluxcd.io/v1",
-			"kind":       "Kustomization",
-			"metadata": map[string]any{
-				"name":      kapro.Name + "-root",
-				"namespace": "flux-system",
-				"labels":    map[string]any{"kapro.io/managed-by": kapro.Name},
-			},
-			"spec": map[string]any{
-				"interval": "5m",
-				"path":     "./flux-system",
-				"prune":    true,
-				"sourceRef": map[string]any{
-					"kind": "OCIRepository",
-					"name": kapro.Name + "-bundle",
-				},
-			},
-		},
-		// HelmRepository on spoke — charts source (same as hub).
-		map[string]any{
-			"apiVersion": "source.toolkit.fluxcd.io/v1",
-			"kind":       "HelmRepository",
-			"metadata": map[string]any{
-				"name":      app.Spec.Registries[0].Name,
-				"namespace": "flux-system",
-				"labels":    map[string]any{"kapro.io/managed-by": kapro.Name},
-			},
-			"spec": map[string]any{
-				"type":     "oci",
-				"interval": "5m",
-				"url":      app.Spec.Registries[0].URL,
-				"provider": resolveDefault(app.Spec.Registries[0].Provider, "generic"),
-			},
-		},
+	}
+
+	// Wave Kustomizations — one per wave, each pointing to its own path.
+	waveKusts := bundle.WaveKustomizations(kapro.Name, app)
+	for _, wk := range waveKusts {
+		resources = append(resources, wk)
 	}
 
 	rs := &unstructured.Unstructured{}

@@ -1,15 +1,21 @@
 // Package bundle generates spoke-side Flux manifests and pushes them as OCI
 // artifacts. The bundle contains everything a spoke cluster needs to reconcile
-// workloads locally: HelmRepositories, wave Kustomizations (with dependsOn
-// chains), and HelmReleases (no kubeConfig — spoke's own helm-controller
-// reconciles them).
+// workloads locally: HelmRepositories and HelmReleases (no kubeConfig — spoke's
+// own helm-controller reconciles them).
 //
-// Bundle layout pushed to OCI:
+// Bundle layout pushed to OCI (per-wave directories):
 //
-//	flux-system/
-//	  helmrepository-{name}.yaml     — one per AppRegistry
-//	  wave-{N}.yaml                  — Kustomization per wave (dependsOn wave N-1)
-//	  {component}-hr.yaml            — HelmRelease per AppComponent
+//	wave-00/
+//	  helmrepository-{name}.yaml     — shared HelmRepo (wave 0 owns it)
+//	  {component}-hr.yaml            — HelmReleases for wave 0
+//	wave-01/
+//	  {component}-hr.yaml            — HelmReleases for wave 1
+//	wave-02/
+//	  {component}-hr.yaml            — HelmReleases for wave 2
+//
+// Wave Kustomizations (dependsOn chains) are NOT in the bundle — they are
+// bootstrap resources created once on the spoke by the hub's ResourceSet.
+// Each wave Kustomization points to its wave-NN/ path in the bundle.
 package bundle
 
 import (
@@ -47,16 +53,14 @@ func GenerateAndPush(ctx context.Context, req BundleRequest) (string, error) {
 	}
 	defer os.RemoveAll(dir)
 
-	fluxDir := filepath.Join(dir, "flux-system")
-	if err := os.MkdirAll(fluxDir, 0755); err != nil {
-		return "", fmt.Errorf("create flux-system dir: %w", err)
-	}
-
 	manifests := Generate(req)
-	for filename, content := range manifests {
-		path := filepath.Join(fluxDir, filename)
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-			return "", fmt.Errorf("write %s: %w", filename, err)
+	for relPath, content := range manifests {
+		absPath := filepath.Join(dir, relPath)
+		if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
+			return "", fmt.Errorf("create dir for %s: %w", relPath, err)
+		}
+		if err := os.WriteFile(absPath, []byte(content), 0644); err != nil {
+			return "", fmt.Errorf("write %s: %w", relPath, err)
 		}
 	}
 
@@ -79,8 +83,9 @@ func GenerateAndPush(ctx context.Context, req BundleRequest) (string, error) {
 	return ociURL, nil
 }
 
-// Generate produces the spoke manifest files as a map of filename → YAML content.
-// This can be used independently of Push for testing or dry-run.
+// Generate produces the spoke manifest files as a map of relative path → YAML content.
+// Files are organized into per-wave directories (wave-00/, wave-01/, ...).
+// Wave 0 also contains shared HelmRepositories.
 func Generate(req BundleRequest) map[string]string {
 	app := req.App
 	defaults := app.Spec.Defaults
@@ -89,27 +94,83 @@ func Generate(req BundleRequest) map[string]string {
 	}
 
 	manifests := map[string]string{}
-
-	// 1. HelmRepositories.
-	for _, reg := range app.Spec.Registries {
-		manifests[fmt.Sprintf("helmrepository-%s.yaml", reg.Name)] = buildHelmRepository(req.KaproName, reg)
-	}
-
-	// 2. Group components by wave.
 	waves := groupByWave(app.Spec.Components)
+	firstWave := sortedWaveNumbers(waves)[0]
 
-	// 3. HelmReleases — one per component (no kubeConfig, spoke-local).
-	for _, comp := range app.Spec.Components {
-		manifests[fmt.Sprintf("%s-hr.yaml", comp.Name)] = buildSpokeHelmRelease(req.KaproName, defaults, comp)
+	// HelmRepositories go into the first wave directory.
+	for _, reg := range app.Spec.Registries {
+		path := fmt.Sprintf("wave-%02d/helmrepository-%s.yaml", firstWave, reg.Name)
+		manifests[path] = buildHelmRepository(req.KaproName, reg)
 	}
 
-	// 4. Wave Kustomizations — one per wave, dependsOn previous wave.
-	for _, waveNum := range sortedWaveNumbers(waves) {
-		comps := waves[waveNum]
-		manifests[fmt.Sprintf("wave-%02d.yaml", waveNum)] = buildWaveKustomization(req.KaproName, waveNum, comps, waves)
+	// HelmReleases go into their wave directory.
+	for _, comp := range app.Spec.Components {
+		path := fmt.Sprintf("wave-%02d/%s-hr.yaml", comp.Wave, comp.Name)
+		manifests[path] = buildSpokeHelmRelease(req.KaproName, defaults, comp)
 	}
 
 	return manifests
+}
+
+// WaveKustomizations generates the wave Kustomization CRs (bootstrap resources).
+// These are NOT part of the OCI bundle — they're created once on the spoke by
+// the hub's ResourceSet. Each Kustomization points to its wave directory in the
+// bundle and has dependsOn to the previous wave.
+func WaveKustomizations(kaproName string, app *kaprov1alpha1.KaproApp) []map[string]any {
+	waves := groupByWave(app.Spec.Components)
+	sorted := sortedWaveNumbers(waves)
+	result := make([]map[string]any, 0, len(sorted))
+
+	for i, waveNum := range sorted {
+		comps := waves[waveNum]
+
+		// healthChecks: one per HelmRelease in this wave.
+		healthChecks := make([]any, 0, len(comps))
+		for _, comp := range comps {
+			healthChecks = append(healthChecks, map[string]any{
+				"apiVersion": "helm.toolkit.fluxcd.io/v2",
+				"kind":       "HelmRelease",
+				"name":       comp.Name,
+				"namespace":  "flux-system",
+			})
+		}
+
+		spec := map[string]any{
+			"interval": "5m",
+			"path":     fmt.Sprintf("./wave-%02d", waveNum),
+			"prune":    true,
+			"wait":     true,
+			"sourceRef": map[string]any{
+				"kind": "OCIRepository",
+				"name": kaproName + "-bundle",
+			},
+			"healthChecks": healthChecks,
+		}
+
+		// dependsOn previous wave.
+		if i > 0 {
+			spec["dependsOn"] = []any{
+				map[string]any{
+					"name": fmt.Sprintf("%s-wave-%02d", kaproName, sorted[i-1]),
+				},
+			}
+		}
+
+		result = append(result, map[string]any{
+			"apiVersion": "kustomize.toolkit.fluxcd.io/v1",
+			"kind":       "Kustomization",
+			"metadata": map[string]any{
+				"name":      fmt.Sprintf("%s-wave-%02d", kaproName, waveNum),
+				"namespace": "flux-system",
+				"labels": map[string]any{
+					"kapro.io/managed-by": kaproName,
+					"kapro.io/wave":       fmt.Sprintf("%d", waveNum),
+				},
+			},
+			"spec": spec,
+		})
+	}
+	return result
 }
 
 // --- HelmRepository ---
@@ -199,15 +260,6 @@ func buildSpokeHelmRelease(kaproName string, defaults *kaprov1alpha1.AppDefaults
 		}
 	}
 
-	// Component-level dependsOn (within the same wave).
-	if len(comp.DependsOn) > 0 {
-		deps := make([]any, 0, len(comp.DependsOn))
-		for _, d := range comp.DependsOn {
-			deps = append(deps, map[string]any{"name": d})
-		}
-		hrSpec["dependsOn"] = deps
-	}
-
 	if comp.Suspend {
 		hrSpec["suspend"] = true
 	}
@@ -224,67 +276,6 @@ func buildSpokeHelmRelease(kaproName string, defaults *kaprov1alpha1.AppDefaults
 			},
 		},
 		"spec": hrSpec,
-	}
-	return mustYAML(obj)
-}
-
-// --- Wave Kustomization ---
-
-func buildWaveKustomization(kaproName string, waveNum int32, comps []kaprov1alpha1.AppComponent, allWaves map[int32][]kaprov1alpha1.AppComponent) string {
-	// healthChecks: one per HelmRelease in this wave.
-	healthChecks := make([]any, 0, len(comps))
-	for _, comp := range comps {
-		healthChecks = append(healthChecks, map[string]any{
-			"apiVersion": "helm.toolkit.fluxcd.io/v2",
-			"kind":       "HelmRelease",
-			"name":       comp.Name,
-			"namespace":  "flux-system",
-		})
-	}
-
-	spec := map[string]any{
-		"interval": "5m",
-		"path":     "./flux-system",
-		"prune":    true,
-		"wait":     true,
-		"sourceRef": map[string]any{
-			"kind": "OCIRepository",
-			"name": kaproName + "-bundle",
-		},
-		"healthChecks": healthChecks,
-	}
-
-	// dependsOn: previous wave (if not wave 0).
-	prevWaves := previousWaveNumbers(waveNum, allWaves)
-	if len(prevWaves) > 0 {
-		deps := make([]any, 0, len(prevWaves))
-		for _, pw := range prevWaves {
-			deps = append(deps, map[string]any{
-				"name": fmt.Sprintf("%s-wave-%02d", kaproName, pw),
-			})
-		}
-		spec["dependsOn"] = deps
-	}
-
-	// namePrefix filter: only apply files matching this wave's HelmReleases.
-	// We use patches to select specific files from the bundle.
-	// Actually, we use a simpler approach: each wave Kustomization watches
-	// the HelmRelease health, and the dependsOn chain enforces ordering.
-	// The root Kustomization applies ALL manifests; wave Kustomizations
-	// only provide the DAG ordering via healthChecks + dependsOn.
-
-	obj := map[string]any{
-		"apiVersion": "kustomize.toolkit.fluxcd.io/v1",
-		"kind":       "Kustomization",
-		"metadata": map[string]any{
-			"name":      fmt.Sprintf("%s-wave-%02d", kaproName, waveNum),
-			"namespace": "flux-system",
-			"labels": map[string]any{
-				"kapro.io/managed-by": kaproName,
-				"kapro.io/wave":       fmt.Sprintf("%d", waveNum),
-			},
-		},
-		"spec": spec,
 	}
 	return mustYAML(obj)
 }
@@ -306,21 +297,6 @@ func sortedWaveNumbers(waves map[int32][]kaprov1alpha1.AppComponent) []int32 {
 	}
 	sort.Slice(nums, func(i, j int) bool { return nums[i] < nums[j] })
 	return nums
-}
-
-func previousWaveNumbers(current int32, allWaves map[int32][]kaprov1alpha1.AppComponent) []int32 {
-	sorted := sortedWaveNumbers(allWaves)
-	var prev []int32
-	for _, n := range sorted {
-		if n < current {
-			prev = append(prev, n)
-		}
-	}
-	// Only depend on the immediately previous wave (not all previous).
-	if len(prev) > 0 {
-		return prev[len(prev)-1:]
-	}
-	return nil
 }
 
 func resolveDefault(value, fallback string) string {
