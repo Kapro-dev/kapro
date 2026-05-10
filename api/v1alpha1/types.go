@@ -6,6 +6,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -1503,4 +1504,164 @@ type AgentPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []AgentPolicy `json:"items"`
+}
+
+// ---- Fleet ------------------------------------------------------------------
+
+// FleetSpec defines the desired state of a Fleet.
+type FleetSpec struct {
+	// Registry is the OCI registry URL for Helm charts.
+	Registry FleetRegistry `json:"registry"`
+	// Components defines the applications to deploy across the fleet.
+	// +kubebuilder:validation:MinItems=1
+	Components []FleetComponent `json:"components"`
+	// Clusters defines the target clusters in the fleet.
+	// +kubebuilder:validation:MinItems=1
+	Clusters []FleetCluster `json:"clusters"`
+	// Pipeline defines the progressive delivery stages.
+	Pipeline FleetPipeline `json:"pipeline"`
+	// Suspended pauses Fleet reconciliation.
+	// +kubebuilder:default=false
+	Suspended bool `json:"suspended,omitempty"`
+}
+
+type FleetRegistry struct {
+	// URL is the OCI registry URL (e.g. oci://europe-west1-docker.pkg.dev/project/repo)
+	URL string `json:"url"`
+	// Name is the HelmRepository name to create. Defaults to "product-charts".
+	// +kubebuilder:default="product-charts"
+	Name string `json:"name,omitempty"`
+	// Provider is the auth provider (generic, gcp, aws, azure).
+	// +kubebuilder:default="generic"
+	Provider string `json:"provider,omitempty"`
+	// SecretRef references a Secret for registry auth.
+	// +optional
+	SecretRef string `json:"secretRef,omitempty"`
+}
+
+type FleetComponent struct {
+	// Name is the component/chart name.
+	Name string `json:"name"`
+	// Version is the chart version.
+	Version string `json:"version"`
+	// Type is "helm" (default) or "kustomize".
+	// +kubebuilder:validation:Enum=helm;kustomize
+	// +kubebuilder:default="helm"
+	Type string `json:"type,omitempty"`
+	// DependsOn is the name of another component that must deploy first.
+	// +optional
+	DependsOn string `json:"dependsOn,omitempty"`
+	// Values are inline Helm values for this component.
+	// +optional
+	// +kubebuilder:pruning:PreserveUnknownFields
+	Values *apiextensionsv1.JSON `json:"values,omitempty"`
+	// ValuesFrom references ConfigMaps/Secrets for values.
+	// +optional
+	ValuesFrom []ValuesReference `json:"valuesFrom,omitempty"`
+	// Chart overrides the default chart source (for non-product charts like strimzi).
+	// +optional
+	Chart *ChartOverride `json:"chart,omitempty"`
+	// Path is used when type=kustomize. The path within the OCI artifact.
+	// +optional
+	Path string `json:"path,omitempty"`
+	// PostRenderers are kustomize patches applied after Helm renders.
+	// +optional
+	// +kubebuilder:pruning:PreserveUnknownFields
+	PostRenderers *apiextensionsv1.JSON `json:"postRenderers,omitempty"`
+}
+
+type ValuesReference struct {
+	Kind string `json:"kind"`
+	Name string `json:"name"`
+	// +optional
+	ValuesKey string `json:"valuesKey,omitempty"`
+	// +optional
+	Optional bool `json:"optional,omitempty"`
+}
+
+type ChartOverride struct {
+	// Repository URL (for non-default chart sources).
+	Repository string `json:"repository"`
+	// Name of the chart (if different from component name).
+	// +optional
+	Name string `json:"name,omitempty"`
+}
+
+type FleetCluster struct {
+	// Name is the cluster identifier.
+	Name string `json:"name"`
+	// Labels for stage selection.
+	Labels map[string]string `json:"labels"`
+	// Provider is "kubeconfig" (default) or "gcp".
+	// +kubebuilder:validation:Enum=kubeconfig;gcp
+	// +kubebuilder:default="kubeconfig"
+	Provider string `json:"provider,omitempty"`
+	// KubeconfigSecret references the kubeconfig Secret name (provider=kubeconfig).
+	// +optional
+	KubeconfigSecret string `json:"kubeconfigSecret,omitempty"`
+	// GCP config (provider=gcp).
+	// +optional
+	GCP *FleetClusterGCP `json:"gcp,omitempty"`
+}
+
+type FleetClusterGCP struct {
+	Project     string `json:"project"`
+	ClusterName string `json:"clusterName"`
+	Region      string `json:"region"`
+}
+
+type FleetPipeline struct {
+	// Stages defines the progressive delivery wave ordering.
+	Stages []FleetStage `json:"stages"`
+}
+
+type FleetStage struct {
+	// Name of the stage.
+	Name string `json:"name"`
+	// Selector matches clusters by labels.
+	Selector map[string]string `json:"selector"`
+	// DependsOn is the list of stages that must complete first.
+	// +optional
+	DependsOn []string `json:"dependsOn,omitempty"`
+	// Gate defines approval/soak/metrics requirements between stages.
+	// +optional
+	// +kubebuilder:pruning:PreserveUnknownFields
+	Gate *apiextensionsv1.JSON `json:"gate,omitempty"`
+}
+
+// FleetStatus defines the observed state of Fleet.
+type FleetStatus struct {
+	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
+	Conditions         []metav1.Condition `json:"conditions,omitempty"`
+	// ClusterCount is the number of clusters in the fleet.
+	ClusterCount int32 `json:"clusterCount,omitempty"`
+	// ComponentCount is the number of components.
+	ComponentCount int32 `json:"componentCount,omitempty"`
+	// Inventory lists the generated resources.
+	// +optional
+	Inventory []string `json:"inventory,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Cluster,shortName=fl,categories=kapro-all
+// +kubebuilder:printcolumn:name="Clusters",type=integer,JSONPath=`.status.clusterCount`
+// +kubebuilder:printcolumn:name="Components",type=integer,JSONPath=`.status.componentCount`
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+
+// Fleet is the single entry point for fleet delivery. Users define components
+// and clusters; Kapro generates FluxInstance, ResourceSet, MemberClusters, and Pipeline.
+type Fleet struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              FleetSpec   `json:"spec,omitempty"`
+	Status            FleetStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+type FleetList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []Fleet `json:"items"`
 }

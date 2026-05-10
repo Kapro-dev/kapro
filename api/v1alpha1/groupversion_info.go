@@ -21,7 +21,11 @@ func init() {
 		&MemberCluster{}, &MemberClusterList{},
 		// Internal / system objects
 		&Approval{}, &ApprovalList{},
+
 		// AI agent trust boundaries
 		&AgentPolicy{}, &AgentPolicyList{},
+
+		// Fleet entry point
+		&Fleet{}, &FleetList{},
 	)
 }

@@ -1,0 +1,319 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.0
+  name: fleets.kapro.io
+spec:
+  group: kapro.io
+  names:
+    categories:
+    - kapro-all
+    kind: Fleet
+    listKind: FleetList
+    plural: fleets
+    shortNames:
+    - fl
+    singular: fleet
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.clusterCount
+      name: Clusters
+      type: integer
+    - jsonPath: .status.componentCount
+      name: Components
+      type: integer
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          Fleet is the single entry point for fleet delivery. Users define components
+          and clusters; Kapro generates FluxInstance, ResourceSet, MemberClusters, and Pipeline.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: FleetSpec defines the desired state of a Fleet.
+            properties:
+              clusters:
+                description: Clusters defines the target clusters in the fleet.
+                items:
+                  properties:
+                    gcp:
+                      description: GCP config (provider=gcp).
+                      properties:
+                        clusterName:
+                          type: string
+                        project:
+                          type: string
+                        region:
+                          type: string
+                      required:
+                      - clusterName
+                      - project
+                      - region
+                      type: object
+                    kubeconfigSecret:
+                      description: KubeconfigSecret references the kubeconfig Secret
+                        name (provider=kubeconfig).
+                      type: string
+                    labels:
+                      additionalProperties:
+                        type: string
+                      description: Labels for stage selection.
+                      type: object
+                    name:
+                      description: Name is the cluster identifier.
+                      type: string
+                    provider:
+                      default: kubeconfig
+                      description: Provider is "kubeconfig" (default) or "gcp".
+                      enum:
+                      - kubeconfig
+                      - gcp
+                      type: string
+                  required:
+                  - labels
+                  - name
+                  type: object
+                minItems: 1
+                type: array
+              components:
+                description: Components defines the applications to deploy across
+                  the fleet.
+                items:
+                  properties:
+                    chart:
+                      description: Chart overrides the default chart source (for non-product
+                        charts like strimzi).
+                      properties:
+                        name:
+                          description: Name of the chart (if different from component
+                            name).
+                          type: string
+                        repository:
+                          description: Repository URL (for non-default chart sources).
+                          type: string
+                      required:
+                      - repository
+                      type: object
+                    dependsOn:
+                      description: DependsOn is the name of another component that
+                        must deploy first.
+                      type: string
+                    name:
+                      description: Name is the component/chart name.
+                      type: string
+                    path:
+                      description: Path is used when type=kustomize. The path within
+                        the OCI artifact.
+                      type: string
+                    postRenderers:
+                      description: PostRenderers are kustomize patches applied after
+                        Helm renders.
+                      x-kubernetes-preserve-unknown-fields: true
+                    type:
+                      default: helm
+                      description: Type is "helm" (default) or "kustomize".
+                      enum:
+                      - helm
+                      - kustomize
+                      type: string
+                    values:
+                      description: Values are inline Helm values for this component.
+                      x-kubernetes-preserve-unknown-fields: true
+                    valuesFrom:
+                      description: ValuesFrom references ConfigMaps/Secrets for values.
+                      items:
+                        properties:
+                          kind:
+                            type: string
+                          name:
+                            type: string
+                          optional:
+                            type: boolean
+                          valuesKey:
+                            type: string
+                        required:
+                        - kind
+                        - name
+                        type: object
+                      type: array
+                    version:
+                      description: Version is the chart version.
+                      type: string
+                  required:
+                  - name
+                  - version
+                  type: object
+                minItems: 1
+                type: array
+              pipeline:
+                description: Pipeline defines the progressive delivery stages.
+                properties:
+                  stages:
+                    description: Stages defines the progressive delivery wave ordering.
+                    items:
+                      properties:
+                        dependsOn:
+                          description: DependsOn is the list of stages that must complete
+                            first.
+                          items:
+                            type: string
+                          type: array
+                        gate:
+                          description: Gate defines approval/soak/metrics requirements
+                            between stages.
+                          x-kubernetes-preserve-unknown-fields: true
+                        name:
+                          description: Name of the stage.
+                          type: string
+                        selector:
+                          additionalProperties:
+                            type: string
+                          description: Selector matches clusters by labels.
+                          type: object
+                      required:
+                      - name
+                      - selector
+                      type: object
+                    type: array
+                required:
+                - stages
+                type: object
+              registry:
+                description: Registry is the OCI registry URL for Helm charts.
+                properties:
+                  name:
+                    default: product-charts
+                    description: Name is the HelmRepository name to create. Defaults
+                      to "product-charts".
+                    type: string
+                  provider:
+                    default: generic
+                    description: Provider is the auth provider (generic, gcp, aws,
+                      azure).
+                    type: string
+                  secretRef:
+                    description: SecretRef references a Secret for registry auth.
+                    type: string
+                  url:
+                    description: URL is the OCI registry URL (e.g. oci://europe-west1-docker.pkg.dev/project/repo)
+                    type: string
+                required:
+                - url
+                type: object
+              suspended:
+                default: false
+                description: Suspended pauses Fleet reconciliation.
+                type: boolean
+            required:
+            - clusters
+            - components
+            - pipeline
+            - registry
+            type: object
+          status:
+            description: FleetStatus defines the observed state of Fleet.
+            properties:
+              clusterCount:
+                description: ClusterCount is the number of clusters in the fleet.
+                format: int32
+                type: integer
+              componentCount:
+                description: ComponentCount is the number of components.
+                format: int32
+                type: integer
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              inventory:
+                description: Inventory lists the generated resources.
+                items:
+                  type: string
+                type: array
+              observedGeneration:
+                format: int64
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
