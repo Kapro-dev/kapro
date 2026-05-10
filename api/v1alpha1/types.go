@@ -1158,6 +1158,15 @@ type MemberClusterStatus struct {
 	Phase              ClusterPhase       `json:"phase,omitempty"`
 	Conditions         []metav1.Condition `json:"conditions,omitempty"`
 
+	// Version is the primary deployed version (first entry in CurrentVersions).
+	// Shown in kubectl/k9s printcolumns for quick fleet overview.
+	// +optional
+	Version string `json:"version,omitempty"`
+
+	// Provider identifies how this cluster is managed (e.g. "gcp-fleet", "kubeconfig").
+	// +optional
+	Provider string `json:"provider,omitempty"`
+
 	// CurrentVersions maps app keys to deployed versions. Written by cluster-controller.
 	// +optional
 	CurrentVersions map[string]string `json:"currentVersions,omitempty"`
@@ -1235,13 +1244,11 @@ func (s *MemberClusterStatus) IsHeartbeatFresh(timeout time.Duration) bool {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=mc,categories=kapro-all
-// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
-// +kubebuilder:printcolumn:name="BootstrapReady",type=string,JSONPath=`.status.conditions[?(@.type=="BootstrapReady")].status`
-// +kubebuilder:printcolumn:name="Delivery",type=string,JSONPath=`.status.deliverySystem`
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.version`
 // +kubebuilder:printcolumn:name="Healthy",type=boolean,JSONPath=`.status.health.allWorkloadsReady`
-// +kubebuilder:printcolumn:name="Active Release",type=string,JSONPath=`.status.activeRelease`
-// +kubebuilder:printcolumn:name="Heartbeat",type=string,JSONPath=`.status.lastHeartbeat`
+// +kubebuilder:printcolumn:name="Provider",type=string,JSONPath=`.status.provider`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // MemberCluster represents one physical cluster in the Kapro fleet.
@@ -1748,8 +1755,13 @@ type KaproStatus struct {
 	Conditions         []metav1.Condition `json:"conditions,omitempty"`
 	// ClusterCount is the number of clusters in the fleet.
 	ClusterCount int32 `json:"clusterCount,omitempty"`
+	// ConvergedCount is the number of clusters where all HelmReleases are Ready.
+	ConvergedCount int32 `json:"convergedCount,omitempty"`
 	// ComponentCount is the number of components from the resolved KaproApp.
 	ComponentCount int32 `json:"componentCount,omitempty"`
+	// Version is the current primary component version being deployed.
+	// +optional
+	Version string `json:"version,omitempty"`
 	// Inventory lists the generated spoke resources (FluxInstance, OCIRepository names).
 	// +optional
 	Inventory []string `json:"inventory,omitempty"`
@@ -1758,10 +1770,11 @@ type KaproStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=kp,categories=kapro-all
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="AppRef",type=string,JSONPath=`.spec.appRef`
 // +kubebuilder:printcolumn:name="Clusters",type=integer,JSONPath=`.status.clusterCount`
-// +kubebuilder:printcolumn:name="Components",type=integer,JSONPath=`.status.componentCount`
-// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
+// +kubebuilder:printcolumn:name="Converged",type=integer,JSONPath=`.status.convergedCount`
+// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.version`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Kapro is the single entry point for fleet delivery. Users reference a KaproApp

@@ -159,13 +159,25 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 	inventory = append(inventory, "ResourceSet/"+kapro.Name+"-workloads")
 
-	// 4. Clean up orphaned resources for removed clusters.
+	// 4. Sync MemberCluster status from HelmRelease status (push model observability).
+	convergedCount := int32(0)
+	for _, cluster := range kapro.Spec.Clusters {
+		converged := r.syncMemberClusterStatus(ctx, &kapro, &app, cluster)
+		if converged {
+			convergedCount++
+		}
+	}
+
+	// 5. Clean up orphaned resources for removed clusters.
 	r.cleanupRemovedClusters(ctx, &kapro)
 
-	// 5. Update Kapro status.
+	// 6. Update Kapro status.
+	primaryVersion := app.Spec.Components[0].Version
 	patch := client.MergeFrom(kapro.DeepCopy())
 	kapro.Status.ClusterCount = int32(len(kapro.Spec.Clusters))
+	kapro.Status.ConvergedCount = convergedCount
 	kapro.Status.ComponentCount = int32(len(app.Spec.Components))
+	kapro.Status.Version = primaryVersion
 	kapro.Status.ObservedGeneration = kapro.Generation
 	kapro.Status.Inventory = inventory
 	apimeta.SetStatusCondition(&kapro.Status.Conditions, metav1.Condition{
@@ -173,7 +185,7 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		Status:             metav1.ConditionTrue,
 		ObservedGeneration: kapro.Generation,
 		Reason:             "ReconcileSuccess",
-		Message:            fmt.Sprintf("Generated ResourceSet with %d clusters × %d components", len(kapro.Spec.Clusters), len(app.Spec.Components)),
+		Message:            fmt.Sprintf("%d/%d clusters converged at %s", convergedCount, len(kapro.Spec.Clusters), primaryVersion),
 	})
 	if err := r.Status().Patch(ctx, &kapro, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch Kapro status: %w", err)
@@ -430,6 +442,93 @@ func hasKubeconfigClusters(kapro *kaprov1alpha1.Kapro) bool {
 // isNoMatchError returns true when the error indicates a missing CRD/API group.
 func isNoMatchError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "no matches for kind")
+}
+
+// syncMemberClusterStatus reads HelmRelease status for a spoke and writes it
+// to the MemberCluster status. This gives k9s users full fleet visibility from the hub.
+func (r *KaproReconciler) syncMemberClusterStatus(ctx context.Context, kapro *kaprov1alpha1.Kapro, app *kaprov1alpha1.KaproApp, cluster kaprov1alpha1.KaproCluster) bool {
+	l := log.FromContext(ctx)
+
+	// Read the MemberCluster.
+	var mc kaprov1alpha1.MemberCluster
+	if err := r.Get(ctx, client.ObjectKey{Name: cluster.Name}, &mc); err != nil {
+		return false
+	}
+
+	// Read HelmRelease status for each component.
+	allReady := true
+	versions := map[string]string{}
+	for _, comp := range app.Spec.Components {
+		hrName := comp.Name + "-" + cluster.Name
+		hr := &unstructured.Unstructured{}
+		hr.SetGroupVersionKind(schema.GroupVersionKind{
+			Group: "helm.toolkit.fluxcd.io", Version: "v2", Kind: "HelmRelease",
+		})
+		if err := r.Get(ctx, client.ObjectKey{Name: hrName, Namespace: "flux-system"}, hr); err != nil {
+			allReady = false
+			continue
+		}
+
+		// Check Ready condition.
+		status, _ := hr.Object["status"].(map[string]any)
+		ready := false
+		if status != nil {
+			conditions, _ := status["conditions"].([]any)
+			for _, c := range conditions {
+				cm, _ := c.(map[string]any)
+				if cm != nil && fmt.Sprintf("%v", cm["type"]) == "Ready" && fmt.Sprintf("%v", cm["status"]) == "True" {
+					ready = true
+					break
+				}
+			}
+		}
+
+		if ready {
+			versions[comp.Name] = comp.Version
+		} else {
+			allReady = false
+		}
+	}
+
+	// Determine phase.
+	phase := kaprov1alpha1.ClusterPhaseConverging
+	if allReady {
+		phase = kaprov1alpha1.ClusterPhaseConverged
+	}
+
+	// Patch MemberCluster status.
+	mcPatch := client.MergeFrom(mc.DeepCopy())
+	mc.Status.Phase = phase
+	mc.Status.CurrentVersions = versions
+	mc.Status.Version = app.Spec.Components[0].Version
+	mc.Status.Provider = cluster.Provider
+	mc.Status.DeliverySystem = "flux-operator"
+	mc.Status.Health = kaprov1alpha1.ClusterHealth{
+		AllWorkloadsReady: allReady,
+		ReadyWorkloads:    len(versions),
+		TotalWorkloads:    len(app.Spec.Components),
+	}
+	mc.Status.LastHeartbeat = time.Now().UTC().Format(time.RFC3339)
+
+	readyStatus := metav1.ConditionFalse
+	reason := "Converging"
+	if allReady {
+		readyStatus = metav1.ConditionTrue
+		reason = "AllHelmReleasesReady"
+	}
+	apimeta.SetStatusCondition(&mc.Status.Conditions, metav1.Condition{
+		Type:               "Ready",
+		Status:             readyStatus,
+		ObservedGeneration: mc.Generation,
+		Reason:             reason,
+		Message:            fmt.Sprintf("%d/%d components ready", len(versions), len(app.Spec.Components)),
+	})
+
+	if err := r.Status().Patch(ctx, &mc, mcPatch); err != nil {
+		l.Error(err, "failed to patch MemberCluster status", "cluster", cluster.Name)
+	}
+
+	return allReady
 }
 
 // cleanupRemovedClusters deletes MemberClusters and kubeconfig Secrets

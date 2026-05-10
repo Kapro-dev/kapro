@@ -19,17 +19,20 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
     - jsonPath: .spec.appRef
       name: AppRef
       type: string
     - jsonPath: .status.clusterCount
       name: Clusters
       type: integer
-    - jsonPath: .status.componentCount
-      name: Components
+    - jsonPath: .status.convergedCount
+      name: Converged
       type: integer
-    - jsonPath: .status.conditions[?(@.type=="Ready")].status
-      name: Ready
+    - jsonPath: .status.version
+      name: Version
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -720,6 +723,11 @@ spec:
                   - type
                   type: object
                 type: array
+              convergedCount:
+                description: ConvergedCount is the number of clusters where all HelmReleases
+                  are Ready.
+                format: int32
+                type: integer
               inventory:
                 description: Inventory lists the generated spoke resources (FluxInstance,
                   OCIRepository names).
@@ -729,6 +737,10 @@ spec:
               observedGeneration:
                 format: int64
                 type: integer
+              version:
+                description: Version is the current primary component version being
+                  deployed.
+                type: string
             type: object
         type: object
     served: true

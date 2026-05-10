@@ -19,26 +19,20 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.phase
-      name: Phase
-      type: string
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
       type: string
-    - jsonPath: .status.conditions[?(@.type=="BootstrapReady")].status
-      name: BootstrapReady
+    - jsonPath: .status.phase
+      name: Phase
       type: string
-    - jsonPath: .status.deliverySystem
-      name: Delivery
+    - jsonPath: .status.version
+      name: Version
       type: string
     - jsonPath: .status.health.allWorkloadsReady
       name: Healthy
       type: boolean
-    - jsonPath: .status.activeRelease
-      name: Active Release
-      type: string
-    - jsonPath: .status.lastHeartbeat
-      name: Heartbeat
+    - jsonPath: .status.provider
+      name: Provider
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -442,6 +436,15 @@ spec:
                 - Converged
                 - Failed
                 - Unreachable
+                type: string
+              provider:
+                description: Provider identifies how this cluster is managed (e.g.
+                  "gcp-fleet", "kubeconfig").
+                type: string
+              version:
+                description: |-
+                  Version is the primary deployed version (first entry in CurrentVersions).
+                  Shown in kubectl/k9s printcolumns for quick fleet overview.
                 type: string
             type: object
         type: object
