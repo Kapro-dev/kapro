@@ -66,6 +66,7 @@ Passes versions forward. Across targets. Across clusters. In waves.`,
 	root.AddCommand(newWorldCmd())
 	root.AddCommand(newBundleCmd())
 	root.AddCommand(newHubCmd())
+	root.AddCommand(newGCPCmd())
 	// bootstrap is under "kapro cluster bootstrap" — no separate root command
 
 	if err := root.Execute(); err != nil {

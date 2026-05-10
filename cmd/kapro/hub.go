@@ -17,6 +17,7 @@ import (
 	"google.golang.org/api/option"
 
 	"kapro.io/kapro/internal/bootstrap"
+	"kapro.io/kapro/internal/gcputil"
 	"kapro.io/kapro/internal/provider"
 )
 
@@ -70,6 +71,22 @@ Examples:
 }
 
 func runHubInit(ctx context.Context, kubeconfigPath, project, clusterName, location string) error {
+	// Interactive mode: no flags → scan projects → pick cluster.
+	if kubeconfigPath == "" && project == "" {
+		var err error
+		project, err = gcputil.SelectProject(ctx)
+		if err != nil {
+			return fmt.Errorf("select project: %w", err)
+		}
+	}
+	if kubeconfigPath == "" && clusterName == "" && project != "" {
+		var err error
+		clusterName, location, err = gcputil.SelectCluster(ctx, project)
+		if err != nil {
+			return fmt.Errorf("select cluster: %w", err)
+		}
+	}
+
 	// Auto-detect location if needed (before connecting).
 	if project != "" && clusterName != "" && location == "" {
 		detected, err := detectClusterLocation(ctx, project, clusterName)
