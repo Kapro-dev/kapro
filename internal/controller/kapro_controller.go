@@ -207,6 +207,12 @@ func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha1.Kapro, app *kapr
 			"tenant":  cluster.Name,
 			"version": primaryVersion,
 		}
+		// Set kubeconfig secret name for cross-cluster delivery.
+		// If the cluster has a kubeconfigSecret, Flux helm-controller uses it
+		// to deploy HelmReleases to the remote spoke instead of locally.
+		if cluster.KubeconfigSecret != "" {
+			input["kubeconfig_secret"] = cluster.KubeconfigSecret
+		}
 		// Merge defaults + per-component versions + matching overrides.
 		mergedValues := r.mergeValues(app, cluster.Name, cluster.Labels)
 		if mergedValues != "" {
@@ -227,6 +233,38 @@ func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha1.Kapro, app *kapr
 			chartName = comp.Chart.Name
 		}
 
+		hrSpec := map[string]interface{}{
+			"interval": "10m",
+			"chart": map[string]interface{}{
+				"spec": map[string]interface{}{
+					"chart":   chartName,
+					"version": "<< inputs.version >>",
+					"sourceRef": map[string]interface{}{
+						"kind": "HelmRepository",
+						"name": kapro.Name + "-registry",
+					},
+				},
+			},
+			"targetNamespace": ns,
+			"releaseName":     comp.Name,
+			"install": map[string]interface{}{
+				"timeout":     "5m",
+				"remediation": map[string]interface{}{"retries": 3},
+			},
+			"upgrade": map[string]interface{}{
+				"timeout":     "5m",
+				"remediation": map[string]interface{}{"retries": 3},
+			},
+		}
+		// When clusters have kubeconfigSecret, add kubeConfig to HelmRelease
+		// so Flux helm-controller deploys to the remote spoke, not locally.
+		if hasKubeconfigClusters(kapro) {
+			hrSpec["kubeConfig"] = map[string]interface{}{
+				"secretRef": map[string]interface{}{
+					"name": "<< inputs.kubeconfig_secret >>",
+				},
+			}
+		}
 		helmRelease := map[string]interface{}{
 			"apiVersion": "helm.toolkit.fluxcd.io/v2",
 			"kind":       "HelmRelease",
@@ -234,29 +272,7 @@ func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha1.Kapro, app *kapr
 				"name":      comp.Name + "-<< inputs.tenant >>",
 				"namespace": ns,
 			},
-			"spec": map[string]interface{}{
-				"interval": "10m",
-				"chart": map[string]interface{}{
-					"spec": map[string]interface{}{
-						"chart":   chartName,
-						"version": "<< inputs.version >>",
-						"sourceRef": map[string]interface{}{
-							"kind": "HelmRepository",
-							"name": kapro.Name + "-registry",
-						},
-					},
-				},
-				"targetNamespace": ns,
-				"releaseName":     comp.Name,
-				"install": map[string]interface{}{
-					"timeout":     "5m",
-					"remediation": map[string]interface{}{"retries": 3},
-				},
-				"upgrade": map[string]interface{}{
-					"timeout":     "5m",
-					"remediation": map[string]interface{}{"retries": 3},
-				},
-			},
+			"spec": hrSpec,
 		}
 		resources = append(resources, helmRelease)
 	}
@@ -380,6 +396,16 @@ func overrideMatches(ov kaprov1alpha1.AppOverride, clusterName string, clusterLa
 	}
 	// No selector and no clusters = matches everything.
 	return true
+}
+
+// hasKubeconfigClusters returns true if any cluster in the Kapro has a kubeconfigSecret.
+func hasKubeconfigClusters(kapro *kaprov1alpha1.Kapro) bool {
+	for _, c := range kapro.Spec.Clusters {
+		if c.KubeconfigSecret != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // isNoMatchError returns true when the error indicates a missing CRD/API group.
