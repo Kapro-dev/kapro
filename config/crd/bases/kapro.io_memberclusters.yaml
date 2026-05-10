@@ -129,6 +129,7 @@ spec:
                     enum:
                     - flux
                     - flux-operator
+                    - spoke
                     type: string
                 required:
                 - type

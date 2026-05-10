@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -147,7 +148,7 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	inventory = append(inventory, "Pipeline/"+kapro.Name+"-pipeline")
 
 	if spokeLocal {
-		// 3a. Spoke-local mode: generate OCI bundle + spoke bootstrap ResourceSet.
+		// 3a. Spoke-local mode: generate OCI bundle + bootstrap each spoke directly.
 		primaryVersion := app.Spec.Components[0].Version
 		bundleReq := bundle.BundleRequest{
 			KaproName: kapro.Name,
@@ -160,29 +161,14 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			// Non-fatal: bundle might already exist at this version.
 		}
 
-		// Generate spoke bootstrap ResourceSet (OCIRepository + root Kustomization per cluster).
-		rs := r.buildSpokeBootstrapResourceSet(&kapro, &app)
-		if err := r.Patch(ctx, rs,
-			client.Apply,
-			client.FieldOwner("kapro-controller"),
-			client.ForceOwnership,
-		); err != nil {
-			if isNoMatchError(err) {
-				l.Info("Flux Operator CRD (ResourceSet) not found — install Flux Operator on the hub")
-				patch := client.MergeFrom(kapro.DeepCopy())
-				apimeta.SetStatusCondition(&kapro.Status.Conditions, metav1.Condition{
-					Type:               "Ready",
-					Status:             metav1.ConditionFalse,
-					ObservedGeneration: kapro.Generation,
-					Reason:             "FluxOperatorNotInstalled",
-					Message:            "ResourceSet CRD not found. Install Flux Operator on the hub cluster.",
-				})
-				_ = r.Status().Patch(ctx, &kapro, patch)
-				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		// Bootstrap each spoke: apply OCIRepository + wave Kustomizations directly.
+		// OCIRepository has no kubeConfig field, so we must use the spoke's API directly.
+		for _, cluster := range kapro.Spec.Clusters {
+			if err := r.bootstrapSpoke(ctx, &kapro, &app, cluster, primaryVersion); err != nil {
+				l.Error(err, "failed to bootstrap spoke", "cluster", cluster.Name)
 			}
-			return ctrl.Result{}, fmt.Errorf("apply spoke bootstrap ResourceSet: %w", err)
 		}
-		inventory = append(inventory, "ResourceSet/"+kapro.Name+"-spoke-bootstrap")
+		inventory = append(inventory, "SpokeBootstrap/"+kapro.Name)
 	} else {
 		// 3b. Push mode: generate ResourceSet on the hub (Flux Operator distributes to spokes).
 		rs := r.buildResourceSet(&kapro, &app)
@@ -622,83 +608,88 @@ func isSpokeLocalMode(kapro *kaprov1alpha1.Kapro) bool {
 	return false
 }
 
-// buildSpokeBootstrapResourceSet creates a ResourceSet that bootstraps each spoke
-// with an OCIRepository and per-wave Kustomizations. The spoke's local Flux
-// controllers pull the bundle and reconcile HelmReleases locally.
+// bootstrapSpoke connects to a spoke cluster via its kubeconfig secret and
+// applies the OCIRepository + wave Kustomizations directly. This is called
+// once per reconcile — Kubernetes server-side apply is idempotent so repeated
+// calls are safe and only patch if something changed.
 //
-// Bundle structure (per-wave directories):
-//
-//	wave-00/  ← HelmRepository + wave 0 HelmReleases
-//	wave-01/  ← wave 1 HelmReleases
-//	wave-02/  ← wave 2 HelmReleases
-//
-// Each wave Kustomization points to its wave-NN/ path and has dependsOn
-// to the previous wave, creating a visible DAG in k9s.
-func (r *KaproReconciler) buildSpokeBootstrapResourceSet(kapro *kaprov1alpha1.Kapro, app *kaprov1alpha1.KaproApp) *unstructured.Unstructured {
-	primaryVersion := app.Spec.Components[0].Version
+// We apply directly to spoke instead of using ResourceSet because OCIRepository
+// has no kubeConfig field — it can't be created remotely via Flux.
+func (r *KaproReconciler) bootstrapSpoke(ctx context.Context, kapro *kaprov1alpha1.Kapro, app *kaprov1alpha1.KaproApp, cluster kaprov1alpha1.KaproCluster, version string) error {
+	l := log.FromContext(ctx)
+
+	if cluster.KubeconfigSecret == "" {
+		return fmt.Errorf("cluster %s has no kubeconfig secret", cluster.Name)
+	}
+
+	// Read kubeconfig secret from hub.
+	var secret corev1.Secret
+	if err := r.Get(ctx, client.ObjectKey{
+		Name:      cluster.KubeconfigSecret,
+		Namespace: "flux-system",
+	}, &secret); err != nil {
+		return fmt.Errorf("get kubeconfig secret %s: %w", cluster.KubeconfigSecret, err)
+	}
+
+	kubeconfigData := secret.Data["value"]
+	if len(kubeconfigData) == 0 {
+		return fmt.Errorf("kubeconfig secret %s has no 'value' key", cluster.KubeconfigSecret)
+	}
+
+	restConfig, err := clientcmd.RESTConfigFromKubeConfig(kubeconfigData)
+	if err != nil {
+		return fmt.Errorf("parse kubeconfig for %s: %w", cluster.Name, err)
+	}
+
+	spokeClient, err := client.New(restConfig, client.Options{})
+	if err != nil {
+		return fmt.Errorf("create spoke client for %s: %w", cluster.Name, err)
+	}
+
 	bundleURL := kapro.Spec.Registry.URL + "/" + kapro.Name + "-bundle"
+	ociProvider := resolveDefault(kapro.Spec.Registry.Provider, "generic")
 
-	// Build inputs: one entry per cluster.
-	inputs := make([]any, 0, len(kapro.Spec.Clusters))
-	for _, cluster := range kapro.Spec.Clusters {
-		input := map[string]any{
-			"tenant":  cluster.Name,
-			"version": primaryVersion,
-		}
-		if cluster.KubeconfigSecret != "" {
-			input["kubeconfig_secret"] = cluster.KubeconfigSecret
-		}
-		inputs = append(inputs, input)
-	}
-
-	// Provider for OCI auth.
-	ociProvider := "generic"
-	if kapro.Spec.Registry.Provider != "" {
-		ociProvider = kapro.Spec.Registry.Provider
-	}
-
-	resources := []any{
-		// OCIRepository on spoke — pulls the bundle.
-		map[string]any{
-			"apiVersion": "source.toolkit.fluxcd.io/v1",
-			"kind":       "OCIRepository",
-			"metadata": map[string]any{
-				"name":      kapro.Name + "-bundle",
-				"namespace": "flux-system",
-				"labels":    map[string]any{"kapro.io/managed-by": kapro.Name},
-			},
-			"spec": map[string]any{
-				"interval": "5m",
-				"url":      bundleURL,
-				"provider": ociProvider,
-				"ref": map[string]any{
-					"tag": "<< inputs.version >>",
-				},
-			},
+	// 1. Apply OCIRepository on spoke.
+	ociRepo := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "source.toolkit.fluxcd.io/v1",
+		"kind":       "OCIRepository",
+		"metadata": map[string]any{
+			"name":      kapro.Name + "-bundle",
+			"namespace": "flux-system",
+			"labels":    map[string]any{"kapro.io/managed-by": kapro.Name},
 		},
+		"spec": map[string]any{
+			"interval": "5m",
+			"url":      bundleURL,
+			"provider": ociProvider,
+			"ref":      map[string]any{"tag": version},
+		},
+	}}
+	if err := spokeClient.Patch(ctx, ociRepo,
+		client.Apply,
+		client.FieldOwner("kapro-controller"),
+		client.ForceOwnership,
+	); err != nil {
+		return fmt.Errorf("apply OCIRepository on spoke %s: %w", cluster.Name, err)
 	}
 
-	// Wave Kustomizations — one per wave, each pointing to its own path.
+	// 2. Apply wave Kustomizations on spoke.
 	waveKusts := bundle.WaveKustomizations(kapro.Name, app)
 	for _, wk := range waveKusts {
-		resources = append(resources, wk)
+		obj := &unstructured.Unstructured{Object: wk}
+		if err := spokeClient.Patch(ctx, obj,
+			client.Apply,
+			client.FieldOwner("kapro-controller"),
+			client.ForceOwnership,
+		); err != nil {
+			return fmt.Errorf("apply wave Kustomization %s on spoke %s: %w",
+				obj.GetName(), cluster.Name, err)
+		}
 	}
 
-	rs := &unstructured.Unstructured{}
-	rs.SetGroupVersionKind(kaproResourceSetGVK)
-	rs.SetName(kapro.Name + "-spoke-bootstrap")
-	rs.SetNamespace("flux-system")
-	rs.SetAnnotations(map[string]string{
-		"fluxcd.controlplane.io/reconcile":      "enabled",
-		"fluxcd.controlplane.io/reconcileEvery": "5m",
-	})
-	rs.Object["apiVersion"] = "fluxcd.controlplane.io/v1"
-	rs.Object["kind"] = "ResourceSet"
-	rs.Object["spec"] = map[string]any{
-		"inputs":    inputs,
-		"resources": resources,
-	}
-	return rs
+	l.Info("bootstrapped spoke", "cluster", cluster.Name,
+		"ociRepository", kapro.Name+"-bundle", "waves", len(waveKusts), "version", version)
+	return nil
 }
 
 // hasKubeconfigClusters returns true if any cluster in the Kapro has a kubeconfigSecret.
