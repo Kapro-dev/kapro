@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -121,6 +122,21 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		client.FieldOwner("kapro-controller"),
 		client.ForceOwnership,
 	); err != nil {
+		// If Flux Operator CRD is not installed, set status and requeue slowly
+		// instead of crash-looping.
+		if isNoMatchError(err) {
+			l.Info("Flux Operator CRD (ResourceSet) not found — install Flux Operator on the hub")
+			patch := client.MergeFrom(kapro.DeepCopy())
+			apimeta.SetStatusCondition(&kapro.Status.Conditions, metav1.Condition{
+				Type:               "Ready",
+				Status:             metav1.ConditionFalse,
+				ObservedGeneration: kapro.Generation,
+				Reason:             "FluxOperatorNotInstalled",
+				Message:            "ResourceSet CRD not found. Install Flux Operator on the hub cluster.",
+			})
+			_ = r.Status().Patch(ctx, &kapro, patch)
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
 		return ctrl.Result{}, fmt.Errorf("apply ResourceSet: %w", err)
 	}
 	inventory = append(inventory, "ResourceSet/"+kapro.Name+"-workloads")
@@ -360,6 +376,11 @@ func overrideMatches(ov kaprov1alpha1.AppOverride, clusterName string, clusterLa
 	}
 	// No selector and no clusters = matches everything.
 	return true
+}
+
+// isNoMatchError returns true when the error indicates a missing CRD/API group.
+func isNoMatchError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "no matches for kind")
 }
 
 func (r *KaproReconciler) SetupWithManager(mgr ctrl.Manager) error {

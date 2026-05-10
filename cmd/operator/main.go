@@ -2,6 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	crypto_rand "crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
 	"net/http"
 	"os"
 	"strings"
@@ -65,24 +72,36 @@ func main() {
 
 	cfg := ctrl.GetConfigOrDie()
 
+	// KAPRO_DEV_MODE=1 disables leader election and auto-generates webhook TLS certs.
+	// Use for local development and testing against a remote cluster.
+	devMode := os.Getenv("KAPRO_DEV_MODE") == "1"
+	leaderElect := !devMode
+
+	webhookCertDir := os.Getenv("KAPRO_WEBHOOK_CERT_DIR")
+	if devMode && webhookCertDir == "" {
+		webhookCertDir = ensureDevWebhookCerts()
+		log.Info("dev mode: auto-generated webhook TLS certs", "dir", webhookCertDir)
+	}
+	if devMode {
+		log.Info("dev mode: leader election disabled, self-signed webhook certs")
+	}
+
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:                        scheme,
-		LeaderElection:                true,
+		LeaderElection:                leaderElect,
 		LeaderElectionID:              "kapro-operator-leader.kapro.io",
 		LeaderElectionNamespace:       podNS,
 		LeaderElectionReleaseOnCancel: true,
 		Metrics: metricsserver.Options{
-			BindAddress: ":8080", // scraped by Prometheus; expose on /metrics
+			BindAddress: ":8080",
 		},
 		HealthProbeBindAddress: ":8081",
-		// Recover from reconciler panics instead of crashing the whole manager.
 		Controller: ctrlcfg.Controller{
 			RecoverPanic:            ptr.To(true),
 			MaxConcurrentReconciles: 5,
 		},
 		WebhookServer: crwebhook.NewServer(crwebhook.Options{
-			// TLS certs loaded from the kapro-webhook-tls Secret via cert-manager or manual mount.
-			CertDir: os.Getenv("KAPRO_WEBHOOK_CERT_DIR"),
+			CertDir: webhookCertDir,
 			Port:    9443,
 		}),
 	})
@@ -292,3 +311,38 @@ func (h *httpRunnable) Start(ctx context.Context) error {
 }
 
 // mcpRunnable and its methods have been removed — MCP server is not part of MVP.
+
+// ensureDevWebhookCerts generates self-signed TLS certs for local dev mode.
+// Returns the directory containing tls.crt and tls.key.
+func ensureDevWebhookCerts() string {
+	dir := os.TempDir() + "/kapro-dev-webhook-certs"
+	certPath := dir + "/tls.crt"
+	keyPath := dir + "/tls.key"
+
+	// Reuse if already exists.
+	if _, err := os.Stat(certPath); err == nil {
+		return dir
+	}
+
+	_ = os.MkdirAll(dir, 0700)
+
+	// Generate self-signed cert using crypto/x509.
+	import_key, _ := ecdsa.GenerateKey(elliptic.P256(), crypto_rand.Reader)
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "kapro-dev-webhook"},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:     []string{"localhost"},
+	}
+	certDER, _ := x509.CreateCertificate(crypto_rand.Reader, template, template, &import_key.PublicKey, import_key)
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyDER, _ := x509.MarshalECPrivateKey(import_key)
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+
+	_ = os.WriteFile(certPath, certPEM, 0600)
+	_ = os.WriteFile(keyPath, keyPEM, 0600)
+	return dir
+}
