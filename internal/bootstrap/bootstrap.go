@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -30,6 +31,21 @@ func InstallFluxOperator(ctx context.Context, c client.Client) error {
 			client.FieldOwner(fieldOwner),
 			client.ForceOwnership,
 		); err != nil {
+			// Immutable fields (roleRef, selector) can't be patched — delete and recreate.
+			if errors.IsInvalid(err) {
+				_ = c.Delete(ctx, obj)
+				if createErr := c.Create(ctx, obj); createErr != nil {
+					if errors.IsAlreadyExists(createErr) {
+						continue // Already exists with compatible spec — skip.
+					}
+					return fmt.Errorf("recreate %s %s: %w", obj.GetKind(), obj.GetName(), createErr)
+				}
+				continue
+			}
+			// Already exists and is compatible — skip.
+			if errors.IsAlreadyExists(err) {
+				continue
+			}
 			return fmt.Errorf("apply %s/%s %s: %w",
 				obj.GetKind(), obj.GetNamespace(), obj.GetName(), err)
 		}
