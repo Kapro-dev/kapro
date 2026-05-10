@@ -3,13 +3,15 @@ package bootstrap
 import (
 	"context"
 	"fmt"
-
-	"cloud.google.com/go/container/apiv1/containerpb"
+	"strings"
 
 	container "cloud.google.com/go/container/apiv1"
+	"cloud.google.com/go/container/apiv1/containerpb"
+	gkehub "cloud.google.com/go/gkehub/apiv1beta1"
+	"cloud.google.com/go/gkehub/apiv1beta1/gkehubpb"
 	"golang.org/x/oauth2"
-	iam "google.golang.org/api/iam/v1"
 	cloudresourcemanager "google.golang.org/api/cloudresourcemanager/v1"
+	iam "google.golang.org/api/iam/v1"
 	"google.golang.org/api/option"
 
 	"kapro.io/kapro/internal/provider"
@@ -26,6 +28,73 @@ type GCPSetupOptions struct {
 	SpokeCluster string
 	// SpokeLocation is the GKE region/zone.
 	SpokeLocation string
+}
+
+// RegisterFleetMembership registers a GKE cluster as a Fleet membership.
+// Idempotent — skips if already registered.
+func RegisterFleetMembership(ctx context.Context, project, clusterName, location string) error {
+	ts := provider.GCPTokenSource(ctx)
+	hubClient, err := gkehub.NewGkeHubMembershipClient(ctx, option.WithTokenSource(ts))
+	if err != nil {
+		return fmt.Errorf("create Fleet client: %w", err)
+	}
+	defer hubClient.Close()
+
+	// Check if already registered.
+	membershipParent := fmt.Sprintf("projects/%s/locations/%s", project, fleetLocation(location))
+	membershipName := fmt.Sprintf("%s/memberships/%s", membershipParent, clusterName)
+
+	_, err = hubClient.GetMembership(ctx, &gkehubpb.GetMembershipRequest{Name: membershipName})
+	if err == nil {
+		return nil // Already registered.
+	}
+
+	// Register.
+	resourceLink := fmt.Sprintf("//container.googleapis.com/projects/%s/locations/%s/clusters/%s",
+		project, location, clusterName)
+
+	op, err := hubClient.CreateMembership(ctx, &gkehubpb.CreateMembershipRequest{
+		Parent:       membershipParent,
+		MembershipId: clusterName,
+		Resource: &gkehubpb.Membership{
+			Type: &gkehubpb.Membership_Endpoint{
+				Endpoint: &gkehubpb.MembershipEndpoint{
+					Type: &gkehubpb.MembershipEndpoint_GkeCluster{
+						GkeCluster: &gkehubpb.GkeCluster{
+							ResourceLink: resourceLink,
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "already exists") {
+			return nil
+		}
+		return fmt.Errorf("register Fleet membership %s: %w", clusterName, err)
+	}
+
+	// Wait for operation to complete.
+	if _, err := op.Wait(ctx); err != nil {
+		return fmt.Errorf("wait for Fleet membership %s: %w", clusterName, err)
+	}
+
+	return nil
+}
+
+// fleetLocation converts a zone (europe-west1-b) to a region (europe-west1)
+// for Fleet membership parent. Fleet uses regional locations.
+func fleetLocation(location string) string {
+	parts := strings.Split(location, "-")
+	if len(parts) >= 3 {
+		// Check if last part is a single letter (zone suffix like "b")
+		last := parts[len(parts)-1]
+		if len(last) == 1 {
+			return strings.Join(parts[:len(parts)-1], "-")
+		}
+	}
+	return location
 }
 
 // SetupGCPSpoke performs all GCP-side setup for a spoke cluster:

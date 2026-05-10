@@ -107,6 +107,14 @@ func runHubInit(ctx context.Context, kubeconfigPath, project, clusterName, locat
 		fmt.Fprintf(os.Stderr, "  warning: %v (CRDs may be installed via Helm chart)\n", err)
 	}
 
+	// 5. Register hub in Fleet (GCP only).
+	if project != "" && clusterName != "" {
+		fmt.Fprintln(os.Stderr, "  [5/5] Registering hub in GKE Fleet...")
+		if err := bootstrap.RegisterFleetMembership(ctx, project, clusterName, location); err != nil {
+			fmt.Fprintf(os.Stderr, "  warning: Fleet registration: %v\n", err)
+		}
+	}
+
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Hub cluster bootstrapped.")
 	fmt.Fprintln(os.Stderr, "Next: deploy kapro-operator via Helm or run locally with KAPRO_DEV_MODE=1")

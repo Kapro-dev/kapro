@@ -241,8 +241,18 @@ func runClusterAdd(ctx context.Context, clusterName, providerName string, labels
 
 	// GCP-specific setup (if applicable).
 	if providerName == "gcp" || providerName == "gcp-fleet" || providerName == "gcp-basic" {
-		sp3 := cli.NewSpinner("Configuring GCP (IAM, Workload Identity)")
+		// Register in Fleet.
+		sp3 := cli.NewSpinner("Registering in GKE Fleet")
 		sp3.Start()
+		if err := bootstrap.RegisterFleetMembership(ctx, project, clusterName, location); err != nil {
+			sp3.StopFail(fmt.Sprintf("Fleet registration: %v", err))
+		} else {
+			sp3.StopSuccess("Fleet membership registered")
+		}
+
+		// IAM + Workload Identity.
+		sp4 := cli.NewSpinner("Configuring GCP (IAM, Workload Identity)")
+		sp4.Start()
 		gcpOpts := bootstrap.GCPSetupOptions{
 			HubProject:    project,
 			SpokeProject:  project,
@@ -250,10 +260,9 @@ func runClusterAdd(ctx context.Context, clusterName, providerName string, labels
 			SpokeLocation: location,
 		}
 		if err := bootstrap.SetupGCPSpoke(ctx, gcpOpts); err != nil {
-			sp3.StopFail(fmt.Sprintf("GCP setup warning: %v", err))
-			// Non-fatal — might already be configured.
+			sp4.StopFail(fmt.Sprintf("GCP setup warning: %v", err))
 		} else {
-			sp3.StopSuccess("GCP configured")
+			sp4.StopSuccess("GCP configured")
 		}
 	}
 
