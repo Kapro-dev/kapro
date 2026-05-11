@@ -102,6 +102,11 @@ func runBundleGenerate(ctx context.Context, appName, bundleName, version, regist
 	fmt.Fprintf(os.Stderr, "Read KaproApp %q: %d components, %d registries\n",
 		appName, len(app.Spec.Components), len(app.Spec.Registries))
 
+	// Validate.
+	if err := bundle.Validate(&app); err != nil {
+		return fmt.Errorf("validation failed:\n%w", err)
+	}
+
 	// Generate bundle.
 	req := bundle.BundleRequest{
 		KaproName: bundleName,
