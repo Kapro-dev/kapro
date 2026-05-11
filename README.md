@@ -6,191 +6,139 @@
 
 <p align="center"><strong>Progressive delivery and promotion engine for multi-cluster Kubernetes fleets.</strong></p>
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Go Report Card](https://goreportcard.com/badge/kapro.io/kapro)](https://goreportcard.com/report/kapro.io/kapro)
-[![API Group](https://img.shields.io/badge/API-kapro.io%2Fv1alpha1-purple)](api/v1alpha1)
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
+  <a href="https://goreportcard.com/report/kapro.io/kapro"><img src="https://goreportcard.com/badge/kapro.io/kapro" alt="Go Report Card"></a>
+  <a href="api/v1alpha1"><img src="https://img.shields.io/badge/API-kapro.io%2Fv1alpha1-purple" alt="API Group"></a>
+</p>
 
-## What is Kapro?
+---
 
-Kapro orchestrates **when** and **where** versions are delivered across a
-fleet of Kubernetes clusters. It doesn't replace Flux or ArgoCD -- it
-orchestrates them across clusters in ordered waves with approval gates.
+## The Problem
 
-Built for environments where:
+As GitOps scales to sovereign fleets, the blast radius of traditional inline updates scales with it. The lack of a controlled promotion layer transforms localized bugs into global outages.
 
-- Clusters are behind NAT, firewalls, or air gaps (no inbound connectivity)
-- Rollouts must move in ordered waves across countries, tiers, or regions
-- Human approval and automated gates must block promotion between waves
-- Per-cluster k9s visibility is required (not just hub-side status)
+<p align="center">
+  <img src="docs/blast-radius.png" alt="The blast radius of legacy fleet management" width="700">
+</p>
 
-```
-CI --> kapro bundle push --> GAR (OCI)
-                              |
-Hub: Release CR --> Pipeline DAG --> spoke actuator
-                              |
-Spoke: OCIRepository --> wave Kustomizations --> HelmReleases (local)
-```
+## The Kapro Approach
 
-## Architecture
+Kapro is a **canonical promotion layer** that sits between your CI pipeline and your fleet. It controls **when**, **where**, and **how safely** new versions reach each cluster.
 
-```
-Hub cluster (GKE)                        Spoke cluster (GKE/SKE/any)
-+----------------------------+           +-----------------------------+
-| kapro-operator             |           | Flux (spoke-local)          |
-|   Release controller       |           |   source-controller         |
-|   ReleaseTarget FSM        |           |   kustomize-controller      |
-|   Approval controller      |           |   helm-controller           |
-|   Kapro controller         |           |                             |
-|     (spoke bootstrap)      | kubeconfig|   OCIRepository             |
-|     (bundle push)          |---------->|     pulls bundle from GAR   |
-|                            |           |                             |
-| Flux Operator              |           |   wave-00 Kustomization     |
-|   FluxInstance             |           |   wave-01 Kustomization     |
-|   ResourceSet (push mode)  |           |     dependsOn: wave-00      |
-|                            |           |   wave-02 Kustomization     |
-| MemberCluster CRDs         |           |     dependsOn: wave-01      |
-|   (fleet inventory)       |           |                             |
-+----------------------------+           |   HelmReleases (local)      |
-                                         |     hello-infra (wave 0)    |
-GCP Services                             |     hello-app (wave 1)      |
-+----------------------------+           |     hello-frontend (wave 2)  |
-| Fleet API (membership)     |           |                             |
-| GAR (OCI bundles + charts) |           |   Observability             |
-| Secret Manager (ESO)       |           |     Beyla -> OTel -> GMP    |
-| Cloud SQL (PostgreSQL)     |           +-----------------------------+
-| Workload Identity (auth)   |
-| GMP (Prometheus metrics)   |
-+----------------------------+
-```
+<p align="center">
+  <img src="docs/manifesto.png" alt="The Kapro manifesto" width="700">
+</p>
 
-## Delivery Modes
+- **Intra-cluster blue/green deployment** — new versions deploy into a standby namespace, fully isolated from live traffic
+- **Inter-cluster canary rings** — promote across clusters in ordered waves, from a single canary to global fleet
+- **No more inline updates** — standby workloads are validated before they ever serve a single request
 
-| Mode | How it works | Visibility |
-|------|-------------|------------|
-| **spoke** (recommended) | OCI bundle pulled by spoke's own Flux. Wave Kustomizations with dependsOn chain. | Full k9s on spoke: `kubectl get ks,hr` |
-| **push** | Hub renders HelmReleases with kubeConfig, hub's helm-controller installs remotely. | Hub only: spoke sees pods but no Flux resources |
+## Safe by Design
 
-Set via `deliveryMode: spoke` on the Kapro CR.
+Legacy GitOps mutates live workloads in-place. One bad image tag and your checkout system is down. Kapro eliminates this by deploying into isolated standby namespaces first.
 
-## CRDs (8)
+<p align="center">
+  <img src="docs/standby-shield.png" alt="Standby shield: eradicating mutable risk" width="700">
+</p>
 
-| CRD | Description |
-|-----|-------------|
-| **Kapro** | Fleet entry point. References KaproApp, defines clusters and pipeline. |
-| **KaproApp** | Component definitions: registries, waves, dependsOn, defaults, overrides. |
-| **Pipeline** | Reusable DAG of stages with label selectors. Pure template. |
-| **Release** | Trigger for rollout. References version and pipelines. |
-| **ReleaseTarget** | Per-target FSM state (child of Release). |
-| **MemberCluster** | Fleet cluster registry: actuator config, health, version, heartbeat. |
-| **Approval** | Human gate signal. kubectl-native, auditable, supports bypass. |
-| **AgentPolicy** | AI trust boundaries for automated approvals. |
+## How Promotion Works
 
-## CLI (`kapro`)
+### Level 1: Blue/Green Within a Cluster
 
-```
-kapro hub init --project X --cluster Y     # bootstrap hub (Flux + CRDs + Fleet)
-kapro hub registry create --project X      # create centralized GAR registry
-kapro hub registry add <url> --as default  # save registry to config
-kapro spoke add <name> --provider gcp-fleet # add spoke (Flux + Fleet + IAM)
-kapro fleet list                           # list Fleet memberships
-kapro fleet sync --project X               # auto-discover + add all Fleet clusters
-kapro bundle generate --app X --push       # generate + push OCI bundle (CI)
-kapro status                               # live fleet delivery dashboard
-kapro approve <release>/<target>           # approve gate
-kapro reject <release>/<target>            # reject gate
-kapro rollback <release> --to <version>    # rollback
-```
+Workloads are validated inside a standby namespace. The switch to live is an instant routing flip — not a redeployment. Rollbacks take milliseconds.
 
-All commands use Go SDK (Fleet Hub, Container, IAM, Artifact Registry, ORAS).
-No gcloud, helm, flux, or kubectl dependencies. Interactive project/cluster
-selection when no flags provided.
+<p align="center">
+  <img src="docs/blue-green.png" alt="Blue/green intra-cluster routing" width="700">
+</p>
 
-Config persisted at `~/.kapro/config.yaml` -- hub init writes it, all commands read it.
+### Level 2: Canary Rings Across the Fleet
+
+Start with a single cluster (Ring 0). If it's healthy, expand to a canary group (Ring 1). Only after automated gates pass does the version reach the global fleet (Ring 2).
+
+<p align="center">
+  <img src="docs/canary-rings.png" alt="Inter-cluster canary rings" width="700">
+</p>
+
+### The Full Stack
+
+The promotion framework is a stack of mechanical guarantees. Global sovereign safety is achieved exclusively through uncompromising local namespace isolation.
+
+<p align="center">
+  <img src="docs/promotion-framework.png" alt="The scale of promotion framework" width="700">
+</p>
+
+## Why Not Just GitOps?
+
+Kapro doesn't replace Flux or ArgoCD — it orchestrates them.
+
+<p align="center">
+  <img src="docs/comparison.png" alt="Kapro vs legacy fleet GitOps" width="700">
+</p>
+
+| | Legacy Fleet GitOps | Kapro |
+|---|---|---|
+| **Blast radius** | Cluster-wide / fleet-wide | Contained to a namespace |
+| **Updates** | Mutating inline updates | Immutable standby workloads |
+| **Rollback** | Minutes (redeployment) | Milliseconds (routing switch) |
+| **Fleet sync** | Drift-prone and manual | Automated ring-based promotion |
+
+## Built For
+
+- **Retail / POS systems** where checkout downtime costs real revenue
+- **Sovereign fleets** across countries with different compliance requirements
+- **Air-gapped clusters** behind NAT and firewalls with no inbound connectivity
+- **Regulated industries** that need human approval gates and full audit trails
+- **Multi-cloud fleets** spanning GCP, AWS, Azure, StackIT, or on-prem
+
+## Gates and Safety
+
+Every promotion step can be guarded by composable gates:
+
+- **Soak time** — wait for a minimum healthy period before advancing
+- **Metrics** — evaluate PromQL queries against live cluster data
+- **Human approval** — block until an authorized person approves
+- **Verification** — cosign artifact signature checks
+- **Webhooks** — call external systems for custom validation
+- **Health checks** — active endpoint polling
+
+Gates are stackable. A single stage can require signature verification, a 30-minute soak, passing error rate metrics, and human sign-off — all before the next ring begins.
 
 ## Getting Started
 
 ```bash
-# 1. Bootstrap hub cluster
+# Bootstrap a hub cluster
 kapro hub init --project my-project --cluster my-hub
 
-# 2. Create registry
-kapro hub registry create --project my-project --name kapro-registry
-kapro hub registry add oci://europe-west1-docker.pkg.dev/my-project/kapro-registry --as default
+# Add spoke clusters to the fleet
+kapro spoke add de-prod --provider gcp-fleet --labels tier=canary
+kapro spoke add fi-prod --provider gcp-fleet --labels tier=prod
 
-# 3. Add spoke clusters
-kapro spoke add de-prod-01 --provider gcp-fleet --labels tier=canary
-kapro spoke add fi-prod-01 --provider gcp-fleet --labels tier=prod
+# Define your app and delivery pipeline
+kubectl apply -f kaproapp.yaml
+kubectl apply -f kapro.yaml
 
-# 4. Define app + delivery
-kubectl apply -f kaproapp.yaml   # components, waves, registries
-kubectl apply -f kapro.yaml      # fleet config, deliveryMode: spoke
+# Push a version (from CI)
+kapro bundle generate --app my-app --version 1.0.0 --push
 
-# 5. CI pushes bundle
-kapro bundle generate --app my-app --name my-kapro --version 1.0.0 --push
-
-# 6. Create release (triggers delivery)
+# Create a release — Kapro handles the rest
 kubectl apply -f release.yaml
+
+# Watch it roll out
+kapro status
 ```
 
-## Composable Gates
+## Documentation
 
-| Gate | Description |
-|------|-------------|
-| **Soak** | Minimum time elapsed before advancing |
-| **Metrics** | PromQL evaluation with configurable threshold |
-| **Approval** | Blocks until Approval CR exists |
-| **CEL** | Inline expression evaluation with target context |
-| **Job** | Kubernetes Job; exit 0 = pass |
-| **Webhook** | HTTP callback to external system |
-| **Verification** | Cosign signature verification |
-| **Health** | Active endpoint polling |
+- [Architecture Spec](docs/SPEC.md)
+- [Roadmap](docs/ROADMAP.md)
 
-## Target State Machine
+<p align="center">
+  <img src="docs/closing.png" alt="Engineered for the sovereign fleet" width="700">
+</p>
 
-```
-Pending -> Verification -> HealthCheck -> Soaking -> MetricsCheck
-        -> WaitingApproval -> Applying -> Converged
-                                       |-> Failed
-                                       |-> Skipped
-```
-
-## GCP-Native Integration
-
-| GCP Service | How Kapro uses it |
-|-------------|-------------------|
-| **GKE Fleet** | Cluster discovery, membership management |
-| **Artifact Registry** | Centralized OCI bundles + Helm charts |
-| **Container API** | Cluster endpoint resolution, location detection |
-| **Secret Manager** | Credentials via External Secrets Operator |
-| **Cloud SQL** | Managed PostgreSQL for platform services |
-| **Workload Identity** | Zero-credential auth (pod -> GCP SA) |
-| **GMP** | Prometheus metrics for health gates |
-| **IAM** | Cross-project spoke access to hub registry |
-
-All via Go SDK. Also supports non-GCP clusters via `--kubeconfig` provider
-(StackIT SKE, EKS, AKS, on-prem, kind).
-
-## Scale
-
-- Parallel spoke bootstrap (10 concurrent, bounded semaphore)
-- Spoke client cache (sync.Map, 5min TTL, health probe on reuse)
-- Version-change detection (skip redundant bootstrap)
-- Error isolation (failing spoke doesn't block fleet)
-- Controller sharding via `KAPRO_SHARD` env for 1000+ clusters
-- Embedded CRDs via go:embed (FluxInstance + ResourceSet + 8 Kapro CRDs)
-
-## Development
-
-```bash
-# Prerequisites: Go 1.22+, make
-make generate manifests   # CRDs + deepcopy
-go build ./...            # all packages
-go test ./...             # tests
-
-# Run operator locally against GKE hub
-KAPRO_DEV_MODE=1 KAPRO_DISABLE_WEBHOOKS=true go run ./cmd/operator/
-```
+<p align="center"><em>Safe. Sovereign. Global.</em></p>
 
 ## License
 
-Apache 2.0 -- see [LICENSE](LICENSE).
+Apache 2.0 — see [LICENSE](LICENSE).
