@@ -130,13 +130,24 @@ func runHubInit(ctx context.Context, kubeconfigPath, project, clusterName, locat
 		}},
 	}
 
-	// Fleet registration (GCP only).
+	// GCP-only steps.
 	if project != "" && clusterName != "" {
 		steps = append(steps, struct {
 			name string
 			fn   func() error
 		}{"Registering hub in GKE Fleet", func() error {
 			return bootstrap.RegisterFleetMembership(ctx, project, clusterName, location)
+		}})
+		steps = append(steps, struct {
+			name string
+			fn   func() error
+		}{"Creating centralized GAR registry", func() error {
+			info, err := bootstrap.EnsureGARRegistry(ctx, project, location, "kapro-registry")
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stderr, "\n    Registry: oci://%s\n", info.URL)
+			return nil
 		}})
 	}
 

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
+	"cloud.google.com/go/artifactregistry/apiv1/artifactregistrypb"
 	container "cloud.google.com/go/container/apiv1"
 	"cloud.google.com/go/container/apiv1/containerpb"
 	gkehub "cloud.google.com/go/gkehub/apiv1beta1"
@@ -91,6 +93,92 @@ func fleetLocation(location string) string {
 		// Check if last part is a single letter (zone suffix like "b")
 		last := parts[len(parts)-1]
 		if len(last) == 1 {
+			return strings.Join(parts[:len(parts)-1], "-")
+		}
+	}
+	return location
+}
+
+// RegistryInfo holds the created registry details.
+type RegistryInfo struct {
+	// URL is the OCI registry URL (e.g. europe-west1-docker.pkg.dev/project/kapro-registry)
+	URL string
+	// Name is the repository ID.
+	Name string
+}
+
+// EnsureGARRegistry creates a Docker/OCI Artifact Registry repository.
+// Idempotent — skips if already exists.
+// Returns the registry URL for use in KaproApp registries and bundle push.
+func EnsureGARRegistry(ctx context.Context, project, location, repoName string) (*RegistryInfo, error) {
+	ts := provider.GCPTokenSource(ctx)
+	c, err := artifactregistry.NewClient(ctx, option.WithTokenSource(ts))
+	if err != nil {
+		return nil, fmt.Errorf("create Artifact Registry client: %w", err)
+	}
+	defer c.Close()
+
+	parent := fmt.Sprintf("projects/%s/locations/%s", project, registryLocation(location))
+
+	// Check if already exists.
+	repoFullName := fmt.Sprintf("%s/repositories/%s", parent, repoName)
+	existing, err := c.GetRepository(ctx, &artifactregistrypb.GetRepositoryRequest{Name: repoFullName})
+	if err == nil {
+		url := fmt.Sprintf("%s-docker.pkg.dev/%s/%s",
+			registryLocation(location), project, existing.GetName())
+		// GetName returns full path — extract just the repo ID.
+		parts := strings.Split(existing.GetName(), "/")
+		shortName := parts[len(parts)-1]
+		url = fmt.Sprintf("%s-docker.pkg.dev/%s/%s",
+			registryLocation(location), project, shortName)
+		return &RegistryInfo{URL: url, Name: shortName}, nil
+	}
+
+	// Create.
+	op, err := c.CreateRepository(ctx, &artifactregistrypb.CreateRepositoryRequest{
+		Parent:       parent,
+		RepositoryId: repoName,
+		Repository: &artifactregistrypb.Repository{
+			Format:      artifactregistrypb.Repository_DOCKER,
+			Mode:        artifactregistrypb.Repository_STANDARD_REPOSITORY,
+			Description: "Kapro centralized registry — OCI bundles + Helm charts",
+		},
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "already exists") {
+			url := fmt.Sprintf("%s-docker.pkg.dev/%s/%s",
+				registryLocation(location), project, repoName)
+			return &RegistryInfo{URL: url, Name: repoName}, nil
+		}
+		return nil, fmt.Errorf("create GAR repository %s: %w", repoName, err)
+	}
+
+	repo, err := op.Wait(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("wait for GAR repository %s: %w", repoName, err)
+	}
+
+	parts := strings.Split(repo.GetName(), "/")
+	shortName := parts[len(parts)-1]
+	url := fmt.Sprintf("%s-docker.pkg.dev/%s/%s",
+		registryLocation(location), project, shortName)
+
+	return &RegistryInfo{URL: url, Name: shortName}, nil
+}
+
+// GrantRegistryReader grants artifactregistry.reader on a project to a service account.
+// Used to give spoke node SAs permission to pull from the hub's centralized registry.
+func GrantRegistryReader(ctx context.Context, hubProject, spokeSAEmail string) error {
+	ts := provider.GCPTokenSource(ctx)
+	return grantIAMRole(ctx, hubProject, ts, "serviceAccount:"+spokeSAEmail, "roles/artifactregistry.reader")
+}
+
+// registryLocation converts a zone to a region for GAR (GAR is regional).
+func registryLocation(location string) string {
+	parts := strings.Split(location, "-")
+	if len(parts) >= 3 {
+		last := parts[len(parts)-1]
+		if len(last) == 1 { // zone suffix like "b"
 			return strings.Join(parts[:len(parts)-1], "-")
 		}
 	}
