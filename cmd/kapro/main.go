@@ -238,6 +238,13 @@ func runClusterAdd(ctx context.Context, clusterName, providerName string, labels
 
 	// GCP-specific setup (if applicable).
 	if providerName == "gcp" || providerName == "gcp-fleet" || providerName == "gcp-basic" {
+		// Auto-detect location if not provided (needed for Fleet + IAM).
+		if location == "" && project != "" {
+			if detected, err := detectClusterLocation(ctx, project, clusterName); err == nil {
+				location = detected
+			}
+		}
+
 		// Register in Fleet.
 		sp3 := cli.NewSpinner("Registering in GKE Fleet")
 		sp3.Start()
