@@ -15,9 +15,16 @@ Purpose-built for sovereign fleet GitOps at global scale.</p>
 
 ---
 
-## The Fleet-Scale Imperative
+## The Problem
 
-When you're deploying across sovereign hubs, thousands of edge locations, and zero tolerance for centralized runtime coordination — standard CI/CD pipelines collapse under the weight of drift, state, and sheer volume.
+Modern retail, financial services, and distributed enterprises face a critical challenge: **how do you safely deploy to hundreds or thousands of Kubernetes clusters across multiple countries without creating coordination bottlenecks or blast radius explosions?**
+
+Traditional GitOps approaches break down at sovereign fleet scale:
+
+- **Sequential pipelines don't scale** — coordinating 100+ clusters through linear CI/CD creates intractable dependency chains
+- **No blast radius control** — a bad deployment can cascade across entire fleets before detection
+- **Missing promotion semantics** — Flux and ArgoCD lack native concepts for "deploy to 3 test clusters, then 10% of production, then all"
+- **Coordination overhead** — manual promotion gates and spreadsheet-driven rollout tracking don't scale
 
 <p align="center">
   <img src="docs/fleet-scale.png" alt="The fleet-scale imperative" width="700">
@@ -47,6 +54,14 @@ Kapro decouples CI from deployment. The OCI artifact becomes the single source o
   <img src="docs/artifact-contract.png" alt="Multi-pipeline GitOps: the artifact is the contract" width="700">
 </p>
 
+| | Traditional GitOps | Kapro |
+|---|---|---|
+| **Runtime source** | Git repository (mutable) | OCI registry (immutable) |
+| **Blast radius** | Cluster-wide on bad commit | Controlled via promotion waves |
+| **Coordination** | Central Git repo bottleneck | Independent cluster reconciliation |
+| **Rollback** | Git revert, wait for sync | Instant artifact tag switch |
+| **Auditability** | Git history | Signed OCI provenance chains |
+
 ## The Missing Link in Global GitOps
 
 You have a centralized artifact registry. You have thousands of edge clusters running Flux, Helm, and Kustomize. But how do you stage rollouts? Manage cross-cluster canaries? Validate state before promotion?
@@ -59,21 +74,21 @@ A fleet of this scale demands a dedicated, state-aware promotion engine.
 
 ## Enter Kapro
 
-Kapro doesn't replace the CNCF ecosystem. It choreographs it. An open-source orchestrator built to manage the complex state of modern sovereign fleets.
+Kapro doesn't replace the CNCF ecosystem. It choreographs it. A Flux-native, OCI-first promotion engine that introduces **promotion as a first-class Kubernetes primitive** — with automated progressive delivery, health gates, and drift reconciliation built directly into the control plane.
 
 <p align="center">
   <img src="docs/kapro-ecosystem.png" alt="Kapro: the CNCF-native promotion engine" width="700">
 </p>
 
-## Precision Control: The Mechanics of Promotion
+### Three Layers of Promotion
+
+1. **Intra-cluster blue/green** — localized confidence through in-cluster routing and validation before promotion. Rollbacks take milliseconds, not minutes.
+2. **Inter-cluster canary rings** — wave-based rollout across cluster rings with automated health gates. Pilot clusters (3 stores) → regional waves (10% → 50% → 100%).
+3. **Isolated sovereign workloads** — independent cluster reconciliation with no cross-cluster dependencies at runtime. Each country's clusters reconcile independently.
 
 <p align="center">
   <img src="docs/promotion-mechanics.png" alt="Precision control: the mechanics of promotion" width="700">
 </p>
-
-- **Intra-cluster blue/green** — seamless traffic cutover within cluster boundary
-- **Inter-cluster canary** — progressive rollout with health gates across regions
-- **No inline updates** — traffic is cutover only after verification, standby workloads always in a separate namespace
 
 ## Autonomous Operations and Bulletproof Reliability
 
@@ -90,6 +105,31 @@ Because Kapro enforces immutable, operator-driven deployments, static keys are e
 <p align="center">
   <img src="docs/security-efficiency.png" alt="Security and efficiency byproducts" width="700">
 </p>
+
+## Use Cases
+
+### Retail: Multi-Country POS Systems
+Deploy point-of-sale software to 10,000+ stores across 30+ countries. Pilot clusters first, then regional waves, with country sovereignty — each country's clusters reconcile independently. A bad deployment halts at wave boundaries, never reaches the fleet.
+
+### Financial Services: Regulatory Compliance
+Separate deployment flows for GDPR (EU), SOC2 (US), PCI-DSS (global). Environment isolation per regulatory zone, audit trails via signed OCI provenance chains, and mandatory human approval gates for production changes.
+
+### SaaS: Multi-Tenant Platforms
+Progressive rollout to customer clusters. Canary tenants get new features first. Health gates block rollout if error rates spike. Automatic promotion to remaining tenants after a configurable soak period.
+
+## How Kapro Compares
+
+| | Kapro | Flux | ArgoCD | Kargo |
+|---|---|---|---|---|
+| **Multi-cluster promotion** | Native | Manual | App-of-apps | Native |
+| **Progressive delivery** | Built-in | Via Flagger | Via Argo Rollouts | Built-in |
+| **OCI-first** | Yes | Partial | Git-centric | Yes |
+| **Sovereign fleet support** | Designed for it | No | No | Limited |
+| **Flux compatibility** | Built on Flux | N/A | No | Separate |
+| **Health gates** | Pluggable | No | No | Yes |
+| **Manual approvals** | CRD-based | No | External | Yes |
+
+Kapro sits **above** Flux (not replacing it) and **alongside** Kargo (complementary, not competitive). Kapro focuses on **horizontal wave ordering** across sovereign fleets, while Kargo focuses on vertical pipeline staging across environments.
 
 ## Getting Started
 
