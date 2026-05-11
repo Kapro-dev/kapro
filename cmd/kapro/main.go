@@ -57,7 +57,7 @@ Passes versions forward. Across targets. Across clusters. In waves.`,
 	root.AddCommand(newDemoCmd())
 	root.AddCommand(newClusterCmd())
 	root.AddCommand(newGetCmd())
-	root.AddCommand(newFleetCmd())
+	root.AddCommand(newDashboardCmd())
 	root.AddCommand(newApproveCmd())
 	root.AddCommand(newRejectCmd())
 	root.AddCommand(newRollbackCmd())
@@ -66,7 +66,7 @@ Passes versions forward. Across targets. Across clusters. In waves.`,
 	root.AddCommand(newWorldCmd())
 	root.AddCommand(newBundleCmd())
 	root.AddCommand(newHubCmd())
-	root.AddCommand(newGCPCmd())
+	root.AddCommand(newFleetMgmtCmd())
 	root.AddCommand(newStatusCmd())
 	// bootstrap is under "kapro cluster bootstrap" — no separate root command
 
@@ -1278,11 +1278,11 @@ func runWorld(ctx context.Context, envFilter, kubeconfigPath string) error {
 
 // ─── kapro fleet ─────────────────────────────────────────────────────────────
 
-func newFleetCmd() *cobra.Command {
+func newDashboardCmd() *cobra.Command {
 	var kubeconfig string
 	cmd := &cobra.Command{
-		Use:   "fleet",
-		Short: "Fleet summary: clusters, releases, and pending decisions",
+		Use:   "dashboard",
+		Short: "Overview: clusters, releases, and pending decisions",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runFleet(cmd.Context(), kubeconfig)
 		},

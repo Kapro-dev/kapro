@@ -10,69 +10,47 @@ import (
 	"github.com/spf13/cobra"
 
 	"kapro.io/kapro/internal/bootstrap"
+	kaproconfig "kapro.io/kapro/internal/config"
 	"kapro.io/kapro/internal/gcputil"
 )
 
-func newGCPCmd() *cobra.Command {
+func newFleetMgmtCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "gcp",
-		Short: "GCP resource discovery and Fleet management",
-		Long: `Manage GKE clusters and Fleet memberships via Go SDK.
-No gcloud dependency — uses ADC/Workload Identity.
+		Use:   "fleet",
+		Short: "Fleet membership management",
+		Long: `Manage GKE Fleet memberships — the clusters Kapro delivers to.
+
+If a cluster isn't in Fleet, Kapro doesn't know about it.
 
 Examples:
-  kapro gcp list --project my-project
-  kapro gcp clusters --project my-project
-  kapro gcp register --project my-project my-cluster`,
+  kapro fleet list
+  kapro fleet register my-cluster`,
 	}
-	cmd.AddCommand(newGCPProjectsCmd())
-	cmd.AddCommand(newFleetListCmd())
-	cmd.AddCommand(newFleetClustersCmd())
+	cmd.AddCommand(newFleetListMgmtCmd())
 	cmd.AddCommand(newFleetRegisterCmd())
 	return cmd
 }
 
-// --- gcp projects ---
-
-func newGCPProjectsCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "projects",
-		Short: "List accessible GCP projects",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			projects, err := gcputil.ListProjects(cmd.Context())
-			if err != nil {
-				return err
-			}
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "PROJECT_ID\tNAME")
-			for _, p := range projects {
-				fmt.Fprintf(w, "%s\t%s\n", p.ID, p.Name)
-			}
-			return w.Flush()
-		},
-	}
-}
-
 // --- fleet list ---
 
-func newFleetListCmd() *cobra.Command {
+func newFleetListMgmtCmd() *cobra.Command {
 	var project string
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List Fleet memberships",
-		Long: `Lists all GKE Fleet memberships in a project.
-Shows membership name, location, GKE cluster, and labels.
-
-If --project is omitted, interactively selects a project.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runFleetList(cmd.Context(), project)
 		},
 	}
-	cmd.Flags().StringVar(&project, "project", "", "GCP project ID (interactive if omitted)")
+	cmd.Flags().StringVar(&project, "project", "", "GCP project (reads from config if omitted)")
 	return cmd
 }
 
 func runFleetList(ctx context.Context, project string) error {
+	if project == "" {
+		cfg, _ := kaproconfig.Load()
+		project = cfg.Hub.Project
+	}
 	if project == "" {
 		var err error
 		project, err = gcputil.SelectProject(ctx)
@@ -100,66 +78,6 @@ func runFleetList(ctx context.Context, project string) error {
 	return w.Flush()
 }
 
-// --- fleet clusters ---
-
-func newFleetClustersCmd() *cobra.Command {
-	var project string
-	cmd := &cobra.Command{
-		Use:   "clusters",
-		Short: "List all GKE clusters in a project",
-		Long: `Lists all GKE clusters (Fleet-enrolled or not) in a project.
-Shows name, location, status, version, and node count.`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runFleetClusters(cmd.Context(), project)
-		},
-	}
-	cmd.Flags().StringVar(&project, "project", "", "GCP project ID (interactive if omitted)")
-	return cmd
-}
-
-func runFleetClusters(ctx context.Context, project string) error {
-	if project == "" {
-		var err error
-		project, err = gcputil.SelectProject(ctx)
-		if err != nil {
-			return err
-		}
-	}
-
-	clusters, err := gcputil.ListClusters(ctx, project)
-	if err != nil {
-		return err
-	}
-
-	if len(clusters) == 0 {
-		fmt.Fprintf(os.Stderr, "No GKE clusters found in project %s\n", project)
-		return nil
-	}
-
-	// Check which clusters are in Fleet.
-	fleetMembers, _ := gcputil.ListFleetMembers(ctx, project)
-	fleetSet := map[string]bool{}
-	for _, m := range fleetMembers {
-		fleetSet[m.Cluster] = true
-	}
-
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tLOCATION\tSTATUS\tVERSION\tNODES\tFLEET")
-	for _, c := range clusters {
-		fleet := "-"
-		if fleetSet[c.Name] {
-			fleet = "yes"
-		}
-		mode := ""
-		if c.Autopilot {
-			mode = " (AP)"
-		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d%s\t%s\n",
-			c.Name, c.Location, c.Status, c.Version, c.NodeCount, mode, fleet)
-	}
-	return w.Flush()
-}
-
 // --- fleet register ---
 
 func newFleetRegisterCmd() *cobra.Command {
@@ -173,22 +91,29 @@ func newFleetRegisterCmd() *cobra.Command {
 		Long: `Registers a GKE cluster as a Fleet membership.
 Idempotent — skips if already registered.
 
-If --project is omitted, interactively selects a project.
-If the cluster name is omitted, interactively selects from available clusters.`,
+If cluster name is omitted, interactively selects from available clusters.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clusterName := ""
 			if len(args) > 0 {
 				clusterName = args[0]
 			}
-			return runFleetRegister(cmd.Context(), project, clusterName, location)
+			return runFleetRegister(ctx(cmd), project, clusterName, location)
 		},
 	}
-	cmd.Flags().StringVar(&project, "project", "", "GCP project ID")
+	cmd.Flags().StringVar(&project, "project", "", "GCP project (reads from config if omitted)")
 	cmd.Flags().StringVar(&location, "location", "", "GKE cluster location (auto-detected if omitted)")
 	return cmd
 }
 
+func ctx(cmd *cobra.Command) context.Context {
+	return cmd.Context()
+}
+
 func runFleetRegister(ctx context.Context, project, clusterName, location string) error {
+	if project == "" {
+		cfg, _ := kaproconfig.Load()
+		project = cfg.Hub.Project
+	}
 	if project == "" {
 		var err error
 		project, err = gcputil.SelectProject(ctx)
@@ -215,7 +140,7 @@ func runFleetRegister(ctx context.Context, project, clusterName, location string
 	if err := bootstrap.RegisterFleetMembership(ctx, project, clusterName, location); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Fleet membership registered: %s\n", clusterName)
+	fmt.Fprintf(os.Stderr, "✔ Fleet membership registered: %s\n", clusterName)
 	return nil
 }
 
