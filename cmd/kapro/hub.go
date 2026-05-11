@@ -18,6 +18,7 @@ import (
 
 	"kapro.io/kapro/internal/bootstrap"
 	"kapro.io/kapro/internal/cli"
+	kaproconfig "kapro.io/kapro/internal/config"
 	"kapro.io/kapro/internal/gcputil"
 	"kapro.io/kapro/internal/provider"
 )
@@ -46,6 +47,46 @@ Examples:
 	}
 	cmd.AddCommand(newRegistryListCmd())
 	cmd.AddCommand(newRegistryCreateCmd())
+	cmd.AddCommand(newRegistryAddCmd())
+	return cmd
+}
+
+func newRegistryAddCmd() *cobra.Command {
+	var role string
+	cmd := &cobra.Command{
+		Use:   "add <registry-url>",
+		Short: "Add a registry to kapro config",
+		Long: `Saves a registry URL to ~/.kapro/config.yaml with a role name.
+Used by bundle generate and other commands to find the right registry.
+
+Roles:
+  default  — used when no specific role matches
+  bundles  — OCI bundles (kapro bundle generate --push)
+  charts   — Helm charts
+
+Examples:
+  kapro hub registry add oci://europe-west1-docker.pkg.dev/project/kapro-registry --as default
+  kapro hub registry add oci://europe-west1-docker.pkg.dev/project/helm-charts --as charts`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if role == "" {
+				role = "default"
+			}
+			cfg, err := kaproconfig.Load()
+			if err != nil {
+				return err
+			}
+			cfg.SetRegistry(role, args[0])
+			if err := cfg.Save(); err != nil {
+				return err
+			}
+			cli.KV("Registry", args[0])
+			cli.KV("Role", role)
+			cli.KV("Config", kaproconfig.DefaultPath())
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&role, "as", "default", "Role name (default, bundles, charts)")
 	return cmd
 }
 
@@ -67,6 +108,10 @@ func newRegistryListCmd() *cobra.Command {
 }
 
 func runRegistryList(ctx context.Context, project, location string) error {
+	if project == "" {
+		cfg, _ := kaproconfig.Load()
+		project = cfg.Hub.Project
+	}
 	if project == "" {
 		var err error
 		project, err = gcputil.SelectProject(ctx)
@@ -127,6 +172,10 @@ Examples:
 }
 
 func runRegistryCreate(ctx context.Context, project, location, name string) error {
+	if project == "" {
+		cfg, _ := kaproconfig.Load()
+		project = cfg.Hub.Project
+	}
 	if project == "" {
 		var err error
 		project, err = gcputil.SelectProject(ctx)
@@ -275,6 +324,21 @@ func runHubInit(ctx context.Context, kubeconfigPath, project, clusterName, locat
 			continue
 		}
 		sp.StopSuccess(fmt.Sprintf("[%d/%d] %s", i+1, len(steps), step.name))
+	}
+
+	// Save config for future commands.
+	if project != "" && clusterName != "" {
+		cfg, _ := kaproconfig.Load()
+		cfg.Hub = kaproconfig.HubConfig{
+			Project:  project,
+			Cluster:  clusterName,
+			Location: location,
+		}
+		if err := cfg.Save(); err != nil {
+			fmt.Fprintf(os.Stderr, "  warning: could not save config: %v\n", err)
+		} else {
+			cli.Muted(fmt.Sprintf("Config saved to %s", kaproconfig.DefaultPath()))
+		}
 	}
 
 	fmt.Fprintln(os.Stderr)
