@@ -4,7 +4,8 @@
 
 <h1 align="center">Kapro</h1>
 
-<p align="center"><strong>Progressive delivery and promotion engine for multi-cluster Kubernetes fleets.</strong></p>
+<p align="center"><strong>The canonical promotion layer for Kubernetes.</strong><br>
+Purpose-built for sovereign fleet GitOps at global scale.</p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
@@ -14,95 +15,81 @@
 
 ---
 
-## The Problem
+## The Fleet-Scale Imperative
 
-As GitOps scales to sovereign fleets, the blast radius of traditional inline updates scales with it. The lack of a controlled promotion layer transforms localized bugs into global outages.
-
-<p align="center">
-  <img src="docs/blast-radius.png" alt="The blast radius of legacy fleet management" width="700">
-</p>
-
-## The Kapro Approach
-
-Kapro is a **canonical promotion layer** that sits between your CI pipeline and your fleet. It controls **when**, **where**, and **how safely** new versions reach each cluster.
+When you're deploying across sovereign hubs, thousands of edge locations, and zero tolerance for centralized runtime coordination — standard CI/CD pipelines collapse under the weight of drift, state, and sheer volume.
 
 <p align="center">
-  <img src="docs/manifesto.png" alt="The Kapro manifesto" width="700">
+  <img src="docs/fleet-scale.png" alt="The fleet-scale imperative" width="700">
 </p>
 
-- **Intra-cluster blue/green deployment** — new versions deploy into a standby namespace, fully isolated from live traffic
-- **Inter-cluster canary rings** — promote across clusters in ordered waves, from a single canary to global fleet
-- **No more inline updates** — standby workloads are validated before they ever serve a single request
+## The Generation Change
 
-## Safe by Design
-
-Legacy GitOps mutates live workloads in-place. One bad image tag and your checkout system is down. Kapro eliminates this by deploying into isolated standby namespaces first.
+We are no longer deploying simple containers. Modern platforms orchestrate stateful distributed systems — with cross-platform dependencies, ordered deployment waves, and strict reconciliation loops — across an untrusted fleet.
 
 <p align="center">
-  <img src="docs/standby-shield.png" alt="Standby shield: eradicating mutable risk" width="700">
+  <img src="docs/generation-change.png" alt="The architectural generation change" width="700">
 </p>
 
-## How Promotion Works
+## Why Sequential Pipelines Break
 
-### Level 1: Blue/Green Within a Cluster
-
-Workloads are validated inside a standby namespace. The switch to live is an instant routing flip — not a redeployment. Rollbacks take milliseconds.
+Traditional CI/CD assumes a linear world: build, test, deploy. But when Kafka must run before 14 dependent services, databases need managed state, and clusters must self-correct drift — sequential pipelines simply cannot express this.
 
 <p align="center">
-  <img src="docs/blue-green.png" alt="Blue/green intra-cluster routing" width="700">
+  <img src="docs/sequential-pipelines-break.png" alt="Why sequential pipelines break" width="700">
 </p>
 
-### Level 2: Canary Rings Across the Fleet
+## The Artifact is the Contract
 
-Start with a single cluster (Ring 0). If it's healthy, expand to a canary group (Ring 1). Only after automated gates pass does the version reach the global fleet (Ring 2).
+Kapro decouples CI from deployment. The OCI artifact becomes the single source of truth — immutable, signed, and version-locked. Any git repo, any CI pipeline can produce it. Runtime git dependency drops to zero.
 
 <p align="center">
-  <img src="docs/canary-rings.png" alt="Inter-cluster canary rings" width="700">
+  <img src="docs/artifact-contract.png" alt="Multi-pipeline GitOps: the artifact is the contract" width="700">
 </p>
 
-### The Full Stack
+## The Missing Link in Global GitOps
 
-The promotion framework is a stack of mechanical guarantees. Global sovereign safety is achieved exclusively through uncompromising local namespace isolation.
+You have a centralized artifact registry. You have thousands of edge clusters running Flux, Helm, and Kustomize. But how do you stage rollouts? Manage cross-cluster canaries? Validate state before promotion?
+
+A fleet of this scale demands a dedicated, state-aware promotion engine.
 
 <p align="center">
-  <img src="docs/promotion-framework.png" alt="The scale of promotion framework" width="700">
+  <img src="docs/missing-link.png" alt="The missing link in global GitOps" width="700">
 </p>
 
-## Why Not Just GitOps?
+## Enter Kapro
 
-Kapro doesn't replace Flux or ArgoCD — it orchestrates them.
+Kapro doesn't replace the CNCF ecosystem. It choreographs it. An open-source orchestrator built to manage the complex state of modern sovereign fleets.
 
 <p align="center">
-  <img src="docs/comparison.png" alt="Kapro vs legacy fleet GitOps" width="700">
+  <img src="docs/kapro-ecosystem.png" alt="Kapro: the CNCF-native promotion engine" width="700">
 </p>
 
-| | Legacy Fleet GitOps | Kapro |
-|---|---|---|
-| **Blast radius** | Cluster-wide / fleet-wide | Contained to a namespace |
-| **Updates** | Mutating inline updates | Immutable standby workloads |
-| **Rollback** | Minutes (redeployment) | Milliseconds (routing switch) |
-| **Fleet sync** | Drift-prone and manual | Automated ring-based promotion |
+## Precision Control: The Mechanics of Promotion
 
-## Built For
+<p align="center">
+  <img src="docs/promotion-mechanics.png" alt="Precision control: the mechanics of promotion" width="700">
+</p>
 
-- **Retail / POS systems** where checkout downtime costs real revenue
-- **Sovereign fleets** across countries with different compliance requirements
-- **Air-gapped clusters** behind NAT and firewalls with no inbound connectivity
-- **Regulated industries** that need human approval gates and full audit trails
-- **Multi-cloud fleets** spanning GCP, AWS, Azure, StackIT, or on-prem
+- **Intra-cluster blue/green** — seamless traffic cutover within cluster boundary
+- **Inter-cluster canary** — progressive rollout with health gates across regions
+- **No inline updates** — traffic is cutover only after verification, standby workloads always in a separate namespace
 
-## Gates and Safety
+## Autonomous Operations and Bulletproof Reliability
 
-Every promotion step can be guarded by composable gates:
+Kapro manages 27-wave dependsOn execution across CRDs, operators, state, apps, and ingress. Automated health gates ensure that if a canary fails, the rollout halts immediately. Zero fleet-wide bad deployments.
 
-- **Soak time** — wait for a minimum healthy period before advancing
-- **Metrics** — evaluate PromQL queries against live cluster data
-- **Human approval** — block until an authorized person approves
-- **Verification** — cosign artifact signature checks
-- **Webhooks** — call external systems for custom validation
-- **Health checks** — active endpoint polling
+<p align="center">
+  <img src="docs/autonomous-operations.png" alt="Autonomous operations and bulletproof reliability" width="700">
+</p>
 
-Gates are stackable. A single stage can require signature verification, a 30-minute soak, passing error rate metrics, and human sign-off — all before the next ring begins.
+## The Byproducts: Security and Efficiency
+
+Because Kapro enforces immutable, operator-driven deployments, static keys are eradicated. Security policies are deployed as code alongside the workloads. Reliable state management enables aggressive disaggregated scaling — non-critical workloads safely scale to zero.
+
+<p align="center">
+  <img src="docs/security-efficiency.png" alt="Security and efficiency byproducts" width="700">
+</p>
 
 ## Getting Started
 
@@ -118,14 +105,11 @@ kapro spoke add fi-prod --provider gcp-fleet --labels tier=prod
 kubectl apply -f kaproapp.yaml
 kubectl apply -f kapro.yaml
 
-# Push a version (from CI)
+# Push a version from CI
 kapro bundle generate --app my-app --version 1.0.0 --push
 
 # Create a release — Kapro handles the rest
 kubectl apply -f release.yaml
-
-# Watch it roll out
-kapro status
 ```
 
 ## Documentation
@@ -133,11 +117,13 @@ kapro status
 - [Architecture Spec](docs/SPEC.md)
 - [Roadmap](docs/ROADMAP.md)
 
+## Proven at Scale. Open to the Community.
+
 <p align="center">
-  <img src="docs/closing.png" alt="Engineered for the sovereign fleet" width="700">
+  <img src="docs/proven-at-scale.png" alt="Proven at scale, open to the community" width="700">
 </p>
 
-<p align="center"><em>Safe. Sovereign. Global.</em></p>
+Kapro is built to be the open-source standard for multi-cluster fleet promotion. Join the project, contribute to the standard, and tame the complexity of global GitOps.
 
 ## License
 
