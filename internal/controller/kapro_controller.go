@@ -748,8 +748,9 @@ func isNoMatchError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "no matches for kind")
 }
 
-// syncMemberClusterStatus reads HelmRelease status for a spoke and writes it
-// to the MemberCluster status. This gives k9s users full fleet visibility from the hub.
+// syncMemberClusterStatus reads HelmRelease status and writes it to the
+// MemberCluster status. For push mode, reads from hub. For spoke-local mode,
+// connects to spoke and reads directly.
 func (r *KaproReconciler) syncMemberClusterStatus(ctx context.Context, kapro *kaprov1alpha1.Kapro, app *kaprov1alpha1.KaproApp, cluster kaprov1alpha1.KaproCluster) bool {
 	l := log.FromContext(ctx)
 
@@ -759,16 +760,45 @@ func (r *KaproReconciler) syncMemberClusterStatus(ctx context.Context, kapro *ka
 		return false
 	}
 
+	// Determine which client to use for reading HelmRelease status.
+	hrClient := client.Client(r.Client) // default: hub (push mode)
+	hrNameSuffix := "-" + cluster.Name  // push mode: hello-infra-kapro-spoke
+
+	if isSpokeLocalMode(kapro) {
+		// Spoke-local: connect to spoke and read HelmReleases there.
+		if cluster.KubeconfigSecret == "" {
+			l.Info("no kubeconfig secret for spoke, skipping status sync", "cluster", cluster.Name)
+			return false
+		}
+		var secret corev1.Secret
+		if err := r.Get(ctx, client.ObjectKey{Name: cluster.KubeconfigSecret, Namespace: "flux-system"}, &secret); err != nil {
+			l.Error(err, "failed to read kubeconfig secret", "cluster", cluster.Name)
+			return false
+		}
+		restConfig, err := clientcmd.RESTConfigFromKubeConfig(secret.Data["value"])
+		if err != nil {
+			l.Error(err, "failed to parse kubeconfig", "cluster", cluster.Name)
+			return false
+		}
+		spokeClient, err := client.New(restConfig, client.Options{})
+		if err != nil {
+			l.Error(err, "failed to create spoke client", "cluster", cluster.Name)
+			return false
+		}
+		hrClient = spokeClient
+		hrNameSuffix = "" // spoke-local: just "hello-infra", no cluster suffix
+	}
+
 	// Read HelmRelease status for each component.
 	allReady := true
 	versions := map[string]string{}
 	for _, comp := range app.Spec.Components {
-		hrName := comp.Name + "-" + cluster.Name
+		hrName := comp.Name + hrNameSuffix
 		hr := &unstructured.Unstructured{}
 		hr.SetGroupVersionKind(schema.GroupVersionKind{
 			Group: "helm.toolkit.fluxcd.io", Version: "v2", Kind: "HelmRelease",
 		})
-		if err := r.Get(ctx, client.ObjectKey{Name: hrName, Namespace: "flux-system"}, hr); err != nil {
+		if err := hrClient.Get(ctx, client.ObjectKey{Name: hrName, Namespace: "flux-system"}, hr); err != nil {
 			allReady = false
 			continue
 		}
@@ -821,7 +851,11 @@ func (r *KaproReconciler) syncMemberClusterStatus(ctx context.Context, kapro *ka
 		mc.Status.Version = app.Spec.Components[0].Version
 	}
 	mc.Status.Provider = cluster.Provider
-	mc.Status.DeliverySystem = "flux-operator"
+	if isSpokeLocalMode(kapro) {
+		mc.Status.DeliverySystem = "spoke"
+	} else {
+		mc.Status.DeliverySystem = "flux-operator"
+	}
 	mc.Status.Health = kaprov1alpha1.ClusterHealth{
 		AllWorkloadsReady: allReady,
 		ReadyWorkloads:    len(versions),
