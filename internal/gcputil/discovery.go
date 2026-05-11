@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 
+	artifactregistry "cloud.google.com/go/artifactregistry/apiv1"
+	"cloud.google.com/go/artifactregistry/apiv1/artifactregistrypb"
 	container "cloud.google.com/go/container/apiv1"
 	"cloud.google.com/go/container/apiv1/containerpb"
 	gkehub "cloud.google.com/go/gkehub/apiv1beta1"
@@ -43,6 +45,58 @@ type FleetMember struct {
 	Project  string // GKE cluster project (may differ from Fleet project)
 	Cluster  string // GKE cluster name
 	Labels   map[string]string
+}
+
+// RegistryInfo holds GAR repository metadata.
+type RegistryInfo struct {
+	Name     string
+	Location string
+	Format   string
+	URL      string
+}
+
+// ListRegistries returns all Artifact Registry repositories in a project.
+func ListRegistries(ctx context.Context, project, location string) ([]RegistryInfo, error) {
+	ts := provider.GCPTokenSource(ctx)
+	c, err := artifactregistry.NewClient(ctx, option.WithTokenSource(ts))
+	if err != nil {
+		return nil, fmt.Errorf("create Artifact Registry client: %w", err)
+	}
+	defer c.Close()
+
+	parent := fmt.Sprintf("projects/%s/locations/%s", project, location)
+	it := c.ListRepositories(ctx, &artifactregistrypb.ListRepositoriesRequest{Parent: parent})
+
+	var repos []RegistryInfo
+	for {
+		repo, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("list repositories: %w", err)
+		}
+
+		// Parse name: projects/P/locations/L/repositories/NAME
+		parts := strings.Split(repo.GetName(), "/")
+		shortName := parts[len(parts)-1]
+		loc := ""
+		for i, p := range parts {
+			if p == "locations" && i+1 < len(parts) {
+				loc = parts[i+1]
+			}
+		}
+
+		url := fmt.Sprintf("%s-docker.pkg.dev/%s/%s", loc, project, shortName)
+
+		repos = append(repos, RegistryInfo{
+			Name:     shortName,
+			Location: loc,
+			Format:   repo.GetFormat().String(),
+			URL:      url,
+		})
+	}
+	return repos, nil
 }
 
 // ListProjects returns all GCP projects accessible to the current identity.

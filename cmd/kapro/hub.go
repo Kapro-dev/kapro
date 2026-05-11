@@ -28,7 +28,130 @@ func newHubCmd() *cobra.Command {
 		Short: "Manage the Kapro hub cluster",
 	}
 	cmd.AddCommand(newHubInitCmd())
+	cmd.AddCommand(newHubRegistryCmd())
 	return cmd
+}
+
+func newHubRegistryCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "registry",
+		Short: "Manage the centralized OCI registry",
+		Long: `Manage the GAR registry used by Kapro for OCI bundles and Helm charts.
+All spokes pull from this single registry.
+
+Examples:
+  kapro hub registry list --project my-project
+  kapro hub registry create --project my-project --name kapro-registry
+  kapro hub registry create --project my-project --name kapro-registry --location europe-west1`,
+	}
+	cmd.AddCommand(newRegistryListCmd())
+	cmd.AddCommand(newRegistryCreateCmd())
+	return cmd
+}
+
+func newRegistryListCmd() *cobra.Command {
+	var (
+		project  string
+		location string
+	)
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List GAR registries in a project",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runRegistryList(cmd.Context(), project, location)
+		},
+	}
+	cmd.Flags().StringVar(&project, "project", "", "GCP project ID (interactive if omitted)")
+	cmd.Flags().StringVar(&location, "location", "", "GAR location (default: all locations)")
+	return cmd
+}
+
+func runRegistryList(ctx context.Context, project, location string) error {
+	if project == "" {
+		var err error
+		project, err = gcputil.SelectProject(ctx)
+		if err != nil {
+			return err
+		}
+	}
+	if location == "" {
+		location = "europe-west1" // GAR doesn't support locations/- wildcard
+	}
+
+	sp := cli.NewSpinner("Listing registries")
+	sp.Start()
+
+	repos, err := gcputil.ListRegistries(ctx, project, location)
+	if err != nil {
+		sp.StopFail("Failed to list registries")
+		return err
+	}
+	sp.Stop()
+
+	if len(repos) == 0 {
+		cli.Muted("No registries found")
+		return nil
+	}
+
+	tbl := cli.NewTable("NAME", "LOCATION", "FORMAT", "URL")
+	for _, r := range repos {
+		tbl.AddRow(r.Name, r.Location, r.Format, "oci://"+r.URL)
+	}
+	tbl.Render()
+	return nil
+}
+
+func newRegistryCreateCmd() *cobra.Command {
+	var (
+		project  string
+		location string
+		name     string
+	)
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create a GAR registry for Kapro",
+		Long: `Creates a Docker/OCI Artifact Registry repository.
+Idempotent — skips if already exists.
+
+Examples:
+  kapro hub registry create --project my-project --name kapro-registry
+  kapro hub registry create --project my-project --name kapro-registry --location us-central1`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runRegistryCreate(cmd.Context(), project, location, name)
+		},
+	}
+	cmd.Flags().StringVar(&project, "project", "", "GCP project ID (interactive if omitted)")
+	cmd.Flags().StringVar(&location, "location", "", "GAR location (auto-detected from hub cluster)")
+	cmd.Flags().StringVar(&name, "name", "kapro-registry", "Repository name")
+	return cmd
+}
+
+func runRegistryCreate(ctx context.Context, project, location, name string) error {
+	if project == "" {
+		var err error
+		project, err = gcputil.SelectProject(ctx)
+		if err != nil {
+			return err
+		}
+	}
+	if location == "" {
+		location = "europe-west1" // sensible default
+	}
+
+	sp := cli.NewSpinner(fmt.Sprintf("Creating registry %s in %s/%s", name, project, location))
+	sp.Start()
+
+	info, err := bootstrap.EnsureGARRegistry(ctx, project, location, name)
+	if err != nil {
+		sp.StopFail("Failed to create registry")
+		return err
+	}
+	sp.StopSuccess(fmt.Sprintf("Registry ready: oci://%s", info.URL))
+
+	fmt.Fprintln(cli.Out)
+	cli.KV("Registry", "oci://"+info.URL)
+	cli.KV("Usage", fmt.Sprintf("kapro bundle generate --registry oci://%s --push", info.URL))
+	return nil
 }
 
 func newHubInitCmd() *cobra.Command {
@@ -130,24 +253,13 @@ func runHubInit(ctx context.Context, kubeconfigPath, project, clusterName, locat
 		}},
 	}
 
-	// GCP-only steps.
+	// GCP-only: Fleet registration.
 	if project != "" && clusterName != "" {
 		steps = append(steps, struct {
 			name string
 			fn   func() error
 		}{"Registering hub in GKE Fleet", func() error {
 			return bootstrap.RegisterFleetMembership(ctx, project, clusterName, location)
-		}})
-		steps = append(steps, struct {
-			name string
-			fn   func() error
-		}{"Creating centralized GAR registry", func() error {
-			info, err := bootstrap.EnsureGARRegistry(ctx, project, location, "kapro-registry")
-			if err != nil {
-				return err
-			}
-			fmt.Fprintf(os.Stderr, "\n    Registry: oci://%s\n", info.URL)
-			return nil
 		}})
 	}
 
