@@ -1,106 +1,118 @@
 # Changelog
 
-## v0.1.0 — Initial Release
+## v0.3.0 — Spoke-Local Flux + CLI + GCP-Native
 
-First release of Kapro: a Kubernetes-native progressive delivery engine for
-multi-cluster fleet rollouts. Built on Flux, OCI-first, outbound-only spoke
-connectivity, composable gates, and horizontal scaling via sharding.
+Production-ready spoke-local delivery mode with complete CLI and GCP integration.
+All operations use Go SDK — no gcloud, helm, flux, or kubectl dependencies.
 
-### CRDs (7)
+### Spoke-Local Flux (deliveryMode: spoke)
 
-- **Artifact** — immutable OCI bundle reference, digest-pinned, created by CI or auto-discovered
-- **Pipeline** — reusable progressive delivery DAG of stages with label selectors (template only, no controller)
-- **Release** — trigger for rollout across cluster fleet; references Artifacts and Pipelines
-- **ReleaseTarget** — per-target execution state within a Release (child object, controller-driven FSM)
-- **MemberCluster** — fleet cluster inventory with delivery config, registration state, and bootstrap credential
-- **Approval** — human gate signal to unblock a waiting target rollout
-- **Source** — OCI registry watcher; auto-discovers semver tags and creates Artifact objects
-
-### Controllers (5)
-
-- **ReleaseReconciler** — orchestrates two-level DAG: pipeline dependencies → stage dependencies → parallel target expansion
-- **ReleaseTargetReconciler** — advances per-target FSM independently (Pending → Verification → HealthCheck → Soaking → MetricsCheck → WaitingApproval → Applying → Converged/Failed/Skipped)
-- **SourceReconciler** — polls OCI registries, discovers new tags matching semver constraints
-- **ApprovalReconciler** — audit trail via immutable Events
-- **CSRApprovalReconciler** — handles bootstrap CSR approval during cluster registration
-
-### Actuator Framework (KAI Interface)
-
-- **Flux actuator** — CRD-native outbound pattern; patches MemberCluster.spec.desiredVersions on hub; cluster-controller polls and patches local Flux OCIRepository
-- Interface: Apply, ApplyDelta (multi-artifact), IsConverged, IsAllConverged, Rollback
-
-### Gates (8 built-in)
-
-- **Soak** — minimum duration elapsed before advancing
-- **Approval** — blocks until Approval CR exists; supports P0 hotfix bypass
-- **Metrics** — Prometheus PromQL evaluation with configurable window, interval, threshold
-- **HealthCheck** — active health polling via configurable endpoint
-- **CEL** — inline CEL expression evaluation with target context
-- **Job** — Kubernetes Job; exit 0 = pass, non-zero = fail
-- **Webhook** — HTTP callback; blocks forbidden IPs (loopback, private, link-local)
-- **Verification** — cosign signature verification (keyless OIDC + static key)
-
-### Progressive Delivery
-
-- 10-state per-target FSM with durable phase persistence
-- Stage failure policies: **halt** (default), **skip**, **rollback**
-- Gate failure policies: **halt** (default), **rollback**, **continue** (mark skipped)
-- Global Release timeout with automatic failure on expiry
-- Multi-artifact delta delivery — only changed artifacts are pushed; inherited artifacts merged from parent
-- Stage label selectors — add clusters to a wave by labeling, no Pipeline changes needed
-
-### Cluster Management
-
-- Lease-based heartbeat (coordination.k8s.io/v1) — reduced hub API pressure vs status writes
-- Heartbeat staleness tracking with configurable fail timeout (10m default)
-- Bootstrap via one-time token hash (SHA-256) + CSR proof-of-identity
-- Generic (Kubernetes CSR) and GCP (Workload Identity) bootstrap providers
-- Self-reported capabilities: k8s version, Flux version, cloud, region, GPU topology
-
-### Scalability (1000+ clusters)
-
-- Controller sharding via `KAPRO_SHARD` env + `kapro.io/shard` label predicate
-- Conditional poll — ReleaseTargetReconciler skips reconcile when no work needed
-- Field-indexed ReleaseTarget lookups — O(1) release→targets, no full scans
-- Incremental persistReleaseTargets — skips API writes when spec unchanged
-
-### Webhook Server
-
-- Approval endpoints: POST /approve, POST /reject, GET /status
-- HMAC-SHA256 token verification scoped per Release UID + target key (48h TTL)
-- Healthz probe at GET /healthz
-
-### Notifications
-
-- Built-in: Slack (zero deps), webhook (zero deps)
-- Rich engine: 15+ providers via argoproj/notifications-engine (Teams, PagerDuty, OpsGenie, email SMTP, etc.)
-- Gate-level notifications to approvers on WaitingApproval entry
+- **OCI bundle pull model** — spoke's own Flux controllers pull and reconcile bundles from GAR
+- **Per-wave directories** — bundle structured as wave-00/, wave-01/, wave-02/ to avoid Kustomization resource conflicts
+- **Wave Kustomization DAG** — each wave has dependsOn to previous wave, visible in k9s on every spoke
+- **HelmReleases without kubeConfig** — spoke's helm-controller reconciles locally (not hub pushing remotely)
+- **Spoke actuator** — patches OCIRepository tag on spoke, reads Flux status directly for convergence
+- **Both modes coexist** — `deliveryMode: push` (v0.2 behavior) and `deliveryMode: spoke` (new) on same hub
 
 ### CLI (`kapro`)
 
-- `kapro cluster bootstrap` / `kapro cluster join` — register spoke clusters
-- `kapro get releases` / `kapro get targets` — observe rollout state
-- `kapro approve` / `kapro reject` — gate management
-- `kapro rollback` — trigger rollback to previous digest
-- `kapro release create` / `kapro artifact push` / `kapro promote`
-- `kapro world` — global fleet delivery view
-- `kapro spoke install` — Flux-aligned declarative spoke installer
+- **`kapro hub init`** — bootstraps hub cluster: flux-operator, FluxInstance, CRDs, Fleet registration. Interactive project/cluster selection when no flags provided.
+- **`kapro hub registry list/create/add`** — centralized GAR registry management. Saved to `~/.kapro/config.yaml`.
+- **`kapro spoke add`** — adds spoke cluster: auto-installs flux-operator + FluxInstance + Fleet registration + IAM bindings. Single command, zero manual steps.
+- **`kapro fleet list/sync`** — Fleet membership management. `sync` auto-discovers and registers all Fleet clusters.
+- **`kapro bundle generate --push`** — reads KaproApp from hub, generates per-wave bundle, validates, pushes via ORAS Go SDK. Used by CI pipelines.
+- **`kapro status`** — live fleet dashboard with colored phases (Converged/Converging/Failed), per-cluster version, health, heartbeat.
+- **`~/.kapro/config.yaml`** — persistent CLI context. `hub init` writes it, all commands read project/registry from it.
+- **Spinner UX** — braille animation with colored status symbols: ✔ (success), ✗ (failure), ⚠ (warning), ℹ (info).
 
-### Admission Webhooks
+### GCP-Native (zero shell dependencies)
 
-- ValidatingWebhook: Pipeline DAG cycle detection, Release artifact/pipeline ref validation
-- MutatingWebhook: Approval defaults (ApprovedBy from request UserInfo), Release env injection
+- **ORAS Go SDK** for OCI bundle push (replaces `flux push artifact` shell exec)
+- **Fleet Hub API** for cluster discovery and membership registration
+- **Container API** for cluster endpoint resolution and location auto-detection
+- **IAM + CRM APIs** for cross-project spoke access and service account bindings
+- **Artifact Registry API** for GAR repository creation and listing
+- **Workload Identity** for authentication — zero credentials on GKE, gcloud fallback for local dev
 
-### Executables
+### Production Scale (150 clusters)
 
-- **kapro-operator** — hub control plane (controllers + webhooks + approval server)
-- **kapro-cluster-controller** — spoke agent (one per workload cluster)
-- **kapro** — CLI for operators and CI
+- **Parallel spoke bootstrap** — bounded concurrency (10 at a time) via semaphore channel
+- **Spoke client cache** — sync.Map with 5min TTL, health probe before reuse (expired tokens auto-invalidate)
+- **Version-change detection** — skip bootstrap if MemberCluster already converged at target version
+- **Error isolation** — failing spoke doesn't block other spokes in the reconcile loop
+- **Embedded CRDs** — FluxInstance, ResourceSet, and 8 Kapro CRDs via go:embed (no external file deps)
 
-### What's NOT in v0.1
+### KaproApp Validation
 
-- Decision API (REST endpoints for AI-driven approvals) — planned for v0.3
-- AgentPolicy CRD (AI trust boundaries) — planned for v0.4
-- DecisionTrace (structured reasoning on ReleaseTarget status) — planned for v0.3
-- ArgoCD actuator
-- Sveltos actuator
+- No empty component names, versions, or registries
+- No duplicate component or registry names
+- DependsOn references must exist
+- Dependencies must be in same or earlier wave
+- Registry URLs must match declared type (oci:// for OCI type)
+
+### Release Flow (e2e verified on GKE)
+
+- Release CR → Progressing → ReleaseTarget created per cluster
+- FSM: Verification ✔ → HealthCheck ✔ → Applying
+- SpokeFluxActuator.Apply() → patches OCIRepository tag on spoke
+- Spoke pulls new bundle → wave DAG reconverges
+- MemberCluster.status.version updated from OCIRepository tag
+
+### Breaking Changes
+
+- `kapro cluster bootstrap` removed — use `kapro spoke add`
+- `kapro gcp *` commands removed — use `kapro fleet list/sync`
+- `kapro world` / `kapro fleet` removed — use `kapro status`
+- `kapro promote` removed — use Release CR
+- CLI commands renamed: `cluster add` → `spoke add`
+
+---
+
+## v0.2.0 — Push Model Complete
+
+Flux Operator actuator, Fleet API integration, and GCP SDK.
+
+### Flux Operator Actuator
+
+- **ResourceSet-based delivery** — patches ResourceSet inputs on hub, Flux Operator renders per-cluster HelmReleases with kubeConfig
+- **KaproApp component spec v2** — registries, waves, dependsOn, values, valuesFrom, timeout, retries, CRDs, suspend
+- **ResourceSet generator** — builds HelmRepositories + HelmReleases from KaproApp spec
+- **Convergence check** — scans ResourceSet inventory for HelmRelease Ready status
+
+### Fleet API + GCP SDK
+
+- **GCPFleetProvider** — auto-discovers clusters from Fleet memberships via Go SDK
+- **GCPBasicProvider** — GKE DNS endpoint + Workload Identity, zero gcloud dependency
+- **Auto-generate kubeconfig secrets** from Fleet API + WI tokens
+- **Token caching** — shared OAuth2 token source, auto-refresh
+
+### Fleet Observability
+
+- **MemberCluster status sync** — reads HelmRelease status, writes version + health to MemberCluster
+- **k9s columns** — version, phase, convergence, healthy visible in `kubectl get memberclusters`
+
+---
+
+## v0.1.0 — Initial Release
+
+First release of Kapro: CRDs, FSM, gates, approval webhook.
+
+### CRDs (7)
+
+- Artifact, Pipeline, Release, ReleaseTarget, MemberCluster, Approval, Source
+
+### Controllers (5)
+
+- ReleaseReconciler (two-level DAG), ReleaseTargetReconciler (10-state FSM), SourceReconciler, ApprovalReconciler, CSRApprovalReconciler
+
+### Gates (8)
+
+- Soak, Approval, Metrics, HealthCheck, CEL, Job, Webhook, Verification
+
+### CLI
+
+- cluster bootstrap/join, get releases/targets, approve/reject, rollback, release create, world
+
+### Scalability
+
+- Controller sharding, lease-based heartbeat, field-indexed lookups, conditional poll

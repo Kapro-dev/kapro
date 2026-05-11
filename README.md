@@ -8,108 +8,140 @@
 
 ## What is Kapro?
 
-Kapro is the **canonical promotion layer** for Kubernetes. It decides
-**when** and **where** a version is delivered across a fleet of clusters.
-The actual deployment is delegated to pluggable actuators -- Kapro never
-runs `helm upgrade` or `kubectl apply` on workload clusters directly.
+Kapro orchestrates **when** and **where** versions are delivered across a
+fleet of Kubernetes clusters. It doesn't replace Flux or ArgoCD -- it
+orchestrates them across clusters in ordered waves with approval gates.
 
-Kapro solves fleet-wide progressive delivery for environments where:
+Built for environments where:
 
 - Clusters are behind NAT, firewalls, or air gaps (no inbound connectivity)
 - Rollouts must move in ordered waves across countries, tiers, or regions
 - Human approval and automated gates must block promotion between waves
-- A single read model must answer "what version is running where, and why"
+- Per-cluster k9s visibility is required (not just hub-side status)
 
 ```
-                    ┌──────────┐
-[ CI ] ──> [ OCI ] ──>│  Kapro   │──> [ Actuator Plugin ] ──> [ Cluster ]
-                    │ (decides) │    (delivers)
-                    └──────────┘
+CI --> kapro bundle push --> GAR (OCI)
+                              |
+Hub: Release CR --> Pipeline DAG --> spoke actuator
+                              |
+Spoke: OCIRepository --> wave Kustomizations --> HelmReleases (local)
 ```
-
-Kapro does not own or replace your delivery system. It orchestrates it.
 
 ## Architecture
 
 ```
-Hub cluster                              Spoke cluster
-┌────────────────────────────┐           ┌─────────────────────────────┐
-│ kapro-system               │           │ kapro-system                │
-│                            │           │                             │
-│  kapro-operator            │  outbound │  kapro-cluster-controller   │
-│  ├── ReleaseReconciler     │◄──────────┤  (single pod, polls hub)    │
-│  ├── ReleaseTargetReconciler│   only   │                             │
-│  ├── SourceReconciler      │           │  Reads MemberCluster spec   │
-│  ├── ApprovalReconciler    │           │  Patches local delivery CRDs│
-│  └── CSRApprovalReconciler │           │  Reports health + versions  │
-│                            │           │                             │
-│  webhook-server            │           │  Your delivery system:      │
-│  ├── /approve              │           │  Your delivery system       │
-│  ├── /reject               │           │  (any KAI-compatible tool)  │
-│  └── /status               │           │                             │
-└────────────────────────────┘           └─────────────────────────────┘
+Hub cluster (GKE)                        Spoke cluster (GKE/SKE/any)
++----------------------------+           +-----------------------------+
+| kapro-operator             |           | Flux (spoke-local)          |
+|   Release controller       |           |   source-controller         |
+|   ReleaseTarget FSM        |           |   kustomize-controller      |
+|   Approval controller      |           |   helm-controller           |
+|   Kapro controller         |           |                             |
+|     (spoke bootstrap)      | kubeconfig|   OCIRepository             |
+|     (bundle push)          |---------->|     pulls bundle from GAR   |
+|                            |           |                             |
+| Flux Operator              |           |   wave-00 Kustomization     |
+|   FluxInstance             |           |   wave-01 Kustomization     |
+|   ResourceSet (push mode)  |           |     dependsOn: wave-00      |
+|                            |           |   wave-02 Kustomization     |
+| MemberCluster CRDs         |           |     dependsOn: wave-01      |
+|   (fleet inventory)       |           |                             |
++----------------------------+           |   HelmReleases (local)      |
+                                         |     hello-infra (wave 0)    |
+GCP Services                             |     hello-app (wave 1)      |
++----------------------------+           |     hello-frontend (wave 2)  |
+| Fleet API (membership)     |           |                             |
+| GAR (OCI bundles + charts) |           |   Observability             |
+| Secret Manager (ESO)       |           |     Beyla -> OTel -> GMP    |
+| Cloud SQL (PostgreSQL)     |           +-----------------------------+
+| Workload Identity (auth)   |
+| GMP (Prometheus metrics)   |
++----------------------------+
 ```
 
-**Hub never dials spokes.** Each spoke runs a single-pod cluster-controller
-that posts outbound heartbeats and polls for desired state. This works
-across NAT, firewalls, VPNs, and air-gapped networks with no tunnel or
-service mesh required.
+## Delivery Modes
 
-## Custom Resource Definitions
+| Mode | How it works | Visibility |
+|------|-------------|------------|
+| **spoke** (recommended) | OCI bundle pulled by spoke's own Flux. Wave Kustomizations with dependsOn chain. | Full k9s on spoke: `kubectl get ks,hr` |
+| **push** | Hub renders HelmReleases with kubeConfig, hub's helm-controller installs remotely. | Hub only: spoke sees pods but no Flux resources |
+
+Set via `deliveryMode: spoke` on the Kapro CR.
+
+## CRDs (8)
 
 | CRD | Description |
 |-----|-------------|
-| **Artifact** | Immutable OCI bundle reference, digest-pinned. Created by CI or auto-discovered. |
-| **Pipeline** | Reusable DAG of stages with label selectors. Pure template -- no controller. |
-| **Release** | Trigger for a rollout. References Artifacts and Pipelines. |
-| **ReleaseTarget** | Per-target execution state. Child of Release, driven by a 10-state FSM. |
-| **MemberCluster** | Fleet cluster registry. Delivery config, health, heartbeat, capabilities. |
-| **Approval** | Human gate signal. Kubectl-native, auditable, supports P0 bypass. |
-| **Source** | OCI registry watcher. Auto-discovers semver tags and creates Artifacts. |
+| **Kapro** | Fleet entry point. References KaproApp, defines clusters and pipeline. |
+| **KaproApp** | Component definitions: registries, waves, dependsOn, defaults, overrides. |
+| **Pipeline** | Reusable DAG of stages with label selectors. Pure template. |
+| **Release** | Trigger for rollout. References version and pipelines. |
+| **ReleaseTarget** | Per-target FSM state (child of Release). |
+| **MemberCluster** | Fleet cluster registry: actuator config, health, version, heartbeat. |
+| **Approval** | Human gate signal. kubectl-native, auditable, supports bypass. |
+| **AgentPolicy** | AI trust boundaries for automated approvals. |
 
-All CRDs are cluster-scoped. All state lives in Kubernetes etcd --
-no external database, no message bus, no separate registry.
+## CLI (`kapro`)
 
-## Key Concepts
+```
+kapro hub init --project X --cluster Y     # bootstrap hub (Flux + CRDs + Fleet)
+kapro hub registry create --project X      # create centralized GAR registry
+kapro hub registry add <url> --as default  # save registry to config
+kapro spoke add <name> --provider gcp-fleet # add spoke (Flux + Fleet + IAM)
+kapro fleet list                           # list Fleet memberships
+kapro fleet sync --project X               # auto-discover + add all Fleet clusters
+kapro bundle generate --app X --push       # generate + push OCI bundle (CI)
+kapro status                               # live fleet delivery dashboard
+kapro approve <release>/<target>           # approve gate
+kapro reject <release>/<target>            # reject gate
+kapro rollback <release> --to <version>    # rollback
+```
 
-### Pluggable Actuators (KAI Interface)
+All commands use Go SDK (Fleet Hub, Container, IAM, Artifact Registry, ORAS).
+No gcloud, helm, flux, or kubectl dependencies. Interactive project/cluster
+selection when no flags provided.
 
-Kapro does not hardcode how deployments reach clusters. The Kapro Actuator
-Interface (KAI) is a pluggable contract:
+Config persisted at `~/.kapro/config.yaml` -- hub init writes it, all commands read it.
 
-| Actuator | What it does |
-|----------|-------------|
-| **OCI** (built-in) | Patches `MemberCluster.spec.desiredVersions`; cluster-controller patches local OCI sources |
-| **ArgoCD** (planned) | Patches `Application.spec.source.targetRevision` |
-| **Sveltos** (planned) | Patches `ClusterProfile.spec.helmCharts` |
-| **Custom** | Implement the KAI interface for any delivery system |
+## Getting Started
 
-### Composable Gates
+```bash
+# 1. Bootstrap hub cluster
+kapro hub init --project my-project --cluster my-hub
 
-Gates block promotion between stages until conditions are met:
+# 2. Create registry
+kapro hub registry create --project my-project --name kapro-registry
+kapro hub registry add oci://europe-west1-docker.pkg.dev/my-project/kapro-registry --as default
+
+# 3. Add spoke clusters
+kapro spoke add de-prod-01 --provider gcp-fleet --labels tier=canary
+kapro spoke add fi-prod-01 --provider gcp-fleet --labels tier=prod
+
+# 4. Define app + delivery
+kubectl apply -f kaproapp.yaml   # components, waves, registries
+kubectl apply -f kapro.yaml      # fleet config, deliveryMode: spoke
+
+# 5. CI pushes bundle
+kapro bundle generate --app my-app --name my-kapro --version 1.0.0 --push
+
+# 6. Create release (triggers delivery)
+kubectl apply -f release.yaml
+```
+
+## Composable Gates
 
 | Gate | Description |
 |------|-------------|
 | **Soak** | Minimum time elapsed before advancing |
 | **Metrics** | PromQL evaluation with configurable threshold |
-| **Approval** | Blocks until an Approval CR exists |
+| **Approval** | Blocks until Approval CR exists |
 | **CEL** | Inline expression evaluation with target context |
 | **Job** | Kubernetes Job; exit 0 = pass |
 | **Webhook** | HTTP callback to external system |
-| **Verification** | Cosign signature verification (keyless OIDC + static key) |
+| **Verification** | Cosign signature verification |
 | **Health** | Active endpoint polling |
 
-### Stage Failure Policies
-
-| Policy | Behavior |
-|--------|----------|
-| **halt** (default) | Cancel all in-flight siblings, fail the Release |
-| **skip** | Mark failed targets as Skipped, continue the stage |
-| **rollback** | Revert all converged targets in the stage and prior stages |
-
-### Target State Machine
-
-Each target progresses independently through a 10-state FSM:
+## Target State Machine
 
 ```
 Pending -> Verification -> HealthCheck -> Soaking -> MetricsCheck
@@ -118,102 +150,42 @@ Pending -> Verification -> HealthCheck -> Soaking -> MetricsCheck
                                        |-> Skipped
 ```
 
-### Wave-Based Rollout
+## GCP-Native Integration
 
-Pipeline stages select targets via label selectors. Adding a cluster
-to a wave is a label change -- no Pipeline modification required:
+| GCP Service | How Kapro uses it |
+|-------------|-------------------|
+| **GKE Fleet** | Cluster discovery, membership management |
+| **Artifact Registry** | Centralized OCI bundles + Helm charts |
+| **Container API** | Cluster endpoint resolution, location detection |
+| **Secret Manager** | Credentials via External Secrets Operator |
+| **Cloud SQL** | Managed PostgreSQL for platform services |
+| **Workload Identity** | Zero-credential auth (pod -> GCP SA) |
+| **GMP** | Prometheus metrics for health gates |
+| **IAM** | Cross-project spoke access to hub registry |
 
-```yaml
-stages:
-- name: pilot
-  selector: { matchLabels: { wave: pilot } }
-- name: eu-west
-  selector: { matchLabels: { region: eu-west } }
-  dependsOn: [{ stage: pilot }]
-  gate:
-    mode: manual
-    gate:
-      templates:
-      - { name: soak, type: soak, args: { duration: 1h } }
-- name: all-prod
-  selector: { matchLabels: { tier: prod } }
-  dependsOn: [{ stage: eu-west }]
-```
+All via Go SDK. Also supports non-GCP clusters via `--kubeconfig` provider
+(StackIT SKE, EKS, AKS, on-prem, kind).
 
-### Scalability
+## Scale
 
-- **Controller sharding** via `KAPRO_SHARD` env + label predicate for 1000+ cluster fleets
-- **Lease-based heartbeat** using `coordination.k8s.io/v1` instead of status writes
-- **Field-indexed lookups** for O(1) release-to-target queries
-- **Conditional poll** -- reconciler skips cycles when no work is pending
-
-## Getting Started
-
-### Prerequisites
-
-- Kubernetes 1.25+
-- Helm 3.x
-- A KAI-compatible delivery system on each spoke cluster
-
-### Install the hub operator
-
-```bash
-helm install kapro-operator charts/kapro-operator \
-  -n kapro-system --create-namespace
-```
-
-### Register a spoke cluster
-
-```bash
-# On the hub: create a bootstrap token
-kapro cluster bootstrap --name prod-eu-01
-
-# On the spoke: join the fleet
-kapro cluster join --hub-kubeconfig <path> --name prod-eu-01 \
-  --labels tier=prod,region=eu-west,wave=pilot
-```
-
-### Create a release
-
-```yaml
-apiVersion: kapro.io/v1alpha1
-kind: Release
-metadata:
-  name: platform-v1.2.4
-spec:
-  artifact: platform-v1.2.4
-  pipelines:
-  - name: eu-rollout
-    pipeline: eu-fleet
-```
-
-### Observe the rollout
-
-```bash
-kapro get releases
-kapro get targets --release platform-v1.2.4
-
-# Or native kubectl:
-kubectl get releases
-kubectl get releasetargets -l kapro.io/release=platform-v1.2.4
-```
+- Parallel spoke bootstrap (10 concurrent, bounded semaphore)
+- Spoke client cache (sync.Map, 5min TTL, health probe on reuse)
+- Version-change detection (skip redundant bootstrap)
+- Error isolation (failing spoke doesn't block fleet)
+- Controller sharding via `KAPRO_SHARD` env for 1000+ clusters
+- Embedded CRDs via go:embed (FluxInstance + ResourceSet + 8 Kapro CRDs)
 
 ## Development
 
 ```bash
-# Prerequisites: Go 1.22+, kind, make
+# Prerequisites: Go 1.22+, make
 make generate manifests   # CRDs + deepcopy
-make test                 # unit + envtest
-make run                  # operator against kind cluster
+go build ./...            # all packages
+go test ./...             # tests
+
+# Run operator locally against GKE hub
+KAPRO_DEV_MODE=1 KAPRO_DISABLE_WEBHOOKS=true go run ./cmd/operator/
 ```
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## Documentation
-
-- [CHANGELOG.md](CHANGELOG.md) -- current release notes
-- [docs/ROADMAP.md](docs/ROADMAP.md) -- planned features
-- [docs/SPEC.md](docs/SPEC.md) -- API specification
 
 ## License
 
