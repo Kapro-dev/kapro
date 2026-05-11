@@ -21,10 +21,10 @@ Modern retail, financial services, and distributed enterprises face a critical c
 
 Traditional GitOps approaches break down at sovereign fleet scale:
 
-- **Sequential pipelines don't scale** — coordinating 100+ clusters through linear CI/CD creates intractable dependency chains
-- **No blast radius control** — a bad deployment can cascade across entire fleets before detection
-- **Missing promotion semantics** — Flux and ArgoCD lack native concepts for "deploy to 3 test clusters, then 10% of production, then all"
-- **Coordination overhead** — manual promotion gates and spreadsheet-driven rollout tracking don't scale
+- **Sequential pipelines don't scale.** Coordinating 100+ clusters through linear CI/CD creates intractable dependency chains.
+- **No blast radius control.** A bad deployment can cascade across entire fleets before detection.
+- **Missing promotion semantics.** Flux and ArgoCD lack native concepts for "deploy to 3 test clusters, then 10% of production, then all."
+- **Coordination overhead.** Manual promotion gates and spreadsheet-driven rollout tracking don't scale.
 
 <p align="center">
   <img src="docs/fleet-scale.png" alt="The fleet-scale imperative" width="700">
@@ -32,7 +32,7 @@ Traditional GitOps approaches break down at sovereign fleet scale:
 
 ## The Generation Change
 
-We are no longer deploying simple containers. Modern platforms orchestrate stateful distributed systems — with cross-platform dependencies, ordered deployment waves, and strict reconciliation loops — across an untrusted fleet.
+We are no longer deploying simple containers. Modern platforms orchestrate stateful distributed systems with cross-platform dependencies, ordered deployment waves, and strict reconciliation loops across an untrusted fleet.
 
 <p align="center">
   <img src="docs/generation-change.png" alt="The architectural generation change" width="700">
@@ -40,7 +40,7 @@ We are no longer deploying simple containers. Modern platforms orchestrate state
 
 ## Why Sequential Pipelines Break
 
-Traditional CI/CD assumes a linear world: build, test, deploy. But when Kafka must run before 14 dependent services, databases need managed state, and clusters must self-correct drift — sequential pipelines simply cannot express this.
+Traditional CI/CD assumes a linear world: build, test, deploy. But when Kafka must run before 14 dependent services, databases need managed state, and clusters must self-correct drift, sequential pipelines simply cannot express this.
 
 <p align="center">
   <img src="docs/sequential-pipelines-break.png" alt="Why sequential pipelines break" width="700">
@@ -48,7 +48,7 @@ Traditional CI/CD assumes a linear world: build, test, deploy. But when Kafka mu
 
 ## The Artifact is the Contract
 
-Kapro decouples CI from deployment. The OCI artifact becomes the single source of truth — immutable, signed, and version-locked. Any git repo, any CI pipeline can produce it. Runtime git dependency drops to zero.
+Kapro decouples CI from deployment. The OCI artifact becomes the single source of truth: immutable, signed, and version-locked. Any git repo, any CI pipeline can produce it. Runtime git dependency drops to zero.
 
 <p align="center">
   <img src="docs/artifact-contract.png" alt="Multi-pipeline GitOps: the artifact is the contract" width="700">
@@ -74,7 +74,7 @@ A fleet of this scale demands a dedicated, state-aware promotion engine.
 
 ## Enter Kapro
 
-Kapro doesn't replace the CNCF ecosystem. It choreographs it. A Flux-native, OCI-first promotion engine that introduces **promotion as a first-class Kubernetes primitive** — with automated progressive delivery, health gates, and drift reconciliation built directly into the control plane.
+Kapro doesn't replace the CNCF ecosystem. It choreographs it. A Flux-native, OCI-first promotion engine that introduces **promotion as a first-class Kubernetes primitive**, with automated progressive delivery, health gates, and drift reconciliation built directly into the control plane.
 
 <p align="center">
   <img src="docs/kapro-ecosystem.png" alt="Kapro: the CNCF-native promotion engine" width="700">
@@ -82,9 +82,9 @@ Kapro doesn't replace the CNCF ecosystem. It choreographs it. A Flux-native, OCI
 
 ### Three Layers of Promotion
 
-1. **Intra-cluster blue/green** — localized confidence through in-cluster routing and validation before promotion. Rollbacks take milliseconds, not minutes.
-2. **Inter-cluster canary rings** — wave-based rollout across cluster rings with automated health gates. Pilot clusters (3 stores) → regional waves (10% → 50% → 100%).
-3. **Isolated sovereign workloads** — independent cluster reconciliation with no cross-cluster dependencies at runtime. Each country's clusters reconcile independently.
+1. **Intra-cluster blue/green.** Localized confidence through in-cluster routing and validation before promotion. Rollbacks take milliseconds, not minutes.
+2. **Inter-cluster canary rings.** Wave-based rollout across cluster rings with automated health gates. Pilot clusters (3 stores), then regional waves (10%, 50%, 100%).
+3. **Isolated sovereign workloads.** Independent cluster reconciliation with no cross-cluster dependencies at runtime. Each country's clusters reconcile independently.
 
 <p align="center">
   <img src="docs/promotion-mechanics.png" alt="Precision control: the mechanics of promotion" width="700">
@@ -100,7 +100,7 @@ Kapro manages 27-wave dependsOn execution across CRDs, operators, state, apps, a
 
 ## The Byproducts: Security and Efficiency
 
-Because Kapro enforces immutable, operator-driven deployments, static keys are eradicated. Security policies are deployed as code alongside the workloads. Reliable state management enables aggressive disaggregated scaling — non-critical workloads safely scale to zero.
+Because Kapro enforces immutable, operator-driven deployments, static keys are eradicated. Security policies are deployed as code alongside the workloads. Reliable state management enables aggressive disaggregated scaling. Non-critical workloads safely scale to zero.
 
 <p align="center">
   <img src="docs/security-efficiency.png" alt="Security and efficiency byproducts" width="700">
@@ -109,7 +109,7 @@ Because Kapro enforces immutable, operator-driven deployments, static keys are e
 ## Use Cases
 
 ### Retail: Multi-Country POS Systems
-Deploy point-of-sale software to 10,000+ stores across 30+ countries. Pilot clusters first, then regional waves, with country sovereignty — each country's clusters reconcile independently. A bad deployment halts at wave boundaries, never reaches the fleet.
+Deploy point-of-sale software to 10,000+ stores across 30+ countries. Pilot clusters first, then regional waves, with country sovereignty. Each country's clusters reconcile independently. A bad deployment halts at wave boundaries and never reaches the fleet.
 
 ### Financial Services: Regulatory Compliance
 Separate deployment flows for GDPR (EU), SOC2 (US), PCI-DSS (global). Environment isolation per regulatory zone, audit trails via signed OCI provenance chains, and mandatory human approval gates for production changes.
@@ -148,7 +148,7 @@ kubectl apply -f kapro.yaml
 # Push a version from CI
 kapro bundle generate --app my-app --version 1.0.0 --push
 
-# Create a release — Kapro handles the rest
+# Create a release. Kapro handles the rest.
 kubectl apply -f release.yaml
 ```
 
@@ -167,4 +167,4 @@ Kapro is built to be the open-source standard for multi-cluster fleet promotion.
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE).
+Apache 2.0. See [LICENSE](LICENSE).
