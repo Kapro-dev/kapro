@@ -194,7 +194,12 @@ func (r *ReleaseReconciler) handlePending(ctx context.Context, release *kaprov1a
 	r.setReleaseReadyCondition(release, metav1.ConditionFalse, "Progressing", "release is advancing")
 	r.clearStalledCondition(release)
 	r.setReconcilingCondition(release, metav1.ConditionTrue, "Progressing", "advancing through pipeline DAG")
-	r.Recorder.Event(release, corev1.EventTypeNormal, "PhaseTransition", "Release → Progressing")
+	pipelineNames := make([]string, 0, len(release.Spec.Pipelines))
+	for _, p := range release.Spec.Pipelines {
+		pipelineNames = append(pipelineNames, p.Pipeline)
+	}
+	r.Recorder.Eventf(release, corev1.EventTypeNormal, "Started",
+		"release %s started: version=%s pipelines=%v", release.Name, release.Spec.Version, pipelineNames)
 	if err := r.patchReleaseStatus(ctx, release, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch Release phase: %w", err)
 	}
@@ -311,10 +316,23 @@ func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kapr
 			allPipelinesComplete = false
 		}
 
+		// Derive active stage for quick "where are we?" in k9s.
+		activeStage := ""
+		for i := len(stageProgress) - 1; i >= 0; i-- {
+			if stageProgress[i].Phase == "Progressing" || stageProgress[i].Phase == "Failed" {
+				activeStage = stageProgress[i].Name
+				break
+			}
+			if stageProgress[i].Phase == "Complete" && activeStage == "" {
+				activeStage = stageProgress[i].Name
+			}
+		}
+
 		updatedPipelines = append(updatedPipelines, kaprov1alpha1.PipelineProgress{
 			Name:          pipelineRef.Name,
 			Pipeline:      pipelineRef.Pipeline,
 			Phase:         newPhase,
+			ActiveStage:   activeStage,
 			StageProgress: stageProgress,
 		})
 
@@ -384,7 +402,15 @@ func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kapr
 		r.setReleaseReadyCondition(release, metav1.ConditionTrue, "Complete", "all pipelines complete")
 		r.clearStalledCondition(release)
 		r.setReconcilingCondition(release, metav1.ConditionFalse, "Complete", "all pipelines complete")
-		r.Recorder.Event(release, corev1.EventTypeNormal, "Complete", "All pipelines complete")
+		duration := ""
+		if release.Status.StartedAt != "" {
+			if startT, err := time.Parse(time.RFC3339, release.Status.StartedAt); err == nil {
+				duration = time.Since(startT).Truncate(time.Second).String()
+			}
+		}
+		r.Recorder.Eventf(release, corev1.EventTypeNormal, "Complete",
+			"all pipelines complete: version=%s targets=%d duration=%s",
+			release.Spec.Version, release.Status.Report.TotalTargets, duration)
 	} else {
 		r.setReleaseReadyCondition(release, metav1.ConditionFalse, "Progressing", releaseProgressSummary(release))
 		r.clearStalledCondition(release)
@@ -563,6 +589,9 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 		sp.Synced = synced
 		sp.Failed = failed
 
+		// Build human-readable message for k9s describe view.
+		sp.Message = stageProgressMessage(stage, release, pipelineRefName, total, synced, failed)
+
 		if failed > 0 {
 			onFailure := stage.OnFailure
 			switch onFailure {
@@ -613,6 +642,57 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 	}
 
 	return stageProgress, allComplete, anyFailed, nextRequeue, cancels, nil
+}
+
+// stageProgressMessage builds a human-readable status line for k9s describe view.
+// Examples: "3/5 converged", "blocked: waiting for approval on de-prod", "1/8 failed"
+func stageProgressMessage(stage kaprov1alpha1.Stage, release *kaprov1alpha1.Release, pipelineRef string, total, synced, failed int) string {
+	if total == 0 {
+		return "no matching clusters"
+	}
+	if synced == total {
+		return fmt.Sprintf("%d/%d converged", synced, total)
+	}
+
+	// Find the most interesting phase among non-terminal targets.
+	waitingApproval := 0
+	applying := 0
+	soaking := 0
+	metricsCheck := 0
+	for i := range release.Status.Targets {
+		t := &release.Status.Targets[i]
+		if t.Stage != stage.Name || t.PipelineRef != pipelineRef {
+			continue
+		}
+		switch t.Phase {
+		case kaprov1alpha1.TargetPhaseWaitingApproval:
+			waitingApproval++
+		case kaprov1alpha1.TargetPhaseApplying:
+			applying++
+		case kaprov1alpha1.TargetPhaseSoaking:
+			soaking++
+		case kaprov1alpha1.TargetPhaseMetricsCheck:
+			metricsCheck++
+		}
+	}
+
+	parts := fmt.Sprintf("%d/%d converged", synced, total)
+	if failed > 0 {
+		parts += fmt.Sprintf(", %d failed", failed)
+	}
+	if waitingApproval > 0 {
+		parts += fmt.Sprintf(", %d awaiting approval", waitingApproval)
+	}
+	if applying > 0 {
+		parts += fmt.Sprintf(", %d applying", applying)
+	}
+	if soaking > 0 {
+		parts += fmt.Sprintf(", %d soaking", soaking)
+	}
+	if metricsCheck > 0 {
+		parts += fmt.Sprintf(", %d checking metrics", metricsCheck)
+	}
+	return parts
 }
 
 func (r *ReleaseReconciler) stageDependencySatisfied(
@@ -959,8 +1039,10 @@ func (r *ReleaseReconciler) releaseTargetFromStatus(release *kaprov1alpha1.Relea
 		ObjectMeta: metav1.ObjectMeta{
 			Name: releaseTargetObjectName(target),
 			Labels: map[string]string{
-				IndexKeyRelease:   release.Name,
-				"kapro.io/target": target.Target,
+				IndexKeyRelease:     release.Name,
+				"kapro.io/target":   target.Target,
+				"kapro.io/pipeline": target.PipelineRef,
+				"kapro.io/stage":    target.Stage,
 			},
 		},
 		Spec: kaprov1alpha1.ReleaseTargetSpec{

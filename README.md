@@ -1,6 +1,10 @@
-# Kapro
+<p align="center">
+  <img src="docs/logo.png" alt="Kapro logo" width="300">
+</p>
 
-**Progressive delivery engine for multi-cluster Kubernetes fleets.**
+<h1 align="center">Kapro</h1>
+
+<p align="center"><strong>Progressive delivery and promotion engine for multi-cluster Kubernetes fleets.</strong></p>
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/kapro.io/kapro)](https://goreportcard.com/report/kapro.io/kapro)

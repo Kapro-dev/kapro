@@ -31,6 +31,21 @@ import (
 
 const maxImmediatePhaseAdvances = 8
 
+// contextKeyReleaseTarget is used to pass the ReleaseTarget object through
+// context so FSM transition helpers can emit events on the target itself.
+type contextKeyReleaseTargetType struct{}
+
+var contextKeyReleaseTarget = contextKeyReleaseTargetType{}
+
+func contextWithReleaseTarget(ctx context.Context, rt *kaprov1alpha1.ReleaseTarget) context.Context {
+	return context.WithValue(ctx, contextKeyReleaseTarget, rt)
+}
+
+func releaseTargetFromContext(ctx context.Context) *kaprov1alpha1.ReleaseTarget {
+	rt, _ := ctx.Value(contextKeyReleaseTarget).(*kaprov1alpha1.ReleaseTarget)
+	return rt
+}
+
 // ReleaseTargetReconciler independently advances one ReleaseTarget through the
 // per-target rollout FSM. It reads the parent Release (read-only, for suspend
 // and version info) and the referenced MemberCluster, but NEVER loads sibling
@@ -109,6 +124,9 @@ func (r *ReleaseTargetReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	// Build the in-memory TargetStatus from the ReleaseTarget for FSM execution.
 	target := targetStatusFromReleaseTarget(&rt)
+
+	// Inject ReleaseTarget into context so FSM helpers can emit events on it.
+	ctx = contextWithReleaseTarget(ctx, &rt)
 
 	// Run the FSM until it reaches a stable state that actually needs a requeue,
 	// external event, or durable persistence boundary.
@@ -216,7 +234,10 @@ func (r *ReleaseTargetReconciler) handleVerification(ctx context.Context, releas
 	}
 
 	if result.IsPassed() {
-		r.Recorder.Eventf(release, corev1.EventTypeNormal, "GatePassed", "VerificationGate passed for %s", target.Target)
+		r.Recorder.Eventf(release, corev1.EventTypeNormal, "GatePassed", "[%s/%s] artifact signature verified", target.Stage, target.Target)
+		if rt := releaseTargetFromContext(ctx); rt != nil {
+			r.Recorder.Event(rt, corev1.EventTypeNormal, "VerificationPassed", "artifact signature verified")
+		}
 		r.transitionTo(ctx, release, target, kaprov1alpha1.TargetPhaseHealthCheck)
 		return ctrl.Result{Requeue: true}, nil
 	}
@@ -225,7 +246,10 @@ func (r *ReleaseTargetReconciler) handleVerification(ctx context.Context, releas
 		return ctrl.Result{}, nil
 	}
 
-	r.Recorder.Eventf(release, corev1.EventTypeWarning, "GateFailed", "VerificationGate: %s", result.Message)
+	r.Recorder.Eventf(release, corev1.EventTypeWarning, "GateFailed", "[%s/%s] verification: %s", target.Stage, target.Target, result.Message)
+	if rt := releaseTargetFromContext(ctx); rt != nil {
+		r.Recorder.Eventf(rt, corev1.EventTypeWarning, "VerificationFailed", "verification: %s", result.Message)
+	}
 	return ctrl.Result{RequeueAfter: parseDurationOrDefault(result.RetryAfter)}, nil
 }
 
@@ -293,7 +317,10 @@ func (r *ReleaseTargetReconciler) handleSoaking(ctx context.Context, release *ka
 	log.FromContext(ctx).Info("soak gate", "phase", result.Phase, "target", target.Target)
 
 	if result.IsPassed() {
-		r.Recorder.Eventf(release, corev1.EventTypeNormal, "GatePassed", "SoakGate passed for %s", target.Target)
+		r.Recorder.Eventf(release, corev1.EventTypeNormal, "GatePassed", "[%s/%s] soak timer completed", target.Stage, target.Target)
+		if rt := releaseTargetFromContext(ctx); rt != nil {
+			r.Recorder.Event(rt, corev1.EventTypeNormal, "SoakPassed", "soak timer completed")
+		}
 		r.transitionTo(ctx, release, target, kaprov1alpha1.TargetPhaseMetricsCheck)
 		return ctrl.Result{Requeue: true}, nil
 	}
@@ -324,7 +351,10 @@ func (r *ReleaseTargetReconciler) handleMetricsCheck(ctx context.Context, releas
 			}
 			log.FromContext(ctx).Info("metrics gate", "index", idx, "provider", metric.Provider, "phase", result.Phase)
 			if !result.IsPassed() {
-				r.Recorder.Eventf(release, corev1.EventTypeWarning, "GateFailed", "MetricsGate[%d]: %s", idx, result.Message)
+				r.Recorder.Eventf(release, corev1.EventTypeWarning, "GateFailed", "[%s/%s] MetricsGate[%d]: %s", target.Stage, target.Target, idx, result.Message)
+				if rt := releaseTargetFromContext(ctx); rt != nil {
+					r.Recorder.Eventf(rt, corev1.EventTypeWarning, "MetricsFailed", "metrics gate[%d]: %s", idx, result.Message)
+				}
 				gatePassed = false
 				if timedOut, failMsg := metricsGateTimedOut(target, policy); timedOut {
 					r.failTarget(ctx, release, target, failMsg)
@@ -726,7 +756,10 @@ func validateTargetTopology(mc *kaprov1alpha1.MemberCluster, desiredVersions map
 }
 
 // transitionTo mutates target.Phase and related timestamps in-place.
+// Events are emitted on BOTH the parent Release (fleet-level view in k9s :rel describe)
+// and the ReleaseTarget itself (per-target CI-log view in k9s :relt describe).
 func (r *ReleaseTargetReconciler) transitionTo(ctx context.Context, release *kaprov1alpha1.Release, target *kaprov1alpha1.TargetStatus, phase kaprov1alpha1.TargetPhase) {
+	prevPhase := target.Phase
 	target.Phase = phase
 	if phase == kaprov1alpha1.TargetPhaseSoaking && target.StartedAt == "" {
 		target.StartedAt = time.Now().UTC().Format(time.RFC3339)
@@ -736,8 +769,52 @@ func (r *ReleaseTargetReconciler) transitionTo(ctx context.Context, release *kap
 	}
 	target.PhaseEnteredAt = time.Now().UTC().Format(time.RFC3339)
 
+	msg := phaseTransitionMessage(prevPhase, phase, target)
+
+	// Event on Release — fleet-level log (visible in :rel describe)
 	r.Recorder.Eventf(release, corev1.EventTypeNormal, "PhaseTransition",
-		"target %s/%s/%s → %s", target.PipelineRef, target.Stage, target.Target, phase)
+		"[%s/%s] %s → %s: %s", target.Stage, target.Target, prevPhase, phase, msg)
+
+	// Event on ReleaseTarget — per-target CI log (visible in :relt describe)
+	// The ReleaseTarget object is retrieved from context when available.
+	if rt := releaseTargetFromContext(ctx); rt != nil {
+		r.Recorder.Eventf(rt, corev1.EventTypeNormal, string(phase), msg)
+	}
+}
+
+// phaseTransitionMessage returns a human-readable message for the FSM transition,
+// giving operators CI-pipeline-like context when reading k9s events.
+func phaseTransitionMessage(from kaprov1alpha1.TargetPhase, to kaprov1alpha1.TargetPhase, target *kaprov1alpha1.TargetStatus) string {
+	switch to {
+	case kaprov1alpha1.TargetPhasePending:
+		return fmt.Sprintf("queued for delivery of %s", target.Version)
+	case kaprov1alpha1.TargetPhaseVerification:
+		return fmt.Sprintf("verifying artifact signature for %s", target.Version)
+	case kaprov1alpha1.TargetPhaseHealthCheck:
+		return "checking pre-deployment cluster health"
+	case kaprov1alpha1.TargetPhaseSoaking:
+		if target.Gate != nil && target.Gate.Gate.SoakTime != "" {
+			return fmt.Sprintf("soak timer started (%s)", target.Gate.Gate.SoakTime)
+		}
+		return "soak timer started"
+	case kaprov1alpha1.TargetPhaseMetricsCheck:
+		return "evaluating metrics gates"
+	case kaprov1alpha1.TargetPhaseWaitingApproval:
+		return "waiting for human approval"
+	case kaprov1alpha1.TargetPhaseApplying:
+		return fmt.Sprintf("applying version %s to cluster", target.Version)
+	case kaprov1alpha1.TargetPhaseConverged:
+		return fmt.Sprintf("cluster converged on %s", target.Version)
+	case kaprov1alpha1.TargetPhaseFailed:
+		if target.Message != "" {
+			return target.Message
+		}
+		return "target failed"
+	case kaprov1alpha1.TargetPhaseSkipped:
+		return "target skipped (onFailure=continue)"
+	default:
+		return string(to)
+	}
 }
 
 // failTarget records a failure and applies the onFailure policy.
@@ -753,13 +830,19 @@ func (r *ReleaseTargetReconciler) failTarget(ctx context.Context, release *kapro
 	if onFailure == "continue" {
 		target.Phase = kaprov1alpha1.TargetPhaseSkipped
 		r.Recorder.Eventf(release, corev1.EventTypeWarning, "TargetSkipped",
-			"target %s/%s/%s skipped (onFailure=continue): %s", target.PipelineRef, target.Stage, target.Target, msg)
+			"[%s/%s] skipped (onFailure=continue): %s", target.Stage, target.Target, msg)
+		if rt := releaseTargetFromContext(ctx); rt != nil {
+			r.Recorder.Eventf(rt, corev1.EventTypeWarning, "Skipped", "skipped: %s", msg)
+		}
 		return
 	}
 
 	target.Phase = kaprov1alpha1.TargetPhaseFailed
 	r.Recorder.Eventf(release, corev1.EventTypeWarning, "TargetFailed",
-		"target %s/%s/%s failed: %s", target.PipelineRef, target.Stage, target.Target, msg)
+		"[%s/%s] failed: %s", target.Stage, target.Target, msg)
+	if rt := releaseTargetFromContext(ctx); rt != nil {
+		r.Recorder.Eventf(rt, corev1.EventTypeWarning, "Failed", "failed: %s", msg)
+	}
 
 	// Rollback is triggered by the parent ReleaseReconciler when it aggregates
 	// child statuses and detects a Failed target with onFailure=rollback.
@@ -917,6 +1000,13 @@ func (r *ReleaseTargetReconciler) releaseTargetsForMemberCluster(ctx context.Con
 
 func (r *ReleaseTargetReconciler) updateReleaseTargetStatusContract(rt *kaprov1alpha1.ReleaseTarget) {
 	rt.Status.ObservedGeneration = rt.Generation
+
+	// Sync phase into labels so k9s label filtering works:
+	//   :relt /phase=WaitingApproval  or  /stage=canary
+	if rt.Labels == nil {
+		rt.Labels = make(map[string]string)
+	}
+	rt.Labels["kapro.io/phase"] = string(rt.Status.Phase)
 
 	phase := kaprov1alpha1.TargetPhase(rt.Status.Phase)
 	switch phase {

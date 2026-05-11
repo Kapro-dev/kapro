@@ -524,6 +524,8 @@ type ReleasePipelineRef struct {
 }
 
 // StageProgress tracks the execution state of one Stage within a pipeline.
+// Designed to render well in k9s describe view — operators see per-stage
+// progress like CI pipeline steps.
 type StageProgress struct {
 	// Name is the stage name from Pipeline.spec.stages[].name.
 	Name string `json:"name"`
@@ -536,6 +538,19 @@ type StageProgress struct {
 	Synced int `json:"synced,omitempty"`
 	// Failed is the number of targets that have reached Failed.
 	Failed int `json:"failed,omitempty"`
+	// Message is a human-readable summary of stage progress, designed for
+	// k9s describe output. Examples:
+	//   "2/5 clusters converged, soak: 12m/30m remaining"
+	//   "waiting for canary stage"
+	//   "blocked: manual approval required for de-prod"
+	// +optional
+	Message string `json:"message,omitempty"`
+	// StartedAt is when this stage first had a Progressing target.
+	// +optional
+	StartedAt string `json:"startedAt,omitempty"`
+	// CompletedAt is when all targets in this stage reached a terminal state.
+	// +optional
+	CompletedAt string `json:"completedAt,omitempty"`
 }
 
 // PipelineProgress tracks the execution state of one pipeline node in a Release.
@@ -547,6 +562,10 @@ type PipelineProgress struct {
 	// Phase is the current execution state of this pipeline node.
 	// +kubebuilder:validation:Enum=Pending;Progressing;Complete;Failed
 	Phase string `json:"phase,omitempty"`
+	// ActiveStage is the name of the currently progressing stage (or the last completed one).
+	// Gives operators a quick "where are we?" without expanding StageProgress.
+	// +optional
+	ActiveStage string `json:"activeStage,omitempty"`
 	// StageProgress summarises the state of each stage in this pipeline.
 	StageProgress []StageProgress `json:"stageProgress,omitempty"`
 }
@@ -612,12 +631,17 @@ type ReleaseStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=rel,categories=kapro-all
-// +kubebuilder:printcolumn:name="Artifacts",type=integer,JSONPath=`.status.report.totalArtifacts`
-// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
-// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
-// +kubebuilder:printcolumn:name="Synced",type=integer,JSONPath=`.status.report.syncedTargets`
-// +kubebuilder:printcolumn:name="Pending",type=integer,JSONPath=`.status.report.pendingTargets`
-// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.spec.version`,priority=0
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`,priority=0
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`,priority=0
+// +kubebuilder:printcolumn:name="Synced",type=string,JSONPath=`.status.report.syncedTargets`,priority=0
+// +kubebuilder:printcolumn:name="Failed",type=string,JSONPath=`.status.report.failedTargets`,priority=0
+// +kubebuilder:printcolumn:name="Pending",type=string,JSONPath=`.status.report.pendingTargets`,priority=0
+// +kubebuilder:printcolumn:name="Total",type=string,JSONPath=`.status.report.totalTargets`,priority=0
+// +kubebuilder:printcolumn:name="Duration",type=string,JSONPath=`.status.report.duration`,priority=0
+// +kubebuilder:printcolumn:name="Suspended",type=boolean,JSONPath=`.spec.suspended`,priority=1
+// +kubebuilder:printcolumn:name="Artifacts",type=integer,JSONPath=`.status.report.totalArtifacts`,priority=1
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`,priority=0
 
 // Release is the trigger for a progressive delivery rollout across the cluster fleet.
 // It references an Artifact and a DAG of Pipelines that define the delivery path.
@@ -903,8 +927,11 @@ type HumanOverride struct {
 // +kubebuilder:resource:scope=Cluster,shortName=relt,categories=kapro-all
 // +kubebuilder:printcolumn:name="Release",type=string,JSONPath=`.spec.releaseRef`
 // +kubebuilder:printcolumn:name="Target",type=string,JSONPath=`.spec.target`
+// +kubebuilder:printcolumn:name="Pipeline",type=string,JSONPath=`.spec.pipelineRef`
 // +kubebuilder:printcolumn:name="Stage",type=string,JSONPath=`.spec.stage`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.spec.version`
+// +kubebuilder:printcolumn:name="Previous",type=string,JSONPath=`.status.previousVersion`,priority=1
 // +kubebuilder:printcolumn:name="Rollback",type=boolean,JSONPath=`.spec.rollback`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
@@ -1248,7 +1275,9 @@ func (s *MemberClusterStatus) IsHeartbeatFresh(timeout time.Duration) bool {
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.version`
 // +kubebuilder:printcolumn:name="Healthy",type=boolean,JSONPath=`.status.health.allWorkloadsReady`
-// +kubebuilder:printcolumn:name="Provider",type=string,JSONPath=`.status.provider`
+// +kubebuilder:printcolumn:name="Release",type=string,JSONPath=`.status.activeRelease`
+// +kubebuilder:printcolumn:name="Region",type=string,JSONPath=`.status.capabilities.region`,priority=1
+// +kubebuilder:printcolumn:name="Cloud",type=string,JSONPath=`.status.capabilities.cloud`,priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // MemberCluster represents one physical cluster in the Kapro fleet.
