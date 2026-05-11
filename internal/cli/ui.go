@@ -134,23 +134,29 @@ func Header(title string) {
 
 // --- Spinners ---
 
+// Braille dot spinner frames — smooth and modern.
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
 // Spinner wraps briandowns/spinner with kapro styling.
+// Shows ✔ on success, ✗ on failure, with colors.
 type Spinner struct {
-	s *spinner.Spinner
+	s   *spinner.Spinner
+	msg string
 }
 
 // NewSpinner creates a styled spinner with the given message.
 func NewSpinner(msg string) *Spinner {
-	s := spinner.New(spinner.CharSets[14], 80*time.Millisecond)
+	s := spinner.New(spinnerFrames, 80*time.Millisecond)
 	s.Suffix = "  " + msg
-	s.Color("cyan")
+	s.Color("cyan", "bold")
 	s.Writer = os.Stderr
-	return &Spinner{s: s}
+	return &Spinner{s: s, msg: msg}
 }
 
 // Start begins the spinner animation.
 func (sp *Spinner) Start() {
 	if IsJSON() || !isInteractive() {
+		fmt.Fprintf(os.Stderr, "  … %s\n", sp.msg)
 		return
 	}
 	sp.s.Start()
@@ -166,23 +172,40 @@ func (sp *Spinner) Stop() {
 // StopWith stops the spinner and prints a final message.
 func (sp *Spinner) StopWith(msg string) {
 	sp.Stop()
-	fmt.Fprintln(Out, "  "+msg)
+	fmt.Fprintln(os.Stderr, "  "+msg)
 }
 
-// StopSuccess stops the spinner with a green success message.
+// StopSuccess stops the spinner with a green ✔ and success message.
 func (sp *Spinner) StopSuccess(msg string) {
 	sp.Stop()
-	Success(msg)
+	green := color.New(color.FgGreen, color.Bold)
+	fmt.Fprintf(os.Stderr, "  %s %s\n", green.Sprint("✔"), msg)
 }
 
-// StopFail stops the spinner with a red error message.
+// StopFail stops the spinner with a red ✗ and error message.
 func (sp *Spinner) StopFail(msg string) {
 	sp.Stop()
-	Error(msg)
+	red := color.New(color.FgRed, color.Bold)
+	fmt.Fprintf(os.Stderr, "  %s %s\n", red.Sprint("✗"), msg)
+}
+
+// StopWarn stops the spinner with a yellow ⚠ and warning message.
+func (sp *Spinner) StopWarn(msg string) {
+	sp.Stop()
+	yellow := color.New(color.FgYellow, color.Bold)
+	fmt.Fprintf(os.Stderr, "  %s %s\n", yellow.Sprint("⚠"), msg)
+}
+
+// StopInfo stops the spinner with a blue ℹ and info message.
+func (sp *Spinner) StopInfo(msg string) {
+	sp.Stop()
+	blue := color.New(color.FgCyan, color.Bold)
+	fmt.Fprintf(os.Stderr, "  %s %s\n", blue.Sprint("ℹ"), msg)
 }
 
 // Update changes the spinner suffix message.
 func (sp *Spinner) Update(msg string) {
+	sp.msg = msg
 	sp.s.Suffix = "  " + msg
 }
 

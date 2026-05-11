@@ -17,6 +17,7 @@ import (
 	"google.golang.org/api/option"
 
 	"kapro.io/kapro/internal/bootstrap"
+	"kapro.io/kapro/internal/cli"
 	"kapro.io/kapro/internal/gcputil"
 	"kapro.io/kapro/internal/provider"
 )
@@ -88,6 +89,8 @@ func runHubInit(ctx context.Context, kubeconfigPath, project, clusterName, locat
 	}
 
 	// Auto-detect location if needed (before connecting).
+	// Always use GKE Container API (returns exact zone like europe-west1-b),
+	// not Fleet API (returns region like europe-west1).
 	if project != "" && clusterName != "" && location == "" {
 		detected, err := detectClusterLocation(ctx, project, clusterName)
 		if err != nil {
@@ -107,43 +110,53 @@ func runHubInit(ctx context.Context, kubeconfigPath, project, clusterName, locat
 	} else if kubeconfigPath != "" {
 		target = kubeconfigPath
 	}
-	fmt.Fprintf(os.Stderr, "Bootstrapping hub cluster (%s)...\n", target)
+	fmt.Fprintf(os.Stderr, "\n  Bootstrapping hub cluster (%s)\n\n", target)
 
-	// 1. Ensure flux-system namespace.
-	fmt.Fprintln(os.Stderr, "  [1/4] Creating flux-system namespace...")
-	if err := bootstrap.EnsureNamespace(ctx, c, "flux-system"); err != nil {
-		return fmt.Errorf("create namespace: %w", err)
+	steps := []struct {
+		name string
+		fn   func() error
+	}{
+		{"Creating flux-system namespace", func() error {
+			return bootstrap.EnsureNamespace(ctx, c, "flux-system")
+		}},
+		{fmt.Sprintf("Installing flux-operator %s", bootstrap.FluxOperatorVersion), func() error {
+			return bootstrap.InstallFluxOperator(ctx, c)
+		}},
+		{"Creating FluxInstance (source + kustomize + helm controllers)", func() error {
+			return bootstrap.InstallFluxInstance(ctx, c)
+		}},
+		{"Installing Kapro CRDs", func() error {
+			return bootstrap.InstallKaproCRDs(ctx, c)
+		}},
 	}
 
-	// 2. Install flux-operator.
-	fmt.Fprintf(os.Stderr, "  [2/4] Installing flux-operator %s...\n", bootstrap.FluxOperatorVersion)
-	if err := bootstrap.InstallFluxOperator(ctx, c); err != nil {
-		return fmt.Errorf("install flux-operator: %w", err)
-	}
-
-	// 3. Create FluxInstance.
-	fmt.Fprintln(os.Stderr, "  [3/4] Creating FluxInstance (source + kustomize + helm controllers)...")
-	if err := bootstrap.InstallFluxInstance(ctx, c); err != nil {
-		return fmt.Errorf("create FluxInstance: %w", err)
-	}
-
-	// 4. Install Kapro CRDs.
-	fmt.Fprintln(os.Stderr, "  [4/4] Installing Kapro CRDs...")
-	if err := bootstrap.InstallKaproCRDs(ctx, c); err != nil {
-		fmt.Fprintf(os.Stderr, "  warning: %v (CRDs may be installed via Helm chart)\n", err)
-	}
-
-	// 5. Register hub in Fleet (GCP only).
+	// Fleet registration (GCP only).
 	if project != "" && clusterName != "" {
-		fmt.Fprintln(os.Stderr, "  [5/5] Registering hub in GKE Fleet...")
-		if err := bootstrap.RegisterFleetMembership(ctx, project, clusterName, location); err != nil {
-			fmt.Fprintf(os.Stderr, "  warning: Fleet registration: %v\n", err)
-		}
+		steps = append(steps, struct {
+			name string
+			fn   func() error
+		}{"Registering hub in GKE Fleet", func() error {
+			return bootstrap.RegisterFleetMembership(ctx, project, clusterName, location)
+		}})
 	}
 
-	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "Hub cluster bootstrapped.")
-	fmt.Fprintln(os.Stderr, "Next: deploy kapro-operator via Helm or run locally with KAPRO_DEV_MODE=1")
+	for i, step := range steps {
+		sp := cli.NewSpinner(fmt.Sprintf("[%d/%d] %s", i+1, len(steps), step.name))
+		sp.Start()
+		if err := step.fn(); err != nil {
+			sp.StopFail(fmt.Sprintf("[%d/%d] %s: %v", i+1, len(steps), step.name, err))
+			// Non-fatal for CRDs and Fleet — continue.
+			if i < 3 {
+				return err
+			}
+			continue
+		}
+		sp.StopSuccess(fmt.Sprintf("[%d/%d] %s", i+1, len(steps), step.name))
+	}
+
+	fmt.Fprintln(os.Stderr)
+	cli.Success("Hub cluster bootstrapped")
+	cli.Muted("Next: deploy kapro-operator via Helm or run locally with KAPRO_DEV_MODE=1")
 	return nil
 }
 
@@ -156,14 +169,6 @@ func resolveHubClient(ctx context.Context, kubeconfigPath, project, clusterName,
 
 	// GCP mode: resolve cluster via SDK, generate kubeconfig in memory.
 	if project != "" && clusterName != "" {
-		// Auto-detect location if not provided.
-		if location == "" {
-			var err error
-			location, err = detectClusterLocation(ctx, project, clusterName)
-			if err != nil {
-				return nil, fmt.Errorf("auto-detect location for %s: %w (use --location to specify manually)", clusterName, err)
-			}
-		}
 		p := &provider.GCPBasicProvider{
 			Project:  project,
 			Location: location,
@@ -199,18 +204,8 @@ func resolveHubClient(ctx context.Context, kubeconfigPath, project, clusterName,
 // in the project. Tries Fleet API first (faster, label-aware), then falls back
 // to the GKE Container API (lists all locations).
 func detectClusterLocation(ctx context.Context, project, clusterName string) (string, error) {
-	// Try Fleet API first.
-	fleetProvider := &provider.GCPFleetProvider{Project: project}
-	clusters, err := fleetProvider.ListClusters(ctx)
-	if err == nil {
-		for _, c := range clusters {
-			if c.Name == clusterName {
-				return c.Location, nil
-			}
-		}
-	}
-
-	// Fallback: list all GKE clusters in all locations.
+	// GKE Container API first — returns exact zone (europe-west1-b), not region.
+	// Fleet API returns region (europe-west1) which doesn't work for kubeconfig generation.
 	ts := provider.GCPTokenSource(ctx)
 	clusterClient, err := container.NewClusterManagerClient(ctx, option.WithTokenSource(ts))
 	if err != nil {
