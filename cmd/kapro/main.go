@@ -54,39 +54,33 @@ Passes versions forward. Across targets. Across clusters. In waves.`,
 
 	root.PersistentFlags().StringVarP(&cli.OutputFormat, "output", "o", "", "Output format (json for machine-readable)")
 
-	root.AddCommand(newDemoCmd())
-	root.AddCommand(newClusterCmd())
-	root.AddCommand(newGetCmd())
-	root.AddCommand(newDashboardCmd())
+	root.AddCommand(newHubCmd())
+	root.AddCommand(newSpokeCmd())
+	root.AddCommand(newFleetMgmtCmd())
+	root.AddCommand(newBundleCmd())
+	root.AddCommand(newStatusCmd())
+	root.AddCommand(newReleaseCmd())
 	root.AddCommand(newApproveCmd())
 	root.AddCommand(newRejectCmd())
 	root.AddCommand(newRollbackCmd())
-	root.AddCommand(newReleaseCmd())
-	root.AddCommand(newPromoteCmd())
-	root.AddCommand(newWorldCmd())
-	root.AddCommand(newBundleCmd())
-	root.AddCommand(newHubCmd())
-	root.AddCommand(newFleetMgmtCmd())
-	root.AddCommand(newStatusCmd())
-	// bootstrap is under "kapro cluster bootstrap" — no separate root command
+	root.AddCommand(newGetCmd())
+	root.AddCommand(newDemoCmd())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
 
-func newClusterCmd() *cobra.Command {
+func newSpokeCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "cluster",
-		Short: "Manage cluster registrations",
+		Use:   "spoke",
+		Short: "Manage spoke clusters",
 	}
-	cmd.AddCommand(newBootstrapCmd())
-	cmd.AddCommand(newClusterAddCmd())
-	cmd.AddCommand(newClusterSyncCmd())
+	cmd.AddCommand(newSpokeAddCmd())
 	return cmd
 }
 
-func newClusterAddCmd() *cobra.Command {
+func newSpokeAddCmd() *cobra.Command {
 	var (
 		providerName string
 		labelsRaw    []string
@@ -96,17 +90,18 @@ func newClusterAddCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "add <cluster-name>",
-		Short: "Register a cluster with Kapro",
-		Long: `Register a cluster using one of three provider modes:
+		Short: "Add a spoke cluster to the fleet",
+		Long: `Adds a spoke cluster: installs Flux, registers in Fleet, configures IAM.
 
+Provider modes:
   kubeconfig:  Static kubeconfig (any cloud, kind, on-prem)
-  gcp:         GKE Workload Identity + API endpoint
-  gcp-fleet:   GKE Fleet API + Connect Gateway (auto-discovery)
+  gcp-fleet:   GKE Fleet API (auto-discovery, recommended)
+  gcp:         GKE direct (Workload Identity)
 
 Examples:
-  kapro cluster add de-prod --kubeconfig /path/to/config --labels tier=prod
-  kapro cluster add de-prod --provider gcp --project my-project --labels tier=prod
-  kapro cluster sync --project my-project  (auto-discover all Fleet clusters)`,
+  kapro spoke add de-prod-01 --labels tier=prod
+  kapro spoke add de-prod-01 --provider gcp-fleet --project my-project
+  kapro spoke add de-prod-01 --kubeconfig /path/to/config`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runClusterAdd(cmd.Context(), args[0], providerName, labelsRaw, kubeconfig, project, location)

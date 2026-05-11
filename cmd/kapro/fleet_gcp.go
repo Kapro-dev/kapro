@@ -9,7 +9,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"kapro.io/kapro/internal/bootstrap"
 	kaproconfig "kapro.io/kapro/internal/config"
 	"kapro.io/kapro/internal/gcputil"
 )
@@ -27,7 +26,24 @@ Examples:
   kapro fleet register my-cluster`,
 	}
 	cmd.AddCommand(newFleetListMgmtCmd())
-	cmd.AddCommand(newFleetRegisterCmd())
+	cmd.AddCommand(newFleetSyncCmd())
+	return cmd
+}
+
+func newFleetSyncCmd() *cobra.Command {
+	var project string
+	cmd := &cobra.Command{
+		Use:   "sync",
+		Short: "Auto-discover Fleet clusters and add them as spokes",
+		Long: `Reads all Fleet memberships and creates MemberCluster CRDs +
+kubeconfig Secrets for each. Installs Flux on spokes that don't have it.
+
+This is the bulk-onboarding command for existing Fleet clusters.`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runClusterSync(cmd.Context(), project)
+		},
+	}
+	cmd.Flags().StringVar(&project, "project", "", "GCP project (reads from config if omitted)")
 	return cmd
 }
 
@@ -78,71 +94,6 @@ func runFleetList(ctx context.Context, project string) error {
 	return w.Flush()
 }
 
-// --- fleet register ---
-
-func newFleetRegisterCmd() *cobra.Command {
-	var (
-		project  string
-		location string
-	)
-	cmd := &cobra.Command{
-		Use:   "register <cluster-name>",
-		Short: "Register a GKE cluster in Fleet",
-		Long: `Registers a GKE cluster as a Fleet membership.
-Idempotent — skips if already registered.
-
-If cluster name is omitted, interactively selects from available clusters.`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			clusterName := ""
-			if len(args) > 0 {
-				clusterName = args[0]
-			}
-			return runFleetRegister(ctx(cmd), project, clusterName, location)
-		},
-	}
-	cmd.Flags().StringVar(&project, "project", "", "GCP project (reads from config if omitted)")
-	cmd.Flags().StringVar(&location, "location", "", "GKE cluster location (auto-detected if omitted)")
-	return cmd
-}
-
-func ctx(cmd *cobra.Command) context.Context {
-	return cmd.Context()
-}
-
-func runFleetRegister(ctx context.Context, project, clusterName, location string) error {
-	if project == "" {
-		cfg, _ := kaproconfig.Load()
-		project = cfg.Hub.Project
-	}
-	if project == "" {
-		var err error
-		project, err = gcputil.SelectProject(ctx)
-		if err != nil {
-			return err
-		}
-	}
-	if clusterName == "" {
-		var err error
-		clusterName, location, err = gcputil.SelectCluster(ctx, project)
-		if err != nil {
-			return err
-		}
-	}
-	if location == "" {
-		detected, err := detectClusterLocation(ctx, project, clusterName)
-		if err != nil {
-			return fmt.Errorf("detect location: %w", err)
-		}
-		location = detected
-	}
-
-	fmt.Fprintf(os.Stderr, "Registering %s/%s/%s in Fleet...\n", project, location, clusterName)
-	if err := bootstrap.RegisterFleetMembership(ctx, project, clusterName, location); err != nil {
-		return err
-	}
-	fmt.Fprintf(os.Stderr, "✔ Fleet membership registered: %s\n", clusterName)
-	return nil
-}
 
 func formatLabels(labels map[string]string) string {
 	if len(labels) == 0 {
