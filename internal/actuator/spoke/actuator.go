@@ -230,9 +230,17 @@ func (a *SpokeFluxActuator) spokeClient(ctx context.Context, mc *kaprov1alpha1.M
 	if cached, ok := a.clientCache.Load(mc.Name); ok {
 		cc := cached.(*cachedClient)
 		if time.Since(cc.createdAt) < clientCacheTTL {
-			return cc.client, nil
+			// Quick health probe — if auth fails, invalidate cache.
+			probe := &unstructured.Unstructured{}
+			probe.SetGroupVersionKind(schema.GroupVersionKind{Version: "v1", Kind: "Namespace"})
+			if err := cc.client.Get(ctx, client.ObjectKey{Name: "flux-system"}, probe); err == nil {
+				return cc.client, nil
+			}
+			// Auth failed — rebuild client.
+			a.clientCache.Delete(mc.Name)
+		} else {
+			a.clientCache.Delete(mc.Name)
 		}
-		a.clientCache.Delete(mc.Name)
 	}
 
 	// Build new client.

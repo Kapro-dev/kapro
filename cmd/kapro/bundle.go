@@ -14,6 +14,7 @@ import (
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	"kapro.io/kapro/internal/bundle"
+	kaproconfig "kapro.io/kapro/internal/config"
 )
 
 func newBundleCmd() *cobra.Command {
@@ -83,6 +84,10 @@ Examples:
 }
 
 func runBundleGenerate(ctx context.Context, appName, bundleName, version, registry, outputDir string, push bool, kubeconfigPath string) error {
+	if registry == "" {
+		cfg, _ := kaproconfig.Load()
+		registry = cfg.Registry("default")
+	}
 	if push && registry == "" {
 		return fmt.Errorf("--registry is required when using --push")
 	}

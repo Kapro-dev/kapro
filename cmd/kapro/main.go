@@ -11,13 +11,11 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,6 +30,7 @@ import (
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	"kapro.io/kapro/internal/bootstrap"
 	"kapro.io/kapro/internal/cli"
+	kaproconfig "kapro.io/kapro/internal/config"
 	internalgate "kapro.io/kapro/internal/gate"
 	"kapro.io/kapro/internal/provider"
 )
@@ -116,6 +115,12 @@ Examples:
 }
 
 func runClusterAdd(ctx context.Context, clusterName, providerName string, labelsRaw []string, kubeconfigPath, project, location string) error {
+	// Fall back to config for project.
+	if project == "" {
+		cfg, _ := kaproconfig.Load()
+		project = cfg.Hub.Project
+	}
+
 	// Auto-detect provider if not specified.
 	if providerName == "" {
 		if kubeconfigPath != "" {
@@ -287,27 +292,12 @@ func buildSpokeClient(kubeconfigData []byte) (client.Client, error) {
 	return client.New(restConfig, client.Options{})
 }
 
-func newClusterSyncCmd() *cobra.Command {
-	var project string
-	cmd := &cobra.Command{
-		Use:   "sync",
-		Short: "Auto-discover and register all GKE Fleet clusters",
-		Long: `Reads all cluster memberships from GKE Fleet API and creates
-MemberCluster CRDs + kubeConfig Secrets for each. Fleet labels
-are synced to MemberCluster labels.
-
-Requires: GKE Fleet API access + Workload Identity.
-Migrate from gcp-basic: run this to upgrade all clusters to gcp-fleet mode.`,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runClusterSync(cmd.Context(), project)
-		},
-	}
-	cmd.Flags().StringVar(&project, "project", "", "GCP project (required)")
-	_ = cmd.MarkFlagRequired("project")
-	return cmd
-}
-
 func runClusterSync(ctx context.Context, project string) error {
+	if project == "" {
+		cfg, _ := kaproconfig.Load()
+		project = cfg.Hub.Project
+	}
+
 	p, err := provider.New("gcp-fleet", provider.Options{Project: project})
 	if err != nil {
 		return err
@@ -391,148 +381,6 @@ func runClusterSync(ctx context.Context, project string) error {
 	fmt.Fprintln(cli.Out)
 	cli.Successf("%d clusters registered from GKE Fleet", registered)
 	cli.Muted("Run: kapro fleet")
-	return nil
-}
-
-func newBootstrapCmd() *cobra.Command {
-	var (
-		clusterName    string
-		namespace      string
-		labelsRaw      []string
-		ttl            time.Duration
-		kubeconfig     string
-		spokeKubeconf  string
-		providerName   string
-		project        string
-		location       string
-		setupSpoke     bool
-	)
-
-	cmd := &cobra.Command{
-		Use:   "bootstrap",
-		Short: "Register a workload cluster with Kapro and set up delivery",
-		Long: `Bootstrap registers a cluster on the hub and optionally sets up
-the delivery system on the spoke. Kapro detects which delivery system
-to install based on the actuator type.
-
-Steps:
-  1. Creates a MemberCluster CR on the hub with a bootstrap token.
-  2. (with --setup-spoke) Connects to the spoke and installs the delivery system.
-
-Examples:
-  kapro cluster bootstrap --name de-prod --labels tier=prod
-  kapro cluster bootstrap --name de-prod --labels tier=prod --setup-spoke --spoke-kubeconfig /path/to/spoke
-  kapro cluster bootstrap --name de-prod --setup-spoke --provider gcp --project my-project`,
-
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runBootstrap(cmd.Context(), clusterName, namespace, labelsRaw, ttl, kubeconfig, setupSpoke, spokeBootstrapOpts{
-				kubeconfig:   spokeKubeconf,
-				providerName: providerName,
-				project:      project,
-				location:     location,
-			})
-		},
-	}
-
-	cmd.Flags().StringVar(&clusterName, "name", "", "Cluster name (required)")
-	cmd.Flags().StringVar(&namespace, "namespace", "kapro-system", "Namespace for bootstrap")
-	cmd.Flags().StringArrayVar(&labelsRaw, "labels", nil, "Labels for the MemberCluster (key=value)")
-	cmd.Flags().DurationVar(&ttl, "ttl", 24*time.Hour, "Token TTL (default 24h)")
-	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Hub kubeconfig path")
-	cmd.Flags().BoolVar(&setupSpoke, "setup-spoke", false, "Also set up delivery system on the spoke cluster")
-	cmd.Flags().StringVar(&spokeKubeconf, "spoke-kubeconfig", "", "Spoke kubeconfig path (for --setup-spoke)")
-	cmd.Flags().StringVar(&providerName, "provider", "", "Provider for spoke access (kubeconfig, gcp-basic, gcp-fleet)")
-	cmd.Flags().StringVar(&project, "project", "", "GCP project (for gcp providers)")
-	cmd.Flags().StringVar(&location, "location", "", "GCP region (for gcp-basic)")
-	_ = cmd.MarkFlagRequired("name")
-
-	return cmd
-}
-
-func runBootstrap(ctx context.Context, clusterName, namespace string, labelsRaw []string, ttl time.Duration, kubeconfigPath string, setupSpoke bool, spokeOpts spokeBootstrapOpts) error {
-	// Build management-cluster client.
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	if kubeconfigPath != "" {
-		loadingRules.ExplicitPath = kubeconfigPath
-	}
-	cfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, &clientcmd.ConfigOverrides{}).ClientConfig()
-	if err != nil {
-		return fmt.Errorf("load kubeconfig: %w", err)
-	}
-
-	c, err := client.New(cfg, client.Options{Scheme: scheme})
-	if err != nil {
-		return fmt.Errorf("create client: %w", err)
-	}
-
-	// Parse labels.
-	labels := map[string]string{}
-	for _, kv := range labelsRaw {
-		parts := strings.SplitN(kv, "=", 2)
-		if len(parts) != 2 {
-			return fmt.Errorf("invalid label %q (expected key=value)", kv)
-		}
-		labels[parts[0]] = parts[1]
-	}
-
-	// Generate a cryptographically random 32-byte token.
-	rawBytes := make([]byte, 32)
-	if _, err := rand.Read(rawBytes); err != nil {
-		return fmt.Errorf("generate token: %w", err)
-	}
-	rawToken := hex.EncodeToString(rawBytes)
-
-	// Store only the SHA-256 hash.
-	hash := sha256.Sum256([]byte(rawToken))
-	tokenHash := hex.EncodeToString(hash[:])
-
-	expiresAt := metav1.NewTime(time.Now().Add(ttl))
-
-	mc := &kaprov1alpha1.MemberCluster{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   clusterName,
-			Labels: labels,
-		},
-		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{
-				Type: "flux",
-				Flux: &kaprov1alpha1.FluxActuator{
-					Namespace:         "flux-system",
-					OCIRepository:     clusterName,
-					KustomizationPath: ".",
-				},
-			},
-			Bootstrap: &kaprov1alpha1.MemberClusterBootstrapSpec{
-				TokenHash: tokenHash,
-				ExpiresAt: &expiresAt,
-			},
-		},
-	}
-
-	sp := cli.NewSpinner("Creating MemberCluster")
-	sp.Start()
-	if err := c.Create(ctx, mc); err != nil {
-		sp.StopFail("Failed to create MemberCluster")
-		return fmt.Errorf("create MemberCluster: %w", err)
-	}
-	sp.StopSuccess("MemberCluster created")
-
-	cli.KV("Cluster", clusterName)
-	cli.KV("Actuator", "flux-operator")
-	cli.KV("Labels", fmt.Sprintf("%v", labels))
-	fmt.Fprintln(cli.Out)
-
-	if setupSpoke {
-		if err := spokeBootstrap(ctx, clusterName, spokeOpts); err != nil {
-			return fmt.Errorf("spoke setup: %w", err)
-		}
-		fmt.Fprintln(cli.Out)
-		cli.Successf("Cluster %q registered and delivery system installed", clusterName)
-	} else {
-		cli.Info("Delivery system not set up. Run again with --setup-spoke to install on the spoke.")
-	}
-
-	cli.Muted("Check status: kubectl get membercluster " + clusterName)
 	return nil
 }
 
@@ -909,20 +757,6 @@ func listOpts(namespace string, allNamespaces bool) []client.ListOption {
 	return []client.ListOption{client.InNamespace(namespace)}
 }
 
-func age(t time.Time) string {
-	d := time.Since(t)
-	switch {
-	case d < time.Minute:
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	case d < time.Hour:
-		return fmt.Sprintf("%dm", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh", int(d.Hours()))
-	default:
-		return fmt.Sprintf("%dd", int(d.Hours()/24))
-	}
-}
-
 func shortHash(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])[:8]
@@ -1057,318 +891,6 @@ func runReleaseCreate(ctx context.Context, name, version string, pipelines, scop
 		fmt.Printf("   Scope:     %s\n", strings.Join(scope, ", "))
 	}
 	fmt.Printf("\nMonitor progress:\n  kapro get releases -n %s\n", namespace)
-	return nil
-}
-
-// ─── kapro promote ────────────────────────────────────────────────────────────
-
-func newPromoteCmd() *cobra.Command {
-	var (
-		releaseName string
-		pipeline    string
-		stage       string
-		targets     []string
-		comment     string
-		namespace   string
-		kubeconfig  string
-	)
-	cmd := &cobra.Command{
-		Use:   "promote",
-		Short: "Manually advance a stage past its gate",
-		Long: `Create Approval CRs for all Syncs in a stage that are waiting for human approval.
-
-This is the bulk equivalent of 'kapro approve' — it targets every cluster
-in a stage rather than a single Sync by name.
-
-Examples:
-  # Approve all targets in canary stage
-  kapro promote --release v1.2.3 --pipeline global --stage canary --comment "LGTM"
-
-  # Approve specific targets only
-  kapro promote --release v1.2.3 --pipeline global --stage canary \
-    --target de-prod --target fi-prod --comment "approved for EU first"`,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runPromote(cmd.Context(), releaseName, pipeline, stage, targets, comment, namespace, kubeconfig)
-		},
-	}
-	cmd.Flags().StringVar(&releaseName, "release", "", "Release name (required)")
-	cmd.Flags().StringVar(&pipeline, "pipeline", "", "Pipeline name the stage belongs to")
-	cmd.Flags().StringVar(&stage, "stage", "", "Stage name (required)")
-	cmd.Flags().StringArrayVar(&targets, "target", nil, "Target specific clusters only (repeatable)")
-	cmd.Flags().StringArrayVar(&targets, "env", nil, "Deprecated alias for --target")
-	_ = cmd.Flags().MarkHidden("env")
-	cmd.Flags().StringVar(&comment, "comment", "", "Approval comment (required if bypass was requested)")
-	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace")
-	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
-	_ = cmd.MarkFlagRequired("release")
-	_ = cmd.MarkFlagRequired("stage")
-	return cmd
-}
-
-func runPromote(ctx context.Context, releaseName, pipeline, stage string, targets []string,
-	comment, namespace, kubeconfigPath string) error {
-	c, err := buildClient(kubeconfigPath)
-	if err != nil {
-		return err
-	}
-
-	targetsForRelease, err := listReleaseTargetsForRelease(ctx, c, namespace, releaseName)
-	if err != nil {
-		return err
-	}
-
-	// Build target allowlist if provided.
-	targetSet := make(map[string]struct{}, len(targets))
-	for _, target := range targets {
-		targetSet[target] = struct{}{}
-	}
-
-	approved := 0
-	skipped := 0
-	total := 0
-	for _, target := range targetsForRelease {
-		if target.Spec.Stage != stage {
-			continue
-		}
-		if pipeline != "" && target.Spec.Pipeline != pipeline {
-			continue
-		}
-		total++
-		if target.Status.Phase != kaprov1alpha1.TargetPhaseWaitingApproval {
-			skipped++
-			continue
-		}
-		if len(targetSet) > 0 {
-			if _, ok := targetSet[target.Spec.Target]; !ok {
-				skipped++
-				continue
-			}
-		}
-
-		ref := approvalRefForTarget(target)
-		approvalName := internalgate.ApprovalName(releaseName, ref)
-		approval := &kaprov1alpha1.Approval{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: approvalName,
-			},
-			Spec: kaprov1alpha1.ApprovalSpec{
-				Ref:     ref,
-				Release: releaseName,
-				Target:  target.Spec.Target,
-				Comment: comment,
-			},
-		}
-		if err := c.Create(ctx, approval); client.IgnoreAlreadyExists(err) != nil {
-			fmt.Printf("⚠️  Failed to create approval for %s: %v\n", target.Spec.Target, err)
-			continue
-		}
-		fmt.Printf("✅ Approved: %s/%s (stage: %s)\n", releaseName, target.Spec.Target, stage)
-		approved++
-	}
-
-	if approved == 0 && total == 0 {
-		fmt.Printf("ℹ️  No targets in stage=%s for release=%s\n", stage, releaseName)
-		return nil
-	}
-	if approved == 0 {
-		fmt.Printf("ℹ️  No targets in WaitingApproval for release=%s stage=%s\n", releaseName, stage)
-		return nil
-	}
-	fmt.Printf("\n%d approval(s) created, %d skipped\n", approved, skipped)
-	return nil
-}
-
-// ─── kapro world ──────────────────────────────────────────────────────────────
-
-func newWorldCmd() *cobra.Command {
-	var (
-		env        string
-		kubeconfig string
-	)
-	cmd := &cobra.Command{
-		Use:   "world",
-		Short: "Fleet-wide status: all clusters, versions, and health",
-		Long: `Show a table of every MemberCluster with its current version, phase, and health.
-
-Equivalent to 'kubectl get memberclusters' but formatted for delivery monitoring.
-
-Examples:
-  kapro world
-  kapro world --env prod`,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runWorld(cmd.Context(), env, kubeconfig)
-		},
-	}
-	cmd.Flags().StringVar(&env, "target", "", "Filter by target cluster name")
-	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
-	return cmd
-}
-
-func runWorld(ctx context.Context, envFilter, kubeconfigPath string) error {
-	sp := cli.NewSpinner("Fetching fleet status")
-	sp.Start()
-
-	c, err := buildClient(kubeconfigPath)
-	if err != nil {
-		sp.StopFail("Failed to connect to cluster")
-		return err
-	}
-
-	var list kaprov1alpha1.MemberClusterList
-	opts := []client.ListOption{client.Limit(2000)}
-	if envFilter != "" {
-		opts = append(opts, client.MatchingLabels{"kapro.io/target": envFilter})
-	}
-	if err := c.List(ctx, &list, opts...); err != nil {
-		sp.StopFail("Failed to list clusters")
-		return fmt.Errorf("list member clusters: %w", err)
-	}
-	sp.Stop()
-
-	if cli.IsJSON() {
-		return cli.JSON(list.Items)
-	}
-
-	if len(list.Items) == 0 {
-		cli.Muted("No member clusters found.")
-		return nil
-	}
-
-	healthy, degraded, unknown := 0, 0, 0
-	for _, mc := range list.Items {
-		switch {
-		case mc.Status.Health.AllWorkloadsReady:
-			healthy++
-		case mc.Status.LastHeartbeat != "":
-			degraded++
-		default:
-			unknown++
-		}
-	}
-
-	cli.Header("Fleet")
-	cli.Infof("%d clusters  %s  %s  %s",
-		len(list.Items),
-		cli.Theme.PhaseComplete.Render(fmt.Sprintf("%d healthy", healthy)),
-		cli.Theme.PhaseFailed.Render(fmt.Sprintf("%d degraded", degraded)),
-		cli.Theme.Muted.Render(fmt.Sprintf("%d unknown", unknown)),
-	)
-
-	tbl := cli.NewTable("CLUSTER", "PHASE", "HEALTHY", "ACTIVE RELEASE", "HEARTBEAT", "AGE")
-	for _, mc := range list.Items {
-		healthStr := "?"
-		if mc.Status.Health.AllWorkloadsReady {
-			healthStr = "Healthy"
-		} else if mc.Status.LastHeartbeat != "" {
-			healthStr = "Degraded"
-		}
-		heartbeat := "-"
-		if mc.Status.LastHeartbeat != "" {
-			if t, err := time.Parse(time.RFC3339, mc.Status.LastHeartbeat); err == nil {
-				heartbeat = cli.Age(t) + " ago"
-			}
-		}
-		activeRelease := mc.Status.ActiveRelease
-		if activeRelease == "" {
-			activeRelease = "-"
-		}
-		tbl.AddRow(mc.Name, string(mc.Status.Phase), healthStr, activeRelease, heartbeat, cli.Age(mc.CreationTimestamp.Time))
-	}
-	tbl.Render()
-	return nil
-}
-
-// ─── kapro fleet ─────────────────────────────────────────────────────────────
-
-func newDashboardCmd() *cobra.Command {
-	var kubeconfig string
-	cmd := &cobra.Command{
-		Use:   "dashboard",
-		Short: "Overview: clusters, releases, and pending decisions",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runFleet(cmd.Context(), kubeconfig)
-		},
-	}
-	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
-	return cmd
-}
-
-func runFleet(ctx context.Context, kubeconfigPath string) error {
-	sp := cli.NewSpinner("Loading fleet state")
-	sp.Start()
-
-	c, err := buildClient(kubeconfigPath)
-	if err != nil {
-		sp.StopFail("Failed to connect")
-		return err
-	}
-
-	var clusters kaprov1alpha1.MemberClusterList
-	var releases kaprov1alpha1.ReleaseList
-	var targets kaprov1alpha1.ReleaseTargetList
-	if err := c.List(ctx, &clusters); err != nil {
-		sp.StopFail("Failed to list clusters")
-		return err
-	}
-	if err := c.List(ctx, &releases); err != nil {
-		sp.StopFail("Failed to list releases")
-		return err
-	}
-	if err := c.List(ctx, &targets); err != nil {
-		sp.StopFail("Failed to list targets")
-		return err
-	}
-	sp.Stop()
-
-	healthy, degraded := 0, 0
-	for _, mc := range clusters.Items {
-		if mc.Status.Health.AllWorkloadsReady {
-			healthy++
-		} else {
-			degraded++
-		}
-	}
-	activeReleases, pendingDecisions := 0, 0
-	for _, r := range releases.Items {
-		if r.Status.Phase == kaprov1alpha1.ReleasePhaseProgressing {
-			activeReleases++
-		}
-	}
-	for _, t := range targets.Items {
-		if t.Status.Phase == kaprov1alpha1.TargetPhaseWaitingApproval {
-			pendingDecisions++
-		}
-	}
-
-	if cli.IsJSON() {
-		return cli.JSON(map[string]any{
-			"clusters":         len(clusters.Items),
-			"healthyClusters":  healthy,
-			"degradedClusters": degraded,
-			"activeReleases":   activeReleases,
-			"pendingDecisions": pendingDecisions,
-			"totalReleases":    len(releases.Items),
-			"totalTargets":     len(targets.Items),
-		})
-	}
-
-	cli.Header("Fleet Overview")
-	fmt.Fprintln(cli.Out)
-	cli.KV("Clusters", fmt.Sprintf("%d total, %s, %s",
-		len(clusters.Items),
-		cli.Theme.PhaseComplete.Render(fmt.Sprintf("%d healthy", healthy)),
-		cli.Theme.PhaseFailed.Render(fmt.Sprintf("%d degraded", degraded)),
-	))
-	cli.KV("Releases", fmt.Sprintf("%d total, %s",
-		len(releases.Items),
-		cli.Theme.PhaseProgressing.Render(fmt.Sprintf("%d active", activeReleases)),
-	))
-	if pendingDecisions > 0 {
-		cli.KV("Pending", cli.Theme.PhaseWaiting.Render(fmt.Sprintf("%d targets waiting for approval", pendingDecisions)))
-	} else {
-		cli.KV("Pending", cli.Theme.Muted.Render("none"))
-	}
-	fmt.Fprintln(cli.Out)
 	return nil
 }
 
