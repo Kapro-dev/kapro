@@ -842,6 +842,27 @@ func (r *KaproReconciler) syncMemberClusterStatus(ctx context.Context, kapro *ka
 		phase = kaprov1alpha1.ClusterPhaseConverged
 	}
 
+	// For spoke-local: version is the OCIRepository tag (bundle version), not chart version.
+	if isSpokeLocalMode(kapro) && allReady && hrClient != r.Client {
+		ociRepo := &unstructured.Unstructured{}
+		ociRepo.SetGroupVersionKind(schema.GroupVersionKind{
+			Group: "source.toolkit.fluxcd.io", Version: "v1", Kind: "OCIRepository",
+		})
+		ociRepoName := kapro.Name + "-bundle"
+		if err := hrClient.Get(ctx, client.ObjectKey{Name: ociRepoName, Namespace: "flux-system"}, ociRepo); err == nil {
+			if spec, ok := ociRepo.Object["spec"].(map[string]any); ok {
+				if ref, ok := spec["ref"].(map[string]any); ok {
+					if tag, ok := ref["tag"].(string); ok && tag != "" {
+						versions["default"] = tag
+						for k := range versions {
+							versions[k] = tag
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// Patch MemberCluster status.
 	mcPatch := client.MergeFrom(mc.DeepCopy())
 	mc.Status.Phase = phase
