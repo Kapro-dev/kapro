@@ -1,0 +1,13 @@
+bin/
+docs/
+charts/
+config/
+gcp/
+hack/
+.github/
+.git/
+*.md
+LICENSE
+OWNERS
+MAINTAINERS
+wrangler.toml

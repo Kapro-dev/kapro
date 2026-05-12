@@ -9,10 +9,7 @@ WORKDIR /workspace
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY api/ api/
-COPY cmd/operator/ cmd/operator/
-COPY internal/ internal/
-COPY pkg/ pkg/
+COPY . .
 
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags="-s -w" \
