@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kapro - The Canonical Promotion Layer for Kubernetes</title>
+  <meta name="description" content="Purpose-built progressive delivery and promotion engine for sovereign fleet GitOps at global scale.">
+  <meta property="og:title" content="Kapro - The Canonical Promotion Layer for Kubernetes">
+  <meta property="og:description" content="Purpose-built progressive delivery and promotion engine for sovereign fleet GitOps at global scale.">
+  <meta property="og:image" content="https://kapro.dev/logo.png">
+  <meta property="og:url" content="https://kapro.dev">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/png" href="logo.png">
+  <style>
+    :root {
+      --bg: #f8f9fb;
+      --surface: #ffffff;
+      --text: #1a1a2e;
+      --text-secondary: #4a4a68;
+      --accent: #2d5a9e;
+      --accent-light: #e8eef6;
+      --border: #e2e4e9;
+      --max-width: 900px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      padding: 80px 24px 60px;
+      background: linear-gradient(180deg, #edf1f7 0%, var(--bg) 100%);
+    }
+    .hero img { width: 180px; margin-bottom: 24px; }
+    .hero h1 {
+      font-size: 2.8rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 12px;
+    }
+    .hero p {
+      font-size: 1.25rem;
+      color: var(--text-secondary);
+      max-width: 600px;
+      margin: 0 auto 32px;
+    }
+    .hero-buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      display: inline-block;
+      padding: 12px 28px;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { background: #1e4580; }
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: var(--accent-light); }
+
+    /* Content */
+    .content { max-width: var(--max-width); margin: 0 auto; padding: 0 24px; }
+
+    .section {
+      padding: 64px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .section:last-child { border-bottom: none; }
+
+    .section h2 {
+      font-size: 1.9rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+      letter-spacing: -0.01em;
+    }
+    .section p {
+      color: var(--text-secondary);
+      font-size: 1.05rem;
+      margin-bottom: 24px;
+    }
+    .section img {
+      width: 100%;
+      border-radius: 12px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.06);
+      margin: 8px 0;
+    }
+
+    /* Features list */
+    .features {
+      list-style: none;
+      padding: 0;
+      margin: 24px 0;
+    }
+    .features li {
+      padding: 8px 0;
+      padding-left: 28px;
+      position: relative;
+      font-size: 1.05rem;
+      color: var(--text-secondary);
+    }
+    .features li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 16px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    .features li strong { color: var(--text); }
+
+    /* Use cases */
+    .use-cases {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-top: 24px;
+    }
+    .use-case {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+    }
+    .use-case h3 {
+      font-size: 1.1rem;
+      margin-bottom: 8px;
+    }
+    .use-case p {
+      font-size: 0.95rem;
+      margin-bottom: 0;
+    }
+
+    /* Comparison table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 24px 0;
+      font-size: 0.95rem;
+    }
+    th, td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      background: var(--accent-light);
+      font-weight: 600;
+    }
+    tr:hover { background: #fafbfc; }
+
+    /* Code block */
+    pre {
+      background: #1a1a2e;
+      color: #e0e0e0;
+      border-radius: 10px;
+      padding: 24px;
+      overflow-x: auto;
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+    pre .comment { color: #6a6a8a; }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+    .footer a { color: var(--accent); text-decoration: none; }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      .hero h1 { font-size: 2rem; }
+      .hero p { font-size: 1.05rem; }
+      .section h2 { font-size: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="hero">
+    <img src="logo.png" alt="Kapro">
+    <h1>Kapro</h1>
+    <p>The canonical promotion layer for Kubernetes. Purpose-built for sovereign fleet GitOps at global scale.</p>
+    <div class="hero-buttons">
+      <a href="https://github.com/Kapro-dev/kapro" class="btn btn-primary">View on GitHub</a>
+      <a href="https://github.com/Kapro-dev/kapro/blob/main/docs/SPEC.md" class="btn btn-secondary">Read the Spec</a>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <div class="section">
+      <h2>The Fleet-Scale Imperative</h2>
+      <p>Sovereign hubs. Edge locations at true distributed scale. Zero tolerance for centralized runtime coordination, because centralized orchestration is a single point of failure. When deploying at this magnitude, standard CI/CD pipelines collapse under the weight of drift, state, and sheer volume.</p>
+      <img src="fleet-scale.png" alt="The fleet-scale imperative">
+    </div>
+
+    <div class="section">
+      <h2>Why Sequential Pipelines Break</h2>
+      <p>Traditional CI/CD assumes a linear world: build, test, deploy. But Kafka must run before 14 dependent services, operators must precede custom resources, and databases require lifecycle management, backups, and drift correction. Every cluster must continuously self-verify against its source of truth. Sequential pipelines simply cannot express this.</p>
+      <img src="sequential-pipelines-break.png" alt="Why sequential pipelines break">
+    </div>
+
+    <div class="section">
+      <h2>The Missing Link in Global GitOps</h2>
+      <p>You have a centralized OCI artifact registry. You have edge clusters running Flux, Helm, and Kustomize. But between those two ends, three questions remain unanswered: How do you stage rollouts? How do you manage cross-cluster canaries? How do you validate state before promotion?</p>
+      <img src="missing-link.png" alt="The missing link in global GitOps">
+    </div>
+
+    <div class="section">
+      <h2>The Artifact is the Contract</h2>
+      <p>Kapro decouples CI from deployment. The OCI artifact becomes the single source of runtime truth: immutable tags only. Any git repo, any CI pipeline can produce it. By making the OCI artifact the contract, CI stops being the deployment orchestrator. Runtime git dependency drops to zero.</p>
+      <img src="artifact-contract.png" alt="The artifact is the contract">
+    </div>
+
+    <div class="section">
+      <h2>Enter Kapro</h2>
+      <p>Kapro doesn't replace the CNCF ecosystem. It choreographs it. An open-source orchestrator built to manage the complex state of modern sovereign fleets, sitting at the center of Kubernetes Operators, Helm, Kustomize, OCI registries, and GitOps reconciliation loops.</p>
+      <img src="kapro-ecosystem.png" alt="Kapro: the CNCF-native promotion engine">
+    </div>
+
+    <div class="section">
+      <h2>The Mechanics of Promotion</h2>
+      <img src="promotion-mechanics.png" alt="The mechanics of promotion">
+      <ul class="features">
+        <li><strong>Intra-cluster blue/green.</strong> Seamless traffic cutover within cluster boundary. Rollbacks are instant routing flips, not redeployments.</li>
+        <li><strong>Inter-cluster canary.</strong> Progressive rollout with health gates across regions. Pilot clusters first, then regional waves, then the global fleet.</li>
+        <li><strong>No inline updates. Ever.</strong> Traffic is cutover only after verification. Standby workloads always deploy in a separate namespace.</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>Autonomous Operations</h2>
+      <p>Kapro manages wave-based dependsOn execution across CRDs, operators, state, apps, and ingress. Automated health gates ensure that if a check or canary fails, the rollout halts. Zero fleet-wide bad deployments.</p>
+      <img src="autonomous-operations.png" alt="Autonomous operations and bulletproof reliability">
+    </div>
+
+    <div class="section">
+      <h2>Built For</h2>
+      <div class="use-cases">
+        <div class="use-case">
+          <h3>Retail</h3>
+          <p>Deploy POS software to thousands of stores across 30+ countries. Pilot clusters first, then regional waves. A bad deployment halts at wave boundaries and never reaches the fleet.</p>
+        </div>
+        <div class="use-case">
+          <h3>Financial Services</h3>
+          <p>Separate deployment flows for GDPR, SOC2, and PCI-DSS. Environment isolation per regulatory zone, audit trails via signed OCI provenance chains, mandatory approval gates.</p>
+        </div>
+        <div class="use-case">
+          <h3>SaaS Platforms</h3>
+          <p>Progressive rollout to customer clusters. Canary tenants get new features first. Health gates block rollout if error rates spike. Auto-promotion after soak.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>How Kapro Compares</h2>
+      <table>
+        <tr><th></th><th>Kapro</th><th>Flux</th><th>ArgoCD</th><th>Kargo</th></tr>
+        <tr><td><strong>Multi-cluster promotion</strong></td><td>Native</td><td>Manual</td><td>App-of-apps</td><td>Native</td></tr>
+        <tr><td><strong>Progressive delivery</strong></td><td>Built-in</td><td>Via Flagger</td><td>Via Argo Rollouts</td><td>Built-in</td></tr>
+        <tr><td><strong>OCI-first</strong></td><td>Yes</td><td>Partial</td><td>Git-centric</td><td>Yes</td></tr>
+        <tr><td><strong>Sovereign fleet</strong></td><td>Designed for it</td><td>No</td><td>No</td><td>Limited</td></tr>
+        <tr><td><strong>Flux compatible</strong></td><td>Built on Flux</td><td>N/A</td><td>No</td><td>Separate</td></tr>
+        <tr><td><strong>Health gates</strong></td><td>Pluggable</td><td>No</td><td>No</td><td>Yes</td></tr>
+        <tr><td><strong>Approvals</strong></td><td>CRD-based</td><td>No</td><td>External</td><td>Yes</td></tr>
+      </table>
+      <p>Kapro sits above Flux, not replacing it, and alongside Kargo as a complementary tool. Kapro focuses on horizontal wave ordering across sovereign fleets, while Kargo focuses on vertical pipeline staging across environments.</p>
+    </div>
+
+    <div class="section">
+      <h2>Get Started</h2>
+<pre><span class="comment"># Bootstrap a hub cluster</span>
+kapro hub init --project my-project --cluster my-hub
+
+<span class="comment"># Add spoke clusters to the fleet</span>
+kapro spoke add de-prod --provider gcp-fleet --labels tier=canary
+kapro spoke add fi-prod --provider gcp-fleet --labels tier=prod
+
+<span class="comment"># Define your app and delivery pipeline</span>
+kubectl apply -f kaproapp.yaml
+kubectl apply -f kapro.yaml
+
+<span class="comment"># Push a version from CI</span>
+kapro bundle generate --app my-app --version 1.0.0 --push
+
+<span class="comment"># Create a release. Kapro handles the rest.</span>
+kubectl apply -f release.yaml</pre>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    <p>Apache 2.0 &middot; <a href="https://github.com/Kapro-dev/kapro">GitHub</a> &middot; <a href="https://github.com/Kapro-dev/kapro/blob/main/docs/SPEC.md">Spec</a> &middot; <a href="https://github.com/Kapro-dev/kapro/blob/main/docs/ROADMAP.md">Roadmap</a></p>
+  </div>
+
+</body>
+</html>
