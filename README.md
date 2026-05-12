@@ -5,7 +5,7 @@
 <h1 align="center">Kapro</h1>
 
 <p align="center"><strong>The canonical promotion layer for Kubernetes.</strong><br>
-Purpose-built for sovereign fleet GitOps at global scale.</p>
+Progressive delivery and promotion engine for multi-cluster Kubernetes fleets.</p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
