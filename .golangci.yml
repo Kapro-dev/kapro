@@ -1,6 +1,8 @@
+version: "2"
+
 run:
-  timeout: 4m
-  go: "1.24"
+  timeout: 5m
+  go: "1.25"
 
 linters:
   enable:
@@ -17,9 +19,15 @@ linters:
     - noctx
     - bodyclose
 
+formatters:
+  enable:
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - kapro.io/kapro
+
 linters-settings:
-  goimports:
-    local-prefixes: kapro.io/kapro
   revive:
     rules:
       - name: exported
@@ -30,11 +38,9 @@ linters-settings:
 
 issues:
   exclude-rules:
-    # Allow dot imports in test files (envtest pattern)
     - path: _test\.go
       linters:
         - revive
-    # Allow unused in generated files
     - path: zz_generated\.
       linters:
         - unused
