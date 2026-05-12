@@ -25,11 +25,21 @@ spec:
     - jsonPath: .spec.target
       name: Target
       type: string
+    - jsonPath: .spec.pipelineRef
+      name: Pipeline
+      type: string
     - jsonPath: .spec.stage
       name: Stage
       type: string
     - jsonPath: .status.phase
       name: Phase
+      type: string
+    - jsonPath: .spec.version
+      name: Version
+      type: string
+    - jsonPath: .status.previousVersion
+      name: Previous
+      priority: 1
       type: string
     - jsonPath: .spec.rollback
       name: Rollback

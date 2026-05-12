@@ -31,8 +31,16 @@ spec:
     - jsonPath: .status.health.allWorkloadsReady
       name: Healthy
       type: boolean
-    - jsonPath: .status.provider
-      name: Provider
+    - jsonPath: .status.activeRelease
+      name: Release
+      type: string
+    - jsonPath: .status.capabilities.region
+      name: Region
+      priority: 1
+      type: string
+    - jsonPath: .status.capabilities.cloud
+      name: Cloud
+      priority: 1
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age

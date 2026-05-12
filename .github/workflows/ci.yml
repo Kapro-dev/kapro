@@ -23,7 +23,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.64
+          version: v1.64.8
           args: --timeout=5m
 
   build:
@@ -76,4 +76,4 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64,linux/arm64
           push: false
-          tags: ghcr.io/vinnxcapital-gif/kapro-operator:pr-${{ github.event.number }}
+          tags: ghcr.io/kapro-dev/kapro-operator:pr-${{ github.event.number }}

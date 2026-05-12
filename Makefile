@@ -1,13 +1,12 @@
 # Image registry
-REGISTRY        ?= ghcr.io/vinnxcapital-gif
+REGISTRY        ?= ghcr.io/kapro-dev
 OPERATOR_IMG    ?= $(REGISTRY)/kapro-operator:latest
-CC_IMG          ?= $(REGISTRY)/kapro-cluster-controller:latest
 
 # Tool versions
 CONTROLLER_GEN_VERSION ?= v0.17.0
 ENVTEST_VERSION        ?= release-0.19
 ENVTEST_K8S_VERSION    ?= 1.31.x
-GOLANGCI_LINT_VERSION  ?= v1.57.2
+GOLANGCI_LINT_VERSION  ?= v1.64.8
 
 # Tool paths
 LOCALBIN        ?= $(shell pwd)/bin
@@ -74,9 +73,8 @@ test: generate manifests $(ENVTEST) ## Run unit + integration tests with envtest
 ##@ Build
 
 .PHONY: build
-build: generate ## Build operator and cluster-controller binaries
+build: generate ## Build operator and CLI binaries
 	go build -trimpath -ldflags="-s -w" -o bin/kapro-operator ./cmd/operator
-	go build -trimpath -ldflags="-s -w" -o bin/kapro-cluster-controller ./cmd/cluster-controller
 	go build -trimpath -ldflags="-s -w" -o bin/kapro ./cmd/kapro
 
 .PHONY: sync-crds
@@ -85,14 +83,12 @@ sync-crds: manifests ## Sync generated CRDs into Helm chart crds/ directory
 	@echo "✅ Helm chart CRDs synced"
 
 .PHONY: docker-build
-docker-build: ## Build multi-arch Docker images (no push)
+docker-build: ## Build multi-arch Docker image (no push)
 	docker buildx build --platform linux/amd64,linux/arm64 -t $(OPERATOR_IMG) -f Dockerfile .
-	docker buildx build --platform linux/amd64,linux/arm64 -t $(CC_IMG) -f Dockerfile.cluster-controller .
 
 .PHONY: docker-push
-docker-push: ## Push Docker images
+docker-push: ## Push Docker image
 	docker buildx build --platform linux/amd64,linux/arm64 -t $(OPERATOR_IMG) -f Dockerfile . --push
-	docker buildx build --platform linux/amd64,linux/arm64 -t $(CC_IMG) -f Dockerfile.cluster-controller . --push
 
 ##@ Cluster
 
