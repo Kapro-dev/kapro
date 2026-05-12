@@ -46,8 +46,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/vinnxcapital-gif/kapro-operator:${{ github.ref_name }}
-            ghcr.io/vinnxcapital-gif/kapro-operator:latest
+            ghcr.io/kapro-dev/kapro-operator:${{ github.ref_name }}
+            ghcr.io/kapro-dev/kapro-operator:latest
           labels: |
             org.opencontainers.image.title=kapro-operator
             org.opencontainers.image.version=${{ github.ref_name }}
@@ -63,13 +63,13 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/vinnxcapital-gif/kapro-cluster-controller:${{ github.ref_name }}
-            ghcr.io/vinnxcapital-gif/kapro-cluster-controller:latest
+            ghcr.io/kapro-dev/kapro-cluster-controller:${{ github.ref_name }}
+            ghcr.io/kapro-dev/kapro-cluster-controller:latest
 
       - name: Sign images with cosign
         run: |
-          cosign sign --yes ghcr.io/vinnxcapital-gif/kapro-operator@${{ steps.build-operator.outputs.digest }}
-          cosign sign --yes ghcr.io/vinnxcapital-gif/kapro-cluster-controller@${{ steps.build-cc.outputs.digest }}
+          cosign sign --yes ghcr.io/kapro-dev/kapro-operator@${{ steps.build-operator.outputs.digest }}
+          cosign sign --yes ghcr.io/kapro-dev/kapro-cluster-controller@${{ steps.build-cc.outputs.digest }}
 
       - name: Create GitHub Release
         uses: goreleaser/goreleaser-action@v5
