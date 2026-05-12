@@ -91,14 +91,14 @@ Automated health gates ensure that if a check or canary fails, the rollout halts
 
 ## Use Cases
 
-### Retail: Multi-Country POS Systems
-Deploy point-of-sale software to thousands of stores across 30+ countries. Pilot clusters first, then regional waves. Each country's clusters reconcile independently. A bad deployment halts at wave boundaries and never reaches the fleet.
+### Multi-Region Fleets
+Roll out across clusters in multiple countries and regions. Pilot a small group first, expand in waves, and halt automatically if something goes wrong. Each region reconciles independently.
 
-### Financial Services: Regulatory Compliance
-Separate deployment flows for GDPR, SOC2, and PCI-DSS. Environment isolation per regulatory zone, audit trails via signed OCI provenance chains, and mandatory human approval gates for production changes.
+### Regulated Environments
+Separate deployment flows per compliance zone. Environment isolation per regulatory boundary, audit trails via signed OCI provenance chains, and mandatory human approval gates before production.
 
-### SaaS: Multi-Tenant Platforms
-Progressive rollout to customer clusters. Canary tenants get new features first. Health gates block rollout if error rates spike. Automatic promotion to remaining tenants after a configurable soak period.
+### Edge and Distributed Platforms
+Progressive rollout to hundreds or thousands of edge clusters. Canary groups get new versions first. Health gates block rollout if error rates spike. Auto-promotion after a configurable soak period.
 
 ## How Kapro Compares
 
