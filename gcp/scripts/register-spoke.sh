@@ -33,7 +33,7 @@ SPOKE_CLUSTER=""
 SPOKE_REGION=""
 CLUSTER_NAME=""
 HUB_URL=""
-IMAGE="ghcr.io/vinnxcapital-gif/kapro/cluster-controller:latest"
+IMAGE="ghcr.io/kapro-dev/kapro/cluster-controller:latest"
 GCP_SA=""
 LABELS=""
 

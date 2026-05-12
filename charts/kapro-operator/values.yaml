@@ -3,7 +3,7 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/vinnxcapital-gif/kapro-operator
+  repository: ghcr.io/kapro-dev/kapro-operator
   pullPolicy: IfNotPresent
   tag: ""  # defaults to Chart.appVersion
 

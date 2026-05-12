@@ -19,9 +19,9 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.report.totalArtifacts
-      name: Artifacts
-      type: integer
+    - jsonPath: .spec.version
+      name: Version
+      type: string
     - jsonPath: .status.phase
       name: Phase
       type: string
@@ -30,9 +30,26 @@ spec:
       type: string
     - jsonPath: .status.report.syncedTargets
       name: Synced
-      type: integer
+      type: string
+    - jsonPath: .status.report.failedTargets
+      name: Failed
+      type: string
     - jsonPath: .status.report.pendingTargets
       name: Pending
+      type: string
+    - jsonPath: .status.report.totalTargets
+      name: Total
+      type: string
+    - jsonPath: .status.report.duration
+      name: Duration
+      type: string
+    - jsonPath: .spec.suspended
+      name: Suspended
+      priority: 1
+      type: boolean
+    - jsonPath: .status.report.totalArtifacts
+      name: Artifacts
+      priority: 1
       type: integer
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -237,6 +254,11 @@ spec:
                   description: PipelineProgress tracks the execution state of one
                     pipeline node in a Release.
                   properties:
+                    activeStage:
+                      description: |-
+                        ActiveStage is the name of the currently progressing stage (or the last completed one).
+                        Gives operators a quick "where are we?" without expanding StageProgress.
+                      type: string
                     name:
                       description: Name matches ReleasePipelineRef.name.
                       type: string
@@ -256,13 +278,27 @@ spec:
                       description: StageProgress summarises the state of each stage
                         in this pipeline.
                       items:
-                        description: StageProgress tracks the execution state of one
-                          Stage within a pipeline.
+                        description: |-
+                          StageProgress tracks the execution state of one Stage within a pipeline.
+                          Designed to render well in k9s describe view — operators see per-stage
+                          progress like CI pipeline steps.
                         properties:
+                          completedAt:
+                            description: CompletedAt is when all targets in this stage
+                              reached a terminal state.
+                            type: string
                           failed:
                             description: Failed is the number of targets that have
                               reached Failed.
                             type: integer
+                          message:
+                            description: |-
+                              Message is a human-readable summary of stage progress, designed for
+                              k9s describe output. Examples:
+                                "2/5 clusters converged, soak: 12m/30m remaining"
+                                "waiting for canary stage"
+                                "blocked: manual approval required for de-prod"
+                            type: string
                           name:
                             description: Name is the stage name from Pipeline.spec.stages[].name.
                             type: string
@@ -273,6 +309,10 @@ spec:
                             - Progressing
                             - Complete
                             - Failed
+                            type: string
+                          startedAt:
+                            description: StartedAt is when this stage first had a
+                              Progressing target.
                             type: string
                           synced:
                             description: Synced is the number of targets that have

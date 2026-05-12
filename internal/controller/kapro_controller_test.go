@@ -79,10 +79,20 @@ func TestBuildResourceSet_Components(t *testing.T) {
 		t.Fatalf("len(resources) = %d, want 4", len(resources))
 	}
 
+	// Verify HelmRepository is the first resource (repos before releases).
+	repo0, _ := resources[0].(map[string]interface{})
+	if repo0["kind"] != "HelmRepository" {
+		t.Errorf("resources[0].kind = %v, want HelmRepository", repo0["kind"])
+	}
+	repoSpec, _ := repo0["spec"].(map[string]interface{})
+	if repoSpec["url"] != "oci://europe-west1-docker.pkg.dev/myproject/charts" {
+		t.Errorf("HelmRepository url = %v", repoSpec["url"])
+	}
+
 	// Verify first HelmRelease template uses << inputs.X >> substitution.
-	hr0, _ := resources[0].(map[string]interface{})
+	hr0, _ := resources[1].(map[string]interface{})
 	if hr0["kind"] != "HelmRelease" {
-		t.Errorf("resources[0].kind = %v, want HelmRelease", hr0["kind"])
+		t.Errorf("resources[1].kind = %v, want HelmRelease", hr0["kind"])
 	}
 	meta0, _ := hr0["metadata"].(map[string]interface{})
 	if meta0["name"] != "pos-server-<< inputs.tenant >>" {
@@ -93,16 +103,6 @@ func TestBuildResourceSet_Components(t *testing.T) {
 	chartSpec, _ := chart["spec"].(map[string]interface{})
 	if chartSpec["version"] != "<< inputs.version >>" {
 		t.Errorf("chart version = %v, want << inputs.version >>", chartSpec["version"])
-	}
-
-	// Verify HelmRepository is the last resource.
-	lastRes, _ := resources[3].(map[string]interface{})
-	if lastRes["kind"] != "HelmRepository" {
-		t.Errorf("resources[3].kind = %v, want HelmRepository", lastRes["kind"])
-	}
-	repoSpec, _ := lastRes["spec"].(map[string]interface{})
-	if repoSpec["url"] != "oci://europe-west1-docker.pkg.dev/myproject/charts" {
-		t.Errorf("HelmRepository url = %v", repoSpec["url"])
 	}
 }
 
