@@ -51,25 +51,13 @@ jobs:
           labels: |
             org.opencontainers.image.title=kapro-operator
             org.opencontainers.image.version=${{ github.ref_name }}
-            org.opencontainers.image.source=https://github.com/vinnxcapital-gif/kapro
+            org.opencontainers.image.source=https://github.com/Kapro-dev/kapro
+            org.opencontainers.image.documentation=https://kapro.dev
             org.opencontainers.image.licenses=Apache-2.0
 
-      - name: Build and push cluster-controller image
-        uses: docker/build-push-action@v5
-        id: build-cc
-        with:
-          context: .
-          file: Dockerfile.cluster-controller
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/kapro-dev/kapro-cluster-controller:${{ github.ref_name }}
-            ghcr.io/kapro-dev/kapro-cluster-controller:latest
-
-      - name: Sign images with cosign
+      - name: Sign operator image with cosign
         run: |
           cosign sign --yes ghcr.io/kapro-dev/kapro-operator@${{ steps.build-operator.outputs.digest }}
-          cosign sign --yes ghcr.io/kapro-dev/kapro-cluster-controller@${{ steps.build-cc.outputs.digest }}
 
       - name: Create GitHub Release
         uses: goreleaser/goreleaser-action@v5

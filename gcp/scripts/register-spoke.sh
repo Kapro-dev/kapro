@@ -33,7 +33,7 @@ SPOKE_CLUSTER=""
 SPOKE_REGION=""
 CLUSTER_NAME=""
 HUB_URL=""
-IMAGE="ghcr.io/kapro-dev/kapro/cluster-controller:latest"
+IMAGE=""  # cluster-controller image, set when spoke-side agent is available
 GCP_SA=""
 LABELS=""
 
