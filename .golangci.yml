@@ -12,12 +12,19 @@ linters:
     - revive
     - unused
     - gofmt
-    - goimports
     - misspell
     - unconvert
     - gosec
     - noctx
     - bodyclose
+  settings:
+    revive:
+      rules:
+        - name: exported
+          arguments:
+            - disableStutteringCheck
+    gosec:
+      excludes: []
 
 formatters:
   enable:
@@ -27,22 +34,8 @@ formatters:
       local-prefixes:
         - kapro.io/kapro
 
-linters-settings:
-  revive:
-    rules:
-      - name: exported
-        arguments:
-          - disableStutteringCheck
-  gosec:
-    excludes: []
-
 issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - revive
-    - path: zz_generated\.
-      linters:
-        - unused
   max-issues-per-linter: 0
   max-same-issues: 0
+  exclude-files:
+    - "zz_generated\\."
