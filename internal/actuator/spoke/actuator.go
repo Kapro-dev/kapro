@@ -33,12 +33,6 @@ var (
 	ociRepoGVK = schema.GroupVersionKind{
 		Group: "source.toolkit.fluxcd.io", Version: "v1", Kind: "OCIRepository",
 	}
-	kustomizationGVK = schema.GroupVersionKind{
-		Group: "kustomize.toolkit.fluxcd.io", Version: "v1", Kind: "Kustomization",
-	}
-	helmReleaseGVK = schema.GroupVersionKind{
-		Group: "helm.toolkit.fluxcd.io", Version: "v2", Kind: "HelmRelease",
-	}
 )
 
 // clientCacheTTL is how long a cached spoke client is reused before rebuilding.

@@ -288,7 +288,7 @@ func sendEmailFromConfig(ctx context.Context, cfg *notification.EmailConfig, sec
 		if err != nil {
 			return fmt.Errorf("email: TLS dial %s: %w", addr, err)
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		c, err := smtp.NewClient(conn, host)
 		if err != nil {
 			return fmt.Errorf("email: SMTP client: %w", err)

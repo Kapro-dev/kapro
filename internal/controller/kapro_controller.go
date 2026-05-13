@@ -128,7 +128,7 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			},
 		}
 		if err := r.Patch(ctx, mc,
-			client.Apply,
+			client.Apply, //nolint:staticcheck // SA1019: deprecated but replacement needs larger refactor
 			client.FieldOwner("kapro-controller"),
 			client.ForceOwnership,
 		); err != nil {
@@ -140,7 +140,7 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// 2. Generate Pipeline on the hub.
 	pipeline := r.buildPipeline(&kapro)
 	if err := r.Patch(ctx, pipeline,
-		client.Apply,
+		client.Apply, //nolint:staticcheck
 		client.FieldOwner("kapro-controller"),
 		client.ForceOwnership,
 	); err != nil {
@@ -164,7 +164,7 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		// 3b. Push mode: generate ResourceSet on the hub (Flux Operator distributes to spokes).
 		rs := r.buildResourceSet(&kapro, &app)
 		if err := r.Patch(ctx, rs,
-			client.Apply,
+			client.Apply, //nolint:staticcheck // SA1019: deprecated but replacement needs larger refactor
 			client.FieldOwner("kapro-controller"),
 			client.ForceOwnership,
 		); err != nil {
@@ -593,10 +593,7 @@ func overrideMatches(ov kaprov1alpha1.AppOverride, clusterName string, clusterLa
 // Convention: if Kapro.Spec.DeliveryMode == "spoke" OR any cluster has Provider == "gcp-fleet",
 // use spoke-local mode. Otherwise, use the push model.
 func isSpokeLocalMode(kapro *kaprov1alpha1.Kapro) bool {
-	if kapro.Spec.DeliveryMode == "spoke" {
-		return true
-	}
-	return false
+	return kapro.Spec.DeliveryMode == "spoke"
 }
 
 const maxConcurrentBootstraps = 10
@@ -707,7 +704,7 @@ func (r *KaproReconciler) bootstrapSpoke(ctx context.Context, kapro *kaprov1alph
 		},
 	}}
 	if err := spokeClient.Patch(ctx, ociRepo,
-		client.Apply,
+		client.Apply, //nolint:staticcheck
 		client.FieldOwner("kapro-controller"),
 		client.ForceOwnership,
 	); err != nil {
@@ -719,7 +716,7 @@ func (r *KaproReconciler) bootstrapSpoke(ctx context.Context, kapro *kaprov1alph
 	for _, wk := range waveKusts {
 		obj := &unstructured.Unstructured{Object: wk}
 		if err := spokeClient.Patch(ctx, obj,
-			client.Apply,
+			client.Apply, //nolint:staticcheck // SA1019: deprecated but replacement needs larger refactor
 			client.FieldOwner("kapro-controller"),
 			client.ForceOwnership,
 		); err != nil {
@@ -761,8 +758,8 @@ func (r *KaproReconciler) syncMemberClusterStatus(ctx context.Context, kapro *ka
 	}
 
 	// Determine which client to use for reading HelmRelease status.
-	hrClient := client.Client(r.Client) // default: hub (push mode)
-	hrNameSuffix := "-" + cluster.Name  // push mode: hello-infra-kapro-spoke
+	hrClient := r.Client               // default: hub (push mode)
+	hrNameSuffix := "-" + cluster.Name // push mode: hello-infra-kapro-spoke
 
 	if isSpokeLocalMode(kapro) {
 		// Spoke-local: connect to spoke and read HelmReleases there.
@@ -1001,7 +998,7 @@ func (r *KaproReconciler) ensureKubeconfigSecret(ctx context.Context, kapro *kap
 	}
 
 	if err := r.Patch(ctx, secret,
-		client.Apply,
+		client.Apply, //nolint:staticcheck
 		client.FieldOwner("kapro-controller"),
 		client.ForceOwnership,
 	); err != nil {

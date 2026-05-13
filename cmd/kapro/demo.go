@@ -255,12 +255,8 @@ func runDemo(ctx context.Context) error {
 }
 
 func splitLines(s string) []string {
-	var lines []string
-	for _, line := range filepath.SplitList(s) {
-		lines = append(lines, line)
-	}
 	// filepath.SplitList uses PATH separator, use manual split instead.
-	lines = nil
+	var lines []string
 	start := 0
 	for i := 0; i < len(s); i++ {
 		if s[i] == '\n' {

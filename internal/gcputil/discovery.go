@@ -14,9 +14,9 @@ import (
 	"cloud.google.com/go/container/apiv1/containerpb"
 	gkehub "cloud.google.com/go/gkehub/apiv1beta1"
 	"cloud.google.com/go/gkehub/apiv1beta1/gkehubpb"
+	cloudresourcemanager "google.golang.org/api/cloudresourcemanager/v1"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
-	cloudresourcemanager "google.golang.org/api/cloudresourcemanager/v1"
 
 	"kapro.io/kapro/internal/provider"
 )
@@ -30,10 +30,10 @@ type ProjectInfo struct {
 
 // ClusterInfo holds GKE cluster metadata.
 type ClusterInfo struct {
-	Name     string
-	Location string
-	Status   string
-	Version  string
+	Name      string
+	Location  string
+	Status    string
+	Version   string
 	NodeCount int32
 	Autopilot bool
 }
@@ -62,7 +62,7 @@ func ListRegistries(ctx context.Context, project, location string) ([]RegistryIn
 	if err != nil {
 		return nil, fmt.Errorf("create Artifact Registry client: %w", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	parent := fmt.Sprintf("projects/%s/locations/%s", project, location)
 	it := c.ListRepositories(ctx, &artifactregistrypb.ListRepositoriesRequest{Parent: parent})
@@ -133,7 +133,7 @@ func ListClusters(ctx context.Context, project string) ([]ClusterInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create GKE client: %w", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	parent := fmt.Sprintf("projects/%s/locations/-", project)
 	resp, err := c.ListClusters(ctx, &containerpb.ListClustersRequest{Parent: parent})

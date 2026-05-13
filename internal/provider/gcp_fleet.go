@@ -50,7 +50,7 @@ func (p *GCPFleetProvider) ListClusters(ctx context.Context) ([]ClusterInfo, err
 	if err != nil {
 		return nil, fmt.Errorf("create Fleet client: %w", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	parent := fmt.Sprintf("projects/%s/locations/-", p.Project)
 	it := c.ListMemberships(ctx, &gkehubpb.ListMembershipsRequest{Parent: parent})
@@ -99,7 +99,7 @@ func (p *GCPFleetProvider) getMembership(ctx context.Context, membershipName str
 			return p.getMembershipByFullName(ctx, c)
 		}
 	}
-	return nil, fmt.Errorf("Fleet membership %q not found in project %s", membershipName, p.Project)
+	return nil, fmt.Errorf("fleet membership %q not found in project %s", membershipName, p.Project)
 }
 
 func (p *GCPFleetProvider) getMembershipByFullName(ctx context.Context, ci ClusterInfo) (*membershipInfo, error) {
@@ -107,7 +107,7 @@ func (p *GCPFleetProvider) getMembershipByFullName(ctx context.Context, ci Clust
 	if err != nil {
 		return nil, fmt.Errorf("create Fleet client: %w", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	// Use the actual location from ListClusters, not wildcard.
 	name := fmt.Sprintf("projects/%s/locations/%s/memberships/%s", p.Project, ci.Location, ci.Name)

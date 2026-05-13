@@ -956,7 +956,7 @@ func (r *ReleaseReconciler) cancelPendingStageTargets(ctx context.Context, relea
 			continue
 		}
 		// Skip terminal targets.
-		switch kaprov1alpha1.TargetPhase(rt.Status.Phase) {
+		switch rt.Status.Phase {
 		case kaprov1alpha1.TargetPhaseConverged, kaprov1alpha1.TargetPhaseFailed, kaprov1alpha1.TargetPhaseSkipped:
 			continue
 		}
@@ -1460,7 +1460,6 @@ func copyStringMap(in map[string]string) map[string]string {
 	}
 	return out
 }
-
 
 func (r *ReleaseReconciler) setReleaseReadyCondition(release *kaprov1alpha1.Release, status metav1.ConditionStatus, reason, message string) {
 	if len(message) > maxReleaseReadyMessageSize {

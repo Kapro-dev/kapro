@@ -39,7 +39,7 @@ func toAPIConditionResults(results []gate.ConditionResult) []kaprov1alpha1.GateC
 	for i, r := range results {
 		out[i] = kaprov1alpha1.GateConditionResult{
 			Name:    r.Name,
-			Phase:   kaprov1alpha1.GatePhase(r.Phase),
+			Phase:   r.Phase,
 			Value:   r.Value,
 			Message: r.Message,
 		}

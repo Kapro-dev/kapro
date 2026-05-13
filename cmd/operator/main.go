@@ -14,30 +14,30 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/utils/ptr"
-	"github.com/go-logr/logr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlcfg "sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
-	kaproSecret "kapro.io/kapro/internal/secret"
 	fluxopactuator "kapro.io/kapro/internal/actuator/fluxoperator"
 	spokeactuator "kapro.io/kapro/internal/actuator/spoke"
 	_ "kapro.io/kapro/internal/metrics" // register custom Prometheus metrics at init
 	enginenotifier "kapro.io/kapro/internal/notification/engine"
+	kaproSecret "kapro.io/kapro/internal/secret"
 	"kapro.io/kapro/internal/version"
 	"kapro.io/kapro/internal/webhook"
 	kaploadmission "kapro.io/kapro/internal/webhook/admission"
 	"kapro.io/kapro/pkg/actuator"
 	cm "kapro.io/kapro/pkg/controllermanager"
-	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 var scheme = runtime.NewScheme()
@@ -122,7 +122,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	recorder := mgr.GetEventRecorderFor("kapro-operator")
+	recorder := mgr.GetEventRecorderFor("kapro-operator") //nolint:staticcheck // migrate to GetEventRecorder when controller-runtime drops this
 
 	// Build actuator registry — resolves per-target actuator at apply time.
 	actuatorReg := actuator.NewRegistry()

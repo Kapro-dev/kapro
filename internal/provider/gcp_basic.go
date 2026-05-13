@@ -60,7 +60,6 @@ func (p *GCPBasicProvider) ListClusters(_ context.Context) ([]ClusterInfo, error
 var (
 	tokenSourceOnce sync.Once
 	cachedTS        oauth2.TokenSource
-	tokenSourceErr  error
 )
 
 // initTokenSource initializes the shared GCP token source (once).
@@ -123,7 +122,7 @@ func getClusterEndpoint(ctx context.Context, project, location, clusterName stri
 	if err != nil {
 		return "", "", fmt.Errorf("create GKE client: %w", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	name := fmt.Sprintf("projects/%s/locations/%s/clusters/%s", project, location, clusterName)
 	cluster, err := c.GetCluster(ctx, &containerpb.GetClusterRequest{Name: name})

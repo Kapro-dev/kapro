@@ -4,14 +4,14 @@ description: The Canonical Promotion Layer for Kubernetes — control plane oper
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
-home: https://github.com/vinnxcapital-gif/kapro
+home: https://github.com/Kapro-dev/kapro
 sources:
-  - https://github.com/vinnxcapital-gif/kapro
+  - https://github.com/Kapro-dev/kapro
 maintainers:
   - name: Vinayaka Krishnamurthy
     email: vinnxcapital@gmail.com
-    url: https://github.com/vinnxcapital-gif
-icon: https://raw.githubusercontent.com/vinnxcapital-gif/kapro/main/docs/logo.png
+    url: https://github.com/Kapro-dev
+icon: https://raw.githubusercontent.com/Kapro-dev/kapro/main/docs/logo.png
 keywords:
   - kubernetes
   - progressive-delivery
@@ -25,4 +25,4 @@ annotations:
   artifacthub.io/operatorCapabilities: Basic Install
   artifacthub.io/signKey: |
     fingerprint: <cosign-public-key>
-    url: https://github.com/vinnxcapital-gif/kapro/releases
+    url: https://github.com/Kapro-dev/kapro/releases

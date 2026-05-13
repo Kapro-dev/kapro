@@ -89,11 +89,10 @@ func runFleetList(ctx context.Context, project string) error {
 	fmt.Fprintln(w, "NAME\tLOCATION\tPROJECT\tCLUSTER\tLABELS")
 	for _, m := range members {
 		labels := formatLabels(m.Labels)
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", m.Name, m.Location, m.Project, m.Cluster, labels)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", m.Name, m.Location, m.Project, m.Cluster, labels)
 	}
 	return w.Flush()
 }
-
 
 func formatLabels(labels map[string]string) string {
 	if len(labels) == 0 {

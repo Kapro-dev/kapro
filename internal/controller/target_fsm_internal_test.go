@@ -184,7 +184,7 @@ func TestAdvanceTargetUntilStable_CollapsesImmediateTransitions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("advanceTargetUntilStable returned error: %v", err)
 	}
-	if !result.Requeue || result.RequeueAfter != 0 {
+	if !result.Requeue || result.RequeueAfter != 0 { //nolint:staticcheck
 		t.Fatalf("expected an immediate requeue after persisting Applying, got %+v", result)
 	}
 	if target.Phase != kaprov1alpha1.TargetPhaseApplying {

@@ -33,7 +33,7 @@ SPOKE_CLUSTER=""
 SPOKE_REGION=""
 CLUSTER_NAME=""
 HUB_URL=""
-IMAGE="ghcr.io/kapro-dev/kapro/cluster-controller:latest"
+IMAGE=""  # cluster-controller image, set when spoke-side agent is available
 GCP_SA=""
 LABELS=""
 
@@ -87,10 +87,10 @@ KAPRO_ARGS=(
   --name           "$CLUSTER_NAME"
   --hub-kubeconfig "$HUB_KUBECONFIG"
   --spoke-kubeconfig "$SPOKE_KUBECONFIG"
-  --image          "$IMAGE"
   --wait
 )
 
+[[ -n "$IMAGE" ]]    && KAPRO_ARGS+=(--image "$IMAGE")
 [[ -n "$HUB_URL" ]]  && KAPRO_ARGS+=(--hub-url "$HUB_URL")
 [[ -n "$LABELS" ]]   && KAPRO_ARGS+=(--labels "$LABELS")
 [[ -n "$GCP_SA" ]]   && KAPRO_ARGS+=(--gcp-service-account "$GCP_SA")

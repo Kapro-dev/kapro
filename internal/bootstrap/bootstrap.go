@@ -43,7 +43,7 @@ func InstallFluxOperator(ctx context.Context, c client.Client) error {
 	objects := fluxOperatorManifests()
 	for _, obj := range objects {
 		if err := c.Patch(ctx, obj,
-			client.Apply,
+			client.Apply, //nolint:staticcheck // SA1019: client.Apply deprecated but replacement needs larger refactor
 			client.FieldOwner(fieldOwner),
 			client.ForceOwnership,
 		); err != nil {
@@ -74,7 +74,7 @@ func InstallFluxOperator(ctx context.Context, c client.Client) error {
 func InstallFluxInstance(ctx context.Context, c client.Client) error {
 	fi := fluxInstanceManifest()
 	if err := c.Patch(ctx, fi,
-		client.Apply,
+		client.Apply, //nolint:staticcheck
 		client.FieldOwner(fieldOwner),
 		client.ForceOwnership,
 	); err != nil {
@@ -98,7 +98,7 @@ func EnsureNamespace(ctx context.Context, c client.Client, name string) error {
 		"metadata":   map[string]any{"name": name},
 	}}
 	return c.Patch(ctx, ns,
-		client.Apply,
+		client.Apply, //nolint:staticcheck
 		client.FieldOwner(fieldOwner),
 		client.ForceOwnership,
 	)
@@ -282,7 +282,7 @@ func applyEmbeddedCRDs(ctx context.Context, c client.Client, fsys embed.FS, dir 
 			}
 
 			if err := c.Patch(ctx, obj,
-				client.Apply,
+				client.Apply, //nolint:staticcheck // SA1019: client.Apply deprecated but replacement needs larger refactor
 				client.FieldOwner(fieldOwner),
 				client.ForceOwnership,
 			); err != nil {

@@ -17,7 +17,7 @@ This project follows the [CNCF Code of Conduct](CODE_OF_CONDUCT.md).
 ## Getting Started
 
 ```bash
-git clone https://github.com/vinnxcapital-gif/kapro
+git clone https://github.com/Kapro-dev/kapro
 cd kapro
 go mod tidy
 make generate    # generate CRD manifests + DeepCopy methods
