@@ -1,7 +1,9 @@
 #!/bin/sh
-# Pre-commit hook for fast local feedback.
+# Pre-commit hook: runs the same checks as CI.
 # Install: make hooks
 # Skip when needed: git commit --no-verify
+#
+# KAPRO_HOOK_FAST=1 git commit  - skip lint and test (gofmt + vet + build only)
 
 set -e
 
@@ -25,4 +27,15 @@ go vet ./...
 echo "pre-commit: go build..."
 go build ./...
 
-echo "pre-commit: passed"
+if [ "${KAPRO_HOOK_FAST:-}" = "1" ]; then
+    echo "pre-commit: passed (fast mode, skipped lint+test)"
+    exit 0
+fi
+
+echo "pre-commit: golangci-lint..."
+make lint
+
+echo "pre-commit: go test..."
+make test
+
+echo "pre-commit: passed (full CI parity)"

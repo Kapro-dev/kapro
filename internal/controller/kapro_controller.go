@@ -704,7 +704,7 @@ func (r *KaproReconciler) bootstrapSpoke(ctx context.Context, kapro *kaprov1alph
 		},
 	}}
 	if err := spokeClient.Patch(ctx, ociRepo,
-		client.Apply,
+		client.Apply, //nolint:staticcheck
 		client.FieldOwner("kapro-controller"),
 		client.ForceOwnership,
 	); err != nil {
@@ -998,7 +998,7 @@ func (r *KaproReconciler) ensureKubeconfigSecret(ctx context.Context, kapro *kap
 	}
 
 	if err := r.Patch(ctx, secret,
-		client.Apply,
+		client.Apply, //nolint:staticcheck
 		client.FieldOwner("kapro-controller"),
 		client.ForceOwnership,
 	); err != nil {
