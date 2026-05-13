@@ -19,12 +19,6 @@ all: generate build
 
 ##@ General
 
-.PHONY: hooks
-hooks: ## Install git pre-commit hook
-	cp scripts/pre-commit .git/hooks/pre-commit
-	chmod +x .git/hooks/pre-commit
-	@echo "✅ Pre-commit hook installed"
-
 .PHONY: help
 help: ## Display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
@@ -32,12 +26,16 @@ help: ## Display this help
 ##@ Development
 
 .PHONY: fmt
-fmt: ## Run go fmt
-	go fmt ./...
+fmt: ## Auto-fix formatting (gofmt + goimports)
+	gofmt -w .
+	@which goimports > /dev/null 2>&1 && goimports -w -local kapro.io/kapro . || true
 
 .PHONY: vet
 vet: ## Run go vet
 	go vet ./...
+
+.PHONY: verify
+verify: fmt vet lint build test ## Run all checks (use before pushing)
 
 .PHONY: lint
 lint: $(GOLANGCI_LINT) ## Run golangci-lint
