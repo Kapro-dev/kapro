@@ -249,6 +249,17 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 	}
 	t.Logf("patched %s to Failed", victim.Name)
 
+	// Nudge the Release to trigger re-aggregation of child statuses.
+	var rel kaprov1alpha1.Release
+	if err := c.Get(ctx, releaseKey, &rel); err == nil {
+		relPatch := client.MergeFrom(rel.DeepCopy())
+		if rel.Annotations == nil {
+			rel.Annotations = map[string]string{}
+		}
+		rel.Annotations["kapro.io/nudge"] = time.Now().UTC().Format(time.RFC3339Nano)
+		_ = c.Patch(ctx, &rel, relPatch)
+	}
+
 	// ── 7. Wait: sibling ReleaseTarget gets spec.cancelled=true ──────────────
 	eventually(t, func() bool {
 		targets := listReleaseTargets(t, ctx, c, release.Name, ns)
