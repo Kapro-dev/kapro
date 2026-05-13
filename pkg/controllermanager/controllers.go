@@ -90,9 +90,9 @@ func BuildGateRegistry(c client.Client) (*pkggate.Registry, error) {
 	reg := pkggate.NewRegistry()
 	for typeName, impl := range map[string]pkggate.Gate{
 		// FSM-phase gates (resolved by fixed name from target_fsm.go handlers).
-		"soak":     &internalgate.SoakGate{},
-		"metrics":  &internalgate.MetricsGate{},
-		"approval": &internalgate.ApprovalGate{Client: c},
+		"soak":         &internalgate.SoakGate{},
+		"metrics":      &internalgate.MetricsGate{},
+		"approval":     &internalgate.ApprovalGate{Client: c},
 		"verification": &internalgate.VerificationGate{},
 		// Template-dispatch gates (resolved by GateTemplate.spec.type).
 		"cel":     &celgate.Gate{Client: c},

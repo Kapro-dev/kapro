@@ -35,7 +35,7 @@ func TestMain(m *testing.M) {
 				candidate := filepath.Join(base, e.Name())
 				if e.IsDir() {
 					if _, err := os.Stat(filepath.Join(candidate, "etcd")); err == nil {
-						os.Setenv("KUBEBUILDER_ASSETS", candidate)
+						_ = os.Setenv("KUBEBUILDER_ASSETS", candidate)
 						break
 					}
 				}
@@ -43,7 +43,7 @@ func TestMain(m *testing.M) {
 			// fallback: binaries directly in base
 			if os.Getenv("KUBEBUILDER_ASSETS") == "" {
 				if _, err := os.Stat(filepath.Join(base, "etcd")); err == nil {
-					os.Setenv("KUBEBUILDER_ASSETS", base)
+					_ = os.Setenv("KUBEBUILDER_ASSETS", base)
 				}
 			}
 		}

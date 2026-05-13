@@ -614,8 +614,8 @@ type ReleaseStatus struct {
 	// ResolvedVersion is the OCI digest or tag resolved from spec.version.
 	// Set once in Pending and never changed.
 	ResolvedVersion string `json:"resolvedVersion,omitempty"`
-	StartedAt         string             `json:"startedAt,omitempty"`
-	CompletedAt       string             `json:"completedAt,omitempty"`
+	StartedAt       string `json:"startedAt,omitempty"`
+	CompletedAt     string `json:"completedAt,omitempty"`
 	// PipelineProgress tracks execution state of each pipeline node in the DAG.
 	PipelineProgress []PipelineProgress `json:"pipelineProgress,omitempty"`
 	// Targets is deprecated compatibility state. The authoritative per-target

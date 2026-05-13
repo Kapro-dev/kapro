@@ -40,7 +40,7 @@ func RegisterFleetMembership(ctx context.Context, project, clusterName, location
 	if err != nil {
 		return fmt.Errorf("create Fleet client: %w", err)
 	}
-	defer hubClient.Close()
+	defer func() { _ = hubClient.Close() }()
 
 	// Check if already registered.
 	membershipParent := fmt.Sprintf("projects/%s/locations/%s", project, fleetLocation(location))
@@ -203,7 +203,7 @@ func SetupGCPSpoke(ctx context.Context, opts GCPSetupOptions) error {
 	if err != nil {
 		return fmt.Errorf("create GKE client: %w", err)
 	}
-	defer clusterClient.Close()
+	defer func() { _ = clusterClient.Close() }()
 
 	clusterName := fmt.Sprintf("projects/%s/locations/%s/clusters/%s",
 		spokeProject, opts.SpokeLocation, opts.SpokeCluster)

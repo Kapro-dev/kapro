@@ -381,7 +381,7 @@ func TestDecide_IdempotentReplay(t *testing.T) {
 		t.Fatalf("replay: expected 200, got %d: %s", rec2.Code, rec2.Body.String())
 	}
 	var resp DecisionResponse
-	json.Unmarshal(rec2.Body.Bytes(), &resp)
+	_ = json.Unmarshal(rec2.Body.Bytes(), &resp)
 	if resp.Reason != "idempotent replay" {
 		t.Errorf("expected idempotent replay, got %s", resp.Reason)
 	}

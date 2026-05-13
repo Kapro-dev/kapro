@@ -150,7 +150,7 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 	if err != nil {
 		return pkggate.Result{}, fmt.Errorf("webhook gate: call %s: %w", rawURL, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 500 {
 		return pkggate.Result{}, fmt.Errorf("webhook gate: server error %d from %s", resp.StatusCode, rawURL)

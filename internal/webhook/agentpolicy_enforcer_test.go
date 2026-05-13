@@ -293,7 +293,7 @@ func TestDecide_RecommendModeDoesNotCreateApproval(t *testing.T) {
 	}
 
 	var resp DecisionResponse
-	json.Unmarshal(rec.Body.Bytes(), &resp)
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
 	if resp.EffectiveDecision != "Recommended" {
 		t.Errorf("expected Recommended, got %s", resp.EffectiveDecision)
 	}

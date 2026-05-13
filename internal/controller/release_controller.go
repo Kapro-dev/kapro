@@ -1461,7 +1461,6 @@ func copyStringMap(in map[string]string) map[string]string {
 	return out
 }
 
-
 func (r *ReleaseReconciler) setReleaseReadyCondition(release *kaprov1alpha1.Release, status metav1.ConditionStatus, reason, message string) {
 	if len(message) > maxReleaseReadyMessageSize {
 		message = message[:maxReleaseReadyMessageSize]

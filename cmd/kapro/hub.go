@@ -11,10 +11,10 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	container "cloud.google.com/go/container/apiv1"
 	"cloud.google.com/go/container/apiv1/containerpb"
 	"google.golang.org/api/option"
+	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 
 	"kapro.io/kapro/internal/bootstrap"
 	"kapro.io/kapro/internal/cli"
@@ -398,7 +398,7 @@ func detectClusterLocation(ctx context.Context, project, clusterName string) (st
 	if err != nil {
 		return "", fmt.Errorf("create GKE client: %w", err)
 	}
-	defer clusterClient.Close()
+	defer func() { _ = clusterClient.Close() }()
 
 	parent := fmt.Sprintf("projects/%s/locations/-", project)
 	resp, err := clusterClient.ListClusters(ctx, &containerpb.ListClustersRequest{Parent: parent})

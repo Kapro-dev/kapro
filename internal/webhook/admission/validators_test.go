@@ -98,7 +98,7 @@ func TestValidateRelease_MissingPipelines(t *testing.T) {
 func TestValidateRelease_PipelineRefMissingName(t *testing.T) {
 	r := &kaprov1alpha1.Release{
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Version:  "art-v1",
+			Version: "art-v1",
 			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
 				{Name: "", Pipeline: "standard-rollout"},
 			},
@@ -112,7 +112,7 @@ func TestValidateRelease_PipelineRefMissingName(t *testing.T) {
 func TestValidateRelease_PipelineRefMissingPipeline(t *testing.T) {
 	r := &kaprov1alpha1.Release{
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Version:  "art-v1",
+			Version: "art-v1",
 			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
 				{Name: "initial", Pipeline: ""},
 			},
@@ -126,7 +126,7 @@ func TestValidateRelease_PipelineRefMissingPipeline(t *testing.T) {
 func TestValidateRelease_Valid(t *testing.T) {
 	r := &kaprov1alpha1.Release{
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Version:  "art-v1",
+			Version: "art-v1",
 			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
 				{Name: "initial", Pipeline: "standard-rollout"},
 			},
@@ -140,7 +140,7 @@ func TestValidateRelease_Valid(t *testing.T) {
 func TestValidateRelease_ValidMultiPipelineDAG(t *testing.T) {
 	r := &kaprov1alpha1.Release{
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Version:  "art-v1",
+			Version: "art-v1",
 			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
 				{Name: "canary", Pipeline: "canary-rollout"},
 				{Name: "stable", Pipeline: "stable-rollout", DependsOn: []string{"canary"}},
@@ -155,7 +155,7 @@ func TestValidateRelease_ValidMultiPipelineDAG(t *testing.T) {
 func TestValidateRelease_DuplicatePipelineName(t *testing.T) {
 	r := &kaprov1alpha1.Release{
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Version:  "art-v1",
+			Version: "art-v1",
 			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
 				{Name: "wave1", Pipeline: "rollout"},
 				{Name: "wave1", Pipeline: "rollout"},
@@ -170,7 +170,7 @@ func TestValidateRelease_DuplicatePipelineName(t *testing.T) {
 func TestValidateRelease_UnknownDependency(t *testing.T) {
 	r := &kaprov1alpha1.Release{
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Version:  "art-v1",
+			Version: "art-v1",
 			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
 				{Name: "wave1", Pipeline: "rollout", DependsOn: []string{"does-not-exist"}},
 			},
@@ -184,7 +184,7 @@ func TestValidateRelease_UnknownDependency(t *testing.T) {
 func TestValidateRelease_PipelineCycle(t *testing.T) {
 	r := &kaprov1alpha1.Release{
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Version:  "art-v1",
+			Version: "art-v1",
 			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
 				{Name: "a", Pipeline: "rollout", DependsOn: []string{"b"}},
 				{Name: "b", Pipeline: "rollout", DependsOn: []string{"a"}},
@@ -199,7 +199,7 @@ func TestValidateRelease_PipelineCycle(t *testing.T) {
 func TestValidateRelease_SelfCycle(t *testing.T) {
 	r := &kaprov1alpha1.Release{
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Version:  "art-v1",
+			Version: "art-v1",
 			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
 				{Name: "wave1", Pipeline: "rollout", DependsOn: []string{"wave1"}},
 			},
@@ -229,7 +229,7 @@ func TestValidateReleaseUpdate_VersionImmutable(t *testing.T) {
 func TestValidateReleaseUpdate_PipelinesImmutable(t *testing.T) {
 	old := &kaprov1alpha1.Release{
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Version:  "art-v1",
+			Version: "art-v1",
 			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
 				{Name: "wave1", Pipeline: "rollout"},
 			},
@@ -245,7 +245,7 @@ func TestValidateReleaseUpdate_PipelinesImmutable(t *testing.T) {
 func TestValidateReleaseUpdate_ScopeImmutable(t *testing.T) {
 	old := &kaprov1alpha1.Release{
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Version:  "art-v1",
+			Version: "art-v1",
 			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
 				{Name: "wave1", Pipeline: "rollout"},
 			},
@@ -262,7 +262,7 @@ func TestValidateReleaseUpdate_ScopeImmutable(t *testing.T) {
 func TestValidateReleaseUpdate_SuspendedMutable(t *testing.T) {
 	old := &kaprov1alpha1.Release{
 		Spec: kaprov1alpha1.ReleaseSpec{
-			Version:  "art-v1",
+			Version: "art-v1",
 			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
 				{Name: "wave1", Pipeline: "rollout"},
 			},

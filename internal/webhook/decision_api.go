@@ -59,12 +59,12 @@ type FleetSummary struct {
 
 // ClusterSummary is a compact view of one MemberCluster.
 type ClusterSummary struct {
-	Name         string            `json:"name"`
-	Labels       map[string]string `json:"labels"`
-	Phase        string            `json:"phase"`
-	Healthy      bool              `json:"healthy"`
-	LastHeartbeat string           `json:"lastHeartbeat,omitempty"`
-	Versions     map[string]string `json:"versions,omitempty"`
+	Name          string            `json:"name"`
+	Labels        map[string]string `json:"labels"`
+	Phase         string            `json:"phase"`
+	Healthy       bool              `json:"healthy"`
+	LastHeartbeat string            `json:"lastHeartbeat,omitempty"`
+	Versions      map[string]string `json:"versions,omitempty"`
 }
 
 // ReleaseSummary is a compact view of one Release.

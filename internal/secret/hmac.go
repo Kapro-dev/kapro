@@ -147,7 +147,7 @@ func (p *HMACKeyProvider) startWatch() {
 	)
 
 	secretInformer := factory.Core().V1().Secrets().Informer()
-	secretInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, _ = secretInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		DeleteFunc: func(obj interface{}) {
 			secret, ok := obj.(*corev1.Secret)
 			if !ok {

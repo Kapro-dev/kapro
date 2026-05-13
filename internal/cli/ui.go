@@ -49,11 +49,11 @@ var Theme = struct {
 	Brand lipgloss.Style
 	Title lipgloss.Style
 }{
-	Success: lipgloss.NewStyle().Foreground(lipgloss.Color("10")),  // green
-	Error:   lipgloss.NewStyle().Foreground(lipgloss.Color("9")),   // red
-	Warning: lipgloss.NewStyle().Foreground(lipgloss.Color("11")),  // yellow
-	Info:    lipgloss.NewStyle().Foreground(lipgloss.Color("12")),  // blue
-	Muted:   lipgloss.NewStyle().Foreground(lipgloss.Color("8")),   // gray
+	Success: lipgloss.NewStyle().Foreground(lipgloss.Color("10")), // green
+	Error:   lipgloss.NewStyle().Foreground(lipgloss.Color("9")),  // red
+	Warning: lipgloss.NewStyle().Foreground(lipgloss.Color("11")), // yellow
+	Info:    lipgloss.NewStyle().Foreground(lipgloss.Color("12")), // blue
+	Muted:   lipgloss.NewStyle().Foreground(lipgloss.Color("8")),  // gray
 
 	Header:    lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15")),
 	Cell:      lipgloss.NewStyle(),
@@ -85,7 +85,7 @@ func IsJSON() bool {
 
 // Success prints a green success message.
 func Success(msg string) {
-	fmt.Fprintln(Out, Theme.Success.Render("  "+msg))
+	_, _ = fmt.Fprintln(Out, Theme.Success.Render("  "+msg))
 }
 
 // Successf prints a formatted green success message.
@@ -95,7 +95,7 @@ func Successf(format string, args ...any) {
 
 // Error prints a red error message.
 func Error(msg string) {
-	fmt.Fprintln(Out, Theme.Error.Render("  "+msg))
+	_, _ = fmt.Fprintln(Out, Theme.Error.Render("  "+msg))
 }
 
 // Errorf prints a formatted red error message.
@@ -105,12 +105,12 @@ func Errorf(format string, args ...any) {
 
 // Warn prints a yellow warning message.
 func Warn(msg string) {
-	fmt.Fprintln(Out, Theme.Warning.Render("  "+msg))
+	_, _ = fmt.Fprintln(Out, Theme.Warning.Render("  "+msg))
 }
 
 // Info prints a blue info message.
 func Info(msg string) {
-	fmt.Fprintln(Out, Theme.Info.Render("  "+msg))
+	_, _ = fmt.Fprintln(Out, Theme.Info.Render("  "+msg))
 }
 
 // Infof prints a formatted blue info message.
@@ -120,7 +120,7 @@ func Infof(format string, args ...any) {
 
 // Muted prints a gray muted message.
 func Muted(msg string) {
-	fmt.Fprintln(Out, Theme.Muted.Render("  "+msg))
+	_, _ = fmt.Fprintln(Out, Theme.Muted.Render("  "+msg))
 }
 
 // --- Headers ---
@@ -128,8 +128,8 @@ func Muted(msg string) {
 // Header prints a section header with a horizontal rule.
 func Header(title string) {
 	fmt.Fprintln(Out)
-	fmt.Fprintln(Out, Theme.Title.Render("  "+title))
-	fmt.Fprintln(Out, Theme.Separator.Render("  "+strings.Repeat("─", len(title)+2)))
+	_, _ = fmt.Fprintln(Out, Theme.Title.Render("  "+title))
+	_, _ = fmt.Fprintln(Out, Theme.Separator.Render("  "+strings.Repeat("─", len(title)+2)))
 }
 
 // --- Spinners ---
@@ -148,7 +148,7 @@ type Spinner struct {
 func NewSpinner(msg string) *Spinner {
 	s := spinner.New(spinnerFrames, 80*time.Millisecond)
 	s.Suffix = "  " + msg
-	s.Color("cyan", "bold")
+	_ = s.Color("cyan", "bold")
 	s.Writer = os.Stderr
 	return &Spinner{s: s, msg: msg}
 }
@@ -262,7 +262,7 @@ func (t *Table) Render() {
 			headerLine += "  "
 		}
 	}
-	fmt.Fprintln(Out, headerLine)
+	_, _ = fmt.Fprintln(Out, headerLine)
 
 	// Separator.
 	sepLine := "  "
@@ -272,7 +272,7 @@ func (t *Table) Render() {
 			sepLine += "  "
 		}
 	}
-	fmt.Fprintln(Out, sepLine)
+	_, _ = fmt.Fprintln(Out, sepLine)
 
 	// Data rows.
 	for _, row := range t.rows {
@@ -289,7 +289,7 @@ func (t *Table) Render() {
 				line += "  "
 			}
 		}
-		fmt.Fprintln(Out, line)
+		_, _ = fmt.Fprintln(Out, line)
 	}
 	fmt.Fprintln(Out)
 }
@@ -299,7 +299,7 @@ func (t *Table) Render() {
 // KV prints a key-value pair with aligned formatting.
 func KV(key, value string) {
 	k := Theme.Muted.Render(fmt.Sprintf("  %-16s", key))
-	fmt.Fprintf(Out, "%s %s\n", k, value)
+	_, _ = fmt.Fprintf(Out, "%s %s\n", k, value)
 }
 
 // --- JSON output ---

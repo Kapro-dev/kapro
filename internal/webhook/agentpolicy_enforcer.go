@@ -16,10 +16,10 @@ import (
 
 // PolicyDecision is the result of evaluating an AgentPolicy against a decision.
 type PolicyDecision struct {
-	Allowed           bool
-	EffectiveMode     kaprov1alpha1.AgentPolicyMode
-	EffectiveMinConf  float64
-	DenyReason        string
+	Allowed            bool
+	EffectiveMode      kaprov1alpha1.AgentPolicyMode
+	EffectiveMinConf   float64
+	DenyReason         string
 	RequireHumanCosign bool
 }
 
