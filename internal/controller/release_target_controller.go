@@ -90,7 +90,7 @@ func (r *ReleaseTargetReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	prevTarget := rt.Status.TargetStatus
 
 	// Terminal — nothing to do.
-	phase := kaprov1alpha1.TargetPhase(rt.Status.Phase)
+	phase := rt.Status.Phase
 	switch phase {
 	case kaprov1alpha1.TargetPhaseConverged, kaprov1alpha1.TargetPhaseFailed, kaprov1alpha1.TargetPhaseSkipped:
 		return ctrl.Result{}, nil
@@ -173,7 +173,7 @@ func (r *ReleaseTargetReconciler) advanceTargetUntilStable(ctx context.Context, 
 }
 
 func isImmediateRequeue(result ctrl.Result) bool {
-	return result.Requeue && result.RequeueAfter == 0
+	return result.Requeue && result.RequeueAfter == 0 //nolint:staticcheck // SA1019: result.Requeue deprecated but replacement needs larger refactor
 }
 
 // advanceTarget dispatches one FSM step for the given target.
@@ -336,7 +336,6 @@ func (r *ReleaseTargetReconciler) handleMetricsCheck(ctx context.Context, releas
 	}
 
 	gateCtx := targetToGateContext(release, target, rt)
-	gatePassed := true
 
 	if len(policy.Gate.Metrics) > 0 {
 		metricsGate, err := r.GateRegistry.Resolve("metrics")
@@ -355,7 +354,6 @@ func (r *ReleaseTargetReconciler) handleMetricsCheck(ctx context.Context, releas
 				if rt := releaseTargetFromContext(ctx); rt != nil {
 					r.Recorder.Eventf(rt, corev1.EventTypeWarning, "MetricsFailed", "metrics gate[%d]: %s", idx, result.Message)
 				}
-				gatePassed = false
 				if timedOut, failMsg := metricsGateTimedOut(target, policy); timedOut {
 					r.failTarget(ctx, release, target, failMsg)
 					return ctrl.Result{}, nil
@@ -371,7 +369,6 @@ func (r *ReleaseTargetReconciler) handleMetricsCheck(ctx context.Context, releas
 			return ctrl.Result{}, fmt.Errorf("evaluateGateTemplates: %w", err)
 		}
 		if !allPassed {
-			gatePassed = false
 			if timedOut, failMsg := metricsGateTimedOut(target, policy); timedOut {
 				r.failTarget(ctx, release, target, failMsg)
 				return ctrl.Result{}, nil
@@ -380,7 +377,6 @@ func (r *ReleaseTargetReconciler) handleMetricsCheck(ctx context.Context, releas
 		}
 	}
 
-	_ = gatePassed
 	return r.nextAfterMetrics(ctx, release, target)
 }
 
@@ -1008,7 +1004,7 @@ func (r *ReleaseTargetReconciler) updateReleaseTargetStatusContract(rt *kaprov1a
 	}
 	rt.Labels["kapro.io/phase"] = string(rt.Status.Phase)
 
-	phase := kaprov1alpha1.TargetPhase(rt.Status.Phase)
+	phase := rt.Status.Phase
 	switch phase {
 	case kaprov1alpha1.TargetPhaseConverged:
 		r.setReleaseTargetCondition(rt, "Ready", metav1.ConditionTrue, "Converged", "target converged")

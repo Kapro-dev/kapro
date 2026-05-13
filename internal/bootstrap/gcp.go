@@ -116,7 +116,7 @@ func EnsureGARRegistry(ctx context.Context, project, location, repoName string) 
 	if err != nil {
 		return nil, fmt.Errorf("create Artifact Registry client: %w", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	parent := fmt.Sprintf("projects/%s/locations/%s", project, registryLocation(location))
 
@@ -124,12 +124,10 @@ func EnsureGARRegistry(ctx context.Context, project, location, repoName string) 
 	repoFullName := fmt.Sprintf("%s/repositories/%s", parent, repoName)
 	existing, err := c.GetRepository(ctx, &artifactregistrypb.GetRepositoryRequest{Name: repoFullName})
 	if err == nil {
-		url := fmt.Sprintf("%s-docker.pkg.dev/%s/%s",
-			registryLocation(location), project, existing.GetName())
 		// GetName returns full path — extract just the repo ID.
 		parts := strings.Split(existing.GetName(), "/")
 		shortName := parts[len(parts)-1]
-		url = fmt.Sprintf("%s-docker.pkg.dev/%s/%s",
+		url := fmt.Sprintf("%s-docker.pkg.dev/%s/%s",
 			registryLocation(location), project, shortName)
 		return &RegistryInfo{URL: url, Name: shortName}, nil
 	}
@@ -221,7 +219,7 @@ func SetupGCPSpoke(ctx context.Context, opts GCPSetupOptions) error {
 	// 2. Grant node SA artifactregistry.reader on spoke project (for GAR chart pulls).
 	// The default node SA is: PROJECT_NUMBER-compute@developer.gserviceaccount.com
 	// For autopilot or custom node pools, this may differ.
-	nodeSA := cluster.GetNodeConfig().GetServiceAccount()
+	nodeSA := cluster.GetNodeConfig().GetServiceAccount() //nolint:staticcheck // SA1019: GetNodeConfig deprecated but replacement needs larger refactor
 	if nodeSA == "" || nodeSA == "default" {
 		// Resolve default compute SA from project number.
 		nodeSA, err = resolveDefaultComputeSA(ctx, spokeProject, ts)

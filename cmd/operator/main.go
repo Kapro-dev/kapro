@@ -24,6 +24,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	fluxopactuator "kapro.io/kapro/internal/actuator/fluxoperator"
@@ -36,8 +38,6 @@ import (
 	kaploadmission "kapro.io/kapro/internal/webhook/admission"
 	"kapro.io/kapro/pkg/actuator"
 	cm "kapro.io/kapro/pkg/controllermanager"
-	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 var scheme = runtime.NewScheme()

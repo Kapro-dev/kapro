@@ -99,7 +99,7 @@ func (p *GCPFleetProvider) getMembership(ctx context.Context, membershipName str
 			return p.getMembershipByFullName(ctx, c)
 		}
 	}
-	return nil, fmt.Errorf("Fleet membership %q not found in project %s", membershipName, p.Project)
+	return nil, fmt.Errorf("fleet membership %q not found in project %s", membershipName, p.Project)
 }
 
 func (p *GCPFleetProvider) getMembershipByFullName(ctx context.Context, ci ClusterInfo) (*membershipInfo, error) {

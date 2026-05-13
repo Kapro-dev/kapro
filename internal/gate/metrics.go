@@ -167,7 +167,7 @@ func (g *MetricsGate) queryInstant(ctx context.Context, baseURL, query string) (
 	if err != nil {
 		return false, 0, fmt.Errorf("http: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

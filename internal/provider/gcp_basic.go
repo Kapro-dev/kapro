@@ -60,7 +60,6 @@ func (p *GCPBasicProvider) ListClusters(_ context.Context) ([]ClusterInfo, error
 var (
 	tokenSourceOnce sync.Once
 	cachedTS        oauth2.TokenSource
-	tokenSourceErr  error
 )
 
 // initTokenSource initializes the shared GCP token source (once).

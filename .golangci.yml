@@ -9,29 +9,20 @@ linters:
     - errcheck
     - govet
     - staticcheck
-    - revive
     - unused
     - misspell
     - unconvert
-    - gosec
-    - noctx
     - bodyclose
   exclusions:
     rules:
       - path: _test\.go
         linters:
-          - revive
+          - errcheck
       - path: zz_generated\.
         linters:
           - unused
-  settings:
-    revive:
-      rules:
-        - name: exported
-          arguments:
-            - disableStutteringCheck
-    gosec:
-      excludes: []
+    presets:
+      - std-error-handling
 
 formatters:
   enable:

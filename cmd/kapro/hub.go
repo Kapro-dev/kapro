@@ -5,17 +5,16 @@ import (
 	"fmt"
 	"os"
 
+	container "cloud.google.com/go/container/apiv1"
+	"cloud.google.com/go/container/apiv1/containerpb"
 	"github.com/spf13/cobra"
+	"google.golang.org/api/option"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	container "cloud.google.com/go/container/apiv1"
-	"cloud.google.com/go/container/apiv1/containerpb"
-	"google.golang.org/api/option"
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
-
 	"kapro.io/kapro/internal/bootstrap"
 	"kapro.io/kapro/internal/cli"
 	kaproconfig "kapro.io/kapro/internal/config"

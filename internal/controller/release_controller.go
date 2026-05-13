@@ -956,7 +956,7 @@ func (r *ReleaseReconciler) cancelPendingStageTargets(ctx context.Context, relea
 			continue
 		}
 		// Skip terminal targets.
-		switch kaprov1alpha1.TargetPhase(rt.Status.Phase) {
+		switch rt.Status.Phase {
 		case kaprov1alpha1.TargetPhaseConverged, kaprov1alpha1.TargetPhaseFailed, kaprov1alpha1.TargetPhaseSkipped:
 			continue
 		}

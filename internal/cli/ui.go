@@ -127,7 +127,7 @@ func Muted(msg string) {
 
 // Header prints a section header with a horizontal rule.
 func Header(title string) {
-	fmt.Fprintln(Out)
+	_, _ = fmt.Fprintln(Out)
 	_, _ = fmt.Fprintln(Out, Theme.Title.Render("  "+title))
 	_, _ = fmt.Fprintln(Out, Theme.Separator.Render("  "+strings.Repeat("─", len(title)+2)))
 }
@@ -252,7 +252,7 @@ func (t *Table) Render() {
 		return
 	}
 
-	fmt.Fprintln(Out)
+	_, _ = fmt.Fprintln(Out)
 
 	// Header row.
 	headerLine := "  "
@@ -291,7 +291,7 @@ func (t *Table) Render() {
 		}
 		_, _ = fmt.Fprintln(Out, line)
 	}
-	fmt.Fprintln(Out)
+	_, _ = fmt.Fprintln(Out)
 }
 
 // --- Key-Value pairs ---

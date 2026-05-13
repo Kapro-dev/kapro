@@ -62,7 +62,7 @@ func ListRegistries(ctx context.Context, project, location string) ([]RegistryIn
 	if err != nil {
 		return nil, fmt.Errorf("create Artifact Registry client: %w", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	parent := fmt.Sprintf("projects/%s/locations/%s", project, location)
 	it := c.ListRepositories(ctx, &artifactregistrypb.ListRepositoriesRequest{Parent: parent})
@@ -133,7 +133,7 @@ func ListClusters(ctx context.Context, project string) ([]ClusterInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create GKE client: %w", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	parent := fmt.Sprintf("projects/%s/locations/-", project)
 	resp, err := c.ListClusters(ctx, &containerpb.ListClustersRequest{Parent: parent})

@@ -35,6 +35,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
+
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
 

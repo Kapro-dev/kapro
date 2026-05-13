@@ -304,22 +304,6 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 		mc1.Name, mc2.Name)
 }
 
-// patchMCFailed sets a MemberCluster to Failed phase so the target FSM
-// detects it in handleApplying and fails the target naturally.
-func patchMCFailed(t *testing.T, ctx context.Context, c client.Client, reg *kaprov1alpha1.MemberCluster) {
-	t.Helper()
-	latest := &kaprov1alpha1.MemberCluster{}
-	eventually(t, func() bool {
-		return c.Get(ctx, types.NamespacedName{Name: reg.Name}, latest) == nil
-	}, "MemberCluster "+reg.Name+" to appear")
-	patch := client.MergeFrom(latest.DeepCopy())
-	latest.Status.Phase = kaprov1alpha1.ClusterPhaseFailed
-	latest.Status.Health = kaprov1alpha1.ClusterHealth{AllWorkloadsReady: false, FailedWorkloads: 1, TotalWorkloads: 1}
-	if err := c.Status().Patch(ctx, latest, patch); err != nil {
-		t.Fatalf("patch MemberCluster Failed %s: %v", reg.Name, err)
-	}
-}
-
 // patchRegistrationConverged sets a fresh heartbeat + Converged phase on a
 // MemberCluster, simulating what cluster-controller writes after deployment.
 // currentVersions should map appKey→version for all syncs that should converge.

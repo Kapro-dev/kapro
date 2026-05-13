@@ -367,22 +367,6 @@ var helmReleaseGVK = schema.GroupVersionKind{
 
 // resolveHelmReleaseName returns the HelmRelease name for a component on a cluster.
 // Convention from buildHelmRelease: {componentName}-{clusterName}
-// The appKey "default" maps to the first component name, but the HelmRelease
-// is always named {componentName}-{clusterName}. Since the actuator doesn't know
-// the component name (only appKey), we scan the ResourceSet inputs to find the
-// rendered HelmRelease name pattern.
-// For single-component apps: appKey is typically the component name itself.
-func resolveHelmReleaseName(appKey, clusterName string) string {
-	// For "default" appKey with single-component apps, the HelmRelease name
-	// follows {componentName}-{clusterName}. Since we don't know componentName
-	// here, we can't resolve it. The caller should use the ResourceSet inventory
-	// or fall back to checking MemberCluster status directly.
-	if appKey == "" || appKey == "default" {
-		return clusterName
-	}
-	return appKey + "-" + clusterName
-}
-
 // checkHelmReleaseFromInventory finds the HelmRelease for a cluster in the ResourceSet inventory.
 func (a *FluxOperatorActuator) checkHelmReleaseFromInventory(ctx context.Context, rsName, ns, clusterName string) (bool, error) {
 	rs, err := a.getResourceSet(ctx, rsName, ns)
