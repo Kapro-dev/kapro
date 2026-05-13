@@ -74,7 +74,7 @@ func InstallFluxOperator(ctx context.Context, c client.Client) error {
 func InstallFluxInstance(ctx context.Context, c client.Client) error {
 	fi := fluxInstanceManifest()
 	if err := c.Patch(ctx, fi,
-		client.Apply,
+		client.Apply, //nolint:staticcheck
 		client.FieldOwner(fieldOwner),
 		client.ForceOwnership,
 	); err != nil {
@@ -98,7 +98,7 @@ func EnsureNamespace(ctx context.Context, c client.Client, name string) error {
 		"metadata":   map[string]any{"name": name},
 	}}
 	return c.Patch(ctx, ns,
-		client.Apply,
+		client.Apply, //nolint:staticcheck
 		client.FieldOwner(fieldOwner),
 		client.ForceOwnership,
 	)

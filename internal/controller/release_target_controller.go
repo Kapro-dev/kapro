@@ -850,8 +850,8 @@ func (r *ReleaseTargetReconciler) notifyPersistedTransitions(ctx context.Context
 		return
 	}
 
-	prevPhase := kaprov1alpha1.TargetPhase(previous.Phase)
-	currPhase := kaprov1alpha1.TargetPhase(current.Phase)
+	prevPhase := previous.Phase
+	currPhase := current.Phase
 	if prevPhase != currPhase && currPhase != kaprov1alpha1.TargetPhaseWaitingApproval {
 		r.Notifier.Notify(ctx, notification.Event{
 			Phase:     string(currPhase),

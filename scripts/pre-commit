@@ -1,0 +1,28 @@
+#!/bin/sh
+# Pre-commit hook for fast local feedback.
+# Install: make hooks
+# Skip when needed: git commit --no-verify
+
+set -e
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$' || true)
+if [ -z "$STAGED" ]; then
+    exit 0
+fi
+
+echo "pre-commit: gofmt..."
+UNFORMATTED=$(gofmt -l $STAGED)
+if [ -n "$UNFORMATTED" ]; then
+    echo "  needs formatting:"
+    echo "$UNFORMATTED"
+    echo "  run: make fmt"
+    exit 1
+fi
+
+echo "pre-commit: go vet..."
+go vet ./...
+
+echo "pre-commit: go build..."
+go build ./...
+
+echo "pre-commit: passed"

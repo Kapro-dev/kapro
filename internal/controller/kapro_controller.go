@@ -140,7 +140,7 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// 2. Generate Pipeline on the hub.
 	pipeline := r.buildPipeline(&kapro)
 	if err := r.Patch(ctx, pipeline,
-		client.Apply,
+		client.Apply, //nolint:staticcheck
 		client.FieldOwner("kapro-controller"),
 		client.ForceOwnership,
 	); err != nil {

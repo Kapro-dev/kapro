@@ -122,7 +122,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	recorder := mgr.GetEventRecorderFor("kapro-operator")
+	recorder := mgr.GetEventRecorderFor("kapro-operator") //nolint:staticcheck // migrate to GetEventRecorder when controller-runtime drops this
 
 	// Build actuator registry — resolves per-target actuator at apply time.
 	actuatorReg := actuator.NewRegistry()
