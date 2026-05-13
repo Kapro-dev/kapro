@@ -17,6 +17,14 @@ linters:
     - gosec
     - noctx
     - bodyclose
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - revive
+      - path: zz_generated\.
+        linters:
+          - unused
   settings:
     revive:
       rules:
@@ -33,9 +41,3 @@ formatters:
     goimports:
       local-prefixes:
         - kapro.io/kapro
-
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0
-  exclude-files:
-    - "zz_generated\\."
