@@ -21,8 +21,10 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"net/smtp"
 	"sync"
 	"time"
@@ -133,6 +135,9 @@ func dispatch(ctx context.Context, ch notification.Channel, secret map[string]st
 	case "webhook":
 		if ch.Target == "" {
 			return fmt.Errorf("webhook notification requires a target URL")
+		}
+		if ch.Format == "cloudevents" {
+			return sendCloudEvents(ctx, ch.Target, event)
 		}
 		svc := services.NewWebhookService(services.WebhookOptions{URL: ch.Target})
 		return svc.Send(notif, services.Destination{Service: "webhook", Recipient: ""})
@@ -370,4 +375,46 @@ func joinStrings(ss []string, sep string) string {
 		result += s
 	}
 	return result
+}
+
+// cloudEvent is the CloudEvents v1.0 structured content mode envelope.
+type cloudEvent struct {
+	SpecVersion string             `json:"specversion"`
+	Type        string             `json:"type"`
+	Source      string             `json:"source"`
+	ID          string             `json:"id"`
+	Time        string             `json:"time"`
+	Subject     string             `json:"subject,omitempty"`
+	Data        notification.Event `json:"data"`
+}
+
+// sendCloudEvents sends a CloudEvents v1.0 payload to a webhook URL.
+func sendCloudEvents(ctx context.Context, url string, event notification.Event) error {
+	ce := cloudEvent{
+		SpecVersion: "1.0",
+		Type:        event.Type,
+		Source:      "/kapro/releases/" + event.Release,
+		ID:          fmt.Sprintf("%s-%s-%s-%d", event.Release, event.Target, event.Phase, time.Now().UnixMilli()),
+		Time:        time.Now().UTC().Format(time.RFC3339),
+		Subject:     event.Target,
+		Data:        event,
+	}
+	if ce.Type == "" {
+		ce.Type = "kapro.release.target." + event.Phase
+	}
+	body, _ := json.Marshal(ce)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build cloudevents request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/cloudevents+json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("cloudevents request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return fmt.Errorf("cloudevents webhook returned %d", resp.StatusCode)
+	}
+	return nil
 }
