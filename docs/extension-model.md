@@ -137,8 +137,10 @@ Kapro controller
     -> external gate plugin
 ```
 
-Runtime dispatch through `PluginGateway` is future work. The API preview
-establishes the stable registration and wire-contract shape first.
+Runtime registration through `PluginRegistration` is an opt-in API preview.
+When `KAPRO_ENABLE_PLUGIN_GATEWAY=true`, the operator loads ready registrations
+with fresh observed generation into the actuator and gate registries once at
+startup. Dynamic hot reload is future work.
 
 API pieces:
 
@@ -191,7 +193,7 @@ Target CRD posture:
 | API surface | Posture |
 |---|---|
 | Existing release, pipeline, app, cluster, target, approval, and policy CRDs | Core API |
-| `PluginRegistration` | API preview; runtime dispatch future work |
+| `PluginRegistration` | API preview; opt-in startup-time runtime registration |
 | `ReleaseTrigger` | API preview with ADR-002 safeguards; controller future work |
 | Notification provider/policy | Add only when shared credential ownership requires it |
 | Metric definition | Add only when metric reuse needs independent ownership |

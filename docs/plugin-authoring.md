@@ -5,10 +5,11 @@ Kapro plugins implement one narrow extension contract:
 - KAI: actuator plugins apply a version and report convergence.
 - KGI: gate plugins decide whether a target may advance.
 
-The controller runtime still uses in-process registries today. The proto
-contracts and conformance harnesses are provided now so plugin authors can build
-against the stable API shape before `PluginGateway` runtime dispatch is wired.
-`PluginRegistration` objects are probed for capabilities and readiness.
+Built-in actuators and gates remain the default execution path. External plugin
+runtime registration is an API preview and is enabled explicitly with
+`KAPRO_ENABLE_PLUGIN_GATEWAY=true`. When enabled, the operator registers ready
+`PluginRegistration` objects once at startup. Dynamic hot reload is future work.
+`PluginRegistration` objects are always probed for capabilities and readiness.
 
 ## Contracts
 
@@ -46,8 +47,24 @@ spec:
   timeout: 10s
 ```
 
-`PluginRegistration` is an API preview. It records the future runtime contract
-for `PluginGateway`; it does not change the current in-process execution path.
+`PluginRegistration` is an API preview. Runtime use is startup-time only and
+requires `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. Only registrations with
+`status.ready=true` and fresh `status.observedGeneration` are loaded.
+
+TLS is configured with a namespaced Secret reference because
+`PluginRegistration` is cluster-scoped:
+
+```yaml
+spec:
+  tlsSecretRef:
+    namespace: kapro-system
+    name: argocd-actuator-tls
+  parameters:
+    tlsServerName: argocd-actuator.kapro-system.svc
+```
+
+The Secret may contain `ca.crt` for server verification and optionally
+`tls.crt` plus `tls.key` for client certificate authentication.
 
 ## Actuator Requirements
 

@@ -97,14 +97,14 @@ func TestProbeValidationFailures(t *testing.T) {
 			want: "InvalidTimeout",
 		},
 		{
-			name: "tls unsupported",
+			name: "tls requires secret client",
 			spec: kaprov1alpha1.PluginRegistrationSpec{
 				Type:         kaprov1alpha1.PluginTypeGate,
 				Protocol:     kaprov1alpha1.PluginProtocolGRPC,
 				Endpoint:     "dns:///plugin:9090",
-				TLSSecretRef: &corev1.LocalObjectReference{Name: "plugin-tls"},
+				TLSSecretRef: &corev1.SecretReference{Name: "plugin-tls", Namespace: "kapro-system"},
 			},
-			want: "TLSUnsupported",
+			want: "TLSInvalid",
 		},
 	}
 

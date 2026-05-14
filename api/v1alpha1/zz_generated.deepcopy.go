@@ -1873,7 +1873,7 @@ func (in *PluginRegistrationSpec) DeepCopyInto(out *PluginRegistrationSpec) {
 	*out = *in
 	if in.TLSSecretRef != nil {
 		in, out := &in.TLSSecretRef, &out.TLSSecretRef
-		*out = new(v1.LocalObjectReference)
+		*out = new(v1.SecretReference)
 		**out = **in
 	}
 	if in.Parameters != nil {

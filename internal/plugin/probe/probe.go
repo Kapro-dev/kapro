@@ -7,11 +7,12 @@ import (
 	"time"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	"kapro.io/kapro/internal/plugin/transport"
 	kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
 	kgiv1alpha1 "kapro.io/kapro/spec/kgi/v1alpha1"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const contractVersion = "v1alpha1"
@@ -27,6 +28,7 @@ type Result struct {
 
 // Prober probes registered plugin endpoints without executing release traffic.
 type Prober struct {
+	Client      client.Reader
 	DialOptions []grpc.DialOption
 }
 
@@ -41,10 +43,6 @@ func (p Prober) Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration)
 	if reg.Spec.Endpoint == "" {
 		return notReady("InvalidEndpoint", "plugin endpoint is required")
 	}
-	if reg.Spec.TLSSecretRef != nil {
-		return notReady("TLSUnsupported", "tlsSecretRef is configured but TLS probing is not implemented yet")
-	}
-
 	timeout := 10 * time.Second
 	if reg.Spec.Timeout != "" {
 		parsed, err := time.ParseDuration(reg.Spec.Timeout)
@@ -56,7 +54,11 @@ func (p Prober) Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock()}
+	opts, err := transport.DialOptions(ctx, p.Client, reg)
+	if err != nil {
+		return notReady("TLSInvalid", err.Error())
+	}
+	opts = append(opts, grpc.WithBlock()) //nolint:staticcheck // grpc.NewClient lacks WithBlock equivalent in older supported versions.
 	opts = append(opts, p.DialOptions...)
 	conn, err := grpc.DialContext(ctx, reg.Spec.Endpoint, opts...) //nolint:staticcheck // grpc.NewClient lacks WithBlock equivalent in older supported versions.
 	if err != nil {

@@ -1516,8 +1516,7 @@ const (
 )
 
 // PluginRegistrationSpec registers an external actuator or gate plugin endpoint.
-// Runtime dispatch through PluginGateway is future work; this API establishes
-// the cluster-scoped registration contract.
+// Runtime dispatch is a startup-time preview enabled with KAPRO_ENABLE_PLUGIN_GATEWAY=true.
 type PluginRegistrationSpec struct {
 	// Type selects which extension contract the plugin implements.
 	Type PluginType `json:"type"`
@@ -1536,8 +1535,9 @@ type PluginRegistrationSpec struct {
 	// +kubebuilder:default="10s"
 	Timeout string `json:"timeout,omitempty"`
 	// TLSSecretRef references a Secret containing client TLS material or CA data.
+	// Cluster-scoped registrations must include the Secret namespace.
 	// +optional
-	TLSSecretRef *corev1.LocalObjectReference `json:"tlsSecretRef,omitempty"`
+	TLSSecretRef *corev1.SecretReference `json:"tlsSecretRef,omitempty"`
 	// Parameters are plugin-specific key-value pairs.
 	// Kapro core does not interpret unknown parameters.
 	// +optional
@@ -1570,7 +1570,7 @@ type PluginRegistrationStatus struct {
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // PluginRegistration declares an external actuator or gate plugin endpoint.
-// It is an API preview for the future PluginGateway runtime.
+// It is an API preview. Runtime registration is opt-in and startup-time only.
 type PluginRegistration struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

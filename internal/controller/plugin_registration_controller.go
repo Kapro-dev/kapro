@@ -32,6 +32,7 @@ type PluginProber interface {
 
 // +kubebuilder:rbac:groups=kapro.io,resources=pluginregistrations,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kapro.io,resources=pluginregistrations/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 
 func (r *PluginRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
@@ -43,7 +44,7 @@ func (r *PluginRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	prober := r.Prober
 	if prober == nil {
-		prober = probe.Prober{}
+		prober = probe.Prober{Client: r.Client}
 	}
 	result := prober.Probe(ctx, reg)
 	patch := client.MergeFrom(reg.DeepCopy())

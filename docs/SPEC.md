@@ -316,8 +316,8 @@ Identity is deterministic: every `(Release, target)` pair has at most one `Appro
 
 `PluginRegistration` is a status-capable preview for external actuator and gate
 plugins. It is cluster-scoped and records the plugin type, registry name,
-protocol, endpoint, timeout, optional TLS secret reference, parameters,
-readiness, version, and capabilities.
+protocol, endpoint, timeout, optional namespaced TLS secret reference,
+parameters, readiness, version, and capabilities.
 
 The proto contracts live under:
 
@@ -326,12 +326,12 @@ The proto contracts live under:
 
 Generated Go stubs are committed beside the proto files. The operator probes
 `GetCapabilities` and writes `PluginRegistration.status.ready`, `lastSeen`,
-`version`, `capabilities`, and conditions. Base conformance harnesses live under
-`conformance/actuator` and `conformance/gate`; plugin authors should run those
-harnesses against their implementation. See `docs/plugin-authoring.md`.
-
-Runtime dispatch through `PluginGateway` is future work. The current in-process
-actuator and gate registries remain the execution path.
+`version`, `capabilities`, and conditions. When
+`KAPRO_ENABLE_PLUGIN_GATEWAY=true`, the operator loads ready registrations with
+fresh `status.observedGeneration` into the actuator and gate registries once at
+startup. Dynamic hot reload is future work. Base conformance harnesses live
+under `conformance/actuator` and `conformance/gate`; plugin authors should run
+those harnesses against their implementation. See `docs/plugin-authoring.md`.
 
 ---
 
