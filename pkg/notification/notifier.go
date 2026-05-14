@@ -22,10 +22,47 @@ package notification
 
 import "context"
 
+// Well-known event types for notification routing.
+// These are semantic lifecycle events, independent of FSM phase names.
+// Channels filter on Type (not Phase) for stable integration contracts.
+const (
+	// Release-level events
+	EventReleaseStarted   = "kapro.release.started"
+	EventReleaseCompleted = "kapro.release.completed"
+	EventReleaseFailed    = "kapro.release.failed"
+	EventRollbackStarted  = "kapro.release.rollback.started"
+
+	// Stage-level events
+	EventStageCompleted = "kapro.release.stage.completed"
+
+	// Gate-level events
+	EventGatePassed = "kapro.release.gate.passed"
+	EventGateFailed = "kapro.release.gate.failed"
+
+	// Target-level events (one per TargetPhase)
+	EventTargetPending      = "kapro.release.target.pending"
+	EventTargetVerification = "kapro.release.target.verification"
+	EventTargetHealthCheck  = "kapro.release.target.health_check"
+	EventTargetSoaking      = "kapro.release.target.soaking"
+	EventTargetMetricsCheck = "kapro.release.target.metrics_check"
+	EventTargetApplying     = "kapro.release.target.applying"
+	EventTargetConverged    = "kapro.release.target.converged"
+	EventTargetFailed       = "kapro.release.target.failed"
+	EventTargetSkipped      = "kapro.release.target.skipped"
+	EventApprovalRequired   = "kapro.release.approval.required"
+)
+
 // Event carries the context for a notification.
-// All fields are plain strings — no dependency on api/v1alpha1.
+// All fields are plain strings, no dependency on api/v1alpha1.
+//
+// Type is the semantic event name (e.g. "kapro.release.target.converged").
+// Phase is the raw FSM state (e.g. "Converged"). Type is for external
+// integrations, Phase is for internal FSM tracking. Channels filter on Type.
 type Event struct {
-	// Phase is the promotion phase that triggered this event (e.g. "Converged", "Failed").
+	// Type is the semantic lifecycle event name (e.g. "kapro.release.target.converged").
+	// Used for notification filtering and future CloudEvents/CDEvents interop.
+	Type string
+	// Phase is the FSM phase that triggered this event (e.g. "Converged", "Failed").
 	Phase string
 	// Version is the artifact version being promoted.
 	Version string
@@ -33,15 +70,17 @@ type Event struct {
 	Target string
 	// Release is the release name.
 	Release string
+	// Pipeline is the pipeline name.
+	Pipeline string
+	// Stage is the stage name within the pipeline.
+	Stage string
 	// Message is additional context (e.g. error details).
 	Message string
 	// IsFailure controls error-level formatting (red/alert vs info).
 	IsFailure bool
 	// ApproveURL is a signed, time-limited URL that creates an Approval CR when POSTed to.
-	// Set only when Phase == WaitingApproval. Channel-agnostic — works in email, Teams, Slack, webhooks.
 	ApproveURL string
 	// RejectURL is a signed, time-limited URL that fails the Promotion when POSTed to.
-	// Set only when Phase == WaitingApproval.
 	RejectURL string
 }
 

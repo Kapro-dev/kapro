@@ -854,10 +854,13 @@ func (r *ReleaseTargetReconciler) notifyPersistedTransitions(ctx context.Context
 	currPhase := current.Phase
 	if prevPhase != currPhase && currPhase != kaprov1alpha1.TargetPhaseWaitingApproval {
 		r.Notifier.Notify(ctx, notification.Event{
+			Type:      eventTypeForPhase(currPhase),
 			Phase:     string(currPhase),
 			Version:   current.Version,
 			Target:    current.Target,
 			Release:   release.Name,
+			Pipeline:  current.PipelineRef,
+			Stage:     current.Stage,
 			Message:   current.Message,
 			IsFailure: currPhase == kaprov1alpha1.TargetPhaseFailed,
 		}, notificationPolicyFrom(current.Gate))
@@ -879,10 +882,13 @@ func (r *ReleaseTargetReconciler) notifyApprovalRequest(ctx context.Context, rel
 	}
 
 	r.Notifier.Notify(ctx, notification.Event{
+		Type:       notification.EventApprovalRequired,
 		Phase:      string(kaprov1alpha1.TargetPhaseWaitingApproval),
 		Version:    target.Version,
 		Target:     target.Target,
 		Release:    release.Name,
+		Pipeline:   target.PipelineRef,
+		Stage:      target.Stage,
 		Message:    "Approval required to proceed",
 		ApproveURL: approveURL,
 		RejectURL:  rejectURL,
