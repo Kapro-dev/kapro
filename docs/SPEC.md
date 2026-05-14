@@ -169,6 +169,9 @@ Two pluggable interfaces. Both use `pkg/registry.Registry[T]` for named, runtime
 
 Other internal concerns — health checking (`internal/health`), OCI fetch (`internal/oci/oras`), cosign verification (`internal/verification/cosign`), notification (`internal/notification`) — are **not** runtime extension points today. They live as internal packages with fixed implementations.
 
+See `docs/extension-model.md` for the full extension boundary model and the
+criteria for adding future plugin or CRD surfaces.
+
 There is **no** cluster-provider interface. Cluster onboarding is concrete, not pluggable (see §10).
 
 ---

@@ -4,6 +4,7 @@
 # Skip when needed: git commit --no-verify
 #
 # KAPRO_HOOK_FAST=1 git commit  - skip lint and test (gofmt + vet + build only)
+# KAPRO_HOOK_COVERAGE=1 git commit  - run coverage test target instead of local no-cover target
 
 set -e
 
@@ -47,6 +48,10 @@ echo "pre-commit: golangci-lint..."
 make lint
 
 echo "pre-commit: go test..."
-make test
+if [ "${KAPRO_HOOK_COVERAGE:-}" = "1" ]; then
+    make test
+else
+    make test-no-cover
+fi
 
-echo "pre-commit: passed (full CI parity)"
+echo "pre-commit: passed"

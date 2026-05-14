@@ -9,9 +9,9 @@
 ## Context
 
 Kapro can eventually close the gap between CI and fleet rollout by watching
-external artifact sources and creating `Release` objects automatically. This is
-similar to Kargo's Warehouse pattern: an external source detects new freight and
-feeds the promotion engine.
+external artifact sources and creating `Release` objects automatically. The
+trigger watches for verified artifact changes and feeds the normal Kapro
+promotion pipeline.
 
 The same feature is dangerous if it turns every pushed tag into a fleet-wide
 production rollout. A broken CI loop, mutable tag, or compromised registry could
@@ -98,4 +98,3 @@ This keeps Kapro Kubernetes-native and extensible without making autonomous
 delivery the default behavior. Platform teams can start with detection-only
 automation, review the created release, then progressively relax the safeguards
 when they trust the pipeline and signature policy.
-
