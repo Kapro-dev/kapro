@@ -2,7 +2,9 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -134,10 +136,12 @@ func (r *ReleaseTriggerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	if trigger.Spec.Source.OCI != nil && trigger.Spec.Source.OCI.RequireSignature {
 		if r.Verifier == nil {
+			setCondition(&trigger.Status.Conditions, conditionArtifactVerified, metav1.ConditionFalse, "VerifierUnavailable", "signature verification is required but no verifier is configured", trigger.Generation, now)
 			setTriggerBlocked(&trigger, now, "VerifierUnavailable", "signature verification is required but no verifier is configured")
 			return ctrl.Result{RequeueAfter: pollAfter}, r.patchStatus(ctx, &trigger, patch)
 		}
 		if err := r.Verifier.Verify(ctx, &trigger, *artifact); err != nil {
+			setCondition(&trigger.Status.Conditions, conditionArtifactVerified, metav1.ConditionFalse, "SignatureVerificationFailed", err.Error(), trigger.Generation, now)
 			setTriggerBlocked(&trigger, now, "SignatureVerificationFailed", err.Error())
 			return ctrl.Result{RequeueAfter: pollAfter}, r.patchStatus(ctx, &trigger, patch)
 		}
@@ -227,7 +231,7 @@ func (r *ReleaseTriggerReconciler) now() time.Time {
 
 func (r *ReleaseTriggerReconciler) activeReleases(ctx context.Context, trigger *kaprov1alpha1.ReleaseTrigger) ([]string, error) {
 	var list kaprov1alpha1.ReleaseList
-	if err := r.List(ctx, &list, client.MatchingLabels{releaseTriggerLabel: trigger.Name}); err != nil {
+	if err := r.List(ctx, &list, client.MatchingLabels{releaseTriggerLabel: releaseTriggerTrackingValue(trigger.Name)}); err != nil {
 		return nil, err
 	}
 	active := make([]string, 0, len(list.Items))
@@ -370,7 +374,7 @@ func normalizeRegistryHost(host string) string {
 
 func releaseAlreadyCreatedForDigest(ctx context.Context, c client.Reader, trigger *kaprov1alpha1.ReleaseTrigger, digest string) (bool, error) {
 	var list kaprov1alpha1.ReleaseList
-	if err := c.List(ctx, &list, client.MatchingLabels{releaseTriggerLabel: trigger.Name}); err != nil {
+	if err := c.List(ctx, &list, client.MatchingLabels{releaseTriggerLabel: releaseTriggerTrackingValue(trigger.Name)}); err != nil {
 		return false, err
 	}
 	for _, release := range list.Items {
@@ -387,7 +391,7 @@ func buildTriggeredRelease(trigger *kaprov1alpha1.ReleaseTrigger, artifact Relea
 		return nil, err
 	}
 	labels := copyTriggerStringMap(trigger.Spec.ReleaseTemplate.Labels)
-	labels[releaseTriggerLabel] = trigger.Name
+	labels[releaseTriggerLabel] = releaseTriggerTrackingValue(trigger.Name)
 	annotations := copyTriggerStringMap(trigger.Spec.ReleaseTemplate.Annotations)
 	annotations[releaseTriggerRepoAnno] = trigger.Spec.Source.OCI.Repository
 	annotations[releaseTriggerTagAnno] = artifact.Tag
@@ -524,6 +528,14 @@ func shortDigest(digest string) string {
 		return digest[:12]
 	}
 	return digest
+}
+
+func releaseTriggerTrackingValue(name string) string {
+	if len(name) <= 63 && len(validation.IsValidLabelValue(name)) == 0 {
+		return name
+	}
+	sum := sha256.Sum256([]byte(name))
+	return "rt-" + hex.EncodeToString(sum[:])[:24]
 }
 
 func dnsName(name string) string {

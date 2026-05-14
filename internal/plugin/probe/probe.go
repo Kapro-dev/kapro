@@ -58,9 +58,8 @@ func (p Prober) Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration)
 	if err != nil {
 		return notReady("TLSInvalid", err.Error())
 	}
-	opts = append(opts, grpc.WithBlock()) //nolint:staticcheck // grpc.NewClient lacks WithBlock equivalent in older supported versions.
 	opts = append(opts, p.DialOptions...)
-	conn, err := grpc.DialContext(ctx, reg.Spec.Endpoint, opts...) //nolint:staticcheck // grpc.NewClient lacks WithBlock equivalent in older supported versions.
+	conn, err := transport.Dial(ctx, reg.Spec.Endpoint, opts...)
 	if err != nil {
 		return notReady("DialFailed", err.Error())
 	}

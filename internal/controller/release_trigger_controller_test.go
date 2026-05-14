@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -56,7 +57,15 @@ func TestReleaseTriggerDryRunCreatesNothingAndRecordsArtifact(t *testing.T) {
 
 func TestReleaseTriggerSignatureFailureBlocksRelease(t *testing.T) {
 	ctx := context.Background()
-	reconciler, c := newReleaseTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{err: errors.New("bad signature")}, releaseTriggerFixture())
+	reconciler, c := newReleaseTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{err: errors.New("bad signature")}, releaseTriggerFixture(func(rt *kaprov1alpha1.ReleaseTrigger) {
+		rt.Status.Conditions = []metav1.Condition{{
+			Type:               conditionArtifactVerified,
+			Status:             metav1.ConditionTrue,
+			Reason:             "SignatureVerified",
+			ObservedGeneration: rt.Generation,
+			LastTransitionTime: metav1.NewTime(fixedNow().Add(-time.Hour)),
+		}}
+	}))
 
 	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
 		t.Fatal(err)
@@ -66,6 +75,10 @@ func TestReleaseTriggerSignatureFailureBlocksRelease(t *testing.T) {
 	cond := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
 	if cond == nil || cond.Reason != "SignatureVerificationFailed" {
 		t.Fatalf("Stalled condition = %+v", cond)
+	}
+	verified := apimeta.FindStatusCondition(got.Status.Conditions, conditionArtifactVerified)
+	if verified == nil || verified.Status != metav1.ConditionFalse || verified.Reason != "SignatureVerificationFailed" {
+		t.Fatalf("ArtifactVerified condition = %+v", verified)
 	}
 }
 
@@ -115,6 +128,32 @@ func TestReleaseTriggerDoesNotDuplicateSameDigest(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertReleaseCount(t, ctx, c, 1)
+}
+
+func TestReleaseTriggerTracksLongNamesWithSafeLabelValue(t *testing.T) {
+	ctx := context.Background()
+	longName := "checkout." + strings.Repeat("very-long-segment.", 12) + "prod"
+	trigger := releaseTriggerFixture(func(rt *kaprov1alpha1.ReleaseTrigger) {
+		rt.Name = longName
+	})
+	existing := &kaprov1alpha1.Release{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "checkout-existing",
+			Labels:      map[string]string{releaseTriggerLabel: releaseTriggerTrackingValue(longName)},
+			Annotations: map[string]string{releaseTriggerDigestAnno: testArtifact().Digest},
+		},
+		Spec: kaprov1alpha1.ReleaseSpec{Version: "oci://registry.example.com/checkout@sha256:abcdef1234567890"},
+	}
+	reconciler, c := newReleaseTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, trigger, existing)
+
+	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: longName}}); err != nil {
+		t.Fatal(err)
+	}
+	assertReleaseCount(t, ctx, c, 1)
+	labelValue := releaseTriggerTrackingValue(longName)
+	if labelValue == longName || len(labelValue) > 63 {
+		t.Fatalf("tracking label value = %q", labelValue)
+	}
 }
 
 func TestReleaseTriggerMaxActiveBlocksCreation(t *testing.T) {

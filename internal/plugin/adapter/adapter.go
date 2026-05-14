@@ -107,9 +107,8 @@ func (r Registrar) dial(ctx context.Context, c client.Reader, reg kaprov1alpha1.
 	if err != nil {
 		return nil, err
 	}
-	opts = append(opts, grpc.WithBlock()) //nolint:staticcheck // grpc.NewClient lacks WithBlock equivalent in older supported versions.
 	opts = append(opts, r.DialOptions...)
-	conn, err := grpc.DialContext(dialCtx, reg.Spec.Endpoint, opts...) //nolint:staticcheck // grpc.NewClient lacks WithBlock equivalent in older supported versions.
+	conn, err := transport.Dial(dialCtx, reg.Spec.Endpoint, opts...)
 	if err != nil {
 		return nil, err
 	}
