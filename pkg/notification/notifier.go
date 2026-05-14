@@ -159,11 +159,11 @@ type CloudEvent struct {
 func BuildCloudEvent(event Event, nowMillis int64, nowRFC3339 string) CloudEvent {
 	typ := event.Type
 	if typ == "" {
-		typ = "kapro.release.target." + event.Phase
+		typ = "kapro.release.target.unknown"
 	}
 	subject := event.Target
 	if event.Pipeline != "" && event.Stage != "" {
-		subject = event.Pipeline + "/" + event.Stage + "/" + event.Target
+		subject = "pipeline/" + event.Pipeline + "/stage/" + event.Stage + "/target/" + event.Target
 	}
 	return CloudEvent{
 		SpecVersion: "1.0",
