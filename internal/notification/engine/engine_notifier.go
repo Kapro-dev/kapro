@@ -377,31 +377,9 @@ func joinStrings(ss []string, sep string) string {
 	return result
 }
 
-// cloudEvent is the CloudEvents v1.0 structured content mode envelope.
-type cloudEvent struct {
-	SpecVersion string             `json:"specversion"`
-	Type        string             `json:"type"`
-	Source      string             `json:"source"`
-	ID          string             `json:"id"`
-	Time        string             `json:"time"`
-	Subject     string             `json:"subject,omitempty"`
-	Data        notification.Event `json:"data"`
-}
-
-// sendCloudEvents sends a CloudEvents v1.0 payload to a webhook URL.
+// sendCloudEvents sends a CloudEvents v1.0 payload to a webhook URL using the shared builder.
 func sendCloudEvents(ctx context.Context, url string, event notification.Event) error {
-	ce := cloudEvent{
-		SpecVersion: "1.0",
-		Type:        event.Type,
-		Source:      "/kapro/releases/" + event.Release,
-		ID:          fmt.Sprintf("%s-%s-%s-%d", event.Release, event.Target, event.Phase, time.Now().UnixMilli()),
-		Time:        time.Now().UTC().Format(time.RFC3339),
-		Subject:     event.Target,
-		Data:        event,
-	}
-	if ce.Type == "" {
-		ce.Type = "kapro.release.target." + event.Phase
-	}
+	ce := notification.BuildCloudEvent(event, time.Now().UnixMilli(), time.Now().UTC().Format(time.RFC3339))
 	body, _ := json.Marshal(ce)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {

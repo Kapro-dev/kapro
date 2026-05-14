@@ -20,7 +20,10 @@
 // The NopNotifier in this package silently drops all events — use it in tests.
 package notification
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 // Well-known event types for notification routing.
 // These are semantic lifecycle events, independent of FSM phase names.
@@ -138,6 +141,40 @@ type EmailConfig struct {
 // EmptyPolicy is a convenience zero-value NotificationPolicy — no channels.
 // Pass it when no GatePolicy is configured.
 var EmptyPolicy = NotificationPolicy{}
+
+// CloudEvent is the CloudEvents v1.0 structured content mode envelope.
+// Shared across all notifier implementations to prevent drift.
+type CloudEvent struct {
+	SpecVersion string `json:"specversion"`
+	Type        string `json:"type"`
+	Source      string `json:"source"`
+	ID          string `json:"id"`
+	Time        string `json:"time"`
+	Subject     string `json:"subject,omitempty"`
+	Data        Event  `json:"data"`
+}
+
+// BuildCloudEvent constructs a CloudEvents v1.0 envelope from a notification Event.
+// Single source of truth for CloudEvents payload format across all notifiers.
+func BuildCloudEvent(event Event, nowMillis int64, nowRFC3339 string) CloudEvent {
+	typ := event.Type
+	if typ == "" {
+		typ = "kapro.release.target." + event.Phase
+	}
+	subject := event.Target
+	if event.Pipeline != "" && event.Stage != "" {
+		subject = event.Pipeline + "/" + event.Stage + "/" + event.Target
+	}
+	return CloudEvent{
+		SpecVersion: "1.0",
+		Type:        typ,
+		Source:      "/kapro/releases/" + event.Release,
+		ID:          fmt.Sprintf("%s-%s-%s-%d", event.Release, event.Target, event.Phase, nowMillis),
+		Time:        nowRFC3339,
+		Subject:     subject,
+		Data:        event,
+	}
+}
 
 // Notifier is KNI v1alpha1: the Kapro Notification Interface.
 //
