@@ -21,8 +21,10 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"net/smtp"
 	"sync"
 	"time"
@@ -133,6 +135,9 @@ func dispatch(ctx context.Context, ch notification.Channel, secret map[string]st
 	case "webhook":
 		if ch.Target == "" {
 			return fmt.Errorf("webhook notification requires a target URL")
+		}
+		if ch.Format == "cloudevents" {
+			return sendCloudEvents(ctx, ch.Target, event)
 		}
 		svc := services.NewWebhookService(services.WebhookOptions{URL: ch.Target})
 		return svc.Send(notif, services.Destination{Service: "webhook", Recipient: ""})
@@ -370,4 +375,24 @@ func joinStrings(ss []string, sep string) string {
 		result += s
 	}
 	return result
+}
+
+// sendCloudEvents sends a CloudEvents v1.0 payload to a webhook URL using the shared builder.
+func sendCloudEvents(ctx context.Context, url string, event notification.Event) error {
+	ce := notification.BuildCloudEvent(event, time.Now().UnixMilli(), time.Now().UTC().Format(time.RFC3339))
+	body, _ := json.Marshal(ce)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build cloudevents request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/cloudevents+json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("cloudevents request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return fmt.Errorf("cloudevents webhook returned %d", resp.StatusCode)
+	}
+	return nil
 }

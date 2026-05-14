@@ -366,6 +366,12 @@ type NotificationSpec struct {
 type WebhookNotifierSpec struct {
 	// URL is the HTTP endpoint to POST events to.
 	URL string `json:"url"`
+	// Format selects the payload format.
+	//   json (default): plain JSON event payload.
+	//   cloudevents: CloudEvents v1.0 structured content mode.
+	// +kubebuilder:validation:Enum=json;cloudevents
+	// +kubebuilder:default="json"
+	Format string `json:"format,omitempty"`
 }
 
 // SlackNotifierSpec configures Slack message delivery.

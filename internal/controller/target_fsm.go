@@ -86,6 +86,7 @@ func notificationPolicyFrom(policy *kaprov1alpha1.GatePolicySpec) notification.N
 		case "webhook":
 			if spec.Webhook != nil {
 				ch.Target = spec.Webhook.URL
+				ch.Format = spec.Webhook.Format
 			}
 		case "email":
 			if spec.Email != nil {

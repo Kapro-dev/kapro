@@ -20,7 +20,10 @@
 // The NopNotifier in this package silently drops all events — use it in tests.
 package notification
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 // Well-known event types for notification routing.
 // These are semantic lifecycle events, independent of FSM phase names.
@@ -60,28 +63,27 @@ const (
 // integrations, Phase is for internal FSM tracking. Channels filter on Type.
 type Event struct {
 	// Type is the semantic lifecycle event name (e.g. "kapro.release.target.converged").
-	// Used for notification filtering and future CloudEvents/CDEvents interop.
-	Type string
+	Type string `json:"type,omitempty"`
 	// Phase is the FSM phase that triggered this event (e.g. "Converged", "Failed").
-	Phase string
+	Phase string `json:"phase,omitempty"`
 	// Version is the artifact version being promoted.
-	Version string
+	Version string `json:"version,omitempty"`
 	// Target is the target cluster name.
-	Target string
+	Target string `json:"target,omitempty"`
 	// Release is the release name.
-	Release string
+	Release string `json:"release,omitempty"`
 	// Pipeline is the pipeline name.
-	Pipeline string
+	Pipeline string `json:"pipeline,omitempty"`
 	// Stage is the stage name within the pipeline.
-	Stage string
+	Stage string `json:"stage,omitempty"`
 	// Message is additional context (e.g. error details).
-	Message string
+	Message string `json:"message,omitempty"`
 	// IsFailure controls error-level formatting (red/alert vs info).
-	IsFailure bool
+	IsFailure bool `json:"isFailure,omitempty"`
 	// ApproveURL is a signed, time-limited URL that creates an Approval CR when POSTed to.
-	ApproveURL string
+	ApproveURL string `json:"approveUrl,omitempty"`
 	// RejectURL is a signed, time-limited URL that fails the Promotion when POSTed to.
-	RejectURL string
+	RejectURL string `json:"rejectUrl,omitempty"`
 }
 
 // NotificationPolicy carries the notification routing config for a delivery operation.
@@ -108,6 +110,8 @@ type Channel struct {
 	// Events filters which lifecycle events this channel receives.
 	// Empty means all events (no filtering).
 	Events []string
+	// Format is the webhook payload format: "json" (default) or "cloudevents".
+	Format string
 	// Email carries SMTP delivery config. Non-nil only when Type == "email".
 	Email *EmailConfig
 }
@@ -137,6 +141,40 @@ type EmailConfig struct {
 // EmptyPolicy is a convenience zero-value NotificationPolicy — no channels.
 // Pass it when no GatePolicy is configured.
 var EmptyPolicy = NotificationPolicy{}
+
+// CloudEvent is the CloudEvents v1.0 structured content mode envelope.
+// Shared across all notifier implementations to prevent drift.
+type CloudEvent struct {
+	SpecVersion string `json:"specversion"`
+	Type        string `json:"type"`
+	Source      string `json:"source"`
+	ID          string `json:"id"`
+	Time        string `json:"time"`
+	Subject     string `json:"subject,omitempty"`
+	Data        Event  `json:"data"`
+}
+
+// BuildCloudEvent constructs a CloudEvents v1.0 envelope from a notification Event.
+// Single source of truth for CloudEvents payload format across all notifiers.
+func BuildCloudEvent(event Event, nowMillis int64, nowRFC3339 string) CloudEvent {
+	typ := event.Type
+	if typ == "" {
+		typ = "kapro.release.target.unknown"
+	}
+	subject := event.Target
+	if event.Pipeline != "" && event.Stage != "" {
+		subject = "pipeline/" + event.Pipeline + "/stage/" + event.Stage + "/target/" + event.Target
+	}
+	return CloudEvent{
+		SpecVersion: "1.0",
+		Type:        typ,
+		Source:      "/kapro/releases/" + event.Release,
+		ID:          fmt.Sprintf("%s-%s-%s-%d", event.Release, event.Target, event.Phase, nowMillis),
+		Time:        nowRFC3339,
+		Subject:     subject,
+		Data:        event,
+	}
+}
 
 // Notifier is KNI v1alpha1: the Kapro Notification Interface.
 //

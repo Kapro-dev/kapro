@@ -56,7 +56,11 @@ func (d *Dispatcher) Notify(ctx context.Context, event Event, policy Notificatio
 		case "slack":
 			err = sendSlack(ctx, client, ch.Target, event)
 		case "webhook":
-			err = sendWebhook(ctx, client, ch.Target, event)
+			if ch.Format == "cloudevents" {
+				err = sendWebhookCloudEvents(ctx, client, ch.Target, event)
+			} else {
+				err = sendWebhookJSON(ctx, client, ch.Target, event)
+			}
 		default:
 			log.Info("unknown notification type, skipping", "type", ch.Type)
 			continue
@@ -113,19 +117,41 @@ func sendSlack(ctx context.Context, client *http.Client, webhookURL string, even
 	return nil
 }
 
-// sendWebhook sends a JSON payload to a generic HTTP webhook endpoint.
-func sendWebhook(ctx context.Context, client *http.Client, url string, event Event) error {
+// sendWebhookJSON sends a plain JSON event payload (default format).
+func sendWebhookJSON(ctx context.Context, client *http.Client, url string, event Event) error {
 	if url == "" {
 		return fmt.Errorf("webhook URL is empty")
 	}
-
 	body, _ := json.Marshal(event)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("build webhook request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("webhook request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
 
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return fmt.Errorf("webhook returned %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// sendWebhookCloudEvents sends a CloudEvents v1.0 structured content mode payload.
+func sendWebhookCloudEvents(ctx context.Context, client *http.Client, url string, event Event) error {
+	if url == "" {
+		return fmt.Errorf("webhook URL is empty")
+	}
+	ce := pkgnotification.BuildCloudEvent(event, time.Now().UnixMilli(), time.Now().UTC().Format(time.RFC3339))
+	body, _ := json.Marshal(ce)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build webhook request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/cloudevents+json")
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("webhook request: %w", err)

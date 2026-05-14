@@ -21,7 +21,13 @@ func slackPolicy(url string) pkgnotification.NotificationPolicy {
 
 func webhookPolicy(url string) pkgnotification.NotificationPolicy {
 	return pkgnotification.NotificationPolicy{
-		Channels: []pkgnotification.Channel{{Type: "webhook", Target: url}},
+		Channels: []pkgnotification.Channel{{Type: "webhook", Target: url, Format: "json"}},
+	}
+}
+
+func webhookCloudEventsPolicy(url string) pkgnotification.NotificationPolicy {
+	return pkgnotification.NotificationPolicy{
+		Channels: []pkgnotification.Channel{{Type: "webhook", Target: url, Format: "cloudevents"}},
 	}
 }
 
@@ -95,9 +101,11 @@ func TestDispatcher_Notify_Slack_ServerError_NoPanic(t *testing.T) {
 	d.Notify(context.Background(), notification.Event{Phase: "Failed", IsFailure: true}, slackPolicy(srv.URL))
 }
 
-func TestDispatcher_Notify_Webhook_SendsJSON(t *testing.T) {
+func TestDispatcher_Notify_Webhook_SendsPlainJSON(t *testing.T) {
 	var received []byte
+	var contentType string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		contentType = r.Header.Get("Content-Type")
 		received, _ = io.ReadAll(r.Body)
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -105,24 +113,83 @@ func TestDispatcher_Notify_Webhook_SendsJSON(t *testing.T) {
 
 	d := &notification.Dispatcher{HTTPClient: srv.Client()}
 	d.Notify(context.Background(), notification.Event{
-		Phase:   "Applying",
+		Type:    pkgnotification.EventTargetConverged,
+		Phase:   "Converged",
 		Version: "v1.0.0",
 		Target:  "prod",
-		Release: "rel-2",
+		Release: "rel-1",
 	}, webhookPolicy(srv.URL))
+
+	if contentType != "application/json" {
+		t.Errorf("expected Content-Type=application/json, got %s", contentType)
+	}
+	var got notification.Event
+	if err := json.Unmarshal(received, &got); err != nil {
+		t.Fatalf("unmarshal plain JSON: %v", err)
+	}
+	if got.Phase != "Converged" {
+		t.Errorf("expected phase=Converged, got %s", got.Phase)
+	}
+}
+
+func TestDispatcher_Notify_Webhook_SendsCloudEvents(t *testing.T) {
+	var received []byte
+	var contentType string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		contentType = r.Header.Get("Content-Type")
+		received, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	d := &notification.Dispatcher{HTTPClient: srv.Client()}
+	d.Notify(context.Background(), notification.Event{
+		Type:     pkgnotification.EventTargetApplying,
+		Phase:    "Applying",
+		Version:  "v1.0.0",
+		Target:   "prod",
+		Release:  "rel-2",
+		Pipeline: "main",
+		Stage:    "canary",
+	}, webhookCloudEventsPolicy(srv.URL))
 
 	if len(received) == 0 {
 		t.Fatal("expected webhook to receive a payload")
 	}
-	var got notification.Event
-	if err := json.Unmarshal(received, &got); err != nil {
-		t.Fatalf("unmarshal webhook payload: %v", err)
+
+	// Verify CloudEvents content type
+	if contentType != "application/cloudevents+json" {
+		t.Errorf("expected Content-Type=application/cloudevents+json, got %s", contentType)
 	}
-	if got.Phase != "Applying" {
-		t.Errorf("expected Phase=Applying, got %s", got.Phase)
+
+	// Verify CloudEvents envelope
+	var ce map[string]interface{}
+	if err := json.Unmarshal(received, &ce); err != nil {
+		t.Fatalf("unmarshal CloudEvents payload: %v", err)
 	}
-	if got.Version != "v1.0.0" {
-		t.Errorf("expected Version=v1.0.0, got %s", got.Version)
+	if ce["specversion"] != "1.0" {
+		t.Errorf("expected specversion=1.0, got %v", ce["specversion"])
+	}
+	if ce["type"] != pkgnotification.EventTargetApplying {
+		t.Errorf("expected type=%s, got %v", pkgnotification.EventTargetApplying, ce["type"])
+	}
+	if ce["subject"] != "pipeline/main/stage/canary/target/prod" {
+		t.Errorf("expected subject=pipeline/main/stage/canary/target/prod, got %v", ce["subject"])
+	}
+	if ce["source"] != "/kapro/releases/rel-2" {
+		t.Errorf("expected source=/kapro/releases/rel-2, got %v", ce["source"])
+	}
+
+	// Verify data contains the event
+	data, ok := ce["data"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected data to be a map")
+	}
+	if data["phase"] != "Applying" {
+		t.Errorf("expected data.phase=Applying, got %v", data["phase"])
+	}
+	if data["version"] != "v1.0.0" {
+		t.Errorf("expected data.version=v1.0.0, got %v", data["version"])
 	}
 }
 
