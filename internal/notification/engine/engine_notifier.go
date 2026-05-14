@@ -86,7 +86,7 @@ func (n *Notifier) Notify(ctx context.Context, event notification.Event, policy 
 	msg := buildMessage(event)
 
 	for _, ch := range policy.Channels {
-		if !ch.MatchesEvent(event.Phase) {
+		if !ch.MatchesEvent(event.Type) {
 			continue
 		}
 		ch := ch // capture for goroutine

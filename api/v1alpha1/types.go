@@ -335,10 +335,12 @@ type NotificationSpec struct {
 	// Type selects the notification backend.
 	// +kubebuilder:validation:Enum=webhook;slack;email
 	Type string `json:"type"`
-	// Events filters which target phase transitions trigger this notification.
-	// Values match TargetPhase: Pending, Verification, HealthCheck, Soaking,
-	// MetricsCheck, WaitingApproval, Applying, Converged, Failed, Skipped.
-	// Empty means all phase transitions.
+	// Events filters which lifecycle events trigger this notification.
+	// Uses semantic event types: kapro.release.target.converged,
+	// kapro.release.target.failed, kapro.release.target.applying,
+	// kapro.release.approval.required, kapro.release.gate.passed,
+	// kapro.release.gate.failed, kapro.release.started, kapro.release.completed.
+	// Empty means all events.
 	// +optional
 	Events []string `json:"events,omitempty"`
 	// Webhook configures HTTP POST delivery.

@@ -35,6 +35,22 @@ const missingMCFailThreshold = 10
 
 // --- Shared helpers ---
 
+// eventTypeForPhase maps a TargetPhase to a semantic event type for notifications.
+func eventTypeForPhase(phase kaprov1alpha1.TargetPhase) string {
+	switch phase {
+	case kaprov1alpha1.TargetPhaseConverged:
+		return notification.EventTargetConverged
+	case kaprov1alpha1.TargetPhaseFailed:
+		return notification.EventTargetFailed
+	case kaprov1alpha1.TargetPhaseApplying:
+		return notification.EventTargetApplying
+	case kaprov1alpha1.TargetPhaseWaitingApproval:
+		return notification.EventApprovalRequired
+	default:
+		return "kapro.release.target." + string(phase)
+	}
+}
+
 // notificationPolicyFrom converts a *GatePolicySpec into the value type expected
 // by the notification package.
 func notificationPolicyFrom(policy *kaprov1alpha1.GatePolicySpec) notification.NotificationPolicy {
