@@ -335,10 +335,10 @@ type NotificationSpec struct {
 	// Type selects the notification backend.
 	// +kubebuilder:validation:Enum=webhook;slack;email
 	Type string `json:"type"`
-	// Events filters which lifecycle events trigger this notification.
-	// Supported events: ReleaseStarted, StageCompleted, GatePassed, GateFailed,
-	// ApprovalRequired, ReleaseCompleted, ReleaseRolledBack.
-	// Empty means all events.
+	// Events filters which target phase transitions trigger this notification.
+	// Values match TargetPhase: Pending, Verification, HealthCheck, Soaking,
+	// MetricsCheck, WaitingApproval, Applying, Converged, Failed, Skipped.
+	// Empty means all phase transitions.
 	// +optional
 	Events []string `json:"events,omitempty"`
 	// Webhook configures HTTP POST delivery.
