@@ -169,6 +169,9 @@ Two pluggable interfaces. Both use `pkg/registry.Registry[T]` for named, runtime
 
 Other internal concerns — health checking (`internal/health`), OCI fetch (`internal/oci/oras`), cosign verification (`internal/verification/cosign`), notification (`internal/notification`) — are **not** runtime extension points today. They live as internal packages with fixed implementations.
 
+See `docs/extension-model.md` for the full extension boundary model and the
+criteria for adding future plugin or CRD surfaces.
+
 There is **no** cluster-provider interface. Cluster onboarding is concrete, not pluggable (see §10).
 
 ---
@@ -295,6 +298,8 @@ Identity is deterministic: every `(Release, target)` pair has at most one `Appro
 - `pkg/notification.Notifier` is an internal contract (not an exposed extension interface yet). Currently ships Slack, email, and generic webhook senders under `internal/notification/engine`.
 - The `ReleaseReconciler` converts `*GatePolicy → NotificationPolicy` at the call boundary so the notification engine never imports `api/v1alpha1`.
 - Every phase transition emits a Kubernetes Event on the `Release` object.
+- Webhook notifications support plain JSON and CloudEvents v1.0 structured JSON. CloudEvents IDs are stable for a given release, event type, pipeline, stage, target, and phase so consumers can de-duplicate retries.
+- Event type names are the stable integration contract. Phase names are internal FSM detail. See `docs/events.md` for the emitted event catalog and integration examples.
 
 ---
 

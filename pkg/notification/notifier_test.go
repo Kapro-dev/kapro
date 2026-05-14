@@ -25,3 +25,25 @@ func TestChannel_MatchesEvent(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildCloudEvent_StableID(t *testing.T) {
+	event := Event{
+		Type:     EventTargetConverged,
+		Phase:    "Converged",
+		Release:  "rel-1",
+		Pipeline: "main",
+		Stage:    "canary",
+		Target:   "cluster-a",
+	}
+
+	first := BuildCloudEvent(event, 100, "2026-05-14T10:00:00Z")
+	second := BuildCloudEvent(event, 200, "2026-05-14T10:00:01Z")
+
+	want := "release/rel-1/type/kapro.release.target.converged/pipeline/main/stage/canary/target/cluster-a/phase/Converged"
+	if first.ID != want {
+		t.Fatalf("CloudEvent ID = %q, want %q", first.ID, want)
+	}
+	if second.ID != first.ID {
+		t.Fatalf("CloudEvent ID should be stable across send attempts: first=%q second=%q", first.ID, second.ID)
+	}
+}

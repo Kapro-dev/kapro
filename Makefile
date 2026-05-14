@@ -41,7 +41,10 @@ vet: ## Run go vet
 	go vet ./...
 
 .PHONY: verify
-verify: fmt vet lint build test ## Run all checks (use before pushing)
+verify: fmt vet lint build test ## Run full checks with coverage (use before pushing)
+
+.PHONY: verify-local
+verify-local: fmt vet lint build test-no-cover ## Run local checks without coverage tooling
 
 .PHONY: lint
 lint: $(GOLANGCI_LINT) ## Run golangci-lint
@@ -74,8 +77,13 @@ manifests: $(CONTROLLER_GEN) ## Generate CRD YAML manifests and RBAC
 		sed -i.bak '/^    subresources: {}$$/d' $$f && rm -f $$f.bak; \
 	done
 
+.PHONY: test-no-cover
+test-no-cover: generate manifests $(ENVTEST) ## Run unit + integration tests with envtest, without coverage
+	KUBEBUILDER_ASSETS="$$($(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" \
+		go test ./...
+
 .PHONY: test
-test: generate manifests $(ENVTEST) ## Run unit + integration tests with envtest
+test: generate manifests $(ENVTEST) ## Run unit + integration tests with envtest and coverage
 	KUBEBUILDER_ASSETS="$$($(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" \
 		go test ./... -coverprofile cover.out -covermode=atomic
 	go tool cover -func cover.out
@@ -135,4 +143,3 @@ $(ENVTEST): $(LOCALBIN)
 
 $(GOLANGCI_LINT): $(LOCALBIN)
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(LOCALBIN) $(GOLANGCI_LINT_VERSION)
-
