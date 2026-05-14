@@ -184,7 +184,7 @@ func (r *ReleaseReconciler) triggerTargetRollback(ctx context.Context, release *
 	var mc kaprov1alpha1.MemberCluster
 	if err := r.Get(ctx, client.ObjectKey{Name: target.Target}, &mc); err == nil {
 		if r.ActuatorRegistry != nil {
-			if act, actErr := r.ActuatorRegistry.Resolve(mc.Spec.Actuator.Type); actErr == nil {
+			if act, actErr := r.ActuatorRegistry.Resolve(mc.Spec.Actuator.RegistryKey()); actErr == nil {
 				if len(target.PreviousVersions) > 0 {
 					if _, rbErr := act.ApplyDelta(ctx, actuator.DeltaApplyRequest{
 						Cluster:         &mc,

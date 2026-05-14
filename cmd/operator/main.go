@@ -127,19 +127,14 @@ func main() {
 	// Build actuator registry — resolves per-target actuator at apply time.
 	actuatorReg := actuator.NewRegistry()
 	foAct := &fluxopactuator.FluxOperatorActuator{Client: mgr.GetClient()}
-	if err := actuatorReg.Register("flux-operator", foAct); err != nil {
-		log.Error(err, "failed to register flux-operator actuator")
-		os.Exit(1)
-	}
-	// Also register as "flux" for backward compatibility.
-	if err := actuatorReg.Register("flux", foAct); err != nil {
-		log.Error(err, "failed to register flux actuator alias")
+	if err := actuatorReg.Register("push/flux", foAct); err != nil {
+		log.Error(err, "failed to register push/flux actuator")
 		os.Exit(1)
 	}
 	// Spoke-local actuator: patches OCIRepository on spoke, reads Flux status directly.
 	spokeAct := &spokeactuator.SpokeFluxActuator{HubClient: mgr.GetClient()}
-	if err := actuatorReg.Register("spoke", spokeAct); err != nil {
-		log.Error(err, "failed to register spoke actuator")
+	if err := actuatorReg.Register("pull/flux", spokeAct); err != nil {
+		log.Error(err, "failed to register pull/flux actuator")
 		os.Exit(1)
 	}
 

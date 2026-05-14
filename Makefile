@@ -3,7 +3,7 @@ REGISTRY        ?= ghcr.io/kapro-dev
 OPERATOR_IMG    ?= $(REGISTRY)/kapro-operator:latest
 
 # Tool versions
-CONTROLLER_GEN_VERSION ?= v0.17.0
+CONTROLLER_GEN_VERSION ?= v0.21.0
 ENVTEST_VERSION        ?= release-0.19
 ENVTEST_K8S_VERSION    ?= 1.31.x
 GOLANGCI_LINT_VERSION  ?= v2.12.2

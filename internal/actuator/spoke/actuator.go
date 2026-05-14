@@ -64,7 +64,7 @@ func (a *SpokeFluxActuator) Apply(ctx context.Context, req actuator.ApplyRequest
 		return fmt.Errorf("cluster is nil")
 	}
 
-	fluxSpec := mc.Spec.Actuator.Flux
+	fluxSpec := mc.Spec.Actuator.Pull
 	if fluxSpec == nil {
 		return fmt.Errorf("MemberCluster %q has no flux actuator config", mc.Name)
 	}
@@ -169,8 +169,8 @@ func (a *SpokeFluxActuator) isAllSpokeReady(ctx context.Context, mc *kaprov1alph
 	}
 
 	ns := "flux-system"
-	if mc.Spec.Actuator.Flux != nil && mc.Spec.Actuator.Flux.Namespace != "" {
-		ns = mc.Spec.Actuator.Flux.Namespace
+	if mc.Spec.Actuator.Pull != nil && mc.Spec.Actuator.Pull.Namespace != "" {
+		ns = mc.Spec.Actuator.Pull.Namespace
 	}
 
 	// Check all Kustomizations with kapro.io/managed-by label.

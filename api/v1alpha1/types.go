@@ -57,16 +57,62 @@ type TargetTopology struct {
 }
 
 // ActuatorSpec selects and configures the delivery backend for this cluster.
+// Mode controls who initiates delivery: push (hub pushes to spoke) or pull
+// (spoke pulls from OCI registry). Backend selects which GitOps tool executes.
+//
+// +kubebuilder:validation:XValidation:rule="self.mode != 'push' || has(self.push)",message="push config is required when mode=push"
+// +kubebuilder:validation:XValidation:rule="self.mode != 'pull' || has(self.pull)",message="pull config is required when mode=pull"
 type ActuatorSpec struct {
-	// +kubebuilder:validation:Enum=flux;flux-operator;spoke
-	Type         string              `json:"type"`
-	Flux         *FluxActuator       `json:"flux,omitempty"`
-	FluxOperator *FluxOperatorConfig `json:"fluxOperator,omitempty"`
+	// Mode controls who initiates delivery.
+	//   push: hub renders and pushes resources to the spoke cluster.
+	//   pull: hub patches the OCI tag, spoke's own controllers pull and reconcile.
+	// +kubebuilder:validation:Enum=push;pull
+	// +kubebuilder:default="pull"
+	Mode string `json:"mode"`
+	// Backend selects which GitOps tool executes the delivery.
+	// +kubebuilder:validation:Enum=flux
+	// +kubebuilder:default="flux"
+	Backend string `json:"backend"`
+	// Pull configures pull-mode delivery (spoke pulls OCI bundle and reconciles locally).
+	// Required when mode=pull.
+	// +optional
+	Pull *PullConfig `json:"pull,omitempty"`
+	// Push configures push-mode delivery (hub renders and pushes to spoke).
+	// Required when mode=push.
+	// +optional
+	Push *PushConfig `json:"push,omitempty"`
 }
 
-// FluxOperatorConfig configures the Flux Operator actuator.
-// Kapro patches ResourceSet inputs instead of individual Flux resources.
-type FluxOperatorConfig struct {
+// RegistryKey returns the composite key used to resolve the actuator implementation.
+func (a *ActuatorSpec) RegistryKey() string {
+	return a.Mode + "/" + a.Backend
+}
+
+// PullConfig configures pull-mode delivery. The spoke's own GitOps controllers
+// pull from an OCI registry and reconcile locally.
+type PullConfig struct {
+	// Namespace is the GitOps controller namespace on the target cluster.
+	// +kubebuilder:default="flux-system"
+	Namespace string `json:"namespace,omitempty"`
+	// OCIRepository is the Flux OCIRepository name that pulls the artifact.
+	OCIRepository string `json:"ociRepository"`
+	// OCIRepositories maps appKey -> Flux OCIRepository name for multi-artifact delivery.
+	// +optional
+	OCIRepositories map[string]string `json:"ociRepositories,omitempty"`
+	// KustomizationPath is the path within the OCI artifact to the kustomization root.
+	// +kubebuilder:default="."
+	KustomizationPath string `json:"kustomizationPath,omitempty"`
+	// Parameters are backend-specific key-value pairs passed through to the actuator.
+	// Kapro does not interpret these. The backend implementation uses them for
+	// vendor-specific configuration (e.g. ArgoCD project, application name, sync policy).
+	// Same pattern as StorageClass.parameters in Kubernetes CSI.
+	// +optional
+	Parameters map[string]string `json:"parameters,omitempty"`
+}
+
+// PushConfig configures push-mode delivery. The hub renders resources and
+// pushes them to the spoke via Flux Operator ResourceSet or similar.
+type PushConfig struct {
 	// ResourceSet is the name of the Flux Operator ResourceSet to patch.
 	ResourceSet string `json:"resourceSet"`
 	// Namespace is the namespace of the ResourceSet.
@@ -78,23 +124,12 @@ type FluxOperatorConfig struct {
 	// TenantField is the ResourceSet input field that identifies the cluster.
 	// +kubebuilder:default="tenant"
 	TenantField string `json:"tenantField,omitempty"`
-}
-
-type FluxActuator struct {
-	// Namespace is the Flux namespace on the target cluster.
-	// +kubebuilder:default="flux-system"
-	Namespace string `json:"namespace,omitempty"`
-	// OCIRepository is the Flux OCIRepository name that pulls the artifact.
-	// Deprecated: use OCIRepositories for multi-artifact delivery.
-	OCIRepository string `json:"ociRepository"`
-	// OCIRepositories maps appKey -> Flux OCIRepository name for multi-artifact delivery.
-	// When multiple artifacts are delivered to a cluster, every appKey in the rollout
-	// must resolve to a repository name here.
+	// Parameters are backend-specific key-value pairs passed through to the actuator.
+	// Kapro does not interpret these. The backend implementation uses them for
+	// vendor-specific configuration (e.g. ArgoCD ApplicationSet name, sync options).
+	// Same pattern as StorageClass.parameters in Kubernetes CSI.
 	// +optional
-	OCIRepositories map[string]string `json:"ociRepositories,omitempty"`
-	// KustomizationPath is the path within the OCI artifact to the kustomization root.
-	// +kubebuilder:default="."
-	KustomizationPath string `json:"kustomizationPath,omitempty"`
+	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
 type HealthCheckSpec struct {

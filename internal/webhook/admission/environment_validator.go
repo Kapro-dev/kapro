@@ -41,18 +41,24 @@ func validateMemberCluster(mc *kaprov1alpha1.MemberCluster) error {
 
 func validateActuator(mc *kaprov1alpha1.MemberCluster) error {
 	act := mc.Spec.Actuator
-	switch act.Type {
+	if act.Mode == "" {
+		return fmt.Errorf("membercluster.spec.actuator.mode must be set")
+	}
+	if act.Backend == "" {
+		return fmt.Errorf("membercluster.spec.actuator.backend must be set")
+	}
+	switch act.Backend {
 	case "flux":
-		if act.Flux == nil {
-			return fmt.Errorf("membercluster.spec.actuator.flux must be set when type=flux")
+		if act.Mode == "pull" {
+			if act.Pull == nil {
+				return fmt.Errorf("membercluster.spec.actuator.pull must be set when mode=pull and backend=flux")
+			}
+			if act.Pull.OCIRepository == "" && len(act.Pull.OCIRepositories) == 0 {
+				return fmt.Errorf("membercluster.spec.actuator.pull.ociRepository or ociRepositories must be set when mode=pull and backend=flux")
+			}
 		}
-		if act.Flux.OCIRepository == "" && len(act.Flux.OCIRepositories) == 0 {
-			return fmt.Errorf("membercluster.spec.actuator.flux.ociRepository or membercluster.spec.actuator.flux.ociRepositories must be set when type=flux")
-		}
-	case "":
-		return fmt.Errorf("membercluster.spec.actuator.type must be set")
 	default:
-		return fmt.Errorf("membercluster.spec.actuator.type %q is not supported in this release; supported: flux", act.Type)
+		return fmt.Errorf("membercluster.spec.actuator.backend %q is not supported in this release; supported: flux", act.Backend)
 	}
 	return nil
 }

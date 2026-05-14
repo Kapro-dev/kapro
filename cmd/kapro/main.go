@@ -199,8 +199,8 @@ func runClusterAdd(ctx context.Context, clusterName, providerName string, labels
 		},
 		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{
-				Type: "spoke",
-				Flux: &kaprov1alpha1.FluxActuator{
+				Mode: "pull", Backend: "flux",
+				Pull: &kaprov1alpha1.PullConfig{
 					Namespace:     "flux-system",
 					OCIRepository: clusterName + "-bundle",
 				},
@@ -355,8 +355,8 @@ func runClusterSync(ctx context.Context, project string) error {
 			},
 			Spec: kaprov1alpha1.MemberClusterSpec{
 				Actuator: kaprov1alpha1.ActuatorSpec{
-					Type: "flux-operator",
-					FluxOperator: &kaprov1alpha1.FluxOperatorConfig{
+					Mode: "push", Backend: "flux",
+					Push: &kaprov1alpha1.PushConfig{
 						ResourceSet: "fleet-workloads",
 						Namespace:   "flux-system",
 					},

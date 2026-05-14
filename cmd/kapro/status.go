@@ -152,7 +152,7 @@ func renderKaproStatus(kapro kaprov1alpha1.Kapro, allClusters []kaprov1alpha1.Me
 			version:   mc.Status.Version,
 			phase:     string(mc.Status.Phase),
 			healthy:   mc.Status.Health.AllWorkloadsReady,
-			actuator:  mc.Spec.Actuator.Type,
+			actuator:  mc.Spec.Actuator.RegistryKey(),
 			heartbeat: mc.Status.LastHeartbeat,
 			ready:     mc.Status.Health.ReadyWorkloads,
 			total:     mc.Status.Health.TotalWorkloads,
