@@ -11,6 +11,7 @@
 //   - ReleaseTrigger — safe-by-default autonomous Release creation from verified artifacts
 //   - ReleaseTarget  — one target-cluster execution owned by a Release
 //   - MemberCluster  — fleet inventory and observed cluster state reported to the hub
+//   - PluginRegistration — external actuator and gate plugin registration
 //   - Approval       — human gate signal to unblock one target-cluster rollout or stage
 //   - AgentPolicy    — AI trust boundary and audit policy
 //

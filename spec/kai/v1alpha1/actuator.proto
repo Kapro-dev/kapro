@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package kapro.kai.v1alpha1;
+
+option go_package = "kapro.io/kapro/spec/kai/v1alpha1;kaiv1alpha1";
+
+// ActuatorService is the Kapro Actuator Interface (KAI).
+//
+// An actuator applies one artifact version to one target and reports backend
+// convergence. Kapro owns release ordering, retries, rollback intent, and
+// status; the actuator owns backend-specific mutation and readiness checks.
+service ActuatorService {
+  rpc Apply(ApplyRequest) returns (ApplyResponse);
+  rpc IsConverged(IsConvergedRequest) returns (IsConvergedResponse);
+  rpc Rollback(RollbackRequest) returns (RollbackResponse);
+}
+
+message ApplyRequest {
+  string release = 1;
+  string target = 2;
+  string pipeline = 3;
+  string stage = 4;
+  string version = 5;
+  string previous_version = 6;
+  map<string, string> parameters = 7;
+}
+
+message ApplyResponse {
+  bool accepted = 1;
+  string message = 2;
+}
+
+message IsConvergedRequest {
+  string release = 1;
+  string target = 2;
+  string version = 3;
+  map<string, string> parameters = 4;
+}
+
+message IsConvergedResponse {
+  bool converged = 1;
+  string message = 2;
+}
+
+message RollbackRequest {
+  string release = 1;
+  string target = 2;
+  string version = 3;
+  string previous_version = 4;
+  map<string, string> parameters = 5;
+}
+
+message RollbackResponse {
+  bool accepted = 1;
+  string message = 2;
+}
+

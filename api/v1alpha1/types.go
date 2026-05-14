@@ -1493,6 +1493,98 @@ func (s *MemberClusterStatus) IsHeartbeatFresh(timeout time.Duration) bool {
 	return time.Since(t) < timeout
 }
 
+// ---- PluginRegistration -----------------------------------------------------
+
+// PluginType identifies which Kapro extension contract a plugin implements.
+// +kubebuilder:validation:Enum=actuator;gate
+type PluginType string
+
+const (
+	// PluginTypeActuator registers an implementation of the Kapro Actuator Interface.
+	PluginTypeActuator PluginType = "actuator"
+	// PluginTypeGate registers an implementation of the Kapro Gate Interface.
+	PluginTypeGate PluginType = "gate"
+)
+
+// PluginProtocol identifies how Kapro talks to a registered plugin.
+// +kubebuilder:validation:Enum=grpc
+type PluginProtocol string
+
+const (
+	// PluginProtocolGRPC uses the KAI/KGI gRPC contracts.
+	PluginProtocolGRPC PluginProtocol = "grpc"
+)
+
+// PluginRegistrationSpec registers an external actuator or gate plugin endpoint.
+// Runtime dispatch through PluginGateway is future work; this API establishes
+// the cluster-scoped registration contract.
+type PluginRegistrationSpec struct {
+	// Type selects which extension contract the plugin implements.
+	Type PluginType `json:"type"`
+	// Name is the registry key exposed by this plugin, for example "argo/pull"
+	// or "slo".
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+	// Protocol selects the wire protocol.
+	// +kubebuilder:default="grpc"
+	Protocol PluginProtocol `json:"protocol,omitempty"`
+	// Endpoint is the plugin endpoint URI, for example
+	// dns:///argocd-actuator.kapro-system.svc:9090.
+	// +kubebuilder:validation:MinLength=1
+	Endpoint string `json:"endpoint"`
+	// Timeout bounds one plugin call.
+	// +kubebuilder:default="10s"
+	Timeout string `json:"timeout,omitempty"`
+	// TLSSecretRef references a Secret containing client TLS material or CA data.
+	// +optional
+	TLSSecretRef *corev1.LocalObjectReference `json:"tlsSecretRef,omitempty"`
+	// Parameters are plugin-specific key-value pairs.
+	// Kapro core does not interpret unknown parameters.
+	// +optional
+	Parameters map[string]string `json:"parameters,omitempty"`
+}
+
+// PluginRegistrationStatus records plugin discovery and readiness.
+type PluginRegistrationStatus struct {
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+	// Ready indicates whether the plugin endpoint is currently usable.
+	Ready bool `json:"ready,omitempty"`
+	// LastSeen is the RFC3339 time of the last successful health or capability check.
+	LastSeen string `json:"lastSeen,omitempty"`
+	// Version is the plugin-reported implementation version.
+	Version string `json:"version,omitempty"`
+	// Capabilities are plugin-reported feature names.
+	Capabilities []string `json:"capabilities,omitempty"`
+	// Conditions summarize plugin registration readiness.
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Cluster,shortName=pluginreg,categories=kapro-all
+// +kubebuilder:printcolumn:name="Type",type=string,JSONPath=`.spec.type`
+// +kubebuilder:printcolumn:name="Name",type=string,JSONPath=`.spec.name`
+// +kubebuilder:printcolumn:name="Protocol",type=string,JSONPath=`.spec.protocol`
+// +kubebuilder:printcolumn:name="Ready",type=boolean,JSONPath=`.status.ready`
+// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.version`,priority=1
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+
+// PluginRegistration declares an external actuator or gate plugin endpoint.
+// It is an API preview for the future PluginGateway runtime.
+type PluginRegistration struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              PluginRegistrationSpec   `json:"spec,omitempty"`
+	Status            PluginRegistrationStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+type PluginRegistrationList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []PluginRegistration `json:"items"`
+}
+
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=mc,categories=kapro-all

@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package kapro.kgi.v1alpha1;
+
+option go_package = "kapro.io/kapro/spec/kgi/v1alpha1;kgiv1alpha1";
+
+// GateService is the Kapro Gate Interface (KGI).
+//
+// A gate evaluates whether one target may advance. Kapro owns timing, retries,
+// failure policy, and persisted status; the gate owns the safety decision.
+service GateService {
+  rpc Evaluate(EvaluateRequest) returns (EvaluateResponse);
+}
+
+message EvaluateRequest {
+  string release = 1;
+  string target = 2;
+  string pipeline = 3;
+  string stage = 4;
+  string version = 5;
+  string gate = 6;
+  map<string, string> parameters = 7;
+}
+
+message EvaluateResponse {
+  GatePhase phase = 1;
+  string message = 2;
+}
+
+enum GatePhase {
+  GATE_PHASE_UNSPECIFIED = 0;
+  GATE_PHASE_PASSED = 1;
+  GATE_PHASE_FAILED = 2;
+  GATE_PHASE_RUNNING = 3;
+  GATE_PHASE_INCONCLUSIVE = 4;
+}
+

@@ -25,7 +25,7 @@ This document defines the target architecture for those contracts.
 | Gate | `pkg/gate` | Decide whether one target may advance. | In-process registry |
 | Template gate | CEL, Job, Webhook gate templates | Configure custom gate behavior through CRDs. | Implemented |
 | Lifecycle events | CloudEvents webhook payloads | Publish release, stage, gate, approval, and target events. | Implemented |
-| Plugin gateway | gRPC KAI/KGI contracts | Run actuators and gates out of process. | Target architecture |
+| Plugin gateway | KAI/KGI proto contracts and `PluginRegistration` | Register out-of-process actuators and gates. | API preview |
 | ReleaseTrigger | CRD API | Define safe autonomous Release creation policy. | API preview |
 
 ## Core Boundary
@@ -121,10 +121,14 @@ External consumers can implement audit trails, chat notifications, incident
 routing, compliance ingestion, or repository dispatch without becoming Kapro
 plugins.
 
-## Plugin Gateway Target
+## Plugin Gateway API Preview
 
-The current registries are in-process. The target architecture adds an
-out-of-process gateway for actuator and gate plugins.
+The current execution registries are in-process. Kapro now defines the API
+surface for out-of-process actuator and gate plugins:
+
+- `spec/kai/v1alpha1/actuator.proto`
+- `spec/kgi/v1alpha1/gate.proto`
+- `PluginRegistration`
 
 ```text
 Kapro controller
@@ -133,15 +137,18 @@ Kapro controller
     -> external gate plugin
 ```
 
-Required pieces:
+Runtime dispatch through `PluginGateway` is future work. The API preview
+establishes the stable registration and wire-contract shape first.
+
+API pieces:
 
 | Piece | Purpose |
 |---|---|
 | KAI proto | Language-neutral actuator contract. |
 | KGI proto | Language-neutral gate contract. |
-| PluginGateway | gRPC boundary, timeout handling, retries, and error normalization. |
 | PluginRegistration CRD | Declarative registration of external plugin endpoints. |
-| Conformance tests | Shared behavioral tests for every plugin implementation. |
+| PluginGateway | Future runtime boundary, timeout handling, retries, and error normalization. |
+| Conformance tests | Future shared behavioral tests for every plugin implementation. |
 
 The gateway must preserve the same state ownership rule: plugins do backend
 work, Kapro owns release state.
@@ -184,7 +191,7 @@ Target CRD posture:
 | API surface | Posture |
 |---|---|
 | Existing release, pipeline, app, cluster, target, approval, and policy CRDs | Core API |
-| `PluginRegistration` | Add with the plugin gateway |
+| `PluginRegistration` | API preview; runtime dispatch future work |
 | `ReleaseTrigger` | API preview with ADR-002 safeguards; controller future work |
 | Notification provider/policy | Add only when shared credential ownership requires it |
 | Metric definition | Add only when metric reuse needs independent ownership |

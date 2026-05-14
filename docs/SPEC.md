@@ -21,8 +21,9 @@
 11. [Target FSM](#11-target-fsm)
 12. [Approval Flow](#12-approval-flow)
 13. [Notification & Events](#13-notification--events)
-14. [ReleaseTrigger API Preview](#14-releasetrigger-api-preview)
-15. [Non-Goals](#15-non-goals)
+14. [PluginRegistration API Preview](#14-pluginregistration-api-preview)
+15. [ReleaseTrigger API Preview](#15-releasetrigger-api-preview)
+16. [Non-Goals](#16-non-goals)
 
 ---
 
@@ -113,6 +114,7 @@ Release
 | `releasetriggers.kapro.io` | `ReleaseTrigger` | Platform / automation | Cluster |
 | `releasetargets.kapro.io` | `ReleaseTarget` | Controller | Cluster |
 | `memberclusters.kapro.io` | `MemberCluster` | Platform | Cluster |
+| `pluginregistrations.kapro.io` | `PluginRegistration` | Platform | Cluster |
 | `approvals.kapro.io` | `Approval` | Human via webhook | Cluster |
 | `agentpolicies.kapro.io` | `AgentPolicy` | Platform | Cluster |
 
@@ -310,7 +312,24 @@ Identity is deterministic: every `(Release, target)` pair has at most one `Appro
 
 ---
 
-## 14. ReleaseTrigger API Preview
+## 14. PluginRegistration API Preview
+
+`PluginRegistration` is an API preview for external actuator and gate plugins.
+It is cluster-scoped and records the plugin type, registry name, protocol,
+endpoint, timeout, optional TLS secret reference, parameters, readiness, version,
+and capabilities.
+
+The proto contracts live under:
+
+- `spec/kai/v1alpha1/actuator.proto`
+- `spec/kgi/v1alpha1/gate.proto`
+
+Runtime dispatch through `PluginGateway` is future work. The current in-process
+actuator and gate registries remain the execution path.
+
+---
+
+## 15. ReleaseTrigger API Preview
 
 `ReleaseTrigger` is a safe-by-default API preview for autonomous Release
 creation from verified artifact changes. It is cluster-scoped and supports OCI
@@ -323,7 +342,7 @@ automatic deployment behavior available before the safeguards are implemented.
 
 ---
 
-## 15. Non-Goals
+## 16. Non-Goals
 
 Kapro explicitly does **not** aim to:
 
