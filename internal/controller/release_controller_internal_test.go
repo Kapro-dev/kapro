@@ -10,6 +10,7 @@ import (
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	"kapro.io/kapro/pkg/notification"
+	"kapro.io/kapro/pkg/planner"
 )
 
 func TestStageDependencySatisfied_AnyUnlocksFromOneConvergedTarget(t *testing.T) {
@@ -231,6 +232,27 @@ func TestStageDependencySatisfied_ReturnsRemainingSoakTime(t *testing.T) {
 	}
 }
 
+func TestListTargetsForStageUsesReleasePlanner(t *testing.T) {
+	scheme := controllerTestScheme(t)
+	r := &ReleaseReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+			memberClusterForStage("cluster-a", "canary"),
+			memberClusterForStage("cluster-b", "canary"),
+		).Build(),
+		Planner: planner.NewFramework(testPlannerFilter{NameValue: "cluster-b"}),
+	}
+	release := &kaprov1alpha1.Release{}
+	pipeline := pipelineWithCanaryStage()
+
+	targets, err := r.listTargetsForStage(context.Background(), "main", pipeline, pipeline.Spec.Stages[0], release)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targets) != 1 || targets[0].Name != "cluster-b" {
+		t.Fatalf("targets = %#v", targets)
+	}
+}
+
 func memberClusterForStage(name, stage string) *kaprov1alpha1.MemberCluster {
 	return &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{
@@ -241,6 +263,19 @@ func memberClusterForStage(name, stage string) *kaprov1alpha1.MemberCluster {
 			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: "flux"},
 		},
 	}
+}
+
+type testPlannerFilter struct {
+	NameValue string
+}
+
+func (t testPlannerFilter) Name() string { return "test-filter" }
+
+func (t testPlannerFilter) Filter(_ context.Context, _ *planner.CycleState, _ planner.Request, target kaprov1alpha1.MemberCluster) *planner.Status {
+	if target.Name != t.NameValue {
+		return planner.NewStatus(planner.Skip, "filtered by test")
+	}
+	return nil
 }
 
 func pipelineWithCanaryStage() *kaprov1alpha1.Pipeline {

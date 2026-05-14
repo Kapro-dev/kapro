@@ -24,6 +24,7 @@ This document defines the target architecture for those contracts.
 | Actuator | `pkg/actuator` | Apply one version to one target and report convergence. | In-process registry |
 | Gate | `pkg/gate` | Decide whether one target may advance. | In-process registry |
 | Template gate | CEL, Job, Webhook gate templates | Configure custom gate behavior through CRDs. | Implemented |
+| Release planner | `pkg/planner` | Filter, score, reserve, and permit rollout targets before binding. | In-process framework |
 | Lifecycle events | CloudEvents webhook payloads | Publish release, stage, gate, approval, and target events. | Implemented |
 | Plugin gateway | KAI/KGI proto contracts and `PluginRegistration` | Register and probe out-of-process actuators and gates. | Status-capable preview |
 | ReleaseTrigger | CRD API | Define safe autonomous Release creation policy. | OCI controller preview |
@@ -181,6 +182,19 @@ Required safeguards:
 | Idempotency | Re-observed artifacts do not create duplicate releases. |
 
 See `docs/ADR-002-release-trigger.md` for the release trigger decision record.
+
+## Release Planner
+
+The release planner is the target-selection boundary inside `ReleaseReconciler`.
+It follows Kubernetes scheduler-style phases:
+
+```text
+PreFilter -> Filter -> Score -> NormalizeScore -> Reserve -> Permit -> bind ReleaseTarget
+```
+
+Kapro keeps ownership of release state. Planner plugins can influence which
+targets are eligible and in what order they are bound, but they do not create
+or mutate `ReleaseTarget` objects directly.
 
 ## CRD Rule
 

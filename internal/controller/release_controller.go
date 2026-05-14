@@ -33,6 +33,7 @@ import (
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
 	"kapro.io/kapro/pkg/notification"
+	"kapro.io/kapro/pkg/planner"
 )
 
 // releaseFinalizer uses the canonical constant from the API package
@@ -76,6 +77,10 @@ type ReleaseReconciler struct {
 	// ShardPredicate optionally filters objects by shard label for horizontal scaling.
 	// When nil, all objects are processed.
 	ShardPredicate predicate.Predicate
+
+	// Planner orders and filters target clusters using scheduler-style extension phases.
+	// Nil means the default empty planner.
+	Planner *planner.Framework
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=releases,verbs=get;list;watch;create;update;patch;delete
@@ -553,7 +558,7 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 		}
 
 		// List clusters matching this stage's selector.
-		envList, err := r.listTargetsForStage(ctx, stage, release)
+		envList, err := r.listTargetsForStage(ctx, pipelineRefName, pipeline, stage, release)
 		if err != nil {
 			return nil, false, false, 0, nil, fmt.Errorf("list targets for stage %s: %w", stage.Name, err)
 		}
@@ -728,7 +733,7 @@ func (r *ReleaseReconciler) stageDependencySatisfied(
 		return false, 0, fmt.Errorf("stage dependency %q not found in pipeline %s", dep.Stage, pipeline.Name)
 	}
 
-	targets, err := r.listTargetsForStage(ctx, depStage, release)
+	targets, err := r.listTargetsForStage(ctx, pipelineRefName, pipeline, depStage, release)
 	if err != nil {
 		return false, 0, fmt.Errorf("list dependency targets for stage %s: %w", dep.Stage, err)
 	}
@@ -829,7 +834,7 @@ func dependencySoakRemaining(finishedAt string, now time.Time, soak time.Duratio
 
 // listTargetsForStage returns all MemberClusters that match the stage selector,
 // filtered to spec.scope.targets when a scope is set on the Release.
-func (r *ReleaseReconciler) listTargetsForStage(ctx context.Context, stage kaprov1alpha1.Stage, release *kaprov1alpha1.Release) ([]kaprov1alpha1.MemberCluster, error) {
+func (r *ReleaseReconciler) listTargetsForStage(ctx context.Context, pipelineRefName string, pipeline *kaprov1alpha1.Pipeline, stage kaprov1alpha1.Stage, release *kaprov1alpha1.Release) ([]kaprov1alpha1.MemberCluster, error) {
 	var mcList kaprov1alpha1.MemberClusterList
 	sel, err := metav1.LabelSelectorAsSelector(&stage.Selector)
 	if err != nil {
@@ -873,7 +878,16 @@ func (r *ReleaseReconciler) listTargetsForStage(ctx context.Context, stage kapro
 		clusters = scopeFiltered
 	}
 
-	return clusters, nil
+	framework := r.Planner
+	if framework == nil {
+		framework = planner.NewFramework()
+	}
+	return framework.Plan(ctx, planner.Request{
+		Release:         release,
+		PipelineRefName: pipelineRefName,
+		Pipeline:        pipeline,
+		Stage:           stage,
+	}, clusters)
 }
 
 // upsertTarget finds an existing TargetStatus entry for

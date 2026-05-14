@@ -169,12 +169,16 @@ Controllers are registered from `pkg/controllermanager/controllers.go`. Hub and 
 
 ## 7. Extension Interfaces
 
-Two pluggable interfaces. Both use `pkg/registry.Registry[T]` for named, runtime-resolved dispatch and have a conformance suite under `conformance/`.
+Kapro has narrow pluggable interfaces for backend execution, safety evaluation,
+and rollout planning. Actuators and gates are named runtime-resolved dispatch
+points with conformance suites. The release planner is an in-process framework
+for target selection and ordering, modeled after Kubernetes scheduler phases.
 
 | Interface | Go package | Question it answers | Conformance |
 |-----------|------------|---------------------|-------------|
 | Actuator (KAI) | `pkg/actuator` | "Apply this version to this cluster" | `conformance/actuator` |
 | Gate (KGI)     | `pkg/gate`     | "May this target advance?"           | `conformance/gate`     |
+| ReleasePlanner | `pkg/planner` | "Which targets should this stage bind, and in what order?" | package tests |
 
 Other internal concerns — health checking (`internal/health`), OCI fetch (`internal/oci/oras`), cosign verification (`internal/verification/cosign`), notification (`internal/notification`) — are **not** runtime extension points today. They live as internal packages with fixed implementations.
 
