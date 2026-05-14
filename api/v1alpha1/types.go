@@ -330,14 +330,44 @@ type ApprovalConfig struct {
 	Approvers []string `json:"approvers,omitempty"`
 }
 
+// NotificationSpec configures where and when to send delivery lifecycle events.
 type NotificationSpec struct {
-	Type    string             `json:"type"`
-	Channel string             `json:"channel,omitempty"`
-	URL     string             `json:"url,omitempty"`
-	Email   *EmailNotifierSpec `json:"email,omitempty"`
+	// Type selects the notification backend.
+	// +kubebuilder:validation:Enum=webhook;slack;email
+	Type string `json:"type"`
+	// Events filters which target phase transitions trigger this notification.
+	// Values match TargetPhase: Pending, Verification, HealthCheck, Soaking,
+	// MetricsCheck, WaitingApproval, Applying, Converged, Failed, Skipped.
+	// Empty means all phase transitions.
+	// +optional
+	Events []string `json:"events,omitempty"`
+	// Webhook configures HTTP POST delivery.
+	// Required when type=webhook.
+	// +optional
+	Webhook *WebhookNotifierSpec `json:"webhook,omitempty"`
+	// Slack configures Slack message delivery.
+	// Required when type=slack.
+	// +optional
+	Slack *SlackNotifierSpec `json:"slack,omitempty"`
+	// Email configures SMTP email delivery.
+	// Required when type=email.
+	// +optional
+	Email *EmailNotifierSpec `json:"email,omitempty"`
 }
 
-// EmailNotifierSpec configures SMTP email delivery for gate notifications.
+// WebhookNotifierSpec configures HTTP POST notification delivery.
+type WebhookNotifierSpec struct {
+	// URL is the HTTP endpoint to POST events to.
+	URL string `json:"url"`
+}
+
+// SlackNotifierSpec configures Slack message delivery.
+type SlackNotifierSpec struct {
+	// Channel is the Slack channel to post to.
+	Channel string `json:"channel"`
+}
+
+// EmailNotifierSpec configures SMTP email delivery.
 type EmailNotifierSpec struct {
 	// +kubebuilder:validation:MinItems=1
 	To   []string `json:"to"`
