@@ -27,7 +27,7 @@ jobs:
       # PR validation: server-side dry-run catches schema errors
       - name: Validate YAMLs (server-side)
         run: |
-          for f in clusters/*.yaml apps/*.yaml pipelines/*.yaml releases/*.yaml releases/*.yaml; do
+          for f in clusters/*.yaml apps/*.yaml pipelines/*.yaml releases/*.yaml; do
             echo "Validating $f..."
             kubectl apply --dry-run=server -f "$f"
           done
