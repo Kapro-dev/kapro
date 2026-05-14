@@ -98,7 +98,7 @@ Design the `scheduler.Plugin` interface so pipeline ordering can be customised w
   links may be shared across multiple approvers.
 - CDEvents integration via webhook sinks
 - SLA tracking and burn rate gates
-- `ReleaseTrigger` CRD for autonomous triggers (MLflow model registered, OCI image pushed, Prometheus alert fired)
+- `ReleaseTrigger` CRD for autonomous triggers (OCI image pushed first; MLflow model registered and Prometheus alert fired later). Must follow `docs/ADR-002-release-trigger.md`.
 - `PluginGateway` + `PluginRegistration` CRDs (GA quality)
 
 ---
@@ -112,5 +112,5 @@ These were considered and deliberately excluded. Do not re-open without an ADR.
 | In-memory gate state | Survives restarts only in etcd. Gate implementations must be stateless. |
 | Mutable Releases | Audit trail must be append-only. Rollback = new Release. |
 | Hub→spoke required network | Air-gapped environments need outbound-only. CRD path is non-negotiable default. |
-| `ReleaseTrigger` in MVP | Autonomous triggers are post-MVP complexity. |
+| `ReleaseTrigger` in MVP | Autonomous triggers are post-MVP complexity. When implemented, follow ADR-002 and make it safe by default. |
 | `PluginGateway` in MVP | gRPC boundary needs proto design first; wrong to rush. |

@@ -169,10 +169,32 @@ func BuildCloudEvent(event Event, nowMillis int64, nowRFC3339 string) CloudEvent
 		SpecVersion: "1.0",
 		Type:        typ,
 		Source:      "/kapro/releases/" + event.Release,
-		ID:          fmt.Sprintf("%s-%s-%s-%d", event.Release, event.Target, event.Phase, nowMillis),
+		ID:          stableEventID(event, typ, nowMillis),
 		Time:        nowRFC3339,
 		Subject:     subject,
 		Data:        event,
+	}
+}
+
+func stableEventID(event Event, typ string, fallbackMillis int64) string {
+	switch {
+	case event.Release != "":
+		id := "release/" + event.Release + "/type/" + typ
+		if event.Pipeline != "" {
+			id += "/pipeline/" + event.Pipeline
+		}
+		if event.Stage != "" {
+			id += "/stage/" + event.Stage
+		}
+		if event.Target != "" {
+			id += "/target/" + event.Target
+		}
+		if event.Phase != "" {
+			id += "/phase/" + event.Phase
+		}
+		return id
+	default:
+		return fmt.Sprintf("kapro-event/%s/%d", typ, fallbackMillis)
 	}
 }
 
