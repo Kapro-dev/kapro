@@ -492,12 +492,13 @@ spec:
                           type: string
                         notifications:
                           items:
+                            description: NotificationSpec configures where and when
+                              to send delivery lifecycle events.
                             properties:
-                              channel:
-                                type: string
                               email:
-                                description: EmailNotifierSpec configures SMTP email
-                                  delivery for gate notifications.
+                                description: |-
+                                  Email configures SMTP email delivery.
+                                  Required when type=email.
                                 properties:
                                   from:
                                     type: string
@@ -527,10 +528,46 @@ spec:
                                 - smtpSecretRef
                                 - to
                                 type: object
+                              events:
+                                description: |-
+                                  Events filters which target phase transitions trigger this notification.
+                                  Values match TargetPhase: Pending, Verification, HealthCheck, Soaking,
+                                  MetricsCheck, WaitingApproval, Applying, Converged, Failed, Skipped.
+                                  Empty means all phase transitions.
+                                items:
+                                  type: string
+                                type: array
+                              slack:
+                                description: |-
+                                  Slack configures Slack message delivery.
+                                  Required when type=slack.
+                                properties:
+                                  channel:
+                                    description: Channel is the Slack channel to post
+                                      to.
+                                    type: string
+                                required:
+                                - channel
+                                type: object
                               type:
+                                description: Type selects the notification backend.
+                                enum:
+                                - webhook
+                                - slack
+                                - email
                                 type: string
-                              url:
-                                type: string
+                              webhook:
+                                description: |-
+                                  Webhook configures HTTP POST delivery.
+                                  Required when type=webhook.
+                                properties:
+                                  url:
+                                    description: URL is the HTTP endpoint to POST
+                                      events to.
+                                    type: string
+                                required:
+                                - url
+                                type: object
                             required:
                             - type
                             type: object
