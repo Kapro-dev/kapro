@@ -59,8 +59,10 @@ func eventTypeForPhase(phase kaprov1alpha1.TargetPhase) string {
 		return notification.EventTargetFailed
 	case kaprov1alpha1.TargetPhaseSkipped:
 		return notification.EventTargetSkipped
+	case "":
+		return "" // initial empty phase, no notification
 	default:
-		return ""
+		return "kapro.release.target.unknown"
 	}
 }
 

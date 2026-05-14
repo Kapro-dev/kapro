@@ -294,3 +294,31 @@ func TestMetricsGateTimedOut_InvalidTimeoutFailsClosed(t *testing.T) {
 		t.Fatalf("expected invalid gateTimeout message, got %q", msg)
 	}
 }
+
+func TestEventTypeForPhase_AllPhasesReturnNonEmpty(t *testing.T) {
+	phases := []kaprov1alpha1.TargetPhase{
+		kaprov1alpha1.TargetPhasePending,
+		kaprov1alpha1.TargetPhaseVerification,
+		kaprov1alpha1.TargetPhaseHealthCheck,
+		kaprov1alpha1.TargetPhaseSoaking,
+		kaprov1alpha1.TargetPhaseMetricsCheck,
+		kaprov1alpha1.TargetPhaseWaitingApproval,
+		kaprov1alpha1.TargetPhaseApplying,
+		kaprov1alpha1.TargetPhaseConverged,
+		kaprov1alpha1.TargetPhaseFailed,
+		kaprov1alpha1.TargetPhaseSkipped,
+	}
+	for _, phase := range phases {
+		typ := eventTypeForPhase(phase)
+		if typ == "" {
+			t.Errorf("eventTypeForPhase(%q) returned empty", phase)
+		}
+		if !strings.HasPrefix(typ, "kapro.release.") {
+			t.Errorf("eventTypeForPhase(%q) = %q, want kapro.release.* prefix", phase, typ)
+		}
+	}
+	// Empty phase should return empty (no notification)
+	if got := eventTypeForPhase(""); got != "" {
+		t.Errorf("eventTypeForPhase(\"\") = %q, want empty", got)
+	}
+}
