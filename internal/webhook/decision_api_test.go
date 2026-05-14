@@ -50,7 +50,7 @@ func decisionFixtures() (*kaprov1alpha1.Release, *kaprov1alpha1.MemberCluster, *
 			Labels: map[string]string{"tier": "canary", "region": "eu-west"},
 		},
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{Type: "flux"},
+			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: "flux"},
 		},
 		Status: kaprov1alpha1.MemberClusterStatus{
 			Phase:         kaprov1alpha1.ClusterPhaseConverged,

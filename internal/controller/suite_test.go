@@ -95,7 +95,7 @@ func setupEnv(t *testing.T) (context.Context, context.CancelFunc, client.Client)
 	}
 
 	fakeActuators := actuator.NewRegistry()
-	if err := fakeActuators.Register("flux", &fakeActuator{converged: true}); err != nil {
+	if err := fakeActuators.Register("pull/flux", &fakeActuator{converged: true}); err != nil {
 		t.Fatalf("register fake actuator: %v", err)
 	}
 
@@ -214,7 +214,7 @@ func makeMemberCluster(name string, labels map[string]string) *kaprov1alpha1.Mem
 		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels},
 		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{
-				Type: "flux",
+				Mode: "pull", Backend: "flux",
 				Flux: &kaprov1alpha1.FluxActuator{
 					Namespace:         "flux-system",
 					OCIRepository:     "test-repo",

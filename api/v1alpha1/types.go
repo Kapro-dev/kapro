@@ -57,10 +57,24 @@ type TargetTopology struct {
 }
 
 // ActuatorSpec selects and configures the delivery backend for this cluster.
+// Mode controls who initiates delivery: push (hub pushes to spoke) or pull
+// (spoke pulls from OCI registry). Backend selects which GitOps tool executes.
 type ActuatorSpec struct {
-	// +kubebuilder:validation:Enum=flux;flux-operator;spoke
-	Type         string              `json:"type"`
-	Flux         *FluxActuator       `json:"flux,omitempty"`
+	// Mode controls who initiates delivery.
+	//   push: hub renders and pushes resources to the spoke cluster.
+	//   pull: hub patches the OCI tag, spoke's own controllers pull and reconcile.
+	// +kubebuilder:validation:Enum=push;pull
+	// +kubebuilder:default="pull"
+	Mode string `json:"mode"`
+	// Backend selects which GitOps tool executes the delivery.
+	// +kubebuilder:validation:Enum=flux;argo
+	// +kubebuilder:default="flux"
+	Backend string `json:"backend"`
+	// Flux configures pull-mode delivery via Flux OCIRepository on the spoke.
+	// Required when mode=pull and backend=flux.
+	Flux *FluxActuator `json:"flux,omitempty"`
+	// FluxOperator configures push-mode delivery via Flux Operator ResourceSet on the hub.
+	// Required when mode=push and backend=flux.
 	FluxOperator *FluxOperatorConfig `json:"fluxOperator,omitempty"`
 }
 

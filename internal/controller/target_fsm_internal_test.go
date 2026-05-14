@@ -77,7 +77,7 @@ func TestHandleApplying_RespectsActiveReleaseClaim(t *testing.T) {
 	scheme := controllerTestScheme(t)
 	mc := &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
-		Spec:       kaprov1alpha1.MemberClusterSpec{Actuator: kaprov1alpha1.ActuatorSpec{Type: "flux"}},
+		Spec:       kaprov1alpha1.MemberClusterSpec{Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: "flux"}},
 		Status: kaprov1alpha1.MemberClusterStatus{
 			ActiveRelease:   "other-release",
 			CurrentVersions: map[string]string{"default": "repo@sha256:old"},

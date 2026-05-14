@@ -79,7 +79,17 @@ spec:
               actuator:
                 description: Actuator configures the delivery backend for this cluster.
                 properties:
+                  backend:
+                    default: flux
+                    description: Backend selects which GitOps tool executes the delivery.
+                    enum:
+                    - flux
+                    - argo
+                    type: string
                   flux:
+                    description: |-
+                      Flux configures pull-mode delivery via Flux OCIRepository on the spoke.
+                      Required when mode=pull and backend=flux.
                     properties:
                       kustomizationPath:
                         default: .
@@ -109,8 +119,8 @@ spec:
                     type: object
                   fluxOperator:
                     description: |-
-                      FluxOperatorConfig configures the Flux Operator actuator.
-                      Kapro patches ResourceSet inputs instead of individual Flux resources.
+                      FluxOperator configures push-mode delivery via Flux Operator ResourceSet on the hub.
+                      Required when mode=push and backend=flux.
                     properties:
                       inputField:
                         default: tag
@@ -133,14 +143,19 @@ spec:
                     required:
                     - resourceSet
                     type: object
-                  type:
+                  mode:
+                    default: pull
+                    description: |-
+                      Mode controls who initiates delivery.
+                        push: hub renders and pushes resources to the spoke cluster.
+                        pull: hub patches the OCI tag, spoke's own controllers pull and reconcile.
                     enum:
-                    - flux
-                    - flux-operator
-                    - spoke
+                    - push
+                    - pull
                     type: string
                 required:
-                - type
+                - backend
+                - mode
                 type: object
               bootstrap:
                 description: |-

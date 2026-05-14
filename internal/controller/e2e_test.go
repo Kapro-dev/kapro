@@ -48,7 +48,7 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 		},
 		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{
-				Type: "flux",
+				Mode: "pull", Backend: "flux",
 				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system", OCIRepository: "test-repo", KustomizationPath: "."},
 			},
 		},
@@ -63,7 +63,7 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 		},
 		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{
-				Type: "flux",
+				Mode: "pull", Backend: "flux",
 				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system", OCIRepository: "test-repo", KustomizationPath: "."},
 			},
 		},
@@ -171,7 +171,7 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 		},
 		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{
-				Type: "flux",
+				Mode: "pull", Backend: "flux",
 				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system", OCIRepository: "test-repo", KustomizationPath: "."},
 			},
 		},
@@ -183,7 +183,7 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 		},
 		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{
-				Type: "flux",
+				Mode: "pull", Backend: "flux",
 				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system", OCIRepository: "test-repo", KustomizationPath: "."},
 			},
 		},

@@ -20,25 +20,36 @@ func deps(names ...string) []kaprov1alpha1.StageDependency {
 
 // ---- MemberClusterValidator ---------------------------------------------------
 
-func TestValidateMemberCluster_MissingActuatorType(t *testing.T) {
+func TestValidateMemberCluster_MissingMode(t *testing.T) {
 	mc := &kaprov1alpha1.MemberCluster{
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{Type: ""},
+			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "", Backend: "flux"},
 		},
 	}
 	if err := mcValidate(mc); err == nil {
-		t.Fatal("expected error for missing actuator type")
+		t.Fatal("expected error for missing actuator mode")
+	}
+}
+
+func TestValidateMemberCluster_MissingBackend(t *testing.T) {
+	mc := &kaprov1alpha1.MemberCluster{
+		Spec: kaprov1alpha1.MemberClusterSpec{
+			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: ""},
+		},
+	}
+	if err := mcValidate(mc); err == nil {
+		t.Fatal("expected error for missing actuator backend")
 	}
 }
 
 func TestValidateMemberCluster_FluxMissingSubSpec(t *testing.T) {
 	mc := &kaprov1alpha1.MemberCluster{
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{Type: "flux", Flux: nil},
+			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: "flux", Flux: nil},
 		},
 	}
 	if err := mcValidate(mc); err == nil {
-		t.Fatal("expected error for flux type without flux sub-spec")
+		t.Fatal("expected error for pull/flux without flux sub-spec")
 	}
 }
 
@@ -46,7 +57,7 @@ func TestValidateMemberCluster_FluxValid(t *testing.T) {
 	mc := &kaprov1alpha1.MemberCluster{
 		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{
-				Type: "flux",
+				Mode: "pull", Backend: "flux",
 				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system", OCIRepository: "cluster-a"},
 			},
 		},
@@ -56,14 +67,14 @@ func TestValidateMemberCluster_FluxValid(t *testing.T) {
 	}
 }
 
-func TestValidateMemberCluster_UnsupportedActuatorType(t *testing.T) {
+func TestValidateMemberCluster_UnsupportedBackend(t *testing.T) {
 	mc := &kaprov1alpha1.MemberCluster{
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{Type: "kserve"},
+			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: "kserve"},
 		},
 	}
 	if err := mcValidate(mc); err == nil {
-		t.Fatal("expected error for unsupported actuator type")
+		t.Fatal("expected error for unsupported actuator backend")
 	}
 }
 

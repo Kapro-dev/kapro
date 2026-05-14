@@ -100,7 +100,7 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// 2. Generate MemberClusters on the hub.
 	for _, cluster := range kapro.Spec.Clusters {
 		actuatorSpec := kaprov1alpha1.ActuatorSpec{
-			Type: "flux-operator",
+			Mode: "push", Backend: "flux",
 			FluxOperator: &kaprov1alpha1.FluxOperatorConfig{
 				ResourceSet: kapro.Name + "-workloads",
 				Namespace:   "flux-system",
@@ -110,7 +110,7 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		}
 		if spokeLocal {
 			actuatorSpec = kaprov1alpha1.ActuatorSpec{
-				Type: "spoke",
+				Mode: "pull", Backend: "flux",
 				Flux: &kaprov1alpha1.FluxActuator{
 					Namespace:     "flux-system",
 					OCIRepository: kapro.Name + "-bundle",
