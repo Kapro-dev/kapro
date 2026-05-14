@@ -337,14 +337,15 @@ type NotificationSpec struct {
 	Type string `json:"type"`
 	// Events filters which lifecycle events trigger this notification.
 	// Uses stable semantic event types. Currently emitted events:
+	//   kapro.release.started, kapro.release.completed, kapro.release.failed,
+	//   kapro.release.rollback.started, kapro.release.stage.completed,
+	//   kapro.release.gate.passed, kapro.release.gate.failed,
 	//   kapro.release.approval.required,
 	//   kapro.release.target.pending, kapro.release.target.verification,
 	//   kapro.release.target.health_check, kapro.release.target.soaking,
 	//   kapro.release.target.metrics_check, kapro.release.target.applying,
 	//   kapro.release.target.converged, kapro.release.target.failed,
 	//   kapro.release.target.skipped.
-	// Future: kapro.release.started, kapro.release.completed,
-	//   kapro.release.gate.passed, kapro.release.gate.failed.
 	// Empty means all events.
 	// +optional
 	Events []string `json:"events,omitempty"`

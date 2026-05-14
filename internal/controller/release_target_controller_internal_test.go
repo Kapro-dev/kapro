@@ -12,11 +12,13 @@ import (
 )
 
 type recordingNotifier struct {
-	events []notification.Event
+	events   []notification.Event
+	policies []notification.NotificationPolicy
 }
 
-func (n *recordingNotifier) Notify(_ context.Context, event notification.Event, _ notification.NotificationPolicy) {
+func (n *recordingNotifier) Notify(_ context.Context, event notification.Event, policy notification.NotificationPolicy) {
 	n.events = append(n.events, event)
+	n.policies = append(n.policies, policy)
 }
 
 func TestReleaseTargetPredicates_RejectedStatusChangeEnqueues(t *testing.T) {
@@ -134,5 +136,36 @@ func TestNotifyPersistedTransitions_ApprovalOnlyAfterPersistedStamp(t *testing.T
 	}
 	if notifier.events[0].Phase != string(kaprov1alpha1.TargetPhaseWaitingApproval) {
 		t.Fatalf("expected WaitingApproval notification, got %q", notifier.events[0].Phase)
+	}
+}
+
+func TestNotifyGateEvent_SendsSemanticGateType(t *testing.T) {
+	notifier := &recordingNotifier{}
+	r := &ReleaseTargetReconciler{Notifier: notifier}
+	release := &kaprov1alpha1.Release{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}}
+	target := &kaprov1alpha1.TargetStatus{
+		Target:      "cluster-a",
+		Version:     "repo@sha256:abc",
+		PipelineRef: "main",
+		Stage:       "canary",
+		Phase:       kaprov1alpha1.TargetPhaseMetricsCheck,
+		Gate: &kaprov1alpha1.GatePolicySpec{
+			Notifications: []kaprov1alpha1.NotificationSpec{{Type: "webhook", Events: []string{notification.EventGatePassed}}},
+		},
+	}
+
+	r.notifyGateEvent(context.Background(), release, target, notification.EventGatePassed, "metrics", "passed", false)
+
+	if len(notifier.events) != 1 {
+		t.Fatalf("expected 1 gate notification, got %d", len(notifier.events))
+	}
+	if notifier.events[0].Type != notification.EventGatePassed {
+		t.Fatalf("expected gate passed event, got %q", notifier.events[0].Type)
+	}
+	if notifier.events[0].Pipeline != "main" || notifier.events[0].Stage != "canary" || notifier.events[0].Target != "cluster-a" {
+		t.Fatalf("gate event context not populated: %#v", notifier.events[0])
+	}
+	if len(notifier.policies) != 1 || len(notifier.policies[0].Channels) != 1 {
+		t.Fatalf("expected gate policy to provide one notification channel, got %#v", notifier.policies)
 	}
 }

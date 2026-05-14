@@ -9,6 +9,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	"kapro.io/kapro/pkg/notification"
 )
 
 func TestStageDependencySatisfied_AnyUnlocksFromOneConvergedTarget(t *testing.T) {
@@ -53,6 +54,96 @@ func TestStageDependencySatisfied_AnyUnlocksFromOneConvergedTarget(t *testing.T)
 	}
 	if wait != 0 {
 		t.Fatalf("expected no remaining wait, got %s", wait)
+	}
+}
+
+func TestNotifyReleaseEvent_UsesPipelineStageNotifications(t *testing.T) {
+	scheme := controllerTestScheme(t)
+	notifier := &recordingNotifier{}
+	pipeline := &kaprov1alpha1.Pipeline{
+		ObjectMeta: metav1.ObjectMeta{Name: "progressive"},
+		Spec: kaprov1alpha1.PipelineSpec{Stages: []kaprov1alpha1.Stage{{
+			Name:     "canary",
+			Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
+			Gate: &kaprov1alpha1.GatePolicySpec{
+				Notifications: []kaprov1alpha1.NotificationSpec{{
+					Type:   "webhook",
+					Events: []string{notification.EventReleaseStarted},
+				}},
+			},
+		}}},
+	}
+	r := &ReleaseReconciler{
+		Client:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(pipeline).Build(),
+		Notifier: notifier,
+	}
+	release := &kaprov1alpha1.Release{
+		ObjectMeta: metav1.ObjectMeta{Name: "rel-1"},
+		Spec: kaprov1alpha1.ReleaseSpec{
+			Version:   "repo@sha256:abc",
+			Pipelines: []kaprov1alpha1.ReleasePipelineRef{{Name: "main", Pipeline: "progressive"}},
+		},
+		Status: kaprov1alpha1.ReleaseStatus{
+			Phase:           kaprov1alpha1.ReleasePhaseProgressing,
+			ResolvedVersion: "repo@sha256:abc",
+		},
+	}
+
+	r.notifyReleaseEvent(context.Background(), release, notification.EventReleaseStarted, "started")
+
+	if len(notifier.events) != 1 {
+		t.Fatalf("expected 1 release notification, got %d", len(notifier.events))
+	}
+	if notifier.events[0].Type != notification.EventReleaseStarted {
+		t.Fatalf("expected release started event, got %q", notifier.events[0].Type)
+	}
+	if len(notifier.policies) != 1 || len(notifier.policies[0].Channels) != 1 {
+		t.Fatalf("expected release policy to collect one channel, got %#v", notifier.policies)
+	}
+}
+
+func TestNotifyStageEvent_UsesStageNotificationPolicy(t *testing.T) {
+	scheme := controllerTestScheme(t)
+	notifier := &recordingNotifier{}
+	pipeline := &kaprov1alpha1.Pipeline{
+		ObjectMeta: metav1.ObjectMeta{Name: "progressive"},
+		Spec: kaprov1alpha1.PipelineSpec{Stages: []kaprov1alpha1.Stage{{
+			Name:     "canary",
+			Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
+			Gate: &kaprov1alpha1.GatePolicySpec{
+				Notifications: []kaprov1alpha1.NotificationSpec{{
+					Type:   "webhook",
+					Events: []string{notification.EventStageCompleted},
+				}},
+			},
+		}}},
+	}
+	r := &ReleaseReconciler{
+		Client:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(pipeline).Build(),
+		Notifier: notifier,
+	}
+	release := &kaprov1alpha1.Release{
+		ObjectMeta: metav1.ObjectMeta{Name: "rel-1"},
+		Spec: kaprov1alpha1.ReleaseSpec{
+			Version:   "repo@sha256:abc",
+			Pipelines: []kaprov1alpha1.ReleasePipelineRef{{Name: "main", Pipeline: "progressive"}},
+		},
+		Status: kaprov1alpha1.ReleaseStatus{ResolvedVersion: "repo@sha256:abc"},
+	}
+
+	r.notifyStageEvent(context.Background(), release, "main", "canary", notification.EventStageCompleted, "complete")
+
+	if len(notifier.events) != 1 {
+		t.Fatalf("expected 1 stage notification, got %d", len(notifier.events))
+	}
+	if notifier.events[0].Type != notification.EventStageCompleted {
+		t.Fatalf("expected stage completed event, got %q", notifier.events[0].Type)
+	}
+	if notifier.events[0].Pipeline != "main" || notifier.events[0].Stage != "canary" {
+		t.Fatalf("stage event context not populated: %#v", notifier.events[0])
+	}
+	if len(notifier.policies) != 1 || len(notifier.policies[0].Channels) != 1 {
+		t.Fatalf("expected stage policy to provide one channel, got %#v", notifier.policies)
 	}
 }
 

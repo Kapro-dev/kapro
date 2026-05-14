@@ -238,10 +238,12 @@ func (r *ReleaseTargetReconciler) handleVerification(ctx context.Context, releas
 		if rt := releaseTargetFromContext(ctx); rt != nil {
 			r.Recorder.Event(rt, corev1.EventTypeNormal, "VerificationPassed", "artifact signature verified")
 		}
+		r.notifyGateEvent(ctx, release, target, notification.EventGatePassed, "verification", "artifact signature verified", false)
 		r.transitionTo(ctx, release, target, kaprov1alpha1.TargetPhaseHealthCheck)
 		return ctrl.Result{Requeue: true}, nil
 	}
 	if result.Phase == kaprov1alpha1.GatePhaseFailed {
+		r.notifyGateEvent(ctx, release, target, notification.EventGateFailed, "verification", result.Message, true)
 		r.failTarget(ctx, release, target, result.Message)
 		return ctrl.Result{}, nil
 	}
@@ -250,6 +252,7 @@ func (r *ReleaseTargetReconciler) handleVerification(ctx context.Context, releas
 	if rt := releaseTargetFromContext(ctx); rt != nil {
 		r.Recorder.Eventf(rt, corev1.EventTypeWarning, "VerificationFailed", "verification: %s", result.Message)
 	}
+	r.notifyGateEvent(ctx, release, target, notification.EventGateFailed, "verification", result.Message, true)
 	return ctrl.Result{RequeueAfter: parseDurationOrDefault(result.RetryAfter)}, nil
 }
 
@@ -321,6 +324,7 @@ func (r *ReleaseTargetReconciler) handleSoaking(ctx context.Context, release *ka
 		if rt := releaseTargetFromContext(ctx); rt != nil {
 			r.Recorder.Event(rt, corev1.EventTypeNormal, "SoakPassed", "soak timer completed")
 		}
+		r.notifyGateEvent(ctx, release, target, notification.EventGatePassed, "soak", "soak timer completed", false)
 		r.transitionTo(ctx, release, target, kaprov1alpha1.TargetPhaseMetricsCheck)
 		return ctrl.Result{Requeue: true}, nil
 	}
@@ -354,6 +358,7 @@ func (r *ReleaseTargetReconciler) handleMetricsCheck(ctx context.Context, releas
 				if rt := releaseTargetFromContext(ctx); rt != nil {
 					r.Recorder.Eventf(rt, corev1.EventTypeWarning, "MetricsFailed", "metrics gate[%d]: %s", idx, result.Message)
 				}
+				r.notifyGateEvent(ctx, release, target, notification.EventGateFailed, fmt.Sprintf("metrics[%d]", idx), result.Message, true)
 				if timedOut, failMsg := metricsGateTimedOut(target, policy); timedOut {
 					r.failTarget(ctx, release, target, failMsg)
 					return ctrl.Result{}, nil
@@ -361,6 +366,7 @@ func (r *ReleaseTargetReconciler) handleMetricsCheck(ctx context.Context, releas
 				return ctrl.Result{RequeueAfter: parseDurationOrDefault(result.RetryAfter)}, nil
 			}
 		}
+		r.notifyGateEvent(ctx, release, target, notification.EventGatePassed, "metrics", "metrics gates passed", false)
 	}
 
 	if len(policy.Gate.Templates) > 0 {
@@ -515,6 +521,7 @@ func (r *ReleaseTargetReconciler) evaluateGateTemplates(
 					continue
 				}
 			}
+			r.notifyGateEvent(ctx, release, target, notification.EventGateFailed, gateName, gateStatus.Message, true)
 			allPassed = false
 		case kaprov1alpha1.GatePhaseInconclusive:
 			switch tmpl.InconclusivePolicy {
@@ -540,11 +547,33 @@ func (r *ReleaseTargetReconciler) evaluateGateTemplates(
 			if d := parseDurationOrDefault(result.RetryAfter); d < requeueAfter || requeueAfter == requeueNormal {
 				requeueAfter = d
 			}
+		case kaprov1alpha1.GatePhasePassed:
+			r.notifyGateEvent(ctx, release, target, notification.EventGatePassed, gateName, gateStatus.Message, false)
 		}
 	}
 
 	target.Gates = gates
 	return allPassed, requeueAfter, nil
+}
+
+func (r *ReleaseTargetReconciler) notifyGateEvent(ctx context.Context, release *kaprov1alpha1.Release, target *kaprov1alpha1.TargetStatus, eventType, gateName, message string, isFailure bool) {
+	if r.Notifier == nil {
+		return
+	}
+	if message == "" {
+		message = gateName
+	}
+	r.Notifier.Notify(ctx, notification.Event{
+		Type:      eventType,
+		Phase:     string(target.Phase),
+		Version:   target.Version,
+		Target:    target.Target,
+		Release:   release.Name,
+		Pipeline:  target.PipelineRef,
+		Stage:     target.Stage,
+		Message:   fmt.Sprintf("%s: %s", gateName, message),
+		IsFailure: isFailure,
+	}, notificationPolicyFrom(target.Gate))
 }
 
 func (r *ReleaseTargetReconciler) gateForTemplate(tmpl *kaprov1alpha1.GateTemplateSpec) (gate.Gate, error) {

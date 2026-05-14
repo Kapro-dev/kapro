@@ -203,6 +203,7 @@ func (r *ReleaseReconciler) handlePending(ctx context.Context, release *kaprov1a
 	if err := r.patchReleaseStatus(ctx, release, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch Release phase: %w", err)
 	}
+	r.notifyReleaseEvent(ctx, release, notification.EventReleaseStarted, "release started")
 	return ctrl.Result{Requeue: true}, nil
 }
 
@@ -366,6 +367,7 @@ func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kapr
 			if patchErr := r.patchReleaseStatus(ctx, release, patch); patchErr != nil {
 				return ctrl.Result{}, fmt.Errorf("patch Release status on failure: %w", patchErr)
 			}
+			r.notifyReleaseEvent(ctx, release, notification.EventReleaseFailed, failureMsg)
 			if hasRollbacks {
 				return ctrl.Result{Requeue: true}, nil
 			}
@@ -421,6 +423,7 @@ func (r *ReleaseReconciler) handleProgressing(ctx context.Context, release *kapr
 	}
 
 	if allPipelinesComplete {
+		r.notifyReleaseEvent(ctx, release, notification.EventReleaseCompleted, "release completed")
 		r.clearActiveRelease(ctx, release)
 		annPatch := client.MergeFrom(release.DeepCopy())
 		if release.Annotations == nil {
@@ -452,6 +455,7 @@ func (r *ReleaseReconciler) handleTimeout(ctx context.Context, release *kaprov1a
 		return ctrl.Result{}, fmt.Errorf("patch Release status (timeout): %w", err)
 	}
 	r.Recorder.Eventf(release, corev1.EventTypeWarning, "Timeout", msg)
+	r.notifyReleaseEvent(ctx, release, notification.EventReleaseFailed, msg)
 	log.FromContext(ctx).Info(msg)
 	return ctrl.Result{}, nil
 }
@@ -634,6 +638,9 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 			allComplete = false
 		}
 
+		if sp.Phase == "Complete" && previousStagePhase(release, pipelineRefName, stage.Name) != "Complete" {
+			r.notifyStageEvent(ctx, release, pipelineRefName, stage.Name, notification.EventStageCompleted, "stage completed")
+		}
 		stageProgress = append(stageProgress, sp)
 
 		if anyFailed {
@@ -642,6 +649,20 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 	}
 
 	return stageProgress, allComplete, anyFailed, nextRequeue, cancels, nil
+}
+
+func previousStagePhase(release *kaprov1alpha1.Release, pipelineRef, stageName string) string {
+	for _, pipelineProgress := range release.Status.PipelineProgress {
+		if pipelineProgress.Name != pipelineRef {
+			continue
+		}
+		for _, stageProgress := range pipelineProgress.StageProgress {
+			if stageProgress.Name == stageName {
+				return stageProgress.Phase
+			}
+		}
+	}
+	return ""
 }
 
 // stageProgressMessage builds a human-readable status line for k9s describe view.
@@ -917,6 +938,71 @@ func (r *ReleaseReconciler) triggerRollbackTargets(ctx context.Context, release 
 		}
 		r.triggerTargetRollback(ctx, release, i)
 	}
+}
+
+func (r *ReleaseReconciler) notifyReleaseEvent(ctx context.Context, release *kaprov1alpha1.Release, eventType, message string) {
+	if r.Notifier == nil {
+		return
+	}
+	policy := r.notificationPolicyForRelease(ctx, release)
+	r.Notifier.Notify(ctx, notification.Event{
+		Type:      eventType,
+		Phase:     string(release.Status.Phase),
+		Version:   release.Status.ResolvedVersion,
+		Release:   release.Name,
+		Message:   message,
+		IsFailure: eventType == notification.EventReleaseFailed,
+	}, policy)
+}
+
+func (r *ReleaseReconciler) notifyStageEvent(ctx context.Context, release *kaprov1alpha1.Release, pipelineRef, stage, eventType, message string) {
+	if r.Notifier == nil {
+		return
+	}
+	policy := r.notificationPolicyForStage(ctx, release, pipelineRef, stage)
+	r.Notifier.Notify(ctx, notification.Event{
+		Type:     eventType,
+		Phase:    "Complete",
+		Version:  release.Status.ResolvedVersion,
+		Release:  release.Name,
+		Pipeline: pipelineRef,
+		Stage:    stage,
+		Message:  message,
+	}, policy)
+}
+
+func (r *ReleaseReconciler) notificationPolicyForRelease(ctx context.Context, release *kaprov1alpha1.Release) notification.NotificationPolicy {
+	policies := make([]notification.NotificationPolicy, 0)
+	for _, pipelineRef := range release.Spec.Pipelines {
+		var pipeline kaprov1alpha1.Pipeline
+		if err := r.Get(ctx, client.ObjectKey{Name: pipelineRef.Pipeline}, &pipeline); err != nil {
+			log.FromContext(ctx).Error(err, "failed to load pipeline for release notification policy", "pipeline", pipelineRef.Pipeline)
+			continue
+		}
+		for _, stage := range pipeline.Spec.Stages {
+			policies = append(policies, notificationPolicyFrom(stage.Gate))
+		}
+	}
+	return mergeNotificationPolicies(policies...)
+}
+
+func (r *ReleaseReconciler) notificationPolicyForStage(ctx context.Context, release *kaprov1alpha1.Release, pipelineRefName, stageName string) notification.NotificationPolicy {
+	for _, pipelineRef := range release.Spec.Pipelines {
+		if pipelineRef.Name != pipelineRefName {
+			continue
+		}
+		var pipeline kaprov1alpha1.Pipeline
+		if err := r.Get(ctx, client.ObjectKey{Name: pipelineRef.Pipeline}, &pipeline); err != nil {
+			log.FromContext(ctx).Error(err, "failed to load pipeline for stage notification policy", "pipeline", pipelineRef.Pipeline)
+			return notification.EmptyPolicy
+		}
+		for _, stage := range pipeline.Spec.Stages {
+			if stage.Name == stageName {
+				return notificationPolicyFrom(stage.Gate)
+			}
+		}
+	}
+	return notification.EmptyPolicy
 }
 
 func (r *ReleaseReconciler) hasActiveRollbackTargets(release *kaprov1alpha1.Release) bool {

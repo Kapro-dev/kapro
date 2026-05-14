@@ -66,6 +66,17 @@ func eventTypeForPhase(phase kaprov1alpha1.TargetPhase) string {
 	}
 }
 
+func mergeNotificationPolicies(policies ...notification.NotificationPolicy) notification.NotificationPolicy {
+	var channels []notification.Channel
+	for _, policy := range policies {
+		channels = append(channels, policy.Channels...)
+	}
+	if len(channels) == 0 {
+		return notification.EmptyPolicy
+	}
+	return notification.NotificationPolicy{Channels: channels}
+}
+
 // notificationPolicyFrom converts a *GatePolicySpec into the value type expected
 // by the notification package.
 func notificationPolicyFrom(policy *kaprov1alpha1.GatePolicySpec) notification.NotificationPolicy {
@@ -283,6 +294,19 @@ func (r *ReleaseReconciler) triggerTargetRollback(ctx context.Context, release *
 	)
 	r.Recorder.Eventf(release, corev1.EventTypeWarning, "RollbackTriggered",
 		"Auto-rollback to %s triggered for %s", target.PreviousVersion, target.Target)
+	if r.Notifier != nil {
+		r.Notifier.Notify(ctx, notification.Event{
+			Type:      notification.EventRollbackStarted,
+			Phase:     string(kaprov1alpha1.ReleasePhaseFailed),
+			Version:   rollbackTarget.Version,
+			Target:    rollbackTarget.Target,
+			Release:   release.Name,
+			Pipeline:  rollbackTarget.PipelineRef,
+			Stage:     rollbackTarget.Stage,
+			Message:   fmt.Sprintf("rollback to %s triggered for %s", rollbackTarget.Version, rollbackTarget.Target),
+			IsFailure: true,
+		}, notificationPolicyFrom(target.Gate))
+	}
 }
 
 // --- Watch mappers ---
