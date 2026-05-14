@@ -652,7 +652,7 @@ func (r *ReleaseTargetReconciler) handleApplying(ctx context.Context, release *k
 
 	// Issue Apply exactly once per Applying entry.
 	if r.ActuatorRegistry != nil && !target.ApplyIssued {
-		act, err := r.ActuatorRegistry.Resolve(mc.Spec.Actuator.Mode + "/" + mc.Spec.Actuator.Backend)
+		act, err := r.ActuatorRegistry.Resolve(mc.Spec.Actuator.RegistryKey())
 		if err != nil {
 			l.Error(err, "failed to resolve actuator")
 			return ctrl.Result{RequeueAfter: requeueFast}, nil
@@ -672,7 +672,7 @@ func (r *ReleaseTargetReconciler) handleApplying(ctx context.Context, release *k
 	// Poll for convergence.
 	currentVersion := mc.Status.CurrentVersions[targetAppKey(target)] // nil map read returns "" safely
 	if r.ActuatorRegistry != nil {
-		act, err := r.ActuatorRegistry.Resolve(mc.Spec.Actuator.Mode + "/" + mc.Spec.Actuator.Backend)
+		act, err := r.ActuatorRegistry.Resolve(mc.Spec.Actuator.RegistryKey())
 		if err != nil {
 			l.Error(err, "failed to resolve actuator for convergence check")
 			return ctrl.Result{RequeueAfter: requeueFast}, nil
@@ -739,7 +739,7 @@ func validateTargetTopology(mc *kaprov1alpha1.MemberCluster, desiredVersions map
 	if len(desiredVersions) <= 1 || mc.Spec.Actuator.Backend != "flux" {
 		return nil
 	}
-	flux := mc.Spec.Actuator.Flux
+	flux := mc.Spec.Actuator.Pull
 	if flux == nil || len(flux.OCIRepositories) == 0 {
 		return fmt.Errorf("cluster %s does not declare spec.actuator.flux.ociRepositories required for multi-artifact delivery", mc.Name)
 	}

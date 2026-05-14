@@ -215,7 +215,7 @@ func makeMemberCluster(name string, labels map[string]string) *kaprov1alpha1.Mem
 		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{
 				Mode: "pull", Backend: "flux",
-				Flux: &kaprov1alpha1.FluxActuator{
+				Pull: &kaprov1alpha1.PullConfig{
 					Namespace:         "flux-system",
 					OCIRepository:     "test-repo",
 					KustomizationPath: ".",

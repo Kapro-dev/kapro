@@ -52,9 +52,9 @@ func (a *FluxOperatorActuator) Apply(ctx context.Context, req actuator.ApplyRequ
 	if mc == nil {
 		return fmt.Errorf("cluster is nil")
 	}
-	foSpec := mc.Spec.Actuator.FluxOperator
+	foSpec := mc.Spec.Actuator.Push
 	if foSpec == nil {
-		return fmt.Errorf("MemberCluster %q has no fluxOperator actuator config", mc.Name)
+		return fmt.Errorf("MemberCluster %q has no push actuator config", mc.Name)
 	}
 
 	ns, tenantField := resolveConfig(foSpec)
@@ -101,9 +101,9 @@ func (a *FluxOperatorActuator) ApplyDelta(ctx context.Context, req actuator.Delt
 		return 0, fmt.Errorf("cluster is nil")
 	}
 	mc := req.Cluster
-	foSpec := mc.Spec.Actuator.FluxOperator
+	foSpec := mc.Spec.Actuator.Push
 	if foSpec == nil {
-		return 0, fmt.Errorf("MemberCluster %q has no fluxOperator actuator config", mc.Name)
+		return 0, fmt.Errorf("MemberCluster %q has no push actuator config", mc.Name)
 	}
 
 	ns, tenantField := resolveConfig(foSpec)
@@ -167,9 +167,9 @@ func (a *FluxOperatorActuator) ApplyDelta(ctx context.Context, req actuator.Delt
 // ResourceSet Ready only means "YAML was applied" — we also need to verify the spoke
 // HelmRelease actually succeeded (Ready=True on the HelmRelease itself).
 func (a *FluxOperatorActuator) IsConverged(ctx context.Context, mc *kaprov1alpha1.MemberCluster, appKey, version string) (bool, error) {
-	foSpec := mc.Spec.Actuator.FluxOperator
+	foSpec := mc.Spec.Actuator.Push
 	if foSpec == nil {
-		return false, fmt.Errorf("no fluxOperator config on %s", mc.Name)
+		return false, fmt.Errorf("no push config on %s", mc.Name)
 	}
 
 	ns, tenantField := resolveConfig(foSpec)
@@ -215,9 +215,9 @@ func (a *FluxOperatorActuator) IsAllConverged(ctx context.Context, mc *kaprov1al
 	if mc == nil {
 		return false, fmt.Errorf("cluster is nil")
 	}
-	foSpec := mc.Spec.Actuator.FluxOperator
+	foSpec := mc.Spec.Actuator.Push
 	if foSpec == nil {
-		return false, fmt.Errorf("no fluxOperator config on %s", mc.Name)
+		return false, fmt.Errorf("no push config on %s", mc.Name)
 	}
 
 	ns, tenantField := resolveConfig(foSpec)
@@ -267,7 +267,7 @@ func (a *FluxOperatorActuator) Rollback(ctx context.Context, mc *kaprov1alpha1.M
 
 // --- Config helpers ---
 
-func resolveConfig(foSpec *kaprov1alpha1.FluxOperatorConfig) (ns, tenantField string) {
+func resolveConfig(foSpec *kaprov1alpha1.PushConfig) (ns, tenantField string) {
 	ns = foSpec.Namespace
 	if ns == "" {
 		ns = "flux-system"
@@ -282,7 +282,7 @@ func resolveConfig(foSpec *kaprov1alpha1.FluxOperatorConfig) (ns, tenantField st
 // resolveVersionField maps an appKey to the ResourceSet input field name.
 // For multi-component KaproApp: "pos-server" → "pos-server_version"
 // For single-app (backward compat): "" or "default" → configured inputField
-func resolveVersionField(foSpec *kaprov1alpha1.FluxOperatorConfig, appKey string) string {
+func resolveVersionField(foSpec *kaprov1alpha1.PushConfig, appKey string) string {
 	if appKey != "" && appKey != "default" {
 		return appKey + "_version"
 	}

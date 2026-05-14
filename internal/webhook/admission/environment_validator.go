@@ -50,11 +50,11 @@ func validateActuator(mc *kaprov1alpha1.MemberCluster) error {
 	switch act.Backend {
 	case "flux":
 		if act.Mode == "pull" {
-			if act.Flux == nil {
-				return fmt.Errorf("membercluster.spec.actuator.flux must be set when mode=pull and backend=flux")
+			if act.Pull == nil {
+				return fmt.Errorf("membercluster.spec.actuator.pull must be set when mode=pull and backend=flux")
 			}
-			if act.Flux.OCIRepository == "" && len(act.Flux.OCIRepositories) == 0 {
-				return fmt.Errorf("membercluster.spec.actuator.flux.ociRepository or ociRepositories must be set when mode=pull and backend=flux")
+			if act.Pull.OCIRepository == "" && len(act.Pull.OCIRepositories) == 0 {
+				return fmt.Errorf("membercluster.spec.actuator.pull.ociRepository or ociRepositories must be set when mode=pull and backend=flux")
 			}
 		}
 	default:

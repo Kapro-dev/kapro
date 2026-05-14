@@ -101,7 +101,7 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	for _, cluster := range kapro.Spec.Clusters {
 		actuatorSpec := kaprov1alpha1.ActuatorSpec{
 			Mode: "push", Backend: "flux",
-			FluxOperator: &kaprov1alpha1.FluxOperatorConfig{
+			Push: &kaprov1alpha1.PushConfig{
 				ResourceSet: kapro.Name + "-workloads",
 				Namespace:   "flux-system",
 				InputField:  "version",
@@ -111,7 +111,7 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		if spokeLocal {
 			actuatorSpec = kaprov1alpha1.ActuatorSpec{
 				Mode: "pull", Backend: "flux",
-				Flux: &kaprov1alpha1.FluxActuator{
+				Pull: &kaprov1alpha1.PullConfig{
 					Namespace:     "flux-system",
 					OCIRepository: kapro.Name + "-bundle",
 				},

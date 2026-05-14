@@ -59,6 +59,9 @@ type TargetTopology struct {
 // ActuatorSpec selects and configures the delivery backend for this cluster.
 // Mode controls who initiates delivery: push (hub pushes to spoke) or pull
 // (spoke pulls from OCI registry). Backend selects which GitOps tool executes.
+//
+// +kubebuilder:validation:XValidation:rule="self.mode != 'push' || has(self.push)",message="push config is required when mode=push"
+// +kubebuilder:validation:XValidation:rule="self.mode != 'pull' || has(self.pull)",message="pull config is required when mode=pull"
 type ActuatorSpec struct {
 	// Mode controls who initiates delivery.
 	//   push: hub renders and pushes resources to the spoke cluster.
@@ -70,17 +73,40 @@ type ActuatorSpec struct {
 	// +kubebuilder:validation:Enum=flux;argo
 	// +kubebuilder:default="flux"
 	Backend string `json:"backend"`
-	// Flux configures pull-mode delivery via Flux OCIRepository on the spoke.
-	// Required when mode=pull and backend=flux.
-	Flux *FluxActuator `json:"flux,omitempty"`
-	// FluxOperator configures push-mode delivery via Flux Operator ResourceSet on the hub.
-	// Required when mode=push and backend=flux.
-	FluxOperator *FluxOperatorConfig `json:"fluxOperator,omitempty"`
+	// Pull configures pull-mode delivery (spoke pulls OCI bundle and reconciles locally).
+	// Required when mode=pull.
+	// +optional
+	Pull *PullConfig `json:"pull,omitempty"`
+	// Push configures push-mode delivery (hub renders and pushes to spoke).
+	// Required when mode=push.
+	// +optional
+	Push *PushConfig `json:"push,omitempty"`
 }
 
-// FluxOperatorConfig configures the Flux Operator actuator.
-// Kapro patches ResourceSet inputs instead of individual Flux resources.
-type FluxOperatorConfig struct {
+// RegistryKey returns the composite key used to resolve the actuator implementation.
+func (a *ActuatorSpec) RegistryKey() string {
+	return a.Mode + "/" + a.Backend
+}
+
+// PullConfig configures pull-mode delivery. The spoke's own GitOps controllers
+// pull from an OCI registry and reconcile locally.
+type PullConfig struct {
+	// Namespace is the Flux namespace on the target cluster.
+	// +kubebuilder:default="flux-system"
+	Namespace string `json:"namespace,omitempty"`
+	// OCIRepository is the Flux OCIRepository name that pulls the artifact.
+	OCIRepository string `json:"ociRepository"`
+	// OCIRepositories maps appKey -> Flux OCIRepository name for multi-artifact delivery.
+	// +optional
+	OCIRepositories map[string]string `json:"ociRepositories,omitempty"`
+	// KustomizationPath is the path within the OCI artifact to the kustomization root.
+	// +kubebuilder:default="."
+	KustomizationPath string `json:"kustomizationPath,omitempty"`
+}
+
+// PushConfig configures push-mode delivery. The hub renders resources and
+// pushes them to the spoke via Flux Operator ResourceSet or similar.
+type PushConfig struct {
 	// ResourceSet is the name of the Flux Operator ResourceSet to patch.
 	ResourceSet string `json:"resourceSet"`
 	// Namespace is the namespace of the ResourceSet.
@@ -94,22 +120,13 @@ type FluxOperatorConfig struct {
 	TenantField string `json:"tenantField,omitempty"`
 }
 
-type FluxActuator struct {
-	// Namespace is the Flux namespace on the target cluster.
-	// +kubebuilder:default="flux-system"
-	Namespace string `json:"namespace,omitempty"`
-	// OCIRepository is the Flux OCIRepository name that pulls the artifact.
-	// Deprecated: use OCIRepositories for multi-artifact delivery.
-	OCIRepository string `json:"ociRepository"`
-	// OCIRepositories maps appKey -> Flux OCIRepository name for multi-artifact delivery.
-	// When multiple artifacts are delivered to a cluster, every appKey in the rollout
-	// must resolve to a repository name here.
-	// +optional
-	OCIRepositories map[string]string `json:"ociRepositories,omitempty"`
-	// KustomizationPath is the path within the OCI artifact to the kustomization root.
-	// +kubebuilder:default="."
-	KustomizationPath string `json:"kustomizationPath,omitempty"`
-}
+// FluxActuator is a type alias for backward compatibility.
+// Deprecated: use PullConfig instead.
+type FluxActuator = PullConfig
+
+// FluxOperatorConfig is a type alias for backward compatibility.
+// Deprecated: use PushConfig instead.
+type FluxOperatorConfig = PushConfig
 
 type HealthCheckSpec struct {
 	Endpoint string `json:"endpoint"`

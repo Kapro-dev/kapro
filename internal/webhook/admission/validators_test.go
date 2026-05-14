@@ -45,7 +45,7 @@ func TestValidateMemberCluster_MissingBackend(t *testing.T) {
 func TestValidateMemberCluster_FluxMissingSubSpec(t *testing.T) {
 	mc := &kaprov1alpha1.MemberCluster{
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: "flux", Flux: nil},
+			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: "flux", Pull: nil},
 		},
 	}
 	if err := mcValidate(mc); err == nil {
@@ -58,7 +58,7 @@ func TestValidateMemberCluster_FluxValid(t *testing.T) {
 		Spec: kaprov1alpha1.MemberClusterSpec{
 			Actuator: kaprov1alpha1.ActuatorSpec{
 				Mode: "pull", Backend: "flux",
-				Flux: &kaprov1alpha1.FluxActuator{Namespace: "flux-system", OCIRepository: "cluster-a"},
+				Pull: &kaprov1alpha1.PullConfig{Namespace: "flux-system", OCIRepository: "cluster-a"},
 			},
 		},
 	}
