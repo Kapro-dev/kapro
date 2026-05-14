@@ -27,6 +27,17 @@ go vet ./...
 echo "pre-commit: go build..."
 go build ./...
 
+# Check if types.go changed - if so, verify manifests are up to date
+if echo "$STAGED" | grep -q "types.go"; then
+    echo "pre-commit: types.go changed, verifying generated manifests..."
+    make generate manifests 2>/dev/null
+    if ! git diff --quiet config/crd/ api/v1alpha1/zz_generated.deepcopy.go 2>/dev/null; then
+        echo "  CRD manifests or deepcopy are out of date."
+        echo "  run: make generate manifests && git add config/ api/"
+        exit 1
+    fi
+fi
+
 if [ "${KAPRO_HOOK_FAST:-}" = "1" ]; then
     echo "pre-commit: passed (fast mode, skipped lint+test)"
     exit 0
