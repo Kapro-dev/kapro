@@ -736,7 +736,7 @@ func capturePreviousVersions(target *kaprov1alpha1.TargetStatus, mc *kaprov1alph
 }
 
 func validateTargetTopology(mc *kaprov1alpha1.MemberCluster, desiredVersions map[string]string) error {
-	if len(desiredVersions) <= 1 || mc.Spec.Actuator.Backend != "flux" {
+	if len(desiredVersions) <= 1 || mc.Spec.Actuator.Mode != "pull" || mc.Spec.Actuator.Backend != "flux" {
 		return nil
 	}
 	flux := mc.Spec.Actuator.Pull

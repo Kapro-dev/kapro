@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.0
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: memberclusters.kapro.io
 spec:
   group: kapro.io
@@ -84,12 +84,21 @@ spec:
                     description: Backend selects which GitOps tool executes the delivery.
                     enum:
                     - flux
-                    - argo
                     type: string
-                  flux:
+                  mode:
+                    default: pull
                     description: |-
-                      Flux configures pull-mode delivery via Flux OCIRepository on the spoke.
-                      Required when mode=pull and backend=flux.
+                      Mode controls who initiates delivery.
+                        push: hub renders and pushes resources to the spoke cluster.
+                        pull: hub patches the OCI tag, spoke's own controllers pull and reconcile.
+                    enum:
+                    - push
+                    - pull
+                    type: string
+                  pull:
+                    description: |-
+                      Pull configures pull-mode delivery (spoke pulls OCI bundle and reconciles locally).
+                      Required when mode=pull.
                     properties:
                       kustomizationPath:
                         default: .
@@ -98,29 +107,35 @@ spec:
                         type: string
                       namespace:
                         default: flux-system
-                        description: Namespace is the Flux namespace on the target
-                          cluster.
+                        description: Namespace is the GitOps controller namespace
+                          on the target cluster.
                         type: string
                       ociRepositories:
                         additionalProperties:
                           type: string
-                        description: |-
-                          OCIRepositories maps appKey -> Flux OCIRepository name for multi-artifact delivery.
-                          When multiple artifacts are delivered to a cluster, every appKey in the rollout
-                          must resolve to a repository name here.
+                        description: OCIRepositories maps appKey -> Flux OCIRepository
+                          name for multi-artifact delivery.
                         type: object
                       ociRepository:
-                        description: |-
-                          OCIRepository is the Flux OCIRepository name that pulls the artifact.
-                          Deprecated: use OCIRepositories for multi-artifact delivery.
+                        description: OCIRepository is the Flux OCIRepository name
+                          that pulls the artifact.
                         type: string
+                      parameters:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Parameters are backend-specific key-value pairs passed through to the actuator.
+                          Kapro does not interpret these. The backend implementation uses them for
+                          vendor-specific configuration (e.g. ArgoCD project, application name, sync policy).
+                          Same pattern as StorageClass.parameters in Kubernetes CSI.
+                        type: object
                     required:
                     - ociRepository
                     type: object
-                  fluxOperator:
+                  push:
                     description: |-
-                      FluxOperator configures push-mode delivery via Flux Operator ResourceSet on the hub.
-                      Required when mode=push and backend=flux.
+                      Push configures push-mode delivery (hub renders and pushes to spoke).
+                      Required when mode=push.
                     properties:
                       inputField:
                         default: tag
@@ -131,6 +146,15 @@ spec:
                         default: flux-system
                         description: Namespace is the namespace of the ResourceSet.
                         type: string
+                      parameters:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Parameters are backend-specific key-value pairs passed through to the actuator.
+                          Kapro does not interpret these. The backend implementation uses them for
+                          vendor-specific configuration (e.g. ArgoCD ApplicationSet name, sync options).
+                          Same pattern as StorageClass.parameters in Kubernetes CSI.
+                        type: object
                       resourceSet:
                         description: ResourceSet is the name of the Flux Operator
                           ResourceSet to patch.
@@ -143,20 +167,15 @@ spec:
                     required:
                     - resourceSet
                     type: object
-                  mode:
-                    default: pull
-                    description: |-
-                      Mode controls who initiates delivery.
-                        push: hub renders and pushes resources to the spoke cluster.
-                        pull: hub patches the OCI tag, spoke's own controllers pull and reconcile.
-                    enum:
-                    - push
-                    - pull
-                    type: string
                 required:
                 - backend
                 - mode
                 type: object
+                x-kubernetes-validations:
+                - message: push config is required when mode=push
+                  rule: self.mode != 'push' || has(self.push)
+                - message: pull config is required when mode=pull
+                  rule: self.mode != 'pull' || has(self.pull)
               bootstrap:
                 description: |-
                   Bootstrap configures one-time cluster self-registration.

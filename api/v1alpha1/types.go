@@ -70,7 +70,7 @@ type ActuatorSpec struct {
 	// +kubebuilder:default="pull"
 	Mode string `json:"mode"`
 	// Backend selects which GitOps tool executes the delivery.
-	// +kubebuilder:validation:Enum=flux;argo
+	// +kubebuilder:validation:Enum=flux
 	// +kubebuilder:default="flux"
 	Backend string `json:"backend"`
 	// Pull configures pull-mode delivery (spoke pulls OCI bundle and reconciles locally).
@@ -131,14 +131,6 @@ type PushConfig struct {
 	// +optional
 	Parameters map[string]string `json:"parameters,omitempty"`
 }
-
-// FluxActuator is a type alias for backward compatibility.
-// Deprecated: use PullConfig instead.
-type FluxActuator = PullConfig
-
-// FluxOperatorConfig is a type alias for backward compatibility.
-// Deprecated: use PushConfig instead.
-type FluxOperatorConfig = PushConfig
 
 type HealthCheckSpec struct {
 	Endpoint string `json:"endpoint"`
