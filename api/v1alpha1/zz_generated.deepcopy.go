@@ -1694,7 +1694,7 @@ func (in *OCIReleaseTriggerSource) DeepCopyInto(out *OCIReleaseTriggerSource) {
 	*out = *in
 	if in.SecretRef != nil {
 		in, out := &in.SecretRef, &out.SecretRef
-		*out = new(v1.LocalObjectReference)
+		*out = new(v1.SecretReference)
 		**out = **in
 	}
 }

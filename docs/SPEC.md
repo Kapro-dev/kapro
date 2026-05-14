@@ -342,9 +342,10 @@ creation from verified artifact changes. It is cluster-scoped and supports OCI
 source configuration, release template configuration, cooldown, max-active
 limits, dry-run mode, and status conditions.
 
-The controller that observes sources and creates Releases is future work.
-Creating the CRD now establishes the API shape and validation without making
-automatic deployment behavior available before the safeguards are implemented.
+The controller observes OCI registries, records the latest matching tag and
+digest, and creates digest-pinned `Release` objects only after safeguards pass.
+Created releases still use the normal Kapro pipeline; the trigger does not
+apply manifests, bypass gates, or promote directly to production.
 
 ---
 

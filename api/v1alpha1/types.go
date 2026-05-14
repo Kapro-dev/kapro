@@ -798,8 +798,9 @@ type OCIReleaseTriggerSource struct {
 	// +kubebuilder:default="5m"
 	PollInterval string `json:"pollInterval,omitempty"`
 	// SecretRef references registry credentials.
+	// Cluster-scoped triggers must include the Secret namespace.
 	// +optional
-	SecretRef *corev1.LocalObjectReference `json:"secretRef,omitempty"`
+	SecretRef *corev1.SecretReference `json:"secretRef,omitempty"`
 }
 
 // ReleaseTriggerTemplate defines the Release created from a verified artifact.

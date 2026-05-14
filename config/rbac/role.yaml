@@ -51,6 +51,7 @@ rules:
   - pluginregistrations/status
   - releases/status
   - releasetargets/status
+  - releasetriggers/status
   verbs:
   - get
   - patch
@@ -70,6 +71,7 @@ rules:
   resources:
   - pipelines
   - pluginregistrations
+  - releasetriggers
   verbs:
   - get
   - list
