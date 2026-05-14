@@ -1,3 +1,5 @@
+# Copy this workflow into your own hub config repository.
+# It will NOT run inside the Kapro repo itself.
 name: Apply Kapro Hub Config
 
 on:
@@ -13,11 +15,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-kubectl@v4
-      - name: Validate YAMLs
+
+      # Configure kubeconfig for the hub cluster.
+      # Examples:
+      #   - GKE: google-github-actions/auth + get-gke-credentials
+      #   - EKS: aws-actions/configure-aws-credentials
+      #   - Generic: store KUBECONFIG as a GitHub secret
+      - name: Configure hub kubeconfig
+        run: echo "Configure your hub cluster auth here"
+
+      # PR validation: server-side dry-run catches schema errors
+      - name: Validate YAMLs (server-side)
         run: |
           for f in clusters/*.yaml apps/*.yaml pipelines/*.yaml releases/*.yaml; do
             echo "Validating $f..."
-            kubectl apply --dry-run=client -f "$f"
+            kubectl apply --dry-run=server -f "$f"
           done
 
   diff:
@@ -27,6 +39,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-kubectl@v4
+      - name: Configure hub kubeconfig
+        run: echo "Configure your hub cluster auth here"
       - name: Show diff
         run: |
           for f in clusters/*.yaml apps/*.yaml pipelines/*.yaml; do
@@ -42,6 +56,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-kubectl@v4
+      - name: Configure hub kubeconfig
+        run: echo "Configure your hub cluster auth here"
       - name: Apply cluster config
         run: kubectl apply -f clusters/
       - name: Apply apps

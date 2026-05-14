@@ -25,7 +25,7 @@ Developer -> git push -> CI pipeline -> kubectl apply -> Hub cluster (etcd)
 | `clusters/` | MemberCluster definitions (one per spoke) |
 | `apps/` | KaproApp definitions (component registry, waves, overrides) |
 | `pipelines/` | Pipeline definitions (stage DAG, selectors, gates) |
-| `releases/` | Release triggers (version + pipeline references) |
+| `releases/` | Release objects (version + pipeline references) |
 
 ## What does NOT live in the hub config repo
 
