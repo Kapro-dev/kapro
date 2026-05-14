@@ -21,7 +21,13 @@ func slackPolicy(url string) pkgnotification.NotificationPolicy {
 
 func webhookPolicy(url string) pkgnotification.NotificationPolicy {
 	return pkgnotification.NotificationPolicy{
-		Channels: []pkgnotification.Channel{{Type: "webhook", Target: url}},
+		Channels: []pkgnotification.Channel{{Type: "webhook", Target: url, Format: "json"}},
+	}
+}
+
+func webhookCloudEventsPolicy(url string) pkgnotification.NotificationPolicy {
+	return pkgnotification.NotificationPolicy{
+		Channels: []pkgnotification.Channel{{Type: "webhook", Target: url, Format: "cloudevents"}},
 	}
 }
 
@@ -95,6 +101,37 @@ func TestDispatcher_Notify_Slack_ServerError_NoPanic(t *testing.T) {
 	d.Notify(context.Background(), notification.Event{Phase: "Failed", IsFailure: true}, slackPolicy(srv.URL))
 }
 
+func TestDispatcher_Notify_Webhook_SendsPlainJSON(t *testing.T) {
+	var received []byte
+	var contentType string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		contentType = r.Header.Get("Content-Type")
+		received, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	d := &notification.Dispatcher{HTTPClient: srv.Client()}
+	d.Notify(context.Background(), notification.Event{
+		Type:    pkgnotification.EventTargetConverged,
+		Phase:   "Converged",
+		Version: "v1.0.0",
+		Target:  "prod",
+		Release: "rel-1",
+	}, webhookPolicy(srv.URL))
+
+	if contentType != "application/json" {
+		t.Errorf("expected Content-Type=application/json, got %s", contentType)
+	}
+	var got notification.Event
+	if err := json.Unmarshal(received, &got); err != nil {
+		t.Fatalf("unmarshal plain JSON: %v", err)
+	}
+	if got.Phase != "Converged" {
+		t.Errorf("expected phase=Converged, got %s", got.Phase)
+	}
+}
+
 func TestDispatcher_Notify_Webhook_SendsCloudEvents(t *testing.T) {
 	var received []byte
 	var contentType string
@@ -112,7 +149,7 @@ func TestDispatcher_Notify_Webhook_SendsCloudEvents(t *testing.T) {
 		Version: "v1.0.0",
 		Target:  "prod",
 		Release: "rel-2",
-	}, webhookPolicy(srv.URL))
+	}, webhookCloudEventsPolicy(srv.URL))
 
 	if len(received) == 0 {
 		t.Fatal("expected webhook to receive a payload")

@@ -107,6 +107,8 @@ type Channel struct {
 	// Events filters which lifecycle events this channel receives.
 	// Empty means all events (no filtering).
 	Events []string
+	// Format is the webhook payload format: "json" (default) or "cloudevents".
+	Format string
 	// Email carries SMTP delivery config. Non-nil only when Type == "email".
 	Email *EmailConfig
 }

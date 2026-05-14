@@ -543,6 +543,16 @@ spec:
                             Webhook configures HTTP POST delivery.
                             Required when type=webhook.
                           properties:
+                            format:
+                              default: json
+                              description: |-
+                                Format selects the payload format.
+                                  json (default): plain JSON event payload.
+                                  cloudevents: CloudEvents v1.0 structured content mode.
+                              enum:
+                              - json
+                              - cloudevents
+                              type: string
                             url:
                               description: URL is the HTTP endpoint to POST events
                                 to.
@@ -1531,6 +1541,16 @@ spec:
                             Webhook configures HTTP POST delivery.
                             Required when type=webhook.
                           properties:
+                            format:
+                              default: json
+                              description: |-
+                                Format selects the payload format.
+                                  json (default): plain JSON event payload.
+                                  cloudevents: CloudEvents v1.0 structured content mode.
+                              enum:
+                              - json
+                              - cloudevents
+                              type: string
                             url:
                               description: URL is the HTTP endpoint to POST events
                                 to.
