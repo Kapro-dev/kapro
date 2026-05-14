@@ -113,18 +113,44 @@ func sendSlack(ctx context.Context, client *http.Client, webhookURL string, even
 	return nil
 }
 
-// sendWebhook sends a JSON payload to a generic HTTP webhook endpoint.
+// cloudEvent is the CloudEvents v1.0 structured content mode envelope.
+// See https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/formats/json-format.md
+type cloudEvent struct {
+	SpecVersion string `json:"specversion"`
+	Type        string `json:"type"`
+	Source      string `json:"source"`
+	ID          string `json:"id"`
+	Time        string `json:"time"`
+	Subject     string `json:"subject,omitempty"`
+	Data        Event  `json:"data"`
+}
+
+// sendWebhook sends a CloudEvents v1.0 JSON payload to an HTTP webhook endpoint.
 func sendWebhook(ctx context.Context, client *http.Client, url string, event Event) error {
 	if url == "" {
 		return fmt.Errorf("webhook URL is empty")
 	}
 
-	body, _ := json.Marshal(event)
+	ce := cloudEvent{
+		SpecVersion: "1.0",
+		Type:        event.Type,
+		Source:      "/kapro/releases/" + event.Release,
+		ID:          fmt.Sprintf("%s-%s-%s-%d", event.Release, event.Target, event.Phase, time.Now().UnixMilli()),
+		Time:        time.Now().UTC().Format(time.RFC3339),
+		Subject:     event.Target,
+		Data:        event,
+	}
+	if ce.Type == "" {
+		ce.Type = "kapro.release.target." + event.Phase
+	}
+
+	body, _ := json.Marshal(ce)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("build webhook request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	// CloudEvents structured content mode: application/cloudevents+json
+	req.Header.Set("Content-Type", "application/cloudevents+json")
 
 	resp, err := client.Do(req)
 	if err != nil {

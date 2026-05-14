@@ -60,28 +60,27 @@ const (
 // integrations, Phase is for internal FSM tracking. Channels filter on Type.
 type Event struct {
 	// Type is the semantic lifecycle event name (e.g. "kapro.release.target.converged").
-	// Used for notification filtering and future CloudEvents/CDEvents interop.
-	Type string
+	Type string `json:"type,omitempty"`
 	// Phase is the FSM phase that triggered this event (e.g. "Converged", "Failed").
-	Phase string
+	Phase string `json:"phase,omitempty"`
 	// Version is the artifact version being promoted.
-	Version string
+	Version string `json:"version,omitempty"`
 	// Target is the target cluster name.
-	Target string
+	Target string `json:"target,omitempty"`
 	// Release is the release name.
-	Release string
+	Release string `json:"release,omitempty"`
 	// Pipeline is the pipeline name.
-	Pipeline string
+	Pipeline string `json:"pipeline,omitempty"`
 	// Stage is the stage name within the pipeline.
-	Stage string
+	Stage string `json:"stage,omitempty"`
 	// Message is additional context (e.g. error details).
-	Message string
+	Message string `json:"message,omitempty"`
 	// IsFailure controls error-level formatting (red/alert vs info).
-	IsFailure bool
+	IsFailure bool `json:"isFailure,omitempty"`
 	// ApproveURL is a signed, time-limited URL that creates an Approval CR when POSTed to.
-	ApproveURL string
+	ApproveURL string `json:"approveUrl,omitempty"`
 	// RejectURL is a signed, time-limited URL that fails the Promotion when POSTed to.
-	RejectURL string
+	RejectURL string `json:"rejectUrl,omitempty"`
 }
 
 // NotificationPolicy carries the notification routing config for a delivery operation.
