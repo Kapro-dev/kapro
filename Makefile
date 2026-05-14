@@ -7,7 +7,7 @@ CONTROLLER_GEN_VERSION ?= v0.21.0
 ENVTEST_VERSION        ?= release-0.19
 ENVTEST_K8S_VERSION    ?= 1.31.x
 GOLANGCI_LINT_VERSION  ?= v2.12.2
-PROTO_FILES            := spec/kai/v1alpha1/actuator.proto spec/kgi/v1alpha1/gate.proto
+PROTO_FILES            := spec/kai/v1alpha1/actuator.proto spec/kgi/v1alpha1/gate.proto spec/kpi/v1alpha1/planner.proto
 
 # Tool paths
 LOCALBIN        ?= $(shell pwd)/bin
@@ -56,7 +56,7 @@ tidy: ## Run go mod tidy
 	go mod tidy
 
 .PHONY: proto
-proto: ## Generate Go stubs from KAI/KGI proto contracts
+proto: ## Generate Go stubs from KAI/KGI/KPI proto contracts
 	@if command -v buf >/dev/null 2>&1; then \
 		buf generate; \
 	else \
@@ -71,7 +71,7 @@ proto: ## Generate Go stubs from KAI/KGI proto contracts
 
 .PHONY: check-proto
 check-proto: proto ## Verify generated proto stubs are up to date
-	@git diff --exit-code -- spec/kai/v1alpha1 spec/kgi/v1alpha1 || \
+	@git diff --exit-code -- spec/kai/v1alpha1 spec/kgi/v1alpha1 spec/kpi/v1alpha1 || \
 		(echo "ERROR: generated proto stubs are out of date. Run 'make proto'." && exit 1)
 
 .PHONY: generate

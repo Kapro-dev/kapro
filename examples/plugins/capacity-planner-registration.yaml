@@ -1,0 +1,10 @@
+apiVersion: kapro.io/v1alpha1
+kind: PluginRegistration
+metadata:
+  name: capacity-planner
+spec:
+  type: planner
+  name: capacity
+  protocol: grpc
+  endpoint: dns:///capacity-planner.kapro-system.svc:9090
+  timeout: 10s

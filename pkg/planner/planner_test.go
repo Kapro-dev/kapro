@@ -55,6 +55,67 @@ func TestFrameworkDefaultOrderingIsDeterministic(t *testing.T) {
 	}
 }
 
+func TestFrameworkPlanWithResultRecordsSkippedTargets(t *testing.T) {
+	result, err := NewFramework(&testPlugin{}).PlanWithResult(context.Background(), Request{}, []kaprov1alpha1.MemberCluster{
+		target("cluster-a", "10", "skip", "true"),
+		target("cluster-b", "10", "permit", "false"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Targets) != 0 {
+		t.Fatalf("targets = %v, want none", targetNames(result.Targets))
+	}
+	if len(result.Decisions) != 2 {
+		t.Fatalf("decisions = %#v, want 2", result.Decisions)
+	}
+	if result.Decisions[0].Target != "cluster-a" || result.Decisions[0].Phase != "Filter" {
+		t.Fatalf("first decision = %#v", result.Decisions[0])
+	}
+	if result.Decisions[1].Target != "cluster-b" || result.Decisions[1].Phase != "Permit" {
+		t.Fatalf("second decision = %#v", result.Decisions[1])
+	}
+}
+
+func TestDefaultFrameworkSkipsNotReadyAndDifferentActiveRelease(t *testing.T) {
+	release := &kaprov1alpha1.Release{ObjectMeta: metav1.ObjectMeta{Name: "release-a"}}
+	ready := target("cluster-a", "")
+	notReady := target("cluster-b", "")
+	notReady.Status.Conditions = []metav1.Condition{{
+		Type:   "Ready",
+		Status: metav1.ConditionFalse,
+		Reason: "Disconnected",
+	}}
+	busy := target("cluster-c", "")
+	busy.Status.ActiveRelease = "release-b"
+
+	result, err := NewDefaultFramework().PlanWithResult(context.Background(), Request{Release: release}, []kaprov1alpha1.MemberCluster{
+		busy,
+		notReady,
+		ready,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := targetNames(result.Targets)
+	if len(names) != 1 || names[0] != "cluster-a" {
+		t.Fatalf("targets = %v, want [cluster-a]", names)
+	}
+	if len(result.Decisions) != 2 {
+		t.Fatalf("decisions = %#v, want 2", result.Decisions)
+	}
+	reasons := map[string]string{}
+	for _, decision := range result.Decisions {
+		reasons[decision.Target] = decision.Reason
+	}
+	if reasons["cluster-b"] != "ClusterNotReady" {
+		t.Fatalf("cluster-b reason = %q", reasons["cluster-b"])
+	}
+	if reasons["cluster-c"] != "DifferentActiveRelease" {
+		t.Fatalf("cluster-c reason = %q", reasons["cluster-c"])
+	}
+}
+
 type testPlugin struct {
 	preFiltered bool
 	reserved    []string

@@ -4,6 +4,7 @@ Kapro plugins implement one narrow extension contract:
 
 - KAI: actuator plugins apply a version and report convergence.
 - KGI: gate plugins decide whether a target may advance.
+- KPI: planner plugins filter and order targets before binding.
 
 Built-in actuators and gates remain the default execution path. External plugin
 runtime registration is an API preview and is enabled explicitly with
@@ -17,6 +18,7 @@ runtime registration is an API preview and is enabled explicitly with
 |---|---|---|
 | KAI actuator | `spec/kai/v1alpha1/actuator.proto` | `kapro.io/kapro/spec/kai/v1alpha1` |
 | KGI gate | `spec/kgi/v1alpha1/gate.proto` | `kapro.io/kapro/spec/kgi/v1alpha1` |
+| KPI planner | `spec/kpi/v1alpha1/planner.proto` | `kapro.io/kapro/spec/kpi/v1alpha1` |
 
 Generate stubs with:
 
@@ -50,6 +52,8 @@ spec:
 `PluginRegistration` is an API preview. Runtime use is startup-time only and
 requires `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. Only registrations with
 `status.ready=true` and fresh `status.observedGeneration` are loaded.
+Planner plugins are probed and reported in status, but runtime dispatch is
+future work.
 
 TLS is configured with a namespaced Secret reference because
 `PluginRegistration` is cluster-scoped:
@@ -108,6 +112,17 @@ func TestKGIConformance(t *testing.T) {
 }
 ```
 
+## Planner Requirements
+
+A planner plugin must:
+
+- implement `GetCapabilities` and return `contractVersion: v1alpha1`;
+- return one decision per target it wants to include, skip, or defer;
+- keep responses deterministic for the same request;
+- not create or mutate `ReleaseTarget` objects;
+- respect request context cancellation;
+- leave binding, retries, and failure policy decisions to Kapro.
+
 ## Package Imports
 
 ```go
@@ -116,5 +131,6 @@ import (
     gateconformance "kapro.io/kapro/conformance/gate"
     kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
     kgiv1alpha1 "kapro.io/kapro/spec/kgi/v1alpha1"
+    kpiv1alpha1 "kapro.io/kapro/spec/kpi/v1alpha1"
 )
 ```

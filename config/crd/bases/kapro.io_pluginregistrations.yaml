@@ -42,7 +42,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          PluginRegistration declares an external actuator or gate plugin endpoint.
+          PluginRegistration declares an external actuator, gate, or planner plugin endpoint.
           It is an API preview. Runtime registration is opt-in and startup-time only.
         properties:
           apiVersion:
@@ -64,7 +64,7 @@ spec:
             type: object
           spec:
             description: |-
-              PluginRegistrationSpec registers an external actuator or gate plugin endpoint.
+              PluginRegistrationSpec registers an external actuator, gate, or planner plugin endpoint.
               Runtime dispatch is a startup-time preview enabled with KAPRO_ENABLE_PLUGIN_GATEWAY=true.
             properties:
               endpoint:
@@ -116,6 +116,7 @@ spec:
                 enum:
                 - actuator
                 - gate
+                - planner
                 type: string
             required:
             - endpoint

@@ -287,6 +287,11 @@ spec:
                             description: CompletedAt is when all targets in this stage
                               reached a terminal state.
                             type: string
+                          deferred:
+                            description: |-
+                              Deferred is the number of eligible targets not yet bound by the planner
+                              or stage strategy.
+                            type: integer
                           failed:
                             description: Failed is the number of targets that have
                               reached Failed.
@@ -310,6 +315,35 @@ spec:
                             - Complete
                             - Failed
                             type: string
+                          plannerResults:
+                            description: |-
+                              PlannerResults records why targets were skipped or deferred during the
+                              latest planning cycle. Capped by the controller.
+                            items:
+                              description: PlannerResult explains one planner decision
+                                for operator visibility.
+                              properties:
+                                message:
+                                  description: Message is a human-readable explanation.
+                                  type: string
+                                phase:
+                                  description: Phase is the planner phase, for example
+                                    Filter, Score, Permit, or Bind.
+                                  type: string
+                                plugin:
+                                  description: Plugin is the planner plugin or built-in
+                                    strategy that made the decision.
+                                  type: string
+                                reason:
+                                  description: Reason is a short machine-readable
+                                    reason.
+                                  type: string
+                                target:
+                                  description: Target is the MemberCluster name affected
+                                    by the decision.
+                                  type: string
+                              type: object
+                            type: array
                           startedAt:
                             description: StartedAt is when this stage first had a
                               Progressing target.

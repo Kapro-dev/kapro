@@ -28,6 +28,7 @@ const (
 // Status is the normalized result of one planner plugin phase.
 type Status struct {
 	Code    Code
+	Reason  string
 	Message string
 }
 
@@ -50,6 +51,11 @@ func (s *Status) AsError(plugin, phase string) error {
 // NewStatus returns a planner status.
 func NewStatus(code Code, message string) *Status {
 	return &Status{Code: code, Message: message}
+}
+
+// NewStatusReason returns a planner status with a machine-readable reason.
+func NewStatusReason(code Code, reason, message string) *Status {
+	return &Status{Code: code, Reason: reason, Message: message}
 }
 
 // CycleState carries per-planning-cycle data shared between plugin phases.
@@ -85,6 +91,21 @@ type Request struct {
 	PipelineRefName string
 	Pipeline        *kaprov1alpha1.Pipeline
 	Stage           kaprov1alpha1.Stage
+}
+
+// Decision records one non-default planner decision for operator visibility.
+type Decision struct {
+	Target  string
+	Plugin  string
+	Phase   string
+	Reason  string
+	Message string
+}
+
+// Result is the output of one planning cycle.
+type Result struct {
+	Targets   []kaprov1alpha1.MemberCluster
+	Decisions []Decision
 }
 
 // Plugin is the base identity contract implemented by all planner plugins.
@@ -149,9 +170,19 @@ func NewFramework(plugins ...Plugin) *Framework {
 
 // Plan returns the eligible targets in deterministic execution order.
 func (f *Framework) Plan(ctx context.Context, req Request, targets []kaprov1alpha1.MemberCluster) ([]kaprov1alpha1.MemberCluster, error) {
+	result, err := f.PlanWithResult(ctx, req, targets)
+	if err != nil {
+		return nil, err
+	}
+	return result.Targets, nil
+}
+
+// PlanWithResult returns eligible targets and planner decisions for observability.
+func (f *Framework) PlanWithResult(ctx context.Context, req Request, targets []kaprov1alpha1.MemberCluster) (Result, error) {
 	if f == nil {
 		f = NewFramework()
 	}
+	result := Result{}
 	state := NewCycleState()
 	targets = append([]kaprov1alpha1.MemberCluster(nil), targets...)
 
@@ -161,7 +192,7 @@ func (f *Framework) Plan(ctx context.Context, req Request, targets []kaprov1alph
 			continue
 		}
 		if err := preFilter.PreFilter(ctx, state, req, targets).AsError(plugin.Name(), "PreFilter"); err != nil {
-			return nil, err
+			return result, err
 		}
 	}
 
@@ -175,9 +206,10 @@ func (f *Framework) Plan(ctx context.Context, req Request, targets []kaprov1alph
 			}
 			status := filter.Filter(ctx, state, req, target)
 			if err := status.AsError(plugin.Name(), "Filter"); err != nil {
-				return nil, err
+				return result, err
 			}
 			if status != nil && status.Code == Skip {
+				result.Decisions = append(result.Decisions, decisionFromStatus(target.Name, plugin.Name(), "Filter", status))
 				allowed = false
 				break
 			}
@@ -189,7 +221,7 @@ func (f *Framework) Plan(ctx context.Context, req Request, targets []kaprov1alph
 
 	scores := scoreTargets(ctx, f.plugins, state, req, filtered)
 	if err := normalizeScores(ctx, f.plugins, state, req, scores); err != nil {
-		return nil, err
+		return result, err
 	}
 	sort.SliceStable(filtered, func(i, j int) bool {
 		left := scores[filtered[i].Name]
@@ -203,16 +235,18 @@ func (f *Framework) Plan(ctx context.Context, req Request, targets []kaprov1alph
 	planned := make([]kaprov1alpha1.MemberCluster, 0, len(filtered))
 	for _, target := range filtered {
 		if err := runReserve(ctx, f.plugins, state, req, target); err != nil {
-			return nil, err
+			return result, err
 		}
-		if allowed, err := runPermit(ctx, f.plugins, state, req, target); err != nil {
-			return nil, err
+		if allowed, decision, err := runPermit(ctx, f.plugins, state, req, target); err != nil {
+			return result, err
 		} else if !allowed {
+			result.Decisions = append(result.Decisions, decision)
 			continue
 		}
 		planned = append(planned, target)
 	}
-	return planned, nil
+	result.Targets = planned
+	return result, nil
 }
 
 func scoreTargets(ctx context.Context, plugins []Plugin, state *CycleState, req Request, targets []kaprov1alpha1.MemberCluster) map[string]int64 {
@@ -269,7 +303,7 @@ func runReserve(ctx context.Context, plugins []Plugin, state *CycleState, req Re
 	return nil
 }
 
-func runPermit(ctx context.Context, plugins []Plugin, state *CycleState, req Request, target kaprov1alpha1.MemberCluster) (bool, error) {
+func runPermit(ctx context.Context, plugins []Plugin, state *CycleState, req Request, target kaprov1alpha1.MemberCluster) (bool, Decision, error) {
 	for _, plugin := range plugins {
 		permit, ok := plugin.(PermitPlugin)
 		if !ok {
@@ -277,13 +311,13 @@ func runPermit(ctx context.Context, plugins []Plugin, state *CycleState, req Req
 		}
 		status := permit.Permit(ctx, state, req, target)
 		if err := status.AsError(plugin.Name(), "Permit"); err != nil {
-			return false, err
+			return false, Decision{}, err
 		}
 		if status != nil && status.Code == Skip {
-			return false, nil
+			return false, decisionFromStatus(target.Name, plugin.Name(), "Permit", status), nil
 		}
 	}
-	return true, nil
+	return true, Decision{}, nil
 }
 
 func clampScore(score int64) int64 {
@@ -294,4 +328,21 @@ func clampScore(score int64) int64 {
 		return MaxNodeScore
 	}
 	return score
+}
+
+func decisionFromStatus(target, plugin, phase string, status *Status) Decision {
+	if status == nil {
+		return Decision{Target: target, Plugin: plugin, Phase: phase}
+	}
+	reason := status.Reason
+	if reason == "" {
+		reason = string(status.Code)
+	}
+	return Decision{
+		Target:  target,
+		Plugin:  plugin,
+		Phase:   phase,
+		Reason:  reason,
+		Message: status.Message,
+	}
 }

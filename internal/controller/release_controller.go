@@ -44,6 +44,7 @@ const (
 	maxGateRunsPerTarget       = 16
 	maxGateResultsPerGateRun   = 16
 	maxReleaseReadyMessageSize = 256
+	maxPlannerResultsPerStage  = 32
 )
 
 // ReleaseReconciler is the main brain of Kapro.
@@ -557,29 +558,44 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 			continue
 		}
 
-		// List clusters matching this stage's selector.
-		envList, err := r.listTargetsForStage(ctx, pipelineRefName, pipeline, stage, release)
+		// Plan clusters matching this stage's selector.
+		planned, err := r.planTargetsForStage(ctx, pipelineRefName, pipeline, stage, release)
 		if err != nil {
 			return nil, false, false, 0, nil, fmt.Errorf("list targets for stage %s: %w", stage.Name, err)
 		}
+		envList := planned.Targets
 		if len(envList) == 0 {
 			log.Info("stage has no matching clusters — treating as complete",
 				"stage", stage.Name, "pipeline", pipeline.Name, "pipelineRef", pipelineRefName)
 			stagePhase[stage.Name] = "Complete"
 			stageProgress = append(stageProgress, kaprov1alpha1.StageProgress{
-				Name: stage.Name, Phase: "Complete", Total: 0,
+				Name: stage.Name, Phase: "Complete", Total: 0, PlannerResults: apiPlannerResults(planned.Decisions),
 			})
 			continue
 		}
 
-		// Upsert target entries; observe phases.
-		total, synced, failed := 0, 0, 0
-		for _, target := range envList {
-			total++
-			i := r.upsertTarget(release, pipelineRefName, pipeline, stage, target)
-			phase := release.Status.Targets[i].Phase
+		bindTargets, deferred, strategyDecisions := r.applyStageStrategy(release, pipelineRefName, stage, envList)
+		plannerResults := apiPlannerResults(append(planned.Decisions, strategyDecisions...))
 
-			switch phase {
+		// Upsert selected target entries; observe phases across the full planned set.
+		for _, target := range bindTargets {
+			i := r.upsertTarget(release, pipelineRefName, pipeline, stage, target)
+			_ = i
+		}
+
+		total, synced, failed := len(envList), 0, 0
+		plannedNames := make(map[string]struct{}, len(envList))
+		for _, target := range envList {
+			plannedNames[target.Name] = struct{}{}
+		}
+		for _, target := range release.Status.Targets {
+			if target.PipelineRef != pipelineRefName || target.Stage != stage.Name {
+				continue
+			}
+			if _, ok := plannedNames[target.Target]; !ok {
+				continue
+			}
+			switch target.Phase {
 			case kaprov1alpha1.TargetPhaseConverged:
 				synced++
 			case kaprov1alpha1.TargetPhaseSkipped:
@@ -597,9 +613,11 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 		sp.Total = total
 		sp.Synced = synced
 		sp.Failed = failed
+		sp.Deferred = deferred
+		sp.PlannerResults = plannerResults
 
 		// Build human-readable message for k9s describe view.
-		sp.Message = stageProgressMessage(stage, release, pipelineRefName, total, synced, failed)
+		sp.Message = stageProgressMessage(stage, release, pipelineRefName, total, synced, failed, deferred)
 
 		if failed > 0 {
 			onFailure := stage.OnFailure
@@ -672,7 +690,7 @@ func previousStagePhase(release *kaprov1alpha1.Release, pipelineRef, stageName s
 
 // stageProgressMessage builds a human-readable status line for k9s describe view.
 // Examples: "3/5 converged", "blocked: waiting for approval on de-prod", "1/8 failed"
-func stageProgressMessage(stage kaprov1alpha1.Stage, release *kaprov1alpha1.Release, pipelineRef string, total, synced, failed int) string {
+func stageProgressMessage(stage kaprov1alpha1.Stage, release *kaprov1alpha1.Release, pipelineRef string, total, synced, failed, deferred int) string {
 	if total == 0 {
 		return "no matching clusters"
 	}
@@ -718,6 +736,9 @@ func stageProgressMessage(stage kaprov1alpha1.Stage, release *kaprov1alpha1.Rele
 	if metricsCheck > 0 {
 		parts += fmt.Sprintf(", %d checking metrics", metricsCheck)
 	}
+	if deferred > 0 {
+		parts += fmt.Sprintf(", %d deferred", deferred)
+	}
 	return parts
 }
 
@@ -733,10 +754,11 @@ func (r *ReleaseReconciler) stageDependencySatisfied(
 		return false, 0, fmt.Errorf("stage dependency %q not found in pipeline %s", dep.Stage, pipeline.Name)
 	}
 
-	targets, err := r.listTargetsForStage(ctx, pipelineRefName, pipeline, depStage, release)
+	planned, err := r.planTargetsForStage(ctx, pipelineRefName, pipeline, depStage, release)
 	if err != nil {
 		return false, 0, fmt.Errorf("list dependency targets for stage %s: %w", dep.Stage, err)
 	}
+	targets := planned.Targets
 	if len(targets) == 0 {
 		return true, 0, nil
 	}
@@ -832,9 +854,9 @@ func dependencySoakRemaining(finishedAt string, now time.Time, soak time.Duratio
 	return 0
 }
 
-// listTargetsForStage returns all MemberClusters that match the stage selector,
+// listRawTargetsForStage returns all MemberClusters that match the stage selector,
 // filtered to spec.scope.targets when a scope is set on the Release.
-func (r *ReleaseReconciler) listTargetsForStage(ctx context.Context, pipelineRefName string, pipeline *kaprov1alpha1.Pipeline, stage kaprov1alpha1.Stage, release *kaprov1alpha1.Release) ([]kaprov1alpha1.MemberCluster, error) {
+func (r *ReleaseReconciler) listRawTargetsForStage(ctx context.Context, stage kaprov1alpha1.Stage, release *kaprov1alpha1.Release) ([]kaprov1alpha1.MemberCluster, error) {
 	var mcList kaprov1alpha1.MemberClusterList
 	sel, err := metav1.LabelSelectorAsSelector(&stage.Selector)
 	if err != nil {
@@ -878,16 +900,123 @@ func (r *ReleaseReconciler) listTargetsForStage(ctx context.Context, pipelineRef
 		clusters = scopeFiltered
 	}
 
+	return clusters, nil
+}
+
+// listTargetsForStage returns the planned MemberClusters for a stage.
+func (r *ReleaseReconciler) listTargetsForStage(ctx context.Context, pipelineRefName string, pipeline *kaprov1alpha1.Pipeline, stage kaprov1alpha1.Stage, release *kaprov1alpha1.Release) ([]kaprov1alpha1.MemberCluster, error) {
+	planned, err := r.planTargetsForStage(ctx, pipelineRefName, pipeline, stage, release)
+	if err != nil {
+		return nil, err
+	}
+	return planned.Targets, nil
+}
+
+// planTargetsForStage runs the scheduler-style planner for a stage and returns
+// both eligible targets and recorded skip decisions.
+func (r *ReleaseReconciler) planTargetsForStage(ctx context.Context, pipelineRefName string, pipeline *kaprov1alpha1.Pipeline, stage kaprov1alpha1.Stage, release *kaprov1alpha1.Release) (planner.Result, error) {
+	clusters, err := r.listRawTargetsForStage(ctx, stage, release)
+	if err != nil {
+		return planner.Result{}, err
+	}
 	framework := r.Planner
 	if framework == nil {
-		framework = planner.NewFramework()
+		framework = planner.NewDefaultFramework()
 	}
-	return framework.Plan(ctx, planner.Request{
+	return framework.PlanWithResult(ctx, planner.Request{
 		Release:         release,
 		PipelineRefName: pipelineRefName,
 		Pipeline:        pipeline,
 		Stage:           stage,
 	}, clusters)
+}
+
+func (r *ReleaseReconciler) applyStageStrategy(
+	release *kaprov1alpha1.Release,
+	pipelineRefName string,
+	stage kaprov1alpha1.Stage,
+	targets []kaprov1alpha1.MemberCluster,
+) ([]kaprov1alpha1.MemberCluster, int, []planner.Decision) {
+	if stage.Strategy == nil || stage.Strategy.MaxParallel <= 0 {
+		return targets, 0, nil
+	}
+
+	planned := make(map[string]struct{}, len(targets))
+	for _, target := range targets {
+		planned[target.Name] = struct{}{}
+	}
+
+	active := 0
+	bound := make(map[string]struct{}, len(targets))
+	for _, target := range release.Status.Targets {
+		if target.PipelineRef != pipelineRefName || target.Stage != stage.Name {
+			continue
+		}
+		if _, ok := planned[target.Target]; !ok {
+			continue
+		}
+		bound[target.Target] = struct{}{}
+		if !planningTargetTerminal(target.Phase) {
+			active++
+		}
+	}
+
+	capacity := int(stage.Strategy.MaxParallel) - active
+	if capacity < 0 {
+		capacity = 0
+	}
+
+	bindTargets := make([]kaprov1alpha1.MemberCluster, 0, len(targets))
+	decisions := make([]planner.Decision, 0)
+	deferred := 0
+	for _, target := range targets {
+		if _, ok := bound[target.Name]; ok {
+			continue
+		}
+		if capacity > 0 {
+			bindTargets = append(bindTargets, target)
+			capacity--
+			continue
+		}
+		deferred++
+		decisions = append(decisions, planner.Decision{
+			Target:  target.Name,
+			Plugin:  "stage-strategy",
+			Phase:   "Bind",
+			Reason:  "MaxParallel",
+			Message: fmt.Sprintf("deferred by stage strategy maxParallel=%d", stage.Strategy.MaxParallel),
+		})
+	}
+
+	return bindTargets, deferred, decisions
+}
+
+func planningTargetTerminal(phase kaprov1alpha1.TargetPhase) bool {
+	return phase == kaprov1alpha1.TargetPhaseConverged ||
+		phase == kaprov1alpha1.TargetPhaseFailed ||
+		phase == kaprov1alpha1.TargetPhaseSkipped
+}
+
+func apiPlannerResults(decisions []planner.Decision) []kaprov1alpha1.PlannerResult {
+	if len(decisions) == 0 {
+		return nil
+	}
+	limit := len(decisions)
+	if limit > maxPlannerResultsPerStage {
+		limit = maxPlannerResultsPerStage
+	}
+	results := make([]kaprov1alpha1.PlannerResult, 0, limit)
+	for i := 0; i < limit; i++ {
+		decision := decisions[i]
+		results = append(results, kaprov1alpha1.PlannerResult{
+			Target:  decision.Target,
+			Plugin:  decision.Plugin,
+			Phase:   decision.Phase,
+			Reason:  decision.Reason,
+			Message: decision.Message,
+		})
+	}
+	return results
 }
 
 // upsertTarget finds an existing TargetStatus entry for

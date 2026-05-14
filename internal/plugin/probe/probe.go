@@ -10,6 +10,7 @@ import (
 	"kapro.io/kapro/internal/plugin/transport"
 	kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
 	kgiv1alpha1 "kapro.io/kapro/spec/kgi/v1alpha1"
+	kpiv1alpha1 "kapro.io/kapro/spec/kpi/v1alpha1"
 
 	"google.golang.org/grpc"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -34,7 +35,9 @@ type Prober struct {
 
 // Probe validates the registration, dials the endpoint, and reads capabilities.
 func (p Prober) Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration) Result {
-	if reg.Spec.Type != kaprov1alpha1.PluginTypeActuator && reg.Spec.Type != kaprov1alpha1.PluginTypeGate {
+	if reg.Spec.Type != kaprov1alpha1.PluginTypeActuator &&
+		reg.Spec.Type != kaprov1alpha1.PluginTypeGate &&
+		reg.Spec.Type != kaprov1alpha1.PluginTypePlanner {
 		return notReady("UnsupportedType", fmt.Sprintf("unsupported plugin type %q", reg.Spec.Type))
 	}
 	if reg.Spec.Protocol != "" && reg.Spec.Protocol != kaprov1alpha1.PluginProtocolGRPC {
@@ -85,6 +88,15 @@ func (p Prober) Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration)
 			return notReady("ContractMismatch", err.Error())
 		}
 		return ready(resp.GetPluginVersion(), resp.GetCapabilities())
+	case kaprov1alpha1.PluginTypePlanner:
+		resp, err := kpiv1alpha1.NewPlannerServiceClient(conn).GetCapabilities(ctx, &kpiv1alpha1.GetCapabilitiesRequest{})
+		if err != nil {
+			return notReady("ProbeFailed", err.Error())
+		}
+		if err := validateContract(resp.GetContractVersion()); err != nil {
+			return notReady("ContractMismatch", err.Error())
+		}
+		return ready(resp.GetPluginVersion(), resp.GetCapabilities())
 	default:
 		return notReady("UnsupportedType", fmt.Sprintf("unsupported plugin type %q", reg.Spec.Type))
 	}
@@ -118,7 +130,7 @@ func notReady(reason, message string) Result {
 	}
 }
 
-// ContractVersion returns the KAI/KGI contract version this prober supports.
+// ContractVersion returns the KAI/KGI/KPI contract version this prober supports.
 func ContractVersion() string {
 	return contractVersion
 }

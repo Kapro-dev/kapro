@@ -87,6 +87,10 @@ func (r Registrar) RegisterReady(ctx context.Context, c client.Reader, actuatorR
 				return registered, fmt.Errorf("register gate plugin %q: %w", reg.Spec.Name, err)
 			}
 			registered++
+		case kaprov1alpha1.PluginTypePlanner:
+			// Planner runtime dispatch is not wired yet. The registration
+			// controller still probes planner plugins and records readiness.
+			continue
 		}
 	}
 	return registered, nil
