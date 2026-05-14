@@ -16,6 +16,7 @@ func init() {
 		// User-facing delivery objects
 		&Pipeline{}, &PipelineList{},
 		&Release{}, &ReleaseList{},
+		&ReleaseTrigger{}, &ReleaseTriggerList{},
 		&ReleaseTarget{}, &ReleaseTargetList{},
 		// Lean fleet registry (MemberCluster = legacy target inventory split)
 		&MemberCluster{}, &MemberClusterList{},

@@ -26,7 +26,7 @@ This document defines the target architecture for those contracts.
 | Template gate | CEL, Job, Webhook gate templates | Configure custom gate behavior through CRDs. | Implemented |
 | Lifecycle events | CloudEvents webhook payloads | Publish release, stage, gate, approval, and target events. | Implemented |
 | Plugin gateway | gRPC KAI/KGI contracts | Run actuators and gates out of process. | Target architecture |
-| ReleaseTrigger | CRD controller | Create releases from verified external artifact events. | Target architecture |
+| ReleaseTrigger | CRD API | Define safe autonomous Release creation policy. | API preview |
 
 ## Core Boundary
 
@@ -148,8 +148,9 @@ work, Kapro owns release state.
 
 ## ReleaseTrigger Target
 
-`ReleaseTrigger` is the target architecture for autonomous release creation.
-It creates `Release` objects from verified external artifact events.
+`ReleaseTrigger` is the API boundary for autonomous release creation. The CRD
+defines safe source observation and Release creation policy. The controller that
+observes OCI registries and creates Releases is future work.
 
 The safe flow is:
 
@@ -184,8 +185,7 @@ Target CRD posture:
 |---|---|
 | Existing release, pipeline, app, cluster, target, approval, and policy CRDs | Core API |
 | `PluginRegistration` | Add with the plugin gateway |
-| `ReleaseTrigger` | Add after ADR-002 safeguards are implemented |
+| `ReleaseTrigger` | API preview with ADR-002 safeguards; controller future work |
 | Notification provider/policy | Add only when shared credential ownership requires it |
 | Metric definition | Add only when metric reuse needs independent ownership |
 | Gate template | Keep inline until it needs independent lifecycle |
-

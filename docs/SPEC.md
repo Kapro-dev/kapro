@@ -21,7 +21,8 @@
 11. [Target FSM](#11-target-fsm)
 12. [Approval Flow](#12-approval-flow)
 13. [Notification & Events](#13-notification--events)
-14. [Non-Goals](#14-non-goals)
+14. [ReleaseTrigger API Preview](#14-releasetrigger-api-preview)
+15. [Non-Goals](#15-non-goals)
 
 ---
 
@@ -105,13 +106,19 @@ Release
 
 | CRD | Kind | Ownership | Scope |
 |-----|------|-----------|-------|
-| `artifacts.kapro.io` | `Artifact` | Platform / release engineer | Namespaced |
-| `pipelines.kapro.io` | `Pipeline` | Platform | Namespaced |
+| `kapros.kapro.io` | `Kapro` | Platform | Cluster |
+| `kaproapps.kapro.io` | `KaproApp` | Platform | Cluster |
+| `pipelines.kapro.io` | `Pipeline` | Platform | Cluster |
 | `releases.kapro.io` | `Release` | Release engineer / automation | Cluster |
+| `releasetriggers.kapro.io` | `ReleaseTrigger` | Platform / automation | Cluster |
+| `releasetargets.kapro.io` | `ReleaseTarget` | Controller | Cluster |
 | `memberclusters.kapro.io` | `MemberCluster` | Platform | Cluster |
 | `approvals.kapro.io` | `Approval` | Human via webhook | Cluster |
+| `agentpolicies.kapro.io` | `AgentPolicy` | Platform | Cluster |
 
-Five CRDs total. Pipeline and Artifact are spec-only (no `/status` subresource).
+`KaproApp` and `Pipeline` are spec-only template objects. Execution state lives
+in `Release`, `ReleaseTarget`, `MemberCluster`, `Approval`, and the future
+`ReleaseTrigger` controller.
 
 ---
 
@@ -303,7 +310,20 @@ Identity is deterministic: every `(Release, target)` pair has at most one `Appro
 
 ---
 
-## 14. Non-Goals
+## 14. ReleaseTrigger API Preview
+
+`ReleaseTrigger` is a safe-by-default API preview for autonomous Release
+creation from verified artifact changes. It is cluster-scoped and supports OCI
+source configuration, release template configuration, cooldown, max-active
+limits, dry-run mode, and status conditions.
+
+The controller that observes sources and creates Releases is future work.
+Creating the CRD now establishes the API shape and validation without making
+automatic deployment behavior available before the safeguards are implemented.
+
+---
+
+## 15. Non-Goals
 
 Kapro explicitly does **not** aim to:
 

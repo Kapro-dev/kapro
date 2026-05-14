@@ -742,6 +742,152 @@ type ReleaseList struct {
 	Items           []Release `json:"items"`
 }
 
+// ---- ReleaseTrigger ---------------------------------------------------------
+
+// ReleaseTriggerSpec defines an autonomous source that can create Release
+// objects from verified artifact changes. The controller for this API is future
+// work; the API is intentionally safe by default.
+//
+// +kubebuilder:validation:XValidation:rule="self.source.type != 'oci' || has(self.source.oci)",message="source.oci is required when source.type=oci"
+// +kubebuilder:validation:XValidation:rule="!has(self.maxActive) || self.maxActive >= 1",message="maxActive must be at least 1"
+type ReleaseTriggerSpec struct {
+	// Suspended pauses source observation and release creation.
+	// +kubebuilder:default=true
+	Suspended bool `json:"suspended,omitempty"`
+	// Source configures where artifact changes are observed.
+	Source ReleaseTriggerSource `json:"source"`
+	// ReleaseTemplate defines the Release created for a verified artifact.
+	ReleaseTemplate ReleaseTriggerTemplate `json:"releaseTemplate"`
+	// Cooldown is the minimum duration between releases created by this trigger.
+	// +kubebuilder:default="30m"
+	Cooldown string `json:"cooldown,omitempty"`
+	// MaxActive limits concurrently active Releases created by this trigger.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:default=1
+	MaxActive int32 `json:"maxActive,omitempty"`
+	// DryRun records what would be created without creating a Release.
+	// +kubebuilder:default=false
+	DryRun bool `json:"dryRun,omitempty"`
+	// Parameters are source-specific key-value pairs for future extension.
+	// Kapro core does not interpret unknown parameters.
+	// +optional
+	Parameters map[string]string `json:"parameters,omitempty"`
+}
+
+// ReleaseTriggerSource selects the artifact source observed by a ReleaseTrigger.
+type ReleaseTriggerSource struct {
+	// Type selects the source backend.
+	// +kubebuilder:validation:Enum=oci
+	Type string `json:"type"`
+	// OCI configures OCI registry tag observation.
+	// +optional
+	OCI *OCIReleaseTriggerSource `json:"oci,omitempty"`
+}
+
+// OCIReleaseTriggerSource configures OCI registry observation.
+type OCIReleaseTriggerSource struct {
+	// Repository is the OCI repository to observe.
+	Repository string `json:"repository"`
+	// TagPattern is a regular expression. Only matching tags can create releases.
+	// +kubebuilder:validation:MinLength=1
+	TagPattern string `json:"tagPattern"`
+	// RequireSignature requires signature verification before creating a Release.
+	// +kubebuilder:default=true
+	RequireSignature bool `json:"requireSignature,omitempty"`
+	// PollInterval controls how often the source is checked.
+	// +kubebuilder:default="5m"
+	PollInterval string `json:"pollInterval,omitempty"`
+	// SecretRef references registry credentials.
+	// +optional
+	SecretRef *corev1.LocalObjectReference `json:"secretRef,omitempty"`
+}
+
+// ReleaseTriggerTemplate defines the Release created from a verified artifact.
+type ReleaseTriggerTemplate struct {
+	// NameTemplate controls the created Release name. Empty means the controller
+	// derives a deterministic name from trigger name and artifact digest.
+	// +optional
+	NameTemplate string `json:"nameTemplate,omitempty"`
+	// Pipelines is copied into Release.spec.pipelines.
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=64
+	Pipelines []ReleasePipelineRef `json:"pipelines"`
+	// Suspended controls Release.spec.suspended on created Releases.
+	// Defaults to true so detection does not equal deployment.
+	// +kubebuilder:default=true
+	Suspended bool `json:"suspended,omitempty"`
+	// Scope restricts created Releases to a subset of clusters.
+	// +optional
+	Scope *ReleaseScope `json:"scope,omitempty"`
+	// Timeout is copied into Release.spec.timeout.
+	// +optional
+	Timeout string `json:"timeout,omitempty"`
+	// Labels are added to created Releases.
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+	// Annotations are added to created Releases.
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
+}
+
+// ReleaseTriggerStatus records observed source state and created releases.
+type ReleaseTriggerStatus struct {
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+	// LastCheckedAt is the last time the source was checked.
+	LastCheckedAt string `json:"lastCheckedAt,omitempty"`
+	// LastTriggeredAt is the last time a Release was created.
+	LastTriggeredAt string `json:"lastTriggeredAt,omitempty"`
+	// LastArtifact is the most recent artifact observed by the trigger.
+	LastArtifact *ReleaseTriggerArtifact `json:"lastArtifact,omitempty"`
+	// ActiveReleases lists non-terminal Releases created by this trigger.
+	ActiveReleases []string `json:"activeReleases,omitempty"`
+	// ActiveReleaseCount is the number of non-terminal Releases created by this trigger.
+	ActiveReleaseCount int32 `json:"activeReleaseCount,omitempty"`
+	// Conditions summarize readiness, suspension, verification, and release creation.
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// ReleaseTriggerArtifact identifies an observed immutable artifact.
+type ReleaseTriggerArtifact struct {
+	// Tag is the source tag that matched the trigger pattern.
+	Tag string `json:"tag,omitempty"`
+	// Digest is the immutable artifact digest.
+	Digest string `json:"digest,omitempty"`
+	// Version is the value copied into Release.spec.version.
+	Version string `json:"version,omitempty"`
+	// ObservedAt is the RFC3339 time this artifact was observed.
+	ObservedAt string `json:"observedAt,omitempty"`
+	// SignatureVerified records whether signature policy passed.
+	SignatureVerified bool `json:"signatureVerified,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Cluster,shortName=reltrig,categories=kapro-all
+// +kubebuilder:printcolumn:name="Source",type=string,JSONPath=`.spec.source.type`
+// +kubebuilder:printcolumn:name="Suspended",type=boolean,JSONPath=`.spec.suspended`
+// +kubebuilder:printcolumn:name="DryRun",type=boolean,JSONPath=`.spec.dryRun`
+// +kubebuilder:printcolumn:name="LastVersion",type=string,JSONPath=`.status.lastArtifact.version`,priority=0
+// +kubebuilder:printcolumn:name="Active",type=integer,JSONPath=`.status.activeReleaseCount`,priority=1
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+
+// ReleaseTrigger observes verified artifact changes and creates Release objects.
+// It is safe by default: triggers are suspended by default, created Releases are
+// suspended by default, and OCI signature verification defaults to required.
+type ReleaseTrigger struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              ReleaseTriggerSpec   `json:"spec,omitempty"`
+	Status            ReleaseTriggerStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+type ReleaseTriggerList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []ReleaseTrigger `json:"items"`
+}
+
 // ---- Per-target execution ---------------------------------------------------
 
 // TargetStatus records the rollout state of one target cluster rollout. It is

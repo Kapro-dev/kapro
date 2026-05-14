@@ -4,12 +4,15 @@
 // Version:   v1alpha1
 //
 // User-facing CRDs:
-//   - Artifact       — immutable OCI bundle, digest-pinned
+//   - Kapro          — fleet entry point
+//   - KaproApp       — application bundle template
 //   - Pipeline       — reusable rollout template composed of ordered stages
-//   - Release        — one rollout execution of an Artifact through one or more Pipelines
+//   - Release        — one rollout execution of an artifact version through one or more Pipelines
+//   - ReleaseTrigger — safe-by-default autonomous Release creation from verified artifacts
+//   - ReleaseTarget  — one target-cluster execution owned by a Release
 //   - MemberCluster  — fleet inventory and observed cluster state reported to the hub
 //   - Approval       — human gate signal to unblock one target-cluster rollout or stage
-//   - BootstrapToken — short-lived token for first registration of spoke agents
+//   - AgentPolicy    — AI trust boundary and audit policy
 //
 // Delivery execution state is stored inline in Release.status.targets
 // rather than in a standalone execution CRD.

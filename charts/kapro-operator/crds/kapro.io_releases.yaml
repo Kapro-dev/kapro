@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.0
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: releases.kapro.io
 spec:
   group: kapro.io
@@ -19,9 +19,9 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.report.totalArtifacts
-      name: Artifacts
-      type: integer
+    - jsonPath: .spec.version
+      name: Version
+      type: string
     - jsonPath: .status.phase
       name: Phase
       type: string
@@ -30,9 +30,26 @@ spec:
       type: string
     - jsonPath: .status.report.syncedTargets
       name: Synced
-      type: integer
+      type: string
+    - jsonPath: .status.report.failedTargets
+      name: Failed
+      type: string
     - jsonPath: .status.report.pendingTargets
       name: Pending
+      type: string
+    - jsonPath: .status.report.totalTargets
+      name: Total
+      type: string
+    - jsonPath: .status.report.duration
+      name: Duration
+      type: string
+    - jsonPath: .spec.suspended
+      name: Suspended
+      priority: 1
+      type: boolean
+    - jsonPath: .status.report.totalArtifacts
+      name: Artifacts
+      priority: 1
       type: integer
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -70,55 +87,8 @@ spec:
               Uniqueness and dependency-reference validation is enforced by the admission webhook,
               which can perform DAG checks without the quadratic CEL cost budget constraints.
             properties:
-              appKey:
-                description: |-
-                  AppKey is the key used in MemberCluster.status.currentVersions.
-                  Defaults to the Artifact name when not set.
-                  Deprecated: use ReleaseArtifactRef.AppKey per artifact instead.
-                type: string
-              artifact:
-                description: |-
-                  Artifact is the OCI artifact name to deliver across the fleet.
-                  Deprecated: use Artifacts[] for multi-artifact releases. When both are set,
-                  Artifacts takes precedence. Kept for backward compatibility with single-artifact releases.
-                type: string
-              artifacts:
-                description: |-
-                  Artifacts is the composable list of artifacts to deliver across the fleet.
-                  Each artifact has an AppKey used for delta-aware delivery (only changed versions are deployed).
-                  When derivedFrom is set, this list is merged with the parent Release's artifacts
-                  (Kustomize-style: child overrides parent by AppKey).
-                items:
-                  description: |-
-                    ReleaseArtifactRef is one artifact in a Release's composable artifact list.
-                    AppKey is the key used in MemberCluster.status.currentVersions to track this artifact.
-                  properties:
-                    appKey:
-                      description: |-
-                        AppKey identifies this artifact in the release (e.g. "auth-service", "config-service").
-                        Used as the key in MemberCluster.status.currentVersions for delta-aware delivery.
-                      type: string
-                    artifact:
-                      description: Artifact is the name of the Artifact CRD object.
-                      type: string
-                  required:
-                  - appKey
-                  - artifact
-                  type: object
-                maxItems: 256
-                type: array
-              derivedFrom:
-                description: |-
-                  DerivedFrom is the name of the parent Release this hotfix was derived from.
-                  When set, the parent's artifacts are inherited and this Release's artifacts
-                  are overlaid on top (merge by AppKey). Only changed artifacts are delivered
-                  to target clusters (delta-aware delivery).
-                  Immutable after creation — changing it has no effect on a running rollout.
-                type: string
               pipelines:
-                description: |-
-                  Pipelines is the DAG of pipeline nodes that this Release executes.
-                  Each node references a Pipeline CRD and may depend on other nodes.
+                description: Pipelines is the DAG of pipeline nodes.
                 items:
                   description: |-
                     ReleasePipelineRef is one node in the Release's pipeline DAG.
@@ -146,11 +116,7 @@ spec:
                 minItems: 1
                 type: array
               scope:
-                description: |-
-                  Scope restricts this Release to a subset of clusters.
-                  When set, rollout entries are only created for the named target clusters.
-                  Nil or empty = full-fleet rollout (normal behaviour).
-                  Immutable after creation — set scope before the Release is created.
+                description: Scope restricts this Release to a subset of clusters.
                 properties:
                   targets:
                     description: |-
@@ -165,16 +131,15 @@ spec:
                 description: Suspended pauses all advancement when true.
                 type: boolean
               timeout:
-                description: |-
-                  Timeout is the maximum duration for the entire Release to complete.
-                  If the Release has not reached Complete or Failed within this duration,
-                  it is automatically failed. Prevents stuck Releases from blocking the
-                  pipeline forever (e.g., forgotten approval, unreachable spoke).
-                  Format: Go duration string (e.g., "4h", "30m", "2h30m").
-                  Default: no timeout (backward compatible). Strongly recommended to set.
+                description: Timeout is the maximum duration for the entire Release.
+                type: string
+              version:
+                description: Version is the OCI digest or tag to deliver across the
+                  fleet.
                 type: string
             required:
             - pipelines
+            - version
             type: object
           status:
             description: ReleaseStatus defines the observed state of Release.
@@ -289,6 +254,11 @@ spec:
                   description: PipelineProgress tracks the execution state of one
                     pipeline node in a Release.
                   properties:
+                    activeStage:
+                      description: |-
+                        ActiveStage is the name of the currently progressing stage (or the last completed one).
+                        Gives operators a quick "where are we?" without expanding StageProgress.
+                      type: string
                     name:
                       description: Name matches ReleasePipelineRef.name.
                       type: string
@@ -308,13 +278,27 @@ spec:
                       description: StageProgress summarises the state of each stage
                         in this pipeline.
                       items:
-                        description: StageProgress tracks the execution state of one
-                          Stage within a pipeline.
+                        description: |-
+                          StageProgress tracks the execution state of one Stage within a pipeline.
+                          Designed to render well in k9s describe view — operators see per-stage
+                          progress like CI pipeline steps.
                         properties:
+                          completedAt:
+                            description: CompletedAt is when all targets in this stage
+                              reached a terminal state.
+                            type: string
                           failed:
                             description: Failed is the number of targets that have
                               reached Failed.
                             type: integer
+                          message:
+                            description: |-
+                              Message is a human-readable summary of stage progress, designed for
+                              k9s describe output. Examples:
+                                "2/5 clusters converged, soak: 12m/30m remaining"
+                                "waiting for canary stage"
+                                "blocked: manual approval required for de-prod"
+                            type: string
                           name:
                             description: Name is the stage name from Pipeline.spec.stages[].name.
                             type: string
@@ -325,6 +309,10 @@ spec:
                             - Progressing
                             - Complete
                             - Failed
+                            type: string
+                          startedAt:
+                            description: StartedAt is when this stage first had a
+                              Progressing target.
                             type: string
                           synced:
                             description: Synced is the number of targets that have
@@ -385,39 +373,10 @@ spec:
                   totalTargets:
                     type: integer
                 type: object
-              resolvedArtifacts:
-                description: |-
-                  ResolvedArtifacts is the merged artifact list after derivedFrom resolution.
-                  For hotfix Releases, this contains the parent's artifacts with overrides applied.
-                  Set once in Pending and never changed.
-                items:
-                  description: ResolvedArtifact is one resolved artifact in a Release's
-                    merged artifact list.
-                  properties:
-                    appKey:
-                      description: AppKey identifies this artifact (e.g. "auth-service").
-                      type: string
-                    artifact:
-                      description: Artifact is the Artifact CRD name.
-                      type: string
-                    inherited:
-                      description: |-
-                        Inherited is true when this artifact came from the parent Release (derivedFrom).
-                        False when explicitly listed in this Release's spec.artifacts.
-                      type: boolean
-                    version:
-                      description: Version is the resolved OCI digest (repository@sha256:...).
-                      type: string
-                  required:
-                  - appKey
-                  - artifact
-                  type: object
-                type: array
               resolvedVersion:
                 description: |-
-                  ResolvedVersion is the OCI digest resolved from the Artifact CR.
-                  Format: <repository>@sha256:<digest>. Set once in Pending and never changed.
-                  Deprecated: use ResolvedArtifacts for multi-artifact releases.
+                  ResolvedVersion is the OCI digest or tag resolved from spec.version.
+                  Set once in Pending and never changed.
                 type: string
               startedAt:
                 type: string
@@ -833,12 +792,13 @@ spec:
                           type: string
                         notifications:
                           items:
+                            description: NotificationSpec configures where and when
+                              to send delivery lifecycle events.
                             properties:
-                              channel:
-                                type: string
                               email:
-                                description: EmailNotifierSpec configures SMTP email
-                                  delivery for gate notifications.
+                                description: |-
+                                  Email configures SMTP email delivery.
+                                  Required when type=email.
                                 properties:
                                   from:
                                     type: string
@@ -868,10 +828,64 @@ spec:
                                 - smtpSecretRef
                                 - to
                                 type: object
+                              events:
+                                description: |-
+                                  Events filters which lifecycle events trigger this notification.
+                                  Uses stable semantic event types. Currently emitted events:
+                                    kapro.release.started, kapro.release.completed, kapro.release.failed,
+                                    kapro.release.rollback.started, kapro.release.stage.completed,
+                                    kapro.release.gate.passed, kapro.release.gate.failed,
+                                    kapro.release.approval.required,
+                                    kapro.release.target.pending, kapro.release.target.verification,
+                                    kapro.release.target.health_check, kapro.release.target.soaking,
+                                    kapro.release.target.metrics_check, kapro.release.target.applying,
+                                    kapro.release.target.converged, kapro.release.target.failed,
+                                    kapro.release.target.skipped.
+                                  Empty means all events.
+                                items:
+                                  type: string
+                                type: array
+                              slack:
+                                description: |-
+                                  Slack configures Slack message delivery.
+                                  Required when type=slack.
+                                properties:
+                                  channel:
+                                    description: Channel is the Slack channel to post
+                                      to.
+                                    type: string
+                                required:
+                                - channel
+                                type: object
                               type:
+                                description: Type selects the notification backend.
+                                enum:
+                                - webhook
+                                - slack
+                                - email
                                 type: string
-                              url:
-                                type: string
+                              webhook:
+                                description: |-
+                                  Webhook configures HTTP POST delivery.
+                                  Required when type=webhook.
+                                properties:
+                                  format:
+                                    default: json
+                                    description: |-
+                                      Format selects the payload format.
+                                        json (default): plain JSON event payload.
+                                        cloudevents: CloudEvents v1.0 structured content mode.
+                                    enum:
+                                    - json
+                                    - cloudevents
+                                    type: string
+                                  url:
+                                    description: URL is the HTTP endpoint to POST
+                                      events to.
+                                    type: string
+                                required:
+                                - url
+                                type: object
                             required:
                             - type
                             type: object
