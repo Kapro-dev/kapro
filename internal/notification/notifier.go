@@ -48,6 +48,9 @@ func (d *Dispatcher) Notify(ctx context.Context, event Event, policy Notificatio
 	client := d.httpClient()
 
 	for _, ch := range policy.Channels {
+		if !ch.MatchesEvent(event.Phase) {
+			continue
+		}
 		var err error
 		switch ch.Type {
 		case "slack":

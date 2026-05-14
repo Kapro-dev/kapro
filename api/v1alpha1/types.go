@@ -333,48 +333,38 @@ type ApprovalConfig struct {
 // NotificationSpec configures where and when to send delivery lifecycle events.
 type NotificationSpec struct {
 	// Type selects the notification backend.
-	// +kubebuilder:validation:Enum=webhook;slack;email;git
+	// +kubebuilder:validation:Enum=webhook;slack;email
 	Type string `json:"type"`
 	// Events filters which lifecycle events trigger this notification.
+	// Supported events: ReleaseStarted, StageCompleted, GatePassed, GateFailed,
+	// ApprovalRequired, ReleaseCompleted, ReleaseRolledBack.
 	// Empty means all events.
 	// +optional
 	Events []string `json:"events,omitempty"`
-	// Webhook configures generic HTTP POST delivery (CloudEvents format).
+	// Webhook configures HTTP POST delivery.
+	// Required when type=webhook.
 	// +optional
 	Webhook *WebhookNotifierSpec `json:"webhook,omitempty"`
 	// Slack configures Slack message delivery.
+	// Required when type=slack.
 	// +optional
 	Slack *SlackNotifierSpec `json:"slack,omitempty"`
 	// Email configures SMTP email delivery.
+	// Required when type=email.
 	// +optional
 	Email *EmailNotifierSpec `json:"email,omitempty"`
-	// Git configures audit trail commits to a git repository.
-	// +optional
-	Git *GitNotifierSpec `json:"git,omitempty"`
-	// Parameters are backend-specific key-value pairs for extensibility.
-	// +optional
-	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
-// WebhookNotifierSpec configures generic HTTP POST notification (CloudEvents format).
+// WebhookNotifierSpec configures HTTP POST notification delivery.
 type WebhookNotifierSpec struct {
 	// URL is the HTTP endpoint to POST events to.
 	URL string `json:"url"`
-	// SecretRef references a Secret containing an Authorization header value.
-	// +optional
-	SecretRef *corev1.LocalObjectReference `json:"secretRef,omitempty"`
 }
 
 // SlackNotifierSpec configures Slack message delivery.
 type SlackNotifierSpec struct {
 	// Channel is the Slack channel to post to.
 	Channel string `json:"channel"`
-	// URL is the Slack webhook URL. Mutually exclusive with SecretRef.
-	// +optional
-	URL string `json:"url,omitempty"`
-	// SecretRef references a Secret containing the Slack webhook URL.
-	// +optional
-	SecretRef *corev1.LocalObjectReference `json:"secretRef,omitempty"`
 }
 
 // EmailNotifierSpec configures SMTP email delivery.
@@ -384,22 +374,6 @@ type EmailNotifierSpec struct {
 	From string   `json:"from,omitempty"`
 	// +kubebuilder:pruning:PreserveUnknownFields
 	SmtpSecretRef corev1.LocalObjectReference `json:"smtpSecretRef"`
-}
-
-// GitNotifierSpec configures audit trail commits to a git repository.
-type GitNotifierSpec struct {
-	// Repo is the git repository URL.
-	Repo string `json:"repo"`
-	// Branch is the target branch.
-	// +kubebuilder:default="main"
-	Branch string `json:"branch,omitempty"`
-	// Path is the file path template for the audit YAML.
-	// Supports Go template variables: {{.Release.Name}}, {{.Release.Version}}.
-	// +kubebuilder:default="releases/{{.Release.Name}}.yaml"
-	Path string `json:"path,omitempty"`
-	// SecretRef references a Secret containing git credentials.
-	// +optional
-	SecretRef *corev1.LocalObjectReference `json:"secretRef,omitempty"`
 }
 
 // ---- GateTemplate -----------------------------------------------------------

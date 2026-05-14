@@ -62,13 +62,29 @@ type Channel struct {
 	// Type is the provider type: "slack" | "webhook" | "email" | "pagerduty" | "opsgenie" | "msteams"
 	Type string
 	// Target is the primary address:
-	//   slack   — incoming webhook URL
+	//   slack   — incoming webhook URL or channel
 	//   webhook — HTTP endpoint URL
-	//   pagerduty / opsgenie — service/team ID (credentials come from the operator secret)
 	//   email   — unused; see Email field
 	Target string
+	// Events filters which lifecycle events this channel receives.
+	// Empty means all events (no filtering).
+	Events []string
 	// Email carries SMTP delivery config. Non-nil only when Type == "email".
 	Email *EmailConfig
+}
+
+// MatchesEvent returns true if the channel should receive the given event.
+// An empty Events list means all events match.
+func (c Channel) MatchesEvent(event string) bool {
+	if len(c.Events) == 0 {
+		return true
+	}
+	for _, e := range c.Events {
+		if e == event {
+			return true
+		}
+	}
+	return false
 }
 
 // EmailConfig carries SMTP delivery configuration extracted from
