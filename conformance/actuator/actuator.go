@@ -1,0 +1,134 @@
+// Package actuator provides conformance checks for external KAI plugins.
+package actuator
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
+
+	"google.golang.org/protobuf/proto"
+)
+
+// Scenario contains the requests used by the actuator conformance harness.
+type Scenario struct {
+	Apply       *kaiv1alpha1.ApplyRequest
+	IsConverged *kaiv1alpha1.IsConvergedRequest
+	Rollback    *kaiv1alpha1.RollbackRequest
+	Timeout     time.Duration
+}
+
+// DefaultScenario returns a minimal deterministic actuator test scenario.
+func DefaultScenario() Scenario {
+	return Scenario{
+		Apply: &kaiv1alpha1.ApplyRequest{
+			Release:         "conformance-release",
+			Target:          "conformance-target",
+			Pipeline:        "main",
+			Stage:           "canary",
+			Version:         "oci://example.com/app@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+			PreviousVersion: "oci://example.com/app@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+			Parameters: map[string]string{
+				"conformance": "true",
+			},
+		},
+		IsConverged: &kaiv1alpha1.IsConvergedRequest{
+			Release: "conformance-release",
+			Target:  "conformance-target",
+			Version: "oci://example.com/app@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+			Parameters: map[string]string{
+				"conformance": "true",
+			},
+		},
+		Rollback: &kaiv1alpha1.RollbackRequest{
+			Release:         "conformance-release",
+			Target:          "conformance-target",
+			Version:         "oci://example.com/app@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+			PreviousVersion: "oci://example.com/app@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+			Parameters: map[string]string{
+				"conformance": "true",
+			},
+		},
+		Timeout: 10 * time.Second,
+	}
+}
+
+// Run executes the base KAI conformance checks against a gRPC actuator client.
+func Run(t *testing.T, client kaiv1alpha1.ActuatorServiceClient, scenario Scenario) {
+	t.Helper()
+	if scenario.Timeout == 0 {
+		scenario.Timeout = 10 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), scenario.Timeout)
+	defer cancel()
+
+	t.Run("ApplyIsIdempotent", func(t *testing.T) {
+		first, err := client.Apply(ctx, cloneApply(scenario.Apply))
+		if err != nil {
+			t.Fatalf("first Apply returned error: %v", err)
+		}
+		if first == nil || !first.GetAccepted() {
+			t.Fatalf("first Apply accepted = false, response=%v", first)
+		}
+		second, err := client.Apply(ctx, cloneApply(scenario.Apply))
+		if err != nil {
+			t.Fatalf("second Apply returned error: %v", err)
+		}
+		if second == nil || !second.GetAccepted() {
+			t.Fatalf("second Apply accepted = false, response=%v", second)
+		}
+	})
+
+	t.Run("IsConvergedIsDeterministic", func(t *testing.T) {
+		first, err := client.IsConverged(ctx, cloneIsConverged(scenario.IsConverged))
+		if err != nil {
+			t.Fatalf("first IsConverged returned error: %v", err)
+		}
+		second, err := client.IsConverged(ctx, cloneIsConverged(scenario.IsConverged))
+		if err != nil {
+			t.Fatalf("second IsConverged returned error: %v", err)
+		}
+		if !proto.Equal(first, second) {
+			t.Fatalf("IsConverged is not deterministic: first=%v second=%v", first, second)
+		}
+	})
+
+	t.Run("RollbackIsIdempotent", func(t *testing.T) {
+		first, err := client.Rollback(ctx, cloneRollback(scenario.Rollback))
+		if err != nil {
+			t.Fatalf("first Rollback returned error: %v", err)
+		}
+		if first == nil || !first.GetAccepted() {
+			t.Fatalf("first Rollback accepted = false, response=%v", first)
+		}
+		second, err := client.Rollback(ctx, cloneRollback(scenario.Rollback))
+		if err != nil {
+			t.Fatalf("second Rollback returned error: %v", err)
+		}
+		if second == nil || !second.GetAccepted() {
+			t.Fatalf("second Rollback accepted = false, response=%v", second)
+		}
+	})
+}
+
+func cloneApply(msg *kaiv1alpha1.ApplyRequest) *kaiv1alpha1.ApplyRequest {
+	if msg == nil {
+		return nil
+	}
+	return proto.Clone(msg).(*kaiv1alpha1.ApplyRequest)
+}
+
+func cloneIsConverged(msg *kaiv1alpha1.IsConvergedRequest) *kaiv1alpha1.IsConvergedRequest {
+	if msg == nil {
+		return nil
+	}
+	return proto.Clone(msg).(*kaiv1alpha1.IsConvergedRequest)
+}
+
+func cloneRollback(msg *kaiv1alpha1.RollbackRequest) *kaiv1alpha1.RollbackRequest {
+	if msg == nil {
+		return nil
+	}
+	return proto.Clone(msg).(*kaiv1alpha1.RollbackRequest)
+}

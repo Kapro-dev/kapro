@@ -1,0 +1,83 @@
+// Package gate provides conformance checks for external KGI plugins.
+package gate
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	kgiv1alpha1 "kapro.io/kapro/spec/kgi/v1alpha1"
+
+	"google.golang.org/protobuf/proto"
+)
+
+// Scenario contains the request used by the gate conformance harness.
+type Scenario struct {
+	Evaluate *kgiv1alpha1.EvaluateRequest
+	Timeout  time.Duration
+}
+
+// DefaultScenario returns a minimal deterministic gate test scenario.
+func DefaultScenario() Scenario {
+	return Scenario{
+		Evaluate: &kgiv1alpha1.EvaluateRequest{
+			Release:  "conformance-release",
+			Target:   "conformance-target",
+			Pipeline: "main",
+			Stage:    "canary",
+			Version:  "oci://example.com/app@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+			Gate:     "conformance",
+			Parameters: map[string]string{
+				"conformance": "true",
+			},
+		},
+		Timeout: 10 * time.Second,
+	}
+}
+
+// Run executes the base KGI conformance checks against a gRPC gate client.
+func Run(t *testing.T, client kgiv1alpha1.GateServiceClient, scenario Scenario) {
+	t.Helper()
+	if scenario.Timeout == 0 {
+		scenario.Timeout = 10 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), scenario.Timeout)
+	defer cancel()
+
+	t.Run("EvaluateReturnsValidPhaseAndDoesNotMutateRequest", func(t *testing.T) {
+		req := cloneEvaluate(scenario.Evaluate)
+		before := cloneEvaluate(req)
+		resp, err := client.Evaluate(ctx, req)
+		if err != nil {
+			t.Fatalf("Evaluate returned error: %v", err)
+		}
+		if resp == nil {
+			t.Fatal("Evaluate returned nil response")
+		}
+		if !isValidPhase(resp.GetPhase()) {
+			t.Fatalf("Evaluate returned invalid phase: %s", resp.GetPhase())
+		}
+		if !proto.Equal(req, before) {
+			t.Fatalf("Evaluate mutated request: before=%v after=%v", before, req)
+		}
+	})
+}
+
+func isValidPhase(phase kgiv1alpha1.GatePhase) bool {
+	switch phase {
+	case kgiv1alpha1.GatePhase_GATE_PHASE_PASSED,
+		kgiv1alpha1.GatePhase_GATE_PHASE_FAILED,
+		kgiv1alpha1.GatePhase_GATE_PHASE_RUNNING,
+		kgiv1alpha1.GatePhase_GATE_PHASE_INCONCLUSIVE:
+		return true
+	default:
+		return false
+	}
+}
+
+func cloneEvaluate(msg *kgiv1alpha1.EvaluateRequest) *kgiv1alpha1.EvaluateRequest {
+	if msg == nil {
+		return nil
+	}
+	return proto.Clone(msg).(*kgiv1alpha1.EvaluateRequest)
+}

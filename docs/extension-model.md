@@ -147,8 +147,8 @@ API pieces:
 | KAI proto | Language-neutral actuator contract. |
 | KGI proto | Language-neutral gate contract. |
 | PluginRegistration CRD | Declarative registration of external plugin endpoints. |
+| Conformance harnesses | Base checks external plugin authors can run. |
 | PluginGateway | Future runtime boundary, timeout handling, retries, and error normalization. |
-| Conformance tests | Future shared behavioral tests for every plugin implementation. |
 
 The gateway must preserve the same state ownership rule: plugins do backend
 work, Kapro owns release state.

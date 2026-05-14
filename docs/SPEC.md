@@ -324,6 +324,11 @@ The proto contracts live under:
 - `spec/kai/v1alpha1/actuator.proto`
 - `spec/kgi/v1alpha1/gate.proto`
 
+Generated Go stubs are committed beside the proto files. Base conformance
+harnesses live under `conformance/actuator` and `conformance/gate`; plugin
+authors should run those harnesses against their implementation. See
+`docs/plugin-authoring.md`.
+
 Runtime dispatch through `PluginGateway` is future work. The current in-process
 actuator and gate registries remain the execution path.
 
