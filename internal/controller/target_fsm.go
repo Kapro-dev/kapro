@@ -44,11 +44,20 @@ func notificationPolicyFrom(policy *kaprov1alpha1.GatePolicySpec) notification.N
 	channels := make([]notification.Channel, 0, len(policy.Notifications))
 	for _, spec := range policy.Notifications {
 		ch := notification.Channel{
-			Type:   spec.Type,
-			Target: spec.Channel,
+			Type: spec.Type,
 		}
-		if spec.URL != "" {
-			ch.Target = spec.URL
+		switch spec.Type {
+		case "slack":
+			if spec.Slack != nil {
+				ch.Target = spec.Slack.Channel
+				if spec.Slack.URL != "" {
+					ch.Target = spec.Slack.URL
+				}
+			}
+		case "webhook":
+			if spec.Webhook != nil {
+				ch.Target = spec.Webhook.URL
+			}
 		}
 		if spec.Email != nil {
 			ch.Email = &notification.EmailConfig{
