@@ -1,0 +1,10 @@
+apiVersion: kapro.io/v1alpha1
+kind: PluginRegistration
+metadata:
+  name: argocd-actuator
+spec:
+  type: actuator
+  name: argo/pull
+  protocol: grpc
+  endpoint: dns:///argocd-actuator.kapro-system.svc:9090
+  timeout: 10s

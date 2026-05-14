@@ -60,9 +60,9 @@ See ADR-006/ADR-007. No per-cloud connector packages planned.
 This is the CRI equivalent for Kapro — enables out-of-process gate and actuator plugins.
 
 Design prerequisites (must happen before implementation):
-1. Define proto files: `spec/kai/v1alpha1/actuator.proto`, `spec/kgi/v1alpha1/gate.proto`
-2. Generate Go from proto; replace hand-written Go interfaces with generated ones (or thin wrappers)
-3. Implement `PluginGateway`: gRPC server the operator dials via Unix socket, registered via `PluginRegistration` CR
+1. Generate Go from `spec/kai/v1alpha1/actuator.proto` and `spec/kgi/v1alpha1/gate.proto`
+2. Replace hand-written Go interfaces with generated ones (or thin wrappers)
+3. Implement `PluginGateway`: gRPC boundary for endpoints registered via `PluginRegistration`
 4. Ship ArgoCD actuator as first external plugin to validate the model
 
 **Why v0.4 and not sooner:** gRPC gateway is a prerequisite for KSI (scheduler plugins) and for the external gate marketplace. It needs to be correct. Rushing it produces a broken extension model that's hard to fix without breaking vendors.

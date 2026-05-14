@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.0
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: pipelines.kapro.io
 spec:
   group: kapro.io
@@ -95,19 +95,15 @@ spec:
                               be satisfied.
                             type: string
                           strategy:
-                            allOf:
-                            - enum:
-                              - all
-                              - any
-                            - enum:
-                              - all
-                              - any
                             default: all
                             description: |-
                               Strategy controls when this dependency is considered satisfied.
                                 "all" (default): every target in the upstream stage must be verified.
                                 "any": at least one target in the upstream stage must be verified
                                        (canary-unlock pattern).
+                            enum:
+                            - all
+                            - any
                             type: string
                         required:
                         - stage
@@ -496,12 +492,13 @@ spec:
                           type: string
                         notifications:
                           items:
+                            description: NotificationSpec configures where and when
+                              to send delivery lifecycle events.
                             properties:
-                              channel:
-                                type: string
                               email:
-                                description: EmailNotifierSpec configures SMTP email
-                                  delivery for gate notifications.
+                                description: |-
+                                  Email configures SMTP email delivery.
+                                  Required when type=email.
                                 properties:
                                   from:
                                     type: string
@@ -531,10 +528,64 @@ spec:
                                 - smtpSecretRef
                                 - to
                                 type: object
+                              events:
+                                description: |-
+                                  Events filters which lifecycle events trigger this notification.
+                                  Uses stable semantic event types. Currently emitted events:
+                                    kapro.release.started, kapro.release.completed, kapro.release.failed,
+                                    kapro.release.rollback.started, kapro.release.stage.completed,
+                                    kapro.release.gate.passed, kapro.release.gate.failed,
+                                    kapro.release.approval.required,
+                                    kapro.release.target.pending, kapro.release.target.verification,
+                                    kapro.release.target.health_check, kapro.release.target.soaking,
+                                    kapro.release.target.metrics_check, kapro.release.target.applying,
+                                    kapro.release.target.converged, kapro.release.target.failed,
+                                    kapro.release.target.skipped.
+                                  Empty means all events.
+                                items:
+                                  type: string
+                                type: array
+                              slack:
+                                description: |-
+                                  Slack configures Slack message delivery.
+                                  Required when type=slack.
+                                properties:
+                                  channel:
+                                    description: Channel is the Slack channel to post
+                                      to.
+                                    type: string
+                                required:
+                                - channel
+                                type: object
                               type:
+                                description: Type selects the notification backend.
+                                enum:
+                                - webhook
+                                - slack
+                                - email
                                 type: string
-                              url:
-                                type: string
+                              webhook:
+                                description: |-
+                                  Webhook configures HTTP POST delivery.
+                                  Required when type=webhook.
+                                properties:
+                                  format:
+                                    default: json
+                                    description: |-
+                                      Format selects the payload format.
+                                        json (default): plain JSON event payload.
+                                        cloudevents: CloudEvents v1.0 structured content mode.
+                                    enum:
+                                    - json
+                                    - cloudevents
+                                    type: string
+                                  url:
+                                    description: URL is the HTTP endpoint to POST
+                                      events to.
+                                    type: string
+                                required:
+                                - url
+                                type: object
                             required:
                             - type
                             type: object

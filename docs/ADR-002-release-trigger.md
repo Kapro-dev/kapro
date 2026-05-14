@@ -21,7 +21,9 @@ create repeated releases faster than humans or gates can reason about them.
 
 ## Decision
 
-Add a `ReleaseTrigger` CRD after v1 only if it is safe by default.
+Introduce a `ReleaseTrigger` API only if it is safe by default. The CRD may
+exist before the controller; the controller that observes sources and creates
+Releases remains future work.
 
 `ReleaseTrigger` creates `Release` objects. It does not apply manifests, bypass
 pipeline gates, mutate active releases, or promote directly to production.
@@ -67,18 +69,20 @@ spec:
       tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
       requireSignature: true
   releaseTemplate:
-    kaproAppRef:
-      name: checkout
-    pipelineRef:
-      name: production
+    pipelines:
+      - name: production
+        pipeline: checkout-production
     suspended: true
     scope:
-      stages:
-        - canary
+      targets:
+        - checkout-canary-eu
   cooldown: 30m
   maxActive: 1
   dryRun: false
 ```
+
+The API shape is available as a preview. The controller that observes OCI
+registries and creates Releases is future work.
 
 ---
 
