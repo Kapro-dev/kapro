@@ -26,17 +26,30 @@ import "context"
 // These are semantic lifecycle events, independent of FSM phase names.
 // Channels filter on Type (not Phase) for stable integration contracts.
 const (
+	// Release-level events
 	EventReleaseStarted   = "kapro.release.started"
 	EventReleaseCompleted = "kapro.release.completed"
 	EventReleaseFailed    = "kapro.release.failed"
-	EventStageCompleted   = "kapro.release.stage.completed"
-	EventGatePassed       = "kapro.release.gate.passed"
-	EventGateFailed       = "kapro.release.gate.failed"
-	EventApprovalRequired = "kapro.release.approval.required"
-	EventTargetConverged  = "kapro.release.target.converged"
-	EventTargetFailed     = "kapro.release.target.failed"
-	EventTargetApplying   = "kapro.release.target.applying"
 	EventRollbackStarted  = "kapro.release.rollback.started"
+
+	// Stage-level events
+	EventStageCompleted = "kapro.release.stage.completed"
+
+	// Gate-level events
+	EventGatePassed = "kapro.release.gate.passed"
+	EventGateFailed = "kapro.release.gate.failed"
+
+	// Target-level events (one per TargetPhase)
+	EventTargetPending      = "kapro.release.target.pending"
+	EventTargetVerification = "kapro.release.target.verification"
+	EventTargetHealthCheck  = "kapro.release.target.health_check"
+	EventTargetSoaking      = "kapro.release.target.soaking"
+	EventTargetMetricsCheck = "kapro.release.target.metrics_check"
+	EventTargetApplying     = "kapro.release.target.applying"
+	EventTargetConverged    = "kapro.release.target.converged"
+	EventTargetFailed       = "kapro.release.target.failed"
+	EventTargetSkipped      = "kapro.release.target.skipped"
+	EventApprovalRequired   = "kapro.release.approval.required"
 )
 
 // Event carries the context for a notification.

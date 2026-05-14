@@ -35,19 +35,32 @@ const missingMCFailThreshold = 10
 
 // --- Shared helpers ---
 
-// eventTypeForPhase maps a TargetPhase to a semantic event type for notifications.
+// eventTypeForPhase maps every TargetPhase to a stable semantic event type.
+// This is a total switch with no fallback to ensure all event types are explicit.
 func eventTypeForPhase(phase kaprov1alpha1.TargetPhase) string {
 	switch phase {
+	case kaprov1alpha1.TargetPhasePending:
+		return notification.EventTargetPending
+	case kaprov1alpha1.TargetPhaseVerification:
+		return notification.EventTargetVerification
+	case kaprov1alpha1.TargetPhaseHealthCheck:
+		return notification.EventTargetHealthCheck
+	case kaprov1alpha1.TargetPhaseSoaking:
+		return notification.EventTargetSoaking
+	case kaprov1alpha1.TargetPhaseMetricsCheck:
+		return notification.EventTargetMetricsCheck
+	case kaprov1alpha1.TargetPhaseWaitingApproval:
+		return notification.EventApprovalRequired
+	case kaprov1alpha1.TargetPhaseApplying:
+		return notification.EventTargetApplying
 	case kaprov1alpha1.TargetPhaseConverged:
 		return notification.EventTargetConverged
 	case kaprov1alpha1.TargetPhaseFailed:
 		return notification.EventTargetFailed
-	case kaprov1alpha1.TargetPhaseApplying:
-		return notification.EventTargetApplying
-	case kaprov1alpha1.TargetPhaseWaitingApproval:
-		return notification.EventApprovalRequired
+	case kaprov1alpha1.TargetPhaseSkipped:
+		return notification.EventTargetSkipped
 	default:
-		return "kapro.release.target." + string(phase)
+		return ""
 	}
 }
 
