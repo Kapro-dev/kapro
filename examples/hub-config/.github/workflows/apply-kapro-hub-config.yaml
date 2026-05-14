@@ -1,0 +1,52 @@
+name: Apply Kapro Hub Config
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+      - name: Validate YAMLs
+        run: |
+          for f in clusters/*.yaml apps/*.yaml pipelines/*.yaml releases/*.yaml; do
+            echo "Validating $f..."
+            kubectl apply --dry-run=client -f "$f"
+          done
+
+  diff:
+    name: Diff
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+      - name: Show diff
+        run: |
+          for f in clusters/*.yaml apps/*.yaml pipelines/*.yaml; do
+            echo "--- $f ---"
+            kubectl diff -f "$f" || true
+          done
+
+  apply:
+    name: Apply
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+      - name: Apply cluster config
+        run: kubectl apply -f clusters/
+      - name: Apply apps
+        run: kubectl apply -f apps/
+      - name: Apply pipelines
+        run: kubectl apply -f pipelines/
+      - name: Apply releases
+        run: kubectl apply -f releases/

@@ -1,0 +1,11 @@
+apiVersion: kapro.io/v1alpha1
+kind: Release
+metadata:
+  name: checkout-v1-2-3
+spec:
+  version: "oci://europe-west3-docker.pkg.dev/my-project/bundles/checkout@sha256:abc123"
+  pipelines:
+    - name: main
+      pipeline: checkout-progressive
+  suspended: false
+  timeout: 4h

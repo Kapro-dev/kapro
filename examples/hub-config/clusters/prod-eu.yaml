@@ -1,0 +1,15 @@
+apiVersion: kapro.io/v1alpha1
+kind: MemberCluster
+metadata:
+  name: prod-eu
+  labels:
+    kapro.io/tier: production
+    kapro.io/region: europe-west3
+    kapro.io/country: de
+spec:
+  actuator:
+    mode: pull
+    backend: flux
+    pull:
+      ociRepository: app-bundle
+      namespace: flux-system
