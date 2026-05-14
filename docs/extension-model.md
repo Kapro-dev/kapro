@@ -25,7 +25,7 @@ This document defines the target architecture for those contracts.
 | Gate | `pkg/gate` | Decide whether one target may advance. | In-process registry |
 | Template gate | CEL, Job, Webhook gate templates | Configure custom gate behavior through CRDs. | Implemented |
 | Lifecycle events | CloudEvents webhook payloads | Publish release, stage, gate, approval, and target events. | Implemented |
-| Plugin gateway | KAI/KGI proto contracts and `PluginRegistration` | Register out-of-process actuators and gates. | API preview |
+| Plugin gateway | KAI/KGI proto contracts and `PluginRegistration` | Register and probe out-of-process actuators and gates. | Status-capable preview |
 | ReleaseTrigger | CRD API | Define safe autonomous Release creation policy. | API preview |
 
 ## Core Boundary

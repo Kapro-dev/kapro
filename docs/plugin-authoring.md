@@ -8,6 +8,7 @@ Kapro plugins implement one narrow extension contract:
 The controller runtime still uses in-process registries today. The proto
 contracts and conformance harnesses are provided now so plugin authors can build
 against the stable API shape before `PluginGateway` runtime dispatch is wired.
+`PluginRegistration` objects are probed for capabilities and readiness.
 
 ## Contracts
 
@@ -52,6 +53,7 @@ for `PluginGateway`; it does not change the current in-process execution path.
 
 An actuator plugin must:
 
+- implement `GetCapabilities` and return `contractVersion: v1alpha1`;
 - make `Apply` idempotent for the same version and target;
 - make `Rollback` idempotent for the same previous version and target;
 - return deterministic `IsConverged` results for the same backend state;
@@ -72,6 +74,7 @@ func TestKAIConformance(t *testing.T) {
 
 A gate plugin must:
 
+- implement `GetCapabilities` and return `contractVersion: v1alpha1`;
 - return one valid phase: `PASSED`, `FAILED`, `RUNNING`, or `INCONCLUSIVE`;
 - not mutate the request object;
 - respect request context cancellation;
@@ -98,4 +101,3 @@ import (
     kgiv1alpha1 "kapro.io/kapro/spec/kgi/v1alpha1"
 )
 ```
-

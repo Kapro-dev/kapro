@@ -19,7 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	GateService_Evaluate_FullMethodName = "/kapro.kgi.v1alpha1.GateService/Evaluate"
+	GateService_GetCapabilities_FullMethodName = "/kapro.kgi.v1alpha1.GateService/GetCapabilities"
+	GateService_Evaluate_FullMethodName        = "/kapro.kgi.v1alpha1.GateService/Evaluate"
 )
 
 // GateServiceClient is the client API for GateService service.
@@ -31,6 +32,7 @@ const (
 // A gate evaluates whether one target may advance. Kapro owns timing, retries,
 // failure policy, and persisted status; the gate owns the safety decision.
 type GateServiceClient interface {
+	GetCapabilities(ctx context.Context, in *GetCapabilitiesRequest, opts ...grpc.CallOption) (*GetCapabilitiesResponse, error)
 	Evaluate(ctx context.Context, in *EvaluateRequest, opts ...grpc.CallOption) (*EvaluateResponse, error)
 }
 
@@ -40,6 +42,16 @@ type gateServiceClient struct {
 
 func NewGateServiceClient(cc grpc.ClientConnInterface) GateServiceClient {
 	return &gateServiceClient{cc}
+}
+
+func (c *gateServiceClient) GetCapabilities(ctx context.Context, in *GetCapabilitiesRequest, opts ...grpc.CallOption) (*GetCapabilitiesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetCapabilitiesResponse)
+	err := c.cc.Invoke(ctx, GateService_GetCapabilities_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *gateServiceClient) Evaluate(ctx context.Context, in *EvaluateRequest, opts ...grpc.CallOption) (*EvaluateResponse, error) {
@@ -61,6 +73,7 @@ func (c *gateServiceClient) Evaluate(ctx context.Context, in *EvaluateRequest, o
 // A gate evaluates whether one target may advance. Kapro owns timing, retries,
 // failure policy, and persisted status; the gate owns the safety decision.
 type GateServiceServer interface {
+	GetCapabilities(context.Context, *GetCapabilitiesRequest) (*GetCapabilitiesResponse, error)
 	Evaluate(context.Context, *EvaluateRequest) (*EvaluateResponse, error)
 	mustEmbedUnimplementedGateServiceServer()
 }
@@ -72,6 +85,9 @@ type GateServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedGateServiceServer struct{}
 
+func (UnimplementedGateServiceServer) GetCapabilities(context.Context, *GetCapabilitiesRequest) (*GetCapabilitiesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetCapabilities not implemented")
+}
 func (UnimplementedGateServiceServer) Evaluate(context.Context, *EvaluateRequest) (*EvaluateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Evaluate not implemented")
 }
@@ -94,6 +110,24 @@ func RegisterGateServiceServer(s grpc.ServiceRegistrar, srv GateServiceServer) {
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&GateService_ServiceDesc, srv)
+}
+
+func _GateService_GetCapabilities_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetCapabilitiesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GateServiceServer).GetCapabilities(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GateService_GetCapabilities_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GateServiceServer).GetCapabilities(ctx, req.(*GetCapabilitiesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _GateService_Evaluate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -121,6 +155,10 @@ var GateService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "kapro.kgi.v1alpha1.GateService",
 	HandlerType: (*GateServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetCapabilities",
+			Handler:    _GateService_GetCapabilities_Handler,
+		},
 		{
 			MethodName: "Evaluate",
 			Handler:    _GateService_Evaluate_Handler,

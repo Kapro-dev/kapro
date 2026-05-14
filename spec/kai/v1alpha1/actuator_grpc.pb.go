@@ -19,9 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ActuatorService_Apply_FullMethodName       = "/kapro.kai.v1alpha1.ActuatorService/Apply"
-	ActuatorService_IsConverged_FullMethodName = "/kapro.kai.v1alpha1.ActuatorService/IsConverged"
-	ActuatorService_Rollback_FullMethodName    = "/kapro.kai.v1alpha1.ActuatorService/Rollback"
+	ActuatorService_GetCapabilities_FullMethodName = "/kapro.kai.v1alpha1.ActuatorService/GetCapabilities"
+	ActuatorService_Apply_FullMethodName           = "/kapro.kai.v1alpha1.ActuatorService/Apply"
+	ActuatorService_IsConverged_FullMethodName     = "/kapro.kai.v1alpha1.ActuatorService/IsConverged"
+	ActuatorService_Rollback_FullMethodName        = "/kapro.kai.v1alpha1.ActuatorService/Rollback"
 )
 
 // ActuatorServiceClient is the client API for ActuatorService service.
@@ -34,6 +35,7 @@ const (
 // convergence. Kapro owns release ordering, retries, rollback intent, and
 // status; the actuator owns backend-specific mutation and readiness checks.
 type ActuatorServiceClient interface {
+	GetCapabilities(ctx context.Context, in *GetCapabilitiesRequest, opts ...grpc.CallOption) (*GetCapabilitiesResponse, error)
 	Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error)
 	IsConverged(ctx context.Context, in *IsConvergedRequest, opts ...grpc.CallOption) (*IsConvergedResponse, error)
 	Rollback(ctx context.Context, in *RollbackRequest, opts ...grpc.CallOption) (*RollbackResponse, error)
@@ -45,6 +47,16 @@ type actuatorServiceClient struct {
 
 func NewActuatorServiceClient(cc grpc.ClientConnInterface) ActuatorServiceClient {
 	return &actuatorServiceClient{cc}
+}
+
+func (c *actuatorServiceClient) GetCapabilities(ctx context.Context, in *GetCapabilitiesRequest, opts ...grpc.CallOption) (*GetCapabilitiesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetCapabilitiesResponse)
+	err := c.cc.Invoke(ctx, ActuatorService_GetCapabilities_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *actuatorServiceClient) Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error) {
@@ -87,6 +99,7 @@ func (c *actuatorServiceClient) Rollback(ctx context.Context, in *RollbackReques
 // convergence. Kapro owns release ordering, retries, rollback intent, and
 // status; the actuator owns backend-specific mutation and readiness checks.
 type ActuatorServiceServer interface {
+	GetCapabilities(context.Context, *GetCapabilitiesRequest) (*GetCapabilitiesResponse, error)
 	Apply(context.Context, *ApplyRequest) (*ApplyResponse, error)
 	IsConverged(context.Context, *IsConvergedRequest) (*IsConvergedResponse, error)
 	Rollback(context.Context, *RollbackRequest) (*RollbackResponse, error)
@@ -100,6 +113,9 @@ type ActuatorServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedActuatorServiceServer struct{}
 
+func (UnimplementedActuatorServiceServer) GetCapabilities(context.Context, *GetCapabilitiesRequest) (*GetCapabilitiesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetCapabilities not implemented")
+}
 func (UnimplementedActuatorServiceServer) Apply(context.Context, *ApplyRequest) (*ApplyResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Apply not implemented")
 }
@@ -128,6 +144,24 @@ func RegisterActuatorServiceServer(s grpc.ServiceRegistrar, srv ActuatorServiceS
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&ActuatorService_ServiceDesc, srv)
+}
+
+func _ActuatorService_GetCapabilities_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetCapabilitiesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ActuatorServiceServer).GetCapabilities(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ActuatorService_GetCapabilities_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ActuatorServiceServer).GetCapabilities(ctx, req.(*GetCapabilitiesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _ActuatorService_Apply_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -191,6 +225,10 @@ var ActuatorService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "kapro.kai.v1alpha1.ActuatorService",
 	HandlerType: (*ActuatorServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetCapabilities",
+			Handler:    _ActuatorService_GetCapabilities_Handler,
+		},
 		{
 			MethodName: "Apply",
 			Handler:    _ActuatorService_Apply_Handler,

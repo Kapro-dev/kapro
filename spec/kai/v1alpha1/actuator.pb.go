@@ -21,6 +21,102 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type GetCapabilitiesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetCapabilitiesRequest) Reset() {
+	*x = GetCapabilitiesRequest{}
+	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCapabilitiesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCapabilitiesRequest) ProtoMessage() {}
+
+func (x *GetCapabilitiesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCapabilitiesRequest.ProtoReflect.Descriptor instead.
+func (*GetCapabilitiesRequest) Descriptor() ([]byte, []int) {
+	return file_spec_kai_v1alpha1_actuator_proto_rawDescGZIP(), []int{0}
+}
+
+type GetCapabilitiesResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	ContractVersion string                 `protobuf:"bytes,1,opt,name=contract_version,json=contractVersion,proto3" json:"contract_version,omitempty"`
+	PluginVersion   string                 `protobuf:"bytes,2,opt,name=plugin_version,json=pluginVersion,proto3" json:"plugin_version,omitempty"`
+	Capabilities    []string               `protobuf:"bytes,3,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *GetCapabilitiesResponse) Reset() {
+	*x = GetCapabilitiesResponse{}
+	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCapabilitiesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCapabilitiesResponse) ProtoMessage() {}
+
+func (x *GetCapabilitiesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCapabilitiesResponse.ProtoReflect.Descriptor instead.
+func (*GetCapabilitiesResponse) Descriptor() ([]byte, []int) {
+	return file_spec_kai_v1alpha1_actuator_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *GetCapabilitiesResponse) GetContractVersion() string {
+	if x != nil {
+		return x.ContractVersion
+	}
+	return ""
+}
+
+func (x *GetCapabilitiesResponse) GetPluginVersion() string {
+	if x != nil {
+		return x.PluginVersion
+	}
+	return ""
+}
+
+func (x *GetCapabilitiesResponse) GetCapabilities() []string {
+	if x != nil {
+		return x.Capabilities
+	}
+	return nil
+}
+
 type ApplyRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Release         string                 `protobuf:"bytes,1,opt,name=release,proto3" json:"release,omitempty"`
@@ -36,7 +132,7 @@ type ApplyRequest struct {
 
 func (x *ApplyRequest) Reset() {
 	*x = ApplyRequest{}
-	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[0]
+	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48,7 +144,7 @@ func (x *ApplyRequest) String() string {
 func (*ApplyRequest) ProtoMessage() {}
 
 func (x *ApplyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[0]
+	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -61,7 +157,7 @@ func (x *ApplyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyRequest.ProtoReflect.Descriptor instead.
 func (*ApplyRequest) Descriptor() ([]byte, []int) {
-	return file_spec_kai_v1alpha1_actuator_proto_rawDescGZIP(), []int{0}
+	return file_spec_kai_v1alpha1_actuator_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ApplyRequest) GetRelease() string {
@@ -123,7 +219,7 @@ type ApplyResponse struct {
 
 func (x *ApplyResponse) Reset() {
 	*x = ApplyResponse{}
-	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[1]
+	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -135,7 +231,7 @@ func (x *ApplyResponse) String() string {
 func (*ApplyResponse) ProtoMessage() {}
 
 func (x *ApplyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[1]
+	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -148,7 +244,7 @@ func (x *ApplyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyResponse.ProtoReflect.Descriptor instead.
 func (*ApplyResponse) Descriptor() ([]byte, []int) {
-	return file_spec_kai_v1alpha1_actuator_proto_rawDescGZIP(), []int{1}
+	return file_spec_kai_v1alpha1_actuator_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ApplyResponse) GetAccepted() bool {
@@ -177,7 +273,7 @@ type IsConvergedRequest struct {
 
 func (x *IsConvergedRequest) Reset() {
 	*x = IsConvergedRequest{}
-	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[2]
+	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -189,7 +285,7 @@ func (x *IsConvergedRequest) String() string {
 func (*IsConvergedRequest) ProtoMessage() {}
 
 func (x *IsConvergedRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[2]
+	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -202,7 +298,7 @@ func (x *IsConvergedRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IsConvergedRequest.ProtoReflect.Descriptor instead.
 func (*IsConvergedRequest) Descriptor() ([]byte, []int) {
-	return file_spec_kai_v1alpha1_actuator_proto_rawDescGZIP(), []int{2}
+	return file_spec_kai_v1alpha1_actuator_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *IsConvergedRequest) GetRelease() string {
@@ -243,7 +339,7 @@ type IsConvergedResponse struct {
 
 func (x *IsConvergedResponse) Reset() {
 	*x = IsConvergedResponse{}
-	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[3]
+	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -255,7 +351,7 @@ func (x *IsConvergedResponse) String() string {
 func (*IsConvergedResponse) ProtoMessage() {}
 
 func (x *IsConvergedResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[3]
+	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -268,7 +364,7 @@ func (x *IsConvergedResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IsConvergedResponse.ProtoReflect.Descriptor instead.
 func (*IsConvergedResponse) Descriptor() ([]byte, []int) {
-	return file_spec_kai_v1alpha1_actuator_proto_rawDescGZIP(), []int{3}
+	return file_spec_kai_v1alpha1_actuator_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *IsConvergedResponse) GetConverged() bool {
@@ -298,7 +394,7 @@ type RollbackRequest struct {
 
 func (x *RollbackRequest) Reset() {
 	*x = RollbackRequest{}
-	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[4]
+	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -310,7 +406,7 @@ func (x *RollbackRequest) String() string {
 func (*RollbackRequest) ProtoMessage() {}
 
 func (x *RollbackRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[4]
+	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -323,7 +419,7 @@ func (x *RollbackRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollbackRequest.ProtoReflect.Descriptor instead.
 func (*RollbackRequest) Descriptor() ([]byte, []int) {
-	return file_spec_kai_v1alpha1_actuator_proto_rawDescGZIP(), []int{4}
+	return file_spec_kai_v1alpha1_actuator_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *RollbackRequest) GetRelease() string {
@@ -371,7 +467,7 @@ type RollbackResponse struct {
 
 func (x *RollbackResponse) Reset() {
 	*x = RollbackResponse{}
-	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[5]
+	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -383,7 +479,7 @@ func (x *RollbackResponse) String() string {
 func (*RollbackResponse) ProtoMessage() {}
 
 func (x *RollbackResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[5]
+	mi := &file_spec_kai_v1alpha1_actuator_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -396,7 +492,7 @@ func (x *RollbackResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollbackResponse.ProtoReflect.Descriptor instead.
 func (*RollbackResponse) Descriptor() ([]byte, []int) {
-	return file_spec_kai_v1alpha1_actuator_proto_rawDescGZIP(), []int{5}
+	return file_spec_kai_v1alpha1_actuator_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *RollbackResponse) GetAccepted() bool {
@@ -417,7 +513,12 @@ var File_spec_kai_v1alpha1_actuator_proto protoreflect.FileDescriptor
 
 const file_spec_kai_v1alpha1_actuator_proto_rawDesc = "" +
 	"\n" +
-	" spec/kai/v1alpha1/actuator.proto\x12\x12kapro.kai.v1alpha1\"\xc8\x02\n" +
+	" spec/kai/v1alpha1/actuator.proto\x12\x12kapro.kai.v1alpha1\"\x18\n" +
+	"\x16GetCapabilitiesRequest\"\x8f\x01\n" +
+	"\x17GetCapabilitiesResponse\x12)\n" +
+	"\x10contract_version\x18\x01 \x01(\tR\x0fcontractVersion\x12%\n" +
+	"\x0eplugin_version\x18\x02 \x01(\tR\rpluginVersion\x12\"\n" +
+	"\fcapabilities\x18\x03 \x03(\tR\fcapabilities\"\xc8\x02\n" +
 	"\fApplyRequest\x12\x18\n" +
 	"\arelease\x18\x01 \x01(\tR\arelease\x12\x16\n" +
 	"\x06target\x18\x02 \x01(\tR\x06target\x12\x1a\n" +
@@ -460,8 +561,9 @@ const file_spec_kai_v1alpha1_actuator_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"H\n" +
 	"\x10RollbackResponse\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage2\x96\x02\n" +
-	"\x0fActuatorService\x12L\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage2\x82\x03\n" +
+	"\x0fActuatorService\x12j\n" +
+	"\x0fGetCapabilities\x12*.kapro.kai.v1alpha1.GetCapabilitiesRequest\x1a+.kapro.kai.v1alpha1.GetCapabilitiesResponse\x12L\n" +
 	"\x05Apply\x12 .kapro.kai.v1alpha1.ApplyRequest\x1a!.kapro.kai.v1alpha1.ApplyResponse\x12^\n" +
 	"\vIsConverged\x12&.kapro.kai.v1alpha1.IsConvergedRequest\x1a'.kapro.kai.v1alpha1.IsConvergedResponse\x12U\n" +
 	"\bRollback\x12#.kapro.kai.v1alpha1.RollbackRequest\x1a$.kapro.kai.v1alpha1.RollbackResponseB.Z,kapro.io/kapro/spec/kai/v1alpha1;kaiv1alpha1b\x06proto3"
@@ -478,33 +580,37 @@ func file_spec_kai_v1alpha1_actuator_proto_rawDescGZIP() []byte {
 	return file_spec_kai_v1alpha1_actuator_proto_rawDescData
 }
 
-var file_spec_kai_v1alpha1_actuator_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_spec_kai_v1alpha1_actuator_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_spec_kai_v1alpha1_actuator_proto_goTypes = []any{
-	(*ApplyRequest)(nil),        // 0: kapro.kai.v1alpha1.ApplyRequest
-	(*ApplyResponse)(nil),       // 1: kapro.kai.v1alpha1.ApplyResponse
-	(*IsConvergedRequest)(nil),  // 2: kapro.kai.v1alpha1.IsConvergedRequest
-	(*IsConvergedResponse)(nil), // 3: kapro.kai.v1alpha1.IsConvergedResponse
-	(*RollbackRequest)(nil),     // 4: kapro.kai.v1alpha1.RollbackRequest
-	(*RollbackResponse)(nil),    // 5: kapro.kai.v1alpha1.RollbackResponse
-	nil,                         // 6: kapro.kai.v1alpha1.ApplyRequest.ParametersEntry
-	nil,                         // 7: kapro.kai.v1alpha1.IsConvergedRequest.ParametersEntry
-	nil,                         // 8: kapro.kai.v1alpha1.RollbackRequest.ParametersEntry
+	(*GetCapabilitiesRequest)(nil),  // 0: kapro.kai.v1alpha1.GetCapabilitiesRequest
+	(*GetCapabilitiesResponse)(nil), // 1: kapro.kai.v1alpha1.GetCapabilitiesResponse
+	(*ApplyRequest)(nil),            // 2: kapro.kai.v1alpha1.ApplyRequest
+	(*ApplyResponse)(nil),           // 3: kapro.kai.v1alpha1.ApplyResponse
+	(*IsConvergedRequest)(nil),      // 4: kapro.kai.v1alpha1.IsConvergedRequest
+	(*IsConvergedResponse)(nil),     // 5: kapro.kai.v1alpha1.IsConvergedResponse
+	(*RollbackRequest)(nil),         // 6: kapro.kai.v1alpha1.RollbackRequest
+	(*RollbackResponse)(nil),        // 7: kapro.kai.v1alpha1.RollbackResponse
+	nil,                             // 8: kapro.kai.v1alpha1.ApplyRequest.ParametersEntry
+	nil,                             // 9: kapro.kai.v1alpha1.IsConvergedRequest.ParametersEntry
+	nil,                             // 10: kapro.kai.v1alpha1.RollbackRequest.ParametersEntry
 }
 var file_spec_kai_v1alpha1_actuator_proto_depIdxs = []int32{
-	6, // 0: kapro.kai.v1alpha1.ApplyRequest.parameters:type_name -> kapro.kai.v1alpha1.ApplyRequest.ParametersEntry
-	7, // 1: kapro.kai.v1alpha1.IsConvergedRequest.parameters:type_name -> kapro.kai.v1alpha1.IsConvergedRequest.ParametersEntry
-	8, // 2: kapro.kai.v1alpha1.RollbackRequest.parameters:type_name -> kapro.kai.v1alpha1.RollbackRequest.ParametersEntry
-	0, // 3: kapro.kai.v1alpha1.ActuatorService.Apply:input_type -> kapro.kai.v1alpha1.ApplyRequest
-	2, // 4: kapro.kai.v1alpha1.ActuatorService.IsConverged:input_type -> kapro.kai.v1alpha1.IsConvergedRequest
-	4, // 5: kapro.kai.v1alpha1.ActuatorService.Rollback:input_type -> kapro.kai.v1alpha1.RollbackRequest
-	1, // 6: kapro.kai.v1alpha1.ActuatorService.Apply:output_type -> kapro.kai.v1alpha1.ApplyResponse
-	3, // 7: kapro.kai.v1alpha1.ActuatorService.IsConverged:output_type -> kapro.kai.v1alpha1.IsConvergedResponse
-	5, // 8: kapro.kai.v1alpha1.ActuatorService.Rollback:output_type -> kapro.kai.v1alpha1.RollbackResponse
-	6, // [6:9] is the sub-list for method output_type
-	3, // [3:6] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	8,  // 0: kapro.kai.v1alpha1.ApplyRequest.parameters:type_name -> kapro.kai.v1alpha1.ApplyRequest.ParametersEntry
+	9,  // 1: kapro.kai.v1alpha1.IsConvergedRequest.parameters:type_name -> kapro.kai.v1alpha1.IsConvergedRequest.ParametersEntry
+	10, // 2: kapro.kai.v1alpha1.RollbackRequest.parameters:type_name -> kapro.kai.v1alpha1.RollbackRequest.ParametersEntry
+	0,  // 3: kapro.kai.v1alpha1.ActuatorService.GetCapabilities:input_type -> kapro.kai.v1alpha1.GetCapabilitiesRequest
+	2,  // 4: kapro.kai.v1alpha1.ActuatorService.Apply:input_type -> kapro.kai.v1alpha1.ApplyRequest
+	4,  // 5: kapro.kai.v1alpha1.ActuatorService.IsConverged:input_type -> kapro.kai.v1alpha1.IsConvergedRequest
+	6,  // 6: kapro.kai.v1alpha1.ActuatorService.Rollback:input_type -> kapro.kai.v1alpha1.RollbackRequest
+	1,  // 7: kapro.kai.v1alpha1.ActuatorService.GetCapabilities:output_type -> kapro.kai.v1alpha1.GetCapabilitiesResponse
+	3,  // 8: kapro.kai.v1alpha1.ActuatorService.Apply:output_type -> kapro.kai.v1alpha1.ApplyResponse
+	5,  // 9: kapro.kai.v1alpha1.ActuatorService.IsConverged:output_type -> kapro.kai.v1alpha1.IsConvergedResponse
+	7,  // 10: kapro.kai.v1alpha1.ActuatorService.Rollback:output_type -> kapro.kai.v1alpha1.RollbackResponse
+	7,  // [7:11] is the sub-list for method output_type
+	3,  // [3:7] is the sub-list for method input_type
+	3,  // [3:3] is the sub-list for extension type_name
+	3,  // [3:3] is the sub-list for extension extendee
+	0,  // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_spec_kai_v1alpha1_actuator_proto_init() }
@@ -518,7 +624,7 @@ func file_spec_kai_v1alpha1_actuator_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_spec_kai_v1alpha1_actuator_proto_rawDesc), len(file_spec_kai_v1alpha1_actuator_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

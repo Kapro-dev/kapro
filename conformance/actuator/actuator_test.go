@@ -15,6 +15,14 @@ func TestRun(t *testing.T) {
 
 type fakeActuatorClient struct{}
 
+func (fakeActuatorClient) GetCapabilities(context.Context, *kaiv1alpha1.GetCapabilitiesRequest, ...grpc.CallOption) (*kaiv1alpha1.GetCapabilitiesResponse, error) {
+	return &kaiv1alpha1.GetCapabilitiesResponse{
+		ContractVersion: "v1alpha1",
+		PluginVersion:   "test",
+		Capabilities:    []string{"apply", "rollback"},
+	}, nil
+}
+
 func (fakeActuatorClient) Apply(context.Context, *kaiv1alpha1.ApplyRequest, ...grpc.CallOption) (*kaiv1alpha1.ApplyResponse, error) {
 	return &kaiv1alpha1.ApplyResponse{Accepted: true, Message: "accepted"}, nil
 }

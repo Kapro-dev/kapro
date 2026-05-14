@@ -25,6 +25,7 @@ func init() {
 	Register("release-target", startReleaseTargetController)
 	Register("approval", startApprovalController)
 	Register("kapro", startKaproController)
+	Register("plugin-registration", startPluginRegistrationController)
 	// csrapproval and membercluster bootstrap removed — Flux Operator handles spoke setup.
 }
 
@@ -110,6 +111,18 @@ func BuildGateRegistry(c client.Client) (*pkggate.Registry, error) {
 // Watches Approval objects and unblocks targets waiting in WaitingApproval phase.
 func startApprovalController(_ context.Context, cc ControllerContext) (bool, error) {
 	if err := (&controller.ApprovalReconciler{
+		Client:   cc.Manager.GetClient(),
+		Recorder: cc.Recorder,
+	}).SetupWithManager(cc.Manager); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// startPluginRegistrationController starts the PluginRegistration readiness reconciler.
+// It probes capabilities only; release execution dispatch remains in-process.
+func startPluginRegistrationController(_ context.Context, cc ControllerContext) (bool, error) {
+	if err := (&controller.PluginRegistrationReconciler{
 		Client:   cc.Manager.GetClient(),
 		Recorder: cc.Recorder,
 	}).SetupWithManager(cc.Manager); err != nil {

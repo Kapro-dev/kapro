@@ -76,6 +76,102 @@ func (GatePhase) EnumDescriptor() ([]byte, []int) {
 	return file_spec_kgi_v1alpha1_gate_proto_rawDescGZIP(), []int{0}
 }
 
+type GetCapabilitiesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetCapabilitiesRequest) Reset() {
+	*x = GetCapabilitiesRequest{}
+	mi := &file_spec_kgi_v1alpha1_gate_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCapabilitiesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCapabilitiesRequest) ProtoMessage() {}
+
+func (x *GetCapabilitiesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_spec_kgi_v1alpha1_gate_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCapabilitiesRequest.ProtoReflect.Descriptor instead.
+func (*GetCapabilitiesRequest) Descriptor() ([]byte, []int) {
+	return file_spec_kgi_v1alpha1_gate_proto_rawDescGZIP(), []int{0}
+}
+
+type GetCapabilitiesResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	ContractVersion string                 `protobuf:"bytes,1,opt,name=contract_version,json=contractVersion,proto3" json:"contract_version,omitempty"`
+	PluginVersion   string                 `protobuf:"bytes,2,opt,name=plugin_version,json=pluginVersion,proto3" json:"plugin_version,omitempty"`
+	Capabilities    []string               `protobuf:"bytes,3,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *GetCapabilitiesResponse) Reset() {
+	*x = GetCapabilitiesResponse{}
+	mi := &file_spec_kgi_v1alpha1_gate_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCapabilitiesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCapabilitiesResponse) ProtoMessage() {}
+
+func (x *GetCapabilitiesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_spec_kgi_v1alpha1_gate_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCapabilitiesResponse.ProtoReflect.Descriptor instead.
+func (*GetCapabilitiesResponse) Descriptor() ([]byte, []int) {
+	return file_spec_kgi_v1alpha1_gate_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *GetCapabilitiesResponse) GetContractVersion() string {
+	if x != nil {
+		return x.ContractVersion
+	}
+	return ""
+}
+
+func (x *GetCapabilitiesResponse) GetPluginVersion() string {
+	if x != nil {
+		return x.PluginVersion
+	}
+	return ""
+}
+
+func (x *GetCapabilitiesResponse) GetCapabilities() []string {
+	if x != nil {
+		return x.Capabilities
+	}
+	return nil
+}
+
 type EvaluateRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Release       string                 `protobuf:"bytes,1,opt,name=release,proto3" json:"release,omitempty"`
@@ -91,7 +187,7 @@ type EvaluateRequest struct {
 
 func (x *EvaluateRequest) Reset() {
 	*x = EvaluateRequest{}
-	mi := &file_spec_kgi_v1alpha1_gate_proto_msgTypes[0]
+	mi := &file_spec_kgi_v1alpha1_gate_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -103,7 +199,7 @@ func (x *EvaluateRequest) String() string {
 func (*EvaluateRequest) ProtoMessage() {}
 
 func (x *EvaluateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_spec_kgi_v1alpha1_gate_proto_msgTypes[0]
+	mi := &file_spec_kgi_v1alpha1_gate_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -116,7 +212,7 @@ func (x *EvaluateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvaluateRequest.ProtoReflect.Descriptor instead.
 func (*EvaluateRequest) Descriptor() ([]byte, []int) {
-	return file_spec_kgi_v1alpha1_gate_proto_rawDescGZIP(), []int{0}
+	return file_spec_kgi_v1alpha1_gate_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *EvaluateRequest) GetRelease() string {
@@ -178,7 +274,7 @@ type EvaluateResponse struct {
 
 func (x *EvaluateResponse) Reset() {
 	*x = EvaluateResponse{}
-	mi := &file_spec_kgi_v1alpha1_gate_proto_msgTypes[1]
+	mi := &file_spec_kgi_v1alpha1_gate_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -190,7 +286,7 @@ func (x *EvaluateResponse) String() string {
 func (*EvaluateResponse) ProtoMessage() {}
 
 func (x *EvaluateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_spec_kgi_v1alpha1_gate_proto_msgTypes[1]
+	mi := &file_spec_kgi_v1alpha1_gate_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -203,7 +299,7 @@ func (x *EvaluateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvaluateResponse.ProtoReflect.Descriptor instead.
 func (*EvaluateResponse) Descriptor() ([]byte, []int) {
-	return file_spec_kgi_v1alpha1_gate_proto_rawDescGZIP(), []int{1}
+	return file_spec_kgi_v1alpha1_gate_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *EvaluateResponse) GetPhase() GatePhase {
@@ -224,7 +320,12 @@ var File_spec_kgi_v1alpha1_gate_proto protoreflect.FileDescriptor
 
 const file_spec_kgi_v1alpha1_gate_proto_rawDesc = "" +
 	"\n" +
-	"\x1cspec/kgi/v1alpha1/gate.proto\x12\x12kapro.kgi.v1alpha1\"\xb7\x02\n" +
+	"\x1cspec/kgi/v1alpha1/gate.proto\x12\x12kapro.kgi.v1alpha1\"\x18\n" +
+	"\x16GetCapabilitiesRequest\"\x8f\x01\n" +
+	"\x17GetCapabilitiesResponse\x12)\n" +
+	"\x10contract_version\x18\x01 \x01(\tR\x0fcontractVersion\x12%\n" +
+	"\x0eplugin_version\x18\x02 \x01(\tR\rpluginVersion\x12\"\n" +
+	"\fcapabilities\x18\x03 \x03(\tR\fcapabilities\"\xb7\x02\n" +
 	"\x0fEvaluateRequest\x12\x18\n" +
 	"\arelease\x18\x01 \x01(\tR\arelease\x12\x16\n" +
 	"\x06target\x18\x02 \x01(\tR\x06target\x12\x1a\n" +
@@ -246,8 +347,9 @@ const file_spec_kgi_v1alpha1_gate_proto_rawDesc = "" +
 	"\x11GATE_PHASE_PASSED\x10\x01\x12\x15\n" +
 	"\x11GATE_PHASE_FAILED\x10\x02\x12\x16\n" +
 	"\x12GATE_PHASE_RUNNING\x10\x03\x12\x1b\n" +
-	"\x17GATE_PHASE_INCONCLUSIVE\x10\x042d\n" +
-	"\vGateService\x12U\n" +
+	"\x17GATE_PHASE_INCONCLUSIVE\x10\x042\xd0\x01\n" +
+	"\vGateService\x12j\n" +
+	"\x0fGetCapabilities\x12*.kapro.kgi.v1alpha1.GetCapabilitiesRequest\x1a+.kapro.kgi.v1alpha1.GetCapabilitiesResponse\x12U\n" +
 	"\bEvaluate\x12#.kapro.kgi.v1alpha1.EvaluateRequest\x1a$.kapro.kgi.v1alpha1.EvaluateResponseB.Z,kapro.io/kapro/spec/kgi/v1alpha1;kgiv1alpha1b\x06proto3"
 
 var (
@@ -263,20 +365,24 @@ func file_spec_kgi_v1alpha1_gate_proto_rawDescGZIP() []byte {
 }
 
 var file_spec_kgi_v1alpha1_gate_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_spec_kgi_v1alpha1_gate_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_spec_kgi_v1alpha1_gate_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_spec_kgi_v1alpha1_gate_proto_goTypes = []any{
-	(GatePhase)(0),           // 0: kapro.kgi.v1alpha1.GatePhase
-	(*EvaluateRequest)(nil),  // 1: kapro.kgi.v1alpha1.EvaluateRequest
-	(*EvaluateResponse)(nil), // 2: kapro.kgi.v1alpha1.EvaluateResponse
-	nil,                      // 3: kapro.kgi.v1alpha1.EvaluateRequest.ParametersEntry
+	(GatePhase)(0),                  // 0: kapro.kgi.v1alpha1.GatePhase
+	(*GetCapabilitiesRequest)(nil),  // 1: kapro.kgi.v1alpha1.GetCapabilitiesRequest
+	(*GetCapabilitiesResponse)(nil), // 2: kapro.kgi.v1alpha1.GetCapabilitiesResponse
+	(*EvaluateRequest)(nil),         // 3: kapro.kgi.v1alpha1.EvaluateRequest
+	(*EvaluateResponse)(nil),        // 4: kapro.kgi.v1alpha1.EvaluateResponse
+	nil,                             // 5: kapro.kgi.v1alpha1.EvaluateRequest.ParametersEntry
 }
 var file_spec_kgi_v1alpha1_gate_proto_depIdxs = []int32{
-	3, // 0: kapro.kgi.v1alpha1.EvaluateRequest.parameters:type_name -> kapro.kgi.v1alpha1.EvaluateRequest.ParametersEntry
+	5, // 0: kapro.kgi.v1alpha1.EvaluateRequest.parameters:type_name -> kapro.kgi.v1alpha1.EvaluateRequest.ParametersEntry
 	0, // 1: kapro.kgi.v1alpha1.EvaluateResponse.phase:type_name -> kapro.kgi.v1alpha1.GatePhase
-	1, // 2: kapro.kgi.v1alpha1.GateService.Evaluate:input_type -> kapro.kgi.v1alpha1.EvaluateRequest
-	2, // 3: kapro.kgi.v1alpha1.GateService.Evaluate:output_type -> kapro.kgi.v1alpha1.EvaluateResponse
-	3, // [3:4] is the sub-list for method output_type
-	2, // [2:3] is the sub-list for method input_type
+	1, // 2: kapro.kgi.v1alpha1.GateService.GetCapabilities:input_type -> kapro.kgi.v1alpha1.GetCapabilitiesRequest
+	3, // 3: kapro.kgi.v1alpha1.GateService.Evaluate:input_type -> kapro.kgi.v1alpha1.EvaluateRequest
+	2, // 4: kapro.kgi.v1alpha1.GateService.GetCapabilities:output_type -> kapro.kgi.v1alpha1.GetCapabilitiesResponse
+	4, // 5: kapro.kgi.v1alpha1.GateService.Evaluate:output_type -> kapro.kgi.v1alpha1.EvaluateResponse
+	4, // [4:6] is the sub-list for method output_type
+	2, // [2:4] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
 	2, // [2:2] is the sub-list for extension extendee
 	0, // [0:2] is the sub-list for field type_name
@@ -293,7 +399,7 @@ func file_spec_kgi_v1alpha1_gate_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_spec_kgi_v1alpha1_gate_proto_rawDesc), len(file_spec_kgi_v1alpha1_gate_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   3,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

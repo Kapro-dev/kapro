@@ -42,6 +42,7 @@ rules:
   resources:
   - approvals/status
   - memberclusters/status
+  - pluginregistrations/status
   - releases/status
   - releasetargets/status
   verbs:
@@ -62,6 +63,7 @@ rules:
   - kapro.io
   resources:
   - pipelines
+  - pluginregistrations
   verbs:
   - get
   - list

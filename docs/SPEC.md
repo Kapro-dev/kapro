@@ -314,20 +314,21 @@ Identity is deterministic: every `(Release, target)` pair has at most one `Appro
 
 ## 14. PluginRegistration API Preview
 
-`PluginRegistration` is an API preview for external actuator and gate plugins.
-It is cluster-scoped and records the plugin type, registry name, protocol,
-endpoint, timeout, optional TLS secret reference, parameters, readiness, version,
-and capabilities.
+`PluginRegistration` is a status-capable preview for external actuator and gate
+plugins. It is cluster-scoped and records the plugin type, registry name,
+protocol, endpoint, timeout, optional TLS secret reference, parameters,
+readiness, version, and capabilities.
 
 The proto contracts live under:
 
 - `spec/kai/v1alpha1/actuator.proto`
 - `spec/kgi/v1alpha1/gate.proto`
 
-Generated Go stubs are committed beside the proto files. Base conformance
-harnesses live under `conformance/actuator` and `conformance/gate`; plugin
-authors should run those harnesses against their implementation. See
-`docs/plugin-authoring.md`.
+Generated Go stubs are committed beside the proto files. The operator probes
+`GetCapabilities` and writes `PluginRegistration.status.ready`, `lastSeen`,
+`version`, `capabilities`, and conditions. Base conformance harnesses live under
+`conformance/actuator` and `conformance/gate`; plugin authors should run those
+harnesses against their implementation. See `docs/plugin-authoring.md`.
 
 Runtime dispatch through `PluginGateway` is future work. The current in-process
 actuator and gate registries remain the execution path.
