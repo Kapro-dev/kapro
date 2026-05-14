@@ -1,0 +1,68 @@
+# Copy this workflow into your own hub config repository.
+# It will NOT run inside the Kapro repo itself.
+name: Apply Kapro Hub Config
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+
+      # Configure kubeconfig for the hub cluster.
+      # Examples:
+      #   - GKE: google-github-actions/auth + get-gke-credentials
+      #   - EKS: aws-actions/configure-aws-credentials
+      #   - Generic: store KUBECONFIG as a GitHub secret
+      - name: Configure hub kubeconfig
+        run: echo "Configure your hub cluster auth here"
+
+      # PR validation: server-side dry-run catches schema errors
+      - name: Validate YAMLs (server-side)
+        run: |
+          for f in clusters/*.yaml apps/*.yaml pipelines/*.yaml releases/*.yaml; do
+            echo "Validating $f..."
+            kubectl apply --dry-run=server -f "$f"
+          done
+
+  diff:
+    name: Diff
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+      - name: Configure hub kubeconfig
+        run: echo "Configure your hub cluster auth here"
+      - name: Show diff
+        run: |
+          for f in clusters/*.yaml apps/*.yaml pipelines/*.yaml releases/*.yaml; do
+            echo "--- $f ---"
+            kubectl diff -f "$f" || true
+          done
+
+  apply:
+    name: Apply
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+      - name: Configure hub kubeconfig
+        run: echo "Configure your hub cluster auth here"
+      - name: Apply cluster config
+        run: kubectl apply -f clusters/
+      - name: Apply apps
+        run: kubectl apply -f apps/
+      - name: Apply pipelines
+        run: kubectl apply -f pipelines/
+      - name: Apply releases
+        run: kubectl apply -f releases/
