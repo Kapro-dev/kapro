@@ -91,7 +91,7 @@ func (a *ActuatorSpec) RegistryKey() string {
 // PullConfig configures pull-mode delivery. The spoke's own GitOps controllers
 // pull from an OCI registry and reconcile locally.
 type PullConfig struct {
-	// Namespace is the Flux namespace on the target cluster.
+	// Namespace is the GitOps controller namespace on the target cluster.
 	// +kubebuilder:default="flux-system"
 	Namespace string `json:"namespace,omitempty"`
 	// OCIRepository is the Flux OCIRepository name that pulls the artifact.
@@ -102,6 +102,12 @@ type PullConfig struct {
 	// KustomizationPath is the path within the OCI artifact to the kustomization root.
 	// +kubebuilder:default="."
 	KustomizationPath string `json:"kustomizationPath,omitempty"`
+	// Parameters are backend-specific key-value pairs passed through to the actuator.
+	// Kapro does not interpret these. The backend implementation uses them for
+	// vendor-specific configuration (e.g. ArgoCD project, application name, sync policy).
+	// Same pattern as StorageClass.parameters in Kubernetes CSI.
+	// +optional
+	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
 // PushConfig configures push-mode delivery. The hub renders resources and
@@ -118,6 +124,12 @@ type PushConfig struct {
 	// TenantField is the ResourceSet input field that identifies the cluster.
 	// +kubebuilder:default="tenant"
 	TenantField string `json:"tenantField,omitempty"`
+	// Parameters are backend-specific key-value pairs passed through to the actuator.
+	// Kapro does not interpret these. The backend implementation uses them for
+	// vendor-specific configuration (e.g. ArgoCD ApplicationSet name, sync options).
+	// Same pattern as StorageClass.parameters in Kubernetes CSI.
+	// +optional
+	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
 // FluxActuator is a type alias for backward compatibility.
