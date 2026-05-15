@@ -2,7 +2,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kapro-manager-role
+  name: {{ include "kapro-operator.fullname" . }}-manager-role
+  labels:
+    {{- include "kapro-operator.labels" . | nindent 4 }}
 rules:
 - apiGroups:
   - ""
@@ -11,22 +13,6 @@ rules:
   verbs:
   - create
   - patch
-- apiGroups:
-  - ""
-  resources:
-  - serviceaccounts
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - serviceaccounts/token
-  verbs:
-  - create
 - apiGroups:
   - ""
   resources:
@@ -40,28 +26,15 @@ rules:
   - update
   - watch
 - apiGroups:
-  - certificates.k8s.io
+  - batch
   resources:
-  - certificatesigningrequests
+  - jobs
   verbs:
+  - create
+  - delete
   - get
   - list
-  - update
   - watch
-- apiGroups:
-  - certificates.k8s.io
-  resources:
-  - certificatesigningrequests/approval
-  verbs:
-  - update
-- apiGroups:
-  - certificates.k8s.io
-  resourceNames:
-  - kubernetes.io/kube-apiserver-client
-  resources:
-  - signers
-  verbs:
-  - approve
 - apiGroups:
   - coordination.k8s.io
   resources:
@@ -75,12 +48,29 @@ rules:
   - update
   - watch
 - apiGroups:
+  - fluxcd.controlplane.io
+  resources:
+  - resourcesets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - helm.toolkit.fluxcd.io
+  resources:
+  - helmreleases
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - kapro.io
   resources:
   - approvals
-  - releases
-  - releasetargets
-  - sources
   verbs:
   - create
   - delete
@@ -93,10 +83,12 @@ rules:
   - kapro.io
   resources:
   - approvals/status
+  - kaproes/status
   - memberclusters/status
+  - pluginregistrations/status
   - releases/status
   - releasetargets/status
-  - sources/status
+  - releasetriggers/status
   verbs:
   - get
   - patch
@@ -104,17 +96,30 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - artifacts
+  - kaproapps
   verbs:
-  - create
   - get
   - list
+  - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - kaproes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - kapro.io
   resources:
   - memberclusters
   verbs:
+  - create
+  - delete
   - get
   - list
   - patch
@@ -123,24 +128,46 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - memberclusters/finalizers
-  - releases/finalizers
-  - sources/finalizers
+  - pipelines
   verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
   - update
+  - watch
 - apiGroups:
   - kapro.io
   resources:
-  - pipelines
+  - pluginregistrations
+  - releasetriggers
   verbs:
   - get
   - list
   - watch
 - apiGroups:
-  - rbac.authorization.k8s.io
+  - kapro.io
   resources:
-  - clusterrolebindings
-  - clusterroles
+  - releases
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - releases/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - kapro.io
+  resources:
+  - releasetargets
   verbs:
   - create
   - delete
@@ -153,13 +180,13 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kapro-manager-role-binding
+  name: {{ include "kapro-operator.fullname" . }}-manager-role-binding
   labels:
     {{- include "kapro-operator.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kapro-manager-role
+  name: {{ include "kapro-operator.fullname" . }}-manager-role
 subjects:
 - kind: ServiceAccount
   name: {{ include "kapro-operator.serviceAccountName" . }}

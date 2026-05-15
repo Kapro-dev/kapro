@@ -43,6 +43,11 @@ leaderElection:
   enabled: true
   namespace: ""  # defaults to Release namespace
 
+controllers:
+  - "*"
+
+shard: ""
+
 # Metrics
 metrics:
   enabled: true
@@ -83,13 +88,34 @@ webhook:
     # cert-manager.io/inject-ca-from annotation on the webhook config.
     # Requires cert-manager >= 1.5 to be installed in the cluster.
     enabled: true
+    # When issuerRef.name is empty, this chart creates a self-signed Issuer
+    # in the release namespace. Set issuerRef to use an existing Issuer or
+    # ClusterIssuer instead.
     issuerRef:
-      name: selfsigned-issuer
-      kind: ClusterIssuer
+      name: ""
+      kind: Issuer
+      group: cert-manager.io
   # caBundle is used only when certManager.enabled=false.
   # Set to the base64-encoded CA certificate that signed the webhook TLS cert.
   caBundle: ""
 
+
+# Public URL for the approval/Decision API. Set this when exposing the
+# approvalServer service through an ingress, load balancer, or port-forward.
+externalURL: ""
+
+approvalServer:
+  enabled: true
+  port: 8091
+  service:
+    enabled: true
+    type: ClusterIP
+    port: 8091
+
+pluginGateway:
+  # Opt-in preview. When true, the operator loads ready PluginRegistration
+  # objects once at startup. This chart does not install demo plugins.
+  enabled: false
 
 # The public URL of this hub's Kubernetes API server as reachable from spoke clusters.
 # Example: https://hub.example.com:6443
@@ -98,11 +124,11 @@ webhook:
 hubAPIURL: ""
 
 # Approval webhook HMAC secret.
-# approvalSecret.value is base64-encoded and stored in a K8s Secret.
+# approvalSecret.value is stored as plain text in a K8s Secret. Leave it empty
+# to let the operator auto-generate and maintain kapro-approval-hmac.
 # The operator reads it from a volume mount (never from a plain env var).
 approvalSecret:
-  # value: base64-encoded secret value. Set via --set or in a sealed secret.
-  # Example: printf 'my-secret' | base64
+  # value: plain-text secret value. Prefer --set-file or an externally managed Secret.
   value: ""
   # secretName: override the Secret name if you manage the Secret externally.
   secretName: ""

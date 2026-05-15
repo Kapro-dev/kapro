@@ -48,7 +48,7 @@ webhooks:
         path: /validate-kapro-io-v1alpha1-membercluster
         port: 443
       {{- if not .Values.webhook.certManager.enabled }}
-      caBundle: {{ .Values.webhook.caBundle | default "" | b64enc | quote }}
+      caBundle: {{ .Values.webhook.caBundle | default "" | quote }}
       {{- end }}
     namespaceSelector:
       matchExpressions:
@@ -73,7 +73,7 @@ webhooks:
         path: /mutate-kapro-io-v1alpha1-membercluster
         port: 443
       {{- if not .Values.webhook.certManager.enabled }}
-      caBundle: {{ .Values.webhook.caBundle | default "" | b64enc | quote }}
+      caBundle: {{ .Values.webhook.caBundle | default "" | quote }}
       {{- end }}
     namespaceSelector:
       matchExpressions:
@@ -98,7 +98,7 @@ webhooks:
         path: /validate-kapro-io-v1alpha1-release
         port: 443
       {{- if not .Values.webhook.certManager.enabled }}
-      caBundle: {{ .Values.webhook.caBundle | default "" | b64enc | quote }}
+      caBundle: {{ .Values.webhook.caBundle | default "" | quote }}
       {{- end }}
     namespaceSelector:
       matchExpressions:
@@ -123,7 +123,7 @@ webhooks:
         path: /validate-kapro-io-v1alpha1-pipeline
         port: 443
       {{- if not .Values.webhook.certManager.enabled }}
-      caBundle: {{ .Values.webhook.caBundle | default "" | b64enc | quote }}
+      caBundle: {{ .Values.webhook.caBundle | default "" | quote }}
       {{- end }}
     namespaceSelector:
       matchExpressions:
@@ -148,6 +148,6 @@ webhooks:
         path: /mutate-kapro-io-v1alpha1-approval
         port: 443
       {{- if not .Values.webhook.certManager.enabled }}
-      caBundle: {{ .Values.webhook.caBundle | default "" | b64enc | quote }}
+      caBundle: {{ .Values.webhook.caBundle | default "" | quote }}
       {{- end }}
 {{- end }}

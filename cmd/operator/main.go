@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"flag"
 	"math/big"
 	"net/http"
 	"os"
@@ -51,9 +52,26 @@ func init() {
 // Manager-level RBAC requirements not tied to a specific controller.
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create
 
 func main() {
+	devMode := os.Getenv("KAPRO_DEV_MODE") == "1"
+	leaderElect := !devMode
+	metricsAddr := ":8080"
+	healthProbeAddr := ":8081"
+	webhookPort := 9443
+
 	opts := zap.Options{Development: true}
+	opts.BindFlags(flag.CommandLine)
+	flag.BoolVar(&leaderElect, "leader-elect", leaderElect, "Enable leader election for controller manager.")
+	flag.StringVar(&metricsAddr, "metrics-bind-address", metricsAddr, "The address the metric endpoint binds to.")
+	flag.StringVar(&healthProbeAddr, "health-probe-bind-address", healthProbeAddr, "The address the health probe endpoint binds to.")
+	flag.IntVar(&webhookPort, "webhook-port", webhookPort, "The port the admission webhook server binds to.")
+	flag.Parse()
+	if devMode {
+		leaderElect = false
+	}
+
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	log := ctrl.Log.WithName("kapro-operator")
 	log.Info("starting kapro-operator", "version", version.Version, "commit", version.Commit, "date", version.Date)
@@ -73,13 +91,12 @@ func main() {
 	if podNS == "" {
 		podNS = "kapro-system"
 	}
+	leaderElectionNS := os.Getenv("KAPRO_LEADER_ELECTION_NAMESPACE")
+	if leaderElectionNS == "" {
+		leaderElectionNS = podNS
+	}
 
 	cfg := ctrl.GetConfigOrDie()
-
-	// KAPRO_DEV_MODE=1 disables leader election and auto-generates webhook TLS certs.
-	// Use for local development and testing against a remote cluster.
-	devMode := os.Getenv("KAPRO_DEV_MODE") == "1"
-	leaderElect := !devMode
 
 	webhookCertDir := os.Getenv("KAPRO_WEBHOOK_CERT_DIR")
 	if devMode && webhookCertDir == "" {
@@ -94,19 +111,19 @@ func main() {
 		Scheme:                        scheme,
 		LeaderElection:                leaderElect,
 		LeaderElectionID:              "kapro-operator-leader.kapro.io",
-		LeaderElectionNamespace:       podNS,
+		LeaderElectionNamespace:       leaderElectionNS,
 		LeaderElectionReleaseOnCancel: true,
 		Metrics: metricsserver.Options{
-			BindAddress: ":8080",
+			BindAddress: metricsAddr,
 		},
-		HealthProbeBindAddress: ":8081",
+		HealthProbeBindAddress: healthProbeAddr,
 		Controller: ctrlcfg.Controller{
 			RecoverPanic:            ptr.To(true),
 			MaxConcurrentReconciles: 5,
 		},
 		WebhookServer: crwebhook.NewServer(crwebhook.Options{
 			CertDir: webhookCertDir,
-			Port:    9443,
+			Port:    webhookPort,
 		}),
 	})
 	if err != nil {
