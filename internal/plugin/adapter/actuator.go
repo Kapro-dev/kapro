@@ -48,13 +48,15 @@ func NewActuatorAdapter(reg kaprov1alpha1.PluginRegistration, client kaiv1alpha1
 
 // Apply instructs the external plugin to apply a version to one target.
 func (a *ActuatorAdapter) Apply(ctx context.Context, req actuator.ApplyRequest) error {
-	clusterName, err := clusterName(req.Cluster)
-	if err != nil {
-		return err
-	}
 	start := time.Now()
 	result := "success"
 	defer func() { observeRuntimeCall(kaprov1alpha1.PluginTypeActuator, a.name, "Apply", result, start) }()
+
+	clusterName, err := clusterName(req.Cluster)
+	if err != nil {
+		result = "error"
+		return err
+	}
 
 	rpcCtx, cancel := context.WithTimeout(ctx, a.timeout)
 	defer cancel()
@@ -77,13 +79,15 @@ func (a *ActuatorAdapter) Apply(ctx context.Context, req actuator.ApplyRequest) 
 
 // IsConverged asks the external plugin whether a target has converged.
 func (a *ActuatorAdapter) IsConverged(ctx context.Context, cluster *kaprov1alpha1.MemberCluster, version, appKey string) (bool, error) {
-	clusterName, err := clusterName(cluster)
-	if err != nil {
-		return false, err
-	}
 	start := time.Now()
 	result := "success"
 	defer func() { observeRuntimeCall(kaprov1alpha1.PluginTypeActuator, a.name, "IsConverged", result, start) }()
+
+	clusterName, err := clusterName(cluster)
+	if err != nil {
+		result = "error"
+		return false, err
+	}
 
 	rpcCtx, cancel := context.WithTimeout(ctx, a.timeout)
 	defer cancel()
@@ -101,13 +105,15 @@ func (a *ActuatorAdapter) IsConverged(ctx context.Context, cluster *kaprov1alpha
 
 // Rollback instructs the external plugin to roll back to a previous version.
 func (a *ActuatorAdapter) Rollback(ctx context.Context, cluster *kaprov1alpha1.MemberCluster, previousVersion, appKey string) error {
-	clusterName, err := clusterName(cluster)
-	if err != nil {
-		return err
-	}
 	start := time.Now()
 	result := "success"
 	defer func() { observeRuntimeCall(kaprov1alpha1.PluginTypeActuator, a.name, "Rollback", result, start) }()
+
+	clusterName, err := clusterName(cluster)
+	if err != nil {
+		result = "error"
+		return err
+	}
 
 	rpcCtx, cancel := context.WithTimeout(ctx, a.timeout)
 	defer cancel()

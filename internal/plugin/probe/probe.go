@@ -175,7 +175,10 @@ func observeProbe(reg kaprov1alpha1.PluginRegistration, result Result, start tim
 	}
 	kaprometrics.PluginProbeResults.WithLabelValues(pluginType, outcome, reason).Inc()
 	kaprometrics.PluginProbeDuration.WithLabelValues(pluginType, outcome).Observe(time.Since(start).Seconds())
-	kaprometrics.PluginProbeReady.WithLabelValues(pluginType, registrationName(reg)).Set(readyValue)
+	kaprometrics.PluginProbeReady.WithLabelValues(pluginType, registrationMetricName(reg)).Set(readyValue)
+	if reg.Name != "" && reg.Name != reg.Spec.Name {
+		kaprometrics.PluginProbeReady.DeleteLabelValues(pluginType, reg.Name)
+	}
 }
 
 func registrationName(reg kaprov1alpha1.PluginRegistration) string {
@@ -186,4 +189,27 @@ func registrationName(reg kaprov1alpha1.PluginRegistration) string {
 		return reg.Spec.Name
 	}
 	return "<unnamed>"
+}
+
+func registrationMetricName(reg kaprov1alpha1.PluginRegistration) string {
+	if reg.Spec.Name != "" {
+		return reg.Spec.Name
+	}
+	return registrationName(reg)
+}
+
+// ForgetReadiness removes the per-registration readiness metric for a deleted
+// registration. Callers should pass the last observed object before finalizer
+// removal so the registry key is still available.
+func ForgetReadiness(reg kaprov1alpha1.PluginRegistration) {
+	pluginType := string(reg.Spec.Type)
+	if pluginType == "" {
+		pluginType = "unknown"
+	}
+	kaprometrics.PluginProbeReady.WithLabelValues(pluginType, registrationMetricName(reg)).Set(0)
+	kaprometrics.PluginProbeReady.DeleteLabelValues(pluginType, registrationMetricName(reg))
+	if reg.Name != "" && reg.Name != reg.Spec.Name {
+		kaprometrics.PluginProbeReady.WithLabelValues(pluginType, reg.Name).Set(0)
+		kaprometrics.PluginProbeReady.DeleteLabelValues(pluginType, reg.Name)
+	}
 }

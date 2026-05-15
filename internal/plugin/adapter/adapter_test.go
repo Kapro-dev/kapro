@@ -91,6 +91,36 @@ func TestActuatorAdapterApplyObservesRuntimeMetrics(t *testing.T) {
 	}
 }
 
+func TestActuatorAdapterValidationErrorsObserveRuntimeMetrics(t *testing.T) {
+	adapter, err := NewActuatorAdapter(pluginReg(kaprov1alpha1.PluginTypeActuator, "metrics/validation"), fakeActuatorClient{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	counter := kaprometrics.PluginRuntimeCalls.WithLabelValues("actuator", "metrics/validation", "Apply", "error")
+	before := testutil.ToFloat64(counter)
+	if err := adapter.Apply(context.Background(), actuator.ApplyRequest{Version: "1.2.3"}); err == nil {
+		t.Fatal("Apply returned nil error")
+	}
+	if got := testutil.ToFloat64(counter); got != before+1 {
+		t.Fatalf("runtime validation error counter = %v, want %v", got, before+1)
+	}
+}
+
+func TestGateAdapterValidationErrorsObserveRuntimeMetrics(t *testing.T) {
+	adapter, err := NewGateAdapter(pluginReg(kaprov1alpha1.PluginTypeGate, "metrics/gate-validation"), fakeGateClient{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	counter := kaprometrics.PluginRuntimeCalls.WithLabelValues("gate", "metrics/gate-validation", "Evaluate", "error")
+	before := testutil.ToFloat64(counter)
+	if _, err := adapter.Evaluate(context.Background(), gate.Request{}); err == nil {
+		t.Fatal("Evaluate returned nil error")
+	}
+	if got := testutil.ToFloat64(counter); got != before+1 {
+		t.Fatalf("runtime validation error counter = %v, want %v", got, before+1)
+	}
+}
+
 func TestGateAdapterMapsPhases(t *testing.T) {
 	tests := []struct {
 		name string
@@ -162,6 +192,7 @@ func TestRegisterReadyPluginsSkipsStaleAndRegistersReady(t *testing.T) {
 	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(&ready, &stale).WithStatusSubresource(&kaprov1alpha1.PluginRegistration{}).Build()
 	actuatorReg := actuator.NewRegistry()
 	gateReg := gate.NewRegistry()
+	kaprometrics.PluginRuntimeRegistered.WithLabelValues("gate").Set(7)
 
 	registered, err := (Registrar{DialOptions: bufDialOptions(server.listener)}).RegisterReady(context.Background(), k8sClient, actuatorReg, gateReg)
 	if err != nil {
@@ -258,6 +289,34 @@ type recordingActuatorServer struct {
 	listener *bufconn.Listener
 	apply    *kaiv1alpha1.ApplyRequest
 	applyErr error
+}
+
+type fakeActuatorClient struct{}
+
+func (fakeActuatorClient) GetCapabilities(context.Context, *kaiv1alpha1.GetCapabilitiesRequest, ...grpc.CallOption) (*kaiv1alpha1.GetCapabilitiesResponse, error) {
+	return nil, nil
+}
+
+func (fakeActuatorClient) Apply(context.Context, *kaiv1alpha1.ApplyRequest, ...grpc.CallOption) (*kaiv1alpha1.ApplyResponse, error) {
+	return nil, nil
+}
+
+func (fakeActuatorClient) IsConverged(context.Context, *kaiv1alpha1.IsConvergedRequest, ...grpc.CallOption) (*kaiv1alpha1.IsConvergedResponse, error) {
+	return nil, nil
+}
+
+func (fakeActuatorClient) Rollback(context.Context, *kaiv1alpha1.RollbackRequest, ...grpc.CallOption) (*kaiv1alpha1.RollbackResponse, error) {
+	return nil, nil
+}
+
+type fakeGateClient struct{}
+
+func (fakeGateClient) GetCapabilities(context.Context, *kgiv1alpha1.GetCapabilitiesRequest, ...grpc.CallOption) (*kgiv1alpha1.GetCapabilitiesResponse, error) {
+	return nil, nil
+}
+
+func (fakeGateClient) Evaluate(context.Context, *kgiv1alpha1.EvaluateRequest, ...grpc.CallOption) (*kgiv1alpha1.EvaluateResponse, error) {
+	return nil, nil
 }
 
 func (s *recordingActuatorServer) GetCapabilities(context.Context, *kaiv1alpha1.GetCapabilitiesRequest) (*kaiv1alpha1.GetCapabilitiesResponse, error) {

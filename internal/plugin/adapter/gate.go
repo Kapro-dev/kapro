@@ -48,12 +48,14 @@ func NewGateAdapter(reg kaprov1alpha1.PluginRegistration, client kgiv1alpha1.Gat
 
 // Evaluate asks the external plugin whether this target may advance.
 func (g *GateAdapter) Evaluate(ctx context.Context, req gate.Request) (gate.Result, error) {
-	if req.Context == nil {
-		return gate.Result{}, fmt.Errorf("gate context is required")
-	}
 	start := time.Now()
 	result := "success"
 	defer func() { observeRuntimeCall(kaprov1alpha1.PluginTypeGate, g.name, "Evaluate", result, start) }()
+
+	if req.Context == nil {
+		result = "error"
+		return gate.Result{}, fmt.Errorf("gate context is required")
+	}
 
 	rpcCtx, cancel := context.WithTimeout(ctx, g.timeout)
 	defer cancel()
