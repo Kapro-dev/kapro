@@ -78,7 +78,7 @@ rules:
   resources:
   - agentpolicies
   - backendprofiles
-  - kaprobundles
+  - promotionsources
   - releasetriggers
   verbs:
   - get

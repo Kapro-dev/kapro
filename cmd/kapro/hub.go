@@ -36,7 +36,7 @@ func newHubRegistryCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "registry",
 		Short: "Manage the centralized OCI registry",
-		Long: `Manage the GAR registry used by Kapro for OCI bundles and Helm charts.
+		Long: `Manage the GAR registry used by Kapro for OCI sources and Helm charts.
 All spokes pull from this single registry.
 
 Examples:
@@ -56,11 +56,11 @@ func newRegistryAddCmd() *cobra.Command {
 		Use:   "add <registry-url>",
 		Short: "Add a registry to kapro config",
 		Long: `Saves a registry URL to ~/.kapro/config.yaml with a role name.
-Used by bundle generate and other commands to find the right registry.
+Used by source package and other commands to find the right registry.
 
 Roles:
   default  — used when no specific role matches
-  bundles  — OCI bundles (kapro bundle generate --push)
+  sources  — OCI artifacts (kapro source package --push)
   charts   — Helm charts
 
 Examples:
@@ -85,7 +85,7 @@ Examples:
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&role, "as", "default", "Role name (default, bundles, charts)")
+	cmd.Flags().StringVar(&role, "as", "default", "Role name (default, sources, charts)")
 	return cmd
 }
 
@@ -198,7 +198,7 @@ func runRegistryCreate(ctx context.Context, project, location, name string) erro
 
 	fmt.Fprintln(cli.Out)
 	cli.KV("Registry", "oci://"+info.URL)
-	cli.KV("Usage", fmt.Sprintf("kapro bundle generate --registry oci://%s --push", info.URL))
+	cli.KV("Usage", fmt.Sprintf("kapro source package --registry oci://%s --push", info.URL))
 	return nil
 }
 

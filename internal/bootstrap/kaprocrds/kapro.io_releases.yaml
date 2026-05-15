@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.0
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: releases.kapro.io
 spec:
   group: kapro.io
@@ -19,9 +19,9 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.report.totalArtifacts
-      name: Artifacts
-      type: integer
+    - jsonPath: .spec.version
+      name: Version
+      type: string
     - jsonPath: .status.phase
       name: Phase
       type: string
@@ -31,8 +31,25 @@ spec:
     - jsonPath: .status.report.syncedTargets
       name: Synced
       type: integer
+    - jsonPath: .status.report.failedTargets
+      name: Failed
+      type: integer
     - jsonPath: .status.report.pendingTargets
       name: Pending
+      type: integer
+    - jsonPath: .status.report.totalTargets
+      name: Total
+      type: integer
+    - jsonPath: .status.report.duration
+      name: Duration
+      type: string
+    - jsonPath: .spec.suspended
+      name: Suspended
+      priority: 1
+      type: boolean
+    - jsonPath: .status.report.totalArtifacts
+      name: Artifacts
+      priority: 1
       type: integer
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -117,12 +134,21 @@ spec:
                 description: Timeout is the maximum duration for the entire Release.
                 type: string
               version:
-                description: Version is the OCI digest or tag to deliver across the
-                  fleet.
+                description: |-
+                  Version is the default revision to deliver across the fleet.
+                  For brownfield/native sources this is the revision for every unit that is
+                  not explicitly listed in versions.
                 type: string
+              versions:
+                additionalProperties:
+                  type: string
+                description: |-
+                  Versions maps promotion unit name to the backend-native revision to
+                  deliver. Use this when a Release promotes multiple existing Argo/Flux
+                  objects together without creating a synthetic application object.
+                type: object
             required:
             - pipelines
-            - version
             type: object
           status:
             description: ReleaseStatus defines the observed state of Release.
@@ -138,9 +164,9 @@ spec:
                     artifact:
                       description: Artifact is the OCI artifact that was delivered.
                       type: string
-                    changedComponents:
-                      description: ChangedComponents lists the components that changed
-                        relative to the parent artifact.
+                    changedUnits:
+                      description: ChangedUnits lists the units that changed relative
+                        to the parent artifact.
                       items:
                         type: string
                       type: array
@@ -237,6 +263,11 @@ spec:
                   description: PipelineProgress tracks the execution state of one
                     pipeline node in a Release.
                   properties:
+                    activeStage:
+                      description: |-
+                        ActiveStage is the name of the currently progressing stage (or the last completed one).
+                        Gives operators a quick "where are we?" without expanding StageProgress.
+                      type: string
                     name:
                       description: Name matches ReleasePipelineRef.name.
                       type: string
@@ -256,13 +287,32 @@ spec:
                       description: StageProgress summarises the state of each stage
                         in this pipeline.
                       items:
-                        description: StageProgress tracks the execution state of one
-                          Stage within a pipeline.
+                        description: |-
+                          StageProgress tracks the execution state of one Stage within a pipeline.
+                          Designed to render well in k9s describe view — operators see per-stage
+                          progress like CI pipeline steps.
                         properties:
+                          completedAt:
+                            description: CompletedAt is when all targets in this stage
+                              reached a terminal state.
+                            type: string
+                          deferred:
+                            description: |-
+                              Deferred is the number of eligible targets not yet bound by the planner
+                              or stage strategy.
+                            type: integer
                           failed:
                             description: Failed is the number of targets that have
                               reached Failed.
                             type: integer
+                          message:
+                            description: |-
+                              Message is a human-readable summary of stage progress, designed for
+                              k9s describe output. Examples:
+                                "2/5 clusters converged, soak: 12m/30m remaining"
+                                "waiting for canary stage"
+                                "blocked: manual approval required for de-prod"
+                            type: string
                           name:
                             description: Name is the stage name from Pipeline.spec.stages[].name.
                             type: string
@@ -273,6 +323,39 @@ spec:
                             - Progressing
                             - Complete
                             - Failed
+                            type: string
+                          plannerResults:
+                            description: |-
+                              PlannerResults records why targets were skipped or deferred during the
+                              latest planning cycle. Capped by the controller.
+                            items:
+                              description: PlannerResult explains one planner decision
+                                for operator visibility.
+                              properties:
+                                message:
+                                  description: Message is a human-readable explanation.
+                                  type: string
+                                phase:
+                                  description: Phase is the planner phase, for example
+                                    Filter, Score, Permit, or Bind.
+                                  type: string
+                                plugin:
+                                  description: Plugin is the planner plugin or built-in
+                                    strategy that made the decision.
+                                  type: string
+                                reason:
+                                  description: Reason is a short machine-readable
+                                    reason.
+                                  type: string
+                                target:
+                                  description: Target is the MemberCluster name affected
+                                    by the decision.
+                                  type: string
+                              type: object
+                            type: array
+                          startedAt:
+                            description: StartedAt is when this stage first had a
+                              Progressing target.
                             type: string
                           synced:
                             description: Synced is the number of targets that have
@@ -402,6 +485,86 @@ spec:
                             metrics:
                               items:
                                 properties:
+                                  analysis:
+                                    description: |-
+                                      Analysis selects optional research-backed metric semantics. Empty keeps
+                                      the original threshold behavior for backwards compatibility.
+                                    properties:
+                                      alpha:
+                                        description: |-
+                                          Alpha is the false-positive budget for statistical tests. Defaults to
+                                          0.05. Lower values are more conservative.
+                                        maximum: 1
+                                        minimum: 0
+                                        type: number
+                                      baselineHealthQuery:
+                                        description: |-
+                                          BaselineHealthQuery must pass before baseline or score analysis can use
+                                          the baseline as a control. It should return a positive/true value when
+                                          the baseline is healthy.
+                                        type: string
+                                      baselineQuery:
+                                        description: |-
+                                          BaselineQuery is required for baseline analysis. The current value is
+                                          divided by the baseline value before applying the threshold.
+                                        type: string
+                                      comparator:
+                                        description: |-
+                                          Comparator controls threshold comparison.
+                                          Defaults to "gt" for threshold/sequential and "lte" for sloBurnRate/baseline.
+                                        enum:
+                                        - gt
+                                        - gte
+                                        - lt
+                                        - lte
+                                        type: string
+                                      confidenceThreshold:
+                                        description: |-
+                                          ConfidenceThreshold is the minimum confidence required for sequential
+                                          analysis to make a terminal decision. Defaults to 0.95.
+                                        maximum: 1
+                                        minimum: 0
+                                        type: number
+                                      maxSamples:
+                                        description: |-
+                                          MaxSamples is the maximum number of samples to wait for before a
+                                          statistical analysis must return a terminal decision using the evidence
+                                          available. Empty means no maximum.
+                                        format: int32
+                                        minimum: 1
+                                        type: integer
+                                      minSamples:
+                                        description: |-
+                                          MinSamples is the minimum number of range samples required for sequential
+                                          analysis before Kapro can pass or fail the gate.
+                                        format: int32
+                                        minimum: 1
+                                        type: integer
+                                      mode:
+                                        description: |-
+                                          Mode selects the metric analysis algorithm.
+                                          threshold: compare the current value to threshold.
+                                          sloBurnRate: treat the current value as an error-budget burn rate.
+                                          baseline: compare the current value to a baseline query as a ratio.
+                                          sequential: sample over the window and require enough confidence before deciding.
+                                          changePoint: detect a statistically meaningful change inside the window.
+                                          score: convert the metric into a 0-100 canary score.
+                                        enum:
+                                        - threshold
+                                        - sloBurnRate
+                                        - baseline
+                                        - sequential
+                                        - changePoint
+                                        - score
+                                        type: string
+                                      scoreThreshold:
+                                        description: |-
+                                          ScoreThreshold is the minimum score required for score analysis. Defaults
+                                          to 95.
+                                        maximum: 100
+                                        minimum: 0
+                                        type: number
+                                    type: object
                                   config:
                                     format: byte
                                     type: string
@@ -415,7 +578,14 @@ spec:
                                       Equivalent to Grafana's "Evaluate every" setting.
                                       Defaults to "30s". Minimum "10s".
                                     type: string
+                                  preset:
+                                    description: |-
+                                      Preset references Pipeline.spec.metricPresets by name.
+                                      Inline fields override the preset when set.
+                                    type: string
                                   provider:
+                                    description: Provider selects the metrics backend.
+                                      Required when preset is empty.
                                     type: string
                                   query:
                                     description: |-
@@ -423,8 +593,12 @@ spec:
                                       Use range functions directly in the query for window-based checks, e.g.:
                                         min_over_time(error_rate[30m]) < 0.01
                                       Or reference the Window field as a template: {{.Window}} is substituted at evaluation time.
+                                      Required when preset is empty.
                                     type: string
                                   threshold:
+                                    description: |-
+                                      Threshold is optional and presence-aware so an inline metric can
+                                      intentionally override a preset threshold to 0.
                                     type: number
                                   window:
                                     default: 5m
@@ -433,9 +607,6 @@ spec:
                                       When Query already contains a hardcoded range (e.g. [5m]), this field is ignored.
                                       Defaults to "5m".
                                     type: string
-                                required:
-                                - provider
-                                - query
                                 type: object
                               type: array
                             soakTime:
@@ -676,6 +847,17 @@ spec:
                                       Name uniquely identifies this template within the gate for status tracking
                                       and Job naming. Required when type == "job" (used to generate Job name).
                                     type: string
+                                  plugin:
+                                    description: PluginGateSpec references an external
+                                      gate registered through PluginRegistration.
+                                    properties:
+                                      name:
+                                        description: Name is PluginRegistration.spec.name
+                                          for a ready gate plugin.
+                                        type: string
+                                    required:
+                                    - name
+                                    type: object
                                   timeout:
                                     type: string
                                   type:
@@ -683,6 +865,7 @@ spec:
                                     - cel
                                     - job
                                     - webhook
+                                    - plugin
                                     type: string
                                   webhook:
                                     description: WebhookGateSpec configures the HTTP
@@ -752,12 +935,13 @@ spec:
                           type: string
                         notifications:
                           items:
+                            description: NotificationSpec configures where and when
+                              to send delivery lifecycle events.
                             properties:
-                              channel:
-                                type: string
                               email:
-                                description: EmailNotifierSpec configures SMTP email
-                                  delivery for gate notifications.
+                                description: |-
+                                  Email configures SMTP email delivery.
+                                  Required when type=email.
                                 properties:
                                   from:
                                     type: string
@@ -787,10 +971,64 @@ spec:
                                 - smtpSecretRef
                                 - to
                                 type: object
+                              events:
+                                description: |-
+                                  Events filters which lifecycle events trigger this notification.
+                                  Uses stable semantic event types. Currently emitted events:
+                                    kapro.release.started, kapro.release.completed, kapro.release.failed,
+                                    kapro.release.rollback.started, kapro.release.stage.completed,
+                                    kapro.release.gate.passed, kapro.release.gate.failed,
+                                    kapro.release.approval.required,
+                                    kapro.release.target.pending, kapro.release.target.verification,
+                                    kapro.release.target.health_check, kapro.release.target.soaking,
+                                    kapro.release.target.metrics_check, kapro.release.target.applying,
+                                    kapro.release.target.converged, kapro.release.target.failed,
+                                    kapro.release.target.skipped.
+                                  Empty means all events.
+                                items:
+                                  type: string
+                                type: array
+                              slack:
+                                description: |-
+                                  Slack configures Slack message delivery.
+                                  Required when type=slack.
+                                properties:
+                                  channel:
+                                    description: Channel is the Slack channel to post
+                                      to.
+                                    type: string
+                                required:
+                                - channel
+                                type: object
                               type:
+                                description: Type selects the notification backend.
+                                enum:
+                                - webhook
+                                - slack
+                                - email
                                 type: string
-                              url:
-                                type: string
+                              webhook:
+                                description: |-
+                                  Webhook configures HTTP POST delivery.
+                                  Required when type=webhook.
+                                properties:
+                                  format:
+                                    default: json
+                                    description: |-
+                                      Format selects the payload format.
+                                        json (default): plain JSON event payload.
+                                        cloudevents: CloudEvents v1.0 structured content mode.
+                                    enum:
+                                    - json
+                                    - cloudevents
+                                    type: string
+                                  url:
+                                    description: URL is the HTTP endpoint to POST
+                                      events to.
+                                    type: string
+                                required:
+                                - url
+                                type: object
                             required:
                             - type
                             type: object
@@ -821,6 +1059,70 @@ spec:
                         properties:
                           attempts:
                             type: integer
+                          evidence:
+                            description: |-
+                              Evidence is structured, non-secret data that explains the gate decision.
+                              It is intended for audit, debugging, notifications, and future AI agents.
+                            items:
+                              description: GateEvidence records the facts and analysis
+                                that produced a gate decision.
+                              properties:
+                                alpha:
+                                  type: number
+                                analysisMode:
+                                  type: string
+                                baselineHealthQuery:
+                                  type: string
+                                baselineHealthy:
+                                  type: boolean
+                                baselineQuery:
+                                  type: string
+                                baselineValue:
+                                  type: string
+                                comparator:
+                                  type: string
+                                confidence:
+                                  type: number
+                                decisionRule:
+                                  type: string
+                                effectSize:
+                                  type: string
+                                interval:
+                                  type: string
+                                observedValue:
+                                  type: string
+                                pValue:
+                                  type: number
+                                projection:
+                                  description: GateProjection records an optional
+                                    forecast derived from gate evidence.
+                                  properties:
+                                    horizon:
+                                      type: string
+                                    reason:
+                                      type: string
+                                    value:
+                                      type: string
+                                  type: object
+                                provider:
+                                  type: string
+                                query:
+                                  type: string
+                                reason:
+                                  type: string
+                                sampleCount:
+                                  format: int64
+                                  type: integer
+                                score:
+                                  type: number
+                                threshold:
+                                  type: string
+                                type:
+                                  type: string
+                                window:
+                                  type: string
+                              type: object
+                            type: array
                           finishedAt:
                             type: string
                           message:
@@ -836,6 +1138,69 @@ spec:
                               description: GateConditionResult is the per-metric/condition
                                 result within a GateRunStatus.
                               properties:
+                                evidence:
+                                  description: Evidence is structured, non-secret
+                                    data for this condition.
+                                  items:
+                                    description: GateEvidence records the facts and
+                                      analysis that produced a gate decision.
+                                    properties:
+                                      alpha:
+                                        type: number
+                                      analysisMode:
+                                        type: string
+                                      baselineHealthQuery:
+                                        type: string
+                                      baselineHealthy:
+                                        type: boolean
+                                      baselineQuery:
+                                        type: string
+                                      baselineValue:
+                                        type: string
+                                      comparator:
+                                        type: string
+                                      confidence:
+                                        type: number
+                                      decisionRule:
+                                        type: string
+                                      effectSize:
+                                        type: string
+                                      interval:
+                                        type: string
+                                      observedValue:
+                                        type: string
+                                      pValue:
+                                        type: number
+                                      projection:
+                                        description: GateProjection records an optional
+                                          forecast derived from gate evidence.
+                                        properties:
+                                          horizon:
+                                            type: string
+                                          reason:
+                                            type: string
+                                          value:
+                                            type: string
+                                        type: object
+                                      provider:
+                                        type: string
+                                      query:
+                                        type: string
+                                      reason:
+                                        type: string
+                                      sampleCount:
+                                        format: int64
+                                        type: integer
+                                      score:
+                                        type: number
+                                      threshold:
+                                        type: string
+                                      type:
+                                        type: string
+                                      window:
+                                        type: string
+                                    type: object
+                                  type: array
                                 message:
                                   type: string
                                 name:
@@ -903,6 +1268,12 @@ spec:
                         - phase
                         type: object
                       type: array
+                    heartbeatStaleCount:
+                      description: |-
+                        HeartbeatStaleCount tracks consecutive reconciles that observed a stale
+                        MemberCluster heartbeat. The target fails only after both the stale timeout
+                        and the consecutive observation threshold are reached.
+                      type: integer
                     heartbeatStaleSince:
                       description: |-
                         HeartbeatStaleSince records when the target's MemberCluster heartbeat first

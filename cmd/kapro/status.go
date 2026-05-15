@@ -118,7 +118,7 @@ func renderKaproStatus(kapro kaprov1alpha1.Kapro, allClusters []kaprov1alpha1.Me
 	if mode == "" {
 		mode = "pull"
 	}
-	cli.KV("Bundle", kapro.Spec.BundleRef)
+	cli.KV("Source", kapro.Spec.SourceRef)
 	cli.KV("Mode", mode)
 	cli.KV("Backend", kapro.Spec.Delivery.BackendRef)
 	cli.KV("Version", kapro.Status.Version)

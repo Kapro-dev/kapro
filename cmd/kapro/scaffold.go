@@ -15,7 +15,7 @@ func newInitCmd() *cobra.Command {
 		Use:   "init [directory]",
 		Short: "Scaffold a greenfield Kapro promotion repo",
 		Long: `Scaffolds a GitOps-ready promotion repository with BackendProfile,
-KaproBundle, Pipeline, Kapro, and sample Release manifests.
+PromotionSource, Pipeline, Kapro, and sample Release manifests.
 
 This bootstraps the promotion layer. Argo, Flux, Helm, and Kubernetes still own
 local sync and rollout mechanics.`,
@@ -172,7 +172,7 @@ func writeScaffoldFiles(root string, files map[string]string, force bool) error 
 func greenfieldFiles(opts scaffoldOptions) map[string]string {
 	files := map[string]string{
 		filepath.Join("backends", opts.Backend+".yaml"): renderGreenfieldBackend(opts),
-		filepath.Join("bundles", opts.Name+".yaml"):     renderBundle(opts),
+		filepath.Join("sources", opts.Name+".yaml"):     renderPromotionSource(opts),
 		filepath.Join("pipelines", opts.Name+".yaml"):   renderPipeline(opts),
 		filepath.Join("README.md"):                      renderGreenfieldReadme(opts),
 		filepath.Join(".gitignore"):                     ".DS_Store\n",
@@ -300,22 +300,23 @@ func renderDeliveryParameters(opts scaffoldOptions, suffix string) string {
 	}
 }
 
-func renderBundle(opts scaffoldOptions) string {
+func renderPromotionSource(opts scaffoldOptions) string {
 	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
-kind: KaproBundle
+kind: PromotionSource
 metadata:
   name: %s
 spec:
+  backendRef: %s
   registries:
     - name: default
       url: %s
-  components:
+  units:
     - name: %s-api
       version: 0.1.0
       repo: default
       chartName: %s-api
       targetNamespace: %s
-`, opts.Name, opts.Registry, opts.Name, opts.Name, opts.Name)
+`, opts.Name, opts.Backend, opts.Registry, opts.Name, opts.Name, opts.Name)
 }
 
 func renderPipeline(opts scaffoldOptions) string {
@@ -357,7 +358,7 @@ metadata:
 spec:
   registry:
     url: %s
-  bundleRef: %s
+  sourceRef: %s
   delivery:
     mode: %s
     backendRef: %s
@@ -442,7 +443,7 @@ This repo is a repo-first Kapro scaffold for the %s backend.
 Apply order:
 
 1. backends/
-2. bundles/
+2. sources/
 3. pipelines/
 4. %s/
 
@@ -459,7 +460,7 @@ This repo is a greenfield Kapro scaffold for the %s backend.
 Apply order:
 
 1. backends/
-2. bundles/
+2. sources/
 3. clusters/
 4. pipelines/
 5. kapro/

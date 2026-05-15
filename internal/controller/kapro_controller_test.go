@@ -9,7 +9,7 @@ import (
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
 
-func TestBuildResourceSet_Components(t *testing.T) {
+func TestBuildResourceSet_Units(t *testing.T) {
 	kapro := &kaprov1alpha1.Kapro{
 		Spec: kaprov1alpha1.KaproSpec{
 			Registry: kaprov1alpha1.KaproRegistry{
@@ -24,9 +24,9 @@ func TestBuildResourceSet_Components(t *testing.T) {
 	}
 	kapro.Name = "demo"
 
-	app := &kaprov1alpha1.KaproBundle{
-		Spec: kaprov1alpha1.KaproBundleSpec{
-			Components: []kaprov1alpha1.BundleComponent{
+	app := &kaprov1alpha1.PromotionSource{
+		Spec: kaprov1alpha1.PromotionSourceSpec{
+			Units: []kaprov1alpha1.PromotionUnit{
 				{Name: "pos-server", Version: "5.28.0"},
 				{Name: "sdc", Version: "5.28.0"},
 				{Name: "keycloak", Version: "6.5.0"},
@@ -59,17 +59,17 @@ func TestBuildResourceSet_Components(t *testing.T) {
 		t.Fatalf("len(inputs) = %d, want 2", len(inputs))
 	}
 
-	// Verify first input has per-component version fields.
+	// Verify first input has per-unit version fields.
 	input0, _ := inputs[0].(map[string]interface{})
 	if input0["tenant"] != "canary-eu" {
 		t.Errorf("input[0].tenant = %v, want canary-eu", input0["tenant"])
 	}
-	// Primary version comes from first component.
+	// Primary version comes from first unit.
 	if input0["version"] != "5.28.0" {
 		t.Errorf("input[0].version = %v, want 5.28.0", input0["version"])
 	}
 
-	// Verify resources: one HelmRelease per component + one HelmRepository.
+	// Verify resources: one HelmRelease per unit + one HelmRepository.
 	resources, ok := spec["resources"].([]interface{})
 	if !ok {
 		t.Fatal("resources is not a slice")
@@ -118,17 +118,17 @@ func TestBuildResourceSet_OverrideMerging(t *testing.T) {
 	}
 	kapro.Name = "test"
 
-	app := &kaprov1alpha1.KaproBundle{
-		Spec: kaprov1alpha1.KaproBundleSpec{
-			Components: []kaprov1alpha1.BundleComponent{
+	app := &kaprov1alpha1.PromotionSource{
+		Spec: kaprov1alpha1.PromotionSourceSpec{
+			Units: []kaprov1alpha1.PromotionUnit{
 				{Name: "app", Version: "1.0"},
 			},
-			Defaults: &kaprov1alpha1.BundleDefaults{
+			Defaults: &kaprov1alpha1.SourceDefaults{
 				Values: &apiextensionsv1.JSON{
 					Raw: []byte(`{"replicaCount":3,"logging":{"level":"info","format":"json"}}`),
 				},
 			},
-			Overrides: []kaprov1alpha1.BundleOverride{
+			Overrides: []kaprov1alpha1.SourceOverride{
 				{
 					Selector: map[string]string{"tier": "canary"},
 					Values: &apiextensionsv1.JSON{

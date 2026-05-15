@@ -7,7 +7,7 @@ does not own traffic shifting or assume a specific GitOps controller.
 Kapro supports two connect paths:
 
 - **Greenfield bootstrap:** create the hub, backend profiles, cluster inventory,
-  starter bundles, pipelines, gates, and optional spoke agents from Kapro
+  promotion sources, pipelines, gates, and optional spoke agents from Kapro
   commands or manifests.
 - **Brownfield connect:** discover existing Argo CD or Flux topology, observe it
   first, then explicitly adopt selected applications or clusters for promotion.
@@ -23,7 +23,7 @@ backend systems directly.
 
 Primary APIs:
 
-- `Kapro` selects a bundle, a delivery backend, clusters, and stages.
+- `Kapro` selects a promotion source, a delivery backend, clusters, and stages.
 - `BackendProfile` declares a selectable delivery backend.
 - `MemberCluster.spec.delivery` selects the per-cluster backend profile.
 - `Release` and `ReleaseTarget` store promotion execution state.
@@ -35,7 +35,7 @@ For new fleets, Kapro can be the setup path for promotion infrastructure:
 1. Install the Kapro hub controller and Hub Gateway.
 2. Create a built-in `BackendProfile` such as `flux` or `argo`.
 3. Register or generate `MemberCluster` inventory.
-4. Generate a starter `KaproBundle`, `Pipeline`, gates, and example `Release`.
+4. Generate a starter `PromotionSource`, `Pipeline`, gates, and example `Release`.
 5. Optionally install a spoke agent for pull-mode clusters.
 
 This is platform bootstrap for the release layer, not a replacement for a

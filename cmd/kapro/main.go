@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -58,7 +59,7 @@ Passes versions forward. Across targets. Across clusters. In waves.`,
 	root.AddCommand(newHubCmd())
 	root.AddCommand(newSpokeCmd())
 	root.AddCommand(newFleetMgmtCmd())
-	root.AddCommand(newBundleCmd())
+	root.AddCommand(newSourceCmd())
 	root.AddCommand(newStatusCmd())
 	root.AddCommand(newReleaseCmd())
 	root.AddCommand(newApproveCmd())
@@ -813,6 +814,7 @@ func newReleaseCreateCmd() *cobra.Command {
 	var (
 		name       string
 		version    string
+		versions   []string
 		pipelines  []string
 		scope      []string
 		namespace  string
@@ -829,23 +831,28 @@ Examples:
 
   # Hotfix targeting specific clusters only
   kapro release create --name v1.2.3-hotfix --version sha256:def456 \
-    --pipeline global --scope de-prod --scope fi-prod`,
+    --pipeline global --scope de-prod --scope fi-prod
+
+  # Brownfield/native release with per-unit revisions
+  kapro release create --name checkout-2026-05-15 \
+    --set api=main@sha256:abc123 --set worker=main@sha256:def456 \
+    --pipeline global`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runReleaseCreate(cmd.Context(), name, version, pipelines, scope, namespace, kubeconfig)
+			return runReleaseCreate(cmd.Context(), name, version, versions, pipelines, scope, namespace, kubeconfig)
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "Release name (required)")
-	cmd.Flags().StringVar(&version, "version", "", "OCI digest or tag to deliver (required)")
+	cmd.Flags().StringVar(&version, "version", "", "Default revision to deliver")
+	cmd.Flags().StringArrayVar(&versions, "set", nil, "Per-unit revision (repeatable: --set api=sha256:abc)")
 	cmd.Flags().StringArrayVar(&pipelines, "pipeline", nil, "Pipeline name (repeatable; required at least once)")
 	cmd.Flags().StringArrayVar(&scope, "scope", nil, "Restrict to target cluster (repeatable: --scope de-prod --scope fi-prod)")
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace for the Release")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	_ = cmd.MarkFlagRequired("name")
-	_ = cmd.MarkFlagRequired("version")
 	return cmd
 }
 
-func runReleaseCreate(ctx context.Context, name, version string, pipelines, scope []string,
+func runReleaseCreate(ctx context.Context, name, version string, versionPairs, pipelines, scope []string,
 	namespace, kubeconfigPath string) error {
 	c, err := buildClient(kubeconfigPath)
 	if err != nil {
@@ -854,6 +861,13 @@ func runReleaseCreate(ctx context.Context, name, version string, pipelines, scop
 
 	if len(pipelines) == 0 {
 		return fmt.Errorf("at least one --pipeline is required")
+	}
+	versions, err := parseReleaseVersions(versionPairs)
+	if err != nil {
+		return err
+	}
+	if version == "" && len(versions) == 0 {
+		return fmt.Errorf("--version or at least one --set unit=revision is required")
 	}
 
 	refs := make([]kaprov1alpha1.ReleasePipelineRef, 0, len(pipelines))
@@ -866,6 +880,7 @@ func runReleaseCreate(ctx context.Context, name, version string, pipelines, scop
 
 	spec := kaprov1alpha1.ReleaseSpec{
 		Version:   version,
+		Versions:  versions,
 		Pipelines: refs,
 	}
 	if len(scope) > 0 {
@@ -885,7 +900,12 @@ func runReleaseCreate(ctx context.Context, name, version string, pipelines, scop
 	}
 
 	fmt.Printf("✅ Release created: %s/%s\n", namespace, name)
-	fmt.Printf("   Version:   %s\n", version)
+	if version != "" {
+		fmt.Printf("   Version:   %s\n", version)
+	}
+	if len(versions) > 0 {
+		fmt.Printf("   Versions:  %s\n", formatReleaseVersions(versions))
+	}
 	pipelineNames := make([]string, len(pipelines))
 	copy(pipelineNames, pipelines)
 	fmt.Printf("   Pipelines: %s\n", strings.Join(pipelineNames, ", "))
@@ -894,6 +914,39 @@ func runReleaseCreate(ctx context.Context, name, version string, pipelines, scop
 	}
 	fmt.Printf("\nMonitor progress:\n  kapro get releases -n %s\n", namespace)
 	return nil
+}
+
+func parseReleaseVersions(pairs []string) (map[string]string, error) {
+	if len(pairs) == 0 {
+		return nil, nil
+	}
+	versions := make(map[string]string, len(pairs))
+	for _, pair := range pairs {
+		unit, version, ok := strings.Cut(pair, "=")
+		unit = strings.TrimSpace(unit)
+		version = strings.TrimSpace(version)
+		if !ok || unit == "" || version == "" {
+			return nil, fmt.Errorf("--set must use unit=revision, got %q", pair)
+		}
+		if _, exists := versions[unit]; exists {
+			return nil, fmt.Errorf("duplicate --set for unit %q", unit)
+		}
+		versions[unit] = version
+	}
+	return versions, nil
+}
+
+func formatReleaseVersions(versions map[string]string) string {
+	keys := make([]string, 0, len(versions))
+	for unit := range versions {
+		keys = append(keys, unit)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, unit := range keys {
+		parts = append(parts, unit+"="+versions[unit])
+	}
+	return strings.Join(parts, ", ")
 }
 
 // ─── kapro reject ────────────────────────────────────────────────────────────

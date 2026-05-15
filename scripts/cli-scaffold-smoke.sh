@@ -39,7 +39,7 @@ cd "${ROOT}"
 echo "smoke: greenfield argo repo-first"
 kapro init "${TMPDIR}/repo-first" --backend argo --name checkout --clusters none --force >/dev/null
 require_file "${TMPDIR}/repo-first/backends/argo.yaml"
-require_file "${TMPDIR}/repo-first/bundles/checkout.yaml"
+require_file "${TMPDIR}/repo-first/sources/checkout.yaml"
 require_file "${TMPDIR}/repo-first/pipelines/checkout.yaml"
 require_file "${TMPDIR}/repo-first/argo/applications/checkout.yaml"
 reject_path "${TMPDIR}/repo-first/clusters"

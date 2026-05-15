@@ -58,6 +58,26 @@ func TestStageDependencySatisfied_AnyUnlocksFromOneConvergedTarget(t *testing.T)
 	}
 }
 
+func TestReleaseDesiredVersions_ExplicitDefaultOverridesSpecVersion(t *testing.T) {
+	release := &kaprov1alpha1.Release{
+		Spec: kaprov1alpha1.ReleaseSpec{
+			Version: "fallback",
+			Versions: map[string]string{
+				"default": "explicit",
+				"api":     "api-v2",
+			},
+		},
+	}
+
+	desired := releaseDesiredVersionsFromSpec(release)
+	if got := desired["default"]; got != "explicit" {
+		t.Fatalf("default version = %q, want explicit", got)
+	}
+	if got := releasePrimaryVersion(release, desired); got != "explicit" {
+		t.Fatalf("primary version = %q, want explicit", got)
+	}
+}
+
 func TestNotifyReleaseEvent_UsesPipelineStageNotifications(t *testing.T) {
 	scheme := controllerTestScheme(t)
 	notifier := &recordingNotifier{}

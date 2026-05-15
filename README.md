@@ -68,7 +68,7 @@ It sits above Kubernetes Operators, Helm, Kustomize, OCI registries, GitOps reco
 Kapro supports both connect paths:
 
 - **Greenfield bootstrap:** create the hub, backend profiles, cluster inventory,
-  starter bundles, pipelines, gates, and optional spoke agents from Kapro
+  starter sources, pipelines, gates, and optional spoke agents from Kapro
   manifests or CLI flows.
 - **Brownfield connect:** discover existing Argo CD or Flux topology, observe it
   first, then explicitly adopt selected applications or clusters for promotion.
@@ -139,12 +139,12 @@ kapro hub init --project my-project --cluster my-hub
 kapro spoke add de-prod --provider gcp-fleet --labels tier=canary
 kapro spoke add fi-prod --provider gcp-fleet --labels tier=prod
 
-# Define your bundle and delivery pipeline
-kubectl apply -f examples/hub-config/bundles/checkout.yaml
+# Define your promotion source and delivery pipeline
+kubectl apply -f examples/hub-config/sources/checkout.yaml
 kubectl apply -f examples/hub-config/pipelines/checkout-progressive.yaml
 
 # Push a version from CI
-kapro bundle generate --bundle my-bundle --version 1.0.0 --push
+kapro source package --source checkout --version 1.0.0 --push
 
 # Create a release. Kapro handles the rest.
 kubectl apply -f examples/hub-config/releases/checkout-v1.2.3.yaml

@@ -139,6 +139,6 @@ kapro init ./promotion-repo --backend flux --name checkout --mode pull
 kapro init ./promotion-repo --backend argo --name checkout --clusters none
 ```
 
-`--clusters none` is repo-first mode. It creates backends, bundle metadata,
+`--clusters none` is repo-first mode. It creates backends, source metadata,
 pipeline metadata, and backend-native starter files, but skips `clusters/`,
 `kapro/`, and `releases/` until real targets exist.

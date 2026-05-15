@@ -16,7 +16,7 @@ import (
 // ReleaseValidator validates Release objects on CREATE and UPDATE.
 //
 // Rules enforced:
-//  1. spec.artifact must be non-empty.
+//  1. spec.version or spec.versions must be non-empty.
 //  2. spec.pipelines must have at least one pipeline reference.
 //  3. Each ReleasePipelineRef must have a non-empty name and pipeline.
 type ReleaseValidator struct {
@@ -51,8 +51,16 @@ func (v *ReleaseValidator) Handle(_ context.Context, req admission.Request) admi
 
 func validateRelease(r *kaprov1alpha1.Release) error {
 	var allErrs field.ErrorList
-	if r.Spec.Version == "" {
-		allErrs = append(allErrs, field.Required(field.NewPath("spec", "version"), "version is required"))
+	if r.Spec.Version == "" && len(r.Spec.Versions) == 0 {
+		allErrs = append(allErrs, field.Required(field.NewPath("spec"), "version or versions is required"))
+	}
+	for unit, version := range r.Spec.Versions {
+		if unit == "" {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec", "versions"), unit, "unit key must be non-empty"))
+		}
+		if version == "" {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("spec", "versions").Key(unit), version, "version must be non-empty"))
+		}
 	}
 	if len(allErrs) > 0 {
 		return fmt.Errorf("%s", allErrs.ToAggregate().Error())
@@ -98,6 +106,9 @@ func validateRelease(r *kaprov1alpha1.Release) error {
 func validateReleaseUpdate(old, new *kaprov1alpha1.Release) error {
 	if old.Spec.Version != new.Spec.Version {
 		return fmt.Errorf("release.spec.version is immutable after creation")
+	}
+	if !reflect.DeepEqual(old.Spec.Versions, new.Spec.Versions) {
+		return fmt.Errorf("release.spec.versions is immutable after creation")
 	}
 	if !reflect.DeepEqual(old.Spec.Pipelines, new.Spec.Pipelines) {
 		return fmt.Errorf("release.spec.pipelines is immutable after creation")

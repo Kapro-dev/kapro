@@ -3,7 +3,7 @@
 // clusters, it patches ResourceSet inputs on the hub. Flux Operator renders
 // the per-cluster Flux resources, and Flux syncs them to spokes.
 //
-// This is the default actuator for Kapro — no spoke-side kapro component needed.
+// This is the default actuator for Kapro — no spoke-side kapro unit needed.
 package fluxoperator
 
 import (
@@ -31,7 +31,7 @@ var resourceSetGVK = schema.GroupVersionKind{
 //
 // Input field naming convention:
 //   - Single-app: inputField (default "tag") holds the version
-//   - Multi-component (KaproBundle): "{appKey}_version" per component (e.g. "pos-server_version")
+//   - Multi-unit (PromotionSource): "{appKey}_version" per unit (e.g. "pos-server_version")
 //
 // The actuator resolves the field name from appKey: if appKey is non-empty and
 // the input entry has a matching "{appKey}_version" field, it patches that.
@@ -276,7 +276,7 @@ func resolveConfig(delivery *kaprov1alpha1.DeliverySpec) (ns, tenantField string
 }
 
 // resolveVersionField maps an appKey to the ResourceSet input field name.
-// For multi-component KaproBundle: "pos-server" → "pos-server_version"
+// For multi-unit PromotionSource: "pos-server" → "pos-server_version"
 // For single-app (backward compat): "" or "default" → configured inputField
 func resolveVersionField(delivery *kaprov1alpha1.DeliverySpec, appKey string) string {
 	if appKey != "" && appKey != "default" {
@@ -358,8 +358,8 @@ var helmReleaseGVK = schema.GroupVersionKind{
 	Kind:    "HelmRelease",
 }
 
-// resolveHelmReleaseName returns the HelmRelease name for a component on a cluster.
-// Convention from buildHelmRelease: {componentName}-{clusterName}
+// resolveHelmReleaseName returns the HelmRelease name for a unit on a cluster.
+// Convention from buildHelmRelease: {unitName}-{clusterName}
 // checkHelmReleaseFromInventory finds the HelmRelease for a cluster in the ResourceSet inventory.
 func (a *FluxOperatorActuator) checkHelmReleaseFromInventory(ctx context.Context, rsName, ns, clusterName string) (bool, error) {
 	rs, err := a.getResourceSet(ctx, rsName, ns)

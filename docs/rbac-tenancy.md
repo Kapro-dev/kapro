@@ -11,7 +11,7 @@ ClusterRoles rather than by making the core APIs namespaced.
 |---|---|---|
 | Platform admin | Operator install, CRDs, controller flags, cluster-wide policy | Full admin on `kapro.io/*` and install namespace |
 | Extension admin | External plugin endpoints and plugin credentials | Create/update `PluginRegistration`; read referenced plugin Secrets |
-| Release manager | Release and trigger policy for one team or app | Create/update `Release`, `ReleaseTrigger`, `Pipeline`, `KaproBundle` with team labels |
+| Release manager | Release and trigger policy for one team or app | Create/update `Release`, `ReleaseTrigger`, `Pipeline`, `PromotionSource` with team labels |
 | Approver | Human gate decisions for assigned teams/environments | Create `Approval`; read relevant `Release` and `ReleaseTarget` status |
 | Auditor | Evidence and status | Read-only on Kapro CRDs and Events |
 
@@ -21,7 +21,7 @@ Every user-created Kapro object should carry these labels:
 
 | Label | Required on | Meaning |
 |---|---|---|
-| `kapro.io/team` | `Release`, `ReleaseTrigger`, `Pipeline`, `KaproBundle`, `Approval` | Owning team or service group |
+| `kapro.io/team` | `Release`, `ReleaseTrigger`, `Pipeline`, `PromotionSource`, `Approval` | Owning team or service group |
 | `kapro.io/environment` | `MemberCluster`, `Pipeline`, `Approval` | Environment boundary such as `dev`, `staging`, `prod` |
 | `kapro.io/plugin-owner` | `PluginRegistration` | Team accountable for the plugin endpoint |
 
@@ -118,7 +118,7 @@ metadata:
   name: kapro-release-manager
 rules:
   - apiGroups: ["kapro.io"]
-    resources: ["releases", "releasetriggers", "pipelines", "kaprobundles"]
+    resources: ["releases", "releasetriggers", "pipelines", "promotionsources"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: ["kapro.io"]
     resources: ["releasetargets", "memberclusters", "pluginregistrations"]
