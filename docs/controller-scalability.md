@@ -17,6 +17,29 @@ controller shards when a single workqueue is no longer enough.
 | Leader election | Enabled for production and required when `replicaCount > 1`. |
 | Runtime plugins | Startup-time only for actuator and gate dispatch. Dynamic reload is not part of the current scaling model. |
 
+The current operator binary sets `MaxConcurrentReconciles=5` at the
+controller-runtime manager level. It is not currently exposed as a Helm value or
+environment variable. When higher worker counts are needed, prefer sharding
+first; raising global concurrency should be a deliberate code or chart change
+after measuring API server and backend capacity.
+
+## Scaling Levers
+
+Use these levers in this order:
+
+1. Set conservative `Stage.spec.strategy.maxParallel` values so a stage cannot
+   exceed backend write capacity.
+2. Keep plugin timeouts short and return gate `retryAfter` values for external
+   systems that need slower polling.
+3. Scale plugin servers horizontally behind stable DNS names.
+4. Split high-cardinality rollout work with `KAPRO_SHARD` when one
+   ReleaseTarget queue cannot keep up.
+5. Only then consider increasing controller worker concurrency.
+
+The first three levers reduce work. Sharding partitions work. Raising worker
+concurrency increases pressure on the Kubernetes API server and external
+backends, so it should follow measurement rather than precede it.
+
 ## Rate Limits
 
 Controller-runtime workqueues protect the API server from tight failure loops.
@@ -34,6 +57,20 @@ Operational defaults:
   capacity for the selected target set.
 - Prefer multiple stages over one very large stage when backend APIs have
   strict per-tenant write quotas.
+- Use per-plugin client-side rate limits when a backend has tenant, region, or
+  token-level quotas.
+- Treat `ReleaseTrigger` cooldown and max-active policy as source-side flood
+  protection, not as replacement for stage parallelism.
+
+Rate limits should be layered:
+
+| Layer | Mechanism | Protects |
+|---|---|---|
+| Source | `ReleaseTrigger` cooldown and max-active policy | Hub from artifact bursts |
+| Stage | `Stage.spec.strategy.maxParallel` | Backend write APIs and target fleets |
+| Controller | Workqueue backoff and reconcile concurrency | Kubernetes API server |
+| Plugin | RPC deadline, retry policy, backend client limiter | External systems |
+| Receiver | CloudEvents de-duplication and webhook timeout | Notification consumers |
 
 ## Sharding
 
@@ -78,6 +115,17 @@ not share the same leader-election identity; each active shard needs an
 independent leader-election lock. Run the remaining controllers in a separate
 singleton manager with leader election enabled.
 
+Current deployment constraint: the operator uses a fixed leader-election ID.
+Until the deployment surface exposes a distinct leader-election ID per shard,
+active shard managers in the same namespace can contend for the same lock. Use a
+deployment layout that gives each shard an independent leader-election namespace,
+or keep one active high-cardinality manager and use shard labels only when the
+operator packaging supports separate locks.
+
+Sharding does not change ownership of non-shard-aware controllers. The
+singleton manager should continue to own approvals, Kapro resource generation,
+plugin registration status, and release triggers.
+
 ## Workqueue Behavior
 
 The Release controller owns orchestration:
@@ -98,6 +146,33 @@ This split keeps high-cardinality per-cluster work out of the top-level
 Release reconcile loop. A large stage should produce many independent
 ReleaseTarget queue items instead of one long-running Release reconcile.
 
+## Workqueue Tuning
+
+Tune workqueues by changing inputs before changing worker counts:
+
+- Reduce duplicate events by creating Releases with final labels, pipeline
+  references, and shard labels already set.
+- Keep status payloads compact so status patch conflicts and API server payload
+  size stay low.
+- Avoid gate templates that poll expensive backends every 30 seconds for every
+  target; return longer `retryAfter` values for slow checks.
+- Keep actuator `Apply` idempotent and cheap when the desired version is already
+  applied.
+- Use `maxParallel` to bound the number of ReleaseTargets actively invoking a
+  backend, even when many targets are queued.
+
+Signals that a queue needs partitioning or tuning:
+
+- controller-runtime workqueue depth grows while reconcile errors stay low;
+- `kapro_controller_reconcile_duration_seconds` increases with fleet size;
+- `kapro_controller_status_writes_total{result="error"}` or API conflict
+  rates rise during large stages;
+- plugin RPC latency approaches `PluginRegistration.spec.timeout`;
+- gate evaluations remain `running` or `inconclusive` for many targets at once.
+
+If errors dominate, fix the failing backend or validation path before adding
+workers. More workers will make a persistent error loop louder.
+
 ## Large Fleet Limits
 
 Kapro is designed for fleets in the 10-500 cluster range by default. Larger
@@ -113,10 +188,24 @@ fleets require explicit partitioning:
 - Keep external plugin servers horizontally scalable behind stable DNS names.
 - Monitor API server request latency, workqueue depth, reconcile error rate,
   plugin RPC latency, and notification delivery failures.
+- Cap simultaneous active Releases per app or tenant with process policy until
+  a dedicated quota API exists.
+- Use separate hub clusters when regulatory, network, or API-server isolation
+  matters more than a single global view.
 
 A single Release should not be used as an unbounded global fan-out primitive.
 Model global rollouts as explicit waves with conservative `maxParallel` values
 and clear failure policy.
+
+Large-fleet sizing assumptions:
+
+| Dimension | Default assumption | Larger-fleet action |
+|---|---|---|
+| Targets per Release | Tens to hundreds | Split into stages, shards, or separate Releases |
+| Active Releases | Low per app or tenant | Add process quotas and watch active release metrics |
+| Target status | Compact status plus backend links | Store evidence outside CRD status |
+| Plugin backend latency | Seconds, bounded by timeout | Scale plugin servers and slow polling |
+| API server latency | Stable under status update load | Partition hubs or shards before raising workers |
 
 ## Resilience Rules
 
@@ -128,3 +217,10 @@ and clear failure policy.
   repeat after any crash, leader change, or API conflict.
 - Webhook notifications may be retried. Receivers should de-duplicate using the
   CloudEvents ID when structured CloudEvents are enabled.
+- External plugin servers should be stateless or persist enough backend state to
+  answer repeated Kapro requests after restart.
+- Timeout errors should be safe to retry. If a backend operation may still be in
+  flight after timeout, the next request must observe backend state before
+  issuing another write.
+- Admission and automation should avoid mutating in-flight Releases except for
+  documented approval, cancellation, or rollback workflows.

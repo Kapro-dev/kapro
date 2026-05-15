@@ -5,7 +5,10 @@
 #   KAPRO_CONTROLLERS=release,release-target
 #   KAPRO_SHARD=shard-a
 #
-# Each active shard manager must use an independent leader-election identity.
+# Each active shard manager must use an independent leader-election lock. The
+# current operator uses a fixed leader-election ID, so separate active shard
+# deployments need separate leader-election namespaces or packaging that exposes
+# a distinct leader-election ID per shard.
 # The singleton manager runs non-shard-aware controllers:
 #
 #   KAPRO_CONTROLLERS=approval,kapro,plugin-registration,release-trigger

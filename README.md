@@ -135,12 +135,31 @@ kapro bundle generate --app my-app --version 1.0.0 --push
 kubectl apply -f release.yaml
 ```
 
+Existing users upgrading a hub should read the API stability and upgrade policy
+before applying new CRDs or rolling the operator. Plugin users should run the
+matching KAI, KGI, or KPI conformance harness before enabling a new plugin image
+in production. Large fleets should review the scalability guide before raising
+stage parallelism or adding operator replicas.
+
+Quick troubleshooting checks:
+
+- `kubectl get releases,releasetargets,pluginregistrations` to confirm observed
+  generation and readiness caught up.
+- Check the operator logs for disabled controllers, shard selection, plugin
+  gateway registration, and webhook startup.
+- Confirm `KAPRO_HUB_API_URL`, approval secrets, plugin TLS Secrets, and
+  notification Secrets are present in the operator namespace.
+- For sharded deployments, verify the `kapro.io/shard` label is set when the
+  `Release` is created.
+
 ## Documentation
 
 - [Architecture Spec](docs/SPEC.md)
 - [API Stability and Upgrade Policy](docs/api-stability.md)
 - [Conformance Packages](docs/conformance.md)
 - [Controller Scalability and Resilience](docs/controller-scalability.md)
+- [Plugin Authoring](docs/plugin-authoring.md)
+- [Extension Model](docs/extension-model.md)
 - [Roadmap](docs/ROADMAP.md)
 
 ## Contributing
