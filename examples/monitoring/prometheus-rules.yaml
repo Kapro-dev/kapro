@@ -1,0 +1,62 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kapro-operational-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: kapro
+    app.kubernetes.io/component: monitoring
+spec:
+  groups:
+    - name: kapro.controller
+      rules:
+        - alert: KaproControllerReconcileErrors
+          expr: |
+            sum by (controller) (rate(kapro_controller_reconciles_total{result="error"}[10m])) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kapro {{ $labels.controller }} controller is returning reconcile errors"
+            description: "The {{ $labels.controller }} controller has had at least one reconcile error per second over the last 10 minutes."
+        - alert: KaproControllerReconcileLatencyP95High
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (controller, le) (rate(kapro_controller_reconcile_duration_seconds_bucket[10m]))
+            ) > 30
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kapro {{ $labels.controller }} reconcile p95 is high"
+            description: "The {{ $labels.controller }} controller p95 reconcile duration has been above 30 seconds for 15 minutes."
+    - name: kapro.gates
+      rules:
+        - alert: KaproGateFailureRateHigh
+          expr: |
+            (
+              sum by (gate_type) (rate(kapro_gate_evaluations_total{result="failed"}[15m]))
+              /
+              clamp_min(sum by (gate_type) (rate(kapro_gate_evaluations_total[15m])), 0.001)
+            ) > 0.20
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kapro {{ $labels.gate_type }} gate failure ratio is high"
+            description: "More than 20% of {{ $labels.gate_type }} gate evaluations failed over the last 15 minutes."
+    - name: kapro.rollouts
+      rules:
+        - alert: KaproRolloutDurationP95High
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (pipeline, le) (rate(kapro_stage_duration_seconds_bucket[30m]))
+            ) > 3600
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kapro {{ $labels.pipeline }} rollout stage p95 is high"
+            description: "Stage completion p95 for pipeline {{ $labels.pipeline }} has been above 1 hour for 30 minutes."
