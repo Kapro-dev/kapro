@@ -147,7 +147,7 @@ func main() {
 
 	ctx := context.Background()
 	if pluginadapter.EnabledFromEnv() {
-		registered, err := pluginadapter.Registrar{}.RegisterReady(ctx, mgr.GetClient(), actuatorReg, gateRegistry)
+		registered, err := pluginadapter.Registrar{}.RegisterReady(ctx, mgr.GetAPIReader(), actuatorReg, gateRegistry)
 		if err != nil {
 			log.Error(err, "failed to register plugin gateway adapters")
 			os.Exit(1)

@@ -783,8 +783,8 @@ type ReleaseList struct {
 // ---- ReleaseTrigger ---------------------------------------------------------
 
 // ReleaseTriggerSpec defines an autonomous source that can create Release
-// objects from verified artifact changes. The controller for this API is future
-// work; the API is intentionally safe by default.
+// objects from verified artifact changes. The controller currently provides
+// preview behavior for this API, and the API is intentionally safe by default.
 //
 // +kubebuilder:validation:XValidation:rule="self.source.type != 'oci' || has(self.source.oci)",message="source.oci is required when source.type=oci"
 // +kubebuilder:validation:XValidation:rule="!has(self.maxActive) || self.maxActive >= 1",message="maxActive must be at least 1"

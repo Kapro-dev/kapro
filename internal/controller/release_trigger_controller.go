@@ -11,6 +11,7 @@ import (
 	"text/template"
 	"time"
 
+	"golang.org/x/mod/semver"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -157,7 +158,12 @@ func (r *ReleaseTriggerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{RequeueAfter: pollAfter}, r.patchStatus(ctx, &trigger, patch)
 	}
 
-	if remaining := cooldownRemaining(&trigger, now); remaining > 0 {
+	remaining, err := cooldownRemaining(&trigger, now)
+	if err != nil {
+		setTriggerBlocked(&trigger, now, "InvalidCooldown", err.Error())
+		return ctrl.Result{}, r.patchStatus(ctx, &trigger, patch)
+	}
+	if remaining > 0 {
 		setTriggerReady(&trigger, now, "CooldownActive", fmt.Sprintf("cooldown active for %s", remaining.Round(time.Second)))
 		setCondition(&trigger.Status.Conditions, conditionReleaseCreated, metav1.ConditionFalse, "CooldownActive", "release creation delayed by cooldown", trigger.Generation, now)
 		return ctrl.Result{RequeueAfter: minDuration(remaining, pollAfter)}, r.patchStatus(ctx, &trigger, patch)
@@ -285,7 +291,9 @@ func (r OCIReleaseTriggerResolver) Resolve(ctx context.Context, trigger *kaprov1
 	if len(tags) == 0 {
 		return nil, nil
 	}
-	sort.Strings(tags)
+	sort.SliceStable(tags, func(i, j int) bool {
+		return releaseTriggerTagLess(tags[i], tags[j])
+	})
 	tag := tags[len(tags)-1]
 	desc, err := repo.Resolve(ctx, tag)
 	if err != nil {
@@ -418,7 +426,7 @@ func releaseName(trigger *kaprov1alpha1.ReleaseTrigger, artifact ReleaseTriggerA
 	if trigger.Spec.ReleaseTemplate.NameTemplate == "" {
 		return dnsName(fmt.Sprintf("%s-%s", trigger.Name, shortDigest(artifact.Digest))), nil
 	}
-	tmpl, err := template.New("release-name").Parse(trigger.Spec.ReleaseTemplate.NameTemplate)
+	tmpl, err := template.New("release-name").Option("missingkey=error").Parse(trigger.Spec.ReleaseTemplate.NameTemplate)
 	if err != nil {
 		return "", fmt.Errorf("parse nameTemplate: %w", err)
 	}
@@ -454,25 +462,41 @@ func pollInterval(trigger *kaprov1alpha1.ReleaseTrigger) (time.Duration, error) 
 	return time.ParseDuration(trigger.Spec.Source.OCI.PollInterval)
 }
 
-func cooldownRemaining(trigger *kaprov1alpha1.ReleaseTrigger, now time.Time) time.Duration {
+func cooldownRemaining(trigger *kaprov1alpha1.ReleaseTrigger, now time.Time) (time.Duration, error) {
 	if trigger.Status.LastTriggeredAt == "" {
-		return 0
+		return 0, nil
 	}
 	cooldown := defaultTriggerCooldown
 	if trigger.Spec.Cooldown != "" {
 		parsed, err := time.ParseDuration(trigger.Spec.Cooldown)
-		if err == nil {
-			cooldown = parsed
+		if err != nil {
+			return 0, fmt.Errorf("parse cooldown %q: %w", trigger.Spec.Cooldown, err)
 		}
+		cooldown = parsed
 	}
 	last, err := time.Parse(time.RFC3339, trigger.Status.LastTriggeredAt)
 	if err != nil {
-		return 0
+		return 0, fmt.Errorf("parse status.lastTriggeredAt %q: %w", trigger.Status.LastTriggeredAt, err)
 	}
 	if elapsed := now.Sub(last); elapsed < cooldown {
-		return cooldown - elapsed
+		return cooldown - elapsed, nil
 	}
-	return 0
+	return 0, nil
+}
+
+func releaseTriggerTagLess(left, right string) bool {
+	leftCanonical := semver.Canonical(left)
+	rightCanonical := semver.Canonical(right)
+	switch {
+	case leftCanonical != "" && rightCanonical != "":
+		return semver.Compare(leftCanonical, rightCanonical) < 0
+	case leftCanonical != "":
+		return false
+	case rightCanonical != "":
+		return true
+	default:
+		return left < right
+	}
 }
 
 func setTriggerSuspended(trigger *kaprov1alpha1.ReleaseTrigger, now time.Time) {
