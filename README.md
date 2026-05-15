@@ -138,6 +138,7 @@ kubectl apply -f release.yaml
 ## Documentation
 
 - [Architecture Spec](docs/SPEC.md)
+- [Local Kind Demo](docs/kind-demo.md)
 - [Roadmap](docs/ROADMAP.md)
 
 ## Contributing

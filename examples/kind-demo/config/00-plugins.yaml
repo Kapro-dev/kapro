@@ -1,0 +1,38 @@
+apiVersion: kapro.io/v1alpha1
+kind: PluginRegistration
+metadata:
+  name: kind-demo-capacity-planner
+spec:
+  type: planner
+  name: capacity
+  protocol: grpc
+  endpoint: dns:///capacity-planner.kapro-system.svc:9090
+  timeout: 2s
+  parameters:
+    note: static demo registration; no plugin server is started
+---
+apiVersion: kapro.io/v1alpha1
+kind: PluginRegistration
+metadata:
+  name: kind-demo-slo-gate
+spec:
+  type: gate
+  name: slo
+  protocol: grpc
+  endpoint: dns:///slo-gate.kapro-system.svc:9090
+  timeout: 2s
+  parameters:
+    note: static demo registration; built-in gates drive this demo
+---
+apiVersion: kapro.io/v1alpha1
+kind: PluginRegistration
+metadata:
+  name: kind-demo-actuator
+spec:
+  type: actuator
+  name: push/flux
+  protocol: grpc
+  endpoint: dns:///flux-actuator.kapro-system.svc:9090
+  timeout: 2s
+  parameters:
+    note: static demo registration; built-in push/flux actuator drives this demo

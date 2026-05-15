@@ -1,0 +1,41 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: checkout-canary
+  namespace: flux-system
+  labels:
+    kapro.io/demo: kind
+spec:
+  interval: 1m
+  chart:
+    spec:
+      chart: checkout
+      version: v1.2.2-kind
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: checkout-prod-eu
+  namespace: flux-system
+  labels:
+    kapro.io/demo: kind
+spec:
+  interval: 1m
+  chart:
+    spec:
+      chart: checkout
+      version: v1.2.2-kind
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: checkout-prod-us
+  namespace: flux-system
+  labels:
+    kapro.io/demo: kind
+spec:
+  interval: 1m
+  chart:
+    spec:
+      chart: checkout
+      version: v1.2.2-kind
