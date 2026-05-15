@@ -15,6 +15,7 @@ import (
 // GateAdapter adapts a KGI gRPC plugin to pkg/gate.Gate.
 type GateAdapter struct {
 	name       string
+	endpoint   string
 	client     kgiv1alpha1.GateServiceClient
 	timeout    time.Duration
 	parameters map[string]string
@@ -38,6 +39,7 @@ func NewGateAdapter(reg kaprov1alpha1.PluginRegistration, client kgiv1alpha1.Gat
 	}
 	return &GateAdapter{
 		name:       reg.Spec.Name,
+		endpoint:   reg.Spec.Endpoint,
 		client:     client,
 		timeout:    timeout,
 		parameters: copyParameters(reg.Spec.Parameters),
@@ -46,9 +48,15 @@ func NewGateAdapter(reg kaprov1alpha1.PluginRegistration, client kgiv1alpha1.Gat
 
 // Evaluate asks the external plugin whether this target may advance.
 func (g *GateAdapter) Evaluate(ctx context.Context, req gate.Request) (gate.Result, error) {
+	start := time.Now()
+	result := "success"
+	defer func() { observeRuntimeCall(kaprov1alpha1.PluginTypeGate, g.name, "Evaluate", result, start) }()
+
 	if req.Context == nil {
+		result = "error"
 		return gate.Result{}, fmt.Errorf("gate context is required")
 	}
+
 	rpcCtx, cancel := context.WithTimeout(ctx, g.timeout)
 	defer cancel()
 
@@ -62,11 +70,13 @@ func (g *GateAdapter) Evaluate(ctx context.Context, req gate.Request) (gate.Resu
 		Parameters: mergeParameters(g.parameters, req.Args),
 	})
 	if err != nil {
-		return gate.Result{}, fmt.Errorf("evaluate via gate plugin %q: %w", g.name, err)
+		result = "error"
+		return gate.Result{}, fmt.Errorf("gate plugin %q Evaluate RPC to %q failed for target %q stage %q: %w", g.name, g.endpoint, req.Context.Target, req.Context.Stage, err)
 	}
 	phase, err := mapGatePhase(resp.GetPhase())
 	if err != nil {
-		return gate.Result{}, fmt.Errorf("evaluate via gate plugin %q: %w", g.name, err)
+		result = "invalid_response"
+		return gate.Result{}, fmt.Errorf("gate plugin %q Evaluate returned invalid phase for target %q stage %q: %w", g.name, req.Context.Target, req.Context.Stage, err)
 	}
 	return gate.Result{Phase: phase, Message: resp.GetMessage()}, nil
 }

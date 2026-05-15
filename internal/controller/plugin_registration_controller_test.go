@@ -5,8 +5,10 @@ import (
 	"testing"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprometrics "kapro.io/kapro/internal/metrics"
 	"kapro.io/kapro/internal/plugin/probe"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -14,6 +16,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 func TestPluginRegistrationReconcilerSetsReadyStatus(t *testing.T) {
@@ -71,6 +74,9 @@ func TestPluginRegistrationReconcilerSetsReadyStatus(t *testing.T) {
 	compatible := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha1.ConditionTypeCompatible)
 	if compatible == nil || compatible.Status != metav1.ConditionTrue {
 		t.Fatalf("Compatible condition = %#v", compatible)
+	}
+	if !controllerutil.ContainsFinalizer(&got, pluginRegistrationMetricsFinalizer) {
+		t.Fatalf("finalizers = %v, want %q", got.Finalizers, pluginRegistrationMetricsFinalizer)
 	}
 }
 
@@ -171,6 +177,39 @@ func TestPluginRegistrationReconcilerSetsIncompatibleStatus(t *testing.T) {
 	compatible := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha1.ConditionTypeCompatible)
 	if compatible == nil || compatible.Status != metav1.ConditionFalse || compatible.Reason != "UnsupportedContractVersion" {
 		t.Fatalf("Compatible condition = %#v", compatible)
+	}
+}
+
+func TestPluginRegistrationReconcilerDeletesReadinessMetricOnDelete(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	reg := &kaprov1alpha1.PluginRegistration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "slo-gate",
+			Finalizers: []string{pluginRegistrationMetricsFinalizer},
+		},
+		Spec: kaprov1alpha1.PluginRegistrationSpec{
+			Type:     kaprov1alpha1.PluginTypeGate,
+			Name:     "slo/gate",
+			Protocol: kaprov1alpha1.PluginProtocolGRPC,
+			Endpoint: "bufnet",
+		},
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(reg).WithStatusSubresource(&kaprov1alpha1.PluginRegistration{}).Build()
+	r := &PluginRegistrationReconciler{Client: c, Recorder: record.NewFakeRecorder(8)}
+
+	readiness := kaprometrics.PluginProbeReady.WithLabelValues("gate", "slo/gate")
+	readiness.Set(1)
+	if err := c.Delete(context.Background(), reg); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: objectKey(reg.Name)}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if got := testutil.ToFloat64(readiness); got != 0 {
+		t.Fatalf("probe readiness gauge = %v, want deleted/zero", got)
 	}
 }
 

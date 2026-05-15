@@ -7,6 +7,7 @@ import (
 	"time"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprometrics "kapro.io/kapro/internal/metrics"
 	"kapro.io/kapro/internal/plugin/transport"
 	"kapro.io/kapro/pkg/plugincompat"
 	kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
@@ -41,23 +42,26 @@ type Prober struct {
 }
 
 // Probe validates the registration, dials the endpoint, and reads capabilities.
-func (p Prober) Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration) Result {
+func (p Prober) Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration) (result Result) {
+	start := time.Now()
+	defer func() { observeProbe(reg, result, start) }()
+
 	if reg.Spec.Type != kaprov1alpha1.PluginTypeActuator &&
 		reg.Spec.Type != kaprov1alpha1.PluginTypeGate &&
 		reg.Spec.Type != kaprov1alpha1.PluginTypePlanner {
-		return notReady("UnsupportedType", fmt.Sprintf("unsupported plugin type %q", reg.Spec.Type))
+		return notReady("UnsupportedType", fmt.Sprintf("plugin registration %q has unsupported type %q", registrationName(reg), reg.Spec.Type))
 	}
 	if reg.Spec.Protocol != "" && reg.Spec.Protocol != kaprov1alpha1.PluginProtocolGRPC {
-		return notReady("UnsupportedProtocol", fmt.Sprintf("unsupported plugin protocol %q", reg.Spec.Protocol))
+		return notReady("UnsupportedProtocol", fmt.Sprintf("plugin %q uses unsupported protocol %q", registrationName(reg), reg.Spec.Protocol))
 	}
 	if reg.Spec.Endpoint == "" {
-		return notReady("InvalidEndpoint", "plugin endpoint is required")
+		return notReady("InvalidEndpoint", fmt.Sprintf("plugin %q endpoint is required", registrationName(reg)))
 	}
 	timeout := 10 * time.Second
 	if reg.Spec.Timeout != "" {
 		parsed, err := time.ParseDuration(reg.Spec.Timeout)
 		if err != nil {
-			return notReady("InvalidTimeout", fmt.Sprintf("parse timeout %q: %v", reg.Spec.Timeout, err))
+			return notReady("InvalidTimeout", fmt.Sprintf("plugin %q has invalid timeout %q: %v", registrationName(reg), reg.Spec.Timeout, err))
 		}
 		timeout = parsed
 	}
@@ -66,13 +70,13 @@ func (p Prober) Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration)
 
 	opts, err := transport.DialOptions(ctx, p.Client, reg)
 	if err != nil {
-		return notReady("TLSInvalid", err.Error())
+		return notReady("TLSInvalid", fmt.Sprintf("plugin %q TLS configuration for endpoint %q is invalid: %v", registrationName(reg), reg.Spec.Endpoint, err))
 	}
 	opts = append(opts, grpc.WithBlock()) //nolint:staticcheck // grpc.NewClient lacks WithBlock equivalent in older supported versions.
 	opts = append(opts, p.DialOptions...)
 	conn, err := grpc.DialContext(ctx, reg.Spec.Endpoint, opts...) //nolint:staticcheck // grpc.NewClient lacks WithBlock equivalent in older supported versions.
 	if err != nil {
-		return notReady("DialFailed", err.Error())
+		return notReady("DialFailed", fmt.Sprintf("plugin %q dial to endpoint %q failed within %s: %v", registrationName(reg), reg.Spec.Endpoint, timeout, err))
 	}
 	defer conn.Close()
 
@@ -80,7 +84,7 @@ func (p Prober) Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration)
 	case kaprov1alpha1.PluginTypeActuator:
 		resp, err := kaiv1alpha1.NewActuatorServiceClient(conn).GetCapabilities(ctx, &kaiv1alpha1.GetCapabilitiesRequest{})
 		if err != nil {
-			return notReady("ProbeFailed", err.Error())
+			return notReady("ProbeFailed", fmt.Sprintf("actuator plugin %q GetCapabilities failed: %v", registrationName(reg), err))
 		}
 		if result := validateContract(reg.Spec.Type, resp.GetContractVersion()); !result.Ready {
 			return result
@@ -89,7 +93,7 @@ func (p Prober) Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration)
 	case kaprov1alpha1.PluginTypeGate:
 		resp, err := kgiv1alpha1.NewGateServiceClient(conn).GetCapabilities(ctx, &kgiv1alpha1.GetCapabilitiesRequest{})
 		if err != nil {
-			return notReady("ProbeFailed", err.Error())
+			return notReady("ProbeFailed", fmt.Sprintf("gate plugin %q GetCapabilities failed: %v", registrationName(reg), err))
 		}
 		if result := validateContract(reg.Spec.Type, resp.GetContractVersion()); !result.Ready {
 			return result
@@ -98,7 +102,7 @@ func (p Prober) Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration)
 	case kaprov1alpha1.PluginTypePlanner:
 		resp, err := kpiv1alpha1.NewPlannerServiceClient(conn).GetCapabilities(ctx, &kpiv1alpha1.GetCapabilitiesRequest{})
 		if err != nil {
-			return notReady("ProbeFailed", err.Error())
+			return notReady("ProbeFailed", fmt.Sprintf("planner plugin %q GetCapabilities failed: %v", registrationName(reg), err))
 		}
 		if result := validateContract(reg.Spec.Type, resp.GetContractVersion()); !result.Ready {
 			return result
@@ -108,7 +112,7 @@ func (p Prober) Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration)
 		}
 		return ready(resp.GetPluginVersion(), resp.GetContractVersion(), resp.GetCapabilities())
 	default:
-		return notReady("UnsupportedType", fmt.Sprintf("unsupported plugin type %q", reg.Spec.Type))
+		return notReady("UnsupportedType", fmt.Sprintf("plugin registration %q has unsupported type %q", registrationName(reg), reg.Spec.Type))
 	}
 }
 
@@ -169,4 +173,60 @@ func notReadyWithContract(reason, message, contractVersion string) Result {
 // ContractVersion returns the KAI/KGI/KPI contract version this prober supports.
 func ContractVersion() string {
 	return plugincompat.VersionV1Alpha1
+}
+
+func observeProbe(reg kaprov1alpha1.PluginRegistration, result Result, start time.Time) {
+	outcome := "error"
+	readyValue := 0.0
+	if result.Ready {
+		outcome = "success"
+		readyValue = 1
+	}
+	reason := result.Reason
+	if reason == "" {
+		reason = "Unknown"
+	}
+	pluginType := string(reg.Spec.Type)
+	if pluginType == "" {
+		pluginType = "unknown"
+	}
+	kaprometrics.PluginProbeResults.WithLabelValues(pluginType, outcome, reason).Inc()
+	kaprometrics.PluginProbeDuration.WithLabelValues(pluginType, outcome).Observe(time.Since(start).Seconds())
+	kaprometrics.PluginProbeReady.WithLabelValues(pluginType, registrationMetricName(reg)).Set(readyValue)
+	if reg.Name != "" && reg.Name != reg.Spec.Name {
+		kaprometrics.PluginProbeReady.DeleteLabelValues(pluginType, reg.Name)
+	}
+}
+
+func registrationName(reg kaprov1alpha1.PluginRegistration) string {
+	if reg.Name != "" {
+		return reg.Name
+	}
+	if reg.Spec.Name != "" {
+		return reg.Spec.Name
+	}
+	return "<unnamed>"
+}
+
+func registrationMetricName(reg kaprov1alpha1.PluginRegistration) string {
+	if reg.Spec.Name != "" {
+		return reg.Spec.Name
+	}
+	return registrationName(reg)
+}
+
+// ForgetReadiness removes the per-registration readiness metric for a deleted
+// registration. Callers should pass the last observed object before finalizer
+// removal so the registry key is still available.
+func ForgetReadiness(reg kaprov1alpha1.PluginRegistration) {
+	pluginType := string(reg.Spec.Type)
+	if pluginType == "" {
+		pluginType = "unknown"
+	}
+	kaprometrics.PluginProbeReady.WithLabelValues(pluginType, registrationMetricName(reg)).Set(0)
+	kaprometrics.PluginProbeReady.DeleteLabelValues(pluginType, registrationMetricName(reg))
+	if reg.Name != "" && reg.Name != reg.Spec.Name {
+		kaprometrics.PluginProbeReady.WithLabelValues(pluginType, reg.Name).Set(0)
+		kaprometrics.PluginProbeReady.DeleteLabelValues(pluginType, reg.Name)
+	}
 }

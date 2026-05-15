@@ -32,6 +32,11 @@ The first implementation should support OCI registry sources only. Additional
 sources such as GitHub releases, MLflow model registry events, Prometheus
 alerts, and external webhooks can be added after the OCI path is proven.
 
+The controller must reject unsafe or malformed trigger configuration before it
+contacts an artifact source. Invalid source settings, tag patterns, poll
+intervals, cooldowns, and negative concurrency limits stall the trigger instead
+of falling through to release creation.
+
 ---
 
 ## Required Safeguards
@@ -42,9 +47,10 @@ Every implementation must include these controls:
 |---|---|
 | Suspended creation | Created `Release` objects default to `spec.suspended: true` unless explicitly disabled. |
 | Tag filtering | `spec.tagPattern` is required. Do not trigger on every tag by default. |
+| Tag ordering | Matching OCI tags are selected by semantic-version ordering when they are semver-like, including `v1.10.0` over `v1.2.0`; non-semver tags keep deterministic lexical ordering. |
 | Digest pinning | Created releases must reference an immutable OCI digest, not only a mutable tag. |
 | Signature policy | `spec.requireSignature` verifies artifacts before creating releases. |
-| Cooldown | `spec.cooldown` prevents rapid-fire release creation. |
+| Cooldown | `spec.cooldown` prevents rapid-fire release creation and also considers recent trigger-owned Releases so status drift cannot bypass the delay. |
 | Max active | `spec.maxActive` limits concurrent releases created by one trigger. |
 | Scope | `spec.scope` can restrict created releases to canary stages or selected clusters. |
 | Dry run | `spec.dryRun` records what would be created without creating it. |

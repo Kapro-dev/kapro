@@ -1,0 +1,105 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kapro-operational-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: kapro
+    app.kubernetes.io/component: monitoring
+spec:
+  groups:
+    - name: kapro.controller
+      rules:
+        - alert: KaproControllerReconcileErrors
+          expr: |
+            sum by (controller) (rate(kapro_controller_reconciles_total{result="error"}[10m])) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kapro {{ $labels.controller }} controller is returning reconcile errors"
+            description: "The {{ $labels.controller }} controller has reported a non-zero reconcile error rate over the last 10 minutes."
+        - alert: KaproControllerReconcileLatencyP95High
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (controller, le) (rate(kapro_controller_reconcile_duration_seconds_bucket[10m]))
+            ) > 30
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kapro {{ $labels.controller }} reconcile p95 is high"
+            description: "The {{ $labels.controller }} controller p95 reconcile duration has been above 30 seconds for 15 minutes."
+    - name: kapro.gates
+      rules:
+        - alert: KaproGateFailureRateHigh
+          expr: |
+            (
+              sum by (gate_type) (rate(kapro_gate_evaluations_total{result="failed"}[15m]))
+              /
+              clamp_min(sum by (gate_type) (rate(kapro_gate_evaluations_total[15m])), 0.001)
+            ) > 0.20
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kapro {{ $labels.gate_type }} gate failure ratio is high"
+            description: "More than 20% of {{ $labels.gate_type }} gate evaluations failed over the last 15 minutes."
+    - name: kapro.rollouts
+      rules:
+        - alert: KaproReleaseStuck
+          expr: |
+            (
+              time() - kapro_release_created > 7200
+            )
+            and on (release)
+            (
+              kapro_release_status_phase{phase=~"Pending|Progressing"} == 1
+            )
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kapro release {{ $labels.release }} appears stuck"
+            description: "Release {{ $labels.release }} has remained non-terminal for more than 2 hours. This rule uses kube-state-metrics custom-resource state metrics; tune the threshold to match Release spec.timeout and normal rollout cadence."
+        - alert: KaproRolloutDurationP95High
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (pipeline, le) (rate(kapro_stage_duration_seconds_bucket[30m]))
+            ) > 3600
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kapro {{ $labels.pipeline }} rollout stage p95 is high"
+            description: "Stage completion p95 for pipeline {{ $labels.pipeline }} has been above 1 hour for 30 minutes."
+    - name: kapro.plugins
+      rules:
+        - alert: KaproPluginProbeFailure
+          expr: |
+            kapro_pluginregistration_status_condition{type="Ready"} == 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kapro plugin {{ $labels.pluginregistration }} probe is failing"
+            description: "PluginRegistration {{ $labels.pluginregistration }} has reported Ready=False for 15 minutes. This rule uses kube-state-metrics custom-resource state metrics."
+    - name: kapro.triggers
+      rules:
+        - alert: KaproReleaseTriggerBlocked
+          expr: |
+            (
+              kapro_releasetrigger_status_condition{type="Stalled"} == 1
+            )
+            or
+            (
+              kapro_releasetrigger_status_condition{type="ReleaseCreated",reason=~"CooldownActive|MaxActiveReached"} == 0
+            )
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kapro release trigger {{ $labels.releasetrigger }} is blocked"
+            description: "ReleaseTrigger {{ $labels.releasetrigger }} is blocked by reason {{ $labels.reason }}. This covers cooldown, max-active, source resolution, signature verification, and release creation failures via kube-state-metrics custom-resource state metrics."

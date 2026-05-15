@@ -6,14 +6,17 @@ import (
 	"strings"
 	"testing"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
-	kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
-	kgiv1alpha1 "kapro.io/kapro/spec/kgi/v1alpha1"
-	kpiv1alpha1 "kapro.io/kapro/spec/kpi/v1alpha1"
-
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/test/bufconn"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprometrics "kapro.io/kapro/internal/metrics"
+	kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
+	kgiv1alpha1 "kapro.io/kapro/spec/kgi/v1alpha1"
+	kpiv1alpha1 "kapro.io/kapro/spec/kpi/v1alpha1"
 )
 
 func TestProbeActuatorCapabilities(t *testing.T) {
@@ -243,6 +246,38 @@ func TestProbeContractVersionPolicy(t *testing.T) {
 				t.Fatalf("Message = %q, want to contain %q", result.Message, tt.wantMessage)
 			}
 		})
+	}
+}
+
+func TestProbeObservesReadinessMetrics(t *testing.T) {
+	reg := kaprov1alpha1.PluginRegistration{
+		ObjectMeta: metav1.ObjectMeta{Name: "metrics-probe-registration"},
+		Spec: kaprov1alpha1.PluginRegistrationSpec{
+			Type:     kaprov1alpha1.PluginTypeGate,
+			Name:     "metrics/probe",
+			Protocol: kaprov1alpha1.PluginProtocolGRPC,
+		},
+	}
+	counter := kaprometrics.PluginProbeResults.WithLabelValues("gate", "error", "InvalidEndpoint")
+	before := testutil.ToFloat64(counter)
+	readiness := kaprometrics.PluginProbeReady.WithLabelValues("gate", "metrics/probe")
+	readiness.Set(1)
+
+	result := Prober{}.Probe(context.Background(), reg)
+	if result.Ready {
+		t.Fatal("Ready = true")
+	}
+	if !strings.Contains(result.Message, "metrics-probe-registration") || !strings.Contains(result.Message, "endpoint is required") {
+		t.Fatalf("Message = %q", result.Message)
+	}
+	if got := testutil.ToFloat64(counter); got != before+1 {
+		t.Fatalf("probe result counter = %v, want %v", got, before+1)
+	}
+	if got := testutil.ToFloat64(readiness); got != 0 {
+		t.Fatalf("probe readiness gauge = %v, want 0", got)
+	}
+	if got := testutil.ToFloat64(kaprometrics.PluginProbeReady.WithLabelValues("gate", "metrics-probe-registration")); got != 0 {
+		t.Fatalf("object-name readiness gauge = %v, want deleted/zero", got)
 	}
 }
 

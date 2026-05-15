@@ -10,6 +10,8 @@
 //   - Release        — one rollout execution of an artifact version through one or more Pipelines
 //   - ReleaseTrigger — safe-by-default autonomous Release creation from verified artifacts
 //   - ReleaseTarget  — one target-cluster execution owned by a Release
+//   - NotificationProvider — API-preview notification destination declaration
+//   - NotificationPolicy   — API-preview notification subscription declaration
 //   - MemberCluster  — fleet inventory and observed cluster state reported to the hub
 //   - PluginRegistration — external actuator, gate, and planner plugin registration
 //   - Approval       — human gate signal to unblock one target-cluster rollout or stage

@@ -2,5 +2,7 @@ resources:
 - bases/kapro.io_approvals.yaml
 - bases/kapro.io_artifacts.yaml
 - bases/kapro.io_memberclusters.yaml
+- bases/kapro.io_notificationpolicies.yaml
+- bases/kapro.io_notificationproviders.yaml
 - bases/kapro.io_pipelines.yaml
 - bases/kapro.io_releases.yaml

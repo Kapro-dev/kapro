@@ -1,0 +1,14 @@
+apiVersion: kapro.io/v1alpha1
+kind: PluginRegistration
+metadata:
+  name: argocd-applicationset-actuator
+spec:
+  type: actuator
+  name: argo/push
+  protocol: grpc
+  endpoint: dns:///argocd-applicationset-actuator.kapro-system.svc:9090
+  timeout: 10s
+  parameters:
+    argocdNamespace: argocd
+    applicationset: checkout-fleet
+    generatedApplication: checkout-prod-eu

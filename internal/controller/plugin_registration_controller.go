@@ -11,6 +11,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
@@ -26,12 +27,15 @@ type PluginRegistrationReconciler struct {
 	Prober   PluginProber
 }
 
+const pluginRegistrationMetricsFinalizer = "kapro.io/plugin-registration-metrics"
+
 // PluginProber is the dependency used to probe plugin endpoints.
 type PluginProber interface {
 	Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration) probe.Result
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=pluginregistrations,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=pluginregistrations,verbs=update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=pluginregistrations/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 
@@ -41,6 +45,22 @@ func (r *PluginRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.R
 	var reg kaprov1alpha1.PluginRegistration
 	if err := r.Get(ctx, req.NamespacedName, &reg); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	if !reg.DeletionTimestamp.IsZero() {
+		probe.ForgetReadiness(reg)
+		if controllerutil.RemoveFinalizer(&reg, pluginRegistrationMetricsFinalizer) {
+			if err := r.Update(ctx, &reg); err != nil {
+				return ctrl.Result{}, fmt.Errorf("remove plugin registration metrics finalizer: %w", err)
+			}
+		}
+		return ctrl.Result{}, nil
+	}
+
+	if controllerutil.AddFinalizer(&reg, pluginRegistrationMetricsFinalizer) {
+		if err := r.Update(ctx, &reg); err != nil {
+			return ctrl.Result{}, fmt.Errorf("add plugin registration metrics finalizer: %w", err)
+		}
 	}
 
 	prober := r.Prober
