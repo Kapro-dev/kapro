@@ -19,7 +19,7 @@ The plugin supports two providers:
 | Provider | Purpose |
 |---|---|
 | `static` | Reads the value from `parameters.value`. Useful for tests and simple webhooks. |
-| `prometheus` | Executes a Prometheus instant query and reads the first returned value. |
+| `prometheus` | Executes a Prometheus instant query and reads a scalar or exactly one vector result. |
 
 Invalid gate configuration returns `INCONCLUSIVE`. Empty Prometheus results
 return `RUNNING` so Kapro can retry according to the gate policy.
@@ -58,17 +58,28 @@ spec:
   parameters:
     provider: prometheus
     prometheusURL: http://prometheus.monitoring.svc:9090
-    query: sum(rate(http_requests_total{status=~"5.."}[5m]))
+    query: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))
     metric: error_rate
     threshold: "0.05"
     operator: lte
 ```
+
+The registration makes the plugin available to the runtime plugin registry as
+`slo`, but the current generated `GateTemplate` CRDs still restrict gate types
+to `cel`, `job`, and `webhook`. Treat this as a KGI implementation and
+registration example until the pipeline API admits external gate types.
 
 Enable runtime plugin loading in the Kapro operator with:
 
 ```bash
 KAPRO_ENABLE_PLUGIN_GATEWAY=true
 ```
+
+The operator only registers `PluginRegistration` objects that are already
+`status.ready=true` with a fresh `observedGeneration` when the operator starts.
+Apply the `PluginRegistration`, wait for the readiness probe to mark it ready,
+then start or restart the Kapro operator. Registrations are not hot-loaded after
+startup.
 
 ## Verify
 

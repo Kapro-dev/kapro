@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"net"
@@ -53,47 +54,48 @@ func (s *sloGateServer) Evaluate(ctx context.Context, req *kgiv1alpha1.EvaluateR
 		return inconclusive(err.Error()), nil
 	}
 	operator := firstNonEmpty(params["operator"], defaultOperator)
-	value, phase, err := s.value(ctx, params)
+	value, phase, message, err := s.value(ctx, params)
 	if err != nil {
 		return nil, err
 	}
 	if phase != kgiv1alpha1.GatePhase_GATE_PHASE_UNSPECIFIED {
-		return &kgiv1alpha1.EvaluateResponse{Phase: phase, Message: "metric value is not available yet"}, nil
+		return &kgiv1alpha1.EvaluateResponse{Phase: phase, Message: message}, nil
 	}
 	passed, err := compare(value, threshold, operator)
 	if err != nil {
 		return inconclusive(err.Error()), nil
 	}
 	metric := firstNonEmpty(params["metric"], req.GetGate(), "slo")
-	message := fmt.Sprintf("%s value %.6g %s threshold %.6g", metric, value, operator, threshold)
+	resultMessage := fmt.Sprintf("%s value %.6g %s threshold %.6g", metric, value, operator, threshold)
 	if passed {
-		return &kgiv1alpha1.EvaluateResponse{Phase: kgiv1alpha1.GatePhase_GATE_PHASE_PASSED, Message: message}, nil
+		return &kgiv1alpha1.EvaluateResponse{Phase: kgiv1alpha1.GatePhase_GATE_PHASE_PASSED, Message: resultMessage}, nil
 	}
-	return &kgiv1alpha1.EvaluateResponse{Phase: kgiv1alpha1.GatePhase_GATE_PHASE_FAILED, Message: message}, nil
+	return &kgiv1alpha1.EvaluateResponse{Phase: kgiv1alpha1.GatePhase_GATE_PHASE_FAILED, Message: resultMessage}, nil
 }
 
-func (s *sloGateServer) value(ctx context.Context, params map[string]string) (float64, kgiv1alpha1.GatePhase, error) {
-	switch strings.ToLower(firstNonEmpty(params["provider"], defaultProvider)) {
+func (s *sloGateServer) value(ctx context.Context, params map[string]string) (float64, kgiv1alpha1.GatePhase, string, error) {
+	provider := strings.ToLower(firstNonEmpty(params["provider"], defaultProvider))
+	switch provider {
 	case "static":
 		value, err := parseRequiredFloat(params, "value")
 		if err != nil {
-			return 0, kgiv1alpha1.GatePhase_GATE_PHASE_INCONCLUSIVE, nil
+			return 0, kgiv1alpha1.GatePhase_GATE_PHASE_INCONCLUSIVE, err.Error(), nil
 		}
-		return value, kgiv1alpha1.GatePhase_GATE_PHASE_UNSPECIFIED, nil
+		return value, kgiv1alpha1.GatePhase_GATE_PHASE_UNSPECIFIED, "", nil
 	case "prometheus":
 		if firstNonEmpty(params["prometheusURL"], params["url"]) == "" || strings.TrimSpace(params["query"]) == "" {
-			return 0, kgiv1alpha1.GatePhase_GATE_PHASE_INCONCLUSIVE, nil
+			return 0, kgiv1alpha1.GatePhase_GATE_PHASE_INCONCLUSIVE, "prometheusURL and query are required for prometheus provider", nil
 		}
 		value, ok, err := s.queryPrometheus(ctx, params)
 		if err != nil {
-			return 0, kgiv1alpha1.GatePhase_GATE_PHASE_UNSPECIFIED, err
+			return 0, kgiv1alpha1.GatePhase_GATE_PHASE_UNSPECIFIED, "", err
 		}
 		if !ok {
-			return 0, kgiv1alpha1.GatePhase_GATE_PHASE_RUNNING, nil
+			return 0, kgiv1alpha1.GatePhase_GATE_PHASE_RUNNING, "metric value is not available yet", nil
 		}
-		return value, kgiv1alpha1.GatePhase_GATE_PHASE_UNSPECIFIED, nil
+		return value, kgiv1alpha1.GatePhase_GATE_PHASE_UNSPECIFIED, "", nil
 	default:
-		return 0, kgiv1alpha1.GatePhase_GATE_PHASE_INCONCLUSIVE, nil
+		return 0, kgiv1alpha1.GatePhase_GATE_PHASE_INCONCLUSIVE, fmt.Sprintf("unsupported provider %q", provider), nil
 	}
 }
 
@@ -121,13 +123,17 @@ func (s *sloGateServer) queryPrometheus(ctx context.Context, params map[string]s
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return 0, false, fmt.Errorf("prometheus returned HTTP %d", resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return 0, false, fmt.Errorf("prometheus returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var result prometheusQueryResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return 0, false, fmt.Errorf("decode prometheus response: %w", err)
 	}
 	if result.Status != "success" {
+		if result.Error != "" {
+			return 0, false, fmt.Errorf("prometheus query status %q: %s: %s", result.Status, result.ErrorType, result.Error)
+		}
 		return 0, false, fmt.Errorf("prometheus query status %q", result.Status)
 	}
 	return prometheusValue(result)
@@ -141,10 +147,12 @@ func (s *sloGateServer) http() *http.Client {
 }
 
 type prometheusQueryResponse struct {
-	Status string `json:"status"`
-	Data   struct {
-		ResultType string             `json:"resultType"`
-		Result     []prometheusResult `json:"result"`
+	Status    string `json:"status"`
+	ErrorType string `json:"errorType,omitempty"`
+	Error     string `json:"error,omitempty"`
+	Data      struct {
+		ResultType string          `json:"resultType"`
+		Result     json.RawMessage `json:"result"`
 	} `json:"data"`
 }
 
@@ -153,10 +161,31 @@ type prometheusResult struct {
 }
 
 func prometheusValue(resp prometheusQueryResponse) (float64, bool, error) {
-	if len(resp.Data.Result) == 0 {
-		return 0, false, nil
+	switch resp.Data.ResultType {
+	case "vector":
+		var results []prometheusResult
+		if err := json.Unmarshal(resp.Data.Result, &results); err != nil {
+			return 0, false, fmt.Errorf("decode prometheus vector result: %w", err)
+		}
+		if len(results) == 0 {
+			return 0, false, nil
+		}
+		if len(results) > 1 {
+			return 0, false, fmt.Errorf("prometheus query returned %d series; expected exactly one series", len(results))
+		}
+		return parsePrometheusSampleValue(results[0].Value)
+	case "scalar":
+		var value []any
+		if err := json.Unmarshal(resp.Data.Result, &value); err != nil {
+			return 0, false, fmt.Errorf("decode prometheus scalar result: %w", err)
+		}
+		return parsePrometheusSampleValue(value)
+	default:
+		return 0, false, fmt.Errorf("unsupported prometheus resultType %q", resp.Data.ResultType)
 	}
-	value := resp.Data.Result[0].Value
+}
+
+func parsePrometheusSampleValue(value []any) (float64, bool, error) {
 	if len(value) < 2 {
 		return 0, false, fmt.Errorf("prometheus result value is missing")
 	}

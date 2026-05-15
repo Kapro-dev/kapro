@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	gateconformance "kapro.io/kapro/conformance/gate"
@@ -69,10 +70,12 @@ func TestEvaluateInvalidConfigIsInconclusive(t *testing.T) {
 	tests := []struct {
 		name       string
 		parameters map[string]string
+		want       string
 	}{
-		{name: "missing threshold", parameters: map[string]string{"provider": "static", "value": "1"}},
-		{name: "missing value", parameters: map[string]string{"provider": "static", "threshold": "1"}},
-		{name: "unknown provider", parameters: map[string]string{"provider": "other", "threshold": "1"}},
+		{name: "missing threshold", parameters: map[string]string{"provider": "static", "value": "1"}, want: "threshold is required"},
+		{name: "missing value", parameters: map[string]string{"provider": "static", "threshold": "1"}, want: "value is required"},
+		{name: "missing prometheus query", parameters: map[string]string{"provider": "prometheus", "threshold": "1"}, want: "prometheusURL and query are required"},
+		{name: "unknown provider", parameters: map[string]string{"provider": "other", "threshold": "1"}, want: `unsupported provider "other"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -83,14 +86,20 @@ func TestEvaluateInvalidConfigIsInconclusive(t *testing.T) {
 			if resp.GetPhase() != kgiv1alpha1.GatePhase_GATE_PHASE_INCONCLUSIVE {
 				t.Fatalf("phase=%s, want INCONCLUSIVE, message=%q", resp.GetPhase(), resp.GetMessage())
 			}
+			if !strings.Contains(resp.GetMessage(), tt.want) {
+				t.Fatalf("message=%q, want to contain %q", resp.GetMessage(), tt.want)
+			}
 		})
 	}
 }
 
 func TestEvaluatePrometheusThreshold(t *testing.T) {
+	query := `sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))`
 	prom := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.URL.Query().Get("query"); got != `sum(rate(http_requests_total{status=~"5.."}[5m]))` {
-			t.Fatalf("query=%q", got)
+		if got := r.URL.Query().Get("query"); got != query {
+			t.Errorf("query=%q", got)
+			http.Error(w, fmt.Sprintf("unexpected query: %q", got), http.StatusBadRequest)
+			return
 		}
 		fmt.Fprint(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1710000000,"0.02"]}]}}`)
 	}))
@@ -101,7 +110,30 @@ func TestEvaluatePrometheusThreshold(t *testing.T) {
 		Parameters: map[string]string{
 			"provider":      "prometheus",
 			"prometheusURL": prom.URL,
-			"query":         `sum(rate(http_requests_total{status=~"5.."}[5m]))`,
+			"query":         query,
+			"threshold":     "0.05",
+			"operator":      "lte",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+	if resp.GetPhase() != kgiv1alpha1.GatePhase_GATE_PHASE_PASSED {
+		t.Fatalf("phase=%s, want PASSED, message=%q", resp.GetPhase(), resp.GetMessage())
+	}
+}
+
+func TestEvaluatePrometheusScalarThreshold(t *testing.T) {
+	prom := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"status":"success","data":{"resultType":"scalar","result":[1710000000,"0.02"]}}`)
+	}))
+	defer prom.Close()
+
+	resp, err := (&sloGateServer{}).Evaluate(context.Background(), &kgiv1alpha1.EvaluateRequest{
+		Parameters: map[string]string{
+			"provider":      "prometheus",
+			"prometheusURL": prom.URL,
+			"query":         "scalar(0.02)",
 			"threshold":     "0.05",
 			"operator":      "lte",
 		},
@@ -137,15 +169,65 @@ func TestEvaluatePrometheusEmptyResultIsRunning(t *testing.T) {
 	}
 }
 
+func TestEvaluatePrometheusMultipleSeriesReturnsError(t *testing.T) {
+	prom := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"pod":"a"},"value":[1710000000,"0.02"]},{"metric":{"pod":"b"},"value":[1710000000,"0.03"]}]}}`)
+	}))
+	defer prom.Close()
+
+	_, err := (&sloGateServer{}).Evaluate(context.Background(), &kgiv1alpha1.EvaluateRequest{
+		Parameters: map[string]string{
+			"provider":      "prometheus",
+			"prometheusURL": prom.URL,
+			"query":         "rate(http_requests_total[5m])",
+			"threshold":     "0.05",
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "expected exactly one series") {
+		t.Fatalf("error=%v, want multiple series error", err)
+	}
+}
+
+func TestEvaluatePrometheusErrorsIncludeDetails(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+		want   string
+	}{
+		{name: "http error", status: http.StatusBadRequest, body: "bad query", want: "bad query"},
+		{name: "prometheus error", status: http.StatusOK, body: `{"status":"error","errorType":"bad_data","error":"parse error"}`, want: "bad_data: parse error"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			prom := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.status)
+				fmt.Fprint(w, tt.body)
+			}))
+			defer prom.Close()
+
+			_, err := (&sloGateServer{}).Evaluate(context.Background(), &kgiv1alpha1.EvaluateRequest{
+				Parameters: map[string]string{
+					"provider":      "prometheus",
+					"prometheusURL": prom.URL,
+					"query":         "bad",
+					"threshold":     "0.05",
+				},
+			})
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error=%v, want to contain %q", err, tt.want)
+			}
+		})
+	}
+}
+
 func newTestClient(t *testing.T, server *sloGateServer) kgiv1alpha1.GateServiceClient {
 	t.Helper()
 	listener := bufconn.Listen(1024 * 1024)
 	grpcServer := grpc.NewServer()
 	kgiv1alpha1.RegisterGateServiceServer(grpcServer, server)
 	go func() {
-		if err := grpcServer.Serve(listener); err != nil {
-			t.Errorf("grpc server stopped: %v", err)
-		}
+		_ = grpcServer.Serve(listener)
 	}()
 	t.Cleanup(func() {
 		grpcServer.Stop()
