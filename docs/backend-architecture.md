@@ -65,6 +65,10 @@ Argo CD users can keep cluster Secrets, Applications, ApplicationSets, and
 app-of-apps in their Git repo. Kapro adds promotion waves, gates, approvals,
 evidence, and fleet-wide status around that existing topology.
 
+The exact write contract is documented in `backend-ownership.md`. Step-by-step
+brownfield onboarding paths are documented in `argo-migration.md` and
+`flux-migration.md`.
+
 ```bash
 kapro connect argo ./kapro-connect --namespace argocd --selector kapro.io/import=true
 kapro connect flux ./kapro-connect --namespace flux-system --selector kapro.io/import=true

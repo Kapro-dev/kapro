@@ -146,3 +146,21 @@ rules:
 
 These roles are intentionally broad examples. Production clusters should pair
 them with admission checks for team and environment ownership.
+
+## Backend Observe and Adopt RBAC
+
+Brownfield backends should use different permissions for discovery and
+promotion writes. The example roles in
+`examples/rbac/backend-observe-adopt-roles.yaml` split those surfaces:
+
+| Mode | Required access | Notes |
+|---|---|---|
+| Argo `Observe` | Read Argo cluster Secrets, Applications, and ApplicationSets in the Argo namespace. | No patch rights. Kapro reports selected, skipped, and unsupported objects in `BackendProfile.status`. |
+| Argo `Adopt` | Patch selected Applications. | The built-in actuator writes only `spec.source.targetRevision`. ApplicationSet template writes require the ApplicationSet actuator plugin and separate RBAC. |
+| Flux `Observe` | Read GitRepository, OCIRepository, HelmRelease, and Kustomization objects in the Flux namespace. | No patch rights. |
+| Flux `Adopt` | Patch selected HelmRelease or Kustomization objects. | Bind per namespace and pair with admission or policy rules that enforce the team selector. |
+
+Kubernetes RBAC cannot express label-selector-scoped patch permissions by
+itself. In shared namespaces, combine these roles with admission policy or
+separate namespaces per tenant so `managementPolicy: Adopt` cannot mutate
+another team's backend objects.

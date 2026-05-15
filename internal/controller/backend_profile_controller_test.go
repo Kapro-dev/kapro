@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -10,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
@@ -103,10 +105,7 @@ func TestBackendProfileArgoDiscoveryCountsExistingResources(t *testing.T) {
 			Parameters: map[string]string{"namespace": "argocd"},
 		},
 	}
-	app := &unstructured.Unstructured{}
-	app.SetGroupVersionKind(schema.GroupVersionKind{Group: "argoproj.io", Version: "v1alpha1", Kind: "Application"})
-	app.SetNamespace("argocd")
-	app.SetName("checkout-prod")
+	app := newArgoApplication("argocd", "checkout-prod", map[string]string{"kapro.io/import": "true", "service": "checkout"}, nil)
 
 	r := &BackendProfileReconciler{
 		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(
@@ -128,6 +127,107 @@ func TestBackendProfileArgoDiscoveryCountsExistingResources(t *testing.T) {
 	}
 	if counts.clusters != 1 || counts.applications != 1 {
 		t.Fatalf("clusters=%d applications=%d", counts.clusters, counts.applications)
+	}
+	if len(counts.selected) != 2 {
+		t.Fatalf("selected=%d, want cluster secret and application", len(counts.selected))
+	}
+	if counts.selected[1].Pattern != "application" || counts.selected[1].VersionField != "spec.source.targetRevision" {
+		t.Fatalf("unexpected selected application: %#v", counts.selected[1])
+	}
+}
+
+func TestBackendProfileArgoDiscoveryClassifiesBrownfieldPatterns(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	profile := &kaprov1alpha1.BackendProfile{
+		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
+		Spec: kaprov1alpha1.BackendProfileSpec{
+			Driver: kaprov1alpha1.BackendDriverArgo,
+			Discovery: &kaprov1alpha1.BackendDiscoverySpec{
+				Enabled: true,
+				Selector: &metav1.LabelSelector{MatchLabels: map[string]string{
+					"kapro.io/import": "true",
+				}},
+			},
+			Parameters: map[string]string{"namespace": "argocd"},
+		},
+	}
+	appSetOwner := []metav1.OwnerReference{{
+		APIVersion: "argoproj.io/v1alpha1",
+		Kind:       "ApplicationSet",
+		Name:       "checkout-prod",
+		UID:        "apps-1",
+	}}
+	plain := newArgoApplication("argocd", "checkout-web-prod", map[string]string{"kapro.io/import": "true", "service": "web"}, nil)
+	appSetChild := newArgoApplication("argocd", "checkout-api-prod", map[string]string{"kapro.io/import": "true", "service": "api"}, appSetOwner)
+	root := newArgoApplication("argocd", "platform-root", map[string]string{"kapro.io/import": "true", "pattern": "app-of-apps"}, nil)
+	appSet := newApplicationSet("argocd", "checkout-prod", map[string]string{"kapro.io/import": "true", "service": "api"})
+
+	r := &BackendProfileReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(profile, plain, appSetChild, root, appSet).Build(),
+	}
+
+	counts, reason, _ := r.observeDiscovery(context.Background(), profile)
+	if reason != "DiscoverySucceeded" {
+		t.Fatalf("reason=%s", reason)
+	}
+	if counts.applications != 3 || counts.applicationSets != 1 {
+		t.Fatalf("applications=%d applicationSets=%d", counts.applications, counts.applicationSets)
+	}
+	if len(counts.selected) != 2 {
+		t.Fatalf("selected=%d, want plain app and ApplicationSet child", len(counts.selected))
+	}
+	if !hasDiscoveryPattern(counts.selected, "applicationset-child") {
+		t.Fatalf("selected does not include applicationset-child: %#v", counts.selected)
+	}
+	if len(counts.unsupported) != 1 || counts.unsupported[0].Pattern != "app-of-apps-root" {
+		t.Fatalf("unsupported=%#v", counts.unsupported)
+	}
+	if len(counts.skipped) != 1 || counts.skipped[0].Kind != "ApplicationSet" {
+		t.Fatalf("skipped=%#v", counts.skipped)
+	}
+}
+
+func TestBackendProfileDiscoveryStatusSamplesAreBounded(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	profile := &kaprov1alpha1.BackendProfile{
+		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
+		Spec: kaprov1alpha1.BackendProfileSpec{
+			Driver: kaprov1alpha1.BackendDriverArgo,
+			Discovery: &kaprov1alpha1.BackendDiscoverySpec{
+				Enabled: true,
+			},
+			Parameters: map[string]string{"namespace": "argocd"},
+		},
+	}
+	objects := []client.Object{profile}
+	for i := 0; i < 1000; i++ {
+		objects = append(objects, newArgoApplication("argocd", fmt.Sprintf("app-%04d", i), map[string]string{"service": "checkout"}, nil))
+	}
+	r := &BackendProfileReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build(),
+	}
+
+	counts, reason, _ := r.observeDiscovery(context.Background(), profile)
+	if reason != "DiscoverySucceeded" {
+		t.Fatalf("reason=%s", reason)
+	}
+	if counts.applications != 1000 {
+		t.Fatalf("applications=%d", counts.applications)
+	}
+	if len(counts.selected) != maxBackendDiscoveryStatusObjects {
+		t.Fatalf("selected sample=%d want %d", len(counts.selected), maxBackendDiscoveryStatusObjects)
 	}
 }
 
@@ -169,4 +269,35 @@ func TestBackendProfileFluxDiscoveryCountsExistingResources(t *testing.T) {
 	if counts.applications != 2 {
 		t.Fatalf("applications=%d", counts.applications)
 	}
+	if len(counts.selected) != 2 {
+		t.Fatalf("selected=%d", len(counts.selected))
+	}
+}
+
+func newArgoApplication(namespace, name string, labels map[string]string, owners []metav1.OwnerReference) *unstructured.Unstructured {
+	app := &unstructured.Unstructured{}
+	app.SetGroupVersionKind(schema.GroupVersionKind{Group: "argoproj.io", Version: "v1alpha1", Kind: "Application"})
+	app.SetNamespace(namespace)
+	app.SetName(name)
+	app.SetLabels(labels)
+	app.SetOwnerReferences(owners)
+	return app
+}
+
+func newApplicationSet(namespace, name string, labels map[string]string) *unstructured.Unstructured {
+	appSet := &unstructured.Unstructured{}
+	appSet.SetGroupVersionKind(schema.GroupVersionKind{Group: "argoproj.io", Version: "v1alpha1", Kind: "ApplicationSet"})
+	appSet.SetNamespace(namespace)
+	appSet.SetName(name)
+	appSet.SetLabels(labels)
+	return appSet
+}
+
+func hasDiscoveryPattern(objects []kaprov1alpha1.DiscoveredBackendObject, pattern string) bool {
+	for _, obj := range objects {
+		if obj.Pattern == pattern {
+			return true
+		}
+	}
+	return false
 }

@@ -1918,6 +1918,10 @@ type BackendProfileStatus struct {
 	Ready              bool           `json:"ready,omitempty"`
 	Driver             BackendDriver  `json:"driver,omitempty"`
 	Runtime            BackendRuntime `json:"runtime,omitempty"`
+	// LastDiscoveryTime records when backend-native discovery last completed or
+	// failed for this profile.
+	// +optional
+	LastDiscoveryTime *metav1.Time `json:"lastDiscoveryTime,omitempty"`
 	// DiscoveredClusters is the number of backend-native clusters seen during
 	// discovery, for example Argo CD cluster Secrets.
 	// +optional
@@ -1925,8 +1929,60 @@ type BackendProfileStatus struct {
 	// DiscoveredApplications is the number of backend-native applications seen
 	// during discovery.
 	// +optional
-	DiscoveredApplications int32              `json:"discoveredApplications,omitempty"`
-	Conditions             []metav1.Condition `json:"conditions,omitempty"`
+	DiscoveredApplications int32 `json:"discoveredApplications,omitempty"`
+	// DiscoveredApplicationSets is the number of Argo CD ApplicationSets seen
+	// during discovery.
+	// +optional
+	DiscoveredApplicationSets int32 `json:"discoveredApplicationSets,omitempty"`
+	// SelectedObjects is a bounded sample of backend-native objects Kapro can
+	// map to promotion units under the current discovery selector.
+	// +optional
+	SelectedObjects []DiscoveredBackendObject `json:"selectedObjects,omitempty"`
+	// SkippedObjects is a bounded sample of backend-native objects Kapro saw
+	// but will not promote directly.
+	// +optional
+	SkippedObjects []DiscoveredBackendObject `json:"skippedObjects,omitempty"`
+	// UnsupportedPatterns is a bounded sample of objects that matched discovery
+	// but need a different ownership level or an external backend plugin.
+	// +optional
+	UnsupportedPatterns []DiscoveredBackendObject `json:"unsupportedPatterns,omitempty"`
+	// DiscoveryErrors is a bounded sample of non-fatal discovery errors. Fatal
+	// errors are also surfaced through the DiscoveryReady condition.
+	// +optional
+	DiscoveryErrors []string           `json:"discoveryErrors,omitempty"`
+	Conditions      []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// DiscoveredBackendObject describes one backend-native object found during
+// BackendProfile discovery. The controller keeps this as bounded status
+// evidence; counts remain the source of truth for fleet scale.
+type DiscoveredBackendObject struct {
+	// APIVersion is the discovered object's API version.
+	// +optional
+	APIVersion string `json:"apiVersion,omitempty"`
+	// Kind is the discovered object's Kubernetes kind.
+	// +optional
+	Kind string `json:"kind,omitempty"`
+	// Namespace is the discovered object's namespace.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+	// Name is the discovered object's name.
+	// +optional
+	Name string `json:"name,omitempty"`
+	// Pattern identifies the backend-native topology pattern, for example
+	// application, applicationset-child, app-of-apps-root, helmrelease, or
+	// kustomization.
+	// +optional
+	Pattern string `json:"pattern,omitempty"`
+	// Reason explains why the object was selected, skipped, or unsupported.
+	// +optional
+	Reason string `json:"reason,omitempty"`
+	// Unit is the inferred PromotionSource unit name when available.
+	// +optional
+	Unit string `json:"unit,omitempty"`
+	// VersionField is the field Kapro would write in Adopt mode when available.
+	// +optional
+	VersionField string `json:"versionField,omitempty"`
 }
 
 // +kubebuilder:object:root=true

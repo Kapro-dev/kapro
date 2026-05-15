@@ -25,6 +25,17 @@ the discovered graph is correct, switch the profile to
 `managementPolicy: Adopt` for selected promotion writes such as
 `spec.source.targetRevision`.
 
+Discovery status reports full counts and bounded object samples:
+
+```bash
+kubectl get backendprofile argo -o jsonpath='{.status.discoveredApplications}'
+kubectl get backendprofile argo -o jsonpath='{.status.selectedObjects}'
+kubectl get backendprofile argo -o jsonpath='{.status.unsupportedPatterns}'
+```
+
+The bounded samples are diagnostic evidence. Counts remain accurate for large
+fleets even when only the first sample entries are stored in status.
+
 ### Argo Pattern 1: Plain Applications
 
 Use this when teams already create one Argo CD `Application` per workload or per
