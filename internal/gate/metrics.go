@@ -119,7 +119,7 @@ func (g *MetricsGate) Evaluate(ctx context.Context, req Request) (Result, error)
 		}, nil // don't propagate — retry is safer than blocking the pipeline
 	}
 
-	threshold := metric.Threshold
+	threshold := metricThreshold(metric)
 	if !passed || val <= threshold {
 		return Result{
 			Phase:      kaprov1alpha1.GatePhaseInconclusive,
@@ -132,6 +132,13 @@ func (g *MetricsGate) Evaluate(ctx context.Context, req Request) (Result, error)
 		Phase:   kaprov1alpha1.GatePhasePassed,
 		Message: fmt.Sprintf("metric query passed (value=%.4f, threshold=%.4f): %s", val, threshold, query),
 	}, nil
+}
+
+func metricThreshold(metric kaprov1alpha1.MetricGate) float64 {
+	if metric.Threshold == nil {
+		return 0
+	}
+	return *metric.Threshold
 }
 
 // prometheusInstantResponse is the subset of the Prometheus HTTP API v1 response

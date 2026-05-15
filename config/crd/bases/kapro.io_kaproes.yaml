@@ -224,6 +224,8 @@ spec:
                                           Inline fields override the preset when set.
                                         type: string
                                       provider:
+                                        description: Provider selects the metrics
+                                          backend. Required when preset is empty.
                                         type: string
                                       query:
                                         description: |-
@@ -231,8 +233,12 @@ spec:
                                           Use range functions directly in the query for window-based checks, e.g.:
                                             min_over_time(error_rate[30m]) < 0.01
                                           Or reference the Window field as a template: {{.Window}} is substituted at evaluation time.
+                                          Required when preset is empty.
                                         type: string
                                       threshold:
+                                        description: |-
+                                          Threshold is optional and presence-aware so an inline metric can
+                                          intentionally override a preset threshold to 0.
                                         type: number
                                       window:
                                         default: 5m
@@ -241,9 +247,6 @@ spec:
                                           When Query already contains a hardcoded range (e.g. [5m]), this field is ignored.
                                           Defaults to "5m".
                                         type: string
-                                    required:
-                                    - provider
-                                    - query
                                     type: object
                                   type: array
                                 soakTime:

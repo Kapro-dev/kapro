@@ -577,9 +577,14 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 		bindTargets, deferred, strategyDecisions := r.applyStageStrategy(release, pipelineRefName, stage, envList)
 		plannerResults := apiPlannerResults(append(planned.Decisions, strategyDecisions...))
 
+		resolvedGate, err := resolveStageGate(pipeline, stage)
+		if err != nil {
+			return nil, false, false, 0, nil, err
+		}
+
 		// Upsert selected target entries; observe phases across the full planned set.
 		for _, target := range bindTargets {
-			i, err := r.upsertTarget(release, pipelineRefName, pipeline, stage, target)
+			i, err := r.upsertTarget(release, pipelineRefName, pipeline, stage, target, resolvedGate)
 			if err != nil {
 				return nil, false, false, 0, nil, err
 			}
@@ -1031,11 +1036,8 @@ func (r *ReleaseReconciler) upsertTarget(
 	pipeline *kaprov1alpha1.Pipeline,
 	stage kaprov1alpha1.Stage,
 	mc kaprov1alpha1.MemberCluster,
+	resolvedGate *kaprov1alpha1.GatePolicySpec,
 ) (int, error) {
-	resolvedGate, err := resolveStageGate(pipeline, stage)
-	if err != nil {
-		return 0, err
-	}
 	desiredVersions := releaseDesiredVersions(release)
 	version, appKey := primaryDesiredVersion(desiredVersions, release.Status.ResolvedVersion, releaseAppKey(release))
 	key := syncKey(pipelineRefName, stage.Name, mc.Name)
@@ -1107,7 +1109,7 @@ func mergeMetricPreset(preset, override kaprov1alpha1.MetricGate) kaprov1alpha1.
 	if override.Endpoint != "" {
 		out.Endpoint = override.Endpoint
 	}
-	if override.Threshold != 0 {
+	if override.Threshold != nil {
 		out.Threshold = override.Threshold
 	}
 	if len(override.Config) > 0 {
