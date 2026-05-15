@@ -13,6 +13,11 @@ ready actuator and gate `PluginRegistration` objects once at startup. Planner
 registrations are probed for capabilities and readiness, but runtime planner
 dispatch remains future work. Dynamic hot reload is future work.
 
+Notifications are not a plugin contract. `NotificationProvider` and
+`NotificationPolicy` are API-preview CRDs for Kubernetes-native provider/policy
+configuration, but runtime dispatch from those resources is future work.
+Existing inline gate notifications remain supported.
+
 ## Contracts
 
 | Contract | Proto | Go package |

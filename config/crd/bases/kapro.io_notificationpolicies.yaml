@@ -1,0 +1,176 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: notificationpolicies.kapro.io
+spec:
+  group: kapro.io
+  names:
+    categories:
+    - kapro-all
+    kind: NotificationPolicy
+    listKind: NotificationPolicyList
+    plural: notificationpolicies
+    shortNames:
+    - notifpol
+    singular: notificationpolicy
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.subscriptions[0].providerRef.name
+      name: Provider
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          NotificationPolicy is an API-preview declaration of when Kapro lifecycle
+          notifications should be routed to NotificationProvider objects. It is
+          spec-only; runtime dispatch remains future work.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              NotificationPolicySpec declares when lifecycle notifications should be sent.
+              It is an API preview and is not wired into runtime dispatch yet.
+            properties:
+              subscriptions:
+                description: Subscriptions route matching events to notification providers.
+                items:
+                  description: NotificationSubscription routes matching events to
+                    one provider.
+                  properties:
+                    filter:
+                      description: |-
+                        Filter selects the lifecycle events delivered to the provider.
+                        Empty means all events.
+                      properties:
+                        phases:
+                          description: Phases filters by normalized event phase.
+                          items:
+                            type: string
+                          type: array
+                        pipelines:
+                          description: Pipelines filters by Release.spec.pipelines[].name.
+                          items:
+                            type: string
+                          type: array
+                        releaseSelector:
+                          description: ReleaseSelector filters by Release labels.
+                          properties:
+                            matchExpressions:
+                              description: matchExpressions is a list of label selector
+                                requirements. The requirements are ANDed.
+                              items:
+                                description: |-
+                                  A label selector requirement is a selector that contains values, a key, and an operator that
+                                  relates the key and values.
+                                properties:
+                                  key:
+                                    description: key is the label key that the selector
+                                      applies to.
+                                    type: string
+                                  operator:
+                                    description: |-
+                                      operator represents a key's relationship to a set of values.
+                                      Valid operators are In, NotIn, Exists and DoesNotExist.
+                                    type: string
+                                  values:
+                                    description: |-
+                                      values is an array of string values. If the operator is In or NotIn,
+                                      the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                      the values array must be empty. This array is replaced during a strategic
+                                      merge patch.
+                                    items:
+                                      type: string
+                                    type: array
+                                    x-kubernetes-list-type: atomic
+                                required:
+                                - key
+                                - operator
+                                type: object
+                              type: array
+                              x-kubernetes-list-type: atomic
+                            matchLabels:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                                map is equivalent to an element of matchExpressions, whose key field is "key", the
+                                operator is "In", and the values array contains only "value". The requirements are ANDed.
+                              type: object
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        stages:
+                          description: Stages filters by Pipeline stage name.
+                          items:
+                            type: string
+                          type: array
+                        targets:
+                          description: Targets filters by MemberCluster name.
+                          items:
+                            type: string
+                          type: array
+                        types:
+                          description: |-
+                            Types filters by stable semantic event type, for example
+                            kapro.release.completed or kapro.release.target.failed.
+                            Empty means all event types.
+                          items:
+                            type: string
+                          type: array
+                      type: object
+                    name:
+                      description: Name identifies this subscription within the policy.
+                      type: string
+                    parameters:
+                      additionalProperties:
+                        type: string
+                      description: |-
+                        Parameters are subscription-specific key-value settings for future extension.
+                        Kapro core does not interpret unknown parameters.
+                      type: object
+                    providerRef:
+                      description: ProviderRef references a NotificationProvider by
+                        name.
+                      properties:
+                        name:
+                          description: Name is the NotificationProvider metadata.name.
+                          minLength: 1
+                          type: string
+                      required:
+                      - name
+                      type: object
+                  required:
+                  - providerRef
+                  type: object
+                minItems: 1
+                type: array
+            required:
+            - subscriptions
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources: {}
