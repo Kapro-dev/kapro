@@ -1,71 +1,168 @@
-# API Stability
+# API Stability and Upgrade Policy
 
-Kapro uses Kubernetes API versioning plus feature-level maturity labels. The
-current public API group is `kapro.io/v1alpha1`.
+Kapro uses explicit API maturity levels for CRDs, Go extension packages, and
+language-neutral plugin contracts. The maturity level describes compatibility
+expectations for users and plugin authors; it does not change Kubernetes API
+version strings by itself.
 
 ## Maturity Levels
 
-| Level | Meaning | Compatibility promise |
+| Level | Meaning | Compatibility |
 |---|---|---|
-| Alpha | Early API shape; feedback expected | May change between minor releases |
-| Preview | Usable behind an explicit enablement or narrow scope | Field names are treated as sticky, behavior may still tighten |
-| Stable | Default production path | Backward-compatible within the same API version |
+| Alpha | Experimental surface used to validate the model. | May change or be removed between minor releases. Migration notes are provided when a surface is used by examples or documented workflows. |
+| Preview | Implemented and intended for early adopters. | Compatible within a minor release. Breaking changes require release notes, a migration path, and at least one minor release of overlap when practical. |
+| Stable | Production contract. | Backward-compatible within the major version. Breaking changes require a new API version or a documented major-version migration. |
 
-## Current Surface
+Maturity is assigned per surface, not per repository. A Preview proto can live
+beside Alpha CRDs, and a Stable Go package can exist while other packages remain
+Preview. The table below is the source of truth for the current contract level.
 
-| Surface | Status |
-|---|---|
-| `Release`, `ReleaseTarget`, `Pipeline`, `MemberCluster`, `KaproApp` | Alpha core API |
-| Built-in gates: soak, metrics, approval, verification, CEL, Job, webhook | Alpha core behavior |
-| Lifecycle webhook notifications | Alpha |
-| `Approval` CRD and admission mutation | Alpha |
-| `ReleaseTrigger` | Preview |
-| `PluginRegistration` | Preview |
-| KAI, KGI, KPI protobuf contracts | Preview |
-| External actuator and gate runtime dispatch | Preview, opt-in with `KAPRO_ENABLE_PLUGIN_GATEWAY=true` |
-| External planner runtime dispatch | Future work; KPI conformance exists |
+## Current Surface Classification
 
-## Deprecation Policy
+| Surface | Path | Level |
+|---|---|---|
+| Core promotion CRDs | `api/v1alpha1` `KaproApp`, `Pipeline`, `Release`, `ReleaseTarget`, `MemberCluster`, `Approval`, `AgentPolicy` | Alpha |
+| ReleaseTrigger CRD | `api/v1alpha1` `ReleaseTrigger` | Preview |
+| PluginRegistration CRD | `api/v1alpha1` `PluginRegistration` | Preview |
+| In-process actuator interface | `pkg/actuator` | Preview |
+| In-process gate interface | `pkg/gate` | Preview |
+| In-process planner interface | `pkg/planner` | Preview |
+| KAI actuator plugin contract | `spec/kai/v1alpha1` | Preview |
+| KGI gate plugin contract | `spec/kgi/v1alpha1` | Preview |
+| KPI planner plugin contract | `spec/kpi/v1alpha1` | Preview |
+| Conformance harnesses | `conformance/actuator`, `conformance/gate`, `conformance/planner` | Preview |
+| Lifecycle event schema | `docs/events.md` | Preview |
 
-For `v1alpha1`, incompatible changes are allowed, but they must be documented in
-`CHANGELOG.md` and migration notes when user data is affected.
-
-Once a surface is marked stable:
-
-- fields are not removed from the served API version;
-- behavior changes preserve existing valid objects where possible;
-- replacements are introduced before old fields are deprecated;
-- deprecated fields remain for at least two minor releases;
-- conversion or migration guidance is documented before removal in a later API
-  version.
-
-## Upgrade Policy
-
-Operators should upgrade in this order:
-
-1. Apply new CRDs.
-2. Roll the controller Deployment.
-3. Roll plugin Deployments.
-4. Update `PluginRegistration` objects only after plugin probes pass.
-5. Update ReleaseTrigger policy last.
-
-Kapro controllers must tolerate older objects that omit newly added optional
-fields. Required-field additions must happen through a new API version or be
-guarded by admission defaults.
+All `v1alpha1` APIs remain below stable maturity until Kapro publishes a
+stable API version. A surface can be Preview while the Kubernetes version is
+still `v1alpha1`; the table above is the source of truth for compatibility
+expectations.
 
 ## Compatibility Rules
 
-Kapro should reject or mark unsupported external contracts using Kubernetes
-status conditions rather than failing silently.
+Kapro treats these changes as backward-compatible for Preview and Stable
+surfaces:
 
-Expected condition pattern:
+- adding optional CRD fields with safe defaults;
+- adding status fields, conditions, reasons, or events;
+- adding enum values when existing consumers are required to ignore unknown
+  values;
+- adding proto fields with new field numbers;
+- adding Go interface helpers that do not change existing method signatures;
+- tightening validation only when existing valid examples continue to pass.
 
-| Condition | Resource | Meaning |
-|---|---|---|
-| `Ready=False,Reason=UnsupportedContractVersion` | `PluginRegistration` | Plugin reported a KAI/KGI/KPI contract outside the supported range |
-| `Stalled=True,Reason=UnsupportedContractVersion` | `PluginRegistration` | Registration cannot be used until the plugin is upgraded or downgraded |
-| `Reconciling=True,Reason=ProbePending` | `PluginRegistration` | Compatibility has not been established yet |
+Kapro treats these changes as breaking unless an API version, overlap period, or
+major-version migration covers them:
 
-The supported contract matrix is maintained with plugin authoring docs. Until a
-stable API version exists, `v1alpha1` is the only accepted contract version for
-KAI, KGI, and KPI.
+- removing or renaming CRD fields, proto fields, packages, methods, or enum
+  values;
+- changing the semantic meaning of an existing field;
+- changing a default in a way that alters an existing rollout, gate, approval,
+  or rollback workflow;
+- changing generated object names or labels that operators are expected to
+  select on;
+- changing plugin request or response requirements in a way that makes an
+  existing conformant plugin fail.
+
+Operational defaults, log text, metrics names, and example manifests can change
+before Stable unless this document explicitly lists them as a contract. When an
+example is changed, the release notes should still explain how an existing user
+updates their manifests.
+
+## Deprecation Policy
+
+Deprecation follows these rules:
+
+- A deprecated field, enum value, package API, or proto field is marked in
+  documentation and release notes.
+- Deprecation notes identify the first release that includes the replacement,
+  the earliest release where removal is allowed, and the user-visible action.
+- Preview surfaces keep deprecated behavior for at least one minor release when
+  the old and new behavior can coexist safely.
+- Stable surfaces keep deprecated behavior for at least two minor releases, or
+  until the next major API version when coexistence would compromise safety.
+- Proto fields are not reused after removal. Removed fields remain reserved in
+  the `.proto` file.
+- CRD fields are not silently repurposed. A semantic change requires a new
+  field, a conversion path, or a new API version.
+- Removal notes state the replacement field or workflow and the first release
+  where removal is allowed.
+
+Alpha surfaces may change faster, but changes that affect committed examples,
+published manifests, or conformance tests still include migration notes.
+
+## Change Process
+
+Changes to Preview or Stable surfaces should include:
+
+1. Updated API, proto, or Go documentation.
+2. Updated examples or conformance scenarios when behavior changes.
+3. Release notes with `Added`, `Changed`, `Deprecated`, `Removed`, or
+   `Migration` entries.
+4. Upgrade instructions for existing hubs when an operator action is required.
+5. A compatibility note explaining why the change is backward-compatible, or
+   why it is intentionally breaking.
+
+For proto contracts, new fields use new field numbers and removed fields are
+reserved. For CRDs, new durable concepts should prefer additive fields or a new
+API version over reinterpreting existing fields. For Go extension packages,
+prefer a new interface or adapter helper over changing a method signature used
+by plugin authors.
+
+## Upgrade Policy
+
+Kapro upgrades are designed around Kubernetes controller safety:
+
+- Upgrade one hub control plane at a time. Do not run different Kapro versions
+  against the same shard unless the release notes explicitly allow it.
+- Apply CRD updates before rolling operator pods.
+- Keep leader election enabled for multi-replica deployments.
+- Keep `Release` and `ReleaseTarget` objects immutable from automation while an
+  operator upgrade is in progress; create a new `Release` for rollback.
+- Upgrade plugin servers before enabling a Kapro version that requires a newer
+  KAI, KGI, or KPI contract.
+- Run the relevant conformance harness for each external plugin before
+  upgrading production hubs.
+- Confirm `PluginRegistration.status.ready=true` and fresh
+  `status.observedGeneration` before restarting an operator that loads startup
+  plugin registrations.
+
+Within a supported minor upgrade, existing in-flight releases continue from
+Kubernetes status. Controllers may requeue work after restart, but gate
+progress, target phase, approval state, and audit trail are persisted in CRDs.
+
+Recommended upgrade order:
+
+1. Read the release notes and migration notes for CRD, plugin, and operational
+   changes.
+2. Back up Kapro CRDs and any namespace-scoped Secrets used for notifications,
+   approvals, and plugin TLS.
+3. Apply CRDs and RBAC.
+4. Upgrade external plugin servers and run their conformance suites.
+5. Roll one hub operator deployment or shard at a time.
+6. Watch `Release`, `ReleaseTarget`, `PluginRegistration`, and controller
+   workqueue metrics until queues drain and observed generations catch up.
+7. Resume automation that creates new `Release` objects.
+
+Rollback is safest when the previous operator version still understands the
+stored CRD schema. If a CRD schema changed, roll back only to a version named as
+compatible in the release notes. Do not downgrade plugin servers below the
+contract version required by the running operator.
+
+## Plugin Certification Path
+
+Kapro defines a future certified plugin path for external KAI, KGI, and KPI
+implementations. Certification is non-binding and is not required to run a
+plugin. The path is:
+
+1. Implement the published proto contract.
+2. Pass the matching conformance harness.
+3. Publish tested `PluginRegistration` manifests and operational defaults.
+4. Document backend permissions, idempotency behavior, timeout behavior, and
+   failure modes.
+5. Publish a compatibility matrix listing Kapro versions, contract versions,
+   backend versions, and conformance evidence.
+
+Certification, when introduced, will identify plugins that meet Kapro's
+published contract and documentation requirements. It will not transfer support
+ownership of third-party backends to the Kapro core maintainers.

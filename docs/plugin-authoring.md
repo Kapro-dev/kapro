@@ -43,6 +43,9 @@ Verify committed stubs are current with:
 make check-proto
 ```
 
+See `docs/api-stability.md` for the compatibility policy that applies to these
+contracts.
+
 ## Registration
 
 Plugins are declared with `PluginRegistration`.
@@ -112,6 +115,8 @@ func TestKAIConformance(t *testing.T) {
     actuatorconformance.Run(t, client, actuatorconformance.DefaultScenario())
 }
 ```
+
+See `docs/conformance.md` for scenario rules and registration checks.
 
 A complete external actuator example is available in
 `examples/plugins/argocd-actuator`. It implements KAI for Argo CD Applications

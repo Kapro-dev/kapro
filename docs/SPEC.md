@@ -197,6 +197,8 @@ Other internal concerns — health checking (`internal/health`), OCI fetch (`int
 
 See `docs/extension-model.md` for the full extension boundary model and the
 criteria for adding future plugin or CRD surfaces.
+See `docs/api-stability.md` for API maturity, deprecation, and upgrade policy.
+See `docs/conformance.md` for KAI, KGI, and KPI conformance instructions.
 
 There is **no** cluster-provider interface. Cluster onboarding is concrete, not pluggable (see §10).
 
