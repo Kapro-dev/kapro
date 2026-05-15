@@ -70,7 +70,7 @@ func TestReleaseReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetrics(t *
 
 	mc := &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: envRefName, Labels: map[string]string{"tier": "tmpl"}},
-		Spec:       kaprov1alpha1.MemberClusterSpec{Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: "flux"}},
+		Spec:       kaprov1alpha1.MemberClusterSpec{Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"}},
 	}
 	pipeline := &kaprov1alpha1.Pipeline{
 		ObjectMeta: metav1.ObjectMeta{Name: pipelineName},
@@ -220,7 +220,7 @@ func TestReleaseReconciler_ReleasesForNewMatchingCluster(t *testing.T) {
 			Labels: map[string]string{"tier": "prod", "region": "eu"},
 		},
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: "flux"},
+			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"},
 		},
 	}
 

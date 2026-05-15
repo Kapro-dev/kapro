@@ -6,10 +6,10 @@ metadata:
     kapro.io/tier: canary
     kapro.io/region: eu
 spec:
-  actuator:
+  delivery:
     mode: push
-    backend: flux
-    push:
+    backendRef: flux
+    parameters:
       resourceSet: checkout-demo
       namespace: flux-system
       inputField: tag
@@ -23,10 +23,10 @@ metadata:
     kapro.io/tier: production
     kapro.io/region: eu
 spec:
-  actuator:
+  delivery:
     mode: push
-    backend: flux
-    push:
+    backendRef: flux
+    parameters:
       resourceSet: checkout-demo
       namespace: flux-system
       inputField: tag
@@ -40,10 +40,10 @@ metadata:
     kapro.io/tier: production
     kapro.io/region: us
 spec:
-  actuator:
+  delivery:
     mode: push
-    backend: flux
-    push:
+    backendRef: flux
+    parameters:
       resourceSet: checkout-demo
       namespace: flux-system
       inputField: tag

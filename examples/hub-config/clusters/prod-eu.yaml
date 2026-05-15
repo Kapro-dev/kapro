@@ -7,9 +7,9 @@ metadata:
     kapro.io/region: europe-west3
     kapro.io/country: de
 spec:
-  actuator:
+  delivery:
     mode: pull
-    backend: flux
-    pull:
+    backendRef: flux
+    parameters:
       ociRepository: app-bundle
       namespace: flux-system

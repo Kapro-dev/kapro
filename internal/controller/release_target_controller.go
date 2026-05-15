@@ -724,7 +724,7 @@ func (r *ReleaseTargetReconciler) handleApplying(ctx context.Context, release *k
 
 	// Issue Apply exactly once per Applying entry.
 	if r.ActuatorRegistry != nil && !target.ApplyIssued {
-		act, err := r.ActuatorRegistry.Resolve(mc.Spec.Actuator.RegistryKey())
+		act, err := r.ActuatorRegistry.Resolve(mc.Spec.Delivery.RegistryKey())
 		if err != nil {
 			l.Error(err, "failed to resolve actuator")
 			return ctrl.Result{RequeueAfter: requeueFast}, nil
@@ -744,7 +744,7 @@ func (r *ReleaseTargetReconciler) handleApplying(ctx context.Context, release *k
 	// Poll for convergence.
 	currentVersion := mc.Status.CurrentVersions[targetAppKey(target)] // nil map read returns "" safely
 	if r.ActuatorRegistry != nil {
-		act, err := r.ActuatorRegistry.Resolve(mc.Spec.Actuator.RegistryKey())
+		act, err := r.ActuatorRegistry.Resolve(mc.Spec.Delivery.RegistryKey())
 		if err != nil {
 			l.Error(err, "failed to resolve actuator for convergence check")
 			return ctrl.Result{RequeueAfter: requeueFast}, nil
@@ -808,16 +808,12 @@ func capturePreviousVersions(target *kaprov1alpha1.TargetStatus, mc *kaprov1alph
 }
 
 func validateTargetTopology(mc *kaprov1alpha1.MemberCluster, desiredVersions map[string]string) error {
-	if len(desiredVersions) <= 1 || mc.Spec.Actuator.Mode != "pull" || mc.Spec.Actuator.Backend != "flux" {
+	if len(desiredVersions) <= 1 || mc.Spec.Delivery.Mode != kaprov1alpha1.DeliveryModePull || mc.Spec.Delivery.BackendRef != "flux" {
 		return nil
 	}
-	flux := mc.Spec.Actuator.Pull
-	if flux == nil || len(flux.OCIRepositories) == 0 {
-		return fmt.Errorf("cluster %s does not declare spec.actuator.flux.ociRepositories required for multi-artifact delivery", mc.Name)
-	}
 	for appKey := range desiredVersions {
-		if flux.OCIRepositories[appKey] == "" {
-			return fmt.Errorf("cluster %s is missing an OCIRepository mapping for appKey %q", mc.Name, appKey)
+		if mc.Spec.Delivery.Parameters["ociRepository."+appKey] == "" {
+			return fmt.Errorf("cluster %s is missing delivery.parameters[%q] required for multi-artifact flux delivery", mc.Name, "ociRepository."+appKey)
 		}
 	}
 	return nil

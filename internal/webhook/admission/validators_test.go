@@ -23,7 +23,7 @@ func deps(names ...string) []kaprov1alpha1.StageDependency {
 func TestValidateMemberCluster_MissingMode(t *testing.T) {
 	mc := &kaprov1alpha1.MemberCluster{
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "", Backend: "flux"},
+			Delivery: kaprov1alpha1.DeliverySpec{Mode: "", BackendRef: "flux"},
 		},
 	}
 	if err := mcValidate(mc); err == nil {
@@ -34,7 +34,7 @@ func TestValidateMemberCluster_MissingMode(t *testing.T) {
 func TestValidateMemberCluster_MissingBackend(t *testing.T) {
 	mc := &kaprov1alpha1.MemberCluster{
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: ""},
+			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: ""},
 		},
 	}
 	if err := mcValidate(mc); err == nil {
@@ -45,20 +45,20 @@ func TestValidateMemberCluster_MissingBackend(t *testing.T) {
 func TestValidateMemberCluster_FluxMissingSubSpec(t *testing.T) {
 	mc := &kaprov1alpha1.MemberCluster{
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: "flux", Pull: nil},
+			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"},
 		},
 	}
 	if err := mcValidate(mc); err == nil {
-		t.Fatal("expected error for pull/flux without flux sub-spec")
+		t.Fatal("expected error for pull/flux without ociRepository parameter")
 	}
 }
 
 func TestValidateMemberCluster_FluxValid(t *testing.T) {
 	mc := &kaprov1alpha1.MemberCluster{
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{
-				Mode: "pull", Backend: "flux",
-				Pull: &kaprov1alpha1.PullConfig{Namespace: "flux-system", OCIRepository: "cluster-a"},
+			Delivery: kaprov1alpha1.DeliverySpec{
+				Mode: "pull", BackendRef: "flux",
+				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "cluster-a"},
 			},
 		},
 	}
@@ -67,14 +67,14 @@ func TestValidateMemberCluster_FluxValid(t *testing.T) {
 	}
 }
 
-func TestValidateMemberCluster_UnsupportedBackend(t *testing.T) {
+func TestValidateMemberCluster_CustomBackendAllowed(t *testing.T) {
 	mc := &kaprov1alpha1.MemberCluster{
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: "kserve"},
+			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "kserve"},
 		},
 	}
-	if err := mcValidate(mc); err == nil {
-		t.Fatal("expected error for unsupported actuator backend")
+	if err := mcValidate(mc); err != nil {
+		t.Fatalf("unexpected error for external backendRef: %v", err)
 	}
 }
 

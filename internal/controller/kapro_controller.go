@@ -105,26 +105,32 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		cluster.KubeconfigSecret = secretName
 	}
 
-	spokeLocal := isSpokeLocalMode(&kapro)
+	delivery := kapro.Spec.Delivery
+	if delivery.Mode == "" {
+		delivery.Mode = kaprov1alpha1.DeliveryModePull
+	}
+	if delivery.BackendRef == "" {
+		delivery.BackendRef = "flux"
+	}
+	spokeLocal := delivery.Mode == kaprov1alpha1.DeliveryModePull && delivery.BackendRef == "flux"
 
 	// 2. Generate MemberClusters on the hub.
 	for _, cluster := range kapro.Spec.Clusters {
-		actuatorSpec := kaprov1alpha1.ActuatorSpec{
-			Mode: "push", Backend: "flux",
-			Push: &kaprov1alpha1.PushConfig{
-				ResourceSet: kapro.Name + "-workloads",
-				Namespace:   "flux-system",
-				InputField:  "version",
-				TenantField: "tenant",
-			},
+		clusterDelivery := delivery
+		clusterDelivery.Parameters = copyParamMap(delivery.Parameters)
+		if clusterDelivery.Parameters == nil {
+			clusterDelivery.Parameters = map[string]string{}
 		}
-		if spokeLocal {
-			actuatorSpec = kaprov1alpha1.ActuatorSpec{
-				Mode: "pull", Backend: "flux",
-				Pull: &kaprov1alpha1.PullConfig{
-					Namespace:     "flux-system",
-					OCIRepository: kapro.Name + "-bundle",
-				},
+		if clusterDelivery.BackendRef == "flux" {
+			if clusterDelivery.Mode == kaprov1alpha1.DeliveryModePush {
+				setDefaultParam(clusterDelivery.Parameters, "resourceSet", kapro.Name+"-workloads")
+				setDefaultParam(clusterDelivery.Parameters, "namespace", "flux-system")
+				setDefaultParam(clusterDelivery.Parameters, "inputField", "version")
+				setDefaultParam(clusterDelivery.Parameters, "tenantField", "tenant")
+			}
+			if clusterDelivery.Mode == kaprov1alpha1.DeliveryModePull {
+				setDefaultParam(clusterDelivery.Parameters, "namespace", "flux-system")
+				setDefaultParam(clusterDelivery.Parameters, "ociRepository", kapro.Name+"-bundle")
 			}
 		}
 		mc := &kaprov1alpha1.MemberCluster{
@@ -134,7 +140,7 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				Labels: cluster.Labels,
 			},
 			Spec: kaprov1alpha1.MemberClusterSpec{
-				Actuator: actuatorSpec,
+				Delivery: clusterDelivery,
 			},
 		}
 		if err := r.Patch(ctx, mc,
@@ -599,11 +605,34 @@ func overrideMatches(ov kaprov1alpha1.BundleOverride, clusterName string, cluste
 	return true
 }
 
-// isSpokeLocalMode returns true if the Kapro spec declares spoke-local delivery.
-// Convention: if Kapro.Spec.DeliveryMode == "spoke" OR any cluster has Provider == "gcp-fleet",
-// use spoke-local mode. Otherwise, use the push model.
+// isSpokeLocalMode returns true if this Kapro still uses the built-in Flux
+// spoke bootstrap path. Non-Flux backends are handled by their adapters/agents.
 func isSpokeLocalMode(kapro *kaprov1alpha1.Kapro) bool {
-	return kapro.Spec.DeliveryMode == "spoke"
+	delivery := kapro.Spec.Delivery
+	if delivery.Mode == "" {
+		delivery.Mode = kaprov1alpha1.DeliveryModePull
+	}
+	if delivery.BackendRef == "" {
+		delivery.BackendRef = "flux"
+	}
+	return delivery.Mode == kaprov1alpha1.DeliveryModePull && delivery.BackendRef == "flux"
+}
+
+func copyParamMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func setDefaultParam(params map[string]string, key, value string) {
+	if params[key] == "" {
+		params[key] = value
+	}
 }
 
 const maxConcurrentBootstraps = 10

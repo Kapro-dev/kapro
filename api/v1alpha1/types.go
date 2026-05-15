@@ -34,7 +34,6 @@ const (
 
 // ---- Shared cluster types ---------------------------------------------------
 
-// ActuatorSpec selects and configures the delivery backend for this cluster.
 type TargetTopology struct {
 	// Accelerator is the GPU/accelerator type in this cluster.
 	// Well-known values: nvidia-h100, nvidia-a100, nvidia-l40s, amd-mi300x, tpu-v5e.
@@ -58,80 +57,68 @@ type TargetTopology struct {
 	Tier string `json:"tier,omitempty"`
 }
 
-// ActuatorSpec selects and configures the delivery backend for this cluster.
-// Mode controls who initiates delivery: push (hub pushes to spoke) or pull
-// (spoke pulls from OCI registry). Backend selects which GitOps tool executes.
-//
-// +kubebuilder:validation:XValidation:rule="self.mode != 'push' || has(self.push)",message="push config is required when mode=push"
-// +kubebuilder:validation:XValidation:rule="self.mode != 'pull' || has(self.pull)",message="pull config is required when mode=pull"
-type ActuatorSpec struct {
-	// Mode controls who initiates delivery.
-	//   push: hub renders and pushes resources to the spoke cluster.
-	//   pull: hub patches the OCI tag, spoke's own controllers pull and reconcile.
-	// +kubebuilder:validation:Enum=push;pull
+// DeliveryMode controls where backend delivery is executed.
+// +kubebuilder:validation:Enum=push;pull
+type DeliveryMode string
+
+const (
+	// DeliveryModePush means the hub calls a hub-side backend adapter.
+	DeliveryModePush DeliveryMode = "push"
+	// DeliveryModePull means the hub records desired state and a spoke agent
+	// calls a local backend adapter.
+	DeliveryModePull DeliveryMode = "pull"
+)
+
+// BackendRuntime identifies where a backend adapter is allowed to run.
+// +kubebuilder:validation:Enum=Hub;Spoke;Both
+type BackendRuntime string
+
+const (
+	BackendRuntimeHub   BackendRuntime = "Hub"
+	BackendRuntimeSpoke BackendRuntime = "Spoke"
+	BackendRuntimeBoth  BackendRuntime = "Both"
+)
+
+// BackendDriver identifies the backend implementation family.
+// +kubebuilder:validation:Enum=flux;argo;external
+type BackendDriver string
+
+const (
+	BackendDriverFlux     BackendDriver = "flux"
+	BackendDriverArgo     BackendDriver = "argo"
+	BackendDriverExternal BackendDriver = "external"
+)
+
+// DeliverySpec selects a backend-neutral delivery profile for a cluster or fleet.
+// Backend-specific resource names live in parameters and are interpreted only by
+// the selected backend adapter.
+type DeliverySpec struct {
+	// Mode controls who performs delivery.
 	// +kubebuilder:default="pull"
-	Mode string `json:"mode"`
-	// Backend selects which GitOps tool executes the delivery.
-	// +kubebuilder:validation:Enum=flux
-	// +kubebuilder:default="flux"
-	Backend string `json:"backend"`
-	// Pull configures pull-mode delivery (spoke pulls OCI bundle and reconciles locally).
-	// Required when mode=pull.
-	// +optional
-	Pull *PullConfig `json:"pull,omitempty"`
-	// Push configures push-mode delivery (hub renders and pushes to spoke).
-	// Required when mode=push.
-	// +optional
-	Push *PushConfig `json:"push,omitempty"`
-}
-
-// RegistryKey returns the composite key used to resolve the actuator implementation.
-func (a *ActuatorSpec) RegistryKey() string {
-	return a.Mode + "/" + a.Backend
-}
-
-// PullConfig configures pull-mode delivery. The spoke's own GitOps controllers
-// pull from an OCI registry and reconcile locally.
-type PullConfig struct {
-	// Namespace is the GitOps controller namespace on the target cluster.
-	// +kubebuilder:default="flux-system"
-	Namespace string `json:"namespace,omitempty"`
-	// OCIRepository is the Flux OCIRepository name that pulls the artifact.
-	OCIRepository string `json:"ociRepository"`
-	// OCIRepositories maps appKey -> Flux OCIRepository name for multi-artifact delivery.
-	// +optional
-	OCIRepositories map[string]string `json:"ociRepositories,omitempty"`
-	// KustomizationPath is the path within the OCI artifact to the kustomization root.
-	// +kubebuilder:default="."
-	KustomizationPath string `json:"kustomizationPath,omitempty"`
-	// Parameters are backend-specific key-value pairs passed through to the actuator.
-	// Kapro does not interpret these. The backend implementation uses them for
-	// vendor-specific configuration (e.g. ArgoCD project, application name, sync policy).
-	// Same pattern as StorageClass.parameters in Kubernetes CSI.
+	Mode DeliveryMode `json:"mode"`
+	// BackendRef is the BackendProfile name. Built-in profiles commonly use
+	// "flux" or "argo"; external profiles may use any platform-defined name.
+	BackendRef string `json:"backendRef"`
+	// Parameters are opaque backend-specific settings, following the
+	// StorageClass.parameters pattern. Kapro core does not interpret them.
 	// +optional
 	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
-// PushConfig configures push-mode delivery. The hub renders resources and
-// pushes them to the spoke via Flux Operator ResourceSet or similar.
-type PushConfig struct {
-	// ResourceSet is the name of the Flux Operator ResourceSet to patch.
-	ResourceSet string `json:"resourceSet"`
-	// Namespace is the namespace of the ResourceSet.
-	// +kubebuilder:default="flux-system"
-	Namespace string `json:"namespace,omitempty"`
-	// InputField is the ResourceSet input field that holds the version/tag.
-	// +kubebuilder:default="tag"
-	InputField string `json:"inputField,omitempty"`
-	// TenantField is the ResourceSet input field that identifies the cluster.
-	// +kubebuilder:default="tenant"
-	TenantField string `json:"tenantField,omitempty"`
-	// Parameters are backend-specific key-value pairs passed through to the actuator.
-	// Kapro does not interpret these. The backend implementation uses them for
-	// vendor-specific configuration (e.g. ArgoCD ApplicationSet name, sync options).
-	// Same pattern as StorageClass.parameters in Kubernetes CSI.
-	// +optional
-	Parameters map[string]string `json:"parameters,omitempty"`
+// RegistryKey returns the composite key used to resolve the delivery adapter.
+func (d *DeliverySpec) RegistryKey() string {
+	if d == nil {
+		return "/"
+	}
+	return string(d.Mode) + "/" + d.BackendRef
+}
+
+// Param returns a backend-specific delivery parameter with a default.
+func (d *DeliverySpec) Param(name, fallback string) string {
+	if d == nil || d.Parameters == nil || d.Parameters[name] == "" {
+		return fallback
+	}
+	return d.Parameters[name]
 }
 
 type HealthCheckSpec struct {
@@ -1716,8 +1703,8 @@ type ApprovalList struct {
 
 // MemberClusterSpec defines the desired state of a cluster in the Kapro fleet.
 type MemberClusterSpec struct {
-	// Actuator configures the delivery backend for this cluster.
-	Actuator ActuatorSpec `json:"actuator"`
+	// Delivery configures the backend-neutral delivery adapter for this cluster.
+	Delivery DeliverySpec `json:"delivery"`
 
 	// HealthCheck configures active health polling for this cluster.
 	// +optional
@@ -1873,6 +1860,89 @@ func (s *MemberClusterStatus) IsHeartbeatFresh(timeout time.Duration) bool {
 		return false
 	}
 	return time.Since(t) < timeout
+}
+
+// ---- BackendProfile ---------------------------------------------------------
+
+// BackendProfileSpec registers a delivery backend profile that can be selected
+// by Kapro or MemberCluster delivery.backendRef.
+// +kubebuilder:validation:XValidation:rule="self.driver == \"external\" ? (has(self.pluginRef) && self.pluginRef != \"\") : (!has(self.pluginRef) || self.pluginRef == \"\")",message="pluginRef must be set when driver is external, and must be omitted otherwise"
+type BackendProfileSpec struct {
+	// Driver identifies the backend implementation family.
+	Driver BackendDriver `json:"driver"`
+	// Runtime identifies where this backend can run.
+	// +kubebuilder:default="Both"
+	Runtime BackendRuntime `json:"runtime,omitempty"`
+	// PluginRef references a PluginRegistration when driver=external.
+	// +optional
+	PluginRef string `json:"pluginRef,omitempty"`
+	// Discovery configures optional adoption of objects already owned by the
+	// backend, for example Argo CD cluster Secrets and Applications.
+	// +optional
+	Discovery *BackendDiscoverySpec `json:"discovery,omitempty"`
+	// Parameters are backend-specific defaults inherited by selected delivery
+	// configs unless overridden there.
+	// +optional
+	Parameters map[string]string `json:"parameters,omitempty"`
+}
+
+// BackendDiscoverySpec configures backend-native discovery for migration.
+type BackendDiscoverySpec struct {
+	// Enabled turns on backend-native discovery.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+	// ManagementPolicy controls whether Kapro only observes discovered objects
+	// or may adopt them for promotion writes.
+	// +kubebuilder:validation:Enum=Observe;Adopt
+	// +kubebuilder:default="Observe"
+	// +optional
+	ManagementPolicy string `json:"managementPolicy,omitempty"`
+	// Selector limits which backend-native objects Kapro discovers. For Argo CD
+	// this selects Applications and cluster Secrets. For Flux this selects
+	// Kustomizations and HelmReleases.
+	// +optional
+	Selector *metav1.LabelSelector `json:"selector,omitempty"`
+}
+
+// BackendProfileStatus records backend discovery and compatibility.
+type BackendProfileStatus struct {
+	ObservedGeneration int64          `json:"observedGeneration,omitempty"`
+	Ready              bool           `json:"ready,omitempty"`
+	Driver             BackendDriver  `json:"driver,omitempty"`
+	Runtime            BackendRuntime `json:"runtime,omitempty"`
+	// DiscoveredClusters is the number of backend-native clusters seen during
+	// discovery, for example Argo CD cluster Secrets.
+	// +optional
+	DiscoveredClusters int32 `json:"discoveredClusters,omitempty"`
+	// DiscoveredApplications is the number of backend-native applications seen
+	// during discovery.
+	// +optional
+	DiscoveredApplications int32              `json:"discoveredApplications,omitempty"`
+	Conditions             []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Cluster,shortName=bp;backend,categories=kapro-all
+// +kubebuilder:printcolumn:name="Driver",type=string,JSONPath=`.spec.driver`
+// +kubebuilder:printcolumn:name="Runtime",type=string,JSONPath=`.spec.runtime`
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+
+// BackendProfile defines a selectable delivery backend. Built-in backends such
+// as Flux and Argo are first-party adapters behind this same profile contract.
+type BackendProfile struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              BackendProfileSpec   `json:"spec,omitempty"`
+	Status            BackendProfileStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+type BackendProfileList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []BackendProfile `json:"items"`
 }
 
 // ---- PluginRegistration -----------------------------------------------------
@@ -2484,19 +2554,13 @@ type KaproSpec struct {
 	Registry KaproRegistry `json:"registry"`
 	// BundleRef is the name of the KaproBundle that defines components to deploy.
 	BundleRef string `json:"bundleRef"`
+	// Delivery selects the backend-neutral fleet delivery profile.
+	Delivery DeliverySpec `json:"delivery"`
 	// Clusters defines the target clusters in the fleet.
 	// +kubebuilder:validation:MinItems=1
 	Clusters []KaproCluster `json:"clusters"`
 	// Pipeline defines the progressive delivery stages.
 	Pipeline KaproPipeline `json:"pipeline"`
-	// DeliveryMode selects how workloads reach spoke clusters.
-	// "push" (default): hub renders HelmReleases with kubeConfig, hub's controllers install remotely.
-	// "spoke": hub records desired bundle state; spoke controllers pull OCI artifacts and reconcile locally.
-	// Spoke mode gives per-cluster k9s visibility (Kustomizations, HelmReleases, wave DAG).
-	// +kubebuilder:validation:Enum=push;spoke
-	// +kubebuilder:default="push"
-	// +optional
-	DeliveryMode string `json:"deliveryMode,omitempty"`
 	// Suspended pauses Kapro reconciliation.
 	// +kubebuilder:default=false
 	Suspended bool `json:"suspended,omitempty"`
@@ -2595,9 +2659,9 @@ type KaproStatus struct {
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.version`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// Kapro is the single entry point for fleet delivery. Users reference a KaproBundle
-// and define clusters; the controller pushes FluxInstance + OCIRepository to spokes
-// and generates MemberClusters + Pipeline on the hub.
+// Kapro is the single entry point for fleet delivery. Users reference a
+// KaproBundle, select a backend profile, and define clusters and promotion
+// stages. Backend adapters own Flux, Argo, or other delivery-system details.
 type Kapro struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

@@ -24,6 +24,14 @@ rules:
   - update
   - watch
 - apiGroups:
+  - argoproj.io
+  resources:
+  - applications
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - batch
   resources:
   - jobs
@@ -69,6 +77,7 @@ rules:
   - kapro.io
   resources:
   - agentpolicies
+  - backendprofiles
   - kaprobundles
   - releasetriggers
   verbs:
@@ -80,6 +89,7 @@ rules:
   resources:
   - agentpolicies/status
   - approvals/status
+  - backendprofiles/status
   - kaproes/status
   - memberclusters/status
   - pluginregistrations/status
@@ -123,3 +133,11 @@ rules:
   - releases/finalizers
   verbs:
   - update
+- apiGroups:
+  - kustomize.toolkit.fluxcd.io
+  resources:
+  - kustomizations
+  verbs:
+  - get
+  - list
+  - watch

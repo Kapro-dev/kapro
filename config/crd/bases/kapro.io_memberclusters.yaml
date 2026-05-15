@@ -76,106 +76,6 @@ spec:
             description: MemberClusterSpec defines the desired state of a cluster
               in the Kapro fleet.
             properties:
-              actuator:
-                description: Actuator configures the delivery backend for this cluster.
-                properties:
-                  backend:
-                    default: flux
-                    description: Backend selects which GitOps tool executes the delivery.
-                    enum:
-                    - flux
-                    type: string
-                  mode:
-                    default: pull
-                    description: |-
-                      Mode controls who initiates delivery.
-                        push: hub renders and pushes resources to the spoke cluster.
-                        pull: hub patches the OCI tag, spoke's own controllers pull and reconcile.
-                    enum:
-                    - push
-                    - pull
-                    type: string
-                  pull:
-                    description: |-
-                      Pull configures pull-mode delivery (spoke pulls OCI bundle and reconciles locally).
-                      Required when mode=pull.
-                    properties:
-                      kustomizationPath:
-                        default: .
-                        description: KustomizationPath is the path within the OCI
-                          artifact to the kustomization root.
-                        type: string
-                      namespace:
-                        default: flux-system
-                        description: Namespace is the GitOps controller namespace
-                          on the target cluster.
-                        type: string
-                      ociRepositories:
-                        additionalProperties:
-                          type: string
-                        description: OCIRepositories maps appKey -> Flux OCIRepository
-                          name for multi-artifact delivery.
-                        type: object
-                      ociRepository:
-                        description: OCIRepository is the Flux OCIRepository name
-                          that pulls the artifact.
-                        type: string
-                      parameters:
-                        additionalProperties:
-                          type: string
-                        description: |-
-                          Parameters are backend-specific key-value pairs passed through to the actuator.
-                          Kapro does not interpret these. The backend implementation uses them for
-                          vendor-specific configuration (e.g. ArgoCD project, application name, sync policy).
-                          Same pattern as StorageClass.parameters in Kubernetes CSI.
-                        type: object
-                    required:
-                    - ociRepository
-                    type: object
-                  push:
-                    description: |-
-                      Push configures push-mode delivery (hub renders and pushes to spoke).
-                      Required when mode=push.
-                    properties:
-                      inputField:
-                        default: tag
-                        description: InputField is the ResourceSet input field that
-                          holds the version/tag.
-                        type: string
-                      namespace:
-                        default: flux-system
-                        description: Namespace is the namespace of the ResourceSet.
-                        type: string
-                      parameters:
-                        additionalProperties:
-                          type: string
-                        description: |-
-                          Parameters are backend-specific key-value pairs passed through to the actuator.
-                          Kapro does not interpret these. The backend implementation uses them for
-                          vendor-specific configuration (e.g. ArgoCD ApplicationSet name, sync options).
-                          Same pattern as StorageClass.parameters in Kubernetes CSI.
-                        type: object
-                      resourceSet:
-                        description: ResourceSet is the name of the Flux Operator
-                          ResourceSet to patch.
-                        type: string
-                      tenantField:
-                        default: tenant
-                        description: TenantField is the ResourceSet input field that
-                          identifies the cluster.
-                        type: string
-                    required:
-                    - resourceSet
-                    type: object
-                required:
-                - backend
-                - mode
-                type: object
-                x-kubernetes-validations:
-                - message: push config is required when mode=push
-                  rule: self.mode != 'push' || has(self.push)
-                - message: pull config is required when mode=pull
-                  rule: self.mode != 'pull' || has(self.pull)
               bootstrap:
                 description: |-
                   Bootstrap configures one-time cluster self-registration.
@@ -212,6 +112,33 @@ spec:
                       The MemberCluster controller writes spec.bootstrap.expiresAt from
                       metadata.creationTimestamp + TTL at creation time and leaves it immutable.
                     type: string
+                type: object
+              delivery:
+                description: Delivery configures the backend-neutral delivery adapter
+                  for this cluster.
+                properties:
+                  backendRef:
+                    description: |-
+                      BackendRef is the BackendProfile name. Built-in profiles commonly use
+                      "flux" or "argo"; external profiles may use any platform-defined name.
+                    type: string
+                  mode:
+                    default: pull
+                    description: Mode controls who performs delivery.
+                    enum:
+                    - push
+                    - pull
+                    type: string
+                  parameters:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Parameters are opaque backend-specific settings, following the
+                      StorageClass.parameters pattern. Kapro core does not interpret them.
+                    type: object
+                required:
+                - backendRef
+                - mode
                 type: object
               desiredAppKey:
                 description: |-
@@ -281,7 +208,7 @@ spec:
                     type: string
                 type: object
             required:
-            - actuator
+            - delivery
             type: object
           status:
             description: MemberClusterStatus is the observed state — written by cluster-controller
