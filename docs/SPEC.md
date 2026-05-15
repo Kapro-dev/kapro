@@ -165,6 +165,16 @@ in `Release`, `ReleaseTarget`, `MemberCluster`, `Approval`, and
 
 Controllers are registered from `pkg/controllermanager/controllers.go`. Hub and spoke share the generated clientset but run different reconciler sets.
 
+### Hub config source of truth
+
+For v1, hub configuration is sourced from a dedicated git repository and
+applied to the hub cluster by CI with `kubectl apply`. The repository owns
+`MemberCluster`, `KaproApp`, `Pipeline`, and `Release` YAML. Spoke clusters do
+not watch that repository; they consume immutable OCI bundles and report status
+through the hub.
+
+See `docs/hub-config-source-of-truth.md` and `examples/hub-config/`.
+
 ---
 
 ## 7. Extension Interfaces
