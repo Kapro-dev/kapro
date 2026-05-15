@@ -40,7 +40,7 @@ type DeltaApplyRequest struct {
 }
 
 // SwitchRequest carries everything needed to perform a namespace slot switch.
-// Used by the promotion control plane when multi-version is enabled on the KaproApp.
+// Used by the promotion control plane when multi-version is enabled on the KaproBundle.
 type SwitchRequest struct {
 	// Cluster is the target member cluster.
 	Cluster *kaprov1alpha1.MemberCluster
@@ -48,8 +48,8 @@ type SwitchRequest struct {
 	FromSlot string
 	// ToSlot is the verified standby slot to switch to (e.g. "green").
 	ToSlot string
-	// App is the KaproApp spec containing multi-version config.
-	App *kaprov1alpha1.KaproAppSpec
+	// Bundle is the KaproBundle spec containing multi-version config.
+	Bundle *kaprov1alpha1.KaproBundleSpec
 }
 
 // Actuator is KAI: the Kapro Actuator Interface.
@@ -91,7 +91,7 @@ type Actuator interface {
 
 // Switcher is an optional interface for actuators that support multi-version
 // namespace slot switching. The promotion control plane checks if the resolved
-// actuator implements Switcher when multi-version is enabled on the KaproApp.
+// actuator implements Switcher when multi-version is enabled on the KaproBundle.
 //
 // The switch sequence is:
 //  1. Scale down stateful consumers (Kafka, MQ) in the active slot

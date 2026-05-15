@@ -3,19 +3,21 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.0
-  name: kaproapps.kapro.io
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: kaprobundles.kapro.io
 spec:
   group: kapro.io
   names:
     categories:
     - kapro-all
-    kind: KaproApp
-    listKind: KaproAppList
-    plural: kaproapps
+    kind: KaproBundle
+    listKind: KaproBundleList
+    plural: kaprobundles
     shortNames:
-    - ka
-    singular: kaproapp
+    - kb
+    - bundle
+    - bundles
+    singular: kaprobundle
   scope: Cluster
   versions:
   - additionalPrinterColumns:
@@ -29,8 +31,8 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          KaproApp is an application bundle defining what to deploy across the fleet.
-          It is a pure template — no controller, no status. Referenced by Kapro.spec.appRef.
+          KaproBundle is a component bundle defining what to deploy across the fleet.
+          It is a pure template — no controller, no status. Referenced by Kapro.spec.bundleRef.
         properties:
           apiVersion:
             description: |-
@@ -51,17 +53,17 @@ spec:
             type: object
           spec:
             description: |-
-              KaproAppSpec defines an application bundle deployed across the fleet.
+              KaproBundleSpec defines a component bundle deployed across the fleet.
               Components, versions, defaults, and per-cluster overrides live here.
-              Referenced by Kapro.spec.appRef.
+              Referenced by Kapro.spec.bundleRef.
             properties:
               components:
                 description: Components defines the deployable units (one HelmRelease
                   per component).
                 items:
                   description: |-
-                    AppComponent is one deployable unit within a KaproApp.
-                    Generates one HelmRelease on the spoke. Inherits from AppDefaults unless overridden.
+                    BundleComponent is one deployable unit within a KaproBundle.
+                    Generates one HelmRelease on the spoke. Inherits from BundleDefaults unless overridden.
                   properties:
                     chartName:
                       description: |-
@@ -284,7 +286,8 @@ spec:
                 description: Overrides are per-cluster or per-label value patches
                   layered on top of defaults.
                 items:
-                  description: AppOverride patches Helm values for a subset of clusters.
+                  description: BundleOverride patches Helm values for a subset of
+                    clusters.
                   properties:
                     clusters:
                       description: Clusters is an explicit list of cluster names.
@@ -312,7 +315,7 @@ spec:
                 description: Registries defines HelmRepository sources. Each becomes
                   a HelmRepository on spoke.
                 items:
-                  description: AppRegistry defines a Helm chart source. Generates
+                  description: BundleRegistry defines a Helm chart source. Generates
                     a HelmRepository on spoke.
                   properties:
                     interval:

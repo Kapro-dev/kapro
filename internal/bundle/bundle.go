@@ -49,7 +49,7 @@ import (
 // BundleRequest holds the inputs for bundle generation.
 type BundleRequest struct {
 	KaproName string
-	App       *kaprov1alpha1.KaproApp
+	Bundle    *kaprov1alpha1.KaproBundle
 	Version   string // OCI tag for the bundle
 	Registry  string // OCI registry URL (e.g. oci://europe-west1-docker.pkg.dev/project/repo)
 }
@@ -222,24 +222,24 @@ func digestOf(data []byte) digest.Digest {
 // Files are organized into per-wave directories (wave-00/, wave-01/, ...).
 // Wave 0 also contains shared HelmRepositories.
 func Generate(req BundleRequest) map[string]string {
-	app := req.App
-	defaults := app.Spec.Defaults
+	bundle := req.Bundle
+	defaults := bundle.Spec.Defaults
 	if defaults == nil {
-		defaults = &kaprov1alpha1.AppDefaults{}
+		defaults = &kaprov1alpha1.BundleDefaults{}
 	}
 
 	manifests := map[string]string{}
-	waves := groupByWave(app.Spec.Components)
+	waves := groupByWave(bundle.Spec.Components)
 	firstWave := sortedWaveNumbers(waves)[0]
 
 	// HelmRepositories go into the first wave directory.
-	for _, reg := range app.Spec.Registries {
+	for _, reg := range bundle.Spec.Registries {
 		path := fmt.Sprintf("wave-%02d/helmrepository-%s.yaml", firstWave, reg.Name)
 		manifests[path] = buildHelmRepository(req.KaproName, reg)
 	}
 
 	// HelmReleases go into their wave directory.
-	for _, comp := range app.Spec.Components {
+	for _, comp := range bundle.Spec.Components {
 		path := fmt.Sprintf("wave-%02d/%s-hr.yaml", comp.Wave, comp.Name)
 		manifests[path] = buildSpokeHelmRelease(req.KaproName, defaults, comp)
 	}
@@ -251,7 +251,7 @@ func Generate(req BundleRequest) map[string]string {
 // These are NOT part of the OCI bundle — they're created once on the spoke by
 // the hub's ResourceSet. Each Kustomization points to its wave directory in the
 // bundle and has dependsOn to the previous wave.
-func WaveKustomizations(kaproName string, app *kaprov1alpha1.KaproApp) []map[string]any {
+func WaveKustomizations(kaproName string, app *kaprov1alpha1.KaproBundle) []map[string]any {
 	waves := groupByWave(app.Spec.Components)
 	sorted := sortedWaveNumbers(waves)
 	result := make([]map[string]any, 0, len(sorted))
@@ -310,7 +310,7 @@ func WaveKustomizations(kaproName string, app *kaprov1alpha1.KaproApp) []map[str
 
 // --- HelmRepository ---
 
-func buildHelmRepository(kaproName string, reg kaprov1alpha1.AppRegistry) string {
+func buildHelmRepository(kaproName string, reg kaprov1alpha1.BundleRegistry) string {
 	spec := map[string]any{
 		"interval": resolveDefault(reg.Interval, "5m"),
 		"url":      reg.URL,
@@ -337,7 +337,7 @@ func buildHelmRepository(kaproName string, reg kaprov1alpha1.AppRegistry) string
 
 // --- Spoke HelmRelease (no kubeConfig) ---
 
-func buildSpokeHelmRelease(kaproName string, defaults *kaprov1alpha1.AppDefaults, comp kaprov1alpha1.AppComponent) string {
+func buildSpokeHelmRelease(kaproName string, defaults *kaprov1alpha1.BundleDefaults, comp kaprov1alpha1.BundleComponent) string {
 	chartName := comp.Name
 	if comp.ChartName != "" {
 		chartName = comp.ChartName
@@ -417,15 +417,15 @@ func buildSpokeHelmRelease(kaproName string, defaults *kaprov1alpha1.AppDefaults
 
 // --- Helpers ---
 
-func groupByWave(components []kaprov1alpha1.AppComponent) map[int32][]kaprov1alpha1.AppComponent {
-	waves := map[int32][]kaprov1alpha1.AppComponent{}
+func groupByWave(components []kaprov1alpha1.BundleComponent) map[int32][]kaprov1alpha1.BundleComponent {
+	waves := map[int32][]kaprov1alpha1.BundleComponent{}
 	for _, comp := range components {
 		waves[comp.Wave] = append(waves[comp.Wave], comp)
 	}
 	return waves
 }
 
-func sortedWaveNumbers(waves map[int32][]kaprov1alpha1.AppComponent) []int32 {
+func sortedWaveNumbers(waves map[int32][]kaprov1alpha1.BundleComponent) []int32 {
 	nums := make([]int32, 0, len(waves))
 	for n := range waves {
 		nums = append(nums, n)

@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.0
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: kaproes.kapro.io
 spec:
   group: kapro.io
@@ -22,8 +22,8 @@ spec:
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
       type: string
-    - jsonPath: .spec.appRef
-      name: AppRef
+    - jsonPath: .spec.bundleRef
+      name: BundleRef
       type: string
     - jsonPath: .status.clusterCount
       name: Clusters
@@ -41,7 +41,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Kapro is the single entry point for fleet delivery. Users reference a KaproApp
+          Kapro is the single entry point for fleet delivery. Users reference a KaproBundle
           and define clusters; the controller pushes FluxInstance + OCIRepository to spokes
           and generates MemberClusters + Pipeline on the hub.
         properties:
@@ -65,9 +65,9 @@ spec:
           spec:
             description: KaproSpec defines the desired state of a Kapro fleet.
             properties:
-              appRef:
-                description: AppRef is the name of the KaproApp that defines components
-                  to deploy.
+              bundleRef:
+                description: BundleRef is the name of the KaproBundle that defines
+                  components to deploy.
                 type: string
               clusters:
                 description: Clusters defines the target clusters in the fleet.
@@ -162,19 +162,15 @@ spec:
                                   must be satisfied.
                                 type: string
                               strategy:
-                                allOf:
-                                - enum:
-                                  - all
-                                  - any
-                                - enum:
-                                  - all
-                                  - any
                                 default: all
                                 description: |-
                                   Strategy controls when this dependency is considered satisfied.
                                     "all" (default): every target in the upstream stage must be verified.
                                     "any": at least one target in the upstream stage must be verified
                                            (canary-unlock pattern).
+                                enum:
+                                - all
+                                - any
                                 type: string
                             required:
                             - stage
@@ -222,7 +218,14 @@ spec:
                                           Equivalent to Grafana's "Evaluate every" setting.
                                           Defaults to "30s". Minimum "10s".
                                         type: string
+                                      preset:
+                                        description: |-
+                                          Preset references Pipeline.spec.metricPresets by name.
+                                          Inline fields override the preset when set.
+                                        type: string
                                       provider:
+                                        description: Provider selects the metrics
+                                          backend. Required when preset is empty.
                                         type: string
                                       query:
                                         description: |-
@@ -230,8 +233,12 @@ spec:
                                           Use range functions directly in the query for window-based checks, e.g.:
                                             min_over_time(error_rate[30m]) < 0.01
                                           Or reference the Window field as a template: {{.Window}} is substituted at evaluation time.
+                                          Required when preset is empty.
                                         type: string
                                       threshold:
+                                        description: |-
+                                          Threshold is optional and presence-aware so an inline metric can
+                                          intentionally override a preset threshold to 0.
                                         type: number
                                       window:
                                         default: 5m
@@ -240,9 +247,6 @@ spec:
                                           When Query already contains a hardcoded range (e.g. [5m]), this field is ignored.
                                           Defaults to "5m".
                                         type: string
-                                    required:
-                                    - provider
-                                    - query
                                     type: object
                                   type: array
                                 soakTime:
@@ -486,6 +490,17 @@ spec:
                                           Name uniquely identifies this template within the gate for status tracking
                                           and Job naming. Required when type == "job" (used to generate Job name).
                                         type: string
+                                      plugin:
+                                        description: PluginGateSpec references an
+                                          external gate registered through PluginRegistration.
+                                        properties:
+                                          name:
+                                            description: Name is PluginRegistration.spec.name
+                                              for a ready gate plugin.
+                                            type: string
+                                        required:
+                                        - name
+                                        type: object
                                       timeout:
                                         type: string
                                       type:
@@ -493,6 +508,7 @@ spec:
                                         - cel
                                         - job
                                         - webhook
+                                        - plugin
                                         type: string
                                       webhook:
                                         description: WebhookGateSpec configures the
@@ -562,12 +578,13 @@ spec:
                               type: string
                             notifications:
                               items:
+                                description: NotificationSpec configures where and
+                                  when to send delivery lifecycle events.
                                 properties:
-                                  channel:
-                                    type: string
                                   email:
-                                    description: EmailNotifierSpec configures SMTP
-                                      email delivery for gate notifications.
+                                    description: |-
+                                      Email configures SMTP email delivery.
+                                      Required when type=email.
                                     properties:
                                       from:
                                         type: string
@@ -597,10 +614,64 @@ spec:
                                     - smtpSecretRef
                                     - to
                                     type: object
+                                  events:
+                                    description: |-
+                                      Events filters which lifecycle events trigger this notification.
+                                      Uses stable semantic event types. Currently emitted events:
+                                        kapro.release.started, kapro.release.completed, kapro.release.failed,
+                                        kapro.release.rollback.started, kapro.release.stage.completed,
+                                        kapro.release.gate.passed, kapro.release.gate.failed,
+                                        kapro.release.approval.required,
+                                        kapro.release.target.pending, kapro.release.target.verification,
+                                        kapro.release.target.health_check, kapro.release.target.soaking,
+                                        kapro.release.target.metrics_check, kapro.release.target.applying,
+                                        kapro.release.target.converged, kapro.release.target.failed,
+                                        kapro.release.target.skipped.
+                                      Empty means all events.
+                                    items:
+                                      type: string
+                                    type: array
+                                  slack:
+                                    description: |-
+                                      Slack configures Slack message delivery.
+                                      Required when type=slack.
+                                    properties:
+                                      channel:
+                                        description: Channel is the Slack channel
+                                          to post to.
+                                        type: string
+                                    required:
+                                    - channel
+                                    type: object
                                   type:
+                                    description: Type selects the notification backend.
+                                    enum:
+                                    - webhook
+                                    - slack
+                                    - email
                                     type: string
-                                  url:
-                                    type: string
+                                  webhook:
+                                    description: |-
+                                      Webhook configures HTTP POST delivery.
+                                      Required when type=webhook.
+                                    properties:
+                                      format:
+                                        default: json
+                                        description: |-
+                                          Format selects the payload format.
+                                            json (default): plain JSON event payload.
+                                            cloudevents: CloudEvents v1.0 structured content mode.
+                                        enum:
+                                        - json
+                                        - cloudevents
+                                        type: string
+                                      url:
+                                        description: URL is the HTTP endpoint to POST
+                                          events to.
+                                        type: string
+                                    required:
+                                    - url
+                                    type: object
                                 required:
                                 - type
                                 type: object
@@ -661,7 +732,7 @@ spec:
                 description: Suspended pauses Kapro reconciliation.
                 type: boolean
             required:
-            - appRef
+            - bundleRef
             - clusters
             - pipeline
             - registry
@@ -675,7 +746,7 @@ spec:
                 type: integer
               componentCount:
                 description: ComponentCount is the number of components from the resolved
-                  KaproApp.
+                  KaproBundle.
                 format: int32
                 type: integer
               conditions:

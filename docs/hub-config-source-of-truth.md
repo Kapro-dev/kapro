@@ -13,7 +13,7 @@ Kapro separates two sources of truth:
 - **Hub config truth:** the git repository that defines fleet inventory, applications, rollout pipelines, and release intent.
 - **Runtime artifact truth:** the OCI registry that stores immutable application bundles consumed by spoke clusters.
 
-The hub cluster needs Kubernetes objects such as `MemberCluster`, `KaproApp`, `Pipeline`, and `Release` to drive the fleet. Those objects must be reviewable, reproducible, and auditable. A plain git repository plus CI-driven `kubectl apply` is the v1 operating model.
+The hub cluster needs Kubernetes objects such as `MemberCluster`, `KaproBundle`, `Pipeline`, and `Release` to drive the fleet. Those objects must be reviewable, reproducible, and auditable. A plain git repository plus CI-driven `kubectl apply` is the v1 operating model.
 
 ## Architecture
 
@@ -27,7 +27,7 @@ Pull request / merge to main
 CI: validate -> diff -> kubectl apply
    |
    v
-Hub cluster etcd: MemberCluster, KaproApp, Pipeline, Release
+Hub cluster etcd: MemberCluster, KaproBundle, Pipeline, Release
    |
    v
 Kapro operator
@@ -41,7 +41,7 @@ Spoke clusters: pull OCI bundles and report status
 | Directory | Contents |
 |---|---|
 | `clusters/` | MemberCluster definitions (one per spoke) |
-| `apps/` | KaproApp definitions (component registry, waves, overrides) |
+| `bundles/` | KaproBundle definitions (component registry, waves, overrides) |
 | `pipelines/` | Pipeline definitions (stage DAG, selectors, gates) |
 | `releases/` | Release objects (version + pipeline references) |
 | `.github/workflows/` | CI that validates, diffs, and applies the repo to the hub |
@@ -64,7 +64,7 @@ hub-config/
     canary-eu.yaml
     prod-eu.yaml
     prod-us.yaml
-  apps/
+  bundles/
     checkout.yaml
   pipelines/
     checkout-progressive.yaml
@@ -82,7 +82,7 @@ See [examples/hub-config/](../examples/hub-config/) for the complete sample.
 Apply objects in dependency order:
 
 1. `clusters/` - registers `MemberCluster` inventory and labels used by selectors.
-2. `apps/` - defines reusable application/component metadata.
+2. `bundles/` - defines reusable component bundle metadata.
 3. `pipelines/` - defines stage DAGs, cluster selectors, and gate policy.
 4. `releases/` - creates release intent that references pipelines and target versions.
 
@@ -96,12 +96,12 @@ Pull request checks:
 
 ```bash
 kubectl apply --dry-run=server -f clusters/
-kubectl apply --dry-run=server -f apps/
+kubectl apply --dry-run=server -f bundles/
 kubectl apply --dry-run=server -f pipelines/
 kubectl apply --dry-run=server -f releases/
 
 kubectl diff -f clusters/ || true
-kubectl diff -f apps/ || true
+kubectl diff -f bundles/ || true
 kubectl diff -f pipelines/ || true
 kubectl diff -f releases/ || true
 ```
@@ -110,7 +110,7 @@ Merge-to-main apply:
 
 ```bash
 kubectl apply -f clusters/
-kubectl apply -f apps/
+kubectl apply -f bundles/
 kubectl apply -f pipelines/
 kubectl apply -f releases/
 ```
@@ -119,7 +119,7 @@ Post-apply checks:
 
 ```bash
 kubectl get memberclusters.kapro.io
-kubectl get kaproapps.kapro.io,pipelines.kapro.io,releases.kapro.io
+kubectl get kaprobundles.kapro.io,pipelines.kapro.io,releases.kapro.io
 kubectl describe releases.kapro.io checkout-v1-2-3
 ```
 
@@ -130,8 +130,8 @@ The CI identity needs permission to `get`, `list`, `watch`, `create`, `patch`, `
 Before opening a pull request from the hub config repo:
 
 ```bash
-kubectl apply --dry-run=server -f clusters/ -f apps/ -f pipelines/ -f releases/
-kubectl diff -f clusters/ -f apps/ -f pipelines/ -f releases/ || true
+kubectl apply --dry-run=server -f clusters/ -f bundles/ -f pipelines/ -f releases/
+kubectl diff -f clusters/ -f bundles/ -f pipelines/ -f releases/ || true
 ```
 
 `--dry-run=server` requires access to a hub cluster with the Kapro CRDs installed. It catches schema and admission errors that static YAML parsing cannot catch.

@@ -24,9 +24,9 @@ func TestBuildResourceSet_Components(t *testing.T) {
 	}
 	kapro.Name = "demo"
 
-	app := &kaprov1alpha1.KaproApp{
-		Spec: kaprov1alpha1.KaproAppSpec{
-			Components: []kaprov1alpha1.AppComponent{
+	app := &kaprov1alpha1.KaproBundle{
+		Spec: kaprov1alpha1.KaproBundleSpec{
+			Components: []kaprov1alpha1.BundleComponent{
 				{Name: "pos-server", Version: "5.28.0"},
 				{Name: "sdc", Version: "5.28.0"},
 				{Name: "keycloak", Version: "6.5.0"},
@@ -118,17 +118,17 @@ func TestBuildResourceSet_OverrideMerging(t *testing.T) {
 	}
 	kapro.Name = "test"
 
-	app := &kaprov1alpha1.KaproApp{
-		Spec: kaprov1alpha1.KaproAppSpec{
-			Components: []kaprov1alpha1.AppComponent{
+	app := &kaprov1alpha1.KaproBundle{
+		Spec: kaprov1alpha1.KaproBundleSpec{
+			Components: []kaprov1alpha1.BundleComponent{
 				{Name: "app", Version: "1.0"},
 			},
-			Defaults: &kaprov1alpha1.AppDefaults{
+			Defaults: &kaprov1alpha1.BundleDefaults{
 				Values: &apiextensionsv1.JSON{
 					Raw: []byte(`{"replicaCount":3,"logging":{"level":"info","format":"json"}}`),
 				},
 			},
-			Overrides: []kaprov1alpha1.AppOverride{
+			Overrides: []kaprov1alpha1.BundleOverride{
 				{
 					Selector: map[string]string{"tier": "canary"},
 					Values: &apiextensionsv1.JSON{

@@ -96,12 +96,12 @@ kapro hub init --project my-project --cluster my-hub
 kapro spoke add de-prod --provider gcp-fleet --labels tier=canary
 kapro spoke add fi-prod --provider gcp-fleet --labels tier=prod
 
-# Define your app and delivery pipeline
-kubectl apply -f examples/hub-config/apps/checkout.yaml
+# Define your bundle and delivery pipeline
+kubectl apply -f examples/hub-config/bundles/checkout.yaml
 kubectl apply -f examples/hub-config/pipelines/checkout-progressive.yaml
 
 # Push a version from CI
-kapro bundle generate --app my-app --version 1.0.0 --push
+kapro bundle generate --bundle my-bundle --version 1.0.0 --push
 
 # Create a release. Kapro handles the rest.
 kubectl apply -f examples/hub-config/releases/checkout-v1.2.3.yaml

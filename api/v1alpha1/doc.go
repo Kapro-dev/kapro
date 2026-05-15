@@ -5,7 +5,7 @@
 //
 // User-facing CRDs:
 //   - Kapro          — fleet entry point
-//   - KaproApp       — application bundle template
+//   - KaproBundle    — component bundle template
 //   - Pipeline       — reusable rollout template composed of ordered stages
 //   - Release        — one rollout execution of an artifact version through one or more Pipelines
 //   - ReleaseTrigger — safe-by-default autonomous Release creation from verified artifacts

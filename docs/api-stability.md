@@ -25,7 +25,7 @@ Preview. The table below is the source of truth for the current contract level.
 
 | Surface | Path | Level |
 |---|---|---|
-| Core promotion CRDs | `api/v1alpha1` `KaproApp`, `Pipeline`, `Release`, `ReleaseTarget`, `MemberCluster`, `Approval`, `AgentPolicy` | Alpha |
+| Core promotion CRDs | `api/v1alpha1` `KaproBundle`, `Pipeline`, `Release`, `ReleaseTarget`, `MemberCluster`, `Approval`, `AgentPolicy` | Alpha |
 | ReleaseTrigger CRD | `api/v1alpha1` `ReleaseTrigger` | Preview |
 | PluginRegistration CRD | `api/v1alpha1` `PluginRegistration` | Preview |
 | Notification provider/policy CRDs | `api/v1alpha1` `NotificationProvider`, `NotificationPolicy` | Preview |
