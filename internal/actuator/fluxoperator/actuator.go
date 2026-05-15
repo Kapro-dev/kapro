@@ -52,15 +52,16 @@ func (a *FluxOperatorActuator) Apply(ctx context.Context, req actuator.ApplyRequ
 	if mc == nil {
 		return fmt.Errorf("cluster is nil")
 	}
-	foSpec := mc.Spec.Actuator.Push
-	if foSpec == nil {
-		return fmt.Errorf("MemberCluster %q has no push actuator config", mc.Name)
+	delivery := mc.Spec.Delivery
+
+	ns, tenantField := resolveConfig(&delivery)
+	resourceSet := delivery.Param("resourceSet", "")
+	if resourceSet == "" {
+		return fmt.Errorf("MemberCluster %q delivery.parameters.resourceSet is required for flux push delivery", mc.Name)
 	}
+	versionField := resolveVersionField(&delivery, req.AppKey)
 
-	ns, tenantField := resolveConfig(foSpec)
-	versionField := resolveVersionField(foSpec, req.AppKey)
-
-	rs, err := a.getResourceSet(ctx, foSpec.ResourceSet, ns)
+	rs, err := a.getResourceSet(ctx, resourceSet, ns)
 	if err != nil {
 		return err
 	}
@@ -85,11 +86,11 @@ func (a *FluxOperatorActuator) Apply(ctx context.Context, req actuator.ApplyRequ
 	setInputs(rs, inputs)
 
 	if err := a.Client.Patch(ctx, rs, patch); err != nil {
-		return fmt.Errorf("patch ResourceSet %s: %w", foSpec.ResourceSet, err)
+		return fmt.Errorf("patch ResourceSet %s: %w", resourceSet, err)
 	}
 
 	l.Info("patched ResourceSet input",
-		"resourceSet", foSpec.ResourceSet, "cluster", mc.Name,
+		"resourceSet", resourceSet, "cluster", mc.Name,
 		"field", versionField, "version", req.Version)
 	return nil
 }
@@ -101,14 +102,15 @@ func (a *FluxOperatorActuator) ApplyDelta(ctx context.Context, req actuator.Delt
 		return 0, fmt.Errorf("cluster is nil")
 	}
 	mc := req.Cluster
-	foSpec := mc.Spec.Actuator.Push
-	if foSpec == nil {
-		return 0, fmt.Errorf("MemberCluster %q has no push actuator config", mc.Name)
+	delivery := mc.Spec.Delivery
+	resourceSet := delivery.Param("resourceSet", "")
+	if resourceSet == "" {
+		return 0, fmt.Errorf("MemberCluster %q delivery.parameters.resourceSet is required for flux push delivery", mc.Name)
 	}
 
-	ns, tenantField := resolveConfig(foSpec)
+	ns, tenantField := resolveConfig(&delivery)
 
-	rs, err := a.getResourceSet(ctx, foSpec.ResourceSet, ns)
+	rs, err := a.getResourceSet(ctx, resourceSet, ns)
 	if err != nil {
 		return 0, err
 	}
@@ -128,12 +130,12 @@ func (a *FluxOperatorActuator) ApplyDelta(ctx context.Context, req actuator.Delt
 		// Create new entry.
 		entry := map[string]any{tenantField: mc.Name}
 		for appKey, version := range req.DesiredVersions {
-			entry[resolveVersionField(foSpec, appKey)] = version
+			entry[resolveVersionField(&delivery, appKey)] = version
 		}
 		inputs = append(inputs, entry)
 		setInputs(rs, inputs)
 		if err := a.Client.Patch(ctx, rs, patch); err != nil {
-			return 0, fmt.Errorf("patch ResourceSet %s: %w", foSpec.ResourceSet, err)
+			return 0, fmt.Errorf("patch ResourceSet %s: %w", resourceSet, err)
 		}
 		return len(req.DesiredVersions), nil
 	}
@@ -141,7 +143,7 @@ func (a *FluxOperatorActuator) ApplyDelta(ctx context.Context, req actuator.Delt
 	// Update existing entry — patch all changed version fields at once.
 	count := 0
 	for appKey, version := range req.DesiredVersions {
-		field := resolveVersionField(foSpec, appKey)
+		field := resolveVersionField(&delivery, appKey)
 		if getStr(inputs[idx], field) != version {
 			inputs[idx][field] = version
 			count++
@@ -154,12 +156,12 @@ func (a *FluxOperatorActuator) ApplyDelta(ctx context.Context, req actuator.Delt
 
 	setInputs(rs, inputs)
 	if err := a.Client.Patch(ctx, rs, patch); err != nil {
-		return 0, fmt.Errorf("patch ResourceSet %s: %w", foSpec.ResourceSet, err)
+		return 0, fmt.Errorf("patch ResourceSet %s: %w", resourceSet, err)
 	}
 
 	l := log.FromContext(ctx)
 	l.Info("patched ResourceSet inputs (delta)",
-		"resourceSet", foSpec.ResourceSet, "cluster", mc.Name, "changed", count)
+		"resourceSet", resourceSet, "cluster", mc.Name, "changed", count)
 	return count, nil
 }
 
@@ -167,15 +169,16 @@ func (a *FluxOperatorActuator) ApplyDelta(ctx context.Context, req actuator.Delt
 // ResourceSet Ready only means "YAML was applied" — we also need to verify the spoke
 // HelmRelease actually succeeded (Ready=True on the HelmRelease itself).
 func (a *FluxOperatorActuator) IsConverged(ctx context.Context, mc *kaprov1alpha1.MemberCluster, appKey, version string) (bool, error) {
-	foSpec := mc.Spec.Actuator.Push
-	if foSpec == nil {
-		return false, fmt.Errorf("no push config on %s", mc.Name)
+	delivery := mc.Spec.Delivery
+	resourceSet := delivery.Param("resourceSet", "")
+	if resourceSet == "" {
+		return false, fmt.Errorf("MemberCluster %q delivery.parameters.resourceSet is required for flux push delivery", mc.Name)
 	}
 
-	ns, tenantField := resolveConfig(foSpec)
-	versionField := resolveVersionField(foSpec, appKey)
+	ns, tenantField := resolveConfig(&delivery)
+	versionField := resolveVersionField(&delivery, appKey)
 
-	rs, err := a.getResourceSet(ctx, foSpec.ResourceSet, ns)
+	rs, err := a.getResourceSet(ctx, resourceSet, ns)
 	if err != nil {
 		return false, err
 	}
@@ -200,7 +203,7 @@ func (a *FluxOperatorActuator) IsConverged(ctx context.Context, mc *kaprov1alpha
 
 	// Check the rendered HelmRelease is Ready.
 	// Try to find it by scanning ResourceSet inventory.
-	hrReady, err := a.checkHelmReleaseFromInventory(ctx, foSpec.ResourceSet, ns, mc.Name)
+	hrReady, err := a.checkHelmReleaseFromInventory(ctx, resourceSet, ns, mc.Name)
 	if err != nil {
 		// Can't determine HR name — fall through to MemberCluster status check
 		// in the ReleaseTargetReconciler fallback.
@@ -215,14 +218,15 @@ func (a *FluxOperatorActuator) IsAllConverged(ctx context.Context, mc *kaprov1al
 	if mc == nil {
 		return false, fmt.Errorf("cluster is nil")
 	}
-	foSpec := mc.Spec.Actuator.Push
-	if foSpec == nil {
-		return false, fmt.Errorf("no push config on %s", mc.Name)
+	delivery := mc.Spec.Delivery
+	resourceSet := delivery.Param("resourceSet", "")
+	if resourceSet == "" {
+		return false, fmt.Errorf("MemberCluster %q delivery.parameters.resourceSet is required for flux push delivery", mc.Name)
 	}
 
-	ns, tenantField := resolveConfig(foSpec)
+	ns, tenantField := resolveConfig(&delivery)
 
-	rs, err := a.getResourceSet(ctx, foSpec.ResourceSet, ns)
+	rs, err := a.getResourceSet(ctx, resourceSet, ns)
 	if err != nil {
 		return false, err
 	}
@@ -237,14 +241,14 @@ func (a *FluxOperatorActuator) IsAllConverged(ctx context.Context, mc *kaprov1al
 			continue
 		}
 		for appKey, version := range desiredVersions {
-			field := resolveVersionField(foSpec, appKey)
+			field := resolveVersionField(&delivery, appKey)
 			if getStr(input, field) != version {
 				return false, nil
 			}
 		}
 
 		// All inputs match — now check HelmReleases are Ready via inventory.
-		hrReady, err := a.checkHelmReleaseFromInventory(ctx, foSpec.ResourceSet, ns, mc.Name)
+		hrReady, err := a.checkHelmReleaseFromInventory(ctx, resourceSet, ns, mc.Name)
 		if err != nil || !hrReady {
 			return false, nil
 		}
@@ -267,29 +271,18 @@ func (a *FluxOperatorActuator) Rollback(ctx context.Context, mc *kaprov1alpha1.M
 
 // --- Config helpers ---
 
-func resolveConfig(foSpec *kaprov1alpha1.PushConfig) (ns, tenantField string) {
-	ns = foSpec.Namespace
-	if ns == "" {
-		ns = "flux-system"
-	}
-	tenantField = foSpec.TenantField
-	if tenantField == "" {
-		tenantField = "tenant"
-	}
-	return
+func resolveConfig(delivery *kaprov1alpha1.DeliverySpec) (ns, tenantField string) {
+	return delivery.Param("namespace", "flux-system"), delivery.Param("tenantField", "tenant")
 }
 
 // resolveVersionField maps an appKey to the ResourceSet input field name.
 // For multi-component KaproBundle: "pos-server" → "pos-server_version"
 // For single-app (backward compat): "" or "default" → configured inputField
-func resolveVersionField(foSpec *kaprov1alpha1.PushConfig, appKey string) string {
+func resolveVersionField(delivery *kaprov1alpha1.DeliverySpec, appKey string) string {
 	if appKey != "" && appKey != "default" {
 		return appKey + "_version"
 	}
-	if foSpec.InputField != "" {
-		return foSpec.InputField
-	}
-	return "tag"
+	return delivery.Param("inputField", "tag")
 }
 
 func (a *FluxOperatorActuator) getResourceSet(ctx context.Context, name, ns string) (*unstructured.Unstructured, error) {

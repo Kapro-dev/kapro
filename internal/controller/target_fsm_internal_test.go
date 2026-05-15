@@ -81,7 +81,7 @@ func TestHandleApplying_RespectsActiveReleaseClaim(t *testing.T) {
 	scheme := controllerTestScheme(t)
 	mc := &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
-		Spec:       kaprov1alpha1.MemberClusterSpec{Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: "flux"}},
+		Spec:       kaprov1alpha1.MemberClusterSpec{Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"}},
 		Status: kaprov1alpha1.MemberClusterStatus{
 			ActiveRelease:   "other-release",
 			CurrentVersions: map[string]string{"default": "repo@sha256:old"},
@@ -123,7 +123,7 @@ func TestHandlePending_PullModeWaitsForFreshHeartbeat(t *testing.T) {
 	mc := &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: "flux"},
+			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"},
 		},
 	}
 	r := &ReleaseTargetReconciler{
@@ -157,7 +157,7 @@ func TestHandlePending_FreshLeaseHeartbeatAllowsPullTarget(t *testing.T) {
 	mc := &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: "flux"},
+			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"},
 		},
 	}
 	lease := &coordinationv1.Lease{
@@ -201,7 +201,7 @@ func TestHandlePending_StaleHeartbeatEventuallyFailsPullTarget(t *testing.T) {
 	mc := &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: "flux"},
+			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"},
 		},
 		Status: kaprov1alpha1.MemberClusterStatus{
 			LastHeartbeat: time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339),

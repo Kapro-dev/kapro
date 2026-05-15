@@ -49,7 +49,10 @@ Kapro decouples CI from deployment. The OCI artifact becomes the single source o
 
 ## Enter Kapro
 
-Kapro does not replace the CNCF ecosystem. It coordinates it. Kapro decides when and where a version may advance across a fleet; local rollout systems decide how pods, sync, and traffic changes happen inside each cluster.
+Kapro does not replace the CNCF ecosystem. It coordinates it. Kapro is a fleet
+deployment promotion control plane: it decides when and where a version may
+advance across a fleet; local rollout systems decide how pods, sync, and traffic
+changes happen inside each cluster.
 
 It sits above Kubernetes Operators, Helm, Kustomize, OCI registries, GitOps reconciliation loops, Argo CD, Argo Rollouts, Flagger, Istio, Gateway API, and custom plugins as a state-aware promotion control plane.
 
@@ -59,6 +62,29 @@ It sits above Kubernetes Operators, Helm, Kustomize, OCI registries, GitOps reco
 2. **Cross-cluster promotion waves.** Kapro coordinates which targets advance first, which regions wait, and when the global fleet may progress.
 3. **Promotion before progression.** Kapro advances only after target health, gates, approvals, plugin status, and policy checks pass; the selected backend executes the local change.
 4. **Auditable evidence.** Kapro persists target phase, gate evidence, approvals, lifecycle events, and release outcome in Kubernetes status.
+
+## Greenfield and Brownfield
+
+Kapro supports both connect paths:
+
+- **Greenfield bootstrap:** create the hub, backend profiles, cluster inventory,
+  starter bundles, pipelines, gates, and optional spoke agents from Kapro
+  manifests or CLI flows.
+- **Brownfield connect:** discover existing Argo CD or Flux topology, observe it
+  first, then explicitly adopt selected applications or clusters for promotion.
+
+For Argo CD users, this means Kapro can start from existing cluster Secrets,
+Applications, ApplicationSets, and app-of-apps instead of requiring a full
+rewrite into Kapro objects on day one. Kapro references backend-owned Secrets
+and configuration; it does not copy Argo CD or Flux credentials.
+
+```bash
+# greenfield
+kapro init ./promotion-repo --backend argo --name checkout
+
+# brownfield
+kapro connect argo ./kapro-connect --namespace argocd --selector kapro.io/import=true
+```
 
 ## Conservative Automation and Reliability
 
@@ -89,11 +115,15 @@ Progressive promotion to hundreds or thousands of edge clusters. Canary groups g
 | **Fleet promotion orchestration** | Native | Manual | App-of-apps | Native |
 | **OCI-first** | Yes | Partial | Git-centric | Yes |
 | **Sovereign fleet support** | Designed for it | No | No | Limited |
-| **Flux compatibility** | Built on Flux | N/A | No | Separate |
+| **Backend model** | Backend-neutral control plane | Built-in GitOps engine | Built-in GitOps engine | Separate promotion controller |
 | **Health gates** | Pluggable | No | No | Yes |
 | **Manual approvals** | CRD-based | No | External | Yes |
 
 Kapro sits **above** local rollout and GitOps systems, not replacing them, and **alongside** Kargo as a complementary tool. Kapro focuses on horizontal wave ordering across sovereign fleets, while local systems handle namespace-level rollout, sync, traffic shifting, and workload health.
+
+Kapro selects delivery systems through `BackendProfile` and
+`spec.delivery.backendRef`. Flux and Argo are first-party adapters, and custom
+backends can be added through the plugin path.
 
 Kapro is not a CI engine, traffic manager, generic workflow system, or
 replacement for Flux, Argo CD, Argo Rollouts, Flagger, Kargo, or Tekton. See

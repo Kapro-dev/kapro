@@ -22,6 +22,7 @@ func init() {
 		&NotificationPolicy{}, &NotificationPolicyList{},
 		// Lean fleet registry (MemberCluster = legacy target inventory split)
 		&MemberCluster{}, &MemberClusterList{},
+		&BackendProfile{}, &BackendProfileList{},
 		&PluginRegistration{}, &PluginRegistrationList{},
 		// Internal / system objects
 		&Approval{}, &ApprovalList{},

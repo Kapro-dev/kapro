@@ -25,6 +25,7 @@ func init() {
 	Register("release-target", startReleaseTargetController)
 	Register("approval", startApprovalController)
 	Register("kapro", startKaproController)
+	Register("backend-profile", startBackendProfileController)
 	Register("plugin-registration", startPluginRegistrationController)
 	Register("release-trigger", startReleaseTriggerController)
 	// csrapproval and membercluster bootstrap removed — Flux Operator handles spoke setup.
@@ -125,6 +126,17 @@ func startApprovalController(_ context.Context, cc ControllerContext) (bool, err
 // It probes capabilities and records readiness for optional plugin runtime registration.
 func startPluginRegistrationController(_ context.Context, cc ControllerContext) (bool, error) {
 	if err := (&controller.PluginRegistrationReconciler{
+		Client:   cc.Manager.GetClient(),
+		Recorder: cc.Recorder,
+	}).SetupWithManager(cc.Manager); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// startBackendProfileController starts the backend readiness reconciler.
+func startBackendProfileController(_ context.Context, cc ControllerContext) (bool, error) {
+	if err := (&controller.BackendProfileReconciler{
 		Client:   cc.Manager.GetClient(),
 		Recorder: cc.Recorder,
 	}).SetupWithManager(cc.Manager); err != nil {

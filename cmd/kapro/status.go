@@ -114,12 +114,13 @@ func renderKaproStatus(kapro kaprov1alpha1.Kapro, allClusters []kaprov1alpha1.Me
 	cli.Header(fmt.Sprintf("kapro/%s", kapro.Name))
 
 	// Summary line.
-	mode := kapro.Spec.DeliveryMode
+	mode := string(kapro.Spec.Delivery.Mode)
 	if mode == "" {
-		mode = "push"
+		mode = "pull"
 	}
 	cli.KV("Bundle", kapro.Spec.BundleRef)
 	cli.KV("Mode", mode)
+	cli.KV("Backend", kapro.Spec.Delivery.BackendRef)
 	cli.KV("Version", kapro.Status.Version)
 	cli.KV("Clusters", fmt.Sprintf("%d total, %d converged",
 		kapro.Status.ClusterCount, kapro.Status.ConvergedCount))
@@ -134,7 +135,7 @@ func renderKaproStatus(kapro kaprov1alpha1.Kapro, allClusters []kaprov1alpha1.Me
 
 	// Cluster table.
 	fmt.Fprintln(cli.Out)
-	tbl := cli.NewTable("CLUSTER", "VERSION", "PHASE", "HEALTH", "ACTUATOR", "HEARTBEAT")
+	tbl := cli.NewTable("CLUSTER", "VERSION", "PHASE", "HEALTH", "BACKEND", "HEARTBEAT")
 
 	// Collect clusters that belong to this Kapro.
 	kaproClusters := map[string]bool{}
@@ -152,7 +153,7 @@ func renderKaproStatus(kapro kaprov1alpha1.Kapro, allClusters []kaprov1alpha1.Me
 			version:   mc.Status.Version,
 			phase:     string(mc.Status.Phase),
 			healthy:   mc.Status.Health.AllWorkloadsReady,
-			actuator:  mc.Spec.Actuator.RegistryKey(),
+			backend:   mc.Spec.Delivery.RegistryKey(),
 			heartbeat: mc.Status.LastHeartbeat,
 			ready:     mc.Status.Health.ReadyWorkloads,
 			total:     mc.Status.Health.TotalWorkloads,
@@ -177,7 +178,7 @@ func renderKaproStatus(kapro kaprov1alpha1.Kapro, allClusters []kaprov1alpha1.Me
 			}
 		}
 
-		tbl.AddRow(r.name, version, phase, health, r.actuator, heartbeat)
+		tbl.AddRow(r.name, version, phase, health, r.backend, heartbeat)
 	}
 	tbl.Render()
 
@@ -199,7 +200,7 @@ type clusterRow struct {
 	version   string
 	phase     string
 	healthy   bool
-	actuator  string
+	backend   string
 	heartbeat string
 	ready     int
 	total     int

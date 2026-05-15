@@ -45,7 +45,7 @@ func (r *ReleaseTargetReconciler) requireFreshHeartbeat(
 	target *kaprov1alpha1.TargetStatus,
 	mc *kaprov1alpha1.MemberCluster,
 ) (ctrl.Result, bool, error) {
-	if mc.Spec.Actuator.Mode != "pull" {
+	if mc.Spec.Delivery.Mode != kaprov1alpha1.DeliveryModePull {
 		target.HeartbeatStaleSince = ""
 		return ctrl.Result{}, true, nil
 	}

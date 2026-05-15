@@ -41,9 +41,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Kapro is the single entry point for fleet delivery. Users reference a KaproBundle
-          and define clusters; the controller pushes FluxInstance + OCIRepository to spokes
-          and generates MemberClusters + Pipeline on the hub.
+          Kapro is the single entry point for fleet delivery. Users reference a
+          KaproBundle, select a backend profile, and define clusters and promotion
+          stages. Backend adapters own Flux, Argo, or other delivery-system details.
         properties:
           apiVersion:
             description: |-
@@ -122,17 +122,32 @@ spec:
                   type: object
                 minItems: 1
                 type: array
-              deliveryMode:
-                default: push
-                description: |-
-                  DeliveryMode selects how workloads reach spoke clusters.
-                  "push" (default): hub renders HelmReleases with kubeConfig, hub's controllers install remotely.
-                  "spoke": hub pushes OCI bundle, spoke's own Flux controllers reconcile locally.
-                  Spoke mode gives per-cluster k9s visibility (Kustomizations, HelmReleases, wave DAG).
-                enum:
-                - push
-                - spoke
-                type: string
+              delivery:
+                description: Delivery selects the backend-neutral fleet delivery profile.
+                properties:
+                  backendRef:
+                    description: |-
+                      BackendRef is the BackendProfile name. Built-in profiles commonly use
+                      "flux" or "argo"; external profiles may use any platform-defined name.
+                    type: string
+                  mode:
+                    default: pull
+                    description: Mode controls who performs delivery.
+                    enum:
+                    - push
+                    - pull
+                    type: string
+                  parameters:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Parameters are opaque backend-specific settings, following the
+                      StorageClass.parameters pattern. Kapro core does not interpret them.
+                    type: object
+                required:
+                - backendRef
+                - mode
+                type: object
               pipeline:
                 description: Pipeline defines the progressive delivery stages.
                 properties:
@@ -205,6 +220,86 @@ spec:
                                 metrics:
                                   items:
                                     properties:
+                                      analysis:
+                                        description: |-
+                                          Analysis selects optional research-backed metric semantics. Empty keeps
+                                          the original threshold behavior for backwards compatibility.
+                                        properties:
+                                          alpha:
+                                            description: |-
+                                              Alpha is the false-positive budget for statistical tests. Defaults to
+                                              0.05. Lower values are more conservative.
+                                            maximum: 1
+                                            minimum: 0
+                                            type: number
+                                          baselineHealthQuery:
+                                            description: |-
+                                              BaselineHealthQuery must pass before baseline or score analysis can use
+                                              the baseline as a control. It should return a positive/true value when
+                                              the baseline is healthy.
+                                            type: string
+                                          baselineQuery:
+                                            description: |-
+                                              BaselineQuery is required for baseline analysis. The current value is
+                                              divided by the baseline value before applying the threshold.
+                                            type: string
+                                          comparator:
+                                            description: |-
+                                              Comparator controls threshold comparison.
+                                              Defaults to "gt" for threshold/sequential and "lte" for sloBurnRate/baseline.
+                                            enum:
+                                            - gt
+                                            - gte
+                                            - lt
+                                            - lte
+                                            type: string
+                                          confidenceThreshold:
+                                            description: |-
+                                              ConfidenceThreshold is the minimum confidence required for sequential
+                                              analysis to make a terminal decision. Defaults to 0.95.
+                                            maximum: 1
+                                            minimum: 0
+                                            type: number
+                                          maxSamples:
+                                            description: |-
+                                              MaxSamples is the maximum number of samples to wait for before a
+                                              statistical analysis must return a terminal decision using the evidence
+                                              available. Empty means no maximum.
+                                            format: int32
+                                            minimum: 1
+                                            type: integer
+                                          minSamples:
+                                            description: |-
+                                              MinSamples is the minimum number of range samples required for sequential
+                                              analysis before Kapro can pass or fail the gate.
+                                            format: int32
+                                            minimum: 1
+                                            type: integer
+                                          mode:
+                                            description: |-
+                                              Mode selects the metric analysis algorithm.
+                                              threshold: compare the current value to threshold.
+                                              sloBurnRate: treat the current value as an error-budget burn rate.
+                                              baseline: compare the current value to a baseline query as a ratio.
+                                              sequential: sample over the window and require enough confidence before deciding.
+                                              changePoint: detect a statistically meaningful change inside the window.
+                                              score: convert the metric into a 0-100 canary score.
+                                            enum:
+                                            - threshold
+                                            - sloBurnRate
+                                            - baseline
+                                            - sequential
+                                            - changePoint
+                                            - score
+                                            type: string
+                                          scoreThreshold:
+                                            description: |-
+                                              ScoreThreshold is the minimum score required for score analysis. Defaults
+                                              to 95.
+                                            maximum: 100
+                                            minimum: 0
+                                            type: number
+                                        type: object
                                       config:
                                         format: byte
                                         type: string
@@ -734,6 +829,7 @@ spec:
             required:
             - bundleRef
             - clusters
+            - delivery
             - pipeline
             - registry
             type: object

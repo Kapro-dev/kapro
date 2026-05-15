@@ -413,7 +413,7 @@ func memberClusterForStage(name, stage string) *kaprov1alpha1.MemberCluster {
 			Labels: map[string]string{"stage": stage},
 		},
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: "flux"},
+			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"},
 		},
 	}
 }

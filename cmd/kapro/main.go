@@ -53,6 +53,8 @@ Passes versions forward. Across targets. Across clusters. In waves.`,
 
 	root.PersistentFlags().StringVarP(&cli.OutputFormat, "output", "o", "", "Output format (json for machine-readable)")
 
+	root.AddCommand(newInitCmd())
+	root.AddCommand(newConnectCmd())
 	root.AddCommand(newHubCmd())
 	root.AddCommand(newSpokeCmd())
 	root.AddCommand(newFleetMgmtCmd())
@@ -198,11 +200,11 @@ func runClusterAdd(ctx context.Context, clusterName, providerName string, labels
 			Labels: labels,
 		},
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{
-				Mode: "pull", Backend: "flux",
-				Pull: &kaprov1alpha1.PullConfig{
-					Namespace:     "flux-system",
-					OCIRepository: clusterName + "-bundle",
+			Delivery: kaprov1alpha1.DeliverySpec{
+				Mode: "pull", BackendRef: "flux",
+				Parameters: map[string]string{
+					"namespace":     "flux-system",
+					"ociRepository": clusterName + "-bundle",
 				},
 			},
 		},
@@ -354,11 +356,11 @@ func runClusterSync(ctx context.Context, project string) error {
 				Labels: cluster.Labels,
 			},
 			Spec: kaprov1alpha1.MemberClusterSpec{
-				Actuator: kaprov1alpha1.ActuatorSpec{
-					Mode: "push", Backend: "flux",
-					Push: &kaprov1alpha1.PushConfig{
-						ResourceSet: "fleet-workloads",
-						Namespace:   "flux-system",
+				Delivery: kaprov1alpha1.DeliverySpec{
+					Mode: "push", BackendRef: "flux",
+					Parameters: map[string]string{
+						"resourceSet": "fleet-workloads",
+						"namespace":   "flux-system",
 					},
 				},
 			},

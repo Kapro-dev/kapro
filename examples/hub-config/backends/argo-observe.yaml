@@ -1,0 +1,15 @@
+apiVersion: kapro.io/v1alpha1
+kind: BackendProfile
+metadata:
+  name: argo
+spec:
+  driver: argo
+  runtime: Hub
+  parameters:
+    namespace: argocd
+  discovery:
+    enabled: true
+    managementPolicy: Observe
+    selector:
+      matchLabels:
+        kapro.io/import: "true"

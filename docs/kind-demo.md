@@ -48,7 +48,9 @@ scripts/kind-demo.sh down
 - `checkout-prod-eu`
 - `checkout-prod-us`
 
-Each target uses the built-in `push/flux` actuator pointed at the local fixture `ResourceSet` named `checkout-demo`.
+Each target uses `spec.delivery.mode: push` with `backendRef: flux`, pointed at
+the local fixture `ResourceSet` named `checkout-demo` through
+`spec.delivery.parameters.resourceSet`.
 
 `examples/kind-demo/config/02-pipeline.yaml` defines two stages:
 
@@ -77,7 +79,7 @@ Before approval, production targets should pause in `WaitingApproval`. After `sc
 ## Limitations
 
 - The `ResourceSet` and `HelmRelease` resources are local fixtures. Their readiness is patched by `scripts/kind-demo.sh`; no Flux controller reconciles workloads.
-- `PluginRegistration` objects point at static demo endpoints. The plugin readiness controller is expected to mark them not ready unless you run matching gRPC plugin servers. The built-in planner, gates, and `push/flux` actuator drive the rollout.
+- `PluginRegistration` objects point at static demo endpoints. The plugin readiness controller is expected to mark them not ready unless you run matching gRPC plugin servers. The built-in planner, gates, and Flux backend adapter drive the rollout.
 - The `ReleaseTrigger` is suspended and dry-run because the demo does not start a local OCI registry or signature verifier.
 - Webhooks are disabled in the demo operator overlay to keep local setup self-contained.
 

@@ -1,4 +1,12 @@
 apiVersion: kapro.io/v1alpha1
+kind: BackendProfile
+metadata:
+  name: flux
+spec:
+  driver: flux
+  runtime: Hub
+---
+apiVersion: kapro.io/v1alpha1
 kind: PluginRegistration
 metadata:
   name: kind-demo-capacity-planner

@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.0
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: memberclusters.kapro.io
 spec:
   group: kapro.io
@@ -31,8 +31,16 @@ spec:
     - jsonPath: .status.health.allWorkloadsReady
       name: Healthy
       type: boolean
-    - jsonPath: .status.provider
-      name: Provider
+    - jsonPath: .status.activeRelease
+      name: Release
+      type: string
+    - jsonPath: .status.capabilities.region
+      name: Region
+      priority: 1
+      type: string
+    - jsonPath: .status.capabilities.cloud
+      name: Cloud
+      priority: 1
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -68,72 +76,6 @@ spec:
             description: MemberClusterSpec defines the desired state of a cluster
               in the Kapro fleet.
             properties:
-              actuator:
-                description: Actuator configures the delivery backend for this cluster.
-                properties:
-                  flux:
-                    properties:
-                      kustomizationPath:
-                        default: .
-                        description: KustomizationPath is the path within the OCI
-                          artifact to the kustomization root.
-                        type: string
-                      namespace:
-                        default: flux-system
-                        description: Namespace is the Flux namespace on the target
-                          cluster.
-                        type: string
-                      ociRepositories:
-                        additionalProperties:
-                          type: string
-                        description: |-
-                          OCIRepositories maps appKey -> Flux OCIRepository name for multi-artifact delivery.
-                          When multiple artifacts are delivered to a cluster, every appKey in the rollout
-                          must resolve to a repository name here.
-                        type: object
-                      ociRepository:
-                        description: |-
-                          OCIRepository is the Flux OCIRepository name that pulls the artifact.
-                          Deprecated: use OCIRepositories for multi-artifact delivery.
-                        type: string
-                    required:
-                    - ociRepository
-                    type: object
-                  fluxOperator:
-                    description: |-
-                      FluxOperatorConfig configures the Flux Operator actuator.
-                      Kapro patches ResourceSet inputs instead of individual Flux resources.
-                    properties:
-                      inputField:
-                        default: tag
-                        description: InputField is the ResourceSet input field that
-                          holds the version/tag.
-                        type: string
-                      namespace:
-                        default: flux-system
-                        description: Namespace is the namespace of the ResourceSet.
-                        type: string
-                      resourceSet:
-                        description: ResourceSet is the name of the Flux Operator
-                          ResourceSet to patch.
-                        type: string
-                      tenantField:
-                        default: tenant
-                        description: TenantField is the ResourceSet input field that
-                          identifies the cluster.
-                        type: string
-                    required:
-                    - resourceSet
-                    type: object
-                  type:
-                    enum:
-                    - flux
-                    - flux-operator
-                    - spoke
-                    type: string
-                required:
-                - type
-                type: object
               bootstrap:
                 description: |-
                   Bootstrap configures one-time cluster self-registration.
@@ -170,6 +112,33 @@ spec:
                       The MemberCluster controller writes spec.bootstrap.expiresAt from
                       metadata.creationTimestamp + TTL at creation time and leaves it immutable.
                     type: string
+                type: object
+              delivery:
+                description: Delivery configures the backend-neutral delivery adapter
+                  for this cluster.
+                properties:
+                  backendRef:
+                    description: |-
+                      BackendRef is the BackendProfile name. Built-in profiles commonly use
+                      "flux" or "argo"; external profiles may use any platform-defined name.
+                    type: string
+                  mode:
+                    default: pull
+                    description: Mode controls who performs delivery.
+                    enum:
+                    - push
+                    - pull
+                    type: string
+                  parameters:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Parameters are opaque backend-specific settings, following the
+                      StorageClass.parameters pattern. Kapro core does not interpret them.
+                    type: object
+                required:
+                - backendRef
+                - mode
                 type: object
               desiredAppKey:
                 description: |-
@@ -239,7 +208,7 @@ spec:
                     type: string
                 type: object
             required:
-            - actuator
+            - delivery
             type: object
           status:
             description: MemberClusterStatus is the observed state — written by cluster-controller

@@ -29,8 +29,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	argoactuator "kapro.io/kapro/internal/actuator/argo"
 	fluxopactuator "kapro.io/kapro/internal/actuator/fluxoperator"
 	spokeactuator "kapro.io/kapro/internal/actuator/spoke"
+	"kapro.io/kapro/internal/hubgateway"
 	_ "kapro.io/kapro/internal/metrics" // register custom Prometheus metrics at init
 	enginenotifier "kapro.io/kapro/internal/notification/engine"
 	pluginadapter "kapro.io/kapro/internal/plugin/adapter"
@@ -151,10 +153,19 @@ func main() {
 		log.Error(err, "failed to register push/flux actuator")
 		os.Exit(1)
 	}
-	// Spoke-local actuator: patches OCIRepository on spoke, reads Flux status directly.
-	spokeAct := &spokeactuator.SpokeFluxActuator{HubClient: mgr.GetClient()}
+	// Pull-mode delivery records desired versions on MemberCluster; spoke-side
+	// agents own applying those versions to their local backend.
+	spokeAct := &spokeactuator.DesiredStateActuator{HubClient: mgr.GetClient()}
 	if err := actuatorReg.Register("pull/flux", spokeAct); err != nil {
 		log.Error(err, "failed to register pull/flux actuator")
+		os.Exit(1)
+	}
+	if err := actuatorReg.Register("push/argo", &argoactuator.Actuator{Client: mgr.GetClient()}); err != nil {
+		log.Error(err, "failed to register push/argo actuator")
+		os.Exit(1)
+	}
+	if err := actuatorReg.Register("pull/argo", spokeAct); err != nil {
+		log.Error(err, "failed to register pull/argo actuator")
 		os.Exit(1)
 	}
 
@@ -276,6 +287,19 @@ func main() {
 		}
 	} else {
 		log.Info("approval/decision API server disabled")
+	}
+
+	if os.Getenv("KAPRO_DISABLE_HUB_GATEWAY") != "true" {
+		gatewayAddr := os.Getenv("KAPRO_HUB_GATEWAY_ADDR")
+		if gatewayAddr == "" {
+			gatewayAddr = ":8092"
+		}
+		if err := mgr.Add(leaderOnlyHTTP(gatewayAddr, hubgateway.NewHandler(mgr.GetClient(), cc.ApprovalSecret), 10*time.Second)); err != nil {
+			log.Error(err, "unable to add hub gateway")
+			os.Exit(1)
+		}
+	} else {
+		log.Info("hub gateway disabled")
 	}
 
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

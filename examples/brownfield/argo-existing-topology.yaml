@@ -1,0 +1,148 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: checkout-canary-cluster
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: cluster
+    kapro.io/import: "true"
+    team: checkout
+    kapro.io/tier: canary
+type: Opaque
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: checkout-prod-eu-cluster
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: cluster
+    kapro.io/import: "true"
+    team: checkout
+    kapro.io/tier: production
+    region: eu
+type: Opaque
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: checkout-prod-us-cluster
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: cluster
+    kapro.io/import: "true"
+    team: checkout
+    kapro.io/tier: production
+    region: us
+type: Opaque
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: checkout
+  namespace: argocd
+spec:
+  sourceRepos:
+    - https://github.com/example/checkout-api-config.git
+    - https://github.com/example/checkout-web-config.git
+  destinations:
+    - namespace: checkout
+      server: "*"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-root
+  namespace: argocd
+  labels:
+    pattern: app-of-apps
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/example/platform-apps.git
+    targetRevision: main
+    path: apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: checkout-api-canary
+  namespace: argocd
+  labels:
+    kapro.io/import: "true"
+    team: checkout
+    service: api
+    kapro.io/tier: canary
+    pattern: app-of-apps-child
+spec:
+  project: checkout
+  source:
+    repoURL: https://github.com/example/checkout-api-config.git
+    targetRevision: 1.4.2
+    path: env/canary
+  destination:
+    name: checkout-canary
+    namespace: checkout
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: checkout-web-prod-eu
+  namespace: argocd
+  labels:
+    kapro.io/import: "true"
+    team: checkout
+    service: web
+    kapro.io/tier: production
+    region: eu
+spec:
+  project: checkout
+  source:
+    repoURL: https://github.com/example/checkout-web-config.git
+    targetRevision: 3.8.0
+    path: env/prod-eu
+  destination:
+    name: checkout-prod-eu
+    namespace: checkout
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: checkout-prod
+  namespace: argocd
+  labels:
+    kapro.io/import: "true"
+    team: checkout
+spec:
+  generators:
+    - list:
+        elements:
+          - cluster: checkout-prod-eu
+            region: eu
+          - cluster: checkout-prod-us
+            region: us
+  template:
+    metadata:
+      name: "checkout-api-{{region}}"
+      labels:
+        kapro.io/import: "true"
+        team: checkout
+        service: api
+        kapro.io/tier: production
+    spec:
+      project: checkout
+      source:
+        repoURL: https://github.com/example/checkout-api-config.git
+        targetRevision: 1.4.2
+        path: "env/prod-{{region}}"
+      destination:
+        name: "{{cluster}}"
+        namespace: checkout

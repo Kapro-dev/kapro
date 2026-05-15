@@ -13,7 +13,9 @@ import (
 // MemberClusterValidator validates MemberCluster objects on CREATE and UPDATE.
 //
 // Rules enforced:
-//  1. actuator.type must be "flux" (MVP) and actuator.flux sub-spec must be populated.
+//  1. delivery.mode and delivery.backendRef must be set.
+//  2. built-in Flux profiles must include the backend-specific parameter needed
+//     by the selected mode.
 type MemberClusterValidator struct {
 	decoder admission.Decoder
 }
@@ -40,25 +42,25 @@ func validateMemberCluster(mc *kaprov1alpha1.MemberCluster) error {
 }
 
 func validateActuator(mc *kaprov1alpha1.MemberCluster) error {
-	act := mc.Spec.Actuator
+	act := mc.Spec.Delivery
 	if act.Mode == "" {
-		return fmt.Errorf("membercluster.spec.actuator.mode must be set")
+		return fmt.Errorf("membercluster.spec.delivery.mode must be set")
 	}
-	if act.Backend == "" {
-		return fmt.Errorf("membercluster.spec.actuator.backend must be set")
+	if act.BackendRef == "" {
+		return fmt.Errorf("membercluster.spec.delivery.backendRef must be set")
 	}
-	switch act.Backend {
+	switch act.BackendRef {
 	case "flux":
-		if act.Mode == "pull" {
-			if act.Pull == nil {
-				return fmt.Errorf("membercluster.spec.actuator.pull must be set when mode=pull and backend=flux")
-			}
-			if act.Pull.OCIRepository == "" && len(act.Pull.OCIRepositories) == 0 {
-				return fmt.Errorf("membercluster.spec.actuator.pull.ociRepository or ociRepositories must be set when mode=pull and backend=flux")
-			}
+		if act.Mode == kaprov1alpha1.DeliveryModePull && act.Param("ociRepository", "") == "" {
+			return fmt.Errorf("membercluster.spec.delivery.parameters.ociRepository must be set when mode=pull and backendRef=flux")
 		}
+		if act.Mode == kaprov1alpha1.DeliveryModePush && act.Param("resourceSet", "") == "" {
+			return fmt.Errorf("membercluster.spec.delivery.parameters.resourceSet must be set when mode=push and backendRef=flux")
+		}
+	case "argo":
+		return nil
 	default:
-		return fmt.Errorf("membercluster.spec.actuator.backend %q is not supported in this release; supported: flux", act.Backend)
+		return nil
 	}
 	return nil
 }

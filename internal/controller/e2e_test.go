@@ -48,9 +48,9 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 			Labels: map[string]string{"tier": "dev", "e2e": suffix},
 		},
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{
-				Mode: "pull", Backend: "flux",
-				Pull: &kaprov1alpha1.PullConfig{Namespace: "flux-system", OCIRepository: "test-repo", KustomizationPath: "."},
+			Delivery: kaprov1alpha1.DeliverySpec{
+				Mode: "pull", BackendRef: "flux",
+				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "test-repo"},
 			},
 		},
 	}
@@ -63,9 +63,9 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 			Labels: map[string]string{"tier": "prod", "e2e": suffix},
 		},
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{
-				Mode: "pull", Backend: "flux",
-				Pull: &kaprov1alpha1.PullConfig{Namespace: "flux-system", OCIRepository: "test-repo", KustomizationPath: "."},
+			Delivery: kaprov1alpha1.DeliverySpec{
+				Mode: "pull", BackendRef: "flux",
+				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "test-repo"},
 			},
 		},
 	}
@@ -174,9 +174,9 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 			Labels: map[string]string{"tier": "halt", "halt-test": suffix},
 		},
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{
-				Mode: "pull", Backend: "flux",
-				Pull: &kaprov1alpha1.PullConfig{Namespace: "flux-system", OCIRepository: "test-repo", KustomizationPath: "."},
+			Delivery: kaprov1alpha1.DeliverySpec{
+				Mode: "pull", BackendRef: "flux",
+				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "test-repo"},
 			},
 		},
 	}
@@ -186,9 +186,9 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 			Labels: map[string]string{"tier": "halt", "halt-test": suffix},
 		},
 		Spec: kaprov1alpha1.MemberClusterSpec{
-			Actuator: kaprov1alpha1.ActuatorSpec{
-				Mode: "pull", Backend: "flux",
-				Pull: &kaprov1alpha1.PullConfig{Namespace: "flux-system", OCIRepository: "test-repo", KustomizationPath: "."},
+			Delivery: kaprov1alpha1.DeliverySpec{
+				Mode: "pull", BackendRef: "flux",
+				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "test-repo"},
 			},
 		},
 	}

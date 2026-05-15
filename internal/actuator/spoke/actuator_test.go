@@ -22,11 +22,11 @@ func TestApplyDeltaRecordsDesiredVersionsOnMemberCluster(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.MemberClusterSpec{
 			DesiredVersions: map[string]string{"worker": "v1"},
-			Actuator: kaprov1alpha1.ActuatorSpec{
-				Mode:    "pull",
-				Backend: "flux",
-				Pull: &kaprov1alpha1.PullConfig{
-					OCIRepository: "cluster-a-bundle",
+			Delivery: kaprov1alpha1.DeliverySpec{
+				Mode:       "pull",
+				BackendRef: "flux",
+				Parameters: map[string]string{
+					"ociRepository": "cluster-a-bundle",
 				},
 			},
 		},
