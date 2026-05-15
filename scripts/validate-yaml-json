@@ -1,0 +1,69 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "yaml"
+
+ROOT = File.expand_path("..", __dir__)
+Dir.chdir(ROOT)
+
+YAML_PATTERNS = [
+  ".github/workflows/*.yml",
+  "examples/**/*.yaml",
+  "monitoring/**/*.yaml"
+].freeze
+
+GRAFANA_JSON_PATTERNS = [
+  "monitoring/grafana/**/*.json",
+  "examples/**/grafana*.json"
+].freeze
+
+def matching_files(patterns)
+  files = []
+
+  patterns.each do |pattern|
+    matches = Dir.glob(pattern).sort
+    raise "no files matched #{pattern}" if matches.empty?
+
+    files.concat(matches)
+  end
+
+  files.uniq.sort
+end
+
+def validate_yaml(path)
+  YAML.parse_file(path)
+end
+
+def validate_json(path)
+  JSON.parse(File.read(path))
+end
+
+failures = []
+begin
+  yaml_files = matching_files(YAML_PATTERNS)
+  json_files = matching_files(GRAFANA_JSON_PATTERNS)
+rescue RuntimeError => e
+  warn "YAML/JSON validation failed: #{e.message}"
+  exit 1
+end
+
+yaml_files.each do |path|
+  validate_yaml(path)
+rescue Psych::Exception => e
+  failures << "#{path}: #{e.message}"
+end
+
+json_files.each do |path|
+  validate_json(path)
+rescue JSON::ParserError => e
+  failures << "#{path}: #{e.message}"
+end
+
+if failures.any?
+  warn "YAML/JSON validation failed:"
+  failures.each { |failure| warn "  #{failure}" }
+  exit 1
+end
+
+puts "Validated #{yaml_files.length} YAML files and #{json_files.length} Grafana dashboard JSON files."
