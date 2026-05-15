@@ -64,19 +64,36 @@ spec:
         service: api
 ```
 
-## Step 2: Generate An Observe Profile
+## Step 2: Discover The Existing Repo
+
+Run discovery against the Git repository that already contains Argo
+Applications, ApplicationSets, and environment files:
 
 ```bash
-kapro connect argo ./kapro-connect \
+kapro discover argo . \
+  --out kapro-connect \
+  --name checkout \
   --namespace argocd \
   --selector kapro.io/import=true,team=checkout
 ```
 
-Apply only the observe profile first:
+This generates:
+
+- `backends/checkout-observe.yaml` for observe-first runtime discovery;
+- `sources/checkout.yaml` with inferred `PromotionSource` units;
+- `discovery/argo-discovery.yaml` with selected, skipped, and unsupported
+  patterns.
+
+For ApplicationSet Git file generators, Kapro maps template variables such as
+`targetRevision: '{{.gkProjectVersion}}'` back to the generator input file, for
+example `argocd/environments/*.json:gkProjectVersion`. That file remains the
+source of truth.
+
+## Step 3: Apply The Observe Profile
 
 ```bash
-kubectl apply -f ./kapro-connect/backends/argo-observe.yaml
-kubectl get backendprofile argo -o yaml
+kubectl apply -f ./kapro-connect/backends/checkout-observe.yaml
+kubectl get backendprofile checkout -o yaml
 ```
 
 Check:
@@ -87,12 +104,14 @@ Check:
 - `status.discoveredApplicationSets`;
 - `status.selectedObjects`;
 - `status.skippedObjects`;
-- `status.unsupportedPatterns`.
+- `status.unsupportedPatterns`;
+- `discovery/argo-discovery.yaml`.
 
-## Step 3: Model Promotion Units
+## Step 4: Review Promotion Units
 
-Create a `PromotionSource` that names the units Kapro will promote. In
-brownfield Argo mode, a unit normally points to an existing Application.
+Review the generated `PromotionSource`. In brownfield Argo mode, a unit points
+to either an existing Application source or a Git parameter file that feeds an
+ApplicationSet.
 
 ```yaml
 apiVersion: kapro.io/v1alpha1
@@ -100,24 +119,25 @@ kind: PromotionSource
 metadata:
   name: checkout
 spec:
-  backendRef: argo
+  backendRef: checkout
   units:
     - name: api
-      backendKind: Application
+      backendKind: ArgoApplicationSource
       namespace: argocd
       versionField: spec.source.targetRevision
-    - name: web
-      backendKind: Application
+    - name: pos-server
+      backendKind: GitJSONField
       namespace: argocd
-      versionField: spec.source.targetRevision
+      versionField: argocd/environments/*.json:gkProjectVersion
 ```
 
-## Step 4: Choose The Adoption Level
+## Step 5: Choose The Adoption Level
 
 | Argo pattern | Recommended Kapro target |
 |---|---|
-| Plain Applications | The Application. |
-| ApplicationSet with generated apps | The generated Application first. Use the ApplicationSet actuator plugin only if one write must update the template for all generated children. |
+| Plain Applications | The Application source revision. |
+| ApplicationSet with Git file generator | The JSON/YAML generator input field. |
+| ApplicationSet generated apps | The generated Application only when the team explicitly wants live Application adoption. |
 | App-of-apps | Child Applications. Root Applications should normally remain observe-only packaging objects. |
 
 After the discovered graph matches intent, switch the profile:
@@ -130,11 +150,11 @@ spec:
 ```
 
 The built-in Argo actuator writes only
-`Application.spec.source.targetRevision`. It does not request sync or change
-traffic. Use Argo automated sync or an external actuator if your production
-policy requires explicit sync requests.
+`Application.spec.source.targetRevision`, sets a hard refresh annotation, and
+requests an Argo sync operation. It does not change traffic, Projects,
+destinations, repo credentials, cluster Secrets, or local rollout policy.
 
-## Step 5: Promote
+## Step 6: Promote
 
 Create a Release with either one default version or per-unit versions:
 

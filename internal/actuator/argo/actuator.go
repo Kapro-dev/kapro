@@ -97,8 +97,31 @@ func (a *Actuator) setTargetRevision(ctx context.Context, mc *kaprov1alpha1.Memb
 		return err
 	}
 	patch := client.MergeFrom(app.DeepCopy())
+	annotations := app.GetAnnotations()
+	if annotations == nil {
+		annotations = map[string]string{}
+	}
+	annotations["argocd.argoproj.io/refresh"] = "hard"
+	app.SetAnnotations(annotations)
 	if err := unstructured.SetNestedField(app.Object, version, "spec", "source", "targetRevision"); err != nil {
 		return fmt.Errorf("set Argo CD targetRevision: %w", err)
+	}
+	operation := map[string]any{
+		"initiatedBy": map[string]any{
+			"username":  "kapro-controller",
+			"automated": true,
+		},
+		"info": []any{
+			map[string]any{"name": "Reason", "value": "Kapro promotion requested a sync of this Application."},
+			map[string]any{"name": "kapro.io/version", "value": version},
+		},
+		"sync": map[string]any{},
+	}
+	if syncOptions, ok, _ := unstructured.NestedStringSlice(app.Object, "spec", "syncPolicy", "syncOptions"); ok {
+		operation["sync"].(map[string]any)["syncOptions"] = syncOptions
+	}
+	if err := unstructured.SetNestedField(app.Object, operation, "operation"); err != nil {
+		return fmt.Errorf("set Argo CD sync operation: %w", err)
 	}
 	if err := a.Client.Patch(ctx, app, patch); err != nil {
 		return fmt.Errorf("patch Argo CD Application %s/%s: %w", app.GetNamespace(), app.GetName(), err)

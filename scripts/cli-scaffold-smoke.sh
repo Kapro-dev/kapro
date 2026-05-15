@@ -66,6 +66,47 @@ require_text "${TMPDIR}/connect-argo/README.md" "switch managementPolicy from Ob
 require_text "${TMPDIR}/connect-argo/README.md" "Adopt"
 require_text "${TMPDIR}/connect-argo/README.md" "does not copy Argo CD or Flux credentials"
 
+echo "smoke: brownfield argo discover"
+mkdir -p "${TMPDIR}/argo-repo/argocd/applicationsets" "${TMPDIR}/argo-repo/argocd/environments"
+cat >"${TMPDIR}/argo-repo/argocd/applicationsets/checkout.yaml" <<'YAML'
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: checkout
+  namespace: argocd
+spec:
+  generators:
+  - matrix:
+      generators:
+      - git:
+          repoURL: https://example.com/platform.git
+          revision: main
+          files:
+          - path: argocd/environments/*.json
+      - list:
+          elements:
+          - appName: checkout-api
+  template:
+    metadata:
+      name: '{{.appName}}-{{.env}}'
+      labels:
+        kapro.io/import: "true"
+    spec:
+      source:
+        repoURL: '{{.repoUrl}}'
+        targetRevision: '{{.gkProjectVersion}}'
+        path: apps/checkout
+YAML
+cat >"${TMPDIR}/argo-repo/argocd/environments/dev.json" <<'JSON'
+{"env":"dev","gkProjectVersion":"1.0.0"}
+JSON
+kapro discover argo "${TMPDIR}/argo-repo" --out "${TMPDIR}/discover-argo" --name checkout --force >/dev/null
+require_file "${TMPDIR}/discover-argo/backends/checkout-observe.yaml"
+require_file "${TMPDIR}/discover-argo/sources/checkout.yaml"
+require_file "${TMPDIR}/discover-argo/discovery/argo-discovery.yaml"
+require_text "${TMPDIR}/discover-argo/sources/checkout.yaml" "backendKind: GitJSONField"
+require_text "${TMPDIR}/discover-argo/sources/checkout.yaml" "argocd/environments/*.json:gkProjectVersion"
+
 echo "smoke: brownfield flux connect"
 kapro connect flux "${TMPDIR}/connect-flux" --namespace flux-system --selector kapro.io/import=true,team=checkout --force >/dev/null
 require_file "${TMPDIR}/connect-flux/backends/flux-observe.yaml"

@@ -11,11 +11,13 @@ has multiple cluster Secrets, Applications from multiple Git repositories, and
 an ApplicationSet. Kapro discovers only objects selected by labels.
 
 ```bash
-kapro connect argo ./kapro-connect \
+kapro discover argo . \
+  --out ./kapro-connect \
+  --name checkout \
   --namespace argocd \
   --selector kapro.io/import=true,team=checkout
 
-kubectl apply -f ./kapro-connect/backends/argo-observe.yaml
+kubectl apply -f ./kapro-connect/backends/checkout-observe.yaml
 ```
 
 The generated `BackendProfile` starts with `managementPolicy: Observe`. Argo CD
@@ -25,12 +27,13 @@ the discovered graph is correct, switch the profile to
 `managementPolicy: Adopt` for selected promotion writes such as
 `spec.source.targetRevision`.
 
-Discovery status reports full counts and bounded object samples:
+Discovery writes `sources/checkout.yaml` and `discovery/argo-discovery.yaml`.
+Runtime `BackendProfile` status reports full counts and bounded object samples:
 
 ```bash
-kubectl get backendprofile argo -o jsonpath='{.status.discoveredApplications}'
-kubectl get backendprofile argo -o jsonpath='{.status.selectedObjects}'
-kubectl get backendprofile argo -o jsonpath='{.status.unsupportedPatterns}'
+kubectl get backendprofile checkout -o jsonpath='{.status.discoveredApplications}'
+kubectl get backendprofile checkout -o jsonpath='{.status.selectedObjects}'
+kubectl get backendprofile checkout -o jsonpath='{.status.unsupportedPatterns}'
 ```
 
 The bounded samples are diagnostic evidence. Counts remain accurate for large
@@ -70,10 +73,10 @@ spec:
         kapro.io/tier: production
 ```
 
-Kapro should start in `Observe` mode and show the generated graph. Adoption
-should update the version field at the right ownership level for the backend:
-either the generated Application, or an ApplicationSet template value when the
-team wants one promotion to fan out through the set.
+Kapro should start in `Observe` mode and show the generated graph. For Git file
+generators, `kapro discover argo` maps `targetRevision: '{{.field}}'` back to
+the JSON/YAML generator input field. That input file is the preferred adoption
+target because it is the durable Argo source of truth.
 
 ### Argo Pattern 3: App Of Apps
 
