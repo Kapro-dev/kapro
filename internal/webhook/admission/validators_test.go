@@ -366,6 +366,39 @@ func TestValidatePipeline_ValidLinearDAG(t *testing.T) {
 	}
 }
 
+func TestValidatePipeline_MetricPresetReference(t *testing.T) {
+	p := buildPipeline([]kaprov1alpha1.Stage{{
+		Name:     "s1",
+		Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
+		Gate: &kaprov1alpha1.GatePolicySpec{
+			Gate: kaprov1alpha1.GateSpec{
+				Metrics: []kaprov1alpha1.MetricGate{{Preset: "error-rate"}},
+			},
+		},
+	}})
+	p.Spec.MetricPresets = map[string]kaprov1alpha1.MetricGate{
+		"error-rate": {Provider: "prometheus", Query: "up", Threshold: 0.01},
+	}
+	if err := pipelineValidate(p); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidatePipeline_UnknownMetricPresetReference(t *testing.T) {
+	p := buildPipeline([]kaprov1alpha1.Stage{{
+		Name:     "s1",
+		Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
+		Gate: &kaprov1alpha1.GatePolicySpec{
+			Gate: kaprov1alpha1.GateSpec{
+				Metrics: []kaprov1alpha1.MetricGate{{Preset: "missing"}},
+			},
+		},
+	}})
+	if err := pipelineValidate(p); err == nil {
+		t.Fatal("expected unknown metric preset error")
+	}
+}
+
 func TestValidatePipeline_ValidDiamondDAG(t *testing.T) {
 	// s1 → s2, s1 → s3, s2+s3 → s4
 	p := buildPipeline([]kaprov1alpha1.Stage{

@@ -39,7 +39,27 @@ func (v *PipelineValidator) Handle(_ context.Context, req admission.Request) adm
 }
 
 func validatePipeline(p *kaprov1alpha1.Pipeline) error {
+	if err := validateMetricPresets(p); err != nil {
+		return err
+	}
 	return validateStageDAG(p.Spec.Stages)
+}
+
+func validateMetricPresets(p *kaprov1alpha1.Pipeline) error {
+	for stageIndex, stage := range p.Spec.Stages {
+		if stage.Gate == nil {
+			continue
+		}
+		for metricIndex, metric := range stage.Gate.Gate.Metrics {
+			if metric.Preset == "" {
+				continue
+			}
+			if _, ok := p.Spec.MetricPresets[metric.Preset]; !ok {
+				return fmt.Errorf("pipeline.spec.stages[%d].gate.gate.metrics[%d].preset: unknown metric preset %q", stageIndex, metricIndex, metric.Preset)
+			}
+		}
+	}
+	return nil
 }
 
 // validateStageDAG checks that the flat Stage DAG is a valid directed acyclic graph.

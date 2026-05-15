@@ -579,7 +579,10 @@ func (r *ReleaseReconciler) reconcilePipelineStages(
 
 		// Upsert selected target entries; observe phases across the full planned set.
 		for _, target := range bindTargets {
-			i := r.upsertTarget(release, pipelineRefName, pipeline, stage, target)
+			i, err := r.upsertTarget(release, pipelineRefName, pipeline, stage, target)
+			if err != nil {
+				return nil, false, false, 0, nil, err
+			}
 			_ = i
 		}
 
@@ -1028,7 +1031,11 @@ func (r *ReleaseReconciler) upsertTarget(
 	pipeline *kaprov1alpha1.Pipeline,
 	stage kaprov1alpha1.Stage,
 	mc kaprov1alpha1.MemberCluster,
-) int {
+) (int, error) {
+	resolvedGate, err := resolveStageGate(pipeline, stage)
+	if err != nil {
+		return 0, err
+	}
 	desiredVersions := releaseDesiredVersions(release)
 	version, appKey := primaryDesiredVersion(desiredVersions, release.Status.ResolvedVersion, releaseAppKey(release))
 	key := syncKey(pipelineRefName, stage.Name, mc.Name)
@@ -1036,9 +1043,10 @@ func (r *ReleaseReconciler) upsertTarget(
 		if syncKey(target.PipelineRef, target.Stage, target.Target) == key {
 			target := &release.Status.Targets[i]
 			target.Version = version
+			target.Gate = resolvedGate
 			target.AppKey = appKey
 			target.DesiredVersions = copyStringMap(desiredVersions)
-			return i
+			return i, nil
 		}
 	}
 	newTarget := kaprov1alpha1.TargetStatus{
@@ -1048,12 +1056,64 @@ func (r *ReleaseReconciler) upsertTarget(
 		Pipeline:        pipeline.Name,
 		Stage:           stage.Name,
 		Version:         version,
-		Gate:            stage.Gate,
+		Gate:            resolvedGate,
 		AppKey:          appKey,
 		DesiredVersions: copyStringMap(desiredVersions),
 	}
 	release.Status.Targets = append(release.Status.Targets, newTarget)
-	return len(release.Status.Targets) - 1
+	return len(release.Status.Targets) - 1, nil
+}
+
+func resolveStageGate(pipeline *kaprov1alpha1.Pipeline, stage kaprov1alpha1.Stage) (*kaprov1alpha1.GatePolicySpec, error) {
+	if stage.Gate == nil {
+		return nil, nil
+	}
+	gatePolicy := stage.Gate.DeepCopy()
+	if len(gatePolicy.Gate.Metrics) == 0 {
+		return gatePolicy, nil
+	}
+	presets := map[string]kaprov1alpha1.MetricGate{}
+	if pipeline != nil {
+		presets = pipeline.Spec.MetricPresets
+	}
+	for i, metric := range gatePolicy.Gate.Metrics {
+		if metric.Preset == "" {
+			continue
+		}
+		preset, ok := presets[metric.Preset]
+		if !ok {
+			return nil, fmt.Errorf("stage %q metric[%d] references unknown metric preset %q", stage.Name, i, metric.Preset)
+		}
+		gatePolicy.Gate.Metrics[i] = mergeMetricPreset(preset, metric)
+	}
+	return gatePolicy, nil
+}
+
+func mergeMetricPreset(preset, override kaprov1alpha1.MetricGate) kaprov1alpha1.MetricGate {
+	out := preset
+	out.Preset = override.Preset
+	if override.Provider != "" {
+		out.Provider = override.Provider
+	}
+	if override.Query != "" {
+		out.Query = override.Query
+	}
+	if override.Window != "" {
+		out.Window = override.Window
+	}
+	if override.Interval != "" {
+		out.Interval = override.Interval
+	}
+	if override.Endpoint != "" {
+		out.Endpoint = override.Endpoint
+	}
+	if override.Threshold != 0 {
+		out.Threshold = override.Threshold
+	}
+	if len(override.Config) > 0 {
+		out.Config = override.Config
+	}
+	return out
 }
 
 // triggerRollbackTargets appends rollback TargetStatus entries for every

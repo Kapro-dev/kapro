@@ -103,6 +103,65 @@ func TestNotifyReleaseEvent_UsesPipelineStageNotifications(t *testing.T) {
 	}
 }
 
+func TestResolveStageGate_ExpandsMetricPreset(t *testing.T) {
+	pipeline := &kaprov1alpha1.Pipeline{
+		ObjectMeta: metav1.ObjectMeta{Name: "progressive"},
+		Spec: kaprov1alpha1.PipelineSpec{
+			MetricPresets: map[string]kaprov1alpha1.MetricGate{
+				"error-rate": {
+					Provider:  "prometheus",
+					Query:     `sum(rate(errors[{{.Window}}])) / sum(rate(requests[{{.Window}}]))`,
+					Window:    "5m",
+					Interval:  "30s",
+					Endpoint:  "http://prometheus.monitoring.svc:9090",
+					Threshold: 0.01,
+				},
+			},
+		},
+	}
+	stage := kaprov1alpha1.Stage{
+		Name: "canary",
+		Gate: &kaprov1alpha1.GatePolicySpec{
+			Gate: kaprov1alpha1.GateSpec{
+				Metrics: []kaprov1alpha1.MetricGate{{
+					Preset:   "error-rate",
+					Window:   "10m",
+					Interval: "1m",
+				}},
+			},
+		},
+	}
+
+	gatePolicy, err := resolveStageGate(pipeline, stage)
+	if err != nil {
+		t.Fatalf("resolveStageGate returned error: %v", err)
+	}
+	metric := gatePolicy.Gate.Metrics[0]
+	if metric.Provider != "prometheus" || metric.Query == "" || metric.Endpoint == "" {
+		t.Fatalf("preset fields were not expanded: %#v", metric)
+	}
+	if metric.Window != "10m" || metric.Interval != "1m" {
+		t.Fatalf("inline overrides not applied: %#v", metric)
+	}
+	if metric.Threshold != 0.01 {
+		t.Fatalf("threshold=%f, want 0.01", metric.Threshold)
+	}
+}
+
+func TestResolveStageGate_UnknownMetricPreset(t *testing.T) {
+	_, err := resolveStageGate(&kaprov1alpha1.Pipeline{}, kaprov1alpha1.Stage{
+		Name: "canary",
+		Gate: &kaprov1alpha1.GatePolicySpec{
+			Gate: kaprov1alpha1.GateSpec{
+				Metrics: []kaprov1alpha1.MetricGate{{Preset: "missing"}},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected unknown preset error")
+	}
+}
+
 func TestNotifyStageEvent_UsesStageNotificationPolicy(t *testing.T) {
 	scheme := controllerTestScheme(t)
 	notifier := &recordingNotifier{}

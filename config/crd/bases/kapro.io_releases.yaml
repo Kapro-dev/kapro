@@ -489,6 +489,11 @@ spec:
                                       Equivalent to Grafana's "Evaluate every" setting.
                                       Defaults to "30s". Minimum "10s".
                                     type: string
+                                  preset:
+                                    description: |-
+                                      Preset references Pipeline.spec.metricPresets by name.
+                                      Inline fields override the preset when set.
+                                    type: string
                                   provider:
                                     type: string
                                   query:

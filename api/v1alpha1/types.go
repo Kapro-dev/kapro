@@ -301,6 +301,10 @@ type CosignKeySecretRef struct {
 }
 
 type MetricGate struct {
+	// Preset references Pipeline.spec.metricPresets by name.
+	// Inline fields override the preset when set.
+	// +optional
+	Preset   string `json:"preset,omitempty"`
 	Provider string `json:"provider"`
 	// Query is a PromQL expression. The gate passes when the query returns a non-zero value.
 	// Use range functions directly in the query for window-based checks, e.g.:
@@ -582,6 +586,11 @@ type Stage struct {
 // Uniqueness and dependency-reference validation is enforced by the admission webhook,
 // which can perform DAG checks without the quadratic CEL cost budget constraints.
 type PipelineSpec struct {
+	// MetricPresets defines reusable metric gate snippets referenced by
+	// Stage.gate.metrics[].preset. Presets are expanded into each target's
+	// gate policy when a Release binds targets.
+	// +optional
+	MetricPresets map[string]MetricGate `json:"metricPresets,omitempty"`
 	// Stages is the flat DAG of delivery stages.
 	// Order is declared via DependsOn, not list position.
 	// +kubebuilder:validation:MinItems=1
