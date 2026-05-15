@@ -1,0 +1,15 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kapro-operator
+  namespace: kapro-system
+spec:
+  template:
+    spec:
+      containers:
+        - name: manager
+          env:
+            - name: KAPRO_CONTROLLERS
+              value: release,release-target,approval,plugin-registration,release-trigger
+            - name: KAPRO_APPROVAL_SECRET
+              value: kind-demo-approval-secret

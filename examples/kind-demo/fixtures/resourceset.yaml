@@ -1,0 +1,17 @@
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSet
+metadata:
+  name: checkout-demo
+  namespace: flux-system
+  labels:
+    kapro.io/demo: kind
+spec:
+  inputs:
+    - tenant: checkout-canary
+      tag: v1.2.2-kind
+    - tenant: checkout-prod-eu
+      tag: v1.2.2-kind
+    - tenant: checkout-prod-us
+      tag: v1.2.2-kind
+  resources: []
+  wait: true

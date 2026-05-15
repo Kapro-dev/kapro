@@ -1,134 +1,104 @@
-# Kind Demo
+# Local Kind Demo
 
-This demo path is the target end-to-end local flow for CNCF reviewers and new
-contributors. It exercises the promotion chain:
+This demo runs Kapro in a local Kind cluster and walks the intended control-plane flow:
 
-```text
-ReleaseTrigger -> Release -> planner -> gates -> actuator
-```
+1. install Kapro CRDs and the Kapro operator
+2. apply a small fleet config with `MemberCluster`, `Pipeline`, `PluginRegistration`, and `ReleaseTrigger`
+3. create a `Release`
+4. watch the planner bind targets, gates advance, approvals unblock production, and the push/Flux actuator patch a `ResourceSet`
+5. inspect rollout status through `Release` and `ReleaseTarget`
 
-The install bundle work owns the exact one-command bootstrap. This document
-defines the expected demo shape and validation steps.
+The path is intentionally local-only. It does not require production OCI credentials, a real Flux Operator install, real Helm charts, or cosign signatures.
 
-## Prerequisites
+## Quick Start
+
+Prerequisites:
 
 - Docker
-- kind
+- Kind
 - kubectl
-- Helm or kustomize, depending on the install bundle used
-- Optional: cosign for signed ReleaseTrigger demonstrations
+- Go and `make`
 
-## Cluster
-
-```bash
-kind create cluster --name kapro-demo
-kubectl cluster-info --context kind-kapro-demo
-```
-
-Install Kapro CRDs, RBAC, controller, webhook, and example config with the
-project install bundle once available:
+Run:
 
 ```bash
-helm upgrade --install kapro ./charts/kapro-operator \
-  --namespace kapro-system \
-  --create-namespace
+scripts/kind-demo.sh up
 ```
 
-For local controller development, use:
+The script creates a `kapro-kind-demo` cluster, builds `kapro-operator:dev`, loads it into Kind, installs the CRDs, deploys the operator, applies local Flux fixture CRDs/resources, and starts the `checkout-kind` release.
+
+Approve production:
 
 ```bash
-KAPRO_DEV_MODE=1 go run ./cmd/operator
+scripts/kind-demo.sh approve
+scripts/kind-demo.sh status
 ```
 
-## Demo Objects
-
-Apply a minimal pipeline and fleet:
+Clean up:
 
 ```bash
-kubectl apply -f examples/hub-config/apps/checkout.yaml
-kubectl apply -f examples/hub-config/clusters/canary-eu.yaml
-kubectl apply -f examples/hub-config/clusters/prod-eu.yaml
-kubectl apply -f examples/hub-config/clusters/prod-us.yaml
-kubectl apply -f examples/hub-config/pipelines/checkout-progressive.yaml
+scripts/kind-demo.sh down
 ```
 
-Install example plugins when testing the plugin gateway:
+## What The Demo Shows
+
+`examples/kind-demo/config/01-memberclusters.yaml` defines three local fleet entries:
+
+- `checkout-canary`
+- `checkout-prod-eu`
+- `checkout-prod-us`
+
+Each target uses the built-in `push/flux` actuator pointed at the local fixture `ResourceSet` named `checkout-demo`.
+
+`examples/kind-demo/config/02-pipeline.yaml` defines two stages:
+
+- `canary`: selects `kapro.io/tier=canary` and uses a short built-in soak gate.
+- `prod`: selects `kapro.io/tier=production`, depends on canary, uses `maxParallel: 1`, and requires manual approval by `demo-sre`.
+
+The default planner orders eligible targets deterministically and records deferrals from the stage strategy in `Release.status.pipelineProgress[].stageProgress[].plannerResults`.
+
+`examples/kind-demo/config/03-release-trigger.yaml` creates a safe, suspended, dry-run `ReleaseTrigger`. It documents the trigger-to-release API path without calling a real registry.
+
+`examples/kind-demo/config/04-release.yaml` creates the live release that drives the rollout.
+
+## Observe
 
 ```bash
-kubectl apply -f examples/plugins/slo-gate-registration.yaml
-kubectl apply -f examples/plugins/argocd-actuator-registration.yaml
+kubectl --context kind-kapro-kind-demo get releases,releasetargets,memberclusters
+kubectl --context kind-kapro-kind-demo get release checkout-kind -o yaml
+kubectl --context kind-kapro-kind-demo get releasetargets -o yaml
+kubectl --context kind-kapro-kind-demo -n flux-system get resourceset checkout-demo -o yaml
+kubectl --context kind-kapro-kind-demo get releasetrigger checkout-kind-trigger -o yaml
+kubectl --context kind-kapro-kind-demo get pluginregistrations
 ```
 
-## Manual Release Path
+Before approval, production targets should pause in `WaitingApproval`. After `scripts/kind-demo.sh approve`, the approvals in `examples/kind-demo/approvals/` allow production to advance.
 
-Create a Release directly:
+## Limitations
+
+- The `ResourceSet` and `HelmRelease` resources are local fixtures. Their readiness is patched by `scripts/kind-demo.sh`; no Flux controller reconciles workloads.
+- `PluginRegistration` objects point at static demo endpoints. The plugin readiness controller is expected to mark them not ready unless you run matching gRPC plugin servers. The built-in planner, gates, and `push/flux` actuator drive the rollout.
+- The `ReleaseTrigger` is suspended and dry-run because the demo does not start a local OCI registry or signature verifier.
+- Webhooks are disabled in the demo operator overlay to keep local setup self-contained.
+
+## Troubleshooting
+
+Check the operator:
 
 ```bash
-kubectl apply -f examples/hub-config/releases/checkout-v1.2.3.yaml
-kubectl get releases.kapro.io
-kubectl get releasetargets.kapro.io
+kubectl --context kind-kapro-kind-demo -n kapro-system logs deployment/kapro-operator
+kubectl --context kind-kapro-kind-demo -n kapro-system describe pod -l app=kapro-operator
 ```
 
-Expected behavior:
-
-1. The Release enters `Progressing`.
-2. The planner selects canary targets first.
-3. Soak, metrics, verification, template, or approval gates run according to
-   the Pipeline.
-4. The actuator applies the desired version.
-5. `ReleaseTarget` objects converge or fail with a status reason.
-6. The Release completes when all required targets finish.
-
-## ReleaseTrigger Path
-
-Apply a suspended trigger:
+Re-apply fixture status if the rollout is waiting for convergence:
 
 ```bash
-kubectl apply -f examples/release-trigger/oci-safe-default.yaml
-kubectl get releasetriggers.kapro.io
+scripts/kind-demo.sh fixtures
 ```
 
-For a full automatic demo, configure the trigger repository, tag pattern, and
-signature policy for a test OCI artifact. Then unsuspend the trigger:
+If a previous run left stale state, delete the cluster and start again:
 
 ```bash
-kubectl patch releasetrigger checkout-oci \
-  --type merge \
-  -p '{"spec":{"suspended":false}}'
+scripts/kind-demo.sh down
+scripts/kind-demo.sh up
 ```
-
-Expected behavior:
-
-1. The trigger observes a matching tag.
-2. The tag is resolved to an immutable digest.
-3. Signature policy is checked when required.
-4. A digest-pinned Release is created from the template.
-5. The normal planner, gate, and actuator flow handles rollout.
-
-## Approvals
-
-When a target waits for approval, create the exact deterministic `Approval`
-object shown by Release status or events:
-
-```bash
-kapro approve <release>/<target> --comment "demo approval"
-```
-
-Or apply an `Approval` manifest with `spec.release`, `spec.target`, and
-`spec.ref` matching the waiting target.
-
-## Verification Commands
-
-```bash
-kubectl get releases.kapro.io -o wide
-kubectl get releasetargets.kapro.io -o wide
-kubectl describe release <name>
-kubectl describe releasetarget <name>
-kubectl get events --sort-by=.lastTimestamp
-kubectl -n kapro-system port-forward deploy/kapro-operator 8080:8080
-curl -s http://127.0.0.1:8080/metrics | grep '^kapro_'
-```
-
-The demo is complete when a reviewer can see a ReleaseTrigger-created or
-manually-created Release progress through target planning, gates, actuator
-application, and terminal status in a local kind cluster.

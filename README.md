@@ -156,6 +156,7 @@ Quick troubleshooting checks:
 
 - [Install Kapro](docs/install.md)
 - [Architecture Spec](docs/SPEC.md)
+- [Local Kind Demo](docs/kind-demo.md)
 - [API Stability and Upgrade Policy](docs/api-stability.md)
 - [Conformance Packages](docs/conformance.md)
 - [Controller Scalability and Resilience](docs/controller-scalability.md)

@@ -1,0 +1,10 @@
+apiVersion: kapro.io/v1alpha1
+kind: Approval
+metadata:
+  name: checkout-kind-checkout-kind-953053e2
+spec:
+  release: checkout-kind
+  target: checkout-prod-us
+  ref: checkout-kind-953053e2
+  approvedBy: demo-sre
+  comment: Kind demo approval for the US production wave.

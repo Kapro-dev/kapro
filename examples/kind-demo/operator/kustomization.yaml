@@ -1,0 +1,7 @@
+resources:
+  - ../../../config/rbac
+  - ../../../config/manager
+  - demo-rbac.yaml
+
+patches:
+  - path: manager-env-patch.yaml

@@ -1,0 +1,50 @@
+apiVersion: kapro.io/v1alpha1
+kind: MemberCluster
+metadata:
+  name: checkout-canary
+  labels:
+    kapro.io/tier: canary
+    kapro.io/region: eu
+spec:
+  actuator:
+    mode: push
+    backend: flux
+    push:
+      resourceSet: checkout-demo
+      namespace: flux-system
+      inputField: tag
+      tenantField: tenant
+---
+apiVersion: kapro.io/v1alpha1
+kind: MemberCluster
+metadata:
+  name: checkout-prod-eu
+  labels:
+    kapro.io/tier: production
+    kapro.io/region: eu
+spec:
+  actuator:
+    mode: push
+    backend: flux
+    push:
+      resourceSet: checkout-demo
+      namespace: flux-system
+      inputField: tag
+      tenantField: tenant
+---
+apiVersion: kapro.io/v1alpha1
+kind: MemberCluster
+metadata:
+  name: checkout-prod-us
+  labels:
+    kapro.io/tier: production
+    kapro.io/region: us
+spec:
+  actuator:
+    mode: push
+    backend: flux
+    push:
+      resourceSet: checkout-demo
+      namespace: flux-system
+      inputField: tag
+      tenantField: tenant
