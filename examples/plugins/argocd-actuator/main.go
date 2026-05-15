@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"net"
-	"os"
 	"strings"
 
 	kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
@@ -15,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -121,15 +122,18 @@ func (s *argoActuatorServer) Rollback(ctx context.Context, req *kaiv1alpha1.Roll
 }
 
 func (s *argoActuatorServer) setTargetRevision(ctx context.Context, ref applicationRef, revision string) error {
-	app, err := s.client.Resource(applicationGVR).Namespace(ref.namespace).Get(ctx, ref.name, metav1.GetOptions{})
+	patch, err := json.Marshal(map[string]any{
+		"spec": map[string]any{
+			"source": map[string]any{
+				"targetRevision": revision,
+			},
+		},
+	})
 	if err != nil {
-		return fmt.Errorf("get Argo CD Application %s/%s: %w", ref.namespace, ref.name, err)
+		return fmt.Errorf("marshal targetRevision patch: %w", err)
 	}
-	if err := unstructured.SetNestedField(app.Object, revision, "spec", "source", "targetRevision"); err != nil {
-		return fmt.Errorf("set targetRevision: %w", err)
-	}
-	if _, err := s.client.Resource(applicationGVR).Namespace(ref.namespace).Update(ctx, app, metav1.UpdateOptions{}); err != nil {
-		return fmt.Errorf("update Argo CD Application %s/%s: %w", ref.namespace, ref.name, err)
+	if _, err := s.client.Resource(applicationGVR).Namespace(ref.namespace).Patch(ctx, ref.name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+		return fmt.Errorf("patch Argo CD Application %s/%s: %w", ref.namespace, ref.name, err)
 	}
 	return nil
 }
@@ -203,8 +207,5 @@ func kubernetesConfig(kubeconfig string) (*rest.Config, error) {
 	}
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	overrides := &clientcmd.ConfigOverrides{}
-	if env := os.Getenv("KUBECONFIG"); env != "" {
-		loadingRules.ExplicitPath = env
-	}
 	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides).ClientConfig()
 }

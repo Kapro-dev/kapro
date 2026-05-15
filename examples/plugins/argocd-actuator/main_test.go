@@ -177,9 +177,7 @@ func newTestClient(t *testing.T, server *argoActuatorServer) kaiv1alpha1.Actuato
 	grpcServer := grpc.NewServer()
 	kaiv1alpha1.RegisterActuatorServiceServer(grpcServer, server)
 	go func() {
-		if err := grpcServer.Serve(listener); err != nil {
-			t.Errorf("grpc server stopped: %v", err)
-		}
+		_ = grpcServer.Serve(listener)
 	}()
 	t.Cleanup(func() {
 		grpcServer.Stop()
