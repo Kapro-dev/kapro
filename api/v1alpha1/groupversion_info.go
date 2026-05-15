@@ -18,6 +18,8 @@ func init() {
 		&Release{}, &ReleaseList{},
 		&ReleaseTrigger{}, &ReleaseTriggerList{},
 		&ReleaseTarget{}, &ReleaseTargetList{},
+		&NotificationProvider{}, &NotificationProviderList{},
+		&NotificationPolicy{}, &NotificationPolicyList{},
 		// Lean fleet registry (MemberCluster = legacy target inventory split)
 		&MemberCluster{}, &MemberClusterList{},
 		&PluginRegistration{}, &PluginRegistrationList{},
