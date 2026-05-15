@@ -149,6 +149,10 @@ func TestKPIConformance(t *testing.T) {
 }
 ```
 
+A planner plugin implementation example is available in
+`examples/plugins/capacity-planner`. It implements KPI for capacity-aware
+filtering, ordering, and deferring rollout targets.
+
 ## Package Imports
 
 ```go
