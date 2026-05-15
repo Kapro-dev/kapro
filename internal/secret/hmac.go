@@ -1,6 +1,6 @@
 // Package secret provides self-bootstrapping HMAC key management.
 //
-// Pattern stolen from cert-manager's DynamicAuthority (pkg/server/tls/authority):
+// Uses the same operational pattern as cert-manager's dynamic certificate authority:
 //   - On startup: read Secret → if missing, generate + create
 //   - Informer watch: if Secret is deleted, recreate immediately
 //   - Concurrent replicas: IsAlreadyExists → read winner's key

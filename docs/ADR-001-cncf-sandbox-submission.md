@@ -3,7 +3,7 @@
 **Status:** Proposed  
 **Date:** 2026-04-19  
 **Deciders:** Vinayaka Krishnamurthy (@Kapro-dev)  
-**Reviewed by:** Architecture analysis (Claude / Cowork)
+**Reviewed by:** Architecture analysis
 
 ---
 

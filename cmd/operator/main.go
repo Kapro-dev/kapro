@@ -32,6 +32,7 @@ import (
 	spokeactuator "kapro.io/kapro/internal/actuator/spoke"
 	_ "kapro.io/kapro/internal/metrics" // register custom Prometheus metrics at init
 	enginenotifier "kapro.io/kapro/internal/notification/engine"
+	pluginadapter "kapro.io/kapro/internal/plugin/adapter"
 	kaproSecret "kapro.io/kapro/internal/secret"
 	"kapro.io/kapro/internal/version"
 	"kapro.io/kapro/internal/webhook"
@@ -144,6 +145,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	ctx := context.Background()
+	if pluginadapter.EnabledFromEnv() {
+		registered, err := pluginadapter.Registrar{}.RegisterReady(ctx, mgr.GetAPIReader(), actuatorReg, gateRegistry)
+		if err != nil {
+			log.Error(err, "failed to register plugin gateway adapters")
+			os.Exit(1)
+		}
+		log.Info("plugin gateway enabled", "registered", registered)
+	}
+
 	cc := cm.ControllerContext{
 		Manager:          mgr,
 		Recorder:         recorder,
@@ -210,8 +221,6 @@ func main() {
 			&crwebhook.Admission{Handler: kaploadmission.NewApprovalValidator(decoder)},
 		)
 	}
-
-	ctx := context.Background()
 
 	for name, initFn := range cm.Registry {
 		if !selected[name] {

@@ -24,9 +24,10 @@ This document defines the target architecture for those contracts.
 | Actuator | `pkg/actuator` | Apply one version to one target and report convergence. | In-process registry |
 | Gate | `pkg/gate` | Decide whether one target may advance. | In-process registry |
 | Template gate | CEL, Job, Webhook gate templates | Configure custom gate behavior through CRDs. | Implemented |
+| Release planner | `pkg/planner` and KPI proto | Filter, score, reserve, and permit rollout targets before binding. | In-process framework; KPI API preview |
 | Lifecycle events | CloudEvents webhook payloads | Publish release, stage, gate, approval, and target events. | Implemented |
-| Plugin gateway | KAI/KGI proto contracts and `PluginRegistration` | Register out-of-process actuators and gates. | API preview |
-| ReleaseTrigger | CRD API | Define safe autonomous Release creation policy. | API preview |
+| Plugin gateway | KAI/KGI/KPI proto contracts and `PluginRegistration` | Register and probe out-of-process actuators, gates, and planner plugins. | Startup-time actuator and gate dispatch preview; planner status preview |
+| ReleaseTrigger | CRD API | Define safe autonomous Release creation policy. | OCI controller preview |
 
 ## Core Boundary
 
@@ -124,10 +125,11 @@ plugins.
 ## Plugin Gateway API Preview
 
 The current execution registries are in-process. Kapro now defines the API
-surface for out-of-process actuator and gate plugins:
+surface for out-of-process actuator, gate, and planner plugins:
 
 - `spec/kai/v1alpha1/actuator.proto`
 - `spec/kgi/v1alpha1/gate.proto`
+- `spec/kpi/v1alpha1/planner.proto`
 - `PluginRegistration`
 
 ```text
@@ -135,10 +137,14 @@ Kapro controller
   -> PluginGateway
     -> external actuator plugin
     -> external gate plugin
+    -> external planner plugin
 ```
 
-Runtime dispatch through `PluginGateway` is future work. The API preview
-establishes the stable registration and wire-contract shape first.
+Runtime registration through `PluginRegistration` is an opt-in API preview.
+When `KAPRO_ENABLE_PLUGIN_GATEWAY=true`, the operator loads ready registrations
+with fresh observed generation into the actuator and gate registries once at
+startup. Planner registrations are probed and reported in status; runtime
+planner dispatch remains future work. Dynamic hot reload is future work.
 
 API pieces:
 
@@ -146,9 +152,10 @@ API pieces:
 |---|---|
 | KAI proto | Language-neutral actuator contract. |
 | KGI proto | Language-neutral gate contract. |
+| KPI proto | Language-neutral planner contract for filtering and ordering targets. |
 | PluginRegistration CRD | Declarative registration of external plugin endpoints. |
-| PluginGateway | Future runtime boundary, timeout handling, retries, and error normalization. |
-| Conformance tests | Future shared behavioral tests for every plugin implementation. |
+| Conformance harnesses | Base checks external plugin authors can run. |
+| PluginGateway | Runtime boundary for enabled contracts, timeout handling, retries, and error normalization. |
 
 The gateway must preserve the same state ownership rule: plugins do backend
 work, Kapro owns release state.
@@ -156,8 +163,8 @@ work, Kapro owns release state.
 ## ReleaseTrigger Target
 
 `ReleaseTrigger` is the API boundary for autonomous release creation. The CRD
-defines safe source observation and Release creation policy. The controller that
-observes OCI registries and creates Releases is future work.
+defines safe source observation and Release creation policy. The controller
+observes OCI registries and creates digest-pinned Releases after safeguards pass.
 
 The safe flow is:
 
@@ -180,6 +187,32 @@ Required safeguards:
 
 See `docs/ADR-002-release-trigger.md` for the release trigger decision record.
 
+## Release Planner
+
+The release planner is the target-selection boundary inside `ReleaseReconciler`.
+It follows Kubernetes scheduler-style phases:
+
+```text
+PreFilter -> Filter -> Score -> NormalizeScore -> Reserve -> Permit -> bind ReleaseTarget
+```
+
+Kapro keeps ownership of release state. Planner plugins can influence which
+targets are eligible and in what order they are bound, but they do not create
+or mutate `ReleaseTarget` objects directly.
+
+Built-in planning behavior:
+
+| Plugin or strategy | Phase | Behavior |
+|---|---|---|
+| Readiness filter | Filter | Skips targets that explicitly report `Ready=False`. |
+| Active release filter | Filter | Skips targets already processing a different Release. |
+| Deterministic ordering | Score | Keeps stable name-based ordering when scores tie. |
+| Stage strategy | Bind | Enforces `Stage.spec.strategy.maxParallel` before creating new `ReleaseTarget` entries. |
+
+`Stage.status.plannerResults` records skip and defer reasons so operators can
+see why a target was not bound in the current planning cycle. External planner
+runtime execution is future work; the KPI proto defines the contract first.
+
 ## CRD Rule
 
 Add a CRD only when the concept has independent lifecycle, status, RBAC, or
@@ -191,8 +224,8 @@ Target CRD posture:
 | API surface | Posture |
 |---|---|
 | Existing release, pipeline, app, cluster, target, approval, and policy CRDs | Core API |
-| `PluginRegistration` | API preview; runtime dispatch future work |
-| `ReleaseTrigger` | API preview with ADR-002 safeguards; controller future work |
+| `PluginRegistration` | API preview; opt-in startup-time runtime registration |
+| `ReleaseTrigger` | API preview with ADR-002 safeguards; OCI controller preview |
 | Notification provider/policy | Add only when shared credential ownership requires it |
 | Metric definition | Add only when metric reuse needs independent ownership |
 | Gate template | Keep inline until it needs independent lifecycle |

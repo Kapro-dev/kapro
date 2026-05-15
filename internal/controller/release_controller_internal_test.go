@@ -10,6 +10,7 @@ import (
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	"kapro.io/kapro/pkg/notification"
+	"kapro.io/kapro/pkg/planner"
 )
 
 func TestStageDependencySatisfied_AnyUnlocksFromOneConvergedTarget(t *testing.T) {
@@ -231,6 +232,86 @@ func TestStageDependencySatisfied_ReturnsRemainingSoakTime(t *testing.T) {
 	}
 }
 
+func TestListTargetsForStageUsesReleasePlanner(t *testing.T) {
+	scheme := controllerTestScheme(t)
+	r := &ReleaseReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+			memberClusterForStage("cluster-a", "canary"),
+			memberClusterForStage("cluster-b", "canary"),
+		).Build(),
+		Planner: planner.NewFramework(testPlannerFilter{NameValue: "cluster-b"}),
+	}
+	release := &kaprov1alpha1.Release{}
+	pipeline := pipelineWithCanaryStage()
+
+	targets, err := r.listTargetsForStage(context.Background(), "main", pipeline, pipeline.Spec.Stages[0], release)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targets) != 1 || targets[0].Name != "cluster-b" {
+		t.Fatalf("targets = %#v", targets)
+	}
+}
+
+func TestReconcilePipelineStagesHonorsStageMaxParallel(t *testing.T) {
+	scheme := controllerTestScheme(t)
+	r := &ReleaseReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+			memberClusterForStage("cluster-a", "canary"),
+			memberClusterForStage("cluster-b", "canary"),
+			memberClusterForStage("cluster-c", "canary"),
+		).Build(),
+	}
+	pipeline := pipelineWithCanaryStage()
+	pipeline.Spec.Stages[0].Strategy = &kaprov1alpha1.StageStrategySpec{MaxParallel: 1}
+	release := &kaprov1alpha1.Release{
+		ObjectMeta: metav1.ObjectMeta{Name: "release-a"},
+		Spec:       kaprov1alpha1.ReleaseSpec{Version: "1.2.3"},
+		Status:     kaprov1alpha1.ReleaseStatus{ResolvedVersion: "1.2.3"},
+	}
+
+	progress, allComplete, anyFailed, _, _, err := r.reconcilePipelineStages(context.Background(), release, "main", pipeline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if allComplete || anyFailed {
+		t.Fatalf("allComplete=%v anyFailed=%v, want progressing without failure", allComplete, anyFailed)
+	}
+	if len(release.Status.Targets) != 1 {
+		t.Fatalf("bound targets = %#v, want 1", release.Status.Targets)
+	}
+	if len(progress) != 1 {
+		t.Fatalf("progress = %#v", progress)
+	}
+	stageProgress := progress[0]
+	if stageProgress.Total != 3 || stageProgress.Deferred != 2 || stageProgress.Phase != "Progressing" {
+		t.Fatalf("stage progress = %#v", stageProgress)
+	}
+	if len(stageProgress.PlannerResults) != 2 {
+		t.Fatalf("planner results = %#v, want 2 deferred targets", stageProgress.PlannerResults)
+	}
+	for _, result := range stageProgress.PlannerResults {
+		if result.Plugin != "stage-strategy" || result.Reason != "MaxParallel" {
+			t.Fatalf("unexpected planner result: %#v", result)
+		}
+	}
+
+	release.Status.Targets[0].Phase = kaprov1alpha1.TargetPhaseConverged
+	progress, allComplete, anyFailed, _, _, err = r.reconcilePipelineStages(context.Background(), release, "main", pipeline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if allComplete || anyFailed {
+		t.Fatalf("allComplete=%v anyFailed=%v, want second target progressing", allComplete, anyFailed)
+	}
+	if len(release.Status.Targets) != 2 {
+		t.Fatalf("bound targets after second reconcile = %#v, want 2", release.Status.Targets)
+	}
+	if progress[0].Deferred != 1 {
+		t.Fatalf("deferred after one convergence = %d, want 1", progress[0].Deferred)
+	}
+}
+
 func memberClusterForStage(name, stage string) *kaprov1alpha1.MemberCluster {
 	return &kaprov1alpha1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{
@@ -241,6 +322,19 @@ func memberClusterForStage(name, stage string) *kaprov1alpha1.MemberCluster {
 			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: "flux"},
 		},
 	}
+}
+
+type testPlannerFilter struct {
+	NameValue string
+}
+
+func (t testPlannerFilter) Name() string { return "test-filter" }
+
+func (t testPlannerFilter) Filter(_ context.Context, _ *planner.CycleState, _ planner.Request, target kaprov1alpha1.MemberCluster) *planner.Status {
+	if target.Name != t.NameValue {
+		return planner.NewStatus(planner.Skip, "filtered by test")
+	}
+	return nil
 }
 
 func pipelineWithCanaryStage() *kaprov1alpha1.Pipeline {

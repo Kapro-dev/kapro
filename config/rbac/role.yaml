@@ -12,6 +12,12 @@ rules:
   - create
   - patch
 - apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+- apiGroups:
   - coordination.k8s.io
   resources:
   - leases
@@ -42,8 +48,10 @@ rules:
   resources:
   - approvals/status
   - memberclusters/status
+  - pluginregistrations/status
   - releases/status
   - releasetargets/status
+  - releasetriggers/status
   verbs:
   - get
   - patch
@@ -62,6 +70,8 @@ rules:
   - kapro.io
   resources:
   - pipelines
+  - pluginregistrations
+  - releasetriggers
   verbs:
   - get
   - list

@@ -9,9 +9,9 @@
 
 ---
 
-## v0.3 — Extended Actuators & Cloud Providers
+## v0.3 — Extension Hardening
 
-**Theme:** make Kapro production-ready for real multi-cloud fleets.
+**Theme:** make the v1alpha1 extension contracts usable by real platform teams.
 
 ### KGI — Gate interface cleanup
 - Remove `Result.Passed bool` entirely (deprecated in v0.2, kept for one cycle)
@@ -34,14 +34,16 @@ re-introduce a generic provider registry.
 
 ---
 
-### KAI — ArgoCD actuator
-- Package: `internal/actuator/argocd/`
-- `Apply` patches `Application.spec.source.targetRevision`
-- `IsConverged` polls `Application.status.sync.status == Synced && health.status == Healthy`
-- `Rollback` patches back to `previousVersion`
-- Register as `"argocd"` in `cmd/operator/main.go`
+### KAI — External ArgoCD actuator plugin
+- Package: `examples/plugins/argocd-actuator/`
+- Implement the KAI gRPC contract.
+- `Apply` patches `Application.spec.source.targetRevision`.
+- `IsConverged` polls `Application.status.sync.status == Synced && health.status == Healthy`.
+- `Rollback` patches back to `previousVersion`.
+- Validate with `conformance/actuator`.
 
-**Acceptance criteria:** conformance suite passes; `MemberCluster.spec.actuator.type: argocd` works end-to-end in integration test.
+**Acceptance criteria:** conformance suite passes; example `PluginRegistration`
+can load through the startup-time plugin gateway.
 
 ---
 
@@ -51,24 +53,23 @@ re-introduce a generic provider registry.
 
 ---
 
-## v0.4 — AI/ML Delivery, More Cloud Providers, gRPC Plugin Gateway
+## v0.4 — Plugin Runtime Maturity
 
 ### KCI — (superseded)
 See ADR-006/ADR-007. No per-cloud connector packages planned.
 
-### KAI/KGI — gRPC plugin gateway
-This is the CRI equivalent for Kapro — enables out-of-process gate and actuator plugins.
+### Plugin gateway dynamic reload
+- Watch `PluginRegistration` changes.
+- Register, update, and remove runtime adapters without operator restart.
+- Preserve current safety rule: only generation-fresh, ready registrations are used.
 
-Design prerequisites (must happen before implementation):
-1. Generate Go from `spec/kai/v1alpha1/actuator.proto` and `spec/kgi/v1alpha1/gate.proto`
-2. Replace hand-written Go interfaces with generated ones (or thin wrappers)
-3. Implement `PluginGateway`: gRPC boundary for endpoints registered via `PluginRegistration`
-4. Ship ArgoCD actuator as first external plugin to validate the model
+### KPI — Planner runtime dispatch
+Planner proto, probing, and conformance exist. Runtime dispatch remains future
+work because planner plugins affect rollout target selection. Implement only
+after actuator and gate plugin lifecycle behavior is proven.
 
-**Why v0.4 and not sooner:** gRPC gateway is a prerequisite for KSI (scheduler plugins) and for the external gate marketplace. It needs to be correct. Rushing it produces a broken extension model that's hard to fix without breaking vendors.
-
-### KSI — Scheduler plugin framework
-Design the `scheduler.Plugin` interface so pipeline ordering can be customised without modifying `ReleaseReconciler`. The gRPC plugin gateway (above) is a hard prerequisite.
+**Acceptance criteria:** external planner plugins can filter/order/defer targets
+without mutating `ReleaseTarget` state directly.
 
 ### KAI — Additional actuators
 - `KServe` — patches `InferenceService.spec.predictor.model.storageUri` for ML model delivery
@@ -98,8 +99,8 @@ Design the `scheduler.Plugin` interface so pipeline ordering can be customised w
   links may be shared across multiple approvers.
 - CDEvents integration via webhook sinks
 - SLA tracking and burn rate gates
-- `ReleaseTrigger` CRD for autonomous triggers (OCI image pushed first; MLflow model registered and Prometheus alert fired later). Must follow `docs/ADR-002-release-trigger.md`.
-- `PluginGateway` + `PluginRegistration` CRDs (GA quality)
+- `ReleaseTrigger` GA hardening: signed source verification, controller metrics, and operational docs.
+- `PluginGateway` + `PluginRegistration` GA hardening: dynamic reload, metrics, and compatibility policy.
 
 ---
 
@@ -112,5 +113,3 @@ These were considered and deliberately excluded. Do not re-open without an ADR.
 | In-memory gate state | Survives restarts only in etcd. Gate implementations must be stateless. |
 | Mutable Releases | Audit trail must be append-only. Rollback = new Release. |
 | Hub→spoke required network | Air-gapped environments need outbound-only. CRD path is non-negotiable default. |
-| `ReleaseTrigger` in MVP | Autonomous triggers are post-MVP complexity. When implemented, follow ADR-002 and make it safe by default. |
-| `PluginGateway` in MVP | gRPC boundary needs proto design first; wrong to rush. |

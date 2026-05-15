@@ -66,8 +66,8 @@ spec:
           spec:
             description: |-
               ReleaseTriggerSpec defines an autonomous source that can create Release
-              objects from verified artifact changes. The controller for this API is future
-              work; the API is intentionally safe by default.
+              objects from verified artifact changes. The controller currently provides
+              preview behavior for this API, and the API is intentionally safe by default.
             properties:
               cooldown:
                 default: 30m
@@ -184,16 +184,17 @@ spec:
                           before creating a Release.
                         type: boolean
                       secretRef:
-                        description: SecretRef references registry credentials.
+                        description: |-
+                          SecretRef references registry credentials.
+                          Cluster-scoped triggers must include the Secret namespace.
                         properties:
                           name:
-                            default: ""
-                            description: |-
-                              Name of the referent.
-                              This field is effectively required, but due to backwards compatibility is
-                              allowed to be empty. Instances of this type with an empty value here are
-                              almost certainly wrong.
-                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            description: name is unique within a namespace to reference
+                              a secret resource.
+                            type: string
+                          namespace:
+                            description: namespace defines the space within which
+                              the secret name must be unique.
                             type: string
                         type: object
                         x-kubernetes-map-type: atomic

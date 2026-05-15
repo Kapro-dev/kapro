@@ -670,6 +670,25 @@ spec:
                           type: object
                       type: object
                       x-kubernetes-map-type: atomic
+                    strategy:
+                      description: Strategy controls target binding concurrency for
+                        this stage.
+                      properties:
+                        maxParallel:
+                          description: |-
+                            MaxParallel limits how many targets in this stage may be non-terminal at once.
+                            Zero means unlimited.
+                          format: int32
+                          minimum: 1
+                          type: integer
+                        maxUnavailable:
+                          description: |-
+                            MaxUnavailable is reserved for availability-aware strategies. The current
+                            controller records the field but only enforces MaxParallel.
+                          format: int32
+                          minimum: 0
+                          type: integer
+                      type: object
                   required:
                   - name
                   - selector
