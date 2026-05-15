@@ -122,12 +122,13 @@ func (r *RuntimeReloader) Reconcile(ctx context.Context, c client.Reader, reg ka
 	}
 
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	current, exists := r.byObject[key]
 	if exists && current.PluginType == reg.Spec.Type && current.Name == reg.Spec.Name && current.Fingerprint == fingerprint {
 		r.observeLocked()
+		r.mu.Unlock()
 		return false, nil
 	}
+	r.mu.Unlock()
 
 	conn, err := r.dial(ctx, c, reg)
 	if err != nil {
@@ -138,6 +139,14 @@ func (r *RuntimeReloader) Reconcile(ctx context.Context, c client.Reader, reg ka
 	if err != nil {
 		_ = conn.Close()
 		return false, err
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if current, exists := r.byObject[key]; exists && current.PluginType == reg.Spec.Type && current.Name == reg.Spec.Name && current.Fingerprint == fingerprint {
+		_ = record.Closer.Close()
+		r.observeLocked()
+		return false, nil
 	}
 
 	if old, ok := r.byObject[key]; ok {

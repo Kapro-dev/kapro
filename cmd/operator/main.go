@@ -146,14 +146,15 @@ func main() {
 	}
 
 	ctx := context.Background()
-	var pluginReloader *pluginadapter.RuntimeReloader
+	var pluginReloader cm.PluginReloader
 	if pluginadapter.EnabledFromEnv() {
-		pluginReloader = pluginadapter.NewRuntimeReloader(actuatorReg, gateRegistry)
-		registered, err := pluginReloader.SyncReady(ctx, mgr.GetAPIReader())
+		reloader := pluginadapter.NewRuntimeReloader(actuatorReg, gateRegistry)
+		registered, err := reloader.SyncReady(ctx, mgr.GetAPIReader())
 		if err != nil {
 			log.Error(err, "failed to register plugin gateway adapters")
 			os.Exit(1)
 		}
+		pluginReloader = reloader
 		log.Info("plugin gateway enabled", "registered", registered, "dynamicReload", true)
 	}
 
