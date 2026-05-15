@@ -18,6 +18,13 @@ import (
 
 const contractVersion = "v1alpha1"
 
+var plannerCapabilities = map[string]struct{}{
+	"filter": {},
+	"score":  {},
+	"order":  {},
+	"defer":  {},
+}
+
 // Result is the normalized outcome of a plugin probe.
 type Result struct {
 	Ready        bool
@@ -96,6 +103,9 @@ func (p Prober) Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration)
 		if err := validateContract(resp.GetContractVersion()); err != nil {
 			return notReady("ContractMismatch", err.Error())
 		}
+		if !hasPlannerCapability(resp.GetCapabilities()) {
+			return notReady("MissingCapability", "planner plugin must report at least one capability: filter, score, order, or defer")
+		}
 		return ready(resp.GetPluginVersion(), resp.GetCapabilities())
 	default:
 		return notReady("UnsupportedType", fmt.Sprintf("unsupported plugin type %q", reg.Spec.Type))
@@ -110,6 +120,15 @@ func validateContract(version string) error {
 		return fmt.Errorf("plugin contract version %q is not supported by this operator (%q)", version, contractVersion)
 	}
 	return nil
+}
+
+func hasPlannerCapability(capabilities []string) bool {
+	for _, capability := range capabilities {
+		if _, ok := plannerCapabilities[capability]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func ready(version string, capabilities []string) Result {

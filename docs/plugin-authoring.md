@@ -6,11 +6,12 @@ Kapro plugins implement one narrow extension contract:
 - KGI: gate plugins decide whether a target may advance.
 - KPI: planner plugins filter and order targets before binding.
 
-Built-in actuators and gates remain the default execution path. External plugin
-runtime registration is an API preview and is enabled explicitly with
-`KAPRO_ENABLE_PLUGIN_GATEWAY=true`. When enabled, the operator registers ready
-`PluginRegistration` objects once at startup. Dynamic hot reload is future work.
-`PluginRegistration` objects are always probed for capabilities and readiness.
+Built-in actuators, gates, and planners remain the default execution path.
+External plugin runtime registration is an API preview and is enabled explicitly
+with `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. When enabled, the operator registers
+ready actuator and gate `PluginRegistration` objects once at startup. Planner
+registrations are probed for capabilities and readiness, but runtime planner
+dispatch remains future work. Dynamic hot reload is future work.
 
 ## Contracts
 
@@ -50,10 +51,10 @@ spec:
 ```
 
 `PluginRegistration` is an API preview. Runtime use is startup-time only and
-requires `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. Only registrations with
-`status.ready=true` and fresh `status.observedGeneration` are loaded.
-Planner plugins are probed and reported in status, but runtime dispatch is
-future work.
+requires `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. Only actuator and gate
+registrations with `status.ready=true` and fresh `status.observedGeneration` are
+loaded into runtime registries. Planner plugins are probed and reported in
+status, but runtime planner dispatch remains future work.
 
 TLS is configured with a namespaced Secret reference because
 `PluginRegistration` is cluster-scoped:
@@ -123,12 +124,27 @@ A planner plugin must:
 - respect request context cancellation;
 - leave binding, retries, and failure policy decisions to Kapro.
 
+Register planner plugins with `spec.type: planner`. Kapro probes ready planner
+registrations and records their status. Built-in planning remains the runtime
+dispatch path until external planner dispatch is implemented.
+
+Run the base planner conformance harness from your plugin tests:
+
+```go
+func TestKPIConformance(t *testing.T) {
+    conn := dialPlugin(t)
+    client := kpiv1alpha1.NewPlannerServiceClient(conn)
+    plannerconformance.Run(t, client, plannerconformance.DefaultScenario())
+}
+```
+
 ## Package Imports
 
 ```go
 import (
     actuatorconformance "kapro.io/kapro/conformance/actuator"
     gateconformance "kapro.io/kapro/conformance/gate"
+    plannerconformance "kapro.io/kapro/conformance/planner"
     kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
     kgiv1alpha1 "kapro.io/kapro/spec/kgi/v1alpha1"
     kpiv1alpha1 "kapro.io/kapro/spec/kpi/v1alpha1"

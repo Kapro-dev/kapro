@@ -178,7 +178,7 @@ for target selection and ordering, modeled after Kubernetes scheduler phases.
 |-----------|------------|---------------------|-------------|
 | Actuator (KAI) | `pkg/actuator` | "Apply this version to this cluster" | `conformance/actuator` |
 | Gate (KGI)     | `pkg/gate`     | "May this target advance?"           | `conformance/gate`     |
-| ReleasePlanner | `pkg/planner` | "Which targets should this stage bind, and in what order?" | package tests |
+| Planner (KPI) | `pkg/planner` | "Which targets should this stage bind, and in what order?" | `conformance/planner` |
 
 Other internal concerns — health checking (`internal/health`), OCI fetch (`internal/oci/oras`), cosign verification (`internal/verification/cosign`), notification (`internal/notification`) — are **not** runtime extension points today. They live as internal packages with fixed implementations.
 
@@ -336,9 +336,9 @@ Generated Go stubs are committed beside the proto files. The operator probes
 fresh `status.observedGeneration` into the actuator and gate registries once at
 startup. Planner plugin registration is probed and reported in status; runtime
 dispatch is future work. Dynamic hot reload is future work. Base conformance
-harnesses live
-under `conformance/actuator` and `conformance/gate`; plugin authors should run
-those harnesses against their implementation. See `docs/plugin-authoring.md`.
+harnesses live under `conformance/actuator`, `conformance/gate`, and
+`conformance/planner`; plugin authors should run those harnesses against their
+implementation. See `docs/plugin-authoring.md`.
 
 ---
 

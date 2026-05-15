@@ -24,9 +24,9 @@ This document defines the target architecture for those contracts.
 | Actuator | `pkg/actuator` | Apply one version to one target and report convergence. | In-process registry |
 | Gate | `pkg/gate` | Decide whether one target may advance. | In-process registry |
 | Template gate | CEL, Job, Webhook gate templates | Configure custom gate behavior through CRDs. | Implemented |
-| Release planner | `pkg/planner` and KPI proto | Filter, score, reserve, and permit rollout targets before binding. | In-process framework; API preview |
+| Release planner | `pkg/planner` and KPI proto | Filter, score, reserve, and permit rollout targets before binding. | In-process framework; KPI API preview |
 | Lifecycle events | CloudEvents webhook payloads | Publish release, stage, gate, approval, and target events. | Implemented |
-| Plugin gateway | KAI/KGI/KPI proto contracts and `PluginRegistration` | Register and probe out-of-process actuators, gates, and planner plugins. | Status-capable preview |
+| Plugin gateway | KAI/KGI/KPI proto contracts and `PluginRegistration` | Register and probe out-of-process actuators, gates, and planner plugins. | Startup-time actuator and gate dispatch preview; planner status preview |
 | ReleaseTrigger | CRD API | Define safe autonomous Release creation policy. | OCI controller preview |
 
 ## Core Boundary
@@ -143,7 +143,8 @@ Kapro controller
 Runtime registration through `PluginRegistration` is an opt-in API preview.
 When `KAPRO_ENABLE_PLUGIN_GATEWAY=true`, the operator loads ready registrations
 with fresh observed generation into the actuator and gate registries once at
-startup. Dynamic hot reload is future work.
+startup. Planner registrations are probed and reported in status; runtime
+planner dispatch remains future work. Dynamic hot reload is future work.
 
 API pieces:
 
@@ -154,7 +155,7 @@ API pieces:
 | KPI proto | Language-neutral planner contract for filtering and ordering targets. |
 | PluginRegistration CRD | Declarative registration of external plugin endpoints. |
 | Conformance harnesses | Base checks external plugin authors can run. |
-| PluginGateway | Future runtime boundary, timeout handling, retries, and error normalization. |
+| PluginGateway | Runtime boundary for enabled contracts, timeout handling, retries, and error normalization. |
 
 The gateway must preserve the same state ownership rule: plugins do backend
 work, Kapro owns release state.

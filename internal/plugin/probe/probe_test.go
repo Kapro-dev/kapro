@@ -3,6 +3,7 @@ package probe
 import (
 	"context"
 	"net"
+	"strings"
 	"testing"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
@@ -74,7 +75,7 @@ func TestProbeGateCapabilities(t *testing.T) {
 func TestProbePlannerCapabilities(t *testing.T) {
 	listener := bufconn.Listen(1024 * 1024)
 	server := grpc.NewServer()
-	kpiv1alpha1.RegisterPlannerServiceServer(server, fakePlannerServer{})
+	kpiv1alpha1.RegisterPlannerServiceServer(server, fakePlannerServer{capabilities: []string{"filter", "score"}})
 	go func() { _ = server.Serve(listener) }()
 	defer server.Stop()
 
@@ -96,6 +97,34 @@ func TestProbePlannerCapabilities(t *testing.T) {
 	}
 	if len(result.Capabilities) != 2 {
 		t.Fatalf("Capabilities = %v", result.Capabilities)
+	}
+}
+
+func TestProbePlannerMissingCapability(t *testing.T) {
+	listener := bufconn.Listen(1024 * 1024)
+	server := grpc.NewServer()
+	kpiv1alpha1.RegisterPlannerServiceServer(server, fakePlannerServer{capabilities: []string{"reserve"}})
+	go func() { _ = server.Serve(listener) }()
+	defer server.Stop()
+
+	result := Prober{DialOptions: bufDialOptions(listener)}.Probe(context.Background(), kaprov1alpha1.PluginRegistration{
+		Spec: kaprov1alpha1.PluginRegistrationSpec{
+			Type:     kaprov1alpha1.PluginTypePlanner,
+			Name:     "capacity",
+			Protocol: kaprov1alpha1.PluginProtocolGRPC,
+			Endpoint: "bufnet",
+			Timeout:  "1s",
+		},
+	})
+
+	if result.Ready {
+		t.Fatal("Ready = true")
+	}
+	if result.Reason != "MissingCapability" {
+		t.Fatalf("Reason = %q", result.Reason)
+	}
+	if !strings.Contains(result.Message, "filter, score, order, or defer") {
+		t.Fatalf("Message = %q", result.Message)
 	}
 }
 
@@ -214,12 +243,17 @@ func (fakeGateServer) GetCapabilities(context.Context, *kgiv1alpha1.GetCapabilit
 
 type fakePlannerServer struct {
 	kpiv1alpha1.UnimplementedPlannerServiceServer
+	capabilities []string
 }
 
-func (fakePlannerServer) GetCapabilities(context.Context, *kpiv1alpha1.GetCapabilitiesRequest) (*kpiv1alpha1.GetCapabilitiesResponse, error) {
+func (s fakePlannerServer) GetCapabilities(context.Context, *kpiv1alpha1.GetCapabilitiesRequest) (*kpiv1alpha1.GetCapabilitiesResponse, error) {
+	capabilities := s.capabilities
+	if capabilities == nil {
+		capabilities = []string{"filter", "score"}
+	}
 	return &kpiv1alpha1.GetCapabilitiesResponse{
 		ContractVersion: ContractVersion(),
 		PluginVersion:   "planner-test",
-		Capabilities:    []string{"filter", "score"},
+		Capabilities:    capabilities,
 	}, nil
 }
