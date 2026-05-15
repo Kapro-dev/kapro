@@ -1,7 +1,7 @@
 // Package gate defines KGI — the Kapro Gate Interface.
 //
 // KGI v1alpha1 is the pluggable evaluation contract for delivery gates.
-// A gate answers one question: "is it safe to advance this target-cluster rollout right now?"
+// A gate answers one question: "is it safe to advance this target-cluster promotion right now?"
 //
 // Built-in implementations live in internal/gate/:
 //   - soak.go              — time-based bake period
@@ -92,7 +92,7 @@ type Projection struct {
 // transitions from Result.Phase.
 //
 // Phase values:
-//   - Passed       — gate condition satisfied; rollout may advance
+//   - Passed       — gate condition satisfied; promotion may advance
 //   - Inconclusive — gate needs more time; controller requeues after RetryAfter
 //   - Failed       — gate condition not met; failure policy applies
 //   - Running      — gate-managed resource (e.g. Job) is still executing
@@ -101,7 +101,7 @@ type Result struct {
 	// The controller uses Phase as the authoritative state.
 	Phase kaprov1alpha1.GatePhase
 
-	// Message is a human-readable explanation shown in rollout status and
+	// Message is a human-readable explanation shown in promotion status and
 	// notifications. Be specific: include metric values, threshold,
 	// actual vs expected. Good: "p99 latency 48ms > threshold 40ms".
 	Message string
@@ -144,7 +144,7 @@ func (r Result) IsFailed() bool {
 	return r.Phase == kaprov1alpha1.GatePhaseFailed
 }
 
-// Context is the per-target rollout context passed into gate evaluation.
+// Context is the per-target promotion context passed into gate evaluation.
 // It is a runtime value owned by the release controller, not a Kubernetes API object.
 type Context struct {
 	Name       string
@@ -167,7 +167,7 @@ type Context struct {
 // Request carries everything a gate needs to evaluate its condition.
 // Gates must not modify any field of Request.
 type Request struct {
-	// Context is the per-target rollout state being gated.
+	// Context is the per-target promotion state being gated.
 	// Never nil.
 	Context *Context
 
@@ -191,7 +191,7 @@ type Request struct {
 
 // Gate is KGI v1alpha1: the Kapro Gate Interface.
 //
-// Evaluate returns a Result indicating whether the target rollout may advance.
+// Evaluate returns a Result indicating whether the target promotion may advance.
 // The controller persists gate state to Release.status.targets[].gates after each
 // evaluation — implementations must not attempt to store state themselves.
 //

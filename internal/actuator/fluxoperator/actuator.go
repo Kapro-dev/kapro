@@ -31,7 +31,7 @@ var resourceSetGVK = schema.GroupVersionKind{
 //
 // Input field naming convention:
 //   - Single-app: inputField (default "tag") holds the version
-//   - Multi-app (KaproApp): "{appKey}_version" per component (e.g. "pos-server_version")
+//   - Multi-component (KaproBundle): "{appKey}_version" per component (e.g. "pos-server_version")
 //
 // The actuator resolves the field name from appKey: if appKey is non-empty and
 // the input entry has a matching "{appKey}_version" field, it patches that.
@@ -280,7 +280,7 @@ func resolveConfig(foSpec *kaprov1alpha1.PushConfig) (ns, tenantField string) {
 }
 
 // resolveVersionField maps an appKey to the ResourceSet input field name.
-// For multi-component KaproApp: "pos-server" → "pos-server_version"
+// For multi-component KaproBundle: "pos-server" → "pos-server_version"
 // For single-app (backward compat): "" or "default" → configured inputField
 func resolveVersionField(foSpec *kaprov1alpha1.PushConfig, appKey string) string {
 	if appKey != "" && appKey != "default" {

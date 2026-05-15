@@ -1,5 +1,5 @@
 apiVersion: kapro.io/v1alpha1
-kind: KaproApp
+kind: KaproBundle
 metadata:
   name: checkout
 spec:

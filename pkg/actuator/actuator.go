@@ -1,6 +1,6 @@
 // Package actuator defines KAI — the Kapro Actuator Interface.
 //
-// KAI is the contract between the Kapro promotion engine and any delivery system.
+// KAI is the contract between the Kapro promotion control plane and any delivery system.
 // Analogous to Kubernetes CRI: Kapro doesn't care if you use Flux, ArgoCD, Helm,
 // or Pulumi — it calls the same three methods.
 //
@@ -40,7 +40,7 @@ type DeltaApplyRequest struct {
 }
 
 // SwitchRequest carries everything needed to perform a namespace slot switch.
-// Used by the promotion engine when multi-version is enabled on the KaproApp.
+// Used by the promotion control plane when multi-version is enabled on the KaproBundle.
 type SwitchRequest struct {
 	// Cluster is the target member cluster.
 	Cluster *kaprov1alpha1.MemberCluster
@@ -48,8 +48,8 @@ type SwitchRequest struct {
 	FromSlot string
 	// ToSlot is the verified standby slot to switch to (e.g. "green").
 	ToSlot string
-	// App is the KaproApp spec containing multi-version config.
-	App *kaprov1alpha1.KaproAppSpec
+	// Bundle is the KaproBundle spec containing multi-version config.
+	Bundle *kaprov1alpha1.KaproBundleSpec
 }
 
 // Actuator is KAI: the Kapro Actuator Interface.
@@ -90,8 +90,8 @@ type Actuator interface {
 }
 
 // Switcher is an optional interface for actuators that support multi-version
-// namespace slot switching. The promotion engine checks if the resolved
-// actuator implements Switcher when multi-version is enabled on the KaproApp.
+// namespace slot switching. The promotion control plane checks if the resolved
+// actuator implements Switcher when multi-version is enabled on the KaproBundle.
 //
 // The switch sequence is:
 //  1. Scale down stateful consumers (Kafka, MQ) in the active slot
@@ -103,7 +103,7 @@ type Actuator interface {
 // If any step fails, the actuator must roll back completed steps.
 type Switcher interface {
 	// Switch performs the atomic namespace slot switch.
-	// Called by the promotion engine after all checkpoints pass in the standby slot.
+	// Called by the promotion control plane after all checkpoints pass in the standby slot.
 	Switch(ctx context.Context, req SwitchRequest) error
 
 	// ActiveSlot returns the currently active slot name for the given cluster.

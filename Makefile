@@ -42,14 +42,22 @@ vet: ## Run go vet
 	go vet ./...
 
 .PHONY: verify
-verify: fmt vet lint build test ## Run full checks with coverage (use before pushing)
+verify: validate-yaml-json check-markdown-links fmt vet lint build test ## Run full checks with coverage (use before pushing)
 
 .PHONY: verify-local
-verify-local: fmt vet lint build test-no-cover ## Run local checks without coverage tooling
+verify-local: validate-yaml-json check-markdown-links fmt vet lint build test-no-cover ## Run local checks without coverage tooling
 
 .PHONY: lint
 lint: $(GOLANGCI_LINT) ## Run golangci-lint
 	$(GOLANGCI_LINT) run --timeout 5m
+
+.PHONY: validate-yaml-json
+validate-yaml-json: ## Validate CI, example, monitoring YAML and Grafana dashboard JSON
+	scripts/validate-yaml-json
+
+.PHONY: check-markdown-links
+check-markdown-links: ## Check local links in README/docs/examples/monitoring Markdown
+	python3 scripts/check-markdown-links.py
 
 .PHONY: tidy
 tidy: ## Run go mod tidy
@@ -114,6 +122,10 @@ test: generate manifests $(ENVTEST) ## Run unit + integration tests with envtest
 build: generate ## Build operator and CLI binaries
 	go build -trimpath -ldflags="-s -w" -o bin/kapro-operator ./cmd/operator
 	go build -trimpath -ldflags="-s -w" -o bin/kapro ./cmd/kapro
+
+.PHONY: release-smoke
+release-smoke: ## Smoke-test Helm packaging and release workflow chart artifacts
+	scripts/ci-release-smoke.sh
 
 .PHONY: sync-crds
 sync-crds: manifests ## Sync generated CRDs into Helm chart crds/ directory

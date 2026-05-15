@@ -22,8 +22,8 @@ spec:
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
       type: string
-    - jsonPath: .spec.appRef
-      name: AppRef
+    - jsonPath: .spec.bundleRef
+      name: BundleRef
       type: string
     - jsonPath: .status.clusterCount
       name: Clusters
@@ -41,7 +41,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Kapro is the single entry point for fleet delivery. Users reference a KaproApp
+          Kapro is the single entry point for fleet delivery. Users reference a KaproBundle
           and define clusters; the controller pushes FluxInstance + OCIRepository to spokes
           and generates MemberClusters + Pipeline on the hub.
         properties:
@@ -65,9 +65,9 @@ spec:
           spec:
             description: KaproSpec defines the desired state of a Kapro fleet.
             properties:
-              appRef:
-                description: AppRef is the name of the KaproApp that defines components
-                  to deploy.
+              bundleRef:
+                description: BundleRef is the name of the KaproBundle that defines
+                  components to deploy.
                 type: string
               clusters:
                 description: Clusters defines the target clusters in the fleet.
@@ -812,7 +812,7 @@ spec:
                 description: Suspended pauses Kapro reconciliation.
                 type: boolean
             required:
-            - appRef
+            - bundleRef
             - clusters
             - pipeline
             - registry
@@ -826,7 +826,7 @@ spec:
                 type: integer
               componentCount:
                 description: ComponentCount is the number of components from the resolved
-                  KaproApp.
+                  KaproBundle.
                 format: int32
                 type: integer
               conditions:

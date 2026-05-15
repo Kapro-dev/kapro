@@ -134,7 +134,7 @@ Release
 | CRD | Kind | Ownership | Scope |
 |-----|------|-----------|-------|
 | `kaproes.kapro.io` | `Kapro` | Platform | Cluster |
-| `kaproapps.kapro.io` | `KaproApp` | Platform | Cluster |
+| `kaprobundles.kapro.io` | `KaproBundle` | Platform | Cluster |
 | `pipelines.kapro.io` | `Pipeline` | Platform | Cluster |
 | `releases.kapro.io` | `Release` | Release engineer / automation | Cluster |
 | `releasetriggers.kapro.io` | `ReleaseTrigger` | Platform / automation | Cluster |
@@ -146,7 +146,7 @@ Release
 | `approvals.kapro.io` | `Approval` | Human via webhook | Cluster |
 | `agentpolicies.kapro.io` | `AgentPolicy` | Platform | Cluster |
 
-`KaproApp`, `Pipeline`, `NotificationProvider`, and `NotificationPolicy` are
+`KaproBundle`, `Pipeline`, `NotificationProvider`, and `NotificationPolicy` are
 spec-only template/configuration objects. Execution state lives in `Release`,
 `ReleaseTarget`, `MemberCluster`, `Approval`, and `ReleaseTrigger` status.
 
@@ -197,7 +197,7 @@ Controllers are registered from `pkg/controllermanager/controllers.go`. Hub and 
 
 For v1, hub configuration is sourced from a dedicated git repository and
 applied to the hub cluster by CI with `kubectl apply`. The repository owns
-`MemberCluster`, `KaproApp`, `Pipeline`, and `Release` YAML. Spoke clusters do
+`MemberCluster`, `KaproBundle`, `Pipeline`, and `Release` YAML. Spoke clusters do
 not watch that repository; they consume immutable OCI bundles and report status
 through the hub.
 
@@ -308,8 +308,12 @@ type Actuator interface {
 
 The reference implementation is **Flux** (`internal/actuator/flux`). It writes `MemberCluster.spec.desiredVersion` on the hub; the spoke `kapro-cluster-controller` observes it and reconciles the local Flux `OCIRepository` + `Kustomization`.
 
-Other actuators (Argo, Helm, KServe, Pulumi, raw Kubernetes apply) are future
-work. The in-process actuator contract is a Preview surface; see
+Other actuators can delegate to Argo CD, Argo Rollouts, Flagger, Helm, KServe,
+Pulumi, raw Kubernetes apply, Istio, Gateway API, or platform-specific systems.
+Kapro does not own those systems' in-cluster traffic shifting or rollout
+algorithms; it gates and sequences promotion around their status.
+
+The in-process actuator contract is a Preview surface; see
 `docs/api-stability.md` before depending on it across minor releases.
 
 ---

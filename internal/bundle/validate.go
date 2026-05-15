@@ -16,9 +16,9 @@ func (e *ValidationError) Error() string {
 	return fmt.Sprintf("%d validation errors:\n  - %s", len(e.Errors), strings.Join(e.Errors, "\n  - "))
 }
 
-// Validate checks a KaproApp for common mistakes before bundle generation.
+// Validate checks a KaproBundle for common mistakes before bundle generation.
 // Returns nil if valid, or a *ValidationError with all issues found.
-func Validate(app *kaprov1alpha1.KaproApp) error {
+func Validate(app *kaprov1alpha1.KaproBundle) error {
 	var errs []string
 
 	if len(app.Spec.Components) == 0 {

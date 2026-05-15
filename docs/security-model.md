@@ -54,7 +54,7 @@ regions, and clusters. Ownership is role-based:
 | Resource | Primary writer | Status writer | Notes |
 |---|---|---|---|
 | `Kapro` | Platform administrator | Kapro operator | Hub-level installation and runtime configuration. |
-| `KaproApp` | Platform or application owner | Kapro operator | Application metadata and delivery configuration. |
+| `KaproBundle` | Platform or application owner | None | Component bundle metadata and delivery configuration. |
 | `Pipeline` | Platform administrator | None | Shared promotion template. |
 | `Release` | Release engineer or trusted automation | Kapro operator | Human-created or trigger-created execution object. |
 | `ReleaseTrigger` | Platform administrator or release automation owner | Kapro operator | Autonomous release creation policy. |
@@ -74,7 +74,7 @@ Kapro supports platform-managed multi-tenancy on a shared hub:
 - Platform administrators own CRDs, operator installation, `MemberCluster`,
   `Pipeline`, `PluginRegistration`, `AgentPolicy`, and trust roots.
 - Application release engineers create `Release` objects against approved
-  `KaproApp` and `Pipeline` objects.
+  `KaproBundle` and `Pipeline` objects.
 - Automation owners create `ReleaseTrigger` objects only when the artifact
   source, signature policy, release template, and release scope are approved for
   that team.

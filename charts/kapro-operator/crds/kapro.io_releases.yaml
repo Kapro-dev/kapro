@@ -476,6 +476,86 @@ spec:
                             metrics:
                               items:
                                 properties:
+                                  analysis:
+                                    description: |-
+                                      Analysis selects optional research-backed metric semantics. Empty keeps
+                                      the original threshold behavior for backwards compatibility.
+                                    properties:
+                                      alpha:
+                                        description: |-
+                                          Alpha is the false-positive budget for statistical tests. Defaults to
+                                          0.05. Lower values are more conservative.
+                                        maximum: 1
+                                        minimum: 0
+                                        type: number
+                                      baselineHealthQuery:
+                                        description: |-
+                                          BaselineHealthQuery must pass before baseline or score analysis can use
+                                          the baseline as a control. It should return a positive/true value when
+                                          the baseline is healthy.
+                                        type: string
+                                      baselineQuery:
+                                        description: |-
+                                          BaselineQuery is required for baseline analysis. The current value is
+                                          divided by the baseline value before applying the threshold.
+                                        type: string
+                                      comparator:
+                                        description: |-
+                                          Comparator controls threshold comparison.
+                                          Defaults to "gt" for threshold/sequential and "lte" for sloBurnRate/baseline.
+                                        enum:
+                                        - gt
+                                        - gte
+                                        - lt
+                                        - lte
+                                        type: string
+                                      confidenceThreshold:
+                                        description: |-
+                                          ConfidenceThreshold is the minimum confidence required for sequential
+                                          analysis to make a terminal decision. Defaults to 0.95.
+                                        maximum: 1
+                                        minimum: 0
+                                        type: number
+                                      maxSamples:
+                                        description: |-
+                                          MaxSamples is the maximum number of samples to wait for before a
+                                          statistical analysis must return a terminal decision using the evidence
+                                          available. Empty means no maximum.
+                                        format: int32
+                                        minimum: 1
+                                        type: integer
+                                      minSamples:
+                                        description: |-
+                                          MinSamples is the minimum number of range samples required for sequential
+                                          analysis before Kapro can pass or fail the gate.
+                                        format: int32
+                                        minimum: 1
+                                        type: integer
+                                      mode:
+                                        description: |-
+                                          Mode selects the metric analysis algorithm.
+                                          threshold: compare the current value to threshold.
+                                          sloBurnRate: treat the current value as an error-budget burn rate.
+                                          baseline: compare the current value to a baseline query as a ratio.
+                                          sequential: sample over the window and require enough confidence before deciding.
+                                          changePoint: detect a statistically meaningful change inside the window.
+                                          score: convert the metric into a 0-100 canary score.
+                                        enum:
+                                        - threshold
+                                        - sloBurnRate
+                                        - baseline
+                                        - sequential
+                                        - changePoint
+                                        - score
+                                        type: string
+                                      scoreThreshold:
+                                        description: |-
+                                          ScoreThreshold is the minimum score required for score analysis. Defaults
+                                          to 95.
+                                        maximum: 100
+                                        minimum: 0
+                                        type: number
+                                    type: object
                                   config:
                                     format: byte
                                     type: string
@@ -970,6 +1050,70 @@ spec:
                         properties:
                           attempts:
                             type: integer
+                          evidence:
+                            description: |-
+                              Evidence is structured, non-secret data that explains the gate decision.
+                              It is intended for audit, debugging, notifications, and future AI agents.
+                            items:
+                              description: GateEvidence records the facts and analysis
+                                that produced a gate decision.
+                              properties:
+                                alpha:
+                                  type: number
+                                analysisMode:
+                                  type: string
+                                baselineHealthQuery:
+                                  type: string
+                                baselineHealthy:
+                                  type: boolean
+                                baselineQuery:
+                                  type: string
+                                baselineValue:
+                                  type: string
+                                comparator:
+                                  type: string
+                                confidence:
+                                  type: number
+                                decisionRule:
+                                  type: string
+                                effectSize:
+                                  type: string
+                                interval:
+                                  type: string
+                                observedValue:
+                                  type: string
+                                pValue:
+                                  type: number
+                                projection:
+                                  description: GateProjection records an optional
+                                    forecast derived from gate evidence.
+                                  properties:
+                                    horizon:
+                                      type: string
+                                    reason:
+                                      type: string
+                                    value:
+                                      type: string
+                                  type: object
+                                provider:
+                                  type: string
+                                query:
+                                  type: string
+                                reason:
+                                  type: string
+                                sampleCount:
+                                  format: int64
+                                  type: integer
+                                score:
+                                  type: number
+                                threshold:
+                                  type: string
+                                type:
+                                  type: string
+                                window:
+                                  type: string
+                              type: object
+                            type: array
                           finishedAt:
                             type: string
                           message:
@@ -985,6 +1129,69 @@ spec:
                               description: GateConditionResult is the per-metric/condition
                                 result within a GateRunStatus.
                               properties:
+                                evidence:
+                                  description: Evidence is structured, non-secret
+                                    data for this condition.
+                                  items:
+                                    description: GateEvidence records the facts and
+                                      analysis that produced a gate decision.
+                                    properties:
+                                      alpha:
+                                        type: number
+                                      analysisMode:
+                                        type: string
+                                      baselineHealthQuery:
+                                        type: string
+                                      baselineHealthy:
+                                        type: boolean
+                                      baselineQuery:
+                                        type: string
+                                      baselineValue:
+                                        type: string
+                                      comparator:
+                                        type: string
+                                      confidence:
+                                        type: number
+                                      decisionRule:
+                                        type: string
+                                      effectSize:
+                                        type: string
+                                      interval:
+                                        type: string
+                                      observedValue:
+                                        type: string
+                                      pValue:
+                                        type: number
+                                      projection:
+                                        description: GateProjection records an optional
+                                          forecast derived from gate evidence.
+                                        properties:
+                                          horizon:
+                                            type: string
+                                          reason:
+                                            type: string
+                                          value:
+                                            type: string
+                                        type: object
+                                      provider:
+                                        type: string
+                                      query:
+                                        type: string
+                                      reason:
+                                        type: string
+                                      sampleCount:
+                                        format: int64
+                                        type: integer
+                                      score:
+                                        type: number
+                                      threshold:
+                                        type: string
+                                      type:
+                                        type: string
+                                      window:
+                                        type: string
+                                    type: object
+                                  type: array
                                 message:
                                   type: string
                                 name:
