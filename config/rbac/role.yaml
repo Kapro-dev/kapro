@@ -68,23 +68,18 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - approvals
-  - kaproes
-  - memberclusters
-  - pipelines
-  - releases
-  - releasetargets
+  - agentpolicies
+  - kaproapps
+  - pluginregistrations
+  - releasetriggers
   verbs:
-  - create
-  - delete
   - get
   - list
-  - patch
-  - update
   - watch
 - apiGroups:
   - kapro.io
   resources:
+  - agentpolicies/status
   - approvals/status
   - kaproes/status
   - memberclusters/status
@@ -99,12 +94,19 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - kaproapps
-  - pluginregistrations
-  - releasetriggers
+  - approvals
+  - kaproes
+  - memberclusters
+  - pipelines
+  - releases
+  - releasetargets
   verbs:
+  - create
+  - delete
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - kapro.io

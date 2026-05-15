@@ -53,6 +53,8 @@ func init() {
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create
+// +kubebuilder:rbac:groups=kapro.io,resources=agentpolicies,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=agentpolicies/status,verbs=get;update;patch
 
 func main() {
 	devMode := os.Getenv("KAPRO_DEV_MODE") == "1"
@@ -254,21 +256,25 @@ func main() {
 		}
 	}
 
-	// Register mutating HTTP servers as leader-only runnables.
-	// controller-runtime calls NeedLeaderElection()=true runnables only on the
-	// elected leader — prevents split-brain when running 2+ replicas.
-	approvalAddr := os.Getenv("KAPRO_APPROVAL_ADDR")
-	if approvalAddr == "" {
-		approvalAddr = ":8091"
-	}
-	approvalHandler := (&webhook.Server{
-		Client:            mgr.GetClient(),
-		TokenSecret:       cc.ApprovalSecret, // reuse already-validated secret
-		OperatorNamespace: podNS,
-	}).Handler()
-	if err := mgr.Add(leaderOnlyHTTP(approvalAddr, approvalHandler, 10*time.Second)); err != nil {
-		log.Error(err, "unable to add approval server")
-		os.Exit(1)
+	if os.Getenv("KAPRO_DISABLE_APPROVAL_SERVER") != "true" {
+		// Register mutating HTTP servers as leader-only runnables.
+		// controller-runtime calls NeedLeaderElection()=true runnables only on the
+		// elected leader — prevents split-brain when running 2+ replicas.
+		approvalAddr := os.Getenv("KAPRO_APPROVAL_ADDR")
+		if approvalAddr == "" {
+			approvalAddr = ":8091"
+		}
+		approvalHandler := (&webhook.Server{
+			Client:            mgr.GetClient(),
+			TokenSecret:       cc.ApprovalSecret, // reuse already-validated secret
+			OperatorNamespace: podNS,
+		}).Handler()
+		if err := mgr.Add(leaderOnlyHTTP(approvalAddr, approvalHandler, 10*time.Second)); err != nil {
+			log.Error(err, "unable to add approval server")
+			os.Exit(1)
+		}
+	} else {
+		log.Info("approval/decision API server disabled")
 	}
 
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

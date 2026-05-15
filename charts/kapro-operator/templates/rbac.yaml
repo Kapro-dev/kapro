@@ -140,12 +140,21 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
+  - agentpolicies
   - pluginregistrations
   - releasetriggers
   verbs:
   - get
   - list
   - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - agentpolicies/status
+  verbs:
+  - get
+  - patch
+  - update
 - apiGroups:
   - kapro.io
   resources:

@@ -98,6 +98,9 @@ webhook:
   # caBundle is used only when certManager.enabled=false.
   # Set to the base64-encoded CA certificate that signed the webhook TLS cert.
   caBundle: ""
+  # tlsSecretName is used only when certManager.enabled=false.
+  # The Secret must contain tls.crt and tls.key for the webhook server.
+  tlsSecretName: ""
 
 
 # Public URL for the approval/Decision API. Set this when exposing the

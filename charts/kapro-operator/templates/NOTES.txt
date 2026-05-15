@@ -6,7 +6,7 @@ Check rollout status:
 Check CRDs:
   kubectl get crd | grep kapro.io
 
-{{- if .Values.approvalServer.service.enabled }}
+{{- if and .Values.approvalServer.enabled .Values.approvalServer.service.enabled }}
 Approval/Decision API service:
   {{ include "kapro-operator.fullname" . }}-approval.{{ .Release.Namespace }}.svc:{{ .Values.approvalServer.service.port }}
 {{- end }}
