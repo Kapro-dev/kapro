@@ -110,7 +110,7 @@ func applyMaxParallel(planned []plannedTarget, maxParallel int32) {
 
 func (s *capacityPlannerServer) planTarget(target *kpiv1alpha1.Target, minCapacity int64, labelFilters map[string]string) plannedTarget {
 	labels := target.GetLabels()
-	capacity := capacityPercent(labels)
+	capacity, capacityErr := capacityPercent(labels)
 	item := plannedTarget{
 		name:     target.GetName(),
 		region:   firstNonEmpty(labels["region"], labels["topology.kubernetes.io/region"]),
@@ -132,13 +132,27 @@ func (s *capacityPlannerServer) planTarget(target *kpiv1alpha1.Target, minCapaci
 		item.target.Message = fmt.Sprintf("target already has active release %q", target.GetActiveRelease())
 		return item
 	}
-	for key, want := range labelFilters {
-		if labels[key] != want {
+	for _, key := range sortedLabelKeys(labelFilters) {
+		want := labelFilters[key]
+		got, ok := labels[key]
+		if !ok {
 			item.target.Decision = kpiv1alpha1.PlanningDecision_PLANNING_DECISION_SKIP
 			item.target.Reason = "RequiredLabelMismatch"
-			item.target.Message = fmt.Sprintf("label %s=%q, want %q", key, labels[key], want)
+			item.target.Message = fmt.Sprintf("label %s is missing, want %q", key, want)
 			return item
 		}
+		if got != want {
+			item.target.Decision = kpiv1alpha1.PlanningDecision_PLANNING_DECISION_SKIP
+			item.target.Reason = "RequiredLabelMismatch"
+			item.target.Message = fmt.Sprintf("label %s=%q, want %q", key, got, want)
+			return item
+		}
+	}
+	if capacityErr != nil {
+		item.target.Decision = kpiv1alpha1.PlanningDecision_PLANNING_DECISION_SKIP
+		item.target.Reason = "InvalidCapacity"
+		item.target.Message = capacityErr.Error()
+		return item
 	}
 	if capacity < minCapacity {
 		item.target.Decision = kpiv1alpha1.PlanningDecision_PLANNING_DECISION_DEFER
@@ -160,21 +174,23 @@ func orderedTargets(targets []*kpiv1alpha1.Target) []*kpiv1alpha1.Target {
 	return out
 }
 
-func capacityPercent(labels map[string]string) int64 {
+func capacityPercent(labels map[string]string) (int64, error) {
 	for _, key := range []string{"kapro.io/available-capacity-percent", "availableCapacityPercent", "capacity"} {
 		if raw := strings.TrimSpace(labels[key]); raw != "" {
-			if value, err := strconv.ParseInt(raw, 10, 64); err == nil {
-				if value < 0 {
-					return 0
-				}
-				if value > 100 {
-					return 100
-				}
-				return value
+			value, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil {
+				return 0, fmt.Errorf("capacity label %s=%q is not an integer percentage", key, raw)
 			}
+			if value < 0 {
+				return 0, nil
+			}
+			if value > 100 {
+				return 100, nil
+			}
+			return value, nil
 		}
 	}
-	return 100
+	return 100, nil
 }
 
 func parseOptionalInt(raw string, defaultValue int64) (int64, error) {
@@ -202,6 +218,15 @@ func requiredLabels(params map[string]string) map[string]string {
 		}
 	}
 	return out
+}
+
+func sortedLabelKeys(labels map[string]string) []string {
+	keys := make([]string, 0, len(labels))
+	for key := range labels {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func decisionRank(decision kpiv1alpha1.PlanningDecision) int {

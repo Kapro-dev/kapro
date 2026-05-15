@@ -94,6 +94,72 @@ func TestPlanInvalidMinCapacity(t *testing.T) {
 	}
 }
 
+func TestPlanRequiredLabelMismatchIsDeterministic(t *testing.T) {
+	req := &kpiv1alpha1.PlanRequest{
+		Parameters: map[string]string{
+			"requiredLabel.zone":   "a",
+			"requiredLabel.region": "eu",
+		},
+		Targets: []*kpiv1alpha1.Target{
+			target("missing", true, "", map[string]string{}),
+		},
+	}
+	server := &capacityPlannerServer{}
+	first, err := server.Plan(context.Background(), req)
+	if err != nil {
+		t.Fatalf("first Plan returned error: %v", err)
+	}
+	second, err := server.Plan(context.Background(), req)
+	if err != nil {
+		t.Fatalf("second Plan returned error: %v", err)
+	}
+	firstTarget := first.GetTargets()[0]
+	secondTarget := second.GetTargets()[0]
+	if firstTarget.GetReason() != "RequiredLabelMismatch" || firstTarget.GetMessage() != `label region is missing, want "eu"` {
+		t.Fatalf("first target = reason %q message %q", firstTarget.GetReason(), firstTarget.GetMessage())
+	}
+	if firstTarget.GetMessage() != secondTarget.GetMessage() {
+		t.Fatalf("messages differ: %q vs %q", firstTarget.GetMessage(), secondTarget.GetMessage())
+	}
+}
+
+func TestPlanRequiredLabelEmptyValueStillRequiresPresence(t *testing.T) {
+	resp, err := (&capacityPlannerServer{}).Plan(context.Background(), &kpiv1alpha1.PlanRequest{
+		Parameters: map[string]string{"requiredLabel.region": ""},
+		Targets: []*kpiv1alpha1.Target{
+			target("missing", true, "", map[string]string{}),
+			target("present-empty", true, "", map[string]string{"region": ""}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Plan returned error: %v", err)
+	}
+	got := summarize(resp.GetTargets())
+	want := []string{
+		"present-empty:PLANNING_DECISION_INCLUDE:Eligible",
+		"missing:PLANNING_DECISION_SKIP:RequiredLabelMismatch",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("planned targets:\n got=%v\nwant=%v", got, want)
+	}
+}
+
+func TestPlanInvalidCapacityIsSkipped(t *testing.T) {
+	resp, err := (&capacityPlannerServer{}).Plan(context.Background(), &kpiv1alpha1.PlanRequest{
+		Targets: []*kpiv1alpha1.Target{
+			target("bad-capacity", true, "", map[string]string{"capacity": "bad"}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Plan returned error: %v", err)
+	}
+	got := summarize(resp.GetTargets())
+	want := []string{"bad-capacity:PLANNING_DECISION_SKIP:InvalidCapacity"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("planned targets:\n got=%v\nwant=%v", got, want)
+	}
+}
+
 func target(name string, ready bool, activeRelease string, labels map[string]string) *kpiv1alpha1.Target {
 	return &kpiv1alpha1.Target{
 		Name:          name,
