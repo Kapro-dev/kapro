@@ -96,7 +96,7 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - kaprobundles
+  - promotionsources
   verbs:
   - get
   - list

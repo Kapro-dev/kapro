@@ -13,8 +13,8 @@ clusters/
   canary-eu.yaml              MemberCluster for the canary spoke
   prod-eu.yaml                MemberCluster for a production EU spoke
   prod-us.yaml                MemberCluster for a production US spoke
-bundles/
-  checkout.yaml               KaproBundle component and registry metadata
+sources/
+  checkout.yaml               PromotionSource unit and registry metadata
 pipelines/
   checkout-progressive.yaml   Pipeline stages, selectors, and gates
 releases/
@@ -27,7 +27,7 @@ releases/
 
 1. Copy this directory into a new hub config git repository.
 2. Configure hub cluster authentication in `.github/workflows/apply-kapro-hub-config.yaml`.
-3. Edit `clusters/`, `bundles/`, `pipelines/`, and `releases/` for your fleet.
+3. Edit `clusters/`, `sources/`, `pipelines/`, and `releases/` for your fleet.
 4. Open a pull request. CI runs server-side validation and `kubectl diff`.
 5. Merge to `main`. CI applies the directories to the hub cluster in order.
 6. Kapro reconciles the `Release` and spoke clusters pull the referenced OCI bundle.
@@ -37,13 +37,13 @@ releases/
 Apply configuration in this order:
 
 1. `clusters/` - creates `MemberCluster` inventory and labels.
-2. `bundles/` - creates reusable `KaproBundle` metadata.
+2. `sources/` - creates reusable `PromotionSource` metadata.
 3. `pipelines/` - creates reusable rollout stage DAGs.
 4. `releases/` - creates release intent that references the pipeline.
 
 ```bash
 kubectl apply -f clusters/
-kubectl apply -f bundles/
+kubectl apply -f sources/
 kubectl apply -f pipelines/
 kubectl apply -f releases/
 ```
@@ -54,12 +54,12 @@ Run these commands against a hub cluster with the Kapro CRDs installed:
 
 ```bash
 kubectl apply --dry-run=server -f clusters/
-kubectl apply --dry-run=server -f bundles/
+kubectl apply --dry-run=server -f sources/
 kubectl apply --dry-run=server -f pipelines/
 kubectl apply --dry-run=server -f releases/
 
 kubectl diff -f clusters/ || true
-kubectl diff -f bundles/ || true
+kubectl diff -f sources/ || true
 kubectl diff -f pipelines/ || true
 kubectl diff -f releases/ || true
 ```
@@ -68,7 +68,7 @@ After apply:
 
 ```bash
 kubectl get memberclusters.kapro.io
-kubectl get kaprobundles.kapro.io,pipelines.kapro.io,releases.kapro.io
+kubectl get promotionsources.kapro.io,pipelines.kapro.io,releases.kapro.io
 kubectl describe releases.kapro.io checkout-v1-2-3
 ```
 

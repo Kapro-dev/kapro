@@ -21,7 +21,7 @@ func TestRunInitScaffoldArgo(t *testing.T) {
 	}
 	for _, relPath := range []string{
 		"backends/argo.yaml",
-		"bundles/checkout.yaml",
+		"sources/checkout.yaml",
 		"pipelines/checkout.yaml",
 		"kapro/checkout.yaml",
 		"argo/applications/checkout.yaml",
@@ -51,7 +51,7 @@ func TestRunInitScaffoldRepoOnly(t *testing.T) {
 	}
 	for _, relPath := range []string{
 		"backends/argo.yaml",
-		"bundles/checkout.yaml",
+		"sources/checkout.yaml",
 		"pipelines/checkout.yaml",
 		"argo/applications/checkout.yaml",
 	} {
@@ -92,6 +92,12 @@ func TestRunConnectScaffoldFlux(t *testing.T) {
 		if !strings.Contains(content, want) {
 			t.Fatalf("missing %q in:\n%s", want, content)
 		}
+	}
+}
+
+func TestParseReleaseVersionsRejectsDuplicateUnits(t *testing.T) {
+	if _, err := parseReleaseVersions([]string{"api=v1", "api=v2"}); err == nil {
+		t.Fatal("expected duplicate unit error")
 	}
 }
 

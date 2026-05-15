@@ -17,23 +17,22 @@ import (
 	kaproconfig "kapro.io/kapro/internal/config"
 )
 
-func newBundleCmd() *cobra.Command {
+func newSourceCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "bundle",
-		Short: "Generate and push OCI bundles for spoke clusters",
-		Long: `Bundle commands generate spoke-side Flux manifests (HelmReleases,
-HelmRepositories, wave Kustomizations) from a KaproBundle spec and push
-them as OCI artifacts to a container registry.
+		Use:   "source",
+		Short: "Work with PromotionSource objects",
+		Long: `Source commands package PromotionSource objects into deployable
+artifacts for pull-mode spokes when a backend needs an OCI artifact.
 
-Used by CI pipelines to prepare bundles before triggering a Release.`,
+Kapro promotes revisions. The selected backend owns local sync and rollout.`,
 	}
-	cmd.AddCommand(newBundleGenerateCmd())
+	cmd.AddCommand(newSourcePackageCmd())
 	return cmd
 }
 
-func newBundleGenerateCmd() *cobra.Command {
+func newSourcePackageCmd() *cobra.Command {
 	var (
-		bundleRef  string
+		sourceRef  string
 		kaproName  string
 		version    string
 		registry   string
@@ -43,47 +42,48 @@ func newBundleGenerateCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "generate",
-		Short: "Generate spoke bundle from KaproBundle spec",
-		Long: `Reads a KaproBundle CR from the hub cluster and generates an OCI bundle
-containing per-wave directories with HelmReleases and HelmRepositories.
+		Use:   "package",
+		Short: "Package a PromotionSource for pull-mode spokes",
+		Long: `Reads a PromotionSource CR from the hub cluster and packages it into
+an OCI artifact containing per-wave directories with HelmReleases and
+HelmRepositories.
 
-With --push, also pushes the bundle to the OCI registry.
+With --push, also pushes the artifact to the OCI registry.
 
 Examples:
-  # Generate to local directory (dry-run)
-  kapro bundle generate --bundle hello-spoke-bundle --version 2.0.0 --output /tmp/bundle
+  # Package to local directory (dry-run)
+  kapro source package --source checkout --version 2.0.0 --output /tmp/kapro-source
 
-  # Generate and push to GAR
-  kapro bundle generate --bundle hello-spoke-bundle --version 2.0.0 \
+  # Package and push to GAR
+  kapro source package --source checkout --version 2.0.0 \
     --registry oci://europe-west1-docker.pkg.dev/project/repo --push
 
   # In CI pipeline
-  kapro bundle generate --bundle hello-spoke-bundle --name hello-spoke --version ${VERSION} \
+  kapro source package --source checkout --kapro checkout-prod --version ${VERSION} \
     --registry ${OCI_REGISTRY} --push \
     --kubeconfig ${HUB_KUBECONFIG}`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := kaproName
 			if name == "" {
-				name = bundleRef
+				name = sourceRef
 			}
-			return runBundleGenerate(cmd.Context(), bundleRef, name, version, registry, outputDir, push, kubeconfig)
+			return runSourcePackage(cmd.Context(), sourceRef, name, version, registry, outputDir, push, kubeconfig)
 		},
 	}
 
-	cmd.Flags().StringVar(&bundleRef, "bundle", "", "KaproBundle CR name (required)")
-	cmd.Flags().StringVar(&kaproName, "name", "", "Bundle name prefix (default: same as --bundle, should match Kapro CR name)")
-	cmd.Flags().StringVar(&version, "version", "", "Bundle version / OCI tag (required)")
+	cmd.Flags().StringVar(&sourceRef, "source", "", "PromotionSource CR name (required)")
+	cmd.Flags().StringVar(&kaproName, "kapro", "", "Kapro fleet name prefix (default: same as --source)")
+	cmd.Flags().StringVar(&version, "version", "", "Artifact version / OCI tag (required)")
 	cmd.Flags().StringVar(&registry, "registry", "", "OCI registry URL (required for --push)")
 	cmd.Flags().StringVar(&outputDir, "output", "", "Output directory (default: temp dir, printed to stdout)")
-	cmd.Flags().BoolVar(&push, "push", false, "Push bundle to OCI registry after generating")
+	cmd.Flags().BoolVar(&push, "push", false, "Push artifact to OCI registry after packaging")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to hub kubeconfig (default: in-cluster or ~/.kube/config)")
-	_ = cmd.MarkFlagRequired("bundle")
+	_ = cmd.MarkFlagRequired("source")
 	_ = cmd.MarkFlagRequired("version")
 	return cmd
 }
 
-func runBundleGenerate(ctx context.Context, bundleRef, bundleName, version, registry, outputDir string, push bool, kubeconfigPath string) error {
+func runSourcePackage(ctx context.Context, sourceRef, kaproName, version, registry, outputDir string, push bool, kubeconfigPath string) error {
 	if registry == "" {
 		cfg, _ := kaproconfig.Load()
 		registry = cfg.Registry("default")
@@ -92,30 +92,30 @@ func runBundleGenerate(ctx context.Context, bundleRef, bundleName, version, regi
 		return fmt.Errorf("--registry is required when using --push")
 	}
 
-	// Build client to read KaproBundle from hub.
+	// Build client to read PromotionSource from hub.
 	hubClient, err := buildHubClient(kubeconfigPath)
 	if err != nil {
 		return fmt.Errorf("connect to hub: %w", err)
 	}
 
-	// Read KaproBundle.
-	var app kaprov1alpha1.KaproBundle
-	if err := hubClient.Get(ctx, client.ObjectKey{Name: bundleRef}, &app); err != nil {
-		return fmt.Errorf("get KaproBundle %q: %w", bundleRef, err)
+	// Read PromotionSource.
+	var app kaprov1alpha1.PromotionSource
+	if err := hubClient.Get(ctx, client.ObjectKey{Name: sourceRef}, &app); err != nil {
+		return fmt.Errorf("get PromotionSource %q: %w", sourceRef, err)
 	}
 
-	fmt.Fprintf(os.Stderr, "Read KaproBundle %q: %d components, %d registries\n",
-		bundleRef, len(app.Spec.Components), len(app.Spec.Registries))
+	fmt.Fprintf(os.Stderr, "Read PromotionSource %q: %d units, %d registries\n",
+		sourceRef, len(app.Spec.Units), len(app.Spec.Registries))
 
 	// Validate.
 	if err := bundle.Validate(&app); err != nil {
 		return fmt.Errorf("validation failed:\n%w", err)
 	}
 
-	// Generate bundle.
+	// Generate artifact contents.
 	req := bundle.BundleRequest{
-		KaproName: bundleName,
-		Bundle:    &app,
+		KaproName: kaproName,
+		Source:    &app,
 		Version:   version,
 		Registry:  registry,
 	}
@@ -124,7 +124,7 @@ func runBundleGenerate(ctx context.Context, bundleRef, bundleName, version, regi
 	// Write to output directory.
 	dir := outputDir
 	if dir == "" {
-		dir, err = os.MkdirTemp("", "kapro-bundle-*")
+		dir, err = os.MkdirTemp("", "kapro-source-*")
 		if err != nil {
 			return fmt.Errorf("create temp dir: %w", err)
 		}
@@ -151,7 +151,7 @@ func runBundleGenerate(ctx context.Context, bundleRef, bundleName, version, regi
 	if push {
 		ociURL, err := bundle.Push(ctx, dir, req)
 		if err != nil {
-			return fmt.Errorf("push bundle: %w", err)
+			return fmt.Errorf("push artifact: %w", err)
 		}
 		fmt.Fprintf(os.Stderr, "Pushed: %s\n", ociURL)
 	}

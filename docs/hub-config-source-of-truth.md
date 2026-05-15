@@ -4,16 +4,16 @@
 
 For v1, hub config lives in a dedicated **git repository**. CI validates that repository and applies the rendered YAML to the Kapro hub cluster with `kubectl apply`.
 
-Spoke clusters remain gitless. They consume OCI bundles and report status through `MemberCluster`; they do not watch the hub config repository.
+Spoke clusters remain gitless. They consume OCI sources and report status through `MemberCluster`; they do not watch the hub config repository.
 
 ## Why
 
 Kapro separates two sources of truth:
 
 - **Hub config truth:** the git repository that defines fleet inventory, applications, rollout pipelines, and release intent.
-- **Runtime artifact truth:** the OCI registry that stores immutable application bundles consumed by spoke clusters.
+- **Runtime artifact truth:** the OCI registry that stores immutable application sources consumed by spoke clusters.
 
-The hub cluster needs Kubernetes objects such as `MemberCluster`, `KaproBundle`, `Pipeline`, and `Release` to drive the fleet. Those objects must be reviewable, reproducible, and auditable. A plain git repository plus CI-driven `kubectl apply` is the v1 operating model.
+The hub cluster needs Kubernetes objects such as `MemberCluster`, `PromotionSource`, `Pipeline`, and `Release` to drive the fleet. Those objects must be reviewable, reproducible, and auditable. A plain git repository plus CI-driven `kubectl apply` is the v1 operating model.
 
 ## Architecture
 
@@ -27,13 +27,13 @@ Pull request / merge to main
 CI: validate -> diff -> kubectl apply
    |
    v
-Hub cluster etcd: MemberCluster, KaproBundle, Pipeline, Release
+Hub cluster etcd: MemberCluster, PromotionSource, Pipeline, Release
    |
    v
 Kapro operator
    |
    v
-Spoke clusters: pull OCI bundles and report status
+Spoke clusters: pull OCI sources and report status
 ```
 
 ## What lives in the hub config repo
@@ -41,7 +41,7 @@ Spoke clusters: pull OCI bundles and report status
 | Directory | Contents |
 |---|---|
 | `clusters/` | MemberCluster definitions (one per spoke) |
-| `bundles/` | KaproBundle definitions (component registry, waves, overrides) |
+| `sources/` | PromotionSource definitions (unit registry, waves, overrides) |
 | `pipelines/` | Pipeline definitions (stage DAG, selectors, gates) |
 | `releases/` | Release objects (version + pipeline references) |
 | `.github/workflows/` | CI that validates, diffs, and applies the repo to the hub |
@@ -49,7 +49,7 @@ Spoke clusters: pull OCI bundles and report status
 ## What does NOT live in the hub config repo
 
 - OCI bundle contents (those are in the container registry)
-- Spoke cluster workloads (those come from OCI bundles)
+- Spoke cluster workloads (those come from OCI sources)
 - Secrets (those come from External Secrets Operator or sealed secrets)
 - Infrastructure (that comes from Terraform)
 - Generated controller status (that belongs in the hub cluster)
@@ -64,7 +64,7 @@ hub-config/
     canary-eu.yaml
     prod-eu.yaml
     prod-us.yaml
-  bundles/
+  sources/
     checkout.yaml
   pipelines/
     checkout-progressive.yaml
@@ -82,7 +82,7 @@ See [examples/hub-config/](../examples/hub-config/) for the complete sample.
 Apply objects in dependency order:
 
 1. `clusters/` - registers `MemberCluster` inventory and labels used by selectors.
-2. `bundles/` - defines reusable component bundle metadata.
+2. `sources/` - defines reusable promotion unit metadata.
 3. `pipelines/` - defines stage DAGs, cluster selectors, and gate policy.
 4. `releases/` - creates release intent that references pipelines and target versions.
 
@@ -96,12 +96,12 @@ Pull request checks:
 
 ```bash
 kubectl apply --dry-run=server -f clusters/
-kubectl apply --dry-run=server -f bundles/
+kubectl apply --dry-run=server -f sources/
 kubectl apply --dry-run=server -f pipelines/
 kubectl apply --dry-run=server -f releases/
 
 kubectl diff -f clusters/ || true
-kubectl diff -f bundles/ || true
+kubectl diff -f sources/ || true
 kubectl diff -f pipelines/ || true
 kubectl diff -f releases/ || true
 ```
@@ -110,7 +110,7 @@ Merge-to-main apply:
 
 ```bash
 kubectl apply -f clusters/
-kubectl apply -f bundles/
+kubectl apply -f sources/
 kubectl apply -f pipelines/
 kubectl apply -f releases/
 ```
@@ -119,7 +119,7 @@ Post-apply checks:
 
 ```bash
 kubectl get memberclusters.kapro.io
-kubectl get kaprobundles.kapro.io,pipelines.kapro.io,releases.kapro.io
+kubectl get promotionsources.kapro.io,pipelines.kapro.io,releases.kapro.io
 kubectl describe releases.kapro.io checkout-v1-2-3
 ```
 
@@ -130,8 +130,8 @@ The CI identity needs permission to `get`, `list`, `watch`, `create`, `patch`, `
 Before opening a pull request from the hub config repo:
 
 ```bash
-kubectl apply --dry-run=server -f clusters/ -f bundles/ -f pipelines/ -f releases/
-kubectl diff -f clusters/ -f bundles/ -f pipelines/ -f releases/ || true
+kubectl apply --dry-run=server -f clusters/ -f sources/ -f pipelines/ -f releases/
+kubectl diff -f clusters/ -f sources/ -f pipelines/ -f releases/ || true
 ```
 
 `--dry-run=server` requires access to a hub cluster with the Kapro CRDs installed. It catches schema and admission errors that static YAML parsing cannot catch.

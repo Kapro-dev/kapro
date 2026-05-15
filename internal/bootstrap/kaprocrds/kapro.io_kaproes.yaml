@@ -22,8 +22,8 @@ spec:
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
       type: string
-    - jsonPath: .spec.bundleRef
-      name: BundleRef
+    - jsonPath: .spec.sourceRef
+      name: SourceRef
       type: string
     - jsonPath: .status.clusterCount
       name: Clusters
@@ -42,7 +42,7 @@ spec:
       openAPIV3Schema:
         description: |-
           Kapro is the single entry point for fleet delivery. Users reference a
-          KaproBundle, select a backend profile, and define clusters and promotion
+          PromotionSource, select a backend profile, and define clusters and promotion
           stages. Backend adapters own Flux, Argo, or other delivery-system details.
         properties:
           apiVersion:
@@ -65,10 +65,6 @@ spec:
           spec:
             description: KaproSpec defines the desired state of a Kapro fleet.
             properties:
-              bundleRef:
-                description: BundleRef is the name of the KaproBundle that defines
-                  components to deploy.
-                type: string
               clusters:
                 description: Clusters defines the target clusters in the fleet.
                 items:
@@ -805,7 +801,9 @@ spec:
                 - stages
                 type: object
               registry:
-                description: Registry is the OCI registry URL for Helm charts.
+                description: |-
+                  Registry is the OCI registry URL for generated pull-mode artifacts.
+                  Native Argo/Flux sources may omit it when no Kapro-packaged artifact is used.
                 properties:
                   provider:
                     default: generic
@@ -822,27 +820,25 @@ spec:
                 required:
                 - url
                 type: object
+              sourceRef:
+                description: SourceRef is the name of the PromotionSource that defines
+                  units to deploy.
+                type: string
               suspended:
                 default: false
                 description: Suspended pauses Kapro reconciliation.
                 type: boolean
             required:
-            - bundleRef
             - clusters
             - delivery
             - pipeline
-            - registry
+            - sourceRef
             type: object
           status:
             description: KaproStatus defines the observed state of Kapro.
             properties:
               clusterCount:
                 description: ClusterCount is the number of clusters in the fleet.
-                format: int32
-                type: integer
-              componentCount:
-                description: ComponentCount is the number of components from the resolved
-                  KaproBundle.
                 format: int32
                 type: integer
               conditions:
@@ -915,9 +911,12 @@ spec:
               observedGeneration:
                 format: int64
                 type: integer
+              unitCount:
+                description: UnitCount is the number of units from the resolved PromotionSource.
+                format: int32
+                type: integer
               version:
-                description: Version is the current primary component version being
-                  deployed.
+                description: Version is the current primary unit version being deployed.
                 type: string
             type: object
         type: object

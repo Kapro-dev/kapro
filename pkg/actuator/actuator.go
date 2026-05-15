@@ -39,19 +39,6 @@ type DeltaApplyRequest struct {
 	DesiredVersions map[string]string
 }
 
-// SwitchRequest carries everything needed to perform a namespace slot switch.
-// Used by the promotion control plane when multi-version is enabled on the KaproBundle.
-type SwitchRequest struct {
-	// Cluster is the target member cluster.
-	Cluster *kaprov1alpha1.MemberCluster
-	// FromSlot is the currently active slot (e.g. "blue").
-	FromSlot string
-	// ToSlot is the verified standby slot to switch to (e.g. "green").
-	ToSlot string
-	// Bundle is the KaproBundle spec containing multi-version config.
-	Bundle *kaprov1alpha1.KaproBundleSpec
-}
-
 // Actuator is KAI: the Kapro Actuator Interface.
 //
 // Any delivery system that can apply a version to a cluster implements this interface.
@@ -87,26 +74,4 @@ type Actuator interface {
 	// IsAllConverged returns true when ALL artifacts in desiredVersions match
 	// the cluster's currentVersions and Flux has converged.
 	IsAllConverged(ctx context.Context, cluster *kaprov1alpha1.MemberCluster, desiredVersions map[string]string) (bool, error)
-}
-
-// Switcher is an optional interface for actuators that support multi-version
-// namespace slot switching. The promotion control plane checks if the resolved
-// actuator implements Switcher when multi-version is enabled on the KaproBundle.
-//
-// The switch sequence is:
-//  1. Scale down stateful consumers (Kafka, MQ) in the active slot
-//  2. Wait for consumer groups to drain
-//  3. Scale up consumers in the standby slot
-//  4. Flip traffic routing (Traefik IngressRoute, Gateway HTTPRoute, etc.)
-//  5. Verify traffic flows to the new slot
-//
-// If any step fails, the actuator must roll back completed steps.
-type Switcher interface {
-	// Switch performs the atomic namespace slot switch.
-	// Called by the promotion control plane after all checkpoints pass in the standby slot.
-	Switch(ctx context.Context, req SwitchRequest) error
-
-	// ActiveSlot returns the currently active slot name for the given cluster.
-	// Returns "" if multi-version is not active on this cluster.
-	ActiveSlot(ctx context.Context, cluster *kaprov1alpha1.MemberCluster) (string, error)
 }

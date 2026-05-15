@@ -100,6 +100,7 @@ func (s *Server) createRelease(w http.ResponseWriter, r *http.Request) {
 		},
 		Spec: kaprov1alpha1.ReleaseSpec{
 			Version:   req.Version,
+			Versions:  req.Versions,
 			Pipelines: req.Pipelines,
 			Timeout:   req.Timeout,
 		},
@@ -124,7 +125,8 @@ func (s *Server) createRelease(w http.ResponseWriter, r *http.Request) {
 
 type CreateReleaseRequest struct {
 	Name      string                             `json:"name"`
-	Version   string                             `json:"version"`
+	Version   string                             `json:"version,omitempty"`
+	Versions  map[string]string                  `json:"versions,omitempty"`
 	Pipelines []kaprov1alpha1.ReleasePipelineRef `json:"pipelines"`
 	Targets   []string                           `json:"targets,omitempty"`
 	Timeout   string                             `json:"timeout,omitempty"`
@@ -163,14 +165,22 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func validateCreateReleaseRequest(req CreateReleaseRequest) error {
-	if req.Name == "" || req.Version == "" || len(req.Pipelines) == 0 {
-		return fmt.Errorf("name, version, and pipelines are required")
+	if req.Name == "" || len(req.Pipelines) == 0 {
+		return fmt.Errorf("name and pipelines are required")
+	}
+	if req.Version == "" && len(req.Versions) == 0 {
+		return fmt.Errorf("version or versions is required")
 	}
 	if errs := validation.IsDNS1123Subdomain(req.Name); len(errs) > 0 {
 		return fmt.Errorf("name must be a DNS-1123 subdomain: %s", strings.Join(errs, "; "))
 	}
 	if len(req.Pipelines) > 64 {
 		return fmt.Errorf("pipelines must contain at most 64 entries")
+	}
+	for unit, version := range req.Versions {
+		if unit == "" || version == "" {
+			return fmt.Errorf("versions must use non-empty unit and version values")
+		}
 	}
 	for i, p := range req.Pipelines {
 		if p.Name == "" || p.Pipeline == "" {

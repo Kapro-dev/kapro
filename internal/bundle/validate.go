@@ -16,13 +16,13 @@ func (e *ValidationError) Error() string {
 	return fmt.Sprintf("%d validation errors:\n  - %s", len(e.Errors), strings.Join(e.Errors, "\n  - "))
 }
 
-// Validate checks a KaproBundle for common mistakes before bundle generation.
+// Validate checks a PromotionSource for common mistakes before source packaging.
 // Returns nil if valid, or a *ValidationError with all issues found.
-func Validate(app *kaprov1alpha1.KaproBundle) error {
+func Validate(app *kaprov1alpha1.PromotionSource) error {
 	var errs []string
 
-	if len(app.Spec.Components) == 0 {
-		errs = append(errs, "no components defined")
+	if len(app.Spec.Units) == 0 {
+		errs = append(errs, "no units defined")
 	}
 
 	// Check registries.
@@ -46,28 +46,28 @@ func Validate(app *kaprov1alpha1.KaproBundle) error {
 		registryNames[reg.Name] = true
 	}
 
-	// Check components.
-	componentNames := map[string]bool{}
-	componentsByWave := map[int32][]string{}
-	for _, comp := range app.Spec.Components {
+	// Check units.
+	unitNames := map[string]bool{}
+	unitsByWave := map[int32][]string{}
+	for _, comp := range app.Spec.Units {
 		// Name.
 		if comp.Name == "" {
-			errs = append(errs, "component has empty name")
+			errs = append(errs, "unit has empty name")
 			continue
 		}
-		if componentNames[comp.Name] {
-			errs = append(errs, fmt.Sprintf("duplicate component name %q", comp.Name))
+		if unitNames[comp.Name] {
+			errs = append(errs, fmt.Sprintf("duplicate unit name %q", comp.Name))
 		}
-		componentNames[comp.Name] = true
+		unitNames[comp.Name] = true
 
 		// Version.
 		if comp.Version == "" {
-			errs = append(errs, fmt.Sprintf("component %q has empty version", comp.Name))
+			errs = append(errs, fmt.Sprintf("unit %q has empty version", comp.Name))
 		}
 
 		// Wave must be non-negative.
 		if comp.Wave < 0 {
-			errs = append(errs, fmt.Sprintf("component %q has negative wave %d", comp.Name, comp.Wave))
+			errs = append(errs, fmt.Sprintf("unit %q has negative wave %d", comp.Name, comp.Wave))
 		}
 
 		// Repo must reference a valid registry.
@@ -76,34 +76,34 @@ func Validate(app *kaprov1alpha1.KaproBundle) error {
 			repo = app.Spec.Defaults.Repo
 		}
 		if repo != "" && len(app.Spec.Registries) > 0 && !registryNames[repo] {
-			errs = append(errs, fmt.Sprintf("component %q references unknown registry %q", comp.Name, repo))
+			errs = append(errs, fmt.Sprintf("unit %q references unknown registry %q", comp.Name, repo))
 		}
 
-		// DependsOn must reference existing components.
+		// DependsOn must reference existing units.
 		for _, dep := range comp.DependsOn {
-			if !componentNames[dep] {
-				// Could be forward reference — check all components.
+			if !unitNames[dep] {
+				// Could be forward reference — check all units.
 				found := false
-				for _, c := range app.Spec.Components {
+				for _, c := range app.Spec.Units {
 					if c.Name == dep {
 						found = true
 						break
 					}
 				}
 				if !found {
-					errs = append(errs, fmt.Sprintf("component %q depends on unknown component %q", comp.Name, dep))
+					errs = append(errs, fmt.Sprintf("unit %q depends on unknown unit %q", comp.Name, dep))
 				}
 			}
 		}
 
-		componentsByWave[comp.Wave] = append(componentsByWave[comp.Wave], comp.Name)
+		unitsByWave[comp.Wave] = append(unitsByWave[comp.Wave], comp.Name)
 	}
 
-	// Check wave ordering — dependsOn should reference components in same or earlier wave.
-	for _, comp := range app.Spec.Components {
+	// Check wave ordering — dependsOn should reference units in same or earlier wave.
+	for _, comp := range app.Spec.Units {
 		for _, dep := range comp.DependsOn {
 			depWave := int32(-1)
-			for _, c := range app.Spec.Components {
+			for _, c := range app.Spec.Units {
 				if c.Name == dep {
 					depWave = c.Wave
 					break
@@ -111,7 +111,7 @@ func Validate(app *kaprov1alpha1.KaproBundle) error {
 			}
 			if depWave > comp.Wave {
 				errs = append(errs, fmt.Sprintf(
-					"component %q (wave %d) depends on %q (wave %d) — dependency must be in same or earlier wave",
+					"unit %q (wave %d) depends on %q (wave %d) — dependency must be in same or earlier wave",
 					comp.Name, comp.Wave, dep, depWave))
 			}
 		}

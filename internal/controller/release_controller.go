@@ -167,14 +167,15 @@ func (r *ReleaseReconciler) patchReleaseStatus(ctx context.Context, release *kap
 	return nil
 }
 
-// handlePending validates spec.version and transitions to Progressing.
+// handlePending validates the release revisions and transitions to Progressing.
 func (r *ReleaseReconciler) handlePending(ctx context.Context, release *kaprov1alpha1.Release) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	if release.Spec.Version == "" {
+	desiredVersions := releaseDesiredVersionsFromSpec(release)
+	if len(desiredVersions) == 0 {
 		patch := client.MergeFrom(release.DeepCopy())
-		r.setReleaseReadyCondition(release, metav1.ConditionFalse, "NoVersion", "spec.version is required")
-		r.setStalledCondition(release, "NoVersion", "spec.version is required")
+		r.setReleaseReadyCondition(release, metav1.ConditionFalse, "NoVersion", "spec.version or spec.versions is required")
+		r.setStalledCondition(release, "NoVersion", "spec.version or spec.versions is required")
 		release.Status.ObservedGeneration = release.Generation
 		if err := r.patchReleaseStatus(ctx, release, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("patch stalled: %w", err)
@@ -182,7 +183,8 @@ func (r *ReleaseReconciler) handlePending(ctx context.Context, release *kaprov1a
 		return ctrl.Result{}, nil
 	}
 
-	log.Info("version resolved", "version", release.Spec.Version)
+	resolvedVersion := releasePrimaryVersion(release, desiredVersions)
+	log.Info("version resolved", "version", resolvedVersion, "versions", len(desiredVersions))
 
 	progress := make([]kaprov1alpha1.PipelineProgress, 0, len(release.Spec.Pipelines))
 	for _, ref := range release.Spec.Pipelines {
@@ -193,7 +195,7 @@ func (r *ReleaseReconciler) handlePending(ctx context.Context, release *kaprov1a
 
 	patch := client.MergeFrom(release.DeepCopy())
 	release.Status.Phase = kaprov1alpha1.ReleasePhaseProgressing
-	release.Status.ResolvedVersion = release.Spec.Version
+	release.Status.ResolvedVersion = resolvedVersion
 	release.Status.PipelineProgress = progress
 	release.Status.ObservedGeneration = release.Generation
 	release.Status.StartedAt = time.Now().UTC().Format(time.RFC3339)
@@ -205,7 +207,7 @@ func (r *ReleaseReconciler) handlePending(ctx context.Context, release *kaprov1a
 		pipelineNames = append(pipelineNames, p.Pipeline)
 	}
 	r.Recorder.Eventf(release, corev1.EventTypeNormal, "Started",
-		"release %s started: version=%s pipelines=%v", release.Name, release.Spec.Version, pipelineNames)
+		"release %s started: version=%s pipelines=%v", release.Name, resolvedVersion, pipelineNames)
 	if err := r.patchReleaseStatus(ctx, release, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch Release phase: %w", err)
 	}
@@ -1704,7 +1706,7 @@ func syncKey(pipelineRefName, stage, target string) string {
 
 // syncName builds the deterministic name for one target rollout entry.
 // Format: <release-prefix>-<hashed logical key>. The hash makes the name
-// collision-safe even when individual components contain hyphens.
+// collision-safe even when individual units contain hyphens.
 func syncName(release, pipelineRef, stage, target string) string {
 	key := fmt.Sprintf("%s/%s", release, syncKey(pipelineRef, stage, target))
 	h := fnv.New32a()
@@ -1721,11 +1723,46 @@ func releaseAppKey(release *kaprov1alpha1.Release) string {
 	return "default"
 }
 
+func releaseDesiredVersionsFromSpec(release *kaprov1alpha1.Release) map[string]string {
+	desired := make(map[string]string, len(release.Spec.Versions)+1)
+	if release.Spec.Version != "" {
+		desired[releaseAppKey(release)] = release.Spec.Version
+	}
+	for unit, version := range release.Spec.Versions {
+		if unit == "" || version == "" {
+			continue
+		}
+		desired[unit] = version
+	}
+	if len(desired) == 0 {
+		return nil
+	}
+	return desired
+}
+
 func releaseDesiredVersions(release *kaprov1alpha1.Release) map[string]string {
+	if len(release.Spec.Versions) > 0 {
+		return releaseDesiredVersionsFromSpec(release)
+	}
 	if release.Status.ResolvedVersion == "" {
 		return nil
 	}
 	return map[string]string{"default": release.Status.ResolvedVersion}
+}
+
+func releasePrimaryVersion(release *kaprov1alpha1.Release, desired map[string]string) string {
+	if version := desired[releaseAppKey(release)]; version != "" {
+		return version
+	}
+	keys := make([]string, 0, len(desired))
+	for unit := range desired {
+		keys = append(keys, unit)
+	}
+	sort.Strings(keys)
+	if len(keys) == 0 {
+		return ""
+	}
+	return desired[keys[0]]
 }
 
 func primaryDesiredVersion(desired map[string]string, fallbackVersion, fallbackAppKey string) (string, string) {

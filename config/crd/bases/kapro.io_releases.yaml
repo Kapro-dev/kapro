@@ -30,16 +30,16 @@ spec:
       type: string
     - jsonPath: .status.report.syncedTargets
       name: Synced
-      type: string
+      type: integer
     - jsonPath: .status.report.failedTargets
       name: Failed
-      type: string
+      type: integer
     - jsonPath: .status.report.pendingTargets
       name: Pending
-      type: string
+      type: integer
     - jsonPath: .status.report.totalTargets
       name: Total
-      type: string
+      type: integer
     - jsonPath: .status.report.duration
       name: Duration
       type: string
@@ -134,12 +134,21 @@ spec:
                 description: Timeout is the maximum duration for the entire Release.
                 type: string
               version:
-                description: Version is the OCI digest or tag to deliver across the
-                  fleet.
+                description: |-
+                  Version is the default revision to deliver across the fleet.
+                  For brownfield/native sources this is the revision for every unit that is
+                  not explicitly listed in versions.
                 type: string
+              versions:
+                additionalProperties:
+                  type: string
+                description: |-
+                  Versions maps promotion unit name to the backend-native revision to
+                  deliver. Use this when a Release promotes multiple existing Argo/Flux
+                  objects together without creating a synthetic application object.
+                type: object
             required:
             - pipelines
-            - version
             type: object
           status:
             description: ReleaseStatus defines the observed state of Release.
@@ -155,9 +164,9 @@ spec:
                     artifact:
                       description: Artifact is the OCI artifact that was delivered.
                       type: string
-                    changedComponents:
-                      description: ChangedComponents lists the components that changed
-                        relative to the parent artifact.
+                    changedUnits:
+                      description: ChangedUnits lists the units that changed relative
+                        to the parent artifact.
                       items:
                         type: string
                       type: array

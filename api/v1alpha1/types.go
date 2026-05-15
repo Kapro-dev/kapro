@@ -1023,8 +1023,16 @@ type ReleaseScope struct {
 // Uniqueness and dependency-reference validation is enforced by the admission webhook,
 // which can perform DAG checks without the quadratic CEL cost budget constraints.
 type ReleaseSpec struct {
-	// Version is the OCI digest or tag to deliver across the fleet.
-	Version string `json:"version"`
+	// Version is the default revision to deliver across the fleet.
+	// For brownfield/native sources this is the revision for every unit that is
+	// not explicitly listed in versions.
+	// +optional
+	Version string `json:"version,omitempty"`
+	// Versions maps promotion unit name to the backend-native revision to
+	// deliver. Use this when a Release promotes multiple existing Argo/Flux
+	// objects together without creating a synthetic application object.
+	// +optional
+	Versions map[string]string `json:"versions,omitempty"`
 	// Pipelines is the DAG of pipeline nodes.
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=64
@@ -1076,10 +1084,10 @@ type ReleaseStatus struct {
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.spec.version`,priority=0
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`,priority=0
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`,priority=0
-// +kubebuilder:printcolumn:name="Synced",type=string,JSONPath=`.status.report.syncedTargets`,priority=0
-// +kubebuilder:printcolumn:name="Failed",type=string,JSONPath=`.status.report.failedTargets`,priority=0
-// +kubebuilder:printcolumn:name="Pending",type=string,JSONPath=`.status.report.pendingTargets`,priority=0
-// +kubebuilder:printcolumn:name="Total",type=string,JSONPath=`.status.report.totalTargets`,priority=0
+// +kubebuilder:printcolumn:name="Synced",type=integer,JSONPath=`.status.report.syncedTargets`,priority=0
+// +kubebuilder:printcolumn:name="Failed",type=integer,JSONPath=`.status.report.failedTargets`,priority=0
+// +kubebuilder:printcolumn:name="Pending",type=integer,JSONPath=`.status.report.pendingTargets`,priority=0
+// +kubebuilder:printcolumn:name="Total",type=integer,JSONPath=`.status.report.totalTargets`,priority=0
 // +kubebuilder:printcolumn:name="Duration",type=string,JSONPath=`.status.report.duration`,priority=0
 // +kubebuilder:printcolumn:name="Suspended",type=boolean,JSONPath=`.spec.suspended`,priority=1
 // +kubebuilder:printcolumn:name="Artifacts",type=integer,JSONPath=`.status.report.totalArtifacts`,priority=1
@@ -1585,9 +1593,9 @@ type AuditEntry struct {
 	// ReleaseDerivedFrom is the parent Release name.
 	// +optional
 	ReleaseDerivedFrom string `json:"releaseDerivedFrom,omitempty"`
-	// ChangedComponents lists the components that changed relative to the parent artifact.
+	// ChangedUnits lists the units that changed relative to the parent artifact.
 	// +optional
-	ChangedComponents []string `json:"changedComponents,omitempty"`
+	ChangedUnits []string `json:"changedUnits,omitempty"`
 	// Scope lists the target cluster names that were targeted. Nil = full-fleet rollout.
 	// +optional
 	Scope []string `json:"scope,omitempty"`
@@ -2315,37 +2323,38 @@ type AgentPolicyList struct {
 	Items           []AgentPolicy `json:"items"`
 }
 
-// ---- KaproBundle ---------------------------------------------------------------
+// ---- PromotionSource ---------------------------------------------------------------
 
-// KaproBundleSpec defines a component bundle deployed across the fleet.
-// Components, versions, defaults, and per-cluster overrides live here.
-// Referenced by Kapro.spec.bundleRef.
-type KaproBundleSpec struct {
-	// Registries defines HelmRepository sources. Each becomes a HelmRepository on spoke.
+// PromotionSourceSpec defines the native promotion units Kapro can move
+// through a fleet. Units may map to generated Flux resources in greenfield mode
+// or to backend-native objects discovered from Argo/Flux in native mode.
+// Referenced by Kapro.spec.sourceRef.
+type PromotionSourceSpec struct {
+	// BackendRef is the BackendProfile this source is normally discovered from
+	// or packaged for. Kapro uses it as metadata; delivery still comes from
+	// Kapro.spec.delivery and MemberCluster.spec.delivery.
 	// +optional
-	Registries []BundleRegistry `json:"registries,omitempty"`
-	// Components defines the deployable units (one HelmRelease per component).
+	BackendRef string `json:"backendRef,omitempty"`
+	// Registries defines HelmRepository sources for generated Flux resources.
+	// +optional
+	Registries []SourceRegistry `json:"registries,omitempty"`
+	// Units defines the native deployable units Kapro promotes.
 	// +kubebuilder:validation:MinItems=1
-	Components []BundleComponent `json:"components"`
-	// Defaults are inherited by every component unless overridden.
+	Units []PromotionUnit `json:"units"`
+	// Defaults are inherited by every unit unless overridden.
 	// +optional
-	Defaults *BundleDefaults `json:"defaults,omitempty"`
+	Defaults *SourceDefaults `json:"defaults,omitempty"`
 	// Overrides are per-cluster or per-label value patches layered on top of defaults.
 	// +optional
-	Overrides []BundleOverride `json:"overrides,omitempty"`
+	Overrides []SourceOverride `json:"overrides,omitempty"`
 	// HelmReleaseNamespace is where HelmRelease CRs live on spokes (not the workloads).
 	// +kubebuilder:default="flux-system"
 	HelmReleaseNamespace string `json:"helmReleaseNamespace,omitempty"`
-	// MultiVersion enables running multiple versions simultaneously on a spoke
-	// using namespace-based isolation. When nil (default), Kapro does single-namespace
-	// in-place upgrades — no extra namespaces, no OPA/Kyverno changes needed.
-	// +optional
-	MultiVersion *MultiVersionStrategy `json:"multiVersion,omitempty"`
 }
 
-// BundleRegistry defines a Helm chart source. Generates a HelmRepository on spoke.
-type BundleRegistry struct {
-	// Name is the registry identifier referenced by components via repo field.
+// SourceRegistry defines a Helm chart source. Generates a HelmRepository on spoke.
+type SourceRegistry struct {
+	// Name is the registry identifier referenced by units via repo field.
 	Name string `json:"name"`
 	// URL is the Helm repository URL (OCI or HTTPS).
 	// Supports ${variable} substitution (e.g. oci://${gcpArtifactRegistry}/helm/ldl).
@@ -2364,8 +2373,8 @@ type BundleRegistry struct {
 	Interval string `json:"interval,omitempty"`
 }
 
-// BundleDefaults are inherited by every component unless overridden at component level.
-type BundleDefaults struct {
+// SourceDefaults are inherited by every unit unless overridden at unit level.
+type SourceDefaults struct {
 	// Repo is the default registry name (from spec.registries).
 	// +optional
 	Repo string `json:"repo,omitempty"`
@@ -2380,90 +2389,59 @@ type BundleDefaults struct {
 	// +kubebuilder:default=3
 	// +optional
 	Retries int32 `json:"retries,omitempty"`
-	// ValuesFrom references ConfigMaps/Secrets with Helm values applied to all components.
+	// ValuesFrom references ConfigMaps/Secrets with Helm values applied to all units.
 	// +optional
 	ValuesFrom []ValuesReference `json:"valuesFrom,omitempty"`
-	// Values are base Helm values applied to every component (deep-merged with component values).
+	// Values are base Helm values applied to every unit (deep-merged with unit values).
 	// +optional
 	// +optional
 	// +kubebuilder:pruning:PreserveUnknownFields
 	Values *apiextensionsv1.JSON `json:"values,omitempty"`
 }
 
-// MultiVersionStrategy enables namespace-based version isolation on spokes.
-// When enabled, two workload namespaces coexist: active (serving traffic)
-// and standby (deploying next version). Shared infrastructure (kafka,
-// postgres, mongo) exists once and serves both.
-//
-// This is an opt-in feature. When not set, Kapro uses single-namespace
-// in-place upgrades with no policy changes required.
-type MultiVersionStrategy struct {
-	// SlotNames are the two namespace slot identifiers appended to workloadNamespace.
-	// Example with workloadNamespace "{{.Env}}-workloads" and slotNames ["blue","green"]:
-	//   → "p528-blue-workloads" (active, all store traffic)
-	//   → "p528-green-workloads" (standby, deploying + verifying)
-	// +kubebuilder:validation:MinItems=2
-	// +kubebuilder:validation:MaxItems=2
-	SlotNames []string `json:"slotNames,omitempty"`
-	// TrafficSwitch configures how traffic flips between slots.
-	TrafficSwitch TrafficSwitch `json:"trafficSwitch"`
-}
-
-// TrafficSwitch configures the full traffic flip between namespace slots.
-// This is always all-or-nothing — no weighted routing. POS checkout sessions
-// cannot be split across versions.
-type TrafficSwitch struct {
-	// Provider is the traffic routing backend that performs the switch.
-	// +kubebuilder:validation:Enum=gateway-api;istio;nginx;traefik;manual
-	Provider string `json:"provider"`
-	// IngressRef identifies the routing resource to modify.
-	// For traefik: an IngressRoute. For nginx: an Ingress.
-	// For gateway-api: an HTTPRoute. For istio: a VirtualService.
-	// +optional
-	IngressRef *IngressReference `json:"ingressRef,omitempty"`
-}
-
-// IngressReference identifies the traffic routing resource to modify.
-type IngressReference struct {
-	// APIVersion of the routing resource (e.g. gateway.networking.k8s.io/v1).
-	APIVersion string `json:"apiVersion"`
-	// Kind of the routing resource (e.g. HTTPRoute, Ingress, VirtualService).
-	Kind string `json:"kind"`
-	// Name of the resource.
+// PromotionUnit is one deployable unit within a PromotionSource.
+// It can describe a generated Helm unit for greenfield scaffolds or an existing
+// backend-native object discovered from Argo/Flux.
+type PromotionUnit struct {
+	// Name is the stable Kapro unit identifier.
 	Name string `json:"name"`
-	// Namespace of the resource.
+	// BackendKind identifies the backend-native object kind when this unit maps
+	// to an existing object, for example Application, ApplicationSet,
+	// Kustomization, or HelmRelease.
+	// +optional
+	BackendKind string `json:"backendKind,omitempty"`
+	// Namespace is the backend-native object namespace when applicable.
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
-}
-
-// BundleComponent is one deployable unit within a KaproBundle.
-// Generates one HelmRelease on the spoke. Inherits from BundleDefaults unless overridden.
-type BundleComponent struct {
-	// Name is the component identifier. Used as HelmRelease name and chart name (unless chartName is set).
-	Name string `json:"name"`
-	// Version is the chart version. Supports ${VARIABLE} substitution from cluster-vars.
-	Version string `json:"version"`
+	// VersionField is the backend-native field Kapro changes for this unit,
+	// for example spec.source.targetRevision for Argo CD Applications.
+	// +optional
+	VersionField string `json:"versionField,omitempty"`
+	// Version is the default chart/revision for generated units. Supports
+	// ${VARIABLE} substitution from cluster-vars.
+	// +optional
+	Version string `json:"version,omitempty"`
 	// Repo references a registry from spec.registries by name. Inherits from defaults if empty.
 	// +optional
 	Repo string `json:"repo,omitempty"`
-	// ChartName overrides the Helm chart name when different from component name.
-	// Example: component "keycloak" uses chart "keycloakx".
+	// ChartName overrides the Helm chart name when different from unit name.
+	// Example: unit "keycloak" uses chart "keycloakx".
 	// +optional
 	ChartName string `json:"chartName,omitempty"`
 	// TargetNamespace is where workload pods run on spoke. Inherits from defaults if empty.
 	// Supports ${variable} substitution.
 	// +optional
 	TargetNamespace string `json:"targetNamespace,omitempty"`
-	// Wave controls deployment ordering (lower = earlier). Components in the same wave
+	// Wave controls deployment ordering (lower = earlier). Units in the same wave
 	// deploy in parallel. Wave N waits for wave N-1 to be Ready.
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	Wave int32 `json:"wave,omitempty"`
-	// DependsOn lists component names that must be Ready before this one starts.
+	// DependsOn lists unit names that must be Ready before this one starts.
 	// Creates HelmRelease-level dependsOn within the same wave.
 	// +optional
 	DependsOn []string `json:"dependsOn,omitempty"`
-	// Values are inline Helm values. Deep-merged with defaults.values (component wins on conflict).
+	// Values are inline Helm values. Deep-merged with defaults.values (unit wins on conflict).
 	// +optional
 	// +optional
 	// +kubebuilder:pruning:PreserveUnknownFields
@@ -2486,12 +2464,9 @@ type BundleComponent struct {
 	// +kubebuilder:validation:Enum=Skip;Create;CreateReplace
 	// +optional
 	CRDs string `json:"crds,omitempty"`
-	// Suspend pauses reconciliation for this component.
+	// Suspend pauses reconciliation for this unit.
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
-	// Shared marks this as infrastructure NOT duplicated in blue-green slots.
-	// +optional
-	Shared bool `json:"shared,omitempty"`
 }
 
 // ValuesReference references a ConfigMap or Secret for Helm values.
@@ -2510,50 +2485,52 @@ type ValuesReference struct {
 	Optional bool `json:"optional,omitempty"`
 }
 
-// BundleOverride patches Helm values for a subset of clusters.
-type BundleOverride struct {
+// SourceOverride patches Helm values for a subset of clusters.
+type SourceOverride struct {
 	// Selector matches clusters by labels. Applied to all matching clusters.
 	// +optional
 	Selector map[string]string `json:"selector,omitempty"`
 	// Clusters is an explicit list of cluster names. Takes precedence over selector.
 	// +optional
 	Clusters []string `json:"clusters,omitempty"`
-	// Component restricts this override to a single component. Empty means all.
+	// Unit restricts this override to a single unit. Empty means all.
 	// +optional
-	Component string `json:"component,omitempty"`
+	Unit string `json:"unit,omitempty"`
 	// Values are Helm value patches merged on top of defaults.
 	// +kubebuilder:pruning:PreserveUnknownFields
 	Values *apiextensionsv1.JSON `json:"values,omitempty"`
 }
 
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:scope=Cluster,shortName=kb;bundle;bundles,categories=kapro-all
-// +kubebuilder:printcolumn:name="Components",type=integer,JSONPath=`.metadata.annotations.kapro\.io/component-count`
+// +kubebuilder:resource:scope=Cluster,shortName=ps;source;sources,categories=kapro-all
+// +kubebuilder:printcolumn:name="Units",type=integer,JSONPath=`.metadata.annotations.kapro\.io/unit-count`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// KaproBundle is a component bundle defining what to deploy across the fleet.
-// It is a pure template — no controller, no status. Referenced by Kapro.spec.bundleRef.
-type KaproBundle struct {
+// PromotionSource defines the units Kapro promotes. It is the source/app-unit
+// contract for both generated greenfield layouts and native Argo/Flux layouts.
+type PromotionSource struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              KaproBundleSpec `json:"spec,omitempty"`
+	Spec              PromotionSourceSpec `json:"spec,omitempty"`
 }
 
 // +kubebuilder:object:root=true
-type KaproBundleList struct {
+type PromotionSourceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []KaproBundle `json:"items"`
+	Items           []PromotionSource `json:"items"`
 }
 
 // ---- Kapro ------------------------------------------------------------------
 
 // KaproSpec defines the desired state of a Kapro fleet.
 type KaproSpec struct {
-	// Registry is the OCI registry URL for Helm charts.
-	Registry KaproRegistry `json:"registry"`
-	// BundleRef is the name of the KaproBundle that defines components to deploy.
-	BundleRef string `json:"bundleRef"`
+	// Registry is the OCI registry URL for generated pull-mode artifacts.
+	// Native Argo/Flux sources may omit it when no Kapro-packaged artifact is used.
+	// +optional
+	Registry KaproRegistry `json:"registry,omitempty"`
+	// SourceRef is the name of the PromotionSource that defines units to deploy.
+	SourceRef string `json:"sourceRef"`
 	// Delivery selects the backend-neutral fleet delivery profile.
 	Delivery DeliverySpec `json:"delivery"`
 	// Clusters defines the target clusters in the fleet.
@@ -2639,9 +2616,9 @@ type KaproStatus struct {
 	ClusterCount int32 `json:"clusterCount,omitempty"`
 	// ConvergedCount is the number of clusters where all HelmReleases are Ready.
 	ConvergedCount int32 `json:"convergedCount,omitempty"`
-	// ComponentCount is the number of components from the resolved KaproBundle.
-	ComponentCount int32 `json:"componentCount,omitempty"`
-	// Version is the current primary component version being deployed.
+	// UnitCount is the number of units from the resolved PromotionSource.
+	UnitCount int32 `json:"unitCount,omitempty"`
+	// Version is the current primary unit version being deployed.
 	// +optional
 	Version string `json:"version,omitempty"`
 	// Inventory lists the generated spoke resources (FluxInstance, OCIRepository names).
@@ -2653,14 +2630,14 @@ type KaproStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=kp,categories=kapro-all
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
-// +kubebuilder:printcolumn:name="BundleRef",type=string,JSONPath=`.spec.bundleRef`
+// +kubebuilder:printcolumn:name="SourceRef",type=string,JSONPath=`.spec.sourceRef`
 // +kubebuilder:printcolumn:name="Clusters",type=integer,JSONPath=`.status.clusterCount`
 // +kubebuilder:printcolumn:name="Converged",type=integer,JSONPath=`.status.convergedCount`
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.version`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Kapro is the single entry point for fleet delivery. Users reference a
-// KaproBundle, select a backend profile, and define clusters and promotion
+// PromotionSource, select a backend profile, and define clusters and promotion
 // stages. Backend adapters own Flux, Argo, or other delivery-system details.
 type Kapro struct {
 	metav1.TypeMeta   `json:",inline"`

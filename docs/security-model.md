@@ -14,7 +14,7 @@ This document defines the target security architecture for Kapro deployments.
   Kubernetes RBAC, object naming, labels, admission policy, and release scope.
 - Humans and automation write intent objects. Kapro controllers write runtime
   state and status.
-- Plugins are not trusted as Kapro control-plane components. They receive
+- Plugins are not trusted as Kapro control-plane units. They receive
   bounded requests over a registered endpoint and return bounded decisions.
 - Artifact promotion uses immutable OCI digests and signature policy. Mutable
   tags are source observations only.
@@ -54,7 +54,7 @@ regions, and clusters. Ownership is role-based:
 | Resource | Primary writer | Status writer | Notes |
 |---|---|---|---|
 | `Kapro` | Platform administrator | Kapro operator | Hub-level installation and runtime configuration. |
-| `KaproBundle` | Platform or application owner | None | Component bundle metadata and delivery configuration. |
+| `PromotionSource` | Platform or application owner | None | Native promotion unit metadata and delivery configuration. |
 | `Pipeline` | Platform administrator | None | Shared promotion template. |
 | `Release` | Release engineer or trusted automation | Kapro operator | Human-created or trigger-created execution object. |
 | `ReleaseTrigger` | Platform administrator or release automation owner | Kapro operator | Autonomous release creation policy. |
@@ -74,7 +74,7 @@ Kapro supports platform-managed multi-tenancy on a shared hub:
 - Platform administrators own CRDs, operator installation, `MemberCluster`,
   `Pipeline`, `PluginRegistration`, `AgentPolicy`, and trust roots.
 - Application release engineers create `Release` objects against approved
-  `KaproBundle` and `Pipeline` objects.
+  `PromotionSource` and `Pipeline` objects.
 - Automation owners create `ReleaseTrigger` objects only when the artifact
   source, signature policy, release template, and release scope are approved for
   that team.

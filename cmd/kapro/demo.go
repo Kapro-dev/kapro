@@ -134,7 +134,7 @@ func runDemo(ctx context.Context) error {
 	}
 	sp.StopSuccess(fmt.Sprintf("Installed %d CRDs", len(crdFiles)))
 
-	// Step 4: Create KaproBundle + Kapro CRs.
+	// Step 4: Create PromotionSource + Kapro CRs.
 	sp = cli.NewSpinner("Creating Kapro resources")
 	sp.Start()
 
@@ -149,11 +149,11 @@ func runDemo(ctx context.Context) error {
 		return err
 	}
 
-	// KaproBundle — defines what to deploy.
-	app := &kaprov1alpha1.KaproBundle{
+	// PromotionSource — defines what to deploy.
+	app := &kaprov1alpha1.PromotionSource{
 		ObjectMeta: metav1.ObjectMeta{Name: "demo-app"},
-		Spec: kaprov1alpha1.KaproBundleSpec{
-			Components: []kaprov1alpha1.BundleComponent{
+		Spec: kaprov1alpha1.PromotionSourceSpec{
+			Units: []kaprov1alpha1.PromotionUnit{
 				{Name: "pos-server", Version: "5.28.0"},
 				{Name: "auth-service", Version: "5.28.0"},
 				{Name: "sdc", Version: "5.28.0"},
@@ -162,7 +162,7 @@ func runDemo(ctx context.Context) error {
 		},
 	}
 	if err := c.Create(ctx, app); err != nil && !isAlreadyExists(err) {
-		sp.StopFail("Failed to create KaproBundle")
+		sp.StopFail("Failed to create PromotionSource")
 		return err
 	}
 
@@ -173,7 +173,7 @@ func runDemo(ctx context.Context) error {
 			Registry: kaprov1alpha1.KaproRegistry{
 				URL: "oci://registry.example.com/charts",
 			},
-			BundleRef: "demo-app",
+			SourceRef: "demo-app",
 			Clusters: []kaprov1alpha1.KaproCluster{
 				{Name: "canary-eu", Labels: map[string]string{"tier": "canary", "region": "eu-west"}},
 				{Name: "prod-eu-west", Labels: map[string]string{"tier": "prod", "region": "eu-west"}},
@@ -227,8 +227,8 @@ func runDemo(ctx context.Context) error {
 	fmt.Fprintln(cli.Out)
 
 	tbl := cli.NewTable("RESOURCE", "NAME", "DETAILS")
-	tbl.AddRow("KaproBundle", "demo-app", "4 components (pos-server, auth-service, sdc, keycloak)")
-	tbl.AddRow("Kapro", "demo", "3 clusters, 2 stages, bundleRef=demo-app")
+	tbl.AddRow("PromotionSource", "demo-app", "4 units (pos-server, auth-service, sdc, keycloak)")
+	tbl.AddRow("Kapro", "demo", "3 clusters, 2 stages, sourceRef=demo-app")
 	tbl.AddRow("  MemberCluster", "canary-eu", "tier=canary (generated on hub)")
 	tbl.AddRow("  MemberCluster", "prod-eu-west", "tier=prod (generated on hub)")
 	tbl.AddRow("  MemberCluster", "prod-eu-east", "tier=prod (generated on hub)")
@@ -245,7 +245,7 @@ func runDemo(ctx context.Context) error {
 	cli.Info("kapro fleet                                 # fleet overview")
 	cli.Info("kapro world                                 # all clusters")
 	cli.Info("kubectl get kapro demo -o yaml              # see the Kapro CRD")
-	cli.Info("kubectl get kaprobundle demo-app -o yaml       # see the KaproBundle CRD")
+	cli.Info("kubectl get promotionsource demo-app -o yaml       # see the PromotionSource CRD")
 	fmt.Fprintln(cli.Out)
 	cli.Muted("Clean up:  kapro demo --cleanup")
 	cli.Muted("Kubeconfig: export KUBECONFIG=" + kubeconfigPath)

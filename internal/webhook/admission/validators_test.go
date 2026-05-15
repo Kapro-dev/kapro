@@ -94,6 +94,23 @@ func TestValidateRelease_MissingVersion(t *testing.T) {
 	}
 }
 
+func TestValidateRelease_ValidVersionsMap(t *testing.T) {
+	r := &kaprov1alpha1.Release{
+		Spec: kaprov1alpha1.ReleaseSpec{
+			Versions: map[string]string{
+				"api":    "main@sha256:abc",
+				"worker": "main@sha256:def",
+			},
+			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
+				{Name: "initial", Pipeline: "pipe-1"},
+			},
+		},
+	}
+	if err := releaseValidate(r); err != nil {
+		t.Fatalf("expected versions map release to be valid: %v", err)
+	}
+}
+
 func TestValidateRelease_MissingPipelines(t *testing.T) {
 	r := &kaprov1alpha1.Release{
 		Spec: kaprov1alpha1.ReleaseSpec{
@@ -234,6 +251,22 @@ func TestValidateReleaseUpdate_VersionImmutable(t *testing.T) {
 	new.Spec.Version = "art-v2"
 	if err := admission.ValidateReleaseUpdate(old, new); err == nil {
 		t.Fatal("expected error for immutable version update")
+	}
+}
+
+func TestValidateReleaseUpdate_VersionsImmutable(t *testing.T) {
+	old := &kaprov1alpha1.Release{
+		Spec: kaprov1alpha1.ReleaseSpec{
+			Versions: map[string]string{"api": "main@sha256:abc"},
+			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
+				{Name: "wave1", Pipeline: "rollout"},
+			},
+		},
+	}
+	new := old.DeepCopy()
+	new.Spec.Versions["api"] = "main@sha256:def"
+	if err := admission.ValidateReleaseUpdate(old, new); err == nil {
+		t.Fatal("expected error for immutable versions update")
 	}
 }
 

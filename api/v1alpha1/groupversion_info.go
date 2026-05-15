@@ -30,8 +30,8 @@ func init() {
 		// AI agent trust boundaries
 		&AgentPolicy{}, &AgentPolicyList{},
 
-		// Kapro entry point + component bundle
+		// Kapro entry point + promotion source
 		&Kapro{}, &KaproList{},
-		&KaproBundle{}, &KaproBundleList{},
+		&PromotionSource{}, &PromotionSourceList{},
 	)
 }
