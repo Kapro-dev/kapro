@@ -16,7 +16,23 @@ rules:
   resources:
   - secrets
   verbs:
+  - create
+  - delete
   - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - watch
 - apiGroups:
   - coordination.k8s.io
   resources:
@@ -30,11 +46,9 @@ rules:
   - update
   - watch
 - apiGroups:
-  - kapro.io
+  - fluxcd.controlplane.io
   resources:
-  - approvals
-  - releases
-  - releasetargets
+  - resourcesets
   verbs:
   - create
   - delete
@@ -44,9 +58,30 @@ rules:
   - update
   - watch
 - apiGroups:
+  - helm.toolkit.fluxcd.io
+  resources:
+  - helmreleases
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - kapro.io
   resources:
+  - agentpolicies
+  - kaproapps
+  - pluginregistrations
+  - releasetriggers
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - agentpolicies/status
   - approvals/status
+  - kaproes/status
   - memberclusters/status
   - pluginregistrations/status
   - releases/status
@@ -59,22 +94,19 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
+  - approvals
+  - kaproes
   - memberclusters
-  - pluginregistrations
+  - pipelines
+  - releases
+  - releasetargets
   verbs:
+  - create
+  - delete
   - get
   - list
   - patch
   - update
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
-  - pipelines
-  - releasetriggers
-  verbs:
-  - get
-  - list
   - watch
 - apiGroups:
   - kapro.io

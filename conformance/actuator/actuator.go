@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	"kapro.io/kapro/pkg/plugincompat"
 	kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
 
 	"google.golang.org/protobuf/proto"
@@ -62,6 +64,19 @@ func Run(t *testing.T, client kaiv1alpha1.ActuatorServiceClient, scenario Scenar
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), scenario.Timeout)
 	defer cancel()
+
+	t.Run("GetCapabilitiesReturnsSupportedContractVersion", func(t *testing.T) {
+		resp, err := client.GetCapabilities(ctx, &kaiv1alpha1.GetCapabilitiesRequest{})
+		if err != nil {
+			t.Fatalf("GetCapabilities returned error: %v", err)
+		}
+		if resp == nil {
+			t.Fatal("GetCapabilities returned nil response")
+		}
+		if !plugincompat.IsContractVersionSupported(kaprov1alpha1.PluginTypeActuator, resp.GetContractVersion()) {
+			t.Fatalf("contract_version = %q, supported versions = %v", resp.GetContractVersion(), plugincompat.SupportedKAIContractVersions())
+		}
+	})
 
 	t.Run("ApplyIsIdempotent", func(t *testing.T) {
 		first, err := client.Apply(ctx, cloneApply(scenario.Apply))

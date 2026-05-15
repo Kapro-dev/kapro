@@ -32,6 +32,7 @@ spec:
             - --leader-elect={{ .Values.leaderElection.enabled }}
             - --metrics-bind-address=:{{ .Values.metrics.port }}
             - --health-probe-bind-address=:8081
+            - --webhook-port={{ .Values.webhook.port }}
           ports:
             - name: metrics
               containerPort: {{ .Values.metrics.port }}
@@ -39,6 +40,11 @@ spec:
             - name: health
               containerPort: 8081
               protocol: TCP
+            {{- if .Values.approvalServer.enabled }}
+            - name: approval
+              containerPort: {{ .Values.approvalServer.port }}
+              protocol: TCP
+            {{- end }}
             {{- if .Values.webhook.enabled }}
             - name: webhook
               containerPort: {{ .Values.webhook.port }}
@@ -63,9 +69,32 @@ spec:
               value: {{ .Values.externalURL | default "" | quote }}
             - name: KAPRO_HUB_API_URL
               value: {{ .Values.hubAPIURL | default "" | quote }}
-          {{- if or (and .Values.webhook.enabled .Values.webhook.certManager.enabled) (or .Values.approvalSecret.value .Values.approvalSecret.secretName) }}
+            - name: KAPRO_ENABLE_PLUGIN_GATEWAY
+              value: {{ .Values.pluginGateway.enabled | quote }}
+            - name: KAPRO_CONTROLLERS
+              value: {{ join "," .Values.controllers | quote }}
+            {{- if .Values.approvalServer.enabled }}
+            - name: KAPRO_APPROVAL_ADDR
+              value: ":{{ .Values.approvalServer.port }}"
+            {{- else }}
+            - name: KAPRO_DISABLE_APPROVAL_SERVER
+              value: "true"
+            {{- end }}
+            {{- if .Values.leaderElection.namespace }}
+            - name: KAPRO_LEADER_ELECTION_NAMESPACE
+              value: {{ .Values.leaderElection.namespace | quote }}
+            {{- end }}
+            {{- if .Values.shard }}
+            - name: KAPRO_SHARD
+              value: {{ .Values.shard | quote }}
+            {{- end }}
+            {{- if not .Values.webhook.enabled }}
+            - name: KAPRO_DISABLE_WEBHOOKS
+              value: "true"
+            {{- end }}
+          {{- if or (and .Values.webhook.enabled (or .Values.webhook.certManager.enabled .Values.webhook.tlsSecretName)) (or .Values.approvalSecret.value .Values.approvalSecret.secretName) }}
           volumeMounts:
-            {{- if and .Values.webhook.enabled .Values.webhook.certManager.enabled }}
+            {{- if and .Values.webhook.enabled (or .Values.webhook.certManager.enabled .Values.webhook.tlsSecretName) }}
             - name: webhook-tls
               mountPath: /tmp/k8s-webhook-server/serving-certs
               readOnly: true
@@ -76,12 +105,12 @@ spec:
               readOnly: true
             {{- end }}
           {{- end }}
-      {{- if or (and .Values.webhook.enabled .Values.webhook.certManager.enabled) (or .Values.approvalSecret.value .Values.approvalSecret.secretName) }}
+      {{- if or (and .Values.webhook.enabled (or .Values.webhook.certManager.enabled .Values.webhook.tlsSecretName)) (or .Values.approvalSecret.value .Values.approvalSecret.secretName) }}
       volumes:
-        {{- if and .Values.webhook.enabled .Values.webhook.certManager.enabled }}
+        {{- if and .Values.webhook.enabled (or .Values.webhook.certManager.enabled .Values.webhook.tlsSecretName) }}
         - name: webhook-tls
           secret:
-            secretName: {{ include "kapro-operator.fullname" . }}-webhook-tls
+            secretName: {{ .Values.webhook.tlsSecretName | default (printf "%s-webhook-tls" (include "kapro-operator.fullname" .)) }}
         {{- end }}
         {{- if or .Values.approvalSecret.value .Values.approvalSecret.secretName }}
         - name: approval-secret

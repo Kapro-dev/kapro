@@ -49,6 +49,16 @@ type KaproReconciler struct {
 	Recorder record.EventRecorder
 }
 
+// +kubebuilder:rbac:groups=kapro.io,resources=kaproes,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=kapro.io,resources=kaproes/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=kaproapps,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=memberclusters,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=kapro.io,resources=memberclusters/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=pipelines,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=fluxcd.controlplane.io,resources=resourcesets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=helm.toolkit.fluxcd.io,resources=helmreleases,verbs=get;list;watch
+
 func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	l := log.FromContext(ctx)
 

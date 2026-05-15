@@ -179,6 +179,11 @@ delivery integration boundary, not inside Kapro's control-plane trust boundary.
 They must not create or mutate Kapro release state directly. See
 `docs/security-model.md` for RBAC, trust boundary, and Secret handling rules.
 
+Plugin readiness follows the compatibility matrix in
+`docs/plugin-compatibility.md`. Unsupported or missing KAI/KGI/KPI contract
+versions are reported as `Ready=False` and `Compatible=False` on
+`PluginRegistration` status and are not loaded for runtime dispatch.
+
 ## ReleaseTrigger Target
 
 `ReleaseTrigger` is the API boundary for autonomous release creation. The CRD

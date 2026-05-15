@@ -1,0 +1,19 @@
+{{- if and .Values.approvalServer.enabled .Values.approvalServer.service.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kapro-operator.fullname" . }}-approval
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kapro-operator.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.approvalServer.service.type }}
+  selector:
+    {{- include "kapro-operator.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: approval
+      port: {{ .Values.approvalServer.service.port }}
+      targetPort: approval
+      protocol: TCP
+{{- end }}

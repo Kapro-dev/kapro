@@ -1,0 +1,14 @@
+Kapro operator is installed in namespace {{ .Release.Namespace }}.
+
+Check rollout status:
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "kapro-operator.fullname" . }}
+
+Check CRDs:
+  kubectl get crd | grep kapro.io
+
+{{- if and .Values.approvalServer.enabled .Values.approvalServer.service.enabled }}
+Approval/Decision API service:
+  {{ include "kapro-operator.fullname" . }}-approval.{{ .Release.Namespace }}.svc:{{ .Values.approvalServer.service.port }}
+{{- end }}
+
+Plugin gateway is {{ ternary "enabled" "disabled" .Values.pluginGateway.enabled }}.

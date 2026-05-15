@@ -26,6 +26,11 @@ Existing inline gate notifications remain supported.
 | KGI gate | `spec/kgi/v1alpha1/gate.proto` | `kapro.io/kapro/spec/kgi/v1alpha1` |
 | KPI planner | `spec/kpi/v1alpha1/planner.proto` | `kapro.io/kapro/spec/kpi/v1alpha1` |
 
+Compatibility is based on the `contract_version` returned by
+`GetCapabilities`, not the plugin implementation version. See
+`docs/plugin-compatibility.md` for the supported version matrix and probe
+status policy.
+
 Generate stubs with:
 
 ```bash
@@ -67,6 +72,10 @@ so registration is part of the platform trust boundary. Production plugins
 should run behind TLS, use least-privilege Kubernetes RBAC for their backend, and
 store client certificates or CA data in platform-owned Secrets. See
 `docs/security-model.md` for the full RBAC and trust model.
+
+When a plugin omits `contract_version` or reports an unsupported version,
+`status.ready` is false, `Ready=False`, `Compatible=False`, and the condition
+message lists the supported contract versions.
 
 TLS is configured with a namespaced Secret reference because
 `PluginRegistration` is cluster-scoped:
