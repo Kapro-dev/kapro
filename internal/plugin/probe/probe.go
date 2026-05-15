@@ -104,7 +104,7 @@ func (p Prober) Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration)
 			return result
 		}
 		if !hasPlannerCapability(resp.GetCapabilities()) {
-			return notReady("MissingCapability", "planner plugin must report at least one capability: filter, score, order, or defer")
+			return notReadyWithContract("MissingCapability", "planner plugin must report at least one capability: filter, score, order, or defer", resp.GetContractVersion())
 		}
 		return ready(resp.GetPluginVersion(), resp.GetContractVersion(), resp.GetCapabilities())
 	default:

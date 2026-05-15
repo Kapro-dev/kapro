@@ -15,6 +15,7 @@ import (
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	"kapro.io/kapro/internal/plugin/probe"
+	"kapro.io/kapro/pkg/plugincompat"
 )
 
 // PluginRegistrationReconciler probes external plugin registrations and records
@@ -70,7 +71,7 @@ func (r *PluginRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.R
 		ObservedGeneration: reg.Generation,
 		LastTransitionTime: now,
 	})
-	apimeta.SetStatusCondition(&reg.Status.Conditions, compatibleCondition(result, reg.Generation, now))
+	apimeta.SetStatusCondition(&reg.Status.Conditions, compatibleCondition(reg.Spec.Type, result, reg.Generation, now))
 	apimeta.SetStatusCondition(&reg.Status.Conditions, metav1.Condition{
 		Type:               kaprov1alpha1.ConditionTypeReconciling,
 		Status:             metav1.ConditionFalse,
@@ -106,7 +107,7 @@ func (r *PluginRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.R
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
-func compatibleCondition(result probe.Result, observedGeneration int64, now metav1.Time) metav1.Condition {
+func compatibleCondition(pluginType kaprov1alpha1.PluginType, result probe.Result, observedGeneration int64, now metav1.Time) metav1.Condition {
 	condition := metav1.Condition{
 		Type:               kaprov1alpha1.ConditionTypeCompatible,
 		Status:             metav1.ConditionUnknown,
@@ -123,6 +124,11 @@ func compatibleCondition(result probe.Result, observedGeneration int64, now meta
 		condition.Status = metav1.ConditionFalse
 		condition.Message = result.Message
 	default:
+		if result.ContractVersion != "" && plugincompat.IsContractVersionSupported(pluginType, result.ContractVersion) {
+			condition.Status = metav1.ConditionTrue
+			condition.Message = fmt.Sprintf("plugin contract version %q is supported", result.ContractVersion)
+			return condition
+		}
 		if result.Message != "" {
 			condition.Message = fmt.Sprintf("plugin contract compatibility could not be determined: %s", result.Message)
 		}
