@@ -139,6 +139,12 @@ kubectl apply -f release.yaml
 
 - [Architecture Spec](docs/SPEC.md)
 - [Roadmap](docs/ROADMAP.md)
+- [RBAC and Tenancy Model](docs/rbac-tenancy.md)
+- [Operations](docs/operations.md)
+- [Security Model](docs/security.md)
+- [API Stability](docs/api-stability.md)
+- [Kind Demo](docs/kind-demo.md)
+- [Plugin Conformance](docs/conformance.md)
 
 ## Contributing
 

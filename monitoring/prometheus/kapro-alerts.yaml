@@ -1,0 +1,68 @@
+groups:
+  - name: kapro.operations
+    rules:
+      - alert: KaproReleaseStuck
+        expr: kapro_release_active_total > 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: Kapro has active releases for more than 30 minutes
+          description: Check Release and ReleaseTarget status for blocked gates, pending approvals, or actuator failures.
+
+      - alert: KaproGateFailureRateHigh
+        expr: |
+          (
+            sum(rate(kapro_gate_evaluations_total{result=~"failed|error"}[10m]))
+            /
+            clamp_min(sum(rate(kapro_gate_evaluations_total[10m])), 1)
+          ) > 0.10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Kapro gate failure rate is above 10 percent
+          description: Gate failures or errors are blocking a significant share of promotion attempts.
+
+      - alert: KaproPluginProbeFailures
+        expr: |
+          sum(rate(kapro_plugin_probe_results_total{result!="success"}[10m])) > 0
+          or
+          min(kapro_plugin_probe_ready) by (type, name) == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Kapro plugin probe failures detected
+          description: One or more registered plugins are failing capability probes or reporting not-ready.
+
+      - alert: KaproReleaseTriggerBlocked
+        expr: rate(kapro_controller_reconciles_total{controller="release_trigger",result="error"}[10m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Kapro ReleaseTrigger reconciles are failing
+          description: Automatic release creation may be blocked by source, signature, cooldown, or status update errors.
+
+      - alert: KaproRolloutDurationP95High
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(kapro_stage_duration_seconds_bucket[30m])) by (le, pipeline)
+          ) > 3600
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Kapro rollout stage p95 is above one hour
+          description: Stage duration is above the expected fleet rollout objective for pipeline {{ $labels.pipeline }}.
+
+      - alert: KaproControllerReconcileErrors
+        expr: sum(rate(kapro_controller_reconciles_total{result="error"}[10m])) by (controller) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Kapro controller reconcile errors detected
+          description: Controller {{ $labels.controller }} is returning reconcile errors.
