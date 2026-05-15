@@ -13,7 +13,7 @@ rules:
     resources:
       - agentpolicies
       - kaproapps
-      - kapros
+      - kaproes
       - memberclusters
       - pipelines
       - pluginregistrations
@@ -29,7 +29,7 @@ rules:
     resources:
       - agentpolicies/status
       - approvals/status
-      - kapros/status
+      - kaproes/status
       - kaproapps/status
       - memberclusters/status
       - pluginregistrations/status
