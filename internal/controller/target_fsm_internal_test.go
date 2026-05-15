@@ -228,6 +228,32 @@ func TestEvaluateGateTemplates_InconclusiveSkipPasses(t *testing.T) {
 	}
 }
 
+func TestGateForTemplate_PluginResolvesPluginName(t *testing.T) {
+	reg := gatepkg.NewRegistry()
+	pluginGate := staticGate{result: gatepkg.Result{Phase: kaprov1alpha1.GatePhasePassed}}
+	reg.MustRegister("slo", pluginGate)
+
+	r := &ReleaseTargetReconciler{GateRegistry: reg}
+	resolved, err := r.gateForTemplate(&kaprov1alpha1.GateTemplateSpec{
+		Type:   "plugin",
+		Plugin: &kaprov1alpha1.PluginGateSpec{Name: "slo"},
+	})
+	if err != nil {
+		t.Fatalf("gateForTemplate returned error: %v", err)
+	}
+	if resolved == nil {
+		t.Fatal("expected resolved plugin gate")
+	}
+}
+
+func TestGateForTemplate_PluginRequiresName(t *testing.T) {
+	r := &ReleaseTargetReconciler{GateRegistry: gatepkg.NewRegistry()}
+	_, err := r.gateForTemplate(&kaprov1alpha1.GateTemplateSpec{Type: "plugin"})
+	if err == nil || !strings.Contains(err.Error(), "plugin.name") {
+		t.Fatalf("error=%v, want missing plugin.name error", err)
+	}
+}
+
 func TestEvaluateGateTemplates_FailureRetryStaysRetryableUntilMaxAttempts(t *testing.T) {
 	reg := gatepkg.NewRegistry()
 	reg.MustRegister("mock", staticGate{

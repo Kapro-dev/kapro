@@ -115,11 +115,9 @@ func TestKGIConformance(t *testing.T) {
 
 A gate plugin implementation example is available in
 `examples/plugins/slo-gate`. It implements KGI for SLO checks using static
-values or Prometheus instant queries. It is not yet a complete end-to-end
-external gate configuration example: the current generated `GateTemplate` CRDs
-still restrict gate types to `cel`, `job`, and `webhook`, so a registered plugin
-gate type such as `slo` cannot yet be referenced from an admissible pipeline
-configuration.
+values or Prometheus instant queries. Reference a runtime gate plugin from a
+gate template with `type: plugin` and `plugin.name` set to
+`PluginRegistration.spec.name`.
 
 ## Planner Requirements
 

@@ -65,9 +65,23 @@ spec:
 ```
 
 The registration makes the plugin available to the runtime plugin registry as
-`slo`, but the current generated `GateTemplate` CRDs still restrict gate types
-to `cel`, `job`, and `webhook`. Treat this as a KGI implementation and
-registration example until the pipeline API admits external gate types.
+`slo`. Reference it from a gate template with `type: plugin`:
+
+```yaml
+gate:
+  templates:
+    - name: error-rate
+      type: plugin
+      plugin:
+        name: slo
+      args:
+        - name: query
+          value: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))
+        - name: threshold
+          value: "0.05"
+        - name: operator
+          value: lte
+```
 
 Enable runtime plugin loading in the Kapro operator with:
 

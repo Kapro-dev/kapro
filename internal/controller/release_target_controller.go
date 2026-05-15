@@ -580,6 +580,12 @@ func (r *ReleaseTargetReconciler) gateForTemplate(tmpl *kaprov1alpha1.GateTempla
 	if r.GateRegistry == nil {
 		return nil, fmt.Errorf("GateRegistry not configured: cannot resolve gate type %q", tmpl.Type)
 	}
+	if tmpl.Type == "plugin" {
+		if tmpl.Plugin == nil || tmpl.Plugin.Name == "" {
+			return nil, fmt.Errorf("plugin gate requires plugin.name")
+		}
+		return r.GateRegistry.Resolve(tmpl.Plugin.Name)
+	}
 	return r.GateRegistry.Resolve(tmpl.Type)
 }
 
