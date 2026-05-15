@@ -482,6 +482,17 @@ spec:
                                           Name uniquely identifies this template within the gate for status tracking
                                           and Job naming. Required when type == "job" (used to generate Job name).
                                         type: string
+                                      plugin:
+                                        description: PluginGateSpec references an
+                                          external gate registered through PluginRegistration.
+                                        properties:
+                                          name:
+                                            description: Name is PluginRegistration.spec.name
+                                              for a ready gate plugin.
+                                            type: string
+                                        required:
+                                        - name
+                                        type: object
                                       timeout:
                                         type: string
                                       type:
@@ -489,6 +500,7 @@ spec:
                                         - cel
                                         - job
                                         - webhook
+                                        - plugin
                                         type: string
                                       webhook:
                                         description: WebhookGateSpec configures the

@@ -154,6 +154,7 @@ Quick troubleshooting checks:
 
 ## Documentation
 
+- [Install Kapro](docs/install.md)
 - [Architecture Spec](docs/SPEC.md)
 - [API Stability and Upgrade Policy](docs/api-stability.md)
 - [Conformance Packages](docs/conformance.md)

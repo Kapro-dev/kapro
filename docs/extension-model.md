@@ -178,6 +178,11 @@ API maturity, deprecation rules, upgrade policy, and the future non-binding
 certified plugin path are defined in `docs/api-stability.md`. KAI, KGI, and KPI
 conformance instructions are defined in `docs/conformance.md`.
 
+Plugin readiness follows the compatibility matrix in
+`docs/plugin-compatibility.md`. Unsupported or missing KAI/KGI/KPI contract
+versions are reported as `Ready=False` and `Compatible=False` on
+`PluginRegistration` status and are not loaded for runtime dispatch.
+
 ## ReleaseTrigger Target
 
 `ReleaseTrigger` is the API boundary for autonomous release creation. The CRD

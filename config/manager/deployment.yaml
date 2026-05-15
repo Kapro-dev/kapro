@@ -21,10 +21,13 @@ spec:
       serviceAccountName: kapro-operator
       containers:
       - name: manager
-        image: kapro-operator:dev
-        imagePullPolicy: Never
-        command: ["/manager"]
-        args: ["--leader-elect=false"]
+        image: ghcr.io/kapro-dev/kapro-operator:latest
+        imagePullPolicy: IfNotPresent
+        command: ["/kapro-operator"]
+        args:
+        - --leader-elect=true
+        - --metrics-bind-address=:8080
+        - --health-probe-bind-address=:8081
         env:
         - name: POD_NAMESPACE
           valueFrom:
@@ -44,6 +47,9 @@ spec:
         - name: KAPRO_HUB_API_URL
           value: ""
         resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
           limits:
             cpu: 500m
             memory: 256Mi

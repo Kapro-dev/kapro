@@ -373,14 +373,17 @@ The proto contracts live under:
 
 Generated Go stubs are committed beside the proto files. The operator probes
 `GetCapabilities` and writes `PluginRegistration.status.ready`, `lastSeen`,
-`version`, `capabilities`, and conditions. When
+`version`, `contractVersion`, `capabilities`, and conditions. Missing or
+unsupported contract versions are reported as `Ready=False` and
+`Compatible=False`; the plugin is not loaded for runtime dispatch. When
 `KAPRO_ENABLE_PLUGIN_GATEWAY=true`, the operator loads ready registrations with
 fresh `status.observedGeneration` into the actuator and gate registries once at
 startup. Planner plugin registration is probed and reported in status; runtime
 dispatch is future work. Dynamic hot reload is future work. Base conformance
 harnesses live under `conformance/actuator`, `conformance/gate`, and
 `conformance/planner`; plugin authors should run those harnesses against their
-implementation. See `docs/plugin-authoring.md`.
+implementation. See `docs/plugin-authoring.md` and
+`docs/plugin-compatibility.md`.
 
 ---
 

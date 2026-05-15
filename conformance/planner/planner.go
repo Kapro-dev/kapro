@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
+	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	"kapro.io/kapro/pkg/plugincompat"
 	kpiv1alpha1 "kapro.io/kapro/spec/kpi/v1alpha1"
 
 	"google.golang.org/protobuf/proto"
 )
-
-const contractVersion = "v1alpha1"
 
 // Scenario contains the request used by the planner conformance harness.
 type Scenario struct {
@@ -79,8 +79,8 @@ func Run(t *testing.T, client kpiv1alpha1.PlannerServiceClient, scenario Scenari
 		if resp == nil {
 			t.Fatal("GetCapabilities returned nil response")
 		}
-		if resp.GetContractVersion() != contractVersion {
-			t.Fatalf("contract_version = %q, want %q", resp.GetContractVersion(), contractVersion)
+		if !plugincompat.IsContractVersionSupported(kaprov1alpha1.PluginTypePlanner, resp.GetContractVersion()) {
+			t.Fatalf("contract_version = %q, supported versions = %v", resp.GetContractVersion(), plugincompat.SupportedKPIContractVersions())
 		}
 		if !hasPlannerCapability(resp.GetCapabilities()) {
 			t.Fatalf("capabilities = %v, want at least one of filter, score, order, defer", resp.GetCapabilities())
