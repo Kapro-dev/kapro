@@ -160,6 +160,10 @@ API pieces:
 The gateway must preserve the same state ownership rule: plugins do backend
 work, Kapro owns release state.
 
+API maturity, deprecation rules, upgrade policy, and the future non-binding
+certified plugin path are defined in `docs/api-stability.md`. KAI, KGI, and KPI
+conformance instructions are defined in `docs/conformance.md`.
+
 ## ReleaseTrigger Target
 
 `ReleaseTrigger` is the API boundary for autonomous release creation. The CRD

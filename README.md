@@ -138,6 +138,9 @@ kubectl apply -f release.yaml
 ## Documentation
 
 - [Architecture Spec](docs/SPEC.md)
+- [API Stability and Upgrade Policy](docs/api-stability.md)
+- [Conformance Packages](docs/conformance.md)
+- [Controller Scalability and Resilience](docs/controller-scalability.md)
 - [Roadmap](docs/ROADMAP.md)
 
 ## Contributing
