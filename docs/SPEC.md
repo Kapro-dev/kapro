@@ -335,9 +335,11 @@ Generated Go stubs are committed beside the proto files. The operator probes
 `GetCapabilities` and writes `PluginRegistration.status.ready`, `lastSeen`,
 `version`, `capabilities`, and conditions. When
 `KAPRO_ENABLE_PLUGIN_GATEWAY=true`, the operator loads ready registrations with
-fresh `status.observedGeneration` into the actuator and gate registries once at
-startup. Planner plugin registration is probed and reported in status; runtime
-dispatch is future work. Dynamic hot reload is future work. Base conformance
+fresh `status.observedGeneration` into the actuator, gate, and planner
+registries once at startup. Built-in planner plugins remain first in the stack;
+external KPI planners are appended and can include, skip, defer, and score
+targets without binding `ReleaseTarget` objects directly. Dynamic hot reload is
+future work. Base conformance
 harnesses live under `conformance/actuator`, `conformance/gate`, and
 `conformance/planner`; plugin authors should run those harnesses against their
 implementation. See `docs/plugin-authoring.md`.

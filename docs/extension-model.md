@@ -142,9 +142,9 @@ Kapro controller
 
 Runtime registration through `PluginRegistration` is an opt-in API preview.
 When `KAPRO_ENABLE_PLUGIN_GATEWAY=true`, the operator loads ready registrations
-with fresh observed generation into the actuator and gate registries once at
-startup. Planner registrations are probed and reported in status; runtime
-planner dispatch remains future work. Dynamic hot reload is future work.
+with fresh observed generation into the actuator, gate, and planner registries
+once at startup. Built-in planner plugins are installed first; external planner
+plugins are appended after them. Dynamic hot reload is future work.
 
 API pieces:
 
@@ -210,8 +210,10 @@ Built-in planning behavior:
 | Stage strategy | Bind | Enforces `Stage.spec.strategy.maxParallel` before creating new `ReleaseTarget` entries. |
 
 `Stage.status.plannerResults` records skip and defer reasons so operators can
-see why a target was not bound in the current planning cycle. External planner
-runtime execution is future work; the KPI proto defines the contract first.
+see why a target was not bound in the current planning cycle. External KPI
+planners return `INCLUDE`, `SKIP`, or `DEFER` decisions and scores; Kapro maps
+those into the same framework decisions and still owns bind-time
+`ReleaseTarget` creation.
 
 ## CRD Rule
 

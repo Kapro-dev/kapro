@@ -18,8 +18,10 @@ import (
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
+	"kapro.io/kapro/pkg/planner"
 	kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
 	kgiv1alpha1 "kapro.io/kapro/spec/kgi/v1alpha1"
+	kpiv1alpha1 "kapro.io/kapro/spec/kpi/v1alpha1"
 )
 
 func TestActuatorAdapterApplyMapsRequest(t *testing.T) {
@@ -111,6 +113,82 @@ func TestGateAdapterMapsPhases(t *testing.T) {
 	}
 }
 
+func TestPlannerAdapterMapsIncludeSkipAndDefer(t *testing.T) {
+	server := &recordingPlannerServer{
+		targets: []*kpiv1alpha1.PlannedTarget{
+			{Name: "cluster-a", Decision: kpiv1alpha1.PlanningDecision_PLANNING_DECISION_INCLUDE, Score: 90},
+			{Name: "cluster-b", Decision: kpiv1alpha1.PlanningDecision_PLANNING_DECISION_SKIP, Reason: "Capacity", Message: "not enough capacity"},
+			{Name: "cluster-c", Decision: kpiv1alpha1.PlanningDecision_PLANNING_DECISION_DEFER, Message: "try later"},
+		},
+	}
+	client, stop := plannerClient(t, server)
+	defer stop()
+
+	adapter, err := NewPlannerAdapter(pluginReg(kaprov1alpha1.PluginTypePlanner, "capacity"), client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := planner.NewFramework(adapter).PlanWithResult(context.Background(), planner.Request{
+		Release: &kaprov1alpha1.Release{
+			ObjectMeta: metav1.ObjectMeta{Name: "rel-1"},
+			Spec:       kaprov1alpha1.ReleaseSpec{Version: "1.2.3"},
+		},
+		PipelineRefName: "prod",
+		Stage: kaprov1alpha1.Stage{
+			Name:     "canary",
+			Strategy: &kaprov1alpha1.StageStrategySpec{MaxParallel: 2},
+		},
+	}, []kaprov1alpha1.MemberCluster{
+		target("cluster-b"),
+		target("cluster-c"),
+		target("cluster-a"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if names := targetNames(result.Targets); len(names) != 1 || names[0] != "cluster-a" {
+		t.Fatalf("targets = %v, want [cluster-a]", names)
+	}
+	if len(result.Decisions) != 2 {
+		t.Fatalf("decisions = %#v, want 2", result.Decisions)
+	}
+	reasons := map[string]string{}
+	for _, decision := range result.Decisions {
+		reasons[decision.Target] = decision.Reason
+	}
+	if reasons["cluster-b"] != "Capacity" {
+		t.Fatalf("cluster-b reason = %q", reasons["cluster-b"])
+	}
+	if reasons["cluster-c"] != "Deferred" {
+		t.Fatalf("cluster-c reason = %q", reasons["cluster-c"])
+	}
+	if server.plan.Release != "rel-1" || server.plan.Pipeline != "prod" || server.plan.Stage != "canary" || server.plan.Version != "1.2.3" {
+		t.Fatalf("PlanRequest = %+v", server.plan)
+	}
+	if server.plan.Parameters["tenant"] != "payments" || server.plan.Strategy.GetMaxParallel() != 2 {
+		t.Fatalf("PlanRequest parameters/strategy = %+v", server.plan)
+	}
+}
+
+func TestPlannerAdapterRejectsInvalidDecisions(t *testing.T) {
+	server := &recordingPlannerServer{
+		targets: []*kpiv1alpha1.PlannedTarget{
+			{Name: "cluster-a", Decision: kpiv1alpha1.PlanningDecision_PLANNING_DECISION_UNSPECIFIED},
+		},
+	}
+	client, stop := plannerClient(t, server)
+	defer stop()
+
+	adapter, err := NewPlannerAdapter(pluginReg(kaprov1alpha1.PluginTypePlanner, "capacity"), client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = planner.NewFramework(adapter).PlanWithResult(context.Background(), planner.Request{}, []kaprov1alpha1.MemberCluster{target("cluster-a")})
+	if err == nil || !strings.Contains(err.Error(), "unsupported decision") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestRegisterReadyPluginsSkipsStaleAndRegistersReady(t *testing.T) {
 	server := &recordingActuatorServer{}
 	client, stop := actuatorClient(t, server)
@@ -138,7 +216,7 @@ func TestRegisterReadyPluginsSkipsStaleAndRegistersReady(t *testing.T) {
 	actuatorReg := actuator.NewRegistry()
 	gateReg := gate.NewRegistry()
 
-	registered, err := (Registrar{DialOptions: bufDialOptions(server.listener)}).RegisterReady(context.Background(), k8sClient, actuatorReg, gateReg)
+	registered, err := (Registrar{DialOptions: bufDialOptions(server.listener)}).RegisterReady(context.Background(), k8sClient, actuatorReg, gateReg, planner.NewDefaultFramework())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,6 +228,49 @@ func TestRegisterReadyPluginsSkipsStaleAndRegistersReady(t *testing.T) {
 	}
 	if _, err := actuatorReg.Resolve("stale/pull"); err == nil {
 		t.Fatal("stale plugin was registered")
+	}
+}
+
+func TestRegisterReadyPluginsRegistersPlanner(t *testing.T) {
+	server := &recordingPlannerServer{
+		targets: []*kpiv1alpha1.PlannedTarget{
+			{Name: "cluster-a", Decision: kpiv1alpha1.PlanningDecision_PLANNING_DECISION_INCLUDE, Score: 1},
+			{Name: "cluster-b", Decision: kpiv1alpha1.PlanningDecision_PLANNING_DECISION_SKIP, Reason: "ExternalSkip"},
+		},
+	}
+	client, stop := plannerClient(t, server)
+	defer stop()
+	_ = client
+
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	ready := pluginReg(kaprov1alpha1.PluginTypePlanner, "capacity")
+	ready.Name = "ready-planner"
+	ready.Spec.Endpoint = "bufnet"
+
+	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(&ready).WithStatusSubresource(&kaprov1alpha1.PluginRegistration{}).Build()
+	framework := planner.NewDefaultFramework()
+	registered, err := (Registrar{DialOptions: bufDialOptions(server.listener)}).RegisterReady(context.Background(), k8sClient, actuator.NewRegistry(), gate.NewRegistry(), framework)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if registered != 1 {
+		t.Fatalf("registered = %d, want 1", registered)
+	}
+	result, err := framework.PlanWithResult(context.Background(), planner.Request{}, []kaprov1alpha1.MemberCluster{
+		target("cluster-b"),
+		target("cluster-a"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if names := targetNames(result.Targets); len(names) != 1 || names[0] != "cluster-a" {
+		t.Fatalf("targets = %v, want [cluster-a]", names)
+	}
+	if len(result.Decisions) != 1 || result.Decisions[0].Plugin != "capacity" || result.Decisions[0].Reason != "ExternalSkip" {
+		t.Fatalf("decisions = %#v", result.Decisions)
 	}
 }
 
@@ -214,6 +335,25 @@ func gateClient(t *testing.T, srv kgiv1alpha1.GateServiceServer) (kgiv1alpha1.Ga
 	}
 }
 
+func plannerClient(t *testing.T, srv kpiv1alpha1.PlannerServiceServer) (kpiv1alpha1.PlannerServiceClient, func()) {
+	t.Helper()
+	listener := bufconn.Listen(1024 * 1024)
+	if recorder, ok := srv.(*recordingPlannerServer); ok {
+		recorder.listener = listener
+	}
+	server := grpc.NewServer()
+	kpiv1alpha1.RegisterPlannerServiceServer(server, srv)
+	go func() { _ = server.Serve(listener) }()
+	conn, err := grpc.DialContext(context.Background(), "bufnet", append([]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock()}, bufDialOptions(listener)...)...) //nolint:staticcheck // grpc.NewClient lacks WithBlock equivalent in older supported versions.
+	if err != nil {
+		t.Fatal(err)
+	}
+	return kpiv1alpha1.NewPlannerServiceClient(conn), func() {
+		_ = conn.Close()
+		server.Stop()
+	}
+}
+
 func bufDialOptions(listener *bufconn.Listener) []grpc.DialOption {
 	return []grpc.DialOption{
 		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
@@ -257,6 +397,34 @@ type recordingGateServer struct {
 
 func (s *recordingGateServer) GetCapabilities(context.Context, *kgiv1alpha1.GetCapabilitiesRequest) (*kgiv1alpha1.GetCapabilitiesResponse, error) {
 	return &kgiv1alpha1.GetCapabilitiesResponse{ContractVersion: "v1alpha1", PluginVersion: "test"}, nil
+}
+
+type recordingPlannerServer struct {
+	kpiv1alpha1.UnimplementedPlannerServiceServer
+	listener *bufconn.Listener
+	targets  []*kpiv1alpha1.PlannedTarget
+	plan     *kpiv1alpha1.PlanRequest
+}
+
+func (s *recordingPlannerServer) GetCapabilities(context.Context, *kpiv1alpha1.GetCapabilitiesRequest) (*kpiv1alpha1.GetCapabilitiesResponse, error) {
+	return &kpiv1alpha1.GetCapabilitiesResponse{ContractVersion: "v1alpha1", PluginVersion: "test"}, nil
+}
+
+func (s *recordingPlannerServer) Plan(_ context.Context, req *kpiv1alpha1.PlanRequest) (*kpiv1alpha1.PlanResponse, error) {
+	s.plan = req
+	return &kpiv1alpha1.PlanResponse{Targets: s.targets}, nil
+}
+
+func target(name string) kaprov1alpha1.MemberCluster {
+	return kaprov1alpha1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: name}}
+}
+
+func targetNames(targets []kaprov1alpha1.MemberCluster) []string {
+	names := make([]string, 0, len(targets))
+	for _, target := range targets {
+		names = append(names, target.Name)
+	}
+	return names
 }
 
 func (s *recordingGateServer) Evaluate(_ context.Context, req *kgiv1alpha1.EvaluateRequest) (*kgiv1alpha1.EvaluateResponse, error) {

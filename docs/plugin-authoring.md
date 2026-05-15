@@ -9,9 +9,8 @@ Kapro plugins implement one narrow extension contract:
 Built-in actuators, gates, and planners remain the default execution path.
 External plugin runtime registration is an API preview and is enabled explicitly
 with `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. When enabled, the operator registers
-ready actuator and gate `PluginRegistration` objects once at startup. Planner
-registrations are probed for capabilities and readiness, but runtime planner
-dispatch remains future work. Dynamic hot reload is future work.
+ready actuator, gate, and planner `PluginRegistration` objects once at startup.
+Dynamic hot reload is future work.
 
 ## Contracts
 
@@ -51,10 +50,10 @@ spec:
 ```
 
 `PluginRegistration` is an API preview. Runtime use is startup-time only and
-requires `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. Only actuator and gate
+requires `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. Actuator, gate, and planner
 registrations with `status.ready=true` and fresh `status.observedGeneration` are
-loaded into runtime registries. Planner plugins are probed and reported in
-status, but runtime planner dispatch remains future work.
+loaded into runtime registries. The operator builds the built-in planner stack
+first, then appends external planner plugins in startup registration order.
 
 TLS is configured with a namespaced Secret reference because
 `PluginRegistration` is cluster-scoped:
@@ -136,8 +135,16 @@ A planner plugin must:
 - leave binding, retries, and failure policy decisions to Kapro.
 
 Register planner plugins with `spec.type: planner`. Kapro probes ready planner
-registrations and records their status. Built-in planning remains the runtime
-dispatch path until external planner dispatch is implemented.
+registrations and records their status. With `KAPRO_ENABLE_PLUGIN_GATEWAY=true`,
+ready planner registrations are called during stage planning. KPI `INCLUDE`
+keeps a target eligible and contributes its score, `SKIP` records a skip reason,
+and `DEFER` records a defer reason for the current planning cycle. Omitted
+targets remain eligible with score `0`. Unsupported decisions, duplicate
+targets, and unknown target names fail the planning cycle closed.
+
+Planner plugins cannot bind releases directly. Kapro still applies
+`Stage.spec.strategy.maxParallel`, creates `ReleaseTarget` objects, owns status,
+and drives retries and failure policy.
 
 Run the base planner conformance harness from your plugin tests:
 

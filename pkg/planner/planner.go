@@ -168,6 +168,14 @@ func NewFramework(plugins ...Plugin) *Framework {
 	return &Framework{plugins: append([]Plugin(nil), plugins...)}
 }
 
+// AddPlugins appends plugins to the framework's deterministic execution order.
+func (f *Framework) AddPlugins(plugins ...Plugin) {
+	if f == nil {
+		return
+	}
+	f.plugins = append(f.plugins, plugins...)
+}
+
 // Plan returns the eligible targets in deterministic execution order.
 func (f *Framework) Plan(ctx context.Context, req Request, targets []kaprov1alpha1.MemberCluster) ([]kaprov1alpha1.MemberCluster, error) {
 	result, err := f.PlanWithResult(ctx, req, targets)

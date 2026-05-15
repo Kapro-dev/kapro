@@ -44,6 +44,7 @@ func startReleaseController(_ context.Context, cc ControllerContext) (bool, erro
 		ApprovalSecret:   cc.ApprovalSecret,
 		ExternalURL:      cc.ExternalURL,
 		GateRegistry:     cc.GateRegistry,
+		Planner:          cc.Planner,
 	}
 	if cc.ShardName != "" {
 		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: true}

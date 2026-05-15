@@ -5,14 +5,17 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	"kapro.io/kapro/internal/plugin/transport"
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
+	"kapro.io/kapro/pkg/planner"
 	kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
 	kgiv1alpha1 "kapro.io/kapro/spec/kgi/v1alpha1"
+	kpiv1alpha1 "kapro.io/kapro/spec/kpi/v1alpha1"
 
 	"google.golang.org/grpc"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -37,11 +40,17 @@ type Registrar struct {
 }
 
 // RegisterReady registers ready, generation-fresh PluginRegistration objects once.
-func (r Registrar) RegisterReady(ctx context.Context, c client.Reader, actuatorReg *actuator.Registry, gateReg *gate.Registry) (int, error) {
+func (r Registrar) RegisterReady(ctx context.Context, c client.Reader, actuatorReg *actuator.Registry, gateReg *gate.Registry, plannerFramework *planner.Framework) (int, error) {
 	var list kaprov1alpha1.PluginRegistrationList
 	if err := c.List(ctx, &list); err != nil {
 		return 0, fmt.Errorf("list plugin registrations: %w", err)
 	}
+	sort.SliceStable(list.Items, func(i, j int) bool {
+		if list.Items[i].Spec.Name == list.Items[j].Spec.Name {
+			return list.Items[i].Name < list.Items[j].Name
+		}
+		return list.Items[i].Spec.Name < list.Items[j].Spec.Name
+	})
 
 	registered := 0
 	for _, reg := range list.Items {
@@ -88,9 +97,21 @@ func (r Registrar) RegisterReady(ctx context.Context, c client.Reader, actuatorR
 			}
 			registered++
 		case kaprov1alpha1.PluginTypePlanner:
-			// Planner runtime dispatch is not wired yet. The registration
-			// controller still probes planner plugins and records readiness.
-			continue
+			if plannerFramework == nil {
+				return registered, fmt.Errorf("planner framework is nil")
+			}
+			conn, err := r.dial(ctx, c, reg)
+			if err != nil {
+				return registered, fmt.Errorf("dial planner plugin %q: %w", reg.Name, err)
+			}
+			adapter, err := NewPlannerAdapter(reg, kpiv1alpha1.NewPlannerServiceClient(conn))
+			if err != nil {
+				_ = conn.Close()
+				return registered, err
+			}
+			adapter.conn = conn
+			plannerFramework.AddPlugins(adapter)
+			registered++
 		}
 	}
 	return registered, nil
@@ -125,7 +146,7 @@ func isReadyForRuntime(reg kaprov1alpha1.PluginRegistration) bool {
 }
 
 func validateRegistration(reg kaprov1alpha1.PluginRegistration) error {
-	if reg.Spec.Type != kaprov1alpha1.PluginTypeActuator && reg.Spec.Type != kaprov1alpha1.PluginTypeGate {
+	if reg.Spec.Type != kaprov1alpha1.PluginTypeActuator && reg.Spec.Type != kaprov1alpha1.PluginTypeGate && reg.Spec.Type != kaprov1alpha1.PluginTypePlanner {
 		return fmt.Errorf("unsupported plugin type %q", reg.Spec.Type)
 	}
 	if reg.Spec.Protocol != "" && reg.Spec.Protocol != kaprov1alpha1.PluginProtocolGRPC {
