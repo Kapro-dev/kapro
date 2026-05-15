@@ -10,6 +10,24 @@ permissions:
   contents: read
 
 jobs:
+  validate-yaml-json:
+    name: Validate YAML/JSON
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate YAML and Grafana JSON
+        run: make validate-yaml-json
+
+  markdown-links:
+    name: Markdown links
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check local Markdown links
+        run: make check-markdown-links
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -60,6 +78,28 @@ jobs:
         with:
           name: coverage
           path: cover.out
+
+  install-render:
+    name: Install Render
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+      - name: Verify install render
+        run: scripts/verify-install.sh render
+
+  release-smoke:
+    name: Release Smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+      - name: Verify release packaging
+        run: make release-smoke
 
   docker:
     name: Docker Build (dry-run)
