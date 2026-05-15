@@ -77,12 +77,24 @@ kapro discover argo . \
   --selector kapro.io/import=true,team=checkout
 ```
 
+You can also point discovery at a remote Git URL. Kapro clones it to a
+temporary directory for read-only discovery:
+
+```bash
+kapro discover argo https://github.com/example/platform.git \
+  --revision main \
+  --out kapro-connect \
+  --name checkout
+```
+
 This generates:
 
 - `backends/checkout-observe.yaml` for observe-first runtime discovery;
 - `sources/checkout.yaml` with inferred `PromotionSource` units;
 - `discovery/argo-discovery.yaml` with selected, skipped, and unsupported
-  patterns.
+  patterns;
+- `discovery/kapro-git-map.yaml` with confidence and write-target evidence for
+  review.
 
 For ApplicationSet Git file generators, Kapro maps template variables such as
 `targetRevision: '{{.gkProjectVersion}}'` back to the generator input file, for
@@ -124,14 +136,35 @@ spec:
     - name: api
       backendKind: ArgoApplicationSource
       namespace: argocd
+      sourcePath: argocd/apps/api.yaml
       versionField: spec.source.targetRevision
     - name: pos-server
       backendKind: GitJSONField
       namespace: argocd
+      sourcePath: argocd/applicationsets/pos-server.yaml
       versionField: argocd/environments/*.json:gkProjectVersion
 ```
 
-## Step 5: Choose The Adoption Level
+## Step 5: Apply Git-Native Promotion Writes
+
+For Git-file backed units, Kapro updates the mapped JSON/YAML field in a local
+checkout. It does not push automatically; review and commit the diff with your
+normal Git workflow.
+
+```bash
+kapro source apply \
+  --repo . \
+  --source kapro-connect/sources/checkout.yaml \
+  --set pos-server=1.2.3 \
+  --include argocd/environments/dev.json
+```
+
+If a generated mapping contains a glob such as `argocd/environments/*.json`,
+`kapro source apply` fails unless `--include` scopes the intended file or
+`--all` is set. This keeps migration safe for repositories with many
+environments.
+
+## Step 6: Choose The Adoption Level
 
 | Argo pattern | Recommended Kapro target |
 |---|---|

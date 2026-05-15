@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -23,6 +24,7 @@ type argoDiscoverOptions struct {
 	Name      string
 	Namespace string
 	Selector  string
+	Revision  string
 	Force     bool
 }
 
@@ -52,6 +54,7 @@ type argoDiscoveredUnit struct {
 	Namespace    string
 	VersionField string
 	SourcePath   string
+	Confidence   string
 	Reason       string
 }
 
@@ -86,6 +89,7 @@ func newDiscoverArgoCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.Name, "name", "argo", "BackendProfile and PromotionSource name")
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "argocd", "Argo CD namespace")
 	cmd.Flags().StringVar(&opts.Selector, "selector", "kapro.io/import=true", "Label selector for imported backend objects")
+	cmd.Flags().StringVar(&opts.Revision, "revision", "", "Git branch/tag/SHA when discovering a remote repository URL")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
 	return cmd
 }
@@ -104,14 +108,21 @@ func runArgoDiscover(opts argoDiscoverOptions) error {
 	if err != nil {
 		return err
 	}
-	result, err := discoverArgoRepo(opts.RepoPath)
+	discoverPath, cleanup, err := prepareArgoDiscoverRepo(opts)
 	if err != nil {
 		return err
 	}
+	defer cleanup()
+	result, err := discoverArgoRepo(discoverPath)
+	if err != nil {
+		return err
+	}
+	result.RepoPath = opts.RepoPath
 	files := map[string]string{
 		filepath.Join("backends", opts.Name+"-observe.yaml"): renderArgoDiscoverBackend(opts, matchLabels),
 		filepath.Join("sources", opts.Name+".yaml"):          renderArgoDiscoverSource(opts, result),
 		filepath.Join("discovery", "argo-discovery.yaml"):    renderArgoDiscoveryReport(result),
+		filepath.Join("discovery", "kapro-git-map.yaml"):     renderArgoGitAdoptionMap(opts, result),
 		filepath.Join("README.md"):                           renderArgoDiscoverReadme(opts, result),
 	}
 	if err := writeScaffoldFiles(opts.OutPath, files, opts.Force); err != nil {
@@ -120,6 +131,31 @@ func runArgoDiscover(opts argoDiscoverOptions) error {
 	fmt.Fprintf(os.Stderr, "Discovered %d Argo Applications, %d ApplicationSets, and %d promotion units from %s\n",
 		len(result.Applications), len(result.ApplicationSets), len(result.SelectedUnits), opts.RepoPath)
 	return nil
+}
+
+func prepareArgoDiscoverRepo(opts argoDiscoverOptions) (string, func(), error) {
+	if !looksLikeGitRemote(opts.RepoPath) {
+		return opts.RepoPath, func() {}, nil
+	}
+	dir, err := os.MkdirTemp("", "kapro-discover-argo-*")
+	if err != nil {
+		return "", func() {}, fmt.Errorf("create temp clone dir: %w", err)
+	}
+	args := []string{"clone", "--depth=1"}
+	if opts.Revision != "" {
+		args = append(args, "--branch", opts.Revision)
+	}
+	args = append(args, opts.RepoPath, dir)
+	cmd := exec.Command("git", args...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		_ = os.RemoveAll(dir)
+		return "", func() {}, fmt.Errorf("clone %s: %w\n%s", opts.RepoPath, err, strings.TrimSpace(string(out)))
+	}
+	return dir, func() { _ = os.RemoveAll(dir) }, nil
+}
+
+func looksLikeGitRemote(path string) bool {
+	return strings.Contains(path, "://") || strings.HasPrefix(path, "git@") || strings.Contains(path, ":")
 }
 
 func discoverArgoRepo(root string) (argoDiscoveryResult, error) {
@@ -185,6 +221,7 @@ func discoverArgoRepo(root string) (argoDiscoveryResult, error) {
 						Namespace:    app.Namespace,
 						VersionField: "spec.source.targetRevision",
 						SourcePath:   rel,
+						Confidence:   "high",
 						Reason:       "writes Argo Application source revision",
 					})
 				}
@@ -329,6 +366,7 @@ func appSetGitFileUnits(doc map[string]any, namespace, rel string) []argoDiscove
 						Namespace:    namespace,
 						VersionField: fmt.Sprintf("%s:%s", filePath, versionVariable),
 						SourcePath:   rel,
+						Confidence:   "high",
 						Reason:       "ApplicationSet Git file generator targetRevision comes from this input field",
 					})
 				}
@@ -348,6 +386,7 @@ func appSetGitFileUnits(doc map[string]any, namespace, rel string) []argoDiscove
 					Namespace:    namespace,
 					VersionField: fmt.Sprintf("%s:%s", filePath, versionVariable),
 					SourcePath:   rel,
+					Confidence:   "medium",
 					Reason:       "ApplicationSet Git file generator targetRevision comes from this input field",
 				})
 			}
@@ -511,11 +550,12 @@ spec:
 		fmt.Fprintf(&b, `    - name: %s
       backendKind: %s
       namespace: %s
+      sourcePath: %s
       versionField: %s
-`, unit.Name, unit.BackendKind, unit.Namespace, unit.VersionField)
+`, unit.Name, unit.BackendKind, unit.Namespace, unit.SourcePath, unit.VersionField)
 	}
 	if len(result.SelectedUnits) == 0 {
-		b.WriteString("    - name: TODO\n      backendKind: ArgoApplicationSource\n      namespace: argocd\n      versionField: spec.source.targetRevision\n")
+		b.WriteString("    - name: TODO\n      backendKind: ArgoApplicationSource\n      namespace: argocd\n      sourcePath: path/to/application.yaml\n      versionField: spec.source.targetRevision\n")
 	}
 	return b.String()
 }
@@ -535,6 +575,35 @@ func renderArgoDiscoveryReport(result argoDiscoveryResult) string {
 	return b.String()
 }
 
+func renderArgoGitAdoptionMap(opts argoDiscoverOptions, result argoDiscoveryResult) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, `schemaVersion: kapro.io/git-adoption/v1alpha1
+name: %s
+repoPath: %s
+sourceRef: %s
+units:
+`, opts.Name, result.RepoPath, opts.Name)
+	if len(result.SelectedUnits) == 0 {
+		b.WriteString("  []\n")
+		return b.String()
+	}
+	for _, unit := range result.SelectedUnits {
+		confidence := unit.Confidence
+		if confidence == "" {
+			confidence = "needs-review"
+		}
+		fmt.Fprintf(&b, `  - name: %s
+    confidence: %s
+    write:
+      backendKind: %s
+      sourcePath: %s
+      versionField: %s
+    reason: %q
+`, unit.Name, confidence, unit.BackendKind, unit.SourcePath, unit.VersionField, unit.Reason)
+	}
+	return b.String()
+}
+
 func writeReportObjects(b *strings.Builder, key string, units []argoDiscoveredUnit) {
 	b.WriteString(key + ":\n")
 	if len(units) == 0 {
@@ -542,8 +611,12 @@ func writeReportObjects(b *strings.Builder, key string, units []argoDiscoveredUn
 		return
 	}
 	for _, unit := range units {
-		fmt.Fprintf(b, "  - name: %s\n    backendKind: %s\n    namespace: %s\n    versionField: %s\n    sourcePath: %s\n    reason: %q\n",
-			unit.Name, unit.BackendKind, unit.Namespace, unit.VersionField, unit.SourcePath, unit.Reason)
+		confidence := unit.Confidence
+		if confidence == "" {
+			confidence = "needs-review"
+		}
+		fmt.Fprintf(b, "  - name: %s\n    backendKind: %s\n    namespace: %s\n    versionField: %s\n    sourcePath: %s\n    confidence: %s\n    reason: %q\n",
+			unit.Name, unit.BackendKind, unit.Namespace, unit.VersionField, unit.SourcePath, confidence, unit.Reason)
 	}
 }
 
@@ -571,13 +644,20 @@ kubectl apply -f backends/%s-observe.yaml
 kubectl get backendprofile %s -o yaml
 `+"```"+`
 
-Review `+"`discovery/argo-discovery.yaml`"+` and `+"`sources/%s.yaml`"+` before switching
-the BackendProfile from `+"`Observe`"+` to `+"`Adopt`"+`.
+Review `+"`discovery/argo-discovery.yaml`"+`, `+"`discovery/kapro-git-map.yaml`"+`,
+and `+"`sources/%s.yaml`"+` before switching the BackendProfile from
+`+"`Observe`"+` to `+"`Adopt`"+`.
+
+Use the generated source mapping to update Git-native version fields:
+
+`+"```bash"+`
+kapro source apply --repo . --source sources/%s.yaml --set unit=revision
+`+"```"+`
 
 Kapro discovered %d Applications, %d ApplicationSets, and %d promotion units.
 Argo CD remains the owner of cluster credentials, repository credentials, sync
 policy, and local rollout behavior.
-`, opts.Name, opts.Name, opts.Name, len(result.Applications), len(result.ApplicationSets), len(result.SelectedUnits))
+`, opts.Name, opts.Name, opts.Name, opts.Name, len(result.Applications), len(result.ApplicationSets), len(result.SelectedUnits))
 }
 
 func argoUnitName(doc map[string]any, fallback string) string {

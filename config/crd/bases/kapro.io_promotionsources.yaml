@@ -237,6 +237,12 @@ spec:
                         from defaults if empty.
                       format: int32
                       type: integer
+                    sourcePath:
+                      description: |-
+                        SourcePath is the repo-relative file path Kapro updates for Git-native
+                        brownfield promotion. It is required for file-backed units whose
+                        VersionField does not already include a file path.
+                      type: string
                     suspend:
                       description: Suspend pauses reconciliation for this unit.
                       type: boolean

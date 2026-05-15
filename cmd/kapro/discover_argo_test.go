@@ -74,6 +74,9 @@ spec:
 	if unit.VersionField != "argocd/environments/*.json:gkProjectVersion" {
 		t.Fatalf("versionField=%q", unit.VersionField)
 	}
+	if unit.Confidence != "high" {
+		t.Fatalf("confidence=%q", unit.Confidence)
+	}
 	if got := len(result.SkippedObjects); got != 1 {
 		t.Fatalf("SkippedObjects=%d, want app-of-apps root", got)
 	}
@@ -111,10 +114,36 @@ spec:
 		"kind: PromotionSource",
 		"name: checkout-api",
 		"backendKind: ArgoApplicationSource",
+		"sourcePath: apps/api.yaml",
 		"versionField: spec.source.targetRevision",
 	} {
 		if !strings.Contains(source, want) {
 			t.Fatalf("source missing %q:\n%s", want, source)
+		}
+	}
+	gitMap := readFile(t, filepath.Join(out, "discovery/kapro-git-map.yaml"))
+	for _, want := range []string{
+		"schemaVersion: kapro.io/git-adoption/v1alpha1",
+		"confidence: high",
+		"sourcePath: apps/api.yaml",
+	} {
+		if !strings.Contains(gitMap, want) {
+			t.Fatalf("git map missing %q:\n%s", want, gitMap)
+		}
+	}
+}
+
+func TestLooksLikeGitRemote(t *testing.T) {
+	tests := map[string]bool{
+		"https://github.com/Kapro-dev/kapro.git": true,
+		"ssh://git@example.com/repo.git":         true,
+		"git@example.com:org/repo.git":           true,
+		"/tmp/local-checkout":                    false,
+		"./relative-checkout":                    false,
+	}
+	for input, want := range tests {
+		if got := looksLikeGitRemote(input); got != want {
+			t.Fatalf("looksLikeGitRemote(%q)=%v, want %v", input, got, want)
 		}
 	}
 }

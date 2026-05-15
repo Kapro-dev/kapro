@@ -104,8 +104,11 @@ kapro discover argo "${TMPDIR}/argo-repo" --out "${TMPDIR}/discover-argo" --name
 require_file "${TMPDIR}/discover-argo/backends/checkout-observe.yaml"
 require_file "${TMPDIR}/discover-argo/sources/checkout.yaml"
 require_file "${TMPDIR}/discover-argo/discovery/argo-discovery.yaml"
+require_file "${TMPDIR}/discover-argo/discovery/kapro-git-map.yaml"
 require_text "${TMPDIR}/discover-argo/sources/checkout.yaml" "backendKind: GitJSONField"
 require_text "${TMPDIR}/discover-argo/sources/checkout.yaml" "argocd/environments/*.json:gkProjectVersion"
+kapro source apply --repo "${TMPDIR}/argo-repo" --source "${TMPDIR}/discover-argo/sources/checkout.yaml" --set checkout-api=2.0.0 --all >/dev/null
+require_text "${TMPDIR}/argo-repo/argocd/environments/dev.json" '"gkProjectVersion": "2.0.0"'
 
 echo "smoke: brownfield flux connect"
 kapro connect flux "${TMPDIR}/connect-flux" --namespace flux-system --selector kapro.io/import=true,team=checkout --force >/dev/null

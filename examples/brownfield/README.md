@@ -27,8 +27,21 @@ the discovered graph is correct, switch the profile to
 `managementPolicy: Adopt` for selected promotion writes such as
 `spec.source.targetRevision`.
 
-Discovery writes `sources/checkout.yaml` and `discovery/argo-discovery.yaml`.
-Runtime `BackendProfile` status reports full counts and bounded object samples:
+Discovery writes `sources/checkout.yaml`, `discovery/argo-discovery.yaml`, and
+`discovery/kapro-git-map.yaml`. The source file is the executable mapping used
+for Git-native promotion writes:
+
+```bash
+kapro source apply \
+  --repo . \
+  --source ./kapro-connect/sources/checkout.yaml \
+  --set checkout-api=2.0.0 \
+  --include argocd/environments/dev.json
+```
+
+When a mapping matches multiple files, `kapro source apply` requires
+`--include` or `--all` before it writes. Runtime `BackendProfile` status reports
+full counts and bounded object samples:
 
 ```bash
 kubectl get backendprofile checkout -o jsonpath='{.status.discoveredApplications}'

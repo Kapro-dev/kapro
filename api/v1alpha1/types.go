@@ -2473,6 +2473,11 @@ type PromotionUnit struct {
 	// for example spec.source.targetRevision for Argo CD Applications.
 	// +optional
 	VersionField string `json:"versionField,omitempty"`
+	// SourcePath is the repo-relative file path Kapro updates for Git-native
+	// brownfield promotion. It is required for file-backed units whose
+	// VersionField does not already include a file path.
+	// +optional
+	SourcePath string `json:"sourcePath,omitempty"`
 	// Version is the default chart/revision for generated units. Supports
 	// ${VARIABLE} substitution from cluster-vars.
 	// +optional
