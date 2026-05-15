@@ -60,6 +60,7 @@ rules:
   - kapro.io
   resources:
   - memberclusters
+  - pluginregistrations
   verbs:
   - get
   - list
@@ -70,7 +71,6 @@ rules:
   - kapro.io
   resources:
   - pipelines
-  - pluginregistrations
   - releasetriggers
   verbs:
   - get
