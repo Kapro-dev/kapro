@@ -21,9 +21,10 @@
 11. [Target FSM](#11-target-fsm)
 12. [Approval Flow](#12-approval-flow)
 13. [Notification & Events](#13-notification--events)
-14. [PluginRegistration API Preview](#14-pluginregistration-api-preview)
-15. [ReleaseTrigger API Preview](#15-releasetrigger-api-preview)
-16. [Non-Goals](#16-non-goals)
+14. [NotificationProvider and NotificationPolicy API Preview](#14-notificationprovider-and-notificationpolicy-api-preview)
+15. [PluginRegistration API Preview](#15-pluginregistration-api-preview)
+16. [ReleaseTrigger API Preview](#16-releasetrigger-api-preview)
+17. [Non-Goals](#17-non-goals)
 
 ---
 
@@ -113,14 +114,16 @@ Release
 | `releases.kapro.io` | `Release` | Release engineer / automation | Cluster |
 | `releasetriggers.kapro.io` | `ReleaseTrigger` | Platform / automation | Cluster |
 | `releasetargets.kapro.io` | `ReleaseTarget` | Controller | Cluster |
+| `notificationproviders.kapro.io` | `NotificationProvider` | Platform | Cluster |
+| `notificationpolicies.kapro.io` | `NotificationPolicy` | Platform / release engineer | Cluster |
 | `memberclusters.kapro.io` | `MemberCluster` | Platform | Cluster |
 | `pluginregistrations.kapro.io` | `PluginRegistration` | Platform | Cluster |
 | `approvals.kapro.io` | `Approval` | Human via webhook | Cluster |
 | `agentpolicies.kapro.io` | `AgentPolicy` | Platform | Cluster |
 
-`KaproApp` and `Pipeline` are spec-only template objects. Execution state lives
-in `Release`, `ReleaseTarget`, `MemberCluster`, `Approval`, and
-`ReleaseTrigger` status.
+`KaproApp`, `Pipeline`, `NotificationProvider`, and `NotificationPolicy` are
+spec-only template/configuration objects. Execution state lives in `Release`,
+`ReleaseTarget`, `MemberCluster`, `Approval`, and `ReleaseTrigger` status.
 
 ---
 
@@ -312,13 +315,38 @@ Identity is deterministic: every `(Release, target)` pair has at most one `Appro
 
 - `pkg/notification.Notifier` is an internal contract (not an exposed extension interface yet). Currently ships Slack, email, and generic webhook senders under `internal/notification/engine`.
 - The `ReleaseReconciler` converts `*GatePolicy → NotificationPolicy` at the call boundary so the notification engine never imports `api/v1alpha1`.
+- Existing inline notifications on gates remain supported and are the active runtime configuration path.
 - Every phase transition emits a Kubernetes Event on the `Release` object.
 - Webhook notifications support plain JSON and CloudEvents v1.0 structured JSON. CloudEvents IDs are stable for a given release, event type, pipeline, stage, target, and phase so consumers can de-duplicate retries.
 - Event type names are the stable integration contract. Phase names are internal FSM detail. See `docs/events.md` for the emitted event catalog and integration examples.
 
 ---
 
-## 14. PluginRegistration API Preview
+## 14. NotificationProvider and NotificationPolicy API Preview
+
+`NotificationProvider` and `NotificationPolicy` are Kubernetes-native,
+cluster-scoped API previews for separating notification destination from
+notification subscription logic:
+
+- `NotificationProvider` is **where** events can be sent. It declares provider
+  type (`webhook`, `slack`, `email`, or `git`), provider-specific config,
+  credential Secret references, and opaque parameters.
+- `NotificationPolicy` is **when** events should be sent. It declares
+  subscriptions with a `providerRef` and filters for stable event types,
+  Release labels, pipelines, stages, targets, and phases.
+
+These APIs are spec-only in this preview. The controller does not dispatch from
+`NotificationPolicy` yet and does not change existing inline notification
+runtime behavior. Inline gate notifications continue to be supported while the
+provider/policy API is introduced for review and future controller wiring.
+
+Because both resources are cluster-scoped, provider Secret references include a
+namespace. Policy `providerRef` values refer to `NotificationProvider` objects
+by name.
+
+---
+
+## 15. PluginRegistration API Preview
 
 `PluginRegistration` is a status-capable preview for external actuator, gate,
 and planner plugins. It is cluster-scoped and records the plugin type, registry name,
@@ -344,7 +372,7 @@ implementation. See `docs/plugin-authoring.md`.
 
 ---
 
-## 15. ReleaseTrigger API Preview
+## 16. ReleaseTrigger API Preview
 
 `ReleaseTrigger` is a safe-by-default API preview for autonomous Release
 creation from verified artifact changes. It is cluster-scoped and supports OCI
@@ -358,7 +386,7 @@ apply manifests, bypass gates, or promote directly to production.
 
 ---
 
-## 16. Non-Goals
+## 17. Non-Goals
 
 Kapro explicitly does **not** aim to:
 
