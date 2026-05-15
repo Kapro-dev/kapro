@@ -395,7 +395,7 @@ type EmailNotifierSpec struct {
 // NotificationProviderSpec declares where lifecycle notifications can be sent.
 // It is an API preview and is not wired into runtime dispatch yet.
 //
-// +kubebuilder:validation:XValidation:rule="self.type != 'webhook' || has(self.webhook)",message="webhook config is required when type=webhook"
+// +kubebuilder:validation:XValidation:rule="self.type != 'webhook' || (has(self.webhook) && (has(self.webhook.url) || (has(self.secretRefs) && self.secretRefs.exists(s, s.purpose == 'webhookURL'))))",message="webhook config requires webhook.url or a secretRef with purpose=webhookURL when type=webhook"
 // +kubebuilder:validation:XValidation:rule="self.type != 'slack' || has(self.slack)",message="slack config is required when type=slack"
 // +kubebuilder:validation:XValidation:rule="self.type != 'email' || has(self.email)",message="email config is required when type=email"
 // +kubebuilder:validation:XValidation:rule="self.type != 'git' || has(self.git)",message="git config is required when type=git"
@@ -539,7 +539,7 @@ type NotificationSubscription struct {
 	// +optional
 	Name string `json:"name,omitempty"`
 	// ProviderRef references a NotificationProvider by name.
-	ProviderRef corev1.LocalObjectReference `json:"providerRef"`
+	ProviderRef NotificationProviderRef `json:"providerRef"`
 	// Filter selects the lifecycle events delivered to the provider.
 	// Empty means all events.
 	// +optional
@@ -548,6 +548,13 @@ type NotificationSubscription struct {
 	// Kapro core does not interpret unknown parameters.
 	// +optional
 	Parameters map[string]string `json:"parameters,omitempty"`
+}
+
+// NotificationProviderRef references a NotificationProvider by name.
+type NotificationProviderRef struct {
+	// Name is the NotificationProvider metadata.name.
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
 }
 
 // NotificationEventFilter selects lifecycle events for a subscription.

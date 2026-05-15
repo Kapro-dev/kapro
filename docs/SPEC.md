@@ -314,7 +314,7 @@ Identity is deterministic: every `(Release, target)` pair has at most one `Appro
 ## 13. Notification & Events
 
 - `pkg/notification.Notifier` is an internal contract (not an exposed extension interface yet). Currently ships Slack, email, and generic webhook senders under `internal/notification/engine`.
-- The `ReleaseReconciler` converts `*GatePolicy → NotificationPolicy` at the call boundary so the notification engine never imports `api/v1alpha1`.
+- The `ReleaseReconciler` converts `*GatePolicy → pkg/notification.NotificationPolicy` at the call boundary so the notification engine never imports `api/v1alpha1`. This is the internal runtime policy type, not the preview `NotificationPolicy` CRD.
 - Existing inline notifications on gates remain supported and are the active runtime configuration path.
 - Every phase transition emits a Kubernetes Event on the `Release` object.
 - Webhook notifications support plain JSON and CloudEvents v1.0 structured JSON. CloudEvents IDs are stable for a given release, event type, pipeline, stage, target, and phase so consumers can de-duplicate retries.
