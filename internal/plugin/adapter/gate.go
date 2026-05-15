@@ -78,7 +78,7 @@ func (g *GateAdapter) Evaluate(ctx context.Context, req gate.Request) (gate.Resu
 		result = "invalid_response"
 		return gate.Result{}, fmt.Errorf("gate plugin %q Evaluate returned invalid phase for target %q stage %q: %w", g.name, req.Context.Target, req.Context.Stage, err)
 	}
-	return gate.Result{Phase: phase, Message: resp.GetMessage()}, nil
+	return gate.Result{Phase: phase, Message: resp.GetMessage(), Evidence: mapGateEvidence(resp.GetEvidence())}, nil
 }
 
 func gateName(defaultName string, tmpl *kaprov1alpha1.GateTemplateSpec) string {
@@ -86,6 +86,65 @@ func gateName(defaultName string, tmpl *kaprov1alpha1.GateTemplateSpec) string {
 		return tmpl.Name
 	}
 	return defaultName
+}
+
+func mapGateEvidence(in []*kgiv1alpha1.GateEvidence) []gate.Evidence {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]gate.Evidence, 0, len(in))
+	for _, e := range in {
+		if e == nil {
+			continue
+		}
+		mapped := gate.Evidence{
+			Type:                e.GetType(),
+			Provider:            e.GetProvider(),
+			AnalysisMode:        e.GetAnalysisMode(),
+			Comparator:          e.GetComparator(),
+			Query:               e.GetQuery(),
+			BaselineQuery:       e.GetBaselineQuery(),
+			BaselineHealthQuery: e.GetBaselineHealthQuery(),
+			Window:              e.GetWindow(),
+			Interval:            e.GetInterval(),
+			ObservedValue:       e.GetObservedValue(),
+			Threshold:           e.GetThreshold(),
+			BaselineValue:       e.GetBaselineValue(),
+			SampleCount:         e.GetSampleCount(),
+			EffectSize:          e.GetEffectSize(),
+			DecisionRule:        e.GetDecisionRule(),
+			Reason:              e.GetReason(),
+		}
+		if e.BaselineHealthy != nil {
+			baselineHealthy := e.GetBaselineHealthy()
+			mapped.BaselineHealthy = &baselineHealthy
+		}
+		if e.Confidence != nil {
+			confidence := e.GetConfidence()
+			mapped.Confidence = &confidence
+		}
+		if e.Alpha != nil {
+			alpha := e.GetAlpha()
+			mapped.Alpha = &alpha
+		}
+		if e.PValue != nil {
+			pValue := e.GetPValue()
+			mapped.PValue = &pValue
+		}
+		if e.Score != nil {
+			score := e.GetScore()
+			mapped.Score = &score
+		}
+		if p := e.GetProjection(); p != nil {
+			mapped.Projection = &gate.Projection{
+				Horizon: p.GetHorizon(),
+				Value:   p.GetValue(),
+				Reason:  p.GetReason(),
+			}
+		}
+		out = append(out, mapped)
+	}
+	return out
 }
 
 func mapGatePhase(phase kgiv1alpha1.GatePhase) (kaprov1alpha1.GatePhase, error) {

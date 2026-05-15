@@ -38,10 +38,51 @@ func toAPIConditionResults(results []gate.ConditionResult) []kaprov1alpha1.GateC
 	out := make([]kaprov1alpha1.GateConditionResult, len(results))
 	for i, r := range results {
 		out[i] = kaprov1alpha1.GateConditionResult{
-			Name:    r.Name,
-			Phase:   r.Phase,
-			Value:   r.Value,
-			Message: r.Message,
+			Name:     r.Name,
+			Phase:    r.Phase,
+			Value:    r.Value,
+			Message:  r.Message,
+			Evidence: toAPIGateEvidence(r.Evidence),
+		}
+	}
+	return out
+}
+
+func toAPIGateEvidence(evidence []gate.Evidence) []kaprov1alpha1.GateEvidence {
+	if len(evidence) == 0 {
+		return nil
+	}
+	out := make([]kaprov1alpha1.GateEvidence, len(evidence))
+	for i, e := range evidence {
+		out[i] = kaprov1alpha1.GateEvidence{
+			Type:                e.Type,
+			Provider:            e.Provider,
+			AnalysisMode:        e.AnalysisMode,
+			Comparator:          e.Comparator,
+			Query:               e.Query,
+			BaselineQuery:       e.BaselineQuery,
+			BaselineHealthQuery: e.BaselineHealthQuery,
+			Window:              e.Window,
+			Interval:            e.Interval,
+			ObservedValue:       e.ObservedValue,
+			Threshold:           e.Threshold,
+			BaselineValue:       e.BaselineValue,
+			BaselineHealthy:     e.BaselineHealthy,
+			SampleCount:         e.SampleCount,
+			Confidence:          e.Confidence,
+			Alpha:               e.Alpha,
+			PValue:              e.PValue,
+			EffectSize:          e.EffectSize,
+			Score:               e.Score,
+			DecisionRule:        e.DecisionRule,
+			Reason:              e.Reason,
+		}
+		if e.Projection != nil {
+			out[i].Projection = &kaprov1alpha1.GateProjection{
+				Horizon: e.Projection.Horizon,
+				Value:   e.Projection.Value,
+				Reason:  e.Projection.Reason,
+			}
 		}
 	}
 	return out

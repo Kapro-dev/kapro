@@ -146,6 +146,27 @@ func prometheusEmptyVectorResponse() []byte {
 	return b
 }
 
+func prometheusMatrixResponse(values ...string) []byte {
+	points := make([]interface{}, 0, len(values))
+	for i, value := range values {
+		points = append(points, []interface{}{float64(1609459200 + i*30), value})
+	}
+	resp := map[string]interface{}{
+		"status": "success",
+		"data": map[string]interface{}{
+			"resultType": "matrix",
+			"result": []map[string]interface{}{
+				{
+					"metric": map[string]string{},
+					"values": points,
+				},
+			},
+		},
+	}
+	b, _ := json.Marshal(resp)
+	return b
+}
+
 func TestMetricsGate_NoMetrics(t *testing.T) {
 	g := &gate.MetricsGate{}
 	result, err := g.Evaluate(context.Background(), gate.Request{
@@ -187,6 +208,12 @@ func TestMetricsGate_Passed(t *testing.T) {
 	}
 	if !result.IsPassed() {
 		t.Errorf("expected Passed=true, got: %s", result.Message)
+	}
+	if len(result.Evidence) != 1 {
+		t.Fatalf("expected one evidence entry, got %d", len(result.Evidence))
+	}
+	if result.Evidence[0].AnalysisMode != "threshold" {
+		t.Fatalf("expected threshold evidence, got %q", result.Evidence[0].AnalysisMode)
 	}
 }
 
@@ -269,6 +296,414 @@ func TestMetricsGate_NonFiniteValueBlocked(t *testing.T) {
 	}
 	if result.IsPassed() {
 		t.Fatal("expected NaN result to block the gate")
+	}
+}
+
+func TestMetricsGate_SLOBurnRateUsesLTEComparator(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(prometheusVectorResponse("1.5"))
+	}))
+	defer srv.Close()
+
+	threshold := 2.0
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{{
+				Provider:  "prometheus",
+				Query:     "burn_rate",
+				Endpoint:  srv.URL,
+				Threshold: &threshold,
+				Analysis:  &kaprov1alpha1.MetricAnalysisSpec{Mode: "sloBurnRate"},
+			}},
+		},
+	}
+
+	result, err := (&gate.MetricsGate{HTTPClient: srv.Client()}).Evaluate(context.Background(), gate.Request{
+		Context: &gate.Context{}, Policy: policy, MetricIndex: 0,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsPassed() {
+		t.Fatalf("expected SLO burn-rate gate to pass, got %s", result.Message)
+	}
+	if got := result.Evidence[0].Comparator; got != "lte" {
+		t.Fatalf("expected lte comparator, got %q", got)
+	}
+}
+
+func TestMetricsGate_SLOBurnRateEmptyResultIsInconclusive(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(prometheusEmptyVectorResponse())
+	}))
+	defer srv.Close()
+
+	threshold := 2.0
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{{
+				Provider:  "prometheus",
+				Query:     "burn_rate",
+				Endpoint:  srv.URL,
+				Threshold: &threshold,
+				Analysis:  &kaprov1alpha1.MetricAnalysisSpec{Mode: "sloBurnRate"},
+			}},
+		},
+	}
+
+	result, err := (&gate.MetricsGate{HTTPClient: srv.Client()}).Evaluate(context.Background(), gate.Request{
+		Context: &gate.Context{}, Policy: policy, MetricIndex: 0,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Phase != kaprov1alpha1.GatePhaseInconclusive {
+		t.Fatalf("expected empty burn-rate result to be inconclusive, got %s", result.Phase)
+	}
+	if result.RetryAfter == "" {
+		t.Fatal("expected RetryAfter for empty burn-rate result")
+	}
+	if got := result.Evidence[0].SampleCount; got != 0 {
+		t.Fatalf("expected sample count 0, got %d", got)
+	}
+}
+
+func TestMetricsGate_BaselineRatioBlocksWhenRegressionTooLarge(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		requests++
+		if requests == 1 {
+			_, _ = w.Write(prometheusVectorResponse("12"))
+			return
+		}
+		_, _ = w.Write(prometheusVectorResponse("10"))
+	}))
+	defer srv.Close()
+
+	threshold := 1.1
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{{
+				Provider:  "prometheus",
+				Query:     "canary_error_rate",
+				Endpoint:  srv.URL,
+				Threshold: &threshold,
+				Analysis: &kaprov1alpha1.MetricAnalysisSpec{
+					Mode:          "baseline",
+					BaselineQuery: "baseline_error_rate",
+				},
+			}},
+		},
+	}
+
+	result, err := (&gate.MetricsGate{HTTPClient: srv.Client()}).Evaluate(context.Background(), gate.Request{
+		Context: &gate.Context{}, Policy: policy, MetricIndex: 0,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsPassed() {
+		t.Fatalf("expected baseline regression to block")
+	}
+	if got := result.Evidence[0].ObservedValue; got != "1.2" {
+		t.Fatalf("expected observed ratio 1.2, got %q", got)
+	}
+	if got := result.Evidence[0].BaselineValue; got != "10" {
+		t.Fatalf("expected baseline 10, got %q", got)
+	}
+}
+
+func TestMetricsGate_BaselineEmptyResultIsInconclusive(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		requests++
+		if requests == 1 {
+			_, _ = w.Write(prometheusVectorResponse("1"))
+			return
+		}
+		_, _ = w.Write(prometheusEmptyVectorResponse())
+	}))
+	defer srv.Close()
+
+	threshold := 1.1
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{{
+				Provider:  "prometheus",
+				Query:     "canary_error_rate",
+				Endpoint:  srv.URL,
+				Threshold: &threshold,
+				Analysis: &kaprov1alpha1.MetricAnalysisSpec{
+					Mode:          "baseline",
+					BaselineQuery: "baseline_error_rate",
+				},
+			}},
+		},
+	}
+
+	result, err := (&gate.MetricsGate{HTTPClient: srv.Client()}).Evaluate(context.Background(), gate.Request{
+		Context: &gate.Context{}, Policy: policy, MetricIndex: 0,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Phase != kaprov1alpha1.GatePhaseInconclusive {
+		t.Fatalf("expected empty baseline result to be inconclusive, got %s", result.Phase)
+	}
+	if got := result.Evidence[0].SampleCount; got != 0 {
+		t.Fatalf("expected sample count 0, got %d", got)
+	}
+}
+
+func TestMetricsGate_SequentialRequiresMinimumSamples(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(prometheusMatrixResponse("1", "1"))
+	}))
+	defer srv.Close()
+
+	threshold := 0.5
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{{
+				Provider:  "prometheus",
+				Query:     "success_rate",
+				Window:    "5m",
+				Interval:  "30s",
+				Endpoint:  srv.URL,
+				Threshold: &threshold,
+				Analysis: &kaprov1alpha1.MetricAnalysisSpec{
+					Mode:       "sequential",
+					MinSamples: 3,
+				},
+			}},
+		},
+	}
+
+	result, err := (&gate.MetricsGate{HTTPClient: srv.Client()}).Evaluate(context.Background(), gate.Request{
+		Context: &gate.Context{}, Policy: policy, MetricIndex: 0,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Phase != kaprov1alpha1.GatePhaseInconclusive {
+		t.Fatalf("expected inconclusive, got %s", result.Phase)
+	}
+	if got := result.Evidence[0].SampleCount; got != 2 {
+		t.Fatalf("expected sample count 2, got %d", got)
+	}
+}
+
+func TestMetricsGate_SequentialPassesWithConfidence(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(prometheusMatrixResponse("1", "1", "1", "1", "1", "1"))
+	}))
+	defer srv.Close()
+
+	threshold := 0.1
+	confidence := 0.8
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{{
+				Provider:  "prometheus",
+				Query:     "success_rate",
+				Window:    "5m",
+				Interval:  "30s",
+				Endpoint:  srv.URL,
+				Threshold: &threshold,
+				Analysis: &kaprov1alpha1.MetricAnalysisSpec{
+					Mode:                "sequential",
+					MinSamples:          5,
+					ConfidenceThreshold: &confidence,
+				},
+			}},
+		},
+	}
+
+	result, err := (&gate.MetricsGate{HTTPClient: srv.Client()}).Evaluate(context.Background(), gate.Request{
+		Context: &gate.Context{}, Policy: policy, MetricIndex: 0,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsPassed() {
+		t.Fatalf("expected sequential gate to pass, got %s", result.Message)
+	}
+	if result.Evidence[0].Confidence == nil {
+		t.Fatal("expected confidence evidence")
+	}
+	if result.Evidence[0].PValue == nil {
+		t.Fatal("expected p-value evidence")
+	}
+}
+
+func TestMetricsGate_ChangePointFailsOnRegression(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(prometheusMatrixResponse("1", "1", "1", "1", "5", "5", "5", "5"))
+	}))
+	defer srv.Close()
+
+	threshold := 0.0
+	alpha := 0.05
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{{
+				Provider:  "prometheus",
+				Query:     "latency",
+				Window:    "5m",
+				Interval:  "30s",
+				Endpoint:  srv.URL,
+				Threshold: &threshold,
+				Analysis: &kaprov1alpha1.MetricAnalysisSpec{
+					Mode:       "changePoint",
+					Comparator: "lte",
+					MinSamples: 8,
+					Alpha:      &alpha,
+				},
+			}},
+		},
+	}
+
+	result, err := (&gate.MetricsGate{HTTPClient: srv.Client()}).Evaluate(context.Background(), gate.Request{
+		Context: &gate.Context{}, Policy: policy, MetricIndex: 0,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Phase != kaprov1alpha1.GatePhaseFailed {
+		t.Fatalf("expected regression to fail, got %s", result.Phase)
+	}
+	if result.Evidence[0].PValue == nil {
+		t.Fatal("expected p-value evidence")
+	}
+	if result.Evidence[0].DecisionRule != "split-window change-point test" {
+		t.Fatalf("unexpected decision rule %q", result.Evidence[0].DecisionRule)
+	}
+}
+
+func TestMetricsGate_ScoreBlocksBelowThreshold(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(prometheusVectorResponse("0.10"))
+	}))
+	defer srv.Close()
+
+	threshold := 0.05
+	scoreThreshold := 90.0
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{{
+				Provider:  "prometheus",
+				Query:     "error_rate",
+				Endpoint:  srv.URL,
+				Threshold: &threshold,
+				Analysis: &kaprov1alpha1.MetricAnalysisSpec{
+					Mode:           "score",
+					ScoreThreshold: &scoreThreshold,
+				},
+			}},
+		},
+	}
+
+	result, err := (&gate.MetricsGate{HTTPClient: srv.Client()}).Evaluate(context.Background(), gate.Request{
+		Context: &gate.Context{}, Policy: policy, MetricIndex: 0,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsPassed() {
+		t.Fatal("expected score gate to block")
+	}
+	if result.Evidence[0].Score == nil || *result.Evidence[0].Score != 50 {
+		t.Fatalf("expected score 50, got %#v", result.Evidence[0].Score)
+	}
+}
+
+func TestMetricsGate_ScoreEmptyResultIsInconclusive(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(prometheusEmptyVectorResponse())
+	}))
+	defer srv.Close()
+
+	threshold := 0.05
+	scoreThreshold := 90.0
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{{
+				Provider:  "prometheus",
+				Query:     "error_rate",
+				Endpoint:  srv.URL,
+				Threshold: &threshold,
+				Analysis: &kaprov1alpha1.MetricAnalysisSpec{
+					Mode:           "score",
+					ScoreThreshold: &scoreThreshold,
+				},
+			}},
+		},
+	}
+
+	result, err := (&gate.MetricsGate{HTTPClient: srv.Client()}).Evaluate(context.Background(), gate.Request{
+		Context: &gate.Context{}, Policy: policy, MetricIndex: 0,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Phase != kaprov1alpha1.GatePhaseInconclusive {
+		t.Fatalf("expected empty score result to be inconclusive, got %s", result.Phase)
+	}
+	if result.RetryAfter == "" {
+		t.Fatal("expected RetryAfter for empty score result")
+	}
+}
+
+func TestMetricsGate_BaselineHealthPrecondition(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		requests++
+		if requests == 1 {
+			_, _ = w.Write(prometheusVectorResponse("0"))
+			return
+		}
+		_, _ = w.Write(prometheusVectorResponse("1"))
+	}))
+	defer srv.Close()
+
+	threshold := 1.1
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{{
+				Provider:  "prometheus",
+				Query:     "canary_error_rate",
+				Endpoint:  srv.URL,
+				Threshold: &threshold,
+				Analysis: &kaprov1alpha1.MetricAnalysisSpec{
+					Mode:                "baseline",
+					BaselineQuery:       "baseline_error_rate",
+					BaselineHealthQuery: "baseline_healthy",
+				},
+			}},
+		},
+	}
+
+	result, err := (&gate.MetricsGate{HTTPClient: srv.Client()}).Evaluate(context.Background(), gate.Request{
+		Context: &gate.Context{}, Policy: policy, MetricIndex: 0,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsPassed() {
+		t.Fatal("expected unhealthy baseline to block")
+	}
+	if result.Evidence[0].BaselineHealthy == nil || *result.Evidence[0].BaselineHealthy {
+		t.Fatalf("expected baselineHealthy=false evidence, got %#v", result.Evidence[0].BaselineHealthy)
 	}
 }
 

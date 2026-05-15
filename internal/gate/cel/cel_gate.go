@@ -80,6 +80,11 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 		return pkggate.Result{
 			Phase:   kaprov1alpha1.GatePhaseFailed,
 			Message: fmt.Sprintf("CEL evaluation error: %v", err),
+			Evidence: []pkggate.Evidence{{
+				Type:   "cel",
+				Query:  expr,
+				Reason: err.Error(),
+			}},
 		}, nil
 	}
 
@@ -87,12 +92,24 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 		return pkggate.Result{
 			Phase:   kaprov1alpha1.GatePhasePassed,
 			Message: fmt.Sprintf("CEL expression passed: %s", expr),
+			Evidence: []pkggate.Evidence{{
+				Type:          "cel",
+				Query:         expr,
+				ObservedValue: "true",
+				Reason:        msg,
+			}},
 		}, nil
 	}
 
 	return pkggate.Result{
 		Phase:   kaprov1alpha1.GatePhaseFailed,
 		Message: fmt.Sprintf("CEL expression failed: %s — %s", expr, msg),
+		Evidence: []pkggate.Evidence{{
+			Type:          "cel",
+			Query:         expr,
+			ObservedValue: "false",
+			Reason:        msg,
+		}},
 	}, nil
 }
 

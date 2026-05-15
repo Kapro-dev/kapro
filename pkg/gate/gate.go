@@ -47,6 +47,41 @@ type ConditionResult struct {
 	Phase   kaprov1alpha1.GatePhase `json:"phase"`
 	Value   string                  `json:"value,omitempty"`
 	Message string                  `json:"message,omitempty"`
+	// Evidence explains the facts and analysis behind this condition.
+	Evidence []Evidence `json:"evidence,omitempty"`
+}
+
+// Evidence is structured, non-secret data that explains a gate decision.
+type Evidence struct {
+	Type                string      `json:"type,omitempty"`
+	Provider            string      `json:"provider,omitempty"`
+	AnalysisMode        string      `json:"analysisMode,omitempty"`
+	Comparator          string      `json:"comparator,omitempty"`
+	Query               string      `json:"query,omitempty"`
+	BaselineQuery       string      `json:"baselineQuery,omitempty"`
+	BaselineHealthQuery string      `json:"baselineHealthQuery,omitempty"`
+	Window              string      `json:"window,omitempty"`
+	Interval            string      `json:"interval,omitempty"`
+	ObservedValue       string      `json:"observedValue,omitempty"`
+	Threshold           string      `json:"threshold,omitempty"`
+	BaselineValue       string      `json:"baselineValue,omitempty"`
+	BaselineHealthy     *bool       `json:"baselineHealthy,omitempty"`
+	SampleCount         int64       `json:"sampleCount,omitempty"`
+	Confidence          *float64    `json:"confidence,omitempty"`
+	Alpha               *float64    `json:"alpha,omitempty"`
+	PValue              *float64    `json:"pValue,omitempty"`
+	EffectSize          string      `json:"effectSize,omitempty"`
+	Score               *float64    `json:"score,omitempty"`
+	DecisionRule        string      `json:"decisionRule,omitempty"`
+	Reason              string      `json:"reason,omitempty"`
+	Projection          *Projection `json:"projection,omitempty"`
+}
+
+// Projection records an optional forecast derived from gate evidence.
+type Projection struct {
+	Horizon string `json:"horizon,omitempty"`
+	Value   string `json:"value,omitempty"`
+	Reason  string `json:"reason,omitempty"`
 }
 
 // Result carries the outcome of a gate evaluation.
@@ -85,6 +120,11 @@ type Result struct {
 	// Results contains per-condition breakdowns for multi-condition gates
 	// (e.g. multiple Prometheus queries in one MetricsGate evaluation).
 	Results []ConditionResult
+
+	// Evidence explains the facts and analysis behind the gate decision.
+	// Implementations must not include secrets, headers, tokens, or raw webhook
+	// payloads in this field.
+	Evidence []Evidence
 }
 
 // IsPassed returns true when Phase is Passed.

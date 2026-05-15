@@ -10,21 +10,22 @@
 
 1. [Vision](#1-vision)
 2. [Problem Statement](#2-problem-statement)
-3. [Core Mental Model](#3-core-mental-model)
-4. [Terminology](#4-terminology)
-5. [CRD Inventory](#5-crd-inventory)
-6. [Architecture](#6-architecture)
-7. [Extension Interfaces](#7-extension-interfaces)
-8. [Gate System](#8-gate-system)
-9. [Actuator System](#9-actuator-system)
-10. [Fleet Onboarding](#10-fleet-onboarding)
-11. [Target FSM](#11-target-fsm)
-12. [Approval Flow](#12-approval-flow)
-13. [Notification & Events](#13-notification--events)
-14. [NotificationProvider and NotificationPolicy API Preview](#14-notificationprovider-and-notificationpolicy-api-preview)
-15. [PluginRegistration API Preview](#15-pluginregistration-api-preview)
-16. [ReleaseTrigger API Preview](#16-releasetrigger-api-preview)
-17. [Non-Goals](#17-non-goals)
+3. [Boundaries](#3-boundaries)
+4. [Core Mental Model](#4-core-mental-model)
+5. [Terminology](#5-terminology)
+6. [CRD Inventory](#6-crd-inventory)
+7. [Architecture](#7-architecture)
+8. [Extension Interfaces](#8-extension-interfaces)
+9. [Gate System](#9-gate-system)
+10. [Actuator System](#10-actuator-system)
+11. [Fleet Onboarding](#11-fleet-onboarding)
+12. [Target FSM](#12-target-fsm)
+13. [Approval Flow](#13-approval-flow)
+14. [Notification & Events](#14-notification--events)
+15. [NotificationProvider and NotificationPolicy API Preview](#15-notificationprovider-and-notificationpolicy-api-preview)
+16. [PluginRegistration API Preview](#16-pluginregistration-api-preview)
+17. [ReleaseTrigger API Preview](#17-releasetrigger-api-preview)
+18. [Non-Goals](#18-non-goals)
 
 ---
 
@@ -32,9 +33,12 @@
 
 Kapro is a **Kubernetes-native progressive delivery orchestrator for cluster fleets**.
 
-It answers one question deterministically: *"Is it safe to deliver this artifact version to this target cluster right now?"*
+It answers one question deterministically: *"Which clusters are allowed to receive this artifact version now, and why?"*
 
-Kapro does not replace GitOps tools (Flux, ArgoCD). It **orchestrates** them — sitting above delivery systems as the choreographer that decides *when* and *in what order* clusters receive new versions, based on configurable gate policies: time soaks, Prometheus metrics, human approval, health checks, OCI signature verification, and custom CEL expressions.
+Kapro does not replace GitOps tools (Flux, Argo CD). It coordinates them —
+sitting above delivery systems as the fleet promotion control plane that decides
+*when* and *in what order* clusters receive new versions, based on release
+topology, target health, planning rules, gate evidence, and approvals.
 
 **Analogy:** Kubernetes is to containers what Kapro is to delivery waves. Kubernetes manages the lifecycle of containers on nodes. Kapro manages the lifecycle of releases across target clusters in a fleet.
 
@@ -48,11 +52,32 @@ Platform engineering teams running 10–500 Kubernetes clusters have three bad o
 - **Bespoke**: per-team promotion pipelines in CI (GitHub Actions, Tekton, Jenkins) with hard-coded targets, no reusable gate logic, brittle failure modes.
 - **Partial**: Argo Rollouts handles in-cluster canary but not cross-cluster waves. Flux applies GitOps but not the "should I apply?" decision.
 
-No CNCF-native tool manages the **full pipeline**: artifact → gates → multi-target wave → convergence → rollback — across a fleet, with an auditable per-release history.
+No CNCF-native tool owns the **fleet promotion layer**: artifact version →
+gates → multi-target wave → backend convergence → auditable release outcome
+across many clusters.
 
 ---
 
-## 3. Core Mental Model
+## 3. Boundaries
+
+Kapro owns cross-cluster promotion state and decisions. It delegates work that
+other cloud-native systems already own.
+
+| Area | Kapro owns | Delegated to |
+|---|---|---|
+| Artifact movement | Release, Pipeline, Stage, target state | CI systems and artifact builders |
+| Fleet ordering | Waves, planning, concurrency, target binding | Not delegated |
+| Workload rollout | Version intent and convergence checks | Flux, Argo CD, Kubernetes, or backend controllers |
+| Traffic shifting | Gate on rollout result | Argo Rollouts, Flagger, service mesh, ingress controllers |
+| Safety controls | Gate lifecycle, evidence, approval state | Domain-specific plugins and policy services |
+| Automation | Guarded Release creation | ReleaseTrigger policy and external CI/webhooks |
+| Agents | Evidence explanation and policy-bound assistance | Never required for core deterministic rollout |
+
+See `docs/vision-and-boundaries.md` for the public positioning and CNCF scope.
+
+---
+
+## 4. Core Mental Model
 
 ### Pod analogy
 
@@ -88,7 +113,7 @@ Release
 
 ---
 
-## 4. Terminology
+## 5. Terminology
 
 | Term | Meaning |
 |------|---------|
@@ -104,7 +129,7 @@ Release
 
 ---
 
-## 5. CRD Inventory
+## 6. CRD Inventory
 
 | CRD | Kind | Ownership | Scope |
 |-----|------|-----------|-------|
@@ -127,7 +152,7 @@ spec-only template/configuration objects. Execution state lives in `Release`,
 
 ---
 
-## 6. Architecture
+## 7. Architecture
 
 ```
 ┌────────────────────────────── Hub cluster ──────────────────────────────┐
@@ -181,7 +206,7 @@ See `docs/hub-config-source-of-truth.md` and `examples/hub-config/`.
 
 ---
 
-## 7. Extension Interfaces
+## 8. Extension Interfaces
 
 Kapro has narrow pluggable interfaces for backend execution, safety evaluation,
 and rollout planning. Actuators and gates are named runtime-resolved dispatch
@@ -205,7 +230,7 @@ There is **no** cluster-provider interface. Cluster onboarding is concrete, not 
 
 ---
 
-## 8. Gate System
+## 9. Gate System
 
 A `Gate` (`pkg/gate.Gate`) is a stateless evaluator:
 
@@ -217,7 +242,34 @@ type Gate interface {
 
 `Result.Phase` is one of `Passed | Failed | Running | Inconclusive`. All timing, retry, and failure policy live in the `ReleaseReconciler` — the gate just evaluates and returns.
 
+Gate decisions are evidence-based:
+
+```text
+Evidence -> Analysis -> Phase
+```
+
+`Result.Evidence` and `status.targets[i].gates[].evidence[]` carry structured,
+non-secret facts behind the decision: observed value, threshold, query, window,
+sample count, confidence, p-value, effect size, score, baseline health,
+baseline value, decision rule, and reason. Evidence is for audit, debugging,
+notifications, and external agents. Gates must not store tokens, headers,
+secrets, or raw webhook payloads in evidence.
+
 All gate state for a running target is persisted on `Release.status.targets[i].gates[]` in etcd. Controller restarts do not lose gate progress.
+
+Metric gates support explicit analysis modes:
+
+| Mode | Purpose |
+|------|---------|
+| `threshold` | Current behavior. Compare one Prometheus instant value to a threshold. |
+| `sloBurnRate` | Treat the value as error-budget burn rate and pass when it stays within budget. |
+| `baseline` | Compare current/canary value to a baseline query as a ratio. |
+| `sequential` | Query a range over the gate window and require minimum samples plus confidence before deciding. |
+| `changePoint` | Compare early and late samples in the gate window to detect a significant regression. |
+| `score` | Convert a metric into a 0-100 canary score and require a minimum score. |
+
+Statistical modes are opt-in. If data is insufficient, Kapro returns
+`Inconclusive` rather than passing.
 
 ### Registry
 
@@ -241,7 +293,7 @@ The target FSM (`internal/controller/target_fsm.go`) resolves gates by name via 
 
 ---
 
-## 9. Actuator System
+## 10. Actuator System
 
 An `Actuator` (`pkg/actuator.Actuator`) drives the "apply this version to this cluster" step:
 
@@ -267,7 +319,7 @@ The in-process actuator contract is a Preview surface; see
 
 ---
 
-## 10. Fleet Onboarding
+## 11. Fleet Onboarding
 
 Spoke onboarding is **not** a pluggable extension point. It uses two concrete paths:
 
@@ -278,7 +330,7 @@ Both paths live entirely in `internal/bootstrap` and related admission / token c
 
 ---
 
-## 11. Target FSM
+## 12. Target FSM
 
 Per-target rollout state is inline at `Release.status.targets[i].phase` (`api/v1alpha1/TargetPhase`):
 
@@ -317,7 +369,7 @@ Each optional gate is skipped when its policy is not configured. Phase handlers 
 
 ---
 
-## 12. Approval Flow
+## 13. Approval Flow
 
 Approval is intentionally minimal:
 
@@ -330,7 +382,7 @@ Identity is deterministic: every `(Release, target)` pair has at most one `Appro
 
 ---
 
-## 13. Notification & Events
+## 14. Notification & Events
 
 - `pkg/notification.Notifier` is an internal contract (not an exposed extension interface yet). Currently ships Slack, email, and generic webhook senders under `internal/notification/engine`.
 - The `ReleaseReconciler` converts `*GatePolicy → pkg/notification.NotificationPolicy` at the call boundary so the notification engine never imports `api/v1alpha1`. This is the internal runtime policy type, not the preview `NotificationPolicy` CRD.
@@ -341,7 +393,7 @@ Identity is deterministic: every `(Release, target)` pair has at most one `Appro
 
 ---
 
-## 14. NotificationProvider and NotificationPolicy API Preview
+## 15. NotificationProvider and NotificationPolicy API Preview
 
 `NotificationProvider` and `NotificationPolicy` are Kubernetes-native,
 cluster-scoped API previews for separating notification destination from
@@ -365,7 +417,7 @@ by name.
 
 ---
 
-## 15. PluginRegistration API Preview
+## 16. PluginRegistration API Preview
 
 `PluginRegistration` is a status-capable preview for external actuator, gate,
 and planner plugins. It is cluster-scoped and records the plugin type, registry name,
@@ -394,7 +446,7 @@ implementation. See `docs/plugin-authoring.md` and
 
 ---
 
-## 16. ReleaseTrigger API Preview
+## 17. ReleaseTrigger API Preview
 
 `ReleaseTrigger` is a safe-by-default API preview for autonomous Release
 creation from verified artifact changes. It is cluster-scoped and supports OCI
@@ -408,7 +460,7 @@ apply manifests, bypass gates, or promote directly to production.
 
 ---
 
-## 17. Non-Goals
+## 18. Non-Goals
 
 Kapro explicitly does **not** aim to:
 
@@ -417,3 +469,6 @@ Kapro explicitly does **not** aim to:
 - Manage in-cluster traffic shaping. Use Argo Rollouts / Flagger for that and gate on their result via `metrics` or `webhook` gates.
 - Expose a plugin interface for every internal concern. Actuator and gate plugins have startup-time runtime dispatch; planner plugins are API-preview and status-probed only.
 - Provide a generic cluster-provider abstraction. `MemberCluster` + `internal/bootstrap` is the onboarding path.
+- Require AI agents for rollout execution. Future agents may summarize evidence
+  and recommend actions under `AgentPolicy`, but Kapro core remains
+  deterministic without them.

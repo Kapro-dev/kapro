@@ -5,8 +5,10 @@ package gate
 import pkggate "kapro.io/kapro/pkg/gate"
 
 type (
-	Context = pkggate.Context
-	Gate    = pkggate.Gate
-	Request = pkggate.Request
-	Result  = pkggate.Result
+	Context    = pkggate.Context
+	Evidence   = pkggate.Evidence
+	Gate       = pkggate.Gate
+	Projection = pkggate.Projection
+	Request    = pkggate.Request
+	Result     = pkggate.Result
 )

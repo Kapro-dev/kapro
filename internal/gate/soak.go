@@ -23,7 +23,14 @@ type SoakGate struct{}
 // this gate when no soak is configured.
 func (g *SoakGate) Evaluate(_ context.Context, req Request) (Result, error) {
 	if req.Policy == nil || req.Policy.Gate.SoakTime == "" {
-		return Result{Phase: kaprov1alpha1.GatePhasePassed, Message: "no soak configured"}, nil
+		return Result{
+			Phase:   kaprov1alpha1.GatePhasePassed,
+			Message: "no soak configured",
+			Evidence: []Evidence{{
+				Type:   "soak",
+				Reason: "no soak configured",
+			}},
+		}, nil
 	}
 
 	soakDuration, err := time.ParseDuration(req.Policy.Gate.SoakTime)
@@ -38,6 +45,11 @@ func (g *SoakGate) Evaluate(_ context.Context, req Request) (Result, error) {
 			Phase:      kaprov1alpha1.GatePhaseInconclusive,
 			Message:    "soak clock not started",
 			RetryAfter: soakDuration.String(),
+			Evidence: []Evidence{{
+				Type:      "soak",
+				Threshold: soakDuration.String(),
+				Reason:    "clock not started",
+			}},
 		}, nil
 	}
 
@@ -54,11 +66,28 @@ func (g *SoakGate) Evaluate(_ context.Context, req Request) (Result, error) {
 			Phase:      kaprov1alpha1.GatePhaseInconclusive,
 			Message:    fmt.Sprintf("soaking: %s remaining", remaining.Round(time.Second)),
 			RetryAfter: remaining.String(),
+			Evidence: []Evidence{{
+				Type:          "soak",
+				ObservedValue: elapsed.Round(time.Second).String(),
+				Threshold:     soakDuration.String(),
+				Reason:        "soak period has not elapsed",
+				Projection: &Projection{
+					Horizon: remaining.Round(time.Second).String(),
+					Value:   soakDuration.String(),
+					Reason:  "soak will pass after remaining duration if no earlier failure occurs",
+				},
+			}},
 		}, nil
 	}
 
 	return Result{
 		Phase:   kaprov1alpha1.GatePhasePassed,
 		Message: fmt.Sprintf("soak period %s elapsed", soakDuration),
+		Evidence: []Evidence{{
+			Type:          "soak",
+			ObservedValue: elapsed.Round(time.Second).String(),
+			Threshold:     soakDuration.String(),
+			Reason:        "soak period elapsed",
+		}},
 	}, nil
 }

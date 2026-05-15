@@ -168,6 +168,42 @@ Acceptance gates:
 - Proto field removals reserve field numbers.
 - CRD semantic changes use additive fields, conversion, or a new API version.
 
+## Milestone 6: Policy-Bound Agentic Workflows
+
+Goal: let agents assist fleet promotion without making agents part of the core
+rollout authority.
+
+Positioning:
+
+```text
+Kapro enables policy-bound agentic workflows for fleet promotion.
+```
+
+Agents consume release state, planner status, gate evidence, lifecycle events,
+and audit history. They may explain, recommend, draft context, request approval,
+or create bounded recommendation objects. They must not bypass gates, approvals,
+RBAC, admission policy, or the deterministic release state machine.
+
+Deliverables:
+
+- `AgentRecommendation` API preview for explain/recommend/hold/rollback/request
+  approval outputs.
+- Evidence references from recommendations to `ReleaseTarget.status.gates[]`.
+- `AgentPolicy` enforcement for allowed intents, stages, targets, and actions.
+- AgentGateway design doc describing context payload, response schema, timeout,
+  retry, authn/authz, and audit behavior.
+- Admission and RBAC guidance for agent identities.
+- Conformance scenarios for safe agent behavior.
+
+Acceptance gates:
+
+- Agents can explain a stuck Release using only Kubernetes status and evidence.
+- Agents can propose actions but cannot directly call actuators or mutate
+  delivery backends.
+- Production-impacting actions require explicit policy and, where configured,
+  human approval.
+- Kapro rollout execution remains deterministic when no agent is installed.
+
 ## Recommended Immediate Work Order
 
 1. Run and repair the Kind demo from a clean clone.
@@ -177,6 +213,8 @@ Acceptance gates:
    plugin author entry point.
 5. Add runbook links to each shipped Prometheus alert.
 6. Add API compatibility checks to CI before broadening the preview API.
+7. Add `AgentRecommendation` API preview and AgentGateway design after the
+   alpha install/demo path is stable.
 
 ## Done Means
 

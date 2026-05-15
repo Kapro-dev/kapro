@@ -20,6 +20,14 @@ require_workflow_line() {
   fi
 }
 
+reject_workflow_line() {
+  local pattern="$1"
+  if grep -Fq -- "$pattern" "${RELEASE_WORKFLOW}"; then
+    echo "release workflow must not contain pinned release-specific line: ${pattern}" >&2
+    exit 1
+  fi
+}
+
 need helm
 need shasum
 
@@ -49,5 +57,6 @@ require_workflow_line "name: Package Helm chart"
 require_workflow_line "helm package charts/kapro-operator --destination dist"
 require_workflow_line "shasum -a 256 dist/* > dist/checksums.txt"
 require_workflow_line "dist/*"
+reject_workflow_line "body_path: docs/release-v0.1.0-alpha.md"
 
 echo "release smoke verification passed"

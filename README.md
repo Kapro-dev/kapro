@@ -5,7 +5,7 @@
 <h1 align="center">Kapro</h1>
 
 <p align="center"><strong>The promotion control plane for Kubernetes fleets.</strong><br>
-Kapro coordinates safe version promotion across clusters, regions, and clouds while existing GitOps, rollout, traffic, and policy systems execute local changes.</p>
+Kapro coordinates safe artifact promotion across clusters, regions, and clouds while existing GitOps, rollout, traffic, and policy systems execute local changes.</p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
@@ -15,21 +15,25 @@ Kapro coordinates safe version promotion across clusters, regions, and clouds wh
 
 ---
 
-## The Fleet-Scale Imperative
+## What Kapro Is
 
-Sovereign hubs. Edge locations at true distributed scale. Zero tolerance for centralized runtime coordination, because centralized orchestration is a single point of failure.
+Kapro is a Kubernetes-native control plane for promoting immutable artifact
+versions across a fleet of clusters.
 
-When deploying at this magnitude, standard CI/CD pipelines collapse under the weight of drift, state, and sheer volume.
+It answers one operational question:
 
-## Why Sequential Pipelines Break
+```text
+Which clusters are allowed to receive this artifact version now, and why?
+```
 
-Traditional CI/CD assumes a linear world: build, test, deploy. But modern platforms are different.
+Kapro owns cross-cluster release ordering, target planning, gate evaluation,
+approval state, backend convergence tracking, and auditable status.
 
-Kafka must run before 14 dependent services. Operators must precede custom resources. Databases cannot be simply redeployed. They require lifecycle management, backups, and drift correction. And every cluster must continuously self-verify against its source of truth. Auto-correction is not optional, it is mandatory.
+It delegates artifact build, manifest rendering, GitOps reconciliation,
+in-cluster traffic shaping, and backend-specific rollout strategy to the tools
+that already own those jobs.
 
-Sequential pipelines simply cannot express this.
-
-## The Missing Link in Global GitOps
+## The Missing Fleet Layer
 
 You have a centralized OCI artifact registry. You have edge clusters running Flux, Helm, and Kustomize. But between those two ends, three questions remain unanswered:
 
@@ -47,19 +51,24 @@ Kapro decouples CI from deployment. The OCI artifact becomes the single source o
 
 Kapro does not replace the CNCF ecosystem. It coordinates it. Kapro decides when and where a version may advance across a fleet; local rollout systems decide how pods, sync, and traffic changes happen inside each cluster.
 
-It sits above Kubernetes Operators, Helm, Kustomize, OCI registries, GitOps reconciliation loops, Argo CD, Argo Rollouts, Flagger, Istio, Gateway API, and custom plugins as a single, state-aware promotion control plane.
+It sits above Kubernetes Operators, Helm, Kustomize, OCI registries, GitOps reconciliation loops, Argo CD, Argo Rollouts, Flagger, Istio, Gateway API, and custom plugins as a state-aware promotion control plane.
 
 ## The Mechanics of Promotion
 
 1. **Delegated local rollout strategies.** Keep using Kubernetes Deployments, Argo Rollouts, Flagger, Istio, Gateway API, Flux, Argo CD, Helm, or custom actuators for namespace-local rollout and traffic mechanics.
 2. **Cross-cluster promotion waves.** Kapro coordinates which targets advance first, which regions wait, and when the global fleet may progress.
 3. **Promotion before progression.** Kapro advances only after target health, gates, approvals, plugin status, and policy checks pass; the selected backend executes the local change.
+4. **Auditable evidence.** Kapro persists target phase, gate evidence, approvals, lifecycle events, and release outcome in Kubernetes status.
 
-## Autonomous Operations and Bulletproof Reliability
+## Conservative Automation and Reliability
 
-Kapro manages wave-based dependsOn execution across CRDs, operators, state, apps, and ingress. Cluster state is continuously mapped to the Git/OCI source of truth using standard controller-runtime patterns.
+Kapro manages wave-based `dependsOn` execution across release pipelines and
+target clusters. Cluster state is reconciled through standard controller-runtime
+patterns and backend convergence checks.
 
-Automated health gates ensure that if a target check, local rollout controller, telemetry signal, or approval fails, fleet progression halts before the next targets advance.
+Automated gates ensure that unclear or failing evidence halts progression before
+the next wave. Advanced statistical gate modes are optional; the default path
+stays simple and operator-readable.
 
 ## Use Cases
 
@@ -72,7 +81,7 @@ Separate deployment flows per compliance zone. Environment isolation per regulat
 ### Edge and Distributed Platforms
 Progressive promotion to hundreds or thousands of edge clusters. Canary groups get new versions first. Health gates block progression if error rates spike. Auto-promotion after a configurable soak period.
 
-## How Kapro Compares
+## How Kapro Fits
 
 | | Kapro | Flux | ArgoCD | Kargo |
 |---|---|---|---|---|
@@ -85,6 +94,10 @@ Progressive promotion to hundreds or thousands of edge clusters. Canary groups g
 | **Manual approvals** | CRD-based | No | External | Yes |
 
 Kapro sits **above** local rollout and GitOps systems, not replacing them, and **alongside** Kargo as a complementary tool. Kapro focuses on horizontal wave ordering across sovereign fleets, while local systems handle namespace-level rollout, sync, traffic shifting, and workload health.
+
+Kapro is not a CI engine, traffic manager, generic workflow system, or
+replacement for Flux, Argo CD, Argo Rollouts, Flagger, Kargo, or Tekton. See
+[Vision and Boundaries](docs/vision-and-boundaries.md) for the project scope.
 
 ## Getting Started
 
@@ -134,6 +147,8 @@ Quick troubleshooting checks:
 - [Clean-Clone Install Verification](docs/install-verification.md)
 - [v0.1.0-alpha Release Runbook](docs/release-v0.1.0-alpha.md)
 - [Architecture Spec](docs/SPEC.md)
+- [Vision and Boundaries](docs/vision-and-boundaries.md)
+- [CNCF Positioning](docs/cncf-positioning.md)
 - [Local Kind Demo](docs/kind-demo.md)
 - [API Stability and Upgrade Policy](docs/api-stability.md)
 - [Conformance Packages](docs/conformance.md)
@@ -150,7 +165,7 @@ Quick troubleshooting checks:
 
 ## Contributing
 
-Kapro is built to be the open-source standard for multi-cluster fleet promotion. Join the project, contribute to the standard, and tame the complexity of global GitOps.
+Kapro is built to be an open-source standard for multi-cluster fleet promotion. Join the project, contribute to the standard, and help make fleet promotion safer and easier to operate.
 
 ## License
 

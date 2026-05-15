@@ -380,6 +380,54 @@ func TestEvaluateGateTemplates_InconclusiveSkipPasses(t *testing.T) {
 	}
 }
 
+func TestEvaluateGateTemplates_PersistsEvidence(t *testing.T) {
+	reg := gatepkg.NewRegistry()
+	reg.MustRegister("mock", staticGate{
+		result: gatepkg.Result{
+			Phase:   kaprov1alpha1.GatePhasePassed,
+			Message: "ok",
+			Evidence: []gatepkg.Evidence{{
+				Type:          "metric",
+				AnalysisMode:  "threshold",
+				ObservedValue: "1",
+				Threshold:     "0",
+				Reason:        "value satisfied threshold",
+			}},
+		},
+	})
+	r := &ReleaseTargetReconciler{
+		Recorder:     record.NewFakeRecorder(10),
+		GateRegistry: reg,
+	}
+	release := &kaprov1alpha1.Release{ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default"}}
+	target := &kaprov1alpha1.TargetStatus{Target: "cluster-a", PhaseEnteredAt: time.Now().UTC().Format(time.RFC3339)}
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Templates: []kaprov1alpha1.GateTemplateSpec{{
+				Name: "gate-1",
+				Type: "mock",
+			}},
+		},
+	}
+
+	allPassed, _, err := r.evaluateGateTemplates(context.Background(), release, target, &gatepkg.Context{}, policy)
+	if err != nil {
+		t.Fatalf("evaluateGateTemplates returned error: %v", err)
+	}
+	if !allPassed {
+		t.Fatal("expected gate to pass")
+	}
+	if len(target.Gates) != 1 {
+		t.Fatalf("expected one persisted gate, got %d", len(target.Gates))
+	}
+	if len(target.Gates[0].Evidence) != 1 {
+		t.Fatalf("expected one evidence entry, got %d", len(target.Gates[0].Evidence))
+	}
+	if got := target.Gates[0].Evidence[0].AnalysisMode; got != "threshold" {
+		t.Fatalf("expected threshold evidence, got %q", got)
+	}
+}
+
 func TestGateForTemplate_PluginResolvesPluginName(t *testing.T) {
 	reg := gatepkg.NewRegistry()
 	pluginGate := staticGate{result: gatepkg.Result{Phase: kaprov1alpha1.GatePhasePassed}}

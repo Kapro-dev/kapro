@@ -170,5 +170,9 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 		Phase:      kaprov1alpha1.GatePhase(wr.Phase),
 		Message:    wr.Message,
 		RetryAfter: wr.RetryAfter,
+		Evidence: []pkggate.Evidence{{
+			Type:   "webhook",
+			Reason: wr.Message,
+		}},
 	}, nil
 }

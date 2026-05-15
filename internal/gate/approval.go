@@ -56,6 +56,10 @@ func (g *ApprovalGate) Evaluate(ctx context.Context, req Request) (Result, error
 				Phase:      kaprov1alpha1.GatePhaseInconclusive,
 				Message:    fmt.Sprintf("waiting for Approval %q", key.Name),
 				RetryAfter: "30s",
+				Evidence: []Evidence{{
+					Type:   "approval",
+					Reason: fmt.Sprintf("approval %q not found", key.Name),
+				}},
 			}, nil
 		}
 		return Result{}, fmt.Errorf("get approval %q: %w", key.Name, err)
@@ -74,6 +78,10 @@ func (g *ApprovalGate) Evaluate(ctx context.Context, req Request) (Result, error
 				Phase:      kaprov1alpha1.GatePhaseFailed,
 				Message:    fmt.Sprintf("approval by %s is not allowed", approval.Spec.ApprovedBy),
 				RetryAfter: "0",
+				Evidence: []Evidence{{
+					Type:   "approval",
+					Reason: "approver is not allowed by policy",
+				}},
 			}, nil
 		}
 	}
@@ -82,10 +90,18 @@ func (g *ApprovalGate) Evaluate(ctx context.Context, req Request) (Result, error
 		return Result{
 			Phase:   kaprov1alpha1.GatePhasePassed,
 			Message: fmt.Sprintf("approval bypassed by %s", approval.Spec.ApprovedBy),
+			Evidence: []Evidence{{
+				Type:   "approval",
+				Reason: "approval bypass flag set",
+			}},
 		}, nil
 	}
 	return Result{
 		Phase:   kaprov1alpha1.GatePhasePassed,
 		Message: fmt.Sprintf("approved by %s: %s", approval.Spec.ApprovedBy, approval.Spec.Comment),
+		Evidence: []Evidence{{
+			Type:   "approval",
+			Reason: "approval object exists and approver is allowed",
+		}},
 	}, nil
 }

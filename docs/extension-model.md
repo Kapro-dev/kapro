@@ -91,6 +91,12 @@ Gate results are normalized:
 Gate state is persisted on `ReleaseTarget` status. A controller restart must not
 lose gate progress.
 
+Gate results may include structured evidence. Evidence records the observed
+facts behind the decision, such as metric query, observed value, threshold,
+baseline value, sample count, confidence, and reason. This keeps gate decisions
+auditable and gives external systems a stable machine-readable contract without
+making those systems authoritative for rollout state.
+
 Gate categories:
 
 | Category | Purpose |
