@@ -219,6 +219,50 @@ spec:
                 default: true
                 description: Suspended pauses source observation and release creation.
                 type: boolean
+              verification:
+                description: |-
+                  Verification configures artifact signature verification trust policy.
+                  Required when source.oci.requireSignature is true.
+                properties:
+                  cosignPolicy:
+                    description: CosignPolicySpec specifies how cosign should verify
+                      the artifact signature.
+                    properties:
+                      key:
+                        description: KeyVerificationSpec configures static public
+                          key cosign verification.
+                        properties:
+                          secretRef:
+                            description: CosignKeySecretRef identifies a cosign public
+                              key stored in a Kubernetes Secret.
+                            properties:
+                              key:
+                                default: cosign.pub
+                                type: string
+                              name:
+                                type: string
+                              namespace:
+                                default: kapro-system
+                                type: string
+                            required:
+                            - name
+                            type: object
+                        required:
+                        - secretRef
+                        type: object
+                      keyless:
+                        description: KeylessVerificationSpec configures OIDC keyless
+                          cosign verification.
+                        properties:
+                          issuer:
+                            type: string
+                          rekorURL:
+                            type: string
+                          subject:
+                            type: string
+                        type: object
+                    type: object
+                type: object
             required:
             - releaseTemplate
             - source

@@ -2,11 +2,21 @@ package controller
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
+	"fmt"
 	"sort"
 	"testing"
 	"time"
 
+	"github.com/google/go-containerregistry/pkg/name"
+	cosignlib "github.com/sigstore/cosign/v2/pkg/cosign"
+	cosignoci "github.com/sigstore/cosign/v2/pkg/oci"
+	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -68,6 +78,109 @@ func TestReleaseTriggerSignatureFailureBlocksRelease(t *testing.T) {
 	if cond == nil || cond.Reason != "SignatureVerificationFailed" {
 		t.Fatalf("Stalled condition = %+v", cond)
 	}
+	verified := apimeta.FindStatusCondition(got.Status.Conditions, conditionArtifactVerified)
+	if verified == nil || verified.Status != metav1.ConditionFalse || verified.Reason != "SignatureVerificationFailed" {
+		t.Fatalf("ArtifactVerified condition = %+v", verified)
+	}
+}
+
+func TestReleaseTriggerVerifierUnavailableBlocksRelease(t *testing.T) {
+	ctx := context.Background()
+	resolveCalls := 0
+	reconciler, c := newReleaseTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact(), calls: &resolveCalls}, nil, releaseTriggerFixture())
+
+	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+	assertReleaseCount(t, ctx, c, 0)
+	if resolveCalls != 0 {
+		t.Fatalf("resolver calls = %d, want 0", resolveCalls)
+	}
+	got := getReleaseTrigger(t, ctx, c, "checkout")
+	cond := apimeta.FindStatusCondition(got.Status.Conditions, conditionArtifactVerified)
+	if cond == nil || cond.Status != metav1.ConditionUnknown || cond.Reason != "VerifierUnavailable" {
+		t.Fatalf("ArtifactVerified condition = %+v", cond)
+	}
+}
+
+func TestReleaseTriggerCosignKeyVerificationCreatesRelease(t *testing.T) {
+	ctx := context.Background()
+	reconciler, c := newReleaseTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, nil, releaseTriggerFixture(), cosignKeySecret(t))
+	reconciler.Verifier = &CosignReleaseTriggerVerifier{
+		Client: c,
+		VerifyImageSignatures: func(_ context.Context, ref name.Reference, opts *cosignlib.CheckOpts) ([]cosignoci.Signature, bool, error) {
+			if got, want := ref.Name(), "registry.example.com/checkout@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"; got != want {
+				return nil, false, fmt.Errorf("reference = %q, want %q", got, want)
+			}
+			if opts.SigVerifier == nil || opts.ClaimVerifier == nil || !opts.IgnoreTlog {
+				return nil, false, fmt.Errorf("unexpected cosign check options: %+v", opts)
+			}
+			return []cosignoci.Signature{nil}, false, nil
+		},
+	}
+
+	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+	got := getReleaseTrigger(t, ctx, c, "checkout")
+	var releases kaprov1alpha1.ReleaseList
+	if err := c.List(ctx, &releases); err != nil {
+		t.Fatal(err)
+	}
+	if len(releases.Items) != 1 {
+		t.Fatalf("release count = %d, want 1; status = %+v", len(releases.Items), got.Status)
+	}
+	cond := apimeta.FindStatusCondition(got.Status.Conditions, conditionArtifactVerified)
+	if cond == nil || cond.Status != metav1.ConditionTrue || cond.Reason != "SignatureVerified" {
+		t.Fatalf("ArtifactVerified condition = %+v", cond)
+	}
+	if got.Status.LastArtifact == nil || !got.Status.LastArtifact.SignatureVerified {
+		t.Fatalf("LastArtifact = %+v", got.Status.LastArtifact)
+	}
+}
+
+func TestReleaseTriggerCosignKeyVerificationFailureBlocksRelease(t *testing.T) {
+	ctx := context.Background()
+	reconciler, c := newReleaseTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, nil, releaseTriggerFixture(), cosignKeySecret(t))
+	reconciler.Verifier = &CosignReleaseTriggerVerifier{
+		Client: c,
+		VerifyImageSignatures: func(context.Context, name.Reference, *cosignlib.CheckOpts) ([]cosignoci.Signature, bool, error) {
+			return nil, false, errors.New("bad signature")
+		},
+	}
+
+	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+	assertReleaseCount(t, ctx, c, 0)
+	got := getReleaseTrigger(t, ctx, c, "checkout")
+	cond := apimeta.FindStatusCondition(got.Status.Conditions, conditionArtifactVerified)
+	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != "SignatureVerificationFailed" {
+		t.Fatalf("ArtifactVerified condition = %+v", cond)
+	}
+}
+
+func TestReleaseTriggerInvalidTrustConfigBlocksBeforeResolve(t *testing.T) {
+	ctx := context.Background()
+	resolveCalls := 0
+	trigger := releaseTriggerFixture(func(rt *kaprov1alpha1.ReleaseTrigger) {
+		rt.Spec.Verification = nil
+	})
+	reconciler, c := newReleaseTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact(), calls: &resolveCalls}, nil, trigger)
+	reconciler.Verifier = &CosignReleaseTriggerVerifier{Client: c}
+
+	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+	assertReleaseCount(t, ctx, c, 0)
+	if resolveCalls != 0 {
+		t.Fatalf("resolver calls = %d, want 0", resolveCalls)
+	}
+	got := getReleaseTrigger(t, ctx, c, "checkout")
+	cond := apimeta.FindStatusCondition(got.Status.Conditions, conditionArtifactVerified)
+	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != "InvalidTrustConfig" {
+		t.Fatalf("ArtifactVerified condition = %+v", cond)
+	}
 }
 
 func TestReleaseTriggerCreatesDigestPinnedRelease(t *testing.T) {
@@ -85,7 +198,7 @@ func TestReleaseTriggerCreatesDigestPinnedRelease(t *testing.T) {
 		t.Fatalf("release count = %d", len(releases.Items))
 	}
 	release := releases.Items[0]
-	if release.Spec.Version != "oci://registry.example.com/checkout@sha256:abcdef1234567890" {
+	if release.Spec.Version != "oci://registry.example.com/checkout@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890" {
 		t.Fatalf("Version = %q", release.Spec.Version)
 	}
 	if !release.Spec.Suspended {
@@ -108,7 +221,7 @@ func TestReleaseTriggerDoesNotDuplicateSameDigest(t *testing.T) {
 			Labels:      map[string]string{releaseTriggerLabel: "checkout"},
 			Annotations: map[string]string{releaseTriggerDigestAnno: testArtifact().Digest},
 		},
-		Spec: kaprov1alpha1.ReleaseSpec{Version: "oci://registry.example.com/checkout@sha256:abcdef1234567890"},
+		Spec: kaprov1alpha1.ReleaseSpec{Version: "oci://registry.example.com/checkout@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"},
 	}
 	reconciler, c := newReleaseTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, releaseTriggerFixture(), existing)
 
@@ -265,6 +378,9 @@ func newReleaseTriggerReconciler(t *testing.T, resolver ReleaseTriggerResolver, 
 	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objects...).
@@ -299,6 +415,17 @@ func releaseTriggerFixture(mutators ...func(*kaprov1alpha1.ReleaseTrigger)) *kap
 				Suspended: true,
 				Scope:     &kaprov1alpha1.ReleaseScope{Targets: []string{"canary-eu"}},
 			},
+			Verification: &kaprov1alpha1.VerificationGateSpec{
+				CosignPolicy: &kaprov1alpha1.CosignPolicySpec{
+					Key: &kaprov1alpha1.KeyVerificationSpec{
+						SecretRef: kaprov1alpha1.CosignKeySecretRef{
+							Name:      "checkout-cosign",
+							Namespace: "kapro-system",
+							Key:       "cosign.pub",
+						},
+					},
+				},
+			},
 			Cooldown:  "30m",
 			MaxActive: 1,
 		},
@@ -310,7 +437,25 @@ func releaseTriggerFixture(mutators ...func(*kaprov1alpha1.ReleaseTrigger)) *kap
 }
 
 func testArtifact() *ReleaseTriggerArtifactObservation {
-	return &ReleaseTriggerArtifactObservation{Tag: "v1.2.3", Digest: "sha256:abcdef1234567890"}
+	return &ReleaseTriggerArtifactObservation{Tag: "v1.2.3", Digest: "sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"}
+}
+
+func cosignKeySecret(t *testing.T) *corev1.Secret {
+	t.Helper()
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, err := x509.MarshalPKIXPublicKey(privateKey.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout-cosign", Namespace: "kapro-system"},
+		Data: map[string][]byte{
+			"cosign.pub": pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: publicKey}),
+		},
+	}
 }
 
 func fixedNow() time.Time {

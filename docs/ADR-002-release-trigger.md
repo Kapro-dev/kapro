@@ -74,6 +74,13 @@ spec:
       repository: oci://registry.example.com/checkout
       tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
       requireSignature: true
+  verification:
+    cosignPolicy:
+      key:
+        secretRef:
+          name: checkout-cosign
+          namespace: kapro-system
+          key: cosign.pub
   releaseTemplate:
     pipelines:
       - name: production

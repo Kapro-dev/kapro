@@ -803,6 +803,10 @@ type ReleaseTriggerSpec struct {
 	Source ReleaseTriggerSource `json:"source"`
 	// ReleaseTemplate defines the Release created for a verified artifact.
 	ReleaseTemplate ReleaseTriggerTemplate `json:"releaseTemplate"`
+	// Verification configures artifact signature verification trust policy.
+	// Required when source.oci.requireSignature is true.
+	// +optional
+	Verification *VerificationGateSpec `json:"verification,omitempty"`
 	// Cooldown is the minimum duration between releases created by this trigger.
 	// +kubebuilder:default="30m"
 	Cooldown string `json:"cooldown,omitempty"`

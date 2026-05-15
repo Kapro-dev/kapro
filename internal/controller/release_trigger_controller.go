@@ -62,6 +62,12 @@ type ReleaseTriggerVerifier interface {
 	Verify(ctx context.Context, trigger *kaprov1alpha1.ReleaseTrigger, artifact ReleaseTriggerArtifactObservation) error
 }
 
+// ReleaseTriggerTrustConfigValidator validates signature trust configuration
+// before contacting an artifact source.
+type ReleaseTriggerTrustConfigValidator interface {
+	ValidateTrustConfig(trigger *kaprov1alpha1.ReleaseTrigger) error
+}
+
 // ReleaseTriggerReconciler observes artifact sources and creates guarded Releases.
 type ReleaseTriggerReconciler struct {
 	client.Client
@@ -111,6 +117,20 @@ func (r *ReleaseTriggerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, nil
 	}
 
+	signatureRequired := trigger.Spec.Source.OCI != nil && trigger.Spec.Source.OCI.RequireSignature
+	if signatureRequired {
+		if r.Verifier == nil {
+			setTriggerVerifierUnavailable(&trigger, now, "signature verification is required but no verifier is configured")
+			return ctrl.Result{RequeueAfter: pollAfter}, r.patchStatus(ctx, &trigger, patch)
+		}
+		if validator, ok := r.Verifier.(ReleaseTriggerTrustConfigValidator); ok {
+			if err := validator.ValidateTrustConfig(&trigger); err != nil {
+				setTriggerInvalidTrustConfig(&trigger, now, err.Error())
+				return ctrl.Result{}, r.patchStatus(ctx, &trigger, patch)
+			}
+		}
+	}
+
 	resolver := r.Resolver
 	if resolver == nil {
 		resolver = OCIReleaseTriggerResolver{Client: r.Client}
@@ -134,13 +154,9 @@ func (r *ReleaseTriggerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 	setCondition(&trigger.Status.Conditions, conditionArtifactObserved, metav1.ConditionTrue, "ArtifactObserved", fmt.Sprintf("observed artifact %s@%s", artifact.Tag, artifact.Digest), trigger.Generation, now)
 
-	if trigger.Spec.Source.OCI != nil && trigger.Spec.Source.OCI.RequireSignature {
-		if r.Verifier == nil {
-			setTriggerBlocked(&trigger, now, "VerifierUnavailable", "signature verification is required but no verifier is configured")
-			return ctrl.Result{RequeueAfter: pollAfter}, r.patchStatus(ctx, &trigger, patch)
-		}
+	if signatureRequired {
 		if err := r.Verifier.Verify(ctx, &trigger, *artifact); err != nil {
-			setTriggerBlocked(&trigger, now, "SignatureVerificationFailed", err.Error())
+			setTriggerVerificationFailed(&trigger, now, err.Error())
 			return ctrl.Result{RequeueAfter: pollAfter}, r.patchStatus(ctx, &trigger, patch)
 		}
 		trigger.Status.LastArtifact.SignatureVerified = true
@@ -621,6 +637,21 @@ func setTriggerBlocked(trigger *kaprov1alpha1.ReleaseTrigger, now time.Time, rea
 	setCondition(&trigger.Status.Conditions, "Ready", metav1.ConditionFalse, reason, message, trigger.Generation, now)
 	setCondition(&trigger.Status.Conditions, kaprov1alpha1.ConditionTypeReconciling, metav1.ConditionFalse, reason, "source check completed", trigger.Generation, now)
 	setCondition(&trigger.Status.Conditions, kaprov1alpha1.ConditionTypeStalled, metav1.ConditionTrue, reason, message, trigger.Generation, now)
+}
+
+func setTriggerVerificationFailed(trigger *kaprov1alpha1.ReleaseTrigger, now time.Time, message string) {
+	setTriggerBlocked(trigger, now, "SignatureVerificationFailed", message)
+	setCondition(&trigger.Status.Conditions, conditionArtifactVerified, metav1.ConditionFalse, "SignatureVerificationFailed", message, trigger.Generation, now)
+}
+
+func setTriggerVerifierUnavailable(trigger *kaprov1alpha1.ReleaseTrigger, now time.Time, message string) {
+	setTriggerBlocked(trigger, now, "VerifierUnavailable", message)
+	setCondition(&trigger.Status.Conditions, conditionArtifactVerified, metav1.ConditionUnknown, "VerifierUnavailable", message, trigger.Generation, now)
+}
+
+func setTriggerInvalidTrustConfig(trigger *kaprov1alpha1.ReleaseTrigger, now time.Time, message string) {
+	setTriggerBlocked(trigger, now, "InvalidTrustConfig", message)
+	setCondition(&trigger.Status.Conditions, conditionArtifactVerified, metav1.ConditionFalse, "InvalidTrustConfig", message, trigger.Generation, now)
 }
 
 func setCondition(conditions *[]metav1.Condition, conditionType string, status metav1.ConditionStatus, reason, message string, observedGeneration int64, now time.Time) {

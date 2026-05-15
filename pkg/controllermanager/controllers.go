@@ -138,6 +138,7 @@ func startReleaseTriggerController(_ context.Context, cc ControllerContext) (boo
 		Client:   cc.Manager.GetClient(),
 		Scheme:   cc.Manager.GetScheme(),
 		Recorder: cc.Recorder,
+		Verifier: &controller.CosignReleaseTriggerVerifier{Client: cc.Manager.GetClient()},
 	}).SetupWithManager(cc.Manager); err != nil {
 		return false, err
 	}

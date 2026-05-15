@@ -2413,6 +2413,11 @@ func (in *ReleaseTriggerSpec) DeepCopyInto(out *ReleaseTriggerSpec) {
 	*out = *in
 	in.Source.DeepCopyInto(&out.Source)
 	in.ReleaseTemplate.DeepCopyInto(&out.ReleaseTemplate)
+	if in.Verification != nil {
+		in, out := &in.Verification, &out.Verification
+		*out = new(VerificationGateSpec)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.Parameters != nil {
 		in, out := &in.Parameters, &out.Parameters
 		*out = make(map[string]string, len(*in))
