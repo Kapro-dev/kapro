@@ -180,7 +180,8 @@ func (r *ReleaseTriggerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{RequeueAfter: pollAfter}, r.patchStatus(ctx, &trigger, patch)
 	}
 
-	release, err := buildTriggeredRelease(&trigger, *artifact, version, r.Scheme, now)
+	createdAt := r.now()
+	release, err := buildTriggeredRelease(&trigger, *artifact, version, r.Scheme, createdAt)
 	if err != nil {
 		setTriggerBlocked(&trigger, now, "InvalidReleaseTemplate", err.Error())
 		return ctrl.Result{}, r.patchStatus(ctx, &trigger, patch)
@@ -197,12 +198,12 @@ func (r *ReleaseTriggerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			return ctrl.Result{}, r.patchStatus(ctx, &trigger, patch)
 		}
 	}
-	trigger.Status.LastTriggeredAt = now.UTC().Format(time.RFC3339)
+	trigger.Status.LastTriggeredAt = createdAt.UTC().Format(time.RFC3339)
 	trigger.Status.ActiveReleases = append(active, release.Name)
 	sort.Strings(trigger.Status.ActiveReleases)
 	trigger.Status.ActiveReleaseCount = int32(len(trigger.Status.ActiveReleases))
-	setTriggerReady(&trigger, now, "ReleaseCreated", fmt.Sprintf("created release %s", release.Name))
-	setCondition(&trigger.Status.Conditions, conditionReleaseCreated, metav1.ConditionTrue, "ReleaseCreated", fmt.Sprintf("created release %s", release.Name), trigger.Generation, now)
+	setTriggerReady(&trigger, createdAt, "ReleaseCreated", fmt.Sprintf("created release %s", release.Name))
+	setCondition(&trigger.Status.Conditions, conditionReleaseCreated, metav1.ConditionTrue, "ReleaseCreated", fmt.Sprintf("created release %s", release.Name), trigger.Generation, createdAt)
 	if r.Recorder != nil {
 		r.Recorder.Eventf(&trigger, corev1.EventTypeNormal, "ReleaseCreated", "created release %s for %s", release.Name, version)
 	}

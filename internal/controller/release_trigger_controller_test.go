@@ -100,6 +100,44 @@ func TestReleaseTriggerCreatesDigestPinnedRelease(t *testing.T) {
 	}
 }
 
+func TestReleaseTriggerCreatedAtUsesCreationTime(t *testing.T) {
+	ctx := context.Background()
+	reconciler, c := newReleaseTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, releaseTriggerFixture())
+	checkTime := fixedNow()
+	createTime := fixedNow().Add(2 * time.Minute)
+	calls := 0
+	reconciler.Now = func() time.Time {
+		calls++
+		if calls == 1 {
+			return checkTime
+		}
+		return createTime
+	}
+
+	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var releases kaprov1alpha1.ReleaseList
+	if err := c.List(ctx, &releases); err != nil {
+		t.Fatal(err)
+	}
+	if len(releases.Items) != 1 {
+		t.Fatalf("release count = %d", len(releases.Items))
+	}
+	want := createTime.UTC().Format(time.RFC3339)
+	if got := releases.Items[0].Annotations[releaseTriggerCreatedAnno]; got != want {
+		t.Fatalf("created annotation = %q, want %q", got, want)
+	}
+	trigger := getReleaseTrigger(t, ctx, c, "checkout")
+	if trigger.Status.LastCheckedAt != checkTime.UTC().Format(time.RFC3339) {
+		t.Fatalf("last checked = %q", trigger.Status.LastCheckedAt)
+	}
+	if trigger.Status.LastTriggeredAt != want {
+		t.Fatalf("last triggered = %q, want %q", trigger.Status.LastTriggeredAt, want)
+	}
+}
+
 func TestReleaseTriggerDoesNotDuplicateSameDigest(t *testing.T) {
 	ctx := context.Background()
 	existing := &kaprov1alpha1.Release{
