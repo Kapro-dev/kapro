@@ -1,4 +1,5 @@
 {{- if and .Values.webhook.enabled .Values.webhook.certManager.enabled }}
+{{- if not .Values.webhook.certManager.issuerRef.name }}
 ---
 # Self-signed Issuer used to mint the webhook serving certificate.
 # cert-manager rotates this automatically — no manual secret management needed.
@@ -11,6 +12,7 @@ metadata:
     {{- include "kapro-operator.labels" . | nindent 4 }}
 spec:
   selfSigned: {}
+{{- end }}
 ---
 # Certificate for the webhook server TLS.
 # The Secret named here is mounted into the operator Deployment and referenced
@@ -25,8 +27,9 @@ metadata:
 spec:
   secretName: {{ include "kapro-operator.fullname" . }}-webhook-tls
   issuerRef:
-    name: {{ include "kapro-operator.fullname" . }}-selfsigned
-    kind: Issuer
+    name: {{ .Values.webhook.certManager.issuerRef.name | default (printf "%s-selfsigned" (include "kapro-operator.fullname" .)) }}
+    kind: {{ .Values.webhook.certManager.issuerRef.kind | default "Issuer" }}
+    group: {{ .Values.webhook.certManager.issuerRef.group | default "cert-manager.io" }}
   dnsNames:
     - {{ include "kapro-operator.fullname" . }}-webhook.{{ .Release.Namespace }}.svc
     - {{ include "kapro-operator.fullname" . }}-webhook.{{ .Release.Namespace }}.svc.cluster.local

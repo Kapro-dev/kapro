@@ -1,0 +1,123 @@
+# Install Kapro
+
+The recommended install path is the Helm chart in `charts/kapro-operator`.
+It installs the CRDs, controller Deployment, ServiceAccount, RBAC, admission
+webhooks, and baseline approval service together.
+
+## Prerequisites
+
+- Kubernetes cluster access with permission to create CRDs and cluster-scoped RBAC.
+- Helm 3.
+- cert-manager when `webhook.enabled=true` (the default).
+
+For local clusters without cert-manager, set `webhook.enabled=false`.
+
+## Install
+
+```bash
+helm upgrade --install kapro charts/kapro-operator \
+  --namespace kapro-system \
+  --create-namespace
+```
+
+Local install without admission webhooks:
+
+```bash
+helm upgrade --install kapro charts/kapro-operator \
+  --namespace kapro-system \
+  --create-namespace \
+  --set webhook.enabled=false
+```
+
+Useful baseline settings:
+
+```bash
+helm upgrade --install kapro charts/kapro-operator \
+  --namespace kapro-system \
+  --create-namespace \
+  --set externalURL=https://kapro.example.com \
+  --set hubAPIURL=https://hub.example.com:6443
+```
+
+`externalURL` is used in approval links and Decision API callbacks.
+`hubAPIURL` should be the hub API server URL reachable from spoke clusters.
+
+## Verify
+
+```bash
+kubectl -n kapro-system rollout status deployment/kapro-kapro-operator
+kubectl get crd | grep kapro.io
+kubectl -n kapro-system get deploy,svc,sa
+kubectl auth can-i get releases.kapro.io \
+  --as=system:serviceaccount:kapro-system:kapro-kapro-operator
+```
+
+Render checks that do not require a cluster:
+
+```bash
+helm lint charts/kapro-operator
+helm template kapro charts/kapro-operator --namespace kapro-system --include-crds
+kubectl kustomize config/default
+```
+
+## Upgrade
+
+Apply CRD changes first, then upgrade the chart:
+
+```bash
+kubectl apply -f charts/kapro-operator/crds
+helm upgrade kapro charts/kapro-operator --namespace kapro-system
+kubectl -n kapro-system rollout status deployment/kapro-kapro-operator
+```
+
+## Uninstall
+
+```bash
+helm uninstall kapro --namespace kapro-system
+```
+
+Helm does not delete CRDs on uninstall. After backing up or deleting Kapro
+custom resources, remove CRDs explicitly:
+
+```bash
+kubectl delete -f charts/kapro-operator/crds
+kubectl delete namespace kapro-system
+```
+
+## Optional Plugin Gateway
+
+The plugin gateway is an opt-in runtime preview. Enabling it only sets
+`KAPRO_ENABLE_PLUGIN_GATEWAY=true`; it does not install any plugin service or
+demo registration.
+
+```bash
+helm upgrade --install kapro charts/kapro-operator \
+  --namespace kapro-system \
+  --create-namespace \
+  --set pluginGateway.enabled=true
+```
+
+Install your plugin service, then apply a registration such as:
+
+```bash
+kubectl apply -f examples/plugins/slo-gate-registration.yaml
+```
+
+The operator loads ready `PluginRegistration` objects once at startup. Restart
+the deployment after applying or changing plugin registrations:
+
+```bash
+kubectl -n kapro-system rollout restart deployment/kapro-kapro-operator
+```
+
+## Kustomize Bundle
+
+The repository also keeps a Kustomize bundle for simple local installs:
+
+```bash
+kubectl apply -k config/default
+kubectl -n kapro-system rollout status deployment/kapro-operator
+```
+
+The Kustomize bundle disables admission webhooks and uses the published
+operator image. Use Helm for configurable production installs.

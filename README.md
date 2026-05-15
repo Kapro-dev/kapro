@@ -137,6 +137,7 @@ kubectl apply -f release.yaml
 
 ## Documentation
 
+- [Install Kapro](docs/install.md)
 - [Architecture Spec](docs/SPEC.md)
 - [Roadmap](docs/ROADMAP.md)
 - [RBAC and Tenancy Model](docs/rbac-tenancy.md)
