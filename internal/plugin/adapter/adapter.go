@@ -8,6 +8,7 @@ import (
 	"time"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprometrics "kapro.io/kapro/internal/metrics"
 	"kapro.io/kapro/internal/plugin/transport"
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
@@ -44,6 +45,15 @@ func (r Registrar) RegisterReady(ctx context.Context, c client.Reader, actuatorR
 	}
 
 	registered := 0
+	registeredByType := map[kaprov1alpha1.PluginType]int{
+		kaprov1alpha1.PluginTypeActuator: 0,
+		kaprov1alpha1.PluginTypeGate:     0,
+	}
+	defer func() {
+		for pluginType, count := range registeredByType {
+			kaprometrics.PluginRuntimeRegistered.WithLabelValues(string(pluginType)).Set(float64(count))
+		}
+	}()
 	for _, reg := range list.Items {
 		if !isReadyForRuntime(reg) {
 			continue
@@ -60,7 +70,7 @@ func (r Registrar) RegisterReady(ctx context.Context, c client.Reader, actuatorR
 			adapter, err := NewActuatorAdapter(reg, kaiv1alpha1.NewActuatorServiceClient(conn))
 			if err != nil {
 				_ = conn.Close()
-				return registered, err
+				return registered, fmt.Errorf("create actuator plugin adapter for registration %q: %w", reg.Name, err)
 			}
 			adapter.conn = conn
 			if err := actuatorReg.Register(reg.Spec.Name, adapter); err != nil {
@@ -68,6 +78,7 @@ func (r Registrar) RegisterReady(ctx context.Context, c client.Reader, actuatorR
 				return registered, fmt.Errorf("register actuator plugin %q: %w", reg.Spec.Name, err)
 			}
 			registered++
+			registeredByType[kaprov1alpha1.PluginTypeActuator]++
 		case kaprov1alpha1.PluginTypeGate:
 			if gateReg == nil {
 				return registered, fmt.Errorf("gate registry is nil")
@@ -79,7 +90,7 @@ func (r Registrar) RegisterReady(ctx context.Context, c client.Reader, actuatorR
 			adapter, err := NewGateAdapter(reg, kgiv1alpha1.NewGateServiceClient(conn))
 			if err != nil {
 				_ = conn.Close()
-				return registered, err
+				return registered, fmt.Errorf("create gate plugin adapter for registration %q: %w", reg.Name, err)
 			}
 			adapter.conn = conn
 			if err := gateReg.Register(reg.Spec.Name, adapter); err != nil {
@@ -87,6 +98,7 @@ func (r Registrar) RegisterReady(ctx context.Context, c client.Reader, actuatorR
 				return registered, fmt.Errorf("register gate plugin %q: %w", reg.Spec.Name, err)
 			}
 			registered++
+			registeredByType[kaprov1alpha1.PluginTypeGate]++
 		case kaprov1alpha1.PluginTypePlanner:
 			// Planner runtime dispatch is not wired yet. The registration
 			// controller still probes planner plugins and records readiness.
@@ -109,13 +121,13 @@ func (r Registrar) dial(ctx context.Context, c client.Reader, reg kaprov1alpha1.
 
 	opts, err := transport.DialOptions(dialCtx, c, reg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build dial options for endpoint %q: %w", reg.Spec.Endpoint, err)
 	}
 	opts = append(opts, grpc.WithBlock()) //nolint:staticcheck // grpc.NewClient lacks WithBlock equivalent in older supported versions.
 	opts = append(opts, r.DialOptions...)
 	conn, err := grpc.DialContext(dialCtx, reg.Spec.Endpoint, opts...) //nolint:staticcheck // grpc.NewClient lacks WithBlock equivalent in older supported versions.
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("connect to endpoint %q within %s: %w", reg.Spec.Endpoint, timeout, err)
 	}
 	return conn, nil
 }
@@ -170,4 +182,10 @@ func mergeParameters(base map[string]string, overlays ...map[string]string) map[
 		}
 	}
 	return out
+}
+
+func observeRuntimeCall(pluginType kaprov1alpha1.PluginType, name, method, result string, start time.Time) {
+	labels := []string{string(pluginType), name, method, result}
+	kaprometrics.PluginRuntimeCalls.WithLabelValues(labels...).Inc()
+	kaprometrics.PluginRuntimeCallDuration.WithLabelValues(labels...).Observe(time.Since(start).Seconds())
 }
