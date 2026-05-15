@@ -199,7 +199,7 @@ func TestKPIConformance(t *testing.T) {
 A planner plugin implementation example is available in
 `examples/plugins/capacity-planner`, with a sample registration manifest at
 `examples/plugins/capacity-planner-registration.yaml`. It implements KPI for
-capacity-aware filtering, ordering, and deferring rollout targets.
+capacity-aware filtering, ordering, and deferring promotion targets.
 
 ## Example Catalog
 

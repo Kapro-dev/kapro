@@ -256,8 +256,12 @@ type Actuator interface {
 
 The reference implementation is **Flux** (`internal/actuator/flux`). It writes `MemberCluster.spec.desiredVersion` on the hub; the spoke `kapro-cluster-controller` observes it and reconciles the local Flux `OCIRepository` + `Kustomization`.
 
-Other actuators (Argo, Helm, KServe, Pulumi, raw Kubernetes apply) are future
-work. The in-process actuator contract is a Preview surface; see
+Other actuators can delegate to Argo CD, Argo Rollouts, Flagger, Helm, KServe,
+Pulumi, raw Kubernetes apply, Istio, Gateway API, or platform-specific systems.
+Kapro does not own those systems' in-cluster traffic shifting or rollout
+algorithms; it gates and sequences promotion around their status.
+
+The in-process actuator contract is a Preview surface; see
 `docs/api-stability.md` before depending on it across minor releases.
 
 ---
