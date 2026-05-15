@@ -4,8 +4,8 @@
 
 <h1 align="center">Kapro</h1>
 
-<p align="center"><strong>The canonical promotion layer for Kubernetes.</strong><br>
-Progressive delivery and promotion engine for multi-cluster Kubernetes fleets.</p>
+<p align="center"><strong>The promotion control plane for Kubernetes fleets.</strong><br>
+Kapro coordinates safe version promotion across clusters, regions, and clouds while existing GitOps, rollout, traffic, and policy systems execute local changes.</p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
@@ -33,11 +33,11 @@ Sequential pipelines simply cannot express this.
 
 You have a centralized OCI artifact registry. You have edge clusters running Flux, Helm, and Kustomize. But between those two ends, three questions remain unanswered:
 
-- How do we stage rollouts?
+- How do we stage fleet promotion?
 - How do we manage cross-cluster canaries?
 - How do we validate state before promotion?
 
-A fleet of this scale demands a dedicated, state-aware promotion engine.
+A fleet of this scale demands a dedicated, state-aware promotion control plane.
 
 ## The Artifact is the Contract
 
@@ -45,21 +45,21 @@ Kapro decouples CI from deployment. The OCI artifact becomes the single source o
 
 ## Enter Kapro
 
-Kapro doesn't replace the CNCF ecosystem. It choreographs it. An open-source orchestrator built to manage the complex state of modern sovereign fleets.
+Kapro does not replace the CNCF ecosystem. It coordinates it. Kapro decides when and where a version may advance across a fleet; local rollout systems decide how pods, sync, and traffic changes happen inside each cluster.
 
-It sits at the center of Kubernetes Operators, Helm, Kustomize, OCI registries, and GitOps reconciliation loops, coordinating them into a single, state-aware promotion engine.
+It sits above Kubernetes Operators, Helm, Kustomize, OCI registries, GitOps reconciliation loops, Argo CD, Argo Rollouts, Flagger, Istio, Gateway API, and custom plugins as a single, state-aware promotion control plane.
 
 ## The Mechanics of Promotion
 
-1. **Intra-cluster blue/green.** Seamless traffic cutover within cluster boundary. Rollbacks are instant routing flips, not redeployments.
-2. **Inter-cluster canary.** Progressive rollout with health gates across regions. Pilot clusters first, then regional waves, then the global fleet.
-3. **No inline updates. Ever.** Traffic is cutover only after verification. Standby workloads always deploy in a separate namespace. No more mutating live state.
+1. **Delegated local rollout strategies.** Keep using Kubernetes Deployments, Argo Rollouts, Flagger, Istio, Gateway API, Flux, Argo CD, Helm, or custom actuators for namespace-local rollout and traffic mechanics.
+2. **Cross-cluster promotion waves.** Kapro coordinates which targets advance first, which regions wait, and when the global fleet may progress.
+3. **Promotion before progression.** Kapro advances only after target health, gates, approvals, plugin status, and policy checks pass; the selected backend executes the local change.
 
 ## Autonomous Operations and Bulletproof Reliability
 
 Kapro manages wave-based dependsOn execution across CRDs, operators, state, apps, and ingress. Cluster state is continuously mapped to the Git/OCI source of truth using standard controller-runtime patterns.
 
-Automated health gates ensure that if a check or canary fails, the rollout halts. Zero fleet-wide bad deployments.
+Automated health gates ensure that if a target check, local rollout controller, telemetry signal, or approval fails, fleet progression halts before the next targets advance.
 
 ## Use Cases
 
@@ -70,21 +70,21 @@ Roll out across clusters in multiple countries and regions. Pilot a small group 
 Separate deployment flows per compliance zone. Environment isolation per regulatory boundary, audit trails via signed OCI provenance chains, and mandatory human approval gates before production.
 
 ### Edge and Distributed Platforms
-Progressive rollout to hundreds or thousands of edge clusters. Canary groups get new versions first. Health gates block rollout if error rates spike. Auto-promotion after a configurable soak period.
+Progressive promotion to hundreds or thousands of edge clusters. Canary groups get new versions first. Health gates block progression if error rates spike. Auto-promotion after a configurable soak period.
 
 ## How Kapro Compares
 
 | | Kapro | Flux | ArgoCD | Kargo |
 |---|---|---|---|---|
 | **Multi-cluster promotion** | Native | Manual | App-of-apps | Native |
-| **Progressive delivery** | Built-in | Via Flagger | Via Argo Rollouts | Built-in |
+| **Fleet promotion orchestration** | Native | Manual | App-of-apps | Native |
 | **OCI-first** | Yes | Partial | Git-centric | Yes |
 | **Sovereign fleet support** | Designed for it | No | No | Limited |
 | **Flux compatibility** | Built on Flux | N/A | No | Separate |
 | **Health gates** | Pluggable | No | No | Yes |
 | **Manual approvals** | CRD-based | No | External | Yes |
 
-Kapro sits **above** Flux, not replacing it, and **alongside** Kargo as a complementary tool. Kapro focuses on horizontal wave ordering across sovereign fleets, while Kargo focuses on vertical pipeline staging across environments.
+Kapro sits **above** local rollout and GitOps systems, not replacing them, and **alongside** Kargo as a complementary tool. Kapro focuses on horizontal wave ordering across sovereign fleets, while local systems handle namespace-level rollout, sync, traffic shifting, and workload health.
 
 ## Getting Started
 

@@ -1,8 +1,8 @@
 // Package health defines the contract for assessing the health of workloads
 // on a target cluster.
 //
-// The release rollout FSM calls AssessHealth during the HealthCheck phase to
-// determine whether a target cluster is in a state suitable for delivery.
+// The target promotion FSM calls AssessHealth during the HealthCheck phase to
+// determine whether a target cluster is in a state suitable for promotion.
 //
 // # Runtime model
 //
