@@ -1,0 +1,85 @@
+kind: CustomResourceStateMetrics
+spec:
+  resources:
+    - groupVersionKind:
+        group: kapro.io
+        version: v1alpha1
+        kind: Release
+      metricNamePrefix: kapro_release
+      labelsFromPath:
+        release: [metadata, name]
+      metrics:
+        - name: created
+          help: Kapro Release creation timestamp.
+          each:
+            type: Gauge
+            gauge:
+              path: [metadata, creationTimestamp]
+        - name: status_phase
+          help: Kapro Release phase.
+          each:
+            type: StateSet
+            stateSet:
+              labelName: phase
+              path: [status, phase]
+              list: [Pending, Progressing, Complete, Failed]
+        - name: status_condition
+          help: Kapro Release status condition.
+          each:
+            type: Gauge
+            gauge:
+              path: [status, conditions]
+              labelsFromPath:
+                type: [type]
+                reason: [reason]
+              valueFrom: [status]
+    - groupVersionKind:
+        group: kapro.io
+        version: v1alpha1
+        kind: ReleaseTrigger
+      metricNamePrefix: kapro_releasetrigger
+      labelsFromPath:
+        releasetrigger: [metadata, name]
+      metrics:
+        - name: status_active_release_count
+          help: Number of active non-terminal Releases tracked by a Kapro ReleaseTrigger.
+          each:
+            type: Gauge
+            gauge:
+              path: [status, activeReleaseCount]
+        - name: status_condition
+          help: Kapro ReleaseTrigger status condition.
+          each:
+            type: Gauge
+            gauge:
+              path: [status, conditions]
+              labelsFromPath:
+                type: [type]
+                reason: [reason]
+              valueFrom: [status]
+    - groupVersionKind:
+        group: kapro.io
+        version: v1alpha1
+        kind: PluginRegistration
+      metricNamePrefix: kapro_pluginregistration
+      labelsFromPath:
+        pluginregistration: [metadata, name]
+        plugin_type: [spec, type]
+        plugin_name: [spec, name]
+      metrics:
+        - name: status_ready
+          help: Kapro PluginRegistration ready status.
+          each:
+            type: Gauge
+            gauge:
+              path: [status, ready]
+        - name: status_condition
+          help: Kapro PluginRegistration status condition.
+          each:
+            type: Gauge
+            gauge:
+              path: [status, conditions]
+              labelsFromPath:
+                type: [type]
+                reason: [reason]
+              valueFrom: [status]

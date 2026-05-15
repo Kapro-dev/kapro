@@ -27,3 +27,7 @@ You will receive a response within 72 hours. We follow responsible disclosure â€
 - No static credentials â€” uses Kubernetes ServiceAccount tokens (OIDC/Workload Identity)
 - CRDs are the only cross-cluster communication channel
 - The control plane never initiates connections to workload clusters
+
+See [docs/security.md](docs/security.md) for the threat model, plugin trust
+boundary, OCI signature trust model, webhook/gate security, and Secret handling
+guidance.

@@ -35,6 +35,7 @@ const (
 	releaseTriggerDigestAnno  = "kapro.io/release-trigger-digest"
 	releaseTriggerTagAnno     = "kapro.io/release-trigger-tag"
 	releaseTriggerRepoAnno    = "kapro.io/release-trigger-repository"
+	releaseTriggerCreatedAnno = "kapro.io/release-trigger-created-at"
 	defaultTriggerCooldown    = 30 * time.Minute
 	defaultTriggerPoll        = 5 * time.Minute
 	defaultTriggerMaxActive   = int32(1)
@@ -89,9 +90,9 @@ func (r *ReleaseTriggerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	trigger.Status.ObservedGeneration = trigger.Generation
 	trigger.Status.LastCheckedAt = now.UTC().Format(time.RFC3339)
 
-	pollAfter, err := pollInterval(&trigger)
+	pollAfter, invalidReason, err := validateReleaseTriggerConfig(&trigger)
 	if err != nil {
-		setTriggerBlocked(&trigger, now, "InvalidPollInterval", err.Error())
+		setTriggerBlocked(&trigger, now, invalidReason, err.Error())
 		return ctrl.Result{}, r.patchStatus(ctx, &trigger, patch)
 	}
 
@@ -158,7 +159,7 @@ func (r *ReleaseTriggerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{RequeueAfter: pollAfter}, r.patchStatus(ctx, &trigger, patch)
 	}
 
-	remaining, err := cooldownRemaining(&trigger, now)
+	remaining, err := r.cooldownRemaining(ctx, &trigger, now)
 	if err != nil {
 		setTriggerBlocked(&trigger, now, "InvalidCooldown", err.Error())
 		return ctrl.Result{}, r.patchStatus(ctx, &trigger, patch)
@@ -179,7 +180,8 @@ func (r *ReleaseTriggerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{RequeueAfter: pollAfter}, r.patchStatus(ctx, &trigger, patch)
 	}
 
-	release, err := buildTriggeredRelease(&trigger, *artifact, version, r.Scheme)
+	createdAt := r.now()
+	release, err := buildTriggeredRelease(&trigger, *artifact, version, r.Scheme, createdAt)
 	if err != nil {
 		setTriggerBlocked(&trigger, now, "InvalidReleaseTemplate", err.Error())
 		return ctrl.Result{}, r.patchStatus(ctx, &trigger, patch)
@@ -196,12 +198,12 @@ func (r *ReleaseTriggerReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			return ctrl.Result{}, r.patchStatus(ctx, &trigger, patch)
 		}
 	}
-	trigger.Status.LastTriggeredAt = now.UTC().Format(time.RFC3339)
+	trigger.Status.LastTriggeredAt = createdAt.UTC().Format(time.RFC3339)
 	trigger.Status.ActiveReleases = append(active, release.Name)
 	sort.Strings(trigger.Status.ActiveReleases)
 	trigger.Status.ActiveReleaseCount = int32(len(trigger.Status.ActiveReleases))
-	setTriggerReady(&trigger, now, "ReleaseCreated", fmt.Sprintf("created release %s", release.Name))
-	setCondition(&trigger.Status.Conditions, conditionReleaseCreated, metav1.ConditionTrue, "ReleaseCreated", fmt.Sprintf("created release %s", release.Name), trigger.Generation, now)
+	setTriggerReady(&trigger, createdAt, "ReleaseCreated", fmt.Sprintf("created release %s", release.Name))
+	setCondition(&trigger.Status.Conditions, conditionReleaseCreated, metav1.ConditionTrue, "ReleaseCreated", fmt.Sprintf("created release %s", release.Name), trigger.Generation, createdAt)
 	if r.Recorder != nil {
 		r.Recorder.Eventf(&trigger, corev1.EventTypeNormal, "ReleaseCreated", "created release %s for %s", release.Name, version)
 	}
@@ -389,7 +391,7 @@ func releaseAlreadyCreatedForDigest(ctx context.Context, c client.Reader, trigge
 	return false, nil
 }
 
-func buildTriggeredRelease(trigger *kaprov1alpha1.ReleaseTrigger, artifact ReleaseTriggerArtifactObservation, version string, scheme *runtime.Scheme) (*kaprov1alpha1.Release, error) {
+func buildTriggeredRelease(trigger *kaprov1alpha1.ReleaseTrigger, artifact ReleaseTriggerArtifactObservation, version string, scheme *runtime.Scheme, now time.Time) (*kaprov1alpha1.Release, error) {
 	name, err := releaseName(trigger, artifact)
 	if err != nil {
 		return nil, err
@@ -400,6 +402,7 @@ func buildTriggeredRelease(trigger *kaprov1alpha1.ReleaseTrigger, artifact Relea
 	annotations[releaseTriggerRepoAnno] = trigger.Spec.Source.OCI.Repository
 	annotations[releaseTriggerTagAnno] = artifact.Tag
 	annotations[releaseTriggerDigestAnno] = artifact.Digest
+	annotations[releaseTriggerCreatedAnno] = now.UTC().Format(time.RFC3339)
 
 	release := &kaprov1alpha1.Release{
 		ObjectMeta: metav1.ObjectMeta{
@@ -455,11 +458,53 @@ func artifactVersion(trigger *kaprov1alpha1.ReleaseTrigger, artifact ReleaseTrig
 	return repo + "@" + artifact.Digest
 }
 
+func validateReleaseTriggerConfig(trigger *kaprov1alpha1.ReleaseTrigger) (time.Duration, string, error) {
+	if trigger.Spec.Source.Type != "oci" {
+		return 0, "InvalidSource", fmt.Errorf("unsupported source.type %q", trigger.Spec.Source.Type)
+	}
+	if trigger.Spec.Source.OCI == nil {
+		return 0, "InvalidSource", fmt.Errorf("source.oci is required when source.type=oci")
+	}
+	if trigger.Spec.Source.OCI.Repository == "" {
+		return 0, "InvalidSource", fmt.Errorf("source.oci.repository is required")
+	}
+	if trigger.Spec.Source.OCI.TagPattern == "" {
+		return 0, "InvalidTagPattern", fmt.Errorf("source.oci.tagPattern is required")
+	}
+	if _, err := regexp.Compile(trigger.Spec.Source.OCI.TagPattern); err != nil {
+		return 0, "InvalidTagPattern", fmt.Errorf("compile source.oci.tagPattern: %w", err)
+	}
+	if trigger.Spec.Cooldown != "" {
+		if _, err := positiveDuration("cooldown", trigger.Spec.Cooldown); err != nil {
+			return 0, "InvalidCooldown", err
+		}
+	}
+	if trigger.Spec.MaxActive < 0 {
+		return 0, "InvalidMaxActive", fmt.Errorf("maxActive must be at least 1 when set")
+	}
+	pollAfter, err := pollInterval(trigger)
+	if err != nil {
+		return 0, "InvalidPollInterval", err
+	}
+	return pollAfter, "", nil
+}
+
 func pollInterval(trigger *kaprov1alpha1.ReleaseTrigger) (time.Duration, error) {
 	if trigger.Spec.Source.OCI == nil || trigger.Spec.Source.OCI.PollInterval == "" {
 		return defaultTriggerPoll, nil
 	}
-	return time.ParseDuration(trigger.Spec.Source.OCI.PollInterval)
+	return positiveDuration("source.oci.pollInterval", trigger.Spec.Source.OCI.PollInterval)
+}
+
+func positiveDuration(field, value string) (time.Duration, error) {
+	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("parse %s %q: %w", field, value, err)
+	}
+	if parsed <= 0 {
+		return 0, fmt.Errorf("%s must be greater than zero", field)
+	}
+	return parsed, nil
 }
 
 func cooldownRemaining(trigger *kaprov1alpha1.ReleaseTrigger, now time.Time) (time.Duration, error) {
@@ -484,9 +529,53 @@ func cooldownRemaining(trigger *kaprov1alpha1.ReleaseTrigger, now time.Time) (ti
 	return 0, nil
 }
 
+func (r *ReleaseTriggerReconciler) cooldownRemaining(ctx context.Context, trigger *kaprov1alpha1.ReleaseTrigger, now time.Time) (time.Duration, error) {
+	lastTriggeredAt, err := lastTriggerReleaseCreatedAt(ctx, r.Client, trigger)
+	if err != nil {
+		return 0, err
+	}
+	if trigger.Status.LastTriggeredAt != "" {
+		statusLastTriggeredAt, err := time.Parse(time.RFC3339, trigger.Status.LastTriggeredAt)
+		if err != nil {
+			return 0, fmt.Errorf("parse status.lastTriggeredAt %q: %w", trigger.Status.LastTriggeredAt, err)
+		}
+		if statusLastTriggeredAt.After(lastTriggeredAt) {
+			lastTriggeredAt = statusLastTriggeredAt
+		}
+	}
+	if lastTriggeredAt.IsZero() {
+		return 0, nil
+	}
+	check := trigger.DeepCopy()
+	check.Status.LastTriggeredAt = lastTriggeredAt.UTC().Format(time.RFC3339)
+	return cooldownRemaining(check, now)
+}
+
+func lastTriggerReleaseCreatedAt(ctx context.Context, c client.Reader, trigger *kaprov1alpha1.ReleaseTrigger) (time.Time, error) {
+	var list kaprov1alpha1.ReleaseList
+	if err := c.List(ctx, &list, client.MatchingLabels{releaseTriggerLabel: trigger.Name}); err != nil {
+		return time.Time{}, fmt.Errorf("list releases for cooldown: %w", err)
+	}
+	var latest time.Time
+	for _, release := range list.Items {
+		createdAt := release.CreationTimestamp.Time
+		if raw := release.Annotations[releaseTriggerCreatedAnno]; raw != "" {
+			parsed, err := time.Parse(time.RFC3339, raw)
+			if err != nil {
+				return time.Time{}, fmt.Errorf("parse release %s annotation %s %q: %w", release.Name, releaseTriggerCreatedAnno, raw, err)
+			}
+			createdAt = parsed
+		}
+		if createdAt.After(latest) {
+			latest = createdAt
+		}
+	}
+	return latest, nil
+}
+
 func releaseTriggerTagLess(left, right string) bool {
-	leftCanonical := semver.Canonical(left)
-	rightCanonical := semver.Canonical(right)
+	leftCanonical := releaseTriggerSemverCanonical(left)
+	rightCanonical := releaseTriggerSemverCanonical(right)
 	switch {
 	case leftCanonical != "" && rightCanonical != "":
 		return semver.Compare(leftCanonical, rightCanonical) < 0
@@ -497,6 +586,13 @@ func releaseTriggerTagLess(left, right string) bool {
 	default:
 		return left < right
 	}
+}
+
+func releaseTriggerSemverCanonical(tag string) string {
+	if canonical := semver.Canonical(tag); canonical != "" {
+		return canonical
+	}
+	return semver.Canonical("v" + tag)
 }
 
 func setTriggerSuspended(trigger *kaprov1alpha1.ReleaseTrigger, now time.Time) {

@@ -1,0 +1,213 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: notificationproviders.kapro.io
+spec:
+  group: kapro.io
+  names:
+    categories:
+    - kapro-all
+    kind: NotificationProvider
+    listKind: NotificationProviderList
+    plural: notificationproviders
+    shortNames:
+    - notifprov
+    singular: notificationprovider
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.type
+      name: Type
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          NotificationProvider is an API-preview declaration of where Kapro lifecycle
+          notifications can be sent. It is spec-only; runtime dispatch remains future work.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              NotificationProviderSpec declares where lifecycle notifications can be sent.
+              It is an API preview and is not wired into runtime dispatch yet.
+            properties:
+              email:
+                description: |-
+                  Email configures SMTP notification delivery.
+                  Required when type=email.
+                properties:
+                  from:
+                    description: From is the sender address.
+                    type: string
+                  host:
+                    description: Host is the SMTP server host.
+                    type: string
+                  port:
+                    description: Port is the SMTP server port.
+                    format: int32
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                  to:
+                    description: |-
+                      To is the default recipient list for this provider.
+                      Policies may further narrow when this provider is used.
+                    items:
+                      type: string
+                    minItems: 1
+                    type: array
+                required:
+                - host
+                - to
+                type: object
+              git:
+                description: |-
+                  Git configures Git-backed notification delivery, for example audit commits.
+                  Required when type=git.
+                properties:
+                  authorEmail:
+                    description: AuthorEmail is used for generated commits.
+                    type: string
+                  authorName:
+                    description: AuthorName is used for generated commits.
+                    type: string
+                  branch:
+                    default: main
+                    description: Branch is the branch to write notification records
+                      to.
+                    type: string
+                  path:
+                    description: Path is the repository path for notification records.
+                    type: string
+                  repository:
+                    description: Repository is the Git repository URL.
+                    type: string
+                required:
+                - repository
+                type: object
+              parameters:
+                additionalProperties:
+                  type: string
+                description: |-
+                  Parameters are provider-specific key-value settings for future extension.
+                  Kapro core does not interpret unknown parameters.
+                type: object
+              secretRefs:
+                description: |-
+                  SecretRefs references provider credentials. Because NotificationProvider
+                  is cluster-scoped, each reference must include a namespace.
+                items:
+                  description: NotificationProviderSecretRef identifies one credential
+                    entry used by a provider.
+                  properties:
+                    key:
+                      description: Key is the optional Secret data key within the
+                        Secret.
+                      type: string
+                    name:
+                      description: Name is the Secret name.
+                      type: string
+                    namespace:
+                      description: Namespace is the Secret namespace.
+                      type: string
+                    purpose:
+                      description: |-
+                        Purpose describes how the credential is used, for example token,
+                        webhookURL, smtpPassword, or sshPrivateKey.
+                      type: string
+                  required:
+                  - name
+                  - namespace
+                  type: object
+                type: array
+              slack:
+                description: |-
+                  Slack configures Slack notification delivery.
+                  Required when type=slack.
+                properties:
+                  channel:
+                    description: Channel is the Slack channel to post to.
+                    type: string
+                  webhookUrl:
+                    description: |-
+                      WebhookURL is the Slack incoming webhook URL.
+                      It may be omitted when supplied through secretRefs.
+                    type: string
+                required:
+                - channel
+                type: object
+              type:
+                description: Type selects the notification provider backend.
+                enum:
+                - webhook
+                - slack
+                - email
+                - git
+                type: string
+              webhook:
+                description: |-
+                  Webhook configures HTTP POST notification delivery.
+                  Required when type=webhook.
+                properties:
+                  format:
+                    default: json
+                    description: |-
+                      Format selects the payload format.
+                        json (default): plain JSON event payload.
+                        cloudevents: CloudEvents v1.0 structured content mode.
+                    enum:
+                    - json
+                    - cloudevents
+                    type: string
+                  headers:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Headers are static HTTP headers sent with every request.
+                      Do not put credentials here; use secretRefs instead.
+                    type: object
+                  url:
+                    description: |-
+                      URL is the HTTP endpoint to POST events to.
+                      It may be omitted when supplied through secretRefs.
+                    type: string
+                type: object
+            required:
+            - type
+            type: object
+            x-kubernetes-validations:
+            - message: webhook config is required when type=webhook
+              rule: self.type != 'webhook' || has(self.webhook)
+            - message: slack config is required when type=slack
+              rule: self.type != 'slack' || has(self.slack)
+            - message: email config is required when type=email
+              rule: self.type != 'email' || has(self.email)
+            - message: git config is required when type=git
+              rule: self.type != 'git' || has(self.git)
+        type: object
+    served: true
+    storage: true
+    subresources: {}
