@@ -2139,24 +2139,24 @@ type AgentPolicyList struct {
 	Items           []AgentPolicy `json:"items"`
 }
 
-// ---- KaproApp ---------------------------------------------------------------
+// ---- KaproBundle ---------------------------------------------------------------
 
-// KaproAppSpec defines an application bundle deployed across the fleet.
+// KaproBundleSpec defines a component bundle deployed across the fleet.
 // Components, versions, defaults, and per-cluster overrides live here.
-// Referenced by Kapro.spec.appRef.
-type KaproAppSpec struct {
+// Referenced by Kapro.spec.bundleRef.
+type KaproBundleSpec struct {
 	// Registries defines HelmRepository sources. Each becomes a HelmRepository on spoke.
 	// +optional
-	Registries []AppRegistry `json:"registries,omitempty"`
+	Registries []BundleRegistry `json:"registries,omitempty"`
 	// Components defines the deployable units (one HelmRelease per component).
 	// +kubebuilder:validation:MinItems=1
-	Components []AppComponent `json:"components"`
+	Components []BundleComponent `json:"components"`
 	// Defaults are inherited by every component unless overridden.
 	// +optional
-	Defaults *AppDefaults `json:"defaults,omitempty"`
+	Defaults *BundleDefaults `json:"defaults,omitempty"`
 	// Overrides are per-cluster or per-label value patches layered on top of defaults.
 	// +optional
-	Overrides []AppOverride `json:"overrides,omitempty"`
+	Overrides []BundleOverride `json:"overrides,omitempty"`
 	// HelmReleaseNamespace is where HelmRelease CRs live on spokes (not the workloads).
 	// +kubebuilder:default="flux-system"
 	HelmReleaseNamespace string `json:"helmReleaseNamespace,omitempty"`
@@ -2167,8 +2167,8 @@ type KaproAppSpec struct {
 	MultiVersion *MultiVersionStrategy `json:"multiVersion,omitempty"`
 }
 
-// AppRegistry defines a Helm chart source. Generates a HelmRepository on spoke.
-type AppRegistry struct {
+// BundleRegistry defines a Helm chart source. Generates a HelmRepository on spoke.
+type BundleRegistry struct {
 	// Name is the registry identifier referenced by components via repo field.
 	Name string `json:"name"`
 	// URL is the Helm repository URL (OCI or HTTPS).
@@ -2188,8 +2188,8 @@ type AppRegistry struct {
 	Interval string `json:"interval,omitempty"`
 }
 
-// AppDefaults are inherited by every component unless overridden at component level.
-type AppDefaults struct {
+// BundleDefaults are inherited by every component unless overridden at component level.
+type BundleDefaults struct {
 	// Repo is the default registry name (from spec.registries).
 	// +optional
 	Repo string `json:"repo,omitempty"`
@@ -2260,9 +2260,9 @@ type IngressReference struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
-// AppComponent is one deployable unit within a KaproApp.
-// Generates one HelmRelease on the spoke. Inherits from AppDefaults unless overridden.
-type AppComponent struct {
+// BundleComponent is one deployable unit within a KaproBundle.
+// Generates one HelmRelease on the spoke. Inherits from BundleDefaults unless overridden.
+type BundleComponent struct {
 	// Name is the component identifier. Used as HelmRelease name and chart name (unless chartName is set).
 	Name string `json:"name"`
 	// Version is the chart version. Supports ${VARIABLE} substitution from cluster-vars.
@@ -2334,8 +2334,8 @@ type ValuesReference struct {
 	Optional bool `json:"optional,omitempty"`
 }
 
-// AppOverride patches Helm values for a subset of clusters.
-type AppOverride struct {
+// BundleOverride patches Helm values for a subset of clusters.
+type BundleOverride struct {
 	// Selector matches clusters by labels. Applied to all matching clusters.
 	// +optional
 	Selector map[string]string `json:"selector,omitempty"`
@@ -2351,23 +2351,23 @@ type AppOverride struct {
 }
 
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:scope=Cluster,shortName=ka,categories=kapro-all
+// +kubebuilder:resource:scope=Cluster,shortName=kb;bundle;bundles,categories=kapro-all
 // +kubebuilder:printcolumn:name="Components",type=integer,JSONPath=`.metadata.annotations.kapro\.io/component-count`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// KaproApp is an application bundle defining what to deploy across the fleet.
-// It is a pure template — no controller, no status. Referenced by Kapro.spec.appRef.
-type KaproApp struct {
+// KaproBundle is a component bundle defining what to deploy across the fleet.
+// It is a pure template — no controller, no status. Referenced by Kapro.spec.bundleRef.
+type KaproBundle struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              KaproAppSpec `json:"spec,omitempty"`
+	Spec              KaproBundleSpec `json:"spec,omitempty"`
 }
 
 // +kubebuilder:object:root=true
-type KaproAppList struct {
+type KaproBundleList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []KaproApp `json:"items"`
+	Items           []KaproBundle `json:"items"`
 }
 
 // ---- Kapro ------------------------------------------------------------------
@@ -2376,8 +2376,8 @@ type KaproAppList struct {
 type KaproSpec struct {
 	// Registry is the OCI registry URL for Helm charts.
 	Registry KaproRegistry `json:"registry"`
-	// AppRef is the name of the KaproApp that defines components to deploy.
-	AppRef string `json:"appRef"`
+	// BundleRef is the name of the KaproBundle that defines components to deploy.
+	BundleRef string `json:"bundleRef"`
 	// Clusters defines the target clusters in the fleet.
 	// +kubebuilder:validation:MinItems=1
 	Clusters []KaproCluster `json:"clusters"`
@@ -2469,7 +2469,7 @@ type KaproStatus struct {
 	ClusterCount int32 `json:"clusterCount,omitempty"`
 	// ConvergedCount is the number of clusters where all HelmReleases are Ready.
 	ConvergedCount int32 `json:"convergedCount,omitempty"`
-	// ComponentCount is the number of components from the resolved KaproApp.
+	// ComponentCount is the number of components from the resolved KaproBundle.
 	ComponentCount int32 `json:"componentCount,omitempty"`
 	// Version is the current primary component version being deployed.
 	// +optional
@@ -2483,13 +2483,13 @@ type KaproStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=kp,categories=kapro-all
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
-// +kubebuilder:printcolumn:name="AppRef",type=string,JSONPath=`.spec.appRef`
+// +kubebuilder:printcolumn:name="BundleRef",type=string,JSONPath=`.spec.bundleRef`
 // +kubebuilder:printcolumn:name="Clusters",type=integer,JSONPath=`.status.clusterCount`
 // +kubebuilder:printcolumn:name="Converged",type=integer,JSONPath=`.status.convergedCount`
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.version`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// Kapro is the single entry point for fleet delivery. Users reference a KaproApp
+// Kapro is the single entry point for fleet delivery. Users reference a KaproBundle
 // and define clusters; the controller pushes FluxInstance + OCIRepository to spokes
 // and generates MemberClusters + Pipeline on the hub.
 type Kapro struct {

@@ -109,7 +109,7 @@ Release
 | CRD | Kind | Ownership | Scope |
 |-----|------|-----------|-------|
 | `kaproes.kapro.io` | `Kapro` | Platform | Cluster |
-| `kaproapps.kapro.io` | `KaproApp` | Platform | Cluster |
+| `kaprobundles.kapro.io` | `KaproBundle` | Platform | Cluster |
 | `pipelines.kapro.io` | `Pipeline` | Platform | Cluster |
 | `releases.kapro.io` | `Release` | Release engineer / automation | Cluster |
 | `releasetriggers.kapro.io` | `ReleaseTrigger` | Platform / automation | Cluster |
@@ -121,7 +121,7 @@ Release
 | `approvals.kapro.io` | `Approval` | Human via webhook | Cluster |
 | `agentpolicies.kapro.io` | `AgentPolicy` | Platform | Cluster |
 
-`KaproApp`, `Pipeline`, `NotificationProvider`, and `NotificationPolicy` are
+`KaproBundle`, `Pipeline`, `NotificationProvider`, and `NotificationPolicy` are
 spec-only template/configuration objects. Execution state lives in `Release`,
 `ReleaseTarget`, `MemberCluster`, `Approval`, and `ReleaseTrigger` status.
 
@@ -172,7 +172,7 @@ Controllers are registered from `pkg/controllermanager/controllers.go`. Hub and 
 
 For v1, hub configuration is sourced from a dedicated git repository and
 applied to the hub cluster by CI with `kubectl apply`. The repository owns
-`MemberCluster`, `KaproApp`, `Pipeline`, and `Release` YAML. Spoke clusters do
+`MemberCluster`, `KaproBundle`, `Pipeline`, and `Release` YAML. Spoke clusters do
 not watch that repository; they consume immutable OCI bundles and report status
 through the hub.
 

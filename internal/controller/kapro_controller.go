@@ -22,7 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
-	"kapro.io/kapro/internal/bundle"
+	bundlepkg "kapro.io/kapro/internal/bundle"
 	"kapro.io/kapro/internal/provider"
 )
 
@@ -32,14 +32,14 @@ var kaproResourceSetGVK = schema.GroupVersionKind{
 	Kind:    "ResourceSet",
 }
 
-// KaproReconciler generates hub-side resources from a Kapro + KaproApp spec.
+// KaproReconciler generates hub-side resources from a Kapro + KaproBundle spec.
 // It produces (all on the hub cluster):
 //   - MemberCluster CRs (one per cluster in the fleet)
 //   - A Pipeline CR (from kapro.spec.pipeline)
 //   - A ResourceSet (Flux Operator) with HelmRelease templates per component
 //
 // The ResourceSet contains per-cluster inputs with component versions and
-// merged Helm values (KaproApp defaults + overrides). Flux Operator distributes
+// merged Helm values (KaproBundle defaults + overrides). Flux Operator distributes
 // the rendered HelmReleases to spokes. Kapro never writes to spoke clusters.
 //
 // Version promotion is handled by the FluxOperatorActuator (via Release),
@@ -51,7 +51,7 @@ type KaproReconciler struct {
 
 // +kubebuilder:rbac:groups=kapro.io,resources=kaproes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kapro.io,resources=kaproes/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=kaproapps,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=kaprobundles,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kapro.io,resources=memberclusters,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kapro.io,resources=memberclusters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=pipelines,verbs=get;list;watch;create;update;patch;delete
@@ -74,16 +74,16 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	l.Info("reconciling Kapro", "name", kapro.Name)
 
-	// Resolve the KaproApp.
-	var app kaprov1alpha1.KaproApp
-	if err := r.Get(ctx, client.ObjectKey{Name: kapro.Spec.AppRef}, &app); err != nil {
+	// Resolve the KaproBundle.
+	var bundle kaprov1alpha1.KaproBundle
+	if err := r.Get(ctx, client.ObjectKey{Name: kapro.Spec.BundleRef}, &bundle); err != nil {
 		patch := client.MergeFrom(kapro.DeepCopy())
 		apimeta.SetStatusCondition(&kapro.Status.Conditions, metav1.Condition{
 			Type:               "Ready",
 			Status:             metav1.ConditionFalse,
 			ObservedGeneration: kapro.Generation,
-			Reason:             "KaproAppNotFound",
-			Message:            fmt.Sprintf("KaproApp %q not found: %v", kapro.Spec.AppRef, err),
+			Reason:             "KaproBundleNotFound",
+			Message:            fmt.Sprintf("KaproBundle %q not found: %v", kapro.Spec.BundleRef, err),
 		})
 		_ = r.Status().Patch(ctx, &kapro, patch)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
@@ -162,8 +162,8 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		// 3a. Spoke-local mode: bootstrap each spoke in parallel.
 		// Bundle generation + push is done by CI via `kapro bundle generate --push`.
 		// The operator only creates the spoke-side Flux resources (OCIRepository + wave Kustomizations).
-		primaryVersion := app.Spec.Components[0].Version
-		bootstrapResults := r.bootstrapSpokesParallel(ctx, &kapro, &app, primaryVersion)
+		primaryVersion := bundle.Spec.Components[0].Version
+		bootstrapResults := r.bootstrapSpokesParallel(ctx, &kapro, &bundle, primaryVersion)
 		for clusterName, err := range bootstrapResults {
 			if err != nil {
 				l.Error(err, "spoke bootstrap failed (skipping)", "cluster", clusterName)
@@ -172,7 +172,7 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		inventory = append(inventory, "SpokeBootstrap/"+kapro.Name)
 	} else {
 		// 3b. Push mode: generate ResourceSet on the hub (Flux Operator distributes to spokes).
-		rs := r.buildResourceSet(&kapro, &app)
+		rs := r.buildResourceSet(&kapro, &bundle)
 		if err := r.Patch(ctx, rs,
 			client.Apply, //nolint:staticcheck // SA1019: deprecated but replacement needs larger refactor
 			client.FieldOwner("kapro-controller"),
@@ -200,7 +200,7 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// For spoke-local mode, this reads from spoke Flux resources directly.
 	convergedCount := int32(0)
 	for _, cluster := range kapro.Spec.Clusters {
-		converged := r.syncMemberClusterStatus(ctx, &kapro, &app, cluster)
+		converged := r.syncMemberClusterStatus(ctx, &kapro, &bundle, cluster)
 		if converged {
 			convergedCount++
 		}
@@ -210,11 +210,11 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	r.cleanupRemovedClusters(ctx, &kapro)
 
 	// 6. Update Kapro status.
-	primaryVersion := app.Spec.Components[0].Version
+	primaryVersion := bundle.Spec.Components[0].Version
 	patch := client.MergeFrom(kapro.DeepCopy())
 	kapro.Status.ClusterCount = int32(len(kapro.Spec.Clusters))
 	kapro.Status.ConvergedCount = convergedCount
-	kapro.Status.ComponentCount = int32(len(app.Spec.Components))
+	kapro.Status.ComponentCount = int32(len(bundle.Spec.Components))
 	kapro.Status.Version = primaryVersion
 	kapro.Status.ObservedGeneration = kapro.Generation
 	kapro.Status.Inventory = inventory
@@ -257,19 +257,19 @@ func (r *KaproReconciler) buildPipeline(kapro *kaprov1alpha1.Kapro) *kaprov1alph
 }
 
 // buildResourceSet creates a Flux Operator ResourceSet on the hub.
-// From the KaproApp component spec, it generates:
+// From the KaproBundle component spec, it generates:
 //   - inputs[]: one entry per cluster (tenant, kubeconfig_secret, per-component versions)
 //   - resources[]: HelmRepositories + HelmReleases with dependsOn, timeout, retries, prune
 //
 // Flux Operator renders one set of resources per input and distributes to spokes.
-func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha1.Kapro, app *kaprov1alpha1.KaproApp) *unstructured.Unstructured {
-	defaults := app.Spec.Defaults
+func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha1.Kapro, bundle *kaprov1alpha1.KaproBundle) *unstructured.Unstructured {
+	defaults := bundle.Spec.Defaults
 	if defaults == nil {
-		defaults = &kaprov1alpha1.AppDefaults{}
+		defaults = &kaprov1alpha1.BundleDefaults{}
 	}
 
 	// Build inputs: one entry per cluster.
-	primaryVersion := app.Spec.Components[0].Version
+	primaryVersion := bundle.Spec.Components[0].Version
 	inputs := make([]any, 0, len(kapro.Spec.Clusters))
 	for _, cluster := range kapro.Spec.Clusters {
 		input := map[string]any{
@@ -279,17 +279,17 @@ func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha1.Kapro, app *kapr
 		if cluster.KubeconfigSecret != "" {
 			input["kubeconfig_secret"] = cluster.KubeconfigSecret
 		}
-		mergedValues := r.mergeValues(app, cluster.Name, cluster.Labels)
+		mergedValues := r.mergeValues(bundle, cluster.Name, cluster.Labels)
 		if mergedValues != "" {
 			input["values_override"] = mergedValues
 		}
 		inputs = append(inputs, input)
 	}
 
-	resources := make([]any, 0, len(app.Spec.Components)+len(app.Spec.Registries))
+	resources := make([]any, 0, len(bundle.Spec.Components)+len(bundle.Spec.Registries))
 
 	// Build HelmRepositories from registries.
-	for _, reg := range app.Spec.Registries {
+	for _, reg := range bundle.Spec.Registries {
 		repoSpec := map[string]any{
 			"interval": resolveDefault(reg.Interval, "5m"),
 			"url":      reg.URL,
@@ -313,7 +313,7 @@ func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha1.Kapro, app *kapr
 	}
 
 	// Fallback: if no registries defined, use kapro.spec.registry (backward compat).
-	if len(app.Spec.Registries) == 0 && kapro.Spec.Registry.URL != "" {
+	if len(bundle.Spec.Registries) == 0 && kapro.Spec.Registry.URL != "" {
 		resources = append(resources, map[string]any{
 			"apiVersion": "source.toolkit.fluxcd.io/v1",
 			"kind":       "HelmRepository",
@@ -331,7 +331,7 @@ func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha1.Kapro, app *kapr
 	}
 
 	// Build HelmReleases — one per component.
-	for _, comp := range app.Spec.Components {
+	for _, comp := range bundle.Spec.Components {
 		resources = append(resources, r.buildHelmRelease(kapro, defaults, comp))
 	}
 
@@ -354,7 +354,7 @@ func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha1.Kapro, app *kapr
 
 // buildHelmRelease generates one HelmRelease from a component spec + defaults.
 // Output matches the exact structure from the integration monorepo.
-func (r *KaproReconciler) buildHelmRelease(kapro *kaprov1alpha1.Kapro, defaults *kaprov1alpha1.AppDefaults, comp kaprov1alpha1.AppComponent) map[string]any {
+func (r *KaproReconciler) buildHelmRelease(kapro *kaprov1alpha1.Kapro, defaults *kaprov1alpha1.BundleDefaults, comp kaprov1alpha1.BundleComponent) map[string]any {
 	// Resolve fields: component overrides defaults.
 	chartName := comp.Name
 	if comp.ChartName != "" {
@@ -466,7 +466,7 @@ func (r *KaproReconciler) buildHelmRelease(kapro *kaprov1alpha1.Kapro, defaults 
 }
 
 // mergeComponentValues deep-merges defaults.values + component.values.
-func (r *KaproReconciler) mergeComponentValues(defaults *kaprov1alpha1.AppDefaults, comp kaprov1alpha1.AppComponent) map[string]any {
+func (r *KaproReconciler) mergeComponentValues(defaults *kaprov1alpha1.BundleDefaults, comp kaprov1alpha1.BundleComponent) map[string]any {
 	merged := map[string]any{}
 	if defaults.Values != nil && defaults.Values.Raw != nil {
 		_ = json.Unmarshal(defaults.Values.Raw, &merged)
@@ -481,7 +481,7 @@ func (r *KaproReconciler) mergeComponentValues(defaults *kaprov1alpha1.AppDefaul
 }
 
 // resolveValuesFrom returns component's valuesFrom if set, otherwise defaults'.
-func (r *KaproReconciler) resolveValuesFrom(defaults *kaprov1alpha1.AppDefaults, comp kaprov1alpha1.AppComponent) []any {
+func (r *KaproReconciler) resolveValuesFrom(defaults *kaprov1alpha1.BundleDefaults, comp kaprov1alpha1.BundleComponent) []any {
 	refs := defaults.ValuesFrom
 	if len(comp.ValuesFrom) > 0 {
 		refs = comp.ValuesFrom
@@ -513,17 +513,17 @@ func resolveDefault(value, fallback string) string {
 	return fallback
 }
 
-// mergeValues resolves KaproApp defaults + matching overrides for a specific cluster.
+// mergeValues resolves KaproBundle defaults + matching overrides for a specific cluster.
 // Returns a JSON string of the merged values, or "" if no values apply.
-func (r *KaproReconciler) mergeValues(app *kaprov1alpha1.KaproApp, clusterName string, clusterLabels map[string]string) string {
+func (r *KaproReconciler) mergeValues(bundle *kaprov1alpha1.KaproBundle, clusterName string, clusterLabels map[string]string) string {
 	// Start with defaults.
 	merged := map[string]interface{}{}
-	if app.Spec.Defaults != nil && app.Spec.Defaults.Values != nil && app.Spec.Defaults.Values.Raw != nil {
-		_ = json.Unmarshal(app.Spec.Defaults.Values.Raw, &merged)
+	if bundle.Spec.Defaults != nil && bundle.Spec.Defaults.Values != nil && bundle.Spec.Defaults.Values.Raw != nil {
+		_ = json.Unmarshal(bundle.Spec.Defaults.Values.Raw, &merged)
 	}
 
 	// Layer matching overrides (order matters — later overrides win).
-	for _, ov := range app.Spec.Overrides {
+	for _, ov := range bundle.Spec.Overrides {
 		if !overrideMatches(ov, clusterName, clusterLabels) {
 			continue
 		}
@@ -576,7 +576,7 @@ func deepMerge(dst, src map[string]interface{}) {
 }
 
 // overrideMatches returns true if the override applies to the given cluster.
-func overrideMatches(ov kaprov1alpha1.AppOverride, clusterName string, clusterLabels map[string]string) bool {
+func overrideMatches(ov kaprov1alpha1.BundleOverride, clusterName string, clusterLabels map[string]string) bool {
 	// Explicit cluster list takes precedence.
 	if len(ov.Clusters) > 0 {
 		for _, c := range ov.Clusters {
@@ -611,7 +611,7 @@ const maxConcurrentBootstraps = 10
 // bootstrapSpokesParallel bootstraps all spokes concurrently with bounded parallelism.
 // Each spoke is independent — a failing spoke doesn't block others.
 // Returns a map of cluster name → error (nil = success).
-func (r *KaproReconciler) bootstrapSpokesParallel(ctx context.Context, kapro *kaprov1alpha1.Kapro, app *kaprov1alpha1.KaproApp, version string) map[string]error {
+func (r *KaproReconciler) bootstrapSpokesParallel(ctx context.Context, kapro *kaprov1alpha1.Kapro, bundle *kaprov1alpha1.KaproBundle, version string) map[string]error {
 	l := log.FromContext(ctx)
 	results := make(map[string]error, len(kapro.Spec.Clusters))
 	var mu sync.Mutex
@@ -635,7 +635,7 @@ func (r *KaproReconciler) bootstrapSpokesParallel(ctx context.Context, kapro *ka
 			sem <- struct{}{}        // acquire
 			defer func() { <-sem }() // release
 
-			err := r.bootstrapSpoke(ctx, kapro, app, cluster, version)
+			err := r.bootstrapSpoke(ctx, kapro, bundle, cluster, version)
 			mu.Lock()
 			results[cluster.Name] = err
 			mu.Unlock()
@@ -663,7 +663,7 @@ func (r *KaproReconciler) spokeAlreadyBootstrapped(ctx context.Context, clusterN
 //
 // We apply directly to spoke instead of using ResourceSet because OCIRepository
 // has no kubeConfig field — it can't be created remotely via Flux.
-func (r *KaproReconciler) bootstrapSpoke(ctx context.Context, kapro *kaprov1alpha1.Kapro, app *kaprov1alpha1.KaproApp, cluster kaprov1alpha1.KaproCluster, version string) error {
+func (r *KaproReconciler) bootstrapSpoke(ctx context.Context, kapro *kaprov1alpha1.Kapro, bundle *kaprov1alpha1.KaproBundle, cluster kaprov1alpha1.KaproCluster, version string) error {
 	l := log.FromContext(ctx)
 
 	if cluster.KubeconfigSecret == "" {
@@ -722,7 +722,7 @@ func (r *KaproReconciler) bootstrapSpoke(ctx context.Context, kapro *kaprov1alph
 	}
 
 	// 2. Apply wave Kustomizations on spoke.
-	waveKusts := bundle.WaveKustomizations(kapro.Name, app)
+	waveKusts := bundlepkg.WaveKustomizations(kapro.Name, bundle)
 	for _, wk := range waveKusts {
 		obj := &unstructured.Unstructured{Object: wk}
 		if err := spokeClient.Patch(ctx, obj,
@@ -758,7 +758,7 @@ func isNoMatchError(err error) bool {
 // syncMemberClusterStatus reads HelmRelease status and writes it to the
 // MemberCluster status. For push mode, reads from hub. For spoke-local mode,
 // connects to spoke and reads directly.
-func (r *KaproReconciler) syncMemberClusterStatus(ctx context.Context, kapro *kaprov1alpha1.Kapro, app *kaprov1alpha1.KaproApp, cluster kaprov1alpha1.KaproCluster) bool {
+func (r *KaproReconciler) syncMemberClusterStatus(ctx context.Context, kapro *kaprov1alpha1.Kapro, bundle *kaprov1alpha1.KaproBundle, cluster kaprov1alpha1.KaproCluster) bool {
 	l := log.FromContext(ctx)
 
 	// Read the MemberCluster.
@@ -799,7 +799,7 @@ func (r *KaproReconciler) syncMemberClusterStatus(ctx context.Context, kapro *ka
 	// Read HelmRelease status for each component.
 	allReady := true
 	versions := map[string]string{}
-	for _, comp := range app.Spec.Components {
+	for _, comp := range bundle.Spec.Components {
 		hrName := comp.Name + hrNameSuffix
 		hr := &unstructured.Unstructured{}
 		hr.SetGroupVersionKind(schema.GroupVersionKind{
@@ -876,7 +876,7 @@ func (r *KaproReconciler) syncMemberClusterStatus(ctx context.Context, kapro *ka
 	mc.Status.CurrentVersions = versions
 	mc.Status.Version = versions["default"]
 	if mc.Status.Version == "" {
-		mc.Status.Version = app.Spec.Components[0].Version
+		mc.Status.Version = bundle.Spec.Components[0].Version
 	}
 	mc.Status.Provider = cluster.Provider
 	if isSpokeLocalMode(kapro) {
@@ -887,7 +887,7 @@ func (r *KaproReconciler) syncMemberClusterStatus(ctx context.Context, kapro *ka
 	mc.Status.Health = kaprov1alpha1.ClusterHealth{
 		AllWorkloadsReady: allReady,
 		ReadyWorkloads:    len(versions),
-		TotalWorkloads:    len(app.Spec.Components),
+		TotalWorkloads:    len(bundle.Spec.Components),
 	}
 	mc.Status.LastHeartbeat = time.Now().UTC().Format(time.RFC3339)
 
@@ -902,7 +902,7 @@ func (r *KaproReconciler) syncMemberClusterStatus(ctx context.Context, kapro *ka
 		Status:             readyStatus,
 		ObservedGeneration: mc.Generation,
 		Reason:             reason,
-		Message:            fmt.Sprintf("%d/%d components ready", len(versions), len(app.Spec.Components)),
+		Message:            fmt.Sprintf("%d/%d components ready", len(versions), len(bundle.Spec.Components)),
 	})
 
 	if err := r.Status().Patch(ctx, &mc, mcPatch); err != nil {
@@ -1023,13 +1023,13 @@ func (r *KaproReconciler) ensureKubeconfigSecret(ctx context.Context, kapro *kap
 func (r *KaproReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kaprov1alpha1.Kapro{}).
-		Watches(&kaprov1alpha1.KaproApp{}, handler.EnqueueRequestsFromMapFunc(r.kaproAppToKapro)).
+		Watches(&kaprov1alpha1.KaproBundle{}, handler.EnqueueRequestsFromMapFunc(r.kaproBundleToKapro)).
 		Complete(r)
 }
 
-// kaproAppToKapro maps a KaproApp change to the Kapro(s) that reference it.
-func (r *KaproReconciler) kaproAppToKapro(ctx context.Context, obj client.Object) []reconcile.Request {
-	app, ok := obj.(*kaprov1alpha1.KaproApp)
+// kaproBundleToKapro maps a KaproBundle change to the Kapro(s) that reference it.
+func (r *KaproReconciler) kaproBundleToKapro(ctx context.Context, obj client.Object) []reconcile.Request {
+	bundle, ok := obj.(*kaprov1alpha1.KaproBundle)
 	if !ok {
 		return nil
 	}
@@ -1039,7 +1039,7 @@ func (r *KaproReconciler) kaproAppToKapro(ctx context.Context, obj client.Object
 	}
 	var requests []reconcile.Request
 	for _, k := range kapros.Items {
-		if k.Spec.AppRef == app.Name {
+		if k.Spec.BundleRef == bundle.Name {
 			requests = append(requests, reconcile.Request{
 				NamespacedName: client.ObjectKeyFromObject(&k),
 			})

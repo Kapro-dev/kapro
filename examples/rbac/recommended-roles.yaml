@@ -12,7 +12,7 @@ rules:
   - apiGroups: ["kapro.io"]
     resources:
       - agentpolicies
-      - kaproapps
+      - kaprobundles
       - kaproes
       - memberclusters
       - pipelines
@@ -30,7 +30,6 @@ rules:
       - agentpolicies/status
       - approvals/status
       - kaproes/status
-      - kaproapps/status
       - memberclusters/status
       - pluginregistrations/status
       - releases/status
@@ -45,7 +44,7 @@ metadata:
 rules:
   - apiGroups: ["kapro.io"]
     resources:
-      - kaproapps
+      - kaprobundles
       - memberclusters
       - pipelines
       - releases
@@ -68,7 +67,7 @@ metadata:
 rules:
   - apiGroups: ["kapro.io"]
     resources:
-      - kaproapps
+      - kaprobundles
       - memberclusters
       - pipelines
       - releases
@@ -93,7 +92,7 @@ rules:
   - apiGroups: ["kapro.io"]
     resources:
       - approvals
-      - kaproapps
+      - kaprobundles
       - memberclusters
       - pipelines
       - releases

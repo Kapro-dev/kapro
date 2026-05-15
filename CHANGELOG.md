@@ -42,7 +42,7 @@ API below stable maturity.
 
 - Publish installable CRDs and the operator chart for local and controlled
   development environments.
-- Document the core promotion workflow: `KaproApp`, `Pipeline`, `Release`,
+- Document the core promotion workflow: `KaproBundle`, `Pipeline`, `Release`,
   `ReleaseTarget`, `MemberCluster`, and `Approval`.
 - Publish preview extension contracts for in-process actuators, gates, planners,
   and the KAI/KGI/KPI gRPC plugin APIs.
@@ -116,7 +116,7 @@ All operations use Go SDK — no gcloud, helm, flux, or kubectl dependencies.
 - **`kapro hub registry list/create/add`** — centralized GAR registry management. Saved to `~/.kapro/config.yaml`.
 - **`kapro spoke add`** — adds spoke cluster: auto-installs flux-operator + FluxInstance + Fleet registration + IAM bindings. Single command, zero manual steps.
 - **`kapro fleet list/sync`** — Fleet membership management. `sync` auto-discovers and registers all Fleet clusters.
-- **`kapro bundle generate --push`** — reads KaproApp from hub, generates per-wave bundle, validates, pushes via ORAS Go SDK. Used by CI pipelines.
+- **`kapro bundle generate --push`** — reads KaproBundle from hub, generates per-wave bundle, validates, pushes via ORAS Go SDK. Used by CI pipelines.
 - **`kapro status`** — live fleet dashboard with colored phases (Converged/Converging/Failed), per-cluster version, health, heartbeat.
 - **`~/.kapro/config.yaml`** — persistent CLI context. `hub init` writes it, all commands read project/registry from it.
 - **Spinner UX** — braille animation with colored status symbols: ✔ (success), ✗ (failure), ⚠ (warning), ℹ (info).
@@ -138,7 +138,7 @@ All operations use Go SDK — no gcloud, helm, flux, or kubectl dependencies.
 - **Error isolation** — failing spoke doesn't block other spokes in the reconcile loop
 - **Embedded CRDs** — FluxInstance, ResourceSet, and 8 Kapro CRDs via go:embed (no external file deps)
 
-### KaproApp Validation
+### KaproBundle Validation
 
 - No empty component names, versions, or registries
 - No duplicate component or registry names
@@ -171,8 +171,8 @@ Flux Operator actuator, Fleet API integration, and GCP SDK.
 ### Flux Operator Actuator
 
 - **ResourceSet-based delivery** — patches ResourceSet inputs on hub, Flux Operator renders per-cluster HelmReleases with kubeConfig
-- **KaproApp component spec v2** — registries, waves, dependsOn, values, valuesFrom, timeout, retries, CRDs, suspend
-- **ResourceSet generator** — builds HelmRepositories + HelmReleases from KaproApp spec
+- **KaproBundle component spec v2** — registries, waves, dependsOn, values, valuesFrom, timeout, retries, CRDs, suspend
+- **ResourceSet generator** — builds HelmRepositories + HelmReleases from KaproBundle spec
 - **Convergence check** — scans ResourceSet inventory for HelmRelease Ready status
 
 ### Fleet API + GCP SDK

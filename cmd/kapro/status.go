@@ -118,7 +118,7 @@ func renderKaproStatus(kapro kaprov1alpha1.Kapro, allClusters []kaprov1alpha1.Me
 	if mode == "" {
 		mode = "push"
 	}
-	cli.KV("App", kapro.Spec.AppRef)
+	cli.KV("Bundle", kapro.Spec.BundleRef)
 	cli.KV("Mode", mode)
 	cli.KV("Version", kapro.Status.Version)
 	cli.KV("Clusters", fmt.Sprintf("%d total, %d converged",
