@@ -8,3 +8,6 @@ spec:
   protocol: grpc
   endpoint: dns:///argocd-actuator.kapro-system.svc:9090
   timeout: 10s
+  parameters:
+    argocdNamespace: argocd
+    application: checkout

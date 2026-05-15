@@ -92,6 +92,11 @@ func TestKAIConformance(t *testing.T) {
 }
 ```
 
+A complete external actuator example is available in
+`examples/plugins/argocd-actuator`. It implements KAI for Argo CD Applications
+by patching `spec.source.targetRevision` and checking Argo CD sync and health
+status for convergence.
+
 ## Gate Requirements
 
 A gate plugin must:
