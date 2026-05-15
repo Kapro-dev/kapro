@@ -10,3 +10,8 @@ spec:
   timeout: 5s
   parameters:
     provider: prometheus
+    prometheusURL: http://prometheus.monitoring.svc:9090
+    query: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))
+    metric: error_rate
+    threshold: "0.05"
+    operator: lte

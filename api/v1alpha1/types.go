@@ -409,7 +409,7 @@ type GateTemplateSpec struct {
 	// Name uniquely identifies this template within the gate for status tracking
 	// and Job naming. Required when type == "job" (used to generate Job name).
 	Name string `json:"name,omitempty"`
-	// +kubebuilder:validation:Enum=cel;job;webhook
+	// +kubebuilder:validation:Enum=cel;job;webhook;plugin
 	Type string    `json:"type"`
 	Args []GateArg `json:"args,omitempty"`
 	// +kubebuilder:validation:Enum=halt;retry;skip
@@ -424,6 +424,7 @@ type GateTemplateSpec struct {
 	CEL         *CELGateSpec     `json:"cel,omitempty"`
 	Job         *JobGateSpec     `json:"job,omitempty"`
 	Webhook     *WebhookGateSpec `json:"webhook,omitempty"`
+	Plugin      *PluginGateSpec  `json:"plugin,omitempty"`
 }
 
 // GateArg declares a named parameter with an optional default value.
@@ -450,6 +451,12 @@ type JobGateSpec struct {
 type WebhookGateSpec struct {
 	URL          string `json:"url"`
 	PollInterval string `json:"pollInterval,omitempty"`
+}
+
+// PluginGateSpec references an external gate registered through PluginRegistration.
+type PluginGateSpec struct {
+	// Name is PluginRegistration.spec.name for a ready gate plugin.
+	Name string `json:"name"`
 }
 
 // GateRunStatus is Kapro's authoritative snapshot of one gate evaluation.

@@ -118,6 +118,12 @@ func TestKGIConformance(t *testing.T) {
 }
 ```
 
+A gate plugin implementation example is available in
+`examples/plugins/slo-gate`. It implements KGI for SLO checks using static
+values or Prometheus instant queries. Reference a runtime gate plugin from a
+gate template with `type: plugin` and `plugin.name` set to
+`PluginRegistration.spec.name`.
+
 ## Planner Requirements
 
 A planner plugin must:
