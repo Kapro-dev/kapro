@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	coordinationv1 "k8s.io/api/coordination/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
@@ -31,6 +32,9 @@ func controllerTestScheme(t *testing.T) *runtime.Scheme {
 	scheme := runtime.NewScheme()
 	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatalf("add scheme: %v", err)
+	}
+	if err := coordinationv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add coordination scheme: %v", err)
 	}
 	return scheme
 }
@@ -81,6 +85,7 @@ func TestHandleApplying_RespectsActiveReleaseClaim(t *testing.T) {
 		Status: kaprov1alpha1.MemberClusterStatus{
 			ActiveRelease:   "other-release",
 			CurrentVersions: map[string]string{"default": "repo@sha256:old"},
+			LastHeartbeat:   time.Now().UTC().Format(time.RFC3339),
 		},
 	}
 
@@ -110,6 +115,153 @@ func TestHandleApplying_RespectsActiveReleaseClaim(t *testing.T) {
 	}
 	if target.ApplyIssued {
 		t.Fatal("expected ApplyIssued to remain false when cluster is claimed by another release")
+	}
+}
+
+func TestHandlePending_PullModeWaitsForFreshHeartbeat(t *testing.T) {
+	scheme := controllerTestScheme(t)
+	mc := &kaprov1alpha1.MemberCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
+		Spec: kaprov1alpha1.MemberClusterSpec{
+			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: "flux"},
+		},
+	}
+	r := &ReleaseTargetReconciler{
+		Client:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(mc).Build(),
+		Recorder: record.NewFakeRecorder(10),
+	}
+	release := &kaprov1alpha1.Release{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}}
+	target := &kaprov1alpha1.TargetStatus{
+		Target: "cluster-a",
+		Phase:  kaprov1alpha1.TargetPhasePending,
+	}
+
+	result, err := r.handlePending(context.Background(), release, target)
+	if err != nil {
+		t.Fatalf("handlePending returned error: %v", err)
+	}
+	if result.RequeueAfter != requeueNormal {
+		t.Fatalf("expected normal requeue for stale heartbeat, got %+v", result)
+	}
+	if target.Phase != kaprov1alpha1.TargetPhasePending {
+		t.Fatalf("expected target to remain Pending, got %q", target.Phase)
+	}
+	if target.HeartbeatStaleSince == "" {
+		t.Fatal("expected HeartbeatStaleSince to be recorded")
+	}
+}
+
+func TestHandlePending_FreshLeaseHeartbeatAllowsPullTarget(t *testing.T) {
+	scheme := controllerTestScheme(t)
+	now := metav1.NewMicroTime(time.Now().UTC())
+	mc := &kaprov1alpha1.MemberCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
+		Spec: kaprov1alpha1.MemberClusterSpec{
+			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: "flux"},
+		},
+	}
+	lease := &coordinationv1.Lease{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      heartbeatLeaseName("cluster-a"),
+			Namespace: defaultHeartbeatNamespace,
+		},
+		Spec: coordinationv1.LeaseSpec{RenewTime: &now},
+	}
+	r := &ReleaseTargetReconciler{
+		Client:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(mc, lease).Build(),
+		Recorder: record.NewFakeRecorder(10),
+	}
+	release := &kaprov1alpha1.Release{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}}
+	target := &kaprov1alpha1.TargetStatus{
+		Target:              "cluster-a",
+		Phase:               kaprov1alpha1.TargetPhasePending,
+		HeartbeatStaleSince: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339),
+	}
+
+	result, err := r.handlePending(context.Background(), release, target)
+	if err != nil {
+		t.Fatalf("handlePending returned error: %v", err)
+	}
+	if !result.Requeue || result.RequeueAfter != 0 { //nolint:staticcheck
+		t.Fatalf("expected immediate requeue after phase advance, got %+v", result)
+	}
+	if target.Phase != kaprov1alpha1.TargetPhaseVerification {
+		t.Fatalf("expected target to advance to Verification, got %q", target.Phase)
+	}
+	if target.HeartbeatStaleSince != "" {
+		t.Fatalf("expected HeartbeatStaleSince to reset, got %q", target.HeartbeatStaleSince)
+	}
+	if target.HeartbeatStaleCount != 0 {
+		t.Fatalf("expected HeartbeatStaleCount to reset, got %d", target.HeartbeatStaleCount)
+	}
+}
+
+func TestHandlePending_StaleHeartbeatEventuallyFailsPullTarget(t *testing.T) {
+	scheme := controllerTestScheme(t)
+	mc := &kaprov1alpha1.MemberCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
+		Spec: kaprov1alpha1.MemberClusterSpec{
+			Actuator: kaprov1alpha1.ActuatorSpec{Mode: "pull", Backend: "flux"},
+		},
+		Status: kaprov1alpha1.MemberClusterStatus{
+			LastHeartbeat: time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339),
+		},
+	}
+	r := &ReleaseTargetReconciler{
+		Client:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(mc).Build(),
+		Recorder: record.NewFakeRecorder(10),
+	}
+	release := &kaprov1alpha1.Release{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}}
+	target := &kaprov1alpha1.TargetStatus{
+		Target:              "cluster-a",
+		Phase:               kaprov1alpha1.TargetPhasePending,
+		HeartbeatStaleSince: time.Now().Add(-heartbeatStaleFailAfter - time.Second).UTC().Format(time.RFC3339),
+		HeartbeatStaleCount: missingMCFailThreshold - 1,
+	}
+
+	result, err := r.handlePending(context.Background(), release, target)
+	if err != nil {
+		t.Fatalf("handlePending returned error: %v", err)
+	}
+	if result != (ctrl.Result{}) {
+		t.Fatalf("expected terminal result, got %+v", result)
+	}
+	if target.Phase != kaprov1alpha1.TargetPhaseFailed {
+		t.Fatalf("expected stale heartbeat to fail target, got %q", target.Phase)
+	}
+	if !strings.Contains(target.Message, "heartbeat stale") {
+		t.Fatalf("expected heartbeat failure message, got %q", target.Message)
+	}
+}
+
+func TestMemberClusterHeartbeat_EmptyLeaseFallsBackToStatusHeartbeat(t *testing.T) {
+	scheme := controllerTestScheme(t)
+	freshStatus := time.Now().UTC().Format(time.RFC3339)
+	mc := &kaprov1alpha1.MemberCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
+		Status: kaprov1alpha1.MemberClusterStatus{
+			LastHeartbeat: freshStatus,
+		},
+	}
+	lease := &coordinationv1.Lease{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      heartbeatLeaseName("cluster-a"),
+			Namespace: defaultHeartbeatNamespace,
+		},
+	}
+	r := &ReleaseTargetReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(mc, lease).Build(),
+	}
+
+	status, err := r.memberClusterHeartbeat(context.Background(), mc)
+	if err != nil {
+		t.Fatalf("memberClusterHeartbeat returned error: %v", err)
+	}
+	if !status.Fresh {
+		t.Fatalf("expected fresh fallback status heartbeat, got %+v", status)
+	}
+	if status.Source != "status" {
+		t.Fatalf("expected status heartbeat source, got %q", status.Source)
 	}
 }
 

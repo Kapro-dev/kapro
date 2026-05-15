@@ -184,11 +184,12 @@ func main() {
 			Namespace:  podNS,
 			Client:     mgr.GetClient(),
 		},
-		ApprovalSecret: loadApprovalSecret(cfg, podNS, log),
-		ExternalURL:    os.Getenv("KAPRO_EXTERNAL_URL"),
-		HubAPIURL:      os.Getenv("KAPRO_HUB_API_URL"),
-		HubCAData:      loadHubCAData(mgr.GetConfig()),
-		ShardName:      os.Getenv("KAPRO_SHARD"),
+		ApprovalSecret:     loadApprovalSecret(cfg, podNS, log),
+		ExternalURL:        os.Getenv("KAPRO_EXTERNAL_URL"),
+		HubAPIURL:          os.Getenv("KAPRO_HUB_API_URL"),
+		HubCAData:          loadHubCAData(mgr.GetConfig()),
+		HeartbeatNamespace: podNS,
+		ShardName:          os.Getenv("KAPRO_SHARD"),
 	}
 
 	if cc.ShardName != "" {

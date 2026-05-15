@@ -1,27 +1,16 @@
-// Package spoke implements the Kapro Actuator Interface for spoke-local Flux.
+// Package spoke implements the Kapro Actuator Interface for pull-mode Flux.
 //
-// Instead of rendering HelmReleases on the hub with kubeConfig (push model),
-// this actuator patches the OCIRepository tag on the spoke cluster. The spoke's
-// own Flux controllers pull the bundle and reconcile HelmReleases locally.
-//
-// Convergence is checked by reading Flux Kustomization and HelmRelease status
-// directly from the spoke via the kubeconfig secret.
-//
-// This gives full k9s visibility on each spoke: operators see wave Kustomizations,
-// HelmRelease status, and the DAG ordering — not just opaque pods.
+// Pull-mode promotion is intentionally hub-to-CRD, not hub-to-spoke. The hub
+// writes desired versions onto MemberCluster.spec; the spoke-side controller
+// observes that desired state, patches local GitOps resources, and reports
+// convergence back through MemberCluster.status plus the heartbeat Lease.
 package spoke
 
 import (
 	"context"
 	"fmt"
-	"strings"
-	"sync"
-	"time"
+	"sort"
 
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -29,282 +18,146 @@ import (
 	"kapro.io/kapro/pkg/actuator"
 )
 
-var (
-	ociRepoGVK = schema.GroupVersionKind{
-		Group: "source.toolkit.fluxcd.io", Version: "v1", Kind: "OCIRepository",
-	}
-)
-
-// clientCacheTTL is how long a cached spoke client is reused before rebuilding.
-const clientCacheTTL = 5 * time.Minute
-
-type cachedClient struct {
-	client    client.Client
-	createdAt time.Time
-}
-
-// SpokeFluxActuator implements the Actuator interface by patching the
-// OCIRepository tag on spoke clusters and checking local Flux status.
+// SpokeFluxActuator implements pull-mode delivery by updating hub-side
+// MemberCluster desired state. It never connects to spoke clusters directly.
 type SpokeFluxActuator struct {
 	// HubClient is the controller-runtime client for the hub cluster.
-	// Used to read kubeconfig secrets.
+	// Used to patch MemberCluster.spec.desiredVersions.
 	HubClient client.Client
-
-	// clientCache caches spoke clients by cluster name. TTL = clientCacheTTL.
-	clientCache sync.Map // map[string]*cachedClient
 }
 
 var _ actuator.Actuator = (*SpokeFluxActuator)(nil)
 
-// Apply patches the OCIRepository on the spoke cluster with the desired version tag.
+// Apply records one desired version on the MemberCluster. The spoke-side
+// controller owns applying it to local Flux resources.
 func (a *SpokeFluxActuator) Apply(ctx context.Context, req actuator.ApplyRequest) error {
-	l := log.FromContext(ctx)
 	mc := req.Cluster
 	if mc == nil {
 		return fmt.Errorf("cluster is nil")
 	}
-
-	fluxSpec := mc.Spec.Actuator.Pull
-	if fluxSpec == nil {
-		return fmt.Errorf("MemberCluster %q has no flux actuator config", mc.Name)
+	appKey := req.AppKey
+	if appKey == "" {
+		appKey = "default"
 	}
-
-	spokeClient, err := a.spokeClient(ctx, mc)
-	if err != nil {
-		return fmt.Errorf("connect to spoke %s: %w", mc.Name, err)
-	}
-
-	ociRepoName := fluxSpec.OCIRepository
-	if ociRepoName == "" {
-		ociRepoName = mc.Name + "-bundle"
-	}
-	ns := fluxSpec.Namespace
-	if ns == "" {
-		ns = "flux-system"
-	}
-
-	// Read the OCIRepository on spoke.
-	ociRepo := &unstructured.Unstructured{}
-	ociRepo.SetGroupVersionKind(ociRepoGVK)
-	if err := spokeClient.Get(ctx, client.ObjectKey{Name: ociRepoName, Namespace: ns}, ociRepo); err != nil {
-		return fmt.Errorf("get OCIRepository %s/%s on spoke %s: %w", ns, ociRepoName, mc.Name, err)
-	}
-
-	// Patch the tag.
-	patch := client.MergeFrom(ociRepo.DeepCopy())
-	spec, _ := ociRepo.Object["spec"].(map[string]any)
-	if spec == nil {
-		spec = map[string]any{}
-		ociRepo.Object["spec"] = spec
-	}
-	ref, _ := spec["ref"].(map[string]any)
-	if ref == nil {
-		ref = map[string]any{}
-		spec["ref"] = ref
-	}
-	ref["tag"] = req.Version
-
-	if err := spokeClient.Patch(ctx, ociRepo, patch); err != nil {
-		return fmt.Errorf("patch OCIRepository %s tag=%s on spoke %s: %w", ociRepoName, req.Version, mc.Name, err)
-	}
-
-	l.Info("patched OCIRepository on spoke",
-		"cluster", mc.Name, "ociRepository", ociRepoName, "tag", req.Version)
-	return nil
+	_, err := a.ApplyDelta(ctx, actuator.DeltaApplyRequest{
+		Cluster:         mc,
+		DesiredVersions: map[string]string{appKey: req.Version},
+	})
+	return err
 }
 
-// ApplyDelta patches the OCIRepository tag with the primary version.
-// For spoke-local Flux, a single OCI bundle contains all component versions,
-// so there's only one tag to patch.
+// ApplyDelta records all desired artifact versions on the MemberCluster in one
+// patch. The spoke controller applies only changed entries locally.
 func (a *SpokeFluxActuator) ApplyDelta(ctx context.Context, req actuator.DeltaApplyRequest) (int, error) {
 	if req.Cluster == nil {
 		return 0, fmt.Errorf("cluster is nil")
 	}
-
-	// Use the first version found — the bundle is tagged with the primary version.
-	var primaryVersion string
-	for _, v := range req.DesiredVersions {
-		primaryVersion = v
-		break
+	if a.HubClient == nil {
+		return 0, fmt.Errorf("hub client is nil")
 	}
-	if primaryVersion == "" {
+
+	desired := normalizeDesiredVersions(req.DesiredVersions)
+	if len(desired) == 0 {
 		return 0, nil
 	}
 
-	err := a.Apply(ctx, actuator.ApplyRequest{
-		Cluster: req.Cluster,
-		Version: primaryVersion,
-	})
-	if err != nil {
-		return 0, err
+	var latest kaprov1alpha1.MemberCluster
+	if err := a.HubClient.Get(ctx, client.ObjectKey{Name: req.Cluster.Name}, &latest); err != nil {
+		return 0, fmt.Errorf("get MemberCluster %s: %w", req.Cluster.Name, err)
 	}
-	return len(req.DesiredVersions), nil
+
+	count := 0
+	for appKey, version := range desired {
+		if latest.Spec.DesiredVersions[appKey] != version {
+			count++
+		}
+	}
+	if count == 0 {
+		return 0, nil
+	}
+
+	patch := client.MergeFrom(latest.DeepCopy())
+	if latest.Spec.DesiredVersions == nil {
+		latest.Spec.DesiredVersions = map[string]string{}
+	}
+	for appKey, version := range desired {
+		latest.Spec.DesiredVersions[appKey] = version
+	}
+	primaryVersion, primaryAppKey := primaryDesiredVersion(desired)
+	latest.Spec.DesiredVersion = primaryVersion
+	latest.Spec.DesiredAppKey = primaryAppKey
+
+	if err := a.HubClient.Patch(ctx, &latest, patch); err != nil {
+		return 0, fmt.Errorf("patch MemberCluster %s desired versions: %w", latest.Name, err)
+	}
+	log.FromContext(ctx).Info("recorded pull-mode desired versions",
+		"cluster", latest.Name, "changed", count, "desiredVersions", desired)
+	return count, nil
 }
 
-// IsConverged checks if all Flux Kustomizations and HelmReleases on the spoke
-// are Ready. This gives the hub a complete view of spoke-side deployment status.
+// IsConverged checks the spoke-reported MemberCluster status.
 func (a *SpokeFluxActuator) IsConverged(ctx context.Context, mc *kaprov1alpha1.MemberCluster, appKey, version string) (bool, error) {
-	return a.isAllSpokeReady(ctx, mc)
+	if appKey == "" {
+		appKey = "default"
+	}
+	return a.IsAllConverged(ctx, mc, map[string]string{appKey: version})
 }
 
-// IsAllConverged checks convergence for all desired versions.
+// IsAllConverged checks the spoke-reported version map and health summary.
 func (a *SpokeFluxActuator) IsAllConverged(ctx context.Context, mc *kaprov1alpha1.MemberCluster, desiredVersions map[string]string) (bool, error) {
-	return a.isAllSpokeReady(ctx, mc)
+	_ = ctx
+	if mc == nil {
+		return false, fmt.Errorf("cluster is nil")
+	}
+	for appKey, desired := range normalizeDesiredVersions(desiredVersions) {
+		if mc.Status.CurrentVersions[appKey] != desired {
+			return false, nil
+		}
+	}
+	if mc.Status.Phase == kaprov1alpha1.ClusterPhaseFailed {
+		return false, fmt.Errorf("cluster %s reported Failed phase", mc.Name)
+	}
+	if mc.Status.Phase == kaprov1alpha1.ClusterPhaseConverged {
+		return true, nil
+	}
+	return mc.Status.Health.AllWorkloadsReady, nil
 }
 
-// Rollback sets the OCIRepository tag back to a previous version.
+// Rollback records the previous version as desired state.
 func (a *SpokeFluxActuator) Rollback(ctx context.Context, mc *kaprov1alpha1.MemberCluster, previousVersion, appKey string) error {
 	return a.Apply(ctx, actuator.ApplyRequest{
 		Cluster: mc,
 		Version: previousVersion,
+		AppKey:  appKey,
 	})
 }
 
-// isAllSpokeReady connects to the spoke and checks that all Kustomizations
-// and HelmReleases managed by Kapro are Ready.
-func (a *SpokeFluxActuator) isAllSpokeReady(ctx context.Context, mc *kaprov1alpha1.MemberCluster) (bool, error) {
-	spokeClient, err := a.spokeClient(ctx, mc)
-	if err != nil {
-		return false, fmt.Errorf("connect to spoke %s: %w", mc.Name, err)
-	}
-
-	ns := "flux-system"
-	if mc.Spec.Actuator.Pull != nil && mc.Spec.Actuator.Pull.Namespace != "" {
-		ns = mc.Spec.Actuator.Pull.Namespace
-	}
-
-	// Check all Kustomizations with kapro.io/managed-by label.
-	ksList := &unstructured.UnstructuredList{}
-	ksList.SetGroupVersionKind(schema.GroupVersionKind{
-		Group: "kustomize.toolkit.fluxcd.io", Version: "v1", Kind: "KustomizationList",
-	})
-	if err := spokeClient.List(ctx, ksList,
-		client.InNamespace(ns),
-		client.MatchingLabels{"kapro.io/managed-by": mc.Name},
-	); err != nil {
-		// If Kustomization CRD not found or no resources, fall through to HR check.
-		if !isNotFoundOrEmpty(err) {
-			return false, fmt.Errorf("list Kustomizations on spoke %s: %w", mc.Name, err)
-		}
-	}
-	for _, ks := range ksList.Items {
-		if !hasReadyCondition(&ks) {
-			return false, nil
-		}
-	}
-
-	// Check all HelmReleases with kapro.io/managed-by label.
-	hrList := &unstructured.UnstructuredList{}
-	hrList.SetGroupVersionKind(schema.GroupVersionKind{
-		Group: "helm.toolkit.fluxcd.io", Version: "v2", Kind: "HelmReleaseList",
-	})
-	if err := spokeClient.List(ctx, hrList,
-		client.InNamespace(ns),
-		client.MatchingLabels{"kapro.io/managed-by": mc.Name},
-	); err != nil {
-		return false, fmt.Errorf("list HelmReleases on spoke %s: %w", mc.Name, err)
-	}
-	if len(hrList.Items) == 0 {
-		return false, nil // No HRs yet — not converged.
-	}
-	for _, hr := range hrList.Items {
-		if !hasReadyCondition(&hr) {
-			return false, nil
-		}
-	}
-
-	return true, nil
-}
-
-// spokeClient returns a cached controller-runtime client for the spoke cluster.
-// Clients are cached for clientCacheTTL to avoid repeated kubeconfig parsing
-// and REST client creation (expensive at 150 clusters).
-func (a *SpokeFluxActuator) spokeClient(ctx context.Context, mc *kaprov1alpha1.MemberCluster) (client.Client, error) {
-	// Check cache.
-	if cached, ok := a.clientCache.Load(mc.Name); ok {
-		cc := cached.(*cachedClient)
-		if time.Since(cc.createdAt) < clientCacheTTL {
-			// Quick health probe — if auth fails, invalidate cache.
-			probe := &unstructured.Unstructured{}
-			probe.SetGroupVersionKind(schema.GroupVersionKind{Version: "v1", Kind: "Namespace"})
-			if err := cc.client.Get(ctx, client.ObjectKey{Name: "flux-system"}, probe); err == nil {
-				return cc.client, nil
-			}
-			// Auth failed — rebuild client.
-			a.clientCache.Delete(mc.Name)
-		} else {
-			a.clientCache.Delete(mc.Name)
-		}
-	}
-
-	// Build new client.
-	c, err := a.buildSpokeClient(ctx, mc)
-	if err != nil {
-		return nil, err
-	}
-
-	a.clientCache.Store(mc.Name, &cachedClient{
-		client:    c,
-		createdAt: time.Now(),
-	})
-	return c, nil
-}
-
-func (a *SpokeFluxActuator) buildSpokeClient(ctx context.Context, mc *kaprov1alpha1.MemberCluster) (client.Client, error) {
-	// Find kubeconfig secret by label or convention.
-	secretList := &corev1.SecretList{}
-	if err := a.HubClient.List(ctx, secretList,
-		client.InNamespace("flux-system"),
-		client.MatchingLabels{"kapro.io/cluster": mc.Name},
-	); err == nil && len(secretList.Items) > 0 {
-		return clientFromSecret(&secretList.Items[0], mc.Name)
-	}
-
-	// Fallback: convention-based name.
-	var secret corev1.Secret
-	if err := a.HubClient.Get(ctx, client.ObjectKey{
-		Name:      mc.Name + "-kubeconfig",
-		Namespace: "flux-system",
-	}, &secret); err != nil {
-		return nil, fmt.Errorf("kubeconfig secret for %s not found: %w", mc.Name, err)
-	}
-	return clientFromSecret(&secret, mc.Name)
-}
-
-func clientFromSecret(secret *corev1.Secret, clusterName string) (client.Client, error) {
-	kubeconfigData := secret.Data["value"]
-	if len(kubeconfigData) == 0 {
-		return nil, fmt.Errorf("kubeconfig secret %s has no 'value' key", secret.Name)
-	}
-
-	restConfig, err := clientcmd.RESTConfigFromKubeConfig(kubeconfigData)
-	if err != nil {
-		return nil, fmt.Errorf("parse kubeconfig for %s: %w", clusterName, err)
-	}
-
-	return client.New(restConfig, client.Options{})
-}
-
-// hasReadyCondition checks if an unstructured object has Ready=True.
-func hasReadyCondition(obj *unstructured.Unstructured) bool {
-	status, _ := obj.Object["status"].(map[string]any)
-	if status == nil {
-		return false
-	}
-	conditions, _ := status["conditions"].([]any)
-	for _, c := range conditions {
-		cm, _ := c.(map[string]any)
-		if cm == nil {
+func normalizeDesiredVersions(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for appKey, version := range in {
+		if version == "" {
 			continue
 		}
-		if fmt.Sprintf("%v", cm["type"]) == "Ready" && fmt.Sprintf("%v", cm["status"]) == "True" {
-			return true
+		if appKey == "" {
+			appKey = "default"
 		}
+		out[appKey] = version
 	}
-	return false
+	return out
 }
 
-func isNotFoundOrEmpty(err error) bool {
-	return err != nil && (strings.Contains(err.Error(), "not found") ||
-		strings.Contains(err.Error(), "no matches for kind"))
+func primaryDesiredVersion(desired map[string]string) (version, appKey string) {
+	keys := make([]string, 0, len(desired))
+	for k := range desired {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	if len(keys) == 0 {
+		return "", ""
+	}
+	if _, ok := desired["default"]; ok {
+		return desired["default"], "default"
+	}
+	appKey = keys[0]
+	return desired[appKey], appKey
 }

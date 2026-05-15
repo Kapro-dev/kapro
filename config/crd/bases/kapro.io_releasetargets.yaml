@@ -1712,6 +1712,12 @@ spec:
                   - phase
                   type: object
                 type: array
+              heartbeatStaleCount:
+                description: |-
+                  HeartbeatStaleCount tracks consecutive reconciles that observed a stale
+                  MemberCluster heartbeat. The target fails only after both the stale timeout
+                  and the consecutive observation threshold are reached.
+                type: integer
               heartbeatStaleSince:
                 description: |-
                   HeartbeatStaleSince records when the target's MemberCluster heartbeat first

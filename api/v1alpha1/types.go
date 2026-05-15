@@ -1228,6 +1228,11 @@ type TargetStatus struct {
 	// Reset when the heartbeat becomes fresh again.
 	// +optional
 	HeartbeatStaleSince string `json:"heartbeatStaleSince,omitempty"`
+	// HeartbeatStaleCount tracks consecutive reconciles that observed a stale
+	// MemberCluster heartbeat. The target fails only after both the stale timeout
+	// and the consecutive observation threshold are reached.
+	// +optional
+	HeartbeatStaleCount int `json:"heartbeatStaleCount,omitempty"`
 }
 
 // ReleaseTargetSpec defines the immutable identity and desired intent for one
@@ -2385,7 +2390,7 @@ type KaproSpec struct {
 	Pipeline KaproPipeline `json:"pipeline"`
 	// DeliveryMode selects how workloads reach spoke clusters.
 	// "push" (default): hub renders HelmReleases with kubeConfig, hub's controllers install remotely.
-	// "spoke": hub pushes OCI bundle, spoke's own Flux controllers reconcile locally.
+	// "spoke": hub records desired bundle state; spoke controllers pull OCI artifacts and reconcile locally.
 	// Spoke mode gives per-cluster k9s visibility (Kustomizations, HelmReleases, wave DAG).
 	// +kubebuilder:validation:Enum=push;spoke
 	// +kubebuilder:default="push"

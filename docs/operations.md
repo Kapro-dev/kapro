@@ -105,6 +105,14 @@ Kapro is designed for hub-and-spoke promotion where the hub stores desired
 promotion state and spoke controllers or GitOps backends converge local
 workloads.
 
+For multi-cloud and air-gapped fleets, prefer `MemberCluster.spec.actuator.mode:
+pull`. In pull mode the hub writes desired versions to `MemberCluster.spec` and
+does not patch spoke workloads directly during a release. Each spoke applies the
+desired state locally, reports `status.currentVersions` and `status.health`, and
+renews `Lease/kapro-heartbeat-<cluster>` in the operator namespace. The
+ReleaseTarget controller blocks pull-mode targets while that heartbeat is stale
+and fails them if it remains stale.
+
 Current practical assumptions:
 
 - Kubernetes API is the source of truth for release state.

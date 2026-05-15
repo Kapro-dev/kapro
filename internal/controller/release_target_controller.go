@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"strings"
 	"time"
 
+	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -55,13 +57,14 @@ func releaseTargetFromContext(ctx context.Context) *kaprov1alpha1.ReleaseTarget 
 // it never runs the FSM itself.
 type ReleaseTargetReconciler struct {
 	client.Client
-	Recorder         record.EventRecorder
-	Scheme           *runtime.Scheme
-	ActuatorRegistry *actuator.Registry
-	Notifier         notification.Notifier
-	ApprovalSecret   []byte
-	ExternalURL      string
-	GateRegistry     *gate.Registry
+	Recorder           record.EventRecorder
+	Scheme             *runtime.Scheme
+	ActuatorRegistry   *actuator.Registry
+	Notifier           notification.Notifier
+	ApprovalSecret     []byte
+	ExternalURL        string
+	GateRegistry       *gate.Registry
+	HeartbeatNamespace string
 
 	// ShardPredicate optionally filters objects by shard label for horizontal scaling.
 	// When nil, all objects are processed.
@@ -215,6 +218,9 @@ func (r *ReleaseTargetReconciler) handlePending(ctx context.Context, release *ka
 		return ctrl.Result{RequeueAfter: requeueFast}, nil
 	}
 	target.MissingMCCount = 0
+	if result, ok, err := r.requireFreshHeartbeat(ctx, release, target, &mc); err != nil || !ok {
+		return result, err
+	}
 
 	// MemberCluster exists and is reachable — advance to verification.
 	r.transitionTo(ctx, release, target, kaprov1alpha1.TargetPhaseVerification)
@@ -273,6 +279,9 @@ func (r *ReleaseTargetReconciler) handleHealthCheck(ctx context.Context, release
 		return ctrl.Result{RequeueAfter: requeueFast}, nil
 	}
 	target.MissingMCCount = 0
+	if result, ok, err := r.requireFreshHeartbeat(ctx, release, target, &mc); err != nil || !ok {
+		return result, err
+	}
 
 	h := mc.Status.Health
 	l.Info("health check (CRD path)", "allReady", h.AllWorkloadsReady,
@@ -663,6 +672,9 @@ func (r *ReleaseTargetReconciler) handleApplying(ctx context.Context, release *k
 		return ctrl.Result{RequeueAfter: requeueFast}, nil
 	}
 	target.MissingMCCount = 0
+	if result, ok, err := r.requireFreshHeartbeat(ctx, release, target, &mc); err != nil || !ok {
+		return result, err
+	}
 	if err := validateTargetTopology(&mc, desiredVersions); err != nil {
 		r.failTarget(ctx, release, target, err.Error())
 		return ctrl.Result{}, nil
@@ -952,6 +964,11 @@ func (r *ReleaseTargetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			handler.EnqueueRequestsFromMapFunc(r.releaseTargetsForMemberCluster),
 			builder.WithPredicates(releaseTargetMemberClusterPredicates()),
 		).
+		Watches(
+			&coordinationv1.Lease{},
+			handler.EnqueueRequestsFromMapFunc(r.releaseTargetsForHeartbeatLease),
+			builder.WithPredicates(heartbeatLeasePredicates()),
+		).
 		Complete(r)
 }
 
@@ -1025,6 +1042,57 @@ func (r *ReleaseTargetReconciler) releaseTargetsForMemberCluster(ctx context.Con
 	var targetList kaprov1alpha1.ReleaseTargetList
 	if err := r.List(ctx, &targetList,
 		client.MatchingFields{IndexKeyActiveCluster: mc.Name},
+	); err != nil {
+		return nil
+	}
+	reqs := make([]ctrl.Request, 0, len(targetList.Items))
+	for i := range targetList.Items {
+		reqs = append(reqs, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(&targetList.Items[i])})
+	}
+	return reqs
+}
+
+func heartbeatLeasePredicates() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return isHeartbeatLeaseObject(e.Object)
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return isHeartbeatLeaseObject(e.Object)
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return isHeartbeatLeaseObject(e.Object)
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldLease, okOld := e.ObjectOld.(*coordinationv1.Lease)
+			newLease, okNew := e.ObjectNew.(*coordinationv1.Lease)
+			if !okOld || !okNew || !isHeartbeatLeaseObject(newLease) {
+				return false
+			}
+			oldFresh := leaseIsFresh(oldLease, heartbeatFreshTimeout)
+			newFresh := leaseIsFresh(newLease, heartbeatFreshTimeout)
+			return oldFresh != newFresh
+		},
+	}
+}
+
+func isHeartbeatLeaseObject(obj client.Object) bool {
+	return obj != nil && strings.HasPrefix(obj.GetName(), heartbeatLeasePrefix)
+}
+
+func leaseIsFresh(lease *coordinationv1.Lease, timeout time.Duration) bool {
+	observed, ok := leaseHeartbeatTime(lease)
+	return ok && time.Since(observed) < timeout
+}
+
+func (r *ReleaseTargetReconciler) releaseTargetsForHeartbeatLease(ctx context.Context, obj client.Object) []ctrl.Request {
+	if !isHeartbeatLeaseObject(obj) {
+		return nil
+	}
+	clusterName := strings.TrimPrefix(obj.GetName(), heartbeatLeasePrefix)
+	var targetList kaprov1alpha1.ReleaseTargetList
+	if err := r.List(ctx, &targetList,
+		client.MatchingFields{IndexKeyActiveCluster: clusterName},
 	); err != nil {
 		return nil
 	}

@@ -80,6 +80,10 @@ type ControllerContext struct {
 	// are processed (plus unlabeled objects on the default shard).
 	// Populated from KAPRO_SHARD env var in cmd/operator/main.go.
 	ShardName string
+
+	// HeartbeatNamespace is where spoke controllers renew
+	// coordination.k8s.io Lease objects named kapro-heartbeat-<cluster>.
+	HeartbeatNamespace string
 }
 
 // Registry maps controller names to their InitFunc.
