@@ -160,6 +160,11 @@ API pieces:
 The gateway must preserve the same state ownership rule: plugins do backend
 work, Kapro owns release state.
 
+Plugin registration is a platform-admin action. External plugins are inside the
+delivery integration boundary, not inside Kapro's control-plane trust boundary.
+They must not create or mutate Kapro release state directly. See
+`docs/security-model.md` for RBAC, trust boundary, and Secret handling rules.
+
 ## ReleaseTrigger Target
 
 `ReleaseTrigger` is the API boundary for autonomous release creation. The CRD

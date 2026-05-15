@@ -1,0 +1,133 @@
+# Recommended Kapro RBAC split for a shared hub cluster.
+#
+# Bind these ClusterRoles to identity-provider groups with ClusterRoleBinding.
+# Keep Secret management in platform namespaces and bind the Secret Role only
+# where the referenced Secrets live.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kapro-platform-admin
+rules:
+  - apiGroups: ["kapro.io"]
+    resources:
+      - agentpolicies
+      - kaproapps
+      - kapros
+      - memberclusters
+      - pipelines
+      - pluginregistrations
+      - releases
+      - releasetriggers
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["kapro.io"]
+    resources:
+      - approvals
+      - releasetargets
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["kapro.io"]
+    resources:
+      - agentpolicies/status
+      - approvals/status
+      - kapros/status
+      - kaproapps/status
+      - memberclusters/status
+      - pluginregistrations/status
+      - releases/status
+      - releasetargets/status
+      - releasetriggers/status
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kapro-release-engineer
+rules:
+  - apiGroups: ["kapro.io"]
+    resources:
+      - kaproapps
+      - memberclusters
+      - pipelines
+      - releases
+      - releasetargets
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["kapro.io"]
+    resources:
+      - releases
+    verbs: ["create", "delete", "patch", "update"]
+  - apiGroups: ["kapro.io"]
+    resources:
+      - releases/status
+      - releasetargets/status
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kapro-release-trigger-admin
+rules:
+  - apiGroups: ["kapro.io"]
+    resources:
+      - kaproapps
+      - memberclusters
+      - pipelines
+      - releases
+      - releasetriggers
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["kapro.io"]
+    resources:
+      - releasetriggers
+    verbs: ["create", "delete", "patch", "update"]
+  - apiGroups: ["kapro.io"]
+    resources:
+      - releases/status
+      - releasetargets/status
+      - releasetriggers/status
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kapro-approver
+rules:
+  - apiGroups: ["kapro.io"]
+    resources:
+      - approvals
+      - kaproapps
+      - memberclusters
+      - pipelines
+      - releases
+      - releasetargets
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["kapro.io"]
+    resources:
+      - approvals
+    verbs: ["create"]
+  - apiGroups: ["kapro.io"]
+    resources:
+      - approvals/status
+      - releases/status
+      - releasetargets/status
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kapro-auditor
+rules:
+  - apiGroups: ["kapro.io"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kapro-secret-reference-manager
+  namespace: kapro-system
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
