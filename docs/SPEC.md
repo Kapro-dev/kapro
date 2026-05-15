@@ -107,7 +107,7 @@ Release
 
 | CRD | Kind | Ownership | Scope |
 |-----|------|-----------|-------|
-| `kapros.kapro.io` | `Kapro` | Platform | Cluster |
+| `kaproes.kapro.io` | `Kapro` | Platform | Cluster |
 | `kaproapps.kapro.io` | `KaproApp` | Platform | Cluster |
 | `pipelines.kapro.io` | `Pipeline` | Platform | Cluster |
 | `releases.kapro.io` | `Release` | Release engineer / automation | Cluster |
