@@ -125,6 +125,74 @@ var (
 			Help:      "Total reconciles skipped due to no spec change.",
 		},
 	)
+
+	// PluginProbeResults counts plugin capability probes by type, result, and reason.
+	PluginProbeResults = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "kapro",
+			Subsystem: "plugin",
+			Name:      "probe_results_total",
+			Help:      "Total plugin capability probe results by plugin type, result, and reason.",
+		},
+		[]string{"type", "result", "reason"},
+	)
+
+	// PluginProbeDuration measures plugin capability probe latency.
+	PluginProbeDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "kapro",
+			Subsystem: "plugin",
+			Name:      "probe_duration_seconds",
+			Help:      "Plugin capability probe duration in seconds.",
+			Buckets:   prometheus.DefBuckets,
+		},
+		[]string{"type", "result"},
+	)
+
+	// PluginProbeReady reports the latest readiness observed by the capability prober.
+	PluginProbeReady = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "kapro",
+			Subsystem: "plugin",
+			Name:      "probe_ready",
+			Help:      "Latest plugin capability probe readiness by plugin type and registration name.",
+		},
+		[]string{"type", "name"},
+	)
+
+	// PluginRuntimeCalls counts runtime calls issued through registered plugin adapters.
+	PluginRuntimeCalls = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "kapro",
+			Subsystem: "plugin",
+			Name:      "runtime_calls_total",
+			Help:      "Total runtime plugin adapter calls by plugin type, plugin name, method, and result.",
+		},
+		[]string{"type", "name", "method", "result"},
+	)
+
+	// PluginRuntimeCallDuration measures runtime call latency through plugin adapters.
+	PluginRuntimeCallDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "kapro",
+			Subsystem: "plugin",
+			Name:      "runtime_call_duration_seconds",
+			Help:      "Runtime plugin adapter call duration in seconds.",
+			Buckets:   prometheus.DefBuckets,
+		},
+		[]string{"type", "name", "method", "result"},
+	)
+
+	// PluginRuntimeRegistered reports startup-time plugin runtime registrations by type.
+	PluginRuntimeRegistered = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "kapro",
+			Subsystem: "plugin",
+			Name:      "runtime_registered",
+			Help:      "Number of plugin adapters registered at operator startup by plugin type.",
+		},
+		[]string{"type"},
+	)
 )
 
 func init() {
@@ -139,5 +207,11 @@ func init() {
 		WaveProgress,
 		SpokeReconciles,
 		SpokeReconcilesSkipped,
+		PluginProbeResults,
+		PluginProbeDuration,
+		PluginProbeReady,
+		PluginRuntimeCalls,
+		PluginRuntimeCallDuration,
+		PluginRuntimeRegistered,
 	)
 }

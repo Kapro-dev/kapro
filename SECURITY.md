@@ -32,4 +32,4 @@ You will receive a response within 72 hours. We follow responsible disclosure â€
 
 Kapro's RBAC, multi-tenancy, plugin trust boundary, OCI signature model,
 webhook security, Secret handling, and threat model are documented in
-[docs/security-model.md](docs/security-model.md).
+[docs/security-model.md](docs/security-model.md) and [docs/security.md](docs/security.md).

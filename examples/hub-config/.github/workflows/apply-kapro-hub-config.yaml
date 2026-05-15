@@ -24,13 +24,19 @@ jobs:
       - name: Configure hub kubeconfig
         run: echo "Configure your hub cluster auth here"
 
-      # PR validation: server-side dry-run catches schema errors
-      - name: Validate YAMLs (server-side)
+      # Server-side dry-run catches CRD schema and admission errors.
+      - name: Validate clusters
+        run: kubectl apply --dry-run=server -f clusters/
+      - name: Validate apps
+        run: kubectl apply --dry-run=server -f apps/
+      - name: Validate pipelines
+        run: kubectl apply --dry-run=server -f pipelines/
+      - name: Validate releases
+        run: kubectl apply --dry-run=server -f releases/
+
+      - name: Check rendered objects
         run: |
-          for f in clusters/*.yaml apps/*.yaml pipelines/*.yaml releases/*.yaml; do
-            echo "Validating $f..."
-            kubectl apply --dry-run=server -f "$f"
-          done
+          kubectl get -f clusters/ -f apps/ -f pipelines/ -f releases/ --ignore-not-found
 
   diff:
     name: Diff
@@ -41,12 +47,14 @@ jobs:
       - uses: azure/setup-kubectl@v4
       - name: Configure hub kubeconfig
         run: echo "Configure your hub cluster auth here"
-      - name: Show diff
-        run: |
-          for f in clusters/*.yaml apps/*.yaml pipelines/*.yaml releases/*.yaml; do
-            echo "--- $f ---"
-            kubectl diff -f "$f" || true
-          done
+      - name: Diff clusters
+        run: kubectl diff -f clusters/ || true
+      - name: Diff apps
+        run: kubectl diff -f apps/ || true
+      - name: Diff pipelines
+        run: kubectl diff -f pipelines/ || true
+      - name: Diff releases
+        run: kubectl diff -f releases/ || true
 
   apply:
     name: Apply
@@ -66,3 +74,7 @@ jobs:
         run: kubectl apply -f pipelines/
       - name: Apply releases
         run: kubectl apply -f releases/
+      - name: Verify hub objects
+        run: |
+          kubectl get memberclusters.kapro.io
+          kubectl get kaproapps.kapro.io,pipelines.kapro.io,releases.kapro.io

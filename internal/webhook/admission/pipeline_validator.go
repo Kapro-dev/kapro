@@ -39,7 +39,41 @@ func (v *PipelineValidator) Handle(_ context.Context, req admission.Request) adm
 }
 
 func validatePipeline(p *kaprov1alpha1.Pipeline) error {
+	if err := validateMetricPresets(p); err != nil {
+		return err
+	}
 	return validateStageDAG(p.Spec.Stages)
+}
+
+func validateMetricPresets(p *kaprov1alpha1.Pipeline) error {
+	for name, preset := range p.Spec.MetricPresets {
+		if preset.Provider == "" {
+			return fmt.Errorf("pipeline.spec.metricPresets[%q].provider must be set", name)
+		}
+		if preset.Query == "" {
+			return fmt.Errorf("pipeline.spec.metricPresets[%q].query must be set", name)
+		}
+	}
+	for stageIndex, stage := range p.Spec.Stages {
+		if stage.Gate == nil {
+			continue
+		}
+		for metricIndex, metric := range stage.Gate.Gate.Metrics {
+			if metric.Preset == "" {
+				if metric.Provider == "" {
+					return fmt.Errorf("pipeline.spec.stages[%d].gate.gate.metrics[%d].provider must be set when preset is empty", stageIndex, metricIndex)
+				}
+				if metric.Query == "" {
+					return fmt.Errorf("pipeline.spec.stages[%d].gate.gate.metrics[%d].query must be set when preset is empty", stageIndex, metricIndex)
+				}
+				continue
+			}
+			if _, ok := p.Spec.MetricPresets[metric.Preset]; !ok {
+				return fmt.Errorf("pipeline.spec.stages[%d].gate.gate.metrics[%d].preset: unknown metric preset %q", stageIndex, metricIndex, metric.Preset)
+			}
+		}
+	}
+	return nil
 }
 
 // validateStageDAG checks that the flat Stage DAG is a valid directed acyclic graph.

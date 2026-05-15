@@ -13,6 +13,11 @@ ready actuator and gate `PluginRegistration` objects once at startup. Planner
 registrations are probed for capabilities and readiness, but runtime planner
 dispatch remains future work. Dynamic hot reload is future work.
 
+Notifications are not a plugin contract. `NotificationProvider` and
+`NotificationPolicy` are API-preview CRDs for Kubernetes-native provider/policy
+configuration, but runtime dispatch from those resources is future work.
+Existing inline gate notifications remain supported.
+
 ## Contracts
 
 | Contract | Proto | Go package |
@@ -102,7 +107,10 @@ func TestKAIConformance(t *testing.T) {
 A complete external actuator example is available in
 `examples/plugins/argocd-actuator`. It implements KAI for Argo CD Applications
 by patching `spec.source.targetRevision` and checking Argo CD sync and health
-status for convergence.
+status for convergence. `examples/plugins/argocd-applicationset-actuator`
+implements the ApplicationSet-based `argo/push` variant by patching
+`spec.template.spec.source.targetRevision` and checking a generated
+Application's sync and health status.
 
 ## Gate Requirements
 
@@ -155,6 +163,10 @@ func TestKPIConformance(t *testing.T) {
     plannerconformance.Run(t, client, plannerconformance.DefaultScenario())
 }
 ```
+
+A planner plugin implementation example is available in
+`examples/plugins/capacity-planner`. It implements KPI for capacity-aware
+filtering, ordering, and deferring rollout targets.
 
 ## Package Imports
 
