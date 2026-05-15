@@ -184,6 +184,122 @@ func TestRegisterReadyPluginsSkipsStaleAndRegistersReady(t *testing.T) {
 	}
 }
 
+func TestRuntimeReloaderAddsUpdatesAndUnregistersStaleActuator(t *testing.T) {
+	server := &recordingActuatorServer{}
+	client, stop := actuatorClient(t, server)
+	defer stop()
+	_ = client
+
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&kaprov1alpha1.PluginRegistration{}).Build()
+	actuatorReg := actuator.NewRegistry()
+	reloader := NewRuntimeReloader(actuatorReg, gate.NewRegistry(), bufDialOptions(server.listener)...)
+
+	reg := pluginReg(kaprov1alpha1.PluginTypeActuator, "argo/pull")
+	reg.Name = "argo-pull"
+	reg.Generation = 1
+	reg.Status.Ready = true
+	reg.Status.ObservedGeneration = 1
+	reg.Spec.Parameters["tenant"] = "payments"
+
+	changed, err := reloader.Reconcile(context.Background(), k8sClient, reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("expected initial ready registration to change runtime registry")
+	}
+	resolved, err := actuatorReg.Resolve("argo/pull")
+	if err != nil {
+		t.Fatalf("ready plugin not registered: %v", err)
+	}
+	if err := resolved.Apply(context.Background(), actuator.ApplyRequest{
+		Cluster: &kaprov1alpha1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: "de-prod"}},
+		Version: "1.2.3",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := server.apply.Parameters["tenant"]; got != "payments" {
+		t.Fatalf("tenant after add = %q, want payments", got)
+	}
+
+	reg.Generation = 2
+	reg.Status.ObservedGeneration = 2
+	reg.Spec.Parameters["tenant"] = "search"
+	changed, err = reloader.Reconcile(context.Background(), k8sClient, reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("expected generation-fresh spec update to replace runtime adapter")
+	}
+	resolved, err = actuatorReg.Resolve("argo/pull")
+	if err != nil {
+		t.Fatalf("updated plugin not registered: %v", err)
+	}
+	if err := resolved.Apply(context.Background(), actuator.ApplyRequest{
+		Cluster: &kaprov1alpha1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: "de-prod"}},
+		Version: "1.2.4",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := server.apply.Parameters["tenant"]; got != "search" {
+		t.Fatalf("tenant after update = %q, want search", got)
+	}
+
+	reg.Generation = 3
+	reg.Status.ObservedGeneration = 2
+	changed, err = reloader.Reconcile(context.Background(), k8sClient, reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed {
+		t.Fatal("expected stale registration to unregister without reporting a new registration")
+	}
+	if _, err := actuatorReg.Resolve("argo/pull"); err == nil {
+		t.Fatal("stale plugin remained registered")
+	}
+	if got := testutil.ToFloat64(kaprometrics.PluginRuntimeRegistered.WithLabelValues("actuator")); got != 0 {
+		t.Fatalf("registered actuator gauge = %v, want 0", got)
+	}
+}
+
+func TestRuntimeReloaderDoesNotReplaceBuiltInRegistration(t *testing.T) {
+	server := &recordingActuatorServer{}
+	client, stop := actuatorClient(t, server)
+	defer stop()
+	_ = client
+
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&kaprov1alpha1.PluginRegistration{}).Build()
+	actuatorReg := actuator.NewRegistry()
+	builtIn := &stubActuator{}
+	if err := actuatorReg.Register("push/flux", builtIn); err != nil {
+		t.Fatal(err)
+	}
+	reloader := NewRuntimeReloader(actuatorReg, gate.NewRegistry(), bufDialOptions(server.listener)...)
+
+	reg := pluginReg(kaprov1alpha1.PluginTypeActuator, "push/flux")
+	reg.Name = "conflicting-plugin"
+	_, err := reloader.Reconcile(context.Background(), k8sClient, reg)
+	if err == nil || !strings.Contains(err.Error(), "already registered") {
+		t.Fatalf("error = %v, want already registered conflict", err)
+	}
+	resolved, err := actuatorReg.Resolve("push/flux")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved != builtIn {
+		t.Fatal("built-in actuator was replaced")
+	}
+}
+
 func TestEnabledFromEnv(t *testing.T) {
 	t.Setenv(EnableEnv, "")
 	if EnabledFromEnv() {
@@ -278,6 +394,28 @@ func (s *recordingActuatorServer) IsConverged(context.Context, *kaiv1alpha1.IsCo
 
 func (s *recordingActuatorServer) Rollback(context.Context, *kaiv1alpha1.RollbackRequest) (*kaiv1alpha1.RollbackResponse, error) {
 	return &kaiv1alpha1.RollbackResponse{Accepted: true}, nil
+}
+
+type stubActuator struct{}
+
+func (s *stubActuator) Apply(context.Context, actuator.ApplyRequest) error {
+	return nil
+}
+
+func (s *stubActuator) IsConverged(context.Context, *kaprov1alpha1.MemberCluster, string, string) (bool, error) {
+	return true, nil
+}
+
+func (s *stubActuator) Rollback(context.Context, *kaprov1alpha1.MemberCluster, string, string) error {
+	return nil
+}
+
+func (s *stubActuator) ApplyDelta(context.Context, actuator.DeltaApplyRequest) (int, error) {
+	return 0, nil
+}
+
+func (s *stubActuator) IsAllConverged(context.Context, *kaprov1alpha1.MemberCluster, map[string]string) (bool, error) {
+	return true, nil
 }
 
 type recordingGateServer struct {

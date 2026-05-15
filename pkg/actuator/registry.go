@@ -27,6 +27,24 @@ func (r *Registry) Register(name string, a Actuator) error {
 	return nil
 }
 
+// Replace updates an existing actuator registration.
+func (r *Registry) Replace(name string, a Actuator) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.actuators[name]; !ok {
+		return fmt.Errorf("actuator %q is not registered", name)
+	}
+	r.actuators[name] = a
+	return nil
+}
+
+// Unregister removes an actuator registration when present.
+func (r *Registry) Unregister(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.actuators, name)
+}
+
 // Resolve returns the actuator registered under the given name.
 func (r *Registry) Resolve(name string) (Actuator, error) {
 	r.mu.RLock()

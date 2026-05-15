@@ -146,13 +146,15 @@ func main() {
 	}
 
 	ctx := context.Background()
+	var pluginReloader *pluginadapter.RuntimeReloader
 	if pluginadapter.EnabledFromEnv() {
-		registered, err := pluginadapter.Registrar{}.RegisterReady(ctx, mgr.GetAPIReader(), actuatorReg, gateRegistry)
+		pluginReloader = pluginadapter.NewRuntimeReloader(actuatorReg, gateRegistry)
+		registered, err := pluginReloader.SyncReady(ctx, mgr.GetAPIReader())
 		if err != nil {
 			log.Error(err, "failed to register plugin gateway adapters")
 			os.Exit(1)
 		}
-		log.Info("plugin gateway enabled", "registered", registered)
+		log.Info("plugin gateway enabled", "registered", registered, "dynamicReload", true)
 	}
 
 	cc := cm.ControllerContext{
@@ -160,6 +162,7 @@ func main() {
 		Recorder:         recorder,
 		ActuatorRegistry: actuatorReg,
 		GateRegistry:     gateRegistry,
+		PluginReloader:   pluginReloader,
 		Notifier: &enginenotifier.Notifier{
 			SecretName: "kapro-notifications-secret",
 			Namespace:  podNS,

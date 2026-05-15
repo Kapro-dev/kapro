@@ -16,9 +16,12 @@ import (
 	"context"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
 	"kapro.io/kapro/pkg/notification"
@@ -30,6 +33,12 @@ import (
 //	enabled bool — false means the controller was intentionally skipped (not an error).
 //	err          — hard failure; the manager must abort.
 type InitFunc func(ctx context.Context, cc ControllerContext) (enabled bool, err error)
+
+// PluginReloader reconciles ready PluginRegistrations into runtime registries.
+type PluginReloader interface {
+	Reconcile(ctx context.Context, c client.Reader, reg kaprov1alpha1.PluginRegistration) (bool, error)
+	Unregister(key types.NamespacedName)
+}
 
 // ControllerContext carries all shared dependencies injected into every
 // controller at startup.  Adding a dependency here makes it available to all
@@ -55,6 +64,10 @@ type ControllerContext struct {
 	// External gate types register at startup:
 	// cc.GateRegistry.Register("my-type", impl). Never nil in production.
 	GateRegistry *gate.Registry
+
+	// PluginReloader reconciles ready PluginRegistrations into runtime registries
+	// when the plugin gateway preview is explicitly enabled.
+	PluginReloader PluginReloader
 
 	// Notifier sends promotion lifecycle events to external channels.
 	Notifier notification.Notifier

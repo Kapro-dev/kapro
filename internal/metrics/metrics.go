@@ -183,13 +183,13 @@ var (
 		[]string{"type", "name", "method", "result"},
 	)
 
-	// PluginRuntimeRegistered reports startup-time plugin runtime registrations by type.
+	// PluginRuntimeRegistered reports plugin runtime registrations by type.
 	PluginRuntimeRegistered = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "kapro",
 			Subsystem: "plugin",
 			Name:      "runtime_registered",
-			Help:      "Number of plugin adapters registered at operator startup by plugin type.",
+			Help:      "Number of plugin adapters currently registered by plugin type.",
 		},
 		[]string{"type"},
 	)

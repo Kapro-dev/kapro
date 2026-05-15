@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -17,17 +18,24 @@ import (
 	"kapro.io/kapro/internal/plugin/probe"
 )
 
-// PluginRegistrationReconciler probes external plugin registrations and records
-// readiness status. It does not register plugins into release execution.
+// PluginRegistrationReconciler probes external plugin registrations, records
+// readiness status, and asks the optional runtime reloader to reconcile ready plugins.
 type PluginRegistrationReconciler struct {
 	client.Client
-	Recorder record.EventRecorder
-	Prober   PluginProber
+	Recorder        record.EventRecorder
+	Prober          PluginProber
+	RuntimeReloader RuntimePluginReloader
 }
 
 // PluginProber is the dependency used to probe plugin endpoints.
 type PluginProber interface {
 	Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration) probe.Result
+}
+
+// RuntimePluginReloader reconciles probed PluginRegistrations into runtime registries.
+type RuntimePluginReloader interface {
+	Reconcile(ctx context.Context, c client.Reader, reg kaprov1alpha1.PluginRegistration) (bool, error)
+	Unregister(key types.NamespacedName)
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=pluginregistrations,verbs=get;list;watch
@@ -39,6 +47,9 @@ func (r *PluginRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	var reg kaprov1alpha1.PluginRegistration
 	if err := r.Get(ctx, req.NamespacedName, &reg); err != nil {
+		if client.IgnoreNotFound(err) == nil && r.RuntimeReloader != nil {
+			r.RuntimeReloader.Unregister(req.NamespacedName)
+		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -100,6 +111,12 @@ func (r *PluginRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 	r.Recorder.Event(&reg, eventType, result.Reason, result.Message)
 	log.Info("plugin registration probed", "name", reg.Name, "type", reg.Spec.Type, "ready", result.Ready, "reason", result.Reason)
+
+	if r.RuntimeReloader != nil {
+		if _, err := r.RuntimeReloader.Reconcile(ctx, r.Client, reg); err != nil {
+			return ctrl.Result{}, fmt.Errorf("reconcile runtime plugin registration: %w", err)
+		}
+	}
 
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }

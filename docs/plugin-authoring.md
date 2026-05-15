@@ -9,9 +9,10 @@ Kapro plugins implement one narrow extension contract:
 Built-in actuators, gates, and planners remain the default execution path.
 External plugin runtime registration is an API preview and is enabled explicitly
 with `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. When enabled, the operator registers
-ready actuator and gate `PluginRegistration` objects once at startup. Planner
-registrations are probed for capabilities and readiness, but runtime planner
-dispatch remains future work. Dynamic hot reload is future work.
+ready actuator and gate `PluginRegistration` objects at startup and reconciles
+generation-fresh readiness changes while it runs. Planner registrations are
+probed for capabilities and readiness, but runtime planner dispatch remains
+future work.
 
 ## Contracts
 
@@ -50,11 +51,16 @@ spec:
   timeout: 10s
 ```
 
-`PluginRegistration` is an API preview. Runtime use is startup-time only and
-requires `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. Only actuator and gate
-registrations with `status.ready=true` and fresh `status.observedGeneration` are
-loaded into runtime registries. Planner plugins are probed and reported in
-status, but runtime planner dispatch remains future work.
+`PluginRegistration` is an API preview and runtime use requires
+`KAPRO_ENABLE_PLUGIN_GATEWAY=true`. Only actuator and gate registrations with
+`status.ready=true` and fresh `status.observedGeneration` are loaded into
+runtime registries. Ready changes are reconciled dynamically: a generation-fresh
+spec update replaces the adapter owned by that `PluginRegistration`, while
+stale, not-ready, or deleted registrations are removed best-effort from the
+runtime registry. Plugin registrations cannot replace built-in actuators or
+gates such as `push/flux`, `pull/flux`, `soak`, or `metrics`; choose a unique
+runtime `spec.name`. Planner plugins are probed and reported in status, but
+runtime planner dispatch remains future work.
 
 TLS is configured with a namespaced Secret reference because
 `PluginRegistration` is cluster-scoped:

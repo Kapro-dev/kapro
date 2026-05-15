@@ -3,8 +3,11 @@ package adapter
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"sync"
 	"time"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
@@ -16,6 +19,7 @@ import (
 	kgiv1alpha1 "kapro.io/kapro/spec/kgi/v1alpha1"
 
 	"google.golang.org/grpc"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -39,76 +43,240 @@ type Registrar struct {
 
 // RegisterReady registers ready, generation-fresh PluginRegistration objects once.
 func (r Registrar) RegisterReady(ctx context.Context, c client.Reader, actuatorReg *actuator.Registry, gateReg *gate.Registry) (int, error) {
+	return NewRuntimeReloader(actuatorReg, gateReg, r.DialOptions...).SyncReady(ctx, c)
+}
+
+// RuntimeReloader reconciles ready PluginRegistration objects into runtime registries.
+type RuntimeReloader struct {
+	DialOptions []grpc.DialOption
+
+	actuatorReg *actuator.Registry
+	gateReg     *gate.Registry
+
+	mu       sync.Mutex
+	byObject map[types.NamespacedName]runtimeRegistration
+	byType   map[kaprov1alpha1.PluginType]int
+}
+
+type runtimeRegistration struct {
+	PluginType  kaprov1alpha1.PluginType
+	Name        string
+	Fingerprint string
+	Actuator    actuator.Actuator
+	Gate        gate.Gate
+	Closer      io.Closer
+}
+
+// NewRuntimeReloader returns a runtime plugin reloader backed by the supplied registries.
+func NewRuntimeReloader(actuatorReg *actuator.Registry, gateReg *gate.Registry, dialOptions ...grpc.DialOption) *RuntimeReloader {
+	return &RuntimeReloader{
+		DialOptions: dialOptions,
+		actuatorReg: actuatorReg,
+		gateReg:     gateReg,
+		byObject:    map[types.NamespacedName]runtimeRegistration{},
+		byType:      map[kaprov1alpha1.PluginType]int{},
+	}
+}
+
+// SyncReady reconciles all PluginRegistrations visible to the reader and removes cached registrations no longer present.
+func (r *RuntimeReloader) SyncReady(ctx context.Context, c client.Reader) (int, error) {
 	var list kaprov1alpha1.PluginRegistrationList
 	if err := c.List(ctx, &list); err != nil {
 		return 0, fmt.Errorf("list plugin registrations: %w", err)
 	}
 
 	registered := 0
-	registeredByType := map[kaprov1alpha1.PluginType]int{
-		kaprov1alpha1.PluginTypeActuator: 0,
-		kaprov1alpha1.PluginTypeGate:     0,
-	}
-	defer func() {
-		for pluginType, count := range registeredByType {
-			kaprometrics.PluginRuntimeRegistered.WithLabelValues(string(pluginType)).Set(float64(count))
-		}
-	}()
+	seen := make(map[types.NamespacedName]struct{}, len(list.Items))
 	for _, reg := range list.Items {
-		if !isReadyForRuntime(reg) {
-			continue
+		key := objectKey(reg)
+		seen[key] = struct{}{}
+		changed, err := r.Reconcile(ctx, c, reg)
+		if err != nil {
+			return registered, err
 		}
-		switch reg.Spec.Type {
-		case kaprov1alpha1.PluginTypeActuator:
-			if actuatorReg == nil {
-				return registered, fmt.Errorf("actuator registry is nil")
-			}
-			conn, err := r.dial(ctx, c, reg)
-			if err != nil {
-				return registered, fmt.Errorf("dial actuator plugin %q: %w", reg.Name, err)
-			}
-			adapter, err := NewActuatorAdapter(reg, kaiv1alpha1.NewActuatorServiceClient(conn))
-			if err != nil {
-				_ = conn.Close()
-				return registered, fmt.Errorf("create actuator plugin adapter for registration %q: %w", reg.Name, err)
-			}
-			adapter.conn = conn
-			if err := actuatorReg.Register(reg.Spec.Name, adapter); err != nil {
-				_ = conn.Close()
-				return registered, fmt.Errorf("register actuator plugin %q: %w", reg.Spec.Name, err)
-			}
+		if changed && isReadyForRuntime(reg) && supportsRuntime(reg.Spec.Type) {
 			registered++
-			registeredByType[kaprov1alpha1.PluginTypeActuator]++
-		case kaprov1alpha1.PluginTypeGate:
-			if gateReg == nil {
-				return registered, fmt.Errorf("gate registry is nil")
-			}
-			conn, err := r.dial(ctx, c, reg)
-			if err != nil {
-				return registered, fmt.Errorf("dial gate plugin %q: %w", reg.Name, err)
-			}
-			adapter, err := NewGateAdapter(reg, kgiv1alpha1.NewGateServiceClient(conn))
-			if err != nil {
-				_ = conn.Close()
-				return registered, fmt.Errorf("create gate plugin adapter for registration %q: %w", reg.Name, err)
-			}
-			adapter.conn = conn
-			if err := gateReg.Register(reg.Spec.Name, adapter); err != nil {
-				_ = conn.Close()
-				return registered, fmt.Errorf("register gate plugin %q: %w", reg.Spec.Name, err)
-			}
-			registered++
-			registeredByType[kaprov1alpha1.PluginTypeGate]++
-		case kaprov1alpha1.PluginTypePlanner:
-			// Planner runtime dispatch is not wired yet. The registration
-			// controller still probes planner plugins and records readiness.
-			continue
 		}
 	}
+	r.mu.Lock()
+	for key := range r.byObject {
+		if _, ok := seen[key]; !ok {
+			r.unregisterLocked(key)
+		}
+	}
+	r.observeLocked()
+	r.mu.Unlock()
 	return registered, nil
 }
 
-func (r Registrar) dial(ctx context.Context, c client.Reader, reg kaprov1alpha1.PluginRegistration) (*grpc.ClientConn, error) {
+// Reconcile registers, updates, or unregisters one PluginRegistration.
+func (r *RuntimeReloader) Reconcile(ctx context.Context, c client.Reader, reg kaprov1alpha1.PluginRegistration) (bool, error) {
+	key := objectKey(reg)
+	if !isReadyForRuntime(reg) || !supportsRuntime(reg.Spec.Type) {
+		r.Unregister(key)
+		return false, nil
+	}
+	fingerprint, err := registrationFingerprint(reg)
+	if err != nil {
+		return false, err
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	current, exists := r.byObject[key]
+	if exists && current.PluginType == reg.Spec.Type && current.Name == reg.Spec.Name && current.Fingerprint == fingerprint {
+		r.observeLocked()
+		return false, nil
+	}
+
+	conn, err := r.dial(ctx, c, reg)
+	if err != nil {
+		return false, fmt.Errorf("dial %s plugin %q: %w", reg.Spec.Type, reg.Name, err)
+	}
+
+	record, err := r.registerRuntime(reg, fingerprint, conn)
+	if err != nil {
+		_ = conn.Close()
+		return false, err
+	}
+
+	if old, ok := r.byObject[key]; ok {
+		if old.Name == record.Name && old.PluginType == record.PluginType {
+			if err := r.replaceLocked(record); err != nil {
+				_ = record.Closer.Close()
+				r.observeLocked()
+				return false, err
+			}
+			if old.Closer != nil {
+				_ = old.Closer.Close()
+			}
+			r.byObject[key] = record
+			r.observeLocked()
+			return true, nil
+		}
+		if err := r.registerLocked(record); err != nil {
+			_ = record.Closer.Close()
+			r.observeLocked()
+			return false, err
+		}
+		r.unregisterLocked(key)
+		r.byObject[key] = record
+		r.byType[record.PluginType]++
+		r.observeLocked()
+		return true, nil
+	}
+	if err := r.registerLocked(record); err != nil {
+		_ = record.Closer.Close()
+		r.observeLocked()
+		return false, err
+	}
+	r.byObject[key] = record
+	r.byType[reg.Spec.Type]++
+	r.observeLocked()
+	return true, nil
+}
+
+// Unregister removes a cached runtime registration by object key.
+func (r *RuntimeReloader) Unregister(key types.NamespacedName) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.unregisterLocked(key)
+	r.observeLocked()
+}
+
+func (r *RuntimeReloader) registerRuntime(reg kaprov1alpha1.PluginRegistration, fingerprint string, conn *grpc.ClientConn) (runtimeRegistration, error) {
+	record := runtimeRegistration{
+		PluginType:  reg.Spec.Type,
+		Name:        reg.Spec.Name,
+		Fingerprint: fingerprint,
+		Closer:      conn,
+	}
+	switch reg.Spec.Type {
+	case kaprov1alpha1.PluginTypeActuator:
+		adapter, err := NewActuatorAdapter(reg, kaiv1alpha1.NewActuatorServiceClient(conn))
+		if err != nil {
+			return runtimeRegistration{}, fmt.Errorf("create actuator plugin adapter for registration %q: %w", reg.Name, err)
+		}
+		adapter.conn = conn
+		record.Actuator = adapter
+		record.Closer = conn
+	case kaprov1alpha1.PluginTypeGate:
+		adapter, err := NewGateAdapter(reg, kgiv1alpha1.NewGateServiceClient(conn))
+		if err != nil {
+			return runtimeRegistration{}, fmt.Errorf("create gate plugin adapter for registration %q: %w", reg.Name, err)
+		}
+		adapter.conn = conn
+		record.Gate = adapter
+		record.Closer = conn
+	}
+	return record, nil
+}
+
+func (r *RuntimeReloader) registerLocked(record runtimeRegistration) error {
+	switch record.PluginType {
+	case kaprov1alpha1.PluginTypeActuator:
+		if r.actuatorReg == nil {
+			return fmt.Errorf("actuator registry is nil")
+		}
+		return r.actuatorReg.Register(record.Name, record.Actuator)
+	case kaprov1alpha1.PluginTypeGate:
+		if r.gateReg == nil {
+			return fmt.Errorf("gate registry is nil")
+		}
+		return r.gateReg.Register(record.Name, record.Gate)
+	default:
+		return fmt.Errorf("unsupported plugin type %q", record.PluginType)
+	}
+}
+
+func (r *RuntimeReloader) replaceLocked(record runtimeRegistration) error {
+	switch record.PluginType {
+	case kaprov1alpha1.PluginTypeActuator:
+		if r.actuatorReg == nil {
+			return fmt.Errorf("actuator registry is nil")
+		}
+		return r.actuatorReg.Replace(record.Name, record.Actuator)
+	case kaprov1alpha1.PluginTypeGate:
+		if r.gateReg == nil {
+			return fmt.Errorf("gate registry is nil")
+		}
+		return r.gateReg.Replace(record.Name, record.Gate)
+	default:
+		return fmt.Errorf("unsupported plugin type %q", record.PluginType)
+	}
+}
+
+func (r *RuntimeReloader) unregisterLocked(key types.NamespacedName) {
+	record, ok := r.byObject[key]
+	if !ok {
+		return
+	}
+	switch record.PluginType {
+	case kaprov1alpha1.PluginTypeActuator:
+		if r.actuatorReg != nil {
+			r.actuatorReg.Unregister(record.Name)
+		}
+	case kaprov1alpha1.PluginTypeGate:
+		if r.gateReg != nil {
+			r.gateReg.Unregister(record.Name)
+		}
+	}
+	if record.Closer != nil {
+		_ = record.Closer.Close()
+	}
+	delete(r.byObject, key)
+	if r.byType[record.PluginType] > 0 {
+		r.byType[record.PluginType]--
+	}
+}
+
+func (r *RuntimeReloader) observeLocked() {
+	for _, pluginType := range []kaprov1alpha1.PluginType{kaprov1alpha1.PluginTypeActuator, kaprov1alpha1.PluginTypeGate} {
+		kaprometrics.PluginRuntimeRegistered.WithLabelValues(string(pluginType)).Set(float64(r.byType[pluginType]))
+	}
+}
+
+func (r *RuntimeReloader) dial(ctx context.Context, c client.Reader, reg kaprov1alpha1.PluginRegistration) (*grpc.ClientConn, error) {
 	if err := validateRegistration(reg); err != nil {
 		return nil, err
 	}
@@ -134,6 +302,22 @@ func (r Registrar) dial(ctx context.Context, c client.Reader, reg kaprov1alpha1.
 
 func isReadyForRuntime(reg kaprov1alpha1.PluginRegistration) bool {
 	return reg.Status.Ready && reg.Status.ObservedGeneration == reg.Generation
+}
+
+func supportsRuntime(pluginType kaprov1alpha1.PluginType) bool {
+	return pluginType == kaprov1alpha1.PluginTypeActuator || pluginType == kaprov1alpha1.PluginTypeGate
+}
+
+func objectKey(reg kaprov1alpha1.PluginRegistration) types.NamespacedName {
+	return types.NamespacedName{Namespace: reg.Namespace, Name: reg.Name}
+}
+
+func registrationFingerprint(reg kaprov1alpha1.PluginRegistration) (string, error) {
+	data, err := json.Marshal(reg.Spec)
+	if err != nil {
+		return "", fmt.Errorf("marshal plugin registration spec: %w", err)
+	}
+	return string(data), nil
 }
 
 func validateRegistration(reg kaprov1alpha1.PluginRegistration) error {

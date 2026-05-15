@@ -124,8 +124,9 @@ func startApprovalController(_ context.Context, cc ControllerContext) (bool, err
 // It probes capabilities and records readiness for optional plugin runtime registration.
 func startPluginRegistrationController(_ context.Context, cc ControllerContext) (bool, error) {
 	if err := (&controller.PluginRegistrationReconciler{
-		Client:   cc.Manager.GetClient(),
-		Recorder: cc.Recorder,
+		Client:          cc.Manager.GetClient(),
+		Recorder:        cc.Recorder,
+		RuntimeReloader: cc.PluginReloader,
 	}).SetupWithManager(cc.Manager); err != nil {
 		return false, err
 	}

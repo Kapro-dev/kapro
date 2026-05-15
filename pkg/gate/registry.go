@@ -27,6 +27,24 @@ func (r *Registry) Register(name string, g Gate) error {
 	return nil
 }
 
+// Replace updates an existing gate registration.
+func (r *Registry) Replace(name string, g Gate) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.gates[name]; !ok {
+		return fmt.Errorf("gate %q is not registered", name)
+	}
+	r.gates[name] = g
+	return nil
+}
+
+// Unregister removes a gate registration when present.
+func (r *Registry) Unregister(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.gates, name)
+}
+
 // MustRegister registers a gate or panics.
 func (r *Registry) MustRegister(name string, g Gate) {
 	if err := r.Register(name, g); err != nil {
