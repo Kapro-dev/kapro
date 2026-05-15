@@ -26,6 +26,11 @@ Existing inline gate notifications remain supported.
 | KGI gate | `spec/kgi/v1alpha1/gate.proto` | `kapro.io/kapro/spec/kgi/v1alpha1` |
 | KPI planner | `spec/kpi/v1alpha1/planner.proto` | `kapro.io/kapro/spec/kpi/v1alpha1` |
 
+Compatibility is based on the `contract_version` returned by
+`GetCapabilities`, not the plugin implementation version. See
+`docs/plugin-compatibility.md` for the supported version matrix and probe
+status policy.
+
 Generate stubs with:
 
 ```bash
@@ -60,6 +65,10 @@ requires `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. Only actuator and gate
 registrations with `status.ready=true` and fresh `status.observedGeneration` are
 loaded into runtime registries. Planner plugins are probed and reported in
 status, but runtime planner dispatch remains future work.
+
+When a plugin omits `contract_version` or reports an unsupported version,
+`status.ready` is false, `Ready=False`, `Compatible=False`, and the condition
+message lists the supported contract versions.
 
 TLS is configured with a namespaced Secret reference because
 `PluginRegistration` is cluster-scoped:

@@ -42,6 +42,9 @@ func TestProbeActuatorCapabilities(t *testing.T) {
 	if result.Version != "actuator-test" {
 		t.Fatalf("Version = %q", result.Version)
 	}
+	if result.ContractVersion != ContractVersion() {
+		t.Fatalf("ContractVersion = %q", result.ContractVersion)
+	}
 	if len(result.Capabilities) != 2 {
 		t.Fatalf("Capabilities = %v", result.Capabilities)
 	}
@@ -182,28 +185,67 @@ func TestProbeValidationFailures(t *testing.T) {
 	}
 }
 
-func TestProbeRejectsContractMismatch(t *testing.T) {
-	listener := bufconn.Listen(1024 * 1024)
-	server := grpc.NewServer()
-	kaiv1alpha1.RegisterActuatorServiceServer(server, fakeActuatorServer{contractVersion: "v2"})
-	go func() { _ = server.Serve(listener) }()
-	defer server.Stop()
-
-	result := Prober{DialOptions: bufDialOptions(listener)}.Probe(context.Background(), kaprov1alpha1.PluginRegistration{
-		Spec: kaprov1alpha1.PluginRegistrationSpec{
-			Type:     kaprov1alpha1.PluginTypeActuator,
-			Name:     "argo/pull",
-			Protocol: kaprov1alpha1.PluginProtocolGRPC,
-			Endpoint: "bufnet",
-			Timeout:  "1s",
+func TestProbeContractVersionPolicy(t *testing.T) {
+	tests := []struct {
+		name            string
+		contractVersion string
+		wantReady       bool
+		wantReason      string
+		wantMessage     string
+	}{
+		{
+			name:            "supported",
+			contractVersion: ContractVersion(),
+			wantReady:       true,
+			wantReason:      "ProbeSucceeded",
 		},
-	})
-
-	if result.Ready {
-		t.Fatal("Ready = true")
+		{
+			name:            "unsupported",
+			contractVersion: "v2",
+			wantReason:      "UnsupportedContractVersion",
+			wantMessage:     "unsupported KAI contract version \"v2\"",
+		},
+		{
+			name:        "missing",
+			wantReason:  "MissingContractVersion",
+			wantMessage: "did not report KAI contract version",
+		},
 	}
-	if result.Reason != "ContractMismatch" {
-		t.Fatalf("Reason = %q", result.Reason)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			listener := bufconn.Listen(1024 * 1024)
+			server := grpc.NewServer()
+			kaiv1alpha1.RegisterActuatorServiceServer(server, fakeActuatorServer{
+				contractVersion:     tt.contractVersion,
+				omitContractVersion: tt.contractVersion == "",
+			})
+			go func() { _ = server.Serve(listener) }()
+			defer server.Stop()
+
+			result := Prober{DialOptions: bufDialOptions(listener)}.Probe(context.Background(), kaprov1alpha1.PluginRegistration{
+				Spec: kaprov1alpha1.PluginRegistrationSpec{
+					Type:     kaprov1alpha1.PluginTypeActuator,
+					Name:     "argo/pull",
+					Protocol: kaprov1alpha1.PluginProtocolGRPC,
+					Endpoint: "bufnet",
+					Timeout:  "1s",
+				},
+			})
+
+			if result.Ready != tt.wantReady {
+				t.Fatalf("Ready = %v, want %v; reason=%s message=%s", result.Ready, tt.wantReady, result.Reason, result.Message)
+			}
+			if result.Reason != tt.wantReason {
+				t.Fatalf("Reason = %q, want %q", result.Reason, tt.wantReason)
+			}
+			if result.ContractVersion != tt.contractVersion {
+				t.Fatalf("ContractVersion = %q, want %q", result.ContractVersion, tt.contractVersion)
+			}
+			if tt.wantMessage != "" && !strings.Contains(result.Message, tt.wantMessage) {
+				t.Fatalf("Message = %q, want to contain %q", result.Message, tt.wantMessage)
+			}
+		})
 	}
 }
 
@@ -249,13 +291,17 @@ func bufDialOptions(listener *bufconn.Listener) []grpc.DialOption {
 
 type fakeActuatorServer struct {
 	kaiv1alpha1.UnimplementedActuatorServiceServer
-	contractVersion string
+	contractVersion     string
+	omitContractVersion bool
 }
 
 func (s fakeActuatorServer) GetCapabilities(context.Context, *kaiv1alpha1.GetCapabilitiesRequest) (*kaiv1alpha1.GetCapabilitiesResponse, error) {
 	version := ContractVersion()
 	if s.contractVersion != "" {
 		version = s.contractVersion
+	}
+	if s.omitContractVersion {
+		version = ""
 	}
 	return &kaiv1alpha1.GetCapabilitiesResponse{
 		ContractVersion: version,

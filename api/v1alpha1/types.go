@@ -28,6 +28,8 @@ const (
 	// ConditionTypeStalled indicates the object cannot progress without external intervention.
 	// True when stuck (e.g. missing artifact, gate failure), False when healthy or recovering.
 	ConditionTypeStalled = "Stalled"
+	// ConditionTypeCompatible indicates a plugin reports a supported extension contract version.
+	ConditionTypeCompatible = "Compatible"
 )
 
 // ---- Shared cluster types ---------------------------------------------------
@@ -1829,6 +1831,8 @@ type PluginRegistrationStatus struct {
 	LastSeen string `json:"lastSeen,omitempty"`
 	// Version is the plugin-reported implementation version.
 	Version string `json:"version,omitempty"`
+	// ContractVersion is the plugin-reported KAI, KGI, or KPI contract version.
+	ContractVersion string `json:"contractVersion,omitempty"`
 	// Capabilities are plugin-reported feature names.
 	Capabilities []string `json:"capabilities,omitempty"`
 	// Conditions summarize plugin registration readiness.

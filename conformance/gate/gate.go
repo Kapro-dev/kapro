@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	"kapro.io/kapro/pkg/plugincompat"
 	kgiv1alpha1 "kapro.io/kapro/spec/kgi/v1alpha1"
 
 	"google.golang.org/protobuf/proto"
@@ -43,6 +45,19 @@ func Run(t *testing.T, client kgiv1alpha1.GateServiceClient, scenario Scenario) 
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), scenario.Timeout)
 	defer cancel()
+
+	t.Run("GetCapabilitiesReturnsSupportedContractVersion", func(t *testing.T) {
+		resp, err := client.GetCapabilities(ctx, &kgiv1alpha1.GetCapabilitiesRequest{})
+		if err != nil {
+			t.Fatalf("GetCapabilities returned error: %v", err)
+		}
+		if resp == nil {
+			t.Fatal("GetCapabilities returned nil response")
+		}
+		if !plugincompat.IsContractVersionSupported(kaprov1alpha1.PluginTypeGate, resp.GetContractVersion()) {
+			t.Fatalf("contract_version = %q, supported versions = %v", resp.GetContractVersion(), plugincompat.SupportedKGIContractVersions())
+		}
+	})
 
 	t.Run("EvaluateReturnsValidPhaseAndDoesNotMutateRequest", func(t *testing.T) {
 		req := cloneEvaluate(scenario.Evaluate)
