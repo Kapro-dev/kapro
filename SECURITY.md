@@ -1,5 +1,9 @@
 # Security Policy
 
+Kapro is a Kubernetes promotion control plane. Treat access to Kapro CRDs,
+plugin registration, release triggers, approvals, and referenced Secrets as
+production-change authority.
+
 ## Supported Versions
 
 | Version | Supported |
@@ -27,9 +31,18 @@ You will receive a response within 72 hours. We follow responsible disclosure â€
 - No static credentials â€” uses Kubernetes ServiceAccount tokens (OIDC/Workload Identity)
 - CRDs are the only cross-cluster communication channel
 - The control plane never initiates connections to workload clusters
+- Autonomous release creation is suspended by default and should require OCI
+  digest pinning plus signature verification
+- External plugins are outside the core trust boundary and must be registered
+  only by platform administrators
+- Secrets are referenced by name and namespace; credential values must not be
+  embedded in CRD specs, status, Events, logs, or notifications
 
 ## Security Architecture
 
 Kapro's RBAC, multi-tenancy, plugin trust boundary, OCI signature model,
 webhook security, Secret handling, and threat model are documented in
-[docs/security-model.md](docs/security-model.md) and [docs/security.md](docs/security.md).
+[docs/security.md](docs/security.md), [docs/security-model.md](docs/security-model.md),
+and [docs/rbac-tenancy.md](docs/rbac-tenancy.md). Plugin trust details are in
+[docs/plugin-authoring.md](docs/plugin-authoring.md), and autonomous release
+creation policy is in [docs/ADR-002-release-trigger.md](docs/ADR-002-release-trigger.md).

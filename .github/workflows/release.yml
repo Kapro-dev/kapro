@@ -37,6 +37,9 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
 
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
       - name: Build and push operator image
         uses: docker/build-push-action@v5
         id: build-operator
@@ -59,10 +62,17 @@ jobs:
         run: |
           cosign sign --yes ghcr.io/kapro-dev/kapro-operator@${{ steps.build-operator.outputs.digest }}
 
+      - name: Package Helm chart
+        run: |
+          mkdir -p dist
+          helm package charts/kapro-operator --destination dist
+          shasum -a 256 dist/* > dist/checksums.txt
+
       - name: Create GitHub Release
-        uses: goreleaser/goreleaser-action@v5
+        uses: softprops/action-gh-release@v2
         with:
-          version: latest
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          generate_release_notes: true
+          body_path: docs/release-v0.1.0-alpha.md
+          files: |
+            dist/*

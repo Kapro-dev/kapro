@@ -199,8 +199,11 @@ spec:
             - type
             type: object
             x-kubernetes-validations:
-            - message: webhook config is required when type=webhook
-              rule: self.type != 'webhook' || has(self.webhook)
+            - message: webhook config requires webhook.url or a secretRef with purpose=webhookURL
+                when type=webhook
+              rule: self.type != 'webhook' || (has(self.webhook) && (has(self.webhook.url)
+                || (has(self.secretRefs) && self.secretRefs.exists(s, s.purpose ==
+                'webhookURL'))))
             - message: slack config is required when type=slack
               rule: self.type != 'slack' || has(self.slack)
             - message: email config is required when type=email

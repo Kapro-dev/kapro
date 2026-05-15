@@ -46,6 +46,9 @@ go run ./examples/plugins/capacity-planner --listen :9090
 
 ## Registration
 
+The standalone manifest is
+`examples/plugins/capacity-planner-registration.yaml`.
+
 ```yaml
 apiVersion: kapro.io/v1alpha1
 kind: PluginRegistration

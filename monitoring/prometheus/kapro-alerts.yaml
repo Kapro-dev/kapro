@@ -9,6 +9,7 @@ groups:
         annotations:
           summary: Kapro has active releases for more than 30 minutes
           description: Check Release and ReleaseTarget status for blocked gates, pending approvals, or actuator failures.
+          runbook: docs/operations.md#runbook-stuck-release
 
       - alert: KaproGateFailureRateHigh
         expr: |
@@ -23,6 +24,7 @@ groups:
         annotations:
           summary: Kapro gate failure rate is above 10 percent
           description: Gate failures or errors are blocking a significant share of promotion attempts.
+          runbook: docs/operations.md#runbook-gate-failure
 
       - alert: KaproPluginProbeFailures
         expr: |
@@ -35,6 +37,7 @@ groups:
         annotations:
           summary: Kapro plugin probe failures detected
           description: One or more registered plugins are failing capability probes or reporting not-ready.
+          runbook: docs/operations.md#runbook-plugin-not-ready
 
       - alert: KaproReleaseTriggerBlocked
         expr: rate(kapro_controller_reconciles_total{controller="release_trigger",result="error"}[10m]) > 0
@@ -44,6 +47,7 @@ groups:
         annotations:
           summary: Kapro ReleaseTrigger reconciles are failing
           description: Automatic release creation may be blocked by source, signature, cooldown, or status update errors.
+          runbook: docs/operations.md#runbook-blocked-releasetrigger
 
       - alert: KaproRolloutDurationP95High
         expr: |
@@ -57,6 +61,7 @@ groups:
         annotations:
           summary: Kapro rollout stage p95 is above one hour
           description: Stage duration is above the expected fleet rollout objective for pipeline {{ $labels.pipeline }}.
+          runbook: docs/controller-scalability.md#workqueue-tuning
 
       - alert: KaproControllerReconcileErrors
         expr: sum(rate(kapro_controller_reconciles_total{result="error"}[10m])) by (controller) > 0
@@ -66,3 +71,4 @@ groups:
         annotations:
           summary: Kapro controller reconcile errors detected
           description: Controller {{ $labels.controller }} is returning reconcile errors.
+          runbook: docs/operations.md#first-response

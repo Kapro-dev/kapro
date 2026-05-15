@@ -52,6 +52,16 @@ kubectl auth can-i get releases.kapro.io \
   --as=system:serviceaccount:kapro-system:kapro-kapro-operator
 ```
 
+For clean-clone verification, use the repository helper:
+
+```bash
+scripts/verify-install.sh render
+scripts/verify-install.sh cluster
+```
+
+See [Clean-Clone Install Verification](install-verification.md) for the full
+fresh clone, Kind, image override, cleanup, and demo validation workflow.
+
 Render checks that do not require a cluster:
 
 ```bash

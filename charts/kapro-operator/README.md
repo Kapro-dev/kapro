@@ -56,6 +56,13 @@ kubectl kustomize config/default
 go test ./...
 ```
 
+The repository install verifier wraps the chart render checks and CRD sync
+check:
+
+```bash
+scripts/verify-install.sh render
+```
+
 ## Plugin Gateway Preview
 
 The runtime plugin gateway is disabled by default and this chart does not

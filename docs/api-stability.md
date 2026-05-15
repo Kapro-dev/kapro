@@ -1,9 +1,13 @@
 # API Stability and Upgrade Policy
 
-Kapro uses explicit API maturity levels for CRDs, Go extension packages, and
-language-neutral plugin contracts. The maturity level describes compatibility
-expectations for users and plugin authors; it does not change Kubernetes API
-version strings by itself.
+Kapro uses explicit API maturity levels for CRDs, Go extension packages,
+lifecycle events, and language-neutral plugin contracts. The maturity level
+describes compatibility expectations for users and plugin authors; it does not
+change Kubernetes API version strings by itself.
+
+The current release line is pre-stable. `v0.1.0-alpha` is the first planned
+version anchor, not a promise that all `kapro.io/v1alpha1` fields are stable.
+Release notes are the binding upgrade record for each tag.
 
 ## Maturity Levels
 
@@ -24,6 +28,7 @@ Preview. The table below is the source of truth for the current contract level.
 | Core promotion CRDs | `api/v1alpha1` `KaproApp`, `Pipeline`, `Release`, `ReleaseTarget`, `MemberCluster`, `Approval`, `AgentPolicy` | Alpha |
 | ReleaseTrigger CRD | `api/v1alpha1` `ReleaseTrigger` | Preview |
 | PluginRegistration CRD | `api/v1alpha1` `PluginRegistration` | Preview |
+| Notification provider/policy CRDs | `api/v1alpha1` `NotificationProvider`, `NotificationPolicy` | Preview |
 | In-process actuator interface | `pkg/actuator` | Preview |
 | In-process gate interface | `pkg/gate` | Preview |
 | In-process planner interface | `pkg/planner` | Preview |
@@ -38,18 +43,28 @@ stable API version. A surface can be Preview while the Kubernetes version is
 still `v1alpha1`; the table above is the source of truth for compatibility
 expectations.
 
+No public surface is Stable in `v0.1.0-alpha`.
+
 ## Compatibility Rules
 
-Kapro treats these changes as backward-compatible for Preview and Stable
+Kapro treats these changes as schema-compatible for Preview and Stable CRD
 surfaces:
 
 - adding optional CRD fields with safe defaults;
 - adding status fields, conditions, reasons, or events;
+- widening validation so previously valid objects remain valid;
+- adding printer columns, categories, labels, annotations, or defaults that do
+  not change reconcile behavior for existing objects.
+
+Kapro treats these changes as contract-compatible for Preview and Stable plugin,
+Go, and event surfaces:
+
 - adding enum values when existing consumers are required to ignore unknown
   values;
 - adding proto fields with new field numbers;
 - adding Go interface helpers that do not change existing method signatures;
-- tightening validation only when existing valid examples continue to pass.
+- adding lifecycle event payload fields while preserving documented event type
+  names and existing field meanings.
 
 Kapro treats these changes as breaking unless an API version, overlap period, or
 major-version migration covers them:
@@ -59,8 +74,12 @@ major-version migration covers them:
 - changing the semantic meaning of an existing field;
 - changing a default in a way that alters an existing rollout, gate, approval,
   or rollback workflow;
+- tightening validation so an object accepted by the previous release is
+  rejected by the new release;
 - changing generated object names or labels that operators are expected to
   select on;
+- changing documented lifecycle event type names or the meaning of documented
+  payload fields;
 - changing plugin request or response requirements in a way that makes an
   existing conformant plugin fail.
 
@@ -89,7 +108,26 @@ Deprecation follows these rules:
   where removal is allowed.
 
 Alpha surfaces may change faster, but changes that affect committed examples,
-published manifests, or conformance tests still include migration notes.
+published manifests, generated CRDs, stored status expectations, or conformance
+tests still include migration notes.
+
+## Schema Compatibility Expectations
+
+Kapro does not publish conversion webhooks in `v0.1.0-alpha`. Operators should
+therefore assume that the storage schema in a tagged release must be readable by
+that same operator version and by any downgrade version named in release notes.
+
+CRD schema changes should follow these rules:
+
+- Prefer additive spec fields with explicit safe defaults.
+- Keep status changes additive and preserve the meaning of existing conditions,
+  reasons, phases, and counters.
+- Do not repurpose fields, enum values, labels, annotations, or generated names.
+- Document any validation tightening as a migration even when the affected input
+  was never intended to be valid.
+- Document downgrade compatibility whenever stored spec or status shape changes.
+- Include example-manifest updates in the same pull request as schema changes
+  when the example exercises the changed field.
 
 ## Change Process
 
@@ -102,6 +140,9 @@ Changes to Preview or Stable surfaces should include:
 4. Upgrade instructions for existing hubs when an operator action is required.
 5. A compatibility note explaining why the change is backward-compatible, or
    why it is intentionally breaking.
+
+Every release should also update `CHANGELOG.md` using the structure in
+`docs/release-notes.md`.
 
 For proto contracts, new fields use new field numbers and removed fields are
 reserved. For CRDs, new durable concepts should prefer additive fields or a new
