@@ -15,6 +15,7 @@ import (
 // ActuatorAdapter adapts a KAI gRPC plugin to pkg/actuator.Actuator.
 type ActuatorAdapter struct {
 	name       string
+	endpoint   string
 	client     kaiv1alpha1.ActuatorServiceClient
 	timeout    time.Duration
 	parameters map[string]string
@@ -38,6 +39,7 @@ func NewActuatorAdapter(reg kaprov1alpha1.PluginRegistration, client kaiv1alpha1
 	}
 	return &ActuatorAdapter{
 		name:       reg.Spec.Name,
+		endpoint:   reg.Spec.Endpoint,
 		client:     client,
 		timeout:    timeout,
 		parameters: copyParameters(reg.Spec.Parameters),
@@ -50,6 +52,10 @@ func (a *ActuatorAdapter) Apply(ctx context.Context, req actuator.ApplyRequest) 
 	if err != nil {
 		return err
 	}
+	start := time.Now()
+	result := "success"
+	defer func() { observeRuntimeCall(kaprov1alpha1.PluginTypeActuator, a.name, "Apply", result, start) }()
+
 	rpcCtx, cancel := context.WithTimeout(ctx, a.timeout)
 	defer cancel()
 	resp, err := a.client.Apply(rpcCtx, &kaiv1alpha1.ApplyRequest{
@@ -59,10 +65,12 @@ func (a *ActuatorAdapter) Apply(ctx context.Context, req actuator.ApplyRequest) 
 		Parameters:      a.parametersWithAppKey(req.AppKey),
 	})
 	if err != nil {
-		return fmt.Errorf("apply via actuator plugin %q: %w", a.name, err)
+		result = "error"
+		return fmt.Errorf("actuator plugin %q Apply RPC to %q failed: %w", a.name, a.endpoint, err)
 	}
 	if !resp.GetAccepted() {
-		return fmt.Errorf("actuator plugin %q rejected apply: %s", a.name, resp.GetMessage())
+		result = "rejected"
+		return fmt.Errorf("actuator plugin %q rejected Apply for target %q version %q: %s", a.name, clusterName, req.Version, responseMessage(resp.GetMessage()))
 	}
 	return nil
 }
@@ -73,6 +81,10 @@ func (a *ActuatorAdapter) IsConverged(ctx context.Context, cluster *kaprov1alpha
 	if err != nil {
 		return false, err
 	}
+	start := time.Now()
+	result := "success"
+	defer func() { observeRuntimeCall(kaprov1alpha1.PluginTypeActuator, a.name, "IsConverged", result, start) }()
+
 	rpcCtx, cancel := context.WithTimeout(ctx, a.timeout)
 	defer cancel()
 	resp, err := a.client.IsConverged(rpcCtx, &kaiv1alpha1.IsConvergedRequest{
@@ -81,7 +93,8 @@ func (a *ActuatorAdapter) IsConverged(ctx context.Context, cluster *kaprov1alpha
 		Parameters: a.parametersWithAppKey(appKey),
 	})
 	if err != nil {
-		return false, fmt.Errorf("check convergence via actuator plugin %q: %w", a.name, err)
+		result = "error"
+		return false, fmt.Errorf("actuator plugin %q IsConverged RPC to %q failed for target %q version %q: %w", a.name, a.endpoint, clusterName, version, err)
 	}
 	return resp.GetConverged(), nil
 }
@@ -92,6 +105,10 @@ func (a *ActuatorAdapter) Rollback(ctx context.Context, cluster *kaprov1alpha1.M
 	if err != nil {
 		return err
 	}
+	start := time.Now()
+	result := "success"
+	defer func() { observeRuntimeCall(kaprov1alpha1.PluginTypeActuator, a.name, "Rollback", result, start) }()
+
 	rpcCtx, cancel := context.WithTimeout(ctx, a.timeout)
 	defer cancel()
 	resp, err := a.client.Rollback(rpcCtx, &kaiv1alpha1.RollbackRequest{
@@ -100,10 +117,12 @@ func (a *ActuatorAdapter) Rollback(ctx context.Context, cluster *kaprov1alpha1.M
 		Parameters:      a.parametersWithAppKey(appKey),
 	})
 	if err != nil {
-		return fmt.Errorf("rollback via actuator plugin %q: %w", a.name, err)
+		result = "error"
+		return fmt.Errorf("actuator plugin %q Rollback RPC to %q failed for target %q previous version %q: %w", a.name, a.endpoint, clusterName, previousVersion, err)
 	}
 	if !resp.GetAccepted() {
-		return fmt.Errorf("actuator plugin %q rejected rollback: %s", a.name, resp.GetMessage())
+		result = "rejected"
+		return fmt.Errorf("actuator plugin %q rejected Rollback for target %q previous version %q: %s", a.name, clusterName, previousVersion, responseMessage(resp.GetMessage()))
 	}
 	return nil
 }
@@ -157,4 +176,11 @@ func clusterName(cluster *kaprov1alpha1.MemberCluster) (string, error) {
 		return "", fmt.Errorf("target cluster name is required")
 	}
 	return cluster.Name, nil
+}
+
+func responseMessage(message string) string {
+	if message == "" {
+		return "plugin returned no message"
+	}
+	return message
 }

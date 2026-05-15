@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -16,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprometrics "kapro.io/kapro/internal/metrics"
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
 	kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
@@ -61,8 +63,31 @@ func TestActuatorAdapterReturnsGRPCError(t *testing.T) {
 		Cluster: &kaprov1alpha1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: "de-prod"}},
 		Version: "1.2.3",
 	})
-	if err == nil || !strings.Contains(err.Error(), "down") {
+	if err == nil || !strings.Contains(err.Error(), "Apply RPC to \"bufnet\" failed") || !strings.Contains(err.Error(), "down") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestActuatorAdapterApplyObservesRuntimeMetrics(t *testing.T) {
+	server := &recordingActuatorServer{}
+	client, stop := actuatorClient(t, server)
+	defer stop()
+
+	adapter, err := NewActuatorAdapter(pluginReg(kaprov1alpha1.PluginTypeActuator, "metrics/apply"), client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	counter := kaprometrics.PluginRuntimeCalls.WithLabelValues("actuator", "metrics/apply", "Apply", "success")
+	before := testutil.ToFloat64(counter)
+	err = adapter.Apply(context.Background(), actuator.ApplyRequest{
+		Cluster: &kaprov1alpha1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: "de-prod"}},
+		Version: "1.2.3",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := testutil.ToFloat64(counter); got != before+1 {
+		t.Fatalf("runtime call counter = %v, want %v", got, before+1)
 	}
 }
 
@@ -150,6 +175,12 @@ func TestRegisterReadyPluginsSkipsStaleAndRegistersReady(t *testing.T) {
 	}
 	if _, err := actuatorReg.Resolve("stale/pull"); err == nil {
 		t.Fatal("stale plugin was registered")
+	}
+	if got := testutil.ToFloat64(kaprometrics.PluginRuntimeRegistered.WithLabelValues("actuator")); got != 1 {
+		t.Fatalf("registered actuator gauge = %v, want 1", got)
+	}
+	if got := testutil.ToFloat64(kaprometrics.PluginRuntimeRegistered.WithLabelValues("gate")); got != 0 {
+		t.Fatalf("registered gate gauge = %v, want 0", got)
 	}
 }
 

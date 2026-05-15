@@ -6,7 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprometrics "kapro.io/kapro/internal/metrics"
 	kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
 	kgiv1alpha1 "kapro.io/kapro/spec/kgi/v1alpha1"
 	kpiv1alpha1 "kapro.io/kapro/spec/kpi/v1alpha1"
@@ -201,6 +203,32 @@ func TestProbeRejectsContractMismatch(t *testing.T) {
 	}
 	if result.Reason != "ContractMismatch" {
 		t.Fatalf("Reason = %q", result.Reason)
+	}
+}
+
+func TestProbeObservesReadinessMetrics(t *testing.T) {
+	reg := kaprov1alpha1.PluginRegistration{
+		Spec: kaprov1alpha1.PluginRegistrationSpec{
+			Type:     kaprov1alpha1.PluginTypeGate,
+			Name:     "metrics/probe",
+			Protocol: kaprov1alpha1.PluginProtocolGRPC,
+		},
+	}
+	counter := kaprometrics.PluginProbeResults.WithLabelValues("gate", "error", "InvalidEndpoint")
+	before := testutil.ToFloat64(counter)
+
+	result := Prober{}.Probe(context.Background(), reg)
+	if result.Ready {
+		t.Fatal("Ready = true")
+	}
+	if !strings.Contains(result.Message, "metrics/probe") || !strings.Contains(result.Message, "endpoint is required") {
+		t.Fatalf("Message = %q", result.Message)
+	}
+	if got := testutil.ToFloat64(counter); got != before+1 {
+		t.Fatalf("probe result counter = %v, want %v", got, before+1)
+	}
+	if got := testutil.ToFloat64(kaprometrics.PluginProbeReady.WithLabelValues("gate", "metrics/probe")); got != 0 {
+		t.Fatalf("probe readiness gauge = %v, want 0", got)
 	}
 }
 
