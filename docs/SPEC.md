@@ -108,7 +108,7 @@ Release
 
 | CRD | Kind | Ownership | Scope |
 |-----|------|-----------|-------|
-| `kapros.kapro.io` | `Kapro` | Platform | Cluster |
+| `kaproes.kapro.io` | `Kapro` | Platform | Cluster |
 | `kaproapps.kapro.io` | `KaproApp` | Platform | Cluster |
 | `pipelines.kapro.io` | `Pipeline` | Platform | Cluster |
 | `releases.kapro.io` | `Release` | Release engineer / automation | Cluster |
@@ -197,6 +197,8 @@ Other internal concerns — health checking (`internal/health`), OCI fetch (`int
 
 See `docs/extension-model.md` for the full extension boundary model and the
 criteria for adding future plugin or CRD surfaces.
+See `docs/api-stability.md` for API maturity, deprecation, and upgrade policy.
+See `docs/conformance.md` for KAI, KGI, and KPI conformance instructions.
 
 There is **no** cluster-provider interface. Cluster onboarding is concrete, not pluggable (see §10).
 
@@ -371,14 +373,17 @@ The proto contracts live under:
 
 Generated Go stubs are committed beside the proto files. The operator probes
 `GetCapabilities` and writes `PluginRegistration.status.ready`, `lastSeen`,
-`version`, `capabilities`, and conditions. When
+`version`, `contractVersion`, `capabilities`, and conditions. Missing or
+unsupported contract versions are reported as `Ready=False` and
+`Compatible=False`; the plugin is not loaded for runtime dispatch. When
 `KAPRO_ENABLE_PLUGIN_GATEWAY=true`, the operator loads ready registrations with
 fresh `status.observedGeneration` into the actuator and gate registries once at
 startup. Planner plugin registration is probed and reported in status; runtime
 dispatch is future work. Dynamic hot reload is future work. Base conformance
 harnesses live under `conformance/actuator`, `conformance/gate`, and
 `conformance/planner`; plugin authors should run those harnesses against their
-implementation. See `docs/plugin-authoring.md`.
+implementation. See `docs/plugin-authoring.md` and
+`docs/plugin-compatibility.md`.
 
 ---
 

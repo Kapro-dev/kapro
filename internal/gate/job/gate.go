@@ -35,6 +35,8 @@ type Gate struct {
 	Client client.Client
 }
 
+// +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;delete
+
 // jobName returns a deterministic Job name for a (context, template) pair.
 // Names are truncated to fit Kubernetes' 63-character DNS label limit.
 // A hash suffix is appended before truncation so that different long names cannot

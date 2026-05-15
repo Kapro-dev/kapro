@@ -48,32 +48,7 @@ webhooks:
         path: /validate-kapro-io-v1alpha1-membercluster
         port: 443
       {{- if not .Values.webhook.certManager.enabled }}
-      caBundle: {{ .Values.webhook.caBundle | default "" | b64enc | quote }}
-      {{- end }}
-    namespaceSelector:
-      matchExpressions:
-        - key: kubernetes.io/metadata.name
-          operator: NotIn
-          values: [kube-system]
-
-  - name: mutate.membercluster.kapro.io
-    admissionReviewVersions: ["v1"]
-    sideEffects: None
-    failurePolicy: {{ .Values.webhook.failurePolicy }}
-    matchPolicy: Equivalent
-    rules:
-      - apiGroups: ["kapro.io"]
-        apiVersions: ["v1alpha1"]
-        resources: ["memberclusters"]
-        operations: ["CREATE", "UPDATE"]
-    clientConfig:
-      service:
-        namespace: {{ .Release.Namespace }}
-        name: {{ include "kapro-operator.fullname" . }}-webhook
-        path: /mutate-kapro-io-v1alpha1-membercluster
-        port: 443
-      {{- if not .Values.webhook.certManager.enabled }}
-      caBundle: {{ .Values.webhook.caBundle | default "" | b64enc | quote }}
+      caBundle: {{ .Values.webhook.caBundle | default "" | quote }}
       {{- end }}
     namespaceSelector:
       matchExpressions:
@@ -98,7 +73,7 @@ webhooks:
         path: /validate-kapro-io-v1alpha1-release
         port: 443
       {{- if not .Values.webhook.certManager.enabled }}
-      caBundle: {{ .Values.webhook.caBundle | default "" | b64enc | quote }}
+      caBundle: {{ .Values.webhook.caBundle | default "" | quote }}
       {{- end }}
     namespaceSelector:
       matchExpressions:
@@ -123,7 +98,64 @@ webhooks:
         path: /validate-kapro-io-v1alpha1-pipeline
         port: 443
       {{- if not .Values.webhook.certManager.enabled }}
-      caBundle: {{ .Values.webhook.caBundle | default "" | b64enc | quote }}
+      caBundle: {{ .Values.webhook.caBundle | default "" | quote }}
+      {{- end }}
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values: [kube-system]
+
+  - name: validate.approval.kapro.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ .Values.webhook.failurePolicy }}
+    matchPolicy: Equivalent
+    rules:
+      - apiGroups: ["kapro.io"]
+        apiVersions: ["v1alpha1"]
+        resources: ["approvals"]
+        operations: ["CREATE", "UPDATE"]
+    clientConfig:
+      service:
+        namespace: {{ .Release.Namespace }}
+        name: {{ include "kapro-operator.fullname" . }}-webhook
+        path: /validate-kapro-io-v1alpha1-approval
+        port: 443
+      {{- if not .Values.webhook.certManager.enabled }}
+      caBundle: {{ .Values.webhook.caBundle | default "" | quote }}
+      {{- end }}
+---
+# MutatingWebhookConfiguration — applies defaulting and managed-label patches.
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ include "kapro-operator.fullname" . }}
+  labels:
+    {{- include "kapro-operator.labels" . | nindent 4 }}
+  {{- if .Values.webhook.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "kapro-operator.fullname" . }}-webhook-cert
+  {{- end }}
+webhooks:
+  - name: mutate.membercluster.kapro.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ .Values.webhook.failurePolicy }}
+    matchPolicy: Equivalent
+    rules:
+      - apiGroups: ["kapro.io"]
+        apiVersions: ["v1alpha1"]
+        resources: ["memberclusters"]
+        operations: ["CREATE", "UPDATE"]
+    clientConfig:
+      service:
+        namespace: {{ .Release.Namespace }}
+        name: {{ include "kapro-operator.fullname" . }}-webhook
+        path: /mutate-kapro-io-v1alpha1-membercluster
+        port: 443
+      {{- if not .Values.webhook.certManager.enabled }}
+      caBundle: {{ .Values.webhook.caBundle | default "" | quote }}
       {{- end }}
     namespaceSelector:
       matchExpressions:
@@ -148,6 +180,6 @@ webhooks:
         path: /mutate-kapro-io-v1alpha1-approval
         port: 443
       {{- if not .Values.webhook.certManager.enabled }}
-      caBundle: {{ .Values.webhook.caBundle | default "" | b64enc | quote }}
+      caBundle: {{ .Values.webhook.caBundle | default "" | quote }}
       {{- end }}
 {{- end }}
