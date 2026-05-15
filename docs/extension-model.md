@@ -160,6 +160,11 @@ API pieces:
 The gateway must preserve the same state ownership rule: plugins do backend
 work, Kapro owns release state.
 
+Plugin readiness follows the compatibility matrix in
+`docs/plugin-compatibility.md`. Unsupported or missing KAI/KGI/KPI contract
+versions are reported as `Ready=False` and `Compatible=False` on
+`PluginRegistration` status and are not loaded for runtime dispatch.
+
 ## ReleaseTrigger Target
 
 `ReleaseTrigger` is the API boundary for autonomous release creation. The CRD

@@ -188,6 +188,10 @@ spec:
                   - type
                   type: object
                 type: array
+              contractVersion:
+                description: ContractVersion is the plugin-reported KAI, KGI, or KPI
+                  contract version.
+                type: string
               lastSeen:
                 description: LastSeen is the RFC3339 time of the last successful health
                   or capability check.

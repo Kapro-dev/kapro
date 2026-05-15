@@ -35,11 +35,12 @@ func TestPluginRegistrationReconcilerSetsReadyStatus(t *testing.T) {
 		Client:   c,
 		Recorder: record.NewFakeRecorder(8),
 		Prober: fakePluginProber{result: probe.Result{
-			Ready:        true,
-			Reason:       "ProbeSucceeded",
-			Message:      "ok",
-			Version:      "v1",
-			Capabilities: []string{"apply"},
+			Ready:           true,
+			Reason:          "ProbeSucceeded",
+			Message:         "ok",
+			Version:         "v1",
+			ContractVersion: probe.ContractVersion(),
+			Capabilities:    []string{"apply"},
 		}},
 	}
 
@@ -57,12 +58,19 @@ func TestPluginRegistrationReconcilerSetsReadyStatus(t *testing.T) {
 	if got.Status.Version != "v1" {
 		t.Fatalf("status.version = %q", got.Status.Version)
 	}
+	if got.Status.ContractVersion != probe.ContractVersion() {
+		t.Fatalf("status.contractVersion = %q", got.Status.ContractVersion)
+	}
 	if len(got.Status.Capabilities) != 1 || got.Status.Capabilities[0] != "apply" {
 		t.Fatalf("status.capabilities = %v", got.Status.Capabilities)
 	}
 	ready := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
 	if ready == nil || ready.Status != metav1.ConditionTrue {
 		t.Fatalf("Ready condition = %#v", ready)
+	}
+	compatible := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha1.ConditionTypeCompatible)
+	if compatible == nil || compatible.Status != metav1.ConditionTrue {
+		t.Fatalf("Compatible condition = %#v", compatible)
 	}
 }
 
@@ -109,6 +117,60 @@ func TestPluginRegistrationReconcilerSetsStalledStatus(t *testing.T) {
 	stalled := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
 	if stalled == nil || stalled.Status != metav1.ConditionTrue {
 		t.Fatalf("Stalled condition = %#v", stalled)
+	}
+	compatible := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha1.ConditionTypeCompatible)
+	if compatible == nil || compatible.Status != metav1.ConditionUnknown {
+		t.Fatalf("Compatible condition = %#v", compatible)
+	}
+}
+
+func TestPluginRegistrationReconcilerSetsIncompatibleStatus(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	reg := &kaprov1alpha1.PluginRegistration{
+		ObjectMeta: metav1.ObjectMeta{Name: "newer-plugin"},
+		Spec: kaprov1alpha1.PluginRegistrationSpec{
+			Type:     kaprov1alpha1.PluginTypeGate,
+			Name:     "newer",
+			Protocol: kaprov1alpha1.PluginProtocolGRPC,
+			Endpoint: "bufnet",
+		},
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(reg).WithStatusSubresource(&kaprov1alpha1.PluginRegistration{}).Build()
+	r := &PluginRegistrationReconciler{
+		Client:   c,
+		Recorder: record.NewFakeRecorder(8),
+		Prober: fakePluginProber{result: probe.Result{
+			Ready:           false,
+			Reason:          "UnsupportedContractVersion",
+			Message:         "plugin reported unsupported KGI contract version \"v2\"; supported versions: v1alpha1",
+			ContractVersion: "v2",
+		}},
+	}
+
+	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: objectKey(reg.Name)}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	var got kaprov1alpha1.PluginRegistration
+	if err := c.Get(context.Background(), objectKey(reg.Name), &got); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status.Ready {
+		t.Fatal("status.ready = true")
+	}
+	if got.Status.ContractVersion != "v2" {
+		t.Fatalf("status.contractVersion = %q", got.Status.ContractVersion)
+	}
+	ready := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
+	if ready == nil || ready.Status != metav1.ConditionFalse || ready.Reason != "UnsupportedContractVersion" {
+		t.Fatalf("Ready condition = %#v", ready)
+	}
+	compatible := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha1.ConditionTypeCompatible)
+	if compatible == nil || compatible.Status != metav1.ConditionFalse || compatible.Reason != "UnsupportedContractVersion" {
+		t.Fatalf("Compatible condition = %#v", compatible)
 	}
 }
 

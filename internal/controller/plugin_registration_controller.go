@@ -52,6 +52,7 @@ func (r *PluginRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.R
 	reg.Status.ObservedGeneration = reg.Generation
 	reg.Status.Ready = result.Ready
 	reg.Status.Version = result.Version
+	reg.Status.ContractVersion = result.ContractVersion
 	reg.Status.Capabilities = result.Capabilities
 	if result.Ready {
 		reg.Status.LastSeen = now.UTC().Format(time.RFC3339)
@@ -69,6 +70,7 @@ func (r *PluginRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.R
 		ObservedGeneration: reg.Generation,
 		LastTransitionTime: now,
 	})
+	apimeta.SetStatusCondition(&reg.Status.Conditions, compatibleCondition(result, reg.Generation, now))
 	apimeta.SetStatusCondition(&reg.Status.Conditions, metav1.Condition{
 		Type:               kaprov1alpha1.ConditionTypeReconciling,
 		Status:             metav1.ConditionFalse,
@@ -102,6 +104,30 @@ func (r *PluginRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.R
 	log.Info("plugin registration probed", "name", reg.Name, "type", reg.Spec.Type, "ready", result.Ready, "reason", result.Reason)
 
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
+}
+
+func compatibleCondition(result probe.Result, observedGeneration int64, now metav1.Time) metav1.Condition {
+	condition := metav1.Condition{
+		Type:               kaprov1alpha1.ConditionTypeCompatible,
+		Status:             metav1.ConditionUnknown,
+		Reason:             result.Reason,
+		Message:            "plugin contract compatibility could not be determined",
+		ObservedGeneration: observedGeneration,
+		LastTransitionTime: now,
+	}
+	switch result.Reason {
+	case "ProbeSucceeded":
+		condition.Status = metav1.ConditionTrue
+		condition.Message = fmt.Sprintf("plugin contract version %q is supported", result.ContractVersion)
+	case "MissingContractVersion", "UnsupportedContractVersion":
+		condition.Status = metav1.ConditionFalse
+		condition.Message = result.Message
+	default:
+		if result.Message != "" {
+			condition.Message = fmt.Sprintf("plugin contract compatibility could not be determined: %s", result.Message)
+		}
+	}
+	return condition
 }
 
 func (r *PluginRegistrationReconciler) SetupWithManager(mgr ctrl.Manager) error {

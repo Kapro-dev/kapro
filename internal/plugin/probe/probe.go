@@ -8,6 +8,7 @@ import (
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	"kapro.io/kapro/internal/plugin/transport"
+	"kapro.io/kapro/pkg/plugincompat"
 	kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
 	kgiv1alpha1 "kapro.io/kapro/spec/kgi/v1alpha1"
 	kpiv1alpha1 "kapro.io/kapro/spec/kpi/v1alpha1"
@@ -15,8 +16,6 @@ import (
 	"google.golang.org/grpc"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
-
-const contractVersion = "v1alpha1"
 
 var plannerCapabilities = map[string]struct{}{
 	"filter": {},
@@ -27,11 +26,12 @@ var plannerCapabilities = map[string]struct{}{
 
 // Result is the normalized outcome of a plugin probe.
 type Result struct {
-	Ready        bool
-	Reason       string
-	Message      string
-	Version      string
-	Capabilities []string
+	Ready           bool
+	Reason          string
+	Message         string
+	Version         string
+	ContractVersion string
+	Capabilities    []string
 }
 
 // Prober probes registered plugin endpoints without executing release traffic.
@@ -82,44 +82,54 @@ func (p Prober) Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration)
 		if err != nil {
 			return notReady("ProbeFailed", err.Error())
 		}
-		if err := validateContract(resp.GetContractVersion()); err != nil {
-			return notReady("ContractMismatch", err.Error())
+		if result := validateContract(reg.Spec.Type, resp.GetContractVersion()); !result.Ready {
+			return result
 		}
-		return ready(resp.GetPluginVersion(), resp.GetCapabilities())
+		return ready(resp.GetPluginVersion(), resp.GetContractVersion(), resp.GetCapabilities())
 	case kaprov1alpha1.PluginTypeGate:
 		resp, err := kgiv1alpha1.NewGateServiceClient(conn).GetCapabilities(ctx, &kgiv1alpha1.GetCapabilitiesRequest{})
 		if err != nil {
 			return notReady("ProbeFailed", err.Error())
 		}
-		if err := validateContract(resp.GetContractVersion()); err != nil {
-			return notReady("ContractMismatch", err.Error())
+		if result := validateContract(reg.Spec.Type, resp.GetContractVersion()); !result.Ready {
+			return result
 		}
-		return ready(resp.GetPluginVersion(), resp.GetCapabilities())
+		return ready(resp.GetPluginVersion(), resp.GetContractVersion(), resp.GetCapabilities())
 	case kaprov1alpha1.PluginTypePlanner:
 		resp, err := kpiv1alpha1.NewPlannerServiceClient(conn).GetCapabilities(ctx, &kpiv1alpha1.GetCapabilitiesRequest{})
 		if err != nil {
 			return notReady("ProbeFailed", err.Error())
 		}
-		if err := validateContract(resp.GetContractVersion()); err != nil {
-			return notReady("ContractMismatch", err.Error())
+		if result := validateContract(reg.Spec.Type, resp.GetContractVersion()); !result.Ready {
+			return result
 		}
 		if !hasPlannerCapability(resp.GetCapabilities()) {
 			return notReady("MissingCapability", "planner plugin must report at least one capability: filter, score, order, or defer")
 		}
-		return ready(resp.GetPluginVersion(), resp.GetCapabilities())
+		return ready(resp.GetPluginVersion(), resp.GetContractVersion(), resp.GetCapabilities())
 	default:
 		return notReady("UnsupportedType", fmt.Sprintf("unsupported plugin type %q", reg.Spec.Type))
 	}
 }
 
-func validateContract(version string) error {
+func validateContract(pluginType kaprov1alpha1.PluginType, version string) Result {
+	supported := plugincompat.SupportedContractVersionsString(pluginType)
+	contractName := plugincompat.ContractName(pluginType)
 	if version == "" {
-		return fmt.Errorf("plugin did not report contract version")
+		return notReadyWithContract(
+			"MissingContractVersion",
+			fmt.Sprintf("plugin did not report %s contract version; supported versions: %s", contractName, supported),
+			version,
+		)
 	}
-	if version != contractVersion {
-		return fmt.Errorf("plugin contract version %q is not supported by this operator (%q)", version, contractVersion)
+	if !plugincompat.IsContractVersionSupported(pluginType, version) {
+		return notReadyWithContract(
+			"UnsupportedContractVersion",
+			fmt.Sprintf("plugin reported unsupported %s contract version %q; supported versions: %s", contractName, version, supported),
+			version,
+		)
 	}
-	return nil
+	return Result{Ready: true, ContractVersion: version}
 }
 
 func hasPlannerCapability(capabilities []string) bool {
@@ -131,13 +141,14 @@ func hasPlannerCapability(capabilities []string) bool {
 	return false
 }
 
-func ready(version string, capabilities []string) Result {
+func ready(version, contractVersion string, capabilities []string) Result {
 	return Result{
-		Ready:        true,
-		Reason:       "ProbeSucceeded",
-		Message:      "plugin capabilities probe succeeded",
-		Version:      version,
-		Capabilities: append([]string(nil), capabilities...),
+		Ready:           true,
+		Reason:          "ProbeSucceeded",
+		Message:         "plugin capabilities probe succeeded",
+		Version:         version,
+		ContractVersion: contractVersion,
+		Capabilities:    append([]string(nil), capabilities...),
 	}
 }
 
@@ -149,7 +160,13 @@ func notReady(reason, message string) Result {
 	}
 }
 
+func notReadyWithContract(reason, message, contractVersion string) Result {
+	result := notReady(reason, message)
+	result.ContractVersion = contractVersion
+	return result
+}
+
 // ContractVersion returns the KAI/KGI/KPI contract version this prober supports.
 func ContractVersion() string {
-	return contractVersion
+	return plugincompat.VersionV1Alpha1
 }
