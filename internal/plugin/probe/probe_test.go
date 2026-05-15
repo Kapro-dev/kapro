@@ -7,15 +7,15 @@ import (
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/test/bufconn"
+	corev1 "k8s.io/api/core/v1"
+
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	kaprometrics "kapro.io/kapro/internal/metrics"
 	kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
 	kgiv1alpha1 "kapro.io/kapro/spec/kgi/v1alpha1"
 	kpiv1alpha1 "kapro.io/kapro/spec/kpi/v1alpha1"
-
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/test/bufconn"
-	corev1 "k8s.io/api/core/v1"
 )
 
 func TestProbeActuatorCapabilities(t *testing.T) {
