@@ -301,12 +301,20 @@ type CosignKeySecretRef struct {
 }
 
 type MetricGate struct {
-	Provider string `json:"provider"`
+	// Preset references Pipeline.spec.metricPresets by name.
+	// Inline fields override the preset when set.
+	// +optional
+	Preset string `json:"preset,omitempty"`
+	// Provider selects the metrics backend. Required when preset is empty.
+	// +optional
+	Provider string `json:"provider,omitempty"`
 	// Query is a PromQL expression. The gate passes when the query returns a non-zero value.
 	// Use range functions directly in the query for window-based checks, e.g.:
 	//   min_over_time(error_rate[30m]) < 0.01
 	// Or reference the Window field as a template: {{.Window}} is substituted at evaluation time.
-	Query string `json:"query"`
+	// Required when preset is empty.
+	// +optional
+	Query string `json:"query,omitempty"`
 	// Window is the lookback duration injected into the query template as {{.Window}}.
 	// When Query already contains a hardcoded range (e.g. [5m]), this field is ignored.
 	// Defaults to "5m".
@@ -318,9 +326,12 @@ type MetricGate struct {
 	// Defaults to "30s". Minimum "10s".
 	// +kubebuilder:default="30s"
 	// +optional
-	Interval  string  `json:"interval,omitempty"`
-	Endpoint  string  `json:"endpoint,omitempty"`
-	Threshold float64 `json:"threshold,omitempty"`
+	Interval string `json:"interval,omitempty"`
+	Endpoint string `json:"endpoint,omitempty"`
+	// Threshold is optional and presence-aware so an inline metric can
+	// intentionally override a preset threshold to 0.
+	// +optional
+	Threshold *float64 `json:"threshold,omitempty"`
 	// +kubebuilder:pruning:PreserveUnknownFields
 	Config []byte `json:"config,omitempty"`
 }
@@ -582,6 +593,11 @@ type Stage struct {
 // Uniqueness and dependency-reference validation is enforced by the admission webhook,
 // which can perform DAG checks without the quadratic CEL cost budget constraints.
 type PipelineSpec struct {
+	// MetricPresets defines reusable metric gate snippets referenced by
+	// Stage.gate.metrics[].preset. Presets are expanded into each target's
+	// gate policy when a Release binds targets.
+	// +optional
+	MetricPresets map[string]MetricGate `json:"metricPresets,omitempty"`
 	// Stages is the flat DAG of delivery stages.
 	// Order is declared via DependsOn, not list position.
 	// +kubebuilder:validation:MinItems=1
