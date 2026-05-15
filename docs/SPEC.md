@@ -159,9 +159,10 @@ spec-only template/configuration objects. Execution state lives in `Release`,
 ┌─────────────────────── Spoke cluster (one per member) ──────────────────┐
 │                                                                         │
 │  kapro-cluster-controller                                               │
-│    - polls MemberCluster.spec.desiredVersion on the hub                 │
+│    - watches MemberCluster.spec.desiredVersions on the hub              │
 │    - patches the local delivery system (Flux/Argo) accordingly          │
-│    - writes MemberCluster.status (heartbeat + currentVersions)          │
+│    - renews Lease kapro-heartbeat-<cluster> in kapro-system             │
+│    - writes MemberCluster.status (currentVersions + health summary)     │
 │    - outbound-only HTTPS; authenticates via CSR-issued cert or GCP WIF  │
 └─────────────────────────────────────────────────────────────────────────┘
 ```

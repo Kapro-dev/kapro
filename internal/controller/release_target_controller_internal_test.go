@@ -3,7 +3,9 @@ package controller
 import (
 	"context"
 	"testing"
+	"time"
 
+	coordinationv1 "k8s.io/api/coordination/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
@@ -57,6 +59,38 @@ func TestReleaseTargetMemberClusterPredicates_HeartbeatOnlyIgnored(t *testing.T)
 
 	if p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj}) {
 		t.Fatal("expected heartbeat-only MemberCluster update to be ignored")
+	}
+}
+
+func TestHeartbeatLeasePredicates_IgnoreFreshRenewal(t *testing.T) {
+	p := heartbeatLeasePredicates()
+	oldRenew := metav1.NewMicroTime(time.Now().Add(-30 * time.Second).UTC())
+	newRenew := metav1.NewMicroTime(time.Now().UTC())
+	oldObj := &coordinationv1.Lease{
+		ObjectMeta: metav1.ObjectMeta{Name: heartbeatLeaseName("cluster-a")},
+		Spec:       coordinationv1.LeaseSpec{RenewTime: &oldRenew},
+	}
+	newObj := oldObj.DeepCopy()
+	newObj.Spec.RenewTime = &newRenew
+
+	if p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj}) {
+		t.Fatal("expected fresh-to-fresh heartbeat renewal to be ignored")
+	}
+}
+
+func TestHeartbeatLeasePredicates_EnqueueOnFreshnessBoundary(t *testing.T) {
+	p := heartbeatLeasePredicates()
+	oldRenew := metav1.NewMicroTime(time.Now().Add(-heartbeatFreshTimeout - time.Second).UTC())
+	newRenew := metav1.NewMicroTime(time.Now().UTC())
+	oldObj := &coordinationv1.Lease{
+		ObjectMeta: metav1.ObjectMeta{Name: heartbeatLeaseName("cluster-a")},
+		Spec:       coordinationv1.LeaseSpec{RenewTime: &oldRenew},
+	}
+	newObj := oldObj.DeepCopy()
+	newObj.Spec.RenewTime = &newRenew
+
+	if !p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj}) {
+		t.Fatal("expected stale-to-fresh heartbeat renewal to enqueue")
 	}
 }
 

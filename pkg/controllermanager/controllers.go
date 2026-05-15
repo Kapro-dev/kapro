@@ -56,14 +56,15 @@ func startReleaseController(_ context.Context, cc ControllerContext) (bool, erro
 
 func startReleaseTargetController(_ context.Context, cc ControllerContext) (bool, error) {
 	r := &controller.ReleaseTargetReconciler{
-		Client:           cc.Manager.GetClient(),
-		Recorder:         cc.Recorder,
-		Scheme:           cc.Manager.GetScheme(),
-		ActuatorRegistry: cc.ActuatorRegistry,
-		Notifier:         cc.Notifier,
-		ApprovalSecret:   cc.ApprovalSecret,
-		ExternalURL:      cc.ExternalURL,
-		GateRegistry:     cc.GateRegistry,
+		Client:             cc.Manager.GetClient(),
+		Recorder:           cc.Recorder,
+		Scheme:             cc.Manager.GetScheme(),
+		ActuatorRegistry:   cc.ActuatorRegistry,
+		Notifier:           cc.Notifier,
+		ApprovalSecret:     cc.ApprovalSecret,
+		ExternalURL:        cc.ExternalURL,
+		GateRegistry:       cc.GateRegistry,
+		HeartbeatNamespace: cc.HeartbeatNamespace,
 	}
 	if cc.ShardName != "" {
 		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: true}

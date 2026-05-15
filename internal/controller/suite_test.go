@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	coordinationv1 "k8s.io/api/coordination/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -68,6 +69,9 @@ func setupEnv(t *testing.T) (context.Context, context.CancelFunc, client.Client)
 	s := runtime.NewScheme()
 	if err := kaprov1alpha1.AddToScheme(s); err != nil {
 		t.Fatalf("AddToScheme: %v", err)
+	}
+	if err := coordinationv1.AddToScheme(s); err != nil {
+		t.Fatalf("Add coordination scheme: %v", err)
 	}
 
 	env := &envtest.Environment{
