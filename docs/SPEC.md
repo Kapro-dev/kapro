@@ -119,8 +119,8 @@ Release
 | `agentpolicies.kapro.io` | `AgentPolicy` | Platform | Cluster |
 
 `KaproApp` and `Pipeline` are spec-only template objects. Execution state lives
-in `Release`, `ReleaseTarget`, `MemberCluster`, `Approval`, and the future
-`ReleaseTrigger` controller.
+in `Release`, `ReleaseTarget`, `MemberCluster`, `Approval`, and
+`ReleaseTrigger` status.
 
 ---
 
@@ -169,12 +169,16 @@ Controllers are registered from `pkg/controllermanager/controllers.go`. Hub and 
 
 ## 7. Extension Interfaces
 
-Two pluggable interfaces. Both use `pkg/registry.Registry[T]` for named, runtime-resolved dispatch and have a conformance suite under `conformance/`.
+Kapro has narrow pluggable interfaces for backend execution, safety evaluation,
+and rollout planning. Actuators and gates are named runtime-resolved dispatch
+points with conformance suites. The release planner is an in-process framework
+for target selection and ordering, modeled after Kubernetes scheduler phases.
 
 | Interface | Go package | Question it answers | Conformance |
 |-----------|------------|---------------------|-------------|
 | Actuator (KAI) | `pkg/actuator` | "Apply this version to this cluster" | `conformance/actuator` |
 | Gate (KGI)     | `pkg/gate`     | "May this target advance?"           | `conformance/gate`     |
+| Planner (KPI) | `pkg/planner` | "Which targets should this stage bind, and in what order?" | `conformance/planner` |
 
 Other internal concerns — health checking (`internal/health`), OCI fetch (`internal/oci/oras`), cosign verification (`internal/verification/cosign`), notification (`internal/notification`) — are **not** runtime extension points today. They live as internal packages with fixed implementations.
 
@@ -228,8 +232,10 @@ An `Actuator` (`pkg/actuator.Actuator`) drives the "apply this version to this c
 ```go
 type Actuator interface {
     Apply(ctx context.Context, req ApplyRequest) error
-    Rollback(ctx context.Context, req RollbackRequest) error
-    GetStatus(ctx context.Context, req StatusRequest) (Status, error)
+    IsConverged(ctx context.Context, cluster *MemberCluster, version, appKey string) (bool, error)
+    Rollback(ctx context.Context, cluster *MemberCluster, previousVersion, appKey string) error
+    ApplyDelta(ctx context.Context, req DeltaApplyRequest) (int, error)
+    IsAllConverged(ctx context.Context, cluster *MemberCluster, desiredVersions map[string]string) (bool, error)
 }
 ```
 
@@ -314,18 +320,27 @@ Identity is deterministic: every `(Release, target)` pair has at most one `Appro
 
 ## 14. PluginRegistration API Preview
 
-`PluginRegistration` is an API preview for external actuator and gate plugins.
-It is cluster-scoped and records the plugin type, registry name, protocol,
-endpoint, timeout, optional TLS secret reference, parameters, readiness, version,
-and capabilities.
+`PluginRegistration` is a status-capable preview for external actuator, gate,
+and planner plugins. It is cluster-scoped and records the plugin type, registry name,
+protocol, endpoint, timeout, optional namespaced TLS secret reference,
+parameters, readiness, version, and capabilities.
 
 The proto contracts live under:
 
 - `spec/kai/v1alpha1/actuator.proto`
 - `spec/kgi/v1alpha1/gate.proto`
+- `spec/kpi/v1alpha1/planner.proto`
 
-Runtime dispatch through `PluginGateway` is future work. The current in-process
-actuator and gate registries remain the execution path.
+Generated Go stubs are committed beside the proto files. The operator probes
+`GetCapabilities` and writes `PluginRegistration.status.ready`, `lastSeen`,
+`version`, `capabilities`, and conditions. When
+`KAPRO_ENABLE_PLUGIN_GATEWAY=true`, the operator loads ready registrations with
+fresh `status.observedGeneration` into the actuator and gate registries once at
+startup. Planner plugin registration is probed and reported in status; runtime
+dispatch is future work. Dynamic hot reload is future work. Base conformance
+harnesses live under `conformance/actuator`, `conformance/gate`, and
+`conformance/planner`; plugin authors should run those harnesses against their
+implementation. See `docs/plugin-authoring.md`.
 
 ---
 
@@ -336,9 +351,10 @@ creation from verified artifact changes. It is cluster-scoped and supports OCI
 source configuration, release template configuration, cooldown, max-active
 limits, dry-run mode, and status conditions.
 
-The controller that observes sources and creates Releases is future work.
-Creating the CRD now establishes the API shape and validation without making
-automatic deployment behavior available before the safeguards are implemented.
+The controller observes OCI registries, records the latest matching tag and
+digest, and creates digest-pinned `Release` objects only after safeguards pass.
+Created releases still use the normal Kapro pipeline; the trigger does not
+apply manifests, bypass gates, or promote directly to production.
 
 ---
 
@@ -349,5 +365,5 @@ Kapro explicitly does **not** aim to:
 - Replace Flux or ArgoCD — it orchestrates them.
 - Be a generic workflow engine. Stages are rollout waves, not arbitrary DAG nodes.
 - Manage in-cluster traffic shaping. Use Argo Rollouts / Flagger for that and gate on their result via `metrics` or `webhook` gates.
-- Expose a plugin interface for every internal concern. Only `actuator` and `gate` are pluggable today.
+- Expose a plugin interface for every internal concern. Actuator and gate plugins have startup-time runtime dispatch; planner plugins are API-preview and status-probed only.
 - Provide a generic cluster-provider abstraction. `MemberCluster` + `internal/bootstrap` is the onboarding path.

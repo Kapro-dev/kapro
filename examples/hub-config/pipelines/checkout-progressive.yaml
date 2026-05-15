@@ -26,6 +26,8 @@ spec:
       selector:
         matchLabels:
           kapro.io/tier: production
+      strategy:
+        maxParallel: 10
       dependsOn:
         - stage: production-eu
           requiredSoakTime: 1h

@@ -42,8 +42,8 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          PluginRegistration declares an external actuator or gate plugin endpoint.
-          It is an API preview for the future PluginGateway runtime.
+          PluginRegistration declares an external actuator, gate, or planner plugin endpoint.
+          It is an API preview. Runtime registration is opt-in and startup-time only.
         properties:
           apiVersion:
             description: |-
@@ -64,9 +64,8 @@ spec:
             type: object
           spec:
             description: |-
-              PluginRegistrationSpec registers an external actuator or gate plugin endpoint.
-              Runtime dispatch through PluginGateway is future work; this API establishes
-              the cluster-scoped registration contract.
+              PluginRegistrationSpec registers an external actuator, gate, or planner plugin endpoint.
+              Runtime dispatch is a startup-time preview enabled with KAPRO_ENABLE_PLUGIN_GATEWAY=true.
             properties:
               endpoint:
                 description: |-
@@ -98,17 +97,17 @@ spec:
                 description: Timeout bounds one plugin call.
                 type: string
               tlsSecretRef:
-                description: TLSSecretRef references a Secret containing client TLS
-                  material or CA data.
+                description: |-
+                  TLSSecretRef references a Secret containing client TLS material or CA data.
+                  Cluster-scoped registrations must include the Secret namespace.
                 properties:
                   name:
-                    default: ""
-                    description: |-
-                      Name of the referent.
-                      This field is effectively required, but due to backwards compatibility is
-                      allowed to be empty. Instances of this type with an empty value here are
-                      almost certainly wrong.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                    description: name is unique within a namespace to reference a
+                      secret resource.
+                    type: string
+                  namespace:
+                    description: namespace defines the space within which the secret
+                      name must be unique.
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
@@ -117,6 +116,7 @@ spec:
                 enum:
                 - actuator
                 - gate
+                - planner
                 type: string
             required:
             - endpoint

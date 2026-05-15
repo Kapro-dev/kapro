@@ -9,7 +9,16 @@ option go_package = "kapro.io/kapro/spec/kgi/v1alpha1;kgiv1alpha1";
 // A gate evaluates whether one target may advance. Kapro owns timing, retries,
 // failure policy, and persisted status; the gate owns the safety decision.
 service GateService {
+  rpc GetCapabilities(GetCapabilitiesRequest) returns (GetCapabilitiesResponse);
   rpc Evaluate(EvaluateRequest) returns (EvaluateResponse);
+}
+
+message GetCapabilitiesRequest {}
+
+message GetCapabilitiesResponse {
+  string contract_version = 1;
+  string plugin_version = 2;
+  repeated string capabilities = 3;
 }
 
 message EvaluateRequest {
@@ -34,4 +43,3 @@ enum GatePhase {
   GATE_PHASE_RUNNING = 3;
   GATE_PHASE_INCONCLUSIVE = 4;
 }
-

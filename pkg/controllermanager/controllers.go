@@ -25,6 +25,8 @@ func init() {
 	Register("release-target", startReleaseTargetController)
 	Register("approval", startApprovalController)
 	Register("kapro", startKaproController)
+	Register("plugin-registration", startPluginRegistrationController)
+	Register("release-trigger", startReleaseTriggerController)
 	// csrapproval and membercluster bootstrap removed — Flux Operator handles spoke setup.
 }
 
@@ -111,6 +113,30 @@ func BuildGateRegistry(c client.Client) (*pkggate.Registry, error) {
 func startApprovalController(_ context.Context, cc ControllerContext) (bool, error) {
 	if err := (&controller.ApprovalReconciler{
 		Client:   cc.Manager.GetClient(),
+		Recorder: cc.Recorder,
+	}).SetupWithManager(cc.Manager); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// startPluginRegistrationController starts the PluginRegistration readiness reconciler.
+// It probes capabilities and records readiness for optional plugin runtime registration.
+func startPluginRegistrationController(_ context.Context, cc ControllerContext) (bool, error) {
+	if err := (&controller.PluginRegistrationReconciler{
+		Client:   cc.Manager.GetClient(),
+		Recorder: cc.Recorder,
+	}).SetupWithManager(cc.Manager); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// startReleaseTriggerController starts the safe-by-default artifact trigger reconciler.
+func startReleaseTriggerController(_ context.Context, cc ControllerContext) (bool, error) {
+	if err := (&controller.ReleaseTriggerReconciler{
+		Client:   cc.Manager.GetClient(),
+		Scheme:   cc.Manager.GetScheme(),
 		Recorder: cc.Recorder,
 	}).SetupWithManager(cc.Manager); err != nil {
 		return false, err

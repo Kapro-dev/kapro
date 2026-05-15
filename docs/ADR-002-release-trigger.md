@@ -21,9 +21,9 @@ create repeated releases faster than humans or gates can reason about them.
 
 ## Decision
 
-Introduce a `ReleaseTrigger` API only if it is safe by default. The CRD may
-exist before the controller; the controller that observes sources and creates
-Releases remains future work.
+Introduce a `ReleaseTrigger` API only if it is safe by default. The first
+controller implementation observes OCI sources and creates Releases only after
+the configured safeguards pass.
 
 `ReleaseTrigger` creates `Release` objects. It does not apply manifests, bypass
 pipeline gates, mutate active releases, or promote directly to production.
@@ -81,8 +81,8 @@ spec:
   dryRun: false
 ```
 
-The API shape is available as a preview. The controller that observes OCI
-registries and creates Releases is future work.
+The API and first OCI controller are available as a preview. The controller
+creates digest-pinned Releases only after the configured safeguards pass.
 
 ---
 

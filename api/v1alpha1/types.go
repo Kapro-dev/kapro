@@ -519,6 +519,20 @@ const (
 	StageDependencyAny StageDependencyStrategy = "any"
 )
 
+// StageStrategySpec controls how many targets a stage may bind concurrently.
+type StageStrategySpec struct {
+	// MaxParallel limits how many targets in this stage may be non-terminal at once.
+	// Zero means unlimited.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	MaxParallel int32 `json:"maxParallel,omitempty"`
+	// MaxUnavailable is reserved for availability-aware strategies. The current
+	// controller records the field but only enforces MaxParallel.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	MaxUnavailable int32 `json:"maxUnavailable,omitempty"`
+}
+
 // Stage is one node in a Pipeline's delivery DAG.
 // It selects a set of target clusters by label selector, optionally gates them
 // with a GatePolicy, and declares ordering via DependsOn.
@@ -538,6 +552,9 @@ type Stage struct {
 	// +optional
 	// +kubebuilder:validation:MaxItems=64
 	DependsOn []StageDependency `json:"dependsOn,omitempty"`
+	// Strategy controls target binding concurrency for this stage.
+	// +optional
+	Strategy *StageStrategySpec `json:"strategy,omitempty"`
 	// Gate is the inline gate policy evaluated after all targets in this
 	// stage converge. If nil, the stage advances immediately on convergence.
 	// Use for complex gates (webhook, job, approval). For simple soak time,
@@ -617,6 +634,13 @@ type StageProgress struct {
 	Synced int `json:"synced,omitempty"`
 	// Failed is the number of targets that have reached Failed.
 	Failed int `json:"failed,omitempty"`
+	// Deferred is the number of eligible targets not yet bound by the planner
+	// or stage strategy.
+	Deferred int `json:"deferred,omitempty"`
+	// PlannerResults records why targets were skipped or deferred during the
+	// latest planning cycle. Capped by the controller.
+	// +optional
+	PlannerResults []PlannerResult `json:"plannerResults,omitempty"`
 	// Message is a human-readable summary of stage progress, designed for
 	// k9s describe output. Examples:
 	//   "2/5 clusters converged, soak: 12m/30m remaining"
@@ -630,6 +654,20 @@ type StageProgress struct {
 	// CompletedAt is when all targets in this stage reached a terminal state.
 	// +optional
 	CompletedAt string `json:"completedAt,omitempty"`
+}
+
+// PlannerResult explains one planner decision for operator visibility.
+type PlannerResult struct {
+	// Target is the MemberCluster name affected by the decision.
+	Target string `json:"target,omitempty"`
+	// Plugin is the planner plugin or built-in strategy that made the decision.
+	Plugin string `json:"plugin,omitempty"`
+	// Phase is the planner phase, for example Filter, Score, Permit, or Bind.
+	Phase string `json:"phase,omitempty"`
+	// Reason is a short machine-readable reason.
+	Reason string `json:"reason,omitempty"`
+	// Message is a human-readable explanation.
+	Message string `json:"message,omitempty"`
 }
 
 // PipelineProgress tracks the execution state of one pipeline node in a Release.
@@ -798,8 +836,9 @@ type OCIReleaseTriggerSource struct {
 	// +kubebuilder:default="5m"
 	PollInterval string `json:"pollInterval,omitempty"`
 	// SecretRef references registry credentials.
+	// Cluster-scoped triggers must include the Secret namespace.
 	// +optional
-	SecretRef *corev1.LocalObjectReference `json:"secretRef,omitempty"`
+	SecretRef *corev1.SecretReference `json:"secretRef,omitempty"`
 }
 
 // ReleaseTriggerTemplate defines the Release created from a verified artifact.
@@ -1496,7 +1535,7 @@ func (s *MemberClusterStatus) IsHeartbeatFresh(timeout time.Duration) bool {
 // ---- PluginRegistration -----------------------------------------------------
 
 // PluginType identifies which Kapro extension contract a plugin implements.
-// +kubebuilder:validation:Enum=actuator;gate
+// +kubebuilder:validation:Enum=actuator;gate;planner
 type PluginType string
 
 const (
@@ -1504,6 +1543,8 @@ const (
 	PluginTypeActuator PluginType = "actuator"
 	// PluginTypeGate registers an implementation of the Kapro Gate Interface.
 	PluginTypeGate PluginType = "gate"
+	// PluginTypePlanner registers an implementation of the Kapro Planner Interface.
+	PluginTypePlanner PluginType = "planner"
 )
 
 // PluginProtocol identifies how Kapro talks to a registered plugin.
@@ -1511,13 +1552,12 @@ const (
 type PluginProtocol string
 
 const (
-	// PluginProtocolGRPC uses the KAI/KGI gRPC contracts.
+	// PluginProtocolGRPC uses the KAI/KGI/KPI gRPC contracts.
 	PluginProtocolGRPC PluginProtocol = "grpc"
 )
 
-// PluginRegistrationSpec registers an external actuator or gate plugin endpoint.
-// Runtime dispatch through PluginGateway is future work; this API establishes
-// the cluster-scoped registration contract.
+// PluginRegistrationSpec registers an external actuator, gate, or planner plugin endpoint.
+// Runtime dispatch is a startup-time preview enabled with KAPRO_ENABLE_PLUGIN_GATEWAY=true.
 type PluginRegistrationSpec struct {
 	// Type selects which extension contract the plugin implements.
 	Type PluginType `json:"type"`
@@ -1536,8 +1576,9 @@ type PluginRegistrationSpec struct {
 	// +kubebuilder:default="10s"
 	Timeout string `json:"timeout,omitempty"`
 	// TLSSecretRef references a Secret containing client TLS material or CA data.
+	// Cluster-scoped registrations must include the Secret namespace.
 	// +optional
-	TLSSecretRef *corev1.LocalObjectReference `json:"tlsSecretRef,omitempty"`
+	TLSSecretRef *corev1.SecretReference `json:"tlsSecretRef,omitempty"`
 	// Parameters are plugin-specific key-value pairs.
 	// Kapro core does not interpret unknown parameters.
 	// +optional
@@ -1569,8 +1610,8 @@ type PluginRegistrationStatus struct {
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.version`,priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// PluginRegistration declares an external actuator or gate plugin endpoint.
-// It is an API preview for the future PluginGateway runtime.
+// PluginRegistration declares an external actuator, gate, or planner plugin endpoint.
+// It is an API preview. Runtime registration is opt-in and startup-time only.
 type PluginRegistration struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
