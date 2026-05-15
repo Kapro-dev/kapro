@@ -34,6 +34,38 @@ message EvaluateRequest {
 message EvaluateResponse {
   GatePhase phase = 1;
   string message = 2;
+  repeated GateEvidence evidence = 3;
+}
+
+message GateEvidence {
+  string type = 1;
+  string provider = 2;
+  string analysis_mode = 3;
+  string comparator = 4;
+  string query = 5;
+  string baseline_query = 6;
+  string baseline_health_query = 7;
+  string window = 8;
+  string interval = 9;
+  string observed_value = 10;
+  string threshold = 11;
+  string baseline_value = 12;
+  optional bool baseline_healthy = 13;
+  int64 sample_count = 14;
+  optional double confidence = 15;
+  optional double alpha = 16;
+  optional double p_value = 17;
+  string effect_size = 18;
+  optional double score = 19;
+  string decision_rule = 20;
+  string reason = 21;
+  GateProjection projection = 22;
+}
+
+message GateProjection {
+  string horizon = 1;
+  string value = 2;
+  string reason = 3;
 }
 
 enum GatePhase {

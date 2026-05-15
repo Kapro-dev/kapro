@@ -105,6 +105,10 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 			Phase:      kaprov1alpha1.GatePhaseRunning,
 			Message:    "gate job created, waiting for completion",
 			RetryAfter: "15s",
+			Evidence: []pkggate.Evidence{{
+				Type:   "job",
+				Reason: "gate job created",
+			}},
 		}, nil
 	}
 
@@ -116,6 +120,11 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 		return pkggate.Result{
 			Phase:   kaprov1alpha1.GatePhasePassed,
 			Message: "gate job completed successfully",
+			Evidence: []pkggate.Evidence{{
+				Type:          "job",
+				ObservedValue: fmt.Sprintf("succeeded=%d", existing.Status.Succeeded),
+				Reason:        "gate job completed successfully",
+			}},
 		}, nil
 	}
 	if existing.Status.Failed > 0 {
@@ -124,6 +133,11 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 		return pkggate.Result{
 			Phase:   kaprov1alpha1.GatePhaseFailed,
 			Message: fmt.Sprintf("gate job failed after %d attempt(s)", existing.Status.Failed),
+			Evidence: []pkggate.Evidence{{
+				Type:          "job",
+				ObservedValue: fmt.Sprintf("failed=%d", existing.Status.Failed),
+				Reason:        "gate job failed",
+			}},
 		}, nil
 	}
 
@@ -132,6 +146,10 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 		Phase:      kaprov1alpha1.GatePhaseRunning,
 		Message:    "gate job is still running",
 		RetryAfter: "15s",
+		Evidence: []pkggate.Evidence{{
+			Type:   "job",
+			Reason: "gate job is still running",
+		}},
 	}, nil
 }
 

@@ -17,5 +17,9 @@ func (g *VerificationGate) Evaluate(_ context.Context, _ Request) (Result, error
 	return Result{
 		Phase:   kaprov1alpha1.GatePhasePassed,
 		Message: "verification delegated to Flux Operator",
+		Evidence: []Evidence{{
+			Type:   "verification",
+			Reason: "artifact verification is delegated to the configured backend",
+		}},
 	}, nil
 }

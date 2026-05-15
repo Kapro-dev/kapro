@@ -340,6 +340,11 @@ func (r *ReleaseTargetReconciler) handleMetricsCheck(ctx context.Context, releas
 	}
 
 	gateCtx := targetToGateContext(release, target, rt)
+	now := time.Now().UTC().Format(time.RFC3339)
+	gates := target.Gates
+	if gates == nil {
+		gates = make([]kaprov1alpha1.GateRunStatus, 0, len(policy.Gate.Metrics)+len(policy.Gate.Templates))
+	}
 
 	if len(policy.Gate.Metrics) > 0 {
 		metricsGate, err := r.GateRegistry.Resolve("metrics")
@@ -347,11 +352,30 @@ func (r *ReleaseTargetReconciler) handleMetricsCheck(ctx context.Context, releas
 			return ctrl.Result{}, fmt.Errorf("metrics gate: %w", err)
 		}
 		for idx, metric := range policy.Gate.Metrics {
+			gateName := fmt.Sprintf("metrics[%d]", idx)
+			gateStatus := findOrCreateGateStatus(gates, gateName, now)
 			result, err := metricsGate.Evaluate(ctx, gate.Request{Context: gateCtx, Policy: policy, MetricIndex: idx})
 			if err != nil {
 				log.FromContext(ctx).Error(err, "metrics gate error, will retry", "index", idx)
 				return ctrl.Result{RequeueAfter: requeueNormal}, nil
 			}
+			phase := result.Phase
+			if phase == "" {
+				phase = kaprov1alpha1.GatePhaseInconclusive
+			}
+			gateStatus.Phase = phase
+			gateStatus.Message = result.Message
+			gateStatus.Attempts++
+			gateStatus.VendorRef = result.VendorRef
+			gateStatus.Evidence = toAPIGateEvidence(result.Evidence)
+			if len(result.Results) > 0 {
+				gateStatus.Results = toAPIConditionResults(result.Results)
+			}
+			if phase != kaprov1alpha1.GatePhaseRunning && phase != kaprov1alpha1.GatePhasePending && phase != kaprov1alpha1.GatePhaseInconclusive {
+				gateStatus.FinishedAt = now
+			}
+			setGateStatus(&gates, gateStatus)
+			target.Gates = gates
 			log.FromContext(ctx).Info("metrics gate", "index", idx, "provider", metric.Provider, "phase", result.Phase)
 			if !result.IsPassed() {
 				r.Recorder.Eventf(release, corev1.EventTypeWarning, "GateFailed", "[%s/%s] MetricsGate[%d]: %s", target.Stage, target.Target, idx, result.Message)
@@ -480,6 +504,7 @@ func (r *ReleaseTargetReconciler) evaluateGateTemplates(
 		gateStatus.Message = result.Message
 		gateStatus.Attempts++
 		gateStatus.VendorRef = result.VendorRef
+		gateStatus.Evidence = toAPIGateEvidence(result.Evidence)
 		if len(result.Results) > 0 {
 			gateStatus.Results = toAPIConditionResults(result.Results)
 		}

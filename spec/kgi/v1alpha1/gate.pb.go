@@ -268,6 +268,7 @@ type EvaluateResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Phase         GatePhase              `protobuf:"varint,1,opt,name=phase,proto3,enum=kapro.kgi.v1alpha1.GatePhase" json:"phase,omitempty"`
 	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	Evidence      []*GateEvidence        `protobuf:"bytes,3,rep,name=evidence,proto3" json:"evidence,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -316,6 +317,285 @@ func (x *EvaluateResponse) GetMessage() string {
 	return ""
 }
 
+func (x *EvaluateResponse) GetEvidence() []*GateEvidence {
+	if x != nil {
+		return x.Evidence
+	}
+	return nil
+}
+
+type GateEvidence struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	Type                string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
+	Provider            string                 `protobuf:"bytes,2,opt,name=provider,proto3" json:"provider,omitempty"`
+	AnalysisMode        string                 `protobuf:"bytes,3,opt,name=analysis_mode,json=analysisMode,proto3" json:"analysis_mode,omitempty"`
+	Comparator          string                 `protobuf:"bytes,4,opt,name=comparator,proto3" json:"comparator,omitempty"`
+	Query               string                 `protobuf:"bytes,5,opt,name=query,proto3" json:"query,omitempty"`
+	BaselineQuery       string                 `protobuf:"bytes,6,opt,name=baseline_query,json=baselineQuery,proto3" json:"baseline_query,omitempty"`
+	BaselineHealthQuery string                 `protobuf:"bytes,7,opt,name=baseline_health_query,json=baselineHealthQuery,proto3" json:"baseline_health_query,omitempty"`
+	Window              string                 `protobuf:"bytes,8,opt,name=window,proto3" json:"window,omitempty"`
+	Interval            string                 `protobuf:"bytes,9,opt,name=interval,proto3" json:"interval,omitempty"`
+	ObservedValue       string                 `protobuf:"bytes,10,opt,name=observed_value,json=observedValue,proto3" json:"observed_value,omitempty"`
+	Threshold           string                 `protobuf:"bytes,11,opt,name=threshold,proto3" json:"threshold,omitempty"`
+	BaselineValue       string                 `protobuf:"bytes,12,opt,name=baseline_value,json=baselineValue,proto3" json:"baseline_value,omitempty"`
+	BaselineHealthy     *bool                  `protobuf:"varint,13,opt,name=baseline_healthy,json=baselineHealthy,proto3,oneof" json:"baseline_healthy,omitempty"`
+	SampleCount         int64                  `protobuf:"varint,14,opt,name=sample_count,json=sampleCount,proto3" json:"sample_count,omitempty"`
+	Confidence          *float64               `protobuf:"fixed64,15,opt,name=confidence,proto3,oneof" json:"confidence,omitempty"`
+	Alpha               *float64               `protobuf:"fixed64,16,opt,name=alpha,proto3,oneof" json:"alpha,omitempty"`
+	PValue              *float64               `protobuf:"fixed64,17,opt,name=p_value,json=pValue,proto3,oneof" json:"p_value,omitempty"`
+	EffectSize          string                 `protobuf:"bytes,18,opt,name=effect_size,json=effectSize,proto3" json:"effect_size,omitempty"`
+	Score               *float64               `protobuf:"fixed64,19,opt,name=score,proto3,oneof" json:"score,omitempty"`
+	DecisionRule        string                 `protobuf:"bytes,20,opt,name=decision_rule,json=decisionRule,proto3" json:"decision_rule,omitempty"`
+	Reason              string                 `protobuf:"bytes,21,opt,name=reason,proto3" json:"reason,omitempty"`
+	Projection          *GateProjection        `protobuf:"bytes,22,opt,name=projection,proto3" json:"projection,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *GateEvidence) Reset() {
+	*x = GateEvidence{}
+	mi := &file_spec_kgi_v1alpha1_gate_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GateEvidence) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GateEvidence) ProtoMessage() {}
+
+func (x *GateEvidence) ProtoReflect() protoreflect.Message {
+	mi := &file_spec_kgi_v1alpha1_gate_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GateEvidence.ProtoReflect.Descriptor instead.
+func (*GateEvidence) Descriptor() ([]byte, []int) {
+	return file_spec_kgi_v1alpha1_gate_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *GateEvidence) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *GateEvidence) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *GateEvidence) GetAnalysisMode() string {
+	if x != nil {
+		return x.AnalysisMode
+	}
+	return ""
+}
+
+func (x *GateEvidence) GetComparator() string {
+	if x != nil {
+		return x.Comparator
+	}
+	return ""
+}
+
+func (x *GateEvidence) GetQuery() string {
+	if x != nil {
+		return x.Query
+	}
+	return ""
+}
+
+func (x *GateEvidence) GetBaselineQuery() string {
+	if x != nil {
+		return x.BaselineQuery
+	}
+	return ""
+}
+
+func (x *GateEvidence) GetBaselineHealthQuery() string {
+	if x != nil {
+		return x.BaselineHealthQuery
+	}
+	return ""
+}
+
+func (x *GateEvidence) GetWindow() string {
+	if x != nil {
+		return x.Window
+	}
+	return ""
+}
+
+func (x *GateEvidence) GetInterval() string {
+	if x != nil {
+		return x.Interval
+	}
+	return ""
+}
+
+func (x *GateEvidence) GetObservedValue() string {
+	if x != nil {
+		return x.ObservedValue
+	}
+	return ""
+}
+
+func (x *GateEvidence) GetThreshold() string {
+	if x != nil {
+		return x.Threshold
+	}
+	return ""
+}
+
+func (x *GateEvidence) GetBaselineValue() string {
+	if x != nil {
+		return x.BaselineValue
+	}
+	return ""
+}
+
+func (x *GateEvidence) GetBaselineHealthy() bool {
+	if x != nil && x.BaselineHealthy != nil {
+		return *x.BaselineHealthy
+	}
+	return false
+}
+
+func (x *GateEvidence) GetSampleCount() int64 {
+	if x != nil {
+		return x.SampleCount
+	}
+	return 0
+}
+
+func (x *GateEvidence) GetConfidence() float64 {
+	if x != nil && x.Confidence != nil {
+		return *x.Confidence
+	}
+	return 0
+}
+
+func (x *GateEvidence) GetAlpha() float64 {
+	if x != nil && x.Alpha != nil {
+		return *x.Alpha
+	}
+	return 0
+}
+
+func (x *GateEvidence) GetPValue() float64 {
+	if x != nil && x.PValue != nil {
+		return *x.PValue
+	}
+	return 0
+}
+
+func (x *GateEvidence) GetEffectSize() string {
+	if x != nil {
+		return x.EffectSize
+	}
+	return ""
+}
+
+func (x *GateEvidence) GetScore() float64 {
+	if x != nil && x.Score != nil {
+		return *x.Score
+	}
+	return 0
+}
+
+func (x *GateEvidence) GetDecisionRule() string {
+	if x != nil {
+		return x.DecisionRule
+	}
+	return ""
+}
+
+func (x *GateEvidence) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *GateEvidence) GetProjection() *GateProjection {
+	if x != nil {
+		return x.Projection
+	}
+	return nil
+}
+
+type GateProjection struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Horizon       string                 `protobuf:"bytes,1,opt,name=horizon,proto3" json:"horizon,omitempty"`
+	Value         string                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GateProjection) Reset() {
+	*x = GateProjection{}
+	mi := &file_spec_kgi_v1alpha1_gate_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GateProjection) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GateProjection) ProtoMessage() {}
+
+func (x *GateProjection) ProtoReflect() protoreflect.Message {
+	mi := &file_spec_kgi_v1alpha1_gate_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GateProjection.ProtoReflect.Descriptor instead.
+func (*GateProjection) Descriptor() ([]byte, []int) {
+	return file_spec_kgi_v1alpha1_gate_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *GateProjection) GetHorizon() string {
+	if x != nil {
+		return x.Horizon
+	}
+	return ""
+}
+
+func (x *GateProjection) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+func (x *GateProjection) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
 var File_spec_kgi_v1alpha1_gate_proto protoreflect.FileDescriptor
 
 const file_spec_kgi_v1alpha1_gate_proto_rawDesc = "" +
@@ -338,10 +618,52 @@ const file_spec_kgi_v1alpha1_gate_proto_rawDesc = "" +
 	"parameters\x1a=\n" +
 	"\x0fParametersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"a\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x9f\x01\n" +
 	"\x10EvaluateResponse\x123\n" +
 	"\x05phase\x18\x01 \x01(\x0e2\x1d.kapro.kgi.v1alpha1.GatePhaseR\x05phase\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage*\x8a\x01\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12<\n" +
+	"\bevidence\x18\x03 \x03(\v2 .kapro.kgi.v1alpha1.GateEvidenceR\bevidence\"\xc6\x06\n" +
+	"\fGateEvidence\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12\x1a\n" +
+	"\bprovider\x18\x02 \x01(\tR\bprovider\x12#\n" +
+	"\ranalysis_mode\x18\x03 \x01(\tR\fanalysisMode\x12\x1e\n" +
+	"\n" +
+	"comparator\x18\x04 \x01(\tR\n" +
+	"comparator\x12\x14\n" +
+	"\x05query\x18\x05 \x01(\tR\x05query\x12%\n" +
+	"\x0ebaseline_query\x18\x06 \x01(\tR\rbaselineQuery\x122\n" +
+	"\x15baseline_health_query\x18\a \x01(\tR\x13baselineHealthQuery\x12\x16\n" +
+	"\x06window\x18\b \x01(\tR\x06window\x12\x1a\n" +
+	"\binterval\x18\t \x01(\tR\binterval\x12%\n" +
+	"\x0eobserved_value\x18\n" +
+	" \x01(\tR\robservedValue\x12\x1c\n" +
+	"\tthreshold\x18\v \x01(\tR\tthreshold\x12%\n" +
+	"\x0ebaseline_value\x18\f \x01(\tR\rbaselineValue\x12.\n" +
+	"\x10baseline_healthy\x18\r \x01(\bH\x00R\x0fbaselineHealthy\x88\x01\x01\x12!\n" +
+	"\fsample_count\x18\x0e \x01(\x03R\vsampleCount\x12#\n" +
+	"\n" +
+	"confidence\x18\x0f \x01(\x01H\x01R\n" +
+	"confidence\x88\x01\x01\x12\x19\n" +
+	"\x05alpha\x18\x10 \x01(\x01H\x02R\x05alpha\x88\x01\x01\x12\x1c\n" +
+	"\ap_value\x18\x11 \x01(\x01H\x03R\x06pValue\x88\x01\x01\x12\x1f\n" +
+	"\veffect_size\x18\x12 \x01(\tR\n" +
+	"effectSize\x12\x19\n" +
+	"\x05score\x18\x13 \x01(\x01H\x04R\x05score\x88\x01\x01\x12#\n" +
+	"\rdecision_rule\x18\x14 \x01(\tR\fdecisionRule\x12\x16\n" +
+	"\x06reason\x18\x15 \x01(\tR\x06reason\x12B\n" +
+	"\n" +
+	"projection\x18\x16 \x01(\v2\".kapro.kgi.v1alpha1.GateProjectionR\n" +
+	"projectionB\x13\n" +
+	"\x11_baseline_healthyB\r\n" +
+	"\v_confidenceB\b\n" +
+	"\x06_alphaB\n" +
+	"\n" +
+	"\b_p_valueB\b\n" +
+	"\x06_score\"X\n" +
+	"\x0eGateProjection\x12\x18\n" +
+	"\ahorizon\x18\x01 \x01(\tR\ahorizon\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason*\x8a\x01\n" +
 	"\tGatePhase\x12\x1a\n" +
 	"\x16GATE_PHASE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11GATE_PHASE_PASSED\x10\x01\x12\x15\n" +
@@ -365,27 +687,31 @@ func file_spec_kgi_v1alpha1_gate_proto_rawDescGZIP() []byte {
 }
 
 var file_spec_kgi_v1alpha1_gate_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_spec_kgi_v1alpha1_gate_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_spec_kgi_v1alpha1_gate_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_spec_kgi_v1alpha1_gate_proto_goTypes = []any{
 	(GatePhase)(0),                  // 0: kapro.kgi.v1alpha1.GatePhase
 	(*GetCapabilitiesRequest)(nil),  // 1: kapro.kgi.v1alpha1.GetCapabilitiesRequest
 	(*GetCapabilitiesResponse)(nil), // 2: kapro.kgi.v1alpha1.GetCapabilitiesResponse
 	(*EvaluateRequest)(nil),         // 3: kapro.kgi.v1alpha1.EvaluateRequest
 	(*EvaluateResponse)(nil),        // 4: kapro.kgi.v1alpha1.EvaluateResponse
-	nil,                             // 5: kapro.kgi.v1alpha1.EvaluateRequest.ParametersEntry
+	(*GateEvidence)(nil),            // 5: kapro.kgi.v1alpha1.GateEvidence
+	(*GateProjection)(nil),          // 6: kapro.kgi.v1alpha1.GateProjection
+	nil,                             // 7: kapro.kgi.v1alpha1.EvaluateRequest.ParametersEntry
 }
 var file_spec_kgi_v1alpha1_gate_proto_depIdxs = []int32{
-	5, // 0: kapro.kgi.v1alpha1.EvaluateRequest.parameters:type_name -> kapro.kgi.v1alpha1.EvaluateRequest.ParametersEntry
+	7, // 0: kapro.kgi.v1alpha1.EvaluateRequest.parameters:type_name -> kapro.kgi.v1alpha1.EvaluateRequest.ParametersEntry
 	0, // 1: kapro.kgi.v1alpha1.EvaluateResponse.phase:type_name -> kapro.kgi.v1alpha1.GatePhase
-	1, // 2: kapro.kgi.v1alpha1.GateService.GetCapabilities:input_type -> kapro.kgi.v1alpha1.GetCapabilitiesRequest
-	3, // 3: kapro.kgi.v1alpha1.GateService.Evaluate:input_type -> kapro.kgi.v1alpha1.EvaluateRequest
-	2, // 4: kapro.kgi.v1alpha1.GateService.GetCapabilities:output_type -> kapro.kgi.v1alpha1.GetCapabilitiesResponse
-	4, // 5: kapro.kgi.v1alpha1.GateService.Evaluate:output_type -> kapro.kgi.v1alpha1.EvaluateResponse
-	4, // [4:6] is the sub-list for method output_type
-	2, // [2:4] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	5, // 2: kapro.kgi.v1alpha1.EvaluateResponse.evidence:type_name -> kapro.kgi.v1alpha1.GateEvidence
+	6, // 3: kapro.kgi.v1alpha1.GateEvidence.projection:type_name -> kapro.kgi.v1alpha1.GateProjection
+	1, // 4: kapro.kgi.v1alpha1.GateService.GetCapabilities:input_type -> kapro.kgi.v1alpha1.GetCapabilitiesRequest
+	3, // 5: kapro.kgi.v1alpha1.GateService.Evaluate:input_type -> kapro.kgi.v1alpha1.EvaluateRequest
+	2, // 6: kapro.kgi.v1alpha1.GateService.GetCapabilities:output_type -> kapro.kgi.v1alpha1.GetCapabilitiesResponse
+	4, // 7: kapro.kgi.v1alpha1.GateService.Evaluate:output_type -> kapro.kgi.v1alpha1.EvaluateResponse
+	6, // [6:8] is the sub-list for method output_type
+	4, // [4:6] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_spec_kgi_v1alpha1_gate_proto_init() }
@@ -393,13 +719,14 @@ func file_spec_kgi_v1alpha1_gate_proto_init() {
 	if File_spec_kgi_v1alpha1_gate_proto != nil {
 		return
 	}
+	file_spec_kgi_v1alpha1_gate_proto_msgTypes[4].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_spec_kgi_v1alpha1_gate_proto_rawDesc), len(file_spec_kgi_v1alpha1_gate_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   5,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

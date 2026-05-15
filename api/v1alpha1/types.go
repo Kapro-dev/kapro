@@ -334,8 +334,69 @@ type MetricGate struct {
 	// intentionally override a preset threshold to 0.
 	// +optional
 	Threshold *float64 `json:"threshold,omitempty"`
+	// Analysis selects optional research-backed metric semantics. Empty keeps
+	// the original threshold behavior for backwards compatibility.
+	// +optional
+	Analysis *MetricAnalysisSpec `json:"analysis,omitempty"`
 	// +kubebuilder:pruning:PreserveUnknownFields
 	Config []byte `json:"config,omitempty"`
+}
+
+// MetricAnalysisSpec configures how a metric observation is interpreted.
+type MetricAnalysisSpec struct {
+	// Mode selects the metric analysis algorithm.
+	// threshold: compare the current value to threshold.
+	// sloBurnRate: treat the current value as an error-budget burn rate.
+	// baseline: compare the current value to a baseline query as a ratio.
+	// sequential: sample over the window and require enough confidence before deciding.
+	// changePoint: detect a statistically meaningful change inside the window.
+	// score: convert the metric into a 0-100 canary score.
+	// +kubebuilder:validation:Enum=threshold;sloBurnRate;baseline;sequential;changePoint;score
+	// +optional
+	Mode string `json:"mode,omitempty"`
+	// Comparator controls threshold comparison.
+	// Defaults to "gt" for threshold/sequential and "lte" for sloBurnRate/baseline.
+	// +kubebuilder:validation:Enum=gt;gte;lt;lte
+	// +optional
+	Comparator string `json:"comparator,omitempty"`
+	// BaselineQuery is required for baseline analysis. The current value is
+	// divided by the baseline value before applying the threshold.
+	// +optional
+	BaselineQuery string `json:"baselineQuery,omitempty"`
+	// BaselineHealthQuery must pass before baseline or score analysis can use
+	// the baseline as a control. It should return a positive/true value when
+	// the baseline is healthy.
+	// +optional
+	BaselineHealthQuery string `json:"baselineHealthQuery,omitempty"`
+	// MinSamples is the minimum number of range samples required for sequential
+	// analysis before Kapro can pass or fail the gate.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	MinSamples int32 `json:"minSamples,omitempty"`
+	// MaxSamples is the maximum number of samples to wait for before a
+	// statistical analysis must return a terminal decision using the evidence
+	// available. Empty means no maximum.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	MaxSamples int32 `json:"maxSamples,omitempty"`
+	// ConfidenceThreshold is the minimum confidence required for sequential
+	// analysis to make a terminal decision. Defaults to 0.95.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=1
+	// +optional
+	ConfidenceThreshold *float64 `json:"confidenceThreshold,omitempty"`
+	// Alpha is the false-positive budget for statistical tests. Defaults to
+	// 0.05. Lower values are more conservative.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=1
+	// +optional
+	Alpha *float64 `json:"alpha,omitempty"`
+	// ScoreThreshold is the minimum score required for score analysis. Defaults
+	// to 95.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=100
+	// +optional
+	ScoreThreshold *float64 `json:"scoreThreshold,omitempty"`
 }
 
 type ApprovalConfig struct {
@@ -695,6 +756,10 @@ type GateRunStatus struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	VendorRef *corev1.ObjectReference `json:"vendorRef,omitempty"`
 	Results   []GateConditionResult   `json:"results,omitempty"`
+	// Evidence is structured, non-secret data that explains the gate decision.
+	// It is intended for audit, debugging, notifications, and future AI agents.
+	// +optional
+	Evidence []GateEvidence `json:"evidence,omitempty"`
 }
 
 // GateConditionResult is the per-metric/condition result within a GateRunStatus.
@@ -703,6 +768,42 @@ type GateConditionResult struct {
 	Phase   GatePhase `json:"phase"`
 	Value   string    `json:"value,omitempty"`
 	Message string    `json:"message,omitempty"`
+	// Evidence is structured, non-secret data for this condition.
+	// +optional
+	Evidence []GateEvidence `json:"evidence,omitempty"`
+}
+
+// GateEvidence records the facts and analysis that produced a gate decision.
+type GateEvidence struct {
+	Type                string          `json:"type,omitempty"`
+	Provider            string          `json:"provider,omitempty"`
+	AnalysisMode        string          `json:"analysisMode,omitempty"`
+	Comparator          string          `json:"comparator,omitempty"`
+	Query               string          `json:"query,omitempty"`
+	BaselineQuery       string          `json:"baselineQuery,omitempty"`
+	BaselineHealthQuery string          `json:"baselineHealthQuery,omitempty"`
+	Window              string          `json:"window,omitempty"`
+	Interval            string          `json:"interval,omitempty"`
+	ObservedValue       string          `json:"observedValue,omitempty"`
+	Threshold           string          `json:"threshold,omitempty"`
+	BaselineValue       string          `json:"baselineValue,omitempty"`
+	BaselineHealthy     *bool           `json:"baselineHealthy,omitempty"`
+	SampleCount         int64           `json:"sampleCount,omitempty"`
+	Confidence          *float64        `json:"confidence,omitempty"`
+	Alpha               *float64        `json:"alpha,omitempty"`
+	PValue              *float64        `json:"pValue,omitempty"`
+	EffectSize          string          `json:"effectSize,omitempty"`
+	Score               *float64        `json:"score,omitempty"`
+	DecisionRule        string          `json:"decisionRule,omitempty"`
+	Reason              string          `json:"reason,omitempty"`
+	Projection          *GateProjection `json:"projection,omitempty"`
+}
+
+// GateProjection records an optional forecast derived from gate evidence.
+type GateProjection struct {
+	Horizon string `json:"horizon,omitempty"`
+	Value   string `json:"value,omitempty"`
+	Reason  string `json:"reason,omitempty"`
 }
 
 // ---- Pipeline ---------------------------------------------------------------

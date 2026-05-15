@@ -4,8 +4,8 @@
 
 <h1 align="center">Kapro</h1>
 
-<p align="center"><strong>The canonical promotion layer for Kubernetes.</strong><br>
-Progressive delivery and promotion engine for multi-cluster Kubernetes fleets.</p>
+<p align="center"><strong>Kubernetes-native fleet promotion.</strong><br>
+Coordinate safe artifact rollout across multi-cluster Kubernetes fleets.</p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
@@ -15,21 +15,25 @@ Progressive delivery and promotion engine for multi-cluster Kubernetes fleets.</
 
 ---
 
-## The Fleet-Scale Imperative
+## What Kapro Is
 
-Sovereign hubs. Edge locations at true distributed scale. Zero tolerance for centralized runtime coordination, because centralized orchestration is a single point of failure.
+Kapro is a Kubernetes-native control plane for promoting immutable artifact
+versions across a fleet of clusters.
 
-When deploying at this magnitude, standard CI/CD pipelines collapse under the weight of drift, state, and sheer volume.
+It answers one operational question:
 
-## Why Sequential Pipelines Break
+```text
+Which clusters are allowed to receive this artifact version now, and why?
+```
 
-Traditional CI/CD assumes a linear world: build, test, deploy. But modern platforms are different.
+Kapro owns cross-cluster release ordering, target planning, gate evaluation,
+approval state, backend convergence tracking, and auditable status.
 
-Kafka must run before 14 dependent services. Operators must precede custom resources. Databases cannot be simply redeployed. They require lifecycle management, backups, and drift correction. And every cluster must continuously self-verify against its source of truth. Auto-correction is not optional, it is mandatory.
+It delegates artifact build, manifest rendering, GitOps reconciliation,
+in-cluster traffic shaping, and backend-specific rollout strategy to the tools
+that already own those jobs.
 
-Sequential pipelines simply cannot express this.
-
-## The Missing Link in Global GitOps
+## The Missing Fleet Layer
 
 You have a centralized OCI artifact registry. You have edge clusters running Flux, Helm, and Kustomize. But between those two ends, three questions remain unanswered:
 
@@ -45,21 +49,28 @@ Kapro decouples CI from deployment. The OCI artifact becomes the single source o
 
 ## Enter Kapro
 
-Kapro doesn't replace the CNCF ecosystem. It choreographs it. An open-source orchestrator built to manage the complex state of modern sovereign fleets.
+Kapro does not replace the CNCF ecosystem. It coordinates it.
 
-It sits at the center of Kubernetes Operators, Helm, Kustomize, OCI registries, and GitOps reconciliation loops, coordinating them into a single, state-aware promotion engine.
+It sits above GitOps and delivery backends as the fleet promotion layer: deciding
+when each target cluster may advance, then asking the configured backend to
+apply exactly one version.
 
 ## The Mechanics of Promotion
 
-1. **Intra-cluster blue/green.** Seamless traffic cutover within cluster boundary. Rollbacks are instant routing flips, not redeployments.
-2. **Inter-cluster canary.** Progressive rollout with health gates across regions. Pilot clusters first, then regional waves, then the global fleet.
-3. **No inline updates. Ever.** Traffic is cutover only after verification. Standby workloads always deploy in a separate namespace. No more mutating live state.
+1. **Release planning.** Select target clusters, order waves, and enforce stage concurrency.
+2. **Composable gates.** Use soak timers, Prometheus checks, SLO burn rate, signature verification, approvals, CEL, Jobs, webhooks, or plugins.
+3. **Backend-neutral apply.** Patch the configured actuator backend and wait for convergence.
+4. **Auditable status.** Persist target phase, gate evidence, approvals, events, and release outcome in Kubernetes.
 
-## Autonomous Operations and Bulletproof Reliability
+## Conservative Automation and Reliability
 
-Kapro manages wave-based dependsOn execution across CRDs, operators, state, apps, and ingress. Cluster state is continuously mapped to the Git/OCI source of truth using standard controller-runtime patterns.
+Kapro manages wave-based `dependsOn` execution across release pipelines and
+target clusters. Cluster state is reconciled through standard controller-runtime
+patterns and backend convergence checks.
 
-Automated health gates ensure that if a check or canary fails, the rollout halts. Zero fleet-wide bad deployments.
+Automated gates ensure that unclear or failing evidence halts progression before
+the next wave. Advanced statistical gate modes are optional; the default path
+stays simple and operator-readable.
 
 ## Use Cases
 
@@ -72,7 +83,7 @@ Separate deployment flows per compliance zone. Environment isolation per regulat
 ### Edge and Distributed Platforms
 Progressive rollout to hundreds or thousands of edge clusters. Canary groups get new versions first. Health gates block rollout if error rates spike. Auto-promotion after a configurable soak period.
 
-## How Kapro Compares
+## How Kapro Fits
 
 | | Kapro | Flux | ArgoCD | Kargo |
 |---|---|---|---|---|
@@ -85,6 +96,10 @@ Progressive rollout to hundreds or thousands of edge clusters. Canary groups get
 | **Manual approvals** | CRD-based | No | External | Yes |
 
 Kapro sits **above** Flux, not replacing it, and **alongside** Kargo as a complementary tool. Kapro focuses on horizontal wave ordering across sovereign fleets, while Kargo focuses on vertical pipeline staging across environments.
+
+Kapro is not a CI engine, traffic manager, generic workflow system, or
+replacement for Flux, Argo CD, Argo Rollouts, Flagger, Kargo, or Tekton. See
+[Vision and Boundaries](docs/vision-and-boundaries.md) for the project scope.
 
 ## Getting Started
 
@@ -134,6 +149,8 @@ Quick troubleshooting checks:
 - [Clean-Clone Install Verification](docs/install-verification.md)
 - [v0.1.0-alpha Release Runbook](docs/release-v0.1.0-alpha.md)
 - [Architecture Spec](docs/SPEC.md)
+- [Vision and Boundaries](docs/vision-and-boundaries.md)
+- [CNCF Positioning](docs/cncf-positioning.md)
 - [Local Kind Demo](docs/kind-demo.md)
 - [API Stability and Upgrade Policy](docs/api-stability.md)
 - [Conformance Packages](docs/conformance.md)
