@@ -174,6 +174,11 @@ API pieces:
 The gateway must preserve the same state ownership rule: plugins do backend
 work, Kapro owns release state.
 
+Plugin registration is a platform-admin action. External plugins are inside the
+delivery integration boundary, not inside Kapro's control-plane trust boundary.
+They must not create or mutate Kapro release state directly. See
+`docs/security-model.md` for RBAC, trust boundary, and Secret handling rules.
+
 Plugin readiness follows the compatibility matrix in
 `docs/plugin-compatibility.md`. Unsupported or missing KAI/KGI/KPI contract
 versions are reported as `Ready=False` and `Compatible=False` on

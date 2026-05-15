@@ -28,6 +28,8 @@ You will receive a response within 72 hours. We follow responsible disclosure â€
 - CRDs are the only cross-cluster communication channel
 - The control plane never initiates connections to workload clusters
 
-See [docs/security.md](docs/security.md) for the threat model, plugin trust
-boundary, OCI signature trust model, webhook/gate security, and Secret handling
-guidance.
+## Security Architecture
+
+Kapro's RBAC, multi-tenancy, plugin trust boundary, OCI signature model,
+webhook security, Secret handling, and threat model are documented in
+[docs/security-model.md](docs/security-model.md) and [docs/security.md](docs/security.md).

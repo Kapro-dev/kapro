@@ -66,6 +66,13 @@ registrations with `status.ready=true` and fresh `status.observedGeneration` are
 loaded into runtime registries. Planner plugins are probed and reported in
 status, but runtime planner dispatch remains future work.
 
+Only platform administrators should create or update `PluginRegistration`
+objects. A plugin endpoint can influence deployment execution or gate decisions,
+so registration is part of the platform trust boundary. Production plugins
+should run behind TLS, use least-privilege Kubernetes RBAC for their backend, and
+store client certificates or CA data in platform-owned Secrets. See
+`docs/security-model.md` for the full RBAC and trust model.
+
 When a plugin omits `contract_version` or reports an unsupported version,
 `status.ready` is false, `Ready=False`, `Compatible=False`, and the condition
 message lists the supported contract versions.
