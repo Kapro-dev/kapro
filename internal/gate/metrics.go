@@ -145,7 +145,7 @@ func (g *MetricsGate) Evaluate(ctx context.Context, req Request) (Result, error)
 }
 
 func (g *MetricsGate) evaluateInstant(ctx context.Context, baseURL string, metric kaprov1alpha1.MetricGate, analysis metricAnalysisConfig, query, interval string) (Result, error) {
-	_, val, err := g.queryInstant(ctx, baseURL, query)
+	ok, val, err := g.queryInstant(ctx, baseURL, query)
 	if err != nil {
 		return Result{
 			Phase:      kaprov1alpha1.GatePhaseInconclusive,
@@ -154,6 +154,9 @@ func (g *MetricsGate) evaluateInstant(ctx context.Context, baseURL string, metri
 			Evidence: []Evidence{metricEvidence(metric, query, "", 0, 0, err.Error(),
 				kaprov1alpha1.GatePhaseInconclusive)},
 		}, nil // don't propagate — retry is safer than blocking the pipeline
+	}
+	if !ok {
+		return noInstantDataResult(metric, query, "", interval, "prometheus query returned no series"), nil
 	}
 
 	threshold := analysis.threshold
@@ -209,7 +212,7 @@ func (g *MetricsGate) evaluateBaseline(ctx context.Context, baseURL string, metr
 		}
 	}
 
-	_, val, err := g.queryInstant(ctx, baseURL, query)
+	ok, val, err := g.queryInstant(ctx, baseURL, query)
 	if err != nil {
 		return Result{
 			Phase:      kaprov1alpha1.GatePhaseInconclusive,
@@ -219,7 +222,10 @@ func (g *MetricsGate) evaluateBaseline(ctx context.Context, baseURL string, metr
 				kaprov1alpha1.GatePhaseInconclusive)},
 		}, nil
 	}
-	_, baseline, err := g.queryInstant(ctx, baseURL, analysis.baselineQuery)
+	if !ok {
+		return noInstantDataResult(metric, query, analysis.baselineQuery, interval, "prometheus query returned no series"), nil
+	}
+	ok, baseline, err := g.queryInstant(ctx, baseURL, analysis.baselineQuery)
 	if err != nil {
 		return Result{
 			Phase:      kaprov1alpha1.GatePhaseInconclusive,
@@ -228,6 +234,9 @@ func (g *MetricsGate) evaluateBaseline(ctx context.Context, baseURL string, metr
 			Evidence: []Evidence{metricEvidence(metric, query, analysis.baselineQuery, val, 0, err.Error(),
 				kaprov1alpha1.GatePhaseInconclusive)},
 		}, nil
+	}
+	if !ok {
+		return noInstantDataResult(metric, query, analysis.baselineQuery, interval, "prometheus baseline query returned no series"), nil
 	}
 	if baseline <= 0 {
 		return Result{
@@ -407,7 +416,7 @@ func (g *MetricsGate) evaluateScore(ctx context.Context, baseURL string, metric 
 			}, nil
 		}
 	}
-	_, val, err := g.queryInstant(ctx, baseURL, query)
+	ok, val, err := g.queryInstant(ctx, baseURL, query)
 	if err != nil {
 		return Result{
 			Phase:      kaprov1alpha1.GatePhaseInconclusive,
@@ -416,6 +425,9 @@ func (g *MetricsGate) evaluateScore(ctx context.Context, baseURL string, metric 
 			Evidence: []Evidence{metricEvidence(metric, query, "", 0, 0, err.Error(),
 				kaprov1alpha1.GatePhaseInconclusive)},
 		}, nil
+	}
+	if !ok {
+		return noInstantDataResult(metric, query, analysis.baselineQuery, interval, "prometheus query returned no series"), nil
 	}
 	score := statistics.Score(val, analysis.threshold, analysis.comparator)
 	if score < analysis.scoreThreshold {
@@ -550,8 +562,8 @@ type matrixResult struct {
 	Values [][]json.RawMessage `json:"values"` // [[timestamp, "value"], ...]
 }
 
-// queryInstant calls /api/v1/query and returns (passed, value, error).
-// passed is true when the query returns a result with value > 0.
+// queryInstant calls /api/v1/query and returns (hasSample, value, error).
+// hasSample is false only when Prometheus returns no scalar/vector sample.
 func (g *MetricsGate) queryInstant(ctx context.Context, baseURL, query string) (bool, float64, error) {
 	endpoint := fmt.Sprintf("%s/api/v1/query", baseURL)
 
@@ -611,7 +623,7 @@ func (g *MetricsGate) queryInstant(ctx context.Context, baseURL, query string) (
 		if err != nil {
 			return false, 0, err
 		}
-		return val != 0, val, nil
+		return true, val, nil
 
 	case "scalar":
 		// scalar result is [timestamp, "value"]
@@ -626,10 +638,20 @@ func (g *MetricsGate) queryInstant(ctx context.Context, baseURL, query string) (
 		if err != nil {
 			return false, 0, err
 		}
-		return val != 0, val, nil
+		return true, val, nil
 
 	default:
 		return false, 0, fmt.Errorf("unsupported resultType: %s", pr.Data.ResultType)
+	}
+}
+
+func noInstantDataResult(metric kaprov1alpha1.MetricGate, query, baselineQuery, interval, reason string) Result {
+	return Result{
+		Phase:      kaprov1alpha1.GatePhaseInconclusive,
+		Message:    reason,
+		RetryAfter: interval,
+		Evidence: []Evidence{metricEvidenceWithStats(metric, query, baselineQuery, 0, 0, 0, nil,
+			reason, kaprov1alpha1.GatePhaseInconclusive, statEvidence{})},
 	}
 }
 

@@ -333,6 +333,43 @@ func TestMetricsGate_SLOBurnRateUsesLTEComparator(t *testing.T) {
 	}
 }
 
+func TestMetricsGate_SLOBurnRateEmptyResultIsInconclusive(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(prometheusEmptyVectorResponse())
+	}))
+	defer srv.Close()
+
+	threshold := 2.0
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{{
+				Provider:  "prometheus",
+				Query:     "burn_rate",
+				Endpoint:  srv.URL,
+				Threshold: &threshold,
+				Analysis:  &kaprov1alpha1.MetricAnalysisSpec{Mode: "sloBurnRate"},
+			}},
+		},
+	}
+
+	result, err := (&gate.MetricsGate{HTTPClient: srv.Client()}).Evaluate(context.Background(), gate.Request{
+		Context: &gate.Context{}, Policy: policy, MetricIndex: 0,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Phase != kaprov1alpha1.GatePhaseInconclusive {
+		t.Fatalf("expected empty burn-rate result to be inconclusive, got %s", result.Phase)
+	}
+	if result.RetryAfter == "" {
+		t.Fatal("expected RetryAfter for empty burn-rate result")
+	}
+	if got := result.Evidence[0].SampleCount; got != 0 {
+		t.Fatalf("expected sample count 0, got %d", got)
+	}
+}
+
 func TestMetricsGate_BaselineRatioBlocksWhenRegressionTooLarge(t *testing.T) {
 	requests := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -376,6 +413,49 @@ func TestMetricsGate_BaselineRatioBlocksWhenRegressionTooLarge(t *testing.T) {
 	}
 	if got := result.Evidence[0].BaselineValue; got != "10" {
 		t.Fatalf("expected baseline 10, got %q", got)
+	}
+}
+
+func TestMetricsGate_BaselineEmptyResultIsInconclusive(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		requests++
+		if requests == 1 {
+			_, _ = w.Write(prometheusVectorResponse("1"))
+			return
+		}
+		_, _ = w.Write(prometheusEmptyVectorResponse())
+	}))
+	defer srv.Close()
+
+	threshold := 1.1
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{{
+				Provider:  "prometheus",
+				Query:     "canary_error_rate",
+				Endpoint:  srv.URL,
+				Threshold: &threshold,
+				Analysis: &kaprov1alpha1.MetricAnalysisSpec{
+					Mode:          "baseline",
+					BaselineQuery: "baseline_error_rate",
+				},
+			}},
+		},
+	}
+
+	result, err := (&gate.MetricsGate{HTTPClient: srv.Client()}).Evaluate(context.Background(), gate.Request{
+		Context: &gate.Context{}, Policy: policy, MetricIndex: 0,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Phase != kaprov1alpha1.GatePhaseInconclusive {
+		t.Fatalf("expected empty baseline result to be inconclusive, got %s", result.Phase)
+	}
+	if got := result.Evidence[0].SampleCount; got != 0 {
+		t.Fatalf("expected sample count 0, got %d", got)
 	}
 }
 
@@ -542,6 +622,44 @@ func TestMetricsGate_ScoreBlocksBelowThreshold(t *testing.T) {
 	}
 	if result.Evidence[0].Score == nil || *result.Evidence[0].Score != 50 {
 		t.Fatalf("expected score 50, got %#v", result.Evidence[0].Score)
+	}
+}
+
+func TestMetricsGate_ScoreEmptyResultIsInconclusive(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(prometheusEmptyVectorResponse())
+	}))
+	defer srv.Close()
+
+	threshold := 0.05
+	scoreThreshold := 90.0
+	policy := &kaprov1alpha1.GatePolicySpec{
+		Gate: kaprov1alpha1.GateSpec{
+			Metrics: []kaprov1alpha1.MetricGate{{
+				Provider:  "prometheus",
+				Query:     "error_rate",
+				Endpoint:  srv.URL,
+				Threshold: &threshold,
+				Analysis: &kaprov1alpha1.MetricAnalysisSpec{
+					Mode:           "score",
+					ScoreThreshold: &scoreThreshold,
+				},
+			}},
+		},
+	}
+
+	result, err := (&gate.MetricsGate{HTTPClient: srv.Client()}).Evaluate(context.Background(), gate.Request{
+		Context: &gate.Context{}, Policy: policy, MetricIndex: 0,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Phase != kaprov1alpha1.GatePhaseInconclusive {
+		t.Fatalf("expected empty score result to be inconclusive, got %s", result.Phase)
+	}
+	if result.RetryAfter == "" {
+		t.Fatal("expected RetryAfter for empty score result")
 	}
 }
 
