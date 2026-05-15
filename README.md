@@ -159,6 +159,7 @@ Quick troubleshooting checks:
 - [API Stability and Upgrade Policy](docs/api-stability.md)
 - [Conformance Packages](docs/conformance.md)
 - [Controller Scalability and Resilience](docs/controller-scalability.md)
+- [RBAC, Multi-Tenancy, and Security Model](docs/security-model.md)
 - [Plugin Authoring](docs/plugin-authoring.md)
 - [Extension Model](docs/extension-model.md)
 - [Roadmap](docs/ROADMAP.md)
