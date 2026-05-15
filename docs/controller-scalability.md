@@ -23,6 +23,28 @@ environment variable. When higher worker counts are needed, prefer sharding
 first; raising global concurrency should be a deliberate code or chart change
 after measuring API server and backend capacity.
 
+## Capacity Model
+
+Kapro capacity is driven by target fan-out, not by the number of `Release`
+objects alone. One stage that selects 300 clusters creates up to 300
+`ReleaseTarget` objects, and each active target can evaluate gates, call an
+actuator, and write status independently.
+
+Use this sizing worksheet before raising rollout width:
+
+| Input | Question | Operational limit |
+|---|---|---|
+| Selected targets per stage | How many `MemberCluster` objects match the stage selector? | Bound with stage selectors and `maxParallel`. |
+| Active targets per stage | How many targets can be in `Applying`, `MetricsCheck`, or plugin-backed gates at once? | Keep below backend write and read QPS. |
+| Gate interval | How often does each target query Prometheus, webhook gates, or plugin gates? | Use 30s or slower for fleet-wide gates unless measured safe. |
+| Actuator convergence latency | How long does the backend need to accept and converge a version? | Long latency favors lower `maxParallel` and more stages. |
+| Status write rate | How many target phase and gate updates are expected per minute? | Watch API server latency and `kapro_controller_status_writes_total{result="error"}`. |
+| Plugin deadline | How much worker time can one plugin call occupy? | Keep `PluginRegistration.spec.timeout` short and scale plugin servers. |
+
+Rule of thumb: begin with `maxParallel` at or below the smallest backend write
+quota for the selected targets, then increase one stage at a time while watching
+controller latency, status write errors, and backend throttling.
+
 ## Scaling Levers
 
 Use these levers in this order:
@@ -39,6 +61,26 @@ Use these levers in this order:
 The first three levers reduce work. Sharding partitions work. Raising worker
 concurrency increases pressure on the Kubernetes API server and external
 backends, so it should follow measurement rather than precede it.
+
+## Stage and Fleet Limits
+
+Default operating range is 10-500 clusters per hub with modest active Release
+count. Larger fleets are possible only with explicit partitioning and measured
+backend capacity.
+
+Recommended starting limits:
+
+| Fleet shape | Starting point |
+|---|---|
+| Development hub | One operator replica, no sharding, `maxParallel` 1-5 |
+| Small production fleet, under 50 clusters | One active manager, `maxParallel` 5-10 per backend |
+| Medium fleet, 50-500 clusters | Wave stages by region or tenant, `maxParallel` 10-25 unless backend quotas are lower |
+| Large fleet, over 500 clusters | Shard by region, tenant, or environment before raising worker counts |
+| Highly regulated or network-isolated fleet | Prefer separate hubs over one global hub with many shards |
+
+Avoid one Release that selects every production cluster in a single unbounded
+stage. Model global delivery as staged waves, then scope emergency corrective
+Releases to the affected clusters.
 
 ## Rate Limits
 
@@ -72,6 +114,12 @@ Rate limits should be layered:
 | Plugin | RPC deadline, retry policy, backend client limiter | External systems |
 | Receiver | CloudEvents de-duplication and webhook timeout | Notification consumers |
 
+Kapro currently does not expose Kubernetes REST client QPS and burst as chart
+values. If API server throttling appears, first lower stage `maxParallel`, slow
+gate intervals, reduce active Releases, or shard the workload. Raising client
+QPS or controller workers should happen only with matching API server capacity
+and backend quotas.
+
 ## Sharding
 
 Kapro supports label-based sharding for the Release and ReleaseTarget
@@ -97,6 +145,20 @@ Shard labels must be applied consistently to `Release` and `ReleaseTarget`
 objects. Admission or automation that creates Releases should set
 `kapro.io/shard` at creation time so the correct controller instance receives
 the first event.
+
+Shard boundary choices should be stable and low-cardinality:
+
+| Shard key | Good fit | Watch-outs |
+|---|---|---|
+| Region | Regional backends and incident ownership | Cross-region Releases need one shard label chosen up front |
+| Tenant or business unit | Independent release owners | Shared platform Releases may need a platform shard |
+| Environment | Separate canary, staging, production queues | Production shard can still be too large without stages |
+| Hash bucket | Very large homogeneous fleets | Harder for humans to debug during incidents |
+
+Do not move an in-flight Release between shards by changing labels unless the
+owning controller is stopped and the operational handoff is explicit. Label
+changes can alter which manager receives future events while existing workqueue
+items are still draining.
 
 Current sharding scope:
 
@@ -172,6 +234,19 @@ Signals that a queue needs partitioning or tuning:
 
 If errors dominate, fix the failing backend or validation path before adding
 workers. More workers will make a persistent error loop louder.
+
+When increasing worker counts in code or packaging, test with:
+
+- synthetic Releases that match the expected target count;
+- real Prometheus and plugin endpoints, not no-op mocks;
+- API server request latency and throttling dashboards;
+- status write conflict/error rates;
+- controller restarts during an active rollout.
+
+The acceptance criterion is not only faster completion. The rollout should also
+remain debuggable: `Release.status.pipelineProgress`, `ReleaseTarget.status`,
+Events, and dashboard panels must still point to the bottleneck without log
+scraping.
 
 ## Large Fleet Limits
 

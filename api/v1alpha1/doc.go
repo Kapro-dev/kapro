@@ -20,6 +20,9 @@
 // Delivery execution state is stored inline in Release.status.targets
 // rather than in a standalone execution CRD.
 //
+// API maturity, deprecation, schema compatibility, and upgrade expectations are
+// documented in docs/api-stability.md.
+//
 // +kubebuilder:object:generate=true
 // +groupName=kapro.io
 package v1alpha1

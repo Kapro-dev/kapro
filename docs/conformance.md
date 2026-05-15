@@ -4,11 +4,11 @@ Kapro ships conformance packages for external plugin authors. They verify the
 minimum behavior required by the KAI, KGI, and KPI contracts before a plugin is
 registered in a hub.
 
-| Contract | Package | Service client |
-|---|---|---|
-| KAI actuator | `kapro.io/kapro/conformance/actuator` | `spec/kai/v1alpha1.ActuatorServiceClient` |
-| KGI gate | `kapro.io/kapro/conformance/gate` | `spec/kgi/v1alpha1.GateServiceClient` |
-| KPI planner | `kapro.io/kapro/conformance/planner` | `spec/kpi/v1alpha1.PlannerServiceClient` |
+| Contract | Package | Service client | Contract focus |
+|---|---|---|---|
+| KAI actuator | `kapro.io/kapro/conformance/actuator` | `spec/kai/v1alpha1.ActuatorServiceClient` | Apply one version, report convergence, and accept rollback |
+| KGI gate | `kapro.io/kapro/conformance/gate` | `spec/kgi/v1alpha1.GateServiceClient` | Decide whether one target may advance |
+| KPI planner | `kapro.io/kapro/conformance/planner` | `spec/kpi/v1alpha1.PlannerServiceClient` | Filter, order, include, skip, or defer candidate targets |
 
 The harnesses are Go packages, but the plugin under test can be written in any
 language that serves the published gRPC contract. The test only needs a gRPC
@@ -112,7 +112,9 @@ Plugin-specific tests should cover:
 
 The conformance packages are the minimum bar. Passing them means the plugin
 obeys the published Kapro contract; it does not prove backend-specific
-correctness, capacity, or production readiness.
+correctness, capacity, or production readiness. A plugin that passes the
+matching suite and documents its runtime assumptions can be described as
+Kapro-compatible; see `docs/plugin-compatibility.md`.
 
 KAI and KGI contracts still require `GetCapabilities` and context cancellation
 support. Until those checks are added to the base harnesses, plugin repositories

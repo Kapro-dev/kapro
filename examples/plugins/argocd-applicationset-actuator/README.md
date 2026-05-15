@@ -51,6 +51,9 @@ the request target name.
 
 ## Registration
 
+The standalone manifest is
+`examples/plugins/argocd-applicationset-actuator-registration.yaml`.
+
 ```yaml
 apiVersion: kapro.io/v1alpha1
 kind: PluginRegistration

@@ -22,6 +22,30 @@ This document defines the target security architecture for Kapro deployments.
 - Approval and webhook paths must be auditable, authenticated, and replay
   bounded.
 
+## Secure-by-Default Install Posture
+
+The production install posture is conservative:
+
+- run the operator in a platform namespace such as `kapro-system`;
+- keep admission webhooks enabled and use cert-manager or an equivalent CA
+  process for serving certificates;
+- use `failurePolicy: Fail` for Kapro admission webhooks after installation is
+  healthy;
+- keep `pluginGateway.enabled=false` unless external plugins are explicitly
+  reviewed and registered;
+- keep `ReleaseTrigger.spec.suspended=true` and
+  `releaseTemplate.suspended=true` during onboarding;
+- keep OCI `requireSignature=true` for autonomous triggers;
+- install only the RBAC verbs required by each persona, using
+  `examples/rbac/recommended-roles.yaml` as a starting split;
+- mount approval HMAC material and notification credentials from Secrets, not
+  environment variables;
+- restrict egress from the operator to the Kubernetes API, approved registries,
+  plugin endpoints, notification sinks, and configured webhook gates.
+
+For install commands, see `docs/install.md`. This document defines the security
+posture those installs should preserve.
+
 ## Cluster-Scoped Ownership Model
 
 Kapro CRDs are cluster-scoped because a release pipeline can span namespaces,
@@ -186,6 +210,9 @@ The recommended production model is:
 Registry credentials and cosign keys are Secrets. CRDs reference those Secrets
 by name and namespace; they do not store credential material.
 
+Example manifests for suspended, digest-pinned ReleaseTrigger use with cosign
+keyless verification are available in `examples/release-trigger/`.
+
 ## Webhook and Gate Security
 
 Admission webhooks protect Kapro's API invariants. They should run with TLS,
@@ -240,4 +267,3 @@ Secret handling rules:
 | Compromised spoke cluster writes another cluster's status. | Bind spoke identity to one `MemberCluster`; use AgentPolicy and RBAC so the identity can read and patch only its allowed cluster object. |
 | Approval webhook token is replayed. | Use short expirations, HMAC signing, action-bound claims, and deterministic Approval object names. |
 | Admission webhook outage blocks emergency operations. | Run multiple replicas, manage CA rotation, monitor webhook health, and document the operational break-glass process. |
-

@@ -18,6 +18,20 @@ Notifications are not a plugin contract. `NotificationProvider` and
 configuration, but runtime dispatch from those resources is future work.
 Existing inline gate notifications remain supported.
 
+## Ecosystem Labels
+
+Kapro uses two plugin ecosystem labels:
+
+| Label | Meaning | Status |
+|---|---|---|
+| Kapro-compatible plugin | Implements one supported KAI, KGI, or KPI contract, reports the matching `contract_version`, passes the relevant base conformance harness, and documents runtime assumptions. | Available now |
+| Certified Kapro plugin | Meets the compatible-plugin bar plus future project certification requirements such as provenance, support windows, upgrade testing, and operational limits. | Future work |
+
+Third-party authors can claim Kapro-compatible when the published contract and
+conformance requirements are met. Do not describe a plugin as certified until a
+certification process exists. See `docs/plugin-compatibility.md` for the
+current matrix and future certification story.
+
 ## Contracts
 
 | Contract | Proto | Go package |
@@ -119,9 +133,12 @@ func TestKAIConformance(t *testing.T) {
 See `docs/conformance.md` for scenario rules and registration checks.
 
 A complete external actuator example is available in
-`examples/plugins/argocd-actuator`. It implements KAI for Argo CD Applications
-by patching `spec.source.targetRevision` and checking Argo CD sync and health
-status for convergence. `examples/plugins/argocd-applicationset-actuator`
+`examples/plugins/argocd-actuator`, with a sample registration manifest at
+`examples/plugins/argocd-actuator-registration.yaml`. It implements KAI for
+Argo CD Applications by patching `spec.source.targetRevision` and checking
+Argo CD sync and health status for convergence.
+`examples/plugins/argocd-applicationset-actuator`, with a sample registration
+manifest at `examples/plugins/argocd-applicationset-actuator-registration.yaml`,
 implements the ApplicationSet-based `argo/push` variant by patching
 `spec.template.spec.source.targetRevision` and checking a generated
 Application's sync and health status.
@@ -148,9 +165,10 @@ func TestKGIConformance(t *testing.T) {
 ```
 
 A gate plugin implementation example is available in
-`examples/plugins/slo-gate`. It implements KGI for SLO checks using static
-values or Prometheus instant queries. Reference a runtime gate plugin from a
-gate template with `type: plugin` and `plugin.name` set to
+`examples/plugins/slo-gate`, with a sample registration manifest at
+`examples/plugins/slo-gate-registration.yaml`. It implements KGI for SLO checks
+using static values or Prometheus instant queries. Reference a runtime gate
+plugin from a gate template with `type: plugin` and `plugin.name` set to
 `PluginRegistration.spec.name`.
 
 ## Planner Requirements
@@ -179,8 +197,18 @@ func TestKPIConformance(t *testing.T) {
 ```
 
 A planner plugin implementation example is available in
-`examples/plugins/capacity-planner`. It implements KPI for capacity-aware
-filtering, ordering, and deferring rollout targets.
+`examples/plugins/capacity-planner`, with a sample registration manifest at
+`examples/plugins/capacity-planner-registration.yaml`. It implements KPI for
+capacity-aware filtering, ordering, and deferring rollout targets.
+
+## Example Catalog
+
+| Example | Contract | Registration manifest | Runtime status |
+|---|---|---|---|
+| `examples/plugins/argocd-actuator` | KAI actuator | `examples/plugins/argocd-actuator-registration.yaml` | Startup-time dispatch preview |
+| `examples/plugins/argocd-applicationset-actuator` | KAI actuator | `examples/plugins/argocd-applicationset-actuator-registration.yaml` | Startup-time dispatch preview |
+| `examples/plugins/slo-gate` | KGI gate | `examples/plugins/slo-gate-registration.yaml` | Startup-time dispatch preview |
+| `examples/plugins/capacity-planner` | KPI planner | `examples/plugins/capacity-planner-registration.yaml` | Status probe only; runtime dispatch future work |
 
 ## Package Imports
 

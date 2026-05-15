@@ -25,9 +25,7 @@
 ### KCI — Deferred / reconsidered
 
 A generic cluster-provider abstraction (`pkg/provider`, `ProviderSpec` on
-`MemberCluster`) was prototyped and then removed — see
-`docs/adr/ADR-006-multi-cloud-provider-onboarding.md` and
-`docs/adr/ADR-007-kxi-interface-family.md`. Multi-cloud support is now a
+`MemberCluster`) was prototyped and then removed. Multi-cloud support is now a
 question of (a) actuator implementations (`pkg/actuator`) and
 (b) spoke-side bootstrap code in `internal/bootstrap`. There is no plan to
 re-introduce a generic provider registry.

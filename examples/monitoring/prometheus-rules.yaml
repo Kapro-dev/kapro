@@ -19,6 +19,7 @@ spec:
           annotations:
             summary: "Kapro {{ $labels.controller }} controller is returning reconcile errors"
             description: "The {{ $labels.controller }} controller has reported a non-zero reconcile error rate over the last 10 minutes."
+            runbook: "docs/operations.md#first-response"
         - alert: KaproControllerReconcileLatencyP95High
           expr: |
             histogram_quantile(
@@ -31,6 +32,7 @@ spec:
           annotations:
             summary: "Kapro {{ $labels.controller }} reconcile p95 is high"
             description: "The {{ $labels.controller }} controller p95 reconcile duration has been above 30 seconds for 15 minutes."
+            runbook: "docs/controller-scalability.md#workqueue-tuning"
     - name: kapro.gates
       rules:
         - alert: KaproGateFailureRateHigh
@@ -46,6 +48,7 @@ spec:
           annotations:
             summary: "Kapro {{ $labels.gate_type }} gate failure ratio is high"
             description: "More than 20% of {{ $labels.gate_type }} gate evaluations failed over the last 15 minutes."
+            runbook: "docs/operations.md#runbook-gate-failure"
     - name: kapro.rollouts
       rules:
         - alert: KaproReleaseStuck
@@ -63,6 +66,7 @@ spec:
           annotations:
             summary: "Kapro release {{ $labels.release }} appears stuck"
             description: "Release {{ $labels.release }} has remained non-terminal for more than 2 hours. This rule uses kube-state-metrics custom-resource state metrics; tune the threshold to match Release spec.timeout and normal rollout cadence."
+            runbook: "docs/operations.md#runbook-stuck-release"
         - alert: KaproRolloutDurationP95High
           expr: |
             histogram_quantile(
@@ -75,6 +79,7 @@ spec:
           annotations:
             summary: "Kapro {{ $labels.pipeline }} rollout stage p95 is high"
             description: "Stage completion p95 for pipeline {{ $labels.pipeline }} has been above 1 hour for 30 minutes."
+            runbook: "docs/controller-scalability.md#workqueue-tuning"
     - name: kapro.plugins
       rules:
         - alert: KaproPluginProbeFailure
@@ -86,6 +91,7 @@ spec:
           annotations:
             summary: "Kapro plugin {{ $labels.pluginregistration }} probe is failing"
             description: "PluginRegistration {{ $labels.pluginregistration }} has reported Ready=False for 15 minutes. This rule uses kube-state-metrics custom-resource state metrics."
+            runbook: "docs/operations.md#runbook-plugin-not-ready"
     - name: kapro.triggers
       rules:
         - alert: KaproReleaseTriggerBlocked
@@ -103,3 +109,4 @@ spec:
           annotations:
             summary: "Kapro release trigger {{ $labels.releasetrigger }} is blocked"
             description: "ReleaseTrigger {{ $labels.releasetrigger }} is blocked by reason {{ $labels.reason }}. This covers cooldown, max-active, source resolution, signature verification, and release creation failures via kube-state-metrics custom-resource state metrics."
+            runbook: "docs/operations.md#runbook-blocked-releasetrigger"

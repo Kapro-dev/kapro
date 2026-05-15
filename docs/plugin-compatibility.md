@@ -10,14 +10,27 @@ operators, but it is not used to decide whether a plugin can run.
 
 ## Compatibility Matrix
 
-| Plugin type | Contract | Supported contract versions | Runtime status |
-|---|---|---|---|
-| `actuator` | KAI | `v1alpha1` | Probed; ready registrations can be loaded at startup when `KAPRO_ENABLE_PLUGIN_GATEWAY=true` |
-| `gate` | KGI | `v1alpha1` | Probed; ready registrations can be loaded at startup when `KAPRO_ENABLE_PLUGIN_GATEWAY=true` |
-| `planner` | KPI | `v1alpha1` | Probed and reported in status; runtime planner dispatch is future work |
+| Plugin type | Contract | Supported contract versions | Conformance package | Example | Runtime status |
+|---|---|---|---|---|---|
+| `actuator` | KAI | `v1alpha1` | `conformance/actuator` | `examples/plugins/argocd-actuator` | Probed; ready registrations can be loaded at startup when `KAPRO_ENABLE_PLUGIN_GATEWAY=true` |
+| `gate` | KGI | `v1alpha1` | `conformance/gate` | `examples/plugins/slo-gate` | Probed; ready registrations can be loaded at startup when `KAPRO_ENABLE_PLUGIN_GATEWAY=true` |
+| `planner` | KPI | `v1alpha1` | `conformance/planner` | `examples/plugins/capacity-planner` | Probed and reported in status; runtime planner dispatch is future work |
 
 The supported versions above are also defined in
 `pkg/plugincompat/compatibility.go`.
+
+## Kapro-Compatible Plugins
+
+A plugin may be described as Kapro-compatible when it:
+
+- implements one supported KAI, KGI, or KPI gRPC contract;
+- reports the supported `contract_version` from `GetCapabilities`;
+- passes the matching conformance harness;
+- documents required parameters, backend permissions, and runtime assumptions;
+- leaves release state, retries, failure policy, and `ReleaseTarget` binding to
+  Kapro.
+
+Kapro-compatible is a contract claim, not a project endorsement.
 
 ## Probe Policy
 
@@ -58,3 +71,17 @@ Within a supported `v1alpha1` contract, changes must be backward-compatible:
 Plugin authors should run the matching conformance harness under
 `conformance/actuator`, `conformance/gate`, or `conformance/planner` before
 publishing a plugin.
+
+## Certified Plugin Future
+
+Certified Kapro plugin is a future ecosystem label. The expected bar is higher
+than Kapro-compatible and is likely to include:
+
+- passing conformance for each supported Kapro and contract version;
+- signed release artifacts or equivalent provenance;
+- a published support window and upgrade policy;
+- documented compatibility ranges for Kapro, the plugin image, and the backend;
+- reproducible registration manifests and operational limits.
+
+Until that certification process exists, plugin authors should use
+Kapro-compatible for plugins that meet the contract and conformance bar.

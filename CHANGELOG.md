@@ -1,5 +1,101 @@
 # Changelog
 
+This changelog tracks user-visible API, behavior, and release-process changes.
+Kapro is currently preparing `v0.1.0-alpha`; entries below that heading are the
+release-note structure for the first tagged pre-stable release.
+
+Release notes must call out CRD schema changes, plugin contract changes,
+deprecations, removals, upgrade steps, and compatibility expectations. See
+`docs/release-notes.md` and `docs/api-stability.md`.
+
+## Unreleased
+
+### Added
+
+- Added API stability and release hygiene documentation for pre-stable releases.
+- Added the `v0.1.0-alpha` release-note structure and follow-up checklist.
+
+### Changed
+
+- Clarified alpha, preview, and stable API surface expectations for CRDs,
+  extension packages, plugin contracts, and lifecycle event schemas.
+
+### Deprecated
+
+- None.
+
+### Removed
+
+- None.
+
+### Migration
+
+- None.
+
+## v0.1.0-alpha — Pending
+
+First alpha milestone for Kapro. This release is intended to provide a concrete
+version anchor for early adopters and contributors while keeping the `v1alpha1`
+API below stable maturity.
+
+### Scope
+
+- Publish installable CRDs and the operator chart for local and controlled
+  development environments.
+- Document the core promotion workflow: `KaproApp`, `Pipeline`, `Release`,
+  `ReleaseTarget`, `MemberCluster`, and `Approval`.
+- Publish preview extension contracts for in-process actuators, gates, planners,
+  and the KAI/KGI/KPI gRPC plugin APIs.
+- Publish preview policies for `ReleaseTrigger`, `PluginRegistration`,
+  notification provider/policy APIs, and lifecycle event payloads.
+- Publish conformance package entry points for plugin authors.
+
+### Compatibility
+
+- All CRDs remain `kapro.io/v1alpha1` and below stable maturity.
+- Alpha CRD fields may change before `v0.2.0`; documented examples and shipped
+  manifests should receive migration notes when they change.
+- Preview plugin contracts must remain compatible within this release line
+  unless a release note marks a breaking alpha change explicitly.
+- Stored status is the recovery source for in-flight releases; do not rely on
+  controller memory or log output as an API.
+
+### Upgrade Notes
+
+- Apply CRD updates before rolling the operator.
+- Run KAI, KGI, or KPI conformance packages before enabling external plugin
+  images with a new Kapro build.
+- Read `docs/api-stability.md` before upgrading a hub with in-flight releases
+  or enabled plugin registrations.
+
+### Known Gaps Before v0.2.0
+
+- No stable API version is published yet.
+- Plugin gateway runtime dispatch is preview and startup-time only for actuator
+  and gate registrations.
+- Planner plugin runtime dispatch remains future work.
+- API conversion webhooks are not yet part of the release process.
+- Markdown and release-note checks are not yet enforced in CI.
+
+### v0.2.0 Follow-up Checklist
+
+- [ ] Decide which core CRD fields move from Alpha to Preview.
+- [ ] Add a CRD schema compatibility check to CI or document the manual command.
+- [ ] Reserve removed proto field numbers before any KAI/KGI/KPI contract
+      cleanup.
+- [ ] Add release-note validation to the pull request checklist or CI.
+- [ ] Add explicit migration notes for every changed shipped example.
+- [ ] Reconcile `CHANGELOG.md` against the tag contents before cutting
+      `v0.2.0`.
+
+---
+
+## Historical Draft Entries
+
+The entries below predate the `v0.1.0-alpha` release hygiene structure. Keep
+them for context, but reconcile them against the tagged contents before using
+them as GitHub release notes.
+
 ## v0.3.0 — Spoke-Local Flux + CLI + GCP-Native
 
 Production-ready spoke-local delivery mode with complete CLI and GCP integration.

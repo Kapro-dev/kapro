@@ -47,6 +47,9 @@ If no application parameter is set, the plugin uses the request target name.
 
 ## Registration
 
+The standalone manifest is
+`examples/plugins/argocd-actuator-registration.yaml`.
+
 ```yaml
 apiVersion: kapro.io/v1alpha1
 kind: PluginRegistration

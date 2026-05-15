@@ -8,10 +8,9 @@ This project follows the [CNCF Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Development Requirements
 
-- Go 1.22+
-- Node.js 20+ (for UI)
-- [controller-gen](https://book.kubebuilder.io/reference/controller-gen.html) v0.14+
-- [golangci-lint](https://golangci-lint.run/) v1.57+
+- Go 1.25+
+- [controller-gen](https://book.kubebuilder.io/reference/controller-gen.html) v0.21.0
+- [golangci-lint](https://golangci-lint.run/) v2.12.2
 - kubectl + a running Kubernetes cluster (for e2e)
 
 ## Getting Started
@@ -23,6 +22,7 @@ go mod tidy
 make generate    # generate CRD manifests + DeepCopy methods
 make build       # compile binaries
 make test        # run unit tests with envtest
+scripts/verify-install.sh render
 ```
 
 ## Pull Request Process

@@ -5,6 +5,9 @@ clusters, so the security model assumes that release creation, plugin
 registration, approval, artifact verification, and webhook gates are privileged
 operations.
 
+For role design, see `docs/rbac-tenancy.md`. For the full control-plane trust
+model, see `docs/security-model.md`.
+
 ## Threat Model
 
 | Threat | Mitigation |
@@ -64,6 +67,91 @@ Keyless verification should pin expected issuer and subject identity. Key-based
 verification should use a trusted public key distributed through a
 platform-owned Secret or ConfigMap. Unsigned artifacts must not create automatic
 production Releases.
+
+### ReleaseTrigger with cosign keyless policy
+
+`ReleaseTrigger` observes tags and creates a digest-pinned Release. The pipeline
+gate enforces the cosign keyless identity before target rollout.
+
+```yaml
+apiVersion: kapro.io/v1alpha1
+kind: Pipeline
+metadata:
+  name: checkout-keyless
+spec:
+  stages:
+    - name: canary
+      selector:
+        matchLabels:
+          kapro.io/tier: canary
+      gate:
+        mode: auto
+        gate:
+          verification:
+            cosignPolicy:
+              keyless:
+                issuer: https://token.actions.githubusercontent.com
+                subject: repo:example/checkout:ref:refs/heads/main
+---
+apiVersion: kapro.io/v1alpha1
+kind: ReleaseTrigger
+metadata:
+  name: checkout-oci-keyless
+spec:
+  suspended: true
+  source:
+    type: oci
+    oci:
+      repository: oci://registry.example.com/platform/checkout
+      tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+      requireSignature: true
+      pollInterval: 5m
+  releaseTemplate:
+    pipelines:
+      - name: production
+        pipeline: checkout-keyless
+    suspended: true
+    scope:
+      targets:
+        - checkout-canary-eu
+  cooldown: 30m
+  maxActive: 1
+  dryRun: true
+```
+
+### ReleaseTrigger with cosign public key policy
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: checkout-cosign-public-key
+  namespace: kapro-system
+type: Opaque
+data:
+  cosign.pub: <base64-encoded-public-key>
+---
+apiVersion: kapro.io/v1alpha1
+kind: Pipeline
+metadata:
+  name: checkout-keyed
+spec:
+  stages:
+    - name: canary
+      selector:
+        matchLabels:
+          kapro.io/tier: canary
+      gate:
+        mode: auto
+        gate:
+          verification:
+            cosignPolicy:
+              key:
+                secretRef:
+                  name: checkout-cosign-public-key
+                  namespace: kapro-system
+                  key: cosign.pub
+```
 
 ## Webhook and Gate Security
 
