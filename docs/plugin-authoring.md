@@ -113,6 +113,10 @@ func TestKGIConformance(t *testing.T) {
 }
 ```
 
+A complete external gate example is available in `examples/plugins/slo-gate`.
+It implements KGI for SLO checks using static values or Prometheus instant
+queries.
+
 ## Planner Requirements
 
 A planner plugin must:
