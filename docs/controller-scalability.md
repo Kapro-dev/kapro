@@ -1,6 +1,6 @@
 # Controller Scalability and Resilience
 
-Kapro is a hub-side controller system. It scales by keeping release state in
+Kapro is a hub-side controller system. It scales by keeping promotionrun state in
 Kubernetes, bounding controller retries, and partitioning large fleets across
 controller shards when a single workqueue is no longer enough.
 
@@ -8,10 +8,10 @@ controller shards when a single workqueue is no longer enough.
 
 | Area | Assumption |
 |---|---|
-| State | `Release`, `ReleaseTarget`, `MemberCluster`, and `Approval` status are the durable source of truth. Controller memory is disposable. |
+| State | `PromotionRun`, `PromotionTarget`, `FleetCluster`, and `Approval` status are the durable source of truth. Controller memory is disposable. |
 | Concurrency | The manager default is `MaxConcurrentReconciles=5`. Per-controller queue workers use that default unless overridden. |
-| Workqueues | Release and ReleaseTarget controllers use exponential failure rate limiters. |
-| Retry backoff | Release failures back off from 50 ms to 10 minutes. ReleaseTarget failures back off from 50 ms to 5 minutes. |
+| Workqueues | PromotionRun and PromotionTarget controllers use exponential failure rate limiters. |
+| Retry backoff | PromotionRun failures back off from 50 ms to 10 minutes. PromotionTarget failures back off from 50 ms to 5 minutes. |
 | Normal polling | Stable external waits use 30 seconds unless a gate returns a shorter `retryAfter`. |
 | Slow waits | Long external waits use 2 minutes where the FSM classifies the wait as slow. |
 | Leader election | Enabled for production and required when `replicaCount > 1`. |
@@ -25,16 +25,16 @@ after measuring API server and backend capacity.
 
 ## Capacity Model
 
-Kapro capacity is driven by target fan-out, not by the number of `Release`
+Kapro capacity is driven by target fan-out, not by the number of `PromotionRun`
 objects alone. One stage that selects 300 clusters creates up to 300
-`ReleaseTarget` objects, and each active target can evaluate gates, call an
+`PromotionTarget` objects, and each active target can evaluate gates, call an
 actuator, and write status independently.
 
 Use this sizing worksheet before raising rollout width:
 
 | Input | Question | Operational limit |
 |---|---|---|
-| Selected targets per stage | How many `MemberCluster` objects match the stage selector? | Bound with stage selectors and `maxParallel`. |
+| Selected targets per stage | How many `FleetCluster` objects match the stage selector? | Bound with stage selectors and `maxParallel`. |
 | Active targets per stage | How many targets can be in `Applying`, `MetricsCheck`, or plugin-backed gates at once? | Keep below backend write and read QPS. |
 | Gate interval | How often does each target query Prometheus, webhook gates, or plugin gates? | Use 30s or slower for fleet-wide gates unless measured safe. |
 | Actuator convergence latency | How long does the backend need to accept and converge a version? | Long latency favors lower `maxParallel` and more stages. |
@@ -55,7 +55,7 @@ Use these levers in this order:
    systems that need slower polling.
 3. Scale plugin servers horizontally behind stable DNS names.
 4. Split high-cardinality rollout work with `KAPRO_SHARD` when one
-   ReleaseTarget queue cannot keep up.
+   PromotionTarget queue cannot keep up.
 5. Only then consider increasing controller worker concurrency.
 
 The first three levers reduce work. Sharding partitions work. Raising worker
@@ -64,7 +64,7 @@ backends, so it should follow measurement rather than precede it.
 
 ## Stage and Fleet Limits
 
-Default operating range is 10-500 clusters per hub with modest active Release
+Default operating range is 10-500 clusters per hub with modest active PromotionRun
 count. Larger fleets are possible only with explicit partitioning and measured
 backend capacity.
 
@@ -78,9 +78,9 @@ Recommended starting limits:
 | Large fleet, over 500 clusters | Shard by region, tenant, or environment before raising worker counts |
 | Highly regulated or network-isolated fleet | Prefer separate hubs over one global hub with many shards |
 
-Avoid one Release that selects every production cluster in a single unbounded
+Avoid one PromotionRun that selects every production cluster in a single unbounded
 stage. Model global delivery as staged waves, then scope emergency corrective
-Releases to the affected clusters.
+PromotionRuns to the affected clusters.
 
 ## Rate Limits
 
@@ -101,14 +101,14 @@ Operational defaults:
   strict per-tenant write quotas.
 - Use per-plugin client-side rate limits when a backend has tenant, region, or
   token-level quotas.
-- Treat `ReleaseTrigger` cooldown and max-active policy as source-side flood
+- Treat `PromotionTrigger` cooldown and max-active policy as source-side flood
   protection, not as replacement for stage parallelism.
 
 Rate limits should be layered:
 
 | Layer | Mechanism | Protects |
 |---|---|---|
-| Source | `ReleaseTrigger` cooldown and max-active policy | Hub from artifact bursts |
+| Source | `PromotionTrigger` cooldown and max-active policy | Hub from artifact bursts |
 | Stage | `Stage.spec.strategy.maxParallel` | Backend write APIs and target fleets |
 | Controller | Workqueue backoff and reconcile concurrency | Kubernetes API server |
 | Plugin | RPC deadline, retry policy, backend client limiter | External systems |
@@ -116,13 +116,13 @@ Rate limits should be layered:
 
 Kapro currently does not expose Kubernetes REST client QPS and burst as chart
 values. If API server throttling appears, first lower stage `maxParallel`, slow
-gate intervals, reduce active Releases, or shard the workload. Raising client
+gate intervals, reduce active PromotionRuns, or shard the workload. Raising client
 QPS or controller workers should happen only with matching API server capacity
 and backend quotas.
 
 ## Sharding
 
-Kapro supports label-based sharding for the Release and ReleaseTarget
+Kapro supports label-based sharding for the PromotionRun and PromotionTarget
 controllers.
 
 Set the shard name with:
@@ -141,8 +141,8 @@ metadata:
     kapro.io/shard: shard-a
 ```
 
-Shard labels must be applied consistently to `Release` and `ReleaseTarget`
-objects. Admission or automation that creates Releases should set
+Shard labels must be applied consistently to `PromotionRun` and `PromotionTarget`
+objects. Admission or automation that creates PromotionRuns should set
 `kapro.io/shard` at creation time so the correct controller instance receives
 the first event.
 
@@ -150,12 +150,12 @@ Shard boundary choices should be stable and low-cardinality:
 
 | Shard key | Good fit | Watch-outs |
 |---|---|---|
-| Region | Regional backends and incident ownership | Cross-region Releases need one shard label chosen up front |
-| Tenant or business unit | Independent release owners | Shared platform Releases may need a platform shard |
+| Region | Regional backends and incident ownership | Cross-region PromotionRuns need one shard label chosen up front |
+| Tenant or business unit | Independent promotionrun owners | Shared platform PromotionRuns may need a platform shard |
 | Environment | Separate canary, staging, production queues | Production shard can still be too large without stages |
 | Hash bucket | Very large homogeneous fleets | Harder for humans to debug during incidents |
 
-Do not move an in-flight Release between shards by changing labels unless the
+Do not move an in-flight PromotionRun between shards by changing labels unless the
 owning controller is stopped and the operational handoff is explicit. Label
 changes can alter which manager receives future events while existing workqueue
 items are still draining.
@@ -164,15 +164,15 @@ Current sharding scope:
 
 | Controller | Shard-aware |
 |---|---|
-| Release | Yes |
-| ReleaseTarget | Yes |
+| PromotionRun | Yes |
+| PromotionTarget | Yes |
 | Approval | No |
 | Kapro | No |
 | PluginRegistration | No |
-| ReleaseTrigger | No |
+| PromotionTrigger | No |
 
 For large fleets, run one active operator manager per shard and set
-`KAPRO_CONTROLLERS=release,release-target` on shard workers. Shard workers must
+`KAPRO_CONTROLLERS=promotionrun,promotion-target` on shard workers. Shard workers must
 not share the same leader-election identity; each active shard needs an
 independent leader-election lock. Run the remaining controllers in a separate
 singleton manager with leader election enabled.
@@ -186,18 +186,18 @@ operator packaging supports separate locks.
 
 Sharding does not change ownership of non-shard-aware controllers. The
 singleton manager should continue to own approvals, Kapro resource generation,
-plugin registration status, and release triggers.
+plugin registration status, and promotion triggers.
 
 ## Workqueue Behavior
 
-The Release controller owns orchestration:
+The PromotionRun controller owns orchestration:
 
-- resolves pipeline and stage dependencies;
+- resolves promotionplan and stage dependencies;
 - selects targets;
-- creates or updates `ReleaseTarget` objects;
-- aggregates child status into `Release.status`.
+- creates or updates `PromotionTarget` objects;
+- aggregates child status into `PromotionRun.status`.
 
-The ReleaseTarget controller owns per-target progress:
+The PromotionTarget controller owns per-target progress:
 
 - evaluates gates;
 - calls actuators;
@@ -205,14 +205,14 @@ The ReleaseTarget controller owns per-target progress:
 - emits lifecycle notifications.
 
 This split keeps high-cardinality per-cluster work out of the top-level
-Release reconcile loop. A large stage should produce many independent
-ReleaseTarget queue items instead of one long-running Release reconcile.
+PromotionRun reconcile loop. A large stage should produce many independent
+PromotionTarget queue items instead of one long-running PromotionRun reconcile.
 
 ## Workqueue Tuning
 
 Tune workqueues by changing inputs before changing worker counts:
 
-- Reduce duplicate events by creating Releases with final labels, pipeline
+- Reduce duplicate events by creating PromotionRuns with final labels, promotionplan
   references, and shard labels already set.
 - Keep status payloads compact so status patch conflicts and API server payload
   size stay low.
@@ -220,7 +220,7 @@ Tune workqueues by changing inputs before changing worker counts:
   target; return longer `retryAfter` values for slow checks.
 - Keep actuator `Apply` idempotent and cheap when the desired version is already
   applied.
-- Use `maxParallel` to bound the number of ReleaseTargets actively invoking a
+- Use `maxParallel` to bound the number of PromotionTargets actively invoking a
   backend, even when many targets are queued.
 
 Signals that a queue needs partitioning or tuning:
@@ -237,14 +237,14 @@ workers. More workers will make a persistent error loop louder.
 
 When increasing worker counts in code or packaging, test with:
 
-- synthetic Releases that match the expected target count;
+- synthetic PromotionRuns that match the expected target count;
 - real Prometheus and plugin endpoints, not no-op mocks;
 - API server request latency and throttling dashboards;
 - status write conflict/error rates;
 - controller restarts during an active rollout.
 
 The acceptance criterion is not only faster completion. The rollout should also
-remain debuggable: `Release.status.pipelineProgress`, `ReleaseTarget.status`,
+remain debuggable: `PromotionRun.status.promotionplanProgress`, `PromotionTarget.status`,
 Events, and dashboard panels must still point to the bottleneck without log
 scraping.
 
@@ -254,7 +254,7 @@ Kapro is designed for fleets in the 10-500 cluster range by default. Larger
 fleets require explicit partitioning:
 
 - Use stages and `maxParallel` to cap concurrent target writes.
-- Use shard labels when a single ReleaseTarget queue cannot keep up with gate
+- Use shard labels when a single PromotionTarget queue cannot keep up with gate
   or actuator latency.
 - Keep target status compact. Store detailed backend evidence in backend
   systems and link to it from status, rather than embedding large payloads.
@@ -263,12 +263,12 @@ fleets require explicit partitioning:
 - Keep external plugin servers horizontally scalable behind stable DNS names.
 - Monitor API server request latency, workqueue depth, reconcile error rate,
   plugin RPC latency, and notification delivery failures.
-- Cap simultaneous active Releases per app or tenant with process policy until
+- Cap simultaneous active PromotionRuns per app or tenant with process policy until
   a dedicated quota API exists.
 - Use separate hub clusters when regulatory, network, or API-server isolation
   matters more than a single global view.
 
-A single Release should not be used as an unbounded global fan-out primitive.
+A single PromotionRun should not be used as an unbounded global fan-out primitive.
 Model global rollouts as explicit waves with conservative `maxParallel` values
 and clear failure policy.
 
@@ -276,15 +276,15 @@ Large-fleet sizing assumptions:
 
 | Dimension | Default assumption | Larger-fleet action |
 |---|---|---|
-| Targets per Release | Tens to hundreds | Split into stages, shards, or separate Releases |
-| Active Releases | Low per app or tenant | Add process quotas and watch active release metrics |
+| Targets per PromotionRun | Tens to hundreds | Split into stages, shards, or separate PromotionRuns |
+| Active PromotionRuns | Low per app or tenant | Add process quotas and watch active promotionrun metrics |
 | Target status | Compact status plus backend links | Store evidence outside CRD status |
 | Plugin backend latency | Seconds, bounded by timeout | Scale plugin servers and slow polling |
 | API server latency | Stable under status update load | Partition hubs or shards before raising workers |
 
 ## Resilience Rules
 
-- Controller restarts must not lose release progress.
+- Controller restarts must not lose promotionrun progress.
 - Rollback intent is represented by Kubernetes state and a new reconcile, not
   by in-memory callbacks.
 - Approval decisions are persisted as `Approval` objects.
@@ -297,5 +297,5 @@ Large-fleet sizing assumptions:
 - Timeout errors should be safe to retry. If a backend operation may still be in
   flight after timeout, the next request must observe backend state before
   issuing another write.
-- Admission and automation should avoid mutating in-flight Releases except for
+- Admission and automation should avoid mutating in-flight PromotionRuns except for
   documented approval, cancellation, or rollback workflows.

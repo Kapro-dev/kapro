@@ -6,7 +6,7 @@
 // Format: base64url(json_claims) + "." + base64url(hmac_sha256_sig)
 //
 // Claims are bound to the Promotion UID, preventing replay attacks when
-// Promotion names are reused across releases.
+// Promotion names are reused across promotionruns.
 package token
 
 import (
@@ -21,17 +21,17 @@ import (
 
 // Claims encodes the context for a single target approval or rejection action.
 type Claims struct {
-	// SyncName is the deterministic rollout entry name (<release>-<target>).
+	// SyncName is the deterministic rollout entry name (<promotionrun>-<target>).
 	SyncName string `json:"n"`
-	// Namespace is the Release namespace.
+	// Namespace is the PromotionRun namespace.
 	Namespace string `json:"ns"`
-	// Release is the owning Release name.
-	Release string `json:"r"`
+	// PromotionRun is the owning PromotionRun name.
+	PromotionRun string `json:"r"`
 	// Target is the target cluster name.
 	Target string `json:"t"`
 	// Version is the artifact version being promoted.
 	Version string `json:"v"`
-	// UID is the release-scoped rollout entry UID surrogate, preventing replay across name reuse.
+	// UID is the promotionrun-scoped rollout entry UID surrogate, preventing replay across name reuse.
 	UID string `json:"uid"`
 	// Action is "approve" or "reject".
 	Action string `json:"a"`

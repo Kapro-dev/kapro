@@ -7,9 +7,9 @@
 //
 // Usage:
 //
-//	KAPRO_CONTROLLERS=*                  # all (default)
-//	KAPRO_CONTROLLERS=*,-releasereport   # all except releasereport
-//	KAPRO_CONTROLLERS=release,sync       # only specified controllers
+//	KAPRO_CONTROLLERS=*                                # all (default)
+//	KAPRO_CONTROLLERS=*,-promotion-trigger             # all except promotion-trigger
+//	KAPRO_CONTROLLERS=promotionrun,promotion-target    # only specified controllers
 package controllermanager
 
 import (
@@ -43,7 +43,7 @@ type ControllerContext struct {
 	// Recorder is the shared event recorder for all controllers.
 	Recorder record.EventRecorder
 
-	// ActuatorRegistry resolves KAI implementations by MemberCluster.spec.delivery.
+	// ActuatorRegistry resolves KAI implementations by FleetCluster.spec.delivery.
 	// Controllers call ActuatorRegistry.Resolve(env.Spec.Delivery.RegistryKey())
 	// to get the correct adapter — Flux, Argo, or any registered backend.
 	ActuatorRegistry *actuator.Registry
@@ -57,7 +57,7 @@ type ControllerContext struct {
 	// cc.GateRegistry.Register("my-type", impl). Never nil in production.
 	GateRegistry *gate.Registry
 
-	// Planner orders and filters release targets. Built-in planner plugins are
+	// Planner orders and filters promotion targets. Built-in planner plugins are
 	// always present; external KPI plugins can be hot-loaded when the plugin
 	// gateway is enabled.
 	Planner *planner.Framework
@@ -117,7 +117,7 @@ func KnownControllers() []string {
 //
 //	"*"           → all registered controllers
 //	"a,b,c"       → only a, b, c
-//	"*,-releasetrigger"   → all except releasetrigger
+//	"*,-promotion-trigger"   → all except promotion-trigger
 func ParseControllerNames(flag string) map[string]bool {
 	selected := map[string]bool{}
 	tokens := strings.Split(flag, ",")

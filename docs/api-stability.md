@@ -5,7 +5,7 @@ lifecycle events, and language-neutral plugin contracts. The maturity level
 describes compatibility expectations for users and plugin authors; it does not
 change Kubernetes API version strings by itself.
 
-The current release line is pre-stable. `v0.1.0-alpha` is the first planned
+The current promotionrun line is pre-stable. `v0.1.0-alpha` is the first planned
 version anchor, not a promise that all `kapro.io/v1alpha1` fields are stable.
 Release notes are the binding upgrade record for each tag.
 
@@ -25,8 +25,8 @@ Preview. The table below is the source of truth for the current contract level.
 
 | Surface | Path | Level |
 |---|---|---|
-| Core promotion CRDs | `api/v1alpha1` `PromotionSource`, `Pipeline`, `Release`, `ReleaseTarget`, `MemberCluster`, `Approval`, `AgentPolicy` | Alpha |
-| ReleaseTrigger CRD | `api/v1alpha1` `ReleaseTrigger` | Preview |
+| Core promotion CRDs | `api/v1alpha1` `PromotionSource`, `PromotionPlan`, `PromotionRun`, `PromotionTarget`, `FleetCluster`, `Approval`, `AgentPolicy` | Alpha |
+| PromotionTrigger CRD | `api/v1alpha1` `PromotionTrigger` | Preview |
 | PluginRegistration CRD | `api/v1alpha1` `PluginRegistration` | Preview |
 | Notification provider/policy CRDs | `api/v1alpha1` `NotificationProvider`, `NotificationPolicy` | Preview |
 | In-process actuator interface | `pkg/actuator` | Preview |
@@ -74,8 +74,8 @@ major-version migration covers them:
 - changing the semantic meaning of an existing field;
 - changing a default in a way that alters an existing rollout, gate, approval,
   or rollback workflow;
-- tightening validation so an object accepted by the previous release is
-  rejected by the new release;
+- tightening validation so an object accepted by the previous promotionrun is
+  rejected by the new promotionrun;
 - changing generated object names or labels that operators are expected to
   select on;
 - changing documented lifecycle event type names or the meaning of documented
@@ -94,8 +94,8 @@ Deprecation follows these rules:
 
 - A deprecated field, enum value, package API, or proto field is marked in
   documentation and release notes.
-- Deprecation notes identify the first release that includes the replacement,
-  the earliest release where removal is allowed, and the user-visible action.
+- Deprecation notes identify the first promotionrun that includes the replacement,
+  the earliest promotionrun where removal is allowed, and the user-visible action.
 - Preview surfaces keep deprecated behavior for at least one minor release when
   the old and new behavior can coexist safely.
 - Stable surfaces keep deprecated behavior for at least two minor releases, or
@@ -104,7 +104,7 @@ Deprecation follows these rules:
   the `.proto` file.
 - CRD fields are not silently repurposed. A semantic change requires a new
   field, a conversion path, or a new API version.
-- Removal notes state the replacement field or workflow and the first release
+- Removal notes state the replacement field or workflow and the first promotionrun
   where removal is allowed.
 
 Alpha surfaces may change faster, but changes that affect committed examples,
@@ -114,14 +114,14 @@ tests still include migration notes.
 ## Schema Compatibility Expectations
 
 Kapro does not publish conversion webhooks in `v0.1.0-alpha`. Operators should
-therefore assume that the storage schema in a tagged release must be readable by
+therefore assume that the storage schema in a tagged promotionrun must be readable by
 that same operator version and by any downgrade version named in release notes.
 
-There is no automatic legacy conversion for pre-release objects such as the
+There is no automatic legacy conversion for pre-promotionrun objects such as the
 removed `KaproBundle` experiment. The project had no supported public install
 before the `PromotionSource` architecture; users testing unreleased branches
 should recreate those objects from the generated examples instead of relying on
-controller-side migration code. The first tagged release that documents a CRD as
+controller-side migration code. The first tagged promotionrun that documents a CRD as
 Preview must include explicit migration notes before removing or renaming that
 surface.
 
@@ -149,8 +149,8 @@ Changes to Preview or Stable surfaces should include:
 5. A compatibility note explaining why the change is backward-compatible, or
    why it is intentionally breaking.
 
-Every release should also update `CHANGELOG.md` using the structure in
-`docs/release-notes.md`.
+Every promotionrun should also update `CHANGELOG.md` using the structure in
+`docs/promotionrun-notes.md`.
 
 For proto contracts, new fields use new field numbers and removed fields are
 reserved. For CRDs, new durable concepts should prefer additive fields or a new
@@ -166,8 +166,8 @@ Kapro upgrades are designed around Kubernetes controller safety:
   against the same shard unless the release notes explicitly allow it.
 - Apply CRD updates before rolling operator pods.
 - Keep leader election enabled for multi-replica deployments.
-- Keep `Release` and `ReleaseTarget` objects immutable from automation while an
-  operator upgrade is in progress; create a new `Release` for rollback.
+- Keep `PromotionRun` and `PromotionTarget` objects immutable from automation while an
+  operator upgrade is in progress; create a new `PromotionRun` for rollback.
 - Upgrade plugin servers before enabling a Kapro version that requires a newer
   KAI, KGI, or KPI contract.
 - Run the relevant conformance harness for each external plugin before
@@ -177,7 +177,7 @@ Kapro upgrades are designed around Kubernetes controller safety:
   `KAPRO_ENABLE_PLUGIN_GATEWAY=true`, ready registrations are hot-loaded and
   stale or incompatible registrations are unloaded.
 
-Within a supported minor upgrade, existing in-flight releases continue from
+Within a supported minor upgrade, existing in-flight promotionruns continue from
 Kubernetes status. Controllers may requeue work after restart, but gate
 progress, target phase, approval state, and audit trail are persisted in CRDs.
 
@@ -190,9 +190,9 @@ Recommended upgrade order:
 3. Apply CRDs and RBAC.
 4. Upgrade external plugin servers and run their conformance suites.
 5. Roll one hub operator deployment or shard at a time.
-6. Watch `Release`, `ReleaseTarget`, `PluginRegistration`, and controller
+6. Watch `PromotionRun`, `PromotionTarget`, `PluginRegistration`, and controller
    workqueue metrics until queues drain and observed generations catch up.
-7. Resume automation that creates new `Release` objects.
+7. Resume automation that creates new `PromotionRun` objects.
 
 Rollback is safest when the previous operator version still understands the
 stored CRD schema. If a CRD schema changed, roll back only to a version named as

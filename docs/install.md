@@ -48,7 +48,7 @@ helm upgrade --install kapro charts/kapro-operator \
 kubectl -n kapro-system rollout status deployment/kapro-kapro-operator
 kubectl get crd | grep kapro.io
 kubectl -n kapro-system get deploy,svc,sa
-kubectl auth can-i get releases.kapro.io \
+kubectl auth can-i get promotionruns.kapro.io \
   --as=system:serviceaccount:kapro-system:kapro-kapro-operator
 ```
 

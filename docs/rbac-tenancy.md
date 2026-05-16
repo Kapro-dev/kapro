@@ -1,6 +1,6 @@
 # RBAC and Tenancy Model
 
-Kapro uses cluster-scoped CRDs because releases, member clusters, plugin
+Kapro uses cluster-scoped CRDs because promotionruns, fleet clusters, plugin
 registrations, and approvals coordinate work across namespaces and clusters.
 Tenancy is expressed through labels, admission policy, and narrowly scoped
 ClusterRoles rather than by making the core APIs namespaced.
@@ -11,8 +11,8 @@ ClusterRoles rather than by making the core APIs namespaced.
 |---|---|---|
 | Platform admin | Operator install, CRDs, controller flags, cluster-wide policy | Full admin on `kapro.io/*` and install namespace |
 | Extension admin | External plugin endpoints and plugin credentials | Create/update `PluginRegistration`; read referenced plugin Secrets |
-| Release manager | Release and trigger policy for one team or app | Create/update `Release`, `ReleaseTrigger`, `Pipeline`, `PromotionSource` with team labels |
-| Approver | Human gate decisions for assigned teams/environments | Create `Approval`; read relevant `Release` and `ReleaseTarget` status |
+| PromotionRun manager | PromotionRun and trigger policy for one team or app | Create/update `PromotionRun`, `PromotionTrigger`, `PromotionPlan`, `PromotionSource` with team labels |
+| Approver | Human gate decisions for assigned teams/environments | Create `Approval`; read relevant `PromotionRun` and `PromotionTarget` status |
 | Auditor | Evidence and status | Read-only on Kapro CRDs and Events |
 
 ## Ownership Labels
@@ -21,8 +21,8 @@ Every user-created Kapro object should carry these labels:
 
 | Label | Required on | Meaning |
 |---|---|---|
-| `kapro.io/team` | `Release`, `ReleaseTrigger`, `Pipeline`, `PromotionSource`, `Approval` | Owning team or service group |
-| `kapro.io/environment` | `MemberCluster`, `Pipeline`, `Approval` | Environment boundary such as `dev`, `staging`, `prod` |
+| `kapro.io/team` | `PromotionRun`, `PromotionTrigger`, `PromotionPlan`, `PromotionSource`, `Approval` | Owning team or service group |
+| `kapro.io/environment` | `FleetCluster`, `PromotionPlan`, `Approval` | Environment boundary such as `dev`, `staging`, `prod` |
 | `kapro.io/plugin-owner` | `PluginRegistration` | Team accountable for the plugin endpoint |
 
 Admission policy should reject objects that omit the ownership labels in shared
@@ -45,27 +45,27 @@ Baseline rule:
 
 - `create`, `update`, `patch`, `delete` on `pluginregistrations.kapro.io`:
   extension admins only.
-- `get`, `list`, `watch` on `pluginregistrations.kapro.io`: release managers
+- `get`, `list`, `watch` on `pluginregistrations.kapro.io`: promotionrun managers
   and auditors may read status.
 - Secrets referenced by `spec.tlsSecretRef`: readable only by the Kapro operator
   service account and the owning extension admin group.
 
-## Who Can Create ReleaseTriggers?
+## Who Can Create PromotionTriggers?
 
-Release managers may create `ReleaseTrigger` objects for their own team labels.
+PromotionRun managers may create `PromotionTrigger` objects for their own team labels.
 Production triggers should require platform review before being unsuspended.
 
 Baseline rule:
 
 - Teams may create suspended triggers with `spec.suspended: true`.
-- Only release managers for the matching `kapro.io/team` may update the trigger.
-- Only production release managers or platform admins may set
+- Only promotionrun managers for the matching `kapro.io/team` may update the trigger.
+- Only production promotionrun managers or platform admins may set
   `spec.suspended: false` for `kapro.io/environment=prod`.
 - Registry credential Secrets referenced by `spec.source.oci.secretRef` must be
   namespaced and readable only by the Kapro operator service account.
 
-`ReleaseTrigger` creates `Release` objects through the controller service
-account. Admission should still validate that the generated Release keeps the
+`PromotionTrigger` creates `PromotionRun` objects through the controller service
+account. Admission should still validate that the generated PromotionRun keeps the
 same `kapro.io/team` and approved scope as the trigger.
 
 ## Who Can Approve Gates?
@@ -83,7 +83,7 @@ Baseline rule:
   `kapro.io/environment` policy.
 
 Kapro approvals are cluster-scoped and named deterministically:
-`<release>-<ref>`. The `ref` binds the approval to one exact target FSM step,
+`<promotionrun>-<ref>`. The `ref` binds the approval to one exact target FSM step,
 which prevents one approval from unintentionally unblocking unrelated targets.
 
 ## Namespace and Team Boundaries
@@ -115,13 +115,13 @@ The exact bindings are cluster-specific, but the intended split is:
 ```yaml
 kind: ClusterRole
 metadata:
-  name: kapro-release-manager
+  name: kapro-promotionrun-manager
 rules:
   - apiGroups: ["kapro.io"]
-    resources: ["releases", "releasetriggers", "pipelines", "promotionsources"]
+    resources: ["promotionruns", "promotiontriggers", "promotionplans", "promotionsources"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: ["kapro.io"]
-    resources: ["releasetargets", "memberclusters", "pluginregistrations"]
+    resources: ["promotiontargets", "fleetclusters", "pluginregistrations"]
     verbs: ["get", "list", "watch"]
 ---
 kind: ClusterRole
@@ -132,7 +132,7 @@ rules:
     resources: ["approvals"]
     verbs: ["get", "list", "watch", "create"]
   - apiGroups: ["kapro.io"]
-    resources: ["releases", "releasetargets"]
+    resources: ["promotionruns", "promotiontargets"]
     verbs: ["get", "list", "watch"]
 ---
 kind: ClusterRole

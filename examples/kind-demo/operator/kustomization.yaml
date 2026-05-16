@@ -3,5 +3,10 @@ resources:
   - ../../../config/manager
   - demo-rbac.yaml
 
+images:
+  - name: ghcr.io/kapro-dev/kapro-operator
+    newName: kapro-operator
+    newTag: dev
+
 patches:
   - path: manager-env-patch.yaml

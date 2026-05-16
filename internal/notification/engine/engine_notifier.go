@@ -232,8 +232,8 @@ func buildMessage(e notification.Event) string {
 		emoji = "❌"
 	}
 	msg := fmt.Sprintf("%s Kapro | %s → %s | version %s", emoji, e.Target, e.Phase, e.Version)
-	if e.Release != "" {
-		msg += " | release " + e.Release
+	if e.PromotionRun != "" {
+		msg += " | promotionrun " + e.PromotionRun
 	}
 	if e.Message != "" {
 		msg += " | " + e.Message
@@ -335,7 +335,7 @@ func smtpSend(c *smtp.Client, from string, to []string, msg []byte) error {
 
 // buildEmailContent returns a subject line and an HTML body for the event.
 func buildEmailContent(e notification.Event) (subject, body string) {
-	subject = fmt.Sprintf("[Kapro] %s: %s → %s requires approval", e.Release, e.Target, e.Version)
+	subject = fmt.Sprintf("[Kapro] %s: %s → %s requires approval", e.PromotionRun, e.Target, e.Version)
 
 	approveSection := ""
 	if e.ApproveURL != "" {
@@ -356,12 +356,12 @@ func buildEmailContent(e notification.Event) (subject, body string) {
 <html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px">
 <h2 style="color:#1d4ed8">Kapro — Approval Required</h2>
 <table style="border-collapse:collapse;width:100%%">
-  <tr><td style="padding:8px;color:#6b7280">Release</td><td style="padding:8px;font-weight:bold">%s</td></tr>
+  <tr><td style="padding:8px;color:#6b7280">PromotionRun</td><td style="padding:8px;font-weight:bold">%s</td></tr>
   <tr><td style="padding:8px;color:#6b7280">Target</td><td style="padding:8px;font-weight:bold">%s</td></tr>
   <tr><td style="padding:8px;color:#6b7280">Version</td><td style="padding:8px;font-weight:bold">%s</td></tr>
 </table>
 %s
-</body></html>`, e.Release, e.Target, e.Version, approveSection)
+</body></html>`, e.PromotionRun, e.Target, e.Version, approveSection)
 
 	return subject, body
 }

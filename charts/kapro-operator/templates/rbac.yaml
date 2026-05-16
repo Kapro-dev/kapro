@@ -95,11 +95,11 @@ rules:
   - approvals/status
   - backendprofiles/status
   - kaproes/status
-  - memberclusters/status
+  - fleetclusters/status
   - pluginregistrations/status
-  - releases/status
-  - releasetargets/status
-  - releasetriggers/status
+  - promotionruns/status
+  - promotiontargets/status
+  - promotiontriggers/status
   verbs:
   - get
   - patch
@@ -111,7 +111,7 @@ rules:
   - backendprofiles
   - pluginregistrations
   - promotionsources
-  - releasetriggers
+  - promotiontriggers
   verbs:
   - get
   - list
@@ -131,7 +131,7 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - memberclusters
+  - fleetclusters
   verbs:
   - create
   - delete
@@ -143,7 +143,7 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - pipelines
+  - promotionplans
   verbs:
   - create
   - delete
@@ -155,7 +155,7 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - releases
+  - promotionruns
   verbs:
   - create
   - delete
@@ -167,13 +167,13 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - releases/finalizers
+  - promotionruns/finalizers
   verbs:
   - update
 - apiGroups:
   - kapro.io
   resources:
-  - releasetargets
+  - promotiontargets
   verbs:
   - create
   - delete

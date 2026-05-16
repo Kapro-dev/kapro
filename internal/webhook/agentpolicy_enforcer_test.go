@@ -231,9 +231,9 @@ func TestEnforce_ClusterSelectorMismatch(t *testing.T) {
 // --- Integration: Decision API with AgentPolicy ---
 
 func TestDecide_WithAgentPolicy_Denied(t *testing.T) {
-	release, mc, _, target := decisionFixtures()
+	promotionrun, mc, _, target := decisionFixtures()
 	policy := makeAgentPolicy("strict-policy", "test-agent", kaprov1alpha1.AgentPolicyModeAuto, 0.99)
-	s := decisionTestServer(t, release, mc, target, policy)
+	s := decisionTestServer(t, promotionrun, mc, target, policy)
 
 	body, _ := json.Marshal(DecisionRequest{
 		Decision:       "Approve",
@@ -252,9 +252,9 @@ func TestDecide_WithAgentPolicy_Denied(t *testing.T) {
 }
 
 func TestDecide_WithAgentPolicy_Allowed(t *testing.T) {
-	release, mc, _, target := decisionFixtures()
+	promotionrun, mc, _, target := decisionFixtures()
 	policy := makeAgentPolicy("loose-policy", "test-agent", kaprov1alpha1.AgentPolicyModeAuto, 0.7)
-	s := decisionTestServer(t, release, mc, target, policy)
+	s := decisionTestServer(t, promotionrun, mc, target, policy)
 
 	body, _ := json.Marshal(DecisionRequest{
 		Decision:       "Approve",
@@ -273,9 +273,9 @@ func TestDecide_WithAgentPolicy_Allowed(t *testing.T) {
 }
 
 func TestDecide_RecommendModeDoesNotCreateApproval(t *testing.T) {
-	release, mc, _, target := decisionFixtures()
+	promotionrun, mc, _, target := decisionFixtures()
 	policy := makeAgentPolicy("recommend-policy", "test-agent", kaprov1alpha1.AgentPolicyModeRecommend, 0.5)
-	s := decisionTestServer(t, release, mc, target, policy)
+	s := decisionTestServer(t, promotionrun, mc, target, policy)
 
 	body, _ := json.Marshal(DecisionRequest{
 		Decision:       "Approve",

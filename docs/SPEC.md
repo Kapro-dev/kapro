@@ -24,7 +24,7 @@
 14. [Notification & Events](#14-notification--events)
 15. [NotificationProvider and NotificationPolicy API Preview](#15-notificationprovider-and-notificationpolicy-api-preview)
 16. [PluginRegistration API Preview](#16-pluginregistration-api-preview)
-17. [ReleaseTrigger API Preview](#17-releasetrigger-api-preview)
+17. [PromotionTrigger API Preview](#17-promotiontrigger-api-preview)
 18. [Non-Goals](#18-non-goals)
 
 ---
@@ -37,10 +37,10 @@ It answers one question deterministically: *"Which clusters are allowed to recei
 
 Kapro does not replace GitOps tools (Flux, Argo CD). It coordinates them —
 sitting above delivery systems as the fleet promotion control plane that decides
-*when* and *in what order* clusters receive new versions, based on release
+*when* and *in what order* clusters receive new versions, based on promotionrun
 topology, target health, planning rules, gate evidence, and approvals.
 
-**Analogy:** Kubernetes is to containers what Kapro is to delivery waves. Kubernetes manages the lifecycle of containers on nodes. Kapro manages the lifecycle of releases across target clusters in a fleet.
+**Analogy:** Kubernetes is to containers what Kapro is to delivery waves. Kubernetes manages the lifecycle of containers on nodes. Kapro manages the lifecycle of promotionruns across target clusters in a fleet.
 
 ---
 
@@ -49,11 +49,11 @@ topology, target health, planning rules, gate evidence, and approvals.
 Platform engineering teams running 10–500 Kubernetes clusters have three bad options today:
 
 - **Manual**: hand-deploy between clusters with no guardrails, no audit trail, no rollback.
-- **Bespoke**: per-team promotion pipelines in CI (GitHub Actions, Tekton, Jenkins) with hard-coded targets, no reusable gate logic, brittle failure modes.
+- **Bespoke**: per-team promotion promotionplans in CI (GitHub Actions, Tekton, Jenkins) with hard-coded targets, no reusable gate logic, brittle failure modes.
 - **Partial**: Argo Rollouts handles in-cluster canary but not cross-cluster waves. Flux applies GitOps but not the "should I apply?" decision.
 
 No CNCF-native tool owns the **fleet promotion layer**: artifact version →
-gates → multi-target wave → backend convergence → auditable release outcome
+gates → multi-target wave → backend convergence → auditable promotionrun outcome
 across many clusters.
 
 ---
@@ -65,12 +65,12 @@ other cloud-native systems already own.
 
 | Area | Kapro owns | Delegated to |
 |---|---|---|
-| Artifact movement | Release, Pipeline, Stage, target state | CI systems and artifact builders |
+| Artifact movement | PromotionRun, PromotionPlan, Stage, target state | CI systems and artifact builders |
 | Fleet ordering | Waves, planning, concurrency, target binding | Not delegated |
 | Workload rollout | Version intent and convergence checks | Flux, Argo CD, Kubernetes, or backend controllers |
 | Traffic shifting | Gate on rollout result | Argo Rollouts, Flagger, service mesh, ingress controllers |
 | Safety controls | Gate lifecycle, evidence, approval state | Domain-specific plugins and policy services |
-| Automation | Guarded Release creation | ReleaseTrigger policy and external CI/webhooks |
+| Automation | Guarded PromotionRun creation | PromotionTrigger policy and external CI/webhooks |
 | Agents | Evidence explanation and policy-bound assistance | Never required for core deterministic rollout |
 
 See `docs/vision-and-boundaries.md` for the public positioning and CNCF scope.
@@ -83,33 +83,33 @@ See `docs/vision-and-boundaries.md` for the public positioning and CNCF scope.
 
 | Kubernetes | Kapro |
 |---|---|
-| `Node` | `MemberCluster` — a cluster registered in the fleet |
-| `Pod` | (the per-target rollout tracked inline in `Release.status.targets[]`) |
+| `Node` | `FleetCluster` — a cluster registered in the fleet |
+| `Pod` | (the per-target rollout tracked inline in `PromotionRun.status.targets[]`) |
 | `Container` | Workload running inside a cluster |
 | `PodSpec.nodeSelector` | `Stage.clusterSelector` — which clusters a stage targets |
-| `Job` | `Release` — owns the full delivery lifecycle, terminates on completion |
-| `CronJob` | (future: recurring `Release` trigger) |
+| `Job` | `PromotionRun` — owns the full delivery lifecycle, terminates on completion |
+| `CronJob` | (future: recurring `PromotionRun` trigger) |
 
 ### Two-level DAG
 
 ```
-Release
-└── Pipeline DAG (pipeline → pipeline via dependsOn)
-    └── Stage DAG (stage → stage via dependsOn inside a pipeline)
-        └── clusterSelector → MemberCluster set → per-target rollout tracked in Release.status.targets[]
+PromotionRun
+└── PromotionPlan DAG (promotionplan → promotionplan via dependsOn)
+    └── Stage DAG (stage → stage via dependsOn inside a promotionplan)
+        └── clusterSelector → FleetCluster set → per-target rollout tracked in PromotionRun.status.targets[]
 ```
 
-- **Release** owns execution end-to-end and terminates when all pipelines/stages have converged or failed.
-- **Pipeline** is a reusable template of stages (no status, no live fields).
+- **PromotionRun** owns execution end-to-end and terminates when all promotionplans/stages have converged or failed.
+- **PromotionPlan** is a reusable template of stages (no status, no live fields).
 - **Stage** selects clusters and carries the gate policy that applies to those clusters.
-- **MemberCluster** is pure inventory + observed state; the operator writes `spec.desiredVersion` and reads status.
+- **FleetCluster** is pure inventory + observed state; the operator writes `spec.desiredVersion` and reads status.
 - **Approval** is a separate CRD that exists only to carry a human "approve / reject" signal for a target awaiting approval.
 
 ### What Kapro does **not** have
 
-- No `Sync` CRD. Per-target execution state is inline in `Release.status.targets[]`.
-- No `ReleaseReport` / `ReleaseRevision` CRD. Report summary is inline in `Release.status.report`; audit trail is inline in `Release.status.auditTrail`.
-- No generic cluster-provider interface. `MemberCluster` is the single cluster CRD; bootstrap lives in code (`internal/bootstrap`).
+- No `Sync` CRD. Per-target execution state is inline in `PromotionRun.status.targets[]`.
+- No `PromotionRunReport` / `PromotionRunRevision` CRD. Report summary is inline in `PromotionRun.status.report`; audit trail is inline in `PromotionRun.status.auditTrail`.
+- No generic cluster-provider interface. `FleetCluster` is the single cluster CRD; bootstrap lives in code (`internal/bootstrap`).
 
 ---
 
@@ -118,12 +118,12 @@ Release
 | Term | Meaning |
 |------|---------|
 | **Artifact** | Declares an OCI repository and a tag resolution policy (semver range, tag list, etc.). Resolves to a concrete `version`. |
-| **Pipeline** | Template only. Contains a DAG of `Stage`s. No status. |
-| **Stage** | One wave inside a Pipeline. Selects target clusters via `clusterSelector` labels. Carries a `gate` policy. |
-| **Release** | The execution owner. References an Artifact and a DAG of Pipelines; drives per-target rollout inline. |
-| **MemberCluster** | One workload cluster in the fleet. Holds actuator config, health check config, topology, and observed status (heartbeat + current versions). |
-| **Approval** | A CRD carrying a human approve/reject signal for a `(Release, target)` pair. Deterministic name: `<release>-<target>`. |
-| **Target** | A `MemberCluster` selected by a stage — i.e. one row in `Release.status.targets[]`. |
+| **PromotionPlan** | Template only. Contains a DAG of `Stage`s. No status. |
+| **Stage** | One wave inside a PromotionPlan. Selects target clusters via `clusterSelector` labels. Carries a `gate` policy. |
+| **PromotionRun** | The execution owner. References an Artifact and a DAG of PromotionPlans; drives per-target rollout inline. |
+| **FleetCluster** | One workload cluster in the fleet. Holds actuator config, health check config, topology, and observed status (heartbeat + current versions). |
+| **Approval** | A CRD carrying a human approve/reject signal for a `(PromotionRun, target)` pair. Deterministic name: `<promotionrun>-<target>`. |
+| **Target** | A `FleetCluster` selected by a stage — i.e. one row in `PromotionRun.status.targets[]`. |
 | **Gate** | One evaluation step in the target FSM. Returns `Passed`, `Failed`, `Running`, or `Inconclusive`. Stateless. |
 | **Actuator** | Driver that applies a version to a target cluster (today: Flux). |
 
@@ -135,20 +135,20 @@ Release
 |-----|------|-----------|-------|
 | `kaproes.kapro.io` | `Kapro` | Platform | Cluster |
 | `promotionsources.kapro.io` | `PromotionSource` | Platform | Cluster |
-| `pipelines.kapro.io` | `Pipeline` | Platform | Cluster |
-| `releases.kapro.io` | `Release` | Release engineer / automation | Cluster |
-| `releasetriggers.kapro.io` | `ReleaseTrigger` | Platform / automation | Cluster |
-| `releasetargets.kapro.io` | `ReleaseTarget` | Controller | Cluster |
+| `promotionplans.kapro.io` | `PromotionPlan` | Platform | Cluster |
+| `promotionruns.kapro.io` | `PromotionRun` | PromotionRun engineer / automation | Cluster |
+| `promotiontriggers.kapro.io` | `PromotionTrigger` | Platform / automation | Cluster |
+| `promotiontargets.kapro.io` | `PromotionTarget` | Controller | Cluster |
 | `notificationproviders.kapro.io` | `NotificationProvider` | Platform | Cluster |
-| `notificationpolicies.kapro.io` | `NotificationPolicy` | Platform / release engineer | Cluster |
-| `memberclusters.kapro.io` | `MemberCluster` | Platform | Cluster |
+| `notificationpolicies.kapro.io` | `NotificationPolicy` | Platform / promotionrun engineer | Cluster |
+| `fleetclusters.kapro.io` | `FleetCluster` | Platform | Cluster |
 | `pluginregistrations.kapro.io` | `PluginRegistration` | Platform | Cluster |
 | `approvals.kapro.io` | `Approval` | Human via webhook | Cluster |
 | `agentpolicies.kapro.io` | `AgentPolicy` | Platform | Cluster |
 
-`PromotionSource`, `Pipeline`, `NotificationProvider`, and `NotificationPolicy` are
-spec-only template/configuration objects. Execution state lives in `Release`,
-`ReleaseTarget`, `MemberCluster`, `Approval`, and `ReleaseTrigger` status.
+`PromotionSource`, `PromotionPlan`, `NotificationProvider`, and `NotificationPolicy` are
+spec-only template/configuration objects. Execution state lives in `PromotionRun`,
+`PromotionTarget`, `FleetCluster`, `Approval`, and `PromotionTrigger` status.
 
 ---
 
@@ -159,7 +159,7 @@ spec-only template/configuration objects. Execution state lives in `Release`,
 │                                                                         │
 │  ┌───────────────────────── kapro-operator ───────────────────────┐     │
 │  │                                                                │     │
-│  │  ReleaseReconciler     ─── drives the Pipeline DAG, owns the   │     │
+│  │  PromotionRunReconciler     ─── drives the PromotionPlan DAG, owns the   │     │
 │  │                            inline per-target FSM, resolves     │     │
 │  │                            gates via gate.Registry             │     │
 │  │                                                                │     │
@@ -169,13 +169,13 @@ spec-only template/configuration objects. Execution state lives in `Release`,
 │  │  CSRApprovalReconciler ─── approves spoke-cluster CSRs based   │     │
 │  │                            on BootstrapToken                   │     │
 │  │                                                                │     │
-│  │  Admission webhooks    ─── MemberCluster + Approval validators │     │
+│  │  Admission webhooks    ─── FleetCluster + Approval validators │     │
 │  └────────────────────────────────────────────────────────────────┘     │
 │                                                                         │
 │  ┌────────────────────── kapro-webhook-server ───────────────────┐      │
-│  │  POST /approve/:token  → creates Approval(release-target)     │      │
-│  │  POST /reject/:token   → creates Approval(release-target)     │      │
-│  │  GET  /status/:release → returns Release.status               │      │
+│  │  POST /approve/:token  → creates Approval(promotion-target)     │      │
+│  │  POST /reject/:token   → creates Approval(promotion-target)     │      │
+│  │  GET  /status/:promotionrun → returns PromotionRun.status               │      │
 │  └───────────────────────────────────────────────────────────────┘      │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -184,10 +184,10 @@ spec-only template/configuration objects. Execution state lives in `Release`,
 ┌─────────────────────── Spoke cluster (one per member) ──────────────────┐
 │                                                                         │
 │  kapro-cluster-controller                                               │
-│    - watches MemberCluster.spec.desiredVersions on the hub              │
+│    - watches FleetCluster.spec.desiredVersions on the hub              │
 │    - patches the local delivery system (Flux/Argo) accordingly          │
 │    - renews Lease kapro-heartbeat-<cluster> in kapro-system             │
-│    - writes MemberCluster.status (currentVersions + health summary)     │
+│    - writes FleetCluster.status (currentVersions + health summary)     │
 │    - outbound-only HTTPS; authenticates via CSR-issued cert or GCP WIF  │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -198,7 +198,7 @@ Controllers are registered from `pkg/controllermanager/controllers.go`. Hub and 
 
 For v1, hub configuration is sourced from a dedicated git repository and
 applied to the hub cluster by CI with `kubectl apply`. The repository owns
-`MemberCluster`, `PromotionSource`, `Pipeline`, and `Release` YAML. Spoke clusters do
+`FleetCluster`, `PromotionSource`, `PromotionPlan`, and `PromotionRun` YAML. Spoke clusters do
 not watch that repository; they consume immutable OCI bundles and report status
 through the hub.
 
@@ -210,7 +210,7 @@ See `docs/hub-config-source-of-truth.md` and `examples/hub-config/`.
 
 Kapro has narrow pluggable interfaces for backend execution, safety evaluation,
 and rollout planning. Actuators and gates are named runtime-resolved dispatch
-points with conformance suites. The release planner is an in-process framework
+points with conformance suites. The promotionrun planner is an in-process framework
 for target selection and ordering, modeled after Kubernetes scheduler phases.
 
 | Interface | Go package | Question it answers | Conformance |
@@ -240,7 +240,7 @@ type Gate interface {
 }
 ```
 
-`Result.Phase` is one of `Passed | Failed | Running | Inconclusive`. All timing, retry, and failure policy live in the `ReleaseReconciler` — the gate just evaluates and returns.
+`Result.Phase` is one of `Passed | Failed | Running | Inconclusive`. All timing, retry, and failure policy live in the `PromotionRunReconciler` — the gate just evaluates and returns.
 
 Gate decisions are evidence-based:
 
@@ -255,7 +255,7 @@ baseline value, decision rule, and reason. Evidence is for audit, debugging,
 notifications, and external agents. Gates must not store tokens, headers,
 secrets, or raw webhook payloads in evidence.
 
-All gate state for a running target is persisted on `Release.status.targets[i].gates[]` in etcd. Controller restarts do not lose gate progress.
+All gate state for a running target is persisted on `PromotionRun.status.targets[i].gates[]` in etcd. Controller restarts do not lose gate progress.
 
 Metric gates support explicit analysis modes:
 
@@ -300,14 +300,14 @@ An `Actuator` (`pkg/actuator.Actuator`) drives the "apply this version to this c
 ```go
 type Actuator interface {
     Apply(ctx context.Context, req ApplyRequest) error
-    IsConverged(ctx context.Context, cluster *MemberCluster, version, appKey string) (bool, error)
-    Rollback(ctx context.Context, cluster *MemberCluster, previousVersion, appKey string) error
+    IsConverged(ctx context.Context, cluster *FleetCluster, version, appKey string) (bool, error)
+    Rollback(ctx context.Context, cluster *FleetCluster, previousVersion, appKey string) error
     ApplyDelta(ctx context.Context, req DeltaApplyRequest) (int, error)
-    IsAllConverged(ctx context.Context, cluster *MemberCluster, desiredVersions map[string]string) (bool, error)
+    IsAllConverged(ctx context.Context, cluster *FleetCluster, desiredVersions map[string]string) (bool, error)
 }
 ```
 
-The reference implementation is **Flux** (`internal/actuator/flux`). It writes `MemberCluster.spec.desiredVersion` on the hub; the spoke `kapro-cluster-controller` observes it and reconciles the local Flux `OCIRepository` + `Kustomization`.
+The reference implementation is **Flux** (`internal/actuator/flux`). It writes `FleetCluster.spec.desiredVersion` on the hub; the spoke `kapro-cluster-controller` observes it and reconciles the local Flux `OCIRepository` + `Kustomization`.
 
 Other actuators can delegate to Argo CD, Argo Rollouts, Flagger, Helm, KServe,
 Pulumi, raw Kubernetes apply, Istio, Gateway API, or platform-specific systems.
@@ -324,30 +324,30 @@ The in-process actuator contract is a Preview surface; see
 Spoke onboarding is **not** a pluggable extension point. It uses two concrete paths:
 
 1. **CSR-based (default).** The spoke cluster-controller submits a Kubernetes `CertificateSigningRequest` with a bootstrap token. The hub's `CSRApprovalReconciler` validates the token and approves the CSR. The spoke then receives a client certificate bound to a `system:kapro:<cluster>` identity.
-2. **GCP Workload Identity Federation (optional).** When `MemberCluster.spec.bootstrap.gcp` is set, the spoke exchanges a GCP ID token for hub credentials via `internal/webhook/token` and WIF.
+2. **GCP Workload Identity Federation (optional).** When `FleetCluster.spec.bootstrap.gcp` is set, the spoke exchanges a GCP ID token for hub credentials via `internal/webhook/token` and WIF.
 
-Both paths live entirely in `internal/bootstrap` and related admission / token code. Once bootstrapped, the spoke is pure `MemberCluster` machinery — no `Provider` CRD, no runtime dispatch on cloud type.
+Both paths live entirely in `internal/bootstrap` and related admission / token code. Once bootstrapped, the spoke is pure `FleetCluster` machinery — no `Provider` CRD, no runtime dispatch on cloud type.
 
 ---
 
 ## 12. Target FSM
 
-Per-target rollout state is inline at `Release.status.targets[i].phase` (`api/v1alpha1/TargetPhase`):
+Per-target rollout state is inline at `PromotionRun.status.targets[i].phase` (`api/v1alpha1/TargetPhase`):
 
 ```
 Pending
   ↓
 Verification          ← optional: cosign signature verification
   ↓
-HealthCheck           ← optional: MemberCluster health is fresh + Ready
+HealthCheck           ← optional: FleetCluster health is fresh + Ready
   ↓
 MetricsCheck          ← optional: Prometheus queries pass
   ↓
 Soaking               ← optional: minimum time-since-entry has elapsed
   ↓
-WaitingApproval       ← optional: Approval CR with name <release>-<target> exists and is Approved
+WaitingApproval       ← optional: Approval CR with name <promotionrun>-<target> exists and is Approved
   ↓
-Applying              ← Actuator.Apply() called; MemberCluster.spec.desiredVersion written
+Applying              ← Actuator.Apply() called; FleetCluster.spec.desiredVersion written
   ↓
 Converged   |   Failed   |   RolledBack
 ```
@@ -362,10 +362,10 @@ Each optional gate is skipped when its policy is not configured. Phase handlers 
 | `status.targets[i].gates[]`        | One row per GateTemplate invocation.              |
 | `status.report`                    | Compact counter summary + pending approval list.  |
 | `status.auditTrail`                | Immutable provenance, capped at 50 entries.       |
-| `status.pipelineProgress[]`        | One row per pipeline node in the DAG.             |
+| `status.promotionplanProgress[]`        | One row per promotionplan node in the DAG.             |
 | `status.conditions`                | Standard Kubernetes conditions (`Ready`, etc.).   |
 
-`ReleaseReportSummary` carries counters and a `pendingApprovals` list only. It does **not** mirror `status.targets[]` or `status.targets[i].gates[]`.
+`PromotionRunReportSummary` carries counters and a `pendingApprovals` list only. It does **not** mirror `status.targets[]` or `status.targets[i].gates[]`.
 
 ---
 
@@ -375,20 +375,20 @@ Approval is intentionally minimal:
 
 1. A target enters `WaitingApproval`.
 2. The operator sends a notification (Slack / email / etc.) containing a short-lived signed URL back to `kapro-webhook-server`.
-3. A human clicks **approve** or **reject**. The webhook creates an `Approval` CR with the deterministic name **`<release>-<target>`** in the release's namespace, recording `spec.approvedBy` (or `rejected: true`).
-4. The `ApprovalGate` (built-in) does a direct `client.Get(<release>-<target>)` — no label-scan — and returns `Passed` / `Failed` / `Running`.
+3. A human clicks **approve** or **reject**. The webhook creates an `Approval` CR with the deterministic name **`<promotionrun>-<target>`** in the promotionrun's namespace, recording `spec.approvedBy` (or `rejected: true`).
+4. The `ApprovalGate` (built-in) does a direct `client.Get(<promotionrun>-<target>)` — no label-scan — and returns `Passed` / `Failed` / `Running`.
 
-Identity is deterministic: every `(Release, target)` pair has at most one `Approval` object. Admission validation enforces that `spec.release` and `spec.target` match the name.
+Identity is deterministic: every `(PromotionRun, target)` pair has at most one `Approval` object. Admission validation enforces that `spec.promotionrun` and `spec.target` match the name.
 
 ---
 
 ## 14. Notification & Events
 
 - `pkg/notification.Notifier` is an internal contract (not an exposed extension interface yet). Currently ships Slack, email, and generic webhook senders under `internal/notification/engine`.
-- The `ReleaseReconciler` converts `*GatePolicy → pkg/notification.NotificationPolicy` at the call boundary so the notification engine never imports `api/v1alpha1`. This is the internal runtime policy type, not the preview `NotificationPolicy` CRD.
+- The `PromotionRunReconciler` converts `*GatePolicy → pkg/notification.NotificationPolicy` at the call boundary so the notification engine never imports `api/v1alpha1`. This is the internal runtime policy type, not the preview `NotificationPolicy` CRD.
 - Existing inline notifications on gates remain supported and are the active runtime configuration path.
-- Every phase transition emits a Kubernetes Event on the `Release` object.
-- Webhook notifications support plain JSON and CloudEvents v1.0 structured JSON. CloudEvents IDs are stable for a given release, event type, pipeline, stage, target, and phase so consumers can de-duplicate retries.
+- Every phase transition emits a Kubernetes Event on the `PromotionRun` object.
+- Webhook notifications support plain JSON and CloudEvents v1.0 structured JSON. CloudEvents IDs are stable for a given promotionrun, event type, promotionplan, stage, target, and phase so consumers can de-duplicate retries.
 - Event type names are the stable integration contract. Phase names are internal FSM detail. See `docs/events.md` for the emitted event catalog and integration examples.
 
 ---
@@ -404,7 +404,7 @@ notification subscription logic:
   credential Secret references, and opaque parameters.
 - `NotificationPolicy` is **when** events should be sent. It declares
   subscriptions with a `providerRef` and filters for stable event types,
-  Release labels, pipelines, stages, targets, and phases.
+  PromotionRun labels, promotionplans, stages, targets, and phases.
 
 These APIs are spec-only in this preview. The controller does not dispatch from
 `NotificationPolicy` yet and does not change existing inline notification
@@ -446,16 +446,16 @@ implementation. See `docs/plugin-authoring.md` and
 
 ---
 
-## 17. ReleaseTrigger API Preview
+## 17. PromotionTrigger API Preview
 
-`ReleaseTrigger` is a safe-by-default API preview for autonomous Release
+`PromotionTrigger` is a safe-by-default API preview for autonomous PromotionRun
 creation from verified artifact changes. It is cluster-scoped and supports OCI
-source configuration, release template configuration, cooldown, max-active
+source configuration, promotionrun template configuration, cooldown, max-active
 limits, dry-run mode, and status conditions.
 
 The controller observes OCI registries, records the latest matching tag and
-digest, and creates digest-pinned `Release` objects only after safeguards pass.
-Created releases still use the normal Kapro pipeline; the trigger does not
+digest, and creates digest-pinned `PromotionRun` objects only after safeguards pass.
+Created promotionruns still use the normal Kapro promotionplan; the trigger does not
 apply manifests, bypass gates, or promote directly to production.
 
 ---
@@ -468,7 +468,7 @@ Kapro explicitly does **not** aim to:
 - Be a generic workflow engine. Stages are rollout waves, not arbitrary DAG nodes.
 - Manage in-cluster traffic shaping. Use Argo Rollouts / Flagger for that and gate on their result via `metrics` or `webhook` gates.
 - Expose a plugin interface for every internal concern. Actuator, gate, and planner plugins are intentionally narrow and run through explicit KAI, KGI, and KPI contracts.
-- Provide a generic cluster-provider abstraction. `MemberCluster` + `internal/bootstrap` is the onboarding path.
+- Provide a generic cluster-provider abstraction. `FleetCluster` + `internal/bootstrap` is the onboarding path.
 - Require AI agents for rollout execution. Future agents may summarize evidence
   and recommend actions under `AgentPolicy`, but Kapro core remains
   deterministic without them.

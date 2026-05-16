@@ -2,8 +2,8 @@ package controller_test
 
 // p1_features_test.go — unit tests for the three P1 feature additions:
 //
-//   p1-halt-policy    TestReleaseReconciler_HaltPolicy_CancelsSiblingSync
-//   p1-gate-template  TestReleaseReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetrics
+//   p1-halt-policy    TestPromotionRunReconciler_HaltPolicy_CancelsSiblingSync
+//   p1-gate-template  TestPromotionRunReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetrics
 //   p1-auto-rollback  covered end-to-end via e2e_test.go
 //
 // All tests use controller-runtime's fake client — no envtest required.
@@ -29,7 +29,7 @@ import (
 //
 // The halt-policy envtest lives in e2e_test.go as TestE2E_HaltPolicy_CancelsSiblingTarget.
 // It requires a real API server (envtest) because cancelPendingStageTargets uses
-// field-indexed List + Update on cluster-scoped ReleaseTarget objects.
+// field-indexed List + Update on cluster-scoped PromotionTarget objects.
 
 // ---- p1-gate-template -------------------------------------------------------
 
@@ -44,7 +44,7 @@ func (g *alwaysPassGate) Evaluate(_ context.Context, _ gate.Request) (gate.Resul
 	}, nil
 }
 
-// TestReleaseReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetrics is a
+// TestPromotionRunReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetrics is a
 // regression test for the early-return bug in handleTargetMetricsCheck.
 //
 // The bug: when GatePolicySpec.Gate.Metrics was empty, handleTargetMetricsCheck
@@ -54,27 +54,27 @@ func (g *alwaysPassGate) Evaluate(_ context.Context, _ gate.Request) (gate.Resul
 //
 // The fix: metrics and templates are now evaluated under separate guards;
 // the function only fast-paths when BOTH are empty.
-func TestReleaseReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetrics(t *testing.T) {
+func TestPromotionRunReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetrics(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
 
 	const (
-		releaseName  = "tmpl-rel"
-		pipelineRef  = "initial"
-		pipelineName = "tmpl-pipeline"
-		stageName    = "deploy"
-		envRefName   = "tmpl-env"
+		promotionrunName  = "tmpl-rel"
+		promotionplanRef  = "initial"
+		promotionplanName = "tmpl-promotionplan"
+		stageName         = "deploy"
+		envRefName        = "tmpl-env"
 	)
 
-	mc := &kaprov1alpha1.MemberCluster{
+	mc := &kaprov1alpha1.FleetCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: envRefName, Labels: map[string]string{"tier": "tmpl"}},
-		Spec:       kaprov1alpha1.MemberClusterSpec{Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"}},
+		Spec:       kaprov1alpha1.FleetClusterSpec{Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"}},
 	}
-	pipeline := &kaprov1alpha1.Pipeline{
-		ObjectMeta: metav1.ObjectMeta{Name: pipelineName},
-		Spec: kaprov1alpha1.PipelineSpec{
+	promotionplan := &kaprov1alpha1.PromotionPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: promotionplanName},
+		Spec: kaprov1alpha1.PromotionPlanSpec{
 			Stages: []kaprov1alpha1.Stage{{
 				Name:     stageName,
 				Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "tmpl"}},
@@ -92,70 +92,70 @@ func TestReleaseReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetrics(t *
 		},
 	}
 
-	// Pre-seed a ReleaseTarget with the env already in MetricsCheck so the
+	// Pre-seed a PromotionTarget with the env already in MetricsCheck so the
 	// first reconcile exercises handleTargetMetricsCheck directly.
-	release := &kaprov1alpha1.Release{
+	promotionrun := &kaprov1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:       releaseName,
-			Finalizers: []string{kaprov1alpha1.ReleaseFinalizer},
+			Name:       promotionrunName,
+			Finalizers: []string{kaprov1alpha1.PromotionRunFinalizer},
 		},
-		Spec: kaprov1alpha1.ReleaseSpec{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "v1.0.0",
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
-				{Name: pipelineRef, Pipeline: pipelineName},
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
+				{Name: promotionplanRef, PromotionPlan: promotionplanName},
 			},
 		},
-		Status: kaprov1alpha1.ReleaseStatus{
-			Phase:           kaprov1alpha1.ReleasePhaseProgressing,
+		Status: kaprov1alpha1.PromotionRunStatus{
+			Phase:           kaprov1alpha1.PromotionRunPhaseProgressing,
 			ResolvedVersion: "v1.0.0",
-			PipelineProgress: []kaprov1alpha1.PipelineProgress{
-				{Name: pipelineRef, Pipeline: pipelineName, Phase: "Progressing"},
+			PromotionPlanProgress: []kaprov1alpha1.PromotionPlanProgress{
+				{Name: promotionplanRef, PromotionPlan: promotionplanName, Phase: "Progressing"},
 			},
 		},
 	}
-	rt := &kaprov1alpha1.ReleaseTarget{
-		ObjectMeta: metav1.ObjectMeta{Name: controller.ReleaseTargetObjectNameForTest(kaprov1alpha1.TargetStatus{
-			ReleaseRef:  releaseName,
-			Target:      envRefName,
-			PipelineRef: pipelineRef,
-			Pipeline:    pipelineName,
-			Stage:       stageName,
-			Version:     "v1.0.0",
+	rt := &kaprov1alpha1.PromotionTarget{
+		ObjectMeta: metav1.ObjectMeta{Name: controller.PromotionTargetObjectNameForTest(kaprov1alpha1.TargetStatus{
+			PromotionRunRef:  promotionrunName,
+			Target:           envRefName,
+			PromotionPlanRef: promotionplanRef,
+			PromotionPlan:    promotionplanName,
+			Stage:            stageName,
+			Version:          "v1.0.0",
 		})},
-		Spec: kaprov1alpha1.ReleaseTargetSpec{
-			ReleaseRef:  releaseName,
-			Target:      envRefName,
-			PipelineRef: pipelineRef,
-			Pipeline:    pipelineName,
-			Stage:       stageName,
-			Version:     "v1.0.0",
-			Gate:        gatePolicy,
-			AppKey:      "default",
+		Spec: kaprov1alpha1.PromotionTargetSpec{
+			PromotionRunRef:  promotionrunName,
+			Target:           envRefName,
+			PromotionPlanRef: promotionplanRef,
+			PromotionPlan:    promotionplanName,
+			Stage:            stageName,
+			Version:          "v1.0.0",
+			Gate:             gatePolicy,
+			AppKey:           "default",
 		},
-		Status: kaprov1alpha1.ReleaseTargetStatus{TargetStatus: kaprov1alpha1.TargetStatus{
-			ReleaseRef:  releaseName,
-			Target:      envRefName,
-			PipelineRef: pipelineRef,
-			Pipeline:    pipelineName,
-			Stage:       stageName,
-			Version:     "v1.0.0",
-			Phase:       kaprov1alpha1.TargetPhaseMetricsCheck,
-			Gate:        gatePolicy,
-			AppKey:      "default",
+		Status: kaprov1alpha1.PromotionTargetStatus{TargetStatus: kaprov1alpha1.TargetStatus{
+			PromotionRunRef:  promotionrunName,
+			Target:           envRefName,
+			PromotionPlanRef: promotionplanRef,
+			PromotionPlan:    promotionplanName,
+			Stage:            stageName,
+			Version:          "v1.0.0",
+			Phase:            kaprov1alpha1.TargetPhaseMetricsCheck,
+			Gate:             gatePolicy,
+			AppKey:           "default",
 		}},
 	}
 
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha1.ReleaseTarget{}).
-		WithStatusSubresource(&kaprov1alpha1.Release{}).
-		WithObjects(mc, pipeline, release, rt).
+		WithStatusSubresource(&kaprov1alpha1.PromotionTarget{}).
+		WithStatusSubresource(&kaprov1alpha1.PromotionRun{}).
+		WithObjects(mc, promotionplan, promotionrun, rt).
 		Build()
 
 	gateReg := gate.NewRegistry()
 	gateReg.MustRegister("mock", &alwaysPassGate{})
 
-	r := &controller.ReleaseTargetReconciler{
+	r := &controller.PromotionTargetReconciler{
 		Client:           c,
 		Recorder:         record.NewFakeRecorder(100),
 		Scheme:           scheme,
@@ -170,10 +170,10 @@ func TestReleaseReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetrics(t *
 		t.Fatalf("Reconcile returned unexpected error: %v", err)
 	}
 
-	// Re-read the ReleaseTarget to check FSM advanced.
-	var updatedRT kaprov1alpha1.ReleaseTarget
+	// Re-read the PromotionTarget to check FSM advanced.
+	var updatedRT kaprov1alpha1.PromotionTarget
 	if err := c.Get(context.Background(), types.NamespacedName{Name: rt.Name}, &updatedRT); err != nil {
-		t.Fatalf("Get ReleaseTarget: %v", err)
+		t.Fatalf("Get PromotionTarget: %v", err)
 	}
 	target := updatedRT
 
@@ -197,36 +197,36 @@ func TestReleaseReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetrics(t *
 	}
 }
 
-// TestReleaseReconciler_ReleasesForNewMatchingCluster verifies that a newly
-// registered cluster still wakes an in-progress Release even before that cluster
-// has a ReleaseTarget child object.
+// TestPromotionRunReconciler_PromotionRunsForNewMatchingCluster verifies that a newly
+// registered cluster still wakes an in-progress PromotionRun even before that cluster
+// has a PromotionTarget child object.
 //
 // This protects the watch-mapper fallback path used when the active-cluster
 // index has no hit yet for the new cluster.
-func TestReleaseReconciler_ReleasesForNewMatchingCluster(t *testing.T) {
+func TestPromotionRunReconciler_PromotionRunsForNewMatchingCluster(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
 
 	const (
-		releaseName  = "new-cluster-rel"
-		pipelineName = "new-cluster-pipeline"
+		promotionrunName  = "new-cluster-rel"
+		promotionplanName = "new-cluster-promotionplan"
 	)
 
-	mc := &kaprov1alpha1.MemberCluster{
+	mc := &kaprov1alpha1.FleetCluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "new-cluster",
 			Labels: map[string]string{"tier": "prod", "region": "eu"},
 		},
-		Spec: kaprov1alpha1.MemberClusterSpec{
+		Spec: kaprov1alpha1.FleetClusterSpec{
 			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"},
 		},
 	}
 
-	pipeline := &kaprov1alpha1.Pipeline{
-		ObjectMeta: metav1.ObjectMeta{Name: pipelineName},
-		Spec: kaprov1alpha1.PipelineSpec{
+	promotionplan := &kaprov1alpha1.PromotionPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: promotionplanName},
+		Spec: kaprov1alpha1.PromotionPlanSpec{
 			Stages: []kaprov1alpha1.Stage{{
 				Name:     "prod",
 				Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}},
@@ -234,34 +234,34 @@ func TestReleaseReconciler_ReleasesForNewMatchingCluster(t *testing.T) {
 		},
 	}
 
-	release := &kaprov1alpha1.Release{
-		ObjectMeta: metav1.ObjectMeta{Name: releaseName, Namespace: "default"},
-		Spec: kaprov1alpha1.ReleaseSpec{
+	promotionrun := &kaprov1alpha1.PromotionRun{
+		ObjectMeta: metav1.ObjectMeta{Name: promotionrunName, Namespace: "default"},
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "registry.example.com/bundle@sha256:cccc",
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{{
-				Name:     "main",
-				Pipeline: pipelineName,
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{{
+				Name:          "main",
+				PromotionPlan: promotionplanName,
 			}},
 		},
-		Status: kaprov1alpha1.ReleaseStatus{
-			Phase: kaprov1alpha1.ReleasePhaseProgressing,
-			// No ReleaseTarget exists yet for the new cluster.
+		Status: kaprov1alpha1.PromotionRunStatus{
+			Phase: kaprov1alpha1.PromotionRunPhaseProgressing,
+			// No PromotionTarget exists yet for the new cluster.
 		},
 	}
 
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha1.ReleaseTarget{}).
-		WithObjects(mc, pipeline, release).
+		WithStatusSubresource(&kaprov1alpha1.PromotionTarget{}).
+		WithObjects(mc, promotionplan, promotionrun).
 		Build()
 
-	r := &controller.ReleaseReconciler{Client: c}
+	r := &controller.PromotionRunReconciler{Client: c}
 
-	reqs := r.ProgressingReleasesForNewClusterForTest(context.Background(), mc)
+	reqs := r.ProgressingPromotionRunsForNewClusterForTest(context.Background(), mc)
 	if len(reqs) != 1 {
 		t.Fatalf("expected 1 reconcile request for new matching cluster, got %d", len(reqs))
 	}
-	if reqs[0].Name != releaseName || reqs[0].Namespace != "default" {
+	if reqs[0].Name != promotionrunName || reqs[0].Namespace != "default" {
 		t.Fatalf("unexpected request target: %#v", reqs[0])
 	}
 }

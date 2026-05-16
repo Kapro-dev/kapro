@@ -69,13 +69,13 @@ func (g *GateAdapter) Evaluate(ctx context.Context, req gate.Request) (gate.Resu
 	defer cancel()
 
 	resp, err := g.client.Evaluate(rpcCtx, &kgiv1alpha1.EvaluateRequest{
-		Release:    req.Context.ReleaseRef,
-		Target:     req.Context.Target,
-		Pipeline:   req.Context.Pipeline,
-		Stage:      req.Context.Stage,
-		Version:    req.Context.Version,
-		Gate:       gateName(g.name, req.Template),
-		Parameters: mergeParameters(g.parameters, req.Args),
+		PromotionRun:  req.Context.PromotionRunRef,
+		Target:        req.Context.Target,
+		PromotionPlan: req.Context.PromotionPlan,
+		Stage:         req.Context.Stage,
+		Version:       req.Context.Version,
+		Gate:          gateName(g.name, req.Template),
+		Parameters:    mergeParameters(g.parameters, req.Args),
 	})
 	if err != nil {
 		result = "error"

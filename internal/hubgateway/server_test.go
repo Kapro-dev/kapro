@@ -37,10 +37,10 @@ func TestGraphIncludesBackendProfiles(t *testing.T) {
 	}
 }
 
-func TestCreateRelease(t *testing.T) {
+func TestCreatePromotionRun(t *testing.T) {
 	c := testClient(t)
-	body := bytes.NewBufferString(`{"name":"checkout-1","version":"1.2.3","pipelines":[{"name":"main","pipeline":"checkout"}]}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/releases", body)
+	body := bytes.NewBufferString(`{"name":"checkout-1","version":"1.2.3","promotionplans":[{"name":"main","promotionplan":"checkout"}]}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/promotionruns", body)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 
@@ -49,12 +49,12 @@ func TestCreateRelease(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	var release kaprov1alpha1.Release
-	if err := c.Get(context.Background(), client.ObjectKey{Name: "checkout-1"}, &release); err != nil {
-		t.Fatalf("release not created: %v", err)
+	var promotionrun kaprov1alpha1.PromotionRun
+	if err := c.Get(context.Background(), client.ObjectKey{Name: "checkout-1"}, &promotionrun); err != nil {
+		t.Fatalf("promotionrun not created: %v", err)
 	}
-	if release.Spec.Version != "1.2.3" {
-		t.Fatalf("version=%s", release.Spec.Version)
+	if promotionrun.Spec.Version != "1.2.3" {
+		t.Fatalf("version=%s", promotionrun.Spec.Version)
 	}
 }
 
@@ -70,10 +70,10 @@ func TestGatewayRequiresBearerToken(t *testing.T) {
 	}
 }
 
-func TestCreateReleaseRejectsUnknownFields(t *testing.T) {
+func TestCreatePromotionRunRejectsUnknownFields(t *testing.T) {
 	c := testClient(t)
-	body := bytes.NewBufferString(`{"name":"checkout-1","version":"1.2.3","pipelines":[{"name":"main","pipeline":"checkout"}],"extra":true}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/releases", body)
+	body := bytes.NewBufferString(`{"name":"checkout-1","version":"1.2.3","promotionplans":[{"name":"main","promotionplan":"checkout"}],"extra":true}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/promotionruns", body)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 

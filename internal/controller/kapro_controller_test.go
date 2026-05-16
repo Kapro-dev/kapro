@@ -79,7 +79,7 @@ func TestBuildResourceSet_Units(t *testing.T) {
 		t.Fatalf("len(resources) = %d, want 4", len(resources))
 	}
 
-	// Verify HelmRepository is the first resource (repos before releases).
+	// Verify HelmRepository is the first resource (repos before promotionruns).
 	repo0, _ := resources[0].(map[string]interface{})
 	if repo0["kind"] != "HelmRepository" {
 		t.Errorf("resources[0].kind = %v, want HelmRepository", repo0["kind"])
@@ -182,10 +182,10 @@ func TestBuildResourceSet_OverrideMerging(t *testing.T) {
 	}
 }
 
-func TestBuildPipeline(t *testing.T) {
+func TestBuildPromotionPlan(t *testing.T) {
 	kapro := &kaprov1alpha1.Kapro{
 		Spec: kaprov1alpha1.KaproSpec{
-			Pipeline: kaprov1alpha1.KaproPipeline{
+			PromotionPlan: kaprov1alpha1.KaproPromotionPlan{
 				Stages: []kaprov1alpha1.KaproStage{
 					{Name: "canary", Selector: map[string]string{"tier": "canary"}},
 					{Name: "prod", Selector: map[string]string{"tier": "prod"},
@@ -197,16 +197,16 @@ func TestBuildPipeline(t *testing.T) {
 	kapro.Name = "demo"
 
 	r := &KaproReconciler{}
-	pipeline := r.buildPipeline(kapro)
+	promotionplan := r.buildPromotionPlan(kapro)
 
-	if pipeline.Name != "demo-pipeline" {
-		t.Errorf("pipeline name = %q, want demo-pipeline", pipeline.Name)
+	if promotionplan.Name != "demo-promotionplan" {
+		t.Errorf("promotionplan name = %q, want demo-promotionplan", promotionplan.Name)
 	}
-	if len(pipeline.Spec.Stages) != 2 {
-		t.Fatalf("stages = %d, want 2", len(pipeline.Spec.Stages))
+	if len(promotionplan.Spec.Stages) != 2 {
+		t.Fatalf("stages = %d, want 2", len(promotionplan.Spec.Stages))
 	}
-	if pipeline.Spec.Stages[1].DependsOn[0].Stage != "canary" {
-		t.Errorf("prod dependsOn = %v, want canary", pipeline.Spec.Stages[1].DependsOn)
+	if promotionplan.Spec.Stages[1].DependsOn[0].Stage != "canary" {
+		t.Errorf("prod dependsOn = %v, want canary", promotionplan.Spec.Stages[1].DependsOn)
 	}
 }
 

@@ -6,8 +6,8 @@
 // The CEL expression is evaluated against a structured activation:
 //
 //	args         — map[string]string of resolved gate args
-//	target       — kapro MemberCluster object (labels, name)
-//	sync         — Kapro delivery context (version, target, releaseRef)
+//	target       — kapro FleetCluster object (labels, name)
+//	sync         — Kapro delivery context (version, target, promotionrunRef)
 //
 // Example expression:
 //
@@ -42,7 +42,7 @@ var (
 	celEnvErr  error
 
 	// celProgramCache is a bounded cache of compiled CEL programs keyed by expression.
-	// Max size prevents OOM when many unique expressions are submitted by Release objects.
+	// Max size prevents OOM when many unique expressions are submitted by PromotionRun objects.
 	celProgramCache    = map[string]cel.Program{}
 	celProgramCacheMu  sync.RWMutex
 	celProgramCacheMax = 1000
@@ -62,11 +62,11 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 		return pkggate.Result{}, fmt.Errorf("cel gate: expression is empty")
 	}
 
-	// Resolve the MemberCluster object for context variables.
-	var mcObj kaprov1alpha1.MemberCluster
+	// Resolve the FleetCluster object for context variables.
+	var mcObj kaprov1alpha1.FleetCluster
 	if req.Context != nil && req.Context.Target != "" && g.Client != nil {
 		if err := g.Client.Get(ctx, client.ObjectKey{Name: req.Context.Target}, &mcObj); err != nil {
-			log.Info("cel gate: could not fetch MemberCluster, proceeding with empty cluster context", "name", req.Context.Target)
+			log.Info("cel gate: could not fetch FleetCluster, proceeding with empty cluster context", "name", req.Context.Target)
 		}
 	}
 
@@ -114,7 +114,7 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 }
 
 // buildActivation constructs the CEL variable map from resolved args + cluster + gate context.
-func buildActivation(args map[string]string, mc *kaprov1alpha1.MemberCluster, gateCtx *pkggate.Context) (map[string]any, error) {
+func buildActivation(args map[string]string, mc *kaprov1alpha1.FleetCluster, gateCtx *pkggate.Context) (map[string]any, error) {
 	// args: map[string]string — directly accessible as args.key
 	argsMap := map[string]any{}
 	for k, v := range args {
@@ -137,16 +137,16 @@ func buildActivation(args map[string]string, mc *kaprov1alpha1.MemberCluster, ga
 
 	// sync: key fields
 	syncMap := map[string]any{
-		"name":       "",
-		"version":    "",
-		"target":     "",
-		"releaseRef": "",
+		"name":            "",
+		"version":         "",
+		"target":          "",
+		"promotionrunRef": "",
 	}
 	if gateCtx != nil {
 		syncMap["name"] = gateCtx.Name
 		syncMap["version"] = gateCtx.Version
 		syncMap["target"] = gateCtx.Target
-		syncMap["releaseRef"] = gateCtx.ReleaseRef
+		syncMap["promotionrunRef"] = gateCtx.PromotionRunRef
 	}
 
 	return map[string]any{

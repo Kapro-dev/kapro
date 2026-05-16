@@ -1,0 +1,25 @@
+apiVersion: kapro.io/v1alpha1
+kind: PromotionTrigger
+metadata:
+  name: checkout-kind-trigger
+spec:
+  suspended: true
+  source:
+    type: oci
+    oci:
+      repository: oci://kind.local/kapro/checkout
+      tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+-kind$"
+      requireSignature: false
+      pollInterval: 1m
+  promotionrunTemplate:
+    nameTemplate: "checkout-kind-{{ .Tag }}"
+    promotionplans:
+      - name: main
+        promotionplan: checkout-progressive-kind
+    suspended: false
+    timeout: 30m
+    labels:
+      kapro.io/demo: kind
+  cooldown: 1m
+  maxActive: 1
+  dryRun: true

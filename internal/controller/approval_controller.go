@@ -17,12 +17,12 @@ import (
 )
 
 // ApprovalReconciler records an audit Event when an Approval is created or
-// updated. The actual gate-unblock happens in ReleaseReconciler, which watches
-// Approval objects via Watches(Approval, approvalForRelease) in SetupWithManager.
+// updated. The actual gate-unblock happens in PromotionRunReconciler, which watches
+// Approval objects via Watches(Approval, approvalForPromotionRun) in SetupWithManager.
 //
 // This controller exists solely for audit: the Kubernetes Event stream gives
 // operators an immutable, time-ordered record of every human approval without
-// having to parse Release.status.targets.
+// having to parse PromotionRun.status.targets.
 type ApprovalReconciler struct {
 	client.Client
 	Recorder record.EventRecorder
@@ -41,17 +41,17 @@ func (r *ApprovalReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	log.Info("approval recorded",
 		"name", approval.Name,
-		"release", approval.Spec.Release,
+		"promotionrun", approval.Spec.PromotionRun,
 		"target", approval.Spec.Target,
 		"approvedBy", approval.Spec.ApprovedBy,
 		"bypass", approval.Spec.Bypass,
 	)
 
-	// Fire an immutable audit Event on the Approval object. ReleaseReconciler
+	// Fire an immutable audit Event on the Approval object. PromotionRunReconciler
 	// will wake up independently via its Approval watch and advance the gate.
 	r.Recorder.Event(&approval, corev1.EventTypeNormal, "ApprovalRecorded",
-		fmt.Sprintf("approved by %s for release=%s target=%s",
-			approval.Spec.ApprovedBy, approval.Spec.Release, approval.Spec.Target))
+		fmt.Sprintf("approved by %s for promotionrun=%s target=%s",
+			approval.Spec.ApprovedBy, approval.Spec.PromotionRun, approval.Spec.Target))
 
 	if approval.Status.Phase != kaprov1alpha1.ApprovalPhaseRecorded || approval.Status.ObservedGeneration != approval.Generation {
 		patch := client.MergeFrom(approval.DeepCopy())
@@ -62,7 +62,7 @@ func (r *ApprovalReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			Type:               "Recorded",
 			Status:             metav1.ConditionTrue,
 			Reason:             "ObservedByController",
-			Message:            "approval has been recorded and is available to release reconciliation",
+			Message:            "approval has been recorded and is available to promotionrun reconciliation",
 			ObservedGeneration: approval.Generation,
 			LastTransitionTime: metav1.Now(),
 		})

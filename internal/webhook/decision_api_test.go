@@ -22,7 +22,7 @@ func decisionTestServer(t *testing.T, objs ...client.Object) *Server {
 		t.Fatalf("add scheme: %v", err)
 	}
 	builder := fake.NewClientBuilder().WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha1.ReleaseTarget{})
+		WithStatusSubresource(&kaprov1alpha1.PromotionTarget{})
 	if len(objs) > 0 {
 		builder = builder.WithObjects(objs...)
 	}
@@ -32,60 +32,60 @@ func decisionTestServer(t *testing.T, objs ...client.Object) *Server {
 	}
 }
 
-func decisionFixtures() (*kaprov1alpha1.Release, *kaprov1alpha1.MemberCluster, *kaprov1alpha1.Pipeline, *kaprov1alpha1.ReleaseTarget) {
-	release := &kaprov1alpha1.Release{
+func decisionFixtures() (*kaprov1alpha1.PromotionRun, *kaprov1alpha1.FleetCluster, *kaprov1alpha1.PromotionPlan, *kaprov1alpha1.PromotionTarget) {
+	promotionrun := &kaprov1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", UID: "uid-1"},
-		Spec: kaprov1alpha1.ReleaseSpec{
-			Version:   "registry.example.com/myapp@sha256:v1",
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{{Name: "main", Pipeline: "std-pipeline"}},
+		Spec: kaprov1alpha1.PromotionRunSpec{
+			Version:        "registry.example.com/myapp@sha256:v1",
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{{Name: "main", PromotionPlan: "std-promotionplan"}},
 		},
-		Status: kaprov1alpha1.ReleaseStatus{
-			Phase:     kaprov1alpha1.ReleasePhaseProgressing,
+		Status: kaprov1alpha1.PromotionRunStatus{
+			Phase:     kaprov1alpha1.PromotionRunPhaseProgressing,
 			StartedAt: "2026-05-09T10:00:00Z",
 		},
 	}
-	mc := &kaprov1alpha1.MemberCluster{
+	mc := &kaprov1alpha1.FleetCluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "cluster-a",
 			Labels: map[string]string{"tier": "canary", "region": "eu-west"},
 		},
-		Spec: kaprov1alpha1.MemberClusterSpec{
+		Spec: kaprov1alpha1.FleetClusterSpec{
 			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"},
 		},
-		Status: kaprov1alpha1.MemberClusterStatus{
+		Status: kaprov1alpha1.FleetClusterStatus{
 			Phase:         kaprov1alpha1.ClusterPhaseConverged,
 			LastHeartbeat: "2026-05-09T14:00:00Z",
 			Health:        kaprov1alpha1.ClusterHealth{AllWorkloadsReady: true, ReadyWorkloads: 5, TotalWorkloads: 5},
 		},
 	}
-	pipeline := &kaprov1alpha1.Pipeline{
-		ObjectMeta: metav1.ObjectMeta{Name: "std-pipeline"},
-		Spec: kaprov1alpha1.PipelineSpec{
+	promotionplan := &kaprov1alpha1.PromotionPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "std-promotionplan"},
+		Spec: kaprov1alpha1.PromotionPlanSpec{
 			Stages: []kaprov1alpha1.Stage{
 				{Name: "canary", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}}},
 			},
 		},
 	}
-	target := &kaprov1alpha1.ReleaseTarget{
+	target := &kaprov1alpha1.PromotionTarget{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1-canary-cluster-a"},
-		Spec: kaprov1alpha1.ReleaseTargetSpec{
-			ReleaseRef: "rel-1",
-			Target:     "cluster-a",
-			Stage:      "canary",
-			Version:    "sha256:abc",
+		Spec: kaprov1alpha1.PromotionTargetSpec{
+			PromotionRunRef: "rel-1",
+			Target:          "cluster-a",
+			Stage:           "canary",
+			Version:         "sha256:abc",
 		},
-		Status: kaprov1alpha1.ReleaseTargetStatus{
+		Status: kaprov1alpha1.PromotionTargetStatus{
 			TargetStatus: kaprov1alpha1.TargetStatus{Phase: kaprov1alpha1.TargetPhaseWaitingApproval},
 		},
 	}
-	return release, mc, pipeline, target
+	return promotionrun, mc, promotionplan, target
 }
 
 // --- Fleet endpoint ---
 
-func TestFleet_ReturnsClusterAndReleaseSummary(t *testing.T) {
-	release, mc, _, target := decisionFixtures()
-	s := decisionTestServer(t, release, mc, target)
+func TestFleet_ReturnsClusterAndPromotionRunSummary(t *testing.T) {
+	promotionrun, mc, _, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, mc, target)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/fleet", nil)
 	rec := httptest.NewRecorder()
@@ -105,8 +105,8 @@ func TestFleet_ReturnsClusterAndReleaseSummary(t *testing.T) {
 	if resp.HealthyClusters != 1 {
 		t.Errorf("expected 1 healthy, got %d", resp.HealthyClusters)
 	}
-	if resp.ActiveReleases != 1 {
-		t.Errorf("expected 1 active release, got %d", resp.ActiveReleases)
+	if resp.ActivePromotionRuns != 1 {
+		t.Errorf("expected 1 active promotionrun, got %d", resp.ActivePromotionRuns)
 	}
 	if resp.PendingDecisions != 1 {
 		t.Errorf("expected 1 pending decision, got %d", resp.PendingDecisions)
@@ -123,39 +123,39 @@ func TestFleet_RejectsPost(t *testing.T) {
 	}
 }
 
-// --- Release Context endpoint ---
+// --- PromotionRun Context endpoint ---
 
-func TestReleaseContext_ReturnsReleaseAndTargets(t *testing.T) {
-	release, mc, pipeline, target := decisionFixtures()
-	s := decisionTestServer(t, release, mc, pipeline, target)
+func TestPromotionRunContext_ReturnsPromotionRunAndTargets(t *testing.T) {
+	promotionrun, mc, promotionplan, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, mc, promotionplan, target)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/releases/rel-1/context", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/promotionruns/rel-1/context", nil)
 	rec := httptest.NewRecorder()
-	s.handleReleaseContext(rec, req, "rel-1")
+	s.handlePromotionRunContext(rec, req, "rel-1")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	var resp ReleaseContext
+	var resp PromotionRunContext
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if resp.Release.Name != "rel-1" {
-		t.Errorf("expected release rel-1, got %s", resp.Release.Name)
+	if resp.PromotionRun.Name != "rel-1" {
+		t.Errorf("expected promotionrun rel-1, got %s", resp.PromotionRun.Name)
 	}
-	if resp.Pipeline == nil {
-		t.Error("expected pipeline to be resolved")
+	if resp.PromotionPlan == nil {
+		t.Error("expected promotionplan to be resolved")
 	}
 	if len(resp.Targets) != 1 {
 		t.Errorf("expected 1 target, got %d", len(resp.Targets))
 	}
 }
 
-func TestReleaseContext_NotFound(t *testing.T) {
+func TestPromotionRunContext_NotFound(t *testing.T) {
 	s := decisionTestServer(t)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/releases/nonexistent/context", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/promotionruns/nonexistent/context", nil)
 	rec := httptest.NewRecorder()
-	s.handleReleaseContext(rec, req, "nonexistent")
+	s.handlePromotionRunContext(rec, req, "nonexistent")
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rec.Code)
 	}
@@ -164,10 +164,10 @@ func TestReleaseContext_NotFound(t *testing.T) {
 // --- Gate Context endpoint ---
 
 func TestGateContext_ReturnsTargetAndCluster(t *testing.T) {
-	release, mc, _, target := decisionFixtures()
-	s := decisionTestServer(t, release, mc, target)
+	promotionrun, mc, _, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, mc, target)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/releases/rel-1/targets/rel-1-canary-cluster-a/gate", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/promotionruns/rel-1/targets/rel-1-canary-cluster-a/gate", nil)
 	rec := httptest.NewRecorder()
 	s.handleGateContext(rec, req, "rel-1", "rel-1-canary-cluster-a")
 
@@ -189,14 +189,14 @@ func TestGateContext_ReturnsTargetAndCluster(t *testing.T) {
 	}
 }
 
-func TestGateContext_ReleaseMismatch(t *testing.T) {
-	release, _, _, target := decisionFixtures()
+func TestGateContext_PromotionRunMismatch(t *testing.T) {
+	promotionrun, _, _, target := decisionFixtures()
 	// Target belongs to rel-1 but we query with rel-1 for a target that
-	// claims a different release. Create a target with mismatched releaseRef.
+	// claims a different promotionrun. Create a target with mismatched promotionrunRef.
 	badTarget := target.DeepCopy()
 	badTarget.Name = "bad-target"
-	badTarget.Spec.ReleaseRef = "other-release"
-	s := decisionTestServer(t, release, badTarget)
+	badTarget.Spec.PromotionRunRef = "other-promotionrun"
+	s := decisionTestServer(t, promotionrun, badTarget)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
@@ -240,20 +240,20 @@ func TestClusterHealth_NotFound(t *testing.T) {
 
 // --- Decide endpoint ---
 
-func postDecision(t *testing.T, s *Server, releaseName, targetKey string, req DecisionRequest) *httptest.ResponseRecorder {
+func postDecision(t *testing.T, s *Server, promotionrunName, targetKey string, req DecisionRequest) *httptest.ResponseRecorder {
 	t.Helper()
 	body, _ := json.Marshal(req)
-	httpReq := httptest.NewRequest(http.MethodPost, "/api/v1/releases/"+releaseName+"/targets/"+targetKey+"/decide", bytes.NewReader(body))
+	httpReq := httptest.NewRequest(http.MethodPost, "/api/v1/promotionruns/"+promotionrunName+"/targets/"+targetKey+"/decide", bytes.NewReader(body))
 	httpReq.Header.Set("X-Agent-Name", "test-agent")
 	httpReq.Header.Set("Authorization", "Bearer test-token-123")
 	rec := httptest.NewRecorder()
-	s.handleDecide(rec, httpReq, releaseName, targetKey)
+	s.handleDecide(rec, httpReq, promotionrunName, targetKey)
 	return rec
 }
 
 func TestDecide_ApproveCreatesApprovalAndTrace(t *testing.T) {
-	release, mc, _, target := decisionFixtures()
-	s := decisionTestServer(t, release, mc, target)
+	promotionrun, mc, _, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, mc, target)
 
 	rec := postDecision(t, s, "rel-1", "rel-1-canary-cluster-a", DecisionRequest{
 		Decision:       "Approve",
@@ -281,7 +281,7 @@ func TestDecide_ApproveCreatesApprovalAndTrace(t *testing.T) {
 	}
 
 	// Verify DecisionTrace was written to target status.
-	var updated kaprov1alpha1.ReleaseTarget
+	var updated kaprov1alpha1.PromotionTarget
 	if err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: "rel-1-canary-cluster-a"}, &updated); err != nil {
 		t.Fatalf("get updated target: %v", err)
 	}
@@ -312,8 +312,8 @@ func TestDecide_ApproveCreatesApprovalAndTrace(t *testing.T) {
 }
 
 func TestDecide_RejectDoesNotCreateApproval(t *testing.T) {
-	release, _, _, target := decisionFixtures()
-	s := decisionTestServer(t, release, target)
+	promotionrun, _, _, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, target)
 
 	rec := postDecision(t, s, "rel-1", "rel-1-canary-cluster-a", DecisionRequest{
 		Decision:       "Reject",
@@ -335,8 +335,8 @@ func TestDecide_RejectDoesNotCreateApproval(t *testing.T) {
 }
 
 func TestDecide_DeferRecordsWithoutApproval(t *testing.T) {
-	release, _, _, target := decisionFixtures()
-	s := decisionTestServer(t, release, target)
+	promotionrun, _, _, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, target)
 
 	rec := postDecision(t, s, "rel-1", "rel-1-canary-cluster-a", DecisionRequest{
 		Decision:       "Defer",
@@ -349,7 +349,7 @@ func TestDecide_DeferRecordsWithoutApproval(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	var updated kaprov1alpha1.ReleaseTarget
+	var updated kaprov1alpha1.PromotionTarget
 	if err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: "rel-1-canary-cluster-a"}, &updated); err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -359,8 +359,8 @@ func TestDecide_DeferRecordsWithoutApproval(t *testing.T) {
 }
 
 func TestDecide_IdempotentReplay(t *testing.T) {
-	release, _, _, target := decisionFixtures()
-	s := decisionTestServer(t, release, target)
+	promotionrun, _, _, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, target)
 
 	req := DecisionRequest{
 		Decision:       "Approve",
@@ -388,8 +388,8 @@ func TestDecide_IdempotentReplay(t *testing.T) {
 }
 
 func TestDecide_IdempotencyKeyConflict(t *testing.T) {
-	release, _, _, target := decisionFixtures()
-	s := decisionTestServer(t, release, target)
+	promotionrun, _, _, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, target)
 
 	// First call: Approve.
 	postDecision(t, s, "rel-1", "rel-1-canary-cluster-a", DecisionRequest{
@@ -412,8 +412,8 @@ func TestDecide_IdempotencyKeyConflict(t *testing.T) {
 }
 
 func TestDecide_FirstDecisionWins(t *testing.T) {
-	release, _, _, target := decisionFixtures()
-	s := decisionTestServer(t, release, target)
+	promotionrun, _, _, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, target)
 
 	// Agent A approves.
 	postDecision(t, s, "rel-1", "rel-1-canary-cluster-a", DecisionRequest{
@@ -436,9 +436,9 @@ func TestDecide_FirstDecisionWins(t *testing.T) {
 }
 
 func TestDecide_WrongPhase(t *testing.T) {
-	release, _, _, target := decisionFixtures()
+	promotionrun, _, _, target := decisionFixtures()
 	target.Status.Phase = kaprov1alpha1.TargetPhaseApplying // not WaitingApproval
-	s := decisionTestServer(t, release, target)
+	s := decisionTestServer(t, promotionrun, target)
 
 	rec := postDecision(t, s, "rel-1", "rel-1-canary-cluster-a", DecisionRequest{
 		Decision:       "Approve",
@@ -451,10 +451,10 @@ func TestDecide_WrongPhase(t *testing.T) {
 	}
 }
 
-func TestDecide_SuspendedRelease(t *testing.T) {
-	release, _, _, target := decisionFixtures()
-	release.Spec.Suspended = true
-	s := decisionTestServer(t, release, target)
+func TestDecide_SuspendedPromotionRun(t *testing.T) {
+	promotionrun, _, _, target := decisionFixtures()
+	promotionrun.Spec.Suspended = true
+	s := decisionTestServer(t, promotionrun, target)
 
 	rec := postDecision(t, s, "rel-1", "rel-1-canary-cluster-a", DecisionRequest{
 		Decision:       "Approve",
@@ -463,13 +463,13 @@ func TestDecide_SuspendedRelease(t *testing.T) {
 		IdempotencyKey: "suspended-1",
 	})
 	if rec.Code != http.StatusConflict {
-		t.Fatalf("expected 409 for suspended release, got %d", rec.Code)
+		t.Fatalf("expected 409 for suspended promotionrun, got %d", rec.Code)
 	}
 }
 
 func TestDecide_InvalidDecisionValue(t *testing.T) {
-	release, _, _, target := decisionFixtures()
-	s := decisionTestServer(t, release, target)
+	promotionrun, _, _, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, target)
 
 	rec := postDecision(t, s, "rel-1", "rel-1-canary-cluster-a", DecisionRequest{
 		Decision:       "Maybe",
@@ -483,8 +483,8 @@ func TestDecide_InvalidDecisionValue(t *testing.T) {
 }
 
 func TestDecide_MissingFields(t *testing.T) {
-	release, _, _, target := decisionFixtures()
-	s := decisionTestServer(t, release, target)
+	promotionrun, _, _, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, target)
 
 	rec := postDecision(t, s, "rel-1", "rel-1-canary-cluster-a", DecisionRequest{
 		Decision: "Approve",
@@ -495,7 +495,7 @@ func TestDecide_MissingFields(t *testing.T) {
 	}
 }
 
-func TestDecide_ReleaseNotFound(t *testing.T) {
+func TestDecide_PromotionRunNotFound(t *testing.T) {
 	_, _, _, target := decisionFixtures()
 	s := decisionTestServer(t, target)
 
@@ -512,18 +512,18 @@ func TestDecide_ReleaseNotFound(t *testing.T) {
 
 // --- Override endpoint ---
 
-func postOverride(t *testing.T, s *Server, releaseName, targetKey string, req OverrideRequest) *httptest.ResponseRecorder {
+func postOverride(t *testing.T, s *Server, promotionrunName, targetKey string, req OverrideRequest) *httptest.ResponseRecorder {
 	t.Helper()
 	body, _ := json.Marshal(req)
-	httpReq := httptest.NewRequest(http.MethodPost, "/api/v1/releases/"+releaseName+"/targets/"+targetKey+"/override", bytes.NewReader(body))
+	httpReq := httptest.NewRequest(http.MethodPost, "/api/v1/promotionruns/"+promotionrunName+"/targets/"+targetKey+"/override", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
-	s.handleOverride(rec, httpReq, releaseName, targetKey)
+	s.handleOverride(rec, httpReq, promotionrunName, targetKey)
 	return rec
 }
 
 func TestOverride_RecordsHumanOverride(t *testing.T) {
-	release, _, _, target := decisionFixtures()
-	s := decisionTestServer(t, release, target)
+	promotionrun, _, _, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, target)
 
 	rec := postOverride(t, s, "rel-1", "rel-1-canary-cluster-a", OverrideRequest{
 		Action:   "Reject",
@@ -535,7 +535,7 @@ func TestOverride_RecordsHumanOverride(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	var updated kaprov1alpha1.ReleaseTarget
+	var updated kaprov1alpha1.PromotionTarget
 	if err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: "rel-1-canary-cluster-a"}, &updated); err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -552,8 +552,8 @@ func TestOverride_RecordsHumanOverride(t *testing.T) {
 }
 
 func TestOverride_ApproveCreatesApprovalCR(t *testing.T) {
-	release, _, _, target := decisionFixtures()
-	s := decisionTestServer(t, release, target)
+	promotionrun, _, _, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, target)
 
 	rec := postOverride(t, s, "rel-1", "rel-1-canary-cluster-a", OverrideRequest{
 		Action:   "Approve",
@@ -575,8 +575,8 @@ func TestOverride_ApproveCreatesApprovalCR(t *testing.T) {
 }
 
 func TestOverride_MissingFields(t *testing.T) {
-	release, _, _, target := decisionFixtures()
-	s := decisionTestServer(t, release, target)
+	promotionrun, _, _, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, target)
 
 	rec := postOverride(t, s, "rel-1", "rel-1-canary-cluster-a", OverrideRequest{
 		Action: "Approve",
@@ -590,8 +590,8 @@ func TestOverride_MissingFields(t *testing.T) {
 // --- Router ---
 
 func TestRouter_DispatchesCorrectly(t *testing.T) {
-	release, mc, pipeline, target := decisionFixtures()
-	s := decisionTestServer(t, release, mc, pipeline, target)
+	promotionrun, mc, promotionplan, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, mc, promotionplan, target)
 
 	mux := http.NewServeMux()
 	s.RegisterDecisionAPI(mux)
@@ -602,10 +602,10 @@ func TestRouter_DispatchesCorrectly(t *testing.T) {
 		want   int
 	}{
 		{http.MethodGet, "/api/v1/fleet", http.StatusOK},
-		{http.MethodGet, "/api/v1/releases/rel-1/context", http.StatusOK},
-		{http.MethodGet, "/api/v1/releases/rel-1/targets/rel-1-canary-cluster-a/gate", http.StatusOK},
+		{http.MethodGet, "/api/v1/promotionruns/rel-1/context", http.StatusOK},
+		{http.MethodGet, "/api/v1/promotionruns/rel-1/targets/rel-1-canary-cluster-a/gate", http.StatusOK},
 		{http.MethodGet, "/api/v1/clusters/cluster-a/health", http.StatusOK},
-		{http.MethodGet, "/api/v1/releases/rel-1/targets/rel-1-canary-cluster-a/nonexistent", http.StatusNotFound},
+		{http.MethodGet, "/api/v1/promotionruns/rel-1/targets/rel-1-canary-cluster-a/nonexistent", http.StatusNotFound},
 	}
 
 	for _, tt := range tests {

@@ -1,13 +1,13 @@
 # Backend-Neutral Delivery Architecture
 
-Kapro is a fleet deployment promotion control plane. It owns release intent,
+Kapro is a fleet deployment promotion control plane. It owns promotionrun intent,
 target ordering, gates, approvals, heartbeat freshness, and fleet status. It
 does not own traffic shifting or assume a specific GitOps controller.
 
 Kapro supports two connect paths:
 
 - **Greenfield bootstrap:** create the hub, backend profiles, cluster inventory,
-  promotion sources, pipelines, gates, and optional spoke agents from Kapro
+  promotion sources, promotionplans, gates, and optional spoke agents from Kapro
   commands or manifests.
 - **Brownfield connect:** discover existing Argo CD or Flux topology, observe it
   first, then explicitly adopt selected applications or clusters for promotion.
@@ -25,8 +25,8 @@ Primary APIs:
 
 - `Kapro` selects a promotion source, a delivery backend, clusters, and stages.
 - `BackendProfile` declares a selectable delivery backend.
-- `MemberCluster.spec.delivery` selects the per-cluster backend profile.
-- `Release` and `ReleaseTarget` store promotion execution state.
+- `FleetCluster.spec.delivery` selects the per-cluster backend profile.
+- `PromotionRun` and `PromotionTarget` store promotion execution state.
 
 ## Greenfield Bootstrap
 
@@ -34,11 +34,11 @@ For new fleets, Kapro can be the setup path for promotion infrastructure:
 
 1. Install the Kapro hub controller and Hub Gateway.
 2. Create a built-in `BackendProfile` such as `flux` or `argo`.
-3. Register or generate `MemberCluster` inventory.
-4. Generate a starter `PromotionSource`, `Pipeline`, gates, and example `Release`.
+3. Register or generate `FleetCluster` inventory.
+4. Generate a starter `PromotionSource`, `PromotionPlan`, gates, and example `PromotionRun`.
 5. Optionally install a spoke agent for pull-mode clusters.
 
-This is platform bootstrap for the release layer, not a replacement for a
+This is platform bootstrap for the promotionrun layer, not a replacement for a
 platform installer. Tools that bootstrap clusters, ingress, observability, or
 base platform services can run before Kapro; Kapro then bootstraps the
 promotion control plane on top.
@@ -56,9 +56,9 @@ already exist in Argo CD or Flux. Brownfield connect has three phases:
 
 1. **Observe:** discover backend-native clusters and applications, report graph
    and health, and do not write to backend-owned objects.
-2. **Adopt:** bind selected backend objects to Kapro releases and allow Kapro to
+2. **Adopt:** bind selected backend objects to Kapro promotionruns and allow Kapro to
    update version fields such as Argo `targetRevision` or Flux input tags.
-3. **Manage:** optionally let Kapro generate new bundles, pipelines, and backend
+3. **Manage:** optionally let Kapro generate new bundles, promotionplans, and backend
    wiring for teams that want a stronger convention.
 
 Argo CD users can keep cluster Secrets, Applications, ApplicationSets, and
@@ -171,12 +171,12 @@ Initial endpoints:
 
 - `GET /healthz`
 - `GET /api/v1/graph`
-- `POST /api/v1/releases`
+- `POST /api/v1/promotionruns`
 
 The gateway is intentionally asynchronous. Commands create or patch CRDs; the
 controllers and backend adapters perform reconciliation.
 
-`GET /api/v1/graph` and `POST /api/v1/releases` require an
+`GET /api/v1/graph` and `POST /api/v1/promotionruns` require an
 `Authorization: Bearer <token>` header. The operator reuses its configured
 approval secret as the gateway bearer token. Request bodies are size-limited
 and unknown JSON fields are rejected.

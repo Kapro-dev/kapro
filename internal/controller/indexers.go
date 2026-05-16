@@ -6,26 +6,26 @@ import (
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
 
-// IndexKeyRelease is the field index key for Approval objects.
-// The index value is the owning Release name.
+// IndexKeyPromotionRun is the field index key for Approval objects.
+// The index value is the owning PromotionRun name.
 //
-// Registration: ReleaseReconciler.SetupWithManager registers the index once.
-// Usage: client.MatchingFields{IndexKeyRelease: release.Name}
-const IndexKeyRelease = "kapro.io/release"
+// Registration: PromotionRunReconciler.SetupWithManager registers the index once.
+// Usage: client.MatchingFields{IndexKeyPromotionRun: promotionrun.Name}
+const IndexKeyPromotionRun = "kapro.io/promotionrun"
 
-// IndexKeyActiveCluster is a field index on ReleaseTarget objects.
-// The index values are the target cluster names from ReleaseTarget.spec.target.
-// This lets the MemberCluster→Release mapper avoid scanning all releases.
+// IndexKeyActiveCluster is a field index on PromotionTarget objects.
+// The index values are the target cluster names from PromotionTarget.spec.target.
+// This lets the FleetCluster→PromotionRun mapper avoid scanning all promotionruns.
 //
-// Registration: ReleaseReconciler.SetupWithManager registers the index once.
+// Registration: PromotionRunReconciler.SetupWithManager registers the index once.
 // Usage: client.MatchingFields{IndexKeyActiveCluster: mc.Name}
 const IndexKeyActiveCluster = "kapro.io/active-cluster"
 
-// IndexKeyReleaseTargetRelease indexes ReleaseTarget objects by owning Release name.
-const IndexKeyReleaseTargetRelease = "kapro.io/release-target-release"
+// IndexKeyPromotionTargetPromotionRun indexes PromotionTarget objects by owning PromotionRun name.
+const IndexKeyPromotionTargetPromotionRun = "kapro.io/promotion-target-promotionrun"
 
-// IndexKeyReleaseProgressing indexes Release objects that are currently progressing.
-const IndexKeyReleaseProgressing = "kapro.io/release-progressing"
+// IndexKeyPromotionRunProgressing indexes PromotionRun objects that are currently progressing.
+const IndexKeyPromotionRunProgressing = "kapro.io/promotionrun-progressing"
 
 // labelExtractor returns an IndexerFunc that extracts a single label value.
 // Returns nil (not indexed) when the label is absent.
@@ -40,9 +40,9 @@ func labelExtractor(key string) client.IndexerFunc {
 }
 
 // ActiveClusterExtractor returns an IndexerFunc that extracts the target cluster
-// from ReleaseTarget.spec.target. This is the index backing IndexKeyActiveCluster.
+// from PromotionTarget.spec.target. This is the index backing IndexKeyActiveCluster.
 func ActiveClusterExtractor(obj client.Object) []string {
-	rt, ok := obj.(*kaprov1alpha1.ReleaseTarget)
+	rt, ok := obj.(*kaprov1alpha1.PromotionTarget)
 	if !ok {
 		return nil
 	}
@@ -52,23 +52,23 @@ func ActiveClusterExtractor(obj client.Object) []string {
 	return []string{rt.Spec.Target}
 }
 
-func ReleaseTargetReleaseExtractor(obj client.Object) []string {
-	rt, ok := obj.(*kaprov1alpha1.ReleaseTarget)
+func PromotionTargetPromotionRunExtractor(obj client.Object) []string {
+	rt, ok := obj.(*kaprov1alpha1.PromotionTarget)
 	if !ok {
 		return nil
 	}
-	if rt.Spec.ReleaseRef == "" {
+	if rt.Spec.PromotionRunRef == "" {
 		return nil
 	}
-	return []string{rt.Spec.ReleaseRef}
+	return []string{rt.Spec.PromotionRunRef}
 }
 
-func ReleaseProgressingExtractor(obj client.Object) []string {
-	release, ok := obj.(*kaprov1alpha1.Release)
+func PromotionRunProgressingExtractor(obj client.Object) []string {
+	promotionrun, ok := obj.(*kaprov1alpha1.PromotionRun)
 	if !ok {
 		return nil
 	}
-	if release.Status.Phase == kaprov1alpha1.ReleasePhaseProgressing {
+	if promotionrun.Status.Phase == kaprov1alpha1.PromotionRunPhaseProgressing {
 		return []string{"true"}
 	}
 	return nil

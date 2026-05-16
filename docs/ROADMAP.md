@@ -25,7 +25,7 @@
 ### KCI — Deferred / reconsidered
 
 A generic cluster-provider abstraction (`pkg/provider`, `ProviderSpec` on
-`MemberCluster`) was prototyped and then removed. Multi-cloud support is now a
+`FleetCluster`) was prototyped and then removed. Multi-cloud support is now a
 question of (a) actuator implementations (`pkg/actuator`) and
 (b) spoke-side bootstrap code in `internal/bootstrap`. There is no plan to
 re-introduce a generic provider registry.
@@ -64,11 +64,11 @@ safety rule that only generation-fresh, ready registrations are used.
 
 ### KPI — Planner runtime dispatch
 Completed in the brownfield production-readiness line. KPI planner plugins are
-loaded into the release planner when the plugin gateway is enabled. They can
+loaded into the promotionrun planner when the plugin gateway is enabled. They can
 filter, defer, and score targets, while Kapro still owns binding and state.
 
 **Acceptance criteria:** external planner plugins can filter/order/defer targets
-without mutating `ReleaseTarget` state directly.
+without mutating `PromotionTarget` state directly.
 
 ### KAI — Additional actuators
 - `KServe` — patches `InferenceService.spec.predictor.model.storageUri` for ML model delivery
@@ -98,7 +98,7 @@ without mutating `ReleaseTarget` state directly.
   links may be shared across multiple approvers.
 - CDEvents integration via webhook sinks
 - SLA tracking and burn rate gates
-- `ReleaseTrigger` GA hardening: signed source verification, controller metrics, and operational docs.
+- `PromotionTrigger` GA hardening: signed source verification, controller metrics, and operational docs.
 - `PluginGateway` + `PluginRegistration` GA hardening: runtime soak, metrics, and compatibility policy.
 
 ---
@@ -110,5 +110,5 @@ These were considered and deliberately excluded. Do not re-open without an ADR.
 | Item | Reason cut |
 |------|-----------|
 | In-memory gate state | Survives restarts only in etcd. Gate implementations must be stateless. |
-| Mutable Releases | Audit trail must be append-only. Rollback = new Release. |
+| Mutable PromotionRuns | Audit trail must be append-only. Rollback = new PromotionRun. |
 | Hub→spoke required network | Air-gapped environments need outbound-only. CRD path is non-negotiable default. |

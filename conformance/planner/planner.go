@@ -23,10 +23,10 @@ type Scenario struct {
 func DefaultScenario() Scenario {
 	return Scenario{
 		Plan: &kpiv1alpha1.PlanRequest{
-			Release:  "conformance-release",
-			Pipeline: "main",
-			Stage:    "canary",
-			Version:  "oci://example.com/app@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+			PromotionRun:  "conformance-promotionrun",
+			PromotionPlan: "main",
+			Stage:         "canary",
+			Version:       "oci://example.com/app@sha256:1111111111111111111111111111111111111111111111111111111111111111",
 			Strategy: &kpiv1alpha1.StageStrategy{
 				MaxParallel:    2,
 				MaxUnavailable: 1,

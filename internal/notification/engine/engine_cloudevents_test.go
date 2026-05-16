@@ -22,13 +22,13 @@ func TestSendCloudEvents_EnvelopeAndContentType(t *testing.T) {
 	defer srv.Close()
 
 	event := notification.Event{
-		Type:     notification.EventTargetConverged,
-		Phase:    "Converged",
-		Version:  "v2.0.0",
-		Target:   "fi-prod",
-		Release:  "app-v2",
-		Pipeline: "eu-rollout",
-		Stage:    "prod",
+		Type:          notification.EventTargetConverged,
+		Phase:         "Converged",
+		Version:       "v2.0.0",
+		Target:        "fi-prod",
+		PromotionRun:  "app-v2",
+		PromotionPlan: "eu-rollout",
+		Stage:         "prod",
 	}
 
 	err := sendCloudEvents(context.Background(), srv.URL, event)
@@ -50,11 +50,11 @@ func TestSendCloudEvents_EnvelopeAndContentType(t *testing.T) {
 	if ce["type"] != notification.EventTargetConverged {
 		t.Errorf("type = %v, want %s", ce["type"], notification.EventTargetConverged)
 	}
-	if ce["subject"] != "pipeline/eu-rollout/stage/prod/target/fi-prod" {
-		t.Errorf("subject = %v, want pipeline/eu-rollout/stage/prod/target/fi-prod", ce["subject"])
+	if ce["subject"] != "promotionplan/eu-rollout/stage/prod/target/fi-prod" {
+		t.Errorf("subject = %v, want promotionplan/eu-rollout/stage/prod/target/fi-prod", ce["subject"])
 	}
-	if ce["source"] != "/kapro/releases/app-v2" {
-		t.Errorf("source = %v, want /kapro/releases/app-v2", ce["source"])
+	if ce["source"] != "/kapro/promotionruns/app-v2" {
+		t.Errorf("source = %v, want /kapro/promotionruns/app-v2", ce["source"])
 	}
 }
 
@@ -67,9 +67,9 @@ func TestSendCloudEvents_EmptyType_FallsBackToUnknown(t *testing.T) {
 	defer srv.Close()
 
 	err := sendCloudEvents(context.Background(), srv.URL, notification.Event{
-		Phase:   "Converged",
-		Target:  "de-prod",
-		Release: "rel-1",
+		Phase:        "Converged",
+		Target:       "de-prod",
+		PromotionRun: "rel-1",
 	})
 	if err != nil {
 		t.Fatalf("sendCloudEvents: %v", err)
@@ -77,8 +77,8 @@ func TestSendCloudEvents_EmptyType_FallsBackToUnknown(t *testing.T) {
 
 	var ce map[string]interface{}
 	_ = json.Unmarshal(received, &ce)
-	if ce["type"] != "kapro.release.target.unknown" {
-		t.Errorf("type = %v, want kapro.release.target.unknown", ce["type"])
+	if ce["type"] != "kapro.promotionrun.target.unknown" {
+		t.Errorf("type = %v, want kapro.promotionrun.target.unknown", ce["type"])
 	}
 }
 
@@ -89,9 +89,9 @@ func TestSendCloudEvents_ServerError_ReturnsError(t *testing.T) {
 	defer srv.Close()
 
 	err := sendCloudEvents(context.Background(), srv.URL, notification.Event{
-		Type:    notification.EventTargetFailed,
-		Phase:   "Failed",
-		Release: "rel-1",
+		Type:         notification.EventTargetFailed,
+		Phase:        "Failed",
+		PromotionRun: "rel-1",
 	})
 	if err == nil {
 		t.Fatal("expected error for 502 response")

@@ -18,11 +18,11 @@ func deps(names ...string) []kaprov1alpha1.StageDependency {
 	return out
 }
 
-// ---- MemberClusterValidator ---------------------------------------------------
+// ---- FleetClusterValidator ---------------------------------------------------
 
-func TestValidateMemberCluster_MissingMode(t *testing.T) {
-	mc := &kaprov1alpha1.MemberCluster{
-		Spec: kaprov1alpha1.MemberClusterSpec{
+func TestValidateFleetCluster_MissingMode(t *testing.T) {
+	mc := &kaprov1alpha1.FleetCluster{
+		Spec: kaprov1alpha1.FleetClusterSpec{
 			Delivery: kaprov1alpha1.DeliverySpec{Mode: "", BackendRef: "flux"},
 		},
 	}
@@ -31,9 +31,9 @@ func TestValidateMemberCluster_MissingMode(t *testing.T) {
 	}
 }
 
-func TestValidateMemberCluster_MissingBackend(t *testing.T) {
-	mc := &kaprov1alpha1.MemberCluster{
-		Spec: kaprov1alpha1.MemberClusterSpec{
+func TestValidateFleetCluster_MissingBackend(t *testing.T) {
+	mc := &kaprov1alpha1.FleetCluster{
+		Spec: kaprov1alpha1.FleetClusterSpec{
 			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: ""},
 		},
 	}
@@ -42,9 +42,9 @@ func TestValidateMemberCluster_MissingBackend(t *testing.T) {
 	}
 }
 
-func TestValidateMemberCluster_FluxMissingSubSpec(t *testing.T) {
-	mc := &kaprov1alpha1.MemberCluster{
-		Spec: kaprov1alpha1.MemberClusterSpec{
+func TestValidateFleetCluster_FluxMissingSubSpec(t *testing.T) {
+	mc := &kaprov1alpha1.FleetCluster{
+		Spec: kaprov1alpha1.FleetClusterSpec{
 			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"},
 		},
 	}
@@ -53,9 +53,9 @@ func TestValidateMemberCluster_FluxMissingSubSpec(t *testing.T) {
 	}
 }
 
-func TestValidateMemberCluster_FluxValid(t *testing.T) {
-	mc := &kaprov1alpha1.MemberCluster{
-		Spec: kaprov1alpha1.MemberClusterSpec{
+func TestValidateFleetCluster_FluxValid(t *testing.T) {
+	mc := &kaprov1alpha1.FleetCluster{
+		Spec: kaprov1alpha1.FleetClusterSpec{
 			Delivery: kaprov1alpha1.DeliverySpec{
 				Mode: "pull", BackendRef: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "cluster-a"},
@@ -67,9 +67,9 @@ func TestValidateMemberCluster_FluxValid(t *testing.T) {
 	}
 }
 
-func TestValidateMemberCluster_CustomBackendAllowed(t *testing.T) {
-	mc := &kaprov1alpha1.MemberCluster{
-		Spec: kaprov1alpha1.MemberClusterSpec{
+func TestValidateFleetCluster_CustomBackendAllowed(t *testing.T) {
+	mc := &kaprov1alpha1.FleetCluster{
+		Spec: kaprov1alpha1.FleetClusterSpec{
 			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "kserve"},
 		},
 	}
@@ -78,267 +78,267 @@ func TestValidateMemberCluster_CustomBackendAllowed(t *testing.T) {
 	}
 }
 
-// ---- ReleaseValidator -------------------------------------------------------
+// ---- PromotionRunValidator -------------------------------------------------------
 
-func TestValidateRelease_MissingVersion(t *testing.T) {
-	r := &kaprov1alpha1.Release{
-		Spec: kaprov1alpha1.ReleaseSpec{
+func TestValidatePromotionRun_MissingVersion(t *testing.T) {
+	r := &kaprov1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "",
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
-				{Name: "initial", Pipeline: "pipe-1"},
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
+				{Name: "initial", PromotionPlan: "pipe-1"},
 			},
 		},
 	}
-	if err := releaseValidate(r); err == nil {
+	if err := promotionrunValidate(r); err == nil {
 		t.Fatal("expected error for missing version")
 	}
 }
 
-func TestValidateRelease_ValidVersionsMap(t *testing.T) {
-	r := &kaprov1alpha1.Release{
-		Spec: kaprov1alpha1.ReleaseSpec{
+func TestValidatePromotionRun_ValidVersionsMap(t *testing.T) {
+	r := &kaprov1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Versions: map[string]string{
 				"api":    "main@sha256:abc",
 				"worker": "main@sha256:def",
 			},
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
-				{Name: "initial", Pipeline: "pipe-1"},
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
+				{Name: "initial", PromotionPlan: "pipe-1"},
 			},
 		},
 	}
-	if err := releaseValidate(r); err != nil {
-		t.Fatalf("expected versions map release to be valid: %v", err)
+	if err := promotionrunValidate(r); err != nil {
+		t.Fatalf("expected versions map promotionrun to be valid: %v", err)
 	}
 }
 
-func TestValidateRelease_MissingPipelines(t *testing.T) {
-	r := &kaprov1alpha1.Release{
-		Spec: kaprov1alpha1.ReleaseSpec{
-			Version:   "art-v1",
-			Pipelines: nil,
+func TestValidatePromotionRun_MissingPromotionPlans(t *testing.T) {
+	r := &kaprov1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
+			Version:        "art-v1",
+			PromotionPlans: nil,
 		},
 	}
-	if err := releaseValidate(r); err == nil {
-		t.Fatal("expected error for missing pipelines")
+	if err := promotionrunValidate(r); err == nil {
+		t.Fatal("expected error for missing promotionplans")
 	}
 }
 
-func TestValidateRelease_PipelineRefMissingName(t *testing.T) {
-	r := &kaprov1alpha1.Release{
-		Spec: kaprov1alpha1.ReleaseSpec{
+func TestValidatePromotionRun_PromotionPlanRefMissingName(t *testing.T) {
+	r := &kaprov1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
-				{Name: "", Pipeline: "standard-rollout"},
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
+				{Name: "", PromotionPlan: "standard-rollout"},
 			},
 		},
 	}
-	if err := releaseValidate(r); err == nil {
-		t.Fatal("expected error for pipeline ref with empty name")
+	if err := promotionrunValidate(r); err == nil {
+		t.Fatal("expected error for promotionplan ref with empty name")
 	}
 }
 
-func TestValidateRelease_PipelineRefMissingPipeline(t *testing.T) {
-	r := &kaprov1alpha1.Release{
-		Spec: kaprov1alpha1.ReleaseSpec{
+func TestValidatePromotionRun_PromotionPlanRefMissingPromotionPlan(t *testing.T) {
+	r := &kaprov1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
-				{Name: "initial", Pipeline: ""},
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
+				{Name: "initial", PromotionPlan: ""},
 			},
 		},
 	}
-	if err := releaseValidate(r); err == nil {
-		t.Fatal("expected error for pipeline ref with empty pipeline")
+	if err := promotionrunValidate(r); err == nil {
+		t.Fatal("expected error for promotionplan ref with empty promotionplan")
 	}
 }
 
-func TestValidateRelease_Valid(t *testing.T) {
-	r := &kaprov1alpha1.Release{
-		Spec: kaprov1alpha1.ReleaseSpec{
+func TestValidatePromotionRun_Valid(t *testing.T) {
+	r := &kaprov1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
-				{Name: "initial", Pipeline: "standard-rollout"},
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
+				{Name: "initial", PromotionPlan: "standard-rollout"},
 			},
 		},
 	}
-	if err := releaseValidate(r); err != nil {
+	if err := promotionrunValidate(r); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestValidateRelease_ValidMultiPipelineDAG(t *testing.T) {
-	r := &kaprov1alpha1.Release{
-		Spec: kaprov1alpha1.ReleaseSpec{
+func TestValidatePromotionRun_ValidMultiPromotionPlanDAG(t *testing.T) {
+	r := &kaprov1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
-				{Name: "canary", Pipeline: "canary-rollout"},
-				{Name: "stable", Pipeline: "stable-rollout", DependsOn: []string{"canary"}},
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
+				{Name: "canary", PromotionPlan: "canary-rollout"},
+				{Name: "stable", PromotionPlan: "stable-rollout", DependsOn: []string{"canary"}},
 			},
 		},
 	}
-	if err := releaseValidate(r); err != nil {
+	if err := promotionrunValidate(r); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestValidateRelease_DuplicatePipelineName(t *testing.T) {
-	r := &kaprov1alpha1.Release{
-		Spec: kaprov1alpha1.ReleaseSpec{
+func TestValidatePromotionRun_DuplicatePromotionPlanName(t *testing.T) {
+	r := &kaprov1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
-				{Name: "wave1", Pipeline: "rollout"},
-				{Name: "wave1", Pipeline: "rollout"},
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
+				{Name: "wave1", PromotionPlan: "rollout"},
+				{Name: "wave1", PromotionPlan: "rollout"},
 			},
 		},
 	}
-	if err := releaseValidate(r); err == nil {
-		t.Fatal("expected error for duplicate pipeline node name")
+	if err := promotionrunValidate(r); err == nil {
+		t.Fatal("expected error for duplicate promotionplan node name")
 	}
 }
 
-func TestValidateRelease_UnknownDependency(t *testing.T) {
-	r := &kaprov1alpha1.Release{
-		Spec: kaprov1alpha1.ReleaseSpec{
+func TestValidatePromotionRun_UnknownDependency(t *testing.T) {
+	r := &kaprov1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
-				{Name: "wave1", Pipeline: "rollout", DependsOn: []string{"does-not-exist"}},
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
+				{Name: "wave1", PromotionPlan: "rollout", DependsOn: []string{"does-not-exist"}},
 			},
 		},
 	}
-	if err := releaseValidate(r); err == nil {
-		t.Fatal("expected error for unknown pipeline node dependency")
+	if err := promotionrunValidate(r); err == nil {
+		t.Fatal("expected error for unknown promotionplan node dependency")
 	}
 }
 
-func TestValidateRelease_PipelineCycle(t *testing.T) {
-	r := &kaprov1alpha1.Release{
-		Spec: kaprov1alpha1.ReleaseSpec{
+func TestValidatePromotionRun_PromotionPlanCycle(t *testing.T) {
+	r := &kaprov1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
-				{Name: "a", Pipeline: "rollout", DependsOn: []string{"b"}},
-				{Name: "b", Pipeline: "rollout", DependsOn: []string{"a"}},
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
+				{Name: "a", PromotionPlan: "rollout", DependsOn: []string{"b"}},
+				{Name: "b", PromotionPlan: "rollout", DependsOn: []string{"a"}},
 			},
 		},
 	}
-	if err := releaseValidate(r); err == nil {
-		t.Fatal("expected error for cycle in pipeline DAG")
+	if err := promotionrunValidate(r); err == nil {
+		t.Fatal("expected error for cycle in promotionplan DAG")
 	}
 }
 
-func TestValidateRelease_SelfCycle(t *testing.T) {
-	r := &kaprov1alpha1.Release{
-		Spec: kaprov1alpha1.ReleaseSpec{
+func TestValidatePromotionRun_SelfCycle(t *testing.T) {
+	r := &kaprov1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
-				{Name: "wave1", Pipeline: "rollout", DependsOn: []string{"wave1"}},
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
+				{Name: "wave1", PromotionPlan: "rollout", DependsOn: []string{"wave1"}},
 			},
 		},
 	}
-	if err := releaseValidate(r); err == nil {
-		t.Fatal("expected error for self-cycle in pipeline DAG")
+	if err := promotionrunValidate(r); err == nil {
+		t.Fatal("expected error for self-cycle in promotionplan DAG")
 	}
 }
 
-func TestValidateReleaseUpdate_VersionImmutable(t *testing.T) {
-	old := &kaprov1alpha1.Release{
-		Spec: kaprov1alpha1.ReleaseSpec{
+func TestValidatePromotionRunUpdate_VersionImmutable(t *testing.T) {
+	old := &kaprov1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
-				{Name: "wave1", Pipeline: "rollout"},
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
+				{Name: "wave1", PromotionPlan: "rollout"},
 			},
 		},
 	}
 	new := old.DeepCopy()
 	new.Spec.Version = "art-v2"
-	if err := admission.ValidateReleaseUpdate(old, new); err == nil {
+	if err := admission.ValidatePromotionRunUpdate(old, new); err == nil {
 		t.Fatal("expected error for immutable version update")
 	}
 }
 
-func TestValidateReleaseUpdate_VersionsImmutable(t *testing.T) {
-	old := &kaprov1alpha1.Release{
-		Spec: kaprov1alpha1.ReleaseSpec{
+func TestValidatePromotionRunUpdate_VersionsImmutable(t *testing.T) {
+	old := &kaprov1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Versions: map[string]string{"api": "main@sha256:abc"},
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
-				{Name: "wave1", Pipeline: "rollout"},
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
+				{Name: "wave1", PromotionPlan: "rollout"},
 			},
 		},
 	}
 	new := old.DeepCopy()
 	new.Spec.Versions["api"] = "main@sha256:def"
-	if err := admission.ValidateReleaseUpdate(old, new); err == nil {
+	if err := admission.ValidatePromotionRunUpdate(old, new); err == nil {
 		t.Fatal("expected error for immutable versions update")
 	}
 }
 
-func TestValidateReleaseUpdate_PipelinesImmutable(t *testing.T) {
-	old := &kaprov1alpha1.Release{
-		Spec: kaprov1alpha1.ReleaseSpec{
+func TestValidatePromotionRunUpdate_PromotionPlansImmutable(t *testing.T) {
+	old := &kaprov1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
-				{Name: "wave1", Pipeline: "rollout"},
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
+				{Name: "wave1", PromotionPlan: "rollout"},
 			},
 		},
 	}
 	new := old.DeepCopy()
-	new.Spec.Pipelines = append(new.Spec.Pipelines, kaprov1alpha1.ReleasePipelineRef{Name: "wave2", Pipeline: "rollout-2"})
-	if err := admission.ValidateReleaseUpdate(old, new); err == nil {
-		t.Fatal("expected error for immutable pipelines update")
+	new.Spec.PromotionPlans = append(new.Spec.PromotionPlans, kaprov1alpha1.PromotionPlanRef{Name: "wave2", PromotionPlan: "rollout-2"})
+	if err := admission.ValidatePromotionRunUpdate(old, new); err == nil {
+		t.Fatal("expected error for immutable promotionplans update")
 	}
 }
 
-func TestValidateReleaseUpdate_ScopeImmutable(t *testing.T) {
-	old := &kaprov1alpha1.Release{
-		Spec: kaprov1alpha1.ReleaseSpec{
+func TestValidatePromotionRunUpdate_ScopeImmutable(t *testing.T) {
+	old := &kaprov1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
-				{Name: "wave1", Pipeline: "rollout"},
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
+				{Name: "wave1", PromotionPlan: "rollout"},
 			},
-			Scope: &kaprov1alpha1.ReleaseScope{Targets: []string{"cluster-a"}},
+			Scope: &kaprov1alpha1.PromotionRunScope{Targets: []string{"cluster-a"}},
 		},
 	}
 	new := old.DeepCopy()
-	new.Spec.Scope = &kaprov1alpha1.ReleaseScope{Targets: []string{"cluster-b"}}
-	if err := admission.ValidateReleaseUpdate(old, new); err == nil {
+	new.Spec.Scope = &kaprov1alpha1.PromotionRunScope{Targets: []string{"cluster-b"}}
+	if err := admission.ValidatePromotionRunUpdate(old, new); err == nil {
 		t.Fatal("expected error for immutable scope update")
 	}
 }
 
-func TestValidateReleaseUpdate_SuspendedMutable(t *testing.T) {
-	old := &kaprov1alpha1.Release{
-		Spec: kaprov1alpha1.ReleaseSpec{
+func TestValidatePromotionRunUpdate_SuspendedMutable(t *testing.T) {
+	old := &kaprov1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
-				{Name: "wave1", Pipeline: "rollout"},
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
+				{Name: "wave1", PromotionPlan: "rollout"},
 			},
 		},
 	}
 	new := old.DeepCopy()
 	new.Spec.Suspended = true
-	if err := admission.ValidateReleaseUpdate(old, new); err != nil {
+	if err := admission.ValidatePromotionRunUpdate(old, new); err != nil {
 		t.Fatalf("unexpected error for mutable suspended update: %v", err)
 	}
 }
 
-// ---- PipelineValidator -------------------------------------------------------
+// ---- PromotionPlanValidator -------------------------------------------------------
 
-func TestValidatePipeline_EmptyStages(t *testing.T) {
-	p := buildPipeline(nil)
-	if err := pipelineValidate(p); err == nil {
+func TestValidatePromotionPlan_EmptyStages(t *testing.T) {
+	p := buildPromotionPlan(nil)
+	if err := promotionplanValidate(p); err == nil {
 		t.Fatal("expected error for empty stages")
 	}
 }
 
-func TestValidatePipeline_UnknownDependency(t *testing.T) {
-	p := buildPipeline([]kaprov1alpha1.Stage{
+func TestValidatePromotionPlan_UnknownDependency(t *testing.T) {
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}, DependsOn: deps("does-not-exist")},
 	})
-	if err := pipelineValidate(p); err == nil {
+	if err := promotionplanValidate(p); err == nil {
 		t.Fatal("expected error for unknown stage dependency")
 	}
 }
 
-func TestValidatePipeline_InvalidDependencyStrategy(t *testing.T) {
-	p := buildPipeline([]kaprov1alpha1.Stage{
+func TestValidatePromotionPlan_InvalidDependencyStrategy(t *testing.T) {
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}},
 		{
 			Name:     "s2",
@@ -348,13 +348,13 @@ func TestValidatePipeline_InvalidDependencyStrategy(t *testing.T) {
 			},
 		},
 	})
-	if err := pipelineValidate(p); err == nil {
+	if err := promotionplanValidate(p); err == nil {
 		t.Fatal("expected error for invalid dependency strategy")
 	}
 }
 
-func TestValidatePipeline_NegativeDependencySoak(t *testing.T) {
-	p := buildPipeline([]kaprov1alpha1.Stage{
+func TestValidatePromotionPlan_NegativeDependencySoak(t *testing.T) {
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}},
 		{
 			Name:     "s2",
@@ -364,43 +364,43 @@ func TestValidatePipeline_NegativeDependencySoak(t *testing.T) {
 			},
 		},
 	})
-	if err := pipelineValidate(p); err == nil {
+	if err := promotionplanValidate(p); err == nil {
 		t.Fatal("expected error for negative dependency soak")
 	}
 }
 
-func TestValidatePipeline_StageCycle(t *testing.T) {
-	p := buildPipeline([]kaprov1alpha1.Stage{
+func TestValidatePromotionPlan_StageCycle(t *testing.T) {
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}, DependsOn: deps("s2")},
 		{Name: "s2", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}}, DependsOn: deps("s1")},
 	})
-	if err := pipelineValidate(p); err == nil {
+	if err := promotionplanValidate(p); err == nil {
 		t.Fatal("expected error for cycle in stage DAG")
 	}
 }
 
-func TestValidatePipeline_SelfCycle(t *testing.T) {
-	p := buildPipeline([]kaprov1alpha1.Stage{
+func TestValidatePromotionPlan_SelfCycle(t *testing.T) {
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}, DependsOn: deps("s1")},
 	})
-	if err := pipelineValidate(p); err == nil {
+	if err := promotionplanValidate(p); err == nil {
 		t.Fatal("expected error for self-cycle")
 	}
 }
 
-func TestValidatePipeline_ValidLinearDAG(t *testing.T) {
-	p := buildPipeline([]kaprov1alpha1.Stage{
+func TestValidatePromotionPlan_ValidLinearDAG(t *testing.T) {
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}},
 		{Name: "s2", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "staging"}}, DependsOn: deps("s1")},
 		{Name: "s3", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}}, DependsOn: deps("s2")},
 	})
-	if err := pipelineValidate(p); err != nil {
+	if err := promotionplanValidate(p); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestValidatePipeline_MetricPresetReference(t *testing.T) {
-	p := buildPipeline([]kaprov1alpha1.Stage{{
+func TestValidatePromotionPlan_MetricPresetReference(t *testing.T) {
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{{
 		Name:     "s1",
 		Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
 		Gate: &kaprov1alpha1.GatePolicySpec{
@@ -412,13 +412,13 @@ func TestValidatePipeline_MetricPresetReference(t *testing.T) {
 	p.Spec.MetricPresets = map[string]kaprov1alpha1.MetricGate{
 		"error-rate": {Provider: "prometheus", Query: "up", Threshold: float64Ptr(0.01)},
 	}
-	if err := pipelineValidate(p); err != nil {
+	if err := promotionplanValidate(p); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestValidatePipeline_MetricWithoutPresetRequiresProviderAndQuery(t *testing.T) {
-	p := buildPipeline([]kaprov1alpha1.Stage{{
+func TestValidatePromotionPlan_MetricWithoutPresetRequiresProviderAndQuery(t *testing.T) {
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{{
 		Name:     "s1",
 		Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
 		Gate: &kaprov1alpha1.GatePolicySpec{
@@ -427,13 +427,13 @@ func TestValidatePipeline_MetricWithoutPresetRequiresProviderAndQuery(t *testing
 			},
 		},
 	}})
-	if err := pipelineValidate(p); err == nil {
+	if err := promotionplanValidate(p); err == nil {
 		t.Fatal("expected metric query validation error")
 	}
 }
 
-func TestValidatePipeline_UnknownMetricPresetReference(t *testing.T) {
-	p := buildPipeline([]kaprov1alpha1.Stage{{
+func TestValidatePromotionPlan_UnknownMetricPresetReference(t *testing.T) {
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{{
 		Name:     "s1",
 		Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
 		Gate: &kaprov1alpha1.GatePolicySpec{
@@ -442,30 +442,30 @@ func TestValidatePipeline_UnknownMetricPresetReference(t *testing.T) {
 			},
 		},
 	}})
-	if err := pipelineValidate(p); err == nil {
+	if err := promotionplanValidate(p); err == nil {
 		t.Fatal("expected unknown metric preset error")
 	}
 }
 
-func TestValidatePipeline_ValidDiamondDAG(t *testing.T) {
+func TestValidatePromotionPlan_ValidDiamondDAG(t *testing.T) {
 	// s1 → s2, s1 → s3, s2+s3 → s4
-	p := buildPipeline([]kaprov1alpha1.Stage{
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}}},
 		{Name: "s2", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"region": "eu"}}, DependsOn: deps("s1")},
 		{Name: "s3", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"region": "us"}}, DependsOn: deps("s1")},
 		{Name: "s4", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "global"}}, DependsOn: deps("s2", "s3")},
 	})
-	if err := pipelineValidate(p); err != nil {
+	if err := promotionplanValidate(p); err != nil {
 		t.Fatalf("unexpected error for diamond DAG: %v", err)
 	}
 }
 
-func TestValidatePipeline_DuplicateStageName(t *testing.T) {
-	p := buildPipeline([]kaprov1alpha1.Stage{
+func TestValidatePromotionPlan_DuplicateStageName(t *testing.T) {
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}},
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}}},
 	})
-	if err := pipelineValidate(p); err == nil {
+	if err := promotionplanValidate(p); err == nil {
 		t.Fatal("expected error for duplicate stage name")
 	}
 }
@@ -474,9 +474,9 @@ func TestValidateApproval_RefRequired(t *testing.T) {
 	approval := &kaprov1alpha1.Approval{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1-target-a"},
 		Spec: kaprov1alpha1.ApprovalSpec{
-			Release:    "rel-1",
-			Target:     "target-a",
-			ApprovedBy: "alice",
+			PromotionRun: "rel-1",
+			Target:       "target-a",
+			ApprovedBy:   "alice",
 		},
 	}
 	if err := approvalValidate(approval); err == nil {
@@ -484,14 +484,14 @@ func TestValidateApproval_RefRequired(t *testing.T) {
 	}
 }
 
-func TestValidateApproval_NameMatchesReleaseAndRef(t *testing.T) {
+func TestValidateApproval_NameMatchesPromotionRunAndRef(t *testing.T) {
 	approval := &kaprov1alpha1.Approval{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1-ref-a"},
 		Spec: kaprov1alpha1.ApprovalSpec{
-			Release:    "rel-1",
-			Target:     "target-a",
-			Ref:        "ref-a",
-			ApprovedBy: "alice",
+			PromotionRun: "rel-1",
+			Target:       "target-a",
+			Ref:          "ref-a",
+			ApprovedBy:   "alice",
 		},
 	}
 	if err := approvalValidate(approval); err != nil {
@@ -501,16 +501,16 @@ func TestValidateApproval_NameMatchesReleaseAndRef(t *testing.T) {
 
 // ---- helpers ----------------------------------------------------------------
 
-func mcValidate(mc *kaprov1alpha1.MemberCluster) error {
-	return admission.ValidateMemberCluster(mc)
+func mcValidate(mc *kaprov1alpha1.FleetCluster) error {
+	return admission.ValidateFleetCluster(mc)
 }
 
-func releaseValidate(r *kaprov1alpha1.Release) error {
-	return admission.ValidateRelease(r)
+func promotionrunValidate(r *kaprov1alpha1.PromotionRun) error {
+	return admission.ValidatePromotionRun(r)
 }
 
-func pipelineValidate(p *kaprov1alpha1.Pipeline) error {
-	return admission.ValidatePipeline(p)
+func promotionplanValidate(p *kaprov1alpha1.PromotionPlan) error {
+	return admission.ValidatePromotionPlan(p)
 }
 
 func approvalValidate(a *kaprov1alpha1.Approval) error {
@@ -521,10 +521,10 @@ func float64Ptr(v float64) *float64 {
 	return &v
 }
 
-func buildPipeline(stages []kaprov1alpha1.Stage) *kaprov1alpha1.Pipeline {
-	return &kaprov1alpha1.Pipeline{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-pipeline"},
-		Spec: kaprov1alpha1.PipelineSpec{
+func buildPromotionPlan(stages []kaprov1alpha1.Stage) *kaprov1alpha1.PromotionPlan {
+	return &kaprov1alpha1.PromotionPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-promotionplan"},
+		Spec: kaprov1alpha1.PromotionPlanSpec{
 			Stages: stages,
 		},
 	}

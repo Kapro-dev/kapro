@@ -4,19 +4,19 @@ spec:
     - groupVersionKind:
         group: kapro.io
         version: v1alpha1
-        kind: Release
-      metricNamePrefix: kapro_release
+        kind: PromotionRun
+      metricNamePrefix: kapro_promotionrun
       labelsFromPath:
-        release: [metadata, name]
+        promotionrun: [metadata, name]
       metrics:
         - name: created
-          help: Kapro Release creation timestamp.
+          help: Kapro PromotionRun creation timestamp.
           each:
             type: Gauge
             gauge:
               path: [metadata, creationTimestamp]
         - name: status_phase
-          help: Kapro Release phase.
+          help: Kapro PromotionRun phase.
           each:
             type: StateSet
             stateSet:
@@ -24,7 +24,7 @@ spec:
               path: [status, phase]
               list: [Pending, Progressing, Complete, Failed]
         - name: status_condition
-          help: Kapro Release status condition.
+          help: Kapro PromotionRun status condition.
           each:
             type: Gauge
             gauge:
@@ -36,19 +36,19 @@ spec:
     - groupVersionKind:
         group: kapro.io
         version: v1alpha1
-        kind: ReleaseTrigger
-      metricNamePrefix: kapro_releasetrigger
+        kind: PromotionTrigger
+      metricNamePrefix: kapro_promotiontrigger
       labelsFromPath:
-        releasetrigger: [metadata, name]
+        promotiontrigger: [metadata, name]
       metrics:
-        - name: status_active_release_count
-          help: Number of active non-terminal Releases tracked by a Kapro ReleaseTrigger.
+        - name: status_active_promotionrun_count
+          help: Number of active non-terminal PromotionRuns tracked by a Kapro PromotionTrigger.
           each:
             type: Gauge
             gauge:
-              path: [status, activeReleaseCount]
+              path: [status, activePromotionRunCount]
         - name: status_condition
-          help: Kapro ReleaseTrigger status condition.
+          help: Kapro PromotionTrigger status condition.
           each:
             type: Gauge
             gauge:

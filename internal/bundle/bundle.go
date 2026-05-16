@@ -372,8 +372,8 @@ func buildSpokeHelmRelease(kaproName string, defaults *kaprov1alpha1.SourceDefau
 				},
 			},
 		},
-		"targetNamespace": targetNS,
-		"releaseName":     comp.Name,
+		"targetNamespace":  targetNS,
+		"promotionrunName": comp.Name,
 		"install": map[string]any{
 			"createNamespace": true,
 			"timeout":         timeout,

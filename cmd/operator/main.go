@@ -154,7 +154,7 @@ func main() {
 		log.Error(err, "failed to register push/flux actuator")
 		os.Exit(1)
 	}
-	// Pull-mode delivery records desired versions on MemberCluster; spoke-side
+	// Pull-mode delivery records desired versions on FleetCluster; spoke-side
 	// agents own applying those versions to their local backend.
 	spokeAct := &spokeactuator.DesiredStateActuator{HubClient: mgr.GetClient()}
 	if err := actuatorReg.Register("pull/flux", spokeAct); err != nil {
@@ -235,20 +235,20 @@ func main() {
 			&crwebhook.Admission{Handler: kaploadmission.NewApprovalMutator(decoder, trustedSA)},
 		)
 		mgr.GetWebhookServer().Register(
-			"/mutate-kapro-io-v1alpha1-membercluster",
-			&crwebhook.Admission{Handler: kaploadmission.NewMemberClusterMutator(decoder)},
+			"/mutate-kapro-io-v1alpha1-fleetcluster",
+			&crwebhook.Admission{Handler: kaploadmission.NewFleetClusterMutator(decoder)},
 		)
 		mgr.GetWebhookServer().Register(
-			"/validate-kapro-io-v1alpha1-membercluster",
-			&crwebhook.Admission{Handler: kaploadmission.NewMemberClusterValidator(decoder)},
+			"/validate-kapro-io-v1alpha1-fleetcluster",
+			&crwebhook.Admission{Handler: kaploadmission.NewFleetClusterValidator(decoder)},
 		)
 		mgr.GetWebhookServer().Register(
-			"/validate-kapro-io-v1alpha1-release",
-			&crwebhook.Admission{Handler: kaploadmission.NewReleaseValidator(decoder)},
+			"/validate-kapro-io-v1alpha1-promotionrun",
+			&crwebhook.Admission{Handler: kaploadmission.NewPromotionRunValidator(decoder)},
 		)
 		mgr.GetWebhookServer().Register(
-			"/validate-kapro-io-v1alpha1-pipeline",
-			&crwebhook.Admission{Handler: kaploadmission.NewPipelineValidator(decoder)},
+			"/validate-kapro-io-v1alpha1-promotionplan",
+			&crwebhook.Admission{Handler: kaploadmission.NewPromotionPlanValidator(decoder)},
 		)
 		mgr.GetWebhookServer().Register(
 			"/validate-kapro-io-v1alpha1-approval",

@@ -67,7 +67,7 @@ func (p *PlannerAdapter) Name() string {
 
 // PreFilter calls the external planner once per planning cycle and stores the
 // response for Filter and Score.
-func (p *PlannerAdapter) PreFilter(ctx context.Context, state *planner.CycleState, req planner.Request, targets []kaprov1alpha1.MemberCluster) *planner.Status {
+func (p *PlannerAdapter) PreFilter(ctx context.Context, state *planner.CycleState, req planner.Request, targets []kaprov1alpha1.FleetCluster) *planner.Status {
 	start := time.Now()
 	result := "success"
 	defer func() { observeRuntimeCall(kaprov1alpha1.PluginTypePlanner, p.name, "Plan", result, start) }()
@@ -75,13 +75,13 @@ func (p *PlannerAdapter) PreFilter(ctx context.Context, state *planner.CycleStat
 	rpcCtx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
 	resp, err := p.client.Plan(rpcCtx, &kpiv1alpha1.PlanRequest{
-		Release:    releaseName(req.Release),
-		Pipeline:   req.PipelineRefName,
-		Stage:      req.Stage.Name,
-		Version:    releaseVersion(req.Release),
-		Strategy:   stageStrategy(req.Stage),
-		Targets:    plannerTargets(targets),
-		Parameters: copyParameters(p.parameters),
+		PromotionRun:  promotionrunName(req.PromotionRun),
+		PromotionPlan: req.PromotionPlanRefName,
+		Stage:         req.Stage.Name,
+		Version:       promotionrunVersion(req.PromotionRun),
+		Strategy:      stageStrategy(req.Stage),
+		Targets:       plannerTargets(targets),
+		Parameters:    copyParameters(p.parameters),
 	})
 	if err != nil {
 		result = "error"
@@ -101,7 +101,7 @@ func (p *PlannerAdapter) PreFilter(ctx context.Context, state *planner.CycleStat
 
 // Filter skips or defers targets when the external planner says they should
 // not be bound in this cycle.
-func (p *PlannerAdapter) Filter(_ context.Context, state *planner.CycleState, _ planner.Request, target kaprov1alpha1.MemberCluster) *planner.Status {
+func (p *PlannerAdapter) Filter(_ context.Context, state *planner.CycleState, _ planner.Request, target kaprov1alpha1.FleetCluster) *planner.Status {
 	planned, ok := p.plannedTarget(state, target.Name)
 	if !ok {
 		return nil
@@ -117,7 +117,7 @@ func (p *PlannerAdapter) Filter(_ context.Context, state *planner.CycleState, _ 
 }
 
 // Score applies the external planner score for included targets.
-func (p *PlannerAdapter) Score(_ context.Context, state *planner.CycleState, _ planner.Request, target kaprov1alpha1.MemberCluster) (int64, *planner.Status) {
+func (p *PlannerAdapter) Score(_ context.Context, state *planner.CycleState, _ planner.Request, target kaprov1alpha1.FleetCluster) (int64, *planner.Status) {
 	planned, ok := p.plannedTarget(state, target.Name)
 	if !ok {
 		return 0, nil
@@ -142,18 +142,18 @@ func (p *PlannerAdapter) stateKey() string {
 	return "plugin.planner." + p.name
 }
 
-func releaseName(release *kaprov1alpha1.Release) string {
-	if release == nil {
+func promotionrunName(promotionrun *kaprov1alpha1.PromotionRun) string {
+	if promotionrun == nil {
 		return ""
 	}
-	return release.Name
+	return promotionrun.Name
 }
 
-func releaseVersion(release *kaprov1alpha1.Release) string {
-	if release == nil {
+func promotionrunVersion(promotionrun *kaprov1alpha1.PromotionRun) string {
+	if promotionrun == nil {
 		return ""
 	}
-	return release.Spec.Version
+	return promotionrun.Spec.Version
 }
 
 func stageStrategy(stage kaprov1alpha1.Stage) *kpiv1alpha1.StageStrategy {
@@ -166,20 +166,20 @@ func stageStrategy(stage kaprov1alpha1.Stage) *kpiv1alpha1.StageStrategy {
 	}
 }
 
-func plannerTargets(targets []kaprov1alpha1.MemberCluster) []*kpiv1alpha1.Target {
+func plannerTargets(targets []kaprov1alpha1.FleetCluster) []*kpiv1alpha1.Target {
 	out := make([]*kpiv1alpha1.Target, 0, len(targets))
 	for _, target := range targets {
 		out = append(out, &kpiv1alpha1.Target{
-			Name:          target.Name,
-			Labels:        copyParameters(target.Labels),
-			Ready:         targetReady(target),
-			ActiveRelease: target.Status.ActiveRelease,
+			Name:               target.Name,
+			Labels:             copyParameters(target.Labels),
+			Ready:              targetReady(target),
+			ActivePromotionRun: target.Status.ActivePromotionRun,
 		})
 	}
 	return out
 }
 
-func targetReady(target kaprov1alpha1.MemberCluster) bool {
+func targetReady(target kaprov1alpha1.FleetCluster) bool {
 	ready := apimeta.FindStatusCondition(target.Status.Conditions, "Ready")
 	return ready == nil || ready.Status != metav1.ConditionFalse
 }

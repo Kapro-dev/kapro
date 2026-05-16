@@ -5,7 +5,7 @@ adapted without assuming a specific Prometheus Operator installation.
 
 | File | Purpose |
 | --- | --- |
-| `prometheus/kapro-alerts.yaml` | Prometheus alert groups for Kapro controller, release, gate, plugin, trigger, and rollout duration signals. |
+| `prometheus/kapro-alerts.yaml` | Prometheus alert groups for Kapro controller, promotionrun, gate, plugin, trigger, and rollout duration signals. |
 | `grafana/kapro-operations-dashboard.json` | Compact Grafana dashboard for the Kapro operations metric surface. |
 
 For installable Prometheus Operator and kube-state-metrics examples, see

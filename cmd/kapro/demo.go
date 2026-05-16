@@ -24,12 +24,12 @@ func newDemoCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "demo",
 		Short: "Run a local Kapro demo on a kind cluster",
-		Long: `Creates a kind cluster, installs CRDs, and sets up a demo release
+		Long: `Creates a kind cluster, installs CRDs, and sets up a demo promotionrun
 with 3 simulated clusters (canary, prod-eu-west, prod-eu-east) and a
-progressive delivery pipeline.
+progressive delivery promotionplan.
 
 After the demo starts, try:
-  kapro get releases
+  kapro get promotionruns
   kapro get targets
   kapro approve myapp-v2.0.0/prod-eu-west
   kapro fleet
@@ -179,7 +179,7 @@ func runDemo(ctx context.Context) error {
 				{Name: "prod-eu-west", Labels: map[string]string{"tier": "prod", "region": "eu-west"}},
 				{Name: "prod-eu-east", Labels: map[string]string{"tier": "prod", "region": "eu-east"}},
 			},
-			Pipeline: kaprov1alpha1.KaproPipeline{
+			PromotionPlan: kaprov1alpha1.KaproPromotionPlan{
 				Stages: []kaprov1alpha1.KaproStage{
 					{Name: "canary", Selector: map[string]string{"tier": "canary"}},
 					{Name: "prod", Selector: map[string]string{"tier": "prod"},
@@ -196,7 +196,7 @@ func runDemo(ctx context.Context) error {
 	// Simulate healthy clusters (in production, Flux reports this).
 	now := time.Now().UTC().Format(time.RFC3339)
 	for _, cluster := range kapro.Spec.Clusters {
-		mc := &kaprov1alpha1.MemberCluster{}
+		mc := &kaprov1alpha1.FleetCluster{}
 		if err := c.Get(ctx, client.ObjectKey{Name: cluster.Name}, mc); err == nil {
 			patch := client.MergeFrom(mc.DeepCopy())
 			mc.Status.Phase = kaprov1alpha1.ClusterPhaseConverged
@@ -206,16 +206,16 @@ func runDemo(ctx context.Context) error {
 		}
 	}
 
-	// Create a Release to trigger the pipeline.
-	release := &kaprov1alpha1.Release{
+	// Create a PromotionRun to trigger the promotionplan.
+	promotionrun := &kaprov1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "platform-v5.28"},
-		Spec: kaprov1alpha1.ReleaseSpec{
-			Version:   "sha256:abc123",
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{{Name: "initial", Pipeline: "demo-pipeline"}},
+		Spec: kaprov1alpha1.PromotionRunSpec{
+			Version:        "sha256:abc123",
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{{Name: "initial", PromotionPlan: "demo-promotionplan"}},
 		},
 	}
-	if err := c.Create(ctx, release); err != nil && !isAlreadyExists(err) {
-		sp.StopFail("Failed to create Release")
+	if err := c.Create(ctx, promotionrun); err != nil && !isAlreadyExists(err) {
+		sp.StopFail("Failed to create PromotionRun")
 		return err
 	}
 
@@ -229,17 +229,17 @@ func runDemo(ctx context.Context) error {
 	tbl := cli.NewTable("RESOURCE", "NAME", "DETAILS")
 	tbl.AddRow("PromotionSource", "demo-app", "4 units (pos-server, auth-service, sdc, keycloak)")
 	tbl.AddRow("Kapro", "demo", "3 clusters, 2 stages, sourceRef=demo-app")
-	tbl.AddRow("  MemberCluster", "canary-eu", "tier=canary (generated on hub)")
-	tbl.AddRow("  MemberCluster", "prod-eu-west", "tier=prod (generated on hub)")
-	tbl.AddRow("  MemberCluster", "prod-eu-east", "tier=prod (generated on hub)")
-	tbl.AddRow("  Pipeline", "demo-pipeline", "canary → prod (generated on hub)")
+	tbl.AddRow("  FleetCluster", "canary-eu", "tier=canary (generated on hub)")
+	tbl.AddRow("  FleetCluster", "prod-eu-west", "tier=prod (generated on hub)")
+	tbl.AddRow("  FleetCluster", "prod-eu-east", "tier=prod (generated on hub)")
+	tbl.AddRow("  PromotionPlan", "demo-promotionplan", "canary → prod (generated on hub)")
 	tbl.AddRow("  ResourceSet", "demo-workloads", "4 HelmReleases × 3 clusters (hub)")
-	tbl.AddRow("Release", "platform-v5.28", "triggers pipeline")
+	tbl.AddRow("PromotionRun", "platform-v5.28", "triggers promotionplan")
 	tbl.Render()
 
 	cli.Header("Try these commands")
 	fmt.Fprintln(cli.Out)
-	cli.Info("kapro get releases                          # list releases")
+	cli.Info("kapro get promotionruns                          # list promotionruns")
 	cli.Info("kapro get targets                           # see rollout status")
 	cli.Info("kapro approve platform-v5.28/prod-eu-west   # approve production")
 	cli.Info("kapro fleet                                 # fleet overview")

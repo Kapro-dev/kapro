@@ -1,10 +1,10 @@
-# Release Process
+# PromotionRun Process
 
-This process is for early Kapro releases. It favors explicit verification over
+This process is for early Kapro promotionruns. It favors explicit verification over
 automation assumptions because the project is still stabilizing its install,
 security, and plugin contracts.
 
-## Release Candidate Checklist
+## PromotionRun Candidate Checklist
 
 Run these checks from a clean checkout before tagging:
 
@@ -40,13 +40,13 @@ For live Flux controller readiness:
 scripts/verify-install.sh flux-e2e
 ```
 
-The release candidate is not ready if:
+The promotionrun candidate is not ready if:
 
 - CRDs fail to render from Helm or Kustomize.
 - The operator image cannot start in Kind.
-- The demo does not create `ReleaseTarget` objects.
-- The Argo E2E cannot prove discover, adopt, Git-native source apply, Release,
-  Argo sync, and `ReleaseTarget.status.backendObjects` convergence.
+- The demo does not create `PromotionTarget` objects.
+- The Argo E2E cannot prove discover, adopt, Git-native source apply, PromotionRun,
+  Argo sync, and `PromotionTarget.status.backendObjects` convergence.
 - The Flux Git-native E2E cannot prove common Flux source, HelmRelease, and
   Kustomize version fields can be updated safely.
 - The live Flux E2E cannot prove generated Flux mappings drive real Flux
@@ -54,7 +54,7 @@ The release candidate is not ready if:
 - Production targets cannot be unblocked by the demo approvals.
 - `PluginRegistration` compatibility conditions are missing from a probe
   failure or unsupported contract version test.
-- ReleaseTrigger signature policy failures do not surface in status
+- PromotionTrigger signature policy failures do not surface in status
   conditions or Events.
 
 ## v0.1.0-alpha Scope
@@ -70,11 +70,11 @@ Include:
 
 - Helm chart and Kustomize install paths.
 - Local Kind demo.
-- ReleaseTrigger preview with OCI signature verification policy.
+- PromotionTrigger preview with OCI signature verification policy.
 - Plugin gateway preview with hot-loaded actuator, gate, and planner runtime
   registration.
 - KPI planner contract, conformance preview, and runtime dispatch through the
-  release planner.
+  promotionrun planner.
 - Security, RBAC, multi-tenancy, operations, monitoring, conformance, and API
   stability docs.
 
@@ -83,12 +83,12 @@ Call out known limitations:
 - All Kubernetes APIs are `v1alpha1`.
 - The security model has not yet had an independent audit.
 - Production soak across many customer repository styles is still limited.
-- Docker dry-run checks may be optional for merging, but release candidates
+- Docker dry-run checks may be optional for merging, but promotionrun candidates
   should still publish a real multi-architecture operator image.
 
 ## Artifact Checklist
 
-For a tagged release, publish:
+For a tagged promotionrun, publish:
 
 - Git tag, for example `v0.1.0-alpha.1`.
 - GitHub release notes generated from `CHANGELOG.md`.
@@ -99,15 +99,15 @@ For a tagged release, publish:
   `kapro-operator-<version>.tgz`.
 - Checksums for downloadable archives.
 
-For the `v0.1.0-alpha` release-specific checklist, use
-[v0.1.0-alpha Release Runbook](release-v0.1.0-alpha.md).
+For the `v0.1.0-alpha` promotionrun-specific checklist, use
+[v0.1.0-alpha PromotionRun Runbook](promotionrun-v0.1.0-alpha.md).
 
-## Release Notes Template
+## PromotionRun Notes Template
 
 ````markdown
 # Kapro <version>
 
-## What This Release Is
+## What This PromotionRun Is
 
 Short statement of maturity, intended audience, and supported install path.
 
@@ -129,7 +129,7 @@ helm upgrade --install kapro charts/kapro-operator \
 2. Apply CRDs.
 3. Upgrade plugin servers and run conformance.
 4. Roll the operator.
-5. Watch Releases, ReleaseTargets, and PluginRegistrations.
+5. Watch PromotionRuns, PromotionTargets, and PluginRegistrations.
 
 ## Security Notes
 
@@ -156,12 +156,12 @@ helm upgrade --install kapro charts/kapro-operator \
 - `scripts/verify-install.sh flux-e2e`
 ````
 
-## Post-Release Checks
+## Post-PromotionRun Checks
 
-After the release is published:
+After the promotionrun is published:
 
 1. Install the chart by tag or packaged artifact into a new Kind cluster.
 2. Verify the operator image digest matches the signed image.
 3. Confirm the README install command references the released version.
 4. Run the Kind demo against the released image, not only a locally built image.
-5. Open follow-up issues for any release note limitation that blocks adoption.
+5. Open follow-up issues for any promotionrun note limitation that blocks adoption.

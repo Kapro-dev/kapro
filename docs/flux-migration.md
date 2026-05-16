@@ -4,7 +4,7 @@ This guide is for teams that already run Flux with GitRepository,
 OCIRepository, Kustomization, and HelmRelease objects.
 
 Kapro should not replace Flux reconciliation. Flux keeps source credentials,
-inventory, health, drift correction, and workload rollout. Kapro adds release
+inventory, health, drift correction, and workload rollout. Kapro adds promotionrun
 intent, promotion ordering, gates, approvals, rollback intent, and fleet
 evidence.
 
@@ -21,8 +21,8 @@ platform-gitops/
   kapro/
     backends/flux-observe.yaml
     sources/checkout.yaml
-    pipelines/checkout.yaml
-    releases/
+    promotionplans/checkout.yaml
+    promotionruns/
 ```
 
 Greenfield users can still use `kapro init --backend flux`. Brownfield users
@@ -80,7 +80,7 @@ Flux Git-native patterns:
 
 Flux `Kustomization` objects are reported but not treated as direct version
 write targets because `spec.path` and `spec.sourceRef` are topology/configuration
-fields, not a universal release revision. Promote the referenced source object,
+fields, not a universal promotionrun revision. Promote the referenced source object,
 the Kustomize image file, or an explicit field you add to `PromotionSource`.
 
 ```yaml
@@ -121,15 +121,15 @@ repository Secrets, workload manifests, traffic resources, or health status.
 
 ## Step 5: Promote
 
-Use Release versions for one or more units:
+Use PromotionRun versions for one or more units:
 
 ```yaml
 apiVersion: kapro.io/v1alpha1
-kind: Release
+kind: PromotionRun
 metadata:
   name: checkout-2026-05-15
 spec:
-  pipelines:
+  promotionplans:
     - checkout
   versions:
     api: 1.5.0
@@ -156,7 +156,7 @@ generates the mapping before applying it.
 
 ## Live Flux Controller E2E
 
-Before calling a Flux brownfield path release-ready, also run:
+Before calling a Flux brownfield path promotionrun-ready, also run:
 
 ```bash
 scripts/verify-install.sh flux-e2e

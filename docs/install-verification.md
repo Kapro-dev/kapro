@@ -1,6 +1,6 @@
 # Clean-Clone Install Verification
 
-Use this checklist from a fresh clone before publishing or announcing a release.
+Use this checklist from a fresh clone before publishing or announcing a promotionrun.
 It separates render checks, which do not need a cluster, from live install checks.
 
 ## Fresh Clone
@@ -11,7 +11,7 @@ git clone https://github.com/Kapro-dev/kapro "${tmpdir}/kapro"
 cd "${tmpdir}/kapro"
 ```
 
-Check out the release tag or candidate branch you are validating:
+Check out the promotionrun tag or candidate branch you are validating:
 
 ```bash
 git checkout v0.1.0-alpha
@@ -47,7 +47,7 @@ Install with webhooks disabled unless cert-manager is already installed:
 scripts/verify-install.sh cluster
 ```
 
-For a pre-release image that is not the chart default, override the image:
+For a pre-promotionrun image that is not the chart default, override the image:
 
 ```bash
 KAPRO_IMAGE_REPOSITORY=ghcr.io/kapro-dev/kapro-operator \
@@ -66,7 +66,7 @@ Expected result:
 - `deployment/kapro-kapro-operator` rolls out in `kapro-system`.
 - Kapro CRDs are present.
 - `deploy`, `svc`, and `sa` exist in `kapro-system`.
-- The operator service account can read `releases.kapro.io`.
+- The operator service account can read `promotionruns.kapro.io`.
 
 Delete a disposable Kind cluster when done:
 
@@ -76,7 +76,7 @@ kind delete cluster --name kapro-install-verify
 
 ## Demo Validation
 
-The local demo exercises a release through target planning, canary, manual
+The local demo exercises a promotionrun through target planning, canary, manual
 approval, and fixture-backed Flux convergence:
 
 ```bash
@@ -98,8 +98,8 @@ scripts/verify-install.sh argo-e2e
 It creates a disposable Kind cluster, installs real Argo CD, installs Kapro,
 creates an in-cluster Git server, runs `kapro adopt argo`, applies the generated
 `BackendProfile` and `PromotionSource`, promotes Git-backed Argo mappings to
-`v2`, creates a Kapro `Release`, and waits for Argo Applications plus
-`ReleaseTarget.status.backendObjects` to converge.
+`v2`, creates a Kapro `PromotionRun`, and waits for Argo Applications plus
+`PromotionTarget.status.backendObjects` to converge.
 
 The fixture covers:
 

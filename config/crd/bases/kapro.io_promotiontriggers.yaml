@@ -1,0 +1,342 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: promotiontriggers.kapro.io
+spec:
+  group: kapro.io
+  names:
+    categories:
+    - kapro-all
+    kind: PromotionTrigger
+    listKind: PromotionTriggerList
+    plural: promotiontriggers
+    shortNames:
+    - reltrig
+    singular: promotiontrigger
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.source.type
+      name: Source
+      type: string
+    - jsonPath: .spec.suspended
+      name: Suspended
+      type: boolean
+    - jsonPath: .spec.dryRun
+      name: DryRun
+      type: boolean
+    - jsonPath: .status.lastArtifact.version
+      name: LastVersion
+      type: string
+    - jsonPath: .status.activePromotionRunCount
+      name: Active
+      priority: 1
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          PromotionTrigger observes verified artifact changes and creates PromotionRun objects.
+          It is safe by default: triggers are suspended by default, created PromotionRuns are
+          suspended by default, and OCI signature verification defaults to required.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              PromotionTriggerSpec defines an autonomous source that can create PromotionRun
+              objects from verified artifact changes. The controller currently provides
+              preview behavior for this API, and the API is intentionally safe by default.
+            properties:
+              cooldown:
+                default: 30m
+                description: Cooldown is the minimum duration between promotionruns
+                  created by this trigger.
+                type: string
+              dryRun:
+                default: false
+                description: DryRun records what would be created without creating
+                  a PromotionRun.
+                type: boolean
+              maxActive:
+                default: 1
+                description: MaxActive limits concurrently active PromotionRuns created
+                  by this trigger.
+                format: int32
+                minimum: 1
+                type: integer
+              parameters:
+                additionalProperties:
+                  type: string
+                description: |-
+                  Parameters are source-specific key-value pairs for future extension.
+                  Kapro core does not interpret unknown parameters.
+                type: object
+              promotionrunTemplate:
+                description: PromotionRunTemplate defines the PromotionRun created
+                  for a verified artifact.
+                properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: Annotations are added to created PromotionRuns.
+                    type: object
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: Labels are added to created PromotionRuns.
+                    type: object
+                  nameTemplate:
+                    description: |-
+                      NameTemplate controls the created PromotionRun name. Empty means the controller
+                      derives a deterministic name from trigger name and artifact digest.
+                    type: string
+                  promotionplans:
+                    description: PromotionPlans is copied into PromotionRun.spec.promotionplans.
+                    items:
+                      description: |-
+                        PromotionPlanRef is one node in the PromotionRun's promotionplan DAG.
+                        Multiple promotionplans can run in parallel; DependsOn declares ordering between them.
+                      properties:
+                        dependsOn:
+                          description: DependsOn lists promotionplan node names that
+                            must reach Complete before this one starts.
+                          items:
+                            type: string
+                          maxItems: 64
+                          type: array
+                        name:
+                          description: Name uniquely identifies this promotionplan
+                            node within the PromotionRun.
+                          type: string
+                        promotionplan:
+                          description: PromotionPlan is the name of the PromotionPlan
+                            CRD to execute.
+                          type: string
+                      required:
+                      - name
+                      - promotionplan
+                      type: object
+                    maxItems: 64
+                    minItems: 1
+                    type: array
+                  scope:
+                    description: Scope restricts created PromotionRuns to a subset
+                      of clusters.
+                    properties:
+                      targets:
+                        description: |-
+                          Targets is the allowlist of target cluster names.
+                          Must be non-empty when Scope is set — an empty list is ignored.
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                  suspended:
+                    default: true
+                    description: |-
+                      Suspended controls PromotionRun.spec.suspended on created PromotionRuns.
+                      Defaults to true so detection does not equal deployment.
+                    type: boolean
+                  timeout:
+                    description: Timeout is copied into PromotionRun.spec.timeout.
+                    type: string
+                required:
+                - promotionplans
+                type: object
+              source:
+                description: Source configures where artifact changes are observed.
+                properties:
+                  oci:
+                    description: OCI configures OCI registry tag observation.
+                    properties:
+                      pollInterval:
+                        default: 5m
+                        description: PollInterval controls how often the source is
+                          checked.
+                        type: string
+                      repository:
+                        description: Repository is the OCI repository to observe.
+                        type: string
+                      requireSignature:
+                        default: true
+                        description: RequireSignature requires signature verification
+                          before creating a PromotionRun.
+                        type: boolean
+                      secretRef:
+                        description: |-
+                          SecretRef references registry credentials.
+                          Cluster-scoped triggers must include the Secret namespace.
+                        properties:
+                          name:
+                            description: name is unique within a namespace to reference
+                              a secret resource.
+                            type: string
+                          namespace:
+                            description: namespace defines the space within which
+                              the secret name must be unique.
+                            type: string
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      tagPattern:
+                        description: TagPattern is a regular expression. Only matching
+                          tags can create promotionruns.
+                        minLength: 1
+                        type: string
+                    required:
+                    - repository
+                    - tagPattern
+                    type: object
+                  type:
+                    description: Type selects the source backend.
+                    enum:
+                    - oci
+                    type: string
+                required:
+                - type
+                type: object
+              suspended:
+                default: true
+                description: Suspended pauses source observation and promotionrun
+                  creation.
+                type: boolean
+            required:
+            - promotionrunTemplate
+            - source
+            type: object
+            x-kubernetes-validations:
+            - message: source.oci is required when source.type=oci
+              rule: self.source.type != 'oci' || has(self.source.oci)
+            - message: maxActive must be at least 1
+              rule: '!has(self.maxActive) || self.maxActive >= 1'
+          status:
+            description: PromotionTriggerStatus records observed source state and
+              created promotionruns.
+            properties:
+              activePromotionRunCount:
+                description: ActivePromotionRunCount is the number of non-terminal
+                  PromotionRuns created by this trigger.
+                format: int32
+                type: integer
+              activePromotionRuns:
+                description: ActivePromotionRuns lists non-terminal PromotionRuns
+                  created by this trigger.
+                items:
+                  type: string
+                type: array
+              conditions:
+                description: Conditions summarize readiness, suspension, verification,
+                  and promotionrun creation.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              lastArtifact:
+                description: LastArtifact is the most recent artifact observed by
+                  the trigger.
+                properties:
+                  digest:
+                    description: Digest is the immutable artifact digest.
+                    type: string
+                  observedAt:
+                    description: ObservedAt is the RFC3339 time this artifact was
+                      observed.
+                    type: string
+                  signatureVerified:
+                    description: SignatureVerified records whether signature policy
+                      passed.
+                    type: boolean
+                  tag:
+                    description: Tag is the source tag that matched the trigger pattern.
+                    type: string
+                  version:
+                    description: Version is the value copied into PromotionRun.spec.version.
+                    type: string
+                type: object
+              lastCheckedAt:
+                description: LastCheckedAt is the last time the source was checked.
+                type: string
+              lastTriggeredAt:
+                description: LastTriggeredAt is the last time a PromotionRun was created.
+                type: string
+              observedGeneration:
+                format: int64
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

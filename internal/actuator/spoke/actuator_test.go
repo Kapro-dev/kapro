@@ -13,14 +13,14 @@ import (
 	"kapro.io/kapro/pkg/actuator"
 )
 
-func TestApplyDeltaRecordsDesiredVersionsOnMemberCluster(t *testing.T) {
+func TestApplyDeltaRecordsDesiredVersionsOnFleetCluster(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatalf("add scheme: %v", err)
 	}
-	mc := &kaprov1alpha1.MemberCluster{
+	mc := &kaprov1alpha1.FleetCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
-		Spec: kaprov1alpha1.MemberClusterSpec{
+		Spec: kaprov1alpha1.FleetClusterSpec{
 			DesiredVersions: map[string]string{"worker": "v1"},
 			Delivery: kaprov1alpha1.DeliverySpec{
 				Mode:       "pull",
@@ -30,7 +30,7 @@ func TestApplyDeltaRecordsDesiredVersionsOnMemberCluster(t *testing.T) {
 				},
 			},
 		},
-		Status: kaprov1alpha1.MemberClusterStatus{
+		Status: kaprov1alpha1.FleetClusterStatus{
 			CurrentVersions: map[string]string{"default": "v1"},
 		},
 	}
@@ -48,9 +48,9 @@ func TestApplyDeltaRecordsDesiredVersionsOnMemberCluster(t *testing.T) {
 		t.Fatalf("changed=%d, want 2", changed)
 	}
 
-	var updated kaprov1alpha1.MemberCluster
+	var updated kaprov1alpha1.FleetCluster
 	if err := c.Get(context.Background(), client.ObjectKey{Name: "cluster-a"}, &updated); err != nil {
-		t.Fatalf("get updated MemberCluster: %v", err)
+		t.Fatalf("get updated FleetCluster: %v", err)
 	}
 	if updated.Spec.DesiredVersions["default"] != "v2" ||
 		updated.Spec.DesiredVersions["api"] != "v2" ||
@@ -64,9 +64,9 @@ func TestApplyDeltaRecordsDesiredVersionsOnMemberCluster(t *testing.T) {
 
 func TestIsAllConvergedUsesSpokeReportedStatus(t *testing.T) {
 	act := &SpokeFluxActuator{}
-	mc := &kaprov1alpha1.MemberCluster{
+	mc := &kaprov1alpha1.FleetCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
-		Status: kaprov1alpha1.MemberClusterStatus{
+		Status: kaprov1alpha1.FleetClusterStatus{
 			CurrentVersions: map[string]string{"default": "v2", "api": "v2"},
 			Health:          kaprov1alpha1.ClusterHealth{AllWorkloadsReady: true},
 		},
@@ -77,6 +77,6 @@ func TestIsAllConvergedUsesSpokeReportedStatus(t *testing.T) {
 		t.Fatalf("IsAllConverged returned error: %v", err)
 	}
 	if !converged {
-		t.Fatal("expected converged from MemberCluster reported status")
+		t.Fatal("expected converged from FleetCluster reported status")
 	}
 }

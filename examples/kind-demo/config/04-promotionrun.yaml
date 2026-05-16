@@ -1,0 +1,13 @@
+apiVersion: kapro.io/v1alpha1
+kind: PromotionRun
+metadata:
+  name: checkout-kind
+  labels:
+    kapro.io/demo: kind
+spec:
+  version: v1.2.3-kind
+  promotionplans:
+    - name: main
+      promotionplan: checkout-progressive-kind
+  suspended: false
+  timeout: 30m

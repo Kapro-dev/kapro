@@ -119,9 +119,9 @@ func (x *GetCapabilitiesResponse) GetCapabilities() []string {
 
 type ApplyRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
-	Release         string                 `protobuf:"bytes,1,opt,name=release,proto3" json:"release,omitempty"`
+	PromotionRun    string                 `protobuf:"bytes,1,opt,name=promotion_run,json=promotionRun,proto3" json:"promotion_run,omitempty"`
 	Target          string                 `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"`
-	Pipeline        string                 `protobuf:"bytes,3,opt,name=pipeline,proto3" json:"pipeline,omitempty"`
+	PromotionPlan   string                 `protobuf:"bytes,3,opt,name=promotion_plan,json=promotionPlan,proto3" json:"promotion_plan,omitempty"`
 	Stage           string                 `protobuf:"bytes,4,opt,name=stage,proto3" json:"stage,omitempty"`
 	Version         string                 `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`
 	PreviousVersion string                 `protobuf:"bytes,6,opt,name=previous_version,json=previousVersion,proto3" json:"previous_version,omitempty"`
@@ -160,9 +160,9 @@ func (*ApplyRequest) Descriptor() ([]byte, []int) {
 	return file_spec_kai_v1alpha1_actuator_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *ApplyRequest) GetRelease() string {
+func (x *ApplyRequest) GetPromotionRun() string {
 	if x != nil {
-		return x.Release
+		return x.PromotionRun
 	}
 	return ""
 }
@@ -174,9 +174,9 @@ func (x *ApplyRequest) GetTarget() string {
 	return ""
 }
 
-func (x *ApplyRequest) GetPipeline() string {
+func (x *ApplyRequest) GetPromotionPlan() string {
 	if x != nil {
-		return x.Pipeline
+		return x.PromotionPlan
 	}
 	return ""
 }
@@ -263,7 +263,7 @@ func (x *ApplyResponse) GetMessage() string {
 
 type IsConvergedRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Release       string                 `protobuf:"bytes,1,opt,name=release,proto3" json:"release,omitempty"`
+	PromotionRun  string                 `protobuf:"bytes,1,opt,name=promotion_run,json=promotionRun,proto3" json:"promotion_run,omitempty"`
 	Target        string                 `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"`
 	Version       string                 `protobuf:"bytes,3,opt,name=version,proto3" json:"version,omitempty"`
 	Parameters    map[string]string      `protobuf:"bytes,4,rep,name=parameters,proto3" json:"parameters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
@@ -301,9 +301,9 @@ func (*IsConvergedRequest) Descriptor() ([]byte, []int) {
 	return file_spec_kai_v1alpha1_actuator_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *IsConvergedRequest) GetRelease() string {
+func (x *IsConvergedRequest) GetPromotionRun() string {
 	if x != nil {
-		return x.Release
+		return x.PromotionRun
 	}
 	return ""
 }
@@ -383,7 +383,7 @@ func (x *IsConvergedResponse) GetMessage() string {
 
 type RollbackRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
-	Release         string                 `protobuf:"bytes,1,opt,name=release,proto3" json:"release,omitempty"`
+	PromotionRun    string                 `protobuf:"bytes,1,opt,name=promotion_run,json=promotionRun,proto3" json:"promotion_run,omitempty"`
 	Target          string                 `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"`
 	Version         string                 `protobuf:"bytes,3,opt,name=version,proto3" json:"version,omitempty"`
 	PreviousVersion string                 `protobuf:"bytes,4,opt,name=previous_version,json=previousVersion,proto3" json:"previous_version,omitempty"`
@@ -422,9 +422,9 @@ func (*RollbackRequest) Descriptor() ([]byte, []int) {
 	return file_spec_kai_v1alpha1_actuator_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *RollbackRequest) GetRelease() string {
+func (x *RollbackRequest) GetPromotionRun() string {
 	if x != nil {
-		return x.Release
+		return x.PromotionRun
 	}
 	return ""
 }
@@ -518,11 +518,11 @@ const file_spec_kai_v1alpha1_actuator_proto_rawDesc = "" +
 	"\x17GetCapabilitiesResponse\x12)\n" +
 	"\x10contract_version\x18\x01 \x01(\tR\x0fcontractVersion\x12%\n" +
 	"\x0eplugin_version\x18\x02 \x01(\tR\rpluginVersion\x12\"\n" +
-	"\fcapabilities\x18\x03 \x03(\tR\fcapabilities\"\xc8\x02\n" +
-	"\fApplyRequest\x12\x18\n" +
-	"\arelease\x18\x01 \x01(\tR\arelease\x12\x16\n" +
-	"\x06target\x18\x02 \x01(\tR\x06target\x12\x1a\n" +
-	"\bpipeline\x18\x03 \x01(\tR\bpipeline\x12\x14\n" +
+	"\fcapabilities\x18\x03 \x03(\tR\fcapabilities\"\xde\x02\n" +
+	"\fApplyRequest\x12#\n" +
+	"\rpromotion_run\x18\x01 \x01(\tR\fpromotionRun\x12\x16\n" +
+	"\x06target\x18\x02 \x01(\tR\x06target\x12%\n" +
+	"\x0epromotion_plan\x18\x03 \x01(\tR\rpromotionPlan\x12\x14\n" +
 	"\x05stage\x18\x04 \x01(\tR\x05stage\x12\x18\n" +
 	"\aversion\x18\x05 \x01(\tR\aversion\x12)\n" +
 	"\x10previous_version\x18\x06 \x01(\tR\x0fpreviousVersion\x12P\n" +
@@ -534,9 +534,9 @@ const file_spec_kai_v1alpha1_actuator_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"E\n" +
 	"\rApplyResponse\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\xf7\x01\n" +
-	"\x12IsConvergedRequest\x12\x18\n" +
-	"\arelease\x18\x01 \x01(\tR\arelease\x12\x16\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"\x82\x02\n" +
+	"\x12IsConvergedRequest\x12#\n" +
+	"\rpromotion_run\x18\x01 \x01(\tR\fpromotionRun\x12\x16\n" +
 	"\x06target\x18\x02 \x01(\tR\x06target\x12\x18\n" +
 	"\aversion\x18\x03 \x01(\tR\aversion\x12V\n" +
 	"\n" +
@@ -547,9 +547,9 @@ const file_spec_kai_v1alpha1_actuator_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"M\n" +
 	"\x13IsConvergedResponse\x12\x1c\n" +
 	"\tconverged\x18\x01 \x01(\bR\tconverged\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\x9c\x02\n" +
-	"\x0fRollbackRequest\x12\x18\n" +
-	"\arelease\x18\x01 \x01(\tR\arelease\x12\x16\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"\xa7\x02\n" +
+	"\x0fRollbackRequest\x12#\n" +
+	"\rpromotion_run\x18\x01 \x01(\tR\fpromotionRun\x12\x16\n" +
 	"\x06target\x18\x02 \x01(\tR\x06target\x12\x18\n" +
 	"\aversion\x18\x03 \x01(\tR\aversion\x12)\n" +
 	"\x10previous_version\x18\x04 \x01(\tR\x0fpreviousVersion\x12S\n" +

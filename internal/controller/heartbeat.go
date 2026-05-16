@@ -32,25 +32,25 @@ func heartbeatLeaseName(clusterName string) string {
 	return heartbeatLeasePrefix + clusterName
 }
 
-func (r *ReleaseTargetReconciler) heartbeatNamespace() string {
+func (r *PromotionTargetReconciler) heartbeatNamespace() string {
 	if r.HeartbeatNamespace != "" {
 		return r.HeartbeatNamespace
 	}
 	return defaultHeartbeatNamespace
 }
 
-func (r *ReleaseTargetReconciler) requireFreshHeartbeat(
+func (r *PromotionTargetReconciler) requireFreshHeartbeat(
 	ctx context.Context,
-	release *kaprov1alpha1.Release,
+	promotionrun *kaprov1alpha1.PromotionRun,
 	target *kaprov1alpha1.TargetStatus,
-	mc *kaprov1alpha1.MemberCluster,
+	mc *kaprov1alpha1.FleetCluster,
 ) (ctrl.Result, bool, error) {
 	if mc.Spec.Delivery.Mode != kaprov1alpha1.DeliveryModePull {
 		target.HeartbeatStaleSince = ""
 		return ctrl.Result{}, true, nil
 	}
 
-	status, err := r.memberClusterHeartbeat(ctx, mc)
+	status, err := r.fleetClusterHeartbeat(ctx, mc)
 	if err != nil {
 		return ctrl.Result{}, false, err
 	}
@@ -66,7 +66,7 @@ func (r *ReleaseTargetReconciler) requireFreshHeartbeat(
 		target.HeartbeatStaleSince = now.Format(time.RFC3339)
 		target.Message = status.Message
 		if r.Recorder != nil {
-			r.Recorder.Eventf(release, corev1.EventTypeWarning, "HeartbeatStale",
+			r.Recorder.Eventf(promotionrun, corev1.EventTypeWarning, "HeartbeatStale",
 				"[%s/%s] waiting for fresh cluster heartbeat: %s", target.Stage, target.Target, status.Message)
 		}
 		return ctrl.Result{RequeueAfter: requeueNormal}, false, nil
@@ -79,7 +79,7 @@ func (r *ReleaseTargetReconciler) requireFreshHeartbeat(
 		return ctrl.Result{RequeueAfter: requeueNormal}, false, nil
 	}
 	if target.HeartbeatStaleCount >= missingMCFailThreshold && now.Sub(staleSince) >= heartbeatStaleFailAfter {
-		r.failTarget(ctx, release, target,
+		r.failTarget(ctx, promotionrun, target,
 			fmt.Sprintf("cluster %s heartbeat stale for %s: %s", mc.Name, heartbeatStaleFailAfter, status.Message))
 		return ctrl.Result{}, false, nil
 	}
@@ -88,7 +88,7 @@ func (r *ReleaseTargetReconciler) requireFreshHeartbeat(
 	return ctrl.Result{RequeueAfter: requeueNormal}, false, nil
 }
 
-func (r *ReleaseTargetReconciler) memberClusterHeartbeat(ctx context.Context, mc *kaprov1alpha1.MemberCluster) (heartbeatStatus, error) {
+func (r *PromotionTargetReconciler) fleetClusterHeartbeat(ctx context.Context, mc *kaprov1alpha1.FleetCluster) (heartbeatStatus, error) {
 	lease := &coordinationv1.Lease{}
 	err := r.Get(ctx, client.ObjectKey{
 		Namespace: r.heartbeatNamespace(),
@@ -128,13 +128,13 @@ func (r *ReleaseTargetReconciler) memberClusterHeartbeat(ctx context.Context, mc
 	return status, nil
 }
 
-func statusHeartbeat(mc *kaprov1alpha1.MemberCluster) (heartbeatStatus, error) {
+func statusHeartbeat(mc *kaprov1alpha1.FleetCluster) (heartbeatStatus, error) {
 	if mc.Status.LastHeartbeat != "" {
 		observed, parseErr := time.Parse(time.RFC3339, mc.Status.LastHeartbeat)
 		if parseErr != nil {
 			return heartbeatStatus{
 				Source:  "status",
-				Message: fmt.Sprintf("MemberCluster.status.lastHeartbeat is invalid: %v", parseErr),
+				Message: fmt.Sprintf("FleetCluster.status.lastHeartbeat is invalid: %v", parseErr),
 			}, nil
 		}
 		if time.Since(observed) < heartbeatFreshTimeout {
@@ -143,7 +143,7 @@ func statusHeartbeat(mc *kaprov1alpha1.MemberCluster) (heartbeatStatus, error) {
 		return heartbeatStatus{
 			Source:   "status",
 			Observed: observed,
-			Message:  fmt.Sprintf("MemberCluster.status.lastHeartbeat last updated %s ago", time.Since(observed).Round(time.Second)),
+			Message:  fmt.Sprintf("FleetCluster.status.lastHeartbeat last updated %s ago", time.Since(observed).Round(time.Second)),
 		}, nil
 	}
 

@@ -22,7 +22,7 @@ Environment for cluster mode:
   KAPRO_IMAGE_REPOSITORY     Optional image repository override
   KAPRO_IMAGE_TAG            Optional image tag override
   KAPRO_VERIFY_WEBHOOKS      Enable admission webhooks (default: false)
-  KAPRO_VERIFY_CLEANUP       Uninstall release and namespace after verification (default: false)
+  KAPRO_VERIFY_CLEANUP       Uninstall promotionrun and namespace after verification (default: false)
 EOF
 }
 
@@ -77,9 +77,9 @@ cluster() {
   need helm
   need kubectl
 
-  local namespace release webhook cleanup
+  local namespace promotionrun webhook cleanup
   namespace="${KAPRO_VERIFY_NAMESPACE:-kapro-system}"
-  release="${KAPRO_VERIFY_RELEASE:-kapro}"
+  promotionrun="${KAPRO_VERIFY_RELEASE:-kapro}"
   webhook="${KAPRO_VERIFY_WEBHOOKS:-false}"
   cleanup="${KAPRO_VERIFY_CLEANUP:-false}"
 
@@ -91,24 +91,24 @@ cluster() {
     set_args+=("--set" "image.tag=${KAPRO_IMAGE_TAG}")
   fi
 
-  echo "installing ${release} into namespace ${namespace}"
-  helm upgrade --install "${release}" "${CHART}" \
+  echo "installing ${promotionrun} into namespace ${namespace}"
+  helm upgrade --install "${promotionrun}" "${CHART}" \
     --namespace "${namespace}" \
     --create-namespace \
     "${set_args[@]}"
 
   echo "waiting for operator rollout"
-  kubectl -n "${namespace}" rollout status "deployment/${release}-kapro-operator" --timeout=180s
+  kubectl -n "${namespace}" rollout status "deployment/${promotionrun}-kapro-operator" --timeout=180s
 
   echo "checking installed resources"
   kubectl get crd -o name | grep -q '^customresourcedefinition.apiextensions.k8s.io/.*\.kapro\.io$'
   kubectl -n "${namespace}" get deploy,svc,sa
-  kubectl auth can-i get releases.kapro.io \
-    --as="system:serviceaccount:${namespace}:${release}-kapro-operator"
+  kubectl auth can-i get promotionruns.kapro.io \
+    --as="system:serviceaccount:${namespace}:${promotionrun}-kapro-operator"
 
   if [ "${cleanup}" = "true" ]; then
-    echo "cleaning up ${release} from namespace ${namespace}"
-    helm uninstall "${release}" --namespace "${namespace}"
+    echo "cleaning up ${promotionrun} from namespace ${namespace}"
+    helm uninstall "${promotionrun}" --namespace "${namespace}"
     kubectl delete namespace "${namespace}" --ignore-not-found
   fi
 

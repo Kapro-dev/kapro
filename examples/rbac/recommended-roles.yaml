@@ -14,74 +14,74 @@ rules:
       - agentpolicies
       - promotionsources
       - kaproes
-      - memberclusters
-      - pipelines
+      - fleetclusters
+      - promotionplans
       - pluginregistrations
-      - releases
-      - releasetriggers
+      - promotionruns
+      - promotiontriggers
     verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
   - apiGroups: ["kapro.io"]
     resources:
       - approvals
-      - releasetargets
+      - promotiontargets
     verbs: ["get", "list", "watch"]
   - apiGroups: ["kapro.io"]
     resources:
       - agentpolicies/status
       - approvals/status
       - kaproes/status
-      - memberclusters/status
+      - fleetclusters/status
       - pluginregistrations/status
-      - releases/status
-      - releasetargets/status
-      - releasetriggers/status
+      - promotionruns/status
+      - promotiontargets/status
+      - promotiontriggers/status
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kapro-release-engineer
+  name: kapro-promotionrun-engineer
 rules:
   - apiGroups: ["kapro.io"]
     resources:
       - promotionsources
-      - memberclusters
-      - pipelines
-      - releases
-      - releasetargets
+      - fleetclusters
+      - promotionplans
+      - promotionruns
+      - promotiontargets
     verbs: ["get", "list", "watch"]
   - apiGroups: ["kapro.io"]
     resources:
-      - releases
+      - promotionruns
     verbs: ["create", "delete", "patch", "update"]
   - apiGroups: ["kapro.io"]
     resources:
-      - releases/status
-      - releasetargets/status
+      - promotionruns/status
+      - promotiontargets/status
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kapro-release-trigger-admin
+  name: kapro-promotion-trigger-admin
 rules:
   - apiGroups: ["kapro.io"]
     resources:
       - promotionsources
-      - memberclusters
-      - pipelines
-      - releases
-      - releasetriggers
+      - fleetclusters
+      - promotionplans
+      - promotionruns
+      - promotiontriggers
     verbs: ["get", "list", "watch"]
   - apiGroups: ["kapro.io"]
     resources:
-      - releasetriggers
+      - promotiontriggers
     verbs: ["create", "delete", "patch", "update"]
   - apiGroups: ["kapro.io"]
     resources:
-      - releases/status
-      - releasetargets/status
-      - releasetriggers/status
+      - promotionruns/status
+      - promotiontargets/status
+      - promotiontriggers/status
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -93,10 +93,10 @@ rules:
     resources:
       - approvals
       - promotionsources
-      - memberclusters
-      - pipelines
-      - releases
-      - releasetargets
+      - fleetclusters
+      - promotionplans
+      - promotionruns
+      - promotiontargets
     verbs: ["get", "list", "watch"]
   - apiGroups: ["kapro.io"]
     resources:
@@ -105,8 +105,8 @@ rules:
   - apiGroups: ["kapro.io"]
     resources:
       - approvals/status
-      - releases/status
-      - releasetargets/status
+      - promotionruns/status
+      - promotiontargets/status
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

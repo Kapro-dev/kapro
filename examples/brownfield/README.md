@@ -135,7 +135,7 @@ metadata:
     kapro.io/tier: production
 ```
 
-The root app remains Argo CD's packaging mechanism. Kapro adds release waves,
+The root app remains Argo CD's packaging mechanism. Kapro adds promotionrun waves,
 gates, approvals, and evidence around the children that actually map to
 promotion targets. If a team wants the root app to be the promoted unit, label
 only the root and keep children unlabelled.
@@ -196,5 +196,5 @@ kapro init ./promotion-repo --backend argo --name checkout --clusters none
 ```
 
 `--clusters none` is repo-first mode. It creates backends, source metadata,
-pipeline metadata, and backend-native starter files, but skips `clusters/`,
-`kapro/`, and `releases/` until real targets exist.
+promotionplan metadata, and backend-native starter files, but skips `clusters/`,
+`kapro/`, and `promotionruns/` until real targets exist.

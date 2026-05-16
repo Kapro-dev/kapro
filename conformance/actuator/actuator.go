@@ -25,9 +25,9 @@ type Scenario struct {
 func DefaultScenario() Scenario {
 	return Scenario{
 		Apply: &kaiv1alpha1.ApplyRequest{
-			Release:         "conformance-release",
+			PromotionRun:    "conformance-promotionrun",
 			Target:          "conformance-target",
-			Pipeline:        "main",
+			PromotionPlan:   "main",
 			Stage:           "canary",
 			Version:         "oci://example.com/app@sha256:1111111111111111111111111111111111111111111111111111111111111111",
 			PreviousVersion: "oci://example.com/app@sha256:0000000000000000000000000000000000000000000000000000000000000000",
@@ -36,15 +36,15 @@ func DefaultScenario() Scenario {
 			},
 		},
 		IsConverged: &kaiv1alpha1.IsConvergedRequest{
-			Release: "conformance-release",
-			Target:  "conformance-target",
-			Version: "oci://example.com/app@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+			PromotionRun: "conformance-promotionrun",
+			Target:       "conformance-target",
+			Version:      "oci://example.com/app@sha256:1111111111111111111111111111111111111111111111111111111111111111",
 			Parameters: map[string]string{
 				"conformance": "true",
 			},
 		},
 		Rollback: &kaiv1alpha1.RollbackRequest{
-			Release:         "conformance-release",
+			PromotionRun:    "conformance-promotionrun",
 			Target:          "conformance-target",
 			Version:         "oci://example.com/app@sha256:1111111111111111111111111111111111111111111111111111111111111111",
 			PreviousVersion: "oci://example.com/app@sha256:0000000000000000000000000000000000000000000000000000000000000000",

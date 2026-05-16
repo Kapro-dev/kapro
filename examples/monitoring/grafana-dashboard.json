@@ -678,8 +678,8 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (pipeline, le) (rate(kapro_stage_duration_seconds_bucket[30m])))",
-          "legendFormat": "{{pipeline}} p95",
+          "expr": "histogram_quantile(0.95, sum by (promotionplan, le) (rate(kapro_stage_duration_seconds_bucket[30m])))",
+          "legendFormat": "{{promotionplan}} p95",
           "range": true,
           "refId": "A"
         }
@@ -771,13 +771,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "kapro_release_active_total",
-          "legendFormat": "active releases",
+          "expr": "kapro_promotionrun_active_total",
+          "legendFormat": "active promotionruns",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Active Releases",
+      "title": "Active PromotionRuns",
       "type": "timeseries"
     },
     {
@@ -836,13 +836,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(((time() - kapro_release_created > 7200) and on (release) (kapro_release_status_phase{phase=~\"Pending|Progressing\"} == 1)))",
-          "legendFormat": "stuck releases",
+          "expr": "count(((time() - kapro_promotionrun_created > 7200) and on (promotionrun) (kapro_promotionrun_status_phase{phase=~\"Pending|Progressing\"} == 1)))",
+          "legendFormat": "stuck promotionruns",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Release Stuck Candidates",
+      "title": "PromotionRun Stuck Candidates",
       "type": "stat"
     },
     {
@@ -901,13 +901,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count((kapro_releasetrigger_status_condition{type=\"Stalled\"} == 1) or (kapro_releasetrigger_status_condition{type=\"ReleaseCreated\",reason=~\"CooldownActive|MaxActiveReached\"} == 0))",
+          "expr": "count((kapro_promotiontrigger_status_condition{type=\"Stalled\"} == 1) or (kapro_promotiontrigger_status_condition{type=\"PromotionRunCreated\",reason=~\"CooldownActive|MaxActiveReached\"} == 0))",
           "legendFormat": "blocked triggers",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Blocked ReleaseTriggers",
+      "title": "Blocked PromotionTriggers",
       "type": "stat"
     },
     {

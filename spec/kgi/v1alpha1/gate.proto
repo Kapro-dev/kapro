@@ -22,9 +22,9 @@ message GetCapabilitiesResponse {
 }
 
 message EvaluateRequest {
-  string release = 1;
+  string promotion_run = 1;
   string target = 2;
-  string pipeline = 3;
+  string promotion_plan = 3;
   string stage = 4;
   string version = 5;
   string gate = 6;

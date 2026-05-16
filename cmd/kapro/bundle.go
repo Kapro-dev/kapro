@@ -59,7 +59,7 @@ Examples:
   kapro source package --source checkout --version 2.0.0 \
     --registry oci://europe-west1-docker.pkg.dev/project/repo --push
 
-  # In CI pipeline
+  # In CI promotionplan
   kapro source package --source checkout --kapro checkout-prod --version ${VERSION} \
     --registry ${OCI_REGISTRY} --push \
     --kubeconfig ${HUB_KUBECONFIG}`,

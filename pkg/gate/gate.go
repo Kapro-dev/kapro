@@ -13,7 +13,7 @@
 //   - webhook/             — HTTP webhook gate
 //
 // External implementations can implement this interface and wire in at startup
-// via the gate registry used by the release controller.
+// via the gate registry used by the promotionrun controller.
 //
 // # The CRI analogy
 //
@@ -21,7 +21,7 @@
 //   - Kapro manages gate lifecycle (when, timeout, retry, failure policy)
 //   - Gate.Evaluate() is the KGI contract — analogous to CRI's RunPodSandbox
 //   - Built-in gates (cel, job, webhook) are like runc — always available
-//   - Release.Status.Targets[].Gates[] is like PodStatus.ContainerStatuses[]
+//   - PromotionRun.Status.Targets[].Gates[] is like PodStatus.ContainerStatuses[]
 //     — Kapro's authoritative state; gates are stateless evaluators only
 //
 // # Stability
@@ -114,7 +114,7 @@ type Result struct {
 	// VendorRef points to the vendor-managed resource created by this gate
 	// (e.g. a Kubernetes Job, a Prometheus recording rule, an AnalysisRun).
 	// Nil for in-process gates (cel, webhook, soak).
-	// Stored in Release.Status.Targets[].Gates[].VendorRef for observability.
+	// Stored in PromotionRun.Status.Targets[].Gates[].VendorRef for observability.
 	VendorRef *corev1.ObjectReference
 
 	// Results contains per-condition breakdowns for multi-condition gates
@@ -145,21 +145,21 @@ func (r Result) IsFailed() bool {
 }
 
 // Context is the per-target promotion context passed into gate evaluation.
-// It is a runtime value owned by the release controller, not a Kubernetes API object.
+// It is a runtime value owned by the promotionrun controller, not a Kubernetes API object.
 type Context struct {
-	Name       string
-	Namespace  string
-	ReleaseRef string
-	Target     string
-	Pipeline   string
-	Stage      string
-	Version    string
-	StartedAt  string
+	Name            string
+	Namespace       string
+	PromotionRunRef string
+	Target          string
+	PromotionPlan   string
+	Stage           string
+	Version         string
+	StartedAt       string
 
-	// OwnerUID and OwnerName identify the ReleaseTarget that triggered this gate
+	// OwnerUID and OwnerName identify the PromotionTarget that triggered this gate
 	// evaluation. Gates that create Kubernetes resources (e.g. Job gate) must set
 	// OwnerReferences using these fields so created resources are garbage-collected
-	// when the ReleaseTarget is deleted.
+	// when the PromotionTarget is deleted.
 	OwnerUID  k8stypes.UID
 	OwnerName string
 }
@@ -192,7 +192,7 @@ type Request struct {
 // Gate is KGI v1alpha1: the Kapro Gate Interface.
 //
 // Evaluate returns a Result indicating whether the target promotion may advance.
-// The controller persists gate state to Release.status.targets[].gates after each
+// The controller persists gate state to PromotionRun.status.targets[].gates after each
 // evaluation — implementations must not attempt to store state themselves.
 //
 // Contract:
@@ -200,7 +200,7 @@ type Request struct {
 //   - Evaluate MUST respect ctx.Done() — do not block indefinitely
 //   - Evaluate MUST NOT mutate any field of req
 //   - Evaluate MUST be safe for concurrent use from multiple goroutines
-//   - Evaluate MUST be idempotent for a given (release/env/stage, gate state) tuple
+//   - Evaluate MUST be idempotent for a given (promotionrun/env/stage, gate state) tuple
 type Gate interface {
 	Evaluate(ctx context.Context, req Request) (Result, error)
 }

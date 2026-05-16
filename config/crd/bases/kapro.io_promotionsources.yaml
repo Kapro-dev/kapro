@@ -62,7 +62,7 @@ spec:
                 description: |-
                   BackendRef is the BackendProfile this source is normally discovered from
                   or packaged for. Kapro uses it as metadata; delivery still comes from
-                  Kapro.spec.delivery and MemberCluster.spec.delivery.
+                  Kapro.spec.delivery and FleetCluster.spec.delivery.
                 type: string
               defaults:
                 description: Defaults are inherited by every unit unless overridden.

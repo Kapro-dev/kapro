@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHART="${ROOT}/charts/kapro-operator"
-RELEASE_WORKFLOW="${ROOT}/.github/workflows/release.yml"
+RELEASE_WORKFLOW="${ROOT}/.github/workflows/promotionrun.yml"
 
 need() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -15,7 +15,7 @@ need() {
 require_workflow_line() {
   local pattern="$1"
   if ! grep -Fq -- "$pattern" "${RELEASE_WORKFLOW}"; then
-    echo "release workflow is missing required line: ${pattern}" >&2
+    echo "promotionrun workflow is missing required line: ${pattern}" >&2
     exit 1
   fi
 }
@@ -23,7 +23,7 @@ require_workflow_line() {
 reject_workflow_line() {
   local pattern="$1"
   if grep -Fq -- "$pattern" "${RELEASE_WORKFLOW}"; then
-    echo "release workflow must not contain pinned release-specific line: ${pattern}" >&2
+    echo "promotionrun workflow must not contain pinned promotionrun-specific line: ${pattern}" >&2
     exit 1
   fi
 }
@@ -51,12 +51,12 @@ echo "generating Helm chart checksum"
 shasum -a 256 "${chart_packages[0]}" >"${tmpdir}/checksums.txt"
 grep -Fq "$(basename "${chart_packages[0]}")" "${tmpdir}/checksums.txt"
 
-echo "checking release workflow packages the chart and publishes checksums"
+echo "checking promotionrun workflow packages the chart and publishes checksums"
 require_workflow_line "uses: azure/setup-helm@v4"
 require_workflow_line "name: Package Helm chart"
 require_workflow_line "helm package charts/kapro-operator --destination dist"
 require_workflow_line "shasum -a 256 dist/* > dist/checksums.txt"
 require_workflow_line "dist/*"
-reject_workflow_line "body_path: docs/release-v0.1.0-alpha.md"
+reject_workflow_line "body_path: docs/promotionrun-v0.1.0-alpha.md"
 
-echo "release smoke verification passed"
+echo "promotionrun smoke verification passed"

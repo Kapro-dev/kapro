@@ -13,7 +13,7 @@ until external planner dispatch is implemented.
 The planner evaluates targets in this order:
 
 1. `ready=false` targets are skipped.
-2. Targets with `active_release` are deferred.
+2. Targets with `active_promotionrun` are deferred.
 3. Targets missing required labels are skipped.
 4. Targets below `minAvailableCapacityPercent` are deferred.
 5. Remaining targets are included, ordered by capacity descending, then region,

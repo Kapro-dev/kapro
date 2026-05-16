@@ -10,6 +10,6 @@ spec:
         - name: manager
           env:
             - name: KAPRO_CONTROLLERS
-              value: release,release-target,approval,plugin-registration,release-trigger
+              value: promotionrun,promotion-target,approval,plugin-registration,promotion-trigger
             - name: KAPRO_APPROVAL_SECRET
               value: kind-demo-approval-secret

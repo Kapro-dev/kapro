@@ -1,7 +1,7 @@
 # Security Model
 
 Kapro is a promotion control plane. It can cause production changes across many
-clusters, so the security model assumes that release creation, plugin
+clusters, so the security model assumes that promotionrun creation, plugin
 registration, approval, artifact verification, and webhook gates are privileged
 operations.
 
@@ -12,7 +12,7 @@ model, see `docs/security-model.md`.
 
 | Threat | Mitigation |
 |---|---|
-| Untrusted artifact triggers an automatic release | Digest pinning, signature verification, suspended-by-default triggers and Releases |
+| Untrusted artifact triggers an automatic promotionrun | Digest pinning, signature verification, suspended-by-default triggers and PromotionRuns |
 | Compromised plugin unblocks or mutates production | Restricted `PluginRegistration` RBAC, TLS/mTLS, short timeouts, narrow KAI/KGI/KPI contracts |
 | User approves a gate outside their team or environment | Admission policy on `Approval` labels, request user info, and bypass use |
 | Webhook gate is spoofed or replayed | HTTPS, shared secret or mTLS at the webhook backend, idempotent decision refs |
@@ -24,14 +24,14 @@ model, see `docs/security-model.md`.
 
 External plugins are outside the Kapro trust boundary. Kapro sends bounded
 requests over the registered protocol and treats plugin responses as advisory
-backend results, not as ownership of release state.
+backend results, not as ownership of promotionrun state.
 
 Plugins must not:
 
-- create or mutate `ReleaseTarget` objects;
-- change `Release.status`;
+- create or mutate `PromotionTarget` objects;
+- change `PromotionRun.status`;
 - bypass Kapro retries, timeouts, or failure policy;
-- store irreplaceable release state only in plugin memory;
+- store irreplaceable promotionrun state only in plugin memory;
 - require cluster-admin credentials for ordinary gate or actuator work.
 
 Plugins should:
@@ -45,37 +45,37 @@ Plugins should:
 
 ## OCI and Signature Trust Model
 
-`ReleaseTrigger` is safe by default:
+`PromotionTrigger` is safe by default:
 
 - `spec.suspended` defaults to `true`;
-- generated Releases default to suspended;
+- generated PromotionRuns default to suspended;
 - OCI signature verification defaults to required;
-- generated Releases should use immutable digests, not mutable tags;
-- cooldown and max-active limits reduce release floods.
+- generated PromotionRuns should use immutable digests, not mutable tags;
+- cooldown and max-active limits reduce promotionrun floods.
 
 The intended production posture is:
 
 1. CI publishes an OCI artifact and signs it.
 2. Kapro observes only tags that match the trigger pattern.
 3. Kapro resolves the tag to an immutable digest.
-4. Kapro verifies signature policy before release creation.
-5. Kapro creates a suspended, digest-pinned Release.
-6. A release manager reviews and unsuspends the Release or trigger according to
+4. Kapro verifies signature policy before promotionrun creation.
+5. Kapro creates a suspended, digest-pinned PromotionRun.
+6. A promotionrun manager reviews and unsuspends the PromotionRun or trigger according to
    environment policy.
 
 Keyless verification should pin expected issuer and subject identity. Key-based
 verification should use a trusted public key distributed through a
 platform-owned Secret or ConfigMap. Unsigned artifacts must not create automatic
-production Releases.
+production PromotionRuns.
 
-### ReleaseTrigger with cosign keyless policy
+### PromotionTrigger with cosign keyless policy
 
-`ReleaseTrigger` observes tags and creates a digest-pinned Release. The pipeline
+`PromotionTrigger` observes tags and creates a digest-pinned PromotionRun. The promotionplan
 gate enforces the cosign keyless identity before target rollout.
 
 ```yaml
 apiVersion: kapro.io/v1alpha1
-kind: Pipeline
+kind: PromotionPlan
 metadata:
   name: checkout-keyless
 spec:
@@ -94,7 +94,7 @@ spec:
                 subject: repo:example/checkout:ref:refs/heads/main
 ---
 apiVersion: kapro.io/v1alpha1
-kind: ReleaseTrigger
+kind: PromotionTrigger
 metadata:
   name: checkout-oci-keyless
 spec:
@@ -106,10 +106,10 @@ spec:
       tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
       requireSignature: true
       pollInterval: 5m
-  releaseTemplate:
-    pipelines:
+  promotionrunTemplate:
+    promotionplans:
       - name: production
-        pipeline: checkout-keyless
+        promotionplan: checkout-keyless
     suspended: true
     scope:
       targets:
@@ -119,7 +119,7 @@ spec:
   dryRun: true
 ```
 
-### ReleaseTrigger with cosign public key policy
+### PromotionTrigger with cosign public key policy
 
 ```yaml
 apiVersion: v1
@@ -132,7 +132,7 @@ data:
   cosign.pub: <base64-encoded-public-key>
 ---
 apiVersion: kapro.io/v1alpha1
-kind: Pipeline
+kind: PromotionPlan
 metadata:
   name: checkout-keyed
 spec:
@@ -163,7 +163,7 @@ Requirements:
 - use HTTPS for all non-development webhook endpoints;
 - authenticate requests with mTLS or a shared secret;
 - validate request timestamp or nonce when the backend supports it;
-- make decisions idempotent for a release, stage, target, and gate ref;
+- make decisions idempotent for a promotionrun, stage, target, and gate ref;
 - return a bounded response containing only the normalized gate result and
   operator-facing message;
 - avoid embedding credentials in gate parameters.
@@ -188,8 +188,8 @@ Rules:
   `PluginRegistration.parameters`;
 - never write credential values into status, Events, logs, or notifications.
 
-Rotate registry and plugin credentials independently from release state. A
-credential rotation should not require recreating Release or Pipeline objects.
+Rotate registry and plugin credentials independently from promotionrun state. A
+credential rotation should not require recreating PromotionRun or PromotionPlan objects.
 
 ## Audit Evidence
 
@@ -198,7 +198,7 @@ For regulated environments, send lifecycle notifications to an append-only
 external sink and retain:
 
 - artifact digest and signature verification result;
-- Release and ReleaseTrigger object metadata;
+- PromotionRun and PromotionTrigger object metadata;
 - gate result and message;
 - approver identity and bypass flag;
 - plugin name, version, and endpoint identity;

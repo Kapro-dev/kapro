@@ -36,7 +36,7 @@ func TestActuatorAdapterApplyMapsRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = adapter.Apply(context.Background(), actuator.ApplyRequest{
-		Cluster:         &kaprov1alpha1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: "de-prod"}},
+		Cluster:         &kaprov1alpha1.FleetCluster{ObjectMeta: metav1.ObjectMeta{Name: "de-prod"}},
 		Version:         "1.2.3",
 		PreviousVersion: "1.2.2",
 		AppKey:          "api",
@@ -62,7 +62,7 @@ func TestActuatorAdapterReturnsGRPCError(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = adapter.Apply(context.Background(), actuator.ApplyRequest{
-		Cluster: &kaprov1alpha1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: "de-prod"}},
+		Cluster: &kaprov1alpha1.FleetCluster{ObjectMeta: metav1.ObjectMeta{Name: "de-prod"}},
 		Version: "1.2.3",
 	})
 	if err == nil || !strings.Contains(err.Error(), "Apply RPC to \"bufnet\" failed") || !strings.Contains(err.Error(), "down") {
@@ -82,7 +82,7 @@ func TestActuatorAdapterApplyObservesRuntimeMetrics(t *testing.T) {
 	counter := kaprometrics.PluginRuntimeCalls.WithLabelValues("actuator", "metrics/apply", "Apply", "success")
 	before := testutil.ToFloat64(counter)
 	err = adapter.Apply(context.Background(), actuator.ApplyRequest{
-		Cluster: &kaprov1alpha1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: "de-prod"}},
+		Cluster: &kaprov1alpha1.FleetCluster{ObjectMeta: metav1.ObjectMeta{Name: "de-prod"}},
 		Version: "1.2.3",
 	})
 	if err != nil {
@@ -146,11 +146,11 @@ func TestGateAdapterMapsPhases(t *testing.T) {
 			}
 			result, err := adapter.Evaluate(context.Background(), gate.Request{
 				Context: &gate.Context{
-					ReleaseRef: "rel-1",
-					Target:     "de-prod",
-					Pipeline:   "prod",
-					Stage:      "canary",
-					Version:    "1.2.3",
+					PromotionRunRef: "rel-1",
+					Target:          "de-prod",
+					PromotionPlan:   "prod",
+					Stage:           "canary",
+					Version:         "1.2.3",
 				},
 				Template: &kaprov1alpha1.GateTemplateSpec{Name: "error-budget"},
 				Args:     map[string]string{"window": "5m"},
@@ -184,13 +184,13 @@ func TestPlannerAdapterMapsPlanDecisions(t *testing.T) {
 	}
 	framework := planner.NewFramework(adapter)
 	result, err := framework.PlanWithResult(context.Background(), planner.Request{
-		Release:         &kaprov1alpha1.Release{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}, Spec: kaprov1alpha1.ReleaseSpec{Version: "1.2.3"}},
-		PipelineRefName: "checkout",
+		PromotionRun:         &kaprov1alpha1.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}, Spec: kaprov1alpha1.PromotionRunSpec{Version: "1.2.3"}},
+		PromotionPlanRefName: "checkout",
 		Stage: kaprov1alpha1.Stage{
 			Name:     "prod",
 			Strategy: &kaprov1alpha1.StageStrategySpec{MaxParallel: 5},
 		},
-	}, []kaprov1alpha1.MemberCluster{
+	}, []kaprov1alpha1.FleetCluster{
 		{ObjectMeta: metav1.ObjectMeta{Name: "cluster-a", Labels: map[string]string{"region": "eu"}}},
 		{ObjectMeta: metav1.ObjectMeta{Name: "cluster-b", Labels: map[string]string{"region": "us"}}},
 	})
@@ -203,7 +203,7 @@ func TestPlannerAdapterMapsPlanDecisions(t *testing.T) {
 	if len(result.Decisions) != 1 || result.Decisions[0].Target != "cluster-a" || result.Decisions[0].Reason != "CapacityFull" {
 		t.Fatalf("decisions = %#v", result.Decisions)
 	}
-	if server.plan.Release != "rel-1" || server.plan.Pipeline != "checkout" || server.plan.Stage != "prod" || server.plan.Version != "1.2.3" {
+	if server.plan.PromotionRun != "rel-1" || server.plan.PromotionPlan != "checkout" || server.plan.Stage != "prod" || server.plan.Version != "1.2.3" {
 		t.Fatalf("PlanRequest = %+v", server.plan)
 	}
 	if server.plan.Strategy.GetMaxParallel() != 5 || len(server.plan.Targets) != 2 || server.plan.Targets[0].Labels["region"] != "eu" {

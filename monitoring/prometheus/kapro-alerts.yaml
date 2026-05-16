@@ -1,15 +1,15 @@
 groups:
   - name: kapro.operations
     rules:
-      - alert: KaproReleaseStuck
-        expr: kapro_release_active_total > 0
+      - alert: KaproPromotionRunStuck
+        expr: kapro_promotionrun_active_total > 0
         for: 30m
         labels:
           severity: warning
         annotations:
-          summary: Kapro has active releases for more than 30 minutes
-          description: Check Release and ReleaseTarget status for blocked gates, pending approvals, or actuator failures.
-          runbook: docs/operations.md#runbook-stuck-release
+          summary: Kapro has active promotionruns for more than 30 minutes
+          description: Check PromotionRun and PromotionTarget status for blocked gates, pending approvals, or actuator failures.
+          runbook: docs/operations.md#runbook-stuck-promotionrun
 
       - alert: KaproGateFailureRateHigh
         expr: |
@@ -39,28 +39,28 @@ groups:
           description: One or more registered plugins are failing capability probes or reporting not-ready.
           runbook: docs/operations.md#runbook-plugin-not-ready
 
-      - alert: KaproReleaseTriggerBlocked
-        expr: rate(kapro_controller_reconciles_total{controller="release_trigger",result="error"}[10m]) > 0
+      - alert: KaproPromotionTriggerBlocked
+        expr: rate(kapro_controller_reconciles_total{controller="promotion_trigger",result="error"}[10m]) > 0
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: Kapro ReleaseTrigger reconciles are failing
-          description: Automatic release creation may be blocked by source, signature, cooldown, or status update errors.
-          runbook: docs/operations.md#runbook-blocked-releasetrigger
+          summary: Kapro PromotionTrigger reconciles are failing
+          description: Automatic promotionrun creation may be blocked by source, signature, cooldown, or status update errors.
+          runbook: docs/operations.md#runbook-blocked-promotiontrigger
 
       - alert: KaproRolloutDurationP95High
         expr: |
           histogram_quantile(
             0.95,
-            sum(rate(kapro_stage_duration_seconds_bucket[30m])) by (le, pipeline)
+            sum(rate(kapro_stage_duration_seconds_bucket[30m])) by (le, promotionplan)
           ) > 3600
         for: 15m
         labels:
           severity: warning
         annotations:
           summary: Kapro rollout stage p95 is above one hour
-          description: Stage duration is above the expected fleet rollout objective for pipeline {{ $labels.pipeline }}.
+          description: Stage duration is above the expected fleet rollout objective for promotionplan {{ $labels.promotionplan }}.
           runbook: docs/controller-scalability.md#workqueue-tuning
 
       - alert: KaproControllerReconcileErrors

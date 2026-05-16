@@ -53,7 +53,7 @@ func TestMain(m *testing.M) {
 }
 
 // setupEnv starts an envtest environment and returns a cancel function.
-// It registers the ReleaseReconciler and starts the manager.
+// It registers the PromotionRunReconciler and starts the manager.
 //
 // Callers must defer the returned cancel func:
 //
@@ -105,26 +105,26 @@ func setupEnv(t *testing.T) (context.Context, context.CancelFunc, client.Client)
 
 	recorder := record.NewFakeRecorder(100)
 
-	// IMPORTANT: ReleaseReconciler MUST be registered first — it owns IndexField registrations.
-	releaseReconciler := &controller.ReleaseReconciler{
+	// IMPORTANT: PromotionRunReconciler MUST be registered first — it owns IndexField registrations.
+	promotionrunReconciler := &controller.PromotionRunReconciler{
 		Client:           mgr.GetClient(),
 		Recorder:         recorder,
 		Scheme:           mgr.GetScheme(),
 		ActuatorRegistry: fakeActuators,
 		GateRegistry:     newNoopGateRegistry(t),
 	}
-	if err := releaseReconciler.SetupWithManager(mgr); err != nil {
-		t.Fatalf("ReleaseReconciler.SetupWithManager: %v", err)
+	if err := promotionrunReconciler.SetupWithManager(mgr); err != nil {
+		t.Fatalf("PromotionRunReconciler.SetupWithManager: %v", err)
 	}
-	releaseTargetReconciler := &controller.ReleaseTargetReconciler{
+	promotionTargetReconciler := &controller.PromotionTargetReconciler{
 		Client:           mgr.GetClient(),
 		Recorder:         recorder,
 		Scheme:           mgr.GetScheme(),
 		ActuatorRegistry: fakeActuators,
 		GateRegistry:     newNoopGateRegistry(t),
 	}
-	if err := releaseTargetReconciler.SetupWithManager(mgr); err != nil {
-		t.Fatalf("ReleaseTargetReconciler.SetupWithManager: %v", err)
+	if err := promotionTargetReconciler.SetupWithManager(mgr); err != nil {
+		t.Fatalf("PromotionTargetReconciler.SetupWithManager: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -182,9 +182,9 @@ func eventuallyLong(t *testing.T, fn func() bool, msg string) {
 	t.Fatalf("eventually: timed out waiting for: %s", msg)
 }
 
-// getRelease fetches the latest Release state.
-func getRelease(ctx context.Context, c client.Client, key types.NamespacedName) *kaprov1alpha1.Release {
-	r := &kaprov1alpha1.Release{}
+// getPromotionRun fetches the latest PromotionRun state.
+func getPromotionRun(ctx context.Context, c client.Client, key types.NamespacedName) *kaprov1alpha1.PromotionRun {
+	r := &kaprov1alpha1.PromotionRun{}
 	_ = c.Get(ctx, key, r)
 	return r
 }
@@ -198,25 +198,25 @@ type fakeActuator struct {
 }
 
 func (f *fakeActuator) Apply(_ context.Context, _ actuator.ApplyRequest) error { return f.applyErr }
-func (f *fakeActuator) IsConverged(_ context.Context, _ *kaprov1alpha1.MemberCluster, _, _ string) (bool, error) {
+func (f *fakeActuator) IsConverged(_ context.Context, _ *kaprov1alpha1.FleetCluster, _, _ string) (bool, error) {
 	return f.converged, f.convErr
 }
-func (f *fakeActuator) Rollback(_ context.Context, _ *kaprov1alpha1.MemberCluster, _, _ string) error {
+func (f *fakeActuator) Rollback(_ context.Context, _ *kaprov1alpha1.FleetCluster, _, _ string) error {
 	return f.applyErr
 }
 func (f *fakeActuator) ApplyDelta(_ context.Context, req actuator.DeltaApplyRequest) (int, error) {
 	return len(req.DesiredVersions), f.applyErr
 }
-func (f *fakeActuator) IsAllConverged(_ context.Context, _ *kaprov1alpha1.MemberCluster, _ map[string]string) (bool, error) {
+func (f *fakeActuator) IsAllConverged(_ context.Context, _ *kaprov1alpha1.FleetCluster, _ map[string]string) (bool, error) {
 	return f.converged, f.convErr
 }
 
 // ---- shared fixture builders ------------------------------------------------
 
-func makeMemberCluster(name string, labels map[string]string) *kaprov1alpha1.MemberCluster {
-	return &kaprov1alpha1.MemberCluster{
+func makeFleetCluster(name string, labels map[string]string) *kaprov1alpha1.FleetCluster {
+	return &kaprov1alpha1.FleetCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels},
-		Spec: kaprov1alpha1.MemberClusterSpec{
+		Spec: kaprov1alpha1.FleetClusterSpec{
 			Delivery: kaprov1alpha1.DeliverySpec{
 				Mode: "pull", BackendRef: "flux",
 				Parameters: map[string]string{

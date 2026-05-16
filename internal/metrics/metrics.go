@@ -80,29 +80,29 @@ var (
 			Help:      "Duration in seconds from stage Pending to Complete.",
 			Buckets:   prometheus.ExponentialBuckets(30, 2, 10), // 30s → ~8h
 		},
-		[]string{"pipeline"},
+		[]string{"promotionplan"},
 	)
 
-	// ActiveReleases tracks the current number of non-terminal Releases.
-	ActiveReleases = prometheus.NewGauge(
+	// ActivePromotionRuns tracks the current number of non-terminal PromotionRuns.
+	ActivePromotionRuns = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: "kapro",
-			Subsystem: "release",
+			Subsystem: "promotionrun",
 			Name:      "active_total",
-			Help:      "Current number of Releases not in a terminal phase (Complete/Failed).",
+			Help:      "Current number of PromotionRuns not in a terminal phase (Complete/Failed).",
 		},
 	)
 
 	// WaveProgress tracks how many Targets have been successfully
-	// promoted per release stage.
+	// promoted per promotionrun stage.
 	WaveProgress = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "kapro",
 			Subsystem: "wave",
 			Name:      "environments_promoted_total",
-			Help:      "Number of Targets successfully promoted per release stage.",
+			Help:      "Number of Targets successfully promoted per promotionrun stage.",
 		},
-		[]string{"release", "stage"},
+		[]string{"promotionrun", "stage"},
 	)
 
 	// SpokeReconciles counts cluster-controller reconcile invocations by result.
@@ -203,7 +203,7 @@ func init() {
 		SyncTransitions,
 		GateEvaluations,
 		StageDuration,
-		ActiveReleases,
+		ActivePromotionRuns,
 		WaveProgress,
 		SpokeReconciles,
 		SpokeReconcilesSkipped,

@@ -11,7 +11,7 @@
 //
 // # Decoupling from CRD types
 //
-// KNI deliberately has zero dependency on api/v1alpha1. The release controller
+// KNI deliberately has zero dependency on api/v1alpha1. The promotionrun controller
 // converts *GatePolicy → NotificationPolicy before calling Notify, so external
 // notifier implementations never need to import Kapro's CRD package.
 // This mirrors how Kubernetes events carry resource metadata as plain strings,
@@ -29,40 +29,40 @@ import (
 // These are semantic lifecycle events, independent of FSM phase names.
 // Channels filter on Type (not Phase) for stable integration contracts.
 const (
-	// Release-level events
-	EventReleaseStarted   = "kapro.release.started"
-	EventReleaseCompleted = "kapro.release.completed"
-	EventReleaseFailed    = "kapro.release.failed"
-	EventRollbackStarted  = "kapro.release.rollback.started"
+	// PromotionRun-level events
+	EventPromotionRunStarted   = "kapro.promotionrun.started"
+	EventPromotionRunCompleted = "kapro.promotionrun.completed"
+	EventPromotionRunFailed    = "kapro.promotionrun.failed"
+	EventRollbackStarted       = "kapro.promotionrun.rollback.started"
 
 	// Stage-level events
-	EventStageCompleted = "kapro.release.stage.completed"
+	EventStageCompleted = "kapro.promotionrun.stage.completed"
 
 	// Gate-level events
-	EventGatePassed = "kapro.release.gate.passed"
-	EventGateFailed = "kapro.release.gate.failed"
+	EventGatePassed = "kapro.promotionrun.gate.passed"
+	EventGateFailed = "kapro.promotionrun.gate.failed"
 
 	// Target-level events (one per TargetPhase)
-	EventTargetPending      = "kapro.release.target.pending"
-	EventTargetVerification = "kapro.release.target.verification"
-	EventTargetHealthCheck  = "kapro.release.target.health_check"
-	EventTargetSoaking      = "kapro.release.target.soaking"
-	EventTargetMetricsCheck = "kapro.release.target.metrics_check"
-	EventTargetApplying     = "kapro.release.target.applying"
-	EventTargetConverged    = "kapro.release.target.converged"
-	EventTargetFailed       = "kapro.release.target.failed"
-	EventTargetSkipped      = "kapro.release.target.skipped"
-	EventApprovalRequired   = "kapro.release.approval.required"
+	EventTargetPending      = "kapro.promotionrun.target.pending"
+	EventTargetVerification = "kapro.promotionrun.target.verification"
+	EventTargetHealthCheck  = "kapro.promotionrun.target.health_check"
+	EventTargetSoaking      = "kapro.promotionrun.target.soaking"
+	EventTargetMetricsCheck = "kapro.promotionrun.target.metrics_check"
+	EventTargetApplying     = "kapro.promotionrun.target.applying"
+	EventTargetConverged    = "kapro.promotionrun.target.converged"
+	EventTargetFailed       = "kapro.promotionrun.target.failed"
+	EventTargetSkipped      = "kapro.promotionrun.target.skipped"
+	EventApprovalRequired   = "kapro.promotionrun.approval.required"
 )
 
 // Event carries the context for a notification.
 // All fields are plain strings, no dependency on api/v1alpha1.
 //
-// Type is the semantic event name (e.g. "kapro.release.target.converged").
+// Type is the semantic event name (e.g. "kapro.promotionrun.target.converged").
 // Phase is the raw FSM state (e.g. "Converged"). Type is for external
 // integrations, Phase is for internal FSM tracking. Channels filter on Type.
 type Event struct {
-	// Type is the semantic lifecycle event name (e.g. "kapro.release.target.converged").
+	// Type is the semantic lifecycle event name (e.g. "kapro.promotionrun.target.converged").
 	Type string `json:"type,omitempty"`
 	// Phase is the FSM phase that triggered this event (e.g. "Converged", "Failed").
 	Phase string `json:"phase,omitempty"`
@@ -70,11 +70,11 @@ type Event struct {
 	Version string `json:"version,omitempty"`
 	// Target is the target cluster name.
 	Target string `json:"target,omitempty"`
-	// Release is the release name.
-	Release string `json:"release,omitempty"`
-	// Pipeline is the pipeline name.
-	Pipeline string `json:"pipeline,omitempty"`
-	// Stage is the stage name within the pipeline.
+	// PromotionRun is the promotionrun name.
+	PromotionRun string `json:"promotionrun,omitempty"`
+	// PromotionPlan is the promotionplan name.
+	PromotionPlan string `json:"promotionplan,omitempty"`
+	// Stage is the stage name within the promotionplan.
 	Stage string `json:"stage,omitempty"`
 	// Message is additional context (e.g. error details).
 	Message string `json:"message,omitempty"`
@@ -89,7 +89,7 @@ type Event struct {
 // NotificationPolicy carries the notification routing config for a delivery operation.
 // It is a plain value type — no dependency on api/v1alpha1 CRD types.
 //
-// The release controller converts *GatePolicy → NotificationPolicy using
+// The promotionrun controller converts *GatePolicy → NotificationPolicy using
 // notificationPolicyFrom() before calling Notify. External Notifier
 // implementations receive only this clean value type.
 type NotificationPolicy struct {
@@ -159,16 +159,16 @@ type CloudEvent struct {
 func BuildCloudEvent(event Event, nowMillis int64, nowRFC3339 string) CloudEvent {
 	typ := event.Type
 	if typ == "" {
-		typ = "kapro.release.target.unknown"
+		typ = "kapro.promotionrun.target.unknown"
 	}
 	subject := event.Target
-	if event.Pipeline != "" && event.Stage != "" {
-		subject = "pipeline/" + event.Pipeline + "/stage/" + event.Stage + "/target/" + event.Target
+	if event.PromotionPlan != "" && event.Stage != "" {
+		subject = "promotionplan/" + event.PromotionPlan + "/stage/" + event.Stage + "/target/" + event.Target
 	}
 	return CloudEvent{
 		SpecVersion: "1.0",
 		Type:        typ,
-		Source:      "/kapro/releases/" + event.Release,
+		Source:      "/kapro/promotionruns/" + event.PromotionRun,
 		ID:          stableEventID(event, typ, nowMillis),
 		Time:        nowRFC3339,
 		Subject:     subject,
@@ -178,10 +178,10 @@ func BuildCloudEvent(event Event, nowMillis int64, nowRFC3339 string) CloudEvent
 
 func stableEventID(event Event, typ string, fallbackMillis int64) string {
 	switch {
-	case event.Release != "":
-		id := "release/" + event.Release + "/type/" + typ
-		if event.Pipeline != "" {
-			id += "/pipeline/" + event.Pipeline
+	case event.PromotionRun != "":
+		id := "promotionrun/" + event.PromotionRun + "/type/" + typ
+		if event.PromotionPlan != "" {
+			id += "/promotionplan/" + event.PromotionPlan
 		}
 		if event.Stage != "" {
 			id += "/stage/" + event.Stage

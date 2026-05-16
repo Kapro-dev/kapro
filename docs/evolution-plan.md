@@ -10,7 +10,7 @@ small, reviewable increments.
 Kapro now has the core preview surfaces expected by early platform teams:
 
 - Helm and Kustomize install paths.
-- ReleaseTrigger OCI observation with signature verification policy.
+- PromotionTrigger OCI observation with signature verification policy.
 - KAI, KGI, and KPI plugin contracts with conformance harnesses.
 - Plugin compatibility reporting on `PluginRegistration`.
 - RBAC, multi-tenancy, security, API stability, operations, monitoring, and
@@ -21,7 +21,7 @@ The next step is not another large feature. It is proving that a new user can
 install Kapro, run a complete demo, understand the trust boundaries, and build
 a conformant plugin without maintainer help.
 
-## Milestone 0: v0.1.0-alpha Release Candidate
+## Milestone 0: v0.1.0-alpha PromotionRun Candidate
 
 Goal: produce a tagged alpha that reviewers can install from a clean clone and
 evaluate in a local cluster.
@@ -35,13 +35,13 @@ Acceptance gates:
 - `go test ./...` passes.
 - `scripts/kind-demo.sh up` completes on a clean machine with Docker, Kind,
   kubectl, Go, and Helm installed.
-- `scripts/kind-demo.sh status` shows the demo Release and ReleaseTargets.
+- `scripts/kind-demo.sh status` shows the demo PromotionRun and PromotionTargets.
 - `scripts/kind-demo.sh approve` unblocks production targets.
 - `docs/install.md`, `docs/kind-demo.md`, `docs/security.md`,
   `docs/security-model.md`, `docs/plugin-authoring.md`, and
   `docs/conformance.md` are linked from the README.
 
-Release artifacts:
+PromotionRun artifacts:
 
 - `CHANGELOG.md` entry for `v0.1.0-alpha`.
 - Container image for the operator.
@@ -58,20 +58,20 @@ Deliverables:
 
 - One-command local demo path documented as the primary reviewer path.
 - Clean install troubleshooting table covering CRDs, RBAC, webhook certs,
-  plugin readiness, ReleaseTrigger blocking, and approval gates.
+  plugin readiness, PromotionTrigger blocking, and approval gates.
 - A short "choose your path" README section:
   - local demo;
   - Helm install;
   - plugin author;
   - operator runbook;
   - security review.
-- Example screenshots or captured output for release progression, gate waiting,
+- Example screenshots or captured output for promotionrun progression, gate waiting,
   approval, and convergence.
 
 Acceptance gates:
 
 - A contributor can run the demo using only the README and `docs/kind-demo.md`.
-- The demo exercises `ReleaseTrigger -> Release -> planner -> gates -> actuator`.
+- The demo exercises `PromotionTrigger -> PromotionRun -> planner -> gates -> actuator`.
 - The demo does not require real OCI credentials, external Flux controllers, or
   production signing keys.
 
@@ -85,7 +85,7 @@ Deliverables:
 - Threat model with actors, assets, trust boundaries, and non-goals.
 - Plugin trust boundary: registration authority, endpoint trust, TLS, Secret
   ownership, and runtime blast radius.
-- OCI/signature trust model for ReleaseTrigger with keyless and key-based
+- OCI/signature trust model for PromotionTrigger with keyless and key-based
   examples.
 - Webhook and gate security guidance.
 - Secure-by-default Helm values and documented deviations for local demos.
@@ -93,10 +93,10 @@ Deliverables:
 Acceptance gates:
 
 - A security reviewer can identify who is allowed to create
-  `PluginRegistration`, `ReleaseTrigger`, and `Approval` objects.
+  `PluginRegistration`, `PromotionTrigger`, and `Approval` objects.
 - Unsigned or untrusted artifacts are documented as blocked when signature
   policy requires verification.
-- The docs explain why external plugins do not own Kapro release state.
+- The docs explain why external plugins do not own Kapro promotionrun state.
 
 ## Milestone 3: Plugin Ecosystem
 
@@ -130,12 +130,12 @@ trial.
 Deliverables:
 
 - Runbooks for:
-  - release stuck;
+  - promotionrun stuck;
   - gate failure rate spike;
   - plugin probe failure;
   - trigger blocked;
   - rollout duration p95 regression;
-  - rollback by creating a new Release.
+  - rollback by creating a new PromotionRun.
 - Prometheus alert rules and Grafana dashboard references in the operations
   guide.
 - Scale assumptions and limits for targets per hub, sharding, workqueue
@@ -179,16 +179,16 @@ Positioning:
 Kapro enables policy-bound agentic workflows for fleet promotion.
 ```
 
-Agents consume release state, planner status, gate evidence, lifecycle events,
+Agents consume promotionrun state, planner status, gate evidence, lifecycle events,
 and audit history. They may explain, recommend, draft context, request approval,
 or create bounded recommendation objects. They must not bypass gates, approvals,
-RBAC, admission policy, or the deterministic release state machine.
+RBAC, admission policy, or the deterministic promotionrun state machine.
 
 Deliverables:
 
 - `AgentRecommendation` API preview for explain/recommend/hold/rollback/request
   approval outputs.
-- Evidence references from recommendations to `ReleaseTarget.status.gates[]`.
+- Evidence references from recommendations to `PromotionTarget.status.gates[]`.
 - `AgentPolicy` enforcement for allowed intents, stages, targets, and actions.
 - AgentGateway design doc describing context payload, response schema, timeout,
   retry, authn/authz, and audit behavior.
@@ -197,7 +197,7 @@ Deliverables:
 
 Acceptance gates:
 
-- Agents can explain a stuck Release using only Kubernetes status and evidence.
+- Agents can explain a stuck PromotionRun using only Kubernetes status and evidence.
 - Agents can propose actions but cannot directly call actuators or mutate
   delivery backends.
 - Production-impacting actions require explicit policy and, where configured,
@@ -208,7 +208,7 @@ Acceptance gates:
 
 1. Run and repair the Kind demo from a clean clone.
 2. Cut `v0.1.0-alpha` release notes and tag after install/demo verification.
-3. Polish the security review path and ReleaseTrigger signature examples.
+3. Polish the security review path and PromotionTrigger signature examples.
 4. Publish the plugin compatibility and conformance quickstart as the external
    plugin author entry point.
 5. Add runbook links to each shipped Prometheus alert.
@@ -224,5 +224,5 @@ The evolution plan is complete when an outside reviewer can:
 2. Run the local demo end to end.
 3. See where security boundaries are enforced.
 4. Build and test a conformant plugin.
-5. Diagnose a stuck release from metrics, events, and status.
+5. Diagnose a stuck promotionrun from metrics, events, and status.
 6. Understand which APIs are alpha, preview, or stable before adopting them.

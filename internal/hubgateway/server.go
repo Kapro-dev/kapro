@@ -21,7 +21,7 @@ import (
 // Kubernetes CRDs remain the durable source of truth.
 type Server struct {
 	Client client.Client
-	// BearerToken gates graph reads and release creation. /healthz is public.
+	// BearerToken gates graph reads and promotionrun creation. /healthz is public.
 	BearerToken []byte
 }
 
@@ -29,7 +29,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.healthz)
 	mux.HandleFunc("/api/v1/graph", s.requireAuth(s.graph))
-	mux.HandleFunc("/api/v1/releases", s.requireAuth(s.releases))
+	mux.HandleFunc("/api/v1/promotionruns", s.requireAuth(s.promotionruns))
 	return mux
 }
 
@@ -45,14 +45,14 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	var kapros kaprov1alpha1.KaproList
-	var clusters kaprov1alpha1.MemberClusterList
-	var releases kaprov1alpha1.ReleaseList
-	var targets kaprov1alpha1.ReleaseTargetList
+	var clusters kaprov1alpha1.FleetClusterList
+	var promotionruns kaprov1alpha1.PromotionRunList
+	var targets kaprov1alpha1.PromotionTargetList
 	var backends kaprov1alpha1.BackendProfileList
 	if err := firstErr(
 		s.Client.List(ctx, &kapros),
 		s.Client.List(ctx, &clusters),
-		s.Client.List(ctx, &releases),
+		s.Client.List(ctx, &promotionruns),
 		s.Client.List(ctx, &targets),
 		s.Client.List(ctx, &backends),
 	); err != nil {
@@ -61,25 +61,25 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, GraphResponse{
-		Kapros:          kapros.Items,
-		MemberClusters:  clusters.Items,
-		Releases:        releases.Items,
-		ReleaseTargets:  targets.Items,
-		BackendProfiles: backends.Items,
+		Kapros:           kapros.Items,
+		FleetClusters:    clusters.Items,
+		PromotionRuns:    promotionruns.Items,
+		PromotionTargets: targets.Items,
+		BackendProfiles:  backends.Items,
 	})
 }
 
-func (s *Server) releases(w http.ResponseWriter, r *http.Request) {
+func (s *Server) promotionruns(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPost:
-		s.createRelease(w, r)
+		s.createPromotionRun(w, r)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-func (s *Server) createRelease(w http.ResponseWriter, r *http.Request) {
-	var req CreateReleaseRequest
+func (s *Server) createPromotionRun(w http.ResponseWriter, r *http.Request) {
+	var req CreatePromotionRunRequest
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
@@ -87,28 +87,28 @@ func (s *Server) createRelease(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := validateCreateReleaseRequest(req); err != nil {
+	if err := validateCreatePromotionRunRequest(req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	release := &kaprov1alpha1.Release{
-		TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "Release"},
+	promotionrun := &kaprov1alpha1.PromotionRun{
+		TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "PromotionRun"},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   req.Name,
 			Labels: req.Labels,
 		},
-		Spec: kaprov1alpha1.ReleaseSpec{
-			Version:   req.Version,
-			Versions:  req.Versions,
-			Pipelines: req.Pipelines,
-			Timeout:   req.Timeout,
+		Spec: kaprov1alpha1.PromotionRunSpec{
+			Version:        req.Version,
+			Versions:       req.Versions,
+			PromotionPlans: req.PromotionPlans,
+			Timeout:        req.Timeout,
 		},
 	}
 	if len(req.Targets) > 0 {
-		release.Spec.Scope = &kaprov1alpha1.ReleaseScope{Targets: req.Targets}
+		promotionrun.Spec.Scope = &kaprov1alpha1.PromotionRunScope{Targets: req.Targets}
 	}
-	if err := s.Client.Create(r.Context(), release); err != nil {
+	if err := s.Client.Create(r.Context(), promotionrun); err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
@@ -120,25 +120,25 @@ func (s *Server) createRelease(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusCreated, release)
+	writeJSON(w, http.StatusCreated, promotionrun)
 }
 
-type CreateReleaseRequest struct {
-	Name      string                             `json:"name"`
-	Version   string                             `json:"version,omitempty"`
-	Versions  map[string]string                  `json:"versions,omitempty"`
-	Pipelines []kaprov1alpha1.ReleasePipelineRef `json:"pipelines"`
-	Targets   []string                           `json:"targets,omitempty"`
-	Timeout   string                             `json:"timeout,omitempty"`
-	Labels    map[string]string                  `json:"labels,omitempty"`
+type CreatePromotionRunRequest struct {
+	Name           string                           `json:"name"`
+	Version        string                           `json:"version,omitempty"`
+	Versions       map[string]string                `json:"versions,omitempty"`
+	PromotionPlans []kaprov1alpha1.PromotionPlanRef `json:"promotionplans"`
+	Targets        []string                         `json:"targets,omitempty"`
+	Timeout        string                           `json:"timeout,omitempty"`
+	Labels         map[string]string                `json:"labels,omitempty"`
 }
 
 type GraphResponse struct {
-	Kapros          []kaprov1alpha1.Kapro          `json:"kapros"`
-	MemberClusters  []kaprov1alpha1.MemberCluster  `json:"memberClusters"`
-	Releases        []kaprov1alpha1.Release        `json:"releases"`
-	ReleaseTargets  []kaprov1alpha1.ReleaseTarget  `json:"releaseTargets"`
-	BackendProfiles []kaprov1alpha1.BackendProfile `json:"backendProfiles"`
+	Kapros           []kaprov1alpha1.Kapro           `json:"kapros"`
+	FleetClusters    []kaprov1alpha1.FleetCluster    `json:"fleetClusters"`
+	PromotionRuns    []kaprov1alpha1.PromotionRun    `json:"promotionruns"`
+	PromotionTargets []kaprov1alpha1.PromotionTarget `json:"promotionTargets"`
+	BackendProfiles  []kaprov1alpha1.BackendProfile  `json:"backendProfiles"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
@@ -164,9 +164,9 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func validateCreateReleaseRequest(req CreateReleaseRequest) error {
-	if req.Name == "" || len(req.Pipelines) == 0 {
-		return fmt.Errorf("name and pipelines are required")
+func validateCreatePromotionRunRequest(req CreatePromotionRunRequest) error {
+	if req.Name == "" || len(req.PromotionPlans) == 0 {
+		return fmt.Errorf("name and promotionplans are required")
 	}
 	if req.Version == "" && len(req.Versions) == 0 {
 		return fmt.Errorf("version or versions is required")
@@ -174,23 +174,23 @@ func validateCreateReleaseRequest(req CreateReleaseRequest) error {
 	if errs := validation.IsDNS1123Subdomain(req.Name); len(errs) > 0 {
 		return fmt.Errorf("name must be a DNS-1123 subdomain: %s", strings.Join(errs, "; "))
 	}
-	if len(req.Pipelines) > 64 {
-		return fmt.Errorf("pipelines must contain at most 64 entries")
+	if len(req.PromotionPlans) > 64 {
+		return fmt.Errorf("promotionplans must contain at most 64 entries")
 	}
 	for unit, version := range req.Versions {
 		if unit == "" || version == "" {
 			return fmt.Errorf("versions must use non-empty unit and version values")
 		}
 	}
-	for i, p := range req.Pipelines {
-		if p.Name == "" || p.Pipeline == "" {
-			return fmt.Errorf("pipelines[%d].name and pipelines[%d].pipeline are required", i, i)
+	for i, p := range req.PromotionPlans {
+		if p.Name == "" || p.PromotionPlan == "" {
+			return fmt.Errorf("promotionplans[%d].name and promotionplans[%d].promotionplan are required", i, i)
 		}
 		if errs := validation.IsDNS1123Subdomain(p.Name); len(errs) > 0 {
-			return fmt.Errorf("pipelines[%d].name must be a DNS-1123 subdomain: %s", i, strings.Join(errs, "; "))
+			return fmt.Errorf("promotionplans[%d].name must be a DNS-1123 subdomain: %s", i, strings.Join(errs, "; "))
 		}
-		if errs := validation.IsDNS1123Subdomain(p.Pipeline); len(errs) > 0 {
-			return fmt.Errorf("pipelines[%d].pipeline must be a DNS-1123 subdomain: %s", i, strings.Join(errs, "; "))
+		if errs := validation.IsDNS1123Subdomain(p.PromotionPlan); len(errs) > 0 {
+			return fmt.Errorf("promotionplans[%d].promotionplan must be a DNS-1123 subdomain: %s", i, strings.Join(errs, "; "))
 		}
 	}
 	if req.Timeout != "" {

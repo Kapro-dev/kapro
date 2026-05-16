@@ -14,7 +14,7 @@ agent workflows.
 ## Evidence
 
 Gate evidence is structured, non-secret data persisted on
-`ReleaseTarget.status.gates[].evidence[]`. It can include:
+`PromotionTarget.status.gates[].evidence[]`. It can include:
 
 - provider and analysis mode;
 - query, window, and interval;
@@ -52,11 +52,11 @@ response, they return the same phase and evidence.
 
 The model follows common progressive-delivery practice: explicit canary/control
 comparison, SLO/error-budget reasoning, and sequential evaluation to reduce
-release exposure while controlling premature decisions. See:
+promotionrun exposure while controlling premature decisions. See:
 
 - Michael Lindon, Chris Sanden, and Vache Shirikian, "Rapid Regression Detection in Software Deployments through Sequential Testing", KDD 2022.
 - David Daly, William Brown, Henrik Ingo, Jim O'Leary, and David Bradford, "Change Point Detection in Software Performance Testing", 2020.
 - Matt Fleming et al., "Hunter: Using Change Point Detection to Hunt for Performance Regressions", 2023.
 - Alexander Tarvo et al., "CanaryAdvisor: A Statistical-Based Tool for Canary Testing", ISSTA 2015.
-- Google SRE Workbook, "Canarying Releases".
+- Google SRE Workbook, "Canarying PromotionRuns".
 - Argo Rollouts Analysis for Kubernetes-native analysis-run semantics.

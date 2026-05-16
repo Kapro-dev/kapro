@@ -13,7 +13,7 @@ Usage: scripts/kind-demo.sh <up|approve|fixtures|status|down>
 Commands:
   up       Create the Kind cluster, install Kapro, apply demo config, and start the rollout.
   approve   Apply the production Approval objects so the rollout can finish.
-  fixtures  Re-patch fake Flux and MemberCluster statuses after a manual reset.
+  fixtures  Re-patch fake Flux and FleetCluster statuses after a manual reset.
   status    Print the key demo resources.
   down      Delete the Kind cluster.
 
@@ -42,7 +42,7 @@ create_cluster() {
   if kind_cluster_exists; then
     echo "kind cluster ${CLUSTER_NAME} already exists"
   else
-    kind create cluster --config "${ROOT}/examples/kind-demo/kind-cluster.yaml"
+    kind create cluster --name "${CLUSTER_NAME}" --config "${ROOT}/examples/kind-demo/kind-cluster.yaml"
   fi
 }
 
@@ -86,20 +86,20 @@ apply_demo_objects() {
 
   echo "applying Kapro demo config"
   "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/00-plugins.yaml"
-  "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/01-memberclusters.yaml"
-  patch_membercluster_status checkout-canary
-  patch_membercluster_status checkout-prod-eu
-  patch_membercluster_status checkout-prod-us
-  "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/02-pipeline.yaml"
-  "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/03-release-trigger.yaml"
-  "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/04-release.yaml"
+  "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/01-fleetclusters.yaml"
+  patch_fleetcluster_status checkout-canary
+  patch_fleetcluster_status checkout-prod-eu
+  patch_fleetcluster_status checkout-prod-us
+  "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/02-promotionplan.yaml"
+  "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/03-promotion-trigger.yaml"
+  "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/04-promotionrun.yaml"
 }
 
-patch_membercluster_status() {
+patch_fleetcluster_status() {
   local cluster="$1"
   local now
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  "${KUBECTL[@]}" patch membercluster "${cluster}" \
+  "${KUBECTL[@]}" patch fleetcluster "${cluster}" \
     --subresource=status \
     --type=merge \
     -p "{\"status\":{\"phase\":\"Converged\",\"version\":\"v1.2.2-kind\",\"currentVersions\":{\"default\":\"v1.2.2-kind\"},\"deliverySystem\":\"flux\",\"lastHeartbeat\":\"${now}\",\"health\":{\"allWorkloadsReady\":true,\"readyWorkloads\":1,\"totalWorkloads\":1},\"conditions\":[{\"type\":\"Ready\",\"status\":\"True\",\"reason\":\"FixtureReady\",\"message\":\"Kind demo fixture reports ready\",\"lastTransitionTime\":\"${now}\"}]}}"
@@ -122,17 +122,17 @@ patch_fixture_status() {
   done
 }
 
-wait_for_releasetargets() {
-  echo "waiting for ReleaseTargets to be created"
+wait_for_promotiontargets() {
+  echo "waiting for PromotionTargets to be created"
   for _ in $(seq 1 60); do
-    if "${KUBECTL[@]}" get releasetargets >/dev/null 2>&1; then
-      if [ "$("${KUBECTL[@]}" get releasetargets --no-headers 2>/dev/null | wc -l | tr -d ' ')" != "0" ]; then
+    if "${KUBECTL[@]}" get promotiontargets >/dev/null 2>&1; then
+      if [ "$("${KUBECTL[@]}" get promotiontargets --no-headers 2>/dev/null | wc -l | tr -d ' ')" != "0" ]; then
         return
       fi
     fi
     sleep 2
   done
-  echo "timed out waiting for ReleaseTargets; use scripts/kind-demo.sh status for details" >&2
+  echo "timed out waiting for PromotionTargets; use scripts/kind-demo.sh status for details" >&2
 }
 
 approve() {
@@ -142,9 +142,9 @@ approve() {
 
 fixtures() {
   patch_fixture_status
-  patch_membercluster_status checkout-canary
-  patch_membercluster_status checkout-prod-eu
-  patch_membercluster_status checkout-prod-us
+  patch_fleetcluster_status checkout-canary
+  patch_fleetcluster_status checkout-prod-eu
+  patch_fleetcluster_status checkout-prod-us
   echo "fixture statuses patched"
 }
 
@@ -153,17 +153,17 @@ status() {
   echo "Kapro operator"
   "${KUBECTL[@]}" -n kapro-system get pods
   echo
-  echo "ReleaseTrigger"
-  "${KUBECTL[@]}" get releasetriggers checkout-kind-trigger -o wide || true
+  echo "PromotionTrigger"
+  "${KUBECTL[@]}" get promotiontriggers checkout-kind-trigger -o wide || true
   echo
-  echo "Release"
-  "${KUBECTL[@]}" get releases checkout-kind -o wide || true
+  echo "PromotionRun"
+  "${KUBECTL[@]}" get promotionruns checkout-kind -o wide || true
   echo
-  echo "ReleaseTargets"
-  "${KUBECTL[@]}" get releasetargets -o wide || true
+  echo "PromotionTargets"
+  "${KUBECTL[@]}" get promotiontargets -o wide || true
   echo
-  echo "MemberClusters"
-  "${KUBECTL[@]}" get memberclusters -o wide || true
+  echo "FleetClusters"
+  "${KUBECTL[@]}" get fleetclusters -o wide || true
   echo
   echo "ResourceSet inputs"
   "${KUBECTL[@]}" -n flux-system get resourceset checkout-demo -o jsonpath='{.spec.inputs}' || true
@@ -176,7 +176,7 @@ up() {
   build_and_load_operator
   install_kapro
   apply_demo_objects
-  wait_for_releasetargets
+  wait_for_promotiontargets
   status
   cat <<EOF
 Demo is running.

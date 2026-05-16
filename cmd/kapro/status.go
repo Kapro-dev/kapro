@@ -55,22 +55,22 @@ func runStatus(ctx context.Context, kaproName, kubeconfigPath string) error {
 		return err
 	}
 
-	// Load MemberClusters.
-	var allClusters kaprov1alpha1.MemberClusterList
+	// Load FleetClusters.
+	var allClusters kaprov1alpha1.FleetClusterList
 	if err := c.List(ctx, &allClusters); err != nil {
 		sp.StopFail("Failed to list clusters")
 		return err
 	}
 
-	// Load active Releases.
-	var releases kaprov1alpha1.ReleaseList
-	if err := c.List(ctx, &releases); err != nil {
-		sp.StopFail("Failed to list releases")
+	// Load active PromotionRuns.
+	var promotionruns kaprov1alpha1.PromotionRunList
+	if err := c.List(ctx, &promotionruns); err != nil {
+		sp.StopFail("Failed to list promotionruns")
 		return err
 	}
 
-	// Load ReleaseTargets.
-	var targets kaprov1alpha1.ReleaseTargetList
+	// Load PromotionTargets.
+	var targets kaprov1alpha1.PromotionTargetList
 	if err := c.List(ctx, &targets); err != nil {
 		sp.StopFail("Failed to list targets")
 		return err
@@ -79,10 +79,10 @@ func runStatus(ctx context.Context, kaproName, kubeconfigPath string) error {
 
 	if cli.IsJSON() {
 		return cli.JSON(map[string]any{
-			"kapros":   kapros.Items,
-			"clusters": allClusters.Items,
-			"releases": releases.Items,
-			"targets":  targets.Items,
+			"kapros":        kapros.Items,
+			"clusters":      allClusters.Items,
+			"promotionruns": promotionruns.Items,
+			"targets":       targets.Items,
 		})
 	}
 
@@ -104,13 +104,13 @@ func runStatus(ctx context.Context, kaproName, kubeconfigPath string) error {
 	}
 
 	for _, kapro := range filteredKapros {
-		renderKaproStatus(kapro, allClusters.Items, releases.Items, targets.Items)
+		renderKaproStatus(kapro, allClusters.Items, promotionruns.Items, targets.Items)
 	}
 
 	return nil
 }
 
-func renderKaproStatus(kapro kaprov1alpha1.Kapro, allClusters []kaprov1alpha1.MemberCluster, releases []kaprov1alpha1.Release, targets []kaprov1alpha1.ReleaseTarget) {
+func renderKaproStatus(kapro kaprov1alpha1.Kapro, allClusters []kaprov1alpha1.FleetCluster, promotionruns []kaprov1alpha1.PromotionRun, targets []kaprov1alpha1.PromotionTarget) {
 	cli.Header(fmt.Sprintf("kapro/%s", kapro.Name))
 
 	// Summary line.
@@ -125,12 +125,12 @@ func renderKaproStatus(kapro kaprov1alpha1.Kapro, allClusters []kaprov1alpha1.Me
 	cli.KV("Clusters", fmt.Sprintf("%d total, %d converged",
 		kapro.Status.ClusterCount, kapro.Status.ConvergedCount))
 
-	// Active release.
-	activeRelease := findActiveRelease(releases)
-	if activeRelease != nil {
-		cli.KV("Release", fmt.Sprintf("%s → %s (%s)",
-			activeRelease.Name, activeRelease.Spec.Version,
-			cli.Theme.PhaseProgressing.Render(string(activeRelease.Status.Phase))))
+	// Active promotionrun.
+	activePromotionRun := findActivePromotionRun(promotionruns)
+	if activePromotionRun != nil {
+		cli.KV("PromotionRun", fmt.Sprintf("%s → %s (%s)",
+			activePromotionRun.Name, activePromotionRun.Spec.Version,
+			cli.Theme.PhaseProgressing.Render(string(activePromotionRun.Status.Phase))))
 	}
 
 	// Cluster table.
@@ -191,7 +191,7 @@ func renderKaproStatus(kapro kaprov1alpha1.Kapro, allClusters []kaprov1alpha1.Me
 	}
 	if pendingApprovals > 0 {
 		fmt.Fprintln(cli.Out)
-		cli.Warn(fmt.Sprintf("%d targets waiting for approval — run: kapro approve <release>/<target>", pendingApprovals))
+		cli.Warn(fmt.Sprintf("%d targets waiting for approval — run: kapro approve <promotionrun>/<target>", pendingApprovals))
 	}
 }
 
@@ -235,10 +235,10 @@ func colorHealth(healthy bool, ready, total int) string {
 	return cli.Theme.Muted.Render("—")
 }
 
-func findActiveRelease(releases []kaprov1alpha1.Release) *kaprov1alpha1.Release {
-	for i := range releases {
-		if releases[i].Status.Phase == kaprov1alpha1.ReleasePhaseProgressing {
-			return &releases[i]
+func findActivePromotionRun(promotionruns []kaprov1alpha1.PromotionRun) *kaprov1alpha1.PromotionRun {
+	for i := range promotionruns {
+		if promotionruns[i].Status.Phase == kaprov1alpha1.PromotionRunPhaseProgressing {
+			return &promotionruns[i]
 		}
 	}
 	return nil

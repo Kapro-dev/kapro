@@ -21,7 +21,7 @@ It helps platform teams:
 - halt progression when gates are inconclusive or failing;
 - delegate actual workload reconciliation to Flux, Argo CD, Kubernetes, or
   backend-specific controllers;
-- keep release history inspectable through Kubernetes APIs.
+- keep promotionrun history inspectable through Kubernetes APIs.
 
 ## What To Lead With
 
@@ -67,7 +67,7 @@ These claims are safe:
 - Kapro is extensible through narrow, conformance-tested plugin contracts.
 - Kapro is conservative: unclear gate data returns `Inconclusive`.
 - Kapro complements existing GitOps and progressive-delivery projects.
-- Current alpha releases are production-capable only for controlled adopters
+- Current alpha promotionruns are production-capable only for controlled adopters
   that run the documented verification and accept `v1alpha1` API movement.
 
 Avoid these claims:

@@ -23,16 +23,16 @@ func webhookTestScheme(t *testing.T) *runtime.Scheme {
 	return scheme
 }
 
-func TestHandleStatus_RequiresReleaseInOperatorNamespace(t *testing.T) {
+func TestHandleStatus_RequiresPromotionRunInOperatorNamespace(t *testing.T) {
 	scheme := webhookTestScheme(t)
-	target := &kaprov1alpha1.ReleaseTarget{
+	target := &kaprov1alpha1.PromotionTarget{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-wave-prod-cluster-a"},
-		Spec: kaprov1alpha1.ReleaseTargetSpec{
-			ReleaseRef: "rel-1",
-			Target:     "cluster-a",
-			Version:    "repo@sha256:abc",
+		Spec: kaprov1alpha1.PromotionTargetSpec{
+			PromotionRunRef: "rel-1",
+			Target:          "cluster-a",
+			Version:         "repo@sha256:abc",
 		},
-		Status: kaprov1alpha1.ReleaseTargetStatus{
+		Status: kaprov1alpha1.PromotionTargetStatus{
 			TargetStatus: kaprov1alpha1.TargetStatus{Phase: kaprov1alpha1.TargetPhaseWaitingApproval},
 		},
 	}
@@ -48,33 +48,33 @@ func TestHandleStatus_RequiresReleaseInOperatorNamespace(t *testing.T) {
 	s.handleStatus(rec, req)
 
 	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404 when owning release is absent in operator namespace, got %d", rec.Code)
+		t.Fatalf("expected 404 when owning promotionrun is absent in operator namespace, got %d", rec.Code)
 	}
 }
 
-func TestHandleReject_TargetReleaseMismatchRejected(t *testing.T) {
+func TestHandleReject_TargetPromotionRunMismatchRejected(t *testing.T) {
 	scheme := webhookTestScheme(t)
-	release := &kaprov1alpha1.Release{
+	promotionrun := &kaprov1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default", UID: "uid-1"},
 	}
-	target := &kaprov1alpha1.ReleaseTarget{
+	target := &kaprov1alpha1.PromotionTarget{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1-deadbeef"},
-		Spec: kaprov1alpha1.ReleaseTargetSpec{
-			ReleaseRef: "other-release",
-			Target:     "cluster-a",
+		Spec: kaprov1alpha1.PromotionTargetSpec{
+			PromotionRunRef: "other-promotionrun",
+			Target:          "cluster-a",
 		},
 	}
 	s := &Server{
-		Client:      fake.NewClientBuilder().WithScheme(scheme).WithObjects(release, target).Build(),
+		Client:      fake.NewClientBuilder().WithScheme(scheme).WithObjects(promotionrun, target).Build(),
 		TokenSecret: []byte("secret"),
 	}
 	claims := token.Claims{
-		Action:    "reject",
-		Namespace: "default",
-		Release:   "rel-1",
-		Target:    "cluster-a",
-		UID:       "uid-1/" + target.Name,
-		Exp:       1 << 62,
+		Action:       "reject",
+		Namespace:    "default",
+		PromotionRun: "rel-1",
+		Target:       "cluster-a",
+		UID:          "uid-1/" + target.Name,
+		Exp:          1 << 62,
 	}
 	tokenStr, err := token.Sign(claims, s.TokenSecret)
 	if err != nil {
@@ -87,6 +87,6 @@ func TestHandleReject_TargetReleaseMismatchRejected(t *testing.T) {
 	s.handleReject(rec, req)
 
 	if rec.Code != http.StatusConflict {
-		t.Fatalf("expected 409 on target/release mismatch, got %d", rec.Code)
+		t.Fatalf("expected 409 on target/promotionrun mismatch, got %d", rec.Code)
 	}
 }

@@ -3,11 +3,12 @@ resources:
 - bases/kapro.io_approvals.yaml
 - bases/kapro.io_promotionsources.yaml
 - bases/kapro.io_kaproes.yaml
-- bases/kapro.io_memberclusters.yaml
+- bases/kapro.io_fleetclusters.yaml
 - bases/kapro.io_notificationpolicies.yaml
 - bases/kapro.io_notificationproviders.yaml
-- bases/kapro.io_pipelines.yaml
+- bases/kapro.io_promotionplans.yaml
+- bases/kapro.io_promotionpolicies.yaml
 - bases/kapro.io_pluginregistrations.yaml
-- bases/kapro.io_releases.yaml
-- bases/kapro.io_releasetargets.yaml
-- bases/kapro.io_releasetriggers.yaml
+- bases/kapro.io_promotionruns.yaml
+- bases/kapro.io_promotiontargets.yaml
+- bases/kapro.io_promotiontriggers.yaml

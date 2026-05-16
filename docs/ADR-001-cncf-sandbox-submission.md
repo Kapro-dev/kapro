@@ -50,27 +50,27 @@ Existing tools cover adjacent layers:
 - Kargo manages artifact promotion through environment stages;
 - policy and observability systems evaluate domain-specific signals.
 
-Kapro fills the fleet promotion layer: release topology, target planning,
+Kapro fills the fleet promotion layer: promotionrun topology, target planning,
 cross-cluster wave ordering, gate lifecycle, approval state, backend convergence,
-and auditable release outcome.
+and auditable promotionrun outcome.
 
 ## Architecture Summary
 
 Kapro's core architecture is Kubernetes-native:
 
-- CRDs define Releases, Pipelines, MemberClusters, ReleaseTargets, approvals,
+- CRDs define PromotionRuns, PromotionPlans, FleetClusters, PromotionTargets, approvals,
   plugins, notifications, and guarded triggers.
-- Controllers reconcile desired release state into per-target rollout state.
+- Controllers reconcile desired promotionrun state into per-target rollout state.
 - Actuators apply one version to one target through backend-specific adapters.
 - Gates decide whether one target may advance and record structured evidence.
 - Planner logic filters and orders targets before rollout.
-- Lifecycle events and notifications expose release transitions to external
+- Lifecycle events and notifications expose promotionrun transitions to external
   systems.
 - KAI, KGI, and KPI define narrow extension contracts with conformance
   harnesses.
 
 The core state machine remains deterministic. Plugins, gates, triggers,
-notifications, and future agents extend the system without owning release state.
+notifications, and future agents extend the system without owning promotionrun state.
 
 ## Relationship to Existing CNCF Projects
 
@@ -105,18 +105,18 @@ must remain conservative and explainable: insufficient data returns
 
 ## Agent Boundary
 
-Future agents may help operators understand and act on release evidence.
+Future agents may help operators understand and act on promotionrun evidence.
 
 Agents may:
 
-- summarize gate evidence and release state;
+- summarize gate evidence and promotionrun state;
 - recommend rollback or approval context;
 - explain blocked targets;
 - invoke approved actions under `AgentPolicy`.
 
 Agents must not:
 
-- replace the release controller;
+- replace the promotionrun controller;
 - bypass gates or approvals;
 - mutate delivery backends directly;
 - make production changes without Kubernetes API policy and audit.
@@ -134,7 +134,7 @@ clear extension path for teams that do.
 | API maturity | Alpha/preview; acceptable for Sandbox but must be documented clearly. |
 | Community | Needs work: more maintainers, public adoption evidence, regular project process. |
 | Install/demo path | Must be easy and repeatable before submission. |
-| Security | Needs continued hardening: threat model, RBAC, plugin trust, release-trigger safeguards. |
+| Security | Needs continued hardening: threat model, RBAC, plugin trust, promotion-trigger safeguards. |
 
 ## Decision
 

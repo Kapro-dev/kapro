@@ -93,7 +93,7 @@ spec:
                 - requireReasoning
                 type: object
               blastRadius:
-                description: BlastRadius caps the maximum fleet impact per Release.
+                description: BlastRadius caps the maximum fleet impact per PromotionRun.
                 properties:
                   maxAbsoluteClusters:
                     description: MaxAbsoluteClusters is the hard cap regardless of
@@ -103,7 +103,7 @@ spec:
                   maxPercentOfFleet:
                     description: |-
                       MaxPercentOfFleet is the maximum percentage of total clusters
-                      the agent may approve in a single Release.
+                      the agent may approve in a single PromotionRun.
                     format: int32
                     maximum: 100
                     minimum: 0
@@ -309,7 +309,7 @@ spec:
                       type: object
                     type: array
                   excludeClusters:
-                    description: ExcludeClusters is an explicit denylist of MemberCluster
+                    description: ExcludeClusters is an explicit denylist of FleetCluster
                       names.
                     items:
                       type: string

@@ -126,10 +126,10 @@ func (s *capacityPlannerServer) planTarget(target *kpiv1alpha1.Target, minCapaci
 		item.target.Message = "target is not ready"
 		return item
 	}
-	if target.GetActiveRelease() != "" {
+	if target.GetActivePromotionRun() != "" {
 		item.target.Decision = kpiv1alpha1.PlanningDecision_PLANNING_DECISION_DEFER
-		item.target.Reason = "ActiveRelease"
-		item.target.Message = fmt.Sprintf("target already has active release %q", target.GetActiveRelease())
+		item.target.Reason = "ActivePromotionRun"
+		item.target.Message = fmt.Sprintf("target already has active promotionrun %q", target.GetActivePromotionRun())
 		return item
 	}
 	for _, key := range sortedLabelKeys(labelFilters) {

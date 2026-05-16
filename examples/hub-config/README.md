@@ -10,15 +10,15 @@ For the source-of-truth model, see [docs/hub-config-source-of-truth.md](../../do
 
 ```
 clusters/
-  canary-eu.yaml              MemberCluster for the canary spoke
-  prod-eu.yaml                MemberCluster for a production EU spoke
-  prod-us.yaml                MemberCluster for a production US spoke
+  canary-eu.yaml              FleetCluster for the canary spoke
+  prod-eu.yaml                FleetCluster for a production EU spoke
+  prod-us.yaml                FleetCluster for a production US spoke
 sources/
   checkout.yaml               PromotionSource unit and registry metadata
-pipelines/
-  checkout-progressive.yaml   Pipeline stages, selectors, and gates
-releases/
-  checkout-v1.2.3.yaml        Release intent for one immutable OCI bundle
+promotionplans/
+  checkout-progressive.yaml   PromotionPlan stages, selectors, and gates
+promotionruns/
+  checkout-v1.2.3.yaml        PromotionRun intent for one immutable OCI bundle
 .github/workflows/
   apply-kapro-hub-config.yaml Pull request validation and main-branch apply
 ```
@@ -27,25 +27,25 @@ releases/
 
 1. Copy this directory into a new hub config git repository.
 2. Configure hub cluster authentication in `.github/workflows/apply-kapro-hub-config.yaml`.
-3. Edit `clusters/`, `sources/`, `pipelines/`, and `releases/` for your fleet.
+3. Edit `clusters/`, `sources/`, `promotionplans/`, and `promotionruns/` for your fleet.
 4. Open a pull request. CI runs server-side validation and `kubectl diff`.
 5. Merge to `main`. CI applies the directories to the hub cluster in order.
-6. Kapro reconciles the `Release` and spoke clusters pull the referenced OCI bundle.
+6. Kapro reconciles the `PromotionRun` and spoke clusters pull the referenced OCI bundle.
 
 ## Apply Order
 
 Apply configuration in this order:
 
-1. `clusters/` - creates `MemberCluster` inventory and labels.
+1. `clusters/` - creates `FleetCluster` inventory and labels.
 2. `sources/` - creates reusable `PromotionSource` metadata.
-3. `pipelines/` - creates reusable rollout stage DAGs.
-4. `releases/` - creates release intent that references the pipeline.
+3. `promotionplans/` - creates reusable rollout stage DAGs.
+4. `promotionruns/` - creates promotionrun intent that references the promotionplan.
 
 ```bash
 kubectl apply -f clusters/
 kubectl apply -f sources/
-kubectl apply -f pipelines/
-kubectl apply -f releases/
+kubectl apply -f promotionplans/
+kubectl apply -f promotionruns/
 ```
 
 ## Validation Commands
@@ -55,21 +55,21 @@ Run these commands against a hub cluster with the Kapro CRDs installed:
 ```bash
 kubectl apply --dry-run=server -f clusters/
 kubectl apply --dry-run=server -f sources/
-kubectl apply --dry-run=server -f pipelines/
-kubectl apply --dry-run=server -f releases/
+kubectl apply --dry-run=server -f promotionplans/
+kubectl apply --dry-run=server -f promotionruns/
 
 kubectl diff -f clusters/ || true
 kubectl diff -f sources/ || true
-kubectl diff -f pipelines/ || true
-kubectl diff -f releases/ || true
+kubectl diff -f promotionplans/ || true
+kubectl diff -f promotionruns/ || true
 ```
 
 After apply:
 
 ```bash
-kubectl get memberclusters.kapro.io
-kubectl get promotionsources.kapro.io,pipelines.kapro.io,releases.kapro.io
-kubectl describe releases.kapro.io checkout-v1-2-3
+kubectl get fleetclusters.kapro.io
+kubectl get promotionsources.kapro.io,promotionplans.kapro.io,promotionruns.kapro.io
+kubectl describe promotionruns.kapro.io checkout-v1-2-3
 ```
 
 ## Ownership Boundaries

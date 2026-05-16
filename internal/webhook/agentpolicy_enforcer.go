@@ -45,8 +45,8 @@ func (s *Server) resolveAgentPolicy(ctx context.Context, agentName string) (*kap
 // Returns a PolicyDecision indicating whether the decision is allowed.
 func enforceAgentPolicy(
 	policy *kaprov1alpha1.AgentPolicy,
-	target *kaprov1alpha1.ReleaseTarget,
-	cluster *kaprov1alpha1.MemberCluster,
+	target *kaprov1alpha1.PromotionTarget,
+	cluster *kaprov1alpha1.FleetCluster,
 	confidence float64,
 	reasoningLen int,
 ) PolicyDecision {

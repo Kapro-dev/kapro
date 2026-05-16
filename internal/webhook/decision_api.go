@@ -7,14 +7,14 @@
 // Context endpoints (read-only):
 //
 //	GET /api/v1/fleet                                    — fleet-wide summary
-//	GET /api/v1/releases/{name}/context                  — full release context
-//	GET /api/v1/releases/{name}/targets/{key}/gate       — gate evaluation context
+//	GET /api/v1/promotionruns/{name}/context                  — full promotionrun context
+//	GET /api/v1/promotionruns/{name}/targets/{key}/gate       — gate evaluation context
 //	GET /api/v1/clusters/{name}/health                   — cluster health
 //
 // Decision endpoints (mutating):
 //
-//	POST /api/v1/releases/{name}/targets/{key}/decide    — submit a decision
-//	POST /api/v1/releases/{name}/targets/{key}/override  — human override
+//	POST /api/v1/promotionruns/{name}/targets/{key}/decide    — submit a decision
+//	POST /api/v1/promotionruns/{name}/targets/{key}/override  — human override
 package webhook
 
 import (
@@ -39,7 +39,7 @@ const maxDecisionTraceHistory = 10
 // RegisterDecisionAPI mounts the Decision API endpoints on the given mux.
 func (s *Server) RegisterDecisionAPI(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/fleet", s.handleFleet)
-	mux.HandleFunc("/api/v1/releases/", s.routeRelease)
+	mux.HandleFunc("/api/v1/promotionruns/", s.routePromotionRun)
 	mux.HandleFunc("/api/v1/clusters/", s.handleClusterHealth)
 }
 
@@ -47,17 +47,17 @@ func (s *Server) RegisterDecisionAPI(mux *http.ServeMux) {
 
 // FleetSummary is the response for GET /api/v1/fleet.
 type FleetSummary struct {
-	GeneratedAt      string           `json:"generatedAt"`
-	TotalClusters    int              `json:"totalClusters"`
-	HealthyClusters  int              `json:"healthyClusters"`
-	DegradedClusters int              `json:"degradedClusters"`
-	ActiveReleases   int              `json:"activeReleases"`
-	PendingDecisions int              `json:"pendingDecisions"`
-	Clusters         []ClusterSummary `json:"clusters"`
-	Releases         []ReleaseSummary `json:"releases"`
+	GeneratedAt         string                `json:"generatedAt"`
+	TotalClusters       int                   `json:"totalClusters"`
+	HealthyClusters     int                   `json:"healthyClusters"`
+	DegradedClusters    int                   `json:"degradedClusters"`
+	ActivePromotionRuns int                   `json:"activePromotionRuns"`
+	PendingDecisions    int                   `json:"pendingDecisions"`
+	Clusters            []ClusterSummary      `json:"clusters"`
+	PromotionRuns       []PromotionRunSummary `json:"promotionruns"`
 }
 
-// ClusterSummary is a compact view of one MemberCluster.
+// ClusterSummary is a compact view of one FleetCluster.
 type ClusterSummary struct {
 	Name          string            `json:"name"`
 	Labels        map[string]string `json:"labels"`
@@ -67,12 +67,12 @@ type ClusterSummary struct {
 	Versions      map[string]string `json:"versions,omitempty"`
 }
 
-// ReleaseSummary is a compact view of one Release.
-type ReleaseSummary struct {
-	Name      string `json:"name"`
-	Phase     string `json:"phase"`
-	Pipeline  string `json:"pipeline,omitempty"`
-	StartedAt string `json:"startedAt,omitempty"`
+// PromotionRunSummary is a compact view of one PromotionRun.
+type PromotionRunSummary struct {
+	Name          string `json:"name"`
+	Phase         string `json:"phase"`
+	PromotionPlan string `json:"promotionplan,omitempty"`
+	StartedAt     string `json:"startedAt,omitempty"`
 }
 
 func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
@@ -83,20 +83,20 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	var clusters kaprov1alpha1.MemberClusterList
+	var clusters kaprov1alpha1.FleetClusterList
 	if err := s.Client.List(ctx, &clusters); err != nil {
 		http.Error(w, "failed to list clusters", http.StatusInternalServerError)
 		return
 	}
 
-	var releases kaprov1alpha1.ReleaseList
-	if err := s.Client.List(ctx, &releases); err != nil {
-		http.Error(w, "failed to list releases", http.StatusInternalServerError)
+	var promotionruns kaprov1alpha1.PromotionRunList
+	if err := s.Client.List(ctx, &promotionruns); err != nil {
+		http.Error(w, "failed to list promotionruns", http.StatusInternalServerError)
 		return
 	}
 
-	// Count pending decisions across all active releases.
-	var targets kaprov1alpha1.ReleaseTargetList
+	// Count pending decisions across all active promotionruns.
+	var targets kaprov1alpha1.PromotionTargetList
 	if err := s.Client.List(ctx, &targets); err != nil {
 		http.Error(w, "failed to list targets", http.StatusInternalServerError)
 		return
@@ -128,69 +128,69 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	activeReleases := 0
-	releaseSummaries := make([]ReleaseSummary, 0, len(releases.Items))
-	for _, rel := range releases.Items {
-		if rel.Status.Phase == kaprov1alpha1.ReleasePhaseProgressing {
-			activeReleases++
+	activePromotionRuns := 0
+	promotionrunSummaries := make([]PromotionRunSummary, 0, len(promotionruns.Items))
+	for _, rel := range promotionruns.Items {
+		if rel.Status.Phase == kaprov1alpha1.PromotionRunPhaseProgressing {
+			activePromotionRuns++
 		}
-		pipeline := ""
-		if len(rel.Spec.Pipelines) > 0 {
-			pipeline = rel.Spec.Pipelines[0].Pipeline
+		promotionplan := ""
+		if len(rel.Spec.PromotionPlans) > 0 {
+			promotionplan = rel.Spec.PromotionPlans[0].PromotionPlan
 		}
-		releaseSummaries = append(releaseSummaries, ReleaseSummary{
-			Name:      rel.Name,
-			Phase:     string(rel.Status.Phase),
-			Pipeline:  pipeline,
-			StartedAt: rel.Status.StartedAt,
+		promotionrunSummaries = append(promotionrunSummaries, PromotionRunSummary{
+			Name:          rel.Name,
+			Phase:         string(rel.Status.Phase),
+			PromotionPlan: promotionplan,
+			StartedAt:     rel.Status.StartedAt,
 		})
 	}
 
 	writeJSON(w, http.StatusOK, FleetSummary{
-		GeneratedAt:      time.Now().UTC().Format(time.RFC3339),
-		TotalClusters:    len(clusters.Items),
-		HealthyClusters:  healthy,
-		DegradedClusters: degraded,
-		ActiveReleases:   activeReleases,
-		PendingDecisions: pendingDecisions,
-		Clusters:         clusterSummaries,
-		Releases:         releaseSummaries,
+		GeneratedAt:         time.Now().UTC().Format(time.RFC3339),
+		TotalClusters:       len(clusters.Items),
+		HealthyClusters:     healthy,
+		DegradedClusters:    degraded,
+		ActivePromotionRuns: activePromotionRuns,
+		PendingDecisions:    pendingDecisions,
+		Clusters:            clusterSummaries,
+		PromotionRuns:       promotionrunSummaries,
 	})
 }
 
-// --- Release Context ---
+// --- PromotionRun Context ---
 
-// ReleaseContext is the response for GET /api/v1/releases/{name}/context.
-type ReleaseContext struct {
-	GeneratedAt string                        `json:"generatedAt"`
-	Release     kaprov1alpha1.Release         `json:"release"`
-	Pipeline    *kaprov1alpha1.Pipeline       `json:"pipeline,omitempty"`
-	Targets     []kaprov1alpha1.ReleaseTarget `json:"targets"`
+// PromotionRunContext is the response for GET /api/v1/promotionruns/{name}/context.
+type PromotionRunContext struct {
+	GeneratedAt   string                          `json:"generatedAt"`
+	PromotionRun  kaprov1alpha1.PromotionRun      `json:"promotionrun"`
+	PromotionPlan *kaprov1alpha1.PromotionPlan    `json:"promotionplan,omitempty"`
+	Targets       []kaprov1alpha1.PromotionTarget `json:"targets"`
 }
 
 // --- Gate Context ---
 
-// GateContext is the response for GET /api/v1/releases/{name}/targets/{key}/gate.
+// GateContext is the response for GET /api/v1/promotionruns/{name}/targets/{key}/gate.
 type GateContext struct {
-	GeneratedAt string                       `json:"generatedAt"`
-	Target      kaprov1alpha1.ReleaseTarget  `json:"target"`
-	Release     kaprov1alpha1.Release        `json:"release"`
-	Cluster     *kaprov1alpha1.MemberCluster `json:"cluster,omitempty"`
-	Precedents  []DecisionPrecedent          `json:"precedents,omitempty"`
+	GeneratedAt  string                        `json:"generatedAt"`
+	Target       kaprov1alpha1.PromotionTarget `json:"target"`
+	PromotionRun kaprov1alpha1.PromotionRun    `json:"promotionrun"`
+	Cluster      *kaprov1alpha1.FleetCluster   `json:"cluster,omitempty"`
+	Precedents   []DecisionPrecedent           `json:"precedents,omitempty"`
 }
 
 // DecisionPrecedent is a historical decision on this target for agent learning.
 type DecisionPrecedent struct {
-	Release    string  `json:"release"`
-	Decision   string  `json:"decision"`
-	Confidence float64 `json:"confidence"`
-	Outcome    string  `json:"outcome"`
-	Agent      string  `json:"agent"`
+	PromotionRun string  `json:"promotionrun"`
+	Decision     string  `json:"decision"`
+	Confidence   float64 `json:"confidence"`
+	Outcome      string  `json:"outcome"`
+	Agent        string  `json:"agent"`
 }
 
 // --- Decision Request/Response ---
 
-// DecisionRequest is the payload for POST /api/v1/releases/{name}/targets/{key}/decide.
+// DecisionRequest is the payload for POST /api/v1/promotionruns/{name}/targets/{key}/decide.
 type DecisionRequest struct {
 	Decision       string                            `json:"decision"`
 	Confidence     float64                           `json:"confidence"`
@@ -218,17 +218,17 @@ type OverrideRequest struct {
 
 // --- Router ---
 
-func (s *Server) routeRelease(w http.ResponseWriter, r *http.Request) {
-	// Parse: /api/v1/releases/{name}/context
-	//        /api/v1/releases/{name}/targets/{key}/gate
-	//        /api/v1/releases/{name}/targets/{key}/decide
-	//        /api/v1/releases/{name}/targets/{key}/override
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/releases/")
+func (s *Server) routePromotionRun(w http.ResponseWriter, r *http.Request) {
+	// Parse: /api/v1/promotionruns/{name}/context
+	//        /api/v1/promotionruns/{name}/targets/{key}/gate
+	//        /api/v1/promotionruns/{name}/targets/{key}/decide
+	//        /api/v1/promotionruns/{name}/targets/{key}/override
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/promotionruns/")
 	parts := strings.Split(path, "/")
 
 	switch {
 	case len(parts) == 2 && parts[1] == "context":
-		s.handleReleaseContext(w, r, parts[0])
+		s.handlePromotionRunContext(w, r, parts[0])
 	case len(parts) == 4 && parts[1] == "targets" && parts[3] == "gate":
 		s.handleGateContext(w, r, parts[0], parts[2])
 	case len(parts) == 4 && parts[1] == "targets" && parts[3] == "decide":
@@ -242,7 +242,7 @@ func (s *Server) routeRelease(w http.ResponseWriter, r *http.Request) {
 
 // --- Context Handlers ---
 
-func (s *Server) handleReleaseContext(w http.ResponseWriter, r *http.Request, releaseName string) {
+func (s *Server) handlePromotionRunContext(w http.ResponseWriter, r *http.Request, promotionrunName string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -250,43 +250,43 @@ func (s *Server) handleReleaseContext(w http.ResponseWriter, r *http.Request, re
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	var release kaprov1alpha1.Release
-	if err := s.Client.Get(ctx, client.ObjectKey{Name: releaseName}, &release); err != nil {
-		http.Error(w, "release not found", http.StatusNotFound)
+	var promotionrun kaprov1alpha1.PromotionRun
+	if err := s.Client.Get(ctx, client.ObjectKey{Name: promotionrunName}, &promotionrun); err != nil {
+		http.Error(w, "promotionrun not found", http.StatusNotFound)
 		return
 	}
 
-	// Resolve the first pipeline for context.
-	var pipeline *kaprov1alpha1.Pipeline
-	if len(release.Spec.Pipelines) > 0 {
-		var pl kaprov1alpha1.Pipeline
-		if err := s.Client.Get(ctx, client.ObjectKey{Name: release.Spec.Pipelines[0].Pipeline}, &pl); err == nil {
-			pipeline = &pl
+	// Resolve the first promotionplan for context.
+	var promotionplan *kaprov1alpha1.PromotionPlan
+	if len(promotionrun.Spec.PromotionPlans) > 0 {
+		var pl kaprov1alpha1.PromotionPlan
+		if err := s.Client.Get(ctx, client.ObjectKey{Name: promotionrun.Spec.PromotionPlans[0].PromotionPlan}, &pl); err == nil {
+			promotionplan = &pl
 		}
 	}
 
-	// List all ReleaseTargets for this release.
-	var allTargets kaprov1alpha1.ReleaseTargetList
+	// List all PromotionTargets for this promotionrun.
+	var allTargets kaprov1alpha1.PromotionTargetList
 	if err := s.Client.List(ctx, &allTargets); err != nil {
 		http.Error(w, "failed to list targets", http.StatusInternalServerError)
 		return
 	}
-	targets := make([]kaprov1alpha1.ReleaseTarget, 0)
+	targets := make([]kaprov1alpha1.PromotionTarget, 0)
 	for _, t := range allTargets.Items {
-		if t.Spec.ReleaseRef == releaseName {
+		if t.Spec.PromotionRunRef == promotionrunName {
 			targets = append(targets, t)
 		}
 	}
 
-	writeJSON(w, http.StatusOK, ReleaseContext{
-		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
-		Release:     release,
-		Pipeline:    pipeline,
-		Targets:     targets,
+	writeJSON(w, http.StatusOK, PromotionRunContext{
+		GeneratedAt:   time.Now().UTC().Format(time.RFC3339),
+		PromotionRun:  promotionrun,
+		PromotionPlan: promotionplan,
+		Targets:       targets,
 	})
 }
 
-func (s *Server) handleGateContext(w http.ResponseWriter, r *http.Request, releaseName, targetKey string) {
+func (s *Server) handleGateContext(w http.ResponseWriter, r *http.Request, promotionrunName, targetKey string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -294,34 +294,34 @@ func (s *Server) handleGateContext(w http.ResponseWriter, r *http.Request, relea
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	var release kaprov1alpha1.Release
-	if err := s.Client.Get(ctx, client.ObjectKey{Name: releaseName}, &release); err != nil {
-		http.Error(w, "release not found", http.StatusNotFound)
+	var promotionrun kaprov1alpha1.PromotionRun
+	if err := s.Client.Get(ctx, client.ObjectKey{Name: promotionrunName}, &promotionrun); err != nil {
+		http.Error(w, "promotionrun not found", http.StatusNotFound)
 		return
 	}
 
-	var target kaprov1alpha1.ReleaseTarget
+	var target kaprov1alpha1.PromotionTarget
 	if err := s.Client.Get(ctx, client.ObjectKey{Name: targetKey}, &target); err != nil {
 		http.Error(w, "target not found", http.StatusNotFound)
 		return
 	}
-	if target.Spec.ReleaseRef != releaseName {
-		http.Error(w, "target/release mismatch", http.StatusConflict)
+	if target.Spec.PromotionRunRef != promotionrunName {
+		http.Error(w, "target/promotionrun mismatch", http.StatusConflict)
 		return
 	}
 
 	// Fetch cluster health.
-	var cluster *kaprov1alpha1.MemberCluster
-	var mc kaprov1alpha1.MemberCluster
+	var cluster *kaprov1alpha1.FleetCluster
+	var mc kaprov1alpha1.FleetCluster
 	if err := s.Client.Get(ctx, client.ObjectKey{Name: target.Spec.Target}, &mc); err == nil {
 		cluster = &mc
 	}
 
 	writeJSON(w, http.StatusOK, GateContext{
-		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
-		Target:      target,
-		Release:     release,
-		Cluster:     cluster,
+		GeneratedAt:  time.Now().UTC().Format(time.RFC3339),
+		Target:       target,
+		PromotionRun: promotionrun,
+		Cluster:      cluster,
 	})
 }
 
@@ -340,27 +340,27 @@ func (s *Server) handleClusterHealth(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	var mc kaprov1alpha1.MemberCluster
+	var mc kaprov1alpha1.FleetCluster
 	if err := s.Client.Get(ctx, client.ObjectKey{Name: clusterName}, &mc); err != nil {
 		http.Error(w, "cluster not found", http.StatusNotFound)
 		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"name":            mc.Name,
-		"labels":          mc.Labels,
-		"phase":           mc.Status.Phase,
-		"lastHeartbeat":   mc.Status.LastHeartbeat,
-		"health":          mc.Status.Health,
-		"currentVersions": mc.Status.CurrentVersions,
-		"activeRelease":   mc.Status.ActiveRelease,
-		"capabilities":    mc.Status.Capabilities,
+		"name":               mc.Name,
+		"labels":             mc.Labels,
+		"phase":              mc.Status.Phase,
+		"lastHeartbeat":      mc.Status.LastHeartbeat,
+		"health":             mc.Status.Health,
+		"currentVersions":    mc.Status.CurrentVersions,
+		"activePromotionRun": mc.Status.ActivePromotionRun,
+		"capabilities":       mc.Status.Capabilities,
 	})
 }
 
 // --- Decision Handler ---
 
-func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, releaseName, targetKey string) {
+func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionrunName, targetKey string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -393,24 +393,24 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, releaseNam
 		return
 	}
 
-	// Look up release and target.
-	var release kaprov1alpha1.Release
-	if err := s.Client.Get(ctx, client.ObjectKey{Name: releaseName}, &release); err != nil {
-		http.Error(w, "release not found", http.StatusNotFound)
+	// Look up promotionrun and target.
+	var promotionrun kaprov1alpha1.PromotionRun
+	if err := s.Client.Get(ctx, client.ObjectKey{Name: promotionrunName}, &promotionrun); err != nil {
+		http.Error(w, "promotionrun not found", http.StatusNotFound)
 		return
 	}
-	if release.Spec.Suspended {
-		http.Error(w, "release is suspended", http.StatusConflict)
+	if promotionrun.Spec.Suspended {
+		http.Error(w, "promotionrun is suspended", http.StatusConflict)
 		return
 	}
 
-	var target kaprov1alpha1.ReleaseTarget
+	var target kaprov1alpha1.PromotionTarget
 	if err := s.Client.Get(ctx, client.ObjectKey{Name: targetKey}, &target); err != nil {
 		http.Error(w, "target not found", http.StatusNotFound)
 		return
 	}
-	if target.Spec.ReleaseRef != releaseName {
-		http.Error(w, "target/release mismatch", http.StatusConflict)
+	if target.Spec.PromotionRunRef != promotionrunName {
+		http.Error(w, "target/promotionrun mismatch", http.StatusConflict)
 		return
 	}
 
@@ -470,8 +470,8 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, releaseNam
 	}
 	if policy != nil {
 		// Fetch cluster for label-based checks.
-		var mc kaprov1alpha1.MemberCluster
-		var cluster *kaprov1alpha1.MemberCluster
+		var mc kaprov1alpha1.FleetCluster
+		var cluster *kaprov1alpha1.FleetCluster
 		if err := s.Client.Get(ctx, client.ObjectKey{Name: target.Spec.Target}, &mc); err == nil {
 			cluster = &mc
 		}
@@ -510,8 +510,8 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, releaseNam
 		ExpiresAt:  req.ExpiresAt,
 	}
 
-	// Write DecisionTrace to ReleaseTarget.status using MergeFrom patch
-	// to avoid conflicting with ReleaseTargetReconciler's status writes.
+	// Write DecisionTrace to PromotionTarget.status using MergeFrom patch
+	// to avoid conflicting with PromotionTargetReconciler's status writes.
 	patch := client.MergeFrom(target.DeepCopy())
 	if target.Status.DecisionTrace == nil {
 		target.Status.DecisionTrace = &kaprov1alpha1.DecisionTrace{}
@@ -536,7 +536,7 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, releaseNam
 	}
 
 	l.Info("Decision recorded",
-		"release", releaseName, "target", targetKey,
+		"promotionrun", promotionrunName, "target", targetKey,
 		"decision", req.Decision, "confidence", req.Confidence,
 		"agent", agentName)
 
@@ -545,14 +545,14 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, releaseNam
 	if req.Decision == "Approve" && effectiveDecision == "Approve" {
 		approval := &kaprov1alpha1.Approval{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: fmt.Sprintf("%s-%s", releaseName, targetKey),
+				Name: fmt.Sprintf("%s-%s", promotionrunName, targetKey),
 			},
 			Spec: kaprov1alpha1.ApprovalSpec{
-				Release:    releaseName,
-				Target:     target.Spec.Target,
-				Ref:        targetKey,
-				ApprovedBy: fmt.Sprintf("agent:%s", agentName),
-				Comment:    fmt.Sprintf("confidence: %.2f\n%s", req.Confidence, req.Reasoning),
+				PromotionRun: promotionrunName,
+				Target:       target.Spec.Target,
+				Ref:          targetKey,
+				ApprovedBy:   fmt.Sprintf("agent:%s", agentName),
+				Comment:      fmt.Sprintf("confidence: %.2f\n%s", req.Confidence, req.Reasoning),
 			},
 		}
 		if err := s.Client.Create(ctx, approval); err != nil {
@@ -579,7 +579,7 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, releaseNam
 
 // --- Override Handler ---
 
-func (s *Server) handleOverride(w http.ResponseWriter, r *http.Request, releaseName, targetKey string) {
+func (s *Server) handleOverride(w http.ResponseWriter, r *http.Request, promotionrunName, targetKey string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -602,13 +602,13 @@ func (s *Server) handleOverride(w http.ResponseWriter, r *http.Request, releaseN
 		return
 	}
 
-	var target kaprov1alpha1.ReleaseTarget
+	var target kaprov1alpha1.PromotionTarget
 	if err := s.Client.Get(ctx, client.ObjectKey{Name: targetKey}, &target); err != nil {
 		http.Error(w, "target not found", http.StatusNotFound)
 		return
 	}
-	if target.Spec.ReleaseRef != releaseName {
-		http.Error(w, "target/release mismatch", http.StatusConflict)
+	if target.Spec.PromotionRunRef != promotionrunName {
+		http.Error(w, "target/promotionrun mismatch", http.StatusConflict)
 		return
 	}
 
@@ -642,14 +642,14 @@ func (s *Server) handleOverride(w http.ResponseWriter, r *http.Request, releaseN
 	if req.Action == "Approve" {
 		approval := &kaprov1alpha1.Approval{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: fmt.Sprintf("%s-%s", releaseName, targetKey),
+				Name: fmt.Sprintf("%s-%s", promotionrunName, targetKey),
 			},
 			Spec: kaprov1alpha1.ApprovalSpec{
-				Release:    releaseName,
-				Target:     target.Spec.Target,
-				Ref:        targetKey,
-				ApprovedBy: req.Identity,
-				Comment:    fmt.Sprintf("human override: %s", req.Reason),
+				PromotionRun: promotionrunName,
+				Target:       target.Spec.Target,
+				Ref:          targetKey,
+				ApprovedBy:   req.Identity,
+				Comment:      fmt.Sprintf("human override: %s", req.Reason),
 			},
 		}
 		if err := s.Client.Create(ctx, approval); err != nil && !isAlreadyExists(err) {

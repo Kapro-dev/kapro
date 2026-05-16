@@ -34,15 +34,15 @@ var kaproResourceSetGVK = schema.GroupVersionKind{
 
 // KaproReconciler generates hub-side resources from a Kapro + PromotionSource spec.
 // It produces (all on the hub cluster):
-//   - MemberCluster CRs (one per cluster in the fleet)
-//   - A Pipeline CR (from kapro.spec.pipeline)
+//   - FleetCluster CRs (one per cluster in the fleet)
+//   - A PromotionPlan CR (from kapro.spec.promotionplan)
 //   - A ResourceSet (Flux Operator) with HelmRelease templates per unit
 //
 // The ResourceSet contains per-cluster inputs with unit versions and
 // merged Helm values (PromotionSource defaults + overrides). Flux Operator distributes
 // the rendered HelmReleases to spokes. Kapro never writes to spoke clusters.
 //
-// Version promotion is handled by the FluxOperatorActuator (via Release),
+// Version promotion is handled by the FluxOperatorActuator (via PromotionRun),
 // which patches ResourceSet inputs — not by this controller.
 type KaproReconciler struct {
 	client.Client
@@ -52,9 +52,9 @@ type KaproReconciler struct {
 // +kubebuilder:rbac:groups=kapro.io,resources=kaproes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kapro.io,resources=kaproes/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=promotionsources,verbs=get;list;watch
-// +kubebuilder:rbac:groups=kapro.io,resources=memberclusters,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=kapro.io,resources=memberclusters/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=pipelines,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=kapro.io,resources=fleetclusters,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=kapro.io,resources=fleetclusters/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=promotionplans,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=fluxcd.controlplane.io,resources=resourcesets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=helm.toolkit.fluxcd.io,resources=helmreleases,verbs=get;list;watch
@@ -114,7 +114,7 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 	spokeLocal := delivery.Mode == kaprov1alpha1.DeliveryModePull && delivery.BackendRef == "flux"
 
-	// 2. Generate MemberClusters on the hub.
+	// 2. Generate FleetClusters on the hub.
 	for _, cluster := range kapro.Spec.Clusters {
 		clusterDelivery := delivery
 		clusterDelivery.Parameters = copyParamMap(delivery.Parameters)
@@ -133,13 +133,13 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				setDefaultParam(clusterDelivery.Parameters, "ociRepository", kapro.Name+"-bundle")
 			}
 		}
-		mc := &kaprov1alpha1.MemberCluster{
-			TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "MemberCluster"},
+		mc := &kaprov1alpha1.FleetCluster{
+			TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "FleetCluster"},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   cluster.Name,
 				Labels: cluster.Labels,
 			},
-			Spec: kaprov1alpha1.MemberClusterSpec{
+			Spec: kaprov1alpha1.FleetClusterSpec{
 				Delivery: clusterDelivery,
 			},
 		}
@@ -148,21 +148,21 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			client.FieldOwner("kapro-controller"),
 			client.ForceOwnership,
 		); err != nil {
-			l.Error(err, "failed to apply MemberCluster", "cluster", cluster.Name)
+			l.Error(err, "failed to apply FleetCluster", "cluster", cluster.Name)
 		}
-		inventory = append(inventory, "MemberCluster/"+cluster.Name)
+		inventory = append(inventory, "FleetCluster/"+cluster.Name)
 	}
 
-	// 2. Generate Pipeline on the hub.
-	pipeline := r.buildPipeline(&kapro)
-	if err := r.Patch(ctx, pipeline,
+	// 2. Generate PromotionPlan on the hub.
+	promotionplan := r.buildPromotionPlan(&kapro)
+	if err := r.Patch(ctx, promotionplan,
 		client.Apply, //nolint:staticcheck
 		client.FieldOwner("kapro-controller"),
 		client.ForceOwnership,
 	); err != nil {
-		return ctrl.Result{}, fmt.Errorf("apply Pipeline: %w", err)
+		return ctrl.Result{}, fmt.Errorf("apply PromotionPlan: %w", err)
 	}
-	inventory = append(inventory, "Pipeline/"+kapro.Name+"-pipeline")
+	inventory = append(inventory, "PromotionPlan/"+kapro.Name+"-promotionplan")
 
 	if spokeLocal {
 		// 3a. Spoke-local mode: bootstrap each spoke in parallel.
@@ -206,11 +206,11 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		inventory = append(inventory, "ResourceSet/"+kapro.Name+"-workloads")
 	}
 
-	// 4. Sync MemberCluster status from HelmRelease status (push model observability).
+	// 4. Sync FleetCluster status from HelmRelease status (push model observability).
 	// For spoke-local mode, this reads from spoke Flux resources directly.
 	convergedCount := int32(0)
 	for _, cluster := range kapro.Spec.Clusters {
-		converged := r.syncMemberClusterStatus(ctx, &kapro, &source, cluster)
+		converged := r.syncFleetClusterStatus(ctx, &kapro, &source, cluster)
 		if converged {
 			convergedCount++
 		}
@@ -242,9 +242,9 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
-func (r *KaproReconciler) buildPipeline(kapro *kaprov1alpha1.Kapro) *kaprov1alpha1.Pipeline {
-	stages := make([]kaprov1alpha1.Stage, 0, len(kapro.Spec.Pipeline.Stages))
-	for _, s := range kapro.Spec.Pipeline.Stages {
+func (r *KaproReconciler) buildPromotionPlan(kapro *kaprov1alpha1.Kapro) *kaprov1alpha1.PromotionPlan {
+	stages := make([]kaprov1alpha1.Stage, 0, len(kapro.Spec.PromotionPlan.Stages))
+	for _, s := range kapro.Spec.PromotionPlan.Stages {
 		stage := kaprov1alpha1.Stage{
 			Name: s.Name,
 			Selector: metav1.LabelSelector{
@@ -257,12 +257,12 @@ func (r *KaproReconciler) buildPipeline(kapro *kaprov1alpha1.Kapro) *kaprov1alph
 		}
 		stages = append(stages, stage)
 	}
-	return &kaprov1alpha1.Pipeline{
-		TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "Pipeline"},
+	return &kaprov1alpha1.PromotionPlan{
+		TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "PromotionPlan"},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: kapro.Name + "-pipeline",
+			Name: kapro.Name + "-promotionplan",
 		},
-		Spec: kaprov1alpha1.PipelineSpec{Stages: stages},
+		Spec: kaprov1alpha1.PromotionPlanSpec{Stages: stages},
 	}
 }
 
@@ -403,8 +403,8 @@ func (r *KaproReconciler) buildHelmRelease(kapro *kaprov1alpha1.Kapro, defaults 
 				},
 			},
 		},
-		"targetNamespace": targetNS,
-		"releaseName":     comp.Name,
+		"targetNamespace":  targetNS,
+		"promotionrunName": comp.Name,
 		"install": map[string]any{
 			"timeout":     timeout,
 			"remediation": map[string]any{"retries": retries},
@@ -685,7 +685,7 @@ func (r *KaproReconciler) bootstrapSpokesParallel(ctx context.Context, kapro *ka
 		go func() {
 			defer wg.Done()
 			sem <- struct{}{}        // acquire
-			defer func() { <-sem }() // release
+			defer func() { <-sem }() // promotionrun
 
 			err := r.bootstrapSpoke(ctx, kapro, source, cluster, version)
 			mu.Lock()
@@ -698,10 +698,10 @@ func (r *KaproReconciler) bootstrapSpokesParallel(ctx context.Context, kapro *ka
 	return results
 }
 
-// spokeAlreadyBootstrapped checks if the spoke's MemberCluster already reports
+// spokeAlreadyBootstrapped checks if the spoke's FleetCluster already reports
 // the target version. Avoids redundant bootstrap calls on every reconcile.
 func (r *KaproReconciler) spokeAlreadyBootstrapped(ctx context.Context, clusterName, targetVersion string) bool {
-	var mc kaprov1alpha1.MemberCluster
+	var mc kaprov1alpha1.FleetCluster
 	if err := r.Get(ctx, client.ObjectKey{Name: clusterName}, &mc); err != nil {
 		return false
 	}
@@ -807,14 +807,14 @@ func isNoMatchError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "no matches for kind")
 }
 
-// syncMemberClusterStatus reads HelmRelease status and writes it to the
-// MemberCluster status. For push mode, reads from hub. For spoke-local mode,
+// syncFleetClusterStatus reads HelmRelease status and writes it to the
+// FleetCluster status. For push mode, reads from hub. For spoke-local mode,
 // connects to spoke and reads directly.
-func (r *KaproReconciler) syncMemberClusterStatus(ctx context.Context, kapro *kaprov1alpha1.Kapro, source *kaprov1alpha1.PromotionSource, cluster kaprov1alpha1.KaproCluster) bool {
+func (r *KaproReconciler) syncFleetClusterStatus(ctx context.Context, kapro *kaprov1alpha1.Kapro, source *kaprov1alpha1.PromotionSource, cluster kaprov1alpha1.KaproCluster) bool {
 	l := log.FromContext(ctx)
 
-	// Read the MemberCluster.
-	var mc kaprov1alpha1.MemberCluster
+	// Read the FleetCluster.
+	var mc kaprov1alpha1.FleetCluster
 	if err := r.Get(ctx, client.ObjectKey{Name: cluster.Name}, &mc); err != nil {
 		return false
 	}
@@ -922,7 +922,7 @@ func (r *KaproReconciler) syncMemberClusterStatus(ctx context.Context, kapro *ka
 		}
 	}
 
-	// Patch MemberCluster status.
+	// Patch FleetCluster status.
 	mcPatch := client.MergeFrom(mc.DeepCopy())
 	mc.Status.Phase = phase
 	mc.Status.CurrentVersions = versions
@@ -958,13 +958,13 @@ func (r *KaproReconciler) syncMemberClusterStatus(ctx context.Context, kapro *ka
 	})
 
 	if err := r.Status().Patch(ctx, &mc, mcPatch); err != nil {
-		l.Error(err, "failed to patch MemberCluster status", "cluster", cluster.Name)
+		l.Error(err, "failed to patch FleetCluster status", "cluster", cluster.Name)
 	}
 
 	return allReady
 }
 
-// cleanupRemovedClusters deletes MemberClusters and kubeconfig Secrets
+// cleanupRemovedClusters deletes FleetClusters and kubeconfig Secrets
 // for clusters that were removed from the Kapro spec.
 func (r *KaproReconciler) cleanupRemovedClusters(ctx context.Context, kapro *kaprov1alpha1.Kapro) {
 	l := log.FromContext(ctx)
@@ -975,18 +975,18 @@ func (r *KaproReconciler) cleanupRemovedClusters(ctx context.Context, kapro *kap
 		current[c.Name] = true
 	}
 
-	// Delete orphaned MemberClusters.
-	var mcList kaprov1alpha1.MemberClusterList
+	// Delete orphaned FleetClusters.
+	var mcList kaprov1alpha1.FleetClusterList
 	if err := r.List(ctx, &mcList); err == nil {
 		for i := range mcList.Items {
 			mc := &mcList.Items[i]
-			// Only clean up MemberClusters that were created by this Kapro
+			// Only clean up FleetClusters that were created by this Kapro
 			// (check if it's in our inventory).
-			if !current[mc.Name] && isInInventory(kapro, "MemberCluster/"+mc.Name) {
+			if !current[mc.Name] && isInInventory(kapro, "FleetCluster/"+mc.Name) {
 				if err := r.Delete(ctx, mc); err != nil {
-					l.Error(err, "failed to delete orphaned MemberCluster", "cluster", mc.Name)
+					l.Error(err, "failed to delete orphaned FleetCluster", "cluster", mc.Name)
 				} else {
-					l.Info("deleted orphaned MemberCluster", "cluster", mc.Name)
+					l.Info("deleted orphaned FleetCluster", "cluster", mc.Name)
 				}
 			}
 		}

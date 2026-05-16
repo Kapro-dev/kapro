@@ -7,7 +7,7 @@ option go_package = "kapro.io/kapro/spec/kpi/v1alpha1;kpiv1alpha1";
 // PlannerService is the Kapro Planner Interface (KPI).
 //
 // A planner plugin filters and orders eligible targets before Kapro binds
-// ReleaseTarget objects. Kapro owns release state, retries, failure policy, and
+// PromotionTarget objects. Kapro owns promotion_run state, retries, failure policy, and
 // binding. Planner plugins only return planning decisions.
 service PlannerService {
   rpc GetCapabilities(GetCapabilitiesRequest) returns (GetCapabilitiesResponse);
@@ -23,8 +23,8 @@ message GetCapabilitiesResponse {
 }
 
 message PlanRequest {
-  string release = 1;
-  string pipeline = 2;
+  string promotion_run = 1;
+  string promotion_plan = 2;
   string stage = 3;
   string version = 4;
   StageStrategy strategy = 5;
@@ -41,7 +41,7 @@ message Target {
   string name = 1;
   map<string, string> labels = 2;
   bool ready = 3;
-  string active_release = 4;
+  string active_promotion_run = 4;
 }
 
 message PlanResponse {

@@ -1,7 +1,7 @@
 # Kapro Extension Model
 
 Kapro is a Kubernetes-native fleet promotion control plane. The core
-controllers own release ordering, stage fan-out, retries, rollback intent, and
+controllers own promotionrun ordering, stage fan-out, retries, rollback intent, and
 status. Extension points are narrow contracts around backend-specific work.
 
 This document defines the target architecture for those contracts.
@@ -24,19 +24,19 @@ This document defines the target architecture for those contracts.
 | Actuator | `pkg/actuator` | Apply one version to one target and report convergence. | In-process registry |
 | Gate | `pkg/gate` | Decide whether one target may advance. | In-process registry |
 | Template gate | CEL, Job, Webhook gate templates | Configure custom gate behavior through CRDs. | Implemented |
-| Release planner | `pkg/planner` and KPI proto | Filter, score, reserve, and permit rollout targets before binding. | In-process framework; KPI API preview |
-| Lifecycle events | CloudEvents webhook payloads | Publish release, stage, gate, approval, and target events. | Implemented |
+| PromotionRun planner | `pkg/planner` and KPI proto | Filter, score, reserve, and permit rollout targets before binding. | In-process framework; KPI API preview |
+| Lifecycle events | CloudEvents webhook payloads | Publish promotionrun, stage, gate, approval, and target events. | Implemented |
 | Notification provider/policy | `NotificationProvider` and `NotificationPolicy` CRDs | Separate notification destinations from event subscriptions. | API preview; runtime dispatch future work |
 | Plugin gateway | KAI/KGI/KPI proto contracts and `PluginRegistration` | Register and probe out-of-process actuators, gates, and planner plugins. | Startup-time actuator and gate dispatch preview; planner status preview |
-| ReleaseTrigger | CRD API | Define safe autonomous Release creation policy. | OCI controller preview |
+| PromotionTrigger | CRD API | Define safe autonomous PromotionRun creation policy. | OCI controller preview |
 
 ## Core Boundary
 
 Kapro core is responsible for:
 
-- resolving `Pipeline` stages and dependencies;
-- selecting `MemberCluster` targets;
-- creating and updating `ReleaseTarget` state;
+- resolving `PromotionPlan` stages and dependencies;
+- selecting `FleetCluster` targets;
+- creating and updating `PromotionTarget` state;
 - evaluating retries, timeouts, failure policy, and rollback intent;
 - recording status and Kubernetes Events;
 - emitting lifecycle notifications.
@@ -88,7 +88,7 @@ Gate results are normalized:
 | Running | The gate is still evaluating. |
 | Inconclusive | The gate could not make a final decision yet. |
 
-Gate state is persisted on `ReleaseTarget` status. A controller restart must not
+Gate state is persisted on `PromotionTarget` status. A controller restart must not
 lose gate progress.
 
 Gate results may include structured evidence. Evidence records the observed
@@ -115,14 +115,14 @@ Lifecycle events are Kapro's integration boundary for downstream systems.
 
 Kapro emits semantic event types for:
 
-- release started, completed, failed, and rollback started;
+- promotionrun started, completed, failed, and rollback started;
 - stage completed;
 - gate passed and failed;
 - approval required;
 - target phase changes.
 
 Webhook notifications can use plain JSON or CloudEvents v1.0 structured JSON.
-CloudEvents IDs are stable for a given release, event type, pipeline, stage,
+CloudEvents IDs are stable for a given promotionrun, event type, promotionplan, stage,
 target, and phase, allowing receivers to de-duplicate retries.
 
 Inline notifications on gate policies remain supported and are the active
@@ -132,7 +132,7 @@ preview for a Kubernetes-native split:
 - `NotificationProvider` is **where** events go: webhook, Slack, email, or Git
   configuration, provider parameters, and namespaced Secret references.
 - `NotificationPolicy` is **when** events go there: subscriptions with a
-  `providerRef` plus event type, Release label, pipeline, stage, target, and
+  `providerRef` plus event type, PromotionRun label, promotionplan, stage, target, and
   phase filters.
 
 The preview resources are spec-only. The controller does not dispatch from
@@ -178,7 +178,7 @@ API pieces:
 | PluginGateway | Runtime boundary for enabled contracts, timeout handling, retries, and error normalization. |
 
 The gateway must preserve the same state ownership rule: plugins do backend
-work, Kapro owns release state.
+work, Kapro owns promotionrun state.
 
 API maturity, deprecation rules, upgrade policy, and the future non-binding
 certified plugin path are defined in `docs/api-stability.md`. KAI, KGI, and KPI
@@ -186,7 +186,7 @@ conformance instructions are defined in `docs/conformance.md`.
 
 Plugin registration is a platform-admin action. External plugins are inside the
 delivery integration boundary, not inside Kapro's control-plane trust boundary.
-They must not create or mutate Kapro release state directly. See
+They must not create or mutate Kapro promotionrun state directly. See
 `docs/security-model.md` for RBAC, trust boundary, and Secret handling rules.
 
 Plugin readiness follows the compatibility matrix in
@@ -194,16 +194,16 @@ Plugin readiness follows the compatibility matrix in
 versions are reported as `Ready=False` and `Compatible=False` on
 `PluginRegistration` status and are not loaded for runtime dispatch.
 
-## ReleaseTrigger Target
+## PromotionTrigger Target
 
-`ReleaseTrigger` is the API boundary for autonomous release creation. The CRD
-defines safe source observation and Release creation policy. The controller
-observes OCI registries and creates digest-pinned Releases after safeguards pass.
+`PromotionTrigger` is the API boundary for autonomous promotionrun creation. The CRD
+defines safe source observation and PromotionRun creation policy. The controller
+observes OCI registries and creates digest-pinned PromotionRuns after safeguards pass.
 
 The safe flow is:
 
 ```text
-artifact source -> ReleaseTrigger -> suspended Release -> normal Kapro pipeline
+artifact source -> PromotionTrigger -> suspended PromotionRun -> normal Kapro promotionplan
 ```
 
 Required safeguards:
@@ -211,42 +211,42 @@ Required safeguards:
 | Safeguard | Required behavior |
 |---|---|
 | Suspended by default | Detection does not equal deployment. |
-| Digest pinning | Releases reference immutable artifact digests. |
-| Signature verification | Unsigned artifacts do not create releases. |
-| Tag filtering | Only configured patterns create releases. |
+| Digest pinning | PromotionRuns reference immutable artifact digests. |
+| Signature verification | Unsigned artifacts do not create promotionruns. |
+| Tag filtering | Only configured patterns create promotionruns. |
 | Cooldown | Rapid artifact pushes cannot flood the fleet. |
-| Max active | One trigger cannot create unlimited concurrent releases. |
+| Max active | One trigger cannot create unlimited concurrent promotionruns. |
 | Scope | Triggers can be limited to canary stages or selected targets. |
-| Idempotency | Re-observed artifacts do not create duplicate releases. |
+| Idempotency | Re-observed artifacts do not create duplicate promotionruns. |
 
-See `docs/ADR-002-release-trigger.md` for the release trigger decision record.
+See `docs/ADR-002-promotion-trigger.md` for the promotion trigger decision record.
 
-## Release Planner
+## PromotionRun Planner
 
-The release planner is the target-selection boundary inside `ReleaseReconciler`.
+The promotionrun planner is the target-selection boundary inside `PromotionRunReconciler`.
 It follows Kubernetes scheduler-style phases:
 
 ```text
-PreFilter -> Filter -> Score -> NormalizeScore -> Reserve -> Permit -> bind ReleaseTarget
+PreFilter -> Filter -> Score -> NormalizeScore -> Reserve -> Permit -> bind PromotionTarget
 ```
 
-Kapro keeps ownership of release state. Planner plugins can influence which
+Kapro keeps ownership of promotionrun state. Planner plugins can influence which
 targets are eligible and in what order they are bound, but they do not create
-or mutate `ReleaseTarget` objects directly.
+or mutate `PromotionTarget` objects directly.
 
 Built-in planning behavior:
 
 | Plugin or strategy | Phase | Behavior |
 |---|---|---|
 | Readiness filter | Filter | Skips targets that explicitly report `Ready=False`. |
-| Active release filter | Filter | Skips targets already processing a different Release. |
+| Active promotionrun filter | Filter | Skips targets already processing a different PromotionRun. |
 | Deterministic ordering | Score | Keeps stable name-based ordering when scores tie. |
-| Stage strategy | Bind | Enforces `Stage.spec.strategy.maxParallel` before creating new `ReleaseTarget` entries. |
+| Stage strategy | Bind | Enforces `Stage.spec.strategy.maxParallel` before creating new `PromotionTarget` entries. |
 
 `Stage.status.plannerResults` records skip and defer reasons so operators can
 see why a target was not bound in the current planning cycle. External planner
 plugins can filter, defer, and score targets, but Kapro still owns
-`ReleaseTarget` creation and release state.
+`PromotionTarget` creation and promotionrun state.
 
 ## CRD Rule
 
@@ -258,9 +258,9 @@ Target CRD posture:
 
 | API surface | Posture |
 |---|---|
-| Existing release, pipeline, app, cluster, target, approval, and policy CRDs | Core API |
+| Existing promotionrun, promotionplan, app, cluster, target, approval, and policy CRDs | Core API |
 | `PluginRegistration` | API preview; opt-in hot-loaded runtime registration |
-| `ReleaseTrigger` | API preview with ADR-002 safeguards; OCI controller preview |
+| `PromotionTrigger` | API preview with ADR-002 safeguards; OCI controller preview |
 | Notification provider/policy | Add only when shared credential ownership requires it |
 | Metric definition | Add only when metric reuse needs independent ownership |
 | Gate template | Keep inline until it needs independent lifecycle |

@@ -59,7 +59,7 @@ spec:
           spec:
             description: |-
               BackendProfileSpec registers a delivery backend profile that can be selected
-              by Kapro or MemberCluster delivery.backendRef.
+              by Kapro or FleetCluster delivery.backendRef.
             properties:
               discovery:
                 description: |-

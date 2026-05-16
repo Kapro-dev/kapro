@@ -14,11 +14,11 @@ import (
 // ApprovalValidator validates Approval objects on CREATE and UPDATE.
 //
 // Rules enforced:
-//  1. spec.release must be non-empty.
+//  1. spec.promotionrun must be non-empty.
 //  2. spec.target must be non-empty.
 //  3. spec.ref must be non-empty.
 //  4. spec.approvedBy must be non-empty (mutator fills it from UserInfo).
-//  5. metadata.name must equal "<release>-<ref>".
+//  5. metadata.name must equal "<promotionrun>-<ref>".
 type ApprovalValidator struct {
 	decoder admission.Decoder
 }
@@ -41,8 +41,8 @@ func (v *ApprovalValidator) Handle(_ context.Context, req admission.Request) adm
 }
 
 func validateApproval(a *kaprov1alpha1.Approval) error {
-	if a.Spec.Release == "" {
-		return fmt.Errorf("approval.spec.release must be non-empty")
+	if a.Spec.PromotionRun == "" {
+		return fmt.Errorf("approval.spec.promotionrun must be non-empty")
 	}
 	if a.Spec.Target == "" {
 		return fmt.Errorf("approval.spec.target must be non-empty")
@@ -53,7 +53,7 @@ func validateApproval(a *kaprov1alpha1.Approval) error {
 	if a.Spec.ApprovedBy == "" {
 		return fmt.Errorf("approval.spec.approvedBy must be non-empty")
 	}
-	expectedName := internalgate.ApprovalName(a.Spec.Release, a.Spec.Ref)
+	expectedName := internalgate.ApprovalName(a.Spec.PromotionRun, a.Spec.Ref)
 	if a.Name != expectedName {
 		return fmt.Errorf("approval.metadata.name must equal %q", expectedName)
 	}

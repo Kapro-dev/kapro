@@ -13,15 +13,16 @@ var (
 
 func init() {
 	SchemeBuilder.Register(
-		// User-facing delivery objects
-		&Pipeline{}, &PipelineList{},
-		&Release{}, &ReleaseList{},
-		&ReleaseTrigger{}, &ReleaseTriggerList{},
-		&ReleaseTarget{}, &ReleaseTargetList{},
+		// Promotion-domain API
+		&FleetCluster{}, &FleetClusterList{},
+		&PromotionPlan{}, &PromotionPlanList{},
+		&Promotion{}, &PromotionList{},
+		&PromotionRun{}, &PromotionRunList{},
+		&PromotionTarget{}, &PromotionTargetList{},
+		&PromotionTrigger{}, &PromotionTriggerList{},
+		&PromotionPolicy{}, &PromotionPolicyList{},
 		&NotificationProvider{}, &NotificationProviderList{},
 		&NotificationPolicy{}, &NotificationPolicyList{},
-		// Lean fleet registry (MemberCluster = legacy target inventory split)
-		&MemberCluster{}, &MemberClusterList{},
 		&BackendProfile{}, &BackendProfileList{},
 		&PluginRegistration{}, &PluginRegistrationList{},
 		// Internal / system objects
