@@ -41,7 +41,7 @@ re-introduce a generic provider registry.
 - Validate with `conformance/actuator`.
 
 **Acceptance criteria:** conformance suite passes; example `PluginRegistration`
-can load through the startup-time plugin gateway.
+can load through the plugin gateway.
 
 ---
 
@@ -57,14 +57,15 @@ can load through the startup-time plugin gateway.
 See ADR-006/ADR-007. No per-cloud connector packages planned.
 
 ### Plugin gateway dynamic reload
-- Watch `PluginRegistration` changes.
-- Register, update, and remove runtime adapters without operator restart.
-- Preserve current safety rule: only generation-fresh, ready registrations are used.
+Completed in the brownfield production-readiness line. The operator watches
+`PluginRegistration` readiness, registers or replaces runtime adapters after
+successful probes, unloads stale or incompatible adapters, and preserves the
+safety rule that only generation-fresh, ready registrations are used.
 
 ### KPI — Planner runtime dispatch
-Planner proto, probing, and conformance exist. Runtime dispatch remains future
-work because planner plugins affect rollout target selection. Implement only
-after actuator and gate plugin lifecycle behavior is proven.
+Completed in the brownfield production-readiness line. KPI planner plugins are
+loaded into the release planner when the plugin gateway is enabled. They can
+filter, defer, and score targets, while Kapro still owns binding and state.
 
 **Acceptance criteria:** external planner plugins can filter/order/defer targets
 without mutating `ReleaseTarget` state directly.
@@ -98,7 +99,7 @@ without mutating `ReleaseTarget` state directly.
 - CDEvents integration via webhook sinks
 - SLA tracking and burn rate gates
 - `ReleaseTrigger` GA hardening: signed source verification, controller metrics, and operational docs.
-- `PluginGateway` + `PluginRegistration` GA hardening: dynamic reload, metrics, and compatibility policy.
+- `PluginGateway` + `PluginRegistration` GA hardening: runtime soak, metrics, and compatibility policy.
 
 ---
 

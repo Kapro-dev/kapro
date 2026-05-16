@@ -267,6 +267,7 @@ spec:
   discovery:
     enabled: true
     managementPolicy: Observe
+    maxObjects: 1000
     selector:
       matchLabels:
 %s`, opts.Name, opts.Backend, opts.Namespace, renderYAMLMap(labels, 8))

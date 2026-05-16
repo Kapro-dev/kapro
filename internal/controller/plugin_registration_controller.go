@@ -15,16 +15,26 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	pluginadapter "kapro.io/kapro/internal/plugin/adapter"
 	"kapro.io/kapro/internal/plugin/probe"
+	"kapro.io/kapro/pkg/actuator"
+	"kapro.io/kapro/pkg/gate"
+	"kapro.io/kapro/pkg/planner"
 	"kapro.io/kapro/pkg/plugincompat"
 )
 
 // PluginRegistrationReconciler probes external plugin registrations and records
-// readiness status. It does not register plugins into release execution.
+// readiness status. When the plugin gateway is enabled, it also hot-loads ready
+// runtime adapters and unloads adapters whose registration is no longer ready.
 type PluginRegistrationReconciler struct {
 	client.Client
-	Recorder record.EventRecorder
-	Prober   PluginProber
+	Recorder         record.EventRecorder
+	Prober           PluginProber
+	RuntimeEnabled   bool
+	RuntimeRegistrar pluginadapter.Registrar
+	ActuatorRegistry *actuator.Registry
+	GateRegistry     *gate.Registry
+	Planner          *planner.Framework
 }
 
 const pluginRegistrationMetricsFinalizer = "kapro.io/plugin-registration-metrics"
@@ -49,6 +59,9 @@ func (r *PluginRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	if !reg.DeletionTimestamp.IsZero() {
 		probe.ForgetReadiness(reg)
+		if r.RuntimeEnabled {
+			r.RuntimeRegistrar.UnregisterOne(reg, r.ActuatorRegistry, r.GateRegistry, r.Planner)
+		}
 		if controllerutil.RemoveFinalizer(&reg, pluginRegistrationMetricsFinalizer) {
 			if err := r.Update(ctx, &reg); err != nil {
 				return ctrl.Result{}, fmt.Errorf("remove plugin registration metrics finalizer: %w", err)
@@ -68,6 +81,7 @@ func (r *PluginRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.R
 		prober = probe.Prober{Client: r.Client}
 	}
 	result := prober.Probe(ctx, reg)
+	wasRuntimeReady := isRuntimeReady(reg)
 	patch := client.MergeFrom(reg.DeepCopy())
 	now := metav1.Now()
 	reg.Status.ObservedGeneration = reg.Generation
@@ -116,6 +130,15 @@ func (r *PluginRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if err := r.Status().Patch(ctx, &reg, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch plugin registration status: %w", err)
 	}
+	if r.RuntimeEnabled {
+		if isRuntimeReady(reg) {
+			if err := r.RuntimeRegistrar.RegisterOne(ctx, r.Client, reg, r.ActuatorRegistry, r.GateRegistry, r.Planner); err != nil {
+				return ctrl.Result{}, fmt.Errorf("register runtime plugin %q: %w", reg.Name, err)
+			}
+		} else if wasRuntimeReady {
+			r.RuntimeRegistrar.UnregisterOne(reg, r.ActuatorRegistry, r.GateRegistry, r.Planner)
+		}
+	}
 
 	eventType := corev1.EventTypeWarning
 	if result.Ready {
@@ -125,6 +148,10 @@ func (r *PluginRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.R
 	log.Info("plugin registration probed", "name", reg.Name, "type", reg.Spec.Type, "ready", result.Ready, "reason", result.Reason)
 
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
+}
+
+func isRuntimeReady(reg kaprov1alpha1.PluginRegistration) bool {
+	return reg.Status.Ready && reg.Status.ObservedGeneration == reg.Generation
 }
 
 func compatibleCondition(pluginType kaprov1alpha1.PluginType, result probe.Result, observedGeneration int64, now metav1.Time) metav1.Condition {

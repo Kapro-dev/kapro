@@ -162,9 +162,9 @@ Kapro controller
 
 Runtime registration through `PluginRegistration` is an opt-in API preview.
 When `KAPRO_ENABLE_PLUGIN_GATEWAY=true`, the operator loads ready registrations
-with fresh observed generation into the actuator and gate registries once at
-startup. Planner registrations are probed and reported in status; runtime
-planner dispatch remains future work. Dynamic hot reload is future work.
+with fresh observed generation into the actuator, gate, and planner registries.
+Registration changes are hot-loaded after readiness probes succeed; stale,
+incompatible, and deleted registrations are unloaded.
 
 API pieces:
 
@@ -245,7 +245,8 @@ Built-in planning behavior:
 
 `Stage.status.plannerResults` records skip and defer reasons so operators can
 see why a target was not bound in the current planning cycle. External planner
-runtime execution is future work; the KPI proto defines the contract first.
+plugins can filter, defer, and score targets, but Kapro still owns
+`ReleaseTarget` creation and release state.
 
 ## CRD Rule
 
@@ -258,7 +259,7 @@ Target CRD posture:
 | API surface | Posture |
 |---|---|
 | Existing release, pipeline, app, cluster, target, approval, and policy CRDs | Core API |
-| `PluginRegistration` | API preview; opt-in startup-time runtime registration |
+| `PluginRegistration` | API preview; opt-in hot-loaded runtime registration |
 | `ReleaseTrigger` | API preview with ADR-002 safeguards; OCI controller preview |
 | Notification provider/policy | Add only when shared credential ownership requires it |
 | Metric definition | Add only when metric reuse needs independent ownership |

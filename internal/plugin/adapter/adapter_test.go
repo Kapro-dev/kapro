@@ -20,8 +20,10 @@ import (
 	kaprometrics "kapro.io/kapro/internal/metrics"
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
+	"kapro.io/kapro/pkg/planner"
 	kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
 	kgiv1alpha1 "kapro.io/kapro/spec/kgi/v1alpha1"
+	kpiv1alpha1 "kapro.io/kapro/spec/kpi/v1alpha1"
 )
 
 func TestActuatorAdapterApplyMapsRequest(t *testing.T) {
@@ -166,6 +168,49 @@ func TestGateAdapterMapsPhases(t *testing.T) {
 	}
 }
 
+func TestPlannerAdapterMapsPlanDecisions(t *testing.T) {
+	server := &recordingPlannerServer{
+		targets: []*kpiv1alpha1.PlannedTarget{
+			{Name: "cluster-b", Decision: kpiv1alpha1.PlanningDecision_PLANNING_DECISION_INCLUDE, Score: 90},
+			{Name: "cluster-a", Decision: kpiv1alpha1.PlanningDecision_PLANNING_DECISION_DEFER, Reason: "CapacityFull", Message: "wait for capacity"},
+		},
+	}
+	client, stop := plannerClient(t, server)
+	defer stop()
+
+	adapter, err := NewPlannerAdapter(pluginReg(kaprov1alpha1.PluginTypePlanner, "fleet-capacity"), client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	framework := planner.NewFramework(adapter)
+	result, err := framework.PlanWithResult(context.Background(), planner.Request{
+		Release:         &kaprov1alpha1.Release{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}, Spec: kaprov1alpha1.ReleaseSpec{Version: "1.2.3"}},
+		PipelineRefName: "checkout",
+		Stage: kaprov1alpha1.Stage{
+			Name:     "prod",
+			Strategy: &kaprov1alpha1.StageStrategySpec{MaxParallel: 5},
+		},
+	}, []kaprov1alpha1.MemberCluster{
+		{ObjectMeta: metav1.ObjectMeta{Name: "cluster-a", Labels: map[string]string{"region": "eu"}}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "cluster-b", Labels: map[string]string{"region": "us"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Targets) != 1 || result.Targets[0].Name != "cluster-b" {
+		t.Fatalf("targets = %#v, want only cluster-b", result.Targets)
+	}
+	if len(result.Decisions) != 1 || result.Decisions[0].Target != "cluster-a" || result.Decisions[0].Reason != "CapacityFull" {
+		t.Fatalf("decisions = %#v", result.Decisions)
+	}
+	if server.plan.Release != "rel-1" || server.plan.Pipeline != "checkout" || server.plan.Stage != "prod" || server.plan.Version != "1.2.3" {
+		t.Fatalf("PlanRequest = %+v", server.plan)
+	}
+	if server.plan.Strategy.GetMaxParallel() != 5 || len(server.plan.Targets) != 2 || server.plan.Targets[0].Labels["region"] != "eu" {
+		t.Fatalf("PlanRequest = %+v", server.plan)
+	}
+}
+
 func TestRegisterReadyPluginsSkipsStaleAndRegistersReady(t *testing.T) {
 	server := &recordingActuatorServer{}
 	client, stop := actuatorClient(t, server)
@@ -192,9 +237,10 @@ func TestRegisterReadyPluginsSkipsStaleAndRegistersReady(t *testing.T) {
 	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(&ready, &stale).WithStatusSubresource(&kaprov1alpha1.PluginRegistration{}).Build()
 	actuatorReg := actuator.NewRegistry()
 	gateReg := gate.NewRegistry()
+	plannerFramework := planner.NewDefaultFramework()
 	kaprometrics.PluginRuntimeRegistered.WithLabelValues("gate").Set(7)
 
-	registered, err := (Registrar{DialOptions: bufDialOptions(server.listener)}).RegisterReady(context.Background(), k8sClient, actuatorReg, gateReg)
+	registered, err := (Registrar{DialOptions: bufDialOptions(server.listener)}).RegisterReady(context.Background(), k8sClient, actuatorReg, gateReg, plannerFramework)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,6 +322,22 @@ func gateClient(t *testing.T, srv kgiv1alpha1.GateServiceServer) (kgiv1alpha1.Ga
 	}
 }
 
+func plannerClient(t *testing.T, srv kpiv1alpha1.PlannerServiceServer) (kpiv1alpha1.PlannerServiceClient, func()) {
+	t.Helper()
+	listener := bufconn.Listen(1024 * 1024)
+	server := grpc.NewServer()
+	kpiv1alpha1.RegisterPlannerServiceServer(server, srv)
+	go func() { _ = server.Serve(listener) }()
+	conn, err := grpc.DialContext(context.Background(), "bufnet", append([]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock()}, bufDialOptions(listener)...)...) //nolint:staticcheck // grpc.NewClient lacks WithBlock equivalent in older supported versions.
+	if err != nil {
+		t.Fatal(err)
+	}
+	return kpiv1alpha1.NewPlannerServiceClient(conn), func() {
+		_ = conn.Close()
+		server.Stop()
+	}
+}
+
 func bufDialOptions(listener *bufconn.Listener) []grpc.DialOption {
 	return []grpc.DialOption{
 		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
@@ -352,4 +414,19 @@ func (s *recordingGateServer) GetCapabilities(context.Context, *kgiv1alpha1.GetC
 func (s *recordingGateServer) Evaluate(_ context.Context, req *kgiv1alpha1.EvaluateRequest) (*kgiv1alpha1.EvaluateResponse, error) {
 	s.evaluate = req
 	return &kgiv1alpha1.EvaluateResponse{Phase: s.phase, Message: "ok"}, nil
+}
+
+type recordingPlannerServer struct {
+	kpiv1alpha1.UnimplementedPlannerServiceServer
+	targets []*kpiv1alpha1.PlannedTarget
+	plan    *kpiv1alpha1.PlanRequest
+}
+
+func (s *recordingPlannerServer) GetCapabilities(context.Context, *kpiv1alpha1.GetCapabilitiesRequest) (*kpiv1alpha1.GetCapabilitiesResponse, error) {
+	return &kpiv1alpha1.GetCapabilitiesResponse{ContractVersion: "v1alpha1", PluginVersion: "test", Capabilities: []string{"filter", "score"}}, nil
+}
+
+func (s *recordingPlannerServer) Plan(_ context.Context, req *kpiv1alpha1.PlanRequest) (*kpiv1alpha1.PlanResponse, error) {
+	s.plan = req
+	return &kpiv1alpha1.PlanResponse{Targets: s.targets}, nil
 }

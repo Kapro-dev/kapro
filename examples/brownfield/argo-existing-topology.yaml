@@ -60,6 +60,8 @@ metadata:
   name: platform-root
   namespace: argocd
   labels:
+    kapro.io/import: "true"
+    team: checkout
     pattern: app-of-apps
 spec:
   project: default
@@ -146,3 +148,55 @@ spec:
       destination:
         name: "{{cluster}}"
         namespace: checkout
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: checkout-api-prod-eu
+  namespace: argocd
+  labels:
+    kapro.io/import: "true"
+    team: checkout
+    service: api
+    kapro.io/tier: production
+    region: eu
+  ownerReferences:
+    - apiVersion: argoproj.io/v1alpha1
+      kind: ApplicationSet
+      name: checkout-prod
+      uid: 11111111-1111-1111-1111-111111111111
+spec:
+  project: checkout
+  source:
+    repoURL: https://github.com/example/checkout-api-config.git
+    targetRevision: 1.4.2
+    path: env/prod-eu
+  destination:
+    name: checkout-prod-eu
+    namespace: checkout
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: checkout-api-prod-us
+  namespace: argocd
+  labels:
+    kapro.io/import: "true"
+    team: checkout
+    service: api
+    kapro.io/tier: production
+    region: us
+  ownerReferences:
+    - apiVersion: argoproj.io/v1alpha1
+      kind: ApplicationSet
+      name: checkout-prod
+      uid: 11111111-1111-1111-1111-111111111111
+spec:
+  project: checkout
+  source:
+    repoURL: https://github.com/example/checkout-api-config.git
+    targetRevision: 1.4.2
+    path: env/prod-us
+  destination:
+    name: checkout-prod-us
+    namespace: checkout

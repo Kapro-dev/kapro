@@ -15,6 +15,21 @@ Kapro coordinates safe artifact promotion across clusters, regions, and clouds w
 
 ---
 
+## Project Status
+
+Kapro is **alpha production-capable**, not GA.
+
+The current codebase has working install, release smoke, Argo brownfield, Flux
+brownfield, plugin hot-load, and KPI planner dispatch coverage. It is suitable
+for controlled adopters who can run the documented verification and accept
+`kapro.io/v1alpha1` API movement.
+
+Do not treat Kapro as GA yet. GA still requires a stable API version, tagged
+release-to-release upgrade history, broad operator soak, and an independent
+security audit. See [GA Readiness](docs/ga-readiness.md) and
+[Alpha Production Capability](docs/alpha-production-capability.md) for the
+current evidence and exit criteria.
+
 ## What Kapro Is
 
 Kapro is a Kubernetes-native control plane for promoting immutable artifact
@@ -175,12 +190,15 @@ Quick troubleshooting checks:
 - [Release Process](docs/release-process.md)
 - [Release Notes Guide](docs/release-notes.md)
 - [Clean-Clone Install Verification](docs/install-verification.md)
+- [Alpha Production Capability](docs/alpha-production-capability.md)
+- [GA Readiness](docs/ga-readiness.md)
 - [v0.1.0-alpha Release Runbook](docs/release-v0.1.0-alpha.md)
 - [Architecture Spec](docs/SPEC.md)
 - [Vision and Boundaries](docs/vision-and-boundaries.md)
 - [CNCF Positioning](docs/cncf-positioning.md)
 - [Local Kind Demo](docs/kind-demo.md)
 - [API Stability and Upgrade Policy](docs/api-stability.md)
+- [Supported Backend Patterns](docs/supported-backend-patterns.md)
 - [Conformance Packages](docs/conformance.md)
 - [Plugin Compatibility](docs/plugin-compatibility.md)
 - [Controller Scalability and Resilience](docs/controller-scalability.md)

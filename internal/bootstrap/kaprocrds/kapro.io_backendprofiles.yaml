@@ -78,6 +78,15 @@ spec:
                     - Observe
                     - Adopt
                     type: string
+                  maxObjects:
+                    default: 1000
+                    description: |-
+                      MaxObjects bounds each backend-native list call during discovery. When a
+                      list returns more objects than this limit, discovery fails closed and asks
+                      the user to narrow the selector. Defaults to 1000.
+                    format: int32
+                    minimum: 1
+                    type: integer
                   selector:
                     description: |-
                       Selector limits which backend-native objects Kapro discovers. For Argo CD
@@ -220,6 +229,12 @@ spec:
                   - type
                   type: object
                 type: array
+              discoveredApplicationSets:
+                description: |-
+                  DiscoveredApplicationSets is the number of Argo CD ApplicationSets seen
+                  during discovery.
+                format: int32
+                type: integer
               discoveredApplications:
                 description: |-
                   DiscoveredApplications is the number of backend-native applications seen
@@ -232,12 +247,25 @@ spec:
                   discovery, for example Argo CD cluster Secrets.
                 format: int32
                 type: integer
+              discoveryErrors:
+                description: |-
+                  DiscoveryErrors is a bounded sample of non-fatal discovery errors. Fatal
+                  errors are also surfaced through the DiscoveryReady condition.
+                items:
+                  type: string
+                type: array
               driver:
                 description: BackendDriver identifies the backend implementation family.
                 enum:
                 - flux
                 - argo
                 - external
+                type: string
+              lastDiscoveryTime:
+                description: |-
+                  LastDiscoveryTime records when backend-native discovery last completed or
+                  failed for this profile.
+                format: date-time
                 type: string
               observedGeneration:
                 format: int64
@@ -252,6 +280,132 @@ spec:
                 - Spoke
                 - Both
                 type: string
+              selectedObjects:
+                description: |-
+                  SelectedObjects is a bounded sample of backend-native objects Kapro can
+                  map to promotion units under the current discovery selector.
+                items:
+                  description: |-
+                    DiscoveredBackendObject describes one backend-native object found during
+                    BackendProfile discovery. The controller keeps this as bounded status
+                    evidence; counts remain the source of truth for fleet scale.
+                  properties:
+                    apiVersion:
+                      description: APIVersion is the discovered object's API version.
+                      type: string
+                    kind:
+                      description: Kind is the discovered object's Kubernetes kind.
+                      type: string
+                    name:
+                      description: Name is the discovered object's name.
+                      type: string
+                    namespace:
+                      description: Namespace is the discovered object's namespace.
+                      type: string
+                    pattern:
+                      description: |-
+                        Pattern identifies the backend-native topology pattern, for example
+                        application, applicationset-child, app-of-apps-root, helmrelease, or
+                        kustomization.
+                      type: string
+                    reason:
+                      description: Reason explains why the object was selected, skipped,
+                        or unsupported.
+                      type: string
+                    unit:
+                      description: Unit is the inferred PromotionSource unit name
+                        when available.
+                      type: string
+                    versionField:
+                      description: VersionField is the field Kapro would write in
+                        Adopt mode when available.
+                      type: string
+                  type: object
+                type: array
+              skippedObjects:
+                description: |-
+                  SkippedObjects is a bounded sample of backend-native objects Kapro saw
+                  but will not promote directly.
+                items:
+                  description: |-
+                    DiscoveredBackendObject describes one backend-native object found during
+                    BackendProfile discovery. The controller keeps this as bounded status
+                    evidence; counts remain the source of truth for fleet scale.
+                  properties:
+                    apiVersion:
+                      description: APIVersion is the discovered object's API version.
+                      type: string
+                    kind:
+                      description: Kind is the discovered object's Kubernetes kind.
+                      type: string
+                    name:
+                      description: Name is the discovered object's name.
+                      type: string
+                    namespace:
+                      description: Namespace is the discovered object's namespace.
+                      type: string
+                    pattern:
+                      description: |-
+                        Pattern identifies the backend-native topology pattern, for example
+                        application, applicationset-child, app-of-apps-root, helmrelease, or
+                        kustomization.
+                      type: string
+                    reason:
+                      description: Reason explains why the object was selected, skipped,
+                        or unsupported.
+                      type: string
+                    unit:
+                      description: Unit is the inferred PromotionSource unit name
+                        when available.
+                      type: string
+                    versionField:
+                      description: VersionField is the field Kapro would write in
+                        Adopt mode when available.
+                      type: string
+                  type: object
+                type: array
+              unsupportedPatterns:
+                description: |-
+                  UnsupportedPatterns is a bounded sample of objects that matched discovery
+                  but need a different ownership level or an external backend plugin.
+                items:
+                  description: |-
+                    DiscoveredBackendObject describes one backend-native object found during
+                    BackendProfile discovery. The controller keeps this as bounded status
+                    evidence; counts remain the source of truth for fleet scale.
+                  properties:
+                    apiVersion:
+                      description: APIVersion is the discovered object's API version.
+                      type: string
+                    kind:
+                      description: Kind is the discovered object's Kubernetes kind.
+                      type: string
+                    name:
+                      description: Name is the discovered object's name.
+                      type: string
+                    namespace:
+                      description: Namespace is the discovered object's namespace.
+                      type: string
+                    pattern:
+                      description: |-
+                        Pattern identifies the backend-native topology pattern, for example
+                        application, applicationset-child, app-of-apps-root, helmrelease, or
+                        kustomization.
+                      type: string
+                    reason:
+                      description: Reason explains why the object was selected, skipped,
+                        or unsupported.
+                      type: string
+                    unit:
+                      description: Unit is the inferred PromotionSource unit name
+                        when available.
+                      type: string
+                    versionField:
+                      description: VersionField is the field Kapro would write in
+                        Adopt mode when available.
+                      type: string
+                  type: object
+                type: array
             type: object
         type: object
     served: true

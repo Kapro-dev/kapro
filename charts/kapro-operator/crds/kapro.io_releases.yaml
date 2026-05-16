@@ -447,6 +447,58 @@ spec:
                       description: ApprovalSentAt records when the approval notification
                         was last dispatched.
                       type: string
+                    backendObjects:
+                      description: |-
+                        BackendObjects records the backend-native objects this target expects to
+                        converge, for example Argo CD Applications selected by a label selector.
+                        It is status evidence only; backend adapters own the actual resources.
+                      items:
+                        description: |-
+                          BackendObjectStatus reports the health of one backend-native object expected
+                          to converge for a ReleaseTarget.
+                        properties:
+                          apiVersion:
+                            description: APIVersion is the backend object's API version.
+                            type: string
+                          currentVersion:
+                            description: CurrentVersion is the revision currently
+                              reported by the backend object.
+                            type: string
+                          desiredVersion:
+                            description: DesiredVersion is the revision Kapro expects
+                              this object to run.
+                            type: string
+                          healthStatus:
+                            description: HealthStatus is the backend health status
+                              when available.
+                            type: string
+                          kind:
+                            description: Kind is the backend object's kind.
+                            type: string
+                          message:
+                            description: Message gives a short diagnostic when the
+                              object is not converged.
+                            type: string
+                          name:
+                            description: Name is the backend object's name.
+                            type: string
+                          namespace:
+                            description: Namespace is the backend object's namespace.
+                            type: string
+                          phase:
+                            description: Phase summarizes this object's convergence
+                              state.
+                            type: string
+                          syncStatus:
+                            description: SyncStatus is the backend sync status when
+                              available.
+                            type: string
+                          unit:
+                            description: Unit is the PromotionSource/release unit
+                              this object belongs to.
+                            type: string
+                        type: object
+                      type: array
                     desiredVersions:
                       additionalProperties:
                         type: string

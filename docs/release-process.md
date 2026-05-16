@@ -22,11 +22,35 @@ For the local demo:
 scripts/verify-install.sh kind-demo
 ```
 
+For Argo brownfield readiness:
+
+```bash
+scripts/verify-install.sh argo-e2e
+```
+
+For Flux Git-native brownfield readiness:
+
+```bash
+scripts/verify-install.sh flux-git-e2e
+```
+
+For live Flux controller readiness:
+
+```bash
+scripts/verify-install.sh flux-e2e
+```
+
 The release candidate is not ready if:
 
 - CRDs fail to render from Helm or Kustomize.
 - The operator image cannot start in Kind.
 - The demo does not create `ReleaseTarget` objects.
+- The Argo E2E cannot prove discover, adopt, Git-native source apply, Release,
+  Argo sync, and `ReleaseTarget.status.backendObjects` convergence.
+- The Flux Git-native E2E cannot prove common Flux source, HelmRelease, and
+  Kustomize version fields can be updated safely.
+- The live Flux E2E cannot prove generated Flux mappings drive real Flux
+  controller reconciliation from `v1` to `v2`.
 - Production targets cannot be unblocked by the demo approvals.
 - `PluginRegistration` compatibility conditions are missing from a probe
   failure or unsupported contract version test.
@@ -35,26 +59,30 @@ The release candidate is not ready if:
 
 ## v0.1.0-alpha Scope
 
-The first alpha should be positioned as an installable preview, not a stability
-promise.
+The first alpha should be positioned as alpha production-capable for controlled
+adopters, not as a GA stability promise. Use
+[Alpha Production Capability](alpha-production-capability.md) as the operator
+contract for what is supported, what must be verified, and what remains below
+GA. Use [GA Readiness](ga-readiness.md) for the evidence matrix before making
+any stable production-readiness claim.
 
 Include:
 
 - Helm chart and Kustomize install paths.
 - Local Kind demo.
 - ReleaseTrigger preview with OCI signature verification policy.
-- Plugin gateway preview for startup-time actuator and gate registration.
-- KPI planner contract and conformance preview, with runtime planner dispatch
-  documented as future work.
+- Plugin gateway preview with hot-loaded actuator, gate, and planner runtime
+  registration.
+- KPI planner contract, conformance preview, and runtime dispatch through the
+  release planner.
 - Security, RBAC, multi-tenancy, operations, monitoring, conformance, and API
   stability docs.
 
 Call out known limitations:
 
 - All Kubernetes APIs are `v1alpha1`.
-- External plugin dynamic reload is future work.
-- Runtime planner dispatch is future work.
-- The Kind demo uses local Flux fixtures instead of real Flux controllers.
+- The security model has not yet had an independent audit.
+- Production soak across many customer repository styles is still limited.
 - Docker dry-run checks may be optional for merging, but release candidates
   should still publish a real multi-architecture operator image.
 
@@ -123,6 +151,9 @@ helm upgrade --install kapro charts/kapro-operator \
 - `go test ./...`
 - `scripts/verify-install.sh render`
 - `scripts/verify-install.sh kind-demo`
+- `scripts/verify-install.sh argo-e2e`
+- `scripts/verify-install.sh flux-git-e2e`
+- `scripts/verify-install.sh flux-e2e`
 ````
 
 ## Post-Release Checks

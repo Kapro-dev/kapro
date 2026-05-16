@@ -27,6 +27,7 @@ rules:
   - argoproj.io
   resources:
   - applications
+  - applicationsets
   verbs:
   - get
   - list
@@ -137,6 +138,16 @@ rules:
   - kustomize.toolkit.fluxcd.io
   resources:
   - kustomizations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - source.toolkit.fluxcd.io
+  resources:
+  - buckets
+  - gitrepositories
+  - ocirepositories
   verbs:
   - get
   - list

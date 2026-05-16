@@ -27,6 +27,7 @@ artifacts for pull-mode spokes when a backend needs an OCI artifact.
 Kapro promotes revisions. The selected backend owns local sync and rollout.`,
 	}
 	cmd.AddCommand(newSourcePackageCmd())
+	cmd.AddCommand(newSourceApplyCmd())
 	return cmd
 }
 

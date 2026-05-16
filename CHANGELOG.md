@@ -14,11 +14,15 @@ deprecations, removals, upgrade steps, and compatibility expectations. See
 
 - Added API stability and release hygiene documentation for pre-stable releases.
 - Added the `v0.1.0-alpha` release-note structure and follow-up checklist.
+- Added hot-loaded plugin runtime registration for actuator, gate, and planner
+  plugins when `KAPRO_ENABLE_PLUGIN_GATEWAY=true`.
 
 ### Changed
 
 - Clarified alpha, preview, and stable API surface expectations for CRDs,
   extension packages, plugin contracts, and lifecycle event schemas.
+- Updated plugin gateway documentation from startup-only actuator/gate dispatch
+  to hot-loaded KAI/KGI/KPI dispatch.
 
 ### Deprecated
 
@@ -42,8 +46,8 @@ API below stable maturity.
 
 - Publish installable CRDs and the operator chart for local and controlled
   development environments.
-- Document the core promotion workflow: `KaproBundle`, `Pipeline`, `Release`,
-  `ReleaseTarget`, `MemberCluster`, and `Approval`.
+- Document the core promotion workflow: `PromotionSource`, `Pipeline`,
+  `Release`, `ReleaseTarget`, `MemberCluster`, and `Approval`.
 - Publish preview extension contracts for in-process actuators, gates, planners,
   and the KAI/KGI/KPI gRPC plugin APIs.
 - Publish preview policies for `ReleaseTrigger`, `PluginRegistration`,
@@ -71,9 +75,8 @@ API below stable maturity.
 ### Known Gaps Before v0.2.0
 
 - No stable API version is published yet.
-- Plugin gateway runtime dispatch is preview and startup-time only for actuator
-  and gate registrations.
-- Planner plugin runtime dispatch remains future work.
+- Plugin gateway runtime dispatch is preview and hot-loaded for actuator, gate,
+  and planner registrations when explicitly enabled.
 - API conversion webhooks are not yet part of the release process.
 - Markdown and release-note checks are not yet enforced in CI.
 

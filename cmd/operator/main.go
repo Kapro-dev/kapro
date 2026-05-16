@@ -42,6 +42,7 @@ import (
 	kaploadmission "kapro.io/kapro/internal/webhook/admission"
 	"kapro.io/kapro/pkg/actuator"
 	cm "kapro.io/kapro/pkg/controllermanager"
+	"kapro.io/kapro/pkg/planner"
 )
 
 var scheme = runtime.NewScheme()
@@ -174,10 +175,11 @@ func main() {
 		log.Error(err, "failed to register built-in gates")
 		os.Exit(1)
 	}
+	plannerFramework := planner.NewDefaultFramework()
 
 	ctx := context.Background()
 	if pluginadapter.EnabledFromEnv() {
-		registered, err := pluginadapter.Registrar{}.RegisterReady(ctx, mgr.GetAPIReader(), actuatorReg, gateRegistry)
+		registered, err := pluginadapter.Registrar{}.RegisterReady(ctx, mgr.GetAPIReader(), actuatorReg, gateRegistry, plannerFramework)
 		if err != nil {
 			log.Error(err, "failed to register plugin gateway adapters")
 			os.Exit(1)
@@ -195,6 +197,7 @@ func main() {
 			Namespace:  podNS,
 			Client:     mgr.GetClient(),
 		},
+		Planner:            plannerFramework,
 		ApprovalSecret:     loadApprovalSecret(cfg, podNS, log),
 		ExternalURL:        os.Getenv("KAPRO_EXTERNAL_URL"),
 		HubAPIURL:          os.Getenv("KAPRO_HUB_API_URL"),

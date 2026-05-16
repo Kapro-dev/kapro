@@ -58,9 +58,9 @@ build_and_load_operator() {
 
   cat >"${tmpdir}/Dockerfile" <<'EOF'
 FROM gcr.io/distroless/static:nonroot
-COPY kapro-operator /manager
+COPY kapro-operator /kapro-operator
 USER 65532:65532
-ENTRYPOINT ["/manager"]
+ENTRYPOINT ["/kapro-operator"]
 EOF
 
   docker build -t kapro-operator:dev "${tmpdir}"

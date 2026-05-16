@@ -749,6 +749,14 @@ func (r *ReleaseTargetReconciler) handleApplying(ctx context.Context, release *k
 			l.Error(err, "failed to resolve actuator for convergence check")
 			return ctrl.Result{RequeueAfter: requeueFast}, nil
 		}
+		if reporter, ok := act.(actuator.BackendObjectReporter); ok {
+			objects, err := reporter.BackendObjects(ctx, &mc, desiredVersions)
+			if err != nil {
+				l.Error(err, "Actuator.BackendObjects failed, will retry")
+				return ctrl.Result{RequeueAfter: requeueNormal}, nil
+			}
+			target.BackendObjects = objects
+		}
 		converged, err := act.IsAllConverged(ctx, &mc, desiredVersions)
 		if err != nil {
 			l.Error(err, "Actuator.IsAllConverged failed, will retry")

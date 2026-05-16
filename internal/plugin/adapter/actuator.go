@@ -46,6 +46,14 @@ func NewActuatorAdapter(reg kaprov1alpha1.PluginRegistration, client kaiv1alpha1
 	}, nil
 }
 
+// Close closes the underlying plugin connection when this adapter owns one.
+func (a *ActuatorAdapter) Close() error {
+	if a == nil || a.conn == nil {
+		return nil
+	}
+	return a.conn.Close()
+}
+
 // Apply instructs the external plugin to apply a version to one target.
 func (a *ActuatorAdapter) Apply(ctx context.Context, req actuator.ApplyRequest) error {
 	start := time.Now()

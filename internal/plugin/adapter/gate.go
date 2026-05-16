@@ -46,6 +46,14 @@ func NewGateAdapter(reg kaprov1alpha1.PluginRegistration, client kgiv1alpha1.Gat
 	}, nil
 }
 
+// Close closes the underlying plugin connection when this adapter owns one.
+func (g *GateAdapter) Close() error {
+	if g == nil || g.conn == nil {
+		return nil
+	}
+	return g.conn.Close()
+}
+
 // Evaluate asks the external plugin whether this target may advance.
 func (g *GateAdapter) Evaluate(ctx context.Context, req gate.Request) (gate.Result, error) {
 	start := time.Now()

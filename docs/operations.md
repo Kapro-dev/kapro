@@ -340,18 +340,16 @@ Check:
 - referenced TLS Secret namespace and name;
 - plugin pod/service readiness in the plugin namespace.
 
-Runtime registration is startup-time only for actuator and gate plugins when
-`KAPRO_ENABLE_PLUGIN_GATEWAY=true`. If a PluginRegistration becomes ready after
-the operator starts, restart or roll the operator after confirming readiness so
-the runtime adapter is loaded.
+Runtime registration is hot-loaded for actuator, gate, and planner plugins when
+`KAPRO_ENABLE_PLUGIN_GATEWAY=true`. If a `PluginRegistration` becomes ready
+after the operator starts, changes generation, becomes incompatible, or is
+deleted, the operator refreshes the runtime adapter without requiring a restart.
 
 Mitigation:
 
 - Restore the plugin Service, DNS, TLS Secret, or backend dependency.
 - Increase `spec.timeout` only when the plugin is healthy but its normal call
   latency exceeds the current deadline.
-- For planner plugins, readiness is reported, but runtime planner dispatch is
-  not wired into release execution yet.
 - If the plugin is optional, remove or change future Pipeline gate templates or
   MemberCluster actuator references that require it. Existing in-flight
   ReleaseTargets should be allowed to reconcile or fail according to policy.
