@@ -6,7 +6,7 @@ adopters**, not GA.
 This means the project should be usable by platform teams that can tolerate
 `v1alpha1` API movement and that are willing to run explicit verification before
 putting Kapro on a real fleet. It does not mean the APIs, upgrade path, plugin
-runtime, or security posture are final.
+runtime maturity, or security posture are final.
 
 ## Supported Alpha Paths
 
@@ -23,6 +23,8 @@ The alpha production-capable scope includes these paths:
 - Use transactional Git-native source writes for discovered JSON, YAML,
   Kustomize image, Argo source, and Flux source fields.
 - Use explicit RBAC roles for observe-only and adopt/write modes.
+- Use `PromotionPolicy` CEL rules and freeze windows for promotion-level
+  guardrails before `PromotionRun` creation.
 - Run KAI, KGI, and KPI plugin conformance before enabling external plugins.
 - Verify PromotionTrigger signature policy behavior before enabling autonomous
   promotionrun creation.
@@ -67,6 +69,8 @@ Run Kapro alpha with these constraints:
 - Keep the hub gateway and plugin gateway behind cluster networking and
   authentication controls.
 - Use promotionrun-scoped approvals and gates for production waves.
+- Keep artifact signature policy on `PromotionTrigger` until
+  `PromotionPolicy.spec.verification` graduates from preview.
 - Monitor promotionrun stuck states, gate failure rates, plugin probe failures,
   blocked triggers, and rollout duration percentiles.
 

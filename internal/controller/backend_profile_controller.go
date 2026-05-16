@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -16,6 +17,8 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
@@ -414,9 +417,98 @@ func exceededListLimit(continueToken string, count int, limit int64) bool {
 }
 
 func (r *BackendProfileReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	builder := ctrl.NewControllerManagedBy(mgr).
 		For(&kaprov1alpha1.BackendProfile{}).
-		Complete(r)
+		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.backendProfilesForBackendObject))
+	if os.Getenv("KAPRO_ENABLE_BACKEND_OBJECT_WATCHES") == "true" {
+		for _, gvk := range backendDiscoveryWatchKinds() {
+			builder = builder.Watches(backendDiscoveryWatchObject(gvk), handler.EnqueueRequestsFromMapFunc(r.backendProfilesForBackendObject))
+		}
+	}
+	return builder.Complete(r)
+}
+
+func backendDiscoveryWatchKinds() []schema.GroupVersionKind {
+	return []schema.GroupVersionKind{
+		{Group: "argoproj.io", Version: "v1alpha1", Kind: "Application"},
+		{Group: "argoproj.io", Version: "v1alpha1", Kind: "ApplicationSet"},
+		{Group: "source.toolkit.fluxcd.io", Version: "v1", Kind: "GitRepository"},
+		{Group: "source.toolkit.fluxcd.io", Version: "v1", Kind: "OCIRepository"},
+		{Group: "source.toolkit.fluxcd.io", Version: "v1", Kind: "Bucket"},
+		{Group: "helm.toolkit.fluxcd.io", Version: "v2", Kind: "HelmRelease"},
+		{Group: "kustomize.toolkit.fluxcd.io", Version: "v1", Kind: "Kustomization"},
+	}
+}
+
+func backendDiscoveryWatchObject(gvk schema.GroupVersionKind) *unstructured.Unstructured {
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(gvk)
+	return obj
+}
+
+func (r *BackendProfileReconciler) backendProfilesForBackendObject(ctx context.Context, obj client.Object) []reconcile.Request {
+	var profiles kaprov1alpha1.BackendProfileList
+	if err := r.List(ctx, &profiles); err != nil {
+		return nil
+	}
+	requests := make([]reconcile.Request, 0, len(profiles.Items))
+	for i := range profiles.Items {
+		profile := &profiles.Items[i]
+		if backendProfileMatchesObject(profile, obj) {
+			requests = append(requests, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(profile)})
+		}
+	}
+	return requests
+}
+
+func backendProfileMatchesObject(profile *kaprov1alpha1.BackendProfile, obj client.Object) bool {
+	if profile.Spec.Discovery == nil || !profile.Spec.Discovery.Enabled {
+		return false
+	}
+	gvk := obj.GetObjectKind().GroupVersionKind()
+	var objectDriver kaprov1alpha1.BackendDriver
+	switch {
+	case isCoreSecretObject(obj):
+		if obj.GetLabels()["argocd.argoproj.io/secret-type"] != "cluster" {
+			return false
+		}
+		objectDriver = kaprov1alpha1.BackendDriverArgo
+	case gvk.Group == "argoproj.io":
+		objectDriver = kaprov1alpha1.BackendDriverArgo
+	case strings.HasSuffix(gvk.Group, "toolkit.fluxcd.io"):
+		objectDriver = kaprov1alpha1.BackendDriverFlux
+	default:
+		return false
+	}
+	if profile.Spec.Driver != objectDriver {
+		return false
+	}
+	namespace := "argocd"
+	if profile.Spec.Driver == kaprov1alpha1.BackendDriverFlux {
+		namespace = "flux-system"
+	}
+	if profile.Spec.Parameters["namespace"] != "" {
+		namespace = profile.Spec.Parameters["namespace"]
+	}
+	if obj.GetNamespace() != namespace {
+		return false
+	}
+	if profile.Spec.Discovery.Selector == nil {
+		return true
+	}
+	selector, err := metav1.LabelSelectorAsSelector(profile.Spec.Discovery.Selector)
+	if err != nil {
+		return true
+	}
+	return selector.Matches(labels.Set(obj.GetLabels()))
+}
+
+func isCoreSecretObject(obj client.Object) bool {
+	if _, ok := obj.(*corev1.Secret); ok {
+		return true
+	}
+	gvk := obj.GetObjectKind().GroupVersionKind()
+	return gvk.Group == "" && gvk.Kind == "Secret"
 }
 
 func (d *backendDiscoveryCounts) addSelected(obj kaprov1alpha1.DiscoveredBackendObject) {

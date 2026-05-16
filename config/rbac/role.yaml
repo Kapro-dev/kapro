@@ -79,6 +79,7 @@ rules:
   resources:
   - agentpolicies
   - backendprofiles
+  - promotionpolicies
   - promotionsources
   - promotiontriggers
   verbs:
@@ -94,6 +95,7 @@ rules:
   - fleetclusters/status
   - kaproes/status
   - pluginregistrations/status
+  - promotionpolicies/status
   - promotionruns/status
   - promotions/status
   - promotiontargets/status
