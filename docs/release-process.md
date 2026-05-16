@@ -63,24 +63,24 @@ The first alpha should be positioned as alpha production-capable for controlled
 adopters, not as a GA stability promise. Use
 [Alpha Production Capability](alpha-production-capability.md) as the operator
 contract for what is supported, what must be verified, and what remains below
-GA.
+GA. Use [GA Readiness](ga-readiness.md) for the evidence matrix before making
+any stable production-readiness claim.
 
 Include:
 
 - Helm chart and Kustomize install paths.
 - Local Kind demo.
 - ReleaseTrigger preview with OCI signature verification policy.
-- Plugin gateway preview for startup-time actuator and gate registration.
-- KPI planner contract and conformance preview, with runtime planner dispatch
-  documented as future work.
+- Plugin gateway preview with hot-loaded actuator, gate, and planner runtime
+  registration.
+- KPI planner contract, conformance preview, and runtime dispatch through the
+  release planner.
 - Security, RBAC, multi-tenancy, operations, monitoring, conformance, and API
   stability docs.
 
 Call out known limitations:
 
 - All Kubernetes APIs are `v1alpha1`.
-- External plugin dynamic reload is future work.
-- Runtime planner dispatch is future work.
 - The security model has not yet had an independent audit.
 - Production soak across many customer repository styles is still limited.
 - Docker dry-run checks may be optional for merging, but release candidates

@@ -178,7 +178,7 @@ responses as untrusted input and keeps authority inside the controller:
   fan-out;
 - plugin calls are bounded by `PluginRegistration.spec.timeout`;
 - only ready registrations with fresh observed generation are loaded into the
-  startup-time runtime registry;
+  runtime registries;
 - planner plugins may influence target eligibility and ordering but do not bind
   `ReleaseTarget` objects directly;
 - gate plugins return normalized phases: passed, failed, running, or

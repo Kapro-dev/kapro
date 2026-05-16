@@ -27,6 +27,26 @@ func (r *Registry) Register(name string, g Gate) error {
 	return nil
 }
 
+// Upsert adds or replaces a gate implementation under the given name and
+// returns the previous implementation, when one existed.
+func (r *Registry) Upsert(name string, g Gate) Gate {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	old := r.gates[name]
+	r.gates[name] = g
+	return old
+}
+
+// Unregister removes a gate implementation by name and returns the previous
+// implementation, when one existed.
+func (r *Registry) Unregister(name string) (Gate, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	old, ok := r.gates[name]
+	delete(r.gates, name)
+	return old, ok
+}
+
 // MustRegister registers a gate or panics.
 func (r *Registry) MustRegister(name string, g Gate) {
 	if err := r.Register(name, g); err != nil {

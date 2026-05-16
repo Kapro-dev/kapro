@@ -22,6 +22,7 @@ import (
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
 	"kapro.io/kapro/pkg/notification"
+	"kapro.io/kapro/pkg/planner"
 )
 
 // InitFunc is the initialisation signature every controller must satisfy.
@@ -55,6 +56,11 @@ type ControllerContext struct {
 	// External gate types register at startup:
 	// cc.GateRegistry.Register("my-type", impl). Never nil in production.
 	GateRegistry *gate.Registry
+
+	// Planner orders and filters release targets. Built-in planner plugins are
+	// always present; external KPI plugins can be hot-loaded when the plugin
+	// gateway is enabled.
+	Planner *planner.Framework
 
 	// Notifier sends promotion lifecycle events to external channels.
 	Notifier notification.Notifier

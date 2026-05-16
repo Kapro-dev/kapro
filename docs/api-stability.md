@@ -173,8 +173,9 @@ Kapro upgrades are designed around Kubernetes controller safety:
 - Run the relevant conformance harness for each external plugin before
   upgrading production hubs.
 - Confirm `PluginRegistration.status.ready=true` and fresh
-  `status.observedGeneration` before restarting an operator that loads startup
-  plugin registrations.
+  `status.observedGeneration` before relying on runtime plugin dispatch. When
+  `KAPRO_ENABLE_PLUGIN_GATEWAY=true`, ready registrations are hot-loaded and
+  stale or incompatible registrations are unloaded.
 
 Within a supported minor upgrade, existing in-flight releases continue from
 Kubernetes status. Controllers may requeue work after restart, but gate

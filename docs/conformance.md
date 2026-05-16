@@ -146,11 +146,10 @@ Before a plugin is used by a hub:
    `planner`.
 4. Wait for the registration controller to set `status.ready=true` and
    `status.observedGeneration` equal to `metadata.generation`.
-5. Restart the operator with `KAPRO_ENABLE_PLUGIN_GATEWAY=true` for startup-time
-   actuator and gate registration.
-
-Planner registrations are probed and reported in status. Runtime planner
-dispatch remains future work.
+5. Start the operator with `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. Ready actuator,
+   gate, and planner registrations are hot-loaded after readiness probes
+   succeed. The operator unloads runtime adapters when registrations become
+   stale, incompatible, or are deleted.
 
 ## Future Certified Plugin Story
 

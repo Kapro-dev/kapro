@@ -12,9 +12,9 @@ operators, but it is not used to decide whether a plugin can run.
 
 | Plugin type | Contract | Supported contract versions | Conformance package | Example | Runtime status |
 |---|---|---|---|---|---|
-| `actuator` | KAI | `v1alpha1` | `conformance/actuator` | `examples/plugins/argocd-actuator` | Probed; ready registrations can be loaded at startup when `KAPRO_ENABLE_PLUGIN_GATEWAY=true` |
-| `gate` | KGI | `v1alpha1` | `conformance/gate` | `examples/plugins/slo-gate` | Probed; ready registrations can be loaded at startup when `KAPRO_ENABLE_PLUGIN_GATEWAY=true` |
-| `planner` | KPI | `v1alpha1` | `conformance/planner` | `examples/plugins/capacity-planner` | Probed and reported in status; runtime planner dispatch is future work |
+| `actuator` | KAI | `v1alpha1` | `conformance/actuator` | `examples/plugins/argocd-actuator` | Probed; ready registrations are hot-loaded when `KAPRO_ENABLE_PLUGIN_GATEWAY=true` |
+| `gate` | KGI | `v1alpha1` | `conformance/gate` | `examples/plugins/slo-gate` | Probed; ready registrations are hot-loaded when `KAPRO_ENABLE_PLUGIN_GATEWAY=true` |
+| `planner` | KPI | `v1alpha1` | `conformance/planner` | `examples/plugins/capacity-planner` | Probed; ready registrations are hot-loaded into release planning when `KAPRO_ENABLE_PLUGIN_GATEWAY=true` |
 
 The supported versions above are also defined in
 `pkg/plugincompat/compatibility.go`.

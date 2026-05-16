@@ -436,9 +436,9 @@ Generated Go stubs are committed beside the proto files. The operator probes
 unsupported contract versions are reported as `Ready=False` and
 `Compatible=False`; the plugin is not loaded for runtime dispatch. When
 `KAPRO_ENABLE_PLUGIN_GATEWAY=true`, the operator loads ready registrations with
-fresh `status.observedGeneration` into the actuator and gate registries once at
-startup. Planner plugin registration is probed and reported in status; runtime
-dispatch is future work. Dynamic hot reload is future work. Base conformance
+fresh `status.observedGeneration` into the actuator, gate, and planner runtime
+registries. Registration changes are hot-loaded after readiness probes succeed;
+stale, incompatible, or deleted registrations are unloaded. Base conformance
 harnesses live under `conformance/actuator`, `conformance/gate`, and
 `conformance/planner`; plugin authors should run those harnesses against their
 implementation. See `docs/plugin-authoring.md` and
@@ -467,7 +467,7 @@ Kapro explicitly does **not** aim to:
 - Replace Flux or ArgoCD — it orchestrates them.
 - Be a generic workflow engine. Stages are rollout waves, not arbitrary DAG nodes.
 - Manage in-cluster traffic shaping. Use Argo Rollouts / Flagger for that and gate on their result via `metrics` or `webhook` gates.
-- Expose a plugin interface for every internal concern. Actuator and gate plugins have startup-time runtime dispatch; planner plugins are API-preview and status-probed only.
+- Expose a plugin interface for every internal concern. Actuator, gate, and planner plugins are intentionally narrow and run through explicit KAI, KGI, and KPI contracts.
 - Provide a generic cluster-provider abstraction. `MemberCluster` + `internal/bootstrap` is the onboarding path.
 - Require AI agents for rollout execution. Future agents may summarize evidence
   and recommend actions under `AgentPolicy`, but Kapro core remains

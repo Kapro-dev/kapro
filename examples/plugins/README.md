@@ -10,15 +10,14 @@ This directory contains runnable external plugin examples and matching
 | `slo-gate` | KGI gate | `slo` | `slo-gate-registration.yaml` | `go test ./examples/plugins/slo-gate` |
 | `capacity-planner` | KPI planner | `capacity` | `capacity-planner-registration.yaml` | `go test ./examples/plugins/capacity-planner` |
 
-Runtime actuator and gate loading is an opt-in preview:
+Runtime actuator, gate, and planner loading is an opt-in preview:
 
 ```bash
 KAPRO_ENABLE_PLUGIN_GATEWAY=true
 ```
 
-The operator loads ready actuator and gate registrations once at startup.
-Planner registrations are probed and reported in status, but runtime planner
-dispatch is future work.
+The operator hot-loads ready actuator, gate, and planner registrations after
+readiness probes succeed.
 
 Related docs:
 

@@ -9,9 +9,9 @@ Kapro plugins implement one narrow extension contract:
 Built-in actuators, gates, and planners remain the default execution path.
 External plugin runtime registration is an API preview and is enabled explicitly
 with `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. When enabled, the operator registers
-ready actuator and gate `PluginRegistration` objects once at startup. Planner
-registrations are probed for capabilities and readiness, but runtime planner
-dispatch remains future work. Dynamic hot reload is future work.
+ready actuator, gate, and planner `PluginRegistration` objects after readiness
+probes succeed. Later readiness changes hot-load updated registrations and
+unload registrations that become stale, incompatible, or deleted.
 
 Notifications are not a plugin contract. `NotificationProvider` and
 `NotificationPolicy` are API-preview CRDs for Kubernetes-native provider/policy
@@ -77,11 +77,10 @@ spec:
   timeout: 10s
 ```
 
-`PluginRegistration` is an API preview. Runtime use is startup-time only and
-requires `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. Only actuator and gate
+`PluginRegistration` is an API preview. Runtime use requires
+`KAPRO_ENABLE_PLUGIN_GATEWAY=true`. Actuator, gate, and planner
 registrations with `status.ready=true` and fresh `status.observedGeneration` are
-loaded into runtime registries. Planner plugins are probed and reported in
-status, but runtime planner dispatch remains future work.
+loaded into runtime registries.
 
 Only platform administrators should create or update `PluginRegistration`
 objects. A plugin endpoint can influence deployment execution or gate decisions,
@@ -205,10 +204,10 @@ capacity-aware filtering, ordering, and deferring promotion targets.
 
 | Example | Contract | Registration manifest | Runtime status |
 |---|---|---|---|
-| `examples/plugins/argocd-actuator` | KAI actuator | `examples/plugins/argocd-actuator-registration.yaml` | Startup-time dispatch preview |
-| `examples/plugins/argocd-applicationset-actuator` | KAI actuator | `examples/plugins/argocd-applicationset-actuator-registration.yaml` | Startup-time dispatch preview |
-| `examples/plugins/slo-gate` | KGI gate | `examples/plugins/slo-gate-registration.yaml` | Startup-time dispatch preview |
-| `examples/plugins/capacity-planner` | KPI planner | `examples/plugins/capacity-planner-registration.yaml` | Status probe only; runtime dispatch future work |
+| `examples/plugins/argocd-actuator` | KAI actuator | `examples/plugins/argocd-actuator-registration.yaml` | Hot-loaded dispatch preview |
+| `examples/plugins/argocd-applicationset-actuator` | KAI actuator | `examples/plugins/argocd-applicationset-actuator-registration.yaml` | Hot-loaded dispatch preview |
+| `examples/plugins/slo-gate` | KGI gate | `examples/plugins/slo-gate-registration.yaml` | Hot-loaded dispatch preview |
+| `examples/plugins/capacity-planner` | KPI planner | `examples/plugins/capacity-planner-registration.yaml` | Hot-loaded planner dispatch preview |
 
 ## Package Imports
 

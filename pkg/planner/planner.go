@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"sync"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
@@ -160,12 +161,60 @@ type NodeScoreList []NodeScore
 
 // Framework runs planner plugins in scheduler-style phases.
 type Framework struct {
+	mu      sync.RWMutex
 	plugins []Plugin
 }
 
 // NewFramework returns a planner framework with plugins in execution order.
 func NewFramework(plugins ...Plugin) *Framework {
 	return &Framework{plugins: append([]Plugin(nil), plugins...)}
+}
+
+// Upsert adds or replaces a plugin by name and returns the previous plugin,
+// when one existed. It is safe to call while planning is running; each planning
+// cycle uses a snapshot of the plugin list.
+func (f *Framework) Upsert(plugin Plugin) Plugin {
+	if f == nil || plugin == nil {
+		return nil
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, existing := range f.plugins {
+		if existing.Name() == plugin.Name() {
+			old := existing
+			f.plugins[i] = plugin
+			return old
+		}
+	}
+	f.plugins = append(f.plugins, plugin)
+	return nil
+}
+
+// Unregister removes a plugin by name and returns the previous plugin, when
+// one existed.
+func (f *Framework) Unregister(name string) (Plugin, bool) {
+	if f == nil {
+		return nil, false
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, existing := range f.plugins {
+		if existing.Name() == name {
+			old := existing
+			f.plugins = append(f.plugins[:i], f.plugins[i+1:]...)
+			return old, true
+		}
+	}
+	return nil, false
+}
+
+func (f *Framework) snapshot() []Plugin {
+	if f == nil {
+		return nil
+	}
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return append([]Plugin(nil), f.plugins...)
 }
 
 // Plan returns the eligible targets in deterministic execution order.
@@ -182,11 +231,12 @@ func (f *Framework) PlanWithResult(ctx context.Context, req Request, targets []k
 	if f == nil {
 		f = NewFramework()
 	}
+	plugins := f.snapshot()
 	result := Result{}
 	state := NewCycleState()
 	targets = append([]kaprov1alpha1.MemberCluster(nil), targets...)
 
-	for _, plugin := range f.plugins {
+	for _, plugin := range plugins {
 		preFilter, ok := plugin.(PreFilterPlugin)
 		if !ok {
 			continue
@@ -199,7 +249,7 @@ func (f *Framework) PlanWithResult(ctx context.Context, req Request, targets []k
 	filtered := make([]kaprov1alpha1.MemberCluster, 0, len(targets))
 	for _, target := range targets {
 		allowed := true
-		for _, plugin := range f.plugins {
+		for _, plugin := range plugins {
 			filter, ok := plugin.(FilterPlugin)
 			if !ok {
 				continue
@@ -219,8 +269,8 @@ func (f *Framework) PlanWithResult(ctx context.Context, req Request, targets []k
 		}
 	}
 
-	scores := scoreTargets(ctx, f.plugins, state, req, filtered)
-	if err := normalizeScores(ctx, f.plugins, state, req, scores); err != nil {
+	scores := scoreTargets(ctx, plugins, state, req, filtered)
+	if err := normalizeScores(ctx, plugins, state, req, scores); err != nil {
 		return result, err
 	}
 	sort.SliceStable(filtered, func(i, j int) bool {
@@ -234,10 +284,10 @@ func (f *Framework) PlanWithResult(ctx context.Context, req Request, targets []k
 
 	planned := make([]kaprov1alpha1.MemberCluster, 0, len(filtered))
 	for _, target := range filtered {
-		if err := runReserve(ctx, f.plugins, state, req, target); err != nil {
+		if err := runReserve(ctx, plugins, state, req, target); err != nil {
 			return result, err
 		}
-		if allowed, decision, err := runPermit(ctx, f.plugins, state, req, target); err != nil {
+		if allowed, decision, err := runPermit(ctx, plugins, state, req, target); err != nil {
 			return result, err
 		} else if !allowed {
 			result.Decisions = append(result.Decisions, decision)

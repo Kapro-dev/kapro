@@ -77,15 +77,14 @@ These items intentionally keep the project below GA:
 - Kubernetes APIs are still `kapro.io/v1alpha1`.
 - No published upgrade history or conversion-webhook contract exists yet.
 - Real-world soak is still limited across customer repository styles.
-- External plugin dynamic reload is future work.
-- Runtime planner dispatch is future work.
 - The security model is documented, but it has not had an independent audit.
 - Large-fleet behavior has synthetic and local E2E coverage, but not broad
   production soak across many operators and environments.
 
 ## Alpha Exit Criteria
 
-Kapro should not be described as GA until these are true:
+Kapro should not be described as GA until these are true. The live status is
+tracked in [GA Readiness](ga-readiness.md).
 
 - Stable API versioning and upgrade policy are backed by release history.
 - Conversion and migration paths exist for any breaking API change.

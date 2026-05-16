@@ -16,6 +16,7 @@ import (
 	celgate "kapro.io/kapro/internal/gate/cel"
 	jobgate "kapro.io/kapro/internal/gate/job"
 	webhookgate "kapro.io/kapro/internal/gate/webhook"
+	pluginadapter "kapro.io/kapro/internal/plugin/adapter"
 	"kapro.io/kapro/internal/shard"
 	pkggate "kapro.io/kapro/pkg/gate"
 )
@@ -45,6 +46,7 @@ func startReleaseController(_ context.Context, cc ControllerContext) (bool, erro
 		ApprovalSecret:   cc.ApprovalSecret,
 		ExternalURL:      cc.ExternalURL,
 		GateRegistry:     cc.GateRegistry,
+		Planner:          cc.Planner,
 	}
 	if cc.ShardName != "" {
 		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: true}
@@ -126,8 +128,12 @@ func startApprovalController(_ context.Context, cc ControllerContext) (bool, err
 // It probes capabilities and records readiness for optional plugin runtime registration.
 func startPluginRegistrationController(_ context.Context, cc ControllerContext) (bool, error) {
 	if err := (&controller.PluginRegistrationReconciler{
-		Client:   cc.Manager.GetClient(),
-		Recorder: cc.Recorder,
+		Client:           cc.Manager.GetClient(),
+		Recorder:         cc.Recorder,
+		RuntimeEnabled:   pluginadapter.EnabledFromEnv(),
+		ActuatorRegistry: cc.ActuatorRegistry,
+		GateRegistry:     cc.GateRegistry,
+		Planner:          cc.Planner,
 	}).SetupWithManager(cc.Manager); err != nil {
 		return false, err
 	}

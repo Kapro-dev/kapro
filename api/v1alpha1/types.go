@@ -2084,7 +2084,7 @@ const (
 )
 
 // PluginRegistrationSpec registers an external actuator, gate, or planner plugin endpoint.
-// Runtime dispatch is a startup-time preview enabled with KAPRO_ENABLE_PLUGIN_GATEWAY=true.
+// Runtime dispatch is an opt-in preview enabled with KAPRO_ENABLE_PLUGIN_GATEWAY=true.
 type PluginRegistrationSpec struct {
 	// Type selects which extension contract the plugin implements.
 	Type PluginType `json:"type"`
@@ -2140,7 +2140,8 @@ type PluginRegistrationStatus struct {
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // PluginRegistration declares an external actuator, gate, or planner plugin endpoint.
-// It is an API preview. Runtime registration is opt-in and startup-time only.
+// It is an API preview. Runtime registration is opt-in and hot-loaded after
+// readiness probes succeed.
 type PluginRegistration struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

@@ -176,6 +176,7 @@ Quick troubleshooting checks:
 - [Release Notes Guide](docs/release-notes.md)
 - [Clean-Clone Install Verification](docs/install-verification.md)
 - [Alpha Production Capability](docs/alpha-production-capability.md)
+- [GA Readiness](docs/ga-readiness.md)
 - [v0.1.0-alpha Release Runbook](docs/release-v0.1.0-alpha.md)
 - [Architecture Spec](docs/SPEC.md)
 - [Vision and Boundaries](docs/vision-and-boundaries.md)
