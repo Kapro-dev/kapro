@@ -59,8 +59,11 @@ The release candidate is not ready if:
 
 ## v0.1.0-alpha Scope
 
-The first alpha should be positioned as an installable preview, not a stability
-promise.
+The first alpha should be positioned as alpha production-capable for controlled
+adopters, not as a GA stability promise. Use
+[Alpha Production Capability](alpha-production-capability.md) as the operator
+contract for what is supported, what must be verified, and what remains below
+GA.
 
 Include:
 
@@ -78,6 +81,8 @@ Call out known limitations:
 - All Kubernetes APIs are `v1alpha1`.
 - External plugin dynamic reload is future work.
 - Runtime planner dispatch is future work.
+- The security model has not yet had an independent audit.
+- Production soak across many customer repository styles is still limited.
 - Docker dry-run checks may be optional for merging, but release candidates
   should still publish a real multi-architecture operator image.
 

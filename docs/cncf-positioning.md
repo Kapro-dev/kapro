@@ -67,6 +67,8 @@ These claims are safe:
 - Kapro is extensible through narrow, conformance-tested plugin contracts.
 - Kapro is conservative: unclear gate data returns `Inconclusive`.
 - Kapro complements existing GitOps and progressive-delivery projects.
+- Current alpha releases are production-capable only for controlled adopters
+  that run the documented verification and accept `v1alpha1` API movement.
 
 Avoid these claims:
 
@@ -75,6 +77,8 @@ Avoid these claims:
 - Kapro guarantees zero bad deployments.
 - Kapro requires AI agents for production safety.
 - Kapro's statistical gates are the main reason to adopt it.
+- Kapro is GA production-ready before stable APIs, published upgrade history,
+  real-world soak, and independent security review exist.
 
 ## Sandbox Readiness Focus
 

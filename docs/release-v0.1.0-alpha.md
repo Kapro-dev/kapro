@@ -12,6 +12,8 @@ Release `v0.1.0-alpha` when these surfaces are ready:
 - Clean-clone render verification passes.
 - At least one disposable cluster install has been verified.
 - Local Kind demo has been run or explicitly waived with the reason recorded.
+- The alpha production capability contract has been reviewed against the
+  release contents.
 
 ## Pre-Tag Checklist
 
@@ -44,6 +46,11 @@ make test-no-cover
 Follow [Clean-Clone Install Verification](install-verification.md) before
 publishing the release announcement.
 
+For maturity claims, also review
+[Alpha Production Capability](alpha-production-capability.md). Do not describe
+the release as GA or generally production-ready while the release still uses
+`kapro.io/v1alpha1` APIs and lacks published upgrade history.
+
 Minimum acceptance:
 
 ```bash
@@ -60,6 +67,14 @@ Run the local demo when Docker and Kind are available:
 
 ```bash
 scripts/verify-install.sh kind-demo
+```
+
+Run the backend-specific E2E checks when their dependencies are available:
+
+```bash
+scripts/verify-install.sh argo-e2e
+scripts/verify-install.sh flux-git-e2e
+scripts/verify-install.sh flux-e2e
 ```
 
 Record the final `scripts/kind-demo.sh status` output in the release notes or
