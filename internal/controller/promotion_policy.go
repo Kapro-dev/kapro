@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/cel-go/common/types"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -59,9 +60,18 @@ func (r *PromotionReconciler) evaluatePromotionPolicies(ctx context.Context, pro
 			continue
 		}
 		decision := evaluatePromotionPolicy(&policy, promotion, now)
-		if !decision.Allowed && promotionPolicyEnforces(&policy) {
-			return decision, nil
+		if decision.Allowed {
+			continue
 		}
+		if promotionPolicyAuditOnly(&policy) {
+			r.recordPromotionPolicyAuditDecision(promotion, &policy, decision)
+			continue
+		}
+		if promotionPolicyContinuesOnFailure(&policy) {
+			r.recordPromotionPolicyContinueDecision(promotion, &policy, decision)
+			continue
+		}
+		return decision, nil
 	}
 	return promotionPolicyDecision{Allowed: true}, nil
 }
@@ -126,8 +136,42 @@ func evaluatePromotionPolicy(policy *kaprov1alpha1.PromotionPolicy, promotion *k
 	return promotionPolicyDecision{Allowed: true}
 }
 
-func promotionPolicyEnforces(policy *kaprov1alpha1.PromotionPolicy) bool {
-	return policy.Spec.Mode == "" || policy.Spec.Mode == "enforce"
+func promotionPolicyAuditOnly(policy *kaprov1alpha1.PromotionPolicy) bool {
+	return policy.Spec.Mode == "audit"
+}
+
+func promotionPolicyContinuesOnFailure(policy *kaprov1alpha1.PromotionPolicy) bool {
+	return policy.Spec.OnFailure == "continue"
+}
+
+func (r *PromotionReconciler) recordPromotionPolicyAuditDecision(promotion *kaprov1alpha1.Promotion, policy *kaprov1alpha1.PromotionPolicy, decision promotionPolicyDecision) {
+	if r.Recorder == nil {
+		return
+	}
+	r.Recorder.Eventf(
+		promotion,
+		corev1.EventTypeWarning,
+		"PromotionPolicyAudit",
+		"PromotionPolicy %q would have blocked promotion: %s: %s",
+		policy.Name,
+		decision.Reason,
+		decision.Message,
+	)
+}
+
+func (r *PromotionReconciler) recordPromotionPolicyContinueDecision(promotion *kaprov1alpha1.Promotion, policy *kaprov1alpha1.PromotionPolicy, decision promotionPolicyDecision) {
+	if r.Recorder == nil {
+		return
+	}
+	r.Recorder.Eventf(
+		promotion,
+		corev1.EventTypeWarning,
+		"PromotionPolicyContinued",
+		"PromotionPolicy %q failed with onFailure=continue: %s: %s",
+		policy.Name,
+		decision.Reason,
+		decision.Message,
+	)
 }
 
 func evaluatePromotionCEL(expr string, promotion *kaprov1alpha1.Promotion) (bool, error) {

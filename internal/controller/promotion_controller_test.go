@@ -216,6 +216,126 @@ func TestPromotionReconcilerEnforcesCELPolicy(t *testing.T) {
 	}
 }
 
+func TestPromotionReconcilerBlocksFailingCELPolicy(t *testing.T) {
+	ctx := context.Background()
+	scheme := newPromotionTestScheme(t)
+	promotion := promotionFixture(1, []corev1.LocalObjectReference{{Name: "prod-only"}})
+	promotion.Labels = map[string]string{"env": "staging"}
+	policy := &kaprov1alpha1.PromotionPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "prod-only"},
+		Spec: kaprov1alpha1.PromotionPolicySpec{
+			CEL: []kaprov1alpha1.CELPolicyRule{{
+				Name:       "prod-label",
+				Expression: `promotion.labels.env == "prod"`,
+				Message:    "promotion must target prod",
+			}},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha1.Promotion{}).
+		WithObjects(promotion, policy).
+		Build()
+	r := &PromotionReconciler{Client: c, Scheme: scheme}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var runs kaprov1alpha1.PromotionRunList
+	if err := c.List(ctx, &runs); err != nil {
+		t.Fatal(err)
+	}
+	if len(runs.Items) != 0 {
+		t.Fatalf("promotionrun count = %d", len(runs.Items))
+	}
+	var got kaprov1alpha1.Promotion
+	if err := c.Get(ctx, client.ObjectKey{Name: "checkout"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	ready := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
+	stalled := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
+	if got.Status.Phase != kaprov1alpha1.PromotionPhaseFailed {
+		t.Fatalf("phase = %q", got.Status.Phase)
+	}
+	if ready == nil || ready.Status != metav1.ConditionFalse || ready.Reason != "PromotionPolicyDenied" {
+		t.Fatalf("Ready condition = %+v", ready)
+	}
+	if stalled == nil || stalled.Status != metav1.ConditionTrue || stalled.Reason != "PromotionPolicyDenied" {
+		t.Fatalf("Stalled condition = %+v", stalled)
+	}
+}
+
+func TestPromotionReconcilerContinuesFailingCELPolicyWhenConfigured(t *testing.T) {
+	ctx := context.Background()
+	scheme := newPromotionTestScheme(t)
+	promotion := promotionFixture(1, []corev1.LocalObjectReference{{Name: "advisory"}})
+	promotion.Labels = map[string]string{"env": "staging"}
+	policy := &kaprov1alpha1.PromotionPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "advisory"},
+		Spec: kaprov1alpha1.PromotionPolicySpec{
+			OnFailure: "continue",
+			CEL: []kaprov1alpha1.CELPolicyRule{{
+				Name:       "prod-label",
+				Expression: `promotion.labels.env == "prod"`,
+			}},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha1.Promotion{}).
+		WithObjects(promotion, policy).
+		Build()
+	r := &PromotionReconciler{Client: c, Scheme: scheme}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var runs kaprov1alpha1.PromotionRunList
+	if err := c.List(ctx, &runs); err != nil {
+		t.Fatal(err)
+	}
+	if len(runs.Items) != 1 {
+		t.Fatalf("promotionrun count = %d", len(runs.Items))
+	}
+}
+
+func TestPromotionReconcilerAuditsFailingCELPolicy(t *testing.T) {
+	ctx := context.Background()
+	scheme := newPromotionTestScheme(t)
+	promotion := promotionFixture(1, []corev1.LocalObjectReference{{Name: "audit-only"}})
+	promotion.Labels = map[string]string{"env": "staging"}
+	policy := &kaprov1alpha1.PromotionPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "audit-only"},
+		Spec: kaprov1alpha1.PromotionPolicySpec{
+			Mode: "audit",
+			CEL: []kaprov1alpha1.CELPolicyRule{{
+				Name:       "prod-label",
+				Expression: `promotion.labels.env == "prod"`,
+			}},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha1.Promotion{}).
+		WithObjects(promotion, policy).
+		Build()
+	r := &PromotionReconciler{Client: c, Scheme: scheme}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var runs kaprov1alpha1.PromotionRunList
+	if err := c.List(ctx, &runs); err != nil {
+		t.Fatal(err)
+	}
+	if len(runs.Items) != 1 {
+		t.Fatalf("promotionrun count = %d", len(runs.Items))
+	}
+}
+
 func TestPromotionPolicyFreezeWindowBlocksPromotion(t *testing.T) {
 	promotion := promotionFixture(1, nil)
 	policy := &kaprov1alpha1.PromotionPolicy{

@@ -91,13 +91,10 @@ func validatePromotionPolicy(policy *kaprov1alpha1.PromotionPolicy) (bool, strin
 }
 
 func validateFreezeWindow(window kaprov1alpha1.AgentTimeWindow) (bool, error) {
-	loc := time.UTC
 	if window.Timezone != "" {
-		loaded, err := time.LoadLocation(window.Timezone)
-		if err != nil {
+		if _, err := time.LoadLocation(window.Timezone); err != nil {
 			return false, err
 		}
-		loc = loaded
 	}
 	start, err := parseWindowClock(window.StartTime)
 	if err != nil {
@@ -110,7 +107,7 @@ func validateFreezeWindow(window kaprov1alpha1.AgentTimeWindow) (bool, error) {
 	if start == end {
 		return false, fmt.Errorf("startTime and endTime must differ")
 	}
-	return freezeWindowActive(window, time.Now().In(loc))
+	return false, nil
 }
 
 func validatePromotionCEL(expr string) error {
