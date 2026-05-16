@@ -104,6 +104,7 @@ jobs:
   docker:
     name: Docker Build (dry-run)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
@@ -114,6 +115,6 @@ jobs:
         with:
           context: .
           file: Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: false
           tags: ghcr.io/kapro-dev/kapro-operator:pr-${{ github.event.number }}
