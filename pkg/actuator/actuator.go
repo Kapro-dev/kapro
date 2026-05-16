@@ -75,3 +75,10 @@ type Actuator interface {
 	// the cluster's currentVersions and Flux has converged.
 	IsAllConverged(ctx context.Context, cluster *kaprov1alpha1.MemberCluster, desiredVersions map[string]string) (bool, error)
 }
+
+// BackendObjectReporter is an optional actuator extension that reports the
+// backend-native objects expected to converge for a target rollout. Controllers
+// use it as status evidence; the Actuator interface remains the write contract.
+type BackendObjectReporter interface {
+	BackendObjects(ctx context.Context, cluster *kaprov1alpha1.MemberCluster, desiredVersions map[string]string) ([]kaprov1alpha1.BackendObjectStatus, error)
+}

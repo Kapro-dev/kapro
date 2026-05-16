@@ -67,7 +67,9 @@ spec:
 ## Step 2: Discover The Existing Repo
 
 Run discovery against the Git repository that already contains Argo
-Applications, ApplicationSets, and environment files:
+Applications, ApplicationSets, and environment files. Discovery requires the
+`git` CLI and a Git worktree; it reads tracked files from Git's index instead
+of walking every file in the checkout.
 
 ```bash
 kapro discover argo . \
@@ -76,6 +78,12 @@ kapro discover argo . \
   --namespace argocd \
   --selector kapro.io/import=true,team=checkout
 ```
+
+By default, discovery scans tracked YAML/JSON files under common GitOps
+prefixes: `argocd/`, `apps/`, `clusters/`, `environments/`, and `flux/`.
+Use `--path-prefix` for a custom layout or `--scan-all` when the repo does not
+follow those prefixes. Repeat runs use `discovery/argo-cache.json` to skip
+unchanged Git blobs.
 
 You can also point discovery at a remote Git URL. Kapro clones it to a
 temporary directory for read-only discovery:
@@ -164,6 +172,20 @@ If a generated mapping contains a glob such as `argocd/environments/*.json`,
 `--all` is set. This keeps migration safe for repositories with many
 environments.
 
+To let Kapro commit and push the same Git diff from automation, opt in
+explicitly:
+
+```bash
+kapro source apply \
+  --repo . \
+  --source kapro-connect/sources/checkout.yaml \
+  --set pos-server=1.2.3 \
+  --include argocd/environments/dev.json \
+  --commit \
+  --push \
+  --message "Promote pos-server to 1.2.3"
+```
+
 ## Step 6: Choose The Adoption Level
 
 | Argo pattern | Recommended Kapro target |
@@ -186,6 +208,22 @@ The built-in Argo actuator writes only
 `Application.spec.source.targetRevision`, sets a hard refresh annotation, and
 requests an Argo sync operation. It does not change traffic, Projects,
 destinations, repo credentials, cluster Secrets, or local rollout policy.
+
+Live Argo Application adoption is intentionally opt-in. Each Application Kapro
+may mutate must carry one of these labels or annotations:
+
+```yaml
+metadata:
+  labels:
+    kapro.io/managed-by: kapro
+    # or:
+    kapro.io/authorized-source: checkout
+```
+
+For ApplicationSet-generated apps, prefer putting the label in
+`spec.template.metadata.labels`. Kapro can also select generated apps by a
+delivery parameter such as `applicationSelector.pos-server:
+kapro.io/import=true,service=pos-server`.
 
 ## Step 6: Promote
 

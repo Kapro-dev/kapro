@@ -1289,6 +1289,11 @@ type TargetStatus struct {
 	// When set, the actuator must converge all of these versions before the target completes.
 	// +optional
 	DesiredVersions map[string]string `json:"desiredVersions,omitempty"`
+	// BackendObjects records the backend-native objects this target expects to
+	// converge, for example Argo CD Applications selected by a label selector.
+	// It is status evidence only; backend adapters own the actual resources.
+	// +optional
+	BackendObjects []BackendObjectStatus `json:"backendObjects,omitempty"`
 	// Phase is the FSM state of this target rollout.
 	Phase      TargetPhase `json:"phase,omitempty"`
 	StartedAt  string      `json:"startedAt,omitempty"`
@@ -1329,6 +1334,44 @@ type TargetStatus struct {
 	// and the consecutive observation threshold are reached.
 	// +optional
 	HeartbeatStaleCount int `json:"heartbeatStaleCount,omitempty"`
+}
+
+// BackendObjectStatus reports the health of one backend-native object expected
+// to converge for a ReleaseTarget.
+type BackendObjectStatus struct {
+	// APIVersion is the backend object's API version.
+	// +optional
+	APIVersion string `json:"apiVersion,omitempty"`
+	// Kind is the backend object's kind.
+	// +optional
+	Kind string `json:"kind,omitempty"`
+	// Namespace is the backend object's namespace.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+	// Name is the backend object's name.
+	// +optional
+	Name string `json:"name,omitempty"`
+	// Unit is the PromotionSource/release unit this object belongs to.
+	// +optional
+	Unit string `json:"unit,omitempty"`
+	// DesiredVersion is the revision Kapro expects this object to run.
+	// +optional
+	DesiredVersion string `json:"desiredVersion,omitempty"`
+	// CurrentVersion is the revision currently reported by the backend object.
+	// +optional
+	CurrentVersion string `json:"currentVersion,omitempty"`
+	// SyncStatus is the backend sync status when available.
+	// +optional
+	SyncStatus string `json:"syncStatus,omitempty"`
+	// HealthStatus is the backend health status when available.
+	// +optional
+	HealthStatus string `json:"healthStatus,omitempty"`
+	// Phase summarizes this object's convergence state.
+	// +optional
+	Phase string `json:"phase,omitempty"`
+	// Message gives a short diagnostic when the object is not converged.
+	// +optional
+	Message string `json:"message,omitempty"`
 }
 
 // ReleaseTargetSpec defines the immutable identity and desired intent for one

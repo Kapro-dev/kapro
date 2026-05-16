@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,14 +17,19 @@ import (
 
 const maxArgoDiscoveryFileSize = 1024 * 1024
 
+var defaultArgoDiscoveryPrefixes = []string{"argocd", "apps", "clusters", "environments", "flux"}
+
 type argoDiscoverOptions struct {
-	RepoPath  string
-	OutPath   string
-	Name      string
-	Namespace string
-	Selector  string
-	Revision  string
-	Force     bool
+	RepoPath     string
+	OutPath      string
+	Name         string
+	Namespace    string
+	Selector     string
+	Revision     string
+	PathPrefixes []string
+	ScanAll      bool
+	Cache        bool
+	Force        bool
 }
 
 type argoDiscoveryResult struct {
@@ -37,6 +41,40 @@ type argoDiscoveryResult struct {
 	SelectedUnits   []argoDiscoveredUnit
 	SkippedObjects  []argoDiscoveredObject
 	Errors          []string
+}
+
+type argoDiscoveryScanOptions struct {
+	PathPrefixes []string
+	ScanAll      bool
+	Cache        *argoDiscoveryCache
+}
+
+type argoDiscoveryCache struct {
+	Version int                        `json:"version"`
+	Files   map[string]argoCachedFile  `json:"files"`
+	Stats   argoDiscoveryCacheCounters `json:"stats,omitempty"`
+}
+
+type argoDiscoveryCacheCounters struct {
+	Hits   int `json:"hits,omitempty"`
+	Misses int `json:"misses,omitempty"`
+}
+
+type argoCachedFile struct {
+	BlobSHA         string                 `json:"blobSHA"`
+	Parsed          bool                   `json:"parsed,omitempty"`
+	Applications    []argoDiscoveredObject `json:"applications,omitempty"`
+	ApplicationSets []argoDiscoveredObject `json:"applicationSets,omitempty"`
+	SelectedUnits   []argoDiscoveredUnit   `json:"selectedUnits,omitempty"`
+	SkippedObjects  []argoDiscoveredObject `json:"skippedObjects,omitempty"`
+	Errors          []string               `json:"errors,omitempty"`
+}
+
+type argoDiscoveryFile struct {
+	RelPath string
+	AbsPath string
+	BlobSHA string
+	Size    int64
 }
 
 type argoDiscoveredObject struct {
@@ -72,7 +110,7 @@ files.`,
 }
 
 func newDiscoverArgoCmd() *cobra.Command {
-	var opts argoDiscoverOptions
+	opts := argoDiscoverOptions{Cache: true}
 	cmd := &cobra.Command{
 		Use:   "argo [repo]",
 		Short: "Discover an existing Argo CD repo and generate Kapro mapping files",
@@ -90,6 +128,9 @@ func newDiscoverArgoCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "argocd", "Argo CD namespace")
 	cmd.Flags().StringVar(&opts.Selector, "selector", "kapro.io/import=true", "Label selector for imported backend objects")
 	cmd.Flags().StringVar(&opts.Revision, "revision", "", "Git branch/tag/SHA when discovering a remote repository URL")
+	cmd.Flags().StringSliceVar(&opts.PathPrefixes, "path-prefix", nil, "Repo path prefix to scan (repeatable; default: argocd, apps, clusters, environments, flux)")
+	cmd.Flags().BoolVar(&opts.ScanAll, "scan-all", false, "Scan all tracked YAML/JSON files instead of GitOps path prefixes")
+	cmd.Flags().BoolVar(&opts.Cache, "cache", true, "Reuse discovery cache for unchanged Git blobs")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
 	return cmd
 }
@@ -113,7 +154,16 @@ func runArgoDiscover(opts argoDiscoverOptions) error {
 		return err
 	}
 	defer cleanup()
-	result, err := discoverArgoRepo(discoverPath)
+	cachePath := filepath.Join(opts.OutPath, "discovery", "argo-cache.json")
+	cache := &argoDiscoveryCache{Version: 1, Files: map[string]argoCachedFile{}}
+	if opts.Cache {
+		cache = loadArgoDiscoveryCache(cachePath)
+	}
+	result, err := discoverArgoRepo(discoverPath, argoDiscoveryScanOptions{
+		PathPrefixes: opts.PathPrefixes,
+		ScanAll:      opts.ScanAll,
+		Cache:        cache,
+	})
 	if err != nil {
 		return err
 	}
@@ -128,14 +178,26 @@ func runArgoDiscover(opts argoDiscoverOptions) error {
 	if err := writeScaffoldFiles(opts.OutPath, files, opts.Force); err != nil {
 		return err
 	}
+	if opts.Cache {
+		if err := writeArgoDiscoveryCache(cachePath, cache); err != nil {
+			return err
+		}
+	}
 	fmt.Fprintf(os.Stderr, "Discovered %d Argo Applications, %d ApplicationSets, and %d promotion units from %s\n",
 		len(result.Applications), len(result.ApplicationSets), len(result.SelectedUnits), opts.RepoPath)
 	return nil
 }
 
 func prepareArgoDiscoverRepo(opts argoDiscoverOptions) (string, func(), error) {
+	if _, err := exec.LookPath("git"); err != nil {
+		return "", func() {}, fmt.Errorf("kapro discover argo requires git CLI in PATH")
+	}
 	if !looksLikeGitRemote(opts.RepoPath) {
-		return opts.RepoPath, func() {}, nil
+		root, err := gitWorktreeRoot(opts.RepoPath)
+		if err != nil {
+			return "", func() {}, err
+		}
+		return root, func() {}, nil
 	}
 	dir, err := os.MkdirTemp("", "kapro-discover-argo-*")
 	if err != nil {
@@ -147,6 +209,7 @@ func prepareArgoDiscoverRepo(opts argoDiscoverOptions) (string, func(), error) {
 	}
 	args = append(args, opts.RepoPath, dir)
 	cmd := exec.Command("git", args...)
+	cmd.Env = cleanGitEnv()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		_ = os.RemoveAll(dir)
 		return "", func() {}, fmt.Errorf("clone %s: %w\n%s", opts.RepoPath, err, strings.TrimSpace(string(out)))
@@ -158,85 +221,37 @@ func looksLikeGitRemote(path string) bool {
 	return strings.Contains(path, "://") || strings.HasPrefix(path, "git@") || strings.Contains(path, ":")
 }
 
-func discoverArgoRepo(root string) (argoDiscoveryResult, error) {
+func gitWorktreeRoot(path string) (string, error) {
+	cmd := exec.Command("git", "-C", path, "rev-parse", "--show-toplevel")
+	cmd.Env = cleanGitEnv()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("%s is not a Git worktree; kapro discover argo requires a Git checkout\n%s", path, strings.TrimSpace(string(out)))
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func discoverArgoRepo(root string, opts argoDiscoveryScanOptions) (argoDiscoveryResult, error) {
 	result := argoDiscoveryResult{RepoPath: root}
-	if err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			result.Errors = append(result.Errors, err.Error())
-			return nil
-		}
-		if shouldSkipDiscoveryPath(path, d) {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
+	files, err := gitTrackedDiscoveryFiles(root, opts)
+	if err != nil {
+		return result, err
+	}
+	for _, file := range files {
 		result.ScannedFiles++
-		if !isDiscoveryCandidate(path) {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			result.Errors = append(result.Errors, err.Error())
-			return nil
-		}
-		if info.Size() > maxArgoDiscoveryFileSize {
-			result.SkippedObjects = append(result.SkippedObjects, argoDiscoveredObject{
-				Kind: "File", Path: relPath(root, path), Pattern: "large-file", Reason: "file exceeds discovery size limit",
-			})
-			return nil
-		}
-		docs, err := readYAMLOrJSONDocuments(path)
-		if err != nil {
-			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", relPath(root, path), err))
-			return nil
-		}
-		if len(docs) > 0 {
-			result.ParsedFiles++
-		}
-		rel := relPath(root, path)
-		for _, doc := range docs {
-			kind := stringAt(doc, "kind")
-			apiVersion := stringAt(doc, "apiVersion")
-			if apiVersion != "argoproj.io/v1alpha1" {
+		if opts.Cache != nil {
+			if cached, ok := opts.Cache.Files[file.RelPath]; ok && cached.BlobSHA == file.BlobSHA {
+				replayArgoCachedFile(&result, cached)
+				opts.Cache.Stats.Hits++
 				continue
 			}
-			switch kind {
-			case "Application":
-				app := argoObjectFromDoc(root, rel, doc)
-				app.Pattern = repoApplicationPattern(root, doc)
-				switch app.Pattern {
-				case "app-of-apps-root":
-					app.Reason = "root app packages child Applications; Kapro should normally promote child Applications or generator input files"
-					result.SkippedObjects = append(result.SkippedObjects, app)
-				default:
-					app.Reason = "plain Argo Application can be mapped directly"
-					result.Applications = append(result.Applications, app)
-					result.SelectedUnits = append(result.SelectedUnits, argoDiscoveredUnit{
-						Name:         argoUnitName(doc, app.Name),
-						BackendKind:  "ArgoApplicationSource",
-						Namespace:    app.Namespace,
-						VersionField: "spec.source.targetRevision",
-						SourcePath:   rel,
-						Confidence:   "high",
-						Reason:       "writes Argo Application source revision",
-					})
-				}
-			case "ApplicationSet":
-				appSet := argoObjectFromDoc(root, rel, doc)
-				appSet.Pattern = "applicationset"
-				appSet.Reason = "ApplicationSet is a generator; Kapro should write its Git input file when possible"
-				result.ApplicationSets = append(result.ApplicationSets, appSet)
-				units := appSetGitFileUnits(doc, appSet.Namespace, rel)
-				result.SelectedUnits = append(result.SelectedUnits, units...)
-			}
+			opts.Cache.Stats.Misses++
 		}
-		return nil
-	}); err != nil {
-		return result, err
+		parsed := parseArgoDiscoveryFile(root, file)
+		replayArgoCachedFile(&result, parsed)
+		if opts.Cache != nil {
+			opts.Cache.Files[file.RelPath] = parsed
+		}
 	}
 	result.SelectedUnits = dedupeUnits(result.SelectedUnits)
 	sort.Slice(result.Applications, func(i, j int) bool { return result.Applications[i].Name < result.Applications[j].Name })
@@ -245,13 +260,163 @@ func discoverArgoRepo(root string) (argoDiscoveryResult, error) {
 	return result, nil
 }
 
-func shouldSkipDiscoveryPath(path string, d fs.DirEntry) bool {
-	name := d.Name()
-	switch name {
-	case ".git", "node_modules", "vendor", ".terraform", "dist", "build", ".cache":
-		return true
+func gitTrackedDiscoveryFiles(root string, opts argoDiscoveryScanOptions) ([]argoDiscoveryFile, error) {
+	cmd := exec.Command("git", "-C", root, "ls-files", "-s", "-z")
+	cmd.Env = cleanGitEnv()
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git ls-files failed in %s: %w", root, err)
+	}
+	prefixes := opts.PathPrefixes
+	if len(prefixes) == 0 && !opts.ScanAll {
+		prefixes = defaultArgoDiscoveryPrefixes
+	}
+	var files []argoDiscoveryFile
+	for _, entry := range bytes.Split(out, []byte{0}) {
+		if len(entry) == 0 {
+			continue
+		}
+		header, relRaw, ok := bytes.Cut(entry, []byte{'\t'})
+		if !ok {
+			continue
+		}
+		parts := strings.Fields(string(header))
+		if len(parts) < 2 {
+			continue
+		}
+		rel := filepath.ToSlash(string(relRaw))
+		if !opts.ScanAll && !hasDiscoveryPrefix(rel, prefixes) {
+			continue
+		}
+		if !isDiscoveryCandidate(rel) {
+			continue
+		}
+		abs := filepath.Join(root, filepath.FromSlash(rel))
+		info, err := os.Stat(abs)
+		if err != nil {
+			continue
+		}
+		if info.Size() > maxArgoDiscoveryFileSize {
+			files = append(files, argoDiscoveryFile{RelPath: rel, AbsPath: abs, BlobSHA: parts[1], Size: info.Size()})
+			continue
+		}
+		files = append(files, argoDiscoveryFile{RelPath: rel, AbsPath: abs, BlobSHA: parts[1], Size: info.Size()})
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].RelPath < files[j].RelPath })
+	return files, nil
+}
+
+func hasDiscoveryPrefix(path string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		prefix = strings.Trim(filepath.ToSlash(prefix), "/")
+		if prefix == "" {
+			continue
+		}
+		if path == prefix || strings.HasPrefix(path, prefix+"/") {
+			return true
+		}
 	}
 	return false
+}
+
+func parseArgoDiscoveryFile(root string, file argoDiscoveryFile) argoCachedFile {
+	parsed := argoCachedFile{BlobSHA: file.BlobSHA}
+	if file.Size > maxArgoDiscoveryFileSize {
+		parsed.SkippedObjects = append(parsed.SkippedObjects, argoDiscoveredObject{
+			Kind: "File", Path: file.RelPath, Pattern: "large-file", Reason: "file exceeds discovery size limit",
+		})
+		return parsed
+	}
+	docs, err := readYAMLOrJSONDocuments(file.AbsPath)
+	if err != nil {
+		parsed.Errors = append(parsed.Errors, fmt.Sprintf("%s: %v", file.RelPath, err))
+		return parsed
+	}
+	if len(docs) > 0 {
+		parsed.Parsed = true
+	}
+	for _, doc := range docs {
+		kind := stringAt(doc, "kind")
+		apiVersion := stringAt(doc, "apiVersion")
+		if apiVersion != "argoproj.io/v1alpha1" {
+			continue
+		}
+		switch kind {
+		case "Application":
+			app := argoObjectFromDoc(root, file.RelPath, doc)
+			app.Pattern = repoApplicationPattern(root, doc)
+			switch app.Pattern {
+			case "app-of-apps-root":
+				app.Reason = "root app packages child Applications; Kapro should normally promote child Applications or generator input files"
+				parsed.SkippedObjects = append(parsed.SkippedObjects, app)
+			default:
+				app.Reason = "plain Argo Application can be mapped directly"
+				parsed.Applications = append(parsed.Applications, app)
+				parsed.SelectedUnits = append(parsed.SelectedUnits, argoDiscoveredUnit{
+					Name:         argoUnitName(doc, app.Name),
+					BackendKind:  "ArgoApplicationSource",
+					Namespace:    app.Namespace,
+					VersionField: "spec.source.targetRevision",
+					SourcePath:   file.RelPath,
+					Confidence:   "high",
+					Reason:       "writes Argo Application source revision",
+				})
+			}
+		case "ApplicationSet":
+			appSet := argoObjectFromDoc(root, file.RelPath, doc)
+			appSet.Pattern = "applicationset"
+			appSet.Reason = "ApplicationSet is a generator; Kapro should write its Git input file when possible"
+			parsed.ApplicationSets = append(parsed.ApplicationSets, appSet)
+			units := appSetGitFileUnits(doc, appSet.Namespace, file.RelPath)
+			parsed.SelectedUnits = append(parsed.SelectedUnits, units...)
+		}
+	}
+	return parsed
+}
+
+func replayArgoCachedFile(result *argoDiscoveryResult, cached argoCachedFile) {
+	if cached.Parsed {
+		result.ParsedFiles++
+	}
+	result.Applications = append(result.Applications, cached.Applications...)
+	result.ApplicationSets = append(result.ApplicationSets, cached.ApplicationSets...)
+	result.SelectedUnits = append(result.SelectedUnits, cached.SelectedUnits...)
+	result.SkippedObjects = append(result.SkippedObjects, cached.SkippedObjects...)
+	result.Errors = append(result.Errors, cached.Errors...)
+}
+
+func loadArgoDiscoveryCache(path string) *argoDiscoveryCache {
+	cache := &argoDiscoveryCache{Version: 1, Files: map[string]argoCachedFile{}}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return cache
+	}
+	if err := json.Unmarshal(data, cache); err != nil || cache.Version != 1 {
+		return &argoDiscoveryCache{Version: 1, Files: map[string]argoCachedFile{}}
+	}
+	if cache.Files == nil {
+		cache.Files = map[string]argoCachedFile{}
+	}
+	cache.Stats = argoDiscoveryCacheCounters{}
+	return cache
+}
+
+func writeArgoDiscoveryCache(path string, cache *argoDiscoveryCache) error {
+	if cache == nil {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("create discovery cache dir: %w", err)
+	}
+	data, err := json.MarshalIndent(cache, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal discovery cache: %w", err)
+	}
+	data = append(data, '\n')
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("write discovery cache: %w", err)
+	}
+	return nil
 }
 
 func isDiscoveryCandidate(path string) bool {
@@ -460,6 +625,11 @@ func nestedGeneratorMaps(value any, key string) []any {
 	}
 	if matrix, ok := m["matrix"].(map[string]any); ok {
 		for _, child := range sliceAt(matrix, "generators") {
+			found = append(found, nestedGeneratorMaps(child, key)...)
+		}
+	}
+	if merge, ok := m["merge"].(map[string]any); ok {
+		for _, child := range sliceAt(merge, "generators") {
 			found = append(found, nestedGeneratorMaps(child, key)...)
 		}
 	}
@@ -714,12 +884,4 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func relPath(root, path string) string {
-	rel, err := filepath.Rel(root, path)
-	if err != nil {
-		return path
-	}
-	return filepath.ToSlash(rel)
 }

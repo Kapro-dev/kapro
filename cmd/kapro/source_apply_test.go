@@ -160,6 +160,41 @@ spec:
 	}
 }
 
+func TestRunSourceApplyUpdatesKustomizeImage(t *testing.T) {
+	repo := t.TempDir()
+	writeTestFile(t, repo, "apps/api/kustomization.yaml", `resources:
+- deploy.yaml
+images:
+- name: example.com/api
+  newTag: old
+`)
+	sourcePath := filepath.Join(repo, "source.yaml")
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
+kind: PromotionSource
+metadata:
+  name: checkout
+spec:
+  units:
+  - name: api
+    backendKind: KustomizeImage
+    sourcePath: apps/api/kustomization.yaml
+    versionField: example.com/api
+`)
+
+	err := runSourceApply(sourceApplyOptions{
+		RepoPath:   repo,
+		SourcePath: sourcePath,
+		VersionSet: []string{"api=2.0.0"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := readFile(t, filepath.Join(repo, "apps/api/kustomization.yaml"))
+	if !strings.Contains(got, "newTag: 2.0.0") {
+		t.Fatalf("kustomize image was not updated:\n%s", got)
+	}
+}
+
 func TestUpdateYAMLFieldSupportsSequenceIndex(t *testing.T) {
 	repo := t.TempDir()
 	path := filepath.Join(repo, "app.yaml")
@@ -170,7 +205,7 @@ func TestUpdateYAMLFieldSupportsSequenceIndex(t *testing.T) {
 `), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := updateYAMLField(path, "spec.sources[0].targetRevision", "2.0.0"); err != nil {
+	if err := updateStructuredField(path, "spec.sources[0].targetRevision", "2.0.0"); err != nil {
 		t.Fatal(err)
 	}
 	got := readFile(t, path)

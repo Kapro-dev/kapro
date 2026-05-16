@@ -20,6 +20,11 @@ kapro discover argo . \
 kubectl apply -f ./kapro-connect/backends/checkout-observe.yaml
 ```
 
+`kapro discover argo` requires the `git` CLI and a Git worktree. It reads
+tracked YAML/JSON files from `git ls-files`, scans common GitOps prefixes by
+default, and writes `discovery/argo-cache.json` so repeat scans skip unchanged
+Git blobs.
+
 The generated `BackendProfile` starts with `managementPolicy: Observe`. Argo CD
 keeps cluster credentials, repository credentials, Projects, Applications, and
 ApplicationSets. Kapro reads metadata and health through Kubernetes RBAC. After
@@ -90,6 +95,21 @@ Kapro should start in `Observe` mode and show the generated graph. For Git file
 generators, `kapro discover argo` maps `targetRevision: '{{.field}}'` back to
 the JSON/YAML generator input field. That input file is the preferred adoption
 target because it is the durable Argo source of truth.
+
+For live generated Application adoption, put Kapro delegation labels in the
+ApplicationSet template and select generated apps by label:
+
+```yaml
+spec:
+  template:
+    metadata:
+      labels:
+        kapro.io/managed-by: kapro
+        service: checkout-api
+```
+
+Then configure the delivery backend with
+`applicationSelector.checkout-api: service=checkout-api`.
 
 ### Argo Pattern 3: App Of Apps
 

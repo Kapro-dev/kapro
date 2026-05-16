@@ -21,7 +21,7 @@ selected objects are correct.
 |---|---|---|---|
 | Plain `Application` | Selected `Application` objects and Argo cluster Secrets. | `Application.spec.source.targetRevision`, hard refresh annotation, and `operation.sync`. | `project`, `destination`, repo credentials, cluster Secrets, sync policy, health status, traffic resources. |
 | `ApplicationSet` with Git files | `ApplicationSet` and generated `Application` objects. | The declared JSON/YAML generator input field through `kapro source apply`; writes require an explicit `PromotionSource` mapping and scoped file match. | Generators, repo credentials, cluster credentials, sync policy, traffic resources. |
-| `ApplicationSet` child | Generated `Application` objects selected by labels or owner references. | Generated child `Application.spec.source.targetRevision` only for explicit live adoption. | `ApplicationSet.spec`, generators, cluster credentials, template metadata. |
+| `ApplicationSet` child | Generated `Application` objects selected by labels or owner references. | Generated child `Application.spec.source.targetRevision` only for explicit live adoption and selector parameters such as `applicationSelector.<unit>`. | `ApplicationSet.spec`, generators, cluster credentials, template metadata. |
 | `ApplicationSet` template | `ApplicationSet` objects are counted and sampled as skipped by the built-in backend. | Not written by the built-in actuator. Use the ApplicationSet actuator plugin when the desired ownership level is `ApplicationSet.spec.template.spec.source.targetRevision`. | Generators, repo credentials, sync policy, traffic resources. |
 | App-of-apps root | Root `Application` can be discovered but is marked unsupported for direct promotion by default. | None by default. | Child Application definitions unless those children are selected directly. |
 | App-of-apps child | Child `Application` objects selected by labels. | `Application.spec.source.targetRevision`. | Root app packaging and sync mechanics. |
@@ -29,6 +29,15 @@ selected objects are correct.
 Argo CD must still reconcile the Application after Kapro changes the revision.
 The built-in live Application actuator requests sync, but Argo CD remains the
 owner of sync windows, hooks, health, and local rollout behavior.
+
+Live Argo writes require an explicit delegation marker on every Application:
+`kapro.io/managed-by: kapro`, `kapro.io/authorized-source: <source>`, or
+`kapro.io/authorized-unit: <unit>`. Put the marker on
+`ApplicationSet.spec.template.metadata.labels` for generated apps.
+
+During apply, `ReleaseTarget.status.backendObjects` records each selected Argo
+Application, desired revision, observed revision, sync status, health status,
+and convergence phase.
 
 ## Flux
 

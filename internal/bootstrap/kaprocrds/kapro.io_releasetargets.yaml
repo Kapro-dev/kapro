@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.0
+    controller-gen.kubebuilder.io/version: v0.21.0
   name: releasetargets.kapro.io
 spec:
   group: kapro.io
@@ -25,11 +25,21 @@ spec:
     - jsonPath: .spec.target
       name: Target
       type: string
+    - jsonPath: .spec.pipelineRef
+      name: Pipeline
+      type: string
     - jsonPath: .spec.stage
       name: Stage
       type: string
     - jsonPath: .status.phase
       name: Phase
+      type: string
+    - jsonPath: .spec.version
+      name: Version
+      type: string
+    - jsonPath: .status.previousVersion
+      name: Previous
+      priority: 1
       type: string
     - jsonPath: .spec.rollback
       name: Rollback
@@ -116,6 +126,86 @@ spec:
                       metrics:
                         items:
                           properties:
+                            analysis:
+                              description: |-
+                                Analysis selects optional research-backed metric semantics. Empty keeps
+                                the original threshold behavior for backwards compatibility.
+                              properties:
+                                alpha:
+                                  description: |-
+                                    Alpha is the false-positive budget for statistical tests. Defaults to
+                                    0.05. Lower values are more conservative.
+                                  maximum: 1
+                                  minimum: 0
+                                  type: number
+                                baselineHealthQuery:
+                                  description: |-
+                                    BaselineHealthQuery must pass before baseline or score analysis can use
+                                    the baseline as a control. It should return a positive/true value when
+                                    the baseline is healthy.
+                                  type: string
+                                baselineQuery:
+                                  description: |-
+                                    BaselineQuery is required for baseline analysis. The current value is
+                                    divided by the baseline value before applying the threshold.
+                                  type: string
+                                comparator:
+                                  description: |-
+                                    Comparator controls threshold comparison.
+                                    Defaults to "gt" for threshold/sequential and "lte" for sloBurnRate/baseline.
+                                  enum:
+                                  - gt
+                                  - gte
+                                  - lt
+                                  - lte
+                                  type: string
+                                confidenceThreshold:
+                                  description: |-
+                                    ConfidenceThreshold is the minimum confidence required for sequential
+                                    analysis to make a terminal decision. Defaults to 0.95.
+                                  maximum: 1
+                                  minimum: 0
+                                  type: number
+                                maxSamples:
+                                  description: |-
+                                    MaxSamples is the maximum number of samples to wait for before a
+                                    statistical analysis must return a terminal decision using the evidence
+                                    available. Empty means no maximum.
+                                  format: int32
+                                  minimum: 1
+                                  type: integer
+                                minSamples:
+                                  description: |-
+                                    MinSamples is the minimum number of range samples required for sequential
+                                    analysis before Kapro can pass or fail the gate.
+                                  format: int32
+                                  minimum: 1
+                                  type: integer
+                                mode:
+                                  description: |-
+                                    Mode selects the metric analysis algorithm.
+                                    threshold: compare the current value to threshold.
+                                    sloBurnRate: treat the current value as an error-budget burn rate.
+                                    baseline: compare the current value to a baseline query as a ratio.
+                                    sequential: sample over the window and require enough confidence before deciding.
+                                    changePoint: detect a statistically meaningful change inside the window.
+                                    score: convert the metric into a 0-100 canary score.
+                                  enum:
+                                  - threshold
+                                  - sloBurnRate
+                                  - baseline
+                                  - sequential
+                                  - changePoint
+                                  - score
+                                  type: string
+                                scoreThreshold:
+                                  description: |-
+                                    ScoreThreshold is the minimum score required for score analysis. Defaults
+                                    to 95.
+                                  maximum: 100
+                                  minimum: 0
+                                  type: number
+                              type: object
                             config:
                               format: byte
                               type: string
@@ -129,7 +219,14 @@ spec:
                                 Equivalent to Grafana's "Evaluate every" setting.
                                 Defaults to "30s". Minimum "10s".
                               type: string
+                            preset:
+                              description: |-
+                                Preset references Pipeline.spec.metricPresets by name.
+                                Inline fields override the preset when set.
+                              type: string
                             provider:
+                              description: Provider selects the metrics backend. Required
+                                when preset is empty.
                               type: string
                             query:
                               description: |-
@@ -137,8 +234,12 @@ spec:
                                 Use range functions directly in the query for window-based checks, e.g.:
                                   min_over_time(error_rate[30m]) < 0.01
                                 Or reference the Window field as a template: {{.Window}} is substituted at evaluation time.
+                                Required when preset is empty.
                               type: string
                             threshold:
+                              description: |-
+                                Threshold is optional and presence-aware so an inline metric can
+                                intentionally override a preset threshold to 0.
                               type: number
                             window:
                               default: 5m
@@ -147,9 +248,6 @@ spec:
                                 When Query already contains a hardcoded range (e.g. [5m]), this field is ignored.
                                 Defaults to "5m".
                               type: string
-                          required:
-                          - provider
-                          - query
                           type: object
                         type: array
                       soakTime:
@@ -383,6 +481,17 @@ spec:
                                 Name uniquely identifies this template within the gate for status tracking
                                 and Job naming. Required when type == "job" (used to generate Job name).
                               type: string
+                            plugin:
+                              description: PluginGateSpec references an external gate
+                                registered through PluginRegistration.
+                              properties:
+                                name:
+                                  description: Name is PluginRegistration.spec.name
+                                    for a ready gate plugin.
+                                  type: string
+                              required:
+                              - name
+                              type: object
                             timeout:
                               type: string
                             type:
@@ -390,6 +499,7 @@ spec:
                               - cel
                               - job
                               - webhook
+                              - plugin
                               type: string
                             webhook:
                               description: WebhookGateSpec configures the HTTP webhook
@@ -458,12 +568,13 @@ spec:
                     type: string
                   notifications:
                     items:
+                      description: NotificationSpec configures where and when to send
+                        delivery lifecycle events.
                       properties:
-                        channel:
-                          type: string
                         email:
-                          description: EmailNotifierSpec configures SMTP email delivery
-                            for gate notifications.
+                          description: |-
+                            Email configures SMTP email delivery.
+                            Required when type=email.
                           properties:
                             from:
                               type: string
@@ -493,10 +604,63 @@ spec:
                           - smtpSecretRef
                           - to
                           type: object
+                        events:
+                          description: |-
+                            Events filters which lifecycle events trigger this notification.
+                            Uses stable semantic event types. Currently emitted events:
+                              kapro.release.started, kapro.release.completed, kapro.release.failed,
+                              kapro.release.rollback.started, kapro.release.stage.completed,
+                              kapro.release.gate.passed, kapro.release.gate.failed,
+                              kapro.release.approval.required,
+                              kapro.release.target.pending, kapro.release.target.verification,
+                              kapro.release.target.health_check, kapro.release.target.soaking,
+                              kapro.release.target.metrics_check, kapro.release.target.applying,
+                              kapro.release.target.converged, kapro.release.target.failed,
+                              kapro.release.target.skipped.
+                            Empty means all events.
+                          items:
+                            type: string
+                          type: array
+                        slack:
+                          description: |-
+                            Slack configures Slack message delivery.
+                            Required when type=slack.
+                          properties:
+                            channel:
+                              description: Channel is the Slack channel to post to.
+                              type: string
+                          required:
+                          - channel
+                          type: object
                         type:
+                          description: Type selects the notification backend.
+                          enum:
+                          - webhook
+                          - slack
+                          - email
                           type: string
-                        url:
-                          type: string
+                        webhook:
+                          description: |-
+                            Webhook configures HTTP POST delivery.
+                            Required when type=webhook.
+                          properties:
+                            format:
+                              default: json
+                              description: |-
+                                Format selects the payload format.
+                                  json (default): plain JSON event payload.
+                                  cloudevents: CloudEvents v1.0 structured content mode.
+                              enum:
+                              - json
+                              - cloudevents
+                              type: string
+                            url:
+                              description: URL is the HTTP endpoint to POST events
+                                to.
+                              type: string
+                          required:
+                          - url
+                          type: object
                       required:
                       - type
                       type: object
@@ -566,6 +730,56 @@ spec:
                 description: ApprovalSentAt records when the approval notification
                   was last dispatched.
                 type: string
+              backendObjects:
+                description: |-
+                  BackendObjects records the backend-native objects this target expects to
+                  converge, for example Argo CD Applications selected by a label selector.
+                  It is status evidence only; backend adapters own the actual resources.
+                items:
+                  description: |-
+                    BackendObjectStatus reports the health of one backend-native object expected
+                    to converge for a ReleaseTarget.
+                  properties:
+                    apiVersion:
+                      description: APIVersion is the backend object's API version.
+                      type: string
+                    currentVersion:
+                      description: CurrentVersion is the revision currently reported
+                        by the backend object.
+                      type: string
+                    desiredVersion:
+                      description: DesiredVersion is the revision Kapro expects this
+                        object to run.
+                      type: string
+                    healthStatus:
+                      description: HealthStatus is the backend health status when
+                        available.
+                      type: string
+                    kind:
+                      description: Kind is the backend object's kind.
+                      type: string
+                    message:
+                      description: Message gives a short diagnostic when the object
+                        is not converged.
+                      type: string
+                    name:
+                      description: Name is the backend object's name.
+                      type: string
+                    namespace:
+                      description: Namespace is the backend object's namespace.
+                      type: string
+                    phase:
+                      description: Phase summarizes this object's convergence state.
+                      type: string
+                    syncStatus:
+                      description: SyncStatus is the backend sync status when available.
+                      type: string
+                    unit:
+                      description: Unit is the PromotionSource/release unit this object
+                        belongs to.
+                      type: string
+                  type: object
+                type: array
               conditions:
                 description: |-
                   Conditions provide the Kubernetes-native readiness/reconciling/stalled contract
@@ -1061,6 +1275,86 @@ spec:
                       metrics:
                         items:
                           properties:
+                            analysis:
+                              description: |-
+                                Analysis selects optional research-backed metric semantics. Empty keeps
+                                the original threshold behavior for backwards compatibility.
+                              properties:
+                                alpha:
+                                  description: |-
+                                    Alpha is the false-positive budget for statistical tests. Defaults to
+                                    0.05. Lower values are more conservative.
+                                  maximum: 1
+                                  minimum: 0
+                                  type: number
+                                baselineHealthQuery:
+                                  description: |-
+                                    BaselineHealthQuery must pass before baseline or score analysis can use
+                                    the baseline as a control. It should return a positive/true value when
+                                    the baseline is healthy.
+                                  type: string
+                                baselineQuery:
+                                  description: |-
+                                    BaselineQuery is required for baseline analysis. The current value is
+                                    divided by the baseline value before applying the threshold.
+                                  type: string
+                                comparator:
+                                  description: |-
+                                    Comparator controls threshold comparison.
+                                    Defaults to "gt" for threshold/sequential and "lte" for sloBurnRate/baseline.
+                                  enum:
+                                  - gt
+                                  - gte
+                                  - lt
+                                  - lte
+                                  type: string
+                                confidenceThreshold:
+                                  description: |-
+                                    ConfidenceThreshold is the minimum confidence required for sequential
+                                    analysis to make a terminal decision. Defaults to 0.95.
+                                  maximum: 1
+                                  minimum: 0
+                                  type: number
+                                maxSamples:
+                                  description: |-
+                                    MaxSamples is the maximum number of samples to wait for before a
+                                    statistical analysis must return a terminal decision using the evidence
+                                    available. Empty means no maximum.
+                                  format: int32
+                                  minimum: 1
+                                  type: integer
+                                minSamples:
+                                  description: |-
+                                    MinSamples is the minimum number of range samples required for sequential
+                                    analysis before Kapro can pass or fail the gate.
+                                  format: int32
+                                  minimum: 1
+                                  type: integer
+                                mode:
+                                  description: |-
+                                    Mode selects the metric analysis algorithm.
+                                    threshold: compare the current value to threshold.
+                                    sloBurnRate: treat the current value as an error-budget burn rate.
+                                    baseline: compare the current value to a baseline query as a ratio.
+                                    sequential: sample over the window and require enough confidence before deciding.
+                                    changePoint: detect a statistically meaningful change inside the window.
+                                    score: convert the metric into a 0-100 canary score.
+                                  enum:
+                                  - threshold
+                                  - sloBurnRate
+                                  - baseline
+                                  - sequential
+                                  - changePoint
+                                  - score
+                                  type: string
+                                scoreThreshold:
+                                  description: |-
+                                    ScoreThreshold is the minimum score required for score analysis. Defaults
+                                    to 95.
+                                  maximum: 100
+                                  minimum: 0
+                                  type: number
+                              type: object
                             config:
                               format: byte
                               type: string
@@ -1074,7 +1368,14 @@ spec:
                                 Equivalent to Grafana's "Evaluate every" setting.
                                 Defaults to "30s". Minimum "10s".
                               type: string
+                            preset:
+                              description: |-
+                                Preset references Pipeline.spec.metricPresets by name.
+                                Inline fields override the preset when set.
+                              type: string
                             provider:
+                              description: Provider selects the metrics backend. Required
+                                when preset is empty.
                               type: string
                             query:
                               description: |-
@@ -1082,8 +1383,12 @@ spec:
                                 Use range functions directly in the query for window-based checks, e.g.:
                                   min_over_time(error_rate[30m]) < 0.01
                                 Or reference the Window field as a template: {{.Window}} is substituted at evaluation time.
+                                Required when preset is empty.
                               type: string
                             threshold:
+                              description: |-
+                                Threshold is optional and presence-aware so an inline metric can
+                                intentionally override a preset threshold to 0.
                               type: number
                             window:
                               default: 5m
@@ -1092,9 +1397,6 @@ spec:
                                 When Query already contains a hardcoded range (e.g. [5m]), this field is ignored.
                                 Defaults to "5m".
                               type: string
-                          required:
-                          - provider
-                          - query
                           type: object
                         type: array
                       soakTime:
@@ -1328,6 +1630,17 @@ spec:
                                 Name uniquely identifies this template within the gate for status tracking
                                 and Job naming. Required when type == "job" (used to generate Job name).
                               type: string
+                            plugin:
+                              description: PluginGateSpec references an external gate
+                                registered through PluginRegistration.
+                              properties:
+                                name:
+                                  description: Name is PluginRegistration.spec.name
+                                    for a ready gate plugin.
+                                  type: string
+                              required:
+                              - name
+                              type: object
                             timeout:
                               type: string
                             type:
@@ -1335,6 +1648,7 @@ spec:
                               - cel
                               - job
                               - webhook
+                              - plugin
                               type: string
                             webhook:
                               description: WebhookGateSpec configures the HTTP webhook
@@ -1403,12 +1717,13 @@ spec:
                     type: string
                   notifications:
                     items:
+                      description: NotificationSpec configures where and when to send
+                        delivery lifecycle events.
                       properties:
-                        channel:
-                          type: string
                         email:
-                          description: EmailNotifierSpec configures SMTP email delivery
-                            for gate notifications.
+                          description: |-
+                            Email configures SMTP email delivery.
+                            Required when type=email.
                           properties:
                             from:
                               type: string
@@ -1438,10 +1753,63 @@ spec:
                           - smtpSecretRef
                           - to
                           type: object
+                        events:
+                          description: |-
+                            Events filters which lifecycle events trigger this notification.
+                            Uses stable semantic event types. Currently emitted events:
+                              kapro.release.started, kapro.release.completed, kapro.release.failed,
+                              kapro.release.rollback.started, kapro.release.stage.completed,
+                              kapro.release.gate.passed, kapro.release.gate.failed,
+                              kapro.release.approval.required,
+                              kapro.release.target.pending, kapro.release.target.verification,
+                              kapro.release.target.health_check, kapro.release.target.soaking,
+                              kapro.release.target.metrics_check, kapro.release.target.applying,
+                              kapro.release.target.converged, kapro.release.target.failed,
+                              kapro.release.target.skipped.
+                            Empty means all events.
+                          items:
+                            type: string
+                          type: array
+                        slack:
+                          description: |-
+                            Slack configures Slack message delivery.
+                            Required when type=slack.
+                          properties:
+                            channel:
+                              description: Channel is the Slack channel to post to.
+                              type: string
+                          required:
+                          - channel
+                          type: object
                         type:
+                          description: Type selects the notification backend.
+                          enum:
+                          - webhook
+                          - slack
+                          - email
                           type: string
-                        url:
-                          type: string
+                        webhook:
+                          description: |-
+                            Webhook configures HTTP POST delivery.
+                            Required when type=webhook.
+                          properties:
+                            format:
+                              default: json
+                              description: |-
+                                Format selects the payload format.
+                                  json (default): plain JSON event payload.
+                                  cloudevents: CloudEvents v1.0 structured content mode.
+                              enum:
+                              - json
+                              - cloudevents
+                              type: string
+                            url:
+                              description: URL is the HTTP endpoint to POST events
+                                to.
+                              type: string
+                          required:
+                          - url
+                          type: object
                       required:
                       - type
                       type: object
@@ -1472,6 +1840,70 @@ spec:
                   properties:
                     attempts:
                       type: integer
+                    evidence:
+                      description: |-
+                        Evidence is structured, non-secret data that explains the gate decision.
+                        It is intended for audit, debugging, notifications, and future AI agents.
+                      items:
+                        description: GateEvidence records the facts and analysis that
+                          produced a gate decision.
+                        properties:
+                          alpha:
+                            type: number
+                          analysisMode:
+                            type: string
+                          baselineHealthQuery:
+                            type: string
+                          baselineHealthy:
+                            type: boolean
+                          baselineQuery:
+                            type: string
+                          baselineValue:
+                            type: string
+                          comparator:
+                            type: string
+                          confidence:
+                            type: number
+                          decisionRule:
+                            type: string
+                          effectSize:
+                            type: string
+                          interval:
+                            type: string
+                          observedValue:
+                            type: string
+                          pValue:
+                            type: number
+                          projection:
+                            description: GateProjection records an optional forecast
+                              derived from gate evidence.
+                            properties:
+                              horizon:
+                                type: string
+                              reason:
+                                type: string
+                              value:
+                                type: string
+                            type: object
+                          provider:
+                            type: string
+                          query:
+                            type: string
+                          reason:
+                            type: string
+                          sampleCount:
+                            format: int64
+                            type: integer
+                          score:
+                            type: number
+                          threshold:
+                            type: string
+                          type:
+                            type: string
+                          window:
+                            type: string
+                        type: object
+                      type: array
                     finishedAt:
                       type: string
                     message:
@@ -1487,6 +1919,69 @@ spec:
                         description: GateConditionResult is the per-metric/condition
                           result within a GateRunStatus.
                         properties:
+                          evidence:
+                            description: Evidence is structured, non-secret data for
+                              this condition.
+                            items:
+                              description: GateEvidence records the facts and analysis
+                                that produced a gate decision.
+                              properties:
+                                alpha:
+                                  type: number
+                                analysisMode:
+                                  type: string
+                                baselineHealthQuery:
+                                  type: string
+                                baselineHealthy:
+                                  type: boolean
+                                baselineQuery:
+                                  type: string
+                                baselineValue:
+                                  type: string
+                                comparator:
+                                  type: string
+                                confidence:
+                                  type: number
+                                decisionRule:
+                                  type: string
+                                effectSize:
+                                  type: string
+                                interval:
+                                  type: string
+                                observedValue:
+                                  type: string
+                                pValue:
+                                  type: number
+                                projection:
+                                  description: GateProjection records an optional
+                                    forecast derived from gate evidence.
+                                  properties:
+                                    horizon:
+                                      type: string
+                                    reason:
+                                      type: string
+                                    value:
+                                      type: string
+                                  type: object
+                                provider:
+                                  type: string
+                                query:
+                                  type: string
+                                reason:
+                                  type: string
+                                sampleCount:
+                                  format: int64
+                                  type: integer
+                                score:
+                                  type: number
+                                threshold:
+                                  type: string
+                                type:
+                                  type: string
+                                window:
+                                  type: string
+                              type: object
+                            type: array
                           message:
                             type: string
                           name:
@@ -1554,6 +2049,12 @@ spec:
                   - phase
                   type: object
                 type: array
+              heartbeatStaleCount:
+                description: |-
+                  HeartbeatStaleCount tracks consecutive reconciles that observed a stale
+                  MemberCluster heartbeat. The target fails only after both the stale timeout
+                  and the consecutive observation threshold are reached.
+                type: integer
               heartbeatStaleSince:
                 description: |-
                   HeartbeatStaleSince records when the target's MemberCluster heartbeat first

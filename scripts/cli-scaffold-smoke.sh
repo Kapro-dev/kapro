@@ -100,6 +100,7 @@ YAML
 cat >"${TMPDIR}/argo-repo/argocd/environments/dev.json" <<'JSON'
 {"env":"dev","gkProjectVersion":"1.0.0"}
 JSON
+(cd "${TMPDIR}/argo-repo" && git init >/dev/null && git add .)
 kapro discover argo "${TMPDIR}/argo-repo" --out "${TMPDIR}/discover-argo" --name checkout --force >/dev/null
 require_file "${TMPDIR}/discover-argo/backends/checkout-observe.yaml"
 require_file "${TMPDIR}/discover-argo/sources/checkout.yaml"

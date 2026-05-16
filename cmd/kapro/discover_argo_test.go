@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -53,8 +54,9 @@ spec:
         ref: values
 `)
 	writeTestFile(t, repo, "argocd/environments/dev.json", `{"env":"dev","gkProjectVersion":"1.0.0"}`)
+	initTestGitRepo(t, repo)
 
-	result, err := discoverArgoRepo(repo)
+	result, err := discoverArgoRepo(repo, argoDiscoveryScanOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,6 +100,7 @@ spec:
     targetRevision: 1.0.0
     path: apps/api
 `)
+	initTestGitRepo(t, repo)
 
 	err := runArgoDiscover(argoDiscoverOptions{
 		RepoPath:  repo,
@@ -133,6 +136,77 @@ spec:
 	}
 }
 
+func TestDiscoverArgoRepoUsesGitPrefixes(t *testing.T) {
+	repo := t.TempDir()
+	writeTestFile(t, repo, "random/api.yaml", `apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: skipped-api
+spec:
+  source:
+    targetRevision: main
+`)
+	writeTestFile(t, repo, "argocd/api.yaml", `apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: selected-api
+spec:
+  source:
+    targetRevision: main
+`)
+	initTestGitRepo(t, repo)
+
+	result, err := discoverArgoRepo(repo, argoDiscoveryScanOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(result.Applications); got != 1 {
+		t.Fatalf("Applications=%d, want 1", got)
+	}
+	if result.Applications[0].Name != "selected-api" {
+		t.Fatalf("selected app=%q", result.Applications[0].Name)
+	}
+	result, err = discoverArgoRepo(repo, argoDiscoveryScanOptions{ScanAll: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(result.Applications); got != 2 {
+		t.Fatalf("scan all Applications=%d, want 2", got)
+	}
+}
+
+func TestDiscoverArgoRepoReusesBlobCache(t *testing.T) {
+	repo := t.TempDir()
+	writeTestFile(t, repo, "argocd/api.yaml", `apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: api
+spec:
+  source:
+    targetRevision: main
+`)
+	initTestGitRepo(t, repo)
+	cache := &argoDiscoveryCache{Version: 1, Files: map[string]argoCachedFile{}}
+
+	if _, err := discoverArgoRepo(repo, argoDiscoveryScanOptions{Cache: cache}); err != nil {
+		t.Fatal(err)
+	}
+	if cache.Stats.Misses == 0 {
+		t.Fatalf("expected initial cache miss, got %#v", cache.Stats)
+	}
+	cache.Stats = argoDiscoveryCacheCounters{}
+	result, err := discoverArgoRepo(repo, argoDiscoveryScanOptions{Cache: cache})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cache.Stats.Hits == 0 {
+		t.Fatalf("expected cache hit, got %#v", cache.Stats)
+	}
+	if len(result.Applications) != 1 {
+		t.Fatalf("cached applications=%d, want 1", len(result.Applications))
+	}
+}
+
 func TestLooksLikeGitRemote(t *testing.T) {
 	tests := map[string]bool{
 		"https://github.com/Kapro-dev/kapro.git": true,
@@ -156,5 +230,23 @@ func writeTestFile(t *testing.T, root, rel, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func initTestGitRepo(t *testing.T, root string) {
+	t.Helper()
+	runTestGit(t, root, "init")
+	runTestGit(t, root, "config", "user.email", "kapro@example.com")
+	runTestGit(t, root, "config", "user.name", "Kapro Test")
+	runTestGit(t, root, "add", ".")
+}
+
+func runTestGit(t *testing.T, root string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = root
+	cmd.Env = cleanGitEnv()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, out)
 	}
 }

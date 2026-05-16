@@ -1,20 +1,18 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
-	yamlv3 "go.yaml.in/yaml/v3"
 	sigsyaml "sigs.k8s.io/yaml"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	"kapro.io/kapro/internal/writetarget"
 )
 
 type sourceApplyOptions struct {
@@ -25,6 +23,9 @@ type sourceApplyOptions struct {
 	Include    []string
 	All        bool
 	DryRun     bool
+	Commit     bool
+	Push       bool
+	Message    string
 }
 
 func newSourceApplyCmd() *cobra.Command {
@@ -49,6 +50,9 @@ revision must be applied to every matched file.`,
 	cmd.Flags().StringArrayVar(&opts.Include, "include", nil, "Repo-relative file glob to allow when a mapping matches multiple files")
 	cmd.Flags().BoolVar(&opts.All, "all", false, "Apply glob mappings to every matched file")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Print planned writes without changing files")
+	cmd.Flags().BoolVar(&opts.Commit, "commit", false, "Create a Git commit after applying changes")
+	cmd.Flags().BoolVar(&opts.Push, "push", false, "Push the current branch after committing changes")
+	cmd.Flags().StringVar(&opts.Message, "message", "", "Git commit message for --commit")
 	_ = cmd.MarkFlagRequired("source")
 	return cmd
 }
@@ -67,6 +71,12 @@ func runSourceApply(opts sourceApplyOptions) error {
 	}
 	if opts.All && len(opts.Include) > 0 {
 		return fmt.Errorf("--all and --include are mutually exclusive")
+	}
+	if opts.DryRun && (opts.Commit || opts.Push) {
+		return fmt.Errorf("--dry-run cannot be combined with --commit or --push")
+	}
+	if opts.Push && !opts.Commit {
+		return fmt.Errorf("--push requires --commit")
 	}
 
 	unitNames := make(map[string]struct{}, len(source.Spec.Units))
@@ -113,10 +123,18 @@ func runSourceApply(opts sourceApplyOptions) error {
 			fmt.Printf("would update %s:%s -> %s\n", write.Path, write.Field, write.Version)
 			continue
 		}
-		if err := updateStructuredField(write.AbsPath, write.Field, write.Version); err != nil {
+		if err := applySourceWrite(write); err != nil {
 			return err
 		}
 		fmt.Printf("updated %s:%s -> %s\n", write.Path, write.Field, write.Version)
+	}
+	if opts.Commit {
+		if opts.Message == "" {
+			opts.Message = "Update Kapro promotion source revisions"
+		}
+		if err := commitSourceWrites(opts.RepoPath, plan, opts.Message, opts.Push); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -143,6 +161,7 @@ func dedupeSourceWrites(writes []sourceWrite) ([]sourceWrite, error) {
 type sourceWrite struct {
 	Path    string
 	AbsPath string
+	Kind    string
 	Field   string
 	Version string
 }
@@ -188,7 +207,7 @@ func planUnitSourceWrites(opts sourceApplyOptions, unit kaprov1alpha1.PromotionU
 		if err != nil {
 			return nil, err
 		}
-		writes = append(writes, sourceWrite{Path: rel, AbsPath: abs, Field: field, Version: version})
+		writes = append(writes, sourceWrite{Path: rel, AbsPath: abs, Kind: unit.BackendKind, Field: field, Version: version})
 	}
 	return writes, nil
 }
@@ -301,184 +320,59 @@ func safeRepoPath(repo, rel string) (string, error) {
 }
 
 func updateStructuredField(path, field, value string) error {
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".json":
-		return updateJSONField(path, field, value)
-	case ".yaml", ".yml":
-		return updateYAMLField(path, field, value)
-	default:
-		return fmt.Errorf("unsupported file extension for %s", path)
-	}
+	return writetarget.UpdateStructuredField(path, field, value)
 }
 
-func updateJSONField(path, field, value string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("read %s: %w", path, err)
+func applySourceWrite(write sourceWrite) error {
+	if write.Kind == "KustomizeImage" {
+		imageName, imageNewName := kustomizeImageField(write.Field)
+		if imageName == "" {
+			return fmt.Errorf("KustomizeImage versionField must be image name or imageName:newName, got %q", write.Field)
+		}
+		return writetarget.UpdateKustomizeImage(write.AbsPath, imageName, imageNewName, write.Version)
 	}
-	var doc any
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.UseNumber()
-	if err := decoder.Decode(&doc); err != nil {
-		return fmt.Errorf("parse JSON %s: %w", path, err)
-	}
-	if err := setStructuredValue(&doc, parseFieldPath(field), value); err != nil {
-		return fmt.Errorf("set %s:%s: %w", path, field, err)
-	}
-	out, err := json.MarshalIndent(doc, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal JSON %s: %w", path, err)
-	}
-	out = append(out, '\n')
-	return os.WriteFile(path, out, 0644)
+	return writetarget.UpdateStructuredField(write.AbsPath, write.Field, write.Version)
 }
 
-func updateYAMLField(path, field, value string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("read %s: %w", path, err)
-	}
-	var doc yamlv3.Node
-	if err := yamlv3.Unmarshal(data, &doc); err != nil {
-		return fmt.Errorf("parse YAML %s: %w", path, err)
-	}
-	if len(doc.Content) == 0 {
-		return fmt.Errorf("YAML %s is empty", path)
-	}
-	if err := setYAMLValue(doc.Content[0], parseFieldPath(field), value); err != nil {
-		return fmt.Errorf("set %s:%s: %w", path, field, err)
-	}
-	out, err := yamlv3.Marshal(&doc)
-	if err != nil {
-		return fmt.Errorf("marshal YAML %s: %w", path, err)
-	}
-	return os.WriteFile(path, out, 0644)
+func kustomizeImageField(field string) (string, string) {
+	imageName, newName, _ := strings.Cut(field, ":")
+	return strings.TrimSpace(imageName), strings.TrimSpace(newName)
 }
 
-type fieldToken struct {
-	Name  string
-	Index *int
-}
-
-func parseFieldPath(field string) []fieldToken {
-	parts := strings.Split(field, ".")
-	tokens := make([]fieldToken, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
+func commitSourceWrites(repo string, writes []sourceWrite, message string, push bool) error {
+	seen := map[string]struct{}{}
+	args := []string{"add", "--"}
+	for _, write := range writes {
+		if _, ok := seen[write.Path]; ok {
 			continue
 		}
-		token := fieldToken{Name: part}
-		if start := strings.Index(part, "["); start >= 0 && strings.HasSuffix(part, "]") {
-			token.Name = part[:start]
-			rawIndex := strings.TrimSuffix(part[start+1:], "]")
-			if idx, err := strconv.Atoi(rawIndex); err == nil {
-				token.Index = &idx
-			}
-		}
-		tokens = append(tokens, token)
+		seen[write.Path] = struct{}{}
+		args = append(args, write.Path)
 	}
-	return tokens
-}
-
-func setStructuredValue(cur *any, tokens []fieldToken, value string) error {
-	if len(tokens) == 0 {
-		*cur = value
-		return nil
-	}
-	token := tokens[0]
-	m, ok := (*cur).(map[string]any)
-	if !ok {
-		return fmt.Errorf("expected object at %q", token.Name)
-	}
-	next, ok := m[token.Name]
-	if !ok {
-		if len(tokens) == 1 {
-			m[token.Name] = value
-			return nil
-		}
-		next = map[string]any{}
-		m[token.Name] = next
-	}
-	if token.Index != nil {
-		items, ok := next.([]any)
-		if !ok {
-			return fmt.Errorf("expected array at %q", token.Name)
-		}
-		if *token.Index < 0 || *token.Index >= len(items) {
-			return fmt.Errorf("index %d out of range at %q", *token.Index, token.Name)
-		}
-		if len(tokens) == 1 {
-			items[*token.Index] = value
-			m[token.Name] = items
-			return nil
-		}
-		child := items[*token.Index]
-		if err := setStructuredValue(&child, tokens[1:], value); err != nil {
-			return err
-		}
-		items[*token.Index] = child
-		m[token.Name] = items
-		return nil
-	}
-	if len(tokens) == 1 {
-		m[token.Name] = value
-		return nil
-	}
-	if err := setStructuredValue(&next, tokens[1:], value); err != nil {
+	if err := runGit(repo, args...); err != nil {
 		return err
 	}
-	m[token.Name] = next
+	if err := runGit(repo, "commit", "-m", message); err != nil {
+		return err
+	}
+	if push {
+		if err := runGit(repo, "push"); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-func setYAMLValue(cur *yamlv3.Node, tokens []fieldToken, value string) error {
-	if len(tokens) == 0 {
-		cur.Kind = yamlv3.ScalarNode
-		cur.Tag = "!!str"
-		cur.Value = value
-		return nil
+func runGit(repo string, args ...string) error {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = repo
+	cmd.Env = cleanGitEnv()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git %s: %w\n%s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
-	if cur.Kind != yamlv3.MappingNode {
-		return fmt.Errorf("expected mapping at %q", tokens[0].Name)
-	}
-	valueNode := yamlMappingValue(cur, tokens[0].Name)
-	if valueNode == nil {
-		valueNode = &yamlv3.Node{Kind: yamlv3.MappingNode, Tag: "!!map"}
-		cur.Content = append(cur.Content,
-			&yamlv3.Node{Kind: yamlv3.ScalarNode, Tag: "!!str", Value: tokens[0].Name},
-			valueNode,
-		)
-	}
-	if tokens[0].Index != nil {
-		if valueNode.Kind != yamlv3.SequenceNode {
-			return fmt.Errorf("expected sequence at %q", tokens[0].Name)
-		}
-		idx := *tokens[0].Index
-		if idx < 0 || idx >= len(valueNode.Content) {
-			return fmt.Errorf("index %d out of range at %q", idx, tokens[0].Name)
-		}
-		if len(tokens) == 1 {
-			valueNode.Content[idx] = &yamlv3.Node{Kind: yamlv3.ScalarNode, Tag: "!!str", Value: value}
-			return nil
-		}
-		return setYAMLValue(valueNode.Content[idx], tokens[1:], value)
-	}
-	if len(tokens) == 1 {
-		valueNode.Kind = yamlv3.ScalarNode
-		valueNode.Tag = "!!str"
-		valueNode.Value = value
-		valueNode.Content = nil
-		return nil
-	}
-	return setYAMLValue(valueNode, tokens[1:], value)
-}
-
-func yamlMappingValue(node *yamlv3.Node, key string) *yamlv3.Node {
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		if node.Content[i].Value == key {
-			return node.Content[i+1]
-		}
+	if len(out) > 0 {
+		fmt.Fprint(os.Stderr, string(out))
 	}
 	return nil
 }
