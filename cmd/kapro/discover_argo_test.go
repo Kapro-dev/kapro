@@ -136,6 +136,39 @@ spec:
 	}
 }
 
+func TestDiscoverArgoRepoMultiSourceApplication(t *testing.T) {
+	repo := t.TempDir()
+	writeTestFile(t, repo, "argocd/applications/api.yaml", `apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: checkout-api
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: checkout-api
+spec:
+  sources:
+  - repoURL: https://example.com/checkout.git
+    targetRevision: 1.0.0
+    path: apps/api
+  - repoURL: https://example.com/values.git
+    targetRevision: main
+    ref: values
+`)
+	initTestGitRepo(t, repo)
+
+	result, err := discoverArgoRepo(repo, argoDiscoveryScanOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(result.SelectedUnits); got != 1 {
+		t.Fatalf("SelectedUnits=%d, want 1: %#v", got, result.SelectedUnits)
+	}
+	unit := result.SelectedUnits[0]
+	if unit.VersionField != "spec.sources[0].targetRevision" {
+		t.Fatalf("versionField=%q", unit.VersionField)
+	}
+}
+
 func TestDiscoverArgoRepoUsesGitPrefixes(t *testing.T) {
 	repo := t.TempDir()
 	writeTestFile(t, repo, "random/api.yaml", `apiVersion: argoproj.io/v1alpha1

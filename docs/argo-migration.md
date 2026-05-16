@@ -275,7 +275,8 @@ generated mapping, promotes the repo-native Argo fields with
 `kapro source apply`, creates a Kapro `Release`, and waits for all selected Argo
 Applications to become `Synced` and `Healthy` at the promoted revision.
 
-This is the concrete acceptance test for the three brownfield patterns in this
-guide: plain Application, ApplicationSet child, and app-of-apps child. The root
-app-of-apps Application is discovered as packaging evidence but is not used as a
-write target.
+This is the concrete acceptance test for the main brownfield patterns in this
+guide: plain Application, multi-source Application, ApplicationSet child backed
+by JSON or YAML generator inputs, and app-of-apps child. The root app-of-apps
+Application is discovered as packaging evidence but is not used as a write
+target.

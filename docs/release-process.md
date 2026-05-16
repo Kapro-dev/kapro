@@ -28,6 +28,12 @@ For Argo brownfield readiness:
 scripts/verify-install.sh argo-e2e
 ```
 
+For Flux Git-native brownfield readiness:
+
+```bash
+scripts/verify-install.sh flux-git-e2e
+```
+
 The release candidate is not ready if:
 
 - CRDs fail to render from Helm or Kustomize.
@@ -35,6 +41,8 @@ The release candidate is not ready if:
 - The demo does not create `ReleaseTarget` objects.
 - The Argo E2E cannot prove discover, adopt, Git-native source apply, Release,
   Argo sync, and `ReleaseTarget.status.backendObjects` convergence.
+- The Flux Git-native E2E cannot prove common Flux source, HelmRelease, and
+  Kustomize version fields can be updated safely.
 - Production targets cannot be unblocked by the demo approvals.
 - `PluginRegistration` compatibility conditions are missing from a probe
   failure or unsupported contract version test.
@@ -132,6 +140,7 @@ helm upgrade --install kapro charts/kapro-operator \
 - `scripts/verify-install.sh render`
 - `scripts/verify-install.sh kind-demo`
 - `scripts/verify-install.sh argo-e2e`
+- `scripts/verify-install.sh flux-git-e2e`
 ````
 
 ## Post-Release Checks

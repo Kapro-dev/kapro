@@ -116,3 +116,16 @@ spec:
 
 Kapro coordinates promotion across targets. Flux applies the selected version
 inside each cluster or hub-managed namespace.
+
+## Local Git-Native E2E
+
+Before calling a Flux mapping ready, run:
+
+```bash
+scripts/flux-git-e2e.sh
+```
+
+The script creates a disposable Git repo and verifies `kapro source apply` can
+update representative Flux-native fields: `GitRepository.spec.ref.tag`,
+`OCIRepository.spec.ref.tag`, `HelmRelease.spec.chart.spec.version`, and
+Kustomize `images[].newTag`.

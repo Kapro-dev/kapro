@@ -370,12 +370,13 @@ func parseArgoDiscoveryFile(root string, file argoDiscoveryFile) argoCachedFile 
 				parsed.SkippedObjects = append(parsed.SkippedObjects, app)
 			default:
 				app.Reason = "plain Argo Application can be mapped directly"
+				versionField := applicationVersionField(doc)
 				parsed.Applications = append(parsed.Applications, app)
 				parsed.SelectedUnits = append(parsed.SelectedUnits, argoDiscoveredUnit{
 					Name:         argoUnitName(doc, app.Name),
 					BackendKind:  "ArgoApplicationSource",
 					Namespace:    app.Namespace,
-					VersionField: "spec.source.targetRevision",
+					VersionField: versionField,
 					SourcePath:   file.RelPath,
 					Confidence:   "high",
 					Reason:       "writes Argo Application source revision",
@@ -391,6 +392,18 @@ func parseArgoDiscoveryFile(root string, file argoDiscoveryFile) argoCachedFile 
 		}
 	}
 	return parsed
+}
+
+func applicationVersionField(doc map[string]any) string {
+	if stringAt(doc, "spec", "source", "targetRevision") != "" {
+		return "spec.source.targetRevision"
+	}
+	for i, source := range sliceAt(doc, "spec", "sources") {
+		if stringAtValue(source, "targetRevision") != "" {
+			return fmt.Sprintf("spec.sources[%d].targetRevision", i)
+		}
+	}
+	return "spec.source.targetRevision"
 }
 
 func replayArgoCachedFile(result *argoDiscoveryResult, cached argoCachedFile) {

@@ -254,6 +254,33 @@ spec:
       - CreateNamespace=true
 YAML
 
+  cat >"${repo}/argocd/applications/multi-source.yaml" <<YAML
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: checkout-multi-source
+  namespace: ${ARGO_NAMESPACE}
+  labels:
+    kapro.io/import: "true"
+    kapro.io/unit: multi-source
+    kapro.io/authorized-source: argo-e2e
+spec:
+  project: kapro-e2e
+  sources:
+    - repoURL: ${repo_url}
+      targetRevision: v1
+      path: workloads/multi-source
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: checkout
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+YAML
+
   cat >"${repo}/argocd/applications/root.yaml" <<YAML
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -353,11 +380,63 @@ spec:
           - CreateNamespace=true
 YAML
 
+  cat >"${repo}/argocd/applicationsets/checkout-yaml-appset.yaml" <<YAML
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: checkout-yaml-appset
+  namespace: ${ARGO_NAMESPACE}
+  labels:
+    kapro.io/import: "true"
+spec:
+  syncPolicy:
+    applicationsSync: create-update
+  generators:
+    - matrix:
+        generators:
+          - git:
+              repoURL: ${repo_url}
+              revision: main
+              files:
+                - path: argocd/environments/*.yaml
+          - list:
+              elements:
+                - appName: yaml-appset
+                  cluster: prod
+  template:
+    metadata:
+      name: checkout-yaml-appset-{{cluster}}
+      labels:
+        kapro.io/import: "true"
+        kapro.io/unit: yaml-appset
+        kapro.io/authorized-source: argo-e2e
+    spec:
+      project: kapro-e2e
+      source:
+        repoURL: ${repo_url}
+        targetRevision: "{{releaseVersion}}"
+        path: workloads/yaml-appset
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: checkout
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+YAML
+
   cat >"${repo}/argocd/environments/prod.json" <<'JSON'
 {"env":"prod","gkProjectVersion":"v1"}
 JSON
 
-  for unit in plain appset root-child; do
+  cat >"${repo}/argocd/environments/prod.yaml" <<'YAML'
+env: prod
+releaseVersion: v1
+YAML
+
+  for unit in plain appset root-child multi-source yaml-appset; do
     mkdir -p "${repo}/workloads/${unit}"
     cat >"${repo}/workloads/${unit}/configmap.yaml" <<YAML
 apiVersion: v1
@@ -374,7 +453,7 @@ YAML
   git -C "${repo}" commit -m "Initial Argo e2e fixture"
   git -C "${repo}" tag v1
 
-  for unit in plain appset root-child; do
+  for unit in plain appset root-child multi-source yaml-appset; do
     cat >"${repo}/workloads/${unit}/configmap.yaml" <<YAML
 apiVersion: v1
 kind: ConfigMap
@@ -494,8 +573,10 @@ apply_argo_roots() {
   echo "applying Argo project, plain Application, ApplicationSet, and app-of-apps root"
   "${KUBECTL[@]}" apply -f "${repo}/argocd/project.yaml"
   "${KUBECTL[@]}" apply -f "${repo}/argocd/applications/plain.yaml"
+  "${KUBECTL[@]}" apply -f "${repo}/argocd/applications/multi-source.yaml"
   "${KUBECTL[@]}" apply -f "${repo}/argocd/applications/root.yaml"
   "${KUBECTL[@]}" apply -f "${repo}/argocd/applicationsets/checkout-appset.yaml"
+  "${KUBECTL[@]}" apply -f "${repo}/argocd/applicationsets/checkout-yaml-appset.yaml"
 }
 
 promote_git_mapping_to_v2() {
@@ -508,6 +589,8 @@ promote_git_mapping_to_v2() {
     --set plain=v2 \
     --set appset=v2 \
     --set root-child=v2 \
+    --set multi-source=v2 \
+    --set yaml-appset=v2 \
     --all
 
   git -C "${repo}" remote add e2e "git://127.0.0.1:${GIT_PORT}/repo.git"
@@ -517,6 +600,7 @@ promote_git_mapping_to_v2() {
 
   "${KUBECTL[@]}" -n "${ARGO_NAMESPACE}" annotate application platform-root argocd.argoproj.io/refresh=hard --overwrite || true
   "${KUBECTL[@]}" -n "${ARGO_NAMESPACE}" annotate applicationset checkout-appset argocd.argoproj.io/refresh=hard --overwrite || true
+  "${KUBECTL[@]}" -n "${ARGO_NAMESPACE}" annotate applicationset checkout-yaml-appset argocd.argoproj.io/refresh=hard --overwrite || true
 }
 
 apply_kapro_rollout() {
@@ -538,6 +622,9 @@ spec:
       applicationSelector.plain: kapro.io/unit=plain
       applicationSelector.appset: kapro.io/unit=appset
       applicationSelector.root-child: kapro.io/unit=root-child
+      applicationSelector.multi-source: kapro.io/unit=multi-source
+      applicationSelector.yaml-appset: kapro.io/unit=yaml-appset
+      versionField.multi-source: spec.sources[0].targetRevision
 ---
 apiVersion: kapro.io/v1alpha1
 kind: Pipeline
@@ -552,7 +639,7 @@ spec:
 YAML
 
   "${KUBECTL[@]}" patch membercluster argo-e2e --subresource=status --type=merge \
-    -p '{"status":{"health":{"allWorkloadsReady":true,"readyWorkloads":3,"totalWorkloads":3,"message":"Argo E2E fixture reports ready"}}}'
+    -p '{"status":{"health":{"allWorkloadsReady":true,"readyWorkloads":5,"totalWorkloads":5,"message":"Argo E2E fixture reports ready"}}}'
 
   echo "creating Kapro Release"
   cat <<YAML | "${KUBECTL[@]}" apply -f -
@@ -566,6 +653,8 @@ spec:
     plain: v2
     appset: v2
     root-child: v2
+    multi-source: v2
+    yaml-appset: v2
   pipelines:
     - name: argo
       pipeline: argo-e2e
@@ -579,8 +668,10 @@ wait_for_application() {
   echo "waiting for Argo Application ${name} to become Synced/Healthy at ${revision}"
   for _ in $(seq 1 180); do
     if "${KUBECTL[@]}" -n "${ARGO_NAMESPACE}" get application "${name}" >/dev/null 2>&1; then
-      local current sync health
-      current="$("${KUBECTL[@]}" -n "${ARGO_NAMESPACE}" get application "${name}" -o jsonpath='{.spec.source.targetRevision}' 2>/dev/null || true)"
+      local current single_source multi_source sync health
+      single_source="$("${KUBECTL[@]}" -n "${ARGO_NAMESPACE}" get application "${name}" -o jsonpath='{.spec.source.targetRevision}' 2>/dev/null || true)"
+      multi_source="$("${KUBECTL[@]}" -n "${ARGO_NAMESPACE}" get application "${name}" -o jsonpath='{.spec.sources[0].targetRevision}' 2>/dev/null || true)"
+      current="${single_source:-${multi_source}}"
       sync="$("${KUBECTL[@]}" -n "${ARGO_NAMESPACE}" get application "${name}" -o jsonpath='{.status.sync.status}' 2>/dev/null || true)"
       health="$("${KUBECTL[@]}" -n "${ARGO_NAMESPACE}" get application "${name}" -o jsonpath='{.status.health.status}' 2>/dev/null || true)"
       if [ "${current}" = "${revision}" ] && [ "${sync}" = "Synced" ] && [ "${health}" = "Healthy" ]; then
@@ -619,11 +710,11 @@ wait_for_release_complete() {
 assert_backend_objects_reported() {
   local names count
   names="$("${KUBECTL[@]}" get releasetargets -o jsonpath='{range .items[*]}{.status.backendObjects[*].name}{"\n"}{end}' || true)"
-  count="$(printf "%s\n" "${names}" | tr ' ' '\n' | grep -E 'checkout-(plain|appset-prod|root-child)' || true)"
+  count="$(printf "%s\n" "${names}" | tr ' ' '\n' | grep -E 'checkout-(plain|appset-prod|root-child|multi-source|yaml-appset-prod)' || true)"
   count="$(printf "%s\n" "${count}" | sed '/^$/d' | wc -l | tr -d ' ')"
-  if [ "${count}" -lt 3 ]; then
+  if [ "${count}" -lt 5 ]; then
     "${KUBECTL[@]}" get releasetargets -o yaml || true
-    echo "expected ReleaseTarget.status.backendObjects to include all three Argo Applications" >&2
+    echo "expected ReleaseTarget.status.backendObjects to include all five Argo Applications" >&2
     exit 1
   fi
 }
@@ -657,6 +748,8 @@ run() {
   wait_for_application checkout-plain v1
   wait_for_application checkout-root-child v1
   wait_for_application checkout-appset-prod v1
+  wait_for_application checkout-multi-source v1
+  wait_for_application checkout-yaml-appset-prod v1
 
   promote_git_mapping_to_v2 "${repo}"
   apply_kapro_rollout
@@ -664,6 +757,8 @@ run() {
   wait_for_application checkout-plain v2
   wait_for_application checkout-root-child v2
   wait_for_application checkout-appset-prod v2
+  wait_for_application checkout-multi-source v2
+  wait_for_application checkout-yaml-appset-prod v2
   wait_for_release_complete
   assert_backend_objects_reported
 

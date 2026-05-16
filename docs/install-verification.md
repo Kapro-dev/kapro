@@ -104,7 +104,9 @@ creates an in-cluster Git server, runs `kapro adopt argo`, applies the generated
 The fixture covers:
 
 - a plain Argo `Application`;
+- a multi-source Argo `Application` using `spec.sources[0].targetRevision`;
 - an `ApplicationSet`-generated child `Application`;
+- an `ApplicationSet` backed by a YAML Git file generator input;
 - an app-of-apps root with a child `Application`.
 
 By default `scripts/verify-install.sh argo-e2e` deletes the Kind cluster after a
@@ -115,3 +117,19 @@ KAPRO_ARGO_E2E_CLEANUP=false scripts/argo-e2e.sh run
 scripts/argo-e2e.sh status
 scripts/argo-e2e.sh down
 ```
+
+## Flux Git-Native E2E
+
+The Flux Git-native E2E verifies Kapro can update common brownfield Flux
+version fields without taking over Flux reconciliation:
+
+```bash
+scripts/verify-install.sh flux-git-e2e
+```
+
+The fixture covers:
+
+- `GitRepository.spec.ref.tag`;
+- `OCIRepository.spec.ref.tag`;
+- `HelmRelease.spec.chart.spec.version`;
+- Kustomize `images[].newTag`.
