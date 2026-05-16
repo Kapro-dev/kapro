@@ -51,10 +51,16 @@ metadata:
     team: checkout
 ```
 
-For ApplicationSets, put import labels on the template so generated
-Applications can be selected:
+For ApplicationSets, put import labels on both the ApplicationSet object and
+the template. The object labels let Kapro report the ApplicationSet in
+discovery status; the template labels let generated Applications be selected:
 
 ```yaml
+metadata:
+  labels:
+    kapro.io/import: "true"
+    team: checkout
+    service: api
 spec:
   template:
     metadata:

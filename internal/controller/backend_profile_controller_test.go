@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -179,17 +180,23 @@ func TestBackendProfileArgoDiscoveryClassifiesBrownfieldPatterns(t *testing.T) {
 	if counts.applications != 3 || counts.applicationSets != 1 {
 		t.Fatalf("applications=%d applicationSets=%d", counts.applications, counts.applicationSets)
 	}
-	if len(counts.selected) != 2 {
-		t.Fatalf("selected=%d, want plain app and ApplicationSet child", len(counts.selected))
+	if len(counts.selected) != 1 {
+		t.Fatalf("selected=%d, want plain app only", len(counts.selected))
 	}
-	if !hasDiscoveryPattern(counts.selected, "applicationset-child") {
-		t.Fatalf("selected does not include applicationset-child: %#v", counts.selected)
+	if !hasDiscoveryPattern(counts.selected, "application") {
+		t.Fatalf("selected does not include plain application: %#v", counts.selected)
 	}
 	if len(counts.unsupported) != 1 || counts.unsupported[0].Pattern != "app-of-apps-root" {
 		t.Fatalf("unsupported=%#v", counts.unsupported)
 	}
-	if len(counts.skipped) != 1 || counts.skipped[0].Kind != "ApplicationSet" {
+	if len(counts.skipped) != 2 {
 		t.Fatalf("skipped=%#v", counts.skipped)
+	}
+	if !hasDiscoveryPattern(counts.skipped, "applicationset-child") {
+		t.Fatalf("skipped does not include applicationset-child: %#v", counts.skipped)
+	}
+	if !hasDiscoveryKind(counts.skipped, "ApplicationSet") {
+		t.Fatalf("skipped does not include ApplicationSet: %#v", counts.skipped)
 	}
 }
 
@@ -219,7 +226,7 @@ func TestBackendProfileDiscoveryStatusSamplesAreBounded(t *testing.T) {
 		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build(),
 	}
 
-	counts, reason, _ := r.observeDiscovery(context.Background(), profile)
+	counts, reason, message := r.observeDiscovery(context.Background(), profile)
 	if reason != "DiscoverySucceeded" {
 		t.Fatalf("reason=%s", reason)
 	}
@@ -228,6 +235,9 @@ func TestBackendProfileDiscoveryStatusSamplesAreBounded(t *testing.T) {
 	}
 	if len(counts.selected) != maxBackendDiscoveryStatusObjects {
 		t.Fatalf("selected sample=%d want %d", len(counts.selected), maxBackendDiscoveryStatusObjects)
+	}
+	if !strings.Contains(message, "sampled selected objects") {
+		t.Fatalf("summary does not identify sampled counts: %q", message)
 	}
 }
 
@@ -329,6 +339,15 @@ func newApplicationSet(namespace, name string, labels map[string]string) *unstru
 func hasDiscoveryPattern(objects []kaprov1alpha1.DiscoveredBackendObject, pattern string) bool {
 	for _, obj := range objects {
 		if obj.Pattern == pattern {
+			return true
+		}
+	}
+	return false
+}
+
+func hasDiscoveryKind(objects []kaprov1alpha1.DiscoveredBackendObject, kind string) bool {
+	for _, obj := range objects {
+		if obj.Kind == kind {
 			return true
 		}
 	}

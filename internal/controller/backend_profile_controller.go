@@ -213,6 +213,9 @@ func (r *BackendProfileReconciler) observeArgoDiscovery(ctx context.Context, pro
 		case "app-of-apps-root":
 			entry.Reason = "root app-of-apps objects package child Applications; select child Applications for promotion writes"
 			counts.addUnsupported(entry)
+		case "applicationset-child":
+			entry.Reason = "generated ApplicationSet children are reconciled from the ApplicationSet template; use Git-native generator input writes or the ApplicationSet actuator plugin"
+			counts.addSkipped(entry)
 		default:
 			entry.Reason = "selected Argo CD Application promotion target"
 			counts.addSelected(entry)
@@ -383,7 +386,7 @@ func (d *backendDiscoveryCounts) merge(other backendDiscoveryCounts) {
 }
 
 func (d backendDiscoveryCounts) summary(driver string) string {
-	return fmt.Sprintf("discovered %d %s clusters, %d applications, %d applicationSets, %d selected objects, %d skipped objects, and %d unsupported patterns",
+	return fmt.Sprintf("discovered %d %s clusters, %d applications, %d applicationSets, %d sampled selected objects, %d sampled skipped objects, and %d sampled unsupported patterns",
 		d.clusters, driver, d.applications, d.applicationSets, len(d.selected), len(d.skipped), len(d.unsupported))
 }
 
