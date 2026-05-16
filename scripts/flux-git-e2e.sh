@@ -9,8 +9,8 @@ usage() {
 Usage: scripts/flux-git-e2e.sh
 
 Creates a disposable Git repo with common Flux brownfield files, runs
-kapro source apply against the repo-native mapping, and verifies the intended
-Flux/Kustomize fields changed.
+kapro discover flux, applies the generated repo-native mapping, and verifies
+the intended Flux/Kustomize/Helm fields changed.
 
 Environment:
   KAPRO_FLUX_GIT_E2E_TMPDIR  Optional temp directory to reuse for debugging.
@@ -28,9 +28,10 @@ write_fixture_repo() {
   local repo="$1"
   mkdir -p \
     "${repo}/apps/web" \
+    "${repo}/charts/checkout" \
     "${repo}/flux/sources" \
     "${repo}/flux/helmreleases" \
-    "${repo}/kapro/sources"
+    "${repo}/flux/kustomizations"
 
   git -C "${repo}" init --initial-branch main
   git -C "${repo}" config user.email "kapro-flux-e2e@example.com"
@@ -87,6 +88,31 @@ spec:
         kind: GitRepository
         name: checkout-charts
         namespace: flux-system
+  values:
+    image:
+      repository: ghcr.io/example/checkout-payments
+      tag: 1.0.0
+    containers:
+      api:
+        image: ghcr.io/example/checkout-payments-api
+        tag: 1.0.0
+YAML
+
+  cat >"${repo}/flux/kustomizations/web.yaml" <<'YAML'
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: checkout-web
+  namespace: flux-system
+  labels:
+    kapro.io/import: "true"
+    service: web
+spec:
+  interval: 1m
+  path: ./apps/web
+  sourceRef:
+    kind: GitRepository
+    name: platform
 YAML
 
   cat >"${repo}/apps/web/kustomization.yaml" <<'YAML'
@@ -97,30 +123,11 @@ images:
     newTag: 1.0.0
 YAML
 
-  cat >"${repo}/kapro/sources/flux.yaml" <<'YAML'
-apiVersion: kapro.io/v1alpha1
-kind: PromotionSource
-metadata:
-  name: checkout-flux
-spec:
-  backendRef: flux
-  units:
-    - name: api-git
-      backendKind: GitYAMLField
-      sourcePath: flux/sources/api-gitrepository.yaml
-      versionField: spec.ref.tag
-    - name: worker-oci
-      backendKind: GitYAMLField
-      sourcePath: flux/sources/worker-ocirepository.yaml
-      versionField: spec.ref.tag
-    - name: payments-chart
-      backendKind: GitYAMLField
-      sourcePath: flux/helmreleases/payments.yaml
-      versionField: spec.chart.spec.version
-    - name: web-image
-      backendKind: KustomizeImage
-      sourcePath: apps/web/kustomization.yaml
-      versionField: ghcr.io/example/checkout-web
+  cat >"${repo}/charts/checkout/Chart.yaml" <<'YAML'
+apiVersion: v2
+name: checkout
+version: 1.0.0
+appVersion: 1.0.0
 YAML
 
   git -C "${repo}" add .
@@ -156,23 +163,46 @@ run() {
   mkdir -p "${repo}"
   write_fixture_repo "${repo}"
 
+  "${kapro}" discover flux "${repo}" \
+    --out "${repo}/kapro-connect" \
+    --name checkout-flux \
+    --force
+
+  assert_contains "${repo}/kapro-connect/sources/checkout-flux.yaml" "name: api"
+  assert_contains "${repo}/kapro-connect/sources/checkout-flux.yaml" "versionField: spec.ref.tag"
+  assert_contains "${repo}/kapro-connect/sources/checkout-flux.yaml" "name: worker"
+  assert_contains "${repo}/kapro-connect/sources/checkout-flux.yaml" "versionField: spec.chart.spec.version"
+  assert_contains "${repo}/kapro-connect/sources/checkout-flux.yaml" "name: payments-image"
+  assert_contains "${repo}/kapro-connect/sources/checkout-flux.yaml" "name: web-image"
+  assert_contains "${repo}/kapro-connect/sources/checkout-flux.yaml" "name: checkout-chart"
+  assert_contains "${repo}/kapro-connect/discovery/flux-discovery.yaml" "skippedObjects:"
+  assert_contains "${repo}/kapro-connect/discovery/flux-discovery.yaml" "Flux Kustomization has no canonical version field"
+
   "${kapro}" source apply \
     --repo "${repo}" \
-    --source "${repo}/kapro/sources/flux.yaml" \
-    --set api-git=v2 \
-    --set worker-oci=2.0.0 \
-    --set payments-chart=2.0.0 \
-    --set web-image=2.0.0
+    --source "${repo}/kapro-connect/sources/checkout-flux.yaml" \
+    --set api=v2 \
+    --set worker=2.0.0 \
+    --set payments=2.0.0 \
+    --set payments-image=2.1.0 \
+    --set payments-containers-api-tag=2.2.0 \
+    --set web-image=2.3.0 \
+    --set checkout-chart=2.4.0 \
+    --set checkout-app=2.5.0
 
   assert_contains "${repo}/flux/sources/api-gitrepository.yaml" "tag: v2"
   assert_contains "${repo}/flux/sources/worker-ocirepository.yaml" "tag: 2.0.0"
   assert_contains "${repo}/flux/helmreleases/payments.yaml" "version: 2.0.0"
-  assert_contains "${repo}/apps/web/kustomization.yaml" "newTag: 2.0.0"
+  assert_contains "${repo}/flux/helmreleases/payments.yaml" "tag: 2.1.0"
+  assert_contains "${repo}/flux/helmreleases/payments.yaml" "tag: 2.2.0"
+  assert_contains "${repo}/apps/web/kustomization.yaml" "newTag: 2.3.0"
+  assert_contains "${repo}/charts/checkout/Chart.yaml" "version: 2.4.0"
+  assert_contains "${repo}/charts/checkout/Chart.yaml" "appVersion: 2.5.0"
 
-  git -C "${repo}" add flux apps
+  git -C "${repo}" add flux apps charts kapro-connect
   git -C "${repo}" commit -m "Promote Flux brownfield fixture"
 
-  echo "Flux Git-native E2E passed: GitRepository, OCIRepository, HelmRelease, and Kustomize image mappings updated."
+  echo "Flux Git-native E2E passed: discovery generated GitRepository, OCIRepository, HelmRelease, Kustomize image, and Helm chart mappings."
 }
 
 case "${1:-run}" in

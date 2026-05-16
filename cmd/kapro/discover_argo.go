@@ -108,11 +108,13 @@ func newDiscoverCmd() *cobra.Command {
 		Use:   "discover",
 		Short: "Discover existing GitOps repositories",
 		Long: `Discovers existing backend-native GitOps layout and generates an
-observe-first Kapro mapping. The first supported path is Argo CD brownfield
+observe-first Kapro mapping. Supported paths include Argo CD brownfield
 repositories using Applications, ApplicationSets, app-of-apps, and Git parameter
-files.`,
+files, plus Flux repositories using Source, HelmRelease, and Kustomize image
+patterns.`,
 	}
 	cmd.AddCommand(newDiscoverArgoCmd())
+	cmd.AddCommand(newDiscoverFluxCmd())
 	return cmd
 }
 

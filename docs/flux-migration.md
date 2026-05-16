@@ -47,7 +47,9 @@ GitRepository or OCIRepository too. Kapro does not need source credentials.
 ## Step 2: Generate An Observe Profile
 
 ```bash
-kapro connect flux ./kapro-connect \
+kapro discover flux . \
+  --out ./kapro-connect \
+  --name checkout-flux \
   --namespace flux-system \
   --selector kapro.io/import=true,team=checkout
 ```
@@ -63,6 +65,24 @@ Check `BackendProfile.status.selectedObjects` before enabling adoption.
 
 ## Step 3: Model Promotion Units
 
+The discovery command generates `kapro-connect/sources/<name>.yaml` from common
+Flux Git-native patterns:
+
+- `GitRepository.spec.ref.tag`, `semver`, `digest`, or reviewed `branch`
+- `OCIRepository.spec.ref.tag`, `semver`, `digest`, or reviewed `branch`
+- `Bucket.spec.ref.*`
+- `HelmRelease.spec.chart.spec.version`
+- obvious `HelmRelease.spec.values.image.tag` fields
+- reviewed custom HelmRelease values image tags such as
+  `spec.values.containers.api.tag`
+- Kustomize `images[].newTag` in `kustomization.yaml`
+- Helm chart `Chart.yaml` `version` and `appVersion`
+
+Flux `Kustomization` objects are reported but not treated as direct version
+write targets because `spec.path` and `spec.sourceRef` are topology/configuration
+fields, not a universal release revision. Promote the referenced source object,
+the Kustomize image file, or an explicit field you add to `PromotionSource`.
+
 ```yaml
 apiVersion: kapro.io/v1alpha1
 kind: PromotionSource
@@ -72,19 +92,19 @@ spec:
   backendRef: flux
   units:
     - name: api
-      backendKind: HelmRelease
+      backendKind: GitYAMLField
       namespace: flux-system
+      sourcePath: flux/helmreleases/api.yaml
       versionField: spec.chart.spec.version
     - name: web
-      backendKind: Kustomization
+      backendKind: KustomizeImage
       namespace: flux-system
-      versionField: spec.sourceRef.name + spec.path + source revision
+      sourcePath: apps/web/kustomization.yaml
+      versionField: ghcr.io/example/web
 ```
 
-The exact field depends on how the Flux repo models versions. For HelmRelease,
-chart version is usually the cleanest promotion field. For Kustomization, teams
-often promote by source revision or by a Git path that points at an environment
-overlay.
+The exact field depends on how the Flux repo models versions. Generated units
+with `confidence: needs-review` should be edited or removed before adoption.
 
 ## Step 4: Adopt Only The Version Field
 
@@ -127,5 +147,7 @@ scripts/flux-git-e2e.sh
 
 The script creates a disposable Git repo and verifies `kapro source apply` can
 update representative Flux-native fields: `GitRepository.spec.ref.tag`,
-`OCIRepository.spec.ref.tag`, `HelmRelease.spec.chart.spec.version`, and
-Kustomize `images[].newTag`.
+`OCIRepository.spec.ref.tag`, `HelmRelease.spec.chart.spec.version`,
+HelmRelease values image tags, Kustomize `images[].newTag`, and Helm
+`Chart.yaml` version fields. It also verifies the Flux discovery command
+generates the mapping before applying it.
