@@ -51,7 +51,8 @@ func promotionTargetFromContext(ctx context.Context) *kaprov1alpha1.PromotionTar
 // PromotionTargetReconciler independently advances one PromotionTarget through the
 // per-target rollout FSM. It reads the parent PromotionRun (read-only, for suspend
 // and version info) and the referenced FleetCluster, but NEVER loads sibling
-// PromotionTargets or writes to any object other than its own PromotionTarget.status.
+// PromotionTargets or writes outside its own PromotionTarget.status and
+// metadata.labels["kapro.io/phase"].
 //
 // The parent PromotionRunReconciler aggregates child statuses via indexed queries —
 // it never runs the FSM itself.
@@ -96,6 +97,11 @@ func (r *PromotionTargetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	phase := rt.Status.Phase
 	switch phase {
 	case kaprov1alpha1.TargetPhaseConverged, kaprov1alpha1.TargetPhaseFailed, kaprov1alpha1.TargetPhaseSkipped:
+		if updateErr := r.syncPromotionTargetPhaseLabel(ctx, &rt); updateErr != nil {
+			kaprometrics.StatusWrites.WithLabelValues("promotiontarget", "error").Inc()
+			resultLabel = "error"
+			return ctrl.Result{}, fmt.Errorf("patch terminal PromotionTarget phase label %s: %w", rt.Name, updateErr)
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -122,6 +128,11 @@ func (r *PromotionTargetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		if updateErr := r.Status().Update(ctx, &rt); updateErr != nil {
 			return ctrl.Result{}, fmt.Errorf("update cancelled PromotionTarget status: %w", updateErr)
 		}
+		if updateErr := r.syncPromotionTargetPhaseLabel(ctx, &rt); updateErr != nil {
+			kaprometrics.StatusWrites.WithLabelValues("promotiontarget", "error").Inc()
+			resultLabel = "error"
+			return ctrl.Result{}, fmt.Errorf("patch cancelled PromotionTarget phase label %s: %w", rt.Name, updateErr)
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -146,6 +157,11 @@ func (r *PromotionTargetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		kaprometrics.StatusWrites.WithLabelValues("promotiontarget", "error").Inc()
 		resultLabel = "error"
 		return ctrl.Result{}, fmt.Errorf("update PromotionTarget status %s: %w", rt.Name, updateErr)
+	}
+	if updateErr := r.syncPromotionTargetPhaseLabel(ctx, &rt); updateErr != nil {
+		kaprometrics.StatusWrites.WithLabelValues("promotiontarget", "error").Inc()
+		resultLabel = "error"
+		return ctrl.Result{}, fmt.Errorf("patch PromotionTarget phase label %s: %w", rt.Name, updateErr)
 	}
 	kaprometrics.StatusWrites.WithLabelValues("promotiontarget", "success").Inc()
 	r.notifyPersistedTransitions(ctx, &promotionrun, &prevTarget, &target)
@@ -1135,13 +1151,6 @@ func (r *PromotionTargetReconciler) promotionTargetsForHeartbeatLease(ctx contex
 func (r *PromotionTargetReconciler) updatePromotionTargetStatusContract(rt *kaprov1alpha1.PromotionTarget) {
 	rt.Status.ObservedGeneration = rt.Generation
 
-	// Sync phase into labels so k9s label filtering works:
-	//   :promotiontarget /phase=WaitingApproval  or  /stage=canary
-	if rt.Labels == nil {
-		rt.Labels = make(map[string]string)
-	}
-	rt.Labels["kapro.io/phase"] = string(rt.Status.Phase)
-
 	phase := rt.Status.Phase
 	switch phase {
 	case kaprov1alpha1.TargetPhaseConverged:
@@ -1165,6 +1174,24 @@ func (r *PromotionTargetReconciler) updatePromotionTargetStatusContract(rt *kapr
 		r.setPromotionTargetCondition(rt, kaprov1alpha1.ConditionTypeReconciling, metav1.ConditionTrue, string(phase), message)
 		apimeta.RemoveStatusCondition(&rt.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
 	}
+}
+
+func (r *PromotionTargetReconciler) syncPromotionTargetPhaseLabel(ctx context.Context, rt *kaprov1alpha1.PromotionTarget) error {
+	phase := rt.Status.Phase
+	if phase == "" {
+		phase = kaprov1alpha1.TargetPhasePending
+	}
+	if rt.Labels != nil && rt.Labels["kapro.io/phase"] == string(phase) {
+		return nil
+	}
+	patch := client.MergeFrom(rt.DeepCopy())
+	if rt.Labels == nil {
+		rt.Labels = make(map[string]string)
+	}
+	// Keep phase in metadata for k9s label filtering:
+	//   :promotiontarget /phase=WaitingApproval  or  /stage=canary
+	rt.Labels["kapro.io/phase"] = string(phase)
+	return r.Patch(ctx, rt, patch)
 }
 
 func (r *PromotionTargetReconciler) setPromotionTargetCondition(rt *kaprov1alpha1.PromotionTarget, conditionType string, status metav1.ConditionStatus, reason, message string) {
