@@ -20,10 +20,18 @@ kapro discover argo . \
 kubectl apply -f ./kapro-connect/backends/checkout-observe.yaml
 ```
 
+`kapro adopt argo . --out ./kapro-connect --name checkout` is an alias for the
+same observe-first Argo onboarding workflow.
+
 `kapro discover argo` requires the `git` CLI and a Git worktree. It reads
 tracked YAML/JSON files from `git ls-files`, scans common GitOps prefixes by
 default, and writes `discovery/argo-cache.json` so repeat scans skip unchanged
 Git blobs.
+
+The scanner is intentionally bounded: 10,000 candidate files and 1,000
+promotion units by default. Prefer `--path-prefix` for unique monorepo layouts;
+raise `--max-files` or `--max-units` only when the generated report is still
+small enough to review.
 
 The generated `BackendProfile` starts with `managementPolicy: Observe`. Argo CD
 keeps cluster credentials, repository credentials, Projects, Applications, and
@@ -45,8 +53,9 @@ kapro source apply \
 ```
 
 When a mapping matches multiple files, `kapro source apply` requires
-`--include` or `--all` before it writes. Runtime `BackendProfile` status reports
-full counts and bounded object samples:
+`--include` or `--all` before it writes. It also writes only tracked Git files,
+so local scratch files cannot be promoted by accident. Runtime `BackendProfile`
+status reports full counts and bounded object samples:
 
 ```bash
 kubectl get backendprofile checkout -o jsonpath='{.status.discoveredApplications}'

@@ -22,6 +22,7 @@ spec:
     backendKind: GitJSONField
     versionField: argocd/environments/*.json:gkProjectVersion
 `)
+	initTestGitRepo(t, repo)
 
 	err := runSourceApply(sourceApplyOptions{
 		RepoPath:   repo,
@@ -57,6 +58,7 @@ spec:
     backendKind: GitJSONField
     versionField: env/*.json:version
 `)
+	initTestGitRepo(t, repo)
 
 	err := runSourceApply(sourceApplyOptions{
 		RepoPath:   repo,
@@ -82,6 +84,7 @@ spec:
     backendKind: GitJSONField
     versionField: env/dev.json:version
 `)
+	initTestGitRepo(t, repo)
 
 	err := runSourceApply(sourceApplyOptions{
 		RepoPath:   repo,
@@ -110,6 +113,7 @@ spec:
     backendKind: GitJSONField
     versionField: env/dev.json:version
 `)
+	initTestGitRepo(t, repo)
 
 	err := runSourceApply(sourceApplyOptions{
 		RepoPath:   repo,
@@ -145,6 +149,7 @@ spec:
     sourcePath: apps/api.yaml
     versionField: spec.source.targetRevision
 `)
+	initTestGitRepo(t, repo)
 
 	err := runSourceApply(sourceApplyOptions{
 		RepoPath:   repo,
@@ -180,6 +185,7 @@ spec:
     sourcePath: apps/api/kustomization.yaml
     versionField: example.com/api
 `)
+	initTestGitRepo(t, repo)
 
 	err := runSourceApply(sourceApplyOptions{
 		RepoPath:   repo,
@@ -192,6 +198,33 @@ spec:
 	got := readFile(t, filepath.Join(repo, "apps/api/kustomization.yaml"))
 	if !strings.Contains(got, "newTag: 2.0.0") {
 		t.Fatalf("kustomize image was not updated:\n%s", got)
+	}
+}
+
+func TestRunSourceApplyIgnoresUntrackedFiles(t *testing.T) {
+	repo := t.TempDir()
+	writeTestFile(t, repo, "env/dev.json", `{"version":"1.0.0"}`)
+	sourcePath := filepath.Join(repo, "source.yaml")
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
+kind: PromotionSource
+metadata:
+  name: checkout
+spec:
+  units:
+  - name: api
+    backendKind: GitJSONField
+    versionField: env/prod.json:version
+`)
+	initTestGitRepo(t, repo)
+	writeTestFile(t, repo, "env/prod.json", `{"version":"1.0.0"}`)
+
+	err := runSourceApply(sourceApplyOptions{
+		RepoPath:   repo,
+		SourcePath: sourcePath,
+		VersionSet: []string{"api=2.0.0"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "matched no files") {
+		t.Fatalf("expected untracked file to be ignored, got %v", err)
 	}
 }
 

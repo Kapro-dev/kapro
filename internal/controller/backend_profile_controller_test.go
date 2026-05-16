@@ -231,6 +231,39 @@ func TestBackendProfileDiscoveryStatusSamplesAreBounded(t *testing.T) {
 	}
 }
 
+func TestBackendProfileDiscoveryFailsClosedWhenMaxObjectsExceeded(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	profile := &kaprov1alpha1.BackendProfile{
+		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
+		Spec: kaprov1alpha1.BackendProfileSpec{
+			Driver: kaprov1alpha1.BackendDriverArgo,
+			Discovery: &kaprov1alpha1.BackendDiscoverySpec{
+				Enabled:    true,
+				MaxObjects: 1,
+			},
+			Parameters: map[string]string{"namespace": "argocd"},
+		},
+	}
+	r := &BackendProfileReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+			profile,
+			newArgoApplication("argocd", "app-1", map[string]string{"service": "checkout"}, nil),
+			newArgoApplication("argocd", "app-2", map[string]string{"service": "checkout"}, nil),
+		).Build(),
+	}
+
+	_, reason, message := r.observeDiscovery(context.Background(), profile)
+	if reason != "DiscoveryLimitExceeded" {
+		t.Fatalf("reason=%s message=%s", reason, message)
+	}
+}
+
 func TestBackendProfileFluxDiscoveryCountsExistingResources(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {

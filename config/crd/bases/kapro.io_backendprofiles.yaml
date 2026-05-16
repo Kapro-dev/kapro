@@ -78,6 +78,15 @@ spec:
                     - Observe
                     - Adopt
                     type: string
+                  maxObjects:
+                    default: 1000
+                    description: |-
+                      MaxObjects bounds each backend-native list call during discovery. When a
+                      list returns more objects than this limit, discovery fails closed and asks
+                      the user to narrow the selector. Defaults to 1000.
+                    format: int32
+                    minimum: 1
+                    type: integer
                   selector:
                     description: |-
                       Selector limits which backend-native objects Kapro discovers. For Argo CD

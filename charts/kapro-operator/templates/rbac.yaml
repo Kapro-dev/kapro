@@ -26,6 +26,15 @@ rules:
   - update
   - watch
 - apiGroups:
+  - argoproj.io
+  resources:
+  - applications
+  - applicationsets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - batch
   resources:
   - jobs
@@ -82,7 +91,9 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
+  - agentpolicies/status
   - approvals/status
+  - backendprofiles/status
   - kaproes/status
   - memberclusters/status
   - pluginregistrations/status
@@ -96,7 +107,11 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
+  - agentpolicies
+  - backendprofiles
+  - pluginregistrations
   - promotionsources
+  - releasetriggers
   verbs:
   - get
   - list
@@ -140,24 +155,6 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - agentpolicies
-  - pluginregistrations
-  - releasetriggers
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
-  - agentpolicies/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - kapro.io
-  resources:
   - releases
   verbs:
   - create
@@ -184,6 +181,14 @@ rules:
   - list
   - patch
   - update
+  - watch
+- apiGroups:
+  - kustomize.toolkit.fluxcd.io
+  resources:
+  - kustomizations
+  verbs:
+  - get
+  - list
   - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1

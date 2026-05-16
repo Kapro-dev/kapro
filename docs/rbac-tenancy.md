@@ -164,3 +164,9 @@ Kubernetes RBAC cannot express label-selector-scoped patch permissions by
 itself. In shared namespaces, combine these roles with admission policy or
 separate namespaces per tenant so `managementPolicy: Adopt` cannot mutate
 another team's backend objects.
+
+For large Argo or Flux control planes, set `BackendProfile.spec.discovery.selector`
+and keep `spec.discovery.maxObjects` near the default `1000`. If a backend list
+exceeds that bound, Kapro marks discovery not ready instead of importing an
+unreviewable set of objects. Raise the limit only after the selector expresses a
+clear team or application boundary.

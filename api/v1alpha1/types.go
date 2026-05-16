@@ -1953,6 +1953,13 @@ type BackendDiscoverySpec struct {
 	// Kustomizations and HelmReleases.
 	// +optional
 	Selector *metav1.LabelSelector `json:"selector,omitempty"`
+	// MaxObjects bounds each backend-native list call during discovery. When a
+	// list returns more objects than this limit, discovery fails closed and asks
+	// the user to narrow the selector. Defaults to 1000.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:default=1000
+	// +optional
+	MaxObjects int32 `json:"maxObjects,omitempty"`
 }
 
 // BackendProfileStatus records backend discovery and compatibility.

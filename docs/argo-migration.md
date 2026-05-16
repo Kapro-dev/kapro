@@ -79,11 +79,23 @@ kapro discover argo . \
   --selector kapro.io/import=true,team=checkout
 ```
 
+`kapro adopt argo` is the higher-level alias for the same observe-first
+workflow. It exists for teams thinking in brownfield adoption terms:
+
+```bash
+kapro adopt argo . --out kapro-connect --name checkout
+```
+
 By default, discovery scans tracked YAML/JSON files under common GitOps
 prefixes: `argocd/`, `apps/`, `clusters/`, `environments/`, and `flux/`.
 Use `--path-prefix` for a custom layout or `--scan-all` when the repo does not
 follow those prefixes. Repeat runs use `discovery/argo-cache.json` to skip
 unchanged Git blobs.
+
+Discovery is bounded by default: at most 10,000 tracked YAML/JSON candidate
+files and 1,000 generated promotion units. Use `--max-files` or `--max-units`
+only after narrowing `--path-prefix` is not enough. This keeps monorepos from
+turning onboarding into an unreviewable import.
 
 You can also point discovery at a remote Git URL. Kapro clones it to a
 temporary directory for read-only discovery:
@@ -170,7 +182,9 @@ kapro source apply \
 If a generated mapping contains a glob such as `argocd/environments/*.json`,
 `kapro source apply` fails unless `--include` scopes the intended file or
 `--all` is set. This keeps migration safe for repositories with many
-environments.
+environments. The command reads candidates from `git ls-files`, so it only
+writes tracked files in a Git checkout; untracked local files are ignored until
+they are added to Git.
 
 To let Kapro commit and push the same Git diff from automation, opt in
 explicitly:

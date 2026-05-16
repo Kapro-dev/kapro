@@ -16,6 +16,8 @@ import (
 )
 
 const maxArgoDiscoveryFileSize = 1024 * 1024
+const defaultArgoDiscoveryMaxFiles = 10000
+const defaultArgoDiscoveryMaxUnits = 1000
 
 var defaultArgoDiscoveryPrefixes = []string{"argocd", "apps", "clusters", "environments", "flux"}
 
@@ -29,6 +31,8 @@ type argoDiscoverOptions struct {
 	PathPrefixes []string
 	ScanAll      bool
 	Cache        bool
+	MaxFiles     int
+	MaxUnits     int
 	Force        bool
 }
 
@@ -41,12 +45,15 @@ type argoDiscoveryResult struct {
 	SelectedUnits   []argoDiscoveredUnit
 	SkippedObjects  []argoDiscoveredObject
 	Errors          []string
+	CacheStats      argoDiscoveryCacheCounters
 }
 
 type argoDiscoveryScanOptions struct {
 	PathPrefixes []string
 	ScanAll      bool
 	Cache        *argoDiscoveryCache
+	MaxFiles     int
+	MaxUnits     int
 }
 
 type argoDiscoveryCache struct {
@@ -78,22 +85,22 @@ type argoDiscoveryFile struct {
 }
 
 type argoDiscoveredObject struct {
-	Kind      string
-	Namespace string
-	Name      string
-	Path      string
-	Pattern   string
-	Reason    string
+	Kind      string `json:"kind,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Path      string `json:"path,omitempty"`
+	Pattern   string `json:"pattern,omitempty"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 type argoDiscoveredUnit struct {
-	Name         string
-	BackendKind  string
-	Namespace    string
-	VersionField string
-	SourcePath   string
-	Confidence   string
-	Reason       string
+	Name         string `json:"name,omitempty"`
+	BackendKind  string `json:"backendKind,omitempty"`
+	Namespace    string `json:"namespace,omitempty"`
+	VersionField string `json:"versionField,omitempty"`
+	SourcePath   string `json:"sourcePath,omitempty"`
+	Confidence   string `json:"confidence,omitempty"`
+	Reason       string `json:"reason,omitempty"`
 }
 
 func newDiscoverCmd() *cobra.Command {
@@ -110,7 +117,7 @@ files.`,
 }
 
 func newDiscoverArgoCmd() *cobra.Command {
-	opts := argoDiscoverOptions{Cache: true}
+	opts := argoDiscoverOptions{Cache: true, MaxFiles: defaultArgoDiscoveryMaxFiles, MaxUnits: defaultArgoDiscoveryMaxUnits}
 	cmd := &cobra.Command{
 		Use:   "argo [repo]",
 		Short: "Discover an existing Argo CD repo and generate Kapro mapping files",
@@ -131,6 +138,8 @@ func newDiscoverArgoCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&opts.PathPrefixes, "path-prefix", nil, "Repo path prefix to scan (repeatable; default: argocd, apps, clusters, environments, flux)")
 	cmd.Flags().BoolVar(&opts.ScanAll, "scan-all", false, "Scan all tracked YAML/JSON files instead of GitOps path prefixes")
 	cmd.Flags().BoolVar(&opts.Cache, "cache", true, "Reuse discovery cache for unchanged Git blobs")
+	cmd.Flags().IntVar(&opts.MaxFiles, "max-files", defaultArgoDiscoveryMaxFiles, "Maximum tracked YAML/JSON candidate files to parse (0 = unlimited)")
+	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum promotion units to generate (0 = unlimited)")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
 	return cmd
 }
@@ -163,6 +172,8 @@ func runArgoDiscover(opts argoDiscoverOptions) error {
 		PathPrefixes: opts.PathPrefixes,
 		ScanAll:      opts.ScanAll,
 		Cache:        cache,
+		MaxFiles:     opts.MaxFiles,
+		MaxUnits:     opts.MaxUnits,
 	})
 	if err != nil {
 		return err
@@ -179,12 +190,14 @@ func runArgoDiscover(opts argoDiscoverOptions) error {
 		return err
 	}
 	if opts.Cache {
+		result.CacheStats = cache.Stats
 		if err := writeArgoDiscoveryCache(cachePath, cache); err != nil {
 			return err
 		}
 	}
-	fmt.Fprintf(os.Stderr, "Discovered %d Argo Applications, %d ApplicationSets, and %d promotion units from %s\n",
-		len(result.Applications), len(result.ApplicationSets), len(result.SelectedUnits), opts.RepoPath)
+	summary := confidenceSummary(result.SelectedUnits)
+	fmt.Fprintf(os.Stderr, "Discovered %d Argo Applications, %d ApplicationSets, and %d promotion units from %s (confidence: high=%d medium=%d needs-review=%d)\n",
+		len(result.Applications), len(result.ApplicationSets), len(result.SelectedUnits), opts.RepoPath, summary.High, summary.Medium, summary.NeedsReview)
 	return nil
 }
 
@@ -254,6 +267,9 @@ func discoverArgoRepo(root string, opts argoDiscoveryScanOptions) (argoDiscovery
 		}
 	}
 	result.SelectedUnits = dedupeUnits(result.SelectedUnits)
+	if opts.MaxUnits > 0 && len(result.SelectedUnits) > opts.MaxUnits {
+		return result, fmt.Errorf("discovery found %d promotion units, above --max-units=%d; narrow --path-prefix or review with a higher limit", len(result.SelectedUnits), opts.MaxUnits)
+	}
 	sort.Slice(result.Applications, func(i, j int) bool { return result.Applications[i].Name < result.Applications[j].Name })
 	sort.Slice(result.ApplicationSets, func(i, j int) bool { return result.ApplicationSets[i].Name < result.ApplicationSets[j].Name })
 	sort.Slice(result.SelectedUnits, func(i, j int) bool { return result.SelectedUnits[i].Name < result.SelectedUnits[j].Name })
@@ -290,6 +306,9 @@ func gitTrackedDiscoveryFiles(root string, opts argoDiscoveryScanOptions) ([]arg
 		}
 		if !isDiscoveryCandidate(rel) {
 			continue
+		}
+		if opts.MaxFiles > 0 && len(files) >= opts.MaxFiles {
+			return nil, fmt.Errorf("discovery candidate file limit exceeded (--max-files=%d); narrow --path-prefix or raise the limit", opts.MaxFiles)
 		}
 		abs := filepath.Join(root, filepath.FromSlash(rel))
 		info, err := os.Stat(abs)
@@ -701,6 +720,7 @@ spec:
   discovery:
     enabled: true
     managementPolicy: Observe
+    maxObjects: 1000
     selector:
       matchLabels:
 %s`, opts.Name, opts.Namespace, renderYAMLMap(labels, 8))
@@ -734,6 +754,11 @@ func renderArgoDiscoveryReport(result argoDiscoveryResult) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "repoPath: %s\nscannedFiles: %d\nparsedFiles: %d\n", result.RepoPath, result.ScannedFiles, result.ParsedFiles)
 	fmt.Fprintf(&b, "applications: %d\napplicationSets: %d\npromotionUnits: %d\n", len(result.Applications), len(result.ApplicationSets), len(result.SelectedUnits))
+	summary := confidenceSummary(result.SelectedUnits)
+	fmt.Fprintf(&b, "confidence:\n  high: %d\n  medium: %d\n  needsReview: %d\n", summary.High, summary.Medium, summary.NeedsReview)
+	if result.CacheStats.Hits > 0 || result.CacheStats.Misses > 0 {
+		fmt.Fprintf(&b, "cache:\n  hits: %d\n  misses: %d\n", result.CacheStats.Hits, result.CacheStats.Misses)
+	}
 	writeReportObjects(&b, "selectedUnits", result.SelectedUnits)
 	writeReportBackendObjects(&b, "skippedObjects", result.SkippedObjects)
 	if len(result.Errors) > 0 {
@@ -743,6 +768,27 @@ func renderArgoDiscoveryReport(result argoDiscoveryResult) string {
 		}
 	}
 	return b.String()
+}
+
+type argoConfidenceSummary struct {
+	High        int
+	Medium      int
+	NeedsReview int
+}
+
+func confidenceSummary(units []argoDiscoveredUnit) argoConfidenceSummary {
+	var summary argoConfidenceSummary
+	for _, unit := range units {
+		switch unit.Confidence {
+		case "high":
+			summary.High++
+		case "medium":
+			summary.Medium++
+		default:
+			summary.NeedsReview++
+		}
+	}
+	return summary
 }
 
 func renderArgoGitAdoptionMap(opts argoDiscoverOptions, result argoDiscoveryResult) string {

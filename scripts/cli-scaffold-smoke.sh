@@ -108,6 +108,8 @@ require_file "${TMPDIR}/discover-argo/discovery/argo-discovery.yaml"
 require_file "${TMPDIR}/discover-argo/discovery/kapro-git-map.yaml"
 require_text "${TMPDIR}/discover-argo/sources/checkout.yaml" "backendKind: GitJSONField"
 require_text "${TMPDIR}/discover-argo/sources/checkout.yaml" "argocd/environments/*.json:gkProjectVersion"
+kapro adopt argo "${TMPDIR}/argo-repo" --out "${TMPDIR}/adopt-argo" --name checkout --force >/dev/null
+require_file "${TMPDIR}/adopt-argo/discovery/kapro-git-map.yaml"
 kapro source apply --repo "${TMPDIR}/argo-repo" --source "${TMPDIR}/discover-argo/sources/checkout.yaml" --set checkout-api=2.0.0 --all >/dev/null
 require_text "${TMPDIR}/argo-repo/argocd/environments/dev.json" '"gkProjectVersion": "2.0.0"'
 

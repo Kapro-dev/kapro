@@ -35,6 +35,7 @@ type BackendProfileReconciler struct {
 // +kubebuilder:rbac:groups=kustomize.toolkit.fluxcd.io,resources=kustomizations,verbs=get;list;watch
 
 const maxBackendDiscoveryStatusObjects = 128
+const defaultBackendDiscoveryMaxObjects int64 = 1000
 
 func (r *BackendProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var profile kaprov1alpha1.BackendProfile
@@ -154,12 +155,18 @@ func (r *BackendProfileReconciler) observeArgoDiscovery(ctx context.Context, pro
 			return backendDiscoveryCounts{status: metav1.ConditionFalse}, "InvalidSelector", err.Error()
 		}
 	}
+	limit := backendDiscoveryListLimit(profile)
 	secretList := &corev1.SecretList{}
 	if err := r.List(ctx, secretList,
 		client.InNamespace(namespace),
 		client.MatchingLabels{"argocd.argoproj.io/secret-type": "cluster"},
+		client.Limit(limit+1),
 	); err != nil {
 		return backendDiscoveryCounts{status: metav1.ConditionFalse}, "ClusterDiscoveryFailed", err.Error()
+	}
+	if exceededListLimit(secretList.Continue, len(secretList.Items), limit) {
+		return backendDiscoveryCounts{status: metav1.ConditionFalse}, "DiscoveryLimitExceeded",
+			fmt.Sprintf("Argo CD cluster Secret discovery exceeded maxObjects=%d; narrow spec.discovery.selector", limit)
 	}
 	for _, secret := range secretList.Items {
 		if selector.Matches(labels.Set(secret.Labels)) {
@@ -179,11 +186,15 @@ func (r *BackendProfileReconciler) observeArgoDiscovery(ctx context.Context, pro
 	appList.SetGroupVersionKind(schema.GroupVersionKind{
 		Group: "argoproj.io", Version: "v1alpha1", Kind: "ApplicationList",
 	})
-	if err := r.List(ctx, appList, client.InNamespace(namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
+	if err := r.List(ctx, appList, client.InNamespace(namespace), client.MatchingLabelsSelector{Selector: selector}, client.Limit(limit+1)); err != nil {
 		if apierrors.IsNotFound(err) || apimeta.IsNoMatchError(err) {
 			return counts, "ApplicationDiscoveryUnavailable", "Argo CD Application CRD is not installed"
 		}
 		return counts, "ApplicationDiscoveryFailed", err.Error()
+	}
+	if exceededListLimit(appList.GetContinue(), len(appList.Items), limit) {
+		return backendDiscoveryCounts{status: metav1.ConditionFalse}, "DiscoveryLimitExceeded",
+			fmt.Sprintf("Argo CD Application discovery exceeded maxObjects=%d; narrow spec.discovery.selector", limit)
 	}
 	counts.applications = int32(len(appList.Items))
 	for i := range appList.Items {
@@ -212,11 +223,15 @@ func (r *BackendProfileReconciler) observeArgoDiscovery(ctx context.Context, pro
 	appSetList.SetGroupVersionKind(schema.GroupVersionKind{
 		Group: "argoproj.io", Version: "v1alpha1", Kind: "ApplicationSetList",
 	})
-	if err := r.List(ctx, appSetList, client.InNamespace(namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
+	if err := r.List(ctx, appSetList, client.InNamespace(namespace), client.MatchingLabelsSelector{Selector: selector}, client.Limit(limit+1)); err != nil {
 		if !apierrors.IsNotFound(err) && !apimeta.IsNoMatchError(err) {
 			return counts, "ApplicationSetDiscoveryFailed", err.Error()
 		}
 	} else {
+		if exceededListLimit(appSetList.GetContinue(), len(appSetList.Items), limit) {
+			return backendDiscoveryCounts{status: metav1.ConditionFalse}, "DiscoveryLimitExceeded",
+				fmt.Sprintf("Argo CD ApplicationSet discovery exceeded maxObjects=%d; narrow spec.discovery.selector", limit)
+		}
 		counts.applicationSets = int32(len(appSetList.Items))
 		for i := range appSetList.Items {
 			appSet := &appSetList.Items[i]
@@ -245,16 +260,17 @@ func (r *BackendProfileReconciler) observeFluxDiscovery(ctx context.Context, pro
 			return counts, "InvalidSelector", err.Error()
 		}
 	}
+	limit := backendDiscoveryListLimit(profile)
 
 	helmReleases, reason, message := r.listFluxObjects(ctx, namespace, appSelector, schema.GroupVersionKind{
 		Group: "helm.toolkit.fluxcd.io", Version: "v2", Kind: "HelmReleaseList",
-	}, "HelmRelease", "helmrelease", "spec.chart.spec.version")
+	}, "HelmRelease", "helmrelease", "spec.chart.spec.version", limit)
 	if reason != "" {
 		return counts, reason, message
 	}
 	kustomizations, reason, message := r.listFluxObjects(ctx, namespace, appSelector, schema.GroupVersionKind{
 		Group: "kustomize.toolkit.fluxcd.io", Version: "v1", Kind: "KustomizationList",
-	}, "Kustomization", "kustomization", "spec.sourceRef.name + spec.path + source revision")
+	}, "Kustomization", "kustomization", "spec.sourceRef.name + spec.path + source revision", limit)
 	if reason != "" {
 		return counts, reason, message
 	}
@@ -263,15 +279,19 @@ func (r *BackendProfileReconciler) observeFluxDiscovery(ctx context.Context, pro
 	return counts, "DiscoverySucceeded", counts.summary("Flux")
 }
 
-func (r *BackendProfileReconciler) listFluxObjects(ctx context.Context, namespace string, selector labels.Selector, gvk schema.GroupVersionKind, kind, pattern, versionField string) (backendDiscoveryCounts, string, string) {
+func (r *BackendProfileReconciler) listFluxObjects(ctx context.Context, namespace string, selector labels.Selector, gvk schema.GroupVersionKind, kind, pattern, versionField string, limit int64) (backendDiscoveryCounts, string, string) {
 	counts := backendDiscoveryCounts{status: metav1.ConditionTrue}
 	list := &unstructured.UnstructuredList{}
 	list.SetGroupVersionKind(gvk)
-	if err := r.List(ctx, list, client.InNamespace(namespace), client.MatchingLabelsSelector{Selector: selector}); err != nil {
+	if err := r.List(ctx, list, client.InNamespace(namespace), client.MatchingLabelsSelector{Selector: selector}, client.Limit(limit+1)); err != nil {
 		if apierrors.IsNotFound(err) || apimeta.IsNoMatchError(err) {
 			return counts, "", ""
 		}
 		return counts, "ApplicationDiscoveryFailed", err.Error()
+	}
+	if exceededListLimit(list.GetContinue(), len(list.Items), limit) {
+		return backendDiscoveryCounts{status: metav1.ConditionFalse}, "DiscoveryLimitExceeded",
+			fmt.Sprintf("%s discovery exceeded maxObjects=%d; narrow spec.discovery.selector", kind, limit)
 	}
 	counts.applications = int32(len(list.Items))
 	for i := range list.Items {
@@ -309,6 +329,17 @@ func (r *BackendProfileReconciler) profileReadiness(ctx context.Context, profile
 	default:
 		return false, "UnsupportedDriver", fmt.Sprintf("backend driver %q is unsupported", profile.Spec.Driver)
 	}
+}
+
+func backendDiscoveryListLimit(profile *kaprov1alpha1.BackendProfile) int64 {
+	if profile.Spec.Discovery != nil && profile.Spec.Discovery.MaxObjects > 0 {
+		return int64(profile.Spec.Discovery.MaxObjects)
+	}
+	return defaultBackendDiscoveryMaxObjects
+}
+
+func exceededListLimit(continueToken string, count int, limit int64) bool {
+	return continueToken != "" || int64(count) > limit
 }
 
 func (r *BackendProfileReconciler) SetupWithManager(mgr ctrl.Manager) error {

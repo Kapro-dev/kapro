@@ -207,6 +207,58 @@ spec:
 	}
 }
 
+func TestDiscoverArgoRepoEnforcesMaxFiles(t *testing.T) {
+	repo := t.TempDir()
+	writeTestFile(t, repo, "argocd/one.yaml", `apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: one
+spec:
+  source:
+    targetRevision: main
+`)
+	writeTestFile(t, repo, "argocd/two.yaml", `apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: two
+spec:
+  source:
+    targetRevision: main
+`)
+	initTestGitRepo(t, repo)
+
+	_, err := discoverArgoRepo(repo, argoDiscoveryScanOptions{MaxFiles: 1})
+	if err == nil || !strings.Contains(err.Error(), "--max-files=1") {
+		t.Fatalf("expected max files error, got %v", err)
+	}
+}
+
+func TestDiscoverArgoRepoEnforcesMaxUnits(t *testing.T) {
+	repo := t.TempDir()
+	writeTestFile(t, repo, "argocd/one.yaml", `apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: one
+spec:
+  source:
+    targetRevision: main
+`)
+	writeTestFile(t, repo, "argocd/two.yaml", `apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: two
+spec:
+  source:
+    targetRevision: main
+`)
+	initTestGitRepo(t, repo)
+
+	_, err := discoverArgoRepo(repo, argoDiscoveryScanOptions{MaxUnits: 1})
+	if err == nil || !strings.Contains(err.Error(), "--max-units=1") {
+		t.Fatalf("expected max units error, got %v", err)
+	}
+}
+
 func TestLooksLikeGitRemote(t *testing.T) {
 	tests := map[string]bool{
 		"https://github.com/Kapro-dev/kapro.git": true,

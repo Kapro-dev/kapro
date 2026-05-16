@@ -57,6 +57,7 @@ Passes versions forward. Across targets. Across clusters. In waves.`,
 	root.AddCommand(newInitCmd())
 	root.AddCommand(newConnectCmd())
 	root.AddCommand(newDiscoverCmd())
+	root.AddCommand(newAdoptCmd())
 	root.AddCommand(newHubCmd())
 	root.AddCommand(newSpokeCmd())
 	root.AddCommand(newFleetMgmtCmd())

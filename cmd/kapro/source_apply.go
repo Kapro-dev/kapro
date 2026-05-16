@@ -58,6 +58,11 @@ revision must be applied to every matched file.`,
 }
 
 func runSourceApply(opts sourceApplyOptions) error {
+	repoRoot, err := gitWorktreeRoot(opts.RepoPath)
+	if err != nil {
+		return err
+	}
+	opts.RepoPath = repoRoot
 	source, err := readPromotionSourceFile(opts.SourcePath)
 	if err != nil {
 		return err
@@ -236,42 +241,42 @@ func resolveRepoPaths(repo, pattern string) ([]string, error) {
 	if hasParentPathSegment(pattern) {
 		return nil, fmt.Errorf("file path %q must stay inside repo", pattern)
 	}
-	if !hasGlobMeta(pattern) {
-		abs, err := safeRepoPath(repo, pattern)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := os.Stat(abs); err != nil {
-			return nil, err
-		}
-		return []string{pattern}, nil
-	}
-	absPattern, err := safeRepoPath(repo, pattern)
+	files, err := gitTrackedRepoFiles(repo)
 	if err != nil {
 		return nil, err
 	}
-	matches, err := filepath.Glob(absPattern)
-	if err != nil {
-		return nil, fmt.Errorf("glob %q: %w", pattern, err)
-	}
-	repoAbs, err := filepath.Abs(repo)
-	if err != nil {
-		return nil, err
-	}
-	relMatches := make([]string, 0, len(matches))
-	for _, match := range matches {
-		info, err := os.Stat(match)
-		if err != nil || info.IsDir() {
+	var matches []string
+	for _, file := range files {
+		if hasGlobMeta(pattern) {
+			matched, err := filepath.Match(pattern, file)
+			if err == nil && matched {
+				matches = append(matches, file)
+			}
 			continue
 		}
-		rel, err := filepath.Rel(repoAbs, match)
-		if err != nil {
-			return nil, err
+		if file == pattern {
+			matches = append(matches, file)
 		}
-		relMatches = append(relMatches, filepath.ToSlash(rel))
 	}
-	sort.Strings(relMatches)
-	return relMatches, nil
+	sort.Strings(matches)
+	return matches, nil
+}
+
+func gitTrackedRepoFiles(repo string) ([]string, error) {
+	cmd := exec.Command("git", "-C", repo, "ls-files", "-z")
+	cmd.Env = cleanGitEnv()
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git ls-files failed in %s: %w", repo, err)
+	}
+	var files []string
+	for _, raw := range strings.Split(string(out), "\x00") {
+		if raw == "" {
+			continue
+		}
+		files = append(files, filepath.ToSlash(raw))
+	}
+	return files, nil
 }
 
 func hasGlobMeta(path string) bool {
