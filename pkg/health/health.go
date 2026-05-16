@@ -11,7 +11,7 @@
 //   - lws/    — LeaderWorkerSet health handler (AI/ML training jobs)
 //
 // An assessor may read a pre-computed health snapshot from the control plane
-// (for example MemberCluster.status written by kapro-cluster-controller) or,
+// (for example FleetCluster.status written by kapro-cluster-controller) or,
 // when a *rest.Config is supplied, open a short-lived client against the
 // target cluster directly. The choice is up to the assessor implementation;
 // this package stays agnostic.
@@ -66,7 +66,7 @@ type AssessRequest struct {
 	Kinds []string
 	// KubeConfig is an optional *rest.Config for the target cluster.
 	// When nil, the assessor is expected to read a pre-computed health
-	// snapshot from the control plane (for example MemberCluster.status).
+	// snapshot from the control plane (for example FleetCluster.status).
 	// When non-nil, the assessor may open a short-lived client against the
 	// target cluster and compute health live.
 	KubeConfig *rest.Config

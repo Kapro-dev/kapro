@@ -1,8 +1,8 @@
-# Example: label Releases for controller sharding.
+# Example: label PromotionRuns for controller sharding.
 #
 # Shard workers run the high-cardinality controllers only:
 #
-#   KAPRO_CONTROLLERS=release,release-target
+#   KAPRO_CONTROLLERS=promotionrun,promotion-target
 #   KAPRO_SHARD=shard-a
 #
 # Each active shard manager must use an independent leader-election lock. The
@@ -11,31 +11,31 @@
 # a distinct leader-election ID per shard.
 # The singleton manager runs non-shard-aware controllers:
 #
-#   KAPRO_CONTROLLERS=approval,kapro,plugin-registration,release-trigger
+#   KAPRO_CONTROLLERS=approval,kapro,plugin-registration,promotion-trigger
 #
-# Apply the shard label when the Release is created so the correct shard sees
+# Apply the shard label when the PromotionRun is created so the correct shard sees
 # the first watch event.
 ---
 apiVersion: kapro.io/v1alpha1
-kind: Release
+kind: PromotionRun
 metadata:
   name: checkout-v1-2-3-shard-a
   labels:
     kapro.io/shard: shard-a
 spec:
   version: 1.2.3
-  pipelines:
+  promotionplans:
     - name: checkout-progressive
-      pipeline: checkout-progressive
+      promotionplan: checkout-progressive
 ---
 apiVersion: kapro.io/v1alpha1
-kind: Release
+kind: PromotionRun
 metadata:
   name: checkout-v1-2-3-shard-b
   labels:
     kapro.io/shard: shard-b
 spec:
   version: 1.2.3
-  pipelines:
+  promotionplans:
     - name: checkout-progressive
-      pipeline: checkout-progressive
+      promotionplan: checkout-progressive

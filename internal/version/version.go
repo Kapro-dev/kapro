@@ -1,4 +1,4 @@
-// Package version holds build-time version information injected by goreleaser ldflags.
+// Package version holds build-time version information injected by gopromotionrunr ldflags.
 package version
 
 var (

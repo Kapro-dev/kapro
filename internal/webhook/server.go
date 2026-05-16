@@ -1,14 +1,14 @@
-// Package webhook provides an HTTP server for human approval of Kapro releases.
+// Package webhook provides an HTTP server for human approval of Kapro promotionruns.
 //
 // The server exposes three endpoints:
 //
 //	POST /approve/{targetKey}?token=<t>   — creates an Approval CR to unblock the target
 //	POST /reject/{targetKey}?token=<t>    — sets rejected=true on the inline target status entry;
-//	                                        ReleaseReconciler will fail the target on next reconcile.
+//	                                        PromotionRunReconciler will fail the target on next reconcile.
 //	GET  /status/{targetKey}?ns=<ns>      — returns public target phase/version (no auth required)
 //
 // Token format is defined in internal/webhook/token. Tokens are HMAC-SHA256 signed,
-// scoped to a single Release UID + target key, and expire after 48 hours by default.
+// scoped to a single PromotionRun UID + target key, and expire after 48 hours by default.
 //
 // The server creates Approval objects directly — no gRPC or extra dependencies.
 // Any notification channel (email, Teams, webhook, etc.) delivers the approve/reject
@@ -31,14 +31,14 @@ import (
 	"kapro.io/kapro/internal/webhook/token"
 )
 
-// Server handles approve/reject/status HTTP requests for Kapro release approvals.
+// Server handles approve/reject/status HTTP requests for Kapro promotionrun approvals.
 type Server struct {
-	// Client is used to look up Releases and create Approval CRs.
+	// Client is used to look up PromotionRuns and create Approval CRs.
 	Client client.Client
 	// TokenSecret is the HMAC key used to verify approval tokens.
-	// Must match the secret used by ReleaseReconciler to sign tokens.
+	// Must match the secret used by PromotionRunReconciler to sign tokens.
 	TokenSecret []byte
-	// OperatorNamespace is the namespace in which Releases are managed.
+	// OperatorNamespace is the namespace in which PromotionRuns are managed.
 	// Defaults to "kapro-system" if empty.
 	OperatorNamespace string
 }
@@ -80,24 +80,24 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Look up the Release and validate UID.
-	release, err := s.getRelease(ctx, claims.Release, claims.Namespace)
+	// Look up the PromotionRun and validate UID.
+	promotionrun, err := s.getPromotionRun(ctx, claims.PromotionRun, claims.Namespace)
 	if err != nil {
-		http.Error(w, "release not found", http.StatusNotFound)
+		http.Error(w, "promotionrun not found", http.StatusNotFound)
 		return
 	}
-	expectedUID := string(release.UID) + "/" + targetKey
+	expectedUID := string(promotionrun.UID) + "/" + targetKey
 	if expectedUID != claims.UID {
-		http.Error(w, "token bound to different release instance", http.StatusConflict)
+		http.Error(w, "token bound to different promotionrun instance", http.StatusConflict)
 		return
 	}
-	var target kaprov1alpha1.ReleaseTarget
+	var target kaprov1alpha1.PromotionTarget
 	if err := s.Client.Get(ctx, client.ObjectKey{Name: targetKey}, &target); err != nil {
 		http.Error(w, "target entry not found", http.StatusNotFound)
 		return
 	}
-	if target.Spec.ReleaseRef != claims.Release {
-		http.Error(w, "target/release mismatch", http.StatusConflict)
+	if target.Spec.PromotionRunRef != claims.PromotionRun {
+		http.Error(w, "target/promotionrun mismatch", http.StatusConflict)
 		return
 	}
 
@@ -116,7 +116,7 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 
 	log.FromContext(ctx).Info("Approval CR created",
 		"targetKey", targetKey,
-		"release", claims.Release,
+		"promotionrun", claims.PromotionRun,
 		"target", claims.Target,
 	)
 
@@ -128,7 +128,7 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleReject sets rejected=true on the inline env entry so ReleaseReconciler
+// handleReject sets rejected=true on the inline env entry so PromotionRunReconciler
 // fails it on the next reconcile.
 // POST /reject/{envKey}?token=<t>
 func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
@@ -153,23 +153,23 @@ func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	release, err := s.getRelease(ctx, claims.Release, claims.Namespace)
+	promotionrun, err := s.getPromotionRun(ctx, claims.PromotionRun, claims.Namespace)
 	if err != nil {
-		http.Error(w, "release not found", http.StatusNotFound)
+		http.Error(w, "promotionrun not found", http.StatusNotFound)
 		return
 	}
-	expectedUID := string(release.UID) + "/" + targetKey
+	expectedUID := string(promotionrun.UID) + "/" + targetKey
 	if expectedUID != claims.UID {
-		http.Error(w, "token bound to different release instance", http.StatusConflict)
+		http.Error(w, "token bound to different promotionrun instance", http.StatusConflict)
 		return
 	}
-	var target kaprov1alpha1.ReleaseTarget
+	var target kaprov1alpha1.PromotionTarget
 	if err := s.Client.Get(ctx, client.ObjectKey{Name: targetKey}, &target); err != nil {
 		http.Error(w, "target entry not found", http.StatusNotFound)
 		return
 	}
-	if target.Spec.ReleaseRef != claims.Release {
-		http.Error(w, "target/release mismatch", http.StatusConflict)
+	if target.Spec.PromotionRunRef != claims.PromotionRun {
+		http.Error(w, "target/promotionrun mismatch", http.StatusConflict)
 		return
 	}
 
@@ -195,7 +195,7 @@ func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
 	target.Status.Rejected = true
 	target.Status.RejectedBy = rejectedBy
 	if err := s.Client.Status().Patch(ctx, &target, patch); err != nil {
-		log.FromContext(ctx).Error(err, "patch ReleaseTarget rejection failed")
+		log.FromContext(ctx).Error(err, "patch PromotionTarget rejection failed")
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -217,7 +217,7 @@ func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
 // GET /status/{targetKey}
 //
 // The operator namespace is fixed at startup. The endpoint verifies that the
-// target belongs to a Release in that namespace before returning public status.
+// target belongs to a PromotionRun in that namespace before returning public status.
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -234,24 +234,24 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		ns = "kapro-system"
 	}
 
-	var target kaprov1alpha1.ReleaseTarget
+	var target kaprov1alpha1.PromotionTarget
 	if err := s.Client.Get(r.Context(), client.ObjectKey{Name: targetKey}, &target); err != nil {
 		http.Error(w, "target not found", http.StatusNotFound)
 		return
 	}
-	if target.Spec.ReleaseRef == "" {
+	if target.Spec.PromotionRunRef == "" {
 		http.Error(w, "target not found", http.StatusNotFound)
 		return
 	}
-	if _, err := s.getRelease(r.Context(), target.Spec.ReleaseRef, ns); err != nil {
+	if _, err := s.getPromotionRun(r.Context(), target.Spec.PromotionRunRef, ns); err != nil {
 		http.Error(w, "target not found", http.StatusNotFound)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{
-		"phase":   string(target.Status.Phase),
-		"version": target.Spec.Version,
-		"target":  target.Spec.Target,
-		"release": target.Spec.ReleaseRef,
+		"phase":        string(target.Status.Phase),
+		"version":      target.Spec.Version,
+		"target":       target.Spec.Target,
+		"promotionrun": target.Spec.PromotionRunRef,
 	})
 }
 
@@ -270,12 +270,12 @@ func (s *Server) verifyToken(r *http.Request, expectedAction string) (*token.Cla
 	return claims, nil
 }
 
-func (s *Server) getRelease(ctx context.Context, name, namespace string) (*kaprov1alpha1.Release, error) {
-	var release kaprov1alpha1.Release
-	if err := s.Client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, &release); err != nil {
+func (s *Server) getPromotionRun(ctx context.Context, name, namespace string) (*kaprov1alpha1.PromotionRun, error) {
+	var promotionrun kaprov1alpha1.PromotionRun
+	if err := s.Client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, &promotionrun); err != nil {
 		return nil, err
 	}
-	return &release, nil
+	return &promotionrun, nil
 }
 
 func (s *Server) buildApproval(claims *token.Claims) *kaprov1alpha1.Approval {
@@ -286,15 +286,15 @@ func (s *Server) buildApproval(claims *token.Claims) *kaprov1alpha1.Approval {
 	return &kaprov1alpha1.Approval{
 		ObjectMeta: metav1.ObjectMeta{
 			// Name is deterministic: one cluster-scoped Approval per
-			// (release, ref) pair, where ref is the rollout entry sync name.
-			Name: fmt.Sprintf("%s-%s", claims.Release, claims.SyncName),
+			// (promotionrun, ref) pair, where ref is the rollout entry sync name.
+			Name: fmt.Sprintf("%s-%s", claims.PromotionRun, claims.SyncName),
 		},
 		Spec: kaprov1alpha1.ApprovalSpec{
-			Release:    claims.Release,
-			Target:     claims.Target,
-			Ref:        claims.SyncName,
-			ApprovedBy: approvedBy,
-			Comment:    fmt.Sprintf("approved via webhook for version %s", claims.Version),
+			PromotionRun: claims.PromotionRun,
+			Target:       claims.Target,
+			Ref:          claims.SyncName,
+			ApprovedBy:   approvedBy,
+			Comment:      fmt.Sprintf("approved via webhook for version %s", claims.Version),
 		},
 	}
 }

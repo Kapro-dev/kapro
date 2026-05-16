@@ -41,7 +41,7 @@ securityContext:
 # Leader election — required when replicaCount > 1
 leaderElection:
   enabled: true
-  namespace: ""  # defaults to Release namespace
+  namespace: ""  # defaults to PromotionRun namespace
 
 controllers:
   - "*"
@@ -89,7 +89,7 @@ webhook:
     # Requires cert-manager >= 1.5 to be installed in the cluster.
     enabled: true
     # When issuerRef.name is empty, this chart creates a self-signed Issuer
-    # in the release namespace. Set issuerRef to use an existing Issuer or
+    # in the promotionrun namespace. Set issuerRef to use an existing Issuer or
     # ClusterIssuer instead.
     issuerRef:
       name: ""

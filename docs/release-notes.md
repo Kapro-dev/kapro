@@ -1,11 +1,11 @@
-# Release Notes Guide
+# PromotionRun Notes Guide
 
-This guide defines the release-note structure for Kapro pre-stable releases.
-Use it with `CHANGELOG.md` and `docs/api-stability.md` before tagging a release.
+This guide defines the promotionrun-note structure for Kapro pre-stable promotionruns.
+Use it with `CHANGELOG.md` and `docs/api-stability.md` before tagging a promotionrun.
 
 ## Required Sections
 
-Every release note should include these sections, even when the entry is
+Every promotionrun note should include these sections, even when the entry is
 `None`:
 
 - `Added` for new user-visible APIs, docs, commands, controllers, or examples.
@@ -75,9 +75,9 @@ Before tagging, review every change that touches these surfaces:
 - Examples: changed examples include migration notes for existing users.
 - Helm and manifests: CRD/RBAC/operator ordering is documented when it changes.
 
-## v0.1.0-alpha Release Checklist
+## v0.1.0-alpha PromotionRun Checklist
 
-- [ ] Confirm the worktree is clean except intentional release edits.
+- [ ] Confirm the worktree is clean except intentional promotionrun edits.
 - [ ] Confirm `CHANGELOG.md` has no empty required sections except `None`.
 - [ ] Confirm `docs/api-stability.md` lists every shipped public surface.
 - [ ] Run Go tests or record why they were skipped.
@@ -90,8 +90,8 @@ Before tagging, review every change that touches these surfaces:
 
 - [ ] Promote only surfaces with conformance coverage, examples, and upgrade
       notes from Alpha to Preview.
-- [ ] Add automated schema-diff or generated-CRD drift checks to release CI.
-- [ ] Require a `Migration` release-note entry for every changed shipped
+- [ ] Add automated schema-diff or generated-CRD drift checks to promotionrun CI.
+- [ ] Require a `Migration` promotionrun-note entry for every changed shipped
       example, default, CRD validation rule, or plugin contract.
 - [ ] Add downgrade guidance whenever stored CRD schema or status changes.
 - [ ] Decide whether any deprecated `v0.1.0-alpha` compatibility shims can be

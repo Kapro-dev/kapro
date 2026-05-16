@@ -5,7 +5,7 @@ Kapro is a Kubernetes-native fleet promotion control plane.
 It coordinates when an immutable artifact version may move across a fleet of
 Kubernetes clusters. Kapro does not build artifacts, render manifests, replace
 GitOps controllers, or manage in-cluster traffic splitting. It owns the
-cross-cluster promotion decision and records an auditable release history in
+cross-cluster promotion decision and records an auditable promotionrun history in
 Kubernetes status.
 
 ## Core Outcome
@@ -18,7 +18,7 @@ Which clusters are allowed to receive this artifact version now, and why?
 
 The answer is computed from:
 
-- release and pipeline topology;
+- promotionrun and promotionplan topology;
 - target cluster inventory and health;
 - stage concurrency and planning rules;
 - gate evidence and approval state;
@@ -28,12 +28,12 @@ The answer is computed from:
 
 | Area | Kapro owns | Kapro delegates |
 |---|---|---|
-| Artifact promotion | Release, Pipeline, Stage, ReleaseTarget state | CI build and image creation |
+| Artifact promotion | PromotionRun, PromotionPlan, Stage, PromotionTarget state | CI build and image creation |
 | Fleet ordering | Cross-cluster waves, target planning, concurrency | In-cluster traffic splitting |
 | Delivery execution | Version patch intent through actuators | Flux, Argo CD, Kubernetes, or backend controllers applying rollout strategy |
 | Safety gates | Evidence-based gate lifecycle and status | Domain-specific checks through KGI plugins, Jobs, webhooks, CEL, or metrics |
 | Audit | Kubernetes status, Events, CloudEvents, notification policies | External long-term storage and reporting systems |
-| Automation | Safe ReleaseTrigger policy and guarded Release creation | Unbounded auto-deploy from every artifact push |
+| Automation | Safe PromotionTrigger policy and guarded PromotionRun creation | Unbounded auto-deploy from every artifact push |
 | Extensibility | KAI, KGI, KPI contracts and conformance | Arbitrary internal controller replacement |
 
 ## Relationship to Existing Projects
@@ -74,7 +74,7 @@ production.
 
 Agents may:
 
-- summarize release and gate evidence;
+- summarize promotionrun and gate evidence;
 - recommend next action;
 - draft rollback or approval context;
 - explain why a target is blocked;
@@ -84,12 +84,12 @@ Agents must not:
 
 - bypass gates or approvals;
 - mutate delivery backends directly;
-- create unscoped fleet-wide releases;
+- create unscoped fleet-wide promotionruns;
 - access secrets outside explicit policy;
 - become required for deterministic rollout execution.
 
 Kapro core remains deterministic without agents. Agents consume evidence and
-policy; they do not replace the release state machine.
+policy; they do not replace the promotionrun state machine.
 
 ## CNCF Fit
 

@@ -35,7 +35,7 @@ func TestPlanFiltersDefersOrdersAndLimitsTargets(t *testing.T) {
 			target("alpha", true, "", map[string]string{"region": "eu", "kapro.io/available-capacity-percent": "90"}),
 			target("beta", true, "", map[string]string{"region": "eu", "kapro.io/available-capacity-percent": "70"}),
 			target("delta", false, "", map[string]string{"region": "eu", "kapro.io/available-capacity-percent": "100"}),
-			target("epsilon", true, "release-a", map[string]string{"region": "eu", "kapro.io/available-capacity-percent": "100"}),
+			target("epsilon", true, "promotionrun-a", map[string]string{"region": "eu", "kapro.io/available-capacity-percent": "100"}),
 			target("zeta", true, "", map[string]string{"region": "us", "kapro.io/available-capacity-percent": "100"}),
 			target("eta", true, "", map[string]string{"region": "eu", "kapro.io/available-capacity-percent": "10"}),
 		},
@@ -46,7 +46,7 @@ func TestPlanFiltersDefersOrdersAndLimitsTargets(t *testing.T) {
 	want := []string{
 		"alpha:PLANNING_DECISION_INCLUDE:Eligible",
 		"gamma:PLANNING_DECISION_INCLUDE:Eligible",
-		"epsilon:PLANNING_DECISION_DEFER:ActiveRelease",
+		"epsilon:PLANNING_DECISION_DEFER:ActivePromotionRun",
 		"beta:PLANNING_DECISION_DEFER:MaxParallelLimit",
 		"eta:PLANNING_DECISION_DEFER:InsufficientCapacity",
 		"delta:PLANNING_DECISION_SKIP:TargetNotReady",
@@ -160,12 +160,12 @@ func TestPlanInvalidCapacityIsSkipped(t *testing.T) {
 	}
 }
 
-func target(name string, ready bool, activeRelease string, labels map[string]string) *kpiv1alpha1.Target {
+func target(name string, ready bool, activePromotionRun string, labels map[string]string) *kpiv1alpha1.Target {
 	return &kpiv1alpha1.Target{
-		Name:          name,
-		Ready:         ready,
-		ActiveRelease: activeRelease,
-		Labels:        labels,
+		Name:               name,
+		Ready:              ready,
+		ActivePromotionRun: activePromotionRun,
+		Labels:             labels,
 	}
 }
 

@@ -3,10 +3,10 @@
 // Usage:
 //
 //	kapro cluster bootstrap --name <cluster-name> [--labels key=value,...]
-//	kapro get releases [-n namespace]
+//	kapro get promotionruns [-n namespace]
 //	kapro get targets [-n namespace]
-//	kapro approve <release>/<target> [-n namespace] [--comment text]
-//	kapro rollback <release-name> --to <digest> [-n namespace]
+//	kapro approve <promotionrun>/<target> [-n namespace] [--comment text]
+//	kapro rollback <promotionrun-name> --to <digest> [-n namespace]
 package main
 
 import (
@@ -63,7 +63,7 @@ Passes versions forward. Across targets. Across clusters. In waves.`,
 	root.AddCommand(newFleetMgmtCmd())
 	root.AddCommand(newSourceCmd())
 	root.AddCommand(newStatusCmd())
-	root.AddCommand(newReleaseCmd())
+	root.AddCommand(newPromotionRunCmd())
 	root.AddCommand(newApproveCmd())
 	root.AddCommand(newRejectCmd())
 	root.AddCommand(newRollbackCmd())
@@ -196,13 +196,13 @@ func runClusterAdd(ctx context.Context, clusterName, providerName string, labels
 		_ = c.Patch(ctx, secret, patch)
 	}
 
-	// Create MemberCluster with spoke-local actuator.
-	mc := &kaprov1alpha1.MemberCluster{
+	// Create FleetCluster with spoke-local actuator.
+	mc := &kaprov1alpha1.FleetCluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   clusterName,
 			Labels: labels,
 		},
-		Spec: kaprov1alpha1.MemberClusterSpec{
+		Spec: kaprov1alpha1.FleetClusterSpec{
 			Delivery: kaprov1alpha1.DeliverySpec{
 				Mode: "pull", BackendRef: "flux",
 				Parameters: map[string]string{
@@ -214,7 +214,7 @@ func runClusterAdd(ctx context.Context, clusterName, providerName string, labels
 	}
 	if err := c.Create(ctx, mc); err != nil {
 		if !strings.Contains(err.Error(), "already exists") {
-			sp.StopFail("Failed to create MemberCluster")
+			sp.StopFail("Failed to create FleetCluster")
 			return err
 		}
 	}
@@ -352,13 +352,13 @@ func runClusterSync(ctx context.Context, project string) error {
 			}
 		}
 
-		// Create/update MemberCluster with Fleet labels.
-		mc := &kaprov1alpha1.MemberCluster{
+		// Create/update FleetCluster with Fleet labels.
+		mc := &kaprov1alpha1.FleetCluster{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   cluster.Name,
 				Labels: cluster.Labels,
 			},
-			Spec: kaprov1alpha1.MemberClusterSpec{
+			Spec: kaprov1alpha1.FleetClusterSpec{
 				Delivery: kaprov1alpha1.DeliverySpec{
 					Mode: "push", BackendRef: "flux",
 					Parameters: map[string]string{
@@ -370,7 +370,7 @@ func runClusterSync(ctx context.Context, project string) error {
 		}
 		if err := c.Create(ctx, mc); err != nil {
 			if strings.Contains(err.Error(), "already exists") {
-				existing := &kaprov1alpha1.MemberCluster{}
+				existing := &kaprov1alpha1.FleetCluster{}
 				if getErr := c.Get(ctx, client.ObjectKey{Name: cluster.Name}, existing); getErr == nil {
 					patch := client.MergeFrom(existing.DeepCopy())
 					existing.Labels = cluster.Labels
@@ -393,25 +393,25 @@ func runClusterSync(ctx context.Context, project string) error {
 
 func newGetCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "get <releases|targets>",
+		Use:   "get <promotionruns|targets>",
 		Short: "Display Kapro resources",
 	}
-	cmd.AddCommand(newGetReleasesCmd())
+	cmd.AddCommand(newGetPromotionRunsCmd())
 	cmd.AddCommand(newGetTargetsCmd())
 	return cmd
 }
 
-func newGetReleasesCmd() *cobra.Command {
+func newGetPromotionRunsCmd() *cobra.Command {
 	var (
 		namespace     string
 		allNamespaces bool
 		kubeconfig    string
 	)
 	cmd := &cobra.Command{
-		Use:   "releases",
-		Short: "List Release objects",
+		Use:   "promotionruns",
+		Short: "List PromotionRun objects",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runGetReleases(cmd.Context(), namespace, allNamespaces, kubeconfig)
+			return runGetPromotionRuns(cmd.Context(), namespace, allNamespaces, kubeconfig)
 		},
 	}
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (empty = all namespaces)")
@@ -420,8 +420,8 @@ func newGetReleasesCmd() *cobra.Command {
 	return cmd
 }
 
-func runGetReleases(ctx context.Context, namespace string, allNamespaces bool, kubeconfigPath string) error {
-	sp := cli.NewSpinner("Fetching releases")
+func runGetPromotionRuns(ctx context.Context, namespace string, allNamespaces bool, kubeconfigPath string) error {
+	sp := cli.NewSpinner("Fetching promotionruns")
 	sp.Start()
 
 	c, err := buildClient(kubeconfigPath)
@@ -430,11 +430,11 @@ func runGetReleases(ctx context.Context, namespace string, allNamespaces bool, k
 		return err
 	}
 
-	var list kaprov1alpha1.ReleaseList
+	var list kaprov1alpha1.PromotionRunList
 	opts := listOpts(namespace, allNamespaces)
 	if err := c.List(ctx, &list, opts...); err != nil {
-		sp.StopFail("Failed to list releases")
-		return fmt.Errorf("list releases: %w", err)
+		sp.StopFail("Failed to list promotionruns")
+		return fmt.Errorf("list promotionruns: %w", err)
 	}
 	sp.Stop()
 
@@ -443,7 +443,7 @@ func runGetReleases(ctx context.Context, namespace string, allNamespaces bool, k
 	}
 
 	if len(list.Items) == 0 {
-		cli.Muted("No releases found.")
+		cli.Muted("No promotionruns found.")
 		return nil
 	}
 
@@ -451,15 +451,15 @@ func runGetReleases(ctx context.Context, namespace string, allNamespaces bool, k
 	progressing, complete, failed := 0, 0, 0
 	for _, r := range list.Items {
 		switch r.Status.Phase {
-		case kaprov1alpha1.ReleasePhaseProgressing:
+		case kaprov1alpha1.PromotionRunPhaseProgressing:
 			progressing++
-		case kaprov1alpha1.ReleasePhaseComplete:
+		case kaprov1alpha1.PromotionRunPhaseComplete:
 			complete++
-		case kaprov1alpha1.ReleasePhaseFailed:
+		case kaprov1alpha1.PromotionRunPhaseFailed:
 			failed++
 		}
 	}
-	cli.Header("Releases")
+	cli.Header("PromotionRuns")
 	cli.Infof("%d total  %s  %s  %s",
 		len(list.Items),
 		cli.Theme.PhaseProgressing.Render(fmt.Sprintf("%d progressing", progressing)),
@@ -469,14 +469,14 @@ func runGetReleases(ctx context.Context, namespace string, allNamespaces bool, k
 
 	tbl := cli.NewTable("NAME", "VERSION", "PHASE", "PIPELINES", "AGE")
 	for _, r := range list.Items {
-		pipelines := ""
-		for i, p := range r.Spec.Pipelines {
+		promotionplans := ""
+		for i, p := range r.Spec.PromotionPlans {
 			if i > 0 {
-				pipelines += ", "
+				promotionplans += ", "
 			}
-			pipelines += p.Pipeline
+			promotionplans += p.PromotionPlan
 		}
-		tbl.AddRow(r.Name, r.Spec.Version, string(r.Status.Phase), pipelines, cli.Age(r.CreationTimestamp.Time))
+		tbl.AddRow(r.Name, r.Spec.Version, string(r.Status.Phase), promotionplans, cli.Age(r.CreationTimestamp.Time))
 	}
 	tbl.Render()
 	return nil
@@ -491,10 +491,10 @@ func newGetTargetsCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "targets",
-		Short: "List target cluster rollout status across all Releases",
-		Long: `List target cluster rollout entries from ReleaseTarget objects.
+		Short: "List target cluster rollout status across all PromotionRuns",
+		Long: `List target cluster rollout entries from PromotionTarget objects.
 
-ReleaseTarget is the authoritative per-target execution state store.`,
+PromotionTarget is the authoritative per-target execution state store.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runGetTargets(cmd.Context(), namespace, allNamespaces, phase, kubeconfig)
 		},
@@ -516,15 +516,15 @@ func runGetTargets(ctx context.Context, namespace string, allNamespaces bool, ph
 		return err
 	}
 
-	var targetList kaprov1alpha1.ReleaseTargetList
+	var targetList kaprov1alpha1.PromotionTargetList
 	if err := c.List(ctx, &targetList); err != nil {
 		sp.StopFail("Failed to list targets")
-		return fmt.Errorf("list release targets: %w", err)
+		return fmt.Errorf("list promotion targets: %w", err)
 	}
 	sp.Stop()
 
 	// Filter by phase if specified.
-	var filtered []kaprov1alpha1.ReleaseTarget
+	var filtered []kaprov1alpha1.PromotionTarget
 	for _, t := range targetList.Items {
 		if phase == "" || string(t.Status.Phase) == phase {
 			filtered = append(filtered, t)
@@ -540,7 +540,7 @@ func runGetTargets(ctx context.Context, namespace string, allNamespaces bool, ph
 		return nil
 	}
 
-	cli.Header("Release Targets")
+	cli.Header("PromotionRun Targets")
 
 	tbl := cli.NewTable("RELEASE", "TARGET", "STAGE", "PHASE", "VERSION", "AGE")
 	for _, t := range filtered {
@@ -549,7 +549,7 @@ func runGetTargets(ctx context.Context, namespace string, allNamespaces bool, ph
 			version = version[:17] + "..."
 		}
 		tbl.AddRow(
-			t.Spec.ReleaseRef, t.Spec.Target, t.Spec.Stage,
+			t.Spec.PromotionRunRef, t.Spec.Target, t.Spec.Stage,
 			string(t.Status.Phase), version, cli.Age(t.CreationTimestamp.Time),
 		)
 	}
@@ -566,11 +566,11 @@ func newApproveCmd() *cobra.Command {
 		kubeconfig string
 	)
 	cmd := &cobra.Command{
-		Use:   "approve <release>/<target>",
+		Use:   "approve <promotionrun>/<target>",
 		Short: "Approve a target cluster waiting for human gate",
 		Long: `Create an Approval for a specific target cluster in WaitingApproval phase.
 
-The argument format is <release-name>/<target-cluster>.
+The argument format is <promotionrun-name>/<target-cluster>.
 
 Examples:
   kapro approve v1.2.3/de-prod
@@ -580,36 +580,36 @@ Examples:
 			return runApprove(cmd.Context(), args[0], namespace, comment, kubeconfig)
 		},
 	}
-	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace of the Release")
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace of the PromotionRun")
 	cmd.Flags().StringVar(&comment, "comment", "", "Optional approval comment (required for bypass)")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	return cmd
 }
 
-func runApprove(ctx context.Context, releaseTarget, namespace, comment, kubeconfigPath string) error {
-	parts := strings.SplitN(releaseTarget, "/", 2)
+func runApprove(ctx context.Context, promotionTarget, namespace, comment, kubeconfigPath string) error {
+	parts := strings.SplitN(promotionTarget, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return fmt.Errorf("argument must be <release>/<target>, got %q", releaseTarget)
+		return fmt.Errorf("argument must be <promotionrun>/<target>, got %q", promotionTarget)
 	}
-	releaseName, targetName := parts[0], parts[1]
+	promotionrunName, targetName := parts[0], parts[1]
 
 	c, err := buildClient(kubeconfigPath)
 	if err != nil {
 		return err
 	}
 
-	var rel kaprov1alpha1.Release
-	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: releaseName}, &rel); err != nil {
-		return fmt.Errorf("get release %q: %w", releaseName, err)
+	var rel kaprov1alpha1.PromotionRun
+	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: promotionrunName}, &rel); err != nil {
+		return fmt.Errorf("get promotionrun %q: %w", promotionrunName, err)
 	}
 
-	targets, err := listReleaseTargetsForRelease(ctx, c, namespace, releaseName)
+	targets, err := listPromotionTargetsForPromotionRun(ctx, c, namespace, promotionrunName)
 	if err != nil {
 		return err
 	}
 	selected := selectApprovalTarget(targets, targetName)
 	if selected == nil {
-		return fmt.Errorf("target %q not found in release %q", targetName, releaseName)
+		return fmt.Errorf("target %q not found in promotionrun %q", targetName, promotionrunName)
 	}
 	if selected.Status.Phase != kaprov1alpha1.TargetPhaseWaitingApproval {
 		fmt.Printf("⚠️  Target %q is in phase %q (not WaitingApproval) — approving anyway.\n",
@@ -617,16 +617,16 @@ func runApprove(ctx context.Context, releaseTarget, namespace, comment, kubeconf
 	}
 
 	ref := approvalRefForTarget(*selected)
-	approvalName := internalgate.ApprovalName(releaseName, ref)
+	approvalName := internalgate.ApprovalName(promotionrunName, ref)
 	approval := &kaprov1alpha1.Approval{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: approvalName,
 		},
 		Spec: kaprov1alpha1.ApprovalSpec{
-			Ref:     ref,
-			Release: releaseName,
-			Target:  targetName,
-			Comment: comment,
+			Ref:          ref,
+			PromotionRun: promotionrunName,
+			Target:       targetName,
+			Comment:      comment,
 			// approvedBy will be overwritten by the ApprovalMutator webhook
 			// with the real Kubernetes username from the admission request.
 		},
@@ -641,7 +641,7 @@ func runApprove(ctx context.Context, releaseTarget, namespace, comment, kubeconf
 	sp.StopSuccess("Approval created")
 
 	cli.KV("Approval", approvalName)
-	cli.KV("Release", releaseName)
+	cli.KV("PromotionRun", promotionrunName)
 	cli.KV("Target", targetName)
 	if comment != "" {
 		cli.KV("Comment", comment)
@@ -659,25 +659,25 @@ func newRollbackCmd() *cobra.Command {
 		kubeconfig string
 	)
 	cmd := &cobra.Command{
-		Use:   "rollback <release-name>",
-		Short: "Roll back a release to a previous OCI digest",
-		Long: `Create a new Release pointing at a previous OCI digest.
+		Use:   "rollback <promotionrun-name>",
+		Short: "Roll back a promotionrun to a previous OCI digest",
+		Long: `Create a new PromotionRun pointing at a previous OCI digest.
 
-The original Release is never modified (immutable). A new Artifact CR is
-created with the provided digest and a new Release is created referencing it.
+The original PromotionRun is never modified (immutable). A new Artifact CR is
+created with the provided digest and a new PromotionRun is created referencing it.
 
 Use --target to scope rollback to specific clusters (hotfix / partial rollback).
 
 Examples:
-  kapro rollback my-release --to sha256:abc123def456
-  kapro rollback my-release --to sha256:abc123def456 --target de-prod --target fi-prod`,
+  kapro rollback my-promotionrun --to sha256:abc123def456
+  kapro rollback my-promotionrun --to sha256:abc123def456 --target de-prod --target fi-prod`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRollback(cmd.Context(), args[0], toDigest, namespace, targets, kubeconfig)
 		},
 	}
 	cmd.Flags().StringVar(&toDigest, "to", "", "OCI digest to roll back to (required)")
-	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace of the Release")
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace of the PromotionRun")
 	cmd.Flags().StringArrayVar(&targets, "target", nil, "Restrict rollback to specific target clusters (repeatable)")
 	cmd.Flags().StringArrayVar(&targets, "env", nil, "Deprecated alias for --target")
 	_ = cmd.Flags().MarkHidden("env")
@@ -686,47 +686,47 @@ Examples:
 	return cmd
 }
 
-func runRollback(ctx context.Context, releaseName, toDigest, namespace string, targets []string, kubeconfigPath string) error {
+func runRollback(ctx context.Context, promotionrunName, toDigest, namespace string, targets []string, kubeconfigPath string) error {
 	c, err := buildClient(kubeconfigPath)
 	if err != nil {
 		return err
 	}
 
-	// Fetch the original Release.
-	var orig kaprov1alpha1.Release
-	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: releaseName}, &orig); err != nil {
-		return fmt.Errorf("get release %q: %w", releaseName, err)
+	// Fetch the original PromotionRun.
+	var orig kaprov1alpha1.PromotionRun
+	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: promotionrunName}, &orig); err != nil {
+		return fmt.Errorf("get promotionrun %q: %w", promotionrunName, err)
 	}
 
 	// Derive short suffix from digest for readable names.
 	suffix := shortHash(toDigest)
 
-	// Create a rollback Release with the same pipelines but the rollback version.
-	rbReleaseName := releaseName + "-rb-" + suffix
-	rbSpec := kaprov1alpha1.ReleaseSpec{
-		Version:   toDigest,
-		Pipelines: orig.Spec.Pipelines,
+	// Create a rollback PromotionRun with the same promotionplans but the rollback version.
+	rbPromotionRunName := promotionrunName + "-rb-" + suffix
+	rbSpec := kaprov1alpha1.PromotionRunSpec{
+		Version:        toDigest,
+		PromotionPlans: orig.Spec.PromotionPlans,
 	}
 	if len(targets) > 0 {
-		rbSpec.Scope = &kaprov1alpha1.ReleaseScope{Targets: targets}
+		rbSpec.Scope = &kaprov1alpha1.PromotionRunScope{Targets: targets}
 	}
-	rbRelease := &kaprov1alpha1.Release{
+	rbPromotionRun := &kaprov1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      rbReleaseName,
+			Name:      rbPromotionRunName,
 			Namespace: namespace,
 			Annotations: map[string]string{
-				"kapro.io/rollback-from":   releaseName,
+				"kapro.io/rollback-from":   promotionrunName,
 				"kapro.io/rollback-digest": toDigest,
 			},
 		},
 		Spec: rbSpec,
 	}
-	if err := c.Create(ctx, rbRelease); err != nil {
-		return fmt.Errorf("create rollback release: %w", err)
+	if err := c.Create(ctx, rbPromotionRun); err != nil {
+		return fmt.Errorf("create rollback promotionrun: %w", err)
 	}
 
-	fmt.Printf("✅ Rollback release created: %s/%s\n", namespace, rbReleaseName)
-	fmt.Printf("   Original release: %s\n", releaseName)
+	fmt.Printf("✅ Rollback promotionrun created: %s/%s\n", namespace, rbPromotionRunName)
+	fmt.Printf("   Original promotionrun: %s\n", promotionrunName)
 	fmt.Printf("   Rollback version: %s\n", toDigest)
 	if len(targets) > 0 {
 		fmt.Printf("   Scoped to targets: %s\n", strings.Join(targets, ", "))
@@ -767,11 +767,11 @@ func shortHash(s string) string {
 	return hex.EncodeToString(h[:])[:8]
 }
 
-func approvalRefForTarget(target kaprov1alpha1.ReleaseTarget) string {
+func approvalRefForTarget(target kaprov1alpha1.PromotionTarget) string {
 	return target.Name
 }
 
-func selectApprovalTarget(targets []kaprov1alpha1.ReleaseTarget, targetName string) *kaprov1alpha1.ReleaseTarget {
+func selectApprovalTarget(targets []kaprov1alpha1.PromotionTarget, targetName string) *kaprov1alpha1.PromotionTarget {
 	for i := range targets {
 		target := &targets[i]
 		if target.Spec.Target == targetName && target.Status.Phase == kaprov1alpha1.TargetPhaseWaitingApproval {
@@ -787,84 +787,84 @@ func selectApprovalTarget(targets []kaprov1alpha1.ReleaseTarget, targetName stri
 	return nil
 }
 
-func listReleaseTargetsForRelease(ctx context.Context, c client.Client, namespace, releaseName string) ([]kaprov1alpha1.ReleaseTarget, error) {
-	var targetList kaprov1alpha1.ReleaseTargetList
+func listPromotionTargetsForPromotionRun(ctx context.Context, c client.Client, namespace, promotionrunName string) ([]kaprov1alpha1.PromotionTarget, error) {
+	var targetList kaprov1alpha1.PromotionTargetList
 	if err := c.List(ctx, &targetList); err != nil {
-		return nil, fmt.Errorf("list release targets: %w", err)
+		return nil, fmt.Errorf("list promotion targets: %w", err)
 	}
-	targets := make([]kaprov1alpha1.ReleaseTarget, 0)
+	targets := make([]kaprov1alpha1.PromotionTarget, 0)
 	for _, target := range targetList.Items {
-		if target.Spec.ReleaseRef == releaseName {
+		if target.Spec.PromotionRunRef == promotionrunName {
 			targets = append(targets, target)
 		}
 	}
 	return targets, nil
 }
 
-// ─── kapro release ────────────────────────────────────────────────────────────
+// ─── kapro promotionrun ────────────────────────────────────────────────────────────
 
-func newReleaseCmd() *cobra.Command {
+func newPromotionRunCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "release",
-		Short: "Manage Kapro Releases",
+		Use:   "promotionrun",
+		Short: "Manage Kapro PromotionRuns",
 	}
-	cmd.AddCommand(newReleaseCreateCmd())
+	cmd.AddCommand(newPromotionRunCreateCmd())
 	return cmd
 }
 
-func newReleaseCreateCmd() *cobra.Command {
+func newPromotionRunCreateCmd() *cobra.Command {
 	var (
-		name       string
-		version    string
-		versions   []string
-		pipelines  []string
-		scope      []string
-		namespace  string
-		kubeconfig string
+		name           string
+		version        string
+		versions       []string
+		promotionplans []string
+		scope          []string
+		namespace      string
+		kubeconfig     string
 	)
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "Create a Release to deliver a version across the fleet",
-		Long: `Create a Kapro Release CR that drives progressive delivery.
+		Short: "Create a PromotionRun to deliver a version across the fleet",
+		Long: `Create a Kapro PromotionRun CR that drives progressive delivery.
 
 Examples:
-  # Full-fleet release
-  kapro release create --name v1.2.3 --version sha256:abc123 --pipeline global
+  # Full-fleet promotionrun
+  kapro promotionrun create --name v1.2.3 --version sha256:abc123 --promotionplan global
 
   # Hotfix targeting specific clusters only
-  kapro release create --name v1.2.3-hotfix --version sha256:def456 \
-    --pipeline global --scope de-prod --scope fi-prod
+  kapro promotionrun create --name v1.2.3-hotfix --version sha256:def456 \
+    --promotionplan global --scope de-prod --scope fi-prod
 
-  # Brownfield/native release with per-unit revisions
-  kapro release create --name checkout-2026-05-15 \
+  # Brownfield/native promotionrun with per-unit revisions
+  kapro promotionrun create --name checkout-2026-05-15 \
     --set api=main@sha256:abc123 --set worker=main@sha256:def456 \
-    --pipeline global`,
+    --promotionplan global`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runReleaseCreate(cmd.Context(), name, version, versions, pipelines, scope, namespace, kubeconfig)
+			return runPromotionRunCreate(cmd.Context(), name, version, versions, promotionplans, scope, namespace, kubeconfig)
 		},
 	}
-	cmd.Flags().StringVar(&name, "name", "", "Release name (required)")
+	cmd.Flags().StringVar(&name, "name", "", "PromotionRun name (required)")
 	cmd.Flags().StringVar(&version, "version", "", "Default revision to deliver")
 	cmd.Flags().StringArrayVar(&versions, "set", nil, "Per-unit revision (repeatable: --set api=sha256:abc)")
-	cmd.Flags().StringArrayVar(&pipelines, "pipeline", nil, "Pipeline name (repeatable; required at least once)")
+	cmd.Flags().StringArrayVar(&promotionplans, "promotionplan", nil, "PromotionPlan name (repeatable; required at least once)")
 	cmd.Flags().StringArrayVar(&scope, "scope", nil, "Restrict to target cluster (repeatable: --scope de-prod --scope fi-prod)")
-	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace for the Release")
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace for the PromotionRun")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	_ = cmd.MarkFlagRequired("name")
 	return cmd
 }
 
-func runReleaseCreate(ctx context.Context, name, version string, versionPairs, pipelines, scope []string,
+func runPromotionRunCreate(ctx context.Context, name, version string, versionPairs, promotionplans, scope []string,
 	namespace, kubeconfigPath string) error {
 	c, err := buildClient(kubeconfigPath)
 	if err != nil {
 		return err
 	}
 
-	if len(pipelines) == 0 {
-		return fmt.Errorf("at least one --pipeline is required")
+	if len(promotionplans) == 0 {
+		return fmt.Errorf("at least one --promotionplan is required")
 	}
-	versions, err := parseReleaseVersions(versionPairs)
+	versions, err := parsePromotionRunVersions(versionPairs)
 	if err != nil {
 		return err
 	}
@@ -872,24 +872,24 @@ func runReleaseCreate(ctx context.Context, name, version string, versionPairs, p
 		return fmt.Errorf("--version or at least one --set unit=revision is required")
 	}
 
-	refs := make([]kaprov1alpha1.ReleasePipelineRef, 0, len(pipelines))
-	for i, p := range pipelines {
-		refs = append(refs, kaprov1alpha1.ReleasePipelineRef{
-			Name:     fmt.Sprintf("p%d", i+1),
-			Pipeline: p,
+	refs := make([]kaprov1alpha1.PromotionPlanRef, 0, len(promotionplans))
+	for i, p := range promotionplans {
+		refs = append(refs, kaprov1alpha1.PromotionPlanRef{
+			Name:          fmt.Sprintf("p%d", i+1),
+			PromotionPlan: p,
 		})
 	}
 
-	spec := kaprov1alpha1.ReleaseSpec{
-		Version:   version,
-		Versions:  versions,
-		Pipelines: refs,
+	spec := kaprov1alpha1.PromotionRunSpec{
+		Version:        version,
+		Versions:       versions,
+		PromotionPlans: refs,
 	}
 	if len(scope) > 0 {
-		spec.Scope = &kaprov1alpha1.ReleaseScope{Targets: scope}
+		spec.Scope = &kaprov1alpha1.PromotionRunScope{Targets: scope}
 	}
 
-	rel := &kaprov1alpha1.Release{
+	rel := &kaprov1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
@@ -898,27 +898,27 @@ func runReleaseCreate(ctx context.Context, name, version string, versionPairs, p
 	}
 
 	if err := c.Create(ctx, rel); err != nil {
-		return fmt.Errorf("create Release: %w", err)
+		return fmt.Errorf("create PromotionRun: %w", err)
 	}
 
-	fmt.Printf("✅ Release created: %s/%s\n", namespace, name)
+	fmt.Printf("✅ PromotionRun created: %s/%s\n", namespace, name)
 	if version != "" {
 		fmt.Printf("   Version:   %s\n", version)
 	}
 	if len(versions) > 0 {
-		fmt.Printf("   Versions:  %s\n", formatReleaseVersions(versions))
+		fmt.Printf("   Versions:  %s\n", formatPromotionRunVersions(versions))
 	}
-	pipelineNames := make([]string, len(pipelines))
-	copy(pipelineNames, pipelines)
-	fmt.Printf("   Pipelines: %s\n", strings.Join(pipelineNames, ", "))
+	promotionplanNames := make([]string, len(promotionplans))
+	copy(promotionplanNames, promotionplans)
+	fmt.Printf("   PromotionPlans: %s\n", strings.Join(promotionplanNames, ", "))
 	if len(scope) > 0 {
 		fmt.Printf("   Scope:     %s\n", strings.Join(scope, ", "))
 	}
-	fmt.Printf("\nMonitor progress:\n  kapro get releases -n %s\n", namespace)
+	fmt.Printf("\nMonitor progress:\n  kapro get promotionruns -n %s\n", namespace)
 	return nil
 }
 
-func parseReleaseVersions(pairs []string) (map[string]string, error) {
+func parsePromotionRunVersions(pairs []string) (map[string]string, error) {
 	if len(pairs) == 0 {
 		return nil, nil
 	}
@@ -938,7 +938,7 @@ func parseReleaseVersions(pairs []string) (map[string]string, error) {
 	return versions, nil
 }
 
-func formatReleaseVersions(versions map[string]string) string {
+func formatPromotionRunVersions(versions map[string]string) string {
 	keys := make([]string, 0, len(versions))
 	for unit := range versions {
 		keys = append(keys, unit)
@@ -959,7 +959,7 @@ func newRejectCmd() *cobra.Command {
 		kubeconfig string
 	)
 	cmd := &cobra.Command{
-		Use:   "reject <release>/<target>",
+		Use:   "reject <promotionrun>/<target>",
 		Short: "Reject a target cluster waiting for approval",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -972,25 +972,25 @@ func newRejectCmd() *cobra.Command {
 	return cmd
 }
 
-func runReject(ctx context.Context, releaseTarget, reason, kubeconfigPath string) error {
-	parts := strings.SplitN(releaseTarget, "/", 2)
+func runReject(ctx context.Context, promotionTarget, reason, kubeconfigPath string) error {
+	parts := strings.SplitN(promotionTarget, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return fmt.Errorf("argument must be <release>/<target>, got %q", releaseTarget)
+		return fmt.Errorf("argument must be <promotionrun>/<target>, got %q", promotionTarget)
 	}
-	releaseName, targetName := parts[0], parts[1]
+	promotionrunName, targetName := parts[0], parts[1]
 
 	c, err := buildClient(kubeconfigPath)
 	if err != nil {
 		return err
 	}
 
-	targets, err := listReleaseTargetsForRelease(ctx, c, "", releaseName)
+	targets, err := listPromotionTargetsForPromotionRun(ctx, c, "", promotionrunName)
 	if err != nil {
 		return err
 	}
 	selected := selectApprovalTarget(targets, targetName)
 	if selected == nil {
-		return fmt.Errorf("target %q not found in release %q", targetName, releaseName)
+		return fmt.Errorf("target %q not found in promotionrun %q", targetName, promotionrunName)
 	}
 
 	sp := cli.NewSpinner("Rejecting target")
@@ -1006,7 +1006,7 @@ func runReject(ctx context.Context, releaseTarget, reason, kubeconfigPath string
 	}
 	sp.StopSuccess("Target rejected")
 
-	cli.KV("Release", releaseName)
+	cli.KV("PromotionRun", promotionrunName)
 	cli.KV("Target", targetName)
 	cli.KV("Reason", reason)
 	return nil

@@ -17,9 +17,9 @@ Kapro-specific metrics use the `kapro_` namespace:
 | `kapro_controller_status_writes_total` | counter | Status write success and failure rate |
 | `kapro_sync_transitions_total` | counter | Target FSM phase transitions |
 | `kapro_gate_evaluations_total` | counter | Gate pass, fail, inconclusive, and error rate |
-| `kapro_stage_duration_seconds` | histogram | Stage duration by pipeline |
-| `kapro_release_active_total` | gauge | Non-terminal Releases |
-| `kapro_wave_environments_promoted_total` | gauge | Promoted targets by release and stage |
+| `kapro_stage_duration_seconds` | histogram | Stage duration by promotionplan |
+| `kapro_promotionrun_active_total` | gauge | Non-terminal PromotionRuns |
+| `kapro_wave_environments_promoted_total` | gauge | Promoted targets by promotionrun and stage |
 | `kapro_plugin_probe_results_total` | counter | Plugin probe success and failure rate |
 | `kapro_plugin_probe_duration_seconds` | histogram | Plugin probe latency |
 | `kapro_plugin_probe_ready` | gauge | Latest plugin readiness by type and name |
@@ -48,21 +48,21 @@ See `docs/monitoring.md` for the metric inventory and installation notes.
 
 The dashboard covers:
 
-- release backlog and active Releases;
-- release stuck symptoms through controller error rate and active backlog;
+- promotionrun backlog and active PromotionRuns;
+- promotionrun stuck symptoms through controller error rate and active backlog;
 - gate failure rate;
 - plugin probe failures and readiness;
-- trigger blocked symptoms through ReleaseTrigger reconcile errors;
+- trigger blocked symptoms through PromotionTrigger reconcile errors;
 - rollout duration p95 via stage duration histogram.
 
 The alert rules cover:
 
 | Alert | Signal |
 |---|---|
-| `KaproReleaseStuck` | Active Releases remain non-terminal for a sustained window |
+| `KaproPromotionRunStuck` | Active PromotionRuns remain non-terminal for a sustained window |
 | `KaproGateFailureRateHigh` | Gate failures/errors exceed 10% of evaluations |
 | `KaproPluginProbeFailures` | Plugin probe failures or plugin readiness drops |
-| `KaproReleaseTriggerBlocked` | ReleaseTrigger reconciles are failing |
+| `KaproPromotionTriggerBlocked` | PromotionTrigger reconciles are failing |
 | `KaproRolloutDurationP95High` | Stage duration p95 exceeds the configured threshold |
 | `KaproControllerReconcileErrors` | Any controller has sustained reconcile errors |
 
@@ -106,21 +106,21 @@ promotion state and spoke controllers or GitOps backends converge local
 workloads.
 
 For multi-cloud and air-gapped fleets, prefer
-`MemberCluster.spec.delivery.mode: pull` with a `BackendProfile` selected by
+`FleetCluster.spec.delivery.mode: pull` with a `BackendProfile` selected by
 `spec.delivery.backendRef`. In pull mode the hub writes desired versions to
-`MemberCluster.spec` and does not patch spoke workloads directly during a
-release. Each spoke applies the desired state locally through its selected
+`FleetCluster.spec` and does not patch spoke workloads directly during a
+promotionrun. Each spoke applies the desired state locally through its selected
 backend, reports `status.currentVersions` and `status.health`, and renews
-`Lease/kapro-heartbeat-<cluster>` in the operator namespace. The ReleaseTarget
+`Lease/kapro-heartbeat-<cluster>` in the operator namespace. The PromotionTarget
 controller blocks pull-mode targets while that heartbeat is stale and fails them
 if it remains stale.
 
 Current practical assumptions:
 
-- Kubernetes API is the source of truth for release state.
+- Kubernetes API is the source of truth for promotionrun state.
 - Plugins are idempotent and bounded by request context.
-- One target rollout is represented by one `ReleaseTarget`.
-- Stage fan-out is controlled by pipeline strategy, not by unbounded goroutines.
+- One target rollout is represented by one `PromotionTarget`.
+- Stage fan-out is controlled by promotionplan strategy, not by unbounded goroutines.
 - Status updates are small and append bounded summaries rather than complete
   historical logs.
 
@@ -133,52 +133,52 @@ operational state, not an infinite audit warehouse.
 Use the same first checks for every incident:
 
 ```bash
-kubectl get releases,releasetargets,releasetriggers,pluginregistrations
-kubectl describe release <release>
-kubectl get releasetargets -l kapro.io/release=<release> -o wide
-kubectl get events --field-selector involvedObject.name=<release> --sort-by=.lastTimestamp
+kubectl get promotionruns,promotiontargets,promotiontriggers,pluginregistrations
+kubectl describe promotionrun <promotionrun>
+kubectl get promotiontargets -l kapro.io/promotionrun=<promotionrun> -o wide
+kubectl get events --field-selector involvedObject.name=<promotionrun> --sort-by=.lastTimestamp
 kubectl logs -n kapro-system deploy/kapro-operator --since=30m
 ```
 
 If the deployment uses sharding, include the shard label in every query:
 
 ```bash
-kubectl get releases,releasetargets -l kapro.io/shard=<shard>
+kubectl get promotionruns,promotiontargets -l kapro.io/shard=<shard>
 ```
 
-For dashboard triage, start with active release count, controller reconcile
+For dashboard triage, start with active promotionrun count, controller reconcile
 errors, status write errors, gate failure ratio, plugin readiness, and blocked
-ReleaseTrigger panels.
+PromotionTrigger panels.
 
-## Runbook: Stuck Release
+## Runbook: Stuck PromotionRun
 
 Symptoms:
 
-- `Release.status.phase` remains `Pending` or `Progressing` past the expected
+- `PromotionRun.status.phase` remains `Pending` or `Progressing` past the expected
   rollout window or `spec.timeout`.
-- `KaproReleaseStuck` fires.
-- `kapro_release_active_total` remains non-zero while no target appears to move.
+- `KaproPromotionRunStuck` fires.
+- `kapro_promotionrun_active_total` remains non-zero while no target appears to move.
 
 Triage:
 
 1. Inspect the top-level summary:
 
    ```bash
-   kubectl get release <release> -o yaml
-   kubectl describe release <release>
+   kubectl get promotionrun <promotionrun> -o yaml
+   kubectl describe promotionrun <promotionrun>
    ```
 
-   Check `status.pipelineProgress`, `status.report`, `status.conditions`, and
+   Check `status.promotionplanProgress`, `status.report`, `status.conditions`, and
    `spec.suspended`.
 
 2. Inspect child execution objects:
 
    ```bash
-   kubectl get releasetargets -l kapro.io/release=<release> -o wide
-   kubectl get releasetargets -l kapro.io/release=<release> -o yaml
+   kubectl get promotiontargets -l kapro.io/promotionrun=<promotionrun> -o wide
+   kubectl get promotiontargets -l kapro.io/promotionrun=<promotionrun> -o yaml
    ```
 
-   The phase that matters is `ReleaseTarget.status.phase`: `Verification`,
+   The phase that matters is `PromotionTarget.status.phase`: `Verification`,
    `HealthCheck`, `Soaking`, `MetricsCheck`, `WaitingApproval`, `Applying`,
    `Converged`, `Failed`, or `Skipped`.
 
@@ -186,14 +186,14 @@ Triage:
 
 | Phase | Likely blocker | Next check |
 |---|---|---|
-| `Pending` | Stage dependency, planner deferral, missing target selection, suspended Release | `status.pipelineProgress[].stageProgress[].plannerResults`, `spec.suspended` |
-| `Verification` | Artifact verification failure or retry | ReleaseTarget Events and verification gate message |
-| `HealthCheck` | `MemberCluster.status.health` not ready or heartbeat stale | `kubectl get membercluster <target> -o yaml` |
+| `Pending` | Stage dependency, planner deferral, missing target selection, suspended PromotionRun | `status.promotionplanProgress[].stageProgress[].plannerResults`, `spec.suspended` |
+| `Verification` | Artifact verification failure or retry | PromotionTarget Events and verification gate message |
+| `HealthCheck` | `FleetCluster.status.health` not ready or heartbeat stale | `kubectl get fleetcluster <target> -o yaml` |
 | `Soaking` | Normal soak delay | `status.phaseEnteredAt` and configured soak duration |
 | `MetricsCheck` | Prometheus query false, inconclusive, or unreachable | Gate results, `kapro_gate_evaluations_total`, Prometheus target health |
 | `WaitingApproval` | Approval not created or rejected | `kubectl get approvals` and approval webhook logs |
-| `Applying` | Actuator backend not converging | `MemberCluster.status.currentVersions`, actuator/plugin logs |
-| `Failed` | Failure policy halted or rollback failed | ReleaseTarget message and Events |
+| `Applying` | Actuator backend not converging | `FleetCluster.status.currentVersions`, actuator/plugin logs |
+| `Failed` | Failure policy halted or rollback failed | PromotionTarget message and Events |
 
 4. Check whether this is isolated or systemic:
 
@@ -209,15 +209,15 @@ Mitigation:
   and scope:
 
   ```bash
-  kubectl patch release <release> --type=merge -p '{"spec":{"suspended":false}}'
+  kubectl patch promotionrun <promotionrun> --type=merge -p '{"spec":{"suspended":false}}'
   ```
 
 - If one target is blocked by a known transient backend issue, fix the backend
-  and let the ReleaseTarget reconcile. Avoid patching status by hand.
-- If a stage is too wide for the backend, suspend the Release, reduce future
+  and let the PromotionTarget reconcile. Avoid patching status by hand.
+- If a stage is too wide for the backend, suspend the PromotionRun, reduce future
   `Stage.spec.strategy.maxParallel`, and let the current target set drain or
   fail according to policy.
-- If the release is failed and the artifact should not continue, use the
+- If the promotionrun is failed and the artifact should not continue, use the
   rollback runbook below.
 
 ## Runbook: Gate Failure
@@ -225,7 +225,7 @@ Mitigation:
 Symptoms:
 
 - `KaproGateFailureRateHigh` fires.
-- A ReleaseTarget is in `MetricsCheck`, `Verification`, or `Failed`.
+- A PromotionTarget is in `MetricsCheck`, `Verification`, or `Failed`.
 - `status.gates[]` shows `Failed`, `Running`, or repeated `Inconclusive`.
 
 Triage:
@@ -233,16 +233,16 @@ Triage:
 1. Identify the target and gate:
 
    ```bash
-   kubectl get releasetargets -l kapro.io/release=<release> -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.phase}{"\t"}{.status.message}{"\n"}{end}'
-   kubectl describe releasetarget <release-target>
+   kubectl get promotiontargets -l kapro.io/promotionrun=<promotionrun> -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.phase}{"\t"}{.status.message}{"\n"}{end}'
+   kubectl describe promotiontarget <promotion-target>
    ```
 
-2. Check the gate policy snapshot on the ReleaseTarget, not only the current
-   Pipeline template:
+2. Check the gate policy snapshot on the PromotionTarget, not only the current
+   PromotionPlan template:
 
    ```bash
-   kubectl get releasetarget <release-target> -o jsonpath='{.spec.gate}{"\n"}'
-   kubectl get releasetarget <release-target> -o jsonpath='{.status.gates}{"\n"}'
+   kubectl get promotiontarget <promotion-target> -o jsonpath='{.spec.gate}{"\n"}'
+   kubectl get promotiontarget <promotion-target> -o jsonpath='{.status.gates}{"\n"}'
    ```
 
 3. For metrics gates, run the recorded PromQL query directly against the same
@@ -257,32 +257,32 @@ Mitigation:
 
 - Fix the underlying service or telemetry query and let the next reconcile
   re-evaluate the gate.
-- If the gate policy is wrong, create a new Release or Pipeline revision for the
-  corrected policy. Existing ReleaseTargets keep a snapshot of the gate policy
+- If the gate policy is wrong, create a new PromotionRun or PromotionPlan revision for the
+  corrected policy. Existing PromotionTargets keep a snapshot of the gate policy
   they were created with.
 - If failure is expected and the policy allows it, confirm whether
   `onFailure=continue` or stage `onFailure=skip` is the intended behavior for
-  future releases.
+  future promotionruns.
 - For external gate plugins, use the plugin-not-ready runbook if the
   PluginRegistration is not ready.
 
-## Runbook: Blocked ReleaseTrigger
+## Runbook: Blocked PromotionTrigger
 
 Symptoms:
 
-- `KaproReleaseTriggerBlocked` fires.
-- `ReleaseTrigger.status.conditions` includes `Stalled=True`,
-  `ReleaseCreated=False`, or reasons such as `CooldownActive`,
+- `KaproPromotionTriggerBlocked` fires.
+- `PromotionTrigger.status.conditions` includes `Stalled=True`,
+  `PromotionRunCreated=False`, or reasons such as `CooldownActive`,
   `MaxActiveReached`, `ResolveFailed`, `SignatureVerificationFailed`,
-  `VerifierUnavailable`, or `ReleaseCreateFailed`.
-- No new Release appears for a tag that should match.
+  `VerifierUnavailable`, or `PromotionRunCreateFailed`.
+- No new PromotionRun appears for a tag that should match.
 
 Triage:
 
 ```bash
-kubectl get releasetrigger <trigger> -o yaml
-kubectl describe releasetrigger <trigger>
-kubectl get releases -l kapro.io/release-trigger=<trigger>
+kubectl get promotiontrigger <trigger> -o yaml
+kubectl describe promotiontrigger <trigger>
+kubectl get promotionruns -l kapro.io/promotion-trigger=<trigger>
 ```
 
 Check these fields in order:
@@ -290,26 +290,26 @@ Check these fields in order:
 | Field | Meaning | Action |
 |---|---|---|
 | `spec.suspended` | Source observation is paused | Resume only if automation is intended |
-| `spec.dryRun` | Controller records what it would create | Disable dry run to create Releases |
+| `spec.dryRun` | Controller records what it would create | Disable dry run to create PromotionRuns |
 | `spec.source.oci.tagPattern` | Tags outside the regex are ignored | Test the regex against the pushed tag |
 | `spec.source.oci.requireSignature` | Signature verification must pass | Verify signer, keyless identity, or verifier availability |
-| `spec.cooldown` | Minimum interval between created Releases | Wait or adjust future trigger policy |
-| `spec.maxActive` | Active Releases created by the trigger are capped | Complete, fail, or suspend existing active Releases before expecting another |
+| `spec.cooldown` | Minimum interval between created PromotionRuns | Wait or adjust future trigger policy |
+| `spec.maxActive` | Active PromotionRuns created by the trigger are capped | Complete, fail, or suspend existing active PromotionRuns before expecting another |
 | `status.lastArtifact` | Last observed tag, digest, and verification result | Confirm the digest is the expected immutable artifact |
 
 Mitigation:
 
-- Do not bypass the trigger by creating an unsuspended production Release unless
+- Do not bypass the trigger by creating an unsuspended production PromotionRun unless
   incident command explicitly accepts that risk.
-- If `MaxActiveReached`, inspect the active Releases and resolve the oldest
+- If `MaxActiveReached`, inspect the active PromotionRuns and resolve the oldest
   non-terminal one first.
 - If signature verification failed, fix the artifact or verifier; do not lower
   signature policy for production as a quick workaround.
-- If the trigger created a suspended Release as designed, review it and then
-  unsuspend the Release, not the trigger policy:
+- If the trigger created a suspended PromotionRun as designed, review it and then
+  unsuspend the PromotionRun, not the trigger policy:
 
   ```bash
-  kubectl patch release <release> --type=merge -p '{"spec":{"suspended":false}}'
+  kubectl patch promotionrun <promotionrun> --type=merge -p '{"spec":{"suspended":false}}'
   ```
 
 ## Runbook: Plugin Not Ready
@@ -350,38 +350,38 @@ Mitigation:
 - Restore the plugin Service, DNS, TLS Secret, or backend dependency.
 - Increase `spec.timeout` only when the plugin is healthy but its normal call
   latency exceeds the current deadline.
-- If the plugin is optional, remove or change future Pipeline gate templates or
-  MemberCluster actuator references that require it. Existing in-flight
-  ReleaseTargets should be allowed to reconcile or fail according to policy.
+- If the plugin is optional, remove or change future PromotionPlan gate templates or
+  FleetCluster actuator references that require it. Existing in-flight
+  PromotionTargets should be allowed to reconcile or fail according to policy.
 
 ## Runbook: Rollback
 
 Rollback is a delivery action, not a status edit. Do not patch
-`Release.status` or `ReleaseTarget.status` to force rollback.
+`PromotionRun.status` or `PromotionTarget.status` to force rollback.
 
 Automatic rollback path:
 
-1. Confirm the pipeline or gate policy is configured for rollback:
+1. Confirm the promotionplan or gate policy is configured for rollback:
 
    ```bash
-   kubectl get pipeline <pipeline> -o yaml
-   kubectl get releasetarget <release-target> -o yaml
+   kubectl get promotionplan <promotionplan> -o yaml
+   kubectl get promotiontarget <promotion-target> -o yaml
    ```
 
-   Gate rollback uses `spec.gate.onFailure=rollback` on the ReleaseTarget
-   snapshot. Stage rollback uses `Stage.onFailure=rollback` in the Pipeline.
+   Gate rollback uses `spec.gate.onFailure=rollback` on the PromotionTarget
+   snapshot. Stage rollback uses `Stage.onFailure=rollback` in the PromotionPlan.
 
 2. Confirm the failed target has a previous version:
 
    ```bash
-   kubectl get releasetarget <release-target> -o jsonpath='{.status.previousVersion}{"\n"}'
-   kubectl get releasetarget <release-target> -o jsonpath='{.status.previousVersions}{"\n"}'
+   kubectl get promotiontarget <promotion-target> -o jsonpath='{.status.previousVersion}{"\n"}'
+   kubectl get promotiontarget <promotion-target> -o jsonpath='{.status.previousVersions}{"\n"}'
    ```
 
-3. Watch for a rollback ReleaseTarget:
+3. Watch for a rollback PromotionTarget:
 
    ```bash
-   kubectl get releasetargets -l kapro.io/release=<release> -o wide
+   kubectl get promotiontargets -l kapro.io/promotionrun=<promotionrun> -o wide
    kubectl get events --field-selector reason=RollbackTriggered --sort-by=.lastTimestamp
    ```
 
@@ -390,20 +390,20 @@ Automatic rollback path:
 
 Manual corrective rollback path:
 
-1. Identify the last known good digest from `ReleaseTarget.status.previousVersion`,
+1. Identify the last known good digest from `PromotionTarget.status.previousVersion`,
    `previousVersions`, artifact inventory, or backend deployment records.
-2. Create a new Release pinned to that immutable digest and scoped to the
+2. Create a new PromotionRun pinned to that immutable digest and scoped to the
    affected targets.
 3. Use conservative stage `maxParallel` and approval gates for production
    targets.
-4. Keep the failed Release for audit. Do not delete it until incident review
+4. Keep the failed PromotionRun for audit. Do not delete it until incident review
    confirms that Events, status, and external audit sinks captured the failure.
 
 Post-rollback checks:
 
 ```bash
-kubectl get releases,releasetargets
-kubectl get memberclusters -o yaml
+kubectl get promotionruns,promotiontargets
+kubectl get fleetclusters -o yaml
 ```
 
 Confirm target `currentVersions` match the rollback version and that downstream

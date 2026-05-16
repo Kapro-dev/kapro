@@ -45,16 +45,16 @@ kapro cluster bootstrap --name de-prod \
   --labels tier=prod,country=de,region=europe-west3
 ```
 
-### 3. Create ResourceSet + Pipeline + Release
+### 3. Create ResourceSet + PromotionPlan + PromotionRun
 
 See examples/ directory for complete YAML.
 
 ### 4. Monitor and Approve
 
 ```bash
-kapro get releases
+kapro get promotionruns
 kapro get targets
-kapro approve <release>/<target>
+kapro approve <promotionrun>/<target>
 kapro fleet
 ```
 

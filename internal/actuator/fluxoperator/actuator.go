@@ -27,7 +27,7 @@ var resourceSetGVK = schema.GroupVersionKind{
 }
 
 // FluxOperatorActuator implements the KAI interface by patching Flux Operator
-// ResourceSet inputs. Each MemberCluster maps to one input entry in a ResourceSet.
+// ResourceSet inputs. Each FleetCluster maps to one input entry in a ResourceSet.
 //
 // Input field naming convention:
 //   - Single-app: inputField (default "tag") holds the version
@@ -57,7 +57,7 @@ func (a *FluxOperatorActuator) Apply(ctx context.Context, req actuator.ApplyRequ
 	ns, tenantField := resolveConfig(&delivery)
 	resourceSet := delivery.Param("resourceSet", "")
 	if resourceSet == "" {
-		return fmt.Errorf("MemberCluster %q delivery.parameters.resourceSet is required for flux push delivery", mc.Name)
+		return fmt.Errorf("FleetCluster %q delivery.parameters.resourceSet is required for flux push delivery", mc.Name)
 	}
 	versionField := resolveVersionField(&delivery, req.AppKey)
 
@@ -105,7 +105,7 @@ func (a *FluxOperatorActuator) ApplyDelta(ctx context.Context, req actuator.Delt
 	delivery := mc.Spec.Delivery
 	resourceSet := delivery.Param("resourceSet", "")
 	if resourceSet == "" {
-		return 0, fmt.Errorf("MemberCluster %q delivery.parameters.resourceSet is required for flux push delivery", mc.Name)
+		return 0, fmt.Errorf("FleetCluster %q delivery.parameters.resourceSet is required for flux push delivery", mc.Name)
 	}
 
 	ns, tenantField := resolveConfig(&delivery)
@@ -168,11 +168,11 @@ func (a *FluxOperatorActuator) ApplyDelta(ctx context.Context, req actuator.Delt
 // IsConverged checks if the ResourceSet input matches AND the rendered HelmRelease is Ready.
 // ResourceSet Ready only means "YAML was applied" — we also need to verify the spoke
 // HelmRelease actually succeeded (Ready=True on the HelmRelease itself).
-func (a *FluxOperatorActuator) IsConverged(ctx context.Context, mc *kaprov1alpha1.MemberCluster, appKey, version string) (bool, error) {
+func (a *FluxOperatorActuator) IsConverged(ctx context.Context, mc *kaprov1alpha1.FleetCluster, appKey, version string) (bool, error) {
 	delivery := mc.Spec.Delivery
 	resourceSet := delivery.Param("resourceSet", "")
 	if resourceSet == "" {
-		return false, fmt.Errorf("MemberCluster %q delivery.parameters.resourceSet is required for flux push delivery", mc.Name)
+		return false, fmt.Errorf("FleetCluster %q delivery.parameters.resourceSet is required for flux push delivery", mc.Name)
 	}
 
 	ns, tenantField := resolveConfig(&delivery)
@@ -205,8 +205,8 @@ func (a *FluxOperatorActuator) IsConverged(ctx context.Context, mc *kaprov1alpha
 	// Try to find it by scanning ResourceSet inventory.
 	hrReady, err := a.checkHelmReleaseFromInventory(ctx, resourceSet, ns, mc.Name)
 	if err != nil {
-		// Can't determine HR name — fall through to MemberCluster status check
-		// in the ReleaseTargetReconciler fallback.
+		// Can't determine HR name — fall through to FleetCluster status check
+		// in the PromotionTargetReconciler fallback.
 		return false, nil
 	}
 	return hrReady, nil
@@ -214,14 +214,14 @@ func (a *FluxOperatorActuator) IsConverged(ctx context.Context, mc *kaprov1alpha
 
 // IsAllConverged checks convergence for all desired versions.
 // Verifies both ResourceSet inputs AND rendered HelmRelease Ready status.
-func (a *FluxOperatorActuator) IsAllConverged(ctx context.Context, mc *kaprov1alpha1.MemberCluster, desiredVersions map[string]string) (bool, error) {
+func (a *FluxOperatorActuator) IsAllConverged(ctx context.Context, mc *kaprov1alpha1.FleetCluster, desiredVersions map[string]string) (bool, error) {
 	if mc == nil {
 		return false, fmt.Errorf("cluster is nil")
 	}
 	delivery := mc.Spec.Delivery
 	resourceSet := delivery.Param("resourceSet", "")
 	if resourceSet == "" {
-		return false, fmt.Errorf("MemberCluster %q delivery.parameters.resourceSet is required for flux push delivery", mc.Name)
+		return false, fmt.Errorf("FleetCluster %q delivery.parameters.resourceSet is required for flux push delivery", mc.Name)
 	}
 
 	ns, tenantField := resolveConfig(&delivery)
@@ -258,7 +258,7 @@ func (a *FluxOperatorActuator) IsAllConverged(ctx context.Context, mc *kaprov1al
 }
 
 // Rollback sets the ResourceSet input back to a previous version.
-func (a *FluxOperatorActuator) Rollback(ctx context.Context, mc *kaprov1alpha1.MemberCluster, previousVersion, appKey string) error {
+func (a *FluxOperatorActuator) Rollback(ctx context.Context, mc *kaprov1alpha1.FleetCluster, previousVersion, appKey string) error {
 	if mc == nil {
 		return fmt.Errorf("cluster is nil")
 	}

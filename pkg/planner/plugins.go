@@ -13,7 +13,7 @@ import (
 func NewDefaultFramework() *Framework {
 	return NewFramework(
 		ReadinessFilter{},
-		ActiveReleaseFilter{},
+		ActivePromotionRunFilter{},
 		DeterministicOrder{},
 	)
 }
@@ -23,7 +23,7 @@ type ReadinessFilter struct{}
 
 func (ReadinessFilter) Name() string { return "readiness" }
 
-func (ReadinessFilter) Filter(_ context.Context, _ *CycleState, _ Request, target kaprov1alpha1.MemberCluster) *Status {
+func (ReadinessFilter) Filter(_ context.Context, _ *CycleState, _ Request, target kaprov1alpha1.FleetCluster) *Status {
 	ready := apimeta.FindStatusCondition(target.Status.Conditions, "Ready")
 	if ready != nil && ready.Status == metav1.ConditionFalse {
 		return NewStatusReason(Skip, "ClusterNotReady", "cluster Ready condition is false")
@@ -31,16 +31,16 @@ func (ReadinessFilter) Filter(_ context.Context, _ *CycleState, _ Request, targe
 	return nil
 }
 
-// ActiveReleaseFilter skips clusters already assigned to a different active Release.
-type ActiveReleaseFilter struct{}
+// ActivePromotionRunFilter skips clusters already assigned to a different active PromotionRun.
+type ActivePromotionRunFilter struct{}
 
-func (ActiveReleaseFilter) Name() string { return "active-release" }
+func (ActivePromotionRunFilter) Name() string { return "active-promotionrun" }
 
-func (ActiveReleaseFilter) Filter(_ context.Context, _ *CycleState, req Request, target kaprov1alpha1.MemberCluster) *Status {
-	if req.Release == nil || target.Status.ActiveRelease == "" || target.Status.ActiveRelease == req.Release.Name {
+func (ActivePromotionRunFilter) Filter(_ context.Context, _ *CycleState, req Request, target kaprov1alpha1.FleetCluster) *Status {
+	if req.PromotionRun == nil || target.Status.ActivePromotionRun == "" || target.Status.ActivePromotionRun == req.PromotionRun.Name {
 		return nil
 	}
-	return NewStatusReason(Skip, "DifferentActiveRelease", "cluster is already processing another release")
+	return NewStatusReason(Skip, "DifferentActivePromotionRun", "cluster is already processing another promotionrun")
 }
 
 // DeterministicOrder is a no-op score plugin. The framework's stable name
@@ -49,6 +49,6 @@ type DeterministicOrder struct{}
 
 func (DeterministicOrder) Name() string { return "deterministic-order" }
 
-func (DeterministicOrder) Score(context.Context, *CycleState, Request, kaprov1alpha1.MemberCluster) (int64, *Status) {
+func (DeterministicOrder) Score(context.Context, *CycleState, Request, kaprov1alpha1.FleetCluster) (int64, *Status) {
 	return 0, nil
 }

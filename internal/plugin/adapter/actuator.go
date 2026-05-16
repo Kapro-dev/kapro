@@ -86,7 +86,7 @@ func (a *ActuatorAdapter) Apply(ctx context.Context, req actuator.ApplyRequest) 
 }
 
 // IsConverged asks the external plugin whether a target has converged.
-func (a *ActuatorAdapter) IsConverged(ctx context.Context, cluster *kaprov1alpha1.MemberCluster, version, appKey string) (bool, error) {
+func (a *ActuatorAdapter) IsConverged(ctx context.Context, cluster *kaprov1alpha1.FleetCluster, version, appKey string) (bool, error) {
 	start := time.Now()
 	result := "success"
 	defer func() { observeRuntimeCall(kaprov1alpha1.PluginTypeActuator, a.name, "IsConverged", result, start) }()
@@ -112,7 +112,7 @@ func (a *ActuatorAdapter) IsConverged(ctx context.Context, cluster *kaprov1alpha
 }
 
 // Rollback instructs the external plugin to roll back to a previous version.
-func (a *ActuatorAdapter) Rollback(ctx context.Context, cluster *kaprov1alpha1.MemberCluster, previousVersion, appKey string) error {
+func (a *ActuatorAdapter) Rollback(ctx context.Context, cluster *kaprov1alpha1.FleetCluster, previousVersion, appKey string) error {
 	start := time.Now()
 	result := "success"
 	defer func() { observeRuntimeCall(kaprov1alpha1.PluginTypeActuator, a.name, "Rollback", result, start) }()
@@ -164,7 +164,7 @@ func (a *ActuatorAdapter) ApplyDelta(ctx context.Context, req actuator.DeltaAppl
 }
 
 // IsAllConverged returns true only when every desired app/version has converged.
-func (a *ActuatorAdapter) IsAllConverged(ctx context.Context, cluster *kaprov1alpha1.MemberCluster, desiredVersions map[string]string) (bool, error) {
+func (a *ActuatorAdapter) IsAllConverged(ctx context.Context, cluster *kaprov1alpha1.FleetCluster, desiredVersions map[string]string) (bool, error) {
 	for appKey, version := range desiredVersions {
 		converged, err := a.IsConverged(ctx, cluster, version, appKey)
 		if err != nil || !converged {
@@ -182,7 +182,7 @@ func (a *ActuatorAdapter) parametersWithAppKey(appKey string) map[string]string 
 	return params
 }
 
-func clusterName(cluster *kaprov1alpha1.MemberCluster) (string, error) {
+func clusterName(cluster *kaprov1alpha1.FleetCluster) (string, error) {
 	if cluster == nil {
 		return "", fmt.Errorf("target cluster is required")
 	}

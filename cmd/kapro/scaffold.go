@@ -15,7 +15,7 @@ func newInitCmd() *cobra.Command {
 		Use:   "init [directory]",
 		Short: "Scaffold a greenfield Kapro promotion repo",
 		Long: `Scaffolds a GitOps-ready promotion repository with BackendProfile,
-PromotionSource, Pipeline, Kapro, and sample Release manifests.
+PromotionSource, PromotionPlan, Kapro, and sample PromotionRun manifests.
 
 This bootstraps the promotion layer. Argo, Flux, Helm, and Kubernetes still own
 local sync and rollout mechanics.`,
@@ -171,11 +171,11 @@ func writeScaffoldFiles(root string, files map[string]string, force bool) error 
 
 func greenfieldFiles(opts scaffoldOptions) map[string]string {
 	files := map[string]string{
-		filepath.Join("backends", opts.Backend+".yaml"): renderGreenfieldBackend(opts),
-		filepath.Join("sources", opts.Name+".yaml"):     renderPromotionSource(opts),
-		filepath.Join("pipelines", opts.Name+".yaml"):   renderPipeline(opts),
-		filepath.Join("README.md"):                      renderGreenfieldReadme(opts),
-		filepath.Join(".gitignore"):                     ".DS_Store\n",
+		filepath.Join("backends", opts.Backend+".yaml"):    renderGreenfieldBackend(opts),
+		filepath.Join("sources", opts.Name+".yaml"):        renderPromotionSource(opts),
+		filepath.Join("promotionplans", opts.Name+".yaml"): renderPromotionPlan(opts),
+		filepath.Join("README.md"):                         renderGreenfieldReadme(opts),
+		filepath.Join(".gitignore"):                        ".DS_Store\n",
 	}
 	clusters := parseClusterScaffold(opts.Clusters)
 	for _, cluster := range clusters {
@@ -183,7 +183,7 @@ func greenfieldFiles(opts scaffoldOptions) map[string]string {
 	}
 	if len(clusters) > 0 {
 		files[filepath.Join("kapro", opts.Name+".yaml")] = renderKapro(opts, clusters)
-		files[filepath.Join("releases", opts.Name+"-release.yaml")] = renderRelease(opts)
+		files[filepath.Join("promotionruns", opts.Name+"-promotionrun.yaml")] = renderPromotionRun(opts)
 	}
 	switch opts.Backend {
 	case "argo":
@@ -275,7 +275,7 @@ spec:
 
 func renderCluster(opts scaffoldOptions, suffix, tier string) string {
 	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
-kind: MemberCluster
+kind: FleetCluster
 metadata:
   name: %s-%s
   labels:
@@ -320,9 +320,9 @@ spec:
 `, opts.Name, opts.Backend, opts.Registry, opts.Name, opts.Name, opts.Name)
 }
 
-func renderPipeline(opts scaffoldOptions) string {
+func renderPromotionPlan(opts scaffoldOptions) string {
 	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
-kind: Pipeline
+kind: PromotionPlan
 metadata:
   name: %s
 spec:
@@ -367,7 +367,7 @@ spec:
       namespace: %s
   clusters:
 %s
-  pipeline:
+  promotionplan:
     stages:
       - name: canary
         selector:
@@ -380,16 +380,16 @@ spec:
 `, opts.Name, opts.Registry, opts.Name, opts.Mode, opts.Backend, opts.Namespace, clusterItems.String())
 }
 
-func renderRelease(opts scaffoldOptions) string {
+func renderPromotionRun(opts scaffoldOptions) string {
 	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
-kind: Release
+kind: PromotionRun
 metadata:
   name: %s-0-1-0
 spec:
   version: 0.1.0
-  pipelines:
+  promotionplans:
     - name: main
-      pipeline: %s
+      promotionplan: %s
 `, opts.Name, opts.Name)
 }
 
@@ -445,11 +445,11 @@ Apply order:
 
 1. backends/
 2. sources/
-3. pipelines/
+3. promotionplans/
 4. %s/
 
 Clusters are intentionally not generated yet. Add clusters later, then add
-clusters/, kapro/, and releases/ when promotion targets exist.
+clusters/, kapro/, and promotionruns/ when promotion targets exist.
 
 Kapro coordinates promotion. The %s backend owns local sync and rollout mechanics.
 `, opts.Name, opts.Backend, opts.Backend, opts.Backend)
@@ -463,9 +463,9 @@ Apply order:
 1. backends/
 2. sources/
 3. clusters/
-4. pipelines/
+4. promotionplans/
 5. kapro/
-6. releases/
+6. promotionruns/
 
 Kapro coordinates promotion. The %s backend owns local sync and rollout mechanics.
 `, opts.Name, opts.Backend, opts.Backend)

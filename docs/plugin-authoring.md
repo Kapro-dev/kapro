@@ -117,7 +117,7 @@ An actuator plugin must:
 - make `Rollback` idempotent for the same previous version and target;
 - return deterministic `IsConverged` results for the same backend state;
 - respect request context cancellation;
-- avoid storing release state outside the backend it controls.
+- avoid storing promotionrun state outside the backend it controls.
 
 Run the base actuator conformance harness from your plugin tests:
 
@@ -177,7 +177,7 @@ A planner plugin must:
 - implement `GetCapabilities` and return `contractVersion: v1alpha1`;
 - return one decision per target it wants to include, skip, or defer;
 - keep responses deterministic for the same request;
-- not create or mutate `ReleaseTarget` objects;
+- not create or mutate `PromotionTarget` objects;
 - respect request context cancellation;
 - leave binding, retries, and failure policy decisions to Kapro.
 

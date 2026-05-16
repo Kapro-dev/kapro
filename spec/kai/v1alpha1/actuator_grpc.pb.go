@@ -32,7 +32,7 @@ const (
 // ActuatorService is the Kapro Actuator Interface (KAI).
 //
 // An actuator applies one artifact version to one target and reports backend
-// convergence. Kapro owns release ordering, retries, rollback intent, and
+// convergence. Kapro owns promotion_run ordering, retries, rollback intent, and
 // status; the actuator owns backend-specific mutation and readiness checks.
 type ActuatorServiceClient interface {
 	GetCapabilities(ctx context.Context, in *GetCapabilitiesRequest, opts ...grpc.CallOption) (*GetCapabilitiesResponse, error)
@@ -96,7 +96,7 @@ func (c *actuatorServiceClient) Rollback(ctx context.Context, in *RollbackReques
 // ActuatorService is the Kapro Actuator Interface (KAI).
 //
 // An actuator applies one artifact version to one target and reports backend
-// convergence. Kapro owns release ordering, retries, rollback intent, and
+// convergence. Kapro owns promotion_run ordering, retries, rollback intent, and
 // status; the actuator owns backend-specific mutation and readiness checks.
 type ActuatorServiceServer interface {
 	GetCapabilities(context.Context, *GetCapabilitiesRequest) (*GetCapabilitiesResponse, error)

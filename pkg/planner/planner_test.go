@@ -11,7 +11,7 @@ import (
 
 func TestFrameworkFiltersScoresAndPermitsTargets(t *testing.T) {
 	plugin := &testPlugin{}
-	targets := []kaprov1alpha1.MemberCluster{
+	targets := []kaprov1alpha1.FleetCluster{
 		target("cluster-b", "10"),
 		target("cluster-a", "90"),
 		target("cluster-c", "50", "skip", "true"),
@@ -38,7 +38,7 @@ func TestFrameworkFiltersScoresAndPermitsTargets(t *testing.T) {
 }
 
 func TestFrameworkDefaultOrderingIsDeterministic(t *testing.T) {
-	got, err := NewFramework().Plan(context.Background(), Request{}, []kaprov1alpha1.MemberCluster{
+	got, err := NewFramework().Plan(context.Background(), Request{}, []kaprov1alpha1.FleetCluster{
 		target("cluster-c", ""),
 		target("cluster-a", ""),
 		target("cluster-b", ""),
@@ -56,7 +56,7 @@ func TestFrameworkDefaultOrderingIsDeterministic(t *testing.T) {
 }
 
 func TestFrameworkPlanWithResultRecordsSkippedTargets(t *testing.T) {
-	result, err := NewFramework(&testPlugin{}).PlanWithResult(context.Background(), Request{}, []kaprov1alpha1.MemberCluster{
+	result, err := NewFramework(&testPlugin{}).PlanWithResult(context.Background(), Request{}, []kaprov1alpha1.FleetCluster{
 		target("cluster-a", "10", "skip", "true"),
 		target("cluster-b", "10", "permit", "false"),
 	})
@@ -77,8 +77,8 @@ func TestFrameworkPlanWithResultRecordsSkippedTargets(t *testing.T) {
 	}
 }
 
-func TestDefaultFrameworkSkipsNotReadyAndDifferentActiveRelease(t *testing.T) {
-	release := &kaprov1alpha1.Release{ObjectMeta: metav1.ObjectMeta{Name: "release-a"}}
+func TestDefaultFrameworkSkipsNotReadyAndDifferentActivePromotionRun(t *testing.T) {
+	promotionrun := &kaprov1alpha1.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "promotionrun-a"}}
 	ready := target("cluster-a", "")
 	notReady := target("cluster-b", "")
 	notReady.Status.Conditions = []metav1.Condition{{
@@ -87,9 +87,9 @@ func TestDefaultFrameworkSkipsNotReadyAndDifferentActiveRelease(t *testing.T) {
 		Reason: "Disconnected",
 	}}
 	busy := target("cluster-c", "")
-	busy.Status.ActiveRelease = "release-b"
+	busy.Status.ActivePromotionRun = "promotionrun-b"
 
-	result, err := NewDefaultFramework().PlanWithResult(context.Background(), Request{Release: release}, []kaprov1alpha1.MemberCluster{
+	result, err := NewDefaultFramework().PlanWithResult(context.Background(), Request{PromotionRun: promotionrun}, []kaprov1alpha1.FleetCluster{
 		busy,
 		notReady,
 		ready,
@@ -111,7 +111,7 @@ func TestDefaultFrameworkSkipsNotReadyAndDifferentActiveRelease(t *testing.T) {
 	if reasons["cluster-b"] != "ClusterNotReady" {
 		t.Fatalf("cluster-b reason = %q", reasons["cluster-b"])
 	}
-	if reasons["cluster-c"] != "DifferentActiveRelease" {
+	if reasons["cluster-c"] != "DifferentActivePromotionRun" {
 		t.Fatalf("cluster-c reason = %q", reasons["cluster-c"])
 	}
 }
@@ -123,19 +123,19 @@ type testPlugin struct {
 
 func (p *testPlugin) Name() string { return "test" }
 
-func (p *testPlugin) PreFilter(context.Context, *CycleState, Request, []kaprov1alpha1.MemberCluster) *Status {
+func (p *testPlugin) PreFilter(context.Context, *CycleState, Request, []kaprov1alpha1.FleetCluster) *Status {
 	p.preFiltered = true
 	return nil
 }
 
-func (p *testPlugin) Filter(_ context.Context, _ *CycleState, _ Request, target kaprov1alpha1.MemberCluster) *Status {
+func (p *testPlugin) Filter(_ context.Context, _ *CycleState, _ Request, target kaprov1alpha1.FleetCluster) *Status {
 	if target.Labels["skip"] == "true" {
 		return NewStatus(Skip, "skipped by test")
 	}
 	return nil
 }
 
-func (p *testPlugin) Score(_ context.Context, _ *CycleState, _ Request, target kaprov1alpha1.MemberCluster) (int64, *Status) {
+func (p *testPlugin) Score(_ context.Context, _ *CycleState, _ Request, target kaprov1alpha1.FleetCluster) (int64, *Status) {
 	switch target.Labels["score"] {
 	case "90":
 		return 90, nil
@@ -148,19 +148,19 @@ func (p *testPlugin) Score(_ context.Context, _ *CycleState, _ Request, target k
 	}
 }
 
-func (p *testPlugin) Reserve(_ context.Context, _ *CycleState, _ Request, target kaprov1alpha1.MemberCluster) *Status {
+func (p *testPlugin) Reserve(_ context.Context, _ *CycleState, _ Request, target kaprov1alpha1.FleetCluster) *Status {
 	p.reserved = append(p.reserved, target.Name)
 	return nil
 }
 
-func (p *testPlugin) Permit(_ context.Context, _ *CycleState, _ Request, target kaprov1alpha1.MemberCluster) *Status {
+func (p *testPlugin) Permit(_ context.Context, _ *CycleState, _ Request, target kaprov1alpha1.FleetCluster) *Status {
 	if target.Labels["permit"] == "false" {
 		return NewStatus(Skip, "blocked by permit")
 	}
 	return nil
 }
 
-func target(name, score string, labels ...string) kaprov1alpha1.MemberCluster {
+func target(name, score string, labels ...string) kaprov1alpha1.FleetCluster {
 	allLabels := map[string]string{}
 	if score != "" {
 		allLabels["score"] = score
@@ -168,10 +168,10 @@ func target(name, score string, labels ...string) kaprov1alpha1.MemberCluster {
 	for i := 0; i+1 < len(labels); i += 2 {
 		allLabels[labels[i]] = labels[i+1]
 	}
-	return kaprov1alpha1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: name, Labels: allLabels}}
+	return kaprov1alpha1.FleetCluster{ObjectMeta: metav1.ObjectMeta{Name: name, Labels: allLabels}}
 }
 
-func targetNames(targets []kaprov1alpha1.MemberCluster) []string {
+func targetNames(targets []kaprov1alpha1.FleetCluster) []string {
 	names := make([]string, 0, len(targets))
 	for _, target := range targets {
 		names = append(names, target.Name)

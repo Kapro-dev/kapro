@@ -1,0 +1,24 @@
+apiVersion: kapro.io/v1alpha1
+kind: PromotionTrigger
+metadata:
+  name: checkout-oci
+spec:
+  suspended: true
+  source:
+    type: oci
+    oci:
+      repository: oci://registry.example.com/platform/checkout
+      tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+      requireSignature: true
+      pollInterval: 5m
+  promotionrunTemplate:
+    promotionplans:
+      - name: production
+        promotionplan: checkout-production
+    suspended: true
+    scope:
+      targets:
+        - checkout-canary-eu
+  cooldown: 30m
+  maxActive: 1
+  dryRun: true

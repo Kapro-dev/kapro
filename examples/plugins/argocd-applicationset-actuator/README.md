@@ -44,7 +44,7 @@ cluster, pass `--kubeconfig` or use the default local kubeconfig loading rules.
 | `applicationSetName` | Alias for `applicationset`. |
 | `generatedApplication` | Generated Application name used for convergence checks. May be `namespace/name`. |
 | `application` | Alias for `generatedApplication`. |
-| `appKey` | Fallback name supplied by Kapro for multi-app releases. |
+| `appKey` | Fallback name supplied by Kapro for multi-app promotionruns. |
 
 If no ApplicationSet or generated Application parameter is set, the plugin uses
 the request target name.

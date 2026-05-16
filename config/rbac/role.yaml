@@ -80,7 +80,7 @@ rules:
   - agentpolicies
   - backendprofiles
   - promotionsources
-  - releasetriggers
+  - promotiontriggers
   verbs:
   - get
   - list
@@ -91,12 +91,13 @@ rules:
   - agentpolicies/status
   - approvals/status
   - backendprofiles/status
+  - fleetclusters/status
   - kaproes/status
-  - memberclusters/status
   - pluginregistrations/status
-  - releases/status
-  - releasetargets/status
-  - releasetriggers/status
+  - promotionruns/status
+  - promotions/status
+  - promotiontargets/status
+  - promotiontriggers/status
   verbs:
   - get
   - patch
@@ -105,11 +106,12 @@ rules:
   - kapro.io
   resources:
   - approvals
+  - fleetclusters
   - kaproes
-  - memberclusters
-  - pipelines
-  - releases
-  - releasetargets
+  - promotionplans
+  - promotionruns
+  - promotions
+  - promotiontargets
   verbs:
   - create
   - delete
@@ -131,7 +133,8 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - releases/finalizers
+  - promotionruns/finalizers
+  - promotions/finalizers
   verbs:
   - update
 - apiGroups:

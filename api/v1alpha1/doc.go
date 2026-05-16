@@ -5,20 +5,19 @@
 //
 // User-facing CRDs:
 //   - Kapro          — fleet entry point
-//   - PromotionSource    — native promotion unit source
-//   - Pipeline       — reusable rollout template composed of ordered stages
-//   - Release        — one rollout execution of an artifact version through one or more Pipelines
-//   - ReleaseTrigger — safe-by-default autonomous Release creation from verified artifacts
-//   - ReleaseTarget  — one target-cluster execution owned by a Release
+//   - FleetCluster   — fleet inventory and observed cluster state reported to the hub
+//   - PromotionPlan  — reusable promotion template composed of ordered stages
+//   - Promotion      — desired promotion intent
+//   - PromotionRun   — one execution attempt for a Promotion
+//   - PromotionTarget — one target-cluster execution owned by a PromotionRun
+//   - PromotionTrigger — safe-by-default autonomous Promotion creation from verified artifacts
+//   - PromotionPolicy — reusable policy guardrails for promotions
+//   - PromotionSource — native promotion unit source
 //   - NotificationProvider — API-preview notification destination declaration
 //   - NotificationPolicy   — API-preview notification subscription declaration
-//   - MemberCluster  — fleet inventory and observed cluster state reported to the hub
 //   - PluginRegistration — external actuator, gate, and planner plugin registration
 //   - Approval       — human gate signal to unblock one target-cluster rollout or stage
 //   - AgentPolicy    — AI trust boundary and audit policy
-//
-// Delivery execution state is stored inline in Release.status.targets
-// rather than in a standalone execution CRD.
 //
 // API maturity, deprecation, schema compatibility, and upgrade expectations are
 // documented in docs/api-stability.md.

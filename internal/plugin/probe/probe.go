@@ -35,7 +35,7 @@ type Result struct {
 	Capabilities    []string
 }
 
-// Prober probes registered plugin endpoints without executing release traffic.
+// Prober probes registered plugin endpoints without executing promotionrun traffic.
 type Prober struct {
 	Client      client.Reader
 	DialOptions []grpc.DialOption

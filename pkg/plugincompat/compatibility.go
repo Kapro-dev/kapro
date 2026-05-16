@@ -18,17 +18,17 @@ var (
 	supportedKPIContractVersions = []string{VersionV1Alpha1}
 )
 
-// SupportedKAIContractVersions returns the KAI contract versions supported by this release.
+// SupportedKAIContractVersions returns the KAI contract versions supported by this promotionrun.
 func SupportedKAIContractVersions() []string {
 	return append([]string(nil), supportedKAIContractVersions...)
 }
 
-// SupportedKGIContractVersions returns the KGI contract versions supported by this release.
+// SupportedKGIContractVersions returns the KGI contract versions supported by this promotionrun.
 func SupportedKGIContractVersions() []string {
 	return append([]string(nil), supportedKGIContractVersions...)
 }
 
-// SupportedKPIContractVersions returns the KPI contract versions supported by this release.
+// SupportedKPIContractVersions returns the KPI contract versions supported by this promotionrun.
 func SupportedKPIContractVersions() []string {
 	return append([]string(nil), supportedKPIContractVersions...)
 }

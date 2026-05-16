@@ -11,14 +11,14 @@ import (
 )
 
 // ApprovalGate blocks a target rollout until a cluster-scoped Approval object
-// with the deterministic name ApprovalName(release, ref) exists.
+// with the deterministic name ApprovalName(promotionrun, ref) exists.
 //
 // When Approval.Spec.Bypass == true the gate passes regardless of the
 // approvedBy value (used for P0 hotfix escalations).
 //
-// Identity is deterministic: one cluster-scoped Approval per (release, ref)
+// Identity is deterministic: one cluster-scoped Approval per (promotionrun, ref)
 // pair. For target FSM approvals, ref is the stable per-target sync name
-// (<release>-<pipelineRef>-<stage>-<target>), which prevents one approval from
+// (<promotionrun>-<promotionplanRef>-<stage>-<target>), which prevents one approval from
 // being silently reused across later waiting-approval steps for the same target.
 // The webhook server, the kapro CLI, and this gate all agree on the same
 // object key — no label scans, no spec filtering.
@@ -28,10 +28,10 @@ type ApprovalGate struct {
 }
 
 // ApprovalName returns the canonical Approval object name for the given
-// (release, ref) pair. All producers (webhook, CLI, gate) must use
+// (promotionrun, ref) pair. All producers (webhook, CLI, gate) must use
 // this helper so identity stays in one place.
-func ApprovalName(release, ref string) string {
-	return fmt.Sprintf("%s-%s", release, ref)
+func ApprovalName(promotionrun, ref string) string {
+	return fmt.Sprintf("%s-%s", promotionrun, ref)
 }
 
 // Evaluate returns Passed when the deterministic Approval exists, and
@@ -48,7 +48,7 @@ func (g *ApprovalGate) Evaluate(ctx context.Context, req Request) (Result, error
 	if ref == "" {
 		ref = req.Context.Target
 	}
-	key := client.ObjectKey{Name: ApprovalName(req.Context.ReleaseRef, ref)}
+	key := client.ObjectKey{Name: ApprovalName(req.Context.PromotionRunRef, ref)}
 	var approval kaprov1alpha1.Approval
 	if err := g.Client.Get(ctx, key, &approval); err != nil {
 		if apierrors.IsNotFound(err) {

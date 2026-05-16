@@ -169,8 +169,8 @@ func buildJob(
 		{Name: "KAPRO_SYNC", Value: gateCtx.Name},
 		{Name: "KAPRO_TARGET", Value: gateCtx.Target},
 		{Name: "KAPRO_VERSION", Value: gateCtx.Version},
-		{Name: "KAPRO_RELEASE", Value: gateCtx.ReleaseRef},
-		{Name: "KAPRO_PIPELINE", Value: gateCtx.Pipeline},
+		{Name: "KAPRO_RELEASE", Value: gateCtx.PromotionRunRef},
+		{Name: "KAPRO_PIPELINE", Value: gateCtx.PromotionPlan},
 		{Name: "KAPRO_STAGE", Value: gateCtx.Stage},
 	}
 	for k, v := range args {
@@ -207,12 +207,12 @@ func buildJob(
 			},
 		},
 	}
-	// Set OwnerReference to the ReleaseTarget so the Job is garbage-collected
-	// when the ReleaseTarget is deleted. Both fields must be present for GC to work.
+	// Set OwnerReference to the PromotionTarget so the Job is garbage-collected
+	// when the PromotionTarget is deleted. Both fields must be present for GC to work.
 	if gateCtx.OwnerUID != "" && gateCtx.OwnerName != "" {
 		job.OwnerReferences = []metav1.OwnerReference{{
 			APIVersion:         kaprov1alpha1.GroupVersion.String(),
-			Kind:               "ReleaseTarget",
+			Kind:               "PromotionTarget",
 			Name:               gateCtx.OwnerName,
 			UID:                gateCtx.OwnerUID,
 			BlockOwnerDeletion: ptr.To(true),

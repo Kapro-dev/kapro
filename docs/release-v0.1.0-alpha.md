@@ -1,10 +1,10 @@
-# v0.1.0-alpha Release Runbook
+# v0.1.0-alpha PromotionRun Runbook
 
-This runbook is the release-readiness checklist for `v0.1.0-alpha`.
+This runbook is the promotionrun-readiness checklist for `v0.1.0-alpha`.
 
 ## Scope
 
-Release `v0.1.0-alpha` when these surfaces are ready:
+PromotionRun `v0.1.0-alpha` when these surfaces are ready:
 
 - Operator image published as `ghcr.io/kapro-dev/kapro-operator:v0.1.0-alpha`.
 - Helm chart renders and installs with `appVersion: v0.1.0-alpha`.
@@ -13,7 +13,7 @@ Release `v0.1.0-alpha` when these surfaces are ready:
 - At least one disposable cluster install has been verified.
 - Local Kind demo has been run or explicitly waived with the reason recorded.
 - The alpha production capability contract has been reviewed against the
-  release contents.
+  promotionrun contents.
 
 ## Pre-Tag Checklist
 
@@ -44,11 +44,11 @@ make test-no-cover
 ## Install Verification
 
 Follow [Clean-Clone Install Verification](install-verification.md) before
-publishing the release announcement.
+publishing the promotionrun announcement.
 
 For maturity claims, also review
 [Alpha Production Capability](alpha-production-capability.md). Do not describe
-the release as GA or generally production-ready while the release still uses
+the promotionrun as GA or generally production-ready while the promotionrun still uses
 `kapro.io/v1alpha1` APIs and lacks published upgrade history.
 
 Minimum acceptance:
@@ -78,18 +78,18 @@ scripts/verify-install.sh flux-e2e
 ```
 
 Record the final `scripts/kind-demo.sh status` output in the release notes or
-release issue. If the demo is waived, record which dependency was unavailable
+promotionrun issue. If the demo is waived, record which dependency was unavailable
 and keep `scripts/verify-install.sh render` as the minimum validation.
 
-## Tag And Release
+## Tag And PromotionRun
 
-Confirm the release workflow is expected to publish:
+Confirm the promotionrun workflow is expected to publish:
 
 - Multi-arch operator image for `linux/amd64` and `linux/arm64`.
 - Image tag `v0.1.0-alpha`.
 - Cosign signature for the image digest.
-- Helm chart archive and checksum file attached to the GitHub Release.
-- GitHub Release generated from the tag, release notes, and packaged chart.
+- Helm chart archive and checksum file attached to the GitHub PromotionRun.
+- GitHub PromotionRun generated from the tag, release notes, and packaged chart.
 
 Create and push the tag:
 
@@ -101,10 +101,10 @@ git push origin v0.1.0-alpha
 After the workflow finishes:
 
 ```bash
-gh release view v0.1.0-alpha
+gh promotionrun view v0.1.0-alpha
 docker buildx imagetools inspect ghcr.io/kapro-dev/kapro-operator:v0.1.0-alpha
 cosign verify ghcr.io/kapro-dev/kapro-operator:v0.1.0-alpha \
-  --certificate-identity-regexp 'https://github.com/Kapro-dev/kapro/.github/workflows/release.yml@refs/tags/v0.1.0-alpha' \
+  --certificate-identity-regexp 'https://github.com/Kapro-dev/kapro/.github/workflows/promotionrun.yml@refs/tags/v0.1.0-alpha' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
@@ -116,9 +116,9 @@ KAPRO_IMAGE_TAG=v0.1.0-alpha scripts/verify-install.sh cluster
 
 ## Rollback
 
-If release publication fails before the image is available, delete the failed
-GitHub Release and tag, fix the issue, and push a new annotated tag.
+If promotionrun publication fails before the image is available, delete the failed
+GitHub PromotionRun and tag, fix the issue, and push a new annotated tag.
 
 If the image is published but install verification fails, leave the tag in
-place, mark the GitHub Release as pre-release with a failure note, and publish a
+place, mark the GitHub PromotionRun as pre-promotionrun with a failure note, and publish a
 new alpha tag after the fix.

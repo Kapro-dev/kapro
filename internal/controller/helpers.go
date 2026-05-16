@@ -88,21 +88,21 @@ func toAPIGateEvidence(evidence []gate.Evidence) []kaprov1alpha1.GateEvidence {
 	return out
 }
 
-// releaseTargetSpecEqual returns true if two ReleaseTargets have identical spec,
+// promotionTargetSpecEqual returns true if two PromotionTargets have identical spec,
 // labels, and owner references — meaning no API patch is needed.
-// Used by persistReleaseTargets to skip no-op writes.
-func releaseTargetSpecEqual(current, desired *kaprov1alpha1.ReleaseTarget) bool {
+// Used by persistPromotionTargets to skip no-op writes.
+func promotionTargetSpecEqual(current, desired *kaprov1alpha1.PromotionTarget) bool {
 	return reflect.DeepEqual(current.Spec, desired.Spec) &&
 		reflect.DeepEqual(current.Labels, desired.Labels) &&
 		reflect.DeepEqual(current.OwnerReferences, desired.OwnerReferences)
 }
 
-func memberClusterStatusEqualForRollouts(a, b kaprov1alpha1.MemberClusterStatus) bool {
+func fleetClusterStatusEqualForRollouts(a, b kaprov1alpha1.FleetClusterStatus) bool {
 	return a.Phase == b.Phase &&
 		reflect.DeepEqual(a.CurrentVersions, b.CurrentVersions) &&
 		a.DeliverySystem == b.DeliverySystem &&
 		reflect.DeepEqual(a.Health, b.Health) &&
-		a.ActiveRelease == b.ActiveRelease &&
+		a.ActivePromotionRun == b.ActivePromotionRun &&
 		a.ControllerVersion == b.ControllerVersion &&
 		reflect.DeepEqual(a.Capabilities, b.Capabilities) &&
 		reflect.DeepEqual(a.Bootstrap, b.Bootstrap)

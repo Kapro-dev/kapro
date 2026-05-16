@@ -2,8 +2,8 @@ package controller
 
 // target_fsm.go contains shared utilities for the per-target rollout FSM.
 //
-// The FSM is driven by ReleaseTargetReconciler (release_target_controller.go).
-// ReleaseReconciler (release_controller.go) only creates ReleaseTarget children
+// The FSM is driven by PromotionTargetReconciler (promotion_target_controller.go).
+// PromotionRunReconciler (promotionrun_controller.go) only creates PromotionTarget children
 // and aggregates their statuses — it never runs the FSM.
 //
 // This file contains:
@@ -30,7 +30,7 @@ import (
 )
 
 // missingMCFailThreshold is the number of consecutive reconciles where a target's
-// MemberCluster is not found before the target is transitioned to Failed.
+// FleetCluster is not found before the target is transitioned to Failed.
 const missingMCFailThreshold = 10
 
 // --- Shared helpers ---
@@ -62,7 +62,7 @@ func eventTypeForPhase(phase kaprov1alpha1.TargetPhase) string {
 	case "":
 		return "" // initial empty phase, no notification
 	default:
-		return "kapro.release.target.unknown"
+		return "kapro.promotionrun.target.unknown"
 	}
 }
 
@@ -114,18 +114,18 @@ func notificationPolicyFrom(policy *kaprov1alpha1.GatePolicySpec) notification.N
 }
 
 // targetToGateContext builds the gate evaluation context from a target entry.
-// rt is the ReleaseTarget owner — its UID and Name are carried into the gate context
+// rt is the PromotionTarget owner — its UID and Name are carried into the gate context
 // so that gates that create Kubernetes resources (e.g. Job gate) can set OwnerReferences.
-func targetToGateContext(release *kaprov1alpha1.Release, target *kaprov1alpha1.TargetStatus, rt *kaprov1alpha1.ReleaseTarget) *gate.Context {
+func targetToGateContext(promotionrun *kaprov1alpha1.PromotionRun, target *kaprov1alpha1.TargetStatus, rt *kaprov1alpha1.PromotionTarget) *gate.Context {
 	ctx := &gate.Context{
-		Name:       syncName(release.Name, target.PipelineRef, target.Stage, target.Target),
-		Namespace:  release.Namespace,
-		ReleaseRef: release.Name,
-		Target:     target.Target,
-		Pipeline:   target.Pipeline,
-		Stage:      target.Stage,
-		Version:    target.Version,
-		StartedAt:  target.StartedAt,
+		Name:            syncName(promotionrun.Name, target.PromotionPlanRef, target.Stage, target.Target),
+		Namespace:       promotionrun.Namespace,
+		PromotionRunRef: promotionrun.Name,
+		Target:          target.Target,
+		PromotionPlan:   target.PromotionPlan,
+		Stage:           target.Stage,
+		Version:         target.Version,
+		StartedAt:       target.StartedAt,
 	}
 	if rt != nil {
 		ctx.OwnerUID = rt.UID
@@ -134,7 +134,7 @@ func targetToGateContext(release *kaprov1alpha1.Release, target *kaprov1alpha1.T
 	return ctx
 }
 
-// targetAppKey returns the MemberCluster.status.currentVersions key for this target.
+// targetAppKey returns the FleetCluster.status.currentVersions key for this target.
 func targetAppKey(target *kaprov1alpha1.TargetStatus) string {
 	if target.AppKey != "" {
 		return target.AppKey
@@ -145,7 +145,7 @@ func targetAppKey(target *kaprov1alpha1.TargetStatus) string {
 			return appKey
 		}
 	}
-	return target.ReleaseRef
+	return target.PromotionRunRef
 }
 
 func targetDesiredVersions(target *kaprov1alpha1.TargetStatus) map[string]string {
@@ -169,27 +169,27 @@ func resolveSyncArgs(tmpl *kaprov1alpha1.GateTemplateSpec, ctx *gate.Context) ma
 	if ctx != nil {
 		args["version"] = ctx.Version
 		args["target"] = ctx.Target
-		args["release"] = ctx.ReleaseRef
-		args["pipeline"] = ctx.Pipeline
+		args["promotionrun"] = ctx.PromotionRunRef
+		args["promotionplan"] = ctx.PromotionPlan
 		args["stage"] = ctx.Stage
 	}
 	return args
 }
 
 // buildApprovalURLs returns signed approve and reject URLs for the given target.
-func buildApprovalURLs(externalURL string, secret []byte, release *kaprov1alpha1.Release, target *kaprov1alpha1.TargetStatus) (approveURL, rejectURL string, err error) {
+func buildApprovalURLs(externalURL string, secret []byte, promotionrun *kaprov1alpha1.PromotionRun, target *kaprov1alpha1.TargetStatus) (approveURL, rejectURL string, err error) {
 	exp := time.Now().Add(token.DefaultTTL).Unix()
-	targetKey := syncName(release.Name, target.PipelineRef, target.Stage, target.Target)
+	targetKey := syncName(promotionrun.Name, target.PromotionPlanRef, target.Stage, target.Target)
 
 	baseClaims := token.Claims{
-		SyncName:   targetKey,
-		Namespace:  release.Namespace,
-		Release:    release.Name,
-		Target:     target.Target,
-		Version:    target.Version,
-		UID:        string(release.UID) + "/" + targetKey,
-		ApprovedBy: approvalIdentityHint(target),
-		Exp:        exp,
+		SyncName:     targetKey,
+		Namespace:    promotionrun.Namespace,
+		PromotionRun: promotionrun.Name,
+		Target:       target.Target,
+		Version:      target.Version,
+		UID:          string(promotionrun.UID) + "/" + targetKey,
+		ApprovedBy:   approvalIdentityHint(target),
+		Exp:          exp,
 	}
 
 	approveClaims := baseClaims
@@ -226,13 +226,13 @@ func approvalIdentityHint(target *kaprov1alpha1.TargetStatus) string {
 
 // triggerTargetRollback calls Actuator.Rollback() immediately, then appends a new
 // rollback TargetStatus entry targeting the previous version.
-// Called by ReleaseReconciler when it detects a failed stage with onFailure=rollback.
-func (r *ReleaseReconciler) triggerTargetRollback(ctx context.Context, release *kaprov1alpha1.Release, i int) {
+// Called by PromotionRunReconciler when it detects a failed stage with onFailure=rollback.
+func (r *PromotionRunReconciler) triggerTargetRollback(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, i int) {
 	log := log.FromContext(ctx)
-	target := &release.Status.Targets[i]
+	target := &promotionrun.Status.Targets[i]
 
 	// 1. Call actuator.Rollback() immediately.
-	var mc kaprov1alpha1.MemberCluster
+	var mc kaprov1alpha1.FleetCluster
 	if err := r.Get(ctx, client.ObjectKey{Name: target.Target}, &mc); err == nil {
 		if r.ActuatorRegistry != nil {
 			if act, actErr := r.ActuatorRegistry.Resolve(mc.Spec.Delivery.RegistryKey()); actErr == nil {
@@ -261,19 +261,19 @@ func (r *ReleaseReconciler) triggerTargetRollback(ctx context.Context, release *
 	}
 
 	// 2. Append rollback entry (idempotent).
-	for _, t := range release.Status.Targets {
+	for _, t := range promotionrun.Status.Targets {
 		if t.Rollback && t.Target == target.Target &&
-			t.PipelineRef == target.PipelineRef && t.Stage == target.Stage {
+			t.PromotionPlanRef == target.PromotionPlanRef && t.Stage == target.Stage {
 			log.Info("rollback target entry already exists", "target", target.Target)
 			return
 		}
 	}
 
 	rollbackTarget := kaprov1alpha1.TargetStatus{
-		ReleaseRef:       release.Name,
+		PromotionRunRef:  promotionrun.Name,
 		Target:           target.Target,
-		PipelineRef:      target.PipelineRef,
-		Pipeline:         target.Pipeline,
+		PromotionPlanRef: target.PromotionPlanRef,
+		PromotionPlan:    target.PromotionPlan,
 		Stage:            target.Stage,
 		Version:          target.PreviousVersion,
 		Gate:             target.Gate,
@@ -286,43 +286,43 @@ func (r *ReleaseReconciler) triggerTargetRollback(ctx context.Context, release *
 	if len(rollbackTarget.DesiredVersions) > 0 {
 		rollbackTarget.Version, rollbackTarget.AppKey = primaryDesiredVersion(rollbackTarget.DesiredVersions, rollbackTarget.Version, rollbackTarget.AppKey)
 	}
-	release.Status.Targets = append(release.Status.Targets, rollbackTarget)
+	promotionrun.Status.Targets = append(promotionrun.Status.Targets, rollbackTarget)
 
 	log.Info("appended rollback target entry",
 		"target", target.Target,
 		"targetVersion", target.PreviousVersion,
 	)
-	r.Recorder.Eventf(release, corev1.EventTypeWarning, "RollbackTriggered",
+	r.Recorder.Eventf(promotionrun, corev1.EventTypeWarning, "RollbackTriggered",
 		"Auto-rollback to %s triggered for %s", target.PreviousVersion, target.Target)
 	if r.Notifier != nil {
 		r.Notifier.Notify(ctx, notification.Event{
-			Type:      notification.EventRollbackStarted,
-			Phase:     string(kaprov1alpha1.ReleasePhaseFailed),
-			Version:   rollbackTarget.Version,
-			Target:    rollbackTarget.Target,
-			Release:   release.Name,
-			Pipeline:  rollbackTarget.PipelineRef,
-			Stage:     rollbackTarget.Stage,
-			Message:   fmt.Sprintf("rollback to %s triggered for %s", rollbackTarget.Version, rollbackTarget.Target),
-			IsFailure: true,
+			Type:          notification.EventRollbackStarted,
+			Phase:         string(kaprov1alpha1.PromotionRunPhaseFailed),
+			Version:       rollbackTarget.Version,
+			Target:        rollbackTarget.Target,
+			PromotionRun:  promotionrun.Name,
+			PromotionPlan: rollbackTarget.PromotionPlanRef,
+			Stage:         rollbackTarget.Stage,
+			Message:       fmt.Sprintf("rollback to %s triggered for %s", rollbackTarget.Version, rollbackTarget.Target),
+			IsFailure:     true,
 		}, notificationPolicyFrom(target.Gate))
 	}
 }
 
 // --- Watch mappers ---
 
-// approvalForRelease maps an Approval to the Release it should unblock.
-func approvalForRelease(_ context.Context, obj client.Object) []ctrl.Request {
+// approvalForPromotionRun maps an Approval to the PromotionRun it should unblock.
+func approvalForPromotionRun(_ context.Context, obj client.Object) []ctrl.Request {
 	approval, ok := obj.(*kaprov1alpha1.Approval)
 	if !ok {
 		return nil
 	}
-	if approval.Spec.Release == "" {
+	if approval.Spec.PromotionRun == "" {
 		return nil
 	}
 	return []ctrl.Request{{
 		NamespacedName: client.ObjectKey{
-			Name:      approval.Spec.Release,
+			Name:      approval.Spec.PromotionRun,
 			Namespace: approval.Namespace,
 		},
 	}}

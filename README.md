@@ -19,13 +19,13 @@ Kapro coordinates safe artifact promotion across clusters, regions, and clouds w
 
 Kapro is **alpha production-capable**, not GA.
 
-The current codebase has working install, release smoke, Argo brownfield, Flux
+The current codebase has working install, promotionrun smoke, Argo brownfield, Flux
 brownfield, plugin hot-load, and KPI planner dispatch coverage. It is suitable
 for controlled adopters who can run the documented verification and accept
 `kapro.io/v1alpha1` API movement.
 
 Do not treat Kapro as GA yet. GA still requires a stable API version, tagged
-release-to-release upgrade history, broad operator soak, and an independent
+promotionrun-to-promotionrun upgrade history, broad operator soak, and an independent
 security audit. See [GA Readiness](docs/ga-readiness.md) and
 [Alpha Production Capability](docs/alpha-production-capability.md) for the
 current evidence and exit criteria.
@@ -41,7 +41,7 @@ It answers one operational question:
 Which clusters are allowed to receive this artifact version now, and why?
 ```
 
-Kapro owns cross-cluster release ordering, target planning, gate evaluation,
+Kapro owns cross-cluster promotionrun ordering, target planning, gate evaluation,
 approval state, backend convergence tracking, and auditable status.
 
 It delegates artifact build, manifest rendering, GitOps reconciliation,
@@ -60,7 +60,7 @@ A fleet of this scale demands a dedicated, state-aware promotion control plane.
 
 ## The Artifact is the Contract
 
-Kapro decouples CI from deployment. The OCI artifact becomes the single source of runtime truth: immutable tags only. Any git repo, any CI pipeline can produce it. By making the OCI artifact the contract, CI stops being the deployment orchestrator. Runtime git dependency drops to zero.
+Kapro decouples CI from deployment. The OCI artifact becomes the single source of runtime truth: immutable tags only. Any git repo, any CI promotionplan can produce it. By making the OCI artifact the contract, CI stops being the deployment orchestrator. Runtime git dependency drops to zero.
 
 ## Enter Kapro
 
@@ -76,14 +76,14 @@ It sits above Kubernetes Operators, Helm, Kustomize, OCI registries, GitOps reco
 1. **Delegated local rollout strategies.** Keep using Kubernetes Deployments, Argo Rollouts, Flagger, Istio, Gateway API, Flux, Argo CD, Helm, or custom actuators for namespace-local rollout and traffic mechanics.
 2. **Cross-cluster promotion waves.** Kapro coordinates which targets advance first, which regions wait, and when the global fleet may progress.
 3. **Promotion before progression.** Kapro advances only after target health, gates, approvals, plugin status, and policy checks pass; the selected backend executes the local change.
-4. **Auditable evidence.** Kapro persists target phase, gate evidence, approvals, lifecycle events, and release outcome in Kubernetes status.
+4. **Auditable evidence.** Kapro persists target phase, gate evidence, approvals, lifecycle events, and promotionrun outcome in Kubernetes status.
 
 ## Greenfield and Brownfield
 
 Kapro supports both connect paths:
 
 - **Greenfield bootstrap:** create the hub, backend profiles, cluster inventory,
-  starter sources, pipelines, gates, and optional spoke agents from Kapro
+  starter sources, promotionplans, gates, and optional spoke agents from Kapro
   manifests or CLI flows.
 - **Brownfield connect:** discover existing Argo CD or Flux topology, observe it
   first, then explicitly adopt selected applications or clusters for promotion.
@@ -103,7 +103,7 @@ kapro connect argo ./kapro-connect --namespace argocd --selector kapro.io/import
 
 ## Conservative Automation and Reliability
 
-Kapro manages wave-based `dependsOn` execution across release pipelines and
+Kapro manages wave-based `dependsOn` execution across promotionrun promotionplans and
 target clusters. Cluster state is reconciled through standard controller-runtime
 patterns and backend convergence checks.
 
@@ -154,15 +154,15 @@ kapro hub init --project my-project --cluster my-hub
 kapro spoke add de-prod --provider gcp-fleet --labels tier=canary
 kapro spoke add fi-prod --provider gcp-fleet --labels tier=prod
 
-# Define your promotion source and delivery pipeline
+# Define your promotion source and delivery promotionplan
 kubectl apply -f examples/hub-config/sources/checkout.yaml
-kubectl apply -f examples/hub-config/pipelines/checkout-progressive.yaml
+kubectl apply -f examples/hub-config/promotionplans/checkout-progressive.yaml
 
 # Push a version from CI
 kapro source package --source checkout --version 1.0.0 --push
 
-# Create a release. Kapro handles the rest.
-kubectl apply -f examples/hub-config/releases/checkout-v1.2.3.yaml
+# Create a promotionrun. Kapro handles the rest.
+kubectl apply -f examples/hub-config/promotionruns/checkout-v1.2.3.yaml
 ```
 
 Existing users upgrading a hub should read the API stability and upgrade policy
@@ -173,14 +173,14 @@ stage parallelism or adding operator replicas.
 
 Quick troubleshooting checks:
 
-- `kubectl get releases,releasetargets,pluginregistrations` to confirm observed
+- `kubectl get promotionruns,promotiontargets,pluginregistrations` to confirm observed
   generation and readiness caught up.
 - Check the operator logs for disabled controllers, shard selection, plugin
   gateway registration, and webhook startup.
 - Confirm `KAPRO_HUB_API_URL`, approval secrets, plugin TLS Secrets, and
   notification Secrets are present in the operator namespace.
 - For sharded deployments, verify the `kapro.io/shard` label is set when the
-  `Release` is created.
+  `PromotionRun` is created.
 
 ## Documentation
 

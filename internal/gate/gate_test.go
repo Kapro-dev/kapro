@@ -750,7 +750,7 @@ func TestApprovalGate_NoApproval_Pending(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().WithScheme(approvalScheme(t)).Build()
 	g := &gate.ApprovalGate{Client: fakeClient}
 
-	promo := &gate.Context{ReleaseRef: "rel-1", Target: "target-staging"}
+	promo := &gate.Context{PromotionRunRef: "rel-1", Target: "target-staging"}
 	result, err := g.Evaluate(context.Background(), gate.Request{Context: promo})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -769,16 +769,16 @@ func TestApprovalGate_MatchingApproval_Passes(t *testing.T) {
 			Name: gate.ApprovalName("rel-1", "target-staging"),
 		},
 		Spec: kaprov1alpha1.ApprovalSpec{
-			Release:    "rel-1",
-			Target:     "target-staging",
-			ApprovedBy: "alice",
-			Comment:    "LGTM",
+			PromotionRun: "rel-1",
+			Target:       "target-staging",
+			ApprovedBy:   "alice",
+			Comment:      "LGTM",
 		},
 	}
 
 	fakeClient := fake.NewClientBuilder().WithScheme(approvalScheme(t)).WithObjects(approval).Build()
 	g := &gate.ApprovalGate{Client: fakeClient}
-	promo := &gate.Context{ReleaseRef: "rel-1", Target: "target-staging", Namespace: "default"}
+	promo := &gate.Context{PromotionRunRef: "rel-1", Target: "target-staging", Namespace: "default"}
 	result, err := g.Evaluate(context.Background(), gate.Request{Context: promo})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -794,16 +794,16 @@ func TestApprovalGate_BypassApproval_Passes(t *testing.T) {
 			Name: gate.ApprovalName("rel-1", "target-staging"),
 		},
 		Spec: kaprov1alpha1.ApprovalSpec{
-			Release:    "rel-1",
-			Target:     "target-staging",
-			ApprovedBy: "bob",
-			Bypass:     true,
+			PromotionRun: "rel-1",
+			Target:       "target-staging",
+			ApprovedBy:   "bob",
+			Bypass:       true,
 		},
 	}
 
 	fakeClient := fake.NewClientBuilder().WithScheme(approvalScheme(t)).WithObjects(approval).Build()
 	g := &gate.ApprovalGate{Client: fakeClient}
-	promo := &gate.Context{ReleaseRef: "rel-1", Target: "target-staging", Namespace: "default"}
+	promo := &gate.Context{PromotionRunRef: "rel-1", Target: "target-staging", Namespace: "default"}
 	result, err := g.Evaluate(context.Background(), gate.Request{Context: promo})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -814,22 +814,22 @@ func TestApprovalGate_BypassApproval_Passes(t *testing.T) {
 }
 
 func TestApprovalGate_WrongName_Pending(t *testing.T) {
-	// Approval exists but its name doesn't match ApprovalName(release, target) —
+	// Approval exists but its name doesn't match ApprovalName(promotionrun, target) —
 	// the gate must not unblock on label matches.
 	approval := &kaprov1alpha1.Approval{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "some-other-name",
 		},
 		Spec: kaprov1alpha1.ApprovalSpec{
-			Release:    "rel-1",
-			Target:     "target-staging",
-			ApprovedBy: "carol",
+			PromotionRun: "rel-1",
+			Target:       "target-staging",
+			ApprovedBy:   "carol",
 		},
 	}
 
 	fakeClient := fake.NewClientBuilder().WithScheme(approvalScheme(t)).WithObjects(approval).Build()
 	g := &gate.ApprovalGate{Client: fakeClient}
-	promo := &gate.Context{ReleaseRef: "rel-1", Target: "target-staging", Namespace: "default"}
+	promo := &gate.Context{PromotionRunRef: "rel-1", Target: "target-staging", Namespace: "default"}
 	result, err := g.Evaluate(context.Background(), gate.Request{Context: promo})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -840,26 +840,26 @@ func TestApprovalGate_WrongName_Pending(t *testing.T) {
 }
 
 func TestApprovalGate_ContextNameScopesApproval(t *testing.T) {
-	ref := "rel-1-pipeline-stage-target-staging"
+	ref := "rel-1-promotionplan-stage-target-staging"
 	approval := &kaprov1alpha1.Approval{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: gate.ApprovalName("rel-1", ref),
 		},
 		Spec: kaprov1alpha1.ApprovalSpec{
-			Release:    "rel-1",
-			Target:     "target-staging",
-			Ref:        ref,
-			ApprovedBy: "dana",
+			PromotionRun: "rel-1",
+			Target:       "target-staging",
+			Ref:          ref,
+			ApprovedBy:   "dana",
 		},
 	}
 
 	fakeClient := fake.NewClientBuilder().WithScheme(approvalScheme(t)).WithObjects(approval).Build()
 	g := &gate.ApprovalGate{Client: fakeClient}
 	promo := &gate.Context{
-		Name:       ref,
-		ReleaseRef: "rel-1",
-		Target:     "target-staging",
-		Namespace:  "default",
+		Name:            ref,
+		PromotionRunRef: "rel-1",
+		Target:          "target-staging",
+		Namespace:       "default",
 	}
 	result, err := g.Evaluate(context.Background(), gate.Request{Context: promo})
 	if err != nil {
@@ -871,26 +871,26 @@ func TestApprovalGate_ContextNameScopesApproval(t *testing.T) {
 }
 
 func TestApprovalGate_ApproverAllowlistEnforced(t *testing.T) {
-	ref := "rel-1-pipeline-stage-target-staging"
+	ref := "rel-1-promotionplan-stage-target-staging"
 	approval := &kaprov1alpha1.Approval{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: gate.ApprovalName("rel-1", ref),
 		},
 		Spec: kaprov1alpha1.ApprovalSpec{
-			Release:    "rel-1",
-			Target:     "target-staging",
-			Ref:        ref,
-			ApprovedBy: "mallory",
+			PromotionRun: "rel-1",
+			Target:       "target-staging",
+			Ref:          ref,
+			ApprovedBy:   "mallory",
 		},
 	}
 
 	fakeClient := fake.NewClientBuilder().WithScheme(approvalScheme(t)).WithObjects(approval).Build()
 	g := &gate.ApprovalGate{Client: fakeClient}
 	promo := &gate.Context{
-		Name:       ref,
-		ReleaseRef: "rel-1",
-		Target:     "target-staging",
-		Namespace:  "default",
+		Name:            ref,
+		PromotionRunRef: "rel-1",
+		Target:          "target-staging",
+		Namespace:       "default",
 	}
 	result, err := g.Evaluate(context.Background(), gate.Request{
 		Context: promo,

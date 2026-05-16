@@ -1,19 +1,19 @@
 # Changelog
 
-This changelog tracks user-visible API, behavior, and release-process changes.
+This changelog tracks user-visible API, behavior, and promotionrun-process changes.
 Kapro is currently preparing `v0.1.0-alpha`; entries below that heading are the
-release-note structure for the first tagged pre-stable release.
+promotionrun-note structure for the first tagged pre-stable promotionrun.
 
 Release notes must call out CRD schema changes, plugin contract changes,
 deprecations, removals, upgrade steps, and compatibility expectations. See
-`docs/release-notes.md` and `docs/api-stability.md`.
+`docs/promotionrun-notes.md` and `docs/api-stability.md`.
 
 ## Unreleased
 
 ### Added
 
-- Added API stability and release hygiene documentation for pre-stable releases.
-- Added the `v0.1.0-alpha` release-note structure and follow-up checklist.
+- Added API stability and promotionrun hygiene documentation for pre-stable promotionruns.
+- Added the `v0.1.0-alpha` promotionrun-note structure and follow-up checklist.
 - Added hot-loaded plugin runtime registration for actuator, gate, and planner
   plugins when `KAPRO_ENABLE_PLUGIN_GATEWAY=true`.
 
@@ -38,7 +38,7 @@ deprecations, removals, upgrade steps, and compatibility expectations. See
 
 ## v0.1.0-alpha — Pending
 
-First alpha milestone for Kapro. This release is intended to provide a concrete
+First alpha milestone for Kapro. This promotionrun is intended to provide a concrete
 version anchor for early adopters and contributors while keeping the `v1alpha1`
 API below stable maturity.
 
@@ -46,11 +46,11 @@ API below stable maturity.
 
 - Publish installable CRDs and the operator chart for local and controlled
   development environments.
-- Document the core promotion workflow: `PromotionSource`, `Pipeline`,
-  `Release`, `ReleaseTarget`, `MemberCluster`, and `Approval`.
+- Document the core promotion workflow: `PromotionSource`, `PromotionPlan`,
+  `PromotionRun`, `PromotionTarget`, `FleetCluster`, and `Approval`.
 - Publish preview extension contracts for in-process actuators, gates, planners,
   and the KAI/KGI/KPI gRPC plugin APIs.
-- Publish preview policies for `ReleaseTrigger`, `PluginRegistration`,
+- Publish preview policies for `PromotionTrigger`, `PluginRegistration`,
   notification provider/policy APIs, and lifecycle event payloads.
 - Publish conformance package entry points for plugin authors.
 
@@ -59,9 +59,9 @@ API below stable maturity.
 - All CRDs remain `kapro.io/v1alpha1` and below stable maturity.
 - Alpha CRD fields may change before `v0.2.0`; documented examples and shipped
   manifests should receive migration notes when they change.
-- Preview plugin contracts must remain compatible within this release line
-  unless a release note marks a breaking alpha change explicitly.
-- Stored status is the recovery source for in-flight releases; do not rely on
+- Preview plugin contracts must remain compatible within this promotionrun line
+  unless a promotionrun note marks a breaking alpha change explicitly.
+- Stored status is the recovery source for in-flight promotionruns; do not rely on
   controller memory or log output as an API.
 
 ### Upgrade Notes
@@ -69,7 +69,7 @@ API below stable maturity.
 - Apply CRD updates before rolling the operator.
 - Run KAI, KGI, or KPI conformance packages before enabling external plugin
   images with a new Kapro build.
-- Read `docs/api-stability.md` before upgrading a hub with in-flight releases
+- Read `docs/api-stability.md` before upgrading a hub with in-flight promotionruns
   or enabled plugin registrations.
 
 ### Known Gaps Before v0.2.0
@@ -78,7 +78,7 @@ API below stable maturity.
 - Plugin gateway runtime dispatch is preview and hot-loaded for actuator, gate,
   and planner registrations when explicitly enabled.
 - API conversion webhooks are not yet part of the release process.
-- Markdown and release-note checks are not yet enforced in CI.
+- Markdown and promotionrun-note checks are not yet enforced in CI.
 
 ### v0.2.0 Follow-up Checklist
 
@@ -86,7 +86,7 @@ API below stable maturity.
 - [ ] Add a CRD schema compatibility check to CI or document the manual command.
 - [ ] Reserve removed proto field numbers before any KAI/KGI/KPI contract
       cleanup.
-- [ ] Add release-note validation to the pull request checklist or CI.
+- [ ] Add promotionrun-note validation to the pull request checklist or CI.
 - [ ] Add explicit migration notes for every changed shipped example.
 - [ ] Reconcile `CHANGELOG.md` against the tag contents before cutting
       `v0.2.0`.
@@ -95,7 +95,7 @@ API below stable maturity.
 
 ## Historical Draft Entries
 
-The entries below predate the `v0.1.0-alpha` release hygiene structure. Keep
+The entries below predate the `v0.1.0-alpha` promotionrun hygiene structure. Keep
 them for context, but reconcile them against the tagged contents before using
 them as GitHub release notes.
 
@@ -119,7 +119,7 @@ All operations use Go SDK — no gcloud, helm, flux, or kubectl dependencies.
 - **`kapro hub registry list/create/add`** — centralized GAR registry management. Saved to `~/.kapro/config.yaml`.
 - **`kapro spoke add`** — adds spoke cluster: auto-installs flux-operator + FluxInstance + Fleet registration + IAM bindings. Single command, zero manual steps.
 - **`kapro fleet list/sync`** — Fleet membership management. `sync` auto-discovers and registers all Fleet clusters.
-- **`kapro bundle generate --push`** — reads KaproBundle from hub, generates per-wave bundle, validates, pushes via ORAS Go SDK. Used by CI pipelines.
+- **`kapro bundle generate --push`** — reads KaproBundle from hub, generates per-wave bundle, validates, pushes via ORAS Go SDK. Used by CI promotionplans.
 - **`kapro status`** — live fleet dashboard with colored phases (Converged/Converging/Failed), per-cluster version, health, heartbeat.
 - **`~/.kapro/config.yaml`** — persistent CLI context. `hub init` writes it, all commands read project/registry from it.
 - **Spinner UX** — braille animation with colored status symbols: ✔ (success), ✗ (failure), ⚠ (warning), ℹ (info).
@@ -137,7 +137,7 @@ All operations use Go SDK — no gcloud, helm, flux, or kubectl dependencies.
 
 - **Parallel spoke bootstrap** — bounded concurrency (10 at a time) via semaphore channel
 - **Spoke client cache** — sync.Map with 5min TTL, health probe before reuse (expired tokens auto-invalidate)
-- **Version-change detection** — skip bootstrap if MemberCluster already converged at target version
+- **Version-change detection** — skip bootstrap if FleetCluster already converged at target version
 - **Error isolation** — failing spoke doesn't block other spokes in the reconcile loop
 - **Embedded CRDs** — FluxInstance, ResourceSet, and 8 Kapro CRDs via go:embed (no external file deps)
 
@@ -149,20 +149,20 @@ All operations use Go SDK — no gcloud, helm, flux, or kubectl dependencies.
 - Dependencies must be in same or earlier wave
 - Registry URLs must match declared type (oci:// for OCI type)
 
-### Release Flow (e2e verified on GKE)
+### PromotionRun Flow (e2e verified on GKE)
 
-- Release CR → Progressing → ReleaseTarget created per cluster
+- PromotionRun CR → Progressing → PromotionTarget created per cluster
 - FSM: Verification ✔ → HealthCheck ✔ → Applying
 - SpokeFluxActuator.Apply() → patches OCIRepository tag on spoke
 - Spoke pulls new bundle → wave DAG reconverges
-- MemberCluster.status.version updated from OCIRepository tag
+- FleetCluster.status.version updated from OCIRepository tag
 
 ### Breaking Changes
 
 - `kapro cluster bootstrap` removed — use `kapro spoke add`
 - `kapro gcp *` commands removed — use `kapro fleet list/sync`
 - `kapro world` / `kapro fleet` removed — use `kapro status`
-- `kapro promote` removed — use Release CR
+- `kapro promote` removed — use PromotionRun CR
 - CLI commands renamed: `cluster add` → `spoke add`
 
 ---
@@ -187,22 +187,22 @@ Flux Operator actuator, Fleet API integration, and GCP SDK.
 
 ### Fleet Observability
 
-- **MemberCluster status sync** — reads HelmRelease status, writes version + health to MemberCluster
-- **k9s columns** — version, phase, convergence, healthy visible in `kubectl get memberclusters`
+- **FleetCluster status sync** — reads HelmRelease status, writes version + health to FleetCluster
+- **k9s columns** — version, phase, convergence, healthy visible in `kubectl get fleetclusters`
 
 ---
 
-## v0.1.0 — Initial Release
+## v0.1.0 — Initial PromotionRun
 
-First release of Kapro: CRDs, FSM, gates, approval webhook.
+First promotionrun of Kapro: CRDs, FSM, gates, approval webhook.
 
 ### CRDs (7)
 
-- Artifact, Pipeline, Release, ReleaseTarget, MemberCluster, Approval, Source
+- Artifact, PromotionPlan, PromotionRun, PromotionTarget, FleetCluster, Approval, Source
 
 ### Controllers (5)
 
-- ReleaseReconciler (two-level DAG), ReleaseTargetReconciler (10-state FSM), SourceReconciler, ApprovalReconciler, CSRApprovalReconciler
+- PromotionRunReconciler (two-level DAG), PromotionTargetReconciler (10-state FSM), SourceReconciler, ApprovalReconciler, CSRApprovalReconciler
 
 ### Gates (8)
 
@@ -210,7 +210,7 @@ First release of Kapro: CRDs, FSM, gates, approval webhook.
 
 ### CLI
 
-- cluster bootstrap/join, get releases/targets, approve/reject, rollback, release create, world
+- cluster bootstrap/join, get promotionruns/targets, approve/reject, rollback, promotionrun create, world
 
 ### Scalability
 

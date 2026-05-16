@@ -144,13 +144,13 @@ spec:
                 - backendRef
                 - mode
                 type: object
-              pipeline:
-                description: Pipeline defines the progressive delivery stages.
+              promotionplan:
+                description: PromotionPlan defines the progressive delivery stages.
                 properties:
                   stages:
                     description: Stages defines the progressive delivery wave ordering.
                     items:
-                      description: KaproStage is one wave in the delivery pipeline.
+                      description: KaproStage is one wave in the delivery promotionplan.
                       properties:
                         dependsOn:
                           description: DependsOn declares upstream stage dependencies.
@@ -311,7 +311,7 @@ spec:
                                         type: string
                                       preset:
                                         description: |-
-                                          Preset references Pipeline.spec.metricPresets by name.
+                                          Preset references PromotionPlan.spec.metricPresets by name.
                                           Inline fields override the preset when set.
                                         type: string
                                       provider:
@@ -709,15 +709,15 @@ spec:
                                     description: |-
                                       Events filters which lifecycle events trigger this notification.
                                       Uses stable semantic event types. Currently emitted events:
-                                        kapro.release.started, kapro.release.completed, kapro.release.failed,
-                                        kapro.release.rollback.started, kapro.release.stage.completed,
-                                        kapro.release.gate.passed, kapro.release.gate.failed,
-                                        kapro.release.approval.required,
-                                        kapro.release.target.pending, kapro.release.target.verification,
-                                        kapro.release.target.health_check, kapro.release.target.soaking,
-                                        kapro.release.target.metrics_check, kapro.release.target.applying,
-                                        kapro.release.target.converged, kapro.release.target.failed,
-                                        kapro.release.target.skipped.
+                                        kapro.promotionrun.started, kapro.promotionrun.completed, kapro.promotionrun.failed,
+                                        kapro.promotionrun.rollback.started, kapro.promotionrun.stage.completed,
+                                        kapro.promotionrun.gate.passed, kapro.promotionrun.gate.failed,
+                                        kapro.promotionrun.approval.required,
+                                        kapro.promotionrun.target.pending, kapro.promotionrun.target.verification,
+                                        kapro.promotionrun.target.health_check, kapro.promotionrun.target.soaking,
+                                        kapro.promotionrun.target.metrics_check, kapro.promotionrun.target.applying,
+                                        kapro.promotionrun.target.converged, kapro.promotionrun.target.failed,
+                                        kapro.promotionrun.target.skipped.
                                       Empty means all events.
                                     items:
                                       type: string
@@ -831,7 +831,7 @@ spec:
             required:
             - clusters
             - delivery
-            - pipeline
+            - promotionplan
             - sourceRef
             type: object
           status:

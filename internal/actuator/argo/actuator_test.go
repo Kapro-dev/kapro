@@ -21,8 +21,8 @@ func TestApplyRequestsHardRefreshAndSyncOperation(t *testing.T) {
 		WithObjects(app).
 		Build()
 	act := &Actuator{Client: c}
-	cluster := &kaprov1alpha1.MemberCluster{
-		Spec: kaprov1alpha1.MemberClusterSpec{
+	cluster := &kaprov1alpha1.FleetCluster{
+		Spec: kaprov1alpha1.FleetClusterSpec{
 			Delivery: kaprov1alpha1.DeliverySpec{
 				Parameters: map[string]string{
 					"namespace":   "argocd",
@@ -67,8 +67,8 @@ func TestApplyRequiresAuthorizedApplication(t *testing.T) {
 		WithObjects(app).
 		Build()
 	act := &Actuator{Client: c}
-	cluster := &kaprov1alpha1.MemberCluster{
-		Spec: kaprov1alpha1.MemberClusterSpec{
+	cluster := &kaprov1alpha1.FleetCluster{
+		Spec: kaprov1alpha1.FleetClusterSpec{
 			Delivery: kaprov1alpha1.DeliverySpec{
 				Parameters: map[string]string{
 					"namespace":   "argocd",
@@ -95,8 +95,8 @@ func TestApplyByApplicationSelectorAndReportsBackendObjects(t *testing.T) {
 		WithObjects(appA, appB).
 		Build()
 	act := &Actuator{Client: c}
-	cluster := &kaprov1alpha1.MemberCluster{
-		Spec: kaprov1alpha1.MemberClusterSpec{
+	cluster := &kaprov1alpha1.FleetCluster{
+		Spec: kaprov1alpha1.FleetClusterSpec{
 			Delivery: kaprov1alpha1.DeliverySpec{
 				Parameters: map[string]string{
 					"namespace":           "argocd",

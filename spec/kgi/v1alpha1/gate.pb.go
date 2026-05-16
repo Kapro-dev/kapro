@@ -174,9 +174,9 @@ func (x *GetCapabilitiesResponse) GetCapabilities() []string {
 
 type EvaluateRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Release       string                 `protobuf:"bytes,1,opt,name=release,proto3" json:"release,omitempty"`
+	PromotionRun  string                 `protobuf:"bytes,1,opt,name=promotion_run,json=promotionRun,proto3" json:"promotion_run,omitempty"`
 	Target        string                 `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"`
-	Pipeline      string                 `protobuf:"bytes,3,opt,name=pipeline,proto3" json:"pipeline,omitempty"`
+	PromotionPlan string                 `protobuf:"bytes,3,opt,name=promotion_plan,json=promotionPlan,proto3" json:"promotion_plan,omitempty"`
 	Stage         string                 `protobuf:"bytes,4,opt,name=stage,proto3" json:"stage,omitempty"`
 	Version       string                 `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`
 	Gate          string                 `protobuf:"bytes,6,opt,name=gate,proto3" json:"gate,omitempty"`
@@ -215,9 +215,9 @@ func (*EvaluateRequest) Descriptor() ([]byte, []int) {
 	return file_spec_kgi_v1alpha1_gate_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *EvaluateRequest) GetRelease() string {
+func (x *EvaluateRequest) GetPromotionRun() string {
 	if x != nil {
-		return x.Release
+		return x.PromotionRun
 	}
 	return ""
 }
@@ -229,9 +229,9 @@ func (x *EvaluateRequest) GetTarget() string {
 	return ""
 }
 
-func (x *EvaluateRequest) GetPipeline() string {
+func (x *EvaluateRequest) GetPromotionPlan() string {
 	if x != nil {
-		return x.Pipeline
+		return x.PromotionPlan
 	}
 	return ""
 }
@@ -605,11 +605,11 @@ const file_spec_kgi_v1alpha1_gate_proto_rawDesc = "" +
 	"\x17GetCapabilitiesResponse\x12)\n" +
 	"\x10contract_version\x18\x01 \x01(\tR\x0fcontractVersion\x12%\n" +
 	"\x0eplugin_version\x18\x02 \x01(\tR\rpluginVersion\x12\"\n" +
-	"\fcapabilities\x18\x03 \x03(\tR\fcapabilities\"\xb7\x02\n" +
-	"\x0fEvaluateRequest\x12\x18\n" +
-	"\arelease\x18\x01 \x01(\tR\arelease\x12\x16\n" +
-	"\x06target\x18\x02 \x01(\tR\x06target\x12\x1a\n" +
-	"\bpipeline\x18\x03 \x01(\tR\bpipeline\x12\x14\n" +
+	"\fcapabilities\x18\x03 \x03(\tR\fcapabilities\"\xcd\x02\n" +
+	"\x0fEvaluateRequest\x12#\n" +
+	"\rpromotion_run\x18\x01 \x01(\tR\fpromotionRun\x12\x16\n" +
+	"\x06target\x18\x02 \x01(\tR\x06target\x12%\n" +
+	"\x0epromotion_plan\x18\x03 \x01(\tR\rpromotionPlan\x12\x14\n" +
 	"\x05stage\x18\x04 \x01(\tR\x05stage\x12\x18\n" +
 	"\aversion\x18\x05 \x01(\tR\aversion\x12\x12\n" +
 	"\x04gate\x18\x06 \x01(\tR\x04gate\x12S\n" +

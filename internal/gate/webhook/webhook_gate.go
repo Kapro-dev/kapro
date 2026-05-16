@@ -78,11 +78,11 @@ type Gate struct {
 
 // webhookPayload is the JSON body sent to the webhook endpoint.
 type webhookPayload struct {
-	Promotion string            `json:"promotion"`
-	Target    string            `json:"target"`
-	Version   string            `json:"version"`
-	Release   string            `json:"release"`
-	Args      map[string]string `json:"args"`
+	Promotion    string            `json:"promotion"`
+	Target       string            `json:"target"`
+	Version      string            `json:"version"`
+	PromotionRun string            `json:"promotionrun"`
+	Args         map[string]string `json:"args"`
 }
 
 // webhookResponse is the expected JSON response from the webhook endpoint.
@@ -109,20 +109,20 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 		return pkggate.Result{}, fmt.Errorf("webhook gate: URL must be http or https with a non-empty host: %q", rawURL)
 	}
 
-	var promotion, target, version, release string
+	var promotion, target, version, promotionrun string
 	if req.Context != nil {
 		promotion = req.Context.Name
 		target = req.Context.Target
 		version = req.Context.Version
-		release = req.Context.ReleaseRef
+		promotionrun = req.Context.PromotionRunRef
 	}
 
 	payload := webhookPayload{
-		Promotion: promotion,
-		Target:    target,
-		Version:   version,
-		Release:   release,
-		Args:      req.Args,
+		Promotion:    promotion,
+		Target:       target,
+		Version:      version,
+		PromotionRun: promotionrun,
+		Args:         req.Args,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

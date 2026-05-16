@@ -35,7 +35,7 @@ Live Argo writes require an explicit delegation marker on every Application:
 `kapro.io/authorized-unit: <unit>`. Put the marker on
 `ApplicationSet.spec.template.metadata.labels` for generated apps.
 
-During apply, `ReleaseTarget.status.backendObjects` records each selected Argo
+During apply, `PromotionTarget.status.backendObjects` records each selected Argo
 Application, desired revision, observed revision, sync status, health status,
 and convergence phase.
 
@@ -48,7 +48,7 @@ and convergence phase.
 | `GitRepository`, `OCIRepository`, or `Bucket` | Selected Flux source objects. | The declared `spec.ref.tag`, `semver`, `digest`, or reviewed `branch` field through Git-native source apply. | Repository credentials and source authentication. |
 
 Flux keeps source authentication, reconciliation, inventory, health checks, and
-drift correction. Kapro supplies promotion order, gates, approvals, release
+drift correction. Kapro supplies promotion order, gates, approvals, promotionrun
 history, and evidence.
 
 ## Status Evidence

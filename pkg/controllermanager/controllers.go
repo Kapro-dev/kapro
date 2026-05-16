@@ -22,22 +22,34 @@ import (
 )
 
 func init() {
-	Register("release", startReleaseController)
-	Register("release-target", startReleaseTargetController)
+	Register("promotion", startPromotionController)
+	Register("promotionrun", startPromotionRunController)
+	Register("promotion-target", startPromotionTargetController)
 	Register("approval", startApprovalController)
 	Register("kapro", startKaproController)
 	Register("backend-profile", startBackendProfileController)
 	Register("plugin-registration", startPluginRegistrationController)
-	Register("release-trigger", startReleaseTriggerController)
-	// csrapproval and membercluster bootstrap removed — Flux Operator handles spoke setup.
+	Register("promotion-trigger", startPromotionTriggerController)
+	// csrapproval and fleetcluster bootstrap removed — Flux Operator handles spoke setup.
 }
 
-// startReleaseController starts the Release reconciler.
-// Drives the two-level DAG orchestration — walks Pipeline nodes then Stages,
-// upserts one ReleaseTarget per (Release, Pipeline, Stage, Target),
-// and aggregates child execution state into Release status.
-func startReleaseController(_ context.Context, cc ControllerContext) (bool, error) {
-	r := &controller.ReleaseReconciler{
+func startPromotionController(_ context.Context, cc ControllerContext) (bool, error) {
+	if err := (&controller.PromotionReconciler{
+		Client:   cc.Manager.GetClient(),
+		Recorder: cc.Recorder,
+		Scheme:   cc.Manager.GetScheme(),
+	}).SetupWithManager(cc.Manager); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// startPromotionRunController starts the PromotionRun reconciler.
+// Drives the two-level DAG orchestration — walks PromotionPlan nodes then Stages,
+// upserts one PromotionTarget per (PromotionRun, PromotionPlan, Stage, Target),
+// and aggregates child execution state into PromotionRun status.
+func startPromotionRunController(_ context.Context, cc ControllerContext) (bool, error) {
+	r := &controller.PromotionRunReconciler{
 		Client:           cc.Manager.GetClient(),
 		Recorder:         cc.Recorder,
 		Scheme:           cc.Manager.GetScheme(),
@@ -57,8 +69,8 @@ func startReleaseController(_ context.Context, cc ControllerContext) (bool, erro
 	return true, nil
 }
 
-func startReleaseTargetController(_ context.Context, cc ControllerContext) (bool, error) {
-	r := &controller.ReleaseTargetReconciler{
+func startPromotionTargetController(_ context.Context, cc ControllerContext) (bool, error) {
+	r := &controller.PromotionTargetReconciler{
 		Client:             cc.Manager.GetClient(),
 		Recorder:           cc.Recorder,
 		Scheme:             cc.Manager.GetScheme(),
@@ -151,9 +163,9 @@ func startBackendProfileController(_ context.Context, cc ControllerContext) (boo
 	return true, nil
 }
 
-// startReleaseTriggerController starts the safe-by-default artifact trigger reconciler.
-func startReleaseTriggerController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.ReleaseTriggerReconciler{
+// startPromotionTriggerController starts the safe-by-default artifact trigger reconciler.
+func startPromotionTriggerController(_ context.Context, cc ControllerContext) (bool, error) {
+	if err := (&controller.PromotionTriggerReconciler{
 		Client:   cc.Manager.GetClient(),
 		Scheme:   cc.Manager.GetScheme(),
 		Recorder: cc.Recorder,
@@ -164,7 +176,7 @@ func startReleaseTriggerController(_ context.Context, cc ControllerContext) (boo
 }
 
 // startKaproController starts the Kapro reconciler.
-// Pushes FluxInstance + OCIRepository to spokes, generates MemberClusters and Pipeline on the hub.
+// Pushes FluxInstance + OCIRepository to spokes, generates FleetClusters and PromotionPlan on the hub.
 func startKaproController(_ context.Context, cc ControllerContext) (bool, error) {
 	if err := (&controller.KaproReconciler{
 		Client:   cc.Manager.GetClient(),
@@ -175,7 +187,7 @@ func startKaproController(_ context.Context, cc ControllerContext) (bool, error)
 	return true, nil
 }
 
-// CSR approval and MemberCluster bootstrap controllers removed.
+// CSR approval and FleetCluster bootstrap controllers removed.
 // Flux Operator handles spoke setup — no kapro component on spokes.
 
 // compile-time checks: all built-in gate implementations satisfy gate.Gate.

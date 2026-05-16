@@ -1,7 +1,7 @@
 apiVersion: kapro.io/v1alpha1
 kind: NotificationProvider
 metadata:
-  name: release-webhook
+  name: promotionrun-webhook
 spec:
   type: webhook
   webhook:
@@ -9,7 +9,7 @@ spec:
     format: cloudevents
   secretRefs:
     - namespace: kapro-system
-      name: release-webhook-token
+      name: promotionrun-webhook-token
       key: token
       purpose: bearerToken
   parameters:
@@ -21,13 +21,13 @@ metadata:
   name: production-failures
 spec:
   subscriptions:
-    - name: release-and-target-failures
+    - name: promotionrun-and-target-failures
       providerRef:
-        name: release-webhook
+        name: promotionrun-webhook
       filter:
         types:
-          - kapro.release.failed
-          - kapro.release.target.failed
-        releaseSelector:
+          - kapro.promotionrun.failed
+          - kapro.promotionrun.target.failed
+        promotionrunSelector:
           matchLabels:
             environment: production

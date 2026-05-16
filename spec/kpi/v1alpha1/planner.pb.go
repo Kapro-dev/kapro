@@ -171,8 +171,8 @@ func (x *GetCapabilitiesResponse) GetCapabilities() []string {
 
 type PlanRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Release       string                 `protobuf:"bytes,1,opt,name=release,proto3" json:"release,omitempty"`
-	Pipeline      string                 `protobuf:"bytes,2,opt,name=pipeline,proto3" json:"pipeline,omitempty"`
+	PromotionRun  string                 `protobuf:"bytes,1,opt,name=promotion_run,json=promotionRun,proto3" json:"promotion_run,omitempty"`
+	PromotionPlan string                 `protobuf:"bytes,2,opt,name=promotion_plan,json=promotionPlan,proto3" json:"promotion_plan,omitempty"`
 	Stage         string                 `protobuf:"bytes,3,opt,name=stage,proto3" json:"stage,omitempty"`
 	Version       string                 `protobuf:"bytes,4,opt,name=version,proto3" json:"version,omitempty"`
 	Strategy      *StageStrategy         `protobuf:"bytes,5,opt,name=strategy,proto3" json:"strategy,omitempty"`
@@ -212,16 +212,16 @@ func (*PlanRequest) Descriptor() ([]byte, []int) {
 	return file_spec_kpi_v1alpha1_planner_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *PlanRequest) GetRelease() string {
+func (x *PlanRequest) GetPromotionRun() string {
 	if x != nil {
-		return x.Release
+		return x.PromotionRun
 	}
 	return ""
 }
 
-func (x *PlanRequest) GetPipeline() string {
+func (x *PlanRequest) GetPromotionPlan() string {
 	if x != nil {
-		return x.Pipeline
+		return x.PromotionPlan
 	}
 	return ""
 }
@@ -314,13 +314,13 @@ func (x *StageStrategy) GetMaxUnavailable() int32 {
 }
 
 type Target struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Labels        map[string]string      `protobuf:"bytes,2,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Ready         bool                   `protobuf:"varint,3,opt,name=ready,proto3" json:"ready,omitempty"`
-	ActiveRelease string                 `protobuf:"bytes,4,opt,name=active_release,json=activeRelease,proto3" json:"active_release,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Name               string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Labels             map[string]string      `protobuf:"bytes,2,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Ready              bool                   `protobuf:"varint,3,opt,name=ready,proto3" json:"ready,omitempty"`
+	ActivePromotionRun string                 `protobuf:"bytes,4,opt,name=active_promotion_run,json=activePromotionRun,proto3" json:"active_promotion_run,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *Target) Reset() {
@@ -374,9 +374,9 @@ func (x *Target) GetReady() bool {
 	return false
 }
 
-func (x *Target) GetActiveRelease() string {
+func (x *Target) GetActivePromotionRun() string {
 	if x != nil {
-		return x.ActiveRelease
+		return x.ActivePromotionRun
 	}
 	return ""
 }
@@ -510,10 +510,10 @@ const file_spec_kpi_v1alpha1_planner_proto_rawDesc = "" +
 	"\x17GetCapabilitiesResponse\x12)\n" +
 	"\x10contract_version\x18\x01 \x01(\tR\x0fcontractVersion\x12%\n" +
 	"\x0eplugin_version\x18\x02 \x01(\tR\rpluginVersion\x12\"\n" +
-	"\fcapabilities\x18\x03 \x03(\tR\fcapabilities\"\xf8\x02\n" +
-	"\vPlanRequest\x12\x18\n" +
-	"\arelease\x18\x01 \x01(\tR\arelease\x12\x1a\n" +
-	"\bpipeline\x18\x02 \x01(\tR\bpipeline\x12\x14\n" +
+	"\fcapabilities\x18\x03 \x03(\tR\fcapabilities\"\x8e\x03\n" +
+	"\vPlanRequest\x12#\n" +
+	"\rpromotion_run\x18\x01 \x01(\tR\fpromotionRun\x12%\n" +
+	"\x0epromotion_plan\x18\x02 \x01(\tR\rpromotionPlan\x12\x14\n" +
 	"\x05stage\x18\x03 \x01(\tR\x05stage\x12\x18\n" +
 	"\aversion\x18\x04 \x01(\tR\aversion\x12=\n" +
 	"\bstrategy\x18\x05 \x01(\v2!.kapro.kpi.v1alpha1.StageStrategyR\bstrategy\x124\n" +
@@ -526,12 +526,12 @@ const file_spec_kpi_v1alpha1_planner_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"[\n" +
 	"\rStageStrategy\x12!\n" +
 	"\fmax_parallel\x18\x01 \x01(\x05R\vmaxParallel\x12'\n" +
-	"\x0fmax_unavailable\x18\x02 \x01(\x05R\x0emaxUnavailable\"\xd4\x01\n" +
+	"\x0fmax_unavailable\x18\x02 \x01(\x05R\x0emaxUnavailable\"\xdf\x01\n" +
 	"\x06Target\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12>\n" +
 	"\x06labels\x18\x02 \x03(\v2&.kapro.kpi.v1alpha1.Target.LabelsEntryR\x06labels\x12\x14\n" +
-	"\x05ready\x18\x03 \x01(\bR\x05ready\x12%\n" +
-	"\x0eactive_release\x18\x04 \x01(\tR\ractiveRelease\x1a9\n" +
+	"\x05ready\x18\x03 \x01(\bR\x05ready\x120\n" +
+	"\x14active_promotion_run\x18\x04 \x01(\tR\x12activePromotionRun\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"K\n" +

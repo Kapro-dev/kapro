@@ -67,7 +67,7 @@ func runSourceApply(opts sourceApplyOptions) error {
 	if err != nil {
 		return err
 	}
-	versions, err := parseReleaseVersions(opts.VersionSet)
+	versions, err := parsePromotionRunVersions(opts.VersionSet)
 	if err != nil {
 		return err
 	}

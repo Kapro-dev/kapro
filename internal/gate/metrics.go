@@ -153,7 +153,7 @@ func (g *MetricsGate) evaluateInstant(ctx context.Context, baseURL string, metri
 			RetryAfter: interval,
 			Evidence: []Evidence{metricEvidence(metric, query, "", 0, 0, err.Error(),
 				kaprov1alpha1.GatePhaseInconclusive)},
-		}, nil // don't propagate — retry is safer than blocking the pipeline
+		}, nil // don't propagate — retry is safer than blocking the promotionplan
 	}
 	if !ok {
 		return noInstantDataResult(metric, query, "", interval, "prometheus query returned no series"), nil

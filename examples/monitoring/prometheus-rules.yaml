@@ -51,34 +51,34 @@ spec:
             runbook: "docs/operations.md#runbook-gate-failure"
     - name: kapro.rollouts
       rules:
-        - alert: KaproReleaseStuck
+        - alert: KaproPromotionRunStuck
           expr: |
             (
-              time() - kapro_release_created > 7200
+              time() - kapro_promotionrun_created > 7200
             )
-            and on (release)
+            and on (promotionrun)
             (
-              kapro_release_status_phase{phase=~"Pending|Progressing"} == 1
+              kapro_promotionrun_status_phase{phase=~"Pending|Progressing"} == 1
             )
           for: 15m
           labels:
             severity: warning
           annotations:
-            summary: "Kapro release {{ $labels.release }} appears stuck"
-            description: "Release {{ $labels.release }} has remained non-terminal for more than 2 hours. This rule uses kube-state-metrics custom-resource state metrics; tune the threshold to match Release spec.timeout and normal rollout cadence."
-            runbook: "docs/operations.md#runbook-stuck-release"
+            summary: "Kapro promotionrun {{ $labels.promotionrun }} appears stuck"
+            description: "PromotionRun {{ $labels.promotionrun }} has remained non-terminal for more than 2 hours. This rule uses kube-state-metrics custom-resource state metrics; tune the threshold to match PromotionRun spec.timeout and normal rollout cadence."
+            runbook: "docs/operations.md#runbook-stuck-promotionrun"
         - alert: KaproRolloutDurationP95High
           expr: |
             histogram_quantile(
               0.95,
-              sum by (pipeline, le) (rate(kapro_stage_duration_seconds_bucket[30m]))
+              sum by (promotionplan, le) (rate(kapro_stage_duration_seconds_bucket[30m]))
             ) > 3600
           for: 30m
           labels:
             severity: warning
           annotations:
-            summary: "Kapro {{ $labels.pipeline }} rollout stage p95 is high"
-            description: "Stage completion p95 for pipeline {{ $labels.pipeline }} has been above 1 hour for 30 minutes."
+            summary: "Kapro {{ $labels.promotionplan }} rollout stage p95 is high"
+            description: "Stage completion p95 for promotionplan {{ $labels.promotionplan }} has been above 1 hour for 30 minutes."
             runbook: "docs/controller-scalability.md#workqueue-tuning"
     - name: kapro.plugins
       rules:
@@ -94,19 +94,19 @@ spec:
             runbook: "docs/operations.md#runbook-plugin-not-ready"
     - name: kapro.triggers
       rules:
-        - alert: KaproReleaseTriggerBlocked
+        - alert: KaproPromotionTriggerBlocked
           expr: |
             (
-              kapro_releasetrigger_status_condition{type="Stalled"} == 1
+              kapro_promotiontrigger_status_condition{type="Stalled"} == 1
             )
             or
             (
-              kapro_releasetrigger_status_condition{type="ReleaseCreated",reason=~"CooldownActive|MaxActiveReached"} == 0
+              kapro_promotiontrigger_status_condition{type="PromotionRunCreated",reason=~"CooldownActive|MaxActiveReached"} == 0
             )
           for: 15m
           labels:
             severity: warning
           annotations:
-            summary: "Kapro release trigger {{ $labels.releasetrigger }} is blocked"
-            description: "ReleaseTrigger {{ $labels.releasetrigger }} is blocked by reason {{ $labels.reason }}. This covers cooldown, max-active, source resolution, signature verification, and release creation failures via kube-state-metrics custom-resource state metrics."
-            runbook: "docs/operations.md#runbook-blocked-releasetrigger"
+            summary: "Kapro promotion trigger {{ $labels.promotiontrigger }} is blocked"
+            description: "PromotionTrigger {{ $labels.promotiontrigger }} is blocked by reason {{ $labels.reason }}. This covers cooldown, max-active, source resolution, signature verification, and promotionrun creation failures via kube-state-metrics custom-resource state metrics."
+            runbook: "docs/operations.md#runbook-blocked-promotiontrigger"

@@ -1,9 +1,9 @@
 // Package spoke implements the Kapro Actuator Interface for pull-mode delivery.
 //
 // Pull-mode promotion is intentionally hub-to-CRD, not hub-to-spoke. The hub
-// writes desired versions onto MemberCluster.spec; the spoke-side controller
+// writes desired versions onto FleetCluster.spec; the spoke-side controller
 // observes that desired state, patches local GitOps resources, and reports
-// convergence back through MemberCluster.status plus the heartbeat Lease.
+// convergence back through FleetCluster.status plus the heartbeat Lease.
 package spoke
 
 import (
@@ -19,10 +19,10 @@ import (
 )
 
 // DesiredStateActuator implements pull-mode delivery by updating hub-side
-// MemberCluster desired state. It never connects to spoke clusters directly.
+// FleetCluster desired state. It never connects to spoke clusters directly.
 type DesiredStateActuator struct {
 	// HubClient is the controller-runtime client for the hub cluster.
-	// Used to patch MemberCluster.spec.desiredVersions.
+	// Used to patch FleetCluster.spec.desiredVersions.
 	HubClient client.Client
 }
 
@@ -31,7 +31,7 @@ type SpokeFluxActuator = DesiredStateActuator
 
 var _ actuator.Actuator = (*DesiredStateActuator)(nil)
 
-// Apply records one desired version on the MemberCluster. The spoke-side
+// Apply records one desired version on the FleetCluster. The spoke-side
 // controller owns applying it to local Flux resources.
 func (a *DesiredStateActuator) Apply(ctx context.Context, req actuator.ApplyRequest) error {
 	mc := req.Cluster
@@ -49,7 +49,7 @@ func (a *DesiredStateActuator) Apply(ctx context.Context, req actuator.ApplyRequ
 	return err
 }
 
-// ApplyDelta records all desired artifact versions on the MemberCluster in one
+// ApplyDelta records all desired artifact versions on the FleetCluster in one
 // patch. The spoke controller applies only changed entries locally.
 func (a *DesiredStateActuator) ApplyDelta(ctx context.Context, req actuator.DeltaApplyRequest) (int, error) {
 	if req.Cluster == nil {
@@ -64,9 +64,9 @@ func (a *DesiredStateActuator) ApplyDelta(ctx context.Context, req actuator.Delt
 		return 0, nil
 	}
 
-	var latest kaprov1alpha1.MemberCluster
+	var latest kaprov1alpha1.FleetCluster
 	if err := a.HubClient.Get(ctx, client.ObjectKey{Name: req.Cluster.Name}, &latest); err != nil {
-		return 0, fmt.Errorf("get MemberCluster %s: %w", req.Cluster.Name, err)
+		return 0, fmt.Errorf("get FleetCluster %s: %w", req.Cluster.Name, err)
 	}
 
 	count := 0
@@ -91,15 +91,15 @@ func (a *DesiredStateActuator) ApplyDelta(ctx context.Context, req actuator.Delt
 	latest.Spec.DesiredAppKey = primaryAppKey
 
 	if err := a.HubClient.Patch(ctx, &latest, patch); err != nil {
-		return 0, fmt.Errorf("patch MemberCluster %s desired versions: %w", latest.Name, err)
+		return 0, fmt.Errorf("patch FleetCluster %s desired versions: %w", latest.Name, err)
 	}
 	log.FromContext(ctx).Info("recorded pull-mode desired versions",
 		"cluster", latest.Name, "changed", count, "desiredVersions", desired)
 	return count, nil
 }
 
-// IsConverged checks the spoke-reported MemberCluster status.
-func (a *DesiredStateActuator) IsConverged(ctx context.Context, mc *kaprov1alpha1.MemberCluster, appKey, version string) (bool, error) {
+// IsConverged checks the spoke-reported FleetCluster status.
+func (a *DesiredStateActuator) IsConverged(ctx context.Context, mc *kaprov1alpha1.FleetCluster, appKey, version string) (bool, error) {
 	if appKey == "" {
 		appKey = "default"
 	}
@@ -107,7 +107,7 @@ func (a *DesiredStateActuator) IsConverged(ctx context.Context, mc *kaprov1alpha
 }
 
 // IsAllConverged checks the spoke-reported version map and health summary.
-func (a *DesiredStateActuator) IsAllConverged(ctx context.Context, mc *kaprov1alpha1.MemberCluster, desiredVersions map[string]string) (bool, error) {
+func (a *DesiredStateActuator) IsAllConverged(ctx context.Context, mc *kaprov1alpha1.FleetCluster, desiredVersions map[string]string) (bool, error) {
 	_ = ctx
 	if mc == nil {
 		return false, fmt.Errorf("cluster is nil")
@@ -127,7 +127,7 @@ func (a *DesiredStateActuator) IsAllConverged(ctx context.Context, mc *kaprov1al
 }
 
 // Rollback records the previous version as desired state.
-func (a *DesiredStateActuator) Rollback(ctx context.Context, mc *kaprov1alpha1.MemberCluster, previousVersion, appKey string) error {
+func (a *DesiredStateActuator) Rollback(ctx context.Context, mc *kaprov1alpha1.FleetCluster, previousVersion, appKey string) error {
 	return a.Apply(ctx, actuator.ApplyRequest{
 		Cluster: mc,
 		Version: previousVersion,

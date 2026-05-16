@@ -4,16 +4,16 @@
 
 For v1, hub config lives in a dedicated **git repository**. CI validates that repository and applies the rendered YAML to the Kapro hub cluster with `kubectl apply`.
 
-Spoke clusters remain gitless. They consume OCI sources and report status through `MemberCluster`; they do not watch the hub config repository.
+Spoke clusters remain gitless. They consume OCI sources and report status through `FleetCluster`; they do not watch the hub config repository.
 
 ## Why
 
 Kapro separates two sources of truth:
 
-- **Hub config truth:** the git repository that defines fleet inventory, applications, rollout pipelines, and release intent.
+- **Hub config truth:** the git repository that defines fleet inventory, applications, rollout promotionplans, and promotionrun intent.
 - **Runtime artifact truth:** the OCI registry that stores immutable application sources consumed by spoke clusters.
 
-The hub cluster needs Kubernetes objects such as `MemberCluster`, `PromotionSource`, `Pipeline`, and `Release` to drive the fleet. Those objects must be reviewable, reproducible, and auditable. A plain git repository plus CI-driven `kubectl apply` is the v1 operating model.
+The hub cluster needs Kubernetes objects such as `FleetCluster`, `PromotionSource`, `PromotionPlan`, and `PromotionRun` to drive the fleet. Those objects must be reviewable, reproducible, and auditable. A plain git repository plus CI-driven `kubectl apply` is the v1 operating model.
 
 ## Architecture
 
@@ -27,7 +27,7 @@ Pull request / merge to main
 CI: validate -> diff -> kubectl apply
    |
    v
-Hub cluster etcd: MemberCluster, PromotionSource, Pipeline, Release
+Hub cluster etcd: FleetCluster, PromotionSource, PromotionPlan, PromotionRun
    |
    v
 Kapro operator
@@ -40,10 +40,10 @@ Spoke clusters: pull OCI sources and report status
 
 | Directory | Contents |
 |---|---|
-| `clusters/` | MemberCluster definitions (one per spoke) |
+| `clusters/` | FleetCluster definitions (one per spoke) |
 | `sources/` | PromotionSource definitions (unit registry, waves, overrides) |
-| `pipelines/` | Pipeline definitions (stage DAG, selectors, gates) |
-| `releases/` | Release objects (version + pipeline references) |
+| `promotionplans/` | PromotionPlan definitions (stage DAG, selectors, gates) |
+| `promotionruns/` | PromotionRun objects (version + promotionplan references) |
 | `.github/workflows/` | CI that validates, diffs, and applies the repo to the hub |
 
 ## What does NOT live in the hub config repo
@@ -66,9 +66,9 @@ hub-config/
     prod-us.yaml
   sources/
     checkout.yaml
-  pipelines/
+  promotionplans/
     checkout-progressive.yaml
-  releases/
+  promotionruns/
     checkout-v1.2.3.yaml
   .github/
     workflows/
@@ -81,12 +81,12 @@ See [examples/hub-config/](../examples/hub-config/) for the complete sample.
 
 Apply objects in dependency order:
 
-1. `clusters/` - registers `MemberCluster` inventory and labels used by selectors.
+1. `clusters/` - registers `FleetCluster` inventory and labels used by selectors.
 2. `sources/` - defines reusable promotion unit metadata.
-3. `pipelines/` - defines stage DAGs, cluster selectors, and gate policy.
-4. `releases/` - creates release intent that references pipelines and target versions.
+3. `promotionplans/` - defines stage DAGs, cluster selectors, and gate policy.
+4. `promotionruns/` - creates promotionrun intent that references promotionplans and target versions.
 
-This order keeps `Release` creation last, after the objects it references and the clusters it may select are present.
+This order keeps `PromotionRun` creation last, after the objects it references and the clusters it may select are present.
 
 ## CI workflow
 
@@ -97,13 +97,13 @@ Pull request checks:
 ```bash
 kubectl apply --dry-run=server -f clusters/
 kubectl apply --dry-run=server -f sources/
-kubectl apply --dry-run=server -f pipelines/
-kubectl apply --dry-run=server -f releases/
+kubectl apply --dry-run=server -f promotionplans/
+kubectl apply --dry-run=server -f promotionruns/
 
 kubectl diff -f clusters/ || true
 kubectl diff -f sources/ || true
-kubectl diff -f pipelines/ || true
-kubectl diff -f releases/ || true
+kubectl diff -f promotionplans/ || true
+kubectl diff -f promotionruns/ || true
 ```
 
 Merge-to-main apply:
@@ -111,16 +111,16 @@ Merge-to-main apply:
 ```bash
 kubectl apply -f clusters/
 kubectl apply -f sources/
-kubectl apply -f pipelines/
-kubectl apply -f releases/
+kubectl apply -f promotionplans/
+kubectl apply -f promotionruns/
 ```
 
 Post-apply checks:
 
 ```bash
-kubectl get memberclusters.kapro.io
-kubectl get promotionsources.kapro.io,pipelines.kapro.io,releases.kapro.io
-kubectl describe releases.kapro.io checkout-v1-2-3
+kubectl get fleetclusters.kapro.io
+kubectl get promotionsources.kapro.io,promotionplans.kapro.io,promotionruns.kapro.io
+kubectl describe promotionruns.kapro.io checkout-v1-2-3
 ```
 
 The CI identity needs permission to `get`, `list`, `watch`, `create`, `patch`, `update`, and `delete` the Kapro configuration objects it owns. Production repositories should protect `main` and require the validation job before merge.
@@ -130,8 +130,8 @@ The CI identity needs permission to `get`, `list`, `watch`, `create`, `patch`, `
 Before opening a pull request from the hub config repo:
 
 ```bash
-kubectl apply --dry-run=server -f clusters/ -f sources/ -f pipelines/ -f releases/
-kubectl diff -f clusters/ -f sources/ -f pipelines/ -f releases/ || true
+kubectl apply --dry-run=server -f clusters/ -f sources/ -f promotionplans/ -f promotionruns/
+kubectl diff -f clusters/ -f sources/ -f promotionplans/ -f promotionruns/ || true
 ```
 
 `--dry-run=server` requires access to a hub cluster with the Kapro CRDs installed. It catches schema and admission errors that static YAML parsing cannot catch.

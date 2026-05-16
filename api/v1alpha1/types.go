@@ -12,12 +12,12 @@ import (
 
 // Finalizer constants — prevents premature deletion of stateful resources.
 const (
-	// ReleaseFinalizer is added to Release objects to allow cleanup of owned rollout state.
-	ReleaseFinalizer = "kapro.io/release-finalizer"
+	// PromotionRunFinalizer is added to PromotionRun objects to allow cleanup of owned rollout state.
+	PromotionRunFinalizer = "kapro.io/promotionrun-finalizer"
 	// BootstrapTokenFinalizer is added to BootstrapToken objects to allow RBAC cleanup on deletion.
 	BootstrapTokenFinalizer = "kapro.io/bootstrap-token-finalizer" //nolint:gosec // not a credential
-	// MemberClusterFinalizer is added to MemberCluster objects to allow bootstrap RBAC cleanup on deletion.
-	MemberClusterFinalizer = "kapro.io/member-cluster-finalizer" //nolint:gosec // not a credential
+	// FleetClusterFinalizer is added to FleetCluster objects to allow bootstrap RBAC cleanup on deletion.
+	FleetClusterFinalizer = "kapro.io/member-cluster-finalizer" //nolint:gosec // not a credential
 )
 
 // Condition type constants — Flux three-condition framework for operator status reporting.
@@ -126,11 +126,11 @@ type HealthCheckSpec struct {
 	Interval string `json:"interval"`
 }
 
-// ---- MemberCluster shared types --------------------------------------------
+// ---- FleetCluster shared types --------------------------------------------
 // registered workload cluster. Written by kapro-cluster-controller at bootstrap
 // time and refreshed on each heartbeat.
 //
-// Platform engineers and pipeline authors can reference these fields in stage
+// Platform engineers and promotionplan authors can reference these fields in stage
 // selectors for cloud-aware, GPU-aware, and compliance-aware delivery waves.
 //
 // Example stage selector:
@@ -290,7 +290,7 @@ type CosignKeySecretRef struct {
 }
 
 type MetricGate struct {
-	// Preset references Pipeline.spec.metricPresets by name.
+	// Preset references PromotionPlan.spec.metricPresets by name.
 	// Inline fields override the preset when set.
 	// +optional
 	Preset string `json:"preset,omitempty"`
@@ -398,15 +398,15 @@ type NotificationSpec struct {
 	Type string `json:"type"`
 	// Events filters which lifecycle events trigger this notification.
 	// Uses stable semantic event types. Currently emitted events:
-	//   kapro.release.started, kapro.release.completed, kapro.release.failed,
-	//   kapro.release.rollback.started, kapro.release.stage.completed,
-	//   kapro.release.gate.passed, kapro.release.gate.failed,
-	//   kapro.release.approval.required,
-	//   kapro.release.target.pending, kapro.release.target.verification,
-	//   kapro.release.target.health_check, kapro.release.target.soaking,
-	//   kapro.release.target.metrics_check, kapro.release.target.applying,
-	//   kapro.release.target.converged, kapro.release.target.failed,
-	//   kapro.release.target.skipped.
+	//   kapro.promotionrun.started, kapro.promotionrun.completed, kapro.promotionrun.failed,
+	//   kapro.promotionrun.rollback.started, kapro.promotionrun.stage.completed,
+	//   kapro.promotionrun.gate.passed, kapro.promotionrun.gate.failed,
+	//   kapro.promotionrun.approval.required,
+	//   kapro.promotionrun.target.pending, kapro.promotionrun.target.verification,
+	//   kapro.promotionrun.target.health_check, kapro.promotionrun.target.soaking,
+	//   kapro.promotionrun.target.metrics_check, kapro.promotionrun.target.applying,
+	//   kapro.promotionrun.target.converged, kapro.promotionrun.target.failed,
+	//   kapro.promotionrun.target.skipped.
 	// Empty means all events.
 	// +optional
 	Events []string `json:"events,omitempty"`
@@ -621,20 +621,20 @@ type NotificationProviderRef struct {
 // NotificationEventFilter selects lifecycle events for a subscription.
 type NotificationEventFilter struct {
 	// Types filters by stable semantic event type, for example
-	// kapro.release.completed or kapro.release.target.failed.
+	// kapro.promotionrun.completed or kapro.promotionrun.target.failed.
 	// Empty means all event types.
 	// +optional
 	Types []string `json:"types,omitempty"`
-	// ReleaseSelector filters by Release labels.
+	// PromotionRunSelector filters by PromotionRun labels.
 	// +optional
-	ReleaseSelector *metav1.LabelSelector `json:"releaseSelector,omitempty"`
-	// Pipelines filters by Release.spec.pipelines[].name.
+	PromotionRunSelector *metav1.LabelSelector `json:"promotionrunSelector,omitempty"`
+	// PromotionPlans filters by PromotionRun.spec.promotionplans[].name.
 	// +optional
-	Pipelines []string `json:"pipelines,omitempty"`
-	// Stages filters by Pipeline stage name.
+	PromotionPlans []string `json:"promotionplans,omitempty"`
+	// Stages filters by PromotionPlan stage name.
 	// +optional
 	Stages []string `json:"stages,omitempty"`
-	// Targets filters by MemberCluster name.
+	// Targets filters by FleetCluster name.
 	// +optional
 	Targets []string `json:"targets,omitempty"`
 	// Phases filters by normalized event phase.
@@ -793,7 +793,7 @@ type GateProjection struct {
 	Reason  string `json:"reason,omitempty"`
 }
 
-// ---- Pipeline ---------------------------------------------------------------
+// ---- PromotionPlan ---------------------------------------------------------------
 
 // StageFailurePolicy controls what Kapro does when a stage fails.
 // +kubebuilder:validation:Enum=halt;skip;rollback
@@ -853,15 +853,15 @@ type StageStrategySpec struct {
 	MaxUnavailable int32 `json:"maxUnavailable,omitempty"`
 }
 
-// Stage is one node in a Pipeline's delivery DAG.
+// Stage is one node in a PromotionPlan's delivery DAG.
 // It selects a set of target clusters by label selector, optionally gates them
 // with a GatePolicy, and declares ordering via DependsOn.
 //
 // A single stage can target one or many clusters — the selector determines the
-// fleet subset. Add a cluster to a wave by labeling its MemberCluster object;
-// no Pipeline changes required.
+// fleet subset. Add a cluster to a wave by labeling its FleetCluster object;
+// no PromotionPlan changes required.
 type Stage struct {
-	// Name uniquely identifies this stage within the pipeline.
+	// Name uniquely identifies this stage within the promotionplan.
 	Name string `json:"name"`
 	// Selector matches the target clusters that belong to this stage.
 	Selector metav1.LabelSelector `json:"selector"`
@@ -882,7 +882,7 @@ type Stage struct {
 	// +optional
 	Gate *GatePolicySpec `json:"gate,omitempty"`
 	// OnFailure controls what Kapro does when this stage fails.
-	// halt (default): stop the pipeline, mark Release Failed.
+	// halt (default): stop the promotionplan, mark PromotionRun Failed.
 	// skip: continue to downstream stages.
 	// rollback: stop AND revert all targets promoted by earlier stages.
 	// +kubebuilder:default=halt
@@ -890,14 +890,14 @@ type Stage struct {
 	OnFailure StageFailurePolicy `json:"onFailure,omitempty"`
 }
 
-// PipelineSpec defines a reusable progressive delivery path as a flat DAG of stages.
-// A Pipeline is a template — referenced by Release.spec.pipelines[].
+// PromotionPlanSpec defines a reusable progressive delivery path as a flat DAG of stages.
+// A PromotionPlan is a template — referenced by PromotionRun.spec.promotionplans[].
 // Uniqueness and dependency-reference validation is enforced by the admission webhook,
 // which can perform DAG checks without the quadratic CEL cost budget constraints.
-type PipelineSpec struct {
+type PromotionPlanSpec struct {
 	// MetricPresets defines reusable metric gate snippets referenced by
 	// Stage.gate.metrics[].preset. Presets are expanded into each target's
-	// gate policy when a Release binds targets.
+	// gate policy when a PromotionRun binds targets.
 	// +optional
 	MetricPresets map[string]MetricGate `json:"metricPresets,omitempty"`
 	// Stages is the flat DAG of delivery stages.
@@ -911,44 +911,44 @@ type PipelineSpec struct {
 // +kubebuilder:resource:scope=Cluster,shortName=pl,categories=kapro-all
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// Pipeline defines a reusable progressive delivery path as a DAG of stages.
+// PromotionPlan defines a reusable progressive delivery path as a DAG of stages.
 // Each stage selects a fleet subset via label selectors and optionally gates
-// advancement with a GatePolicy. Referenced by Release.spec.pipelines[].
-// Pipeline is a pure template — it has no controller, no status, no reconciler.
-// Validation is enforced by the admission webhook. Execution state lives in Release.
-type Pipeline struct {
+// advancement with a GatePolicy. Referenced by PromotionRun.spec.promotionplans[].
+// PromotionPlan is a pure template — it has no controller, no status, no reconciler.
+// Validation is enforced by the admission webhook. Execution state lives in PromotionRun.
+type PromotionPlan struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              PipelineSpec `json:"spec,omitempty"`
+	Spec              PromotionPlanSpec `json:"spec,omitempty"`
 }
 
 // +kubebuilder:object:root=true
-type PipelineList struct {
+type PromotionPlanList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Pipeline `json:"items"`
+	Items           []PromotionPlan `json:"items"`
 }
 
-// ---- Release ----------------------------------------------------------------
+// ---- PromotionRun ----------------------------------------------------------------
 
-// ReleasePipelineRef is one node in the Release's pipeline DAG.
-// Multiple pipelines can run in parallel; DependsOn declares ordering between them.
-type ReleasePipelineRef struct {
-	// Name uniquely identifies this pipeline node within the Release.
+// PromotionPlanRef is one node in the PromotionRun's promotionplan DAG.
+// Multiple promotionplans can run in parallel; DependsOn declares ordering between them.
+type PromotionPlanRef struct {
+	// Name uniquely identifies this promotionplan node within the PromotionRun.
 	Name string `json:"name"`
-	// Pipeline is the name of the Pipeline CRD to execute.
-	Pipeline string `json:"pipeline"`
-	// DependsOn lists pipeline node names that must reach Complete before this one starts.
+	// PromotionPlan is the name of the PromotionPlan CRD to execute.
+	PromotionPlan string `json:"promotionplan"`
+	// DependsOn lists promotionplan node names that must reach Complete before this one starts.
 	// +optional
 	// +kubebuilder:validation:MaxItems=64
 	DependsOn []string `json:"dependsOn,omitempty"`
 }
 
-// StageProgress tracks the execution state of one Stage within a pipeline.
+// StageProgress tracks the execution state of one Stage within a promotionplan.
 // Designed to render well in k9s describe view — operators see per-stage
-// progress like CI pipeline steps.
+// progress like CI promotionplan steps.
 type StageProgress struct {
-	// Name is the stage name from Pipeline.spec.stages[].name.
+	// Name is the stage name from PromotionPlan.spec.stages[].name.
 	Name string `json:"name"`
 	// Phase is the current state of this stage.
 	// +kubebuilder:validation:Enum=Pending;Progressing;Complete;Failed
@@ -983,7 +983,7 @@ type StageProgress struct {
 
 // PlannerResult explains one planner decision for operator visibility.
 type PlannerResult struct {
-	// Target is the MemberCluster name affected by the decision.
+	// Target is the FleetCluster name affected by the decision.
 	Target string `json:"target,omitempty"`
 	// Plugin is the planner plugin or built-in strategy that made the decision.
 	Plugin string `json:"plugin,omitempty"`
@@ -995,26 +995,26 @@ type PlannerResult struct {
 	Message string `json:"message,omitempty"`
 }
 
-// PipelineProgress tracks the execution state of one pipeline node in a Release.
-type PipelineProgress struct {
-	// Name matches ReleasePipelineRef.name.
+// PromotionPlanProgress tracks the execution state of one promotionplan node in a PromotionRun.
+type PromotionPlanProgress struct {
+	// Name matches PromotionPlanRef.name.
 	Name string `json:"name"`
-	// Pipeline is the Pipeline CRD name.
-	Pipeline string `json:"pipeline"`
-	// Phase is the current execution state of this pipeline node.
+	// PromotionPlan is the PromotionPlan CRD name.
+	PromotionPlan string `json:"promotionplan"`
+	// Phase is the current execution state of this promotionplan node.
 	// +kubebuilder:validation:Enum=Pending;Progressing;Complete;Failed
 	Phase string `json:"phase,omitempty"`
 	// ActiveStage is the name of the currently progressing stage (or the last completed one).
 	// Gives operators a quick "where are we?" without expanding StageProgress.
 	// +optional
 	ActiveStage string `json:"activeStage,omitempty"`
-	// StageProgress summarises the state of each stage in this pipeline.
+	// StageProgress summarises the state of each stage in this promotionplan.
 	StageProgress []StageProgress `json:"stageProgress,omitempty"`
 }
 
-// ReleaseScope restricts a Release to an explicit subset of clusters.
+// PromotionRunScope restricts a PromotionRun to an explicit subset of clusters.
 // Only clusters listed in Targets will receive rollout entries.
-type ReleaseScope struct {
+type PromotionRunScope struct {
 	// Targets is the allowlist of target cluster names.
 	// Must be non-empty when Scope is set — an empty list is ignored.
 	Targets []string `json:"targets,omitempty"`
@@ -1022,57 +1022,57 @@ type ReleaseScope struct {
 
 // Uniqueness and dependency-reference validation is enforced by the admission webhook,
 // which can perform DAG checks without the quadratic CEL cost budget constraints.
-type ReleaseSpec struct {
+type PromotionRunSpec struct {
 	// Version is the default revision to deliver across the fleet.
 	// For brownfield/native sources this is the revision for every unit that is
 	// not explicitly listed in versions.
 	// +optional
 	Version string `json:"version,omitempty"`
 	// Versions maps promotion unit name to the backend-native revision to
-	// deliver. Use this when a Release promotes multiple existing Argo/Flux
+	// deliver. Use this when a PromotionRun promotes multiple existing Argo/Flux
 	// objects together without creating a synthetic application object.
 	// +optional
 	Versions map[string]string `json:"versions,omitempty"`
-	// Pipelines is the DAG of pipeline nodes.
+	// PromotionPlans is the DAG of promotionplan nodes.
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=64
-	Pipelines []ReleasePipelineRef `json:"pipelines"`
+	PromotionPlans []PromotionPlanRef `json:"promotionplans"`
 	// Suspended pauses all advancement when true.
 	// +kubebuilder:default=false
 	Suspended bool `json:"suspended,omitempty"`
-	// Scope restricts this Release to a subset of clusters.
+	// Scope restricts this PromotionRun to a subset of clusters.
 	// +optional
-	Scope *ReleaseScope `json:"scope,omitempty"`
-	// Timeout is the maximum duration for the entire Release.
+	Scope *PromotionRunScope `json:"scope,omitempty"`
+	// Timeout is the maximum duration for the entire PromotionRun.
 	// +optional
 	Timeout string `json:"timeout,omitempty"`
 }
 
-type ReleasePhase string
+type PromotionRunPhase string
 
 const (
-	ReleasePhasePending     ReleasePhase = "Pending"
-	ReleasePhaseProgressing ReleasePhase = "Progressing"
-	ReleasePhaseComplete    ReleasePhase = "Complete"
-	ReleasePhaseFailed      ReleasePhase = "Failed"
+	PromotionRunPhasePending     PromotionRunPhase = "Pending"
+	PromotionRunPhaseProgressing PromotionRunPhase = "Progressing"
+	PromotionRunPhaseComplete    PromotionRunPhase = "Complete"
+	PromotionRunPhaseFailed      PromotionRunPhase = "Failed"
 )
 
-// ReleaseStatus defines the observed state of Release.
-type ReleaseStatus struct {
-	ObservedGeneration int64        `json:"observedGeneration,omitempty"`
-	Phase              ReleasePhase `json:"phase,omitempty"`
+// PromotionRunStatus defines the observed state of PromotionRun.
+type PromotionRunStatus struct {
+	ObservedGeneration int64             `json:"observedGeneration,omitempty"`
+	Phase              PromotionRunPhase `json:"phase,omitempty"`
 	// ResolvedVersion is the OCI digest or tag resolved from spec.version.
 	// Set once in Pending and never changed.
 	ResolvedVersion string `json:"resolvedVersion,omitempty"`
 	StartedAt       string `json:"startedAt,omitempty"`
 	CompletedAt     string `json:"completedAt,omitempty"`
-	// PipelineProgress tracks execution state of each pipeline node in the DAG.
-	PipelineProgress []PipelineProgress `json:"pipelineProgress,omitempty"`
+	// PromotionPlanProgress tracks execution state of each promotionplan node in the DAG.
+	PromotionPlanProgress []PromotionPlanProgress `json:"promotionplanProgress,omitempty"`
 	// Targets is deprecated compatibility state. The authoritative per-target
-	// rollout state lives in child ReleaseTarget objects.
+	// rollout state lives in child PromotionTarget objects.
 	Targets []TargetStatus `json:"targets,omitempty"`
 	// Report is the inline delivery summary.
-	Report ReleaseReportSummary `json:"report,omitempty"`
+	Report PromotionRunReportSummary `json:"report,omitempty"`
 	// AuditTrail records immutable delivery provenance. Capped at 50 entries.
 	AuditTrail []AuditEntry       `json:"auditTrail,omitempty"`
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
@@ -1093,50 +1093,50 @@ type ReleaseStatus struct {
 // +kubebuilder:printcolumn:name="Artifacts",type=integer,JSONPath=`.status.report.totalArtifacts`,priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`,priority=0
 
-// Release is the trigger for a progressive delivery rollout across the cluster fleet.
-// It references an Artifact and a DAG of Pipelines that define the delivery path.
-// The Release controller drives the pipeline DAG, advancing each target cluster
+// PromotionRun is the trigger for a progressive delivery rollout across the cluster fleet.
+// It references an Artifact and a DAG of PromotionPlans that define the delivery path.
+// The PromotionRun controller drives the promotionplan DAG, advancing each target cluster
 // through the delivery FSM (MetricsCheck → WaitingApproval → Applying → Applied).
-// Per-target execution state lives in child ReleaseTarget objects; Release.status
-// stores only rollout summary, pipeline progress, and audit metadata.
-type Release struct {
+// Per-target execution state lives in child PromotionTarget objects; PromotionRun.status
+// stores only rollout summary, promotionplan progress, and audit metadata.
+type PromotionRun struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              ReleaseSpec   `json:"spec,omitempty"`
-	Status            ReleaseStatus `json:"status,omitempty"`
+	Spec              PromotionRunSpec   `json:"spec,omitempty"`
+	Status            PromotionRunStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
-type ReleaseList struct {
+type PromotionRunList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Release `json:"items"`
+	Items           []PromotionRun `json:"items"`
 }
 
-// ---- ReleaseTrigger ---------------------------------------------------------
+// ---- PromotionTrigger ---------------------------------------------------------
 
-// ReleaseTriggerSpec defines an autonomous source that can create Release
+// PromotionTriggerSpec defines an autonomous source that can create PromotionRun
 // objects from verified artifact changes. The controller currently provides
 // preview behavior for this API, and the API is intentionally safe by default.
 //
 // +kubebuilder:validation:XValidation:rule="self.source.type != 'oci' || has(self.source.oci)",message="source.oci is required when source.type=oci"
 // +kubebuilder:validation:XValidation:rule="!has(self.maxActive) || self.maxActive >= 1",message="maxActive must be at least 1"
-type ReleaseTriggerSpec struct {
-	// Suspended pauses source observation and release creation.
+type PromotionTriggerSpec struct {
+	// Suspended pauses source observation and promotionrun creation.
 	// +kubebuilder:default=true
 	Suspended bool `json:"suspended,omitempty"`
 	// Source configures where artifact changes are observed.
-	Source ReleaseTriggerSource `json:"source"`
-	// ReleaseTemplate defines the Release created for a verified artifact.
-	ReleaseTemplate ReleaseTriggerTemplate `json:"releaseTemplate"`
-	// Cooldown is the minimum duration between releases created by this trigger.
+	Source PromotionTriggerSource `json:"source"`
+	// PromotionRunTemplate defines the PromotionRun created for a verified artifact.
+	PromotionRunTemplate PromotionTriggerTemplate `json:"promotionrunTemplate"`
+	// Cooldown is the minimum duration between promotionruns created by this trigger.
 	// +kubebuilder:default="30m"
 	Cooldown string `json:"cooldown,omitempty"`
-	// MaxActive limits concurrently active Releases created by this trigger.
+	// MaxActive limits concurrently active PromotionRuns created by this trigger.
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:default=1
 	MaxActive int32 `json:"maxActive,omitempty"`
-	// DryRun records what would be created without creating a Release.
+	// DryRun records what would be created without creating a PromotionRun.
 	// +kubebuilder:default=false
 	DryRun bool `json:"dryRun,omitempty"`
 	// Parameters are source-specific key-value pairs for future extension.
@@ -1145,24 +1145,24 @@ type ReleaseTriggerSpec struct {
 	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
-// ReleaseTriggerSource selects the artifact source observed by a ReleaseTrigger.
-type ReleaseTriggerSource struct {
+// PromotionTriggerSource selects the artifact source observed by a PromotionTrigger.
+type PromotionTriggerSource struct {
 	// Type selects the source backend.
 	// +kubebuilder:validation:Enum=oci
 	Type string `json:"type"`
 	// OCI configures OCI registry tag observation.
 	// +optional
-	OCI *OCIReleaseTriggerSource `json:"oci,omitempty"`
+	OCI *OCIPromotionTriggerSource `json:"oci,omitempty"`
 }
 
-// OCIReleaseTriggerSource configures OCI registry observation.
-type OCIReleaseTriggerSource struct {
+// OCIPromotionTriggerSource configures OCI registry observation.
+type OCIPromotionTriggerSource struct {
 	// Repository is the OCI repository to observe.
 	Repository string `json:"repository"`
-	// TagPattern is a regular expression. Only matching tags can create releases.
+	// TagPattern is a regular expression. Only matching tags can create promotionruns.
 	// +kubebuilder:validation:MinLength=1
 	TagPattern string `json:"tagPattern"`
-	// RequireSignature requires signature verification before creating a Release.
+	// RequireSignature requires signature verification before creating a PromotionRun.
 	// +kubebuilder:default=true
 	RequireSignature bool `json:"requireSignature,omitempty"`
 	// PollInterval controls how often the source is checked.
@@ -1174,58 +1174,58 @@ type OCIReleaseTriggerSource struct {
 	SecretRef *corev1.SecretReference `json:"secretRef,omitempty"`
 }
 
-// ReleaseTriggerTemplate defines the Release created from a verified artifact.
-type ReleaseTriggerTemplate struct {
-	// NameTemplate controls the created Release name. Empty means the controller
+// PromotionTriggerTemplate defines the PromotionRun created from a verified artifact.
+type PromotionTriggerTemplate struct {
+	// NameTemplate controls the created PromotionRun name. Empty means the controller
 	// derives a deterministic name from trigger name and artifact digest.
 	// +optional
 	NameTemplate string `json:"nameTemplate,omitempty"`
-	// Pipelines is copied into Release.spec.pipelines.
+	// PromotionPlans is copied into PromotionRun.spec.promotionplans.
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=64
-	Pipelines []ReleasePipelineRef `json:"pipelines"`
-	// Suspended controls Release.spec.suspended on created Releases.
+	PromotionPlans []PromotionPlanRef `json:"promotionplans"`
+	// Suspended controls PromotionRun.spec.suspended on created PromotionRuns.
 	// Defaults to true so detection does not equal deployment.
 	// +kubebuilder:default=true
 	Suspended bool `json:"suspended,omitempty"`
-	// Scope restricts created Releases to a subset of clusters.
+	// Scope restricts created PromotionRuns to a subset of clusters.
 	// +optional
-	Scope *ReleaseScope `json:"scope,omitempty"`
-	// Timeout is copied into Release.spec.timeout.
+	Scope *PromotionRunScope `json:"scope,omitempty"`
+	// Timeout is copied into PromotionRun.spec.timeout.
 	// +optional
 	Timeout string `json:"timeout,omitempty"`
-	// Labels are added to created Releases.
+	// Labels are added to created PromotionRuns.
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
-	// Annotations are added to created Releases.
+	// Annotations are added to created PromotionRuns.
 	// +optional
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
-// ReleaseTriggerStatus records observed source state and created releases.
-type ReleaseTriggerStatus struct {
+// PromotionTriggerStatus records observed source state and created promotionruns.
+type PromotionTriggerStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 	// LastCheckedAt is the last time the source was checked.
 	LastCheckedAt string `json:"lastCheckedAt,omitempty"`
-	// LastTriggeredAt is the last time a Release was created.
+	// LastTriggeredAt is the last time a PromotionRun was created.
 	LastTriggeredAt string `json:"lastTriggeredAt,omitempty"`
 	// LastArtifact is the most recent artifact observed by the trigger.
-	LastArtifact *ReleaseTriggerArtifact `json:"lastArtifact,omitempty"`
-	// ActiveReleases lists non-terminal Releases created by this trigger.
-	ActiveReleases []string `json:"activeReleases,omitempty"`
-	// ActiveReleaseCount is the number of non-terminal Releases created by this trigger.
-	ActiveReleaseCount int32 `json:"activeReleaseCount,omitempty"`
-	// Conditions summarize readiness, suspension, verification, and release creation.
+	LastArtifact *PromotionTriggerArtifact `json:"lastArtifact,omitempty"`
+	// ActivePromotionRuns lists non-terminal PromotionRuns created by this trigger.
+	ActivePromotionRuns []string `json:"activePromotionRuns,omitempty"`
+	// ActivePromotionRunCount is the number of non-terminal PromotionRuns created by this trigger.
+	ActivePromotionRunCount int32 `json:"activePromotionRunCount,omitempty"`
+	// Conditions summarize readiness, suspension, verification, and promotionrun creation.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// ReleaseTriggerArtifact identifies an observed immutable artifact.
-type ReleaseTriggerArtifact struct {
+// PromotionTriggerArtifact identifies an observed immutable artifact.
+type PromotionTriggerArtifact struct {
 	// Tag is the source tag that matched the trigger pattern.
 	Tag string `json:"tag,omitempty"`
 	// Digest is the immutable artifact digest.
 	Digest string `json:"digest,omitempty"`
-	// Version is the value copied into Release.spec.version.
+	// Version is the value copied into PromotionRun.spec.version.
 	Version string `json:"version,omitempty"`
 	// ObservedAt is the RFC3339 time this artifact was observed.
 	ObservedAt string `json:"observedAt,omitempty"`
@@ -1240,49 +1240,49 @@ type ReleaseTriggerArtifact struct {
 // +kubebuilder:printcolumn:name="Suspended",type=boolean,JSONPath=`.spec.suspended`
 // +kubebuilder:printcolumn:name="DryRun",type=boolean,JSONPath=`.spec.dryRun`
 // +kubebuilder:printcolumn:name="LastVersion",type=string,JSONPath=`.status.lastArtifact.version`,priority=0
-// +kubebuilder:printcolumn:name="Active",type=integer,JSONPath=`.status.activeReleaseCount`,priority=1
+// +kubebuilder:printcolumn:name="Active",type=integer,JSONPath=`.status.activePromotionRunCount`,priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// ReleaseTrigger observes verified artifact changes and creates Release objects.
-// It is safe by default: triggers are suspended by default, created Releases are
+// PromotionTrigger observes verified artifact changes and creates PromotionRun objects.
+// It is safe by default: triggers are suspended by default, created PromotionRuns are
 // suspended by default, and OCI signature verification defaults to required.
-type ReleaseTrigger struct {
+type PromotionTrigger struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              ReleaseTriggerSpec   `json:"spec,omitempty"`
-	Status            ReleaseTriggerStatus `json:"status,omitempty"`
+	Spec              PromotionTriggerSpec   `json:"spec,omitempty"`
+	Status            PromotionTriggerStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
-type ReleaseTriggerList struct {
+type PromotionTriggerList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []ReleaseTrigger `json:"items"`
+	Items           []PromotionTrigger `json:"items"`
 }
 
 // ---- Per-target execution ---------------------------------------------------
 
 // TargetStatus records the rollout state of one target cluster rollout. It is
-// used as the status payload of ReleaseTarget and retained here as the
+// used as the status payload of PromotionTarget and retained here as the
 // controller's in-memory execution shape.
 type TargetStatus struct {
-	// ReleaseRef is the owning Release name.
-	ReleaseRef string `json:"releaseRef,omitempty"`
+	// PromotionRunRef is the owning PromotionRun name.
+	PromotionRunRef string `json:"promotionrunRef,omitempty"`
 	// Target is the target cluster name.
 	Target string `json:"target"`
-	// PipelineRef is the logical pipeline reference name from Release.spec.pipelines[i].name.
-	// Used to disambiguate when the same Pipeline CRD is referenced multiple times.
-	PipelineRef string `json:"pipelineRef,omitempty"`
-	// Pipeline is the Pipeline CRD name this entry belongs to.
-	Pipeline string `json:"pipeline"`
-	// Stage is the stage name within the Pipeline.
+	// PromotionPlanRef is the logical promotionplan reference name from PromotionRun.spec.promotionplans[i].name.
+	// Used to disambiguate when the same PromotionPlan CRD is referenced multiple times.
+	PromotionPlanRef string `json:"promotionplanRef,omitempty"`
+	// PromotionPlan is the PromotionPlan CRD name this entry belongs to.
+	PromotionPlan string `json:"promotionplan"`
+	// Stage is the stage name within the PromotionPlan.
 	Stage string `json:"stage"`
 	// Version is the OCI digest being delivered.
 	Version string `json:"version,omitempty"`
 	// Gate is the inline gate policy snapshot applied to this target cluster.
 	// +optional
 	Gate *GatePolicySpec `json:"gate,omitempty"`
-	// AppKey is the key used to look up the current version in MemberCluster.status.currentVersions.
+	// AppKey is the key used to look up the current version in FleetCluster.status.currentVersions.
 	// +optional
 	AppKey string `json:"appKey,omitempty"`
 	// DesiredVersions is the full appKey -> version map for this target rollout.
@@ -1320,24 +1320,24 @@ type TargetStatus struct {
 	// cycle. Guards against duplicate Apply() calls on subsequent reconciles while
 	// the cluster is converging. Reset automatically on each transition into Applying.
 	ApplyIssued bool `json:"applyIssued,omitempty"`
-	// MissingMCCount tracks consecutive reconciles where the MemberCluster was not found.
+	// MissingMCCount tracks consecutive reconciles where the FleetCluster was not found.
 	// When it reaches missingMCFailThreshold the target is transitioned to Failed.
 	MissingMCCount int `json:"missingMCCount,omitempty"`
-	// HeartbeatStaleSince records when the target's MemberCluster heartbeat first
+	// HeartbeatStaleSince records when the target's FleetCluster heartbeat first
 	// became stale. Used to implement a configurable timeout — if the heartbeat
 	// remains stale for longer than the threshold, the target is failed.
 	// Reset when the heartbeat becomes fresh again.
 	// +optional
 	HeartbeatStaleSince string `json:"heartbeatStaleSince,omitempty"`
 	// HeartbeatStaleCount tracks consecutive reconciles that observed a stale
-	// MemberCluster heartbeat. The target fails only after both the stale timeout
+	// FleetCluster heartbeat. The target fails only after both the stale timeout
 	// and the consecutive observation threshold are reached.
 	// +optional
 	HeartbeatStaleCount int `json:"heartbeatStaleCount,omitempty"`
 }
 
 // BackendObjectStatus reports the health of one backend-native object expected
-// to converge for a ReleaseTarget.
+// to converge for a PromotionTarget.
 type BackendObjectStatus struct {
 	// APIVersion is the backend object's API version.
 	// +optional
@@ -1351,7 +1351,7 @@ type BackendObjectStatus struct {
 	// Name is the backend object's name.
 	// +optional
 	Name string `json:"name,omitempty"`
-	// Unit is the PromotionSource/release unit this object belongs to.
+	// Unit is the PromotionSource/promotionrun unit this object belongs to.
 	// +optional
 	Unit string `json:"unit,omitempty"`
 	// DesiredVersion is the revision Kapro expects this object to run.
@@ -1374,25 +1374,25 @@ type BackendObjectStatus struct {
 	Message string `json:"message,omitempty"`
 }
 
-// ReleaseTargetSpec defines the immutable identity and desired intent for one
-// target rollout entry within a Release.
-type ReleaseTargetSpec struct {
-	// ReleaseRef is the owning Release name.
-	ReleaseRef string `json:"releaseRef"`
+// PromotionTargetSpec defines the immutable identity and desired intent for one
+// target rollout entry within a PromotionRun.
+type PromotionTargetSpec struct {
+	// PromotionRunRef is the owning PromotionRun name.
+	PromotionRunRef string `json:"promotionrunRef"`
 	// Target is the target cluster name.
 	Target string `json:"target"`
-	// PipelineRef is the logical pipeline reference name from Release.spec.pipelines[i].name.
-	PipelineRef string `json:"pipelineRef,omitempty"`
-	// Pipeline is the Pipeline CRD name this entry belongs to.
-	Pipeline string `json:"pipeline"`
-	// Stage is the stage name within the Pipeline.
+	// PromotionPlanRef is the logical promotionplan reference name from PromotionRun.spec.promotionplans[i].name.
+	PromotionPlanRef string `json:"promotionplanRef,omitempty"`
+	// PromotionPlan is the PromotionPlan CRD name this entry belongs to.
+	PromotionPlan string `json:"promotionplan"`
+	// Stage is the stage name within the PromotionPlan.
 	Stage string `json:"stage"`
 	// Version is the OCI digest being delivered.
 	Version string `json:"version,omitempty"`
 	// Gate is the inline gate policy snapshot applied to this target cluster.
 	// +optional
 	Gate *GatePolicySpec `json:"gate,omitempty"`
-	// AppKey is the key used to look up the current version in MemberCluster.status.currentVersions.
+	// AppKey is the key used to look up the current version in FleetCluster.status.currentVersions.
 	// +optional
 	AppKey string `json:"appKey,omitempty"`
 	// DesiredVersions is the full appKey -> version map for this target rollout.
@@ -1400,9 +1400,9 @@ type ReleaseTargetSpec struct {
 	DesiredVersions map[string]string `json:"desiredVersions,omitempty"`
 	// Rollback is true when this entry was created by a rollback trigger.
 	Rollback bool `json:"rollback,omitempty"`
-	// Cancelled is set by the parent ReleaseReconciler to signal that this
+	// Cancelled is set by the parent PromotionRunReconciler to signal that this
 	// target should stop progressing (e.g., stage halted due to peer failure).
-	// The child ReleaseTargetReconciler observes this and transitions to Failed.
+	// The child PromotionTargetReconciler observes this and transitions to Failed.
 	// This avoids cross-controller status writes — parent owns spec, child owns status.
 	// +optional
 	Cancelled bool `json:"cancelled,omitempty"`
@@ -1411,10 +1411,10 @@ type ReleaseTargetSpec struct {
 	CancelledReason string `json:"cancelledReason,omitempty"`
 }
 
-// ReleaseTargetStatus is the live execution state for one target rollout.
-type ReleaseTargetStatus struct {
+// PromotionTargetStatus is the live execution state for one target rollout.
+type PromotionTargetStatus struct {
 	TargetStatus `json:",inline"`
-	// ObservedGeneration records the ReleaseTarget generation last processed by
+	// ObservedGeneration records the PromotionTarget generation last processed by
 	// the child reconciler.
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 	// Conditions provide the Kubernetes-native readiness/reconciling/stalled contract
@@ -1422,7 +1422,7 @@ type ReleaseTargetStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 	// DecisionTrace stores the audit trail of AI agent and human decisions
 	// for this target's approval gates. Written by the Decision API (webhook
-	// server), never by the ReleaseTargetReconciler.
+	// server), never by the PromotionTargetReconciler.
 	// +optional
 	DecisionTrace *DecisionTrace `json:"decisionTrace,omitempty"`
 }
@@ -1570,9 +1570,9 @@ type HumanOverride struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=relt,categories=kapro-all
-// +kubebuilder:printcolumn:name="Release",type=string,JSONPath=`.spec.releaseRef`
+// +kubebuilder:printcolumn:name="PromotionRun",type=string,JSONPath=`.spec.promotionrunRef`
 // +kubebuilder:printcolumn:name="Target",type=string,JSONPath=`.spec.target`
-// +kubebuilder:printcolumn:name="Pipeline",type=string,JSONPath=`.spec.pipelineRef`
+// +kubebuilder:printcolumn:name="PromotionPlan",type=string,JSONPath=`.spec.promotionplanRef`
 // +kubebuilder:printcolumn:name="Stage",type=string,JSONPath=`.spec.stage`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.spec.version`
@@ -1580,75 +1580,75 @@ type HumanOverride struct {
 // +kubebuilder:printcolumn:name="Rollback",type=boolean,JSONPath=`.spec.rollback`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// ReleaseTarget is the child execution resource for one target rollout entry
-// within a Release. It is the authoritative live state store for rollout
-// execution and replaces Release.status.targets as the persistence layer.
-type ReleaseTarget struct {
+// PromotionTarget is the child execution resource for one target rollout entry
+// within a PromotionRun. It is the authoritative live state store for rollout
+// execution and replaces PromotionRun.status.targets as the persistence layer.
+type PromotionTarget struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              ReleaseTargetSpec   `json:"spec,omitempty"`
-	Status            ReleaseTargetStatus `json:"status,omitempty"`
+	Spec              PromotionTargetSpec   `json:"spec,omitempty"`
+	Status            PromotionTargetStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
-type ReleaseTargetList struct {
+type PromotionTargetList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []ReleaseTarget `json:"items"`
+	Items           []PromotionTarget `json:"items"`
 }
 
-// ReleaseReportSummary is the inline delivery summary stored in
-// Release.status.report. Counters + PendingApprovals only — per-target and
-// per-gate detail live authoritatively in child ReleaseTarget objects (not
+// PromotionRunReportSummary is the inline delivery summary stored in
+// PromotionRun.status.report. Counters + PendingApprovals only — per-target and
+// per-gate detail live authoritatively in child PromotionTarget objects (not
 // duplicated here).
-type ReleaseReportSummary struct {
-	Phase             ReleasePhase `json:"phase,omitempty"`
-	Artifact          string       `json:"artifact,omitempty"`
-	ResolvedVersion   string       `json:"resolvedVersion,omitempty"`
-	StartedAt         string       `json:"startedAt,omitempty"`
-	CompletedAt       string       `json:"completedAt,omitempty"`
-	Duration          string       `json:"duration,omitempty"`
-	TotalTargets      int          `json:"totalTargets,omitempty"`
-	SyncedTargets     int          `json:"syncedTargets,omitempty"`
-	FailedTargets     int          `json:"failedTargets,omitempty"`
-	PendingTargets    int          `json:"pendingTargets,omitempty"`
-	RolledBackTargets int          `json:"rolledBackTargets,omitempty"`
+type PromotionRunReportSummary struct {
+	Phase             PromotionRunPhase `json:"phase,omitempty"`
+	Artifact          string            `json:"artifact,omitempty"`
+	ResolvedVersion   string            `json:"resolvedVersion,omitempty"`
+	StartedAt         string            `json:"startedAt,omitempty"`
+	CompletedAt       string            `json:"completedAt,omitempty"`
+	Duration          string            `json:"duration,omitempty"`
+	TotalTargets      int               `json:"totalTargets,omitempty"`
+	SyncedTargets     int               `json:"syncedTargets,omitempty"`
+	FailedTargets     int               `json:"failedTargets,omitempty"`
+	PendingTargets    int               `json:"pendingTargets,omitempty"`
+	RolledBackTargets int               `json:"rolledBackTargets,omitempty"`
 	// TotalArtifacts is the number of artifacts in the resolved (merged) artifact list.
 	TotalArtifacts int `json:"totalArtifacts,omitempty"`
-	// DeltaArtifacts is the number of artifacts explicitly changed by this Release.
-	// For derivedFrom releases, inherited artifacts are excluded.
+	// DeltaArtifacts is the number of artifacts explicitly changed by this PromotionRun.
+	// For derivedFrom promotionruns, inherited artifacts are excluded.
 	DeltaArtifacts int `json:"deltaArtifacts,omitempty"`
-	// PendingApprovals lists "<release>-<ref>" Approval names that are
-	// awaiting human signal. Derived from ReleaseTarget objects.
+	// PendingApprovals lists "<promotionrun>-<ref>" Approval names that are
+	// awaiting human signal. Derived from PromotionTarget objects.
 	PendingApprovals []string `json:"pendingApprovals,omitempty"`
 }
 
-// AuditEntry records the immutable delivery provenance of a completed Release.
-// Stored in Release.status.auditTrail.
+// AuditEntry records the immutable delivery provenance of a completed PromotionRun.
+// Stored in PromotionRun.status.auditTrail.
 type AuditEntry struct {
 	// Artifact is the OCI artifact that was delivered.
 	Artifact string `json:"artifact"`
-	// Release is the Release name.
-	Release string `json:"release"`
+	// PromotionRun is the PromotionRun name.
+	PromotionRun string `json:"promotionrun"`
 	// DerivedFrom is the parent Artifact name.
 	// +optional
 	DerivedFrom string `json:"derivedFrom,omitempty"`
-	// ReleaseDerivedFrom is the parent Release name.
+	// PromotionRunDerivedFrom is the parent PromotionRun name.
 	// +optional
-	ReleaseDerivedFrom string `json:"releaseDerivedFrom,omitempty"`
+	PromotionRunDerivedFrom string `json:"promotionrunDerivedFrom,omitempty"`
 	// ChangedUnits lists the units that changed relative to the parent artifact.
 	// +optional
 	ChangedUnits []string `json:"changedUnits,omitempty"`
 	// Scope lists the target cluster names that were targeted. Nil = full-fleet rollout.
 	// +optional
 	Scope []string `json:"scope,omitempty"`
-	// CompletedAt is when the Release completed.
+	// CompletedAt is when the PromotionRun completed.
 	CompletedAt string `json:"completedAt,omitempty"`
 }
 
 // ---- Rollout execution ------------------------------------------------------
 
-// TargetPhase is the execution state of one target cluster rollout within a Release.
+// TargetPhase is the execution state of one target cluster rollout within a PromotionRun.
 // +kubebuilder:validation:Enum=Pending;Verification;HealthCheck;Soaking;MetricsCheck;WaitingApproval;Applying;Converged;Failed;Skipped
 type TargetPhase string
 
@@ -1663,7 +1663,7 @@ const (
 	TargetPhaseConverged       TargetPhase = "Converged"
 	TargetPhaseFailed          TargetPhase = "Failed"
 	// TargetPhaseSkipped means the target was bypassed because onFailure=continue was set
-	// on a gate policy. A skipped target does not block subsequent targets in the pipeline.
+	// on a gate policy. A skipped target does not block subsequent targets in the promotionplan.
 	TargetPhaseSkipped TargetPhase = "Skipped"
 )
 
@@ -1671,21 +1671,21 @@ const (
 
 // ApprovalSpec is the human signal that unblocks a waiting target.
 //
-// Identity is deterministic: one cluster-scoped Approval per (release, ref)
-// pair. The object name is "<release>-<ref>". For target FSM approvals, ref is
-// the stable sync key "<release>-<pipelineRef>-<stage>-<target>", so each
+// Identity is deterministic: one cluster-scoped Approval per (promotionrun, ref)
+// pair. The object name is "<promotionrun>-<ref>". For target FSM approvals, ref is
+// the stable sync key "<promotionrun>-<promotionplanRef>-<stage>-<target>", so each
 // waiting-approval step requires its own approval object.
 type ApprovalSpec struct {
-	// Release is the name of the Release this approval unblocks.
+	// PromotionRun is the name of the PromotionRun this approval unblocks.
 	// +kubebuilder:validation:Required
-	Release string `json:"release"`
-	// Target is the MemberCluster name this approval is for.
+	PromotionRun string `json:"promotionrun"`
+	// Target is the FleetCluster name this approval is for.
 	// +kubebuilder:validation:Required
 	Target string `json:"target"`
-	// Ref identifies the exact approval scope within the Release. For target FSM
-	// approvals this is the stable sync key "<release>-<pipelineRef>-<stage>-<target>".
+	// Ref identifies the exact approval scope within the PromotionRun. For target FSM
+	// approvals this is the stable sync key "<promotionrun>-<promotionplanRef>-<stage>-<target>".
 	// External integrators may use another deterministic ref as long as
-	// metadata.name is "<release>-<ref>".
+	// metadata.name is "<promotionrun>-<ref>".
 	Ref string `json:"ref"`
 	// ApprovedBy identifies the human approver. Populated by the admission
 	// webhook from the request UserInfo when empty.
@@ -1717,7 +1717,7 @@ type ApprovalStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=ap,categories=kapro-all
-// +kubebuilder:printcolumn:name="Release",type=string,JSONPath=`.spec.release`
+// +kubebuilder:printcolumn:name="PromotionRun",type=string,JSONPath=`.spec.promotionrun`
 // +kubebuilder:printcolumn:name="Target",type=string,JSONPath=`.spec.target`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Recorded",type=string,JSONPath=`.status.conditions[?(@.type=="Recorded")].status`
@@ -1726,7 +1726,7 @@ type ApprovalStatus struct {
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Approval is the human gate signal that unblocks a waiting target rollout.
-// Object name convention: "<release>-<ref>" as a cluster-scoped object.
+// Object name convention: "<promotionrun>-<ref>" as a cluster-scoped object.
 type Approval struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -1741,19 +1741,19 @@ type ApprovalList struct {
 	Items           []Approval `json:"items"`
 }
 
-// ---- MemberCluster ----------------------------------------------------------
+// ---- FleetCluster ----------------------------------------------------------
 //
-// MemberCluster is the cluster-inventory CRD for Kapro. One object per physical
+// FleetCluster is the cluster-inventory CRD for Kapro. One object per physical
 // cluster in the fleet.
 //
 // Ownership split:
 //   - spec (except desiredVersion/desiredAppKey): written by the platform team
-//   - spec.desiredVersion, spec.desiredAppKey: written by the kapro-operator (ReleaseReconciler)
+//   - spec.desiredVersion, spec.desiredAppKey: written by the kapro-operator (PromotionRunReconciler)
 //   - status: written by the cluster-controller (kapro-cluster-controller on the spoke)
 //   - status.bootstrap: written by the hub csrapproval controller during registration
 
-// MemberClusterSpec defines the desired state of a cluster in the Kapro fleet.
-type MemberClusterSpec struct {
+// FleetClusterSpec defines the desired state of a cluster in the Kapro fleet.
+type FleetClusterSpec struct {
 	// Delivery configures the backend-neutral delivery adapter for this cluster.
 	Delivery DeliverySpec `json:"delivery"`
 
@@ -1761,25 +1761,25 @@ type MemberClusterSpec struct {
 	// +optional
 	HealthCheck *HealthCheckSpec `json:"healthCheck,omitempty"`
 
-	// Topology holds hardware and scheduling metadata used by Pipeline stage selectors.
+	// Topology holds hardware and scheduling metadata used by PromotionPlan stage selectors.
 	// +optional
 	Topology *TargetTopology `json:"topology,omitempty"`
 
-	// DesiredVersion is written by the kapro-operator (ReleaseReconciler).
+	// DesiredVersion is written by the kapro-operator (PromotionRunReconciler).
 	// The cluster-controller polls this field and patches the local delivery system.
-	// Deprecated: use DesiredVersions map for multi-artifact releases.
+	// Deprecated: use DesiredVersions map for multi-artifact promotionruns.
 	// +optional
 	DesiredVersion string `json:"desiredVersion,omitempty"`
 
 	// DesiredAppKey is the key the cluster-controller uses when writing
 	// status.currentVersions. Defaults to "default".
-	// Deprecated: use DesiredVersions map for multi-artifact releases.
+	// Deprecated: use DesiredVersions map for multi-artifact promotionruns.
 	// +optional
 	DesiredAppKey string `json:"desiredAppKey,omitempty"`
 
 	// DesiredVersions is a map of appKey → version written by the kapro-operator.
 	// The cluster-controller iterates this map and patches local delivery for each changed entry.
-	// This replaces the single DesiredVersion/DesiredAppKey pair for multi-artifact releases.
+	// This replaces the single DesiredVersion/DesiredAppKey pair for multi-artifact promotionruns.
 	// +optional
 	DesiredVersions map[string]string `json:"desiredVersions,omitempty"`
 
@@ -1793,11 +1793,11 @@ type MemberClusterSpec struct {
 	// One bootstrap slot per cluster. To re-bootstrap, update tokenHash + expiresAt
 	// and the hub resets the slot automatically.
 	// +optional
-	Bootstrap *MemberClusterBootstrapSpec `json:"bootstrap,omitempty"`
+	Bootstrap *FleetClusterBootstrapSpec `json:"bootstrap,omitempty"`
 }
 
-// MemberClusterBootstrapSpec holds the one-time registration credential.
-type MemberClusterBootstrapSpec struct {
+// FleetClusterBootstrapSpec holds the one-time registration credential.
+type FleetClusterBootstrapSpec struct {
 	// TokenHash is the SHA-256 hex hash of the pre-image bootstrap token (exactly 64 lowercase hex chars).
 	// Platform team hashes the raw token and stores only the hash here; the cluster-controller
 	// presents the plaintext pre-image. This ensures tokenHash cannot be used directly.
@@ -1807,25 +1807,25 @@ type MemberClusterBootstrapSpec struct {
 
 	// ExpiresAt is the absolute UTC time after which this bootstrap slot is invalid.
 	// Set explicitly by the platform team for auditability.
-	// If empty and TTL is set, the MemberCluster controller computes it on first reconcile.
+	// If empty and TTL is set, the FleetCluster controller computes it on first reconcile.
 	// +optional
 	ExpiresAt *metav1.Time `json:"expiresAt,omitempty"`
 
 	// TTL is a convenience duration (e.g. "24h") used when ExpiresAt is not set explicitly.
-	// The MemberCluster controller writes spec.bootstrap.expiresAt from
+	// The FleetCluster controller writes spec.bootstrap.expiresAt from
 	// metadata.creationTimestamp + TTL at creation time and leaves it immutable.
 	// +optional
 	TTL string `json:"ttl,omitempty"`
 
 	// Labels are applied to bootstrap resources created during registration
 	// (ServiceAccount, kubeconfig Secret). Not used for stage selection — use
-	// MemberCluster.metadata.labels for that.
+	// FleetCluster.metadata.labels for that.
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
 }
 
-// MemberClusterStatus is the observed state — written by cluster-controller and hub.
-type MemberClusterStatus struct {
+// FleetClusterStatus is the observed state — written by cluster-controller and hub.
+type FleetClusterStatus struct {
 	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
 	Phase              ClusterPhase       `json:"phase,omitempty"`
 	Conditions         []metav1.Condition `json:"conditions,omitempty"`
@@ -1851,9 +1851,9 @@ type MemberClusterStatus struct {
 	// +optional
 	Health ClusterHealth `json:"health,omitempty"`
 
-	// ActiveRelease is the Release currently being processed for this cluster.
+	// ActivePromotionRun is the PromotionRun currently being processed for this cluster.
 	// +optional
-	ActiveRelease string `json:"activeRelease,omitempty"`
+	ActivePromotionRun string `json:"activePromotionRun,omitempty"`
 
 	// LastHeartbeat is the RFC3339 timestamp of the last cluster-controller heartbeat.
 	// Deprecated: the authoritative heartbeat source is now the coordination.k8s.io/v1
@@ -1872,11 +1872,11 @@ type MemberClusterStatus struct {
 
 	// Bootstrap tracks the one-time registration state. Written by the hub.
 	// +optional
-	Bootstrap *MemberClusterBootstrapStatus `json:"bootstrap,omitempty"`
+	Bootstrap *FleetClusterBootstrapStatus `json:"bootstrap,omitempty"`
 }
 
-// MemberClusterBootstrapStatus tracks the one-time bootstrap registration state.
-type MemberClusterBootstrapStatus struct {
+// FleetClusterBootstrapStatus tracks the one-time bootstrap registration state.
+type FleetClusterBootstrapStatus struct {
 	// Used is true once the bootstrap token has been consumed by a successful CSR.
 	Used bool `json:"used,omitempty"`
 
@@ -1902,7 +1902,7 @@ type MemberClusterBootstrapStatus struct {
 
 // IsHeartbeatFresh returns true when the cluster last reported a heartbeat
 // within the given timeout window.
-func (s *MemberClusterStatus) IsHeartbeatFresh(timeout time.Duration) bool {
+func (s *FleetClusterStatus) IsHeartbeatFresh(timeout time.Duration) bool {
 	if s.LastHeartbeat == "" {
 		return false
 	}
@@ -1916,7 +1916,7 @@ func (s *MemberClusterStatus) IsHeartbeatFresh(timeout time.Duration) bool {
 // ---- BackendProfile ---------------------------------------------------------
 
 // BackendProfileSpec registers a delivery backend profile that can be selected
-// by Kapro or MemberCluster delivery.backendRef.
+// by Kapro or FleetCluster delivery.backendRef.
 // +kubebuilder:validation:XValidation:rule="self.driver == \"external\" ? (has(self.pluginRef) && self.pluginRef != \"\") : (!has(self.pluginRef) || self.pluginRef == \"\")",message="pluginRef must be set when driver is external, and must be omitted otherwise"
 type BackendProfileSpec struct {
 	// Driver identifies the backend implementation family.
@@ -2163,28 +2163,28 @@ type PluginRegistrationList struct {
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.version`
 // +kubebuilder:printcolumn:name="Healthy",type=boolean,JSONPath=`.status.health.allWorkloadsReady`
-// +kubebuilder:printcolumn:name="Release",type=string,JSONPath=`.status.activeRelease`
+// +kubebuilder:printcolumn:name="PromotionRun",type=string,JSONPath=`.status.activePromotionRun`
 // +kubebuilder:printcolumn:name="Region",type=string,JSONPath=`.status.capabilities.region`,priority=1
 // +kubebuilder:printcolumn:name="Cloud",type=string,JSONPath=`.status.capabilities.cloud`,priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// MemberCluster represents one physical cluster in the Kapro fleet.
+// FleetCluster represents one physical cluster in the Kapro fleet.
 // It merges delivery config, fleet registration state,
 // and BootstrapToken (one-time registration credential) into a single resource.
 //
-// Labels on MemberCluster drive Pipeline stage selection (tier, region, wave, cloud, etc.).
-type MemberCluster struct {
+// Labels on FleetCluster drive PromotionPlan stage selection (tier, region, wave, cloud, etc.).
+type FleetCluster struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              MemberClusterSpec   `json:"spec,omitempty"`
-	Status            MemberClusterStatus `json:"status,omitempty"`
+	Spec              FleetClusterSpec   `json:"spec,omitempty"`
+	Status            FleetClusterStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
-type MemberClusterList struct {
+type FleetClusterList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []MemberCluster `json:"items"`
+	Items           []FleetCluster `json:"items"`
 }
 
 // ---- AgentPolicy ---------------------------------------------------------------
@@ -2230,7 +2230,7 @@ type AgentPolicySpec struct {
 	// RateLimits caps the agent's decision throughput.
 	// +optional
 	RateLimits *AgentRateLimits `json:"rateLimits,omitempty"`
-	// BlastRadius caps the maximum fleet impact per Release.
+	// BlastRadius caps the maximum fleet impact per PromotionRun.
 	// +optional
 	BlastRadius *AgentBlastRadius `json:"blastRadius,omitempty"`
 	// Audit defines what the agent must provide with each decision.
@@ -2269,7 +2269,7 @@ type AgentScope struct {
 	// ClusterSelector restricts to targets matching these labels.
 	// +optional
 	ClusterSelector *metav1.LabelSelector `json:"clusterSelector,omitempty"`
-	// ExcludeClusters is an explicit denylist of MemberCluster names.
+	// ExcludeClusters is an explicit denylist of FleetCluster names.
 	// +optional
 	ExcludeClusters []string `json:"excludeClusters,omitempty"`
 	// CountryProfiles assigns risk tiers and confidence overrides per geography.
@@ -2341,7 +2341,7 @@ type AgentRateLimits struct {
 // AgentBlastRadius caps the fleet impact of agent decisions.
 type AgentBlastRadius struct {
 	// MaxPercentOfFleet is the maximum percentage of total clusters
-	// the agent may approve in a single Release.
+	// the agent may approve in a single PromotionRun.
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=100
 	// +optional
@@ -2439,7 +2439,7 @@ type AgentPolicyList struct {
 type PromotionSourceSpec struct {
 	// BackendRef is the BackendProfile this source is normally discovered from
 	// or packaged for. Kapro uses it as metadata; delivery still comes from
-	// Kapro.spec.delivery and MemberCluster.spec.delivery.
+	// Kapro.spec.delivery and FleetCluster.spec.delivery.
 	// +optional
 	BackendRef string `json:"backendRef,omitempty"`
 	// Registries defines HelmRepository sources for generated Flux resources.
@@ -2648,8 +2648,8 @@ type KaproSpec struct {
 	// Clusters defines the target clusters in the fleet.
 	// +kubebuilder:validation:MinItems=1
 	Clusters []KaproCluster `json:"clusters"`
-	// Pipeline defines the progressive delivery stages.
-	Pipeline KaproPipeline `json:"pipeline"`
+	// PromotionPlan defines the progressive delivery stages.
+	PromotionPlan KaproPromotionPlan `json:"promotionplan"`
 	// Suspended pauses Kapro reconciliation.
 	// +kubebuilder:default=false
 	Suspended bool `json:"suspended,omitempty"`
@@ -2700,13 +2700,13 @@ type KaproClusterGCP struct {
 	Region string `json:"region,omitempty"`
 }
 
-// KaproPipeline defines the progressive delivery stages.
-type KaproPipeline struct {
+// KaproPromotionPlan defines the progressive delivery stages.
+type KaproPromotionPlan struct {
 	// Stages defines the progressive delivery wave ordering.
 	Stages []KaproStage `json:"stages"`
 }
 
-// KaproStage is one wave in the delivery pipeline.
+// KaproStage is one wave in the delivery promotionplan.
 type KaproStage struct {
 	// Name of the stage.
 	Name string `json:"name"`

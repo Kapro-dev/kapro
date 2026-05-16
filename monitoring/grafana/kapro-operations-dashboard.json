@@ -15,8 +15,8 @@
       "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
       "id": 1,
       "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"expr": "kapro_release_active_total", "legendFormat": "active", "refId": "A"}],
-      "title": "Active Releases",
+      "targets": [{"expr": "kapro_promotionrun_active_total", "legendFormat": "active", "refId": "A"}],
+      "title": "Active PromotionRuns",
       "type": "stat"
     },
     {
@@ -35,7 +35,7 @@
       "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
       "id": 3,
       "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(kapro_stage_duration_seconds_bucket[30m])) by (le, pipeline))", "legendFormat": "{{pipeline}}", "refId": "A"}],
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(kapro_stage_duration_seconds_bucket[30m])) by (le, promotionplan))", "legendFormat": "{{promotionplan}}", "refId": "A"}],
       "title": "Rollout Duration p95",
       "type": "stat"
     },
@@ -85,8 +85,8 @@
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
       "id": 8,
       "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single", "sort": "none"}},
-      "targets": [{"expr": "rate(kapro_controller_reconciles_total{controller=\"release_trigger\",result=\"error\"}[5m])", "legendFormat": "ReleaseTrigger errors", "refId": "A"}],
-      "title": "ReleaseTrigger Blocked Signal",
+      "targets": [{"expr": "rate(kapro_controller_reconciles_total{controller=\"promotion_trigger\",result=\"error\"}[5m])", "legendFormat": "PromotionTrigger errors", "refId": "A"}],
+      "title": "PromotionTrigger Blocked Signal",
       "type": "timeseries"
     },
     {
@@ -95,7 +95,7 @@
       "gridPos": {"h": 8, "w": 24, "x": 0, "y": 20},
       "id": 9,
       "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single", "sort": "none"}},
-      "targets": [{"expr": "kapro_wave_environments_promoted_total", "legendFormat": "{{release}} {{stage}}", "refId": "A"}],
+      "targets": [{"expr": "kapro_wave_environments_promoted_total", "legendFormat": "{{promotionrun}} {{stage}}", "refId": "A"}],
       "title": "Wave Progress",
       "type": "timeseries"
     }

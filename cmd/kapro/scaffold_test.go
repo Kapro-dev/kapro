@@ -22,7 +22,7 @@ func TestRunInitScaffoldArgo(t *testing.T) {
 	for _, relPath := range []string{
 		"backends/argo.yaml",
 		"sources/checkout.yaml",
-		"pipelines/checkout.yaml",
+		"promotionplans/checkout.yaml",
 		"kapro/checkout.yaml",
 		"argo/applications/checkout.yaml",
 	} {
@@ -52,7 +52,7 @@ func TestRunInitScaffoldRepoOnly(t *testing.T) {
 	for _, relPath := range []string{
 		"backends/argo.yaml",
 		"sources/checkout.yaml",
-		"pipelines/checkout.yaml",
+		"promotionplans/checkout.yaml",
 		"argo/applications/checkout.yaml",
 	} {
 		if _, err := os.Stat(filepath.Join(dir, relPath)); err != nil {
@@ -62,7 +62,7 @@ func TestRunInitScaffoldRepoOnly(t *testing.T) {
 	for _, relPath := range []string{
 		"clusters/canary.yaml",
 		"kapro/checkout.yaml",
-		"releases/checkout-release.yaml",
+		"promotionruns/checkout-promotionrun.yaml",
 	} {
 		if _, err := os.Stat(filepath.Join(dir, relPath)); !os.IsNotExist(err) {
 			t.Fatalf("%s should not be generated before clusters exist", relPath)
@@ -95,8 +95,8 @@ func TestRunConnectScaffoldFlux(t *testing.T) {
 	}
 }
 
-func TestParseReleaseVersionsRejectsDuplicateUnits(t *testing.T) {
-	if _, err := parseReleaseVersions([]string{"api=v1", "api=v2"}); err == nil {
+func TestParsePromotionRunVersionsRejectsDuplicateUnits(t *testing.T) {
+	if _, err := parsePromotionRunVersions([]string{"api=v1", "api=v2"}); err == nil {
 		t.Fatal("expected duplicate unit error")
 	}
 }

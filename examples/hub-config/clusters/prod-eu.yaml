@@ -1,5 +1,5 @@
 apiVersion: kapro.io/v1alpha1
-kind: MemberCluster
+kind: FleetCluster
 metadata:
   name: prod-eu
   labels:

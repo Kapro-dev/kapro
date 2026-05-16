@@ -30,7 +30,7 @@ const (
 // PlannerService is the Kapro Planner Interface (KPI).
 //
 // A planner plugin filters and orders eligible targets before Kapro binds
-// ReleaseTarget objects. Kapro owns release state, retries, failure policy, and
+// PromotionTarget objects. Kapro owns promotion_run state, retries, failure policy, and
 // binding. Planner plugins only return planning decisions.
 type PlannerServiceClient interface {
 	GetCapabilities(ctx context.Context, in *GetCapabilitiesRequest, opts ...grpc.CallOption) (*GetCapabilitiesResponse, error)
@@ -72,7 +72,7 @@ func (c *plannerServiceClient) Plan(ctx context.Context, in *PlanRequest, opts .
 // PlannerService is the Kapro Planner Interface (KPI).
 //
 // A planner plugin filters and orders eligible targets before Kapro binds
-// ReleaseTarget objects. Kapro owns release state, retries, failure policy, and
+// PromotionTarget objects. Kapro owns promotion_run state, retries, failure policy, and
 // binding. Planner plugins only return planning decisions.
 type PlannerServiceServer interface {
 	GetCapabilities(context.Context, *GetCapabilitiesRequest) (*GetCapabilitiesResponse, error)

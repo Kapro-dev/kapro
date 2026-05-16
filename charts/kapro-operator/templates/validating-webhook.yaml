@@ -31,7 +31,7 @@ metadata:
     cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "kapro-operator.fullname" . }}-webhook-cert
   {{- end }}
 webhooks:
-  - name: validate.membercluster.kapro.io
+  - name: validate.fleetcluster.kapro.io
     admissionReviewVersions: ["v1"]
     sideEffects: None
     failurePolicy: {{ .Values.webhook.failurePolicy }}
@@ -39,13 +39,13 @@ webhooks:
     rules:
       - apiGroups: ["kapro.io"]
         apiVersions: ["v1alpha1"]
-        resources: ["memberclusters"]
+        resources: ["fleetclusters"]
         operations: ["CREATE", "UPDATE"]
     clientConfig:
       service:
         namespace: {{ .Release.Namespace }}
         name: {{ include "kapro-operator.fullname" . }}-webhook
-        path: /validate-kapro-io-v1alpha1-membercluster
+        path: /validate-kapro-io-v1alpha1-fleetcluster
         port: 443
       {{- if not .Values.webhook.certManager.enabled }}
       caBundle: {{ .Values.webhook.caBundle | default "" | quote }}
@@ -56,7 +56,7 @@ webhooks:
           operator: NotIn
           values: [kube-system]
 
-  - name: validate.release.kapro.io
+  - name: validate.promotionrun.kapro.io
     admissionReviewVersions: ["v1"]
     sideEffects: None
     failurePolicy: {{ .Values.webhook.failurePolicy }}
@@ -64,13 +64,13 @@ webhooks:
     rules:
       - apiGroups: ["kapro.io"]
         apiVersions: ["v1alpha1"]
-        resources: ["releases"]
+        resources: ["promotionruns"]
         operations: ["CREATE", "UPDATE"]
     clientConfig:
       service:
         namespace: {{ .Release.Namespace }}
         name: {{ include "kapro-operator.fullname" . }}-webhook
-        path: /validate-kapro-io-v1alpha1-release
+        path: /validate-kapro-io-v1alpha1-promotionrun
         port: 443
       {{- if not .Values.webhook.certManager.enabled }}
       caBundle: {{ .Values.webhook.caBundle | default "" | quote }}
@@ -81,7 +81,7 @@ webhooks:
           operator: NotIn
           values: [kube-system]
 
-  - name: validate.pipeline.kapro.io
+  - name: validate.promotionplan.kapro.io
     admissionReviewVersions: ["v1"]
     sideEffects: None
     failurePolicy: {{ .Values.webhook.failurePolicy }}
@@ -89,13 +89,13 @@ webhooks:
     rules:
       - apiGroups: ["kapro.io"]
         apiVersions: ["v1alpha1"]
-        resources: ["pipelines"]
+        resources: ["promotionplans"]
         operations: ["CREATE", "UPDATE"]
     clientConfig:
       service:
         namespace: {{ .Release.Namespace }}
         name: {{ include "kapro-operator.fullname" . }}-webhook
-        path: /validate-kapro-io-v1alpha1-pipeline
+        path: /validate-kapro-io-v1alpha1-promotionplan
         port: 443
       {{- if not .Values.webhook.certManager.enabled }}
       caBundle: {{ .Values.webhook.caBundle | default "" | quote }}
@@ -138,7 +138,7 @@ metadata:
     cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "kapro-operator.fullname" . }}-webhook-cert
   {{- end }}
 webhooks:
-  - name: mutate.membercluster.kapro.io
+  - name: mutate.fleetcluster.kapro.io
     admissionReviewVersions: ["v1"]
     sideEffects: None
     failurePolicy: {{ .Values.webhook.failurePolicy }}
@@ -146,13 +146,13 @@ webhooks:
     rules:
       - apiGroups: ["kapro.io"]
         apiVersions: ["v1alpha1"]
-        resources: ["memberclusters"]
+        resources: ["fleetclusters"]
         operations: ["CREATE", "UPDATE"]
     clientConfig:
       service:
         namespace: {{ .Release.Namespace }}
         name: {{ include "kapro-operator.fullname" . }}-webhook
-        path: /mutate-kapro-io-v1alpha1-membercluster
+        path: /mutate-kapro-io-v1alpha1-fleetcluster
         port: 443
       {{- if not .Values.webhook.certManager.enabled }}
       caBundle: {{ .Values.webhook.caBundle | default "" | quote }}

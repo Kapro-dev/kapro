@@ -146,7 +146,7 @@ install_kapro() {
   "${KUBECTL[@]}" -n kapro-system set image deployment/kapro-operator manager=kapro-operator:argo-e2e
   "${KUBECTL[@]}" -n kapro-system set env deployment/kapro-operator \
     KAPRO_DEV_MODE=1 \
-    KAPRO_CONTROLLERS=release,release-target,backend-profile,approval,plugin-registration
+    KAPRO_CONTROLLERS=promotionrun,promotion-target,backend-profile,approval,plugin-registration
   "${KUBECTL[@]}" -n kapro-system rollout status deployment/kapro-operator --timeout=180s
 }
 
@@ -414,7 +414,7 @@ spec:
       project: kapro-e2e
       source:
         repoURL: ${repo_url}
-        targetRevision: "{{releaseVersion}}"
+        targetRevision: "{{promotionrunVersion}}"
         path: workloads/yaml-appset
       destination:
         server: https://kubernetes.default.svc
@@ -433,7 +433,7 @@ JSON
 
   cat >"${repo}/argocd/environments/prod.yaml" <<'YAML'
 env: prod
-releaseVersion: v1
+promotionrunVersion: v1
 YAML
 
   for unit in plain appset root-child multi-source yaml-appset; do
@@ -604,10 +604,10 @@ promote_git_mapping_to_v2() {
 }
 
 apply_kapro_rollout() {
-  echo "creating Kapro MemberCluster and Pipeline"
+  echo "creating Kapro FleetCluster and PromotionPlan"
   cat <<YAML | "${KUBECTL[@]}" apply -f -
 apiVersion: kapro.io/v1alpha1
-kind: MemberCluster
+kind: FleetCluster
 metadata:
   name: argo-e2e
   labels:
@@ -627,7 +627,7 @@ spec:
       versionField.multi-source: spec.sources[0].targetRevision
 ---
 apiVersion: kapro.io/v1alpha1
-kind: Pipeline
+kind: PromotionPlan
 metadata:
   name: argo-e2e
 spec:
@@ -638,14 +638,14 @@ spec:
           kapro.io/e2e: argo
 YAML
 
-  "${KUBECTL[@]}" patch membercluster argo-e2e --subresource=status --type=merge \
+  "${KUBECTL[@]}" patch fleetcluster argo-e2e --subresource=status --type=merge \
     -p '{"status":{"health":{"allWorkloadsReady":true,"readyWorkloads":5,"totalWorkloads":5,"message":"Argo E2E fixture reports ready"}}}'
 
-  echo "creating Kapro Release"
+  echo "creating Kapro PromotionRun"
   cat <<YAML | "${KUBECTL[@]}" apply -f -
 ---
 apiVersion: kapro.io/v1alpha1
-kind: Release
+kind: PromotionRun
 metadata:
   name: argo-e2e
 spec:
@@ -655,9 +655,9 @@ spec:
     root-child: v2
     multi-source: v2
     yaml-appset: v2
-  pipelines:
+  promotionplans:
     - name: argo
-      pipeline: argo-e2e
+      promotionplan: argo-e2e
   timeout: 10m
 YAML
 }
@@ -685,36 +685,36 @@ wait_for_application() {
   exit 1
 }
 
-wait_for_release_complete() {
-  echo "waiting for Kapro Release to complete"
+wait_for_promotionrun_complete() {
+  echo "waiting for Kapro PromotionRun to complete"
   for _ in $(seq 1 180); do
     local phase
-    phase="$("${KUBECTL[@]}" get release argo-e2e -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+    phase="$("${KUBECTL[@]}" get promotionrun argo-e2e -o jsonpath='{.status.phase}' 2>/dev/null || true)"
     if [ "${phase}" = "Complete" ]; then
       return
     fi
     if [ "${phase}" = "Failed" ]; then
-      "${KUBECTL[@]}" get release argo-e2e -o yaml || true
-      "${KUBECTL[@]}" get releasetargets -o yaml || true
-      echo "Kapro Release failed" >&2
+      "${KUBECTL[@]}" get promotionrun argo-e2e -o yaml || true
+      "${KUBECTL[@]}" get promotiontargets -o yaml || true
+      echo "Kapro PromotionRun failed" >&2
       exit 1
     fi
     sleep 2
   done
-  "${KUBECTL[@]}" get release argo-e2e -o yaml || true
-  "${KUBECTL[@]}" get releasetargets -o yaml || true
-  echo "timed out waiting for Kapro Release to complete" >&2
+  "${KUBECTL[@]}" get promotionrun argo-e2e -o yaml || true
+  "${KUBECTL[@]}" get promotiontargets -o yaml || true
+  echo "timed out waiting for Kapro PromotionRun to complete" >&2
   exit 1
 }
 
 assert_backend_objects_reported() {
   local names count
-  names="$("${KUBECTL[@]}" get releasetargets -o jsonpath='{range .items[*]}{.status.backendObjects[*].name}{"\n"}{end}' || true)"
+  names="$("${KUBECTL[@]}" get promotiontargets -o jsonpath='{range .items[*]}{.status.backendObjects[*].name}{"\n"}{end}' || true)"
   count="$(printf "%s\n" "${names}" | tr ' ' '\n' | grep -E 'checkout-(plain|appset-prod|root-child|multi-source|yaml-appset-prod)' || true)"
   count="$(printf "%s\n" "${count}" | sed '/^$/d' | wc -l | tr -d ' ')"
   if [ "${count}" -lt 5 ]; then
-    "${KUBECTL[@]}" get releasetargets -o yaml || true
-    echo "expected ReleaseTarget.status.backendObjects to include all five Argo Applications" >&2
+    "${KUBECTL[@]}" get promotiontargets -o yaml || true
+    echo "expected PromotionTarget.status.backendObjects to include all five Argo Applications" >&2
     exit 1
   fi
 }
@@ -759,7 +759,7 @@ run() {
   wait_for_application checkout-appset-prod v2
   wait_for_application checkout-multi-source v2
   wait_for_application checkout-yaml-appset-prod v2
-  wait_for_release_complete
+  wait_for_promotionrun_complete
   assert_backend_objects_reported
 
   status
@@ -773,7 +773,7 @@ run() {
 status() {
   echo
   echo "Kapro resources"
-  "${KUBECTL[@]}" get backendprofiles,promotionsources,memberclusters,pipelines,releases,releasetargets -o wide || true
+  "${KUBECTL[@]}" get backendprofiles,promotionsources,fleetclusters,promotionplans,promotionruns,promotiontargets -o wide || true
   echo
   echo "Argo Applications"
   "${KUBECTL[@]}" -n "${ARGO_NAMESPACE}" get applications,applicationsets -o wide || true

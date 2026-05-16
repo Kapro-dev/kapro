@@ -13,27 +13,27 @@ Zero Terraform required — infra team handles the IAM setup.
 
 The infra team must create two GSAs per spoke and bind them:
 
-### 1. Pipeline GSA (for CI — runs `kapro cluster join`)
+### 1. PromotionPlan GSA (for CI — runs `kapro cluster join`)
 
 ```bash
-# Create pipeline SA in hub project
-gcloud iam service-accounts create kapro-pipeline \
+# Create promotionplan SA in hub project
+gcloud iam service-accounts create kapro-promotionplan \
   --project=$HUB_PROJECT \
-  --display-name="Kapro pipeline — registers spoke clusters"
+  --display-name="Kapro promotionplan — registers spoke clusters"
 
-# Hub project: read/write MemberCluster, read bootstrap Secrets
+# Hub project: read/write FleetCluster, read bootstrap Secrets
 gcloud projects add-iam-policy-binding $HUB_PROJECT \
-  --member="serviceAccount:kapro-pipeline@$HUB_PROJECT.iam.gserviceaccount.com" \
+  --member="serviceAccount:kapro-promotionplan@$HUB_PROJECT.iam.gserviceaccount.com" \
   --role="roles/container.developer"
 
 # Cross-project: apply spoke manifests in each spoke project
 gcloud projects add-iam-policy-binding $SPOKE_PROJECT \
-  --member="serviceAccount:kapro-pipeline@$HUB_PROJECT.iam.gserviceaccount.com" \
+  --member="serviceAccount:kapro-promotionplan@$HUB_PROJECT.iam.gserviceaccount.com" \
   --role="roles/container.developer"
 
 # WIF binding (GitHub Actions example)
 gcloud iam service-accounts add-iam-policy-binding \
-  kapro-pipeline@$HUB_PROJECT.iam.gserviceaccount.com \
+  kapro-promotionplan@$HUB_PROJECT.iam.gserviceaccount.com \
   --role="roles/iam.workloadIdentityUser" \
   --member="principalSet://iam.googleapis.com/$WIF_POOL/attribute.repository/$GITHUB_REPO"
 ```
@@ -90,7 +90,7 @@ gcloud iam service-accounts add-iam-policy-binding \
   --labels        tier=prod,country=de
 ```
 
-## 33-country pipeline loop
+## 33-country promotionplan loop
 
 ```bash
 for COUNTRY in de fi fr pl nl se no dk es pt it; do
@@ -116,5 +116,5 @@ The cluster-controller pod connects to the hub Kubernetes API using:
 2. Ongoing: mTLS client certificate issued by hub
 
 GCP Workload Identity only covers:
-- Pipeline authenticating to GCP to get kubeconfigs
+- PromotionPlan authenticating to GCP to get kubeconfigs
 - Pod pulling images from Artifact Registry (no imagePullSecrets)

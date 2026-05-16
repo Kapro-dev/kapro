@@ -2,7 +2,7 @@
 # register-spoke.sh — register a GKE spoke cluster with Kapro hub using Workload Identity.
 #
 # Handles both same-project and cross-project scenarios.
-# Called by CI pipeline (Cloud Build / GitHub Actions) after WIF authentication.
+# Called by CI promotionplan (Cloud Build / GitHub Actions) after WIF authentication.
 #
 # Usage:
 #   register-spoke.sh \

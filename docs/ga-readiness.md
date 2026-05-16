@@ -1,19 +1,19 @@
 # GA Readiness
 
-Kapro is not GA while it uses `kapro.io/v1alpha1` APIs and lacks release,
+Kapro is not GA while it uses `kapro.io/v1alpha1` APIs and lacks promotionrun,
 upgrade, soak, and audit evidence. This document is the GA evidence matrix.
 
 ## Current State
 
 | Area | Status | Evidence |
 |---|---|---|
-| Install path | Alpha production-capable | Helm/Kustomize render checks, Kind demo, release smoke, and install docs. |
+| Install path | Alpha production-capable | Helm/Kustomize render checks, Kind demo, promotionrun smoke, and install docs. |
 | Argo brownfield onboarding | Alpha production-capable | Live Argo E2E covers plain Applications, multi-source Applications, app-of-apps child Applications, and ApplicationSet Git generator inputs. |
 | Flux brownfield onboarding | Alpha production-capable | Flux Git-native E2E and live Flux controller E2E cover source and workload version fields. |
 | Plugin runtime | Preview | `PluginRegistration` readiness probes hot-load actuator, gate, and planner adapters when `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. |
-| Planner runtime dispatch | Preview | KPI plugins can filter, defer, and score targets through the release planner while Kapro owns binding and state. |
+| Planner runtime dispatch | Preview | KPI plugins can filter, defer, and score targets through the promotionrun planner while Kapro owns binding and state. |
 | API version | Not GA | Public Kubernetes APIs are still `kapro.io/v1alpha1`. |
-| Upgrade history | Not GA | No tagged release-to-release upgrade history exists yet. |
+| Upgrade history | Not GA | No tagged promotionrun-to-promotionrun upgrade history exists yet. |
 | Production soak | Not GA | Local and synthetic evidence exists, but broad customer/operator soak is not yet published. |
 | Security audit | Not GA | Threat model and security docs exist, but no independent audit has been published. |
 
@@ -26,9 +26,9 @@ Kapro can be proposed for GA only after all of these gates are satisfied:
 - At least one real tagged upgrade path has been validated and documented in
   release notes.
 - Argo and Flux onboarding paths have passing live E2E evidence for the tagged
-  release.
+  promotionrun.
 - Large-fleet limits are documented with benchmark evidence for repository
-  size, backend object count, target count, and release fanout.
+  size, backend object count, target count, and promotionrun fanout.
 - Plugin compatibility, hot reload, and KPI planner dispatch have conformance
   and operational evidence.
 - Security boundaries, hub gateway exposure, plugin trust, RBAC, and secret
@@ -44,7 +44,7 @@ Do not claim:
 - Stable API compatibility.
 - Independently audited security.
 - Broad real-world soak.
-- Published upgrade compatibility across historical releases.
+- Published upgrade compatibility across historical promotionruns.
 
 The correct public claim remains:
 

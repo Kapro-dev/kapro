@@ -7,7 +7,7 @@ Grafana stack.
 | --- | --- |
 | `prometheus-rules.yaml` | PrometheusRule example for Kapro alerts. |
 | `grafana-dashboard.json` | Grafana dashboard that uses Kapro metrics and kube-state-metrics CRD state metrics. |
-| `kube-state-metrics-crd-config.yaml` | CustomResourceStateMetrics example for `Release`, `ReleaseTrigger`, and `PluginRegistration` status. |
+| `kube-state-metrics-crd-config.yaml` | CustomResourceStateMetrics example for `PromotionRun`, `PromotionTrigger`, and `PluginRegistration` status. |
 
 The PrometheusRule and dashboard assume the CRD state metrics from
 `kube-state-metrics-crd-config.yaml` are installed. Adjust namespaces, labels,

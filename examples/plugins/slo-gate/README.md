@@ -1,7 +1,7 @@
 # SLO Gate Plugin
 
 This example implements the Kapro Gate Interface for SLO-style promotion
-checks. It runs as a gRPC server and returns a gate phase for one release target.
+checks. It runs as a gRPC server and returns a gate phase for one promotion target.
 
 ## Behavior
 

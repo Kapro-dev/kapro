@@ -14,18 +14,18 @@ import (
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
 
-// TestE2E_Release_Sync_Converged is the full integration test of
+// TestE2E_PromotionRun_Sync_Converged is the full integration test of
 // the Kapro state machine chain:
 //
-//	Release → (Progressing) walks Pipeline DAG, creates Syncs per stage per env
+//	PromotionRun → (Progressing) walks PromotionPlan DAG, creates Syncs per stage per env
 //	       → Sync (dev stage) — fake actuator signals Converged
 //	       → dev stage Complete; prod stage (dependsOn dev) starts
 //	       → Syncs for prod stage Converge
-//	       → Pipeline node reaches Complete
-//	       → Release reaches Complete
+//	       → PromotionPlan node reaches Complete
+//	       → PromotionRun reaches Complete
 //
 // Requires KUBEBUILDER_ASSETS to be set — skipped otherwise.
-func TestE2E_Release_Sync_Converged(t *testing.T) {
+func TestE2E_PromotionRun_Sync_Converged(t *testing.T) {
 	ctx, cancel, c := setupEnv(t)
 	defer cancel()
 
@@ -37,17 +37,17 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 	appKey := "default"
 	versions := map[string]string{appKey: resolvedVersion}
 
-	// ── 2 + 3. Create MemberClusters with tier labels and live heartbeat ─────
-	// MemberCluster.Name must match Sync.Spec.Target (looked up by name).
-	// Tier labels are used by pipeline stage selectors.
+	// ── 2 + 3. Create FleetClusters with tier labels and live heartbeat ─────
+	// FleetCluster.Name must match Sync.Spec.Target (looked up by name).
+	// Tier labels are used by promotionplan stage selectors.
 	// SyncReconciler.handlePending checks LastHeartbeat freshness.
 	// handleApplying checks CurrentVersions[appKey] == sync.Spec.Version.
-	devReg := &kaprov1alpha1.MemberCluster{
+	devReg := &kaprov1alpha1.FleetCluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "e2e-dev-" + suffix,
 			Labels: map[string]string{"tier": "dev", "e2e": suffix},
 		},
-		Spec: kaprov1alpha1.MemberClusterSpec{
+		Spec: kaprov1alpha1.FleetClusterSpec{
 			Delivery: kaprov1alpha1.DeliverySpec{
 				Mode: "pull", BackendRef: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "test-repo"},
@@ -57,12 +57,12 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 	mustCreate(t, ctx, c, devReg)
 	patchRegistrationConverged(t, ctx, c, devReg, versions)
 
-	prodReg := &kaprov1alpha1.MemberCluster{
+	prodReg := &kaprov1alpha1.FleetCluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "e2e-prod-" + suffix,
 			Labels: map[string]string{"tier": "prod", "e2e": suffix},
 		},
-		Spec: kaprov1alpha1.MemberClusterSpec{
+		Spec: kaprov1alpha1.FleetClusterSpec{
 			Delivery: kaprov1alpha1.DeliverySpec{
 				Mode: "pull", BackendRef: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "test-repo"},
@@ -72,11 +72,11 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 	mustCreate(t, ctx, c, prodReg)
 	patchRegistrationConverged(t, ctx, c, prodReg, versions)
 
-	// ── 4. Create Pipeline ────────────────────────────────────────────────────
+	// ── 4. Create PromotionPlan ────────────────────────────────────────────────────
 	// Two stages: "dev" runs first, "prod" depends on it.
-	pipeline := &kaprov1alpha1.Pipeline{
-		ObjectMeta: metav1.ObjectMeta{Name: "e2e-pipeline-" + suffix},
-		Spec: kaprov1alpha1.PipelineSpec{
+	promotionplan := &kaprov1alpha1.PromotionPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "e2e-promotionplan-" + suffix},
+		Spec: kaprov1alpha1.PromotionPlanSpec{
 			Stages: []kaprov1alpha1.Stage{
 				{
 					Name:     "dev",
@@ -90,70 +90,70 @@ func TestE2E_Release_Sync_Converged(t *testing.T) {
 			},
 		},
 	}
-	mustCreate(t, ctx, c, pipeline)
+	mustCreate(t, ctx, c, promotionplan)
 
-	// ── 5. Create Release ─────────────────────────────────────────────────────
-	// Single pipeline node referencing the pipeline CRD.
-	release := &kaprov1alpha1.Release{
-		ObjectMeta: metav1.ObjectMeta{Name: "e2e-release-" + suffix, Namespace: ns},
-		Spec: kaprov1alpha1.ReleaseSpec{
+	// ── 5. Create PromotionRun ─────────────────────────────────────────────────────
+	// Single promotionplan node referencing the promotionplan CRD.
+	promotionrun := &kaprov1alpha1.PromotionRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "e2e-promotionrun-" + suffix, Namespace: ns},
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: resolvedVersion,
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
 				{
-					Name:     "initial",
-					Pipeline: pipeline.Name,
+					Name:          "initial",
+					PromotionPlan: promotionplan.Name,
 				},
 			},
 		},
 	}
-	mustCreate(t, ctx, c, release)
+	mustCreate(t, ctx, c, promotionrun)
 
-	releaseKey := types.NamespacedName{Name: release.Name, Namespace: ns}
+	promotionrunKey := types.NamespacedName{Name: promotionrun.Name, Namespace: ns}
 
-	// ── 6. Wait: Release leaves Pending ──────────────────────────────────────
+	// ── 6. Wait: PromotionRun leaves Pending ──────────────────────────────────────
 	eventually(t, func() bool {
-		r := getRelease(ctx, c, releaseKey)
-		return r.Status.Phase != "" && r.Status.Phase != kaprov1alpha1.ReleasePhasePending
-	}, "release should leave Pending")
-	t.Logf("release phase after Pending: %s", getRelease(ctx, c, releaseKey).Status.Phase)
+		r := getPromotionRun(ctx, c, promotionrunKey)
+		return r.Status.Phase != "" && r.Status.Phase != kaprov1alpha1.PromotionRunPhasePending
+	}, "promotionrun should leave Pending")
+	t.Logf("promotionrun phase after Pending: %s", getPromotionRun(ctx, c, promotionrunKey).Status.Phase)
 
-	// ── 7. Wait: at least one ReleaseTarget child is created ─
+	// ── 7. Wait: at least one PromotionTarget child is created ─
 	eventually(t, func() bool {
-		return len(listReleaseTargets(t, ctx, c, release.Name, release.Namespace)) > 0
-	}, "at least one ReleaseTarget should be created")
+		return len(listPromotionTargets(t, ctx, c, promotionrun.Name, promotionrun.Namespace)) > 0
+	}, "at least one PromotionTarget should be created")
 
-	// ── 8. Keep MemberClusters fresh so Syncs can converge ──────────────────
+	// ── 8. Keep FleetClusters fresh so Syncs can converge ──────────────────
 	patchRegistrationConverged(t, ctx, c, devReg, versions)
 	patchRegistrationConverged(t, ctx, c, prodReg, versions)
 
-	// ── 9. Wait: Release reaches Complete ────────────────────────────────────
+	// ── 9. Wait: PromotionRun reaches Complete ────────────────────────────────────
 	// The full chain (dev stage + prod stage, each going through env FSM states)
 	// can take >20s; use a longer deadline here.
 	eventuallyLong(t, func() bool {
 		// Log target phases to aid debugging.
-		for _, target := range listReleaseTargets(t, ctx, c, release.Name, release.Namespace) {
-			t.Logf("  Target %s/%s/%s phase=%s", target.Spec.PipelineRef, target.Spec.Stage, target.Spec.Target, target.Status.Phase)
+		for _, target := range listPromotionTargets(t, ctx, c, promotionrun.Name, promotionrun.Namespace) {
+			t.Logf("  Target %s/%s/%s phase=%s", target.Spec.PromotionPlanRef, target.Spec.Stage, target.Spec.Target, target.Status.Phase)
 		}
-		r := getRelease(ctx, c, releaseKey)
-		t.Logf("  Release phase=%s", r.Status.Phase)
-		return r.Status.Phase == kaprov1alpha1.ReleasePhaseComplete
-	}, "release should reach Complete — full chain Release→Env FSM→Converged→Complete")
+		r := getPromotionRun(ctx, c, promotionrunKey)
+		t.Logf("  PromotionRun phase=%s", r.Status.Phase)
+		return r.Status.Phase == kaprov1alpha1.PromotionRunPhaseComplete
+	}, "promotionrun should reach Complete — full chain PromotionRun→Env FSM→Converged→Complete")
 
-	t.Logf("✅ E2E chain complete — Release %s reached Complete", release.Name)
+	t.Logf("✅ E2E chain complete — PromotionRun %s reached Complete", promotionrun.Name)
 }
 
 // TestE2E_HaltPolicy_CancelsSiblingTarget verifies the halt policy end-to-end:
 //
-//  1. A Release with one stage targeting two clusters starts progressing.
+//  1. A PromotionRun with one stage targeting two clusters starts progressing.
 //  2. One target's status is patched to Failed (simulating actuator failure).
-//  3. ReleaseReconciler detects the failure and sets spec.cancelled=true on the
-//     sibling ReleaseTarget (parent owns spec).
-//  4. ReleaseTargetReconciler observes spec.cancelled and transitions the sibling
+//  3. PromotionRunReconciler detects the failure and sets spec.cancelled=true on the
+//     sibling PromotionTarget (parent owns spec).
+//  4. PromotionTargetReconciler observes spec.cancelled and transitions the sibling
 //     to Failed (child owns status).
-//  5. Release reaches Failed.
+//  5. PromotionRun reaches Failed.
 //
 // This test requires envtest because cancelPendingStageTargets uses field-indexed
-// List + Update on cluster-scoped ReleaseTarget objects.
+// List + Update on cluster-scoped PromotionTarget objects.
 func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 	if os.Getenv("KAPRO_RUN_HALT_POLICY_E2E") != "1" {
 		t.Skip("skipped by default: set KAPRO_RUN_HALT_POLICY_E2E=1 to run the flaky halt-policy envtest")
@@ -167,25 +167,25 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 	// ── 1. Define version ───────────────────────────────────────────────────
 	haltVersion := "172.17.0.1:5000/halt-bundle@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
-	// ── 2. Create two MemberClusters matching the same stage ─────────────────
-	mc1 := &kaprov1alpha1.MemberCluster{
+	// ── 2. Create two FleetClusters matching the same stage ─────────────────
+	mc1 := &kaprov1alpha1.FleetCluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "halt-cluster1-" + suffix,
 			Labels: map[string]string{"tier": "halt", "halt-test": suffix},
 		},
-		Spec: kaprov1alpha1.MemberClusterSpec{
+		Spec: kaprov1alpha1.FleetClusterSpec{
 			Delivery: kaprov1alpha1.DeliverySpec{
 				Mode: "pull", BackendRef: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "test-repo"},
 			},
 		},
 	}
-	mc2 := &kaprov1alpha1.MemberCluster{
+	mc2 := &kaprov1alpha1.FleetCluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "halt-cluster2-" + suffix,
 			Labels: map[string]string{"tier": "halt", "halt-test": suffix},
 		},
-		Spec: kaprov1alpha1.MemberClusterSpec{
+		Spec: kaprov1alpha1.FleetClusterSpec{
 			Delivery: kaprov1alpha1.DeliverySpec{
 				Mode: "pull", BackendRef: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "test-repo"},
@@ -197,10 +197,10 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 	// Don't converge either cluster — targets will stay in early FSM states.
 	// We'll patch one target to Failed manually after it's created.
 
-	// ── 3. Create Pipeline: one stage, default onFailure (halt) ──────────────
-	pipeline := &kaprov1alpha1.Pipeline{
-		ObjectMeta: metav1.ObjectMeta{Name: "halt-pipeline-" + suffix},
-		Spec: kaprov1alpha1.PipelineSpec{
+	// ── 3. Create PromotionPlan: one stage, default onFailure (halt) ──────────────
+	promotionplan := &kaprov1alpha1.PromotionPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "halt-promotionplan-" + suffix},
+		Spec: kaprov1alpha1.PromotionPlanSpec{
 			Stages: []kaprov1alpha1.Stage{{
 				Name:     "deploy",
 				Selector: metav1.LabelSelector{MatchLabels: map[string]string{"halt-test": suffix}},
@@ -208,33 +208,33 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 			}},
 		},
 	}
-	mustCreate(t, ctx, c, pipeline)
+	mustCreate(t, ctx, c, promotionplan)
 
-	// ── 4. Create Release ────────────────────────────────────────────────────
-	release := &kaprov1alpha1.Release{
-		ObjectMeta: metav1.ObjectMeta{Name: "halt-release-" + suffix, Namespace: ns},
-		Spec: kaprov1alpha1.ReleaseSpec{
+	// ── 4. Create PromotionRun ────────────────────────────────────────────────────
+	promotionrun := &kaprov1alpha1.PromotionRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "halt-promotionrun-" + suffix, Namespace: ns},
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: haltVersion,
-			Pipelines: []kaprov1alpha1.ReleasePipelineRef{
-				{Name: "initial", Pipeline: pipeline.Name},
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
+				{Name: "initial", PromotionPlan: promotionplan.Name},
 			},
 		},
 	}
-	mustCreate(t, ctx, c, release)
+	mustCreate(t, ctx, c, promotionrun)
 
-	releaseKey := types.NamespacedName{Name: release.Name, Namespace: ns}
+	promotionrunKey := types.NamespacedName{Name: promotionrun.Name, Namespace: ns}
 
-	// ── 5. Wait for both ReleaseTargets to be created ────────────────────────
+	// ── 5. Wait for both PromotionTargets to be created ────────────────────────
 	eventually(t, func() bool {
-		targets := listReleaseTargets(t, ctx, c, release.Name, ns)
+		targets := listPromotionTargets(t, ctx, c, promotionrun.Name, ns)
 		return len(targets) >= 2
-	}, "two ReleaseTargets should be created")
+	}, "two PromotionTargets should be created")
 
-	// ── 6. Patch one ReleaseTarget status to Failed (simulate failure)
+	// ── 6. Patch one PromotionTarget status to Failed (simulate failure)
 	// Wait a moment for the controller to process, then patch.
 	time.Sleep(500 * time.Millisecond)
-	targets := listReleaseTargets(t, ctx, c, release.Name, ns)
-	var victim *kaprov1alpha1.ReleaseTarget
+	targets := listPromotionTargets(t, ctx, c, promotionrun.Name, ns)
+	var victim *kaprov1alpha1.PromotionTarget
 	for i := range targets {
 		if targets[i].Spec.Target == mc1.Name {
 			victim = &targets[i]
@@ -242,20 +242,20 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 		}
 	}
 	if victim == nil {
-		t.Fatal("could not find ReleaseTarget for " + mc1.Name)
+		t.Fatal("could not find PromotionTarget for " + mc1.Name)
 	}
 	patch := client.MergeFrom(victim.DeepCopy())
 	victim.Status.Phase = kaprov1alpha1.TargetPhaseFailed
 	victim.Status.Message = "deploy failed: simulated"
 	victim.Status.FinishedAt = time.Now().UTC().Format(time.RFC3339)
 	if err := c.Status().Patch(ctx, victim, patch); err != nil {
-		t.Fatalf("patch ReleaseTarget to Failed: %v", err)
+		t.Fatalf("patch PromotionTarget to Failed: %v", err)
 	}
 	t.Logf("patched %s to Failed", victim.Name)
 
-	// Nudge the Release to trigger re-aggregation of child statuses.
-	var rel kaprov1alpha1.Release
-	if err := c.Get(ctx, releaseKey, &rel); err == nil {
+	// Nudge the PromotionRun to trigger re-aggregation of child statuses.
+	var rel kaprov1alpha1.PromotionRun
+	if err := c.Get(ctx, promotionrunKey, &rel); err == nil {
 		relPatch := client.MergeFrom(rel.DeepCopy())
 		if rel.Annotations == nil {
 			rel.Annotations = map[string]string{}
@@ -264,19 +264,19 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 		_ = c.Patch(ctx, &rel, relPatch)
 	}
 
-	// ── 7. Wait: sibling ReleaseTarget gets spec.cancelled=true ──────────────
+	// ── 7. Wait: sibling PromotionTarget gets spec.cancelled=true ──────────────
 	eventually(t, func() bool {
-		targets := listReleaseTargets(t, ctx, c, release.Name, ns)
+		targets := listPromotionTargets(t, ctx, c, promotionrun.Name, ns)
 		for _, rt := range targets {
 			if rt.Spec.Target == mc2.Name && rt.Spec.Cancelled {
 				return true
 			}
 		}
 		return false
-	}, "sibling ReleaseTarget should have spec.cancelled=true")
+	}, "sibling PromotionTarget should have spec.cancelled=true")
 
 	// ── 8. Verify sibling's cancellation reason is set ───────────────────────
-	cancelTargets := listReleaseTargets(t, ctx, c, release.Name, ns)
+	cancelTargets := listPromotionTargets(t, ctx, c, promotionrun.Name, ns)
 	for _, rt := range cancelTargets {
 		if rt.Spec.Target == mc2.Name {
 			if rt.Spec.CancelledReason == "" {
@@ -287,9 +287,9 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 		}
 	}
 
-	// ── 9. Wait: cancelled sibling transitions to Failed via ReleaseTargetReconciler
+	// ── 9. Wait: cancelled sibling transitions to Failed via PromotionTargetReconciler
 	eventually(t, func() bool {
-		targets := listReleaseTargets(t, ctx, c, release.Name, ns)
+		targets := listPromotionTargets(t, ctx, c, promotionrun.Name, ns)
 		for _, rt := range targets {
 			if rt.Spec.Target == mc2.Name {
 				return rt.Status.Phase == kaprov1alpha1.TargetPhaseFailed
@@ -298,14 +298,14 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 		return false
 	}, "cancelled sibling should transition to Failed")
 
-	// ── 10. Wait: Release reaches Failed ─────────────────────────────────────
+	// ── 10. Wait: PromotionRun reaches Failed ─────────────────────────────────────
 	eventually(t, func() bool {
-		r := getRelease(ctx, c, releaseKey)
-		return r.Status.Phase == kaprov1alpha1.ReleasePhaseFailed
-	}, "release should reach Failed after halt policy")
+		r := getPromotionRun(ctx, c, promotionrunKey)
+		return r.Status.Phase == kaprov1alpha1.PromotionRunPhaseFailed
+	}, "promotionrun should reach Failed after halt policy")
 
 	// ── 11. Verify the trigger target is still Failed (not overwritten) ──────
-	finalTargets := listReleaseTargets(t, ctx, c, release.Name, ns)
+	finalTargets := listPromotionTargets(t, ctx, c, promotionrun.Name, ns)
 	for _, rt := range finalTargets {
 		if rt.Spec.Target == mc1.Name {
 			if rt.Status.Phase != kaprov1alpha1.TargetPhaseFailed {
@@ -315,27 +315,27 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 		}
 	}
 
-	t.Logf("halt policy verified: trigger=%s(Failed), sibling=%s(cancelled→Failed), Release=Failed",
+	t.Logf("halt policy verified: trigger=%s(Failed), sibling=%s(cancelled→Failed), PromotionRun=Failed",
 		mc1.Name, mc2.Name)
 }
 
 // patchRegistrationConverged sets a fresh heartbeat + Converged phase on a
-// MemberCluster, simulating what cluster-controller writes after deployment.
+// FleetCluster, simulating what cluster-controller writes after deployment.
 // currentVersions should map appKey→version for all syncs that should converge.
-func patchRegistrationConverged(t *testing.T, ctx context.Context, c client.Client, reg *kaprov1alpha1.MemberCluster, currentVersions map[string]string) {
+func patchRegistrationConverged(t *testing.T, ctx context.Context, c client.Client, reg *kaprov1alpha1.FleetCluster, currentVersions map[string]string) {
 	t.Helper()
 	// Retry Get — caching client may not have synced immediately after Create.
-	latest := &kaprov1alpha1.MemberCluster{}
+	latest := &kaprov1alpha1.FleetCluster{}
 	eventually(t, func() bool {
 		err := c.Get(ctx, types.NamespacedName{Name: reg.Name}, latest)
 		return err == nil
-	}, "MemberCluster "+reg.Name+" to appear in cache")
+	}, "FleetCluster "+reg.Name+" to appear in cache")
 	patch := client.MergeFrom(latest.DeepCopy())
 	latest.Status.LastHeartbeat = time.Now().UTC().Format(time.RFC3339)
 	latest.Status.Phase = kaprov1alpha1.ClusterPhaseConverged
 	latest.Status.CurrentVersions = currentVersions
 	latest.Status.Health = kaprov1alpha1.ClusterHealth{AllWorkloadsReady: true}
 	if err := c.Status().Patch(ctx, latest, patch); err != nil {
-		t.Fatalf("patch MemberCluster status %s: %v", reg.Name, err)
+		t.Fatalf("patch FleetCluster status %s: %v", reg.Name, err)
 	}
 }

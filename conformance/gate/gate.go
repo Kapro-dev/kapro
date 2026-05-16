@@ -23,12 +23,12 @@ type Scenario struct {
 func DefaultScenario() Scenario {
 	return Scenario{
 		Evaluate: &kgiv1alpha1.EvaluateRequest{
-			Release:  "conformance-release",
-			Target:   "conformance-target",
-			Pipeline: "main",
-			Stage:    "canary",
-			Version:  "oci://example.com/app@sha256:1111111111111111111111111111111111111111111111111111111111111111",
-			Gate:     "conformance",
+			PromotionRun:  "conformance-promotionrun",
+			Target:        "conformance-target",
+			PromotionPlan: "main",
+			Stage:         "canary",
+			Version:       "oci://example.com/app@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+			Gate:          "conformance",
 			Parameters: map[string]string{
 				"conformance": "true",
 			},

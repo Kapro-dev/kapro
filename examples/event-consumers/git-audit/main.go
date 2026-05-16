@@ -22,15 +22,15 @@ type cloudEvent struct {
 }
 
 type kaproEvent struct {
-	Type      string `json:"type"`
-	Phase     string `json:"phase"`
-	Version   string `json:"version"`
-	Target    string `json:"target"`
-	Release   string `json:"release"`
-	Pipeline  string `json:"pipeline"`
-	Stage     string `json:"stage"`
-	Message   string `json:"message"`
-	IsFailure bool   `json:"isFailure"`
+	Type          string `json:"type"`
+	Phase         string `json:"phase"`
+	Version       string `json:"version"`
+	Target        string `json:"target"`
+	PromotionRun  string `json:"promotionrun"`
+	PromotionPlan string `json:"promotionplan"`
+	Stage         string `json:"stage"`
+	Message       string `json:"message"`
+	IsFailure     bool   `json:"isFailure"`
 }
 
 func main() {
@@ -81,11 +81,11 @@ func writeAuditRecord(auditRepo string, body []byte) error {
 	if !isAuditEvent(ce.Type) {
 		return nil
 	}
-	if event.Release == "" {
-		return fmt.Errorf("event data.release is required")
+	if event.PromotionRun == "" {
+		return fmt.Errorf("event data.promotionrun is required")
 	}
 
-	path := filepath.Join(auditRepo, "releases", safeName(event.Release)+".yaml")
+	path := filepath.Join(auditRepo, "promotionruns", safeName(event.PromotionRun)+".yaml")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -93,14 +93,14 @@ func writeAuditRecord(auditRepo string, body []byte) error {
 		return err
 	}
 	if os.Getenv("GIT_COMMIT") == "true" {
-		return commitAuditRecord(auditRepo, path, event.Release)
+		return commitAuditRecord(auditRepo, path, event.PromotionRun)
 	}
 	return nil
 }
 
 func isAuditEvent(eventType string) bool {
 	switch eventType {
-	case "kapro.release.completed", "kapro.release.failed", "kapro.release.rollback.started":
+	case "kapro.promotionrun.completed", "kapro.promotionrun.failed", "kapro.promotionrun.rollback.started":
 		return true
 	default:
 		return false
@@ -108,11 +108,11 @@ func isAuditEvent(eventType string) bool {
 }
 
 func renderAuditYAML(ce cloudEvent, event kaproEvent) string {
-	return fmt.Sprintf(`release: %q
+	return fmt.Sprintf(`promotionrun: %q
 eventType: %q
 phase: %q
 version: %q
-pipeline: %q
+promotionplan: %q
 stage: %q
 target: %q
 source: %q
@@ -121,10 +121,10 @@ eventID: %q
 time: %q
 message: %q
 isFailure: %t
-`, event.Release, ce.Type, event.Phase, event.Version, event.Pipeline, event.Stage, event.Target, ce.Source, ce.Subject, ce.ID, ce.Time, event.Message, event.IsFailure)
+`, event.PromotionRun, ce.Type, event.Phase, event.Version, event.PromotionPlan, event.Stage, event.Target, ce.Source, ce.Subject, ce.ID, ce.Time, event.Message, event.IsFailure)
 }
 
-func commitAuditRecord(auditRepo, path, release string) error {
+func commitAuditRecord(auditRepo, path, promotionrun string) error {
 	relPath, err := filepath.Rel(auditRepo, path)
 	if err != nil {
 		return err
@@ -139,7 +139,7 @@ func commitAuditRecord(auditRepo, path, release string) error {
 	if strings.TrimSpace(changed) == "" {
 		return nil
 	}
-	return git(auditRepo, "commit", "-m", "Record Kapro release "+release)
+	return git(auditRepo, "commit", "-m", "Record Kapro promotionrun "+promotionrun)
 }
 
 func git(dir string, args ...string) error {

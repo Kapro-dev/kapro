@@ -71,13 +71,14 @@ spec:
                           items:
                             type: string
                           type: array
-                        pipelines:
-                          description: Pipelines filters by Release.spec.pipelines[].name.
+                        promotionplans:
+                          description: PromotionPlans filters by PromotionRun.spec.promotionplans[].name.
                           items:
                             type: string
                           type: array
-                        releaseSelector:
-                          description: ReleaseSelector filters by Release labels.
+                        promotionrunSelector:
+                          description: PromotionRunSelector filters by PromotionRun
+                            labels.
                           properties:
                             matchExpressions:
                               description: matchExpressions is a list of label selector
@@ -123,19 +124,19 @@ spec:
                           type: object
                           x-kubernetes-map-type: atomic
                         stages:
-                          description: Stages filters by Pipeline stage name.
+                          description: Stages filters by PromotionPlan stage name.
                           items:
                             type: string
                           type: array
                         targets:
-                          description: Targets filters by MemberCluster name.
+                          description: Targets filters by FleetCluster name.
                           items:
                             type: string
                           type: array
                         types:
                           description: |-
                             Types filters by stable semantic event type, for example
-                            kapro.release.completed or kapro.release.target.failed.
+                            kapro.promotionrun.completed or kapro.promotionrun.target.failed.
                             Empty means all event types.
                           items:
                             type: string

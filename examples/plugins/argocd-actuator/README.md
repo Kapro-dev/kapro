@@ -41,7 +41,7 @@ cluster, pass `--kubeconfig` or set `KUBECONFIG`.
 | `application` | Application name. May be `namespace/name`. |
 | `applicationName` | Alias for `application`. |
 | `argocdApplication` | Alias for `application`. |
-| `appKey` | Fallback application name supplied by Kapro for multi-app releases. |
+| `appKey` | Fallback application name supplied by Kapro for multi-app promotionruns. |
 
 If no application parameter is set, the plugin uses the request target name.
 
