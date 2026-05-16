@@ -22,11 +22,19 @@ For the local demo:
 scripts/verify-install.sh kind-demo
 ```
 
+For Argo brownfield readiness:
+
+```bash
+scripts/verify-install.sh argo-e2e
+```
+
 The release candidate is not ready if:
 
 - CRDs fail to render from Helm or Kustomize.
 - The operator image cannot start in Kind.
 - The demo does not create `ReleaseTarget` objects.
+- The Argo E2E cannot prove discover, adopt, Git-native source apply, Release,
+  Argo sync, and `ReleaseTarget.status.backendObjects` convergence.
 - Production targets cannot be unblocked by the demo approvals.
 - `PluginRegistration` compatibility conditions are missing from a probe
   failure or unsupported contract version test.
@@ -123,6 +131,7 @@ helm upgrade --install kapro charts/kapro-operator \
 - `go test ./...`
 - `scripts/verify-install.sh render`
 - `scripts/verify-install.sh kind-demo`
+- `scripts/verify-install.sh argo-e2e`
 ````
 
 ## Post-Release Checks

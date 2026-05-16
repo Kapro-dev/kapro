@@ -6,12 +6,13 @@ CHART="${ROOT}/charts/kapro-operator"
 
 usage() {
   cat <<EOF
-Usage: scripts/verify-install.sh <render|cluster|kind-demo>
+Usage: scripts/verify-install.sh <render|cluster|kind-demo|argo-e2e>
 
 Modes:
   render     Validate chart rendering, CRD sync, and kustomize output. Default.
   cluster    Install the Helm chart into the active Kubernetes context and verify rollout.
   kind-demo  Run the local Kind demo through create, approve, status, and cleanup.
+  argo-e2e   Run the Kind + real Argo CD brownfield promotion E2E.
 
 Environment for cluster mode:
   KAPRO_VERIFY_NAMESPACE     Namespace to install into (default: kapro-system)
@@ -120,11 +121,16 @@ kind_demo() {
   "${ROOT}/scripts/kind-demo.sh" down
 }
 
+argo_e2e() {
+  KAPRO_ARGO_E2E_CLEANUP="${KAPRO_ARGO_E2E_CLEANUP:-true}" "${ROOT}/scripts/argo-e2e.sh" run
+}
+
 cmd="${1:-render}"
 case "${cmd}" in
   render) render ;;
   cluster) cluster ;;
   kind-demo) kind_demo ;;
+  argo-e2e) argo_e2e ;;
   -h|--help|help) usage ;;
   *)
     usage >&2

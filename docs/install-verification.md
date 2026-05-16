@@ -86,3 +86,32 @@ scripts/verify-install.sh kind-demo
 This is intentionally heavier than render verification because it builds a
 local operator image, creates a Kind cluster, runs the demo, approves production,
 prints status, and deletes the cluster.
+
+## Argo Brownfield E2E
+
+The Argo E2E is the production-readiness check for brownfield Argo onboarding:
+
+```bash
+scripts/verify-install.sh argo-e2e
+```
+
+It creates a disposable Kind cluster, installs real Argo CD, installs Kapro,
+creates an in-cluster Git server, runs `kapro adopt argo`, applies the generated
+`BackendProfile` and `PromotionSource`, promotes Git-backed Argo mappings to
+`v2`, creates a Kapro `Release`, and waits for Argo Applications plus
+`ReleaseTarget.status.backendObjects` to converge.
+
+The fixture covers:
+
+- a plain Argo `Application`;
+- an `ApplicationSet`-generated child `Application`;
+- an app-of-apps root with a child `Application`.
+
+By default `scripts/verify-install.sh argo-e2e` deletes the Kind cluster after a
+successful run. To inspect resources afterward:
+
+```bash
+KAPRO_ARGO_E2E_CLEANUP=false scripts/argo-e2e.sh run
+scripts/argo-e2e.sh status
+scripts/argo-e2e.sh down
+```

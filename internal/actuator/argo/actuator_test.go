@@ -53,6 +53,9 @@ func TestApplyRequestsHardRefreshAndSyncOperation(t *testing.T) {
 	if _, ok, _ := unstructured.NestedMap(updated.Object, "operation", "sync"); !ok {
 		t.Fatal("operation.sync was not set")
 	}
+	if got, _, _ := unstructured.NestedStringSlice(updated.Object, "operation", "sync", "syncOptions"); len(got) != 1 || got[0] != "CreateNamespace=true" {
+		t.Fatalf("operation.sync.syncOptions=%v", got)
+	}
 }
 
 func TestApplyRequiresAuthorizedApplication(t *testing.T) {
@@ -135,6 +138,9 @@ func newArgoApplication(namespace, name, revision string) *unstructured.Unstruct
 					"repoURL":        "https://example.com/repo.git",
 					"targetRevision": revision,
 					"path":           "apps/checkout",
+				},
+				"syncPolicy": map[string]any{
+					"syncOptions": []any{"CreateNamespace=true"},
 				},
 			},
 		},

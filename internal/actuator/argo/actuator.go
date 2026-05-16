@@ -120,6 +120,10 @@ func (a *Actuator) setTargetRevision(ctx context.Context, mc *kaprov1alpha1.Memb
 		if err := setApplicationTargetRevision(app, version, argoVersionField(mc, appKey)); err != nil {
 			return fmt.Errorf("set Argo CD targetRevision: %w", err)
 		}
+		syncOperation := map[string]any{}
+		if syncOptions, ok, _ := unstructured.NestedStringSlice(app.Object, "spec", "syncPolicy", "syncOptions"); ok {
+			syncOperation["syncOptions"] = stringSliceToAny(syncOptions)
+		}
 		operation := map[string]any{
 			"initiatedBy": map[string]any{
 				"username":  "kapro-controller",
@@ -130,10 +134,7 @@ func (a *Actuator) setTargetRevision(ctx context.Context, mc *kaprov1alpha1.Memb
 				map[string]any{"name": "kapro.io/version", "value": version},
 				map[string]any{"name": "kapro.io/unit", "value": appKey},
 			},
-			"sync": map[string]any{},
-		}
-		if syncOptions, ok, _ := unstructured.NestedStringSlice(app.Object, "spec", "syncPolicy", "syncOptions"); ok {
-			operation["sync"].(map[string]any)["syncOptions"] = syncOptions
+			"sync": syncOperation,
 		}
 		if err := unstructured.SetNestedField(app.Object, operation, "operation"); err != nil {
 			return fmt.Errorf("set Argo CD sync operation: %w", err)
@@ -143,6 +144,14 @@ func (a *Actuator) setTargetRevision(ctx context.Context, mc *kaprov1alpha1.Memb
 		}
 	}
 	return nil
+}
+
+func stringSliceToAny(values []string) []any {
+	out := make([]any, 0, len(values))
+	for _, value := range values {
+		out = append(out, value)
+	}
+	return out
 }
 
 func (a *Actuator) getApplications(ctx context.Context, mc *kaprov1alpha1.MemberCluster, appKey string) ([]unstructured.Unstructured, error) {

@@ -43,6 +43,58 @@ spec:
 	}
 }
 
+func TestRunSourceApplyIncludeDoesNotFilterExactFileUnits(t *testing.T) {
+	repo := t.TempDir()
+	writeTestFile(t, repo, "argocd/applications/api.yaml", `apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: api
+spec:
+  source:
+    targetRevision: 1.0.0
+`)
+	writeTestFile(t, repo, "argocd/environments/dev.json", `{"gkProjectVersion":"1.0.0"}`)
+	writeTestFile(t, repo, "argocd/environments/prod.json", `{"gkProjectVersion":"1.0.0"}`)
+	sourcePath := filepath.Join(repo, "source.yaml")
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
+kind: PromotionSource
+metadata:
+  name: checkout
+spec:
+  units:
+  - name: api
+    backendKind: ArgoApplicationSource
+    sourcePath: argocd/applications/api.yaml
+    versionField: spec.source.targetRevision
+  - name: appset
+    backendKind: GitJSONField
+    versionField: argocd/environments/*.json:gkProjectVersion
+`)
+	initTestGitRepo(t, repo)
+
+	err := runSourceApply(sourceApplyOptions{
+		RepoPath:   repo,
+		SourcePath: sourcePath,
+		VersionSet: []string{"api=2.0.0", "appset=2.0.0"},
+		Include:    []string{"argocd/environments/dev.json"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := readFile(t, filepath.Join(repo, "argocd/applications/api.yaml"))
+	if !strings.Contains(app, "targetRevision: 2.0.0") {
+		t.Fatalf("exact Application mapping was filtered by --include:\n%s", app)
+	}
+	dev := readFile(t, filepath.Join(repo, "argocd/environments/dev.json"))
+	if !strings.Contains(dev, `"gkProjectVersion": "2.0.0"`) {
+		t.Fatalf("included env json was not updated:\n%s", dev)
+	}
+	prod := readFile(t, filepath.Join(repo, "argocd/environments/prod.json"))
+	if !strings.Contains(prod, `"gkProjectVersion":"1.0.0"`) {
+		t.Fatalf("non-included env json should not be updated:\n%s", prod)
+	}
+}
+
 func TestRunSourceApplyFailsClosedForMultiFileGlob(t *testing.T) {
 	repo := t.TempDir()
 	writeTestFile(t, repo, "env/dev.json", `{"version":"1.0.0"}`)

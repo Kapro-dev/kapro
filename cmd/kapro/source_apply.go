@@ -198,7 +198,9 @@ func planUnitSourceWrites(opts sourceApplyOptions, unit kaprov1alpha1.PromotionU
 	if err != nil {
 		return nil, err
 	}
-	paths = filterIncludedPaths(paths, opts.Include)
+	if hasGlobMeta(pattern) {
+		paths = filterIncludedPaths(paths, opts.Include)
+	}
 	if len(paths) == 0 {
 		return nil, fmt.Errorf("mapping %q matched no files", pattern)
 	}

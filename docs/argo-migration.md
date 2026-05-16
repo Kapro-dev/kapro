@@ -239,7 +239,7 @@ For ApplicationSet-generated apps, prefer putting the label in
 delivery parameter such as `applicationSelector.pos-server:
 kapro.io/import=true,service=pos-server`.
 
-## Step 6: Promote
+## Step 7: Promote
 
 Create a Release with either one default version or per-unit versions:
 
@@ -260,3 +260,22 @@ spec:
 Kapro creates ReleaseTargets, runs gates and approvals, and then calls the Argo
 backend for selected targets. Argo CD remains responsible for reconciling the
 Application to the cluster.
+
+## Local E2E Proof
+
+Before calling an Argo migration production-ready, run the real Argo CD E2E:
+
+```bash
+scripts/argo-e2e.sh run
+```
+
+The script creates a Kind cluster, installs Argo CD and Kapro, serves a
+throwaway Git repo inside the cluster, runs `kapro adopt argo`, applies the
+generated mapping, promotes the repo-native Argo fields with
+`kapro source apply`, creates a Kapro `Release`, and waits for all selected Argo
+Applications to become `Synced` and `Healthy` at the promoted revision.
+
+This is the concrete acceptance test for the three brownfield patterns in this
+guide: plain Application, ApplicationSet child, and app-of-apps child. The root
+app-of-apps Application is discovered as packaging evidence but is not used as a
+write target.
