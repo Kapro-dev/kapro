@@ -119,6 +119,12 @@ This lets Kapro count Argo CD cluster Secrets and selected Applications without
 taking over writes. Switching `managementPolicy` to `Adopt` is the explicit
 step that allows Kapro promotion commands to update Argo target revisions.
 
+By default, discovery is periodically refreshed so optional Argo/Flux CRDs do
+not become hard install dependencies. Installations that already have the
+backend CRDs present can enable event-triggered refresh for backend objects with
+`KAPRO_ENABLE_BACKEND_OBJECT_WATCHES=true`. Core Argo CD cluster Secrets are
+watched without that opt-in.
+
 ## Backend-Owned Credentials
 
 Brownfield connection does not import or copy backend credentials. Argo CD keeps

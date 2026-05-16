@@ -10,6 +10,7 @@ upgrade, soak, and audit evidence. This document is the GA evidence matrix.
 | Install path | Alpha production-capable | Helm/Kustomize render checks, Kind demo, promotionrun smoke, and install docs. |
 | Argo brownfield onboarding | Alpha production-capable | Live Argo E2E covers plain Applications, multi-source Applications, app-of-apps child Applications, and ApplicationSet Git generator inputs. |
 | Flux brownfield onboarding | Alpha production-capable | Flux Git-native E2E and live Flux controller E2E cover source and workload version fields. |
+| Promotion policies | Alpha production-capable | `PromotionPolicy` CEL rules and freeze windows are enforced before `PromotionRun` creation; artifact verification policy remains on `PromotionTrigger`. |
 | Plugin runtime | Preview | `PluginRegistration` readiness probes hot-load actuator, gate, and planner adapters when `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. |
 | Planner runtime dispatch | Preview | KPI plugins can filter, defer, and score targets through the promotionrun planner while Kapro owns binding and state. |
 | API version | Not GA | Public Kubernetes APIs are still `kapro.io/v1alpha1`. |
