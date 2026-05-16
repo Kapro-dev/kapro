@@ -113,11 +113,13 @@ Install your plugin service, then apply a registration such as:
 kubectl apply -f examples/plugins/slo-gate-registration.yaml
 ```
 
-The operator loads ready `PluginRegistration` objects once at startup. Restart
-the deployment after applying or changing plugin registrations:
+The operator probes `PluginRegistration` objects continuously. Ready
+registrations with a fresh `status.observedGeneration` are hot-loaded into the
+actuator, gate, and planner registries; stale, incompatible, or deleted
+registrations are unloaded without restarting the operator.
 
 ```bash
-kubectl -n kapro-system rollout restart deployment/kapro-kapro-operator
+kubectl get pluginregistrations.kapro.io
 ```
 
 ## Kustomize Bundle

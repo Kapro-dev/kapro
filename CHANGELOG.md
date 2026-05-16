@@ -1,28 +1,19 @@
 # Changelog
 
-This changelog tracks user-visible API, behavior, and promotionrun-process changes.
-Kapro is currently preparing `v0.1.0-alpha`; entries below that heading are the
-promotionrun-note structure for the first tagged pre-stable promotionrun.
-
-Release notes must call out CRD schema changes, plugin contract changes,
-deprecations, removals, upgrade steps, and compatibility expectations. See
-`docs/promotionrun-notes.md` and `docs/api-stability.md`.
+This changelog tracks user-visible API, behavior, packaging, and upgrade
+changes for Kapro releases. Kapro is still pre-stable: all Kubernetes APIs are
+served as `kapro.io/v1alpha1`, and release notes are the binding compatibility
+record for each tag.
 
 ## Unreleased
 
 ### Added
 
-- Added API stability and promotionrun hygiene documentation for pre-stable promotionruns.
-- Added the `v0.1.0-alpha` promotionrun-note structure and follow-up checklist.
-- Added hot-loaded plugin runtime registration for actuator, gate, and planner
-  plugins when `KAPRO_ENABLE_PLUGIN_GATEWAY=true`.
+- None.
 
 ### Changed
 
-- Clarified alpha, preview, and stable API surface expectations for CRDs,
-  extension packages, plugin contracts, and lifecycle event schemas.
-- Updated plugin gateway documentation from startup-only actuator/gate dispatch
-  to hot-loaded KAI/KGI/KPI dispatch.
+- None.
 
 ### Deprecated
 
@@ -36,182 +27,135 @@ deprecations, removals, upgrade steps, and compatibility expectations. See
 
 - None.
 
-## v0.1.0-alpha — Pending
+## v0.4.0-alpha.0 - Pending
 
-First alpha milestone for Kapro. This promotionrun is intended to provide a concrete
-version anchor for early adopters and contributors while keeping the `v1alpha1`
-API below stable maturity.
+`v0.4.0-alpha.0` is the first release candidate for the current Kapro promotion
+domain architecture. It is intended for controlled alpha adopters who can run
+the documented verification suite and accept `v1alpha1` API movement.
 
-### Scope
+### Added
 
-- Publish installable CRDs and the operator chart for local and controlled
-  development environments.
-- Document the core promotion workflow: `PromotionSource`, `PromotionPlan`,
-  `PromotionRun`, `PromotionTarget`, `FleetCluster`, and `Approval`.
-- Publish preview extension contracts for in-process actuators, gates, planners,
-  and the KAI/KGI/KPI gRPC plugin APIs.
-- Publish preview policies for `PromotionTrigger`, `PluginRegistration`,
-  notification provider/policy APIs, and lifecycle event payloads.
-- Publish conformance package entry points for plugin authors.
+- Added the full promotion-domain API surface around `Promotion`,
+  `PromotionRun`, `PromotionTarget`, `PromotionPlan`, `PromotionPolicy`,
+  `PromotionSource`, `PromotionUnit`, `FleetCluster`, `BackendProfile`,
+  `PromotionTrigger`, `PluginRegistration`, `NotificationProvider`, and
+  `NotificationPolicy`.
+- Added runtime enforcement for `PromotionPolicy` CEL checks and freeze windows
+  before `PromotionRun` creation, including audit-mode Events and
+  `onFailure: continue` handling.
+- Added Argo CD brownfield onboarding for existing Applications, multi-source
+  Applications, app-of-apps children, ApplicationSet Git generator inputs, and
+  cluster Secrets.
+- Added Flux brownfield onboarding for `GitRepository`, `OCIRepository`,
+  `Bucket`, `Kustomization`, and `HelmRelease` version fields.
+- Added `PromotionSource` and `PromotionUnit` mappings so Kapro can promote
+  backend-native version fields without requiring one packaging format.
+- Added Git-native source write support for discovered JSON, YAML, Kustomize
+  image, Argo source, and Flux source fields.
+- Added `BackendProfile` discovery and observe/adopt policy for greenfield and
+  brownfield backends.
+- Added hot-loaded plugin runtime registration for KAI actuators, KGI gates, and
+  KPI planner plugins when `KAPRO_ENABLE_PLUGIN_GATEWAY=true`.
+- Added KPI planner runtime dispatch so external planner plugins can filter,
+  defer, and score targets while Kapro retains binding and state ownership.
+- Added PromotionTrigger OCI source observation with digest pinning, tag
+  filtering, cooldown, max-active limits, and signature policy safeguards.
+- Added lifecycle event and notification documentation, including CloudEvents
+  webhook payload guidance.
+- Added install, Kind demo, Argo E2E, Flux Git-native E2E, live Flux E2E,
+  conformance, operations, monitoring, API stability, and GA readiness docs.
+
+### Changed
+
+- Reframed Kapro as an agent-ready promotion controller for Kubernetes fleets:
+  intent plus promotion plan, policy checks, backend apply, health evidence, and
+  rollback decision support.
+- Replaced the old packaging-centric docs with the `PromotionSource` /
+  `PromotionUnit` architecture.
+- Renamed the public domain language away from release/member terminology and
+  toward `FleetCluster`, `Promotion`, `PromotionRun`, and `PromotionTarget`.
+- Changed Promotion policies from a fail-closed reserved field into an enforced
+  alpha runtime for CEL and freeze-window checks.
+- Changed plugin registration from startup-only discovery into hot-loaded
+  runtime registration after readiness probes succeed.
+- Changed backend discovery to refresh from backend objects when opted in with
+  `KAPRO_ENABLE_BACKEND_OBJECT_WATCHES=true`; Argo CD cluster Secrets are
+  watched without the optional backend-object watch flag.
+- Changed release documentation to use `v0.4.0-alpha.0` as the candidate tag and
+  to require explicit verification evidence before tagging.
+
+### Deprecated
+
+- Deprecated any unreleased manifests or docs that still refer to the removed
+  packaging prototype. Use `PromotionSource` plus `PromotionUnit` mappings instead.
+- Deprecated release/member-era names from unreleased branches. Use
+  `FleetCluster`, `Promotion`, `PromotionTrigger`, `PromotionRun`, and
+  `PromotionTarget`.
+
+### Removed
+
+- Removed the public packaging prototype workflow from the release-facing
+  documentation set.
+- Removed the standalone evolution plan page. Completed milestones are recorded
+  here; future work is tracked in `docs/ROADMAP.md`.
+- Removed the obsolete first-alpha release runbook from the documentation index.
+
+### Migration
+
+- Apply the `v0.4.0-alpha.0` CRDs and RBAC before rolling the operator.
+- Replace any local pre-0.4 packaging test manifests with `PromotionSource`,
+  `PromotionUnit`, `BackendProfile`, `PromotionPlan`, and `PromotionRun`
+  manifests from `examples/hub-config/`.
+- Replace old release/member names from pre-release branches with the current
+  promotion-domain kinds.
+- Start Argo and Flux brownfield onboarding in observe mode, review generated
+  `PromotionSource` mappings, then switch selected objects to adopt/write mode.
+- Run KAI, KGI, and KPI conformance before enabling any external plugin through
+  `PluginRegistration`.
+- Keep artifact signature policy on `PromotionTrigger` for this release;
+  `PromotionPolicy.spec.verification` remains a preview field and is not the
+  enforcement path yet.
 
 ### Compatibility
 
-- All CRDs remain `kapro.io/v1alpha1` and below stable maturity.
-- Alpha CRD fields may change before `v0.2.0`; documented examples and shipped
-  manifests should receive migration notes when they change.
-- Preview plugin contracts must remain compatible within this promotionrun line
-  unless a promotionrun note marks a breaking alpha change explicitly.
-- Stored status is the recovery source for in-flight promotionruns; do not rely on
-  controller memory or log output as an API.
+- CRD schema: pre-stable `kapro.io/v1alpha1`; compatible only within the
+  documented `v0.4.0-alpha.0` operator and CRD set.
+- Plugin contracts: KAI, KGI, and KPI are preview contracts. Run conformance
+  before using external plugins with this release.
+- Lifecycle events: event type names and documented payload fields are preview
+  integration contracts for this release line.
+- Downgrade: do not downgrade a hub with stored `v0.4.0-alpha.0` objects to an
+  older unreleased operator unless the release notes for that operator explicitly
+  name the stored schema as compatible.
 
-### Upgrade Notes
+### Verification
 
-- Apply CRD updates before rolling the operator.
-- Run KAI, KGI, or KPI conformance packages before enabling external plugin
-  images with a new Kapro build.
-- Read `docs/api-stability.md` before upgrading a hub with in-flight promotionruns
-  or enabled plugin registrations.
+Before tagging `v0.4.0-alpha.0`, run:
 
-### Known Gaps Before v0.2.0
+```bash
+go test ./...
+make build
+make lint
+make validate-yaml-json
+make check-markdown-links
+scripts/verify-install.sh render
+scripts/verify-install.sh kind-demo
+scripts/verify-install.sh argo-e2e
+scripts/verify-install.sh flux-git-e2e
+scripts/verify-install.sh flux-e2e
+```
 
-- No stable API version is published yet.
-- Plugin gateway runtime dispatch is preview and hot-loaded for actuator, gate,
-  and planner registrations when explicitly enabled.
-- API conversion webhooks are not yet part of the release process.
-- Markdown and promotionrun-note checks are not yet enforced in CI.
+If an environment cannot run Docker, Kind, Argo CD, Flux, or external network
+dependencies, record the waiver in the release notes before tagging.
 
-### v0.2.0 Follow-up Checklist
+### Known Gaps
 
-- [ ] Decide which core CRD fields move from Alpha to Preview.
-- [ ] Add a CRD schema compatibility check to CI or document the manual command.
-- [ ] Reserve removed proto field numbers before any KAI/KGI/KPI contract
-      cleanup.
-- [ ] Add promotionrun-note validation to the pull request checklist or CI.
-- [ ] Add explicit migration notes for every changed shipped example.
-- [ ] Reconcile `CHANGELOG.md` against the tag contents before cutting
-      `v0.2.0`.
-
----
-
-## Historical Draft Entries
-
-The entries below predate the `v0.1.0-alpha` promotionrun hygiene structure. Keep
-them for context, but reconcile them against the tagged contents before using
-them as GitHub release notes.
-
-## v0.3.0 — Spoke-Local Flux + CLI + GCP-Native
-
-Production-ready spoke-local delivery mode with complete CLI and GCP integration.
-All operations use Go SDK — no gcloud, helm, flux, or kubectl dependencies.
-
-### Spoke-Local Flux (deliveryMode: spoke)
-
-- **OCI bundle pull model** — spoke's own Flux controllers pull and reconcile bundles from GAR
-- **Per-wave directories** — bundle structured as wave-00/, wave-01/, wave-02/ to avoid Kustomization resource conflicts
-- **Wave Kustomization DAG** — each wave has dependsOn to previous wave, visible in k9s on every spoke
-- **HelmReleases without kubeConfig** — spoke's helm-controller reconciles locally (not hub pushing remotely)
-- **Spoke actuator** — patches OCIRepository tag on spoke, reads Flux status directly for convergence
-- **Both modes coexist** — `deliveryMode: push` (v0.2 behavior) and `deliveryMode: spoke` (new) on same hub
-
-### CLI (`kapro`)
-
-- **`kapro hub init`** — bootstraps hub cluster: flux-operator, FluxInstance, CRDs, Fleet registration. Interactive project/cluster selection when no flags provided.
-- **`kapro hub registry list/create/add`** — centralized GAR registry management. Saved to `~/.kapro/config.yaml`.
-- **`kapro spoke add`** — adds spoke cluster: auto-installs flux-operator + FluxInstance + Fleet registration + IAM bindings. Single command, zero manual steps.
-- **`kapro fleet list/sync`** — Fleet membership management. `sync` auto-discovers and registers all Fleet clusters.
-- **`kapro bundle generate --push`** — reads KaproBundle from hub, generates per-wave bundle, validates, pushes via ORAS Go SDK. Used by CI promotionplans.
-- **`kapro status`** — live fleet dashboard with colored phases (Converged/Converging/Failed), per-cluster version, health, heartbeat.
-- **`~/.kapro/config.yaml`** — persistent CLI context. `hub init` writes it, all commands read project/registry from it.
-- **Spinner UX** — braille animation with colored status symbols: ✔ (success), ✗ (failure), ⚠ (warning), ℹ (info).
-
-### GCP-Native (zero shell dependencies)
-
-- **ORAS Go SDK** for OCI bundle push (replaces `flux push artifact` shell exec)
-- **Fleet Hub API** for cluster discovery and membership registration
-- **Container API** for cluster endpoint resolution and location auto-detection
-- **IAM + CRM APIs** for cross-project spoke access and service account bindings
-- **Artifact Registry API** for GAR repository creation and listing
-- **Workload Identity** for authentication — zero credentials on GKE, gcloud fallback for local dev
-
-### Production Scale (150 clusters)
-
-- **Parallel spoke bootstrap** — bounded concurrency (10 at a time) via semaphore channel
-- **Spoke client cache** — sync.Map with 5min TTL, health probe before reuse (expired tokens auto-invalidate)
-- **Version-change detection** — skip bootstrap if FleetCluster already converged at target version
-- **Error isolation** — failing spoke doesn't block other spokes in the reconcile loop
-- **Embedded CRDs** — FluxInstance, ResourceSet, and 8 Kapro CRDs via go:embed (no external file deps)
-
-### KaproBundle Validation
-
-- No empty component names, versions, or registries
-- No duplicate component or registry names
-- DependsOn references must exist
-- Dependencies must be in same or earlier wave
-- Registry URLs must match declared type (oci:// for OCI type)
-
-### PromotionRun Flow (e2e verified on GKE)
-
-- PromotionRun CR → Progressing → PromotionTarget created per cluster
-- FSM: Verification ✔ → HealthCheck ✔ → Applying
-- SpokeFluxActuator.Apply() → patches OCIRepository tag on spoke
-- Spoke pulls new bundle → wave DAG reconverges
-- FleetCluster.status.version updated from OCIRepository tag
-
-### Breaking Changes
-
-- `kapro cluster bootstrap` removed — use `kapro spoke add`
-- `kapro gcp *` commands removed — use `kapro fleet list/sync`
-- `kapro world` / `kapro fleet` removed — use `kapro status`
-- `kapro promote` removed — use PromotionRun CR
-- CLI commands renamed: `cluster add` → `spoke add`
-
----
-
-## v0.2.0 — Push Model Complete
-
-Flux Operator actuator, Fleet API integration, and GCP SDK.
-
-### Flux Operator Actuator
-
-- **ResourceSet-based delivery** — patches ResourceSet inputs on hub, Flux Operator renders per-cluster HelmReleases with kubeConfig
-- **KaproBundle component spec v2** — registries, waves, dependsOn, values, valuesFrom, timeout, retries, CRDs, suspend
-- **ResourceSet generator** — builds HelmRepositories + HelmReleases from KaproBundle spec
-- **Convergence check** — scans ResourceSet inventory for HelmRelease Ready status
-
-### Fleet API + GCP SDK
-
-- **GCPFleetProvider** — auto-discovers clusters from Fleet memberships via Go SDK
-- **GCPBasicProvider** — GKE DNS endpoint + Workload Identity, zero gcloud dependency
-- **Auto-generate kubeconfig secrets** from Fleet API + WI tokens
-- **Token caching** — shared OAuth2 token source, auto-refresh
-
-### Fleet Observability
-
-- **FleetCluster status sync** — reads HelmRelease status, writes version + health to FleetCluster
-- **k9s columns** — version, phase, convergence, healthy visible in `kubectl get fleetclusters`
-
----
-
-## v0.1.0 — Initial PromotionRun
-
-First promotionrun of Kapro: CRDs, FSM, gates, approval webhook.
-
-### CRDs (7)
-
-- Artifact, PromotionPlan, PromotionRun, PromotionTarget, FleetCluster, Approval, Source
-
-### Controllers (5)
-
-- PromotionRunReconciler (two-level DAG), PromotionTargetReconciler (10-state FSM), SourceReconciler, ApprovalReconciler, CSRApprovalReconciler
-
-### Gates (8)
-
-- Soak, Approval, Metrics, HealthCheck, CEL, Job, Webhook, Verification
-
-### CLI
-
-- cluster bootstrap/join, get promotionruns/targets, approve/reject, rollback, promotionrun create, world
-
-### Scalability
-
-- Controller sharding, lease-based heartbeat, field-indexed lookups, conditional poll
+- No stable Kubernetes API version is published yet.
+- Conversion webhooks are not part of this release.
+- `NotificationProvider` and `NotificationPolicy` are API previews; inline gate
+  notifications remain the active runtime path.
+- `PromotionPolicy.spec.verification` is present but not the enforcement path;
+  use PromotionTrigger signature verification for artifact policy.
+- Production soak across many independent operators and repository styles is not
+  published yet.
+- The documented security model has not had an independent audit.

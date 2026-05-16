@@ -27,12 +27,12 @@ The alpha production-capable scope includes these paths:
   guardrails before `PromotionRun` creation.
 - Run KAI, KGI, and KPI plugin conformance before enabling external plugins.
 - Verify PromotionTrigger signature policy behavior before enabling autonomous
-  promotionrun creation.
+  PromotionRun creation.
 
 ## Required Verification
 
 Before using a Kapro alpha on a real fleet, run these checks from a clean
-checkout or from the promotionrun artifact being evaluated:
+checkout or from the release artifact being evaluated:
 
 ```bash
 go test ./...
@@ -48,7 +48,7 @@ scripts/verify-install.sh flux-e2e
 ```
 
 If a dependency such as Docker, Kind, Argo CD, or Flux cannot run in the
-verification environment, record that waiver in the promotionrun issue and do not
+verification environment, record that waiver in the release issue and do not
 claim that path as verified for the deployment.
 
 ## Operating Contract
@@ -68,10 +68,10 @@ Run Kapro alpha with these constraints:
   update rights on backend objects.
 - Keep the hub gateway and plugin gateway behind cluster networking and
   authentication controls.
-- Use promotionrun-scoped approvals and gates for production waves.
+- Use PromotionRun-scoped approvals and gates for production waves.
 - Keep artifact signature policy on `PromotionTrigger` until
   `PromotionPolicy.spec.verification` graduates from preview.
-- Monitor promotionrun stuck states, gate failure rates, plugin probe failures,
+- Monitor PromotionRun stuck states, gate failure rates, plugin probe failures,
   blocked triggers, and rollout duration percentiles.
 
 ## Not GA Yet
@@ -90,13 +90,13 @@ These items intentionally keep the project below GA:
 Kapro should not be described as GA until these are true. The live status is
 tracked in [GA Readiness](ga-readiness.md).
 
-- Stable API versioning and upgrade policy are backed by promotionrun history.
+- Stable API versioning and upgrade policy are backed by release history.
 - Conversion and migration paths exist for any breaking API change.
 - Argo and Flux brownfield paths have repeatable live E2E coverage in CI or in
-  a documented promotionrun gate.
+  a documented release gate.
 - Scale limits are benchmarked and documented for repository size, backend
-  object count, target count, and promotionrun fanout.
+  object count, target count, and PromotionRun fanout.
 - Security boundaries, gateway authentication, plugin trust, and RBAC have had
   an external review.
 - Multiple non-maintainer users have successfully installed, connected, and
-  operated Kapro through at least one promotionrun cycle.
+  operated Kapro through at least one promotion cycle.

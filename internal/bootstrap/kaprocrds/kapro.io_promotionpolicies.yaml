@@ -53,9 +53,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: |-
-              PromotionPolicySpec declares reusable policy checks for a Promotion. The API
-              is preview-only until the PromotionPolicy runtime is enabled.
+            description: PromotionPolicySpec declares reusable policy checks for a
+              Promotion.
             properties:
               cel:
                 description: CEL contains simple expression checks evaluated by Kapro.
