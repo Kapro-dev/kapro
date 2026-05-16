@@ -15,6 +15,21 @@ Kapro coordinates safe artifact promotion across clusters, regions, and clouds w
 
 ---
 
+## Project Status
+
+Kapro is **alpha production-capable**, not GA.
+
+The current codebase has working install, release smoke, Argo brownfield, Flux
+brownfield, plugin hot-load, and KPI planner dispatch coverage. It is suitable
+for controlled adopters who can run the documented verification and accept
+`kapro.io/v1alpha1` API movement.
+
+Do not treat Kapro as GA yet. GA still requires a stable API version, tagged
+release-to-release upgrade history, broad operator soak, and an independent
+security audit. See [GA Readiness](docs/ga-readiness.md) and
+[Alpha Production Capability](docs/alpha-production-capability.md) for the
+current evidence and exit criteria.
+
 ## What Kapro Is
 
 Kapro is a Kubernetes-native control plane for promoting immutable artifact
