@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -140,7 +141,7 @@ func TestPromotionReconcilerSuspendsLegacyRunBeforeNewImmutableSpec(t *testing.T
 	}
 }
 
-func TestPromotionReconcilerFailsClosedForPoliciesAndSuspendsExistingRuns(t *testing.T) {
+func TestPromotionReconcilerBlocksMissingPolicyAndSuspendsExistingRuns(t *testing.T) {
 	ctx := context.Background()
 	scheme := newPromotionTestScheme(t)
 	promotion := promotionFixture(1, []corev1.LocalObjectReference{{Name: "signed-artifacts"}})
@@ -176,8 +177,125 @@ func TestPromotionReconcilerFailsClosedForPoliciesAndSuspendsExistingRuns(t *tes
 		t.Fatal(err)
 	}
 	cond := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
-	if got.Status.Phase != kaprov1alpha1.PromotionPhaseFailed || cond == nil || cond.Reason != "PromotionPolicyUnsupported" {
+	if got.Status.Phase != kaprov1alpha1.PromotionPhaseFailed || cond == nil || cond.Reason != "PromotionPolicyNotFound" {
 		t.Fatalf("status phase=%q condition=%+v", got.Status.Phase, cond)
+	}
+}
+
+func TestPromotionReconcilerEnforcesCELPolicy(t *testing.T) {
+	ctx := context.Background()
+	scheme := newPromotionTestScheme(t)
+	promotion := promotionFixture(1, []corev1.LocalObjectReference{{Name: "prod-only"}})
+	promotion.Labels = map[string]string{"env": "prod"}
+	policy := &kaprov1alpha1.PromotionPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "prod-only"},
+		Spec: kaprov1alpha1.PromotionPolicySpec{
+			CEL: []kaprov1alpha1.CELPolicyRule{{
+				Name:       "prod-label",
+				Expression: `promotion.labels.env == "prod" && promotion.version == "v2"`,
+			}},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha1.Promotion{}).
+		WithObjects(promotion, policy).
+		Build()
+	r := &PromotionReconciler{Client: c, Scheme: scheme}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var runs kaprov1alpha1.PromotionRunList
+	if err := c.List(ctx, &runs); err != nil {
+		t.Fatal(err)
+	}
+	if len(runs.Items) != 1 {
+		t.Fatalf("promotionrun count = %d", len(runs.Items))
+	}
+}
+
+func TestPromotionPolicyFreezeWindowBlocksPromotion(t *testing.T) {
+	promotion := promotionFixture(1, nil)
+	policy := &kaprov1alpha1.PromotionPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "freeze"},
+		Spec: kaprov1alpha1.PromotionPolicySpec{
+			FreezeWindows: []kaprov1alpha1.AgentTimeWindow{{
+				Timezone:   "UTC",
+				DaysOfWeek: []string{"Monday"},
+				StartTime:  "09:00",
+				EndTime:    "17:00",
+			}},
+		},
+	}
+
+	decision := evaluatePromotionPolicy(policy, promotion, time.Date(2026, 5, 18, 12, 0, 0, 0, time.UTC))
+	if decision.Allowed || decision.Reason != "FreezeWindowActive" || decision.RequeueAfter == 0 {
+		t.Fatalf("decision = %+v", decision)
+	}
+}
+
+func TestPromotionPolicyReconcilerSetsReadyStatus(t *testing.T) {
+	ctx := context.Background()
+	scheme := newPromotionTestScheme(t)
+	policy := &kaprov1alpha1.PromotionPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "prod-only", Generation: 1},
+		Spec: kaprov1alpha1.PromotionPolicySpec{
+			CEL: []kaprov1alpha1.CELPolicyRule{{
+				Name:       "prod-label",
+				Expression: `promotion.labels.env == "prod"`,
+			}},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha1.PromotionPolicy{}).
+		WithObjects(policy).
+		Build()
+	r := &PromotionPolicyReconciler{Client: c}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "prod-only"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var got kaprov1alpha1.PromotionPolicy
+	if err := c.Get(ctx, client.ObjectKey{Name: "prod-only"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	cond := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
+	if cond == nil || cond.Status != metav1.ConditionTrue || cond.Reason != "PolicyReady" {
+		t.Fatalf("Ready condition = %+v", cond)
+	}
+}
+
+func TestPromotionPolicyReconcilerRejectsUnsupportedVerification(t *testing.T) {
+	ctx := context.Background()
+	scheme := newPromotionTestScheme(t)
+	policy := &kaprov1alpha1.PromotionPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "verify", Generation: 1},
+		Spec: kaprov1alpha1.PromotionPolicySpec{
+			Verification: &kaprov1alpha1.VerificationGateSpec{},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha1.PromotionPolicy{}).
+		WithObjects(policy).
+		Build()
+	r := &PromotionPolicyReconciler{Client: c}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "verify"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var got kaprov1alpha1.PromotionPolicy
+	if err := c.Get(ctx, client.ObjectKey{Name: "verify"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	cond := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
+	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != "UnsupportedVerification" {
+		t.Fatalf("Ready condition = %+v", cond)
 	}
 }
 

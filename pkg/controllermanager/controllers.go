@@ -23,6 +23,7 @@ import (
 
 func init() {
 	Register("promotion", startPromotionController)
+	Register("promotion-policy", startPromotionPolicyController)
 	Register("promotionrun", startPromotionRunController)
 	Register("promotion-target", startPromotionTargetController)
 	Register("approval", startApprovalController)
@@ -38,6 +39,15 @@ func startPromotionController(_ context.Context, cc ControllerContext) (bool, er
 		Client:   cc.Manager.GetClient(),
 		Recorder: cc.Recorder,
 		Scheme:   cc.Manager.GetScheme(),
+	}).SetupWithManager(cc.Manager); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func startPromotionPolicyController(_ context.Context, cc ControllerContext) (bool, error) {
+	if err := (&controller.PromotionPolicyReconciler{
+		Client: cc.Manager.GetClient(),
 	}).SetupWithManager(cc.Manager); err != nil {
 		return false, err
 	}

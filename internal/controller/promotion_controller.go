@@ -35,6 +35,7 @@ type PromotionReconciler struct {
 // +kubebuilder:rbac:groups=kapro.io,resources=promotions,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kapro.io,resources=promotions/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=promotions/finalizers,verbs=update
+// +kubebuilder:rbac:groups=kapro.io,resources=promotionpolicies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kapro.io,resources=promotionruns,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=promotionruns/status,verbs=get
 
@@ -48,31 +49,19 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	spec := promotionRunSpecFromPromotion(&promotion)
-	if len(promotion.Spec.Policies) > 0 {
+	policyDecision, err := r.evaluatePromotionPolicies(ctx, &promotion, time.Now().UTC())
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if !policyDecision.Allowed {
 		if err := r.suspendOwnedPromotionRuns(ctx, &promotion, spec); err != nil {
-			return ctrl.Result{}, fmt.Errorf("suspend PromotionRuns for unsupported policy: %w", err)
+			return ctrl.Result{}, fmt.Errorf("suspend PromotionRuns for policy denial: %w", err)
 		}
-		patch := client.MergeFrom(promotion.DeepCopy())
-		promotion.Status.ObservedGeneration = promotion.Generation
-		promotion.Status.Phase = kaprov1alpha1.PromotionPhaseFailed
-		promotion.Status.ActiveRun = ""
-		promotion.Status.ResolvedVersion = ""
-		meta.SetStatusCondition(&promotion.Status.Conditions, metav1.Condition{
-			Type:               "Ready",
-			Status:             metav1.ConditionFalse,
-			Reason:             "PromotionPolicyUnsupported",
-			Message:            "Promotion.spec.policies is reserved for the policy runtime and is not enforced in this release",
-			ObservedGeneration: promotion.Generation,
-		})
-		meta.SetStatusCondition(&promotion.Status.Conditions, metav1.Condition{
-			Type:               kaprov1alpha1.ConditionTypeStalled,
-			Status:             metav1.ConditionTrue,
-			Reason:             "PromotionPolicyUnsupported",
-			Message:            "Promotion.spec.policies is reserved for the policy runtime and is not enforced in this release",
-			ObservedGeneration: promotion.Generation,
-		})
-		if err := r.Status().Patch(ctx, &promotion, patch); err != nil {
-			return ctrl.Result{}, fmt.Errorf("patch Promotion unsupported policy status: %w", err)
+		if err := r.patchPromotionPolicyDecision(ctx, &promotion, policyDecision); err != nil {
+			return ctrl.Result{}, err
+		}
+		if policyDecision.RequeueAfter > 0 {
+			return ctrl.Result{RequeueAfter: policyDecision.RequeueAfter}, nil
 		}
 		return ctrl.Result{}, nil
 	}

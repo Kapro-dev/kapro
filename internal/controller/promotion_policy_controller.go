@@ -1,0 +1,136 @@
+package controller
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/google/cel-go/cel"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+)
+
+// PromotionPolicyReconciler records readiness for reusable promotion guardrails.
+type PromotionPolicyReconciler struct {
+	client.Client
+}
+
+// +kubebuilder:rbac:groups=kapro.io,resources=promotionpolicies,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=promotionpolicies/status,verbs=get;update;patch
+
+func (r *PromotionPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	var policy kaprov1alpha1.PromotionPolicy
+	if err := r.Get(ctx, req.NamespacedName, &policy); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	ready, reason, message := validatePromotionPolicy(&policy)
+	patch := client.MergeFrom(policy.DeepCopy())
+	now := metav1.Now()
+	policy.Status.ObservedGeneration = policy.Generation
+	status := metav1.ConditionFalse
+	if ready {
+		status = metav1.ConditionTrue
+	}
+	apimeta.SetStatusCondition(&policy.Status.Conditions, metav1.Condition{
+		Type:               "Ready",
+		Status:             status,
+		Reason:             reason,
+		Message:            message,
+		ObservedGeneration: policy.Generation,
+		LastTransitionTime: now,
+	})
+	if ready {
+		apimeta.RemoveStatusCondition(&policy.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
+	} else {
+		apimeta.SetStatusCondition(&policy.Status.Conditions, metav1.Condition{
+			Type:               kaprov1alpha1.ConditionTypeStalled,
+			Status:             metav1.ConditionTrue,
+			Reason:             reason,
+			Message:            message,
+			ObservedGeneration: policy.Generation,
+			LastTransitionTime: now,
+		})
+	}
+	if err := r.Status().Patch(ctx, &policy, patch); err != nil {
+		return ctrl.Result{}, fmt.Errorf("patch PromotionPolicy status: %w", err)
+	}
+	return ctrl.Result{}, nil
+}
+
+func (r *PromotionPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&kaprov1alpha1.PromotionPolicy{}).
+		Complete(r)
+}
+
+func validatePromotionPolicy(policy *kaprov1alpha1.PromotionPolicy) (bool, string, string) {
+	if policy.Spec.Selector != nil {
+		if _, err := metav1.LabelSelectorAsSelector(policy.Spec.Selector); err != nil {
+			return false, "InvalidSelector", err.Error()
+		}
+	}
+	for _, window := range policy.Spec.FreezeWindows {
+		if _, err := validateFreezeWindow(window); err != nil {
+			return false, "InvalidFreezeWindow", err.Error()
+		}
+	}
+	for _, rule := range policy.Spec.CEL {
+		if err := validatePromotionCEL(rule.Expression); err != nil {
+			return false, "InvalidCEL", fmt.Sprintf("rule %q: %v", rule.Name, err)
+		}
+	}
+	if policy.Spec.Verification != nil {
+		return false, "UnsupportedVerification", "PromotionPolicy.spec.verification is preview-only; use PromotionTrigger signature verification"
+	}
+	return true, "PolicyReady", "PromotionPolicy is valid and enforceable"
+}
+
+func validateFreezeWindow(window kaprov1alpha1.AgentTimeWindow) (bool, error) {
+	loc := time.UTC
+	if window.Timezone != "" {
+		loaded, err := time.LoadLocation(window.Timezone)
+		if err != nil {
+			return false, err
+		}
+		loc = loaded
+	}
+	start, err := parseWindowClock(window.StartTime)
+	if err != nil {
+		return false, fmt.Errorf("startTime: %w", err)
+	}
+	end, err := parseWindowClock(window.EndTime)
+	if err != nil {
+		return false, fmt.Errorf("endTime: %w", err)
+	}
+	if start == end {
+		return false, fmt.Errorf("startTime and endTime must differ")
+	}
+	return freezeWindowActive(window, time.Now().In(loc))
+}
+
+func validatePromotionCEL(expr string) error {
+	if expr == "" {
+		return fmt.Errorf("expression is empty")
+	}
+	env, err := promotionPolicyCELEnv()
+	if err != nil {
+		return err
+	}
+	_, issues := env.Compile(expr)
+	if issues != nil && issues.Err() != nil {
+		return issues.Err()
+	}
+	return nil
+}
+
+func promotionPolicyCELEnv() (*cel.Env, error) {
+	return cel.NewEnv(
+		cel.Variable("promotion", cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable("versions", cel.MapType(cel.StringType, cel.StringType)),
+	)
+}
