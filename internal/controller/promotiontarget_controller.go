@@ -51,7 +51,8 @@ func promotionTargetFromContext(ctx context.Context) *kaprov1alpha1.PromotionTar
 // PromotionTargetReconciler independently advances one PromotionTarget through the
 // per-target rollout FSM. It reads the parent PromotionRun (read-only, for suspend
 // and version info) and the referenced FleetCluster, but NEVER loads sibling
-// PromotionTargets or writes to any object other than its own PromotionTarget.status.
+// PromotionTargets or writes outside its own PromotionTarget.status and
+// metadata.labels["kapro.io/phase"].
 //
 // The parent PromotionRunReconciler aggregates child statuses via indexed queries —
 // it never runs the FSM itself.
@@ -96,6 +97,11 @@ func (r *PromotionTargetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	phase := rt.Status.Phase
 	switch phase {
 	case kaprov1alpha1.TargetPhaseConverged, kaprov1alpha1.TargetPhaseFailed, kaprov1alpha1.TargetPhaseSkipped:
+		if updateErr := r.syncPromotionTargetPhaseLabel(ctx, &rt); updateErr != nil {
+			kaprometrics.StatusWrites.WithLabelValues("promotiontarget", "error").Inc()
+			resultLabel = "error"
+			return ctrl.Result{}, fmt.Errorf("patch terminal PromotionTarget phase label %s: %w", rt.Name, updateErr)
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -121,6 +127,11 @@ func (r *PromotionTargetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		r.updatePromotionTargetStatusContract(&rt)
 		if updateErr := r.Status().Update(ctx, &rt); updateErr != nil {
 			return ctrl.Result{}, fmt.Errorf("update cancelled PromotionTarget status: %w", updateErr)
+		}
+		if updateErr := r.syncPromotionTargetPhaseLabel(ctx, &rt); updateErr != nil {
+			kaprometrics.StatusWrites.WithLabelValues("promotiontarget", "error").Inc()
+			resultLabel = "error"
+			return ctrl.Result{}, fmt.Errorf("patch cancelled PromotionTarget phase label %s: %w", rt.Name, updateErr)
 		}
 		return ctrl.Result{}, nil
 	}

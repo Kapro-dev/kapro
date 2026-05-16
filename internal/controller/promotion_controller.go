@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -45,7 +46,12 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if !promotion.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, nil
 	}
+
+	spec := promotionRunSpecFromPromotion(&promotion)
 	if len(promotion.Spec.Policies) > 0 {
+		if err := r.suspendOwnedPromotionRuns(ctx, &promotion, spec); err != nil {
+			return ctrl.Result{}, fmt.Errorf("suspend PromotionRuns for unsupported policy: %w", err)
+		}
 		patch := client.MergeFrom(promotion.DeepCopy())
 		promotion.Status.ObservedGeneration = promotion.Generation
 		promotion.Status.Phase = kaprov1alpha1.PromotionPhaseFailed
@@ -71,14 +77,6 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	spec := kaprov1alpha1.PromotionRunSpec{
-		Version:        promotionVersion(&promotion),
-		Versions:       copyStringMap(promotion.Spec.Versions),
-		PromotionPlans: append([]kaprov1alpha1.PromotionPlanRef(nil), promotion.Spec.PromotionPlans...),
-		Suspended:      promotion.Spec.Suspended,
-		Scope:          promotion.Spec.Scope,
-		Timeout:        promotion.Spec.Timeout,
-	}
 	runName := promotionRunName(&promotion, spec)
 
 	var run kaprov1alpha1.PromotionRun
@@ -86,21 +84,30 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if !apierrors.IsNotFound(err) {
 			return ctrl.Result{}, err
 		}
-		run = kaprov1alpha1.PromotionRun{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:        runName,
-				Labels:      copyStringMap(promotion.Labels),
-				Annotations: copyStringMap(promotion.Annotations),
-			},
-			Spec: spec,
+		legacyRun, adopted, err := r.adoptOrSuspendLegacyPromotionRun(ctx, &promotion, spec)
+		if err != nil {
+			return ctrl.Result{}, err
 		}
-		if err := controllerutil.SetControllerReference(&promotion, &run, r.Scheme); err != nil {
-			return ctrl.Result{}, fmt.Errorf("set Promotion owner on PromotionRun: %w", err)
+		if adopted {
+			run = *legacyRun
+			runName = run.Name
+		} else {
+			run = kaprov1alpha1.PromotionRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        runName,
+					Labels:      copyStringMap(promotion.Labels),
+					Annotations: copyStringMap(promotion.Annotations),
+				},
+				Spec: spec,
+			}
+			if err := controllerutil.SetControllerReference(&promotion, &run, r.Scheme); err != nil {
+				return ctrl.Result{}, fmt.Errorf("set Promotion owner on PromotionRun: %w", err)
+			}
+			if err := r.Create(ctx, &run); err != nil {
+				return ctrl.Result{}, fmt.Errorf("create PromotionRun: %w", err)
+			}
+			return ctrl.Result{RequeueAfter: promotionIntentRequeue}, nil
 		}
-		if err := r.Create(ctx, &run); err != nil {
-			return ctrl.Result{}, fmt.Errorf("create PromotionRun: %w", err)
-		}
-		return ctrl.Result{RequeueAfter: promotionIntentRequeue}, nil
 	}
 
 	patch := client.MergeFrom(run.DeepCopy())
@@ -134,6 +141,114 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, fmt.Errorf("patch Promotion status: %w", err)
 	}
 	return ctrl.Result{RequeueAfter: promotionIntentRequeue}, nil
+}
+
+func promotionRunSpecFromPromotion(promotion *kaprov1alpha1.Promotion) kaprov1alpha1.PromotionRunSpec {
+	return kaprov1alpha1.PromotionRunSpec{
+		Version:        promotionVersion(promotion),
+		Versions:       copyStringMap(promotion.Spec.Versions),
+		PromotionPlans: append([]kaprov1alpha1.PromotionPlanRef(nil), promotion.Spec.PromotionPlans...),
+		Suspended:      promotion.Spec.Suspended,
+		Scope:          promotion.Spec.Scope,
+		Timeout:        promotion.Spec.Timeout,
+	}
+}
+
+func (r *PromotionReconciler) adoptOrSuspendLegacyPromotionRun(ctx context.Context, promotion *kaprov1alpha1.Promotion, spec kaprov1alpha1.PromotionRunSpec) (*kaprov1alpha1.PromotionRun, bool, error) {
+	var legacy kaprov1alpha1.PromotionRun
+	if err := r.Get(ctx, client.ObjectKey{Name: legacyPromotionRunName(promotion)}, &legacy); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	if promotionRunImmutableSpecEqual(legacy.Spec, spec) {
+		return &legacy, true, nil
+	}
+	if err := r.suspendPromotionRun(ctx, &legacy); err != nil {
+		return nil, false, fmt.Errorf("suspend legacy PromotionRun %s: %w", legacy.Name, err)
+	}
+	return nil, false, nil
+}
+
+func (r *PromotionReconciler) suspendOwnedPromotionRuns(ctx context.Context, promotion *kaprov1alpha1.Promotion, spec kaprov1alpha1.PromotionRunSpec) error {
+	names := map[string]struct{}{
+		legacyPromotionRunName(promotion): {},
+		promotionRunName(promotion, spec): {},
+	}
+	if promotion.Status.ActiveRun != "" {
+		names[promotion.Status.ActiveRun] = struct{}{}
+	}
+	if promotion.Status.LastRun != "" {
+		names[promotion.Status.LastRun] = struct{}{}
+	}
+
+	var runs kaprov1alpha1.PromotionRunList
+	if err := r.List(ctx, &runs); err != nil {
+		return err
+	}
+	for i := range runs.Items {
+		run := &runs.Items[i]
+		if promotionControlsRun(promotion, run) {
+			names[run.Name] = struct{}{}
+		}
+	}
+
+	for name := range names {
+		var run kaprov1alpha1.PromotionRun
+		if err := r.Get(ctx, client.ObjectKey{Name: name}, &run); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return err
+		}
+		if !promotionMayOwnRun(promotion, &run, name, names) {
+			continue
+		}
+		if err := r.suspendPromotionRun(ctx, &run); err != nil {
+			return fmt.Errorf("suspend PromotionRun %s: %w", run.Name, err)
+		}
+	}
+	return nil
+}
+
+func promotionMayOwnRun(promotion *kaprov1alpha1.Promotion, run *kaprov1alpha1.PromotionRun, name string, candidateNames map[string]struct{}) bool {
+	if promotionControlsRun(promotion, run) {
+		return true
+	}
+	if _, ok := candidateNames[name]; !ok {
+		return false
+	}
+	return name == promotion.Status.ActiveRun ||
+		name == promotion.Status.LastRun ||
+		name == legacyPromotionRunName(promotion) ||
+		strings.HasPrefix(name, strings.TrimRight(promotion.Name, "-.")+"-run-")
+}
+
+func promotionControlsRun(promotion *kaprov1alpha1.Promotion, run *kaprov1alpha1.PromotionRun) bool {
+	for _, ref := range run.OwnerReferences {
+		if ref.APIVersion != "kapro.io/v1alpha1" || ref.Kind != "Promotion" || ref.Name != promotion.Name {
+			continue
+		}
+		return promotion.UID == "" || ref.UID == promotion.UID
+	}
+	return false
+}
+
+func (r *PromotionReconciler) suspendPromotionRun(ctx context.Context, run *kaprov1alpha1.PromotionRun) error {
+	if run.Spec.Suspended {
+		return nil
+	}
+	patch := client.MergeFrom(run.DeepCopy())
+	run.Spec.Suspended = true
+	return r.Patch(ctx, run, patch)
+}
+
+func promotionRunImmutableSpecEqual(a, b kaprov1alpha1.PromotionRunSpec) bool {
+	return a.Version == b.Version &&
+		reflect.DeepEqual(a.Versions, b.Versions) &&
+		reflect.DeepEqual(a.PromotionPlans, b.PromotionPlans) &&
+		reflect.DeepEqual(a.Scope, b.Scope)
 }
 
 func (r *PromotionReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -180,6 +295,15 @@ func promotionRunName(promotion *kaprov1alpha1.Promotion, spec kaprov1alpha1.Pro
 	sum := sha256.Sum256(payload)
 	suffix := "-run-" + hex.EncodeToString(sum[:])[:12]
 	base := strings.TrimRight(promotion.Name, "-.")
+	if len(base)+len(suffix) > 253 {
+		base = strings.TrimRight(base[:253-len(suffix)], "-.")
+	}
+	return base + suffix
+}
+
+func legacyPromotionRunName(promotion *kaprov1alpha1.Promotion) string {
+	base := strings.TrimRight(promotion.Name, "-.")
+	suffix := "-run-1"
 	if len(base)+len(suffix) > 253 {
 		base = strings.TrimRight(base[:253-len(suffix)], "-.")
 	}

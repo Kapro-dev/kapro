@@ -73,14 +73,19 @@ func TestPromotionReconcilerPatchesSameRunForMutableSpecChanges(t *testing.T) {
 	}
 }
 
-func TestPromotionReconcilerFailsClosedForPolicies(t *testing.T) {
+func TestPromotionReconcilerAdoptsLegacyRunForSameImmutableSpec(t *testing.T) {
 	ctx := context.Background()
 	scheme := newPromotionTestScheme(t)
-	promotion := promotionFixture(1, []corev1.LocalObjectReference{{Name: "signed-artifacts"}})
+	promotion := promotionFixture(2, nil)
+	spec := promotionRunSpecFixture("v2", false)
+	legacy := &kaprov1alpha1.PromotionRun{
+		ObjectMeta: metav1.ObjectMeta{Name: legacyPromotionRunName(promotion)},
+		Spec:       spec,
+	}
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithStatusSubresource(&kaprov1alpha1.Promotion{}).
-		WithObjects(promotion).
+		WithObjects(promotion, legacy).
 		Build()
 	r := &PromotionReconciler{Client: c, Scheme: scheme}
 
@@ -92,8 +97,79 @@ func TestPromotionReconcilerFailsClosedForPolicies(t *testing.T) {
 	if err := c.List(ctx, &runs); err != nil {
 		t.Fatal(err)
 	}
-	if len(runs.Items) != 0 {
+	if len(runs.Items) != 1 {
 		t.Fatalf("promotionrun count = %d", len(runs.Items))
+	}
+	if runs.Items[0].Name != legacyPromotionRunName(promotion) {
+		t.Fatalf("expected legacy PromotionRun to be adopted, got %q", runs.Items[0].Name)
+	}
+	if runs.Items[0].Spec.Suspended {
+		t.Fatalf("legacy PromotionRun should not be suspended when immutable spec matches")
+	}
+}
+
+func TestPromotionReconcilerSuspendsLegacyRunBeforeNewImmutableSpec(t *testing.T) {
+	ctx := context.Background()
+	scheme := newPromotionTestScheme(t)
+	promotion := promotionFixture(2, nil)
+	legacy := &kaprov1alpha1.PromotionRun{
+		ObjectMeta: metav1.ObjectMeta{Name: legacyPromotionRunName(promotion)},
+		Spec:       promotionRunSpecFixture("v1", false),
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha1.Promotion{}).
+		WithObjects(promotion, legacy).
+		Build()
+	r := &PromotionReconciler{Client: c, Scheme: scheme}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var gotLegacy kaprov1alpha1.PromotionRun
+	if err := c.Get(ctx, client.ObjectKey{Name: legacyPromotionRunName(promotion)}, &gotLegacy); err != nil {
+		t.Fatal(err)
+	}
+	if !gotLegacy.Spec.Suspended {
+		t.Fatalf("legacy PromotionRun should be suspended before creating replacement")
+	}
+	var newRun kaprov1alpha1.PromotionRun
+	if err := c.Get(ctx, client.ObjectKey{Name: promotionRunName(promotion, promotionRunSpecFixture("v2", false))}, &newRun); err != nil {
+		t.Fatalf("expected new digest PromotionRun: %v", err)
+	}
+}
+
+func TestPromotionReconcilerFailsClosedForPoliciesAndSuspendsExistingRuns(t *testing.T) {
+	ctx := context.Background()
+	scheme := newPromotionTestScheme(t)
+	promotion := promotionFixture(1, []corev1.LocalObjectReference{{Name: "signed-artifacts"}})
+	promotion.Status.ActiveRun = legacyPromotionRunName(promotion)
+	promotion.Status.LastRun = legacyPromotionRunName(promotion)
+	existing := &kaprov1alpha1.PromotionRun{
+		ObjectMeta: metav1.ObjectMeta{Name: legacyPromotionRunName(promotion)},
+		Spec:       promotionRunSpecFixture("v2", false),
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha1.Promotion{}).
+		WithObjects(promotion, existing).
+		Build()
+	r := &PromotionReconciler{Client: c, Scheme: scheme}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var runs kaprov1alpha1.PromotionRunList
+	if err := c.List(ctx, &runs); err != nil {
+		t.Fatal(err)
+	}
+	if len(runs.Items) != 1 {
+		t.Fatalf("promotionrun count = %d", len(runs.Items))
+	}
+	if !runs.Items[0].Spec.Suspended {
+		t.Fatalf("existing PromotionRun was not suspended")
 	}
 	var got kaprov1alpha1.Promotion
 	if err := c.Get(ctx, client.ObjectKey{Name: "checkout"}, &got); err != nil {
