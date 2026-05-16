@@ -31,6 +31,7 @@ type BackendProfileReconciler struct {
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=argoproj.io,resources=applications,verbs=get;list;watch
 // +kubebuilder:rbac:groups=argoproj.io,resources=applicationsets,verbs=get;list;watch
+// +kubebuilder:rbac:groups=source.toolkit.fluxcd.io,resources=gitrepositories;ocirepositories;buckets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=helm.toolkit.fluxcd.io,resources=helmreleases,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kustomize.toolkit.fluxcd.io,resources=kustomizations,verbs=get;list;watch
 
@@ -265,6 +266,24 @@ func (r *BackendProfileReconciler) observeFluxDiscovery(ctx context.Context, pro
 	}
 	limit := backendDiscoveryListLimit(profile)
 
+	gitRepositories, reason, message := r.listFluxSourceObjects(ctx, namespace, appSelector, schema.GroupVersionKind{
+		Group: "source.toolkit.fluxcd.io", Version: "v1", Kind: "GitRepositoryList",
+	}, "GitRepository", "gitrepository", limit)
+	if reason != "" {
+		return counts, reason, message
+	}
+	ociRepositories, reason, message := r.listFluxSourceObjects(ctx, namespace, appSelector, schema.GroupVersionKind{
+		Group: "source.toolkit.fluxcd.io", Version: "v1", Kind: "OCIRepositoryList",
+	}, "OCIRepository", "ocirepository", limit)
+	if reason != "" {
+		return counts, reason, message
+	}
+	buckets, reason, message := r.listFluxSourceObjects(ctx, namespace, appSelector, schema.GroupVersionKind{
+		Group: "source.toolkit.fluxcd.io", Version: "v1", Kind: "BucketList",
+	}, "Bucket", "bucket", limit)
+	if reason != "" {
+		return counts, reason, message
+	}
 	helmReleases, reason, message := r.listFluxObjects(ctx, namespace, appSelector, schema.GroupVersionKind{
 		Group: "helm.toolkit.fluxcd.io", Version: "v2", Kind: "HelmReleaseList",
 	}, "HelmRelease", "helmrelease", "spec.chart.spec.version", limit)
@@ -277,9 +296,43 @@ func (r *BackendProfileReconciler) observeFluxDiscovery(ctx context.Context, pro
 	if reason != "" {
 		return counts, reason, message
 	}
+	counts.merge(gitRepositories)
+	counts.merge(ociRepositories)
+	counts.merge(buckets)
 	counts.merge(helmReleases)
 	counts.merge(kustomizations)
 	return counts, "DiscoverySucceeded", counts.summary("Flux")
+}
+
+func (r *BackendProfileReconciler) listFluxSourceObjects(ctx context.Context, namespace string, selector labels.Selector, gvk schema.GroupVersionKind, kind, pattern string, limit int64) (backendDiscoveryCounts, string, string) {
+	counts := backendDiscoveryCounts{status: metav1.ConditionTrue}
+	list := &unstructured.UnstructuredList{}
+	list.SetGroupVersionKind(gvk)
+	if err := r.List(ctx, list, client.InNamespace(namespace), client.MatchingLabelsSelector{Selector: selector}, client.Limit(limit+1)); err != nil {
+		if apierrors.IsNotFound(err) || apimeta.IsNoMatchError(err) {
+			return counts, "", ""
+		}
+		return counts, "SourceDiscoveryFailed", err.Error()
+	}
+	if exceededListLimit(list.GetContinue(), len(list.Items), limit) {
+		return backendDiscoveryCounts{status: metav1.ConditionFalse}, "DiscoveryLimitExceeded",
+			fmt.Sprintf("%s discovery exceeded maxObjects=%d; narrow spec.discovery.selector", kind, limit)
+	}
+	counts.applications = int32(len(list.Items))
+	for i := range list.Items {
+		obj := &list.Items[i]
+		counts.addSelected(kaprov1alpha1.DiscoveredBackendObject{
+			APIVersion:   gvk.GroupVersion().String(),
+			Kind:         kind,
+			Namespace:    obj.GetNamespace(),
+			Name:         obj.GetName(),
+			Pattern:      pattern,
+			Reason:       "selected Flux source revision target",
+			Unit:         backendObjectUnit(obj),
+			VersionField: fluxSourceVersionField(obj),
+		})
+	}
+	return counts, "", ""
 }
 
 func (r *BackendProfileReconciler) listFluxObjects(ctx context.Context, namespace string, selector labels.Selector, gvk schema.GroupVersionKind, kind, pattern, versionField string, limit int64) (backendDiscoveryCounts, string, string) {
@@ -300,7 +353,7 @@ func (r *BackendProfileReconciler) listFluxObjects(ctx context.Context, namespac
 	for i := range list.Items {
 		obj := &list.Items[i]
 		counts.addSelected(kaprov1alpha1.DiscoveredBackendObject{
-			APIVersion:   strings.TrimSuffix(gvk.GroupVersion().String(), "List"),
+			APIVersion:   gvk.GroupVersion().String(),
 			Kind:         kind,
 			Namespace:    obj.GetNamespace(),
 			Name:         obj.GetName(),
@@ -311,6 +364,15 @@ func (r *BackendProfileReconciler) listFluxObjects(ctx context.Context, namespac
 		})
 	}
 	return counts, "", ""
+}
+
+func fluxSourceVersionField(obj *unstructured.Unstructured) string {
+	for _, field := range []string{"tag", "semver", "digest", "branch"} {
+		if value, _, _ := unstructured.NestedString(obj.Object, "spec", "ref", field); value != "" {
+			return "spec.ref." + field
+		}
+	}
+	return "spec.ref.tag"
 }
 
 func (r *BackendProfileReconciler) profileReadiness(ctx context.Context, profile *kaprov1alpha1.BackendProfile) (bool, string, string) {

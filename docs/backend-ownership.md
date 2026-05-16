@@ -44,8 +44,8 @@ and convergence phase.
 | Pattern | Kapro observes | Kapro writes in `Adopt` or generated mode | Kapro never writes |
 |---|---|---|---|
 | `HelmRelease` | Selected `HelmRelease` objects. | The selected chart/image/source version field declared by the backend adapter. Generated greenfield pull mode writes Kapro-managed desired state. | Helm values not declared in `PromotionSource`, secrets, target cluster credentials, rollout traffic resources. |
-| `Kustomization` | Selected `Kustomization` objects. | Source revision/path fields only when the backend adapter declares that ownership. | Reconciled workload manifests, secrets, drift correction, health status. |
-| `GitRepository` or `OCIRepository` | Source objects may be referenced for graph context. | Not by default. | Repository credentials and source authentication. |
+| `Kustomization` | Selected `Kustomization` objects. | No default direct write target. Promote the referenced source revision or a Kustomize image file instead. | Reconciled workload manifests, secrets, drift correction, health status. |
+| `GitRepository`, `OCIRepository`, or `Bucket` | Selected Flux source objects. | The declared `spec.ref.tag`, `semver`, `digest`, or reviewed `branch` field through Git-native source apply. | Repository credentials and source authentication. |
 
 Flux keeps source authentication, reconciliation, inventory, health checks, and
 drift correction. Kapro supplies promotion order, gates, approvals, release
@@ -63,3 +63,6 @@ history, and evidence.
 
 The object samples are intentionally capped. Counts are the scale signal; status
 samples are for operator diagnosis and UI previews.
+
+For the exact automatic vs skipped pattern list, see
+[Supported Backend Patterns](supported-backend-patterns.md).

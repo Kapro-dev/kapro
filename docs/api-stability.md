@@ -117,6 +117,14 @@ Kapro does not publish conversion webhooks in `v0.1.0-alpha`. Operators should
 therefore assume that the storage schema in a tagged release must be readable by
 that same operator version and by any downgrade version named in release notes.
 
+There is no automatic legacy conversion for pre-release objects such as the
+removed `KaproBundle` experiment. The project had no supported public install
+before the `PromotionSource` architecture; users testing unreleased branches
+should recreate those objects from the generated examples instead of relying on
+controller-side migration code. The first tagged release that documents a CRD as
+Preview must include explicit migration notes before removing or renaming that
+surface.
+
 CRD schema changes should follow these rules:
 
 - Prefer additive spec fields with explicit safe defaults.

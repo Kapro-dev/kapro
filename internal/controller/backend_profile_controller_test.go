@@ -292,6 +292,22 @@ func TestBackendProfileFluxDiscoveryCountsExistingResources(t *testing.T) {
 			Parameters: map[string]string{"namespace": "flux-system"},
 		},
 	}
+	gitRepository := &unstructured.Unstructured{}
+	gitRepository.SetGroupVersionKind(schema.GroupVersionKind{Group: "source.toolkit.fluxcd.io", Version: "v1", Kind: "GitRepository"})
+	gitRepository.SetNamespace("flux-system")
+	gitRepository.SetName("checkout-git")
+	gitRepository.SetLabels(map[string]string{"service": "checkout"})
+	if err := unstructured.SetNestedField(gitRepository.Object, "v1.0.0", "spec", "ref", "tag"); err != nil {
+		t.Fatal(err)
+	}
+	ociRepository := &unstructured.Unstructured{}
+	ociRepository.SetGroupVersionKind(schema.GroupVersionKind{Group: "source.toolkit.fluxcd.io", Version: "v1", Kind: "OCIRepository"})
+	ociRepository.SetNamespace("flux-system")
+	ociRepository.SetName("checkout-oci")
+	ociRepository.SetLabels(map[string]string{"service": "checkout"})
+	if err := unstructured.SetNestedField(ociRepository.Object, "1.x", "spec", "ref", "semver"); err != nil {
+		t.Fatal(err)
+	}
 	helmRelease := &unstructured.Unstructured{}
 	helmRelease.SetGroupVersionKind(schema.GroupVersionKind{Group: "helm.toolkit.fluxcd.io", Version: "v2", Kind: "HelmRelease"})
 	helmRelease.SetNamespace("flux-system")
@@ -302,18 +318,27 @@ func TestBackendProfileFluxDiscoveryCountsExistingResources(t *testing.T) {
 	kustomization.SetName("checkout")
 
 	r := &BackendProfileReconciler{
-		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(profile, helmRelease, kustomization).Build(),
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(profile, gitRepository, ociRepository, helmRelease, kustomization).Build(),
 	}
 
 	counts, reason, _ := r.observeDiscovery(context.Background(), profile)
 	if reason != "DiscoverySucceeded" {
 		t.Fatalf("reason=%s", reason)
 	}
-	if counts.applications != 2 {
+	if counts.applications != 4 {
 		t.Fatalf("applications=%d", counts.applications)
 	}
-	if len(counts.selected) != 2 {
+	if len(counts.selected) != 4 {
 		t.Fatalf("selected=%d", len(counts.selected))
+	}
+	if !hasDiscoveryPattern(counts.selected, "gitrepository") {
+		t.Fatalf("selected does not include GitRepository: %#v", counts.selected)
+	}
+	if !hasDiscoveryPattern(counts.selected, "ocirepository") {
+		t.Fatalf("selected does not include OCIRepository: %#v", counts.selected)
+	}
+	if !hasDiscoveryVersionField(counts.selected, "spec.ref.semver") {
+		t.Fatalf("selected does not include semver source field: %#v", counts.selected)
 	}
 }
 
@@ -348,6 +373,15 @@ func hasDiscoveryPattern(objects []kaprov1alpha1.DiscoveredBackendObject, patter
 func hasDiscoveryKind(objects []kaprov1alpha1.DiscoveredBackendObject, kind string) bool {
 	for _, obj := range objects {
 		if obj.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+func hasDiscoveryVersionField(objects []kaprov1alpha1.DiscoveredBackendObject, field string) bool {
+	for _, obj := range objects {
+		if obj.VersionField == field {
 			return true
 		}
 	}

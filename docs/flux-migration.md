@@ -105,6 +105,8 @@ spec:
 
 The exact field depends on how the Flux repo models versions. Generated units
 with `confidence: needs-review` should be edited or removed before adoption.
+The canonical list of automatic, skipped, and review-required patterns is
+[Supported Backend Patterns](supported-backend-patterns.md).
 
 ## Step 4: Adopt Only The Version Field
 
@@ -151,3 +153,17 @@ update representative Flux-native fields: `GitRepository.spec.ref.tag`,
 HelmRelease values image tags, Kustomize `images[].newTag`, and Helm
 `Chart.yaml` version fields. It also verifies the Flux discovery command
 generates the mapping before applying it.
+
+## Live Flux Controller E2E
+
+Before calling a Flux brownfield path release-ready, also run:
+
+```bash
+scripts/verify-install.sh flux-e2e
+```
+
+This creates a disposable Kind cluster, installs real Flux controllers, serves a
+Git fixture inside the cluster, bootstraps Flux from that repo, runs
+`kapro adopt flux`, applies the generated `PromotionSource` mapping from `v1`
+to `v2`, pushes the Git change, and waits for Flux to reconcile the workload
+ConfigMap to `v2`.

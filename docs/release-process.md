@@ -34,6 +34,12 @@ For Flux Git-native brownfield readiness:
 scripts/verify-install.sh flux-git-e2e
 ```
 
+For live Flux controller readiness:
+
+```bash
+scripts/verify-install.sh flux-e2e
+```
+
 The release candidate is not ready if:
 
 - CRDs fail to render from Helm or Kustomize.
@@ -43,6 +49,8 @@ The release candidate is not ready if:
   Argo sync, and `ReleaseTarget.status.backendObjects` convergence.
 - The Flux Git-native E2E cannot prove common Flux source, HelmRelease, and
   Kustomize version fields can be updated safely.
+- The live Flux E2E cannot prove generated Flux mappings drive real Flux
+  controller reconciliation from `v1` to `v2`.
 - Production targets cannot be unblocked by the demo approvals.
 - `PluginRegistration` compatibility conditions are missing from a probe
   failure or unsupported contract version test.
@@ -70,7 +78,6 @@ Call out known limitations:
 - All Kubernetes APIs are `v1alpha1`.
 - External plugin dynamic reload is future work.
 - Runtime planner dispatch is future work.
-- The Kind demo uses local Flux fixtures instead of real Flux controllers.
 - Docker dry-run checks may be optional for merging, but release candidates
   should still publish a real multi-architecture operator image.
 
@@ -141,6 +148,7 @@ helm upgrade --install kapro charts/kapro-operator \
 - `scripts/verify-install.sh kind-demo`
 - `scripts/verify-install.sh argo-e2e`
 - `scripts/verify-install.sh flux-git-e2e`
+- `scripts/verify-install.sh flux-e2e`
 ````
 
 ## Post-Release Checks

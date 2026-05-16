@@ -177,6 +177,45 @@ spec:
 	}
 }
 
+func TestRunSourceApplyDoesNotPartiallyWriteOnFailure(t *testing.T) {
+	repo := t.TempDir()
+	writeTestFile(t, repo, "app.yaml", `spec:
+  good: old
+  items:
+  - tag: old
+`)
+	sourcePath := filepath.Join(repo, "source.yaml")
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
+kind: PromotionSource
+metadata:
+  name: checkout
+spec:
+  units:
+  - name: valid
+    backendKind: GitYAMLField
+    sourcePath: app.yaml
+    versionField: spec.good
+  - name: invalid
+    backendKind: GitYAMLField
+    sourcePath: app.yaml
+    versionField: spec.items[9].tag
+`)
+	initTestGitRepo(t, repo)
+
+	err := runSourceApply(sourceApplyOptions{
+		RepoPath:   repo,
+		SourcePath: sourcePath,
+		VersionSet: []string{"valid=new", "invalid=new"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "index 9 out of range") {
+		t.Fatalf("expected invalid field error, got %v", err)
+	}
+	got := readFile(t, filepath.Join(repo, "app.yaml"))
+	if !strings.Contains(got, "good: old") || strings.Contains(got, "good: new") {
+		t.Fatalf("source apply partially modified file after failure:\n%s", got)
+	}
+}
+
 func TestRunSourceApplyUpdatesArgoApplicationSourcePath(t *testing.T) {
 	repo := t.TempDir()
 	writeTestFile(t, repo, "apps/api.yaml", `apiVersion: argoproj.io/v1alpha1

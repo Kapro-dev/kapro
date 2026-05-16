@@ -307,7 +307,7 @@ func TestLooksLikeGitRemote(t *testing.T) {
 	}
 }
 
-func writeTestFile(t *testing.T, root, rel, content string) {
+func writeTestFile(t testing.TB, root, rel, content string) {
 	t.Helper()
 	path := filepath.Join(root, rel)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -318,7 +318,7 @@ func writeTestFile(t *testing.T, root, rel, content string) {
 	}
 }
 
-func initTestGitRepo(t *testing.T, root string) {
+func initTestGitRepo(t testing.TB, root string) {
 	t.Helper()
 	runTestGit(t, root, "init")
 	runTestGit(t, root, "config", "user.email", "kapro@example.com")
@@ -326,7 +326,7 @@ func initTestGitRepo(t *testing.T, root string) {
 	runTestGit(t, root, "add", ".")
 }
 
-func runTestGit(t *testing.T, root string, args ...string) {
+func runTestGit(t testing.TB, root string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = root

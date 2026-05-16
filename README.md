@@ -181,6 +181,7 @@ Quick troubleshooting checks:
 - [CNCF Positioning](docs/cncf-positioning.md)
 - [Local Kind Demo](docs/kind-demo.md)
 - [API Stability and Upgrade Policy](docs/api-stability.md)
+- [Supported Backend Patterns](docs/supported-backend-patterns.md)
 - [Conformance Packages](docs/conformance.md)
 - [Plugin Compatibility](docs/plugin-compatibility.md)
 - [Controller Scalability and Resilience](docs/controller-scalability.md)

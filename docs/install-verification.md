@@ -132,4 +132,30 @@ The fixture covers:
 - `GitRepository.spec.ref.tag`;
 - `OCIRepository.spec.ref.tag`;
 - `HelmRelease.spec.chart.spec.version`;
-- Kustomize `images[].newTag`.
+- HelmRelease image tag values;
+- Kustomize `images[].newTag`;
+- Helm `Chart.yaml` `version` and `appVersion`.
+
+## Live Flux Controller E2E
+
+The live Flux E2E proves the generated mapping can drive real Flux
+reconciliation, not just local file mutation:
+
+```bash
+scripts/verify-install.sh flux-e2e
+```
+
+It creates a disposable Kind cluster, installs Flux controllers, serves a Git
+fixture inside the cluster, bootstraps Flux from that repo, runs
+`kapro adopt flux`, applies the generated `PromotionSource` from `v1` to `v2`,
+pushes the Git change, and waits for Flux to reconcile the workload ConfigMap
+to `v2`.
+
+By default the wrapper deletes the Kind cluster after success. To inspect the
+cluster afterward:
+
+```bash
+KAPRO_FLUX_E2E_CLEANUP=false scripts/flux-e2e.sh run
+scripts/flux-e2e.sh status
+scripts/flux-e2e.sh down
+```

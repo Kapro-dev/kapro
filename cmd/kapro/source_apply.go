@@ -126,12 +126,15 @@ func runSourceApply(opts sourceApplyOptions) error {
 	for _, write := range plan {
 		if opts.DryRun {
 			fmt.Printf("would update %s:%s -> %s\n", write.Path, write.Field, write.Version)
-			continue
 		}
-		if err := applySourceWrite(write); err != nil {
+	}
+	if !opts.DryRun {
+		if err := applySourceWritesAtomically(plan); err != nil {
 			return err
 		}
-		fmt.Printf("updated %s:%s -> %s\n", write.Path, write.Field, write.Version)
+		for _, write := range plan {
+			fmt.Printf("updated %s:%s -> %s\n", write.Path, write.Field, write.Version)
+		}
 	}
 	if opts.Commit {
 		if opts.Message == "" {
@@ -339,6 +342,60 @@ func applySourceWrite(write sourceWrite) error {
 		return writetarget.UpdateKustomizeImage(write.AbsPath, imageName, imageNewName, write.Version)
 	}
 	return writetarget.UpdateStructuredField(write.AbsPath, write.Field, write.Version)
+}
+
+func applySourceWritesAtomically(writes []sourceWrite) error {
+	tmpDir, err := os.MkdirTemp("", "kapro-source-apply-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	tempPaths := make(map[string]string, len(writes))
+	modes := make(map[string]os.FileMode, len(writes))
+	for _, write := range writes {
+		if _, ok := tempPaths[write.Path]; ok {
+			continue
+		}
+		info, err := os.Stat(write.AbsPath)
+		if err != nil {
+			return fmt.Errorf("stat %s: %w", write.Path, err)
+		}
+		data, err := os.ReadFile(write.AbsPath)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", write.Path, err)
+		}
+		tmpPath := filepath.Join(tmpDir, strings.ReplaceAll(write.Path, "/", "__"))
+		if err := os.WriteFile(tmpPath, data, info.Mode().Perm()); err != nil {
+			return fmt.Errorf("stage %s: %w", write.Path, err)
+		}
+		tempPaths[write.Path] = tmpPath
+		modes[write.Path] = info.Mode().Perm()
+	}
+
+	for _, write := range writes {
+		staged := write
+		staged.AbsPath = tempPaths[write.Path]
+		if err := applySourceWrite(staged); err != nil {
+			return err
+		}
+	}
+
+	for _, write := range writes {
+		tmpPath := tempPaths[write.Path]
+		if tmpPath == "" {
+			continue
+		}
+		data, err := os.ReadFile(tmpPath)
+		if err != nil {
+			return fmt.Errorf("read staged %s: %w", write.Path, err)
+		}
+		if err := os.WriteFile(write.AbsPath, data, modes[write.Path]); err != nil {
+			return fmt.Errorf("write %s: %w", write.Path, err)
+		}
+		delete(tempPaths, write.Path)
+	}
+	return nil
 }
 
 func kustomizeImageField(field string) (string, string) {
