@@ -88,7 +88,7 @@ Call out known limitations:
 
 ## Artifact Checklist
 
-For a tagged promotionrun, publish:
+For a tagged release, publish:
 
 - Git tag, for example `v0.1.0-alpha.1`.
 - GitHub release notes generated from `CHANGELOG.md`.
@@ -99,15 +99,15 @@ For a tagged promotionrun, publish:
   `kapro-operator-<version>.tgz`.
 - Checksums for downloadable archives.
 
-For the `v0.1.0-alpha` promotionrun-specific checklist, use
-[v0.1.0-alpha PromotionRun Runbook](promotionrun-v0.1.0-alpha.md).
+For the `v0.1.0-alpha` release-specific checklist, use
+[v0.1.0-alpha Release Runbook](release-v0.1.0-alpha.md).
 
-## PromotionRun Notes Template
+## Release Notes Template
 
 ````markdown
 # Kapro <version>
 
-## What This PromotionRun Is
+## What This Release Is
 
 Short statement of maturity, intended audience, and supported install path.
 
