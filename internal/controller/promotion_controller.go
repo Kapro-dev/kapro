@@ -2,7 +2,11 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -41,8 +45,32 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if !promotion.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, nil
 	}
+	if len(promotion.Spec.Policies) > 0 {
+		patch := client.MergeFrom(promotion.DeepCopy())
+		promotion.Status.ObservedGeneration = promotion.Generation
+		promotion.Status.Phase = kaprov1alpha1.PromotionPhaseFailed
+		promotion.Status.ActiveRun = ""
+		promotion.Status.ResolvedVersion = ""
+		meta.SetStatusCondition(&promotion.Status.Conditions, metav1.Condition{
+			Type:               "Ready",
+			Status:             metav1.ConditionFalse,
+			Reason:             "PromotionPolicyUnsupported",
+			Message:            "Promotion.spec.policies is reserved for the policy runtime and is not enforced in this release",
+			ObservedGeneration: promotion.Generation,
+		})
+		meta.SetStatusCondition(&promotion.Status.Conditions, metav1.Condition{
+			Type:               kaprov1alpha1.ConditionTypeStalled,
+			Status:             metav1.ConditionTrue,
+			Reason:             "PromotionPolicyUnsupported",
+			Message:            "Promotion.spec.policies is reserved for the policy runtime and is not enforced in this release",
+			ObservedGeneration: promotion.Generation,
+		})
+		if err := r.Status().Patch(ctx, &promotion, patch); err != nil {
+			return ctrl.Result{}, fmt.Errorf("patch Promotion unsupported policy status: %w", err)
+		}
+		return ctrl.Result{}, nil
+	}
 
-	runName := promotion.Name + "-run-1"
 	spec := kaprov1alpha1.PromotionRunSpec{
 		Version:        promotionVersion(&promotion),
 		Versions:       copyStringMap(promotion.Spec.Versions),
@@ -51,6 +79,7 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		Scope:          promotion.Spec.Scope,
 		Timeout:        promotion.Spec.Timeout,
 	}
+	runName := promotionRunName(&promotion, spec)
 
 	var run kaprov1alpha1.PromotionRun
 	if err := r.Get(ctx, client.ObjectKey{Name: runName}, &run); err != nil {
@@ -130,6 +159,31 @@ func promotionVersion(promotion *kaprov1alpha1.Promotion) string {
 		return promotion.Spec.Artifact.Image + ":" + promotion.Spec.Artifact.Tag
 	}
 	return promotion.Spec.Artifact.Tag
+}
+
+func promotionRunName(promotion *kaprov1alpha1.Promotion, spec kaprov1alpha1.PromotionRunSpec) string {
+	identity := struct {
+		Version        string                           `json:"version,omitempty"`
+		Versions       map[string]string                `json:"versions,omitempty"`
+		PromotionPlans []kaprov1alpha1.PromotionPlanRef `json:"promotionplans,omitempty"`
+		Scope          *kaprov1alpha1.PromotionRunScope `json:"scope,omitempty"`
+	}{
+		Version:        spec.Version,
+		Versions:       spec.Versions,
+		PromotionPlans: spec.PromotionPlans,
+		Scope:          spec.Scope,
+	}
+	payload, err := json.Marshal(identity)
+	if err != nil {
+		payload = []byte(fmt.Sprintf("%#v", identity))
+	}
+	sum := sha256.Sum256(payload)
+	suffix := "-run-" + hex.EncodeToString(sum[:])[:12]
+	base := strings.TrimRight(promotion.Name, "-.")
+	if len(base)+len(suffix) > 253 {
+		base = strings.TrimRight(base[:253-len(suffix)], "-.")
+	}
+	return base + suffix
 }
 
 func promotionPhaseFromRun(phase kaprov1alpha1.PromotionRunPhase) kaprov1alpha1.PromotionPhase {

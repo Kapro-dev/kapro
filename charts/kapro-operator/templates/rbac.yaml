@@ -98,6 +98,7 @@ rules:
   - fleetclusters/status
   - pluginregistrations/status
   - promotionruns/status
+  - promotions/status
   - promotiontargets/status
   - promotiontriggers/status
   verbs:
@@ -144,6 +145,7 @@ rules:
   - kapro.io
   resources:
   - promotionplans
+  - promotions
   verbs:
   - create
   - delete
@@ -168,6 +170,7 @@ rules:
   - kapro.io
   resources:
   - promotionruns/finalizers
+  - promotions/finalizers
   verbs:
   - update
 - apiGroups:

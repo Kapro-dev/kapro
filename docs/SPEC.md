@@ -96,18 +96,19 @@ See `docs/vision-and-boundaries.md` for the public positioning and CNCF scope.
 PromotionRun
 └── PromotionPlan DAG (promotionplan → promotionplan via dependsOn)
     └── Stage DAG (stage → stage via dependsOn inside a promotionplan)
-        └── clusterSelector → FleetCluster set → per-target rollout tracked in PromotionRun.status.targets[]
+        └── clusterSelector → FleetCluster set → child PromotionTarget per cluster/stage
 ```
 
 - **PromotionRun** owns execution end-to-end and terminates when all promotionplans/stages have converged or failed.
 - **PromotionPlan** is a reusable template of stages (no status, no live fields).
 - **Stage** selects clusters and carries the gate policy that applies to those clusters.
 - **FleetCluster** is pure inventory + observed state; the operator writes `spec.desiredVersion` and reads status.
+- **PromotionTarget** is the authoritative per-cluster/stage execution object. `PromotionRun.status.targets[]` is retained only as deprecated compatibility state.
 - **Approval** is a separate CRD that exists only to carry a human "approve / reject" signal for a target awaiting approval.
 
 ### What Kapro does **not** have
 
-- No `Sync` CRD. Per-target execution state is inline in `PromotionRun.status.targets[]`.
+- No `Sync` CRD. Per-target execution state is materialized as child `PromotionTarget` objects and summarized back into `PromotionRun.status`.
 - No `PromotionRunReport` / `PromotionRunRevision` CRD. Report summary is inline in `PromotionRun.status.report`; audit trail is inline in `PromotionRun.status.auditTrail`.
 - No generic cluster-provider interface. `FleetCluster` is the single cluster CRD; bootstrap lives in code (`internal/bootstrap`).
 

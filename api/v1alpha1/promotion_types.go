@@ -45,8 +45,9 @@ type PromotionSpec struct {
 	// allowed write targets.
 	// +optional
 	SourceRef string `json:"sourceRef,omitempty"`
-	// Policies references PromotionPolicy objects evaluated before or during the
-	// promotion.
+	// Policies is reserved for the PromotionPolicy runtime. Policy references
+	// fail closed until that runtime is available so users do not receive a false
+	// enforcement signal.
 	// +optional
 	Policies []corev1.LocalObjectReference `json:"policies,omitempty"`
 	// Suspended pauses all advancement when true.
@@ -108,7 +109,8 @@ type PromotionList struct {
 	Items           []Promotion `json:"items"`
 }
 
-// PromotionPolicySpec declares reusable policy checks for a Promotion.
+// PromotionPolicySpec declares reusable policy checks for a Promotion. The API
+// is preview-only until the PromotionPolicy runtime is enabled.
 type PromotionPolicySpec struct {
 	// Mode controls whether this policy is required or advisory.
 	// +kubebuilder:validation:Enum=enforce;audit
@@ -153,7 +155,8 @@ type PromotionPolicyStatus struct {
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// PromotionPolicy is a reusable guardrail evaluated before or during promotion.
+// PromotionPolicy is a preview reusable guardrail API. Policy references fail
+// closed until the PromotionPolicy runtime is enabled.
 type PromotionPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

@@ -7,6 +7,10 @@ import (
 
 	coordinationv1 "k8s.io/api/coordination/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
@@ -21,6 +25,36 @@ type recordingNotifier struct {
 func (n *recordingNotifier) Notify(_ context.Context, event notification.Event, policy notification.NotificationPolicy) {
 	n.events = append(n.events, event)
 	n.policies = append(n.policies, policy)
+}
+
+func TestSyncPromotionTargetPhaseLabelPersistsMetadata(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	target := &kaprov1alpha1.PromotionTarget{
+		ObjectMeta: metav1.ObjectMeta{Name: "promo-wave-cluster-a"},
+		Status: kaprov1alpha1.PromotionTargetStatus{
+			TargetStatus: kaprov1alpha1.TargetStatus{Phase: kaprov1alpha1.TargetPhaseWaitingApproval},
+		},
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(target).Build()
+	r := &PromotionTargetReconciler{Client: c}
+
+	if err := r.syncPromotionTargetPhaseLabel(ctx, target); err != nil {
+		t.Fatal(err)
+	}
+	var got kaprov1alpha1.PromotionTarget
+	if err := c.Get(ctx, client.ObjectKey{Name: target.Name}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Labels["kapro.io/phase"] != string(kaprov1alpha1.TargetPhaseWaitingApproval) {
+		t.Fatalf("phase label = %q", got.Labels["kapro.io/phase"])
+	}
 }
 
 func TestPromotionTargetPredicates_RejectedStatusChangeEnqueues(t *testing.T) {

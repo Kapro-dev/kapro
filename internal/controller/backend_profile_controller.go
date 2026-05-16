@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -18,6 +19,8 @@ import (
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
+
+const backendProfileDiscoveryRequeue = 2 * time.Minute
 
 // BackendProfileReconciler records readiness for selectable delivery backends.
 type BackendProfileReconciler struct {
@@ -108,6 +111,9 @@ func (r *BackendProfileReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	if err := r.Status().Patch(ctx, &profile, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch BackendProfile status: %w", err)
+	}
+	if profile.Spec.Discovery != nil && profile.Spec.Discovery.Enabled {
+		return ctrl.Result{RequeueAfter: backendProfileDiscoveryRequeue}, nil
 	}
 	return ctrl.Result{}, nil
 }

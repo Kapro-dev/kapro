@@ -90,8 +90,9 @@ spec:
                 type: object
               policies:
                 description: |-
-                  Policies references PromotionPolicy objects evaluated before or during the
-                  promotion.
+                  Policies is reserved for the PromotionPolicy runtime. Policy references
+                  fail closed until that runtime is available so users do not receive a false
+                  enforcement signal.
                 items:
                   description: |-
                     LocalObjectReference contains enough information to let you locate the
