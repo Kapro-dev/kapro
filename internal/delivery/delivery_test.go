@@ -145,6 +145,42 @@ func TestDelivery_Reconcile_ZeroObjectsIsFailure(t *testing.T) {
 	}
 }
 
+func TestDelivery_Reconcile_PartiallyConstructedNoPanic(t *testing.T) {
+	cases := []struct {
+		name string
+		d    *Delivery
+		want string
+	}{
+		{"nil receiver", nil, "nil Delivery"},
+		{"nil Puller", &Delivery{Engine: &ApplyEngine{}, Renderers: map[Format]Renderer{}}, "Puller is nil"},
+		{"nil Engine", &Delivery{Puller: &fakePuller{}, Renderers: map[Format]Renderer{}}, "Engine is nil"},
+		{"nil Renderers", &Delivery{Puller: &fakePuller{}, Engine: &ApplyEngine{}}, "Renderers is nil"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := tc.d.Reconcile(context.Background(), ReconcileRequest{App: "x"})
+			if res.Err == nil {
+				t.Fatal("expected error")
+			}
+			if res.Phase != string(kaprov1alpha1.DeliveryPhaseFailed) {
+				t.Fatalf("phase=%s, want Failed", res.Phase)
+			}
+			if !contains(res.Err.Error(), tc.want) {
+				t.Fatalf("err=%q does not contain %q", res.Err.Error(), tc.want)
+			}
+		})
+	}
+}
+
+func contains(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
+
 func TestDelivery_RegisterRenderer(t *testing.T) {
 	d := newDeliveryFixture(t, &fakePuller{pa: newRawArtifact(t)})
 	stub := stubRenderer{}

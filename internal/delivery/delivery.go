@@ -73,16 +73,20 @@ type ReconcileResult struct {
 }
 
 // Reconcile runs one Pull→Render→Apply pass for the requested (app, ref).
-// Phase transitions:
 //
-//	Pending → Pulling      (entry)
-//	Pulling → Staging      (Pull ok)
-//	Staging → Applying     (Render + dry-run-apply ok)
-//	Applying → Converged   (commit ok)
-//	any     → Failed       (sticky on error)
+// Returned ReconcileResult.Phase is terminal — exactly one of
+// DeliveryPhaseConverged (full commit succeeded) or DeliveryPhaseFailed
+// (any step errored). Reconcile is synchronous; by the time it returns the
+// pass is over, so intermediate phases (Pulling, Staging, Applying) are not
+// observable on the result. The intermediate phases exist for callers that
+// want to advertise in-flight progress in status.delivery — typically by
+// writing the phase to status before/after each step in their own loop. A
+// follow-up commit adds that streaming wrapper; this function deliberately
+// stays linear so logs and metrics see a stable terminal phase.
 //
-// The function is deliberately small — branching kept linear because the
-// caller logs and metrics depend on stable phase order in the result.
+// Pending and Skipped are owned by the caller's outer loop:
+//   - Pending: desired version recorded but the caller hasn't started yet.
+//   - Skipped: caller short-circuited (e.g. spec.suspend=true).
 func (d *Delivery) Reconcile(ctx context.Context, req ReconcileRequest) ReconcileResult {
 	if d == nil {
 		return ReconcileResult{App: req.App, Phase: string(kaprov1alpha1.DeliveryPhaseFailed),
@@ -92,7 +96,23 @@ func (d *Delivery) Reconcile(ctx context.Context, req ReconcileRequest) Reconcil
 	if now == nil {
 		now = time.Now
 	}
-	out := ReconcileResult{App: req.App, LastAttemptedAt: now()}
+	out := ReconcileResult{App: req.App, LastAttemptedAt: now(), Phase: string(kaprov1alpha1.DeliveryPhaseFailed)}
+
+	// Guard against partially-constructed Delivery: a nil Puller / Engine /
+	// Renderers map would panic on dereference further down. Surface the
+	// misconfiguration as a Failed result so the caller can write it to
+	// status.delivery and log it, rather than crashing the spoke pod.
+	switch {
+	case d.Puller == nil:
+		out.Err = fmt.Errorf("Delivery.Puller is nil")
+		return out
+	case d.Engine == nil:
+		out.Err = fmt.Errorf("Delivery.Engine is nil")
+		return out
+	case d.Renderers == nil:
+		out.Err = fmt.Errorf("Delivery.Renderers is nil")
+		return out
+	}
 
 	// Pull.
 	pa, err := d.Puller.Pull(ctx, req.Ref)

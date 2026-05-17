@@ -22,9 +22,16 @@ import (
 // etc. — same convention `kubectl apply -f dir` uses.
 //
 // Duplicates: if two documents resolve to the same Object.Key, the later
-// one in iteration order wins, with a warning in the returned error chain
-// only when both bodies are byte-distinct (identical re-declarations are
-// permitted — common when a Helm chart's helpers.tpl is included verbatim).
+// one in iteration order wins silently. The "last writer wins" rule
+// matches kubectl apply semantics — repeated declarations of the same
+// object in different files are common (helpers.tpl style includes,
+// app-of-apps templates) and rejecting them would force authors to write
+// brittle de-duplication logic upstream.
+//
+// A future commit may add an optional strict-mode that surfaces a warning
+// when colliding documents differ byte-for-byte; the spoke binary doesn't
+// need it yet because the OCI artifacts are produced by Kapro's own
+// promotion pipeline.
 type RawYAMLRenderer struct{}
 
 // Render parses the filesystem and returns RenderedManifests with

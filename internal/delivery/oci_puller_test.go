@@ -169,6 +169,37 @@ func TestOCIPuller_Pull_EmptyRepositoryRejected(t *testing.T) {
 	}
 }
 
+func TestReadAll_RejectsNegativeSize(t *testing.T) {
+	// Hostile manifest claims a negative descriptor size; readAll must
+	// refuse to allocate / read rather than panic on make([]byte, 0, neg).
+	store := memory.New()
+	d := ocispec.Descriptor{
+		MediaType: "application/octet-stream",
+		Digest:    digest.FromBytes([]byte("x")),
+		Size:      -1,
+	}
+	_, err := readAll(context.Background(), store, d, DefaultMaxLayerBytes)
+	if err == nil {
+		t.Fatal("expected error for negative size")
+	}
+}
+
+func TestReadAll_RejectsOversizedDeclaration(t *testing.T) {
+	// Hostile manifest claims a descriptor size larger than the cap before
+	// any bytes are fetched. Cheaper to reject up-front than to start the
+	// transfer and OOM mid-stream.
+	store := memory.New()
+	d := ocispec.Descriptor{
+		MediaType: "application/octet-stream",
+		Digest:    digest.FromBytes([]byte("x")),
+		Size:      1 << 40, // 1 TiB
+	}
+	_, err := readAll(context.Background(), store, d, 1024)
+	if err == nil {
+		t.Fatal("expected error for oversized descriptor")
+	}
+}
+
 func TestOCIPuller_Pull_RejectsLayerOverCap(t *testing.T) {
 	// Build a tar with a single large file; cap the puller at 1 KiB.
 	big := bytes.Repeat([]byte("a"), 4096)

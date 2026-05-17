@@ -81,7 +81,7 @@ func (p *OCIPuller) Pull(ctx context.Context, ref ArtifactRef) (*PulledArtifact,
 		return nil, fmt.Errorf("copy %s: %w", ref.String(), err)
 	}
 
-	manifestBytes, err := readAll(ctx, dst, desc)
+	manifestBytes, err := readAll(ctx, dst, desc, maxBytes)
 	if err != nil {
 		return nil, fmt.Errorf("read manifest %s: %w", ref.String(), err)
 	}
@@ -95,7 +95,7 @@ func (p *OCIPuller) Pull(ctx context.Context, ref ArtifactRef) (*PulledArtifact,
 	}
 	layer := manifest.Layers[0]
 
-	layerBytes, err := readAll(ctx, dst, layer)
+	layerBytes, err := readAll(ctx, dst, layer, maxBytes)
 	if err != nil {
 		return nil, fmt.Errorf("read layer %s of %s: %w", layer.Digest, ref.String(), err)
 	}
@@ -111,9 +111,22 @@ func (p *OCIPuller) Pull(ctx context.Context, ref ArtifactRef) (*PulledArtifact,
 	}, nil
 }
 
-// readAll fetches a descriptor's full bytes via Fetch. Bounded by the
-// descriptor's declared Size to keep peak memory predictable.
-func readAll(ctx context.Context, fetcher oras.ReadOnlyTarget, desc ocispec.Descriptor) ([]byte, error) {
+// readAll fetches a descriptor's full bytes via Fetch. Bounded by both the
+// descriptor's declared Size and maxBytes to keep peak memory predictable
+// even when a malicious manifest declares an absurd Size.
+//
+// A negative declared size is rejected — the OCI spec mandates non-negative
+// sizes and any negative value indicates a malformed or hostile descriptor.
+// A zero declared size means "unknown" and we fall back to a length-bounded
+// ReadAll.
+func readAll(ctx context.Context, fetcher oras.ReadOnlyTarget, desc ocispec.Descriptor, maxBytes int64) ([]byte, error) {
+	if desc.Size < 0 {
+		return nil, fmt.Errorf("descriptor %s declares negative size %d", desc.Digest, desc.Size)
+	}
+	if desc.Size > maxBytes {
+		return nil, fmt.Errorf("descriptor %s declares size %d > cap %d",
+			desc.Digest, desc.Size, maxBytes)
+	}
 	rc, err := fetcher.Fetch(ctx, desc)
 	if err != nil {
 		return nil, err
@@ -126,7 +139,7 @@ func readAll(ctx context.Context, fetcher oras.ReadOnlyTarget, desc ocispec.Desc
 		}
 		return buf.Bytes(), nil
 	}
-	return io.ReadAll(rc)
+	return io.ReadAll(io.LimitReader(rc, maxBytes+1))
 }
 
 // decodeTarGz reads a single-layer tar+gzip blob into an in-memory fs.FS.
