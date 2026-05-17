@@ -25,6 +25,16 @@ make test        # run unit tests with envtest
 scripts/verify-install.sh render
 ```
 
+## Repository Layout
+
+- `docs/` contains user-facing concepts, operations, and provider setup docs.
+- `examples/` contains runnable examples and optional provider-specific helpers.
+- `scripts/` contains repository development, CI, and verification scripts.
+- `build/` contains build-time metadata used by generators and release tooling.
+- Provider-specific onboarding helpers should live under `examples/cloud/`; core
+  Kapro APIs and controllers should stay cloud-neutral unless a provider
+  integration requires dedicated code.
+
 ## Pull Request Process
 
 1. Fork the repo and create a feature branch from `main`
