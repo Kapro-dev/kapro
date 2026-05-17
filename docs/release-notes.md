@@ -1,64 +1,88 @@
-# PromotionRun Notes Guide
+# Release Notes Guide
 
-This guide defines the promotionrun-note structure for Kapro pre-stable promotionruns.
-Use it with `CHANGELOG.md` and `docs/api-stability.md` before tagging a promotionrun.
+Use this guide with [`CHANGELOG.md`](../CHANGELOG.md) and
+[`api-stability.md`](api-stability.md) before tagging a Kapro release.
 
 ## Required Sections
 
-Every promotionrun note should include these sections, even when the entry is
+Every release note should include these sections, even when the entry is
 `None`:
 
-- `Added` for new user-visible APIs, docs, commands, controllers, or examples.
-- `Changed` for behavior, defaults, validation, schema, packaging, or docs that
-  can affect existing users.
-- `Deprecated` for fields, enum values, Go APIs, proto fields, commands, or
-  workflows that remain available but should be replaced.
-- `Removed` for deleted fields, enum values, Go APIs, proto fields, commands,
-  or workflows.
-- `Migration` for required user action during install or upgrade.
-- `Compatibility` for CRD schema, plugin contract, lifecycle event, chart, and
-  downgrade expectations.
-- `Known Gaps` for preview limitations that operators must understand.
+- `What This Release Is` for maturity, audience, and install path.
+- `Highlights` for the most important user-visible changes.
+- `Install` for chart, image, CRD, and namespace instructions.
+- `Upgrade` for ordered user actions.
+- `Security Notes` for trust boundary, RBAC, signature, and plugin notes.
+- `Compatibility` for CRD schema, plugin contracts, lifecycle events, chart
+  version, and downgrade expectations.
+- `Migration` for required manifest or workflow changes.
+- `Known Limitations` for alpha or preview limitations.
+- `Verification` for commands that passed before tagging.
 
 ## Template
 
-```markdown
-## vX.Y.Z[-alpha.N] - YYYY-MM-DD
+````markdown
+# Kapro <version>
 
-### Added
+## What This Release Is
 
-- ...
+Short maturity statement, intended audience, and supported install path.
 
-### Changed
-
-- ...
-
-### Deprecated
-
-- Deprecated `<surface>` in favor of `<replacement>`. First deprecated in
-  `<version>`; earliest removal is `<version>`; user action is `<action>`.
-
-### Removed
+## Highlights
 
 - ...
 
-### Migration
+## Install
 
-- Apply CRDs before rolling the operator.
-- Run `<conformance package>` before enabling `<plugin image or contract>`.
-- Update manifests from `<old field/workflow>` to `<new field/workflow>`.
-
-### Compatibility
-
-- CRD schema: `<compatible|breaking>`, because `<reason>`.
-- Plugin contracts: `<compatible|breaking>`, because `<reason>`.
-- Lifecycle events: `<compatible|breaking>`, because `<reason>`.
-- Downgrade: `<allowed version range or not supported>`.
-
-### Known Gaps
-
-- ...
+```bash
+helm upgrade --install kapro charts/kapro-operator \
+  --namespace kapro-system \
+  --create-namespace
 ```
+
+## Upgrade
+
+1. Back up Kapro CRDs and Secrets.
+2. Apply CRDs and RBAC.
+3. Upgrade plugin servers and run conformance.
+4. Roll the operator.
+5. Watch PromotionRuns, PromotionTargets, PromotionPolicies, and
+   PluginRegistrations.
+
+## Security Notes
+
+- ...
+
+## Compatibility
+
+- Kapro APIs:
+- KAI:
+- KGI:
+- KPI:
+- Lifecycle events:
+- Downgrade:
+
+## Migration
+
+- ...
+
+## Known Limitations
+
+- ...
+
+## Verification
+
+- `go test ./...`
+- `make build`
+- `make lint`
+- `make validate-yaml-json`
+- `make check-markdown-links`
+- `scripts/verify-install.sh render`
+- `scripts/verify-install.sh kind-demo`
+- `scripts/verify-install.sh argo-e2e`
+- `scripts/verify-install.sh flux-git-e2e`
+- `scripts/verify-install.sh flux-e2e`
+````
 
 ## Compatibility Review
 
@@ -73,27 +97,17 @@ Before tagging, review every change that touches these surfaces:
 - Lifecycle events: event type names and documented payload fields remain
   compatible.
 - Examples: changed examples include migration notes for existing users.
-- Helm and manifests: CRD/RBAC/operator ordering is documented when it changes.
+- Helm and manifests: CRD, RBAC, webhook, and operator ordering is documented
+  when it changes.
 
-## v0.1.0-alpha PromotionRun Checklist
+## v0.4.0-alpha.0 Checklist
 
-- [ ] Confirm the worktree is clean except intentional promotionrun edits.
-- [ ] Confirm `CHANGELOG.md` has no empty required sections except `None`.
+- [ ] Confirm the worktree is clean except intentional release edits.
+- [ ] Confirm `CHANGELOG.md` has a complete `v0.4.0-alpha.0` section.
 - [ ] Confirm `docs/api-stability.md` lists every shipped public surface.
+- [ ] Confirm release-facing docs do not link deleted planning/runbook pages.
+- [ ] Confirm generated CRDs, Helm CRDs, embedded CRDs, and RBAC are current.
 - [ ] Run Go tests or record why they were skipped.
-- [ ] Run markdown checks or record why they were unavailable.
-- [ ] Confirm generated CRDs and proto stubs are current.
+- [ ] Run install verification or record environment waivers.
 - [ ] Confirm release notes describe install, upgrade, downgrade, and known
       preview limitations.
-
-## v0.2.0 Planning Checklist
-
-- [ ] Promote only surfaces with conformance coverage, examples, and upgrade
-      notes from Alpha to Preview.
-- [ ] Add automated schema-diff or generated-CRD drift checks to promotionrun CI.
-- [ ] Require a `Migration` promotionrun-note entry for every changed shipped
-      example, default, CRD validation rule, or plugin contract.
-- [ ] Add downgrade guidance whenever stored CRD schema or status changes.
-- [ ] Decide whether any deprecated `v0.1.0-alpha` compatibility shims can be
-      removed in `v0.2.0`; if so, reserve proto fields and document replacement
-      workflows.

@@ -38,7 +38,7 @@ require an explicit `PromotionSource` mapping.
 | Flux `Kustomization` object | Yes | No default direct write target | Skipped |
 
 Flux `Kustomization.spec.path` and `spec.sourceRef` are topology fields. Kapro
-does not treat them as universal promotionrun-version fields. Promote the referenced
+does not treat them as universal promotion-version fields. Promote the referenced
 source revision, a Kustomize image tag, Helm chart version, or an explicit
 field that the team adds to `PromotionSource`.
 
