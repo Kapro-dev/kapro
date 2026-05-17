@@ -355,8 +355,8 @@ func TestReconcile_AddsFinalizer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	if !res.Requeue && res.RequeueAfter == 0 {
-		t.Error("expected requeue after adding finalizer")
+	if res.RequeueAfter == 0 {
+		t.Error("expected RequeueAfter to be set after adding finalizer")
 	}
 	got := &kaprov1alpha1.FleetCluster{}
 	_ = c.Get(context.Background(), client.ObjectKey{Name: fc.Name}, got)
@@ -410,7 +410,7 @@ func TestReconcile_CrashRecovery_ApprovesPendingCSR(t *testing.T) {
 	}
 
 	r, _ := newBootstrapReconciler(t, fc, csr)
-	fakeCertClient := k8sfake.NewSimpleClientset(csr)
+	fakeCertClient := k8sfake.NewClientset(csr)
 	r.CertClient = fakeCertClient.CertificatesV1()
 
 	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: client.ObjectKey{Name: fc.Name}}); err != nil {
@@ -465,7 +465,7 @@ func TestProcessCSRsForCluster_RecoversFromCrashMidApprove(t *testing.T) {
 	// The controller-runtime client (used by r.List for CSRs) and the typed
 	// CertClient (used by UpdateApproval) must BOTH see the CSR.
 	r, _ := newBootstrapReconciler(t, fc, csr)
-	fakeClient := k8sfake.NewSimpleClientset(csr)
+	fakeClient := k8sfake.NewClientset(csr)
 	r.CertClient = fakeClient.CertificatesV1()
 
 	res, err := r.processCSRsForCluster(context.Background(), fc)
@@ -512,7 +512,7 @@ func TestProcessCSRsForCluster_SkipsFinalizedCSRs(t *testing.T) {
 	}
 
 	r, _ := newBootstrapReconciler(t, fc, approvedCSR, deniedCSR)
-	r.CertClient = k8sfake.NewSimpleClientset(approvedCSR, deniedCSR).CertificatesV1()
+	r.CertClient = k8sfake.NewClientset(approvedCSR, deniedCSR).CertificatesV1()
 
 	res, err := r.processCSRsForCluster(context.Background(), fc)
 	if err != nil {
