@@ -18,7 +18,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -279,7 +278,6 @@ func (r *PromotionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&kaprov1alpha1.PromotionPolicy{},
 			handler.EnqueueRequestsFromMapFunc(r.promotionsForPolicy),
-			builder.WithPredicates(),
 		).
 		Complete(r)
 }

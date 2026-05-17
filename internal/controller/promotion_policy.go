@@ -100,8 +100,15 @@ func (r *PromotionReconciler) evaluatePromotionPolicies(ctx context.Context, pro
 			if decision.Reason == "" {
 				decision.Reason = "PromotionPolicyRollback"
 			}
+			// Carry forward any audit violations collected from earlier
+			// policies so the denying-path status patch preserves them.
+			decision.AuditViolations = allowed.AuditViolations
 			return decision, nil
 		}
+		// Carry forward audit violations from earlier policies onto the
+		// terminal-deny return so applyPromotionAuditConditions does not
+		// silently drop them when patching status.
+		decision.AuditViolations = allowed.AuditViolations
 		return decision, nil
 	}
 	return allowed, nil
