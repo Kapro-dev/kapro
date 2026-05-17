@@ -2,7 +2,11 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -22,6 +26,23 @@ import (
 	"kapro.io/kapro/pkg/planner"
 	"kapro.io/kapro/pkg/plugincompat"
 )
+
+// pluginSchemaConditionType marks a PluginRegistration whose plugin-reported
+// schema (contract version or capability set) has drifted from the previously
+// stored snapshot. It is informational: the runtime continues to use the new
+// schema, but the condition + event give operators a chance to catch breaking
+// upgrades of an external plugin image.
+const pluginSchemaConditionType = "SchemaChanged"
+
+// pluginSchemaHash returns a deterministic sha256 of (contractVersion + sorted
+// capabilities). The format is stable across re-orderings so hot-reloads that
+// merely re-shuffle the capability list don't appear as drift.
+func pluginSchemaHash(contractVersion string, capabilities []string) string {
+	sorted := append([]string(nil), capabilities...)
+	sort.Strings(sorted)
+	sum := sha256.Sum256([]byte(contractVersion + "|" + strings.Join(sorted, ",")))
+	return hex.EncodeToString(sum[:])
+}
 
 // PluginRegistrationReconciler probes external plugin registrations and records
 // readiness status. When the plugin gateway is enabled, it also hot-loads ready
@@ -82,6 +103,9 @@ func (r *PluginRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 	result := prober.Probe(ctx, reg)
 	wasRuntimeReady := isRuntimeReady(reg)
+	previousSchemaHash := reg.Status.SchemaHash
+	previousContractVersion := reg.Status.ContractVersion
+	previousCapabilities := append([]string(nil), reg.Status.Capabilities...)
 	patch := client.MergeFrom(reg.DeepCopy())
 	now := metav1.Now()
 	reg.Status.ObservedGeneration = reg.Generation
@@ -91,6 +115,17 @@ func (r *PluginRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.R
 	reg.Status.Capabilities = result.Capabilities
 	if result.Ready {
 		reg.Status.LastSeen = now.UTC().Format(time.RFC3339)
+	}
+	// Update schema snapshot only when the probe reported a usable schema; do
+	// not clobber the previously-stored hash on a transient probe failure.
+	newSchemaHash := previousSchemaHash
+	schemaChanged := false
+	if result.Ready && result.ContractVersion != "" {
+		newSchemaHash = pluginSchemaHash(result.ContractVersion, result.Capabilities)
+		reg.Status.SchemaHash = newSchemaHash
+		if previousSchemaHash != "" && previousSchemaHash != newSchemaHash {
+			schemaChanged = true
+		}
 	}
 
 	status := metav1.ConditionFalse
@@ -126,9 +161,28 @@ func (r *PluginRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.R
 			LastTransitionTime: now,
 		})
 	}
+	if schemaChanged {
+		apimeta.SetStatusCondition(&reg.Status.Conditions, metav1.Condition{
+			Type:               pluginSchemaConditionType,
+			Status:             metav1.ConditionTrue,
+			Reason:             "PluginSchemaDrift",
+			Message:            describePluginSchemaDrift(previousContractVersion, previousCapabilities, result.ContractVersion, result.Capabilities),
+			ObservedGeneration: reg.Generation,
+			LastTransitionTime: now,
+		})
+	} else if previousSchemaHash != "" && newSchemaHash == previousSchemaHash {
+		// Stable schema — drop a stale SchemaChanged condition so operators
+		// see it clear after they have acknowledged the drift.
+		apimeta.RemoveStatusCondition(&reg.Status.Conditions, pluginSchemaConditionType)
+	}
 
 	if err := r.Status().Patch(ctx, &reg, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch plugin registration status: %w", err)
+	}
+	if schemaChanged && r.Recorder != nil {
+		r.Recorder.Eventf(&reg, corev1.EventTypeWarning, "PluginSchemaDrift",
+			"plugin %q schema changed between hot-reloads: %s", reg.Name,
+			describePluginSchemaDrift(previousContractVersion, previousCapabilities, result.ContractVersion, result.Capabilities))
 	}
 	if r.RuntimeEnabled {
 		if isRuntimeReady(reg) {
@@ -187,4 +241,45 @@ func (r *PluginRegistrationReconciler) SetupWithManager(mgr ctrl.Manager) error 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kaprov1alpha1.PluginRegistration{}).
 		Complete(r)
+}
+
+// describePluginSchemaDrift returns a human-readable diff of the changed
+// contract version and added/removed capabilities. Used for status messages
+// and Warning events so operators see *what* changed, not just *that* it did.
+func describePluginSchemaDrift(oldContract string, oldCaps []string, newContract string, newCaps []string) string {
+	var parts []string
+	if oldContract != newContract {
+		parts = append(parts, fmt.Sprintf("contractVersion %q → %q", oldContract, newContract))
+	}
+	oldSet := make(map[string]struct{}, len(oldCaps))
+	for _, c := range oldCaps {
+		oldSet[c] = struct{}{}
+	}
+	newSet := make(map[string]struct{}, len(newCaps))
+	for _, c := range newCaps {
+		newSet[c] = struct{}{}
+	}
+	var added, removed []string
+	for c := range newSet {
+		if _, ok := oldSet[c]; !ok {
+			added = append(added, c)
+		}
+	}
+	for c := range oldSet {
+		if _, ok := newSet[c]; !ok {
+			removed = append(removed, c)
+		}
+	}
+	sort.Strings(added)
+	sort.Strings(removed)
+	if len(added) > 0 {
+		parts = append(parts, "added capabilities: "+strings.Join(added, ", "))
+	}
+	if len(removed) > 0 {
+		parts = append(parts, "removed capabilities: "+strings.Join(removed, ", "))
+	}
+	if len(parts) == 0 {
+		return "schema hash changed but no per-field diff detected"
+	}
+	return strings.Join(parts, "; ")
 }

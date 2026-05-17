@@ -2133,6 +2133,14 @@ type PluginRegistrationStatus struct {
 	ContractVersion string `json:"contractVersion,omitempty"`
 	// Capabilities are plugin-reported feature names.
 	Capabilities []string `json:"capabilities,omitempty"`
+	// SchemaHash is a sha256 of (contractVersion + sorted capabilities). The
+	// reconciler uses it to detect schema drift between hot-reloads of the same
+	// PluginRegistration: when the plugin reports a different set of
+	// capabilities or contract version than the previously-stored hash, a
+	// SchemaChanged condition is surfaced and an event emitted so operators
+	// can notice silent breaking changes from plugin upgrades.
+	// +optional
+	SchemaHash string `json:"schemaHash,omitempty"`
 	// Conditions summarize plugin registration readiness.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }

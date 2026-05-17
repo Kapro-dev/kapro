@@ -13,14 +13,23 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
+
+// promotionPolicyRefIndex indexes Promotions by the names of policies they
+// reference via spec.policies[]. Used by the PromotionPolicy watch to requeue
+// affected Promotions when a policy changes.
+const promotionPolicyRefIndex = "spec.policies.name"
 
 const promotionIntentRequeue = 15 * time.Second
 
@@ -126,6 +135,9 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			ObservedGeneration: promotion.Generation,
 		})
 	}
+	// Preserve audit-mode policy violations on the allowed path so operators
+	// can see what would have been blocked even when promotion proceeds.
+	applyPromotionAuditConditions(&promotion, policyDecision.AuditViolations)
 	if err := r.Status().Patch(ctx, &promotion, statusPatch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch Promotion status: %w", err)
 	}
@@ -241,9 +253,57 @@ func promotionRunImmutableSpecEqual(a, b kaprov1alpha1.PromotionRunSpec) bool {
 }
 
 func (r *PromotionReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&kaprov1alpha1.Promotion{},
+		promotionPolicyRefIndex,
+		func(obj client.Object) []string {
+			promotion, ok := obj.(*kaprov1alpha1.Promotion)
+			if !ok {
+				return nil
+			}
+			out := make([]string, 0, len(promotion.Spec.Policies))
+			for _, ref := range promotion.Spec.Policies {
+				if ref.Name != "" {
+					out = append(out, ref.Name)
+				}
+			}
+			return out
+		},
+	); err != nil {
+		return fmt.Errorf("index Promotion by policy ref: %w", err)
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kaprov1alpha1.Promotion{}).
+		Watches(
+			&kaprov1alpha1.PromotionPolicy{},
+			handler.EnqueueRequestsFromMapFunc(r.promotionsForPolicy),
+		).
 		Complete(r)
+}
+
+// promotionsForPolicy returns reconcile requests for every Promotion that
+// references the given PromotionPolicy by name. Triggered on policy CREATE,
+// UPDATE, and DELETE so denied Promotions unblock when a policy is fixed
+// and previously-allowed Promotions re-evaluate when a policy tightens.
+func (r *PromotionReconciler) promotionsForPolicy(ctx context.Context, obj client.Object) []reconcile.Request {
+	policy, ok := obj.(*kaprov1alpha1.PromotionPolicy)
+	if !ok {
+		return nil
+	}
+	var list kaprov1alpha1.PromotionList
+	if err := r.List(ctx, &list, client.MatchingFieldsSelector{
+		Selector: fields.OneTermEqualSelector(promotionPolicyRefIndex, policy.Name),
+	}); err != nil {
+		return nil
+	}
+	out := make([]reconcile.Request, 0, len(list.Items))
+	for i := range list.Items {
+		out = append(out, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: list.Items[i].Name},
+		})
+	}
+	return out
 }
 
 func promotionVersion(promotion *kaprov1alpha1.Promotion) string {

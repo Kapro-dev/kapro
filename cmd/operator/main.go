@@ -258,9 +258,13 @@ func main() {
 			"/mutate-kapro-io-v1alpha1-fleetcluster",
 			&crwebhook.Admission{Handler: kaploadmission.NewFleetClusterMutator(decoder)},
 		)
+		// Use APIReader (uncached, direct to apiserver) for the FleetCluster
+		// admission webhook so a cold-start informer cache cannot produce a
+		// spurious BackendProfile-not-found rejection. Matches the pattern
+		// already used by the plugin gateway registration above.
 		mgr.GetWebhookServer().Register(
 			"/validate-kapro-io-v1alpha1-fleetcluster",
-			&crwebhook.Admission{Handler: kaploadmission.NewFleetClusterValidator(decoder)},
+			&crwebhook.Admission{Handler: kaploadmission.NewFleetClusterValidator(decoder, mgr.GetAPIReader())},
 		)
 		mgr.GetWebhookServer().Register(
 			"/validate-kapro-io-v1alpha1-promotionrun",

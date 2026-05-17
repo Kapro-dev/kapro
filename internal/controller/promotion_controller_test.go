@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -333,6 +334,118 @@ func TestPromotionReconcilerAuditsFailingCELPolicy(t *testing.T) {
 	}
 	if len(runs.Items) != 1 {
 		t.Fatalf("promotionrun count = %d", len(runs.Items))
+	}
+}
+
+// TestPromotionReconcilerCarriesAuditViolationsThroughDenial guards the bug
+// where audit violations collected from earlier policies were dropped if a
+// later enforce-mode policy returned a terminal denial — the denying decision
+// carries an empty AuditViolations slice, which would silently clear the
+// PolicyAuditViolation condition. The runtime now copies the accumulated
+// audit violations onto the returned decision so status reflects both the
+// blocking enforce policy AND the audit-mode shadow blocks.
+func TestPromotionReconcilerCarriesAuditViolationsThroughDenial(t *testing.T) {
+	ctx := context.Background()
+	scheme := newPromotionTestScheme(t)
+	promotion := promotionFixture(1, []corev1.LocalObjectReference{
+		{Name: "audit-shadow"},
+		{Name: "enforce-block"},
+	})
+	promotion.Labels = map[string]string{"env": "staging"}
+	auditPolicy := &kaprov1alpha1.PromotionPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "audit-shadow"},
+		Spec: kaprov1alpha1.PromotionPolicySpec{
+			Mode: "audit",
+			CEL: []kaprov1alpha1.CELPolicyRule{{
+				Name:       "would-have-blocked",
+				Expression: `promotion.labels.env == "prod"`,
+			}},
+		},
+	}
+	enforcePolicy := &kaprov1alpha1.PromotionPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "enforce-block"},
+		Spec: kaprov1alpha1.PromotionPolicySpec{
+			CEL: []kaprov1alpha1.CELPolicyRule{{
+				Name:       "blocking",
+				Expression: `promotion.labels.env == "prod"`,
+				Message:    "must run in prod",
+			}},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha1.Promotion{}).
+		WithObjects(promotion, auditPolicy, enforcePolicy).
+		Build()
+	r := &PromotionReconciler{Client: c, Scheme: scheme}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var got kaprov1alpha1.Promotion
+	if err := c.Get(ctx, client.ObjectKey{Name: "checkout"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	ready := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
+	if ready == nil || ready.Status != metav1.ConditionFalse || ready.Reason != "PromotionPolicyDenied" {
+		t.Fatalf("Ready condition = %+v", ready)
+	}
+	audit := apimeta.FindStatusCondition(got.Status.Conditions, "PolicyAuditViolation")
+	if audit == nil || audit.Status != metav1.ConditionTrue {
+		t.Fatalf("PolicyAuditViolation condition should be True on the denied Promotion, got %+v", audit)
+	}
+	if !strings.Contains(audit.Message, "audit-shadow") {
+		t.Fatalf("PolicyAuditViolation message should reference audit-shadow policy, got %q", audit.Message)
+	}
+}
+
+// TestPromotionReconcilerCarriesAuditViolationsThroughEarlyReturn covers the
+// same audit-carryforward contract for the early-return paths
+// (InvalidPromotionPolicyRef / PromotionPolicyNotFound /
+// InvalidPromotionPolicySelector) that don't go through evaluatePromotionPolicy.
+// Without the deny() helper that stamps audit violations, the not-found path
+// returns an empty decision and the prior audit-mode shadow block disappears.
+func TestPromotionReconcilerCarriesAuditViolationsThroughEarlyReturn(t *testing.T) {
+	ctx := context.Background()
+	scheme := newPromotionTestScheme(t)
+	promotion := promotionFixture(1, []corev1.LocalObjectReference{
+		{Name: "audit-shadow"},
+		{Name: "does-not-exist"},
+	})
+	promotion.Labels = map[string]string{"env": "staging"}
+	auditPolicy := &kaprov1alpha1.PromotionPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "audit-shadow"},
+		Spec: kaprov1alpha1.PromotionPolicySpec{
+			Mode: "audit",
+			CEL: []kaprov1alpha1.CELPolicyRule{{
+				Name:       "would-have-blocked",
+				Expression: `promotion.labels.env == "prod"`,
+			}},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha1.Promotion{}).
+		WithObjects(promotion, auditPolicy).
+		Build()
+	r := &PromotionReconciler{Client: c, Scheme: scheme}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var got kaprov1alpha1.Promotion
+	if err := c.Get(ctx, client.ObjectKey{Name: "checkout"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	ready := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
+	if ready == nil || ready.Reason != "PromotionPolicyNotFound" {
+		t.Fatalf("Ready condition = %+v", ready)
+	}
+	audit := apimeta.FindStatusCondition(got.Status.Conditions, "PolicyAuditViolation")
+	if audit == nil || audit.Status != metav1.ConditionTrue || !strings.Contains(audit.Message, "audit-shadow") {
+		t.Fatalf("PolicyAuditViolation condition should survive early-return denial, got %+v", audit)
 	}
 }
 

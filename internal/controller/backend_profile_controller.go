@@ -16,12 +16,36 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
+
+// argoClusterSecretLabel is the well-known Argo CD label that identifies a
+// cluster Secret in the argocd namespace. Used to short-circuit Secret watch
+// events at predicate time so unrelated Secret churn doesn't enqueue every
+// BackendProfile reconcile.
+const argoClusterSecretLabel = "argocd.argoproj.io/secret-type"
+const argoClusterSecretValue = "cluster"
+
+// argoClusterSecretPredicate accepts only Secret events whose label matches
+// argocd.argoproj.io/secret-type=cluster. Applied to the Secret watch so the
+// generic mapping function never runs for unrelated Secrets.
+var argoClusterSecretPredicate = predicate.NewPredicateFuncs(func(obj client.Object) bool {
+	if obj == nil {
+		return false
+	}
+	return obj.GetLabels()[argoClusterSecretLabel] == argoClusterSecretValue
+})
+
+// Compile-time guard so event package import stays referenced if a future edit
+// re-uses event filtering. Cheap, removes "unused import" diagnostics noise.
+var _ = event.CreateEvent{}
 
 const backendProfileDiscoveryRequeue = 2 * time.Minute
 
@@ -417,15 +441,19 @@ func exceededListLimit(continueToken string, count int, limit int64) bool {
 }
 
 func (r *BackendProfileReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	builder := ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr).
 		For(&kaprov1alpha1.BackendProfile{}).
-		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.backendProfilesForBackendObject))
+		Watches(
+			&corev1.Secret{},
+			handler.EnqueueRequestsFromMapFunc(r.backendProfilesForBackendObject),
+			builder.WithPredicates(argoClusterSecretPredicate),
+		)
 	if os.Getenv("KAPRO_ENABLE_BACKEND_OBJECT_WATCHES") == "true" {
 		for _, gvk := range backendDiscoveryWatchKinds() {
-			builder = builder.Watches(backendDiscoveryWatchObject(gvk), handler.EnqueueRequestsFromMapFunc(r.backendProfilesForBackendObject))
+			b = b.Watches(backendDiscoveryWatchObject(gvk), handler.EnqueueRequestsFromMapFunc(r.backendProfilesForBackendObject))
 		}
 	}
-	return builder.Complete(r)
+	return b.Complete(r)
 }
 
 func backendDiscoveryWatchKinds() []schema.GroupVersionKind {
