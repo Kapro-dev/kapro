@@ -102,11 +102,14 @@ func (s *statusReporter) tick(ctx context.Context) error {
 func (s *statusReporter) observeCapabilities(ctx context.Context) (kaprov1alpha1.ClusterCapabilities, error) {
 	caps := kaprov1alpha1.ClusterCapabilities{}
 
-	// Node count + a representative kubelet version.
+	// Node count + a representative kubelet version. List failures are
+	// surfaced as errors (callers abort the status tick) rather than
+	// silently swallowed: a missing nodes RBAC binding during install
+	// should be loud, not invisible. Operators can grant the binding
+	// (or scope it tighter — read-only on Nodes is sufficient) and the
+	// next tick succeeds.
 	var nodes corev1.NodeList
 	if err := s.Local.List(ctx, &nodes); err != nil {
-		// Not having node list permission shouldn't block status reporting; log
-		// and return what we have.
 		return caps, fmt.Errorf("list nodes: %w", err)
 	}
 	caps.NodeCount = len(nodes.Items)

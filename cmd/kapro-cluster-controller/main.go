@@ -279,19 +279,37 @@ func hostname() string {
 
 // buildLocalClient builds a controller-runtime client for the LOCAL spoke
 // cluster (the cluster this pod runs in), used to persist the cert Secret
-// and read node info for status. Uses in-cluster config when available.
+// and read node info for status reporting.
+//
+// Precedence INTENTIONALLY prefers in-cluster config:
+//
+//   - In production the spoke runs as a Pod and KUBERNETES_SERVICE_HOST is
+//     set, so in-cluster wins. This is the correct + only safe answer.
+//   - Falling back to a stray KUBECONFIG env var (kubelet config, dev
+//     kubeconfig left on the node) would silently make the spoke persist
+//     credentials into — and read node info from — a DIFFERENT cluster.
+//     That's a data-corruption-class bug: the wrong cluster's node count
+//     would land on this cluster's FleetCluster.status.capabilities.
+//   - Outside a pod (local dev) we fall back to kubeconfig loading rules
+//     so `go run` against kind still works.
+//
+// The selected source is logged so a misconfiguration becomes visible
+// rather than silently corrupting state.
 func buildLocalClient() (client.Client, error) {
+	logger := log.Log.WithName("local-client")
+	if restCfg, err := inClusterConfig(); err == nil {
+		logger.Info("using in-cluster config", "host", restCfg.Host)
+		return client.New(restCfg, client.Options{Scheme: scheme})
+	}
+	// Not in a pod — try kubeconfig for local dev.
 	cfg, err := clientcmd.NewDefaultClientConfigLoadingRules().Load()
-	if err == nil && cfg != nil && len(cfg.Clusters) > 0 {
-		restCfg, err := clientcmd.NewDefaultClientConfig(*cfg, &clientcmd.ConfigOverrides{}).ClientConfig()
-		if err == nil {
-			return client.New(restCfg, client.Options{Scheme: scheme})
-		}
+	if err != nil || cfg == nil || len(cfg.Clusters) == 0 {
+		return nil, fmt.Errorf("not running in a pod and no usable KUBECONFIG: %w", err)
 	}
-	// Fall back to in-cluster.
-	restCfg, err := inClusterConfig()
+	restCfg, err := clientcmd.NewDefaultClientConfig(*cfg, &clientcmd.ConfigOverrides{}).ClientConfig()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build rest.Config from kubeconfig: %w", err)
 	}
+	logger.Info("using kubeconfig (local dev — no KUBERNETES_SERVICE_HOST set)", "host", restCfg.Host, "context", cfg.CurrentContext)
 	return client.New(restCfg, client.Options{Scheme: scheme})
 }

@@ -16,7 +16,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -127,13 +126,21 @@ func (m *certManager) Stop() {
 }
 
 // Current returns the current cert PEM + key PEM. Safe for concurrent use.
+// Returns (nil, nil) when no cert has been issued yet. If key marshalling
+// somehow fails (programming error — we hold a freshly-generated P256 key)
+// it returns (nil, nil) too: callers like HubClient.Client log the empty
+// result and surface "no current cert" rather than corrupt downstream state.
 func (m *certManager) Current() (certPEM, keyPEM []byte) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	if m.cert == nil || m.key == nil {
 		return nil, nil
 	}
-	return encodeCert(m.cert), encodeKey(m.key)
+	enc, err := encodeKey(m.key)
+	if err != nil {
+		return nil, nil
+	}
+	return encodeCert(m.cert), enc
 }
 
 // CurrentNotAfter returns the expiry of the current cert, or zero Time.
@@ -237,17 +244,16 @@ func (m *certManager) submitAndWaitForCert(ctx context.Context, cfg *rest.Config
 	logger := log.Log.WithName("csr").WithValues("csr", csrName)
 	logger.Info("CSR submitted, waiting for approver")
 
-	wait := wait.Backoff{
-		Steps:    int(m.opts.WaitForFirstCert / m.opts.WaitForCertInterval),
-		Duration: m.opts.WaitForCertInterval,
-		Cap:      m.opts.WaitForFirstCert,
-	}
+	// Plain fixed-interval polling. The earlier wait.Backoff was a footgun:
+	// the local variable shadowed the k8s.io/apimachinery/pkg/util/wait
+	// package, and with Factor==0 it returns a constant Duration every Step
+	// anyway. Equivalent behaviour, less surface area, no shadowing.
 	deadline := time.Now().Add(m.opts.WaitForFirstCert)
 	for time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
 			return nil, nil, ctx.Err()
-		case <-time.After(wait.Step()):
+		case <-time.After(m.opts.WaitForCertInterval):
 		}
 		got, err := clientset.CertificatesV1().CertificateSigningRequests().Get(ctx, csrName, metav1.GetOptions{})
 		if err != nil {
@@ -302,7 +308,11 @@ func (m *certManager) acceptIfValid(cert *x509.Certificate, key *ecdsa.PrivateKe
 }
 
 func (m *certManager) persist(ctx context.Context, cert *x509.Certificate, key *ecdsa.PrivateKey) error {
-	return m.store.Save(ctx, encodeCert(cert), encodeKey(key))
+	keyPEM, err := encodeKey(key)
+	if err != nil {
+		return fmt.Errorf("encode key for persistence: %w", err)
+	}
+	return m.store.Save(ctx, encodeCert(cert), keyPEM)
 }
 
 // HubClient is a rotation-aware client.Client. Internally it tracks the
@@ -445,12 +455,16 @@ func encodeCert(c *x509.Certificate) []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: c.Raw})
 }
 
-func encodeKey(k *ecdsa.PrivateKey) []byte {
+// encodeKey returns the PEM-encoded ECDSA private key. Errors from
+// MarshalECPrivateKey are propagated rather than swallowed — without this,
+// callers (Save → Secret store) would happily persist an empty `tls.key`
+// and the next pod restart would fail mysteriously on cert load.
+func encodeKey(k *ecdsa.PrivateKey) ([]byte, error) {
 	der, err := x509.MarshalECPrivateKey(k)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("marshal EC private key: %w", err)
 	}
-	return pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der})
+	return pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der}), nil
 }
 
 func decodeKey(keyPEM []byte) (*ecdsa.PrivateKey, error) {

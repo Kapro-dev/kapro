@@ -20,6 +20,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
+// mustEncodeKey is a test helper that t.Fatal's instead of returning an
+// error — keeps Save/Load call sites readable.
+func mustEncodeKey(t *testing.T, k *ecdsa.PrivateKey) []byte {
+	t.Helper()
+	enc, err := encodeKey(k)
+	if err != nil {
+		t.Fatalf("encodeKey: %v", err)
+	}
+	return enc
+}
+
 // helper: build a minimal signed cert valid for `lifetime` from now.
 func makeTestCert(t *testing.T, cn string, lifetime time.Duration) (*x509.Certificate, *ecdsa.PrivateKey) {
 	t.Helper()
@@ -72,7 +83,10 @@ func TestEncodeDecodeCert(t *testing.T) {
 
 func TestEncodeDecodeKey(t *testing.T) {
 	_, key := makeTestCert(t, "kapro-cluster:de-prod-01", time.Hour)
-	encoded := encodeKey(key)
+	encoded, err := encodeKey(key)
+	if err != nil {
+		t.Fatalf("encodeKey: %v", err)
+	}
 	if len(encoded) == 0 {
 		t.Fatal("empty encoded key")
 	}
@@ -105,7 +119,7 @@ func TestSecretStore_SaveThenLoad(t *testing.T) {
 	c := newFakeLocalClient(t)
 	s := &secretStore{client: c, namespace: "kapro-system", name: "kapro-hub-credentials"}
 
-	if err := s.Save(context.Background(), encodeCert(cert), encodeKey(key)); err != nil {
+	if err := s.Save(context.Background(), encodeCert(cert), mustEncodeKey(t, key)); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 
@@ -124,7 +138,7 @@ func TestSecretStore_SaveThenLoad(t *testing.T) {
 	}
 
 	// Saving again must be idempotent (upsert).
-	if err := s.Save(context.Background(), encodeCert(cert), encodeKey(key)); err != nil {
+	if err := s.Save(context.Background(), encodeCert(cert), mustEncodeKey(t, key)); err != nil {
 		t.Fatalf("second Save: %v", err)
 	}
 }
@@ -138,7 +152,7 @@ func TestSecretStore_SaveUpdatesExisting(t *testing.T) {
 	s := &secretStore{client: c, namespace: "kapro-system", name: "kapro-hub-credentials"}
 
 	cert, key := makeTestCert(t, "kapro-cluster:de-prod-01", time.Hour)
-	if err := s.Save(context.Background(), encodeCert(cert), encodeKey(key)); err != nil {
+	if err := s.Save(context.Background(), encodeCert(cert), mustEncodeKey(t, key)); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	gotCert, _, _, err := s.Load(context.Background())
