@@ -206,6 +206,16 @@ func main() {
 		log.Info("plugin gateway enabled", "registered", registered)
 	}
 
+	// Typed Kubernetes clients for verbs not exposed by controller-runtime's
+	// generic client: ServiceAccounts/token TokenRequest and CSR UpdateApproval.
+	// Used by the FleetCluster bootstrap controller. Cheap to construct; safe to
+	// share across reconcilers.
+	kubeClient, err := kubernetes.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		log.Error(err, "unable to build typed Kubernetes client")
+		os.Exit(1)
+	}
+
 	cc := cm.ControllerContext{
 		Manager:          mgr,
 		Recorder:         recorder,
@@ -224,6 +234,9 @@ func main() {
 		HeartbeatNamespace: podNS,
 		ShardName:          shardName,
 		ShardIsDefault:     strings.EqualFold(os.Getenv("KAPRO_SHARD_DEFAULT"), "true"),
+		KubeClient:         kubeClient,
+		CertClient:         kubeClient.CertificatesV1(),
+		PodNamespace:       podNS,
 	}
 
 	if cc.ShardName != "" {
