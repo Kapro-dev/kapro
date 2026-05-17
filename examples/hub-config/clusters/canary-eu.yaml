@@ -11,5 +11,5 @@ spec:
     mode: pull
     backendRef: flux
     parameters:
-      ociRepository: app-bundle
+      ociRepository: app-source
       namespace: flux-system

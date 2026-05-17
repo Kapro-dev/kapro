@@ -5,9 +5,10 @@ lifecycle events, and language-neutral plugin contracts. The maturity level
 describes compatibility expectations for users and plugin authors; it does not
 change Kubernetes API version strings by itself.
 
-The current promotionrun line is pre-stable. `v0.1.0-alpha` is the first planned
-version anchor, not a promise that all `kapro.io/v1alpha1` fields are stable.
-Release notes are the binding upgrade record for each tag.
+The current release line is pre-stable. `v0.4.0-alpha.0` is the first release
+candidate for the full promotion-domain API, not a promise that all
+`kapro.io/v1alpha1` fields are stable. `CHANGELOG.md` and the release notes are
+the binding upgrade record for each tag.
 
 ## Maturity Levels
 
@@ -25,7 +26,8 @@ Preview. The table below is the source of truth for the current contract level.
 
 | Surface | Path | Level |
 |---|---|---|
-| Core promotion CRDs | `api/v1alpha1` `PromotionSource`, `PromotionPlan`, `PromotionRun`, `PromotionTarget`, `FleetCluster`, `Approval`, `AgentPolicy` | Alpha |
+| Core promotion CRDs | `api/v1alpha1` `Promotion`, `PromotionSource`, `PromotionUnit`, `PromotionPlan`, `PromotionRun`, `PromotionTarget`, `FleetCluster`, `BackendProfile`, `Approval`, `AgentPolicy` | Alpha |
+| PromotionPolicy CRD | `api/v1alpha1` `PromotionPolicy` | Preview |
 | PromotionTrigger CRD | `api/v1alpha1` `PromotionTrigger` | Preview |
 | PluginRegistration CRD | `api/v1alpha1` `PluginRegistration` | Preview |
 | Notification provider/policy CRDs | `api/v1alpha1` `NotificationProvider`, `NotificationPolicy` | Preview |
@@ -43,7 +45,7 @@ stable API version. A surface can be Preview while the Kubernetes version is
 still `v1alpha1`; the table above is the source of truth for compatibility
 expectations.
 
-No public surface is Stable in `v0.1.0-alpha`.
+No public surface is Stable in `v0.4.0-alpha.0`.
 
 ## Compatibility Rules
 
@@ -74,8 +76,8 @@ major-version migration covers them:
 - changing the semantic meaning of an existing field;
 - changing a default in a way that alters an existing rollout, gate, approval,
   or rollback workflow;
-- tightening validation so an object accepted by the previous promotionrun is
-  rejected by the new promotionrun;
+- tightening validation so an object accepted by the previous release is
+  rejected by the new release;
 - changing generated object names or labels that operators are expected to
   select on;
 - changing documented lifecycle event type names or the meaning of documented
@@ -94,8 +96,8 @@ Deprecation follows these rules:
 
 - A deprecated field, enum value, package API, or proto field is marked in
   documentation and release notes.
-- Deprecation notes identify the first promotionrun that includes the replacement,
-  the earliest promotionrun where removal is allowed, and the user-visible action.
+- Deprecation notes identify the first release that includes the replacement,
+  the earliest release where removal is allowed, and the user-visible action.
 - Preview surfaces keep deprecated behavior for at least one minor release when
   the old and new behavior can coexist safely.
 - Stable surfaces keep deprecated behavior for at least two minor releases, or
@@ -104,7 +106,7 @@ Deprecation follows these rules:
   the `.proto` file.
 - CRD fields are not silently repurposed. A semantic change requires a new
   field, a conversion path, or a new API version.
-- Removal notes state the replacement field or workflow and the first promotionrun
+- Removal notes state the replacement field or workflow and the first release
   where removal is allowed.
 
 Alpha surfaces may change faster, but changes that affect committed examples,
@@ -113,17 +115,16 @@ tests still include migration notes.
 
 ## Schema Compatibility Expectations
 
-Kapro does not publish conversion webhooks in `v0.1.0-alpha`. Operators should
-therefore assume that the storage schema in a tagged promotionrun must be readable by
+Kapro does not publish conversion webhooks in `v0.4.0-alpha.0`. Operators should
+therefore assume that the storage schema in a tagged release must be readable by
 that same operator version and by any downgrade version named in release notes.
 
-There is no automatic legacy conversion for pre-promotionrun objects such as the
-removed `KaproBundle` experiment. The project had no supported public install
-before the `PromotionSource` architecture; users testing unreleased branches
-should recreate those objects from the generated examples instead of relying on
-controller-side migration code. The first tagged promotionrun that documents a CRD as
-Preview must include explicit migration notes before removing or renaming that
-surface.
+There is no automatic legacy conversion for unreleased prototype objects. The
+project had no supported public install before the promotion-domain
+architecture; users testing old branches should recreate objects from the
+generated examples instead of relying on controller-side migration code. The
+first tagged release that documents a CRD as Preview must include explicit
+migration notes before removing or renaming that surface.
 
 CRD schema changes should follow these rules:
 
@@ -149,8 +150,7 @@ Changes to Preview or Stable surfaces should include:
 5. A compatibility note explaining why the change is backward-compatible, or
    why it is intentionally breaking.
 
-Every promotionrun should also update `CHANGELOG.md` using the structure in
-`docs/promotionrun-notes.md`.
+Every release should also update `CHANGELOG.md` and `docs/release-notes.md`.
 
 For proto contracts, new fields use new field numbers and removed fields are
 reserved. For CRDs, new durable concepts should prefer additive fields or a new
@@ -177,7 +177,7 @@ Kapro upgrades are designed around Kubernetes controller safety:
   `KAPRO_ENABLE_PLUGIN_GATEWAY=true`, ready registrations are hot-loaded and
   stale or incompatible registrations are unloaded.
 
-Within a supported minor upgrade, existing in-flight promotionruns continue from
+Within a supported minor upgrade, existing in-flight PromotionRuns continue from
 Kubernetes status. Controllers may requeue work after restart, but gate
 progress, target phase, approval state, and audit trail are persisted in CRDs.
 

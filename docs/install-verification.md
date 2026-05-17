@@ -1,6 +1,6 @@
 # Clean-Clone Install Verification
 
-Use this checklist from a fresh clone before publishing or announcing a promotionrun.
+Use this checklist from a fresh clone before publishing or announcing a release.
 It separates render checks, which do not need a cluster, from live install checks.
 
 ## Fresh Clone
@@ -11,10 +11,10 @@ git clone https://github.com/Kapro-dev/kapro "${tmpdir}/kapro"
 cd "${tmpdir}/kapro"
 ```
 
-Check out the promotionrun tag or candidate branch you are validating:
+Check out the release tag or candidate branch you are validating:
 
 ```bash
-git checkout v0.1.0-alpha
+git checkout v0.4.0-alpha.0
 ```
 
 ## Render Verification
@@ -47,11 +47,11 @@ Install with webhooks disabled unless cert-manager is already installed:
 scripts/verify-install.sh cluster
 ```
 
-For a pre-promotionrun image that is not the chart default, override the image:
+For a prerelease image that is not the chart default, override the image:
 
 ```bash
 KAPRO_IMAGE_REPOSITORY=ghcr.io/kapro-dev/kapro-operator \
-KAPRO_IMAGE_TAG=v0.1.0-alpha \
+KAPRO_IMAGE_TAG=v0.4.0-alpha.0 \
 scripts/verify-install.sh cluster
 ```
 

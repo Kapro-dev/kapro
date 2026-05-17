@@ -1,7 +1,7 @@
 # Kapro Extension Model
 
 Kapro is a Kubernetes-native fleet promotion control plane. The core
-controllers own promotionrun ordering, stage fan-out, retries, rollback intent, and
+controllers own promotion ordering, stage fan-out, retries, rollback intent, and
 status. Extension points are narrow contracts around backend-specific work.
 
 This document defines the target architecture for those contracts.
@@ -25,9 +25,9 @@ This document defines the target architecture for those contracts.
 | Gate | `pkg/gate` | Decide whether one target may advance. | In-process registry |
 | Template gate | CEL, Job, Webhook gate templates | Configure custom gate behavior through CRDs. | Implemented |
 | PromotionRun planner | `pkg/planner` and KPI proto | Filter, score, reserve, and permit rollout targets before binding. | In-process framework; KPI API preview |
-| Lifecycle events | CloudEvents webhook payloads | Publish promotionrun, stage, gate, approval, and target events. | Implemented |
+| Lifecycle events | CloudEvents webhook payloads | Publish PromotionRun, stage, gate, approval, and target events. | Implemented |
 | Notification provider/policy | `NotificationProvider` and `NotificationPolicy` CRDs | Separate notification destinations from event subscriptions. | API preview; runtime dispatch future work |
-| Plugin gateway | KAI/KGI/KPI proto contracts and `PluginRegistration` | Register and probe out-of-process actuators, gates, and planner plugins. | Startup-time actuator and gate dispatch preview; planner status preview |
+| Plugin gateway | KAI/KGI/KPI proto contracts and `PluginRegistration` | Register and probe out-of-process actuators, gates, and planner plugins. | Hot-loaded actuator, gate, and planner dispatch preview |
 | PromotionTrigger | CRD API | Define safe autonomous PromotionRun creation policy. | OCI controller preview |
 
 ## Core Boundary
@@ -115,14 +115,14 @@ Lifecycle events are Kapro's integration boundary for downstream systems.
 
 Kapro emits semantic event types for:
 
-- promotionrun started, completed, failed, and rollback started;
+- promotion started, completed, failed, and rollback started;
 - stage completed;
 - gate passed and failed;
 - approval required;
 - target phase changes.
 
 Webhook notifications can use plain JSON or CloudEvents v1.0 structured JSON.
-CloudEvents IDs are stable for a given promotionrun, event type, promotionplan, stage,
+CloudEvents IDs are stable for a given PromotionRun, event type, promotion plan, stage,
 target, and phase, allowing receivers to de-duplicate retries.
 
 Inline notifications on gate policies remain supported and are the active
@@ -132,7 +132,7 @@ preview for a Kubernetes-native split:
 - `NotificationProvider` is **where** events go: webhook, Slack, email, or Git
   configuration, provider parameters, and namespaced Secret references.
 - `NotificationPolicy` is **when** events go there: subscriptions with a
-  `providerRef` plus event type, PromotionRun label, promotionplan, stage, target, and
+  `providerRef` plus event type, PromotionRun label, promotion plan, stage, target, and
   phase filters.
 
 The preview resources are spec-only. The controller does not dispatch from
@@ -178,7 +178,7 @@ API pieces:
 | PluginGateway | Runtime boundary for enabled contracts, timeout handling, retries, and error normalization. |
 
 The gateway must preserve the same state ownership rule: plugins do backend
-work, Kapro owns promotionrun state.
+work, Kapro owns PromotionRun state.
 
 API maturity, deprecation rules, upgrade policy, and the future non-binding
 certified plugin path are defined in `docs/api-stability.md`. KAI, KGI, and KPI
@@ -186,7 +186,7 @@ conformance instructions are defined in `docs/conformance.md`.
 
 Plugin registration is a platform-admin action. External plugins are inside the
 delivery integration boundary, not inside Kapro's control-plane trust boundary.
-They must not create or mutate Kapro promotionrun state directly. See
+They must not create or mutate Kapro PromotionRun state directly. See
 `docs/security-model.md` for RBAC, trust boundary, and Secret handling rules.
 
 Plugin readiness follows the compatibility matrix in
@@ -196,14 +196,14 @@ versions are reported as `Ready=False` and `Compatible=False` on
 
 ## PromotionTrigger Target
 
-`PromotionTrigger` is the API boundary for autonomous promotionrun creation. The CRD
+`PromotionTrigger` is the API boundary for autonomous PromotionRun creation. The CRD
 defines safe source observation and PromotionRun creation policy. The controller
 observes OCI registries and creates digest-pinned PromotionRuns after safeguards pass.
 
 The safe flow is:
 
 ```text
-artifact source -> PromotionTrigger -> suspended PromotionRun -> normal Kapro promotionplan
+artifact source -> PromotionTrigger -> suspended PromotionRun -> normal Kapro PromotionPlan
 ```
 
 Required safeguards:
@@ -212,25 +212,25 @@ Required safeguards:
 |---|---|
 | Suspended by default | Detection does not equal deployment. |
 | Digest pinning | PromotionRuns reference immutable artifact digests. |
-| Signature verification | Unsigned artifacts do not create promotionruns. |
-| Tag filtering | Only configured patterns create promotionruns. |
+| Signature verification | Unsigned artifacts do not create PromotionRuns. |
+| Tag filtering | Only configured patterns create PromotionRuns. |
 | Cooldown | Rapid artifact pushes cannot flood the fleet. |
-| Max active | One trigger cannot create unlimited concurrent promotionruns. |
+| Max active | One trigger cannot create unlimited concurrent PromotionRuns. |
 | Scope | Triggers can be limited to canary stages or selected targets. |
-| Idempotency | Re-observed artifacts do not create duplicate promotionruns. |
+| Idempotency | Re-observed artifacts do not create duplicate PromotionRuns. |
 
 See `docs/ADR-002-promotion-trigger.md` for the promotion trigger decision record.
 
 ## PromotionRun Planner
 
-The promotionrun planner is the target-selection boundary inside `PromotionRunReconciler`.
+The PromotionRun planner is the target-selection boundary inside `PromotionRunReconciler`.
 It follows Kubernetes scheduler-style phases:
 
 ```text
 PreFilter -> Filter -> Score -> NormalizeScore -> Reserve -> Permit -> bind PromotionTarget
 ```
 
-Kapro keeps ownership of promotionrun state. Planner plugins can influence which
+Kapro keeps ownership of PromotionRun state. Planner plugins can influence which
 targets are eligible and in what order they are bound, but they do not create
 or mutate `PromotionTarget` objects directly.
 
@@ -239,14 +239,14 @@ Built-in planning behavior:
 | Plugin or strategy | Phase | Behavior |
 |---|---|---|
 | Readiness filter | Filter | Skips targets that explicitly report `Ready=False`. |
-| Active promotionrun filter | Filter | Skips targets already processing a different PromotionRun. |
+| Active PromotionRun filter | Filter | Skips targets already processing a different PromotionRun. |
 | Deterministic ordering | Score | Keeps stable name-based ordering when scores tie. |
 | Stage strategy | Bind | Enforces `Stage.spec.strategy.maxParallel` before creating new `PromotionTarget` entries. |
 
 `Stage.status.plannerResults` records skip and defer reasons so operators can
 see why a target was not bound in the current planning cycle. External planner
 plugins can filter, defer, and score targets, but Kapro still owns
-`PromotionTarget` creation and promotionrun state.
+`PromotionTarget` creation and PromotionRun state.
 
 ## CRD Rule
 
@@ -258,7 +258,7 @@ Target CRD posture:
 
 | API surface | Posture |
 |---|---|
-| Existing promotionrun, promotionplan, app, cluster, target, approval, and policy CRDs | Core API |
+| Existing promotion, promotion plan, source, unit, cluster, target, approval, backend, trigger, and policy CRDs | Core API |
 | `PluginRegistration` | API preview; opt-in hot-loaded runtime registration |
 | `PromotionTrigger` | API preview with ADR-002 safeguards; OCI controller preview |
 | Notification provider/policy | Add only when shared credential ownership requires it |

@@ -3,7 +3,7 @@ kind: PromotionRun
 metadata:
   name: checkout-v1-2-3
 spec:
-  version: "oci://europe-west3-docker.pkg.dev/my-project/kapro-sources/checkout@sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+  version: "oci://europe-west3-docker.pkg.dev/my-project/kapro-sources/checkout@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
   promotionplans:
     - name: main
       promotionplan: checkout-progressive

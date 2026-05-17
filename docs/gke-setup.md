@@ -45,7 +45,7 @@ kapro cluster bootstrap --name de-prod \
   --labels tier=prod,country=de,region=europe-west3
 ```
 
-### 3. Create ResourceSet + PromotionPlan + PromotionRun
+### 3. Create BackendProfile + PromotionSource + PromotionPlan + Promotion
 
 See examples/ directory for complete YAML.
 
@@ -64,7 +64,7 @@ Bind Flux SA to GCP SA for GAR access without static credentials:
 
 ```bash
 gcloud iam service-accounts create flux-gar-reader --project=PROJECT
-gcloud artifacts repositories add-iam-policy-binding kapro-bundles \
+gcloud artifacts repositories add-iam-policy-binding kapro-artifacts \
   --location=REGION --project=PROJECT \
   --member="serviceAccount:flux-gar-reader@PROJECT.iam.gserviceaccount.com" \
   --role="roles/artifactregistry.reader"

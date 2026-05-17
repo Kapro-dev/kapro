@@ -1,0 +1,17 @@
+apiVersion: kapro.io/v1alpha1
+kind: PromotionPolicy
+metadata:
+  name: checkout-prod-guardrails
+spec:
+  mode: enforce
+  onFailure: halt
+  selector:
+    matchLabels:
+      app.kapro.io/name: checkout
+  cel:
+    - name: source-bound
+      expression: promotion.sourceRef == "checkout"
+      message: checkout promotions must use the reviewed checkout PromotionSource
+    - name: version-present
+      expression: promotion.version != ""
+      message: checkout promotions must declare a concrete version
