@@ -61,16 +61,16 @@ func parseCSRRequest(raw []byte) (*x509.CertificateRequest, error) {
 	return x509.ParseCertificateRequest(block.Bytes)
 }
 
+// hasOnlyClientAuthUsage enforces exactly [client auth]: a single entry, no
+// duplicates, no other usages mixed in. Rejecting duplicates is defence-in-
+// depth — the standard K8s validation already deduplicates Usages on the
+// way in, but a future controller-runtime upgrade or a strict equality
+// check downstream should never trip on `[ClientAuth, ClientAuth]`.
 func hasOnlyClientAuthUsage(usages []certificatesv1.KeyUsage) bool {
-	if len(usages) == 0 {
+	if len(usages) != 1 {
 		return false
 	}
-	for _, u := range usages {
-		if u != certificatesv1.UsageClientAuth {
-			return false
-		}
-	}
-	return true
+	return usages[0] == certificatesv1.UsageClientAuth
 }
 
 func isCSRApproved(csr *certificatesv1.CertificateSigningRequest) bool {
@@ -97,20 +97,53 @@ func startsWith(s, prefix string) bool {
 
 // ---- Bootstrap SA + kubeconfig provisioning --------------------------------
 
+const (
+	// bootstrapTokenRefreshLeeway is the buffer before the SA token's expiry
+	// at which the hub re-issues the bootstrap kubeconfig Secret. The TokenRequest
+	// is 1h by default; a spoke that comes up late (e.g., 24h slot, pod arrives at
+	// 50m) must still find a usable token. The annotation
+	// `kapro.io/bootstrap-expires-at` on the Secret drives this check.
+	bootstrapTokenRefreshLeeway = 15 * time.Minute
+)
+
 // shouldProvision returns true when a fresh bootstrap kubeconfig Secret needs
-// to be issued — either no Secret has been recorded yet, or the recorded one
-// no longer exists.
-func shouldProvision(fc *kaprov1alpha1.FleetCluster) bool {
+// to be issued — either no Secret has been recorded yet, the recorded one no
+// longer exists, OR the recorded one's SA token is near expiry. The third case
+// matters whenever spec.bootstrap.ttl is significantly longer than the
+// TokenRequest TTL (default 1h): without refresh, a late-arriving spoke would
+// find an expired token and never register.
+func (r *FleetClusterBootstrapReconciler) shouldProvision(ctx context.Context, fc *kaprov1alpha1.FleetCluster) bool {
 	if fc.Spec.Bootstrap == nil {
 		return false
 	}
 	if fc.Status.Bootstrap != nil && fc.Status.Bootstrap.Used {
 		return false
 	}
-	if fc.Status.Bootstrap == nil {
+	if fc.Status.Bootstrap == nil || fc.Status.Bootstrap.IssuedBootstrapKubeconfig == "" {
 		return true
 	}
-	return fc.Status.Bootstrap.IssuedBootstrapKubeconfig == ""
+	// Read the Secret annotation to see if the token is still fresh.
+	secret := &corev1.Secret{}
+	err := r.Get(ctx, types.NamespacedName{
+		Namespace: r.podNS(),
+		Name:      fc.Status.Bootstrap.IssuedBootstrapKubeconfig,
+	}, secret)
+	if apierrors.IsNotFound(err) {
+		return true // Secret was deleted — re-issue.
+	}
+	if err != nil {
+		// Transient error: don't re-provision aggressively. Next reconcile retries.
+		return false
+	}
+	expiresAtStr := secret.Annotations["kapro.io/bootstrap-expires-at"]
+	if expiresAtStr == "" {
+		return true // Missing annotation — old Secret, re-issue to add it.
+	}
+	expiresAt, err := time.Parse(time.RFC3339, expiresAtStr)
+	if err != nil {
+		return true // Malformed — replace.
+	}
+	return time.Until(expiresAt) <= bootstrapTokenRefreshLeeway
 }
 
 // ensureBootstrapProvisioned is idempotent: it creates the bootstrap SA,
@@ -121,7 +154,7 @@ func shouldProvision(fc *kaprov1alpha1.FleetCluster) bool {
 // Secret name so subsequent reconciles skip this work.
 func (r *FleetClusterBootstrapReconciler) ensureBootstrapProvisioned(ctx context.Context, fc *kaprov1alpha1.FleetCluster) (ctrl.Result, error) {
 	log := log.FromContext(ctx).WithValues("fleetcluster", fc.Name)
-	if !shouldProvision(fc) {
+	if !r.shouldProvision(ctx, fc) {
 		return ctrl.Result{}, nil
 	}
 
@@ -246,9 +279,16 @@ func (r *FleetClusterBootstrapReconciler) ensureBootstrapProvisioned(ctx context
 // hub kube-apiserver with the SA bearer token. This kubeconfig is single-use:
 // the spoke uses it ONLY to create + poll a CSR. After bootstrap, the spoke
 // builds its own steady-state kubeconfig from the issued client cert.
+//
+// The kubeconfig context is named after the cluster ("kapro-<cluster>") so
+// `kubectl --kubeconfig=...` output is human-readable during debugging.
 func buildBootstrapKubeconfig(hubURL string, caData []byte, token, clusterName, saName string) ([]byte, error) {
 	if hubURL == "" {
 		return nil, fmt.Errorf("hub API URL is empty")
+	}
+	contextName := "kapro-" + clusterName
+	if clusterName == "" {
+		contextName = "kapro-bootstrap"
 	}
 	cfg := clientcmdapi.NewConfig()
 	cfg.Clusters["kapro-hub"] = &clientcmdapi.Cluster{
@@ -258,11 +298,11 @@ func buildBootstrapKubeconfig(hubURL string, caData []byte, token, clusterName, 
 	cfg.AuthInfos[saName] = &clientcmdapi.AuthInfo{
 		Token: token,
 	}
-	cfg.Contexts["bootstrap"] = &clientcmdapi.Context{
+	cfg.Contexts[contextName] = &clientcmdapi.Context{
 		Cluster:  "kapro-hub",
 		AuthInfo: saName,
 	}
-	cfg.CurrentContext = "bootstrap"
+	cfg.CurrentContext = contextName
 	return clientcmd.Write(*cfg)
 }
 
@@ -487,6 +527,12 @@ func sameFinalizers(a, b []string) bool {
 	return true
 }
 
+// bootstrapStatusEqual compares two FleetClusterBootstrapStatus values
+// SEMANTICALLY, not by raw struct equality. The UsedAt field is
+// `*metav1.Time` — `*a == *b` would compare pointer addresses, returning
+// false for two distinct *metav1.Time allocations that hold the same
+// instant. This drove spurious reconciles whenever the informer cache and
+// a freshly-decoded apiserver response disagreed on pointer identity.
 func bootstrapStatusEqual(a, b *kaprov1alpha1.FleetClusterBootstrapStatus) bool {
 	if a == nil && b == nil {
 		return true
@@ -494,5 +540,25 @@ func bootstrapStatusEqual(a, b *kaprov1alpha1.FleetClusterBootstrapStatus) bool 
 	if a == nil || b == nil {
 		return false
 	}
-	return *a == *b
+	if a.Used != b.Used ||
+		a.IssuedCredentialFor != b.IssuedCredentialFor ||
+		a.IssuedBootstrapKubeconfig != b.IssuedBootstrapKubeconfig ||
+		a.BoundCSRName != b.BoundCSRName ||
+		a.IssuedClusterRole != b.IssuedClusterRole ||
+		a.IssuedClusterRoleBinding != b.IssuedClusterRoleBinding {
+		return false
+	}
+	return timesEqual(a.UsedAt, b.UsedAt)
+}
+
+// timesEqual compares two *metav1.Time pointers by their time value, not by
+// pointer identity. Both-nil is equal; one-nil is unequal.
+func timesEqual(a, b *metav1.Time) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return a.Time.Equal(b.Time)
 }

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -8,6 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"testing"
+	"time"
 
 	certificatesv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -110,6 +112,14 @@ func TestManagedResourceLabels(t *testing.T) {
 }
 
 func TestBootstrapStatusEqual(t *testing.T) {
+	// Distinct *metav1.Time allocations with the same instant. The previous
+	// implementation used `*a == *b` and would report these as unequal
+	// because Go struct equality compares pointer addresses, not pointed-to
+	// values. The fix unpacks each pointer field and compares semantics.
+	instant := time.Date(2026, 5, 17, 10, 0, 0, 0, time.UTC)
+	timeA := metav1.NewTime(instant)
+	timeB := metav1.NewTime(instant) // different allocation, same time
+
 	cases := []struct {
 		name string
 		a, b *kaprov1alpha1.FleetClusterBootstrapStatus
@@ -125,7 +135,7 @@ func TestBootstrapStatusEqual(t *testing.T) {
 			false,
 		},
 		{
-			"deeply equal",
+			"deeply equal (no UsedAt)",
 			&kaprov1alpha1.FleetClusterBootstrapStatus{
 				Used:                true,
 				IssuedCredentialFor: "de-prod-01",
@@ -137,6 +147,31 @@ func TestBootstrapStatusEqual(t *testing.T) {
 				BoundCSRName:        "csr-abc",
 			},
 			true,
+		},
+		{
+			// REGRESSION GUARD: this case failed with the previous `*a == *b`
+			// implementation because timeA and timeB are distinct heap
+			// allocations holding the same instant. The semantic-compare fix
+			// makes this case pass.
+			"semantically equal UsedAt with distinct pointer addresses",
+			&kaprov1alpha1.FleetClusterBootstrapStatus{Used: true, UsedAt: &timeA},
+			&kaprov1alpha1.FleetClusterBootstrapStatus{Used: true, UsedAt: &timeB},
+			true,
+		},
+		{
+			"genuinely different UsedAt",
+			&kaprov1alpha1.FleetClusterBootstrapStatus{Used: true, UsedAt: &timeA},
+			&kaprov1alpha1.FleetClusterBootstrapStatus{Used: true, UsedAt: func() *metav1.Time {
+				t := metav1.NewTime(instant.Add(time.Hour))
+				return &t
+			}()},
+			false,
+		},
+		{
+			"one UsedAt nil, the other set",
+			&kaprov1alpha1.FleetClusterBootstrapStatus{Used: true, UsedAt: nil},
+			&kaprov1alpha1.FleetClusterBootstrapStatus{Used: true, UsedAt: &timeA},
+			false,
 		},
 	}
 	for _, c := range cases {
@@ -181,6 +216,12 @@ func TestHasOnlyClientAuthUsage(t *testing.T) {
 		{
 			"client + digital signature",
 			[]certificatesv1.KeyUsage{certificatesv1.UsageClientAuth, certificatesv1.UsageDigitalSignature},
+			false,
+		},
+		{
+			// Defence-in-depth: even a duplicate ClientAuth must not pass.
+			"duplicate client auth",
+			[]certificatesv1.KeyUsage{certificatesv1.UsageClientAuth, certificatesv1.UsageClientAuth},
 			false,
 		},
 	}
@@ -362,23 +403,74 @@ func TestShouldProvision(t *testing.T) {
 			},
 			want: false,
 		},
-		{
-			name: "kubeconfig already issued",
-			fc: &kaprov1alpha1.FleetCluster{
-				Spec: kaprov1alpha1.FleetClusterSpec{Bootstrap: &kaprov1alpha1.FleetClusterBootstrapSpec{}},
-				Status: kaprov1alpha1.FleetClusterStatus{
-					Bootstrap: &kaprov1alpha1.FleetClusterBootstrapStatus{
-						IssuedBootstrapKubeconfig: "kapro-bootstrap-kubeconfig-de-prod-01",
-					},
-				},
-			},
-			want: false,
-		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := shouldProvision(c.fc); got != c.want {
+			// Spec-only branches don't need a client; nil is fine — the only
+			// path that calls r.Get is the Secret-lookup branch, which is
+			// exercised separately by TestShouldProvision_SecretBased.
+			r := &FleetClusterBootstrapReconciler{PodNamespace: "kapro-system"}
+			if got := r.shouldProvision(context.Background(), c.fc); got != c.want {
 				t.Errorf("shouldProvision = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// TestShouldProvision_SecretBased exercises the token-freshness branch:
+// when status.bootstrap.IssuedBootstrapKubeconfig points at a Secret, the
+// hub re-issues iff the Secret is missing, lacks the
+// `kapro.io/bootstrap-expires-at` annotation, holds a malformed annotation,
+// or is within 15 minutes of expiry. This guards against spec.bootstrap.ttl
+// being significantly longer than the TokenRequest TTL.
+func TestShouldProvision_SecretBased(t *testing.T) {
+	secretName := "kapro-bootstrap-kubeconfig-de-prod-01"
+	fc := &kaprov1alpha1.FleetCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "de-prod-01"},
+		Spec:       kaprov1alpha1.FleetClusterSpec{Bootstrap: &kaprov1alpha1.FleetClusterBootstrapSpec{}},
+		Status: kaprov1alpha1.FleetClusterStatus{
+			Bootstrap: &kaprov1alpha1.FleetClusterBootstrapStatus{
+				IssuedBootstrapKubeconfig: secretName,
+			},
+		},
+	}
+
+	mkSecret := func(annotation string) *corev1.Secret {
+		s := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      secretName,
+				Namespace: "kapro-system",
+			},
+		}
+		if annotation != "" {
+			s.Annotations = map[string]string{"kapro.io/bootstrap-expires-at": annotation}
+		}
+		return s
+	}
+
+	cases := []struct {
+		name    string
+		secret  *corev1.Secret
+		want    bool
+		because string
+	}{
+		{"missing secret", nil, true, "Secret deleted ⇒ re-issue"},
+		{"no annotation", mkSecret(""), true, "missing expiry annotation ⇒ re-issue"},
+		{"malformed annotation", mkSecret("not-a-timestamp"), true, "unparseable annotation ⇒ re-issue"},
+		{"fresh token", mkSecret(time.Now().Add(45 * time.Minute).Format(time.RFC3339)), false, "fresh token within TTL ⇒ skip"},
+		{"expiring within leeway", mkSecret(time.Now().Add(5 * time.Minute).Format(time.RFC3339)), true, "< 15m to expiry ⇒ re-issue"},
+		{"already expired", mkSecret(time.Now().Add(-1 * time.Minute).Format(time.RFC3339)), true, "negative remaining ⇒ re-issue"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var r *FleetClusterBootstrapReconciler
+			if c.secret == nil {
+				r, _ = newBootstrapReconciler(t)
+			} else {
+				r, _ = newBootstrapReconciler(t, c.secret)
+			}
+			if got := r.shouldProvision(context.Background(), fc); got != c.want {
+				t.Errorf("shouldProvision = %v, want %v (%s)", got, c.want, c.because)
 			}
 		})
 	}
@@ -395,7 +487,7 @@ func TestBuildBootstrapKubeconfig(t *testing.T) {
 		}
 		// Sanity: rendered kubeconfig should contain key markers.
 		s := string(out)
-		for _, want := range []string{"https://hub.example.com:6443", "kapro-bootstrap-de-prod-01", "current-context: bootstrap"} {
+		for _, want := range []string{"https://hub.example.com:6443", "kapro-bootstrap-de-prod-01", "current-context: kapro-de-prod-01"} {
 			if !contains(s, want) {
 				t.Errorf("rendered kubeconfig missing %q\nfull:\n%s", want, s)
 			}

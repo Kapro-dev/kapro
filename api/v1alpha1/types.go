@@ -1818,37 +1818,78 @@ type FleetClusterSpec struct {
 
 	// Bootstrap configures one-time cluster self-registration.
 	//
-	// Protocol (CSR-native, K8s-API transport — works across any cloud /
-	// any cluster / any K8s distribution):
-	//  1. Platform team creates this FleetCluster with spec.bootstrap.tokenHash
-	//     (SHA-256 of a random pre-image) and a TTL.
-	//  2. kapro-cluster-controller boots on the spoke with the plaintext token,
-	//     generates a keypair, and submits a CertificateSigningRequest to the
-	//     hub's K8s API with signerName=kapro.io/cluster-bootstrap. The CSR
-	//     username encodes the cluster name and the request annotation carries
-	//     the SHA-256 of the plaintext token.
-	//  3. The hub CSR approver verifies the SHA-256 matches this field, that
-	//     spec.bootstrap.expiresAt is in the future, and that
-	//     status.bootstrap.used is false. On success it approves the CSR,
-	//     signs the cert, and creates a per-cluster ClusterRole+Binding with
-	//     resourceNames=[<this cluster>] for fleetclusters/status and the
-	//     heartbeat Lease.
-	//  4. The spoke uses the issued client cert (auto-rotated by client-go)
-	//     for steady-state K8s API calls. No bearer tokens. No long-lived
-	//     credentials. No custom HTTP protocol.
+	// Protocol (SA-token-mediated CSR; built-in K8s signer; works across any
+	// cloud / any cluster / any K8s distribution):
 	//
-	// One bootstrap slot per cluster. To re-bootstrap, the platform team
-	// updates tokenHash + expiresAt (or ttl); the hub clears status.bootstrap
-	// on the next reconcile.
+	//  1. Platform team creates this FleetCluster with spec.bootstrap set.
+	//     `tokenHash` (when supplied) is an opaque slot identifier — its
+	//     value isn't cryptographically verified by the hub today (the
+	//     bootstrap ServiceAccount identity is the effective auth factor).
+	//     Mutating it counts as a re-bootstrap intent (planned: hub resets
+	//     status.bootstrap; see RE-BOOTSTRAP below).
+	//
+	//  2. The hub FleetClusterBootstrapReconciler provisions a per-cluster
+	//     ServiceAccount `kapro-bootstrap-<cluster>` in kapro-system with a
+	//     narrowly-scoped ClusterRole (CSR-create only, for this signer
+	//     name). It issues a TokenRequest for that SA (default 1h TTL,
+	//     audience `kapro-bootstrap`) and writes the rendered kubeconfig
+	//     into Secret `kapro-bootstrap-kubeconfig-<cluster>`. The Secret
+	//     name is recorded in `status.bootstrap.issuedBootstrapKubeconfig`.
+	//
+	//  3. The platform team ships that Secret out-of-band to the spoke
+	//     cluster (Helm chart mount, kubectl image copy, GitOps, etc.).
+	//     The kapro-cluster-controller pod on the spoke mounts the Secret,
+	//     generates an ECDSA keypair, and submits a CertificateSigningRequest
+	//     to the hub apiserver. The CSR carries:
+	//       signerName = kubernetes.io/kube-apiserver-client
+	//       Subject.CN = "kapro-cluster:<cluster>"
+	//       Subject.O  = "kapro:cluster-controllers"
+	//       Usages     = [client auth]
+	//     The CSR's `spec.username` is automatically set by the apiserver
+	//     to the bootstrap SA's identity
+	//     ("system:serviceaccount:kapro-system:kapro-bootstrap-<cluster>").
+	//
+	//  4. The hub approver validates: (a) signer/CN/O/usages exactly match
+	//     above; (b) Username equals the SA we provisioned for this
+	//     FleetCluster — preventing a leaked Secret for cluster A from
+	//     registering cluster B; (c) spec.bootstrap.expiresAt is in the
+	//     future and status.bootstrap.used is false. It then approves the
+	//     CSR via UpdateApproval. The K8s kube-controller-manager signs the
+	//     cert with the apiserver's own client CA.
+	//
+	//  5. On approval the hub also creates a long-lived per-cluster
+	//     ClusterRole and ClusterRoleBinding for the issued cert identity
+	//     (User CN=`kapro-cluster:<cluster>`). Both names are
+	//     `kapro:cluster-controller:<cluster>`. resourceNames lock the
+	//     access scope to THIS cluster's FleetCluster + its own heartbeat
+	//     Lease — a compromised spoke cannot patch a sibling.
+	//
+	//  6. The spoke uses the signed client cert for steady-state K8s API
+	//     calls and rotates it via a renewal CSR before expiry (Username
+	//     becomes the cluster cert identity rather than the bootstrap SA;
+	//     the approver recognises the renewal class and skips the bootstrap
+	//     slot check).
+	//
+	// RE-BOOTSTRAP (planned, not yet wired): mutating
+	// spec.bootstrap.tokenHash signals re-bootstrap intent; the hub will
+	// reset status.bootstrap. For now the workaround is to delete and
+	// recreate the FleetCluster.
 	// +optional
 	Bootstrap *FleetClusterBootstrapSpec `json:"bootstrap,omitempty"`
 }
 
-// FleetClusterBootstrapSpec holds the one-time registration credential.
+// FleetClusterBootstrapSpec holds the one-time registration slot for a
+// FleetCluster. See FleetClusterSpec.Bootstrap doc for the full protocol.
 type FleetClusterBootstrapSpec struct {
-	// TokenHash is the SHA-256 hex hash of the pre-image bootstrap token (exactly 64 lowercase hex chars).
-	// Platform team hashes the raw token and stores only the hash here; the cluster-controller
-	// presents the plaintext pre-image. This ensures tokenHash cannot be used directly.
+	// TokenHash is an opaque, platform-supplied bootstrap-slot identifier in
+	// SHA-256-hex shape (exactly 64 lowercase hex chars). It is NOT a
+	// pre-image-of-token check today: the hub controller's effective
+	// authorization is the bootstrap ServiceAccount it provisions (see the
+	// FleetClusterSpec.Bootstrap protocol). Mutating this value counts as
+	// a re-bootstrap intent — a future change will have the hub controller
+	// reset status.bootstrap when it observes a TokenHash mutation.
+	// Validation pattern remains a SHA-256 hex so existing tooling that
+	// pre-computes the hash keeps working unmodified.
 	// +kubebuilder:validation:Pattern=`^[0-9a-f]{64}$`
 	// +optional
 	TokenHash string `json:"tokenHash,omitempty"`
@@ -1924,44 +1965,57 @@ type FleetClusterStatus struct {
 }
 
 // FleetClusterBootstrapStatus tracks the one-time bootstrap registration state.
-// Written by the hub CSR approver after a successful CSR exchange.
+// Written by the hub FleetClusterBootstrapReconciler — first when it provisions
+// the bootstrap SA + kubeconfig Secret, then again when a matching CSR is
+// approved.
 type FleetClusterBootstrapStatus struct {
-	// Used is true once the bootstrap token has been consumed by a successful CSR.
-	// Used in CAS predicate to enforce one-time use — a second CSR carrying the
-	// same token hash is rejected regardless of which spoke submits it.
+	// Used is true once a matching CSR has been approved and the per-cluster
+	// long-lived RBAC has been created. Enforces one-bootstrap-slot-per-
+	// FleetCluster: a second CSR matching this slot but with a different
+	// BoundCSRName is denied as a replay attempt.
 	Used bool `json:"used,omitempty"`
 
-	// UsedAt is when the bootstrap token was consumed.
+	// UsedAt is when the bootstrap slot was consumed (the first matching CSR
+	// approved).
 	// +optional
 	UsedAt *metav1.Time `json:"usedAt,omitempty"`
 
-	// IssuedCredentialFor is the cluster name the bootstrap credential was issued for.
-	// Mirrors metadata.name on a successful registration; serves as a defensive
-	// cross-check when the hub controller later loads RBAC by deterministic name.
+	// IssuedCredentialFor is the cluster name the bootstrap credential was
+	// issued for — mirrors metadata.name on a successful registration. Serves
+	// as a defensive cross-check when the hub controller later loads RBAC by
+	// deterministic name.
 	// +optional
 	IssuedCredentialFor string `json:"issuedCredentialFor,omitempty"`
 
-	// IssuedBootstrapKubeconfig is the name of an optional kubeconfig Secret in
-	// kapro-system. Legacy from the bearer-token bootstrap mode; the CSR flow
-	// returns a signed cert directly to the spoke and leaves this empty.
+	// IssuedBootstrapKubeconfig is the name of the kubeconfig Secret in
+	// kapro-system (`kapro-bootstrap-kubeconfig-<cluster>`) that the hub
+	// controller provisioned for the spoke to mount. It is populated on every
+	// (re-)provisioning pass and is the spoke's input for its first CSR
+	// submission. The Secret carries a TokenRequest-issued bearer token whose
+	// expiry is recorded in the Secret annotation
+	// `kapro.io/bootstrap-expires-at`; the hub re-issues the Secret when the
+	// token nears expiry while spec.bootstrap.expiresAt is still in the future.
 	// +optional
 	IssuedBootstrapKubeconfig string `json:"issuedBootstrapKubeconfig,omitempty"`
 
 	// BoundCSRName is the CSR that consumed this bootstrap slot. Enables
-	// idempotent retry: if status patching fails after CSR approval, the next
-	// reconcile recognises the same CSR via this field and re-converges status
-	// rather than rejecting it as a replay.
+	// idempotent retry: if status patching crashes after the slot is marked
+	// Used but before UpdateApproval succeeds, the next reconcile recognises
+	// the same CSR via this field and re-runs the approve step instead of
+	// rejecting it as a replay.
 	// +optional
 	BoundCSRName string `json:"boundCSRName,omitempty"`
 
-	// IssuedClusterRole is the name of the per-cluster ClusterRole created by
-	// the bootstrap reconciler. Naming is deterministic (kapro-agent-<cluster>),
-	// but recording it makes deletion cascade trivial without re-derivation.
+	// IssuedClusterRole is the name of the per-cluster long-lived ClusterRole
+	// the bootstrap reconciler created (deterministic shape
+	// `kapro:cluster-controller:<cluster>`). Recording it makes deletion
+	// cascade trivial without re-derivation.
 	// +optional
 	IssuedClusterRole string `json:"issuedClusterRole,omitempty"`
 
-	// IssuedClusterRoleBinding is the name of the per-cluster ClusterRoleBinding
-	// created by the bootstrap reconciler. Same rationale as IssuedClusterRole.
+	// IssuedClusterRoleBinding is the name of the per-cluster long-lived
+	// ClusterRoleBinding (same `kapro:cluster-controller:<cluster>` shape as
+	// IssuedClusterRole). Same rationale.
 	// +optional
 	IssuedClusterRoleBinding string `json:"issuedClusterRoleBinding,omitempty"`
 }

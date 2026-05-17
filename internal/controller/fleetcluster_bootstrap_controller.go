@@ -186,21 +186,32 @@ func (r *FleetClusterBootstrapReconciler) Reconcile(ctx context.Context, req ctr
 		return r.markExpired(ctx, fc)
 	}
 
-	// Phase 3 — already used? Ensure per-cluster RBAC is in place.
-	if fc.Status.Bootstrap != nil && fc.Status.Bootstrap.Used {
-		return r.handleRegistered(ctx, fc)
-	}
-
-	// Phase 4 — not used yet: provision bootstrap SA + kubeconfig if missing,
-	// then scan for matching CSRs and process the first valid one.
-	if res, err := r.ensureBootstrapProvisioned(ctx, fc); err != nil {
-		return ctrl.Result{}, fmt.Errorf("provision bootstrap: %w", err)
+	// Phase 3 — always process matching CSRs (bootstrap-pending OR renewal).
+	// processCSRsForCluster is idempotent: it skips approved/denied CSRs and
+	// re-invokes handleBootstrapCSR / handleRenewalCSR for the rest.
+	//
+	// Crash-recovery: if a previous reconcile marked status.bootstrap.Used=true
+	// but crashed before calling UpdateApproval, the CSR is still pending. We
+	// MUST run this phase even when Used==true so the pending CSR is approved
+	// on retry; otherwise the spoke is stuck waiting for a cert it will never
+	// receive. Regression test: TestReconcile_CrashRecovery_ApprovesPendingCSR.
+	if res, err := r.processCSRsForCluster(ctx, fc); err != nil {
+		return ctrl.Result{}, fmt.Errorf("process CSRs: %w", err)
 	} else if !res.IsZero() {
 		return res, nil
 	}
 
-	if res, err := r.processCSRsForCluster(ctx, fc); err != nil {
-		return ctrl.Result{}, fmt.Errorf("process CSRs: %w", err)
+	// Phase 4 — already registered? Ensure per-cluster RBAC is in place and
+	// mark Registered. (Renewal CSRs are handled in Phase 3 above.)
+	if fc.Status.Bootstrap != nil && fc.Status.Bootstrap.Used {
+		return r.handleRegistered(ctx, fc)
+	}
+
+	// Phase 5 — not registered yet: provision the bootstrap SA + kubeconfig
+	// Secret so the spoke has something to authenticate with. Idempotent;
+	// also re-issues when the issued SA token is approaching expiry.
+	if res, err := r.ensureBootstrapProvisioned(ctx, fc); err != nil {
+		return ctrl.Result{}, fmt.Errorf("provision bootstrap: %w", err)
 	} else if !res.IsZero() {
 		return res, nil
 	}
@@ -576,7 +587,10 @@ func fleetClusterBootstrapPredicate() predicate.Predicate {
 			if !sameFinalizers(oldFC.Finalizers, newFC.Finalizers) {
 				return true
 			}
-			if oldFC.DeletionTimestamp != newFC.DeletionTimestamp {
+			// Compare deletion-state by zero-ness, not by pointer identity. Two
+			// non-nil *metav1.Time across cache refreshes hold distinct addresses;
+			// raw `!=` always returned true and produced spurious reconciles.
+			if oldFC.DeletionTimestamp.IsZero() != newFC.DeletionTimestamp.IsZero() {
 				return true
 			}
 			return !bootstrapStatusEqual(oldFC.Status.Bootstrap, newFC.Status.Bootstrap)

@@ -365,6 +365,67 @@ func TestReconcile_AddsFinalizer(t *testing.T) {
 	}
 }
 
+// TestReconcile_CrashRecovery_ApprovesPendingCSR verifies the END-TO-END
+// crash-recovery path through the public Reconcile entry point: when the
+// controller previously marked status.bootstrap.Used=true with
+// BoundCSRName=csr-X but crashed before UpdateApproval landed, the next
+// Reconcile MUST re-process csr-X and approve it.
+//
+// This was broken in the originally-shipped PR-2: Reconcile Phase 3
+// short-circuited to handleRegistered as soon as Used==true, so
+// processCSRsForCluster was never reached and csr-X stayed pending
+// forever (Copilot review on PR #57 caught this). The fix moved CSR
+// processing to a phase that runs regardless of Used.
+//
+// TestProcessCSRsForCluster_RecoversFromCrashMidApprove (below) only
+// exercises processCSRsForCluster directly and does NOT detect the
+// Reconcile-level regression; this test is the higher-fidelity guard.
+func TestReconcile_CrashRecovery_ApprovesPendingCSR(t *testing.T) {
+	clusterName := "de-prod-01"
+	bootstrapSA := "system:serviceaccount:kapro-system:kapro-bootstrap-" + clusterName
+
+	csr := makeTestCSR(t, csrCNPrefix+clusterName, []string{csrOrganization}, bootstrapSA)
+	csr.Name = "csr-crashed-mid-approve"
+	// Pending: no Approved/Denied conditions yet.
+
+	usedAt := metav1.Now()
+	fc := &kaprov1alpha1.FleetCluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       clusterName,
+			Finalizers: []string{kaprov1alpha1.FleetClusterFinalizer},
+		},
+		Spec: kaprov1alpha1.FleetClusterSpec{
+			Bootstrap: &kaprov1alpha1.FleetClusterBootstrapSpec{
+				ExpiresAt: &metav1.Time{Time: time.Now().Add(1 * time.Hour)},
+			},
+		},
+		Status: kaprov1alpha1.FleetClusterStatus{
+			Bootstrap: &kaprov1alpha1.FleetClusterBootstrapStatus{
+				Used:                true,
+				UsedAt:              &usedAt,
+				IssuedCredentialFor: clusterName,
+				BoundCSRName:        csr.Name,
+			},
+		},
+	}
+
+	r, _ := newBootstrapReconciler(t, fc, csr)
+	fakeCertClient := k8sfake.NewSimpleClientset(csr)
+	r.CertClient = fakeCertClient.CertificatesV1()
+
+	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: client.ObjectKey{Name: fc.Name}}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	got, err := fakeCertClient.CertificatesV1().CertificateSigningRequests().Get(context.Background(), csr.Name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("re-fetch CSR: %v", err)
+	}
+	if !isCSRApproved(got) {
+		t.Fatalf("Reconcile must re-approve a previously-bound pending CSR; status=%+v", got.Status)
+	}
+}
+
 // TestProcessCSRsForCluster_RecoversFromCrashMidApprove verifies that a CSR
 // which was marked as the BoundCSRName but never reached Approved status
 // (e.g., controller crashed between markBootstrapUsed and approveCSR) gets

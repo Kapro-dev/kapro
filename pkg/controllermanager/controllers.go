@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"kapro.io/kapro/internal/controller"
@@ -207,12 +208,19 @@ func startKaproController(_ context.Context, cc ControllerContext) (bool, error)
 // spoke; creates the long-lived per-cluster ClusterRole + Binding with a
 // resourceNames lock on the issued cluster cert's User identity.
 //
-// Returns enabled=false (no error) when KubeClient or CertClient is missing —
-// these are populated in main.go from the operator's REST config and only
-// non-nil in production. Unit tests that don't need the controller may leave
-// them unset.
+// Returns enabled=false (no error) when KubeClient or CertClient is missing.
+// These are populated unconditionally in cmd/operator/main.go from the
+// operator's REST config and so are non-nil in production. The escape hatch
+// exists for unit tests that don't exercise this controller; a warning is
+// logged so a partial-wiring regression in main.go would still be visible
+// in operator startup logs rather than silently dropping the controller.
 func startFleetClusterBootstrapController(_ context.Context, cc ControllerContext) (bool, error) {
 	if cc.KubeClient == nil || cc.CertClient == nil {
+		ctrl.Log.WithName("controllermanager").Info(
+			"fleetcluster-bootstrap controller skipped: KubeClient or CertClient is nil — expected only in tests, log a bug if you see this in production",
+			"kubeClientPresent", cc.KubeClient != nil,
+			"certClientPresent", cc.CertClient != nil,
+		)
 		return false, nil
 	}
 	r := &controller.FleetClusterBootstrapReconciler{
