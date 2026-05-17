@@ -4,39 +4,37 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.21.0
-  name: approvals.kapro.io
+  name: pluginregistrations.kapro.io
 spec:
   group: kapro.io
   names:
     categories:
     - kapro-all
-    kind: Approval
-    listKind: ApprovalList
-    plural: approvals
+    kind: PluginRegistration
+    listKind: PluginRegistrationList
+    plural: pluginregistrations
     shortNames:
-    - ap
-    singular: approval
+    - pluginreg
+    singular: pluginregistration
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.promotionrun
-      name: PromotionRun
+    - jsonPath: .spec.type
+      name: Type
       type: string
-    - jsonPath: .spec.target
-      name: Target
+    - jsonPath: .spec.name
+      name: Name
       type: string
-    - jsonPath: .status.phase
-      name: Phase
+    - jsonPath: .spec.protocol
+      name: Protocol
       type: string
-    - jsonPath: .status.conditions[?(@.type=="Recorded")].status
-      name: Recorded
-      type: string
-    - jsonPath: .spec.approvedBy
-      name: Approved By
-      type: string
-    - jsonPath: .spec.bypass
-      name: Bypass
+    - jsonPath: .status.ready
+      name: Ready
       type: boolean
+    - jsonPath: .status.version
+      name: Version
+      priority: 1
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -44,8 +42,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Approval is the human gate signal that unblocks a waiting target rollout.
-          Object name convention: "<promotionrun>-<ref>" as a cluster-scoped object.
+          PluginRegistration declares an external actuator, gate, or planner plugin endpoint.
+          It is an API preview. Runtime registration is opt-in and hot-loaded after
+          readiness probes succeed.
         properties:
           apiVersion:
             description: |-
@@ -66,49 +65,75 @@ spec:
             type: object
           spec:
             description: |-
-              ApprovalSpec is the human signal that unblocks a waiting target.
-
-              Identity is deterministic: one cluster-scoped Approval per (promotionrun, ref)
-              pair. The object name is "<promotionrun>-<ref>". For target FSM approvals, ref is
-              the stable sync key "<promotionrun>-<promotionplanRef>-<stage>-<target>", so each
-              waiting-approval step requires its own approval object.
+              PluginRegistrationSpec registers an external actuator, gate, or planner plugin endpoint.
+              Runtime dispatch is an opt-in preview enabled with KAPRO_ENABLE_PLUGIN_GATEWAY=true.
             properties:
-              approvedBy:
+              endpoint:
                 description: |-
-                  ApprovedBy identifies the human approver. Populated by the admission
-                  webhook from the request UserInfo when empty.
+                  Endpoint is the plugin endpoint URI, for example
+                  dns:///argocd-actuator.kapro-system.svc:9090.
+                minLength: 1
                 type: string
-              bypass:
+              name:
                 description: |-
-                  Bypass skips subsequent gate conditions for the target. Reserved for
-                  P0 hotfix escalations; audited via the ApprovalRecorded Event.
-                type: boolean
-              comment:
-                description: Comment is optional free-form justification.
+                  Name is the registry key exposed by this plugin, for example "argo/pull"
+                  or "slo".
+                minLength: 1
                 type: string
-              promotionrun:
-                description: PromotionRun is the name of the PromotionRun this approval
-                  unblocks.
-                type: string
-              ref:
+              parameters:
+                additionalProperties:
+                  type: string
                 description: |-
-                  Ref identifies the exact approval scope within the PromotionRun. For target FSM
-                  approvals this is the stable sync key "<promotionrun>-<promotionplanRef>-<stage>-<target>".
-                  External integrators may use another deterministic ref as long as
-                  metadata.name is "<promotionrun>-<ref>".
+                  Parameters are plugin-specific key-value pairs.
+                  Kapro core does not interpret unknown parameters.
+                type: object
+              protocol:
+                default: grpc
+                description: Protocol selects the wire protocol.
+                enum:
+                - grpc
                 type: string
-              target:
-                description: Target is the FleetCluster name this approval is for.
+              timeout:
+                default: 10s
+                description: Timeout bounds one plugin call.
+                type: string
+              tlsSecretRef:
+                description: |-
+                  TLSSecretRef references a Secret containing client TLS material or CA data.
+                  Cluster-scoped registrations must include the Secret namespace.
+                properties:
+                  name:
+                    description: name is unique within a namespace to reference a
+                      secret resource.
+                    type: string
+                  namespace:
+                    description: namespace defines the space within which the secret
+                      name must be unique.
+                    type: string
+                type: object
+                x-kubernetes-map-type: atomic
+              type:
+                description: Type selects which extension contract the plugin implements.
+                enum:
+                - actuator
+                - gate
+                - planner
                 type: string
             required:
-            - approvedBy
-            - promotionrun
-            - ref
-            - target
+            - endpoint
+            - name
+            - type
             type: object
           status:
+            description: PluginRegistrationStatus records plugin discovery and readiness.
             properties:
+              capabilities:
+                description: Capabilities are plugin-reported feature names.
+                items:
+                  type: string
+                type: array
               conditions:
+                description: Conditions summarize plugin registration readiness.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -164,12 +189,23 @@ spec:
                   - type
                   type: object
                 type: array
+              contractVersion:
+                description: ContractVersion is the plugin-reported KAI, KGI, or KPI
+                  contract version.
+                type: string
+              lastSeen:
+                description: LastSeen is the RFC3339 time of the last successful health
+                  or capability check.
+                type: string
               observedGeneration:
                 format: int64
                 type: integer
-              phase:
-                type: string
-              processedAt:
+              ready:
+                description: Ready indicates whether the plugin endpoint is currently
+                  usable.
+                type: boolean
+              version:
+                description: Version is the plugin-reported implementation version.
                 type: string
             type: object
         type: object

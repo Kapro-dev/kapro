@@ -128,9 +128,10 @@ release-smoke: ## Smoke-test Helm packaging and release workflow chart artifacts
 	scripts/ci-release-smoke.sh
 
 .PHONY: sync-crds
-sync-crds: manifests ## Sync generated CRDs into Helm chart crds/ directory
+sync-crds: manifests ## Sync generated CRDs into Helm chart crds/ and internal/bootstrap/kaprocrds/ (used by hub init)
 	cp config/crd/bases/*.yaml charts/kapro-operator/crds/
-	@echo "✅ Helm chart CRDs synced"
+	cp config/crd/bases/*.yaml internal/bootstrap/kaprocrds/
+	@echo "✅ Helm chart and bootstrap CRDs synced"
 
 .PHONY: docker-build
 docker-build: ## Build multi-arch Docker image (no push)
