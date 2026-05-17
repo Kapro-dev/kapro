@@ -142,6 +142,7 @@ spec:
                 enum:
                 - flux
                 - argo
+                - oci
                 - external
                 type: string
               parameters:
@@ -259,6 +260,7 @@ spec:
                 enum:
                 - flux
                 - argo
+                - oci
                 - external
                 type: string
               lastDiscoveryTime:

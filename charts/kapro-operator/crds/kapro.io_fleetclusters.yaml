@@ -472,6 +472,76 @@ spec:
                 description: CurrentVersions maps app keys to deployed versions. Written
                   by cluster-controller.
                 type: object
+              delivery:
+                additionalProperties:
+                  description: |-
+                    FleetClusterDeliveryStatus is the per-app delivery progress reported by the
+                    spoke-side cluster-controller. Written by exactly one writer: the spoke's
+                    own delivery loop on its own FleetCluster (RBAC-locked via resourceNames).
+                  properties:
+                    appliedObjects:
+                      description: |-
+                        AppliedObjects is the count of distinct GVK+namespace+name tuples
+                        committed by the most recent successful apply. Useful for "did this
+                        just regress to applying 1 object instead of 47?" diagnostics.
+                      format: int32
+                      type: integer
+                    desiredVersion:
+                      description: |-
+                        DesiredVersion is the version the loop is targeting (mirrors
+                        spec.desiredVersions[app] at the time of the last reconcile).
+                      type: string
+                    format:
+                      description: |-
+                        Format records the artifact format the spoke detected for the most
+                        recent successful pull: "helm", "kustomize", or "raw-yaml". Empty until
+                        the first pull succeeds.
+                      type: string
+                    lastAppliedAt:
+                      description: LastAppliedAt is when the last successful commit
+                        happened.
+                      format: date-time
+                      type: string
+                    lastAttemptedAt:
+                      description: |-
+                        LastAttemptedAt is when the delivery loop most recently attempted this
+                        app (success or failure). Useful for "is the spoke alive?" checks even
+                        when ObservedDigest is empty.
+                      format: date-time
+                      type: string
+                    lastError:
+                      description: |-
+                        LastError carries the human-readable error from the most recent failed
+                        attempt. Cleared on success. Bounded to 4 KiB by the spoke before
+                        writing to keep the status object small.
+                      type: string
+                    observedDigest:
+                      description: |-
+                        ObservedDigest is the digest (e.g. "sha256:abcd…") of the OCI artifact
+                        that produced the most recent successful apply. Stable across pulls of
+                        the same tag, so a digest-equal short-circuit can skip re-apply when
+                        the upstream tag is moved to point at the same content.
+                      type: string
+                    phase:
+                      description: Phase is the current phase of the delivery loop
+                        for this app.
+                      enum:
+                      - Pending
+                      - Pulling
+                      - Staging
+                      - Applying
+                      - Converged
+                      - Failed
+                      - Skipped
+                      type: string
+                  type: object
+                description: |-
+                  Delivery tracks the spoke-side delivery loop's progress for each app.
+                  Written by the cluster-controller's delivery loop (OCI Delivery Core).
+                  Distinct from CurrentVersions: that map records the last successfully
+                  committed version per app, while Delivery exposes in-flight phase,
+                  observed digest, and last error for human and Decision API consumption.
+                type: object
               deliverySystem:
                 description: DeliverySystem is the delivery system detected by the
                   cluster-controller (e.g. "flux").
