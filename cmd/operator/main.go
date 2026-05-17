@@ -5,10 +5,12 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	crypto_rand "crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"flag"
+	"fmt"
 	"math/big"
 	"net/http"
 	"os"
@@ -51,6 +53,15 @@ var scheme = runtime.NewScheme()
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
 	_ = kaprov1alpha1.AddToScheme(scheme)
+}
+
+func defaultLeaderElectionID(shardName string) string {
+	const base = "kapro-operator-leader.kapro.io"
+	if shardName == "" {
+		return base
+	}
+	sum := sha256.Sum256([]byte(shardName))
+	return fmt.Sprintf("kapro-operator-leader-%x.kapro.io", sum[:8])
 }
 
 // Manager-level RBAC requirements not tied to a specific controller.
@@ -106,10 +117,7 @@ func main() {
 	}
 	leaderElectionID := os.Getenv("KAPRO_LEADER_ELECTION_ID")
 	if leaderElectionID == "" {
-		leaderElectionID = "kapro-operator-leader.kapro.io"
-		if shardName != "" {
-			leaderElectionID = "kapro-operator-leader-" + shardName + ".kapro.io"
-		}
+		leaderElectionID = defaultLeaderElectionID(shardName)
 	}
 
 	cfg := ctrl.GetConfigOrDie()

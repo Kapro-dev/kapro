@@ -62,6 +62,15 @@ func (f fakeDecisionAuthorizer) Authorize(_ context.Context, _ authnv1.UserInfo,
 	return nil
 }
 
+type recordingDecisionAuthorizer struct {
+	attrs []authzv1.ResourceAttributes
+}
+
+func (r *recordingDecisionAuthorizer) Authorize(_ context.Context, _ authnv1.UserInfo, attrs authzv1.ResourceAttributes) error {
+	r.attrs = append(r.attrs, attrs)
+	return nil
+}
+
 func authorizeDecisionRequest(req *http.Request) {
 	req.Header.Set("Authorization", "Bearer test-token-123")
 }
@@ -360,6 +369,9 @@ func TestDecide_ApproveCreatesApprovalAndTrace(t *testing.T) {
 	if updated.Status.DecisionTrace.Current.Identity.Name != "system:serviceaccount:kapro-system:test-agent" {
 		t.Errorf("expected authenticated agent identity, got %s", updated.Status.DecisionTrace.Current.Identity.Name)
 	}
+	if updated.Status.DecisionTrace.Current.Identity.Type != "ServiceAccount" {
+		t.Errorf("expected service account identity type, got %s", updated.Status.DecisionTrace.Current.Identity.Type)
+	}
 	if updated.Status.DecisionTrace.Current.Confidence != 0.95 {
 		t.Errorf("expected confidence 0.95, got %f", updated.Status.DecisionTrace.Current.Confidence)
 	}
@@ -398,6 +410,58 @@ func TestDecide_ApproveRequiresApprovalCreateRBACBeforeTraceWrite(t *testing.T) 
 	}
 	if updated.Status.DecisionTrace != nil && updated.Status.DecisionTrace.Current != nil {
 		t.Fatal("decision trace should not be written when approval create RBAC is denied")
+	}
+}
+
+func TestDecide_AuthorizesPromotionTargetStatusPatchSubresource(t *testing.T) {
+	promotionrun, mc, _, target := decisionFixtures()
+	authz := &recordingDecisionAuthorizer{}
+	s := decisionTestServer(t, promotionrun, mc, target)
+	s.DecisionAuthorizer = authz
+
+	rec := postDecision(t, s, "rel-1", "rel-1-canary-cluster-a", DecisionRequest{
+		Decision:       "Reject",
+		Confidence:     0.9,
+		Reasoning:      "Rejecting for test coverage.",
+		IdempotencyKey: "status-patch-rbac",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	for _, attr := range authz.attrs {
+		if attr.Group == "kapro.io" &&
+			attr.Verb == "patch" &&
+			attr.Resource == "promotiontargets" &&
+			attr.Subresource == "status" &&
+			attr.Name == "rel-1-canary-cluster-a" {
+			return
+		}
+	}
+	t.Fatalf("missing promotiontargets/status patch SAR; attrs=%#v", authz.attrs)
+}
+
+func TestDecide_RecordsUserIdentityType(t *testing.T) {
+	promotionrun, mc, _, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, mc, target)
+	s.DecisionAuthenticator = fakeDecisionAuthenticator{user: "alice@example.com"}
+
+	rec := postDecision(t, s, "rel-1", "rel-1-canary-cluster-a", DecisionRequest{
+		Decision:       "Reject",
+		Confidence:     0.9,
+		Reasoning:      "User token decision.",
+		IdempotencyKey: "user-identity-type",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var updated kaprov1alpha1.PromotionTarget
+	if err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: "rel-1-canary-cluster-a"}, &updated); err != nil {
+		t.Fatalf("get target: %v", err)
+	}
+	if got := updated.Status.DecisionTrace.Current.Identity.Type; got != "User" {
+		t.Fatalf("identity type = %q, want User", got)
 	}
 }
 

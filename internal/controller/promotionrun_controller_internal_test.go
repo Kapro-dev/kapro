@@ -5,7 +5,10 @@ import (
 	"testing"
 	"time"
 
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/record"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
@@ -75,6 +78,67 @@ func TestPromotionRunDesiredVersions_ExplicitDefaultOverridesSpecVersion(t *test
 	}
 	if got := promotionrunPrimaryVersion(promotionrun, desired); got != "explicit" {
 		t.Fatalf("primary version = %q, want explicit", got)
+	}
+}
+
+func TestHandleProgressingFailsWhenPromotionPlanGenerationChanges(t *testing.T) {
+	scheme := controllerTestScheme(t)
+	promotionplan := &kaprov1alpha1.PromotionPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "progressive", Generation: 2},
+		Spec: kaprov1alpha1.PromotionPlanSpec{Stages: []kaprov1alpha1.Stage{{
+			Name:     "canary",
+			Selector: metav1.LabelSelector{MatchLabels: map[string]string{"stage": "canary"}},
+		}}},
+	}
+	promotionrun := &kaprov1alpha1.PromotionRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Generation: 1},
+		Spec: kaprov1alpha1.PromotionRunSpec{
+			Version:        "repo@sha256:abc",
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{{Name: "main", PromotionPlan: "progressive"}},
+		},
+		Status: kaprov1alpha1.PromotionRunStatus{
+			Phase:           kaprov1alpha1.PromotionRunPhaseProgressing,
+			ResolvedVersion: "repo@sha256:abc",
+			PromotionPlanProgress: []kaprov1alpha1.PromotionPlanProgress{{
+				Name:               "main",
+				PromotionPlan:      "progressive",
+				ObservedGeneration: 1,
+				Phase:              "Progressing",
+			}},
+		},
+	}
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha1.PromotionRun{}).
+		WithIndex(&kaprov1alpha1.PromotionTarget{}, IndexKeyPromotionTargetPromotionRun, func(obj client.Object) []string {
+			return PromotionTargetPromotionRunExtractor(obj)
+		}).
+		WithObjects(promotionplan, promotionrun).
+		Build()
+	r := &PromotionRunReconciler{
+		Client:   c,
+		Recorder: record.NewFakeRecorder(10),
+	}
+
+	if _, err := r.handleProgressing(context.Background(), promotionrun.DeepCopy()); err != nil {
+		t.Fatalf("handleProgressing returned error: %v", err)
+	}
+
+	var updated kaprov1alpha1.PromotionRun
+	if err := c.Get(context.Background(), client.ObjectKey{Name: "rel-1"}, &updated); err != nil {
+		t.Fatalf("get PromotionRun: %v", err)
+	}
+	if updated.Status.Phase != kaprov1alpha1.PromotionRunPhaseFailed {
+		t.Fatalf("phase = %s, want Failed", updated.Status.Phase)
+	}
+	ready := apimeta.FindStatusCondition(updated.Status.Conditions, "Ready")
+	if ready == nil || ready.Reason != "PromotionPlanChanged" {
+		t.Fatalf("Ready condition = %#v, want reason PromotionPlanChanged", ready)
+	}
+	stalled := apimeta.FindStatusCondition(updated.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
+	if stalled == nil || stalled.Reason != "PromotionPlanChanged" {
+		t.Fatalf("Stalled condition = %#v, want reason PromotionPlanChanged", stalled)
 	}
 }
 

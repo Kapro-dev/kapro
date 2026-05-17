@@ -2,7 +2,7 @@
 //
 // The Decision API extends the existing webhook server with endpoints that
 // allow AI agents to query fleet context and submit deployment decisions.
-// All endpoints are mounted under /api/v1/ and authenticated via ServiceAccount JWT.
+// All endpoints are mounted under /api/v1/ and authenticated with Kubernetes bearer tokens.
 //
 // Context endpoints (read-only):
 //
@@ -396,7 +396,7 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 	user, ok := s.requireDecisionAccess(ctx, w, r,
 		kaproAttrs("get", "promotionruns", promotionrunName),
 		kaproAttrs("get", "promotiontargets", targetKey),
-		kaproAttrs("update", "promotiontargets/status", targetKey),
+		kaproSubresourceAttrs("patch", "promotiontargets", "status", targetKey),
 	)
 	if !ok {
 		return
@@ -537,7 +537,7 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 		EffectiveDecision: effectiveDecision,
 		Identity: kaprov1alpha1.DecisionIdentity{
 			Name:           agentName,
-			Type:           "ServiceAccount",
+			Type:           decisionIdentityType(user),
 			TrustLevel:     trustLevel,
 			JWTFingerprint: jwtFP,
 		},
@@ -628,7 +628,7 @@ func (s *Server) handleOverride(w http.ResponseWriter, r *http.Request, promotio
 	user, ok := s.requireDecisionAccess(ctx, w, r,
 		kaproAttrs("get", "promotionruns", promotionrunName),
 		kaproAttrs("get", "promotiontargets", targetKey),
-		kaproAttrs("update", "promotiontargets/status", targetKey),
+		kaproSubresourceAttrs("patch", "promotiontargets", "status", targetKey),
 	)
 	if !ok {
 		return
@@ -724,6 +724,20 @@ func decisionIdentityName(user *authnv1.UserInfo) string {
 		return user.Username
 	}
 	return "unknown"
+}
+
+func decisionIdentityType(user *authnv1.UserInfo) string {
+	if user == nil {
+		return "Unknown"
+	}
+	switch {
+	case strings.HasPrefix(user.Username, "system:serviceaccount:"):
+		return "ServiceAccount"
+	case strings.HasPrefix(user.Username, "system:node:"):
+		return "Node"
+	default:
+		return "User"
+	}
 }
 
 // extractJWTFingerprint computes a SHA-256 fingerprint of the bearer token

@@ -136,3 +136,13 @@ func kaproAttrs(verb, resource, name string) authzv1.ResourceAttributes {
 		Name:     name,
 	}
 }
+
+func kaproSubresourceAttrs(verb, resource, subresource, name string) authzv1.ResourceAttributes {
+	return authzv1.ResourceAttributes{
+		Group:       "kapro.io",
+		Verb:        verb,
+		Resource:    resource,
+		Subresource: subresource,
+		Name:        name,
+	}
+}
