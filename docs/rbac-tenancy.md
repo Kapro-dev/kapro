@@ -1,6 +1,6 @@
 # RBAC and Tenancy Model
 
-Kapro uses cluster-scoped CRDs because promotionruns, fleet clusters, plugin
+Kapro uses cluster-scoped CRDs because PromotionRuns, fleet clusters, plugin
 registrations, and approvals coordinate work across namespaces and clusters.
 Tenancy is expressed through labels, admission policy, and narrowly scoped
 ClusterRoles rather than by making the core APIs namespaced.
@@ -45,7 +45,7 @@ Baseline rule:
 
 - `create`, `update`, `patch`, `delete` on `pluginregistrations.kapro.io`:
   extension admins only.
-- `get`, `list`, `watch` on `pluginregistrations.kapro.io`: promotionrun managers
+- `get`, `list`, `watch` on `pluginregistrations.kapro.io`: PromotionRun managers
   and auditors may read status.
 - Secrets referenced by `spec.tlsSecretRef`: readable only by the Kapro operator
   service account and the owning extension admin group.
@@ -58,8 +58,8 @@ Production triggers should require platform review before being unsuspended.
 Baseline rule:
 
 - Teams may create suspended triggers with `spec.suspended: true`.
-- Only promotionrun managers for the matching `kapro.io/team` may update the trigger.
-- Only production promotionrun managers or platform admins may set
+- Only PromotionRun managers for the matching `kapro.io/team` may update the trigger.
+- Only production PromotionRun managers or platform admins may set
   `spec.suspended: false` for `kapro.io/environment=prod`.
 - Registry credential Secrets referenced by `spec.source.oci.secretRef` must be
   namespaced and readable only by the Kapro operator service account.

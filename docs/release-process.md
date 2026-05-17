@@ -53,9 +53,8 @@ The release candidate is not ready if:
 ## v0.4.0-alpha.0 Scope
 
 Position `v0.4.0-alpha.0` as alpha production-capable for controlled adopters,
-not as a GA stability promise. Use
-[Alpha Production Capability](alpha-production-capability.md) as the operator
-contract and [GA Readiness](ga-readiness.md) as the evidence matrix.
+not as a GA stability promise. Use `CHANGELOG.md` for release notes and
+`docs/ROADMAP.md` for the remaining GA exit criteria.
 
 Include:
 

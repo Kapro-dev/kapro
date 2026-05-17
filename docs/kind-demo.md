@@ -25,7 +25,9 @@ Run:
 scripts/kind-demo.sh up
 ```
 
-The script creates a `kapro-kind-demo` cluster, builds `kapro-operator:dev`, loads it into Kind, installs the CRDs, deploys the operator, applies local Flux fixture CRDs/resources, and starts the `checkout-kind` promotionrun.
+The script creates a `kapro-kind-demo` cluster, builds `kapro-operator:dev`,
+loads it into Kind, installs the CRDs, deploys the operator, applies local Flux
+fixture CRDs/resources, and starts the `checkout-kind` PromotionRun.
 
 Approve production:
 
@@ -59,9 +61,12 @@ the local fixture `ResourceSet` named `checkout-demo` through
 
 The default planner orders eligible targets deterministically and records deferrals from the stage strategy in `PromotionRun.status.promotionplanProgress[].stageProgress[].plannerResults`.
 
-`examples/kind-demo/config/03-promotion-trigger.yaml` creates a safe, suspended, dry-run `PromotionTrigger`. It documents the trigger-to-promotionrun API path without calling a real registry.
+`examples/kind-demo/config/03-promotion-trigger.yaml` creates a safe,
+suspended, dry-run `PromotionTrigger`. It documents the trigger-to-PromotionRun
+API path without calling a real registry.
 
-`examples/kind-demo/config/04-promotionrun.yaml` creates the live promotionrun that drives the rollout.
+`examples/kind-demo/config/04-promotionrun.yaml` creates the live PromotionRun
+that drives the rollout.
 
 ## Observe
 

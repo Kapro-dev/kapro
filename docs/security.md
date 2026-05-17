@@ -1,18 +1,17 @@
 # Security Model
 
 Kapro is a promotion control plane. It can cause production changes across many
-clusters, so the security model assumes that promotionrun creation, plugin
+clusters, so the security model assumes that PromotionRun creation, plugin
 registration, approval, artifact verification, and webhook gates are privileged
 operations.
 
-For role design, see `docs/rbac-tenancy.md`. For the full control-plane trust
-model, see `docs/security-model.md`.
+For role design, see `docs/rbac-tenancy.md`.
 
 ## Threat Model
 
 | Threat | Mitigation |
 |---|---|
-| Untrusted artifact triggers an automatic promotionrun | Digest pinning, signature verification, suspended-by-default triggers and PromotionRuns |
+| Untrusted artifact triggers an automatic PromotionRun | Digest pinning, signature verification, suspended-by-default triggers and PromotionRuns |
 | Compromised plugin unblocks or mutates production | Restricted `PluginRegistration` RBAC, TLS/mTLS, short timeouts, narrow KAI/KGI/KPI contracts |
 | User approves a gate outside their team or environment | Admission policy on `Approval` labels, request user info, and bypass use |
 | Webhook gate is spoofed or replayed | HTTPS, shared secret or mTLS at the webhook backend, idempotent decision refs |
@@ -24,14 +23,14 @@ model, see `docs/security-model.md`.
 
 External plugins are outside the Kapro trust boundary. Kapro sends bounded
 requests over the registered protocol and treats plugin responses as advisory
-backend results, not as ownership of promotionrun state.
+backend results, not as ownership of PromotionRun state.
 
 Plugins must not:
 
 - create or mutate `PromotionTarget` objects;
 - change `PromotionRun.status`;
 - bypass Kapro retries, timeouts, or failure policy;
-- store irreplaceable promotionrun state only in plugin memory;
+- store irreplaceable PromotionRun state only in plugin memory;
 - require cluster-admin credentials for ordinary gate or actuator work.
 
 Plugins should:
@@ -51,16 +50,16 @@ Plugins should:
 - generated PromotionRuns default to suspended;
 - OCI signature verification defaults to required;
 - generated PromotionRuns should use immutable digests, not mutable tags;
-- cooldown and max-active limits reduce promotionrun floods.
+- cooldown and max-active limits reduce PromotionRun floods.
 
 The intended production posture is:
 
 1. CI publishes an OCI artifact and signs it.
 2. Kapro observes only tags that match the trigger pattern.
 3. Kapro resolves the tag to an immutable digest.
-4. Kapro verifies signature policy before promotionrun creation.
+4. Kapro verifies signature policy before PromotionRun creation.
 5. Kapro creates a suspended, digest-pinned PromotionRun.
-6. A promotionrun manager reviews and unsuspends the PromotionRun or trigger according to
+6. A PromotionRun manager reviews and unsuspends the PromotionRun or trigger according to
    environment policy.
 
 Keyless verification should pin expected issuer and subject identity. Key-based
@@ -70,7 +69,7 @@ production PromotionRuns.
 
 ### PromotionTrigger with cosign keyless policy
 
-`PromotionTrigger` observes tags and creates a digest-pinned PromotionRun. The promotionplan
+`PromotionTrigger` observes tags and creates a digest-pinned PromotionRun. The PromotionPlan
 gate enforces the cosign keyless identity before target rollout.
 
 ```yaml
@@ -163,7 +162,7 @@ Requirements:
 - use HTTPS for all non-development webhook endpoints;
 - authenticate requests with mTLS or a shared secret;
 - validate request timestamp or nonce when the backend supports it;
-- make decisions idempotent for a promotionrun, stage, target, and gate ref;
+- make decisions idempotent for a PromotionRun, stage, target, and gate ref;
 - return a bounded response containing only the normalized gate result and
   operator-facing message;
 - avoid embedding credentials in gate parameters.
@@ -188,7 +187,7 @@ Rules:
   `PluginRegistration.parameters`;
 - never write credential values into status, Events, logs, or notifications.
 
-Rotate registry and plugin credentials independently from promotionrun state. A
+Rotate registry and plugin credentials independently from PromotionRun state. A
 credential rotation should not require recreating PromotionRun or PromotionPlan objects.
 
 ## Audit Evidence

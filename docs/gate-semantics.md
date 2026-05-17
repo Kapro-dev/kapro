@@ -52,7 +52,7 @@ response, they return the same phase and evidence.
 
 The model follows common progressive-delivery practice: explicit canary/control
 comparison, SLO/error-budget reasoning, and sequential evaluation to reduce
-promotionrun exposure while controlling premature decisions. See:
+PromotionRun exposure while controlling premature decisions. See:
 
 - Michael Lindon, Chris Sanden, and Vache Shirikian, "Rapid Regression Detection in Software Deployments through Sequential Testing", KDD 2022.
 - David Daly, William Brown, Henrik Ingo, Jim O'Leary, and David Bradford, "Change Point Detection in Software Performance Testing", 2020.
