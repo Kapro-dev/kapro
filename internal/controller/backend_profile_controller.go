@@ -410,7 +410,7 @@ func fluxSourceVersionField(obj *unstructured.Unstructured) string {
 
 func (r *BackendProfileReconciler) profileReadiness(ctx context.Context, profile *kaprov1alpha1.BackendProfile) (bool, string, string) {
 	switch profile.Spec.Driver {
-	case kaprov1alpha1.BackendDriverFlux, kaprov1alpha1.BackendDriverArgo:
+	case kaprov1alpha1.BackendDriverFlux, kaprov1alpha1.BackendDriverArgo, kaprov1alpha1.BackendDriverOCI:
 		return true, "BuiltInBackendReady", fmt.Sprintf("built-in %s backend is available", profile.Spec.Driver)
 	case kaprov1alpha1.BackendDriverExternal:
 		if profile.Spec.PluginRef == "" {
