@@ -1042,6 +1042,11 @@ func (in *FleetClusterSpec) DeepCopyInto(out *FleetClusterSpec) {
 			(*out)[key] = val
 		}
 	}
+	if in.ConsecutiveFailureThreshold != nil {
+		in, out := &in.ConsecutiveFailureThreshold, &out.ConsecutiveFailureThreshold
+		*out = new(int32)
+		**out = **in
+	}
 	if in.Bootstrap != nil {
 		in, out := &in.Bootstrap, &out.Bootstrap
 		*out = new(FleetClusterBootstrapSpec)

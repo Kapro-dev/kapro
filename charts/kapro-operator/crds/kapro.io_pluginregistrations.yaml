@@ -204,6 +204,15 @@ spec:
                 description: Ready indicates whether the plugin endpoint is currently
                   usable.
                 type: boolean
+              schemaHash:
+                description: |-
+                  SchemaHash is a sha256 of (contractVersion + sorted capabilities). The
+                  reconciler uses it to detect schema drift between hot-reloads of the same
+                  PluginRegistration: when the plugin reports a different set of
+                  capabilities or contract version than the previously-stored hash, a
+                  SchemaChanged condition is surfaced and an event emitted so operators
+                  can notice silent breaking changes from plugin upgrades.
+                type: string
               version:
                 description: Version is the plugin-reported implementation version.
                 type: string

@@ -30,6 +30,17 @@ const (
 	ConditionTypeStalled = "Stalled"
 	// ConditionTypeCompatible indicates a plugin reports a supported extension contract version.
 	ConditionTypeCompatible = "Compatible"
+	// ConditionTypeReady is the standard Kubernetes summary condition: True means the
+	// object is observed-ready by its primary writer. For FleetCluster, this is True
+	// after successful bootstrap registration AND a fresh heartbeat within the
+	// configured staleness window. Surfaced in kubectl printcolumns.
+	ConditionTypeReady = "Ready"
+	// ConditionTypeRegistered indicates a FleetCluster has consumed its bootstrap
+	// slot via a valid CSR exchange, and the hub has issued the per-cluster
+	// ClusterRole + ClusterRoleBinding. True after first successful registration;
+	// once True it stays True until the FleetCluster is deleted or its bootstrap
+	// slot is rotated.
+	ConditionTypeRegistered = "Registered"
 )
 
 // ---- Shared cluster types ---------------------------------------------------
@@ -1795,20 +1806,90 @@ type FleetClusterSpec struct {
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
 
+	// ConsecutiveFailureThreshold is the number of consecutive heartbeat
+	// misses required before the FleetCluster Ready condition flips to False
+	// and the Phase transitions to Unreachable. Defaults to 3 to absorb
+	// transient network blips without flapping. Pattern adopted from Sveltos
+	// SveltosCluster.spec.consecutiveFailureThreshold.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100
+	// +optional
+	ConsecutiveFailureThreshold *int32 `json:"consecutiveFailureThreshold,omitempty"`
+
 	// Bootstrap configures one-time cluster self-registration.
-	// Platform engineers set tokenHash + expiresAt (or ttl); the cluster-controller
-	// presents the pre-image token in a CSR to prove identity.
-	// One bootstrap slot per cluster. To re-bootstrap, update tokenHash + expiresAt
-	// and the hub resets the slot automatically.
+	//
+	// Protocol (SA-token-mediated CSR; built-in K8s signer; works across any
+	// cloud / any cluster / any K8s distribution):
+	//
+	//  1. Platform team creates this FleetCluster with spec.bootstrap set.
+	//     `tokenHash` (when supplied) is an opaque slot identifier — its
+	//     value isn't cryptographically verified by the hub today (the
+	//     bootstrap ServiceAccount identity is the effective auth factor).
+	//     Mutating it counts as a re-bootstrap intent (planned: hub resets
+	//     status.bootstrap; see RE-BOOTSTRAP below).
+	//
+	//  2. The hub FleetClusterBootstrapReconciler provisions a per-cluster
+	//     ServiceAccount `kapro-bootstrap-<cluster>` in kapro-system with a
+	//     narrowly-scoped ClusterRole (CSR-create only, for this signer
+	//     name). It issues a TokenRequest for that SA (default 1h TTL,
+	//     audience `kapro-bootstrap`) and writes the rendered kubeconfig
+	//     into Secret `kapro-bootstrap-kubeconfig-<cluster>`. The Secret
+	//     name is recorded in `status.bootstrap.issuedBootstrapKubeconfig`.
+	//
+	//  3. The platform team ships that Secret out-of-band to the spoke
+	//     cluster (Helm chart mount, kubectl image copy, GitOps, etc.).
+	//     The kapro-cluster-controller pod on the spoke mounts the Secret,
+	//     generates an ECDSA keypair, and submits a CertificateSigningRequest
+	//     to the hub apiserver. The CSR carries:
+	//       signerName = kubernetes.io/kube-apiserver-client
+	//       Subject.CN = "kapro-cluster:<cluster>"
+	//       Subject.O  = "kapro:cluster-controllers"
+	//       Usages     = [client auth]
+	//     The CSR's `spec.username` is automatically set by the apiserver
+	//     to the bootstrap SA's identity
+	//     ("system:serviceaccount:kapro-system:kapro-bootstrap-<cluster>").
+	//
+	//  4. The hub approver validates: (a) signer/CN/O/usages exactly match
+	//     above; (b) Username equals the SA we provisioned for this
+	//     FleetCluster — preventing a leaked Secret for cluster A from
+	//     registering cluster B; (c) spec.bootstrap.expiresAt is in the
+	//     future and status.bootstrap.used is false. It then approves the
+	//     CSR via UpdateApproval. The K8s kube-controller-manager signs the
+	//     cert with the apiserver's own client CA.
+	//
+	//  5. On approval the hub also creates a long-lived per-cluster
+	//     ClusterRole and ClusterRoleBinding for the issued cert identity
+	//     (User CN=`kapro-cluster:<cluster>`). Both names are
+	//     `kapro:cluster-controller:<cluster>`. resourceNames lock the
+	//     access scope to THIS cluster's FleetCluster + its own heartbeat
+	//     Lease — a compromised spoke cannot patch a sibling.
+	//
+	//  6. The spoke uses the signed client cert for steady-state K8s API
+	//     calls and rotates it via a renewal CSR before expiry (Username
+	//     becomes the cluster cert identity rather than the bootstrap SA;
+	//     the approver recognises the renewal class and skips the bootstrap
+	//     slot check).
+	//
+	// RE-BOOTSTRAP (planned, not yet wired): mutating
+	// spec.bootstrap.tokenHash signals re-bootstrap intent; the hub will
+	// reset status.bootstrap. For now the workaround is to delete and
+	// recreate the FleetCluster.
 	// +optional
 	Bootstrap *FleetClusterBootstrapSpec `json:"bootstrap,omitempty"`
 }
 
-// FleetClusterBootstrapSpec holds the one-time registration credential.
+// FleetClusterBootstrapSpec holds the one-time registration slot for a
+// FleetCluster. See FleetClusterSpec.Bootstrap doc for the full protocol.
 type FleetClusterBootstrapSpec struct {
-	// TokenHash is the SHA-256 hex hash of the pre-image bootstrap token (exactly 64 lowercase hex chars).
-	// Platform team hashes the raw token and stores only the hash here; the cluster-controller
-	// presents the plaintext pre-image. This ensures tokenHash cannot be used directly.
+	// TokenHash is an opaque, platform-supplied bootstrap-slot identifier in
+	// SHA-256-hex shape (exactly 64 lowercase hex chars). It is NOT a
+	// pre-image-of-token check today: the hub controller's effective
+	// authorization is the bootstrap ServiceAccount it provisions (see the
+	// FleetClusterSpec.Bootstrap protocol). Mutating this value counts as
+	// a re-bootstrap intent — a future change will have the hub controller
+	// reset status.bootstrap when it observes a TokenHash mutation.
+	// Validation pattern remains a SHA-256 hex so existing tooling that
+	// pre-computes the hash keeps working unmodified.
 	// +kubebuilder:validation:Pattern=`^[0-9a-f]{64}$`
 	// +optional
 	TokenHash string `json:"tokenHash,omitempty"`
@@ -1884,28 +1965,59 @@ type FleetClusterStatus struct {
 }
 
 // FleetClusterBootstrapStatus tracks the one-time bootstrap registration state.
+// Written by the hub FleetClusterBootstrapReconciler — first when it provisions
+// the bootstrap SA + kubeconfig Secret, then again when a matching CSR is
+// approved.
 type FleetClusterBootstrapStatus struct {
-	// Used is true once the bootstrap token has been consumed by a successful CSR.
+	// Used is true once a matching CSR has been approved and the per-cluster
+	// long-lived RBAC has been created. Enforces one-bootstrap-slot-per-
+	// FleetCluster: a second CSR matching this slot but with a different
+	// BoundCSRName is denied as a replay attempt.
 	Used bool `json:"used,omitempty"`
 
-	// UsedAt is when the bootstrap token was consumed.
+	// UsedAt is when the bootstrap slot was consumed (the first matching CSR
+	// approved).
 	// +optional
 	UsedAt *metav1.Time `json:"usedAt,omitempty"`
 
-	// IssuedCredentialFor is the cluster name the bootstrap credential was issued for.
+	// IssuedCredentialFor is the cluster name the bootstrap credential was
+	// issued for — mirrors metadata.name on a successful registration. Serves
+	// as a defensive cross-check when the hub controller later loads RBAC by
+	// deterministic name.
 	// +optional
 	IssuedCredentialFor string `json:"issuedCredentialFor,omitempty"`
 
-	// IssuedBootstrapKubeconfig is the name of the Secret in kapro-system that
-	// contains the bootstrap kubeconfig. Operators copy this to the spoke cluster.
+	// IssuedBootstrapKubeconfig is the name of the kubeconfig Secret in
+	// kapro-system (`kapro-bootstrap-kubeconfig-<cluster>`) that the hub
+	// controller provisioned for the spoke to mount. It is populated on every
+	// (re-)provisioning pass and is the spoke's input for its first CSR
+	// submission. The Secret carries a TokenRequest-issued bearer token whose
+	// expiry is recorded in the Secret annotation
+	// `kapro.io/bootstrap-expires-at`; the hub re-issues the Secret when the
+	// token nears expiry while spec.bootstrap.expiresAt is still in the future.
 	// +optional
 	IssuedBootstrapKubeconfig string `json:"issuedBootstrapKubeconfig,omitempty"`
 
-	// BoundCSRName is the CSR that consumed this bootstrap slot.
-	// Enables idempotent retry: if CSR approval fails transiently, the next reconcile
-	// recognises the same CSR and re-approves rather than denying as replay.
+	// BoundCSRName is the CSR that consumed this bootstrap slot. Enables
+	// idempotent retry: if status patching crashes after the slot is marked
+	// Used but before UpdateApproval succeeds, the next reconcile recognises
+	// the same CSR via this field and re-runs the approve step instead of
+	// rejecting it as a replay.
 	// +optional
 	BoundCSRName string `json:"boundCSRName,omitempty"`
+
+	// IssuedClusterRole is the name of the per-cluster long-lived ClusterRole
+	// the bootstrap reconciler created (deterministic shape
+	// `kapro:cluster-controller:<cluster>`). Recording it makes deletion
+	// cascade trivial without re-derivation.
+	// +optional
+	IssuedClusterRole string `json:"issuedClusterRole,omitempty"`
+
+	// IssuedClusterRoleBinding is the name of the per-cluster long-lived
+	// ClusterRoleBinding (same `kapro:cluster-controller:<cluster>` shape as
+	// IssuedClusterRole). Same rationale.
+	// +optional
+	IssuedClusterRoleBinding string `json:"issuedClusterRoleBinding,omitempty"`
 }
 
 // IsHeartbeatFresh returns true when the cluster last reported a heartbeat
@@ -2174,8 +2286,9 @@ type PluginRegistrationList struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=mc,categories=kapro-all
+// +kubebuilder:resource:scope=Cluster,shortName=mc;fc;fleetcluster,categories=kapro-all
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
+// +kubebuilder:printcolumn:name="Registered",type=string,JSONPath=`.status.conditions[?(@.type=="Registered")].status`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.version`
 // +kubebuilder:printcolumn:name="Healthy",type=boolean,JSONPath=`.status.health.allWorkloadsReady`

@@ -16,6 +16,8 @@ import (
 	"context"
 	"strings"
 
+	"k8s.io/client-go/kubernetes"
+	certificatesv1client "k8s.io/client-go/kubernetes/typed/certificates/v1"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -93,6 +95,20 @@ type ControllerContext struct {
 	// HeartbeatNamespace is where spoke controllers renew
 	// coordination.k8s.io Lease objects named kapro-heartbeat-<cluster>.
 	HeartbeatNamespace string
+
+	// KubeClient is the typed Kubernetes client used by controllers that need
+	// operations not exposed by the controller-runtime client — e.g.,
+	// ServiceAccounts/token TokenRequest. Non-nil in production.
+	KubeClient kubernetes.Interface
+
+	// CertClient is the typed CertificatesV1 client. The bootstrap reconciler
+	// needs UpdateApproval which is a subresource verb not routed by
+	// controller-runtime Status().Update(). Non-nil in production.
+	CertClient certificatesv1client.CertificatesV1Interface
+
+	// PodNamespace is the operator's own namespace. Used by the bootstrap
+	// reconciler to place per-cluster bootstrap SAs and kubeconfig Secrets.
+	PodNamespace string
 }
 
 // Registry maps controller names to their InitFunc.

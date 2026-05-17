@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"kapro.io/kapro/internal/controller"
@@ -31,7 +32,11 @@ func init() {
 	Register("backend-profile", startBackendProfileController)
 	Register("plugin-registration", startPluginRegistrationController)
 	Register("promotion-trigger", startPromotionTriggerController)
-	// csrapproval and fleetcluster bootstrap removed — Flux Operator handles spoke setup.
+	// fleetcluster-bootstrap: CSR-native cluster registration + per-cluster RBAC.
+	// Opt-in for now (off-by-default) until OCI Delivery Core (PR-3, PR-4) ships
+	// a spoke binary to consume the issued bootstrap kubeconfig. Set
+	// KAPRO_CONTROLLERS=*,fleetcluster-bootstrap or list it explicitly to enable.
+	Register("fleetcluster-bootstrap", startFleetClusterBootstrapController)
 }
 
 func startPromotionController(_ context.Context, cc ControllerContext) (bool, error) {
@@ -197,8 +202,42 @@ func startKaproController(_ context.Context, cc ControllerContext) (bool, error)
 	return true, nil
 }
 
-// CSR approval and FleetCluster bootstrap controllers removed.
-// Flux Operator handles spoke setup — no kapro component on spokes.
+// startFleetClusterBootstrapController starts the FleetCluster bootstrap
+// reconciler. Provisions per-cluster bootstrap SA + scoped CSR-create RBAC +
+// rendered kubeconfig Secret; validates and approves CSRs submitted by the
+// spoke; creates the long-lived per-cluster ClusterRole + Binding with a
+// resourceNames lock on the issued cluster cert's User identity.
+//
+// Returns enabled=false (no error) when KubeClient or CertClient is missing.
+// These are populated unconditionally in cmd/operator/main.go from the
+// operator's REST config and so are non-nil in production. The escape hatch
+// exists for unit tests that don't exercise this controller; a warning is
+// logged so a partial-wiring regression in main.go would still be visible
+// in operator startup logs rather than silently dropping the controller.
+func startFleetClusterBootstrapController(_ context.Context, cc ControllerContext) (bool, error) {
+	if cc.KubeClient == nil || cc.CertClient == nil {
+		ctrl.Log.WithName("controllermanager").Info(
+			"fleetcluster-bootstrap controller skipped: KubeClient or CertClient is nil — expected only in tests, log a bug if you see this in production",
+			"kubeClientPresent", cc.KubeClient != nil,
+			"certClientPresent", cc.CertClient != nil,
+		)
+		return false, nil
+	}
+	r := &controller.FleetClusterBootstrapReconciler{
+		Client:       cc.Manager.GetClient(),
+		Scheme:       cc.Manager.GetScheme(),
+		Recorder:     cc.Recorder,
+		KubeClient:   cc.KubeClient,
+		CertClient:   cc.CertClient,
+		HubAPIURL:    cc.HubAPIURL,
+		HubCAData:    cc.HubCAData,
+		PodNamespace: cc.PodNamespace,
+	}
+	if err := r.SetupWithManager(cc.Manager); err != nil {
+		return false, err
+	}
+	return true, nil
+}
 
 // compile-time checks: all built-in gate implementations satisfy gate.Gate.
 // Add a line here whenever a new built-in gate is added to BuildGateRegistry.
