@@ -42,7 +42,7 @@ You will receive a response within 72 hours. We follow responsible disclosure â€
 
 Kapro's RBAC, multi-tenancy, plugin trust boundary, OCI signature model,
 webhook security, Secret handling, and threat model are documented in
-[docs/security.md](docs/security.md), [docs/security-model.md](docs/security-model.md),
-and [docs/rbac-tenancy.md](docs/rbac-tenancy.md). Plugin trust details are in
+[docs/security.md](docs/security.md) and
+[docs/rbac-tenancy.md](docs/rbac-tenancy.md). Plugin trust details are in
 [docs/plugin-authoring.md](docs/plugin-authoring.md), and autonomous promotionrun
 creation policy is in [docs/ADR-002-promotionrun-trigger.md](docs/ADR-002-promotionrun-trigger.md).
