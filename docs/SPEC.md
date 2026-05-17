@@ -52,7 +52,7 @@ Platform engineering teams running 10–500 Kubernetes clusters have three bad o
 - **Bespoke**: per-team promotion plans in CI (GitHub Actions, Tekton, Jenkins) with hard-coded targets, no reusable gate logic, brittle failure modes.
 - **Partial**: Argo Rollouts handles in-cluster canary but not cross-cluster waves. Flux applies GitOps but not the "should I apply?" decision.
 
-No CNCF-native tool owns the **fleet promotion layer**: artifact version →
+No Kubernetes-native tool owns the **fleet promotion layer**: artifact version →
 gates → multi-target wave → backend convergence → auditable PromotionRun outcome
 across many clusters.
 
@@ -73,7 +73,8 @@ other cloud-native systems already own.
 | Automation | Guarded PromotionRun creation | PromotionTrigger policy and external CI/webhooks |
 | Agents | Evidence explanation and policy-bound assistance | Never required for core deterministic rollout |
 
-See `docs/vision-and-boundaries.md` for the public positioning and CNCF scope.
+See `docs/vision-and-boundaries.md` for the public positioning and project
+scope.
 
 ---
 

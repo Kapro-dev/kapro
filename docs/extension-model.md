@@ -187,7 +187,8 @@ conformance instructions are defined in `docs/conformance.md`.
 Plugin registration is a platform-admin action. External plugins are inside the
 delivery integration boundary, not inside Kapro's control-plane trust boundary.
 They must not create or mutate Kapro PromotionRun state directly. See
-`docs/security-model.md` for RBAC, trust boundary, and Secret handling rules.
+`docs/security.md` and `docs/rbac-tenancy.md` for trust boundary, Secret
+handling, RBAC, and tenancy rules.
 
 Plugin readiness follows the compatibility matrix in
 `docs/plugin-compatibility.md`. Unsupported or missing KAI/KGI/KPI contract

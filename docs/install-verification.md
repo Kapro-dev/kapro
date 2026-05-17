@@ -76,7 +76,7 @@ kind delete cluster --name kapro-install-verify
 
 ## Demo Validation
 
-The local demo exercises a promotionrun through target planning, canary, manual
+The local demo exercises a PromotionRun through target planning, canary, manual
 approval, and fixture-backed Flux convergence:
 
 ```bash

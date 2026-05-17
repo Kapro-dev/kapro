@@ -131,7 +131,7 @@ Run conformance in the plugin repository on every pull request that changes:
 - idempotency, convergence, planning, or gate decision logic;
 - default parameters used by `PluginRegistration`.
 
-For a promotionrun candidate, run conformance against the same container image and
+For a release candidate, run conformance against the same container image and
 configuration that will be published. Store the Kapro version, plugin image
 digest, backend version, and test command in release notes so operators can
 reproduce the result.
@@ -180,4 +180,4 @@ The conformance packages intentionally do not test:
 - whether a plugin is appropriate for a particular regulated environment.
 
 Operators should still review plugin source, permissions, manifests, and
-runtime limits before allowing a plugin to control production promotionruns.
+runtime limits before allowing a plugin to control production PromotionRuns.

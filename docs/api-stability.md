@@ -150,7 +150,7 @@ Changes to Preview or Stable surfaces should include:
 5. A compatibility note explaining why the change is backward-compatible, or
    why it is intentionally breaking.
 
-Every release should also update `CHANGELOG.md` and `docs/release-notes.md`.
+Every release should also update `CHANGELOG.md`.
 
 For proto contracts, new fields use new field numbers and removed fields are
 reserved. For CRDs, new durable concepts should prefer additive fields or a new

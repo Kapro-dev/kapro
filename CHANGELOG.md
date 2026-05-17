@@ -63,7 +63,7 @@ the documented verification suite and accept `v1alpha1` API movement.
 - Added lifecycle event and notification documentation, including CloudEvents
   webhook payload guidance.
 - Added install, Kind demo, Argo E2E, Flux Git-native E2E, live Flux E2E,
-  conformance, operations, monitoring, API stability, and GA readiness docs.
+  conformance, operations, monitoring, and API stability docs.
 
 ### Changed
 
@@ -99,6 +99,10 @@ the documented verification suite and accept `v1alpha1` API movement.
 - Removed the standalone evolution plan page. Completed milestones are recorded
   here; future work is tracked in `docs/ROADMAP.md`.
 - Removed the obsolete first-alpha release runbook from the documentation index.
+- Removed community-positioning, alpha/GA positioning, duplicate security-model,
+  and release-notes guide pages from the documentation set. The public index
+  now links only the operator, concept, backend, security, extension, and
+  release history docs that users need for onboarding.
 
 ### Migration
 

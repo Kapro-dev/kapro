@@ -27,9 +27,7 @@ the documented verification and accept `kapro.io/v1alpha1` API movement.
 
 Do not treat Kapro as GA yet. GA still requires a stable API version, tagged
 release-to-release upgrade history, broad operator soak, and an independent
-security audit. See [GA Readiness](docs/ga-readiness.md) and
-[Alpha Production Capability](docs/alpha-production-capability.md) for the
-current evidence and exit criteria.
+security audit. See the [Roadmap](docs/ROADMAP.md) for release exit criteria.
 
 ## What Kapro Is
 
@@ -68,7 +66,8 @@ next.
 
 ## Enter Kapro
 
-Kapro does not replace the CNCF ecosystem. It coordinates it. Kapro is a fleet
+Kapro does not replace the Kubernetes delivery ecosystem. It coordinates it.
+Kapro is a fleet
 deployment promotion control plane: it decides when and where a version may
 advance across a fleet; local rollout systems decide how pods, sync, and traffic
 changes happen inside each cluster.
@@ -190,37 +189,47 @@ Quick troubleshooting checks:
 
 ## Documentation
 
-- [Changelog](CHANGELOG.md)
-- [Architecture Spec](docs/SPEC.md)
+Start here:
+
 - [Install Kapro](docs/install.md)
 - [Clean-Clone Install Verification](docs/install-verification.md)
 - [Local Kind Demo](docs/kind-demo.md)
 - [Hub Config Source of Truth](docs/hub-config-source-of-truth.md)
-- [Supported Backend Patterns](docs/supported-backend-patterns.md)
+
+Core concepts:
+
+- [Architecture Spec](docs/SPEC.md)
+- [Vision and Boundaries](docs/vision-and-boundaries.md)
 - [Backend Architecture](docs/backend-architecture.md)
 - [Backend Ownership](docs/backend-ownership.md)
-- [Argo Brownfield Migration](docs/argo-migration.md)
-- [Flux Brownfield Migration](docs/flux-migration.md)
+- [Supported Backend Patterns](docs/supported-backend-patterns.md)
 - [Promotion Gate Semantics](docs/gate-semantics.md)
 - [Events](docs/events.md)
-- [Plugin Authoring](docs/plugin-authoring.md)
-- [Plugin Compatibility](docs/plugin-compatibility.md)
-- [Conformance Packages](docs/conformance.md)
-- [Extension Model](docs/extension-model.md)
-- [Controller Scalability and Resilience](docs/controller-scalability.md)
+
+Backend onboarding:
+
+- [Argo Brownfield Migration](docs/argo-migration.md)
+- [Flux Brownfield Migration](docs/flux-migration.md)
+
+Operations and security:
+
 - [Operations](docs/operations.md)
 - [Monitoring](docs/monitoring.md)
 - [Security Implementation Guide](docs/security.md)
 - [Security Policy](SECURITY.md)
-- [RBAC, Multi-Tenancy, and Security Model](docs/security-model.md)
 - [RBAC and Tenancy Model](docs/rbac-tenancy.md)
-- [Alpha Production Capability](docs/alpha-production-capability.md)
-- [GA Readiness](docs/ga-readiness.md)
 - [API Stability and Upgrade Policy](docs/api-stability.md)
-- [Release Process](docs/release-process.md)
-- [Release Notes Guide](docs/release-notes.md)
-- [Vision and Boundaries](docs/vision-and-boundaries.md)
-- [CNCF Positioning](docs/cncf-positioning.md)
+
+Extension points:
+
+- [Extension Model](docs/extension-model.md)
+- [Plugin Authoring](docs/plugin-authoring.md)
+- [Plugin Compatibility](docs/plugin-compatibility.md)
+- [Conformance Packages](docs/conformance.md)
+
+Release history:
+
+- [Changelog](CHANGELOG.md)
 - [Roadmap](docs/ROADMAP.md)
 
 ## Contributing

@@ -14,7 +14,7 @@ operators, but it is not used to decide whether a plugin can run.
 |---|---|---|---|---|---|
 | `actuator` | KAI | `v1alpha1` | `conformance/actuator` | `examples/plugins/argocd-actuator` | Probed; ready registrations are hot-loaded when `KAPRO_ENABLE_PLUGIN_GATEWAY=true` |
 | `gate` | KGI | `v1alpha1` | `conformance/gate` | `examples/plugins/slo-gate` | Probed; ready registrations are hot-loaded when `KAPRO_ENABLE_PLUGIN_GATEWAY=true` |
-| `planner` | KPI | `v1alpha1` | `conformance/planner` | `examples/plugins/capacity-planner` | Probed; ready registrations are hot-loaded into promotionrun planning when `KAPRO_ENABLE_PLUGIN_GATEWAY=true` |
+| `planner` | KPI | `v1alpha1` | `conformance/planner` | `examples/plugins/capacity-planner` | Probed; ready registrations are hot-loaded into PromotionRun planning when `KAPRO_ENABLE_PLUGIN_GATEWAY=true` |
 
 The supported versions above are also defined in
 `pkg/plugincompat/compatibility.go`.
@@ -27,7 +27,7 @@ A plugin may be described as Kapro-compatible when it:
 - reports the supported `contract_version` from `GetCapabilities`;
 - passes the matching conformance harness;
 - documents required parameters, backend permissions, and runtime assumptions;
-- leaves promotionrun state, retries, failure policy, and `PromotionTarget` binding to
+- leaves PromotionRun state, retries, failure policy, and `PromotionTarget` binding to
   Kapro.
 
 Kapro-compatible is a contract claim, not a project endorsement.
@@ -78,7 +78,7 @@ Certified Kapro plugin is a future ecosystem label. The expected bar is higher
 than Kapro-compatible and is likely to include:
 
 - passing conformance for each supported Kapro and contract version;
-- signed promotionrun artifacts or equivalent provenance;
+- signed PromotionRun artifacts or equivalent provenance;
 - a published support window and upgrade policy;
 - documented compatibility ranges for Kapro, the plugin image, and the backend;
 - reproducible registration manifests and operational limits.

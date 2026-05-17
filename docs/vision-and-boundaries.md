@@ -5,7 +5,7 @@ Kapro is a Kubernetes-native fleet promotion control plane.
 It coordinates when an immutable artifact version may move across a fleet of
 Kubernetes clusters. Kapro does not build artifacts, render manifests, replace
 GitOps controllers, or manage in-cluster traffic splitting. It owns the
-cross-cluster promotion decision and records an auditable promotionrun history in
+cross-cluster promotion decision and records auditable PromotionRun history in
 Kubernetes status.
 
 ## Core Outcome
@@ -18,7 +18,7 @@ Which clusters are allowed to receive this artifact version now, and why?
 
 The answer is computed from:
 
-- promotionrun and promotionplan topology;
+- PromotionRun and PromotionPlan topology;
 - target cluster inventory and health;
 - stage concurrency and planning rules;
 - gate evidence and approval state;
@@ -74,7 +74,7 @@ production.
 
 Agents may:
 
-- summarize promotionrun and gate evidence;
+- summarize PromotionRun and gate evidence;
 - recommend next action;
 - draft rollback or approval context;
 - explain why a target is blocked;
@@ -84,25 +84,9 @@ Agents must not:
 
 - bypass gates or approvals;
 - mutate delivery backends directly;
-- create unscoped fleet-wide promotionruns;
+- create unscoped fleet-wide PromotionRuns;
 - access secrets outside explicit policy;
 - become required for deterministic rollout execution.
 
 Kapro core remains deterministic without agents. Agents consume evidence and
-policy; they do not replace the promotionrun state machine.
-
-## CNCF Fit
-
-Kapro is intended to be a small, composable cloud-native control plane:
-
-- Kubernetes APIs and controller-runtime reconciliation;
-- CRD-backed state and status;
-- OCI artifact orientation;
-- GitOps/backend-neutral actuators;
-- CloudEvents-compatible lifecycle events;
-- conformance-tested extension contracts;
-- clear security and tenancy boundaries.
-
-The project should be evaluated as a fleet promotion layer. It should not be
-positioned as a CI engine, traffic manager, generic workflow system, or
-all-purpose deployment platform.
+policy; they do not replace the PromotionRun state machine.
