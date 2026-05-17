@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -116,9 +117,10 @@ func TestHandleProgressingFailsWhenPromotionPlanGenerationChanges(t *testing.T) 
 		}).
 		WithObjects(promotionplan, promotionrun).
 		Build()
+	recorder := record.NewFakeRecorder(10)
 	r := &PromotionRunReconciler{
 		Client:   c,
-		Recorder: record.NewFakeRecorder(10),
+		Recorder: recorder,
 	}
 
 	if _, err := r.handleProgressing(context.Background(), promotionrun.DeepCopy()); err != nil {
@@ -139,6 +141,14 @@ func TestHandleProgressingFailsWhenPromotionPlanGenerationChanges(t *testing.T) 
 	stalled := apimeta.FindStatusCondition(updated.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
 	if stalled == nil || stalled.Reason != "PromotionPlanChanged" {
 		t.Fatalf("Stalled condition = %#v, want reason PromotionPlanChanged", stalled)
+	}
+	select {
+	case event := <-recorder.Events:
+		if !strings.Contains(event, "PromotionPlanChanged") {
+			t.Fatalf("event = %q, want PromotionPlanChanged", event)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected PromotionPlanChanged event")
 	}
 }
 
