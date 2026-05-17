@@ -5,8 +5,8 @@ Kapro is a Kubernetes-native fleet promotion control plane.
 It coordinates when an immutable artifact version may move across a fleet of
 Kubernetes clusters. Kapro does not build artifacts, render manifests, replace
 GitOps controllers, or manage in-cluster traffic splitting. It owns the
-cross-cluster promotion decision and records auditable PromotionRun history in
-Kubernetes status.
+cross-cluster promotion decision and records an auditable PromotionRun history
+in Kubernetes status.
 
 ## Core Outcome
 
