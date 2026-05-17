@@ -37,6 +37,9 @@ jobs:
         run: kubectl apply --dry-run=server -f promotionplans/
       - name: Validate promotions
         run: kubectl apply --dry-run=server -f promotions/
+      # Direct PromotionRun examples under promotionruns/ are intentionally not
+      # part of the standard Promotion workflow. If your repo manages
+      # PromotionRuns directly, replace the promotions/ steps with promotionruns/.
 
       - name: Check rendered objects
         run: |
@@ -63,6 +66,7 @@ jobs:
         run: kubectl diff -f promotionplans/ || true
       - name: Diff promotions
         run: kubectl diff -f promotions/ || true
+      # See validate job note: promotionruns/ is direct-CRD compatibility only.
 
   apply:
     name: Apply
@@ -86,6 +90,7 @@ jobs:
         run: kubectl apply -f promotionplans/
       - name: Apply promotions
         run: kubectl apply -f promotions/
+      # See validate job note: promotionruns/ is direct-CRD compatibility only.
       - name: Verify hub objects
         run: |
           kubectl get fleetclusters.kapro.io

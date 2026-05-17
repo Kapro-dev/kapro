@@ -36,7 +36,9 @@ promotionruns/
 1. Copy this directory into a new hub config git repository.
 2. Configure hub cluster authentication in `.github/workflows/apply-kapro-hub-config.yaml`.
 3. Edit `clusters/`, `backends/`, `sources/`, `policies/`,
-   `promotionplans/`, and `promotions/` for your fleet.
+   `promotionplans/`, and `promotions/` for your fleet. The `promotionruns/`
+   directory is a direct-CRD compatibility example and is not part of the
+   standard Promotion workflow.
 4. Open a pull request. CI runs server-side validation and `kubectl diff`.
 5. Merge to `main`. CI applies the directories to the hub cluster in order.
 6. Kapro reconciles the `Promotion`, creates a `PromotionRun`, and the selected backend applies the referenced version.
@@ -52,6 +54,11 @@ Apply configuration in this order:
 5. `promotionplans/` - creates reusable rollout stage DAGs.
 6. `promotions/` - creates user-facing Promotion intent that references
    source, policy, and plans.
+
+The `promotionruns/` directory is intentionally excluded from the standard
+apply loop. Use it only when you want to bypass `Promotion` and manage
+`PromotionRun` objects directly; in that case, replace the `promotions/` step
+with `promotionruns/` for that repository.
 
 ```bash
 kubectl apply -f clusters/

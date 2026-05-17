@@ -158,7 +158,7 @@ kapro hub init --project my-project --cluster my-hub
 kapro spoke add de-prod --provider gcp-fleet --labels tier=canary
 kapro spoke add fi-prod --provider gcp-fleet --labels tier=prod
 
-# Define your promotion source and delivery PromotionPlan
+# Define backend, source, policy, and delivery PromotionPlan
 kubectl apply -f examples/hub-config/backends/flux.yaml
 kubectl apply -f examples/hub-config/sources/checkout.yaml
 kubectl apply -f examples/hub-config/policies/checkout-prod-guardrails.yaml
