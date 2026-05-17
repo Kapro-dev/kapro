@@ -7,8 +7,9 @@ Check CRDs:
   kubectl get crd | grep kapro.io
 
 {{- if and .Values.approvalServer.enabled .Values.approvalServer.service.enabled }}
-Approval/Decision API service:
+Approval service:
   {{ include "kapro-operator.fullname" . }}-approval.{{ .Release.Namespace }}.svc:{{ .Values.approvalServer.service.port }}
+Decision API is {{ ternary "enabled" "disabled" .Values.decisionAPI.enabled }}.
 {{- end }}
 
 Plugin gateway is {{ ternary "enabled" "disabled" .Values.pluginGateway.enabled }}.

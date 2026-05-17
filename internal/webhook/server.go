@@ -41,6 +41,12 @@ type Server struct {
 	// OperatorNamespace is the namespace in which PromotionRuns are managed.
 	// Defaults to "kapro-system" if empty.
 	OperatorNamespace string
+	// DecisionAPIEnabled controls whether /api/v1 Decision API routes are mounted.
+	DecisionAPIEnabled bool
+	// DecisionAuthenticator validates bearer tokens for Decision API routes.
+	DecisionAuthenticator DecisionAuthenticator
+	// DecisionAuthorizer checks Kubernetes RBAC for Decision API actions.
+	DecisionAuthorizer DecisionAuthorizer
 }
 
 // Handler returns the HTTP mux for all approval and Decision API endpoints.
@@ -52,7 +58,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	s.RegisterDecisionAPI(mux)
+	if s.DecisionAPIEnabled {
+		s.RegisterDecisionAPI(mux)
+	}
 	return mux
 }
 

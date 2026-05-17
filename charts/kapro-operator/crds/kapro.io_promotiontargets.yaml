@@ -1996,6 +1996,7 @@ spec:
                         - name
                         - phase
                         type: object
+                      maxItems: 16
                       type: array
                     startedAt:
                       type: string
@@ -2048,6 +2049,7 @@ spec:
                   - name
                   - phase
                   type: object
+                maxItems: 16
                 type: array
               heartbeatStaleCount:
                 description: |-

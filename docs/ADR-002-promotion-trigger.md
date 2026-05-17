@@ -73,7 +73,8 @@ spec:
     oci:
       repository: oci://registry.example.com/checkout
       tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
-      requireSignature: true
+      # Set true only after configuring a trigger verifier.
+      requireSignature: false
   promotionrunTemplate:
     promotionplans:
       - name: production

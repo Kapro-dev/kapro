@@ -145,6 +145,11 @@ Check:
 - `status.unsupportedPatterns`;
 - `discovery/argo-discovery.yaml`.
 
+If `DiscoveryReady=False`, selected objects are missing, or generated units are
+marked `confidence: needs-review`, use
+[Discovery Troubleshooting](discovery-troubleshooting.md) before adopting
+writes.
+
 ## Step 4: Review Promotion Units
 
 Review the generated `PromotionSource`. In brownfield Argo mode, a unit points

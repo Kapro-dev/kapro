@@ -29,6 +29,16 @@ Do not treat Kapro as GA yet. GA still requires a stable API version, tagged
 release-to-release upgrade history, broad operator soak, and an independent
 security audit. See the [Roadmap](docs/ROADMAP.md) for release exit criteria.
 
+## Choose Your Path
+
+| If you are... | Start here | Goal |
+|---|---|---|
+| Evaluating Kapro locally | [Local Kind Demo](docs/kind-demo.md) | See a complete PromotionRun on a disposable cluster. |
+| Starting greenfield | [First Promotion in 10 Minutes](docs/first-promotion-10min.md) | Install Kapro, apply a minimal hub config, and create one Promotion. |
+| Adding Kapro to Argo CD | [Argo Brownfield Migration](docs/argo-migration.md) | Discover existing Applications, ApplicationSets, and app-of-apps before adopting writes. |
+| Adding Kapro to Flux | [Flux Brownfield Migration](docs/flux-migration.md) | Discover existing Flux sources, HelmReleases, Kustomizations, and Git version fields. |
+| Operating a shared hub | [Install Kapro](docs/install.md) and [RBAC and Tenancy Model](docs/rbac-tenancy.md) | Configure Helm, RBAC, approvals, and optional Decision API access. |
+
 ## What Kapro Is
 
 Kapro is a Kubernetes-native control plane for promoting immutable artifact
@@ -101,7 +111,7 @@ and configuration; it does not copy Argo CD or Flux credentials.
 kapro init ./promotion-repo --backend argo --name checkout
 
 # brownfield
-kapro connect argo ./kapro-connect --namespace argocd --selector kapro.io/import=true
+kapro adopt argo . --out ./kapro-connect --namespace argocd --selector kapro.io/import=true
 ```
 
 ## Conservative Automation and Reliability
@@ -149,26 +159,19 @@ replacement for Flux, Argo CD, Argo Rollouts, Flagger, Kargo, or Tekton. See
 
 ## Getting Started
 
+For a local proof, run the [Kind demo](docs/kind-demo.md). For a minimal
+greenfield walkthrough with expected output, use
+[First Promotion in 10 Minutes](docs/first-promotion-10min.md).
+
+For existing GitOps platforms, start observe-first:
+
 ```bash
-# Bootstrap a hub cluster
-kapro hub init --project my-project --cluster my-hub
-
-# Add spoke clusters to the fleet
-kapro spoke add de-prod --provider gcp-fleet --labels tier=canary
-kapro spoke add fi-prod --provider gcp-fleet --labels tier=prod
-
-# Define backend, source, policy, and delivery PromotionPlan
-kubectl apply -f examples/hub-config/backends/flux.yaml
-kubectl apply -f examples/hub-config/sources/checkout.yaml
-kubectl apply -f examples/hub-config/policies/checkout-prod-guardrails.yaml
-kubectl apply -f examples/hub-config/promotionplans/checkout-progressive.yaml
-
-# Package a version from CI when using source artifacts
-kapro source package --source checkout --version 1.0.0 --push
-
-# Create a Promotion. Kapro creates and manages the PromotionRun.
-kubectl apply -f examples/hub-config/promotions/checkout-v1.2.3.yaml
+kapro adopt argo . --out ./kapro-connect --namespace argocd --selector kapro.io/import=true
+kapro discover flux . --out ./kapro-connect --namespace flux-system --selector kapro.io/import=true
 ```
+
+Then review the generated `BackendProfile`, `PromotionSource`, and discovery
+evidence before switching any backend profile to `managementPolicy: Adopt`.
 
 Existing users upgrading a hub should read the API stability and upgrade policy
 before applying new CRDs or rolling the operator. Plugin users should run the
@@ -184,6 +187,8 @@ Quick troubleshooting checks:
   gateway registration, and webhook startup.
 - Confirm `KAPRO_HUB_API_URL`, approval secrets, plugin TLS Secrets, and
   notification Secrets are present in the operator namespace.
+- For discovery failures or `confidence: needs-review` units, use
+  [Discovery Troubleshooting](docs/discovery-troubleshooting.md).
 - For sharded deployments, verify the `kapro.io/shard` label is set when the
   `PromotionRun` is created.
 
@@ -191,9 +196,10 @@ Quick troubleshooting checks:
 
 Start here:
 
+- [Local Kind Demo](docs/kind-demo.md)
+- [First Promotion in 10 Minutes](docs/first-promotion-10min.md)
 - [Install Kapro](docs/install.md)
 - [Clean-Clone Install Verification](docs/install-verification.md)
-- [Local Kind Demo](docs/kind-demo.md)
 - [Hub Config Source of Truth](docs/hub-config-source-of-truth.md)
 
 Core concepts:
@@ -210,6 +216,7 @@ Backend onboarding:
 
 - [Argo Brownfield Migration](docs/argo-migration.md)
 - [Flux Brownfield Migration](docs/flux-migration.md)
+- [Discovery Troubleshooting](docs/discovery-troubleshooting.md)
 
 Operations and security:
 

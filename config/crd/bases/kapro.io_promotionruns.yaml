@@ -273,6 +273,13 @@ spec:
                     name:
                       description: Name matches PromotionPlanRef.name.
                       type: string
+                    observedGeneration:
+                      description: |-
+                        ObservedGeneration pins the PromotionPlan generation used by this
+                        PromotionRun. If the referenced PromotionPlan changes while the run is in
+                        flight, the controller fails the run instead of silently switching DAGs.
+                      format: int64
+                      type: integer
                     phase:
                       description: Phase is the current execution state of this promotionplan
                         node.
@@ -1269,6 +1276,7 @@ spec:
                               - name
                               - phase
                               type: object
+                            maxItems: 16
                             type: array
                           startedAt:
                             type: string
@@ -1321,6 +1329,7 @@ spec:
                         - name
                         - phase
                         type: object
+                      maxItems: 16
                       type: array
                     heartbeatStaleCount:
                       description: |-

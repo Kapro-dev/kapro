@@ -7,6 +7,26 @@ operations.
 
 For role design, see `docs/rbac-tenancy.md`.
 
+## Decision API Authentication
+
+The machine-facing Decision API is opt-in and must not be exposed without
+Kubernetes authentication and authorization. When enabled, each `/api/v1`
+request must include a bearer token. Kapro validates it with Kubernetes
+`TokenReview` and authorizes every read or mutation with
+`SubjectAccessReview`.
+
+The authenticated Kubernetes username is the audit identity stored on decision
+traces and human overrides. Request payload fields such as `identity` are not
+trusted as the source of authority.
+
+Grant narrow RBAC:
+
+- read-only agents may `get`/`list` `PromotionRun`, `PromotionTarget`, and
+  `FleetCluster` objects;
+- decision agents may also `update` `promotiontargets/status`;
+- agents that can approve must separately be able to `create` `approvals`;
+- override access should be bound to a different emergency role.
+
 ## Threat Model
 
 | Threat | Mitigation |
@@ -44,11 +64,12 @@ Plugins should:
 
 ## OCI and Signature Trust Model
 
-`PromotionTrigger` is safe by default:
+`PromotionTrigger` is conservative by default:
 
 - `spec.suspended` defaults to `true`;
 - generated PromotionRuns default to suspended;
-- OCI signature verification defaults to required;
+- OCI signature verification defaults to off until a trigger verifier is
+  configured, and fails closed when explicitly required without a verifier;
 - generated PromotionRuns should use immutable digests, not mutable tags;
 - cooldown and max-active limits reduce PromotionRun floods.
 
@@ -57,7 +78,9 @@ The intended production posture is:
 1. CI publishes an OCI artifact and signs it.
 2. Kapro observes only tags that match the trigger pattern.
 3. Kapro resolves the tag to an immutable digest.
-4. Kapro verifies signature policy before PromotionRun creation.
+4. If `requireSignature: true` is set and a verifier is configured, Kapro
+   verifies signature policy before PromotionRun creation. Without a configured
+   verifier, the trigger fails closed with `VerifierUnavailable`.
 5. Kapro creates a suspended, digest-pinned PromotionRun.
 6. A PromotionRun manager reviews and unsuspends the PromotionRun or trigger according to
    environment policy.
@@ -69,8 +92,9 @@ production PromotionRuns.
 
 ### PromotionTrigger with cosign keyless policy
 
-`PromotionTrigger` observes tags and creates a digest-pinned PromotionRun. The PromotionPlan
-gate enforces the cosign keyless identity before target rollout.
+`PromotionTrigger` observes tags and creates a digest-pinned PromotionRun. Set
+`requireSignature: true` only after installing a verifier implementation for
+the trigger controller; otherwise the trigger intentionally blocks.
 
 ```yaml
 apiVersion: kapro.io/v1alpha1
@@ -85,12 +109,6 @@ spec:
           kapro.io/tier: canary
       gate:
         mode: auto
-        gate:
-          verification:
-            cosignPolicy:
-              keyless:
-                issuer: https://token.actions.githubusercontent.com
-                subject: repo:example/checkout:ref:refs/heads/main
 ---
 apiVersion: kapro.io/v1alpha1
 kind: PromotionTrigger
@@ -118,7 +136,7 @@ spec:
   dryRun: true
 ```
 
-### PromotionTrigger with cosign public key policy
+### Cosign public key material
 
 ```yaml
 apiVersion: v1
@@ -131,25 +149,22 @@ data:
   cosign.pub: <base64-encoded-public-key>
 ---
 apiVersion: kapro.io/v1alpha1
-kind: PromotionPlan
+kind: PromotionTrigger
 metadata:
-  name: checkout-keyed
+  name: checkout-oci-keyed
 spec:
-  stages:
-    - name: canary
-      selector:
-        matchLabels:
-          kapro.io/tier: canary
-      gate:
-        mode: auto
-        gate:
-          verification:
-            cosignPolicy:
-              key:
-                secretRef:
-                  name: checkout-cosign-public-key
-                  namespace: kapro-system
-                  key: cosign.pub
+  suspended: true
+  source:
+    type: oci
+    oci:
+      repository: oci://registry.example.com/platform/checkout
+      tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+      requireSignature: true
+  promotionrunTemplate:
+    promotionplans:
+      - name: production
+        promotionplan: checkout
+    suspended: true
 ```
 
 ## Webhook and Gate Security

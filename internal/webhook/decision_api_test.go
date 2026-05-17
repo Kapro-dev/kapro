@@ -2,11 +2,15 @@ package webhook
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	authnv1 "k8s.io/api/authentication/v1"
+	authzv1 "k8s.io/api/authorization/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -27,9 +31,48 @@ func decisionTestServer(t *testing.T, objs ...client.Object) *Server {
 		builder = builder.WithObjects(objs...)
 	}
 	return &Server{
-		Client:            builder.Build(),
-		OperatorNamespace: "default",
+		Client:                builder.Build(),
+		OperatorNamespace:     "default",
+		DecisionAPIEnabled:    true,
+		DecisionAuthenticator: fakeDecisionAuthenticator{user: "system:serviceaccount:kapro-system:test-agent"},
+		DecisionAuthorizer:    fakeDecisionAuthorizer{},
 	}
+}
+
+type fakeDecisionAuthenticator struct {
+	user string
+}
+
+func (f fakeDecisionAuthenticator) Authenticate(_ context.Context, token string) (*authnv1.UserInfo, error) {
+	if token == "" || token == "bad-token" {
+		return nil, errors.New("bad token")
+	}
+	return &authnv1.UserInfo{Username: f.user, Groups: []string{"system:serviceaccounts"}}, nil
+}
+
+type fakeDecisionAuthorizer struct {
+	deny         bool
+	denyResource string
+}
+
+func (f fakeDecisionAuthorizer) Authorize(_ context.Context, _ authnv1.UserInfo, attrs authzv1.ResourceAttributes) error {
+	if f.deny || (f.denyResource != "" && f.denyResource == attrs.Resource) {
+		return errors.New("denied")
+	}
+	return nil
+}
+
+type recordingDecisionAuthorizer struct {
+	attrs []authzv1.ResourceAttributes
+}
+
+func (r *recordingDecisionAuthorizer) Authorize(_ context.Context, _ authnv1.UserInfo, attrs authzv1.ResourceAttributes) error {
+	r.attrs = append(r.attrs, attrs)
+	return nil
+}
+
+func authorizeDecisionRequest(req *http.Request) {
+	req.Header.Set("Authorization", "Bearer test-token-123")
 }
 
 func decisionFixtures() (*kaprov1alpha1.PromotionRun, *kaprov1alpha1.FleetCluster, *kaprov1alpha1.PromotionPlan, *kaprov1alpha1.PromotionTarget) {
@@ -88,6 +131,7 @@ func TestFleet_ReturnsClusterAndPromotionRunSummary(t *testing.T) {
 	s := decisionTestServer(t, promotionrun, mc, target)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/fleet", nil)
+	authorizeDecisionRequest(req)
 	rec := httptest.NewRecorder()
 	s.handleFleet(rec, req)
 
@@ -123,6 +167,32 @@ func TestFleet_RejectsPost(t *testing.T) {
 	}
 }
 
+func TestDecisionAPI_RequiresBearerToken(t *testing.T) {
+	promotionrun, mc, _, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, mc, target)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/fleet", nil)
+	rec := httptest.NewRecorder()
+	s.handleFleet(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without bearer token, got %d", rec.Code)
+	}
+}
+
+func TestDecisionAPI_RequiresRBAC(t *testing.T) {
+	promotionrun, mc, _, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, mc, target)
+	s.DecisionAuthorizer = fakeDecisionAuthorizer{deny: true}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/fleet", nil)
+	authorizeDecisionRequest(req)
+	rec := httptest.NewRecorder()
+	s.handleFleet(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 when RBAC denies request, got %d", rec.Code)
+	}
+}
+
 // --- PromotionRun Context endpoint ---
 
 func TestPromotionRunContext_ReturnsPromotionRunAndTargets(t *testing.T) {
@@ -130,6 +200,7 @@ func TestPromotionRunContext_ReturnsPromotionRunAndTargets(t *testing.T) {
 	s := decisionTestServer(t, promotionrun, mc, promotionplan, target)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/promotionruns/rel-1/context", nil)
+	authorizeDecisionRequest(req)
 	rec := httptest.NewRecorder()
 	s.handlePromotionRunContext(rec, req, "rel-1")
 
@@ -154,6 +225,7 @@ func TestPromotionRunContext_ReturnsPromotionRunAndTargets(t *testing.T) {
 func TestPromotionRunContext_NotFound(t *testing.T) {
 	s := decisionTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/promotionruns/nonexistent/context", nil)
+	authorizeDecisionRequest(req)
 	rec := httptest.NewRecorder()
 	s.handlePromotionRunContext(rec, req, "nonexistent")
 	if rec.Code != http.StatusNotFound {
@@ -168,6 +240,7 @@ func TestGateContext_ReturnsTargetAndCluster(t *testing.T) {
 	s := decisionTestServer(t, promotionrun, mc, target)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/promotionruns/rel-1/targets/rel-1-canary-cluster-a/gate", nil)
+	authorizeDecisionRequest(req)
 	rec := httptest.NewRecorder()
 	s.handleGateContext(rec, req, "rel-1", "rel-1-canary-cluster-a")
 
@@ -199,6 +272,7 @@ func TestGateContext_PromotionRunMismatch(t *testing.T) {
 	s := decisionTestServer(t, promotionrun, badTarget)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	authorizeDecisionRequest(req)
 	rec := httptest.NewRecorder()
 	s.handleGateContext(rec, req, "rel-1", "bad-target")
 	if rec.Code != http.StatusConflict {
@@ -213,6 +287,7 @@ func TestClusterHealth_ReturnsHealth(t *testing.T) {
 	s := decisionTestServer(t, mc)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/clusters/cluster-a/health", nil)
+	authorizeDecisionRequest(req)
 	rec := httptest.NewRecorder()
 	s.handleClusterHealth(rec, req)
 
@@ -231,6 +306,7 @@ func TestClusterHealth_ReturnsHealth(t *testing.T) {
 func TestClusterHealth_NotFound(t *testing.T) {
 	s := decisionTestServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/clusters/nonexistent/health", nil)
+	authorizeDecisionRequest(req)
 	rec := httptest.NewRecorder()
 	s.handleClusterHealth(rec, req)
 	if rec.Code != http.StatusNotFound {
@@ -244,7 +320,6 @@ func postDecision(t *testing.T, s *Server, promotionrunName, targetKey string, r
 	t.Helper()
 	body, _ := json.Marshal(req)
 	httpReq := httptest.NewRequest(http.MethodPost, "/api/v1/promotionruns/"+promotionrunName+"/targets/"+targetKey+"/decide", bytes.NewReader(body))
-	httpReq.Header.Set("X-Agent-Name", "test-agent")
 	httpReq.Header.Set("Authorization", "Bearer test-token-123")
 	rec := httptest.NewRecorder()
 	s.handleDecide(rec, httpReq, promotionrunName, targetKey)
@@ -291,8 +366,11 @@ func TestDecide_ApproveCreatesApprovalAndTrace(t *testing.T) {
 	if updated.Status.DecisionTrace.Current.Decision != "Approve" {
 		t.Errorf("expected Approve, got %s", updated.Status.DecisionTrace.Current.Decision)
 	}
-	if updated.Status.DecisionTrace.Current.Identity.Name != "test-agent" {
-		t.Errorf("expected agent name test-agent, got %s", updated.Status.DecisionTrace.Current.Identity.Name)
+	if updated.Status.DecisionTrace.Current.Identity.Name != "system:serviceaccount:kapro-system:test-agent" {
+		t.Errorf("expected authenticated agent identity, got %s", updated.Status.DecisionTrace.Current.Identity.Name)
+	}
+	if updated.Status.DecisionTrace.Current.Identity.Type != "ServiceAccount" {
+		t.Errorf("expected service account identity type, got %s", updated.Status.DecisionTrace.Current.Identity.Type)
 	}
 	if updated.Status.DecisionTrace.Current.Confidence != 0.95 {
 		t.Errorf("expected confidence 0.95, got %f", updated.Status.DecisionTrace.Current.Confidence)
@@ -306,8 +384,84 @@ func TestDecide_ApproveCreatesApprovalAndTrace(t *testing.T) {
 	if err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: "rel-1-rel-1-canary-cluster-a"}, &approval); err != nil {
 		t.Fatalf("expected Approval to be created: %v", err)
 	}
-	if approval.Spec.ApprovedBy != "agent:test-agent" {
-		t.Errorf("expected approvedBy agent:test-agent, got %s", approval.Spec.ApprovedBy)
+	if approval.Spec.ApprovedBy != "agent:system:serviceaccount:kapro-system:test-agent" {
+		t.Errorf("expected approvedBy authenticated agent, got %s", approval.Spec.ApprovedBy)
+	}
+}
+
+func TestDecide_ApproveRequiresApprovalCreateRBACBeforeTraceWrite(t *testing.T) {
+	promotionrun, mc, _, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, mc, target)
+	s.DecisionAuthorizer = fakeDecisionAuthorizer{denyResource: "approvals"}
+
+	rec := postDecision(t, s, "rel-1", "rel-1-canary-cluster-a", DecisionRequest{
+		Decision:       "Approve",
+		Confidence:     0.95,
+		Reasoning:      "Canary looks healthy.",
+		IdempotencyKey: "approval-rbac-denied",
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var updated kaprov1alpha1.PromotionTarget
+	if err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: "rel-1-canary-cluster-a"}, &updated); err != nil {
+		t.Fatalf("get target: %v", err)
+	}
+	if updated.Status.DecisionTrace != nil && updated.Status.DecisionTrace.Current != nil {
+		t.Fatal("decision trace should not be written when approval create RBAC is denied")
+	}
+}
+
+func TestDecide_AuthorizesPromotionTargetStatusPatchSubresource(t *testing.T) {
+	promotionrun, mc, _, target := decisionFixtures()
+	authz := &recordingDecisionAuthorizer{}
+	s := decisionTestServer(t, promotionrun, mc, target)
+	s.DecisionAuthorizer = authz
+
+	rec := postDecision(t, s, "rel-1", "rel-1-canary-cluster-a", DecisionRequest{
+		Decision:       "Reject",
+		Confidence:     0.9,
+		Reasoning:      "Rejecting for test coverage.",
+		IdempotencyKey: "status-patch-rbac",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	for _, attr := range authz.attrs {
+		if attr.Group == "kapro.io" &&
+			attr.Verb == "patch" &&
+			attr.Resource == "promotiontargets" &&
+			attr.Subresource == "status" &&
+			attr.Name == "rel-1-canary-cluster-a" {
+			return
+		}
+	}
+	t.Fatalf("missing promotiontargets/status patch SAR; attrs=%#v", authz.attrs)
+}
+
+func TestDecide_RecordsUserIdentityType(t *testing.T) {
+	promotionrun, mc, _, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, mc, target)
+	s.DecisionAuthenticator = fakeDecisionAuthenticator{user: "alice@example.com"}
+
+	rec := postDecision(t, s, "rel-1", "rel-1-canary-cluster-a", DecisionRequest{
+		Decision:       "Reject",
+		Confidence:     0.9,
+		Reasoning:      "User token decision.",
+		IdempotencyKey: "user-identity-type",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var updated kaprov1alpha1.PromotionTarget
+	if err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: "rel-1-canary-cluster-a"}, &updated); err != nil {
+		t.Fatalf("get target: %v", err)
+	}
+	if got := updated.Status.DecisionTrace.Current.Identity.Type; got != "User" {
+		t.Fatalf("identity type = %q, want User", got)
 	}
 }
 
@@ -516,6 +670,7 @@ func postOverride(t *testing.T, s *Server, promotionrunName, targetKey string, r
 	t.Helper()
 	body, _ := json.Marshal(req)
 	httpReq := httptest.NewRequest(http.MethodPost, "/api/v1/promotionruns/"+promotionrunName+"/targets/"+targetKey+"/override", bytes.NewReader(body))
+	httpReq.Header.Set("Authorization", "Bearer test-token-123")
 	rec := httptest.NewRecorder()
 	s.handleOverride(rec, httpReq, promotionrunName, targetKey)
 	return rec
@@ -543,8 +698,8 @@ func TestOverride_RecordsHumanOverride(t *testing.T) {
 		t.Fatal("expected 1 human override")
 	}
 	ov := updated.Status.DecisionTrace.HumanOverrides[0]
-	if ov.Identity != "sre-oncall" {
-		t.Errorf("expected sre-oncall, got %s", ov.Identity)
+	if ov.Identity != "system:serviceaccount:kapro-system:test-agent" {
+		t.Errorf("expected authenticated override identity, got %s", ov.Identity)
 	}
 	if ov.Action != "Reject" {
 		t.Errorf("expected Reject, got %s", ov.Action)
@@ -569,8 +724,8 @@ func TestOverride_ApproveCreatesApprovalCR(t *testing.T) {
 	if err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: "rel-1-rel-1-canary-cluster-a"}, &approval); err != nil {
 		t.Fatalf("expected Approval to be created: %v", err)
 	}
-	if approval.Spec.ApprovedBy != "sre-oncall" {
-		t.Errorf("expected sre-oncall, got %s", approval.Spec.ApprovedBy)
+	if approval.Spec.ApprovedBy != "system:serviceaccount:kapro-system:test-agent" {
+		t.Errorf("expected authenticated approver, got %s", approval.Spec.ApprovedBy)
 	}
 }
 
@@ -610,6 +765,7 @@ func TestRouter_DispatchesCorrectly(t *testing.T) {
 
 	for _, tt := range tests {
 		req := httptest.NewRequest(tt.method, tt.path, nil)
+		authorizeDecisionRequest(req)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
 		if rec.Code != tt.want {

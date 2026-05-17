@@ -180,9 +180,11 @@ spec:
                         description: Repository is the OCI repository to observe.
                         type: string
                       requireSignature:
-                        default: true
-                        description: RequireSignature requires signature verification
-                          before creating a PromotionRun.
+                        default: false
+                        description: |-
+                          RequireSignature requires a configured verifier to pass before creating a
+                          PromotionRun. Defaults to false so triggers do not fail closed unless a
+                          signature policy is intentionally enabled.
                         type: boolean
                       secretRef:
                         description: |-

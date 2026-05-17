@@ -742,7 +742,8 @@ type GateRunStatus struct {
 	Attempts   int       `json:"attempts,omitempty"`
 	// +kubebuilder:pruning:PreserveUnknownFields
 	VendorRef *corev1.ObjectReference `json:"vendorRef,omitempty"`
-	Results   []GateConditionResult   `json:"results,omitempty"`
+	// +kubebuilder:validation:MaxItems=16
+	Results []GateConditionResult `json:"results,omitempty"`
 	// Evidence is structured, non-secret data that explains the gate decision.
 	// It is intended for audit, debugging, notifications, and future AI agents.
 	// +optional
@@ -1001,6 +1002,10 @@ type PromotionPlanProgress struct {
 	Name string `json:"name"`
 	// PromotionPlan is the PromotionPlan CRD name.
 	PromotionPlan string `json:"promotionplan"`
+	// ObservedGeneration pins the PromotionPlan generation used by this
+	// PromotionRun. If the referenced PromotionPlan changes while the run is in
+	// flight, the controller fails the run instead of silently switching DAGs.
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 	// Phase is the current execution state of this promotionplan node.
 	// +kubebuilder:validation:Enum=Pending;Progressing;Complete;Failed
 	Phase string `json:"phase,omitempty"`
@@ -1162,8 +1167,10 @@ type OCIPromotionTriggerSource struct {
 	// TagPattern is a regular expression. Only matching tags can create promotionruns.
 	// +kubebuilder:validation:MinLength=1
 	TagPattern string `json:"tagPattern"`
-	// RequireSignature requires signature verification before creating a PromotionRun.
-	// +kubebuilder:default=true
+	// RequireSignature requires a configured verifier to pass before creating a
+	// PromotionRun. Defaults to false so triggers do not fail closed unless a
+	// signature policy is intentionally enabled.
+	// +kubebuilder:default=false
 	RequireSignature bool `json:"requireSignature,omitempty"`
 	// PollInterval controls how often the source is checked.
 	// +kubebuilder:default="5m"
@@ -1309,6 +1316,7 @@ type TargetStatus struct {
 	// ApprovalSentAt records when the approval notification was last dispatched.
 	ApprovalSentAt string `json:"approvalSentAt,omitempty"`
 	// Gates is the authoritative snapshot of GateTemplate evaluation state.
+	// +kubebuilder:validation:MaxItems=16
 	Gates []GateRunStatus `json:"gates,omitempty"`
 	// Rollback is true when this entry was created by a rollback trigger.
 	Rollback bool `json:"rollback,omitempty"`

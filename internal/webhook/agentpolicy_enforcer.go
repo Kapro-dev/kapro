@@ -23,22 +23,44 @@ type PolicyDecision struct {
 	RequireHumanCosign bool
 }
 
-// resolveAgentPolicy finds the highest-priority AgentPolicy matching the agent name.
+// resolveAgentPolicy finds the highest-priority AgentPolicy matching the
+// authenticated Kubernetes identity.
 func (s *Server) resolveAgentPolicy(ctx context.Context, agentName string) (*kaprov1alpha1.AgentPolicy, error) {
 	var list kaprov1alpha1.AgentPolicyList
 	if err := s.Client.List(ctx, &list); err != nil {
 		return nil, fmt.Errorf("list AgentPolicies: %w", err)
 	}
+	saNamespace, saName, isServiceAccount := parseServiceAccountUsername(agentName)
 	var best *kaprov1alpha1.AgentPolicy
 	for i := range list.Items {
 		ap := &list.Items[i]
-		if ap.Spec.Identity.ServiceAccountName == agentName {
-			if best == nil || ap.Spec.Priority < best.Spec.Priority {
-				best = ap
+		if isServiceAccount {
+			if ap.Spec.Identity.ServiceAccountName != saName {
+				continue
 			}
+			if ap.Spec.Identity.ServiceAccountNamespace != "" && ap.Spec.Identity.ServiceAccountNamespace != saNamespace {
+				continue
+			}
+		} else if ap.Spec.Identity.ServiceAccountName != agentName {
+			continue
+		}
+		if best == nil || ap.Spec.Priority < best.Spec.Priority {
+			best = ap
 		}
 	}
 	return best, nil
+}
+
+func parseServiceAccountUsername(username string) (string, string, bool) {
+	const prefix = "system:serviceaccount:"
+	if !strings.HasPrefix(username, prefix) {
+		return "", "", false
+	}
+	parts := strings.Split(strings.TrimPrefix(username, prefix), ":")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
 }
 
 // enforceAgentPolicy validates a decision against the resolved AgentPolicy.
