@@ -15,12 +15,17 @@ spec:
     plural: fleetclusters
     shortNames:
     - mc
+    - fc
+    - fleetcluster
     singular: fleetcluster
   scope: Cluster
   versions:
   - additionalPrinterColumns:
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Registered")].status
+      name: Registered
       type: string
     - jsonPath: .status.phase
       name: Phase
@@ -79,10 +84,29 @@ spec:
               bootstrap:
                 description: |-
                   Bootstrap configures one-time cluster self-registration.
-                  Platform engineers set tokenHash + expiresAt (or ttl); the cluster-controller
-                  presents the pre-image token in a CSR to prove identity.
-                  One bootstrap slot per cluster. To re-bootstrap, update tokenHash + expiresAt
-                  and the hub resets the slot automatically.
+
+                  Protocol (CSR-native, K8s-API transport — works across any cloud /
+                  any cluster / any K8s distribution):
+                   1. Platform team creates this FleetCluster with spec.bootstrap.tokenHash
+                      (SHA-256 of a random pre-image) and a TTL.
+                   2. kapro-cluster-controller boots on the spoke with the plaintext token,
+                      generates a keypair, and submits a CertificateSigningRequest to the
+                      hub's K8s API with signerName=kapro.io/cluster-bootstrap. The CSR
+                      username encodes the cluster name and the request annotation carries
+                      the SHA-256 of the plaintext token.
+                   3. The hub CSR approver verifies the SHA-256 matches this field, that
+                      spec.bootstrap.expiresAt is in the future, and that
+                      status.bootstrap.used is false. On success it approves the CSR,
+                      signs the cert, and creates a per-cluster ClusterRole+Binding with
+                      resourceNames=[<this cluster>] for fleetclusters/status and the
+                      heartbeat Lease.
+                   4. The spoke uses the issued client cert (auto-rotated by client-go)
+                      for steady-state K8s API calls. No bearer tokens. No long-lived
+                      credentials. No custom HTTP protocol.
+
+                  One bootstrap slot per cluster. To re-bootstrap, the platform team
+                  updates tokenHash + expiresAt (or ttl); the hub clears status.bootstrap
+                  on the next reconcile.
                 properties:
                   expiresAt:
                     description: |-
@@ -113,6 +137,17 @@ spec:
                       metadata.creationTimestamp + TTL at creation time and leaves it immutable.
                     type: string
                 type: object
+              consecutiveFailureThreshold:
+                description: |-
+                  ConsecutiveFailureThreshold is the number of consecutive heartbeat
+                  misses required before the FleetCluster Ready condition flips to False
+                  and the Phase transitions to Unreachable. Defaults to 3 to absorb
+                  transient network blips without flapping. Pattern adopted from Sveltos
+                  SveltosCluster.spec.consecutiveFailureThreshold.
+                format: int32
+                maximum: 100
+                minimum: 1
+                type: integer
               delivery:
                 description: Delivery configures the backend-neutral delivery adapter
                   for this cluster.
@@ -224,22 +259,39 @@ spec:
                 properties:
                   boundCSRName:
                     description: |-
-                      BoundCSRName is the CSR that consumed this bootstrap slot.
-                      Enables idempotent retry: if CSR approval fails transiently, the next reconcile
-                      recognises the same CSR and re-approves rather than denying as replay.
+                      BoundCSRName is the CSR that consumed this bootstrap slot. Enables
+                      idempotent retry: if status patching fails after CSR approval, the next
+                      reconcile recognises the same CSR via this field and re-converges status
+                      rather than rejecting it as a replay.
                     type: string
                   issuedBootstrapKubeconfig:
                     description: |-
-                      IssuedBootstrapKubeconfig is the name of the Secret in kapro-system that
-                      contains the bootstrap kubeconfig. Operators copy this to the spoke cluster.
+                      IssuedBootstrapKubeconfig is the name of an optional kubeconfig Secret in
+                      kapro-system. Legacy from the bearer-token bootstrap mode; the CSR flow
+                      returns a signed cert directly to the spoke and leaves this empty.
+                    type: string
+                  issuedClusterRole:
+                    description: |-
+                      IssuedClusterRole is the name of the per-cluster ClusterRole created by
+                      the bootstrap reconciler. Naming is deterministic (kapro-agent-<cluster>),
+                      but recording it makes deletion cascade trivial without re-derivation.
+                    type: string
+                  issuedClusterRoleBinding:
+                    description: |-
+                      IssuedClusterRoleBinding is the name of the per-cluster ClusterRoleBinding
+                      created by the bootstrap reconciler. Same rationale as IssuedClusterRole.
                     type: string
                   issuedCredentialFor:
-                    description: IssuedCredentialFor is the cluster name the bootstrap
-                      credential was issued for.
+                    description: |-
+                      IssuedCredentialFor is the cluster name the bootstrap credential was issued for.
+                      Mirrors metadata.name on a successful registration; serves as a defensive
+                      cross-check when the hub controller later loads RBAC by deterministic name.
                     type: string
                   used:
-                    description: Used is true once the bootstrap token has been consumed
-                      by a successful CSR.
+                    description: |-
+                      Used is true once the bootstrap token has been consumed by a successful CSR.
+                      Used in CAS predicate to enforce one-time use — a second CSR carrying the
+                      same token hash is rejected regardless of which spoke submits it.
                     type: boolean
                   usedAt:
                     description: UsedAt is when the bootstrap token was consumed.
