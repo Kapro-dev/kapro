@@ -579,7 +579,7 @@ func TestHandleRenewalCSR_ApprovesWhenActive(t *testing.T) {
 		},
 	}
 	r, _ := newBootstrapReconciler(t, fc)
-	fakeClient := k8sfake.NewSimpleClientset(csr)
+	fakeClient := k8sfake.NewClientset(csr)
 	r.CertClient = fakeClient.CertificatesV1()
 
 	if err := r.handleRenewalCSR(context.Background(), fc, csr); err != nil {
@@ -606,7 +606,7 @@ func TestHandleRenewalCSR_DeniedWhenSuspended(t *testing.T) {
 		Spec:       kaprov1alpha1.FleetClusterSpec{Suspend: true},
 	}
 	r, _ := newBootstrapReconciler(t, fc)
-	fakeClient := k8sfake.NewSimpleClientset(csr)
+	fakeClient := k8sfake.NewClientset(csr)
 	r.CertClient = fakeClient.CertificatesV1()
 
 	if err := r.handleRenewalCSR(context.Background(), fc, csr); err != nil {
