@@ -17,7 +17,7 @@ Kapro coordinates safe artifact promotion across clusters, regions, and clouds w
 
 ## Project Status
 
-Kapro is **alpha production-capable**, not GA. The current release candidate is
+Kapro is **alpha production-capable**, not GA. The current alpha release is
 `v0.4.0-alpha.0`.
 
 The current codebase has working install, PromotionRun smoke, Argo brownfield,

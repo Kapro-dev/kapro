@@ -3,19 +3,6 @@
 This file tracks planned work only. Implemented work belongs in
 [`SPEC.md`](SPEC.md) and release history belongs in [`CHANGELOG.md`](../CHANGELOG.md).
 
-## v0.4.0-alpha.0 Release Exit
-
-Before tagging `v0.4.0-alpha.0`, complete the release-candidate checklist:
-
-- Run the verification commands listed in `CHANGELOG.md`.
-- Confirm generated CRDs, Helm CRDs, embedded bootstrap CRDs, and RBAC are in
-  sync.
-- Confirm README, install docs, API stability docs, release process, and
-  examples reference the current promotion-domain API.
-- Confirm no release-facing docs still describe removed pre-0.4 API names or
-  PromotionPolicy as a reserved, unenforced runtime.
-- Publish release notes from `CHANGELOG.md`.
-
 ## v0.5 - Operational Hardening
 
 - Add automated CRD schema drift checks to CI.
