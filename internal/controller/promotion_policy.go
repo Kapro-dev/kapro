@@ -45,33 +45,34 @@ func (r *PromotionReconciler) evaluatePromotionPolicies(ctx context.Context, pro
 	if len(promotion.Spec.Policies) == 0 {
 		return promotionPolicyDecision{Allowed: true}, nil
 	}
-	allowed := promotionPolicyDecision{Allowed: true}
+	// auditViolations is the single source of truth for audit-mode policies
+	// that would have blocked this Promotion. Every terminal-deny return
+	// must carry it forward so status reflects both the blocking policy and
+	// the shadow-blocked set. deny() is the only allowed way to construct a
+	// terminal denial inside this loop — do not return a bare decision.
+	var auditViolations []promotionPolicyAuditViolation
+	deny := func(reason, message string) (promotionPolicyDecision, error) {
+		return promotionPolicyDecision{
+			Reason:          reason,
+			Message:         message,
+			Terminal:        true,
+			AuditViolations: auditViolations,
+		}, nil
+	}
 	for _, ref := range promotion.Spec.Policies {
 		if ref.Name == "" {
-			return promotionPolicyDecision{
-				Reason:   "InvalidPromotionPolicyRef",
-				Message:  "Promotion.spec.policies contains an empty policy reference",
-				Terminal: true,
-			}, nil
+			return deny("InvalidPromotionPolicyRef", "Promotion.spec.policies contains an empty policy reference")
 		}
 		var policy kaprov1alpha1.PromotionPolicy
 		if err := r.Get(ctx, client.ObjectKey{Name: ref.Name}, &policy); err != nil {
 			if apierrors.IsNotFound(err) {
-				return promotionPolicyDecision{
-					Reason:   "PromotionPolicyNotFound",
-					Message:  fmt.Sprintf("PromotionPolicy %q was not found", ref.Name),
-					Terminal: true,
-				}, nil
+				return deny("PromotionPolicyNotFound", fmt.Sprintf("PromotionPolicy %q was not found", ref.Name))
 			}
 			return promotionPolicyDecision{}, fmt.Errorf("get PromotionPolicy %q: %w", ref.Name, err)
 		}
 		applies, err := promotionPolicyApplies(&policy, promotion)
 		if err != nil {
-			return promotionPolicyDecision{
-				Reason:   "InvalidPromotionPolicySelector",
-				Message:  fmt.Sprintf("PromotionPolicy %q selector is invalid: %v", policy.Name, err),
-				Terminal: true,
-			}, nil
+			return deny("InvalidPromotionPolicySelector", fmt.Sprintf("PromotionPolicy %q selector is invalid: %v", policy.Name, err))
 		}
 		if !applies {
 			continue
@@ -82,7 +83,7 @@ func (r *PromotionReconciler) evaluatePromotionPolicies(ctx context.Context, pro
 		}
 		if promotionPolicyAuditOnly(&policy) {
 			r.recordPromotionPolicyAuditDecision(promotion, &policy, decision)
-			allowed.AuditViolations = append(allowed.AuditViolations, promotionPolicyAuditViolation{
+			auditViolations = append(auditViolations, promotionPolicyAuditViolation{
 				Policy:  policy.Name,
 				Reason:  decision.Reason,
 				Message: decision.Message,
@@ -100,18 +101,13 @@ func (r *PromotionReconciler) evaluatePromotionPolicies(ctx context.Context, pro
 			if decision.Reason == "" {
 				decision.Reason = "PromotionPolicyRollback"
 			}
-			// Carry forward any audit violations collected from earlier
-			// policies so the denying-path status patch preserves them.
-			decision.AuditViolations = allowed.AuditViolations
+			decision.AuditViolations = auditViolations
 			return decision, nil
 		}
-		// Carry forward audit violations from earlier policies onto the
-		// terminal-deny return so applyPromotionAuditConditions does not
-		// silently drop them when patching status.
-		decision.AuditViolations = allowed.AuditViolations
+		decision.AuditViolations = auditViolations
 		return decision, nil
 	}
-	return allowed, nil
+	return promotionPolicyDecision{Allowed: true, AuditViolations: auditViolations}, nil
 }
 
 func promotionPolicyApplies(policy *kaprov1alpha1.PromotionPolicy, promotion *kaprov1alpha1.Promotion) (bool, error) {

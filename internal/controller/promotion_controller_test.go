@@ -400,6 +400,55 @@ func TestPromotionReconcilerCarriesAuditViolationsThroughDenial(t *testing.T) {
 	}
 }
 
+// TestPromotionReconcilerCarriesAuditViolationsThroughEarlyReturn covers the
+// same audit-carryforward contract for the early-return paths
+// (InvalidPromotionPolicyRef / PromotionPolicyNotFound /
+// InvalidPromotionPolicySelector) that don't go through evaluatePromotionPolicy.
+// Without the deny() helper that stamps audit violations, the not-found path
+// returns an empty decision and the prior audit-mode shadow block disappears.
+func TestPromotionReconcilerCarriesAuditViolationsThroughEarlyReturn(t *testing.T) {
+	ctx := context.Background()
+	scheme := newPromotionTestScheme(t)
+	promotion := promotionFixture(1, []corev1.LocalObjectReference{
+		{Name: "audit-shadow"},
+		{Name: "does-not-exist"},
+	})
+	promotion.Labels = map[string]string{"env": "staging"}
+	auditPolicy := &kaprov1alpha1.PromotionPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "audit-shadow"},
+		Spec: kaprov1alpha1.PromotionPolicySpec{
+			Mode: "audit",
+			CEL: []kaprov1alpha1.CELPolicyRule{{
+				Name:       "would-have-blocked",
+				Expression: `promotion.labels.env == "prod"`,
+			}},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha1.Promotion{}).
+		WithObjects(promotion, auditPolicy).
+		Build()
+	r := &PromotionReconciler{Client: c, Scheme: scheme}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var got kaprov1alpha1.Promotion
+	if err := c.Get(ctx, client.ObjectKey{Name: "checkout"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	ready := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
+	if ready == nil || ready.Reason != "PromotionPolicyNotFound" {
+		t.Fatalf("Ready condition = %+v", ready)
+	}
+	audit := apimeta.FindStatusCondition(got.Status.Conditions, "PolicyAuditViolation")
+	if audit == nil || audit.Status != metav1.ConditionTrue || !strings.Contains(audit.Message, "audit-shadow") {
+		t.Fatalf("PolicyAuditViolation condition should survive early-return denial, got %+v", audit)
+	}
+}
+
 func TestPromotionPolicyFreezeWindowBlocksPromotion(t *testing.T) {
 	promotion := promotionFixture(1, nil)
 	policy := &kaprov1alpha1.PromotionPolicy{
