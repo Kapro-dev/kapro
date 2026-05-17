@@ -260,7 +260,7 @@ func main() {
 		)
 		mgr.GetWebhookServer().Register(
 			"/validate-kapro-io-v1alpha1-fleetcluster",
-			&crwebhook.Admission{Handler: kaploadmission.NewFleetClusterValidator(decoder)},
+			&crwebhook.Admission{Handler: kaploadmission.NewFleetClusterValidator(decoder, mgr.GetClient())},
 		)
 		mgr.GetWebhookServer().Register(
 			"/validate-kapro-io-v1alpha1-promotionrun",
