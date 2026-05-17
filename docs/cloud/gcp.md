@@ -1,9 +1,12 @@
-# GCP Integration
+# GCP / GKE Integration
 
 Helpers for registering Kapro spoke clusters on GKE using Workload Identity.
 Zero Terraform required — infra team handles the IAM setup.
 
-## What `scripts/register-spoke.sh` does
+Kapro's core APIs are cloud-neutral. This page only documents optional GCP/GKE
+onboarding helpers for teams that already run GKE and Google Workload Identity.
+
+## What `examples/cloud/gcp/register-spoke.sh` does
 
 1. Calls `gcloud container clusters get-credentials` for both hub and spoke
 2. Calls `kapro cluster join` with the right flags
@@ -61,7 +64,7 @@ gcloud iam service-accounts add-iam-policy-binding \
 ## Same-project usage (hub + spoke in same project)
 
 ```bash
-./gcp/scripts/register-spoke.sh \
+./examples/cloud/gcp/register-spoke.sh \
   --name          spoke-de \
   --hub-project   my-project \
   --hub-cluster   hub \
@@ -76,7 +79,7 @@ gcloud iam service-accounts add-iam-policy-binding \
 ## Cross-project usage (hub project A, spoke project B)
 
 ```bash
-./gcp/scripts/register-spoke.sh \
+./examples/cloud/gcp/register-spoke.sh \
   --name          spoke-de \
   --hub-project   my-hub-project \
   --hub-cluster   hub \
@@ -94,7 +97,7 @@ gcloud iam service-accounts add-iam-policy-binding \
 
 ```bash
 for COUNTRY in de fi fr pl nl se no dk es pt it; do
-  ./gcp/scripts/register-spoke.sh \
+  ./examples/cloud/gcp/register-spoke.sh \
     --name          spoke-$COUNTRY \
     --hub-project   my-hub-project \
     --hub-cluster   hub \
