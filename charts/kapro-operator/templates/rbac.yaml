@@ -97,6 +97,7 @@ rules:
   - kaproes/status
   - fleetclusters/status
   - pluginregistrations/status
+  - promotionpolicies/status
   - promotionruns/status
   - promotions/status
   - promotiontargets/status
@@ -111,6 +112,7 @@ rules:
   - agentpolicies
   - backendprofiles
   - pluginregistrations
+  - promotionpolicies
   - promotionsources
   - promotiontriggers
   verbs:

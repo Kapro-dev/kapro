@@ -48,7 +48,7 @@ and convergence phase.
 | `GitRepository`, `OCIRepository`, or `Bucket` | Selected Flux source objects. | The declared `spec.ref.tag`, `semver`, `digest`, or reviewed `branch` field through Git-native source apply. | Repository credentials and source authentication. |
 
 Flux keeps source authentication, reconciliation, inventory, health checks, and
-drift correction. Kapro supplies promotion order, gates, approvals, promotionrun
+drift correction. Kapro supplies promotion order, gates, approvals, PromotionRun
 history, and evidence.
 
 ## Status Evidence

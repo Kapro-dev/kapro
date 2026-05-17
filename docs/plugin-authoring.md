@@ -87,7 +87,7 @@ objects. A plugin endpoint can influence deployment execution or gate decisions,
 so registration is part of the platform trust boundary. Production plugins
 should run behind TLS, use least-privilege Kubernetes RBAC for their backend, and
 store client certificates or CA data in platform-owned Secrets. See
-`docs/security-model.md` for the full RBAC and trust model.
+`docs/rbac-tenancy.md` for the RBAC and tenancy model.
 
 When a plugin omits `contract_version` or reports an unsupported version,
 `status.ready` is false, `Ready=False`, `Compatible=False`, and the condition
@@ -117,7 +117,7 @@ An actuator plugin must:
 - make `Rollback` idempotent for the same previous version and target;
 - return deterministic `IsConverged` results for the same backend state;
 - respect request context cancellation;
-- avoid storing promotionrun state outside the backend it controls.
+- avoid storing PromotionRun state outside the backend it controls.
 
 Run the base actuator conformance harness from your plugin tests:
 

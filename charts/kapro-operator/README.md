@@ -1,7 +1,7 @@
 # kapro-operator Helm chart
 
 This chart installs the Kapro CRDs, controller Deployment, ServiceAccount, RBAC,
-admission webhook configuration, and baseline services in one promotionrun.
+admission webhook configuration, and baseline services in one Helm release.
 
 ## Install
 
@@ -30,7 +30,7 @@ helm upgrade kapro charts/kapro-operator \
 ```
 
 CRDs in `crds/` are installed on first install. For CRD upgrades, apply them
-explicitly before upgrading the promotionrun:
+explicitly before upgrading the Helm release:
 
 ```bash
 kubectl apply -f charts/kapro-operator/crds

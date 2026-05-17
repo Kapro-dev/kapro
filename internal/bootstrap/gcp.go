@@ -109,7 +109,7 @@ type RegistryInfo struct {
 
 // EnsureGARRegistry creates a Docker/OCI Artifact Registry repository.
 // Idempotent — skips if already exists.
-// Returns the registry URL for use in PromotionSource registries and bundle push.
+// Returns the registry URL for use in PromotionSource registries and artifact push.
 func EnsureGARRegistry(ctx context.Context, project, location, repoName string) (*RegistryInfo, error) {
 	ts := provider.GCPTokenSource(ctx)
 	c, err := artifactregistry.NewClient(ctx, option.WithTokenSource(ts))
@@ -139,7 +139,7 @@ func EnsureGARRegistry(ctx context.Context, project, location, repoName string) 
 		Repository: &artifactregistrypb.Repository{
 			Format:      artifactregistrypb.Repository_DOCKER,
 			Mode:        artifactregistrypb.Repository_STANDARD_REPOSITORY,
-			Description: "Kapro centralized registry — OCI bundles + Helm charts",
+			Description: "Kapro centralized registry — OCI artifacts + Helm charts",
 		},
 	})
 	if err != nil {

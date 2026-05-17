@@ -17,18 +17,17 @@ Kapro coordinates safe artifact promotion across clusters, regions, and clouds w
 
 ## Project Status
 
-Kapro is **alpha production-capable**, not GA.
+Kapro is **alpha production-capable**, not GA. The current release candidate is
+`v0.4.0-alpha.0`.
 
-The current codebase has working install, promotionrun smoke, Argo brownfield, Flux
-brownfield, plugin hot-load, and KPI planner dispatch coverage. It is suitable
-for controlled adopters who can run the documented verification and accept
-`kapro.io/v1alpha1` API movement.
+The current codebase has working install, PromotionRun smoke, Argo brownfield,
+Flux brownfield, PromotionPolicy runtime guardrails, plugin hot-load, and KPI
+planner dispatch coverage. It is suitable for controlled adopters who can run
+the documented verification and accept `kapro.io/v1alpha1` API movement.
 
 Do not treat Kapro as GA yet. GA still requires a stable API version, tagged
-promotionrun-to-promotionrun upgrade history, broad operator soak, and an independent
-security audit. See [GA Readiness](docs/ga-readiness.md) and
-[Alpha Production Capability](docs/alpha-production-capability.md) for the
-current evidence and exit criteria.
+release-to-release upgrade history, broad operator soak, and an independent
+security audit. See the [Roadmap](docs/ROADMAP.md) for release exit criteria.
 
 ## What Kapro Is
 
@@ -41,7 +40,7 @@ It answers one operational question:
 Which clusters are allowed to receive this artifact version now, and why?
 ```
 
-Kapro owns cross-cluster promotionrun ordering, target planning, gate evaluation,
+Kapro owns cross-cluster PromotionRun ordering, target planning, gate evaluation,
 approval state, backend convergence tracking, and auditable status.
 
 It delegates artifact build, manifest rendering, GitOps reconciliation,
@@ -60,11 +59,15 @@ A fleet of this scale demands a dedicated, state-aware promotion control plane.
 
 ## The Artifact is the Contract
 
-Kapro decouples CI from deployment. The OCI artifact becomes the single source of runtime truth: immutable tags only. Any git repo, any CI promotionplan can produce it. By making the OCI artifact the contract, CI stops being the deployment orchestrator. Runtime git dependency drops to zero.
+Kapro decouples CI from deployment. The artifact version becomes the promotion
+contract: image digest, tag, chart version, Git revision, or per-unit version
+map. CI produces immutable versions; Kapro decides where those versions may go
+next.
 
 ## Enter Kapro
 
-Kapro does not replace the CNCF ecosystem. It coordinates it. Kapro is a fleet
+Kapro does not replace the Kubernetes delivery ecosystem. It coordinates it.
+Kapro is a fleet
 deployment promotion control plane: it decides when and where a version may
 advance across a fleet; local rollout systems decide how pods, sync, and traffic
 changes happen inside each cluster.
@@ -76,14 +79,14 @@ It sits above Kubernetes Operators, Helm, Kustomize, OCI registries, GitOps reco
 1. **Delegated local rollout strategies.** Keep using Kubernetes Deployments, Argo Rollouts, Flagger, Istio, Gateway API, Flux, Argo CD, Helm, or custom actuators for namespace-local rollout and traffic mechanics.
 2. **Cross-cluster promotion waves.** Kapro coordinates which targets advance first, which regions wait, and when the global fleet may progress.
 3. **Promotion before progression.** Kapro advances only after target health, gates, approvals, plugin status, and policy checks pass; the selected backend executes the local change.
-4. **Auditable evidence.** Kapro persists target phase, gate evidence, approvals, lifecycle events, and promotionrun outcome in Kubernetes status.
+4. **Auditable evidence.** Kapro persists target phase, gate evidence, approvals, lifecycle events, and PromotionRun outcome in Kubernetes status.
 
 ## Greenfield and Brownfield
 
 Kapro supports both connect paths:
 
 - **Greenfield bootstrap:** create the hub, backend profiles, cluster inventory,
-  starter sources, promotionplans, gates, and optional spoke agents from Kapro
+  starter sources, PromotionPlans, gates, and optional spoke agents from Kapro
   manifests or CLI flows.
 - **Brownfield connect:** discover existing Argo CD or Flux topology, observe it
   first, then explicitly adopt selected applications or clusters for promotion.
@@ -103,7 +106,7 @@ kapro connect argo ./kapro-connect --namespace argocd --selector kapro.io/import
 
 ## Conservative Automation and Reliability
 
-Kapro manages wave-based `dependsOn` execution across promotionrun promotionplans and
+Kapro manages wave-based `dependsOn` execution across PromotionPlans and
 target clusters. Cluster state is reconciled through standard controller-runtime
 patterns and backend convergence checks.
 
@@ -154,15 +157,17 @@ kapro hub init --project my-project --cluster my-hub
 kapro spoke add de-prod --provider gcp-fleet --labels tier=canary
 kapro spoke add fi-prod --provider gcp-fleet --labels tier=prod
 
-# Define your promotion source and delivery promotionplan
+# Define backend, source, policy, and delivery PromotionPlan
+kubectl apply -f examples/hub-config/backends/flux.yaml
 kubectl apply -f examples/hub-config/sources/checkout.yaml
+kubectl apply -f examples/hub-config/policies/checkout-prod-guardrails.yaml
 kubectl apply -f examples/hub-config/promotionplans/checkout-progressive.yaml
 
-# Push a version from CI
+# Package a version from CI when using source artifacts
 kapro source package --source checkout --version 1.0.0 --push
 
-# Create a promotionrun. Kapro handles the rest.
-kubectl apply -f examples/hub-config/promotionruns/checkout-v1.2.3.yaml
+# Create a Promotion. Kapro creates and manages the PromotionRun.
+kubectl apply -f examples/hub-config/promotions/checkout-v1.2.3.yaml
 ```
 
 Existing users upgrading a hub should read the API stability and upgrade policy
@@ -173,7 +178,7 @@ stage parallelism or adding operator replicas.
 
 Quick troubleshooting checks:
 
-- `kubectl get promotionruns,promotiontargets,pluginregistrations` to confirm observed
+- `kubectl get promotions,promotionruns,promotiontargets,pluginregistrations` to confirm observed
   generation and readiness caught up.
 - Check the operator logs for disabled controllers, shard selection, plugin
   gateway registration, and webhook startup.
@@ -184,32 +189,48 @@ Quick troubleshooting checks:
 
 ## Documentation
 
-- [Changelog](CHANGELOG.md)
-- [Evolution Plan](docs/evolution-plan.md)
+Start here:
+
 - [Install Kapro](docs/install.md)
-- [Release Process](docs/release-process.md)
-- [Release Notes Guide](docs/release-notes.md)
 - [Clean-Clone Install Verification](docs/install-verification.md)
-- [Alpha Production Capability](docs/alpha-production-capability.md)
-- [GA Readiness](docs/ga-readiness.md)
-- [v0.1.0-alpha Release Runbook](docs/release-v0.1.0-alpha.md)
+- [Local Kind Demo](docs/kind-demo.md)
+- [Hub Config Source of Truth](docs/hub-config-source-of-truth.md)
+
+Core concepts:
+
 - [Architecture Spec](docs/SPEC.md)
 - [Vision and Boundaries](docs/vision-and-boundaries.md)
-- [CNCF Positioning](docs/cncf-positioning.md)
-- [Local Kind Demo](docs/kind-demo.md)
-- [API Stability and Upgrade Policy](docs/api-stability.md)
+- [Backend Architecture](docs/backend-architecture.md)
+- [Backend Ownership](docs/backend-ownership.md)
 - [Supported Backend Patterns](docs/supported-backend-patterns.md)
-- [Conformance Packages](docs/conformance.md)
-- [Plugin Compatibility](docs/plugin-compatibility.md)
-- [Controller Scalability and Resilience](docs/controller-scalability.md)
-- [Security Policy](SECURITY.md)
-- [Security Implementation Guide](docs/security.md)
-- [RBAC, Multi-Tenancy, and Security Model](docs/security-model.md)
-- [Plugin Authoring](docs/plugin-authoring.md)
-- [Extension Model](docs/extension-model.md)
-- [Roadmap](docs/ROADMAP.md)
-- [RBAC and Tenancy Model](docs/rbac-tenancy.md)
+- [Promotion Gate Semantics](docs/gate-semantics.md)
+- [Events](docs/events.md)
+
+Backend onboarding:
+
+- [Argo Brownfield Migration](docs/argo-migration.md)
+- [Flux Brownfield Migration](docs/flux-migration.md)
+
+Operations and security:
+
 - [Operations](docs/operations.md)
+- [Monitoring](docs/monitoring.md)
+- [Security Implementation Guide](docs/security.md)
+- [Security Policy](SECURITY.md)
+- [RBAC and Tenancy Model](docs/rbac-tenancy.md)
+- [API Stability and Upgrade Policy](docs/api-stability.md)
+
+Extension points:
+
+- [Extension Model](docs/extension-model.md)
+- [Plugin Authoring](docs/plugin-authoring.md)
+- [Plugin Compatibility](docs/plugin-compatibility.md)
+- [Conformance Packages](docs/conformance.md)
+
+Release history:
+
+- [Changelog](CHANGELOG.md)
+- [Roadmap](docs/ROADMAP.md)
 
 ## Contributing
 

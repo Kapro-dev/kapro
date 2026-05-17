@@ -88,6 +88,81 @@ func TestBackendProfileReadinessExternalRequiresReadyPlugin(t *testing.T) {
 	}
 }
 
+func TestBackendProfilesForBackendObjectMatchesDiscoveryProfile(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	profile := &kaprov1alpha1.BackendProfile{
+		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
+		Spec: kaprov1alpha1.BackendProfileSpec{
+			Driver: kaprov1alpha1.BackendDriverArgo,
+			Discovery: &kaprov1alpha1.BackendDiscoverySpec{
+				Enabled: true,
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"kapro.io/import": "true"},
+				},
+			},
+			Parameters: map[string]string{"namespace": "argocd"},
+		},
+	}
+	fluxProfile := &kaprov1alpha1.BackendProfile{
+		ObjectMeta: metav1.ObjectMeta{Name: "flux"},
+		Spec: kaprov1alpha1.BackendProfileSpec{
+			Driver: kaprov1alpha1.BackendDriverFlux,
+			Discovery: &kaprov1alpha1.BackendDiscoverySpec{
+				Enabled: true,
+			},
+			Parameters: map[string]string{"namespace": "flux-system"},
+		},
+	}
+	r := &BackendProfileReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(profile, fluxProfile).Build(),
+	}
+	app := newArgoApplication("argocd", "checkout", map[string]string{"kapro.io/import": "true"}, nil)
+
+	requests := r.backendProfilesForBackendObject(context.Background(), app)
+	if len(requests) != 1 || requests[0].Name != "argo" {
+		t.Fatalf("requests = %#v", requests)
+	}
+}
+
+func TestBackendProfilesForBackendObjectMatchesArgoClusterSecret(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	profile := &kaprov1alpha1.BackendProfile{
+		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
+		Spec: kaprov1alpha1.BackendProfileSpec{
+			Driver: kaprov1alpha1.BackendDriverArgo,
+			Discovery: &kaprov1alpha1.BackendDiscoverySpec{
+				Enabled: true,
+			},
+			Parameters: map[string]string{"namespace": "argocd"},
+		},
+	}
+	r := &BackendProfileReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(profile).Build(),
+	}
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
+		Name:      "cluster-a",
+		Namespace: "argocd",
+		Labels:    map[string]string{"argocd.argoproj.io/secret-type": "cluster"},
+	}}
+
+	requests := r.backendProfilesForBackendObject(context.Background(), secret)
+	if len(requests) != 1 || requests[0].Name != "argo" {
+		t.Fatalf("requests = %#v", requests)
+	}
+}
+
 func TestBackendProfileArgoDiscoveryCountsExistingResources(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
