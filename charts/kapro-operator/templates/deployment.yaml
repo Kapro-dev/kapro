@@ -76,6 +76,8 @@ spec:
             {{- if .Values.approvalServer.enabled }}
             - name: KAPRO_APPROVAL_ADDR
               value: ":{{ .Values.approvalServer.port }}"
+            - name: KAPRO_ENABLE_DECISION_API
+              value: {{ .Values.decisionAPI.enabled | quote }}
             {{- else }}
             - name: KAPRO_DISABLE_APPROVAL_SERVER
               value: "true"
@@ -84,9 +86,15 @@ spec:
             - name: KAPRO_LEADER_ELECTION_NAMESPACE
               value: {{ .Values.leaderElection.namespace | quote }}
             {{- end }}
+            {{- if .Values.leaderElection.id }}
+            - name: KAPRO_LEADER_ELECTION_ID
+              value: {{ .Values.leaderElection.id | quote }}
+            {{- end }}
             {{- if .Values.shard }}
             - name: KAPRO_SHARD
               value: {{ .Values.shard | quote }}
+            - name: KAPRO_SHARD_DEFAULT
+              value: {{ .Values.shardDefault | quote }}
             {{- end }}
             {{- if not .Values.webhook.enabled }}
             - name: KAPRO_DISABLE_WEBHOOKS

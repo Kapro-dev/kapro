@@ -27,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	authnv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -82,6 +83,13 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
+	if _, ok := s.requireDecisionAccess(ctx, w, r,
+		kaproAttrs("list", "fleetclusters", ""),
+		kaproAttrs("list", "promotionruns", ""),
+		kaproAttrs("list", "promotiontargets", ""),
+	); !ok {
+		return
+	}
 
 	var clusters kaprov1alpha1.FleetClusterList
 	if err := s.Client.List(ctx, &clusters); err != nil {
@@ -249,6 +257,12 @@ func (s *Server) handlePromotionRunContext(w http.ResponseWriter, r *http.Reques
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
+	if _, ok := s.requireDecisionAccess(ctx, w, r,
+		kaproAttrs("get", "promotionruns", promotionrunName),
+		kaproAttrs("list", "promotiontargets", ""),
+	); !ok {
+		return
+	}
 
 	var promotionrun kaprov1alpha1.PromotionRun
 	if err := s.Client.Get(ctx, client.ObjectKey{Name: promotionrunName}, &promotionrun); err != nil {
@@ -293,6 +307,12 @@ func (s *Server) handleGateContext(w http.ResponseWriter, r *http.Request, promo
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
+	if _, ok := s.requireDecisionAccess(ctx, w, r,
+		kaproAttrs("get", "promotionruns", promotionrunName),
+		kaproAttrs("get", "promotiontargets", targetKey),
+	); !ok {
+		return
+	}
 
 	var promotionrun kaprov1alpha1.PromotionRun
 	if err := s.Client.Get(ctx, client.ObjectKey{Name: promotionrunName}, &promotionrun); err != nil {
@@ -339,6 +359,11 @@ func (s *Server) handleClusterHealth(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
+	if _, ok := s.requireDecisionAccess(ctx, w, r,
+		kaproAttrs("get", "fleetclusters", clusterName),
+	); !ok {
+		return
+	}
 
 	var mc kaprov1alpha1.FleetCluster
 	if err := s.Client.Get(ctx, client.ObjectKey{Name: clusterName}, &mc); err != nil {
@@ -368,6 +393,14 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	l := log.FromContext(ctx)
+	user, ok := s.requireDecisionAccess(ctx, w, r,
+		kaproAttrs("get", "promotionruns", promotionrunName),
+		kaproAttrs("get", "promotiontargets", targetKey),
+		kaproAttrs("update", "promotiontargets/status", targetKey),
+	)
+	if !ok {
+		return
+	}
 
 	// Parse request body.
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
@@ -457,7 +490,7 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 
 	// Build the decision entry.
 	now := time.Now().UTC().Format(time.RFC3339)
-	agentName := extractAgentName(r)
+	agentName := decisionIdentityName(user)
 	jwtFP := extractJWTFingerprint(r)
 
 	// Resolve and enforce AgentPolicy if one exists.
@@ -489,6 +522,12 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 		}
 		if pd.RequireHumanCosign && req.Decision == "Approve" {
 			effectiveDecision = "PendingHumanConfirm"
+		}
+	}
+	if req.Decision == "Approve" && effectiveDecision == "Approve" {
+		if err := s.authorizeDecisionUser(ctx, *user, kaproAttrs("create", "approvals", "")); err != nil {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
 		}
 	}
 
@@ -586,6 +625,14 @@ func (s *Server) handleOverride(w http.ResponseWriter, r *http.Request, promotio
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
+	user, ok := s.requireDecisionAccess(ctx, w, r,
+		kaproAttrs("get", "promotionruns", promotionrunName),
+		kaproAttrs("get", "promotiontargets", targetKey),
+		kaproAttrs("update", "promotiontargets/status", targetKey),
+	)
+	if !ok {
+		return
+	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 16*1024))
 	if err != nil {
@@ -597,8 +644,8 @@ func (s *Server) handleOverride(w http.ResponseWriter, r *http.Request, promotio
 		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	if req.Action == "" || req.Identity == "" || req.Reason == "" {
-		http.Error(w, "action, identity, and reason are required", http.StatusBadRequest)
+	if req.Action == "" || req.Reason == "" {
+		http.Error(w, "action and reason are required", http.StatusBadRequest)
 		return
 	}
 
@@ -611,6 +658,12 @@ func (s *Server) handleOverride(w http.ResponseWriter, r *http.Request, promotio
 		http.Error(w, "target/promotionrun mismatch", http.StatusConflict)
 		return
 	}
+	if req.Action == "Approve" {
+		if err := s.authorizeDecisionUser(ctx, *user, kaproAttrs("create", "approvals", "")); err != nil {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	overriddenDecisionID := ""
@@ -622,7 +675,7 @@ func (s *Server) handleOverride(w http.ResponseWriter, r *http.Request, promotio
 		OverrideID:           fmt.Sprintf("o-%s-%s", time.Now().Format("20060102-150405"), targetKey),
 		OverriddenDecisionID: overriddenDecisionID,
 		Action:               req.Action,
-		Identity:             req.Identity,
+		Identity:             decisionIdentityName(user),
 		Reason:               req.Reason,
 		OverriddenAt:         now,
 	}
@@ -648,7 +701,7 @@ func (s *Server) handleOverride(w http.ResponseWriter, r *http.Request, promotio
 				PromotionRun: promotionrunName,
 				Target:       target.Spec.Target,
 				Ref:          targetKey,
-				ApprovedBy:   req.Identity,
+				ApprovedBy:   decisionIdentityName(user),
 				Comment:      fmt.Sprintf("human override: %s", req.Reason),
 			},
 		}
@@ -666,23 +719,11 @@ func (s *Server) handleOverride(w http.ResponseWriter, r *http.Request, promotio
 
 // --- Helpers ---
 
-// extractAgentName gets the agent identity from the Authorization header.
-// In v0.3, we use a simple bearer token extraction. In v0.4, this will
-// resolve against AgentPolicy via full JWT validation.
-func extractAgentName(r *http.Request) string {
-	auth := r.Header.Get("Authorization")
-	if strings.HasPrefix(auth, "Bearer ") {
-		// For now, use X-Agent-Name header as the identity.
-		// Full JWT validation comes with AgentPolicy in v0.4.
-		if name := r.Header.Get("X-Agent-Name"); name != "" {
-			return name
-		}
-		return "unknown-agent"
+func decisionIdentityName(user *authnv1.UserInfo) string {
+	if user != nil && user.Username != "" {
+		return user.Username
 	}
-	if name := r.Header.Get("X-Agent-Name"); name != "" {
-		return name
-	}
-	return "anonymous"
+	return "unknown"
 }
 
 // extractJWTFingerprint computes a SHA-256 fingerprint of the bearer token

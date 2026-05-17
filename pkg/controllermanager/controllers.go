@@ -71,7 +71,7 @@ func startPromotionRunController(_ context.Context, cc ControllerContext) (bool,
 		Planner:          cc.Planner,
 	}
 	if cc.ShardName != "" {
-		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: true}
+		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: cc.ShardIsDefault}
 	}
 	if err := r.SetupWithManager(cc.Manager); err != nil {
 		return false, err
@@ -92,7 +92,7 @@ func startPromotionTargetController(_ context.Context, cc ControllerContext) (bo
 		HeartbeatNamespace: cc.HeartbeatNamespace,
 	}
 	if cc.ShardName != "" {
-		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: true}
+		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: cc.ShardIsDefault}
 	}
 	if err := r.SetupWithManager(cc.Manager); err != nil {
 		return false, err

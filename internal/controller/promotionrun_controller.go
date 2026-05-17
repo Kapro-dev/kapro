@@ -252,8 +252,10 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 
 	// Build promotionplan phase map from current PromotionPlanProgress.
 	promotionplanPhase := make(map[string]string, len(promotionrun.Status.PromotionPlanProgress))
+	promotionplanProgress := make(map[string]kaprov1alpha1.PromotionPlanProgress, len(promotionrun.Status.PromotionPlanProgress))
 	for _, p := range promotionrun.Status.PromotionPlanProgress {
 		promotionplanPhase[p.Name] = p.Phase
+		promotionplanProgress[p.Name] = p
 	}
 
 	// Track updated progress (written back once at the end).
@@ -267,15 +269,27 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 		currentPhase := promotionplanPhase[promotionplanRef.Name]
 
 		if currentPhase == "Complete" {
+			previous := promotionplanProgress[promotionplanRef.Name]
 			updatedPromotionPlans = append(updatedPromotionPlans, kaprov1alpha1.PromotionPlanProgress{
-				Name: promotionplanRef.Name, PromotionPlan: promotionplanRef.PromotionPlan, Phase: "Complete",
+				Name:               promotionplanRef.Name,
+				PromotionPlan:      promotionplanRef.PromotionPlan,
+				ObservedGeneration: previous.ObservedGeneration,
+				Phase:              "Complete",
+				ActiveStage:        previous.ActiveStage,
+				StageProgress:      previous.StageProgress,
 			})
 			continue
 		}
 		if currentPhase == "Failed" {
 			allPromotionPlansComplete = false
+			previous := promotionplanProgress[promotionplanRef.Name]
 			updatedPromotionPlans = append(updatedPromotionPlans, kaprov1alpha1.PromotionPlanProgress{
-				Name: promotionplanRef.Name, PromotionPlan: promotionplanRef.PromotionPlan, Phase: "Failed",
+				Name:               promotionplanRef.Name,
+				PromotionPlan:      promotionplanRef.PromotionPlan,
+				ObservedGeneration: previous.ObservedGeneration,
+				Phase:              "Failed",
+				ActiveStage:        previous.ActiveStage,
+				StageProgress:      previous.StageProgress,
 			})
 			continue
 		}
@@ -290,8 +304,14 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 		}
 		if !depsComplete {
 			allPromotionPlansComplete = false
+			previous := promotionplanProgress[promotionplanRef.Name]
 			updatedPromotionPlans = append(updatedPromotionPlans, kaprov1alpha1.PromotionPlanProgress{
-				Name: promotionplanRef.Name, PromotionPlan: promotionplanRef.PromotionPlan, Phase: "Pending",
+				Name:               promotionplanRef.Name,
+				PromotionPlan:      promotionplanRef.PromotionPlan,
+				ObservedGeneration: previous.ObservedGeneration,
+				Phase:              "Pending",
+				ActiveStage:        previous.ActiveStage,
+				StageProgress:      previous.StageProgress,
 			})
 			continue
 		}
@@ -300,6 +320,20 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 		var promotionplan kaprov1alpha1.PromotionPlan
 		if err := r.Get(ctx, client.ObjectKey{Name: promotionplanRef.PromotionPlan}, &promotionplan); err != nil {
 			return ctrl.Result{}, fmt.Errorf("promotionplan %s not found: %w", promotionplanRef.PromotionPlan, err)
+		}
+		previous := promotionplanProgress[promotionplanRef.Name]
+		if previous.ObservedGeneration != 0 && previous.ObservedGeneration != promotionplan.Generation {
+			msg := fmt.Sprintf("promotionplan %s changed during promotionrun: observed generation %d, current generation %d", promotionplan.Name, previous.ObservedGeneration, promotionplan.Generation)
+			promotionrun.Status.Phase = kaprov1alpha1.PromotionRunPhaseFailed
+			promotionrun.Status.CompletedAt = time.Now().UTC().Format(time.RFC3339)
+			r.setPromotionRunReadyCondition(promotionrun, metav1.ConditionFalse, "PromotionPlanChanged", msg)
+			r.setStalledCondition(promotionrun, "PromotionPlanChanged", msg)
+			if err := r.patchPromotionRunStatus(ctx, promotionrun, patch); err != nil {
+				return ctrl.Result{}, fmt.Errorf("patch PromotionRun status (promotionplan changed): %w", err)
+			}
+			r.Recorder.Eventf(promotionrun, corev1.EventTypeWarning, "PromotionPlanChanged", msg)
+			r.notifyPromotionRunEvent(ctx, promotionrun, notification.EventPromotionRunFailed, msg)
+			return ctrl.Result{}, nil
 		}
 
 		stageProgress, promotionplanDone, promotionplanFailed, requeueAfter, cancels, err := r.reconcilePromotionPlanStages(
@@ -338,11 +372,12 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 		}
 
 		updatedPromotionPlans = append(updatedPromotionPlans, kaprov1alpha1.PromotionPlanProgress{
-			Name:          promotionplanRef.Name,
-			PromotionPlan: promotionplanRef.PromotionPlan,
-			Phase:         newPhase,
-			ActiveStage:   activeStage,
-			StageProgress: stageProgress,
+			Name:               promotionplanRef.Name,
+			PromotionPlan:      promotionplanRef.PromotionPlan,
+			ObservedGeneration: promotionplan.Generation,
+			Phase:              newPhase,
+			ActiveStage:        activeStage,
+			StageProgress:      stageProgress,
 		})
 
 		if promotionplanFailed {

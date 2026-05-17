@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/utils/ptr"
@@ -56,6 +57,8 @@ func init() {
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create
+// +kubebuilder:rbac:groups=authentication.k8s.io,resources=tokenreviews,verbs=create
+// +kubebuilder:rbac:groups=authorization.k8s.io,resources=subjectaccessreviews,verbs=create
 // +kubebuilder:rbac:groups=kapro.io,resources=agentpolicies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kapro.io,resources=agentpolicies/status,verbs=get;update;patch
 
@@ -96,9 +99,17 @@ func main() {
 	if podNS == "" {
 		podNS = "kapro-system"
 	}
+	shardName := os.Getenv("KAPRO_SHARD")
 	leaderElectionNS := os.Getenv("KAPRO_LEADER_ELECTION_NAMESPACE")
 	if leaderElectionNS == "" {
 		leaderElectionNS = podNS
+	}
+	leaderElectionID := os.Getenv("KAPRO_LEADER_ELECTION_ID")
+	if leaderElectionID == "" {
+		leaderElectionID = "kapro-operator-leader.kapro.io"
+		if shardName != "" {
+			leaderElectionID = "kapro-operator-leader-" + shardName + ".kapro.io"
+		}
 	}
 
 	cfg := ctrl.GetConfigOrDie()
@@ -115,7 +126,7 @@ func main() {
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:                        scheme,
 		LeaderElection:                leaderElect,
-		LeaderElectionID:              "kapro-operator-leader.kapro.io",
+		LeaderElectionID:              leaderElectionID,
 		LeaderElectionNamespace:       leaderElectionNS,
 		LeaderElectionReleaseOnCancel: true,
 		Metrics: metricsserver.Options{
@@ -203,11 +214,12 @@ func main() {
 		HubAPIURL:          os.Getenv("KAPRO_HUB_API_URL"),
 		HubCAData:          loadHubCAData(mgr.GetConfig()),
 		HeartbeatNamespace: podNS,
-		ShardName:          os.Getenv("KAPRO_SHARD"),
+		ShardName:          shardName,
+		ShardIsDefault:     strings.EqualFold(os.Getenv("KAPRO_SHARD_DEFAULT"), "true"),
 	}
 
 	if cc.ShardName != "" {
-		log.Info("controller sharding enabled", "shard", cc.ShardName)
+		log.Info("controller sharding enabled", "shard", cc.ShardName, "default", cc.ShardIsDefault, "leaderElectionID", leaderElectionID)
 	}
 
 	// ApprovalSecret is loaded by ensureApprovalSecret — it either reads the existing
@@ -279,10 +291,25 @@ func main() {
 		if approvalAddr == "" {
 			approvalAddr = ":8091"
 		}
+		decisionAPIEnabled := strings.EqualFold(os.Getenv("KAPRO_ENABLE_DECISION_API"), "true")
+		var decisionAuthenticator webhook.DecisionAuthenticator
+		var decisionAuthorizer webhook.DecisionAuthorizer
+		if decisionAPIEnabled {
+			kubeClient, err := kubernetes.NewForConfig(mgr.GetConfig())
+			if err != nil {
+				log.Error(err, "unable to create Kubernetes auth client for Decision API")
+				os.Exit(1)
+			}
+			decisionAuthenticator = webhook.KubernetesDecisionAuthenticator{Client: kubeClient.AuthenticationV1()}
+			decisionAuthorizer = webhook.KubernetesDecisionAuthorizer{Client: kubeClient.AuthorizationV1()}
+		}
 		approvalHandler := (&webhook.Server{
-			Client:            mgr.GetClient(),
-			TokenSecret:       cc.ApprovalSecret, // reuse already-validated secret
-			OperatorNamespace: podNS,
+			Client:                mgr.GetClient(),
+			TokenSecret:           cc.ApprovalSecret, // reuse already-validated secret
+			OperatorNamespace:     podNS,
+			DecisionAPIEnabled:    decisionAPIEnabled,
+			DecisionAuthenticator: decisionAuthenticator,
+			DecisionAuthorizer:    decisionAuthorizer,
 		}).Handler()
 		if err := mgr.Add(leaderOnlyHTTP(approvalAddr, approvalHandler, 10*time.Second)); err != nil {
 			log.Error(err, "unable to add approval server")

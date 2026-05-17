@@ -95,6 +95,10 @@ Recommended model:
 
 - Run one shard per major environment or region.
 - Assign objects using a stable shard label such as `kapro.io/shard`.
+- Set `KAPRO_SHARD_DEFAULT=true` on exactly one shard if unlabeled objects
+  should still be processed.
+- Use the default shard-specific leader election ID, or set
+  `KAPRO_LEADER_ELECTION_ID` explicitly for each shard deployment.
 - Keep one unsharded controller only in small development clusters.
 - Do not run overlapping shards against the same object set unless leader
   election and selectors make ownership unambiguous.

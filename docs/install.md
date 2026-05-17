@@ -39,8 +39,50 @@ helm upgrade --install kapro charts/kapro-operator \
   --set hubAPIURL=https://hub.example.com:6443
 ```
 
-`externalURL` is used in approval links and Decision API callbacks.
+`externalURL` is used in approval links and optional Decision API callbacks.
 `hubAPIURL` should be the hub API server URL reachable from spoke clusters.
+
+## Optional Decision API
+
+The approval HTTP server is installed for signed human approval links. The
+machine-facing Decision API under `/api/v1` is disabled by default.
+
+Enable it only after granting Kubernetes RBAC to the ServiceAccounts that should
+read promotion context or submit decisions:
+
+```bash
+helm upgrade --install kapro charts/kapro-operator \
+  --namespace kapro-system \
+  --create-namespace \
+  --set decisionAPI.enabled=true
+```
+
+Every Decision API request must include a Kubernetes bearer token. The operator
+validates the token with `TokenReview` and checks each requested action with
+`SubjectAccessReview` before reading fleet state, writing
+`PromotionTarget.status`, or creating `Approval` objects.
+
+Example approver RBAC:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kapro-decision-approver
+rules:
+  - apiGroups: ["kapro.io"]
+    resources: ["promotionruns", "promotiontargets"]
+    verbs: ["get"]
+  - apiGroups: ["kapro.io"]
+    resources: ["promotiontargets/status"]
+    verbs: ["update", "patch"]
+  - apiGroups: ["kapro.io"]
+    resources: ["approvals"]
+    verbs: ["create"]
+```
+
+Bind this role only to the agent or human-facing ServiceAccount that is allowed
+to decide or override promotions.
 
 ## Verify
 

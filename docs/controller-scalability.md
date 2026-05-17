@@ -131,6 +131,8 @@ Set the shard name with:
 env:
   - name: KAPRO_SHARD
     value: shard-a
+  - name: KAPRO_SHARD_DEFAULT
+    value: "true" # exactly one shard should process unlabeled objects
 ```
 
 Assign owned objects with:
@@ -174,15 +176,10 @@ Current sharding scope:
 For large fleets, run one active operator manager per shard and set
 `KAPRO_CONTROLLERS=promotionrun,promotion-target` on shard workers. Shard workers must
 not share the same leader-election identity; each active shard needs an
-independent leader-election lock. Run the remaining controllers in a separate
-singleton manager with leader election enabled.
-
-Current deployment constraint: the operator uses a fixed leader-election ID.
-Until the deployment surface exposes a distinct leader-election ID per shard,
-active shard managers in the same namespace can contend for the same lock. Use a
-deployment layout that gives each shard an independent leader-election namespace,
-or keep one active high-cardinality manager and use shard labels only when the
-operator packaging supports separate locks.
+independent leader-election lock. When `KAPRO_SHARD` is set and
+`KAPRO_LEADER_ELECTION_ID` is not set, the operator derives a shard-specific
+leader-election ID. Run the remaining controllers in a separate singleton
+manager with leader election enabled.
 
 Sharding does not change ownership of non-shard-aware controllers. The
 singleton manager should continue to own approvals, Kapro resource generation,

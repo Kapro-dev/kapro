@@ -42,11 +42,13 @@ securityContext:
 leaderElection:
   enabled: true
   namespace: ""  # defaults to PromotionRun namespace
+  id: ""         # defaults to a shard-specific ID when shard is set
 
 controllers:
   - "*"
 
 shard: ""
+shardDefault: false
 
 # Metrics
 metrics:
@@ -114,6 +116,11 @@ approvalServer:
     enabled: true
     type: ClusterIP
     port: 8091
+
+decisionAPI:
+  # Opt-in. When enabled, /api/v1 Decision API routes require Kubernetes
+  # bearer-token authentication plus SubjectAccessReview authorization.
+  enabled: false
 
 pluginGateway:
   # Opt-in preview. When true, the operator loads ready PluginRegistration

@@ -86,6 +86,9 @@ type ControllerContext struct {
 	// are processed (plus unlabeled objects on the default shard).
 	// Populated from KAPRO_SHARD env var in cmd/operator/main.go.
 	ShardName string
+	// ShardIsDefault controls whether this shard processes unlabeled objects.
+	// Exactly one active shard should set this when sharding is enabled.
+	ShardIsDefault bool
 
 	// HeartbeatNamespace is where spoke controllers renew
 	// coordination.k8s.io Lease objects named kapro-heartbeat-<cluster>.

@@ -242,7 +242,7 @@ func TestDecide_WithAgentPolicy_Denied(t *testing.T) {
 		IdempotencyKey: "policy-test-1",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
-	req.Header.Set("X-Agent-Name", "test-agent")
+	authorizeDecisionRequest(req)
 	rec := httptest.NewRecorder()
 	s.handleDecide(rec, req, "rel-1", "rel-1-canary-cluster-a")
 
@@ -263,7 +263,7 @@ func TestDecide_WithAgentPolicy_Allowed(t *testing.T) {
 		IdempotencyKey: "policy-test-2",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
-	req.Header.Set("X-Agent-Name", "test-agent")
+	authorizeDecisionRequest(req)
 	rec := httptest.NewRecorder()
 	s.handleDecide(rec, req, "rel-1", "rel-1-canary-cluster-a")
 
@@ -284,7 +284,7 @@ func TestDecide_RecommendModeDoesNotCreateApproval(t *testing.T) {
 		IdempotencyKey: "recommend-test-1",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
-	req.Header.Set("X-Agent-Name", "test-agent")
+	authorizeDecisionRequest(req)
 	rec := httptest.NewRecorder()
 	s.handleDecide(rec, req, "rel-1", "rel-1-canary-cluster-a")
 
