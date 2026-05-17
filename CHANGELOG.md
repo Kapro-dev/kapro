@@ -27,9 +27,9 @@ record for each tag.
 
 - None.
 
-## v0.4.0-alpha.0 - Pending
+## v0.4.0-alpha.0 - 2026-05-17
 
-`v0.4.0-alpha.0` is the first release candidate for the current Kapro promotion
+`v0.4.0-alpha.0` is the first alpha release for the current Kapro promotion
 domain architecture. It is intended for controlled alpha adopters who can run
 the documented verification suite and accept `v1alpha1` API movement.
 
@@ -134,7 +134,7 @@ the documented verification suite and accept `v1alpha1` API movement.
 
 ### Verification
 
-Before tagging `v0.4.0-alpha.0`, run:
+Release verification for `v0.4.0-alpha.0` completed on 2026-05-17 with:
 
 ```bash
 go test ./...
@@ -149,8 +149,7 @@ scripts/verify-install.sh flux-git-e2e
 scripts/verify-install.sh flux-e2e
 ```
 
-If an environment cannot run Docker, Kind, Argo CD, Flux, or external network
-dependencies, record the waiver in the release notes before tagging.
+No verification waivers were recorded.
 
 ### Known Gaps
 
