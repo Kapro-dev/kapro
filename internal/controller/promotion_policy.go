@@ -23,12 +23,29 @@ type promotionPolicyDecision struct {
 	Reason       string
 	Message      string
 	RequeueAfter time.Duration
+	// AuditViolations collects policies that would have blocked the Promotion
+	// while running in audit mode. Recorded on Promotion status even when the
+	// promotion is allowed to proceed.
+	AuditViolations []promotionPolicyAuditViolation
+	// Rollback indicates the failing policy requested onFailure=rollback. Treated
+	// as a terminal halt that also suspends owned PromotionRuns so a human can
+	// triage; a future release may implement automated version revert.
+	Rollback bool
+}
+
+// promotionPolicyAuditViolation describes one would-have-blocked outcome from
+// an audit-mode policy.
+type promotionPolicyAuditViolation struct {
+	Policy  string
+	Reason  string
+	Message string
 }
 
 func (r *PromotionReconciler) evaluatePromotionPolicies(ctx context.Context, promotion *kaprov1alpha1.Promotion, now time.Time) (promotionPolicyDecision, error) {
 	if len(promotion.Spec.Policies) == 0 {
 		return promotionPolicyDecision{Allowed: true}, nil
 	}
+	allowed := promotionPolicyDecision{Allowed: true}
 	for _, ref := range promotion.Spec.Policies {
 		if ref.Name == "" {
 			return promotionPolicyDecision{
@@ -65,15 +82,29 @@ func (r *PromotionReconciler) evaluatePromotionPolicies(ctx context.Context, pro
 		}
 		if promotionPolicyAuditOnly(&policy) {
 			r.recordPromotionPolicyAuditDecision(promotion, &policy, decision)
+			allowed.AuditViolations = append(allowed.AuditViolations, promotionPolicyAuditViolation{
+				Policy:  policy.Name,
+				Reason:  decision.Reason,
+				Message: decision.Message,
+			})
 			continue
 		}
 		if promotionPolicyContinuesOnFailure(&policy) {
 			r.recordPromotionPolicyContinueDecision(promotion, &policy, decision)
 			continue
 		}
+		if promotionPolicyRollsBackOnFailure(&policy) {
+			r.recordPromotionPolicyRollbackDecision(promotion, &policy, decision)
+			decision.Terminal = true
+			decision.Rollback = true
+			if decision.Reason == "" {
+				decision.Reason = "PromotionPolicyRollback"
+			}
+			return decision, nil
+		}
 		return decision, nil
 	}
-	return promotionPolicyDecision{Allowed: true}, nil
+	return allowed, nil
 }
 
 func promotionPolicyApplies(policy *kaprov1alpha1.PromotionPolicy, promotion *kaprov1alpha1.Promotion) (bool, error) {
@@ -144,6 +175,10 @@ func promotionPolicyContinuesOnFailure(policy *kaprov1alpha1.PromotionPolicy) bo
 	return policy.Spec.OnFailure == "continue"
 }
 
+func promotionPolicyRollsBackOnFailure(policy *kaprov1alpha1.PromotionPolicy) bool {
+	return policy.Spec.OnFailure == "rollback"
+}
+
 func (r *PromotionReconciler) recordPromotionPolicyAuditDecision(promotion *kaprov1alpha1.Promotion, policy *kaprov1alpha1.PromotionPolicy, decision promotionPolicyDecision) {
 	if r.Recorder == nil {
 		return
@@ -168,6 +203,21 @@ func (r *PromotionReconciler) recordPromotionPolicyContinueDecision(promotion *k
 		corev1.EventTypeWarning,
 		"PromotionPolicyContinued",
 		"PromotionPolicy %q failed with onFailure=continue: %s: %s",
+		policy.Name,
+		decision.Reason,
+		decision.Message,
+	)
+}
+
+func (r *PromotionReconciler) recordPromotionPolicyRollbackDecision(promotion *kaprov1alpha1.Promotion, policy *kaprov1alpha1.PromotionPolicy, decision promotionPolicyDecision) {
+	if r.Recorder == nil {
+		return
+	}
+	r.Recorder.Eventf(
+		promotion,
+		corev1.EventTypeWarning,
+		"PromotionPolicyRollback",
+		"PromotionPolicy %q failed with onFailure=rollback: %s: %s; in-flight PromotionRuns will be suspended pending operator review (automated revert is not yet implemented)",
 		policy.Name,
 		decision.Reason,
 		decision.Message,
@@ -304,8 +354,33 @@ func (r *PromotionReconciler) patchPromotionPolicyDecision(ctx context.Context, 
 		Message:            decision.Message,
 		ObservedGeneration: promotion.Generation,
 	})
+	applyPromotionAuditConditions(promotion, decision.AuditViolations)
 	if err := r.Status().Patch(ctx, promotion, patch); err != nil {
 		return fmt.Errorf("patch Promotion policy status: %w", err)
 	}
 	return nil
+}
+
+// applyPromotionAuditConditions writes a PolicyAuditViolation condition on the
+// Promotion describing any audit-mode policy that would have blocked it. The
+// condition is True when audit violations exist and removed otherwise so a
+// human reviewer can rely on its presence as evidence of blocked-in-shadow
+// outcomes. Called from both the policy-denied and allowed paths.
+func applyPromotionAuditConditions(promotion *kaprov1alpha1.Promotion, violations []promotionPolicyAuditViolation) {
+	const conditionType = "PolicyAuditViolation"
+	if len(violations) == 0 {
+		meta.RemoveStatusCondition(&promotion.Status.Conditions, conditionType)
+		return
+	}
+	parts := make([]string, 0, len(violations))
+	for _, v := range violations {
+		parts = append(parts, fmt.Sprintf("%s(%s): %s", v.Policy, v.Reason, v.Message))
+	}
+	meta.SetStatusCondition(&promotion.Status.Conditions, metav1.Condition{
+		Type:               conditionType,
+		Status:             metav1.ConditionTrue,
+		Reason:             "AuditPolicyWouldHaveBlocked",
+		Message:            strings.Join(parts, "; "),
+		ObservedGeneration: promotion.Generation,
+	})
 }

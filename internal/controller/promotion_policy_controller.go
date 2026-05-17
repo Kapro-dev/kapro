@@ -74,6 +74,16 @@ func validatePromotionPolicy(policy *kaprov1alpha1.PromotionPolicy) (bool, strin
 			return false, "InvalidSelector", err.Error()
 		}
 	}
+	switch policy.Spec.OnFailure {
+	case "", "halt", "continue":
+		// supported
+	case "rollback":
+		return false, "UnsupportedOnFailureRollback",
+			"PromotionPolicy.spec.onFailure=rollback is not implemented; in-flight runs will be suspended and flagged for operator review but no automated revert is performed. Use halt or continue, or omit the field."
+	default:
+		return false, "UnknownOnFailure",
+			fmt.Sprintf("PromotionPolicy.spec.onFailure=%q is not a supported value (allowed: halt, rollback, continue)", policy.Spec.OnFailure)
+	}
 	for _, window := range policy.Spec.FreezeWindows {
 		if _, err := validateFreezeWindow(window); err != nil {
 			return false, "InvalidFreezeWindow", err.Error()
@@ -118,9 +128,17 @@ func validatePromotionCEL(expr string) error {
 	if err != nil {
 		return err
 	}
-	_, issues := env.Compile(expr)
+	ast, issues := env.Compile(expr)
 	if issues != nil && issues.Err() != nil {
 		return issues.Err()
+	}
+	// CEL expressions that compile but return a non-bool type (e.g. just
+	// `promotion.version`) would always fail evaluation at runtime because
+	// evaluatePromotionCEL expects True/False. Reject them at Ready time so
+	// the failure surfaces on the policy itself rather than terminally on
+	// every matched Promotion.
+	if ast.OutputType() != cel.BoolType {
+		return fmt.Errorf("expression must return bool, got %s", ast.OutputType().String())
 	}
 	return nil
 }
