@@ -81,6 +81,12 @@ validates the token with `TokenReview` and checks each requested action with
 `SubjectAccessReview` before reading fleet state, writing
 `PromotionTarget.status`, or creating `Approval` objects.
 
+Read endpoints are bounded. `GET /api/v1/fleet` and
+`GET /api/v1/promotionruns/{name}/context` accept `limit`, `labelSelector`, and
+`phase` query parameters and return `page.truncated=true` when more matching
+objects exist than were returned or when sparse filters exhaust the server scan
+budget.
+
 Example approver RBAC:
 
 ```yaml

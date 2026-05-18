@@ -24,18 +24,32 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	authnv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
 
-const maxDecisionTraceHistory = 10
+const (
+	maxDecisionTraceHistory = 10
+	defaultDecisionAPILimit = 100
+	maxDecisionAPILimit     = 500
+	// Phase is not a selectable field for every Kapro API. Bound sparse phase
+	// scans to a multiple of the requested response limit and return a truncated
+	// partial view when the scan budget is exhausted.
+	decisionAPIScanLimitMultiplier = 10
+
+	decisionPromotionRunLabel = "kapro.io/promotionrun"
+	decisionPhaseLabel        = "kapro.io/phase"
+)
 
 // RegisterDecisionAPI mounts the Decision API endpoints on the given mux.
 func (s *Server) RegisterDecisionAPI(mux *http.ServeMux) {
@@ -56,6 +70,30 @@ type FleetSummary struct {
 	PendingDecisions    int                   `json:"pendingDecisions"`
 	Clusters            []ClusterSummary      `json:"clusters"`
 	PromotionRuns       []PromotionRunSummary `json:"promotionruns"`
+	Page                DecisionAPIPage       `json:"page"`
+}
+
+// DecisionAPIPage describes bounded Decision API read responses.
+type DecisionAPIPage struct {
+	Limit         int            `json:"limit"`
+	LabelSelector string         `json:"labelSelector,omitempty"`
+	Phase         string         `json:"phase,omitempty"`
+	Truncated     bool           `json:"truncated"`
+	Counts        map[string]int `json:"counts,omitempty"`
+}
+
+type decisionListOptions struct {
+	limit         int
+	labelSelector string
+	selector      labels.Selector
+	phase         string
+}
+
+func (s *Server) decisionReader() client.Reader {
+	if s.DecisionReader != nil {
+		return s.DecisionReader
+	}
+	return s.Client
 }
 
 // ClusterSummary is a compact view of one FleetCluster.
@@ -90,42 +128,80 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 	); !ok {
 		return
 	}
+	opts, err := decisionListOptionsFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	var clusters kaprov1alpha1.FleetClusterList
-	if err := s.Client.List(ctx, &clusters); err != nil {
+	clusters, clusterCount, clustersTruncated, err := listDecisionItems(
+		ctx,
+		s.decisionReader(),
+		opts,
+		func() client.ObjectList { return &kaprov1alpha1.FleetClusterList{} },
+		func(list client.ObjectList) []kaprov1alpha1.FleetCluster {
+			return list.(*kaprov1alpha1.FleetClusterList).Items
+		},
+		filterDecisionFleetClustersByPhase,
+	)
+	if err != nil {
 		http.Error(w, "failed to list clusters", http.StatusInternalServerError)
 		return
 	}
 
-	var promotionruns kaprov1alpha1.PromotionRunList
-	if err := s.Client.List(ctx, &promotionruns); err != nil {
+	promotionruns, promotionRunCount, promotionRunsTruncated, err := listDecisionItems(
+		ctx,
+		s.decisionReader(),
+		opts,
+		func() client.ObjectList { return &kaprov1alpha1.PromotionRunList{} },
+		func(list client.ObjectList) []kaprov1alpha1.PromotionRun {
+			return list.(*kaprov1alpha1.PromotionRunList).Items
+		},
+		filterDecisionPromotionRunsByPhase,
+	)
+	if err != nil {
 		http.Error(w, "failed to list promotionruns", http.StatusInternalServerError)
 		return
 	}
 
-	// Count pending decisions across all active promotionruns.
-	var targets kaprov1alpha1.PromotionTargetList
-	if err := s.Client.List(ctx, &targets); err != nil {
-		http.Error(w, "failed to list targets", http.StatusInternalServerError)
-		return
+	var targets []kaprov1alpha1.PromotionTarget
+	pendingDecisionCount, pendingDecisionsTruncated := 0, false
+	if opts.phase == "" || strings.EqualFold(string(kaprov1alpha1.TargetPhaseWaitingApproval), opts.phase) {
+		// Count pending decisions through the same bounded read path so one large
+		// fleet cannot force the Decision API to materialize every target.
+		var err error
+		targets, pendingDecisionCount, pendingDecisionsTruncated, err = listDecisionItems(
+			ctx,
+			s.decisionReader(),
+			opts,
+			func() client.ObjectList { return &kaprov1alpha1.PromotionTargetList{} },
+			func(list client.ObjectList) []kaprov1alpha1.PromotionTarget {
+				return list.(*kaprov1alpha1.PromotionTargetList).Items
+			},
+			filterDecisionPendingTargetsByPhase,
+		)
+		if err != nil {
+			http.Error(w, "failed to list targets", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	healthy, degraded, pendingDecisions := 0, 0, 0
-	for _, mc := range clusters.Items {
+	for _, mc := range clusters {
 		if mc.Status.Health.AllWorkloadsReady {
 			healthy++
 		} else {
 			degraded++
 		}
 	}
-	for _, t := range targets.Items {
+	for _, t := range targets {
 		if t.Status.Phase == kaprov1alpha1.TargetPhaseWaitingApproval {
 			pendingDecisions++
 		}
 	}
 
-	clusterSummaries := make([]ClusterSummary, 0, len(clusters.Items))
-	for _, mc := range clusters.Items {
+	clusterSummaries := make([]ClusterSummary, 0, len(clusters))
+	for _, mc := range clusters {
 		clusterSummaries = append(clusterSummaries, ClusterSummary{
 			Name:          mc.Name,
 			Labels:        mc.Labels,
@@ -137,8 +213,8 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	activePromotionRuns := 0
-	promotionrunSummaries := make([]PromotionRunSummary, 0, len(promotionruns.Items))
-	for _, rel := range promotionruns.Items {
+	promotionrunSummaries := make([]PromotionRunSummary, 0, len(promotionruns))
+	for _, rel := range promotionruns {
 		if rel.Status.Phase == kaprov1alpha1.PromotionRunPhaseProgressing {
 			activePromotionRuns++
 		}
@@ -156,13 +232,24 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, FleetSummary{
 		GeneratedAt:         time.Now().UTC().Format(time.RFC3339),
-		TotalClusters:       len(clusters.Items),
+		TotalClusters:       len(clusters),
 		HealthyClusters:     healthy,
 		DegradedClusters:    degraded,
 		ActivePromotionRuns: activePromotionRuns,
 		PendingDecisions:    pendingDecisions,
 		Clusters:            clusterSummaries,
 		PromotionRuns:       promotionrunSummaries,
+		Page: DecisionAPIPage{
+			Limit:         opts.limit,
+			LabelSelector: opts.labelSelector,
+			Phase:         opts.phase,
+			Truncated:     clustersTruncated || promotionRunsTruncated || pendingDecisionsTruncated,
+			Counts: map[string]int{
+				"fleetclusters":    clusterCount,
+				"promotionruns":    promotionRunCount,
+				"pendingdecisions": pendingDecisionCount,
+			},
+		},
 	})
 }
 
@@ -174,6 +261,7 @@ type PromotionRunContext struct {
 	PromotionRun  kaprov1alpha1.PromotionRun      `json:"promotionrun"`
 	PromotionPlan *kaprov1alpha1.PromotionPlan    `json:"promotionplan,omitempty"`
 	Targets       []kaprov1alpha1.PromotionTarget `json:"targets"`
+	Page          DecisionAPIPage                 `json:"page"`
 }
 
 // --- Gate Context ---
@@ -263,9 +351,14 @@ func (s *Server) handlePromotionRunContext(w http.ResponseWriter, r *http.Reques
 	); !ok {
 		return
 	}
+	opts, err := decisionListOptionsFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	var promotionrun kaprov1alpha1.PromotionRun
-	if err := s.Client.Get(ctx, client.ObjectKey{Name: promotionrunName}, &promotionrun); err != nil {
+	if err := s.decisionReader().Get(ctx, client.ObjectKey{Name: promotionrunName}, &promotionrun); err != nil {
 		http.Error(w, "promotionrun not found", http.StatusNotFound)
 		return
 	}
@@ -274,22 +367,26 @@ func (s *Server) handlePromotionRunContext(w http.ResponseWriter, r *http.Reques
 	var promotionplan *kaprov1alpha1.PromotionPlan
 	if len(promotionrun.Spec.PromotionPlans) > 0 {
 		var pl kaprov1alpha1.PromotionPlan
-		if err := s.Client.Get(ctx, client.ObjectKey{Name: promotionrun.Spec.PromotionPlans[0].PromotionPlan}, &pl); err == nil {
+		if err := s.decisionReader().Get(ctx, client.ObjectKey{Name: promotionrun.Spec.PromotionPlans[0].PromotionPlan}, &pl); err == nil {
 			promotionplan = &pl
 		}
 	}
 
-	// List all PromotionTargets for this promotionrun.
-	var allTargets kaprov1alpha1.PromotionTargetList
-	if err := s.Client.List(ctx, &allTargets); err != nil {
+	targets, targetCount, targetsTruncated, err := listDecisionItems(
+		ctx,
+		s.decisionReader(),
+		decisionOptionsWithPromotionRunSelector(opts, promotionrunName),
+		func() client.ObjectList { return &kaprov1alpha1.PromotionTargetList{} },
+		func(list client.ObjectList) []kaprov1alpha1.PromotionTarget {
+			return list.(*kaprov1alpha1.PromotionTargetList).Items
+		},
+		func(items []kaprov1alpha1.PromotionTarget, phase string) []kaprov1alpha1.PromotionTarget {
+			return filterDecisionPromotionTargetsForRunByPhase(items, promotionrunName, phase)
+		},
+	)
+	if err != nil {
 		http.Error(w, "failed to list targets", http.StatusInternalServerError)
 		return
-	}
-	targets := make([]kaprov1alpha1.PromotionTarget, 0)
-	for _, t := range allTargets.Items {
-		if t.Spec.PromotionRunRef == promotionrunName {
-			targets = append(targets, t)
-		}
 	}
 
 	writeJSON(w, http.StatusOK, PromotionRunContext{
@@ -297,7 +394,162 @@ func (s *Server) handlePromotionRunContext(w http.ResponseWriter, r *http.Reques
 		PromotionRun:  promotionrun,
 		PromotionPlan: promotionplan,
 		Targets:       targets,
+		Page: DecisionAPIPage{
+			Limit:         opts.limit,
+			LabelSelector: opts.labelSelector,
+			Phase:         opts.phase,
+			Truncated:     targetsTruncated,
+			Counts:        map[string]int{"promotiontargets": targetCount},
+		},
 	})
+}
+
+func decisionListOptionsFromRequest(r *http.Request) (decisionListOptions, error) {
+	q := r.URL.Query()
+	limit := defaultDecisionAPILimit
+	if raw := q.Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > maxDecisionAPILimit {
+			return decisionListOptions{}, fmt.Errorf("limit must be an integer between 1 and %d", maxDecisionAPILimit)
+		}
+		limit = parsed
+	}
+
+	selector := labels.Everything()
+	labelSelector := q.Get("labelSelector")
+	if labelSelector != "" {
+		parsed, err := labels.Parse(labelSelector)
+		if err != nil {
+			return decisionListOptions{}, fmt.Errorf("labelSelector is invalid: %w", err)
+		}
+		selector = parsed
+	}
+
+	return decisionListOptions{
+		limit:         limit,
+		labelSelector: labelSelector,
+		selector:      selector,
+		phase:         q.Get("phase"),
+	}, nil
+}
+
+func decisionOptionsWithPromotionRunSelector(opts decisionListOptions, promotionrunName string) decisionListOptions {
+	req, err := labels.NewRequirement(decisionPromotionRunLabel, selection.Equals, []string{promotionrunName})
+	if err != nil {
+		return opts
+	}
+	opts.selector = opts.selector.Add(*req)
+	return opts
+}
+
+func listDecisionItems[T any](
+	ctx context.Context,
+	c client.Reader,
+	opts decisionListOptions,
+	newList func() client.ObjectList,
+	itemsFromList func(client.ObjectList) []T,
+	filter func([]T, string) []T,
+) ([]T, int, bool, error) {
+	var out []T
+	continueToken := ""
+	pageSize := int64(opts.limit + 1)
+	scanLimit := opts.limit * decisionAPIScanLimitMultiplier
+	if scanLimit < opts.limit+1 {
+		scanLimit = opts.limit + 1
+	}
+	scanned := 0
+	for {
+		list := newList()
+		remainingScanBudget := scanLimit - scanned
+		if remainingScanBudget <= 0 {
+			return out, len(out), true, nil
+		}
+		thisPageSize := pageSize
+		if int64(remainingScanBudget) < thisPageSize {
+			thisPageSize = int64(remainingScanBudget)
+		}
+		listOpts := []client.ListOption{
+			client.MatchingLabelsSelector{Selector: opts.selector},
+			client.Limit(thisPageSize),
+		}
+		if continueToken != "" {
+			listOpts = append(listOpts, client.Continue(continueToken))
+		}
+		if err := c.List(ctx, list, listOpts...); err != nil {
+			return nil, 0, false, err
+		}
+
+		pageItems := itemsFromList(list)
+		scanned += len(pageItems)
+		out = append(out, filter(pageItems, opts.phase)...)
+		if len(out) > opts.limit {
+			return out[:opts.limit], opts.limit, true, nil
+		}
+		if scanned > scanLimit {
+			return out, len(out), true, nil
+		}
+
+		continueToken = list.GetContinue()
+		if continueToken == "" {
+			return out, len(out), false, nil
+		}
+		if scanned >= scanLimit {
+			return out, len(out), true, nil
+		}
+	}
+}
+
+func filterDecisionFleetClustersByPhase(items []kaprov1alpha1.FleetCluster, phase string) []kaprov1alpha1.FleetCluster {
+	if phase == "" {
+		return items
+	}
+	out := items[:0]
+	for _, item := range items {
+		if strings.EqualFold(string(item.Status.Phase), phase) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func filterDecisionPromotionRunsByPhase(items []kaprov1alpha1.PromotionRun, phase string) []kaprov1alpha1.PromotionRun {
+	if phase == "" {
+		return items
+	}
+	out := items[:0]
+	for _, item := range items {
+		if strings.EqualFold(string(item.Status.Phase), phase) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func filterDecisionPromotionTargetsForRunByPhase(items []kaprov1alpha1.PromotionTarget, promotionrunName, phase string) []kaprov1alpha1.PromotionTarget {
+	out := items[:0]
+	for _, item := range items {
+		if item.Spec.PromotionRunRef != promotionrunName {
+			continue
+		}
+		if phase != "" && !strings.EqualFold(string(item.Status.Phase), phase) {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+func filterDecisionPendingTargetsByPhase(items []kaprov1alpha1.PromotionTarget, phase string) []kaprov1alpha1.PromotionTarget {
+	if phase != "" && !strings.EqualFold(string(kaprov1alpha1.TargetPhaseWaitingApproval), phase) {
+		return nil
+	}
+	out := items[:0]
+	for _, item := range items {
+		if item.Status.Phase == kaprov1alpha1.TargetPhaseWaitingApproval {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 func (s *Server) handleGateContext(w http.ResponseWriter, r *http.Request, promotionrunName, targetKey string) {
@@ -315,13 +567,13 @@ func (s *Server) handleGateContext(w http.ResponseWriter, r *http.Request, promo
 	}
 
 	var promotionrun kaprov1alpha1.PromotionRun
-	if err := s.Client.Get(ctx, client.ObjectKey{Name: promotionrunName}, &promotionrun); err != nil {
+	if err := s.decisionReader().Get(ctx, client.ObjectKey{Name: promotionrunName}, &promotionrun); err != nil {
 		http.Error(w, "promotionrun not found", http.StatusNotFound)
 		return
 	}
 
 	var target kaprov1alpha1.PromotionTarget
-	if err := s.Client.Get(ctx, client.ObjectKey{Name: targetKey}, &target); err != nil {
+	if err := s.decisionReader().Get(ctx, client.ObjectKey{Name: targetKey}, &target); err != nil {
 		http.Error(w, "target not found", http.StatusNotFound)
 		return
 	}
@@ -333,7 +585,7 @@ func (s *Server) handleGateContext(w http.ResponseWriter, r *http.Request, promo
 	// Fetch cluster health.
 	var cluster *kaprov1alpha1.FleetCluster
 	var mc kaprov1alpha1.FleetCluster
-	if err := s.Client.Get(ctx, client.ObjectKey{Name: target.Spec.Target}, &mc); err == nil {
+	if err := s.decisionReader().Get(ctx, client.ObjectKey{Name: target.Spec.Target}, &mc); err == nil {
 		cluster = &mc
 	}
 
@@ -366,7 +618,7 @@ func (s *Server) handleClusterHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var mc kaprov1alpha1.FleetCluster
-	if err := s.Client.Get(ctx, client.ObjectKey{Name: clusterName}, &mc); err != nil {
+	if err := s.decisionReader().Get(ctx, client.ObjectKey{Name: clusterName}, &mc); err != nil {
 		http.Error(w, "cluster not found", http.StatusNotFound)
 		return
 	}

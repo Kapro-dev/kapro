@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -30,8 +31,10 @@ func decisionTestServer(t *testing.T, objs ...client.Object) *Server {
 	if len(objs) > 0 {
 		builder = builder.WithObjects(objs...)
 	}
+	c := builder.Build()
 	return &Server{
-		Client:                builder.Build(),
+		Client:                c,
+		DecisionReader:        c,
 		OperatorNamespace:     "default",
 		DecisionAPIEnabled:    true,
 		DecisionAuthenticator: fakeDecisionAuthenticator{user: "system:serviceaccount:kapro-system:test-agent"},
@@ -110,7 +113,10 @@ func decisionFixtures() (*kaprov1alpha1.PromotionRun, *kaprov1alpha1.FleetCluste
 		},
 	}
 	target := &kaprov1alpha1.PromotionTarget{
-		ObjectMeta: metav1.ObjectMeta{Name: "rel-1-canary-cluster-a"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "rel-1-canary-cluster-a",
+			Labels: map[string]string{decisionPromotionRunLabel: "rel-1", decisionPhaseLabel: string(kaprov1alpha1.TargetPhaseWaitingApproval)},
+		},
 		Spec: kaprov1alpha1.PromotionTargetSpec{
 			PromotionRunRef: "rel-1",
 			Target:          "cluster-a",
@@ -154,6 +160,119 @@ func TestFleet_ReturnsClusterAndPromotionRunSummary(t *testing.T) {
 	}
 	if resp.PendingDecisions != 1 {
 		t.Errorf("expected 1 pending decision, got %d", resp.PendingDecisions)
+	}
+	if resp.Page.Limit != defaultDecisionAPILimit {
+		t.Errorf("expected default limit %d, got %d", defaultDecisionAPILimit, resp.Page.Limit)
+	}
+}
+
+func TestFleet_RejectsInvalidLimit(t *testing.T) {
+	s := decisionTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/fleet?limit=0", nil)
+	authorizeDecisionRequest(req)
+	rec := httptest.NewRecorder()
+	s.handleFleet(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestFleet_LimitsAndReportsTruncation(t *testing.T) {
+	promotionrun, mc, _, target := decisionFixtures()
+	clusterB := mc.DeepCopy()
+	clusterB.Name = "cluster-b"
+	clusterC := mc.DeepCopy()
+	clusterC.Name = "cluster-c"
+	s := decisionTestServer(t, promotionrun, mc, clusterB, clusterC, target)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/fleet?limit=2", nil)
+	authorizeDecisionRequest(req)
+	rec := httptest.NewRecorder()
+	s.handleFleet(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp FleetSummary
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Clusters) != 2 {
+		t.Fatalf("expected 2 bounded clusters, got %d", len(resp.Clusters))
+	}
+	if !resp.Page.Truncated {
+		t.Fatal("expected page to be marked truncated")
+	}
+	if resp.Page.Counts["fleetclusters"] != 2 {
+		t.Fatalf("expected fleetcluster count 2, got %d", resp.Page.Counts["fleetclusters"])
+	}
+}
+
+func TestFleet_PhaseFilterScansPastFirstPage(t *testing.T) {
+	clusterA := &kaprov1alpha1.FleetCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
+		Status:     kaprov1alpha1.FleetClusterStatus{Phase: kaprov1alpha1.ClusterPhaseFailed},
+	}
+	clusterB := &kaprov1alpha1.FleetCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "cluster-b"},
+		Status:     kaprov1alpha1.FleetClusterStatus{Phase: kaprov1alpha1.ClusterPhaseFailed},
+	}
+	clusterC := &kaprov1alpha1.FleetCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "cluster-c"},
+		Status: kaprov1alpha1.FleetClusterStatus{
+			Phase:  kaprov1alpha1.ClusterPhaseConverged,
+			Health: kaprov1alpha1.ClusterHealth{AllWorkloadsReady: true},
+		},
+	}
+	s := decisionTestServer(t, clusterA, clusterB, clusterC)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/fleet?limit=1&phase=Converged", nil)
+	authorizeDecisionRequest(req)
+	rec := httptest.NewRecorder()
+	s.handleFleet(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp FleetSummary
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Clusters) != 1 || resp.Clusters[0].Name != "cluster-c" {
+		t.Fatalf("expected phase filter to find cluster-c after first page, got %#v", resp.Clusters)
+	}
+	if resp.Page.Truncated {
+		t.Fatal("did not expect truncated response after one matching cluster")
+	}
+}
+
+func TestFleet_PhaseFilterStopsAtScanCap(t *testing.T) {
+	objs := make([]client.Object, 0, decisionAPIScanLimitMultiplier+1)
+	for i := 0; i < decisionAPIScanLimitMultiplier+1; i++ {
+		objs = append(objs, &kaprov1alpha1.FleetCluster{
+			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("cluster-%02d", i)},
+			Status:     kaprov1alpha1.FleetClusterStatus{Phase: kaprov1alpha1.ClusterPhaseFailed},
+		})
+	}
+	s := decisionTestServer(t, objs...)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/fleet?limit=1&phase=Converged", nil)
+	authorizeDecisionRequest(req)
+	rec := httptest.NewRecorder()
+	s.handleFleet(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp FleetSummary
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Clusters) != 0 {
+		t.Fatalf("expected no converged clusters, got %#v", resp.Clusters)
+	}
+	if !resp.Page.Truncated {
+		t.Fatal("expected sparse phase scan to stop at scan cap and mark response truncated")
 	}
 }
 
@@ -219,6 +338,42 @@ func TestPromotionRunContext_ReturnsPromotionRunAndTargets(t *testing.T) {
 	}
 	if len(resp.Targets) != 1 {
 		t.Errorf("expected 1 target, got %d", len(resp.Targets))
+	}
+}
+
+func TestPromotionRunContext_FiltersTargetsWithLimit(t *testing.T) {
+	promotionrun, _, promotionplan, target := decisionFixtures()
+	completeTarget := target.DeepCopy()
+	completeTarget.Name = "rel-1-canary-cluster-b"
+	completeTarget.Spec.Target = "cluster-b"
+	completeTarget.Status.Phase = kaprov1alpha1.TargetPhaseConverged
+
+	otherRunTarget := target.DeepCopy()
+	otherRunTarget.Name = "rel-2-canary-cluster-a"
+	otherRunTarget.Spec.PromotionRunRef = "rel-2"
+
+	s := decisionTestServer(t, promotionrun, promotionplan, completeTarget, target, otherRunTarget)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/promotionruns/rel-1/context?limit=1&phase=WaitingApproval", nil)
+	authorizeDecisionRequest(req)
+	rec := httptest.NewRecorder()
+	s.handlePromotionRunContext(rec, req, "rel-1")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp PromotionRunContext
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Targets) != 1 {
+		t.Fatalf("expected 1 filtered target, got %d", len(resp.Targets))
+	}
+	if resp.Targets[0].Spec.PromotionRunRef != "rel-1" || resp.Targets[0].Status.Phase != kaprov1alpha1.TargetPhaseWaitingApproval {
+		t.Fatalf("unexpected target returned: %#v", resp.Targets[0])
+	}
+	if resp.Page.Counts["promotiontargets"] != 1 {
+		t.Fatalf("expected target page count 1, got %d", resp.Page.Counts["promotiontargets"])
 	}
 }
 

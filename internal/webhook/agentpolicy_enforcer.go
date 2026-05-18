@@ -27,7 +27,7 @@ type PolicyDecision struct {
 // authenticated Kubernetes identity.
 func (s *Server) resolveAgentPolicy(ctx context.Context, agentName string) (*kaprov1alpha1.AgentPolicy, error) {
 	var list kaprov1alpha1.AgentPolicyList
-	if err := s.Client.List(ctx, &list); err != nil {
+	if err := s.decisionReader().List(ctx, &list); err != nil {
 		return nil, fmt.Errorf("list AgentPolicies: %w", err)
 	}
 	saNamespace, saName, isServiceAccount := parseServiceAccountUsername(agentName)

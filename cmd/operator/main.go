@@ -334,6 +334,7 @@ func main() {
 		}
 		approvalHandler := (&webhook.Server{
 			Client:                mgr.GetClient(),
+			DecisionReader:        mgr.GetAPIReader(),
 			TokenSecret:           cc.ApprovalSecret, // reuse already-validated secret
 			OperatorNamespace:     podNS,
 			DecisionAPIEnabled:    decisionAPIEnabled,
