@@ -19,6 +19,12 @@ The authenticated Kubernetes username is the audit identity stored on decision
 traces and human overrides. Request payload fields such as `identity` are not
 trusted as the source of authority.
 
+Decision API list responses are bounded by default and support `limit`,
+`labelSelector`, and `phase` query parameters. Clients must treat
+`page.truncated=true` as a partial view and issue narrower follow-up queries
+instead of assuming the response contains the whole fleet. Sparse filtered reads
+also stop at a server-side scan budget and return `page.truncated=true`.
+
 Grant narrow RBAC:
 
 - read-only agents may `get`/`list` `PromotionRun`, `PromotionTarget`, and

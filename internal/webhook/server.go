@@ -35,6 +35,10 @@ import (
 type Server struct {
 	// Client is used to look up PromotionRuns and create Approval CRs.
 	Client client.Client
+	// DecisionReader is used for Decision API read paths. In production this is
+	// the manager APIReader so bounded list calls use Kubernetes API pagination
+	// instead of walking the controller-runtime cache.
+	DecisionReader client.Reader
 	// TokenSecret is the HMAC key used to verify approval tokens.
 	// Must match the secret used by PromotionRunReconciler to sign tokens.
 	TokenSecret []byte
