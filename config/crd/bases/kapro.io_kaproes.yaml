@@ -22,9 +22,9 @@ spec:
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
       type: string
-    - jsonPath: .spec.sourceRef
-      name: SourceRef
-      type: string
+    - jsonPath: .status.unitCount
+      name: Units
+      type: integer
     - jsonPath: .status.clusterCount
       name: Clusters
       type: integer
@@ -821,9 +821,8 @@ spec:
                 - url
                 type: object
               source:
-                description: |-
-                  Source defines deployable units inline for the KISS single-object path.
-                  If SourceRef is set, SourceRef wins.
+                description: Source defines deployable units inline for the KISS single-object
+                  path.
                 properties:
                   backendRef:
                     description: |-
@@ -1095,6 +1094,9 @@ spec:
             - delivery
             - promotionplan
             type: object
+            x-kubernetes-validations:
+            - message: exactly one of sourceRef or source is required
+              rule: (has(self.sourceRef) && size(self.sourceRef) > 0) != has(self.source)
           status:
             description: KaproStatus defines the observed state of Kapro.
             properties:
