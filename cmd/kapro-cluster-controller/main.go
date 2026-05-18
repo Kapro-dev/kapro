@@ -1,10 +1,7 @@
 // Command kapro-cluster-controller is the spoke-side agent that registers a
-// workload cluster with the Kapro hub, maintains a heartbeat Lease, and
-// reports cluster status to the hub via the standard K8s API.
-//
-// It is intentionally minimal: registration + heartbeat + status reporting.
-// Backend-specific delivery (Helm/Kustomize/raw YAML from OCI) lands in
-// PR-4's OCI Delivery Core.
+// workload cluster with the Kapro hub, maintains a heartbeat Lease, reports
+// cluster status, and reconciles FleetCluster.spec.desiredVersions onto the
+// local cluster through a pluggable spoke Provider registry.
 //
 // Lifecycle:
 //
@@ -15,9 +12,12 @@
 //     Store so the issued cert survives pod restarts.
 //  3. Wait for the first cert (the hub approver signs it).
 //  4. Build a steady-state hub client using the cert.
-//  5. Start two background loops:
+//  5. Start three background loops:
 //     - heartbeat: refresh Lease kapro-heartbeat-<name> every 30s
 //     - status:    report cluster capabilities + health to FleetCluster.status
+//     - delivery:  watch FleetCluster.spec.desiredVersions, dispatch to a
+//                  spoke Provider (oci/flux/argo/external) via the registry,
+//                  and write per-app progress to FleetCluster.status.delivery
 //  6. Cert rotation is handled automatically by certificate.Manager — when the
 //     cert is approaching expiry it submits a renewal CSR (Username =
 //     "kapro-cluster:<name>" so the hub approver recognizes it as a renewal,
@@ -218,10 +218,10 @@ func run() error {
 
 	hubClient := newHubClient(certMgr, cfg.HubAPIURL, cfg.HubCAData)
 
-	// Spawn heartbeat + status loops. They run forever; main exits when ctx
-	// is cancelled by SIGTERM/SIGINT. Both loops call hubClient.Client() per
-	// tick so cert rotation transparently swaps the underlying client without
-	// the loops needing to know.
+	// Spawn heartbeat + status + delivery loops. They run forever; main
+	// exits when ctx is cancelled by SIGTERM/SIGINT. All three loops call
+	// hubClient.Client() per tick so cert rotation transparently swaps the
+	// underlying client without the loops needing to know.
 	hb := &heartbeatLoop{
 		Hub:            hubClient,
 		ClusterName:    cfg.ClusterName,
