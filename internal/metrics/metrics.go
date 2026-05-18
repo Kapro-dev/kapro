@@ -58,17 +58,27 @@ var (
 		[]string{"phase", "result"},
 	)
 
-	// FSMUnexpectedTransitions counts PromotionTarget FSM transitions that
-	// the controller attempted but the declared AllowedNext metadata
-	// (internal/promotion/fsm) did NOT permit. A non-zero rate here is a
-	// strong signal that the FSM graph documentation has drifted from the
-	// handler code — alertable. Labels: from, to.
+	// FSMUnexpectedTransitions counts FSM phase transitions that a
+	// controller attempted but the declared AllowedNext metadata
+	// (internal/promotion/fsm) did NOT permit. Shared across every
+	// FSM in the operator:
+	//
+	//   - PromotionTargetReconciler.transitionTo (D3 — 10-phase target FSM)
+	//   - PromotionRunReconciler.setRunPhase    (D2 — 4-phase run FSM)
+	//
+	// A non-zero rate here is a strong signal that the FSM graph
+	// documentation has drifted from the handler code — alertable.
+	// TargetPhase and PromotionRunPhase share string values ("Pending",
+	// "Failed") so the {from, to} labels alone don't disambiguate
+	// which FSM emitted the count; for alerting that's acceptable, for
+	// forensics correlate with the accompanying Warning Event on the
+	// owning object.
 	FSMUnexpectedTransitions = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "kapro",
 			Subsystem: "fsm",
 			Name:      "unexpected_transitions_total",
-			Help:      "Phase transitions that violated the declared AllowedNext FSM graph (observability, not enforcement).",
+			Help:      "Phase transitions that violated the declared AllowedNext FSM graph (observability, not enforcement). Shared across PromotionTarget + PromotionRun FSMs.",
 		},
 		[]string{"from", "to"},
 	)
