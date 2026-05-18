@@ -126,8 +126,19 @@ func (p *Provider) Reconcile(ctx context.Context, req spokeprovider.ReconcileReq
 		return out
 	}
 
-	// OCIRepository is at the desired revision. If a HelmRelease is
-	// configured, gate on its Ready condition; otherwise mark Converged.
+	// gate review fix: revision matched, but Flux may still be reconciling
+	// (Ready=Unknown or missing). The previous code treated "not False" as
+	// good enough and could report Converged before Flux finished fetching.
+	// Now require an explicit Ready=True before considering the OCI side
+	// converged; anything else is still Pulling.
+	if !isReady(repo.Object) {
+		out.Phase = kaprov1alpha1.DeliveryPhasePulling
+		return out
+	}
+
+	// OCIRepository is at the desired revision AND Ready=True. If a
+	// HelmRelease is configured, gate on its Ready condition too;
+	// otherwise mark Converged.
 	hrName := req.Parameters[paramHelmReleaseName]
 	if hrName == "" {
 		out.Phase = kaprov1alpha1.DeliveryPhaseConverged

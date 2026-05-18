@@ -5,6 +5,9 @@ apiVersion: kapro.io/v1alpha1
 kind: PromotionPlan
 metadata:
   name: checkout-greenfield
+  labels:
+    # Required by the validating admission webhook (multi-tenancy ownership).
+    kapro.io/team: checkout
 spec:
   stages:
     - name: canary
@@ -13,7 +16,8 @@ spec:
           tier: canary
           env: prod
       strategy:
-        maxConcurrent: 1
+        # Field is maxParallel, not maxConcurrent (StageStrategySpec).
+        maxParallel: 1
       gate:
         mode: auto
         gate:
@@ -26,11 +30,12 @@ spec:
           tier: general
           env: prod
       dependsOn:
-        - name: canary
+        # StageDependency: the upstream key is `stage`, not `name`.
+        - stage: canary
           strategy: all
           requiredSoakTime: 5m
       strategy:
-        maxConcurrent: 5
+        maxParallel: 5
       gate:
         mode: manual
         approval:
