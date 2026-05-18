@@ -1,14 +1,18 @@
 // Package provider abstracts how Kapro connects to spoke clusters.
 //
 // Provider kinds:
-//   - kubeconfig: static kubeconfig file (any cloud, kind, on-prem)
-//   - gcp-basic:  GKE Workload Identity + direct GKE API endpoint
-//     (single-project / VPC-peered private GKE)
-//   - gcp-fleet:  GKE Fleet API for discovery + Connect Gateway for access.
-//     Topology-agnostic — works across any project, VPC, or
-//     region without peering. Connect Gateway is an
-//     implementation detail of this provider, not a selectable
-//     kind on its own (see gcp_connect_gateway.go helpers).
+//   - kubeconfig:          static kubeconfig file (any cloud, kind, on-prem)
+//   - gcp-basic:           GKE Workload Identity + direct GKE API endpoint
+//                          (single-project / VPC-peered private GKE)
+//   - gcp-fleet:           GKE Fleet API for discovery + Connect Gateway
+//                          for access. Topology-agnostic — works across any
+//                          project, VPC, or region without peering. Use when
+//                          you want auto-discovery of memberships.
+//   - gcp-connect-gateway: Connect Gateway access for a known membership
+//                          without Fleet discovery. Lower privilege than
+//                          gcp-fleet (gatewayReader, not gkehub.viewer).
+//                          Use when you know the project + location +
+//                          membership ahead of time.
 //
 // Future providers (stubs in v0.5): eks, aks-arc, rhacm, capi.
 //
@@ -96,8 +100,14 @@ func New(name string, opts Options) (Provider, error) {
 		return &GCPBasicProvider{Project: opts.Project, Location: opts.Location}, nil
 	case "gcp-fleet":
 		return &GCPFleetProvider{Project: opts.Project}, nil
+	case "gcp-connect-gateway":
+		return &GCPConnectGatewayProvider{
+			Project:    opts.Project,
+			Location:   opts.Location,
+			Membership: opts.Membership,
+		}, nil
 	default:
-		return nil, fmt.Errorf("unknown provider %q (supported: kubeconfig, gcp-basic, gcp-fleet)", name)
+		return nil, fmt.Errorf("unknown provider %q (supported: kubeconfig, gcp-basic, gcp-fleet, gcp-connect-gateway)", name)
 	}
 }
 
@@ -107,4 +117,7 @@ type Options struct {
 	Project        string
 	Location       string
 	ClusterName    string
+	// Membership is the GKE Fleet membership name. Used by
+	// gcp-connect-gateway when the membership name differs from ClusterName.
+	Membership string
 }

@@ -303,7 +303,7 @@ type FleetClusterSpec struct {
 // cluster. See projects/kapro/specs/fleet-and-oci-delivery-core-spec §3.2.
 type FleetClusterProvider struct {
 	// Kind selects a registered provider implementation.
-	// +kubebuilder:validation:Enum=outbound-agent;gcp-fleet;eks;aks-arc;rhacm;capi;kubeconfig
+	// +kubebuilder:validation:Enum=outbound-agent;gcp-fleet;gcp-connect-gateway;eks;aks-arc;rhacm;capi;kubeconfig
 	Kind string `json:"kind"`
 	// Parameters are opaque, provider-specific key/value settings. Kapro
 	// core does not interpret them.
