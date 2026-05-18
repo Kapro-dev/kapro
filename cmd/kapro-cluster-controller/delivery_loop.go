@@ -137,6 +137,15 @@ func (l *deliveryLoop) reconcileOne(
 		out.Err = fmt.Errorf("BackendProfile %q not found", fc.Spec.Delivery.BackendRef)
 		return out
 	}
+	// Runtime gating: if this BackendProfile is hub-only, the hub-side
+	// actuator owns delivery (it patches backend-native objects on the
+	// hub, e.g. Flux OCIRepository.tag) and the spoke MUST stay out of the
+	// way. Surface Skipped so SREs see why the spoke didn't act.
+	if profile.Spec.Runtime == kaprov1alpha1.BackendRuntimeHub {
+		out.Phase = kaprov1alpha1.DeliveryPhaseSkipped
+		out.Err = fmt.Errorf("BackendProfile %q runtime is Hub; spoke delivery is a no-op", profile.Name)
+		return out
+	}
 	if l.Registry == nil {
 		out.Phase = kaprov1alpha1.DeliveryPhaseFailed
 		out.Err = fmt.Errorf("delivery loop has no provider registry")

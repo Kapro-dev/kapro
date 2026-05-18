@@ -355,6 +355,72 @@ func TestDeliveryLoop_TruncateError_DoesNotSplitMultibyteRune(t *testing.T) {
 	}
 }
 
+func TestDeliveryLoop_HubRuntimeProfileSkipsSpokeDelivery(t *testing.T) {
+	fc := newDeliveryFC("c1", map[string]string{"api": "1.0"}, false, "flux-hub")
+	bp := newDeliveryBP("flux-hub", kaprov1alpha1.BackendDriverFlux)
+	bp.Spec.Runtime = kaprov1alpha1.BackendRuntimeHub
+	hub := deliveryHub(t, fc, bp)
+
+	// Even though no flux provider is registered, the loop must NOT reach
+	// the registry-resolve step for a hub-only profile — the hub-side
+	// actuator owns delivery.
+	provider := &scriptedProvider{driver: kaprov1alpha1.BackendDriverOCI}
+	reg := spokeprovider.NewRegistry()
+	_ = reg.Register(kaprov1alpha1.BackendDriverOCI, provider)
+	l := &deliveryLoop{
+		Hub:         newHubClientFromStatic(hub),
+		ClusterName: "c1",
+		Registry:    reg,
+	}
+
+	if err := l.tick(context.Background()); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	if len(provider.calls) != 0 {
+		t.Fatalf("provider should not be invoked for Runtime=Hub profile")
+	}
+
+	var got kaprov1alpha1.FleetCluster
+	if err := hub.Get(context.Background(), client.ObjectKey{Name: "c1"}, &got); err != nil {
+		t.Fatalf("re-get: %v", err)
+	}
+	entry := got.Status.Delivery["api"]
+	if entry.Phase != kaprov1alpha1.DeliveryPhaseSkipped {
+		t.Fatalf("phase = %q, want Skipped", entry.Phase)
+	}
+	if entry.LastError == "" {
+		t.Fatalf("expected lastError to explain why spoke skipped")
+	}
+}
+
+func TestDeliveryLoop_BothRuntimeProfileRunsOnSpoke(t *testing.T) {
+	fc := newDeliveryFC("c1", map[string]string{"api": "1.0"}, false, "oci-both")
+	bp := newDeliveryBP("oci-both", kaprov1alpha1.BackendDriverOCI)
+	bp.Spec.Runtime = kaprov1alpha1.BackendRuntimeBoth
+	hub := deliveryHub(t, fc, bp)
+
+	provider := &scriptedProvider{
+		driver: kaprov1alpha1.BackendDriverOCI,
+		results: map[string]spokeprovider.ReconcileResult{
+			"api": {Phase: kaprov1alpha1.DeliveryPhaseConverged},
+		},
+	}
+	reg := spokeprovider.NewRegistry()
+	_ = reg.Register(kaprov1alpha1.BackendDriverOCI, provider)
+	l := &deliveryLoop{
+		Hub:         newHubClientFromStatic(hub),
+		ClusterName: "c1",
+		Registry:    reg,
+	}
+
+	if err := l.tick(context.Background()); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	if len(provider.calls) != 1 {
+		t.Fatalf("Runtime=Both should run the spoke provider; got %d calls", len(provider.calls))
+	}
+}
+
 func TestDeliveryLoop_BackfillsLastAttemptedAtWhenProviderOmitsIt(t *testing.T) {
 	fc := newDeliveryFC("c1", map[string]string{"api": "1.0"}, false, "oci-default")
 	bp := newDeliveryBP("oci-default", kaprov1alpha1.BackendDriverOCI)
