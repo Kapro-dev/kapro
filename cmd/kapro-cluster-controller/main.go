@@ -49,6 +49,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	fluxspoke "kapro.io/kapro/internal/spokeprovider/flux"
 	"kapro.io/kapro/internal/spokeprovider/outbound"
 	"kapro.io/kapro/pkg/spokeprovider"
 )
@@ -240,12 +241,21 @@ func run() error {
 	go sr.Run(ctx)
 
 	// Delivery loop: watches FleetCluster.spec.desiredVersions and reconciles
-	// each (app, version) tuple via the spoke Provider registry. The OCI
-	// outbound-agent is registered as the BackendDriverOCI implementation;
-	// other drivers (flux/argo/external) are added in follow-up PRs.
+	// each (app, version) tuple via the spoke Provider registry. Two
+	// first-party drivers are wired:
+	//   - oci  — internal/spokeprovider/outbound: pulls OCI artifacts and
+	//            applies them via the two-phase apply engine. Greenfield.
+	//   - flux — internal/spokeprovider/flux: observes local Flux
+	//            OCIRepository / HelmRelease status and reports back to the
+	//            hub. Brownfield (Flux already installed on the spoke).
+	// External drivers are loaded via PluginRegistration + the plugin
+	// gateway when KAPRO_ENABLE_PLUGIN_GATEWAY=true.
 	registry := spokeprovider.NewRegistry()
 	if err := registry.Register(kaprov1alpha1.BackendDriverOCI, outbound.NewProvider(localKubeClient)); err != nil {
 		return fmt.Errorf("register oci provider: %w", err)
+	}
+	if err := registry.Register(kaprov1alpha1.BackendDriverFlux, fluxspoke.NewProvider(localKubeClient)); err != nil {
+		return fmt.Errorf("register flux provider: %w", err)
 	}
 	dl := &deliveryLoop{
 		Hub:         hubClient,
