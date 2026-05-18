@@ -49,6 +49,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	"kapro.io/kapro/internal/spokeprovider/outbound"
+	"kapro.io/kapro/pkg/spokeprovider"
 )
 
 var scheme = runtime.NewScheme()
@@ -101,6 +103,12 @@ type Config struct {
 	// Defaults to 60s — slower than heartbeat because Health probes are
 	// more expensive and the status doesn't change as fast.
 	StatusReportInterval time.Duration
+
+	// DeliveryInterval is how often the delivery loop reconciles
+	// FleetCluster.spec.desiredVersions on the local spoke cluster.
+	// Defaults to 30s — same cadence as heartbeat so a freshly-promoted
+	// version starts converging within one heartbeat window.
+	DeliveryInterval time.Duration
 }
 
 // loadConfig populates Config from env vars + flags.
@@ -115,6 +123,7 @@ func loadConfig() (*Config, error) {
 		HeartbeatNamespace:        envOrDefault("KAPRO_HEARTBEAT_NAMESPACE", "kapro-system"),
 		HeartbeatInterval:         envDurationOrDefault("KAPRO_HEARTBEAT_INTERVAL", 30*time.Second),
 		StatusReportInterval:      envDurationOrDefault("KAPRO_STATUS_REPORT_INTERVAL", 60*time.Second),
+		DeliveryInterval:          envDurationOrDefault("KAPRO_DELIVERY_INTERVAL", 30*time.Second),
 	}
 
 	flag.StringVar(&cfg.ClusterName, "cluster-name", cfg.ClusterName, "FleetCluster name this spoke registers as (env: KAPRO_CLUSTER_NAME)")
@@ -136,6 +145,9 @@ func loadConfig() (*Config, error) {
 	}
 	if cfg.StatusReportInterval < 10*time.Second {
 		return nil, fmt.Errorf("KAPRO_STATUS_REPORT_INTERVAL must be ≥ 10s (got %s)", cfg.StatusReportInterval)
+	}
+	if cfg.DeliveryInterval < 10*time.Second {
+		return nil, fmt.Errorf("KAPRO_DELIVERY_INTERVAL must be ≥ 10s (got %s)", cfg.DeliveryInterval)
 	}
 	return cfg, nil
 }
@@ -226,6 +238,22 @@ func run() error {
 		Interval:    cfg.StatusReportInterval,
 	}
 	go sr.Run(ctx)
+
+	// Delivery loop: watches FleetCluster.spec.desiredVersions and reconciles
+	// each (app, version) tuple via the spoke Provider registry. The OCI
+	// outbound-agent is registered as the BackendDriverOCI implementation;
+	// other drivers (flux/argo/external) are added in follow-up PRs.
+	registry := spokeprovider.NewRegistry()
+	if err := registry.Register(kaprov1alpha1.BackendDriverOCI, outbound.NewProvider(localKubeClient)); err != nil {
+		return fmt.Errorf("register oci provider: %w", err)
+	}
+	dl := &deliveryLoop{
+		Hub:         hubClient,
+		ClusterName: cfg.ClusterName,
+		Interval:    cfg.DeliveryInterval,
+		Registry:    registry,
+	}
+	go dl.Run(ctx)
 
 	<-ctx.Done()
 	logger.Info("shutting down")
