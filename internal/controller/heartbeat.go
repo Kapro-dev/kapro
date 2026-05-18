@@ -7,9 +7,9 @@ import (
 
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
@@ -17,139 +17,99 @@ import (
 const (
 	defaultHeartbeatNamespace = "kapro-system"
 	heartbeatLeasePrefix      = "kapro-heartbeat-"
-	heartbeatFreshTimeout     = 2 * time.Minute
-	heartbeatStaleFailAfter   = 5 * time.Minute
+	// heartbeatFreshTimeout is the window beyond which a Lease renewal is
+	// considered a miss. The FleetClusterHeartbeatReconciler reads the Lease
+	// and counts misses; this constant defines what counts as a miss but
+	// NOT how many misses are tolerated (that is per-cluster via
+	// spec.consecutiveFailureThreshold).
+	heartbeatFreshTimeout = 2 * time.Minute
 )
-
-type heartbeatStatus struct {
-	Fresh    bool
-	Source   string
-	Observed time.Time
-	Message  string
-}
 
 func heartbeatLeaseName(clusterName string) string {
 	return heartbeatLeasePrefix + clusterName
 }
 
-func (r *PromotionTargetReconciler) heartbeatNamespace() string {
-	if r.HeartbeatNamespace != "" {
-		return r.HeartbeatNamespace
-	}
-	return defaultHeartbeatNamespace
-}
-
+// requireFreshHeartbeat blocks a target from progressing when the cluster's
+// heartbeat is not fresh. Reachability is decided by the
+// FleetClusterHeartbeatReconciler via Spec.ConsecutiveFailureThreshold — this
+// function only reads that decision (conditions[Ready] + status.heartbeat)
+// and surfaces it on the target.
+//
+// Behavior matrix (DeliveryMode == pull):
+//
+//	Ready=True                       → proceed.
+//	Ready=False reason=Unreachable   → defer; emit ClusterUnreachable event.
+//	Ready=Unknown reason=Stale       → defer; emit HeartbeatStale event the
+//	                                   first time we see it.
+//	Ready=Unknown reason=Suspended   → defer; the cluster is paused.
+//	Ready=Unknown reason=NotRegistered → defer; cluster has never bootstrapped.
+//	Ready condition missing          → defer; reconciler hasn't run yet.
+//
+// The function never fails the target on heartbeat staleness. That decision
+// belongs to the cluster-level threshold (which controls Phase=Unreachable)
+// or to an explicit operator action (suspend / reject / delete). Auto-failing
+// after a fixed wall-clock window was the v0.4 behavior and proved brittle
+// during normal network blips. Operators can still cancel a stuck target via
+// the standard reject flow.
+//
+// status.heartbeatStaleSince and status.heartbeatStaleCount stay updated for
+// dashboards and runbooks but are no longer load-bearing.
 func (r *PromotionTargetReconciler) requireFreshHeartbeat(
 	ctx context.Context,
 	promotionrun *kaprov1alpha1.PromotionRun,
 	target *kaprov1alpha1.TargetStatus,
 	mc *kaprov1alpha1.FleetCluster,
 ) (ctrl.Result, bool, error) {
+	_ = ctx // ctx retained for future use (status patches, list calls)
 	if mc.Spec.Delivery.Mode != kaprov1alpha1.DeliveryModePull {
-		target.HeartbeatStaleSince = ""
-		return ctrl.Result{}, true, nil
-	}
-
-	status, err := r.fleetClusterHeartbeat(ctx, mc)
-	if err != nil {
-		return ctrl.Result{}, false, err
-	}
-	if status.Fresh {
 		target.HeartbeatStaleSince = ""
 		target.HeartbeatStaleCount = 0
 		return ctrl.Result{}, true, nil
 	}
 
 	now := time.Now().UTC()
-	target.HeartbeatStaleCount++
-	if target.HeartbeatStaleSince == "" {
-		target.HeartbeatStaleSince = now.Format(time.RFC3339)
-		target.Message = status.Message
-		if r.Recorder != nil {
-			r.Recorder.Eventf(promotionrun, corev1.EventTypeWarning, "HeartbeatStale",
-				"[%s/%s] waiting for fresh cluster heartbeat: %s", target.Stage, target.Target, status.Message)
-		}
-		return ctrl.Result{RequeueAfter: requeueNormal}, false, nil
-	}
+	ready := apimeta.FindStatusCondition(mc.Status.Conditions, kaprov1alpha1.ConditionTypeReady)
+	switch {
+	case ready != nil && ready.Status == metav1.ConditionTrue:
+		// Heartbeat fresh per the reconciler. Clear per-target staleness state.
+		target.HeartbeatStaleSince = ""
+		target.HeartbeatStaleCount = 0
+		return ctrl.Result{}, true, nil
 
-	staleSince, parseErr := time.Parse(time.RFC3339, target.HeartbeatStaleSince)
-	if parseErr != nil {
-		target.HeartbeatStaleSince = now.Format(time.RFC3339)
-		target.Message = status.Message
-		return ctrl.Result{RequeueAfter: requeueNormal}, false, nil
-	}
-	if target.HeartbeatStaleCount >= missingMCFailThreshold && now.Sub(staleSince) >= heartbeatStaleFailAfter {
-		r.failTarget(ctx, promotionrun, target,
-			fmt.Sprintf("cluster %s heartbeat stale for %s: %s", mc.Name, heartbeatStaleFailAfter, status.Message))
-		return ctrl.Result{}, false, nil
-	}
-
-	target.Message = status.Message
-	return ctrl.Result{RequeueAfter: requeueNormal}, false, nil
-}
-
-func (r *PromotionTargetReconciler) fleetClusterHeartbeat(ctx context.Context, mc *kaprov1alpha1.FleetCluster) (heartbeatStatus, error) {
-	lease := &coordinationv1.Lease{}
-	err := r.Get(ctx, client.ObjectKey{
-		Namespace: r.heartbeatNamespace(),
-		Name:      heartbeatLeaseName(mc.Name),
-	}, lease)
-	if err == nil {
-		if observed, ok := leaseHeartbeatTime(lease); ok {
-			if time.Since(observed) < heartbeatFreshTimeout {
-				return heartbeatStatus{Fresh: true, Source: "lease", Observed: observed}, nil
+	case ready != nil && ready.Status == metav1.ConditionFalse && ready.Reason == kaprov1alpha1.ReasonUnreachable:
+		target.HeartbeatStaleCount++
+		if target.HeartbeatStaleSince == "" {
+			target.HeartbeatStaleSince = now.Format(time.RFC3339)
+			if r.Recorder != nil {
+				r.Recorder.Eventf(promotionrun, corev1.EventTypeWarning, "ClusterUnreachable",
+					"[%s/%s] cluster %s is Unreachable per heartbeat threshold; deferring promotion: %s",
+					target.Stage, target.Target, mc.Name, ready.Message)
 			}
-			return heartbeatStatus{
-				Source:   "lease",
-				Observed: observed,
-				Message:  fmt.Sprintf("Lease %s/%s last renewed %s ago", lease.Namespace, lease.Name, time.Since(observed).Round(time.Second)),
-			}, nil
 		}
-		status, statusErr := statusHeartbeat(mc)
-		if statusErr != nil {
-			return status, statusErr
-		}
-		if !status.Fresh {
-			status.Message = fmt.Sprintf("Lease %s/%s has no renewTime or acquireTime; %s", lease.Namespace, lease.Name, status.Message)
-		}
-		return status, nil
-	}
-	if err != nil && !apierrors.IsNotFound(err) {
-		return heartbeatStatus{}, fmt.Errorf("read heartbeat Lease for %s: %w", mc.Name, err)
-	}
+		target.Message = fmt.Sprintf("cluster %s Unreachable: %s", mc.Name, ready.Message)
+		return ctrl.Result{RequeueAfter: requeueNormal}, false, nil
 
-	status, statusErr := statusHeartbeat(mc)
-	if statusErr != nil {
-		return status, statusErr
-	}
-	if !status.Fresh {
-		status.Message = fmt.Sprintf("missing heartbeat Lease %s/%s; %s", r.heartbeatNamespace(), heartbeatLeaseName(mc.Name), status.Message)
-	}
-	return status, nil
-}
-
-func statusHeartbeat(mc *kaprov1alpha1.FleetCluster) (heartbeatStatus, error) {
-	if mc.Status.LastHeartbeat != "" {
-		observed, parseErr := time.Parse(time.RFC3339, mc.Status.LastHeartbeat)
-		if parseErr != nil {
-			return heartbeatStatus{
-				Source:  "status",
-				Message: fmt.Sprintf("FleetCluster.status.lastHeartbeat is invalid: %v", parseErr),
-			}, nil
+	default:
+		// Unknown / Stale / Suspended / NotRegistered / missing condition.
+		// All mean "wait, don't proceed, don't fail."
+		target.HeartbeatStaleCount++
+		reason := "HeartbeatNotReady"
+		message := "FleetCluster Ready condition not yet observed"
+		if ready != nil {
+			reason = ready.Reason
+			message = ready.Message
 		}
-		if time.Since(observed) < heartbeatFreshTimeout {
-			return heartbeatStatus{Fresh: true, Source: "status", Observed: observed}, nil
+		if target.HeartbeatStaleSince == "" {
+			target.HeartbeatStaleSince = now.Format(time.RFC3339)
+			if r.Recorder != nil {
+				r.Recorder.Eventf(promotionrun, corev1.EventTypeWarning, reason,
+					"[%s/%s] cluster %s heartbeat not fresh: %s",
+					target.Stage, target.Target, mc.Name, message)
+			}
 		}
-		return heartbeatStatus{
-			Source:   "status",
-			Observed: observed,
-			Message:  fmt.Sprintf("FleetCluster.status.lastHeartbeat last updated %s ago", time.Since(observed).Round(time.Second)),
-		}, nil
+		target.Message = fmt.Sprintf("cluster %s heartbeat not fresh (%s): %s", mc.Name, reason, message)
+		return ctrl.Result{RequeueAfter: requeueNormal}, false, nil
 	}
-
-	return heartbeatStatus{
-		Message: "status.lastHeartbeat is empty",
-	}, nil
 }
 
 func leaseHeartbeatTime(lease *coordinationv1.Lease) (time.Time, bool) {

@@ -41,6 +41,11 @@ func init() {
 	// per-source IAM is documented (PR-7). Set
 	// KAPRO_CONTROLLERS=*,fleetcluster-template or list it explicitly to enable.
 	Register("fleetcluster-template", startFleetClusterTemplateController)
+	// fleetcluster-heartbeat: cluster reachability via consecutive-failure
+	// threshold (PR-8). Sole writer of FleetCluster conditions[Ready] and
+	// status.heartbeat. kapro_controller reads conditions[Ready] to surface
+	// Phase=Unreachable. Always-on: no cost when no FleetCluster exists.
+	Register("fleetcluster-heartbeat", startFleetClusterHeartbeatController)
 }
 
 func startPromotionController(_ context.Context, cc ControllerContext) (bool, error) {
@@ -90,15 +95,14 @@ func startPromotionRunController(_ context.Context, cc ControllerContext) (bool,
 
 func startPromotionTargetController(_ context.Context, cc ControllerContext) (bool, error) {
 	r := &controller.PromotionTargetReconciler{
-		Client:             cc.Manager.GetClient(),
-		Recorder:           cc.Recorder,
-		Scheme:             cc.Manager.GetScheme(),
-		ActuatorRegistry:   cc.ActuatorRegistry,
-		Notifier:           cc.Notifier,
-		ApprovalSecret:     cc.ApprovalSecret,
-		ExternalURL:        cc.ExternalURL,
-		GateRegistry:       cc.GateRegistry,
-		HeartbeatNamespace: cc.HeartbeatNamespace,
+		Client:           cc.Manager.GetClient(),
+		Recorder:         cc.Recorder,
+		Scheme:           cc.Manager.GetScheme(),
+		ActuatorRegistry: cc.ActuatorRegistry,
+		Notifier:         cc.Notifier,
+		ApprovalSecret:   cc.ApprovalSecret,
+		ExternalURL:      cc.ExternalURL,
+		GateRegistry:     cc.GateRegistry,
 	}
 	if cc.ShardName != "" {
 		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: cc.ShardIsDefault}
@@ -252,6 +256,26 @@ func startFleetClusterTemplateController(_ context.Context, cc ControllerContext
 		Client:   cc.Manager.GetClient(),
 		Scheme:   cc.Manager.GetScheme(),
 		Recorder: cc.Recorder,
+	}
+	if err := r.SetupWithManager(cc.Manager); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// startFleetClusterHeartbeatController starts the FleetCluster reachability
+// reconciler (PR-8). Watches FleetCluster + coordination Lease and writes
+// FleetCluster conditions[Ready] + status.heartbeat. Honors per-cluster
+// spec.consecutiveFailureThreshold (default 3) to absorb transient network
+// blips. kapro_controller is the sole writer of Phase; it surfaces
+// Phase=Unreachable when this reconciler has set Ready=False
+// reason=Unreachable.
+func startFleetClusterHeartbeatController(_ context.Context, cc ControllerContext) (bool, error) {
+	r := &controller.FleetClusterHeartbeatReconciler{
+		Client:             cc.Manager.GetClient(),
+		Scheme:             cc.Manager.GetScheme(),
+		Recorder:           cc.Recorder,
+		HeartbeatNamespace: cc.HeartbeatNamespace,
 	}
 	if err := r.SetupWithManager(cc.Manager); err != nil {
 		return false, err

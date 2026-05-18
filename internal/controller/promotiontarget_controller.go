@@ -58,14 +58,13 @@ func promotionTargetFromContext(ctx context.Context) *kaprov1alpha1.PromotionTar
 // it never runs the FSM itself.
 type PromotionTargetReconciler struct {
 	client.Client
-	Recorder           record.EventRecorder
-	Scheme             *runtime.Scheme
-	ActuatorRegistry   *actuator.Registry
-	Notifier           notification.Notifier
-	ApprovalSecret     []byte
-	ExternalURL        string
-	GateRegistry       *gate.Registry
-	HeartbeatNamespace string
+	Recorder         record.EventRecorder
+	Scheme           *runtime.Scheme
+	ActuatorRegistry *actuator.Registry
+	Notifier         notification.Notifier
+	ApprovalSecret   []byte
+	ExternalURL      string
+	GateRegistry     *gate.Registry
 
 	// ShardPredicate optionally filters objects by shard label for horizontal scaling.
 	// When nil, all objects are processed.
@@ -802,6 +801,23 @@ func (r *PromotionTargetReconciler) handleApplying(ctx context.Context, promotio
 		r.failTarget(ctx, promotionrun, target,
 			fmt.Sprintf("cluster %s reported Failed phase", target.Target))
 		return ctrl.Result{}, nil
+	}
+
+	// Phase=Unreachable means the FleetClusterHeartbeatReconciler has crossed
+	// the per-cluster ConsecutiveFailureThreshold. Defer (do not fail) — a
+	// transient network outage shouldn't trash an in-flight promotion. The
+	// reconciler will flip Phase back as soon as a fresh heartbeat lands; the
+	// requeue here is a belt-and-braces re-check in case watch events miss.
+	if mc.Status.Phase == kaprov1alpha1.ClusterPhaseUnreachable {
+		if r.Recorder != nil {
+			msg := fmt.Sprintf("cluster %s is Unreachable; deferring", target.Target)
+			if ready := apimeta.FindStatusCondition(mc.Status.Conditions, kaprov1alpha1.ConditionTypeReady); ready != nil && ready.Message != "" {
+				msg = fmt.Sprintf("cluster %s is Unreachable: %s; deferring", target.Target, ready.Message)
+			}
+			r.Recorder.Eventf(promotionrun, corev1.EventTypeWarning, "ClusterUnreachable", "%s", msg)
+		}
+		l.Info("cluster Unreachable; deferring", "cluster", target.Target)
+		return ctrl.Result{RequeueAfter: requeueNormal}, nil
 	}
 
 	// Warn when the cluster reports Converged but CurrentVersions is absent or stale —

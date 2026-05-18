@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -322,6 +323,12 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 // patchRegistrationConverged sets a fresh heartbeat + Converged phase on a
 // FleetCluster, simulating what cluster-controller writes after deployment.
 // currentVersions should map appKey→version for all syncs that should converge.
+//
+// Sets conditions[Ready]=True too — that is what the v0.5
+// FleetClusterHeartbeatReconciler would write for a healthy pull-mode cluster
+// and what PromotionTargetReconciler.requireFreshHeartbeat now reads to
+// decide whether to proceed. Without this, the e2e would defer indefinitely
+// because no Ready condition is observed.
 func patchRegistrationConverged(t *testing.T, ctx context.Context, c client.Client, reg *kaprov1alpha1.FleetCluster, currentVersions map[string]string) {
 	t.Helper()
 	// Retry Get — caching client may not have synced immediately after Create.
@@ -335,6 +342,12 @@ func patchRegistrationConverged(t *testing.T, ctx context.Context, c client.Clie
 	latest.Status.Phase = kaprov1alpha1.ClusterPhaseConverged
 	latest.Status.CurrentVersions = currentVersions
 	latest.Status.Health = kaprov1alpha1.ClusterHealth{AllWorkloadsReady: true}
+	apimeta.SetStatusCondition(&latest.Status.Conditions, metav1.Condition{
+		Type:    kaprov1alpha1.ConditionTypeReady,
+		Status:  metav1.ConditionTrue,
+		Reason:  kaprov1alpha1.ReasonHeartbeatFresh,
+		Message: "simulated by e2e patchRegistrationConverged",
+	})
 	if err := c.Status().Patch(ctx, latest, patch); err != nil {
 		t.Fatalf("patch FleetCluster status %s: %v", reg.Name, err)
 	}

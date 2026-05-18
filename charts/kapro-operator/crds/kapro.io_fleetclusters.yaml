@@ -592,6 +592,52 @@ spec:
                   totalWorkloads:
                     type: integer
                 type: object
+              heartbeat:
+                description: |-
+                  Heartbeat tracks cluster reachability based on the spoke's coordination
+                  Lease (`kapro-heartbeat-<cluster>` in kapro-system). Written exclusively
+                  by the FleetClusterHeartbeatReconciler. The reconciler is the single
+                  writer of both this substruct AND the ConditionTypeReady condition; it
+                  does NOT write Phase (kapro_controller reads conditions[Ready] and
+                  computes Phase=Unreachable when Ready=False reason=Unreachable).
+                properties:
+                  consecutiveMisses:
+                    description: |-
+                      ConsecutiveMisses is the count of consecutive reconciles where the Lease
+                      was missing or stale. Reset to 0 on the first fresh observation. Compared
+                      to Spec.ConsecutiveFailureThreshold to decide whether Ready=Unknown
+                      (below threshold, transient) or Ready=False (at threshold, Unreachable).
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  lastTransitionAt:
+                    description: |-
+                      LastTransitionAt is when the Ready condition last flipped. Distinct from
+                      the condition's own LastTransitionTime so this substruct is self-contained
+                      for dashboards that don't unpack Conditions.
+                    format: date-time
+                    type: string
+                  leaseObservedAt:
+                    description: |-
+                      LeaseObservedAt is the timestamp the reconciler extracted from the Lease
+                      (spec.renewTime, or acquireTime, or metadata.creationTimestamp). Empty
+                      when no Lease exists yet.
+                    format: date-time
+                    type: string
+                  observedAt:
+                    description: |-
+                      ObservedAt is when the reconciler last computed reachability. Always
+                      recent (≤ one reconcile interval). Distinct from LeaseObservedAt, which
+                      is the spoke's last renewal.
+                    format: date-time
+                    type: string
+                  reason:
+                    description: |-
+                      Reason mirrors the current Ready condition reason for quick read access.
+                      One of: HeartbeatFresh, HeartbeatStale, Unreachable, Suspended,
+                      PushModeNoHeartbeat, NotRegistered.
+                    type: string
+                type: object
               lastHeartbeat:
                 description: |-
                   LastHeartbeat is the RFC3339 timestamp of the last cluster-controller heartbeat.
