@@ -7,7 +7,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -492,5 +491,3 @@ func TestMergedDesiredVersions_MapWinsOverLegacy(t *testing.T) {
 	}
 }
 
-// silence unused-helper warnings if a test is trimmed later
-var _ = metav1.Now
