@@ -91,12 +91,18 @@ const (
 )
 
 // BackendDriver identifies the backend implementation family.
-// +kubebuilder:validation:Enum=flux;argo;external
+// +kubebuilder:validation:Enum=flux;argo;oci;external
 type BackendDriver string
 
 const (
-	BackendDriverFlux     BackendDriver = "flux"
-	BackendDriverArgo     BackendDriver = "argo"
+	BackendDriverFlux BackendDriver = "flux"
+	BackendDriverArgo BackendDriver = "argo"
+	// BackendDriverOCI is the built-in spoke-side OCI Delivery Core: the
+	// kapro-cluster-controller pulls OCI artifacts (Helm chart, raw YAML
+	// tarball, or Kustomize tarball) and server-side applies them via the
+	// two-phase staging engine. Available out of the box; requires no Flux,
+	// Argo, or Sveltos installation on the spoke. Default for v0.5+.
+	BackendDriverOCI      BackendDriver = "oci"
 	BackendDriverExternal BackendDriver = "external"
 )
 
@@ -211,6 +217,79 @@ type ClusterHealth struct {
 	FailedWorkloads   int    `json:"failedWorkloads,omitempty"`
 	TotalWorkloads    int    `json:"totalWorkloads,omitempty"`
 	Message           string `json:"message,omitempty"`
+}
+
+// DeliveryPhase classifies the spoke-side delivery loop's progress for one app.
+// Pending → Pulling → Staging → Applying → Converged is the happy path; Failed
+// is a sticky terminal state cleared on the next observed-digest change.
+// +kubebuilder:validation:Enum=Pending;Pulling;Staging;Applying;Converged;Failed;Skipped
+type DeliveryPhase string
+
+const (
+	// DeliveryPhasePending means the desired version is recorded but the
+	// delivery loop has not yet processed it (e.g. cluster suspended,
+	// rate-limited, or just received the change).
+	DeliveryPhasePending DeliveryPhase = "Pending"
+	// DeliveryPhasePulling means the OCI artifact is being fetched from the
+	// registry.
+	DeliveryPhasePulling DeliveryPhase = "Pulling"
+	// DeliveryPhaseStaging means objects have been parsed and a dry-run
+	// server-side apply is in progress. No live objects have been mutated.
+	DeliveryPhaseStaging DeliveryPhase = "Staging"
+	// DeliveryPhaseApplying means the staged objects validated and are now
+	// being committed via server-side apply.
+	DeliveryPhaseApplying DeliveryPhase = "Applying"
+	// DeliveryPhaseConverged means every staged object committed successfully
+	// and the app reports healthy.
+	DeliveryPhaseConverged DeliveryPhase = "Converged"
+	// DeliveryPhaseFailed is a terminal sticky state; cleared on the next
+	// observed-digest change (i.e. when a new desired version arrives).
+	DeliveryPhaseFailed DeliveryPhase = "Failed"
+	// DeliveryPhaseSkipped means delivery was skipped intentionally — usually
+	// because the FleetCluster is suspended.
+	DeliveryPhaseSkipped DeliveryPhase = "Skipped"
+)
+
+// FleetClusterDeliveryStatus is the per-app delivery progress reported by the
+// spoke-side cluster-controller. Written by exactly one writer: the spoke's
+// own delivery loop on its own FleetCluster (RBAC-locked via resourceNames).
+type FleetClusterDeliveryStatus struct {
+	// Phase is the current phase of the delivery loop for this app.
+	// +optional
+	Phase DeliveryPhase `json:"phase,omitempty"`
+	// DesiredVersion is the version the loop is targeting (mirrors
+	// spec.desiredVersions[app] at the time of the last reconcile).
+	// +optional
+	DesiredVersion string `json:"desiredVersion,omitempty"`
+	// ObservedDigest is the digest (e.g. "sha256:abcd…") of the OCI artifact
+	// that produced the most recent successful apply. Stable across pulls of
+	// the same tag, so a digest-equal short-circuit can skip re-apply when
+	// the upstream tag is moved to point at the same content.
+	// +optional
+	ObservedDigest string `json:"observedDigest,omitempty"`
+	// LastAppliedAt is when the last successful commit happened.
+	// +optional
+	LastAppliedAt *metav1.Time `json:"lastAppliedAt,omitempty"`
+	// LastAttemptedAt is when the delivery loop most recently attempted this
+	// app (success or failure). Useful for "is the spoke alive?" checks even
+	// when ObservedDigest is empty.
+	// +optional
+	LastAttemptedAt *metav1.Time `json:"lastAttemptedAt,omitempty"`
+	// LastError carries the human-readable error from the most recent failed
+	// attempt. Cleared on success. Bounded to 4 KiB by the spoke before
+	// writing to keep the status object small.
+	// +optional
+	LastError string `json:"lastError,omitempty"`
+	// AppliedObjects is the count of distinct GVK+namespace+name tuples
+	// committed by the most recent successful apply. Useful for "did this
+	// just regress to applying 1 object instead of 47?" diagnostics.
+	// +optional
+	AppliedObjects int32 `json:"appliedObjects,omitempty"`
+	// Format records the artifact format the spoke detected for the most
+	// recent successful pull: "helm", "kustomize", or "raw-yaml". Empty until
+	// the first pull succeeds.
+	// +optional
+	Format string `json:"format,omitempty"`
 }
 
 // ClusterPhase represents the convergence state of a workload cluster.
@@ -1939,6 +2018,14 @@ type FleetClusterStatus struct {
 	// Health aggregates workload health. Written by cluster-controller.
 	// +optional
 	Health ClusterHealth `json:"health,omitempty"`
+
+	// Delivery tracks the spoke-side delivery loop's progress for each app.
+	// Written by the cluster-controller's delivery loop (OCI Delivery Core).
+	// Distinct from CurrentVersions: that map records the last successfully
+	// committed version per app, while Delivery exposes in-flight phase,
+	// observed digest, and last error for human and Decision API consumption.
+	// +optional
+	Delivery map[string]FleetClusterDeliveryStatus `json:"delivery,omitempty"`
 
 	// ActivePromotionRun is the PromotionRun currently being processed for this cluster.
 	// +optional
