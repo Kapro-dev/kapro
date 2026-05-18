@@ -131,3 +131,62 @@ func TestMachine_HandlerErrorPropagates(t *testing.T) {
 		t.Fatalf("err = %v, want %v", err, want)
 	}
 }
+
+func TestMachine_ValidateTransition_DeclaredAllowed(t *testing.T) {
+	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
+	_ = m.RegisterTransition(Transition[kaprov1alpha1.TargetPhase, *testEnv]{
+		Phase:       kaprov1alpha1.TargetPhasePending,
+		AllowedNext: []kaprov1alpha1.TargetPhase{kaprov1alpha1.TargetPhaseVerification},
+		Handler:     func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil },
+	})
+	if err := m.ValidateTransition(kaprov1alpha1.TargetPhasePending, kaprov1alpha1.TargetPhaseVerification); err != nil {
+		t.Fatalf("declared transition rejected: %v", err)
+	}
+	if err := m.ValidateTransition(kaprov1alpha1.TargetPhasePending, kaprov1alpha1.TargetPhaseApplying); err == nil {
+		t.Fatal("undeclared transition Pending → Applying should fail")
+	}
+}
+
+func TestMachine_ValidateTransition_TerminalAlwaysAllowed(t *testing.T) {
+	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
+	_ = m.RegisterTransition(Transition[kaprov1alpha1.TargetPhase, *testEnv]{
+		Phase:       kaprov1alpha1.TargetPhasePending,
+		AllowedNext: []kaprov1alpha1.TargetPhase{kaprov1alpha1.TargetPhaseVerification},
+		Handler:     func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil },
+	})
+	_ = m.RegisterTerminal(kaprov1alpha1.TargetPhaseFailed, kaprov1alpha1.TargetPhaseSkipped)
+	if err := m.ValidateTransition(kaprov1alpha1.TargetPhasePending, kaprov1alpha1.TargetPhaseFailed); err != nil {
+		t.Fatalf("transition to terminal should always be allowed: %v", err)
+	}
+}
+
+func TestMachine_RegisterTerminal_RejectsRegisteredPhase(t *testing.T) {
+	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
+	_ = m.Register(kaprov1alpha1.TargetPhaseApplying, func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil })
+	if err := m.RegisterTerminal(kaprov1alpha1.TargetPhaseApplying); err == nil {
+		t.Fatal("expected RegisterTerminal on a Register'd phase to fail")
+	}
+}
+
+func TestMachine_ValidateGraph_FlagsMissingPhases(t *testing.T) {
+	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
+	_ = m.Register(kaprov1alpha1.TargetPhasePending, func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil })
+	_ = m.RegisterTerminal(kaprov1alpha1.TargetPhaseFailed)
+	required := []kaprov1alpha1.TargetPhase{
+		kaprov1alpha1.TargetPhasePending,
+		kaprov1alpha1.TargetPhaseVerification, // missing
+		kaprov1alpha1.TargetPhaseFailed,
+	}
+	missing := m.ValidateGraph(required)
+	if len(missing) != 1 || missing[0] != kaprov1alpha1.TargetPhaseVerification {
+		t.Fatalf("missing = %v, want [Verification]", missing)
+	}
+}
+
+func TestMachine_NoMetadataIsUnrestricted(t *testing.T) {
+	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
+	_ = m.Register(kaprov1alpha1.TargetPhasePending, func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil })
+	if err := m.ValidateTransition(kaprov1alpha1.TargetPhasePending, kaprov1alpha1.TargetPhaseApplying); err != nil {
+		t.Fatalf("unrestricted transition should be allowed: %v", err)
+	}
+}

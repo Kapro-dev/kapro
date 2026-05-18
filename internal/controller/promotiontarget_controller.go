@@ -239,41 +239,105 @@ type fsmEnv struct {
 // Called exactly once per reconciler via ensureFSM.
 func (r *PromotionTargetReconciler) buildFSM() *fsm.Machine[kaprov1alpha1.TargetPhase, *fsmEnv] {
 	m := fsm.New[kaprov1alpha1.TargetPhase, *fsmEnv]()
-	// Phase "" → transition into Pending. Replaces the bare case "" branch
-	// of the legacy switch; kept identical (transitionTo + immediate
-	// requeue) so behaviour is unchanged.
+
+	// Declared phase graph (D3-PR2). The AllowedNext metadata on every
+	// Register is what transitionTo consults via ValidateTransition to
+	// flag undeclared transitions. The graph below IS the documentation —
+	// promotiontarget_fsm_graph_test.go asserts the metadata matches
+	// this comment, so they cannot drift:
+	//
+	//   ""              → Pending
+	//   Pending         → Verification, Failed, Skipped
+	//   Verification    → HealthCheck,  Failed, Skipped
+	//   HealthCheck     → Soaking, MetricsCheck, Failed, Skipped
+	//   Soaking         → MetricsCheck, Failed, Skipped
+	//   MetricsCheck    → WaitingApproval, Applying, Failed, Skipped
+	//   WaitingApproval → Applying, Failed, Skipped
+	//   Applying        → Converged, Failed, Skipped
+	//   Converged | Failed | Skipped — terminal (filtered before reaching FSM)
+	//
+	// Failed/Skipped appear in AllowedNext for every non-terminal phase
+	// because failTarget can fire from inside any handler; ValidateTransition
+	// treats transitions TO terminal phases as always-allowed anyway, but
+	// listing them keeps the table self-documenting.
+	terminal := []kaprov1alpha1.TargetPhase{
+		kaprov1alpha1.TargetPhaseFailed,
+		kaprov1alpha1.TargetPhaseSkipped,
+	}
 	must(m.RegisterInitial(func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
 		r.transitionTo(ctx, e.promotionrun, e.target, kaprov1alpha1.TargetPhasePending)
 		return ctrl.Result{Requeue: true}, nil //nolint:staticcheck // SA1019: result.Requeue deprecated, see existing notes
+	}, kaprov1alpha1.TargetPhasePending))
+	must(m.RegisterTransition(fsm.Transition[kaprov1alpha1.TargetPhase, *fsmEnv]{
+		Phase: kaprov1alpha1.TargetPhasePending,
+		AllowedNext: append([]kaprov1alpha1.TargetPhase{
+			kaprov1alpha1.TargetPhaseVerification,
+		}, terminal...),
+		Handler: func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+			return r.handlePending(ctx, e.promotionrun, e.target)
+		},
 	}))
-	must(m.Register(kaprov1alpha1.TargetPhasePending, func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
-		return r.handlePending(ctx, e.promotionrun, e.target)
+	must(m.RegisterTransition(fsm.Transition[kaprov1alpha1.TargetPhase, *fsmEnv]{
+		Phase: kaprov1alpha1.TargetPhaseVerification,
+		AllowedNext: append([]kaprov1alpha1.TargetPhase{
+			kaprov1alpha1.TargetPhaseHealthCheck,
+		}, terminal...),
+		Handler: func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+			return r.handleVerification(ctx, e.promotionrun, e.target, e.rt)
+		},
 	}))
-	must(m.Register(kaprov1alpha1.TargetPhaseVerification, func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
-		return r.handleVerification(ctx, e.promotionrun, e.target, e.rt)
+	must(m.RegisterTransition(fsm.Transition[kaprov1alpha1.TargetPhase, *fsmEnv]{
+		Phase: kaprov1alpha1.TargetPhaseHealthCheck,
+		AllowedNext: append([]kaprov1alpha1.TargetPhase{
+			kaprov1alpha1.TargetPhaseSoaking,
+			kaprov1alpha1.TargetPhaseMetricsCheck,
+		}, terminal...),
+		Handler: func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+			return r.handleHealthCheck(ctx, e.promotionrun, e.target)
+		},
 	}))
-	must(m.Register(kaprov1alpha1.TargetPhaseHealthCheck, func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
-		return r.handleHealthCheck(ctx, e.promotionrun, e.target)
+	must(m.RegisterTransition(fsm.Transition[kaprov1alpha1.TargetPhase, *fsmEnv]{
+		Phase: kaprov1alpha1.TargetPhaseSoaking,
+		AllowedNext: append([]kaprov1alpha1.TargetPhase{
+			kaprov1alpha1.TargetPhaseMetricsCheck,
+		}, terminal...),
+		Handler: func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+			return r.handleSoaking(ctx, e.promotionrun, e.target, e.rt)
+		},
 	}))
-	must(m.Register(kaprov1alpha1.TargetPhaseSoaking, func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
-		return r.handleSoaking(ctx, e.promotionrun, e.target, e.rt)
+	must(m.RegisterTransition(fsm.Transition[kaprov1alpha1.TargetPhase, *fsmEnv]{
+		Phase: kaprov1alpha1.TargetPhaseMetricsCheck,
+		AllowedNext: append([]kaprov1alpha1.TargetPhase{
+			kaprov1alpha1.TargetPhaseWaitingApproval,
+			kaprov1alpha1.TargetPhaseApplying,
+		}, terminal...),
+		Handler: func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+			return r.handleMetricsCheck(ctx, e.promotionrun, e.target, e.rt)
+		},
 	}))
-	must(m.Register(kaprov1alpha1.TargetPhaseMetricsCheck, func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
-		return r.handleMetricsCheck(ctx, e.promotionrun, e.target, e.rt)
+	must(m.RegisterTransition(fsm.Transition[kaprov1alpha1.TargetPhase, *fsmEnv]{
+		Phase: kaprov1alpha1.TargetPhaseWaitingApproval,
+		AllowedNext: append([]kaprov1alpha1.TargetPhase{
+			kaprov1alpha1.TargetPhaseApplying,
+		}, terminal...),
+		Handler: func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+			return r.handleWaitingApproval(ctx, e.promotionrun, e.target, e.rt)
+		},
 	}))
-	must(m.Register(kaprov1alpha1.TargetPhaseWaitingApproval, func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
-		return r.handleWaitingApproval(ctx, e.promotionrun, e.target, e.rt)
+	must(m.RegisterTransition(fsm.Transition[kaprov1alpha1.TargetPhase, *fsmEnv]{
+		Phase: kaprov1alpha1.TargetPhaseApplying,
+		AllowedNext: append([]kaprov1alpha1.TargetPhase{
+			kaprov1alpha1.TargetPhaseConverged,
+		}, terminal...),
+		Handler: func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+			return r.handleApplying(ctx, e.promotionrun, e.target)
+		},
 	}))
-	must(m.Register(kaprov1alpha1.TargetPhaseApplying, func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
-		return r.handleApplying(ctx, e.promotionrun, e.target)
-	}))
-	// Converged / Failed / Skipped are terminal — Reconcile filters them
-	// out before reaching the FSM (see the terminal-phase switch at the
-	// top of Reconcile). Intentionally NOT registered here so that any
-	// future code path that accidentally calls Step on a terminal phase
-	// gets the no-op from Machine.Step rather than re-running the
-	// handler body. If we later need terminal handlers (e.g. for cleanup
-	// hooks), Register them here.
+	must(m.RegisterTerminal(
+		kaprov1alpha1.TargetPhaseConverged,
+		kaprov1alpha1.TargetPhaseFailed,
+		kaprov1alpha1.TargetPhaseSkipped,
+	))
 	return m
 }
 
@@ -953,8 +1017,24 @@ func validateTargetTopology(mc *kaprov1alpha1.FleetCluster, desiredVersions map[
 // transitionTo mutates target.Phase and related timestamps in-place.
 // Events are emitted on BOTH the parent PromotionRun (fleet-level view in k9s :promotionrun describe)
 // and the PromotionTarget itself (per-target CI-log view in k9s :promotiontarget describe).
+//
+// D3-PR2: validates the transition against the FSM table's declared
+// AllowedNext metadata. An undeclared transition emits a Warning event +
+// the kapro_fsm_unexpected_transitions_total metric counter and then
+// proceeds (observability, not enforcement). Crashing on a state-graph
+// drift in production would be strictly worse than letting the transition
+// through with a loud alert; the graph is documentation and a violation
+// means the documentation is stale, not that the rollout is unsafe.
 func (r *PromotionTargetReconciler) transitionTo(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, target *kaprov1alpha1.TargetStatus, phase kaprov1alpha1.TargetPhase) {
 	prevPhase := target.Phase
+
+	r.ensureFSM()
+	if err := r.fsmMachine.ValidateTransition(prevPhase, phase); err != nil {
+		r.Recorder.Eventf(promotionrun, corev1.EventTypeWarning, "FSMUnexpectedTransition",
+			"[%s/%s] %s", target.Stage, target.Target, err.Error())
+		kaprometrics.FSMUnexpectedTransitions.WithLabelValues(string(prevPhase), string(phase)).Inc()
+	}
+
 	target.Phase = phase
 	if phase == kaprov1alpha1.TargetPhaseSoaking && target.StartedAt == "" {
 		target.StartedAt = time.Now().UTC().Format(time.RFC3339)
