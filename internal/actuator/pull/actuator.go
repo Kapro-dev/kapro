@@ -1,10 +1,15 @@
-// Package spoke implements the Kapro Actuator Interface for pull-mode delivery.
+// Package pull implements the hub-side actuator for pull-mode delivery.
 //
 // Pull-mode promotion is intentionally hub-to-CRD, not hub-to-spoke. The hub
-// writes desired versions onto FleetCluster.spec; the spoke-side controller
-// observes that desired state, patches local GitOps resources, and reports
-// convergence back through FleetCluster.status plus the heartbeat Lease.
-package spoke
+// writes desired versions onto FleetCluster.spec; the spoke-side
+// kapro-cluster-controller observes that desired state, applies it locally
+// (via OCI Delivery Core, Flux, or Argo), and reports convergence back through
+// FleetCluster.status and the heartbeat Lease.
+//
+// This package replaces internal/actuator/spoke (renamed to clarify that the
+// actuator runs on the hub; the spoke is the consumer of the desired state it
+// records).
+package pull
 
 import (
 	"context"
@@ -18,22 +23,19 @@ import (
 	"kapro.io/kapro/pkg/actuator"
 )
 
-// DesiredStateActuator implements pull-mode delivery by updating hub-side
+// PullActuator implements pull-mode delivery by updating hub-side
 // FleetCluster desired state. It never connects to spoke clusters directly.
-type DesiredStateActuator struct {
+type PullActuator struct {
 	// HubClient is the controller-runtime client for the hub cluster.
 	// Used to patch FleetCluster.spec.desiredVersions.
 	HubClient client.Client
 }
 
-// SpokeFluxActuator is kept as a compatibility alias for older internal code.
-type SpokeFluxActuator = DesiredStateActuator
-
-var _ actuator.Actuator = (*DesiredStateActuator)(nil)
+var _ actuator.Actuator = (*PullActuator)(nil)
 
 // Apply records one desired version on the FleetCluster. The spoke-side
 // controller owns applying it to local Flux resources.
-func (a *DesiredStateActuator) Apply(ctx context.Context, req actuator.ApplyRequest) error {
+func (a *PullActuator) Apply(ctx context.Context, req actuator.ApplyRequest) error {
 	mc := req.Cluster
 	if mc == nil {
 		return fmt.Errorf("cluster is nil")
@@ -51,7 +53,7 @@ func (a *DesiredStateActuator) Apply(ctx context.Context, req actuator.ApplyRequ
 
 // ApplyDelta records all desired artifact versions on the FleetCluster in one
 // patch. The spoke controller applies only changed entries locally.
-func (a *DesiredStateActuator) ApplyDelta(ctx context.Context, req actuator.DeltaApplyRequest) (int, error) {
+func (a *PullActuator) ApplyDelta(ctx context.Context, req actuator.DeltaApplyRequest) (int, error) {
 	if req.Cluster == nil {
 		return 0, fmt.Errorf("cluster is nil")
 	}
@@ -99,7 +101,7 @@ func (a *DesiredStateActuator) ApplyDelta(ctx context.Context, req actuator.Delt
 }
 
 // IsConverged checks the spoke-reported FleetCluster status.
-func (a *DesiredStateActuator) IsConverged(ctx context.Context, mc *kaprov1alpha1.FleetCluster, appKey, version string) (bool, error) {
+func (a *PullActuator) IsConverged(ctx context.Context, mc *kaprov1alpha1.FleetCluster, appKey, version string) (bool, error) {
 	if appKey == "" {
 		appKey = "default"
 	}
@@ -107,7 +109,7 @@ func (a *DesiredStateActuator) IsConverged(ctx context.Context, mc *kaprov1alpha
 }
 
 // IsAllConverged checks the spoke-reported version map and health summary.
-func (a *DesiredStateActuator) IsAllConverged(ctx context.Context, mc *kaprov1alpha1.FleetCluster, desiredVersions map[string]string) (bool, error) {
+func (a *PullActuator) IsAllConverged(ctx context.Context, mc *kaprov1alpha1.FleetCluster, desiredVersions map[string]string) (bool, error) {
 	_ = ctx
 	if mc == nil {
 		return false, fmt.Errorf("cluster is nil")
@@ -127,7 +129,7 @@ func (a *DesiredStateActuator) IsAllConverged(ctx context.Context, mc *kaprov1al
 }
 
 // Rollback records the previous version as desired state.
-func (a *DesiredStateActuator) Rollback(ctx context.Context, mc *kaprov1alpha1.FleetCluster, previousVersion, appKey string) error {
+func (a *PullActuator) Rollback(ctx context.Context, mc *kaprov1alpha1.FleetCluster, previousVersion, appKey string) error {
 	return a.Apply(ctx, actuator.ApplyRequest{
 		Cluster: mc,
 		Version: previousVersion,

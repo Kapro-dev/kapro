@@ -1,4 +1,4 @@
-package spoke
+package pull
 
 import (
 	"context"
@@ -35,7 +35,7 @@ func TestApplyDeltaRecordsDesiredVersionsOnFleetCluster(t *testing.T) {
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(mc).Build()
-	act := &SpokeFluxActuator{HubClient: c}
+	act := &PullActuator{HubClient: c}
 
 	changed, err := act.ApplyDelta(context.Background(), actuator.DeltaApplyRequest{
 		Cluster:         mc,
@@ -63,7 +63,7 @@ func TestApplyDeltaRecordsDesiredVersionsOnFleetCluster(t *testing.T) {
 }
 
 func TestIsAllConvergedUsesSpokeReportedStatus(t *testing.T) {
-	act := &SpokeFluxActuator{}
+	act := &PullActuator{}
 	mc := &kaprov1alpha1.FleetCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Status: kaprov1alpha1.FleetClusterStatus{

@@ -34,7 +34,7 @@ import (
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	argoactuator "kapro.io/kapro/internal/actuator/argo"
 	fluxopactuator "kapro.io/kapro/internal/actuator/fluxoperator"
-	spokeactuator "kapro.io/kapro/internal/actuator/spoke"
+	pullactuator "kapro.io/kapro/internal/actuator/pull"
 	"kapro.io/kapro/internal/hubgateway"
 	_ "kapro.io/kapro/internal/metrics" // register custom Prometheus metrics at init
 	enginenotifier "kapro.io/kapro/internal/notification/engine"
@@ -175,12 +175,12 @@ func main() {
 	}
 	// Pull-mode delivery records desired versions on FleetCluster; spoke-side
 	// agents own applying those versions to their local backend.
-	spokeAct := &spokeactuator.DesiredStateActuator{HubClient: mgr.GetClient()}
-	if err := actuatorReg.Register("pull/flux", spokeAct); err != nil {
+	pullAct := &pullactuator.PullActuator{HubClient: mgr.GetClient()}
+	if err := actuatorReg.Register("pull/flux", pullAct); err != nil {
 		log.Error(err, "failed to register pull/flux actuator")
 		os.Exit(1)
 	}
-	if err := actuatorReg.Register("pull/oci", spokeAct); err != nil {
+	if err := actuatorReg.Register("pull/oci", pullAct); err != nil {
 		log.Error(err, "failed to register pull/oci actuator")
 		os.Exit(1)
 	}
@@ -188,7 +188,7 @@ func main() {
 		log.Error(err, "failed to register push/argo actuator")
 		os.Exit(1)
 	}
-	if err := actuatorReg.Register("pull/argo", spokeAct); err != nil {
+	if err := actuatorReg.Register("pull/argo", pullAct); err != nil {
 		log.Error(err, "failed to register pull/argo actuator")
 		os.Exit(1)
 	}
