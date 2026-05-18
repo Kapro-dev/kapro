@@ -1,6 +1,20 @@
-// Package bootstrap provides cluster setup primitives for Kapro.
-// All functions use the controller-runtime client with server-side apply —
-// no Helm binary, no kubectl, no gcloud. Idempotent: safe to call repeatedly.
+// Package bootstrap provides cluster-software-setup primitives used by the
+// kapro CLI (cmd/kapro): install Flux Operator + FluxInstance, install Kapro
+// CRDs, ensure namespaces, and optionally wire GCP-specific spoke prep (GAR
+// registry, Fleet membership). All functions use the controller-runtime client
+// with server-side apply — no Helm binary, no kubectl, no gcloud. Idempotent:
+// safe to call repeatedly.
+//
+// This is NOT the v0.5 FleetCluster CSR registration path. CSR-based cluster
+// registration lives in:
+//   - internal/controller/fleetcluster_bootstrap_controller.go (hub approver)
+//   - cmd/kapro-cluster-controller/bootstrap.go (spoke CSR client)
+//
+// internal/bootstrap is the *pre-registration* layer: it gets the right CRDs
+// and controllers installed on a cluster (hub or spoke) so that the CSR
+// registration flow can subsequently run. The two layers are intentionally
+// separate — operators may use either or both depending on whether they want
+// Kapro to manage the Flux install or run alongside an existing Flux.
 package bootstrap
 
 import (
