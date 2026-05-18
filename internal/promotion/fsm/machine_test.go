@@ -17,7 +17,7 @@ type testEnv struct {
 }
 
 func TestMachine_RegisterAndStep(t *testing.T) {
-	m := New[*testEnv]()
+	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
 	if err := m.Register(kaprov1alpha1.TargetPhaseVerification, func(_ context.Context, e *testEnv) (ctrl.Result, error) {
 		e.called = "verification"
 		return ctrl.Result{Requeue: true}, nil
@@ -39,7 +39,7 @@ func TestMachine_RegisterAndStep(t *testing.T) {
 }
 
 func TestMachine_UnknownPhaseIsNoop(t *testing.T) {
-	m := New[*testEnv]()
+	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
 	env := &testEnv{}
 	res, err := m.Step(context.Background(), kaprov1alpha1.TargetPhaseApplying, env)
 	if err != nil {
@@ -54,7 +54,7 @@ func TestMachine_UnknownPhaseIsNoop(t *testing.T) {
 }
 
 func TestMachine_InitialHandler(t *testing.T) {
-	m := New[*testEnv]()
+	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
 	if err := m.RegisterInitial(func(_ context.Context, e *testEnv) (ctrl.Result, error) {
 		e.called = "initial"
 		return ctrl.Result{}, nil
@@ -71,7 +71,7 @@ func TestMachine_InitialHandler(t *testing.T) {
 }
 
 func TestMachine_EmptyInitialIsNoop(t *testing.T) {
-	m := New[*testEnv]()
+	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
 	res, err := m.Step(context.Background(), "", &testEnv{})
 	if err != nil {
 		t.Fatalf("Step: %v", err)
@@ -82,7 +82,7 @@ func TestMachine_EmptyInitialIsNoop(t *testing.T) {
 }
 
 func TestMachine_DuplicateRegisterFails(t *testing.T) {
-	m := New[*testEnv]()
+	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
 	h := func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil }
 	if err := m.Register(kaprov1alpha1.TargetPhaseVerification, h); err != nil {
 		t.Fatalf("first Register: %v", err)
@@ -93,7 +93,7 @@ func TestMachine_DuplicateRegisterFails(t *testing.T) {
 }
 
 func TestMachine_RegisterEmptyPhaseFails(t *testing.T) {
-	m := New[*testEnv]()
+	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
 	h := func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil }
 	if err := m.Register("", h); err == nil {
 		t.Fatal("expected Register(\"\") to fail with guidance to use RegisterInitial")
@@ -101,7 +101,7 @@ func TestMachine_RegisterEmptyPhaseFails(t *testing.T) {
 }
 
 func TestMachine_RegisterNilHandlerFails(t *testing.T) {
-	m := New[*testEnv]()
+	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
 	if err := m.Register(kaprov1alpha1.TargetPhaseVerification, nil); err == nil {
 		t.Fatal("expected nil handler registration to fail")
 	}
@@ -111,7 +111,7 @@ func TestMachine_RegisterNilHandlerFails(t *testing.T) {
 }
 
 func TestMachine_PhasesListsRegistered(t *testing.T) {
-	m := New[*testEnv]()
+	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
 	_ = m.Register(kaprov1alpha1.TargetPhaseVerification, func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil })
 	_ = m.Register(kaprov1alpha1.TargetPhaseSoaking, func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil })
 	phases := m.Phases()
@@ -121,7 +121,7 @@ func TestMachine_PhasesListsRegistered(t *testing.T) {
 }
 
 func TestMachine_HandlerErrorPropagates(t *testing.T) {
-	m := New[*testEnv]()
+	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
 	want := errors.New("boom")
 	_ = m.Register(kaprov1alpha1.TargetPhaseApplying, func(_ context.Context, _ *testEnv) (ctrl.Result, error) {
 		return ctrl.Result{}, want

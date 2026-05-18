@@ -20,6 +20,8 @@
 //   - it's a stable hook for observability (every dispatch is one call site,
 //     not seven case branches).
 //
-// Generic on the environment type so the same primitive can later host the
-// PromotionRun FSM (D2) without copy-paste.
+// Generic on both the phase enum type and the environment type so the same
+// primitive can host the PromotionRun FSM (D2) without copy-paste — the
+// PromotionRunPhase enum is a distinct string type from TargetPhase and
+// would otherwise require casts at every call site.
 package fsm

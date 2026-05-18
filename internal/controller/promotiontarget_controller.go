@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"strings"
+	"sync"
 	"time"
 
 	coordinationv1 "k8s.io/api/coordination/v1"
@@ -71,6 +72,13 @@ type PromotionTargetReconciler struct {
 	// ShardPredicate optionally filters objects by shard label for horizontal scaling.
 	// When nil, all objects are processed.
 	ShardPredicate predicate.Predicate
+
+	// fsmMachine is the per-phase dispatch table for target rollout. Built
+	// lazily on first Reconcile via fsmOnce so that unit tests which
+	// construct PromotionTargetReconciler directly (without calling
+	// SetupWithManager) still get the FSM wired.
+	fsmOnce    sync.Once
+	fsmMachine *fsm.Machine[kaprov1alpha1.TargetPhase, *fsmEnv]
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=promotiontargets,verbs=get;list;watch;create;update;patch;delete
@@ -215,23 +223,22 @@ func isImmediateRequeue(result ctrl.Result) bool {
 	return result.Requeue && result.RequeueAfter == 0 //nolint:staticcheck // SA1019: result.Requeue deprecated but replacement needs larger refactor
 }
 
-// fsmEnv is the small per-Reconcile state bag the FSM hands to each phase
-// handler. The reconciler itself is captured by the closures registered in
-// buildFSM, so handlers can call r.handleX directly without extra plumbing.
+// fsmEnv is the per-tick state bag the FSM hands to each phase handler.
+// Only the values that vary between phase ticks live here; the reconciler
+// itself is captured once by the closures registered in buildFSM (it is
+// stable for the lifetime of the controller).
 type fsmEnv struct {
 	promotionrun *kaprov1alpha1.PromotionRun
 	target       *kaprov1alpha1.TargetStatus
 	rt           *kaprov1alpha1.PromotionTarget
 }
 
-// buildFSM constructs the per-Reconcile phase dispatch table. Building it
-// once per call (rather than caching on the reconciler) keeps each Step
-// closed over the current promotionrun / target / rt without any escape
-// from the Reconcile stack, which mirrors the previous switch's lifetime
-// exactly. If profiling ever shows allocation pressure here we can hoist
-// the closures and pass the env explicitly via the Env type parameter.
-func (r *PromotionTargetReconciler) buildFSM() *fsm.Machine[*fsmEnv] {
-	m := fsm.New[*fsmEnv]()
+// buildFSM constructs the phase dispatch table. The closures capture r,
+// which is stable for the reconciler's lifetime; per-tick values
+// (promotionrun / target / rt) are passed through fsmEnv at Step time.
+// Called exactly once per reconciler via ensureFSM.
+func (r *PromotionTargetReconciler) buildFSM() *fsm.Machine[kaprov1alpha1.TargetPhase, *fsmEnv] {
+	m := fsm.New[kaprov1alpha1.TargetPhase, *fsmEnv]()
 	// Phase "" → transition into Pending. Replaces the bare case "" branch
 	// of the legacy switch; kept identical (transitionTo + immediate
 	// requeue) so behaviour is unchanged.
@@ -280,14 +287,22 @@ func must(err error) {
 	}
 }
 
+// ensureFSM builds the phase dispatch table the first time it is called
+// on this reconciler. Lazy init keeps unit tests that construct
+// PromotionTargetReconciler directly (without SetupWithManager) working.
+func (r *PromotionTargetReconciler) ensureFSM() {
+	r.fsmOnce.Do(func() {
+		r.fsmMachine = r.buildFSM()
+	})
+}
+
 // advanceTarget dispatches one FSM step for the given target. The legacy
-// implementation was a switch statement; this delegates to the
-// internal/promotion/fsm package's Machine so the dispatch is declarative
-// (Phases() lists everything supported) and the same primitive can host
-// the PromotionRun FSM when D2 lands.
+// implementation was a switch statement; this delegates to the cached
+// Machine built by ensureFSM so the dispatch is declarative (Phases()
+// lists everything supported) and no table is rebuilt per phase tick.
 func (r *PromotionTargetReconciler) advanceTarget(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, target *kaprov1alpha1.TargetStatus, rt *kaprov1alpha1.PromotionTarget) (ctrl.Result, error) {
-	machine := r.buildFSM()
-	return machine.Step(ctx, target.Phase, &fsmEnv{
+	r.ensureFSM()
+	return r.fsmMachine.Step(ctx, target.Phase, &fsmEnv{
 		promotionrun: promotionrun,
 		target:       target,
 		rt:           rt,
