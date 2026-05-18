@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"time"
+	"unicode/utf8"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -148,13 +149,20 @@ func (l *deliveryLoop) reconcileOne(
 		return out
 	}
 	params := mergeParameters(profile.Spec.Parameters, fc.Spec.Delivery.Parameters)
-	return provider.Reconcile(ctx, spokeprovider.ReconcileRequest{
+	res := provider.Reconcile(ctx, spokeprovider.ReconcileRequest{
 		Cluster:        fc,
 		AppKey:         appKey,
 		DesiredVersion: version,
 		BackendProfile: profile,
 		Parameters:     params,
 	})
+	// Backfill LastAttemptedAt if the Provider implementation forgot to set
+	// it — SREs rely on this timestamp to answer "is the spoke alive?"
+	// independently of whether ObservedDigest has populated yet.
+	if res.LastAttemptedAt.IsZero() {
+		res.LastAttemptedAt = l.now()
+	}
+	return res
 }
 
 // resolveBackendProfile reads the cluster-scoped BackendProfile referenced by
@@ -296,11 +304,19 @@ func sortedKeys(m map[string]string) []string {
 	return keys
 }
 
+// truncateError caps an error string at max BYTES, suffixing "…". It
+// guards against splitting a multi-byte UTF-8 rune across the cut point so
+// the resulting string is always valid UTF-8 (the apiserver rejects status
+// fields with invalid UTF-8).
 func truncateError(s string, max int) string {
 	if max <= 0 || len(s) <= max {
 		return s
 	}
-	return s[:max] + "…"
+	cut := max
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "…"
 }
 
 func (l *deliveryLoop) now() time.Time {

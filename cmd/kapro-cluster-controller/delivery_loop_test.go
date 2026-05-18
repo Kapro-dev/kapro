@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -332,6 +333,25 @@ func TestDeliveryLoop_TruncateError(t *testing.T) {
 	short := "hi"
 	if truncateError(short, 100) != "hi" {
 		t.Fatalf("short string should pass through")
+	}
+}
+
+func TestDeliveryLoop_TruncateError_DoesNotSplitMultibyteRune(t *testing.T) {
+	// Build a string where byte index `max` falls in the middle of a
+	// 3-byte UTF-8 character (the ellipsis itself). Without UTF-8-aware
+	// truncation the result would contain a half-rune and be rejected by
+	// the apiserver. The "max" we pick is the byte index of the second
+	// byte of the 4th "…" — guaranteed mid-rune.
+	s := "aaaaaaaaaaaaa…………"
+	// First 13 ASCII bytes + 4× 3-byte ellipsis. Pick max=14 → middle of
+	// first ellipsis (bytes 13,14,15).
+	got := truncateError(s, 14)
+	if !utf8.ValidString(got) {
+		t.Fatalf("truncateError produced invalid UTF-8: %q (% x)", got, []byte(got))
+	}
+	// Must have shrunk back to a rune boundary at byte 13 (the ASCII).
+	if got != "aaaaaaaaaaaaa…" {
+		t.Fatalf("expected to cut back to rune boundary, got %q", got)
 	}
 }
 
