@@ -140,8 +140,10 @@ type PromotionTriggerArtifact struct {
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // PromotionTrigger observes verified artifact changes and creates PromotionRun objects.
-// It is safe by default: triggers are suspended by default, created PromotionRuns are
-// suspended by default, and OCI signature verification defaults to required.
+// It is safe by default for promotion-side concerns: triggers are suspended by default
+// and any PromotionRuns they create are suspended by default. OCI signature verification
+// is opt-in per source (`spec.source.oci.requireSignature`, default false) so a trigger
+// does not fail closed unless a signature policy is intentionally enabled.
 type PromotionTrigger struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

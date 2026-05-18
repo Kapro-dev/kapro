@@ -467,6 +467,7 @@ spec:
                             enum:
                             - outbound-agent
                             - gcp-fleet
+                            - gcp-connect-gateway
                             - eks
                             - aks-arc
                             - rhacm

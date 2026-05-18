@@ -26,10 +26,13 @@ type ApprovalSpec struct {
 	// External integrators may use another deterministic ref as long as
 	// metadata.name is "<promotionrun>-<ref>".
 	Ref string `json:"ref"`
-	// ApprovedBy identifies the human approver. Populated by the admission
-	// webhook from the request UserInfo when empty.
-	// +kubebuilder:validation:Required
-	ApprovedBy string `json:"approvedBy"`
+	// ApprovedBy identifies the human approver. May be left empty by the
+	// client; the admission mutating webhook fills it in from the request
+	// UserInfo (the validating webhook then enforces non-empty). This field
+	// is intentionally NOT marked as a required schema field so that the
+	// mutating webhook has a chance to populate it before validation runs.
+	// +optional
+	ApprovedBy string `json:"approvedBy,omitempty"`
 	// Bypass skips subsequent gate conditions for the target. Reserved for
 	// P0 hotfix escalations; audited via the ApprovalRecorded Event.
 	// +optional

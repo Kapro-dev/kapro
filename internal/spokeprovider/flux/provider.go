@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -162,16 +161,14 @@ func (p *Provider) Reconcile(ctx context.Context, req spokeprovider.ReconcileReq
 }
 
 // getUnstructured fetches a typed-by-GVK object from the spoke cluster.
-// Returns the apierror unchanged so callers can decide whether NotFound
-// is fatal or just "Flux not running yet."
+// Errors are returned wrapped with %w so callers can still use
+// apierrors.IsNotFound to distinguish "Flux not installed yet" from other
+// failures, while keeping the original apierror context for debugging.
 func (p *Provider) getUnstructured(ctx context.Context, gvk schema.GroupVersionKind, namespace, name string) (*unstructured.Unstructured, error) {
 	u := &unstructured.Unstructured{}
 	u.SetGroupVersionKind(gvk)
 	if err := p.Local.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, u); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, fmt.Errorf("not found")
-		}
-		return nil, err
+		return nil, fmt.Errorf("get %s %s/%s: %w", gvk.Kind, namespace, name, err)
 	}
 	return u, nil
 }

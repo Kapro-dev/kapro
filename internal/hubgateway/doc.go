@@ -18,10 +18,10 @@
 //
 // This package is distinct from:
 //   - internal/webhook/server.go      — approval webhook (/approve, /reject)
-//                                       plus the Decision API HTTP mount.
+//     plus the Decision API HTTP mount.
 //   - internal/webhook/decision_api.go — Decision API for AI agents: promotion
-//                                       context, gate evaluation context,
-//                                       decision submission with audit trail.
+//     context, gate evaluation context,
+//     decision submission with audit trail.
 //
 // The hub gateway is for humans-with-tools (UI, CLI, dashboards); the Decision
 // API is for autonomous agents that need richer per-decision context.

@@ -75,8 +75,11 @@ spec:
             properties:
               approvedBy:
                 description: |-
-                  ApprovedBy identifies the human approver. Populated by the admission
-                  webhook from the request UserInfo when empty.
+                  ApprovedBy identifies the human approver. May be left empty by the
+                  client; the admission mutating webhook fills it in from the request
+                  UserInfo (the validating webhook then enforces non-empty). This field
+                  is intentionally NOT marked as a required schema field so that the
+                  mutating webhook has a chance to populate it before validation runs.
                 type: string
               bypass:
                 description: |-
@@ -101,7 +104,6 @@ spec:
                 description: Target is the FleetCluster name this approval is for.
                 type: string
             required:
-            - approvedBy
             - promotionrun
             - ref
             - target

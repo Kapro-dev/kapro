@@ -3,16 +3,16 @@
 // Provider kinds:
 //   - kubeconfig:          static kubeconfig file (any cloud, kind, on-prem)
 //   - gcp-basic:           GKE Workload Identity + direct GKE API endpoint
-//                          (single-project / VPC-peered private GKE)
+//     (single-project / VPC-peered private GKE)
 //   - gcp-fleet:           GKE Fleet API for discovery + Connect Gateway
-//                          for access. Topology-agnostic — works across any
-//                          project, VPC, or region without peering. Use when
-//                          you want auto-discovery of memberships.
+//     for access. Topology-agnostic — works across any
+//     project, VPC, or region without peering. Use when
+//     you want auto-discovery of memberships.
 //   - gcp-connect-gateway: Connect Gateway access for a known membership
-//                          without Fleet discovery. Lower privilege than
-//                          gcp-fleet (gatewayReader, not gkehub.viewer).
-//                          Use when you know the project + location +
-//                          membership ahead of time.
+//     without Fleet discovery. Lower privilege than
+//     gcp-fleet (gatewayReader, not gkehub.viewer).
+//     Use when you know the project + location +
+//     membership ahead of time.
 //
 // Future providers (stubs in v0.5): eks, aks-arc, rhacm, capi.
 //
