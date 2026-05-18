@@ -9,6 +9,7 @@ import (
 
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -120,11 +121,18 @@ func (r *PromotionTargetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	// Parent writes spec (owns it), child transitions status to Failed (owns it).
 	if rt.Spec.Cancelled {
 		log.FromContext(ctx).Info("target cancelled by parent", "reason", rt.Spec.CancelledReason)
-		rt.Status.Phase = kaprov1alpha1.TargetPhaseFailed
-		rt.Status.Message = "cancelled: " + rt.Spec.CancelledReason
-		rt.Status.FinishedAt = time.Now().UTC().Format(time.RFC3339)
-		r.updatePromotionTargetStatusContract(&rt)
-		if updateErr := r.Status().Update(ctx, &rt); updateErr != nil {
+		// gate-IsConflict: cancellation is a deterministic, side-effect-free
+		// status flip — perfect candidate for the retry helper. The mutate
+		// function is idempotent so a refetch + re-apply on conflict is safe.
+		cancelReason := rt.Spec.CancelledReason
+		nowStr := time.Now().UTC().Format(time.RFC3339)
+		if updateErr := StatusUpdateWithRetry(ctx, r.Client, &rt, func(fresh *kaprov1alpha1.PromotionTarget) error {
+			fresh.Status.Phase = kaprov1alpha1.TargetPhaseFailed
+			fresh.Status.Message = "cancelled: " + cancelReason
+			fresh.Status.FinishedAt = nowStr
+			r.updatePromotionTargetStatusContract(fresh)
+			return nil
+		}); updateErr != nil {
 			return ctrl.Result{}, fmt.Errorf("update cancelled PromotionTarget status: %w", updateErr)
 		}
 		if updateErr := r.syncPromotionTargetPhaseLabel(ctx, &rt); updateErr != nil {
@@ -153,6 +161,18 @@ func (r *PromotionTargetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	rt.Status.TargetStatus = target
 	r.updatePromotionTargetStatusContract(&rt)
 	if updateErr := r.Status().Update(ctx, &rt); updateErr != nil {
+		// gate-IsConflict: don't bury the FSM in a refetch-and-retry loop —
+		// the FSM mutation cost is too high to repeat per conflict. Instead,
+		// detect Conflict explicitly and return a fast requeue (1s) so the
+		// workqueue picks the request back up with a fresh read; non-conflict
+		// errors bubble up as before. At 500-cluster scale this turns a
+		// "flapping condition for ~30s of exponential backoff" into a
+		// predictable 1s retry that keeps p99 latency bounded.
+		if apierrors.IsConflict(updateErr) {
+			kaprometrics.StatusWrites.WithLabelValues("promotiontarget", "conflict").Inc()
+			resultLabel = "conflict"
+			return ctrl.Result{RequeueAfter: time.Second}, nil
+		}
 		kaprometrics.StatusWrites.WithLabelValues("promotiontarget", "error").Inc()
 		resultLabel = "error"
 		return ctrl.Result{}, fmt.Errorf("update PromotionTarget status %s: %w", rt.Name, updateErr)
