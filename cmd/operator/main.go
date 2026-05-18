@@ -295,6 +295,10 @@ func main() {
 			"/validate-kapro-io-v1alpha1-approval",
 			&crwebhook.Admission{Handler: kaploadmission.NewApprovalValidator(decoder)},
 		)
+		mgr.GetWebhookServer().Register(
+			"/validate-kapro-io-v1alpha1-promotiontrigger",
+			&crwebhook.Admission{Handler: kaploadmission.NewPromotionTriggerValidator(decoder)},
+		)
 	}
 
 	for name, initFn := range cm.Registry {
