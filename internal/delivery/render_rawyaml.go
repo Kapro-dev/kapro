@@ -191,4 +191,3 @@ func parseUnstructured(doc []byte, source string, ordinal int) (*Object, error) 
 	}
 	return FromUnstructured(u, fmt.Sprintf("%s#%d", source, ordinal)), nil
 }
-

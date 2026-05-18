@@ -329,9 +329,9 @@ type HubClient struct {
 	hubURL  string
 	caData  []byte
 
-	mu       sync.Mutex
-	current  client.Client
-	curCert  []byte
+	mu      sync.Mutex
+	current client.Client
+	curCert []byte
 }
 
 // Client returns a fresh controller-runtime client when cert has rotated;

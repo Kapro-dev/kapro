@@ -6,10 +6,10 @@
 //
 // One Provider services one BackendDriver. The first-party providers are:
 //   - "oci"      — internal/spokeprovider/outbound (PR-5): the outbound-agent.
-//                  Pulls OCI artifacts directly and applies them via the
-//                  two-phase apply engine from internal/delivery.
+//     Pulls OCI artifacts directly and applies them via the
+//     two-phase apply engine from internal/delivery.
 //   - "flux"     — patches an existing OCIRepository tag and waits for Flux to
-//                  reconcile. Not yet implemented; planned for a follow-up PR.
+//     reconcile. Not yet implemented; planned for a follow-up PR.
 //   - "argo"     — analogous to flux but for ArgoCD Application objects.
 //   - "external" — gRPC-dispatched out-of-tree plugin via PluginRegistration.
 //

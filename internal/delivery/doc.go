@@ -23,9 +23,10 @@
 //
 // Test surface:
 //   - Pull / Detect / Render / Apply each individually unit-testable.
+//   - The Pull path is exercised against the oras-go in-memory store via an
+//     injected ResolverFactory — no httptest registry yet.
 //   - Two-phase engine driven by a fake client.Client; assertions over
 //     "no live objects mutated when dry-run fails".
-//   - End-to-end test pushes a tiny raw-yaml artifact to an in-test OCI
-//     registry (oras-go memory store + httptest server) and asserts
-//     FleetCluster.status.delivery transitions through the expected phases.
+//   - End-to-end test against a real OCI registry is deferred to the Helm
+//     chart shipped in PR-7, which exercises the spoke binary in kind.
 package delivery

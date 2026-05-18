@@ -40,7 +40,7 @@ func TestDetectFormat_ByStructure(t *testing.T) {
 		{
 			"helm via Chart.yaml",
 			fstest.MapFS{
-				"Chart.yaml":            &fstest.MapFile{Data: []byte("apiVersion: v2\nname: x\n")},
+				"Chart.yaml":               &fstest.MapFile{Data: []byte("apiVersion: v2\nname: x\n")},
 				"templates/configmap.yaml": &fstest.MapFile{Data: []byte("kind: ConfigMap\n")},
 			},
 			FormatHelm,

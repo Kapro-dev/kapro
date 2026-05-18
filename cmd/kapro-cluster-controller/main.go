@@ -16,8 +16,8 @@
 //     - heartbeat: refresh Lease kapro-heartbeat-<name> every 30s
 //     - status:    report cluster capabilities + health to FleetCluster.status
 //     - delivery:  watch FleetCluster.spec.desiredVersions, dispatch to a
-//                  spoke Provider (oci/flux/argo/external) via the registry,
-//                  and write per-app progress to FleetCluster.status.delivery
+//     spoke Provider (oci/flux/argo/external) via the registry,
+//     and write per-app progress to FleetCluster.status.delivery
 //  6. Cert rotation is handled automatically by certificate.Manager — when the
 //     cert is approaching expiry it submits a renewal CSR (Username =
 //     "kapro-cluster:<name>" so the hub approver recognizes it as a renewal,

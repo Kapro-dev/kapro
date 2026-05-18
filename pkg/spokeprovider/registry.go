@@ -43,13 +43,21 @@ func (r *Registry) Register(driver kaprov1alpha1.BackendDriver, p Provider) erro
 }
 
 // Upsert adds or replaces the Provider for driver and returns the previous
-// implementation when one existed.
-func (r *Registry) Upsert(driver kaprov1alpha1.BackendDriver, p Provider) Provider {
+// implementation when one existed. Rejects empty driver and nil provider
+// for the same reason Register does — a nil entry would let Resolve return
+// (nil, nil) and panic the dispatcher.
+func (r *Registry) Upsert(driver kaprov1alpha1.BackendDriver, p Provider) (Provider, error) {
+	if driver == "" {
+		return nil, fmt.Errorf("driver is required")
+	}
+	if p == nil {
+		return nil, fmt.Errorf("provider for driver %q is nil", driver)
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	old := r.providers[driver]
 	r.providers[driver] = p
-	return old
+	return old, nil
 }
 
 // Unregister removes the provider for driver and returns the previous

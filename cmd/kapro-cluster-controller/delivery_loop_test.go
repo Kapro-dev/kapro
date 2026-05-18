@@ -490,4 +490,3 @@ func TestMergedDesiredVersions_MapWinsOverLegacy(t *testing.T) {
 		t.Fatalf("map should win: got %q", got)
 	}
 }
-

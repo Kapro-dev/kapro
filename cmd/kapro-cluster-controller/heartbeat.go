@@ -83,7 +83,7 @@ func (h *heartbeatLoop) tick(ctx context.Context) error {
 			},
 			Spec: coordinationv1.LeaseSpec{
 				HolderIdentity:       ptrString(h.HolderIdentity),
-				LeaseDurationSeconds: ptrInt32(int32(2 * h.Interval.Seconds())),
+				LeaseDurationSeconds: ptrInt32(h.leaseDurationSeconds()),
 				AcquireTime:          &now,
 				RenewTime:            &now,
 			},
@@ -100,7 +100,7 @@ func (h *heartbeatLoop) tick(ctx context.Context) error {
 	lease.Spec.RenewTime = &now
 	lease.Spec.HolderIdentity = ptrString(h.HolderIdentity)
 	if lease.Spec.LeaseDurationSeconds == nil {
-		lease.Spec.LeaseDurationSeconds = ptrInt32(int32(2 * h.Interval.Seconds()))
+		lease.Spec.LeaseDurationSeconds = ptrInt32(h.leaseDurationSeconds())
 	}
 	if err := hub.Patch(tctx, lease, patch); err != nil {
 		return fmt.Errorf("patch heartbeat Lease: %w", err)
@@ -119,3 +119,19 @@ func heartbeatLeaseName(clusterName string) string {
 
 func ptrString(s string) *string { return &s }
 func ptrInt32(v int32) *int32    { return &v }
+
+// leaseDurationSeconds returns 2× the heartbeat interval in whole seconds,
+// rounding UP so sub-second intervals (e.g. 10.9s) do not produce a Lease
+// shorter than 2× the configured cadence. A minimum of 1 second is
+// enforced so a zero/negative Interval still yields a valid Lease.
+func (h *heartbeatLoop) leaseDurationSeconds() int32 {
+	d := 2 * h.Interval
+	if d <= 0 {
+		return 1
+	}
+	secs := int64((d + time.Second - 1) / time.Second)
+	if secs < 1 {
+		secs = 1
+	}
+	return int32(secs)
+}

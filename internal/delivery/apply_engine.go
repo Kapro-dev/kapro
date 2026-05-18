@@ -110,7 +110,9 @@ func (e *ApplyEngine) Apply(ctx context.Context, objects []*Object) (ApplyResult
 		if e.Force {
 			opts = append(opts, client.ForceOwnership)
 		}
-		if err := e.Client.Patch(ctx, obj.U.DeepCopy(), client.Apply, opts...); err != nil {
+		if err := e.Client.Patch(ctx, obj.U.DeepCopy(),
+			client.Apply, //nolint:staticcheck // SA1019: client.Apply deprecated but replacement needs larger refactor
+			opts...); err != nil {
 			res.StagingErrors = append(res.StagingErrors, ObjectError{Key: obj.Key(), Err: err})
 			continue
 		}
@@ -133,7 +135,9 @@ func (e *ApplyEngine) Apply(ctx context.Context, objects []*Object) (ApplyResult
 			opts = append(opts, client.ForceOwnership)
 		}
 		toApply := obj.U.DeepCopy()
-		if err := e.Client.Patch(ctx, toApply, client.Apply, opts...); err != nil {
+		if err := e.Client.Patch(ctx, toApply,
+			client.Apply, //nolint:staticcheck // SA1019: client.Apply deprecated but replacement needs larger refactor
+			opts...); err != nil {
 			res.CommitErrors = append(res.CommitErrors, ObjectError{Key: obj.Key(), Err: err})
 			continue
 		}
@@ -163,12 +167,15 @@ func summariseErrors(errs []ObjectError) string {
 }
 
 // errorBrief shortens an apiserver error to its Reason+Message, dropping
-// long-form status-object dumps that bloat the status field.
+// long-form status-object dumps that bloat the status field. Uses errors.As
+// so wrapped apierrors (e.g. fmt.Errorf("...: %w", apierr)) are still
+// recognised and stripped down — direct type assertion misses these.
 func errorBrief(err error) string {
 	if err == nil {
 		return ""
 	}
-	if s, ok := err.(apierrors.APIStatus); ok {
+	var s apierrors.APIStatus
+	if errors.As(err, &s) {
 		st := s.Status()
 		if st.Reason != "" {
 			return fmt.Sprintf("%s: %s", st.Reason, st.Message)

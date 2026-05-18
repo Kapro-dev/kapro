@@ -133,13 +133,31 @@ func readAll(ctx context.Context, fetcher oras.ReadOnlyTarget, desc ocispec.Desc
 	}
 	defer rc.Close()
 	if desc.Size > 0 {
+		// Known size: require an EXACT read of desc.Size bytes. io.CopyN
+		// returns io.EOF only when the source is short — treating that as
+		// success would silently accept truncated/corrupt blobs.
 		buf := bytes.NewBuffer(make([]byte, 0, desc.Size))
-		if _, err := io.CopyN(buf, rc, desc.Size); err != nil && err != io.EOF {
-			return nil, err
+		n, err := io.CopyN(buf, rc, desc.Size)
+		if err != nil {
+			return nil, fmt.Errorf("read descriptor %s: %w", desc.Digest, err)
+		}
+		if n != desc.Size {
+			return nil, fmt.Errorf("descriptor %s: read %d bytes, expected %d",
+				desc.Digest, n, desc.Size)
 		}
 		return buf.Bytes(), nil
 	}
-	return io.ReadAll(io.LimitReader(rc, maxBytes+1))
+	// Unknown size: read up to maxBytes+1 and fail if we hit that ceiling
+	// (any over-cap content indicates a malicious or malformed descriptor).
+	data, err := io.ReadAll(io.LimitReader(rc, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("descriptor %s: unbounded blob exceeded %d byte cap",
+			desc.Digest, maxBytes)
+	}
+	return data, nil
 }
 
 // decodeTarGz reads a single-layer tar+gzip blob into an in-memory fs.FS.
@@ -172,7 +190,8 @@ func decodeTarGz(blob []byte, maxBytes int64) (fs.FS, error) {
 		switch hdr.Typeflag {
 		case tar.TypeDir:
 			out[name] = &fstest.MapFile{Mode: fs.ModeDir | 0o755, ModTime: hdr.ModTime}
-		case tar.TypeReg, tar.TypeRegA:
+		case tar.TypeReg:
+			// tar.TypeRegA was an alias for TypeReg, deprecated since Go 1.11.
 			if hdr.Size < 0 {
 				return nil, fmt.Errorf("tar entry %s has negative size", name)
 			}

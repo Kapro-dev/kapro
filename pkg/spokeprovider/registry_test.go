@@ -59,10 +59,17 @@ func TestRegistry_UpsertReturnsPrevious(t *testing.T) {
 	first := &stubProvider{driver: kaprov1alpha1.BackendDriverOCI}
 	second := &stubProvider{driver: kaprov1alpha1.BackendDriverOCI}
 
-	if prev := r.Upsert(kaprov1alpha1.BackendDriverOCI, first); prev != nil {
+	prev, err := r.Upsert(kaprov1alpha1.BackendDriverOCI, first)
+	if err != nil {
+		t.Fatalf("first Upsert: %v", err)
+	}
+	if prev != nil {
 		t.Fatalf("first Upsert returned non-nil prev: %v", prev)
 	}
-	prev := r.Upsert(kaprov1alpha1.BackendDriverOCI, second)
+	prev, err = r.Upsert(kaprov1alpha1.BackendDriverOCI, second)
+	if err != nil {
+		t.Fatalf("second Upsert: %v", err)
+	}
 	if prev != first {
 		t.Fatalf("second Upsert did not return the first provider")
 	}
@@ -72,6 +79,16 @@ func TestRegistry_UpsertReturnsPrevious(t *testing.T) {
 	}
 	if got != second {
 		t.Fatalf("Resolve did not return the replaced provider")
+	}
+}
+
+func TestRegistry_UpsertRejectsEmptyAndNil(t *testing.T) {
+	r := NewRegistry()
+	if _, err := r.Upsert("", &stubProvider{}); err == nil {
+		t.Fatalf("expected error for empty driver")
+	}
+	if _, err := r.Upsert(kaprov1alpha1.BackendDriverOCI, nil); err == nil {
+		t.Fatalf("expected error for nil provider")
 	}
 }
 

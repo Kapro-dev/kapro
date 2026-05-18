@@ -134,7 +134,7 @@ func (r *ParametersRefResolver) resolveBearerToken(ctx context.Context, req spok
 	}
 	raw, ok := s.Data[key]
 	if !ok || len(raw) == 0 {
-		return "", fmt.Errorf("Secret %s/%s has no non-empty %q key", ns, name, key)
+		return "", fmt.Errorf("secret %s/%s has no non-empty %q key", ns, name, key)
 	}
 	return strings.TrimSpace(string(raw)), nil
 }
@@ -157,10 +157,18 @@ func expandTemplate(tpl, appKey, version string) (string, error) {
 	return out, nil
 }
 
+// splitNamespacedName parses "namespace/name". Returns ok=false unless the
+// input contains EXACTLY one slash and both segments are non-empty.
+// Kubernetes names cannot contain '/', so values like "ns/name/extra" are
+// typos — we reject them up-front with the clear "namespace/name" error
+// message instead of letting the apiserver surface a confusing one later.
 func splitNamespacedName(s string) (ns, name string, ok bool) {
-	i := strings.Index(s, "/")
-	if i <= 0 || i == len(s)-1 {
+	ns, name, ok = strings.Cut(s, "/")
+	if !ok {
 		return "", "", false
 	}
-	return s[:i], s[i+1:], true
+	if ns == "" || name == "" || strings.Contains(name, "/") {
+		return "", "", false
+	}
+	return ns, name, true
 }
