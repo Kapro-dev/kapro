@@ -37,6 +37,10 @@ func init() {
 	// a spoke binary to consume the issued bootstrap kubeconfig. Set
 	// KAPRO_CONTROLLERS=*,fleetcluster-bootstrap or list it explicitly to enable.
 	Register("fleetcluster-bootstrap", startFleetClusterBootstrapController)
+	// fleetcluster-template: universal fleet auto-import (PR-6). Opt-in until
+	// per-source IAM is documented (PR-7). Set
+	// KAPRO_CONTROLLERS=*,fleetcluster-template or list it explicitly to enable.
+	Register("fleetcluster-template", startFleetClusterTemplateController)
 }
 
 func startPromotionController(_ context.Context, cc ControllerContext) (bool, error) {
@@ -232,6 +236,22 @@ func startFleetClusterBootstrapController(_ context.Context, cc ControllerContex
 		HubAPIURL:    cc.HubAPIURL,
 		HubCAData:    cc.HubCAData,
 		PodNamespace: cc.PodNamespace,
+	}
+	if err := r.SetupWithManager(cc.Manager); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// startFleetClusterTemplateController starts the universal fleet auto-import
+// reconciler (PR-6). One CRD (FleetClusterTemplate) discovers clusters from
+// any supported source (GCP Fleet today; AWS / Azure / RHACM / CAPI / static
+// stubbed in v0.5) and upserts FleetCluster objects.
+func startFleetClusterTemplateController(_ context.Context, cc ControllerContext) (bool, error) {
+	r := &controller.FleetClusterTemplateReconciler{
+		Client:   cc.Manager.GetClient(),
+		Scheme:   cc.Manager.GetScheme(),
+		Recorder: cc.Recorder,
 	}
 	if err := r.SetupWithManager(cc.Manager); err != nil {
 		return false, err

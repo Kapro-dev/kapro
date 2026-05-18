@@ -25,6 +25,7 @@ func init() {
 		&NotificationPolicy{}, &NotificationPolicyList{},
 		&BackendProfile{}, &BackendProfileList{},
 		&PluginRegistration{}, &PluginRegistrationList{},
+		&FleetClusterTemplate{}, &FleetClusterTemplateList{},
 		// Internal / system objects
 		&Approval{}, &ApprovalList{},
 

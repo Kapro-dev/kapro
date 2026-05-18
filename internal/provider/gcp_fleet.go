@@ -11,8 +11,12 @@ import (
 	"google.golang.org/api/option"
 )
 
-// GCPFleetProvider uses Fleet API for auto-discovery + direct GKE endpoint for access.
-// No gcloud CLI dependency — uses Go GKE Hub SDK for Fleet membership listing.
+// GCPFleetProvider uses the GKE Fleet API for membership discovery and the
+// GCP Connect Gateway for access. No gcloud CLI dependency.
+//
+// Connect Gateway is topology-agnostic: project, VPC, region, peering, and
+// authorized-network configuration are irrelevant. Any cluster registered to
+// a Fleet that the hub identity can read is reachable.
 type GCPFleetProvider struct {
 	Project string
 }
@@ -21,23 +25,20 @@ var _ Provider = (*GCPFleetProvider)(nil)
 
 func (p *GCPFleetProvider) Name() string { return "gcp-fleet" }
 
-func (p *GCPFleetProvider) GenerateKubeConfig(ctx context.Context, clusterName string) ([]byte, error) {
+func (p *GCPFleetProvider) GenerateKubeConfig(ctx context.Context, membershipName string) ([]byte, error) {
 	if p.Project == "" {
 		return nil, fmt.Errorf("GCP project is required for gcp-fleet provider")
 	}
 
-	// Resolve the cluster's GKE location from Fleet membership.
-	membership, err := p.getMembership(ctx, clusterName)
+	// Look up the membership location so we can construct the Connect
+	// Gateway URL. The membership name (not the underlying GKE cluster name)
+	// is what Connect Gateway addresses by.
+	loc, err := p.getMembershipLocation(ctx, membershipName)
 	if err != nil {
 		return nil, err
 	}
 
-	// Delegate to GCPBasicProvider for kubeconfig generation.
-	basic := &GCPBasicProvider{
-		Project:  membership.project,
-		Location: membership.location,
-	}
-	return basic.GenerateKubeConfig(ctx, membership.gkeClusterName)
+	return BuildConnectGatewayKubeconfig(ctx, p.Project, loc, membershipName, nil)
 }
 
 // ListClusters discovers all Fleet memberships in the project.
@@ -73,89 +74,25 @@ func (p *GCPFleetProvider) ListClusters(ctx context.Context) ([]ClusterInfo, err
 	return clusters, nil
 }
 
-type membershipInfo struct {
-	project        string
-	location       string
-	gkeClusterName string
-}
-
-// getMembership resolves a Fleet membership to its GKE cluster details.
+// getMembershipLocation resolves a Fleet membership name to its location
+// (e.g. "europe-west3", "global"). The location is required to construct the
+// Connect Gateway URL but is not embedded in the membership name itself.
 // Lists all memberships and filters by name — avoids the location requirement
 // in the GetMembership API (which doesn't support locations/-).
-func (p *GCPFleetProvider) getMembership(ctx context.Context, membershipName string) (*membershipInfo, error) {
+func (p *GCPFleetProvider) getMembershipLocation(ctx context.Context, membershipName string) (string, error) {
 	clusters, err := p.ListClusters(ctx)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-
 	for _, c := range clusters {
 		if c.Name == membershipName {
-			if c.Project == "" || c.Location == "" {
-				return nil, fmt.Errorf("membership %s has incomplete cluster info", membershipName)
+			if c.Location == "" {
+				return "", fmt.Errorf("membership %s has no location", membershipName)
 			}
-			// Resolve the actual GKE cluster name from the resource link.
-			// For Fleet memberships, the cluster name may differ from the membership name.
-			// We need to get the full membership to parse the resource link.
-			return p.getMembershipByFullName(ctx, c)
+			return c.Location, nil
 		}
 	}
-	return nil, fmt.Errorf("fleet membership %q not found in project %s", membershipName, p.Project)
-}
-
-func (p *GCPFleetProvider) getMembershipByFullName(ctx context.Context, ci ClusterInfo) (*membershipInfo, error) {
-	c, err := gkehub.NewGkeHubMembershipClient(ctx, option.WithTokenSource(GCPTokenSource(ctx)))
-	if err != nil {
-		return nil, fmt.Errorf("create Fleet client: %w", err)
-	}
-	defer func() { _ = c.Close() }()
-
-	// Use the actual location from ListClusters, not wildcard.
-	name := fmt.Sprintf("projects/%s/locations/%s/memberships/%s", p.Project, ci.Location, ci.Name)
-	m, err := c.GetMembership(ctx, &gkehubpb.GetMembershipRequest{Name: name})
-	if err != nil {
-		return nil, fmt.Errorf("get Fleet membership %s: %w", name, err)
-	}
-
-	ep := m.GetEndpoint()
-	if ep == nil {
-		return nil, fmt.Errorf("membership %s has no endpoint", ci.Name)
-	}
-	gkeCluster := ep.GetGkeCluster()
-	if gkeCluster == nil {
-		return nil, fmt.Errorf("membership %s is not a GKE cluster", ci.Name)
-	}
-
-	return parseResourceLink(gkeCluster.GetResourceLink())
-}
-
-func parseResourceLink(rl string) (*membershipInfo, error) {
-	if rl == "" {
-		return nil, fmt.Errorf("empty resource link")
-	}
-
-	parts := strings.Split(rl, "/")
-	info := &membershipInfo{}
-	for i, part := range parts {
-		switch part {
-		case "projects":
-			if i+1 < len(parts) {
-				info.project = parts[i+1]
-			}
-		case "locations":
-			if i+1 < len(parts) {
-				info.location = parts[i+1]
-			}
-		case "clusters":
-			if i+1 < len(parts) {
-				info.gkeClusterName = parts[i+1]
-			}
-		}
-	}
-
-	if info.project == "" || info.location == "" || info.gkeClusterName == "" {
-		return nil, fmt.Errorf("could not parse resource link %q", rl)
-	}
-	return info, nil
+	return "", fmt.Errorf("fleet membership %q not found in project %s", membershipName, p.Project)
 }
 
 // parseMembership extracts ClusterInfo from a Fleet membership proto.

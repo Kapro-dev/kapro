@@ -1,9 +1,16 @@
 // Package provider abstracts how Kapro connects to spoke clusters.
 //
-// Three modes:
+// Provider kinds:
 //   - kubeconfig: static kubeconfig file (any cloud, kind, on-prem)
-//   - gcp-basic: GKE Workload Identity + API endpoint (no Fleet)
-//   - gcp-fleet: GKE Fleet API + Connect Gateway (auto-discovery)
+//   - gcp-basic:  GKE Workload Identity + direct GKE API endpoint
+//                 (single-project / VPC-peered private GKE)
+//   - gcp-fleet:  GKE Fleet API for discovery + Connect Gateway for access.
+//                 Topology-agnostic — works across any project, VPC, or
+//                 region without peering. Connect Gateway is an
+//                 implementation detail of this provider, not a selectable
+//                 kind on its own (see gcp_connect_gateway.go helpers).
+//
+// Future providers (stubs in v0.5): eks, aks-arc, rhacm, capi.
 //
 // The provider interface is used by the actuator to reach spoke clusters
 // and by the CLI to register clusters.
