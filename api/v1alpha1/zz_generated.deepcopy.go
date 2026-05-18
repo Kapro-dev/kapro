@@ -21,9 +21,9 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -239,7 +239,7 @@ func (in *AgentPolicyStatus) DeepCopyInto(out *AgentPolicyStatus) {
 	*out = *in
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make([]metav1.Condition, len(*in))
+		*out = make([]v1.Condition, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -286,7 +286,7 @@ func (in *AgentScope) DeepCopyInto(out *AgentScope) {
 	}
 	if in.ClusterSelector != nil {
 		in, out := &in.ClusterSelector, &out.ClusterSelector
-		*out = new(metav1.LabelSelector)
+		*out = new(v1.LabelSelector)
 		(*in).DeepCopyInto(*out)
 	}
 	if in.ExcludeClusters != nil {
@@ -432,7 +432,7 @@ func (in *ApprovalStatus) DeepCopyInto(out *ApprovalStatus) {
 	*out = *in
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make([]metav1.Condition, len(*in))
+		*out = make([]v1.Condition, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -494,7 +494,7 @@ func (in *BackendDiscoverySpec) DeepCopyInto(out *BackendDiscoverySpec) {
 	*out = *in
 	if in.Selector != nil {
 		in, out := &in.Selector, &out.Selector
-		*out = new(metav1.LabelSelector)
+		*out = new(v1.LabelSelector)
 		(*in).DeepCopyInto(*out)
 	}
 }
@@ -639,7 +639,7 @@ func (in *BackendProfileStatus) DeepCopyInto(out *BackendProfileStatus) {
 	}
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make([]metav1.Condition, len(*in))
+		*out = make([]v1.Condition, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -1191,7 +1191,7 @@ func (in *FleetClusterStatus) DeepCopyInto(out *FleetClusterStatus) {
 	*out = *in
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make([]metav1.Condition, len(*in))
+		*out = make([]v1.Condition, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -1390,7 +1390,7 @@ func (in *FleetClusterTemplateSpec) DeepCopyInto(out *FleetClusterTemplateSpec) 
 	in.Source.DeepCopyInto(&out.Source)
 	if in.Selector != nil {
 		in, out := &in.Selector, &out.Selector
-		*out = new(metav1.LabelSelector)
+		*out = new(v1.LabelSelector)
 		(*in).DeepCopyInto(*out)
 	}
 	in.Template.DeepCopyInto(&out.Template)
@@ -1415,7 +1415,7 @@ func (in *FleetClusterTemplateStatus) DeepCopyInto(out *FleetClusterTemplateStat
 	}
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make([]metav1.Condition, len(*in))
+		*out = make([]v1.Condition, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -1577,7 +1577,7 @@ func (in *GateRunStatus) DeepCopyInto(out *GateRunStatus) {
 	*out = *in
 	if in.VendorRef != nil {
 		in, out := &in.VendorRef, &out.VendorRef
-		*out = new(v1.ObjectReference)
+		*out = new(corev1.ObjectReference)
 		**out = **in
 	}
 	if in.Results != nil {
@@ -1740,7 +1740,7 @@ func (in *JobGateSpec) DeepCopyInto(out *JobGateSpec) {
 	}
 	if in.Env != nil {
 		in, out := &in.Env, &out.Env
-		*out = make([]v1.EnvVar, len(*in))
+		*out = make([]corev1.EnvVar, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -1959,7 +1959,7 @@ func (in *KaproStatus) DeepCopyInto(out *KaproStatus) {
 	*out = *in
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make([]metav1.Condition, len(*in))
+		*out = make([]v1.Condition, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -2102,7 +2102,7 @@ func (in *NotificationEventFilter) DeepCopyInto(out *NotificationEventFilter) {
 	}
 	if in.PromotionRunSelector != nil {
 		in, out := &in.PromotionRunSelector, &out.PromotionRunSelector
-		*out = new(metav1.LabelSelector)
+		*out = new(v1.LabelSelector)
 		(*in).DeepCopyInto(*out)
 	}
 	if in.PromotionPlans != nil {
@@ -2472,7 +2472,7 @@ func (in *OCIPromotionTriggerSource) DeepCopyInto(out *OCIPromotionTriggerSource
 	*out = *in
 	if in.SecretRef != nil {
 		in, out := &in.SecretRef, &out.SecretRef
-		*out = new(v1.SecretReference)
+		*out = new(corev1.SecretReference)
 		**out = **in
 	}
 }
@@ -2581,7 +2581,7 @@ func (in *PluginRegistrationSpec) DeepCopyInto(out *PluginRegistrationSpec) {
 	*out = *in
 	if in.TLSSecretRef != nil {
 		in, out := &in.TLSSecretRef, &out.TLSSecretRef
-		*out = new(v1.SecretReference)
+		*out = new(corev1.SecretReference)
 		**out = **in
 	}
 	if in.Parameters != nil {
@@ -2613,7 +2613,7 @@ func (in *PluginRegistrationStatus) DeepCopyInto(out *PluginRegistrationStatus) 
 	}
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make([]metav1.Condition, len(*in))
+		*out = make([]v1.Condition, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -2897,7 +2897,7 @@ func (in *PromotionPolicySpec) DeepCopyInto(out *PromotionPolicySpec) {
 	*out = *in
 	if in.Selector != nil {
 		in, out := &in.Selector, &out.Selector
-		*out = new(metav1.LabelSelector)
+		*out = new(v1.LabelSelector)
 		(*in).DeepCopyInto(*out)
 	}
 	if in.CEL != nil {
@@ -2934,7 +2934,7 @@ func (in *PromotionPolicyStatus) DeepCopyInto(out *PromotionPolicyStatus) {
 	*out = *in
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make([]metav1.Condition, len(*in))
+		*out = make([]v1.Condition, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -3111,7 +3111,7 @@ func (in *PromotionRunStatus) DeepCopyInto(out *PromotionRunStatus) {
 	}
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make([]metav1.Condition, len(*in))
+		*out = make([]v1.Condition, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -3249,7 +3249,7 @@ func (in *PromotionSpec) DeepCopyInto(out *PromotionSpec) {
 	}
 	if in.Policies != nil {
 		in, out := &in.Policies, &out.Policies
-		*out = make([]v1.LocalObjectReference, len(*in))
+		*out = make([]corev1.LocalObjectReference, len(*in))
 		copy(*out, *in)
 	}
 	if in.Scope != nil {
@@ -3274,7 +3274,7 @@ func (in *PromotionStatus) DeepCopyInto(out *PromotionStatus) {
 	*out = *in
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make([]metav1.Condition, len(*in))
+		*out = make([]v1.Condition, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -3383,7 +3383,7 @@ func (in *PromotionTargetStatus) DeepCopyInto(out *PromotionTargetStatus) {
 	in.TargetStatus.DeepCopyInto(&out.TargetStatus)
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make([]metav1.Condition, len(*in))
+		*out = make([]v1.Condition, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -3538,7 +3538,7 @@ func (in *PromotionTriggerStatus) DeepCopyInto(out *PromotionTriggerStatus) {
 	}
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make([]metav1.Condition, len(*in))
+		*out = make([]v1.Condition, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -3776,7 +3776,7 @@ func (in *StageDependency) DeepCopyInto(out *StageDependency) {
 	*out = *in
 	if in.RequiredSoakTime != nil {
 		in, out := &in.RequiredSoakTime, &out.RequiredSoakTime
-		*out = new(metav1.Duration)
+		*out = new(v1.Duration)
 		**out = **in
 	}
 }
@@ -3831,7 +3831,7 @@ func (in *StaticClusterEntry) DeepCopyInto(out *StaticClusterEntry) {
 	*out = *in
 	if in.KubeconfigSecretRef != nil {
 		in, out := &in.KubeconfigSecretRef, &out.KubeconfigSecretRef
-		*out = new(v1.SecretReference)
+		*out = new(corev1.SecretReference)
 		**out = **in
 	}
 	if in.Labels != nil {

@@ -40,6 +40,9 @@ security audit. See the [Roadmap](docs/ROADMAP.md) for release exit criteria.
 | Operating a shared hub | [Install Kapro](docs/install.md) and [RBAC and Tenancy Model](docs/rbac-tenancy.md) | Configure Helm, RBAC, approvals, and optional Decision API access. |
 | Registering a new fleet cluster (pull mode) | [Cluster Bootstrap](docs/cluster-bootstrap.md) | Install `kapro-cluster-controller` on a workload cluster so it self-registers with the hub. |
 | Tuning cluster reachability | [Heartbeat & Reachability](docs/heartbeat-and-reachability.md) | Understand `consecutiveFailureThreshold`, Ready/Phase transitions, and how in-flight promotions handle Unreachable clusters. |
+| Picking push vs pull for a new cluster | [Push vs Pull Matrix](docs/push-vs-pull.md) | One per-cluster decision; mix freely across the fleet. |
+| Evaluating which providers and actuators ship today | [Providers](docs/providers.md), [Actuators](docs/actuators.md) | Live / Stub / Planned status per `provider.kind` and per backend. |
+| Letting an AI agent promote against your fleet | [Decision API](docs/decision-api.md) | Typed, audited surface with AgentPolicy guard-rails and DecisionTrace audit. |
 
 ## What Kapro Is
 
@@ -213,6 +216,10 @@ Core concepts:
 - [Backend Ownership](docs/backend-ownership.md)
 - [Supported Backend Patterns](docs/supported-backend-patterns.md)
 - [CNCF Integration Masterplan](docs/cncf-integration-masterplan.md)
+- [Push vs Pull — Per-Cluster Connectivity Matrix](docs/push-vs-pull.md)
+- [Providers](docs/providers.md)
+- [Actuators](docs/actuators.md)
+- [Decision API](docs/decision-api.md)
 - [Promotion Gate Semantics](docs/gate-semantics.md)
 - [Events](docs/events.md)
 

@@ -15,7 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
-	spokeactuator "kapro.io/kapro/internal/actuator/spoke"
+	pullactuator "kapro.io/kapro/internal/actuator/pull"
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
 	"kapro.io/kapro/pkg/notification"
@@ -236,7 +236,7 @@ func TestPromotionTargetReconcilePullOCIRecordsDesiredState(t *testing.T) {
 		WithObjects(promotionrun, cluster, target).
 		Build()
 	actuators := actuator.NewRegistry()
-	if err := actuators.Register("pull/oci", &spokeactuator.DesiredStateActuator{HubClient: c}); err != nil {
+	if err := actuators.Register("pull/oci", &pullactuator.PullActuator{HubClient: c}); err != nil {
 		t.Fatal(err)
 	}
 	r := &PromotionTargetReconciler{

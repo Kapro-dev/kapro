@@ -85,3 +85,26 @@ than Kapro-compatible and is likely to include:
 
 Until that certification process exists, plugin authors should use
 Kapro-compatible for plugins that meet the contract and conformance bar.
+
+## Deprecation Policy
+
+When a new contract version (for example `v1alpha2`) is added, the previous
+version remains supported for at least **three Kapro minor releases** or until
+the next alpha→beta promotion, whichever comes first. During that window both
+versions appear in `pkg/plugincompat`'s supported list and in this matrix; the
+operator emits a `PluginContractDeprecated` Event on each successful probe of a
+plugin reporting the older version; conformance harnesses for both versions
+are maintained.
+
+After the deprecation window the older version is removed from
+`pkg/plugincompat` in a single PR that also updates this matrix. Plugins
+reporting the removed version will fail probe with `UnsupportedContractVersion`
+on the next reconcile.
+
+How to discover what your Kapro operator supports — programmatically:
+
+```go
+import "kapro.io/kapro/pkg/plugincompat"
+
+versions := plugincompat.SupportedContractVersions(kaprov1alpha1.PluginTypeActuator)
+```
