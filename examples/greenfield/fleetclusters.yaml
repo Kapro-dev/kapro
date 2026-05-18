@@ -1,0 +1,79 @@
+# Three greenfield FleetClusters. All three:
+#   - register via outbound-agent (spoke-initiated CSR bootstrap);
+#   - run no Flux or Argo on the spoke;
+#   - pull OCI bundles via the kapro-cluster-controller delivery loop.
+#
+# These CRs are created by an operator on the hub. Each spoke then runs
+# `kapro spoke bootstrap <name>` followed by `helm install
+# kapro-cluster-controller …` (see README.md).
+---
+apiVersion: kapro.io/v1alpha1
+kind: FleetCluster
+metadata:
+  name: de-store-01
+  labels:
+    env: prod
+    tier: canary
+    country: de
+spec:
+  provider:
+    kind: outbound-agent
+    parameters:
+      hubURL: https://kapro-hub.example.com:6443
+  bootstrap:
+    # SHA-256 of the bootstrap token issued by `kapro spoke bootstrap`.
+    # Single-use; rotated after consumption.
+    tokenHash: sha256:0000000000000000000000000000000000000000000000000000000000000001
+    ttl: 24h
+  delivery:
+    backendRef: oci-greenfield
+    mode: pull
+    parameters:
+      ociRepository: oci://harbor.de-store-01.local/kapro/checkout-bundle
+  consecutiveFailureThreshold: 3
+---
+apiVersion: kapro.io/v1alpha1
+kind: FleetCluster
+metadata:
+  name: de-store-02
+  labels:
+    env: prod
+    tier: general
+    country: de
+spec:
+  provider:
+    kind: outbound-agent
+    parameters:
+      hubURL: https://kapro-hub.example.com:6443
+  bootstrap:
+    tokenHash: sha256:0000000000000000000000000000000000000000000000000000000000000002
+    ttl: 24h
+  delivery:
+    backendRef: oci-greenfield
+    mode: pull
+    parameters:
+      ociRepository: oci://harbor.de-store-02.local/kapro/checkout-bundle
+  consecutiveFailureThreshold: 3
+---
+apiVersion: kapro.io/v1alpha1
+kind: FleetCluster
+metadata:
+  name: at-store-01
+  labels:
+    env: prod
+    tier: general
+    country: at
+spec:
+  provider:
+    kind: outbound-agent
+    parameters:
+      hubURL: https://kapro-hub.example.com:6443
+  bootstrap:
+    tokenHash: sha256:0000000000000000000000000000000000000000000000000000000000000003
+    ttl: 24h
+  delivery:
+    backendRef: oci-greenfield
+    mode: pull
+    parameters:
+      ociRepository: oci://harbor.at-store-01.local/kapro/checkout-bundle
+  consecutiveFailureThreshold: 3

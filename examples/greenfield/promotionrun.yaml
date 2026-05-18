@@ -1,0 +1,13 @@
+# A single PromotionRun against the greenfield plan above. Once applied,
+# kapro-operator creates a PromotionTarget per matching FleetCluster and
+# drives each one through the 10-phase target FSM
+# (Pending → Verification → HealthCheck → Soaking → MetricsCheck →
+# WaitingApproval → Applying → Converged | Failed | Skipped).
+apiVersion: kapro.io/v1alpha1
+kind: PromotionRun
+metadata:
+  name: checkout-v1-2-3-greenfield
+spec:
+  version: v1.2.3
+  promotionPlans:
+    - name: checkout-greenfield
