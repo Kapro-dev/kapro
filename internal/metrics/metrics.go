@@ -58,6 +58,21 @@ var (
 		[]string{"phase", "result"},
 	)
 
+	// FSMUnexpectedTransitions counts PromotionTarget FSM transitions that
+	// the controller attempted but the declared AllowedNext metadata
+	// (internal/promotion/fsm) did NOT permit. A non-zero rate here is a
+	// strong signal that the FSM graph documentation has drifted from the
+	// handler code — alertable. Labels: from, to.
+	FSMUnexpectedTransitions = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "kapro",
+			Subsystem: "fsm",
+			Name:      "unexpected_transitions_total",
+			Help:      "Phase transitions that violated the declared AllowedNext FSM graph (observability, not enforcement).",
+		},
+		[]string{"from", "to"},
+	)
+
 	// GateEvaluations counts gate evaluations across all gate types.
 	// Labels: gate_type (cel|job|webhook|soak|metrics|approval|verification),
 	//         result (passed|failed|inconclusive|error).
@@ -240,6 +255,7 @@ func init() {
 		ControllerReconcileDuration,
 		StatusWrites,
 		SyncTransitions,
+		FSMUnexpectedTransitions,
 		GateEvaluations,
 		StageDuration,
 		ActivePromotionRuns,

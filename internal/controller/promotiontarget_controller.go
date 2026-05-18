@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"strings"
+	"sync"
 	"time"
 
 	coordinationv1 "k8s.io/api/coordination/v1"
@@ -27,6 +28,7 @@ import (
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	kaprometrics "kapro.io/kapro/internal/metrics"
+	"kapro.io/kapro/internal/promotion/fsm"
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
 	"kapro.io/kapro/pkg/notification"
@@ -70,6 +72,13 @@ type PromotionTargetReconciler struct {
 	// ShardPredicate optionally filters objects by shard label for horizontal scaling.
 	// When nil, all objects are processed.
 	ShardPredicate predicate.Predicate
+
+	// fsmMachine is the per-phase dispatch table for target rollout. Built
+	// lazily on first Reconcile via fsmOnce so that unit tests which
+	// construct PromotionTargetReconciler directly (without calling
+	// SetupWithManager) still get the FSM wired.
+	fsmOnce    sync.Once
+	fsmMachine *fsm.Machine[kaprov1alpha1.TargetPhase, *fsmEnv]
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=promotiontargets,verbs=get;list;watch;create;update;patch;delete
@@ -214,28 +223,154 @@ func isImmediateRequeue(result ctrl.Result) bool {
 	return result.Requeue && result.RequeueAfter == 0 //nolint:staticcheck // SA1019: result.Requeue deprecated but replacement needs larger refactor
 }
 
-// advanceTarget dispatches one FSM step for the given target.
-func (r *PromotionTargetReconciler) advanceTarget(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, target *kaprov1alpha1.TargetStatus, rt *kaprov1alpha1.PromotionTarget) (ctrl.Result, error) {
-	switch target.Phase {
-	case "":
-		r.transitionTo(ctx, promotionrun, target, kaprov1alpha1.TargetPhasePending)
-		return ctrl.Result{Requeue: true}, nil
-	case kaprov1alpha1.TargetPhasePending:
-		return r.handlePending(ctx, promotionrun, target)
-	case kaprov1alpha1.TargetPhaseVerification:
-		return r.handleVerification(ctx, promotionrun, target, rt)
-	case kaprov1alpha1.TargetPhaseHealthCheck:
-		return r.handleHealthCheck(ctx, promotionrun, target)
-	case kaprov1alpha1.TargetPhaseSoaking:
-		return r.handleSoaking(ctx, promotionrun, target, rt)
-	case kaprov1alpha1.TargetPhaseMetricsCheck:
-		return r.handleMetricsCheck(ctx, promotionrun, target, rt)
-	case kaprov1alpha1.TargetPhaseWaitingApproval:
-		return r.handleWaitingApproval(ctx, promotionrun, target, rt)
-	case kaprov1alpha1.TargetPhaseApplying:
-		return r.handleApplying(ctx, promotionrun, target)
+// fsmEnv is the per-tick state bag the FSM hands to each phase handler.
+// Only the values that vary between phase ticks live here; the reconciler
+// itself is captured once by the closures registered in buildFSM (it is
+// stable for the lifetime of the controller).
+type fsmEnv struct {
+	promotionrun *kaprov1alpha1.PromotionRun
+	target       *kaprov1alpha1.TargetStatus
+	rt           *kaprov1alpha1.PromotionTarget
+}
+
+// buildFSM constructs the phase dispatch table. The closures capture r,
+// which is stable for the reconciler's lifetime; per-tick values
+// (promotionrun / target / rt) are passed through fsmEnv at Step time.
+// Called exactly once per reconciler via ensureFSM.
+func (r *PromotionTargetReconciler) buildFSM() *fsm.Machine[kaprov1alpha1.TargetPhase, *fsmEnv] {
+	m := fsm.New[kaprov1alpha1.TargetPhase, *fsmEnv]()
+
+	// Declared phase graph (D3-PR2). The AllowedNext metadata on every
+	// Register is what transitionTo consults via ValidateTransition to
+	// flag undeclared transitions. The graph below IS the documentation —
+	// promotiontarget_fsm_graph_test.go asserts the metadata matches
+	// this comment, so they cannot drift:
+	//
+	//   ""              → Pending
+	//   Pending         → Verification, Failed, Skipped
+	//   Verification    → HealthCheck,  Failed, Skipped
+	//   HealthCheck     → Soaking, MetricsCheck, Failed, Skipped
+	//   Soaking         → MetricsCheck, Failed, Skipped
+	//   MetricsCheck    → WaitingApproval, Applying, Failed, Skipped
+	//   WaitingApproval → Applying, Failed, Skipped
+	//   Applying        → Converged, Failed, Skipped
+	//   Converged | Failed | Skipped — terminal (filtered before reaching FSM)
+	//
+	// Failed/Skipped appear in AllowedNext for every non-terminal phase
+	// because failTarget can fire from inside any handler; ValidateTransition
+	// treats transitions TO terminal phases as always-allowed anyway, but
+	// listing them keeps the table self-documenting.
+	terminal := []kaprov1alpha1.TargetPhase{
+		kaprov1alpha1.TargetPhaseFailed,
+		kaprov1alpha1.TargetPhaseSkipped,
 	}
-	return ctrl.Result{}, nil
+	must(m.RegisterInitial(func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+		r.transitionTo(ctx, e.promotionrun, e.target, kaprov1alpha1.TargetPhasePending)
+		return ctrl.Result{Requeue: true}, nil //nolint:staticcheck // SA1019: result.Requeue deprecated, see existing notes
+	}, kaprov1alpha1.TargetPhasePending))
+	must(m.RegisterTransition(fsm.Transition[kaprov1alpha1.TargetPhase, *fsmEnv]{
+		Phase: kaprov1alpha1.TargetPhasePending,
+		AllowedNext: append([]kaprov1alpha1.TargetPhase{
+			kaprov1alpha1.TargetPhaseVerification,
+		}, terminal...),
+		Handler: func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+			return r.handlePending(ctx, e.promotionrun, e.target)
+		},
+	}))
+	must(m.RegisterTransition(fsm.Transition[kaprov1alpha1.TargetPhase, *fsmEnv]{
+		Phase: kaprov1alpha1.TargetPhaseVerification,
+		AllowedNext: append([]kaprov1alpha1.TargetPhase{
+			kaprov1alpha1.TargetPhaseHealthCheck,
+		}, terminal...),
+		Handler: func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+			return r.handleVerification(ctx, e.promotionrun, e.target, e.rt)
+		},
+	}))
+	must(m.RegisterTransition(fsm.Transition[kaprov1alpha1.TargetPhase, *fsmEnv]{
+		Phase: kaprov1alpha1.TargetPhaseHealthCheck,
+		AllowedNext: append([]kaprov1alpha1.TargetPhase{
+			kaprov1alpha1.TargetPhaseSoaking,
+			kaprov1alpha1.TargetPhaseMetricsCheck,
+		}, terminal...),
+		Handler: func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+			return r.handleHealthCheck(ctx, e.promotionrun, e.target)
+		},
+	}))
+	must(m.RegisterTransition(fsm.Transition[kaprov1alpha1.TargetPhase, *fsmEnv]{
+		Phase: kaprov1alpha1.TargetPhaseSoaking,
+		AllowedNext: append([]kaprov1alpha1.TargetPhase{
+			kaprov1alpha1.TargetPhaseMetricsCheck,
+		}, terminal...),
+		Handler: func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+			return r.handleSoaking(ctx, e.promotionrun, e.target, e.rt)
+		},
+	}))
+	must(m.RegisterTransition(fsm.Transition[kaprov1alpha1.TargetPhase, *fsmEnv]{
+		Phase: kaprov1alpha1.TargetPhaseMetricsCheck,
+		AllowedNext: append([]kaprov1alpha1.TargetPhase{
+			kaprov1alpha1.TargetPhaseWaitingApproval,
+			kaprov1alpha1.TargetPhaseApplying,
+		}, terminal...),
+		Handler: func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+			return r.handleMetricsCheck(ctx, e.promotionrun, e.target, e.rt)
+		},
+	}))
+	must(m.RegisterTransition(fsm.Transition[kaprov1alpha1.TargetPhase, *fsmEnv]{
+		Phase: kaprov1alpha1.TargetPhaseWaitingApproval,
+		AllowedNext: append([]kaprov1alpha1.TargetPhase{
+			kaprov1alpha1.TargetPhaseApplying,
+		}, terminal...),
+		Handler: func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+			return r.handleWaitingApproval(ctx, e.promotionrun, e.target, e.rt)
+		},
+	}))
+	must(m.RegisterTransition(fsm.Transition[kaprov1alpha1.TargetPhase, *fsmEnv]{
+		Phase: kaprov1alpha1.TargetPhaseApplying,
+		AllowedNext: append([]kaprov1alpha1.TargetPhase{
+			kaprov1alpha1.TargetPhaseConverged,
+		}, terminal...),
+		Handler: func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+			return r.handleApplying(ctx, e.promotionrun, e.target)
+		},
+	}))
+	must(m.RegisterTerminal(
+		kaprov1alpha1.TargetPhaseConverged,
+		kaprov1alpha1.TargetPhaseFailed,
+		kaprov1alpha1.TargetPhaseSkipped,
+	))
+	return m
+}
+
+// must panics when the FSM rejects a registration. Wrapping every Register
+// call in if err != nil { return ctrl.Result{}, err } would clutter the
+// table; registration failure is a programmer bug (duplicate phase, nil
+// handler) caught at init, not at runtime, so a panic is correct.
+func must(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
+// ensureFSM builds the phase dispatch table the first time it is called
+// on this reconciler. Lazy init keeps unit tests that construct
+// PromotionTargetReconciler directly (without SetupWithManager) working.
+func (r *PromotionTargetReconciler) ensureFSM() {
+	r.fsmOnce.Do(func() {
+		r.fsmMachine = r.buildFSM()
+	})
+}
+
+// advanceTarget dispatches one FSM step for the given target. The legacy
+// implementation was a switch statement; this delegates to the cached
+// Machine built by ensureFSM so the dispatch is declarative (Phases()
+// lists everything supported) and no table is rebuilt per phase tick.
+func (r *PromotionTargetReconciler) advanceTarget(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, target *kaprov1alpha1.TargetStatus, rt *kaprov1alpha1.PromotionTarget) (ctrl.Result, error) {
+	r.ensureFSM()
+	return r.fsmMachine.Step(ctx, target.Phase, &fsmEnv{
+		promotionrun: promotionrun,
+		target:       target,
+		rt:           rt,
+	})
 }
 
 func (r *PromotionTargetReconciler) handlePending(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, target *kaprov1alpha1.TargetStatus) (ctrl.Result, error) {
@@ -882,8 +1017,24 @@ func validateTargetTopology(mc *kaprov1alpha1.FleetCluster, desiredVersions map[
 // transitionTo mutates target.Phase and related timestamps in-place.
 // Events are emitted on BOTH the parent PromotionRun (fleet-level view in k9s :promotionrun describe)
 // and the PromotionTarget itself (per-target CI-log view in k9s :promotiontarget describe).
+//
+// D3-PR2: validates the transition against the FSM table's declared
+// AllowedNext metadata. An undeclared transition emits a Warning event +
+// the kapro_fsm_unexpected_transitions_total metric counter and then
+// proceeds (observability, not enforcement). Crashing on a state-graph
+// drift in production would be strictly worse than letting the transition
+// through with a loud alert; the graph is documentation and a violation
+// means the documentation is stale, not that the rollout is unsafe.
 func (r *PromotionTargetReconciler) transitionTo(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, target *kaprov1alpha1.TargetStatus, phase kaprov1alpha1.TargetPhase) {
 	prevPhase := target.Phase
+
+	r.ensureFSM()
+	if err := r.fsmMachine.ValidateTransition(prevPhase, phase); err != nil {
+		r.Recorder.Eventf(promotionrun, corev1.EventTypeWarning, "FSMUnexpectedTransition",
+			"[%s/%s] %s", target.Stage, target.Target, err.Error())
+		kaprometrics.FSMUnexpectedTransitions.WithLabelValues(string(prevPhase), string(phase)).Inc()
+	}
+
 	target.Phase = phase
 	if phase == kaprov1alpha1.TargetPhaseSoaking && target.StartedAt == "" {
 		target.StartedAt = time.Now().UTC().Format(time.RFC3339)
