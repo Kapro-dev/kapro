@@ -3,12 +3,12 @@
 // Provider kinds:
 //   - kubeconfig: static kubeconfig file (any cloud, kind, on-prem)
 //   - gcp-basic:  GKE Workload Identity + direct GKE API endpoint
-//                 (single-project / VPC-peered private GKE)
+//     (single-project / VPC-peered private GKE)
 //   - gcp-fleet:  GKE Fleet API for discovery + Connect Gateway for access.
-//                 Topology-agnostic — works across any project, VPC, or
-//                 region without peering. Connect Gateway is an
-//                 implementation detail of this provider, not a selectable
-//                 kind on its own (see gcp_connect_gateway.go helpers).
+//     Topology-agnostic — works across any project, VPC, or
+//     region without peering. Connect Gateway is an
+//     implementation detail of this provider, not a selectable
+//     kind on its own (see gcp_connect_gateway.go helpers).
 //
 // Future providers (stubs in v0.5): eks, aks-arc, rhacm, capi.
 //
