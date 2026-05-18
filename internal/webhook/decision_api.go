@@ -42,6 +42,16 @@ const (
 	maxDecisionTraceHistory = 10
 	defaultDecisionAPILimit = 100
 	maxDecisionAPILimit     = 500
+
+	// maxDecisionReasoningLen bounds the free-text Reasoning field on a
+	// DecisionRequest after JSON unmarshal. 8 KiB is enough for a thorough
+	// rationale; pathological inputs packed into the 64 KiB body limit are
+	// rejected up front (webhook hardening, gate sprint).
+	maxDecisionReasoningLen = 8 * 1024
+
+	// maxIdempotencyKeyLen bounds the IdempotencyKey field. Real keys are
+	// short ULIDs / UUIDs (< 64 bytes); 256 leaves headroom without abuse.
+	maxIdempotencyKeyLen = 256
 	// Phase is not a selectable field for every Kapro API. Bound sparse phase
 	// scans to a multiple of the requested response limit and return a truncated
 	// partial view when the scan budget is exhausted.
@@ -675,6 +685,18 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 	case "Approve", "Reject", "Defer":
 	default:
 		http.Error(w, "decision must be Approve, Reject, or Defer", http.StatusBadRequest)
+		return
+	}
+	// Bound the per-field string lengths after JSON unmarshal so a 64 KiB
+	// body cannot be packed into a single Reasoning or IdempotencyKey
+	// string and slow down policy enforcement, logging, or status writes
+	// downstream (webhook hardening).
+	if len(req.Reasoning) > maxDecisionReasoningLen {
+		http.Error(w, fmt.Sprintf("reasoning exceeds %d bytes", maxDecisionReasoningLen), http.StatusRequestEntityTooLarge)
+		return
+	}
+	if len(req.IdempotencyKey) > maxIdempotencyKeyLen {
+		http.Error(w, fmt.Sprintf("idempotencyKey exceeds %d bytes", maxIdempotencyKeyLen), http.StatusRequestEntityTooLarge)
 		return
 	}
 

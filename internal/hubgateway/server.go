@@ -263,13 +263,24 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	}
 }
 
+// maxBearerHeaderLen bounds the Authorization header to keep the
+// constant-time compare and the surrounding string ops finite. Real Kapro
+// hub-gateway bearer tokens are <= 256 bytes; 4 KiB leaves room for future
+// signed tokens (JWT etc.) without ever crossing into pathological territory.
+const maxBearerHeaderLen = 4 * 1024
+
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if len(s.BearerToken) == 0 {
 			http.Error(w, "hub gateway bearer token is not configured", http.StatusServiceUnavailable)
 			return
 		}
-		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		raw := r.Header.Get("Authorization")
+		if len(raw) > maxBearerHeaderLen {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		token, ok := strings.CutPrefix(raw, "Bearer ")
 		if !ok || subtle.ConstantTimeCompare([]byte(token), s.BearerToken) != 1 {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
