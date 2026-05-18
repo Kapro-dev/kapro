@@ -1,4 +1,21 @@
 // Package plugincompat defines Kapro plugin contract compatibility policy.
+//
+// Two version axes are tracked at handshake (see proto GetCapabilitiesResponse):
+//
+//   - contract_version: the KAI/KGI/KPI wire contract implemented by the plugin.
+//     This is what Kapro enforces. Plugins reporting an unsupported value are
+//     rejected by internal/plugin/probe (validateContract) and surface
+//     Compatible=False on PluginRegistration.status.
+//   - plugin_version: free-form, plugin-author-owned implementation version.
+//     Recorded on status for operators, never used in admission decisions.
+//
+// Adding a new contract version (e.g. v1alpha2) means:
+//  1. add the constant + supported-list entry here;
+//  2. update docs/plugin-compatibility.md (the human-facing matrix);
+//  3. ship the matching conformance/* harness for the new version.
+//
+// The full lifecycle (deprecation window, removal, discovery) is documented in
+// docs/plugin-compatibility.md.
 package plugincompat
 
 import (
