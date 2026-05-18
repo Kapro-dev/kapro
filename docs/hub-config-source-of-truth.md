@@ -13,13 +13,13 @@ greenfield delivery objects, then report status through `FleetCluster`.
 Kapro separates two sources of truth:
 
 - **Hub config truth:** the git repository that defines fleet inventory,
-  backend profiles, promotion sources, policies, plans, and Promotion intent.
+  backend profiles, promotion sources, rollout plans, and PromotionRun intent.
 - **Runtime artifact truth:** the OCI registry, Git repository, chart, image, or
   backend-native object that stores the immutable application version.
 
 The hub cluster needs Kubernetes objects such as `FleetCluster`,
-`BackendProfile`, `PromotionSource`, `PromotionPolicy`, `PromotionPlan`, and
-`Promotion` to drive the fleet. Those objects must be reviewable,
+`BackendProfile`, `PromotionSource`, `PromotionPlan`, and `PromotionRun` to
+drive the fleet. Those objects must be reviewable,
 reproducible, and auditable. A plain git repository plus CI-driven
 `kubectl apply` is the documented operating model.
 
@@ -35,7 +35,7 @@ Pull request / merge to main
 CI: validate -> diff -> kubectl apply
    |
    v
-Hub cluster etcd: FleetCluster, BackendProfile, PromotionSource, PromotionPolicy, PromotionPlan, Promotion
+Hub cluster etcd: FleetCluster, BackendProfile, PromotionSource, PromotionPlan, PromotionRun
    |
    v
 Kapro operator
@@ -51,10 +51,8 @@ Delivery backends: Argo/Flux/Git/native apply + FleetCluster status
 | `clusters/` | FleetCluster definitions (one per spoke) |
 | `backends/` | BackendProfile definitions for Flux, Argo, or external drivers |
 | `sources/` | PromotionSource definitions (unit registry, waves, overrides) |
-| `policies/` | PromotionPolicy definitions for reusable guardrails |
 | `promotionplans/` | PromotionPlan definitions (stage DAG, selectors, gates) |
-| `promotions/` | Promotion objects (version, source, policy, plan references) |
-| `promotionruns/` | Optional direct PromotionRun compatibility objects |
+| `promotionruns/` | PromotionRun objects (version, plan references, optional scope) |
 | `.github/workflows/` | CI that validates, diffs, and applies the repo to the hub |
 
 ## What does NOT live in the hub config repo
@@ -80,12 +78,8 @@ hub-config/
     flux.yaml
   sources/
     checkout.yaml
-  policies/
-    checkout-prod-guardrails.yaml
   promotionplans/
     checkout-progressive.yaml
-  promotions/
-    checkout-v1.2.3.yaml
   promotionruns/
     checkout-v1.2.3.yaml
   .github/
@@ -102,13 +96,11 @@ Apply objects in dependency order:
 1. `clusters/` - registers `FleetCluster` inventory and labels used by selectors.
 2. `backends/` - registers selectable backend profiles and discovery settings.
 3. `sources/` - defines reusable PromotionUnit metadata and write mappings.
-4. `policies/` - defines reusable PromotionPolicy guardrails.
-5. `promotionplans/` - defines stage DAGs, cluster selectors, and gate policy.
-6. `promotions/` - creates Promotion intent that references source, policy, plans, and target versions.
+4. `promotionplans/` - defines stage DAGs, cluster selectors, and gate policy.
+5. `promotionruns/` - creates user-facing promotion intent that references plans and target versions.
 
-This order keeps Promotion reconciliation last, after the objects it references
-and the clusters it may select are present. Kapro then creates or updates the
-owned `PromotionRun`.
+This order keeps PromotionRun reconciliation last, after the objects it
+references and the clusters it may select are present.
 
 ## CI workflow
 
@@ -120,16 +112,14 @@ Pull request checks:
 kubectl apply --dry-run=server -f clusters/
 kubectl apply --dry-run=server -f backends/
 kubectl apply --dry-run=server -f sources/
-kubectl apply --dry-run=server -f policies/
 kubectl apply --dry-run=server -f promotionplans/
-kubectl apply --dry-run=server -f promotions/
+kubectl apply --dry-run=server -f promotionruns/
 
 kubectl diff -f clusters/ || true
 kubectl diff -f backends/ || true
 kubectl diff -f sources/ || true
-kubectl diff -f policies/ || true
 kubectl diff -f promotionplans/ || true
-kubectl diff -f promotions/ || true
+kubectl diff -f promotionruns/ || true
 ```
 
 Merge-to-main apply:
@@ -138,18 +128,17 @@ Merge-to-main apply:
 kubectl apply -f clusters/
 kubectl apply -f backends/
 kubectl apply -f sources/
-kubectl apply -f policies/
 kubectl apply -f promotionplans/
-kubectl apply -f promotions/
+kubectl apply -f promotionruns/
 ```
 
 Post-apply checks:
 
 ```bash
 kubectl get fleetclusters.kapro.io
-kubectl get backendprofiles.kapro.io,promotionsources.kapro.io,promotionpolicies.kapro.io
-kubectl get promotions.kapro.io,promotionruns.kapro.io,promotiontargets.kapro.io
-kubectl describe promotions.kapro.io checkout-v1-2-3
+kubectl get backendprofiles.kapro.io,promotionsources.kapro.io
+kubectl get promotionruns.kapro.io,promotiontargets.kapro.io
+kubectl describe promotionruns.kapro.io checkout-v1-2-3
 ```
 
 The CI identity needs permission to `get`, `list`, `watch`, `create`, `patch`, `update`, and `delete` the Kapro configuration objects it owns. Production repositories should protect `main` and require the validation job before merge.
@@ -159,8 +148,8 @@ The CI identity needs permission to `get`, `list`, `watch`, `create`, `patch`, `
 Before opening a pull request from the hub config repo:
 
 ```bash
-kubectl apply --dry-run=server -f clusters/ -f backends/ -f sources/ -f policies/ -f promotionplans/ -f promotions/
-kubectl diff -f clusters/ -f backends/ -f sources/ -f policies/ -f promotionplans/ -f promotions/ || true
+kubectl apply --dry-run=server -f clusters/ -f backends/ -f sources/ -f promotionplans/ -f promotionruns/
+kubectl diff -f clusters/ -f backends/ -f sources/ -f promotionplans/ -f promotionruns/ || true
 ```
 
 `--dry-run=server` requires access to a hub cluster with the Kapro CRDs installed. It catches schema and admission errors that static YAML parsing cannot catch.

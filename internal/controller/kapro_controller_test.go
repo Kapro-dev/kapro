@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -8,6 +9,26 @@ import (
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
+
+func TestResolvePromotionSourceUsesInlineSource(t *testing.T) {
+	r := &KaproReconciler{}
+	source, ok, err := r.resolvePromotionSource(context.Background(), &kaprov1alpha1.Kapro{
+		Spec: kaprov1alpha1.KaproSpec{
+			Source: &kaprov1alpha1.PromotionSourceSpec{
+				Units: []kaprov1alpha1.PromotionUnit{{Name: "checkout", Version: "1.2.3"}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected inline source to resolve")
+	}
+	if source.Spec.Units[0].Name != "checkout" {
+		t.Fatalf("source unit = %q", source.Spec.Units[0].Name)
+	}
+}
 
 func TestBuildResourceSet_Units(t *testing.T) {
 	kapro := &kaprov1alpha1.Kapro{

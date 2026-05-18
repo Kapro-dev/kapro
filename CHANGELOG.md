@@ -9,11 +9,15 @@ record for each tag.
 
 ### Added
 
-- None.
+- Added `kapro promote <app>` as the simple public CLI path for creating a
+  `PromotionRun`.
+- Added inline `Kapro.spec.source` for the single-object quickstart path.
 
 ### Changed
 
-- None.
+- Re-centered the public API on `Kapro`, `PromotionRun`, `PromotionPlan`, and
+  `PromotionTarget`; advanced reusable objects remain available where they add
+  real value.
 
 ### Deprecated
 
@@ -21,11 +25,16 @@ record for each tag.
 
 ### Removed
 
-- None.
+- Removed the public `Promotion`, `PromotionPolicy`, `NotificationProvider`,
+  and `NotificationPolicy` CRDs from generated manifests, Helm CRDs, bootstrap
+  CRDs, controller registration, and examples.
 
 ### Migration
 
-- None.
+- Replace `Promotion` manifests with `PromotionRun` manifests or use
+  `kapro promote`.
+- Move reusable guardrails into inline `PromotionPlan` stage gates.
+- Keep notification routing inline on gates and stages.
 
 ## v0.4.0-alpha.0 - 2026-05-17
 

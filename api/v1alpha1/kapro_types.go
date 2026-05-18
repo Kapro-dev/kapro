@@ -1,5 +1,5 @@
-// Kapro CRD: the single fleet entry point that ties a PromotionSource,
-// a delivery profile, clusters, and a promotion plan together.
+// Kapro CRD: the single fleet entry point that ties source units, a delivery
+// profile, clusters, and a promotion plan together.
 package v1alpha1
 
 import (
@@ -14,8 +14,15 @@ type KaproSpec struct {
 	// Native Argo/Flux sources may omit it when no Kapro-packaged artifact is used.
 	// +optional
 	Registry KaproRegistry `json:"registry,omitempty"`
-	// SourceRef is the name of the PromotionSource that defines units to deploy.
-	SourceRef string `json:"sourceRef"`
+	// SourceRef is the optional name of a separate PromotionSource that defines
+	// units to deploy. Use Source for the KISS single-object path; use SourceRef
+	// when teams want to share a source catalog across multiple Kapro objects.
+	// +optional
+	SourceRef string `json:"sourceRef,omitempty"`
+	// Source defines deployable units inline for the KISS single-object path.
+	// If SourceRef is set, SourceRef wins.
+	// +optional
+	Source *PromotionSourceSpec `json:"source,omitempty"`
 	// Delivery selects the backend-neutral fleet delivery profile.
 	Delivery DeliverySpec `json:"delivery"`
 	// Clusters defines the target clusters in the fleet.
@@ -121,8 +128,8 @@ type KaproStatus struct {
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.version`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// Kapro is the single entry point for fleet delivery. Users reference a
-// PromotionSource, select a backend profile, and define clusters and promotion
+// Kapro is the single entry point for fleet delivery. Users define or reference
+// source units, select a backend profile, and define clusters and promotion
 // stages. Backend adapters own Flux, Argo, or other delivery-system details.
 type Kapro struct {
 	metav1.TypeMeta   `json:",inline"`

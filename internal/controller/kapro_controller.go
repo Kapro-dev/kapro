@@ -34,7 +34,7 @@ var kaproResourceSetGVK = schema.GroupVersionKind{
 	Kind:    "ResourceSet",
 }
 
-// KaproReconciler generates hub-side resources from a Kapro + PromotionSource spec.
+// KaproReconciler generates hub-side resources from a Kapro source spec.
 // It produces (all on the hub cluster):
 //   - FleetCluster CRs (one per cluster in the fleet)
 //   - A PromotionPlan CR (from kapro.spec.promotionplan)
@@ -76,9 +76,8 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	l.Info("reconciling Kapro", "name", kapro.Name)
 
-	// Resolve the PromotionSource.
-	var source kaprov1alpha1.PromotionSource
-	if err := r.Get(ctx, client.ObjectKey{Name: kapro.Spec.SourceRef}, &source); err != nil {
+	source, ok, err := r.resolvePromotionSource(ctx, &kapro)
+	if err != nil {
 		patch := client.MergeFrom(kapro.DeepCopy())
 		apimeta.SetStatusCondition(&kapro.Status.Conditions, metav1.Condition{
 			Type:               "Ready",
@@ -89,6 +88,18 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		})
 		_ = r.Status().Patch(ctx, &kapro, patch)
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+	if !ok {
+		patch := client.MergeFrom(kapro.DeepCopy())
+		apimeta.SetStatusCondition(&kapro.Status.Conditions, metav1.Condition{
+			Type:               "Ready",
+			Status:             metav1.ConditionFalse,
+			ObservedGeneration: kapro.Generation,
+			Reason:             "SourceNotConfigured",
+			Message:            "set spec.source for the single-object path or spec.sourceRef for a separate PromotionSource",
+		})
+		_ = r.Status().Patch(ctx, &kapro, patch)
+		return ctrl.Result{}, nil
 	}
 
 	var inventory []string
@@ -170,9 +181,9 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		// 3a. Spoke-local mode: bootstrap each spoke in parallel.
 		// Source packaging + push is done by CI via `kapro source package --push`.
 		// The operator only creates the spoke-side Flux resources (OCIRepository + wave Kustomizations).
-		primaryVersion := promotionSourcePrimaryVersion(&source)
+		primaryVersion := promotionSourcePrimaryVersion(source)
 		if primaryVersion != "" {
-			bootstrapResults := r.bootstrapSpokesParallel(ctx, &kapro, &source, primaryVersion)
+			bootstrapResults := r.bootstrapSpokesParallel(ctx, &kapro, source, primaryVersion)
 			for clusterName, err := range bootstrapResults {
 				if err != nil {
 					l.Error(err, "spoke bootstrap failed (skipping)", "cluster", clusterName)
@@ -184,7 +195,7 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		inventory = append(inventory, "SpokeBootstrap/"+kapro.Name)
 	} else {
 		// 3b. Push mode: generate ResourceSet on the hub (Flux Operator distributes to spokes).
-		rs := r.buildResourceSet(&kapro, &source)
+		rs := r.buildResourceSet(&kapro, source)
 		if err := r.Patch(ctx, rs,
 			client.Apply, //nolint:staticcheck // SA1019: deprecated but replacement needs larger refactor
 			client.FieldOwner("kapro-controller"),
@@ -212,7 +223,7 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// For spoke-local mode, this reads from spoke Flux resources directly.
 	convergedCount := int32(0)
 	for _, cluster := range kapro.Spec.Clusters {
-		converged := r.syncFleetClusterStatus(ctx, &kapro, &source, cluster)
+		converged := r.syncFleetClusterStatus(ctx, &kapro, source, cluster)
 		if converged {
 			convergedCount++
 		}
@@ -222,7 +233,7 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	r.cleanupRemovedClusters(ctx, &kapro)
 
 	// 6. Update Kapro status.
-	primaryVersion := promotionSourcePrimaryVersion(&source)
+	primaryVersion := promotionSourcePrimaryVersion(source)
 	patch := client.MergeFrom(kapro.DeepCopy())
 	kapro.Status.ClusterCount = int32(len(kapro.Spec.Clusters))
 	kapro.Status.ConvergedCount = convergedCount
@@ -242,6 +253,23 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
+}
+
+func (r *KaproReconciler) resolvePromotionSource(ctx context.Context, kapro *kaprov1alpha1.Kapro) (*kaprov1alpha1.PromotionSource, bool, error) {
+	if kapro.Spec.SourceRef != "" {
+		var source kaprov1alpha1.PromotionSource
+		if err := r.Get(ctx, client.ObjectKey{Name: kapro.Spec.SourceRef}, &source); err != nil {
+			return nil, false, err
+		}
+		return &source, true, nil
+	}
+	if kapro.Spec.Source == nil {
+		return nil, false, nil
+	}
+	return &kaprov1alpha1.PromotionSource{
+		ObjectMeta: metav1.ObjectMeta{Name: kapro.Name},
+		Spec:       *kapro.Spec.Source,
+	}, true, nil
 }
 
 func (r *KaproReconciler) buildPromotionPlan(kapro *kaprov1alpha1.Kapro) *kaprov1alpha1.PromotionPlan {

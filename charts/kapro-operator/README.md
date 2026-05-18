@@ -94,4 +94,4 @@ Preview surfaces are explicit opt-ins or spec-only APIs:
 | Decision API and `AgentPolicy` | Disabled | `--set decisionAPI.enabled=true` plus Kubernetes RBAC |
 | Runtime plugin gateway | Disabled | `--set pluginGateway.enabled=true` |
 | Hub Gateway Service | Internal listener only | `--set hubGateway.service.enabled=true` and place Kubernetes authn/authz or an identity proxy in front |
-| `NotificationProvider` / `NotificationPolicy` | Spec-only | No runtime dispatch from these CRDs yet |
+| Inline gate notifications | Runtime | No separate public notification provider/policy CRDs |

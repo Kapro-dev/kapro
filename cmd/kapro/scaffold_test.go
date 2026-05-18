@@ -170,6 +170,13 @@ func TestParsePromotionRunVersionsRejectsDuplicateUnits(t *testing.T) {
 	}
 }
 
+func TestDefaultPromotionRunNameIsDNSLabel(t *testing.T) {
+	got := defaultPromotionRunName("Checkout.API", "v1.2.3+build.4", nil)
+	if got != "checkout-api-v1-2-3-build-4" {
+		t.Fatalf("defaultPromotionRunName()=%q", got)
+	}
+}
+
 func readFile(t *testing.T, path string) string {
 	t.Helper()
 	data, err := os.ReadFile(path)

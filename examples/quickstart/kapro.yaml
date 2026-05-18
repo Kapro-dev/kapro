@@ -1,0 +1,37 @@
+apiVersion: kapro.io/v1alpha1
+kind: Kapro
+metadata:
+  name: checkout
+spec:
+  source:
+    registries:
+      - name: app
+        url: oci://registry.example.com/charts
+        type: oci
+    defaults:
+      repo: app
+      targetNamespace: checkout
+    units:
+      - name: checkout
+        chartName: checkout
+        version: 1.2.3
+  delivery:
+    mode: pull
+    backendRef: flux
+  clusters:
+    - name: canary-eu
+      labels:
+        stage: canary
+    - name: prod-eu
+      labels:
+        stage: prod
+  promotionplan:
+    stages:
+      - name: canary
+        selector:
+          stage: canary
+      - name: prod
+        selector:
+          stage: prod
+        dependsOn:
+          - stage: canary

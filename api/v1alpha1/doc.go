@@ -7,14 +7,10 @@
 //   - Kapro          — fleet entry point
 //   - FleetCluster   — fleet inventory and observed cluster state reported to the hub
 //   - PromotionPlan  — reusable promotion template composed of ordered stages
-//   - Promotion      — desired promotion intent
-//   - PromotionRun   — one execution attempt for a Promotion
+//   - PromotionRun   — user-facing promotion intent and execution attempt
 //   - PromotionTarget — one target-cluster execution owned by a PromotionRun
 //   - PromotionTrigger — safe-by-default autonomous Promotion creation from verified artifacts
-//   - PromotionPolicy — reusable policy guardrails for promotions
 //   - PromotionSource — native promotion unit source
-//   - NotificationProvider — API-preview notification destination declaration
-//   - NotificationPolicy   — API-preview notification subscription declaration
 //   - PluginRegistration — external actuator, gate, and planner plugin registration
 //   - Approval       — human gate signal to unblock one target-cluster rollout or stage
 //   - AgentPolicy    — AI trust boundary and audit policy

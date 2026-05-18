@@ -59,7 +59,7 @@ exposed deliberately:
 | Plugin gateway runtime dispatch | Disabled | `pluginGateway.enabled=true` plus installed plugin services and `PluginRegistration` objects. |
 | Hub Gateway service exposure | Internal only | `hubGateway.service.enabled=true`; place Kubernetes authn/authz or an identity-aware proxy in front of production exposure. |
 | Fleet auto-import providers beyond GCP | Stubbed | Use `FleetClusterTemplate` only for implemented sources; unsupported sources report `SourceNotImplemented`. |
-| `NotificationProvider` and `NotificationPolicy` | Spec-only | Do not expect runtime dispatch from these CRDs yet; inline gate notifications remain the active runtime path. |
+| Inline gate notifications | Runtime | Notification routing is configured inside gate/stage policy; there is no separate public notification provider/policy CRD. |
 
 ## Optional Decision API
 

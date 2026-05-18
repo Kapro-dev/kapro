@@ -45,7 +45,7 @@ kapro cluster bootstrap --name de-prod \
   --labels tier=prod,country=de,region=europe-west3
 ```
 
-### 3. Create BackendProfile + PromotionSource + PromotionPlan + Promotion
+### 3. Create BackendProfile + PromotionSource + PromotionPlan + PromotionRun
 
 See examples/ directory for complete YAML.
 

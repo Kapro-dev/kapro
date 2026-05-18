@@ -130,13 +130,9 @@ rules:
       - fleetclusters
       - fleetclustertemplates
       - kaproes
-      - notificationpolicies
-      - notificationproviders
       - pluginregistrations
       - promotionplans
-      - promotionpolicies
       - promotionruns
-      - promotions
       - promotionsources
       - promotiontargets
       - promotiontriggers
@@ -149,9 +145,7 @@ rules:
       - fleetclustertemplates/status
       - kaproes/status
       - pluginregistrations/status
-      - promotionpolicies/status
       - promotionruns/status
-      - promotions/status
       - promotiontargets/status
       - promotiontriggers/status
     verbs: ["get", "list", "watch"]

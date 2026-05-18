@@ -3,6 +3,7 @@
 // Usage:
 //
 //	kapro cluster bootstrap --name <cluster-name> [--labels key=value,...]
+//	kapro promote <app> --version <version> --plan <promotionplan>
 //	kapro get promotionruns [-n namespace]
 //	kapro get targets [-n namespace]
 //	kapro approve <promotionrun>/<target> [-n namespace] [--comment text]
@@ -63,6 +64,7 @@ Passes versions forward. Across targets. Across clusters. In waves.`,
 	root.AddCommand(newFleetMgmtCmd())
 	root.AddCommand(newSourceCmd())
 	root.AddCommand(newStatusCmd())
+	root.AddCommand(newPromoteCmd())
 	root.AddCommand(newPromotionRunCmd())
 	root.AddCommand(newApproveCmd())
 	root.AddCommand(newRejectCmd())
@@ -800,6 +802,85 @@ func listPromotionTargetsForPromotionRun(ctx context.Context, c client.Client, n
 		}
 	}
 	return targets, nil
+}
+
+// ─── kapro promote ────────────────────────────────────────────────────────────────
+
+func newPromoteCmd() *cobra.Command {
+	var (
+		name       string
+		version    string
+		versions   []string
+		plans      []string
+		scope      []string
+		namespace  string
+		kubeconfig string
+	)
+	cmd := &cobra.Command{
+		Use:   "promote <app>",
+		Short: "Promote a version through the fleet",
+		Long: `Create the user-facing promotion object for a version.
+
+Kapro stores promotion execution as a PromotionRun, but the public CLI keeps
+the workflow short: app, version, rollout plan, optional scope.
+
+Examples:
+  kapro promote checkout --version v1.2.3 --plan checkout-progressive
+  kapro promote checkout --version v1.2.4 --plan checkout-progressive --scope canary-eu
+  kapro promote checkout --set api=v1.2.3 --set worker=v1.2.2 --plan checkout-progressive`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			promotionName := name
+			if promotionName == "" {
+				promotionName = defaultPromotionRunName(args[0], version, versions)
+			}
+			return runPromotionRunCreate(cmd.Context(), promotionName, version, versions, plans, scope, namespace, kubeconfig)
+		},
+	}
+	cmd.Flags().StringVar(&name, "name", "", "PromotionRun name; defaults to <app>-<version>")
+	cmd.Flags().StringVar(&version, "version", "", "Default revision to deliver")
+	cmd.Flags().StringArrayVar(&versions, "set", nil, "Per-unit revision (repeatable: --set api=sha256:abc)")
+	cmd.Flags().StringArrayVar(&plans, "plan", nil, "PromotionPlan name (repeatable; required at least once)")
+	cmd.Flags().StringArrayVar(&scope, "scope", nil, "Restrict to target cluster (repeatable: --scope de-prod --scope fi-prod)")
+	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace for the PromotionRun")
+	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
+	return cmd
+}
+
+func defaultPromotionRunName(app, version string, versions []string) string {
+	suffix := version
+	if suffix == "" && len(versions) > 0 {
+		suffix = versions[0]
+	}
+	if suffix == "" {
+		suffix = "promotion"
+	}
+	return dnsLabel(app + "-" + suffix)
+}
+
+func dnsLabel(value string) string {
+	var b strings.Builder
+	lastDash := false
+	for _, r := range strings.ToLower(value) {
+		isNameChar := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+		if isNameChar {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash && b.Len() > 0 {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	name := strings.Trim(b.String(), "-")
+	if len(name) > 63 {
+		name = strings.Trim(name[:63], "-")
+	}
+	if name == "" {
+		return "promotion"
+	}
+	return name
 }
 
 // ─── kapro promotionrun ────────────────────────────────────────────────────────────
