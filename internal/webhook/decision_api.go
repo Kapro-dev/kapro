@@ -776,7 +776,15 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 			effectiveDecision = "PendingHumanConfirm"
 		}
 	}
-	if req.Decision == "Approve" && effectiveDecision == "Approve" {
+	// Security (gate-B1): any "Approve" submission requires create-approvals
+	// permission even when AgentPolicy downgrades to Recommended /
+	// PendingHumanConfirm. Previously the SAR was only run when BOTH
+	// req.Decision AND effectiveDecision equaled "Approve", which let an
+	// agent with patch-only access set up a Recommended decision that a
+	// human could later cosign into an Approval — bypassing the agent's
+	// own permission boundary. The intent of the user matters, not the
+	// post-policy effective form.
+	if req.Decision == "Approve" {
 		if err := s.authorizeDecisionUser(ctx, *user, kaproAttrs("create", "approvals", "")); err != nil {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
