@@ -5,15 +5,14 @@ import (
 	"fmt"
 	"hash/fnv"
 	"sort"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -30,6 +29,7 @@ import (
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	internalgate "kapro.io/kapro/internal/gate"
 	kaprometrics "kapro.io/kapro/internal/metrics"
+	"kapro.io/kapro/internal/promotion/fsm"
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
 	"kapro.io/kapro/pkg/notification"
@@ -82,6 +82,19 @@ type PromotionRunReconciler struct {
 	// Planner orders and filters target clusters using scheduler-style extension phases.
 	// Nil means the default empty planner.
 	Planner *planner.Framework
+
+	// runFsmMachine is the declarative dispatch table for the PromotionRun
+	// phase FSM (D2-PR1). Built lazily via ensureRunFSM so direct
+	// reconciler construction in tests works without SetupWithManager.
+	runFsmOnce    sync.Once
+	runFsmMachine *fsm.Machine[kaprov1alpha1.PromotionRunPhase, *runFsmEnv]
+}
+
+// runFsmEnv is the per-Reconcile state bag the PromotionRun FSM hands to
+// each phase handler. Held by pointer so handlers see the same
+// promotionrun value the reconciler holds across the step's lifetime.
+type runFsmEnv struct {
+	promotionrun *kaprov1alpha1.PromotionRun
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=promotionruns,verbs=get;list;watch;create;update;patch;delete
@@ -141,21 +154,108 @@ func (r *PromotionRunReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	switch promotionrun.Status.Phase {
-	case "", kaprov1alpha1.PromotionRunPhasePending:
-		return r.handlePending(ctx, &promotionrun)
-	case kaprov1alpha1.PromotionRunPhaseProgressing:
-		return r.handleProgressing(ctx, &promotionrun)
-	case kaprov1alpha1.PromotionRunPhaseFailed:
-		if r.hasActiveRollbackTargets(&promotionrun) {
-			return r.handleFailed(ctx, &promotionrun)
-		}
-		return ctrl.Result{}, nil
-	case kaprov1alpha1.PromotionRunPhaseComplete:
-		return ctrl.Result{}, nil
-	}
+	// Dispatch via the FSM (D2-PR1). Replaces the legacy phase switch;
+	// behaviour unchanged. Phase mutation continues to happen as a side
+	// effect inside the handlers (handlePending sets Progressing,
+	// handleProgressing sets Complete or Failed via patchPromotionRunStatus).
+	r.ensureRunFSM()
+	return r.runFsmMachine.Step(ctx, promotionrun.Status.Phase, &runFsmEnv{promotionrun: &promotionrun})
+}
 
-	return ctrl.Result{}, nil
+// ensureRunFSM builds the PromotionRun phase dispatch table the first
+// time it is called. Lazy init keeps unit tests that construct
+// PromotionRunReconciler directly (without SetupWithManager) working —
+// same pattern as PromotionTarget's ensureFSM (D3-PR1).
+func (r *PromotionRunReconciler) ensureRunFSM() {
+	r.runFsmOnce.Do(func() {
+		r.runFsmMachine = r.buildRunFSM()
+	})
+}
+
+// buildRunFSM constructs the PromotionRun phase dispatch table.
+//
+// Declared phase graph (D2-PR2 — AllowedNext on every Register;
+// promotionrun_fsm_graph_test.go locks this against the comment block):
+//
+//	""              → Progressing  (via handlePending, which sets the phase)
+//	Pending         → Progressing, Failed
+//	Progressing     → Complete, Failed
+//	Failed          → Failed       (sticky during rollback; ValidateTransition
+//	                                treats from==to as a no-op so the loop
+//	                                doesn't fire spurious warnings)
+//	Complete        → terminal (no handler, RegisterTerminal)
+//
+// All non-terminal phases keep Failed in AllowedNext because
+// handleTimeout / setStalledCondition paths can flip the phase from any
+// non-terminal state when the global PromotionRun timeout fires.
+func (r *PromotionRunReconciler) buildRunFSM() *fsm.Machine[kaprov1alpha1.PromotionRunPhase, *runFsmEnv] {
+	m := fsm.New[kaprov1alpha1.PromotionRunPhase, *runFsmEnv]()
+	must(m.RegisterInitial(func(ctx context.Context, e *runFsmEnv) (ctrl.Result, error) {
+		return r.handlePending(ctx, e.promotionrun)
+	}, kaprov1alpha1.PromotionRunPhaseProgressing))
+	must(m.RegisterTransition(fsm.Transition[kaprov1alpha1.PromotionRunPhase, *runFsmEnv]{
+		Phase: kaprov1alpha1.PromotionRunPhasePending,
+		AllowedNext: []kaprov1alpha1.PromotionRunPhase{
+			kaprov1alpha1.PromotionRunPhaseProgressing,
+			kaprov1alpha1.PromotionRunPhaseFailed,
+		},
+		Handler: func(ctx context.Context, e *runFsmEnv) (ctrl.Result, error) {
+			return r.handlePending(ctx, e.promotionrun)
+		},
+	}))
+	must(m.RegisterTransition(fsm.Transition[kaprov1alpha1.PromotionRunPhase, *runFsmEnv]{
+		Phase: kaprov1alpha1.PromotionRunPhaseProgressing,
+		AllowedNext: []kaprov1alpha1.PromotionRunPhase{
+			kaprov1alpha1.PromotionRunPhaseComplete,
+			kaprov1alpha1.PromotionRunPhaseFailed,
+		},
+		Handler: func(ctx context.Context, e *runFsmEnv) (ctrl.Result, error) {
+			return r.handleProgressing(ctx, e.promotionrun)
+		},
+	}))
+	// Failed is NOT terminal — when rollback targets are active the
+	// reconciler keeps driving handleFailed until they converge. The
+	// guard moves into this closure so the legacy
+	// "if hasActiveRollbackTargets" pre-check is encoded at the
+	// dispatch site rather than the call site. AllowedNext is empty
+	// (Failed is sticky); ValidateTransition treats from==to as
+	// always-allowed so the rollback loop doesn't fire warnings.
+	must(m.RegisterTransition(fsm.Transition[kaprov1alpha1.PromotionRunPhase, *runFsmEnv]{
+		Phase: kaprov1alpha1.PromotionRunPhaseFailed,
+		Handler: func(ctx context.Context, e *runFsmEnv) (ctrl.Result, error) {
+			if !r.hasActiveRollbackTargets(e.promotionrun) {
+				return ctrl.Result{}, nil
+			}
+			return r.handleFailed(ctx, e.promotionrun)
+		},
+	}))
+	must(m.RegisterTerminal(kaprov1alpha1.PromotionRunPhaseComplete))
+	return m
+}
+
+// setRunPhase mutates promotionrun.Status.Phase after validating the
+// transition against the declared FSM graph (D2-PR2). Same observability-
+// not-enforcement stance as PromotionTarget's transitionTo: undeclared
+// transitions emit a Warning event + bump
+// kapro_fsm_unexpected_transitions_total{from,to} and proceed. Crashing
+// the reconciler on a graph-doc drift would be strictly worse than
+// alerting; the FSM graph is documentation and a violation means the
+// docs are stale, not that the rollout is unsafe.
+//
+// Callers MUST funnel every Phase assignment through here so the
+// validation hook is single-source — direct mutations bypass the check
+// and silently drift the graph. The pkg/golangci-lint exhaustive linter
+// is the long-term enforcement; for now the call-site discipline is
+// covered by code review and the graph-adjacency test.
+func (r *PromotionRunReconciler) setRunPhase(promotionrun *kaprov1alpha1.PromotionRun, newPhase kaprov1alpha1.PromotionRunPhase) {
+	prevPhase := promotionrun.Status.Phase
+	r.ensureRunFSM()
+	if err := r.runFsmMachine.ValidateTransition(prevPhase, newPhase); err != nil {
+		r.Recorder.Eventf(promotionrun, corev1.EventTypeWarning, "FSMUnexpectedTransition",
+			"[promotionrun/%s] %s", promotionrun.Name, err.Error())
+		kaprometrics.FSMUnexpectedTransitions.WithLabelValues(string(prevPhase), string(newPhase)).Inc()
+	}
+	promotionrun.Status.Phase = newPhase
 }
 
 func (r *PromotionRunReconciler) patchPromotionRunStatus(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, patch client.Patch) error {
@@ -194,7 +294,7 @@ func (r *PromotionRunReconciler) handlePending(ctx context.Context, promotionrun
 	}
 
 	patch := client.MergeFrom(promotionrun.DeepCopy())
-	promotionrun.Status.Phase = kaprov1alpha1.PromotionRunPhaseProgressing
+	r.setRunPhase(promotionrun, kaprov1alpha1.PromotionRunPhaseProgressing)
 	promotionrun.Status.ResolvedVersion = resolvedVersion
 	promotionrun.Status.PromotionPlanProgress = progress
 	promotionrun.Status.ObservedGeneration = promotionrun.Generation
@@ -324,7 +424,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 		previous := promotionplanProgress[promotionplanRef.Name]
 		if previous.ObservedGeneration != 0 && previous.ObservedGeneration != promotionplan.Generation {
 			msg := fmt.Sprintf("promotionplan %s changed during promotionrun: observed generation %d, current generation %d", promotionplan.Name, previous.ObservedGeneration, promotionplan.Generation)
-			promotionrun.Status.Phase = kaprov1alpha1.PromotionRunPhaseFailed
+			r.setRunPhase(promotionrun, kaprov1alpha1.PromotionRunPhaseFailed)
 			promotionrun.Status.CompletedAt = time.Now().UTC().Format(time.RFC3339)
 			r.setPromotionRunReadyCondition(promotionrun, metav1.ConditionFalse, "PromotionPlanChanged", msg)
 			r.setStalledCondition(promotionrun, "PromotionPlanChanged", msg)
@@ -383,7 +483,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 		if promotionplanFailed {
 			// Fail fast: mark promotionrun failed using the outer patch (which already
 			// includes any target mutations from upsertTarget/cancelPendingStageTargets).
-			promotionrun.Status.Phase = kaprov1alpha1.PromotionRunPhaseFailed
+			r.setRunPhase(promotionrun, kaprov1alpha1.PromotionRunPhaseFailed)
 			promotionrun.Status.ObservedGeneration = promotionrun.Generation
 			promotionrun.Status.CompletedAt = time.Now().UTC().Format(time.RFC3339)
 			promotionrun.Status.PromotionPlanProgress = updatedPromotionPlans
@@ -428,7 +528,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 	// correct Phase and CompletedAt (B50: previously set after targets were cleared).
 	if allPromotionPlansComplete {
 		r.appendAuditEntry(ctx, promotionrun)
-		promotionrun.Status.Phase = kaprov1alpha1.PromotionRunPhaseComplete
+		r.setRunPhase(promotionrun, kaprov1alpha1.PromotionRunPhaseComplete)
 		promotionrun.Status.CompletedAt = time.Now().UTC().Format(time.RFC3339)
 	}
 	// Compute report while targets are still in memory; normalization and
@@ -489,7 +589,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 
 func (r *PromotionRunReconciler) handleTimeout(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun) (ctrl.Result, error) {
 	patch := client.MergeFrom(promotionrun.DeepCopy())
-	promotionrun.Status.Phase = kaprov1alpha1.PromotionRunPhaseFailed
+	r.setRunPhase(promotionrun, kaprov1alpha1.PromotionRunPhaseFailed)
 	promotionrun.Status.CompletedAt = time.Now().UTC().Format(time.RFC3339)
 	msg := fmt.Sprintf("promotionrun exceeded timeout (%s)", promotionrun.Spec.Timeout)
 	r.setPromotionRunReadyCondition(promotionrun, metav1.ConditionFalse, "Timeout", msg)
@@ -1067,41 +1167,6 @@ func apiPlannerResults(decisions []planner.Decision) []kaprov1alpha1.PlannerResu
 // upsertTarget finds an existing TargetStatus entry for
 // (promotionplanRefName, stage.Name, mc.Name) or appends a new one.
 // Returns the slice index of the entry (stable within a single reconcile).
-func (r *PromotionRunReconciler) upsertTarget(
-	promotionrun *kaprov1alpha1.PromotionRun,
-	promotionplanRefName string,
-	promotionplan *kaprov1alpha1.PromotionPlan,
-	stage kaprov1alpha1.Stage,
-	mc kaprov1alpha1.FleetCluster,
-	resolvedGate *kaprov1alpha1.GatePolicySpec,
-) (int, error) {
-	desiredVersions := promotionrunDesiredVersions(promotionrun)
-	version, appKey := primaryDesiredVersion(desiredVersions, promotionrun.Status.ResolvedVersion, promotionrunAppKey(promotionrun))
-	key := syncKey(promotionplanRefName, stage.Name, mc.Name)
-	for i, target := range promotionrun.Status.Targets {
-		if syncKey(target.PromotionPlanRef, target.Stage, target.Target) == key {
-			target := &promotionrun.Status.Targets[i]
-			target.Version = version
-			target.Gate = resolvedGate
-			target.AppKey = appKey
-			target.DesiredVersions = copyStringMap(desiredVersions)
-			return i, nil
-		}
-	}
-	newTarget := kaprov1alpha1.TargetStatus{
-		PromotionRunRef:  promotionrun.Name,
-		Target:           mc.Name,
-		PromotionPlanRef: promotionplanRefName,
-		PromotionPlan:    promotionplan.Name,
-		Stage:            stage.Name,
-		Version:          version,
-		Gate:             resolvedGate,
-		AppKey:           appKey,
-		DesiredVersions:  copyStringMap(desiredVersions),
-	}
-	promotionrun.Status.Targets = append(promotionrun.Status.Targets, newTarget)
-	return len(promotionrun.Status.Targets) - 1, nil
-}
 
 func resolveStageGate(promotionplan *kaprov1alpha1.PromotionPlan, stage kaprov1alpha1.Stage) (*kaprov1alpha1.GatePolicySpec, error) {
 	if stage.Gate == nil {
@@ -1158,109 +1223,6 @@ func mergeMetricPreset(preset, override kaprov1alpha1.MetricGate) kaprov1alpha1.
 // triggerRollbackTargets appends rollback TargetStatus entries for every
 // converged target in the failed stage and all earlier stages in the same
 // promotionplan instance. In-memory only; caller patches.
-func (r *PromotionRunReconciler) triggerRollbackTargets(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, promotionplanRefName string, promotionplan *kaprov1alpha1.PromotionPlan, stageName string) {
-	eligibleStages := make(map[string]struct{}, len(promotionplan.Spec.Stages))
-	for _, stage := range promotionplan.Spec.Stages {
-		eligibleStages[stage.Name] = struct{}{}
-		if stage.Name == stageName {
-			break
-		}
-	}
-	n := len(promotionrun.Status.Targets) // capture length before appending
-	for i := 0; i < n; i++ {
-		target := &promotionrun.Status.Targets[i]
-		if target.PromotionPlanRef != promotionplanRefName {
-			continue
-		}
-		if _, ok := eligibleStages[target.Stage]; !ok {
-			continue
-		}
-		if target.Phase != kaprov1alpha1.TargetPhaseConverged {
-			continue
-		}
-		r.triggerTargetRollback(ctx, promotionrun, i)
-	}
-}
-
-func (r *PromotionRunReconciler) notifyPromotionRunEvent(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, eventType, message string) {
-	if r.Notifier == nil {
-		return
-	}
-	policy := r.notificationPolicyForPromotionRun(ctx, promotionrun)
-	r.Notifier.Notify(ctx, notification.Event{
-		Type:         eventType,
-		Phase:        string(promotionrun.Status.Phase),
-		Version:      promotionrun.Status.ResolvedVersion,
-		PromotionRun: promotionrun.Name,
-		Message:      message,
-		IsFailure:    eventType == notification.EventPromotionRunFailed,
-	}, policy)
-}
-
-func (r *PromotionRunReconciler) notifyStageEvent(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, promotionplanRef, stage, eventType, message string) {
-	if r.Notifier == nil {
-		return
-	}
-	policy := r.notificationPolicyForStage(ctx, promotionrun, promotionplanRef, stage)
-	r.Notifier.Notify(ctx, notification.Event{
-		Type:          eventType,
-		Phase:         "Complete",
-		Version:       promotionrun.Status.ResolvedVersion,
-		PromotionRun:  promotionrun.Name,
-		PromotionPlan: promotionplanRef,
-		Stage:         stage,
-		Message:       message,
-	}, policy)
-}
-
-func (r *PromotionRunReconciler) notificationPolicyForPromotionRun(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun) notification.NotificationPolicy {
-	policies := make([]notification.NotificationPolicy, 0)
-	for _, promotionplanRef := range promotionrun.Spec.PromotionPlans {
-		var promotionplan kaprov1alpha1.PromotionPlan
-		if err := r.Get(ctx, client.ObjectKey{Name: promotionplanRef.PromotionPlan}, &promotionplan); err != nil {
-			log.FromContext(ctx).Error(err, "failed to load promotionplan for promotionrun notification policy", "promotionplan", promotionplanRef.PromotionPlan)
-			continue
-		}
-		for _, stage := range promotionplan.Spec.Stages {
-			policies = append(policies, notificationPolicyFrom(stage.Gate))
-		}
-	}
-	return mergeNotificationPolicies(policies...)
-}
-
-func (r *PromotionRunReconciler) notificationPolicyForStage(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, promotionplanRefName, stageName string) notification.NotificationPolicy {
-	for _, promotionplanRef := range promotionrun.Spec.PromotionPlans {
-		if promotionplanRef.Name != promotionplanRefName {
-			continue
-		}
-		var promotionplan kaprov1alpha1.PromotionPlan
-		if err := r.Get(ctx, client.ObjectKey{Name: promotionplanRef.PromotionPlan}, &promotionplan); err != nil {
-			log.FromContext(ctx).Error(err, "failed to load promotionplan for stage notification policy", "promotionplan", promotionplanRef.PromotionPlan)
-			return notification.EmptyPolicy
-		}
-		for _, stage := range promotionplan.Spec.Stages {
-			if stage.Name == stageName {
-				return notificationPolicyFrom(stage.Gate)
-			}
-		}
-	}
-	return notification.EmptyPolicy
-}
-
-func (r *PromotionRunReconciler) hasActiveRollbackTargets(promotionrun *kaprov1alpha1.PromotionRun) bool {
-	for _, target := range promotionrun.Status.Targets {
-		if !target.Rollback {
-			continue
-		}
-		switch target.Phase {
-		case kaprov1alpha1.TargetPhaseConverged, kaprov1alpha1.TargetPhaseFailed, kaprov1alpha1.TargetPhaseSkipped:
-			continue
-		default:
-			return true
-		}
-	}
-	return false
-}
 
 // cancelPendingStageTargets signals non-terminal targets in the stage to stop.
 // This implements failurePolicy: halt — sibling targets stop advancing.
@@ -1268,85 +1230,9 @@ func (r *PromotionRunReconciler) hasActiveRollbackTargets(promotionrun *kaprov1a
 // Ownership contract: the parent writes spec.cancelled (parent owns spec),
 // the child PromotionTargetReconciler observes it and transitions to Failed
 // (child owns status). This avoids cross-controller status writes.
-func (r *PromotionRunReconciler) cancelPendingStageTargets(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, promotionplanRefName, stageName string) {
-	log := log.FromContext(ctx)
-
-	// List PromotionTarget objects for this promotionrun (indexed, not full scan).
-	var list kaprov1alpha1.PromotionTargetList
-	if err := r.List(ctx, &list, client.MatchingFields{IndexKeyPromotionTargetPromotionRun: promotionrun.Name}); err != nil {
-		log.Error(err, "cancel: failed to list PromotionTargets")
-		return
-	}
-
-	for i := range list.Items {
-		rt := &list.Items[i]
-		if rt.Spec.PromotionPlanRef != promotionplanRefName || rt.Spec.Stage != stageName {
-			continue
-		}
-		// Skip terminal targets.
-		switch rt.Status.Phase {
-		case kaprov1alpha1.TargetPhaseConverged, kaprov1alpha1.TargetPhaseFailed, kaprov1alpha1.TargetPhaseSkipped:
-			continue
-		}
-		if rt.Spec.Cancelled {
-			continue
-		}
-
-		// Signal cancellation via spec — the child reconciler observes this
-		// and transitions status to Failed on its next reconcile.
-		// Use a raw JSON merge patch to set spec.cancelled directly, avoiding
-		// resourceVersion conflicts with concurrent status writes.
-		rawPatch := client.RawPatch(types.MergePatchType,
-			[]byte(`{"spec":{"cancelled":true,"cancelledReason":"stage halted due to peer failure (failurePolicy: halt)"}}`))
-		if err := r.Patch(ctx, rt, rawPatch); err != nil {
-			log.Error(err, "cancel: failed to patch PromotionTarget spec", "name", rt.Name)
-			continue
-		}
-		log.Info("cancel: signalled cancellation", "target", rt.Name)
-
-		// Also update inline targets for immediate aggregation so the parent
-		// can compute the correct PromotionRun phase without waiting for child reconcile.
-		for j := range promotionrun.Status.Targets {
-			t := &promotionrun.Status.Targets[j]
-			if t.Target == rt.Spec.Target && t.PromotionPlanRef == promotionplanRefName && t.Stage == stageName {
-				t.Phase = kaprov1alpha1.TargetPhaseFailed
-				t.Message = "cancelled: " + rt.Spec.CancelledReason
-				break
-			}
-		}
-	}
-}
 
 // clearActivePromotionRun clears mc.status.activePromotionRun for all FleetClusters
 // targeted by this PromotionRun, found via promotionrun.Status.Targets.
-func (r *PromotionRunReconciler) clearActivePromotionRun(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun) {
-	log := log.FromContext(ctx)
-	if len(promotionrun.Status.Targets) == 0 {
-		if err := r.loadPromotionTargets(ctx, promotionrun); err != nil {
-			log.Error(err, "clearActivePromotionRun: failed to load promotion targets")
-			return
-		}
-	}
-	seen := make(map[string]bool)
-	for _, target := range promotionrun.Status.Targets {
-		mcName := target.Target
-		if seen[mcName] {
-			continue
-		}
-		seen[mcName] = true
-		var mc kaprov1alpha1.FleetCluster
-		if err := r.Get(ctx, client.ObjectKey{Name: mcName}, &mc); err != nil {
-			continue
-		}
-		if mc.Status.ActivePromotionRun == promotionrun.Name {
-			patch := client.MergeFrom(mc.DeepCopy())
-			mc.Status.ActivePromotionRun = ""
-			if err := r.Status().Patch(ctx, &mc, patch); err != nil {
-				log.Error(err, "clearActivePromotionRun: failed to clear activePromotionRun", "cluster", mcName)
-			}
-		}
-	}
-}
 
 func promotionTargetObjectName(target kaprov1alpha1.TargetStatus) string {
 	name := syncName(target.PromotionRunRef, target.PromotionPlanRef, target.Stage, target.Target)
@@ -1360,37 +1246,6 @@ func promotionTargetObjectName(target kaprov1alpha1.TargetStatus) string {
 // contract to external tests without widening production behavior.
 func PromotionTargetObjectNameForTest(target kaprov1alpha1.TargetStatus) string {
 	return promotionTargetObjectName(target)
-}
-
-func (r *PromotionRunReconciler) promotionTargetFromStatus(promotionrun *kaprov1alpha1.PromotionRun, target kaprov1alpha1.TargetStatus) *kaprov1alpha1.PromotionTarget {
-	rt := &kaprov1alpha1.PromotionTarget{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: promotionTargetObjectName(target),
-			Labels: map[string]string{
-				IndexKeyPromotionRun:     promotionrun.Name,
-				"kapro.io/target":        target.Target,
-				"kapro.io/promotionplan": target.PromotionPlanRef,
-				"kapro.io/stage":         target.Stage,
-			},
-		},
-		Spec: kaprov1alpha1.PromotionTargetSpec{
-			PromotionRunRef:  target.PromotionRunRef,
-			Target:           target.Target,
-			PromotionPlanRef: target.PromotionPlanRef,
-			PromotionPlan:    target.PromotionPlan,
-			Stage:            target.Stage,
-			Version:          target.Version,
-			Gate:             target.Gate,
-			AppKey:           target.AppKey,
-			DesiredVersions:  copyStringMap(target.DesiredVersions),
-			Rollback:         target.Rollback,
-		},
-		Status: kaprov1alpha1.PromotionTargetStatus{TargetStatus: target},
-	}
-	if err := ctrl.SetControllerReference(promotionrun, rt, r.Scheme); err == nil {
-		return rt
-	}
-	return rt
 }
 
 func targetStatusFromPromotionTarget(rt *kaprov1alpha1.PromotionTarget) kaprov1alpha1.TargetStatus {
@@ -1408,72 +1263,9 @@ func targetStatusFromPromotionTarget(rt *kaprov1alpha1.PromotionTarget) kaprov1a
 	return target
 }
 
-func (r *PromotionRunReconciler) loadPromotionTargets(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun) error {
-	var list kaprov1alpha1.PromotionTargetList
-	if err := r.List(ctx, &list,
-		client.MatchingFields{IndexKeyPromotionTargetPromotionRun: promotionrun.Name},
-	); err != nil {
-		return err
-	}
-	targets := make([]kaprov1alpha1.TargetStatus, 0, len(list.Items))
-	for i := range list.Items {
-		rt := &list.Items[i]
-		targets = append(targets, targetStatusFromPromotionTarget(rt))
-	}
-	sort.Slice(targets, func(i, j int) bool {
-		ai := promotionTargetObjectName(targets[i])
-		aj := promotionTargetObjectName(targets[j])
-		return ai < aj
-	})
-	promotionrun.Status.Targets = targets
-	return nil
-}
-
 // persistPromotionTargets ensures a PromotionTarget CRD exists for each in-memory
 // target entry. The parent creates new children and updates their specs/labels/
 // ownerRefs, but NEVER writes child status — that's owned by PromotionTargetReconciler.
-func (r *PromotionRunReconciler) persistPromotionTargets(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun) error {
-	var existingList kaprov1alpha1.PromotionTargetList
-	if err := r.List(ctx, &existingList,
-		client.MatchingFields{IndexKeyPromotionTargetPromotionRun: promotionrun.Name},
-	); err != nil {
-		return err
-	}
-	existing := make(map[string]*kaprov1alpha1.PromotionTarget, len(existingList.Items))
-	for i := range existingList.Items {
-		rt := existingList.Items[i]
-		existing[rt.Name] = rt.DeepCopy()
-	}
-
-	for _, target := range promotionrun.Status.Targets {
-		name := promotionTargetObjectName(target)
-		desired := r.promotionTargetFromStatus(promotionrun, target)
-		if _, ok := existing[name]; !ok {
-			// Create new child — status starts empty, PromotionTargetReconciler will drive it.
-			toCreate := desired.DeepCopy()
-			toCreate.Status = kaprov1alpha1.PromotionTargetStatus{}
-			if err := r.Create(ctx, toCreate); err != nil && !apierrors.IsAlreadyExists(err) {
-				return fmt.Errorf("create PromotionTarget %s: %w", name, err)
-			}
-		} else {
-			// Update spec/labels/ownerRefs only — never touch status.
-			// Skip the patch if nothing actually changed (avoids O(N) API writes
-			// per reconcile when targets are stable).
-			current := existing[name]
-			if promotionTargetSpecEqual(current, desired) {
-				continue
-			}
-			specPatch := client.MergeFrom(current.DeepCopy())
-			current.Labels = desired.Labels
-			current.Spec = desired.Spec
-			current.OwnerReferences = desired.OwnerReferences
-			if err := r.Patch(ctx, current, specPatch); err != nil {
-				return fmt.Errorf("patch PromotionTarget %s: %w", name, err)
-			}
-		}
-	}
-	return nil
-}
 
 // handleDeletion clears FleetCluster activePromotionRun references and removes the finalizer.
 // Targets are inline status — nothing to delete externally.
