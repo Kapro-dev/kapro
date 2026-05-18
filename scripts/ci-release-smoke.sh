@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHART="${ROOT}/charts/kapro-operator"
+CLUSTER_CONTROLLER_CHART="${ROOT}/charts/kapro-cluster-controller"
 RELEASE_WORKFLOW="${ROOT}/.github/workflows/release.yml"
 
 need() {
@@ -34,8 +35,9 @@ need shasum
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "${tmpdir}"' EXIT
 
-echo "packaging Helm chart"
+echo "packaging Helm charts"
 helm package "${CHART}" --destination "${tmpdir}"
+helm package "${CLUSTER_CONTROLLER_CHART}" --destination "${tmpdir}"
 
 chart_packages=("${tmpdir}"/kapro-operator-*.tgz)
 if [[ ! -f "${chart_packages[0]}" ]]; then
@@ -47,16 +49,36 @@ if [[ "${#chart_packages[@]}" -ne 1 ]]; then
   exit 1
 fi
 
-echo "generating Helm chart checksum"
-shasum -a 256 "${chart_packages[0]}" >"${tmpdir}/checksums.txt"
-grep -Fq "$(basename "${chart_packages[0]}")" "${tmpdir}/checksums.txt"
+cluster_controller_packages=("${tmpdir}"/kapro-cluster-controller-*.tgz)
+if [[ ! -f "${cluster_controller_packages[0]}" ]]; then
+  echo "helm package did not produce a kapro-cluster-controller chart archive" >&2
+  exit 1
+fi
+if [[ "${#cluster_controller_packages[@]}" -ne 1 ]]; then
+  echo "expected one kapro-cluster-controller chart archive, found ${#cluster_controller_packages[@]}" >&2
+  exit 1
+fi
 
-echo "checking release workflow packages the chart and publishes checksums"
+echo "generating Helm chart checksums"
+shasum -a 256 "${chart_packages[0]}" "${cluster_controller_packages[0]}" >"${tmpdir}/checksums.txt"
+grep -Fq "$(basename "${chart_packages[0]}")" "${tmpdir}/checksums.txt"
+grep -Fq "$(basename "${cluster_controller_packages[0]}")" "${tmpdir}/checksums.txt"
+
+echo "checking release workflow packages the charts and publishes checksums"
 require_workflow_line "uses: azure/setup-helm@v4"
 require_workflow_line "name: Package Helm chart"
 require_workflow_line "helm package charts/kapro-operator --destination dist"
+require_workflow_line "helm package charts/kapro-cluster-controller --destination dist"
 require_workflow_line "shasum -a 256 dist/* > dist/checksums.txt"
 require_workflow_line "dist/*"
 reject_workflow_line "body_path: docs/release-v0.1.0-alpha.md"
+
+echo "checking release workflow builds and signs both images"
+require_workflow_line "file: Dockerfile"
+require_workflow_line "file: Dockerfile.cluster-controller"
+require_workflow_line "ghcr.io/kapro-dev/kapro-operator:"
+require_workflow_line "ghcr.io/kapro-dev/kapro-cluster-controller:"
+require_workflow_line "cosign sign --yes ghcr.io/kapro-dev/kapro-operator"
+require_workflow_line "cosign sign --yes ghcr.io/kapro-dev/kapro-cluster-controller"
 
 echo "release smoke verification passed"

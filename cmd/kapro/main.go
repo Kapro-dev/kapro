@@ -81,6 +81,7 @@ func newSpokeCmd() *cobra.Command {
 		Short: "Manage spoke clusters",
 	}
 	cmd.AddCommand(newSpokeAddCmd())
+	cmd.AddCommand(newSpokeBootstrapCmd())
 	return cmd
 }
 

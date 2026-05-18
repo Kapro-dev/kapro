@@ -62,10 +62,33 @@ jobs:
         run: |
           cosign sign --yes ghcr.io/kapro-dev/kapro-operator@${{ steps.build-operator.outputs.digest }}
 
+      - name: Build and push cluster-controller image
+        uses: docker/build-push-action@v5
+        id: build-cluster-controller
+        with:
+          context: .
+          file: Dockerfile.cluster-controller
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/kapro-dev/kapro-cluster-controller:${{ github.ref_name }}
+            ghcr.io/kapro-dev/kapro-cluster-controller:latest
+          labels: |
+            org.opencontainers.image.title=kapro-cluster-controller
+            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.source=https://github.com/Kapro-dev/kapro
+            org.opencontainers.image.documentation=https://kapro.dev
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Sign cluster-controller image with cosign
+        run: |
+          cosign sign --yes ghcr.io/kapro-dev/kapro-cluster-controller@${{ steps.build-cluster-controller.outputs.digest }}
+
       - name: Package Helm chart
         run: |
           mkdir -p dist
           helm package charts/kapro-operator --destination dist
+          helm package charts/kapro-cluster-controller --destination dist
           shasum -a 256 dist/* > dist/checksums.txt
 
       - name: Create GitHub Release

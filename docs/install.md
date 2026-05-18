@@ -122,6 +122,13 @@ helm upgrade kapro charts/kapro-operator --namespace kapro-system
 kubectl -n kapro-system rollout status deployment/kapro-kapro-operator
 ```
 
+## Registering fleet clusters (pull mode)
+
+Kapro v0.5 supports a pull-mode spoke agent (`kapro-cluster-controller`) that
+runs inside each workload cluster and reports back to the hub. To register a
+new spoke see [cluster-bootstrap.md](cluster-bootstrap.md). The existing push-
+mode flow (`kapro spoke add`) is unchanged.
+
 ## Uninstall
 
 ```bash

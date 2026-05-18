@@ -1,0 +1,22 @@
+apiVersion: v2
+name: kapro-cluster-controller
+description: Spoke-side agent that registers a workload cluster with the Kapro hub and reports heartbeat + status.
+type: application
+version: 0.5.0
+appVersion: "v0.5.0"
+home: https://github.com/Kapro-dev/kapro
+sources:
+  - https://github.com/Kapro-dev/kapro
+maintainers:
+  - name: Vinayaka Krishnamurthy
+    email: vinnxcapital@gmail.com
+    url: https://github.com/Kapro-dev
+icon: https://raw.githubusercontent.com/Kapro-dev/kapro/main/docs/logo.png
+keywords:
+  - kubernetes
+  - multi-cluster
+  - fleet
+  - spoke-agent
+  - kapro
+annotations:
+  artifacthub.io/license: Apache-2.0

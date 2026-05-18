@@ -1,0 +1,68 @@
+{{- if .Values.rbac.create }}
+# Minimum local-cluster permissions the spoke needs:
+#   - list nodes: status reporter reads node inventory + topology labels
+#   - manage credential Secret: cert manager persists the issued cert+key
+#     across pod restarts (default Secret: kapro-hub-credentials in install ns)
+#   - get/create namespaces: cert manager's secretStore.ensureNamespace runs
+#     once at startup; helm --create-namespace already handles install ns, but
+#     credentials.secretName may target a different namespace
+# All hub-side authority is granted out-of-band via the per-cluster ClusterRole
+# the hub bootstrap reconciler creates (kapro:cluster-controller:<name>).
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kapro-cluster-controller.fullname" . }}
+  labels:
+    {{- include "kapro-cluster-controller.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kapro-cluster-controller.fullname" . }}
+  labels:
+    {{- include "kapro-cluster-controller.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kapro-cluster-controller.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kapro-cluster-controller.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "kapro-cluster-controller.fullname" . }}-credentials
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kapro-cluster-controller.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "kapro-cluster-controller.fullname" . }}-credentials
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kapro-cluster-controller.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "kapro-cluster-controller.fullname" . }}-credentials
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kapro-cluster-controller.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
