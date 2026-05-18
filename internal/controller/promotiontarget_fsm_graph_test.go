@@ -116,3 +116,35 @@ func TestPromotionTargetFSM_GraphAdjacencyMatchesDocs(t *testing.T) {
 		}
 	}
 }
+
+// TestEventTypeForPhase_CoversAllRegisteredPhases asserts that every phase
+// registered in the FSM (non-initial, non-terminal) has a stable, named
+// notification event type — i.e. eventTypeForPhase does NOT fall through to
+// the generic "kapro.promotionrun.target.unknown" sentinel. Catches the
+// "added a phase, registered a handler, forgot to map a notification event"
+// drift case at unit-test time.
+//
+// Initial ("") and terminal phases (Converged, Failed, Skipped) have their
+// own dedicated entries in eventTypeForPhase and are listed explicitly here
+// so we verify them too — terminal phases drive
+// EventTargetConverged/Failed/Skipped which downstream notifiers depend on.
+func TestEventTypeForPhase_CoversAllRegisteredPhases(t *testing.T) {
+	r := &PromotionTargetReconciler{Recorder: record.NewFakeRecorder(8)}
+	r.ensureFSM()
+	phases := r.fsmMachine.Phases()
+	phases = append(phases,
+		kaprov1alpha1.TargetPhaseConverged,
+		kaprov1alpha1.TargetPhaseFailed,
+		kaprov1alpha1.TargetPhaseSkipped,
+	)
+	const fallback = "kapro.promotionrun.target.unknown"
+	for _, phase := range phases {
+		evt := eventTypeForPhase(phase)
+		if evt == "" {
+			t.Errorf("phase %s: empty event type", phase)
+		}
+		if evt == fallback {
+			t.Errorf("phase %s: falls through to %q — add an explicit case in eventTypeForPhase", phase, fallback)
+		}
+	}
+}

@@ -1,15 +1,29 @@
 package controller
 
-// target_fsm.go contains shared utilities for the per-target rollout FSM.
+// target_fsm.go is named for historical reasons — the per-target rollout
+// FSM itself now lives in:
 //
-// The FSM is driven by PromotionTargetReconciler (promotion_target_controller.go).
-// PromotionRunReconciler (promotionrun_controller.go) only creates PromotionTarget children
-// and aggregates their statuses — it never runs the FSM.
+//   - internal/promotion/fsm           : Machine[Phase, Env] primitive
+//   - promotiontarget_controller.go    : buildFSM() phase table + handler bodies
 //
-// This file contains:
-//   - Shared helpers used by both controllers (name generation, gate context, etc.)
-//   - Parent-side rollback logic (triggerTargetRollback, called when parent detects failure)
-//   - Watch mappers shared across controllers
+// This file contains only the supporting cast that the FSM and the
+// parent PromotionRunReconciler both reach for:
+//
+//   - eventTypeForPhase           : phase → notification event-type mapping
+//                                   (kept in sync with the FSM graph by
+//                                    TestEventTypeForPhase_CoversAllRegisteredPhases
+//                                    in promotiontarget_fsm_graph_test.go)
+//   - notificationPolicyFrom / mergeNotificationPolicies : notification plumbing
+//   - targetToGateContext / targetAppKey / targetDesiredVersions / resolveSyncArgs
+//                                 : per-target helpers consumed by handlers
+//   - buildApprovalURLs / approvalIdentityHint : signed approval URLs
+//   - triggerTargetRollback       : parent-side rollback driver, called from
+//                                   PromotionRunReconciler when a stage fails
+//                                   with onFailure=rollback
+//   - approvalForPromotionRun     : watch mapper shared across reconcilers
+//
+// A future cleanup may rename this file to target_helpers.go; renaming was
+// deferred to keep this commit reviewable against git blame.
 
 import (
 	"context"
@@ -35,7 +49,13 @@ const missingMCFailThreshold = 10
 
 // --- Shared helpers ---
 
-// eventTypeForPhase maps every TargetPhase to a stable semantic event type.
+// eventTypeForPhase maps every TargetPhase to a stable semantic event type
+// for the notification engine. This is the dual of the FSM phase table in
+// promotiontarget_controller.go's buildFSM(); keeping the two in sync is
+// asserted by TestEventTypeForPhase_CoversAllRegisteredPhases — every
+// non-terminal phase the FSM registers must have a non-fallback mapping
+// here so notification consumers see meaningful event types.
+//
 // This is a total switch with no fallback to ensure all event types are explicit.
 func eventTypeForPhase(phase kaprov1alpha1.TargetPhase) string {
 	switch phase {
