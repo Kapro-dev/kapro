@@ -1,6 +1,7 @@
 # Image registry
-REGISTRY        ?= ghcr.io/kapro-dev
-OPERATOR_IMG    ?= $(REGISTRY)/kapro-operator:latest
+REGISTRY           ?= ghcr.io/kapro-dev
+OPERATOR_IMG       ?= $(REGISTRY)/kapro-operator:latest
+CLUSTER_CONTROLLER_IMG ?= $(REGISTRY)/kapro-cluster-controller:latest
 
 # Tool versions
 CONTROLLER_GEN_VERSION ?= v0.21.0
@@ -119,13 +120,19 @@ test: generate manifests $(ENVTEST) ## Run unit + integration tests with envtest
 ##@ Build
 
 .PHONY: build
-build: generate ## Build operator and CLI binaries
+build: generate ## Build operator, cluster-controller, and CLI binaries
 	go build -trimpath -ldflags="-s -w" -o bin/kapro-operator ./cmd/operator
+	go build -trimpath -ldflags="-s -w" -o bin/kapro-cluster-controller ./cmd/kapro-cluster-controller
 	go build -trimpath -ldflags="-s -w" -o bin/kapro ./cmd/kapro
 
 .PHONY: release-smoke
 release-smoke: ## Smoke-test Helm packaging and release workflow chart artifacts
 	scripts/ci-release-smoke.sh
+
+.PHONY: helm-lint
+helm-lint: ## Run `helm lint` on all charts
+	helm lint charts/kapro-operator
+	helm lint charts/kapro-cluster-controller
 
 .PHONY: sync-crds
 sync-crds: manifests ## Sync generated CRDs into Helm chart crds/ and internal/bootstrap/kaprocrds/ (used by hub init)
@@ -134,12 +141,14 @@ sync-crds: manifests ## Sync generated CRDs into Helm chart crds/ and internal/b
 	@echo "✅ Helm chart and bootstrap CRDs synced"
 
 .PHONY: docker-build
-docker-build: ## Build multi-arch Docker image (no push)
+docker-build: ## Build multi-arch Docker images (no push)
 	docker buildx build --platform linux/amd64,linux/arm64 -t $(OPERATOR_IMG) -f Dockerfile .
+	docker buildx build --platform linux/amd64,linux/arm64 -t $(CLUSTER_CONTROLLER_IMG) -f Dockerfile.cluster-controller .
 
 .PHONY: docker-push
-docker-push: ## Push Docker image
+docker-push: ## Push Docker images
 	docker buildx build --platform linux/amd64,linux/arm64 -t $(OPERATOR_IMG) -f Dockerfile . --push
+	docker buildx build --platform linux/amd64,linux/arm64 -t $(CLUSTER_CONTROLLER_IMG) -f Dockerfile.cluster-controller . --push
 
 ##@ Cluster
 

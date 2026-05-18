@@ -1,0 +1,21 @@
+kapro-cluster-controller is installed.
+
+Cluster name:      {{ .Values.cluster.name }}
+Hub API URL:       {{ .Values.hub.url }}
+Bootstrap Secret:  {{ .Values.bootstrap.kubeconfigSecret.name }} (in {{ .Release.Namespace }})
+
+Verify the agent locally:
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "kapro-cluster-controller.fullname" . }}
+  kubectl -n {{ .Release.Namespace }} logs deployment/{{ include "kapro-cluster-controller.fullname" . }}
+
+Then on the HUB cluster:
+  kubectl get fleetcluster {{ .Values.cluster.name }} -o yaml
+
+Look for:
+  status.phase: Ready
+  status.bootstrap.used: true
+  status.capabilities.nodeCount: <your node count>
+
+If the pod is CrashLoopBackOff, check logs for missing env vars or a stale
+bootstrap kubeconfig (default TTL is 1h — re-run `kapro spoke bootstrap` to
+mint a fresh one).

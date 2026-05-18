@@ -1,0 +1,31 @@
+# Build stage
+FROM golang:1.25-alpine AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /workspace
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" \
+    -o /workspace/kapro-cluster-controller \
+    ./cmd/kapro-cluster-controller
+
+# Runtime stage — distroless, non-root
+FROM gcr.io/distroless/static:nonroot
+
+LABEL org.opencontainers.image.title="kapro-cluster-controller" \
+      org.opencontainers.image.description="Kapro spoke-side agent — registers a workload cluster with the Kapro hub and reports heartbeat + status" \
+      org.opencontainers.image.source="https://github.com/Kapro-dev/kapro" \
+      org.opencontainers.image.licenses="Apache-2.0"
+
+COPY --from=builder /workspace/kapro-cluster-controller /kapro-cluster-controller
+
+USER 65532:65532
+
+ENTRYPOINT ["/kapro-cluster-controller"]

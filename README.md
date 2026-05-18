@@ -38,6 +38,7 @@ security audit. See the [Roadmap](docs/ROADMAP.md) for release exit criteria.
 | Adding Kapro to Argo CD | [Argo Brownfield Migration](docs/argo-migration.md) | Discover existing Applications, ApplicationSets, and app-of-apps before adopting writes. |
 | Adding Kapro to Flux | [Flux Brownfield Migration](docs/flux-migration.md) | Discover existing Flux sources, HelmReleases, Kustomizations, and Git version fields. |
 | Operating a shared hub | [Install Kapro](docs/install.md) and [RBAC and Tenancy Model](docs/rbac-tenancy.md) | Configure Helm, RBAC, approvals, and optional Decision API access. |
+| Registering a new fleet cluster (pull mode) | [Cluster Bootstrap](docs/cluster-bootstrap.md) | Install `kapro-cluster-controller` on a workload cluster so it self-registers with the hub. |
 
 ## What Kapro Is
 
