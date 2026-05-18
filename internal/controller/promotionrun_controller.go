@@ -176,48 +176,88 @@ func (r *PromotionRunReconciler) ensureRunFSM() {
 
 // buildRunFSM constructs the PromotionRun phase dispatch table.
 //
-// The legacy phase graph:
+// Declared phase graph (D2-PR2 — AllowedNext on every Register;
+// promotionrun_fsm_graph_test.go locks this against the comment block):
 //
-//	""              → handlePending (which transitions to Progressing)
-//	Pending         → handlePending
-//	Progressing     → handleProgressing
-//	Failed          → handleFailed (guarded on hasActiveRollbackTargets;
-//	                  no-op otherwise so the reconciler doesn't churn)
-//	Complete        → terminal (no work)
+//	""              → Progressing  (via handlePending, which sets the phase)
+//	Pending         → Progressing, Failed
+//	Progressing     → Complete, Failed
+//	Failed          → Failed       (sticky during rollback; ValidateTransition
+//	                                treats from==to as a no-op so the loop
+//	                                doesn't fire spurious warnings)
+//	Complete        → terminal (no handler, RegisterTerminal)
 //
-// AllowedNext metadata will be wired in D2-PR2 alongside the runtime
-// validation hook in patchPromotionRunStatus. Today this PR is dispatch-
-// only — zero behaviour delta from the legacy switch.
+// All non-terminal phases keep Failed in AllowedNext because
+// handleTimeout / setStalledCondition paths can flip the phase from any
+// non-terminal state when the global PromotionRun timeout fires.
 func (r *PromotionRunReconciler) buildRunFSM() *fsm.Machine[kaprov1alpha1.PromotionRunPhase, *runFsmEnv] {
 	m := fsm.New[kaprov1alpha1.PromotionRunPhase, *runFsmEnv]()
-	// Initial ("") and Pending both invoke handlePending in the legacy
-	// switch. Keep both wired the same way so behaviour matches.
 	must(m.RegisterInitial(func(ctx context.Context, e *runFsmEnv) (ctrl.Result, error) {
 		return r.handlePending(ctx, e.promotionrun)
+	}, kaprov1alpha1.PromotionRunPhaseProgressing))
+	must(m.RegisterTransition(fsm.Transition[kaprov1alpha1.PromotionRunPhase, *runFsmEnv]{
+		Phase: kaprov1alpha1.PromotionRunPhasePending,
+		AllowedNext: []kaprov1alpha1.PromotionRunPhase{
+			kaprov1alpha1.PromotionRunPhaseProgressing,
+			kaprov1alpha1.PromotionRunPhaseFailed,
+		},
+		Handler: func(ctx context.Context, e *runFsmEnv) (ctrl.Result, error) {
+			return r.handlePending(ctx, e.promotionrun)
+		},
 	}))
-	must(m.Register(kaprov1alpha1.PromotionRunPhasePending, func(ctx context.Context, e *runFsmEnv) (ctrl.Result, error) {
-		return r.handlePending(ctx, e.promotionrun)
+	must(m.RegisterTransition(fsm.Transition[kaprov1alpha1.PromotionRunPhase, *runFsmEnv]{
+		Phase: kaprov1alpha1.PromotionRunPhaseProgressing,
+		AllowedNext: []kaprov1alpha1.PromotionRunPhase{
+			kaprov1alpha1.PromotionRunPhaseComplete,
+			kaprov1alpha1.PromotionRunPhaseFailed,
+		},
+		Handler: func(ctx context.Context, e *runFsmEnv) (ctrl.Result, error) {
+			return r.handleProgressing(ctx, e.promotionrun)
+		},
 	}))
-	must(m.Register(kaprov1alpha1.PromotionRunPhaseProgressing, func(ctx context.Context, e *runFsmEnv) (ctrl.Result, error) {
-		return r.handleProgressing(ctx, e.promotionrun)
-	}))
-	// Failed is NOT terminal — when rollback targets are active, the
+	// Failed is NOT terminal — when rollback targets are active the
 	// reconciler keeps driving handleFailed until they converge. The
-	// guard moves into this closure so the legacy "if hasActiveRollbackTargets"
-	// pre-check is encoded at the dispatch site rather than the call site.
-	must(m.Register(kaprov1alpha1.PromotionRunPhaseFailed, func(ctx context.Context, e *runFsmEnv) (ctrl.Result, error) {
-		if !r.hasActiveRollbackTargets(e.promotionrun) {
-			return ctrl.Result{}, nil
-		}
-		return r.handleFailed(ctx, e.promotionrun)
+	// guard moves into this closure so the legacy
+	// "if hasActiveRollbackTargets" pre-check is encoded at the
+	// dispatch site rather than the call site. AllowedNext is empty
+	// (Failed is sticky); ValidateTransition treats from==to as
+	// always-allowed so the rollback loop doesn't fire warnings.
+	must(m.RegisterTransition(fsm.Transition[kaprov1alpha1.PromotionRunPhase, *runFsmEnv]{
+		Phase: kaprov1alpha1.PromotionRunPhaseFailed,
+		Handler: func(ctx context.Context, e *runFsmEnv) (ctrl.Result, error) {
+			if !r.hasActiveRollbackTargets(e.promotionrun) {
+				return ctrl.Result{}, nil
+			}
+			return r.handleFailed(ctx, e.promotionrun)
+		},
 	}))
-	// Complete is the one true terminal: no handler, no requeue.
-	// Reconcile reaches Step with Phase=Complete only on a spurious wake
-	// (watch event after completion); Machine.Step's unknown-phase no-op
-	// behaviour would also work, but registering Complete as terminal is
-	// explicit and lets ValidateGraph (D2-PR2) confirm coverage.
 	must(m.RegisterTerminal(kaprov1alpha1.PromotionRunPhaseComplete))
 	return m
+}
+
+// setRunPhase mutates promotionrun.Status.Phase after validating the
+// transition against the declared FSM graph (D2-PR2). Same observability-
+// not-enforcement stance as PromotionTarget's transitionTo: undeclared
+// transitions emit a Warning event + bump
+// kapro_fsm_unexpected_transitions_total{from,to} and proceed. Crashing
+// the reconciler on a graph-doc drift would be strictly worse than
+// alerting; the FSM graph is documentation and a violation means the
+// docs are stale, not that the rollout is unsafe.
+//
+// Callers MUST funnel every Phase assignment through here so the
+// validation hook is single-source — direct mutations bypass the check
+// and silently drift the graph. The pkg/golangci-lint exhaustive linter
+// is the long-term enforcement; for now the call-site discipline is
+// covered by code review and the graph-adjacency test.
+func (r *PromotionRunReconciler) setRunPhase(promotionrun *kaprov1alpha1.PromotionRun, newPhase kaprov1alpha1.PromotionRunPhase) {
+	prevPhase := promotionrun.Status.Phase
+	r.ensureRunFSM()
+	if err := r.runFsmMachine.ValidateTransition(prevPhase, newPhase); err != nil {
+		r.Recorder.Eventf(promotionrun, corev1.EventTypeWarning, "FSMUnexpectedTransition",
+			"[promotionrun/%s] %s", promotionrun.Name, err.Error())
+		kaprometrics.FSMUnexpectedTransitions.WithLabelValues(string(prevPhase), string(newPhase)).Inc()
+	}
+	promotionrun.Status.Phase = newPhase
 }
 
 func (r *PromotionRunReconciler) patchPromotionRunStatus(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, patch client.Patch) error {
@@ -256,7 +296,7 @@ func (r *PromotionRunReconciler) handlePending(ctx context.Context, promotionrun
 	}
 
 	patch := client.MergeFrom(promotionrun.DeepCopy())
-	promotionrun.Status.Phase = kaprov1alpha1.PromotionRunPhaseProgressing
+	r.setRunPhase(promotionrun, kaprov1alpha1.PromotionRunPhaseProgressing)
 	promotionrun.Status.ResolvedVersion = resolvedVersion
 	promotionrun.Status.PromotionPlanProgress = progress
 	promotionrun.Status.ObservedGeneration = promotionrun.Generation
@@ -386,7 +426,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 		previous := promotionplanProgress[promotionplanRef.Name]
 		if previous.ObservedGeneration != 0 && previous.ObservedGeneration != promotionplan.Generation {
 			msg := fmt.Sprintf("promotionplan %s changed during promotionrun: observed generation %d, current generation %d", promotionplan.Name, previous.ObservedGeneration, promotionplan.Generation)
-			promotionrun.Status.Phase = kaprov1alpha1.PromotionRunPhaseFailed
+			r.setRunPhase(promotionrun, kaprov1alpha1.PromotionRunPhaseFailed)
 			promotionrun.Status.CompletedAt = time.Now().UTC().Format(time.RFC3339)
 			r.setPromotionRunReadyCondition(promotionrun, metav1.ConditionFalse, "PromotionPlanChanged", msg)
 			r.setStalledCondition(promotionrun, "PromotionPlanChanged", msg)
@@ -445,7 +485,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 		if promotionplanFailed {
 			// Fail fast: mark promotionrun failed using the outer patch (which already
 			// includes any target mutations from upsertTarget/cancelPendingStageTargets).
-			promotionrun.Status.Phase = kaprov1alpha1.PromotionRunPhaseFailed
+			r.setRunPhase(promotionrun, kaprov1alpha1.PromotionRunPhaseFailed)
 			promotionrun.Status.ObservedGeneration = promotionrun.Generation
 			promotionrun.Status.CompletedAt = time.Now().UTC().Format(time.RFC3339)
 			promotionrun.Status.PromotionPlanProgress = updatedPromotionPlans
@@ -490,7 +530,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 	// correct Phase and CompletedAt (B50: previously set after targets were cleared).
 	if allPromotionPlansComplete {
 		r.appendAuditEntry(ctx, promotionrun)
-		promotionrun.Status.Phase = kaprov1alpha1.PromotionRunPhaseComplete
+		r.setRunPhase(promotionrun, kaprov1alpha1.PromotionRunPhaseComplete)
 		promotionrun.Status.CompletedAt = time.Now().UTC().Format(time.RFC3339)
 	}
 	// Compute report while targets are still in memory; normalization and
@@ -551,7 +591,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 
 func (r *PromotionRunReconciler) handleTimeout(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun) (ctrl.Result, error) {
 	patch := client.MergeFrom(promotionrun.DeepCopy())
-	promotionrun.Status.Phase = kaprov1alpha1.PromotionRunPhaseFailed
+	r.setRunPhase(promotionrun, kaprov1alpha1.PromotionRunPhaseFailed)
 	promotionrun.Status.CompletedAt = time.Now().UTC().Format(time.RFC3339)
 	msg := fmt.Sprintf("promotionrun exceeded timeout (%s)", promotionrun.Spec.Timeout)
 	r.setPromotionRunReadyCondition(promotionrun, metav1.ConditionFalse, "Timeout", msg)
