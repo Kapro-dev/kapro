@@ -193,6 +193,45 @@ var (
 		},
 		[]string{"type"},
 	)
+
+	// FleetClusterHeartbeatMisses is the current consecutive-miss count per
+	// FleetCluster. Mirrors status.heartbeat.consecutiveMisses. Resets to 0 on
+	// every fresh observation. Compared against per-cluster
+	// spec.consecutiveFailureThreshold by the reconciler.
+	FleetClusterHeartbeatMisses = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "kapro",
+			Subsystem: "fleetcluster",
+			Name:      "heartbeat_misses",
+			Help:      "Current consecutive heartbeat misses per FleetCluster.",
+		},
+		[]string{"cluster"},
+	)
+
+	// FleetClusterUnreachableTransitions counts transitions to
+	// Ready=False reason=Unreachable. Use this for alerting on cluster
+	// outages: rate over 5m > 0 = paging signal.
+	FleetClusterUnreachableTransitions = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "kapro",
+			Subsystem: "fleetcluster",
+			Name:      "unreachable_transitions_total",
+			Help:      "Total transitions to Ready=False reason=Unreachable per FleetCluster.",
+		},
+		[]string{"cluster"},
+	)
+
+	// FleetClusterRecoveredTransitions counts transitions out of Unreachable
+	// back to Ready=True. Inverse signal to FleetClusterUnreachableTransitions.
+	FleetClusterRecoveredTransitions = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "kapro",
+			Subsystem: "fleetcluster",
+			Name:      "recovered_transitions_total",
+			Help:      "Total transitions from Unreachable back to Ready=True per FleetCluster.",
+		},
+		[]string{"cluster"},
+	)
 )
 
 func init() {
@@ -213,5 +252,8 @@ func init() {
 		PluginRuntimeCalls,
 		PluginRuntimeCallDuration,
 		PluginRuntimeRegistered,
+		FleetClusterHeartbeatMisses,
+		FleetClusterUnreachableTransitions,
+		FleetClusterRecoveredTransitions,
 	)
 }

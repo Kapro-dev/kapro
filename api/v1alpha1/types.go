@@ -43,6 +43,35 @@ const (
 	ConditionTypeRegistered = "Registered"
 )
 
+// Reason codes attached to FleetCluster ConditionTypeReady by the
+// FleetClusterHeartbeatReconciler. Kept as exported constants so consumers
+// (decision API, promotion controller, dashboards) can compare without
+// string-literal drift.
+const (
+	// ReasonHeartbeatFresh — Lease was renewed within the freshness window.
+	// Ready=True.
+	ReasonHeartbeatFresh = "HeartbeatFresh"
+	// ReasonHeartbeatStale — heartbeat is past the freshness window but the
+	// per-cluster ConsecutiveFailureThreshold has not been reached yet.
+	// Ready=Unknown; the cluster MAY still recover on next heartbeat.
+	ReasonHeartbeatStale = "HeartbeatStale"
+	// ReasonUnreachable — heartbeat has been stale for at least
+	// Spec.ConsecutiveFailureThreshold consecutive reconciles. Ready=False;
+	// Phase=Unreachable. Promotion targeting this cluster must defer (not fail).
+	ReasonUnreachable = "Unreachable"
+	// ReasonSuspended — Spec.Suspend=true. Heartbeat is intentionally ignored;
+	// Ready=Unknown until Suspend clears.
+	ReasonSuspended = "Suspended"
+	// ReasonPushModeNoHeartbeat — Delivery.Mode=push, so there is no spoke
+	// agent and no Lease to read. Ready=True (heartbeat is not applicable).
+	ReasonPushModeNoHeartbeat = "PushModeNoHeartbeat"
+	// ReasonNotRegistered — FleetCluster has never registered (bootstrap slot
+	// not yet consumed). Heartbeat tracking is suspended until registration
+	// completes; Ready stays Unknown so observers know the difference between
+	// "registered but unreachable" and "not yet registered."
+	ReasonNotRegistered = "NotRegistered"
+)
+
 // ---- Shared cluster types ---------------------------------------------------
 
 type TargetTopology struct {
@@ -2072,6 +2101,52 @@ type FleetClusterStatus struct {
 	// Bootstrap tracks the one-time registration state. Written by the hub.
 	// +optional
 	Bootstrap *FleetClusterBootstrapStatus `json:"bootstrap,omitempty"`
+
+	// Heartbeat tracks cluster reachability based on the spoke's coordination
+	// Lease (`kapro-heartbeat-<cluster>` in kapro-system). Written exclusively
+	// by the FleetClusterHeartbeatReconciler. The reconciler is the single
+	// writer of both this substruct AND the ConditionTypeReady condition; it
+	// does NOT write Phase (kapro_controller reads conditions[Ready] and
+	// computes Phase=Unreachable when Ready=False reason=Unreachable).
+	// +optional
+	Heartbeat *FleetClusterHeartbeatStatus `json:"heartbeat,omitempty"`
+}
+
+// FleetClusterHeartbeatStatus surfaces *why* Ready is what it is. Operators
+// debugging a stuck cluster should be able to answer "how many misses, since
+// when, what reason" from `kubectl get fleetcluster -o yaml` alone.
+type FleetClusterHeartbeatStatus struct {
+	// ObservedAt is when the reconciler last computed reachability. Always
+	// recent (≤ one reconcile interval). Distinct from LeaseObservedAt, which
+	// is the spoke's last renewal.
+	// +optional
+	ObservedAt *metav1.Time `json:"observedAt,omitempty"`
+
+	// LeaseObservedAt is the timestamp the reconciler extracted from the Lease
+	// (spec.renewTime, or acquireTime, or metadata.creationTimestamp). Empty
+	// when no Lease exists yet.
+	// +optional
+	LeaseObservedAt *metav1.Time `json:"leaseObservedAt,omitempty"`
+
+	// ConsecutiveMisses is the count of consecutive reconciles where the Lease
+	// was missing or stale. Reset to 0 on the first fresh observation. Compared
+	// to Spec.ConsecutiveFailureThreshold to decide whether Ready=Unknown
+	// (below threshold, transient) or Ready=False (at threshold, Unreachable).
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	ConsecutiveMisses int32 `json:"consecutiveMisses,omitempty"`
+
+	// LastTransitionAt is when the Ready condition last flipped. Distinct from
+	// the condition's own LastTransitionTime so this substruct is self-contained
+	// for dashboards that don't unpack Conditions.
+	// +optional
+	LastTransitionAt *metav1.Time `json:"lastTransitionAt,omitempty"`
+
+	// Reason mirrors the current Ready condition reason for quick read access.
+	// One of: HeartbeatFresh, HeartbeatStale, Unreachable, Suspended,
+	// PushModeNoHeartbeat, NotRegistered.
+	// +optional
+	Reason string `json:"reason,omitempty"`
 }
 
 // FleetClusterBootstrapStatus tracks the one-time bootstrap registration state.

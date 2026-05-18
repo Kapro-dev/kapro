@@ -97,6 +97,15 @@ Look for:
 - `status.capabilities.nodeCount: <your node count>`
 - A non-empty `status.controllerVersion`
 
+## Reachability and Ready condition
+
+Once registered, this FleetCluster's `status.conditions[Ready]` and
+`status.phase` are maintained by the `FleetClusterHeartbeatReconciler`.
+See [heartbeat-and-reachability.md](heartbeat-and-reachability.md) for the
+full model: how the per-cluster `consecutiveFailureThreshold` controls
+transitions to `Phase=Unreachable`, what changes for in-flight promotions,
+and which reason codes appear on the Ready condition.
+
 ## Cert rotation
 
 Rotation is fully automatic. The spoke uses the issued client cert for

@@ -151,24 +151,24 @@ func TestHandlePending_PullModeWaitsForFreshHeartbeat(t *testing.T) {
 	}
 }
 
-func TestHandlePending_FreshLeaseHeartbeatAllowsPullTarget(t *testing.T) {
+func TestHandlePending_ReadyTrueAllowsPullTarget(t *testing.T) {
 	scheme := controllerTestScheme(t)
-	now := metav1.NewMicroTime(time.Now().UTC())
 	mc := &kaprov1alpha1.FleetCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.FleetClusterSpec{
 			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"},
 		},
-	}
-	lease := &coordinationv1.Lease{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      heartbeatLeaseName("cluster-a"),
-			Namespace: defaultHeartbeatNamespace,
+		Status: kaprov1alpha1.FleetClusterStatus{
+			Conditions: []metav1.Condition{{
+				Type:               kaprov1alpha1.ConditionTypeReady,
+				Status:             metav1.ConditionTrue,
+				Reason:             kaprov1alpha1.ReasonHeartbeatFresh,
+				LastTransitionTime: metav1.NewTime(time.Now()),
+			}},
 		},
-		Spec: coordinationv1.LeaseSpec{RenewTime: &now},
 	}
 	r := &PromotionTargetReconciler{
-		Client:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(mc, lease).Build(),
+		Client:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(mc).Build(),
 		Recorder: record.NewFakeRecorder(10),
 	}
 	promotionrun := &kaprov1alpha1.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}}
@@ -176,6 +176,7 @@ func TestHandlePending_FreshLeaseHeartbeatAllowsPullTarget(t *testing.T) {
 		Target:              "cluster-a",
 		Phase:               kaprov1alpha1.TargetPhasePending,
 		HeartbeatStaleSince: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339),
+		HeartbeatStaleCount: 4,
 	}
 
 	result, err := r.handlePending(context.Background(), promotionrun, target)
@@ -196,7 +197,13 @@ func TestHandlePending_FreshLeaseHeartbeatAllowsPullTarget(t *testing.T) {
 	}
 }
 
-func TestHandlePending_StaleHeartbeatEventuallyFailsPullTarget(t *testing.T) {
+// TestHandlePending_UnreachableDefersPullTarget asserts the v0.5 behavior:
+// when the FleetCluster Ready condition reports Unreachable (per-cluster
+// ConsecutiveFailureThreshold has been hit), the target DEFERS instead of
+// failing. Auto-failing on stale heartbeat was the v0.4 behavior and proved
+// brittle during transient network blips. Operators can still cancel via
+// reject if they decide to give up.
+func TestHandlePending_UnreachableDefersPullTarget(t *testing.T) {
 	scheme := controllerTestScheme(t)
 	mc := &kaprov1alpha1.FleetCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
@@ -204,7 +211,14 @@ func TestHandlePending_StaleHeartbeatEventuallyFailsPullTarget(t *testing.T) {
 			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"},
 		},
 		Status: kaprov1alpha1.FleetClusterStatus{
-			LastHeartbeat: time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339),
+			Phase: kaprov1alpha1.ClusterPhaseUnreachable,
+			Conditions: []metav1.Condition{{
+				Type:               kaprov1alpha1.ConditionTypeReady,
+				Status:             metav1.ConditionFalse,
+				Reason:             kaprov1alpha1.ReasonUnreachable,
+				Message:            "Lease kapro-system/kapro-heartbeat-cluster-a last renewed 10m0s ago; 3/3 consecutive misses",
+				LastTransitionTime: metav1.NewTime(time.Now()),
+			}},
 		},
 	}
 	r := &PromotionTargetReconciler{
@@ -213,55 +227,25 @@ func TestHandlePending_StaleHeartbeatEventuallyFailsPullTarget(t *testing.T) {
 	}
 	promotionrun := &kaprov1alpha1.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}}
 	target := &kaprov1alpha1.TargetStatus{
-		Target:              "cluster-a",
-		Phase:               kaprov1alpha1.TargetPhasePending,
-		HeartbeatStaleSince: time.Now().Add(-heartbeatStaleFailAfter - time.Second).UTC().Format(time.RFC3339),
-		HeartbeatStaleCount: missingMCFailThreshold - 1,
+		Target: "cluster-a",
+		Phase:  kaprov1alpha1.TargetPhasePending,
 	}
 
 	result, err := r.handlePending(context.Background(), promotionrun, target)
 	if err != nil {
 		t.Fatalf("handlePending returned error: %v", err)
 	}
-	if result != (ctrl.Result{}) {
-		t.Fatalf("expected terminal result, got %+v", result)
+	if result.RequeueAfter != requeueNormal {
+		t.Fatalf("expected requeue (defer), got %+v", result)
 	}
-	if target.Phase != kaprov1alpha1.TargetPhaseFailed {
-		t.Fatalf("expected stale heartbeat to fail target, got %q", target.Phase)
+	if target.Phase != kaprov1alpha1.TargetPhasePending {
+		t.Fatalf("expected target to remain Pending (deferred, not failed), got %q", target.Phase)
 	}
-	if !strings.Contains(target.Message, "heartbeat stale") {
-		t.Fatalf("expected heartbeat failure message, got %q", target.Message)
+	if target.HeartbeatStaleSince == "" {
+		t.Fatal("expected HeartbeatStaleSince to be recorded")
 	}
-}
-
-func TestFleetClusterHeartbeat_EmptyLeaseFallsBackToStatusHeartbeat(t *testing.T) {
-	scheme := controllerTestScheme(t)
-	freshStatus := time.Now().UTC().Format(time.RFC3339)
-	mc := &kaprov1alpha1.FleetCluster{
-		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
-		Status: kaprov1alpha1.FleetClusterStatus{
-			LastHeartbeat: freshStatus,
-		},
-	}
-	lease := &coordinationv1.Lease{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      heartbeatLeaseName("cluster-a"),
-			Namespace: defaultHeartbeatNamespace,
-		},
-	}
-	r := &PromotionTargetReconciler{
-		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(mc, lease).Build(),
-	}
-
-	status, err := r.fleetClusterHeartbeat(context.Background(), mc)
-	if err != nil {
-		t.Fatalf("fleetClusterHeartbeat returned error: %v", err)
-	}
-	if !status.Fresh {
-		t.Fatalf("expected fresh fallback status heartbeat, got %+v", status)
-	}
-	if status.Source != "status" {
-		t.Fatalf("expected status heartbeat source, got %q", status.Source)
+	if !strings.Contains(target.Message, "Unreachable") {
+		t.Fatalf("expected target.Message to mention Unreachable, got %q", target.Message)
 	}
 }
 

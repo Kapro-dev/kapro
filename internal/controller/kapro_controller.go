@@ -895,10 +895,20 @@ func (r *KaproReconciler) syncFleetClusterStatus(ctx context.Context, kapro *kap
 		}
 	}
 
-	// Determine phase.
+	// Determine phase. Reachability wins: when the heartbeat reconciler has
+	// set Ready=False reason=Unreachable, surface that as Phase=Unreachable
+	// regardless of convergence state. We can't trust convergence numbers
+	// from a cluster we can't reach. The heartbeat reconciler is the sole
+	// writer of conditions[Ready]; this is the only place that reads it to
+	// influence Phase. See fleetcluster_heartbeat_controller.go for the
+	// state machine that produces the condition.
 	phase := kaprov1alpha1.ClusterPhaseConverging
 	if allReady {
 		phase = kaprov1alpha1.ClusterPhaseConverged
+	}
+	if ready := apimeta.FindStatusCondition(mc.Status.Conditions, kaprov1alpha1.ConditionTypeReady); ready != nil &&
+		ready.Status == metav1.ConditionFalse && ready.Reason == kaprov1alpha1.ReasonUnreachable {
+		phase = kaprov1alpha1.ClusterPhaseUnreachable
 	}
 
 	// For spoke-local: version is the OCIRepository tag (bundle version), not chart version.
