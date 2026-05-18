@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -173,25 +174,16 @@ func enforceAgentPolicy(
 		return PolicyDecision{Allowed: false, DenyReason: "decision outside allowed time window"}
 	}
 
-	// Validate rate limits against status counters.
-	if policy.Spec.RateLimits != nil {
-		rl := policy.Spec.RateLimits
-		if rl.MaxApprovalsPerDay > 0 && policy.Status.DecisionsToday >= rl.MaxApprovalsPerDay {
-			return PolicyDecision{Allowed: false, DenyReason: "daily approval limit reached"}
-		}
-		if rl.MaxConcurrent > 0 && policy.Status.ActiveDecisions >= rl.MaxConcurrent {
-			return PolicyDecision{Allowed: false, DenyReason: "concurrent approval limit reached"}
-		}
-		if rl.Cooldown != "" && policy.Status.LastDecisionAt != "" {
-			cooldown, err := time.ParseDuration(rl.Cooldown)
-			if err == nil {
-				last, parseErr := time.Parse(time.RFC3339, policy.Status.LastDecisionAt)
-				if parseErr == nil && time.Since(last) < cooldown {
-					return PolicyDecision{Allowed: false, DenyReason: fmt.Sprintf("cooldown period not elapsed (last: %s)", policy.Status.LastDecisionAt)}
-				}
-			}
-		}
-	}
+	// Note: rate limits (MaxApprovalsPerDay, MaxConcurrent, Cooldown) are NOT
+	// checked here. They live in reserveAgentPolicySlot, which atomically
+	// validates and increments the counter via Status().Update so concurrent
+	// decisions cannot all observe the same stale counter and pass. See
+	// security audit gate-B2.
+	//
+	// A non-enforcing fast-path advisory check could go here for early
+	// rejection, but the cost (one extra read) is paid by every request
+	// while only the rare overload case benefits. Deferred until metrics
+	// show it's worth.
 
 	return PolicyDecision{
 		Allowed:            true,
@@ -273,12 +265,75 @@ func isWithinTimeWindows(windows []kaprov1alpha1.AgentTimeWindow) bool {
 	return true // only deny windows, none blocked
 }
 
-// updateAgentPolicyStatus increments the decision counters on the AgentPolicy.
-func (s *Server) updateAgentPolicyStatus(ctx context.Context, policy *kaprov1alpha1.AgentPolicy) {
-	patch := client.MergeFrom(policy.DeepCopy())
-	policy.Status.ActiveDecisions++
-	policy.Status.DecisionsToday++
-	policy.Status.LastDecisionAt = time.Now().UTC().Format(time.RFC3339)
-	policy.Status.ObservedGeneration = policy.Generation
-	_ = s.Client.Status().Patch(ctx, policy, patch)
+// reserveAgentPolicySlot atomically validates rate limits and increments the
+// AgentPolicy decision counters in one Status().Update() pass — using
+// resourceVersion as the CAS predicate to serialise concurrent decision
+// submissions. Returns (allowed, denyReason, error).
+//
+// Security (gate-B2): the previous flow checked counters in
+// enforceAgentPolicy (read-only) and incremented them in a separate
+// updateAgentPolicyStatus call AFTER the decision was recorded. N parallel
+// requests all observed the same stale counter, all passed the limit check,
+// and the rate limit was advisory only. This function moves the check and
+// the increment into the same optimistic-concurrency-protected write so a
+// genuine cap is enforced.
+//
+// Retries on conflict (typical at high contention); gives up after maxRetries
+// and returns the conflict so the caller can fail the request rather than
+// silently overshooting the limit.
+func (s *Server) reserveAgentPolicySlot(ctx context.Context, policy *kaprov1alpha1.AgentPolicy) (bool, string, error) {
+	const maxRetries = 5
+	key := client.ObjectKey{Namespace: policy.Namespace, Name: policy.Name}
+	now := time.Now().UTC()
+
+	var lastConflict error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		// Refetch on retry to pick up the latest resourceVersion + counters.
+		if attempt > 0 {
+			var fresh kaprov1alpha1.AgentPolicy
+			if err := s.Client.Get(ctx, key, &fresh); err != nil {
+				return false, "", fmt.Errorf("refetch AgentPolicy %s for retry: %w", policy.Name, err)
+			}
+			*policy = fresh
+		}
+
+		// Validate against rate limits using the freshly-observed counters.
+		if policy.Spec.RateLimits != nil {
+			rl := policy.Spec.RateLimits
+			if rl.MaxApprovalsPerDay > 0 && policy.Status.DecisionsToday >= rl.MaxApprovalsPerDay {
+				return false, "daily approval limit reached", nil
+			}
+			if rl.MaxConcurrent > 0 && policy.Status.ActiveDecisions >= rl.MaxConcurrent {
+				return false, "concurrent approval limit reached", nil
+			}
+			if rl.Cooldown != "" && policy.Status.LastDecisionAt != "" {
+				cooldown, err := time.ParseDuration(rl.Cooldown)
+				if err == nil {
+					last, parseErr := time.Parse(time.RFC3339, policy.Status.LastDecisionAt)
+					if parseErr == nil && now.Sub(last) < cooldown {
+						return false, fmt.Sprintf("cooldown period not elapsed (last: %s)", policy.Status.LastDecisionAt), nil
+					}
+				}
+			}
+		}
+
+		// Increment + write in one CAS pass.
+		policy.Status.ActiveDecisions++
+		policy.Status.DecisionsToday++
+		policy.Status.LastDecisionAt = now.Format(time.RFC3339)
+		policy.Status.ObservedGeneration = policy.Generation
+
+		if err := s.Client.Status().Update(ctx, policy); err != nil {
+			if apierrors.IsConflict(err) {
+				// Roll back the local mutation; refetch+retry on next loop.
+				policy.Status.ActiveDecisions--
+				policy.Status.DecisionsToday--
+				lastConflict = err
+				continue
+			}
+			return false, "", fmt.Errorf("update AgentPolicy status: %w", err)
+		}
+		return true, "", nil
+	}
+	return false, "", fmt.Errorf("AgentPolicy %s rate-limit reservation lost %d races: %w", policy.Name, maxRetries, lastConflict)
 }

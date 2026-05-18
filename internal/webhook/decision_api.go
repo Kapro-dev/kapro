@@ -775,6 +775,26 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 		if pd.RequireHumanCosign && req.Decision == "Approve" {
 			effectiveDecision = "PendingHumanConfirm"
 		}
+
+		// Reserve a rate-limit slot atomically (gate-B2). This both checks
+		// the policy's rate-limit counters and increments them in one CAS
+		// pass so N parallel requests cannot all observe the same stale
+		// counter and overshoot the configured cap. We reserve here, after
+		// the policy validation has passed but before any decision is
+		// recorded, so a denied reservation does not pollute DecisionTrace.
+		ok, denyReason, resErr := s.reserveAgentPolicySlot(ctx, policy)
+		if resErr != nil {
+			l.Error(resErr, "AgentPolicy rate-limit reservation failed")
+			http.Error(w, "internal error reserving agent policy slot", http.StatusInternalServerError)
+			return
+		}
+		if !ok {
+			writeJSON(w, http.StatusTooManyRequests, DecisionResponse{
+				Accepted: false,
+				Reason:   fmt.Sprintf("AgentPolicy denied: %s", denyReason),
+			})
+			return
+		}
 	}
 	// Security (gate-B1): any "Approve" submission requires create-approvals
 	// permission even when AgentPolicy downgrades to Recommended /
@@ -863,10 +883,8 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 		}
 	}
 
-	// Update AgentPolicy status counters.
-	if policy != nil {
-		s.updateAgentPolicyStatus(ctx, policy)
-	}
+	// Counter increment happened up front in reserveAgentPolicySlot (gate-B2).
+	// Nothing to do here.
 
 	writeJSON(w, http.StatusOK, DecisionResponse{
 		Accepted:          true,
