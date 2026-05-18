@@ -47,6 +47,10 @@ The answer is computed from:
 | Tekton / CI systems | Build, test, and package artifacts. | Kapro starts after an artifact is available. |
 | Keptn / policy systems | Evaluate domain-specific health and quality signals. | Kapro can call them through gates or plugins. |
 
+See `docs/cncf-integration-masterplan.md` for the integration boundary across
+Flux, Argo CD, OCM ManifestWork, Sveltos, Helm, Kargo, Argo Rollouts, Flagger,
+Gateway API, and service mesh controllers.
+
 ## Gate Positioning
 
 Gates are rollout controls, not the main product. Their purpose is to make

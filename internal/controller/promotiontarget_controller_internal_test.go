@@ -15,6 +15,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	spokeactuator "kapro.io/kapro/internal/actuator/spoke"
+	"kapro.io/kapro/pkg/actuator"
+	"kapro.io/kapro/pkg/gate"
 	"kapro.io/kapro/pkg/notification"
 )
 
@@ -156,6 +159,106 @@ func TestHeartbeatLeasePredicates_EnqueueOnFreshnessBoundary(t *testing.T) {
 
 	if !p.Update(event.UpdateEvent{ObjectOld: oldObj, ObjectNew: newObj}) {
 		t.Fatal("expected stale-to-fresh heartbeat renewal to enqueue")
+	}
+}
+
+func TestPromotionTargetReconcilePullOCIRecordsDesiredState(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+
+	promotionrun := &kaprov1alpha1.PromotionRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "rel-oci"},
+		Spec: kaprov1alpha1.PromotionRunSpec{
+			Version: "oci://registry.example.com/apps/checkout@sha256:222",
+			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{{
+				Name: "default", PromotionPlan: "plan",
+			}},
+		},
+	}
+	cluster := &kaprov1alpha1.FleetCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
+		Spec: kaprov1alpha1.FleetClusterSpec{
+			Delivery: kaprov1alpha1.DeliverySpec{
+				Mode:       kaprov1alpha1.DeliveryModePull,
+				BackendRef: "oci",
+			},
+		},
+		Status: kaprov1alpha1.FleetClusterStatus{
+			Conditions: []metav1.Condition{{
+				Type:   kaprov1alpha1.ConditionTypeReady,
+				Status: metav1.ConditionTrue,
+				Reason: kaprov1alpha1.ReasonHeartbeatFresh,
+			}},
+			CurrentVersions: map[string]string{"default": "oci://registry.example.com/apps/checkout@sha256:111"},
+			Health:          kaprov1alpha1.ClusterHealth{AllWorkloadsReady: true},
+		},
+	}
+	target := &kaprov1alpha1.PromotionTarget{
+		ObjectMeta: metav1.ObjectMeta{Name: "rel-oci-default-cluster-a"},
+		Spec: kaprov1alpha1.PromotionTargetSpec{
+			PromotionRunRef:  "rel-oci",
+			Target:           "cluster-a",
+			PromotionPlan:    "plan",
+			PromotionPlanRef: "default",
+			Stage:            "prod",
+			Version:          "oci://registry.example.com/apps/checkout@sha256:222",
+			AppKey:           "default",
+			DesiredVersions: map[string]string{
+				"default": "oci://registry.example.com/apps/checkout@sha256:222",
+			},
+		},
+		Status: kaprov1alpha1.PromotionTargetStatus{
+			TargetStatus: kaprov1alpha1.TargetStatus{
+				PromotionRunRef:  "rel-oci",
+				Target:           "cluster-a",
+				PromotionPlan:    "plan",
+				PromotionPlanRef: "default",
+				Stage:            "prod",
+				Version:          "oci://registry.example.com/apps/checkout@sha256:222",
+				AppKey:           "default",
+				DesiredVersions: map[string]string{
+					"default": "oci://registry.example.com/apps/checkout@sha256:222",
+				},
+				Phase: kaprov1alpha1.TargetPhaseApplying,
+			},
+		},
+	}
+
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha1.PromotionTarget{}, &kaprov1alpha1.FleetCluster{}).
+		WithObjects(promotionrun, cluster, target).
+		Build()
+	actuators := actuator.NewRegistry()
+	if err := actuators.Register("pull/oci", &spokeactuator.DesiredStateActuator{HubClient: c}); err != nil {
+		t.Fatal(err)
+	}
+	r := &PromotionTargetReconciler{
+		Client:           c,
+		ActuatorRegistry: actuators,
+		GateRegistry:     gate.NewRegistry(),
+	}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: target.Name}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var updatedCluster kaprov1alpha1.FleetCluster
+	if err := c.Get(ctx, client.ObjectKey{Name: "cluster-a"}, &updatedCluster); err != nil {
+		t.Fatal(err)
+	}
+	want := "oci://registry.example.com/apps/checkout@sha256:222"
+	if updatedCluster.Spec.DesiredVersions["default"] != want {
+		t.Fatalf("desiredVersions[default]=%q, want %q", updatedCluster.Spec.DesiredVersions["default"], want)
+	}
+	if updatedCluster.Spec.DesiredVersion != want || updatedCluster.Spec.DesiredAppKey != "default" {
+		t.Fatalf("compat desired fields=%q/%q, want %q/default", updatedCluster.Spec.DesiredVersion, updatedCluster.Spec.DesiredAppKey, want)
 	}
 }
 

@@ -42,6 +42,25 @@ helm upgrade --install kapro charts/kapro-operator \
 `externalURL` is used in approval links and optional Decision API callbacks.
 `hubAPIURL` should be the hub API server URL reachable from spoke clusters.
 
+## Core and Preview Surfaces
+
+The default install runs the core runtime controllers for promotion orchestration,
+target execution, backend profiles, approvals, triggers, plugins, and cluster
+heartbeat. The core APIs operators should rely on for fleet promotion are:
+`PromotionRun`, `PromotionTarget`, `PromotionPlan`, `FleetCluster`,
+`BackendProfile`, `PromotionSource`, and `Approval`.
+
+Preview surfaces are available for early adopters but should be enabled or
+exposed deliberately:
+
+| Surface | Default | Enablement |
+|---|---|---|
+| Decision API and `AgentPolicy` | Disabled | `decisionAPI.enabled=true` and explicit Kubernetes RBAC. |
+| Plugin gateway runtime dispatch | Disabled | `pluginGateway.enabled=true` plus installed plugin services and `PluginRegistration` objects. |
+| Hub Gateway service exposure | Internal only | `hubGateway.service.enabled=true`; place Kubernetes authn/authz or an identity-aware proxy in front of production exposure. |
+| Fleet auto-import providers beyond GCP | Stubbed | Use `FleetClusterTemplate` only for implemented sources; unsupported sources report `SourceNotImplemented`. |
+| `NotificationProvider` and `NotificationPolicy` | Spec-only | Do not expect runtime dispatch from these CRDs yet; inline gate notifications remain the active runtime path. |
+
 ## Optional Decision API
 
 The approval HTTP server is installed for signed human approval links. The
@@ -169,6 +188,25 @@ registrations are unloaded without restarting the operator.
 
 ```bash
 kubectl get pluginregistrations.kapro.io
+```
+
+## Optional Hub Gateway
+
+The Hub Gateway is a lightweight facade for UI and CLI clients. It reads and
+creates Kapro CRDs; it does not mutate delivery backends directly. The graph
+endpoint is bounded and supports `resource`, `labelSelector`, `phase`, and
+`limit` query parameters.
+
+The built-in bearer token is suitable for local development and port-forwarded
+use only. Production exposure should terminate identity through Kubernetes
+authentication and authorization or an identity-aware reverse proxy before
+traffic reaches the gateway.
+
+```bash
+helm upgrade --install kapro charts/kapro-operator \
+  --namespace kapro-system \
+  --create-namespace \
+  --set hubGateway.service.enabled=true
 ```
 
 ## Kustomize Bundle

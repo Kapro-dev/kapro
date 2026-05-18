@@ -180,6 +180,10 @@ func main() {
 		log.Error(err, "failed to register pull/flux actuator")
 		os.Exit(1)
 	}
+	if err := actuatorReg.Register("pull/oci", spokeAct); err != nil {
+		log.Error(err, "failed to register pull/oci actuator")
+		os.Exit(1)
+	}
 	if err := actuatorReg.Register("push/argo", &argoactuator.Actuator{Client: mgr.GetClient()}); err != nil {
 		log.Error(err, "failed to register push/argo actuator")
 		os.Exit(1)

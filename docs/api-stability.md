@@ -26,11 +26,13 @@ Preview. The table below is the source of truth for the current contract level.
 
 | Surface | Path | Level |
 |---|---|---|
-| Core promotion CRDs | `api/v1alpha1` `Promotion`, `PromotionSource`, `PromotionUnit`, `PromotionPlan`, `PromotionRun`, `PromotionTarget`, `FleetCluster`, `BackendProfile`, `Approval`, `AgentPolicy` | Alpha |
+| Core promotion CRDs | `api/v1alpha1` `Promotion`, `PromotionSource`, `PromotionUnit`, `PromotionPlan`, `PromotionRun`, `PromotionTarget`, `FleetCluster`, `BackendProfile`, `Approval` | Alpha |
 | PromotionPolicy CRD | `api/v1alpha1` `PromotionPolicy` | Preview |
 | PromotionTrigger CRD | `api/v1alpha1` `PromotionTrigger` | Preview |
 | PluginRegistration CRD | `api/v1alpha1` `PluginRegistration` | Preview |
 | Notification provider/policy CRDs | `api/v1alpha1` `NotificationProvider`, `NotificationPolicy` | Preview |
+| Agent decision APIs | `api/v1alpha1` `AgentPolicy`, `PromotionTarget.status.decisionTrace`, Decision API HTTP routes | Preview |
+| Fleet auto-import CRD | `api/v1alpha1` `FleetClusterTemplate` | Preview; only implemented sources are runtime features |
 | In-process actuator interface | `pkg/actuator` | Preview |
 | In-process gate interface | `pkg/gate` | Preview |
 | In-process planner interface | `pkg/planner` | Preview |
@@ -46,6 +48,23 @@ still `v1alpha1`; the table above is the source of truth for compatibility
 expectations.
 
 No public surface is Stable in `v0.4.0-alpha.0`.
+
+## Stable Core Versus Preview
+
+The core runtime path is the promotion execution model: `PromotionRun`,
+`PromotionTarget`, `PromotionPlan`, `FleetCluster`, `BackendProfile`,
+`PromotionSource`, and `Approval`. These APIs are still versioned
+`v1alpha1`, but they are the durable product center and are exercised by the
+operator runtime.
+
+Preview APIs are intentionally separated from that core. `NotificationProvider`
+and `NotificationPolicy` are spec-only today; inline gate notifications remain
+the active runtime path. `AgentPolicy`, `PromotionTarget.status.decisionTrace`,
+and the Decision API are opt-in surfaces for machine assistance, not required
+for deterministic promotion execution. `FleetClusterTemplate` auto-import
+sources are only runtime features when the source is implemented by the
+controller; unsupported sources must be documented as future work rather than
+claimed as supported behavior.
 
 ## Compatibility Rules
 

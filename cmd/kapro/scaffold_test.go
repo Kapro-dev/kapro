@@ -70,6 +70,75 @@ func TestRunInitScaffoldRepoOnly(t *testing.T) {
 	}
 }
 
+func TestRunInitScaffoldOCIPull(t *testing.T) {
+	dir := t.TempDir()
+	err := runInitScaffold(scaffoldOptions{
+		Path:     dir,
+		Name:     "checkout",
+		Backend:  "oci",
+		Mode:     "pull",
+		Registry: "oci://registry.example.com/platform",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, relPath := range []string{
+		"backends/oci.yaml",
+		"sources/checkout.yaml",
+		"promotionplans/checkout.yaml",
+		"clusters/canary.yaml",
+		"clusters/prod.yaml",
+		"kapro/checkout.yaml",
+		"promotionruns/checkout-promotionrun.yaml",
+	} {
+		if _, err := os.Stat(filepath.Join(dir, relPath)); err != nil {
+			t.Fatalf("%s not generated: %v", relPath, err)
+		}
+	}
+	for _, relPath := range []string{
+		"argo/applications/checkout.yaml",
+		"flux/kustomizations/checkout.yaml",
+	} {
+		if _, err := os.Stat(filepath.Join(dir, relPath)); !os.IsNotExist(err) {
+			t.Fatalf("%s should not be generated for oci backend", relPath)
+		}
+	}
+	backend := readFile(t, filepath.Join(dir, "backends/oci.yaml"))
+	for _, want := range []string{
+		"driver: oci",
+		"runtime: Spoke",
+		"repository: registry.example.com/platform/{appKey}",
+		"tag: \"{version}\"",
+	} {
+		if !strings.Contains(backend, want) {
+			t.Fatalf("backend file missing %q:\n%s", want, backend)
+		}
+	}
+	cluster := readFile(t, filepath.Join(dir, "clusters/canary.yaml"))
+	for _, want := range []string{
+		"mode: pull",
+		"backendRef: oci",
+		"namespace: kapro-system",
+	} {
+		if !strings.Contains(cluster, want) {
+			t.Fatalf("cluster file missing %q:\n%s", want, cluster)
+		}
+	}
+}
+
+func TestRunInitScaffoldOCIRejectsPushMode(t *testing.T) {
+	err := runInitScaffold(scaffoldOptions{
+		Path:     t.TempDir(),
+		Name:     "checkout",
+		Backend:  "oci",
+		Mode:     "push",
+		Registry: "oci://registry.example.com/platform",
+	})
+	if err == nil || !strings.Contains(err.Error(), "--backend oci requires --mode pull") {
+		t.Fatalf("err=%v, want oci pull-mode error", err)
+	}
+}
+
 func TestRunConnectScaffoldFlux(t *testing.T) {
 	dir := t.TempDir()
 	err := runConnectScaffold(connectOptions{

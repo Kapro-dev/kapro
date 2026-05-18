@@ -127,6 +127,17 @@ pluginGateway:
   # objects once at startup. This chart does not install demo plugins.
   enabled: false
 
+hubGateway:
+  # Lightweight UI/CLI facade over Kapro CRDs. It is enabled by default for
+  # in-cluster or port-forwarded use. Production exposure should place
+  # Kubernetes authn/authz or an identity-aware proxy in front of it.
+  enabled: true
+  port: 8092
+  service:
+    enabled: false
+    type: ClusterIP
+    port: 8092
+
 # The public URL of this hub's Kubernetes API server as reachable from spoke clusters.
 # Example: https://hub.example.com:6443
 # Required for CSR bootstrap — the hub operator passes this URL into the bootstrap kubeconfig
