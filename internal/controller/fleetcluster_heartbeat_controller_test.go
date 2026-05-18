@@ -157,7 +157,7 @@ func TestHeartbeat_Recovery_FlipsImmediately(t *testing.T) {
 	}
 	// Misses reset.
 	fcGot := &kaprov1alpha1.FleetCluster{}
-	_ = r.Client.Get(context.Background(), types.NamespacedName{Name: "cluster-a"}, fcGot)
+	_ = r.Get(context.Background(), types.NamespacedName{Name: "cluster-a"}, fcGot)
 	if fcGot.Status.Heartbeat == nil || fcGot.Status.Heartbeat.ConsecutiveMisses != 0 {
 		t.Fatalf("expected misses reset to 0, got %+v", fcGot.Status.Heartbeat)
 	}
@@ -181,7 +181,7 @@ func TestHeartbeat_Suspended_NoMissAccumulation(t *testing.T) {
 		t.Fatalf("expected Ready=Unknown reason=Suspended, got %+v", cond)
 	}
 	fcGot := &kaprov1alpha1.FleetCluster{}
-	_ = r.Client.Get(context.Background(), types.NamespacedName{Name: "cluster-a"}, fcGot)
+	_ = r.Get(context.Background(), types.NamespacedName{Name: "cluster-a"}, fcGot)
 	if fcGot.Status.Heartbeat == nil || fcGot.Status.Heartbeat.ConsecutiveMisses != 0 {
 		t.Fatalf("suspended cluster should not accumulate misses, got %+v", fcGot.Status.Heartbeat)
 	}
@@ -342,7 +342,7 @@ func TestApplyDesired_LeaseObservedAtMatchesLeaseSpec(t *testing.T) {
 		t.Fatalf("reconcile: %v", err)
 	}
 	fcGot := &kaprov1alpha1.FleetCluster{}
-	_ = r.Client.Get(context.Background(), types.NamespacedName{Name: "cluster-a"}, fcGot)
+	_ = r.Get(context.Background(), types.NamespacedName{Name: "cluster-a"}, fcGot)
 	if fcGot.Status.Heartbeat == nil || fcGot.Status.Heartbeat.LeaseObservedAt == nil {
 		t.Fatalf("expected LeaseObservedAt to be set, got %+v", fcGot.Status.Heartbeat)
 	}
@@ -372,7 +372,7 @@ func TestReconcile_EmitsEventOnUnreachableTransition(t *testing.T) {
 		if !contains(evt, eventReasonClusterUnreachable) {
 			t.Fatalf("expected event %q in %q", eventReasonClusterUnreachable, evt)
 		}
-		if !contains(evt, string(corev1.EventTypeWarning)) {
+		if !contains(evt, corev1.EventTypeWarning) {
 			t.Fatalf("expected Warning event type in %q", evt)
 		}
 	default:
