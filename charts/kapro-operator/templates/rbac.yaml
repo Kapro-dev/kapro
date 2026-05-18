@@ -147,6 +147,7 @@ rules:
   - backendprofiles/status
   - kaproes/status
   - fleetclusters/status
+  - fleetclustertemplates/status
   - pluginregistrations/status
   - promotionpolicies/status
   - promotionruns/status
@@ -162,13 +163,23 @@ rules:
   resources:
   - agentpolicies
   - backendprofiles
-  - pluginregistrations
   - promotionpolicies
   - promotionsources
   - promotiontriggers
   verbs:
   - get
   - list
+  - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - fleetclustertemplates
+  - pluginregistrations
+  verbs:
+  - get
+  - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - kapro.io
@@ -223,6 +234,7 @@ rules:
   - kapro.io
   resources:
   - fleetclusters/finalizers
+  - fleetclustertemplates/finalizers
   - promotionruns/finalizers
   - promotions/finalizers
   verbs:

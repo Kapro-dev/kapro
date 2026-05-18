@@ -247,6 +247,38 @@ spec:
                 - endpoint
                 - interval
                 type: object
+              provider:
+                description: |-
+                  Provider declares how the hub discovers this cluster and reaches it.
+                  The kind is one of the registered providers (outbound-agent,
+                  gcp-fleet, eks, aks-arc, rhacm, capi, kubeconfig). Parameters are
+                  provider-specific and opaque to Kapro core (StorageClass-style).
+
+                  When unset, the hub falls back to the legacy behaviour of looking up
+                  a Secret-referenced kubeconfig from cluster annotations — kept for
+                  backwards compatibility while existing FleetClusters migrate.
+                properties:
+                  kind:
+                    description: Kind selects a registered provider implementation.
+                    enum:
+                    - outbound-agent
+                    - gcp-fleet
+                    - eks
+                    - aks-arc
+                    - rhacm
+                    - capi
+                    - kubeconfig
+                    type: string
+                  parameters:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Parameters are opaque, provider-specific key/value settings. Kapro
+                      core does not interpret them.
+                    type: object
+                required:
+                - kind
+                type: object
               suspend:
                 description: Suspend pauses all reconciliation for this cluster.
                 type: boolean
