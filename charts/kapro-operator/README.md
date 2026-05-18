@@ -80,3 +80,18 @@ Then install your plugin service and apply a registration, for example:
 ```bash
 kubectl apply -f examples/plugins/slo-gate-registration.yaml
 ```
+
+## Preview Features
+
+The default install runs the core promotion controllers for `PromotionRun`,
+`PromotionTarget`, `PromotionPlan`, `FleetCluster`, `BackendProfile`,
+`PromotionSource`, and `Approval`.
+
+Preview surfaces are explicit opt-ins or spec-only APIs:
+
+| Surface | Default | Opt-in |
+|---|---|---|
+| Decision API and `AgentPolicy` | Disabled | `--set decisionAPI.enabled=true` plus Kubernetes RBAC |
+| Runtime plugin gateway | Disabled | `--set pluginGateway.enabled=true` |
+| Hub Gateway Service | Internal listener only | `--set hubGateway.service.enabled=true` and place Kubernetes authn/authz or an identity proxy in front |
+| `NotificationProvider` / `NotificationPolicy` | Spec-only | No runtime dispatch from these CRDs yet |

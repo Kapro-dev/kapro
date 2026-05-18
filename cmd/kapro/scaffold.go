@@ -30,10 +30,10 @@ local sync and rollout mechanics.`,
 		},
 	}
 	cmd.Flags().StringVar(&opts.Name, "name", "checkout", "Application or fleet name")
-	cmd.Flags().StringVar(&opts.Backend, "backend", "argo", "Delivery backend: argo or flux")
+	cmd.Flags().StringVar(&opts.Backend, "backend", "argo", "Delivery backend: argo, flux, or oci")
 	cmd.Flags().StringVar(&opts.Mode, "mode", "push", "Delivery mode: push or pull")
 	cmd.Flags().StringVar(&opts.Registry, "registry", "oci://registry.example.com/platform", "OCI registry URL for bundles")
-	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Backend namespace (default: argocd for argo, flux-system for flux)")
+	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Backend namespace (default: argocd for argo, flux-system for flux, kapro-system for oci)")
 	cmd.Flags().StringVar(&opts.Clusters, "clusters", "canary:canary,prod:production", "Cluster scaffold list as name:tier pairs, or none for repo-only setup")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
 	return cmd
@@ -100,11 +100,14 @@ func runInitScaffold(opts scaffoldOptions) error {
 		return fmt.Errorf("--name is required")
 	}
 	opts.Backend = strings.ToLower(opts.Backend)
-	if opts.Backend != "argo" && opts.Backend != "flux" {
-		return fmt.Errorf("--backend must be argo or flux")
+	if opts.Backend != "argo" && opts.Backend != "flux" && opts.Backend != "oci" {
+		return fmt.Errorf("--backend must be argo, flux, or oci")
 	}
 	if opts.Mode != "push" && opts.Mode != "pull" {
 		return fmt.Errorf("--mode must be push or pull")
+	}
+	if opts.Backend == "oci" && opts.Mode != "pull" {
+		return fmt.Errorf("--backend oci requires --mode pull")
 	}
 	if opts.Namespace == "" {
 		opts.Namespace = defaultBackendNamespace(opts.Backend)
@@ -222,6 +225,9 @@ func defaultBackendNamespace(backend string) string {
 	if backend == "argo" {
 		return "argocd"
 	}
+	if backend == "oci" {
+		return "kapro-system"
+	}
 	return "flux-system"
 }
 
@@ -242,6 +248,20 @@ func parseSelector(raw string) (map[string]string, error) {
 }
 
 func renderGreenfieldBackend(opts scaffoldOptions) string {
+	if opts.Backend == "oci" {
+		return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
+kind: BackendProfile
+metadata:
+  name: oci
+spec:
+  driver: oci
+  runtime: Spoke
+  parameters:
+    repository: %s/{appKey}
+    tag: "{version}"
+    auth: anonymous
+`, strings.TrimSuffix(strings.TrimPrefix(opts.Registry, "oci://"), "/"))
+	}
 	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
 kind: BackendProfile
 metadata:
@@ -293,6 +313,8 @@ func renderDeliveryParameters(opts scaffoldOptions, suffix string) string {
 	switch opts.Backend {
 	case "argo":
 		return fmt.Sprintf("      application: %s-%s\n", opts.Name, suffix)
+	case "oci":
+		return ""
 	default:
 		if opts.Mode == "push" {
 			return fmt.Sprintf("      resourceSet: %s-workloads\n      inputField: tag\n      tenantField: tenant\n", opts.Name)

@@ -45,6 +45,11 @@ spec:
               containerPort: {{ .Values.approvalServer.port }}
               protocol: TCP
             {{- end }}
+            {{- if .Values.hubGateway.enabled }}
+            - name: hub-gateway
+              containerPort: {{ .Values.hubGateway.port }}
+              protocol: TCP
+            {{- end }}
             {{- if .Values.webhook.enabled }}
             - name: webhook
               containerPort: {{ .Values.webhook.port }}
@@ -80,6 +85,13 @@ spec:
               value: {{ .Values.decisionAPI.enabled | quote }}
             {{- else }}
             - name: KAPRO_DISABLE_APPROVAL_SERVER
+              value: "true"
+            {{- end }}
+            {{- if .Values.hubGateway.enabled }}
+            - name: KAPRO_HUB_GATEWAY_ADDR
+              value: ":{{ .Values.hubGateway.port }}"
+            {{- else }}
+            - name: KAPRO_DISABLE_HUB_GATEWAY
               value: "true"
             {{- end }}
             {{- if .Values.leaderElection.namespace }}

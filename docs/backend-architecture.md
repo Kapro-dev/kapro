@@ -31,14 +31,20 @@ Primary APIs:
 
 ## Greenfield Bootstrap
 
-For new fleets, Kapro can be the setup path for promotion infrastructure:
+For new fleets, Kapro can be the setup path for promotion infrastructure. The
+recommended greenfield default is **OCI pull mode**: the hub records desired
+versions on `FleetCluster`, and a spoke-side `kapro-cluster-controller` pulls
+and applies the artifact from inside the workload cluster. This keeps the hub
+out of spoke network paths and works for outbound-only, edge, and sovereign
+fleet shapes.
 
 1. Install the Kapro hub controller and Hub Gateway.
-2. Create a built-in `BackendProfile` such as `flux` or `argo`.
+2. Create a built-in `BackendProfile`, preferably `oci` for new outbound-only
+   fleets or `flux`/`argo` when the fleet already standardizes on those tools.
 3. Register or generate `FleetCluster` inventory.
 4. Generate a starter `PromotionSource`, `PromotionPolicy`, `PromotionPlan`,
    gates, and example `Promotion`.
-5. Optionally install a spoke agent for pull-mode clusters.
+5. Install a spoke agent for pull-mode clusters.
 
 This is platform bootstrap for the promotion layer, not a replacement for a
 platform installer. Tools that bootstrap clusters, ingress, observability, or
@@ -46,8 +52,9 @@ base platform services can run before Kapro; Kapro then bootstraps the
 promotion control plane on top.
 
 ```bash
-kapro init ./promotion-repo --backend argo --name checkout
+kapro init ./promotion-repo --backend oci --name checkout --mode pull
 kapro init ./promotion-repo --backend flux --name checkout --mode pull
+kapro init ./promotion-repo --backend argo --name checkout
 kapro init ./promotion-repo --backend argo --name checkout --clusters none
 ```
 
@@ -69,7 +76,8 @@ evidence, and fleet-wide status around that existing topology.
 
 The exact write contract is documented in `backend-ownership.md`. Step-by-step
 brownfield onboarding paths are documented in `argo-migration.md` and
-`flux-migration.md`.
+`flux-migration.md`. The broader CNCF integration boundary is documented in
+`cncf-integration-masterplan.md`.
 
 ```bash
 kapro connect argo ./kapro-connect --namespace argocd --selector kapro.io/import=true
@@ -157,6 +165,18 @@ spec:
       application: checkout-prod
 ```
 
+Delivery mode controls where mutation happens:
+
+| Mode | Kapro hub behavior | Backend behavior |
+|---|---|---|
+| `pull` | Writes desired versions to `FleetCluster.spec.desiredVersions`. | A spoke agent reads that intent and applies it locally through OCI, Flux, Argo, or a plugin. |
+| `push` | Mutates backend-owned objects from the hub, such as Argo Applications or Flux Operator ResourceSet inputs. | The selected backend reconciles local rollout, drift, health, and traffic behavior. |
+
+Use pull mode when clusters cannot accept inbound connections from the hub or
+when local autonomy is required. Use push mode when the backend's control plane
+already lives on the hub and exposing that backend to Kapro is operationally
+simpler.
+
 Flux push mode uses parameters such as `resourceSet`, `namespace`, `inputField`,
 and `tenantField`. Flux pull mode uses `ociRepository` or
 `ociRepository.<appKey>` mappings. Argo push mode uses `application` or
@@ -185,6 +205,13 @@ The gateway is intentionally asynchronous. Commands create or patch CRDs; the
 controllers and backend adapters perform reconciliation.
 
 `GET /api/v1/graph` and `POST /api/v1/promotionruns` require an
-`Authorization: Bearer <token>` header. The operator reuses its configured
-approval secret as the gateway bearer token. Request bodies are size-limited
-and unknown JSON fields are rejected.
+`Authorization: Bearer <token>` header. The built-in token check is a
+development and port-forward convenience, not the production gateway auth
+model. Production exposure should put Kubernetes authentication and
+authorization, or an identity-aware reverse proxy, in front of the gateway.
+Request bodies are size-limited and unknown JSON fields are rejected.
+
+`GET /api/v1/graph` returns bounded responses. Use `resource` to select
+`kapros`, `fleetclusters`, `promotionruns`, `promotiontargets`, or
+`backendprofiles`; use `labelSelector`, `phase`, and `limit` to keep fleet
+reads scoped.

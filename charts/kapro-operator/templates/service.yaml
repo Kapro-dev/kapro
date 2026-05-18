@@ -17,3 +17,22 @@ spec:
       targetPort: approval
       protocol: TCP
 {{- end }}
+{{- if and .Values.hubGateway.enabled .Values.hubGateway.service.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kapro-operator.fullname" . }}-hub-gateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kapro-operator.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.hubGateway.service.type }}
+  selector:
+    {{- include "kapro-operator.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: hub-gateway
+      port: {{ .Values.hubGateway.service.port }}
+      targetPort: hub-gateway
+      protocol: TCP
+{{- end }}

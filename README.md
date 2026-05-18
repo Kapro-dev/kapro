@@ -109,8 +109,8 @@ rewrite into Kapro objects on day one. Kapro references backend-owned Secrets
 and configuration; it does not copy Argo CD or Flux credentials.
 
 ```bash
-# greenfield
-kapro init ./promotion-repo --backend argo --name checkout
+# greenfield: outbound-only OCI pull mode
+kapro init ./promotion-repo --backend oci --mode pull --name checkout
 
 # brownfield
 kapro adopt argo . --out ./kapro-connect --namespace argocd --selector kapro.io/import=true
@@ -152,8 +152,9 @@ Progressive promotion to hundreds or thousands of edge clusters. Canary groups g
 Kapro sits **above** local rollout and GitOps systems, not replacing them, and **alongside** Kargo as a complementary tool. Kapro focuses on horizontal wave ordering across sovereign fleets, while local systems handle namespace-level rollout, sync, traffic shifting, and workload health.
 
 Kapro selects delivery systems through `BackendProfile` and
-`spec.delivery.backendRef`. Flux and Argo are first-party adapters, and custom
-backends can be added through the plugin path.
+`spec.delivery.backendRef`. OCI pull mode is the recommended greenfield path for
+outbound-only fleets. Flux and Argo are first-party integration backends, and
+custom CNCF/platform systems can be added through the plugin path.
 
 Kapro is not a CI engine, traffic manager, generic workflow system, or
 replacement for Flux, Argo CD, Argo Rollouts, Flagger, Kargo, or Tekton. See
@@ -211,6 +212,7 @@ Core concepts:
 - [Backend Architecture](docs/backend-architecture.md)
 - [Backend Ownership](docs/backend-ownership.md)
 - [Supported Backend Patterns](docs/supported-backend-patterns.md)
+- [CNCF Integration Masterplan](docs/cncf-integration-masterplan.md)
 - [Promotion Gate Semantics](docs/gate-semantics.md)
 - [Events](docs/events.md)
 

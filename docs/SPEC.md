@@ -170,6 +170,14 @@ Promotion
 policy objects. Execution state lives in `Promotion`, `PromotionRun`,
 `PromotionTarget`, `FleetCluster`, `Approval`, and `PromotionTrigger` status.
 
+The stable product center is the promotion execution path: `PromotionRun`,
+`PromotionTarget`, `PromotionPlan`, `FleetCluster`, `BackendProfile`,
+`PromotionSource`, and `Approval`. Preview surfaces are documented separately:
+`NotificationProvider` and `NotificationPolicy` are spec-only, `AgentPolicy`
+and the Decision API are opt-in assistance surfaces, and unsupported
+`FleetClusterTemplate` import sources are not runtime features until their
+controllers are implemented.
+
 ---
 
 ## 7. Architecture
@@ -207,7 +215,7 @@ policy objects. Execution state lives in `Promotion`, `PromotionRun`,
 ┌─────────────────────── Spoke cluster (one per FleetCluster) ─────────────┐
 │                                                                         │
 │  kapro-cluster-controller                                               │
-│    - watches hub intent for greenfield Flux-style delivery              │
+│    - watches hub intent for pull-mode delivery                          │
 │    - patches the local delivery system when a spoke actuator is used     │
 │    - renews Lease kapro-heartbeat-<cluster> in kapro-system             │
 │    - writes FleetCluster.status (currentVersions + health summary)     │
@@ -333,9 +341,11 @@ type Actuator interface {
 }
 ```
 
-Built-in backend adapters cover Flux and Argo CD in both greenfield and
-brownfield shapes:
+Built-in backend adapters cover OCI pull desired state plus Flux and Argo CD
+greenfield and brownfield shapes:
 
+- OCI pull mode records desired versions on `FleetCluster` for outbound-only
+  spoke clusters to apply locally;
 - greenfield Flux generation can use Kapro-owned source and workload objects;
 - brownfield Flux Git-native promotion updates existing `GitRepository`,
   `OCIRepository`, `HelmRelease`, Kustomize image, and chart version fields;
