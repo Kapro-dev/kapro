@@ -393,6 +393,22 @@ func (r *FleetClusterBootstrapReconciler) processCSRsForCluster(ctx context.Cont
 		if isCSRApproved(csr) || isCSRDenied(csr) {
 			continue
 		}
+		// Defense in depth (security audit B3): if the slot is already bound
+		// to a different CSR, deny this one IMMEDIATELY at the loop entry
+		// rather than letting handleBootstrapCSR's inner check do it. This
+		// avoids wasted RBAC ensure work and gives the spoke a clear NACK
+		// signal sooner so it doesn't retry with yet another fresh CSR.
+		// handleBootstrapCSR also enforces this (lines below) — keep both as
+		// belt-and-suspenders so any future refactor can't drop the check.
+		if fc.Status.Bootstrap != nil &&
+			fc.Status.Bootstrap.Used &&
+			fc.Status.Bootstrap.BoundCSRName != "" &&
+			fc.Status.Bootstrap.BoundCSRName != csr.Name {
+			if err := r.denyCSR(ctx, csr, fmt.Sprintf("bootstrap already consumed by CSR %s", fc.Status.Bootstrap.BoundCSRName)); err != nil {
+				return ctrl.Result{}, err
+			}
+			continue
+		}
 		if err := r.handleBootstrapCSR(ctx, fc, csr); err != nil {
 			return ctrl.Result{}, err
 		}
