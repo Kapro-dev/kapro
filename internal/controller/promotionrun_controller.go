@@ -9,12 +9,10 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -1169,41 +1167,6 @@ func apiPlannerResults(decisions []planner.Decision) []kaprov1alpha1.PlannerResu
 // upsertTarget finds an existing TargetStatus entry for
 // (promotionplanRefName, stage.Name, mc.Name) or appends a new one.
 // Returns the slice index of the entry (stable within a single reconcile).
-func (r *PromotionRunReconciler) upsertTarget(
-	promotionrun *kaprov1alpha1.PromotionRun,
-	promotionplanRefName string,
-	promotionplan *kaprov1alpha1.PromotionPlan,
-	stage kaprov1alpha1.Stage,
-	mc kaprov1alpha1.FleetCluster,
-	resolvedGate *kaprov1alpha1.GatePolicySpec,
-) (int, error) {
-	desiredVersions := promotionrunDesiredVersions(promotionrun)
-	version, appKey := primaryDesiredVersion(desiredVersions, promotionrun.Status.ResolvedVersion, promotionrunAppKey(promotionrun))
-	key := syncKey(promotionplanRefName, stage.Name, mc.Name)
-	for i, target := range promotionrun.Status.Targets {
-		if syncKey(target.PromotionPlanRef, target.Stage, target.Target) == key {
-			target := &promotionrun.Status.Targets[i]
-			target.Version = version
-			target.Gate = resolvedGate
-			target.AppKey = appKey
-			target.DesiredVersions = copyStringMap(desiredVersions)
-			return i, nil
-		}
-	}
-	newTarget := kaprov1alpha1.TargetStatus{
-		PromotionRunRef:  promotionrun.Name,
-		Target:           mc.Name,
-		PromotionPlanRef: promotionplanRefName,
-		PromotionPlan:    promotionplan.Name,
-		Stage:            stage.Name,
-		Version:          version,
-		Gate:             resolvedGate,
-		AppKey:           appKey,
-		DesiredVersions:  copyStringMap(desiredVersions),
-	}
-	promotionrun.Status.Targets = append(promotionrun.Status.Targets, newTarget)
-	return len(promotionrun.Status.Targets) - 1, nil
-}
 
 func resolveStageGate(promotionplan *kaprov1alpha1.PromotionPlan, stage kaprov1alpha1.Stage) (*kaprov1alpha1.GatePolicySpec, error) {
 	if stage.Gate == nil {
@@ -1260,109 +1223,6 @@ func mergeMetricPreset(preset, override kaprov1alpha1.MetricGate) kaprov1alpha1.
 // triggerRollbackTargets appends rollback TargetStatus entries for every
 // converged target in the failed stage and all earlier stages in the same
 // promotionplan instance. In-memory only; caller patches.
-func (r *PromotionRunReconciler) triggerRollbackTargets(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, promotionplanRefName string, promotionplan *kaprov1alpha1.PromotionPlan, stageName string) {
-	eligibleStages := make(map[string]struct{}, len(promotionplan.Spec.Stages))
-	for _, stage := range promotionplan.Spec.Stages {
-		eligibleStages[stage.Name] = struct{}{}
-		if stage.Name == stageName {
-			break
-		}
-	}
-	n := len(promotionrun.Status.Targets) // capture length before appending
-	for i := 0; i < n; i++ {
-		target := &promotionrun.Status.Targets[i]
-		if target.PromotionPlanRef != promotionplanRefName {
-			continue
-		}
-		if _, ok := eligibleStages[target.Stage]; !ok {
-			continue
-		}
-		if target.Phase != kaprov1alpha1.TargetPhaseConverged {
-			continue
-		}
-		r.triggerTargetRollback(ctx, promotionrun, i)
-	}
-}
-
-func (r *PromotionRunReconciler) notifyPromotionRunEvent(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, eventType, message string) {
-	if r.Notifier == nil {
-		return
-	}
-	policy := r.notificationPolicyForPromotionRun(ctx, promotionrun)
-	r.Notifier.Notify(ctx, notification.Event{
-		Type:         eventType,
-		Phase:        string(promotionrun.Status.Phase),
-		Version:      promotionrun.Status.ResolvedVersion,
-		PromotionRun: promotionrun.Name,
-		Message:      message,
-		IsFailure:    eventType == notification.EventPromotionRunFailed,
-	}, policy)
-}
-
-func (r *PromotionRunReconciler) notifyStageEvent(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, promotionplanRef, stage, eventType, message string) {
-	if r.Notifier == nil {
-		return
-	}
-	policy := r.notificationPolicyForStage(ctx, promotionrun, promotionplanRef, stage)
-	r.Notifier.Notify(ctx, notification.Event{
-		Type:          eventType,
-		Phase:         "Complete",
-		Version:       promotionrun.Status.ResolvedVersion,
-		PromotionRun:  promotionrun.Name,
-		PromotionPlan: promotionplanRef,
-		Stage:         stage,
-		Message:       message,
-	}, policy)
-}
-
-func (r *PromotionRunReconciler) notificationPolicyForPromotionRun(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun) notification.NotificationPolicy {
-	policies := make([]notification.NotificationPolicy, 0)
-	for _, promotionplanRef := range promotionrun.Spec.PromotionPlans {
-		var promotionplan kaprov1alpha1.PromotionPlan
-		if err := r.Get(ctx, client.ObjectKey{Name: promotionplanRef.PromotionPlan}, &promotionplan); err != nil {
-			log.FromContext(ctx).Error(err, "failed to load promotionplan for promotionrun notification policy", "promotionplan", promotionplanRef.PromotionPlan)
-			continue
-		}
-		for _, stage := range promotionplan.Spec.Stages {
-			policies = append(policies, notificationPolicyFrom(stage.Gate))
-		}
-	}
-	return mergeNotificationPolicies(policies...)
-}
-
-func (r *PromotionRunReconciler) notificationPolicyForStage(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, promotionplanRefName, stageName string) notification.NotificationPolicy {
-	for _, promotionplanRef := range promotionrun.Spec.PromotionPlans {
-		if promotionplanRef.Name != promotionplanRefName {
-			continue
-		}
-		var promotionplan kaprov1alpha1.PromotionPlan
-		if err := r.Get(ctx, client.ObjectKey{Name: promotionplanRef.PromotionPlan}, &promotionplan); err != nil {
-			log.FromContext(ctx).Error(err, "failed to load promotionplan for stage notification policy", "promotionplan", promotionplanRef.PromotionPlan)
-			return notification.EmptyPolicy
-		}
-		for _, stage := range promotionplan.Spec.Stages {
-			if stage.Name == stageName {
-				return notificationPolicyFrom(stage.Gate)
-			}
-		}
-	}
-	return notification.EmptyPolicy
-}
-
-func (r *PromotionRunReconciler) hasActiveRollbackTargets(promotionrun *kaprov1alpha1.PromotionRun) bool {
-	for _, target := range promotionrun.Status.Targets {
-		if !target.Rollback {
-			continue
-		}
-		switch target.Phase {
-		case kaprov1alpha1.TargetPhaseConverged, kaprov1alpha1.TargetPhaseFailed, kaprov1alpha1.TargetPhaseSkipped:
-			continue
-		default:
-			return true
-		}
-	}
-	return false
-}
 
 // cancelPendingStageTargets signals non-terminal targets in the stage to stop.
 // This implements failurePolicy: halt — sibling targets stop advancing.
@@ -1370,85 +1230,9 @@ func (r *PromotionRunReconciler) hasActiveRollbackTargets(promotionrun *kaprov1a
 // Ownership contract: the parent writes spec.cancelled (parent owns spec),
 // the child PromotionTargetReconciler observes it and transitions to Failed
 // (child owns status). This avoids cross-controller status writes.
-func (r *PromotionRunReconciler) cancelPendingStageTargets(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, promotionplanRefName, stageName string) {
-	log := log.FromContext(ctx)
-
-	// List PromotionTarget objects for this promotionrun (indexed, not full scan).
-	var list kaprov1alpha1.PromotionTargetList
-	if err := r.List(ctx, &list, client.MatchingFields{IndexKeyPromotionTargetPromotionRun: promotionrun.Name}); err != nil {
-		log.Error(err, "cancel: failed to list PromotionTargets")
-		return
-	}
-
-	for i := range list.Items {
-		rt := &list.Items[i]
-		if rt.Spec.PromotionPlanRef != promotionplanRefName || rt.Spec.Stage != stageName {
-			continue
-		}
-		// Skip terminal targets.
-		switch rt.Status.Phase {
-		case kaprov1alpha1.TargetPhaseConverged, kaprov1alpha1.TargetPhaseFailed, kaprov1alpha1.TargetPhaseSkipped:
-			continue
-		}
-		if rt.Spec.Cancelled {
-			continue
-		}
-
-		// Signal cancellation via spec — the child reconciler observes this
-		// and transitions status to Failed on its next reconcile.
-		// Use a raw JSON merge patch to set spec.cancelled directly, avoiding
-		// resourceVersion conflicts with concurrent status writes.
-		rawPatch := client.RawPatch(types.MergePatchType,
-			[]byte(`{"spec":{"cancelled":true,"cancelledReason":"stage halted due to peer failure (failurePolicy: halt)"}}`))
-		if err := r.Patch(ctx, rt, rawPatch); err != nil {
-			log.Error(err, "cancel: failed to patch PromotionTarget spec", "name", rt.Name)
-			continue
-		}
-		log.Info("cancel: signalled cancellation", "target", rt.Name)
-
-		// Also update inline targets for immediate aggregation so the parent
-		// can compute the correct PromotionRun phase without waiting for child reconcile.
-		for j := range promotionrun.Status.Targets {
-			t := &promotionrun.Status.Targets[j]
-			if t.Target == rt.Spec.Target && t.PromotionPlanRef == promotionplanRefName && t.Stage == stageName {
-				t.Phase = kaprov1alpha1.TargetPhaseFailed
-				t.Message = "cancelled: " + rt.Spec.CancelledReason
-				break
-			}
-		}
-	}
-}
 
 // clearActivePromotionRun clears mc.status.activePromotionRun for all FleetClusters
 // targeted by this PromotionRun, found via promotionrun.Status.Targets.
-func (r *PromotionRunReconciler) clearActivePromotionRun(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun) {
-	log := log.FromContext(ctx)
-	if len(promotionrun.Status.Targets) == 0 {
-		if err := r.loadPromotionTargets(ctx, promotionrun); err != nil {
-			log.Error(err, "clearActivePromotionRun: failed to load promotion targets")
-			return
-		}
-	}
-	seen := make(map[string]bool)
-	for _, target := range promotionrun.Status.Targets {
-		mcName := target.Target
-		if seen[mcName] {
-			continue
-		}
-		seen[mcName] = true
-		var mc kaprov1alpha1.FleetCluster
-		if err := r.Get(ctx, client.ObjectKey{Name: mcName}, &mc); err != nil {
-			continue
-		}
-		if mc.Status.ActivePromotionRun == promotionrun.Name {
-			patch := client.MergeFrom(mc.DeepCopy())
-			mc.Status.ActivePromotionRun = ""
-			if err := r.Status().Patch(ctx, &mc, patch); err != nil {
-				log.Error(err, "clearActivePromotionRun: failed to clear activePromotionRun", "cluster", mcName)
-			}
-		}
-	}
-}
 
 func promotionTargetObjectName(target kaprov1alpha1.TargetStatus) string {
 	name := syncName(target.PromotionRunRef, target.PromotionPlanRef, target.Stage, target.Target)
@@ -1462,37 +1246,6 @@ func promotionTargetObjectName(target kaprov1alpha1.TargetStatus) string {
 // contract to external tests without widening production behavior.
 func PromotionTargetObjectNameForTest(target kaprov1alpha1.TargetStatus) string {
 	return promotionTargetObjectName(target)
-}
-
-func (r *PromotionRunReconciler) promotionTargetFromStatus(promotionrun *kaprov1alpha1.PromotionRun, target kaprov1alpha1.TargetStatus) *kaprov1alpha1.PromotionTarget {
-	rt := &kaprov1alpha1.PromotionTarget{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: promotionTargetObjectName(target),
-			Labels: map[string]string{
-				IndexKeyPromotionRun:     promotionrun.Name,
-				"kapro.io/target":        target.Target,
-				"kapro.io/promotionplan": target.PromotionPlanRef,
-				"kapro.io/stage":         target.Stage,
-			},
-		},
-		Spec: kaprov1alpha1.PromotionTargetSpec{
-			PromotionRunRef:  target.PromotionRunRef,
-			Target:           target.Target,
-			PromotionPlanRef: target.PromotionPlanRef,
-			PromotionPlan:    target.PromotionPlan,
-			Stage:            target.Stage,
-			Version:          target.Version,
-			Gate:             target.Gate,
-			AppKey:           target.AppKey,
-			DesiredVersions:  copyStringMap(target.DesiredVersions),
-			Rollback:         target.Rollback,
-		},
-		Status: kaprov1alpha1.PromotionTargetStatus{TargetStatus: target},
-	}
-	if err := ctrl.SetControllerReference(promotionrun, rt, r.Scheme); err == nil {
-		return rt
-	}
-	return rt
 }
 
 func targetStatusFromPromotionTarget(rt *kaprov1alpha1.PromotionTarget) kaprov1alpha1.TargetStatus {
@@ -1510,72 +1263,9 @@ func targetStatusFromPromotionTarget(rt *kaprov1alpha1.PromotionTarget) kaprov1a
 	return target
 }
 
-func (r *PromotionRunReconciler) loadPromotionTargets(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun) error {
-	var list kaprov1alpha1.PromotionTargetList
-	if err := r.List(ctx, &list,
-		client.MatchingFields{IndexKeyPromotionTargetPromotionRun: promotionrun.Name},
-	); err != nil {
-		return err
-	}
-	targets := make([]kaprov1alpha1.TargetStatus, 0, len(list.Items))
-	for i := range list.Items {
-		rt := &list.Items[i]
-		targets = append(targets, targetStatusFromPromotionTarget(rt))
-	}
-	sort.Slice(targets, func(i, j int) bool {
-		ai := promotionTargetObjectName(targets[i])
-		aj := promotionTargetObjectName(targets[j])
-		return ai < aj
-	})
-	promotionrun.Status.Targets = targets
-	return nil
-}
-
 // persistPromotionTargets ensures a PromotionTarget CRD exists for each in-memory
 // target entry. The parent creates new children and updates their specs/labels/
 // ownerRefs, but NEVER writes child status — that's owned by PromotionTargetReconciler.
-func (r *PromotionRunReconciler) persistPromotionTargets(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun) error {
-	var existingList kaprov1alpha1.PromotionTargetList
-	if err := r.List(ctx, &existingList,
-		client.MatchingFields{IndexKeyPromotionTargetPromotionRun: promotionrun.Name},
-	); err != nil {
-		return err
-	}
-	existing := make(map[string]*kaprov1alpha1.PromotionTarget, len(existingList.Items))
-	for i := range existingList.Items {
-		rt := existingList.Items[i]
-		existing[rt.Name] = rt.DeepCopy()
-	}
-
-	for _, target := range promotionrun.Status.Targets {
-		name := promotionTargetObjectName(target)
-		desired := r.promotionTargetFromStatus(promotionrun, target)
-		if _, ok := existing[name]; !ok {
-			// Create new child — status starts empty, PromotionTargetReconciler will drive it.
-			toCreate := desired.DeepCopy()
-			toCreate.Status = kaprov1alpha1.PromotionTargetStatus{}
-			if err := r.Create(ctx, toCreate); err != nil && !apierrors.IsAlreadyExists(err) {
-				return fmt.Errorf("create PromotionTarget %s: %w", name, err)
-			}
-		} else {
-			// Update spec/labels/ownerRefs only — never touch status.
-			// Skip the patch if nothing actually changed (avoids O(N) API writes
-			// per reconcile when targets are stable).
-			current := existing[name]
-			if promotionTargetSpecEqual(current, desired) {
-				continue
-			}
-			specPatch := client.MergeFrom(current.DeepCopy())
-			current.Labels = desired.Labels
-			current.Spec = desired.Spec
-			current.OwnerReferences = desired.OwnerReferences
-			if err := r.Patch(ctx, current, specPatch); err != nil {
-				return fmt.Errorf("patch PromotionTarget %s: %w", name, err)
-			}
-		}
-	}
-	return nil
-}
 
 // handleDeletion clears FleetCluster activePromotionRun references and removes the finalizer.
 // Targets are inline status — nothing to delete externally.
