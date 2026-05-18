@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"sort"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -30,6 +31,7 @@ import (
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	internalgate "kapro.io/kapro/internal/gate"
 	kaprometrics "kapro.io/kapro/internal/metrics"
+	"kapro.io/kapro/internal/promotion/fsm"
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
 	"kapro.io/kapro/pkg/notification"
@@ -82,6 +84,19 @@ type PromotionRunReconciler struct {
 	// Planner orders and filters target clusters using scheduler-style extension phases.
 	// Nil means the default empty planner.
 	Planner *planner.Framework
+
+	// runFsmMachine is the declarative dispatch table for the PromotionRun
+	// phase FSM (D2-PR1). Built lazily via ensureRunFSM so direct
+	// reconciler construction in tests works without SetupWithManager.
+	runFsmOnce    sync.Once
+	runFsmMachine *fsm.Machine[kaprov1alpha1.PromotionRunPhase, *runFsmEnv]
+}
+
+// runFsmEnv is the per-Reconcile state bag the PromotionRun FSM hands to
+// each phase handler. Held by pointer so handlers see the same
+// promotionrun value the reconciler holds across the step's lifetime.
+type runFsmEnv struct {
+	promotionrun *kaprov1alpha1.PromotionRun
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=promotionruns,verbs=get;list;watch;create;update;patch;delete
@@ -141,21 +156,68 @@ func (r *PromotionRunReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	switch promotionrun.Status.Phase {
-	case "", kaprov1alpha1.PromotionRunPhasePending:
-		return r.handlePending(ctx, &promotionrun)
-	case kaprov1alpha1.PromotionRunPhaseProgressing:
-		return r.handleProgressing(ctx, &promotionrun)
-	case kaprov1alpha1.PromotionRunPhaseFailed:
-		if r.hasActiveRollbackTargets(&promotionrun) {
-			return r.handleFailed(ctx, &promotionrun)
-		}
-		return ctrl.Result{}, nil
-	case kaprov1alpha1.PromotionRunPhaseComplete:
-		return ctrl.Result{}, nil
-	}
+	// Dispatch via the FSM (D2-PR1). Replaces the legacy phase switch;
+	// behaviour unchanged. Phase mutation continues to happen as a side
+	// effect inside the handlers (handlePending sets Progressing,
+	// handleProgressing sets Complete or Failed via patchPromotionRunStatus).
+	r.ensureRunFSM()
+	return r.runFsmMachine.Step(ctx, promotionrun.Status.Phase, &runFsmEnv{promotionrun: &promotionrun})
+}
 
-	return ctrl.Result{}, nil
+// ensureRunFSM builds the PromotionRun phase dispatch table the first
+// time it is called. Lazy init keeps unit tests that construct
+// PromotionRunReconciler directly (without SetupWithManager) working —
+// same pattern as PromotionTarget's ensureFSM (D3-PR1).
+func (r *PromotionRunReconciler) ensureRunFSM() {
+	r.runFsmOnce.Do(func() {
+		r.runFsmMachine = r.buildRunFSM()
+	})
+}
+
+// buildRunFSM constructs the PromotionRun phase dispatch table.
+//
+// The legacy phase graph:
+//
+//	""              → handlePending (which transitions to Progressing)
+//	Pending         → handlePending
+//	Progressing     → handleProgressing
+//	Failed          → handleFailed (guarded on hasActiveRollbackTargets;
+//	                  no-op otherwise so the reconciler doesn't churn)
+//	Complete        → terminal (no work)
+//
+// AllowedNext metadata will be wired in D2-PR2 alongside the runtime
+// validation hook in patchPromotionRunStatus. Today this PR is dispatch-
+// only — zero behaviour delta from the legacy switch.
+func (r *PromotionRunReconciler) buildRunFSM() *fsm.Machine[kaprov1alpha1.PromotionRunPhase, *runFsmEnv] {
+	m := fsm.New[kaprov1alpha1.PromotionRunPhase, *runFsmEnv]()
+	// Initial ("") and Pending both invoke handlePending in the legacy
+	// switch. Keep both wired the same way so behaviour matches.
+	must(m.RegisterInitial(func(ctx context.Context, e *runFsmEnv) (ctrl.Result, error) {
+		return r.handlePending(ctx, e.promotionrun)
+	}))
+	must(m.Register(kaprov1alpha1.PromotionRunPhasePending, func(ctx context.Context, e *runFsmEnv) (ctrl.Result, error) {
+		return r.handlePending(ctx, e.promotionrun)
+	}))
+	must(m.Register(kaprov1alpha1.PromotionRunPhaseProgressing, func(ctx context.Context, e *runFsmEnv) (ctrl.Result, error) {
+		return r.handleProgressing(ctx, e.promotionrun)
+	}))
+	// Failed is NOT terminal — when rollback targets are active, the
+	// reconciler keeps driving handleFailed until they converge. The
+	// guard moves into this closure so the legacy "if hasActiveRollbackTargets"
+	// pre-check is encoded at the dispatch site rather than the call site.
+	must(m.Register(kaprov1alpha1.PromotionRunPhaseFailed, func(ctx context.Context, e *runFsmEnv) (ctrl.Result, error) {
+		if !r.hasActiveRollbackTargets(e.promotionrun) {
+			return ctrl.Result{}, nil
+		}
+		return r.handleFailed(ctx, e.promotionrun)
+	}))
+	// Complete is the one true terminal: no handler, no requeue.
+	// Reconcile reaches Step with Phase=Complete only on a spurious wake
+	// (watch event after completion); Machine.Step's unknown-phase no-op
+	// behaviour would also work, but registering Complete as terminal is
+	// explicit and lets ValidateGraph (D2-PR2) confirm coverage.
+	must(m.RegisterTerminal(kaprov1alpha1.PromotionRunPhaseComplete))
+	return m
 }
 
 func (r *PromotionRunReconciler) patchPromotionRunStatus(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, patch client.Patch) error {
