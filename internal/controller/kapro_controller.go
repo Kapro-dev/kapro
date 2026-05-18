@@ -16,7 +16,9 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -1086,6 +1088,17 @@ func (r *KaproReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kaprov1alpha1.Kapro{}).
 		Watches(&kaprov1alpha1.PromotionSource{}, handler.EnqueueRequestsFromMapFunc(r.kaproSourceToKapro)).
+		// FleetCluster.status.conditions[Ready] flips drive Phase=Unreachable
+		// in the status sync step. Without this watch the heartbeat
+		// reconciler's Ready=False reason=Unreachable transition would not
+		// surface as Phase=Unreachable until an unrelated Kapro/PromotionSource
+		// event fired. Predicate filters to Ready-condition transitions only —
+		// no feedback loop with our own status patches (which don't touch
+		// conditions[Ready]).
+		Watches(&kaprov1alpha1.FleetCluster{},
+			handler.EnqueueRequestsFromMapFunc(r.fleetClusterToKapro),
+			builder.WithPredicates(fleetClusterReadyConditionChangedPredicate{}),
+		).
 		Complete(r)
 }
 
@@ -1108,4 +1121,61 @@ func (r *KaproReconciler) kaproSourceToKapro(ctx context.Context, obj client.Obj
 		}
 	}
 	return requests
+}
+
+// fleetClusterToKapro maps a FleetCluster change to the Kapro(s) whose
+// spec.clusters references it by name. Matches the inventory ownership
+// pattern used by cleanupRemovedClusters.
+func (r *KaproReconciler) fleetClusterToKapro(ctx context.Context, obj client.Object) []reconcile.Request {
+	fc, ok := obj.(*kaprov1alpha1.FleetCluster)
+	if !ok {
+		return nil
+	}
+	var kapros kaprov1alpha1.KaproList
+	if err := r.List(ctx, &kapros); err != nil {
+		return nil
+	}
+	var requests []reconcile.Request
+	for _, k := range kapros.Items {
+		for _, c := range k.Spec.Clusters {
+			if c.Name == fc.Name {
+				requests = append(requests, reconcile.Request{
+					NamespacedName: client.ObjectKeyFromObject(&k),
+				})
+				break
+			}
+		}
+	}
+	return requests
+}
+
+// fleetClusterReadyConditionChangedPredicate triggers a reconcile only when a
+// FleetCluster's ConditionTypeReady changes (status or reason). All other
+// FleetCluster mutations — including our own Phase/CurrentVersions status
+// writes — are filtered out so we don't feedback-loop on ourselves.
+type fleetClusterReadyConditionChangedPredicate struct{}
+
+func (fleetClusterReadyConditionChangedPredicate) Create(_ event.CreateEvent) bool { return false }
+func (fleetClusterReadyConditionChangedPredicate) Delete(_ event.DeleteEvent) bool { return false }
+func (fleetClusterReadyConditionChangedPredicate) Generic(_ event.GenericEvent) bool {
+	return false
+}
+func (fleetClusterReadyConditionChangedPredicate) Update(e event.UpdateEvent) bool {
+	oldFC, ok := e.ObjectOld.(*kaprov1alpha1.FleetCluster)
+	if !ok {
+		return false
+	}
+	newFC, ok := e.ObjectNew.(*kaprov1alpha1.FleetCluster)
+	if !ok {
+		return false
+	}
+	oldReady := apimeta.FindStatusCondition(oldFC.Status.Conditions, kaprov1alpha1.ConditionTypeReady)
+	newReady := apimeta.FindStatusCondition(newFC.Status.Conditions, kaprov1alpha1.ConditionTypeReady)
+	if oldReady == nil && newReady == nil {
+		return false
+	}
+	if oldReady == nil || newReady == nil {
+		return true
+	}
+	return oldReady.Status != newReady.Status || oldReady.Reason != newReady.Reason
 }

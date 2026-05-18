@@ -202,14 +202,19 @@ func TestHeartbeat_PushMode_AlwaysReady(t *testing.T) {
 	}
 }
 
+// TestHeartbeat_NotYetRegistered exercises the bootstrap-aware NotRegistered
+// path: spec.bootstrap is set, status.bootstrap.used is false → the v0.5
+// bootstrap workflow hasn't completed yet.
 func TestHeartbeat_NotYetRegistered(t *testing.T) {
 	now := time.Now()
+	tokenTTL := "1h"
 	fc := &kaprov1alpha1.FleetCluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{Mode: kaprov1alpha1.DeliveryModePull, BackendRef: "flux"},
+			Delivery:  kaprov1alpha1.DeliverySpec{Mode: kaprov1alpha1.DeliveryModePull, BackendRef: "flux"},
+			Bootstrap: &kaprov1alpha1.FleetClusterBootstrapSpec{TTL: tokenTTL},
 		},
-		// No Status.Bootstrap.Used — never registered.
+		// No Status.Bootstrap.Used — bootstrap workflow not yet complete.
 	}
 	r := newReconciler(t, now, fc)
 	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "cluster-a"}}); err != nil {
@@ -218,6 +223,56 @@ func TestHeartbeat_NotYetRegistered(t *testing.T) {
 	cond := readyCondition(t, r.Client, "cluster-a")
 	if cond == nil || cond.Status != metav1.ConditionUnknown || cond.Reason != kaprov1alpha1.ReasonNotRegistered {
 		t.Fatalf("expected Ready=Unknown reason=NotRegistered, got %+v", cond)
+	}
+}
+
+// TestHeartbeat_LegacyClusterNoBootstrap_LeaseEstablishesReady covers the
+// path that broke before the spec.bootstrap gate: a pull-mode FleetCluster
+// created without the v0.5 bootstrap workflow (e.g. via legacy `kapro spoke
+// add`, manual kubectl apply, or FleetClusterTemplate auto-import) MUST
+// reach Ready=True purely on the strength of a fresh heartbeat Lease.
+// Otherwise requireFreshHeartbeat would defer their promotions indefinitely.
+func TestHeartbeat_LegacyClusterNoBootstrap_LeaseEstablishesReady(t *testing.T) {
+	now := time.Now()
+	fc := &kaprov1alpha1.FleetCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "legacy-cluster"},
+		Spec: kaprov1alpha1.FleetClusterSpec{
+			Delivery: kaprov1alpha1.DeliverySpec{Mode: kaprov1alpha1.DeliveryModePull, BackendRef: "flux"},
+			// spec.Bootstrap intentionally nil — legacy / non-bootstrap path.
+		},
+	}
+	lease := freshLease("legacy-cluster", defaultHeartbeatNamespace, now.Add(-5*time.Second))
+	r := newReconciler(t, now, fc, lease)
+	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "legacy-cluster"}}); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	cond := readyCondition(t, r.Client, "legacy-cluster")
+	if cond == nil || cond.Status != metav1.ConditionTrue || cond.Reason != kaprov1alpha1.ReasonHeartbeatFresh {
+		t.Fatalf("legacy cluster with fresh Lease should reach Ready=True/HeartbeatFresh; got %+v", cond)
+	}
+}
+
+// TestHeartbeat_LegacyClusterNoBootstrap_MissingLeaseCountsAsMiss confirms the
+// symmetric case: a legacy cluster with no Lease still goes through the normal
+// miss-counter path (Stale → Unreachable) rather than being held in
+// NotRegistered limbo forever.
+func TestHeartbeat_LegacyClusterNoBootstrap_MissingLeaseCountsAsMiss(t *testing.T) {
+	now := time.Now()
+	threshold := int32(1)
+	fc := &kaprov1alpha1.FleetCluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "legacy-cluster"},
+		Spec: kaprov1alpha1.FleetClusterSpec{
+			Delivery:                    kaprov1alpha1.DeliverySpec{Mode: kaprov1alpha1.DeliveryModePull, BackendRef: "flux"},
+			ConsecutiveFailureThreshold: &threshold,
+		},
+	}
+	r := newReconciler(t, now, fc)
+	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "legacy-cluster"}}); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	cond := readyCondition(t, r.Client, "legacy-cluster")
+	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != kaprov1alpha1.ReasonUnreachable {
+		t.Fatalf("legacy cluster with threshold=1 + no Lease should hit Unreachable, not NotRegistered; got %+v", cond)
 	}
 }
 

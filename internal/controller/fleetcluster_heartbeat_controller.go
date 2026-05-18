@@ -188,16 +188,25 @@ func (r *FleetClusterHeartbeatReconciler) computeDesiredReady(ctx context.Contex
 		}
 	}
 
-	// If bootstrap.used is false, the spoke has never registered.
-	// Distinguishing this from "registered but unreachable" is important for
-	// dashboards and runbooks: "not yet registered" is a Day-0 problem
-	// (chart not installed, kubeconfig not applied), "Unreachable" is a
-	// Day-1+ problem (network outage, pod crash).
-	if fc.Status.Bootstrap == nil || !fc.Status.Bootstrap.Used {
+	// NotRegistered applies ONLY to clusters that opted into the v0.5
+	// bootstrap workflow (spec.bootstrap is set on creation, typically by
+	// `kapro spoke bootstrap`). For those, "registered" means the CSR
+	// exchange has completed and status.bootstrap.used is true.
+	//
+	// FleetClusters created without spec.bootstrap — e.g. legacy push-mode
+	// objects from `kapro spoke add`, manually-created pull-mode clusters,
+	// or auto-imported ones from FleetClusterTemplate — never go through
+	// the bootstrap workflow. For those we fall through to Lease-based
+	// reachability: a fresh heartbeat Lease is the registration signal.
+	//
+	// Distinguishing NotRegistered from Unreachable matters for dashboards:
+	// NotRegistered is a Day-0 problem (chart not installed yet);
+	// Unreachable is a Day-1+ problem (cluster down).
+	if fc.Spec.Bootstrap != nil && (fc.Status.Bootstrap == nil || !fc.Status.Bootstrap.Used) {
 		return desiredReady{
 			Status:  metav1.ConditionUnknown,
 			Reason:  kaprov1alpha1.ReasonNotRegistered,
-			Message: "FleetCluster has not yet completed bootstrap registration",
+			Message: "FleetCluster has spec.bootstrap set but bootstrap workflow has not yet completed",
 		}
 	}
 
