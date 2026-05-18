@@ -13,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
@@ -20,6 +21,13 @@ import (
 const (
 	// ParameterTLSServerName optionally overrides the server name used to verify the plugin certificate.
 	ParameterTLSServerName = "tlsServerName"
+
+	// ParameterAllowTLS12 opts a registration into accepting TLS 1.2 servers.
+	// The default is TLS 1.3 (modern, drops CBC/RC4 weak-cipher exposure).
+	// Set to "true" only when wrapping a legacy backend the operator cannot
+	// upgrade — emits a warning log each time the registration is probed so
+	// the downgrade is auditable.
+	ParameterAllowTLS12 = "allowTLS12"
 )
 
 // DialOptions returns the base gRPC dial options for a plugin registration.
@@ -33,8 +41,15 @@ func DialOptions(ctx context.Context, c client.Reader, reg kaprov1alpha1.PluginR
 
 // Credentials returns insecure credentials when no TLSSecretRef is configured,
 // otherwise it builds TLS credentials from the referenced Kubernetes Secret.
+// Default MinVersion is TLS 1.3; set spec.parameters.allowTLS12=true to
+// downgrade for legacy plugin servers (emits a warning log).
 func Credentials(ctx context.Context, c client.Reader, reg kaprov1alpha1.PluginRegistration) (credentials.TransportCredentials, error) {
+	logger := log.FromContext(ctx).WithName("plugin-transport").WithValues("plugin", reg.Name)
 	if reg.Spec.TLSSecretRef == nil {
+		// Loud warning every time we hand back insecure creds — operators
+		// should set a tlsSecretRef in production. Cheap (one log per probe)
+		// and a clear audit signal in logs / log-based alerts.
+		logger.Info("WARNING: plugin transport is INSECURE (no spec.tlsSecretRef configured) — do not use in production")
 		return insecure.NewCredentials(), nil
 	}
 	if c == nil {
@@ -50,7 +65,15 @@ func Credentials(ctx context.Context, c client.Reader, reg kaprov1alpha1.PluginR
 		return nil, fmt.Errorf("get tls secret %s/%s: %w", ref.Namespace, ref.Name, err)
 	}
 
-	config := &tls.Config{MinVersion: tls.VersionTLS12} //nolint:gosec // TLS 1.2 is the Kubernetes baseline for broad plugin compatibility.
+	// Default to TLS 1.3 (modern, no weak ciphers). Legacy plugin servers can
+	// opt back to TLS 1.2 with spec.parameters.allowTLS12=true; we log the
+	// downgrade each time so it shows up on every probe.
+	minVersion := uint16(tls.VersionTLS13)
+	if reg.Spec.Parameters[ParameterAllowTLS12] == "true" {
+		minVersion = tls.VersionTLS12
+		logger.Info("WARNING: TLS 1.2 explicitly allowed via parameters.allowTLS12 — prefer upgrading the plugin server to TLS 1.3")
+	}
+	config := &tls.Config{MinVersion: minVersion} //nolint:gosec // MinVersion is configurable; default is TLS 1.3.
 	if serverName := reg.Spec.Parameters[ParameterTLSServerName]; serverName != "" {
 		config.ServerName = serverName
 	}

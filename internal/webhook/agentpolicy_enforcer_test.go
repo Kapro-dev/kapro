@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -193,25 +194,64 @@ func TestEnforce_TierOverrideTightensConfidence(t *testing.T) {
 	}
 }
 
-func TestEnforce_RateLimitDeniesAtMax(t *testing.T) {
+func TestReserve_RateLimitDeniesAtMax(t *testing.T) {
+	// Rate limits moved from enforceAgentPolicy to reserveAgentPolicySlot in
+	// gate-B2 so the check + counter increment happen in one CAS pass.
 	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha1.AgentPolicyModeAuto, 0.5)
 	policy.Spec.RateLimits = &kaprov1alpha1.AgentRateLimits{MaxApprovalsPerDay: 5}
 	policy.Status.DecisionsToday = 5
-	_, mc, _, target := decisionFixtures()
-	pd := enforceAgentPolicy(policy, target, mc, 0.95, 50)
-	if pd.Allowed {
+	s := decisionTestServer(t, policy)
+	ok, reason, err := s.reserveAgentPolicySlot(httpReq(t).Context(), policy.DeepCopy())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ok {
 		t.Fatal("expected denied — daily limit reached")
+	}
+	if reason == "" {
+		t.Fatal("expected deny reason")
 	}
 }
 
-func TestEnforce_ConcurrentLimitDenies(t *testing.T) {
+func TestReserve_ConcurrentLimitDenies(t *testing.T) {
 	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha1.AgentPolicyModeAuto, 0.5)
 	policy.Spec.RateLimits = &kaprov1alpha1.AgentRateLimits{MaxConcurrent: 3}
 	policy.Status.ActiveDecisions = 3
-	_, mc, _, target := decisionFixtures()
-	pd := enforceAgentPolicy(policy, target, mc, 0.95, 50)
-	if pd.Allowed {
+	s := decisionTestServer(t, policy)
+	ok, reason, err := s.reserveAgentPolicySlot(httpReq(t).Context(), policy.DeepCopy())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ok {
 		t.Fatal("expected denied — concurrent limit reached")
+	}
+	if reason == "" {
+		t.Fatal("expected deny reason")
+	}
+}
+
+func TestReserve_IncrementsCountersOnSuccess(t *testing.T) {
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha1.AgentPolicyModeAuto, 0.5)
+	policy.Spec.RateLimits = &kaprov1alpha1.AgentRateLimits{MaxApprovalsPerDay: 5}
+	s := decisionTestServer(t, policy)
+	local := policy.DeepCopy()
+	ok, _, err := s.reserveAgentPolicySlot(httpReq(t).Context(), local)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected slot allowed under limit")
+	}
+	// Confirm the increment landed in etcd, not just on the local copy.
+	var fresh kaprov1alpha1.AgentPolicy
+	if err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: policy.Name}, &fresh); err != nil {
+		t.Fatalf("get refreshed policy: %v", err)
+	}
+	if fresh.Status.DecisionsToday != 1 {
+		t.Fatalf("DecisionsToday = %d, want 1", fresh.Status.DecisionsToday)
+	}
+	if fresh.Status.ActiveDecisions != 1 {
+		t.Fatalf("ActiveDecisions = %d, want 1", fresh.Status.ActiveDecisions)
 	}
 }
 
@@ -303,5 +343,60 @@ func TestDecide_RecommendModeDoesNotCreateApproval(t *testing.T) {
 	err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: "rel-1-rel-1-canary-cluster-a"}, &approval)
 	if err == nil {
 		t.Error("expected no Approval CR in recommend mode")
+	}
+}
+
+func TestReserve_ResetsDecisionsTodayAcrossUTCDay(t *testing.T) {
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha1.AgentPolicyModeAuto, 0.5)
+	policy.Spec.RateLimits = &kaprov1alpha1.AgentRateLimits{MaxApprovalsPerDay: 5}
+	// Simulate yesterday's decision count at the limit, with LastDecisionAt
+	// from a prior UTC day. The reservation should reset DecisionsToday
+	// to 0 BEFORE checking the limit, so it's allowed.
+	yesterday := time.Now().UTC().AddDate(0, 0, -2).Format(time.RFC3339)
+	policy.Status.DecisionsToday = 5
+	policy.Status.LastDecisionAt = yesterday
+
+	s := decisionTestServer(t, policy)
+	local := policy.DeepCopy()
+	ok, reason, err := s.reserveAgentPolicySlot(httpReq(t).Context(), local)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected allowed after day rollover, denied: %s", reason)
+	}
+
+	var fresh kaprov1alpha1.AgentPolicy
+	_ = s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: policy.Name}, &fresh)
+	if fresh.Status.DecisionsToday != 1 {
+		t.Fatalf("DecisionsToday = %d, want 1 (was reset to 0 then incremented)", fresh.Status.DecisionsToday)
+	}
+}
+
+func TestRelease_DecrementsActiveDecisions(t *testing.T) {
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha1.AgentPolicyModeAuto, 0.5)
+	policy.Status.ActiveDecisions = 3
+	s := decisionTestServer(t, policy)
+	if err := s.releaseAgentPolicySlot(httpReq(t).Context(), policy); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	var fresh kaprov1alpha1.AgentPolicy
+	_ = s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: policy.Name}, &fresh)
+	if fresh.Status.ActiveDecisions != 2 {
+		t.Fatalf("ActiveDecisions = %d, want 2", fresh.Status.ActiveDecisions)
+	}
+}
+
+func TestRelease_FloorsAtZero(t *testing.T) {
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha1.AgentPolicyModeAuto, 0.5)
+	policy.Status.ActiveDecisions = 0
+	s := decisionTestServer(t, policy)
+	if err := s.releaseAgentPolicySlot(httpReq(t).Context(), policy); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	var fresh kaprov1alpha1.AgentPolicy
+	_ = s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: policy.Name}, &fresh)
+	if fresh.Status.ActiveDecisions != 0 {
+		t.Fatalf("ActiveDecisions = %d, want 0 (floored)", fresh.Status.ActiveDecisions)
 	}
 }

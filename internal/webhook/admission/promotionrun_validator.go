@@ -13,12 +13,33 @@ import (
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
 
+// LabelKaproTeam is the ownership label every promotion-affecting CR must
+// carry. Enforced at CREATE by the admission validators per
+// docs/rbac-tenancy.md. Use a constant so adding the same check to a new
+// CRD validator is a one-line change.
+const LabelKaproTeam = "kapro.io/team"
+
+// requireTeamLabel returns a field.Error when the supplied labels map does
+// not contain a non-empty kapro.io/team value. Use on CREATE only — UPDATE
+// flows do not enforce the label change so existing objects keep working
+// when a tenancy policy is introduced mid-life.
+func requireTeamLabel(labels map[string]string) *field.Error {
+	if labels == nil || labels[LabelKaproTeam] == "" {
+		return field.Required(
+			field.NewPath("metadata", "labels").Key(LabelKaproTeam),
+			"is required (multi-tenancy ownership label; see docs/rbac-tenancy.md)",
+		)
+	}
+	return nil
+}
+
 // PromotionRunValidator validates PromotionRun objects on CREATE and UPDATE.
 //
 // Rules enforced:
 //  1. spec.version or spec.versions must be non-empty.
 //  2. spec.promotionplans must have at least one promotionplan reference.
 //  3. Each PromotionPlanRef must have a non-empty name and promotionplan.
+//  4. metadata.labels[kapro.io/team] must be set on CREATE (gate sprint).
 type PromotionRunValidator struct {
 	decoder admission.Decoder
 }
@@ -36,6 +57,11 @@ func (v *PromotionRunValidator) Handle(_ context.Context, req admission.Request)
 	}
 	if err := validatePromotionRun(&promotionrun); err != nil {
 		return admission.Denied(err.Error())
+	}
+	if req.Operation == admissionv1.Create {
+		if fe := requireTeamLabel(promotionrun.Labels); fe != nil {
+			return admission.Denied(fe.Error())
+		}
 	}
 	if req.Operation == admissionv1.Update {
 		var old kaprov1alpha1.PromotionRun

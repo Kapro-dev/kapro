@@ -42,6 +42,16 @@ const (
 	maxDecisionTraceHistory = 10
 	defaultDecisionAPILimit = 100
 	maxDecisionAPILimit     = 500
+
+	// maxDecisionReasoningLen bounds the free-text Reasoning field on a
+	// DecisionRequest after JSON unmarshal. 8 KiB is enough for a thorough
+	// rationale; pathological inputs packed into the 64 KiB body limit are
+	// rejected up front (webhook hardening, gate sprint).
+	maxDecisionReasoningLen = 8 * 1024
+
+	// maxIdempotencyKeyLen bounds the IdempotencyKey field. Real keys are
+	// short ULIDs / UUIDs (< 64 bytes); 256 leaves headroom without abuse.
+	maxIdempotencyKeyLen = 256
 	// Phase is not a selectable field for every Kapro API. Bound sparse phase
 	// scans to a multiple of the requested response limit and return a truncated
 	// partial view when the scan budget is exhausted.
@@ -677,6 +687,18 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 		http.Error(w, "decision must be Approve, Reject, or Defer", http.StatusBadRequest)
 		return
 	}
+	// Bound the per-field string lengths after JSON unmarshal so a 64 KiB
+	// body cannot be packed into a single Reasoning or IdempotencyKey
+	// string and slow down policy enforcement, logging, or status writes
+	// downstream (webhook hardening).
+	if len(req.Reasoning) > maxDecisionReasoningLen {
+		http.Error(w, fmt.Sprintf("reasoning exceeds %d bytes", maxDecisionReasoningLen), http.StatusRequestEntityTooLarge)
+		return
+	}
+	if len(req.IdempotencyKey) > maxIdempotencyKeyLen {
+		http.Error(w, fmt.Sprintf("idempotencyKey exceeds %d bytes", maxIdempotencyKeyLen), http.StatusRequestEntityTooLarge)
+		return
+	}
 
 	// Look up promotionrun and target.
 	var promotionrun kaprov1alpha1.PromotionRun
@@ -776,12 +798,58 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 			effectiveDecision = "PendingHumanConfirm"
 		}
 	}
-	if req.Decision == "Approve" && effectiveDecision == "Approve" {
+
+	// Security (gate-B1): any "Approve" submission requires create-approvals
+	// permission even when AgentPolicy downgrades to Recommended /
+	// PendingHumanConfirm. The intent of the user matters, not the
+	// post-policy effective form.
+	//
+	// Run this check BEFORE reserveAgentPolicySlot (review fix gate-v6.1):
+	// a rejected SAR should NOT consume a rate-limit slot.
+	if req.Decision == "Approve" {
 		if err := s.authorizeDecisionUser(ctx, *user, kaproAttrs("create", "approvals", "")); err != nil {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 	}
+
+	// Reserve a rate-limit slot atomically (gate-B2). This both checks the
+	// policy's rate-limit counters and increments them in one CAS pass so N
+	// parallel requests cannot all observe the same stale counter and
+	// overshoot the configured cap. Runs AFTER all authorization checks
+	// (review fix gate-v6.1) so rejected requests don't consume capacity.
+	//
+	// ActiveDecisions is decremented in a deferred release on every
+	// non-2xx exit between here and the final 200; DecisionsToday is
+	// intentionally NOT released since it's a daily quota (rolls over
+	// in reserveAgentPolicySlot when LastDecisionAt is from a prior UTC day).
+	released := false
+	if policy != nil {
+		ok, denyReason, resErr := s.reserveAgentPolicySlot(ctx, policy)
+		if resErr != nil {
+			l.Error(resErr, "AgentPolicy rate-limit reservation failed")
+			http.Error(w, "internal error reserving agent policy slot", http.StatusInternalServerError)
+			return
+		}
+		if !ok {
+			writeJSON(w, http.StatusTooManyRequests, DecisionResponse{
+				Accepted: false,
+				Reason:   fmt.Sprintf("AgentPolicy denied: %s", denyReason),
+			})
+			return
+		}
+		// Defer release: any return after this point WITHOUT a successful
+		// decision write must decrement ActiveDecisions. Set released=true
+		// once the happy path commits.
+		defer func() {
+			if !released {
+				if relErr := s.releaseAgentPolicySlot(ctx, policy); relErr != nil {
+					l.Error(relErr, "AgentPolicy slot release failed; ActiveDecisions may leak")
+				}
+			}
+		}()
+	}
+	_ = released // assigned in happy path below
 
 	entry := kaprov1alpha1.DecisionEntry{
 		DecisionID:        req.IdempotencyKey,
@@ -855,10 +923,13 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 		}
 	}
 
-	// Update AgentPolicy status counters.
-	if policy != nil {
-		s.updateAgentPolicyStatus(ctx, policy)
-	}
+	// Decision recorded successfully — mark the slot reservation as
+	// committed so the deferred release does NOT decrement
+	// ActiveDecisions. The slot is decremented later by the
+	// Approval/decision-completion controller (TODO v0.7: wire this
+	// release path) or by the daily reset; for now we just retain the
+	// in-flight count for the duration of the active rollout.
+	released = true
 
 	writeJSON(w, http.StatusOK, DecisionResponse{
 		Accepted:          true,

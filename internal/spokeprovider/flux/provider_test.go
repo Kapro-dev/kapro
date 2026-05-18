@@ -306,3 +306,19 @@ func unstructuredSet(obj map[string]any, value any, path ...string) error {
 	}
 	return nil
 }
+
+func TestOCIRepositoryReadyUnknownIsPulling_RegressionGateReview(t *testing.T) {
+	// Regression for gate review fix: a matched revision with no Ready
+	// condition (or Ready=Unknown) is NOT enough to declare Converged —
+	// Flux may still be reconciling.
+	repo := newOCIRepo("flux-system", "bundle", "v1", "sha256:abcd", "")
+	p := NewProvider(newFakeClient(repo))
+	res := p.Reconcile(context.Background(), spokeprovider.ReconcileRequest{
+		Cluster:        &kaprov1alpha1.FleetCluster{},
+		DesiredVersion: "v1",
+		Parameters:     map[string]string{paramOCIRepositoryName: "bundle"},
+	})
+	if res.Phase != kaprov1alpha1.DeliveryPhasePulling {
+		t.Fatalf("Phase = %q, want Pulling (Ready not yet True); converged-on-Unknown was the bug being fixed", res.Phase)
+	}
+}

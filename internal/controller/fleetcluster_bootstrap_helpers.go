@@ -266,6 +266,11 @@ func (r *FleetClusterBootstrapReconciler) ensureBootstrapProvisioned(ctx context
 		return ctrl.Result{}, fmt.Errorf("patch IssuedBootstrapKubeconfig: %w", err)
 	}
 
+	// Intentional: log only the Secret name + expiration metadata. NEVER log
+	// the kubeconfig payload, the TokenRequest token, or the CA bundle —
+	// they are credentials. The Secret is per-cluster RBAC-scoped (see
+	// ensureClusterRBAC); whoever can read this log line can already list
+	// the Secret if they have the right RBAC.
 	log.Info("bootstrap kubeconfig issued", "secret", secretName, "expires", tok.Status.ExpirationTimestamp)
 	if r.Recorder != nil {
 		r.Recorder.Eventf(fc, corev1.EventTypeNormal, "BootstrapIssued",

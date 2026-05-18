@@ -114,9 +114,49 @@ kind: ClusterRole
 metadata:
   name: kapro-auditor
 rules:
+  # Explicit allow-list (no wildcard) so the auditor cannot infer
+  # AgentPolicy decision rate / cooldown state from counters in
+  # `agentpolicies/status` (DecisionsToday, ActiveDecisions,
+  # LastDecisionAt). Production audit treats those counters as a
+  # timing-inference side channel; auditors get the policy spec but not
+  # the live decision stream. Bind kapro-platform-admin (which DOES
+  # include agentpolicies/status) to security incident response
+  # principals instead.
   - apiGroups: ["kapro.io"]
-    resources: ["*"]
+    resources:
+      - agentpolicies
+      - approvals
+      - backendprofiles
+      - fleetclusters
+      - fleetclustertemplates
+      - kaproes
+      - notificationpolicies
+      - notificationproviders
+      - pluginregistrations
+      - promotionplans
+      - promotionpolicies
+      - promotionruns
+      - promotions
+      - promotionsources
+      - promotiontargets
+      - promotiontriggers
     verbs: ["get", "list", "watch"]
+  - apiGroups: ["kapro.io"]
+    resources:
+      - approvals/status
+      - backendprofiles/status
+      - fleetclusters/status
+      - fleetclustertemplates/status
+      - kaproes/status
+      - pluginregistrations/status
+      - promotionpolicies/status
+      - promotionruns/status
+      - promotions/status
+      - promotiontargets/status
+      - promotiontriggers/status
+    verbs: ["get", "list", "watch"]
+  # Intentionally OMITTED from the auditor:
+  #   - agentpolicies/status   (DecisionsToday / cooldown timing leak)
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["get", "list", "watch"]
