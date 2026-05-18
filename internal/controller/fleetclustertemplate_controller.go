@@ -10,6 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -69,8 +70,16 @@ func (r *FleetClusterTemplateReconciler) Reconcile(ctx context.Context, req ctrl
 	if err := r.Get(ctx, req.NamespacedName, &tmpl); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	// Capture the base for a strategic-merge status patch at the end.
+	// Mutate tmpl.Status freely throughout reconcile — only the diff against
+	// statusBase is shipped to the apiserver. Matches BackendProfileReconciler.
+	statusBase := tmpl.DeepCopy()
 
 	requeue := r.intervalOrDefault(&tmpl)
+
+	// SourceKind is set from spec FIRST so it shows up in printcolumns even
+	// when the template is suspended or its source branch is unimplemented.
+	tmpl.Status.SourceKind = sourceKindFromSpec(tmpl.Spec.Source)
 
 	if tmpl.Spec.Suspend {
 		// Suspended is intentional pause — Ready stays False but Stalled
@@ -83,29 +92,22 @@ func (r *FleetClusterTemplateReconciler) Reconcile(ctx context.Context, req ctrl
 			ObservedGeneration: tmpl.Generation,
 		})
 		apimeta.RemoveStatusCondition(&tmpl.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
-		if err := r.patchStatus(ctx, &tmpl); err != nil {
+		if err := r.patchStatus(ctx, statusBase, &tmpl); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{RequeueAfter: requeue}, nil
 	}
-
-	// SourceKind is set from spec first so it shows up in printcolumns even
-	// when the source branch is unimplemented and we never construct a
-	// Discoverer.
-	tmpl.Status.SourceKind = sourceKindFromSpec(tmpl.Spec.Source)
 
 	disco, err := r.factory()(tmpl.Spec.Source)
 	if err != nil {
 		if provider.IsSourceNotImplemented(err) {
 			r.setReady(&tmpl, metav1.ConditionFalse, "SourceNotImplemented", err.Error())
 			r.eventf(&tmpl, "Warning", "SourceNotImplemented", "%v", err)
-			_ = r.patchStatus(ctx, &tmpl)
 			// Don't requeue tight; operator must edit spec.source.
-			return ctrl.Result{}, nil
+			return ctrl.Result{}, r.patchStatus(ctx, statusBase, &tmpl)
 		}
 		r.setReady(&tmpl, metav1.ConditionFalse, "InvalidSource", err.Error())
-		_ = r.patchStatus(ctx, &tmpl)
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, r.patchStatus(ctx, statusBase, &tmpl)
 	}
 	tmpl.Status.SourceKind = disco.SourceKind()
 
@@ -113,7 +115,9 @@ func (r *FleetClusterTemplateReconciler) Reconcile(ctx context.Context, req ctrl
 	if err != nil {
 		r.setReady(&tmpl, metav1.ConditionFalse, "DiscoveryError", err.Error())
 		r.eventf(&tmpl, "Warning", "DiscoveryError", "%v", err)
-		_ = r.patchStatus(ctx, &tmpl)
+		if perr := r.patchStatus(ctx, statusBase, &tmpl); perr != nil {
+			logger.Error(perr, "patch status after DiscoveryError")
+		}
 		return ctrl.Result{RequeueAfter: requeue}, fmt.Errorf("discover clusters: %w", err)
 	}
 	tmpl.Status.DiscoveredClusters = int32(len(discovered))
@@ -121,8 +125,7 @@ func (r *FleetClusterTemplateReconciler) Reconcile(ctx context.Context, req ctrl
 	sel, err := labelSelectorOrAll(tmpl.Spec.Selector)
 	if err != nil {
 		r.setReady(&tmpl, metav1.ConditionFalse, "InvalidSelector", err.Error())
-		_ = r.patchStatus(ctx, &tmpl)
-		return ctrl.Result{RequeueAfter: requeue}, nil
+		return ctrl.Result{RequeueAfter: requeue}, r.patchStatus(ctx, statusBase, &tmpl)
 	}
 
 	providerSpec := disco.Provider()
@@ -170,7 +173,7 @@ func (r *FleetClusterTemplateReconciler) Reconcile(ctx context.Context, req ctrl
 				len(discovered), imported, disco.SourceKind()))
 	}
 
-	if err := r.patchStatus(ctx, &tmpl); err != nil {
+	if err := r.patchStatus(ctx, statusBase, &tmpl); err != nil {
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{RequeueAfter: requeue}, nil
@@ -341,20 +344,14 @@ func (r *FleetClusterTemplateReconciler) pruneOrphans(
 }
 
 // sanitiseClusterName returns the discovered cluster name unchanged if it is
-// a valid DNS-1123 label, otherwise empty. Sources that report names from
-// cloud APIs already enforce DNS-1123 — this is a belt-and-braces check.
+// a valid DNS-1123 subdomain (the Kubernetes object-name rule), otherwise
+// empty. Uses the apimachinery helper so we catch the same cases the
+// apiserver would reject — leading/trailing '-' or '.', invalid characters,
+// length > 253. Cloud sources typically already enforce this, but a
+// hand-typed StaticFleetSource entry might not.
 func sanitiseClusterName(name string) string {
-	if name == "" || len(name) > 253 {
+	if errs := validation.IsDNS1123Subdomain(name); len(errs) > 0 {
 		return ""
-	}
-	for _, ch := range name {
-		switch {
-		case ch >= 'a' && ch <= 'z':
-		case ch >= '0' && ch <= '9':
-		case ch == '-' || ch == '.':
-		default:
-			return ""
-		}
 	}
 	return name
 }
@@ -385,10 +382,14 @@ func (r *FleetClusterTemplateReconciler) setReady(tmpl *kaprov1alpha1.FleetClust
 	})
 }
 
-func (r *FleetClusterTemplateReconciler) patchStatus(ctx context.Context, tmpl *kaprov1alpha1.FleetClusterTemplate) error {
+// patchStatus ships a strategic-merge status patch derived from the
+// base+mutated pair. Using MergeFrom+Patch (rather than Status().Update) is
+// the convention in the codebase (see BackendProfileReconciler) — it's
+// less conflict-prone and only the diff is transmitted.
+func (r *FleetClusterTemplateReconciler) patchStatus(ctx context.Context, base, tmpl *kaprov1alpha1.FleetClusterTemplate) error {
 	tmpl.Status.ObservedGeneration = tmpl.Generation
-	if err := r.Status().Update(ctx, tmpl); err != nil {
-		return fmt.Errorf("update FleetClusterTemplate status: %w", err)
+	if err := r.Status().Patch(ctx, tmpl, client.MergeFrom(base)); err != nil {
+		return fmt.Errorf("patch FleetClusterTemplate status: %w", err)
 	}
 	return nil
 }

@@ -32,13 +32,27 @@ func (p *GCPFleetProvider) GenerateKubeConfig(ctx context.Context, membershipNam
 
 	// Look up the membership location so we can construct the Connect
 	// Gateway URL. The membership name (not the underlying GKE cluster name)
-	// is what Connect Gateway addresses by.
+	// is what Connect Gateway addresses by. Callers that already have the
+	// location (e.g. just iterated ListClusters results) should use
+	// GenerateKubeConfigAt directly to skip the N+1 lookup.
 	loc, err := p.getMembershipLocation(ctx, membershipName)
 	if err != nil {
 		return nil, err
 	}
 
-	return BuildConnectGatewayKubeconfig(ctx, p.Project, loc, membershipName, nil)
+	return p.GenerateKubeConfigAt(ctx, membershipName, loc)
+}
+
+// GenerateKubeConfigAt builds a kubeconfig for a known membership without
+// re-listing the Fleet to find its location. Callers that already have the
+// location from ListClusters or from operator config should prefer this
+// over GenerateKubeConfig to avoid N+1 Fleet API calls when iterating many
+// memberships.
+func (p *GCPFleetProvider) GenerateKubeConfigAt(ctx context.Context, membershipName, location string) ([]byte, error) {
+	if p.Project == "" {
+		return nil, fmt.Errorf("GCP project is required for gcp-fleet provider")
+	}
+	return BuildConnectGatewayKubeconfig(ctx, p.Project, location, membershipName, nil)
 }
 
 // ListClusters discovers all Fleet memberships in the project.

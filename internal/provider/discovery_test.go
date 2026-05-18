@@ -2,6 +2,7 @@ package provider
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
@@ -65,5 +66,21 @@ func TestNewDiscoverer_NoBranch(t *testing.T) {
 	}
 	if IsSourceNotImplemented(err) {
 		t.Errorf("no-branch should not be reported as not-implemented")
+	}
+}
+
+func TestNewDiscoverer_MultipleBranchesRejected(t *testing.T) {
+	_, err := NewDiscoverer(kaprov1alpha1.FleetClusterTemplateSource{
+		GCP: &kaprov1alpha1.GCPFleetSource{Project: "p1"},
+		AWS: &kaprov1alpha1.AWSFleetSource{Region: "eu-west-1"},
+	})
+	if err == nil {
+		t.Fatal("expected error when multiple source branches set")
+	}
+	if IsSourceNotImplemented(err) {
+		t.Errorf("multi-branch should not be reported as not-implemented")
+	}
+	if !strings.Contains(err.Error(), "gcp") || !strings.Contains(err.Error(), "aws") {
+		t.Errorf("error message %q should name conflicting branches", err.Error())
 	}
 }

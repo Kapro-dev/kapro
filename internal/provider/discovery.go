@@ -50,24 +50,55 @@ func IsSourceNotImplemented(err error) bool {
 }
 
 // NewDiscoverer dispatches a FleetClusterTemplate source to its Discoverer.
-// Exactly one branch must be set; mis-set combinations are rejected by the
-// admission webhook before this code runs.
+// Exactly one branch must be set: zero is a config error, multiple is
+// ambiguous (the spec example shows oneOf semantics). An admission webhook
+// will reject these at admission time once wired (PR-7+); this function is
+// defensive so the reconciler never imports from an unintended source even
+// if a webhook bypass exists.
 func NewDiscoverer(src kaprov1alpha1.FleetClusterTemplateSource) (Discoverer, error) {
-	switch {
-	case src.GCP != nil:
+	var set []string
+	if src.GCP != nil {
+		set = append(set, "gcp")
+	}
+	if src.AWS != nil {
+		set = append(set, "aws")
+	}
+	if src.Azure != nil {
+		set = append(set, "azure")
+	}
+	if src.RHACM != nil {
+		set = append(set, "rhacm")
+	}
+	if src.CAPI != nil {
+		set = append(set, "capi")
+	}
+	if src.Static != nil {
+		set = append(set, "static")
+	}
+
+	switch len(set) {
+	case 0:
+		return nil, errors.New("no source branch set; one of gcp/aws/azure/rhacm/capi/static is required")
+	case 1: // dispatch below
+	default:
+		return nil, fmt.Errorf("exactly one source branch must be set; got %d (%v)", len(set), set)
+	}
+
+	switch set[0] {
+	case "gcp":
 		return &gcpFleetDiscoverer{project: src.GCP.Project}, nil
-	case src.AWS != nil:
+	case "aws":
 		return nil, ErrSourceNotImplemented{Branch: "aws"}
-	case src.Azure != nil:
+	case "azure":
 		return nil, ErrSourceNotImplemented{Branch: "azure"}
-	case src.RHACM != nil:
+	case "rhacm":
 		return nil, ErrSourceNotImplemented{Branch: "rhacm"}
-	case src.CAPI != nil:
+	case "capi":
 		return nil, ErrSourceNotImplemented{Branch: "capi"}
-	case src.Static != nil:
+	case "static":
 		return nil, ErrSourceNotImplemented{Branch: "static"}
 	default:
-		return nil, errors.New("no source branch set; one of gcp/aws/azure/rhacm/capi/static is required")
+		return nil, fmt.Errorf("unknown source branch %q", set[0])
 	}
 }
 
