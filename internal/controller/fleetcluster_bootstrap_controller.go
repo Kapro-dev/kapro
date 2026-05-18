@@ -393,55 +393,19 @@ func (r *FleetClusterBootstrapReconciler) processCSRsForCluster(ctx context.Cont
 		if isCSRApproved(csr) || isCSRDenied(csr) {
 			continue
 		}
-		switch r.classifyCSR(csr, fc) {
-		case csrKindBootstrap:
-			if err := r.handleBootstrapCSR(ctx, fc, csr); err != nil {
-				return ctrl.Result{}, err
-			}
-		case csrKindRenewal:
-			if err := r.handleRenewalCSR(ctx, fc, csr); err != nil {
-				return ctrl.Result{}, err
-			}
-		default:
-			continue
+		if err := r.handleBootstrapCSR(ctx, fc, csr); err != nil {
+			return ctrl.Result{}, err
 		}
 		return ctrl.Result{RequeueAfter: time.Nanosecond}, nil
 	}
 	return ctrl.Result{}, nil
 }
 
-// handleRenewalCSR approves a cert-rotation request from an already-registered
-// cluster. The K8s apiserver authenticated the requester via x509 client cert,
-// and the per-cluster ClusterRoleBinding (issued at first bootstrap) confirms
-// the request came from THIS cluster's identity. No token check needed.
-//
-// If the FleetCluster is suspended we deny — operators may have intentionally
-// quarantined the cluster and renewal would let it keep talking to the hub.
-func (r *FleetClusterBootstrapReconciler) handleRenewalCSR(
-	ctx context.Context,
-	fc *kaprov1alpha1.FleetCluster,
-	csr *certificatesv1.CertificateSigningRequest,
-) error {
-	log := log.FromContext(ctx).WithValues("fleetcluster", fc.Name, "csr", csr.Name)
-	if fc.Spec.Suspend {
-		return r.denyCSR(ctx, csr, "FleetCluster is suspended; renewal denied")
-	}
-	if isCSRApproved(csr) {
-		return nil
-	}
-	if err := r.approveCSR(ctx, csr); err != nil {
-		return fmt.Errorf("approve renewal CSR: %w", err)
-	}
-	log.Info("renewal CSR approved")
-	if r.Recorder != nil {
-		r.Recorder.Eventf(fc, corev1.EventTypeNormal, "CertRenewed", "Renewal CSR %s approved", csr.Name)
-	}
-	return nil
-}
-
-// matchesFleetCluster returns true when the CSR is a Kapro CSR — bootstrap
-// or renewal — for THIS FleetCluster. Distinguishing the two is done in
-// classifyCSR below.
+// matchesFleetCluster returns true when the CSR is a Kapro bootstrap CSR for
+// THIS FleetCluster. Bootstrap-only — renewal CSRs (Username =
+// "kapro-cluster:<name>" instead of the bootstrap SA) are out of scope for
+// PR-2 since no spoke binary exists yet to submit them. Renewal handling
+// lands in PR-3 alongside the spoke binary.
 func (r *FleetClusterBootstrapReconciler) matchesFleetCluster(csr *certificatesv1.CertificateSigningRequest, fc *kaprov1alpha1.FleetCluster, expectedCN string) bool {
 	if !isKaproCSR(csr) {
 		return false
@@ -453,47 +417,8 @@ func (r *FleetClusterBootstrapReconciler) matchesFleetCluster(csr *certificatesv
 	if req.Subject.CommonName != expectedCN {
 		return false
 	}
-	return r.classifyCSR(csr, fc) != csrKindUnknown
-}
-
-// csrKind discriminates the two CSR shapes the hub accepts.
-type csrKind int
-
-const (
-	csrKindUnknown csrKind = iota
-	// csrKindBootstrap — Username is the per-cluster bootstrap SA. Must
-	// validate against spec.bootstrap (unused, not expired, SA name matches
-	// the cluster). One-time use; consumes the bootstrap slot.
-	csrKindBootstrap
-	// csrKindRenewal — Username is the cluster's existing cert identity
-	// (system:kapro:cluster-controllers / kapro-cluster:<name>). No token
-	// check: the existing cert is proof of identity. The K8s authenticator
-	// already verified it before the CSR Create reached us. We just confirm
-	// the FleetCluster still exists and isn't suspended.
-	csrKindRenewal
-)
-
-// classifyCSR returns whether the CSR is a bootstrap or a renewal for this
-// FleetCluster, or unknown (ignored).
-func (r *FleetClusterBootstrapReconciler) classifyCSR(csr *certificatesv1.CertificateSigningRequest, fc *kaprov1alpha1.FleetCluster) csrKind {
-	expectedBootstrapSA := fmt.Sprintf("system:serviceaccount:%s:%s", r.podNS(), fmt.Sprintf(bootstrapSAFormat, fc.Name))
-	if csr.Spec.Username == expectedBootstrapSA {
-		return csrKindBootstrap
-	}
-	// Renewal: Username == the cluster's existing cert identity. K8s
-	// formats x509-authenticated usernames as exactly the cert CN.
-	if csr.Spec.Username == csrCNPrefix+fc.Name {
-		// Defense-in-depth: require the requester to also be in the
-		// cluster-controllers group. The hub apiserver populates Groups
-		// from the cert Organization, which our per-cluster Binding only
-		// grants to certs we previously issued.
-		for _, g := range csr.Spec.Groups {
-			if g == csrOrganization {
-				return csrKindRenewal
-			}
-		}
-	}
-	return csrKindUnknown
+	expectedSA := fmt.Sprintf("system:serviceaccount:%s:%s", r.podNS(), fmt.Sprintf(bootstrapSAFormat, fc.Name))
+	return csr.Spec.Username == expectedSA
 }
 
 // handleBootstrapCSR validates the bootstrap CSR, marks the slot used, ensures
