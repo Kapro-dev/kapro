@@ -797,13 +797,34 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 		if pd.RequireHumanCosign && req.Decision == "Approve" {
 			effectiveDecision = "PendingHumanConfirm"
 		}
+	}
 
-		// Reserve a rate-limit slot atomically (gate-B2). This both checks
-		// the policy's rate-limit counters and increments them in one CAS
-		// pass so N parallel requests cannot all observe the same stale
-		// counter and overshoot the configured cap. We reserve here, after
-		// the policy validation has passed but before any decision is
-		// recorded, so a denied reservation does not pollute DecisionTrace.
+	// Security (gate-B1): any "Approve" submission requires create-approvals
+	// permission even when AgentPolicy downgrades to Recommended /
+	// PendingHumanConfirm. The intent of the user matters, not the
+	// post-policy effective form.
+	//
+	// Run this check BEFORE reserveAgentPolicySlot (review fix gate-v6.1):
+	// a rejected SAR should NOT consume a rate-limit slot.
+	if req.Decision == "Approve" {
+		if err := s.authorizeDecisionUser(ctx, *user, kaproAttrs("create", "approvals", "")); err != nil {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+	}
+
+	// Reserve a rate-limit slot atomically (gate-B2). This both checks the
+	// policy's rate-limit counters and increments them in one CAS pass so N
+	// parallel requests cannot all observe the same stale counter and
+	// overshoot the configured cap. Runs AFTER all authorization checks
+	// (review fix gate-v6.1) so rejected requests don't consume capacity.
+	//
+	// ActiveDecisions is decremented in a deferred release on every
+	// non-2xx exit between here and the final 200; DecisionsToday is
+	// intentionally NOT released since it's a daily quota (rolls over
+	// in reserveAgentPolicySlot when LastDecisionAt is from a prior UTC day).
+	released := false
+	if policy != nil {
 		ok, denyReason, resErr := s.reserveAgentPolicySlot(ctx, policy)
 		if resErr != nil {
 			l.Error(resErr, "AgentPolicy rate-limit reservation failed")
@@ -817,21 +838,18 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 			})
 			return
 		}
+		// Defer release: any return after this point WITHOUT a successful
+		// decision write must decrement ActiveDecisions. Set released=true
+		// once the happy path commits.
+		defer func() {
+			if !released {
+				if relErr := s.releaseAgentPolicySlot(ctx, policy); relErr != nil {
+					l.Error(relErr, "AgentPolicy slot release failed; ActiveDecisions may leak")
+				}
+			}
+		}()
 	}
-	// Security (gate-B1): any "Approve" submission requires create-approvals
-	// permission even when AgentPolicy downgrades to Recommended /
-	// PendingHumanConfirm. Previously the SAR was only run when BOTH
-	// req.Decision AND effectiveDecision equaled "Approve", which let an
-	// agent with patch-only access set up a Recommended decision that a
-	// human could later cosign into an Approval — bypassing the agent's
-	// own permission boundary. The intent of the user matters, not the
-	// post-policy effective form.
-	if req.Decision == "Approve" {
-		if err := s.authorizeDecisionUser(ctx, *user, kaproAttrs("create", "approvals", "")); err != nil {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-	}
+	_ = released // assigned in happy path below
 
 	entry := kaprov1alpha1.DecisionEntry{
 		DecisionID:        req.IdempotencyKey,
@@ -905,8 +923,13 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 		}
 	}
 
-	// Counter increment happened up front in reserveAgentPolicySlot (gate-B2).
-	// Nothing to do here.
+	// Decision recorded successfully — mark the slot reservation as
+	// committed so the deferred release does NOT decrement
+	// ActiveDecisions. The slot is decremented later by the
+	// Approval/decision-completion controller (TODO v0.7: wire this
+	// release path) or by the daily reset; for now we just retain the
+	// in-flight count for the duration of the active rollout.
+	released = true
 
 	writeJSON(w, http.StatusOK, DecisionResponse{
 		Accepted:          true,

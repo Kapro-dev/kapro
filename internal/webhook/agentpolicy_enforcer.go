@@ -265,6 +265,15 @@ func isWithinTimeWindows(windows []kaprov1alpha1.AgentTimeWindow) bool {
 	return true // only deny windows, none blocked
 }
 
+// sameUTCDay returns true when two times fall on the same UTC calendar day.
+// Used by reserveAgentPolicySlot to roll DecisionsToday over at midnight UTC
+// without needing a separate timer or controller.
+func sameUTCDay(a, b time.Time) bool {
+	aU := a.UTC()
+	bU := b.UTC()
+	return aU.Year() == bU.Year() && aU.Month() == bU.Month() && aU.Day() == bU.Day()
+}
+
 // reserveAgentPolicySlot atomically validates rate limits and increments the
 // AgentPolicy decision counters in one Status().Update() pass — using
 // resourceVersion as the CAS predicate to serialise concurrent decision
@@ -277,6 +286,11 @@ func isWithinTimeWindows(windows []kaprov1alpha1.AgentTimeWindow) bool {
 // and the rate limit was advisory only. This function moves the check and
 // the increment into the same optimistic-concurrency-protected write so a
 // genuine cap is enforced.
+//
+// Day rollover (review fix gate-v6.1): DecisionsToday is reset to 0 when
+// the recorded LastDecisionAt falls on a prior UTC day. This is computed
+// inside the CAS loop so concurrent first-request-of-day racers all observe
+// the reset coherently.
 //
 // Retries on conflict (typical at high contention); gives up after maxRetries
 // and returns the conflict so the caller can fail the request rather than
@@ -297,7 +311,20 @@ func (s *Server) reserveAgentPolicySlot(ctx context.Context, policy *kaprov1alph
 			*policy = fresh
 		}
 
-		// Validate against rate limits using the freshly-observed counters.
+		// Day-rollover reset (review fix gate-v6.1): if LastDecisionAt is
+		// from a prior UTC day, zero DecisionsToday before rate-limit
+		// validation. Without this, MaxApprovalsPerDay becomes a lifetime
+		// cap once enough requests accumulate.
+		if policy.Status.LastDecisionAt != "" {
+			if last, parseErr := time.Parse(time.RFC3339, policy.Status.LastDecisionAt); parseErr == nil {
+				if !sameUTCDay(last, now) {
+					policy.Status.DecisionsToday = 0
+				}
+			}
+		}
+
+		// Validate against rate limits using the freshly-observed (and
+		// possibly day-reset) counters.
 		if policy.Spec.RateLimits != nil {
 			rl := policy.Spec.RateLimits
 			if rl.MaxApprovalsPerDay > 0 && policy.Status.DecisionsToday >= rl.MaxApprovalsPerDay {
@@ -336,4 +363,47 @@ func (s *Server) reserveAgentPolicySlot(ctx context.Context, policy *kaprov1alph
 		return true, "", nil
 	}
 	return false, "", fmt.Errorf("AgentPolicy %s rate-limit reservation lost %d races: %w", policy.Name, maxRetries, lastConflict)
+}
+
+// releaseAgentPolicySlot decrements ActiveDecisions when an in-flight
+// reservation will NOT lead to a recorded decision (review fix gate-v6.1).
+// Called by the deferred-release path in handleDecide on any non-2xx exit
+// after reserveAgentPolicySlot succeeded.
+//
+// DecisionsToday is intentionally NOT decremented — it's a daily quota
+// counted against the request RATE, not in-flight load. If the decision
+// failed at the post-reserve gate (SAR, status patch, Approval create),
+// the agent still tried; counting it against the daily budget is
+// defensible and avoids unbounded retry loops. Day rollover in
+// reserveAgentPolicySlot zeroes it at midnight UTC anyway.
+//
+// Floor at zero so a buggy double-release can't drive the counter negative
+// (apiserver would accept a negative int32 but consumers would be confused).
+// Retries on conflict up to maxRetries; non-conflict errors surface so the
+// caller can log them — leaking one slot is acceptable, swallowing the
+// underlying error is not.
+func (s *Server) releaseAgentPolicySlot(ctx context.Context, policy *kaprov1alpha1.AgentPolicy) error {
+	const maxRetries = 5
+	key := client.ObjectKey{Namespace: policy.Namespace, Name: policy.Name}
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		var fresh kaprov1alpha1.AgentPolicy
+		if err := s.Client.Get(ctx, key, &fresh); err != nil {
+			return fmt.Errorf("refetch AgentPolicy %s for release: %w", policy.Name, err)
+		}
+		if fresh.Status.ActiveDecisions <= 0 {
+			// Nothing to release; treat as success rather than driving
+			// the counter negative.
+			return nil
+		}
+		fresh.Status.ActiveDecisions--
+		if err := s.Client.Status().Update(ctx, &fresh); err != nil {
+			if apierrors.IsConflict(err) {
+				continue
+			}
+			return fmt.Errorf("update AgentPolicy %s for release: %w", policy.Name, err)
+		}
+		return nil
+	}
+	return fmt.Errorf("AgentPolicy %s slot release lost %d races", policy.Name, maxRetries)
 }

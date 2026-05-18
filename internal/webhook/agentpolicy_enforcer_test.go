@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -342,5 +343,60 @@ func TestDecide_RecommendModeDoesNotCreateApproval(t *testing.T) {
 	err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: "rel-1-rel-1-canary-cluster-a"}, &approval)
 	if err == nil {
 		t.Error("expected no Approval CR in recommend mode")
+	}
+}
+
+func TestReserve_ResetsDecisionsTodayAcrossUTCDay(t *testing.T) {
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha1.AgentPolicyModeAuto, 0.5)
+	policy.Spec.RateLimits = &kaprov1alpha1.AgentRateLimits{MaxApprovalsPerDay: 5}
+	// Simulate yesterday's decision count at the limit, with LastDecisionAt
+	// from a prior UTC day. The reservation should reset DecisionsToday
+	// to 0 BEFORE checking the limit, so it's allowed.
+	yesterday := time.Now().UTC().AddDate(0, 0, -2).Format(time.RFC3339)
+	policy.Status.DecisionsToday = 5
+	policy.Status.LastDecisionAt = yesterday
+
+	s := decisionTestServer(t, policy)
+	local := policy.DeepCopy()
+	ok, reason, err := s.reserveAgentPolicySlot(httpReq(t).Context(), local)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected allowed after day rollover, denied: %s", reason)
+	}
+
+	var fresh kaprov1alpha1.AgentPolicy
+	_ = s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: policy.Name}, &fresh)
+	if fresh.Status.DecisionsToday != 1 {
+		t.Fatalf("DecisionsToday = %d, want 1 (was reset to 0 then incremented)", fresh.Status.DecisionsToday)
+	}
+}
+
+func TestRelease_DecrementsActiveDecisions(t *testing.T) {
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha1.AgentPolicyModeAuto, 0.5)
+	policy.Status.ActiveDecisions = 3
+	s := decisionTestServer(t, policy)
+	if err := s.releaseAgentPolicySlot(httpReq(t).Context(), policy); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	var fresh kaprov1alpha1.AgentPolicy
+	_ = s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: policy.Name}, &fresh)
+	if fresh.Status.ActiveDecisions != 2 {
+		t.Fatalf("ActiveDecisions = %d, want 2", fresh.Status.ActiveDecisions)
+	}
+}
+
+func TestRelease_FloorsAtZero(t *testing.T) {
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha1.AgentPolicyModeAuto, 0.5)
+	policy.Status.ActiveDecisions = 0
+	s := decisionTestServer(t, policy)
+	if err := s.releaseAgentPolicySlot(httpReq(t).Context(), policy); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	var fresh kaprov1alpha1.AgentPolicy
+	_ = s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: policy.Name}, &fresh)
+	if fresh.Status.ActiveDecisions != 0 {
+		t.Fatalf("ActiveDecisions = %d, want 0 (floored)", fresh.Status.ActiveDecisions)
 	}
 }
