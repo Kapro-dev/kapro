@@ -355,6 +355,45 @@ func TestDeliveryLoop_TruncateError_DoesNotSplitMultibyteRune(t *testing.T) {
 	}
 }
 
+func TestDeliveryLoop_BackfillsLastAttemptedAtWhenProviderOmitsIt(t *testing.T) {
+	fc := newDeliveryFC("c1", map[string]string{"api": "1.0"}, false, "oci-default")
+	bp := newDeliveryBP("oci-default", kaprov1alpha1.BackendDriverOCI)
+	hub := deliveryHub(t, fc, bp)
+
+	// A provider that returns a successful result but forgets to stamp
+	// LastAttemptedAt — the loop must fill it from its own clock so SRE
+	// dashboards still get a per-app timestamp.
+	provider := &scriptedProvider{
+		driver: kaprov1alpha1.BackendDriverOCI,
+		results: map[string]spokeprovider.ReconcileResult{
+			"api": {Phase: kaprov1alpha1.DeliveryPhaseConverged}, // no LastAttemptedAt
+		},
+	}
+	reg := spokeprovider.NewRegistry()
+	_ = reg.Register(kaprov1alpha1.BackendDriverOCI, provider)
+	l := &deliveryLoop{
+		Hub:         newHubClientFromStatic(hub),
+		ClusterName: "c1",
+		Registry:    reg,
+		Now:         func() time.Time { return time.Unix(1700000777, 0) },
+	}
+
+	if err := l.tick(context.Background()); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	var got kaprov1alpha1.FleetCluster
+	if err := hub.Get(context.Background(), client.ObjectKey{Name: "c1"}, &got); err != nil {
+		t.Fatalf("re-get: %v", err)
+	}
+	entry := got.Status.Delivery["api"]
+	if entry.LastAttemptedAt == nil {
+		t.Fatalf("LastAttemptedAt was not backfilled")
+	}
+	if !entry.LastAttemptedAt.Time.Equal(time.Unix(1700000777, 0)) {
+		t.Fatalf("LastAttemptedAt = %v, want injected clock value", entry.LastAttemptedAt.Time)
+	}
+}
+
 func TestMergedDesiredVersions_LegacyFieldsAndMap(t *testing.T) {
 	spec := kaprov1alpha1.FleetClusterSpec{
 		DesiredVersion: "legacy-1",
