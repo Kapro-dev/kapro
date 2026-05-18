@@ -27,6 +27,7 @@ import (
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	kaprometrics "kapro.io/kapro/internal/metrics"
+	"kapro.io/kapro/internal/promotion/fsm"
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
 	"kapro.io/kapro/pkg/notification"
@@ -214,28 +215,83 @@ func isImmediateRequeue(result ctrl.Result) bool {
 	return result.Requeue && result.RequeueAfter == 0 //nolint:staticcheck // SA1019: result.Requeue deprecated but replacement needs larger refactor
 }
 
-// advanceTarget dispatches one FSM step for the given target.
-func (r *PromotionTargetReconciler) advanceTarget(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, target *kaprov1alpha1.TargetStatus, rt *kaprov1alpha1.PromotionTarget) (ctrl.Result, error) {
-	switch target.Phase {
-	case "":
-		r.transitionTo(ctx, promotionrun, target, kaprov1alpha1.TargetPhasePending)
-		return ctrl.Result{Requeue: true}, nil
-	case kaprov1alpha1.TargetPhasePending:
-		return r.handlePending(ctx, promotionrun, target)
-	case kaprov1alpha1.TargetPhaseVerification:
-		return r.handleVerification(ctx, promotionrun, target, rt)
-	case kaprov1alpha1.TargetPhaseHealthCheck:
-		return r.handleHealthCheck(ctx, promotionrun, target)
-	case kaprov1alpha1.TargetPhaseSoaking:
-		return r.handleSoaking(ctx, promotionrun, target, rt)
-	case kaprov1alpha1.TargetPhaseMetricsCheck:
-		return r.handleMetricsCheck(ctx, promotionrun, target, rt)
-	case kaprov1alpha1.TargetPhaseWaitingApproval:
-		return r.handleWaitingApproval(ctx, promotionrun, target, rt)
-	case kaprov1alpha1.TargetPhaseApplying:
-		return r.handleApplying(ctx, promotionrun, target)
+// fsmEnv is the small per-Reconcile state bag the FSM hands to each phase
+// handler. The reconciler itself is captured by the closures registered in
+// buildFSM, so handlers can call r.handleX directly without extra plumbing.
+type fsmEnv struct {
+	promotionrun *kaprov1alpha1.PromotionRun
+	target       *kaprov1alpha1.TargetStatus
+	rt           *kaprov1alpha1.PromotionTarget
+}
+
+// buildFSM constructs the per-Reconcile phase dispatch table. Building it
+// once per call (rather than caching on the reconciler) keeps each Step
+// closed over the current promotionrun / target / rt without any escape
+// from the Reconcile stack, which mirrors the previous switch's lifetime
+// exactly. If profiling ever shows allocation pressure here we can hoist
+// the closures and pass the env explicitly via the Env type parameter.
+func (r *PromotionTargetReconciler) buildFSM() *fsm.Machine[*fsmEnv] {
+	m := fsm.New[*fsmEnv]()
+	// Phase "" → transition into Pending. Replaces the bare case "" branch
+	// of the legacy switch; kept identical (transitionTo + immediate
+	// requeue) so behaviour is unchanged.
+	must(m.RegisterInitial(func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+		r.transitionTo(ctx, e.promotionrun, e.target, kaprov1alpha1.TargetPhasePending)
+		return ctrl.Result{Requeue: true}, nil //nolint:staticcheck // SA1019: result.Requeue deprecated, see existing notes
+	}))
+	must(m.Register(kaprov1alpha1.TargetPhasePending, func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+		return r.handlePending(ctx, e.promotionrun, e.target)
+	}))
+	must(m.Register(kaprov1alpha1.TargetPhaseVerification, func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+		return r.handleVerification(ctx, e.promotionrun, e.target, e.rt)
+	}))
+	must(m.Register(kaprov1alpha1.TargetPhaseHealthCheck, func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+		return r.handleHealthCheck(ctx, e.promotionrun, e.target)
+	}))
+	must(m.Register(kaprov1alpha1.TargetPhaseSoaking, func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+		return r.handleSoaking(ctx, e.promotionrun, e.target, e.rt)
+	}))
+	must(m.Register(kaprov1alpha1.TargetPhaseMetricsCheck, func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+		return r.handleMetricsCheck(ctx, e.promotionrun, e.target, e.rt)
+	}))
+	must(m.Register(kaprov1alpha1.TargetPhaseWaitingApproval, func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+		return r.handleWaitingApproval(ctx, e.promotionrun, e.target, e.rt)
+	}))
+	must(m.Register(kaprov1alpha1.TargetPhaseApplying, func(ctx context.Context, e *fsmEnv) (ctrl.Result, error) {
+		return r.handleApplying(ctx, e.promotionrun, e.target)
+	}))
+	// Converged / Failed / Skipped are terminal — Reconcile filters them
+	// out before reaching the FSM (see the terminal-phase switch at the
+	// top of Reconcile). Intentionally NOT registered here so that any
+	// future code path that accidentally calls Step on a terminal phase
+	// gets the no-op from Machine.Step rather than re-running the
+	// handler body. If we later need terminal handlers (e.g. for cleanup
+	// hooks), Register them here.
+	return m
+}
+
+// must panics when the FSM rejects a registration. Wrapping every Register
+// call in if err != nil { return ctrl.Result{}, err } would clutter the
+// table; registration failure is a programmer bug (duplicate phase, nil
+// handler) caught at init, not at runtime, so a panic is correct.
+func must(err error) {
+	if err != nil {
+		panic(err)
 	}
-	return ctrl.Result{}, nil
+}
+
+// advanceTarget dispatches one FSM step for the given target. The legacy
+// implementation was a switch statement; this delegates to the
+// internal/promotion/fsm package's Machine so the dispatch is declarative
+// (Phases() lists everything supported) and the same primitive can host
+// the PromotionRun FSM when D2 lands.
+func (r *PromotionTargetReconciler) advanceTarget(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, target *kaprov1alpha1.TargetStatus, rt *kaprov1alpha1.PromotionTarget) (ctrl.Result, error) {
+	machine := r.buildFSM()
+	return machine.Step(ctx, target.Phase, &fsmEnv{
+		promotionrun: promotionrun,
+		target:       target,
+		rt:           rt,
+	})
 }
 
 func (r *PromotionTargetReconciler) handlePending(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, target *kaprov1alpha1.TargetStatus) (ctrl.Result, error) {
