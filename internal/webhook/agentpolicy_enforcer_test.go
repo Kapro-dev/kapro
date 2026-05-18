@@ -193,25 +193,64 @@ func TestEnforce_TierOverrideTightensConfidence(t *testing.T) {
 	}
 }
 
-func TestEnforce_RateLimitDeniesAtMax(t *testing.T) {
+func TestReserve_RateLimitDeniesAtMax(t *testing.T) {
+	// Rate limits moved from enforceAgentPolicy to reserveAgentPolicySlot in
+	// gate-B2 so the check + counter increment happen in one CAS pass.
 	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha1.AgentPolicyModeAuto, 0.5)
 	policy.Spec.RateLimits = &kaprov1alpha1.AgentRateLimits{MaxApprovalsPerDay: 5}
 	policy.Status.DecisionsToday = 5
-	_, mc, _, target := decisionFixtures()
-	pd := enforceAgentPolicy(policy, target, mc, 0.95, 50)
-	if pd.Allowed {
+	s := decisionTestServer(t, policy)
+	ok, reason, err := s.reserveAgentPolicySlot(httpReq(t).Context(), policy.DeepCopy())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ok {
 		t.Fatal("expected denied — daily limit reached")
+	}
+	if reason == "" {
+		t.Fatal("expected deny reason")
 	}
 }
 
-func TestEnforce_ConcurrentLimitDenies(t *testing.T) {
+func TestReserve_ConcurrentLimitDenies(t *testing.T) {
 	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha1.AgentPolicyModeAuto, 0.5)
 	policy.Spec.RateLimits = &kaprov1alpha1.AgentRateLimits{MaxConcurrent: 3}
 	policy.Status.ActiveDecisions = 3
-	_, mc, _, target := decisionFixtures()
-	pd := enforceAgentPolicy(policy, target, mc, 0.95, 50)
-	if pd.Allowed {
+	s := decisionTestServer(t, policy)
+	ok, reason, err := s.reserveAgentPolicySlot(httpReq(t).Context(), policy.DeepCopy())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ok {
 		t.Fatal("expected denied — concurrent limit reached")
+	}
+	if reason == "" {
+		t.Fatal("expected deny reason")
+	}
+}
+
+func TestReserve_IncrementsCountersOnSuccess(t *testing.T) {
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha1.AgentPolicyModeAuto, 0.5)
+	policy.Spec.RateLimits = &kaprov1alpha1.AgentRateLimits{MaxApprovalsPerDay: 5}
+	s := decisionTestServer(t, policy)
+	local := policy.DeepCopy()
+	ok, _, err := s.reserveAgentPolicySlot(httpReq(t).Context(), local)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected slot allowed under limit")
+	}
+	// Confirm the increment landed in etcd, not just on the local copy.
+	var fresh kaprov1alpha1.AgentPolicy
+	if err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: policy.Name}, &fresh); err != nil {
+		t.Fatalf("get refreshed policy: %v", err)
+	}
+	if fresh.Status.DecisionsToday != 1 {
+		t.Fatalf("DecisionsToday = %d, want 1", fresh.Status.DecisionsToday)
+	}
+	if fresh.Status.ActiveDecisions != 1 {
+		t.Fatalf("ActiveDecisions = %d, want 1", fresh.Status.ActiveDecisions)
 	}
 }
 

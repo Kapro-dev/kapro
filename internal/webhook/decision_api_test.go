@@ -27,7 +27,7 @@ func decisionTestServer(t *testing.T, objs ...client.Object) *Server {
 		t.Fatalf("add scheme: %v", err)
 	}
 	builder := fake.NewClientBuilder().WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha1.PromotionTarget{})
+		WithStatusSubresource(&kaprov1alpha1.PromotionTarget{}, &kaprov1alpha1.AgentPolicy{})
 	if len(objs) > 0 {
 		builder = builder.WithObjects(objs...)
 	}

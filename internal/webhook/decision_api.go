@@ -42,6 +42,16 @@ const (
 	maxDecisionTraceHistory = 10
 	defaultDecisionAPILimit = 100
 	maxDecisionAPILimit     = 500
+
+	// maxDecisionReasoningLen bounds the free-text Reasoning field on a
+	// DecisionRequest after JSON unmarshal. 8 KiB is enough for a thorough
+	// rationale; pathological inputs packed into the 64 KiB body limit are
+	// rejected up front (webhook hardening, gate sprint).
+	maxDecisionReasoningLen = 8 * 1024
+
+	// maxIdempotencyKeyLen bounds the IdempotencyKey field. Real keys are
+	// short ULIDs / UUIDs (< 64 bytes); 256 leaves headroom without abuse.
+	maxIdempotencyKeyLen = 256
 	// Phase is not a selectable field for every Kapro API. Bound sparse phase
 	// scans to a multiple of the requested response limit and return a truncated
 	// partial view when the scan budget is exhausted.
@@ -677,6 +687,18 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 		http.Error(w, "decision must be Approve, Reject, or Defer", http.StatusBadRequest)
 		return
 	}
+	// Bound the per-field string lengths after JSON unmarshal so a 64 KiB
+	// body cannot be packed into a single Reasoning or IdempotencyKey
+	// string and slow down policy enforcement, logging, or status writes
+	// downstream (webhook hardening).
+	if len(req.Reasoning) > maxDecisionReasoningLen {
+		http.Error(w, fmt.Sprintf("reasoning exceeds %d bytes", maxDecisionReasoningLen), http.StatusRequestEntityTooLarge)
+		return
+	}
+	if len(req.IdempotencyKey) > maxIdempotencyKeyLen {
+		http.Error(w, fmt.Sprintf("idempotencyKey exceeds %d bytes", maxIdempotencyKeyLen), http.StatusRequestEntityTooLarge)
+		return
+	}
 
 	// Look up promotionrun and target.
 	var promotionrun kaprov1alpha1.PromotionRun
@@ -775,8 +797,36 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 		if pd.RequireHumanCosign && req.Decision == "Approve" {
 			effectiveDecision = "PendingHumanConfirm"
 		}
+
+		// Reserve a rate-limit slot atomically (gate-B2). This both checks
+		// the policy's rate-limit counters and increments them in one CAS
+		// pass so N parallel requests cannot all observe the same stale
+		// counter and overshoot the configured cap. We reserve here, after
+		// the policy validation has passed but before any decision is
+		// recorded, so a denied reservation does not pollute DecisionTrace.
+		ok, denyReason, resErr := s.reserveAgentPolicySlot(ctx, policy)
+		if resErr != nil {
+			l.Error(resErr, "AgentPolicy rate-limit reservation failed")
+			http.Error(w, "internal error reserving agent policy slot", http.StatusInternalServerError)
+			return
+		}
+		if !ok {
+			writeJSON(w, http.StatusTooManyRequests, DecisionResponse{
+				Accepted: false,
+				Reason:   fmt.Sprintf("AgentPolicy denied: %s", denyReason),
+			})
+			return
+		}
 	}
-	if req.Decision == "Approve" && effectiveDecision == "Approve" {
+	// Security (gate-B1): any "Approve" submission requires create-approvals
+	// permission even when AgentPolicy downgrades to Recommended /
+	// PendingHumanConfirm. Previously the SAR was only run when BOTH
+	// req.Decision AND effectiveDecision equaled "Approve", which let an
+	// agent with patch-only access set up a Recommended decision that a
+	// human could later cosign into an Approval — bypassing the agent's
+	// own permission boundary. The intent of the user matters, not the
+	// post-policy effective form.
+	if req.Decision == "Approve" {
 		if err := s.authorizeDecisionUser(ctx, *user, kaproAttrs("create", "approvals", "")); err != nil {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
@@ -855,10 +905,8 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 		}
 	}
 
-	// Update AgentPolicy status counters.
-	if policy != nil {
-		s.updateAgentPolicyStatus(ctx, policy)
-	}
+	// Counter increment happened up front in reserveAgentPolicySlot (gate-B2).
+	// Nothing to do here.
 
 	writeJSON(w, http.StatusOK, DecisionResponse{
 		Accepted:          true,

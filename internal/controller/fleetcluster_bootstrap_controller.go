@@ -393,6 +393,22 @@ func (r *FleetClusterBootstrapReconciler) processCSRsForCluster(ctx context.Cont
 		if isCSRApproved(csr) || isCSRDenied(csr) {
 			continue
 		}
+		// Defense in depth (security audit B3): if the slot is already bound
+		// to a different CSR, deny this one IMMEDIATELY at the loop entry
+		// rather than letting handleBootstrapCSR's inner check do it. This
+		// avoids wasted RBAC ensure work and gives the spoke a clear NACK
+		// signal sooner so it doesn't retry with yet another fresh CSR.
+		// handleBootstrapCSR also enforces this (lines below) — keep both as
+		// belt-and-suspenders so any future refactor can't drop the check.
+		if fc.Status.Bootstrap != nil &&
+			fc.Status.Bootstrap.Used &&
+			fc.Status.Bootstrap.BoundCSRName != "" &&
+			fc.Status.Bootstrap.BoundCSRName != csr.Name {
+			if err := r.denyCSR(ctx, csr, fmt.Sprintf("bootstrap already consumed by CSR %s", fc.Status.Bootstrap.BoundCSRName)); err != nil {
+				return ctrl.Result{}, err
+			}
+			continue
+		}
 		if err := r.handleBootstrapCSR(ctx, fc, csr); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -470,26 +486,43 @@ func (r *FleetClusterBootstrapReconciler) handleBootstrapCSR(
 
 // markBootstrapUsed updates the FleetCluster status to mark bootstrap as used,
 // using Status().Update() (NOT Patch) so resourceVersion is the CAS predicate
-// that catches concurrent reconciles attempting double-claim.
+// that catches concurrent reconciles attempting double-claim. Wrapped in
+// StatusUpdateWithRetry (gate-IsConflict) so transient races with the
+// heartbeat reconciler or admission-time mutations refetch + reapply
+// instead of bouncing the whole reconcile through workqueue backoff.
 func (r *FleetClusterBootstrapReconciler) markBootstrapUsed(ctx context.Context, fc *kaprov1alpha1.FleetCluster, csrName string) error {
 	if fc.Status.Bootstrap != nil &&
 		fc.Status.Bootstrap.Used &&
 		fc.Status.Bootstrap.BoundCSRName == csrName {
 		return nil
 	}
-	now := metav1.Now()
-	if fc.Status.Bootstrap == nil {
-		fc.Status.Bootstrap = &kaprov1alpha1.FleetClusterBootstrapStatus{}
-	}
-	fc.Status.Bootstrap.Used = true
-	fc.Status.Bootstrap.UsedAt = &now
-	fc.Status.Bootstrap.IssuedCredentialFor = fc.Name
-	fc.Status.Bootstrap.BoundCSRName = csrName
-	fc.Status.Bootstrap.IssuedClusterRole = fmt.Sprintf(clusterRoleNameFmt, fc.Name)
-	fc.Status.Bootstrap.IssuedClusterRoleBinding = fmt.Sprintf(clusterRoleNameFmt, fc.Name)
-	fc.Status.ObservedGeneration = fc.Generation
-	setCondition(&fc.Status.Conditions, kaprov1alpha1.ConditionTypeRegistered, metav1.ConditionTrue, "BootstrapConsumed", fmt.Sprintf("bootstrap credential consumed by CSR %s", csrName), fc.Generation, time.Now())
-	return r.Status().Update(ctx, fc)
+	return StatusUpdateWithRetry(ctx, r.Client, fc, func(fresh *kaprov1alpha1.FleetCluster) error {
+		// Idempotency: if a concurrent reconcile already marked the same CSR,
+		// drop out. If a DIFFERENT CSR claimed the slot between the caller's
+		// read and this retry's refetch, surface that as an error — the
+		// outer race check at processCSRsForCluster (gate-B3) will catch it
+		// on the next reconcile and deny the loser.
+		if fresh.Status.Bootstrap != nil &&
+			fresh.Status.Bootstrap.Used &&
+			fresh.Status.Bootstrap.BoundCSRName != "" &&
+			fresh.Status.Bootstrap.BoundCSRName != csrName {
+			return fmt.Errorf("bootstrap slot for %s was claimed by CSR %s during retry",
+				fresh.Name, fresh.Status.Bootstrap.BoundCSRName)
+		}
+		now := metav1.Now()
+		if fresh.Status.Bootstrap == nil {
+			fresh.Status.Bootstrap = &kaprov1alpha1.FleetClusterBootstrapStatus{}
+		}
+		fresh.Status.Bootstrap.Used = true
+		fresh.Status.Bootstrap.UsedAt = &now
+		fresh.Status.Bootstrap.IssuedCredentialFor = fresh.Name
+		fresh.Status.Bootstrap.BoundCSRName = csrName
+		fresh.Status.Bootstrap.IssuedClusterRole = fmt.Sprintf(clusterRoleNameFmt, fresh.Name)
+		fresh.Status.Bootstrap.IssuedClusterRoleBinding = fmt.Sprintf(clusterRoleNameFmt, fresh.Name)
+		fresh.Status.ObservedGeneration = fresh.Generation
+		setCondition(&fresh.Status.Conditions, kaprov1alpha1.ConditionTypeRegistered, metav1.ConditionTrue, "BootstrapConsumed", fmt.Sprintf("bootstrap credential consumed by CSR %s", csrName), fresh.Generation, time.Now())
+		return nil
+	})
 }
 
 // approveCSR appends the Approved condition and submits via the typed

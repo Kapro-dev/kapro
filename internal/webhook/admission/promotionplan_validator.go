@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
@@ -17,6 +18,7 @@ import (
 //  2. All stage names must be unique.
 //  3. All stage dependsOn references must name existing stages.
 //  4. The stage DAG must be acyclic (DFS cycle detection).
+//  5. metadata.labels[kapro.io/team] must be set on CREATE (gate sprint).
 type PromotionPlanValidator struct {
 	decoder admission.Decoder
 }
@@ -34,6 +36,11 @@ func (v *PromotionPlanValidator) Handle(_ context.Context, req admission.Request
 	}
 	if err := validatePromotionPlan(&promotionplan); err != nil {
 		return admission.Denied(err.Error())
+	}
+	if req.Operation == admissionv1.Create {
+		if fe := requireTeamLabel(promotionplan.Labels); fe != nil {
+			return admission.Denied(fe.Error())
+		}
 	}
 	return admission.Allowed("")
 }

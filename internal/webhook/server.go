@@ -267,10 +267,25 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// maxApprovalTokenLen bounds the ?token= query parameter so an
+// attacker cannot exhaust memory by sending Authorization-equivalents
+// of arbitrary size (gate webhook hardening). Real Kapro approval tokens
+// are HMAC-signed claims that decode to <1 KiB; 4 KiB leaves headroom
+// for future fields without ever crossing into pathological territory.
+const maxApprovalTokenLen = 4 * 1024
+
 func (s *Server) verifyToken(r *http.Request, expectedAction string) (*token.Claims, error) {
+	// Bound the entire query string, not just the token field, to keep the
+	// parse-time cost finite (url.ParseQuery is O(N)).
+	if len(r.URL.RawQuery) > maxApprovalTokenLen+128 {
+		return nil, fmt.Errorf("query string too large")
+	}
 	t := r.URL.Query().Get("token")
 	if t == "" {
 		return nil, fmt.Errorf("missing token")
+	}
+	if len(t) > maxApprovalTokenLen {
+		return nil, fmt.Errorf("token too large")
 	}
 	claims, err := token.Verify(t, s.TokenSecret)
 	if err != nil {
