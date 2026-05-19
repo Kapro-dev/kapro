@@ -38,9 +38,18 @@ record for each tag.
 ### Migration
 
 - Replace `Promotion` manifests with `PromotionRun` manifests or use
-  `kapro promote`.
-- Move reusable guardrails into inline `PromotionPlan` stage gates.
-- Keep notification routing inline on gates and stages.
+  `kapro promote`. The Kapro controller does not generate `PromotionRun`
+  objects from `Kapro.spec` changes; promotions are explicitly created via
+  the CLI, direct `PromotionRun` apply, or a `PromotionTrigger`.
+- Move reusable guardrails into inline `PromotionPlan` stage gates
+  (`GatePolicySpec`, including CEL gates). Cluster-wide admission, freeze
+  windows, and org-level policy are now deferred to external policy engines
+  (e.g. Kyverno, Gatekeeper) — there is no longer an in-tree
+  `PromotionPolicy` CRD or runtime freeze-window enforcement.
+- Keep notification routing inline on gates and stages. Centralized provider
+  reuse via `NotificationProvider` is removed; teams that previously shared a
+  provider across many policies must duplicate the inline routing or front it
+  with an external notifier.
 - Helm upgrades do not delete CRDs that are already installed in a cluster. If
   an existing alpha hub installed the removed CRDs, delete the stale
   `promotions`, `promotionpolicies`, `notificationproviders`, and
