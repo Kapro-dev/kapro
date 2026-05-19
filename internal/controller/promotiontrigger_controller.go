@@ -745,17 +745,6 @@ func setCondition(conditions *[]metav1.Condition, conditionType string, status m
 	})
 }
 
-func shortDigest(digest string) string {
-	parts := strings.SplitN(digest, ":", 2)
-	if len(parts) == 2 {
-		digest = parts[1]
-	}
-	if len(digest) > 12 {
-		return digest[:12]
-	}
-	return digest
-}
-
 func dnsName(name string) string {
 	name = strings.ToLower(name)
 	name = regexp.MustCompile(`[^a-z0-9.-]+`).ReplaceAllString(name, "-")
