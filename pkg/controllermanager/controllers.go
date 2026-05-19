@@ -17,6 +17,7 @@ import (
 	celgate "kapro.io/kapro/internal/gate/cel"
 	jobgate "kapro.io/kapro/internal/gate/job"
 	webhookgate "kapro.io/kapro/internal/gate/webhook"
+	"kapro.io/kapro/internal/lifecycle"
 	pluginadapter "kapro.io/kapro/internal/plugin/adapter"
 	"kapro.io/kapro/internal/shard"
 	pkggate "kapro.io/kapro/pkg/gate"
@@ -49,12 +50,21 @@ func init() {
 
 // startPromotionController starts the Promotion intent reconciler.
 // Materializes user-authored Promotion objects into PromotionRun attempts and
-// mirrors run status back into Promotion.status.
-func startPromotionController(_ context.Context, cc ControllerContext) (bool, error) {
+// mirrors run status back into Promotion.status. A nil-safe lifecycle
+// dispatcher is attached so user-declared `spec.lifecycle.handlers` fire
+// asynchronously on phase transitions; the dispatcher itself is
+// fire-and-forget and never blocks reconcile.
+func startPromotionController(ctx context.Context, cc ControllerContext) (bool, error) {
 	r := &controller.PromotionReconciler{
 		Client:   cc.Manager.GetClient(),
 		Recorder: cc.Recorder,
 		Scheme:   cc.Manager.GetScheme(),
+		Lifecycle: lifecycle.NewDispatcher(
+			ctx,
+			cc.Manager.GetClient(),
+			cc.Recorder,
+			cc.PodNamespace,
+		),
 	}
 	if err := r.SetupWithManager(cc.Manager); err != nil {
 		return false, err

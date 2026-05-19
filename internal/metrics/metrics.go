@@ -257,6 +257,33 @@ var (
 		},
 		[]string{"cluster"},
 	)
+
+	// LifecycleHookInvocations counts Promotion lifecycle handler invocations.
+	// Labels: kind (Webhook|Event), phase (Promotion.status.phase value at
+	// fire time), result (Succeeded|Failed). Handler retries collapse into
+	// a single counted invocation per (kind, phase) tuple.
+	LifecycleHookInvocations = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "kapro",
+			Subsystem: "lifecycle",
+			Name:      "hook_invocations_total",
+			Help:      "Promotion lifecycle handler invocations by kind, phase, and result.",
+		},
+		[]string{"kind", "phase", "result"},
+	)
+
+	// LifecycleHookDuration is the wall-clock duration of one handler
+	// dispatch (including retries and backoff).
+	LifecycleHookDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "kapro",
+			Subsystem: "lifecycle",
+			Name:      "hook_duration_seconds",
+			Help:      "End-to-end duration of a single Promotion lifecycle handler dispatch.",
+			Buckets:   []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60},
+		},
+		[]string{"kind", "phase"},
+	)
 )
 
 func init() {
@@ -281,5 +308,7 @@ func init() {
 		FleetClusterHeartbeatMisses,
 		FleetClusterUnreachableTransitions,
 		FleetClusterRecoveredTransitions,
+		LifecycleHookInvocations,
+		LifecycleHookDuration,
 	)
 }

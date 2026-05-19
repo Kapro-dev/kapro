@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -487,4 +488,80 @@ func assertCondition(t *testing.T, c client.Client, name, condType string, want 
 		}
 	}
 	t.Fatalf("condition %q not found on Promotion %s", condType, name)
+}
+
+// fakeLifecycleDispatcher captures phase transitions the controller fires.
+// Used to verify the wire-up between PromotionReconciler and the lifecycle
+// dispatcher without spinning up the real HTTP-based dispatcher.
+type fakeLifecycleDispatcher struct {
+	mu          sync.Mutex
+	transitions []fakePhaseTransition
+}
+
+type fakePhaseTransition struct {
+	promotion string
+	prev      kaprov1alpha1.PromotionPhase
+	next      kaprov1alpha1.PromotionPhase
+}
+
+func (f *fakeLifecycleDispatcher) OnPhaseTransition(_ context.Context,
+	p *kaprov1alpha1.Promotion, prev, next kaprov1alpha1.PromotionPhase) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.transitions = append(f.transitions, fakePhaseTransition{
+		promotion: p.Name, prev: prev, next: next,
+	})
+}
+
+func (f *fakeLifecycleDispatcher) snapshot() []fakePhaseTransition {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]fakePhaseTransition, len(f.transitions))
+	copy(out, f.transitions)
+	return out
+}
+
+// TestPromotionReconcilerInvokesLifecycleDispatcher verifies the wire-up
+// between the Promotion reconciler and the lifecycle dispatcher. The
+// reconciler must call OnPhaseTransition exactly once per coarse phase
+// change, with the correct (prev, next) pair.
+func TestPromotionReconcilerInvokesLifecycleDispatcher(t *testing.T) {
+	ctx := context.Background()
+	p := newPromotion("checkout-lf", "checkout", "v1.2.3")
+	r, c := newPromotionReconciler(t, newKapro("checkout"), p)
+	fake := &fakeLifecycleDispatcher{}
+	r.Lifecycle = fake
+
+	// Reconcile #1: phase becomes Pending (no prior).
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
+		t.Fatal(err)
+	}
+	// Advance the active run + reconcile #2 -> Progressing.
+	advanceRun(t, ctx, c, p.Name, kaprov1alpha1.PromotionRunPhaseProgressing, "")
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
+		t.Fatal(err)
+	}
+	// Run completes -> Succeeded.
+	advanceRun(t, ctx, c, p.Name, kaprov1alpha1.PromotionRunPhaseComplete, "2024-01-01T00:00:00Z")
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
+		t.Fatal(err)
+	}
+
+	got := fake.snapshot()
+	if len(got) != 3 {
+		t.Fatalf("transitions = %d, want 3", len(got))
+	}
+	wantPairs := []struct {
+		prev, next kaprov1alpha1.PromotionPhase
+	}{
+		{"", kaprov1alpha1.PromotionPhasePending},
+		{kaprov1alpha1.PromotionPhasePending, kaprov1alpha1.PromotionPhaseProgressing},
+		{kaprov1alpha1.PromotionPhaseProgressing, kaprov1alpha1.PromotionPhaseSucceeded},
+	}
+	for i, want := range wantPairs {
+		if got[i].prev != want.prev || got[i].next != want.next {
+			t.Fatalf("transition %d = (%q -> %q), want (%q -> %q)",
+				i, got[i].prev, got[i].next, want.prev, want.next)
+		}
+	}
 }

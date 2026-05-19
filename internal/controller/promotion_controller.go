@@ -38,6 +38,19 @@ type PromotionReconciler struct {
 	client.Client
 	Recorder record.EventRecorder
 	Scheme   *runtime.Scheme
+	// Lifecycle dispatches Promotion.spec.lifecycle.handlers on coarse
+	// phase transitions. Nil-safe: when unset, transitions emit the
+	// built-in phase event only and no user handlers fire.
+	Lifecycle PhaseTransitionDispatcher
+}
+
+// PhaseTransitionDispatcher is the minimal interface the PromotionReconciler
+// needs to fan out lifecycle handlers. Defined here (rather than imported)
+// so the dispatcher implementation and the controller can be tested in
+// isolation without import cycles.
+type PhaseTransitionDispatcher interface {
+	OnPhaseTransition(ctx context.Context, promotion *kaprov1alpha1.Promotion,
+		prev, next kaprov1alpha1.PromotionPhase)
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=promotions,verbs=get;list;watch;create;update;patch;delete
@@ -258,6 +271,7 @@ func (r *PromotionReconciler) patchStatusFromRun(ctx context.Context, p *kaprov1
 	if err := r.Status().Patch(ctx, p, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch Promotion status: %w", err)
 	}
+	r.dispatchLifecycle(ctx, p, prevPhase, p.Status.Phase)
 	return ctrl.Result{RequeueAfter: requeueForPhase(p.Status.Phase)}, nil
 }
 
@@ -298,7 +312,20 @@ func (r *PromotionReconciler) patchStatus(ctx context.Context, p *kaprov1alpha1.
 	if err := r.Status().Patch(ctx, p, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch Promotion status: %w", err)
 	}
+	r.dispatchLifecycle(ctx, p, prevPhase, phase)
 	return ctrl.Result{RequeueAfter: requeueForPhase(phase)}, nil
+}
+
+// dispatchLifecycle fans out user-declared spec.lifecycle.handlers when a
+// coarse phase transition occurs. Nil-safe: when the controller has no
+// dispatcher wired (legacy tests, test doubles), this is a no-op. The
+// dispatcher itself is fire-and-forget — failures never propagate here.
+func (r *PromotionReconciler) dispatchLifecycle(ctx context.Context,
+	p *kaprov1alpha1.Promotion, prev, next kaprov1alpha1.PromotionPhase) {
+	if r.Lifecycle == nil || prev == next {
+		return
+	}
+	r.Lifecycle.OnPhaseTransition(ctx, p, prev, next)
 }
 
 // requeueForPhase returns the periodic requeue interval for the given coarse
