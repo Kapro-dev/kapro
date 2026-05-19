@@ -11,8 +11,9 @@ spec:
       tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
       requireSignature: true
       pollInterval: 5m
-  promotionrunTemplate:
-    promotionplans:
+  promotionTemplate:
+    kaproRef: checkout
+    promotionPlans:
       - name: production
         promotionplan: checkout-production
     suspended: true

@@ -67,24 +67,28 @@ spec:
             type: object
           spec:
             description: |-
-              PromotionTriggerSpec defines an autonomous source that can create PromotionRun
-              objects from verified artifact changes. The controller currently provides
-              preview behavior for this API, and the API is intentionally safe by default.
+              PromotionTriggerSpec defines an autonomous source that creates or updates
+              a Promotion from verified artifact changes. The controller currently
+              provides preview behavior for this API, and the API is intentionally safe
+              by default.
             properties:
               cooldown:
                 default: 30m
-                description: Cooldown is the minimum duration between promotionruns
-                  created by this trigger.
+                description: |-
+                  Cooldown is the minimum duration between Promotion updates created by
+                  this trigger.
                 type: string
               dryRun:
                 default: false
-                description: DryRun records what would be created without creating
-                  a PromotionRun.
+                description: DryRun records what would be created without writing
+                  the Promotion.
                 type: boolean
               maxActive:
                 default: 1
-                description: MaxActive limits concurrently active PromotionRuns created
-                  by this trigger.
+                description: |-
+                  MaxActive limits concurrently non-terminal PromotionRuns observed under
+                  the trigger's managed Promotion. A high count usually means a prior
+                  rollout is still in flight when a new artifact arrives.
                 format: int32
                 minimum: 1
                 type: integer
@@ -95,27 +99,38 @@ spec:
                   Parameters are source-specific key-value pairs for future extension.
                   Kapro core does not interpret unknown parameters.
                 type: object
-              promotionrunTemplate:
-                description: PromotionRunTemplate defines the PromotionRun created
-                  for a verified artifact.
+              promotionTemplate:
+                description: |-
+                  PromotionTemplate defines the Promotion the trigger creates or updates.
+                  Renamed from promotionrunTemplate when the trigger moved from emitting
+                  PromotionRun directly to emitting Promotion intent.
                 properties:
                   annotations:
                     additionalProperties:
                       type: string
-                    description: Annotations are added to created PromotionRuns.
+                    description: Annotations are added to the managed Promotion.
                     type: object
+                  kaproRef:
+                    description: |-
+                      KaproRef is the name of the parent Kapro fleet the managed Promotion
+                      targets. Required; the PromotionController uses it to resolve the
+                      inline plan and clusters.
+                    minLength: 1
+                    type: string
                   labels:
                     additionalProperties:
                       type: string
-                    description: Labels are added to created PromotionRuns.
+                    description: Labels are added to the managed Promotion.
                     type: object
                   nameTemplate:
                     description: |-
-                      NameTemplate controls the created PromotionRun name. Empty means the controller
-                      derives a deterministic name from trigger name and artifact digest.
+                      NameTemplate controls the managed Promotion name. Empty means the
+                      controller derives a deterministic name from the trigger name.
                     type: string
-                  promotionplans:
-                    description: PromotionPlans is copied into PromotionRun.spec.promotionplans.
+                  promotionPlans:
+                    description: |-
+                      PromotionPlans optionally overrides Kapro.spec.promotionplan on the
+                      managed Promotion.
                     items:
                       description: |-
                         PromotionPlanRef is one node in the PromotionRun's promotionplan DAG.
@@ -141,10 +156,9 @@ spec:
                       - promotionplan
                       type: object
                     maxItems: 64
-                    minItems: 1
                     type: array
                   scope:
-                    description: Scope restricts created PromotionRuns to a subset
+                    description: Scope restricts the managed Promotion to a subset
                       of clusters.
                     properties:
                       targets:
@@ -158,14 +172,14 @@ spec:
                   suspended:
                     default: true
                     description: |-
-                      Suspended controls PromotionRun.spec.suspended on created PromotionRuns.
-                      Defaults to true so detection does not equal deployment.
+                      Suspended controls Promotion.spec.suspended on creation. Defaults to
+                      true so detection does not equal deployment.
                     type: boolean
                   timeout:
-                    description: Timeout is copied into PromotionRun.spec.timeout.
+                    description: Timeout is copied into Promotion.spec.timeout.
                     type: string
                 required:
-                - promotionplans
+                - kaproRef
                 type: object
               source:
                 description: Source configures where artifact changes are observed.
@@ -222,11 +236,10 @@ spec:
                 type: object
               suspended:
                 default: true
-                description: Suspended pauses source observation and promotionrun
-                  creation.
+                description: Suspended pauses source observation and Promotion creation/update.
                 type: boolean
             required:
-            - promotionrunTemplate
+            - promotionTemplate
             - source
             type: object
             x-kubernetes-validations:
@@ -235,23 +248,22 @@ spec:
             - message: maxActive must be at least 1
               rule: '!has(self.maxActive) || self.maxActive >= 1'
           status:
-            description: PromotionTriggerStatus records observed source state and
-              created promotionruns.
+            description: |-
+              PromotionTriggerStatus records observed source state and the managed
+              Promotion's progress.
             properties:
               activePromotionRunCount:
-                description: ActivePromotionRunCount is the number of non-terminal
-                  PromotionRuns created by this trigger.
+                description: |-
+                  ActivePromotionRunCount is the number of non-terminal PromotionRuns
+                  observed under the managed Promotion. Equals 1 during a healthy
+                  in-flight rollout; >1 usually means a prior attempt has not been
+                  superseded yet.
                 format: int32
                 type: integer
-              activePromotionRuns:
-                description: ActivePromotionRuns lists non-terminal PromotionRuns
-                  created by this trigger.
-                items:
-                  type: string
-                type: array
               conditions:
-                description: Conditions summarize readiness, suspension, verification,
-                  and promotionrun creation.
+                description: |-
+                  Conditions summarize readiness, suspension, verification, and the
+                  managed Promotion's creation/update state.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -333,11 +345,48 @@ spec:
                 description: LastCheckedAt is the last time the source was checked.
                 type: string
               lastTriggeredAt:
-                description: LastTriggeredAt is the last time a PromotionRun was created.
+                description: |-
+                  LastTriggeredAt is the last time the managed Promotion was created or
+                  updated.
+                type: string
+              managedPromotion:
+                description: |-
+                  ManagedPromotion is the name of the Promotion this trigger
+                  creates and updates.
                 type: string
               observedGeneration:
                 format: int64
                 type: integer
+              recentArtifacts:
+                description: |-
+                  RecentArtifacts is a bounded history of recently observed artifacts
+                  (newest first, capped at 20). Records tag movement even when dedup
+                  suppresses a Promotion update.
+                items:
+                  description: PromotionTriggerArtifact identifies an observed immutable
+                    artifact.
+                  properties:
+                    digest:
+                      description: Digest is the immutable artifact digest.
+                      type: string
+                    observedAt:
+                      description: ObservedAt is the RFC3339 time this artifact was
+                        observed.
+                      type: string
+                    signatureVerified:
+                      description: SignatureVerified records whether signature policy
+                        passed.
+                      type: boolean
+                    tag:
+                      description: Tag is the source tag that matched the trigger
+                        pattern.
+                      type: string
+                    version:
+                      description: Version is the value copied into PromotionRun.spec.version.
+                      type: string
+                  type: object
+                maxItems: 20
+                type: array
             type: object
         type: object
     served: true

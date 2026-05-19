@@ -11,9 +11,10 @@ spec:
       tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+-kind$"
       requireSignature: false
       pollInterval: 1m
-  promotionrunTemplate:
-    nameTemplate: "checkout-kind-{{ .Tag }}"
-    promotionplans:
+  promotionTemplate:
+    kaproRef: checkout
+    nameTemplate: "checkout-kind"
+    promotionPlans:
       - name: main
         promotionplan: checkout-progressive-kind
     suspended: false

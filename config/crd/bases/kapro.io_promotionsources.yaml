@@ -287,8 +287,11 @@ spec:
                       type: array
                     version:
                       description: |-
-                        Version is the default chart/revision for generated units. Supports
-                        ${VARIABLE} substitution from cluster-vars.
+                        Version is the default chart/revision for the unit at install time.
+                        This is the package/catalog default; the per-rollout target version
+                        comes from PromotionRun.spec.version (or --version on `kapro promote`)
+                        and is what advances the unit through the fleet.
+                        Supports ${VARIABLE} substitution from cluster-vars.
                       type: string
                     versionField:
                       description: |-

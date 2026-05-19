@@ -31,5 +31,6 @@ func init() {
 		// Kapro entry point + promotion source
 		&Kapro{}, &KaproList{},
 		&PromotionSource{}, &PromotionSourceList{},
+		&Promotion{}, &PromotionList{},
 	)
 }

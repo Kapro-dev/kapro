@@ -794,36 +794,95 @@ func newPromoteCmd() *cobra.Command {
 		kubeconfig string
 	)
 	cmd := &cobra.Command{
-		Use:   "promote <app>",
-		Short: "Promote a version through the fleet",
-		Long: `Create the user-facing promotion object for a version.
+		Use:   "promote <kapro>",
+		Short: "Promote a version through a Kapro fleet",
+		Long: `Create a Promotion intent to roll a version through the named Kapro fleet.
 
-Kapro stores promotion execution as a PromotionRun, but the public CLI keeps
-the workflow short: app, version, rollout plan, optional scope.
+The controller materializes each Promotion into one or more PromotionRun
+attempts; users normally observe PromotionRun, they do not author it.
 
 Examples:
-  kapro promote checkout --version v1.2.3 --plan checkout-progressive
-  kapro promote checkout --version v1.2.4 --plan checkout-progressive --scope canary-eu
-  kapro promote checkout --set api=v1.2.3 --set worker=v1.2.2 --plan checkout-progressive`,
+  kapro promote checkout --version v1.2.3
+  kapro promote checkout --version v1.2.4 --scope canary-eu
+  kapro promote checkout --set api=v1.2.3 --set worker=v1.2.2
+  kapro promote checkout --version v1.2.3 --plan checkout-progressive`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(plans) == 0 {
-				return fmt.Errorf("at least one --plan is required")
+			if version == "" && len(versions) == 0 {
+				return fmt.Errorf("--version or at least one --set unit=revision is required")
 			}
 			promotionName := name
 			if promotionName == "" {
 				promotionName = defaultPromotionRunName(args[0], version, versions)
 			}
-			return runPromotionRunCreate(cmd.Context(), promotionName, version, versions, plans, scope, kubeconfig)
+			return runPromotionCreate(cmd.Context(), promotionName, args[0], version, versions, plans, scope, kubeconfig)
 		},
 	}
-	cmd.Flags().StringVar(&name, "name", "", "PromotionRun name; defaults to <app>-<version>")
+	cmd.Flags().StringVar(&name, "name", "", "Promotion name; defaults to <kapro>-<version>")
 	cmd.Flags().StringVar(&version, "version", "", "Default revision to deliver")
 	cmd.Flags().StringArrayVar(&versions, "set", nil, "Per-unit revision (repeatable: --set api=sha256:abc)")
-	cmd.Flags().StringArrayVar(&plans, "plan", nil, "PromotionPlan name (repeatable; required at least once)")
+	cmd.Flags().StringArrayVar(&plans, "plan", nil, "PromotionPlan override (repeatable); defaults to the parent Kapro's inline plan")
 	cmd.Flags().StringArrayVar(&scope, "scope", nil, "Restrict to target cluster (repeatable: --scope de-prod --scope fi-prod)")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	return cmd
+}
+
+// runPromotionCreate creates a Promotion intent. The PromotionController
+// materializes it into a PromotionRun.
+func runPromotionCreate(ctx context.Context, name, kaproRef, version string,
+	versionPairs, plans, scope []string, kubeconfigPath string) error {
+
+	versions, err := parsePromotionRunVersions(versionPairs)
+	if err != nil {
+		return err
+	}
+	c, err := buildClient(kubeconfigPath)
+	if err != nil {
+		return err
+	}
+
+	var planRefs []kaprov1alpha1.PromotionPlanRef
+	for i, p := range plans {
+		planRefs = append(planRefs, kaprov1alpha1.PromotionPlanRef{
+			Name:          fmt.Sprintf("p%d", i+1),
+			PromotionPlan: p,
+		})
+	}
+
+	spec := kaprov1alpha1.PromotionSpec{
+		KaproRef:       kaproRef,
+		Version:        version,
+		Versions:       versions,
+		PromotionPlans: planRefs,
+	}
+	if len(scope) > 0 {
+		spec.Scope = &kaprov1alpha1.PromotionRunScope{Targets: scope}
+	}
+
+	promo := &kaprov1alpha1.Promotion{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec:       spec,
+	}
+	if err := c.Create(ctx, promo); err != nil {
+		return fmt.Errorf("create Promotion: %w", err)
+	}
+
+	fmt.Printf("✅ Promotion created: %s\n", name)
+	fmt.Printf("   Kapro:     %s\n", kaproRef)
+	if version != "" {
+		fmt.Printf("   Version:   %s\n", version)
+	}
+	if len(versions) > 0 {
+		fmt.Printf("   Versions:  %s\n", formatPromotionRunVersions(versions))
+	}
+	if len(plans) > 0 {
+		fmt.Printf("   Plans:     %s\n", strings.Join(plans, ", "))
+	}
+	if len(scope) > 0 {
+		fmt.Printf("   Scope:     %s\n", strings.Join(scope, ", "))
+	}
+	fmt.Printf("\nWatch progress:\n  kubectl get promotion %s -w\n  kubectl get promotionruns -l kapro.io/promotion=%s\n", name, name)
+	return nil
 }
 
 func defaultPromotionRunName(app, version string, versions []string) string {
@@ -889,8 +948,12 @@ func newPromotionRunCreateCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "Create a PromotionRun to deliver a version across the fleet",
-		Long: `Create a Kapro PromotionRun CR that drives progressive delivery.
+		Short: "Create a PromotionRun directly (advanced; bypasses Promotion intent)",
+		Long: `Create a Kapro PromotionRun CR directly.
+
+Most users should use 'kapro promote' to create a Promotion; the controller
+will create a PromotionRun under it. This command is for debugging, plugin
+authors, and other advanced cases that need to bypass the intent layer.
 
 Examples:
   # Full-fleet promotionrun

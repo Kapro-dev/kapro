@@ -9,6 +9,97 @@ record for each tag.
 
 ### Added
 
+- Restored the `Promotion` CRD as the durable user-facing rollout intent,
+  partially reversing #75. The PromotionController materializes each
+  Promotion into a `PromotionRun` attempt and mirrors run status back into
+  `Promotion.status`. The model mirrors `Deployment → ReplicaSet → Pod` and
+  Docker Swarm `Service → Task → Container`: intent is durable, attempts are
+  ephemeral.
+- `Promotion.spec.kaproRef` references the parent Kapro fleet; the
+  PromotionController inherits the rollout plan from `Kapro.spec.promotionplan`
+  when `Promotion.spec.promotionPlans` is unset.
+- `Promotion.status.activeAttemptRef` (current non-terminal `PromotionRun`)
+  and `Promotion.status.attempts[]` (bounded last-20 history, newest-first).
+- `PromotionRun.status.phase` gained terminal `Superseded`. When a new
+  attempt is stamped under the same Promotion, the previous non-terminal
+  run is patched to `Superseded` with reason `SupersededByNewPromotionAttempt`.
+- Admission webhook for `PromotionRun`: create/update is denied unless the
+  requester is the Kapro controller service account (configurable via env
+  `KAPRO_PROMOTIONRUN_WRITERS`). `system:masters` is always allowed as
+  break-glass.
+- Recommended RBAC role `kapro-promotion-engineer` (renamed from
+  `kapro-promotionrun-engineer`): users get Promotion CRUD; PromotionRun
+  is read-only.
+
+### Changed
+
+- `kapro promote <kapro> --version <v>` now creates a `Promotion` (not a
+  `PromotionRun`). The CLI surface is unchanged for the common case.
+- `kapro promotionrun create` is now documented as advanced/debug usage that
+  bypasses the intent layer.
+- `PromotionController` stamps a NEW `PromotionRun` whenever the deterministic
+  hash of `Promotion.spec` changes; existing runs are never rolling-updated
+  for new desired versions. Spec hash covers kaproRef, version, versions,
+  plans, scope, and timeout (suspended deliberately excluded).
+
+### Changed (cont.) — PromotionTrigger now emits Promotion
+
+- Renamed `PromotionTrigger.spec.promotionrunTemplate` to
+  `spec.promotionTemplate`. The template adds a required `kaproRef` field
+  pointing at the parent Kapro fleet. Existing trigger manifests must be
+  rewritten (alpha API, no migration tooling).
+- Renamed status `activePromotionRuns` (slice) to `managedPromotion`
+  (single name) + `activePromotionRunCount`. Added
+  `status.recentArtifacts[]` (bounded last 20) so tag movement is recorded
+  even when the dedup path skips a Promotion update.
+- `PromotionTrigger` now creates or updates a single managed Promotion per
+  trigger; the PromotionController stamps PromotionRun attempts under it.
+  Dedup: skips when the managed Promotion's `spec.version` already matches
+  the observed digest AND the trigger template hash is unchanged.
+- A tag flip A → B → A now produces three Promotion updates only when the
+  active digest differs from A at the moment of the flip; redundant
+  same-digest observations are coalesced into the recent-artifact history.
+- Renamed RBAC role `kapro-promotion-trigger-admin` keeps its existing
+  grants; triggers no longer need direct PromotionRun write access.
+
+### Migration from v0.5.0-rc.0 (#75)
+
+- Existing `PromotionRun` manifests still work; they execute directly without
+  a Promotion parent.
+- New users should author a `Promotion` (or use `kapro promote`) instead of
+  a `PromotionRun` so the CI re-stamp, audit, and cancellation semantics
+  are first-class.
+
+### Added (Docker-style Promotion lifecycle)
+
+- `Promotion.status.phase` is now a Docker-container-shaped state machine:
+  `Pending` (created), `Progressing` (running), `Paused` (suspended),
+  `Restarting` (new attempt after a prior terminal one), `Succeeded`
+  (exited 0), `Failed` (exited >0), `RollingBack` (reserved for
+  `spec.rollbackTo`), `Terminating` (removing). The old enum
+  (`Pending/Running/Promoted/Failed/Suspended`) is replaced.
+- `Promotion.status.conditions` now publishes `Ready`, `Progressing`,
+  `Suspended`, and `RollbackAvailable`. `RollbackAvailable=True` once any
+  prior attempt reached `Succeeded` — observability today, wired to a
+  rollback feature in a follow-up.
+- The controller emits a Kubernetes `Event` on every coarse phase
+  transition (e.g. `Pending -> Progressing -> Succeeded -> Restarting`),
+  marking `Failed` as `Warning` and everything else as `Normal`.
+- `kubectl delete promotion <name>` now publishes `phase=Terminating`
+  before owner-reference GC drains child `PromotionRun` objects.
+
+### Fixed
+
+- `Promotion.spec.suspended` now propagates to the freshly-stamped
+  `PromotionRun.spec.suspended` at t=0. Previously, a Promotion whose
+  spec went from suspended to unsuspended on a new generation could
+  briefly stamp a non-suspended run; this is now sealed by writing the
+  parent's current suspend state into `buildRunSpec`.
+
+
+
+### Added
+
 - Added `kapro promote <app>` as the simple public CLI path for creating a
   `PromotionRun`.
 - Added inline `Kapro.spec.source` for the single-object quickstart path.

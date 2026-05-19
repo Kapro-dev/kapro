@@ -4,14 +4,59 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"reflect"
+	"strings"
 
 	admissionv1 "k8s.io/api/admission/v1"
+	authenticationv1 "k8s.io/api/authentication/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
+
+// PromotionRun create/update is restricted to the Kapro controller service
+// account. Normal users should author a Promotion and let the controller
+// stamp a PromotionRun; direct PromotionRun writes are a break-glass path.
+//
+// AllowedPromotionRunWriters is the default set of usernames allowed to
+// write PromotionRun objects. Override via KAPRO_PROMOTIONRUN_WRITERS
+// (comma-separated). The system:masters group is always allowed as a
+// break-glass override.
+var AllowedPromotionRunWriters = []string{
+	"system:serviceaccount:kapro-system:kapro-operator",
+}
+
+// breakGlassGroup is allowed regardless of username.
+const breakGlassGroup = "system:masters"
+
+func allowedWriters() []string {
+	if env := os.Getenv("KAPRO_PROMOTIONRUN_WRITERS"); env != "" {
+		out := strings.Split(env, ",")
+		for i := range out {
+			out[i] = strings.TrimSpace(out[i])
+		}
+		return out
+	}
+	return AllowedPromotionRunWriters
+}
+
+// isAllowedPromotionRunWriter reports whether the given user identity is
+// permitted to create or update PromotionRun objects.
+func isAllowedPromotionRunWriter(user authenticationv1.UserInfo) bool {
+	for _, g := range user.Groups {
+		if g == breakGlassGroup {
+			return true
+		}
+	}
+	for _, allowed := range allowedWriters() {
+		if user.Username == allowed {
+			return true
+		}
+	}
+	return false
+}
 
 // LabelKaproTeam is the ownership label every promotion-affecting CR must
 // carry. Enforced at CREATE by the admission validators per
@@ -51,6 +96,18 @@ func NewPromotionRunValidator(decoder admission.Decoder) *PromotionRunValidator 
 
 // Handle implements admission.Handler.
 func (v *PromotionRunValidator) Handle(_ context.Context, req admission.Request) admission.Response {
+	// Gate writes to the controller. Users author Promotion; the controller
+	// stamps PromotionRun. Break-glass via system:masters group.
+	if req.Operation == admissionv1.Create || req.Operation == admissionv1.Update {
+		if !isAllowedPromotionRunWriter(req.UserInfo) {
+			return admission.Denied(fmt.Sprintf(
+				"PromotionRun is controller-managed; create or update a Promotion instead "+
+					"(requester %q is not in the allowed writer list)",
+				req.UserInfo.Username,
+			))
+		}
+	}
+
 	var promotionrun kaprov1alpha1.PromotionRun
 	if err := v.decoder.DecodeRaw(req.Object, &promotionrun); err != nil {
 		return admission.Errored(http.StatusBadRequest, err)

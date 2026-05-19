@@ -230,6 +230,7 @@ func (r *PromotionRunReconciler) buildRunFSM() *fsm.Machine[kaprov1alpha1.Promot
 		},
 	}))
 	must(m.RegisterTerminal(kaprov1alpha1.PromotionRunPhaseComplete))
+	must(m.RegisterTerminal(kaprov1alpha1.PromotionRunPhaseSuperseded))
 	return m
 }
 

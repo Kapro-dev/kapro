@@ -1,0 +1,319 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: promotions.kapro.io
+spec:
+  group: kapro.io
+  names:
+    categories:
+    - kapro-all
+    kind: Promotion
+    listKind: PromotionList
+    plural: promotions
+    shortNames:
+    - promo
+    singular: promotion
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.kaproRef
+      name: Kapro
+      type: string
+    - jsonPath: .spec.version
+      name: Version
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.activeAttemptRef.name
+      name: Run
+      type: string
+    - jsonPath: .status.attempts.length()
+      name: Attempts
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          Promotion is the durable user-facing intent to roll a version through a
+          Kapro fleet. The controller materializes intent into one or more
+          PromotionRun attempts; PromotionRun and PromotionTarget are observe-only
+          runtime objects.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              PromotionSpec is the durable intent to deliver a version through a Kapro
+              fleet. It refers to a parent Kapro (which owns source, plan, clusters,
+              delivery) and adds the rollout target (version, scope, optional plan
+              override).
+            properties:
+              kaproRef:
+                description: KaproRef is the name of the Kapro fleet this intent targets.
+                minLength: 1
+                type: string
+              promotionPlans:
+                description: |-
+                  PromotionPlans optionally overrides the inline Kapro.spec.promotionplan
+                  for this intent. When unset, the controller derives a single plan ref
+                  from the parent Kapro's inline plan.
+                items:
+                  description: |-
+                    PromotionPlanRef is one node in the PromotionRun's promotionplan DAG.
+                    Multiple promotionplans can run in parallel; DependsOn declares ordering between them.
+                  properties:
+                    dependsOn:
+                      description: DependsOn lists promotionplan node names that must
+                        reach Complete before this one starts.
+                      items:
+                        type: string
+                      maxItems: 64
+                      type: array
+                    name:
+                      description: Name uniquely identifies this promotionplan node
+                        within the PromotionRun.
+                      type: string
+                    promotionplan:
+                      description: PromotionPlan is the name of the PromotionPlan
+                        CRD to execute.
+                      type: string
+                  required:
+                  - name
+                  - promotionplan
+                  type: object
+                maxItems: 64
+                type: array
+              scope:
+                description: Scope restricts this Promotion to a subset of the parent
+                  fleet.
+                properties:
+                  targets:
+                    description: |-
+                      Targets is the allowlist of target cluster names.
+                      Must be non-empty when Scope is set — an empty list is ignored.
+                    items:
+                      type: string
+                    type: array
+                type: object
+              suspended:
+                default: false
+                description: |-
+                  Suspended pauses creation of new PromotionRun attempts when true.
+                  In-flight attempts are also suspended via PromotionRun.spec.suspended.
+                type: boolean
+              timeout:
+                description: Timeout is the maximum duration for each PromotionRun
+                  attempt.
+                type: string
+              version:
+                description: Version is the default revision to deliver across all
+                  units.
+                type: string
+              versions:
+                additionalProperties:
+                  type: string
+                description: |-
+                  Versions maps PromotionUnit name to a per-unit revision.
+                  Either Version or at least one Versions entry must be set.
+                type: object
+            required:
+            - kaproRef
+            type: object
+          status:
+            description: PromotionStatus is the observed state of a Promotion intent.
+            properties:
+              activeAttemptRef:
+                description: |-
+                  ActiveAttemptRef points at the current (non-terminal) PromotionRun.
+                  nil when no attempt is in flight (all attempts terminal).
+                properties:
+                  completedAt:
+                    description: |-
+                      CompletedAt is when the attempt reached a terminal phase
+                      (Complete, Failed, or Superseded).
+                    format: date-time
+                    type: string
+                  name:
+                    description: Name is the PromotionRun name for this attempt.
+                    type: string
+                  phase:
+                    description: Phase is the last-observed PromotionRun.status.phase
+                      for this attempt.
+                    type: string
+                  specHash:
+                    description: |-
+                      SpecHash is the deterministic hash of the Promotion spec that produced
+                      this attempt. Used to detect spec drift and trigger a new attempt.
+                    type: string
+                  startedAt:
+                    description: StartedAt is when the attempt was created.
+                    format: date-time
+                    type: string
+                  supersededReason:
+                    description: |-
+                      SupersededReason is set when this attempt was marked Superseded
+                      instead of finishing naturally.
+                    type: string
+                  version:
+                    description: |-
+                      Version is the resolved version applied for this attempt (the value
+                      echoed into PromotionRun.spec.version at stamp time).
+                    type: string
+                required:
+                - name
+                - specHash
+                type: object
+              attempts:
+                description: |-
+                  Attempts records up to the last 20 attempts (newest first). Older
+                  attempts remain discoverable via PromotionRun objects with the
+                  kapro.io/promotion label.
+                items:
+                  description: PromotionAttemptRef is one historical or active attempt
+                    under a Promotion.
+                  properties:
+                    completedAt:
+                      description: |-
+                        CompletedAt is when the attempt reached a terminal phase
+                        (Complete, Failed, or Superseded).
+                      format: date-time
+                      type: string
+                    name:
+                      description: Name is the PromotionRun name for this attempt.
+                      type: string
+                    phase:
+                      description: Phase is the last-observed PromotionRun.status.phase
+                        for this attempt.
+                      type: string
+                    specHash:
+                      description: |-
+                        SpecHash is the deterministic hash of the Promotion spec that produced
+                        this attempt. Used to detect spec drift and trigger a new attempt.
+                      type: string
+                    startedAt:
+                      description: StartedAt is when the attempt was created.
+                      format: date-time
+                      type: string
+                    supersededReason:
+                      description: |-
+                        SupersededReason is set when this attempt was marked Superseded
+                        instead of finishing naturally.
+                      type: string
+                    version:
+                      description: |-
+                        Version is the resolved version applied for this attempt (the value
+                        echoed into PromotionRun.spec.version at stamp time).
+                      type: string
+                  required:
+                  - name
+                  - specHash
+                  type: object
+                maxItems: 20
+                type: array
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              observedGeneration:
+                description: ObservedGeneration is the .metadata.generation last reconciled.
+                format: int64
+                type: integer
+              phase:
+                description: |-
+                  Phase aggregates the active attempt's PromotionRun phase into a coarse
+                  Promotion phase.
+                enum:
+                - Pending
+                - Progressing
+                - Paused
+                - Restarting
+                - Succeeded
+                - Failed
+                - RollingBack
+                - Terminating
+                type: string
+              resolvedVersion:
+                description: |-
+                  ResolvedVersion echoes the most recent attempt's version for quick
+                  at-a-glance status.
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
