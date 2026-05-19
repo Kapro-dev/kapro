@@ -76,9 +76,9 @@ spec:
       # Set true only after configuring a trigger verifier.
       requireSignature: false
   promotionrunTemplate:
-    promotionplans:
+    promotionPlans:
       - name: production
-        promotionplan: checkout-production
+        promotionPlan: checkout-production
     suspended: true
     scope:
       targets:

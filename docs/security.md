@@ -130,9 +130,9 @@ spec:
       requireSignature: true
       pollInterval: 5m
   promotionrunTemplate:
-    promotionplans:
+    promotionPlans:
       - name: production
-        promotionplan: checkout-keyless
+        promotionPlan: checkout-keyless
     suspended: true
     scope:
       targets:
@@ -167,9 +167,9 @@ spec:
       tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
       requireSignature: true
   promotionrunTemplate:
-    promotionplans:
+    promotionPlans:
       - name: production
-        promotionplan: checkout
+        promotionPlan: checkout
     suspended: true
 ```
 

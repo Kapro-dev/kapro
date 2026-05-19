@@ -24,9 +24,9 @@ metadata:
     kapro.io/shard: shard-a
 spec:
   version: 1.2.3
-  promotionplans:
+  promotionPlans:
     - name: checkout-progressive
-      promotionplan: checkout-progressive
+      promotionPlan: checkout-progressive
 ---
 apiVersion: kapro.io/v1alpha1
 kind: PromotionRun
@@ -36,6 +36,6 @@ metadata:
     kapro.io/shard: shard-b
 spec:
   version: 1.2.3
-  promotionplans:
+  promotionPlans:
     - name: checkout-progressive
-      promotionplan: checkout-progressive
+      promotionPlan: checkout-progressive

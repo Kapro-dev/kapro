@@ -55,11 +55,11 @@ protection, idempotency checks, signed commits, and a controlled push path.
 ## Example Output
 
 ```yaml
-promotionrun: "checkout-v1-2-3"
+promotionRun: "checkout-v1-2-3"
 eventType: "kapro.promotionrun.completed"
 phase: "Complete"
 version: "oci://registry.example.com/checkout@sha256:..."
-promotionplan: "main"
+promotionPlan: "main"
 stage: "production-eu"
 target: "prod-eu"
 source: "/kapro/promotionruns/checkout-v1-2-3"

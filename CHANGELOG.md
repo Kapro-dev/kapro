@@ -7,6 +7,52 @@ record for each tag.
 
 ## Unreleased
 
+### BREAKING — CRD field names harmonised to strict Kubernetes camelCase
+
+Fourteen JSON field names across `Kapro`, `Approval`, `PromotionRun`,
+`PromotionTarget`, and `AuditEntry` were renamed to match the
+Kubernetes camelCase convention. The Go field names are unchanged —
+this is a YAML/JSON-on-the-wire change only. Existing v0.1.0
+manifests must be rewritten before upgrading to v0.1.1.
+
+| Path | Was | Becomes |
+|---|---|---|
+| `Kapro.spec.promotionplan` | `promotionplan` | `promotionPlan` |
+| `Approval.spec.promotionrun` | `promotionrun` | `promotionRun` |
+| `PromotionRun.spec.promotionplans` | `promotionplans` | `promotionPlans` |
+| `PromotionRun.spec.promotionPlans[].promotionplan` | `promotionplan` | `promotionPlan` |
+| `PromotionRun.status.promotionplanProgress` | `promotionplanProgress` | `promotionPlanProgress` |
+| `PromotionRun.status.promotionPlanProgress[].promotionplan` | `promotionplan` | `promotionPlan` |
+| `PromotionRun.status.targets[].promotionrunRef` | `promotionrunRef` | `promotionRunRef` |
+| `PromotionRun.status.targets[].promotionplanRef` | `promotionplanRef` | `promotionPlanRef` |
+| `PromotionRun.status.targets[].promotionplan` | `promotionplan` | `promotionPlan` |
+| `PromotionRun.status.auditTrail[].promotionrun` | `promotionrun` | `promotionRun` |
+| `PromotionRun.status.auditTrail[].promotionrunDerivedFrom` | `promotionrunDerivedFrom` | `promotionRunDerivedFrom` |
+| `PromotionTarget.spec.promotionrunRef` | `promotionrunRef` | `promotionRunRef` |
+| `PromotionTarget.spec.promotionplanRef` | `promotionplanRef` | `promotionPlanRef` |
+| `PromotionTarget.spec.promotionplan` | `promotionplan` | `promotionPlan` |
+
+Two printcolumn JSONPaths on `PromotionTarget` updated accordingly.
+
+A new drift canary at `api/v1alpha1/camelcase_canary_test.go`
+(`TestJSONTagsAreCamelCase`) fails the build if a future contributor
+reintroduces lowercase-two-word JSON tags or snake_case anywhere in
+the API. Decision rationale and rejected alternatives (compatibility
+shim, defer to v1beta1) are captured in
+[ADR-0004](docs/adr/0004-camelcase-field-harmonization.md).
+
+Examples (`examples/kind-demo/`, `examples/hub-config/`,
+`examples/quickstart/`, `examples/promotion-trigger/`,
+`examples/operations/`, `examples/event-consumers/`,
+`examples/greenfield/`), the CLI scaffold (`cmd/kapro/scaffold.go`),
+and migration/security/ADR docs (`docs/flux-migration.md`,
+`docs/argo-migration.md`, `docs/security.md`,
+`docs/ADR-002-promotion-trigger.md`) all rewritten to the new keys.
+
+No `kapro migrate v0.1-fields` CLI subcommand ships in this release;
+the rename list is short enough for `sed` and existing manifests can
+be rewritten with a one-liner.
+
 ### Added (quality A-pass — docs / tests / process)
 
 - **Three Architecture Decision Records** capture the design decisions

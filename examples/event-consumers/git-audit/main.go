@@ -108,11 +108,11 @@ func isAuditEvent(eventType string) bool {
 }
 
 func renderAuditYAML(ce cloudEvent, event kaproEvent) string {
-	return fmt.Sprintf(`promotionrun: %q
+	return fmt.Sprintf(`promotionRun: %q
 eventType: %q
 phase: %q
 version: %q
-promotionplan: %q
+promotionPlan: %q
 stage: %q
 target: %q
 source: %q

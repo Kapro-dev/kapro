@@ -159,10 +159,10 @@ func validatePromotionRun(r *kaprov1alpha1.PromotionRun) error {
 			return fmt.Errorf("promotionrun.spec.promotionplans[%d].name must be set", i)
 		}
 		if ref.PromotionPlan == "" {
-			return fmt.Errorf("promotionrun.spec.promotionplans[%d].promotionplan must be set", i)
+			return fmt.Errorf("promotionrun.spec.promotionPlans[%d].promotionPlan must be set", i)
 		}
 		if _, exists := index[ref.Name]; exists {
-			return fmt.Errorf("promotionrun.spec.promotionplans: duplicate promotionplan node name %q", ref.Name)
+			return fmt.Errorf("promotionrun.spec.promotionPlans: duplicate promotionPlan node name %q", ref.Name)
 		}
 		index[ref.Name] = i
 	}
@@ -171,7 +171,7 @@ func validatePromotionRun(r *kaprov1alpha1.PromotionRun) error {
 	for _, ref := range r.Spec.PromotionPlans {
 		for _, dep := range ref.DependsOn {
 			if _, exists := index[dep]; !exists {
-				return fmt.Errorf("promotionrun.spec.promotionplans[%q].dependsOn: unknown promotionplan node %q", ref.Name, dep)
+				return fmt.Errorf("promotionrun.spec.promotionPlans[%q].dependsOn: unknown promotionPlan node %q", ref.Name, dep)
 			}
 		}
 	}
@@ -180,7 +180,7 @@ func validatePromotionRun(r *kaprov1alpha1.PromotionRun) error {
 	if cycle := detectCycle(index, func(name string) []string {
 		return r.Spec.PromotionPlans[index[name]].DependsOn
 	}); cycle != "" {
-		return fmt.Errorf("promotionrun.spec.promotionplans: cycle detected: %s", cycle)
+		return fmt.Errorf("promotionrun.spec.promotionPlans: cycle detected: %s", cycle)
 	}
 
 	return nil

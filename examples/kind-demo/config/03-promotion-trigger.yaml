@@ -16,7 +16,7 @@ spec:
     nameTemplate: "checkout-kind"
     promotionPlans:
       - name: main
-        promotionplan: checkout-progressive-kind
+        promotionPlan: checkout-progressive-kind
     suspended: false
     timeout: 30m
     labels:

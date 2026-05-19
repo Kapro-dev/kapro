@@ -27,7 +27,7 @@ spec:
     - name: prod-eu
       labels:
         stage: prod
-  promotionplan:
+  promotionPlan:
     stages:
       - name: canary
         selector:

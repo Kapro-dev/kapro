@@ -261,9 +261,9 @@ metadata:
   name: checkout-2026-05-15
 spec:
   version: 1.5.0
-  promotionplans:
+  promotionPlans:
     - name: main
-      promotionplan: checkout
+      promotionPlan: checkout
   versions:
     api: 1.5.0
     web: 3.9.1
