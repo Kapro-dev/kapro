@@ -28,7 +28,19 @@ const (
 	promotionIntentRequeue = 15 * time.Second
 	promotionOwnerLabel    = "kapro.io/promotion"
 	promotionSpecHashLabel = "kapro.io/promotion-spec-hash"
-	supersededReason       = "SupersededByNewPromotionAttempt"
+	// promotionUIDLabel propagates the parent Promotion's metadata.uid to
+	// every stamped PromotionRun. Downstream emitters (lifecycle
+	// dispatcher publishing kapro.io/promotion.wave.*, .stage.*,
+	// .stage.gate.* CloudEvents) read this so data.promotionUID is
+	// available without an extra Get to the owning Promotion.
+	promotionUIDLabel = "kapro.io/promotion-uid"
+	// promotionKaproLabel propagates the parent Kapro fleet name (the
+	// value of Promotion.spec.kaproRef). PromotionRun.spec.promotionplans
+	// carries PromotionPlan names, not the Kapro name, so this label is
+	// the only source of truth for sink-emitted data.kaproRef on
+	// run-scoped events.
+	promotionKaproLabel = "kapro.io/kapro"
+	supersededReason    = "SupersededByNewPromotionAttempt"
 )
 
 // PromotionReconciler materializes Promotion intent into PromotionRun
@@ -166,6 +178,16 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		for _, name := range supersededNames {
 			r.emitAttemptSuperseded(ctx, &promotion, name)
 		}
+	} else {
+		// Upgrade-path backfill: runs stamped by an older controller may
+		// be missing kapro.io/kapro and kapro.io/promotion-uid. Without
+		// these, wave/stage/gate CloudEvents emit empty data.kaproRef /
+		// data.promotionUID for the entire lifetime of the in-flight
+		// attempt. backfillRunLabels is idempotent — a no-op once the
+		// labels are already in place.
+		if err := r.backfillRunLabels(ctx, activeRun, &promotion); err != nil {
+			return ctrl.Result{}, fmt.Errorf("backfill labels on active PromotionRun: %w", err)
+		}
 	}
 
 	return r.patchStatusFromRun(ctx, &promotion, activeRun, specHash, priorTerminalExists)
@@ -199,13 +221,20 @@ func (r *PromotionReconciler) stampAttempt(ctx context.Context, p *kaprov1alpha1
 	spec kaprov1alpha1.PromotionRunSpec, specHash string) (*kaprov1alpha1.PromotionRun, error) {
 
 	name := attemptName(p.Name, specHash)
+	labels := map[string]string{
+		promotionOwnerLabel:    p.Name,
+		promotionSpecHashLabel: specHash,
+	}
+	if p.Spec.KaproRef != "" {
+		labels[promotionKaproLabel] = p.Spec.KaproRef
+	}
+	if p.UID != "" {
+		labels[promotionUIDLabel] = string(p.UID)
+	}
 	run := &kaprov1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-			Labels: map[string]string{
-				promotionOwnerLabel:    p.Name,
-				promotionSpecHashLabel: specHash,
-			},
+			Name:        name,
+			Labels:      labels,
 			Annotations: copyStringMap(p.Annotations),
 		},
 		Spec: spec,
@@ -215,15 +244,57 @@ func (r *PromotionReconciler) stampAttempt(ctx context.Context, p *kaprov1alpha1
 	}
 	if err := r.Create(ctx, run); err != nil {
 		if apierrors.IsAlreadyExists(err) {
-			// Deterministic name collision: fetch the existing one.
+			// Deterministic name collision: fetch the existing one and
+			// backfill the run-scoped CloudEvents labels if a previous
+			// controller version stamped this run without them. In-flight
+			// attempts created before this PR would otherwise emit
+			// wave/stage/gate events with empty data.kaproRef and
+			// data.promotionUID until the next attempt is stamped.
 			if getErr := r.Get(ctx, client.ObjectKey{Name: name}, run); getErr != nil {
 				return nil, fmt.Errorf("re-fetch PromotionRun after AlreadyExists: %w", getErr)
+			}
+			if err := r.backfillRunLabels(ctx, run, p); err != nil {
+				return nil, fmt.Errorf("backfill labels on existing PromotionRun: %w", err)
 			}
 			return run, nil
 		}
 		return nil, fmt.Errorf("create PromotionRun: %w", err)
 	}
 	return run, nil
+}
+
+// backfillRunLabels patches kapro.io/kapro and kapro.io/promotion-uid
+// onto an existing PromotionRun when they're missing. This covers the
+// upgrade path: runs stamped by an older PromotionController had only
+// kapro.io/promotion and kapro.io/promotion-spec-hash labels. Without
+// the backfill, in-flight attempts created before this PR would emit
+// wave/stage/gate CloudEvents with empty data.kaproRef and
+// data.promotionUID until they completed and a new attempt was stamped.
+//
+// Idempotent: a no-op when both labels are already set or when the
+// parent Promotion has no spec.kaproRef / UID to copy.
+func (r *PromotionReconciler) backfillRunLabels(ctx context.Context,
+	run *kaprov1alpha1.PromotionRun, p *kaprov1alpha1.Promotion) error {
+	wantKapro := p.Spec.KaproRef
+	wantUID := string(p.UID)
+	haveKapro := run.Labels[promotionKaproLabel]
+	haveUID := run.Labels[promotionUIDLabel]
+	missingKapro := wantKapro != "" && haveKapro == ""
+	missingUID := wantUID != "" && haveUID == ""
+	if !missingKapro && !missingUID {
+		return nil
+	}
+	patch := client.MergeFrom(run.DeepCopy())
+	if run.Labels == nil {
+		run.Labels = map[string]string{}
+	}
+	if missingKapro {
+		run.Labels[promotionKaproLabel] = wantKapro
+	}
+	if missingUID {
+		run.Labels[promotionUIDLabel] = wantUID
+	}
+	return r.Patch(ctx, run, patch)
 }
 
 // supersedePrevious marks any non-terminal PromotionRun owned by this

@@ -102,7 +102,7 @@ Each `type` follows reverse-DNS naming under `kapro.io/`.
 | Type | When | data fields |
 |---|---|---|
 | `kapro.io/promotion.wave.entered` | A PromotionPlan node transitions from Pending to Progressing. | wave |
-| `kapro.io/promotion.wave.completed` | A PromotionPlan node reaches terminal phase (Complete or Failed). | wave, reason (`complete`/`failed`) |
+| `kapro.io/promotion.wave.completed` | A PromotionPlan node reaches terminal phase. | wave, reason (canonical `complete` or `failed`), message (human sentence) |
 
 ### Stage-level (Stage inside a PromotionPlan)
 
@@ -133,8 +133,8 @@ unknown types under these prefixes as Kapro-shaped:
 | `promotion` | yes | `Promotion.metadata.name` |
 | `promotionUID` | yes | `Promotion.metadata.uid` |
 | `kaproRef` | yes | Parent `Kapro` fleet name |
-| `phase` | yes | `Promotion.status.phase` at emit |
-| `previousPhase` | yes | Prior `status.phase`, empty for the initial transition |
+| `phase` | yes | `Promotion.status.phase` for whole-Promotion / attempt events; `PromotionRun.status.phase` for wave / stage / stage.gate / target events. The scoped phase (wave/stage/gate local state) is in the event type plus the `wave` / `stage` / `gate` fields — never overloaded into `phase`. |
+| `previousPhase` | yes | Prior `status.phase`, empty for the initial transition and for run-scoped events |
 | `version` | yes | `Promotion.spec.version` |
 | `attemptName` | yes | Active or just-affected `PromotionRun` name |
 | `wave` | yes | PromotionPlan DAG node name (set on wave/stage/gate events) |
