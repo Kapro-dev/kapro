@@ -437,11 +437,12 @@ func setPromotionConditions(p *kaprov1alpha1.Promotion, run *kaprov1alpha1.Promo
 	ready := metav1.ConditionFalse
 	readyReason := "Reconciled"
 	readyMsg := fmt.Sprintf("Active attempt %s in phase %s", run.Name, run.Status.Phase)
-	if phase == kaprov1alpha1.PromotionPhaseSucceeded {
+	switch phase {
+	case kaprov1alpha1.PromotionPhaseSucceeded:
 		ready = metav1.ConditionTrue
 		readyReason = "Succeeded"
 		readyMsg = fmt.Sprintf("Attempt %s completed", run.Name)
-	} else if phase == kaprov1alpha1.PromotionPhaseFailed {
+	case kaprov1alpha1.PromotionPhaseFailed:
 		readyReason = "Failed"
 		readyMsg = fmt.Sprintf("Attempt %s failed", run.Name)
 	}

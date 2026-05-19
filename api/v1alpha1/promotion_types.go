@@ -42,15 +42,17 @@ type PromotionSpec struct {
 
 // PromotionPhase is the coarse lifecycle state of a Promotion intent,
 // modeled after the Docker container lifecycle:
-//   Pending      -> created, not yet stamped       (Docker: created)
-//   Progressing  -> active PromotionRun running    (Docker: running)
-//   Paused       -> spec.suspended=true            (Docker: paused)
-//   Restarting   -> new attempt after terminal     (Docker: restarting)
-//   Succeeded    -> latest attempt completed       (Docker: exited 0)
-//   Failed       -> latest attempt failed          (Docker: exited >0)
-//   RollingBack  -> rollback to a prior version    (reachable when
-//                   spec.rollbackTo is wired; reserved today)
-//   Terminating  -> deletionTimestamp set, GC      (Docker: removing)
+//
+//	Pending      -> created, not yet stamped       (Docker: created)
+//	Progressing  -> active PromotionRun running    (Docker: running)
+//	Paused       -> spec.suspended=true            (Docker: paused)
+//	Restarting   -> new attempt after terminal     (Docker: restarting)
+//	Succeeded    -> latest attempt completed       (Docker: exited 0)
+//	Failed       -> latest attempt failed          (Docker: exited >0)
+//	RollingBack  -> rollback to a prior version    (reachable when
+//	                spec.rollbackTo is wired; reserved today)
+//	Terminating  -> deletionTimestamp set, GC      (Docker: removing)
+//
 // +kubebuilder:validation:Enum=Pending;Progressing;Paused;Restarting;Succeeded;Failed;RollingBack;Terminating
 type PromotionPhase string
 
