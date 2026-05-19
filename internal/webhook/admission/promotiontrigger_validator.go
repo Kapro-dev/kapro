@@ -64,12 +64,14 @@ func validatePromotionTrigger(pt *kaprov1alpha1.PromotionTrigger) error {
 	default:
 		return fmt.Errorf("spec.source.type %q is unsupported (built-in: oci)", src.Type)
 	}
-	if len(pt.Spec.PromotionRunTemplate.PromotionPlans) == 0 {
-		return fmt.Errorf("spec.promotionrunTemplate.promotionplans must contain at least one ref")
+	if pt.Spec.PromotionTemplate.KaproRef == "" {
+		return fmt.Errorf("spec.promotionTemplate.kaproRef is required")
 	}
-	for i, ref := range pt.Spec.PromotionRunTemplate.PromotionPlans {
+	// PromotionPlans is optional on the trigger template; when empty the
+	// Promotion controller inherits the inline plan from the parent Kapro.
+	for i, ref := range pt.Spec.PromotionTemplate.PromotionPlans {
 		if ref.Name == "" {
-			return fmt.Errorf("spec.promotionrunTemplate.promotionplans[%d].name is required", i)
+			return fmt.Errorf("spec.promotionTemplate.promotionPlans[%d].name is required", i)
 		}
 	}
 	return nil

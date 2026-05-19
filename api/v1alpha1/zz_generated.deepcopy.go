@@ -3025,7 +3025,7 @@ func (in *PromotionTriggerSource) DeepCopy() *PromotionTriggerSource {
 func (in *PromotionTriggerSpec) DeepCopyInto(out *PromotionTriggerSpec) {
 	*out = *in
 	in.Source.DeepCopyInto(&out.Source)
-	in.PromotionRunTemplate.DeepCopyInto(&out.PromotionRunTemplate)
+	in.PromotionTemplate.DeepCopyInto(&out.PromotionTemplate)
 	if in.Parameters != nil {
 		in, out := &in.Parameters, &out.Parameters
 		*out = make(map[string]string, len(*in))
@@ -3053,9 +3053,9 @@ func (in *PromotionTriggerStatus) DeepCopyInto(out *PromotionTriggerStatus) {
 		*out = new(PromotionTriggerArtifact)
 		**out = **in
 	}
-	if in.ActivePromotionRuns != nil {
-		in, out := &in.ActivePromotionRuns, &out.ActivePromotionRuns
-		*out = make([]string, len(*in))
+	if in.RecentArtifacts != nil {
+		in, out := &in.RecentArtifacts, &out.RecentArtifacts
+		*out = make([]PromotionTriggerArtifact, len(*in))
 		copy(*out, *in)
 	}
 	if in.Conditions != nil {

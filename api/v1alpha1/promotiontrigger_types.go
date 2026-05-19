@@ -1,5 +1,7 @@
-// PromotionTrigger CRD: autonomous source observation that creates
-// PromotionRun objects from verified artifact changes.
+// PromotionTrigger CRD: autonomous source observation that creates or
+// updates a Promotion from verified artifact changes. The PromotionController
+// then materializes each Promotion update into a PromotionRun attempt; the
+// trigger itself never writes PromotionRun directly.
 package v1alpha1
 
 import (
@@ -9,28 +11,34 @@ import (
 
 // ---- PromotionTrigger ---------------------------------------------------------
 
-// PromotionTriggerSpec defines an autonomous source that can create PromotionRun
-// objects from verified artifact changes. The controller currently provides
-// preview behavior for this API, and the API is intentionally safe by default.
+// PromotionTriggerSpec defines an autonomous source that creates or updates
+// a Promotion from verified artifact changes. The controller currently
+// provides preview behavior for this API, and the API is intentionally safe
+// by default.
 //
 // +kubebuilder:validation:XValidation:rule="self.source.type != 'oci' || has(self.source.oci)",message="source.oci is required when source.type=oci"
 // +kubebuilder:validation:XValidation:rule="!has(self.maxActive) || self.maxActive >= 1",message="maxActive must be at least 1"
 type PromotionTriggerSpec struct {
-	// Suspended pauses source observation and promotionrun creation.
+	// Suspended pauses source observation and Promotion creation/update.
 	// +kubebuilder:default=true
 	Suspended bool `json:"suspended,omitempty"`
 	// Source configures where artifact changes are observed.
 	Source PromotionTriggerSource `json:"source"`
-	// PromotionRunTemplate defines the PromotionRun created for a verified artifact.
-	PromotionRunTemplate PromotionTriggerTemplate `json:"promotionrunTemplate"`
-	// Cooldown is the minimum duration between promotionruns created by this trigger.
+	// PromotionTemplate defines the Promotion the trigger creates or updates.
+	// Renamed from promotionrunTemplate when the trigger moved from emitting
+	// PromotionRun directly to emitting Promotion intent.
+	PromotionTemplate PromotionTriggerTemplate `json:"promotionTemplate"`
+	// Cooldown is the minimum duration between Promotion updates created by
+	// this trigger.
 	// +kubebuilder:default="30m"
 	Cooldown string `json:"cooldown,omitempty"`
-	// MaxActive limits concurrently active PromotionRuns created by this trigger.
+	// MaxActive limits concurrently non-terminal PromotionRuns observed under
+	// the trigger's managed Promotion. A high count usually means a prior
+	// rollout is still in flight when a new artifact arrives.
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:default=1
 	MaxActive int32 `json:"maxActive,omitempty"`
-	// DryRun records what would be created without creating a PromotionRun.
+	// DryRun records what would be created without writing the Promotion.
 	// +kubebuilder:default=false
 	DryRun bool `json:"dryRun,omitempty"`
 	// Parameters are source-specific key-value pairs for future extension.
@@ -70,50 +78,75 @@ type OCIPromotionTriggerSource struct {
 	SecretRef *corev1.SecretReference `json:"secretRef,omitempty"`
 }
 
-// PromotionTriggerTemplate defines the PromotionRun created from a verified artifact.
+// PromotionTriggerTemplate defines the Promotion created or updated from a
+// verified artifact. Mirrors PromotionSpec with the rollout-input fields the
+// trigger is allowed to set.
 type PromotionTriggerTemplate struct {
-	// NameTemplate controls the created PromotionRun name. Empty means the controller
-	// derives a deterministic name from trigger name and artifact digest.
+	// KaproRef is the name of the parent Kapro fleet the managed Promotion
+	// targets. Required; the PromotionController uses it to resolve the
+	// inline plan and clusters.
+	// +kubebuilder:validation:MinLength=1
+	KaproRef string `json:"kaproRef"`
+	// NameTemplate controls the managed Promotion name. Empty means the
+	// controller derives a deterministic name from the trigger name.
 	// +optional
 	NameTemplate string `json:"nameTemplate,omitempty"`
-	// PromotionPlans is copied into PromotionRun.spec.promotionplans.
-	// +kubebuilder:validation:MinItems=1
+	// PromotionPlans optionally overrides Kapro.spec.promotionplan on the
+	// managed Promotion.
 	// +kubebuilder:validation:MaxItems=64
-	PromotionPlans []PromotionPlanRef `json:"promotionplans"`
-	// Suspended controls PromotionRun.spec.suspended on created PromotionRuns.
-	// Defaults to true so detection does not equal deployment.
+	// +optional
+	PromotionPlans []PromotionPlanRef `json:"promotionPlans,omitempty"`
+	// Suspended controls Promotion.spec.suspended on creation. Defaults to
+	// true so detection does not equal deployment.
 	// +kubebuilder:default=true
 	Suspended bool `json:"suspended,omitempty"`
-	// Scope restricts created PromotionRuns to a subset of clusters.
+	// Scope restricts the managed Promotion to a subset of clusters.
 	// +optional
 	Scope *PromotionRunScope `json:"scope,omitempty"`
-	// Timeout is copied into PromotionRun.spec.timeout.
+	// Timeout is copied into Promotion.spec.timeout.
 	// +optional
 	Timeout string `json:"timeout,omitempty"`
-	// Labels are added to created PromotionRuns.
+	// Labels are added to the managed Promotion.
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
-	// Annotations are added to created PromotionRuns.
+	// Annotations are added to the managed Promotion.
 	// +optional
 	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
-// PromotionTriggerStatus records observed source state and created promotionruns.
+// PromotionTriggerStatus records observed source state and the managed
+// Promotion's progress.
 type PromotionTriggerStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 	// LastCheckedAt is the last time the source was checked.
 	LastCheckedAt string `json:"lastCheckedAt,omitempty"`
-	// LastTriggeredAt is the last time a PromotionRun was created.
+	// LastTriggeredAt is the last time the managed Promotion was created or
+	// updated.
 	LastTriggeredAt string `json:"lastTriggeredAt,omitempty"`
 	// LastArtifact is the most recent artifact observed by the trigger.
 	LastArtifact *PromotionTriggerArtifact `json:"lastArtifact,omitempty"`
-	// ActivePromotionRuns lists non-terminal PromotionRuns created by this trigger.
-	ActivePromotionRuns []string `json:"activePromotionRuns,omitempty"`
-	// ActivePromotionRunCount is the number of non-terminal PromotionRuns created by this trigger.
+	// ManagedPromotion is the name of the Promotion this trigger
+	// creates and updates.
+	ManagedPromotion string `json:"managedPromotion,omitempty"`
+	// ActivePromotionRunCount is the number of non-terminal PromotionRuns
+	// observed under the managed Promotion. Equals 1 during a healthy
+	// in-flight rollout; >1 usually means a prior attempt has not been
+	// superseded yet.
 	ActivePromotionRunCount int32 `json:"activePromotionRunCount,omitempty"`
-	// Conditions summarize readiness, suspension, verification, and promotionrun creation.
+	// RecentArtifacts is a bounded history of recently observed artifacts
+	// (newest first, capped at 20). Records tag movement even when dedup
+	// suppresses a Promotion update.
+	// +kubebuilder:validation:MaxItems=20
+	// +optional
+	RecentArtifacts []PromotionTriggerArtifact `json:"recentArtifacts,omitempty"`
+	// Conditions summarize readiness, suspension, verification, and the
+	// managed Promotion's creation/update state.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
+
+// MaxRecentArtifacts caps PromotionTriggerStatus.RecentArtifacts to keep
+// status size bounded.
+const MaxRecentArtifacts = 20
 
 // PromotionTriggerArtifact identifies an observed immutable artifact.
 type PromotionTriggerArtifact struct {

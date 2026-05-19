@@ -3,7 +3,9 @@ package controller
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,7 +51,7 @@ func TestPromotionTriggerDryRunCreatesNothingAndRecordsArtifact(t *testing.T) {
 	if got.Status.LastArtifact == nil || got.Status.LastArtifact.Digest != testArtifact().Digest {
 		t.Fatalf("LastArtifact = %+v", got.Status.LastArtifact)
 	}
-	cond := apimeta.FindStatusCondition(got.Status.Conditions, conditionPromotionRunCreated)
+	cond := apimeta.FindStatusCondition(got.Status.Conditions, conditionPromotionUpdated)
 	if cond == nil || cond.Reason != "DryRun" {
 		t.Fatalf("PromotionRunCreated condition = %+v", cond)
 	}
@@ -70,32 +72,33 @@ func TestPromotionTriggerSignatureFailureBlocksPromotionRun(t *testing.T) {
 	}
 }
 
-func TestPromotionTriggerCreatesDigestPinnedPromotionRun(t *testing.T) {
+func TestPromotionTriggerCreatesDigestPinnedPromotion(t *testing.T) {
 	ctx := context.Background()
 	reconciler, c := newPromotionTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, promotionTriggerFixture())
 
 	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
 		t.Fatal(err)
 	}
-	var promotionruns kaprov1alpha1.PromotionRunList
-	if err := c.List(ctx, &promotionruns); err != nil {
-		t.Fatal(err)
+	assertPromotionCount(t, ctx, c, 1)
+	// PromotionTrigger no longer creates PromotionRun directly; the
+	// PromotionController stamps that under the managed Promotion.
+	assertPromotionRunCount(t, ctx, c, 0)
+
+	managed := getManagedPromotion(t, ctx, c, "checkout")
+	if managed.Spec.KaproRef != "checkout" {
+		t.Fatalf("KaproRef = %q", managed.Spec.KaproRef)
 	}
-	if len(promotionruns.Items) != 1 {
-		t.Fatalf("promotionrun count = %d", len(promotionruns.Items))
+	if managed.Spec.Version != "oci://registry.example.com/checkout@sha256:abcdef1234567890" {
+		t.Fatalf("Version = %q", managed.Spec.Version)
 	}
-	promotionrun := promotionruns.Items[0]
-	if promotionrun.Spec.Version != "oci://registry.example.com/checkout@sha256:abcdef1234567890" {
-		t.Fatalf("Version = %q", promotionrun.Spec.Version)
+	if !managed.Spec.Suspended {
+		t.Fatal("managed Promotion should be suspended by default per template fixture")
 	}
-	if !promotionrun.Spec.Suspended {
-		t.Fatal("created PromotionRun should be suspended by default in the template fixture")
-	}
-	if promotionrun.Labels[promotionTriggerLabel] != "checkout" || promotionrun.Annotations[promotionTriggerDigestAnno] != testArtifact().Digest {
-		t.Fatalf("metadata labels=%v annotations=%v", promotionrun.Labels, promotionrun.Annotations)
+	if managed.Labels[promotionTriggerLabel] != "checkout" || managed.Annotations[promotionTriggerDigestAnno] != testArtifact().Digest {
+		t.Fatalf("metadata labels=%v annotations=%v", managed.Labels, managed.Annotations)
 	}
 	got := getPromotionTrigger(t, ctx, c, "checkout")
-	if got.Status.LastTriggeredAt == "" || got.Status.ActivePromotionRunCount != 1 {
+	if got.Status.LastTriggeredAt == "" || got.Status.ManagedPromotion != "checkout" {
 		t.Fatalf("status = %+v", got.Status)
 	}
 }
@@ -118,15 +121,9 @@ func TestPromotionTriggerCreatedAtUsesCreationTime(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var promotionruns kaprov1alpha1.PromotionRunList
-	if err := c.List(ctx, &promotionruns); err != nil {
-		t.Fatal(err)
-	}
-	if len(promotionruns.Items) != 1 {
-		t.Fatalf("promotionrun count = %d", len(promotionruns.Items))
-	}
+	managed := getManagedPromotion(t, ctx, c, "checkout")
 	want := createTime.UTC().Format(time.RFC3339)
-	if got := promotionruns.Items[0].Annotations[promotionTriggerCreatedAnno]; got != want {
+	if got := managed.Annotations[promotionTriggerCreatedAnno]; got != want {
 		t.Fatalf("created annotation = %q, want %q", got, want)
 	}
 	trigger := getPromotionTrigger(t, ctx, c, "checkout")
@@ -140,27 +137,47 @@ func TestPromotionTriggerCreatedAtUsesCreationTime(t *testing.T) {
 
 func TestPromotionTriggerDoesNotDuplicateSameDigest(t *testing.T) {
 	ctx := context.Background()
-	existing := &kaprov1alpha1.PromotionRun{
+	trigger := promotionTriggerFixture()
+	// Pre-existing managed Promotion already targets the same digest with the
+	// same template hash; the trigger must dedupe.
+	tmplHash := triggerTemplateHash(trigger)
+	existing := &kaprov1alpha1.Promotion{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        "checkout-existing",
-			Labels:      map[string]string{promotionTriggerLabel: "checkout"},
+			Name: "checkout",
+			Labels: map[string]string{
+				promotionTriggerLabel:             "checkout",
+				promotionTriggerTemplateHashLabel: tmplHash,
+			},
 			Annotations: map[string]string{promotionTriggerDigestAnno: testArtifact().Digest},
 		},
-		Spec: kaprov1alpha1.PromotionRunSpec{Version: "oci://registry.example.com/checkout@sha256:abcdef1234567890"},
+		Spec: kaprov1alpha1.PromotionSpec{
+			KaproRef: "checkout",
+			Version:  "oci://registry.example.com/checkout@sha256:abcdef1234567890",
+		},
 	}
-	reconciler, c := newPromotionTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, promotionTriggerFixture(), existing)
+	reconciler, c := newPromotionTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, trigger, existing)
 
 	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
 		t.Fatal(err)
 	}
-	assertPromotionRunCount(t, ctx, c, 1)
+	assertPromotionCount(t, ctx, c, 1)
+	// LastTriggeredAt should NOT have been bumped, since the dedup path returned
+	// early before reaching the upsert.
+	got := getPromotionTrigger(t, ctx, c, "checkout")
+	if got.Status.LastTriggeredAt != "" {
+		t.Fatalf("LastTriggeredAt should be empty after dedup, got %q", got.Status.LastTriggeredAt)
+	}
 }
 
 func TestPromotionTriggerMaxActiveBlocksCreation(t *testing.T) {
 	ctx := context.Background()
+	// Active PromotionRun under the managed Promotion (label points at it).
 	active := &kaprov1alpha1.PromotionRun{
-		ObjectMeta: metav1.ObjectMeta{Name: "checkout-active", Labels: map[string]string{promotionTriggerLabel: "checkout"}},
-		Status:     kaprov1alpha1.PromotionRunStatus{Phase: kaprov1alpha1.PromotionRunPhaseProgressing},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "checkout-active",
+			Labels: map[string]string{promotionOwnerLabel: "checkout"},
+		},
+		Status: kaprov1alpha1.PromotionRunStatus{Phase: kaprov1alpha1.PromotionRunPhaseProgressing},
 	}
 	reconciler, c := newPromotionTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, promotionTriggerFixture(), active)
 
@@ -169,7 +186,7 @@ func TestPromotionTriggerMaxActiveBlocksCreation(t *testing.T) {
 	}
 	assertPromotionRunCount(t, ctx, c, 1)
 	got := getPromotionTrigger(t, ctx, c, "checkout")
-	cond := apimeta.FindStatusCondition(got.Status.Conditions, conditionPromotionRunCreated)
+	cond := apimeta.FindStatusCondition(got.Status.Conditions, conditionPromotionUpdated)
 	if cond == nil || cond.Reason != "MaxActiveReached" {
 		t.Fatalf("PromotionRunCreated condition = %+v", cond)
 	}
@@ -187,7 +204,7 @@ func TestPromotionTriggerCooldownBlocksCreation(t *testing.T) {
 	}
 	assertPromotionRunCount(t, ctx, c, 0)
 	got := getPromotionTrigger(t, ctx, c, "checkout")
-	cond := apimeta.FindStatusCondition(got.Status.Conditions, conditionPromotionRunCreated)
+	cond := apimeta.FindStatusCondition(got.Status.Conditions, conditionPromotionUpdated)
 	if cond == nil || cond.Reason != "CooldownActive" {
 		t.Fatalf("PromotionRunCreated condition = %+v", cond)
 	}
@@ -261,7 +278,7 @@ func TestPromotionTriggerExistingPromotionRunCooldownPreventsRapidBypass(t *test
 	}
 	assertPromotionRunCount(t, ctx, c, 1)
 	got := getPromotionTrigger(t, ctx, c, "checkout")
-	cond := apimeta.FindStatusCondition(got.Status.Conditions, conditionPromotionRunCreated)
+	cond := apimeta.FindStatusCondition(got.Status.Conditions, conditionPromotionUpdated)
 	if cond == nil || cond.Reason != "CooldownActive" {
 		t.Fatalf("PromotionRunCreated condition = %+v", cond)
 	}
@@ -269,10 +286,10 @@ func TestPromotionTriggerExistingPromotionRunCooldownPreventsRapidBypass(t *test
 
 func TestPromotionTriggerNameTemplateFailsOnMissingKey(t *testing.T) {
 	trigger := promotionTriggerFixture(func(rt *kaprov1alpha1.PromotionTrigger) {
-		rt.Spec.PromotionRunTemplate.NameTemplate = "{{ .Missing.Value }}"
+		rt.Spec.PromotionTemplate.NameTemplate = "{{ .Missing.Value }}"
 	})
 
-	if _, err := promotionrunName(trigger, *testArtifact()); err == nil {
+	if _, err := managedPromotionName(trigger); err == nil {
 		t.Fatal("expected missing-key template error")
 	}
 }
@@ -306,7 +323,7 @@ func newPromotionTriggerReconciler(t *testing.T, resolver PromotionTriggerResolv
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objects...).
-		WithStatusSubresource(&kaprov1alpha1.PromotionTrigger{}, &kaprov1alpha1.PromotionRun{}).
+		WithStatusSubresource(&kaprov1alpha1.PromotionTrigger{}, &kaprov1alpha1.PromotionRun{}, &kaprov1alpha1.Promotion{}).
 		Build()
 	return &PromotionTriggerReconciler{
 		Client:   c,
@@ -332,7 +349,8 @@ func promotionTriggerFixture(mutators ...func(*kaprov1alpha1.PromotionTrigger)) 
 					PollInterval:     "1m",
 				},
 			},
-			PromotionRunTemplate: kaprov1alpha1.PromotionTriggerTemplate{
+			PromotionTemplate: kaprov1alpha1.PromotionTriggerTemplate{
+				KaproRef:       "checkout",
 				PromotionPlans: []kaprov1alpha1.PromotionPlanRef{{Name: "prod", PromotionPlan: "checkout-prod"}},
 				Suspended:      true,
 				Scope:          &kaprov1alpha1.PromotionRunScope{Targets: []string{"canary-eu"}},
@@ -375,6 +393,26 @@ func assertPromotionRunCount(t *testing.T, ctx context.Context, c client.Client,
 	}
 }
 
+func assertPromotionCount(t *testing.T, ctx context.Context, c client.Client, want int) {
+	t.Helper()
+	var promotions kaprov1alpha1.PromotionList
+	if err := c.List(ctx, &promotions); err != nil {
+		t.Fatal(err)
+	}
+	if len(promotions.Items) != want {
+		t.Fatalf("promotion count = %d, want %d", len(promotions.Items), want)
+	}
+}
+
+func getManagedPromotion(t *testing.T, ctx context.Context, c client.Client, name string) kaprov1alpha1.Promotion {
+	t.Helper()
+	var got kaprov1alpha1.Promotion
+	if err := c.Get(ctx, client.ObjectKey{Name: name}, &got); err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
 type fakeTriggerResolver struct {
 	artifact *PromotionTriggerArtifactObservation
 	err      error
@@ -397,4 +435,92 @@ type fakeVerifier struct {
 
 func (f fakeVerifier) Verify(context.Context, *kaprov1alpha1.PromotionTrigger, PromotionTriggerArtifactObservation) error {
 	return f.err
+}
+
+func TestPromotionTriggerTagFlipUpdatesManagedPromotion(t *testing.T) {
+	ctx := context.Background()
+	artifact := &PromotionTriggerArtifactObservation{Tag: "v1.2.3", Digest: "sha256:aaaa"}
+	resolver := &fakeTriggerResolver{artifact: artifact}
+	trigger := promotionTriggerFixture(func(rt *kaprov1alpha1.PromotionTrigger) {
+		rt.Spec.Cooldown = "1m"
+	})
+	reconciler, c := newPromotionTriggerReconciler(t, resolver, fakeVerifier{}, trigger)
+	// Advance Now() by 1h between reconciles so cooldown does not block tag flips.
+	tick := fixedNow()
+	reconciler.Now = func() time.Time {
+		t := tick
+		tick = tick.Add(time.Hour)
+		return t
+	}
+
+	// Tag A → managed Promotion stamped with digest A.
+	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+	managed := getManagedPromotion(t, ctx, c, "checkout")
+	if !strings.Contains(managed.Spec.Version, "sha256:aaaa") {
+		t.Fatalf("after tag A: Version = %q, want digest aaaa", managed.Spec.Version)
+	}
+
+	// Tag B → managed Promotion updated to digest B.
+	resolver.artifact = &PromotionTriggerArtifactObservation{Tag: "v1.2.4", Digest: "sha256:bbbb"}
+	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+	managed = getManagedPromotion(t, ctx, c, "checkout")
+	if !strings.Contains(managed.Spec.Version, "sha256:bbbb") {
+		t.Fatalf("after tag B: Version = %q, want digest bbbb", managed.Spec.Version)
+	}
+
+	// Tag A again → managed Promotion updated back to digest A (active is B).
+	resolver.artifact = &PromotionTriggerArtifactObservation{Tag: "v1.2.3", Digest: "sha256:aaaa"}
+	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+	managed = getManagedPromotion(t, ctx, c, "checkout")
+	if !strings.Contains(managed.Spec.Version, "sha256:aaaa") {
+		t.Fatalf("after tag A flip back: Version = %q, want digest aaaa", managed.Spec.Version)
+	}
+}
+
+func TestPromotionTriggerTemplateHashStableAndChangeDetectable(t *testing.T) {
+	a := promotionTriggerFixture()
+	b := promotionTriggerFixture()
+	if triggerTemplateHash(a) != triggerTemplateHash(b) {
+		t.Fatal("identical templates should hash equal")
+	}
+	c := promotionTriggerFixture(func(rt *kaprov1alpha1.PromotionTrigger) {
+		rt.Spec.PromotionTemplate.Timeout = "1h"
+	})
+	if triggerTemplateHash(a) == triggerTemplateHash(c) {
+		t.Fatal("template change (timeout) must produce different hash")
+	}
+}
+
+func TestPromotionTriggerRecentArtifactsBoundedAndDedupedByDigest(t *testing.T) {
+	var list []kaprov1alpha1.PromotionTriggerArtifact
+	// Same digest + tag twice → coalesced to one entry, refreshed.
+	first := kaprov1alpha1.PromotionTriggerArtifact{Tag: "v1", Digest: "sha256:a", ObservedAt: "t1"}
+	second := kaprov1alpha1.PromotionTriggerArtifact{Tag: "v1", Digest: "sha256:a", ObservedAt: "t2"}
+	list = recordRecentArtifact(list, first)
+	list = recordRecentArtifact(list, second)
+	if len(list) != 1 || list[0].ObservedAt != "t2" {
+		t.Fatalf("same digest+tag should coalesce; got %+v", list)
+	}
+	// Different digest → new entry prepended.
+	third := kaprov1alpha1.PromotionTriggerArtifact{Tag: "v2", Digest: "sha256:b", ObservedAt: "t3"}
+	list = recordRecentArtifact(list, third)
+	if len(list) != 2 || list[0].Digest != "sha256:b" {
+		t.Fatalf("different digest should prepend; got %+v", list)
+	}
+	// Fill past cap; oldest should fall off.
+	for i := 0; i < kaprov1alpha1.MaxRecentArtifacts+5; i++ {
+		list = recordRecentArtifact(list, kaprov1alpha1.PromotionTriggerArtifact{
+			Tag:    "v",
+			Digest: fmt.Sprintf("sha256:fill-%d", i),
+		})
+	}
+	if len(list) != kaprov1alpha1.MaxRecentArtifacts {
+		t.Fatalf("len = %d, want %d", len(list), kaprov1alpha1.MaxRecentArtifacts)
+	}
 }

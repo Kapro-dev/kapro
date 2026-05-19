@@ -42,13 +42,25 @@ record for each tag.
   for new desired versions. Spec hash covers kaproRef, version, versions,
   plans, scope, and timeout (suspended deliberately excluded).
 
-### Deferred to follow-up
+### Changed (cont.) — PromotionTrigger now emits Promotion
 
-- `PromotionTrigger` still creates `PromotionRun` directly (allowed by the
-  new webhook because the trigger runs as the operator service account).
-  Migrating triggers to emit `Promotion` with digest+template-hash dedup
-  requires a `PromotionTriggerTemplate.kaproRef` schema change and is a
-  separate PR.
+- Renamed `PromotionTrigger.spec.promotionrunTemplate` to
+  `spec.promotionTemplate`. The template adds a required `kaproRef` field
+  pointing at the parent Kapro fleet. Existing trigger manifests must be
+  rewritten (alpha API, no migration tooling).
+- Renamed status `activePromotionRuns` (slice) to `managedPromotion`
+  (single name) + `activePromotionRunCount`. Added
+  `status.recentArtifacts[]` (bounded last 20) so tag movement is recorded
+  even when the dedup path skips a Promotion update.
+- `PromotionTrigger` now creates or updates a single managed Promotion per
+  trigger; the PromotionController stamps PromotionRun attempts under it.
+  Dedup: skips when the managed Promotion's `spec.version` already matches
+  the observed digest AND the trigger template hash is unchanged.
+- A tag flip A → B → A now produces three Promotion updates only when the
+  active digest differs from A at the moment of the flip; redundant
+  same-digest observations are coalesced into the recent-artifact history.
+- Renamed RBAC role `kapro-promotion-trigger-admin` keeps its existing
+  grants; triggers no longer need direct PromotionRun write access.
 
 ### Migration from v0.5.0-rc.0 (#75)
 

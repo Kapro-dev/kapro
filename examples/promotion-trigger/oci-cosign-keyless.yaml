@@ -30,9 +30,10 @@ spec:
       tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
       requireSignature: true
       pollInterval: 5m
-  promotionrunTemplate:
-    nameTemplate: "checkout-{{ .ShortDigest }}"
-    promotionplans:
+  promotionTemplate:
+    kaproRef: checkout
+    nameTemplate: "checkout-cosign"
+    promotionPlans:
       - name: production
         promotionplan: checkout-cosign-keyless
     suspended: true

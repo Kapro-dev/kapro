@@ -2,7 +2,9 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -31,19 +33,20 @@ import (
 )
 
 const (
-	promotionTriggerLabel        = "kapro.io/promotion-trigger"
-	promotionTriggerDigestAnno   = "kapro.io/promotion-trigger-digest"
-	promotionTriggerTagAnno      = "kapro.io/promotion-trigger-tag"
-	promotionTriggerRepoAnno     = "kapro.io/promotion-trigger-repository"
-	promotionTriggerCreatedAnno  = "kapro.io/promotion-trigger-created-at"
-	defaultTriggerCooldown       = 30 * time.Minute
-	defaultTriggerPoll           = 5 * time.Minute
-	defaultTriggerMaxActive      = int32(1)
-	defaultTagListPageSize       = 100
-	conditionArtifactObserved    = "ArtifactObserved"
-	conditionArtifactVerified    = "ArtifactVerified"
-	conditionPromotionRunCreated = "PromotionRunCreated"
-	conditionSuspended           = "Suspended"
+	promotionTriggerLabel             = "kapro.io/promotion-trigger"
+	promotionTriggerTemplateHashLabel = "kapro.io/promotion-trigger-template-hash"
+	promotionTriggerDigestAnno        = "kapro.io/promotion-trigger-digest"
+	promotionTriggerTagAnno           = "kapro.io/promotion-trigger-tag"
+	promotionTriggerRepoAnno          = "kapro.io/promotion-trigger-repository"
+	promotionTriggerCreatedAnno       = "kapro.io/promotion-trigger-created-at"
+	defaultTriggerCooldown            = 30 * time.Minute
+	defaultTriggerPoll                = 5 * time.Minute
+	defaultTriggerMaxActive           = int32(1)
+	defaultTagListPageSize            = 100
+	conditionArtifactObserved         = "ArtifactObserved"
+	conditionArtifactVerified         = "ArtifactVerified"
+	conditionPromotionUpdated         = "PromotionUpdated"
+	conditionSuspended                = "Suspended"
 )
 
 // PromotionTriggerArtifactObservation is the immutable source artifact selected by a trigger.
@@ -96,12 +99,18 @@ func (r *PromotionTriggerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, r.patchStatus(ctx, &trigger, patch)
 	}
 
-	active, err := r.activePromotionRuns(ctx, &trigger)
+	managedName, err := managedPromotionName(&trigger)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("list active promotionruns for trigger %q: %w", trigger.Name, err)
+		setTriggerBlocked(&trigger, now, "InvalidNameTemplate", err.Error())
+		return ctrl.Result{}, r.patchStatus(ctx, &trigger, patch)
 	}
-	trigger.Status.ActivePromotionRuns = active
-	trigger.Status.ActivePromotionRunCount = int32(len(active))
+	trigger.Status.ManagedPromotion = managedName
+
+	activeCount, err := r.activePromotionRunCount(ctx, managedName)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("count active PromotionRuns for managed Promotion %q: %w", managedName, err)
+	}
+	trigger.Status.ActivePromotionRunCount = activeCount
 
 	if trigger.Spec.Suspended {
 		setTriggerSuspended(&trigger, now)
@@ -150,13 +159,23 @@ func (r *PromotionTriggerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		setCondition(&trigger.Status.Conditions, conditionArtifactVerified, metav1.ConditionTrue, "SignatureNotRequired", "signature verification is not required for this trigger", trigger.Generation, now)
 	}
 
-	exists, err := promotionrunAlreadyCreatedForDigest(ctx, r.Client, &trigger, artifact.Digest)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("check existing promotionrun for digest %q: %w", artifact.Digest, err)
-	}
-	if exists {
-		setTriggerReady(&trigger, now, "ArtifactAlreadyReleased", "promotionrun already exists for observed artifact")
-		return ctrl.Result{RequeueAfter: pollAfter}, r.patchStatus(ctx, &trigger, patch)
+	templateHash := triggerTemplateHash(&trigger)
+	trigger.Status.RecentArtifacts = recordRecentArtifact(trigger.Status.RecentArtifacts, *trigger.Status.LastArtifact)
+
+	// Look up the managed Promotion. Dedup: if it already targets this
+	// digest AND was last stamped from the same template hash, skip.
+	var managed kaprov1alpha1.Promotion
+	managedExists := false
+	if err := r.Get(ctx, client.ObjectKey{Name: managedName}, &managed); err == nil {
+		managedExists = true
+		if managed.Spec.Version == version &&
+			managed.Labels[promotionTriggerTemplateHashLabel] == templateHash {
+			setTriggerReady(&trigger, now, "ArtifactAlreadyReleased",
+				"managed Promotion already targets this digest+template")
+			return ctrl.Result{RequeueAfter: pollAfter}, r.patchStatus(ctx, &trigger, patch)
+		}
+	} else if !apierrors.IsNotFound(err) {
+		return ctrl.Result{}, fmt.Errorf("get managed Promotion %q: %w", managedName, err)
 	}
 
 	remaining, err := r.cooldownRemaining(ctx, &trigger, now)
@@ -166,7 +185,7 @@ func (r *PromotionTriggerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	if remaining > 0 {
 		setTriggerReady(&trigger, now, "CooldownActive", fmt.Sprintf("cooldown active for %s", remaining.Round(time.Second)))
-		setCondition(&trigger.Status.Conditions, conditionPromotionRunCreated, metav1.ConditionFalse, "CooldownActive", "promotionrun creation delayed by cooldown", trigger.Generation, now)
+		setCondition(&trigger.Status.Conditions, conditionPromotionUpdated, metav1.ConditionFalse, "CooldownActive", "Promotion update delayed by cooldown", trigger.Generation, now)
 		return ctrl.Result{RequeueAfter: minDuration(remaining, pollAfter)}, r.patchStatus(ctx, &trigger, patch)
 	}
 
@@ -174,40 +193,57 @@ func (r *PromotionTriggerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if maxActive == 0 {
 		maxActive = defaultTriggerMaxActive
 	}
-	if int32(len(active)) >= maxActive {
-		setTriggerReady(&trigger, now, "MaxActiveReached", fmt.Sprintf("active promotionrun count %d reached maxActive %d", len(active), maxActive))
-		setCondition(&trigger.Status.Conditions, conditionPromotionRunCreated, metav1.ConditionFalse, "MaxActiveReached", "promotionrun creation delayed by maxActive", trigger.Generation, now)
+	if activeCount >= maxActive {
+		setTriggerReady(&trigger, now, "MaxActiveReached", fmt.Sprintf("active PromotionRun count %d reached maxActive %d", activeCount, maxActive))
+		setCondition(&trigger.Status.Conditions, conditionPromotionUpdated, metav1.ConditionFalse, "MaxActiveReached", "Promotion update delayed by maxActive", trigger.Generation, now)
 		return ctrl.Result{RequeueAfter: pollAfter}, r.patchStatus(ctx, &trigger, patch)
 	}
 
 	createdAt := r.now()
-	promotionrun, err := buildTriggeredPromotionRun(&trigger, *artifact, version, r.Scheme, createdAt)
+	desired, err := buildTriggeredPromotion(&trigger, *artifact, version, managedName, templateHash, r.Scheme, createdAt)
 	if err != nil {
-		setTriggerBlocked(&trigger, now, "InvalidPromotionRunTemplate", err.Error())
+		setTriggerBlocked(&trigger, now, "InvalidPromotionTemplate", err.Error())
 		return ctrl.Result{}, r.patchStatus(ctx, &trigger, patch)
 	}
 	if trigger.Spec.DryRun {
-		setTriggerReady(&trigger, now, "DryRun", fmt.Sprintf("would create promotionrun %s", promotionrun.Name))
-		setCondition(&trigger.Status.Conditions, conditionPromotionRunCreated, metav1.ConditionFalse, "DryRun", fmt.Sprintf("dry run: would create promotionrun %s", promotionrun.Name), trigger.Generation, now)
+		setTriggerReady(&trigger, now, "DryRun", fmt.Sprintf("would upsert Promotion %s for %s", desired.Name, version))
+		setCondition(&trigger.Status.Conditions, conditionPromotionUpdated, metav1.ConditionFalse, "DryRun", fmt.Sprintf("dry run: would upsert Promotion %s", desired.Name), trigger.Generation, now)
 		return ctrl.Result{RequeueAfter: pollAfter}, r.patchStatus(ctx, &trigger, patch)
 	}
 
-	if err := r.Create(ctx, promotionrun); err != nil {
-		if !apierrors.IsAlreadyExists(err) {
-			setTriggerBlocked(&trigger, now, "PromotionRunCreateFailed", err.Error())
-			return ctrl.Result{}, r.patchStatus(ctx, &trigger, patch)
+	var op string
+	if !managedExists {
+		if err := r.Create(ctx, desired); err != nil {
+			if !apierrors.IsAlreadyExists(err) {
+				setTriggerBlocked(&trigger, now, "PromotionCreateFailed", err.Error())
+				return ctrl.Result{}, r.patchStatus(ctx, &trigger, patch)
+			}
+			// Race: fetch and fall through to update.
+			if err := r.Get(ctx, client.ObjectKey{Name: managedName}, &managed); err != nil {
+				return ctrl.Result{}, fmt.Errorf("re-fetch managed Promotion after AlreadyExists: %w", err)
+			}
+			managedExists = true
+		} else {
+			op = "created"
 		}
 	}
-	trigger.Status.LastTriggeredAt = createdAt.UTC().Format(time.RFC3339)
-	trigger.Status.ActivePromotionRuns = append(active, promotionrun.Name)
-	sort.Strings(trigger.Status.ActivePromotionRuns)
-	trigger.Status.ActivePromotionRunCount = int32(len(trigger.Status.ActivePromotionRuns))
-	setTriggerReady(&trigger, createdAt, "PromotionRunCreated", fmt.Sprintf("created promotionrun %s", promotionrun.Name))
-	setCondition(&trigger.Status.Conditions, conditionPromotionRunCreated, metav1.ConditionTrue, "PromotionRunCreated", fmt.Sprintf("created promotionrun %s", promotionrun.Name), trigger.Generation, createdAt)
-	if r.Recorder != nil {
-		r.Recorder.Eventf(&trigger, corev1.EventTypeNormal, "PromotionRunCreated", "created promotionrun %s for %s", promotionrun.Name, version)
+	if managedExists && op == "" {
+		mergePatch := client.MergeFrom(managed.DeepCopy())
+		applyTriggerToPromotion(&managed, desired)
+		if err := r.Patch(ctx, &managed, mergePatch); err != nil {
+			setTriggerBlocked(&trigger, now, "PromotionUpdateFailed", err.Error())
+			return ctrl.Result{}, r.patchStatus(ctx, &trigger, patch)
+		}
+		op = "updated"
 	}
-	l.Info("promotion trigger created promotionrun", "trigger", trigger.Name, "promotionrun", promotionrun.Name, "version", version)
+
+	trigger.Status.LastTriggeredAt = createdAt.UTC().Format(time.RFC3339)
+	setTriggerReady(&trigger, createdAt, "PromotionUpdated", fmt.Sprintf("%s Promotion %s", op, desired.Name))
+	setCondition(&trigger.Status.Conditions, conditionPromotionUpdated, metav1.ConditionTrue, "PromotionUpdated", fmt.Sprintf("%s Promotion %s for %s", op, desired.Name, version), trigger.Generation, createdAt)
+	if r.Recorder != nil {
+		r.Recorder.Eventf(&trigger, corev1.EventTypeNormal, "PromotionUpdated", "%s Promotion %s for %s", op, desired.Name, version)
+	}
+	l.Info("promotion trigger upserted Promotion", "trigger", trigger.Name, "promotion", desired.Name, "version", version, "op", op)
 
 	return ctrl.Result{RequeueAfter: pollAfter}, r.patchStatus(ctx, &trigger, patch)
 }
@@ -215,7 +251,7 @@ func (r *PromotionTriggerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 func (r *PromotionTriggerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kaprov1alpha1.PromotionTrigger{}).
-		Owns(&kaprov1alpha1.PromotionRun{}).
+		Owns(&kaprov1alpha1.Promotion{}).
 		Complete(r)
 }
 
@@ -233,20 +269,23 @@ func (r *PromotionTriggerReconciler) now() time.Time {
 	return time.Now().UTC()
 }
 
-func (r *PromotionTriggerReconciler) activePromotionRuns(ctx context.Context, trigger *kaprov1alpha1.PromotionTrigger) ([]string, error) {
+// activePromotionRunCount counts non-terminal PromotionRuns owned by the
+// trigger's managed Promotion (via promotion-owner label).
+func (r *PromotionTriggerReconciler) activePromotionRunCount(ctx context.Context, managedPromotion string) (int32, error) {
+	if managedPromotion == "" {
+		return 0, nil
+	}
 	var list kaprov1alpha1.PromotionRunList
-	if err := r.List(ctx, &list, client.MatchingLabels{promotionTriggerLabel: trigger.Name}); err != nil {
-		return nil, err
+	if err := r.List(ctx, &list, client.MatchingLabels{promotionOwnerLabel: managedPromotion}); err != nil {
+		return 0, err
 	}
-	active := make([]string, 0, len(list.Items))
-	for _, promotionrun := range list.Items {
-		if promotionrun.Status.Phase == kaprov1alpha1.PromotionRunPhaseComplete || promotionrun.Status.Phase == kaprov1alpha1.PromotionRunPhaseFailed {
-			continue
+	var n int32
+	for _, run := range list.Items {
+		if !run.Status.Phase.IsTerminal() {
+			n++
 		}
-		active = append(active, promotionrun.Name)
 	}
-	sort.Strings(active)
-	return active, nil
+	return n, nil
 }
 
 // OCIPromotionTriggerResolver observes OCI tags using ORAS.
@@ -378,74 +417,120 @@ func normalizeRegistryHost(host string) string {
 	return strings.TrimSuffix(host, "/")
 }
 
-func promotionrunAlreadyCreatedForDigest(ctx context.Context, c client.Reader, trigger *kaprov1alpha1.PromotionTrigger, digest string) (bool, error) {
-	var list kaprov1alpha1.PromotionRunList
-	if err := c.List(ctx, &list, client.MatchingLabels{promotionTriggerLabel: trigger.Name}); err != nil {
-		return false, err
+// buildTriggeredPromotion constructs the desired Promotion spec for this
+// trigger + observed artifact. The PromotionController owns stamping a
+// PromotionRun under it.
+func buildTriggeredPromotion(trigger *kaprov1alpha1.PromotionTrigger, artifact PromotionTriggerArtifactObservation, version, managedName, templateHash string, scheme *runtime.Scheme, now time.Time) (*kaprov1alpha1.Promotion, error) {
+	tmpl := &trigger.Spec.PromotionTemplate
+	if tmpl.KaproRef == "" {
+		return nil, fmt.Errorf("spec.promotionTemplate.kaproRef is required")
 	}
-	for _, promotionrun := range list.Items {
-		if promotionrun.Annotations[promotionTriggerDigestAnno] == digest {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func buildTriggeredPromotionRun(trigger *kaprov1alpha1.PromotionTrigger, artifact PromotionTriggerArtifactObservation, version string, scheme *runtime.Scheme, now time.Time) (*kaprov1alpha1.PromotionRun, error) {
-	name, err := promotionrunName(trigger, artifact)
-	if err != nil {
-		return nil, err
-	}
-	labels := copyTriggerStringMap(trigger.Spec.PromotionRunTemplate.Labels)
+	labels := copyTriggerStringMap(tmpl.Labels)
 	labels[promotionTriggerLabel] = trigger.Name
-	annotations := copyTriggerStringMap(trigger.Spec.PromotionRunTemplate.Annotations)
+	labels[promotionTriggerTemplateHashLabel] = templateHash
+	annotations := copyTriggerStringMap(tmpl.Annotations)
 	annotations[promotionTriggerRepoAnno] = trigger.Spec.Source.OCI.Repository
 	annotations[promotionTriggerTagAnno] = artifact.Tag
 	annotations[promotionTriggerDigestAnno] = artifact.Digest
 	annotations[promotionTriggerCreatedAnno] = now.UTC().Format(time.RFC3339)
 
-	promotionrun := &kaprov1alpha1.PromotionRun{
+	promo := &kaprov1alpha1.Promotion{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        name,
+			Name:        managedName,
 			Labels:      labels,
 			Annotations: annotations,
 		},
-		Spec: kaprov1alpha1.PromotionRunSpec{
+		Spec: kaprov1alpha1.PromotionSpec{
+			KaproRef:       tmpl.KaproRef,
 			Version:        version,
-			PromotionPlans: append([]kaprov1alpha1.PromotionPlanRef(nil), trigger.Spec.PromotionRunTemplate.PromotionPlans...),
-			Suspended:      trigger.Spec.PromotionRunTemplate.Suspended,
-			Scope:          trigger.Spec.PromotionRunTemplate.Scope.DeepCopy(),
-			Timeout:        trigger.Spec.PromotionRunTemplate.Timeout,
+			PromotionPlans: append([]kaprov1alpha1.PromotionPlanRef(nil), tmpl.PromotionPlans...),
+			Suspended:      tmpl.Suspended,
+			Scope:          tmpl.Scope.DeepCopy(),
+			Timeout:        tmpl.Timeout,
 		},
 	}
 	if scheme != nil {
 		gvk := schema.GroupVersionKind{Group: kaprov1alpha1.GroupVersion.Group, Version: kaprov1alpha1.GroupVersion.Version, Kind: "PromotionTrigger"}
-		promotionrun.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(trigger, gvk)}
+		promo.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(trigger, gvk)}
 	}
-	return promotionrun, nil
+	return promo, nil
 }
 
-func promotionrunName(trigger *kaprov1alpha1.PromotionTrigger, artifact PromotionTriggerArtifactObservation) (string, error) {
-	if trigger.Spec.PromotionRunTemplate.NameTemplate == "" {
-		return dnsName(fmt.Sprintf("%s-%s", trigger.Name, shortDigest(artifact.Digest))), nil
+// applyTriggerToPromotion mutates `existing` toward `desired` (spec + labels
+// + annotations) without disturbing fields the trigger does not own.
+func applyTriggerToPromotion(existing, desired *kaprov1alpha1.Promotion) {
+	existing.Spec = desired.Spec
+	if existing.Labels == nil {
+		existing.Labels = map[string]string{}
 	}
-	tmpl, err := template.New("promotionrun-name").Option("missingkey=error").Parse(trigger.Spec.PromotionRunTemplate.NameTemplate)
+	for k, v := range desired.Labels {
+		existing.Labels[k] = v
+	}
+	if existing.Annotations == nil {
+		existing.Annotations = map[string]string{}
+	}
+	for k, v := range desired.Annotations {
+		existing.Annotations[k] = v
+	}
+}
+
+// triggerTemplateHash is a deterministic hash of the parts of the trigger
+// template that affect Promotion identity. Used to detect template drift
+// and force a Promotion update even when the digest is unchanged.
+func triggerTemplateHash(trigger *kaprov1alpha1.PromotionTrigger) string {
+	t := trigger.Spec.PromotionTemplate
+	buf, _ := json.Marshal(struct {
+		KaproRef       string                           `json:"kaproRef"`
+		PromotionPlans []kaprov1alpha1.PromotionPlanRef `json:"promotionPlans"`
+		Suspended      bool                             `json:"suspended"`
+		Scope          *kaprov1alpha1.PromotionRunScope `json:"scope"`
+		Timeout        string                           `json:"timeout"`
+		Labels         map[string]string                `json:"labels"`
+		Annotations    map[string]string                `json:"annotations"`
+	}{
+		KaproRef: t.KaproRef, PromotionPlans: t.PromotionPlans, Suspended: t.Suspended,
+		Scope: t.Scope, Timeout: t.Timeout, Labels: t.Labels, Annotations: t.Annotations,
+	})
+	h := sha256.Sum256(buf)
+	return hex.EncodeToString(h[:])[:12]
+}
+
+// recordRecentArtifact prepends a new artifact observation, dedupes by
+// digest (an A→B→A flip is recorded as separate entries since each carries
+// a fresh ObservedAt), and caps the slice at MaxRecentArtifacts.
+func recordRecentArtifact(list []kaprov1alpha1.PromotionTriggerArtifact, current kaprov1alpha1.PromotionTriggerArtifact) []kaprov1alpha1.PromotionTriggerArtifact {
+	if len(list) > 0 && list[0].Digest == current.Digest && list[0].Tag == current.Tag {
+		// Same artifact, same tag — just refresh the latest entry's ObservedAt.
+		list[0] = current
+		return list
+	}
+	out := append([]kaprov1alpha1.PromotionTriggerArtifact{current}, list...)
+	if len(out) > kaprov1alpha1.MaxRecentArtifacts {
+		out = out[:kaprov1alpha1.MaxRecentArtifacts]
+	}
+	return out
+}
+
+func managedPromotionName(trigger *kaprov1alpha1.PromotionTrigger) (string, error) {
+	tmpl := trigger.Spec.PromotionTemplate.NameTemplate
+	if tmpl == "" {
+		return dnsName(trigger.Name), nil
+	}
+	parsed, err := template.New("promotion-name").Option("missingkey=error").Parse(tmpl)
 	if err != nil {
 		return "", fmt.Errorf("parse nameTemplate: %w", err)
 	}
 	var b strings.Builder
 	data := map[string]any{
-		"Trigger":  trigger,
-		"Artifact": artifact,
-		"Tag":      artifact.Tag,
-		"Digest":   artifact.Digest,
+		"Trigger": trigger,
+		"Kapro":   trigger.Spec.PromotionTemplate.KaproRef,
 	}
-	if err := tmpl.Execute(&b, data); err != nil {
+	if err := parsed.Execute(&b, data); err != nil {
 		return "", fmt.Errorf("execute nameTemplate: %w", err)
 	}
 	name := dnsName(b.String())
 	if errs := validation.IsDNS1123Subdomain(name); len(errs) > 0 {
-		return "", fmt.Errorf("nameTemplate produced invalid promotionrun name %q: %s", name, strings.Join(errs, "; "))
+		return "", fmt.Errorf("nameTemplate produced invalid Promotion name %q: %s", name, strings.Join(errs, "; "))
 	}
 	return name, nil
 }
@@ -530,7 +615,7 @@ func cooldownRemaining(trigger *kaprov1alpha1.PromotionTrigger, now time.Time) (
 }
 
 func (r *PromotionTriggerReconciler) cooldownRemaining(ctx context.Context, trigger *kaprov1alpha1.PromotionTrigger, now time.Time) (time.Duration, error) {
-	lastTriggeredAt, err := lastTriggerPromotionRunCreatedAt(ctx, r.Client, trigger)
+	lastTriggeredAt, err := lastTriggerPromotionCreatedAt(ctx, r.Client, trigger)
 	if err != nil {
 		return 0, err
 	}
@@ -551,23 +636,48 @@ func (r *PromotionTriggerReconciler) cooldownRemaining(ctx context.Context, trig
 	return cooldownRemaining(check, now)
 }
 
-func lastTriggerPromotionRunCreatedAt(ctx context.Context, c client.Reader, trigger *kaprov1alpha1.PromotionTrigger) (time.Time, error) {
-	var list kaprov1alpha1.PromotionRunList
-	if err := c.List(ctx, &list, client.MatchingLabels{promotionTriggerLabel: trigger.Name}); err != nil {
-		return time.Time{}, fmt.Errorf("list promotionruns for cooldown: %w", err)
-	}
+// lastTriggerPromotionCreatedAt returns the most recent stamp time from
+// either the managed Promotion's annotation or a child PromotionRun's
+// annotation (legacy/back-compat). Used to seed the cooldown when the
+// trigger's own status.lastTriggeredAt has been cleared (e.g. operator restart).
+func lastTriggerPromotionCreatedAt(ctx context.Context, c client.Reader, trigger *kaprov1alpha1.PromotionTrigger) (time.Time, error) {
 	var latest time.Time
-	for _, promotionrun := range list.Items {
-		createdAt := promotionrun.CreationTimestamp.Time
-		if raw := promotionrun.Annotations[promotionTriggerCreatedAnno]; raw != "" {
+	pick := func(annotations map[string]string, fallback time.Time) (time.Time, error) {
+		if raw := annotations[promotionTriggerCreatedAnno]; raw != "" {
 			parsed, err := time.Parse(time.RFC3339, raw)
 			if err != nil {
-				return time.Time{}, fmt.Errorf("parse promotionrun %s annotation %s %q: %w", promotionrun.Name, promotionTriggerCreatedAnno, raw, err)
+				return time.Time{}, err
 			}
-			createdAt = parsed
+			return parsed, nil
 		}
-		if createdAt.After(latest) {
-			latest = createdAt
+		return fallback, nil
+	}
+	var promotions kaprov1alpha1.PromotionList
+	if err := c.List(ctx, &promotions, client.MatchingLabels{promotionTriggerLabel: trigger.Name}); err != nil {
+		return time.Time{}, fmt.Errorf("list managed Promotions for cooldown: %w", err)
+	}
+	for _, p := range promotions.Items {
+		t, err := pick(p.Annotations, p.CreationTimestamp.Time)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("parse Promotion %s annotation: %w", p.Name, err)
+		}
+		if t.After(latest) {
+			latest = t
+		}
+	}
+	// Back-compat: legacy PromotionRuns created by the old trigger model
+	// still count toward cooldown until they age out.
+	var runs kaprov1alpha1.PromotionRunList
+	if err := c.List(ctx, &runs, client.MatchingLabels{promotionTriggerLabel: trigger.Name}); err != nil {
+		return time.Time{}, fmt.Errorf("list legacy PromotionRuns for cooldown: %w", err)
+	}
+	for _, r := range runs.Items {
+		t, err := pick(r.Annotations, r.CreationTimestamp.Time)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("parse PromotionRun %s annotation: %w", r.Name, err)
+		}
+		if t.After(latest) {
+			latest = t
 		}
 	}
 	return latest, nil
