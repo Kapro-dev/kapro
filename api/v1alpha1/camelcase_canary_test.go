@@ -153,7 +153,7 @@ func violatesCamelCase(name string) string {
 	if name == "" || name == "-" || name == "inline" {
 		return ""
 	}
-	if !(name[0] >= 'a' && name[0] <= 'z') {
+	if name[0] < 'a' || name[0] > 'z' {
 		return "must start with a lowercase ASCII letter"
 	}
 	if strings.Contains(name, "_") {
