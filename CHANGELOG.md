@@ -7,6 +7,29 @@ record for each tag.
 
 ## Unreleased
 
+### Added (quality A-pass — docs / tests / process)
+
+- **Three Architecture Decision Records** capture the design decisions
+  made across PRs #77–#82 so future contributors don't relitigate them:
+  - [ADR-0001](docs/adr/0001-promotion-runtime-split.md) — `Promotion`
+    intent vs `PromotionRun` runtime split (Service/EndpointSlice model)
+  - [ADR-0002](docs/adr/0002-promotion-docker-lifecycle.md) —
+    Docker-style Promotion lifecycle phases
+  - [ADR-0003](docs/adr/0003-cloudevents-publisher-posture.md) —
+    CloudEvents publisher posture (emit, don't route)
+- **`docs/CONTRIBUTING-events.md`** — a 6-step self-review checklist
+  every change to the `pkg/events` vocabulary or its emitters must pass
+  before commit. Closes the docs↔code drift gap that cost 21 review
+  comments across PRs #80/#81/#82.
+- **`TestEventTypesDocumentedInCloudEventsMd`** — drift canary: every
+  `EventType` constant exported from `pkg/events` must appear verbatim
+  in `docs/cloudevents.md`. Build fails on doc/code drift.
+- **`TestRenderSucceedsForEveryEventType`** — sweep test: every
+  constant in `AllEventTypes()` round-trips through `Render` without
+  panic. New constants get exercised automatically.
+- All critical packages (`internal/lifecycle`, `pkg/events`) verified
+  race-clean with `go test -race`.
+
 ### Added (Wave / Stage / Gate CloudEvents — the fleet narrative)
 
 - Seven new EventTypes published to the operator-level CloudEvents sink,
