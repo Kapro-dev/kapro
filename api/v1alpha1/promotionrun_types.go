@@ -272,7 +272,21 @@ const (
 	PromotionRunPhaseProgressing PromotionRunPhase = "Progressing"
 	PromotionRunPhaseComplete    PromotionRunPhase = "Complete"
 	PromotionRunPhaseFailed      PromotionRunPhase = "Failed"
+	// PromotionRunPhaseSuperseded is set by the PromotionController when a
+	// newer attempt is stamped for the same Promotion while this one is
+	// still non-terminal. The FSM treats it as terminal (no further work).
+	PromotionRunPhaseSuperseded PromotionRunPhase = "Superseded"
 )
+
+// IsTerminal reports whether the phase represents a terminal PromotionRun
+// state. Reconcilers should stop FSM advancement when this returns true.
+func (p PromotionRunPhase) IsTerminal() bool {
+	switch p {
+	case PromotionRunPhaseComplete, PromotionRunPhaseFailed, PromotionRunPhaseSuperseded:
+		return true
+	}
+	return false
+}
 
 // PromotionRunStatus defines the observed state of PromotionRun.
 type PromotionRunStatus struct {

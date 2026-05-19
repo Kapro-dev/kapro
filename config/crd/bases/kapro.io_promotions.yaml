@@ -28,10 +28,10 @@ spec:
     - jsonPath: .status.phase
       name: Phase
       type: string
-    - jsonPath: .status.activeRun
+    - jsonPath: .status.activeAttemptRef.name
       name: Run
       type: string
-    - jsonPath: .status.attemptCount
+    - jsonPath: .status.attempts.length()
       name: Attempts
       type: integer
     - jsonPath: .metadata.creationTimestamp
@@ -144,15 +144,94 @@ spec:
           status:
             description: PromotionStatus is the observed state of a Promotion intent.
             properties:
-              activeRun:
-                description: ActiveRun is the name of the currently-executing PromotionRun,
-                  if any.
-                type: string
-              attemptCount:
-                description: AttemptCount is how many PromotionRun attempts have been
-                  created.
-                format: int32
-                type: integer
+              activeAttemptRef:
+                description: |-
+                  ActiveAttemptRef points at the current (non-terminal) PromotionRun.
+                  nil when no attempt is in flight (all attempts terminal).
+                properties:
+                  completedAt:
+                    description: |-
+                      CompletedAt is when the attempt reached a terminal phase
+                      (Complete, Failed, or Superseded).
+                    format: date-time
+                    type: string
+                  name:
+                    description: Name is the PromotionRun name for this attempt.
+                    type: string
+                  phase:
+                    description: Phase is the last-observed PromotionRun.status.phase
+                      for this attempt.
+                    type: string
+                  specHash:
+                    description: |-
+                      SpecHash is the deterministic hash of the Promotion spec that produced
+                      this attempt. Used to detect spec drift and trigger a new attempt.
+                    type: string
+                  startedAt:
+                    description: StartedAt is when the attempt was created.
+                    format: date-time
+                    type: string
+                  supersededReason:
+                    description: |-
+                      SupersededReason is set when this attempt was marked Superseded
+                      instead of finishing naturally.
+                    type: string
+                  version:
+                    description: |-
+                      Version is the resolved version applied for this attempt (the value
+                      echoed into PromotionRun.spec.version at stamp time).
+                    type: string
+                required:
+                - name
+                - specHash
+                type: object
+              attempts:
+                description: |-
+                  Attempts records up to the last 20 attempts (newest first). Older
+                  attempts remain discoverable via PromotionRun objects with the
+                  kapro.io/promotion label.
+                items:
+                  description: PromotionAttemptRef is one historical or active attempt
+                    under a Promotion.
+                  properties:
+                    completedAt:
+                      description: |-
+                        CompletedAt is when the attempt reached a terminal phase
+                        (Complete, Failed, or Superseded).
+                      format: date-time
+                      type: string
+                    name:
+                      description: Name is the PromotionRun name for this attempt.
+                      type: string
+                    phase:
+                      description: Phase is the last-observed PromotionRun.status.phase
+                        for this attempt.
+                      type: string
+                    specHash:
+                      description: |-
+                        SpecHash is the deterministic hash of the Promotion spec that produced
+                        this attempt. Used to detect spec drift and trigger a new attempt.
+                      type: string
+                    startedAt:
+                      description: StartedAt is when the attempt was created.
+                      format: date-time
+                      type: string
+                    supersededReason:
+                      description: |-
+                        SupersededReason is set when this attempt was marked Superseded
+                        instead of finishing naturally.
+                      type: string
+                    version:
+                      description: |-
+                        Version is the resolved version applied for this attempt (the value
+                        echoed into PromotionRun.spec.version at stamp time).
+                      type: string
+                  required:
+                  - name
+                  - specHash
+                  type: object
+                maxItems: 20
+                type: array
               conditions:
                 items:
                   description: Condition contains details for one aspect of the current
@@ -209,15 +288,13 @@ spec:
                   - type
                   type: object
                 type: array
-              lastRun:
-                description: LastRun is the name of the most recently terminated PromotionRun.
-                type: string
               observedGeneration:
                 description: ObservedGeneration is the .metadata.generation last reconciled.
                 format: int64
                 type: integer
               phase:
-                description: Phase aggregates ActiveRun.status.phase into a coarse
+                description: |-
+                  Phase aggregates the active attempt's PromotionRun phase into a coarse
                   Promotion phase.
                 enum:
                 - Pending
@@ -227,7 +304,9 @@ spec:
                 - Suspended
                 type: string
               resolvedVersion:
-                description: ResolvedVersion is the version applied to the last attempt.
+                description: |-
+                  ResolvedVersion echoes the most recent attempt's version for quick
+                  at-a-glance status.
                 type: string
             type: object
         type: object

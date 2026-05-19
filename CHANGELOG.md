@@ -18,6 +18,18 @@ record for each tag.
 - `Promotion.spec.kaproRef` references the parent Kapro fleet; the
   PromotionController inherits the rollout plan from `Kapro.spec.promotionplan`
   when `Promotion.spec.promotionPlans` is unset.
+- `Promotion.status.activeAttemptRef` (current non-terminal `PromotionRun`)
+  and `Promotion.status.attempts[]` (bounded last-20 history, newest-first).
+- `PromotionRun.status.phase` gained terminal `Superseded`. When a new
+  attempt is stamped under the same Promotion, the previous non-terminal
+  run is patched to `Superseded` with reason `SupersededByNewPromotionAttempt`.
+- Admission webhook for `PromotionRun`: create/update is denied unless the
+  requester is the Kapro controller service account (configurable via env
+  `KAPRO_PROMOTIONRUN_WRITERS`). `system:masters` is always allowed as
+  break-glass.
+- Recommended RBAC role `kapro-promotion-engineer` (renamed from
+  `kapro-promotionrun-engineer`): users get Promotion CRUD; PromotionRun
+  is read-only.
 
 ### Changed
 
@@ -25,6 +37,18 @@ record for each tag.
   `PromotionRun`). The CLI surface is unchanged for the common case.
 - `kapro promotionrun create` is now documented as advanced/debug usage that
   bypasses the intent layer.
+- `PromotionController` stamps a NEW `PromotionRun` whenever the deterministic
+  hash of `Promotion.spec` changes; existing runs are never rolling-updated
+  for new desired versions. Spec hash covers kaproRef, version, versions,
+  plans, scope, and timeout (suspended deliberately excluded).
+
+### Deferred to follow-up
+
+- `PromotionTrigger` still creates `PromotionRun` directly (allowed by the
+  new webhook because the trigger runs as the operator service account).
+  Migrating triggers to emit `Promotion` with digest+template-hash dedup
+  requires a `PromotionTriggerTemplate.kaproRef` schema change and is a
+  separate PR.
 
 ### Migration from v0.5.0-rc.0 (#75)
 

@@ -52,22 +52,60 @@ const (
 	PromotionPhaseSuspended PromotionPhase = "Suspended"
 )
 
+// PromotionAttemptRef is one historical or active attempt under a Promotion.
+type PromotionAttemptRef struct {
+	// Name is the PromotionRun name for this attempt.
+	Name string `json:"name"`
+	// SpecHash is the deterministic hash of the Promotion spec that produced
+	// this attempt. Used to detect spec drift and trigger a new attempt.
+	SpecHash string `json:"specHash"`
+	// Version is the resolved version applied for this attempt (the value
+	// echoed into PromotionRun.spec.version at stamp time).
+	// +optional
+	Version string `json:"version,omitempty"`
+	// Phase is the last-observed PromotionRun.status.phase for this attempt.
+	// +optional
+	Phase PromotionRunPhase `json:"phase,omitempty"`
+	// StartedAt is when the attempt was created.
+	// +optional
+	StartedAt *metav1.Time `json:"startedAt,omitempty"`
+	// CompletedAt is when the attempt reached a terminal phase
+	// (Complete, Failed, or Superseded).
+	// +optional
+	CompletedAt *metav1.Time `json:"completedAt,omitempty"`
+	// SupersededReason is set when this attempt was marked Superseded
+	// instead of finishing naturally.
+	// +optional
+	SupersededReason string `json:"supersededReason,omitempty"`
+}
+
 // PromotionStatus is the observed state of a Promotion intent.
 type PromotionStatus struct {
 	// ObservedGeneration is the .metadata.generation last reconciled.
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-	// Phase aggregates ActiveRun.status.phase into a coarse Promotion phase.
+	// Phase aggregates the active attempt's PromotionRun phase into a coarse
+	// Promotion phase.
 	Phase PromotionPhase `json:"phase,omitempty"`
-	// ActiveRun is the name of the currently-executing PromotionRun, if any.
-	ActiveRun string `json:"activeRun,omitempty"`
-	// LastRun is the name of the most recently terminated PromotionRun.
-	LastRun string `json:"lastRun,omitempty"`
-	// AttemptCount is how many PromotionRun attempts have been created.
-	AttemptCount int32 `json:"attemptCount,omitempty"`
-	// ResolvedVersion is the version applied to the last attempt.
+	// ActiveAttemptRef points at the current (non-terminal) PromotionRun.
+	// nil when no attempt is in flight (all attempts terminal).
+	// +optional
+	ActiveAttemptRef *PromotionAttemptRef `json:"activeAttemptRef,omitempty"`
+	// Attempts records up to the last 20 attempts (newest first). Older
+	// attempts remain discoverable via PromotionRun objects with the
+	// kapro.io/promotion label.
+	// +optional
+	// +kubebuilder:validation:MaxItems=20
+	Attempts []PromotionAttemptRef `json:"attempts,omitempty"`
+	// ResolvedVersion echoes the most recent attempt's version for quick
+	// at-a-glance status.
+	// +optional
 	ResolvedVersion string             `json:"resolvedVersion,omitempty"`
 	Conditions      []metav1.Condition `json:"conditions,omitempty"`
 }
+
+// MaxPromotionAttempts is the cap on Promotion.status.attempts[]. Older
+// attempts are pruned but the underlying PromotionRun objects remain.
+const MaxPromotionAttempts = 20
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
@@ -75,8 +113,8 @@ type PromotionStatus struct {
 // +kubebuilder:printcolumn:name="Kapro",type=string,JSONPath=`.spec.kaproRef`
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.spec.version`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
-// +kubebuilder:printcolumn:name="Run",type=string,JSONPath=`.status.activeRun`
-// +kubebuilder:printcolumn:name="Attempts",type=integer,JSONPath=`.status.attemptCount`
+// +kubebuilder:printcolumn:name="Run",type=string,JSONPath=`.status.activeAttemptRef.name`
+// +kubebuilder:printcolumn:name="Attempts",type=integer,JSONPath=`.status.attempts.length()`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Promotion is the durable user-facing intent to roll a version through a
