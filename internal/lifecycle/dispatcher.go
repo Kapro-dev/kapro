@@ -37,6 +37,7 @@ import (
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	"kapro.io/kapro/internal/metrics"
+	"kapro.io/kapro/pkg/events"
 )
 
 const (
@@ -62,7 +63,8 @@ var backoffBase = 2 * time.Second
 
 // Dispatcher fires lifecycle handlers asynchronously on Promotion phase
 // transitions. A single Dispatcher is shared by the PromotionController;
-// each call to OnPhaseTransition spawns one goroutine per matched handler.
+// each call to Publish spawns one goroutine per matched handler plus,
+// when configured, one goroutine for the operator-level CloudEvents sink.
 type Dispatcher struct {
 	Client     client.Client
 	Recorder   record.EventRecorder
@@ -70,6 +72,12 @@ type Dispatcher struct {
 	// Namespace is the operator's own namespace, used to resolve Secret
 	// references from PromotionLifecycleAuthHeader.
 	Namespace string
+	// Sink is the optional operator-level CloudEvents subscriber. When
+	// non-nil, every Publish call fans out to this single URL in
+	// addition to the per-Promotion handlers. This is the canonical
+	// integration point for Argo Events / Flux Notification Controller /
+	// kube-event-exporter / Knative / any CloudEvents-aware system.
+	Sink *Sink
 	// Now is injected for deterministic tests; defaults to time.Now.
 	Now func() time.Time
 	// rootCtx is the long-lived context tied to manager shutdown. All
@@ -88,9 +96,9 @@ type Dispatcher struct {
 }
 
 // NewDispatcher constructs a Dispatcher rooted at the given context (the
-// manager's context). HTTPClient is optional; when nil a defaulted client
-// with a 30s timeout and SSRF-guarded transport is used for outbound
-// webhook calls.
+// manager's context). HTTPClient is nil-defaulted to a defaulted client
+// with no client-level timeout (per-request context drives deadlines) and
+// an SSRF-guarded transport.
 func NewDispatcher(rootCtx context.Context, c client.Client, rec record.EventRecorder, namespace string) *Dispatcher {
 	return &Dispatcher{
 		Client:     c,
@@ -103,57 +111,93 @@ func NewDispatcher(rootCtx context.Context, c client.Client, rec record.EventRec
 	}
 }
 
+// WithSink attaches an operator-level CloudEvents sink. Returns the same
+// dispatcher for chaining at the construction site.
+func (d *Dispatcher) WithSink(s *Sink) *Dispatcher {
+	d.Sink = s
+	return d
+}
+
 // Wait blocks until all in-flight handler goroutines complete. Intended
 // for tests and manager shutdown drains.
 func (d *Dispatcher) Wait() { d.wg.Wait() }
 
 // OnPhaseTransition is called from the PromotionController after a status
-// patch that changed the coarse phase. It selects matching handlers from
-// promotion.spec.lifecycle.handlers and fires them asynchronously.
+// patch that changed the coarse phase. It is a thin compatibility shim
+// that builds a Kapro CloudEvents Event and calls Publish.
 //
-// Idempotency: handlers already recorded with a terminal Result for the
-// same (name, phase, attempt) tuple are skipped. This makes the call safe
-// against controller restarts and reconcile re-entry on the same
-// transition.
-func (d *Dispatcher) OnPhaseTransition(_ context.Context,
+// Existing callers in the controller use this signature; new emitters
+// (attempt stamped, attempt superseded) call Publish directly.
+func (d *Dispatcher) OnPhaseTransition(ctx context.Context,
 	promotion *kaprov1alpha1.Promotion,
 	prevPhase, newPhase kaprov1alpha1.PromotionPhase,
 ) {
-	if promotion == nil || promotion.Spec.Lifecycle == nil {
+	if promotion == nil || newPhase == "" || newPhase == prevPhase {
 		return
 	}
-	if newPhase == "" || newPhase == prevPhase {
+	d.Publish(ctx, promotion, events.Event{
+		Type:          eventTypeForPhase(newPhase),
+		PromotionName: promotion.Name,
+		PromotionUID:  string(promotion.UID),
+		KaproRef:      promotion.Spec.KaproRef,
+		Phase:         string(newPhase),
+		PreviousPhase: string(prevPhase),
+		Version:       promotion.Spec.Version,
+		AttemptName:   activeAttemptName(promotion),
+		Reason:        fmt.Sprintf("Promotion phase: %s -> %s", prevPhase, newPhase),
+	})
+}
+
+// Publish dispatches a Kapro lifecycle event:
+//
+//  1. The operator-level Sink (when configured) receives the rendered
+//     CloudEvents v1.0 envelope. This is the canonical subscription
+//     path for Argo Events / Flux Notification Controller /
+//     kube-event-exporter / Knative / any CloudEvents-aware system.
+//  2. Per-Promotion lifecycle handlers (spec.lifecycle.handlers[]) that
+//     nominate the event's phase fire asynchronously. Existing
+//     idempotency on (name, phase, attempt) applies.
+//
+// Both paths run in independent goroutines: a sink delivery failure does
+// not block per-Promotion handlers, and vice versa.
+func (d *Dispatcher) Publish(_ context.Context, promotion *kaprov1alpha1.Promotion, ev events.Event) {
+	if promotion == nil || ev.Type == "" {
 		return
 	}
 
-	attemptName := ""
-	if promotion.Status.ActiveAttemptRef != nil {
-		attemptName = promotion.Status.ActiveAttemptRef.Name
-	} else if len(promotion.Status.Attempts) > 0 {
-		attemptName = promotion.Status.Attempts[0].Name
+	// 1) Operator-level sink fanout (fire-and-forget).
+	if d.Sink != nil && d.Sink.URL != "" {
+		d.wg.Add(1)
+		go func() {
+			defer d.wg.Done()
+			d.Sink.Publish(d.rootCtx, d.Recorder, promotionRefForEvent(promotion), ev)
+		}()
 	}
 
+	// 2) Per-Promotion handlers (phase-filtered, idempotent).
+	if promotion.Spec.Lifecycle == nil {
+		return
+	}
+	phase := kaprov1alpha1.PromotionPhase(ev.Phase)
 	for i := range promotion.Spec.Lifecycle.Handlers {
 		h := promotion.Spec.Lifecycle.Handlers[i]
-		if !handlerMatchesPhase(&h, newPhase) {
+		if !handlerMatchesPhase(&h, phase) {
 			continue
 		}
-		if alreadyFinal(promotion, h.Name, newPhase, attemptName) {
+		if alreadyFinal(promotion, h.Name, phase, ev.AttemptName) {
 			continue
 		}
-		key := inflightKey(promotion.Name, h.Name, newPhase, attemptName)
+		key := inflightKey(promotion.Name, h.Name, phase, ev.AttemptName)
 		if !d.tryReserveInflight(key) {
 			continue
 		}
-		// Snapshot the parts of the Promotion the goroutine needs so we
-		// don't race with subsequent reconciles mutating the live object.
 		snap := snapshot{
 			PromotionName: promotion.Name,
 			PromotionUID:  string(promotion.UID),
 			Generation:    promotion.Generation,
-			Phase:         newPhase,
-			PrevPhase:     prevPhase,
-			AttemptName:   attemptName,
+			Phase:         phase,
+			PrevPhase:     kaprov1alpha1.PromotionPhase(ev.PreviousPhase),
+			AttemptName:   ev.AttemptName,
 			Version:       promotion.Spec.Version,
 			KaproRef:      promotion.Spec.KaproRef,
 			Handler:       h,
@@ -161,6 +205,58 @@ func (d *Dispatcher) OnPhaseTransition(_ context.Context,
 		}
 		d.wg.Add(1)
 		go d.run(snap)
+	}
+}
+
+// activeAttemptName picks the most relevant PromotionRun name for an
+// event: the active attempt when one is in flight, otherwise the newest
+// attempt in history. Empty when no attempt exists yet.
+func activeAttemptName(p *kaprov1alpha1.Promotion) string {
+	if p.Status.ActiveAttemptRef != nil {
+		return p.Status.ActiveAttemptRef.Name
+	}
+	if len(p.Status.Attempts) > 0 {
+		return p.Status.Attempts[0].Name
+	}
+	return ""
+}
+
+// eventTypeForPhase maps a coarse Promotion phase to its CloudEvents
+// type from the stable pkg/events vocabulary.
+func eventTypeForPhase(phase kaprov1alpha1.PromotionPhase) events.EventType {
+	switch phase {
+	case kaprov1alpha1.PromotionPhasePending:
+		return events.EventPromotionCreated
+	case kaprov1alpha1.PromotionPhaseProgressing:
+		return events.EventPromotionProgressing
+	case kaprov1alpha1.PromotionPhasePaused:
+		return events.EventPromotionPaused
+	case kaprov1alpha1.PromotionPhaseRestarting:
+		return events.EventPromotionRestarting
+	case kaprov1alpha1.PromotionPhaseSucceeded:
+		return events.EventPromotionSucceeded
+	case kaprov1alpha1.PromotionPhaseFailed:
+		return events.EventPromotionFailed
+	case kaprov1alpha1.PromotionPhaseRollingBack:
+		return events.EventPromotionRollingBack
+	case kaprov1alpha1.PromotionPhaseTerminating:
+		return events.EventPromotionTerminating
+	}
+	// Unknown phase: still publish, with a synthetic type. This keeps the
+	// sink unblocked when a new phase is added before this map is.
+	return events.EventType("kapro.io/promotion." + string(phase))
+}
+
+// promotionRefForEvent returns a minimal *corev1.ObjectReference for the
+// Sink's observability events (Kubernetes Events about sink delivery).
+// The dispatcher already uses promotionRef for the handler goroutine; the
+// sink uses *corev1.ObjectReference directly.
+func promotionRefForEvent(p *kaprov1alpha1.Promotion) *corev1.ObjectReference {
+	return &corev1.ObjectReference{
+		APIVersion: kaprov1alpha1.GroupVersion.String(),
+		Kind:       "Promotion",
+		Name:       p.Name,
+		UID:        p.UID,
 	}
 }
 

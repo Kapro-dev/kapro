@@ -7,6 +7,39 @@ record for each tag.
 
 ## Unreleased
 
+### Added (CloudEvents vocabulary + operator-level sink — the CNCF positioning layer)
+
+- New `pkg/events` Go package exporting the **stable Kapro CloudEvents
+  vocabulary**: `kapro.io/promotion.{created,progressing,paused,resumed,restarting,succeeded,failed,rollingBack,terminating}`,
+  `kapro.io/promotion.attempt.{stamped,superseded}`, and reserved
+  `kapro.io/promotion.{wave,stage,target}.*` namespaces.
+  Constants are part of the public API; once published they will not be
+  renamed or removed within `v1alpha1`.
+- Every phase transition is now also published as a **CloudEvents v1.0**
+  structured-mode JSON envelope (`application/cloudevents+json`) to the
+  operator-level sink when configured. This is the canonical subscription
+  point — Argo Events, Flux Notification Controller, kube-event-exporter,
+  Knative, AWS EventBridge, Google Eventarc, Azure Event Grid, and any
+  CloudEvents-aware system can subscribe.
+- Operator sink config via env vars on the `kapro-operator` Deployment:
+  `KAPRO_EVENTS_SINK_URL`, `KAPRO_EVENTS_SINK_AUTH_HEADER_NAME` (default
+  `Authorization`), `KAPRO_EVENTS_SINK_AUTH_HEADER_VALUE` (best sourced
+  via `valueFrom.secretKeyRef`), `KAPRO_EVENTS_SINK_TIMEOUT` (10s
+  default), `KAPRO_EVENTS_SINK_MAX_RETRIES` (3 default).
+- Sink delivery is fire-and-forget — a sink failure does not block
+  per-Promotion `spec.lifecycle.handlers[]` and does not block reconcile.
+  Sink outcomes are surfaced via Kubernetes Events (`EventSinkDelivered`,
+  `EventSinkFailed`) and the `kapro_lifecycle_hook_*` Prometheus metrics
+  (with `kind="Sink"`).
+- Documentation:
+  - `docs/cloudevents.md` — the versioned vocabulary contract.
+  - `docs/integrations/argo-events.md` — `EventSource` + `Sensor` recipe.
+  - `docs/integrations/flux-notification-controller.md` — `Receiver` +
+    `Alert` + `Provider` recipe.
+  - `docs/integrations/kube-event-exporter.md` — K8s Event routing recipe.
+  - `docs/integrations/generic-webhook.md` — per-Promotion handler vs
+    operator-level sink decision guide.
+
 ### Added (Promotion lifecycle hooks)
 
 - `Promotion.spec.lifecycle.handlers[]` declares user-defined handlers
