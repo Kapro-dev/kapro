@@ -3,7 +3,7 @@ kind: Approval
 metadata:
   name: checkout-kind-checkout-kind-8f5759e0
 spec:
-  promotionrun: checkout-kind
+  promotionRun: checkout-kind
   target: checkout-prod-eu
   ref: checkout-kind-8f5759e0
   approvedBy: demo-sre

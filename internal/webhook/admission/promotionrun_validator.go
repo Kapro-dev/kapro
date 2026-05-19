@@ -82,8 +82,8 @@ func requireTeamLabel(labels map[string]string) *field.Error {
 //
 // Rules enforced:
 //  1. spec.version or spec.versions must be non-empty.
-//  2. spec.promotionplans must have at least one promotionplan reference.
-//  3. Each PromotionPlanRef must have a non-empty name and promotionplan.
+//  2. spec.promotionPlans must have at least one promotionPlan reference.
+//  3. Each PromotionPlanRef must have a non-empty name and promotionPlan.
 //  4. metadata.labels[kapro.io/team] must be set on CREATE (gate sprint).
 type PromotionRunValidator struct {
 	decoder admission.Decoder
@@ -108,15 +108,15 @@ func (v *PromotionRunValidator) Handle(_ context.Context, req admission.Request)
 		}
 	}
 
-	var promotionrun kaprov1alpha1.PromotionRun
-	if err := v.decoder.DecodeRaw(req.Object, &promotionrun); err != nil {
+	var promotionRun kaprov1alpha1.PromotionRun
+	if err := v.decoder.DecodeRaw(req.Object, &promotionRun); err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
 	}
-	if err := validatePromotionRun(&promotionrun); err != nil {
+	if err := validatePromotionRun(&promotionRun); err != nil {
 		return admission.Denied(err.Error())
 	}
 	if req.Operation == admissionv1.Create {
-		if fe := requireTeamLabel(promotionrun.Labels); fe != nil {
+		if fe := requireTeamLabel(promotionRun.Labels); fe != nil {
 			return admission.Denied(fe.Error())
 		}
 	}
@@ -125,7 +125,7 @@ func (v *PromotionRunValidator) Handle(_ context.Context, req admission.Request)
 		if err := v.decoder.DecodeRaw(req.OldObject, &old); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
-		if err := validatePromotionRunUpdate(&old, &promotionrun); err != nil {
+		if err := validatePromotionRunUpdate(&old, &promotionRun); err != nil {
 			return admission.Denied(err.Error())
 		}
 	}
@@ -150,37 +150,37 @@ func validatePromotionRun(r *kaprov1alpha1.PromotionRun) error {
 	}
 
 	if len(r.Spec.PromotionPlans) == 0 {
-		return fmt.Errorf("promotionrun.spec.promotionplans must have at least one promotionplan reference")
+		return fmt.Errorf("promotionRun.spec.promotionPlans must have at least one promotionPlan reference")
 	}
 
 	index := make(map[string]int, len(r.Spec.PromotionPlans))
 	for i, ref := range r.Spec.PromotionPlans {
 		if ref.Name == "" {
-			return fmt.Errorf("promotionrun.spec.promotionplans[%d].name must be set", i)
+			return fmt.Errorf("promotionRun.spec.promotionPlans[%d].name must be set", i)
 		}
 		if ref.PromotionPlan == "" {
-			return fmt.Errorf("promotionrun.spec.promotionplans[%d].promotionplan must be set", i)
+			return fmt.Errorf("promotionRun.spec.promotionPlans[%d].promotionPlan must be set", i)
 		}
 		if _, exists := index[ref.Name]; exists {
-			return fmt.Errorf("promotionrun.spec.promotionplans: duplicate promotionplan node name %q", ref.Name)
+			return fmt.Errorf("promotionRun.spec.promotionPlans: duplicate promotionPlan node name %q", ref.Name)
 		}
 		index[ref.Name] = i
 	}
 
-	// Validate all dependsOn references name existing promotionplan nodes.
+	// Validate all dependsOn references name existing promotionPlan nodes.
 	for _, ref := range r.Spec.PromotionPlans {
 		for _, dep := range ref.DependsOn {
 			if _, exists := index[dep]; !exists {
-				return fmt.Errorf("promotionrun.spec.promotionplans[%q].dependsOn: unknown promotionplan node %q", ref.Name, dep)
+				return fmt.Errorf("promotionRun.spec.promotionPlans[%q].dependsOn: unknown promotionPlan node %q", ref.Name, dep)
 			}
 		}
 	}
 
-	// DFS cycle detection on the promotionplan node DAG.
+	// DFS cycle detection on the promotionPlan node DAG.
 	if cycle := detectCycle(index, func(name string) []string {
 		return r.Spec.PromotionPlans[index[name]].DependsOn
 	}); cycle != "" {
-		return fmt.Errorf("promotionrun.spec.promotionplans: cycle detected: %s", cycle)
+		return fmt.Errorf("promotionRun.spec.promotionPlans: cycle detected: %s", cycle)
 	}
 
 	return nil
@@ -188,16 +188,16 @@ func validatePromotionRun(r *kaprov1alpha1.PromotionRun) error {
 
 func validatePromotionRunUpdate(old, new *kaprov1alpha1.PromotionRun) error {
 	if old.Spec.Version != new.Spec.Version {
-		return fmt.Errorf("promotionrun.spec.version is immutable after creation")
+		return fmt.Errorf("promotionRun.spec.version is immutable after creation")
 	}
 	if !reflect.DeepEqual(old.Spec.Versions, new.Spec.Versions) {
-		return fmt.Errorf("promotionrun.spec.versions is immutable after creation")
+		return fmt.Errorf("promotionRun.spec.versions is immutable after creation")
 	}
 	if !reflect.DeepEqual(old.Spec.PromotionPlans, new.Spec.PromotionPlans) {
-		return fmt.Errorf("promotionrun.spec.promotionplans is immutable after creation")
+		return fmt.Errorf("promotionRun.spec.promotionPlans is immutable after creation")
 	}
 	if !reflect.DeepEqual(old.Spec.Scope, new.Spec.Scope) {
-		return fmt.Errorf("promotionrun.spec.scope is immutable after creation")
+		return fmt.Errorf("promotionRun.spec.scope is immutable after creation")
 	}
 	return nil
 }

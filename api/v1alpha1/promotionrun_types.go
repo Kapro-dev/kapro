@@ -150,7 +150,7 @@ type PromotionPlanRef struct {
 	// Name uniquely identifies this promotionplan node within the PromotionRun.
 	Name string `json:"name"`
 	// PromotionPlan is the name of the PromotionPlan CRD to execute.
-	PromotionPlan string `json:"promotionplan"`
+	PromotionPlan string `json:"promotionPlan"`
 	// DependsOn lists promotionplan node names that must reach Complete before this one starts.
 	// +optional
 	// +kubebuilder:validation:MaxItems=64
@@ -213,7 +213,7 @@ type PromotionPlanProgress struct {
 	// Name matches PromotionPlanRef.name.
 	Name string `json:"name"`
 	// PromotionPlan is the PromotionPlan CRD name.
-	PromotionPlan string `json:"promotionplan"`
+	PromotionPlan string `json:"promotionPlan"`
 	// ObservedGeneration pins the PromotionPlan generation used by this
 	// PromotionRun. If the referenced PromotionPlan changes while the run is in
 	// flight, the controller fails the run instead of silently switching DAGs.
@@ -253,7 +253,7 @@ type PromotionRunSpec struct {
 	// PromotionPlans is the DAG of promotionplan nodes.
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=64
-	PromotionPlans []PromotionPlanRef `json:"promotionplans"`
+	PromotionPlans []PromotionPlanRef `json:"promotionPlans"`
 	// Suspended pauses all advancement when true.
 	// +kubebuilder:default=false
 	Suspended bool `json:"suspended,omitempty"`
@@ -298,7 +298,7 @@ type PromotionRunStatus struct {
 	StartedAt       string `json:"startedAt,omitempty"`
 	CompletedAt     string `json:"completedAt,omitempty"`
 	// PromotionPlanProgress tracks execution state of each promotionplan node in the DAG.
-	PromotionPlanProgress []PromotionPlanProgress `json:"promotionplanProgress,omitempty"`
+	PromotionPlanProgress []PromotionPlanProgress `json:"promotionPlanProgress,omitempty"`
 	// Targets is deprecated compatibility state. The authoritative per-target
 	// rollout state lives in child PromotionTarget objects.
 	Targets []TargetStatus `json:"targets,omitempty"`
@@ -351,14 +351,14 @@ type PromotionRunList struct {
 // controller's in-memory execution shape.
 type TargetStatus struct {
 	// PromotionRunRef is the owning PromotionRun name.
-	PromotionRunRef string `json:"promotionrunRef,omitempty"`
+	PromotionRunRef string `json:"promotionRunRef,omitempty"`
 	// Target is the target cluster name.
 	Target string `json:"target"`
-	// PromotionPlanRef is the logical promotionplan reference name from PromotionRun.spec.promotionplans[i].name.
+	// PromotionPlanRef is the logical promotionplan reference name from PromotionRun.spec.promotionPlans[i].name.
 	// Used to disambiguate when the same PromotionPlan CRD is referenced multiple times.
-	PromotionPlanRef string `json:"promotionplanRef,omitempty"`
+	PromotionPlanRef string `json:"promotionPlanRef,omitempty"`
 	// PromotionPlan is the PromotionPlan CRD name this entry belongs to.
-	PromotionPlan string `json:"promotionplan"`
+	PromotionPlan string `json:"promotionPlan"`
 	// Stage is the stage name within the PromotionPlan.
 	Stage string `json:"stage"`
 	// Version is the OCI digest being delivered.
@@ -463,13 +463,13 @@ type BackendObjectStatus struct {
 // target rollout entry within a PromotionRun.
 type PromotionTargetSpec struct {
 	// PromotionRunRef is the owning PromotionRun name.
-	PromotionRunRef string `json:"promotionrunRef"`
+	PromotionRunRef string `json:"promotionRunRef"`
 	// Target is the target cluster name.
 	Target string `json:"target"`
-	// PromotionPlanRef is the logical promotionplan reference name from PromotionRun.spec.promotionplans[i].name.
-	PromotionPlanRef string `json:"promotionplanRef,omitempty"`
+	// PromotionPlanRef is the logical promotionplan reference name from PromotionRun.spec.promotionPlans[i].name.
+	PromotionPlanRef string `json:"promotionPlanRef,omitempty"`
 	// PromotionPlan is the PromotionPlan CRD name this entry belongs to.
-	PromotionPlan string `json:"promotionplan"`
+	PromotionPlan string `json:"promotionPlan"`
 	// Stage is the stage name within the PromotionPlan.
 	Stage string `json:"stage"`
 	// Version is the OCI digest being delivered.
@@ -515,9 +515,9 @@ type PromotionTargetStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=relt,categories=kapro-all
-// +kubebuilder:printcolumn:name="PromotionRun",type=string,JSONPath=`.spec.promotionrunRef`
+// +kubebuilder:printcolumn:name="PromotionRun",type=string,JSONPath=`.spec.promotionRunRef`
 // +kubebuilder:printcolumn:name="Target",type=string,JSONPath=`.spec.target`
-// +kubebuilder:printcolumn:name="PromotionPlan",type=string,JSONPath=`.spec.promotionplanRef`
+// +kubebuilder:printcolumn:name="PromotionPlan",type=string,JSONPath=`.spec.promotionPlanRef`
 // +kubebuilder:printcolumn:name="Stage",type=string,JSONPath=`.spec.stage`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.spec.version`
@@ -574,13 +574,13 @@ type AuditEntry struct {
 	// Artifact is the OCI artifact that was delivered.
 	Artifact string `json:"artifact"`
 	// PromotionRun is the PromotionRun name.
-	PromotionRun string `json:"promotionrun"`
+	PromotionRun string `json:"promotionRun"`
 	// DerivedFrom is the parent Artifact name.
 	// +optional
 	DerivedFrom string `json:"derivedFrom,omitempty"`
 	// PromotionRunDerivedFrom is the parent PromotionRun name.
 	// +optional
-	PromotionRunDerivedFrom string `json:"promotionrunDerivedFrom,omitempty"`
+	PromotionRunDerivedFrom string `json:"promotionRunDerivedFrom,omitempty"`
 	// ChangedUnits lists the units that changed relative to the parent artifact.
 	// +optional
 	ChangedUnits []string `json:"changedUnits,omitempty"`

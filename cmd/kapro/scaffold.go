@@ -401,7 +401,7 @@ spec:
       namespace: %s
   clusters:
 %s
-  promotionplan:
+  promotionPlan:
     stages:
       - name: canary
         selector:
@@ -421,9 +421,9 @@ metadata:
   name: %s-0-1-0
 spec:
   version: 0.1.0
-  promotionplans:
+  promotionPlans:
     - name: main
-      promotionplan: %s
+      promotionPlan: %s
 `, opts.Name, opts.Name)
 }
 

@@ -17,7 +17,7 @@ import (
 type ApprovalSpec struct {
 	// PromotionRun is the name of the PromotionRun this approval unblocks.
 	// +kubebuilder:validation:Required
-	PromotionRun string `json:"promotionrun"`
+	PromotionRun string `json:"promotionRun"`
 	// Target is the FleetCluster name this approval is for.
 	// +kubebuilder:validation:Required
 	Target string `json:"target"`

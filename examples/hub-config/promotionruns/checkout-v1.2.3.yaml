@@ -4,8 +4,8 @@ metadata:
   name: checkout-v1-2-3
 spec:
   version: "oci://europe-west3-docker.pkg.dev/my-project/kapro-sources/checkout@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-  promotionplans:
+  promotionPlans:
     - name: main
-      promotionplan: checkout-progressive
+      promotionPlan: checkout-progressive
   suspended: false
   timeout: 4h

@@ -10,6 +10,7 @@ relitigating it.
 | [0001](0001-promotion-runtime-split.md) | Promotion intent vs PromotionRun runtime split (Service/EndpointSlice model) | Accepted |
 | [0002](0002-promotion-docker-lifecycle.md) | Docker-style Promotion lifecycle phases | Accepted |
 | [0003](0003-cloudevents-publisher-posture.md) | CloudEvents publisher posture: emit, don't route | Accepted |
+| [0004](0004-camelcase-field-harmonization.md) | Harmonize CRD JSON field names to strict Kubernetes camelCase | Accepted |
 
 ## Adding a new ADR
 

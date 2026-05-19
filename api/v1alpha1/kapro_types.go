@@ -29,7 +29,7 @@ type KaproSpec struct {
 	// +kubebuilder:validation:MinItems=1
 	Clusters []KaproCluster `json:"clusters"`
 	// PromotionPlan defines the progressive delivery stages.
-	PromotionPlan KaproPromotionPlan `json:"promotionplan"`
+	PromotionPlan KaproPromotionPlan `json:"promotionPlan"`
 	// Suspended pauses Kapro reconciliation.
 	// +kubebuilder:default=false
 	Suspended bool `json:"suspended,omitempty"`

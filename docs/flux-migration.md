@@ -131,9 +131,9 @@ kind: PromotionRun
 metadata:
   name: checkout-2026-05-15
 spec:
-  promotionplans:
+  promotionPlans:
     - name: main
-      promotionplan: checkout
+      promotionPlan: checkout
   versions:
     api: 1.5.0
     web: main-20260515

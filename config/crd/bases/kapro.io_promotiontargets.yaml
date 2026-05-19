@@ -19,13 +19,13 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.promotionrunRef
+    - jsonPath: .spec.promotionRunRef
       name: PromotionRun
       type: string
     - jsonPath: .spec.target
       name: Target
       type: string
-    - jsonPath: .spec.promotionplanRef
+    - jsonPath: .spec.promotionPlanRef
       name: PromotionPlan
       type: string
     - jsonPath: .spec.stage
@@ -682,15 +682,15 @@ spec:
                 required:
                 - mode
                 type: object
-              promotionplan:
+              promotionPlan:
                 description: PromotionPlan is the PromotionPlan CRD name this entry
                   belongs to.
                 type: string
-              promotionplanRef:
+              promotionPlanRef:
                 description: PromotionPlanRef is the logical promotionplan reference
-                  name from PromotionRun.spec.promotionplans[i].name.
+                  name from PromotionRun.spec.promotionPlans[i].name.
                 type: string
-              promotionrunRef:
+              promotionRunRef:
                 description: PromotionRunRef is the owning PromotionRun name.
                 type: string
               rollback:
@@ -707,8 +707,8 @@ spec:
                 description: Version is the OCI digest being delivered.
                 type: string
             required:
-            - promotionplan
-            - promotionrunRef
+            - promotionPlan
+            - promotionRunRef
             - stage
             - target
             type: object
@@ -2105,16 +2105,16 @@ spec:
                 description: PreviousVersions holds the pre-rollout appKey -> version
                   snapshot used for rollback.
                 type: object
-              promotionplan:
+              promotionPlan:
                 description: PromotionPlan is the PromotionPlan CRD name this entry
                   belongs to.
                 type: string
-              promotionplanRef:
+              promotionPlanRef:
                 description: |-
-                  PromotionPlanRef is the logical promotionplan reference name from PromotionRun.spec.promotionplans[i].name.
+                  PromotionPlanRef is the logical promotionplan reference name from PromotionRun.spec.promotionPlans[i].name.
                   Used to disambiguate when the same PromotionPlan CRD is referenced multiple times.
                 type: string
-              promotionrunRef:
+              promotionRunRef:
                 description: PromotionRunRef is the owning PromotionRun name.
                 type: string
               rejected:
@@ -2141,7 +2141,7 @@ spec:
                 description: Version is the OCI digest being delivered.
                 type: string
             required:
-            - promotionplan
+            - promotionPlan
             - stage
             - target
             type: object

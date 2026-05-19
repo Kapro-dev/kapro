@@ -147,13 +147,13 @@ spec:
                           description: Name uniquely identifies this promotionplan
                             node within the PromotionRun.
                           type: string
-                        promotionplan:
+                        promotionPlan:
                           description: PromotionPlan is the name of the PromotionPlan
                             CRD to execute.
                           type: string
                       required:
                       - name
-                      - promotionplan
+                      - promotionPlan
                       type: object
                     maxItems: 64
                     type: array

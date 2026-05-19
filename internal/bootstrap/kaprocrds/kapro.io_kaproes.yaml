@@ -144,7 +144,7 @@ spec:
                 - backendRef
                 - mode
                 type: object
-              promotionplan:
+              promotionPlan:
                 description: PromotionPlan defines the progressive delivery stages.
                 properties:
                   stages:
@@ -1095,7 +1095,7 @@ spec:
             required:
             - clusters
             - delivery
-            - promotionplan
+            - promotionPlan
             type: object
             x-kubernetes-validations:
             - message: exactly one of sourceRef or source is required

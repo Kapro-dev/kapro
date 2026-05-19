@@ -15,7 +15,7 @@ spec:
     kaproRef: checkout
     promotionPlans:
       - name: production
-        promotionplan: checkout-production
+        promotionPlan: checkout-production
     suspended: true
     scope:
       targets:
