@@ -26,7 +26,7 @@ This document defines the target architecture for those contracts.
 | Template gate | CEL, Job, Webhook gate templates | Configure custom gate behavior through CRDs. | Implemented |
 | PromotionRun planner | `pkg/planner` and KPI proto | Filter, score, reserve, and permit rollout targets before binding. | In-process framework; KPI API preview |
 | Lifecycle events | CloudEvents webhook payloads | Publish PromotionRun, stage, gate, approval, and target events. | Implemented |
-| Notification provider/policy | `NotificationProvider` and `NotificationPolicy` CRDs | Separate notification destinations from event subscriptions. | API preview; runtime dispatch future work |
+| Notifications | Inline gate/stage notification settings | Route gate events without adding a separate public notification API. | Runtime path |
 | Plugin gateway | KAI/KGI/KPI proto contracts and `PluginRegistration` | Register and probe out-of-process actuators, gates, and planner plugins. | Hot-loaded actuator, gate, and planner dispatch preview |
 | PromotionTrigger | CRD API | Define safe autonomous PromotionRun creation policy. | OCI controller preview |
 
@@ -126,17 +126,8 @@ CloudEvents IDs are stable for a given PromotionRun, event type, promotion plan,
 target, and phase, allowing receivers to de-duplicate retries.
 
 Inline notifications on gate policies remain supported and are the active
-runtime path today. `NotificationProvider` and `NotificationPolicy` are an API
-preview for a Kubernetes-native split:
-
-- `NotificationProvider` is **where** events go: webhook, Slack, email, or Git
-  configuration, provider parameters, and namespaced Secret references.
-- `NotificationPolicy` is **when** events go there: subscriptions with a
-  `providerRef` plus event type, PromotionRun label, promotion plan, stage, target, and
-  phase filters.
-
-The preview resources are spec-only. The controller does not dispatch from
-`NotificationPolicy` yet.
+runtime path today. Kapro does not expose separate public notification
+provider/policy CRDs in the KISS API.
 
 External consumers can implement audit trails, chat notifications, incident
 routing, compliance ingestion, or repository dispatch without becoming Kapro

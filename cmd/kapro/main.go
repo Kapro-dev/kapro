@@ -3,10 +3,11 @@
 // Usage:
 //
 //	kapro cluster bootstrap --name <cluster-name> [--labels key=value,...]
-//	kapro get promotionruns [-n namespace]
-//	kapro get targets [-n namespace]
-//	kapro approve <promotionrun>/<target> [-n namespace] [--comment text]
-//	kapro rollback <promotionrun-name> --to <digest> [-n namespace]
+//	kapro promote <app> --version <version> --plan <promotionplan>
+//	kapro get promotionruns
+//	kapro get targets
+//	kapro approve <promotionrun>/<target> [--comment text]
+//	kapro rollback <promotionrun-name> --to <digest>
 package main
 
 import (
@@ -21,7 +22,6 @@ import (
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -63,6 +63,7 @@ Passes versions forward. Across targets. Across clusters. In waves.`,
 	root.AddCommand(newFleetMgmtCmd())
 	root.AddCommand(newSourceCmd())
 	root.AddCommand(newStatusCmd())
+	root.AddCommand(newPromoteCmd())
 	root.AddCommand(newPromotionRunCmd())
 	root.AddCommand(newApproveCmd())
 	root.AddCommand(newRejectCmd())
@@ -404,24 +405,20 @@ func newGetCmd() *cobra.Command {
 
 func newGetPromotionRunsCmd() *cobra.Command {
 	var (
-		namespace     string
-		allNamespaces bool
-		kubeconfig    string
+		kubeconfig string
 	)
 	cmd := &cobra.Command{
 		Use:   "promotionruns",
 		Short: "List PromotionRun objects",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runGetPromotionRuns(cmd.Context(), namespace, allNamespaces, kubeconfig)
+			return runGetPromotionRuns(cmd.Context(), kubeconfig)
 		},
 	}
-	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (empty = all namespaces)")
-	cmd.Flags().BoolVarP(&allNamespaces, "all-namespaces", "A", false, "List across all namespaces")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	return cmd
 }
 
-func runGetPromotionRuns(ctx context.Context, namespace string, allNamespaces bool, kubeconfigPath string) error {
+func runGetPromotionRuns(ctx context.Context, kubeconfigPath string) error {
 	sp := cli.NewSpinner("Fetching promotionruns")
 	sp.Start()
 
@@ -432,8 +429,7 @@ func runGetPromotionRuns(ctx context.Context, namespace string, allNamespaces bo
 	}
 
 	var list kaprov1alpha1.PromotionRunList
-	opts := listOpts(namespace, allNamespaces)
-	if err := c.List(ctx, &list, opts...); err != nil {
+	if err := c.List(ctx, &list); err != nil {
 		sp.StopFail("Failed to list promotionruns")
 		return fmt.Errorf("list promotionruns: %w", err)
 	}
@@ -485,10 +481,8 @@ func runGetPromotionRuns(ctx context.Context, namespace string, allNamespaces bo
 
 func newGetTargetsCmd() *cobra.Command {
 	var (
-		namespace     string
-		allNamespaces bool
-		phase         string
-		kubeconfig    string
+		phase      string
+		kubeconfig string
 	)
 	cmd := &cobra.Command{
 		Use:   "targets",
@@ -497,17 +491,15 @@ func newGetTargetsCmd() *cobra.Command {
 
 PromotionTarget is the authoritative per-target execution state store.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runGetTargets(cmd.Context(), namespace, allNamespaces, phase, kubeconfig)
+			return runGetTargets(cmd.Context(), phase, kubeconfig)
 		},
 	}
-	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace (empty = all namespaces)")
-	cmd.Flags().BoolVarP(&allNamespaces, "all-namespaces", "A", false, "List across all namespaces")
 	cmd.Flags().StringVar(&phase, "phase", "", "Filter by phase (e.g. WaitingApproval, Applying, Converged)")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	return cmd
 }
 
-func runGetTargets(ctx context.Context, namespace string, allNamespaces bool, phase, kubeconfigPath string) error {
+func runGetTargets(ctx context.Context, phase, kubeconfigPath string) error {
 	sp := cli.NewSpinner("Fetching targets")
 	sp.Start()
 
@@ -562,7 +554,6 @@ func runGetTargets(ctx context.Context, namespace string, allNamespaces bool, ph
 
 func newApproveCmd() *cobra.Command {
 	var (
-		namespace  string
 		comment    string
 		kubeconfig string
 	)
@@ -578,16 +569,15 @@ Examples:
   kapro approve v1.2.3/de-prod --comment "checked canary metrics, all green"`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runApprove(cmd.Context(), args[0], namespace, comment, kubeconfig)
+			return runApprove(cmd.Context(), args[0], comment, kubeconfig)
 		},
 	}
-	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace of the PromotionRun")
 	cmd.Flags().StringVar(&comment, "comment", "", "Optional approval comment (required for bypass)")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	return cmd
 }
 
-func runApprove(ctx context.Context, promotionTarget, namespace, comment, kubeconfigPath string) error {
+func runApprove(ctx context.Context, promotionTarget, comment, kubeconfigPath string) error {
 	parts := strings.SplitN(promotionTarget, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return fmt.Errorf("argument must be <promotionrun>/<target>, got %q", promotionTarget)
@@ -600,11 +590,11 @@ func runApprove(ctx context.Context, promotionTarget, namespace, comment, kubeco
 	}
 
 	var rel kaprov1alpha1.PromotionRun
-	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: promotionrunName}, &rel); err != nil {
+	if err := c.Get(ctx, client.ObjectKey{Name: promotionrunName}, &rel); err != nil {
 		return fmt.Errorf("get promotionrun %q: %w", promotionrunName, err)
 	}
 
-	targets, err := listPromotionTargetsForPromotionRun(ctx, c, namespace, promotionrunName)
+	targets, err := listPromotionTargetsForPromotionRun(ctx, c, promotionrunName)
 	if err != nil {
 		return err
 	}
@@ -655,7 +645,6 @@ func runApprove(ctx context.Context, promotionTarget, namespace, comment, kubeco
 func newRollbackCmd() *cobra.Command {
 	var (
 		toDigest   string
-		namespace  string
 		targets    []string
 		kubeconfig string
 	)
@@ -674,11 +663,10 @@ Examples:
   kapro rollback my-promotionrun --to sha256:abc123def456 --target de-prod --target fi-prod`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRollback(cmd.Context(), args[0], toDigest, namespace, targets, kubeconfig)
+			return runRollback(cmd.Context(), args[0], toDigest, targets, kubeconfig)
 		},
 	}
 	cmd.Flags().StringVar(&toDigest, "to", "", "OCI digest to roll back to (required)")
-	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace of the PromotionRun")
 	cmd.Flags().StringArrayVar(&targets, "target", nil, "Restrict rollback to specific target clusters (repeatable)")
 	cmd.Flags().StringArrayVar(&targets, "env", nil, "Deprecated alias for --target")
 	_ = cmd.Flags().MarkHidden("env")
@@ -687,7 +675,7 @@ Examples:
 	return cmd
 }
 
-func runRollback(ctx context.Context, promotionrunName, toDigest, namespace string, targets []string, kubeconfigPath string) error {
+func runRollback(ctx context.Context, promotionrunName, toDigest string, targets []string, kubeconfigPath string) error {
 	c, err := buildClient(kubeconfigPath)
 	if err != nil {
 		return err
@@ -695,7 +683,7 @@ func runRollback(ctx context.Context, promotionrunName, toDigest, namespace stri
 
 	// Fetch the original PromotionRun.
 	var orig kaprov1alpha1.PromotionRun
-	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: promotionrunName}, &orig); err != nil {
+	if err := c.Get(ctx, client.ObjectKey{Name: promotionrunName}, &orig); err != nil {
 		return fmt.Errorf("get promotionrun %q: %w", promotionrunName, err)
 	}
 
@@ -713,8 +701,7 @@ func runRollback(ctx context.Context, promotionrunName, toDigest, namespace stri
 	}
 	rbPromotionRun := &kaprov1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      rbPromotionRunName,
-			Namespace: namespace,
+			Name: rbPromotionRunName,
 			Annotations: map[string]string{
 				"kapro.io/rollback-from":   promotionrunName,
 				"kapro.io/rollback-digest": toDigest,
@@ -726,13 +713,13 @@ func runRollback(ctx context.Context, promotionrunName, toDigest, namespace stri
 		return fmt.Errorf("create rollback promotionrun: %w", err)
 	}
 
-	fmt.Printf("✅ Rollback promotionrun created: %s/%s\n", namespace, rbPromotionRunName)
+	fmt.Printf("✅ Rollback promotionrun created: %s\n", rbPromotionRunName)
 	fmt.Printf("   Original promotionrun: %s\n", promotionrunName)
 	fmt.Printf("   Rollback version: %s\n", toDigest)
 	if len(targets) > 0 {
 		fmt.Printf("   Scoped to targets: %s\n", strings.Join(targets, ", "))
 	}
-	fmt.Printf("\nMonitor progress:\n  kapro get targets -n %s\n", namespace)
+	fmt.Printf("\nMonitor progress:\n  kapro get targets\n")
 	return nil
 }
 
@@ -754,13 +741,6 @@ func buildClient(kubeconfigPath string) (client.Client, error) {
 		return nil, fmt.Errorf("create client: %w", err)
 	}
 	return c, nil
-}
-
-func listOpts(namespace string, allNamespaces bool) []client.ListOption {
-	if allNamespaces || namespace == "" {
-		return nil
-	}
-	return []client.ListOption{client.InNamespace(namespace)}
 }
 
 func shortHash(s string) string {
@@ -788,7 +768,7 @@ func selectApprovalTarget(targets []kaprov1alpha1.PromotionTarget, targetName st
 	return nil
 }
 
-func listPromotionTargetsForPromotionRun(ctx context.Context, c client.Client, namespace, promotionrunName string) ([]kaprov1alpha1.PromotionTarget, error) {
+func listPromotionTargetsForPromotionRun(ctx context.Context, c client.Client, promotionrunName string) ([]kaprov1alpha1.PromotionTarget, error) {
 	var targetList kaprov1alpha1.PromotionTargetList
 	if err := c.List(ctx, &targetList); err != nil {
 		return nil, fmt.Errorf("list promotion targets: %w", err)
@@ -800,6 +780,91 @@ func listPromotionTargetsForPromotionRun(ctx context.Context, c client.Client, n
 		}
 	}
 	return targets, nil
+}
+
+// ─── kapro promote ────────────────────────────────────────────────────────────────
+
+func newPromoteCmd() *cobra.Command {
+	var (
+		name       string
+		version    string
+		versions   []string
+		plans      []string
+		scope      []string
+		kubeconfig string
+	)
+	cmd := &cobra.Command{
+		Use:   "promote <app>",
+		Short: "Promote a version through the fleet",
+		Long: `Create the user-facing promotion object for a version.
+
+Kapro stores promotion execution as a PromotionRun, but the public CLI keeps
+the workflow short: app, version, rollout plan, optional scope.
+
+Examples:
+  kapro promote checkout --version v1.2.3 --plan checkout-progressive
+  kapro promote checkout --version v1.2.4 --plan checkout-progressive --scope canary-eu
+  kapro promote checkout --set api=v1.2.3 --set worker=v1.2.2 --plan checkout-progressive`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(plans) == 0 {
+				return fmt.Errorf("at least one --plan is required")
+			}
+			promotionName := name
+			if promotionName == "" {
+				promotionName = defaultPromotionRunName(args[0], version, versions)
+			}
+			return runPromotionRunCreate(cmd.Context(), promotionName, version, versions, plans, scope, kubeconfig)
+		},
+	}
+	cmd.Flags().StringVar(&name, "name", "", "PromotionRun name; defaults to <app>-<version>")
+	cmd.Flags().StringVar(&version, "version", "", "Default revision to deliver")
+	cmd.Flags().StringArrayVar(&versions, "set", nil, "Per-unit revision (repeatable: --set api=sha256:abc)")
+	cmd.Flags().StringArrayVar(&plans, "plan", nil, "PromotionPlan name (repeatable; required at least once)")
+	cmd.Flags().StringArrayVar(&scope, "scope", nil, "Restrict to target cluster (repeatable: --scope de-prod --scope fi-prod)")
+	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
+	return cmd
+}
+
+func defaultPromotionRunName(app, version string, versions []string) string {
+	suffix := version
+	if suffix == "" && len(versions) > 0 {
+		suffix = versions[0]
+	}
+	if suffix == "" {
+		suffix = "promotion"
+	}
+	return dnsLabel(app + "-" + suffix)
+}
+
+func dnsLabel(value string) string {
+	var b strings.Builder
+	lastDash := false
+	for _, r := range strings.ToLower(value) {
+		isNameChar := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+		if isNameChar {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash && b.Len() > 0 {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	name := strings.Trim(b.String(), "-")
+	if len(name) > 63 {
+		hash := shortHash(value)
+		prefix := strings.Trim(name[:54], "-")
+		if prefix == "" {
+			return hash
+		}
+		name = prefix + "-" + hash
+	}
+	if name == "" {
+		return "promotion"
+	}
+	return name
 }
 
 // ─── kapro promotionrun ────────────────────────────────────────────────────────────
@@ -820,7 +885,6 @@ func newPromotionRunCreateCmd() *cobra.Command {
 		versions       []string
 		promotionplans []string
 		scope          []string
-		namespace      string
 		kubeconfig     string
 	)
 	cmd := &cobra.Command{
@@ -841,7 +905,7 @@ Examples:
     --set api=main@sha256:abc123 --set worker=main@sha256:def456 \
     --promotionplan global`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runPromotionRunCreate(cmd.Context(), name, version, versions, promotionplans, scope, namespace, kubeconfig)
+			return runPromotionRunCreate(cmd.Context(), name, version, versions, promotionplans, scope, kubeconfig)
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "PromotionRun name (required)")
@@ -849,19 +913,13 @@ Examples:
 	cmd.Flags().StringArrayVar(&versions, "set", nil, "Per-unit revision (repeatable: --set api=sha256:abc)")
 	cmd.Flags().StringArrayVar(&promotionplans, "promotionplan", nil, "PromotionPlan name (repeatable; required at least once)")
 	cmd.Flags().StringArrayVar(&scope, "scope", nil, "Restrict to target cluster (repeatable: --scope de-prod --scope fi-prod)")
-	cmd.Flags().StringVarP(&namespace, "namespace", "n", "default", "Namespace for the PromotionRun")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	_ = cmd.MarkFlagRequired("name")
 	return cmd
 }
 
 func runPromotionRunCreate(ctx context.Context, name, version string, versionPairs, promotionplans, scope []string,
-	namespace, kubeconfigPath string) error {
-	c, err := buildClient(kubeconfigPath)
-	if err != nil {
-		return err
-	}
-
+	kubeconfigPath string) error {
 	if len(promotionplans) == 0 {
 		return fmt.Errorf("at least one --promotionplan is required")
 	}
@@ -871,6 +929,11 @@ func runPromotionRunCreate(ctx context.Context, name, version string, versionPai
 	}
 	if version == "" && len(versions) == 0 {
 		return fmt.Errorf("--version or at least one --set unit=revision is required")
+	}
+
+	c, err := buildClient(kubeconfigPath)
+	if err != nil {
+		return err
 	}
 
 	refs := make([]kaprov1alpha1.PromotionPlanRef, 0, len(promotionplans))
@@ -892,8 +955,7 @@ func runPromotionRunCreate(ctx context.Context, name, version string, versionPai
 
 	rel := &kaprov1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
+			Name: name,
 		},
 		Spec: spec,
 	}
@@ -902,7 +964,7 @@ func runPromotionRunCreate(ctx context.Context, name, version string, versionPai
 		return fmt.Errorf("create PromotionRun: %w", err)
 	}
 
-	fmt.Printf("✅ PromotionRun created: %s/%s\n", namespace, name)
+	fmt.Printf("✅ PromotionRun created: %s\n", name)
 	if version != "" {
 		fmt.Printf("   Version:   %s\n", version)
 	}
@@ -915,7 +977,7 @@ func runPromotionRunCreate(ctx context.Context, name, version string, versionPai
 	if len(scope) > 0 {
 		fmt.Printf("   Scope:     %s\n", strings.Join(scope, ", "))
 	}
-	fmt.Printf("\nMonitor progress:\n  kapro get promotionruns -n %s\n", namespace)
+	fmt.Printf("\nMonitor progress:\n  kapro get promotionruns\n")
 	return nil
 }
 
@@ -985,7 +1047,7 @@ func runReject(ctx context.Context, promotionTarget, reason, kubeconfigPath stri
 		return err
 	}
 
-	targets, err := listPromotionTargetsForPromotionRun(ctx, c, "", promotionrunName)
+	targets, err := listPromotionTargetsForPromotionRun(ctx, c, promotionrunName)
 	if err != nil {
 		return err
 	}

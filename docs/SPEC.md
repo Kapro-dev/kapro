@@ -22,10 +22,9 @@
 12. [Target FSM](#12-target-fsm)
 13. [Approval Flow](#13-approval-flow)
 14. [Notification & Events](#14-notification--events)
-15. [NotificationProvider and NotificationPolicy API Preview](#15-notificationprovider-and-notificationpolicy-api-preview)
-16. [PluginRegistration API Preview](#16-pluginregistration-api-preview)
-17. [PromotionTrigger API Preview](#17-promotiontrigger-api-preview)
-18. [Non-Goals](#18-non-goals)
+15. [PluginRegistration API Preview](#15-pluginregistration-api-preview)
+16. [PromotionTrigger API Preview](#16-promotiontrigger-api-preview)
+17. [Non-Goals](#17-non-goals)
 
 ---
 
@@ -94,24 +93,20 @@ scope.
 ### Promotion execution DAG
 
 ```
-Promotion
-└── PromotionRun
-    └── PromotionPlan DAG (PromotionPlan -> PromotionPlan via dependsOn)
-        └── Stage DAG (Stage -> Stage via dependsOn inside a PromotionPlan)
-            └── clusterSelector -> FleetCluster set -> child PromotionTarget per cluster/stage
+PromotionRun
+└── PromotionPlan DAG (PromotionPlan -> PromotionPlan via dependsOn)
+    └── Stage DAG (Stage -> Stage via dependsOn inside a PromotionPlan)
+        └── clusterSelector -> FleetCluster set -> child PromotionTarget per cluster/stage
 ```
 
-- **Promotion** is the user-facing intent: version, source, policies, scope,
-  and the PromotionPlans to execute.
-- **PromotionRun** owns execution end-to-end and terminates when all PromotionPlans and stages have converged or failed.
+- **PromotionRun** is the user-facing intent and owns execution end-to-end:
+  version, scope, PromotionPlans, and terminal outcome.
 - **PromotionPlan** is a reusable template of stages (no status, no live fields).
 - **Stage** selects clusters and carries the gate policy that applies to those clusters.
 - **PromotionSource** contains `PromotionUnit` mappings: the deployable units and
   the backend-native fields or files Kapro is allowed to change.
 - **BackendProfile** selects the backend driver (`flux`, `argo`, `external`,
   etc.) and records discovery evidence for brownfield adoption.
-- **PromotionPolicy** evaluates reusable guardrails before a PromotionRun is
-  created. CEL and freeze-window checks are enforced by the built-in runtime.
 - **FleetCluster** is inventory + delivery configuration + observed state.
 - **PromotionTarget** is the authoritative per-cluster/stage execution object. `PromotionRun.status.targets[]` is retained only as deprecated compatibility state.
 - **Approval** is a separate CRD that exists only to carry a human "approve / reject" signal for a target awaiting approval.
@@ -128,15 +123,13 @@ Promotion
 
 | Term | Meaning |
 |------|---------|
-| **Promotion** | User-facing intent to move a version through one or more PromotionPlans. |
-| **Artifact** | Optional image, tag, digest, repository, or version metadata attached to a Promotion. |
+| **PromotionRun** | User-facing intent and execution owner for moving a version through one or more PromotionPlans. |
+| **Artifact** | Optional image, tag, digest, repository, or version metadata attached to a PromotionRun. |
 | **PromotionSource** | Declares deployable PromotionUnits and their backend-native write targets. |
 | **PromotionUnit** | One application, HelmRelease, Argo Application, ApplicationSet input, Git file field, or generated unit Kapro can promote. |
 | **BackendProfile** | Selectable delivery backend profile for Flux, Argo, or external plugin-backed drivers. |
-| **PromotionPolicy** | Reusable pre-run guardrail. Built-in runtime supports CEL and freeze-window enforcement; unsupported verification policies fail closed. |
 | **PromotionPlan** | Template only. Contains a DAG of `Stage`s. No status. |
 | **Stage** | One wave inside a PromotionPlan. Selects target clusters via `clusterSelector` labels. Carries a `gate` policy. |
-| **PromotionRun** | The execution owner. References Promotion intent, source, and a DAG of PromotionPlans; drives per-target rollout. |
 | **FleetCluster** | One workload cluster in the fleet. Holds actuator config, health check config, topology, and observed status (heartbeat + current versions). |
 | **Approval** | A CRD carrying a human approve/reject signal for a `(PromotionRun, target)` pair. Deterministic name: `<promotionrun>-<target>`. |
 | **Target** | A `FleetCluster` selected by a stage — i.e. one row in `PromotionRun.status.targets[]`. |
@@ -150,33 +143,27 @@ Promotion
 | CRD | Kind | Ownership | Scope |
 |-----|------|-----------|-------|
 | `kaproes.kapro.io` | `Kapro` | Platform | Cluster |
-| `promotions.kapro.io` | `Promotion` | Promotion engineer / automation | Cluster |
 | `promotionsources.kapro.io` | `PromotionSource` | Platform | Cluster |
-| `promotionpolicies.kapro.io` | `PromotionPolicy` | Platform / release governance | Cluster |
 | `promotionplans.kapro.io` | `PromotionPlan` | Platform | Cluster |
-| `promotionruns.kapro.io` | `PromotionRun` | Controller / automation | Cluster |
+| `promotionruns.kapro.io` | `PromotionRun` | Promotion engineer / automation | Cluster |
 | `promotiontriggers.kapro.io` | `PromotionTrigger` | Platform / automation | Cluster |
 | `promotiontargets.kapro.io` | `PromotionTarget` | Controller | Cluster |
 | `backendprofiles.kapro.io` | `BackendProfile` | Platform | Cluster |
-| `notificationproviders.kapro.io` | `NotificationProvider` | Platform | Cluster |
-| `notificationpolicies.kapro.io` | `NotificationPolicy` | Platform / promotion engineer | Cluster |
 | `fleetclusters.kapro.io` | `FleetCluster` | Platform | Cluster |
 | `pluginregistrations.kapro.io` | `PluginRegistration` | Platform | Cluster |
 | `approvals.kapro.io` | `Approval` | Human via webhook | Cluster |
 | `agentpolicies.kapro.io` | `AgentPolicy` | Platform | Cluster |
 
-`PromotionSource`, `PromotionPlan`, `PromotionPolicy`, `BackendProfile`,
-`NotificationProvider`, and `NotificationPolicy` are reusable configuration or
-policy objects. Execution state lives in `Promotion`, `PromotionRun`,
+`PromotionSource`, `PromotionPlan`, and `BackendProfile` are reusable
+configuration objects. Execution state lives in `PromotionRun`,
 `PromotionTarget`, `FleetCluster`, `Approval`, and `PromotionTrigger` status.
 
 The stable product center is the promotion execution path: `PromotionRun`,
 `PromotionTarget`, `PromotionPlan`, `FleetCluster`, `BackendProfile`,
 `PromotionSource`, and `Approval`. Preview surfaces are documented separately:
-`NotificationProvider` and `NotificationPolicy` are spec-only, `AgentPolicy`
-and the Decision API are opt-in assistance surfaces, and unsupported
-`FleetClusterTemplate` import sources are not runtime features until their
-controllers are implemented.
+`AgentPolicy` and the Decision API are opt-in assistance surfaces, and
+unsupported `FleetClusterTemplate` import sources are not runtime features until
+their controllers are implemented.
 
 ---
 
@@ -186,9 +173,6 @@ controllers are implemented.
 ┌────────────────────────────── Hub cluster ──────────────────────────────┐
 │                                                                         │
 │  ┌───────────────────────── kapro-operator ───────────────────────┐     │
-│  │                                                                │     │
-│  │  PromotionReconciler   ─── evaluates PromotionPolicy guardrails, │     │
-│  │                           creates PromotionRun attempts          │     │
 │  │                                                                │     │
 │  │  PromotionRunReconciler ─── drives the PromotionPlan DAG, owns  │     │
 │  │                           the per-target FSM, resolves gates    │     │
@@ -229,8 +213,8 @@ Controllers are registered from `pkg/controllermanager/controllers.go`. Hub and 
 
 For the current alpha line, hub configuration is sourced from a dedicated git repository and
 applied to the hub cluster by CI with `kubectl apply`. The repository owns
-`FleetCluster`, `BackendProfile`, `PromotionSource`, `PromotionPolicy`,
-`PromotionPlan`, and Promotion intent YAML. Built-in Argo and Flux adoption can
+`FleetCluster`, `BackendProfile`, `PromotionSource`, `PromotionPlan`, and
+`PromotionRun` intent YAML. Built-in Argo and Flux adoption can
 also write backend-native Git fields by creating a GitOps pull request or local
 repository mutation, depending on the actuator configuration. Spoke clusters do
 not watch the hub repository directly; they either consume their existing
@@ -435,7 +419,7 @@ Identity is deterministic: every `(PromotionRun, target)` pair has at most one `
 ## 14. Notification & Events
 
 - `pkg/notification.Notifier` is an internal contract (not an exposed extension interface yet). Currently ships Slack, email, and generic webhook senders under `internal/notification/engine`.
-- The `PromotionRunReconciler` converts `*GatePolicy → pkg/notification.NotificationPolicy` at the call boundary so the notification engine never imports `api/v1alpha1`. This is the internal runtime policy type, not the preview `NotificationPolicy` CRD.
+- The `PromotionRunReconciler` converts `*GatePolicy → pkg/notification.NotificationPolicy` at the call boundary so the notification engine never imports `api/v1alpha1`. This is an internal runtime policy type, not a public CRD.
 - Existing inline notifications on gates remain supported and are the active runtime configuration path.
 - Every phase transition emits a Kubernetes Event on the `PromotionRun` object.
 - Webhook notifications support plain JSON and CloudEvents v1.0 structured JSON. CloudEvents IDs are stable for a given PromotionRun, event type, PromotionPlan, stage, target, and phase so consumers can de-duplicate retries.
@@ -443,31 +427,7 @@ Identity is deterministic: every `(PromotionRun, target)` pair has at most one `
 
 ---
 
-## 15. NotificationProvider and NotificationPolicy API Preview
-
-`NotificationProvider` and `NotificationPolicy` are Kubernetes-native,
-cluster-scoped API previews for separating notification destination from
-notification subscription logic:
-
-- `NotificationProvider` is **where** events can be sent. It declares provider
-  type (`webhook`, `slack`, `email`, or `git`), provider-specific config,
-  credential Secret references, and opaque parameters.
-- `NotificationPolicy` is **when** events should be sent. It declares
-  subscriptions with a `providerRef` and filters for stable event types,
-  PromotionRun labels, PromotionPlans, stages, targets, and phases.
-
-These APIs are spec-only in this preview. The controller does not dispatch from
-`NotificationPolicy` yet and does not change existing inline notification
-runtime behavior. Inline gate notifications continue to be supported while the
-provider/policy API is introduced for review and future controller wiring.
-
-Because both resources are cluster-scoped, provider Secret references include a
-namespace. Policy `providerRef` values refer to `NotificationProvider` objects
-by name.
-
----
-
-## 16. PluginRegistration API Preview
+## 15. PluginRegistration API Preview
 
 `PluginRegistration` is a status-capable preview for external actuator, gate,
 and planner plugins. It is cluster-scoped and records the plugin type, registry name,
@@ -496,7 +456,7 @@ implementation. See `docs/plugin-authoring.md` and
 
 ---
 
-## 17. PromotionTrigger API Preview
+## 16. PromotionTrigger API Preview
 
 `PromotionTrigger` is a safe-by-default API preview for autonomous PromotionRun
 creation from verified artifact changes. It is cluster-scoped and supports OCI
@@ -510,7 +470,7 @@ apply manifests, bypass gates, or promote directly to production.
 
 ---
 
-## 18. Non-Goals
+## 17. Non-Goals
 
 Kapro explicitly does **not** aim to:
 

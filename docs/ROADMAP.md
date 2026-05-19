@@ -10,7 +10,7 @@ This file tracks planned work only. Implemented work belongs in
 - Add release-note/changelog validation for required sections.
 - Publish benchmark evidence for repository size, backend object count, target
   count, and PromotionRun fanout.
-- Add dashboard-ready metrics for PromotionPolicy decisions, backend refresh,
+- Add dashboard-ready metrics for inline gate decisions, backend refresh,
   plugin probe failures, and target duration percentiles.
 - Expand install verification to cover upgrade from the previous tagged alpha.
 
@@ -21,8 +21,8 @@ This file tracks planned work only. Implemented work belongs in
 - Add KGI gate examples for OPA, Argo AnalysisRun, queue-lag checks, and
   service-level objective burn-rate checks.
 - Publish a compatibility matrix for external KAI, KGI, and KPI plugins.
-- Decide whether `NotificationProvider` and `NotificationPolicy` move from API
-  preview to runtime dispatch.
+- Decide whether notification routing needs a separate public API or should
+  remain inline on gate/stage policy.
 
 ## v1.0 - GA
 

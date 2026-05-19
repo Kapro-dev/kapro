@@ -16,13 +16,9 @@ func init() {
 		// Promotion-domain API
 		&FleetCluster{}, &FleetClusterList{},
 		&PromotionPlan{}, &PromotionPlanList{},
-		&Promotion{}, &PromotionList{},
 		&PromotionRun{}, &PromotionRunList{},
 		&PromotionTarget{}, &PromotionTargetList{},
 		&PromotionTrigger{}, &PromotionTriggerList{},
-		&PromotionPolicy{}, &PromotionPolicyList{},
-		&NotificationProvider{}, &NotificationProviderList{},
-		&NotificationPolicy{}, &NotificationPolicyList{},
 		&BackendProfile{}, &BackendProfileList{},
 		&PluginRegistration{}, &PluginRegistrationList{},
 		&FleetClusterTemplate{}, &FleetClusterTemplateList{},

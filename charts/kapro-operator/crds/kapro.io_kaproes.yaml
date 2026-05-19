@@ -22,9 +22,9 @@ spec:
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
       type: string
-    - jsonPath: .spec.sourceRef
-      name: SourceRef
-      type: string
+    - jsonPath: .status.unitCount
+      name: Units
+      type: integer
     - jsonPath: .status.clusterCount
       name: Clusters
       type: integer
@@ -41,8 +41,8 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Kapro is the single entry point for fleet delivery. Users reference a
-          PromotionSource, select a backend profile, and define clusters and promotion
+          Kapro is the single entry point for fleet delivery. Users define or reference
+          source units, select a backend profile, and define clusters and promotion
           stages. Backend adapters own Flux, Argo, or other delivery-system details.
         properties:
           apiVersion:
@@ -820,9 +820,270 @@ spec:
                 required:
                 - url
                 type: object
+              source:
+                description: Source defines deployable units inline for the KISS single-object
+                  path.
+                properties:
+                  backendRef:
+                    description: |-
+                      BackendRef is the BackendProfile this source is normally discovered from
+                      or packaged for. Kapro uses it as metadata; delivery still comes from
+                      Kapro.spec.delivery and FleetCluster.spec.delivery.
+                    type: string
+                  defaults:
+                    description: Defaults are inherited by every unit unless overridden.
+                    properties:
+                      repo:
+                        description: Repo is the default registry name (from spec.registries).
+                        type: string
+                      retries:
+                        default: 3
+                        description: Retries is the number of install/upgrade retry
+                          attempts.
+                        format: int32
+                        type: integer
+                      targetNamespace:
+                        description: TargetNamespace is where workload pods run. Supports
+                          ${variable} substitution.
+                        type: string
+                      timeout:
+                        default: 10m
+                        description: Timeout for install and upgrade operations.
+                        type: string
+                      values:
+                        description: Values are base Helm values applied to every
+                          unit (deep-merged with unit values).
+                        x-kubernetes-preserve-unknown-fields: true
+                      valuesFrom:
+                        description: ValuesFrom references ConfigMaps/Secrets with
+                          Helm values applied to all units.
+                        items:
+                          description: ValuesReference references a ConfigMap or Secret
+                            for Helm values.
+                          properties:
+                            kind:
+                              default: ConfigMap
+                              description: Kind is "ConfigMap" (default) or "Secret".
+                              type: string
+                            name:
+                              description: Name of the ConfigMap or Secret.
+                              type: string
+                            optional:
+                              description: Optional marks this values source as non-required.
+                              type: boolean
+                            valuesKey:
+                              description: 'ValuesKey is the data key to use. Default:
+                                "values.yaml".'
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                    type: object
+                  helmReleaseNamespace:
+                    default: flux-system
+                    description: HelmReleaseNamespace is where HelmRelease CRs live
+                      on spokes (not the workloads).
+                    type: string
+                  overrides:
+                    description: Overrides are per-cluster or per-label value patches
+                      layered on top of defaults.
+                    items:
+                      description: SourceOverride patches Helm values for a subset
+                        of clusters.
+                      properties:
+                        clusters:
+                          description: Clusters is an explicit list of cluster names.
+                            Takes precedence over selector.
+                          items:
+                            type: string
+                          type: array
+                        selector:
+                          additionalProperties:
+                            type: string
+                          description: Selector matches clusters by labels. Applied
+                            to all matching clusters.
+                          type: object
+                        unit:
+                          description: Unit restricts this override to a single unit.
+                            Empty means all.
+                          type: string
+                        values:
+                          description: Values are Helm value patches merged on top
+                            of defaults.
+                          x-kubernetes-preserve-unknown-fields: true
+                      type: object
+                    type: array
+                  registries:
+                    description: Registries defines HelmRepository sources for generated
+                      Flux resources.
+                    items:
+                      description: SourceRegistry defines a Helm chart source. Generates
+                        a HelmRepository on spoke.
+                      properties:
+                        interval:
+                          default: 5m
+                          description: Interval is how often to check for new chart
+                            versions.
+                          type: string
+                        name:
+                          description: Name is the registry identifier referenced
+                            by units via repo field.
+                          type: string
+                        provider:
+                          default: generic
+                          description: |-
+                            Provider is the auth provider: "generic" (default), "gcp", "aws", "azure".
+                            "gcp" uses Workload Identity — no credentials needed.
+                          type: string
+                        type:
+                          description: Type is "oci" (auto-detected for oci:// URLs)
+                            or "default" (HTTPS).
+                          type: string
+                        url:
+                          description: |-
+                            URL is the Helm repository URL (OCI or HTTPS).
+                            Supports ${variable} substitution (e.g. oci://${gcpArtifactRegistry}/helm/ldl).
+                          type: string
+                      required:
+                      - name
+                      - url
+                      type: object
+                    type: array
+                  units:
+                    description: Units defines the native deployable units Kapro promotes.
+                    items:
+                      description: |-
+                        PromotionUnit is one deployable unit within a PromotionSource.
+                        It can describe a generated Helm unit for greenfield scaffolds or an existing
+                        backend-native object discovered from Argo/Flux.
+                      properties:
+                        backendKind:
+                          description: |-
+                            BackendKind identifies the backend-native object kind when this unit maps
+                            to an existing object, for example Application, ApplicationSet,
+                            Kustomization, or HelmRelease.
+                          type: string
+                        chartName:
+                          description: |-
+                            ChartName overrides the Helm chart name when different from unit name.
+                            Example: unit "keycloak" uses chart "keycloakx".
+                          type: string
+                        crds:
+                          description: 'CRDs controls CRD install policy: "Skip" (default),
+                            "Create", "CreateReplace".'
+                          enum:
+                          - Skip
+                          - Create
+                          - CreateReplace
+                          type: string
+                        dependsOn:
+                          description: |-
+                            DependsOn lists unit names that must be Ready before this one starts.
+                            Creates HelmRelease-level dependsOn within the same wave.
+                          items:
+                            type: string
+                          type: array
+                        name:
+                          description: Name is the stable Kapro unit identifier.
+                          type: string
+                        namespace:
+                          description: Namespace is the backend-native object namespace
+                            when applicable.
+                          type: string
+                        prune:
+                          description: |-
+                            Prune controls whether Flux deletes resources when removed. Default: true.
+                            Set to false for databases, Kafka, PVCs.
+                          type: boolean
+                        repo:
+                          description: Repo references a registry from spec.registries
+                            by name. Inherits from defaults if empty.
+                          type: string
+                        retries:
+                          description: Retries for install/upgrade remediation. Inherits
+                            from defaults if empty.
+                          format: int32
+                          type: integer
+                        sourcePath:
+                          description: |-
+                            SourcePath is the repo-relative file path Kapro updates for Git-native
+                            brownfield promotion. It is required for file-backed units whose
+                            VersionField does not already include a file path.
+                          type: string
+                        suspend:
+                          description: Suspend pauses reconciliation for this unit.
+                          type: boolean
+                        targetNamespace:
+                          description: |-
+                            TargetNamespace is where workload pods run on spoke. Inherits from defaults if empty.
+                            Supports ${variable} substitution.
+                          type: string
+                        timeout:
+                          description: Timeout for install and upgrade. Inherits from
+                            defaults if empty.
+                          type: string
+                        values:
+                          description: Values are inline Helm values. Deep-merged
+                            with defaults.values (unit wins on conflict).
+                          x-kubernetes-preserve-unknown-fields: true
+                        valuesFrom:
+                          description: |-
+                            ValuesFrom references ConfigMaps/Secrets with Helm values.
+                            When set, REPLACES defaults.valuesFrom (not appended).
+                          items:
+                            description: ValuesReference references a ConfigMap or
+                              Secret for Helm values.
+                            properties:
+                              kind:
+                                default: ConfigMap
+                                description: Kind is "ConfigMap" (default) or "Secret".
+                                type: string
+                              name:
+                                description: Name of the ConfigMap or Secret.
+                                type: string
+                              optional:
+                                description: Optional marks this values source as
+                                  non-required.
+                                type: boolean
+                              valuesKey:
+                                description: 'ValuesKey is the data key to use. Default:
+                                  "values.yaml".'
+                                type: string
+                            required:
+                            - name
+                            type: object
+                          type: array
+                        version:
+                          description: |-
+                            Version is the default chart/revision for generated units. Supports
+                            ${VARIABLE} substitution from cluster-vars.
+                          type: string
+                        versionField:
+                          description: |-
+                            VersionField is the backend-native field Kapro changes for this unit,
+                            for example spec.source.targetRevision for Argo CD Applications.
+                          type: string
+                        wave:
+                          description: |-
+                            Wave controls deployment ordering (lower = earlier). Units in the same wave
+                            deploy in parallel. Wave N waits for wave N-1 to be Ready.
+                          format: int32
+                          minimum: 0
+                          type: integer
+                      required:
+                      - name
+                      type: object
+                    minItems: 1
+                    type: array
+                required:
+                - units
+                type: object
               sourceRef:
-                description: SourceRef is the name of the PromotionSource that defines
-                  units to deploy.
+                description: |-
+                  SourceRef is the optional name of a separate PromotionSource that defines
+                  units to deploy. Use Source for the KISS single-object path; use SourceRef
+                  when teams want to share a source catalog across multiple Kapro objects.
                 type: string
               suspended:
                 default: false
@@ -832,8 +1093,10 @@ spec:
             - clusters
             - delivery
             - promotionplan
-            - sourceRef
             type: object
+            x-kubernetes-validations:
+            - message: exactly one of sourceRef or source is required
+              rule: (has(self.sourceRef) && size(self.sourceRef) > 0) != has(self.source)
           status:
             description: KaproStatus defines the observed state of Kapro.
             properties:

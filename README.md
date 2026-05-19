@@ -21,9 +21,9 @@ Kapro is **alpha production-capable**, not GA. The current alpha release is
 `v0.4.0-alpha.0`.
 
 The current codebase has working install, PromotionRun smoke, Argo brownfield,
-Flux brownfield, PromotionPolicy runtime guardrails, plugin hot-load, and KPI
-planner dispatch coverage. It is suitable for controlled adopters who can run
-the documented verification and accept `kapro.io/v1alpha1` API movement.
+Flux brownfield, inline gate guardrails, plugin hot-load, and KPI planner
+dispatch coverage. It is suitable for controlled adopters who can run the
+documented verification and accept `kapro.io/v1alpha1` API movement.
 
 Do not treat Kapro as GA yet. GA still requires a stable API version, tagged
 release-to-release upgrade history, broad operator soak, and an independent
@@ -34,7 +34,7 @@ security audit. See the [Roadmap](docs/ROADMAP.md) for release exit criteria.
 | If you are... | Start here | Goal |
 |---|---|---|
 | Evaluating Kapro locally | [Local Kind Demo](docs/kind-demo.md) | See a complete PromotionRun on a disposable cluster. |
-| Starting greenfield | [First Promotion in 10 Minutes](docs/first-promotion-10min.md) | Install Kapro, apply a minimal hub config, and create one Promotion. |
+| Starting greenfield | [First Promotion in 10 Minutes](docs/first-promotion-10min.md) | Install Kapro, apply a minimal hub config, and promote one version. |
 | Adding Kapro to Argo CD | [Argo Brownfield Migration](docs/argo-migration.md) | Discover existing Applications, ApplicationSets, and app-of-apps before adopting writes. |
 | Adding Kapro to Flux | [Flux Brownfield Migration](docs/flux-migration.md) | Discover existing Flux sources, HelmReleases, Kustomizations, and Git version fields. |
 | Operating a shared hub | [Install Kapro](docs/install.md) and [RBAC and Tenancy Model](docs/rbac-tenancy.md) | Configure Helm, RBAC, approvals, and optional Decision API access. |
@@ -101,8 +101,8 @@ It sits above Kubernetes Operators, Helm, Kustomize, OCI registries, GitOps reco
 Kapro supports both connect paths:
 
 - **Greenfield bootstrap:** create the hub, backend profiles, cluster inventory,
-  starter sources, PromotionPlans, gates, and optional spoke agents from Kapro
-  manifests or CLI flows.
+  a Kapro fleet object with inline source units, PromotionPlans, gates, and
+  optional spoke agents from Kapro manifests or CLI flows.
 - **Brownfield connect:** discover existing Argo CD or Flux topology, observe it
   first, then explicitly adopt selected applications or clusters for promotion.
 
@@ -187,7 +187,7 @@ stage parallelism or adding operator replicas.
 
 Quick troubleshooting checks:
 
-- `kubectl get promotions,promotionruns,promotiontargets,pluginregistrations` to confirm observed
+- `kubectl get promotionruns,promotiontargets,pluginregistrations` to confirm observed
   generation and readiness caught up.
 - Check the operator logs for disabled controllers, shard selection, plugin
   gateway registration, and webhook startup.

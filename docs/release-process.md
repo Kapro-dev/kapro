@@ -45,8 +45,8 @@ The release candidate is not ready if:
 - Live Flux E2E cannot prove generated Flux mappings drive real Flux controller
   reconciliation from `v1` to `v2`.
 - `PluginRegistration` compatibility failures do not surface in status.
-- `PromotionPolicy` CEL/freeze-window denials do not block `PromotionRun`
-  creation with clear status.
+- Inline CEL gate denials do not block `PromotionRun` progression with clear
+  status.
 - PromotionTrigger signature policy failures do not surface in status
   conditions or Events.
 
@@ -62,7 +62,8 @@ Include:
 - Local Kind demo.
 - Promotion-domain APIs and examples.
 - Argo and Flux brownfield onboarding.
-- `PromotionPolicy` CEL and freeze-window runtime guardrails.
+- Inline CEL runtime guardrails and documented deferral to external policy
+  systems for freeze-window enforcement.
 - PromotionTrigger OCI signature verification policy.
 - Plugin gateway preview with hot-loaded actuator, gate, and planner runtime
   registration.
@@ -76,8 +77,8 @@ Call out known limitations:
 - All Kubernetes APIs are `kapro.io/v1alpha1`.
 - The security model has not had an independent audit.
 - Production soak across many customer repository styles is still limited.
-- `PromotionPolicy.spec.verification` is not the artifact verification
-  enforcement path yet; use PromotionTrigger signature policy.
+- PromotionRun gate verification is not the artifact verification enforcement
+  path yet; use PromotionTrigger signature policy.
 - Docker dry-run checks may be optional for merging, but release candidates
   should publish a real multi-architecture operator image.
 

@@ -22,7 +22,7 @@ platform-gitops/
     backends/flux-observe.yaml
     sources/checkout.yaml
     promotionplans/checkout.yaml
-    promotions/
+    promotionruns/
 ```
 
 Greenfield users can still use `kapro init --backend flux`. Brownfield users
@@ -123,16 +123,15 @@ repository Secrets, workload manifests, traffic resources, or health status.
 
 ## Step 5: Promote
 
-Create a Promotion for one or more units:
+Create a PromotionRun for one or more units:
 
 ```yaml
 apiVersion: kapro.io/v1alpha1
-kind: Promotion
+kind: PromotionRun
 metadata:
   name: checkout-2026-05-15
 spec:
-  sourceRef: checkout
-  promotionPlans:
+  promotionplans:
     - name: main
       promotionplan: checkout
   versions:

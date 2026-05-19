@@ -9,11 +9,21 @@ record for each tag.
 
 ### Added
 
-- None.
+- Added `kapro promote <app>` as the simple public CLI path for creating a
+  `PromotionRun`.
+- Added inline `Kapro.spec.source` for the single-object quickstart path.
 
 ### Changed
 
-- None.
+- Re-centered the public API on `Kapro`, `PromotionRun`, `PromotionPlan`, and
+  `PromotionTarget`; advanced reusable objects remain available where they add
+  real value.
+- Changed `kapro init` to generate inline `Kapro.spec.source` for the default
+  greenfield path instead of teaching a separate `PromotionSource` first.
+- Changed `kapro source package` so pull-mode packaging can read inline source
+  units from `Kapro.spec.source` with `--kapro <name>`.
+- Removed obsolete namespace flags from public PromotionRun, PromotionTarget,
+  approval, and rollback CLI paths because those CRDs are cluster-scoped.
 
 ### Deprecated
 
@@ -21,11 +31,29 @@ record for each tag.
 
 ### Removed
 
-- None.
+- Removed the public `Promotion`, `PromotionPolicy`, `NotificationProvider`,
+  and `NotificationPolicy` CRDs from generated manifests, Helm CRDs, bootstrap
+  CRDs, controller registration, and examples.
 
 ### Migration
 
-- None.
+- Replace `Promotion` manifests with `PromotionRun` manifests or use
+  `kapro promote`. The Kapro controller does not generate `PromotionRun`
+  objects from `Kapro.spec` changes; promotions are explicitly created via
+  the CLI, direct `PromotionRun` apply, or a `PromotionTrigger`.
+- Move reusable guardrails into inline `PromotionPlan` stage gates
+  (`GatePolicySpec`, including CEL gates). Cluster-wide admission, freeze
+  windows, and org-level policy are now deferred to external policy engines
+  (e.g. Kyverno, Gatekeeper) — there is no longer an in-tree
+  `PromotionPolicy` CRD or runtime freeze-window enforcement.
+- Keep notification routing inline on gates and stages. Centralized provider
+  reuse via `NotificationProvider` is removed; teams that previously shared a
+  provider across many policies must duplicate the inline routing or front it
+  with an external notifier.
+- Helm upgrades do not delete CRDs that are already installed in a cluster. If
+  an existing alpha hub installed the removed CRDs, delete the stale
+  `promotions`, `promotionpolicies`, `notificationproviders`, and
+  `notificationpolicies` CRDs manually after migrating stored objects.
 
 ## v0.4.0-alpha.0 - 2026-05-17
 

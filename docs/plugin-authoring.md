@@ -13,10 +13,9 @@ ready actuator, gate, and planner `PluginRegistration` objects after readiness
 probes succeed. Later readiness changes hot-load updated registrations and
 unload registrations that become stale, incompatible, or deleted.
 
-Notifications are not a plugin contract. `NotificationProvider` and
-`NotificationPolicy` are API-preview CRDs for Kubernetes-native provider/policy
-configuration, but runtime dispatch from those resources is future work.
-Existing inline gate notifications remain supported.
+Notifications are not a plugin contract. The runtime notification path is
+inline gate configuration; Kapro does not expose separate public notification
+provider/policy CRDs in the KISS API.
 
 ## Ecosystem Labels
 

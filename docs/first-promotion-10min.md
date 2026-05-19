@@ -1,9 +1,9 @@
 # First Promotion in 10 Minutes
 
 This is the shortest greenfield path for seeing Kapro create and reconcile a
-Promotion. Use the Kind demo when you want a fully local scripted environment;
-use this page when you already have a Kubernetes cluster and want to apply the
-smallest useful hub configuration yourself.
+PromotionRun. Use the Kind demo when you want a fully local scripted
+environment; use this page when you already have a Kubernetes cluster and want
+to apply the smallest useful hub configuration yourself.
 
 ## 1. Install The Operator
 
@@ -33,17 +33,17 @@ helm upgrade --install kapro charts/kapro-operator \
 
 ```bash
 kubectl apply -f examples/hub-config/backends/flux.yaml
-kubectl apply -f examples/hub-config/sources/checkout.yaml
-kubectl apply -f examples/hub-config/promotionplans/checkout-progressive.yaml
+kubectl apply -f examples/quickstart/kapro.yaml
 ```
 
 Expected:
 
 ```bash
-kubectl get backendprofiles,promotionsources,promotionplans
+kubectl get backendprofiles,kaproes,promotionplans
 ```
 
-shows one backend profile, one source, and one promotion plan.
+shows one backend profile, one Kapro fleet object, and one generated promotion
+plan.
 
 ## 3. Add Or Confirm Targets
 
@@ -55,18 +55,17 @@ If your test cluster has no `FleetCluster` objects yet, use the Kind demo for a
 fully scripted hub/spoke setup, or create a small test `FleetCluster` that
 matches the labels in the example PromotionPlan.
 
-## 4. Create A Promotion
+## 4. Promote A Version
 
 ```bash
-kubectl apply -f examples/hub-config/promotions/checkout-v1.2.3.yaml
-kubectl get promotions,promotionruns,promotiontargets
+kapro promote checkout --version v1.2.3 --plan checkout-promotionplan
+kubectl get promotionruns,promotiontargets
 ```
 
 Expected:
 
 ```text
-Promotion       created or configured
-PromotionRun    created by the controller
+PromotionRun    created
 PromotionTarget created for each selected target
 ```
 

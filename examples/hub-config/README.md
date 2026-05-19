@@ -19,14 +19,10 @@ backends/
   argo-observe.yaml           Observe-only Argo CD brownfield profile
 sources/
   checkout.yaml               PromotionSource unit and registry metadata
-policies/
-  checkout-prod-guardrails.yaml PromotionPolicy guardrails for Promotion intent
 promotionplans/
   checkout-progressive.yaml   PromotionPlan stages, selectors, and gates
-promotions/
-  checkout-v1.2.3.yaml        Promotion intent for one immutable artifact
 promotionruns/
-  checkout-v1.2.3.yaml        Direct PromotionRun compatibility example
+  checkout-v1.2.3.yaml        PromotionRun intent for one immutable artifact
 .github/workflows/
   apply-kapro-hub-config.yaml Pull request validation and main-branch apply
 ```
@@ -35,13 +31,11 @@ promotionruns/
 
 1. Copy this directory into a new hub config git repository.
 2. Configure hub cluster authentication in `.github/workflows/apply-kapro-hub-config.yaml`.
-3. Edit `clusters/`, `backends/`, `sources/`, `policies/`,
-   `promotionplans/`, and `promotions/` for your fleet. The `promotionruns/`
-   directory is a direct-CRD compatibility example and is not part of the
-   standard Promotion workflow.
+3. Edit `clusters/`, `backends/`, `sources/`, `promotionplans/`, and
+   `promotionruns/` for your fleet.
 4. Open a pull request. CI runs server-side validation and `kubectl diff`.
 5. Merge to `main`. CI applies the directories to the hub cluster in order.
-6. Kapro reconciles the `Promotion`, creates a `PromotionRun`, and the selected backend applies the referenced version.
+6. Kapro reconciles the `PromotionRun`, creates selected targets, and the selected backend applies the referenced version.
 
 ## Apply Order
 
@@ -50,23 +44,15 @@ Apply configuration in this order:
 1. `clusters/` - creates `FleetCluster` inventory and labels.
 2. `backends/` - creates selectable `BackendProfile` objects.
 3. `sources/` - creates reusable `PromotionSource` metadata.
-4. `policies/` - creates reusable `PromotionPolicy` guardrails.
-5. `promotionplans/` - creates reusable rollout stage DAGs.
-6. `promotions/` - creates user-facing Promotion intent that references
-   source, policy, and plans.
-
-The `promotionruns/` directory is intentionally excluded from the standard
-apply loop. Use it only when you want to bypass `Promotion` and manage
-`PromotionRun` objects directly; in that case, replace the `promotions/` step
-with `promotionruns/` for that repository.
+4. `promotionplans/` - creates reusable rollout stage DAGs.
+5. `promotionruns/` - creates user-facing promotion intent for immutable versions.
 
 ```bash
 kubectl apply -f clusters/
 kubectl apply -f backends/
 kubectl apply -f sources/
-kubectl apply -f policies/
 kubectl apply -f promotionplans/
-kubectl apply -f promotions/
+kubectl apply -f promotionruns/
 ```
 
 ## Validation Commands
@@ -77,24 +63,22 @@ Run these commands against a hub cluster with the Kapro CRDs installed:
 kubectl apply --dry-run=server -f clusters/
 kubectl apply --dry-run=server -f backends/
 kubectl apply --dry-run=server -f sources/
-kubectl apply --dry-run=server -f policies/
 kubectl apply --dry-run=server -f promotionplans/
-kubectl apply --dry-run=server -f promotions/
+kubectl apply --dry-run=server -f promotionruns/
 
 kubectl diff -f clusters/ || true
 kubectl diff -f backends/ || true
 kubectl diff -f sources/ || true
-kubectl diff -f policies/ || true
 kubectl diff -f promotionplans/ || true
-kubectl diff -f promotions/ || true
+kubectl diff -f promotionruns/ || true
 ```
 
 After apply:
 
 ```bash
 kubectl get fleetclusters.kapro.io
-kubectl get promotions.kapro.io,promotionruns.kapro.io,promotiontargets.kapro.io
-kubectl describe promotions.kapro.io checkout-v1-2-3
+kubectl get promotionruns.kapro.io,promotiontargets.kapro.io
+kubectl describe promotionruns.kapro.io checkout-v1-2-3
 ```
 
 ## Ownership Boundaries

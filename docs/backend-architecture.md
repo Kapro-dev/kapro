@@ -1,6 +1,6 @@
 # Backend-Neutral Delivery Architecture
 
-Kapro is a fleet deployment promotion control plane. It owns Promotion intent,
+Kapro is a fleet deployment promotion control plane. It owns PromotionRun intent,
 target ordering, gates, approvals, heartbeat freshness, and fleet status. It
 does not own traffic shifting or assume a specific GitOps controller.
 
@@ -26,8 +26,8 @@ Primary APIs:
 - `Kapro` selects a promotion source, a delivery backend, clusters, and stages.
 - `BackendProfile` declares a selectable delivery backend.
 - `FleetCluster.spec.delivery` selects the per-cluster backend profile.
-- `Promotion` stores user intent; `PromotionRun` and `PromotionTarget` store
-  promotion execution state.
+- `PromotionRun` stores user intent and execution state; `PromotionTarget`
+  stores per-target execution state.
 
 ## Greenfield Bootstrap
 
@@ -42,8 +42,8 @@ fleet shapes.
 2. Create a built-in `BackendProfile`, preferably `oci` for new outbound-only
    fleets or `flux`/`argo` when the fleet already standardizes on those tools.
 3. Register or generate `FleetCluster` inventory.
-4. Generate a starter `PromotionSource`, `PromotionPolicy`, `PromotionPlan`,
-   gates, and example `Promotion`.
+4. Generate a starter `Kapro` object with inline source units, a
+   `PromotionPlan`, gates, and example `PromotionRun`.
 5. Install a spoke agent for pull-mode clusters.
 
 This is platform bootstrap for the promotion layer, not a replacement for a
@@ -65,7 +65,7 @@ already exist in Argo CD or Flux. Brownfield connect has three phases:
 
 1. **Observe:** discover backend-native clusters and applications, report graph
    and health, and do not write to backend-owned objects.
-2. **Adopt:** bind selected backend objects to Kapro Promotions and allow Kapro to
+2. **Adopt:** bind selected backend objects to Kapro PromotionRuns and allow Kapro to
    update version fields such as Argo `targetRevision` or Flux input tags.
 3. **Manage:** optionally let Kapro generate new sources, PromotionPlans, and backend
    wiring for teams that want a stronger convention.

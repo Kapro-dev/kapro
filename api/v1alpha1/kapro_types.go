@@ -1,5 +1,5 @@
-// Kapro CRD: the single fleet entry point that ties a PromotionSource,
-// a delivery profile, clusters, and a promotion plan together.
+// Kapro CRD: the single fleet entry point that ties source units, a delivery
+// profile, clusters, and a promotion plan together.
 package v1alpha1
 
 import (
@@ -9,13 +9,20 @@ import (
 // ---- Kapro ------------------------------------------------------------------
 
 // KaproSpec defines the desired state of a Kapro fleet.
+// +kubebuilder:validation:XValidation:rule="(has(self.sourceRef) && size(self.sourceRef) > 0) != has(self.source)",message="exactly one of sourceRef or source is required"
 type KaproSpec struct {
 	// Registry is the OCI registry URL for generated pull-mode artifacts.
 	// Native Argo/Flux sources may omit it when no Kapro-packaged artifact is used.
 	// +optional
 	Registry KaproRegistry `json:"registry,omitempty"`
-	// SourceRef is the name of the PromotionSource that defines units to deploy.
-	SourceRef string `json:"sourceRef"`
+	// SourceRef is the optional name of a separate PromotionSource that defines
+	// units to deploy. Use Source for the KISS single-object path; use SourceRef
+	// when teams want to share a source catalog across multiple Kapro objects.
+	// +optional
+	SourceRef string `json:"sourceRef,omitempty"`
+	// Source defines deployable units inline for the KISS single-object path.
+	// +optional
+	Source *PromotionSourceSpec `json:"source,omitempty"`
 	// Delivery selects the backend-neutral fleet delivery profile.
 	Delivery DeliverySpec `json:"delivery"`
 	// Clusters defines the target clusters in the fleet.
@@ -115,14 +122,14 @@ type KaproStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=kp,categories=kapro-all
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
-// +kubebuilder:printcolumn:name="SourceRef",type=string,JSONPath=`.spec.sourceRef`
+// +kubebuilder:printcolumn:name="Units",type=integer,JSONPath=`.status.unitCount`
 // +kubebuilder:printcolumn:name="Clusters",type=integer,JSONPath=`.status.clusterCount`
 // +kubebuilder:printcolumn:name="Converged",type=integer,JSONPath=`.status.convergedCount`
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.version`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// Kapro is the single entry point for fleet delivery. Users reference a
-// PromotionSource, select a backend profile, and define clusters and promotion
+// Kapro is the single entry point for fleet delivery. Users define or reference
+// source units, select a backend profile, and define clusters and promotion
 // stages. Backend adapters own Flux, Argo, or other delivery-system details.
 type Kapro struct {
 	metav1.TypeMeta   `json:",inline"`
