@@ -147,6 +147,7 @@ rules:
   - kaproes/status
   - pluginregistrations/status
   - promotionruns/status
+  - promotions/status
   - promotiontargets/status
   - promotiontriggers/status
   verbs:
@@ -161,6 +162,7 @@ rules:
   - kaproes
   - promotionplans
   - promotionruns
+  - promotions
   - promotiontargets
   verbs:
   - create
@@ -176,6 +178,7 @@ rules:
   - fleetclusters/finalizers
   - fleetclustertemplates/finalizers
   - promotionruns/finalizers
+  - promotions/finalizers
   verbs:
   - update
 - apiGroups:

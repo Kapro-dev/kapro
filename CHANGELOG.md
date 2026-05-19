@@ -9,6 +9,35 @@ record for each tag.
 
 ### Added
 
+- Restored the `Promotion` CRD as the durable user-facing rollout intent,
+  partially reversing #75. The PromotionController materializes each
+  Promotion into a `PromotionRun` attempt and mirrors run status back into
+  `Promotion.status`. The model mirrors `Deployment → ReplicaSet → Pod` and
+  Docker Swarm `Service → Task → Container`: intent is durable, attempts are
+  ephemeral.
+- `Promotion.spec.kaproRef` references the parent Kapro fleet; the
+  PromotionController inherits the rollout plan from `Kapro.spec.promotionplan`
+  when `Promotion.spec.promotionPlans` is unset.
+
+### Changed
+
+- `kapro promote <kapro> --version <v>` now creates a `Promotion` (not a
+  `PromotionRun`). The CLI surface is unchanged for the common case.
+- `kapro promotionrun create` is now documented as advanced/debug usage that
+  bypasses the intent layer.
+
+### Migration from v0.5.0-rc.0 (#75)
+
+- Existing `PromotionRun` manifests still work; they execute directly without
+  a Promotion parent.
+- New users should author a `Promotion` (or use `kapro promote`) instead of
+  a `PromotionRun` so the CI re-stamp, audit, and cancellation semantics
+  are first-class.
+
+
+
+### Added
+
 - Added `kapro promote <app>` as the simple public CLI path for creating a
   `PromotionRun`.
 - Added inline `Kapro.spec.source` for the single-object quickstart path.
