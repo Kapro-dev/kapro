@@ -354,6 +354,105 @@ func TestStatusBoundedAtMax(t *testing.T) {
 	}
 }
 
+// TestX509ErrorShortCircuitsRetries verifies that an unrecoverable TLS
+// certificate verification failure (x509.UnknownAuthorityError) is
+// classified as permanent so the dispatcher does not retry it.
+func TestX509ErrorShortCircuitsRetries(t *testing.T) {
+	// Server with a self-signed cert that the default RootCAs will not
+	// trust; the client transport here uses the system pool, so the
+	// handshake will fail with x509.UnknownAuthorityError.
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	maxRetries := int32(5)
+	p := newTestPromotion("checkout", kaprov1alpha1.PromotionLifecycleHandler{
+		Name:       "cert-broken",
+		On:         []kaprov1alpha1.PromotionPhase{kaprov1alpha1.PromotionPhaseSucceeded},
+		Webhook:    &kaprov1alpha1.PromotionLifecycleWebhook{URL: srv.URL}, // httptest.NewTLSServer URL is https://
+		MaxRetries: &maxRetries,
+	})
+	// Build a dispatcher that does NOT trust the test server's cert.
+	d, c, _ := newTestDispatcher(t, p)
+	d.HTTPClient = &http.Client{} // default transport, no test-server cert pool
+
+	overrideBackoff(t, time.Millisecond)
+	start := time.Now()
+	d.OnPhaseTransition(context.Background(), p,
+		kaprov1alpha1.PromotionPhaseProgressing, kaprov1alpha1.PromotionPhaseSucceeded)
+	d.Wait()
+	elapsed := time.Since(start)
+
+	// A retrying dispatcher would loop maxRetries+1 = 6 times. We assert
+	// the run completes well under the time required for that, AND we
+	// check the recorded attempts to confirm short-circuit.
+	if elapsed > 2*time.Second {
+		t.Fatalf("dispatcher took %v; x509 should short-circuit retries", elapsed)
+	}
+	var got kaprov1alpha1.Promotion
+	if err := c.Get(context.Background(), client.ObjectKey{Name: p.Name}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Status.LifecycleHandlerResults) != 1 {
+		t.Fatalf("results = %d, want 1", len(got.Status.LifecycleHandlerResults))
+	}
+	res := got.Status.LifecycleHandlerResults[0]
+	if res.Result != resultFailed {
+		t.Fatalf("result = %q, want Failed", res.Result)
+	}
+	if res.Attempts != 1 {
+		t.Fatalf("attempts = %d, want 1 (cert error must not retry)", res.Attempts)
+	}
+}
+
+// TestBothKindsSetRecordedAsFailed verifies a misconfigured handler with
+// both spec.webhook and spec.event set is recorded as Failed with a clear
+// message instead of silently picking one.
+func TestBothKindsSetRecordedAsFailed(t *testing.T) {
+	p := newTestPromotion("checkout", kaprov1alpha1.PromotionLifecycleHandler{
+		Name: "ambiguous",
+		On:   []kaprov1alpha1.PromotionPhase{kaprov1alpha1.PromotionPhaseSucceeded},
+		Webhook: &kaprov1alpha1.PromotionLifecycleWebhook{
+			URL: "https://example.com/hook",
+		},
+		Event: &kaprov1alpha1.PromotionLifecycleEvent{
+			Reason: "Shout",
+		},
+	})
+	d, c, _ := newTestDispatcher(t, p)
+
+	d.OnPhaseTransition(context.Background(), p,
+		kaprov1alpha1.PromotionPhaseProgressing, kaprov1alpha1.PromotionPhaseSucceeded)
+	d.Wait()
+
+	var got kaprov1alpha1.Promotion
+	if err := c.Get(context.Background(), client.ObjectKey{Name: p.Name}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Status.LifecycleHandlerResults) != 1 {
+		t.Fatalf("results = %d, want 1", len(got.Status.LifecycleHandlerResults))
+	}
+	res := got.Status.LifecycleHandlerResults[0]
+	if res.Result != resultFailed || res.Kind != "Misconfigured" {
+		t.Fatalf("result = %+v, want Result=Failed Kind=Misconfigured", res)
+	}
+	if !containsString(res.Message, "both spec.webhook and spec.event") {
+		t.Fatalf("message = %q, want guidance about both kinds set", res.Message)
+	}
+}
+
+// TestPerHandlerTimeoutHonoredAbove30s verifies that the dispatcher's
+// per-handler timeout (set on the handler spec, up to 5m) is not silently
+// capped by the default HTTP client. The default client must have no
+// Timeout; the per-request context is the only deadline.
+func TestPerHandlerTimeoutHonoredAbove30s(t *testing.T) {
+	c := defaultHTTPClient()
+	if c.Timeout != 0 {
+		t.Fatalf("defaultHTTPClient().Timeout = %v, want 0 (per-request ctx is the only deadline)", c.Timeout)
+	}
+}
+
 // TestNonHTTPSWebhookRejected confirms the SSRF / cleartext guard kicks
 // in when the operator has NOT opted in to insecure webhooks.
 func TestNonHTTPSWebhookRejected(t *testing.T) {

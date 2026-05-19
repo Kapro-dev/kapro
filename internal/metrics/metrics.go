@@ -260,8 +260,9 @@ var (
 
 	// LifecycleHookInvocations counts Promotion lifecycle handler invocations.
 	// Labels: kind (Webhook|Event), phase (Promotion.status.phase value at
-	// fire time), result (Succeeded|Failed). Handler retries collapse into
-	// a single counted invocation per (kind, phase) tuple.
+	// fire time), result (succeeded|failed — lowercase to match Prometheus
+	// convention). Handler retries collapse into a single counted
+	// invocation per (kind, phase) tuple.
 	LifecycleHookInvocations = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "kapro",

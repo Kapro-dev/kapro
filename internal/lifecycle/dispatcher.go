@@ -10,6 +10,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -206,7 +208,17 @@ func (d *Dispatcher) run(snap snapshot) {
 		err = d.fireEvent(snap)
 		result.Attempts = 1
 	default:
-		err = fmt.Errorf("unknown handler kind for %q (set spec.lifecycle.handlers[].webhook or .event)", snap.Handler.Name)
+		// "Misconfigured" — both kinds set, or neither set. Record a
+		// Failed result so the user sees a discoverable signal in
+		// Promotion.status.lifecycleHandlerResults[].
+		hasWebhook := snap.Handler.Webhook != nil
+		hasEvent := snap.Handler.Event != nil
+		switch {
+		case hasWebhook && hasEvent:
+			err = fmt.Errorf("handler %q sets both spec.webhook and spec.event; exactly one must be set", snap.Handler.Name)
+		default:
+			err = fmt.Errorf("handler %q sets neither spec.webhook nor spec.event; exactly one must be set", snap.Handler.Name)
+		}
 		result.Attempts = 1
 	}
 
@@ -287,6 +299,7 @@ func (d *Dispatcher) fireWebhook(ctx context.Context, snap snapshot) (int, int32
 	maxRetries := handlerMaxRetries(snap.Handler.MaxRetries)
 	var lastStatus int
 	var lastErr error
+	var madeAttempts int32
 
 	for attempt := int32(1); attempt <= maxRetries+1; attempt++ {
 		// Per-attempt timeout: split the handler timeout evenly across
@@ -297,6 +310,7 @@ func (d *Dispatcher) fireWebhook(ctx context.Context, snap snapshot) (int, int32
 		cancel()
 		lastStatus = status
 		lastErr = err
+		madeAttempts = attempt
 
 		if err == nil && status >= 200 && status < 300 {
 			return status, attempt, nil
@@ -315,9 +329,9 @@ func (d *Dispatcher) fireWebhook(ctx context.Context, snap snapshot) (int, int32
 		}
 	}
 	if lastErr != nil {
-		return lastStatus, maxRetries + 1, lastErr
+		return lastStatus, madeAttempts, lastErr
 	}
-	return lastStatus, maxRetries + 1, fmt.Errorf("webhook returned non-2xx: HTTP %d", lastStatus)
+	return lastStatus, madeAttempts, fmt.Errorf("webhook returned non-2xx: HTTP %d", lastStatus)
 }
 
 func (d *Dispatcher) doRequest(ctx context.Context, rawURL string, headers http.Header, body []byte) (int, error) {
@@ -460,17 +474,22 @@ func handlerMaxRetries(n *int32) int32 {
 }
 
 // Kind returns the handler kind name. Exactly one of Webhook or Event
-// must be set; admission webhook should enforce this, but the dispatcher
-// reports "Unknown" if neither is set so the status record makes the
-// misconfiguration obvious.
+// must be set. When both are set or neither is set the dispatcher records
+// "Misconfigured" so the status entry surfaces the user error instead of
+// silently picking one. There is no in-tree admission validator yet; this
+// is the only place the contract is enforced.
 func handlerKind(h *kaprov1alpha1.PromotionLifecycleHandler) string {
+	hasWebhook := h.Webhook != nil
+	hasEvent := h.Event != nil
 	switch {
-	case h.Webhook != nil:
+	case hasWebhook && hasEvent:
+		return "Misconfigured"
+	case hasWebhook:
 		return kindWebhook
-	case h.Event != nil:
+	case hasEvent:
 		return kindEvent
 	default:
-		return "Unknown"
+		return "Misconfigured"
 	}
 }
 
@@ -546,16 +565,69 @@ func validateWebhookURL(rawURL string, allowInsecure bool) (*url.URL, error) {
 	return u, nil
 }
 
+// isPermanentFailure classifies a webhook attempt outcome as terminal
+// (no retry) or transient (retry with backoff).
+//
+//	Terminal:
+//	  - HTTP 4xx (except 408 Request Timeout, 425 Too Early, 429 Too
+//	    Many Requests, which the receiver may recover from).
+//	  - Context cancellation (the manager is shutting down).
+//	  - TLS handshake / certificate verification failures — a retry
+//	    against the same URL will fail the same way.
+//	  - Malformed-URL errors from http.NewRequest / http.Client.Do.
+//
+//	Transient:
+//	  - 5xx, network read/write errors, DNS hiccups, connection refused.
+//	    Retried with linear backoff up to maxRetries.
 func isPermanentFailure(status int, err error) bool {
 	if status >= 400 && status < 500 {
-		// 408 Request Timeout and 429 Too Many Requests are retryable.
-		if status == http.StatusRequestTimeout || status == http.StatusTooManyRequests {
+		switch status {
+		case http.StatusRequestTimeout, http.StatusTooEarly, http.StatusTooManyRequests:
 			return false
 		}
 		return true
 	}
-	if err != nil && errors.Is(err, context.Canceled) {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
 		return true
+	}
+	// x509 certificate verification errors won't recover by retrying the
+	// same URL. Check the structured types first.
+	var certErr *x509.CertificateInvalidError
+	if errors.As(err, &certErr) {
+		return true
+	}
+	var hostErr *x509.HostnameError
+	if errors.As(err, &hostErr) {
+		return true
+	}
+	var unknownAuthErr x509.UnknownAuthorityError
+	if errors.As(err, &unknownAuthErr) {
+		return true
+	}
+	var tlsVerifyErr *tls.CertificateVerificationError
+	if errors.As(err, &tlsVerifyErr) {
+		return true
+	}
+	// http.Client.Do often returns TLS handshake failures wrapped through
+	// *url.Error -> *net.OpError without preserving the structured cert
+	// type at the leaf (the leaf may be a bare alert error). Fall back to
+	// a substring check on "x509:" / "tls:" prefixes the stdlib emits so
+	// we still classify those as permanent.
+	msg := err.Error()
+	if strings.Contains(msg, "x509:") || strings.Contains(msg, "tls:") {
+		return true
+	}
+	// Malformed-URL / unsupported-scheme errors surface as *url.Error
+	// with a non-network leaf — also permanent.
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) && urlErr.Err != nil {
+		var netOpErr *net.OpError
+		if !errors.As(urlErr.Err, &netOpErr) {
+			return true
+		}
 	}
 	return false
 }
@@ -622,6 +694,11 @@ func truncate(s string, n int) string {
 // webhook calls. It applies the same SSRF guard as the gate webhook so
 // lifecycle webhooks cannot be aimed at private or metadata addresses
 // unless the operator opts out via KAPRO_LIFECYCLE_INSECURE_WEBHOOKS=1.
+//
+// Note: the client has no Timeout. Per-handler timeouts (up to
+// maxHandlerTimeout = 5m) are enforced via http.NewRequestWithContext on
+// each attempt. Setting a client-level Timeout would silently cap user
+// handler.timeout values above 30s.
 func defaultHTTPClient() *http.Client {
 	allowInsecure := os.Getenv(allowInsecureEnv) == "1"
 	transport := http.DefaultTransport.(*http.Transport).Clone()
@@ -629,7 +706,7 @@ func defaultHTTPClient() *http.Client {
 	if !allowInsecure {
 		transport.DialContext = safeDial
 	}
-	return &http.Client{Timeout: defaultHandlerTimeout, Transport: transport}
+	return &http.Client{Transport: transport}
 }
 
 func isForbiddenIP(addr netip.Addr) bool {

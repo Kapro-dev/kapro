@@ -129,7 +129,8 @@ type PromotionLifecycleEvent struct {
 	// +kubebuilder:validation:MinLength=1
 	Reason string `json:"reason"`
 	// Message is the Event message body. Promotion field references are
-	// substituted: {{.Phase}}, {{.PreviousPhase}}, {{.Version}}, {{.Name}}.
+	// substituted: {{.Phase}}, {{.PreviousPhase}}, {{.Version}}, {{.Name}},
+	// {{.AttemptName}}.
 	// +optional
 	Message string `json:"message,omitempty"`
 	// Type is "Normal" (default) or "Warning".
@@ -174,7 +175,9 @@ type PromotionLifecycleHandlerResult struct {
 }
 
 // PromotionPhase is the coarse lifecycle state of a Promotion intent,
-// modeled after the Docker container lifecycle:
+// modeled after the Docker container lifecycle. All values are listed
+// here; `RollingBack` is reserved for a future `spec.rollbackTo` field
+// and is not yet reachable from any controller transition.
 //
 //	Pending      -> created, not yet stamped       (Docker: created)
 //	Progressing  -> active PromotionRun running    (Docker: running)
@@ -182,8 +185,8 @@ type PromotionLifecycleHandlerResult struct {
 //	Restarting   -> new attempt after terminal     (Docker: restarting)
 //	Succeeded    -> latest attempt completed       (Docker: exited 0)
 //	Failed       -> latest attempt failed          (Docker: exited >0)
-//	RollingBack  -> rollback to a prior version    (reachable when
-//	                spec.rollbackTo is wired; reserved today)
+//	RollingBack  -> rollback to a prior version    (reserved; lights up
+//	                when spec.rollbackTo is wired)
 //	Terminating  -> deletionTimestamp set, GC      (Docker: removing)
 //
 // +kubebuilder:validation:Enum=Pending;Progressing;Paused;Restarting;Succeeded;Failed;RollingBack;Terminating
