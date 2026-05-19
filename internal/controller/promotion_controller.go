@@ -258,7 +258,7 @@ func (r *PromotionReconciler) patchStatusFromRun(ctx context.Context, p *kaprov1
 	if err := r.Status().Patch(ctx, p, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch Promotion status: %w", err)
 	}
-	return ctrl.Result{RequeueAfter: promotionIntentRequeue}, nil
+	return ctrl.Result{RequeueAfter: requeueForPhase(p.Status.Phase)}, nil
 }
 
 func (r *PromotionReconciler) patchStatus(ctx context.Context, p *kaprov1alpha1.Promotion,
@@ -298,7 +298,24 @@ func (r *PromotionReconciler) patchStatus(ctx context.Context, p *kaprov1alpha1.
 	if err := r.Status().Patch(ctx, p, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch Promotion status: %w", err)
 	}
-	return ctrl.Result{RequeueAfter: promotionIntentRequeue}, nil
+	return ctrl.Result{RequeueAfter: requeueForPhase(phase)}, nil
+}
+
+// requeueForPhase returns the periodic requeue interval for the given coarse
+// Promotion phase. Steady-state phases (Succeeded, Failed, Paused,
+// Terminating) skip the periodic wake-up entirely — child PromotionRun
+// watches drive reconciliation when meaningful state changes. Active phases
+// keep the existing 15s cadence as a belt-and-braces for cases where a
+// watch event is lost.
+func requeueForPhase(phase kaprov1alpha1.PromotionPhase) time.Duration {
+	switch phase {
+	case kaprov1alpha1.PromotionPhaseSucceeded,
+		kaprov1alpha1.PromotionPhaseFailed,
+		kaprov1alpha1.PromotionPhasePaused,
+		kaprov1alpha1.PromotionPhaseTerminating:
+		return 0
+	}
+	return promotionIntentRequeue
 }
 
 func (r *PromotionReconciler) patchUnresolved(ctx context.Context, p *kaprov1alpha1.Promotion,
@@ -311,9 +328,12 @@ func (r *PromotionReconciler) patchUnresolved(ctx context.Context, p *kaprov1alp
 func buildRunSpec(p *kaprov1alpha1.Promotion, parent *kaprov1alpha1.Kapro) (kaprov1alpha1.PromotionRunSpec, error) {
 	plans := append([]kaprov1alpha1.PromotionPlanRef(nil), p.Spec.PromotionPlans...)
 	if len(plans) == 0 {
+		// KaproReconciler materializes Kapro.spec.promotionplan as a separate
+		// PromotionPlan CR named via InlinePromotionPlanName; reference that
+		// generated object, not the bare Kapro name.
 		plans = []kaprov1alpha1.PromotionPlanRef{{
 			Name:          "inline",
-			PromotionPlan: parent.Name,
+			PromotionPlan: InlinePromotionPlanName(parent.Name),
 		}}
 	}
 	if p.Spec.Version == "" && len(p.Spec.Versions) == 0 {
@@ -525,7 +545,28 @@ func (r *PromotionReconciler) emitPhaseTransitionEvent(p *kaprov1alpha1.Promotio
 	r.Recorder.Event(p, eventType, reason, msg)
 }
 
+// promotionKaproRefIndex is the field-indexer key on Promotion.spec.kaproRef.
+// The PromotionController uses it to map a Kapro change event to the small
+// set of Promotions that actually reference that fleet, instead of listing
+// every Promotion and filtering in memory.
+const promotionKaproRefIndex = "spec.kaproRef"
+
 func (r *PromotionReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&kaprov1alpha1.Promotion{},
+		promotionKaproRefIndex,
+		func(obj client.Object) []string {
+			p, ok := obj.(*kaprov1alpha1.Promotion)
+			if !ok || p.Spec.KaproRef == "" {
+				return nil
+			}
+			return []string{p.Spec.KaproRef}
+		},
+	); err != nil {
+		return fmt.Errorf("index Promotion.spec.kaproRef: %w", err)
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kaprov1alpha1.Promotion{}).
 		Owns(&kaprov1alpha1.PromotionRun{}).
@@ -542,16 +583,16 @@ func (r *PromotionReconciler) promotionsForKapro(ctx context.Context, obj client
 		return nil
 	}
 	var list kaprov1alpha1.PromotionList
-	if err := r.List(ctx, &list); err != nil {
+	if err := r.List(ctx, &list,
+		client.MatchingFields{promotionKaproRefIndex: kapro.Name},
+	); err != nil {
 		return nil
 	}
-	var requests []reconcile.Request
+	requests := make([]reconcile.Request, 0, len(list.Items))
 	for _, p := range list.Items {
-		if p.Spec.KaproRef == kapro.Name {
-			requests = append(requests, reconcile.Request{
-				NamespacedName: types.NamespacedName{Name: p.Name},
-			})
-		}
+		requests = append(requests, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: p.Name},
+		})
 	}
 	return requests
 }
