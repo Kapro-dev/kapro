@@ -490,18 +490,26 @@ func assertCondition(t *testing.T, c client.Client, name, condType string, want 
 	t.Fatalf("condition %q not found on Promotion %s", condType, name)
 }
 
-// fakeLifecycleDispatcher captures phase transitions the controller fires.
-// Used to verify the wire-up between PromotionReconciler and the lifecycle
-// dispatcher without spinning up the real HTTP-based dispatcher.
+// fakeLifecycleDispatcher captures phase transitions and attempt events
+// the controller fires. Used to verify the wire-up between
+// PromotionReconciler and the lifecycle dispatcher without spinning up
+// the real HTTP-based dispatcher.
 type fakeLifecycleDispatcher struct {
-	mu          sync.Mutex
-	transitions []fakePhaseTransition
+	mu            sync.Mutex
+	transitions   []fakePhaseTransition
+	attemptEvents []fakeAttemptEvent
 }
 
 type fakePhaseTransition struct {
 	promotion string
 	prev      kaprov1alpha1.PromotionPhase
 	next      kaprov1alpha1.PromotionPhase
+}
+
+type fakeAttemptEvent struct {
+	promotion string
+	runName   string
+	kind      string // "stamped" or "superseded"
 }
 
 func (f *fakeLifecycleDispatcher) OnPhaseTransition(_ context.Context,
@@ -513,12 +521,86 @@ func (f *fakeLifecycleDispatcher) OnPhaseTransition(_ context.Context,
 	})
 }
 
+// PublishAttemptEvent satisfies the optional interface the controller
+// checks via type assertion to emit kapro.io/promotion.attempt.*
+// CloudEvents.
+func (f *fakeLifecycleDispatcher) PublishAttemptEvent(_ context.Context,
+	p *kaprov1alpha1.Promotion, runName, kind string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.attemptEvents = append(f.attemptEvents, fakeAttemptEvent{
+		promotion: p.Name, runName: runName, kind: kind,
+	})
+}
+
 func (f *fakeLifecycleDispatcher) snapshot() []fakePhaseTransition {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	out := make([]fakePhaseTransition, len(f.transitions))
 	copy(out, f.transitions)
 	return out
+}
+
+func (f *fakeLifecycleDispatcher) attemptSnapshot() []fakeAttemptEvent {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]fakeAttemptEvent, len(f.attemptEvents))
+	copy(out, f.attemptEvents)
+	return out
+}
+
+// TestAttemptEventsFireOnStampAndSupersede verifies the controller
+// publishes kapro.io/promotion.attempt.stamped on first stamp and
+// kapro.io/promotion.attempt.superseded for every prior non-terminal
+// run when a new spec hash arrives.
+func TestAttemptEventsFireOnStampAndSupersede(t *testing.T) {
+	ctx := context.Background()
+	p := newPromotion("checkout-att", "checkout", "v1.2.3")
+	r, c := newPromotionReconciler(t, newKapro("checkout"), p)
+	fake := &fakeLifecycleDispatcher{}
+	r.Lifecycle = fake
+
+	// First reconcile stamps attempt 1.
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
+		t.Fatal(err)
+	}
+	got := fake.attemptSnapshot()
+	if len(got) != 1 || got[0].kind != "stamped" {
+		t.Fatalf("attempt events after first stamp = %+v, want one stamped", got)
+	}
+	firstRunName := got[0].runName
+
+	// Mutate spec → second reconcile stamps a new attempt AND supersedes the first.
+	var fetched kaprov1alpha1.Promotion
+	if err := c.Get(ctx, client.ObjectKey{Name: p.Name}, &fetched); err != nil {
+		t.Fatal(err)
+	}
+	fetched.Spec.Version = "v1.2.4"
+	fetched.Generation = 2
+	if err := c.Update(ctx, &fetched); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
+		t.Fatal(err)
+	}
+
+	got = fake.attemptSnapshot()
+	// Expect: stamped (att1), stamped (att2), superseded (att1).
+	var stamped, superseded []string
+	for _, ev := range got {
+		switch ev.kind {
+		case "stamped":
+			stamped = append(stamped, ev.runName)
+		case "superseded":
+			superseded = append(superseded, ev.runName)
+		}
+	}
+	if len(stamped) != 2 {
+		t.Fatalf("stamped events = %v, want 2", stamped)
+	}
+	if len(superseded) != 1 || superseded[0] != firstRunName {
+		t.Fatalf("superseded events = %v, want [%s]", superseded, firstRunName)
+	}
 }
 
 // TestPromotionReconcilerInvokesLifecycleDispatcher verifies the wire-up

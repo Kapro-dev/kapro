@@ -7,6 +7,51 @@ record for each tag.
 
 ## Unreleased
 
+### Fixed (PR #80 review feedback)
+
+- **Unified per-Promotion webhook payload with `pkg/events.Render`**. The per-Promotion `spec.lifecycle.handlers[].webhook` path used to produce a separate envelope shape with a lowercased-phase type string. Both per-Promotion and operator-level sink deliveries now share the same CloudEvents v1.0 envelope, matching the contract docs.
+- **Sink metric labels use the Promotion phase**, not the CloudEvents type. `kapro_lifecycle_hook_*{phase=...}` is uniform across `kind={Webhook,Event,Sink}` so dashboards can group/sum by phase without conditionals.
+- **`kapro_lifecycle_hook_duration_seconds` observes on failure too**, not only success. End-to-end latency for slow/failing sinks is now visible.
+- **`KAPRO_EVENTS_SINK_TIMEOUT` is total per-event**, not per-attempt. The dispatcher wraps the entire Publish call in `context.WithTimeout` and derives per-attempt sub-budgets from the remaining time. Backoff sleeps now respect the overall deadline.
+- **Wired the previously-documented attempt and resume events**:
+  - `kapro.io/promotion.attempt.stamped` is published once per new PromotionRun stamped by the controller.
+  - `kapro.io/promotion.attempt.superseded` is published once per superseded run.
+  - `kapro.io/promotion.resumed` is published as a synthetic event on every transition out of `Paused`, before the new-phase event.
+- Metric help text + comments updated to reflect `kind="Sink"`.
+
+### Added (CloudEvents vocabulary + operator-level sink — the CNCF positioning layer)
+
+- New `pkg/events` Go package exporting the **stable Kapro CloudEvents
+  vocabulary**: `kapro.io/promotion.{created,progressing,paused,resumed,restarting,succeeded,failed,rollingBack,terminating}`,
+  `kapro.io/promotion.attempt.{stamped,superseded}`, and reserved
+  `kapro.io/promotion.{wave,stage,target}.*` namespaces.
+  Constants are part of the public API; once published they will not be
+  renamed or removed within `v1alpha1`.
+- Every phase transition is now also published as a **CloudEvents v1.0**
+  structured-mode JSON envelope (`application/cloudevents+json`) to the
+  operator-level sink when configured. This is the canonical subscription
+  point — Argo Events, Flux Notification Controller, kube-event-exporter,
+  Knative, AWS EventBridge, Google Eventarc, Azure Event Grid, and any
+  CloudEvents-aware system can subscribe.
+- Operator sink config via env vars on the `kapro-operator` Deployment:
+  `KAPRO_EVENTS_SINK_URL`, `KAPRO_EVENTS_SINK_AUTH_HEADER_NAME` (default
+  `Authorization`), `KAPRO_EVENTS_SINK_AUTH_HEADER_VALUE` (best sourced
+  via `valueFrom.secretKeyRef`), `KAPRO_EVENTS_SINK_TIMEOUT` (10s
+  default), `KAPRO_EVENTS_SINK_MAX_RETRIES` (3 default).
+- Sink delivery is fire-and-forget — a sink failure does not block
+  per-Promotion `spec.lifecycle.handlers[]` and does not block reconcile.
+  Sink outcomes are surfaced via Kubernetes Events (`EventSinkDelivered`,
+  `EventSinkFailed`) and the `kapro_lifecycle_hook_*` Prometheus metrics
+  (with `kind="Sink"`).
+- Documentation:
+  - `docs/cloudevents.md` — the versioned vocabulary contract.
+  - `docs/integrations/argo-events.md` — `EventSource` + `Sensor` recipe.
+  - `docs/integrations/flux-notification-controller.md` — `Receiver` +
+    `Alert` + `Provider` recipe.
+  - `docs/integrations/kube-event-exporter.md` — K8s Event routing recipe.
+  - `docs/integrations/generic-webhook.md` — per-Promotion handler vs
+    operator-level sink decision guide.
+
 ### Added (Promotion lifecycle hooks)
 
 - `Promotion.spec.lifecycle.handlers[]` declares user-defined handlers

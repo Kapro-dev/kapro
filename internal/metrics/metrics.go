@@ -258,29 +258,37 @@ var (
 		[]string{"cluster"},
 	)
 
-	// LifecycleHookInvocations counts Promotion lifecycle handler invocations.
-	// Labels: kind (Webhook|Event), phase (Promotion.status.phase value at
-	// fire time), result (succeeded|failed — lowercase to match Prometheus
-	// convention). Handler retries collapse into a single counted
-	// invocation per (kind, phase) tuple.
+	// LifecycleHookInvocations counts Promotion lifecycle dispatcher
+	// invocations.
+	// Labels:
+	//   kind   - Webhook | Event (per-Promotion spec.lifecycle.handlers)
+	//            or Sink         (operator-level CloudEvents sink)
+	//   phase  - Promotion.status.phase value at emit time
+	//            (Pending|Progressing|Paused|...|Terminating). Same
+	//            semantics across all kinds so dashboards can sum or
+	//            group by phase uniformly.
+	//   result - succeeded | failed (lowercase, Prometheus convention).
+	// Retries collapse into a single counted invocation per (kind, phase)
+	// tuple; intermediate retry attempts are not counted separately.
 	LifecycleHookInvocations = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "kapro",
 			Subsystem: "lifecycle",
 			Name:      "hook_invocations_total",
-			Help:      "Promotion lifecycle handler invocations by kind, phase, and result.",
+			Help:      "Promotion lifecycle dispatcher invocations by kind (Webhook|Event|Sink), Promotion phase, and result (succeeded|failed).",
 		},
 		[]string{"kind", "phase", "result"},
 	)
 
-	// LifecycleHookDuration is the wall-clock duration of one handler
-	// dispatch (including retries and backoff).
+	// LifecycleHookDuration is the end-to-end wall-clock duration of one
+	// dispatch — initial attempt + retries + backoff — regardless of
+	// outcome. The {kind, phase} labels mirror LifecycleHookInvocations.
 	LifecycleHookDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: "kapro",
 			Subsystem: "lifecycle",
 			Name:      "hook_duration_seconds",
-			Help:      "End-to-end duration of a single Promotion lifecycle handler dispatch.",
+			Help:      "End-to-end duration of a single Promotion lifecycle dispatch (Webhook|Event|Sink) by Promotion phase, including retries and backoff, recorded on success and failure.",
 			Buckets:   []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60},
 		},
 		[]string{"kind", "phase"},

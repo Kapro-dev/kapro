@@ -130,7 +130,8 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	if activeRun == nil {
 		// Spec changed (or first attempt). Supersede any non-terminal previous run.
-		if err := r.supersedePrevious(ctx, runs.Items); err != nil {
+		supersededNames, err := r.supersedePrevious(ctx, runs.Items)
+		if err != nil {
 			return ctrl.Result{}, err
 		}
 		newRun, err := r.stampAttempt(ctx, &promotion, runSpec, specHash)
@@ -140,9 +141,39 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		activeRun = newRun
 		r.Recorder.Eventf(&promotion, "Normal", "AttemptStamped",
 			"Created PromotionRun %s for spec hash %s", newRun.Name, specHash)
+		// Publish kapro.io/promotion.attempt.* CloudEvents for downstream
+		// subscribers. These are attempt-scoped events that fire
+		// regardless of whether the coarse phase also changed below.
+		r.emitAttemptStamped(ctx, &promotion, newRun.Name)
+		for _, name := range supersededNames {
+			r.emitAttemptSuperseded(ctx, &promotion, name)
+		}
 	}
 
 	return r.patchStatusFromRun(ctx, &promotion, activeRun, specHash, priorTerminalExists)
+}
+
+// emitAttemptStamped publishes a kapro.io/promotion.attempt.stamped
+// CloudEvent. Nil-safe: a no-op when the controller runs without a
+// Lifecycle dispatcher (e.g. older tests).
+func (r *PromotionReconciler) emitAttemptStamped(ctx context.Context, p *kaprov1alpha1.Promotion, runName string) {
+	publisher, ok := r.Lifecycle.(interface {
+		PublishAttemptEvent(context.Context, *kaprov1alpha1.Promotion, string, string)
+	})
+	if !ok {
+		return
+	}
+	publisher.PublishAttemptEvent(ctx, p, runName, "stamped")
+}
+
+func (r *PromotionReconciler) emitAttemptSuperseded(ctx context.Context, p *kaprov1alpha1.Promotion, runName string) {
+	publisher, ok := r.Lifecycle.(interface {
+		PublishAttemptEvent(context.Context, *kaprov1alpha1.Promotion, string, string)
+	})
+	if !ok {
+		return
+	}
+	publisher.PublishAttemptEvent(ctx, p, runName, "superseded")
 }
 
 // stampAttempt creates a new PromotionRun for this Promotion attempt.
@@ -179,8 +210,11 @@ func (r *PromotionReconciler) stampAttempt(ctx context.Context, p *kaprov1alpha1
 
 // supersedePrevious marks any non-terminal PromotionRun owned by this
 // Promotion as Superseded with reason SupersededByNewPromotionAttempt.
-func (r *PromotionReconciler) supersedePrevious(ctx context.Context, runs []kaprov1alpha1.PromotionRun) error {
+// Returns the names of runs it actually superseded so the caller can
+// emit one kapro.io/promotion.attempt.superseded CloudEvent per name.
+func (r *PromotionReconciler) supersedePrevious(ctx context.Context, runs []kaprov1alpha1.PromotionRun) ([]string, error) {
 	now := metav1.Now()
+	var superseded []string
 	for i := range runs {
 		run := &runs[i]
 		if run.Status.Phase.IsTerminal() {
@@ -198,10 +232,11 @@ func (r *PromotionReconciler) supersedePrevious(ctx context.Context, runs []kapr
 			ObservedGeneration: run.Generation,
 		})
 		if err := r.Status().Patch(ctx, run, patch); err != nil {
-			return fmt.Errorf("supersede PromotionRun %s: %w", run.Name, err)
+			return superseded, fmt.Errorf("supersede PromotionRun %s: %w", run.Name, err)
 		}
+		superseded = append(superseded, run.Name)
 	}
-	return nil
+	return superseded, nil
 }
 
 // suspendOwnedRuns flips spec.suspended=true on every owned non-terminal run.

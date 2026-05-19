@@ -96,7 +96,8 @@ func TestWebhookFiresOnceOnPhaseTransition(t *testing.T) {
 		t.Fatalf("calls = %d, want 1", got)
 	}
 
-	// CloudEvents payload must include the transition shape.
+	// CloudEvents payload must match the stable vocabulary contract — same
+	// envelope as the operator-level sink (built via pkg/events.Render).
 	var env map[string]any
 	if err := json.Unmarshal(body, &env); err != nil {
 		t.Fatalf("unmarshal payload: %v", err)
@@ -104,12 +105,15 @@ func TestWebhookFiresOnceOnPhaseTransition(t *testing.T) {
 	if env["specversion"] != "1.0" {
 		t.Fatalf("specversion = %v, want 1.0", env["specversion"])
 	}
+	if env["type"] != "kapro.io/promotion.succeeded" {
+		t.Fatalf("type = %v, want kapro.io/promotion.succeeded", env["type"])
+	}
+	if env["subject"] != "checkout" {
+		t.Fatalf("subject = %v, want checkout", env["subject"])
+	}
 	data := env["data"].(map[string]any)
 	if data["phase"] != "Succeeded" || data["previousPhase"] != "Progressing" {
 		t.Fatalf("data = %+v, want phase=Succeeded prev=Progressing", data)
-	}
-	if data["handler"] != "slack" {
-		t.Fatalf("handler = %v, want slack", data["handler"])
 	}
 
 	// Status is updated with a Succeeded result.

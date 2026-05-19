@@ -50,21 +50,36 @@ func init() {
 
 // startPromotionController starts the Promotion intent reconciler.
 // Materializes user-authored Promotion objects into PromotionRun attempts and
-// mirrors run status back into Promotion.status. A nil-safe lifecycle
-// dispatcher is attached so user-declared `spec.lifecycle.handlers` fire
-// asynchronously on phase transitions; the dispatcher itself is
-// fire-and-forget and never blocks reconcile.
+// mirrors run status back into Promotion.status.
+//
+// A nil-safe lifecycle dispatcher is attached so:
+//   - User-declared `Promotion.spec.lifecycle.handlers` fire asynchronously
+//     on phase transitions (per-Promotion ergonomic shortcut).
+//   - When KAPRO_EVENTS_SINK_URL is set, every fleet-promotion CloudEvent
+//     is also published to the operator-level sink (canonical CNCF
+//     integration point — subscribers like Argo Events, Flux Notification
+//     Controller, kube-event-exporter consume from there).
+//
+// Both paths are fire-and-forget; neither blocks reconcile.
 func startPromotionController(ctx context.Context, cc ControllerContext) (bool, error) {
-	r := &controller.PromotionReconciler{
-		Client:   cc.Manager.GetClient(),
-		Recorder: cc.Recorder,
-		Scheme:   cc.Manager.GetScheme(),
-		Lifecycle: lifecycle.NewDispatcher(
+	sink, err := lifecycle.SinkFromEnv()
+	if err != nil {
+		return false, fmt.Errorf("configure events sink: %w", err)
+	}
+	dispatcher := lifecycle.
+		NewDispatcher(
 			ctx,
 			cc.Manager.GetClient(),
 			cc.Recorder,
 			cc.PodNamespace,
-		),
+		).
+		WithSink(sink)
+
+	r := &controller.PromotionReconciler{
+		Client:    cc.Manager.GetClient(),
+		Recorder:  cc.Recorder,
+		Scheme:    cc.Manager.GetScheme(),
+		Lifecycle: dispatcher,
 	}
 	if err := r.SetupWithManager(cc.Manager); err != nil {
 		return false, err
