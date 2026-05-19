@@ -7,6 +7,41 @@ record for each tag.
 
 ## Unreleased
 
+### Added (Promotion lifecycle hooks)
+
+- `Promotion.spec.lifecycle.handlers[]` declares user-defined handlers
+  fired asynchronously on coarse Promotion phase transitions. Two handler
+  kinds in this release:
+  - **`webhook`** — POSTs a CloudEvents v1.0 JSON envelope to an HTTPS
+    URL. Supports per-handler `timeout` (default 30s, max 5m),
+    `maxRetries` (default 3) with linear backoff on transient failures
+    (network errors, 5xx, 408, 429), and an optional `authHeader` whose
+    value is sourced from a Kubernetes Secret in the operator's
+    namespace.
+  - **`event`** — records an additional Kubernetes Event on the
+    Promotion with templated `{{.Phase}} / {{.PreviousPhase}} /
+    {{.Version}} / {{.Name}} / {{.AttemptName}}` substitution.
+- Handlers nominate phases via `on: [Pending, Progressing, Paused,
+  Restarting, Succeeded, Failed, Terminating]` and fire when the
+  controller transitions into one of those phases.
+- **Fire-and-forget**: handler failures never change the Promotion phase
+  or block reconcile. Outcomes are recorded in
+  `Promotion.status.lifecycleHandlerResults[]` (bounded, newest first)
+  and surfaced as `LifecycleHookFired` (Normal) /
+  `LifecycleHookFailed` (Warning) Kubernetes Events.
+- **At-least-once + idempotent**: the dispatcher dedupes invocations
+  keyed by `(handler, phase, attempt)`. A controller restart mid-fire
+  may re-invoke a handler; receivers should treat the CloudEvents `id`
+  and the `(handler, phase, attemptName)` fields in `data` as the
+  idempotency key.
+- **SSRF guard** on outbound webhook calls (rejects loopback, private,
+  link-local, metadata addresses). Opt-out via
+  `KAPRO_LIFECYCLE_INSECURE_WEBHOOKS=1` for in-cluster sinks and local
+  development.
+- **Prometheus metrics**:
+  - `kapro_lifecycle_hook_invocations_total{kind, phase, result}`
+  - `kapro_lifecycle_hook_duration_seconds{kind, phase}` (histogram)
+
 ### Added
 
 - Restored the `Promotion` CRD as the durable user-facing rollout intent,
