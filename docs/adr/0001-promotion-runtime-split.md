@@ -26,9 +26,11 @@ from per-cluster reconcile tools like Flux/Argo CD.
 is a controller-authored, immutable execution attempt. Humans, CI, and
 `PromotionTrigger` write `Promotion`. The Promotion controller is the
 sole writer of `PromotionRun` (enforced by a validating admission
-webhook plus default RBAC that gives users `get/list/watch` only on
-`PromotionRun`). Each spec change on a Promotion stamps a new
-PromotionRun; the prior non-terminal run is marked `Superseded`.
+webhook). Human-user RBAC should grant `Promotion` authoring and
+read-only `PromotionRun` access; the operator does not install those
+end-user bindings by default. `examples/rbac/recommended-roles.yaml`
+shows the recommended posture. Each spec change on a Promotion stamps a
+new PromotionRun; the prior non-terminal run is marked `Superseded`.
 
 This matches the Service/EndpointSlice pattern in Kubernetes itself:
 Service is user-facing, EndpointSlice is controller-managed. Same
@@ -75,7 +77,9 @@ state.
 **Locks in:**
 - The `PromotionRun.spec` immutability contract.
 - The `Superseded` terminal phase semantic.
-- Default RBAC for human users: `promotions:CRUD`, `promotionruns:RO`.
+- Recommended human-user RBAC posture: `promotions:CRUD`,
+  `promotionruns:RO`, as illustrated in
+  `examples/rbac/recommended-roles.yaml`.
 
 ## References
 

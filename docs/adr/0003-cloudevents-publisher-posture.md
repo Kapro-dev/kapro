@@ -57,12 +57,11 @@ Tekton does not ship Slack triggers.
 
 ### A. Ship Slack/Teams/PagerDuty/OpsGenie/email backends in-tree
 Every backend we ship is one we maintain forever. Slack changes their
-attachment schema → we break. PagerDuty rev's Events v3 → we lag.
+attachment schema → we break. PagerDuty revs Events v3 → we lag.
 Direct duplication of Flux Notification Controller / Argo CD
 Notifications. CNCF anti-pattern.
 
-### B. Mutate Flux NC or Argo CD Notifications CRDs from the Kapro
-### controller
+### B. Mutate Flux NC or Argo CD Notifications CRDs from the Kapro controller
 Couples our release cadence to theirs. Demands RBAC into
 `flux-system`/`argocd` namespaces. Creates ownership conflicts. No
 CNCF graduated project does this to another graduated project.
