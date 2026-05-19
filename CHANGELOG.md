@@ -95,56 +95,66 @@ record for each tag.
   spec went from suspended to unsuspended on a new generation could
   briefly stamp a non-suspended run; this is now sealed by writing the
   parent's current suspend state into `buildRunSpec`.
-
-
-
-### Added
-
-- Added `kapro promote <app>` as the simple public CLI path for creating a
-  `PromotionRun`.
-- Added inline `Kapro.spec.source` for the single-object quickstart path.
+- `PromotionController` now references the materialized inline
+  `PromotionPlan` by its generated name (`<kapro>-promotionplan`) via the
+  shared `InlinePromotionPlanName` helper, instead of using the bare
+  Kapro name. This unblocks `PromotionRun` plan resolution when a
+  Promotion does not specify `spec.promotionPlans`.
 
 ### Changed
 
-- Re-centered the public API on `Kapro`, `PromotionRun`, `PromotionPlan`, and
-  `PromotionTarget`; advanced reusable objects remain available where they add
-  real value.
-- Changed `kapro init` to generate inline `Kapro.spec.source` for the default
+- Re-centered the public API on `Kapro`, `Promotion`, `PromotionPlan`, and
+  `PromotionTarget`; `PromotionRun` is now controller-authored runtime state
+  and admission gates direct human writes. Advanced reusable objects remain
+  available where they add real value.
+- `kapro init` now generates inline `Kapro.spec.source` for the default
   greenfield path instead of teaching a separate `PromotionSource` first.
-- Changed `kapro source package` so pull-mode packaging can read inline source
-  units from `Kapro.spec.source` with `--kapro <name>`.
-- Removed obsolete namespace flags from public PromotionRun, PromotionTarget,
-  approval, and rollback CLI paths because those CRDs are cluster-scoped.
+- `kapro source package` now reads inline source units from
+  `Kapro.spec.source` with `--kapro <name>` when pull-mode packaging.
+- Removed obsolete namespace flags from public CLI paths because
+  `PromotionRun`, `PromotionTarget`, `Approval`, and rollback are
+  cluster-scoped.
 
-### Deprecated
+### Performance
 
-- None.
+- `PromotionController` now indexes `Promotion.spec.kaproRef` and uses
+  `MatchingFields` to enqueue only the Promotions referencing a changed
+  Kapro fleet, instead of listing every Promotion and filtering in
+  memory.
+- Terminal coarse phases (`Succeeded`, `Failed`, `Paused`, `Terminating`)
+  no longer trigger periodic 15s requeues; the controller relies on
+  child `PromotionRun` watches and spec edits to wake up. Active phases
+  retain the 15s cadence as a belt-and-braces for missed watch events.
 
 ### Removed
 
-- Removed the public `Promotion`, `PromotionPolicy`, `NotificationProvider`,
-  and `NotificationPolicy` CRDs from generated manifests, Helm CRDs, bootstrap
-  CRDs, controller registration, and examples.
+- Removed the `PromotionPolicy`, `NotificationProvider`, and
+  `NotificationPolicy` CRDs from generated manifests, Helm CRDs, bootstrap
+  CRDs, controller registration, and examples. `Promotion` itself was
+  removed in an earlier draft of this release and has since been restored
+  as the durable user-facing intent (see the "Added" section above).
 
 ### Migration
 
-- Replace `Promotion` manifests with `PromotionRun` manifests or use
-  `kapro promote`. The Kapro controller does not generate `PromotionRun`
-  objects from `Kapro.spec` changes; promotions are explicitly created via
-  the CLI, direct `PromotionRun` apply, or a `PromotionTrigger`.
+- Wrap any direct `PromotionRun` manifests in a `Promotion` (or use
+  `kapro promote`) so the CI re-stamp, audit, and supersession semantics
+  are first-class. Existing `PromotionRun` manifests continue to apply
+  for the duration of the alpha but are now considered an advanced path;
+  default RBAC grants users `get/list/watch` only.
 - Move reusable guardrails into inline `PromotionPlan` stage gates
   (`GatePolicySpec`, including CEL gates). Cluster-wide admission, freeze
-  windows, and org-level policy are now deferred to external policy engines
-  (e.g. Kyverno, Gatekeeper) — there is no longer an in-tree
+  windows, and org-level policy are now deferred to external policy
+  engines (e.g. Kyverno, Gatekeeper) — there is no longer an in-tree
   `PromotionPolicy` CRD or runtime freeze-window enforcement.
-- Keep notification routing inline on gates and stages. Centralized provider
-  reuse via `NotificationProvider` is removed; teams that previously shared a
-  provider across many policies must duplicate the inline routing or front it
-  with an external notifier.
-- Helm upgrades do not delete CRDs that are already installed in a cluster. If
-  an existing alpha hub installed the removed CRDs, delete the stale
-  `promotions`, `promotionpolicies`, `notificationproviders`, and
+- Keep notification routing inline on gates and stages. Centralized
+  provider reuse via `NotificationProvider` is removed; teams that
+  previously shared a provider across many policies must duplicate the
+  inline routing or front it with an external notifier.
+- Helm upgrades do not delete CRDs that are already installed in a
+  cluster. If an existing alpha hub installed the removed CRDs, delete
+  the stale `promotionpolicies`, `notificationproviders`, and
   `notificationpolicies` CRDs manually after migrating stored objects.
+  Existing `promotions` objects are preserved by the restoration.
 
 ## v0.4.0-alpha.0 - 2026-05-17
 
