@@ -91,7 +91,11 @@ func startPromotionController(ctx context.Context, cc ControllerContext) (bool, 
 // Drives the two-level DAG orchestration — walks PromotionPlan nodes then Stages,
 // upserts one PromotionTarget per (PromotionRun, PromotionPlan, Stage, Target),
 // and aggregates child execution state into PromotionRun status.
-func startPromotionRunController(_ context.Context, cc ControllerContext) (bool, error) {
+func startPromotionRunController(ctx context.Context, cc ControllerContext) (bool, error) {
+	stageDispatcher, err := buildStageDispatcher(ctx, cc)
+	if err != nil {
+		return false, err
+	}
 	r := &controller.PromotionRunReconciler{
 		Client:           cc.Manager.GetClient(),
 		Recorder:         cc.Recorder,
@@ -102,6 +106,7 @@ func startPromotionRunController(_ context.Context, cc ControllerContext) (bool,
 		ExternalURL:      cc.ExternalURL,
 		GateRegistry:     cc.GateRegistry,
 		Planner:          cc.Planner,
+		StagePublisher:   stageDispatcher,
 	}
 	if cc.ShardName != "" {
 		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: cc.ShardIsDefault}
@@ -112,7 +117,11 @@ func startPromotionRunController(_ context.Context, cc ControllerContext) (bool,
 	return true, nil
 }
 
-func startPromotionTargetController(_ context.Context, cc ControllerContext) (bool, error) {
+func startPromotionTargetController(ctx context.Context, cc ControllerContext) (bool, error) {
+	stageDispatcher, err := buildStageDispatcher(ctx, cc)
+	if err != nil {
+		return false, err
+	}
 	r := &controller.PromotionTargetReconciler{
 		Client:           cc.Manager.GetClient(),
 		Recorder:         cc.Recorder,
@@ -122,6 +131,7 @@ func startPromotionTargetController(_ context.Context, cc ControllerContext) (bo
 		ApprovalSecret:   cc.ApprovalSecret,
 		ExternalURL:      cc.ExternalURL,
 		GateRegistry:     cc.GateRegistry,
+		StagePublisher:   stageDispatcher,
 	}
 	if cc.ShardName != "" {
 		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: cc.ShardIsDefault}
@@ -130,6 +140,22 @@ func startPromotionTargetController(_ context.Context, cc ControllerContext) (bo
 		return false, err
 	}
 	return true, nil
+}
+
+// buildStageDispatcher constructs a lifecycle Dispatcher just for the
+// wave/stage/gate CloudEvents sink path. Returns nil (no error) when
+// KAPRO_EVENTS_SINK_URL is unset — the reconcilers are nil-safe.
+func buildStageDispatcher(ctx context.Context, cc ControllerContext) (controller.StageEventPublisher, error) {
+	sink, err := lifecycle.SinkFromEnv()
+	if err != nil {
+		return nil, fmt.Errorf("configure events sink: %w", err)
+	}
+	if sink == nil {
+		return nil, nil
+	}
+	return lifecycle.
+		NewDispatcher(ctx, cc.Manager.GetClient(), cc.Recorder, cc.PodNamespace).
+		WithSink(sink), nil
 }
 
 // BuildGateRegistry registers every built-in Gate into a single registry.

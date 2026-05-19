@@ -100,6 +100,47 @@ const (
 	// PromotionRun attempt is marked Superseded because a newer attempt
 	// was stamped under the same Promotion.
 	EventPromotionAttemptSuperseded EventType = "kapro.io/promotion.attempt.superseded"
+
+	// --- Wave-level events (one PromotionPlan node = one wave) ----------------
+
+	// EventPromotionWaveEntered fires once when a PromotionPlan DAG node
+	// transitions from Pending to Progressing (its dependencies are
+	// satisfied and stage execution has started).
+	EventPromotionWaveEntered EventType = "kapro.io/promotion.wave.entered"
+
+	// EventPromotionWaveCompleted fires once when a PromotionPlan DAG node
+	// reaches a terminal phase (Complete or Failed). Data.reason carries
+	// "complete" or "failed"; subscribers can also inspect data.phase.
+	EventPromotionWaveCompleted EventType = "kapro.io/promotion.wave.completed"
+
+	// --- Stage-level events (one Stage inside a PromotionPlan) ----------------
+
+	// EventPromotionStageEntered fires once when a Stage transitions from
+	// Pending to Progressing (at least one matching target started rolling).
+	EventPromotionStageEntered EventType = "kapro.io/promotion.stage.entered"
+
+	// EventPromotionStageCompleted fires once when every target in a Stage
+	// reaches Converged. Aligned with the existing notification engine's
+	// "stage completed" notification — Kapro emits both.
+	EventPromotionStageCompleted EventType = "kapro.io/promotion.stage.completed"
+
+	// --- Gate-level events (per-target, since each target evaluates the stage gate) -----
+
+	// EventPromotionStageGateWaiting fires once when a stage's GateTemplate
+	// first enters evaluation for a target (the gate has Started but not
+	// yet returned Passed or Failed). Subscribers can use this to surface
+	// "approval required" / "soak time in progress" / "metrics gathering"
+	// in dashboards.
+	EventPromotionStageGateWaiting EventType = "kapro.io/promotion.stage.gate.waiting"
+
+	// EventPromotionStageGatePassed fires when a gate returns Passed for
+	// a target. Mirrors the existing notification.EventGatePassed.
+	EventPromotionStageGatePassed EventType = "kapro.io/promotion.stage.gate.passed"
+
+	// EventPromotionStageGateFailed fires when a gate returns Failed for
+	// a target (terminal — retry logic has been exhausted or the gate's
+	// failure policy says "halt"). Mirrors notification.EventGateFailed.
+	EventPromotionStageGateFailed EventType = "kapro.io/promotion.stage.gate.failed"
 )
 
 // AllEventTypes returns the canonical list of EventType constants in
@@ -119,6 +160,13 @@ func AllEventTypes() []EventType {
 		EventPromotionTerminating,
 		EventPromotionAttemptStamped,
 		EventPromotionAttemptSuperseded,
+		EventPromotionWaveEntered,
+		EventPromotionWaveCompleted,
+		EventPromotionStageEntered,
+		EventPromotionStageCompleted,
+		EventPromotionStageGateWaiting,
+		EventPromotionStageGatePassed,
+		EventPromotionStageGateFailed,
 	}
 }
 
@@ -150,6 +198,23 @@ type Event struct {
 	// transitions with no active run (e.g. Terminating, Paused on create).
 	// +optional
 	AttemptName string
+	// Wave is the PromotionPlan DAG node name (the value of
+	// PromotionRun.spec.promotionplans[].name). Set for wave-, stage-,
+	// gate- and target-scoped events; empty otherwise.
+	// +optional
+	Wave string
+	// Stage is the Stage name within the PromotionPlan. Set for stage-,
+	// gate-, and target-scoped events; empty otherwise.
+	// +optional
+	Stage string
+	// Gate is the gate name within the Stage. Set only for
+	// kapro.io/promotion.stage.gate.* events.
+	// +optional
+	Gate string
+	// Target is the FleetCluster name. Set for target- and gate-scoped
+	// events (gates are evaluated per-target).
+	// +optional
+	Target string
 	// Reason is a short machine-readable cause (e.g. "AttemptSucceeded",
 	// "SupersededByNewPromotionAttempt").
 	// +optional
@@ -174,8 +239,17 @@ type EventData struct {
 	PreviousPhase string `json:"previousPhase,omitempty"`
 	Version       string `json:"version,omitempty"`
 	AttemptName   string `json:"attemptName,omitempty"`
-	Reason        string `json:"reason,omitempty"`
-	Message       string `json:"message,omitempty"`
+	// Wave is set on kapro.io/promotion.wave.*, .stage.*, .stage.gate.*,
+	// and .target.* events. Empty on whole-Promotion events.
+	Wave string `json:"wave,omitempty"`
+	// Stage is set on .stage.*, .stage.gate.*, and .target.* events.
+	Stage string `json:"stage,omitempty"`
+	// Gate is set only on .stage.gate.* events.
+	Gate string `json:"gate,omitempty"`
+	// Target is set on per-target events (gate evaluation is per-target).
+	Target  string `json:"target,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 // Envelope is the CloudEvents v1.0 structured-mode JSON envelope. It is
@@ -225,6 +299,10 @@ func Render(e Event) ([]byte, Envelope, error) {
 			PreviousPhase: e.PreviousPhase,
 			Version:       e.Version,
 			AttemptName:   e.AttemptName,
+			Wave:          e.Wave,
+			Stage:         e.Stage,
+			Gate:          e.Gate,
+			Target:        e.Target,
 			Reason:        e.Reason,
 			Message:       e.Message,
 		},

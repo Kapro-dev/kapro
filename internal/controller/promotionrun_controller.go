@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -82,6 +83,11 @@ type PromotionRunReconciler struct {
 	// Planner orders and filters target clusters using scheduler-style extension phases.
 	// Nil means the default empty planner.
 	Planner *planner.Framework
+
+	// StagePublisher emits kapro.io/promotion.wave.* and stage.* events
+	// to the operator-level CloudEvents sink on PromotionPlan / Stage
+	// transitions. Nil-safe — when unset, no fleet-narrative events fire.
+	StagePublisher StageEventPublisher
 
 	// runFsmMachine is the declarative dispatch table for the PromotionRun
 	// phase FSM (D2-PR1). Built lazily via ensureRunFSM so direct
@@ -460,6 +466,19 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 			allPromotionPlansComplete = false
 		}
 
+		// kapro.io/promotion.wave.* fleet-narrative events. Guard against
+		// re-emission by comparing against the previously observed phase
+		// recorded in promotionrun.Status.PromotionPlanProgress.
+		prevPlanPhase := previousPromotionPlanPhase(promotionrun, promotionplanRef.Name)
+		if newPhase == "Progressing" && prevPlanPhase != "Progressing" && prevPlanPhase != "Complete" && prevPlanPhase != "Failed" {
+			r.publishWaveEvent(ctx, promotionrun, promotionplanRef.Name, "entered", newPhase,
+				fmt.Sprintf("Wave %s entered", promotionplanRef.Name))
+		}
+		if (newPhase == "Complete" || newPhase == "Failed") && prevPlanPhase != newPhase {
+			r.publishWaveEvent(ctx, promotionrun, promotionplanRef.Name, "completed", newPhase,
+				fmt.Sprintf("Wave %s %s", promotionplanRef.Name, strings.ToLower(newPhase)))
+		}
+
 		// Derive active stage for quick "where are we?" in k9s.
 		activeStage := ""
 		for i := len(stageProgress) - 1; i >= 0; i-- {
@@ -807,8 +826,18 @@ func (r *PromotionRunReconciler) reconcilePromotionPlanStages(
 			allComplete = false
 		}
 
-		if sp.Phase == "Complete" && previousStagePhase(promotionrun, promotionplanRefName, stage.Name) != "Complete" {
+		prevStagePhase := previousStagePhase(promotionrun, promotionplanRefName, stage.Name)
+		if sp.Phase == "Complete" && prevStagePhase != "Complete" {
 			r.notifyStageEvent(ctx, promotionrun, promotionplanRefName, stage.Name, notification.EventStageCompleted, "stage completed")
+			r.publishStageEvent(ctx, promotionrun, promotionplanRefName, stage.Name, "completed", "Complete",
+				fmt.Sprintf("Stage %s/%s completed", promotionplanRefName, stage.Name))
+		}
+		// kapro.io/promotion.stage.entered fires on the Pending -> Progressing
+		// edge. prevStagePhase is "" before the first observation; treat that
+		// as Pending so the initial entry emits exactly one event.
+		if sp.Phase == "Progressing" && prevStagePhase != "Progressing" && prevStagePhase != "Complete" && prevStagePhase != "Failed" {
+			r.publishStageEvent(ctx, promotionrun, promotionplanRefName, stage.Name, "entered", "Progressing",
+				fmt.Sprintf("Stage %s/%s entered", promotionplanRefName, stage.Name))
 		}
 		stageProgress = append(stageProgress, sp)
 
@@ -832,6 +861,40 @@ func previousStagePhase(promotionrun *kaprov1alpha1.PromotionRun, promotionplanR
 		}
 	}
 	return ""
+}
+
+// previousPromotionPlanPhase returns the phase of the named wave
+// (PromotionPlan node) as last observed in PromotionRun status. Empty
+// when this wave hasn't been recorded yet (first reconcile). Used to
+// dedupe kapro.io/promotion.wave.* CloudEvent emission so a single
+// transition fires exactly one event.
+func previousPromotionPlanPhase(promotionrun *kaprov1alpha1.PromotionRun, promotionplanRef string) string {
+	for _, promotionplanProgress := range promotionrun.Status.PromotionPlanProgress {
+		if promotionplanProgress.Name == promotionplanRef {
+			return promotionplanProgress.Phase
+		}
+	}
+	return ""
+}
+
+// publishWaveEvent forwards a kapro.io/promotion.wave.* emission to the
+// optional StagePublisher (operator-level CloudEvents sink). Nil-safe.
+func (r *PromotionRunReconciler) publishWaveEvent(ctx context.Context,
+	run *kaprov1alpha1.PromotionRun, wave, kind, phase, reason string) {
+	if r.StagePublisher == nil {
+		return
+	}
+	r.StagePublisher.PublishWaveEvent(ctx, run, wave, kind, phase, reason)
+}
+
+// publishStageEvent forwards a kapro.io/promotion.stage.* emission.
+// Nil-safe.
+func (r *PromotionRunReconciler) publishStageEvent(ctx context.Context,
+	run *kaprov1alpha1.PromotionRun, wave, stage, kind, phase, reason string) {
+	if r.StagePublisher == nil {
+		return
+	}
+	r.StagePublisher.PublishStageEvent(ctx, run, wave, stage, kind, phase, reason)
 }
 
 // stageProgressMessage builds a human-readable status line for k9s describe view.

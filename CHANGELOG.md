@@ -7,6 +7,34 @@ record for each tag.
 
 ## Unreleased
 
+### Added (Wave / Stage / Gate CloudEvents — the fleet narrative)
+
+- Seven new EventTypes published to the operator-level CloudEvents sink,
+  filling the previously-reserved `kapro.io/promotion.wave.*`,
+  `.stage.*`, and `.stage.gate.*` namespaces:
+  - `kapro.io/promotion.wave.entered` — PromotionPlan DAG node started
+  - `kapro.io/promotion.wave.completed` — PromotionPlan DAG node terminal
+  - `kapro.io/promotion.stage.entered` — Stage Pending→Progressing
+  - `kapro.io/promotion.stage.completed` — all targets in a Stage Converged
+  - `kapro.io/promotion.stage.gate.waiting` — gate evaluation started
+  - `kapro.io/promotion.stage.gate.passed` — gate returned Passed
+  - `kapro.io/promotion.stage.gate.failed` — gate returned Failed (terminal)
+- `pkg/events.Event` and `EventData` carry new `Wave`, `Stage`, `Gate`,
+  `Target` fields. CloudEvents `data` includes them as top-level keys
+  so subscribers can filter by fleet topology without parsing the type.
+- New `StageEventPublisher` interface in `internal/controller` and
+  matching `Dispatcher.PublishWaveEvent` / `PublishStageEvent` /
+  `PublishGateEvent` methods on `internal/lifecycle.Dispatcher`. The
+  per-Promotion handler path is intentionally NOT wired for these
+  events — they go to the operator-level sink only. The v1alpha1
+  handler `on: [Phase]` filter remains stable; an `onTypes:` extension
+  is reserved for a future minor release.
+- Transition guards (`previousPromotionPlanPhase`, `previousStagePhase`)
+  ensure each event fires exactly once per phase edge, even across
+  reconcile loops.
+- Updated `docs/cloudevents.md` with the new vocabulary, data-field
+  schema, and a complete worked example (`stage.gate.passed`).
+
 ### Fixed (PR #80 review feedback)
 
 - **Unified per-Promotion webhook payload with `pkg/events.Render`**. The per-Promotion `spec.lifecycle.handlers[].webhook` path used to produce a separate envelope shape with a lowercased-phase type string. Both per-Promotion and operator-level sink deliveries now share the same CloudEvents v1.0 envelope, matching the contract docs.
