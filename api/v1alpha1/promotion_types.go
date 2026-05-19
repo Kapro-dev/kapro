@@ -40,17 +40,40 @@ type PromotionSpec struct {
 	Suspended bool `json:"suspended,omitempty"`
 }
 
-// PromotionPhase is the coarse state of a Promotion intent.
-// +kubebuilder:validation:Enum=Pending;Running;Promoted;Failed;Suspended
+// PromotionPhase is the coarse lifecycle state of a Promotion intent,
+// modeled after the Docker container lifecycle:
+//   Pending      -> created, not yet stamped       (Docker: created)
+//   Progressing  -> active PromotionRun running    (Docker: running)
+//   Paused       -> spec.suspended=true            (Docker: paused)
+//   Restarting   -> new attempt after terminal     (Docker: restarting)
+//   Succeeded    -> latest attempt completed       (Docker: exited 0)
+//   Failed       -> latest attempt failed          (Docker: exited >0)
+//   RollingBack  -> rollback to a prior version    (reachable when
+//                   spec.rollbackTo is wired; reserved today)
+//   Terminating  -> deletionTimestamp set, GC      (Docker: removing)
+// +kubebuilder:validation:Enum=Pending;Progressing;Paused;Restarting;Succeeded;Failed;RollingBack;Terminating
 type PromotionPhase string
 
 const (
-	PromotionPhasePending   PromotionPhase = "Pending"
-	PromotionPhaseRunning   PromotionPhase = "Running"
-	PromotionPhasePromoted  PromotionPhase = "Promoted"
-	PromotionPhaseFailed    PromotionPhase = "Failed"
-	PromotionPhaseSuspended PromotionPhase = "Suspended"
+	PromotionPhasePending     PromotionPhase = "Pending"
+	PromotionPhaseProgressing PromotionPhase = "Progressing"
+	PromotionPhasePaused      PromotionPhase = "Paused"
+	PromotionPhaseRestarting  PromotionPhase = "Restarting"
+	PromotionPhaseSucceeded   PromotionPhase = "Succeeded"
+	PromotionPhaseFailed      PromotionPhase = "Failed"
+	PromotionPhaseRollingBack PromotionPhase = "RollingBack"
+	PromotionPhaseTerminating PromotionPhase = "Terminating"
 )
+
+// IsTerminal reports whether the phase is a steady-state outcome (no work
+// in flight). Callers use this to suppress retries until spec changes.
+func (p PromotionPhase) IsTerminal() bool {
+	switch p {
+	case PromotionPhaseSucceeded, PromotionPhaseFailed:
+		return true
+	}
+	return false
+}
 
 // PromotionAttemptRef is one historical or active attempt under a Promotion.
 type PromotionAttemptRef struct {

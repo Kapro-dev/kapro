@@ -256,3 +256,235 @@ func TestPromotionAttemptsCappedAt20(t *testing.T) {
 		t.Fatalf("list[0].Name = %q, want newest", list[0].Name)
 	}
 }
+
+// TestPromotionSuspendedAtCreationStampsSuspendedRun covers Bug A: a
+// Promotion created already-suspended must produce a PromotionRun that is
+// suspended at t=0. The prior implementation only suspended runs on a later
+// reconcile cycle, leaving a window where the runtime FSM could advance.
+func TestPromotionSuspendedAtCreationStampsSuspendedRun(t *testing.T) {
+	ctx := context.Background()
+	p := newPromotion("checkout-v1", "checkout", "v1.2.3")
+	p.Spec.Suspended = true
+	r, c := newPromotionReconciler(t, newKapro("checkout"), p)
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var runs kaprov1alpha1.PromotionRunList
+	if err := c.List(ctx, &runs); err != nil {
+		t.Fatal(err)
+	}
+	// Promotion is suspended → the suspended branch never stamps a new
+	// PromotionRun. That is correct: spec.suspended at creation pauses the
+	// whole lifecycle. We assert phase=Paused and no run exists.
+	if len(runs.Items) != 0 {
+		t.Fatalf("expected no PromotionRun while spec.suspended=true at creation, got %d", len(runs.Items))
+	}
+
+	var got kaprov1alpha1.Promotion
+	if err := c.Get(ctx, client.ObjectKey{Name: p.Name}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Status.Phase != kaprov1alpha1.PromotionPhasePaused {
+		t.Fatalf("phase = %q, want Paused", got.Status.Phase)
+	}
+
+	// Unsuspend and reconcile: the freshly-stamped run must carry
+	// spec.suspended=false (i.e., the value propagated from the current
+	// Promotion.spec.suspended, not the previous one).
+	got.Spec.Suspended = false
+	got.Generation = 2
+	if err := c.Update(ctx, &got); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.List(ctx, &runs); err != nil {
+		t.Fatal(err)
+	}
+	if len(runs.Items) != 1 {
+		t.Fatalf("expected one PromotionRun after unsuspend, got %d", len(runs.Items))
+	}
+	if runs.Items[0].Spec.Suspended {
+		t.Fatal("freshly stamped PromotionRun must mirror current Promotion.spec.suspended=false")
+	}
+
+	// Re-suspend before reconciliation and confirm the suspend bit flows
+	// through to the run (verifies Bug A propagation path, not just
+	// post-hoc patching). This is the inverse case: a *new* attempt while
+	// spec.suspended=true must produce a suspended run at t=0.
+	if err := c.Get(ctx, client.ObjectKey{Name: p.Name}, &got); err != nil {
+		t.Fatal(err)
+	}
+	got.Spec.Suspended = true
+	got.Spec.Version = "v1.2.4"
+	got.Generation = 3
+	if err := c.Update(ctx, &got); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.List(ctx, &runs); err != nil {
+		t.Fatal(err)
+	}
+	for _, run := range runs.Items {
+		if !run.Spec.Suspended {
+			t.Fatalf("PromotionRun %s spec.suspended = false, want true while parent Promotion is suspended", run.Name)
+		}
+	}
+}
+
+// TestPromotionPhaseLifecycle walks the Docker-style lifecycle:
+// Pending → Progressing → Succeeded → Restarting (on respec) → Progressing.
+func TestPromotionPhaseLifecycle(t *testing.T) {
+	ctx := context.Background()
+	p := newPromotion("checkout-lc", "checkout", "v1.2.3")
+	r, c := newPromotionReconciler(t, newKapro("checkout"), p)
+
+	// 1. First reconcile stamps attempt #1; run starts in Pending phase
+	//    (no prior terminal attempts → Promotion.phase=Pending).
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
+		t.Fatal(err)
+	}
+	assertPromotionPhase(t, c, p.Name, kaprov1alpha1.PromotionPhasePending)
+
+	// 2. Run advances to Progressing → Promotion mirrors it.
+	advanceRun(t, ctx, c, p.Name, kaprov1alpha1.PromotionRunPhaseProgressing, "")
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
+		t.Fatal(err)
+	}
+	assertPromotionPhase(t, c, p.Name, kaprov1alpha1.PromotionPhaseProgressing)
+
+	// 3. Run completes → Promotion → Succeeded; Ready=True.
+	advanceRun(t, ctx, c, p.Name, kaprov1alpha1.PromotionRunPhaseComplete, "2024-01-01T00:00:00Z")
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
+		t.Fatal(err)
+	}
+	assertPromotionPhase(t, c, p.Name, kaprov1alpha1.PromotionPhaseSucceeded)
+	assertCondition(t, c, p.Name, "Ready", metav1.ConditionTrue)
+	assertCondition(t, c, p.Name, "RollbackAvailable", metav1.ConditionTrue)
+
+	// 4. New spec → controller stamps attempt #2 while a prior terminal
+	//    exists → Promotion → Restarting (run created in Pending).
+	var got kaprov1alpha1.Promotion
+	if err := c.Get(ctx, client.ObjectKey{Name: p.Name}, &got); err != nil {
+		t.Fatal(err)
+	}
+	got.Spec.Version = "v1.2.4"
+	got.Generation = 2
+	if err := c.Update(ctx, &got); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
+		t.Fatal(err)
+	}
+	assertPromotionPhase(t, c, p.Name, kaprov1alpha1.PromotionPhaseRestarting)
+
+	// 5. New run progresses → Promotion → Progressing.
+	advanceRun(t, ctx, c, p.Name, kaprov1alpha1.PromotionRunPhaseProgressing, "")
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
+		t.Fatal(err)
+	}
+	assertPromotionPhase(t, c, p.Name, kaprov1alpha1.PromotionPhaseProgressing)
+
+	// 6. New run fails → Promotion → Failed; Ready=False.
+	advanceRun(t, ctx, c, p.Name, kaprov1alpha1.PromotionRunPhaseFailed, "2024-01-02T00:00:00Z")
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
+		t.Fatal(err)
+	}
+	assertPromotionPhase(t, c, p.Name, kaprov1alpha1.PromotionPhaseFailed)
+	assertCondition(t, c, p.Name, "Ready", metav1.ConditionFalse)
+}
+
+// TestPromotionDeletionTransitionsToTerminating verifies the Docker
+// "removing" analogue: a Promotion with deletionTimestamp set publishes
+// phase=Terminating so observers see the transition before GC completes.
+func TestPromotionDeletionTransitionsToTerminating(t *testing.T) {
+	ctx := context.Background()
+	p := newPromotion("checkout-del", "checkout", "v1.2.3")
+	// Add a finalizer so the fake client persists the object after Delete
+	// (without one, Delete removes immediately and we can't reconcile).
+	p.Finalizers = []string{"kapro.io/test"}
+	r, c := newPromotionReconciler(t, newKapro("checkout"), p)
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Delete(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var got kaprov1alpha1.Promotion
+	if err := c.Get(ctx, client.ObjectKey{Name: p.Name}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Status.Phase != kaprov1alpha1.PromotionPhaseTerminating {
+		t.Fatalf("phase = %q, want Terminating", got.Status.Phase)
+	}
+	if got.Status.ActiveAttemptRef != nil {
+		t.Fatal("ActiveAttemptRef must be nil during Terminating")
+	}
+}
+
+// advanceRun patches the (single) PromotionRun owned by the named Promotion
+// to the given phase and optional CompletedAt timestamp.
+func advanceRun(t *testing.T, ctx context.Context, c client.Client, promotionName string,
+	phase kaprov1alpha1.PromotionRunPhase, completedAt string) {
+	t.Helper()
+	var runs kaprov1alpha1.PromotionRunList
+	if err := c.List(ctx, &runs, client.MatchingLabels{promotionOwnerLabel: promotionName}); err != nil {
+		t.Fatal(err)
+	}
+	if len(runs.Items) == 0 {
+		t.Fatalf("no PromotionRun owned by %q", promotionName)
+	}
+	// Newest first.
+	newest := &runs.Items[0]
+	for i := range runs.Items {
+		if runs.Items[i].CreationTimestamp.After(newest.CreationTimestamp.Time) {
+			newest = &runs.Items[i]
+		}
+	}
+	patch := client.MergeFrom(newest.DeepCopy())
+	newest.Status.Phase = phase
+	if completedAt != "" {
+		newest.Status.CompletedAt = completedAt
+	}
+	if err := c.Status().Patch(ctx, newest, patch); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertPromotionPhase(t *testing.T, c client.Client, name string, want kaprov1alpha1.PromotionPhase) {
+	t.Helper()
+	var got kaprov1alpha1.Promotion
+	if err := c.Get(context.Background(), client.ObjectKey{Name: name}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Status.Phase != want {
+		t.Fatalf("phase = %q, want %q", got.Status.Phase, want)
+	}
+}
+
+func assertCondition(t *testing.T, c client.Client, name, condType string, want metav1.ConditionStatus) {
+	t.Helper()
+	var got kaprov1alpha1.Promotion
+	if err := c.Get(context.Background(), client.ObjectKey{Name: name}, &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, cond := range got.Status.Conditions {
+		if cond.Type == condType {
+			if cond.Status != want {
+				t.Fatalf("condition %q status = %q, want %q", condType, cond.Status, want)
+			}
+			return
+		}
+	}
+	t.Fatalf("condition %q not found on Promotion %s", condType, name)
+}

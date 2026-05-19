@@ -53,7 +53,11 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	if !promotion.DeletionTimestamp.IsZero() {
-		return ctrl.Result{}, nil
+		// Docker-lifecycle analogue: removing. Owned PromotionRuns are
+		// garbage-collected by ownerReference; we just publish the phase so
+		// observers see the transition.
+		return r.patchStatus(ctx, &promotion, kaprov1alpha1.PromotionPhaseTerminating,
+			"", "Terminating", "deletionTimestamp set; child PromotionRuns will be garbage-collected")
 	}
 
 	// Resolve parent Kapro (cluster-scoped, looked up by name).
@@ -72,7 +76,7 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if err := r.suspendOwnedRuns(ctx, &promotion); err != nil {
 			return ctrl.Result{}, err
 		}
-		return r.patchStatus(ctx, &promotion, kaprov1alpha1.PromotionPhaseSuspended,
+		return r.patchStatus(ctx, &promotion, kaprov1alpha1.PromotionPhasePaused,
 			specHash, "Suspended", "Promotion or parent Kapro is suspended")
 	}
 
@@ -100,6 +104,17 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 
+	// priorTerminalExists drives the Docker-lifecycle Restarting phase:
+	// a freshly-stamped attempt is "Restarting" iff at least one prior
+	// attempt has reached a terminal phase (Succeeded/Failed/Superseded).
+	priorTerminalExists := false
+	for i := range runs.Items {
+		if runs.Items[i].Status.Phase.IsTerminal() {
+			priorTerminalExists = true
+			break
+		}
+	}
+
 	if activeRun == nil {
 		// Spec changed (or first attempt). Supersede any non-terminal previous run.
 		if err := r.supersedePrevious(ctx, runs.Items); err != nil {
@@ -114,7 +129,7 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			"Created PromotionRun %s for spec hash %s", newRun.Name, specHash)
 	}
 
-	return r.patchStatusFromRun(ctx, &promotion, activeRun, specHash)
+	return r.patchStatusFromRun(ctx, &promotion, activeRun, specHash, priorTerminalExists)
 }
 
 // stampAttempt creates a new PromotionRun for this Promotion attempt.
@@ -197,8 +212,9 @@ func (r *PromotionReconciler) suspendOwnedRuns(ctx context.Context, p *kaprov1al
 }
 
 func (r *PromotionReconciler) patchStatusFromRun(ctx context.Context, p *kaprov1alpha1.Promotion,
-	run *kaprov1alpha1.PromotionRun, specHash string) (ctrl.Result, error) {
+	run *kaprov1alpha1.PromotionRun, specHash string, priorTerminalExists bool) (ctrl.Result, error) {
 
+	prevPhase := p.Status.Phase
 	patch := client.MergeFrom(p.DeepCopy())
 
 	startedAt := &run.CreationTimestamp
@@ -233,24 +249,11 @@ func (r *PromotionReconciler) patchStatusFromRun(ctx context.Context, p *kaprov1
 	if p.Status.ResolvedVersion == "" {
 		p.Status.ResolvedVersion = run.Spec.Version
 	}
-	p.Status.Phase = promotionPhaseFromRun(run.Status.Phase)
+	p.Status.Phase = computePromotionPhase(run.Status.Phase, priorTerminalExists)
 	p.Status.ObservedGeneration = p.Generation
 
-	condStatus := metav1.ConditionFalse
-	condReason := "Reconciled"
-	condMsg := fmt.Sprintf("Active attempt %s in phase %s", run.Name, run.Status.Phase)
-	if p.Status.Phase == kaprov1alpha1.PromotionPhasePromoted {
-		condStatus = metav1.ConditionTrue
-		condReason = "Promoted"
-		condMsg = fmt.Sprintf("Attempt %s completed", run.Name)
-	}
-	meta.SetStatusCondition(&p.Status.Conditions, metav1.Condition{
-		Type:               "Ready",
-		Status:             condStatus,
-		Reason:             condReason,
-		Message:            condMsg,
-		ObservedGeneration: p.Generation,
-	})
+	setPromotionConditions(p, run)
+	r.emitPhaseTransitionEvent(p, prevPhase, run.Name)
 
 	if err := r.Status().Patch(ctx, p, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch Promotion status: %w", err)
@@ -259,16 +262,17 @@ func (r *PromotionReconciler) patchStatusFromRun(ctx context.Context, p *kaprov1
 }
 
 func (r *PromotionReconciler) patchStatus(ctx context.Context, p *kaprov1alpha1.Promotion,
-	phase kaprov1alpha1.PromotionPhase, specHash, reason, msg string) (ctrl.Result, error) {
+	phase kaprov1alpha1.PromotionPhase, _ /*specHash retained for symmetry*/, reason, msg string) (ctrl.Result, error) {
 
+	prevPhase := p.Status.Phase
 	patch := client.MergeFrom(p.DeepCopy())
 	p.Status.Phase = phase
 	p.Status.ObservedGeneration = p.Generation
-	if phase == kaprov1alpha1.PromotionPhaseSuspended {
+	if phase == kaprov1alpha1.PromotionPhasePaused || phase == kaprov1alpha1.PromotionPhaseTerminating {
 		p.Status.ActiveAttemptRef = nil
 	}
 	condStatus := metav1.ConditionFalse
-	if phase == kaprov1alpha1.PromotionPhasePromoted {
+	if phase == kaprov1alpha1.PromotionPhaseSucceeded {
 		condStatus = metav1.ConditionTrue
 	}
 	meta.SetStatusCondition(&p.Status.Conditions, metav1.Condition{
@@ -278,6 +282,19 @@ func (r *PromotionReconciler) patchStatus(ctx context.Context, p *kaprov1alpha1.
 		Message:            msg,
 		ObservedGeneration: p.Generation,
 	})
+	// Surface Suspended condition explicitly so users can filter on it.
+	suspendedStatus := metav1.ConditionFalse
+	if phase == kaprov1alpha1.PromotionPhasePaused {
+		suspendedStatus = metav1.ConditionTrue
+	}
+	meta.SetStatusCondition(&p.Status.Conditions, metav1.Condition{
+		Type:               "Suspended",
+		Status:             suspendedStatus,
+		Reason:             reason,
+		Message:            msg,
+		ObservedGeneration: p.Generation,
+	})
+	r.emitPhaseTransitionEvent(p, prevPhase, "")
 	if err := r.Status().Patch(ctx, p, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch Promotion status: %w", err)
 	}
@@ -308,6 +325,11 @@ func buildRunSpec(p *kaprov1alpha1.Promotion, parent *kaprov1alpha1.Kapro) (kapr
 		PromotionPlans: plans,
 		Scope:          p.Spec.Scope,
 		Timeout:        p.Spec.Timeout,
+		// Bug A fix: suspend state must propagate from Promotion intent to
+		// the freshly stamped PromotionRun at t=0. Without this, a Promotion
+		// created with spec.suspended=true would stamp a non-suspended run;
+		// suspension would only take effect on the next reconcile cycle.
+		Suspended: p.Spec.Suspended,
 	}, nil
 }
 
@@ -374,25 +396,132 @@ func upsertAttempt(list []kaprov1alpha1.PromotionAttemptRef, current kaprov1alph
 	return out
 }
 
-func promotionPhaseFromRun(rp kaprov1alpha1.PromotionRunPhase) kaprov1alpha1.PromotionPhase {
+// computePromotionPhase maps the active PromotionRun phase plus contextual
+// state into the Docker-lifecycle phase exposed on Promotion.status.
+//
+// A freshly-stamped attempt sitting in Pending while at least one earlier
+// attempt has reached a terminal state is reported as Restarting (Docker's
+// "restarting" between exited and running). Otherwise Pending bubbles up
+// as Pending so first-attempt latency stays visible.
+func computePromotionPhase(rp kaprov1alpha1.PromotionRunPhase, priorTerminalExists bool) kaprov1alpha1.PromotionPhase {
 	switch rp {
 	case kaprov1alpha1.PromotionRunPhaseComplete:
-		return kaprov1alpha1.PromotionPhasePromoted
+		return kaprov1alpha1.PromotionPhaseSucceeded
 	case kaprov1alpha1.PromotionRunPhaseFailed:
 		return kaprov1alpha1.PromotionPhaseFailed
 	case kaprov1alpha1.PromotionRunPhaseProgressing:
-		return kaprov1alpha1.PromotionPhaseRunning
+		return kaprov1alpha1.PromotionPhaseProgressing
 	case kaprov1alpha1.PromotionRunPhaseSuperseded:
-		// Superseded runs themselves are terminal but the parent Promotion
-		// stays Running while a newer attempt is in flight; the outer
-		// reconcile selects the newest matching-hash run as activeRun so
-		// this branch is rare (only fires when nothing newer exists).
+		// The activeRun selection prefers the newest matching-hash run, so
+		// this branch only fires when nothing newer exists for the current
+		// hash — treat it as Pending pending a fresh stamp.
 		return kaprov1alpha1.PromotionPhasePending
 	case kaprov1alpha1.PromotionRunPhasePending, "":
+		if priorTerminalExists {
+			return kaprov1alpha1.PromotionPhaseRestarting
+		}
 		return kaprov1alpha1.PromotionPhasePending
 	default:
 		return kaprov1alpha1.PromotionPhase(rp)
 	}
+}
+
+// setPromotionConditions writes the per-phase status conditions:
+// Ready, Progressing, Suspended, Stalled (reserved), RollbackAvailable.
+// Stalled is left unset here — it is owned by the PromotionRun timeout
+// machinery and aggregated into Promotion by future work.
+func setPromotionConditions(p *kaprov1alpha1.Promotion, run *kaprov1alpha1.PromotionRun) {
+	phase := p.Status.Phase
+	now := metav1.Now()
+
+	ready := metav1.ConditionFalse
+	readyReason := "Reconciled"
+	readyMsg := fmt.Sprintf("Active attempt %s in phase %s", run.Name, run.Status.Phase)
+	if phase == kaprov1alpha1.PromotionPhaseSucceeded {
+		ready = metav1.ConditionTrue
+		readyReason = "Succeeded"
+		readyMsg = fmt.Sprintf("Attempt %s completed", run.Name)
+	} else if phase == kaprov1alpha1.PromotionPhaseFailed {
+		readyReason = "Failed"
+		readyMsg = fmt.Sprintf("Attempt %s failed", run.Name)
+	}
+	meta.SetStatusCondition(&p.Status.Conditions, metav1.Condition{
+		Type:               "Ready",
+		Status:             ready,
+		Reason:             readyReason,
+		Message:            readyMsg,
+		LastTransitionTime: now,
+		ObservedGeneration: p.Generation,
+	})
+
+	progressing := metav1.ConditionFalse
+	progressingReason := "Idle"
+	if phase == kaprov1alpha1.PromotionPhaseProgressing ||
+		phase == kaprov1alpha1.PromotionPhaseRestarting ||
+		phase == kaprov1alpha1.PromotionPhasePending {
+		progressing = metav1.ConditionTrue
+		progressingReason = "AttemptInFlight"
+	}
+	meta.SetStatusCondition(&p.Status.Conditions, metav1.Condition{
+		Type:               "Progressing",
+		Status:             progressing,
+		Reason:             progressingReason,
+		Message:            string(phase),
+		LastTransitionTime: now,
+		ObservedGeneration: p.Generation,
+	})
+
+	suspended := metav1.ConditionFalse
+	if phase == kaprov1alpha1.PromotionPhasePaused {
+		suspended = metav1.ConditionTrue
+	}
+	meta.SetStatusCondition(&p.Status.Conditions, metav1.Condition{
+		Type:               "Suspended",
+		Status:             suspended,
+		Reason:             "SpecSuspended",
+		Message:            fmt.Sprintf("spec.suspended=%t", p.Spec.Suspended),
+		LastTransitionTime: now,
+		ObservedGeneration: p.Generation,
+	})
+
+	// RollbackAvailable: at least one prior attempt has reached Succeeded
+	// (observability — wires up to spec.rollbackTo once that field lands).
+	rollback := metav1.ConditionFalse
+	for _, a := range p.Status.Attempts {
+		if a.Phase == kaprov1alpha1.PromotionRunPhaseComplete {
+			rollback = metav1.ConditionTrue
+			break
+		}
+	}
+	meta.SetStatusCondition(&p.Status.Conditions, metav1.Condition{
+		Type:               "RollbackAvailable",
+		Status:             rollback,
+		Reason:             "HistoricalSuccess",
+		Message:            "at least one prior attempt reached Succeeded",
+		LastTransitionTime: now,
+		ObservedGeneration: p.Generation,
+	})
+}
+
+// emitPhaseTransitionEvent records a Kubernetes Event whenever the coarse
+// Promotion phase changes. Events are best-effort; the controller does not
+// fail reconcile if the recorder buffer is full.
+func (r *PromotionReconciler) emitPhaseTransitionEvent(p *kaprov1alpha1.Promotion,
+	prevPhase kaprov1alpha1.PromotionPhase, runName string) {
+	if prevPhase == p.Status.Phase {
+		return
+	}
+	eventType := "Normal"
+	switch p.Status.Phase {
+	case kaprov1alpha1.PromotionPhaseFailed:
+		eventType = "Warning"
+	}
+	reason := string(p.Status.Phase)
+	msg := fmt.Sprintf("Promotion phase: %s -> %s", prevPhase, p.Status.Phase)
+	if runName != "" {
+		msg = fmt.Sprintf("%s (run %s)", msg, runName)
+	}
+	r.Recorder.Event(p, eventType, reason, msg)
 }
 
 func (r *PromotionReconciler) SetupWithManager(mgr ctrl.Manager) error {

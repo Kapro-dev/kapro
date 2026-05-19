@@ -70,6 +70,32 @@ record for each tag.
   a `PromotionRun` so the CI re-stamp, audit, and cancellation semantics
   are first-class.
 
+### Added (Docker-style Promotion lifecycle)
+
+- `Promotion.status.phase` is now a Docker-container-shaped state machine:
+  `Pending` (created), `Progressing` (running), `Paused` (suspended),
+  `Restarting` (new attempt after a prior terminal one), `Succeeded`
+  (exited 0), `Failed` (exited >0), `RollingBack` (reserved for
+  `spec.rollbackTo`), `Terminating` (removing). The old enum
+  (`Pending/Running/Promoted/Failed/Suspended`) is replaced.
+- `Promotion.status.conditions` now publishes `Ready`, `Progressing`,
+  `Suspended`, and `RollbackAvailable`. `RollbackAvailable=True` once any
+  prior attempt reached `Succeeded` — observability today, wired to a
+  rollback feature in a follow-up.
+- The controller emits a Kubernetes `Event` on every coarse phase
+  transition (e.g. `Pending -> Progressing -> Succeeded -> Restarting`),
+  marking `Failed` as `Warning` and everything else as `Normal`.
+- `kubectl delete promotion <name>` now publishes `phase=Terminating`
+  before owner-reference GC drains child `PromotionRun` objects.
+
+### Fixed
+
+- `Promotion.spec.suspended` now propagates to the freshly-stamped
+  `PromotionRun.spec.suspended` at t=0. Previously, a Promotion whose
+  spec went from suspended to unsuspended on a new generation could
+  briefly stamp a non-suspended run; this is now sealed by writing the
+  parent's current suspend state into `buildRunSpec`.
+
 
 
 ### Added
