@@ -367,7 +367,7 @@ func (d *Dispatcher) resolveAuthHeader(ctx context.Context, ref *kaprov1alpha1.P
 	}
 	val, ok := secret.Data[ref.SecretKey]
 	if !ok {
-		return "", fmt.Errorf("Secret %s/%s missing key %q", d.Namespace, ref.SecretName, ref.SecretKey)
+		return "", fmt.Errorf("secret %s/%s missing key %q", d.Namespace, ref.SecretName, ref.SecretKey)
 	}
 	return string(val), nil
 }
@@ -540,7 +540,7 @@ func validateWebhookURL(rawURL string, allowInsecure bool) (*url.URL, error) {
 	if u.Host == "" {
 		return nil, fmt.Errorf("webhook url missing host: %q", rawURL)
 	}
-	if u.Scheme != "https" && !(u.Scheme == "http" && allowInsecure) {
+	if u.Scheme != "https" && (u.Scheme != "http" || !allowInsecure) {
 		return nil, fmt.Errorf("webhook url must be https (or set %s=1 for http): %q", allowInsecureEnv, rawURL)
 	}
 	return u, nil
