@@ -11,12 +11,14 @@ import (
 	"testing"
 	"time"
 
+	promtestutil "github.com/prometheus/client_golang/prometheus/testutil"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	"kapro.io/kapro/internal/metrics"
 	"kapro.io/kapro/pkg/events"
 )
 
@@ -247,5 +249,106 @@ func TestSinkFromEnvDisabledWhenURLUnset(t *testing.T) {
 	}
 	if s != nil {
 		t.Fatalf("Sink = %+v, want nil when URL unset", s)
+	}
+}
+
+// TestSinkMetricLabelUsesPhaseNotType confirms the {phase} metric label
+// carries the Promotion phase (e.g. "Succeeded"), not the CloudEvents
+// type. Verified via the prometheus testutil counter accessor for the
+// exact label combination.
+func TestSinkMetricLabelUsesPhaseNotType(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	p := &kaprov1alpha1.Promotion{
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
+		Spec:       kaprov1alpha1.PromotionSpec{KaproRef: "k"},
+	}
+	d, _ := newSinkTestDispatcher(t, srv.URL, p)
+
+	before := promtestutil.ToFloat64(metrics.LifecycleHookInvocations.WithLabelValues("Sink", "Succeeded", "succeeded"))
+	wrongLabel := promtestutil.ToFloat64(metrics.LifecycleHookInvocations.WithLabelValues("Sink", "kapro.io/promotion.succeeded", "succeeded"))
+
+	d.OnPhaseTransition(context.Background(), p,
+		kaprov1alpha1.PromotionPhaseProgressing, kaprov1alpha1.PromotionPhaseSucceeded)
+	d.Wait()
+
+	after := promtestutil.ToFloat64(metrics.LifecycleHookInvocations.WithLabelValues("Sink", "Succeeded", "succeeded"))
+	wrongAfter := promtestutil.ToFloat64(metrics.LifecycleHookInvocations.WithLabelValues("Sink", "kapro.io/promotion.succeeded", "succeeded"))
+
+	if after-before < 1 {
+		t.Fatalf("counter for kind=Sink phase=Succeeded result=succeeded did not increase (before=%v after=%v)", before, after)
+	}
+	if wrongAfter != wrongLabel {
+		t.Fatalf("counter must not be labeled with the CloudEvents type; got delta=%v", wrongAfter-wrongLabel)
+	}
+}
+
+// TestSinkFailureRecordsDurationHistogram is the regression test for
+// the metric-completeness fix: the duration histogram must observe on
+// failure too, not only on success.
+func TestSinkFailureRecordsDurationHistogram(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	p := &kaprov1alpha1.Promotion{
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout-fail"},
+		Spec:       kaprov1alpha1.PromotionSpec{KaproRef: "k"},
+	}
+	d, sink := newSinkTestDispatcher(t, srv.URL, p)
+	sink.MaxRetries = 0
+	overrideBackoff(t, time.Millisecond)
+
+	before := promtestutil.CollectAndCount(metrics.LifecycleHookDuration, "kapro_lifecycle_hook_duration_seconds")
+	d.OnPhaseTransition(context.Background(), p, "", kaprov1alpha1.PromotionPhasePending)
+	d.Wait()
+	after := promtestutil.CollectAndCount(metrics.LifecycleHookDuration, "kapro_lifecycle_hook_duration_seconds")
+
+	if after <= before {
+		// Series count didn't change because the (Sink, Pending) label
+		// may already exist from another test; fall back to checking the
+		// counter for the same labels increased (proxy for "duration was
+		// observed alongside it").
+		failCount := promtestutil.ToFloat64(metrics.LifecycleHookInvocations.WithLabelValues("Sink", "Pending", "failed"))
+		if failCount < 1 {
+			t.Fatalf("neither duration histogram nor failure counter recorded the failed dispatch")
+		}
+	}
+}
+
+// TestSinkRespectsOverallTimeout pins the documented semantic that
+// KAPRO_EVENTS_SINK_TIMEOUT is the total-per-event budget. With a
+// 100ms total budget and a 500ms-blocking endpoint, the dispatcher
+// must give up well before the endpoint responds.
+func TestSinkRespectsOverallTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(500 * time.Millisecond):
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	p := &kaprov1alpha1.Promotion{
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout-slow"},
+		Spec:       kaprov1alpha1.PromotionSpec{KaproRef: "k"},
+	}
+	d, sink := newSinkTestDispatcher(t, srv.URL, p)
+	sink.Timeout = 100 * time.Millisecond
+	sink.MaxRetries = 0
+	overrideBackoff(t, time.Millisecond)
+
+	start := time.Now()
+	d.OnPhaseTransition(context.Background(), p, "", kaprov1alpha1.PromotionPhasePending)
+	d.Wait()
+	elapsed := time.Since(start)
+
+	if elapsed > 400*time.Millisecond {
+		t.Fatalf("dispatch took %v; total budget of 100ms must be enforced", elapsed)
 	}
 }

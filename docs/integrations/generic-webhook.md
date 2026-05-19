@@ -29,7 +29,7 @@ spec:
 ```
 
 - Fires only for the named Promotion.
-- Uses the same CloudEvents v1.0 envelope as the operator-level sink.
+- Uses the **same CloudEvents v1.0 envelope** as the operator-level sink — both built via `pkg/events.Render`. Subscribers can swap which path delivered a given event without changing how they parse it.
 - Outcome recorded in `Promotion.status.lifecycleHandlerResults[]`.
 
 ## B. Operator-level sink (cluster-wide)
@@ -54,7 +54,7 @@ across the fleet:
 
 - Fires for **every** Promotion in the cluster.
 - One request per transition.
-- Same CloudEvents v1.0 envelope.
+- Same CloudEvents v1.0 envelope as path A.
 - Outcome surfaced via Kubernetes Events (`EventSinkDelivered` /
   `EventSinkFailed`) and Prometheus metrics
   (`kapro_lifecycle_hook_invocations_total{kind="Sink",...}`).

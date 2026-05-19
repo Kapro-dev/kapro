@@ -36,8 +36,11 @@ const (
 	// the literal into a plaintext field.
 	SinkEnvAuthHeaderValue = "KAPRO_EVENTS_SINK_AUTH_HEADER_VALUE"
 
-	// SinkEnvTimeout caps each sink delivery attempt (parsed by
-	// time.ParseDuration). Defaults to 10s.
+	// SinkEnvTimeout is the total per-event delivery budget — initial
+	// attempt plus all retries plus backoff sleeps must complete within
+	// this window. Parsed by time.ParseDuration. Defaults to 10s. Set
+	// generously when MaxRetries is high; per-attempt sub-budgets are
+	// derived from the remaining overall budget.
 	SinkEnvTimeout = "KAPRO_EVENTS_SINK_TIMEOUT"
 
 	// SinkEnvMaxRetries bounds transient-failure retries per event.
@@ -112,17 +115,25 @@ func SinkFromEnv() (*Sink, error) {
 // linear-backoff retries on transient failures. Sink failures are
 // observability-grade: they emit Kubernetes Events and Prometheus
 // metrics but never block the Promotion FSM or per-Promotion handlers.
+// Publish enforces s.Timeout as the total-per-event budget (initial
+// attempt + all retries + backoff sleeps). Each individual attempt
+// derives its sub-deadline from the remaining budget; once the overall
+// deadline expires, the loop exits even mid-backoff.
 func (s *Sink) Publish(ctx context.Context, rec record.EventRecorder, target *corev1.ObjectReference, ev events.Event) {
 	if s == nil || s.URL == "" {
 		return
 	}
+	overallCtx, cancelOverall := context.WithTimeout(ctx, s.Timeout)
+	defer cancelOverall()
+
+	start := time.Now()
+
 	body, _, err := events.Render(ev)
 	if err != nil {
-		s.observeFailure(ctx, rec, target, ev, 0, 0, err)
+		s.observeFailure(overallCtx, rec, target, ev, time.Since(start), 0, 0, err)
 		return
 	}
 
-	start := time.Now()
 	retries := max(s.MaxRetries, 0)
 
 	var lastStatus int
@@ -131,7 +142,16 @@ func (s *Sink) Publish(ctx context.Context, rec record.EventRecorder, target *co
 
 retryLoop:
 	for attempt := int32(1); attempt <= retries+1; attempt++ {
-		attemptCtx, cancel := context.WithTimeout(ctx, s.attemptTimeout(retries))
+		// Per-attempt sub-deadline = remaining overall budget divided by
+		// the attempts still available. Guarantees the first attempt has
+		// room for retries; the final attempt gets the rest.
+		remaining := time.Until(deadlineOrFar(overallCtx))
+		attemptsLeft := time.Duration((retries + 1) - attempt + 1)
+		if attemptsLeft <= 0 {
+			attemptsLeft = 1
+		}
+		attemptBudget := remaining / attemptsLeft
+		attemptCtx, cancel := context.WithTimeout(overallCtx, attemptBudget)
 		status, err := s.doRequest(attemptCtx, body)
 		cancel()
 		lastStatus = status
@@ -148,8 +168,8 @@ retryLoop:
 			break
 		}
 		select {
-		case <-ctx.Done():
-			lastErr = ctx.Err()
+		case <-overallCtx.Done():
+			lastErr = overallCtx.Err()
 			break retryLoop
 		case <-time.After(backoffBase * time.Duration(attempt)):
 		}
@@ -157,18 +177,17 @@ retryLoop:
 	if lastErr == nil && lastStatus > 0 {
 		lastErr = fmt.Errorf("sink returned HTTP %d", lastStatus)
 	}
-	s.observeFailure(ctx, rec, target, ev, lastStatus, madeAttempts, lastErr)
+	s.observeFailure(overallCtx, rec, target, ev, time.Since(start), lastStatus, madeAttempts, lastErr)
 }
 
-func (s *Sink) attemptTimeout(retries int32) time.Duration {
-	if retries < 0 {
-		retries = 0
+// deadlineOrFar returns ctx's deadline, or a far-future time when the
+// context has no deadline. Used to compute remaining budget without
+// special-casing the unset-deadline path.
+func deadlineOrFar(ctx context.Context) time.Time {
+	if dl, ok := ctx.Deadline(); ok {
+		return dl
 	}
-	div := time.Duration(retries + 1)
-	if div <= 0 {
-		div = 1
-	}
-	return s.Timeout / div
+	return time.Now().Add(time.Hour)
 }
 
 func (s *Sink) doRequest(ctx context.Context, body []byte) (int, error) {
@@ -192,10 +211,17 @@ func (s *Sink) doRequest(ctx context.Context, body []byte) (int, error) {
 	return resp.StatusCode, nil
 }
 
+// observeSuccess and observeFailure both record metrics with the
+// {kind, phase, result} schema shared by the per-Promotion handler
+// path. The `phase` label is the Promotion phase (e.g. "Succeeded"),
+// NOT the CloudEvents type — keeping the cardinality predictable and
+// dashboards/alerts consistent between sink and per-Promotion deliveries.
+// The event type is carried in the Kubernetes Event message instead.
+
 func (s *Sink) observeSuccess(rec record.EventRecorder, target *corev1.ObjectReference,
 	ev events.Event, dur time.Duration, attempts int32, status int) {
-	metrics.LifecycleHookInvocations.WithLabelValues("Sink", string(ev.Type), "succeeded").Inc()
-	metrics.LifecycleHookDuration.WithLabelValues("Sink", string(ev.Type)).Observe(dur.Seconds())
+	metrics.LifecycleHookInvocations.WithLabelValues("Sink", ev.Phase, "succeeded").Inc()
+	metrics.LifecycleHookDuration.WithLabelValues("Sink", ev.Phase).Observe(dur.Seconds())
 	if rec != nil && target != nil {
 		rec.Eventf(target, corev1.EventTypeNormal, "EventSinkDelivered",
 			"published %s to operator sink in %dms (HTTP %d, attempts=%d)",
@@ -204,8 +230,12 @@ func (s *Sink) observeSuccess(rec record.EventRecorder, target *corev1.ObjectRef
 }
 
 func (s *Sink) observeFailure(ctx context.Context, rec record.EventRecorder, target *corev1.ObjectReference,
-	ev events.Event, status int, attempts int32, err error) {
-	metrics.LifecycleHookInvocations.WithLabelValues("Sink", string(ev.Type), "failed").Inc()
+	ev events.Event, dur time.Duration, status int, attempts int32, err error) {
+	metrics.LifecycleHookInvocations.WithLabelValues("Sink", ev.Phase, "failed").Inc()
+	// Histogram observes end-to-end dispatch time including retries and
+	// backoff, regardless of outcome. Subscribers debugging slow sinks
+	// need failure latency just as much as success latency.
+	metrics.LifecycleHookDuration.WithLabelValues("Sink", ev.Phase).Observe(dur.Seconds())
 	logf.FromContext(ctx).Error(err, "publish to operator events sink failed",
 		"type", string(ev.Type),
 		"promotion", ev.PromotionName,

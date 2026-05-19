@@ -7,6 +7,18 @@ record for each tag.
 
 ## Unreleased
 
+### Fixed (PR #80 review feedback)
+
+- **Unified per-Promotion webhook payload with `pkg/events.Render`**. The per-Promotion `spec.lifecycle.handlers[].webhook` path used to produce a separate envelope shape with a lowercased-phase type string. Both per-Promotion and operator-level sink deliveries now share the same CloudEvents v1.0 envelope, matching the contract docs.
+- **Sink metric labels use the Promotion phase**, not the CloudEvents type. `kapro_lifecycle_hook_*{phase=...}` is uniform across `kind={Webhook,Event,Sink}` so dashboards can group/sum by phase without conditionals.
+- **`kapro_lifecycle_hook_duration_seconds` observes on failure too**, not only success. End-to-end latency for slow/failing sinks is now visible.
+- **`KAPRO_EVENTS_SINK_TIMEOUT` is total per-event**, not per-attempt. The dispatcher wraps the entire Publish call in `context.WithTimeout` and derives per-attempt sub-budgets from the remaining time. Backoff sleeps now respect the overall deadline.
+- **Wired the previously-documented attempt and resume events**:
+  - `kapro.io/promotion.attempt.stamped` is published once per new PromotionRun stamped by the controller.
+  - `kapro.io/promotion.attempt.superseded` is published once per superseded run.
+  - `kapro.io/promotion.resumed` is published as a synthetic event on every transition out of `Paused`, before the new-phase event.
+- Metric help text + comments updated to reflect `kind="Sink"`.
+
 ### Added (CloudEvents vocabulary + operator-level sink — the CNCF positioning layer)
 
 - New `pkg/events` Go package exporting the **stable Kapro CloudEvents

@@ -21,7 +21,7 @@ Set environment variables on the `kapro-operator` Deployment:
 | `KAPRO_EVENTS_SINK_URL` | yes (to enable) | unset | HTTPS endpoint that receives every event |
 | `KAPRO_EVENTS_SINK_AUTH_HEADER_NAME` | no | `Authorization` | Header name for the auth value |
 | `KAPRO_EVENTS_SINK_AUTH_HEADER_VALUE` | no | unset | Header value (e.g. `Bearer xoxb-…`). Source from a Secret via `valueFrom.secretKeyRef`. |
-| `KAPRO_EVENTS_SINK_TIMEOUT` | no | `10s` | Per-delivery context deadline |
+| `KAPRO_EVENTS_SINK_TIMEOUT` | no | `10s` | **Total** per-event budget — initial attempt + all retries + backoff sleeps must complete within this window. Per-attempt sub-budgets derive from the remaining budget. |
 | `KAPRO_EVENTS_SINK_MAX_RETRIES` | no | `3` | Linear-backoff retries on transient failures |
 | `KAPRO_LIFECYCLE_INSECURE_WEBHOOKS` | no | unset | Set to `1` to allow http:// URLs (for in-cluster sinks) |
 
@@ -45,9 +45,9 @@ you already operate.
 ### 2. Per-Promotion handlers (ergonomic shortcut)
 
 `Promotion.spec.lifecycle.handlers[]` lets a single Promotion declare
-inline webhook or Kubernetes-Event handlers. Use this for one-off
-integrations or when the team-level subscriber differs from the
-fleet-wide one. See [generic-webhook.md](integrations/generic-webhook.md).
+inline webhook or Kubernetes-Event handlers. The webhook payload is
+**identical** to the operator-level sink envelope — both built via
+`pkg/events.Render`. See [generic-webhook.md](integrations/generic-webhook.md).
 
 ## CloudEvents v1.0 envelope
 
@@ -58,7 +58,7 @@ fleet-wide one. See [generic-webhook.md](integrations/generic-webhook.md).
   "type": "kapro.io/promotion.succeeded",
   "source": "/apis/kapro.io/v1alpha1/promotions/checkout",
   "subject": "checkout",
-  "time": "2026-05-19T14:23:11.123456Z",
+  "time": "2026-05-19T14:23:11.123456789Z",
   "datacontenttype": "application/json",
   "data": {
     "promotion": "checkout",
@@ -88,7 +88,7 @@ Each `type` follows reverse-DNS naming under `kapro.io/`.
 | `kapro.io/promotion.created` | Controller first observes the Promotion (transition into `Pending`). | `created` |
 | `kapro.io/promotion.progressing` | An attempt is rolling out. | `running` |
 | `kapro.io/promotion.paused` | `spec.suspended=true` observed. | `paused` |
-| `kapro.io/promotion.resumed` | Suspend cleared; non-Paused phase entered. | (custom) |
+| `kapro.io/promotion.resumed` | Emitted on every transition out of `Paused` (synthetic; fires before the new-phase event). | (custom) |
 | `kapro.io/promotion.restarting` | A new attempt is stamped after a prior terminal attempt. | `restarting` |
 | `kapro.io/promotion.succeeded` | Latest attempt converged. | `exited 0` |
 | `kapro.io/promotion.failed` | Latest attempt failed terminally. | `exited >0` |
@@ -99,8 +99,8 @@ Each `type` follows reverse-DNS naming under `kapro.io/`.
 
 | Type | When |
 |---|---|
-| `kapro.io/promotion.attempt.stamped` | Controller created a new `PromotionRun` (first attempt or spec/template-hash change). |
-| `kapro.io/promotion.attempt.superseded` | A previously non-terminal `PromotionRun` was marked `Superseded` because a newer attempt was stamped. |
+| `kapro.io/promotion.attempt.stamped` | Controller created a new `PromotionRun` (first attempt or spec/template-hash change). Emitted once per new run alongside the `AttemptStamped` Kubernetes Event. |
+| `kapro.io/promotion.attempt.superseded` | A previously non-terminal `PromotionRun` was marked `Superseded` because a newer attempt was stamped. Emitted once per superseded run. |
 
 ### Reserved namespaces
 
@@ -120,9 +120,9 @@ unless documented:
 | `promotionUID` | string | yes | `Promotion.metadata.uid` for forensics across renames |
 | `kaproRef` | string | yes | Parent `Kapro` fleet name (`Promotion.spec.kaproRef`) |
 | `phase` | string | yes | `Promotion.status.phase` at emit |
-| `previousPhase` | string | yes | Prior `status.phase`, empty for the initial transition |
+| `previousPhase` | string | yes | Prior `status.phase`, empty for the initial transition or attempt-scoped events |
 | `version` | string | yes | `Promotion.spec.version` |
-| `attemptName` | string | yes | The active `PromotionRun` name, when one exists |
+| `attemptName` | string | yes | The active or just-affected `PromotionRun` name |
 | `reason` | string | yes | Short machine-readable cause |
 | `message` | string | yes | One-line human summary |
 
@@ -130,7 +130,8 @@ unless documented:
 
 - **At-least-once.** Re-delivery may occur on controller restart. Subscribers must be idempotent. The CloudEvents `id` and the `(promotion, phase, attemptName)` tuple in `data` are the idempotency keys.
 - **Order is not guaranteed.** Goroutines deliver concurrently. Use the `time` field plus `(previousPhase, phase)` to reconstruct causality.
-- **Per-handler retry policy.** Linear backoff on transient failures (5xx, network errors). Permanent failures (4xx except 408/425/429, TLS/x509, malformed URLs) short-circuit.
+- **Per-event total timeout.** `KAPRO_EVENTS_SINK_TIMEOUT` bounds the entire dispatch (initial + retries + backoff). Once exceeded, the loop exits even mid-backoff.
+- **Retry policy.** Linear backoff on transient failures (5xx, network errors). Permanent failures (4xx except 408/425/429, TLS/x509, malformed URLs) short-circuit.
 - **SSRF guard.** Outbound URLs reject loopback/private/link-local/metadata addresses unless `KAPRO_LIFECYCLE_INSECURE_WEBHOOKS=1` is set.
 
 ## Go SDK

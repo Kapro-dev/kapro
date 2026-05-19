@@ -9,11 +9,8 @@ package lifecycle
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -44,7 +41,6 @@ const (
 	defaultHandlerTimeout = 30 * time.Second
 	maxHandlerTimeout     = 5 * time.Minute
 	defaultMaxRetries     = 3
-	cloudEventsSpec       = "1.0"
 	resultSucceeded       = "Succeeded"
 	resultFailed          = "Failed"
 	kindWebhook           = "Webhook"
@@ -123,17 +119,33 @@ func (d *Dispatcher) WithSink(s *Sink) *Dispatcher {
 func (d *Dispatcher) Wait() { d.wg.Wait() }
 
 // OnPhaseTransition is called from the PromotionController after a status
-// patch that changed the coarse phase. It is a thin compatibility shim
-// that builds a Kapro CloudEvents Event and calls Publish.
+// patch that changed the coarse phase. It builds the appropriate Kapro
+// CloudEvents Event(s) and calls Publish.
 //
-// Existing callers in the controller use this signature; new emitters
-// (attempt stamped, attempt superseded) call Publish directly.
+// Special case: a transition out of Paused (e.g. Paused -> Progressing)
+// emits TWO events — a synthetic kapro.io/promotion.resumed first, then
+// the regular phase event. This is the canonical signal subscribers use
+// to detect spec.suspended being cleared, since there is no dedicated
+// "Resumed" phase.
 func (d *Dispatcher) OnPhaseTransition(ctx context.Context,
 	promotion *kaprov1alpha1.Promotion,
 	prevPhase, newPhase kaprov1alpha1.PromotionPhase,
 ) {
 	if promotion == nil || newPhase == "" || newPhase == prevPhase {
 		return
+	}
+	if prevPhase == kaprov1alpha1.PromotionPhasePaused && newPhase != kaprov1alpha1.PromotionPhasePaused {
+		d.Publish(ctx, promotion, events.Event{
+			Type:          events.EventPromotionResumed,
+			PromotionName: promotion.Name,
+			PromotionUID:  string(promotion.UID),
+			KaproRef:      promotion.Spec.KaproRef,
+			Phase:         string(newPhase),
+			PreviousPhase: string(prevPhase),
+			Version:       promotion.Spec.Version,
+			AttemptName:   activeAttemptName(promotion),
+			Reason:        "Promotion resumed: spec.suspended cleared",
+		})
 	}
 	d.Publish(ctx, promotion, events.Event{
 		Type:          eventTypeForPhase(newPhase),
@@ -145,6 +157,42 @@ func (d *Dispatcher) OnPhaseTransition(ctx context.Context,
 		Version:       promotion.Spec.Version,
 		AttemptName:   activeAttemptName(promotion),
 		Reason:        fmt.Sprintf("Promotion phase: %s -> %s", prevPhase, newPhase),
+	})
+}
+
+// PublishAttemptEvent publishes a kapro.io/promotion.attempt.<kind>
+// CloudEvent for the named PromotionRun. kind is "stamped" or
+// "superseded" today; new kinds may be added in minor releases.
+//
+// The event's Phase mirrors the Promotion's current phase so the
+// {kind, phase} metric label semantics stay aligned with regular
+// phase-transition events.
+func (d *Dispatcher) PublishAttemptEvent(ctx context.Context,
+	promotion *kaprov1alpha1.Promotion, runName, kind string) {
+	if promotion == nil || runName == "" {
+		return
+	}
+	var t events.EventType
+	var reason string
+	switch kind {
+	case "stamped":
+		t = events.EventPromotionAttemptStamped
+		reason = fmt.Sprintf("PromotionRun %s created", runName)
+	case "superseded":
+		t = events.EventPromotionAttemptSuperseded
+		reason = fmt.Sprintf("PromotionRun %s marked Superseded", runName)
+	default:
+		return
+	}
+	d.Publish(ctx, promotion, events.Event{
+		Type:          t,
+		PromotionName: promotion.Name,
+		PromotionUID:  string(promotion.UID),
+		KaproRef:      promotion.Spec.KaproRef,
+		Phase:         string(promotion.Status.Phase),
+		Version:       promotion.Spec.Version,
+		AttemptName:   runName,
+		Reason:        reason,
 	})
 }
 
@@ -387,7 +435,17 @@ func (d *Dispatcher) fireWebhook(ctx context.Context, snap snapshot) (int, int32
 		headers.Set(wh.AuthHeader.Name, val)
 	}
 
-	payload, err := buildCloudEvent(snap)
+	payload, _, err := events.Render(events.Event{
+		Type:          eventTypeForPhase(snap.Phase),
+		PromotionName: snap.PromotionName,
+		PromotionUID:  snap.PromotionUID,
+		KaproRef:      snap.KaproRef,
+		Phase:         string(snap.Phase),
+		PreviousPhase: string(snap.PrevPhase),
+		Version:       snap.Version,
+		AttemptName:   snap.AttemptName,
+		Reason:        fmt.Sprintf("Promotion phase: %s -> %s", snap.PrevPhase, snap.Phase),
+	})
 	if err != nil {
 		return 0, 0, fmt.Errorf("build payload: %w", err)
 	}
@@ -742,42 +800,11 @@ func substituteEventMessage(tpl string, snap snapshot) string {
 	return repl.Replace(tpl)
 }
 
-// buildCloudEvent produces a CloudEvents v1.0 JSON payload describing the
-// transition. The CloudEvents standard ID is a fresh random hex string so
-// receivers can dedupe their own way; idempotency at the Kapro layer is
-// keyed on (handler, phase, attemptName) which appear in `data`.
-func buildCloudEvent(snap snapshot) ([]byte, error) {
-	id, err := randomID()
-	if err != nil {
-		return nil, err
-	}
-	envelope := map[string]any{
-		"specversion":     cloudEventsSpec,
-		"id":              id,
-		"type":            "kapro.io/promotion." + strings.ToLower(string(snap.Phase)),
-		"source":          "/apis/kapro.io/v1alpha1/promotions/" + snap.PromotionName,
-		"time":            time.Now().UTC().Format(time.RFC3339),
-		"datacontenttype": "application/json",
-		"data": map[string]any{
-			"promotion":     snap.PromotionName,
-			"kaproRef":      snap.KaproRef,
-			"phase":         string(snap.Phase),
-			"previousPhase": string(snap.PrevPhase),
-			"attemptName":   snap.AttemptName,
-			"version":       snap.Version,
-			"handler":       snap.Handler.Name,
-		},
-	}
-	return json.Marshal(envelope)
-}
-
-func randomID() (string, error) {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b[:]), nil
-}
+// buildCloudEvent is removed: per-Promotion webhooks and the operator
+// sink share a single envelope shape via pkg/events.Render. This keeps
+// the contract documented in docs/cloudevents.md and docs/integrations/
+// honest — subscribers see the same CloudEvents v1.0 payload regardless
+// of which path delivered it.
 
 func truncate(s string, n int) string {
 	if len(s) <= n {
