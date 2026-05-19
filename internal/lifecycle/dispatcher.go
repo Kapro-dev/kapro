@@ -183,71 +183,116 @@ func (d *Dispatcher) PublishToSink(ctx context.Context, ev events.Event) {
 }
 
 // PublishWaveEvent publishes a kapro.io/promotion.wave.* CloudEvent to
-// the operator sink. Use kind="entered" or "completed". The promotion
-// and kapro fleet are looked up from PromotionRun labels; the function
-// is a no-op when the run lacks the kapro.io/promotion label (e.g.
-// detached test fixtures).
+// the operator sink. Use kind="entered" or "completed".
+//
+// kind="completed" sets data.reason to the canonical token "complete"
+// or "failed" (matching docs/cloudevents.md), and routes the human
+// sentence to data.message instead. Subscribers should branch on the
+// canonical reason, not the message.
+//
+// data.phase carries the PromotionRun.status.phase at emit (which the
+// schema doc describes as the run-scoped phase for these events), NOT
+// the wave's local phase. The fleet-narrative state lives in the
+// event type plus the wave field.
+//
+// No-op when promotionNameFromRun(run) is empty — events without a
+// resolvable Promotion identity are not published (would emit invalid
+// CloudEvents `source`/`subject`).
 func (d *Dispatcher) PublishWaveEvent(ctx context.Context, run *kaprov1alpha1.PromotionRun,
-	waveName, kind, phase, reason string) {
+	waveName, kind, wavePhase, message string) {
 	if d == nil || run == nil {
 		return
 	}
+	promotionName := promotionNameFromRun(run)
+	if promotionName == "" {
+		return
+	}
 	var t events.EventType
+	var reason string
 	switch kind {
 	case "entered":
 		t = events.EventPromotionWaveEntered
+		reason = "entered"
 	case "completed":
 		t = events.EventPromotionWaveCompleted
+		// Canonical reason values from the schema doc.
+		switch strings.ToLower(wavePhase) {
+		case "complete":
+			reason = "complete"
+		case "failed":
+			reason = "failed"
+		default:
+			reason = strings.ToLower(wavePhase)
+		}
 	default:
 		return
 	}
 	d.PublishToSink(ctx, events.Event{
 		Type:          t,
-		PromotionName: promotionNameFromRun(run),
+		PromotionName: promotionName,
+		PromotionUID:  promotionUIDFromRun(run),
 		KaproRef:      kaproRefFromRun(run),
-		Phase:         phase,
+		Phase:         string(run.Status.Phase),
 		Version:       run.Spec.Version,
 		AttemptName:   run.Name,
 		Wave:          waveName,
 		Reason:        reason,
+		Message:       message,
 	})
 }
 
 // PublishStageEvent publishes a kapro.io/promotion.stage.* CloudEvent.
-// kind is "entered" or "completed".
+// kind is "entered" or "completed". data.phase carries the PromotionRun
+// phase (consistent semantic across all event types); stage state is
+// conveyed via the event type + (wave, stage) fields.
 func (d *Dispatcher) PublishStageEvent(ctx context.Context, run *kaprov1alpha1.PromotionRun,
-	waveName, stageName, kind, phase, reason string) {
+	waveName, stageName, kind, _ /*stagePhase reserved for future use*/, message string) {
 	if d == nil || run == nil {
 		return
 	}
+	promotionName := promotionNameFromRun(run)
+	if promotionName == "" {
+		return
+	}
 	var t events.EventType
+	var reason string
 	switch kind {
 	case "entered":
 		t = events.EventPromotionStageEntered
+		reason = "entered"
 	case "completed":
 		t = events.EventPromotionStageCompleted
+		reason = "completed"
 	default:
 		return
 	}
 	d.PublishToSink(ctx, events.Event{
 		Type:          t,
-		PromotionName: promotionNameFromRun(run),
+		PromotionName: promotionName,
+		PromotionUID:  promotionUIDFromRun(run),
 		KaproRef:      kaproRefFromRun(run),
-		Phase:         phase,
+		Phase:         string(run.Status.Phase),
 		Version:       run.Spec.Version,
 		AttemptName:   run.Name,
 		Wave:          waveName,
 		Stage:         stageName,
 		Reason:        reason,
+		Message:       message,
 	})
 }
 
 // PublishGateEvent publishes a kapro.io/promotion.stage.gate.* CloudEvent.
 // kind is "waiting", "passed", or "failed". Gates are evaluated per
-// target; the resulting event is per-(stage, gate, target).
+// target; the resulting event is per-(stage, gate, target). data.phase
+// is the PromotionRun phase (consistent semantic); gate state is in the
+// event type + gate field.
 func (d *Dispatcher) PublishGateEvent(ctx context.Context, run *kaprov1alpha1.PromotionRun,
-	waveName, stageName, gateName, targetName, kind, phase, reason, message string) {
+	waveName, stageName, gateName, targetName, kind, _ /*gatePhase reserved for future use*/, reason, message string) {
 	if d == nil || run == nil {
+		return
+	}
+	promotionName := promotionNameFromRun(run)
+	if promotionName == "" {
 		return
 	}
 	var t events.EventType
@@ -263,9 +308,10 @@ func (d *Dispatcher) PublishGateEvent(ctx context.Context, run *kaprov1alpha1.Pr
 	}
 	d.PublishToSink(ctx, events.Event{
 		Type:          t,
-		PromotionName: promotionNameFromRun(run),
+		PromotionName: promotionName,
+		PromotionUID:  promotionUIDFromRun(run),
 		KaproRef:      kaproRefFromRun(run),
-		Phase:         phase,
+		Phase:         string(run.Status.Phase),
 		Version:       run.Spec.Version,
 		AttemptName:   run.Name,
 		Wave:          waveName,
@@ -287,15 +333,25 @@ func promotionNameFromRun(run *kaprov1alpha1.PromotionRun) string {
 	return run.Labels["kapro.io/promotion"]
 }
 
-// kaproRefFromRun pulls the parent Kapro fleet name from the
-// PromotionPlanRef on the run (every run references at least one plan,
-// which carries the Kapro name in PromotionRunSpec). Empty when the run
-// has no plans (impossible in normal flow).
-func kaproRefFromRun(run *kaprov1alpha1.PromotionRun) string {
-	if run == nil || len(run.Spec.PromotionPlans) == 0 {
+// promotionUIDFromRun reads the parent Promotion's metadata.uid from the
+// label PromotionController stamps onto every owned PromotionRun.
+// Empty for runs authored without the controller (rare break-glass).
+func promotionUIDFromRun(run *kaprov1alpha1.PromotionRun) string {
+	if run == nil || run.Labels == nil {
 		return ""
 	}
-	return run.Spec.PromotionPlans[0].PromotionPlan
+	return run.Labels["kapro.io/promotion-uid"]
+}
+
+// kaproRefFromRun reads the parent Kapro fleet name from the
+// kapro.io/kapro label PromotionController stamps onto every owned
+// PromotionRun. Returns the Kapro name (not a PromotionPlan name).
+// Empty when the run lacks the label (e.g. authored directly).
+func kaproRefFromRun(run *kaprov1alpha1.PromotionRun) string {
+	if run == nil || run.Labels == nil {
+		return ""
+	}
+	return run.Labels["kapro.io/kapro"]
 }
 
 // PublishAttemptEvent publishes a kapro.io/promotion.attempt.<kind>

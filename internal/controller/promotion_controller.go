@@ -28,7 +28,19 @@ const (
 	promotionIntentRequeue = 15 * time.Second
 	promotionOwnerLabel    = "kapro.io/promotion"
 	promotionSpecHashLabel = "kapro.io/promotion-spec-hash"
-	supersededReason       = "SupersededByNewPromotionAttempt"
+	// promotionUIDLabel propagates the parent Promotion's metadata.uid to
+	// every stamped PromotionRun. Downstream emitters (lifecycle
+	// dispatcher publishing kapro.io/promotion.wave.*, .stage.*,
+	// .stage.gate.* CloudEvents) read this so data.promotionUID is
+	// available without an extra Get to the owning Promotion.
+	promotionUIDLabel = "kapro.io/promotion-uid"
+	// promotionKaproLabel propagates the parent Kapro fleet name (the
+	// value of Promotion.spec.kaproRef). PromotionRun.spec.promotionplans
+	// carries PromotionPlan names, not the Kapro name, so this label is
+	// the only source of truth for sink-emitted data.kaproRef on
+	// run-scoped events.
+	promotionKaproLabel = "kapro.io/kapro"
+	supersededReason    = "SupersededByNewPromotionAttempt"
 )
 
 // PromotionReconciler materializes Promotion intent into PromotionRun
@@ -199,13 +211,20 @@ func (r *PromotionReconciler) stampAttempt(ctx context.Context, p *kaprov1alpha1
 	spec kaprov1alpha1.PromotionRunSpec, specHash string) (*kaprov1alpha1.PromotionRun, error) {
 
 	name := attemptName(p.Name, specHash)
+	labels := map[string]string{
+		promotionOwnerLabel:    p.Name,
+		promotionSpecHashLabel: specHash,
+	}
+	if p.Spec.KaproRef != "" {
+		labels[promotionKaproLabel] = p.Spec.KaproRef
+	}
+	if p.UID != "" {
+		labels[promotionUIDLabel] = string(p.UID)
+	}
 	run := &kaprov1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-			Labels: map[string]string{
-				promotionOwnerLabel:    p.Name,
-				promotionSpecHashLabel: specHash,
-			},
+			Name:        name,
+			Labels:      labels,
 			Annotations: copyStringMap(p.Annotations),
 		},
 		Spec: spec,

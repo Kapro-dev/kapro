@@ -109,8 +109,11 @@ const (
 	EventPromotionWaveEntered EventType = "kapro.io/promotion.wave.entered"
 
 	// EventPromotionWaveCompleted fires once when a PromotionPlan DAG node
-	// reaches a terminal phase (Complete or Failed). Data.reason carries
-	// "complete" or "failed"; subscribers can also inspect data.phase.
+	// reaches a terminal phase. Subscribers should branch on
+	// `data.reason`, which carries the canonical lowercase tokens
+	// "complete" (success) or "failed". The human-readable sentence
+	// lives in `data.message`. `data.phase` is the PromotionRun phase,
+	// not the wave's local phase.
 	EventPromotionWaveCompleted EventType = "kapro.io/promotion.wave.completed"
 
 	// --- Stage-level events (one Stage inside a PromotionPlan) ----------------
@@ -185,7 +188,13 @@ type Event struct {
 	// KaproRef is the parent Kapro fleet name. Provided in `data` so
 	// fleet-scope filtering works without re-fetching the Promotion.
 	KaproRef string
-	// Phase is the Promotion.status.phase value at emit time.
+	// Phase is the dispatch-time phase the event was emitted under.
+	// For whole-Promotion and attempt events this is
+	// Promotion.status.phase. For wave / stage / stage.gate / target
+	// events this is the owning PromotionRun.status.phase — a
+	// run-scoped mirror of the Promotion phase. The scoped phase
+	// (wave/stage/gate state) is conveyed via the event type plus the
+	// Wave/Stage/Gate/Target fields, not by overloading Phase.
 	Phase string
 	// PreviousPhase is the prior status.phase, for transition events.
 	// +optional
@@ -232,9 +241,12 @@ type Event struct {
 // the equivalent in their language). New fields may be added in minor
 // releases; existing fields are stable across v1alpha1.
 type EventData struct {
-	Promotion     string `json:"promotion"`
-	PromotionUID  string `json:"promotionUID,omitempty"`
-	KaproRef      string `json:"kaproRef,omitempty"`
+	Promotion    string `json:"promotion"`
+	PromotionUID string `json:"promotionUID,omitempty"`
+	KaproRef     string `json:"kaproRef,omitempty"`
+	// Phase is the Promotion.status.phase for whole-Promotion / attempt
+	// events, and the PromotionRun.status.phase for wave/stage/gate/
+	// target events. See Event.Phase for the full semantic.
 	Phase         string `json:"phase"`
 	PreviousPhase string `json:"previousPhase,omitempty"`
 	Version       string `json:"version,omitempty"`
