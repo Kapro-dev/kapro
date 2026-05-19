@@ -3,6 +3,8 @@ kind: Kapro
 metadata:
   name: checkout
 spec:
+  registry:
+    url: oci://registry.example.com/kapro
   source:
     registries:
       - name: app

@@ -18,6 +18,12 @@ record for each tag.
 - Re-centered the public API on `Kapro`, `PromotionRun`, `PromotionPlan`, and
   `PromotionTarget`; advanced reusable objects remain available where they add
   real value.
+- Changed `kapro init` to generate inline `Kapro.spec.source` for the default
+  greenfield path instead of teaching a separate `PromotionSource` first.
+- Changed `kapro source package` so pull-mode packaging can read inline source
+  units from `Kapro.spec.source` with `--kapro <name>`.
+- Removed obsolete namespace flags from public PromotionRun, PromotionTarget,
+  approval, and rollback CLI paths because those CRDs are cluster-scoped.
 
 ### Deprecated
 
@@ -35,6 +41,10 @@ record for each tag.
   `kapro promote`.
 - Move reusable guardrails into inline `PromotionPlan` stage gates.
 - Keep notification routing inline on gates and stages.
+- Helm upgrades do not delete CRDs that are already installed in a cluster. If
+  an existing alpha hub installed the removed CRDs, delete the stale
+  `promotions`, `promotionpolicies`, `notificationproviders`, and
+  `notificationpolicies` CRDs manually after migrating stored objects.
 
 ## v0.4.0-alpha.0 - 2026-05-17
 

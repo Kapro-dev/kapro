@@ -21,7 +21,6 @@ func TestRunInitScaffoldArgo(t *testing.T) {
 	}
 	for _, relPath := range []string{
 		"backends/argo.yaml",
-		"sources/checkout.yaml",
 		"promotionplans/checkout.yaml",
 		"kapro/checkout.yaml",
 		"argo/applications/checkout.yaml",
@@ -33,6 +32,22 @@ func TestRunInitScaffoldArgo(t *testing.T) {
 	content := readFile(t, filepath.Join(dir, "backends/argo.yaml"))
 	if !strings.Contains(content, "driver: argo") {
 		t.Fatalf("backend file missing argo driver:\n%s", content)
+	}
+	kapro := readFile(t, filepath.Join(dir, "kapro/checkout.yaml"))
+	for _, want := range []string{
+		"source:",
+		"backendRef: argo",
+		"name: checkout-api",
+	} {
+		if !strings.Contains(kapro, want) {
+			t.Fatalf("kapro file missing %q:\n%s", want, kapro)
+		}
+	}
+	if strings.Contains(kapro, "sourceRef:") {
+		t.Fatalf("kapro scaffold should use inline source, got:\n%s", kapro)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "sources/checkout.yaml")); !os.IsNotExist(err) {
+		t.Fatalf("sources/checkout.yaml should not be generated for the default inline-source scaffold")
 	}
 }
 
@@ -84,7 +99,6 @@ func TestRunInitScaffoldOCIPull(t *testing.T) {
 	}
 	for _, relPath := range []string{
 		"backends/oci.yaml",
-		"sources/checkout.yaml",
 		"promotionplans/checkout.yaml",
 		"clusters/canary.yaml",
 		"clusters/prod.yaml",
@@ -174,6 +188,17 @@ func TestDefaultPromotionRunNameIsDNSLabel(t *testing.T) {
 	got := defaultPromotionRunName("Checkout.API", "v1.2.3+build.4", nil)
 	if got != "checkout-api-v1-2-3-build-4" {
 		t.Fatalf("defaultPromotionRunName()=%q", got)
+	}
+}
+
+func TestDefaultPromotionRunNameAddsHashWhenTruncated(t *testing.T) {
+	first := defaultPromotionRunName("checkout", "sha256:"+strings.Repeat("a", 80), nil)
+	second := defaultPromotionRunName("checkout", "sha256:"+strings.Repeat("a", 79)+"b", nil)
+	if len(first) > 63 || len(second) > 63 {
+		t.Fatalf("names exceed DNS label length: %q %q", first, second)
+	}
+	if first == second {
+		t.Fatalf("long versions should keep unique hashed names, got %q", first)
 	}
 }
 

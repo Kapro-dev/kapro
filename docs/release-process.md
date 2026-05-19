@@ -45,8 +45,8 @@ The release candidate is not ready if:
 - Live Flux E2E cannot prove generated Flux mappings drive real Flux controller
   reconciliation from `v1` to `v2`.
 - `PluginRegistration` compatibility failures do not surface in status.
-- Inline CEL/freeze-window denials do not block `PromotionRun` creation with
-  clear status.
+- Inline CEL gate denials do not block `PromotionRun` progression with clear
+  status.
 - PromotionTrigger signature policy failures do not surface in status
   conditions or Events.
 
@@ -62,7 +62,8 @@ Include:
 - Local Kind demo.
 - Promotion-domain APIs and examples.
 - Argo and Flux brownfield onboarding.
-- Inline CEL and freeze-window runtime guardrails.
+- Inline CEL runtime guardrails and documented deferral to external policy
+  systems for freeze-window enforcement.
 - PromotionTrigger OCI signature verification policy.
 - Plugin gateway preview with hot-loaded actuator, gate, and planner runtime
   registration.

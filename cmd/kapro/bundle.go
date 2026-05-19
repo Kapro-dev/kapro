@@ -20,9 +20,9 @@ import (
 func newSourceCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "source",
-		Short: "Work with PromotionSource objects",
-		Long: `Source commands package PromotionSource objects into deployable
-artifacts for pull-mode spokes when a backend needs an OCI artifact.
+		Short: "Work with Kapro source units",
+		Long: `Source commands package Kapro source units into deployable artifacts
+for pull-mode spokes when a backend needs an OCI artifact.
 
 Kapro promotes revisions. The selected backend owns local sync and rollout.`,
 	}
@@ -44,23 +44,23 @@ func newSourcePackageCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "package",
-		Short: "Package a PromotionSource for pull-mode spokes",
-		Long: `Reads a PromotionSource CR from the hub cluster and packages it into
-an OCI artifact containing per-wave directories with HelmReleases and
-HelmRepositories.
+		Short: "Package Kapro source units for pull-mode spokes",
+		Long: `Reads source units from a Kapro CR or advanced PromotionSource CR and
+packages them into an OCI artifact containing per-wave directories with
+HelmReleases and HelmRepositories.
 
 With --push, also pushes the artifact to the OCI registry.
 
 Examples:
   # Package to local directory (dry-run)
-  kapro source package --source checkout --version 2.0.0 --output /tmp/kapro-source
+  kapro source package --kapro checkout --version 2.0.0 --output /tmp/kapro-source
 
   # Package and push to GAR
-  kapro source package --source checkout --version 2.0.0 \
+  kapro source package --kapro checkout --version 2.0.0 \
     --registry oci://europe-west1-docker.pkg.dev/project/repo --push
 
-  # In CI promotionplan
-  kapro source package --source checkout --kapro checkout-prod --version ${VERSION} \
+  # Advanced: package a reusable PromotionSource CR
+  kapro source package --source checkout --version ${VERSION} \
     --registry ${OCI_REGISTRY} --push \
     --kubeconfig ${HUB_KUBECONFIG}`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -72,19 +72,21 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&sourceRef, "source", "", "PromotionSource CR name (required)")
-	cmd.Flags().StringVar(&kaproName, "kapro", "", "Kapro fleet name prefix (default: same as --source)")
+	cmd.Flags().StringVar(&sourceRef, "source", "", "Advanced PromotionSource CR name")
+	cmd.Flags().StringVar(&kaproName, "kapro", "", "Kapro artifact name; when --source is omitted, also the Kapro CR name")
 	cmd.Flags().StringVar(&version, "version", "", "Artifact version / OCI tag (required)")
 	cmd.Flags().StringVar(&registry, "registry", "", "OCI registry URL (required for --push)")
 	cmd.Flags().StringVar(&outputDir, "output", "", "Output directory (default: temp dir, printed to stdout)")
 	cmd.Flags().BoolVar(&push, "push", false, "Push artifact to OCI registry after packaging")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to hub kubeconfig (default: in-cluster or ~/.kube/config)")
-	_ = cmd.MarkFlagRequired("source")
 	_ = cmd.MarkFlagRequired("version")
 	return cmd
 }
 
 func runSourcePackage(ctx context.Context, sourceRef, kaproName, version, registry, outputDir string, push bool, kubeconfigPath string) error {
+	if sourceRef == "" && kaproName == "" {
+		return fmt.Errorf("one of --kapro or --source is required")
+	}
 	if registry == "" {
 		cfg, _ := kaproconfig.Load()
 		registry = cfg.Registry("default")
@@ -99,24 +101,26 @@ func runSourcePackage(ctx context.Context, sourceRef, kaproName, version, regist
 		return fmt.Errorf("connect to hub: %w", err)
 	}
 
-	// Read PromotionSource.
-	var app kaprov1alpha1.PromotionSource
-	if err := hubClient.Get(ctx, client.ObjectKey{Name: sourceRef}, &app); err != nil {
-		return fmt.Errorf("get PromotionSource %q: %w", sourceRef, err)
+	app, err := readPackageSource(ctx, hubClient, sourceRef, kaproName)
+	if err != nil {
+		return err
+	}
+	if kaproName == "" {
+		kaproName = app.Name
 	}
 
-	fmt.Fprintf(os.Stderr, "Read PromotionSource %q: %d units, %d registries\n",
-		sourceRef, len(app.Spec.Units), len(app.Spec.Registries))
+	fmt.Fprintf(os.Stderr, "Read source units from %q: %d units, %d registries\n",
+		app.Name, len(app.Spec.Units), len(app.Spec.Registries))
 
 	// Validate.
-	if err := bundle.Validate(&app); err != nil {
+	if err := bundle.Validate(app); err != nil {
 		return fmt.Errorf("validation failed:\n%w", err)
 	}
 
 	// Generate artifact contents.
 	req := bundle.BundleRequest{
 		KaproName: kaproName,
-		Source:    &app,
+		Source:    app,
 		Version:   version,
 		Registry:  registry,
 	}
@@ -158,6 +162,31 @@ func runSourcePackage(ctx context.Context, sourceRef, kaproName, version, regist
 	}
 
 	return nil
+}
+
+func readPackageSource(ctx context.Context, hubClient client.Client, sourceRef, kaproName string) (*kaprov1alpha1.PromotionSource, error) {
+	if sourceRef != "" {
+		var source kaprov1alpha1.PromotionSource
+		if err := hubClient.Get(ctx, client.ObjectKey{Name: sourceRef}, &source); err != nil {
+			return nil, fmt.Errorf("get PromotionSource %q: %w", sourceRef, err)
+		}
+		return &source, nil
+	}
+
+	var fleet kaprov1alpha1.Kapro
+	if err := hubClient.Get(ctx, client.ObjectKey{Name: kaproName}, &fleet); err != nil {
+		return nil, fmt.Errorf("get Kapro %q: %w", kaproName, err)
+	}
+	if fleet.Spec.Source == nil {
+		if fleet.Spec.SourceRef != "" {
+			return nil, fmt.Errorf("kapro %q references PromotionSource %q; pass --source %s", kaproName, fleet.Spec.SourceRef, fleet.Spec.SourceRef)
+		}
+		return nil, fmt.Errorf("kapro %q has neither spec.source nor spec.sourceRef set", kaproName)
+	}
+	return &kaprov1alpha1.PromotionSource{
+		ObjectMeta: fleet.ObjectMeta,
+		Spec:       *fleet.Spec.Source,
+	}, nil
 }
 
 func buildHubClient(kubeconfigPath string) (client.Client, error) {

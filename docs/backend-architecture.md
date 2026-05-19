@@ -42,8 +42,8 @@ fleet shapes.
 2. Create a built-in `BackendProfile`, preferably `oci` for new outbound-only
    fleets or `flux`/`argo` when the fleet already standardizes on those tools.
 3. Register or generate `FleetCluster` inventory.
-4. Generate a starter `PromotionSource`, `PromotionPlan`, gates, and example
-   `PromotionRun`.
+4. Generate a starter `Kapro` object with inline source units, a
+   `PromotionPlan`, gates, and example `PromotionRun`.
 5. Install a spoke agent for pull-mode clusters.
 
 This is platform bootstrap for the promotion layer, not a replacement for a

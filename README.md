@@ -101,8 +101,8 @@ It sits above Kubernetes Operators, Helm, Kustomize, OCI registries, GitOps reco
 Kapro supports both connect paths:
 
 - **Greenfield bootstrap:** create the hub, backend profiles, cluster inventory,
-  starter sources, PromotionPlans, gates, and optional spoke agents from Kapro
-  manifests or CLI flows.
+  a Kapro fleet object with inline source units, PromotionPlans, gates, and
+  optional spoke agents from Kapro manifests or CLI flows.
 - **Brownfield connect:** discover existing Argo CD or Flux topology, observe it
   first, then explicitly adopt selected applications or clusters for promotion.
 

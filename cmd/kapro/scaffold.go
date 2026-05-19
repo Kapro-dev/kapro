@@ -15,7 +15,8 @@ func newInitCmd() *cobra.Command {
 		Use:   "init [directory]",
 		Short: "Scaffold a greenfield Kapro promotion repo",
 		Long: `Scaffolds a GitOps-ready promotion repository with BackendProfile,
-PromotionSource, PromotionPlan, Kapro, and sample PromotionRun manifests.
+PromotionPlan, a Kapro fleet object with inline source units, and sample
+PromotionRun manifests.
 
 This bootstraps the promotion layer. Argo, Flux, Helm, and Kubernetes still own
 local sync and rollout mechanics.`,
@@ -175,7 +176,6 @@ func writeScaffoldFiles(root string, files map[string]string, force bool) error 
 func greenfieldFiles(opts scaffoldOptions) map[string]string {
 	files := map[string]string{
 		filepath.Join("backends", opts.Backend+".yaml"):    renderGreenfieldBackend(opts),
-		filepath.Join("sources", opts.Name+".yaml"):        renderPromotionSource(opts),
 		filepath.Join("promotionplans", opts.Name+".yaml"): renderPromotionPlan(opts),
 		filepath.Join("README.md"):                         renderGreenfieldReadme(opts),
 		filepath.Join(".gitignore"):                        ".DS_Store\n",
@@ -187,6 +187,8 @@ func greenfieldFiles(opts scaffoldOptions) map[string]string {
 	if len(clusters) > 0 {
 		files[filepath.Join("kapro", opts.Name+".yaml")] = renderKapro(opts, clusters)
 		files[filepath.Join("promotionruns", opts.Name+"-promotionrun.yaml")] = renderPromotionRun(opts)
+	} else {
+		files[filepath.Join("sources", opts.Name+".yaml")] = renderPromotionSource(opts)
 	}
 	switch opts.Backend {
 	case "argo":
@@ -381,7 +383,17 @@ metadata:
 spec:
   registry:
     url: %s
-  sourceRef: %s
+  source:
+    backendRef: %s
+    registries:
+      - name: default
+        url: %s
+    units:
+      - name: %s-api
+        version: 0.1.0
+        repo: default
+        chartName: %s-api
+        targetNamespace: %s
   delivery:
     mode: %s
     backendRef: %s
@@ -399,7 +411,7 @@ spec:
           kapro.io/tier: production
         dependsOn:
           - stage: canary
-`, opts.Name, opts.Registry, opts.Name, opts.Mode, opts.Backend, opts.Namespace, clusterItems.String())
+`, opts.Name, opts.Registry, opts.Backend, opts.Registry, opts.Name, opts.Name, opts.Name, opts.Mode, opts.Backend, opts.Namespace, clusterItems.String())
 }
 
 func renderPromotionRun(opts scaffoldOptions) string {
@@ -459,6 +471,10 @@ spec:
 
 func renderGreenfieldReadme(opts scaffoldOptions) string {
 	if len(parseClusterScaffold(opts.Clusters)) == 0 {
+		backendStep := ""
+		if opts.Backend == "argo" || opts.Backend == "flux" {
+			backendStep = fmt.Sprintf("4. %s/\n", opts.Backend)
+		}
 		return fmt.Sprintf(`# %s Kapro Promotion Repo
 
 This repo is a repo-first Kapro scaffold for the %s backend.
@@ -468,13 +484,12 @@ Apply order:
 1. backends/
 2. sources/
 3. promotionplans/
-4. %s/
-
+%s
 Clusters are intentionally not generated yet. Add clusters later, then add
 clusters/, kapro/, and promotionruns/ when promotion targets exist.
 
 Kapro coordinates promotion. The %s backend owns local sync and rollout mechanics.
-`, opts.Name, opts.Backend, opts.Backend, opts.Backend)
+`, opts.Name, opts.Backend, backendStep, opts.Backend)
 	}
 	return fmt.Sprintf(`# %s Kapro Promotion Repo
 
@@ -483,11 +498,10 @@ This repo is a greenfield Kapro scaffold for the %s backend.
 Apply order:
 
 1. backends/
-2. sources/
-3. clusters/
-4. promotionplans/
-5. kapro/
-6. promotionruns/
+2. clusters/
+3. promotionplans/
+4. kapro/
+5. promotionruns/
 
 Kapro coordinates promotion. The %s backend owns local sync and rollout mechanics.
 `, opts.Name, opts.Backend, opts.Backend)

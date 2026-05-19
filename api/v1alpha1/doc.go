@@ -9,7 +9,7 @@
 //   - PromotionPlan  — reusable promotion template composed of ordered stages
 //   - PromotionRun   — user-facing promotion intent and execution attempt
 //   - PromotionTarget — one target-cluster execution owned by a PromotionRun
-//   - PromotionTrigger — safe-by-default autonomous Promotion creation from verified artifacts
+//   - PromotionTrigger — safe-by-default autonomous PromotionRun creation from verified artifacts
 //   - PromotionSource — native promotion unit source
 //   - PluginRegistration — external actuator, gate, and planner plugin registration
 //   - Approval       — human gate signal to unblock one target-cluster rollout or stage

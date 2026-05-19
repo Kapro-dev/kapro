@@ -134,7 +134,7 @@ func runDemo(ctx context.Context) error {
 	}
 	sp.StopSuccess(fmt.Sprintf("Installed %d CRDs", len(crdFiles)))
 
-	// Step 4: Create PromotionSource + Kapro CRs.
+	// Step 4: Create Kapro CRs.
 	sp = cli.NewSpinner("Creating Kapro resources")
 	sp.Start()
 

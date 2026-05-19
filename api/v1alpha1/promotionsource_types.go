@@ -12,7 +12,7 @@ import (
 // PromotionSourceSpec defines the native promotion units Kapro can move
 // through a fleet. Units may map to generated Flux resources in greenfield mode
 // or to backend-native objects discovered from Argo/Flux in native mode.
-// Referenced by Kapro.spec.sourceRef.
+// Used inline by Kapro.spec.source or referenced by Kapro.spec.sourceRef.
 type PromotionSourceSpec struct {
 	// BackendRef is the BackendProfile this source is normally discovered from
 	// or packaged for. Kapro uses it as metadata; delivery still comes from

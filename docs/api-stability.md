@@ -26,7 +26,7 @@ Preview. The table below is the source of truth for the current contract level.
 
 | Surface | Path | Level |
 |---|---|---|
-| Core promotion CRDs | `api/v1alpha1` `PromotionRun`, `PromotionTarget`, `PromotionPlan`, `PromotionSource`, `PromotionUnit`, `FleetCluster`, `BackendProfile`, `Approval` | Alpha |
+| Core promotion CRDs | `api/v1alpha1` `Kapro`, `PromotionRun`, `PromotionTarget`, `PromotionPlan`, `PromotionSource`, `PromotionUnit`, `FleetCluster`, `BackendProfile`, `Approval` | Alpha |
 | PromotionTrigger CRD | `api/v1alpha1` `PromotionTrigger` | Preview |
 | PluginRegistration CRD | `api/v1alpha1` `PluginRegistration` | Preview |
 | Agent decision APIs | `api/v1alpha1` `AgentPolicy`, `PromotionTarget.status.decisionTrace`, Decision API HTTP routes | Preview |
