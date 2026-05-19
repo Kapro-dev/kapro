@@ -647,3 +647,45 @@ func TestPromotionReconcilerInvokesLifecycleDispatcher(t *testing.T) {
 		}
 	}
 }
+
+// TestBackfillRunLabelsOnAlreadyExists is the upgrade-path regression
+// test: a PromotionRun stamped by an older controller version (only
+// kapro.io/promotion + kapro.io/promotion-spec-hash labels) must have
+// kapro.io/kapro and kapro.io/promotion-uid patched in when the new
+// stampAttempt path hits AlreadyExists. Without this, wave/stage/gate
+// CloudEvents would emit empty data.kaproRef / data.promotionUID
+// during an in-flight attempt that crossed the upgrade boundary.
+func TestBackfillRunLabelsOnAlreadyExists(t *testing.T) {
+	ctx := context.Background()
+	p := newPromotion("checkout-backfill", "checkout", "v1.2.3")
+	p.UID = "promotion-uid-xyz"
+
+	// Pre-existing run with old label set only.
+	oldRun := &kaprov1alpha1.PromotionRun{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: attemptName(p.Name, promotionSpecHash(&p.Spec)),
+			Labels: map[string]string{
+				promotionOwnerLabel:    p.Name,
+				promotionSpecHashLabel: promotionSpecHash(&p.Spec),
+			},
+		},
+	}
+	r, c := newPromotionReconciler(t, newKapro("checkout"), p, oldRun)
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var got kaprov1alpha1.PromotionRun
+	if err := c.Get(ctx, client.ObjectKey{Name: oldRun.Name}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Labels[promotionKaproLabel] != "checkout" {
+		t.Fatalf("%s = %q, want %q (label must be backfilled on AlreadyExists)",
+			promotionKaproLabel, got.Labels[promotionKaproLabel], "checkout")
+	}
+	if got.Labels[promotionUIDLabel] != "promotion-uid-xyz" {
+		t.Fatalf("%s = %q, want %q (label must be backfilled on AlreadyExists)",
+			promotionUIDLabel, got.Labels[promotionUIDLabel], "promotion-uid-xyz")
+	}
+}
