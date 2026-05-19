@@ -36,8 +36,9 @@ It answers one question deterministically: *"Which clusters are allowed to recei
 
 Kapro does not replace GitOps tools (Flux, Argo CD). It coordinates them —
 sitting above delivery systems as the fleet promotion control plane that decides
-*when* and *in what order* clusters receive new versions, based on PromotionRun
-topology, target health, planning rules, gate evidence, and approvals.
+*when* and *in what order* clusters receive new versions, based on Promotion
+intent, PromotionRun attempts, target health, planning rules, gate evidence,
+and approvals.
 
 **Analogy:** Kubernetes is to containers what Kapro is to delivery waves. Kubernetes manages the lifecycle of containers on nodes. Kapro manages the lifecycle of promotions across target clusters in a fleet.
 
@@ -52,7 +53,7 @@ Platform engineering teams running 10–500 Kubernetes clusters have three bad o
 - **Partial**: Argo Rollouts handles in-cluster canary but not cross-cluster waves. Flux applies GitOps but not the "should I apply?" decision.
 
 No Kubernetes-native tool owns the **fleet promotion layer**: artifact version →
-gates → multi-target wave → backend convergence → auditable PromotionRun outcome
+gates → multi-target wave → backend convergence → auditable Promotion outcome
 across many clusters.
 
 ---
@@ -64,12 +65,12 @@ other cloud-native systems already own.
 
 | Area | Kapro owns | Delegated to |
 |---|---|---|
-| Artifact movement | PromotionRun, PromotionPlan, Stage, target state | CI systems and artifact builders |
+| Artifact movement | Promotion, PromotionRun, PromotionPlan, Stage, target state | CI systems and artifact builders |
 | Fleet ordering | Waves, planning, concurrency, target binding | Not delegated |
 | Workload rollout | Version intent and convergence checks | Flux, Argo CD, Kubernetes, or backend controllers |
 | Traffic shifting | Gate on rollout result | Argo Rollouts, Flagger, service mesh, ingress controllers |
 | Safety controls | Gate lifecycle, evidence, approval state | Domain-specific plugins and policy services |
-| Automation | Guarded PromotionRun creation | PromotionTrigger policy and external CI/webhooks |
+| Automation | Guarded Promotion creation; controller-owned PromotionRun attempts | PromotionTrigger policy and external CI/webhooks |
 | Agents | Evidence explanation and policy-bound assistance | Never required for core deterministic rollout |
 
 See `docs/vision-and-boundaries.md` for the public positioning and project
@@ -87,8 +88,8 @@ scope.
 | `Pod` | (the per-target rollout tracked inline in `PromotionRun.status.targets[]`) |
 | `Container` | Workload running inside a cluster |
 | `PodSpec.nodeSelector` | `Stage.clusterSelector` — which clusters a stage targets |
-| `Job` | `PromotionRun` — owns the full delivery lifecycle, terminates on completion |
-| `CronJob` | (future: recurring `PromotionRun` trigger) |
+| `Job` | `PromotionRun` — one execution attempt, terminates on completion |
+| `CronJob` | `PromotionTrigger` — watches artifact sources and updates Promotion intent |
 
 ### Promotion execution DAG
 
@@ -99,8 +100,10 @@ PromotionRun
         └── clusterSelector -> FleetCluster set -> child PromotionTarget per cluster/stage
 ```
 
-- **PromotionRun** is the user-facing intent and owns execution end-to-end:
-  version, scope, PromotionPlans, and terminal outcome.
+- **Promotion** is the user-facing durable intent: version, scope, Kapro fleet,
+  and rollout inputs.
+- **PromotionRun** is the controller-owned execution attempt stamped from a
+  Promotion and owns one terminal outcome.
 - **PromotionPlan** is a reusable template of stages (no status, no live fields).
 - **Stage** selects clusters and carries the gate policy that applies to those clusters.
 - **PromotionSource** contains `PromotionUnit` mappings: the deployable units and
@@ -123,8 +126,9 @@ PromotionRun
 
 | Term | Meaning |
 |------|---------|
-| **PromotionRun** | User-facing intent and execution owner for moving a version through one or more PromotionPlans. |
-| **Artifact** | Optional image, tag, digest, repository, or version metadata attached to a PromotionRun. |
+| **Promotion** | User-facing durable intent for moving a version through one or more PromotionPlans. |
+| **PromotionRun** | Controller-owned execution attempt stamped from a Promotion. |
+| **Artifact** | Optional image, tag, digest, repository, or version metadata attached to a Promotion or stamped PromotionRun. |
 | **PromotionSource** | Declares deployable PromotionUnits and their backend-native write targets. |
 | **PromotionUnit** | One application, HelmRelease, Argo Application, ApplicationSet input, Git file field, or generated unit Kapro can promote. |
 | **BackendProfile** | Selectable delivery backend profile for Flux, Argo, or external plugin-backed drivers. |
@@ -145,7 +149,8 @@ PromotionRun
 | `kaproes.kapro.io` | `Kapro` | Platform | Cluster |
 | `promotionsources.kapro.io` | `PromotionSource` | Platform | Cluster |
 | `promotionplans.kapro.io` | `PromotionPlan` | Platform | Cluster |
-| `promotionruns.kapro.io` | `PromotionRun` | Promotion engineer / automation | Cluster |
+| `promotions.kapro.io` | `Promotion` | Promotion engineer / automation | Cluster |
+| `promotionruns.kapro.io` | `PromotionRun` | Controller | Cluster |
 | `promotiontriggers.kapro.io` | `PromotionTrigger` | Platform / automation | Cluster |
 | `promotiontargets.kapro.io` | `PromotionTarget` | Controller | Cluster |
 | `backendprofiles.kapro.io` | `BackendProfile` | Platform | Cluster |
@@ -155,11 +160,11 @@ PromotionRun
 | `agentpolicies.kapro.io` | `AgentPolicy` | Platform | Cluster |
 
 `PromotionSource`, `PromotionPlan`, and `BackendProfile` are reusable
-configuration objects. Execution state lives in `PromotionRun`,
+configuration objects. User intent lives in `Promotion`; execution state lives in `PromotionRun`,
 `PromotionTarget`, `FleetCluster`, `Approval`, and `PromotionTrigger` status.
 
-The stable product center is the promotion execution path: `PromotionRun`,
-`PromotionTarget`, `PromotionPlan`, `FleetCluster`, `BackendProfile`,
+The stable product center is the promotion execution path: `Promotion`,
+`PromotionRun`, `PromotionTarget`, `PromotionPlan`, `FleetCluster`, `BackendProfile`,
 `PromotionSource`, and `Approval`. Preview surfaces are documented separately:
 `AgentPolicy` and the Decision API are opt-in assistance surfaces, and
 unsupported `FleetClusterTemplate` import sources are not runtime features until
@@ -211,10 +216,10 @@ Controllers are registered from `pkg/controllermanager/controllers.go`. Hub and 
 
 ### Hub config source of truth
 
-For the current alpha line, hub configuration is sourced from a dedicated git repository and
+For the current public pre-stable line, hub configuration is sourced from a dedicated git repository and
 applied to the hub cluster by CI with `kubectl apply`. The repository owns
 `FleetCluster`, `BackendProfile`, `PromotionSource`, `PromotionPlan`, and
-`PromotionRun` intent YAML. Built-in Argo and Flux adoption can
+`Promotion` intent YAML. Built-in Argo and Flux adoption can
 also write backend-native Git fields by creating a GitOps pull request or local
 repository mutation, depending on the actuator configuration. Spoke clusters do
 not watch the hub repository directly; they either consume their existing

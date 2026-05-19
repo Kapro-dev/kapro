@@ -1,8 +1,9 @@
 # Backend-Neutral Delivery Architecture
 
-Kapro is a fleet deployment promotion control plane. It owns PromotionRun intent,
-target ordering, gates, approvals, heartbeat freshness, and fleet status. It
-does not own traffic shifting or assume a specific GitOps controller.
+Kapro is a fleet deployment promotion control plane. It owns Promotion intent,
+PromotionRun attempts, target ordering, gates, approvals, heartbeat freshness,
+and fleet status. It does not own traffic shifting or assume a specific GitOps
+controller.
 
 Kapro supports two connect paths:
 
@@ -26,8 +27,8 @@ Primary APIs:
 - `Kapro` selects a promotion source, a delivery backend, clusters, and stages.
 - `BackendProfile` declares a selectable delivery backend.
 - `FleetCluster.spec.delivery` selects the per-cluster backend profile.
-- `PromotionRun` stores user intent and execution state; `PromotionTarget`
-  stores per-target execution state.
+- `Promotion` stores user intent, `PromotionRun` stores one execution attempt,
+  and `PromotionTarget` stores per-target execution state.
 
 ## Greenfield Bootstrap
 
@@ -43,7 +44,7 @@ fleet shapes.
    fleets or `flux`/`argo` when the fleet already standardizes on those tools.
 3. Register or generate `FleetCluster` inventory.
 4. Generate a starter `Kapro` object with inline source units, a
-   `PromotionPlan`, gates, and example `PromotionRun`.
+   `PromotionPlan`, gates, and example `Promotion`.
 5. Install a spoke agent for pull-mode clusters.
 
 This is platform bootstrap for the promotion layer, not a replacement for a
@@ -65,8 +66,8 @@ already exist in Argo CD or Flux. Brownfield connect has three phases:
 
 1. **Observe:** discover backend-native clusters and applications, report graph
    and health, and do not write to backend-owned objects.
-2. **Adopt:** bind selected backend objects to Kapro PromotionRuns and allow Kapro to
-   update version fields such as Argo `targetRevision` or Flux input tags.
+2. **Adopt:** bind selected backend objects to Kapro Promotions and allow Kapro
+   to update version fields such as Argo `targetRevision` or Flux input tags.
 3. **Manage:** optionally let Kapro generate new sources, PromotionPlans, and backend
    wiring for teams that want a stronger convention.
 
@@ -199,12 +200,12 @@ Initial endpoints:
 
 - `GET /healthz`
 - `GET /api/v1/graph`
-- `POST /api/v1/promotionruns`
+- `POST /api/v1/promotions`
 
 The gateway is intentionally asynchronous. Commands create or patch CRDs; the
 controllers and backend adapters perform reconciliation.
 
-`GET /api/v1/graph` and `POST /api/v1/promotionruns` require an
+`GET /api/v1/graph` and `POST /api/v1/promotions` require an
 `Authorization: Bearer <token>` header. The built-in token check is a
 development and port-forward convenience, not the production gateway auth
 model. Production exposure should put Kubernetes authentication and
@@ -212,6 +213,6 @@ authorization, or an identity-aware reverse proxy, in front of the gateway.
 Request bodies are size-limited and unknown JSON fields are rejected.
 
 `GET /api/v1/graph` returns bounded responses. Use `resource` to select
-`kapros`, `fleetclusters`, `promotionruns`, `promotiontargets`, or
+`kapros`, `fleetclusters`, `promotions`, `promotionruns`, `promotiontargets`, or
 `backendprofiles`; use `labelSelector`, `phase`, and `limit` to keep fleet
 reads scoped.

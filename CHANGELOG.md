@@ -5,7 +5,11 @@ changes for Kapro releases. Kapro is still pre-stable: all Kubernetes APIs are
 served as `kapro.io/v1alpha1`, and release notes are the binding compatibility
 record for each tag.
 
-## Unreleased
+## v0.1.0 - 2026-05-19
+
+`v0.1.0` is the first public Kapro release. It supersedes the earlier alpha
+tag line and publishes the durable `Promotion` intent plus controller-owned
+`PromotionRun` execution model as the public pre-stable baseline.
 
 ### BREAKING — CRD field names harmonised to strict Kubernetes camelCase
 
@@ -317,7 +321,8 @@ be rewritten with a one-liner.
   `kapro promote`) so the CI re-stamp, audit, and supersession semantics
   are first-class. Existing `PromotionRun` manifests continue to apply
   for the duration of the alpha but are now considered an advanced path;
-  default RBAC grants users `get/list/watch` only.
+  recommended human-user RBAC grants `promotionruns` `get/list/watch` only,
+  while the admission webhook enforces controller-owned writes.
 - Move reusable guardrails into inline `PromotionPlan` stage gates
   (`GatePolicySpec`, including CEL gates). Cluster-wide admission, freeze
   windows, and org-level policy are now deferred to external policy

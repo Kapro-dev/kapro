@@ -17,13 +17,14 @@ Kapro coordinates safe artifact promotion across clusters, regions, and clouds w
 
 ## Project Status
 
-Kapro is **alpha production-capable**, not GA. The current alpha release is
-`v0.4.0-alpha.0`.
+Kapro is **pre-stable public release software**, not GA. The current public
+release line is `v0.1.0`.
 
-The current codebase has working install, PromotionRun smoke, Argo brownfield,
-Flux brownfield, inline gate guardrails, plugin hot-load, and KPI planner
-dispatch coverage. It is suitable for controlled adopters who can run the
-documented verification and accept `kapro.io/v1alpha1` API movement.
+The current codebase has working install, Promotion intent, PromotionRun
+execution attempts, Argo brownfield, Flux brownfield, inline gate guardrails,
+plugin hot-load, and KPI planner dispatch coverage. It is suitable for
+controlled public adopters who can run the documented verification and accept
+`kapro.io/v1alpha1` API movement.
 
 Do not treat Kapro as GA yet. GA still requires a stable API version, tagged
 release-to-release upgrade history, broad operator soak, and an independent
@@ -55,8 +56,9 @@ It answers one operational question:
 Which clusters are allowed to receive this artifact version now, and why?
 ```
 
-Kapro owns cross-cluster PromotionRun ordering, target planning, gate evaluation,
-approval state, backend convergence tracking, and auditable status.
+Kapro owns cross-cluster Promotion intent, PromotionRun attempt ordering, target
+planning, gate evaluation, approval state, backend convergence tracking, and
+auditable status.
 
 It delegates artifact build, manifest rendering, GitOps reconciliation,
 in-cluster traffic shaping, and backend-specific rollout strategy to the tools

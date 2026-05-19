@@ -1,15 +1,16 @@
 // Package hubgateway implements the stateless HTTP gateway used by UI and CLI
-// clients to read Kapro fleet state and create PromotionRun objects.
+// clients to read Kapro fleet state and create Promotion objects.
 //
 // Endpoints (all but /healthz require BearerToken auth):
 //
 //	GET  /healthz                       — liveness probe
 //	GET  /api/v1/graph                  — paginated graph read of fleet resources
-//	                                      (kapros, fleetclusters, promotionruns,
-//	                                      promotiontargets, backendprofiles) with
+//	                                      (kapros, fleetclusters, promotions,
+//	                                      promotionruns, promotiontargets,
+//	                                      backendprofiles) with
 //	                                      label selector + phase filter + bounded
 //	                                      limit + truncation flag.
-//	POST /api/v1/promotionruns          — create a PromotionRun from a JSON body.
+//	POST /api/v1/promotions             — create a Promotion from a JSON body.
 //
 // Source of truth: Kubernetes API. The gateway is a thin read/create facade —
 // it caches nothing, owns no state, and never mutates objects beyond Create.

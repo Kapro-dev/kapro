@@ -26,7 +26,7 @@ Files:
 | `fleetclusters.yaml` | Three FleetClusters using `outbound-agent` + `oci` + `pull` mode. |
 | `backend-profile.yaml` | BackendProfile selecting the `oci` driver with default OCI pull parameters. |
 | `promotionplan.yaml` | A 2-stage plan: canary → general, with a manual approval between stages. |
-| `promotionrun.yaml` | Promotes `v1.2.3` of the bundle to the fleet. |
+| `promotionrun.yaml` | Advanced direct PromotionRun compatibility manifest that promotes `v1.2.3` of the bundle to the fleet. |
 
 ## How it differs from kind-demo
 

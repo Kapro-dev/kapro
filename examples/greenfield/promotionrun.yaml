@@ -1,6 +1,8 @@
-# A single PromotionRun against the greenfield plan above. Once applied,
-# kapro-operator creates a PromotionTarget per matching FleetCluster and
-# drives each one through the 10-phase target FSM
+# Advanced compatibility path: a direct PromotionRun against the greenfield
+# plan above. The preferred public path is to author Promotion and let
+# kapro-operator stamp PromotionRun attempts. Once applied, this direct run
+# creates a PromotionTarget per matching FleetCluster and drives each one
+# through the 10-phase target FSM
 # (Pending → Verification → HealthCheck → Soaking → MetricsCheck →
 # WaitingApproval → Applying → Converged | Failed | Skipped).
 apiVersion: kapro.io/v1alpha1

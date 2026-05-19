@@ -1,6 +1,6 @@
 # RBAC and Tenancy Model
 
-Kapro uses cluster-scoped CRDs because PromotionRuns, fleet clusters, plugin
+Kapro uses cluster-scoped CRDs because Promotions, PromotionRuns, fleet clusters, plugin
 registrations, and approvals coordinate work across namespaces and clusters.
 Tenancy is expressed through labels, admission policy, and narrowly scoped
 ClusterRoles rather than by making the core APIs namespaced.
@@ -11,7 +11,7 @@ ClusterRoles rather than by making the core APIs namespaced.
 |---|---|---|
 | Platform admin | Operator install, CRDs, controller flags, cluster-wide policy | Full admin on `kapro.io/*` and install namespace |
 | Extension admin | External plugin endpoints and plugin credentials | Create/update `PluginRegistration`; read referenced plugin Secrets |
-| PromotionRun manager | PromotionRun and trigger policy for one team or app | Create/update `PromotionRun`, `PromotionTrigger`, `PromotionPlan`, `PromotionSource` with team labels |
+| Promotion manager | Promotion and trigger policy for one team or app | Create/update `Promotion`, `PromotionTrigger`, `PromotionPlan`, `PromotionSource` with team labels; read `PromotionRun` execution records |
 | Approver | Human gate decisions for assigned teams/environments | Create `Approval`; read relevant `PromotionRun` and `PromotionTarget` status |
 | Auditor | Evidence and status | Read-only on Kapro CRDs and Events |
 
@@ -21,7 +21,7 @@ Every user-created Kapro object should carry these labels:
 
 | Label | Required on | Meaning |
 |---|---|---|
-| `kapro.io/team` | `PromotionRun`, `PromotionTrigger`, `PromotionPlan`, `PromotionSource`, `Approval` | Owning team or service group |
+| `kapro.io/team` | `Promotion`, `PromotionTrigger`, `PromotionPlan`, `PromotionSource`, `Approval` | Owning team or service group |
 | `kapro.io/environment` | `FleetCluster`, `PromotionPlan`, `Approval` | Environment boundary such as `dev`, `staging`, `prod` |
 | `kapro.io/plugin-owner` | `PluginRegistration` | Team accountable for the plugin endpoint |
 
@@ -45,28 +45,29 @@ Baseline rule:
 
 - `create`, `update`, `patch`, `delete` on `pluginregistrations.kapro.io`:
   extension admins only.
-- `get`, `list`, `watch` on `pluginregistrations.kapro.io`: PromotionRun managers
+- `get`, `list`, `watch` on `pluginregistrations.kapro.io`: Promotion managers
   and auditors may read status.
 - Secrets referenced by `spec.tlsSecretRef`: readable only by the Kapro operator
   service account and the owning extension admin group.
 
 ## Who Can Create PromotionTriggers?
 
-PromotionRun managers may create `PromotionTrigger` objects for their own team labels.
+Promotion managers may create `PromotionTrigger` objects for their own team labels.
 Production triggers should require platform review before being unsuspended.
 
 Baseline rule:
 
 - Teams may create suspended triggers with `spec.suspended: true`.
-- Only PromotionRun managers for the matching `kapro.io/team` may update the trigger.
-- Only production PromotionRun managers or platform admins may set
+- Only Promotion managers for the matching `kapro.io/team` may update the trigger.
+- Only production Promotion managers or platform admins may set
   `spec.suspended: false` for `kapro.io/environment=prod`.
 - Registry credential Secrets referenced by `spec.source.oci.secretRef` must be
   namespaced and readable only by the Kapro operator service account.
 
-`PromotionTrigger` creates `PromotionRun` objects through the controller service
-account. Admission should still validate that the generated PromotionRun keeps the
-same `kapro.io/team` and approved scope as the trigger.
+`PromotionTrigger` creates or updates `Promotion` objects through the controller
+service account; the `Promotion` controller then stamps `PromotionRun`
+attempts. Admission should still validate that generated runtime objects keep
+the same `kapro.io/team` and approved scope as the trigger.
 
 ## Who Can Approve Gates?
 
@@ -115,13 +116,13 @@ The exact bindings are cluster-specific, but the intended split is:
 ```yaml
 kind: ClusterRole
 metadata:
-  name: kapro-promotionrun-manager
+  name: kapro-promotion-manager
 rules:
   - apiGroups: ["kapro.io"]
-    resources: ["promotionruns", "promotiontriggers", "promotionplans", "promotionsources"]
+    resources: ["promotions", "promotiontriggers", "promotionplans", "promotionsources"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: ["kapro.io"]
-    resources: ["promotiontargets", "fleetclusters", "pluginregistrations"]
+    resources: ["promotionruns", "promotiontargets", "fleetclusters", "pluginregistrations"]
     verbs: ["get", "list", "watch"]
 ---
 kind: ClusterRole

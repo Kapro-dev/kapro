@@ -14,7 +14,7 @@ cd "${tmpdir}/kapro"
 Check out the release tag or candidate branch you are validating:
 
 ```bash
-git checkout v0.4.0-alpha.0
+git checkout v0.1.0
 ```
 
 ## Render Verification
@@ -51,7 +51,7 @@ For a prerelease image that is not the chart default, override the image:
 
 ```bash
 KAPRO_IMAGE_REPOSITORY=ghcr.io/kapro-dev/kapro-operator \
-KAPRO_IMAGE_TAG=v0.4.0-alpha.0 \
+KAPRO_IMAGE_TAG=v0.1.0 \
 scripts/verify-install.sh cluster
 ```
 

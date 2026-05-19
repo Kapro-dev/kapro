@@ -2,8 +2,8 @@ apiVersion: v2
 name: kapro-operator
 description: The Canonical Promotion Layer for Kubernetes — control plane operator
 type: application
-version: 0.4.0-alpha.0
-appVersion: "v0.4.0-alpha.0"
+version: 0.1.0
+appVersion: "v0.1.0"
 home: https://github.com/Kapro-dev/kapro
 sources:
   - https://github.com/Kapro-dev/kapro

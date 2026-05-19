@@ -4,7 +4,7 @@ This demo runs Kapro in a local Kind cluster and walks the intended control-plan
 
 1. install Kapro CRDs and the Kapro operator
 2. apply a small fleet config with `FleetCluster`, `PromotionPlan`, `PluginRegistration`, and `PromotionTrigger`
-3. create a `PromotionRun`
+3. create a compatibility `PromotionRun` fixture
 4. watch the planner bind targets, gates advance, approvals unblock production, and the push/Flux actuator patch a `ResourceSet`
 5. inspect rollout status through `PromotionRun` and `PromotionTarget`
 
@@ -62,11 +62,12 @@ the local fixture `ResourceSet` named `checkout-demo` through
 The default planner orders eligible targets deterministically and records deferrals from the stage strategy in `PromotionRun.status.promotionplanProgress[].stageProgress[].plannerResults`.
 
 `examples/kind-demo/config/03-promotion-trigger.yaml` creates a safe,
-suspended, dry-run `PromotionTrigger`. It documents the trigger-to-PromotionRun
+suspended, dry-run `PromotionTrigger`. It documents the trigger-to-Promotion
 API path without calling a real registry.
 
-`examples/kind-demo/config/04-promotionrun.yaml` creates the live PromotionRun
-that drives the rollout.
+`examples/kind-demo/config/04-promotionrun.yaml` creates the live compatibility
+PromotionRun fixture that drives the local rollout. The public user path is to
+author `Promotion` and let the controller stamp PromotionRun attempts.
 
 ## Observe
 

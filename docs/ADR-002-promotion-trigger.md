@@ -9,24 +9,25 @@
 ## Context
 
 Kapro can eventually close the gap between CI and fleet rollout by watching
-external artifact sources and creating `PromotionRun` objects automatically. The
-trigger watches for verified artifact changes and feeds the normal Kapro
-promotion promotionplan.
+external artifact sources and creating or updating `Promotion` objects
+automatically. The trigger watches for verified artifact changes and feeds the
+normal Kapro promotion plan.
 
 The same feature is dangerous if it turns every pushed tag into a fleet-wide
 production rollout. A broken CI loop, mutable tag, or compromised registry could
-create repeated promotionruns faster than humans or gates can reason about them.
+create repeated promotion attempts faster than humans or gates can reason about them.
 
 ---
 
 ## Decision
 
 Introduce a `PromotionTrigger` API only if it is safe by default. The first
-controller implementation observes OCI sources and creates PromotionRuns only after
-the configured safeguards pass.
+controller implementation observes OCI sources and creates or updates Promotion
+intent only after the configured safeguards pass.
 
-`PromotionTrigger` creates `PromotionRun` objects. It does not apply manifests, bypass
-promotionplan gates, mutate active promotionruns, or promote directly to production.
+`PromotionTrigger` creates or updates `Promotion` objects. It does not apply
+manifests, bypass promotion plan gates, mutate active PromotionRuns, or promote
+directly to production.
 
 The first implementation should support OCI registry sources only. Additional
 sources such as GitHub releases, MLflow model registry events, Prometheus
@@ -35,7 +36,7 @@ alerts, and external webhooks can be added after the OCI path is proven.
 The controller must reject unsafe or malformed trigger configuration before it
 contacts an artifact source. Invalid source settings, tag patterns, poll
 intervals, cooldowns, and negative concurrency limits stall the trigger instead
-of falling through to promotionrun creation.
+of falling through to Promotion creation.
 
 ---
 
@@ -45,14 +46,14 @@ Every implementation must include these controls:
 
 | Safeguard | Requirement |
 |---|---|
-| Suspended creation | Created `PromotionRun` objects default to `spec.suspended: true` unless explicitly disabled. |
+| Suspended creation | Created `Promotion` objects default to `spec.suspended: true` unless explicitly disabled. |
 | Tag filtering | `spec.tagPattern` is required. Do not trigger on every tag by default. |
 | Tag ordering | Matching OCI tags are selected by semantic-version ordering when they are semver-like, including `v1.10.0` over `v1.2.0`; non-semver tags keep deterministic lexical ordering. |
-| Digest pinning | Created promotionruns must reference an immutable OCI digest, not only a mutable tag. |
-| Signature policy | `spec.requireSignature` verifies artifacts before creating promotionruns. |
-| Cooldown | `spec.cooldown` prevents rapid-fire promotionrun creation and also considers recent trigger-owned PromotionRuns so status drift cannot bypass the delay. |
-| Max active | `spec.maxActive` limits concurrent promotionruns created by one trigger. |
-| Scope | `spec.scope` can restrict created promotionruns to canary stages or selected clusters. |
+| Digest pinning | Created Promotions must reference an immutable OCI digest, not only a mutable tag. |
+| Signature policy | `spec.requireSignature` verifies artifacts before creating or updating Promotion intent. |
+| Cooldown | `spec.cooldown` prevents rapid-fire Promotion updates and also considers recent trigger-owned PromotionRuns so status drift cannot bypass the delay. |
+| Max active | `spec.maxActive` limits concurrent PromotionRun attempts created from one trigger-managed Promotion. |
+| Scope | `spec.scope` can restrict created Promotions to canary stages or selected clusters. |
 | Dry run | `spec.dryRun` records what would be created without creating it. |
 | Idempotency | Status records observed tag/digest pairs so repeated polls do not create duplicates. |
 | Conditions | Status exposes `Ready`, `Suspended`, `ArtifactVerified`, and `PromotionRunCreated` conditions. |

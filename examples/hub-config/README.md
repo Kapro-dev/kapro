@@ -1,6 +1,9 @@
 # Kapro Hub Config Example
 
-This is a template for a dedicated Kapro hub config repository. Copy the contents of this directory into that repository and let CI validate and apply changes to the hub cluster.
+This is an advanced template for a dedicated Kapro hub config repository using
+direct `PromotionRun` compatibility manifests. New first-use paths should start
+from `examples/quickstart/`, where users author `Promotion` and the controller
+stamps `PromotionRun` attempts.
 
 The nested `.github/workflows/` directory is intended for the copied hub config repository. It is not part of the Kapro source repository CI.
 
@@ -22,7 +25,7 @@ sources/
 promotionplans/
   checkout-progressive.yaml   PromotionPlan stages, selectors, and gates
 promotionruns/
-  checkout-v1.2.3.yaml        PromotionRun intent for one immutable artifact
+  checkout-v1.2.3.yaml        Advanced direct PromotionRun compatibility manifest
 .github/workflows/
   apply-kapro-hub-config.yaml Pull request validation and main-branch apply
 ```
@@ -45,7 +48,7 @@ Apply configuration in this order:
 2. `backends/` - creates selectable `BackendProfile` objects.
 3. `sources/` - creates reusable `PromotionSource` metadata.
 4. `promotionplans/` - creates reusable rollout stage DAGs.
-5. `promotionruns/` - creates user-facing promotion intent for immutable versions.
+5. `promotionruns/` - creates advanced direct PromotionRun compatibility objects for immutable versions.
 
 ```bash
 kubectl apply -f clusters/

@@ -42,11 +42,12 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          PromotionTrigger observes verified artifact changes and creates PromotionRun objects.
-          It is safe by default for promotion-side concerns: triggers are suspended by default
-          and any PromotionRuns they create are suspended by default. OCI signature verification
-          is opt-in per source (`spec.source.oci.requireSignature`, default false) so a trigger
-          does not fail closed unless a signature policy is intentionally enabled.
+          PromotionTrigger observes verified artifact changes and creates or updates
+          Promotion intent. It is safe by default for promotion-side concerns: triggers
+          are suspended by default and created Promotions default to suspended. OCI
+          signature verification is opt-in per source (`spec.source.oci.requireSignature`,
+          default false) so a trigger does not fail closed unless a signature policy is
+          intentionally enabled.
         properties:
           apiVersion:
             description: |-
@@ -198,9 +199,9 @@ spec:
                       requireSignature:
                         default: false
                         description: |-
-                          RequireSignature requires a configured verifier to pass before creating a
-                          PromotionRun. Defaults to false so triggers do not fail closed unless a
-                          signature policy is intentionally enabled.
+                          RequireSignature requires a configured verifier to pass before creating or
+                          updating Promotion intent. Defaults to false so triggers do not fail closed
+                          unless a signature policy is intentionally enabled.
                         type: boolean
                       secretRef:
                         description: |-
@@ -218,8 +219,9 @@ spec:
                         type: object
                         x-kubernetes-map-type: atomic
                       tagPattern:
-                        description: TagPattern is a regular expression. Only matching
-                          tags can create promotionruns.
+                        description: |-
+                          TagPattern is a regular expression. Only matching tags can create or update
+                          Promotions.
                         minLength: 1
                         type: string
                     required:
