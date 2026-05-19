@@ -28,6 +28,13 @@ func TestVocabularyStable(t *testing.T) {
 		{"EventPromotionTerminating", "kapro.io/promotion.terminating"},
 		{"EventPromotionAttemptStamped", "kapro.io/promotion.attempt.stamped"},
 		{"EventPromotionAttemptSuperseded", "kapro.io/promotion.attempt.superseded"},
+		{"EventPromotionWaveEntered", "kapro.io/promotion.wave.entered"},
+		{"EventPromotionWaveCompleted", "kapro.io/promotion.wave.completed"},
+		{"EventPromotionStageEntered", "kapro.io/promotion.stage.entered"},
+		{"EventPromotionStageCompleted", "kapro.io/promotion.stage.completed"},
+		{"EventPromotionStageGateWaiting", "kapro.io/promotion.stage.gate.waiting"},
+		{"EventPromotionStageGatePassed", "kapro.io/promotion.stage.gate.passed"},
+		{"EventPromotionStageGateFailed", "kapro.io/promotion.stage.gate.failed"},
 	}
 	for _, w := range want {
 		got, ok := lookupByName(w.name)
@@ -57,6 +64,13 @@ func TestAllEventTypesIncludesAllConstants(t *testing.T) {
 		events.EventPromotionTerminating,
 		events.EventPromotionAttemptStamped,
 		events.EventPromotionAttemptSuperseded,
+		events.EventPromotionWaveEntered,
+		events.EventPromotionWaveCompleted,
+		events.EventPromotionStageEntered,
+		events.EventPromotionStageCompleted,
+		events.EventPromotionStageGateWaiting,
+		events.EventPromotionStageGatePassed,
+		events.EventPromotionStageGateFailed,
 	}
 	if len(all) != len(mustContain) {
 		t.Fatalf("AllEventTypes() returned %d types, want %d", len(all), len(mustContain))
@@ -162,6 +176,20 @@ func lookupByName(name string) (events.EventType, bool) {
 		return events.EventPromotionAttemptStamped, true
 	case "EventPromotionAttemptSuperseded":
 		return events.EventPromotionAttemptSuperseded, true
+	case "EventPromotionWaveEntered":
+		return events.EventPromotionWaveEntered, true
+	case "EventPromotionWaveCompleted":
+		return events.EventPromotionWaveCompleted, true
+	case "EventPromotionStageEntered":
+		return events.EventPromotionStageEntered, true
+	case "EventPromotionStageCompleted":
+		return events.EventPromotionStageCompleted, true
+	case "EventPromotionStageGateWaiting":
+		return events.EventPromotionStageGateWaiting, true
+	case "EventPromotionStageGatePassed":
+		return events.EventPromotionStageGatePassed, true
+	case "EventPromotionStageGateFailed":
+		return events.EventPromotionStageGateFailed, true
 	}
 	return "", false
 }

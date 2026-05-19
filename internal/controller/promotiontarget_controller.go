@@ -69,6 +69,11 @@ type PromotionTargetReconciler struct {
 	ExternalURL      string
 	GateRegistry     *gate.Registry
 
+	// StagePublisher emits kapro.io/promotion.stage.gate.* events to the
+	// operator-level CloudEvents sink on gate evaluation transitions.
+	// Nil-safe — when unset, no gate-narrative events fire.
+	StagePublisher StageEventPublisher
+
 	// ShardPredicate optionally filters objects by shard label for horizontal scaling.
 	// When nil, all objects are processed.
 	ShardPredicate predicate.Predicate
@@ -633,6 +638,17 @@ func (r *PromotionTargetReconciler) evaluateGateTemplates(
 		}
 
 		gateStatus := findOrCreateGateStatus(gates, gateName, now)
+		// kapro.io/promotion.stage.gate.waiting fires exactly once when
+		// this gate first enters evaluation for this (target, gate)
+		// tuple. Attempts==0 just before Evaluate is the canonical
+		// "first time we see this gate" signal.
+		firstEvaluation := gateStatus.Attempts == 0 &&
+			gateStatus.Phase != kaprov1alpha1.GatePhasePassed &&
+			gateStatus.Phase != kaprov1alpha1.GatePhaseFailed
+		if firstEvaluation {
+			r.publishGateEvent(ctx, promotionrun, target, gateName, "waiting",
+				string(kaprov1alpha1.GatePhaseRunning), "gate evaluation started", "")
+		}
 		if gateStatus.Phase == kaprov1alpha1.GatePhasePassed {
 			continue
 		}
@@ -726,6 +742,8 @@ func (r *PromotionTargetReconciler) evaluateGateTemplates(
 				}
 			}
 			r.notifyGateEvent(ctx, promotionrun, target, notification.EventGateFailed, gateName, gateStatus.Message, true)
+			r.publishGateEvent(ctx, promotionrun, target, gateName, "failed",
+				string(kaprov1alpha1.GatePhaseFailed), "gate evaluation failed", gateStatus.Message)
 			allPassed = false
 		case kaprov1alpha1.GatePhaseInconclusive:
 			switch tmpl.InconclusivePolicy {
@@ -753,11 +771,26 @@ func (r *PromotionTargetReconciler) evaluateGateTemplates(
 			}
 		case kaprov1alpha1.GatePhasePassed:
 			r.notifyGateEvent(ctx, promotionrun, target, notification.EventGatePassed, gateName, gateStatus.Message, false)
+			r.publishGateEvent(ctx, promotionrun, target, gateName, "passed",
+				string(kaprov1alpha1.GatePhasePassed), "gate passed", gateStatus.Message)
 		}
 	}
 
 	target.Gates = gates
 	return allPassed, requeueAfter, nil
+}
+
+// publishGateEvent forwards a kapro.io/promotion.stage.gate.* emission
+// to the operator-level CloudEvents sink. Nil-safe.
+func (r *PromotionTargetReconciler) publishGateEvent(ctx context.Context,
+	promotionrun *kaprov1alpha1.PromotionRun, target *kaprov1alpha1.TargetStatus,
+	gateName, kind, phase, reason, message string) {
+	if r.StagePublisher == nil || promotionrun == nil || target == nil {
+		return
+	}
+	r.StagePublisher.PublishGateEvent(ctx, promotionrun,
+		target.PromotionPlanRef, target.Stage, gateName, target.Target,
+		kind, phase, reason, message)
 }
 
 func (r *PromotionTargetReconciler) notifyGateEvent(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, target *kaprov1alpha1.TargetStatus, eventType, gateName, message string, isFailure bool) {

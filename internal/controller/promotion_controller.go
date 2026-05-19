@@ -53,6 +53,24 @@ type PhaseTransitionDispatcher interface {
 		prev, next kaprov1alpha1.PromotionPhase)
 }
 
+// StageEventPublisher is the optional interface that the PromotionRun /
+// PromotionTarget reconcilers use to emit fleet-narrative CloudEvents
+// for wave / stage / gate transitions. Nil-safe at every call site —
+// when unset, the reconciler simply does not emit those events. The
+// operator-level sink (see internal/lifecycle) is the receiver.
+//
+// Per-Promotion handler fanout for these events is intentionally NOT
+// part of this interface today; the v1alpha1 handler filter is phase-
+// scoped only. Adding `onTypes:` filter support is a separate follow-up.
+type StageEventPublisher interface {
+	PublishWaveEvent(ctx context.Context, run *kaprov1alpha1.PromotionRun,
+		wave, kind, phase, reason string)
+	PublishStageEvent(ctx context.Context, run *kaprov1alpha1.PromotionRun,
+		wave, stage, kind, phase, reason string)
+	PublishGateEvent(ctx context.Context, run *kaprov1alpha1.PromotionRun,
+		wave, stage, gate, target, kind, phase, reason, message string)
+}
+
 // +kubebuilder:rbac:groups=kapro.io,resources=promotions,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kapro.io,resources=promotions/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=promotions/finalizers,verbs=update
