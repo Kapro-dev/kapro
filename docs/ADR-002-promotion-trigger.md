@@ -76,7 +76,8 @@ spec:
       tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
       # Set true only after configuring a trigger verifier.
       requireSignature: false
-  promotionrunTemplate:
+  promotionTemplate:
+    kaproRef: checkout
     promotionPlans:
       - name: production
         promotionPlan: checkout-production

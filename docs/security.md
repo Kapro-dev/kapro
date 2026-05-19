@@ -131,7 +131,8 @@ spec:
       tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
       requireSignature: true
       pollInterval: 5m
-  promotionrunTemplate:
+  promotionTemplate:
+    kaproRef: checkout
     promotionPlans:
       - name: production
         promotionPlan: checkout-keyless
@@ -168,7 +169,8 @@ spec:
       repository: oci://registry.example.com/platform/checkout
       tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
       requireSignature: true
-  promotionrunTemplate:
+  promotionTemplate:
+    kaproRef: checkout
     promotionPlans:
       - name: production
         promotionPlan: checkout
