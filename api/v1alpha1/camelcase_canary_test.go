@@ -22,10 +22,9 @@ import (
 //
 //   - First character must be lowercase ASCII.
 //   - The token must NOT contain an underscore (no snake_case).
-//   - If the token contains an embedded uppercase letter (e.g.
-//     "promotionPlan"), every alphabetic run between capitals must
-//     either start lowercase OR be a single uppercase acronym (e.g.
-//     "URL", "ID", "UID") that is at most 3 letters long.
+//   - Known drift-prone Kapro compound words must include their expected
+//     embedded capitals (for example, "promotionRunRef", not
+//     "promotionrunRef").
 //   - "-" and inline-omit ("inline") are accepted special tokens.
 //   - Empty tag (json:",inline" / json:"-") is accepted.
 //
@@ -82,6 +81,26 @@ func TestJSONTagsAreCamelCase(t *testing.T) {
 			}
 			return true
 		})
+	}
+}
+
+func TestViolatesCamelCaseExamples(t *testing.T) {
+	tests := map[string]bool{
+		"promotionPlan":         false,
+		"promotionPlans":        false,
+		"promotionRunRef":       false,
+		"activePromotionRun":    false,
+		"promotionPlanProgress": false,
+		"promotionplan":         true,
+		"promotionrunRef":       true,
+		"kapro_ref":             true,
+		"PromotionPlan":         true,
+	}
+	for name, wantViolation := range tests {
+		gotViolation := violatesCamelCase(name) != ""
+		if gotViolation != wantViolation {
+			t.Fatalf("violatesCamelCase(%q) violation=%t, want %t", name, gotViolation, wantViolation)
+		}
 	}
 }
 
@@ -165,20 +184,34 @@ func violatesCamelCase(name string) string {
 	// catch the specific concrete tokens we know to be drift-prone.
 	//
 	// Allow-listing acronyms could be added here when needed.
-	for _, bad := range []string{
-		"promotionplan", "promotionrun", "kaproref",
-		"promotionrunref", "promotionplanref",
-		"promotiontarget", "promotionsource",
-		"promotionplanprogress", "kaproplan",
+	for _, token := range []struct {
+		bad  string
+		want string
+	}{
+		{"promotionplanprogress", "promotionPlanProgress"},
+		{"promotionrunref", "promotionRunRef"},
+		{"promotionplanref", "promotionPlanRef"},
+		{"promotionplan", "promotionPlan"},
+		{"promotionrun", "promotionRun"},
+		{"promotiontarget", "promotionTarget"},
+		{"promotionsource", "promotionSource"},
+		{"kaproref", "kaproRef"},
+		{"kaproplan", "kaproPlan"},
 	} {
-		if strings.Contains(strings.ToLower(name), bad) && !strings.Contains(name, "Plan") &&
-			!strings.Contains(name, "Run") && !strings.Contains(name, "Ref") &&
-			!strings.Contains(name, "Target") && !strings.Contains(name, "Source") &&
-			!strings.Contains(name, "Progress") {
-			return "looks like two words concatenated lowercase (e.g. \"" + bad + "\") — use camelCase"
+		if strings.Contains(strings.ToLower(name), token.bad) &&
+			!strings.Contains(name, token.want) &&
+			!strings.Contains(name, upperFirst(token.want)) {
+			return "looks like two words concatenated lowercase (e.g. \"" + token.bad + "\") — use " + token.want
 		}
 	}
 	return ""
+}
+
+func upperFirst(s string) string {
+	if s == "" || s[0] < 'a' || s[0] > 'z' {
+		return s
+	}
+	return string(s[0]-'a'+'A') + s[1:]
 }
 
 // apiDir resolves the api/v1alpha1 directory relative to this test
