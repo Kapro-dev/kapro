@@ -80,7 +80,10 @@ type KaproClusterGCP struct {
 	Region string `json:"region,omitempty"`
 }
 
-// KaproPromotionPlan defines the progressive delivery stages.
+// KaproPromotionPlan defines the progressive delivery stages inline on a
+// single Kapro object (KISS path). For reuse across multiple Kapro objects
+// or across PromotionRuns, define stages on a standalone PromotionPlan CRD
+// and reference it via PromotionRun.spec.promotionplans instead.
 type KaproPromotionPlan struct {
 	// Stages defines the progressive delivery wave ordering.
 	Stages []KaproStage `json:"stages"`

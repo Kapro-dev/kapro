@@ -106,8 +106,11 @@ type PromotionUnit struct {
 	// VersionField does not already include a file path.
 	// +optional
 	SourcePath string `json:"sourcePath,omitempty"`
-	// Version is the default chart/revision for generated units. Supports
-	// ${VARIABLE} substitution from cluster-vars.
+	// Version is the default chart/revision for the unit at install time.
+	// This is the package/catalog default; the per-rollout target version
+	// comes from PromotionRun.spec.version (or --version on `kapro promote`)
+	// and is what advances the unit through the fleet.
+	// Supports ${VARIABLE} substitution from cluster-vars.
 	// +optional
 	Version string `json:"version,omitempty"`
 	// Repo references a registry from spec.registries by name. Inherits from defaults if empty.
