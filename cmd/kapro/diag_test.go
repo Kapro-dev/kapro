@@ -129,8 +129,8 @@ func TestRunDiag_HappyPathRendersExpectedSections(t *testing.T) {
 
 	for _, want := range []string{
 		"promotion/checkout-v1.2.3",
-		"checkout",            // KaproRef
-		"Progressing",         // phase
+		"checkout",    // KaproRef
+		"Progressing", // phase
 		"Active Run",
 		"checkout-v1.2.3-001", // run name
 		"Conditions",
@@ -187,7 +187,7 @@ func TestRunDiag_JSONOutputIsStable(t *testing.T) {
 func TestComputeBlockedOn_FailedTarget(t *testing.T) {
 	promo := &kaprov1alpha1.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "p"}}
 	targets := []kaprov1alpha1.PromotionTarget{{
-		Spec:   kaprov1alpha1.PromotionTargetSpec{Target: "de-prod", Stage: "canary"},
+		Spec: kaprov1alpha1.PromotionTargetSpec{Target: "de-prod", Stage: "canary"},
 		Status: kaprov1alpha1.PromotionTargetStatus{
 			TargetStatus: kaprov1alpha1.TargetStatus{Phase: kaprov1alpha1.TargetPhaseFailed, Message: "gate timeout"},
 		},

@@ -20,12 +20,12 @@ import (
 // flat, intentionally stable shape so scripts and downstream tooling can
 // depend on it without unmarshalling raw Kubernetes objects.
 type promotionDiag struct {
-	Promotion *kaprov1alpha1.Promotion          `json:"promotion"`
-	Runs      []kaprov1alpha1.PromotionRun      `json:"promotionRuns"`
-	Targets   []kaprov1alpha1.PromotionTarget   `json:"promotionTargets"`
-	Events    []corev1.Event                    `json:"events"`
-	BlockedOn []string                          `json:"blockedOn,omitempty"`
-	Next      []string                          `json:"suggestedNextActions,omitempty"`
+	Promotion *kaprov1alpha1.Promotion        `json:"promotion"`
+	Runs      []kaprov1alpha1.PromotionRun    `json:"promotionRuns"`
+	Targets   []kaprov1alpha1.PromotionTarget `json:"promotionTargets"`
+	Events    []corev1.Event                  `json:"events"`
+	BlockedOn []string                        `json:"blockedOn,omitempty"`
+	Next      []string                        `json:"suggestedNextActions,omitempty"`
 }
 
 func newDiagCmd() *cobra.Command {
@@ -364,4 +364,3 @@ func truncate(s string, n int) string {
 	}
 	return s[:n-3] + "..."
 }
-
