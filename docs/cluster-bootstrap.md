@@ -111,7 +111,10 @@ Operational behavior:
 
 - stale heartbeat blocks new pull-mode work for that cluster;
 - in-flight targets wait while the cluster is temporarily unreachable;
-- targets fail if the cluster remains unreachable past timeout policy;
+- heartbeat staleness does not directly fail a `PromotionTarget`; the target
+  defers until the cluster recovers or an operator takes explicit action;
+- a `PromotionRun` may still fail if its own global timeout expires while
+  targets are deferred;
 - recovery is automatic once the spoke renews the lease again.
 
 Common Ready reasons:
@@ -120,8 +123,10 @@ Common Ready reasons:
 |---|---|
 | `HeartbeatFresh` | Lease is current and the spoke is reachable. |
 | `HeartbeatStale` | Lease is stale but not yet past the failure threshold. |
-| `HeartbeatMissing` | No heartbeat lease exists for the cluster. |
-| `ClusterUnreachable` | Failure threshold exceeded. |
+| `Unreachable` | Failure threshold exceeded; pull-mode promotion targets defer instead of failing directly. |
+| `Suspended` | `FleetCluster.spec.suspend=true`; heartbeat is intentionally ignored. |
+| `PushModeNoHeartbeat` | Push-mode cluster; no spoke heartbeat is expected. |
+| `NotRegistered` | The cluster has not completed bootstrap registration yet. |
 
 ## Cert rotation
 
