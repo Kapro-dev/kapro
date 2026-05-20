@@ -64,8 +64,8 @@
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
       "id": 6,
       "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
-      "targets": [{"expr": "sum(rate(kapro_lifecycle_hook_invocations_total[5m])) by (phase)", "legendFormat": "phase={{phase}}", "refId": "A"}],
-      "title": "Lifecycle Hooks by Promotion Phase",
+      "targets": [{"expr": "sum(rate(kapro_lifecycle_hook_invocations_total{kind=\"Sink\"}[5m])) by (phase)", "legendFormat": "phase={{phase}}", "refId": "A"}],
+      "title": "CloudEvents Sink: Invocations by Promotion Phase",
       "type": "timeseries"
     },
     {
