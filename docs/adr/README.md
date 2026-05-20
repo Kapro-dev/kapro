@@ -12,6 +12,8 @@ relitigating it.
 | [0003](0003-cloudevents-publisher-posture.md) | CloudEvents publisher posture: emit, don't route | Accepted |
 | [0004](0004-camelcase-field-harmonization.md) | Harmonize CRD JSON field names to strict Kubernetes camelCase | Accepted |
 | [0005](0005-withdraw-target-namespace.md) | Withdraw kapro.io/promotion.target.* from the reserved CloudEvents vocabulary | Accepted |
+| [0006](0006-external-gate-predicates.md) | External gate predicates — GateType (KEDA-shaped) | Proposed |
+| [0007](0007-programmatic-sdk.md) | Kapro programmatic SDK — builder + subscriber + gate | Proposed |
 
 ## Adding a new ADR
 
