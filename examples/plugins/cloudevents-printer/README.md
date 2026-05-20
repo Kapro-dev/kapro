@@ -8,7 +8,7 @@ Notifications or Flux Notification Controller and point them at Kapro
 
 ## What it does
 
-- Listens for HTTPS POSTs from `kapro-operator`'s CloudEvents sink.
+- Listens for HTTP POSTs from `kapro-operator`'s CloudEvents sink. (TLS is intentionally not handled in-binary — terminate at an Ingress or service-mesh sidecar in production.)
 - Decodes each request body as a CloudEvents v1.0 structured-mode
   envelope using `kapro.io/kapro/pkg/events.Envelope`.
 - Pretty-prints one line per event to `stdout` in a fleet-narrative
@@ -129,13 +129,13 @@ The printer prints something like:
 ## How the contract is validated
 
 `go test ./examples/plugins/cloudevents-printer/...` includes a sweep
-test (`TestFormatEventEveryEventType`) that walks every constant in
-`events.AllEventTypes()`, renders it, and re-parses it through the
-same handler the server uses. New event types in `pkg/events` are
-exercised automatically.
+test (`TestHandleAcceptsEveryEventType`) that walks every constant in
+`events.AllEventTypes()`, renders it, and POSTs the body through the
+real `server.handle` — same JSON parser, same `specversion` check,
+same `204` response path that production traffic hits. New event
+types in `pkg/events` are exercised automatically.
 
 ## See also
 
 - [`docs/events.md`](../../../docs/events.md) — vocabulary spec
 - [`docs/adr/0003-cloudevents-publisher-posture.md`](../../../docs/adr/0003-cloudevents-publisher-posture.md) — why Kapro doesn't ship Slack backends
-- [`docs/adr/0005-withdraw-target-namespace.md`](../../../docs/adr/0005-withdraw-target-namespace.md) — why no per-cluster events

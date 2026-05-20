@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -85,12 +84,15 @@ func TestHandleRejectsNonPost(t *testing.T) {
 	}
 }
 
-// TestFormatEventEveryEventType makes sure formatEvent doesn't blow
-// up or produce empty output for any constant in the Kapro vocabulary.
-// New event types are exercised automatically by this sweep.
-func TestFormatEventEveryEventType(t *testing.T) {
+// TestHandleAcceptsEveryEventType sweeps every constant in
+// events.AllEventTypes(), renders an envelope for it, and POSTs it
+// through the real server.handle. This catches two failure modes in
+// one test: a new EventType whose rendered envelope confuses Unmarshal,
+// or a new EventType whose printed line is empty. The handler invocation
+// makes the README's "re-parses through the same handler" claim true.
+func TestHandleAcceptsEveryEventType(t *testing.T) {
 	for _, et := range events.AllEventTypes() {
-		_, env, err := events.Render(events.Event{
+		body, env, err := events.Render(events.Event{
 			Type:          et,
 			PromotionName: "canary",
 			Phase:         "Progressing",
@@ -100,29 +102,26 @@ func TestFormatEventEveryEventType(t *testing.T) {
 			t.Errorf("Render %q: %v", et, err)
 			continue
 		}
-		out := formatEvent(env)
-		if out == "" {
+		if env.Type != et {
+			t.Errorf("Render(%q).Type = %q", et, env.Type)
+		}
+		if out := formatEvent(env); out == "" {
 			t.Errorf("formatEvent(%q) returned empty string", et)
 		}
-		// Round-trip the rendered envelope through the same JSON parser
-		// the server uses, exercising the full pipeline.
-		var rt events.Envelope
-		if err := json.Unmarshal(mustRender(t, et), &rt); err != nil {
-			t.Errorf("unmarshal %q: %v", et, err)
-		}
-		if rt.Type != et {
-			t.Errorf("round-trip type = %q, want %q", rt.Type, et)
-		}
-	}
-}
 
-func mustRender(t *testing.T, et events.EventType) []byte {
-	t.Helper()
-	body, _, err := events.Render(events.Event{
-		Type: et, PromotionName: "x", Phase: "Progressing",
-	})
-	if err != nil {
-		t.Fatal(err)
+		// Invoke the real handler — round-trips through the same JSON
+		// parser, specversion check, and 204 response path that
+		// production traffic hits.
+		var captured strings.Builder
+		s := newServer("", log.New(&captured, "", 0))
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
+		s.handle(rr, req)
+		if rr.Code != http.StatusNoContent {
+			t.Errorf("handle(%q): status = %d, want 204; body=%s", et, rr.Code, rr.Body.String())
+		}
+		if !strings.Contains(captured.String(), strings.TrimPrefix(string(et), "kapro.io/")) {
+			t.Errorf("handle(%q): printed output missing type token; got %q", et, captured.String())
+		}
 	}
-	return body
 }

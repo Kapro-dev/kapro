@@ -5,9 +5,12 @@
 //
 // What it does
 //
-//   - Listens for HTTPS POSTs from the Kapro operator's CloudEvents
+//   - Listens for HTTP POSTs from the Kapro operator's CloudEvents
 //     sink (the URL configured via KAPRO_EVENTS_SINK_URL on the
-//     kapro-operator Deployment).
+//     kapro-operator Deployment). The bundled in-cluster manifest
+//     terminates TLS at the Ingress; the binary itself speaks plain
+//     HTTP so that fronting it with any TLS proxy / service mesh /
+//     OAuth gateway stays straightforward.
 //   - Decodes each request body as a CloudEvents v1.0 structured-mode
 //     envelope using `kapro.io/kapro/pkg/events.Envelope`.
 //   - Pretty-prints one line per event to stdout in a
@@ -31,6 +34,7 @@
 package main
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -60,14 +64,17 @@ func main() {
 	flag.Parse()
 
 	expectedAuth := os.Getenv(envAuthHeader)
-	srv := newServer(expectedAuth, log.New(os.Stdout, "", log.LstdFlags|log.LUTC))
+	out := log.New(os.Stdout, "", log.LstdFlags|log.LUTC)
+	srv := newServer(expectedAuth, out)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", srv.handle)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	log.Printf("cloudevents-printer listening on %s (auth header required: %t)",
+	// Use the same logger instance for startup as for event lines so
+	// stdout shows one consistent stream and tests can redirect it.
+	out.Printf("cloudevents-printer listening on %s (auth header required: %t)",
 		*listen, expectedAuth != "")
 	httpSrv := &http.Server{
 		Addr:              *listen,
@@ -75,7 +82,7 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatalf("server: %v", err)
+		out.Fatalf("server: %v", err)
 	}
 }
 
@@ -95,9 +102,18 @@ func (s *server) handle(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "POST required", http.StatusMethodNotAllowed)
 		return
 	}
-	if s.expectedAuth != "" && r.Header.Get("X-Kapro-Auth") != s.expectedAuth {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
+	if s.expectedAuth != "" {
+		// Constant-time comparison defends against timing-side-channel
+		// attacks even when this binary is briefly exposed beyond a
+		// trusted network boundary. crypto/subtle.ConstantTimeCompare
+		// returns 0 when the two byte slices differ in any byte (or
+		// in length), and 1 on exact match.
+		given := []byte(r.Header.Get("X-Kapro-Auth"))
+		want := []byte(s.expectedAuth)
+		if subtle.ConstantTimeCompare(given, want) != 1 {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20)) // 1 MiB ceiling
 	if err != nil {
