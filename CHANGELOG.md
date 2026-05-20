@@ -40,6 +40,22 @@ list as a stable JSON array. Other Kapro kinds
 so `kapro lint **/*.yaml` does not flag manifests the linter has no
 rules for yet.
 
+### Added — `kapro diag` CLI
+
+New `kapro diag <promotion>` command renders a single-screen narrative of a
+Promotion's current state: phase + age, conditions, attempt history, active
+run targets, blocked-on hints (gates, approvals, suspension), recent
+Kubernetes Events, and suggested next-action commands.
+
+Use it as the default "what is this Promotion doing right now?" entry point
+before reaching for `kubectl describe`. Supports `-o json` for scripting and
+`--events N` to bound the events table.
+
+```
+kapro diag checkout-v1.2.3
+kapro diag checkout-v1.2.3 -o json
+kapro diag checkout-v1.2.3 --events 25
+```
 ## v0.1.0 - 2026-05-19
 
 `v0.1.0` is the first public Kapro release. It supersedes the earlier alpha
