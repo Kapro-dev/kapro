@@ -72,6 +72,8 @@ Passes versions forward. Across targets. Across clusters. In waves.`,
 	root.AddCommand(newGetCmd())
 	root.AddCommand(newLintCmd())
 	root.AddCommand(newDiagCmd())
+	root.AddCommand(newSuspendCmd())
+	root.AddCommand(newResumeCmd())
 	root.AddCommand(newDemoCmd())
 
 	if err := root.Execute(); err != nil {
