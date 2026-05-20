@@ -872,13 +872,21 @@ func runPromotionCreate(ctx context.Context, name, kaproRef, version string,
 			Spec:       spec,
 		}
 		if err := c.Create(ctx, promo); err != nil {
-			return fmt.Errorf("create Promotion: %w", err)
+			if !apierrors.IsAlreadyExists(err) {
+				return fmt.Errorf("create Promotion: %w", err)
+			}
+			promo = &kaprov1alpha1.Promotion{}
+			if err := c.Get(ctx, client.ObjectKey{Name: name}, promo); err != nil {
+				return fmt.Errorf("get existing Promotion after create race: %w", err)
+			}
+			if err := updatePromotionSpec(ctx, c, promo, spec); err != nil {
+				return err
+			}
+			op = "updated"
 		}
 	} else {
-		patch := client.MergeFrom(promo.DeepCopy())
-		promo.Spec = spec
-		if err := c.Patch(ctx, promo, patch); err != nil {
-			return fmt.Errorf("update Promotion: %w", err)
+		if err := updatePromotionSpec(ctx, c, promo, spec); err != nil {
+			return err
 		}
 		op = "updated"
 	}
@@ -898,6 +906,15 @@ func runPromotionCreate(ctx context.Context, name, kaproRef, version string,
 		fmt.Printf("   Scope:     %s\n", strings.Join(scope, ", "))
 	}
 	fmt.Printf("\nWatch progress:\n  kubectl get promotion %s -w\n  kubectl get promotionruns -l kapro.io/promotion=%s\n", name, name)
+	return nil
+}
+
+func updatePromotionSpec(ctx context.Context, c client.Client, promo *kaprov1alpha1.Promotion, spec kaprov1alpha1.PromotionSpec) error {
+	patch := client.MergeFrom(promo.DeepCopy())
+	promo.Spec = spec
+	if err := c.Patch(ctx, promo, patch); err != nil {
+		return fmt.Errorf("update Promotion: %w", err)
+	}
 	return nil
 }
 
