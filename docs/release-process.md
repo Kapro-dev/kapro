@@ -50,11 +50,11 @@ The release candidate is not ready if:
 - PromotionTrigger signature policy failures do not surface in status
   conditions or Events.
 
-## v0.4.0-alpha.0 Scope
+## v0.1.0 Scope
 
-Position `v0.4.0-alpha.0` as alpha production-capable for controlled adopters,
-not as a GA stability promise. Use `CHANGELOG.md` for release notes and
-`docs/ROADMAP.md` for the remaining GA exit criteria.
+Position `v0.1.0` as the first public pre-stable release for controlled
+adopters, not as a GA stability promise. Use `CHANGELOG.md` for release notes
+and `docs/api-stability.md` for compatibility guidance.
 
 Include:
 
@@ -86,7 +86,7 @@ Call out known limitations:
 
 For a tagged release, publish:
 
-- Git tag, for example `v0.4.0-alpha.0`.
+- Git tag, for example `v0.1.0`.
 - GitHub release notes generated from `CHANGELOG.md`.
 - Operator image: `ghcr.io/kapro-dev/kapro-operator:<tag>`.
 - Cosign signature for the operator image.
@@ -98,8 +98,8 @@ For a tagged release, publish:
 After verification and review:
 
 ```bash
-git tag -a v0.4.0-alpha.0 -m "v0.4.0-alpha.0"
-git push origin v0.4.0-alpha.0
+git tag -a v0.1.0 -m "v0.1.0"
+git push origin v0.1.0
 ```
 
 The release workflow builds and pushes the operator image, signs it with

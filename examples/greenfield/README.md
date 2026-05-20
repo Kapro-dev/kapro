@@ -26,7 +26,7 @@ Files:
 | `fleetclusters.yaml` | Three FleetClusters using `outbound-agent` + `oci` + `pull` mode. |
 | `backend-profile.yaml` | BackendProfile selecting the `oci` driver with default OCI pull parameters. |
 | `promotionplan.yaml` | A 2-stage plan: canary → general, with a manual approval between stages. |
-| `promotionrun.yaml` | Promotes `v1.2.3` of the bundle to the fleet. |
+| `promotionrun.yaml` | Advanced direct PromotionRun compatibility manifest that promotes `v1.2.3` of the bundle to the fleet. |
 
 ## How it differs from kind-demo
 
@@ -72,10 +72,7 @@ When converged, every FleetCluster reports
 
 ## See also
 
-- [`docs/push-vs-pull.md`](../../docs/push-vs-pull.md) — when to choose
-  outbound-agent + pull vs hub-dial + push.
-- [`docs/providers.md`](../../docs/providers.md) — `outbound-agent` provider.
-- [`docs/actuators.md`](../../docs/actuators.md) — `oci` (greenfield) vs
-  `flux` (brownfield) spoke providers.
+- [`docs/backends.md`](../../docs/backends.md) — when to choose pull, push,
+  observe, or adopt modes.
 - [`docs/cluster-bootstrap.md`](../../docs/cluster-bootstrap.md) — the
   CSR-based registration protocol used by outbound-agent.

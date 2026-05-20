@@ -61,12 +61,13 @@ type PromotionTriggerSource struct {
 type OCIPromotionTriggerSource struct {
 	// Repository is the OCI repository to observe.
 	Repository string `json:"repository"`
-	// TagPattern is a regular expression. Only matching tags can create promotionruns.
+	// TagPattern is a regular expression. Only matching tags can create or update
+	// Promotions.
 	// +kubebuilder:validation:MinLength=1
 	TagPattern string `json:"tagPattern"`
-	// RequireSignature requires a configured verifier to pass before creating a
-	// PromotionRun. Defaults to false so triggers do not fail closed unless a
-	// signature policy is intentionally enabled.
+	// RequireSignature requires a configured verifier to pass before creating or
+	// updating Promotion intent. Defaults to false so triggers do not fail closed
+	// unless a signature policy is intentionally enabled.
 	// +kubebuilder:default=false
 	RequireSignature bool `json:"requireSignature,omitempty"`
 	// PollInterval controls how often the source is checked.
@@ -172,11 +173,12 @@ type PromotionTriggerArtifact struct {
 // +kubebuilder:printcolumn:name="Active",type=integer,JSONPath=`.status.activePromotionRunCount`,priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// PromotionTrigger observes verified artifact changes and creates PromotionRun objects.
-// It is safe by default for promotion-side concerns: triggers are suspended by default
-// and any PromotionRuns they create are suspended by default. OCI signature verification
-// is opt-in per source (`spec.source.oci.requireSignature`, default false) so a trigger
-// does not fail closed unless a signature policy is intentionally enabled.
+// PromotionTrigger observes verified artifact changes and creates or updates
+// Promotion intent. It is safe by default for promotion-side concerns: triggers
+// are suspended by default and created Promotions default to suspended. OCI
+// signature verification is opt-in per source (`spec.source.oci.requireSignature`,
+// default false) so a trigger does not fail closed unless a signature policy is
+// intentionally enabled.
 type PromotionTrigger struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

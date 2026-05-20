@@ -1,0 +1,74 @@
+# Kapro Concepts
+
+Kapro separates fleet setup, rollout intent, and runtime execution. Users author
+durable intent; controllers create execution records and per-target state.
+
+## Object Model
+
+| Object | Authored by | Purpose |
+|---|---|---|
+| `Kapro` | Platform team | Defines the fleet root: source, delivery defaults, clusters, and stage plan. |
+| `PromotionSource` | Platform or app team | Declares deployable units and the backend-native fields Kapro may update. |
+| `Promotion` | App team or automation | Requests that a version move through a Kapro fleet. |
+| `PromotionRun` | Controller | Records one execution attempt stamped from a Promotion. |
+| `PromotionTarget` | Controller | Tracks one cluster/stage execution inside a run. |
+| `FleetCluster` | Platform team or bootstrap controller | Represents one workload cluster and its delivery settings. |
+| `Approval` | Human or approval webhook | Carries approve/reject state for a gated target. |
+
+## Promotion Lifecycle
+
+1. A user or CI system creates or updates a `Promotion`.
+2. The Promotion controller stamps a new `PromotionRun` when the effective
+   rollout input changes.
+3. The PromotionRun controller resolves the selected plan and clusters.
+4. The controller creates `PromotionTarget` children for each selected
+   cluster/stage.
+5. Each target moves through gates, approval, apply, health, and convergence.
+6. Status rolls up from targets to the run and from the active run to the
+   Promotion.
+
+`PromotionRun` objects are execution history. A new version creates a new run;
+Kapro does not rewrite an old run into a different desired version.
+
+## Stage Plans
+
+A stage selects clusters by label and may declare:
+
+- dependencies on earlier stages;
+- maximum parallelism;
+- gates such as soak, CEL checks, metrics, or approvals;
+- backend-specific delivery settings inherited from the fleet or cluster.
+
+The plan is reusable. A Promotion supplies the version and optional scope; the
+plan supplies rollout shape.
+
+## Backend Adaptability
+
+Kapro does not require a single deployment backend. Each cluster can point to a
+delivery mode that fits its network and ownership boundary:
+
+- hub-to-cluster push for centrally reachable clusters;
+- spoke-side pull for outbound-only clusters;
+- Flux or Argo CD integration for existing GitOps estates;
+- external plugins for platform-specific apply, gate, or planning logic.
+
+See [Backends](backends.md) for the supported modes.
+
+## Generated Objects
+
+For the quickstart path, users normally write:
+
+- `Kapro`
+- `PromotionSource`
+- `Promotion`
+- `Approval` when a manual gate blocks
+
+Kapro or its controllers generate and update:
+
+- `FleetCluster` entries from `Kapro.spec.clusters`
+- `PromotionPlan` entries from `Kapro.spec.promotionPlan`
+- `PromotionRun`
+- `PromotionTarget`
+
+Direct `PromotionRun` manifests remain an advanced compatibility path, not the
+recommended first-use API.

@@ -24,12 +24,12 @@ Kapro uses two plugin ecosystem labels:
 | Label | Meaning | Status |
 |---|---|---|
 | Kapro-compatible plugin | Implements one supported KAI, KGI, or KPI contract, reports the matching `contract_version`, passes the relevant base conformance harness, and documents runtime assumptions. | Available now |
-| Certified Kapro plugin | Meets the compatible-plugin bar plus future project certification requirements such as provenance, support windows, upgrade testing, and operational limits. | Future work |
+| Certified Kapro plugin | Reserved for a later certification process. Do not use this label yet. | Reserved |
 
 Third-party authors can claim Kapro-compatible when the published contract and
 conformance requirements are met. Do not describe a plugin as certified until a
 certification process exists. See `docs/plugin-compatibility.md` for the
-current matrix and future certification story.
+current compatibility matrix.
 
 ## Contracts
 

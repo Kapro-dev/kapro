@@ -5,8 +5,8 @@ lifecycle events, and language-neutral plugin contracts. The maturity level
 describes compatibility expectations for users and plugin authors; it does not
 change Kubernetes API version strings by itself.
 
-The current release line is pre-stable. `v0.4.0-alpha.0` is the first release
-candidate for the full promotion-domain API, not a promise that all
+The current release line is pre-stable. `v0.1.0` is the first public release
+for the full promotion-domain API, not a promise that all
 `kapro.io/v1alpha1` fields are stable. `CHANGELOG.md` and the release notes are
 the binding upgrade record for each tag.
 
@@ -26,7 +26,7 @@ Preview. The table below is the source of truth for the current contract level.
 
 | Surface | Path | Level |
 |---|---|---|
-| Core promotion CRDs | `api/v1alpha1` `Kapro`, `PromotionRun`, `PromotionTarget`, `PromotionPlan`, `PromotionSource`, `PromotionUnit`, `FleetCluster`, `BackendProfile`, `Approval` | Alpha |
+| Core promotion CRDs | `api/v1alpha1` `Kapro`, `Promotion`, `PromotionRun`, `PromotionTarget`, `PromotionPlan`, `PromotionSource`, `PromotionUnit`, `FleetCluster`, `BackendProfile`, `Approval` | Alpha |
 | PromotionTrigger CRD | `api/v1alpha1` `PromotionTrigger` | Preview |
 | PluginRegistration CRD | `api/v1alpha1` `PluginRegistration` | Preview |
 | Agent decision APIs | `api/v1alpha1` `AgentPolicy`, `PromotionTarget.status.decisionTrace`, Decision API HTTP routes | Preview |
@@ -45,12 +45,12 @@ stable API version. A surface can be Preview while the Kubernetes version is
 still `v1alpha1`; the table above is the source of truth for compatibility
 expectations.
 
-No public surface is Stable in `v0.4.0-alpha.0`.
+No public surface is Stable in `v0.1.0`.
 
 ## Stable Core Versus Preview
 
-The core runtime path is the promotion execution model: `PromotionRun`,
-`PromotionTarget`, `PromotionPlan`, `FleetCluster`, `BackendProfile`,
+The core runtime path is the promotion execution model: `Promotion`,
+`PromotionRun`, `PromotionTarget`, `PromotionPlan`, `FleetCluster`, `BackendProfile`,
 `PromotionSource`, and `Approval`. These APIs are still versioned
 `v1alpha1`, but they are the durable product center and are exercised by the
 operator runtime.
@@ -132,7 +132,7 @@ tests still include migration notes.
 
 ## Schema Compatibility Expectations
 
-Kapro does not publish conversion webhooks in `v0.4.0-alpha.0`. Operators should
+Kapro does not publish conversion webhooks in `v0.1.0`. Operators should
 therefore assume that the storage schema in a tagged release must be readable by
 that same operator version and by any downgrade version named in release notes.
 

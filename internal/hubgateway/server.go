@@ -23,7 +23,7 @@ import (
 // Kubernetes CRDs remain the durable source of truth.
 type Server struct {
 	Client client.Client
-	// BearerToken gates graph reads and promotionrun creation. /healthz is public.
+	// BearerToken gates graph reads and promotion creation. /healthz is public.
 	BearerToken []byte
 }
 
@@ -36,7 +36,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.healthz)
 	mux.HandleFunc("/api/v1/graph", s.requireAuth(s.graph))
-	mux.HandleFunc("/api/v1/promotionruns", s.requireAuth(s.promotionruns))
+	mux.HandleFunc("/api/v1/promotions", s.requireAuth(s.promotions))
 	return mux
 }
 
@@ -103,6 +103,25 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 		response.Page.Counts["fleetclusters"] = count
 		response.Page.Truncated = response.Page.Truncated || truncated
 	}
+	if opts.wants("promotions") {
+		items, count, truncated, err := listGraphItems(
+			ctx,
+			s.Client,
+			opts,
+			func() client.ObjectList { return &kaprov1alpha1.PromotionList{} },
+			func(list client.ObjectList) []kaprov1alpha1.Promotion {
+				return list.(*kaprov1alpha1.PromotionList).Items
+			},
+			filterPromotionsByPhase,
+		)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		response.Promotions = items
+		response.Page.Counts["promotions"] = count
+		response.Page.Truncated = response.Page.Truncated || truncated
+	}
 	if opts.wants("promotionruns") {
 		items, count, truncated, err := listGraphItems(
 			ctx,
@@ -164,17 +183,17 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
-func (s *Server) promotionruns(w http.ResponseWriter, r *http.Request) {
+func (s *Server) promotions(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPost:
-		s.createPromotionRun(w, r)
+		s.createPromotion(w, r)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-func (s *Server) createPromotionRun(w http.ResponseWriter, r *http.Request) {
-	var req CreatePromotionRunRequest
+func (s *Server) createPromotion(w http.ResponseWriter, r *http.Request) {
+	var req CreatePromotionRequest
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
@@ -182,28 +201,30 @@ func (s *Server) createPromotionRun(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := validateCreatePromotionRunRequest(req); err != nil {
+	if err := validateCreatePromotionRequest(req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	promotionrun := &kaprov1alpha1.PromotionRun{
-		TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "PromotionRun"},
+	promotion := &kaprov1alpha1.Promotion{
+		TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "Promotion"},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   req.Name,
 			Labels: req.Labels,
 		},
-		Spec: kaprov1alpha1.PromotionRunSpec{
+		Spec: kaprov1alpha1.PromotionSpec{
+			KaproRef:       req.KaproRef,
 			Version:        req.Version,
 			Versions:       req.Versions,
 			PromotionPlans: req.PromotionPlans,
 			Timeout:        req.Timeout,
+			Suspended:      req.Suspended,
 		},
 	}
 	if len(req.Targets) > 0 {
-		promotionrun.Spec.Scope = &kaprov1alpha1.PromotionRunScope{Targets: req.Targets}
+		promotion.Spec.Scope = &kaprov1alpha1.PromotionRunScope{Targets: req.Targets}
 	}
-	if err := s.Client.Create(r.Context(), promotionrun); err != nil {
+	if err := s.Client.Create(r.Context(), promotion); err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
@@ -215,22 +236,25 @@ func (s *Server) createPromotionRun(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusCreated, promotionrun)
+	writeJSON(w, http.StatusCreated, promotion)
 }
 
-type CreatePromotionRunRequest struct {
+type CreatePromotionRequest struct {
 	Name           string                           `json:"name"`
+	KaproRef       string                           `json:"kaproRef"`
 	Version        string                           `json:"version,omitempty"`
 	Versions       map[string]string                `json:"versions,omitempty"`
-	PromotionPlans []kaprov1alpha1.PromotionPlanRef `json:"promotionplans"`
+	PromotionPlans []kaprov1alpha1.PromotionPlanRef `json:"promotionPlans,omitempty"`
 	Targets        []string                         `json:"targets,omitempty"`
 	Timeout        string                           `json:"timeout,omitempty"`
+	Suspended      bool                             `json:"suspended,omitempty"`
 	Labels         map[string]string                `json:"labels,omitempty"`
 }
 
 type GraphResponse struct {
 	Kapros           []kaprov1alpha1.Kapro           `json:"kapros"`
 	FleetClusters    []kaprov1alpha1.FleetCluster    `json:"fleetClusters"`
+	Promotions       []kaprov1alpha1.Promotion       `json:"promotions"`
 	PromotionRuns    []kaprov1alpha1.PromotionRun    `json:"promotionruns"`
 	PromotionTargets []kaprov1alpha1.PromotionTarget `json:"promotionTargets"`
 	BackendProfiles  []kaprov1alpha1.BackendProfile  `json:"backendProfiles"`
@@ -289,9 +313,9 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func validateCreatePromotionRunRequest(req CreatePromotionRunRequest) error {
-	if req.Name == "" || len(req.PromotionPlans) == 0 {
-		return fmt.Errorf("name and promotionplans are required")
+func validateCreatePromotionRequest(req CreatePromotionRequest) error {
+	if req.Name == "" || req.KaproRef == "" {
+		return fmt.Errorf("name and kaproRef are required")
 	}
 	if req.Version == "" && len(req.Versions) == 0 {
 		return fmt.Errorf("version or versions is required")
@@ -299,8 +323,11 @@ func validateCreatePromotionRunRequest(req CreatePromotionRunRequest) error {
 	if errs := validation.IsDNS1123Subdomain(req.Name); len(errs) > 0 {
 		return fmt.Errorf("name must be a DNS-1123 subdomain: %s", strings.Join(errs, "; "))
 	}
+	if errs := validation.IsDNS1123Subdomain(req.KaproRef); len(errs) > 0 {
+		return fmt.Errorf("kaproRef must be a DNS-1123 subdomain: %s", strings.Join(errs, "; "))
+	}
 	if len(req.PromotionPlans) > 64 {
-		return fmt.Errorf("promotionplans must contain at most 64 entries")
+		return fmt.Errorf("promotionPlans must contain at most 64 entries")
 	}
 	for unit, version := range req.Versions {
 		if unit == "" || version == "" {
@@ -309,13 +336,13 @@ func validateCreatePromotionRunRequest(req CreatePromotionRunRequest) error {
 	}
 	for i, p := range req.PromotionPlans {
 		if p.Name == "" || p.PromotionPlan == "" {
-			return fmt.Errorf("promotionplans[%d].name and promotionplans[%d].promotionplan are required", i, i)
+			return fmt.Errorf("promotionPlans[%d].name and promotionPlans[%d].promotionplan are required", i, i)
 		}
 		if errs := validation.IsDNS1123Subdomain(p.Name); len(errs) > 0 {
-			return fmt.Errorf("promotionplans[%d].name must be a DNS-1123 subdomain: %s", i, strings.Join(errs, "; "))
+			return fmt.Errorf("promotionPlans[%d].name must be a DNS-1123 subdomain: %s", i, strings.Join(errs, "; "))
 		}
 		if errs := validation.IsDNS1123Subdomain(p.PromotionPlan); len(errs) > 0 {
-			return fmt.Errorf("promotionplans[%d].promotionplan must be a DNS-1123 subdomain: %s", i, strings.Join(errs, "; "))
+			return fmt.Errorf("promotionPlans[%d].promotionplan must be a DNS-1123 subdomain: %s", i, strings.Join(errs, "; "))
 		}
 	}
 	if req.Timeout != "" {
@@ -376,6 +403,7 @@ func parseGraphResources(raw string) (map[string]bool, string, error) {
 		return map[string]bool{
 			"kapros":           true,
 			"fleetclusters":    true,
+			"promotions":       true,
 			"promotionruns":    true,
 			"promotiontargets": true,
 			"backendprofiles":  true,
@@ -391,7 +419,7 @@ func parseGraphResources(raw string) (map[string]bool, string, error) {
 		}
 		out[name] = true
 	}
-	for _, name := range []string{"kapros", "fleetclusters", "promotionruns", "promotiontargets", "backendprofiles"} {
+	for _, name := range []string{"kapros", "fleetclusters", "promotions", "promotionruns", "promotiontargets", "backendprofiles"} {
 		if out[name] {
 			canonical = append(canonical, name)
 		}
@@ -405,6 +433,8 @@ func canonicalGraphResource(raw string) string {
 		return "kapros"
 	case "fleetcluster", "fleetclusters", "cluster", "clusters":
 		return "fleetclusters"
+	case "promotion", "promotions":
+		return "promotions"
 	case "promotionrun", "promotionruns":
 		return "promotionruns"
 	case "promotiontarget", "promotiontargets", "target", "targets":
@@ -477,6 +507,19 @@ func filterKaprosByPhase(items []kaprov1alpha1.Kapro, phase string) []kaprov1alp
 }
 
 func filterFleetClustersByPhase(items []kaprov1alpha1.FleetCluster, phase string) []kaprov1alpha1.FleetCluster {
+	if phase == "" {
+		return items
+	}
+	out := items[:0]
+	for _, item := range items {
+		if strings.EqualFold(string(item.Status.Phase), phase) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func filterPromotionsByPhase(items []kaprov1alpha1.Promotion, phase string) []kaprov1alpha1.Promotion {
 	if phase == "" {
 		return items
 	}

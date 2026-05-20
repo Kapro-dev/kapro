@@ -73,10 +73,12 @@ Plugins should:
 `PromotionTrigger` is conservative by default:
 
 - `spec.suspended` defaults to `true`;
-- generated PromotionRuns default to suspended;
+- generated Promotions default to suspended, and stamped PromotionRuns inherit
+  that suspension;
 - OCI signature verification defaults to off until a trigger verifier is
   configured, and fails closed when explicitly required without a verifier;
-- generated PromotionRuns should use immutable digests, not mutable tags;
+- generated Promotions and stamped PromotionRuns should use immutable digests,
+  not mutable tags;
 - cooldown and max-active limits reduce PromotionRun floods.
 
 The intended production posture is:
@@ -85,10 +87,10 @@ The intended production posture is:
 2. Kapro observes only tags that match the trigger pattern.
 3. Kapro resolves the tag to an immutable digest.
 4. If `requireSignature: true` is set and a verifier is configured, Kapro
-   verifies signature policy before PromotionRun creation. Without a configured
+   verifies signature policy before Promotion creation. Without a configured
    verifier, the trigger fails closed with `VerifierUnavailable`.
-5. Kapro creates a suspended, digest-pinned PromotionRun.
-6. A PromotionRun manager reviews and unsuspends the PromotionRun or trigger according to
+5. Kapro creates or updates a suspended, digest-pinned Promotion.
+6. A Promotion manager reviews and unsuspends the Promotion or trigger according to
    environment policy.
 
 Keyless verification should pin expected issuer and subject identity. Key-based
@@ -98,7 +100,7 @@ production PromotionRuns.
 
 ### PromotionTrigger with cosign keyless policy
 
-`PromotionTrigger` observes tags and creates a digest-pinned PromotionRun. Set
+`PromotionTrigger` observes tags and creates or updates a digest-pinned Promotion. Set
 `requireSignature: true` only after installing a verifier implementation for
 the trigger controller; otherwise the trigger intentionally blocks.
 
@@ -129,7 +131,8 @@ spec:
       tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
       requireSignature: true
       pollInterval: 5m
-  promotionrunTemplate:
+  promotionTemplate:
+    kaproRef: checkout
     promotionPlans:
       - name: production
         promotionPlan: checkout-keyless
@@ -166,7 +169,8 @@ spec:
       repository: oci://registry.example.com/platform/checkout
       tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
       requireSignature: true
-  promotionrunTemplate:
+  promotionTemplate:
+    kaproRef: checkout
     promotionPlans:
       - name: production
         promotionPlan: checkout

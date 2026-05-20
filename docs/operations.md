@@ -294,16 +294,16 @@ Check these fields in order:
 | Field | Meaning | Action |
 |---|---|---|
 | `spec.suspended` | Source observation is paused | Resume only if automation is intended |
-| `spec.dryRun` | Controller records what it would create | Disable dry run to create PromotionRuns |
+| `spec.dryRun` | Controller records what it would create | Disable dry run to create or update Promotions |
 | `spec.source.oci.tagPattern` | Tags outside the regex are ignored | Test the regex against the pushed tag |
 | `spec.source.oci.requireSignature` | Signature verification must pass | Verify signer, keyless identity, or verifier availability |
-| `spec.cooldown` | Minimum interval between created PromotionRuns | Wait or adjust future trigger policy |
+| `spec.cooldown` | Minimum interval between Promotion updates | Wait or adjust future trigger policy |
 | `spec.maxActive` | Active PromotionRuns created by the trigger are capped | Complete, fail, or suspend existing active PromotionRuns before expecting another |
 | `status.lastArtifact` | Last observed tag, digest, and verification result | Confirm the digest is the expected immutable artifact |
 
 Mitigation:
 
-- Do not bypass the trigger by creating an unsuspended production PromotionRun unless
+- Do not bypass the trigger by creating an unsuspended production Promotion unless
   incident command explicitly accepts that risk.
 - If `MaxActiveReached`, inspect the active PromotionRuns and resolve the oldest
   non-terminal one first.

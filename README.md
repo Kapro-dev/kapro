@@ -1,11 +1,12 @@
 <p align="center">
-  <img src="docs/logo.png" alt="Kapro logo" width="300">
+  <img src="docs/logo.png" alt="Kapro logo" width="260">
 </p>
 
 <h1 align="center">Kapro</h1>
 
-<p align="center"><strong>The promotion control plane for Kubernetes fleets.</strong><br>
-Kapro coordinates safe artifact promotion across clusters, regions, and clouds while existing GitOps, rollout, traffic, and policy systems execute local changes.</p>
+<p align="center"><strong>A promotion control plane for Kubernetes fleets.</strong><br>
+Kapro coordinates when an artifact version should move across clusters while
+Flux, Argo CD, OCI pull agents, and other delivery systems keep owning the local rollout.</p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
@@ -15,244 +16,121 @@ Kapro coordinates safe artifact promotion across clusters, regions, and clouds w
 
 ---
 
-## Project Status
+Kapro is **pre-stable public release software**, not GA. The current public
+release line is `v0.1.0`; all Kubernetes APIs are still `kapro.io/v1alpha1`.
 
-Kapro is **alpha production-capable**, not GA. The current alpha release is
-`v0.4.0-alpha.0`.
+## What Kapro Does
 
-The current codebase has working install, PromotionRun smoke, Argo brownfield,
-Flux brownfield, inline gate guardrails, plugin hot-load, and KPI planner
-dispatch coverage. It is suitable for controlled adopters who can run the
-documented verification and accept `kapro.io/v1alpha1` API movement.
-
-Do not treat Kapro as GA yet. GA still requires a stable API version, tagged
-release-to-release upgrade history, broad operator soak, and an independent
-security audit. See the [Roadmap](docs/ROADMAP.md) for release exit criteria.
-
-## Choose Your Path
-
-| If you are... | Start here | Goal |
-|---|---|---|
-| Evaluating Kapro locally | [Local Kind Demo](docs/kind-demo.md) | See a complete PromotionRun on a disposable cluster. |
-| Starting greenfield | [First Promotion in 10 Minutes](docs/first-promotion-10min.md) | Install Kapro, apply a minimal hub config, and promote one version. |
-| Adding Kapro to Argo CD | [Argo Brownfield Migration](docs/argo-migration.md) | Discover existing Applications, ApplicationSets, and app-of-apps before adopting writes. |
-| Adding Kapro to Flux | [Flux Brownfield Migration](docs/flux-migration.md) | Discover existing Flux sources, HelmReleases, Kustomizations, and Git version fields. |
-| Operating a shared hub | [Install Kapro](docs/install.md) and [RBAC and Tenancy Model](docs/rbac-tenancy.md) | Configure Helm, RBAC, approvals, and optional Decision API access. |
-| Registering a new fleet cluster (pull mode) | [Cluster Bootstrap](docs/cluster-bootstrap.md) | Install `kapro-cluster-controller` on a workload cluster so it self-registers with the hub. |
-| Tuning cluster reachability | [Heartbeat & Reachability](docs/heartbeat-and-reachability.md) | Understand `consecutiveFailureThreshold`, Ready/Phase transitions, and how in-flight promotions handle Unreachable clusters. |
-| Picking push vs pull for a new cluster | [Push vs Pull Matrix](docs/push-vs-pull.md) | One per-cluster decision; mix freely across the fleet. |
-| Evaluating which providers and actuators ship today | [Providers](docs/providers.md), [Actuators](docs/actuators.md) | Live / Stub / Planned status per `provider.kind` and per backend. |
-| Letting an AI agent promote against your fleet | [Decision API](docs/decision-api.md) | Typed, audited surface with AgentPolicy guard-rails and DecisionTrace audit. |
-
-## What Kapro Is
-
-Kapro is a Kubernetes-native control plane for promoting immutable artifact
-versions across a fleet of clusters.
-
-It answers one operational question:
+Kapro answers one operational question:
 
 ```text
 Which clusters are allowed to receive this artifact version now, and why?
 ```
 
-Kapro owns cross-cluster PromotionRun ordering, target planning, gate evaluation,
-approval state, backend convergence tracking, and auditable status.
+It is useful when one application version must move through many clusters,
+regions, environments, or connectivity models without putting all promotion
+logic into CI scripts.
 
-It delegates artifact build, manifest rendering, GitOps reconciliation,
-in-cluster traffic shaping, and backend-specific rollout strategy to the tools
-that already own those jobs.
+Kapro owns:
 
-## The Missing Fleet Layer
+- cross-cluster promotion intent;
+- stage and wave ordering;
+- target selection;
+- gate and approval state;
+- per-target execution records;
+- backend convergence evidence.
 
-You have a centralized OCI artifact registry. You have edge clusters running Flux, Helm, and Kustomize. But between those two ends, three questions remain unanswered:
+Kapro does not build artifacts, render manifests, replace GitOps controllers,
+or implement in-cluster traffic shifting. Those jobs stay with CI, Helm,
+Kustomize, Flux, Argo CD, Argo Rollouts, service mesh controllers, or custom
+platform tooling.
 
-- How do we stage fleet promotion?
-- How do we manage cross-cluster canaries?
-- How do we validate state before promotion?
+## Core Concepts
 
-A fleet of this scale demands a dedicated, state-aware promotion control plane.
+| Kind | Role |
+|---|---|
+| `Kapro` | Fleet setup root: source, delivery defaults, clusters, and embedded stage plan. |
+| `PromotionSource` | Reusable catalog of deployable units and backend write targets. |
+| `Promotion` | User-authored rollout intent: "promote this version through this Kapro fleet." |
+| `PromotionRun` | Controller-authored execution attempt and audit record. |
+| `PromotionTarget` | Per-cluster, per-stage runtime state. |
+| `FleetCluster` | A workload cluster known to the hub. |
+| `Approval` | Human approval or rejection for a gated target. |
 
-## The Artifact is the Contract
+See [Concepts](docs/concepts.md) for the object model and lifecycle.
 
-Kapro decouples CI from deployment. The artifact version becomes the promotion
-contract: image digest, tag, chart version, Git revision, or per-unit version
-map. CI produces immutable versions; Kapro decides where those versions may go
-next.
+## Adapt To Your Fleet
 
-## Enter Kapro
+Kapro is backend-neutral. A fleet can mix delivery styles by cluster:
 
-Kapro does not replace the Kubernetes delivery ecosystem. It coordinates it.
-Kapro is a fleet
-deployment promotion control plane: it decides when and where a version may
-advance across a fleet; local rollout systems decide how pods, sync, and traffic
-changes happen inside each cluster.
+- **Flux or Argo CD brownfield:** discover existing apps first, review the
+  generated mappings, then opt selected objects into managed promotion.
+- **OCI pull mode:** spoke clusters pull artifacts from inside their own network
+  boundary and report status back to the hub.
+- **Hub push mode:** the hub patches a backend object directly when network and
+  RBAC policy allow it.
+- **Plugins:** custom actuators, gates, and planners can be loaded through
+  `PluginRegistration` after they pass the conformance harness.
 
-It sits above Kubernetes Operators, Helm, Kustomize, OCI registries, GitOps reconciliation loops, Argo CD, Argo Rollouts, Flagger, Istio, Gateway API, and custom plugins as a state-aware promotion control plane.
+Start with [Backends](docs/backends.md) when deciding how Kapro should connect
+to existing delivery systems.
 
-## The Mechanics of Promotion
+## Quick Start
 
-1. **Delegated local rollout strategies.** Keep using Kubernetes Deployments, Argo Rollouts, Flagger, Istio, Gateway API, Flux, Argo CD, Helm, or custom actuators for namespace-local rollout and traffic mechanics.
-2. **Cross-cluster promotion waves.** Kapro coordinates which targets advance first, which regions wait, and when the global fleet may progress.
-3. **Promotion before progression.** Kapro advances only after target health, gates, approvals, plugin status, and policy checks pass; the selected backend executes the local change.
-4. **Auditable evidence.** Kapro persists target phase, gate evidence, approvals, lifecycle events, and PromotionRun outcome in Kubernetes status.
-
-## Greenfield and Brownfield
-
-Kapro supports both connect paths:
-
-- **Greenfield bootstrap:** create the hub, backend profiles, cluster inventory,
-  a Kapro fleet object with inline source units, PromotionPlans, gates, and
-  optional spoke agents from Kapro manifests or CLI flows.
-- **Brownfield connect:** discover existing Argo CD or Flux topology, observe it
-  first, then explicitly adopt selected applications or clusters for promotion.
-
-For Argo CD users, this means Kapro can start from existing cluster Secrets,
-Applications, ApplicationSets, and app-of-apps instead of requiring a full
-rewrite into Kapro objects on day one. Kapro references backend-owned Secrets
-and configuration; it does not copy Argo CD or Flux credentials.
+Install the operator:
 
 ```bash
-# greenfield: outbound-only OCI pull mode
-kapro init ./promotion-repo --backend oci --mode pull --name checkout
-
-# brownfield
-kapro adopt argo . --out ./kapro-connect --namespace argocd --selector kapro.io/import=true
+helm upgrade --install kapro charts/kapro-operator \
+  --namespace kapro-system \
+  --create-namespace
 ```
 
-## Conservative Automation and Reliability
-
-Kapro manages wave-based `dependsOn` execution across PromotionPlans and
-target clusters. Cluster state is reconciled through standard controller-runtime
-patterns and backend convergence checks.
-
-Automated gates ensure that unclear or failing evidence halts progression before
-the next wave. Advanced statistical gate modes are optional; the default path
-stays simple and operator-readable.
-
-## Use Cases
-
-### Multi-Region Fleets
-Roll out across clusters in multiple countries and regions. Pilot a small group first, expand in waves, and halt automatically if something goes wrong. Each region reconciles independently.
-
-### Regulated Environments
-Separate deployment flows per compliance zone. Environment isolation per regulatory boundary, audit trails via signed OCI provenance chains, and mandatory human approval gates before production.
-
-### Edge and Distributed Platforms
-Progressive promotion to hundreds or thousands of edge clusters. Canary groups get new versions first. Health gates block progression if error rates spike. Auto-promotion after a configurable soak period.
-
-## How Kapro Fits
-
-| | Kapro | Flux | ArgoCD | Kargo |
-|---|---|---|---|---|
-| **Multi-cluster promotion** | Native | Manual | App-of-apps | Native |
-| **Fleet promotion orchestration** | Native | Manual | App-of-apps | Native |
-| **OCI-first** | Yes | Partial | Git-centric | Yes |
-| **Sovereign fleet support** | Designed for it | No | No | Limited |
-| **Backend model** | Backend-neutral control plane | Built-in GitOps engine | Built-in GitOps engine | Separate promotion controller |
-| **Health gates** | Pluggable | No | No | Yes |
-| **Manual approvals** | CRD-based | No | External | Yes |
-
-Kapro sits **above** local rollout and GitOps systems, not replacing them, and **alongside** Kargo as a complementary tool. Kapro focuses on horizontal wave ordering across sovereign fleets, while local systems handle namespace-level rollout, sync, traffic shifting, and workload health.
-
-Kapro selects delivery systems through `BackendProfile` and
-`spec.delivery.backendRef`. OCI pull mode is the recommended greenfield path for
-outbound-only fleets. Flux and Argo are first-party integration backends, and
-custom CNCF/platform systems can be added through the plugin path.
-
-Kapro is not a CI engine, traffic manager, generic workflow system, or
-replacement for Flux, Argo CD, Argo Rollouts, Flagger, Kargo, or Tekton. See
-[Vision and Boundaries](docs/vision-and-boundaries.md) for the project scope.
-
-## Getting Started
-
-For a local proof, run the [Kind demo](docs/kind-demo.md). For a minimal
-greenfield walkthrough with expected output, use
-[First Promotion in 10 Minutes](docs/first-promotion-10min.md).
-
-For existing GitOps platforms, start observe-first:
+Apply a minimal source and fleet setup:
 
 ```bash
-kapro adopt argo . --out ./kapro-connect --namespace argocd --selector kapro.io/import=true
-kapro discover flux . --out ./kapro-connect --namespace flux-system --selector kapro.io/import=true
+kubectl apply -f examples/hub-config/backends/flux.yaml
+kubectl apply -f examples/quickstart/kapro.yaml
 ```
 
-Then review the generated `BackendProfile`, `PromotionSource`, and discovery
-evidence before switching any backend profile to `managementPolicy: Adopt`.
+Promote a version:
 
-Existing users upgrading a hub should read the API stability and upgrade policy
-before applying new CRDs or rolling the operator. Plugin users should run the
-matching KAI, KGI, or KPI conformance harness before enabling a new plugin image
-in production. Large fleets should review the scalability guide before raising
-stage parallelism or adding operator replicas.
+```bash
+kubectl apply -f examples/quickstart/promotion.yaml
+kubectl get promotions,promotionruns,promotiontargets
+```
 
-Quick troubleshooting checks:
-
-- `kubectl get promotionruns,promotiontargets,pluginregistrations` to confirm observed
-  generation and readiness caught up.
-- Check the operator logs for disabled controllers, shard selection, plugin
-  gateway registration, and webhook startup.
-- Confirm `KAPRO_HUB_API_URL`, approval secrets, plugin TLS Secrets, and
-  notification Secrets are present in the operator namespace.
-- For discovery failures or `confidence: needs-review` units, use
-  [Discovery Troubleshooting](docs/discovery-troubleshooting.md).
-- For sharded deployments, verify the `kapro.io/shard` label is set when the
-  `PromotionRun` is created.
+For a complete local walkthrough, use the [Kind demo](docs/kind-demo.md). For a
+step-by-step minimal path, use [First Promotion in 10 Minutes](docs/first-promotion-10min.md).
 
 ## Documentation
 
 Start here:
 
-- [Local Kind Demo](docs/kind-demo.md)
+- [Concepts](docs/concepts.md)
+- [Install](docs/install.md)
 - [First Promotion in 10 Minutes](docs/first-promotion-10min.md)
-- [Install Kapro](docs/install.md)
-- [Clean-Clone Install Verification](docs/install-verification.md)
-- [Hub Config Source of Truth](docs/hub-config-source-of-truth.md)
+- [Kind Demo](docs/kind-demo.md)
+- [Backends](docs/backends.md)
+- [Operations](docs/operations.md)
+- [Security](docs/security.md)
+- [API Stability](docs/api-stability.md)
+- [Changelog](CHANGELOG.md)
 
-Core concepts:
-
-- [Architecture Spec](docs/SPEC.md)
-- [Vision and Boundaries](docs/vision-and-boundaries.md)
-- [Backend Architecture](docs/backend-architecture.md)
-- [Backend Ownership](docs/backend-ownership.md)
-- [Supported Backend Patterns](docs/supported-backend-patterns.md)
-- [CNCF Integration Masterplan](docs/cncf-integration-masterplan.md)
-- [Push vs Pull — Per-Cluster Connectivity Matrix](docs/push-vs-pull.md)
-- [Providers](docs/providers.md)
-- [Actuators](docs/actuators.md)
-- [Decision API](docs/decision-api.md)
-- [Promotion Gate Semantics](docs/gate-semantics.md)
-- [Events](docs/events.md)
-
-Backend onboarding:
+Deeper references:
 
 - [Argo Brownfield Migration](docs/argo-migration.md)
 - [Flux Brownfield Migration](docs/flux-migration.md)
-- [Discovery Troubleshooting](docs/discovery-troubleshooting.md)
-
-Operations and security:
-
-- [Operations](docs/operations.md)
+- [RBAC and Tenancy](docs/rbac-tenancy.md)
 - [Monitoring](docs/monitoring.md)
-- [Security Implementation Guide](docs/security.md)
-- [Security Policy](SECURITY.md)
-- [RBAC and Tenancy Model](docs/rbac-tenancy.md)
-- [API Stability and Upgrade Policy](docs/api-stability.md)
-
-Extension points:
-
 - [Extension Model](docs/extension-model.md)
 - [Plugin Authoring](docs/plugin-authoring.md)
-- [Plugin Compatibility](docs/plugin-compatibility.md)
-- [Conformance Packages](docs/conformance.md)
-
-Release history:
-
-- [Changelog](CHANGELOG.md)
-- [Roadmap](docs/ROADMAP.md)
+- [Architecture Decision Records](docs/adr/README.md)
 
 ## Contributing
 
-Kapro is built to be an open-source standard for multi-cluster fleet promotion. Join the project, contribute to the standard, and help make fleet promotion safer and easier to operate.
+Issues and pull requests are welcome. Keep changes tied to implemented behavior:
+public docs should describe what users can run today, while larger design
+decisions belong in [ADRs](docs/adr/README.md).
 
 ## License
 

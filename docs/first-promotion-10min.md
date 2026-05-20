@@ -1,9 +1,10 @@
 # First Promotion in 10 Minutes
 
-This is the shortest greenfield path for seeing Kapro create and reconcile a
-PromotionRun. Use the Kind demo when you want a fully local scripted
-environment; use this page when you already have a Kubernetes cluster and want
-to apply the smallest useful hub configuration yourself.
+This is the shortest greenfield path for seeing Kapro create Promotion intent
+and reconcile a controller-owned PromotionRun attempt. Use the Kind demo when
+you want a fully local scripted environment; use this page when you already
+have a Kubernetes cluster and want to apply the smallest useful hub
+configuration yourself.
 
 ## 1. Install The Operator
 
@@ -58,21 +59,22 @@ matches the labels in the example PromotionPlan.
 ## 4. Promote A Version
 
 ```bash
-kapro promote checkout --version v1.2.3 --plan checkout-promotionplan
-kubectl get promotionruns,promotiontargets
+kapro promote checkout --version v1.2.3
+kubectl get promotions,promotionruns,promotiontargets
 ```
 
 Expected:
 
 ```text
-PromotionRun    created
+Promotion       created or updated
+PromotionRun    created by the controller
 PromotionTarget created for each selected target
 ```
 
 ## 5. Watch The Evidence
 
 ```bash
-kubectl get promotionruns,promotiontargets -w
+kubectl get promotions,promotionruns,promotiontargets -w
 kubectl describe promotiontarget <target-name>
 ```
 

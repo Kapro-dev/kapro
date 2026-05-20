@@ -143,8 +143,8 @@ metadata:
     kapro.io/shard: shard-a
 ```
 
-Shard labels must be applied consistently to `PromotionRun` and `PromotionTarget`
-objects. Admission or automation that creates PromotionRuns should set
+Shard labels must be applied consistently to `Promotion`, `PromotionRun`, and
+`PromotionTarget` objects. Admission or controller automation should set
 `kapro.io/shard` at creation time so the correct controller instance receives
 the first event.
 
