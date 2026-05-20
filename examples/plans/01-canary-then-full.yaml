@@ -1,0 +1,32 @@
+# canary-then-full
+# -----------------
+# The smallest non-trivial PromotionPlan: deliver to one canary cluster,
+# soak for 10 minutes, then deliver to every production cluster in
+# parallel.
+#
+# Cluster labels expected:
+#   kapro.io/tier=canary       (exactly one cluster)
+#   kapro.io/tier=production   (the rest of the fleet)
+apiVersion: kapro.io/v1alpha1
+kind: PromotionPlan
+metadata:
+  name: canary-then-full
+spec:
+  stages:
+    - name: canary
+      selector:
+        matchLabels:
+          kapro.io/tier: canary
+      gate:
+        mode: auto
+        gate:
+          soakTime: 10m
+          healthCheck: true
+    - name: prod
+      selector:
+        matchLabels:
+          kapro.io/tier: production
+      dependsOn:
+        - stage: canary
+          requiredSoakTime: 10m
+          strategy: all

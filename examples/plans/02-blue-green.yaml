@@ -1,0 +1,42 @@
+# blue-green
+# ----------
+# Single-cluster blue/green with a manual cutover gate. The "green"
+# stage delivers the new version side-by-side with the live ("blue")
+# workloads via a separate target namespace; an SRE manually approves
+# the switchover before the "cutover" stage flips traffic.
+#
+# Cluster labels expected:
+#   kapro.io/tier=green     (the cluster running the candidate)
+#   kapro.io/tier=blue      (the cluster currently serving traffic)
+#
+# Note: the actual traffic flip is your service-mesh / load-balancer
+# operator's job. Kapro tells you "the candidate is healthy and an
+# operator approved it" — your network layer does the rest.
+apiVersion: kapro.io/v1alpha1
+kind: PromotionPlan
+metadata:
+  name: blue-green
+spec:
+  stages:
+    - name: green
+      selector:
+        matchLabels:
+          kapro.io/tier: green
+      gate:
+        mode: auto
+        gate:
+          soakTime: 5m
+          healthCheck: true
+    - name: cutover
+      selector:
+        matchLabels:
+          kapro.io/tier: blue
+      dependsOn:
+        - stage: green
+          strategy: all
+      gate:
+        mode: manual
+        approval:
+          required: true
+          approvers:
+            - sre-oncall

@@ -1,0 +1,71 @@
+# metrics-gated
+# -------------
+# Canary must hold error_rate < 1% over a 10-minute window AND
+# p99_latency_ms < 500 over the same window before prod promotes.
+#
+# Both metrics share a `prom-prod` provider preset declared in
+# metricPresets — change the endpoint once at the top, every stage
+# references it by name.
+#
+# Cluster labels expected:
+#   kapro.io/tier=canary
+#   kapro.io/tier=production
+apiVersion: kapro.io/v1alpha1
+kind: PromotionPlan
+metadata:
+  name: metrics-gated
+spec:
+  metricPresets:
+    error-rate:
+      provider: prometheus
+      endpoint: http://prometheus.monitoring.svc:9090
+      query: |
+        sum(rate(http_requests_total{job="checkout",code=~"5.."}[{{.Window}}]))
+        /
+        sum(rate(http_requests_total{job="checkout"}[{{.Window}}]))
+      window: 10m
+      interval: 30s
+      threshold: 0.01
+    p99-latency:
+      provider: prometheus
+      endpoint: http://prometheus.monitoring.svc:9090
+      query: |
+        histogram_quantile(0.99,
+          sum by (le) (rate(http_request_duration_seconds_bucket{job="checkout"}[{{.Window}}]))
+        ) * 1000
+      window: 10m
+      interval: 30s
+      threshold: 500
+  stages:
+    - name: canary
+      selector:
+        matchLabels:
+          kapro.io/tier: canary
+      gate:
+        mode: auto
+        gate:
+          soakTime: 10m
+          healthCheck: true
+          gateTimeout: 30m
+          metrics:
+            - preset: error-rate
+            - preset: p99-latency
+        # If either metric exceeds threshold, halt the rollout and
+        # wait for an operator. Use "rollback" instead if your
+        # backend supports it and the previous version was healthy.
+        onFailure: halt
+    - name: prod
+      selector:
+        matchLabels:
+          kapro.io/tier: production
+      dependsOn:
+        - stage: canary
+          requiredSoakTime: 10m
+          strategy: all
+      gate:
+        mode: auto
+        gate:
+          metrics:
+            - preset: error-rate
+            - preset: p99-latency
+          gateTimeout: 60m

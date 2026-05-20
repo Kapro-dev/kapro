@@ -1,0 +1,36 @@
+# region-failover
+# ---------------
+# Primary region rolls first; the standby region only promotes after
+# the primary has held for 30 minutes. Useful when the standby is
+# truly passive (DR / failover only) and you don't want both regions
+# running the new version at the same time during validation.
+#
+# Cluster labels expected:
+#   kapro.io/role=primary
+#   kapro.io/role=standby
+apiVersion: kapro.io/v1alpha1
+kind: PromotionPlan
+metadata:
+  name: region-failover
+spec:
+  stages:
+    - name: primary
+      selector:
+        matchLabels:
+          kapro.io/role: primary
+      gate:
+        mode: auto
+        gate:
+          soakTime: 30m
+          healthCheck: true
+      # If the primary fails, do NOT advance to standby — leave the
+      # standby on the old version so failover stays safe.
+      onFailure: halt
+    - name: standby
+      selector:
+        matchLabels:
+          kapro.io/role: standby
+      dependsOn:
+        - stage: primary
+          requiredSoakTime: 30m
+          strategy: all

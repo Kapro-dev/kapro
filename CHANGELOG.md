@@ -76,6 +76,22 @@ subcommand; it is now called out in `--help`. Example:
 ```
 kapro completion zsh > "${fpath[1]}/_kapro"
 ```
+
+### Added — reference `PromotionPlan` library (`examples/plans/`)
+
+Six copy-paste-ready PromotionPlans covering the most common shapes:
+
+1. `01-canary-then-full.yaml` — one canary, then everything else.
+2. `02-blue-green.yaml` — single-cluster blue/green with manual cutover.
+3. `03-multi-region-staggered.yaml` — EU → US → APAC with cross-region soak.
+4. `04-region-failover.yaml` — primary + passive standby (failover stays safe).
+5. `05-ring-deployment.yaml` — concentric rings with increasing parallelism.
+6. `06-metrics-gated.yaml` — canary holds error_rate + p99_latency below thresholds.
+
+A unit test (`examples/plans/plans_validate_test.go`) parses each YAML
+into `kapro.io/v1alpha1.PromotionPlan` and checks DAG references, so
+schema drift between the docs and the CRD source-of-truth fails the
+build.
 ## v0.1.0 - 2026-05-19
 
 `v0.1.0` is the first public Kapro release. It supersedes the earlier alpha
