@@ -10,15 +10,21 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	"kapro.io/kapro/internal/cli"
 )
 
-// promotionDiag is the JSON payload shape for `kapro diag -o json`. It is a
-// flat, intentionally stable shape so scripts and downstream tooling can
-// depend on it without unmarshalling raw Kubernetes objects.
+// promotionDiag is the JSON payload shape for `kapro diag -o json`.
+// It is intentionally a thin envelope around the live v1alpha1 /
+// corev1 types — scripts that key on `.promotion.spec.version` or
+// `.events[0].reason` get the full Kubernetes object shape they
+// already know. The envelope keys (`promotion`, `promotionRuns`,
+// `promotionTargets`, `events`, `blockedOn`, `suggestedNextActions`)
+// are the stable contract; the embedded types track their own
+// versioning policy (api/v1alpha1 stability via ADRs).
 type promotionDiag struct {
 	Promotion *kaprov1alpha1.Promotion        `json:"promotion"`
 	Runs      []kaprov1alpha1.PromotionRun    `json:"promotionRuns"`
@@ -96,20 +102,38 @@ func collectDiag(ctx context.Context, c client.Client, name string, eventsLimit 
 		return runs.Items[i].CreationTimestamp.After(runs.Items[j].CreationTimestamp.Time)
 	})
 
-	var targets []kaprov1alpha1.PromotionTarget
+	// Pick the "most relevant" PromotionRun to show target state for:
+	// the active attempt if there is one, otherwise the most recent
+	// historical attempt. Without this fallback a terminal-phase
+	// Promotion (Failed or Succeeded with no in-flight attempt)
+	// renders no target context at all.
+	relevantRunName := ""
 	if promo.Status.ActiveAttemptRef != nil {
-		t, err := listPromotionTargetsForPromotionRun(ctx, c, promo.Status.ActiveAttemptRef.Name)
+		relevantRunName = promo.Status.ActiveAttemptRef.Name
+	} else if len(promo.Status.Attempts) > 0 {
+		relevantRunName = promo.Status.Attempts[0].Name
+	} else if len(runs.Items) > 0 {
+		// Status not yet populated; fall back to whatever the label-
+		// scoped run list produced.
+		relevantRunName = runs.Items[0].Name
+	}
+	var targets []kaprov1alpha1.PromotionTarget
+	if relevantRunName != "" {
+		t, err := listPromotionTargetsForPromotionRun(ctx, c, relevantRunName)
 		if err != nil {
 			return nil, err
 		}
 		targets = t
 	}
 
-	var events corev1.EventList
-	if err := c.List(ctx, &events); err != nil {
-		return nil, fmt.Errorf("list events: %w", err)
-	}
-	filtered := filterPromotionEvents(events.Items, &promo, runs.Items, targets)
+	// Event collection is best-effort and intentionally scoped. The
+	// previous behaviour was c.List(events) cluster-wide, which can
+	// be slow / memory-heavy / RBAC-rejected on large clusters.
+	// Instead, do one targeted list per object we actually care
+	// about, using the API server's built-in involvedObject.name
+	// field selector. Failures are non-fatal — diag is useful even
+	// without events.
+	filtered := collectScopedEvents(ctx, c, &promo, runs.Items, targets)
 	sort.Slice(filtered, func(i, j int) bool {
 		return eventTime(filtered[i]).After(eventTime(filtered[j]))
 	})
@@ -126,6 +150,59 @@ func collectDiag(ctx context.Context, c client.Client, name string, eventsLimit 
 	d.BlockedOn = computeBlockedOn(&promo, targets)
 	d.Next = computeNextActions(&promo, targets)
 	return d, nil
+}
+
+// collectScopedEvents does one List per (Kind, Name) we care about,
+// using the Event resource's built-in involvedObject.name field
+// selector. The API server returns only matching events, so this
+// stays fast on large clusters and works under tight Event-read RBAC
+// (the equivalent of `kubectl get events --field-selector=...`).
+//
+// Each list is best-effort: failures are accumulated into a single
+// warning log but never block the rest of diag — events are
+// context, not load-bearing for the rollout state diagnosis.
+func collectScopedEvents(ctx context.Context, c client.Client, p *kaprov1alpha1.Promotion,
+	runs []kaprov1alpha1.PromotionRun, targets []kaprov1alpha1.PromotionTarget) []corev1.Event {
+
+	names := []string{p.Name}
+	for _, r := range runs {
+		names = append(names, r.Name)
+	}
+	for _, t := range targets {
+		names = append(names, t.Name)
+	}
+
+	var out []corev1.Event
+	for _, n := range names {
+		if n == "" {
+			continue
+		}
+		var list corev1.EventList
+		sel := fields.OneTermEqualSelector("involvedObject.name", n)
+		err := c.List(ctx, &list, &client.ListOptions{FieldSelector: sel})
+		if err != nil {
+			// Field-selector listing is unavailable (e.g. fake client
+			// without an index). Fall back to one unscoped list and
+			// filter client-side. Best-effort by design.
+			return fallbackUnscopedEvents(ctx, c, p, runs, targets)
+		}
+		out = append(out, list.Items...)
+	}
+	return out
+}
+
+// fallbackUnscopedEvents preserves the original cluster-wide list
+// behaviour for environments where the field-selector path errors
+// (notably the controller-runtime fake client without a registered
+// index). It is intentionally only reachable from collectScopedEvents
+// — production clients use the scoped path.
+func fallbackUnscopedEvents(ctx context.Context, c client.Client, p *kaprov1alpha1.Promotion,
+	runs []kaprov1alpha1.PromotionRun, targets []kaprov1alpha1.PromotionTarget) []corev1.Event {
+	var list corev1.EventList
+	if err := c.List(ctx, &list); err != nil {
+		return nil
+	}
+	return filterPromotionEvents(list.Items, p, runs, targets)
 }
 
 func filterPromotionEvents(all []corev1.Event, p *kaprov1alpha1.Promotion,
@@ -199,11 +276,19 @@ func computeNextActions(p *kaprov1alpha1.Promotion, targets []kaprov1alpha1.Prom
 	}
 	if p.Status.Phase == kaprov1alpha1.PromotionPhaseFailed {
 		next = append(next, fmt.Sprintf("kubectl describe promotion %s   # inspect failure conditions", p.Name))
-		next = append(next, fmt.Sprintf("kapro rollback %s --to <previous-digest>", attemptName(p)))
+		// Only suggest a rollback command when we have a concrete
+		// PromotionRun name to roll back. Emitting "kapro rollback
+		// <run> --to ..." with a placeholder is worse than silent —
+		// users copy-paste it and hit "<run> not found".
+		if run := attemptName(p); run != "" {
+			next = append(next, fmt.Sprintf("kapro rollback %s --to <previous-digest>", run))
+		}
 	}
 	return next
 }
 
+// attemptName returns the most recent concrete PromotionRun name for
+// this Promotion, or "" if no attempt has been stamped yet.
 func attemptName(p *kaprov1alpha1.Promotion) string {
 	if p.Status.ActiveAttemptRef != nil {
 		return p.Status.ActiveAttemptRef.Name
@@ -211,7 +296,7 @@ func attemptName(p *kaprov1alpha1.Promotion) string {
 	if len(p.Status.Attempts) > 0 {
 		return p.Status.Attempts[0].Name
 	}
-	return "<run>"
+	return ""
 }
 
 func renderDiag(d *promotionDiag) {
