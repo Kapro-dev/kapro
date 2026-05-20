@@ -57,8 +57,7 @@ Lets the question linger; new contributors will ask "when will the
 target events ship?" The honest answer is "never," so document it
 honestly.
 
-### B. Ship a small per-cluster event set anyway (e.g. just
-### `target.failed` for paging)
+### B. Ship a small per-cluster event set anyway (e.g. just `target.failed` for paging)
 The kind of subscribers who want paging on a failed cluster apply
 should subscribe to Flux Notification Controller's
 `Kustomization.status.conditions[Ready]=False` Alert — which is

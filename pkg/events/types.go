@@ -34,7 +34,7 @@
 //	kapro.io/promotion.attempt.*   - per-PromotionRun execution attempts
 //	kapro.io/promotion.wave.*      - PromotionPlan DAG node transitions
 //	kapro.io/promotion.stage.*     - Stage transitions inside a wave
-//	kapro.io/promotion.stage.gate.*- gate evaluation outcomes per target
+//	kapro.io/promotion.stage.gate.* - gate evaluation outcomes per target
 //
 // Per-cluster events (kapro.io/promotion.target.*) are intentionally
 // NOT part of this vocabulary. Per-cluster reconcile state is Flux
@@ -223,10 +223,11 @@ type Event struct {
 	// kapro.io/promotion.stage.gate.* events.
 	// +optional
 	Gate string
-	// Target is the FleetCluster name. Set for stage.gate.* events
-	// (gates are evaluated per-target). There are intentionally no
-	// per-target events outside the gate scope; per-cluster reconcile
-	// is Flux Notification Controller's / Argo CD Notifications' job.
+	// Target is the FleetCluster name. Set for
+	// kapro.io/promotion.stage.gate.* events (gates are evaluated
+	// per-target). There are intentionally no per-target events
+	// outside the gate scope; per-cluster reconcile is Flux
+	// Notification Controller's / Argo CD Notifications' job.
 	// +optional
 	Target string
 	// Reason is a short machine-readable cause (e.g. "AttemptSucceeded",
