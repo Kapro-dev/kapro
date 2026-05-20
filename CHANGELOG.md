@@ -5,6 +5,39 @@ changes for Kapro releases. Kapro is still pre-stable: all Kubernetes APIs are
 served as `kapro.io/v1alpha1`, and release notes are the binding compatibility
 record for each tag.
 
+## Unreleased
+
+### Added — `kapro lint`
+
+Static analysis for Kapro YAML manifests. Runs without a cluster
+connection so it is safe in CI pipelines and pre-commit hooks.
+
+```
+kapro lint examples/quickstart/*.yaml
+kapro lint --strict promotion.yaml plan.yaml
+cat promotion.yaml | kapro lint -
+kapro lint -o json promotion.yaml
+```
+
+Checks:
+
+- **Kapro** — exactly one of `spec.source` / `spec.sourceRef`,
+  `spec.delivery.backendRef` set, `spec.clusters` non-empty.
+- **Promotion** — `spec.kaproRef` set, `spec.version` or
+  `spec.versions` set, `spec.timeout` set (advisory), no duplicate
+  scope targets, non-empty PromotionPlan refs.
+- **PromotionPlan** — unique stage names, every `dependsOn[].stage`
+  references a real stage, no self-dependencies, no cycles in the
+  DAG, manual gates have approvers, metric gates have a preset or
+  threshold.
+
+Severity: `ERROR` fails (exit 1), `WARN` is advisory (exit 0).
+`--strict` upgrades warnings to errors. `-o json` emits the issue
+list as a stable JSON array. Other Kapro kinds
+(FleetCluster, BackendProfile, PromotionRun, …) are skipped silently
+so `kapro lint **/*.yaml` does not flag manifests the linter has no
+rules for yet.
+
 ## v0.1.0 - 2026-05-19
 
 `v0.1.0` is the first public Kapro release. It supersedes the earlier alpha
