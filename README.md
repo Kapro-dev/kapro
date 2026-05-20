@@ -88,7 +88,7 @@ helm upgrade --install kapro charts/kapro-operator \
 Apply a minimal source and fleet setup:
 
 ```bash
-kubectl apply -f examples/hub-config/backends/flux.yaml
+kubectl apply -f examples/quickstart/backend-flux.yaml
 kubectl apply -f examples/quickstart/kapro.yaml
 ```
 

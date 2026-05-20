@@ -98,9 +98,8 @@ Apply objects in dependency order: clusters, backends, sources, plans, then
 promotions. Direct `promotionruns/` can exist as an advanced compatibility path,
 but first-use repositories should prefer `promotions/`.
 
-See [examples/hub-config](../examples/hub-config/) for a direct-run
-compatibility sample and [examples/quickstart](../examples/quickstart/) for the
-preferred Kapro-root Promotion path.
+See [examples/quickstart](../examples/quickstart/) for the preferred
+Kapro-root Promotion path.
 
 ## Gate Semantics
 
