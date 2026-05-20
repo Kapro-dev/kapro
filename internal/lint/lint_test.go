@@ -250,10 +250,10 @@ func TestLintKapro_NilSourceDoesNotPanic(t *testing.T) {
 
 func TestLintKapro_ExactlyOneOfSourceSourceRef(t *testing.T) {
 	cases := []struct {
-		name     string
+		name      string
 		sourceRef string
-		source   *kaprov1alpha1.PromotionSourceSpec
-		wantErr  bool
+		source    *kaprov1alpha1.PromotionSourceSpec
+		wantErr   bool
 	}{
 		{name: "both unset", wantErr: true},
 		{name: "only sourceRef", sourceRef: "shared"},
