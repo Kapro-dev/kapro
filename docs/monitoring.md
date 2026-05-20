@@ -6,19 +6,19 @@ do not contain real endpoints, credentials, or cluster-specific labels.
 
 ## Asset Locations
 
-Kapro keeps two monitoring asset sets:
+Kapro keeps monitoring examples under `examples/monitoring`:
 
 | Path | Purpose |
 | --- | --- |
-| `monitoring/prometheus/kapro-alerts.yaml` | Generic Prometheus alert groups for direct import or adaptation. |
-| `monitoring/grafana/kapro-operations-dashboard.json` | Compact operations dashboard for the core Kapro metrics endpoint. |
+| `examples/monitoring/kapro-alerts.yaml` | Generic Prometheus alert groups for direct import or adaptation. |
+| `examples/monitoring/kapro-operations-dashboard.json` | Compact operations dashboard for the core Kapro metrics endpoint. |
 | `examples/monitoring/prometheus-rules.yaml` | Prometheus Operator `PrometheusRule` example that combines Kapro metrics with kube-state-metrics CRD state metrics. |
 | `examples/monitoring/grafana-dashboard.json` | Full example Grafana dashboard using Kapro metrics and CRD state metrics. |
 | `examples/monitoring/kube-state-metrics-crd-config.yaml` | Example kube-state-metrics custom-resource state config for PromotionRuns, PromotionTriggers, and PluginRegistrations. |
 
-Use `monitoring/` when you want small, generic assets. Use
-`examples/monitoring/` when your stack already runs Prometheus Operator and
-kube-state-metrics and can install the CRD state metrics used by the richer
+Use `kapro-alerts.yaml` and `kapro-operations-dashboard.json` when you want
+small, generic assets. Use the Prometheus Operator and kube-state-metrics
+examples when your stack can install the CRD state metrics used by the richer
 alerts.
 
 ## Examples
@@ -131,9 +131,8 @@ Use alerts as routing signals, then follow the operational runbooks in
 | `KaproRolloutDurationP95High` | Stuck PromotionRun or scalability review | stage duration histogram, stage `maxParallel`, backend latency |
 | `KaproControllerReconcileErrors` | First Response | controller logs, status write metrics, Kubernetes Events |
 
-Alert names differ slightly between the generic `monitoring/` rules and the
-Prometheus Operator examples, but they intentionally route to the same
-runbooks.
+Alert names differ slightly between the generic alert rules and the Prometheus
+Operator examples, but they intentionally route to the same runbooks.
 
 ## Remaining First-Class Metric Gaps
 

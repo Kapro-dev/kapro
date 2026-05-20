@@ -32,10 +32,10 @@ endpoint.
 
 ## Dashboard and Alerts
 
-Example assets are provided under `monitoring/`:
+Generic assets are provided under `examples/monitoring/`:
 
-- `monitoring/grafana/kapro-operations-dashboard.json`
-- `monitoring/prometheus/kapro-alerts.yaml`
+- `examples/monitoring/kapro-operations-dashboard.json`
+- `examples/monitoring/kapro-alerts.yaml`
 
 Installable examples for Prometheus Operator and kube-state-metrics live under
 `examples/monitoring/`:

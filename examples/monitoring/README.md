@@ -5,11 +5,13 @@ Grafana stack.
 
 | File | Purpose |
 | --- | --- |
+| `kapro-alerts.yaml` | Generic Prometheus alert rules for direct import or adaptation. |
+| `kapro-operations-dashboard.json` | Compact Grafana dashboard for the core Kapro metrics endpoint. |
 | `prometheus-rules.yaml` | PrometheusRule example for Kapro alerts. |
 | `grafana-dashboard.json` | Grafana dashboard that uses Kapro metrics and kube-state-metrics CRD state metrics. |
 | `kube-state-metrics-crd-config.yaml` | CustomResourceStateMetrics example for `PromotionRun`, `PromotionTrigger`, and `PluginRegistration` status. |
 
-The PrometheusRule and dashboard assume the CRD state metrics from
+The PrometheusRule and full dashboard assume the CRD state metrics from
 `kube-state-metrics-crd-config.yaml` are installed. Adjust namespaces, labels,
 rule selectors, and dashboard datasource UIDs for your observability stack.
 
