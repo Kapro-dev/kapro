@@ -119,15 +119,53 @@ kubectl auth can-i get promotionruns.kapro.io \
   --as=system:serviceaccount:kapro-system:kapro-kapro-operator
 ```
 
-For clean-clone verification, use the repository helper:
+For clean-clone or release-candidate verification, use the repository helper:
 
 ```bash
 scripts/verify-install.sh render
 scripts/verify-install.sh cluster
 ```
 
-See [Clean-Clone Install Verification](install-verification.md) for the full
-fresh clone, Kind, image override, cleanup, and demo validation workflow.
+`render` checks Helm CRD drift, `helm lint`, `helm template --include-crds`,
+and `kubectl kustomize config/default`. `cluster` installs the chart into the
+current cluster and verifies the operator Deployment, CRDs, ServiceAccount, and
+basic PromotionRun read access.
+
+For a fresh clone release check:
+
+```bash
+tmpdir="$(mktemp -d)"
+git clone https://github.com/Kapro-dev/kapro "${tmpdir}/kapro"
+cd "${tmpdir}/kapro"
+git checkout v0.1.0
+scripts/verify-install.sh render
+```
+
+For a disposable Kind install check:
+
+```bash
+kind create cluster --name kapro-install-verify
+kubectl config use-context kind-kapro-install-verify
+scripts/verify-install.sh cluster
+kind delete cluster --name kapro-install-verify
+```
+
+For a release image that is not the chart default:
+
+```bash
+KAPRO_IMAGE_REPOSITORY=ghcr.io/kapro-dev/kapro-operator \
+KAPRO_IMAGE_TAG=v0.1.0 \
+scripts/verify-install.sh cluster
+```
+
+Heavier validation targets are available when you need backend coverage:
+
+```bash
+scripts/verify-install.sh kind-demo
+scripts/verify-install.sh argo-e2e
+scripts/verify-install.sh flux-git-e2e
+scripts/verify-install.sh flux-e2e
+```
 
 Render checks that do not require a cluster:
 

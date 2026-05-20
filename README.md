@@ -99,8 +99,8 @@ kubectl apply -f examples/quickstart/promotion.yaml
 kubectl get promotions,promotionruns,promotiontargets
 ```
 
-For a complete local walkthrough, use the [Kind demo](docs/kind-demo.md). For a
-step-by-step minimal path, use [First Promotion in 10 Minutes](docs/first-promotion-10min.md).
+For a step-by-step minimal path, use [First Promotion in 10 Minutes](docs/first-promotion-10min.md).
+For a complete local walkthrough, use the [Kind demo](examples/kind-demo/README.md).
 
 ## Documentation
 
@@ -109,7 +109,7 @@ Start here:
 - [Concepts](docs/concepts.md)
 - [Install](docs/install.md)
 - [First Promotion in 10 Minutes](docs/first-promotion-10min.md)
-- [Kind Demo](docs/kind-demo.md)
+- [Kind Demo](examples/kind-demo/README.md)
 - [Backends](docs/backends.md)
 - [Operations](docs/operations.md)
 - [Security](docs/security.md)

@@ -7,7 +7,7 @@ stamps `PromotionRun` attempts.
 
 The nested `.github/workflows/` directory is intended for the copied hub config repository. It is not part of the Kapro source repository CI.
 
-For the source-of-truth model, see [docs/hub-config-source-of-truth.md](../../docs/hub-config-source-of-truth.md).
+For the source-of-truth model, see [Concepts](../../docs/concepts.md#hub-config-source-of-truth).
 
 ## Structure
 
