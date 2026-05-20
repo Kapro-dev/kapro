@@ -32,13 +32,16 @@
 //
 //	kapro.io/promotion.*           - whole-Promotion transitions
 //	kapro.io/promotion.attempt.*   - per-PromotionRun execution attempts
-//	kapro.io/promotion.wave.*      - reserved for future wave-level events
-//	kapro.io/promotion.stage.*     - reserved for future stage-level events
-//	kapro.io/promotion.target.*    - reserved for future per-cluster events
+//	kapro.io/promotion.wave.*      - PromotionPlan DAG node transitions
+//	kapro.io/promotion.stage.*     - Stage transitions inside a wave
+//	kapro.io/promotion.stage.gate.* - gate evaluation outcomes per target
 //
-// Reserved namespaces are documented to prevent collision; concrete
-// constants are added only when the emitter is implemented (no
-// half-wired contracts).
+// Per-cluster events (kapro.io/promotion.target.*) are intentionally
+// NOT part of this vocabulary. Per-cluster reconcile state is Flux
+// Notification Controller's and Argo CD Notifications' domain;
+// duplicating it at the Kapro layer adds noise without adding signal.
+// Subscribers wanting per-cluster detail should consume Flux/Argo
+// events directly. See docs/adr/0005-withdraw-target-namespace.md.
 package events
 
 import (
@@ -208,20 +211,23 @@ type Event struct {
 	// +optional
 	AttemptName string
 	// Wave is the PromotionPlan DAG node name (the value of
-	// PromotionRun.spec.promotionplans[].name). Set for wave-, stage-,
-	// gate- and target-scoped events; empty otherwise.
+	// PromotionRun.spec.promotionPlans[].name). Set for wave-, stage-,
+	// and gate-scoped events; empty otherwise.
 	// +optional
 	Wave string
-	// Stage is the Stage name within the PromotionPlan. Set for stage-,
-	// gate-, and target-scoped events; empty otherwise.
+	// Stage is the Stage name within the PromotionPlan. Set for stage-
+	// and gate-scoped events; empty otherwise.
 	// +optional
 	Stage string
 	// Gate is the gate name within the Stage. Set only for
 	// kapro.io/promotion.stage.gate.* events.
 	// +optional
 	Gate string
-	// Target is the FleetCluster name. Set for target- and gate-scoped
-	// events (gates are evaluated per-target).
+	// Target is the FleetCluster name. Set for
+	// kapro.io/promotion.stage.gate.* events (gates are evaluated
+	// per-target). There are intentionally no per-target events
+	// outside the gate scope; per-cluster reconcile is Flux
+	// Notification Controller's / Argo CD Notifications' job.
 	// +optional
 	Target string
 	// Reason is a short machine-readable cause (e.g. "AttemptSucceeded",
@@ -245,20 +251,20 @@ type EventData struct {
 	PromotionUID string `json:"promotionUID,omitempty"`
 	KaproRef     string `json:"kaproRef,omitempty"`
 	// Phase is the Promotion.status.phase for whole-Promotion / attempt
-	// events, and the PromotionRun.status.phase for wave/stage/gate/
-	// target events. See Event.Phase for the full semantic.
+	// events, and the PromotionRun.status.phase for wave/stage/gate
+	// events. See Event.Phase for the full semantic.
 	Phase         string `json:"phase"`
 	PreviousPhase string `json:"previousPhase,omitempty"`
 	Version       string `json:"version,omitempty"`
 	AttemptName   string `json:"attemptName,omitempty"`
-	// Wave is set on kapro.io/promotion.wave.*, .stage.*, .stage.gate.*,
-	// and .target.* events. Empty on whole-Promotion events.
+	// Wave is set on kapro.io/promotion.wave.*, .stage.*, and
+	// .stage.gate.* events. Empty on whole-Promotion and attempt events.
 	Wave string `json:"wave,omitempty"`
-	// Stage is set on .stage.*, .stage.gate.*, and .target.* events.
+	// Stage is set on .stage.* and .stage.gate.* events.
 	Stage string `json:"stage,omitempty"`
 	// Gate is set only on .stage.gate.* events.
 	Gate string `json:"gate,omitempty"`
-	// Target is set on per-target events (gate evaluation is per-target).
+	// Target is set on .stage.gate.* events (gates evaluate per cluster).
 	Target  string `json:"target,omitempty"`
 	Reason  string `json:"reason,omitempty"`
 	Message string `json:"message,omitempty"`

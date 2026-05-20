@@ -113,3 +113,19 @@ transitions.
 | Flux Notification Controller | Point a Flux `Receiver` at Kapro's sink URL, then route with `Provider` and `Alert`. |
 | kube-event-exporter | Route Kubernetes Events emitted by Kapro when HTTP sinks are not desired. |
 | SIEM or audit store | Ingest all CloudEvents and index by `source`, `subject`, `type`, and `data.promotion`. |
+
+## Per-cluster events: scope decision
+
+Kapro does **not** emit per-cluster reconcile events
+(`kapro.io/promotion.target.*` is intentionally not part of the
+vocabulary). Per-cluster state belongs to the delivery tool that owns
+the actual reconcile loop:
+
+| Need | Where to subscribe |
+|---|---|
+| "Did cluster X converge on version Y?" | Flux Notification Controller `Alert` on `Kustomization`, or Argo CD Notifications on `Application` |
+| "Which targets are still pending?" | `PromotionTarget.status.phase` via the Kubernetes API |
+| "Did gate Z pass for cluster X?" | `kapro.io/promotion.stage.gate.passed` — `data.target` carries the cluster |
+
+Rationale is captured in
+[ADR-0005](adr/0005-withdraw-target-namespace.md).
