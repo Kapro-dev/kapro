@@ -7,13 +7,17 @@ package plans_test
 import (
 	"os"
 	"path/filepath"
-	"strings"
+	"regexp"
 	"testing"
 
 	"sigs.k8s.io/yaml"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 )
+
+// plansFileRe matches NN-<slug>.yaml: two leading digits, dash, then a
+// non-empty slug, then the .yaml extension. Anchored at both ends.
+var plansFileRe = regexp.MustCompile(`^[0-9]{2}-[a-z0-9][a-z0-9-]*\.yaml$`)
 
 func TestEveryPlanParsesAsPromotionPlan(t *testing.T) {
 	matches, err := filepath.Glob("*.yaml")
@@ -66,11 +70,13 @@ func TestEveryPlanParsesAsPromotionPlan(t *testing.T) {
 				}
 			}
 
-			// File name should start with NN- and end with .yaml so the
-			// README's numbered listing stays in sync with disk order.
+			// File name should match NN-<slug>.yaml (two leading digits,
+			// then a dash, then a slug). Enforced via a regex so the
+			// numbered listing in README stays in sync with disk order.
 			base := filepath.Base(path)
-			if !strings.HasSuffix(base, ".yaml") || len(base) < 4 || base[2] != '-' {
-				t.Errorf("%s: file should be named NN-<slug>.yaml", path)
+			if !plansFileRe.MatchString(base) {
+				t.Errorf("%s: file should be named NN-<slug>.yaml (regex %s)",
+					path, plansFileRe.String())
 			}
 		})
 	}

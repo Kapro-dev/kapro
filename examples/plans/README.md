@@ -10,7 +10,7 @@ reference the plan from `Promotion.spec.promotionPlans[].promotionPlan`.
 | [`01-canary-then-full.yaml`](01-canary-then-full.yaml) | canary → prod | Default. One canary, then everything else when canary soaks clean. |
 | [`02-blue-green.yaml`](02-blue-green.yaml) | green (idle) → swap | Single-cluster blue/green with manual cutover gate. |
 | [`03-multi-region-staggered.yaml`](03-multi-region-staggered.yaml) | EU → US → APAC | Roll one region at a time with cross-region soak time. |
-| [`04-region-failover.yaml`](04-region-failover.yaml) | primary, then standby on `any` | Promote the standby only after the primary holds for 30m. |
+| [`04-region-failover.yaml`](04-region-failover.yaml) | primary → standby (depends on `all`) | Standby promotes only after the entire primary stage holds for 30m. |
 | [`05-ring-deployment.yaml`](05-ring-deployment.yaml) | ring0 → ring1 → ring2 → ring3 | Microsoft-shaped concentric rings with parallelism increasing per ring. |
 | [`06-metrics-gated.yaml`](06-metrics-gated.yaml) | canary with PromQL gate | Canary must hold `error_rate < 1%` over a 10-min window before prod. |
 

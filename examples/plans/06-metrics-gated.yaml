@@ -26,6 +26,12 @@ spec:
       window: 10m
       interval: 30s
       threshold: 0.01
+      # Comparator defaults to "gt" — for an error-rate gate that
+      # would invert the meaning (pass when above threshold). Override
+      # to "lt" so the gate passes only when error_rate < 0.01.
+      analysis:
+        mode: threshold
+        comparator: lt
     p99-latency:
       provider: prometheus
       endpoint: http://prometheus.monitoring.svc:9090
@@ -36,6 +42,10 @@ spec:
       window: 10m
       interval: 30s
       threshold: 500
+      # Same as above — pass only when p99 < 500ms.
+      analysis:
+        mode: threshold
+        comparator: lt
   stages:
     - name: canary
       selector:
