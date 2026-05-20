@@ -111,8 +111,11 @@ import (
     "kapro.io/kapro/sdk/subscriber"
 )
 
+// KAPRO_PRINTER_AUTH_HEADER is the env-var name the reference
+// subscriber (examples/plugins/cloudevents-printer) uses. The SDK
+// is unopinionated — pick whichever name fits your binary.
 sub := subscriber.New(":8080",
-    subscriber.WithAuthHeader(os.Getenv("KAPRO_PRINTER_AUTH_HEADER")),
+    subscriber.WithAuthHeader(os.Getenv("KAPRO_SUBSCRIBER_AUTH_HEADER")),
     subscriber.WithMaxBody(1<<20),
 )
 

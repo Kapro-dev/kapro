@@ -1,4 +1,4 @@
-# ADR-0006: External gate predicates — GateType + GateInstance (KEDA-shaped)
+# ADR-0006: External gate predicates — GateType (KEDA-shaped)
 
 ## Status
 Proposed
@@ -83,10 +83,16 @@ spec:
     ttl: 60s                             # dedup identical evaluations
 ```
 
-`GateType` is a **template**. It has **no controller and no status**
-— the same model as `PromotionPlan` and `BackendProfile`. The
-admission webhook validates the parameter schema is well-formed
-OpenAPI and that the predicate block names a reachable transport.
+`GateType` is a **template**. It has **no controller and no
+status subresource** — the same model as `PromotionPlan`. (Unlike
+`BackendProfile`, which carries a discovery controller and a status
+subresource; `GateType` is closer to `PromotionPlan` in that
+respect.) Static well-formedness — that the OpenAPI parameter
+schema parses, that the predicate block names a supported transport,
+that `protocolVersion` is one the operator knows — is enforced by a
+validating admission webhook at apply time. Runtime reachability is
+*not* checked at admission; predicates that go offline surface via
+`failureMode` at evaluation time.
 
 ### Stage-inline reference
 
