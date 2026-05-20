@@ -8,7 +8,7 @@ Accepted
 Kapro emits events on every fleet-promotion transition. The
 question: which slice of the notification problem does Kapro own?
 
-The CNCF landscape already has mature notification routers:
+The Kubernetes delivery ecosystem already has mature notification routers:
 
 - **Argo CD Notifications** (graduated): Annotation-driven subscriptions
   on `Application` state → Slack/Teams/PagerDuty/OpsGenie/email/webhook,
@@ -58,13 +58,12 @@ Tekton does not ship Slack triggers.
 ### A. Ship Slack/Teams/PagerDuty/OpsGenie/email backends in-tree
 Every backend we ship is one we maintain forever. Slack changes their
 attachment schema → we break. PagerDuty revs Events v3 → we lag.
-Direct duplication of Flux Notification Controller / Argo CD
-Notifications. CNCF anti-pattern.
+Direct duplication of Flux Notification Controller / Argo CD Notifications.
 
 ### B. Mutate Flux NC or Argo CD Notifications CRDs from the Kapro controller
 Couples our release cadence to theirs. Demands RBAC into
 `flux-system`/`argocd` namespaces. Creates ownership conflicts. No
-CNCF graduated project does this to another graduated project.
+Upstream delivery projects should not mutate each other's notification APIs.
 
 ### C. Subscribe to Flux/Argo events and re-emit them in our vocabulary
 Wrong layer. Flux/Argo emit per-cluster reconcile events; Kapro emits
@@ -83,7 +82,7 @@ existing Flux Notification Controller `Receiver` at Kapro's sink).
 - Tight scope — Kapro stays narrow on what it owns.
 - Public contract (`pkg/events.EventType`) is stable and small enough
   to maintain.
-- Every CNCF event router can subscribe — Argo Events, Flux NC,
+- Existing event routers can subscribe — Argo Events, Flux NC,
   kube-event-exporter, Knative, AWS EventBridge, Google Eventarc,
   Azure Event Grid.
 
@@ -105,7 +104,7 @@ existing Flux Notification Controller `Receiver` at Kapro's sink).
 ## References
 
 - PR #79: Lifecycle hooks (per-Promotion handlers)
-- PR #80: CloudEvents vocabulary + operator-level sink — the CNCF positioning layer
+- PR #80: CloudEvents vocabulary + operator-level sink
 - PR #81/#82: Wave / Stage / Gate CloudEvents
 - `docs/cloudevents.md` — vocabulary spec
 - `docs/integrations/` — subscriber cookbooks

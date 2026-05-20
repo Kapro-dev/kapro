@@ -1,9 +1,9 @@
 # Flux Notification Controller ← Kapro
 
 [Flux Notification Controller](https://fluxcd.io/flux/components/notification/)
-is the CNCF-graduated way to route events to Slack, Teams, PagerDuty,
-OpsGenie, MS Graph, and many other backends. Subscribe Flux to Kapro by
-configuring the operator-level sink to deliver to a Flux Receiver.
+routes events to Slack, Teams, PagerDuty, OpsGenie, MS Graph, and many other
+backends. Subscribe Flux to Kapro by configuring the operator-level sink to
+deliver to a Flux Receiver.
 
 ## 1. Flux Receiver
 

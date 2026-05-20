@@ -72,10 +72,7 @@ When converged, every FleetCluster reports
 
 ## See also
 
-- [`docs/push-vs-pull.md`](../../docs/push-vs-pull.md) — when to choose
-  outbound-agent + pull vs hub-dial + push.
-- [`docs/providers.md`](../../docs/providers.md) — `outbound-agent` provider.
-- [`docs/actuators.md`](../../docs/actuators.md) — `oci` (greenfield) vs
-  `flux` (brownfield) spoke providers.
+- [`docs/backends.md`](../../docs/backends.md) — when to choose pull, push,
+  observe, or adopt modes.
 - [`docs/cluster-bootstrap.md`](../../docs/cluster-bootstrap.md) — the
   CSR-based registration protocol used by outbound-agent.

@@ -211,7 +211,8 @@ Required safeguards:
 | Scope | Triggers can be limited to canary stages or selected targets. |
 | Idempotency | Re-observed artifacts do not create duplicate PromotionRuns. |
 
-See `docs/ADR-002-promotion-trigger.md` for the promotion trigger decision record.
+Promotion trigger behavior is covered by the public API docs, release notes,
+and ADRs under `docs/adr/`.
 
 ## PromotionRun Planner
 
