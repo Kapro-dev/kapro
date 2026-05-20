@@ -70,6 +70,7 @@ Passes versions forward. Across targets. Across clusters. In waves.`,
 	root.AddCommand(newRejectCmd())
 	root.AddCommand(newRollbackCmd())
 	root.AddCommand(newGetCmd())
+	root.AddCommand(newLintCmd())
 	root.AddCommand(newDemoCmd())
 
 	if err := root.Execute(); err != nil {
