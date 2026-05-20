@@ -32,7 +32,7 @@ spec:
           annotations:
             summary: "Kapro {{ $labels.controller }} reconcile p95 is high"
             description: "The {{ $labels.controller }} controller p95 reconcile duration has been above 30 seconds for 15 minutes."
-            runbook: "docs/controller-scalability.md#workqueue-tuning"
+            runbook: "docs/operations.md#rate-limits-and-workqueue-tuning"
     - name: kapro.gates
       rules:
         - alert: KaproGateFailureRateHigh
@@ -79,7 +79,7 @@ spec:
           annotations:
             summary: "Kapro {{ $labels.promotionplan }} rollout stage p95 is high"
             description: "Stage completion p95 for promotionplan {{ $labels.promotionplan }} has been above 1 hour for 30 minutes."
-            runbook: "docs/controller-scalability.md#workqueue-tuning"
+            runbook: "docs/operations.md#rate-limits-and-workqueue-tuning"
     - name: kapro.plugins
       rules:
         - alert: KaproPluginProbeFailure

@@ -28,8 +28,7 @@ Kapro uses two plugin ecosystem labels:
 
 Third-party authors can claim Kapro-compatible when the published contract and
 conformance requirements are met. Do not describe a plugin as certified until a
-certification process exists. See `docs/plugin-compatibility.md` for the
-current compatibility matrix.
+certification process exists.
 
 ## Contracts
 
@@ -40,9 +39,18 @@ current compatibility matrix.
 | KPI planner | `spec/kpi/v1alpha1/planner.proto` | `kapro.io/kapro/spec/kpi/v1alpha1` |
 
 Compatibility is based on the `contract_version` returned by
-`GetCapabilities`, not the plugin implementation version. See
-`docs/plugin-compatibility.md` for the supported version matrix and probe
-status policy.
+`GetCapabilities`, not the plugin implementation version.
+
+## Compatibility Matrix
+
+| Plugin type | Contract | Supported versions | Conformance package | Example |
+|---|---|---|---|---|
+| `actuator` | KAI | `v1alpha1` | `conformance/actuator` | `examples/plugins/argocd-actuator` |
+| `gate` | KGI | `v1alpha1` | `conformance/gate` | `examples/plugins/slo-gate` |
+| `planner` | KPI | `v1alpha1` | `conformance/planner` | `examples/plugins/capacity-planner` |
+
+The supported versions are also defined in
+`pkg/plugincompat/compatibility.go`.
 
 Generate stubs with:
 
@@ -128,8 +136,6 @@ func TestKAIConformance(t *testing.T) {
 }
 ```
 
-See `docs/conformance.md` for scenario rules and registration checks.
-
 A complete external actuator example is available in
 `examples/plugins/argocd-actuator`, with a sample registration manifest at
 `examples/plugins/argocd-actuator-registration.yaml`. It implements KAI for
@@ -207,6 +213,28 @@ capacity-aware filtering, ordering, and deferring promotion targets.
 | `examples/plugins/argocd-applicationset-actuator` | KAI actuator | `examples/plugins/argocd-applicationset-actuator-registration.yaml` | Hot-loaded dispatch preview |
 | `examples/plugins/slo-gate` | KGI gate | `examples/plugins/slo-gate-registration.yaml` | Hot-loaded dispatch preview |
 | `examples/plugins/capacity-planner` | KPI planner | `examples/plugins/capacity-planner-registration.yaml` | Hot-loaded planner dispatch preview |
+
+## Conformance Rules
+
+Run the matching conformance harness in the plugin repository before publishing
+a `PluginRegistration`. Use deterministic inputs, immutable versions, stable
+target names, and isolated backend resources. Do not point conformance tests at
+shared production systems.
+
+The harnesses check the base contract:
+
+- KAI: idempotent `Apply`, idempotent `Rollback`, deterministic convergence.
+- KGI: valid phases, no request mutation, gRPC errors for unsupported work.
+- KPI: capabilities, empty target handling, deterministic planning, valid
+  target decisions, no request mutation, and context cancellation.
+
+Add plugin-specific tests for authentication, backend permissions, timeouts,
+retryable and terminal failures, cleanup, rollback, and concurrency. Passing
+the conformance package means the plugin obeys the Kapro contract; it does not
+prove backend-specific production readiness.
+
+When a new contract version is added, update `pkg/plugincompat`, this matrix,
+and the matching conformance harness in the same change.
 
 ## Package Imports
 

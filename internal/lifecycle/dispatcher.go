@@ -186,7 +186,7 @@ func (d *Dispatcher) PublishToSink(ctx context.Context, ev events.Event) {
 // the operator sink. Use kind="entered" or "completed".
 //
 // kind="completed" sets data.reason to the canonical token "complete"
-// or "failed" (matching docs/cloudevents.md), and routes the human
+// or "failed" (matching docs/events.md), and routes the human
 // sentence to data.message instead. Subscribers should branch on the
 // canonical reason, not the message.
 //
@@ -996,7 +996,7 @@ func substituteEventMessage(tpl string, snap snapshot) string {
 
 // buildCloudEvent is removed: per-Promotion webhooks and the operator
 // sink share a single envelope shape via pkg/events.Render. This keeps
-// the contract documented in docs/cloudevents.md and docs/integrations/
+// the contract documented in docs/events.md
 // honest — subscribers see the same CloudEvents v1.0 payload regardless
 // of which path delivered it.
 

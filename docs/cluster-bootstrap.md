@@ -101,10 +101,27 @@ Look for:
 
 Once registered, this FleetCluster's `status.conditions[Ready]` and
 `status.phase` are maintained by the `FleetClusterHeartbeatReconciler`.
-See [heartbeat-and-reachability.md](heartbeat-and-reachability.md) for the
-full model: how the per-cluster `consecutiveFailureThreshold` controls
-transitions to `Phase=Unreachable`, what changes for in-flight promotions,
-and which reason codes appear on the Ready condition.
+
+Each spoke renews a hub-side `Lease` named `kapro-heartbeat-<cluster>` in the
+operator namespace. The hub marks a cluster `Ready=False` and eventually
+`Phase=Unreachable` when the lease is stale for the configured failure
+threshold.
+
+Operational behavior:
+
+- stale heartbeat blocks new pull-mode work for that cluster;
+- in-flight targets wait while the cluster is temporarily unreachable;
+- targets fail if the cluster remains unreachable past timeout policy;
+- recovery is automatic once the spoke renews the lease again.
+
+Common Ready reasons:
+
+| Reason | Meaning |
+|---|---|
+| `HeartbeatFresh` | Lease is current and the spoke is reachable. |
+| `HeartbeatStale` | Lease is stale but not yet past the failure threshold. |
+| `HeartbeatMissing` | No heartbeat lease exists for the cluster. |
+| `ClusterUnreachable` | Failure threshold exceeded. |
 
 ## Cert rotation
 

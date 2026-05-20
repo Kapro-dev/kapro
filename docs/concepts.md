@@ -72,3 +72,33 @@ Kapro or its controllers generate and update:
 
 Direct `PromotionRun` manifests remain an advanced compatibility path, not the
 recommended first-use API.
+
+## Gate Semantics
+
+Kapro gates use a simple decision model:
+
+```text
+Evidence -> Analysis -> Phase
+```
+
+The phase is the rollout-control field. Evidence explains why the phase was
+returned and is stored on `PromotionTarget.status.gates[].evidence[]`.
+
+Gate evidence can include provider, query, window, interval, observed value,
+threshold, baseline value, sample count, confidence, reason, and projection.
+It must not contain tokens, headers, secret values, or raw webhook payloads.
+
+Metric gates support these analysis modes:
+
+| Mode | Behavior |
+|---|---|
+| `threshold` | Compare the current Prometheus value to a threshold. |
+| `sloBurnRate` | Treat the current value as error-budget burn rate. |
+| `baseline` | Compare current value to a baseline query. |
+| `sequential` | Query a range and require enough samples before passing or failing. |
+| `changePoint` | Compare the first and second halves of a range for regression. |
+| `score` | Convert one metric into a score and require `scoreThreshold`. |
+
+Missing data, unhealthy baselines, low confidence, unreachable metrics systems,
+and too few samples return `Inconclusive` so unclear evidence does not advance a
+fleet by accident.
