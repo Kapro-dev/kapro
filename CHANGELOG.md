@@ -56,6 +56,26 @@ kapro diag checkout-v1.2.3
 kapro diag checkout-v1.2.3 -o json
 kapro diag checkout-v1.2.3 --events 25
 ```
+
+### Added — `kapro suspend` / `kapro resume`
+
+Shortcut subcommands that flip `Promotion.spec.suspended` so operators do
+not have to hand-craft a `kubectl patch` payload. Idempotent: a no-op
+when the Promotion is already in the desired state.
+
+```
+kapro suspend checkout-v1.2.3
+kapro resume  checkout-v1.2.3
+```
+
+### Documented — shell completion (cobra default)
+
+Cobra already ships a `kapro completion {bash,zsh,fish,powershell}`
+subcommand; it is now called out in `--help`. Example:
+
+```
+kapro completion zsh > "${fpath[1]}/_kapro"
+```
 ## v0.1.0 - 2026-05-19
 
 `v0.1.0` is the first public Kapro release. It supersedes the earlier alpha
