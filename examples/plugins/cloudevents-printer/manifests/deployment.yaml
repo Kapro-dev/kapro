@@ -1,0 +1,99 @@
+# Minimal Deployment + Service for cloudevents-printer.
+#
+# Apply alongside the Kapro operator and point the operator's
+# KAPRO_EVENTS_SINK_URL at http://cloudevents-printer.<this-ns>.svc:8080/
+# to see every fleet-promotion CloudEvent stream into the printer's
+# stdout (visible via `kubectl logs deploy/cloudevents-printer`).
+#
+# This is a reference subscriber — for production multi-backend
+# notification, install Argo CD Notifications or Flux Notification
+# Controller and point the Kapro sink at their webhook endpoint
+# instead. See docs/events.md and docs/adr/0003-cloudevents-publisher-posture.md.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cloudevents-printer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudevents-printer
+  labels:
+    app.kubernetes.io/name: cloudevents-printer
+    app.kubernetes.io/component: kapro-events-subscriber
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cloudevents-printer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cloudevents-printer
+    spec:
+      serviceAccountName: cloudevents-printer
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+      containers:
+        - name: printer
+          image: ghcr.io/kapro-dev/cloudevents-printer:latest  # replace with your build
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: KAPRO_PRINTER_LISTEN_ADDR
+              value: ":8080"
+            # Optional shared-secret header. The Kapro operator must be
+            # configured with a matching value via
+            # KAPRO_EVENTS_SINK_AUTH_HEADER_NAME=X-Kapro-Auth and
+            # KAPRO_EVENTS_SINK_AUTH_HEADER_VALUE sourced from a Secret.
+            # - name: KAPRO_PRINTER_AUTH_HEADER
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: cloudevents-printer-auth
+            #       key: token
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudevents-printer
+  labels:
+    app.kubernetes.io/name: cloudevents-printer
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: cloudevents-printer
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
