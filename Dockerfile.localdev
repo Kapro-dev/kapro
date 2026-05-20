@@ -1,5 +1,0 @@
-FROM gcr.io/distroless/static:nonroot
-ARG BINARY
-COPY bin/${BINARY} /manager
-USER 65532:65532
-ENTRYPOINT ["/manager"]
