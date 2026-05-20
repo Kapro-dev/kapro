@@ -101,10 +101,32 @@ Look for:
 
 Once registered, this FleetCluster's `status.conditions[Ready]` and
 `status.phase` are maintained by the `FleetClusterHeartbeatReconciler`.
-See [heartbeat-and-reachability.md](heartbeat-and-reachability.md) for the
-full model: how the per-cluster `consecutiveFailureThreshold` controls
-transitions to `Phase=Unreachable`, what changes for in-flight promotions,
-and which reason codes appear on the Ready condition.
+
+Each spoke renews a hub-side `Lease` named `kapro-heartbeat-<cluster>` in the
+operator namespace. The hub marks a cluster `Ready=False` and eventually
+`Phase=Unreachable` when the lease is stale for the configured failure
+threshold.
+
+Operational behavior:
+
+- stale heartbeat blocks new pull-mode work for that cluster;
+- in-flight targets wait while the cluster is temporarily unreachable;
+- heartbeat staleness does not directly fail a `PromotionTarget`; the target
+  defers until the cluster recovers or an operator takes explicit action;
+- a `PromotionRun` may still fail if its own global timeout expires while
+  targets are deferred;
+- recovery is automatic once the spoke renews the lease again.
+
+Common Ready reasons:
+
+| Reason | Meaning |
+|---|---|
+| `HeartbeatFresh` | Lease is current and the spoke is reachable. |
+| `HeartbeatStale` | Lease is stale but not yet past the failure threshold. |
+| `Unreachable` | Failure threshold exceeded; pull-mode promotion targets defer instead of failing directly. |
+| `Suspended` | `FleetCluster.spec.suspend=true`; heartbeat is intentionally ignored. |
+| `PushModeNoHeartbeat` | Push-mode cluster; no spoke heartbeat is expected. |
+| `NotRegistered` | The cluster has not completed bootstrap registration yet. |
 
 ## Cert rotation
 

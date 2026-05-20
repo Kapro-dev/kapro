@@ -85,6 +85,26 @@ Operational guidance:
 - Use controller sharding before pushing a single manager beyond the Kubernetes
   API server's comfortable QPS budget.
 
+Tune rollout inputs before changing worker counts:
+
+- Use `Stage.spec.strategy.maxParallel` to bound backend write pressure.
+- Prefer more stages over one wide stage when backend APIs have tenant or
+  region quotas.
+- Keep actuator `Apply` idempotent and cheap when the desired version is already
+  present.
+- Return longer gate `retryAfter` values for slow external checks.
+- Create objects with final labels, plan references, and shard labels already
+  set so duplicate queue events are minimized.
+
+Signals that a queue needs partitioning or tuning:
+
+- controller workqueue depth grows while reconcile errors stay low;
+- `kapro_controller_reconcile_duration_seconds` rises with fleet size;
+- `kapro_controller_status_writes_total{result="error"}` rises during large
+  stages;
+- plugin RPC latency approaches `PluginRegistration.spec.timeout`;
+- many gates remain `Running` or `Inconclusive` at the same time.
+
 ## Sharding
 
 Set `KAPRO_SHARD` on an operator replica set to enable shard selection. The

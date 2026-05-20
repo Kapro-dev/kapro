@@ -1,111 +1,115 @@
-# Kapro Events
+# Events
 
-Kapro emits semantic lifecycle events through configured notifications. These
-events are intended for audit systems, chat/incident bots, dashboards, SIEM
-promotionplans, and custom platform controllers.
+Kapro publishes fleet-promotion lifecycle events as CloudEvents v1.0 envelopes.
+The operator can send events to one fleet-wide sink, and individual Promotions
+can also declare lightweight lifecycle handlers.
 
-`Event.Type` is the stable integration contract. `Event.Phase` is the internal
-FSM state that caused the event.
+`pkg/events.EventType` constants are public integration contract. New event
+types may be added, but existing `kapro.io/...` strings must not be renamed
+within `v1alpha1`.
 
-## Configure a CloudEvents Webhook
+## Subscribe
 
-```yaml
-gate:
-  mode: manual
-  notifications:
-    - type: webhook
-      events:
-        - kapro.promotionrun.failed
-        - kapro.promotionrun.stage.completed
-        - kapro.promotionrun.gate.failed
-        - kapro.promotionrun.approval.required
-      webhook:
-        url: https://events.example.com/kapro
-        format: cloudevents
-```
+Operator-level sink:
 
-Use `format: json` or omit `format` to receive the plain Kapro event payload.
-Use `format: cloudevents` to receive CloudEvents v1.0 structured JSON.
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `KAPRO_EVENTS_SINK_URL` | yes, to enable | unset | HTTPS endpoint that receives every event. |
+| `KAPRO_EVENTS_SINK_AUTH_HEADER_NAME` | no | `Authorization` | Header name for auth. |
+| `KAPRO_EVENTS_SINK_AUTH_HEADER_VALUE` | no | unset | Header value, usually sourced from a Secret. |
+| `KAPRO_EVENTS_SINK_TIMEOUT` | no | `10s` | Total per-event timeout across retries. |
+| `KAPRO_EVENTS_SINK_MAX_RETRIES` | no | `3` | Linear-backoff retries for transient failures. |
+| `KAPRO_LIFECYCLE_INSECURE_WEBHOOKS` | no | unset | Set to `1` only for local HTTP sinks. |
 
-## Event Types
+Per-Promotion handlers live under `Promotion.spec.lifecycle.handlers[]` and use
+the same CloudEvents envelope, but they fire only for coarse Promotion phase
+transitions.
 
-| Event type | Emitted when | Scope |
-|---|---|---|
-| `kapro.promotionrun.started` | A PromotionRun transitions from Pending to Progressing. | PromotionRun |
-| `kapro.promotionrun.completed` | All promotionplans in a PromotionRun complete. | PromotionRun |
-| `kapro.promotionrun.failed` | A PromotionRun reaches Failed, including timeout. | PromotionRun |
-| `kapro.promotionrun.rollback.started` | A rollback target is created for a previously converged target. | Target |
-| `kapro.promotionrun.stage.completed` | A stage first reaches Complete. | Stage |
-| `kapro.promotionrun.gate.passed` | A verification, soak, metrics, or template gate passes. | Target |
-| `kapro.promotionrun.gate.failed` | A verification, metrics, or template gate fails. | Target |
-| `kapro.promotionrun.approval.required` | A target reaches WaitingApproval and approval links are sent. | Target |
-| `kapro.promotionrun.target.pending` | A target enters Pending. | Target |
-| `kapro.promotionrun.target.verification` | A target enters Verification. | Target |
-| `kapro.promotionrun.target.health_check` | A target enters HealthCheck. | Target |
-| `kapro.promotionrun.target.soaking` | A target enters Soaking. | Target |
-| `kapro.promotionrun.target.metrics_check` | A target enters MetricsCheck. | Target |
-| `kapro.promotionrun.target.applying` | A target enters Applying. | Target |
-| `kapro.promotionrun.target.converged` | A target reaches Converged. | Target |
-| `kapro.promotionrun.target.failed` | A target reaches Failed. | Target |
-| `kapro.promotionrun.target.skipped` | A target is skipped after `onFailure=continue`. | Target |
-
-## Plain JSON Payload
-
-Plain webhook notifications send the `data` object directly:
-
-```json
-{
-  "type": "kapro.promotionrun.target.converged",
-  "phase": "Converged",
-  "version": "oci://registry.example.com/checkout@sha256:...",
-  "target": "prod-eu",
-  "promotionrun": "checkout-v1-2-3",
-  "promotionplan": "main",
-  "stage": "production-eu",
-  "message": "target converged"
-}
-```
-
-## CloudEvents Payload
-
-CloudEvents webhooks use structured content mode:
+## Envelope
 
 ```json
 {
   "specversion": "1.0",
-  "type": "kapro.promotionrun.target.converged",
-  "source": "/kapro/promotionruns/checkout-v1-2-3",
-  "id": "promotionrun/checkout-v1-2-3/type/kapro.promotionrun.target.converged/promotionplan/main/stage/production-eu/target/prod-eu/phase/Converged",
-  "time": "2026-05-14T10:23:00Z",
-  "subject": "promotionplan/main/stage/production-eu/target/prod-eu",
+  "id": "f9c4d39c5a4d4eba9a6b8ee2c3d4f5a6",
+  "type": "kapro.io/promotion.stage.gate.passed",
+  "source": "/apis/kapro.io/v1alpha1/promotions/checkout",
+  "subject": "checkout",
+  "time": "2026-05-19T14:23:11Z",
+  "datacontenttype": "application/json",
   "data": {
-    "type": "kapro.promotionrun.target.converged",
-    "phase": "Converged",
-    "version": "oci://registry.example.com/checkout@sha256:...",
-    "target": "prod-eu",
-    "promotionrun": "checkout-v1-2-3",
-    "promotionplan": "main",
-    "stage": "production-eu",
-    "message": "target converged"
+    "promotion": "checkout",
+    "kaproRef": "checkout-fleet",
+    "phase": "Progressing",
+    "version": "v1.2.3",
+    "attemptName": "checkout-att-1",
+    "wave": "default",
+    "stage": "canary",
+    "gate": "metrics",
+    "target": "fi-prod",
+    "reason": "gate passed",
+    "message": "Datadog SLO ok"
   }
 }
 ```
 
-The CloudEvents `id` is stable for a given promotionrun, event type, promotionplan, stage,
-target, and phase. Consumers can use it for best-effort de-duplication.
+## Event Types
+
+| Type | When |
+|---|---|
+| `kapro.io/promotion.created` | Controller first observes the Promotion. |
+| `kapro.io/promotion.progressing` | An attempt is rolling out. |
+| `kapro.io/promotion.paused` | `spec.suspended=true` is observed. |
+| `kapro.io/promotion.resumed` | A Promotion transitions out of paused state. |
+| `kapro.io/promotion.restarting` | A new attempt is stamped after a terminal attempt. |
+| `kapro.io/promotion.succeeded` | Latest attempt converged. |
+| `kapro.io/promotion.failed` | Latest attempt failed terminally. |
+| `kapro.io/promotion.rollingBack` | Reserved for rollback attempts. |
+| `kapro.io/promotion.terminating` | Promotion deletion starts. |
+| `kapro.io/promotion.attempt.stamped` | Controller created a new PromotionRun. |
+| `kapro.io/promotion.attempt.superseded` | An older non-terminal PromotionRun was superseded. |
+| `kapro.io/promotion.wave.entered` | A PromotionPlan DAG node starts. |
+| `kapro.io/promotion.wave.completed` | A PromotionPlan DAG node reaches terminal phase. |
+| `kapro.io/promotion.stage.entered` | A stage starts. |
+| `kapro.io/promotion.stage.completed` | Every target in a stage converged. |
+| `kapro.io/promotion.stage.gate.waiting` | A gate begins evaluation for a target. |
+| `kapro.io/promotion.stage.gate.passed` | A gate passes for a target. |
+| `kapro.io/promotion.stage.gate.failed` | A gate fails for a target. |
+
+## Data Fields
+
+| Field | Meaning |
+|---|---|
+| `promotion` | `Promotion.metadata.name`. |
+| `promotionUID` | Kubernetes UID for traceability. |
+| `kaproRef` | Parent `Kapro` fleet name. |
+| `phase` | Promotion phase for whole-Promotion and attempt events; PromotionRun phase for wave, stage, gate, and target events. |
+| `previousPhase` | Prior phase for transition events. |
+| `version` | Requested artifact version. |
+| `attemptName` | Active or affected PromotionRun name. |
+| `wave` | PromotionPlan DAG node name. |
+| `stage` | Stage name inside a PromotionPlan. |
+| `gate` | Gate name. |
+| `target` | FleetCluster name. |
+| `reason` | Short machine-readable cause. |
+| `message` | One-line human summary. |
+
+## Delivery Semantics
+
+- Events are delivered at least once. Subscribers must be idempotent.
+- Ordering is not guaranteed across concurrent dispatches.
+- `KAPRO_EVENTS_SINK_TIMEOUT` bounds the whole dispatch attempt, including
+  retries and backoff.
+- 4xx responses other than retryable throttling/timeout statuses are treated as
+  permanent failures.
+- Outbound URLs reject loopback, private, link-local, and metadata addresses
+  unless insecure local webhooks are explicitly enabled.
 
 ## Integration Patterns
 
-| Integration | Recommended pattern |
+| Integration | Pattern |
 |---|---|
-| Slack or Teams bot | Receive CloudEvents and render selected event types. |
-| Git audit log | Commit a compact YAML record on `kapro.promotionrun.completed`. |
-| SIEM / audit sink | Ingest all CloudEvents and index by `source`, `subject`, and `type`. |
-| GitHub Actions | Use a small webhook receiver to trigger `repository_dispatch`. |
-| Knative Eventing | Point the webhook at a broker-compatible ingress adapter. |
-
-## Core Boundary
-
-Kapro core emits events; it does not own every downstream integration. Prefer
-small external consumers for Git commits, ticketing systems, SIEM routing, and
-organization-specific policy workflows.
+| Generic webhook | Point `KAPRO_EVENTS_SINK_URL` at an HTTPS receiver that accepts structured CloudEvents JSON. |
+| Argo Events | Use a webhook EventSource and Sensor to route selected event types. |
+| Flux Notification Controller | Point a Flux `Receiver` at Kapro's sink URL, then route with `Provider` and `Alert`. |
+| kube-event-exporter | Route Kubernetes Events emitted by Kapro when HTTP sinks are not desired. |
+| SIEM or audit store | Ingest all CloudEvents and index by `source`, `subject`, `type`, and `data.promotion`. |

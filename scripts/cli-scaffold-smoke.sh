@@ -45,6 +45,7 @@ require_file "${TMPDIR}/repo-first/argo/applications/checkout.yaml"
 reject_path "${TMPDIR}/repo-first/clusters"
 reject_path "${TMPDIR}/repo-first/kapro"
 reject_path "${TMPDIR}/repo-first/promotionruns"
+reject_path "${TMPDIR}/repo-first/promotions"
 
 echo "smoke: greenfield flux pull with cluster inventory"
 kapro init "${TMPDIR}/greenfield-flux" --backend flux --name checkout --mode pull --force >/dev/null
@@ -52,9 +53,11 @@ require_file "${TMPDIR}/greenfield-flux/backends/flux.yaml"
 require_file "${TMPDIR}/greenfield-flux/clusters/canary.yaml"
 require_file "${TMPDIR}/greenfield-flux/clusters/prod.yaml"
 require_file "${TMPDIR}/greenfield-flux/kapro/checkout.yaml"
-require_file "${TMPDIR}/greenfield-flux/promotionruns/checkout-promotionrun.yaml"
+require_file "${TMPDIR}/greenfield-flux/promotions/checkout-promotion.yaml"
 require_text "${TMPDIR}/greenfield-flux/clusters/canary.yaml" "backendRef: flux"
 require_text "${TMPDIR}/greenfield-flux/clusters/canary.yaml" "ociRepository: checkout-bundle"
+require_text "${TMPDIR}/greenfield-flux/promotions/checkout-promotion.yaml" "kind: Promotion"
+require_text "${TMPDIR}/greenfield-flux/promotions/checkout-promotion.yaml" "kaproRef: checkout"
 
 echo "smoke: brownfield argo connect"
 kapro connect argo "${TMPDIR}/connect-argo" --namespace argocd --selector kapro.io/import=true,team=checkout --force >/dev/null

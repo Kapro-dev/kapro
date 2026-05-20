@@ -16,7 +16,7 @@ func newInitCmd() *cobra.Command {
 		Short: "Scaffold a greenfield Kapro promotion repo",
 		Long: `Scaffolds a GitOps-ready promotion repository with BackendProfile,
 PromotionPlan, a Kapro fleet object with inline source units, and sample
-PromotionRun manifests.
+Promotion intent manifests.
 
 This bootstraps the promotion layer. Argo, Flux, Helm, and Kubernetes still own
 local sync and rollout mechanics.`,
@@ -186,7 +186,7 @@ func greenfieldFiles(opts scaffoldOptions) map[string]string {
 	}
 	if len(clusters) > 0 {
 		files[filepath.Join("kapro", opts.Name+".yaml")] = renderKapro(opts, clusters)
-		files[filepath.Join("promotionruns", opts.Name+"-promotionrun.yaml")] = renderPromotionRun(opts)
+		files[filepath.Join("promotions", opts.Name+"-promotion.yaml")] = renderPromotion(opts)
 	} else {
 		files[filepath.Join("sources", opts.Name+".yaml")] = renderPromotionSource(opts)
 	}
@@ -414,16 +414,14 @@ spec:
 `, opts.Name, opts.Registry, opts.Backend, opts.Registry, opts.Name, opts.Name, opts.Name, opts.Mode, opts.Backend, opts.Namespace, clusterItems.String())
 }
 
-func renderPromotionRun(opts scaffoldOptions) string {
+func renderPromotion(opts scaffoldOptions) string {
 	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
-kind: PromotionRun
+kind: Promotion
 metadata:
   name: %s-0-1-0
 spec:
+  kaproRef: %s
   version: 0.1.0
-  promotionPlans:
-    - name: main
-      promotionPlan: %s
 `, opts.Name, opts.Name)
 }
 
@@ -486,7 +484,7 @@ Apply order:
 3. promotionplans/
 %s
 Clusters are intentionally not generated yet. Add clusters later, then add
-clusters/, kapro/, and promotionruns/ when promotion targets exist.
+clusters/, kapro/, and promotions/ when promotion targets exist.
 
 Kapro coordinates promotion. The %s backend owns local sync and rollout mechanics.
 `, opts.Name, opts.Backend, backendStep, opts.Backend)
@@ -501,7 +499,7 @@ Apply order:
 2. clusters/
 3. promotionplans/
 4. kapro/
-5. promotionruns/
+5. promotions/
 
 Kapro coordinates promotion. The %s backend owns local sync and rollout mechanics.
 `, opts.Name, opts.Backend, opts.Backend)

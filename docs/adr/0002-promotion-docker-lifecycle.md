@@ -68,7 +68,7 @@ Unreadable. Operators want a vocabulary they already know.
 - `Restarting` is a transient phase; subscribers that aren't
   prepared for it may double-count `Progressing` transitions.
   Documented as expected behaviour in
-  `docs/cloudevents.md`.
+  `docs/events.md`.
 - `RollingBack` is reserved but not yet emitted (pending `spec.rollbackTo`
   design). Some confusion possible if subscribers pre-register for it.
 

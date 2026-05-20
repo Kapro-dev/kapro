@@ -11,11 +11,11 @@
 //
 // Adding a new contract version (e.g. v1alpha2) means:
 //  1. add the constant + supported-list entry here;
-//  2. update docs/plugin-compatibility.md (the human-facing matrix);
+//  2. update docs/plugin-authoring.md (the human-facing matrix);
 //  3. ship the matching conformance/* harness for the new version.
 //
 // The full lifecycle (deprecation window, removal, discovery) is documented in
-// docs/plugin-compatibility.md.
+// docs/plugin-authoring.md.
 package plugincompat
 
 import (

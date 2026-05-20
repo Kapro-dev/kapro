@@ -72,3 +72,61 @@ Kapro or its controllers generate and update:
 
 Direct `PromotionRun` manifests remain an advanced compatibility path, not the
 recommended first-use API.
+
+## Hub Config Source Of Truth
+
+The recommended operating model is a dedicated hub-config Git repository. CI
+validates that repository and applies the rendered YAML to the Kapro hub with
+`kubectl apply`. Spoke clusters do not watch that repository directly; they
+either keep using their existing Argo or Flux source of truth, or they consume
+Kapro-generated greenfield delivery objects and report status through
+`FleetCluster`.
+
+Typical layout:
+
+```text
+hub-config/
+  clusters/
+  backends/
+  sources/
+  promotionplans/
+  promotions/
+  .github/workflows/
+```
+
+Apply objects in dependency order: clusters, backends, sources, plans, then
+promotions. Direct `promotionruns/` can exist as an advanced compatibility path,
+but first-use repositories should prefer `promotions/`.
+
+See [examples/quickstart](../examples/quickstart/) for the preferred
+Kapro-root Promotion path.
+
+## Gate Semantics
+
+Kapro gates use a simple decision model:
+
+```text
+Evidence -> Analysis -> Phase
+```
+
+The phase is the rollout-control field. Evidence explains why the phase was
+returned and is stored on `PromotionTarget.status.gates[].evidence[]`.
+
+Gate evidence can include provider, query, window, interval, observed value,
+threshold, baseline value, sample count, confidence, reason, and projection.
+It must not contain tokens, headers, secret values, or raw webhook payloads.
+
+Metric gates support these analysis modes:
+
+| Mode | Behavior |
+|---|---|
+| `threshold` | Compare the current Prometheus value to a threshold. |
+| `sloBurnRate` | Treat the current value as error-budget burn rate. |
+| `baseline` | Compare current value to a baseline query. |
+| `sequential` | Query a range and require enough samples before passing or failing. |
+| `changePoint` | Compare the first and second halves of a range for regression. |
+| `score` | Convert one metric into a score and require `scoreThreshold`. |
+
+Missing data, unhealthy baselines, low confidence, unreachable metrics systems,
+and too few samples return `Inconclusive` so unclear evidence does not advance a
+fleet by accident.

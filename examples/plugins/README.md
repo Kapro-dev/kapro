@@ -22,5 +22,3 @@ readiness probes succeed.
 Related docs:
 
 - `docs/plugin-authoring.md`
-- `docs/plugin-compatibility.md`
-- `docs/conformance.md`

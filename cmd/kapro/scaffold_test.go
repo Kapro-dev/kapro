@@ -77,7 +77,7 @@ func TestRunInitScaffoldRepoOnly(t *testing.T) {
 	for _, relPath := range []string{
 		"clusters/canary.yaml",
 		"kapro/checkout.yaml",
-		"promotionruns/checkout-promotionrun.yaml",
+		"promotions/checkout-promotion.yaml",
 	} {
 		if _, err := os.Stat(filepath.Join(dir, relPath)); !os.IsNotExist(err) {
 			t.Fatalf("%s should not be generated before clusters exist", relPath)
@@ -103,7 +103,7 @@ func TestRunInitScaffoldOCIPull(t *testing.T) {
 		"clusters/canary.yaml",
 		"clusters/prod.yaml",
 		"kapro/checkout.yaml",
-		"promotionruns/checkout-promotionrun.yaml",
+		"promotions/checkout-promotion.yaml",
 	} {
 		if _, err := os.Stat(filepath.Join(dir, relPath)); err != nil {
 			t.Fatalf("%s not generated: %v", relPath, err)
@@ -136,6 +136,16 @@ func TestRunInitScaffoldOCIPull(t *testing.T) {
 	} {
 		if !strings.Contains(cluster, want) {
 			t.Fatalf("cluster file missing %q:\n%s", want, cluster)
+		}
+	}
+	promotion := readFile(t, filepath.Join(dir, "promotions/checkout-promotion.yaml"))
+	for _, want := range []string{
+		"kind: Promotion",
+		"kaproRef: checkout",
+		"version: 0.1.0",
+	} {
+		if !strings.Contains(promotion, want) {
+			t.Fatalf("promotion file missing %q:\n%s", want, promotion)
 		}
 	}
 }

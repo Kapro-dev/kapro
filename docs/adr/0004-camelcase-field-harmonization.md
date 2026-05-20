@@ -119,6 +119,6 @@ Pure regression.
 
 - PR vinn/crd-camelcase-harmonization (this change)
 - `api/v1alpha1/camelcase_canary_test.go` — the drift canary
-- `docs/CONTRIBUTING-events.md` — style discipline that informs this
+- `.github/CONTRIBUTING_EVENTS.md` — style discipline that informs this
   decision (the events checklist and the CRD checklist are the same
   shape: catch drift at commit time, not in review)

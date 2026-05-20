@@ -173,7 +173,7 @@ work, Kapro owns PromotionRun state.
 
 API maturity, deprecation rules, upgrade policy, and the future non-binding
 certified plugin path are defined in `docs/api-stability.md`. KAI, KGI, and KPI
-conformance instructions are defined in `docs/conformance.md`.
+conformance instructions are defined in `docs/plugin-authoring.md`.
 
 Plugin registration is a platform-admin action. External plugins are inside the
 delivery integration boundary, not inside Kapro's control-plane trust boundary.
@@ -182,7 +182,7 @@ They must not create or mutate Kapro PromotionRun state directly. See
 handling, RBAC, and tenancy rules.
 
 Plugin readiness follows the compatibility matrix in
-`docs/plugin-compatibility.md`. Unsupported or missing KAI/KGI/KPI contract
+`docs/plugin-authoring.md`. Unsupported or missing KAI/KGI/KPI contract
 versions are reported as `Ready=False` and `Compatible=False` on
 `PluginRegistration` status and are not loaded for runtime dispatch.
 

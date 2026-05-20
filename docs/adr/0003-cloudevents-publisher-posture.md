@@ -44,10 +44,10 @@ Concretely:
      integrations.
 4. Ship `webhook` and `event` handler kinds only. Do NOT ship `slack`,
    `teams`, `pagerduty`, `opsgenie`, `email`, etc.
-5. Document integration recipes (`docs/integrations/`) that show users
-   how to subscribe via Argo Events, Flux Notification Controller,
-   kube-event-exporter, etc. — those projects already speak every
-   backend natively.
+5. Document integration recipes in `docs/events.md` that show users how to
+   subscribe via Argo Events, Flux Notification Controller,
+   kube-event-exporter, etc. — those projects already speak every backend
+   natively.
 
 This is the same posture Tekton holds for CI: own the primitive
 (`TaskRun`/`PipelineRun`), define the contract, let others build on top.
@@ -89,7 +89,7 @@ existing Flux Notification Controller `Receiver` at Kapro's sink).
 **Harder:**
 - Users who want "install Kapro, get Slack" need to also install
   Flux Notification Controller or Argo CD Notifications. Documented
-  in `docs/integrations/generic-webhook.md`.
+  in `docs/events.md`.
 - Discovery: users won't find Kapro by searching "Slack notifications
   for Kubernetes." We win on the fleet-narrative axis instead.
 
@@ -106,5 +106,4 @@ existing Flux Notification Controller `Receiver` at Kapro's sink).
 - PR #79: Lifecycle hooks (per-Promotion handlers)
 - PR #80: CloudEvents vocabulary + operator-level sink
 - PR #81/#82: Wave / Stage / Gate CloudEvents
-- `docs/cloudevents.md` — vocabulary spec
-- `docs/integrations/` — subscriber cookbooks
+- `docs/events.md` — vocabulary spec and subscriber cookbook

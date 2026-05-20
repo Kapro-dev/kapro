@@ -4,7 +4,8 @@ This is the shortest greenfield path for seeing Kapro create Promotion intent
 and reconcile a controller-owned PromotionRun attempt. Use the Kind demo when
 you want a fully local scripted environment; use this page when you already
 have a Kubernetes cluster and want to apply the smallest useful hub
-configuration yourself.
+configuration yourself. For a fully scripted local cluster, use the
+[Kind demo](../examples/kind-demo/README.md).
 
 ## 1. Install The Operator
 
@@ -33,7 +34,7 @@ helm upgrade --install kapro charts/kapro-operator \
 ## 2. Apply A Minimal Hub Config
 
 ```bash
-kubectl apply -f examples/hub-config/backends/flux.yaml
+kubectl apply -f examples/quickstart/backend-flux.yaml
 kubectl apply -f examples/quickstart/kapro.yaml
 ```
 

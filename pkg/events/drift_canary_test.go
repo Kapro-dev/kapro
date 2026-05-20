@@ -10,9 +10,9 @@ import (
 	"kapro.io/kapro/pkg/events"
 )
 
-// TestEventTypesDocumentedInCloudEventsMd is the drift canary: every
+// TestEventTypesDocumentedInEventsMd is the drift canary: every
 // EventType constant exported from pkg/events MUST appear verbatim
-// somewhere in docs/cloudevents.md. Adding a new constant without
+// somewhere in docs/events.md. Adding a new constant without
 // adding a row to the vocabulary table will fail this test, which is
 // the single line of CI defence against the docs↔code drift bugs that
 // cost PRs #80 and #81 a combined 20 review comments.
@@ -20,15 +20,15 @@ import (
 // The check is deliberately strict-substring (the entire EventType
 // literal must appear). False negatives — "I documented it under a
 // slightly different spelling" — are wins for the canary.
-func TestEventTypesDocumentedInCloudEventsMd(t *testing.T) {
-	docs, err := readDocsFile("cloudevents.md")
+func TestEventTypesDocumentedInEventsMd(t *testing.T) {
+	docs, err := readDocsFile("events.md")
 	if err != nil {
-		t.Fatalf("read docs/cloudevents.md: %v", err)
+		t.Fatalf("read docs/events.md: %v", err)
 	}
 	for _, et := range events.AllEventTypes() {
 		if !strings.Contains(docs, string(et)) {
-			t.Errorf("EventType %q is exported from pkg/events but not documented in docs/cloudevents.md.\n"+
-				"Add a row to the matching scope table; see docs/CONTRIBUTING-events.md step 1.",
+			t.Errorf("EventType %q is exported from pkg/events but not documented in docs/events.md.\n"+
+				"Add a row to the matching scope table; see .github/CONTRIBUTING_EVENTS.md.",
 				string(et))
 		}
 	}
