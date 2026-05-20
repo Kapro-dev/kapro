@@ -28,7 +28,9 @@ Checks:
   scope targets, non-empty PromotionPlan refs.
 - **PromotionPlan** — unique stage names, every `dependsOn[].stage`
   references a real stage, no self-dependencies, no cycles in the
-  DAG, manual gates have approvers, metric gates have a preset or
+  DAG, manual gates declare `approval.required: true` (silent
+  auto-advance is an ERROR), manual gates with `required: true` list
+  at least one approver (WARN), metric gates have a preset or
   threshold.
 
 Severity: `ERROR` fails (exit 1), `WARN` is advisory (exit 0).

@@ -220,6 +220,188 @@ spec:
 	}
 }
 
+// ---- LintKapro -------------------------------------------------------------
+
+func TestLintKapro_NilSourceDoesNotPanic(t *testing.T) {
+	// Regression guard. KaproSpec.Source is *PromotionSourceSpec and is
+	// nil whenever the user does not declare an inline source — i.e.
+	// every Kapro that uses sourceRef. An earlier version of LintKapro
+	// dereferenced k.Spec.Source.Units unconditionally and panicked.
+	k := &kaprov1alpha1.Kapro{
+		ObjectMeta: metav1.ObjectMeta{Name: "k1"},
+		Spec: kaprov1alpha1.KaproSpec{
+			SourceRef: "shared-catalog",
+			Delivery:  kaprov1alpha1.DeliverySpec{BackendRef: "flux"},
+			Clusters:  []kaprov1alpha1.KaproCluster{{Name: "c1"}},
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("LintKapro panicked with nil Source: %v", r)
+		}
+	}()
+	issues := LintKapro(k)
+	for _, i := range issues {
+		if i.Severity == SeverityError {
+			t.Errorf("nil-Source + valid sourceRef should not error; got %+v", i)
+		}
+	}
+}
+
+func TestLintKapro_ExactlyOneOfSourceSourceRef(t *testing.T) {
+	cases := []struct {
+		name     string
+		sourceRef string
+		source   *kaprov1alpha1.PromotionSourceSpec
+		wantErr  bool
+	}{
+		{name: "both unset", wantErr: true},
+		{name: "only sourceRef", sourceRef: "shared"},
+		{
+			name:   "only inline source",
+			source: &kaprov1alpha1.PromotionSourceSpec{Units: []kaprov1alpha1.PromotionUnit{{Name: "u"}}},
+		},
+		{
+			name:      "both set",
+			sourceRef: "shared",
+			source:    &kaprov1alpha1.PromotionSourceSpec{Units: []kaprov1alpha1.PromotionUnit{{Name: "u"}}},
+			wantErr:   true,
+		},
+		{
+			name:   "source non-nil but empty units",
+			source: &kaprov1alpha1.PromotionSourceSpec{},
+			// No sourceRef, no actual units → still "neither set".
+			wantErr: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			k := &kaprov1alpha1.Kapro{
+				ObjectMeta: metav1.ObjectMeta{Name: "k1"},
+				Spec: kaprov1alpha1.KaproSpec{
+					SourceRef: tc.sourceRef,
+					Source:    tc.source,
+					Delivery:  kaprov1alpha1.DeliverySpec{BackendRef: "flux"},
+					Clusters:  []kaprov1alpha1.KaproCluster{{Name: "c1"}},
+				},
+			}
+			issues := LintKapro(k)
+			got := findIssue(t, issues, "source")
+			if tc.wantErr {
+				if got == nil || got.Severity != SeverityError {
+					t.Fatalf("expected source/sourceRef ERROR; got %+v", issues)
+				}
+			} else if got != nil && got.Severity == SeverityError {
+				t.Fatalf("did not expect source/sourceRef ERROR; got %+v", got)
+			}
+		})
+	}
+}
+
+func TestLintKapro_MissingBackendIsError(t *testing.T) {
+	k := &kaprov1alpha1.Kapro{
+		ObjectMeta: metav1.ObjectMeta{Name: "k1"},
+		Spec: kaprov1alpha1.KaproSpec{
+			SourceRef: "shared",
+			Clusters:  []kaprov1alpha1.KaproCluster{{Name: "c1"}},
+		},
+	}
+	issues := LintKapro(k)
+	hit := findIssue(t, issues, "backendRef")
+	if hit == nil || hit.Severity != SeverityError {
+		t.Fatalf("expected backendRef ERROR; got %+v", issues)
+	}
+}
+
+func TestLintKapro_NoClustersWarn(t *testing.T) {
+	k := &kaprov1alpha1.Kapro{
+		ObjectMeta: metav1.ObjectMeta{Name: "k1"},
+		Spec: kaprov1alpha1.KaproSpec{
+			SourceRef: "shared",
+			Delivery:  kaprov1alpha1.DeliverySpec{BackendRef: "flux"},
+		},
+	}
+	issues := LintKapro(k)
+	hit := findIssue(t, issues, "clusters")
+	if hit == nil || hit.Severity != SeverityWarn {
+		t.Fatalf("expected clusters WARN; got %+v", issues)
+	}
+}
+
+// ---- Manual-gate severity upgrade ------------------------------------------
+
+func TestLintPromotionPlan_ManualGateWithRequiredFalseIsError(t *testing.T) {
+	// approval.required=false on a manual gate materially breaks the
+	// user's intent ("wait for a human"). Reviewer flagged this as
+	// CHANGELOG/code drift in PR #96 — upgraded from WARN to ERROR.
+	pp := &kaprov1alpha1.PromotionPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "pp"},
+		Spec: kaprov1alpha1.PromotionPlanSpec{
+			Stages: []kaprov1alpha1.Stage{
+				{Name: "prod", Gate: &kaprov1alpha1.GatePolicySpec{
+					Mode:     kaprov1alpha1.GateModeManual,
+					Approval: &kaprov1alpha1.ApprovalConfig{Required: false},
+				}},
+			},
+		},
+	}
+	issues := LintPromotionPlan(pp)
+	hit := findIssue(t, issues, "will NOT wait for a human")
+	if hit == nil {
+		t.Fatalf("expected required=false ERROR; got %+v", issues)
+	}
+	if hit.Severity != SeverityError {
+		t.Errorf("severity = %s, want ERROR", hit.Severity)
+	}
+}
+
+// ---- LintFile edge cases ---------------------------------------------------
+
+func TestLintFile_NonKaproApiVersionSkippedSilently(t *testing.T) {
+	// A Deployment in a mixed YAML tree must not produce a warning —
+	// `kapro lint **/*.yaml` is meant to be safe on heterogeneous repos.
+	issues := LintFile("deploy.yaml", []byte(`
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+`))
+	if len(issues) != 0 {
+		t.Fatalf("non-Kapro manifest should be skipped; got %+v", issues)
+	}
+}
+
+func TestLintFile_CommentOnlyDocSkipsSilently(t *testing.T) {
+	issues := LintFile("comments.yaml", []byte(`
+# this file is intentionally only comments
+# generated by codegen — do not delete
+`))
+	if len(issues) != 0 {
+		t.Fatalf("comment-only doc should be skipped; got %+v", issues)
+	}
+}
+
+func TestLintFile_ExplicitNullDocSkipsSilently(t *testing.T) {
+	// A multi-doc stream with a `null` separator should not produce a
+	// "missing kind" error on the null doc.
+	issues := LintFile("stream.yaml", []byte(`null
+---
+apiVersion: kapro.io/v1alpha1
+kind: Promotion
+metadata:
+  name: ok
+spec:
+  kaproRef: k
+  version: v1
+  timeout: 30m
+`))
+	for _, i := range issues {
+		if i.Severity == SeverityError {
+			t.Fatalf("null doc produced ERROR: %+v (all issues: %+v)", i, issues)
+		}
+	}
+}
+
 func TestHasErrors_StrictUpgrades(t *testing.T) {
 	warn := []Issue{{Severity: SeverityWarn}}
 	if HasErrors(warn, false) {

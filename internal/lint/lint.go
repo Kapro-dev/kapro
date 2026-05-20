@@ -80,7 +80,11 @@ func LintFile(file string, data []byte) []Issue {
 }
 
 // lintOneDoc dispatches a single YAML document to the kind-specific
-// linter. Unknown kinds return a single ERROR — explicit, not silent.
+// linter. Non-Kapro manifests and Kapro kinds the linter has no rules
+// for yet are skipped silently (returns nil) so that running
+// `kapro lint **/*.yaml` over a mixed tree only surfaces real issues.
+// A parse failure or a Kapro-kind doc with the wrong apiVersion still
+// produces an issue.
 func lintOneDoc(data []byte) []Issue {
 	var meta struct {
 		APIVersion string `json:"apiVersion"`
@@ -95,12 +99,26 @@ func lintOneDoc(data []byte) []Issue {
 			Message:  fmt.Sprintf("YAML parse failed: %v", err),
 		}}
 	}
+	// A doc that decoded to zero metadata is either comment-only,
+	// `null`, or an empty map — none of which the linter should flag.
+	// splitYAMLDocs already drops whitespace-only docs; this handles
+	// the harder cases that survive past it.
+	if meta.Kind == "" && meta.APIVersion == "" && meta.Metadata.Name == "" {
+		return nil
+	}
 	if meta.Kind == "" {
 		return []Issue{{
 			Severity: SeverityError,
 			Message:  "missing kind",
 		}}
 	}
+	// Non-Kapro manifests (Deployment, Service, ConfigMap, …) are out
+	// of scope. Skip silently so mixed-content lint runs are clean.
+	if !strings.HasPrefix(meta.APIVersion, "kapro.io/") {
+		return nil
+	}
+	// Same apiVersion family but wrong version is still a Kapro
+	// manifest the user probably wants flagged.
 	if meta.APIVersion != "kapro.io/v1alpha1" {
 		return []Issue{{
 			Severity: SeverityWarn,
@@ -168,11 +186,15 @@ func LintKapro(k *kaprov1alpha1.Kapro) []Issue {
 	if k.Name == "" {
 		out = append(out, errAt("metadata.name", "Kapro requires a name"))
 	}
-	if k.Spec.SourceRef == "" && len(k.Spec.Source.Units) == 0 {
+	// KaproSpec.Source is *PromotionSourceSpec — nil when the inline
+	// source path is not used. Treat "source is set" as "non-nil with
+	// at least one unit" so the exactly-one-of check is panic-safe.
+	inlineSourceSet := k.Spec.Source != nil && len(k.Spec.Source.Units) > 0
+	if k.Spec.SourceRef == "" && !inlineSourceSet {
 		out = append(out, errAt("spec.source / spec.sourceRef",
 			"exactly one of spec.source or spec.sourceRef must be set"))
 	}
-	if k.Spec.SourceRef != "" && len(k.Spec.Source.Units) > 0 {
+	if k.Spec.SourceRef != "" && inlineSourceSet {
 		out = append(out, errAt("spec.source / spec.sourceRef",
 			"only one of spec.source or spec.sourceRef may be set"))
 	}
@@ -279,9 +301,12 @@ func LintPromotionPlan(pp *kaprov1alpha1.PromotionPlan) []Issue {
 		if s.Gate != nil {
 			if s.Gate.Mode == kaprov1alpha1.GateModeManual {
 				if s.Gate.Approval == nil || !s.Gate.Approval.Required {
-					out = append(out, warnAt(
+					// Materially breaks the user's stated intent ("wait
+					// for a human") — the stage will silently auto-advance.
+					// Upgrade from advisory to ERROR so CI catches it.
+					out = append(out, errAt(
 						fmt.Sprintf("spec.stages[%d].gate.approval.required", i),
-						fmt.Sprintf("stage %q gate.mode=manual but approval.required is false; the rollout will not actually wait for a human", s.Name)))
+						fmt.Sprintf("stage %q gate.mode=manual but approval.required is false; the rollout will NOT wait for a human", s.Name)))
 				} else if len(s.Gate.Approval.Approvers) == 0 {
 					out = append(out, warnAt(
 						fmt.Sprintf("spec.stages[%d].gate.approval.approvers", i),
