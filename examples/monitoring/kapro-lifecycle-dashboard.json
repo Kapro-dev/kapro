@@ -1,0 +1,147 @@
+{
+  "annotations": {"list": []},
+  "description": "Kapro Promotion lifecycle hooks + CloudEvents sink + FleetCluster health. Pair with kapro-operations-dashboard.json for full coverage.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"expr": "sum(rate(kapro_lifecycle_hook_invocations_total{kind=\"Sink\"}[5m]))", "legendFormat": "events/s", "refId": "A"}],
+      "title": "CloudEvents Sink Throughput",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "percentunit", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.01}, {"color": "red", "value": 0.05}]}}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "id": 2,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"expr": "sum(rate(kapro_lifecycle_hook_invocations_total{result=\"failed\"}[10m])) / clamp_min(sum(rate(kapro_lifecycle_hook_invocations_total[10m])), 1)", "legendFormat": "failure rate", "refId": "A"}],
+      "title": "Lifecycle Hook Failure Rate",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "id": 3,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"expr": "histogram_quantile(0.99, sum(rate(kapro_lifecycle_hook_duration_seconds_bucket[10m])) by (le, kind))", "legendFormat": "{{kind}}", "refId": "A"}],
+      "title": "Hook Dispatch p99",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 3}]}}, "overrides": []},
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+      "id": 4,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"expr": "sum(max_over_time(kapro_fleetcluster_heartbeat_misses[5m]) > 0)", "legendFormat": "stale heartbeats", "refId": "A"}],
+      "title": "Clusters with Stale Heartbeat",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "id": 5,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"expr": "sum(rate(kapro_lifecycle_hook_invocations_total[5m])) by (kind, result)", "legendFormat": "{{kind}} {{result}}", "refId": "A"}],
+      "title": "Lifecycle Hooks by Kind + Result",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "id": 6,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"expr": "sum(rate(kapro_lifecycle_hook_invocations_total{kind=\"Sink\"}[5m])) by (phase)", "legendFormat": "phase={{phase}}", "refId": "A"}],
+      "title": "CloudEvents Sink: Invocations by Promotion Phase",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "id": 7,
+      "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"expr": "histogram_quantile(0.50, sum(rate(kapro_lifecycle_hook_duration_seconds_bucket[5m])) by (le, kind))", "legendFormat": "{{kind}} p50", "refId": "A"},
+        {"expr": "histogram_quantile(0.95, sum(rate(kapro_lifecycle_hook_duration_seconds_bucket[5m])) by (le, kind))", "legendFormat": "{{kind}} p95", "refId": "B"},
+        {"expr": "histogram_quantile(0.99, sum(rate(kapro_lifecycle_hook_duration_seconds_bucket[5m])) by (le, kind))", "legendFormat": "{{kind}} p99", "refId": "C"}
+      ],
+      "title": "Hook Dispatch Duration (p50/p95/p99 by kind)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "id": 8,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"expr": "kapro_fleetcluster_heartbeat_misses", "legendFormat": "{{cluster}}", "refId": "A"}],
+      "title": "FleetCluster Heartbeat Misses (current)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+      "id": 9,
+      "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"expr": "sum(rate(kapro_fleetcluster_unreachable_transitions_total[5m]))", "legendFormat": "→ unreachable", "refId": "A"},
+        {"expr": "sum(rate(kapro_fleetcluster_recovered_transitions_total[5m]))", "legendFormat": "→ recovered", "refId": "B"}
+      ],
+      "title": "FleetCluster Reachability Transitions",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+      "id": 10,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"expr": "sum(rate(kapro_fsm_unexpected_transitions_total[5m])) by (from, to)", "legendFormat": "{{from}} → {{to}}", "refId": "A"}],
+      "title": "FSM Unexpected Transitions (drift signal)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["kapro", "lifecycle", "cloudevents", "fleet"],
+  "templating": {
+    "list": [
+      {
+        "current": {"selected": false, "text": "Prometheus", "value": "Prometheus"},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Prometheus",
+        "multi": false,
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": {"from": "now-6h", "to": "now"},
+  "timepicker": {},
+  "timezone": "",
+  "title": "Kapro Lifecycle & Fleet Health",
+  "uid": "kapro-lifecycle",
+  "version": 1,
+  "weekStart": ""
+}

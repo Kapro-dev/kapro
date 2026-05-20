@@ -92,6 +92,30 @@ A unit test (`examples/plans/plans_validate_test.go`) parses each YAML
 into `kapro.io/v1alpha1.PromotionPlan` and checks DAG references, so
 schema drift between the docs and the CRD source-of-truth fails the
 build.
+
+### Added — Grafana lifecycle + fleet-health dashboard
+
+`examples/monitoring/kapro-lifecycle-dashboard.json` is a focused
+companion to the existing operations dashboard. It visualises the gap
+the older dashboards did not cover:
+
+- **Promotion lifecycle hooks** — invocation rate by kind
+  (`Webhook` / `Event` / `Sink`), failure rate, dispatch p50/p95/p99
+  latency, and breakdown by Promotion phase. Uses
+  `kapro_lifecycle_hook_invocations_total` and
+  `kapro_lifecycle_hook_duration_seconds`.
+- **CloudEvents sink** — throughput stat and per-phase breakdown so
+  subscribers can see exactly which Promotion phases are emitting.
+- **FleetCluster health** — heartbeat misses per cluster, unreachable
+  vs recovered transition rates. Uses
+  `kapro_fleetcluster_heartbeat_misses` and the
+  `kapro_fleetcluster_{unreachable,recovered}_transitions_total`
+  pair.
+- **FSM drift signal** —
+  `kapro_fsm_unexpected_transitions_total{from,to}` non-zero rates as
+  an early warning that the documented FSM has drifted from handler code.
+
+Import alongside `kapro-operations-dashboard.json`.
 ## v0.1.0 - 2026-05-19
 
 `v0.1.0` is the first public Kapro release. It supersedes the earlier alpha
