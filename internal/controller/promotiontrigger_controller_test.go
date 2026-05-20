@@ -53,7 +53,7 @@ func TestPromotionTriggerDryRunCreatesNothingAndRecordsArtifact(t *testing.T) {
 	}
 	cond := apimeta.FindStatusCondition(got.Status.Conditions, conditionPromotionUpdated)
 	if cond == nil || cond.Reason != "DryRun" {
-		t.Fatalf("PromotionRunCreated condition = %+v", cond)
+		t.Fatalf("PromotionUpdated condition = %+v", cond)
 	}
 }
 
@@ -188,7 +188,7 @@ func TestPromotionTriggerMaxActiveBlocksCreation(t *testing.T) {
 	got := getPromotionTrigger(t, ctx, c, "checkout")
 	cond := apimeta.FindStatusCondition(got.Status.Conditions, conditionPromotionUpdated)
 	if cond == nil || cond.Reason != "MaxActiveReached" {
-		t.Fatalf("PromotionRunCreated condition = %+v", cond)
+		t.Fatalf("PromotionUpdated condition = %+v", cond)
 	}
 }
 
@@ -206,7 +206,7 @@ func TestPromotionTriggerCooldownBlocksCreation(t *testing.T) {
 	got := getPromotionTrigger(t, ctx, c, "checkout")
 	cond := apimeta.FindStatusCondition(got.Status.Conditions, conditionPromotionUpdated)
 	if cond == nil || cond.Reason != "CooldownActive" {
-		t.Fatalf("PromotionRunCreated condition = %+v", cond)
+		t.Fatalf("PromotionUpdated condition = %+v", cond)
 	}
 }
 
@@ -280,7 +280,7 @@ func TestPromotionTriggerExistingPromotionRunCooldownPreventsRapidBypass(t *test
 	got := getPromotionTrigger(t, ctx, c, "checkout")
 	cond := apimeta.FindStatusCondition(got.Status.Conditions, conditionPromotionUpdated)
 	if cond == nil || cond.Reason != "CooldownActive" {
-		t.Fatalf("PromotionRunCreated condition = %+v", cond)
+		t.Fatalf("PromotionUpdated condition = %+v", cond)
 	}
 }
 

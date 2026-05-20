@@ -60,12 +60,12 @@ type PromotionTriggerResolver interface {
 	Resolve(ctx context.Context, trigger *kaprov1alpha1.PromotionTrigger) (*PromotionTriggerArtifactObservation, error)
 }
 
-// PromotionTriggerVerifier verifies an artifact before promotionrun creation.
+// PromotionTriggerVerifier verifies an artifact before Promotion intent is updated.
 type PromotionTriggerVerifier interface {
 	Verify(ctx context.Context, trigger *kaprov1alpha1.PromotionTrigger, artifact PromotionTriggerArtifactObservation) error
 }
 
-// PromotionTriggerReconciler observes artifact sources and creates guarded PromotionRuns.
+// PromotionTriggerReconciler observes artifact sources and updates guarded Promotions.
 type PromotionTriggerReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
@@ -77,7 +77,8 @@ type PromotionTriggerReconciler struct {
 
 // +kubebuilder:rbac:groups=kapro.io,resources=promotiontriggers,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kapro.io,resources=promotiontriggers/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=promotionruns,verbs=get;list;watch;create
+// +kubebuilder:rbac:groups=kapro.io,resources=promotions,verbs=get;list;watch;create;patch;update
+// +kubebuilder:rbac:groups=kapro.io,resources=promotionruns,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 
 func (r *PromotionTriggerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -194,7 +195,7 @@ func (r *PromotionTriggerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		maxActive = defaultTriggerMaxActive
 	}
 	if activeCount >= maxActive {
-		setTriggerReady(&trigger, now, "MaxActiveReached", fmt.Sprintf("active PromotionRun count %d reached maxActive %d", activeCount, maxActive))
+		setTriggerReady(&trigger, now, "MaxActiveReached", fmt.Sprintf("active attempt count %d reached maxActive %d", activeCount, maxActive))
 		setCondition(&trigger.Status.Conditions, conditionPromotionUpdated, metav1.ConditionFalse, "MaxActiveReached", "Promotion update delayed by maxActive", trigger.Generation, now)
 		return ctrl.Result{RequeueAfter: pollAfter}, r.patchStatus(ctx, &trigger, patch)
 	}

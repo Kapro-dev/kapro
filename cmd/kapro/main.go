@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -827,8 +828,9 @@ Examples:
 	return cmd
 }
 
-// runPromotionCreate creates a Promotion intent. The PromotionController
-// materializes it into a PromotionRun.
+// runPromotionCreate creates or updates a Promotion intent. The
+// PromotionController materializes each effective spec change into a
+// PromotionRun attempt.
 func runPromotionCreate(ctx context.Context, name, kaproRef, version string,
 	versionPairs, plans, scope []string, kubeconfigPath string) error {
 
@@ -859,15 +861,37 @@ func runPromotionCreate(ctx context.Context, name, kaproRef, version string,
 		spec.Scope = &kaprov1alpha1.PromotionRunScope{Targets: scope}
 	}
 
-	promo := &kaprov1alpha1.Promotion{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec:       spec,
-	}
-	if err := c.Create(ctx, promo); err != nil {
-		return fmt.Errorf("create Promotion: %w", err)
+	op := "created"
+	promo := &kaprov1alpha1.Promotion{}
+	if err := c.Get(ctx, client.ObjectKey{Name: name}, promo); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("get Promotion: %w", err)
+		}
+		promo = &kaprov1alpha1.Promotion{
+			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Spec:       spec,
+		}
+		if err := c.Create(ctx, promo); err != nil {
+			if !apierrors.IsAlreadyExists(err) {
+				return fmt.Errorf("create Promotion: %w", err)
+			}
+			promo = &kaprov1alpha1.Promotion{}
+			if err := c.Get(ctx, client.ObjectKey{Name: name}, promo); err != nil {
+				return fmt.Errorf("get existing Promotion after create race: %w", err)
+			}
+			if err := updatePromotionSpec(ctx, c, promo, spec); err != nil {
+				return err
+			}
+			op = "updated"
+		}
+	} else {
+		if err := updatePromotionSpec(ctx, c, promo, spec); err != nil {
+			return err
+		}
+		op = "updated"
 	}
 
-	fmt.Printf("✅ Promotion created: %s\n", name)
+	fmt.Printf("✅ Promotion %s: %s\n", op, name)
 	fmt.Printf("   Kapro:     %s\n", kaproRef)
 	if version != "" {
 		fmt.Printf("   Version:   %s\n", version)
@@ -882,6 +906,15 @@ func runPromotionCreate(ctx context.Context, name, kaproRef, version string,
 		fmt.Printf("   Scope:     %s\n", strings.Join(scope, ", "))
 	}
 	fmt.Printf("\nWatch progress:\n  kubectl get promotion %s -w\n  kubectl get promotionruns -l kapro.io/promotion=%s\n", name, name)
+	return nil
+}
+
+func updatePromotionSpec(ctx context.Context, c client.Client, promo *kaprov1alpha1.Promotion, spec kaprov1alpha1.PromotionSpec) error {
+	patch := client.MergeFrom(promo.DeepCopy())
+	promo.Spec = spec
+	if err := c.Patch(ctx, promo, patch); err != nil {
+		return fmt.Errorf("update Promotion: %w", err)
+	}
 	return nil
 }
 

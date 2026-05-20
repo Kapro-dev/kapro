@@ -144,7 +144,7 @@ func TestStatusTick_PatchesCapabilities(t *testing.T) {
 		Hub:               newHubClientFromStatic(hub),
 		Local:             local,
 		ClusterName:       "de-prod-01",
-		ControllerVersion: "v0.5.0-alpha.1",
+		ControllerVersion: "v0.0.0-test",
 	}
 	if err := sr.tick(context.Background()); err != nil {
 		t.Fatalf("tick: %v", err)
@@ -159,8 +159,8 @@ func TestStatusTick_PatchesCapabilities(t *testing.T) {
 	if got.Status.Capabilities.Cloud != "gcp" {
 		t.Errorf("Cloud not patched: %q", got.Status.Capabilities.Cloud)
 	}
-	if got.Status.ControllerVersion != "v0.5.0-alpha.1" {
-		t.Errorf("ControllerVersion = %q, want v0.5.0-alpha.1", got.Status.ControllerVersion)
+	if got.Status.ControllerVersion != "v0.0.0-test" {
+		t.Errorf("ControllerVersion = %q, want v0.0.0-test", got.Status.ControllerVersion)
 	}
 }
 

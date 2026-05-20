@@ -1,12 +1,12 @@
 # Kapro Kind Demo
 
-This demo runs Kapro in a local Kind cluster and walks the intended
+This demo runs Kapro in a local Kind cluster and exercises the runtime
 control-plane flow:
 
 1. install Kapro CRDs and the Kapro operator;
 2. apply a small fleet config with `FleetCluster`, `PromotionPlan`,
    `PluginRegistration`, and `PromotionTrigger`;
-3. create a compatibility `PromotionRun` fixture;
+3. create a compatibility `PromotionRun` fixture for the local runtime demo;
 4. watch the planner bind targets, gates advance, approvals unblock
    production, and the push/Flux actuator patch a `ResourceSet`;
 5. inspect rollout status through `PromotionRun` and `PromotionTarget`.
@@ -31,7 +31,8 @@ scripts/kind-demo.sh up
 
 The script creates a `kapro-kind-demo` cluster, builds `kapro-operator:dev`,
 loads it into Kind, installs the CRDs, deploys the operator, applies local Flux
-fixture CRDs/resources, and starts the `checkout-kind` PromotionRun.
+fixture CRDs/resources, and starts the `checkout-kind` compatibility
+PromotionRun.
 
 Approve production:
 
@@ -53,7 +54,7 @@ The demo manifests are split by role:
 - `operator/`: demo kustomize overlay for the local operator.
 - `crds/`: fixture-only CRDs not shipped by Kapro.
 - `fixtures/`: fake Flux resources used by the local actuator path.
-- `config/`: Kapro API objects for the PromotionRun flow.
+- `config/`: Kapro API objects for the local runtime fixture.
 - `approvals/`: manual approvals that unblock production.
 
 ## What The Demo Shows
@@ -79,8 +80,9 @@ the local fixture `ResourceSet` named `checkout-demo` through
 calling a real registry.
 
 `config/04-promotionrun.yaml` creates the live compatibility PromotionRun
-fixture that drives the local rollout. The public user path is to author
-`Promotion` and let the controller stamp PromotionRun attempts.
+fixture that drives this local rollout. The public user path is to author
+`Promotion` and let the controller stamp PromotionRun attempts; this fixture
+keeps the demo deterministic because its approval names are precomputed.
 
 ## Observe
 

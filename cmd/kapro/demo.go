@@ -196,7 +196,7 @@ func runDemo(ctx context.Context) error {
 		}
 	}
 
-	// Create a PromotionRun to trigger the promotionplan.
+	// Create a compatibility PromotionRun to trigger the promotionplan.
 	promotionrun := &kaprov1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "platform-v5.28"},
 		Spec: kaprov1alpha1.PromotionRunSpec{

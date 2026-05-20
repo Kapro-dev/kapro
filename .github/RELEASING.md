@@ -17,6 +17,7 @@ make build
 make lint
 make validate-yaml-json
 make check-markdown-links
+scripts/ci-release-smoke.sh
 scripts/verify-install.sh render
 ```
 
@@ -44,7 +45,7 @@ Known limitations to call out:
 - the security model has not had an independent audit;
 - production soak across many customer repository styles is limited;
 - PromotionTrigger signature policy is the artifact verification path;
-- release candidates should publish a real multi-architecture operator image.
+- both operator images should be published as real multi-architecture images.
 
 ## Artifacts
 
@@ -53,8 +54,10 @@ For a tagged release, publish:
 - Git tag, for example `v0.1.0`;
 - GitHub release notes generated from `CHANGELOG.md`;
 - operator image `ghcr.io/kapro-dev/kapro-operator:<tag>`;
-- cosign signature for the operator image;
-- Helm chart package `kapro-operator-<version>.tgz`;
+- cluster controller image `ghcr.io/kapro-dev/kapro-cluster-controller:<tag>`;
+- cosign signatures for both images;
+- Helm chart packages `kapro-operator-<version>.tgz` and
+  `kapro-cluster-controller-<version>.tgz`;
 - checksums for downloadable archives.
 
 ## Tagging

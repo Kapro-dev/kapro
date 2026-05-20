@@ -60,7 +60,7 @@ const (
 	// kapro-cluster-controller pulls OCI artifacts (Helm chart, raw YAML
 	// tarball, or Kustomize tarball) and server-side applies them via the
 	// two-phase staging engine. Available out of the box; requires no Flux,
-	// Argo, or Sveltos installation on the spoke. Default for v0.5+.
+	// Argo, or Sveltos installation on the spoke.
 	BackendDriverOCI      BackendDriver = "oci"
 	BackendDriverExternal BackendDriver = "external"
 )

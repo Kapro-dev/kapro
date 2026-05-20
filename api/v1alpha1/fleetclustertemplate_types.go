@@ -32,31 +32,31 @@ type FleetClusterTemplateSource struct {
 
 	// AWS discovers EKS clusters in an account/region.
 	// Imported clusters get spec.provider.kind=eks.
-	// Stub in v0.5; surfaced as a Stalled condition when set.
+	// Preview stub; surfaced as a Stalled condition when set.
 	// +optional
 	AWS *AWSFleetSource `json:"aws,omitempty"`
 
 	// Azure discovers AKS / Azure Arc-connected clusters in a subscription.
 	// Imported clusters get spec.provider.kind=aks-arc.
-	// Stub in v0.5.
+	// Preview stub.
 	// +optional
 	Azure *AzureFleetSource `json:"azure,omitempty"`
 
 	// RHACM watches open-cluster-management.io ManagedCluster CRs on the
 	// local hub. Imported clusters get spec.provider.kind=rhacm.
-	// Stub in v0.5.
+	// Preview stub.
 	// +optional
 	RHACM *RHACMFleetSource `json:"rhacm,omitempty"`
 
 	// CAPI watches cluster.x-k8s.io Cluster CRs on the management cluster
 	// and pairs each with its kubeconfig Secret. Imported clusters get
-	// spec.provider.kind=capi. Stub in v0.5.
+	// spec.provider.kind=capi. Preview stub.
 	// +optional
 	CAPI *CAPIFleetSource `json:"capi,omitempty"`
 
 	// Static is an operator-supplied list with kubeconfig Secret references
 	// for on-prem / bare-metal clusters with no Fleet API. Imported
-	// clusters get spec.provider.kind=kubeconfig. Stub in v0.5.
+	// clusters get spec.provider.kind=kubeconfig. Preview stub.
 	// +optional
 	Static *StaticFleetSource `json:"static,omitempty"`
 }
@@ -68,7 +68,7 @@ type GCPFleetSource struct {
 	Project string `json:"project"`
 }
 
-// AWSFleetSource configures EKS auto-import. Stub in v0.5.
+// AWSFleetSource configures EKS auto-import. Preview stub.
 type AWSFleetSource struct {
 	// Region is the AWS region to enumerate EKS clusters in.
 	// +kubebuilder:validation:MinLength=1
@@ -79,7 +79,7 @@ type AWSFleetSource struct {
 	AccountID string `json:"accountID,omitempty"`
 }
 
-// AzureFleetSource configures AKS / Arc auto-import. Stub in v0.5.
+// AzureFleetSource configures AKS / Arc auto-import. Preview stub.
 type AzureFleetSource struct {
 	// SubscriptionID is the Azure subscription to enumerate clusters in.
 	// +kubebuilder:validation:MinLength=1
@@ -90,7 +90,7 @@ type AzureFleetSource struct {
 }
 
 // RHACMFleetSource configures Red Hat ACM ManagedCluster auto-import.
-// Stub in v0.5.
+// Preview stub.
 type RHACMFleetSource struct {
 	// Namespace is the namespace to watch ManagedCluster CRs in. When
 	// empty, the cluster-scoped ManagedCluster API is used (default RHACM
@@ -99,7 +99,7 @@ type RHACMFleetSource struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
-// CAPIFleetSource configures Cluster API auto-import. Stub in v0.5.
+// CAPIFleetSource configures Cluster API auto-import. Preview stub.
 type CAPIFleetSource struct {
 	// Namespace is the namespace to watch CAPI Cluster CRs in. Empty means
 	// all namespaces.
@@ -108,7 +108,7 @@ type CAPIFleetSource struct {
 }
 
 // StaticFleetSource enumerates on-prem clusters via operator-supplied
-// kubeconfig Secret references. Stub in v0.5.
+// kubeconfig Secret references. Preview stub.
 type StaticFleetSource struct {
 	// Clusters lists each on-prem cluster and its kubeconfig Secret.
 	// +kubebuilder:validation:MinItems=1

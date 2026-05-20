@@ -197,4 +197,4 @@ kapro init ./promotion-repo --backend argo --name checkout --clusters none
 
 `--clusters none` is repo-first mode. It creates backends, source metadata,
 promotionplan metadata, and backend-native starter files, but skips `clusters/`,
-`kapro/`, and `promotionruns/` until real targets exist.
+`kapro/`, and `promotions/` until real targets exist.

@@ -188,8 +188,8 @@ func (r *FleetClusterHeartbeatReconciler) computeDesiredReady(ctx context.Contex
 		}
 	}
 
-	// NotRegistered applies ONLY to clusters that opted into the v0.5
-	// bootstrap workflow (spec.bootstrap is set on creation, typically by
+	// NotRegistered applies ONLY to clusters that opted into the CSR bootstrap
+	// workflow (spec.bootstrap is set on creation, typically by
 	// `kapro spoke bootstrap`). For those, "registered" means the CSR
 	// exchange has completed and status.bootstrap.used is true.
 	//
@@ -324,7 +324,7 @@ func (r *FleetClusterHeartbeatReconciler) readLeaseFreshness(ctx context.Context
 // consistent because each reconciler re-runs (this one at
 // heartbeatReconcileRequeue cadence, ~1m) and re-asserts its condition. A
 // future project-wide migration to server-side apply would eliminate the
-// window. Acceptable for v0.5 — the window is bounded by the requeue
+// window. Acceptable for preview — the window is bounded by the requeue
 // interval, transitions emit metrics + events on every flip, and a momentary
 // stale condition does not affect promotion behavior because Phase
 // (not Ready) is the gate kapro_controller and the promotion target

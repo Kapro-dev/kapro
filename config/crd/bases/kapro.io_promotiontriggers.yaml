@@ -340,7 +340,7 @@ spec:
                     description: Tag is the source tag that matched the trigger pattern.
                     type: string
                   version:
-                    description: Version is the value copied into PromotionRun.spec.version.
+                    description: Version is the value copied into Promotion.spec.version.
                     type: string
                 type: object
               lastCheckedAt:
@@ -384,7 +384,7 @@ spec:
                         pattern.
                       type: string
                     version:
-                      description: Version is the value copied into PromotionRun.spec.version.
+                      description: Version is the value copied into Promotion.spec.version.
                       type: string
                   type: object
                 maxItems: 20

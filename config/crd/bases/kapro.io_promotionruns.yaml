@@ -58,10 +58,12 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          PromotionRun is the trigger for a progressive delivery rollout across the cluster fleet.
-          It references an Artifact and a DAG of PromotionPlans that define the delivery path.
-          The PromotionRun controller drives the promotionplan DAG, advancing each target cluster
-          through the delivery FSM (MetricsCheck → WaitingApproval → Applying → Applied).
+          PromotionRun is an immutable execution attempt for a progressive delivery rollout
+          across the cluster fleet. User-authored Promotion intent normally stamps
+          PromotionRun attempts through the Promotion controller.
+          It references an artifact version and PromotionPlans that define the delivery path.
+          The PromotionRun controller resolves the promotionplan DAG and creates child
+          targets; each PromotionTarget advances through its own delivery FSM.
           Per-target execution state lives in child PromotionTarget objects; PromotionRun.status
           stores only rollout summary, promotionplan progress, and audit metadata.
         properties:
@@ -177,10 +179,10 @@ spec:
                     derivedFrom:
                       description: DerivedFrom is the parent Artifact name.
                       type: string
-                    promotionrun:
+                    promotionRun:
                       description: PromotionRun is the PromotionRun name.
                       type: string
-                    promotionrunDerivedFrom:
+                    promotionRunDerivedFrom:
                       description: PromotionRunDerivedFrom is the parent PromotionRun
                         name.
                       type: string
@@ -192,7 +194,7 @@ spec:
                       type: array
                   required:
                   - artifact
-                  - promotionrun
+                  - promotionRun
                   type: object
                 type: array
               completedAt:

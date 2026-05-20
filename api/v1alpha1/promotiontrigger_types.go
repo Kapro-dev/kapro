@@ -155,7 +155,7 @@ type PromotionTriggerArtifact struct {
 	Tag string `json:"tag,omitempty"`
 	// Digest is the immutable artifact digest.
 	Digest string `json:"digest,omitempty"`
-	// Version is the value copied into PromotionRun.spec.version.
+	// Version is the value copied into Promotion.spec.version.
 	Version string `json:"version,omitempty"`
 	// ObservedAt is the RFC3339 time this artifact was observed.
 	ObservedAt string `json:"observedAt,omitempty"`

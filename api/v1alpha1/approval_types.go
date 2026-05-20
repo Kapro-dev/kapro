@@ -59,7 +59,7 @@ type ApprovalStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=ap,categories=kapro-all
-// +kubebuilder:printcolumn:name="PromotionRun",type=string,JSONPath=`.spec.promotionrun`
+// +kubebuilder:printcolumn:name="PromotionRun",type=string,JSONPath=`.spec.promotionRun`
 // +kubebuilder:printcolumn:name="Target",type=string,JSONPath=`.spec.target`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Recorded",type=string,JSONPath=`.status.conditions[?(@.type=="Recorded")].status`

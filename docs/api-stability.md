@@ -183,8 +183,9 @@ Kapro upgrades are designed around Kubernetes controller safety:
   against the same shard unless the release notes explicitly allow it.
 - Apply CRD updates before rolling operator pods.
 - Keep leader election enabled for multi-replica deployments.
-- Keep `PromotionRun` and `PromotionTarget` objects immutable from automation while an
-  operator upgrade is in progress; create a new `PromotionRun` for rollback.
+- Keep `PromotionRun` and `PromotionTarget` objects immutable from automation
+  while an operator upgrade is in progress; update `Promotion` intent or create
+  a new `Promotion` for rollback.
 - Upgrade plugin servers before enabling a Kapro version that requires a newer
   KAI, KGI, or KPI contract.
 - Run the relevant conformance harness for each external plugin before
@@ -209,7 +210,7 @@ Recommended upgrade order:
 5. Roll one hub operator deployment or shard at a time.
 6. Watch `PromotionRun`, `PromotionTarget`, `PluginRegistration`, and controller
    workqueue metrics until queues drain and observed generations catch up.
-7. Resume automation that creates new `PromotionRun` objects.
+7. Resume automation that creates or updates `Promotion` objects.
 
 Rollback is safest when the previous operator version still understands the
 stored CRD schema. If a CRD schema changed, roll back only to a version named as

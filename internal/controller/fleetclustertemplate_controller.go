@@ -32,9 +32,9 @@ type DiscovererFactory func(kaprov1alpha1.FleetClusterTemplateSource) (provider.
 // FleetClusterTemplateReconciler is the universal fleet auto-import reconciler.
 //
 // It is discoverer-agnostic: every cloud or platform is one Discoverer
-// implementation behind the same interface. v0.5 ships the GCP Fleet
-// discoverer; AWS / Azure / RHACM / CAPI / static are stubbed and surfaced as
-// a Stalled condition until their discoverers land.
+// implementation behind the same interface. The public preview ships the GCP
+// Fleet discoverer; AWS / Azure / RHACM / CAPI / static are preview stubs and
+// surface a Stalled condition until their discoverers land.
 //
 // Ownership model:
 //   - Imported FleetClusters carry an ownerReference + the

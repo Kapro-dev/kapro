@@ -40,7 +40,7 @@ type ErrSourceNotImplemented struct {
 }
 
 func (e ErrSourceNotImplemented) Error() string {
-	return fmt.Sprintf("fleet source branch %q is reserved for a future release (v0.5 implements: gcp)", e.Branch)
+	return fmt.Sprintf("fleet source branch %q is reserved for a future release (currently implemented: gcp)", e.Branch)
 }
 
 // IsSourceNotImplemented reports whether err is ErrSourceNotImplemented.

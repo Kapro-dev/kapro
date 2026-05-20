@@ -23,7 +23,7 @@ platform-gitops/
     backends/argo-observe.yaml
     sources/checkout.yaml
     promotionplans/checkout.yaml
-    promotionruns/
+    promotions/
 ```
 
 The Kapro files can live beside Argo files or in a separate hub-config repo.
@@ -252,14 +252,16 @@ kapro.io/import=true,service=pos-server`.
 
 ## Step 7: Promote
 
-Create a PromotionRun with either one default version or per-unit versions:
+Create a `Promotion` with either one default version or per-unit versions. The
+controller stamps immutable `PromotionRun` attempts from that intent:
 
 ```yaml
 apiVersion: kapro.io/v1alpha1
-kind: PromotionRun
+kind: Promotion
 metadata:
   name: checkout-2026-05-15
 spec:
+  kaproRef: checkout
   version: 1.5.0
   promotionPlans:
     - name: main
@@ -269,9 +271,9 @@ spec:
     web: 3.9.1
 ```
 
-Kapro creates PromotionTargets, runs gates and approvals, and then calls the Argo
-backend for selected targets. Argo CD remains responsible for reconciling the
-Application to the cluster.
+Kapro creates a `PromotionRun`, then creates `PromotionTarget` records, runs
+gates and approvals, and calls the Argo backend for selected targets. Argo CD
+remains responsible for reconciling the Application to the cluster.
 
 ## Local E2E Proof
 
@@ -284,8 +286,9 @@ scripts/argo-e2e.sh run
 The script creates a Kind cluster, installs Argo CD and Kapro, serves a
 throwaway Git repo inside the cluster, runs `kapro adopt argo`, applies the
 generated mapping, promotes the repo-native Argo fields with
-`kapro source apply`, creates a Kapro `PromotionRun`, and waits for all selected Argo
-Applications to become `Synced` and `Healthy` at the promoted revision.
+`kapro source apply`, creates a compatibility `PromotionRun` runtime fixture,
+and waits for all selected Argo Applications to become `Synced` and `Healthy`
+at the promoted revision.
 
 This is the concrete acceptance test for the main brownfield patterns in this
 guide: plain Application, multi-source Application, ApplicationSet child backed

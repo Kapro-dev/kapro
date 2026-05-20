@@ -16,8 +16,8 @@ tag line and publishes the durable `Promotion` intent plus controller-owned
 Fourteen JSON field names across `Kapro`, `Approval`, `PromotionRun`,
 `PromotionTarget`, and `AuditEntry` were renamed to match the
 Kubernetes camelCase convention. The Go field names are unchanged —
-this is a YAML/JSON-on-the-wire change only. Existing v0.1.0
-manifests must be rewritten before upgrading to v0.1.1.
+this is a YAML/JSON-on-the-wire change only. Existing alpha or release
+candidate manifests must be rewritten before installing `v0.1.0`.
 
 | Path | Was | Becomes |
 |---|---|---|
@@ -45,13 +45,12 @@ the API. Decision rationale and rejected alternatives (compatibility
 shim, defer to v1beta1) are captured in
 [ADR-0004](docs/adr/0004-camelcase-field-harmonization.md).
 
-Examples (`examples/kind-demo/`, `examples/hub-config/`,
-`examples/quickstart/`, `examples/promotion-trigger/`,
-`examples/operations/`, `examples/event-consumers/`,
-`examples/greenfield/`), the CLI scaffold (`cmd/kapro/scaffold.go`),
-and migration/security/ADR docs (`docs/flux-migration.md`,
-`docs/argo-migration.md`, `docs/security.md`,
-`docs/ADR-002-promotion-trigger.md`) all rewritten to the new keys.
+Examples (`examples/quickstart/`, `examples/kind-demo/`,
+`examples/brownfield/`, `examples/promotion-trigger/`,
+`examples/monitoring/`, and `examples/rbac/`), the CLI scaffold
+(`cmd/kapro/scaffold.go`), and migration/security/ADR docs
+(`docs/flux-migration.md`, `docs/argo-migration.md`,
+`docs/security.md`, and `docs/adr/`) all use the new keys.
 
 No `kapro migrate v0.1-fields` CLI subcommand ships in this release;
 the rename list is short enough for `sed` and existing manifests can
@@ -67,13 +66,13 @@ be rewritten with a one-liner.
     Docker-style Promotion lifecycle phases
   - [ADR-0003](docs/adr/0003-cloudevents-publisher-posture.md) —
     CloudEvents publisher posture (emit, don't route)
-- **`docs/CONTRIBUTING-events.md`** — a 6-step self-review checklist
+- **`.github/CONTRIBUTING_EVENTS.md`** — a 6-step self-review checklist
   every change to the `pkg/events` vocabulary or its emitters must pass
   before commit. Closes the docs↔code drift gap that cost 21 review
   comments across PRs #80/#81/#82.
-- **`TestEventTypesDocumentedInCloudEventsMd`** — drift canary: every
+- **`TestEventTypesDocumentedInEventsMd`** — drift canary: every
   `EventType` constant exported from `pkg/events` must appear verbatim
-  in `docs/cloudevents.md`. Build fails on doc/code drift.
+  in `docs/events.md`. Build fails on doc/code drift.
 - **`TestRenderSucceedsForEveryEventType`** — sweep test: every
   constant in `AllEventTypes()` round-trips through `Render` without
   panic. New constants get exercised automatically.
@@ -105,7 +104,7 @@ be rewritten with a one-liner.
 - Transition guards (`previousPromotionPlanPhase`, `previousStagePhase`)
   ensure each event fires exactly once per phase edge, even across
   reconcile loops.
-- Updated `docs/cloudevents.md` with the new vocabulary, data-field
+- Updated `docs/events.md` with the new vocabulary, data-field
   schema, and a complete worked example (`stage.gate.passed`).
 
 ### Fixed (PR #80 review feedback)
@@ -145,13 +144,11 @@ be rewritten with a one-liner.
   `EventSinkFailed`) and the `kapro_lifecycle_hook_*` Prometheus metrics
   (with `kind="Sink"`).
 - Documentation:
-  - `docs/cloudevents.md` — the versioned vocabulary contract.
-  - `docs/integrations/argo-events.md` — `EventSource` + `Sensor` recipe.
-  - `docs/integrations/flux-notification-controller.md` — `Receiver` +
-    `Alert` + `Provider` recipe.
-  - `docs/integrations/kube-event-exporter.md` — K8s Event routing recipe.
-  - `docs/integrations/generic-webhook.md` — per-Promotion handler vs
-    operator-level sink decision guide.
+  - `docs/events.md` — the versioned vocabulary contract and subscriber
+    cookbook.
+  - `docs/extension-model.md` — event emission as an extension boundary.
+  - `.github/CONTRIBUTING_EVENTS.md` — contributor checklist for event
+    vocabulary changes.
 
 ### Added (Promotion lifecycle hooks)
 
@@ -243,7 +240,7 @@ be rewritten with a one-liner.
 - Renamed RBAC role `kapro-promotion-trigger-admin` keeps its existing
   grants; triggers no longer need direct PromotionRun write access.
 
-### Migration from v0.5.0-rc.0 (#75)
+### Migration from earlier alpha/RC builds (#75)
 
 - Existing `PromotionRun` manifests still work; they execute directly without
   a Promotion parent.
@@ -311,9 +308,8 @@ be rewritten with a one-liner.
 
 - Removed the `PromotionPolicy`, `NotificationProvider`, and
   `NotificationPolicy` CRDs from generated manifests, Helm CRDs, bootstrap
-  CRDs, controller registration, and examples. `Promotion` itself was
-  removed in an earlier draft of this release and has since been restored
-  as the durable user-facing intent (see the "Added" section above).
+  CRDs, controller registration, and examples. `Promotion` is the durable
+  user-facing intent in the public `v0.1.0` baseline.
 
 ### Migration
 
@@ -408,7 +404,7 @@ the documented verification suite and accept `v1alpha1` API movement.
 - Removed the public packaging prototype workflow from the release-facing
   documentation set.
 - Removed the standalone evolution plan page. Completed milestones are recorded
-  here; future work is tracked in `docs/ROADMAP.md`.
+  here; future work should be tracked in GitHub issues and ADRs.
 - Removed the obsolete first-alpha release runbook from the documentation index.
 - Removed community-positioning, alpha/GA positioning, duplicate security-model,
   and release-notes guide pages from the documentation set. The public index
@@ -418,9 +414,8 @@ the documented verification suite and accept `v1alpha1` API movement.
 ### Migration
 
 - Apply the `v0.4.0-alpha.0` CRDs and RBAC before rolling the operator.
-- Replace any local pre-0.4 packaging test manifests with `PromotionSource`,
-  `PromotionUnit`, `BackendProfile`, `PromotionPlan`, and `PromotionRun`
-  manifests from `examples/hub-config/`.
+- Replace any local pre-0.4 packaging test manifests with the current
+  quickstart or Kind demo examples.
 - Replace old release/member names from pre-release branches with the current
   promotion-domain kinds.
 - Start Argo and Flux brownfield onboarding in observe mode, review generated

@@ -46,7 +46,7 @@ groups:
           severity: warning
         annotations:
           summary: Kapro PromotionTrigger reconciles are failing
-          description: Automatic promotionrun creation may be blocked by source, signature, cooldown, or status update errors.
+          description: Automatic Promotion updates may be blocked by source, signature, cooldown, or status update errors.
           runbook: docs/operations.md#runbook-blocked-promotiontrigger
 
       - alert: KaproRolloutDurationP95High

@@ -1,6 +1,6 @@
 # Registering a Fleet Cluster (Pull Mode)
 
-This guide walks through the v0.5 pull-mode registration flow: installing
+This guide walks through the pull-mode registration flow: installing
 `kapro-cluster-controller` on a workload cluster so it self-registers with a
 running Kapro hub via a CSR-based handshake.
 
@@ -16,8 +16,8 @@ spoke), see [`install.md`](install.md) under "Add a spoke cluster".
 - Helm 3 and the Kapro source tree (or the published chart artifact).
 - The `kapro` CLI built from this repo (`go build ./cmd/kapro`).
 
-The hub's `FleetClusterBootstrapReconciler` must be enabled (it is by default
-in `kapro-operator` v0.5+).
+The hub's `FleetClusterBootstrapReconciler` must be enabled; it is enabled by
+default in the operator.
 
 ## Step 1 — Generate values + bootstrap Secret on the hub
 
