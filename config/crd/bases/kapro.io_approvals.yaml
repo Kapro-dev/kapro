@@ -19,7 +19,7 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.promotionrun
+    - jsonPath: .spec.promotionRun
       name: PromotionRun
       type: string
     - jsonPath: .spec.target
@@ -89,7 +89,7 @@ spec:
               comment:
                 description: Comment is optional free-form justification.
                 type: string
-              promotionrun:
+              promotionRun:
                 description: PromotionRun is the name of the PromotionRun this approval
                   unblocks.
                 type: string
@@ -104,7 +104,7 @@ spec:
                 description: Target is the FleetCluster name this approval is for.
                 type: string
             required:
-            - promotionrun
+            - promotionRun
             - ref
             - target
             type: object

@@ -1,9 +1,9 @@
 # Security Model
 
 Kapro is a promotion control plane. It can cause production changes across many
-clusters, so the security model assumes that PromotionRun creation, plugin
-registration, approval, artifact verification, and webhook gates are privileged
-operations.
+clusters, so the security model assumes that Promotion updates, PromotionRun
+attempt creation, plugin registration, approval, artifact verification, and
+webhook gates are privileged operations.
 
 For role design, see `docs/rbac-tenancy.md`.
 
@@ -37,7 +37,7 @@ Grant narrow RBAC:
 
 | Threat | Mitigation |
 |---|---|
-| Untrusted artifact triggers an automatic PromotionRun | Digest pinning, signature verification, suspended-by-default triggers and PromotionRuns |
+| Untrusted artifact triggers an automatic Promotion | Digest pinning, signature verification, suspended-by-default triggers and Promotions |
 | Compromised plugin unblocks or mutates production | Restricted `PluginRegistration` RBAC, TLS/mTLS, short timeouts, narrow KAI/KGI/KPI contracts |
 | User approves a gate outside their team or environment | Admission policy on `Approval` labels, request user info, and bypass use |
 | Webhook gate is spoofed or replayed | HTTPS, shared secret or mTLS at the webhook backend, idempotent decision refs |
@@ -79,7 +79,7 @@ Plugins should:
   configured, and fails closed when explicitly required without a verifier;
 - generated Promotions and stamped PromotionRuns should use immutable digests,
   not mutable tags;
-- cooldown and max-active limits reduce PromotionRun floods.
+- cooldown and max-active limits reduce attempt floods.
 
 The intended production posture is:
 

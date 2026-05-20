@@ -901,7 +901,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count((kapro_promotiontrigger_status_condition{type=\"Stalled\"} == 1) or (kapro_promotiontrigger_status_condition{type=\"PromotionRunCreated\",reason=~\"CooldownActive|MaxActiveReached\"} == 0))",
+          "expr": "count((kapro_promotiontrigger_status_condition{type=\"Stalled\"} == 1) or (kapro_promotiontrigger_status_condition{type=\"PromotionUpdated\",reason=~\"CooldownActive|MaxActiveReached\"} == 0))",
           "legendFormat": "blocked triggers",
           "range": true,
           "refId": "A"

@@ -324,10 +324,12 @@ type PromotionRunStatus struct {
 // +kubebuilder:printcolumn:name="Artifacts",type=integer,JSONPath=`.status.report.totalArtifacts`,priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`,priority=0
 
-// PromotionRun is the trigger for a progressive delivery rollout across the cluster fleet.
-// It references an Artifact and a DAG of PromotionPlans that define the delivery path.
-// The PromotionRun controller drives the promotionplan DAG, advancing each target cluster
-// through the delivery FSM (MetricsCheck → WaitingApproval → Applying → Applied).
+// PromotionRun is an immutable execution attempt for a progressive delivery rollout
+// across the cluster fleet. User-authored Promotion intent normally stamps
+// PromotionRun attempts through the Promotion controller.
+// It references an artifact version and PromotionPlans that define the delivery path.
+// The PromotionRun controller resolves the promotionplan DAG and creates child
+// targets; each PromotionTarget advances through its own delivery FSM.
 // Per-target execution state lives in child PromotionTarget objects; PromotionRun.status
 // stores only rollout summary, promotionplan progress, and audit metadata.
 type PromotionRun struct {

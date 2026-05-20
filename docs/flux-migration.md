@@ -22,7 +22,7 @@ platform-gitops/
     backends/flux-observe.yaml
     sources/checkout.yaml
     promotionplans/checkout.yaml
-    promotionruns/
+    promotions/
 ```
 
 Greenfield users can still use `kapro init --backend flux`. Brownfield users
@@ -123,14 +123,16 @@ repository Secrets, workload manifests, traffic resources, or health status.
 
 ## Step 5: Promote
 
-Create a PromotionRun for one or more units:
+Create a `Promotion` for one or more units. The controller stamps immutable
+`PromotionRun` attempts from that intent:
 
 ```yaml
 apiVersion: kapro.io/v1alpha1
-kind: PromotionRun
+kind: Promotion
 metadata:
   name: checkout-2026-05-15
 spec:
+  kaproRef: checkout-flux
   promotionPlans:
     - name: main
       promotionPlan: checkout
@@ -139,8 +141,8 @@ spec:
     web: main-20260515
 ```
 
-Kapro coordinates promotion across targets. Flux applies the selected version
-inside each cluster or hub-managed namespace.
+Kapro creates a `PromotionRun` and coordinates promotion across targets. Flux
+applies the selected version inside each cluster or hub-managed namespace.
 
 ## Local Git-Native E2E
 

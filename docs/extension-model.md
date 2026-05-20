@@ -28,7 +28,7 @@ This document defines the target architecture for those contracts.
 | Lifecycle events | CloudEvents webhook payloads | Publish PromotionRun, stage, gate, approval, and target events. | Implemented |
 | Notifications | Inline gate/stage notification settings | Route gate events without adding a separate public notification API. | Runtime path |
 | Plugin gateway | KAI/KGI/KPI proto contracts and `PluginRegistration` | Register and probe out-of-process actuators, gates, and planner plugins. | Hot-loaded actuator, gate, and planner dispatch preview |
-| PromotionTrigger | CRD API | Define safe autonomous PromotionRun creation policy. | OCI controller preview |
+| PromotionTrigger | CRD API | Define safe autonomous Promotion creation/update policy. | OCI controller preview |
 
 ## Core Boundary
 
@@ -188,14 +188,16 @@ versions are reported as `Ready=False` and `Compatible=False` on
 
 ## PromotionTrigger Target
 
-`PromotionTrigger` is the API boundary for autonomous PromotionRun creation. The CRD
-defines safe source observation and PromotionRun creation policy. The controller
-observes OCI registries and creates digest-pinned PromotionRuns after safeguards pass.
+`PromotionTrigger` is the API boundary for autonomous Promotion creation and
+updates. The CRD defines safe source observation and Promotion update policy.
+The controller observes OCI registries and updates digest-pinned Promotion
+intent after safeguards pass; the Promotion controller then stamps
+`PromotionRun` attempts.
 
 The safe flow is:
 
 ```text
-artifact source -> PromotionTrigger -> suspended PromotionRun -> normal Kapro PromotionPlan
+artifact source -> PromotionTrigger -> suspended Promotion -> PromotionRun attempt -> PromotionPlan
 ```
 
 Required safeguards:
@@ -203,13 +205,13 @@ Required safeguards:
 | Safeguard | Required behavior |
 |---|---|
 | Suspended by default | Detection does not equal deployment. |
-| Digest pinning | PromotionRuns reference immutable artifact digests. |
-| Signature verification | Unsigned artifacts do not create PromotionRuns. |
-| Tag filtering | Only configured patterns create PromotionRuns. |
+| Digest pinning | Promotions reference immutable artifact digests before attempts are stamped. |
+| Signature verification | Unsigned artifacts do not update Promotion intent. |
+| Tag filtering | Only configured patterns update Promotion intent. |
 | Cooldown | Rapid artifact pushes cannot flood the fleet. |
-| Max active | One trigger cannot create unlimited concurrent PromotionRuns. |
+| Max active | One trigger cannot create unlimited concurrent attempts. |
 | Scope | Triggers can be limited to canary stages or selected targets. |
-| Idempotency | Re-observed artifacts do not create duplicate PromotionRuns. |
+| Idempotency | Re-observed artifacts do not create duplicate attempts. |
 
 Promotion trigger behavior is covered by the public API docs, release notes,
 and ADRs under `docs/adr/`.

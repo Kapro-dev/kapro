@@ -81,8 +81,8 @@ That config emits these example metric names:
 | `kapro_promotionrun_created` | `PromotionRun.metadata.creationTimestamp` | PromotionRun age calculations. |
 | `kapro_promotionrun_status_phase` | `PromotionRun.status.phase` | Non-terminal promotionrun detection. |
 | `kapro_promotionrun_status_condition` | `PromotionRun.status.conditions[]` | Stalled/ready promotionrun state. |
-| `kapro_promotiontrigger_status_condition` | `PromotionTrigger.status.conditions[]` | Cooldown, max-active, source, signature, and create blocking reasons. |
-| `kapro_promotiontrigger_status_active_promotionrun_count` | `PromotionTrigger.status.activePromotionRunCount` | Trigger-owned active promotionrun count. |
+| `kapro_promotiontrigger_status_condition` | `PromotionTrigger.status.conditions[]` | Cooldown, max-active, source, signature, and Promotion update blocking reasons. |
+| `kapro_promotiontrigger_status_active_promotionrun_count` | `PromotionTrigger.status.activePromotionRunCount` | Active attempt count for the trigger-managed Promotion. |
 | `kapro_pluginregistration_status_ready` | `PluginRegistration.status.ready` | Plugin readiness. |
 | `kapro_pluginregistration_status_condition` | `PluginRegistration.status.conditions[]` | Plugin probe status and failure reason. |
 
@@ -112,7 +112,7 @@ The PrometheusRule example includes alert expressions for:
 - plugin probe failures using `PluginRegistration` readiness conditions from
   kube-state-metrics;
 - blocked `PromotionTrigger` state using cooldown, max-active, source,
-  signature, and promotionrun creation condition reasons from kube-state-metrics.
+  signature, and Promotion update condition reasons from kube-state-metrics.
 
 These alerts are examples, not universal SLOs. Tune thresholds to your promotionrun
 cadence, cluster count, and expected gate retry behavior.
@@ -127,7 +127,7 @@ Use alerts as routing signals, then follow the operational runbooks in
 | `KaproPromotionRunStuck` | Stuck PromotionRun | `PromotionRun.status`, `PromotionTarget.status`, Events, dashboard promotionrun panels |
 | `KaproGateFailureRateHigh` | Gate Failure | `status.gates[]`, `kapro_gate_evaluations_total`, backend telemetry |
 | `KaproPluginProbeFailure` / `KaproPluginProbeFailures` | Plugin Not Ready | `PluginRegistration.status`, plugin probe metrics, operator logs |
-| `KaproPromotionTriggerBlocked` | Blocked PromotionTrigger | `PromotionTrigger.status.conditions`, active PromotionRuns, OCI source health |
+| `KaproPromotionTriggerBlocked` | Blocked PromotionTrigger | `PromotionTrigger.status.conditions`, active attempts, OCI source health |
 | `KaproRolloutDurationP95High` | Stuck PromotionRun or scalability review | stage duration histogram, stage `maxParallel`, backend latency |
 | `KaproControllerReconcileErrors` | First Response | controller logs, status write metrics, Kubernetes Events |
 

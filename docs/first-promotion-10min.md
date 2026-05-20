@@ -45,7 +45,8 @@ kubectl get backendprofiles,kaproes,promotionplans
 ```
 
 shows one backend profile, one Kapro fleet object, and one generated promotion
-plan.
+plan. The example `Kapro` also generates two synthetic `FleetCluster` objects
+from `spec.clusters`.
 
 ## 3. Add Or Confirm Targets
 
@@ -53,9 +54,10 @@ plan.
 kubectl get fleetclusters
 ```
 
-If your test cluster has no `FleetCluster` objects yet, use the Kind demo for a
-fully scripted hub/spoke setup, or create a small test `FleetCluster` that
-matches the labels in the example PromotionPlan.
+You should see the generated `canary-eu` and `prod-eu` targets from
+`examples/quickstart/kapro.yaml`. If none appear, the operator is not
+reconciling the `Kapro` object; check the controller logs before creating
+manual test targets. Use the Kind demo for a fully scripted hub/spoke setup.
 
 ## 4. Promote A Version
 

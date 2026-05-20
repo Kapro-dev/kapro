@@ -103,7 +103,7 @@ Pure regression.
 - New contributors recognise the convention immediately.
 
 **Harder:**
-- Existing v0.1.0 manifests need a one-time rewrite. The keys
+- Existing alpha or release-candidate manifests need a one-time rewrite. The keys
   affected are a small, mechanical set (`sed` is sufficient). A
   `kapro migrate v0.1-fields` CLI subcommand is reserved for a
   follow-up if user demand emerges.

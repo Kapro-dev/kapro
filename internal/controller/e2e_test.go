@@ -324,10 +324,10 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 // FleetCluster, simulating what cluster-controller writes after deployment.
 // currentVersions should map appKey→version for all syncs that should converge.
 //
-// Sets conditions[Ready]=True too — that is what the v0.5
-// FleetClusterHeartbeatReconciler would write for a healthy pull-mode cluster
-// and what PromotionTargetReconciler.requireFreshHeartbeat now reads to
-// decide whether to proceed. Without this, the e2e would defer indefinitely
+// Sets conditions[Ready]=True too — that is what
+// FleetClusterHeartbeatReconciler writes for a healthy pull-mode cluster and
+// what PromotionTargetReconciler.requireFreshHeartbeat now reads to decide
+// whether to proceed. Without this, the e2e would defer indefinitely
 // because no Ready condition is observed.
 func patchRegistrationConverged(t *testing.T, ctx context.Context, c client.Client, reg *kaprov1alpha1.FleetCluster, currentVersions map[string]string) {
 	t.Helper()

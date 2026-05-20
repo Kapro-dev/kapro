@@ -137,7 +137,7 @@ spec:
                     description: |-
                       AWS discovers EKS clusters in an account/region.
                       Imported clusters get spec.provider.kind=eks.
-                      Stub in v0.5; surfaced as a Stalled condition when set.
+                      Preview stub; surfaced as a Stalled condition when set.
                     properties:
                       accountID:
                         description: |-
@@ -156,7 +156,7 @@ spec:
                     description: |-
                       Azure discovers AKS / Azure Arc-connected clusters in a subscription.
                       Imported clusters get spec.provider.kind=aks-arc.
-                      Stub in v0.5.
+                      Preview stub.
                     properties:
                       resourceGroup:
                         description: ResourceGroup optionally narrows discovery to
@@ -174,7 +174,7 @@ spec:
                     description: |-
                       CAPI watches cluster.x-k8s.io Cluster CRs on the management cluster
                       and pairs each with its kubeconfig Secret. Imported clusters get
-                      spec.provider.kind=capi. Stub in v0.5.
+                      spec.provider.kind=capi. Preview stub.
                     properties:
                       namespace:
                         description: |-
@@ -199,7 +199,7 @@ spec:
                     description: |-
                       RHACM watches open-cluster-management.io ManagedCluster CRs on the
                       local hub. Imported clusters get spec.provider.kind=rhacm.
-                      Stub in v0.5.
+                      Preview stub.
                     properties:
                       namespace:
                         description: |-
@@ -212,7 +212,7 @@ spec:
                     description: |-
                       Static is an operator-supplied list with kubeconfig Secret references
                       for on-prem / bare-metal clusters with no Fleet API. Imported
-                      clusters get spec.provider.kind=kubeconfig. Stub in v0.5.
+                      clusters get spec.provider.kind=kubeconfig. Preview stub.
                     properties:
                       clusters:
                         description: Clusters lists each on-prem cluster and its kubeconfig

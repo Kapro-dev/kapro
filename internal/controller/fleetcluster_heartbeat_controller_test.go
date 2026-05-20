@@ -203,7 +203,7 @@ func TestHeartbeat_PushMode_AlwaysReady(t *testing.T) {
 }
 
 // TestHeartbeat_NotYetRegistered exercises the bootstrap-aware NotRegistered
-// path: spec.bootstrap is set, status.bootstrap.used is false → the v0.5
+// path: spec.bootstrap is set, status.bootstrap.used is false → the CSR
 // bootstrap workflow hasn't completed yet.
 func TestHeartbeat_NotYetRegistered(t *testing.T) {
 	now := time.Now()
@@ -228,7 +228,7 @@ func TestHeartbeat_NotYetRegistered(t *testing.T) {
 
 // TestHeartbeat_LegacyClusterNoBootstrap_LeaseEstablishesReady covers the
 // path that broke before the spec.bootstrap gate: a pull-mode FleetCluster
-// created without the v0.5 bootstrap workflow (e.g. via legacy `kapro spoke
+// created without the CSR bootstrap workflow (e.g. via legacy `kapro spoke
 // add`, manual kubectl apply, or FleetClusterTemplate auto-import) MUST
 // reach Ready=True purely on the strength of a fresh heartbeat Lease.
 // Otherwise requireFreshHeartbeat would defer their promotions indefinitely.

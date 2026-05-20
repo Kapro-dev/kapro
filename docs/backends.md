@@ -29,8 +29,11 @@ For existing Flux or Argo CD estates, use observe-first workflows:
 
 ```bash
 kapro adopt argo . --out ./kapro-connect --namespace argocd --selector kapro.io/import=true
-kapro discover flux . --out ./kapro-connect --namespace flux-system --selector kapro.io/import=true
+kapro adopt flux . --out ./kapro-connect --namespace flux-system --selector kapro.io/import=true
 ```
+
+`kapro adopt` is the brownfield-friendly wrapper around `kapro discover`; use
+`kapro discover` directly when you want the lower-level discovery command name.
 
 Review the generated `BackendProfile`, `PromotionSource`, and discovery status
 before switching a backend to write mode. Kapro should only patch fields that

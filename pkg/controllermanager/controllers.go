@@ -295,7 +295,7 @@ func startFleetClusterBootstrapController(_ context.Context, cc ControllerContex
 // startFleetClusterTemplateController starts the universal fleet auto-import
 // reconciler (PR-6). One CRD (FleetClusterTemplate) discovers clusters from
 // any supported source (GCP Fleet today; AWS / Azure / RHACM / CAPI / static
-// stubbed in v0.5) and upserts FleetCluster objects.
+// are preview stubs) and upserts FleetCluster objects.
 func startFleetClusterTemplateController(_ context.Context, cc ControllerContext) (bool, error) {
 	r := &controller.FleetClusterTemplateReconciler{
 		Client:   cc.Manager.GetClient(),

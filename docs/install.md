@@ -47,8 +47,10 @@ helm upgrade --install kapro charts/kapro-operator \
 The default install runs the core runtime controllers for promotion orchestration,
 target execution, backend profiles, approvals, triggers, plugins, and cluster
 heartbeat. The core APIs operators should rely on for fleet promotion are:
-`PromotionRun`, `PromotionTarget`, `PromotionPlan`, `FleetCluster`,
-`BackendProfile`, `PromotionSource`, and `Approval`.
+`Kapro`, `Promotion`, `PromotionSource`, `BackendProfile`, `Approval`,
+`FleetCluster`, `PromotionPlan`, `PromotionRun`, and `PromotionTarget`.
+Users normally author `Kapro`, `PromotionSource`, and `Promotion`; the
+controllers generate or update the runtime records.
 
 Preview surfaces are available for early adopters but should be enabled or
 exposed deliberately:
@@ -187,7 +189,7 @@ kubectl -n kapro-system rollout status deployment/kapro-kapro-operator
 
 ## Registering fleet clusters (pull mode)
 
-Kapro v0.5 supports a pull-mode spoke agent (`kapro-cluster-controller`) that
+Kapro supports a pull-mode spoke agent (`kapro-cluster-controller`) that
 runs inside each workload cluster and reports back to the hub. To register a
 new spoke see [cluster-bootstrap.md](cluster-bootstrap.md). The existing push-
 mode flow (`kapro spoke add`) is unchanged.

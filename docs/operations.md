@@ -281,9 +281,9 @@ Mitigation:
 
 - Fix the underlying service or telemetry query and let the next reconcile
   re-evaluate the gate.
-- If the gate policy is wrong, create a new PromotionRun or PromotionPlan revision for the
-  corrected policy. Existing PromotionTargets keep a snapshot of the gate policy
-  they were created with.
+- If the gate policy is wrong, update the Promotion or create a PromotionPlan
+  revision for the corrected policy. Existing PromotionTargets keep a snapshot
+  of the gate policy they were created with.
 - If failure is expected and the policy allows it, confirm whether
   `onFailure=continue` or stage `onFailure=skip` is the intended behavior for
   future promotionruns.
@@ -296,17 +296,19 @@ Symptoms:
 
 - `KaproPromotionTriggerBlocked` fires.
 - `PromotionTrigger.status.conditions` includes `Stalled=True`,
-  `PromotionRunCreated=False`, or reasons such as `CooldownActive`,
+  `PromotionUpdated=False`, or reasons such as `CooldownActive`,
   `MaxActiveReached`, `ResolveFailed`, `SignatureVerificationFailed`,
-  `VerifierUnavailable`, or `PromotionRunCreateFailed`.
-- No new PromotionRun appears for a tag that should match.
+  `VerifierUnavailable`, `PromotionCreateFailed`, or
+  `PromotionUpdateFailed`.
+- The managed Promotion does not update for a tag that should match.
 
 Triage:
 
 ```bash
 kubectl get promotiontrigger <trigger> -o yaml
 kubectl describe promotiontrigger <trigger>
-kubectl get promotionruns -l kapro.io/promotion-trigger=<trigger>
+kubectl get promotion "$(kubectl get promotiontrigger <trigger> -o jsonpath='{.status.managedPromotion}')"
+kubectl get promotionruns -l kapro.io/promotion="$(kubectl get promotiontrigger <trigger> -o jsonpath='{.status.managedPromotion}')"
 ```
 
 Check these fields in order:
@@ -318,7 +320,7 @@ Check these fields in order:
 | `spec.source.oci.tagPattern` | Tags outside the regex are ignored | Test the regex against the pushed tag |
 | `spec.source.oci.requireSignature` | Signature verification must pass | Verify signer, keyless identity, or verifier availability |
 | `spec.cooldown` | Minimum interval between Promotion updates | Wait or adjust future trigger policy |
-| `spec.maxActive` | Active PromotionRuns created by the trigger are capped | Complete, fail, or suspend existing active PromotionRuns before expecting another |
+| `spec.maxActive` | Active attempts for the managed Promotion are capped | Complete, fail, or suspend existing active PromotionRuns before expecting another |
 | `status.lastArtifact` | Last observed tag, digest, and verification result | Confirm the digest is the expected immutable artifact |
 
 Mitigation:
@@ -329,11 +331,11 @@ Mitigation:
   non-terminal one first.
 - If signature verification failed, fix the artifact or verifier; do not lower
   signature policy for production as a quick workaround.
-- If the trigger created a suspended PromotionRun as designed, review it and then
-  unsuspend the PromotionRun, not the trigger policy:
+- If the trigger created or updated a suspended Promotion as designed, review it
+  and then unsuspend the Promotion, not the trigger policy:
 
   ```bash
-  kubectl patch promotionrun <promotionrun> --type=merge -p '{"spec":{"suspended":false}}'
+  kubectl patch promotion <promotion> --type=merge -p '{"spec":{"suspended":false}}'
   ```
 
 ## Runbook: Plugin Not Ready
@@ -416,8 +418,8 @@ Manual corrective rollback path:
 
 1. Identify the last known good digest from `PromotionTarget.status.previousVersion`,
    `previousVersions`, artifact inventory, or backend deployment records.
-2. Create a new PromotionRun pinned to that immutable digest and scoped to the
-   affected targets.
+2. Create or update a Promotion pinned to that immutable digest and scoped to
+   the affected targets. Let the controller stamp the rollback attempt.
 3. Use conservative stage `maxParallel` and approval gates for production
    targets.
 4. Keep the failed PromotionRun for audit. Do not delete it until incident review

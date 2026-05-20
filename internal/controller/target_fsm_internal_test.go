@@ -197,7 +197,7 @@ func TestHandlePending_ReadyTrueAllowsPullTarget(t *testing.T) {
 	}
 }
 
-// TestHandlePending_UnreachableDefersPullTarget asserts the v0.5 behavior:
+// TestHandlePending_UnreachableDefersPullTarget asserts the public-preview behavior:
 // when the FleetCluster Ready condition reports Unreachable (per-cluster
 // ConsecutiveFailureThreshold has been hit), the target DEFERS instead of
 // failing. Auto-failing on stale heartbeat was the v0.4 behavior and proved

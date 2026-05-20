@@ -14,7 +14,7 @@
 //     Use when you know the project + location +
 //     membership ahead of time.
 //
-// Future providers (stubs in v0.5): eks, aks-arc, rhacm, capi.
+// Future providers (preview stubs): eks, aks-arc, rhacm, capi.
 //
 // The provider interface is used by the actuator to reach spoke clusters
 // and by the CLI to register clusters.
