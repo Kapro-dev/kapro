@@ -102,9 +102,9 @@ func suspendResumeWithClient(ctx context.Context, c client.Client, name string, 
 
 	cli.Successf("Promotion %q %s.", name, past)
 	if suspended {
-		cli.Muted("  To unpause: kapro resume " + name)
+		cli.Muted("To unpause: kapro resume " + name)
 	} else {
-		cli.Muted("  To pause again: kapro suspend " + name)
+		cli.Muted("To pause again: kapro suspend " + name)
 	}
 	return nil
 }

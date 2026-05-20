@@ -115,6 +115,33 @@ func TestSuspend_NoOpWhenAlreadySuspended(t *testing.T) {
 	if !strings.Contains(out, "already") {
 		t.Errorf("expected idempotent message, got %q", out)
 	}
+	if !strings.Contains(out, "suspended") {
+		t.Errorf("expected past-tense %q in idempotent message, got %q", "suspended", out)
+	}
+}
+
+// TestResume_NoOpWhenAlreadyResumed exercises the same idempotent
+// early-return as TestSuspend_NoOpWhenAlreadySuspended but on the
+// resume side — the formatter picks a different past-tense word
+// ("resumed" vs "suspended"), so this is a real second branch.
+func TestResume_NoOpWhenAlreadyResumed(t *testing.T) {
+	promo := &kaprov1alpha1.Promotion{
+		ObjectMeta: metav1.ObjectMeta{Name: "p1"},
+		Spec:       kaprov1alpha1.PromotionSpec{KaproRef: "k", Suspended: false},
+	}
+	c := newFakeClientWithPromo(t, promo)
+
+	out := captureSuspendOutput(t, func() {
+		if err := suspendResumeWithClient(context.Background(), c, "p1", false); err != nil {
+			t.Fatalf("resume no-op: %v", err)
+		}
+	})
+	if !strings.Contains(out, "already") {
+		t.Errorf("expected idempotent message, got %q", out)
+	}
+	if !strings.Contains(out, "resumed") {
+		t.Errorf("expected past-tense %q in idempotent message, got %q", "resumed", out)
+	}
 }
 
 func TestSuspend_NotFound(t *testing.T) {
