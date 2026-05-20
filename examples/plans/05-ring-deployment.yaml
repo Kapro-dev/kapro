@@ -1,0 +1,71 @@
+# ring-deployment
+# ---------------
+# Microsoft-shaped concentric rings: ring0 (internal/dogfood) → ring1
+# (early adopters) → ring2 (general) → ring3 (full fleet).
+#
+# Each ring's parallelism doubles to keep total rollout time bounded
+# while still containing blast radius:
+#   ring0: maxParallel 1   (1-2 clusters)
+#   ring1: maxParallel 2   (~5 clusters)
+#   ring2: maxParallel 4   (~20 clusters)
+#   ring3: maxParallel 8   (the long tail)
+#
+# Cluster labels expected:
+#   kapro.io/ring=0  |  kapro.io/ring=1  |  kapro.io/ring=2  |  kapro.io/ring=3
+apiVersion: kapro.io/v1alpha1
+kind: PromotionPlan
+metadata:
+  name: ring-deployment
+spec:
+  stages:
+    - name: ring0
+      selector:
+        matchLabels:
+          kapro.io/ring: "0"
+      strategy:
+        maxParallel: 1
+      gate:
+        mode: auto
+        gate:
+          soakTime: 30m
+          healthCheck: true
+    - name: ring1
+      selector:
+        matchLabels:
+          kapro.io/ring: "1"
+      strategy:
+        maxParallel: 2
+      dependsOn:
+        - stage: ring0
+          requiredSoakTime: 30m
+          strategy: all
+      gate:
+        mode: auto
+        gate:
+          soakTime: 30m
+          healthCheck: true
+    - name: ring2
+      selector:
+        matchLabels:
+          kapro.io/ring: "2"
+      strategy:
+        maxParallel: 4
+      dependsOn:
+        - stage: ring1
+          requiredSoakTime: 30m
+          strategy: all
+      gate:
+        mode: auto
+        gate:
+          soakTime: 30m
+          healthCheck: true
+    - name: ring3
+      selector:
+        matchLabels:
+          kapro.io/ring: "3"
+      strategy:
+        maxParallel: 8
+      dependsOn:
+        - stage: ring2
+          requiredSoakTime: 30m
+          strategy: all

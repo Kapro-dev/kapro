@@ -1,0 +1,53 @@
+# multi-region-staggered
+# ----------------------
+# Roll one region at a time, with cross-region soak time before
+# advancing. EU goes first (lower blast radius), then US, then APAC.
+#
+# Each region's stage runs maxParallel: 2 so two clusters per region
+# converge concurrently — the limit prevents a region-wide outage if
+# the rollout itself is the bug.
+#
+# Cluster labels expected:
+#   kapro.io/region=eu  |  kapro.io/region=us  |  kapro.io/region=apac
+apiVersion: kapro.io/v1alpha1
+kind: PromotionPlan
+metadata:
+  name: multi-region-staggered
+spec:
+  stages:
+    - name: eu
+      selector:
+        matchLabels:
+          kapro.io/region: eu
+      strategy:
+        maxParallel: 2
+      gate:
+        mode: auto
+        gate:
+          soakTime: 15m
+          healthCheck: true
+    - name: us
+      selector:
+        matchLabels:
+          kapro.io/region: us
+      strategy:
+        maxParallel: 2
+      dependsOn:
+        - stage: eu
+          requiredSoakTime: 15m
+          strategy: all
+      gate:
+        mode: auto
+        gate:
+          soakTime: 15m
+          healthCheck: true
+    - name: apac
+      selector:
+        matchLabels:
+          kapro.io/region: apac
+      strategy:
+        maxParallel: 2
+      dependsOn:
+        - stage: us
+          requiredSoakTime: 15m
+          strategy: all
