@@ -9,13 +9,11 @@ Dir.chdir(ROOT)
 
 YAML_PATTERNS = [
   ".github/workflows/*.yml",
-  "examples/**/*.yaml",
-  "monitoring/**/*.yaml"
+  "examples/**/*.yaml"
 ].freeze
 
 GRAFANA_JSON_PATTERNS = [
-  "monitoring/grafana/**/*.json",
-  "examples/**/grafana*.json"
+  "examples/monitoring/*.json"
 ].freeze
 
 def matching_files(patterns)
