@@ -11,6 +11,7 @@ relitigating it.
 | [0002](0002-promotion-docker-lifecycle.md) | Docker-style Promotion lifecycle phases | Accepted |
 | [0003](0003-cloudevents-publisher-posture.md) | CloudEvents publisher posture: emit, don't route | Accepted |
 | [0004](0004-camelcase-field-harmonization.md) | Harmonize CRD JSON field names to strict Kubernetes camelCase | Accepted |
+| [0005](0005-withdraw-target-namespace.md) | Withdraw kapro.io/promotion.target.* from the reserved CloudEvents vocabulary | Accepted |
 
 ## Adding a new ADR
 
