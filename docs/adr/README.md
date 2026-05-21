@@ -15,6 +15,7 @@ relitigating it.
 | [0006](0006-external-gate-predicates.md) | External gate predicates — GateType (KEDA-shaped) | Proposed |
 | [0007](0007-programmatic-sdk.md) | Kapro programmatic SDK — builder + subscriber + gate | Proposed |
 | [0009](0009-promotionrun-target-status-collapse.md) | Target is the PromotionRun per-target state authority | Accepted |
+| [0010](0010-core-and-preview-controller-tier.md) | Core and preview controller tier | Accepted |
 | [0011](0011-conversion-webhook-scaffold.md) | Conversion webhook scaffold without legacy migration guarantee | Accepted |
 
 ## Adding a new ADR
