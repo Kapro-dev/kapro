@@ -310,14 +310,33 @@ type PromotionRunStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// PromotionRun is intentionally NOT declared as a v1alpha2 Kind in
-// PR 1 of the migration. v1alpha1 still serves PromotionRun and the
-// controllers still operate on it. Once the controllers migrate
-// (PRs 5-9), the Kind is re-declared on v1alpha2 with the compacted
-// shape (and v1alpha1 served=false then). The supporting types
-// (PromotionRunSpec, PromotionRunStatus, PromotionRunScope,
-// PromotionRunPhase, StageProgress, …) remain in this file because
-// other v1alpha2 types (Trigger.spec) reference them.
+// +kubebuilder:object:root=true
+// +kubebuilder:storageversion
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Cluster,shortName=rel,categories=kapro-all
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.spec.version`
+// +kubebuilder:printcolumn:name="Resolved",type=string,JSONPath=`.status.resolvedVersion`,priority=1
+// +kubebuilder:printcolumn:name="Started",type=date,JSONPath=`.status.startedAt`
+// +kubebuilder:printcolumn:name="Completed",type=date,JSONPath=`.status.completedAt`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+
+// PromotionRun is one immutable execution attempt of a Promotion. Created and
+// updated by the controller; users typically write Promotion (the intent
+// object) and observe PromotionRun for execution detail.
+type PromotionRun struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              PromotionRunSpec   `json:"spec,omitempty"`
+	Status            PromotionRunStatus `json:"status,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+type PromotionRunList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []PromotionRun `json:"items"`
+}
 
 // ---- Per-target execution ---------------------------------------------------
 

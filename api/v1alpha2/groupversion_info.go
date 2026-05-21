@@ -13,21 +13,18 @@ var (
 
 func init() {
 	SchemeBuilder.Register(
-		// v1alpha2 Kinds declared in PR 1 of the migration. The shared-
-		// name Kinds (Approval, Promotion, PromotionRun) are intentionally
-		// NOT registered yet — they would force a multi-version CRD that
-		// kube-apiserver refuses to establish without a conversion
-		// strategy. They are added back in PRs 5-9 when the controllers
-		// migrate and v1alpha1 stops being served.
-		&Fleet{}, &FleetList{},
-		&Plan{}, &PlanList{},
-		&Source{}, &SourceList{},
-		&Trigger{}, &TriggerList{},
-		&Target{}, &TargetList{},
+		&Approval{}, &ApprovalList{},
 		&Backend{}, &BackendList{},
 		&Cluster{}, &ClusterList{},
 		&ClusterTemplate{}, &ClusterTemplateList{},
+		&Fleet{}, &FleetList{},
+		&Plan{}, &PlanList{},
 		&Plugin{}, &PluginList{},
 		&Policy{}, &PolicyList{},
+		&Promotion{}, &PromotionList{},
+		&PromotionRun{}, &PromotionRunList{},
+		&Source{}, &SourceList{},
+		&Target{}, &TargetList{},
+		&Trigger{}, &TriggerList{},
 	)
 }
