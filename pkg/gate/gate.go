@@ -21,8 +21,8 @@
 //   - Kapro manages gate lifecycle (when, timeout, retry, failure policy)
 //   - Gate.Evaluate() is the KGI contract — analogous to CRI's RunPodSandbox
 //   - Built-in gates (cel, job, webhook) are like runc — always available
-//   - PromotionRun.Status.Targets[].Gates[] is like PodStatus.ContainerStatuses[]
-//     — Kapro's authoritative state; gates are stateless evaluators only
+//   - Target.status.gates is like PodStatus.ContainerStatuses[] — Kapro's
+//     authoritative gate state; gates are stateless evaluators only
 //
 // # Stability
 //
@@ -114,7 +114,7 @@ type Result struct {
 	// VendorRef points to the vendor-managed resource created by this gate
 	// (e.g. a Kubernetes Job, a Prometheus recording rule, an AnalysisRun).
 	// Nil for in-process gates (cel, webhook, soak).
-	// Stored in PromotionRun.Status.Targets[].Gates[].VendorRef for observability.
+	// Stored in Target.status.gates[].vendorRef for observability.
 	VendorRef *corev1.ObjectReference
 
 	// Results contains per-condition breakdowns for multi-condition gates
@@ -192,8 +192,8 @@ type Request struct {
 // Gate is KGI v1alpha1: the Kapro Gate Interface.
 //
 // Evaluate returns a Result indicating whether the target promotion may advance.
-// The controller persists gate state to PromotionRun.status.targets[].gates after each
-// evaluation — implementations must not attempt to store state themselves.
+// The controller persists gate state to child Target.status.gates after each
+// evaluation; implementations must not attempt to store state themselves.
 //
 // Contract:
 //   - Implementations MUST set Result.Phase

@@ -25,28 +25,25 @@ func TestStageDependencySatisfied_AnyUnlocksFromOneConvergedTarget(t *testing.T)
 			fleetClusterForStage("cluster-b", "canary"),
 		).Build(),
 	}
-	promotionrun := &kaprov1alpha2.PromotionRun{
-		Status: kaprov1alpha2.PromotionRunStatus{
-			Targets: []kaprov1alpha2.TargetExecutionState{
-				{
-					Target:     "cluster-a",
-					PlanRef:    "main",
-					Stage:      "canary",
-					Phase:      kaprov1alpha2.TargetPhaseConverged,
-					FinishedAt: time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339),
-				},
-				{
-					Target:  "cluster-b",
-					PlanRef: "main",
-					Stage:   "canary",
-					Phase:   kaprov1alpha2.TargetPhaseHealthCheck,
-				},
-			},
+	promotionrun := &kaprov1alpha2.PromotionRun{}
+	targets := []kaprov1alpha2.TargetExecutionState{
+		{
+			Target:     "cluster-a",
+			PlanRef:    "main",
+			Stage:      "canary",
+			Phase:      kaprov1alpha2.TargetPhaseConverged,
+			FinishedAt: time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339),
+		},
+		{
+			Target:  "cluster-b",
+			PlanRef: "main",
+			Stage:   "canary",
+			Phase:   kaprov1alpha2.TargetPhaseHealthCheck,
 		},
 	}
 	promotionplan := promotionplanWithCanaryStage()
 
-	satisfied, wait, err := r.stageDependencySatisfied(context.Background(), promotionrun, "main", promotionplan, kaprov1alpha2.StageDependency{
+	satisfied, wait, err := r.stageDependencySatisfied(context.Background(), promotionrun, targets, "main", promotionplan, kaprov1alpha2.StageDependency{
 		Stage:            "canary",
 		Strategy:         kaprov1alpha2.StageDependencyAny,
 		RequiredSoakTime: &metav1.Duration{Duration: time.Hour},
@@ -149,6 +146,70 @@ func TestHandleProgressingFailsWhenPromotionPlanGenerationChanges(t *testing.T) 
 		}
 	case <-time.After(time.Second):
 		t.Fatal("expected PromotionPlanChanged event")
+	}
+}
+
+func TestHandleFailedSummarizesChildTargets(t *testing.T) {
+	scheme := controllerTestScheme(t)
+	promotionrun := &kaprov1alpha2.PromotionRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Generation: 1},
+		Spec: kaprov1alpha2.PromotionRunSpec{
+			Version: "repo@sha256:abc",
+			Plans:   []kaprov1alpha2.PlanRef{{Name: "main", Plan: "progressive"}},
+		},
+		Status: kaprov1alpha2.PromotionRunStatus{
+			Phase:           kaprov1alpha2.PromotionRunPhaseFailed,
+			ResolvedVersion: "repo@sha256:abc",
+			StartedAt:       time.Now().Add(-2 * time.Minute).UTC().Format(time.RFC3339),
+			CompletedAt:     time.Now().UTC().Format(time.RFC3339),
+		},
+	}
+	objects := []client.Object{
+		promotionrun,
+		targetForSummary("rel-1-a", "rel-1", "cluster-a", kaprov1alpha2.TargetPhaseConverged),
+		targetForSummary("rel-1-b", "rel-1", "cluster-b", kaprov1alpha2.TargetPhaseFailed),
+		targetForSummary("rel-1-c", "rel-1", "cluster-c", kaprov1alpha2.TargetPhaseApplying),
+		targetForSummary("other-a", "other-run", "cluster-z", kaprov1alpha2.TargetPhaseFailed),
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha2.PromotionRun{}, &kaprov1alpha2.Target{}).
+		WithIndex(&kaprov1alpha2.Target{}, IndexKeyPromotionTargetPromotionRun, func(obj client.Object) []string {
+			return PromotionTargetPromotionRunExtractor(obj)
+		}).
+		WithObjects(objects...).
+		Build()
+	r := &PromotionRunReconciler{Client: c, Scheme: scheme}
+
+	if _, err := r.handleFailed(context.Background(), promotionrun.DeepCopy()); err != nil {
+		t.Fatalf("handleFailed returned error: %v", err)
+	}
+
+	var updated kaprov1alpha2.PromotionRun
+	if err := c.Get(context.Background(), client.ObjectKey{Name: "rel-1"}, &updated); err != nil {
+		t.Fatalf("get PromotionRun: %v", err)
+	}
+	if updated.Status.Summary == nil {
+		t.Fatal("summary is nil, want aggregate counts")
+	}
+	if got := *updated.Status.Summary; got.TotalTargets != 3 || got.SyncedTargets != 1 || got.FailedTargets != 1 || got.PendingTargets != 1 {
+		t.Fatalf("summary = %#v, want total=3 synced=1 failed=1 pending=1", got)
+	}
+	if got := updated.Status.Report; got.TotalTargets != 3 || got.SyncedTargets != 1 || got.FailedTargets != 1 || got.PendingTargets != 1 {
+		t.Fatalf("report = %#v, want total=3 synced=1 failed=1 pending=1", got)
+	}
+}
+
+func TestPromotionRunSummaryConvergedAtFromCompleteReport(t *testing.T) {
+	completedAt := time.Now().UTC().Format(time.RFC3339)
+	summary := promotionRunSummaryFromReport(kaprov1alpha2.PromotionRunReportSummary{
+		Phase:         kaprov1alpha2.PromotionRunPhaseComplete,
+		CompletedAt:   completedAt,
+		TotalTargets:  2,
+		SyncedTargets: 2,
+	})
+	if summary.ConvergedAt != completedAt {
+		t.Fatalf("convergedAt = %q, want %q", summary.ConvergedAt, completedAt)
 	}
 }
 
@@ -344,28 +405,25 @@ func TestStageDependencySatisfied_AllRequiresEveryTarget(t *testing.T) {
 			fleetClusterForStage("cluster-b", "canary"),
 		).Build(),
 	}
-	promotionrun := &kaprov1alpha2.PromotionRun{
-		Status: kaprov1alpha2.PromotionRunStatus{
-			Targets: []kaprov1alpha2.TargetExecutionState{
-				{
-					Target:     "cluster-a",
-					PlanRef:    "main",
-					Stage:      "canary",
-					Phase:      kaprov1alpha2.TargetPhaseConverged,
-					FinishedAt: time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339),
-				},
-				{
-					Target:  "cluster-b",
-					PlanRef: "main",
-					Stage:   "canary",
-					Phase:   kaprov1alpha2.TargetPhaseApplying,
-				},
-			},
+	promotionrun := &kaprov1alpha2.PromotionRun{}
+	targets := []kaprov1alpha2.TargetExecutionState{
+		{
+			Target:     "cluster-a",
+			PlanRef:    "main",
+			Stage:      "canary",
+			Phase:      kaprov1alpha2.TargetPhaseConverged,
+			FinishedAt: time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339),
+		},
+		{
+			Target:  "cluster-b",
+			PlanRef: "main",
+			Stage:   "canary",
+			Phase:   kaprov1alpha2.TargetPhaseApplying,
 		},
 	}
 	promotionplan := promotionplanWithCanaryStage()
 
-	satisfied, wait, err := r.stageDependencySatisfied(context.Background(), promotionrun, "main", promotionplan, kaprov1alpha2.StageDependency{
+	satisfied, wait, err := r.stageDependencySatisfied(context.Background(), promotionrun, targets, "main", promotionplan, kaprov1alpha2.StageDependency{
 		Stage:    "canary",
 		Strategy: kaprov1alpha2.StageDependencyAll,
 	})
@@ -387,22 +445,19 @@ func TestStageDependencySatisfied_ReturnsRemainingSoakTime(t *testing.T) {
 			fleetClusterForStage("cluster-a", "canary"),
 		).Build(),
 	}
-	promotionrun := &kaprov1alpha2.PromotionRun{
-		Status: kaprov1alpha2.PromotionRunStatus{
-			Targets: []kaprov1alpha2.TargetExecutionState{
-				{
-					Target:     "cluster-a",
-					PlanRef:    "main",
-					Stage:      "canary",
-					Phase:      kaprov1alpha2.TargetPhaseConverged,
-					FinishedAt: time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339),
-				},
-			},
+	promotionrun := &kaprov1alpha2.PromotionRun{}
+	targets := []kaprov1alpha2.TargetExecutionState{
+		{
+			Target:     "cluster-a",
+			PlanRef:    "main",
+			Stage:      "canary",
+			Phase:      kaprov1alpha2.TargetPhaseConverged,
+			FinishedAt: time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339),
 		},
 	}
 	promotionplan := promotionplanWithCanaryStage()
 
-	satisfied, wait, err := r.stageDependencySatisfied(context.Background(), promotionrun, "main", promotionplan, kaprov1alpha2.StageDependency{
+	satisfied, wait, err := r.stageDependencySatisfied(context.Background(), promotionrun, targets, "main", promotionplan, kaprov1alpha2.StageDependency{
 		Stage:            "canary",
 		RequiredSoakTime: &metav1.Duration{Duration: time.Hour},
 	})
@@ -443,12 +498,16 @@ func TestListTargetsForStageUsesPromotionRunPlanner(t *testing.T) {
 
 func TestReconcilePromotionPlanStagesHonorsStageMaxParallel(t *testing.T) {
 	scheme := controllerTestScheme(t)
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+		fleetClusterForStage("cluster-a", "canary"),
+		fleetClusterForStage("cluster-b", "canary"),
+		fleetClusterForStage("cluster-c", "canary"),
+	).WithIndex(&kaprov1alpha2.Target{}, IndexKeyPromotionTargetPromotionRun, func(obj client.Object) []string {
+		return PromotionTargetPromotionRunExtractor(obj)
+	}).Build()
 	r := &PromotionRunReconciler{
-		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(
-			fleetClusterForStage("cluster-a", "canary"),
-			fleetClusterForStage("cluster-b", "canary"),
-			fleetClusterForStage("cluster-c", "canary"),
-		).Build(),
+		Client: c,
+		Scheme: scheme,
 	}
 	promotionplan := promotionplanWithCanaryStage()
 	promotionplan.Spec.Stages[0].Strategy = &kaprov1alpha2.StageStrategySpec{MaxParallel: 1}
@@ -458,15 +517,26 @@ func TestReconcilePromotionPlanStagesHonorsStageMaxParallel(t *testing.T) {
 		Status:     kaprov1alpha2.PromotionRunStatus{ResolvedVersion: "1.2.3"},
 	}
 
-	progress, allComplete, anyFailed, _, _, err := r.reconcilePromotionPlanStages(context.Background(), promotionrun, "main", promotionplan)
+	var targets []kaprov1alpha2.TargetExecutionState
+	progress, allComplete, anyFailed, _, _, err := r.reconcilePromotionPlanStages(context.Background(), promotionrun, &targets, "main", promotionplan)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if allComplete || anyFailed {
 		t.Fatalf("allComplete=%v anyFailed=%v, want progressing without failure", allComplete, anyFailed)
 	}
-	if len(promotionrun.Status.Targets) != 1 {
-		t.Fatalf("bound targets = %#v, want 1", promotionrun.Status.Targets)
+	if len(targets) != 1 {
+		t.Fatalf("bound targets = %#v, want 1", targets)
+	}
+	if err := r.persistPromotionTargets(context.Background(), promotionrun, targets); err != nil {
+		t.Fatal(err)
+	}
+	var persisted kaprov1alpha2.TargetList
+	if err := c.List(context.Background(), &persisted, client.MatchingFields{IndexKeyPromotionTargetPromotionRun: promotionrun.Name}); err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted.Items) != 1 {
+		t.Fatalf("persisted targets = %d, want 1", len(persisted.Items))
 	}
 	if len(progress) != 1 {
 		t.Fatalf("progress = %#v", progress)
@@ -484,19 +554,44 @@ func TestReconcilePromotionPlanStagesHonorsStageMaxParallel(t *testing.T) {
 		}
 	}
 
-	promotionrun.Status.Targets[0].Phase = kaprov1alpha2.TargetPhaseConverged
-	progress, allComplete, anyFailed, _, _, err = r.reconcilePromotionPlanStages(context.Background(), promotionrun, "main", promotionplan)
+	targets[0].Phase = kaprov1alpha2.TargetPhaseConverged
+	progress, allComplete, anyFailed, _, _, err = r.reconcilePromotionPlanStages(context.Background(), promotionrun, &targets, "main", promotionplan)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if allComplete || anyFailed {
 		t.Fatalf("allComplete=%v anyFailed=%v, want second target progressing", allComplete, anyFailed)
 	}
-	if len(promotionrun.Status.Targets) != 2 {
-		t.Fatalf("bound targets after second reconcile = %#v, want 2", promotionrun.Status.Targets)
+	if len(targets) != 2 {
+		t.Fatalf("bound targets after second reconcile = %#v, want 2", targets)
 	}
 	if progress[0].Deferred != 1 {
 		t.Fatalf("deferred after one convergence = %d, want 1", progress[0].Deferred)
+	}
+}
+
+func targetForSummary(name, runName, clusterName string, phase kaprov1alpha2.TargetPhase) *kaprov1alpha2.Target {
+	return &kaprov1alpha2.Target{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: kaprov1alpha2.TargetSpec{
+			PromotionRunRef: runName,
+			Target:          clusterName,
+			PlanRef:         "main",
+			Plan:            "progressive",
+			Stage:           "canary",
+			Version:         "repo@sha256:abc",
+		},
+		Status: kaprov1alpha2.TargetStatus{
+			TargetExecutionState: kaprov1alpha2.TargetExecutionState{
+				PromotionRunRef: runName,
+				Target:          clusterName,
+				PlanRef:         "main",
+				Plan:            "progressive",
+				Stage:           "canary",
+				Version:         "repo@sha256:abc",
+				Phase:           phase,
+			},
+		},
 	}
 }
 

@@ -330,9 +330,60 @@ func (r *PromotionReconciler) supersedePrevious(ctx context.Context, runs []kapr
 		if err := r.Status().Patch(ctx, run, patch); err != nil {
 			return superseded, fmt.Errorf("supersede PromotionRun %s: %w", run.Name, err)
 		}
+		if err := r.cancelSupersededRunTargets(ctx, run.Name); err != nil {
+			return superseded, err
+		}
 		superseded = append(superseded, run.Name)
 	}
 	return superseded, nil
+}
+
+func (r *PromotionReconciler) cancelSupersededRunTargets(ctx context.Context, runName string) error {
+	var targets kaprov1alpha2.TargetList
+	if err := r.List(ctx, &targets); err != nil {
+		return fmt.Errorf("list targets for superseded PromotionRun %s: %w", runName, err)
+	}
+	for i := range targets.Items {
+		target := &targets.Items[i]
+		if target.Spec.PromotionRunRef != runName {
+			continue
+		}
+		switch target.Status.Phase {
+		case kaprov1alpha2.TargetPhaseConverged, kaprov1alpha2.TargetPhaseFailed, kaprov1alpha2.TargetPhaseSkipped:
+			continue
+		}
+		if target.Spec.Cancelled {
+			continue
+		}
+		rawPatch := client.RawPatch(types.MergePatchType,
+			[]byte(`{"spec":{"cancelled":true,"cancelledReason":"superseded by newer PromotionRun","cancelledPhase":"Failed"}}`))
+		if err := r.Patch(ctx, target, rawPatch); err != nil {
+			return fmt.Errorf("cancel superseded target %s: %w", target.Name, err)
+		}
+		if err := r.clearSupersededActiveClaim(ctx, runName, target.Spec.Target); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *PromotionReconciler) clearSupersededActiveClaim(ctx context.Context, runName, clusterName string) error {
+	if clusterName == "" {
+		return nil
+	}
+	var cluster kaprov1alpha2.Cluster
+	if err := r.Get(ctx, client.ObjectKey{Name: clusterName}, &cluster); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+	if cluster.Status.ActivePromotionRun != runName {
+		return nil
+	}
+	patch := client.MergeFrom(cluster.DeepCopy())
+	cluster.Status.ActivePromotionRun = ""
+	if err := r.Status().Patch(ctx, &cluster, patch); err != nil {
+		return fmt.Errorf("clear activePromotionRun for superseded run %s on cluster %s: %w", runName, clusterName, err)
+	}
+	return nil
 }
 
 // suspendOwnedRuns flips spec.suspended=true on every owned non-terminal run.

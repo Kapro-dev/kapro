@@ -192,8 +192,8 @@ Triage:
    kubectl describe promotionrun <promotionrun>
    ```
 
-   Check `status.planProgress`, `status.report`, `status.conditions`, and
-   `spec.suspended`.
+   Check `status.summary`, `status.planProgress`, `status.report`,
+   `status.conditions`, and `spec.suspended`.
 
 2. Inspect child execution objects:
 

@@ -300,9 +300,9 @@ type PromotionRunStatus struct {
 	CompletedAt     string `json:"completedAt,omitempty"`
 	// PlanProgress tracks execution state of each plan node in the DAG.
 	PlanProgress []PlanProgress `json:"planProgress,omitempty"`
-	// Targets is deprecated compatibility state. The authoritative per-target
-	// rollout state lives in child Target objects.
-	Targets []TargetExecutionState `json:"targets,omitempty"`
+	// Summary is the compact target aggregate for kubectl, dashboards, and
+	// scripts. Per-target detail lives in child Target objects.
+	Summary *PromotionRunSummary `json:"summary,omitempty"`
 	// Report is the inline delivery summary.
 	Report PromotionRunReportSummary `json:"report,omitempty"`
 	// AuditTrail records immutable delivery provenance. Capped at 50 entries.
@@ -316,6 +316,9 @@ type PromotionRunStatus struct {
 // +kubebuilder:resource:scope=Cluster,shortName=prun,categories=kapro-all
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.spec.version`
+// +kubebuilder:printcolumn:name="Targets",type=integer,JSONPath=`.status.summary.totalTargets`
+// +kubebuilder:printcolumn:name="Synced",type=integer,JSONPath=`.status.summary.syncedTargets`
+// +kubebuilder:printcolumn:name="Failed",type=integer,JSONPath=`.status.summary.failedTargets`
 // +kubebuilder:printcolumn:name="Resolved",type=string,JSONPath=`.status.resolvedVersion`,priority=1
 // +kubebuilder:printcolumn:name="Started",type=date,JSONPath=`.status.startedAt`
 // +kubebuilder:printcolumn:name="Completed",type=date,JSONPath=`.status.completedAt`
@@ -488,6 +491,11 @@ type TargetSpec struct {
 	// CancelledReason explains why the target was cancelled.
 	// +optional
 	CancelledReason string `json:"cancelledReason,omitempty"`
+	// CancelledPhase is the terminal phase the child reconciler should record
+	// after observing Cancelled. Defaults to Failed.
+	// +kubebuilder:validation:Enum=Failed;Skipped
+	// +optional
+	CancelledPhase TargetPhase `json:"cancelledPhase,omitempty"`
 }
 
 // TargetStatus is the live execution state for one target rollout.
@@ -522,7 +530,7 @@ type TargetStatus struct {
 
 // Target is the child execution resource for one target rollout entry
 // within a PromotionRun. It is the authoritative live state store for rollout
-// execution and replaces PromotionRun.status.targets as the persistence layer.
+// execution and replaces the former inline PromotionRun target list.
 type Target struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -561,6 +569,17 @@ type PromotionRunReportSummary struct {
 	// PendingApprovals lists "<promotionrun>-<ref>" Approval names that are
 	// awaiting human signal. Derived from Target objects.
 	PendingApprovals []string `json:"pendingApprovals,omitempty"`
+}
+
+// PromotionRunSummary is the compact aggregate stored in
+// PromotionRun.status.summary. It intentionally contains counts only; child
+// Target objects hold per-target details.
+type PromotionRunSummary struct {
+	TotalTargets   int32  `json:"totalTargets"`
+	SyncedTargets  int32  `json:"syncedTargets"`
+	FailedTargets  int32  `json:"failedTargets"`
+	PendingTargets int32  `json:"pendingTargets"`
+	ConvergedAt    string `json:"convergedAt,omitempty"`
 }
 
 // AuditEntry records the immutable delivery provenance of a completed PromotionRun.

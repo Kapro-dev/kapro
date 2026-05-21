@@ -220,18 +220,13 @@ func (r *PromotionRunReconciler) buildRunFSM() *fsm.Machine[kaprov1alpha2.Promot
 		},
 	}))
 	// Failed is NOT terminal — when rollback targets are active the
-	// reconciler keeps driving handleFailed until they converge. The
-	// guard moves into this closure so the legacy
-	// "if hasActiveRollbackTargets" pre-check is encoded at the
-	// dispatch site rather than the call site. AllowedNext is empty
-	// (Failed is sticky); ValidateTransition treats from==to as
-	// always-allowed so the rollback loop doesn't fire warnings.
+	// reconciler keeps driving handleFailed until they converge. handleFailed
+	// loads child Target state before deciding whether rollback work remains.
+	// AllowedNext is empty (Failed is sticky); ValidateTransition treats
+	// from==to as always-allowed so the rollback loop doesn't fire warnings.
 	must(m.RegisterTransition(fsm.Transition[kaprov1alpha2.PromotionRunPhase, *runFsmEnv]{
 		Phase: kaprov1alpha2.PromotionRunPhaseFailed,
 		Handler: func(ctx context.Context, e *runFsmEnv) (ctrl.Result, error) {
-			if !r.hasActiveRollbackTargets(e.promotionrun) {
-				return ctrl.Result{}, nil
-			}
 			return r.handleFailed(ctx, e.promotionrun)
 		},
 	}))
@@ -281,6 +276,7 @@ func (r *PromotionRunReconciler) handlePending(ctx context.Context, promotionrun
 	desiredVersions := promotionrunDesiredVersionsFromSpec(promotionrun)
 	if len(desiredVersions) == 0 {
 		patch := client.MergeFrom(promotionrun.DeepCopy())
+		ensurePromotionRunSummary(promotionrun)
 		r.setPromotionRunReadyCondition(promotionrun, metav1.ConditionFalse, "NoVersion", "spec.version or spec.versions is required")
 		r.setStalledCondition(promotionrun, "NoVersion", "spec.version or spec.versions is required")
 		promotionrun.Status.ObservedGeneration = promotionrun.Generation
@@ -306,6 +302,7 @@ func (r *PromotionRunReconciler) handlePending(ctx context.Context, promotionrun
 	promotionrun.Status.PlanProgress = progress
 	promotionrun.Status.ObservedGeneration = promotionrun.Generation
 	promotionrun.Status.StartedAt = time.Now().UTC().Format(time.RFC3339)
+	ensurePromotionRunSummary(promotionrun)
 	r.setPromotionRunReadyCondition(promotionrun, metav1.ConditionFalse, "Progressing", "promotionrun is advancing")
 	r.clearStalledCondition(promotionrun)
 	r.setReconcilingCondition(promotionrun, metav1.ConditionTrue, "Progressing", "advancing through promotionplan DAG")
@@ -327,10 +324,9 @@ func (r *PromotionRunReconciler) handlePending(ctx context.Context, promotionrun
 //	Plan DAG (outer) → Stage DAG (inner) → Targets per Stage
 //
 // For each promotionplan whose dependencies are complete, we walk its stages in
-// dependsOn order. For each eligible stage we list matching Targets,
-// upsert an TargetStatus entry in promotionrun.Status.Targets, and
-// observe current phases. advanceAllTargets then moves each non-terminal
-// env one FSM step forward. A single Status().Patch() persists everything.
+// dependsOn order. For each eligible stage we plan child Target specs in the
+// controller-local runtime buffer, observe phases from existing child Targets,
+// then patch only the PromotionRun aggregate status.
 func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
@@ -347,13 +343,13 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 		}
 	}
 
-	// CRITICAL: take snapshot BEFORE any mutations to promotionrun.Status.
-	// advanceAllTargets, upsertTarget, cancelPendingStageTargets, and
-	// triggerRollbackTargets all mutate promotionrun.Status in-place; one patch at the
-	// bottom persists the full diff.
+	// Take the snapshot before mutating aggregate PromotionRun status. The
+	// target buffer is controller-local scratch state; it feeds orchestration
+	// decisions and child Target spec writes but is never persisted on the run.
 	patch := client.MergeFrom(promotionrun.DeepCopy())
 
-	if err := r.loadPromotionTargets(ctx, promotionrun); err != nil {
+	targets, err := r.loadPromotionTargets(ctx, promotionrun)
+	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("load promotion targets: %w", err)
 	}
 
@@ -444,7 +440,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 		}
 
 		stageProgress, promotionplanDone, promotionplanFailed, requeueAfter, cancels, err := r.reconcilePromotionPlanStages(
-			ctx, promotionrun, promotionplanRef.Name, &promotionplan,
+			ctx, promotionrun, &targets, promotionplanRef.Name, &promotionplan,
 		)
 		if err != nil {
 			return ctrl.Result{}, err
@@ -507,18 +503,17 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 			promotionrun.Status.ObservedGeneration = promotionrun.Generation
 			promotionrun.Status.CompletedAt = time.Now().UTC().Format(time.RFC3339)
 			promotionrun.Status.PlanProgress = updatedPlans
-			promotionrun.Status.Report = r.computeReport(promotionrun)
-			r.normalizePromotionRunStatus(promotionrun)
-			if err := r.persistPromotionTargets(ctx, promotionrun); err != nil {
+			r.setPromotionRunSummaries(promotionrun, targets)
+			targets = normalizePromotionRunTargets(targets)
+			if err := r.persistPromotionTargets(ctx, promotionrun, targets); err != nil {
 				return ctrl.Result{}, fmt.Errorf("persist promotion targets: %w", err)
 			}
 			// Apply deferred cancellations AFTER persistPromotionTargets so the
 			// cache-based spec writes don't overwrite spec.cancelled.
 			for _, c := range pendingCancels {
-				r.cancelPendingStageTargets(ctx, promotionrun, c.promotionplanRef, c.stage)
+				r.cancelPendingStageTargets(ctx, promotionrun, targets, c.promotionplanRef, c.stage)
 			}
-			hasRollbacks := r.hasActiveRollbackTargets(promotionrun)
-			promotionrun.Status.Targets = nil
+			hasRollbacks := hasActiveRollbackTargets(targets)
 			r.setPromotionRunReadyCondition(promotionrun, metav1.ConditionFalse, "SubResourceFailed", failureMsg)
 			r.setStalledCondition(promotionrun, "SubResourceFailed", failureMsg)
 			if hasRollbacks {
@@ -534,7 +529,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 			if hasRollbacks {
 				return ctrl.Result{Requeue: true}, nil
 			}
-			r.clearActivePromotionRun(ctx, promotionrun)
+			r.clearActivePromotionRun(ctx, promotionrun, targets)
 			return ctrl.Result{}, nil
 		}
 	}
@@ -553,15 +548,14 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 	}
 	// Compute report while targets are still in memory; normalization and
 	// persistence happen after so the report reflects the full target set.
-	promotionrun.Status.Report = r.computeReport(promotionrun)
-	r.normalizePromotionRunStatus(promotionrun)
-	if err := r.persistPromotionTargets(ctx, promotionrun); err != nil {
+	r.setPromotionRunSummaries(promotionrun, targets)
+	targets = normalizePromotionRunTargets(targets)
+	if err := r.persistPromotionTargets(ctx, promotionrun, targets); err != nil {
 		return ctrl.Result{}, fmt.Errorf("persist promotion targets: %w", err)
 	}
 	for _, c := range pendingCancels {
-		r.cancelPendingStageTargets(ctx, promotionrun, c.promotionplanRef, c.stage)
+		r.cancelPendingStageTargets(ctx, promotionrun, targets, c.promotionplanRef, c.stage)
 	}
-	promotionrun.Status.Targets = nil
 
 	if allPlansComplete {
 		r.setPromotionRunReadyCondition(promotionrun, metav1.ConditionTrue, "Complete", "all plans complete")
@@ -577,7 +571,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 			"all plans complete: version=%s targets=%d duration=%s",
 			promotionrun.Spec.Version, promotionrun.Status.Report.TotalTargets, duration)
 	} else {
-		r.setPromotionRunReadyCondition(promotionrun, metav1.ConditionFalse, "Progressing", promotionrunProgressSummary(promotionrun))
+		r.setPromotionRunReadyCondition(promotionrun, metav1.ConditionFalse, "Progressing", promotionrunProgressSummary(promotionrun, targets))
 		r.clearStalledCondition(promotionrun)
 		r.setReconcilingCondition(promotionrun, metav1.ConditionTrue, "Progressing", "promotionrun is advancing through promotionplan DAG")
 	}
@@ -587,7 +581,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 
 	if allPlansComplete {
 		r.notifyPromotionRunEvent(ctx, promotionrun, notification.EventPromotionRunCompleted, "promotionrun completed")
-		r.clearActivePromotionRun(ctx, promotionrun)
+		r.clearActivePromotionRun(ctx, promotionrun, targets)
 		annPatch := client.MergeFrom(promotionrun.DeepCopy())
 		if promotionrun.Annotations == nil {
 			promotionrun.Annotations = make(map[string]string)
@@ -609,8 +603,16 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 
 func (r *PromotionRunReconciler) handleTimeout(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun) (ctrl.Result, error) {
 	patch := client.MergeFrom(promotionrun.DeepCopy())
+	targets, err := r.loadPromotionTargets(ctx, promotionrun)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("load promotion targets: %w", err)
+	}
+	if err := r.cancelPromotionRunTargets(ctx, promotionrun.Name, "promotionrun exceeded timeout"); err != nil {
+		return ctrl.Result{}, fmt.Errorf("cancel timed-out targets: %w", err)
+	}
 	r.setRunPhase(promotionrun, kaprov1alpha2.PromotionRunPhaseFailed)
 	promotionrun.Status.CompletedAt = time.Now().UTC().Format(time.RFC3339)
+	r.setPromotionRunSummaries(promotionrun, targets)
 	msg := fmt.Sprintf("promotionrun exceeded timeout (%s)", promotionrun.Spec.Timeout)
 	r.setPromotionRunReadyCondition(promotionrun, metav1.ConditionFalse, "Timeout", msg)
 	r.setStalledCondition(promotionrun, "Timeout", msg)
@@ -619,6 +621,7 @@ func (r *PromotionRunReconciler) handleTimeout(ctx context.Context, promotionrun
 	}
 	r.Recorder.Eventf(promotionrun, corev1.EventTypeWarning, "Timeout", msg)
 	r.notifyPromotionRunEvent(ctx, promotionrun, notification.EventPromotionRunFailed, msg)
+	r.clearActivePromotionRun(ctx, promotionrun, targets)
 	log.FromContext(ctx).Info(msg)
 	return ctrl.Result{}, nil
 }
@@ -626,18 +629,18 @@ func (r *PromotionRunReconciler) handleTimeout(ctx context.Context, promotionrun
 func (r *PromotionRunReconciler) handleFailed(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun) (ctrl.Result, error) {
 	patch := client.MergeFrom(promotionrun.DeepCopy())
 
-	if err := r.loadPromotionTargets(ctx, promotionrun); err != nil {
+	targets, err := r.loadPromotionTargets(ctx, promotionrun)
+	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("load promotion targets: %w", err)
 	}
 
 	promotionrun.Status.ObservedGeneration = promotionrun.Generation
-	promotionrun.Status.Report = r.computeReport(promotionrun)
-	r.normalizePromotionRunStatus(promotionrun)
-	if err := r.persistPromotionTargets(ctx, promotionrun); err != nil {
+	r.setPromotionRunSummaries(promotionrun, targets)
+	targets = normalizePromotionRunTargets(targets)
+	if err := r.persistPromotionTargets(ctx, promotionrun, targets); err != nil {
 		return ctrl.Result{}, fmt.Errorf("persist promotion targets: %w", err)
 	}
-	hasRollbacks := r.hasActiveRollbackTargets(promotionrun)
-	promotionrun.Status.Targets = nil
+	hasRollbacks := hasActiveRollbackTargets(targets)
 	r.setPromotionRunReadyCondition(promotionrun, metav1.ConditionFalse, "Failed", "promotionrun failed")
 
 	if hasRollbacks {
@@ -653,7 +656,7 @@ func (r *PromotionRunReconciler) handleFailed(ctx context.Context, promotionrun 
 	}
 
 	if !hasRollbacks {
-		r.clearActivePromotionRun(ctx, promotionrun)
+		r.clearActivePromotionRun(ctx, promotionrun, targets)
 	}
 	return ctrl.Result{}, nil
 }
@@ -662,7 +665,7 @@ func (r *PromotionRunReconciler) handleFailed(ctx context.Context, promotionrun 
 //
 // For each stage whose dependencies are satisfied it:
 //  1. Lists target clusters matching the stage selector.
-//  2. Upserts a TargetStatus entry for each (idempotent).
+//  2. Upserts an in-memory target plan for each (idempotent).
 //  3. Observes current target phases → derives stage phase.
 //
 // Returns (stageProgress, allComplete, anyFailed, error).
@@ -676,6 +679,7 @@ type cancelRequest struct {
 func (r *PromotionRunReconciler) reconcilePromotionPlanStages(
 	ctx context.Context,
 	promotionrun *kaprov1alpha2.PromotionRun,
+	targets *[]kaprov1alpha2.TargetExecutionState,
 	promotionplanRefName string,
 	promotionplan *kaprov1alpha2.Plan,
 ) ([]kaprov1alpha2.StageProgress, bool, bool, time.Duration, []cancelRequest, error) {
@@ -694,7 +698,7 @@ func (r *PromotionRunReconciler) reconcilePromotionPlanStages(
 		// Check stage-level dependencies (with optional soak time and strategy).
 		depsComplete := true
 		for _, dep := range stage.DependsOn {
-			satisfied, wait, err := r.stageDependencySatisfied(ctx, promotionrun, promotionplanRefName, promotionplan, dep)
+			satisfied, wait, err := r.stageDependencySatisfied(ctx, promotionrun, *targets, promotionplanRefName, promotionplan, dep)
 			if err != nil {
 				return nil, false, false, 0, nil, err
 			}
@@ -731,7 +735,7 @@ func (r *PromotionRunReconciler) reconcilePromotionPlanStages(
 			continue
 		}
 
-		bindTargets, deferred, strategyDecisions := r.applyStageStrategy(promotionrun, promotionplanRefName, stage, envList)
+		bindTargets, deferred, strategyDecisions := r.applyStageStrategy(promotionrun, *targets, promotionplanRefName, stage, envList)
 		plannerResults := apiPlannerResults(append(planned.Decisions, strategyDecisions...))
 
 		resolvedGate, err := resolveStageGate(promotionplan, stage)
@@ -741,7 +745,7 @@ func (r *PromotionRunReconciler) reconcilePromotionPlanStages(
 
 		// Upsert selected target entries; observe phases across the full planned set.
 		for _, target := range bindTargets {
-			i, err := r.upsertTarget(promotionrun, promotionplanRefName, promotionplan, stage, target, resolvedGate)
+			i, err := r.upsertTarget(targets, promotionrun, promotionplanRefName, promotionplan, stage, target, resolvedGate)
 			if err != nil {
 				return nil, false, false, 0, nil, err
 			}
@@ -753,7 +757,7 @@ func (r *PromotionRunReconciler) reconcilePromotionPlanStages(
 		for _, target := range envList {
 			plannedNames[target.Name] = struct{}{}
 		}
-		for _, target := range promotionrun.Status.Targets {
+		for _, target := range *targets {
 			if target.PlanRef != promotionplanRefName || target.Stage != stage.Name {
 				continue
 			}
@@ -782,7 +786,7 @@ func (r *PromotionRunReconciler) reconcilePromotionPlanStages(
 		sp.PlannerResults = plannerResults
 
 		// Build human-readable message for k9s describe view.
-		sp.Message = stageProgressMessage(stage, promotionrun, promotionplanRefName, total, synced, failed, deferred)
+		sp.Message = stageProgressMessage(stage, *targets, promotionplanRefName, total, synced, failed, deferred)
 
 		if failed > 0 {
 			onFailure := stage.OnFailure
@@ -790,20 +794,19 @@ func (r *PromotionRunReconciler) reconcilePromotionPlanStages(
 			case kaprov1alpha2.StageFailurePolicySkip:
 				log.Info("stage has failed targets with OnFailure=skip, treating as complete",
 					"stage", stage.Name, "promotionplanRef", promotionplanRefName, "failed", failed)
-				sp.Phase = "Complete"
-				stagePhase[stage.Name] = "Complete"
-				// Transition Failed targets to Skipped so they are properly terminal
-				// and don't pollute the promotionrun report with stale failure counts.
-				for idx := range promotionrun.Status.Targets {
-					t := &promotionrun.Status.Targets[idx]
-					if t.Stage == stage.Name && t.PlanRef == promotionplanRefName && t.Phase == kaprov1alpha2.TargetPhaseFailed {
-						t.Phase = kaprov1alpha2.TargetPhaseSkipped
-					}
+				if err := r.markFailedStageTargetsSkipped(ctx, promotionrun, promotionplanRefName, stage.Name); err != nil {
+					return nil, false, false, 0, nil, err
+				}
+				sp.Phase = "Progressing"
+				stagePhase[stage.Name] = "Progressing"
+				allComplete = false
+				if nextRequeue == 0 || requeueNormal < nextRequeue {
+					nextRequeue = requeueNormal
 				}
 			case kaprov1alpha2.StageFailurePolicyRollback:
 				log.Info("stage has failed targets with OnFailure=rollback",
 					"stage", stage.Name, "promotionplanRef", promotionplanRefName)
-				r.triggerRollbackTargets(ctx, promotionrun, promotionplanRefName, promotionplan, stage.Name)
+				r.triggerRollbackTargets(ctx, promotionrun, targets, promotionplanRefName, promotionplan, stage.Name)
 				sp.Phase = "Failed"
 				stagePhase[stage.Name] = "Failed"
 				anyFailed = true
@@ -899,7 +902,7 @@ func (r *PromotionRunReconciler) publishStageEvent(ctx context.Context,
 
 // stageProgressMessage builds a human-readable status line for k9s describe view.
 // Examples: "3/5 converged", "blocked: waiting for approval on de-prod", "1/8 failed"
-func stageProgressMessage(stage kaprov1alpha2.Stage, promotionrun *kaprov1alpha2.PromotionRun, promotionplanRef string, total, synced, failed, deferred int) string {
+func stageProgressMessage(stage kaprov1alpha2.Stage, targets []kaprov1alpha2.TargetExecutionState, promotionplanRef string, total, synced, failed, deferred int) string {
 	if total == 0 {
 		return "no matching clusters"
 	}
@@ -912,8 +915,8 @@ func stageProgressMessage(stage kaprov1alpha2.Stage, promotionrun *kaprov1alpha2
 	applying := 0
 	soaking := 0
 	metricsCheck := 0
-	for i := range promotionrun.Status.Targets {
-		t := &promotionrun.Status.Targets[i]
+	for i := range targets {
+		t := &targets[i]
 		if t.Stage != stage.Name || t.PlanRef != promotionplanRef {
 			continue
 		}
@@ -954,6 +957,7 @@ func stageProgressMessage(stage kaprov1alpha2.Stage, promotionrun *kaprov1alpha2
 func (r *PromotionRunReconciler) stageDependencySatisfied(
 	ctx context.Context,
 	promotionrun *kaprov1alpha2.PromotionRun,
+	runtimeTargets []kaprov1alpha2.TargetExecutionState,
 	promotionplanRefName string,
 	promotionplan *kaprov1alpha2.Plan,
 	dep kaprov1alpha2.StageDependency,
@@ -991,8 +995,8 @@ func (r *PromotionRunReconciler) stageDependencySatisfied(
 	successful := 0
 	var shortestWait time.Duration
 
-	for idx := range promotionrun.Status.Targets {
-		target := &promotionrun.Status.Targets[idx]
+	for idx := range runtimeTargets {
+		target := &runtimeTargets[idx]
 		if target.PlanRef != promotionplanRefName || target.Stage != dep.Stage {
 			continue
 		}
@@ -1142,6 +1146,7 @@ func (r *PromotionRunReconciler) planTargetsForStage(ctx context.Context, promot
 
 func (r *PromotionRunReconciler) applyStageStrategy(
 	promotionrun *kaprov1alpha2.PromotionRun,
+	runtimeTargets []kaprov1alpha2.TargetExecutionState,
 	promotionplanRefName string,
 	stage kaprov1alpha2.Stage,
 	targets []kaprov1alpha2.Cluster,
@@ -1157,7 +1162,7 @@ func (r *PromotionRunReconciler) applyStageStrategy(
 
 	active := 0
 	bound := make(map[string]struct{}, len(targets))
-	for _, target := range promotionrun.Status.Targets {
+	for _, target := range runtimeTargets {
 		if target.PlanRef != promotionplanRefName || target.Stage != stage.Name {
 			continue
 		}
@@ -1228,7 +1233,7 @@ func apiPlannerResults(decisions []planner.Decision) []kaprov1alpha2.PlannerResu
 	return results
 }
 
-// upsertTarget finds an existing TargetStatus entry for
+// upsertTarget finds an existing runtime target entry for
 // (promotionplanRefName, stage.Name, mc.Name) or appends a new one.
 // Returns the slice index of the entry (stable within a single reconcile).
 
@@ -1295,8 +1300,8 @@ func mergeMetricPreset(preset, override kaprov1alpha2.MetricGate) kaprov1alpha2.
 // the child TargetReconciler observes it and transitions to Failed
 // (child owns status). This avoids cross-controller status writes.
 
-// clearActivePromotionRun clears mc.status.activePromotionRun for all FleetClusters
-// targeted by this PromotionRun, found via promotionrun.Status.Targets.
+// clearActivePromotionRun clears mc.status.activePromotionRun for all clusters
+// targeted by this PromotionRun, found via child Target objects.
 
 func promotionTargetObjectName(target kaprov1alpha2.TargetExecutionState) string {
 	name := syncName(target.PromotionRunRef, target.PlanRef, target.Stage, target.Target)
@@ -1331,8 +1336,7 @@ func targetStatusFromPromotionTarget(rt *kaprov1alpha2.Target) kaprov1alpha2.Tar
 // target entry. The parent creates new children and updates their specs/labels/
 // ownerRefs, but NEVER writes child status — that's owned by TargetReconciler.
 
-// handleDeletion clears FleetCluster activePromotionRun references and removes the finalizer.
-// Targets are inline status — nothing to delete externally.
+// handleDeletion clears Cluster activePromotionRun references and removes the finalizer.
 func (r *PromotionRunReconciler) handleDeletion(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 	log.Info("handling PromotionRun deletion", "name", promotionrun.Name)
@@ -1340,12 +1344,11 @@ func (r *PromotionRunReconciler) handleDeletion(ctx context.Context, promotionru
 	// Ensure targets are loaded so clearActivePromotionRun can find all clusters to
 	// clear. If this fails, retry deletion rather than removing the finalizer
 	// with stale activePromotionRun claims still pointing at this PromotionRun.
-	if len(promotionrun.Status.Targets) == 0 {
-		if err := r.loadPromotionTargets(ctx, promotionrun); err != nil {
-			return ctrl.Result{}, fmt.Errorf("handleDeletion: load promotion targets for cleanup: %w", err)
-		}
+	targets, err := r.loadPromotionTargets(ctx, promotionrun)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("handleDeletion: load promotion targets for cleanup: %w", err)
 	}
-	r.clearActivePromotionRun(ctx, promotionrun)
+	r.clearActivePromotionRun(ctx, promotionrun, targets)
 
 	patch := client.MergeFrom(promotionrun.DeepCopy())
 	controllerutil.RemoveFinalizer(promotionrun, promotionrunFinalizer)
@@ -1498,8 +1501,8 @@ func (r *PromotionRunReconciler) ProgressingPromotionRunsForNewClusterForTest(ct
 }
 
 // progressingPromotionRunsForNewCluster handles the case where a newly registered
-// cluster is not yet referenced by any PromotionRun.status.targets entry. The
-// active-cluster index cannot find these promotionruns, so we fall back to checking
+// cluster is not yet referenced by any child Target object. The active-cluster
+// index cannot find these promotionruns, so we fall back to checking
 // only non-terminal promotionruns and enqueue those whose Plan selectors could
 // target the cluster.
 func (r *PromotionRunReconciler) progressingPromotionRunsForNewCluster(ctx context.Context, mc *kaprov1alpha2.Cluster) []ctrl.Request {
@@ -1720,7 +1723,7 @@ func (r *PromotionRunReconciler) clearStalledCondition(promotionrun *kaprov1alph
 	apimeta.RemoveStatusCondition(&promotionrun.Status.Conditions, kaprov1alpha2.ConditionTypeStalled)
 }
 
-func promotionrunProgressSummary(promotionrun *kaprov1alpha2.PromotionRun) string {
+func promotionrunProgressSummary(promotionrun *kaprov1alpha2.PromotionRun, runtimeTargets []kaprov1alpha2.TargetExecutionState) string {
 	activePlans := 0
 	for _, p := range promotionrun.Status.PlanProgress {
 		if p.Phase == "Progressing" || p.Phase == "Pending" {
@@ -1729,7 +1732,7 @@ func promotionrunProgressSummary(promotionrun *kaprov1alpha2.PromotionRun) strin
 	}
 
 	activeTargets := 0
-	for _, target := range promotionrun.Status.Targets {
+	for _, target := range runtimeTargets {
 		if target.Rollback {
 			continue
 		}
@@ -1741,21 +1744,16 @@ func promotionrunProgressSummary(promotionrun *kaprov1alpha2.PromotionRun) strin
 	return fmt.Sprintf("promotionrun progressing: %d active plans, %d active targets", activePlans, activeTargets)
 }
 
-// normalizePromotionRunStatus deduplicates PromotionRun.status.targets and bounds per-target
-// gate history. It never drops target execution rows, because those rows are the
-// source of truth for in-flight rollout state.
-func (r *PromotionRunReconciler) normalizePromotionRunStatus(promotionrun *kaprov1alpha2.PromotionRun) {
-	if len(promotionrun.Status.Targets) == 0 {
-		return
-	}
-
+// normalizePromotionRunTargets deduplicates the controller-local runtime target
+// buffer and bounds per-target gate history before child Target specs are planned.
+func normalizePromotionRunTargets(runtimeTargets []kaprov1alpha2.TargetExecutionState) []kaprov1alpha2.TargetExecutionState {
 	// Keep the latest current-state row for each logical target, plus at most one
-	// rollback row. This prevents PromotionRun.status.targets from becoming an append-only log.
-	seen := make(map[string]struct{}, len(promotionrun.Status.Targets))
-	normalized := make([]kaprov1alpha2.TargetExecutionState, 0, len(promotionrun.Status.Targets))
-	for i := len(promotionrun.Status.Targets) - 1; i >= 0; i-- {
-		target := promotionrun.Status.Targets[i]
-		r.normalizeTargetEntry(&target)
+	// rollback row. This prevents the runtime buffer from becoming an append-only log.
+	seen := make(map[string]struct{}, len(runtimeTargets))
+	normalized := make([]kaprov1alpha2.TargetExecutionState, 0, len(runtimeTargets))
+	for i := len(runtimeTargets) - 1; i >= 0; i-- {
+		target := runtimeTargets[i]
+		normalizeTargetEntry(&target)
 		key := syncKey(target.PlanRef, target.Stage, target.Target)
 		if target.Rollback {
 			key += "/rollback"
@@ -1770,11 +1768,10 @@ func (r *PromotionRunReconciler) normalizePromotionRunStatus(promotionrun *kapro
 	for i, j := 0, len(normalized)-1; i < j; i, j = i+1, j-1 {
 		normalized[i], normalized[j] = normalized[j], normalized[i]
 	}
-
-	promotionrun.Status.Targets = normalized
+	return normalized
 }
 
-func (r *PromotionRunReconciler) normalizeTargetEntry(target *kaprov1alpha2.TargetExecutionState) {
+func normalizeTargetEntry(target *kaprov1alpha2.TargetExecutionState) {
 	if len(target.Gates) > maxGateRunsPerTarget {
 		target.Gates = target.Gates[len(target.Gates)-maxGateRunsPerTarget:]
 	}
@@ -1817,9 +1814,37 @@ func (r *PromotionRunReconciler) appendAuditEntry(_ context.Context, promotionru
 	}
 }
 
-// computeReport builds the inline PromotionRunReportSummary from PromotionRun.status.targets.
-// It is a bounded, counter-only summary; per-target detail lives in status.targets.
-func (r *PromotionRunReconciler) computeReport(promotionrun *kaprov1alpha2.PromotionRun) kaprov1alpha2.PromotionRunReportSummary {
+func (r *PromotionRunReconciler) setPromotionRunSummaries(promotionrun *kaprov1alpha2.PromotionRun, runtimeTargets []kaprov1alpha2.TargetExecutionState) {
+	report := r.computeReport(promotionrun, runtimeTargets)
+	promotionrun.Status.Report = report
+	summary := promotionRunSummaryFromReport(report)
+	promotionrun.Status.Summary = &summary
+}
+
+func ensurePromotionRunSummary(promotionrun *kaprov1alpha2.PromotionRun) {
+	if promotionrun.Status.Summary == nil {
+		promotionrun.Status.Summary = &kaprov1alpha2.PromotionRunSummary{}
+	}
+}
+
+func promotionRunSummaryFromReport(report kaprov1alpha2.PromotionRunReportSummary) kaprov1alpha2.PromotionRunSummary {
+	summary := kaprov1alpha2.PromotionRunSummary{
+		TotalTargets:   int32(report.TotalTargets),
+		SyncedTargets:  int32(report.SyncedTargets),
+		FailedTargets:  int32(report.FailedTargets),
+		PendingTargets: int32(report.PendingTargets),
+	}
+	if report.Phase == kaprov1alpha2.PromotionRunPhaseComplete {
+		summary.ConvergedAt = report.CompletedAt
+	}
+	return summary
+}
+
+// computeReport builds the inline PromotionRunReportSummary from the
+// controller-local runtime target buffer.
+// It is a bounded, counter-only summary; per-target detail lives in child
+// Target objects.
+func (r *PromotionRunReconciler) computeReport(promotionrun *kaprov1alpha2.PromotionRun, runtimeTargets []kaprov1alpha2.TargetExecutionState) kaprov1alpha2.PromotionRunReportSummary {
 	now := time.Now().UTC()
 
 	st := kaprov1alpha2.PromotionRunReportSummary{
@@ -1844,13 +1869,13 @@ func (r *PromotionRunReconciler) computeReport(promotionrun *kaprov1alpha2.Promo
 		}
 	}
 
-	// Count targets from inline status; list pending approvals by deterministic name.
+	// Count targets from the runtime target buffer; list pending approvals by deterministic name.
 	// Key by (promotionplanRef, stage, cluster) to avoid undercounting when the same cluster
 	// is targeted by multiple promotionplans or stages.
-	targetPhases := make(map[string]kaprov1alpha2.TargetPhase, len(promotionrun.Status.Targets))
+	targetPhases := make(map[string]kaprov1alpha2.TargetPhase, len(runtimeTargets))
 	var rolledBack int
 	var pendingApprovals []string
-	for _, target := range promotionrun.Status.Targets {
+	for _, target := range runtimeTargets {
 		if target.Rollback {
 			rolledBack++
 			continue
