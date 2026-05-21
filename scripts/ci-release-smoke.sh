@@ -153,7 +153,7 @@ grep -Fq "$(basename "${cluster_controller_packages[0]}")" "${tmpdir}/checksums.
 
 echo "checking release workflow packages the charts and publishes checksums"
 require_workflow_line "uses: azure/setup-helm@v4"
-require_workflow_line "name: Package Helm chart"
+require_workflow_line "name: Package Helm charts"
 require_workflow_line "helm package charts/kapro-operator --destination dist"
 require_workflow_line "helm package charts/kapro-cluster-controller --destination dist"
 require_workflow_line "name: Sign Helm chart artifacts with cosign (sign-blob)"
