@@ -130,6 +130,23 @@ func TestGeneratedCRDsAreSyncedAndServedVersion(t *testing.T) {
 	}
 }
 
+func TestStaticCRDsDoNotDeclareUntrustedConversionWebhook(t *testing.T) {
+	root := repoRoot(t)
+	for _, relDir := range []string{
+		filepath.Join("config", "crd", "bases"),
+		filepath.Join("charts", "kapro-operator", "crds"),
+		filepath.Join("internal", "bootstrap", "kaprocrds"),
+	} {
+		for _, name := range crdBaseNames(t, filepath.Join(root, relDir)) {
+			path := filepath.Join(root, relDir, name)
+			data := readText(t, path)
+			if strings.Contains(data, "strategy: Webhook") && !strings.Contains(data, "caBundle:") {
+				t.Fatalf("%s declares a conversion webhook without a trusted caBundle; static CRDs cannot use chart-generated webhook CAs", path)
+			}
+		}
+	}
+}
+
 func TestCRDNamesMatchPublicContract(t *testing.T) {
 	root := repoRoot(t)
 	configDir := filepath.Join(root, "config", "crd", "bases")

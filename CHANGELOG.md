@@ -7,11 +7,13 @@ record for each tag.
 
 ## Unreleased
 
-### ⚠️ Breaking — `kapro.io/v1alpha2` migration (clean break, no conversion)
+### ⚠️ Breaking — `kapro.io/v1alpha2` migration (clean break; conversion scaffold only)
 
-All CRDs moved from `kapro.io/v1alpha1` to `kapro.io/v1alpha2`. There is no
-conversion webhook and no v1alpha1 served version remains — this is a clean
-break appropriate for pre-stable software with no production users yet.
+All CRDs moved from `kapro.io/v1alpha1` to `kapro.io/v1alpha2`. ADR-0011 adds
+the `/convert` handler scaffold, but the shipped CRDs do not enable conversion
+strategy, no v1alpha1 served version remains, and no automatic legacy
+conversion path is published for this migration. This remains a clean break
+appropriate for pre-stable software with no production users yet.
 
 **Kind renames** (the new short forms are the canonical names going forward):
 
@@ -37,9 +39,10 @@ break appropriate for pre-stable software with no production users yet.
 
 CloudEvents payload field `data.kaproRef` is renamed to `data.fleetRef`.
 
-**Upgrade path**: there is none in the operator. Apply the new
-`kapro.io/v1alpha2` CRDs and re-author manifests with the new Kinds and field
-names. Existing v1alpha1 objects must be deleted before installing v1alpha2.
+**Upgrade path**: there is no automatic operator migration for legacy v1alpha1
+objects. Delete legacy v1alpha1 objects and old prototype CRDs before applying
+the new `kapro.io/v1alpha2` CRDs, then re-author manifests with the new Kinds
+and field names.
 
 ### Changed — default controller set narrowed
 
