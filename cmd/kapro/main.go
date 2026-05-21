@@ -2,8 +2,9 @@
 //
 // Usage:
 //
-//	kapro cluster bootstrap --name <cluster-name> [--labels key=value,...]
-//	kapro promote <app> --version <version> --plan <plan>
+//	kapro init ./promotion-repo --backend flux --mode pull --name checkout
+//	kapro promote <fleet> --version <version>
+//	kapro diag <promotion>
 //	kapro get promotionruns
 //	kapro get targets
 //	kapro approve <promotionrun>/<target> [--comment text]
@@ -50,7 +51,16 @@ func main() {
 		Short: "The Canonical Promotion Layer for Kubernetes",
 		Long: `kapro — multi-cluster progressive delivery engine.
 
-Passes versions forward. Across targets. Across clusters. In waves.`,
+Pass versions forward across targets, clusters, and waves.
+
+Start here:
+  kapro init ./promotion-repo --backend flux --mode pull --name checkout
+  kapro promote checkout --version v1.2.3
+  kapro diag checkout-v1-2-3
+
+For existing GitOps repositories:
+  kapro connect argo ./kapro-connect
+  kapro adopt argo . --out ./kapro-connect --name checkout`,
 	}
 
 	root.PersistentFlags().StringVarP(&cli.OutputFormat, "output", "o", "", "Output format (json for machine-readable)")
@@ -804,7 +814,8 @@ func newPromoteCmd() *cobra.Command {
 		Long: `Create a Promotion intent to roll a version through the named Fleet.
 
 The controller materializes each Promotion into one or more PromotionRun
-attempts; users normally observe PromotionRun, they do not author it.
+attempts. Start with this command, then use "kapro diag" when you need the
+single-screen explanation of what is happening.
 
 Examples:
   kapro promote checkout --version v1.2.3
@@ -827,7 +838,7 @@ Examples:
 	cmd.Flags().StringVar(&version, "version", "", "Default revision to deliver")
 	cmd.Flags().StringArrayVar(&versions, "set", nil, "Per-unit revision (repeatable: --set api=sha256:abc)")
 	cmd.Flags().StringArrayVar(&plans, "plan", nil, "Plan override (repeatable); defaults to the parent Fleet's inline plan")
-	cmd.Flags().StringArrayVar(&scope, "scope", nil, "Restrict to target cluster (repeatable: --scope de-prod --scope fi-prod)")
+	cmd.Flags().StringArrayVar(&scope, "scope", nil, "Restrict to target cluster (repeatable: --scope canary-eu --scope prod-eu)")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	return cmd
 }
@@ -909,7 +920,7 @@ func runPromotionCreate(ctx context.Context, name, fleetRef, version string,
 	if len(scope) > 0 {
 		fmt.Printf("   Scope:     %s\n", strings.Join(scope, ", "))
 	}
-	fmt.Printf("\nWatch progress:\n  kubectl get promotion %s -w\n  kubectl get promotionruns -l kapro.io/promotion=%s\n", name, name)
+	fmt.Printf("\nNext steps:\n  kapro diag %s\n  kapro status %s\n  kubectl get promotions,promotionruns,targets\n", name, fleetRef)
 	return nil
 }
 

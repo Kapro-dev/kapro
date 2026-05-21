@@ -10,7 +10,8 @@ configuration yourself. For a fully scripted local cluster, use the
 ## 1. Install The Operator
 
 ```bash
-helm upgrade --install kapro charts/kapro-operator \
+helm upgrade --install kapro \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.1.0/kapro-operator-0.1.0.tgz \
   --namespace kapro-system \
   --create-namespace
 kubectl -n kapro-system rollout status deployment/kapro-kapro-operator
@@ -22,19 +23,25 @@ Expected:
 deployment "kapro-kapro-operator" successfully rolled out
 ```
 
-For local clusters without cert-manager:
+For throwaway local clusters where you intentionally want to skip admission
+webhooks:
 
 ```bash
-helm upgrade --install kapro charts/kapro-operator \
+helm upgrade --install kapro \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.1.0/kapro-operator-0.1.0.tgz \
   --namespace kapro-system \
   --create-namespace \
   --set webhook.enabled=false
 ```
 
+When working from a local checkout before the release is published, use
+`charts/kapro-operator` in place of the release URL.
+
 ## 2. Apply A Minimal Hub Config
 
 ```bash
 kubectl apply -f examples/quickstart/backend-flux.yaml
+kubectl wait backend/flux --for=condition=Ready --timeout=60s
 kubectl apply -f examples/quickstart/kapro.yaml
 ```
 
@@ -54,22 +61,23 @@ from `spec.clusters`.
 kubectl get clusters
 ```
 
-You should see the generated `canary-eu` and `prod-eu` clusters from
-`examples/quickstart/kapro.yaml`. If none appear, the operator is not
-reconciling the `Fleet` object; check the controller logs before creating
-manual test targets. Use the Kind demo for a fully scripted hub/spoke setup.
+You should see the generated `checkout-canary-eu` and
+`checkout-production-eu` clusters from `examples/quickstart/kapro.yaml`. If
+none appear, the operator is not reconciling the `Fleet` object; check the
+controller logs before creating manual test targets. Use the Kind demo for a
+fully scripted hub/spoke setup.
 
 ## 4. Promote A Version
 
 ```bash
-kapro promote checkout --version v1.2.3
+kubectl apply -f examples/quickstart/promotion.yaml
 kubectl get promotions,promotionruns,targets
 ```
 
 Expected:
 
 ```text
-Promotion       created or updated
+Promotion       checkout-v1-2-3
 PromotionRun    created by the controller
 Target         created for each selected target
 ```

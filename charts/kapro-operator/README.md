@@ -5,22 +5,27 @@ admission webhook configuration, and baseline services in one Helm release.
 
 ## Install
 
+From this source checkout:
+
 ```bash
 helm upgrade --install kapro charts/kapro-operator \
   --namespace kapro-system \
   --create-namespace
 ```
 
-The default webhook configuration uses cert-manager to create and inject a
-self-signed serving certificate. If cert-manager is not installed, either
-install it first or disable admission webhooks for local testing:
+For public-preview installs, prefer the packaged chart attached to the GitHub
+Release:
 
 ```bash
-helm upgrade --install kapro charts/kapro-operator \
+helm upgrade --install kapro \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.1.0/kapro-operator-0.1.0.tgz \
   --namespace kapro-system \
-  --create-namespace \
-  --set webhook.enabled=false
+  --create-namespace
 ```
+
+The default webhook configuration generates a self-signed serving certificate
+without cert-manager. If you already run cert-manager and prefer its certificate
+lifecycle, set `webhook.certManager.enabled=true`.
 
 ## Upgrade
 
@@ -69,7 +74,8 @@ The runtime plugin gateway is disabled by default and this chart does not
 install demo plugins. To opt in:
 
 ```bash
-helm upgrade --install kapro charts/kapro-operator \
+helm upgrade --install kapro \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.1.0/kapro-operator-0.1.0.tgz \
   --namespace kapro-system \
   --create-namespace \
   --set pluginGateway.enabled=true
@@ -93,4 +99,5 @@ Preview surfaces are explicit opt-ins or spec-only APIs:
 | Decision API and `Policy` | Disabled | `--set decisionAPI.enabled=true` plus Kubernetes RBAC |
 | Runtime plugin gateway | Disabled | `--set pluginGateway.enabled=true` |
 | Hub Gateway Service | Internal listener only | `--set hubGateway.service.enabled=true` and place Kubernetes authn/authz or an identity proxy in front |
+| Spoke CSR bootstrap controller | Disabled | Add `fleetcluster-bootstrap` to `controllers` and set `hubAPIURL` |
 | Inline gate notifications | Runtime | No separate public notification provider/policy CRDs |

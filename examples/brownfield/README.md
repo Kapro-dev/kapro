@@ -4,6 +4,11 @@ These fixtures show how Kapro connects to existing Argo CD or Flux installs
 without copying backend credentials or rewriting every workload into Kapro
 objects.
 
+Use brownfield adoption in three steps: observe the selected backend objects,
+review the generated `Source` and discovery reports, then adopt only the
+version fields the team has approved. A `Promotion` still runs through a
+`Fleet` and `Plan`; Argo CD or Flux still reconciles the workload.
+
 ## Argo CD
 
 `argo-existing-topology.yaml` represents a hub Argo CD namespace that already
@@ -29,15 +34,15 @@ default, and writes `discovery/argo-cache.json` so repeat scans skip unchanged
 Git blobs.
 
 The scanner is intentionally bounded: 10,000 candidate files and 1,000
-promotion units by default. Prefer `--path-prefix` for unique monorepo layouts;
+`Source` units by default. Prefer `--path-prefix` for unique monorepo layouts;
 raise `--max-files` or `--max-units` only when the generated report is still
 small enough to review.
 
 The generated `Backend` starts with `managementPolicy: Observe`. Argo CD
 keeps cluster credentials, repository credentials, Projects, Applications, and
 ApplicationSets. Kapro reads metadata and health through Kubernetes RBAC. After
-the discovered graph is correct, switch the profile to
-`managementPolicy: Adopt` for selected promotion writes such as
+the discovered graph and `Source` are correct, switch the profile to
+`managementPolicy: Adopt` for selected version writes such as
 `spec.source.targetRevision`.
 
 Discovery writes `sources/checkout.yaml`, `discovery/argo-discovery.yaml`, and
@@ -80,7 +85,7 @@ metadata:
     kapro.io/tier: canary
 ```
 
-Kapro observes selected Applications and can later adopt promotion writes to the
+Kapro observes selected Applications and can later adopt version writes to the
 Application revision field. Argo CD still owns sync, drift correction, cluster
 credentials, and repository credentials.
 
@@ -123,8 +128,8 @@ Then configure the delivery backend with
 ### Argo Pattern 3: App Of Apps
 
 Use this when a root Argo CD `Application` points at a Git path that defines
-child Applications. Kapro should usually discover and promote the child
-Applications, not the root app-of-apps object:
+child Applications. Kapro should usually map the child Applications to `Source`
+units, not the root app-of-apps object:
 
 ```yaml
 metadata:
@@ -135,10 +140,10 @@ metadata:
     kapro.io/tier: production
 ```
 
-The root app remains Argo CD's packaging mechanism. Kapro adds promotionrun waves,
-gates, approvals, and evidence around the children that actually map to
-promotion targets. If a team wants the root app to be the promoted unit, label
-only the root and keep children unlabelled.
+The root app remains Argo CD's packaging mechanism. Kapro adds `PromotionRun`
+waves, gates, approvals, and evidence around the children that actually map to
+`Source` units. If a team wants the root app to be the `Source` unit, label only
+the root and keep children unlabelled.
 
 ### Argo Clusters And Secrets
 
@@ -166,22 +171,26 @@ GitRepository, Kustomization, and HelmRelease objects. Kapro again discovers by
 label instead of requiring every object to be re-authored.
 
 ```bash
-kapro connect flux ./kapro-connect \
+kapro discover flux . \
+  --out ./kapro-connect \
+  --name checkout \
   --namespace flux-system \
   --selector kapro.io/import=true,team=checkout
 
-kubectl apply -f ./kapro-connect/backends/flux-observe.yaml
+kubectl apply -f ./kapro-connect/backends/checkout-observe.yaml
 ```
 
 Flux keeps its repository credentials and source references. Kapro stores only
-backend references and selected object names.
+backend references, selected object names, and reviewed `Source` version-field
+mappings. Use `kapro connect flux` only when you want a Backend-only scaffold
+and will author the `Source` yourself.
 
 ### Flux Patterns
 
-For plain Flux, label the Kustomizations and HelmReleases that represent
-promotion targets. For repo-per-service or repo-per-env setups, label the
-GitRepository too so discovery can show where the target came from. Kapro
-should promote only selected fields such as an image tag, chart version, or
+For plain Flux, label the Kustomizations and HelmReleases that represent the
+workloads Kapro should observe. For repo-per-service or repo-per-env setups,
+label the GitRepository too so discovery can show where the version came from.
+Kapro should write only selected fields such as an image tag, chart version, or
 source revision; Flux keeps source authentication, reconciliation, drift
 correction, and workload rollout.
 

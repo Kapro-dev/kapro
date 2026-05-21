@@ -29,7 +29,86 @@ reject_workflow_line() {
   fi
 }
 
+chart_value() {
+  local chart_dir="$1"
+  local key="$2"
+  awk -F: -v key="${key}" '
+    $1 == key {
+      value = $0
+      sub(/^[^:]+:[[:space:]]*/, "", value)
+      sub(/[[:space:]]*#.*/, "", value)
+      gsub(/^"|"$/, "", value)
+      print value
+      exit
+    }
+  ' "${chart_dir}/Chart.yaml"
+}
+
+assert_packaged_file_matches() {
+  local package_path="$1"
+  local chart_name="$2"
+  local source_path="$3"
+  local package_rel="$4"
+  local package_member="${chart_name}/${package_rel}"
+
+  if ! tar -tzf "${package_path}" "${package_member}" >/dev/null 2>&1; then
+    echo "${package_path} is missing ${package_member}" >&2
+    exit 1
+  fi
+  if ! tar -xOf "${package_path}" "${package_member}" | cmp -s "${source_path}" -; then
+    echo "${package_member} in ${package_path} differs from ${source_path}" >&2
+    exit 1
+  fi
+}
+
+check_chart_package() {
+  local chart_dir="$1"
+  local chart_name="$2"
+  local package_path="$3"
+  local version
+  local app_version
+
+  version="$(chart_value "${chart_dir}" version)"
+  app_version="$(chart_value "${chart_dir}" appVersion)"
+  if [[ -z "${version}" || -z "${app_version}" ]]; then
+    echo "${chart_dir}/Chart.yaml must set version and appVersion" >&2
+    exit 1
+  fi
+  if [[ "${app_version}" != "v${version}" ]]; then
+    echo "${chart_dir}/Chart.yaml appVersion ${app_version} must match chart version v${version}" >&2
+    exit 1
+  fi
+  if [[ "$(basename "${package_path}")" != "${chart_name}-${version}.tgz" ]]; then
+    echo "packaged chart name $(basename "${package_path}") does not match ${chart_name}-${version}.tgz" >&2
+    exit 1
+  fi
+
+  helm show chart "${package_path}" | grep -Fxq "name: ${chart_name}"
+  helm show chart "${package_path}" | grep -Fxq "version: ${version}"
+  helm show chart "${package_path}" | grep -Fxq "appVersion: ${app_version}"
+  assert_packaged_file_matches "${package_path}" "${chart_name}" "${chart_dir}/values.yaml" "values.yaml"
+  if [[ -f "${chart_dir}/README.md" ]]; then
+    assert_packaged_file_matches "${package_path}" "${chart_name}" "${chart_dir}/README.md" "README.md"
+  fi
+
+  if [[ -d "${chart_dir}/crds" ]]; then
+    local crd
+    for crd in "${chart_dir}"/crds/*.yaml; do
+      [[ -f "${crd}" ]] || continue
+      local base
+      base="$(basename "${crd}")"
+      if ! cmp -s "${ROOT}/config/crd/bases/${base}" "${crd}"; then
+        echo "${crd} differs from config/crd/bases/${base}; chart CRD is stale" >&2
+        exit 1
+      fi
+      assert_packaged_file_matches "${package_path}" "${chart_name}" "${crd}" "crds/${base}"
+    done
+  fi
+}
+
 need helm
+need tar
+need cmp
 need shasum
 
 tmpdir="$(mktemp -d)"
@@ -59,6 +138,14 @@ if [[ "${#cluster_controller_packages[@]}" -ne 1 ]]; then
   exit 1
 fi
 
+echo "checking packaged Helm chart metadata and published files"
+if grep -Fxq '  - "*"' "${CHART}/values.yaml"; then
+  echo "kapro-operator values.yaml must not default controllers to wildcard; opt-in controllers can require extra configuration" >&2
+  exit 1
+fi
+check_chart_package "${CHART}" kapro-operator "${chart_packages[0]}"
+check_chart_package "${CLUSTER_CONTROLLER_CHART}" kapro-cluster-controller "${cluster_controller_packages[0]}"
+
 echo "generating Helm chart checksums"
 shasum -a 256 "${chart_packages[0]}" "${cluster_controller_packages[0]}" >"${tmpdir}/checksums.txt"
 grep -Fq "$(basename "${chart_packages[0]}")" "${tmpdir}/checksums.txt"
@@ -71,7 +158,11 @@ require_workflow_line "helm package charts/kapro-operator --destination dist"
 require_workflow_line "helm package charts/kapro-cluster-controller --destination dist"
 require_workflow_line "shasum -a 256 dist/* > dist/checksums.txt"
 require_workflow_line "dist/*"
+require_workflow_line "startsWith(github.ref_name, 'v0.')"
+require_workflow_line "generate_release_notes: true"
 reject_workflow_line "body_path: docs/release-v0.1.0-alpha.md"
+reject_workflow_line "kapro-operator-0.1.0.tgz"
+reject_workflow_line "kapro-cluster-controller-0.1.0.tgz"
 
 echo "checking release workflow builds and signs both images"
 require_workflow_line "file: Dockerfile"

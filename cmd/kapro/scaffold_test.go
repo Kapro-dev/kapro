@@ -37,7 +37,10 @@ func TestRunInitScaffoldArgo(t *testing.T) {
 	for _, want := range []string{
 		"source:",
 		"backendRef: argo",
-		"name: checkout-api",
+		"kapro.io/team: platform",
+		"name: checkout",
+		"kapro.io/stage: canary",
+		"kapro.io/stage: production",
 	} {
 		if !strings.Contains(kapro, want) {
 			t.Fatalf("kapro file missing %q:\n%s", want, kapro)
@@ -100,8 +103,8 @@ func TestRunInitScaffoldOCIPull(t *testing.T) {
 	for _, relPath := range []string{
 		"backends/oci.yaml",
 		"plans/checkout.yaml",
-		"clusters/canary.yaml",
-		"clusters/prod.yaml",
+		"clusters/canary-eu.yaml",
+		"clusters/prod-eu.yaml",
 		"fleets/checkout.yaml",
 		"promotions/checkout-promotion.yaml",
 	} {
@@ -128,8 +131,10 @@ func TestRunInitScaffoldOCIPull(t *testing.T) {
 			t.Fatalf("backend file missing %q:\n%s", want, backend)
 		}
 	}
-	cluster := readFile(t, filepath.Join(dir, "clusters/canary.yaml"))
+	cluster := readFile(t, filepath.Join(dir, "clusters/canary-eu.yaml"))
 	for _, want := range []string{
+		"name: canary-eu",
+		"kapro.io/stage: canary",
 		"mode: pull",
 		"backendRef: oci",
 		"namespace: kapro-system",
@@ -141,8 +146,10 @@ func TestRunInitScaffoldOCIPull(t *testing.T) {
 	promotion := readFile(t, filepath.Join(dir, "promotions/checkout-promotion.yaml"))
 	for _, want := range []string{
 		"kind: Promotion",
+		"kapro.io/team: platform",
 		"fleetRef: checkout",
 		"version: 0.1.0",
+		"timeout: 30m",
 	} {
 		if !strings.Contains(promotion, want) {
 			t.Fatalf("promotion file missing %q:\n%s", want, promotion)

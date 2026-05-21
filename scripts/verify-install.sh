@@ -7,15 +7,17 @@ BOOTSTRAP_CRDS="${ROOT}/internal/bootstrap/kaprocrds"
 
 usage() {
   cat <<EOF
-Usage: scripts/verify-install.sh <render|cluster|kind-demo|argo-e2e|flux-git-e2e|flux-e2e>
+Usage: scripts/verify-install.sh <render|release-render|cluster|release-cluster|kind-demo|argo-e2e|flux-git-e2e|flux-e2e>
 
 Modes:
-  render     Validate chart rendering, CRD sync, and kustomize output. Default.
-  cluster    Install the Helm chart into the active Kubernetes context and verify rollout.
-  kind-demo  Run the local Kind demo through create, approve, status, and cleanup.
-  argo-e2e   Run the Kind + real Argo CD brownfield promotion E2E.
+  render          Validate local chart rendering, CRD sync, and kustomize output. Default.
+  release-render  Validate rendering for the published GitHub Release chart package.
+  cluster         Install the local Helm chart into the active Kubernetes context and verify rollout.
+  release-cluster Install the published GitHub Release chart package and verify rollout.
+  kind-demo       Run the local Kind demo through create, approve, status, and cleanup.
+  argo-e2e        Run the Kind + real Argo CD brownfield promotion E2E.
   flux-git-e2e Run the Flux brownfield Git-native source apply E2E.
-  flux-e2e  Run the Kind + real Flux controller brownfield promotion E2E.
+  flux-e2e       Run the Kind + real Flux controller brownfield promotion E2E.
 
 Environment for cluster mode:
   KAPRO_VERIFY_NAMESPACE     Namespace to install into (default: kapro-system)
@@ -24,6 +26,10 @@ Environment for cluster mode:
   KAPRO_IMAGE_TAG            Optional image tag override
   KAPRO_VERIFY_WEBHOOKS      Enable admission webhooks (default: false)
   KAPRO_VERIFY_CLEANUP       Uninstall the Helm release and namespace after verification (default: false)
+
+Environment for release-render and release-cluster modes:
+  KAPRO_RELEASE_VERSION       Release tag to verify (default: v0.1.0)
+  KAPRO_RELEASE_CHART_URL     Optional chart package URL override
 EOF
 }
 
@@ -87,7 +93,36 @@ render() {
   echo "install render verification passed"
 }
 
-cluster() {
+download_release_chart() {
+  need curl
+  local version chart_url tmpdir chart_package
+  version="${KAPRO_RELEASE_VERSION:-v0.1.0}"
+  chart_url="${KAPRO_RELEASE_CHART_URL:-https://github.com/Kapro-dev/kapro/releases/download/${version}/kapro-operator-${version#v}.tgz}"
+  tmpdir="$(mktemp -d)"
+  chart_package="${tmpdir}/kapro-operator-${version#v}.tgz"
+
+  echo "downloading published chart ${chart_url}" >&2
+  curl -fsSL "${chart_url}" -o "${chart_package}"
+  printf '%s\n' "${chart_package}"
+}
+
+release_render() (
+  need helm
+  local chart_package
+  chart_package="$(download_release_chart)"
+  trap 'rm -rf "$(dirname "${chart_package}")"' EXIT
+
+  echo "running helm lint for ${chart_package}"
+  helm lint "${chart_package}"
+
+  echo "rendering published Helm chart with CRDs"
+  helm template kapro "${chart_package}" --namespace kapro-system --include-crds >/tmp/kapro-release-helm-render.yaml
+
+  echo "release render verification passed"
+)
+
+install_chart() {
+  local chart_ref="$1"
   need helm
   need kubectl
 
@@ -106,7 +141,7 @@ cluster() {
   fi
 
   echo "installing ${release} into namespace ${namespace}"
-  helm upgrade --install "${release}" "${CHART}" \
+  helm upgrade --install "${release}" "${chart_ref}" \
     --namespace "${namespace}" \
     --create-namespace \
     "${set_args[@]}"
@@ -128,6 +163,18 @@ cluster() {
 
   echo "cluster install verification passed"
 }
+
+cluster() {
+  install_chart "${CHART}"
+}
+
+release_cluster() (
+  local version chart_package
+  version="${KAPRO_RELEASE_VERSION:-v0.1.0}"
+  chart_package="$(download_release_chart)"
+  trap 'rm -rf "$(dirname "${chart_package}")"' EXIT
+  KAPRO_IMAGE_TAG="${KAPRO_IMAGE_TAG:-${version}}" install_chart "${chart_package}"
+)
 
 kind_demo() {
   "${ROOT}/scripts/kind-demo.sh" up
@@ -152,7 +199,9 @@ flux_e2e() {
 cmd="${1:-render}"
 case "${cmd}" in
   render) render ;;
+  release-render) release_render ;;
   cluster) cluster ;;
+  release-cluster) release_cluster ;;
   kind-demo) kind_demo ;;
   argo-e2e) argo_e2e ;;
   flux-git-e2e) flux_git_e2e ;;

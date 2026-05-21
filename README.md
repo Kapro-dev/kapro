@@ -80,10 +80,13 @@ to existing delivery systems.
 Install the operator:
 
 ```bash
-helm upgrade --install kapro charts/kapro-operator \
+helm upgrade --install kapro \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.1.0/kapro-operator-0.1.0.tgz \
   --namespace kapro-system \
   --create-namespace
 ```
+
+For local development, use `charts/kapro-operator` instead of the release URL.
 
 Apply a minimal backend and Fleet setup:
 
@@ -98,6 +101,9 @@ Promote a version:
 kubectl apply -f examples/quickstart/promotion.yaml
 kubectl get promotions,promotionruns,targets
 ```
+
+The user-authored object is `Promotion`. `PromotionRun` and `Target` are
+controller-owned runtime records for inspection in `kubectl` or k9s.
 
 For a step-by-step minimal path, use [First Promotion in 10 Minutes](docs/first-promotion-10min.md).
 For a complete local walkthrough, use the [Kind demo](examples/kind-demo/README.md).

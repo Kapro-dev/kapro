@@ -25,7 +25,7 @@ emitters.
 - Use `events.Render`; do not hand-build parallel JSON envelopes.
 - Deduplicate transition events with previous-phase guards.
 - Populate `fleetRef` and `promotionUID` when emitting from PromotionRun or
-  PromotionTarget paths.
+  Target paths.
 - Skip emission for detached runs that lack a Promotion label.
 
 ## Tests

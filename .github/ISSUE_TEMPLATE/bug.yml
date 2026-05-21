@@ -38,7 +38,7 @@ body:
     attributes:
       label: Minimal reproduction
       description: |
-        YAML for the Kapro/Promotion/PromotionPlan involved, the `kapro` /
+        YAML for the Fleet/Plan/Promotion involved, the `kapro` /
         `kubectl` commands you ran, and the cluster context (kind, GKE, etc.).
         `kapro diag <promotion> -o json` output is gold.
       render: yaml

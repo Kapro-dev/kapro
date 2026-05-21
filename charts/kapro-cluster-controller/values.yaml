@@ -8,7 +8,8 @@
 image:
   repository: ghcr.io/kapro-dev/kapro-cluster-controller
   pullPolicy: IfNotPresent
-  tag: ""  # defaults to Chart.appVersion
+  # Empty defaults to Chart.appVersion, which matches the published release image tag.
+  tag: ""
 
 imagePullSecrets: []
 nameOverride: ""
