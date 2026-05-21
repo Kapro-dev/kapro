@@ -159,6 +159,7 @@ Use the Kapro CLI for the first operational read before dropping to raw
 `kubectl` YAML:
 
 ```bash
+kapro doctor
 kapro top
 kapro get promotion checkout
 kapro tree checkout
@@ -166,6 +167,10 @@ kapro events --promotion checkout --since=30m
 kapro diag checkout
 ```
 
+`kapro doctor` is the read-only preflight for hub installation health: CRD
+establishment, operator readiness, operator RBAC, webhook wiring, and referenced
+pull secrets. Exit code is `0` when all required checks pass and `1` when any
+required check fails; advisory WARN/SKIP findings do not fail the command.
 `kapro top` renders Promotion intent rows with active-attempt target counts.
 Use `kapro top --watch --watch-interval=2s` during a rollout. JSON output is
 one-shot only. `kapro tree` shows the runtime hierarchy from Promotion to
@@ -180,6 +185,7 @@ exposed directly to the user.
 Use the same first checks for every incident:
 
 ```bash
+kapro doctor
 kapro top
 kapro tree <promotion>
 kapro events --promotion <promotion> --since=30m
