@@ -7,6 +7,13 @@ record for each tag.
 
 ## Unreleased
 
+### Added — `kapro doctor`
+
+Added a read-only preflight command for hub install health checks. `kapro
+doctor` reports CRD establishment, operator readiness, operator service-account
+RBAC, admission webhook wiring, dormant conversion configuration, and referenced
+pull-secret availability with stable JSON output for automation.
+
 ### Changed — user-facing YAML adoption polish
 
 Quickstart and demo YAML now explain the apply order, Promotion versus
