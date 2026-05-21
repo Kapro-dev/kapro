@@ -78,6 +78,8 @@ Kapro is backend-neutral. A fleet can mix delivery styles by cluster:
 Run [First Promotion in 10 Minutes](docs/first-promotion-10min.md) first to
 see the API lifecycle, then use [Backends](docs/backends.md) when deciding how
 Kapro should connect to existing delivery systems.
+For the architectural positioning against adjacent Kubernetes projects, see
+[ADR-0012](docs/adr/0012-competitive-positioning.md).
 
 ## Quick Start
 
@@ -124,6 +126,7 @@ Start here:
 - [Operations](docs/operations.md)
 - [Security](docs/security.md)
 - [API Stability](docs/api-stability.md)
+- [Competitive Positioning](docs/adr/0012-competitive-positioning.md)
 - [v1alpha1 to v1alpha2 Migration](docs/migration-v1alpha1-to-v1alpha2.md)
 - [Changelog](CHANGELOG.md)
 

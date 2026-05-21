@@ -21,6 +21,8 @@ Which clusters are allowed to receive this artifact version now, and why?
 - [Operations](operations.md) covers day-two status, debugging, and metrics.
 - [v1alpha1 to v1alpha2 Migration](migration-v1alpha1-to-v1alpha2.md) explains
   the clean-break upgrade path for legacy alpha manifests.
+- [Competitive Positioning](adr/0012-competitive-positioning.md) explains where
+  Kapro fits beside Sveltos, Argo Rollouts, Flagger, and GitOps Toolkit.
 
 ## Core Objects
 
