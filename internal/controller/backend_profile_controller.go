@@ -55,9 +55,9 @@ type BackendProfileReconciler struct {
 	Recorder record.EventRecorder
 }
 
-// +kubebuilder:rbac:groups=kapro.io,resources=backendprofiles,verbs=get;list;watch
-// +kubebuilder:rbac:groups=kapro.io,resources=backendprofiles/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=pluginregistrations,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=backends,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=backends/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=plugins,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=argoproj.io,resources=applications,verbs=get;list;watch
 // +kubebuilder:rbac:groups=argoproj.io,resources=applicationsets,verbs=get;list;watch

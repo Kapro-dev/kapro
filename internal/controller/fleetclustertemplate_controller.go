@@ -58,10 +58,10 @@ type FleetClusterTemplateReconciler struct {
 	DiscovererFactory DiscovererFactory
 }
 
-// +kubebuilder:rbac:groups=kapro.io,resources=fleetclustertemplates,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=fleetclustertemplates/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=fleetclustertemplates/finalizers,verbs=update
-// +kubebuilder:rbac:groups=kapro.io,resources=fleetclusters,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=kapro.io,resources=clustertemplates,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=clustertemplates/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=clustertemplates/finalizers,verbs=update
+// +kubebuilder:rbac:groups=kapro.io,resources=clusters,verbs=get;list;watch;create;update;patch;delete
 
 func (r *FleetClusterTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues("fleetclustertemplate", req.Name)

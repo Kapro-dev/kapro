@@ -322,17 +322,17 @@ func (r *FleetClusterBootstrapReconciler) upsertClusterRole(ctx context.Context,
 			Labels: managedResourceLabels(clusterName, "cluster-controller-rbac"),
 		},
 		Rules: []rbacv1.PolicyRule{
-			// Read its own FleetCluster.
+			// Read its own Cluster.
 			{
 				APIGroups:     []string{"kapro.io"},
-				Resources:     []string{"fleetclusters"},
+				Resources:     []string{"clusters"},
 				ResourceNames: []string{clusterName},
 				Verbs:         []string{"get", "list", "watch", "patch", "update"},
 			},
-			// Update its own FleetCluster status.
+			// Update its own Cluster status.
 			{
 				APIGroups:     []string{"kapro.io"},
-				Resources:     []string{"fleetclusters/status"},
+				Resources:     []string{"clusters/status"},
 				ResourceNames: []string{clusterName},
 				Verbs:         []string{"get", "patch", "update"},
 			},

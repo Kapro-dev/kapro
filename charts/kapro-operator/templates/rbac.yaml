@@ -142,17 +142,17 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - agentpolicies/status
+  - policies/status
   - approvals/status
-  - backendprofiles/status
-  - kaproes/status
-  - fleetclusters/status
-  - fleetclustertemplates/status
-  - pluginregistrations/status
+  - backends/status
+  - fleets/status
+  - clusters/status
+  - clustertemplates/status
+  - plugins/status
   - promotionruns/status
   - promotions/status
-  - promotiontargets/status
-  - promotiontriggers/status
+  - targets/status
+  - triggers/status
   verbs:
   - get
   - patch
@@ -160,10 +160,10 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - agentpolicies
-  - backendprofiles
-  - promotionsources
-  - promotiontriggers
+  - policies
+  - backends
+  - sources
+  - triggers
   verbs:
   - get
   - list
@@ -171,8 +171,8 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - fleetclustertemplates
-  - pluginregistrations
+  - clustertemplates
+  - plugins
   verbs:
   - get
   - list
@@ -182,7 +182,7 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - kaproes
+  - fleets
   verbs:
   - create
   - delete
@@ -194,7 +194,7 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - fleetclusters
+  - clusters
   verbs:
   - create
   - delete
@@ -206,7 +206,7 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - promotionplans
+  - plans
   verbs:
   - create
   - delete
@@ -231,8 +231,8 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - fleetclusters/finalizers
-  - fleetclustertemplates/finalizers
+  - clusters/finalizers
+  - clustertemplates/finalizers
   - promotionruns/finalizers
   - promotions/finalizers
   verbs:
@@ -240,7 +240,7 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - promotiontargets
+  - targets
   verbs:
   - create
   - delete

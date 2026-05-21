@@ -86,11 +86,11 @@ type PromotionTargetReconciler struct {
 	fsmMachine *fsm.Machine[kaprov1alpha2.TargetPhase, *fsmEnv]
 }
 
-// +kubebuilder:rbac:groups=kapro.io,resources=promotiontargets,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=kapro.io,resources=promotiontargets/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=targets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=kapro.io,resources=targets/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=promotionruns,verbs=get
-// +kubebuilder:rbac:groups=kapro.io,resources=fleetclusters,verbs=get
-// +kubebuilder:rbac:groups=kapro.io,resources=fleetclusters/status,verbs=get;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=clusters,verbs=get
+// +kubebuilder:rbac:groups=kapro.io,resources=clusters/status,verbs=get;patch
 
 func (r *PromotionTargetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	start := time.Now()

@@ -15,7 +15,7 @@ spec:
     fleetRef: checkout
     promotionPlans:
       - name: production
-        promotionPlan: checkout-production
+        plan: checkout-production
     suspended: true
     scope:
       targets:

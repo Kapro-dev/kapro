@@ -351,7 +351,7 @@ func fleetRefFromRun(run *kaprov1alpha2.PromotionRun) string {
 	if run == nil || run.Labels == nil {
 		return ""
 	}
-	return run.Labels["kapro.io/kapro"]
+	return run.Labels["kapro.io/fleet"]
 }
 
 // PublishAttemptEvent publishes a kapro.io/promotion.attempt.<kind>

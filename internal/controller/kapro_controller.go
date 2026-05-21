@@ -52,12 +52,12 @@ type KaproReconciler struct {
 	Recorder record.EventRecorder
 }
 
-// +kubebuilder:rbac:groups=kapro.io,resources=kaproes,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=kapro.io,resources=kaproes/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=promotionsources,verbs=get;list;watch
-// +kubebuilder:rbac:groups=kapro.io,resources=fleetclusters,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=kapro.io,resources=fleetclusters/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=promotionplans,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=kapro.io,resources=fleets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=kapro.io,resources=fleets/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=sources,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=clusters,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=kapro.io,resources=clusters/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=plans,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=fluxcd.controlplane.io,resources=resourcesets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=helm.toolkit.fluxcd.io,resources=helmreleases,verbs=get;list;watch

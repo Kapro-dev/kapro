@@ -67,7 +67,7 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	if opts.wants("kapros") {
+	if opts.wants("fleets") {
 		items, count, truncated, err := listGraphItems(
 			ctx,
 			s.Client,
@@ -81,10 +81,10 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		response.Kapros = items
-		response.Page.Counts["kapros"] = count
+		response.Page.Counts["fleets"] = count
 		response.Page.Truncated = response.Page.Truncated || truncated
 	}
-	if opts.wants("fleetclusters") {
+	if opts.wants("clusters") {
 		items, count, truncated, err := listGraphItems(
 			ctx,
 			s.Client,
@@ -93,14 +93,14 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 			func(list client.ObjectList) []kaprov1alpha2.Cluster {
 				return list.(*kaprov1alpha2.ClusterList).Items
 			},
-			filterFleetClustersByPhase,
+			filterClustersByPhase,
 		)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		response.FleetClusters = items
-		response.Page.Counts["fleetclusters"] = count
+		response.Clusters = items
+		response.Page.Counts["clusters"] = count
 		response.Page.Truncated = response.Page.Truncated || truncated
 	}
 	if opts.wants("promotions") {
@@ -141,7 +141,7 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 		response.Page.Counts["promotionruns"] = count
 		response.Page.Truncated = response.Page.Truncated || truncated
 	}
-	if opts.wants("promotiontargets") {
+	if opts.wants("targets") {
 		items, count, truncated, err := listGraphItems(
 			ctx,
 			s.Client,
@@ -157,10 +157,10 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		response.PromotionTargets = items
-		response.Page.Counts["promotiontargets"] = count
+		response.Page.Counts["targets"] = count
 		response.Page.Truncated = response.Page.Truncated || truncated
 	}
-	if opts.wants("backendprofiles") {
+	if opts.wants("backends") {
 		items, count, truncated, err := listGraphItems(
 			ctx,
 			s.Client,
@@ -176,7 +176,7 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		response.BackendProfiles = items
-		response.Page.Counts["backendprofiles"] = count
+		response.Page.Counts["backends"] = count
 		response.Page.Truncated = response.Page.Truncated || truncated
 	}
 
@@ -252,8 +252,8 @@ type CreatePromotionRequest struct {
 }
 
 type GraphResponse struct {
-	Kapros           []kaprov1alpha2.Fleet        `json:"kapros"`
-	FleetClusters    []kaprov1alpha2.Cluster      `json:"fleetClusters"`
+	Kapros           []kaprov1alpha2.Fleet        `json:"fleets"`
+	Clusters         []kaprov1alpha2.Cluster      `json:"clusters"`
 	Promotions       []kaprov1alpha2.Promotion    `json:"promotions"`
 	PromotionRuns    []kaprov1alpha2.PromotionRun `json:"promotionruns"`
 	PromotionTargets []kaprov1alpha2.Target       `json:"promotionTargets"`
@@ -401,12 +401,12 @@ func graphOptionsFromRequest(r *http.Request) (graphOptions, error) {
 func parseGraphResources(raw string) (map[string]bool, string, error) {
 	if raw == "" || raw == "all" {
 		return map[string]bool{
-			"kapros":           true,
-			"fleetclusters":    true,
-			"promotions":       true,
-			"promotionruns":    true,
-			"promotiontargets": true,
-			"backendprofiles":  true,
+			"fleets":        true,
+			"clusters":      true,
+			"promotions":    true,
+			"promotionruns": true,
+			"targets":       true,
+			"backends":      true,
 		}, "all", nil
 	}
 
@@ -419,7 +419,7 @@ func parseGraphResources(raw string) (map[string]bool, string, error) {
 		}
 		out[name] = true
 	}
-	for _, name := range []string{"kapros", "fleetclusters", "promotions", "promotionruns", "promotiontargets", "backendprofiles"} {
+	for _, name := range []string{"fleets", "clusters", "promotions", "promotionruns", "targets", "backends"} {
 		if out[name] {
 			canonical = append(canonical, name)
 		}
@@ -429,18 +429,18 @@ func parseGraphResources(raw string) (map[string]bool, string, error) {
 
 func canonicalGraphResource(raw string) string {
 	switch strings.ToLower(raw) {
-	case "kapro", "kapros":
-		return "kapros"
-	case "fleetcluster", "fleetclusters", "cluster", "clusters":
-		return "fleetclusters"
+	case "fleet", "fleets":
+		return "fleets"
+	case "cluster", "clusters":
+		return "clusters"
 	case "promotion", "promotions":
 		return "promotions"
 	case "promotionrun", "promotionruns":
 		return "promotionruns"
-	case "promotiontarget", "promotiontargets", "target", "targets":
-		return "promotiontargets"
-	case "backendprofile", "backendprofiles", "backend", "backends":
-		return "backendprofiles"
+	case "target", "targets":
+		return "targets"
+	case "backend", "backends":
+		return "backends"
 	default:
 		return ""
 	}
@@ -506,7 +506,7 @@ func filterKaprosByPhase(items []kaprov1alpha2.Fleet, phase string) []kaprov1alp
 	return out
 }
 
-func filterFleetClustersByPhase(items []kaprov1alpha2.Cluster, phase string) []kaprov1alpha2.Cluster {
+func filterClustersByPhase(items []kaprov1alpha2.Cluster, phase string) []kaprov1alpha2.Cluster {
 	if phase == "" {
 		return items
 	}

@@ -70,8 +70,8 @@ func defaultLeaderElectionID(shardName string) string {
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create
 // +kubebuilder:rbac:groups=authentication.k8s.io,resources=tokenreviews,verbs=create
 // +kubebuilder:rbac:groups=authorization.k8s.io,resources=subjectaccessreviews,verbs=create
-// +kubebuilder:rbac:groups=kapro.io,resources=agentpolicies,verbs=get;list;watch
-// +kubebuilder:rbac:groups=kapro.io,resources=agentpolicies/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=policies,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=policies/status,verbs=get;update;patch
 
 func main() {
 	devMode := os.Getenv("KAPRO_DEV_MODE") == "1"

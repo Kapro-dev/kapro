@@ -35,12 +35,11 @@ const (
 	// .stage.gate.* CloudEvents) read this so data.promotionUID is
 	// available without an extra Get to the owning Promotion.
 	promotionUIDLabel = "kapro.io/promotion-uid"
-	// promotionKaproLabel propagates the parent Kapro fleet name (the
-	// value of Promotion.spec.fleetRef). PromotionRun.spec.promotionplans
-	// carries Plan names, not the Kapro name, so this label is
-	// the only source of truth for sink-emitted data.fleetRef on
-	// run-scoped events.
-	promotionKaproLabel = "kapro.io/kapro"
+	// promotionFleetLabel propagates the parent Fleet name (the value of
+	// Promotion.spec.fleetRef). PromotionRun.spec.plans carries Plan
+	// names, not the Fleet name, so this label is the only source of
+	// truth for sink-emitted data.fleetRef on run-scoped events.
+	promotionFleetLabel = "kapro.io/fleet"
 	supersededReason    = "SupersededByNewPromotionAttempt"
 )
 
@@ -89,7 +88,7 @@ type StageEventPublisher interface {
 // +kubebuilder:rbac:groups=kapro.io,resources=promotions/finalizers,verbs=update
 // +kubebuilder:rbac:groups=kapro.io,resources=promotionruns,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=promotionruns/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=kaproes,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=fleets,verbs=get;list;watch
 
 func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var promotion kaprov1alpha2.Promotion
@@ -227,7 +226,7 @@ func (r *PromotionReconciler) stampAttempt(ctx context.Context, p *kaprov1alpha2
 		promotionSpecHashLabel: specHash,
 	}
 	if p.Spec.FleetRef != "" {
-		labels[promotionKaproLabel] = p.Spec.FleetRef
+		labels[promotionFleetLabel] = p.Spec.FleetRef
 	}
 	if p.UID != "" {
 		labels[promotionUIDLabel] = string(p.UID)
@@ -285,7 +284,7 @@ func (r *PromotionReconciler) backfillRunLabels(ctx context.Context,
 	run *kaprov1alpha2.PromotionRun, p *kaprov1alpha2.Promotion) error {
 	wantKapro := p.Spec.FleetRef
 	wantUID := string(p.UID)
-	haveKapro := run.Labels[promotionKaproLabel]
+	haveKapro := run.Labels[promotionFleetLabel]
 	haveUID := run.Labels[promotionUIDLabel]
 	missingKapro := wantKapro != "" && haveKapro == ""
 	missingUID := wantUID != "" && haveUID == ""
@@ -297,7 +296,7 @@ func (r *PromotionReconciler) backfillRunLabels(ctx context.Context,
 		run.Labels = map[string]string{}
 	}
 	if missingKapro {
-		run.Labels[promotionKaproLabel] = wantKapro
+		run.Labels[promotionFleetLabel] = wantKapro
 	}
 	if missingUID {
 		run.Labels[promotionUIDLabel] = wantUID

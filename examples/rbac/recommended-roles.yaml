@@ -11,30 +11,30 @@ metadata:
 rules:
   - apiGroups: ["kapro.io"]
     resources:
-      - agentpolicies
-      - promotionsources
-      - kaproes
-      - fleetclusters
-      - promotionplans
-      - pluginregistrations
+      - policies
+      - sources
+      - fleets
+      - clusters
+      - plans
+      - plugins
       - promotionruns
-      - promotiontriggers
+      - triggers
     verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
   - apiGroups: ["kapro.io"]
     resources:
       - approvals
-      - promotiontargets
+      - targets
     verbs: ["get", "list", "watch"]
   - apiGroups: ["kapro.io"]
     resources:
-      - agentpolicies/status
+      - policies/status
       - approvals/status
-      - kaproes/status
-      - fleetclusters/status
-      - pluginregistrations/status
+      - fleets/status
+      - clusters/status
+      - plugins/status
       - promotionruns/status
-      - promotiontargets/status
-      - promotiontriggers/status
+      - targets/status
+      - triggers/status
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -47,11 +47,11 @@ rules:
   - apiGroups: ["kapro.io"]
     resources:
       - promotions
-      - promotionsources
-      - fleetclusters
-      - promotionplans
+      - sources
+      - clusters
+      - plans
       - promotionruns
-      - promotiontargets
+      - targets
     verbs: ["get", "list", "watch"]
   - apiGroups: ["kapro.io"]
     resources:
@@ -61,7 +61,7 @@ rules:
     resources:
       - promotions/status
       - promotionruns/status
-      - promotiontargets/status
+      - targets/status
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -71,21 +71,21 @@ metadata:
 rules:
   - apiGroups: ["kapro.io"]
     resources:
-      - promotionsources
-      - fleetclusters
-      - promotionplans
+      - sources
+      - clusters
+      - plans
       - promotionruns
-      - promotiontriggers
+      - triggers
     verbs: ["get", "list", "watch"]
   - apiGroups: ["kapro.io"]
     resources:
-      - promotiontriggers
+      - triggers
     verbs: ["create", "delete", "patch", "update"]
   - apiGroups: ["kapro.io"]
     resources:
       - promotionruns/status
-      - promotiontargets/status
-      - promotiontriggers/status
+      - targets/status
+      - triggers/status
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -96,11 +96,11 @@ rules:
   - apiGroups: ["kapro.io"]
     resources:
       - approvals
-      - promotionsources
-      - fleetclusters
-      - promotionplans
+      - sources
+      - clusters
+      - plans
       - promotionruns
-      - promotiontargets
+      - targets
     verbs: ["get", "list", "watch"]
   - apiGroups: ["kapro.io"]
     resources:
@@ -110,7 +110,7 @@ rules:
     resources:
       - approvals/status
       - promotionruns/status
-      - promotiontargets/status
+      - targets/status
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -120,41 +120,41 @@ metadata:
 rules:
   # Explicit allow-list (no wildcard) so the auditor cannot infer
   # AgentPolicy decision rate / cooldown state from counters in
-  # `agentpolicies/status` (DecisionsToday, ActiveDecisions,
+  # `policies/status` (DecisionsToday, ActiveDecisions,
   # LastDecisionAt). Production audit treats those counters as a
   # timing-inference side channel; auditors get the policy spec but not
   # the live decision stream. Bind kapro-platform-admin (which DOES
-  # include agentpolicies/status) to security incident response
+  # include policies/status) to security incident response
   # principals instead.
   - apiGroups: ["kapro.io"]
     resources:
-      - agentpolicies
+      - policies
       - approvals
-      - backendprofiles
-      - fleetclusters
-      - fleetclustertemplates
-      - kaproes
-      - pluginregistrations
-      - promotionplans
+      - backends
+      - clusters
+      - clustertemplates
+      - fleets
+      - plugins
+      - plans
       - promotionruns
-      - promotionsources
-      - promotiontargets
-      - promotiontriggers
+      - sources
+      - targets
+      - triggers
     verbs: ["get", "list", "watch"]
   - apiGroups: ["kapro.io"]
     resources:
       - approvals/status
-      - backendprofiles/status
-      - fleetclusters/status
-      - fleetclustertemplates/status
-      - kaproes/status
-      - pluginregistrations/status
+      - backends/status
+      - clusters/status
+      - clustertemplates/status
+      - fleets/status
+      - plugins/status
       - promotionruns/status
-      - promotiontargets/status
-      - promotiontriggers/status
+      - targets/status
+      - triggers/status
     verbs: ["get", "list", "watch"]
   # Intentionally OMITTED from the auditor:
-  #   - agentpolicies/status   (DecisionsToday / cooldown timing leak)
+  #   - policies/status   (DecisionsToday / cooldown timing leak)
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["get", "list", "watch"]

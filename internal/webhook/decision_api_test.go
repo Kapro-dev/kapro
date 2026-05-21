@@ -203,8 +203,8 @@ func TestFleet_LimitsAndReportsTruncation(t *testing.T) {
 	if !resp.Page.Truncated {
 		t.Fatal("expected page to be marked truncated")
 	}
-	if resp.Page.Counts["fleetclusters"] != 2 {
-		t.Fatalf("expected fleetcluster count 2, got %d", resp.Page.Counts["fleetclusters"])
+	if resp.Page.Counts["clusters"] != 2 {
+		t.Fatalf("expected cluster count 2, got %d", resp.Page.Counts["clusters"])
 	}
 }
 
@@ -372,8 +372,8 @@ func TestPromotionRunContext_FiltersTargetsWithLimit(t *testing.T) {
 	if resp.Targets[0].Spec.PromotionRunRef != "rel-1" || resp.Targets[0].Status.Phase != kaprov1alpha2.TargetPhaseWaitingApproval {
 		t.Fatalf("unexpected target returned: %#v", resp.Targets[0])
 	}
-	if resp.Page.Counts["promotiontargets"] != 1 {
-		t.Fatalf("expected target page count 1, got %d", resp.Page.Counts["promotiontargets"])
+	if resp.Page.Counts["targets"] != 1 {
+		t.Fatalf("expected target page count 1, got %d", resp.Page.Counts["targets"])
 	}
 }
 
@@ -587,13 +587,13 @@ func TestDecide_AuthorizesPromotionTargetStatusPatchSubresource(t *testing.T) {
 	for _, attr := range authz.attrs {
 		if attr.Group == "kapro.io" &&
 			attr.Verb == "patch" &&
-			attr.Resource == "promotiontargets" &&
+			attr.Resource == "targets" &&
 			attr.Subresource == "status" &&
 			attr.Name == "rel-1-canary-cluster-a" {
 			return
 		}
 	}
-	t.Fatalf("missing promotiontargets/status patch SAR; attrs=%#v", authz.attrs)
+	t.Fatalf("missing targets/status patch SAR; attrs=%#v", authz.attrs)
 }
 
 func TestDecide_RecordsUserIdentityType(t *testing.T) {

@@ -114,7 +114,7 @@ webhooks:
     rules:
       - apiGroups: ["kapro.io"]
         apiVersions: ["v1alpha1"]
-        resources: ["fleetclusters"]
+        resources: ["clusters"]
         operations: ["CREATE", "UPDATE"]
     clientConfig:
       service:
@@ -164,7 +164,7 @@ webhooks:
     rules:
       - apiGroups: ["kapro.io"]
         apiVersions: ["v1alpha1"]
-        resources: ["promotionplans"]
+        resources: ["plans"]
         operations: ["CREATE", "UPDATE"]
     clientConfig:
       service:
@@ -209,7 +209,7 @@ webhooks:
     rules:
       - apiGroups: ["kapro.io"]
         apiVersions: ["v1alpha1"]
-        resources: ["promotiontriggers"]
+        resources: ["triggers"]
         operations: ["CREATE", "UPDATE"]
     clientConfig:
       service:
@@ -247,7 +247,7 @@ webhooks:
     rules:
       - apiGroups: ["kapro.io"]
         apiVersions: ["v1alpha1"]
-        resources: ["fleetclusters"]
+        resources: ["clusters"]
         operations: ["CREATE", "UPDATE"]
     clientConfig:
       service:

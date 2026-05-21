@@ -132,9 +132,9 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	if _, ok := s.requireDecisionAccess(ctx, w, r,
-		kaproAttrs("list", "fleetclusters", ""),
+		kaproAttrs("list", "clusters", ""),
 		kaproAttrs("list", "promotionruns", ""),
-		kaproAttrs("list", "promotiontargets", ""),
+		kaproAttrs("list", "targets", ""),
 	); !ok {
 		return
 	}
@@ -255,7 +255,7 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 			Phase:         opts.phase,
 			Truncated:     clustersTruncated || promotionRunsTruncated || pendingDecisionsTruncated,
 			Counts: map[string]int{
-				"fleetclusters":    clusterCount,
+				"clusters":         clusterCount,
 				"promotionruns":    promotionRunCount,
 				"pendingdecisions": pendingDecisionCount,
 			},
@@ -357,7 +357,7 @@ func (s *Server) handlePromotionRunContext(w http.ResponseWriter, r *http.Reques
 	defer cancel()
 	if _, ok := s.requireDecisionAccess(ctx, w, r,
 		kaproAttrs("get", "promotionruns", promotionrunName),
-		kaproAttrs("list", "promotiontargets", ""),
+		kaproAttrs("list", "targets", ""),
 	); !ok {
 		return
 	}
@@ -409,7 +409,7 @@ func (s *Server) handlePromotionRunContext(w http.ResponseWriter, r *http.Reques
 			LabelSelector: opts.labelSelector,
 			Phase:         opts.phase,
 			Truncated:     targetsTruncated,
-			Counts:        map[string]int{"promotiontargets": targetCount},
+			Counts:        map[string]int{"targets": targetCount},
 		},
 	})
 }
@@ -571,7 +571,7 @@ func (s *Server) handleGateContext(w http.ResponseWriter, r *http.Request, promo
 	defer cancel()
 	if _, ok := s.requireDecisionAccess(ctx, w, r,
 		kaproAttrs("get", "promotionruns", promotionrunName),
-		kaproAttrs("get", "promotiontargets", targetKey),
+		kaproAttrs("get", "targets", targetKey),
 	); !ok {
 		return
 	}
@@ -622,7 +622,7 @@ func (s *Server) handleClusterHealth(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	if _, ok := s.requireDecisionAccess(ctx, w, r,
-		kaproAttrs("get", "fleetclusters", clusterName),
+		kaproAttrs("get", "clusters", clusterName),
 	); !ok {
 		return
 	}
@@ -657,8 +657,8 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 	l := log.FromContext(ctx)
 	user, ok := s.requireDecisionAccess(ctx, w, r,
 		kaproAttrs("get", "promotionruns", promotionrunName),
-		kaproAttrs("get", "promotiontargets", targetKey),
-		kaproSubresourceAttrs("patch", "promotiontargets", "status", targetKey),
+		kaproAttrs("get", "targets", targetKey),
+		kaproSubresourceAttrs("patch", "targets", "status", targetKey),
 	)
 	if !ok {
 		return
@@ -950,8 +950,8 @@ func (s *Server) handleOverride(w http.ResponseWriter, r *http.Request, promotio
 	defer cancel()
 	user, ok := s.requireDecisionAccess(ctx, w, r,
 		kaproAttrs("get", "promotionruns", promotionrunName),
-		kaproAttrs("get", "promotiontargets", targetKey),
-		kaproSubresourceAttrs("patch", "promotiontargets", "status", targetKey),
+		kaproAttrs("get", "targets", targetKey),
+		kaproSubresourceAttrs("patch", "targets", "status", targetKey),
 	)
 	if !ok {
 		return

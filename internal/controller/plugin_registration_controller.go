@@ -65,9 +65,9 @@ type PluginProber interface {
 	Probe(ctx context.Context, reg kaprov1alpha2.Plugin) probe.Result
 }
 
-// +kubebuilder:rbac:groups=kapro.io,resources=pluginregistrations,verbs=get;list;watch
-// +kubebuilder:rbac:groups=kapro.io,resources=pluginregistrations,verbs=update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=pluginregistrations/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=plugins,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=plugins,verbs=update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=plugins/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 
 func (r *PluginRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {

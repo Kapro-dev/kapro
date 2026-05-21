@@ -51,7 +51,7 @@ const (
 // PromotionRunReconciler is the main brain of Kapro.
 // It drives two DAG levels:
 //
-//  1. Plan DAG — PromotionRun.spec.promotionplans[].dependsOn orders which promotionplans
+//  1. Plan DAG — PromotionRun.spec.plans[].dependsOn orders which promotionplans
 //     run in sequence (or parallel when no deps). Useful when the same fleet is
 //     partitioned into logical "apps" that must be released in a fixed order.
 //
@@ -106,9 +106,9 @@ type runFsmEnv struct {
 // +kubebuilder:rbac:groups=kapro.io,resources=promotionruns,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kapro.io,resources=promotionruns/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=promotionruns/finalizers,verbs=update
-// +kubebuilder:rbac:groups=kapro.io,resources=fleetclusters,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=fleetclusters/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=promotionplans,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=clusters,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=clusters/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=plans,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kapro.io,resources=approvals,verbs=get;list;watch
 
 func (r *PromotionRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -314,7 +314,7 @@ func (r *PromotionRunReconciler) handlePending(ctx context.Context, promotionrun
 		promotionplanNames = append(promotionplanNames, p.Plan)
 	}
 	r.Recorder.Eventf(promotionrun, corev1.EventTypeNormal, "Started",
-		"promotionrun %s started: version=%s promotionplans=%v", promotionrun.Name, resolvedVersion, promotionplanNames)
+		"promotionrun %s started: version=%s plans=%v", promotionrun.Name, resolvedVersion, promotionplanNames)
 	if err := r.patchPromotionRunStatus(ctx, promotionrun, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch PromotionRun phase: %w", err)
 	}
@@ -564,9 +564,9 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 	promotionrun.Status.Targets = nil
 
 	if allPromotionPlansComplete {
-		r.setPromotionRunReadyCondition(promotionrun, metav1.ConditionTrue, "Complete", "all promotionplans complete")
+		r.setPromotionRunReadyCondition(promotionrun, metav1.ConditionTrue, "Complete", "all plans complete")
 		r.clearStalledCondition(promotionrun)
-		r.setReconcilingCondition(promotionrun, metav1.ConditionFalse, "Complete", "all promotionplans complete")
+		r.setReconcilingCondition(promotionrun, metav1.ConditionFalse, "Complete", "all plans complete")
 		duration := ""
 		if promotionrun.Status.StartedAt != "" {
 			if startT, err := time.Parse(time.RFC3339, promotionrun.Status.StartedAt); err == nil {
@@ -574,7 +574,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 			}
 		}
 		r.Recorder.Eventf(promotionrun, corev1.EventTypeNormal, "Complete",
-			"all promotionplans complete: version=%s targets=%d duration=%s",
+			"all plans complete: version=%s targets=%d duration=%s",
 			promotionrun.Spec.Version, promotionrun.Status.Report.TotalTargets, duration)
 	} else {
 		r.setPromotionRunReadyCondition(promotionrun, metav1.ConditionFalse, "Progressing", promotionrunProgressSummary(promotionrun))
@@ -602,7 +602,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 		}
 		return ctrl.Result{}, nil
 	}
-	// Not all promotionplans complete — requeue as a safety net in case a
+	// Not all plans complete — requeue as a safety net in case a
 	// PromotionTarget watch event is missed (cache lag, informer backpressure).
 	return ctrl.Result{RequeueAfter: requeueNormal}, nil
 }
@@ -1738,7 +1738,7 @@ func promotionrunProgressSummary(promotionrun *kaprov1alpha2.PromotionRun) strin
 		}
 	}
 
-	return fmt.Sprintf("promotionrun progressing: %d active promotionplans, %d active targets", activePromotionPlans, activeTargets)
+	return fmt.Sprintf("promotionrun progressing: %d active plans, %d active targets", activePromotionPlans, activeTargets)
 }
 
 // normalizePromotionRunStatus deduplicates PromotionRun.status.targets and bounds per-target

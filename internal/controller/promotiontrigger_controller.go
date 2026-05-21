@@ -75,8 +75,8 @@ type PromotionTriggerReconciler struct {
 	Now      func() time.Time
 }
 
-// +kubebuilder:rbac:groups=kapro.io,resources=promotiontriggers,verbs=get;list;watch
-// +kubebuilder:rbac:groups=kapro.io,resources=promotiontriggers/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=triggers,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=triggers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=promotions,verbs=get;list;watch;create;patch;update
 // +kubebuilder:rbac:groups=kapro.io,resources=promotionruns,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get

@@ -8,6 +8,6 @@ spec:
   version: v1.2.3-kind
   promotionPlans:
     - name: main
-      promotionPlan: checkout-progressive-kind
+      plan: checkout-progressive-kind
   suspended: false
   timeout: 30m

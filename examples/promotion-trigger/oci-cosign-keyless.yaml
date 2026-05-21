@@ -35,7 +35,7 @@ spec:
     nameTemplate: "checkout-cosign"
     promotionPlans:
       - name: production
-        promotionPlan: checkout-cosign-keyless
+        plan: checkout-cosign-keyless
     suspended: true
     scope:
       targets:

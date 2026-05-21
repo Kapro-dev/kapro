@@ -680,9 +680,9 @@ func TestBackfillRunLabelsOnAlreadyExists(t *testing.T) {
 	if err := c.Get(ctx, client.ObjectKey{Name: oldRun.Name}, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Labels[promotionKaproLabel] != "checkout" {
+	if got.Labels[promotionFleetLabel] != "checkout" {
 		t.Fatalf("%s = %q, want %q (label must be backfilled on AlreadyExists)",
-			promotionKaproLabel, got.Labels[promotionKaproLabel], "checkout")
+			promotionFleetLabel, got.Labels[promotionFleetLabel], "checkout")
 	}
 	if got.Labels[promotionUIDLabel] != "promotion-uid-xyz" {
 		t.Fatalf("%s = %q, want %q (label must be backfilled on AlreadyExists)",

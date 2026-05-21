@@ -117,9 +117,9 @@ type FleetClusterBootstrapReconciler struct {
 	PodNamespace string
 }
 
-// +kubebuilder:rbac:groups=kapro.io,resources=fleetclusters,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=fleetclusters/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=fleetclusters/finalizers,verbs=update
+// +kubebuilder:rbac:groups=kapro.io,resources=clusters,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=clusters/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=clusters/finalizers,verbs=update
 // +kubebuilder:rbac:groups=certificates.k8s.io,resources=certificatesigningrequests,verbs=get;list;watch;update
 // +kubebuilder:rbac:groups=certificates.k8s.io,resources=certificatesigningrequests/approval,verbs=update
 // +kubebuilder:rbac:groups=certificates.k8s.io,resources=signers,resourceNames=kubernetes.io/kube-apiserver-client,verbs=approve

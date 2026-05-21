@@ -82,7 +82,7 @@ func requireTeamLabel(labels map[string]string) *field.Error {
 //
 // Rules enforced:
 //  1. spec.version or spec.versions must be non-empty.
-//  2. spec.promotionPlans must have at least one promotionPlan reference.
+//  2. spec.plans must have at least one promotionPlan reference.
 //  3. Each PromotionPlanRef must have a non-empty name and promotionPlan.
 //  4. metadata.labels[kapro.io/team] must be set on CREATE (gate sprint).
 type PromotionRunValidator struct {
@@ -150,19 +150,19 @@ func validatePromotionRun(r *kaprov1alpha2.PromotionRun) error {
 	}
 
 	if len(r.Spec.PromotionPlans) == 0 {
-		return fmt.Errorf("promotionRun.spec.promotionPlans must have at least one promotionPlan reference")
+		return fmt.Errorf("promotionRun.spec.plans must have at least one promotionPlan reference")
 	}
 
 	index := make(map[string]int, len(r.Spec.PromotionPlans))
 	for i, ref := range r.Spec.PromotionPlans {
 		if ref.Name == "" {
-			return fmt.Errorf("promotionRun.spec.promotionPlans[%d].name must be set", i)
+			return fmt.Errorf("promotionRun.spec.plans[%d].name must be set", i)
 		}
 		if ref.Plan == "" {
-			return fmt.Errorf("promotionRun.spec.promotionPlans[%d].promotionPlan must be set", i)
+			return fmt.Errorf("promotionRun.spec.plans[%d].promotionPlan must be set", i)
 		}
 		if _, exists := index[ref.Name]; exists {
-			return fmt.Errorf("promotionRun.spec.promotionPlans: duplicate promotionPlan node name %q", ref.Name)
+			return fmt.Errorf("promotionRun.spec.plans: duplicate promotionPlan node name %q", ref.Name)
 		}
 		index[ref.Name] = i
 	}
@@ -171,7 +171,7 @@ func validatePromotionRun(r *kaprov1alpha2.PromotionRun) error {
 	for _, ref := range r.Spec.PromotionPlans {
 		for _, dep := range ref.DependsOn {
 			if _, exists := index[dep]; !exists {
-				return fmt.Errorf("promotionRun.spec.promotionPlans[%q].dependsOn: unknown promotionPlan node %q", ref.Name, dep)
+				return fmt.Errorf("promotionRun.spec.plans[%q].dependsOn: unknown promotionPlan node %q", ref.Name, dep)
 			}
 		}
 	}
@@ -180,7 +180,7 @@ func validatePromotionRun(r *kaprov1alpha2.PromotionRun) error {
 	if cycle := detectCycle(index, func(name string) []string {
 		return r.Spec.PromotionPlans[index[name]].DependsOn
 	}); cycle != "" {
-		return fmt.Errorf("promotionRun.spec.promotionPlans: cycle detected: %s", cycle)
+		return fmt.Errorf("promotionRun.spec.plans: cycle detected: %s", cycle)
 	}
 
 	return nil
@@ -194,7 +194,7 @@ func validatePromotionRunUpdate(old, new *kaprov1alpha2.PromotionRun) error {
 		return fmt.Errorf("promotionRun.spec.versions is immutable after creation")
 	}
 	if !reflect.DeepEqual(old.Spec.PromotionPlans, new.Spec.PromotionPlans) {
-		return fmt.Errorf("promotionRun.spec.promotionPlans is immutable after creation")
+		return fmt.Errorf("promotionRun.spec.plans is immutable after creation")
 	}
 	if !reflect.DeepEqual(old.Spec.Scope, new.Spec.Scope) {
 		return fmt.Errorf("promotionRun.spec.scope is immutable after creation")

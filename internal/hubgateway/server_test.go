@@ -118,7 +118,7 @@ func TestGraphSupportsResourceLabelPhaseAndLimitFilters(t *testing.T) {
 			Status:     kaprov1alpha2.ClusterStatus{Phase: kaprov1alpha2.ClusterPhaseConverged},
 		},
 	)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/graph?resource=promotiontargets&labelSelector=team%3Dcheckout&phase=Applying&limit=1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/graph?resource=targets&labelSelector=team%3Dcheckout&phase=Applying&limit=1", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 
@@ -137,10 +137,10 @@ func TestGraphSupportsResourceLabelPhaseAndLimitFilters(t *testing.T) {
 	if graph.PromotionTargets[0].Status.Phase != kaprov1alpha2.TargetPhaseApplying {
 		t.Fatalf("phase=%q, want Applying", graph.PromotionTargets[0].Status.Phase)
 	}
-	if len(graph.FleetClusters) != 0 {
-		t.Fatalf("fleetClusters=%d, want 0 when resource=promotiontargets", len(graph.FleetClusters))
+	if len(graph.Clusters) != 0 {
+		t.Fatalf("clusters=%d, want 0 when resource=targets", len(graph.Clusters))
 	}
-	if graph.Page.Resource != "promotiontargets" || graph.Page.Limit != 1 || graph.Page.Counts["promotiontargets"] != 1 {
+	if graph.Page.Resource != "targets" || graph.Page.Limit != 1 || graph.Page.Counts["targets"] != 1 {
 		t.Fatalf("unexpected page metadata: %+v", graph.Page)
 	}
 }
@@ -166,7 +166,7 @@ func TestGraphPhaseFilterScansPastFirstLimitedPage(t *testing.T) {
 			},
 		},
 	)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/graph?resource=promotiontargets&phase=Applying&limit=1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/graph?resource=targets&phase=Applying&limit=1", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 
@@ -198,7 +198,7 @@ func TestGraphMarksLimitedResponsesAsTruncated(t *testing.T) {
 			Spec:       kaprov1alpha2.BackendSpec{Driver: kaprov1alpha2.BackendDriverArgo},
 		},
 	)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/graph?resource=backendprofiles&limit=1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/graph?resource=backends&limit=1", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 
