@@ -1,0 +1,319 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: sources.kapro.io
+spec:
+  group: kapro.io
+  names:
+    categories:
+    - kapro-all
+    kind: Source
+    listKind: SourceList
+    plural: sources
+    shortNames:
+    - ps
+    - source
+    - sources
+    singular: source
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .metadata.annotations.kapro\.io/unit-count
+      name: Units
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha2
+    schema:
+      openAPIV3Schema:
+        description: |-
+          Source defines the units Fleet promotes. It is the source/app-unit
+          contract for both generated greenfield layouts and native Argo/Flux layouts.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              SourceSpec defines the native promotion units Fleet can move
+              through a fleet. Units may map to generated Flux resources in greenfield mode
+              or to backend-native objects discovered from Argo/Flux in native mode.
+              Used inline by Fleet.spec.source or referenced by Fleet.spec.sourceRef.
+            properties:
+              backendRef:
+                description: |-
+                  BackendRef is the Backend this source is normally discovered from
+                  or packaged for. Fleet uses it as metadata; delivery still comes from
+                  Fleet.spec.delivery and Cluster.spec.delivery.
+                type: string
+              defaults:
+                description: Defaults are inherited by every unit unless overridden.
+                properties:
+                  repo:
+                    description: Repo is the default registry name (from spec.registries).
+                    type: string
+                  retries:
+                    default: 3
+                    description: Retries is the number of install/upgrade retry attempts.
+                    format: int32
+                    type: integer
+                  targetNamespace:
+                    description: TargetNamespace is where workload pods run. Supports
+                      ${variable} substitution.
+                    type: string
+                  timeout:
+                    default: 10m
+                    description: Timeout for install and upgrade operations.
+                    type: string
+                  values:
+                    description: Values are base Helm values applied to every unit
+                      (deep-merged with unit values).
+                    x-kubernetes-preserve-unknown-fields: true
+                  valuesFrom:
+                    description: ValuesFrom references ConfigMaps/Secrets with Helm
+                      values applied to all units.
+                    items:
+                      description: ValuesReference references a ConfigMap or Secret
+                        for Helm values.
+                      properties:
+                        kind:
+                          default: ConfigMap
+                          description: Kind is "ConfigMap" (default) or "Secret".
+                          type: string
+                        name:
+                          description: Name of the ConfigMap or Secret.
+                          type: string
+                        optional:
+                          description: Optional marks this values source as non-required.
+                          type: boolean
+                        valuesKey:
+                          description: 'ValuesKey is the data key to use. Default:
+                            "values.yaml".'
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                type: object
+              helmReleaseNamespace:
+                default: flux-system
+                description: HelmReleaseNamespace is where HelmRelease CRs live on
+                  spokes (not the workloads).
+                type: string
+              overrides:
+                description: Overrides are per-cluster or per-label value patches
+                  layered on top of defaults.
+                items:
+                  description: SourceOverride patches Helm values for a subset of
+                    clusters.
+                  properties:
+                    clusters:
+                      description: Clusters is an explicit list of cluster names.
+                        Takes precedence over selector.
+                      items:
+                        type: string
+                      type: array
+                    selector:
+                      additionalProperties:
+                        type: string
+                      description: Selector matches clusters by labels. Applied to
+                        all matching clusters.
+                      type: object
+                    unit:
+                      description: Unit restricts this override to a single unit.
+                        Empty means all.
+                      type: string
+                    values:
+                      description: Values are Helm value patches merged on top of
+                        defaults.
+                      x-kubernetes-preserve-unknown-fields: true
+                  type: object
+                type: array
+              registries:
+                description: Registries defines HelmRepository sources for generated
+                  Flux resources.
+                items:
+                  description: SourceRegistry defines a Helm chart source. Generates
+                    a HelmRepository on spoke.
+                  properties:
+                    interval:
+                      default: 5m
+                      description: Interval is how often to check for new chart versions.
+                      type: string
+                    name:
+                      description: Name is the registry identifier referenced by units
+                        via repo field.
+                      type: string
+                    provider:
+                      default: generic
+                      description: |-
+                        Provider is the auth provider: "generic" (default), "gcp", "aws", "azure".
+                        "gcp" uses Workload Identity — no credentials needed.
+                      type: string
+                    type:
+                      description: Type is "oci" (auto-detected for oci:// URLs) or
+                        "default" (HTTPS).
+                      type: string
+                    url:
+                      description: |-
+                        URL is the Helm repository URL (OCI or HTTPS).
+                        Supports ${variable} substitution (e.g. oci://${gcpArtifactRegistry}/helm/ldl).
+                      type: string
+                  required:
+                  - name
+                  - url
+                  type: object
+                type: array
+              units:
+                description: Units defines the native deployable units Fleet promotes.
+                items:
+                  description: |-
+                    Unit is one deployable unit within a Source.
+                    It can describe a generated Helm unit for greenfield scaffolds or an existing
+                    backend-native object discovered from Argo/Flux.
+                  properties:
+                    backendKind:
+                      description: |-
+                        BackendKind identifies the backend-native object kind when this unit maps
+                        to an existing object, for example Application, ApplicationSet,
+                        Kustomization, or HelmRelease.
+                      type: string
+                    chartName:
+                      description: |-
+                        ChartName overrides the Helm chart name when different from unit name.
+                        Example: unit "keycloak" uses chart "keycloakx".
+                      type: string
+                    crds:
+                      description: 'CRDs controls CRD install policy: "Skip" (default),
+                        "Create", "CreateReplace".'
+                      enum:
+                      - Skip
+                      - Create
+                      - CreateReplace
+                      type: string
+                    dependsOn:
+                      description: |-
+                        DependsOn lists unit names that must be Ready before this one starts.
+                        Creates HelmRelease-level dependsOn within the same wave.
+                      items:
+                        type: string
+                      type: array
+                    name:
+                      description: Name is the stable Fleet unit identifier.
+                      type: string
+                    namespace:
+                      description: Namespace is the backend-native object namespace
+                        when applicable.
+                      type: string
+                    prune:
+                      description: |-
+                        Prune controls whether Flux deletes resources when removed. Default: true.
+                        Set to false for databases, Kafka, PVCs.
+                      type: boolean
+                    repo:
+                      description: Repo references a registry from spec.registries
+                        by name. Inherits from defaults if empty.
+                      type: string
+                    retries:
+                      description: Retries for install/upgrade remediation. Inherits
+                        from defaults if empty.
+                      format: int32
+                      type: integer
+                    sourcePath:
+                      description: |-
+                        SourcePath is the repo-relative file path Fleet updates for Git-native
+                        brownfield promotion. It is required for file-backed units whose
+                        VersionField does not already include a file path.
+                      type: string
+                    suspend:
+                      description: Suspend pauses reconciliation for this unit.
+                      type: boolean
+                    targetNamespace:
+                      description: |-
+                        TargetNamespace is where workload pods run on spoke. Inherits from defaults if empty.
+                        Supports ${variable} substitution.
+                      type: string
+                    timeout:
+                      description: Timeout for install and upgrade. Inherits from
+                        defaults if empty.
+                      type: string
+                    values:
+                      description: Values are inline Helm values. Deep-merged with
+                        defaults.values (unit wins on conflict).
+                      x-kubernetes-preserve-unknown-fields: true
+                    valuesFrom:
+                      description: |-
+                        ValuesFrom references ConfigMaps/Secrets with Helm values.
+                        When set, REPLACES defaults.valuesFrom (not appended).
+                      items:
+                        description: ValuesReference references a ConfigMap or Secret
+                          for Helm values.
+                        properties:
+                          kind:
+                            default: ConfigMap
+                            description: Kind is "ConfigMap" (default) or "Secret".
+                            type: string
+                          name:
+                            description: Name of the ConfigMap or Secret.
+                            type: string
+                          optional:
+                            description: Optional marks this values source as non-required.
+                            type: boolean
+                          valuesKey:
+                            description: 'ValuesKey is the data key to use. Default:
+                              "values.yaml".'
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      type: array
+                    version:
+                      description: |-
+                        Version is the default chart/revision for the unit at install time.
+                        This is the package/catalog default; the per-rollout target version
+                        comes from PromotionRun.spec.version (or --version on `kapro promote`)
+                        and is what advances the unit through the fleet.
+                        Supports ${VARIABLE} substitution from cluster-vars.
+                      type: string
+                    versionField:
+                      description: |-
+                        VersionField is the backend-native field Fleet changes for this unit,
+                        for example spec.source.targetRevision for Argo CD Applications.
+                      type: string
+                    wave:
+                      description: |-
+                        Wave controls deployment ordering (lower = earlier). Units in the same wave
+                        deploy in parallel. Wave N waits for wave N-1 to be Ready.
+                      format: int32
+                      minimum: 0
+                      type: integer
+                  required:
+                  - name
+                  type: object
+                minItems: 1
+                type: array
+            required:
+            - units
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources: {}

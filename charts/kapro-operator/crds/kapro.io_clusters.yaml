@@ -1,0 +1,677 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: clusters.kapro.io
+spec:
+  group: kapro.io
+  names:
+    categories:
+    - kapro-all
+    kind: Cluster
+    listKind: ClusterList
+    plural: clusters
+    shortNames:
+    - mc
+    - fc
+    - fleetcluster
+    singular: cluster
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Registered")].status
+      name: Registered
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.version
+      name: Version
+      type: string
+    - jsonPath: .status.health.allWorkloadsReady
+      name: Healthy
+      type: boolean
+    - jsonPath: .status.activePromotionRun
+      name: PromotionRun
+      type: string
+    - jsonPath: .status.capabilities.region
+      name: Region
+      priority: 1
+      type: string
+    - jsonPath: .status.capabilities.cloud
+      name: Cloud
+      priority: 1
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha2
+    schema:
+      openAPIV3Schema:
+        description: |-
+          Cluster represents one physical cluster in the Fleet fleet.
+          It merges delivery config, fleet registration state,
+          and BootstrapToken (one-time registration credential) into a single resource.
+
+          Labels on Cluster drive Plan stage selection (tier, region, wave, cloud, etc.).
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ClusterSpec defines the desired state of a cluster in the
+              Fleet fleet.
+            properties:
+              bootstrap:
+                description: |-
+                  Bootstrap configures one-time cluster self-registration.
+
+                  Protocol (SA-token-mediated CSR; built-in K8s signer; works across any
+                  cloud / any cluster / any K8s distribution):
+
+                   1. Platform team creates this Cluster with spec.bootstrap set.
+                      `tokenHash` (when supplied) is an opaque slot identifier — its
+                      value isn't cryptographically verified by the hub today (the
+                      bootstrap ServiceAccount identity is the effective auth factor).
+                      Mutating it counts as a re-bootstrap intent (planned: hub resets
+                      status.bootstrap; see RE-BOOTSTRAP below).
+
+                   2. The hub FleetClusterBootstrapReconciler provisions a per-cluster
+                      ServiceAccount `kapro-bootstrap-<cluster>` in kapro-system with a
+                      narrowly-scoped ClusterRole (CSR-create only, for this signer
+                      name). It issues a TokenRequest for that SA (default 1h TTL,
+                      audience `kapro-bootstrap`) and writes the rendered kubeconfig
+                      into Secret `kapro-bootstrap-kubeconfig-<cluster>`. The Secret
+                      name is recorded in `status.bootstrap.issuedBootstrapKubeconfig`.
+
+                   3. The platform team ships that Secret out-of-band to the spoke
+                      cluster (Helm chart mount, kubectl image copy, GitOps, etc.).
+                      The kapro-cluster-controller pod on the spoke mounts the Secret,
+                      generates an ECDSA keypair, and submits a CertificateSigningRequest
+                      to the hub apiserver. The CSR carries:
+                        signerName = kubernetes.io/kube-apiserver-client
+                        Subject.CN = "kapro-cluster:<cluster>"
+                        Subject.O  = "kapro:cluster-controllers"
+                        Usages     = [client auth]
+                      The CSR's `spec.username` is automatically set by the apiserver
+                      to the bootstrap SA's identity
+                      ("system:serviceaccount:kapro-system:kapro-bootstrap-<cluster>").
+
+                   4. The hub approver validates: (a) signer/CN/O/usages exactly match
+                      above; (b) Username equals the SA we provisioned for this
+                      Cluster — preventing a leaked Secret for cluster A from
+                      registering cluster B; (c) spec.bootstrap.expiresAt is in the
+                      future and status.bootstrap.used is false. It then approves the
+                      CSR via UpdateApproval. The K8s kube-controller-manager signs the
+                      cert with the apiserver's own client CA.
+
+                   5. On approval the hub also creates a long-lived per-cluster
+                      ClusterRole and ClusterRoleBinding for the issued cert identity
+                      (User CN=`kapro-cluster:<cluster>`). Both names are
+                      `kapro:cluster-controller:<cluster>`. resourceNames lock the
+                      access scope to THIS cluster's Cluster + its own heartbeat
+                      Lease — a compromised spoke cannot patch a sibling.
+
+                   6. The spoke uses the signed client cert for steady-state K8s API
+                      calls and rotates it via a renewal CSR before expiry (Username
+                      becomes the cluster cert identity rather than the bootstrap SA;
+                      the approver recognises the renewal class and skips the bootstrap
+                      slot check).
+
+                  RE-BOOTSTRAP (planned, not yet wired): mutating
+                  spec.bootstrap.tokenHash signals re-bootstrap intent; the hub will
+                  reset status.bootstrap. For now the workaround is to delete and
+                  recreate the Cluster.
+                properties:
+                  expiresAt:
+                    description: |-
+                      ExpiresAt is the absolute UTC time after which this bootstrap slot is invalid.
+                      Set explicitly by the platform team for auditability.
+                      If empty and TTL is set, the Cluster controller computes it on first reconcile.
+                    format: date-time
+                    type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are applied to bootstrap resources created during registration
+                      (ServiceAccount, kubeconfig Secret). Not used for stage selection — use
+                      Cluster.metadata.labels for that.
+                    type: object
+                  tokenHash:
+                    description: |-
+                      TokenHash is an opaque, platform-supplied bootstrap-slot identifier in
+                      SHA-256-hex shape (exactly 64 lowercase hex chars). It is NOT a
+                      pre-image-of-token check today: the hub controller's effective
+                      authorization is the bootstrap ServiceAccount it provisions (see the
+                      ClusterSpec.Bootstrap protocol). Mutating this value counts as
+                      a re-bootstrap intent — a future change will have the hub controller
+                      reset status.bootstrap when it observes a TokenHash mutation.
+                      Validation pattern remains a SHA-256 hex so existing tooling that
+                      pre-computes the hash keeps working unmodified.
+                    pattern: ^[0-9a-f]{64}$
+                    type: string
+                  ttl:
+                    description: |-
+                      TTL is a convenience duration (e.g. "24h") used when ExpiresAt is not set explicitly.
+                      The Cluster controller writes spec.bootstrap.expiresAt from
+                      metadata.creationTimestamp + TTL at creation time and leaves it immutable.
+                    type: string
+                type: object
+              consecutiveFailureThreshold:
+                description: |-
+                  ConsecutiveFailureThreshold is the number of consecutive heartbeat
+                  misses required before the Cluster Ready condition flips to False
+                  and the Phase transitions to Unreachable. Defaults to 3 to absorb
+                  transient network blips without flapping. Pattern adopted from Sveltos
+                  SveltosCluster.spec.consecutiveFailureThreshold.
+                format: int32
+                maximum: 100
+                minimum: 1
+                type: integer
+              delivery:
+                description: Delivery configures the backend-neutral delivery adapter
+                  for this cluster.
+                properties:
+                  backendRef:
+                    description: |-
+                      BackendRef is the Backend name. Built-in profiles commonly use
+                      "flux" or "argo"; external profiles may use any platform-defined name.
+                    type: string
+                  mode:
+                    default: pull
+                    description: Mode controls who performs delivery.
+                    enum:
+                    - push
+                    - pull
+                    type: string
+                  parameters:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Parameters are opaque backend-specific settings, following the
+                      StorageClass.parameters pattern. Fleet core does not interpret them.
+                    type: object
+                required:
+                - backendRef
+                - mode
+                type: object
+              desiredAppKey:
+                description: |-
+                  DesiredAppKey is the key the cluster-controller uses when writing
+                  status.currentVersions. Defaults to "default".
+                  Deprecated: use DesiredVersions map for multi-artifact promotionruns.
+                type: string
+              desiredVersion:
+                description: |-
+                  DesiredVersion is written by the kapro-operator (PromotionRunReconciler).
+                  The cluster-controller polls this field and patches the local delivery system.
+                  Deprecated: use DesiredVersions map for multi-artifact promotionruns.
+                type: string
+              desiredVersions:
+                additionalProperties:
+                  type: string
+                description: |-
+                  DesiredVersions is a map of appKey → version written by the kapro-operator.
+                  The cluster-controller iterates this map and patches local delivery for each changed entry.
+                  This replaces the single DesiredVersion/DesiredAppKey pair for multi-artifact promotionruns.
+                type: object
+              healthCheck:
+                description: HealthCheck configures active health polling for this
+                  cluster.
+                properties:
+                  endpoint:
+                    type: string
+                  interval:
+                    type: string
+                required:
+                - endpoint
+                - interval
+                type: object
+              provider:
+                description: |-
+                  Provider declares how the hub discovers this cluster and reaches it.
+                  The kind is one of the registered providers (outbound-agent,
+                  gcp-fleet, eks, aks-arc, rhacm, capi, kubeconfig). Parameters are
+                  provider-specific and opaque to Fleet core (StorageClass-style).
+
+                  When unset, the hub falls back to the legacy behaviour of looking up
+                  a Secret-referenced kubeconfig from cluster annotations — kept for
+                  backwards compatibility while existing FleetClusters migrate.
+                properties:
+                  kind:
+                    description: Kind selects a registered provider implementation.
+                    enum:
+                    - outbound-agent
+                    - gcp-fleet
+                    - gcp-connect-gateway
+                    - eks
+                    - aks-arc
+                    - rhacm
+                    - capi
+                    - kubeconfig
+                    type: string
+                  parameters:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Parameters are opaque, provider-specific key/value settings. Fleet
+                      core does not interpret them.
+                    type: object
+                required:
+                - kind
+                type: object
+              suspend:
+                description: Suspend pauses all reconciliation for this cluster.
+                type: boolean
+              topology:
+                description: Topology holds hardware and scheduling metadata used
+                  by Plan stage selectors.
+                properties:
+                  accelerator:
+                    description: |-
+                      Accelerator is the GPU/accelerator type in this cluster.
+                      Well-known values: nvidia-h100, nvidia-a100, nvidia-l40s, amd-mi300x, tpu-v5e.
+                    type: string
+                  gpuCount:
+                    description: GPUCount is the total number of GPU devices across
+                      all nodes in this cluster.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  gpuMemoryGb:
+                    description: GPUMemoryGB is the memory per GPU device in gigabytes
+                      (e.g. 80 for H100 SXM).
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  nodeCount:
+                    description: NodeCount is the number of GPU nodes (not total devices).
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  tier:
+                    description: |-
+                      Tier classifies the cluster's role in the delivery wave.
+                      Well-known values: canary, shadow, prod.
+                    type: string
+                type: object
+            required:
+            - delivery
+            type: object
+          status:
+            description: ClusterStatus is the observed state — written by cluster-controller
+              and hub.
+            properties:
+              activePromotionRun:
+                description: ActivePromotionRun is the PromotionRun currently being
+                  processed for this cluster.
+                type: string
+              bootstrap:
+                description: Bootstrap tracks the one-time registration state. Written
+                  by the hub.
+                properties:
+                  boundCSRName:
+                    description: |-
+                      BoundCSRName is the CSR that consumed this bootstrap slot. Enables
+                      idempotent retry: if status patching crashes after the slot is marked
+                      Used but before UpdateApproval succeeds, the next reconcile recognises
+                      the same CSR via this field and re-runs the approve step instead of
+                      rejecting it as a replay.
+                    type: string
+                  issuedBootstrapKubeconfig:
+                    description: |-
+                      IssuedBootstrapKubeconfig is the name of the kubeconfig Secret in
+                      kapro-system (`kapro-bootstrap-kubeconfig-<cluster>`) that the hub
+                      controller provisioned for the spoke to mount. It is populated on every
+                      (re-)provisioning pass and is the spoke's input for its first CSR
+                      submission. The Secret carries a TokenRequest-issued bearer token whose
+                      expiry is recorded in the Secret annotation
+                      `kapro.io/bootstrap-expires-at`; the hub re-issues the Secret when the
+                      token nears expiry while spec.bootstrap.expiresAt is still in the future.
+                    type: string
+                  issuedClusterRole:
+                    description: |-
+                      IssuedClusterRole is the name of the per-cluster long-lived ClusterRole
+                      the bootstrap reconciler created (deterministic shape
+                      `kapro:cluster-controller:<cluster>`). Recording it makes deletion
+                      cascade trivial without re-derivation.
+                    type: string
+                  issuedClusterRoleBinding:
+                    description: |-
+                      IssuedClusterRoleBinding is the name of the per-cluster long-lived
+                      ClusterRoleBinding (same `kapro:cluster-controller:<cluster>` shape as
+                      IssuedClusterRole). Same rationale.
+                    type: string
+                  issuedCredentialFor:
+                    description: |-
+                      IssuedCredentialFor is the cluster name the bootstrap credential was
+                      issued for — mirrors metadata.name on a successful registration. Serves
+                      as a defensive cross-check when the hub controller later loads RBAC by
+                      deterministic name.
+                    type: string
+                  used:
+                    description: |-
+                      Used is true once a matching CSR has been approved and the per-cluster
+                      long-lived RBAC has been created. Enforces one-bootstrap-slot-per-
+                      Cluster: a second CSR matching this slot but with a different
+                      BoundCSRName is denied as a replay attempt.
+                    type: boolean
+                  usedAt:
+                    description: |-
+                      UsedAt is when the bootstrap slot was consumed (the first matching CSR
+                      approved).
+                    format: date-time
+                    type: string
+                type: object
+              capabilities:
+                description: Capabilities is the self-reported capability profile
+                  written at registration time.
+                properties:
+                  accountID:
+                    description: |-
+                      AccountID is the cloud account or project identifier.
+                      GCP: project ID. AWS: account ID. Azure: subscription UUID.
+                      DigitalOcean: team ID. StackIT: project UUID.
+                      Used for cost attribution, audit, and cross-account routing.
+                    type: string
+                  argoCDVersion:
+                    description: |-
+                      ArgoCDVersion is the ArgoCD version installed on this cluster (e.g. "2.11.0").
+                      Empty when ArgoCD is not installed.
+                    type: string
+                  cloud:
+                    description: |-
+                      Cloud identifies the cloud provider hosting this cluster.
+                      Well-known values: gcp, aws, azure, digitalocean, stackit, on-prem.
+                      Written by kapro-cluster-controller based on IMDS detection.
+                    type: string
+                  clusterID:
+                    description: |-
+                      ClusterID is the cloud-provider-assigned cluster identifier.
+                      GCP: cluster resource name. AWS: cluster ARN. Azure: resource ID.
+                      DigitalOcean: cluster UUID. StackIT: cluster UUID.
+                    type: string
+                  fluxVersion:
+                    description: |-
+                      FluxVersion is the Flux version installed on this cluster (e.g. "2.3.0").
+                      Empty when Flux is not installed.
+                    type: string
+                  k8sVersion:
+                    description: K8sVersion is the Kubernetes server version (e.g.
+                      "1.30.2").
+                    type: string
+                  nodeCount:
+                    description: NodeCount is the total number of nodes in the cluster
+                      at registration time.
+                    type: integer
+                  region:
+                    description: Region is the cloud region of this cluster (e.g.
+                      europe-west1, us-east-1, westeurope).
+                    type: string
+                  sveltosVersion:
+                    description: |-
+                      SveltosVersion is the Sveltos version installed on this cluster.
+                      Empty when Sveltos is not installed.
+                    type: string
+                  zone:
+                    description: |-
+                      Zone is the cloud availability zone of the primary node pool
+                      (e.g. europe-west1-b, us-east-1a, 1). Empty for regional clusters.
+                    type: string
+                type: object
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              controllerVersion:
+                description: ControllerVersion is the kapro-cluster-controller version
+                  running on this cluster.
+                type: string
+              currentVersions:
+                additionalProperties:
+                  type: string
+                description: CurrentVersions maps app keys to deployed versions. Written
+                  by cluster-controller.
+                type: object
+              delivery:
+                additionalProperties:
+                  description: |-
+                    FleetClusterDeliveryStatus is the per-app delivery progress reported by the
+                    spoke-side cluster-controller. Written by exactly one writer: the spoke's
+                    own delivery loop on its own Cluster (RBAC-locked via resourceNames).
+                  properties:
+                    appliedObjects:
+                      description: |-
+                        AppliedObjects is the count of distinct GVK+namespace+name tuples
+                        committed by the most recent successful apply. Useful for "did this
+                        just regress to applying 1 object instead of 47?" diagnostics.
+                      format: int32
+                      type: integer
+                    desiredVersion:
+                      description: |-
+                        DesiredVersion is the version the loop is targeting (mirrors
+                        spec.desiredVersions[app] at the time of the last reconcile).
+                      type: string
+                    format:
+                      description: |-
+                        Format records the artifact format the spoke detected for the most
+                        recent successful pull: "helm", "kustomize", or "raw-yaml". Empty until
+                        the first pull succeeds.
+                      type: string
+                    lastAppliedAt:
+                      description: LastAppliedAt is when the last successful commit
+                        happened.
+                      format: date-time
+                      type: string
+                    lastAttemptedAt:
+                      description: |-
+                        LastAttemptedAt is when the delivery loop most recently attempted this
+                        app (success or failure). Useful for "is the spoke alive?" checks even
+                        when ObservedDigest is empty.
+                      format: date-time
+                      type: string
+                    lastError:
+                      description: |-
+                        LastError carries the human-readable error from the most recent failed
+                        attempt. Cleared on success. Bounded to 4 KiB by the spoke before
+                        writing to keep the status object small.
+                      type: string
+                    observedDigest:
+                      description: |-
+                        ObservedDigest is the digest (e.g. "sha256:abcd…") of the OCI artifact
+                        that produced the most recent successful apply. Stable across pulls of
+                        the same tag, so a digest-equal short-circuit can skip re-apply when
+                        the upstream tag is moved to point at the same content.
+                      type: string
+                    phase:
+                      description: Phase is the current phase of the delivery loop
+                        for this app.
+                      enum:
+                      - Pending
+                      - Pulling
+                      - Staging
+                      - Applying
+                      - Converged
+                      - Failed
+                      - Skipped
+                      type: string
+                  type: object
+                description: |-
+                  Delivery tracks the spoke-side delivery loop's progress for each app.
+                  Written by the cluster-controller's delivery loop (OCI Delivery Core).
+                  Distinct from CurrentVersions: that map records the last successfully
+                  committed version per app, while Delivery exposes in-flight phase,
+                  observed digest, and last error for human and Decision API consumption.
+                type: object
+              deliverySystem:
+                description: DeliverySystem is the delivery system detected by the
+                  cluster-controller (e.g. "flux").
+                type: string
+              health:
+                description: Health aggregates workload health. Written by cluster-controller.
+                properties:
+                  allWorkloadsReady:
+                    type: boolean
+                  failedWorkloads:
+                    type: integer
+                  message:
+                    type: string
+                  readyWorkloads:
+                    type: integer
+                  totalWorkloads:
+                    type: integer
+                type: object
+              heartbeat:
+                description: |-
+                  Heartbeat tracks cluster reachability based on the spoke's coordination
+                  Lease (`kapro-heartbeat-<cluster>` in kapro-system). Written exclusively
+                  by the FleetClusterHeartbeatReconciler. The reconciler is the single
+                  writer of both this substruct AND the ConditionTypeReady condition; it
+                  does NOT write Phase (kapro_controller reads conditions[Ready] and
+                  computes Phase=Unreachable when Ready=False reason=Unreachable).
+                properties:
+                  consecutiveMisses:
+                    description: |-
+                      ConsecutiveMisses is the count of consecutive reconciles where the Lease
+                      was missing or stale. Reset to 0 on the first fresh observation. Compared
+                      to Spec.ConsecutiveFailureThreshold to decide whether Ready=Unknown
+                      (below threshold, transient) or Ready=False (at threshold, Unreachable).
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  lastTransitionAt:
+                    description: |-
+                      LastTransitionAt is when the Ready condition last flipped. Distinct from
+                      the condition's own LastTransitionTime so this substruct is self-contained
+                      for dashboards that don't unpack Conditions.
+                    format: date-time
+                    type: string
+                  leaseObservedAt:
+                    description: |-
+                      LeaseObservedAt is the timestamp the reconciler extracted from the Lease
+                      (spec.renewTime, or acquireTime, or metadata.creationTimestamp). Empty
+                      when no Lease exists yet.
+                    format: date-time
+                    type: string
+                  observedAt:
+                    description: |-
+                      ObservedAt is when the reconciler last computed reachability. Always
+                      recent (≤ one reconcile interval). Distinct from LeaseObservedAt, which
+                      is the spoke's last renewal.
+                    format: date-time
+                    type: string
+                  reason:
+                    description: |-
+                      Reason mirrors the current Ready condition reason for quick read access.
+                      One of: HeartbeatFresh, HeartbeatStale, Unreachable, Suspended,
+                      PushModeNoHeartbeat, NotRegistered.
+                    type: string
+                type: object
+              lastHeartbeat:
+                description: |-
+                  LastHeartbeat is the RFC3339 timestamp of the last cluster-controller heartbeat.
+                  Deprecated: the authoritative heartbeat source is now the coordination.k8s.io/v1
+                  Lease "kapro-heartbeat-<cluster>" in kapro-system. This field is still written
+                  for backward compatibility but should not be relied upon for freshness checks.
+                type: string
+              observedGeneration:
+                format: int64
+                type: integer
+              phase:
+                description: ClusterPhase represents the convergence state of a workload
+                  cluster.
+                enum:
+                - Pending
+                - Applying
+                - Converging
+                - Converged
+                - Failed
+                - Unreachable
+                type: string
+              provider:
+                description: Provider identifies how this cluster is managed (e.g.
+                  "gcp-fleet", "kubeconfig").
+                type: string
+              version:
+                description: |-
+                  Version is the primary deployed version (first entry in CurrentVersions).
+                  Shown in kubectl/k9s printcolumns for quick fleet overview.
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
