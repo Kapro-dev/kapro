@@ -27,7 +27,7 @@ The public object names were also shortened.
 
 | v1alpha1 kind | v1alpha2 kind | v1alpha1 plural | v1alpha2 plural |
 |---|---|---|---|
-| `Kapro` | `Fleet` | `kapros` | `fleets` |
+| `Kapro` | `Fleet` | `kaproes` | `fleets` |
 | `FleetCluster` | `Cluster` | `fleetclusters` | `clusters` |
 | `FleetClusterTemplate` | `ClusterTemplate` | `fleetclustertemplates` | `clustertemplates` |
 | `AgentPolicy` | `Policy` | `agentpolicies` | `policies` |
@@ -53,15 +53,14 @@ These are the user-facing field changes most likely to affect existing YAML.
 | `spec.promotionPlans[]` | `spec.plans[]` |
 | `spec.promotionPlans[].promotionPlanRef` | `spec.plans[].planRef` |
 | `spec.promotionPlans[].promotionPlan` | `spec.plans[].plan` |
-| `PromotionTrigger.spec.promotionrunTemplate` | `Trigger.spec.promotionTemplate` |
+| `PromotionTrigger.spec.promotionTemplate.kaproRef` | `Trigger.spec.promotionTemplate.fleetRef` |
+| `PromotionTrigger.spec.promotionTemplate.promotionPlans[]` | `Trigger.spec.promotionTemplate.plans[]` |
+| `PromotionTrigger.spec.promotionTemplate.promotionPlans[].promotionPlan` | `Trigger.spec.promotionTemplate.plans[].plan` |
 | `PromotionRun.status.promotionPlanProgress` | `PromotionRun.status.planProgress` |
 | `PromotionRun.status.promotionPlanProgress[].promotionPlan` | `PromotionRun.status.planProgress[].plan` |
 | `PromotionTarget.spec.promotionRunRef` | `Target.spec.runRef` |
 | `PromotionTarget.spec.promotionPlanRef` | `Target.spec.planRef` |
 | `PromotionTarget.spec.promotionPlan` | `Target.spec.plan` |
-| `PromotionTarget.status.promotionRunRef` | `Target.status.runRef` |
-| `PromotionTarget.status.promotionPlanRef` | `Target.status.planRef` |
-| `PromotionTarget.status.promotionPlan` | `Target.status.plan` |
 | `PromotionRun.status.auditTrail[].promotionRunDerivedFrom` | `PromotionRun.status.auditTrail[].runDerivedFrom` |
 | CloudEvents `data.kaproRef` | CloudEvents `data.fleetRef` |
 
@@ -108,7 +107,7 @@ backup:
 
 ```bash
 legacy_resources=(
-  kapros
+  kaproes
   fleetclusters
   fleetclustertemplates
   agentpolicies
@@ -146,7 +145,7 @@ Then delete the old prototype CRDs:
 
 ```bash
 kubectl delete crd \
-  kapros.kapro.io \
+  kaproes.kapro.io \
   fleetclusters.kapro.io \
   fleetclustertemplates.kapro.io \
   agentpolicies.kapro.io \
@@ -190,7 +189,6 @@ perl -pi -e 's#kind: PromotionTarget#kind: Target#g' *.yaml
 perl -pi -e 's#kind: BackendProfile#kind: Backend#g' *.yaml
 perl -pi -e 's#kind: PluginRegistration#kind: Plugin#g' *.yaml
 perl -pi -e 's#kaproRef:#fleetRef:#g' *.yaml
-perl -pi -e 's#promotionrunTemplate:#promotionTemplate:#g' *.yaml
 perl -pi -e 's#promotionPlans:#plans:#g' *.yaml
 perl -pi -e 's#promotionPlanRef:#planRef:#g' *.yaml
 perl -pi -e 's#promotionPlan:#plan:#g' *.yaml
@@ -214,7 +212,7 @@ kubectl get fleets,clusters,plans,promotions,promotionruns,targets
 - Argo CD API references such as `argoproj.io/v1alpha1` are unrelated and
   should not be rewritten.
 - Plugin protocol packages under `spec/kai/v1alpha1`, `spec/kgi/v1alpha1`,
-  `spec/kpi/v1alpha1`, and `spec/kni/v1alpha1` are separate extension
-  contracts. They did not move with the Kapro CRD API.
+  and `spec/kpi/v1alpha1` are separate extension contracts. They did not move
+  with the Kapro CRD API.
 - Discovery map `schemaVersion: kapro.io/git-adoption/v1alpha1` is a separate
   brownfield import file format, not a Kapro CRD `apiVersion`.
