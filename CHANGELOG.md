@@ -64,6 +64,13 @@ Older controller keys such as `kapro`, `promotion-target`, `backend-profile`,
 and `promotion-trigger` are still accepted as compatibility aliases, but new
 manifests and Helm values should use the canonical keys.
 
+### Added — CLI rollout observability
+
+Added `kapro top`, `kapro tree <promotion>`, and `kapro events` for first-line
+rollout inspection. `kapro get promotion <name>` now renders a richer
+Promotion summary with active attempt progress, lifecycle handler results,
+recent Events, and current or most recent Target state.
+
 ### Added — `kapro lint`
 
 Static analysis for Kapro YAML manifests. Runs without a cluster
