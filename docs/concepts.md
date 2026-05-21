@@ -120,8 +120,8 @@ sources, or plans first; fleets next; promotions last. Direct `promotionruns/`
 can exist as an advanced compatibility path, but first-use repositories should
 prefer `promotions/`.
 
-See [examples/quickstart](../examples/quickstart/) for the preferred
-Fleet-root Promotion path.
+See [examples/quickstart](https://github.com/Kapro-dev/kapro/tree/main/examples/quickstart)
+for the preferred Fleet-root Promotion path.
 
 ## Gate Semantics
 

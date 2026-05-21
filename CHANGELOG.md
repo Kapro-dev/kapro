@@ -7,6 +7,11 @@ record for each tag.
 
 ## Unreleased
 
+### Added — MkDocs public docs scaffold
+
+Added a Material for MkDocs site configuration, docs landing page, and GitHub
+Pages workflow so public documentation builds on PRs and deploys from `main`.
+
 ### ⚠️ Breaking — `kapro.io/v1alpha2` migration (clean break; conversion scaffold only)
 
 All CRDs moved from `kapro.io/v1alpha1` to `kapro.io/v1alpha2`. ADR-0011 adds
@@ -180,7 +185,6 @@ the older dashboards did not cover:
   an early warning that the documented FSM has drifted from handler code.
 
 Import alongside `kapro-operations-dashboard.json`.
-## Unreleased
 
 ### Fixed — README quickstart now works on a fresh cluster, no prereqs
 
