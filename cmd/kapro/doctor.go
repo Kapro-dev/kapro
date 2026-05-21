@@ -129,7 +129,7 @@ func collectDoctorReport(ctx context.Context, c client.Client, opts doctorOption
 }
 
 func checkKaproCRDs(ctx context.Context, c client.Client) doctorFinding {
-	var missing, notEstablished []string
+	var missing, problems []string
 	for _, name := range expectedKaproCRDs {
 		var crd apiextensionsv1.CustomResourceDefinition
 		if err := c.Get(ctx, types.NamespacedName{Name: name}, &crd); err != nil {
@@ -140,15 +140,23 @@ func checkKaproCRDs(ctx context.Context, c client.Client) doctorFinding {
 			return doctorFinding{Name: "crds", Status: doctorStatusFail, Message: "could not read Kapro CRDs", Details: []string{err.Error()}}
 		}
 		if !crdEstablished(crd) {
-			notEstablished = append(notEstablished, name)
-			continue
+			problems = append(problems, "not established: "+name)
 		}
-		if crd.Spec.Group != "kapro.io" || crd.Spec.Scope != apiextensionsv1.ClusterScoped || !crdServesVersion(crd, "v1alpha2") || !crdNamesAccepted(crd) {
-			notEstablished = append(notEstablished, name)
+		if !crdNamesAccepted(crd) {
+			problems = append(problems, "names not accepted: "+name)
+		}
+		if crd.Spec.Group != "kapro.io" {
+			problems = append(problems, fmt.Sprintf("wrong group: %s has %q", name, crd.Spec.Group))
+		}
+		if crd.Spec.Scope != apiextensionsv1.ClusterScoped {
+			problems = append(problems, fmt.Sprintf("wrong scope: %s has %q", name, crd.Spec.Scope))
+		}
+		if !crdServesVersion(crd, "v1alpha2") {
+			problems = append(problems, "missing served v1alpha2: "+name)
 		}
 	}
-	if len(missing) > 0 || len(notEstablished) > 0 {
-		details := append(prefixDetails("missing: ", missing), prefixDetails("not established: ", notEstablished)...)
+	if len(missing) > 0 || len(problems) > 0 {
+		details := append(prefixDetails("missing: ", missing), problems...)
 		return doctorFinding{Name: "crds", Status: doctorStatusFail, Message: "Kapro CRDs are not fully installed", Details: details}
 	}
 	return doctorFinding{Name: "crds", Status: doctorStatusPass, Message: fmt.Sprintf("%d Kapro CRDs are Established", len(expectedKaproCRDs))}
@@ -307,6 +315,9 @@ func checkValidatingWebhook(ctx context.Context, c client.Client) doctorFinding 
 	var serviceErrors []string
 	for _, cfg := range configs {
 		for _, hook := range cfg.Webhooks {
+			if !webhookTouchesKapro(hook.Rules) {
+				continue
+			}
 			if hook.ClientConfig.Service == nil {
 				serviceErrors = append(serviceErrors, hook.Name+": no service clientConfig")
 				continue
@@ -410,9 +421,12 @@ func checkConversionWebhookConfig(ctx context.Context, c client.Client) doctorFi
 }
 
 func checkPullSecrets(ctx context.Context, c client.Client, namespace string) doctorFinding {
-	refs, err := collectReferencedPullSecrets(ctx, c)
+	refs, invalid, err := collectReferencedPullSecrets(ctx, c, namespace)
 	if err != nil {
 		return doctorFinding{Name: "pull-secrets", Status: doctorStatusWarn, Message: "could not inspect pull-secret references", Details: []string{err.Error()}}
+	}
+	if len(invalid) > 0 {
+		return doctorFinding{Name: "pull-secrets", Status: doctorStatusFail, Message: "some private registry pull-secret references are incomplete", Details: invalid}
 	}
 	if len(refs) == 0 {
 		return doctorFinding{Name: "pull-secrets", Status: doctorStatusPass, Message: "no private registry pull-secret references found"}
@@ -420,9 +434,9 @@ func checkPullSecrets(ctx context.Context, c client.Client, namespace string) do
 	var missing []string
 	for _, ref := range refs {
 		var secret corev1.Secret
-		if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: ref}, &secret); err != nil {
+		if err := c.Get(ctx, ref.NamespacedName, &secret); err != nil {
 			if apierrors.IsNotFound(err) {
-				missing = append(missing, namespace+"/"+ref)
+				missing = append(missing, ref.String())
 				continue
 			}
 			return doctorFinding{Name: "pull-secrets", Status: doctorStatusWarn, Message: "could not inspect referenced pull secrets", Details: []string{err.Error()}}
@@ -434,46 +448,65 @@ func checkPullSecrets(ctx context.Context, c client.Client, namespace string) do
 	return doctorFinding{Name: "pull-secrets", Status: doctorStatusPass, Message: fmt.Sprintf("%d referenced pull secret(s) exist", len(refs))}
 }
 
-func collectReferencedPullSecrets(ctx context.Context, c client.Client) ([]string, error) {
-	seen := map[string]struct{}{}
+type doctorSecretRef struct {
+	types.NamespacedName
+	Source string
+}
+
+func collectReferencedPullSecrets(ctx context.Context, c client.Client, defaultNamespace string) ([]doctorSecretRef, []string, error) {
+	seen := map[types.NamespacedName]doctorSecretRef{}
+	var invalid []string
+	addDefaultNamespaceRef := func(source, name string) {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return
+		}
+		key := types.NamespacedName{Namespace: defaultNamespace, Name: name}
+		seen[key] = doctorSecretRef{NamespacedName: key, Source: source}
+	}
+	addTriggerRef := func(source string, ref *corev1.SecretReference) {
+		if ref == nil || strings.TrimSpace(ref.Name) == "" {
+			return
+		}
+		if strings.TrimSpace(ref.Namespace) == "" {
+			invalid = append(invalid, source+": secretRef.namespace is required for cluster-scoped Trigger")
+			return
+		}
+		key := types.NamespacedName{Namespace: strings.TrimSpace(ref.Namespace), Name: strings.TrimSpace(ref.Name)}
+		seen[key] = doctorSecretRef{NamespacedName: key, Source: source}
+	}
 	var fleets kaprov1alpha2.FleetList
 	if err := c.List(ctx, &fleets); err != nil && !apierrors.IsNotFound(err) {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, fleet := range fleets.Items {
-		if fleet.Spec.Registry.SecretRef != "" {
-			seen[fleet.Spec.Registry.SecretRef] = struct{}{}
-		}
+		addDefaultNamespaceRef("Fleet/"+fleet.Name, fleet.Spec.Registry.SecretRef)
 	}
 	var backends kaprov1alpha2.BackendList
 	if err := c.List(ctx, &backends); err != nil && !apierrors.IsNotFound(err) {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, backend := range backends.Items {
 		for _, key := range []string{"secretRef", "pullSecret", "imagePullSecret"} {
-			if v := strings.TrimSpace(backend.Spec.Parameters[key]); v != "" {
-				seen[v] = struct{}{}
-			}
+			addDefaultNamespaceRef("Backend/"+backend.Name+" parameter "+key, backend.Spec.Parameters[key])
 		}
 	}
 	var triggers kaprov1alpha2.TriggerList
 	if err := c.List(ctx, &triggers); err != nil && !apierrors.IsNotFound(err) {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, trigger := range triggers.Items {
 		if trigger.Spec.Source.OCI != nil && trigger.Spec.Source.OCI.SecretRef != nil {
-			ref := strings.TrimSpace(trigger.Spec.Source.OCI.SecretRef.Name)
-			if ref != "" {
-				seen[ref] = struct{}{}
-			}
+			addTriggerRef("Trigger/"+trigger.Name, trigger.Spec.Source.OCI.SecretRef)
 		}
 	}
-	out := make([]string, 0, len(seen))
-	for ref := range seen {
+	out := make([]doctorSecretRef, 0, len(seen))
+	for _, ref := range seen {
 		out = append(out, ref)
 	}
-	sort.Strings(out)
-	return out, nil
+	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
+	sort.Strings(invalid)
+	return out, invalid, nil
 }
 
 func renderDoctorReport(report doctorReport) {

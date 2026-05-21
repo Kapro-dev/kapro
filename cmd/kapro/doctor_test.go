@@ -88,6 +88,61 @@ func TestDoctorReportFailsMissingPullSecret(t *testing.T) {
 	}
 }
 
+func TestDoctorReportHonorsTriggerSecretNamespace(t *testing.T) {
+	trigger := &kaprov1alpha2.Trigger{
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout-trigger"},
+		Spec: kaprov1alpha2.TriggerSpec{
+			Source: kaprov1alpha2.TriggerSource{
+				Type: "oci",
+				OCI: &kaprov1alpha2.OCITriggerSource{
+					Repository: "oci://registry.example.com/platform",
+					TagPattern: ".*",
+					SecretRef:  &corev1.SecretReference{Namespace: "delivery", Name: "registry-auth"},
+				},
+			},
+			PromotionTemplate: kaprov1alpha2.TriggerTemplate{FleetRef: "checkout"},
+		},
+	}
+	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "registry-auth", Namespace: "delivery"}}
+	c := fakeDoctorClient(t, append(append(healthyDoctorObjects(), validatingWebhookObjects()...), trigger, secret)...)
+	report := collectDoctorReport(context.Background(), c, doctorOptions{
+		Namespace:  "kapro-system",
+		Deployment: "kapro-kapro-operator",
+	}, allowAllSAR)
+
+	pullSecrets := findDoctorCheck(report, "pull-secrets")
+	if pullSecrets.Status != doctorStatusPass {
+		t.Fatalf("pull-secret check should honor trigger namespace: %#v", pullSecrets)
+	}
+}
+
+func TestDoctorReportFailsTriggerSecretWithoutNamespace(t *testing.T) {
+	trigger := &kaprov1alpha2.Trigger{
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout-trigger"},
+		Spec: kaprov1alpha2.TriggerSpec{
+			Source: kaprov1alpha2.TriggerSource{
+				Type: "oci",
+				OCI: &kaprov1alpha2.OCITriggerSource{
+					Repository: "oci://registry.example.com/platform",
+					TagPattern: ".*",
+					SecretRef:  &corev1.SecretReference{Name: "registry-auth"},
+				},
+			},
+			PromotionTemplate: kaprov1alpha2.TriggerTemplate{FleetRef: "checkout"},
+		},
+	}
+	c := fakeDoctorClient(t, append(append(healthyDoctorObjects(), validatingWebhookObjects()...), trigger)...)
+	report := collectDoctorReport(context.Background(), c, doctorOptions{
+		Namespace:  "kapro-system",
+		Deployment: "kapro-kapro-operator",
+	}, allowAllSAR)
+
+	pullSecrets := findDoctorCheck(report, "pull-secrets")
+	if pullSecrets.Status != doctorStatusFail || !strings.Contains(strings.Join(pullSecrets.Details, ","), "secretRef.namespace") {
+		t.Fatalf("pull-secret check should require trigger secret namespace: %#v", pullSecrets)
+	}
+}
+
 func TestRunDoctorJSONOutputIsStable(t *testing.T) {
 	c := fakeDoctorClient(t, append(healthyDoctorObjects(), validatingWebhookObjects()...)...)
 	prev := cli.OutputFormat
@@ -236,6 +291,22 @@ func validatingWebhookObjects() []client.Object {
 					Namespace: "kapro-system",
 					Name:      "kapro-kapro-operator-webhook",
 					Path:      &path,
+				},
+			},
+		}, {
+			Name: "validate.unrelated.example.io",
+			Rules: []admissionv1.RuleWithOperations{{
+				Rule: admissionv1.Rule{
+					APIGroups:   []string{"example.io"},
+					APIVersions: []string{"v1"},
+					Resources:   []string{"widgets"},
+				},
+				Operations: []admissionv1.OperationType{admissionv1.Create},
+			}},
+			ClientConfig: admissionv1.WebhookClientConfig{
+				Service: &admissionv1.ServiceReference{
+					Namespace: "missing",
+					Name:      "unrelated-webhook",
 				},
 			},
 		}},
