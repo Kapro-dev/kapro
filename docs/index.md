@@ -30,6 +30,8 @@ Which clusters are allowed to receive this artifact version now, and why?
 |---|---|
 | `Fleet` | Fleet setup root: source, delivery defaults, clusters, and embedded stage plan. |
 | `Source` | Reusable catalog of deployable units and backend write targets. |
+| `Backend` | Delivery driver configuration for Flux, Argo CD, OCI, or plugin-backed execution. |
+| `Plan` | Stage order, target selection, and gates generated from or referenced by a Fleet. |
 | `Promotion` | User-authored rollout intent. |
 | `PromotionRun` | Controller-authored execution attempt and audit record. |
 | `Target` | Per-cluster, per-stage runtime state. |

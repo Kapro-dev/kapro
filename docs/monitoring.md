@@ -125,7 +125,7 @@ Use alerts as routing signals, then follow the operational runbooks in
 | Alert | Primary runbook | Main data sources |
 | --- | --- | --- |
 | `KaproPromotionRunStuck` | Stuck PromotionRun | `PromotionRun.status`, `Target.status`, Events, dashboard promotionrun panels |
-| `KaproGateFailureRateHigh` | Gate Failure | `status.gates[]`, `kapro_gate_evaluations_total`, backend telemetry |
+| `KaproGateFailureRateHigh` | Gate Failure | `Target.status.gates[]`, `kapro_gate_evaluations_total`, backend telemetry |
 | `KaproPluginProbeFailure` / `KaproPluginProbeFailures` | Plugin Not Ready | `Plugin.status`, plugin probe metrics, operator logs |
 | `KaproTriggerBlocked` | Blocked Trigger | `Trigger.status.conditions`, active attempts, OCI source health |
 | `KaproRolloutDurationP95High` | Stuck PromotionRun or scalability review | stage duration histogram, stage `maxParallel`, backend latency |

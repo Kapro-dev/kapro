@@ -18,8 +18,18 @@ bootstrap flow below.
   `charts/kapro-cluster-controller` instead.
 - The `kapro` CLI built from this repo (`go build ./cmd/kapro`).
 
-The hub's `ClusterBootstrapReconciler` must be enabled; it is enabled by
-default in the operator.
+The hub's `ClusterBootstrapReconciler` is a preview controller and is not
+enabled by the default ADR-0010 core install. Enable it on the hub before
+running this flow, and set `hubAPIURL` to the hub API server URL reachable from
+spokes:
+
+```bash
+helm upgrade --install kapro charts/kapro-operator \
+  --namespace kapro-system \
+  --create-namespace \
+  --set hubAPIURL=https://hub.example.com:6443 \
+  --set controllers='{fleet,plan,promotion,promotionrun,cluster,cluster-bootstrap}'
+```
 
 ## Step 1 — Generate values + bootstrap Secret on the hub
 
