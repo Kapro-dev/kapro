@@ -19,9 +19,8 @@ Flux, Argo CD, OCI pull agents, and other delivery systems keep owning the local
 
 ---
 
-Kapro is **pre-stable public release software**, not GA. The next public
-preview release is planned as `v0.1.2`; all Kubernetes APIs are now
-`kapro.io/v1alpha2`.
+Kapro is **pre-stable public release software**, not GA. The current public
+preview release is `v0.1.2`; all Kubernetes APIs are now `kapro.io/v1alpha2`.
 If you have legacy `kapro.io/v1alpha1` manifests, follow the
 [v1alpha1 to v1alpha2 migration guide](docs/migration-v1alpha1-to-v1alpha2.md);
 this release does not provide automatic legacy conversion.
@@ -104,14 +103,15 @@ Kapro should connect to existing delivery systems.
 
 ## Quick Start
 
-From a clone of this repository, install the operator, apply the starter fleet,
-and inspect the controller-owned runtime records:
+Install the released operator, apply the starter fleet from a clone, and inspect
+the controller-owned runtime records:
 
 ```bash
+KAPRO_VERSION=0.1.2
 git clone https://github.com/Kapro-dev/kapro.git
 cd kapro
 helm upgrade --install kapro \
-  charts/kapro-operator \
+  "https://github.com/Kapro-dev/kapro/releases/download/v${KAPRO_VERSION}/kapro-operator-${KAPRO_VERSION}.tgz" \
   --namespace kapro-system \
   --create-namespace \
   --wait
@@ -124,8 +124,7 @@ controller-owned runtime records for inspection in `kubectl` or k9s.
 
 For a step-by-step minimal path, use [First Promotion in 10 Minutes](docs/first-promotion-10min.md).
 For a complete local walkthrough, use the [Kind demo](examples/kind-demo/README.md).
-After `v0.1.2` is published, [Install](docs/install.md) has the release-asset
-Helm command.
+[Install](docs/install.md) has local-checkout and release-asset variants.
 
 ## Documentation
 
