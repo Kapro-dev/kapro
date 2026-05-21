@@ -37,7 +37,7 @@ var kaproResourceSetGVK = schema.GroupVersionKind{
 
 // FleetReconciler generates hub-side resources from a Kapro source spec.
 // It produces (all on the hub cluster):
-//   - FleetCluster CRs (one per cluster in the fleet)
+//   - Cluster CRs (one per cluster in the fleet)
 //   - A Plan CR (from Fleet.spec.plan)
 //   - A ResourceSet (Flux Operator) with HelmRelease templates per unit
 //
@@ -128,7 +128,7 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 	spokeLocal := delivery.Mode == kaprov1alpha2.DeliveryModePull && delivery.BackendRef == "flux"
 
-	// 2. Generate FleetClusters on the hub.
+	// 2. Generate Clusters on the hub.
 	for _, cluster := range kapro.Spec.Clusters {
 		clusterDelivery := delivery
 		clusterDelivery.Parameters = copyParamMap(delivery.Parameters)
@@ -148,7 +148,7 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			}
 		}
 		mc := &kaprov1alpha2.Cluster{
-			TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha2", Kind: "FleetCluster"},
+			TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha2", Kind: "Cluster"},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   cluster.Name,
 				Labels: cluster.Labels,
@@ -162,9 +162,9 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			client.FieldOwner("kapro-controller"),
 			client.ForceOwnership,
 		); err != nil {
-			l.Error(err, "failed to apply FleetCluster", "cluster", cluster.Name)
+			l.Error(err, "failed to apply Cluster", "cluster", cluster.Name)
 		}
-		inventory = append(inventory, "FleetCluster/"+cluster.Name)
+		inventory = append(inventory, "Cluster/"+cluster.Name)
 	}
 
 	// 2. Generate Plan on the hub.
@@ -220,7 +220,7 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		inventory = append(inventory, "ResourceSet/"+kapro.Name+"-workloads")
 	}
 
-	// 4. Sync FleetCluster status from HelmRelease status (push model observability).
+	// 4. Sync Cluster status from HelmRelease status (push model observability).
 	// For spoke-local mode, this reads from spoke Flux resources directly.
 	convergedCount := int32(0)
 	for _, cluster := range kapro.Spec.Clusters {
@@ -749,7 +749,7 @@ func (r *FleetReconciler) bootstrapSpokesParallel(ctx context.Context, kapro *ka
 	return results
 }
 
-// spokeAlreadyBootstrapped checks if the spoke's FleetCluster already reports
+// spokeAlreadyBootstrapped checks if the spoke's Cluster already reports
 // the target version. Avoids redundant bootstrap calls on every reconcile.
 func (r *FleetReconciler) spokeAlreadyBootstrapped(ctx context.Context, clusterName, targetVersion string) bool {
 	var mc kaprov1alpha2.Cluster
@@ -859,12 +859,12 @@ func isNoMatchError(err error) bool {
 }
 
 // syncFleetClusterStatus reads HelmRelease status and writes it to the
-// FleetCluster status. For push mode, reads from hub. For spoke-local mode,
+// Cluster status. For push mode, reads from hub. For spoke-local mode,
 // connects to spoke and reads directly.
 func (r *FleetReconciler) syncFleetClusterStatus(ctx context.Context, kapro *kaprov1alpha2.Fleet, source *kaprov1alpha2.Source, cluster kaprov1alpha2.ClusterRef) bool {
 	l := log.FromContext(ctx)
 
-	// Read the FleetCluster.
+	// Read the Cluster.
 	var mc kaprov1alpha2.Cluster
 	if err := r.Get(ctx, client.ObjectKey{Name: cluster.Name}, &mc); err != nil {
 		return false
@@ -983,7 +983,7 @@ func (r *FleetReconciler) syncFleetClusterStatus(ctx context.Context, kapro *kap
 		}
 	}
 
-	// Patch FleetCluster status.
+	// Patch Cluster status.
 	mcPatch := client.MergeFrom(mc.DeepCopy())
 	mc.Status.Phase = phase
 	mc.Status.CurrentVersions = versions
@@ -1019,13 +1019,13 @@ func (r *FleetReconciler) syncFleetClusterStatus(ctx context.Context, kapro *kap
 	})
 
 	if err := r.Status().Patch(ctx, &mc, mcPatch); err != nil {
-		l.Error(err, "failed to patch FleetCluster status", "cluster", cluster.Name)
+		l.Error(err, "failed to patch Cluster status", "cluster", cluster.Name)
 	}
 
 	return allReady
 }
 
-// cleanupRemovedClusters deletes FleetClusters and kubeconfig Secrets
+// cleanupRemovedClusters deletes Clusters and kubeconfig Secrets
 // for clusters that were removed from the Kapro spec.
 func (r *FleetReconciler) cleanupRemovedClusters(ctx context.Context, kapro *kaprov1alpha2.Fleet) {
 	l := log.FromContext(ctx)
@@ -1036,18 +1036,18 @@ func (r *FleetReconciler) cleanupRemovedClusters(ctx context.Context, kapro *kap
 		current[c.Name] = true
 	}
 
-	// Delete orphaned FleetClusters.
+	// Delete orphaned Clusters.
 	var mcList kaprov1alpha2.ClusterList
 	if err := r.List(ctx, &mcList); err == nil {
 		for i := range mcList.Items {
 			mc := &mcList.Items[i]
-			// Only clean up FleetClusters that were created by this Kapro
+			// Only clean up Clusters that were created by this Kapro
 			// (check if it's in our inventory).
-			if !current[mc.Name] && isInInventory(kapro, "FleetCluster/"+mc.Name) {
+			if !current[mc.Name] && isInInventory(kapro, "Cluster/"+mc.Name) {
 				if err := r.Delete(ctx, mc); err != nil {
-					l.Error(err, "failed to delete orphaned FleetCluster", "cluster", mc.Name)
+					l.Error(err, "failed to delete orphaned Cluster", "cluster", mc.Name)
 				} else {
-					l.Info("deleted orphaned FleetCluster", "cluster", mc.Name)
+					l.Info("deleted orphaned Cluster", "cluster", mc.Name)
 				}
 			}
 		}
@@ -1137,7 +1137,7 @@ func (r *FleetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kaprov1alpha2.Fleet{}).
 		Watches(&kaprov1alpha2.Source{}, handler.EnqueueRequestsFromMapFunc(r.kaproSourceToKapro)).
-		// FleetCluster.status.conditions[Ready] flips drive Phase=Unreachable
+		// Cluster.status.conditions[Ready] flips drive Phase=Unreachable
 		// in the status sync step. Without this watch the heartbeat
 		// reconciler's Ready=False reason=Unreachable transition would not
 		// surface as Phase=Unreachable until an unrelated Kapro/PromotionSource
@@ -1172,7 +1172,7 @@ func (r *FleetReconciler) kaproSourceToKapro(ctx context.Context, obj client.Obj
 	return requests
 }
 
-// fleetClusterToKapro maps a FleetCluster change to the Kapro(s) whose
+// fleetClusterToKapro maps a Cluster change to the Kapro(s) whose
 // spec.clusters references it by name. Matches the inventory ownership
 // pattern used by cleanupRemovedClusters.
 func (r *FleetReconciler) fleetClusterToKapro(ctx context.Context, obj client.Object) []reconcile.Request {
@@ -1199,8 +1199,8 @@ func (r *FleetReconciler) fleetClusterToKapro(ctx context.Context, obj client.Ob
 }
 
 // fleetClusterReadyConditionChangedPredicate triggers a reconcile only when a
-// FleetCluster's ConditionTypeReady changes (status or reason). All other
-// FleetCluster mutations — including our own Phase/CurrentVersions status
+// Cluster's ConditionTypeReady changes (status or reason). All other
+// Cluster mutations — including our own Phase/CurrentVersions status
 // writes — are filtered out so we don't feedback-loop on ourselves.
 type fleetClusterReadyConditionChangedPredicate struct{}
 

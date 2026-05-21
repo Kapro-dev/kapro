@@ -150,7 +150,12 @@ install_chart() {
   kubectl -n "${namespace}" rollout status "deployment/${release}-kapro-operator" --timeout=180s
 
   echo "checking installed resources"
-  kubectl get crd -o name | grep -q '^customresourcedefinition.apiextensions.k8s.io/.*\.kapro\.io$'
+  local crds
+  crds="$(kubectl get crd -o name)"
+  if ! grep -q '^customresourcedefinition.apiextensions.k8s.io/.*\.kapro\.io$' <<<"${crds}"; then
+    echo "no kapro.io CRDs were installed" >&2
+    return 1
+  fi
   kubectl -n "${namespace}" get deploy,svc,sa
   kubectl auth can-i get promotionruns.kapro.io \
     --as="system:serviceaccount:${namespace}:${release}-kapro-operator"

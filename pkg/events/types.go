@@ -8,7 +8,7 @@
 //
 // EventType constants are part of the public API. Once an EventType is
 // added to a Kapro release it MUST NOT be renamed or removed in any
-// subsequent v1alpha1 release; subscribers depend on the literal string.
+// subsequent v1alpha2 release; subscribers depend on the literal string.
 // New EventType values may be added in minor releases. Removal requires
 // a major version bump (v1beta1, v1).
 //
@@ -223,7 +223,7 @@ type Event struct {
 	// kapro.io/promotion.stage.gate.* events.
 	// +optional
 	Gate string
-	// Target is the FleetCluster name. Set for
+	// Target is the Cluster name. Set for
 	// kapro.io/promotion.stage.gate.* events (gates are evaluated
 	// per-target). There are intentionally no per-target events
 	// outside the gate scope; per-cluster reconcile is Flux
