@@ -62,6 +62,7 @@ nav:
       - Discovery Troubleshooting: discovery-troubleshooting.md
   - Extending Kapro:
       - Extension Model: extension-model.md
+      - Go SDK: sdk.md
       - Plugin Authoring: plugin-authoring.md
       - GCP Cloud: cloud-gcp.md
   - ADRs:
@@ -73,6 +74,7 @@ nav:
       - Target Namespace: adr/0005-withdraw-target-namespace.md
       - External Gates: adr/0006-external-gate-predicates.md
       - Programmatic SDK: adr/0007-programmatic-sdk.md
+      - SDK Versioning: adr/0013-sdk-versioning-policy.md
       - Target Status Authority: adr/0009-promotionrun-target-status-collapse.md
       - Controller Tier: adr/0010-core-and-preview-controller-tier.md
       - Conversion Webhook: adr/0011-conversion-webhook-scaffold.md
