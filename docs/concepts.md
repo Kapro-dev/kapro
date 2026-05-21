@@ -7,6 +7,7 @@ durable intent; controllers create execution records and per-target state.
 
 | Object | Authored by | Purpose |
 |---|---|---|
+| `Backend` | Platform team | Registers a delivery adapter and its default settings. |
 | `Fleet` | Platform team | Defines the fleet root: source, delivery defaults, clusters, and stage plan. |
 | `Source` | Platform or app team | Declares deployable units and the backend-native fields Kapro may update. |
 | `Promotion` | App team or automation | Requests that a version move through a Fleet. |
@@ -14,6 +15,21 @@ durable intent; controllers create execution records and per-target state.
 | `Target` | Controller | Tracks one cluster/stage execution inside a run. |
 | `Cluster` | Platform team or bootstrap controller | Represents one workload cluster and its delivery settings. |
 | `Approval` | Human or approval webhook | Carries approve/reject state for a gated target. |
+
+## Authored YAML Shape
+
+The first user-authored path is three objects:
+
+```text
+Backend    names the delivery adapter, for example flux
+Fleet      names the app/fleet, declares clusters, and defines the stage plan
+Promotion  points at the Fleet and asks for one version to move through it
+```
+
+In the quickstart `Fleet`, clusters carry intent labels such as
+`kapro.io/stage: canary` or `kapro.io/stage: production`. Plan stages select
+those labels, and downstream stages use `dependsOn` to make the rollout order
+explicit.
 
 ## Promotion Lifecycle
 
@@ -58,10 +74,14 @@ See [Backends](backends.md) for the supported modes.
 
 For the quickstart path, users normally write:
 
+- `Backend`
 - `Fleet`
-- `Source`
 - `Promotion`
 - `Approval` when a manual gate blocks
+
+`Source` can be authored separately when multiple fleets share the same
+deployable-unit catalog. The quickstart keeps source units inline on the
+`Fleet` so the first YAML stays in one place.
 
 Kapro or its controllers generate and update:
 
@@ -88,15 +108,17 @@ Typical layout:
 hub-config/
   clusters/
   backends/
+  fleets/
   sources/
   plans/
   promotions/
   .github/workflows/
 ```
 
-Apply objects in dependency order: clusters, backends, sources, plans, then
-promotions. Direct `promotionruns/` can exist as an advanced compatibility path,
-but first-use repositories should prefer `promotions/`.
+Apply objects in dependency order: backends and any standalone clusters,
+sources, or plans first; fleets next; promotions last. Direct `promotionruns/`
+can exist as an advanced compatibility path, but first-use repositories should
+prefer `promotions/`.
 
 See [examples/quickstart](../examples/quickstart/) for the preferred
 Fleet-root Promotion path.

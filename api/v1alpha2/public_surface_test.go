@@ -121,6 +121,39 @@ func TestCRDShortNamesUseCurrentAliases(t *testing.T) {
 	}
 }
 
+func TestReleaseVersionMarkersStayInSync(t *testing.T) {
+	root := repoRoot(t)
+	operatorChart := filepath.Join(root, "charts", "kapro-operator", "Chart.yaml")
+	clusterControllerChart := filepath.Join(root, "charts", "kapro-cluster-controller", "Chart.yaml")
+
+	operatorVersion, operatorAppVersion := helmChartVersionPair(t, operatorChart)
+	clusterControllerVersion, clusterControllerAppVersion := helmChartVersionPair(t, clusterControllerChart)
+	if operatorVersion != clusterControllerVersion {
+		t.Fatalf("chart versions drifted: kapro-operator=%s, kapro-cluster-controller=%s", operatorVersion, clusterControllerVersion)
+	}
+
+	releaseTag := "v" + operatorVersion
+	for chart, appVersion := range map[string]string{
+		operatorChart:          operatorAppVersion,
+		clusterControllerChart: clusterControllerAppVersion,
+	} {
+		if appVersion != releaseTag {
+			t.Fatalf("%s appVersion=%q, want %q", chart, appVersion, releaseTag)
+		}
+	}
+
+	for _, relPath := range []string{
+		"README.md",
+		filepath.Join("docs", "api-stability.md"),
+		filepath.Join("docs", "install.md"),
+	} {
+		path := filepath.Join(root, relPath)
+		if !strings.Contains(readText(t, path), releaseTag) {
+			t.Fatalf("%s does not mention current release tag %s", path, releaseTag)
+		}
+	}
+}
+
 func TestAPICommentsUseCurrentPublicResourceNames(t *testing.T) {
 	root := repoRoot(t)
 	stale := []*regexp.Regexp{
@@ -236,6 +269,24 @@ func crdBaseNames(t *testing.T, dir string) []string {
 		t.Fatalf("no CRD YAML files found in %s", dir)
 	}
 	return names
+}
+
+func helmChartVersionPair(t *testing.T, path string) (version, appVersion string) {
+	t.Helper()
+	data := readText(t, path)
+	version = helmChartScalar(t, path, data, "version")
+	appVersion = helmChartScalar(t, path, data, "appVersion")
+	return version, appVersion
+}
+
+func helmChartScalar(t *testing.T, path, data, key string) string {
+	t.Helper()
+	re := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(key) + `:\s*"?([^"\n#]+)"?`)
+	match := re.FindStringSubmatch(data)
+	if match == nil {
+		t.Fatalf("%s missing %s", path, key)
+	}
+	return strings.TrimSpace(match[1])
 }
 
 func checkCRDServedVersion(t *testing.T, path, data string) {

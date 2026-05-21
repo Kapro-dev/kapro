@@ -7,9 +7,9 @@ func newAdoptCmd() *cobra.Command {
 		Use:   "adopt",
 		Short: "Generate brownfield adoption mappings",
 		Long: `Adoption commands generate observe-first Kapro mappings from
-existing backend-native GitOps repositories. They do not mutate live backend
-objects; switching a Backend to Adopt and applying Git changes are
-separate, explicit steps.`,
+existing backend-native GitOps repositories: a read-only Backend, Source units,
+and discovery reports. They do not mutate live backend objects; switching a
+Backend to Adopt and applying Git changes are separate, explicit steps.`,
 	}
 	cmd.AddCommand(newAdoptArgoCmd())
 	cmd.AddCommand(newAdoptFluxCmd())
@@ -43,7 +43,7 @@ before any write permissions are granted.`,
 	cmd.Flags().BoolVar(&opts.ScanAll, "scan-all", false, "Scan all tracked YAML/JSON files instead of GitOps path prefixes")
 	cmd.Flags().BoolVar(&opts.Cache, "cache", true, "Reuse discovery cache for unchanged Git blobs")
 	cmd.Flags().IntVar(&opts.MaxFiles, "max-files", defaultArgoDiscoveryMaxFiles, "Maximum tracked YAML/JSON candidate files to parse (0 = unlimited)")
-	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum promotion units to generate (0 = unlimited)")
+	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum Source units to generate (0 = unlimited)")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
 	return cmd
 }
@@ -73,7 +73,7 @@ before any write permissions are granted.`,
 	cmd.Flags().StringSliceVar(&opts.PathPrefixes, "path-prefix", nil, "Repo path prefix to scan (repeatable; default: common Flux/GitOps paths)")
 	cmd.Flags().BoolVar(&opts.ScanAll, "scan-all", false, "Scan all tracked YAML/JSON files instead of GitOps path prefixes")
 	cmd.Flags().IntVar(&opts.MaxFiles, "max-files", defaultArgoDiscoveryMaxFiles, "Maximum tracked YAML/JSON candidate files to parse (0 = unlimited)")
-	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum promotion units to generate (0 = unlimited)")
+	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum Source units to generate (0 = unlimited)")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
 	return cmd
 }

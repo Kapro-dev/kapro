@@ -4,9 +4,12 @@ This guide is for teams that already run Flux with GitRepository,
 OCIRepository, Kustomization, and HelmRelease objects.
 
 Kapro should not replace Flux reconciliation. Flux keeps source credentials,
-inventory, health, drift correction, and workload rollout. Kapro adds Promotion
-intent, promotion ordering, gates, approvals, rollback intent, and fleet
-evidence.
+inventory, health, drift correction, and workload rollout. Kapro adds `Fleet`,
+`Source`, `Plan`, and `Promotion` intent around the Flux estate.
+
+The migration path is observe, review, then adopt. Discovery generates a
+read-only `Backend`, inferred `Source` units, and review reports. Adoption
+should only enable the specific version writes the owning team has reviewed.
 
 ## Repository Shape
 
@@ -19,7 +22,7 @@ platform-gitops/
     kustomizations/
     helmreleases/
   fleets/
-    backends/flux-observe.yaml
+    backends/checkout-observe.yaml
     sources/checkout.yaml
     plans/checkout.yaml
     promotions/
@@ -31,7 +34,8 @@ promotion.
 
 ## Step 1: Label Selected Flux Objects
 
-Label the Kustomizations or HelmReleases that represent promotion targets:
+Label the Kustomizations or HelmReleases that represent the workloads Kapro
+should observe:
 
 ```yaml
 metadata:
@@ -49,7 +53,7 @@ GitRepository or OCIRepository too. Kapro does not need source credentials.
 ```bash
 kapro discover flux . \
   --out ./kapro-connect \
-  --name checkout-flux \
+  --name checkout \
   --namespace flux-system \
   --selector kapro.io/import=true,team=checkout
 ```
@@ -57,13 +61,15 @@ kapro discover flux . \
 Apply the observe profile:
 
 ```bash
-kubectl apply -f ./kapro-connect/backends/flux-observe.yaml
-kubectl get backend flux -o yaml
+kubectl apply -f ./kapro-connect/backends/checkout-observe.yaml
+kubectl get backend checkout -o yaml
 ```
 
-Check `Backend.status.selectedObjects` before enabling adoption.
+Check `Backend.status.selectedObjects`, `discovery/flux-discovery.yaml`, and
+`discovery/kapro-git-map.yaml` before enabling adoption. Observe mode does not
+patch Flux objects.
 
-## Step 3: Model Promotion Units
+## Step 3: Review Source Units
 
 The discovery command generates `kapro-connect/sources/<name>.yaml` from common
 Flux Git-native patterns:
@@ -80,7 +86,7 @@ Flux Git-native patterns:
 
 Flux `Kustomization` objects are reported but not treated as direct version
 write targets because `spec.path` and `spec.sourceRef` are topology/configuration
-fields, not a universal promotion version. Promote the referenced source object,
+fields, not a universal promotion version. Use the referenced source object,
 the Kustomize image file, or an explicit field you add to `Source`.
 
 ```yaml
@@ -89,7 +95,7 @@ kind: Source
 metadata:
   name: checkout
 spec:
-  backendRef: flux
+  backendRef: checkout
   units:
     - name: api
       backendKind: GitYAMLField
@@ -114,12 +120,15 @@ For concrete failure modes and editing guidance, see
 
 Switch to `managementPolicy: Adopt` only when:
 
-- the selected objects are the intended promotion targets;
+- the selected objects are the intended Flux objects;
 - the team has chosen exactly which version field Kapro may write;
+- the `Source` is referenced by the intended `Fleet` and `Plan`;
 - Flux RBAC grants patch rights only in the target namespace.
 
 Flux continues to reconcile the resulting desired state. Kapro does not write
 repository Secrets, workload manifests, traffic resources, or health status.
+`Adopt` only changes what the backend is allowed to patch; rollout order still
+comes from the `Plan`, and each rollout starts from a reviewed `Promotion`.
 
 ## Step 5: Promote
 
@@ -132,7 +141,7 @@ kind: Promotion
 metadata:
   name: checkout-2026-05-15
 spec:
-  fleetRef: checkout-flux
+  fleetRef: checkout
   plans:
     - name: main
       plan: checkout
@@ -141,8 +150,9 @@ spec:
     web: main-20260515
 ```
 
-Kapro creates a `PromotionRun` and coordinates promotion across targets. Flux
-applies the selected version inside each cluster or hub-managed namespace.
+Kapro creates a `PromotionRun` and `Target` records, then coordinates promotion
+across the selected targets. Flux applies the selected version inside each
+cluster or hub-managed namespace.
 
 ## Local Git-Native E2E
 

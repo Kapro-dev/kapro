@@ -13,7 +13,9 @@ bootstrap flow below.
   reachable from the spoke.
 - `kubectl` context pointed at the **hub** for steps 1–2.
 - `kubectl` context pointed at the **spoke** for step 3.
-- Helm 3 and the Kapro source tree (or the published chart artifact).
+- Helm 3 and the `kapro-cluster-controller` chart package from the Kapro
+  GitHub Release. For source-checkout development, use
+  `charts/kapro-cluster-controller` instead.
 - The `kapro` CLI built from this repo (`go build ./cmd/kapro`).
 
 The hub's `ClusterBootstrapReconciler` must be enabled; it is enabled by
@@ -62,10 +64,14 @@ kubectl config use-context my-spoke-cluster
 ```bash
 kubectl apply -f /tmp/de-prod-01-bootstrap-secret.yaml
 
-helm install kapro-cluster-controller charts/kapro-cluster-controller \
+helm install kapro-cluster-controller \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.1.0/kapro-cluster-controller-0.1.0.tgz \
   -n kapro-system --create-namespace \
   -f /tmp/de-prod-01-values.yaml
 ```
+
+For source-checkout development, replace the release URL with
+`charts/kapro-cluster-controller`.
 
 Watch the agent come up:
 

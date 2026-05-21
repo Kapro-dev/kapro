@@ -70,7 +70,7 @@ func newDiscoverFluxCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&opts.PathPrefixes, "path-prefix", nil, "Repo path prefix to scan (repeatable; default: common Flux/GitOps paths)")
 	cmd.Flags().BoolVar(&opts.ScanAll, "scan-all", false, "Scan all tracked YAML/JSON files instead of GitOps path prefixes")
 	cmd.Flags().IntVar(&opts.MaxFiles, "max-files", defaultArgoDiscoveryMaxFiles, "Maximum tracked YAML/JSON candidate files to parse (0 = unlimited)")
-	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum promotion units to generate (0 = unlimited)")
+	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum Source units to generate (0 = unlimited)")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
 	return cmd
 }
@@ -114,7 +114,7 @@ func runFluxDiscover(opts fluxDiscoverOptions) error {
 		return err
 	}
 	summary := confidenceSummary(result.SelectedUnits)
-	fmt.Fprintf(os.Stderr, "Discovered %d Flux objects and %d promotion units from %s (confidence: high=%d medium=%d needs-review=%d)\n",
+	fmt.Fprintf(os.Stderr, "Discovered %d Flux objects and %d Source units from %s (confidence: high=%d medium=%d needs-review=%d)\n",
 		len(result.Objects), len(result.SelectedUnits), opts.RepoPath, summary.High, summary.Medium, summary.NeedsReview)
 	return nil
 }
@@ -141,7 +141,7 @@ func discoverFluxRepo(root string, opts argoDiscoveryScanOptions) (fluxDiscovery
 	}
 	result.SelectedUnits = dedupeUnits(result.SelectedUnits)
 	if opts.MaxUnits > 0 && len(result.SelectedUnits) > opts.MaxUnits {
-		return result, fmt.Errorf("discovery found %d promotion units, above --max-units=%d; narrow --path-prefix or review with a higher limit", len(result.SelectedUnits), opts.MaxUnits)
+		return result, fmt.Errorf("discovery found %d Source units, above --max-units=%d; narrow --path-prefix or review with a higher limit", len(result.SelectedUnits), opts.MaxUnits)
 	}
 	sort.Slice(result.Objects, func(i, j int) bool {
 		if result.Objects[i].Kind == result.Objects[j].Kind {
@@ -574,7 +574,7 @@ Use the generated source mapping to update Git-native version fields:
 kapro source apply --repo . --source sources/%s.yaml --set unit=revision
 `+"```"+`
 
-Kapro discovered %d Flux objects and %d promotion units. Flux remains the owner
+Kapro discovered %d Flux objects and %d Source units. Flux remains the owner
 of source credentials, reconciliation, inventory, drift correction, and local
 rollout behavior.
 `, opts.Name, opts.Name, opts.Name, opts.Name, len(result.Objects), len(result.SelectedUnits))

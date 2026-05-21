@@ -5,8 +5,12 @@ ApplicationSets, app-of-apps, and registered clusters.
 
 Kapro should be introduced as a promotion layer, not as a replacement for Argo
 CD. Argo keeps cluster credentials, Projects, repo credentials, sync policy,
-health checks, and local rollout behavior. Kapro adds promotion waves, gates,
-approvals, and fleet evidence.
+health checks, and local rollout behavior. Kapro adds `Fleet`, `Source`, `Plan`,
+and `Promotion` intent around the Argo estate.
+
+The migration path is observe, review, then adopt. Discovery generates a
+read-only `Backend`, inferred `Source` units, and review reports. Adoption
+should only enable the specific version writes the owning team has reviewed.
 
 ## Repository Shape
 
@@ -20,7 +24,7 @@ platform-gitops/
     applicationsets/
     app-of-apps/
   fleets/
-    backends/argo-observe.yaml
+    backends/checkout-observe.yaml
     sources/checkout.yaml
     plans/checkout.yaml
     promotions/
@@ -99,7 +103,7 @@ follow those prefixes. Repeat runs use `discovery/argo-cache.json` to skip
 unchanged Git blobs.
 
 Discovery is bounded by default: at most 10,000 tracked YAML/JSON candidate
-files and 1,000 generated promotion units. Use `--max-files` or `--max-units`
+files and 1,000 generated `Source` units. Use `--max-files` or `--max-units`
 only after narrowing `--path-prefix` is not enough. This keeps monorepos from
 turning onboarding into an unreviewable import.
 
@@ -122,6 +126,9 @@ This generates:
 - `discovery/kapro-git-map.yaml` with confidence and write-target evidence for
   review.
 
+Discovery does not create a `Fleet`, `Plan`, or `Promotion`, and it does not
+mutate live Argo objects.
+
 For ApplicationSet Git file generators, Kapro maps template variables such as
 `targetRevision: '{{.gkProjectVersion}}'` back to the generator input file, for
 example `argocd/environments/*.json:gkProjectVersion`. That file remains the
@@ -133,6 +140,9 @@ source of truth.
 kubectl apply -f ./kapro-connect/backends/checkout-observe.yaml
 kubectl get backend checkout -o yaml
 ```
+
+Observe mode lists selected Argo objects and reports evidence through
+`Backend.status`. It does not patch Applications or ApplicationSets.
 
 Check:
 
@@ -150,7 +160,7 @@ marked `confidence: needs-review`, use
 [Discovery Troubleshooting](discovery-troubleshooting.md) before adopting
 writes.
 
-## Step 4: Review Promotion Units
+## Step 4: Review Source Units
 
 Review the generated `Source`. In brownfield Argo mode, a unit points
 to either an existing Application source or a Git parameter file that feeds an
@@ -178,9 +188,9 @@ spec:
 
 ## Step 5: Apply Git-Native Promotion Writes
 
-For Git-file backed units, Kapro updates the mapped JSON/YAML field in a local
-checkout. It does not push automatically; review and commit the diff with your
-normal Git workflow.
+For Git-file backed `Source` units, Kapro updates the mapped JSON/YAML field in
+a local checkout. It does not push automatically; review and commit the diff
+with your normal Git workflow.
 
 ```bash
 kapro source apply \
@@ -213,14 +223,15 @@ kapro source apply \
 
 ## Step 6: Choose The Adoption Level
 
-| Argo pattern | Recommended Kapro target |
+| Argo pattern | Recommended Kapro write target |
 |---|---|
 | Plain Applications | The Application source revision. |
 | ApplicationSet with Git file generator | The JSON/YAML generator input field. |
 | ApplicationSet generated apps | The generated Application only when the team explicitly wants live Application adoption. |
 | App-of-apps | Child Applications. Root Applications should normally remain observe-only packaging objects. |
 
-After the discovered graph matches intent, switch the profile:
+After the discovered graph and generated `Source` match intent, switch the
+profile:
 
 ```yaml
 spec:
@@ -233,6 +244,10 @@ The built-in Argo actuator writes only
 `Application.spec.source.targetRevision`, sets a hard refresh annotation, and
 requests an Argo sync operation. It does not change traffic, Projects,
 destinations, repo credentials, cluster Secrets, or local rollout policy.
+
+`Adopt` only changes what the backend is allowed to patch. Promotion ordering
+still comes from the `Plan`, and each rollout still starts from a reviewed
+`Promotion`.
 
 Live Argo Application adoption is intentionally opt-in. Each Application Kapro
 may mutate must carry one of these labels or annotations:

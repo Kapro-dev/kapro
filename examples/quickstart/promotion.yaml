@@ -1,10 +1,10 @@
 apiVersion: kapro.io/v1alpha2
 kind: Promotion
 metadata:
-  name: checkout-v1.2.3
+  name: checkout-v1-2-3
   labels:
-    # Tenancy ownership label — see examples/quickstart/kapro.yaml.
     kapro.io/team: platform
+    app.kubernetes.io/name: checkout
 spec:
   fleetRef: checkout
   version: v1.2.3

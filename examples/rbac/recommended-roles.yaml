@@ -119,7 +119,7 @@ metadata:
   name: kapro-auditor
 rules:
   # Explicit allow-list (no wildcard) so the auditor cannot infer
-  # AgentPolicy decision rate / cooldown state from counters in
+  # Policy decision rate / cooldown state from counters in
   # `policies/status` (DecisionsToday, ActiveDecisions,
   # LastDecisionAt). Production audit treats those counters as a
   # timing-inference side channel; auditors get the policy spec but not

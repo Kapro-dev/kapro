@@ -259,6 +259,31 @@ func TestExampleYAMLHasNoKaproLintErrors(t *testing.T) {
 	}
 }
 
+func TestQuickstartYAMLIsStrictLintClean(t *testing.T) {
+	root := lintRepoRoot(t)
+	files, err := filepath.Glob(filepath.Join(root, "examples", "quickstart", "*.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) == 0 {
+		t.Fatal("no quickstart YAML files found")
+	}
+
+	for _, path := range files {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			rel = path
+		}
+		for _, issue := range LintFile(filepath.ToSlash(rel), data) {
+			t.Errorf("%s", issue.String())
+		}
+	}
+}
+
 // ---- LintKapro -------------------------------------------------------------
 
 func TestLintKapro_NilSourceDoesNotPanic(t *testing.T) {

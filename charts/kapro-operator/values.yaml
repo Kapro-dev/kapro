@@ -5,7 +5,8 @@ replicaCount: 1
 image:
   repository: ghcr.io/kapro-dev/kapro-operator
   pullPolicy: IfNotPresent
-  tag: ""  # defaults to Chart.appVersion
+  # Empty defaults to Chart.appVersion, which matches the published release image tag.
+  tag: ""
 
 imagePullSecrets: []
 nameOverride: ""
@@ -44,8 +45,20 @@ leaderElection:
   namespace: ""  # defaults to PromotionRun namespace
   id: ""         # defaults to a shard-specific ID when shard is set
 
+# Core controllers that work in a normal hub install with no extra spoke
+# bootstrap URL or fleet auto-import provider configuration. Keep
+# fleetcluster-bootstrap and fleetcluster-template opt-in until those flows are
+# explicitly configured.
 controllers:
-  - "*"
+  - promotion
+  - promotionrun
+  - promotion-target
+  - approval
+  - kapro
+  - backend-profile
+  - plugin-registration
+  - promotion-trigger
+  - fleetcluster-heartbeat
 
 shard: ""
 shardDefault: false

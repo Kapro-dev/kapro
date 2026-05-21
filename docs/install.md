@@ -1,8 +1,10 @@
 # Install Kapro
 
-The recommended install path is the Helm chart in `charts/kapro-operator`.
-It installs the CRDs, controller Deployment, ServiceAccount, RBAC, admission
-webhooks, and baseline approval service together.
+The recommended public-preview install path is the Helm chart package attached
+to the GitHub Release. It installs the CRDs, controller Deployment,
+ServiceAccount, RBAC, admission webhooks, and baseline approval service
+together. The `0.1.0` chart defaults to
+`ghcr.io/kapro-dev/kapro-operator:v0.1.0`.
 
 ## Prerequisites
 
@@ -17,7 +19,11 @@ cert-manager can opt back in (see below).
 ## Install
 
 ```bash
-helm upgrade --install kapro charts/kapro-operator \
+KAPRO_VERSION=0.1.0
+KAPRO_CHART="https://github.com/Kapro-dev/kapro/releases/download/v${KAPRO_VERSION}/kapro-operator-${KAPRO_VERSION}.tgz"
+
+helm upgrade --install kapro \
+  "${KAPRO_CHART}" \
   --namespace kapro-system \
   --create-namespace
 ```
@@ -26,13 +32,18 @@ That is the full install for kind, k3d, EKS without the cert-manager
 add-on, and any other cluster where you do not have cert-manager
 installed.
 
+For development from a local checkout, set
+`KAPRO_CHART=charts/kapro-operator` instead of using the release URL.
+The remaining Helm examples use the same `KAPRO_CHART` value.
+
 ### Install with cert-manager
 
 If you already run cert-manager (≥ 1.5) and prefer its certificate
 lifecycle, enable the cert-manager path:
 
 ```bash
-helm upgrade --install kapro charts/kapro-operator \
+helm upgrade --install kapro \
+  "${KAPRO_CHART}" \
   --namespace kapro-system \
   --create-namespace \
   --set webhook.certManager.enabled=true
@@ -48,7 +59,8 @@ If you want the smallest possible install (no webhook = no admission
 validation of CRD invariants), turn the webhook off entirely:
 
 ```bash
-helm upgrade --install kapro charts/kapro-operator \
+helm upgrade --install kapro \
+  "${KAPRO_CHART}" \
   --namespace kapro-system \
   --create-namespace \
   --set webhook.enabled=false
@@ -61,7 +73,8 @@ Plan DAG validity is enforced.
 Useful baseline settings:
 
 ```bash
-helm upgrade --install kapro charts/kapro-operator \
+helm upgrade --install kapro \
+  "${KAPRO_CHART}" \
   --namespace kapro-system \
   --create-namespace \
   --set externalURL=https://kapro.example.com \
@@ -89,6 +102,7 @@ exposed deliberately:
 | Decision API and `Policy` | Disabled | `decisionAPI.enabled=true` and explicit Kubernetes RBAC. |
 | Plugin gateway runtime dispatch | Disabled | `pluginGateway.enabled=true` plus installed plugin services and `Plugin` objects. |
 | Hub Gateway service exposure | Internal only | `hubGateway.service.enabled=true`; place Kubernetes authn/authz or an identity-aware proxy in front of production exposure. |
+| Spoke CSR bootstrap controller | Disabled | Add `fleetcluster-bootstrap` to `controllers` and set `hubAPIURL` to the hub API server URL reachable from spokes. |
 | Fleet auto-import providers beyond GCP | Stubbed | Use `ClusterTemplate` only for implemented sources; unsupported sources report `SourceNotImplemented`. |
 | Inline gate notifications | Runtime | Notification routing is configured inside gate/stage policy; there is no separate public notification provider/policy CRD. |
 
@@ -101,7 +115,8 @@ Enable it only after granting Kubernetes RBAC to the ServiceAccounts that should
 read promotion context or submit decisions:
 
 ```bash
-helm upgrade --install kapro charts/kapro-operator \
+helm upgrade --install kapro \
+  "${KAPRO_CHART}" \
   --namespace kapro-system \
   --create-namespace \
   --set decisionAPI.enabled=true
@@ -189,6 +204,21 @@ KAPRO_IMAGE_TAG=v0.1.0 \
 scripts/verify-install.sh cluster
 ```
 
+For a render-only check against the published chart artifact:
+
+```bash
+scripts/verify-install.sh release-render
+```
+
+For a disposable Kind install check against the published chart artifact:
+
+```bash
+kind create cluster --name kapro-release-verify
+kubectl config use-context kind-kapro-release-verify
+KAPRO_VERIFY_CLEANUP=true scripts/verify-install.sh release-cluster
+kind delete cluster --name kapro-release-verify
+```
+
 Heavier validation targets are available when you need backend coverage:
 
 ```bash
@@ -208,13 +238,19 @@ kubectl kustomize config/default
 
 ## Upgrade
 
-Apply CRD changes first, then upgrade the chart:
+Apply CRD changes first, then upgrade the chart. For the release package,
+pull and unpack the chart before applying CRDs:
 
 ```bash
-kubectl apply -f charts/kapro-operator/crds
-helm upgrade kapro charts/kapro-operator --namespace kapro-system
+tmpdir="$(mktemp -d)"
+helm pull "${KAPRO_CHART}" --untar --untardir "${tmpdir}"
+kubectl apply -f "${tmpdir}/kapro-operator/crds"
+helm upgrade kapro "${KAPRO_CHART}" --namespace kapro-system
 kubectl -n kapro-system rollout status deployment/kapro-kapro-operator
 ```
+
+From a source checkout, `kubectl apply -f charts/kapro-operator/crds` is the
+equivalent CRD apply path.
 
 ## Registering clusters (pull mode)
 
@@ -244,7 +280,8 @@ The plugin gateway is an opt-in runtime preview. Enabling it only sets
 demo `Plugin`.
 
 ```bash
-helm upgrade --install kapro charts/kapro-operator \
+helm upgrade --install kapro \
+  "${KAPRO_CHART}" \
   --namespace kapro-system \
   --create-namespace \
   --set pluginGateway.enabled=true
@@ -278,7 +315,8 @@ authentication and authorization or an identity-aware reverse proxy before
 traffic reaches the gateway.
 
 ```bash
-helm upgrade --install kapro charts/kapro-operator \
+helm upgrade --install kapro \
+  "${KAPRO_CHART}" \
   --namespace kapro-system \
   --create-namespace \
   --set hubGateway.service.enabled=true
