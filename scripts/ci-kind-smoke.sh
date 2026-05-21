@@ -176,7 +176,6 @@ main() {
 
   echo "applying quickstart API objects"
   kubectl --context "${CTX}" apply -f examples/quickstart/backend-flux.yaml
-  kubectl --context "${CTX}" wait backend/flux --for=condition=Ready --timeout=90s
   kubectl --context "${CTX}" apply -f examples/quickstart/kapro.yaml
   wait_for_count clusters 2
   mark_cluster_converged checkout-canary-eu

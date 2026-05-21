@@ -205,7 +205,12 @@ func TestWebhookResourcesMatchPublicContract(t *testing.T) {
 func TestControllerSelectionUsesRegisteredPublicNames(t *testing.T) {
 	root := repoRoot(t)
 	known := registeredControllerNames(t, filepath.Join(root, "pkg", "controllermanager", "controllers.go"))
-	for _, controller := range helmDefaultControllers(t, filepath.Join(root, "charts", "kapro-operator", "values.yaml")) {
+	defaultControllers := helmDefaultControllers(t, filepath.Join(root, "charts", "kapro-operator", "values.yaml"))
+	wantDefaultControllers := []string{"fleet", "plan", "promotion", "promotionrun", "cluster"}
+	if !sameStringSet(defaultControllers, wantDefaultControllers) {
+		t.Fatalf("chart default controllers = %v, want ADR-0010 core set %v", defaultControllers, wantDefaultControllers)
+	}
+	for _, controller := range defaultControllers {
 		if controller == "*" {
 			t.Fatalf("chart must not default to wildcard controllers; opt-in controllers can require extra configuration")
 		}
@@ -924,6 +929,14 @@ func sortedKeys[V any](values map[string]V) []string {
 
 func sortedBoolKeys(values map[string]bool) []string {
 	return sortedKeys(values)
+}
+
+func sameStringSet(a, b []string) bool {
+	a = slices.Clone(a)
+	b = slices.Clone(b)
+	sort.Strings(a)
+	sort.Strings(b)
+	return slices.Equal(a, b)
 }
 
 func helmChartVersionPair(t *testing.T, path string) (version, appVersion string) {

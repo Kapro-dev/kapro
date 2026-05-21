@@ -98,10 +98,20 @@ func main() {
 	// KAPRO_CONTROLLERS selects which controllers to run (CCM-style).
 	controllersFlag := os.Getenv("KAPRO_CONTROLLERS")
 	if controllersFlag == "" {
-		controllersFlag = "*"
+		controllersFlag = cm.DefaultControllersFlag()
 	}
 	selected := cm.ParseControllerNames(controllersFlag)
-	log.Info("controller selection", "controllers", controllersFlag)
+	unknownControllers := cm.UnknownControllerNames(selected)
+	if len(unknownControllers) > 0 {
+		log.Info("unknown controllers requested; skipping", "controllers", unknownControllers)
+	}
+	log.Info(
+		"controller selection",
+		"requested", controllersFlag,
+		"enabled", cm.SelectedControllerNames(selected),
+		"disabled", cm.DisabledControllerNames(selected),
+		"unknown", unknownControllers,
+	)
 
 	// POD_NAMESPACE is projected from the downward API in both the Helm chart
 	// and the dev kustomize manifest. It drives leader election, notification
@@ -301,19 +311,22 @@ func main() {
 		)
 	}
 
-	for name, initFn := range cm.Registry {
+	for _, name := range cm.KnownControllers() {
 		if !selected[name] {
 			log.Info("controller disabled", "name", name)
 			continue
 		}
+		initFn := cm.Registry[name]
 		enabled, err := initFn(ctx, cc)
 		if err != nil {
 			log.Error(err, "unable to start controller", "name", name)
 			os.Exit(1)
 		}
-		if enabled {
-			log.Info("controller started", "name", name)
+		if !enabled {
+			log.Info("controller skipped", "name", name)
+			continue
 		}
+		log.Info("controller started", "name", name)
 	}
 
 	if os.Getenv("KAPRO_DISABLE_APPROVAL_SERVER") != "true" {

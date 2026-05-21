@@ -89,15 +89,19 @@ kubectl apply -f examples/plugins/slo-gate-registration.yaml
 
 ## Preview Features
 
-The default install runs the core promotion controllers for `PromotionRun`,
-`Target`, `Plan`, `Cluster`, `Backend`, `Source`, and `Approval`.
+The default install runs the ADR-0010 core controllers: `fleet`, `plan`,
+`promotion`, `promotionrun`, and `cluster`. The `target` controller starts
+implicitly whenever `promotionrun` is enabled.
 
 Preview surfaces are explicit opt-ins or spec-only APIs:
 
 | Surface | Default | Opt-in |
 |---|---|---|
 | Decision API and `Policy` | Disabled | `--set decisionAPI.enabled=true` plus Kubernetes RBAC |
+| Backend readiness controller | Disabled | Add `backend` to `controllers` |
+| Approval controller | Disabled | Add `approval` to `controllers` |
+| Trigger controller | Disabled | Add `trigger` to `controllers` |
 | Runtime plugin gateway | Disabled | `--set pluginGateway.enabled=true` |
 | Hub Gateway Service | Internal listener only | `--set hubGateway.service.enabled=true` and place Kubernetes authn/authz or an identity proxy in front |
-| Spoke CSR bootstrap controller | Disabled | Add `fleetcluster-bootstrap` to `controllers` and set `hubAPIURL` |
+| Spoke CSR bootstrap controller | Disabled | Add `cluster-bootstrap` to `controllers` and set `hubAPIURL` |
 | Inline gate notifications | Runtime | No separate public notification provider/policy CRDs |
