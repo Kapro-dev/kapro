@@ -29,17 +29,17 @@ func TestStageDependencySatisfied_AnyUnlocksFromOneConvergedTarget(t *testing.T)
 		Status: kaprov1alpha2.PromotionRunStatus{
 			Targets: []kaprov1alpha2.TargetExecutionState{
 				{
-					Target:           "cluster-a",
-					PlanRef: "main",
-					Stage:            "canary",
-					Phase:            kaprov1alpha2.TargetPhaseConverged,
-					FinishedAt:       time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339),
+					Target:     "cluster-a",
+					PlanRef:    "main",
+					Stage:      "canary",
+					Phase:      kaprov1alpha2.TargetPhaseConverged,
+					FinishedAt: time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339),
 				},
 				{
-					Target:           "cluster-b",
+					Target:  "cluster-b",
 					PlanRef: "main",
-					Stage:            "canary",
-					Phase:            kaprov1alpha2.TargetPhaseHealthCheck,
+					Stage:   "canary",
+					Phase:   kaprov1alpha2.TargetPhaseHealthCheck,
 				},
 			},
 		},
@@ -102,7 +102,7 @@ func TestHandleProgressingFailsWhenPromotionPlanGenerationChanges(t *testing.T) 
 			ResolvedVersion: "repo@sha256:abc",
 			PromotionPlanProgress: []kaprov1alpha2.PromotionPlanProgress{{
 				Name:               "main",
-				Plan:      "progressive",
+				Plan:               "progressive",
 				ObservedGeneration: 1,
 				Phase:              "Progressing",
 			}},
@@ -348,17 +348,17 @@ func TestStageDependencySatisfied_AllRequiresEveryTarget(t *testing.T) {
 		Status: kaprov1alpha2.PromotionRunStatus{
 			Targets: []kaprov1alpha2.TargetExecutionState{
 				{
-					Target:           "cluster-a",
-					PlanRef: "main",
-					Stage:            "canary",
-					Phase:            kaprov1alpha2.TargetPhaseConverged,
-					FinishedAt:       time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339),
+					Target:     "cluster-a",
+					PlanRef:    "main",
+					Stage:      "canary",
+					Phase:      kaprov1alpha2.TargetPhaseConverged,
+					FinishedAt: time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339),
 				},
 				{
-					Target:           "cluster-b",
+					Target:  "cluster-b",
 					PlanRef: "main",
-					Stage:            "canary",
-					Phase:            kaprov1alpha2.TargetPhaseApplying,
+					Stage:   "canary",
+					Phase:   kaprov1alpha2.TargetPhaseApplying,
 				},
 			},
 		},
@@ -391,11 +391,11 @@ func TestStageDependencySatisfied_ReturnsRemainingSoakTime(t *testing.T) {
 		Status: kaprov1alpha2.PromotionRunStatus{
 			Targets: []kaprov1alpha2.TargetExecutionState{
 				{
-					Target:           "cluster-a",
-					PlanRef: "main",
-					Stage:            "canary",
-					Phase:            kaprov1alpha2.TargetPhaseConverged,
-					FinishedAt:       time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339),
+					Target:     "cluster-a",
+					PlanRef:    "main",
+					Stage:      "canary",
+					Phase:      kaprov1alpha2.TargetPhaseConverged,
+					FinishedAt: time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339),
 				},
 			},
 		},

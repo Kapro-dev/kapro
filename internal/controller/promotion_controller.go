@@ -491,7 +491,7 @@ func buildRunSpec(p *kaprov1alpha2.Promotion, parent *kaprov1alpha2.Fleet) (kapr
 		// Plan CR named via InlinePromotionPlanName; reference that
 		// generated object, not the bare Kapro name.
 		plans = []kaprov1alpha2.PlanRef{{
-			Name:          "inline",
+			Name: "inline",
 			Plan: InlinePromotionPlanName(parent.Name),
 		}}
 	}

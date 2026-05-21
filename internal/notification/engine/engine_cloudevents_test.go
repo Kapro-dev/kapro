@@ -22,13 +22,13 @@ func TestSendCloudEvents_EnvelopeAndContentType(t *testing.T) {
 	defer srv.Close()
 
 	event := notification.Event{
-		Type:          notification.EventTargetConverged,
-		Phase:         "Converged",
-		Version:       "v2.0.0",
-		Target:        "fi-prod",
-		PromotionRun:  "app-v2",
-		Plan: "eu-rollout",
-		Stage:         "prod",
+		Type:         notification.EventTargetConverged,
+		Phase:        "Converged",
+		Version:      "v2.0.0",
+		Target:       "fi-prod",
+		PromotionRun: "app-v2",
+		Plan:         "eu-rollout",
+		Stage:        "prod",
 	}
 
 	err := sendCloudEvents(context.Background(), srv.URL, event)

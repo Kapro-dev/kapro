@@ -101,7 +101,7 @@ func TestE2E_PromotionRun_Sync_Converged(t *testing.T) {
 			Version: resolvedVersion,
 			PromotionPlans: []kaprov1alpha2.PlanRef{
 				{
-					Name:          "initial",
+					Name: "initial",
 					Plan: promotionplan.Name,
 				},
 			},

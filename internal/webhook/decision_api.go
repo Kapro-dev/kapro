@@ -118,10 +118,10 @@ type ClusterSummary struct {
 
 // PromotionRunSummary is a compact view of one PromotionRun.
 type PromotionRunSummary struct {
-	Name          string `json:"name"`
-	Phase         string `json:"phase"`
-	Plan string `json:"promotionplan,omitempty"`
-	StartedAt     string `json:"startedAt,omitempty"`
+	Name      string `json:"name"`
+	Phase     string `json:"phase"`
+	Plan      string `json:"promotionplan,omitempty"`
+	StartedAt string `json:"startedAt,omitempty"`
 }
 
 func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
@@ -233,10 +233,10 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 			promotionplan = rel.Spec.PromotionPlans[0].Plan
 		}
 		promotionrunSummaries = append(promotionrunSummaries, PromotionRunSummary{
-			Name:          rel.Name,
-			Phase:         string(rel.Status.Phase),
-			Plan: promotionplan,
-			StartedAt:     rel.Status.StartedAt,
+			Name:      rel.Name,
+			Phase:     string(rel.Status.Phase),
+			Plan:      promotionplan,
+			StartedAt: rel.Status.StartedAt,
 		})
 	}
 
@@ -267,22 +267,22 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 
 // PromotionRunContext is the response for GET /api/v1/promotionruns/{name}/context.
 type PromotionRunContext struct {
-	GeneratedAt   string                          `json:"generatedAt"`
-	PromotionRun  kaprov1alpha2.PromotionRun      `json:"promotionrun"`
-	Plan *kaprov1alpha2.Plan    `json:"promotionplan,omitempty"`
-	Targets       []kaprov1alpha2.Target `json:"targets"`
-	Page          DecisionAPIPage                 `json:"page"`
+	GeneratedAt  string                     `json:"generatedAt"`
+	PromotionRun kaprov1alpha2.PromotionRun `json:"promotionrun"`
+	Plan         *kaprov1alpha2.Plan        `json:"promotionplan,omitempty"`
+	Targets      []kaprov1alpha2.Target     `json:"targets"`
+	Page         DecisionAPIPage            `json:"page"`
 }
 
 // --- Gate Context ---
 
 // GateContext is the response for GET /api/v1/promotionruns/{name}/targets/{key}/gate.
 type GateContext struct {
-	GeneratedAt  string                        `json:"generatedAt"`
-	Target       kaprov1alpha2.Target `json:"target"`
-	PromotionRun kaprov1alpha2.PromotionRun    `json:"promotionrun"`
-	Cluster      *kaprov1alpha2.Cluster   `json:"cluster,omitempty"`
-	Precedents   []DecisionPrecedent           `json:"precedents,omitempty"`
+	GeneratedAt  string                     `json:"generatedAt"`
+	Target       kaprov1alpha2.Target       `json:"target"`
+	PromotionRun kaprov1alpha2.PromotionRun `json:"promotionrun"`
+	Cluster      *kaprov1alpha2.Cluster     `json:"cluster,omitempty"`
+	Precedents   []DecisionPrecedent        `json:"precedents,omitempty"`
 }
 
 // DecisionPrecedent is a historical decision on this target for agent learning.
@@ -400,10 +400,10 @@ func (s *Server) handlePromotionRunContext(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, http.StatusOK, PromotionRunContext{
-		GeneratedAt:   time.Now().UTC().Format(time.RFC3339),
-		PromotionRun:  promotionrun,
-		Plan: promotionplan,
-		Targets:       targets,
+		GeneratedAt:  time.Now().UTC().Format(time.RFC3339),
+		PromotionRun: promotionrun,
+		Plan:         promotionplan,
+		Targets:      targets,
 		Page: DecisionAPIPage{
 			Limit:         opts.limit,
 			LabelSelector: opts.labelSelector,

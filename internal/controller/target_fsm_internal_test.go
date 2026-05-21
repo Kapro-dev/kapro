@@ -56,13 +56,13 @@ func TestHandleVerification_FailedResultFailsTarget(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default"},
 	}
 	target := &kaprov1alpha2.TargetExecutionState{
-		PromotionRunRef:  "rel-1",
-		Target:           "cluster-a",
-		PlanRef: "wave-1",
-		Plan:    "promotionplan-a",
-		Stage:            "prod",
-		Version:          "repo@sha256:abc",
-		Phase:            kaprov1alpha2.TargetPhaseVerification,
+		PromotionRunRef: "rel-1",
+		Target:          "cluster-a",
+		PlanRef:         "wave-1",
+		Plan:            "promotionplan-a",
+		Stage:           "prod",
+		Version:         "repo@sha256:abc",
+		Phase:           kaprov1alpha2.TargetPhaseVerification,
 	}
 
 	result, err := r.handleVerification(context.Background(), promotionrun, target, nil)
@@ -97,13 +97,13 @@ func TestHandleApplying_RespectsActivePromotionRunClaim(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default"},
 	}
 	target := &kaprov1alpha2.TargetExecutionState{
-		PromotionRunRef:  "rel-1",
-		Target:           "cluster-a",
-		PlanRef: "wave-1",
-		Plan:    "promotionplan-a",
-		Stage:            "prod",
-		Version:          "repo@sha256:new",
-		Phase:            kaprov1alpha2.TargetPhaseApplying,
+		PromotionRunRef: "rel-1",
+		Target:          "cluster-a",
+		PlanRef:         "wave-1",
+		Plan:            "promotionplan-a",
+		Stage:           "prod",
+		Version:         "repo@sha256:new",
+		Phase:           kaprov1alpha2.TargetPhaseApplying,
 	}
 
 	result, err := r.handleApplying(context.Background(), promotionrun, target)
@@ -258,10 +258,10 @@ func TestBuildApprovalURLs_SingleApproverHintSignedIntoToken(t *testing.T) {
 		},
 	}
 	target := &kaprov1alpha2.TargetExecutionState{
-		Target:           "cluster-a",
+		Target:  "cluster-a",
 		PlanRef: "wave-1",
-		Stage:            "prod",
-		Version:          "repo@sha256:abc",
+		Stage:   "prod",
+		Version: "repo@sha256:abc",
 		Gate: &kaprov1alpha2.GatePolicySpec{
 			Approval: &kaprov1alpha2.ApprovalConfig{
 				Approvers: []string{"alice@example.com"},
@@ -308,12 +308,12 @@ func TestAdvanceTargetUntilStable_CollapsesImmediateTransitions(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default"},
 	}
 	target := &kaprov1alpha2.TargetExecutionState{
-		PromotionRunRef:  "rel-1",
-		Target:           "cluster-a",
-		PlanRef: "wave-1",
-		Plan:    "promotionplan-a",
-		Stage:            "prod",
-		Version:          "repo@sha256:abc",
+		PromotionRunRef: "rel-1",
+		Target:          "cluster-a",
+		PlanRef:         "wave-1",
+		Plan:            "promotionplan-a",
+		Stage:           "prod",
+		Version:         "repo@sha256:abc",
 	}
 
 	result, err := r.advanceTargetUntilStable(context.Background(), promotionrun, target, nil)

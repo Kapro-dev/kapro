@@ -42,13 +42,13 @@ func (r *PromotionRunReconciler) notifyStageEvent(ctx context.Context, promotion
 	}
 	policy := r.notificationPolicyForStage(ctx, promotionrun, promotionplanRef, stage)
 	r.Notifier.Notify(ctx, notification.Event{
-		Type:          eventType,
-		Phase:         "Complete",
-		Version:       promotionrun.Status.ResolvedVersion,
-		PromotionRun:  promotionrun.Name,
-		Plan: promotionplanRef,
-		Stage:         stage,
-		Message:       message,
+		Type:         eventType,
+		Phase:        "Complete",
+		Version:      promotionrun.Status.ResolvedVersion,
+		PromotionRun: promotionrun.Name,
+		Plan:         promotionplanRef,
+		Stage:        stage,
+		Message:      message,
 	}, policy)
 }
 

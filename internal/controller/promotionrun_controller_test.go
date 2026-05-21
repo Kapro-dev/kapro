@@ -49,7 +49,7 @@ func TestPromotionRunReconciler_PendingToPromoting(t *testing.T) {
 			Version: "registry.example.com/app@sha256:aaaa",
 			PromotionPlans: []kaprov1alpha2.PlanRef{
 				{
-					Name:          "initial",
+					Name: "initial",
 					Plan: promotionplan.Name,
 				},
 			},
@@ -83,7 +83,7 @@ func TestPromotionRunReconciler_MissingVersion_StaysPending(t *testing.T) {
 			Version: "",
 			PromotionPlans: []kaprov1alpha2.PlanRef{
 				{
-					Name:          "initial",
+					Name: "initial",
 					Plan: promotionplan.Name,
 				},
 			},
@@ -122,7 +122,7 @@ func TestPromotionRunReconciler_EnvStatus_Populated(t *testing.T) {
 			Version: "registry.example.com/app@sha256:bbbb",
 			PromotionPlans: []kaprov1alpha2.PlanRef{
 				{
-					Name:          "initial",
+					Name: "initial",
 					Plan: promotionplan.Name,
 				},
 			},

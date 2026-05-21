@@ -151,7 +151,7 @@ type Context struct {
 	Namespace       string
 	PromotionRunRef string
 	Target          string
-	Plan   string
+	Plan            string
 	Stage           string
 	Version         string
 	StartedAt       string

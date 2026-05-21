@@ -26,12 +26,12 @@ import (
 // are the stable contract; the embedded types track their own
 // versioning policy (api/v1alpha2 stability via ADRs).
 type promotionDiag struct {
-	Promotion *kaprov1alpha2.Promotion        `json:"promotion"`
-	Runs      []kaprov1alpha2.PromotionRun    `json:"promotionRuns"`
-	Targets   []kaprov1alpha2.Target `json:"promotionTargets"`
-	Events    []corev1.Event                  `json:"events"`
-	BlockedOn []string                        `json:"blockedOn,omitempty"`
-	Next      []string                        `json:"suggestedNextActions,omitempty"`
+	Promotion *kaprov1alpha2.Promotion     `json:"promotion"`
+	Runs      []kaprov1alpha2.PromotionRun `json:"promotionRuns"`
+	Targets   []kaprov1alpha2.Target       `json:"promotionTargets"`
+	Events    []corev1.Event               `json:"events"`
+	BlockedOn []string                     `json:"blockedOn,omitempty"`
+	Next      []string                     `json:"suggestedNextActions,omitempty"`
 }
 
 func newDiagCmd() *cobra.Command {

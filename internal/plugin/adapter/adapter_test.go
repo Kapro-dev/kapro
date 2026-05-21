@@ -148,7 +148,7 @@ func TestGateAdapterMapsPhases(t *testing.T) {
 				Context: &gate.Context{
 					PromotionRunRef: "rel-1",
 					Target:          "de-prod",
-					Plan:   "prod",
+					Plan:            "prod",
 					Stage:           "canary",
 					Version:         "1.2.3",
 				},

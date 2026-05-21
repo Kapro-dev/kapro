@@ -379,7 +379,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 			previous := promotionplanProgress[promotionplanRef.Name]
 			updatedPromotionPlans = append(updatedPromotionPlans, kaprov1alpha2.PromotionPlanProgress{
 				Name:               promotionplanRef.Name,
-				Plan:      promotionplanRef.Plan,
+				Plan:               promotionplanRef.Plan,
 				ObservedGeneration: previous.ObservedGeneration,
 				Phase:              "Complete",
 				ActiveStage:        previous.ActiveStage,
@@ -392,7 +392,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 			previous := promotionplanProgress[promotionplanRef.Name]
 			updatedPromotionPlans = append(updatedPromotionPlans, kaprov1alpha2.PromotionPlanProgress{
 				Name:               promotionplanRef.Name,
-				Plan:      promotionplanRef.Plan,
+				Plan:               promotionplanRef.Plan,
 				ObservedGeneration: previous.ObservedGeneration,
 				Phase:              "Failed",
 				ActiveStage:        previous.ActiveStage,
@@ -414,7 +414,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 			previous := promotionplanProgress[promotionplanRef.Name]
 			updatedPromotionPlans = append(updatedPromotionPlans, kaprov1alpha2.PromotionPlanProgress{
 				Name:               promotionplanRef.Name,
-				Plan:      promotionplanRef.Plan,
+				Plan:               promotionplanRef.Plan,
 				ObservedGeneration: previous.ObservedGeneration,
 				Phase:              "Pending",
 				ActiveStage:        previous.ActiveStage,
@@ -493,7 +493,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 
 		updatedPromotionPlans = append(updatedPromotionPlans, kaprov1alpha2.PromotionPlanProgress{
 			Name:               promotionplanRef.Name,
-			Plan:      promotionplanRef.Plan,
+			Plan:               promotionplanRef.Plan,
 			ObservedGeneration: promotionplan.Generation,
 			Phase:              newPhase,
 			ActiveStage:        activeStage,
@@ -1135,7 +1135,7 @@ func (r *PromotionRunReconciler) planTargetsForStage(ctx context.Context, promot
 	return framework.PlanWithResult(ctx, planner.Request{
 		PromotionRun:         promotionrun,
 		PromotionPlanRefName: promotionplanRefName,
-		Plan:        promotionplan,
+		Plan:                 promotionplan,
 		Stage:                stage,
 	}, clusters)
 }

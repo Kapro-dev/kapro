@@ -48,15 +48,15 @@ func (r *PromotionRunReconciler) upsertTarget(
 		}
 	}
 	newTarget := kaprov1alpha2.TargetExecutionState{
-		PromotionRunRef:  promotionrun.Name,
-		Target:           mc.Name,
-		PlanRef: promotionplanRefName,
-		Plan:    promotionplan.Name,
-		Stage:            stage.Name,
-		Version:          version,
-		Gate:             resolvedGate,
-		AppKey:           appKey,
-		DesiredVersions:  copyStringMap(desiredVersions),
+		PromotionRunRef: promotionrun.Name,
+		Target:          mc.Name,
+		PlanRef:         promotionplanRefName,
+		Plan:            promotionplan.Name,
+		Stage:           stage.Name,
+		Version:         version,
+		Gate:            resolvedGate,
+		AppKey:          appKey,
+		DesiredVersions: copyStringMap(desiredVersions),
 	}
 	promotionrun.Status.Targets = append(promotionrun.Status.Targets, newTarget)
 	return len(promotionrun.Status.Targets) - 1, nil
@@ -191,16 +191,16 @@ func (r *PromotionRunReconciler) promotionTargetFromStatus(promotionrun *kaprov1
 			},
 		},
 		Spec: kaprov1alpha2.TargetSpec{
-			PromotionRunRef:  target.PromotionRunRef,
-			Target:           target.Target,
-			PlanRef: target.PlanRef,
-			Plan:    target.Plan,
-			Stage:            target.Stage,
-			Version:          target.Version,
-			Gate:             target.Gate,
-			AppKey:           target.AppKey,
-			DesiredVersions:  copyStringMap(target.DesiredVersions),
-			Rollback:         target.Rollback,
+			PromotionRunRef: target.PromotionRunRef,
+			Target:          target.Target,
+			PlanRef:         target.PlanRef,
+			Plan:            target.Plan,
+			Stage:           target.Stage,
+			Version:         target.Version,
+			Gate:            target.Gate,
+			AppKey:          target.AppKey,
+			DesiredVersions: copyStringMap(target.DesiredVersions),
+			Rollback:        target.Rollback,
 		},
 		Status: kaprov1alpha2.TargetStatus{TargetExecutionState: target},
 	}

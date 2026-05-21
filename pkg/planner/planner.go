@@ -90,7 +90,7 @@ func (s *CycleState) Read(key string) (any, bool) {
 type Request struct {
 	PromotionRun         *kaprov1alpha2.PromotionRun
 	PromotionPlanRefName string
-	Plan        *kaprov1alpha2.Plan
+	Plan                 *kaprov1alpha2.Plan
 	Stage                kaprov1alpha2.Stage
 }
 

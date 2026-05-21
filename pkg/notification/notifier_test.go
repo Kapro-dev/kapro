@@ -28,12 +28,12 @@ func TestChannel_MatchesEvent(t *testing.T) {
 
 func TestBuildCloudEvent_StableID(t *testing.T) {
 	event := Event{
-		Type:          EventTargetConverged,
-		Phase:         "Converged",
-		PromotionRun:  "rel-1",
-		Plan: "main",
-		Stage:         "canary",
-		Target:        "cluster-a",
+		Type:         EventTargetConverged,
+		Phase:        "Converged",
+		PromotionRun: "rel-1",
+		Plan:         "main",
+		Stage:        "canary",
+		Target:       "cluster-a",
 	}
 
 	first := BuildCloudEvent(event, 100, "2026-05-14T10:00:00Z")

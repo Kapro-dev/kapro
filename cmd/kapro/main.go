@@ -850,7 +850,7 @@ func runPromotionCreate(ctx context.Context, name, kaproRef, version string,
 	var planRefs []kaprov1alpha2.PlanRef
 	for i, p := range plans {
 		planRefs = append(planRefs, kaprov1alpha2.PlanRef{
-			Name:          fmt.Sprintf("p%d", i+1),
+			Name: fmt.Sprintf("p%d", i+1),
 			Plan: p,
 		})
 	}
@@ -1039,7 +1039,7 @@ func runPromotionRunCreate(ctx context.Context, name, version string, versionPai
 	refs := make([]kaprov1alpha2.PlanRef, 0, len(promotionplans))
 	for i, p := range promotionplans {
 		refs = append(refs, kaprov1alpha2.PlanRef{
-			Name:          fmt.Sprintf("p%d", i+1),
+			Name: fmt.Sprintf("p%d", i+1),
 			Plan: p,
 		})
 	}

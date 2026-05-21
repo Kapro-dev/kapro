@@ -801,15 +801,15 @@ func (r *PromotionTargetReconciler) notifyGateEvent(ctx context.Context, promoti
 		message = gateName
 	}
 	r.Notifier.Notify(ctx, notification.Event{
-		Type:          eventType,
-		Phase:         string(target.Phase),
-		Version:       target.Version,
-		Target:        target.Target,
-		PromotionRun:  promotionrun.Name,
-		Plan: target.PlanRef,
-		Stage:         target.Stage,
-		Message:       fmt.Sprintf("%s: %s", gateName, message),
-		IsFailure:     isFailure,
+		Type:         eventType,
+		Phase:        string(target.Phase),
+		Version:      target.Version,
+		Target:       target.Target,
+		PromotionRun: promotionrun.Name,
+		Plan:         target.PlanRef,
+		Stage:        target.Stage,
+		Message:      fmt.Sprintf("%s: %s", gateName, message),
+		IsFailure:    isFailure,
 	}, notificationPolicyFrom(target.Gate))
 }
 
@@ -1166,15 +1166,15 @@ func (r *PromotionTargetReconciler) notifyPersistedTransitions(ctx context.Conte
 	currPhase := current.Phase
 	if prevPhase != currPhase && currPhase != kaprov1alpha2.TargetPhaseWaitingApproval {
 		r.Notifier.Notify(ctx, notification.Event{
-			Type:          eventTypeForPhase(currPhase),
-			Phase:         string(currPhase),
-			Version:       current.Version,
-			Target:        current.Target,
-			PromotionRun:  promotionrun.Name,
-			Plan: current.PlanRef,
-			Stage:         current.Stage,
-			Message:       current.Message,
-			IsFailure:     currPhase == kaprov1alpha2.TargetPhaseFailed,
+			Type:         eventTypeForPhase(currPhase),
+			Phase:        string(currPhase),
+			Version:      current.Version,
+			Target:       current.Target,
+			PromotionRun: promotionrun.Name,
+			Plan:         current.PlanRef,
+			Stage:        current.Stage,
+			Message:      current.Message,
+			IsFailure:    currPhase == kaprov1alpha2.TargetPhaseFailed,
 		}, notificationPolicyFrom(current.Gate))
 	}
 
@@ -1194,16 +1194,16 @@ func (r *PromotionTargetReconciler) notifyApprovalRequest(ctx context.Context, p
 	}
 
 	r.Notifier.Notify(ctx, notification.Event{
-		Type:          notification.EventApprovalRequired,
-		Phase:         string(kaprov1alpha2.TargetPhaseWaitingApproval),
-		Version:       target.Version,
-		Target:        target.Target,
-		PromotionRun:  promotionrun.Name,
-		Plan: target.PlanRef,
-		Stage:         target.Stage,
-		Message:       "Approval required to proceed",
-		ApproveURL:    approveURL,
-		RejectURL:     rejectURL,
+		Type:         notification.EventApprovalRequired,
+		Phase:        string(kaprov1alpha2.TargetPhaseWaitingApproval),
+		Version:      target.Version,
+		Target:       target.Target,
+		PromotionRun: promotionrun.Name,
+		Plan:         target.PlanRef,
+		Stage:        target.Stage,
+		Message:      "Approval required to proceed",
+		ApproveURL:   approveURL,
+		RejectURL:    rejectURL,
 	}, notificationPolicyFrom(target.Gate))
 }
 

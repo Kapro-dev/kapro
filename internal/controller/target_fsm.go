@@ -142,7 +142,7 @@ func targetToGateContext(promotionrun *kaprov1alpha2.PromotionRun, target *kapro
 		Namespace:       promotionrun.Namespace,
 		PromotionRunRef: promotionrun.Name,
 		Target:          target.Target,
-		Plan:   target.Plan,
+		Plan:            target.Plan,
 		Stage:           target.Stage,
 		Version:         target.Version,
 		StartedAt:       target.StartedAt,
@@ -292,8 +292,8 @@ func (r *PromotionRunReconciler) triggerTargetRollback(ctx context.Context, prom
 	rollbackTarget := kaprov1alpha2.TargetExecutionState{
 		PromotionRunRef:  promotionrun.Name,
 		Target:           target.Target,
-		PlanRef: target.PlanRef,
-		Plan:    target.Plan,
+		PlanRef:          target.PlanRef,
+		Plan:             target.Plan,
 		Stage:            target.Stage,
 		Version:          target.PreviousVersion,
 		Gate:             target.Gate,
@@ -316,15 +316,15 @@ func (r *PromotionRunReconciler) triggerTargetRollback(ctx context.Context, prom
 		"Auto-rollback to %s triggered for %s", target.PreviousVersion, target.Target)
 	if r.Notifier != nil {
 		r.Notifier.Notify(ctx, notification.Event{
-			Type:          notification.EventRollbackStarted,
-			Phase:         string(kaprov1alpha2.PromotionRunPhaseFailed),
-			Version:       rollbackTarget.Version,
-			Target:        rollbackTarget.Target,
-			PromotionRun:  promotionrun.Name,
-			Plan: rollbackTarget.PlanRef,
-			Stage:         rollbackTarget.Stage,
-			Message:       fmt.Sprintf("rollback to %s triggered for %s", rollbackTarget.Version, rollbackTarget.Target),
-			IsFailure:     true,
+			Type:         notification.EventRollbackStarted,
+			Phase:        string(kaprov1alpha2.PromotionRunPhaseFailed),
+			Version:      rollbackTarget.Version,
+			Target:       rollbackTarget.Target,
+			PromotionRun: promotionrun.Name,
+			Plan:         rollbackTarget.PlanRef,
+			Stage:        rollbackTarget.Stage,
+			Message:      fmt.Sprintf("rollback to %s triggered for %s", rollbackTarget.Version, rollbackTarget.Target),
+			IsFailure:    true,
 		}, notificationPolicyFrom(target.Gate))
 	}
 }

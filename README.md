@@ -11,13 +11,13 @@ Flux, Argo CD, OCI pull agents, and other delivery systems keep owning the local
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <a href="https://goreportcard.com/report/kapro.io/kapro"><img src="https://goreportcard.com/badge/kapro.io/kapro" alt="Go Report Card"></a>
-  <a href="api/v1alpha1"><img src="https://img.shields.io/badge/API-kapro.io%2Fv1alpha1-purple" alt="API Group"></a>
+  <a href="api/v1alpha2"><img src="https://img.shields.io/badge/API-kapro.io%2Fv1alpha2-purple" alt="API Group"></a>
 </p>
 
 ---
 
 Kapro is **pre-stable public release software**, not GA. The current public
-release line is `v0.1.0`; all Kubernetes APIs are still `kapro.io/v1alpha1`.
+release line is `v0.1.0`; all Kubernetes APIs are now `kapro.io/v1alpha2`.
 
 ## What Kapro Does
 

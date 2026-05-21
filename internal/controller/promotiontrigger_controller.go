@@ -482,7 +482,7 @@ func triggerTemplateHash(trigger *kaprov1alpha2.Trigger) string {
 	t := trigger.Spec.PromotionTemplate
 	buf, _ := json.Marshal(struct {
 		FleetRef       string                           `json:"fleetRef"`
-		PromotionPlans []kaprov1alpha2.PlanRef `json:"promotionPlans"`
+		PromotionPlans []kaprov1alpha2.PlanRef          `json:"promotionPlans"`
 		Suspended      bool                             `json:"suspended"`
 		Scope          *kaprov1alpha2.PromotionRunScope `json:"scope"`
 		Timeout        string                           `json:"timeout"`

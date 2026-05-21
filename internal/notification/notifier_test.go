@@ -144,13 +144,13 @@ func TestDispatcher_Notify_Webhook_SendsCloudEvents(t *testing.T) {
 
 	d := &notification.Dispatcher{HTTPClient: srv.Client()}
 	d.Notify(context.Background(), notification.Event{
-		Type:          pkgnotification.EventTargetApplying,
-		Phase:         "Applying",
-		Version:       "v1.0.0",
-		Target:        "prod",
-		PromotionRun:  "rel-2",
-		Plan: "main",
-		Stage:         "canary",
+		Type:         pkgnotification.EventTargetApplying,
+		Phase:        "Applying",
+		Version:      "v1.0.0",
+		Target:       "prod",
+		PromotionRun: "rel-2",
+		Plan:         "main",
+		Stage:        "canary",
 	}, webhookCloudEventsPolicy(srv.URL))
 
 	if len(received) == 0 {

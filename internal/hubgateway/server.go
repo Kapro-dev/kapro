@@ -240,25 +240,25 @@ func (s *Server) createPromotion(w http.ResponseWriter, r *http.Request) {
 }
 
 type CreatePromotionRequest struct {
-	Name           string                           `json:"name"`
-	FleetRef       string                           `json:"fleetRef"`
-	Version        string                           `json:"version,omitempty"`
-	Versions       map[string]string                `json:"versions,omitempty"`
+	Name           string                  `json:"name"`
+	FleetRef       string                  `json:"fleetRef"`
+	Version        string                  `json:"version,omitempty"`
+	Versions       map[string]string       `json:"versions,omitempty"`
 	PromotionPlans []kaprov1alpha2.PlanRef `json:"promotionPlans,omitempty"`
-	Targets        []string                         `json:"targets,omitempty"`
-	Timeout        string                           `json:"timeout,omitempty"`
-	Suspended      bool                             `json:"suspended,omitempty"`
-	Labels         map[string]string                `json:"labels,omitempty"`
+	Targets        []string                `json:"targets,omitempty"`
+	Timeout        string                  `json:"timeout,omitempty"`
+	Suspended      bool                    `json:"suspended,omitempty"`
+	Labels         map[string]string       `json:"labels,omitempty"`
 }
 
 type GraphResponse struct {
-	Kapros           []kaprov1alpha2.Fleet           `json:"kapros"`
-	FleetClusters    []kaprov1alpha2.Cluster    `json:"fleetClusters"`
-	Promotions       []kaprov1alpha2.Promotion       `json:"promotions"`
-	PromotionRuns    []kaprov1alpha2.PromotionRun    `json:"promotionruns"`
-	PromotionTargets []kaprov1alpha2.Target `json:"promotionTargets"`
-	BackendProfiles  []kaprov1alpha2.Backend  `json:"backendProfiles"`
-	Page             GraphPage                       `json:"page"`
+	Kapros           []kaprov1alpha2.Fleet        `json:"kapros"`
+	FleetClusters    []kaprov1alpha2.Cluster      `json:"fleetClusters"`
+	Promotions       []kaprov1alpha2.Promotion    `json:"promotions"`
+	PromotionRuns    []kaprov1alpha2.PromotionRun `json:"promotionruns"`
+	PromotionTargets []kaprov1alpha2.Target       `json:"promotionTargets"`
+	BackendProfiles  []kaprov1alpha2.Backend      `json:"backendProfiles"`
+	Page             GraphPage                    `json:"page"`
 }
 
 type GraphPage struct {

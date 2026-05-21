@@ -100,7 +100,7 @@ func TestRunDiag_HappyPathRendersExpectedSections(t *testing.T) {
 			PromotionRunRef: "checkout-v1.2.3-001",
 			Target:          "de-prod",
 			Stage:           "canary",
-			Plan:   "checkout-progressive",
+			Plan:            "checkout-progressive",
 			Version:         "v1.2.3",
 		},
 		Status: kaprov1alpha2.TargetStatus{
