@@ -36,7 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/webhook/token"
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
@@ -57,27 +57,27 @@ const missingMCFailThreshold = 10
 // here so notification consumers see meaningful event types.
 //
 // This is a total switch with no fallback to ensure all event types are explicit.
-func eventTypeForPhase(phase kaprov1alpha1.TargetPhase) string {
+func eventTypeForPhase(phase kaprov1alpha2.TargetPhase) string {
 	switch phase {
-	case kaprov1alpha1.TargetPhasePending:
+	case kaprov1alpha2.TargetPhasePending:
 		return notification.EventTargetPending
-	case kaprov1alpha1.TargetPhaseVerification:
+	case kaprov1alpha2.TargetPhaseVerification:
 		return notification.EventTargetVerification
-	case kaprov1alpha1.TargetPhaseHealthCheck:
+	case kaprov1alpha2.TargetPhaseHealthCheck:
 		return notification.EventTargetHealthCheck
-	case kaprov1alpha1.TargetPhaseSoaking:
+	case kaprov1alpha2.TargetPhaseSoaking:
 		return notification.EventTargetSoaking
-	case kaprov1alpha1.TargetPhaseMetricsCheck:
+	case kaprov1alpha2.TargetPhaseMetricsCheck:
 		return notification.EventTargetMetricsCheck
-	case kaprov1alpha1.TargetPhaseWaitingApproval:
+	case kaprov1alpha2.TargetPhaseWaitingApproval:
 		return notification.EventApprovalRequired
-	case kaprov1alpha1.TargetPhaseApplying:
+	case kaprov1alpha2.TargetPhaseApplying:
 		return notification.EventTargetApplying
-	case kaprov1alpha1.TargetPhaseConverged:
+	case kaprov1alpha2.TargetPhaseConverged:
 		return notification.EventTargetConverged
-	case kaprov1alpha1.TargetPhaseFailed:
+	case kaprov1alpha2.TargetPhaseFailed:
 		return notification.EventTargetFailed
-	case kaprov1alpha1.TargetPhaseSkipped:
+	case kaprov1alpha2.TargetPhaseSkipped:
 		return notification.EventTargetSkipped
 	case "":
 		return "" // initial empty phase, no notification
@@ -99,7 +99,7 @@ func mergeNotificationPolicies(policies ...notification.NotificationPolicy) noti
 
 // notificationPolicyFrom converts a *GatePolicySpec into the value type expected
 // by the notification package.
-func notificationPolicyFrom(policy *kaprov1alpha1.GatePolicySpec) notification.NotificationPolicy {
+func notificationPolicyFrom(policy *kaprov1alpha2.GatePolicySpec) notification.NotificationPolicy {
 	if policy == nil || len(policy.Notifications) == 0 {
 		return notification.EmptyPolicy
 	}
@@ -136,13 +136,13 @@ func notificationPolicyFrom(policy *kaprov1alpha1.GatePolicySpec) notification.N
 // targetToGateContext builds the gate evaluation context from a target entry.
 // rt is the PromotionTarget owner — its UID and Name are carried into the gate context
 // so that gates that create Kubernetes resources (e.g. Job gate) can set OwnerReferences.
-func targetToGateContext(promotionrun *kaprov1alpha1.PromotionRun, target *kaprov1alpha1.TargetStatus, rt *kaprov1alpha1.PromotionTarget) *gate.Context {
+func targetToGateContext(promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState, rt *kaprov1alpha2.Target) *gate.Context {
 	ctx := &gate.Context{
-		Name:            syncName(promotionrun.Name, target.PromotionPlanRef, target.Stage, target.Target),
+		Name:            syncName(promotionrun.Name, target.PlanRef, target.Stage, target.Target),
 		Namespace:       promotionrun.Namespace,
 		PromotionRunRef: promotionrun.Name,
 		Target:          target.Target,
-		PromotionPlan:   target.PromotionPlan,
+		Plan:            target.Plan,
 		Stage:           target.Stage,
 		Version:         target.Version,
 		StartedAt:       target.StartedAt,
@@ -155,7 +155,7 @@ func targetToGateContext(promotionrun *kaprov1alpha1.PromotionRun, target *kapro
 }
 
 // targetAppKey returns the FleetCluster.status.currentVersions key for this target.
-func targetAppKey(target *kaprov1alpha1.TargetStatus) string {
+func targetAppKey(target *kaprov1alpha2.TargetExecutionState) string {
 	if target.AppKey != "" {
 		return target.AppKey
 	}
@@ -168,7 +168,7 @@ func targetAppKey(target *kaprov1alpha1.TargetStatus) string {
 	return target.PromotionRunRef
 }
 
-func targetDesiredVersions(target *kaprov1alpha1.TargetStatus) map[string]string {
+func targetDesiredVersions(target *kaprov1alpha2.TargetExecutionState) map[string]string {
 	if len(target.DesiredVersions) > 0 {
 		return copyStringMap(target.DesiredVersions)
 	}
@@ -179,7 +179,7 @@ func targetDesiredVersions(target *kaprov1alpha1.TargetStatus) map[string]string
 }
 
 // resolveSyncArgs builds the final args map for a GateTemplate.
-func resolveSyncArgs(tmpl *kaprov1alpha1.GateTemplateSpec, ctx *gate.Context) map[string]string {
+func resolveSyncArgs(tmpl *kaprov1alpha2.GateTemplateSpec, ctx *gate.Context) map[string]string {
 	args := make(map[string]string)
 	for _, a := range tmpl.Args {
 		if a.Value != "" {
@@ -190,16 +190,16 @@ func resolveSyncArgs(tmpl *kaprov1alpha1.GateTemplateSpec, ctx *gate.Context) ma
 		args["version"] = ctx.Version
 		args["target"] = ctx.Target
 		args["promotionrun"] = ctx.PromotionRunRef
-		args["promotionplan"] = ctx.PromotionPlan
+		args["promotionplan"] = ctx.Plan
 		args["stage"] = ctx.Stage
 	}
 	return args
 }
 
 // buildApprovalURLs returns signed approve and reject URLs for the given target.
-func buildApprovalURLs(externalURL string, secret []byte, promotionrun *kaprov1alpha1.PromotionRun, target *kaprov1alpha1.TargetStatus) (approveURL, rejectURL string, err error) {
+func buildApprovalURLs(externalURL string, secret []byte, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState) (approveURL, rejectURL string, err error) {
 	exp := time.Now().Add(token.DefaultTTL).Unix()
-	targetKey := syncName(promotionrun.Name, target.PromotionPlanRef, target.Stage, target.Target)
+	targetKey := syncName(promotionrun.Name, target.PlanRef, target.Stage, target.Target)
 
 	baseClaims := token.Claims{
 		SyncName:     targetKey,
@@ -232,7 +232,7 @@ func buildApprovalURLs(externalURL string, secret []byte, promotionrun *kaprov1a
 	return approveURL, rejectURL, nil
 }
 
-func approvalIdentityHint(target *kaprov1alpha1.TargetStatus) string {
+func approvalIdentityHint(target *kaprov1alpha2.TargetExecutionState) string {
 	if target == nil || target.Gate == nil || target.Gate.Approval == nil {
 		return ""
 	}
@@ -247,12 +247,12 @@ func approvalIdentityHint(target *kaprov1alpha1.TargetStatus) string {
 // triggerTargetRollback calls Actuator.Rollback() immediately, then appends a new
 // rollback TargetStatus entry targeting the previous version.
 // Called by PromotionRunReconciler when it detects a failed stage with onFailure=rollback.
-func (r *PromotionRunReconciler) triggerTargetRollback(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, i int) {
+func (r *PromotionRunReconciler) triggerTargetRollback(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, i int) {
 	log := log.FromContext(ctx)
 	target := &promotionrun.Status.Targets[i]
 
 	// 1. Call actuator.Rollback() immediately.
-	var mc kaprov1alpha1.FleetCluster
+	var mc kaprov1alpha2.Cluster
 	if err := r.Get(ctx, client.ObjectKey{Name: target.Target}, &mc); err == nil {
 		if r.ActuatorRegistry != nil {
 			if act, actErr := r.ActuatorRegistry.Resolve(mc.Spec.Delivery.RegistryKey()); actErr == nil {
@@ -283,24 +283,24 @@ func (r *PromotionRunReconciler) triggerTargetRollback(ctx context.Context, prom
 	// 2. Append rollback entry (idempotent).
 	for _, t := range promotionrun.Status.Targets {
 		if t.Rollback && t.Target == target.Target &&
-			t.PromotionPlanRef == target.PromotionPlanRef && t.Stage == target.Stage {
+			t.PlanRef == target.PlanRef && t.Stage == target.Stage {
 			log.Info("rollback target entry already exists", "target", target.Target)
 			return
 		}
 	}
 
-	rollbackTarget := kaprov1alpha1.TargetStatus{
+	rollbackTarget := kaprov1alpha2.TargetExecutionState{
 		PromotionRunRef:  promotionrun.Name,
 		Target:           target.Target,
-		PromotionPlanRef: target.PromotionPlanRef,
-		PromotionPlan:    target.PromotionPlan,
+		PlanRef:          target.PlanRef,
+		Plan:             target.Plan,
 		Stage:            target.Stage,
 		Version:          target.PreviousVersion,
 		Gate:             target.Gate,
 		AppKey:           target.AppKey,
 		DesiredVersions:  copyStringMap(target.PreviousVersions),
 		PreviousVersions: targetDesiredVersions(target),
-		Phase:            kaprov1alpha1.TargetPhasePending,
+		Phase:            kaprov1alpha2.TargetPhasePending,
 		Rollback:         true,
 	}
 	if len(rollbackTarget.DesiredVersions) > 0 {
@@ -316,15 +316,15 @@ func (r *PromotionRunReconciler) triggerTargetRollback(ctx context.Context, prom
 		"Auto-rollback to %s triggered for %s", target.PreviousVersion, target.Target)
 	if r.Notifier != nil {
 		r.Notifier.Notify(ctx, notification.Event{
-			Type:          notification.EventRollbackStarted,
-			Phase:         string(kaprov1alpha1.PromotionRunPhaseFailed),
-			Version:       rollbackTarget.Version,
-			Target:        rollbackTarget.Target,
-			PromotionRun:  promotionrun.Name,
-			PromotionPlan: rollbackTarget.PromotionPlanRef,
-			Stage:         rollbackTarget.Stage,
-			Message:       fmt.Sprintf("rollback to %s triggered for %s", rollbackTarget.Version, rollbackTarget.Target),
-			IsFailure:     true,
+			Type:         notification.EventRollbackStarted,
+			Phase:        string(kaprov1alpha2.PromotionRunPhaseFailed),
+			Version:      rollbackTarget.Version,
+			Target:       rollbackTarget.Target,
+			PromotionRun: promotionrun.Name,
+			Plan:         rollbackTarget.PlanRef,
+			Stage:        rollbackTarget.Stage,
+			Message:      fmt.Sprintf("rollback to %s triggered for %s", rollbackTarget.Version, rollbackTarget.Target),
+			IsFailure:    true,
 		}, notificationPolicyFrom(target.Gate))
 	}
 }
@@ -333,7 +333,7 @@ func (r *PromotionRunReconciler) triggerTargetRollback(ctx context.Context, prom
 
 // approvalForPromotionRun maps an Approval to the PromotionRun it should unblock.
 func approvalForPromotionRun(_ context.Context, obj client.Object) []ctrl.Request {
-	approval, ok := obj.(*kaprov1alpha1.Approval)
+	approval, ok := obj.(*kaprov1alpha2.Approval)
 	if !ok {
 		return nil
 	}

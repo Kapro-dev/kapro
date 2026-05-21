@@ -14,8 +14,8 @@ func newInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init [directory]",
 		Short: "Scaffold a greenfield Kapro promotion repo",
-		Long: `Scaffolds a GitOps-ready promotion repository with BackendProfile,
-PromotionPlan, a Kapro fleet object with inline source units, and sample
+		Long: `Scaffolds a GitOps-ready promotion repository with Backend,
+Plan, a Fleet object with inline source units, and sample
 Promotion intent manifests.
 
 This bootstraps the promotion layer. Argo, Flux, Helm, and Kubernetes still own
@@ -44,7 +44,7 @@ func newConnectCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "connect",
 		Short: "Scaffold brownfield connect manifests",
-		Long: `Scaffolds observe-first BackendProfile manifests for existing Argo CD
+		Long: `Scaffolds observe-first Backend manifests for existing Argo CD
 or Flux installations. Observe mode discovers existing backend objects without
 taking over writes.`,
 	}
@@ -69,7 +69,7 @@ func newConnectBackendCmd(backend string) *cobra.Command {
 			return runConnectScaffold(opts)
 		},
 	}
-	cmd.Flags().StringVar(&opts.Name, "name", backend, "BackendProfile name")
+	cmd.Flags().StringVar(&opts.Name, "name", backend, "Backend name")
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", defaultBackendNamespace(backend), "Backend namespace")
 	cmd.Flags().StringVar(&opts.Selector, "selector", "kapro.io/import=true", "Label selector for imported backend objects")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
@@ -175,17 +175,17 @@ func writeScaffoldFiles(root string, files map[string]string, force bool) error 
 
 func greenfieldFiles(opts scaffoldOptions) map[string]string {
 	files := map[string]string{
-		filepath.Join("backends", opts.Backend+".yaml"):    renderGreenfieldBackend(opts),
-		filepath.Join("promotionplans", opts.Name+".yaml"): renderPromotionPlan(opts),
-		filepath.Join("README.md"):                         renderGreenfieldReadme(opts),
-		filepath.Join(".gitignore"):                        ".DS_Store\n",
+		filepath.Join("backends", opts.Backend+".yaml"): renderGreenfieldBackend(opts),
+		filepath.Join("plans", opts.Name+".yaml"):       renderPlan(opts),
+		filepath.Join("README.md"):                      renderGreenfieldReadme(opts),
+		filepath.Join(".gitignore"):                     ".DS_Store\n",
 	}
 	clusters := parseClusterScaffold(opts.Clusters)
 	for _, cluster := range clusters {
 		files[filepath.Join("clusters", cluster.Name+".yaml")] = renderCluster(opts, cluster.Name, cluster.Tier)
 	}
 	if len(clusters) > 0 {
-		files[filepath.Join("kapro", opts.Name+".yaml")] = renderKapro(opts, clusters)
+		files[filepath.Join("fleets", opts.Name+".yaml")] = renderKapro(opts, clusters)
 		files[filepath.Join("promotions", opts.Name+"-promotion.yaml")] = renderPromotion(opts)
 	} else {
 		files[filepath.Join("sources", opts.Name+".yaml")] = renderPromotionSource(opts)
@@ -251,8 +251,8 @@ func parseSelector(raw string) (map[string]string, error) {
 
 func renderGreenfieldBackend(opts scaffoldOptions) string {
 	if opts.Backend == "oci" {
-		return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
-kind: BackendProfile
+		return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
+kind: Backend
 metadata:
   name: oci
 spec:
@@ -264,8 +264,8 @@ spec:
     auth: anonymous
 `, strings.TrimSuffix(strings.TrimPrefix(opts.Registry, "oci://"), "/"))
 	}
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
-kind: BackendProfile
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
+kind: Backend
 metadata:
   name: %s
 spec:
@@ -277,8 +277,8 @@ spec:
 }
 
 func renderConnectBackend(opts connectOptions, labels map[string]string) string {
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
-kind: BackendProfile
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
+kind: Backend
 metadata:
   name: %s
 spec:
@@ -296,8 +296,8 @@ spec:
 }
 
 func renderCluster(opts scaffoldOptions, suffix, tier string) string {
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
-kind: FleetCluster
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
+kind: Cluster
 metadata:
   name: %s-%s
   labels:
@@ -326,8 +326,8 @@ func renderDeliveryParameters(opts scaffoldOptions, suffix string) string {
 }
 
 func renderPromotionSource(opts scaffoldOptions) string {
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
-kind: PromotionSource
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
+kind: Source
 metadata:
   name: %s
 spec:
@@ -344,9 +344,9 @@ spec:
 `, opts.Name, opts.Backend, opts.Registry, opts.Name, opts.Name, opts.Name)
 }
 
-func renderPromotionPlan(opts scaffoldOptions) string {
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
-kind: PromotionPlan
+func renderPlan(opts scaffoldOptions) string {
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
+kind: Plan
 metadata:
   name: %s
 spec:
@@ -376,8 +376,8 @@ func renderKapro(opts scaffoldOptions, clusters []scaffoldCluster) string {
         kapro.io/tier: %s
 `, opts.Name, cluster.Name, cluster.Tier)
 	}
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
-kind: Kapro
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
+kind: Fleet
 metadata:
   name: %s
 spec:
@@ -401,7 +401,7 @@ spec:
       namespace: %s
   clusters:
 %s
-  promotionPlan:
+  plan:
     stages:
       - name: canary
         selector:
@@ -415,12 +415,12 @@ spec:
 }
 
 func renderPromotion(opts scaffoldOptions) string {
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
 kind: Promotion
 metadata:
   name: %s-0-1-0
 spec:
-  kaproRef: %s
+  fleetRef: %s
   version: 0.1.0
 `, opts.Name, opts.Name)
 }
@@ -481,10 +481,10 @@ Apply order:
 
 1. backends/
 2. sources/
-3. promotionplans/
+3. plans/
 %s
 Clusters are intentionally not generated yet. Add clusters later, then add
-clusters/, kapro/, and promotions/ when promotion targets exist.
+clusters/, fleets/, and promotions/ when promotion targets exist.
 
 Kapro coordinates promotion. The %s backend owns local sync and rollout mechanics.
 `, opts.Name, opts.Backend, backendStep, opts.Backend)
@@ -497,8 +497,8 @@ Apply order:
 
 1. backends/
 2. clusters/
-3. promotionplans/
-4. kapro/
+3. plans/
+4. fleets/
 5. promotions/
 
 Kapro coordinates promotion. The %s backend owns local sync and rollout mechanics.
@@ -509,7 +509,7 @@ func renderConnectReadme(opts connectOptions) string {
 	return fmt.Sprintf(`# Kapro %s Brownfield Connection
 
 This scaffold starts in observe mode. Kapro discovers existing %s objects and
-reports them through BackendProfile status without taking over writes.
+reports them through Backend status without taking over writes.
 
 Apply:
 
@@ -518,7 +518,7 @@ kubectl apply -f backends/%s-observe.yaml
 `+"```"+`
 
 When the observed graph is correct, switch managementPolicy from Observe to
-Adopt for the selected backend profile. Kapro still references backend-owned
+Adopt for the selected Backend. Kapro still references backend-owned
 Secrets and configuration; it does not copy Argo CD or Flux credentials into
 Kapro objects.
 `, opts.Backend, opts.Backend, opts.Backend)

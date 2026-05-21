@@ -5,9 +5,9 @@
 //
 //	GET  /healthz                       — liveness probe
 //	GET  /api/v1/graph                  — paginated graph read of fleet resources
-//	                                      (kapros, fleetclusters, promotions,
-//	                                      promotionruns, promotiontargets,
-//	                                      backendprofiles) with
+//	                                      (fleets, clusters, promotions,
+//	                                      promotionruns, targets,
+//	                                      backends) with
 //	                                      label selector + phase filter + bounded
 //	                                      limit + truncation flag.
 //	POST /api/v1/promotions             — create a Promotion from a JSON body.

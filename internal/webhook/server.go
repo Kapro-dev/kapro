@@ -27,7 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/webhook/token"
 )
 
@@ -103,7 +103,7 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "token bound to different promotionrun instance", http.StatusConflict)
 		return
 	}
-	var target kaprov1alpha1.PromotionTarget
+	var target kaprov1alpha2.Target
 	if err := s.Client.Get(ctx, client.ObjectKey{Name: targetKey}, &target); err != nil {
 		http.Error(w, "target entry not found", http.StatusNotFound)
 		return
@@ -175,7 +175,7 @@ func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "token bound to different promotionrun instance", http.StatusConflict)
 		return
 	}
-	var target kaprov1alpha1.PromotionTarget
+	var target kaprov1alpha2.Target
 	if err := s.Client.Get(ctx, client.ObjectKey{Name: targetKey}, &target); err != nil {
 		http.Error(w, "target entry not found", http.StatusNotFound)
 		return
@@ -246,7 +246,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		ns = "kapro-system"
 	}
 
-	var target kaprov1alpha1.PromotionTarget
+	var target kaprov1alpha2.Target
 	if err := s.Client.Get(r.Context(), client.ObjectKey{Name: targetKey}, &target); err != nil {
 		http.Error(w, "target not found", http.StatusNotFound)
 		return
@@ -297,26 +297,26 @@ func (s *Server) verifyToken(r *http.Request, expectedAction string) (*token.Cla
 	return claims, nil
 }
 
-func (s *Server) getPromotionRun(ctx context.Context, name, namespace string) (*kaprov1alpha1.PromotionRun, error) {
-	var promotionrun kaprov1alpha1.PromotionRun
+func (s *Server) getPromotionRun(ctx context.Context, name, namespace string) (*kaprov1alpha2.PromotionRun, error) {
+	var promotionrun kaprov1alpha2.PromotionRun
 	if err := s.Client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, &promotionrun); err != nil {
 		return nil, err
 	}
 	return &promotionrun, nil
 }
 
-func (s *Server) buildApproval(claims *token.Claims) *kaprov1alpha1.Approval {
+func (s *Server) buildApproval(claims *token.Claims) *kaprov1alpha2.Approval {
 	approvedBy := claims.ApprovedBy
 	if approvedBy == "" {
 		approvedBy = "webhook"
 	}
-	return &kaprov1alpha1.Approval{
+	return &kaprov1alpha2.Approval{
 		ObjectMeta: metav1.ObjectMeta{
 			// Name is deterministic: one cluster-scoped Approval per
 			// (promotionrun, ref) pair, where ref is the rollout entry sync name.
 			Name: fmt.Sprintf("%s-%s", claims.PromotionRun, claims.SyncName),
 		},
-		Spec: kaprov1alpha1.ApprovalSpec{
+		Spec: kaprov1alpha2.ApprovalSpec{
 			PromotionRun: claims.PromotionRun,
 			Target:       claims.Target,
 			Ref:          claims.SyncName,

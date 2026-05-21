@@ -5,9 +5,9 @@
 // with server-side apply — no Helm binary, no kubectl, no gcloud. Idempotent:
 // safe to call repeatedly.
 //
-// This is NOT the FleetCluster CSR registration path. CSR-based cluster
+// This is NOT the Cluster CSR registration path. CSR-based cluster
 // registration lives in:
-//   - internal/controller/fleetcluster_bootstrap_controller.go (hub approver)
+//   - internal/controller/cluster_bootstrap_controller.go (hub approver)
 //   - cmd/kapro-cluster-controller/bootstrap.go (spoke CSR client)
 //
 // internal/bootstrap is the *pre-registration* layer: it gets the right CRDs

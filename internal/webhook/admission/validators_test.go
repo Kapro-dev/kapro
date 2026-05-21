@@ -5,15 +5,15 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/webhook/admission"
 )
 
 // deps converts a list of stage names into StageDependency values for test brevity.
-func deps(names ...string) []kaprov1alpha1.StageDependency {
-	out := make([]kaprov1alpha1.StageDependency, len(names))
+func deps(names ...string) []kaprov1alpha2.StageDependency {
+	out := make([]kaprov1alpha2.StageDependency, len(names))
 	for i, n := range names {
-		out[i] = kaprov1alpha1.StageDependency{Stage: n}
+		out[i] = kaprov1alpha2.StageDependency{Stage: n}
 	}
 	return out
 }
@@ -21,9 +21,9 @@ func deps(names ...string) []kaprov1alpha1.StageDependency {
 // ---- FleetClusterValidator ---------------------------------------------------
 
 func TestValidateFleetCluster_MissingMode(t *testing.T) {
-	mc := &kaprov1alpha1.FleetCluster{
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{Mode: "", BackendRef: "flux"},
+	mc := &kaprov1alpha2.Cluster{
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{Mode: "", BackendRef: "flux"},
 		},
 	}
 	if err := mcValidate(mc); err == nil {
@@ -32,9 +32,9 @@ func TestValidateFleetCluster_MissingMode(t *testing.T) {
 }
 
 func TestValidateFleetCluster_MissingBackend(t *testing.T) {
-	mc := &kaprov1alpha1.FleetCluster{
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: ""},
+	mc := &kaprov1alpha2.Cluster{
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{Mode: "pull", BackendRef: ""},
 		},
 	}
 	if err := mcValidate(mc); err == nil {
@@ -43,9 +43,9 @@ func TestValidateFleetCluster_MissingBackend(t *testing.T) {
 }
 
 func TestValidateFleetCluster_FluxMissingSubSpec(t *testing.T) {
-	mc := &kaprov1alpha1.FleetCluster{
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"},
+	mc := &kaprov1alpha2.Cluster{
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{Mode: "pull", BackendRef: "flux"},
 		},
 	}
 	if err := mcValidate(mc); err == nil {
@@ -54,9 +54,9 @@ func TestValidateFleetCluster_FluxMissingSubSpec(t *testing.T) {
 }
 
 func TestValidateFleetCluster_FluxValid(t *testing.T) {
-	mc := &kaprov1alpha1.FleetCluster{
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{
+	mc := &kaprov1alpha2.Cluster{
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{
 				Mode: "pull", BackendRef: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "cluster-a"},
 			},
@@ -68,9 +68,9 @@ func TestValidateFleetCluster_FluxValid(t *testing.T) {
 }
 
 func TestValidateFleetCluster_CustomBackendAllowed(t *testing.T) {
-	mc := &kaprov1alpha1.FleetCluster{
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "kserve"},
+	mc := &kaprov1alpha2.Cluster{
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{Mode: "pull", BackendRef: "kserve"},
 		},
 	}
 	if err := mcValidate(mc); err != nil {
@@ -81,11 +81,11 @@ func TestValidateFleetCluster_CustomBackendAllowed(t *testing.T) {
 // ---- PromotionRunValidator -------------------------------------------------------
 
 func TestValidatePromotionRun_MissingVersion(t *testing.T) {
-	r := &kaprov1alpha1.PromotionRun{
-		Spec: kaprov1alpha1.PromotionRunSpec{
+	r := &kaprov1alpha2.PromotionRun{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
-				{Name: "initial", PromotionPlan: "pipe-1"},
+			Plans: []kaprov1alpha2.PlanRef{
+				{Name: "initial", Plan: "pipe-1"},
 			},
 		},
 	}
@@ -95,14 +95,14 @@ func TestValidatePromotionRun_MissingVersion(t *testing.T) {
 }
 
 func TestValidatePromotionRun_ValidVersionsMap(t *testing.T) {
-	r := &kaprov1alpha1.PromotionRun{
-		Spec: kaprov1alpha1.PromotionRunSpec{
+	r := &kaprov1alpha2.PromotionRun{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Versions: map[string]string{
 				"api":    "main@sha256:abc",
 				"worker": "main@sha256:def",
 			},
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
-				{Name: "initial", PromotionPlan: "pipe-1"},
+			Plans: []kaprov1alpha2.PlanRef{
+				{Name: "initial", Plan: "pipe-1"},
 			},
 		},
 	}
@@ -111,11 +111,11 @@ func TestValidatePromotionRun_ValidVersionsMap(t *testing.T) {
 	}
 }
 
-func TestValidatePromotionRun_MissingPromotionPlans(t *testing.T) {
-	r := &kaprov1alpha1.PromotionRun{
-		Spec: kaprov1alpha1.PromotionRunSpec{
-			Version:        "art-v1",
-			PromotionPlans: nil,
+func TestValidatePromotionRun_MissingPlans(t *testing.T) {
+	r := &kaprov1alpha2.PromotionRun{
+		Spec: kaprov1alpha2.PromotionRunSpec{
+			Version: "art-v1",
+			Plans:   nil,
 		},
 	}
 	if err := promotionrunValidate(r); err == nil {
@@ -124,11 +124,11 @@ func TestValidatePromotionRun_MissingPromotionPlans(t *testing.T) {
 }
 
 func TestValidatePromotionRun_PromotionPlanRefMissingName(t *testing.T) {
-	r := &kaprov1alpha1.PromotionRun{
-		Spec: kaprov1alpha1.PromotionRunSpec{
+	r := &kaprov1alpha2.PromotionRun{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
-				{Name: "", PromotionPlan: "standard-rollout"},
+			Plans: []kaprov1alpha2.PlanRef{
+				{Name: "", Plan: "standard-rollout"},
 			},
 		},
 	}
@@ -138,11 +138,11 @@ func TestValidatePromotionRun_PromotionPlanRefMissingName(t *testing.T) {
 }
 
 func TestValidatePromotionRun_PromotionPlanRefMissingPromotionPlan(t *testing.T) {
-	r := &kaprov1alpha1.PromotionRun{
-		Spec: kaprov1alpha1.PromotionRunSpec{
+	r := &kaprov1alpha2.PromotionRun{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
-				{Name: "initial", PromotionPlan: ""},
+			Plans: []kaprov1alpha2.PlanRef{
+				{Name: "initial", Plan: ""},
 			},
 		},
 	}
@@ -152,11 +152,11 @@ func TestValidatePromotionRun_PromotionPlanRefMissingPromotionPlan(t *testing.T)
 }
 
 func TestValidatePromotionRun_Valid(t *testing.T) {
-	r := &kaprov1alpha1.PromotionRun{
-		Spec: kaprov1alpha1.PromotionRunSpec{
+	r := &kaprov1alpha2.PromotionRun{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
-				{Name: "initial", PromotionPlan: "standard-rollout"},
+			Plans: []kaprov1alpha2.PlanRef{
+				{Name: "initial", Plan: "standard-rollout"},
 			},
 		},
 	}
@@ -166,12 +166,12 @@ func TestValidatePromotionRun_Valid(t *testing.T) {
 }
 
 func TestValidatePromotionRun_ValidMultiPromotionPlanDAG(t *testing.T) {
-	r := &kaprov1alpha1.PromotionRun{
-		Spec: kaprov1alpha1.PromotionRunSpec{
+	r := &kaprov1alpha2.PromotionRun{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
-				{Name: "canary", PromotionPlan: "canary-rollout"},
-				{Name: "stable", PromotionPlan: "stable-rollout", DependsOn: []string{"canary"}},
+			Plans: []kaprov1alpha2.PlanRef{
+				{Name: "canary", Plan: "canary-rollout"},
+				{Name: "stable", Plan: "stable-rollout", DependsOn: []string{"canary"}},
 			},
 		},
 	}
@@ -181,12 +181,12 @@ func TestValidatePromotionRun_ValidMultiPromotionPlanDAG(t *testing.T) {
 }
 
 func TestValidatePromotionRun_DuplicatePromotionPlanName(t *testing.T) {
-	r := &kaprov1alpha1.PromotionRun{
-		Spec: kaprov1alpha1.PromotionRunSpec{
+	r := &kaprov1alpha2.PromotionRun{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
-				{Name: "wave1", PromotionPlan: "rollout"},
-				{Name: "wave1", PromotionPlan: "rollout"},
+			Plans: []kaprov1alpha2.PlanRef{
+				{Name: "wave1", Plan: "rollout"},
+				{Name: "wave1", Plan: "rollout"},
 			},
 		},
 	}
@@ -196,11 +196,11 @@ func TestValidatePromotionRun_DuplicatePromotionPlanName(t *testing.T) {
 }
 
 func TestValidatePromotionRun_UnknownDependency(t *testing.T) {
-	r := &kaprov1alpha1.PromotionRun{
-		Spec: kaprov1alpha1.PromotionRunSpec{
+	r := &kaprov1alpha2.PromotionRun{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
-				{Name: "wave1", PromotionPlan: "rollout", DependsOn: []string{"does-not-exist"}},
+			Plans: []kaprov1alpha2.PlanRef{
+				{Name: "wave1", Plan: "rollout", DependsOn: []string{"does-not-exist"}},
 			},
 		},
 	}
@@ -210,12 +210,12 @@ func TestValidatePromotionRun_UnknownDependency(t *testing.T) {
 }
 
 func TestValidatePromotionRun_PromotionPlanCycle(t *testing.T) {
-	r := &kaprov1alpha1.PromotionRun{
-		Spec: kaprov1alpha1.PromotionRunSpec{
+	r := &kaprov1alpha2.PromotionRun{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
-				{Name: "a", PromotionPlan: "rollout", DependsOn: []string{"b"}},
-				{Name: "b", PromotionPlan: "rollout", DependsOn: []string{"a"}},
+			Plans: []kaprov1alpha2.PlanRef{
+				{Name: "a", Plan: "rollout", DependsOn: []string{"b"}},
+				{Name: "b", Plan: "rollout", DependsOn: []string{"a"}},
 			},
 		},
 	}
@@ -225,11 +225,11 @@ func TestValidatePromotionRun_PromotionPlanCycle(t *testing.T) {
 }
 
 func TestValidatePromotionRun_SelfCycle(t *testing.T) {
-	r := &kaprov1alpha1.PromotionRun{
-		Spec: kaprov1alpha1.PromotionRunSpec{
+	r := &kaprov1alpha2.PromotionRun{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
-				{Name: "wave1", PromotionPlan: "rollout", DependsOn: []string{"wave1"}},
+			Plans: []kaprov1alpha2.PlanRef{
+				{Name: "wave1", Plan: "rollout", DependsOn: []string{"wave1"}},
 			},
 		},
 	}
@@ -239,11 +239,11 @@ func TestValidatePromotionRun_SelfCycle(t *testing.T) {
 }
 
 func TestValidatePromotionRunUpdate_VersionImmutable(t *testing.T) {
-	old := &kaprov1alpha1.PromotionRun{
-		Spec: kaprov1alpha1.PromotionRunSpec{
+	old := &kaprov1alpha2.PromotionRun{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
-				{Name: "wave1", PromotionPlan: "rollout"},
+			Plans: []kaprov1alpha2.PlanRef{
+				{Name: "wave1", Plan: "rollout"},
 			},
 		},
 	}
@@ -255,11 +255,11 @@ func TestValidatePromotionRunUpdate_VersionImmutable(t *testing.T) {
 }
 
 func TestValidatePromotionRunUpdate_VersionsImmutable(t *testing.T) {
-	old := &kaprov1alpha1.PromotionRun{
-		Spec: kaprov1alpha1.PromotionRunSpec{
+	old := &kaprov1alpha2.PromotionRun{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Versions: map[string]string{"api": "main@sha256:abc"},
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
-				{Name: "wave1", PromotionPlan: "rollout"},
+			Plans: []kaprov1alpha2.PlanRef{
+				{Name: "wave1", Plan: "rollout"},
 			},
 		},
 	}
@@ -270,45 +270,45 @@ func TestValidatePromotionRunUpdate_VersionsImmutable(t *testing.T) {
 	}
 }
 
-func TestValidatePromotionRunUpdate_PromotionPlansImmutable(t *testing.T) {
-	old := &kaprov1alpha1.PromotionRun{
-		Spec: kaprov1alpha1.PromotionRunSpec{
+func TestValidatePromotionRunUpdate_PlansImmutable(t *testing.T) {
+	old := &kaprov1alpha2.PromotionRun{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
-				{Name: "wave1", PromotionPlan: "rollout"},
+			Plans: []kaprov1alpha2.PlanRef{
+				{Name: "wave1", Plan: "rollout"},
 			},
 		},
 	}
 	new := old.DeepCopy()
-	new.Spec.PromotionPlans = append(new.Spec.PromotionPlans, kaprov1alpha1.PromotionPlanRef{Name: "wave2", PromotionPlan: "rollout-2"})
+	new.Spec.Plans = append(new.Spec.Plans, kaprov1alpha2.PlanRef{Name: "wave2", Plan: "rollout-2"})
 	if err := admission.ValidatePromotionRunUpdate(old, new); err == nil {
 		t.Fatal("expected error for immutable promotionplans update")
 	}
 }
 
 func TestValidatePromotionRunUpdate_ScopeImmutable(t *testing.T) {
-	old := &kaprov1alpha1.PromotionRun{
-		Spec: kaprov1alpha1.PromotionRunSpec{
+	old := &kaprov1alpha2.PromotionRun{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
-				{Name: "wave1", PromotionPlan: "rollout"},
+			Plans: []kaprov1alpha2.PlanRef{
+				{Name: "wave1", Plan: "rollout"},
 			},
-			Scope: &kaprov1alpha1.PromotionRunScope{Targets: []string{"cluster-a"}},
+			Scope: &kaprov1alpha2.PromotionRunScope{Targets: []string{"cluster-a"}},
 		},
 	}
 	new := old.DeepCopy()
-	new.Spec.Scope = &kaprov1alpha1.PromotionRunScope{Targets: []string{"cluster-b"}}
+	new.Spec.Scope = &kaprov1alpha2.PromotionRunScope{Targets: []string{"cluster-b"}}
 	if err := admission.ValidatePromotionRunUpdate(old, new); err == nil {
 		t.Fatal("expected error for immutable scope update")
 	}
 }
 
 func TestValidatePromotionRunUpdate_SuspendedMutable(t *testing.T) {
-	old := &kaprov1alpha1.PromotionRun{
-		Spec: kaprov1alpha1.PromotionRunSpec{
+	old := &kaprov1alpha2.PromotionRun{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
-				{Name: "wave1", PromotionPlan: "rollout"},
+			Plans: []kaprov1alpha2.PlanRef{
+				{Name: "wave1", Plan: "rollout"},
 			},
 		},
 	}
@@ -329,7 +329,7 @@ func TestValidatePromotionPlan_EmptyStages(t *testing.T) {
 }
 
 func TestValidatePromotionPlan_UnknownDependency(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha1.Stage{
+	p := buildPromotionPlan([]kaprov1alpha2.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}, DependsOn: deps("does-not-exist")},
 	})
 	if err := promotionplanValidate(p); err == nil {
@@ -338,12 +338,12 @@ func TestValidatePromotionPlan_UnknownDependency(t *testing.T) {
 }
 
 func TestValidatePromotionPlan_InvalidDependencyStrategy(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha1.Stage{
+	p := buildPromotionPlan([]kaprov1alpha2.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}},
 		{
 			Name:     "s2",
 			Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}},
-			DependsOn: []kaprov1alpha1.StageDependency{
+			DependsOn: []kaprov1alpha2.StageDependency{
 				{Stage: "s1", Strategy: "some"},
 			},
 		},
@@ -354,12 +354,12 @@ func TestValidatePromotionPlan_InvalidDependencyStrategy(t *testing.T) {
 }
 
 func TestValidatePromotionPlan_NegativeDependencySoak(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha1.Stage{
+	p := buildPromotionPlan([]kaprov1alpha2.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}},
 		{
 			Name:     "s2",
 			Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}},
-			DependsOn: []kaprov1alpha1.StageDependency{
+			DependsOn: []kaprov1alpha2.StageDependency{
 				{Stage: "s1", RequiredSoakTime: &metav1.Duration{Duration: -1}},
 			},
 		},
@@ -370,7 +370,7 @@ func TestValidatePromotionPlan_NegativeDependencySoak(t *testing.T) {
 }
 
 func TestValidatePromotionPlan_StageCycle(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha1.Stage{
+	p := buildPromotionPlan([]kaprov1alpha2.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}, DependsOn: deps("s2")},
 		{Name: "s2", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}}, DependsOn: deps("s1")},
 	})
@@ -380,7 +380,7 @@ func TestValidatePromotionPlan_StageCycle(t *testing.T) {
 }
 
 func TestValidatePromotionPlan_SelfCycle(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha1.Stage{
+	p := buildPromotionPlan([]kaprov1alpha2.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}, DependsOn: deps("s1")},
 	})
 	if err := promotionplanValidate(p); err == nil {
@@ -389,7 +389,7 @@ func TestValidatePromotionPlan_SelfCycle(t *testing.T) {
 }
 
 func TestValidatePromotionPlan_ValidLinearDAG(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha1.Stage{
+	p := buildPromotionPlan([]kaprov1alpha2.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}},
 		{Name: "s2", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "staging"}}, DependsOn: deps("s1")},
 		{Name: "s3", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}}, DependsOn: deps("s2")},
@@ -400,16 +400,16 @@ func TestValidatePromotionPlan_ValidLinearDAG(t *testing.T) {
 }
 
 func TestValidatePromotionPlan_MetricPresetReference(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha1.Stage{{
+	p := buildPromotionPlan([]kaprov1alpha2.Stage{{
 		Name:     "s1",
 		Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
-		Gate: &kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{
-				Metrics: []kaprov1alpha1.MetricGate{{Preset: "error-rate"}},
+		Gate: &kaprov1alpha2.GatePolicySpec{
+			Gate: kaprov1alpha2.GateSpec{
+				Metrics: []kaprov1alpha2.MetricGate{{Preset: "error-rate"}},
 			},
 		},
 	}})
-	p.Spec.MetricPresets = map[string]kaprov1alpha1.MetricGate{
+	p.Spec.MetricPresets = map[string]kaprov1alpha2.MetricGate{
 		"error-rate": {Provider: "prometheus", Query: "up", Threshold: float64Ptr(0.01)},
 	}
 	if err := promotionplanValidate(p); err != nil {
@@ -418,12 +418,12 @@ func TestValidatePromotionPlan_MetricPresetReference(t *testing.T) {
 }
 
 func TestValidatePromotionPlan_MetricWithoutPresetRequiresProviderAndQuery(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha1.Stage{{
+	p := buildPromotionPlan([]kaprov1alpha2.Stage{{
 		Name:     "s1",
 		Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
-		Gate: &kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{
-				Metrics: []kaprov1alpha1.MetricGate{{Provider: "prometheus"}},
+		Gate: &kaprov1alpha2.GatePolicySpec{
+			Gate: kaprov1alpha2.GateSpec{
+				Metrics: []kaprov1alpha2.MetricGate{{Provider: "prometheus"}},
 			},
 		},
 	}})
@@ -433,12 +433,12 @@ func TestValidatePromotionPlan_MetricWithoutPresetRequiresProviderAndQuery(t *te
 }
 
 func TestValidatePromotionPlan_UnknownMetricPresetReference(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha1.Stage{{
+	p := buildPromotionPlan([]kaprov1alpha2.Stage{{
 		Name:     "s1",
 		Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
-		Gate: &kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{
-				Metrics: []kaprov1alpha1.MetricGate{{Preset: "missing"}},
+		Gate: &kaprov1alpha2.GatePolicySpec{
+			Gate: kaprov1alpha2.GateSpec{
+				Metrics: []kaprov1alpha2.MetricGate{{Preset: "missing"}},
 			},
 		},
 	}})
@@ -449,7 +449,7 @@ func TestValidatePromotionPlan_UnknownMetricPresetReference(t *testing.T) {
 
 func TestValidatePromotionPlan_ValidDiamondDAG(t *testing.T) {
 	// s1 → s2, s1 → s3, s2+s3 → s4
-	p := buildPromotionPlan([]kaprov1alpha1.Stage{
+	p := buildPromotionPlan([]kaprov1alpha2.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}}},
 		{Name: "s2", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"region": "eu"}}, DependsOn: deps("s1")},
 		{Name: "s3", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"region": "us"}}, DependsOn: deps("s1")},
@@ -461,7 +461,7 @@ func TestValidatePromotionPlan_ValidDiamondDAG(t *testing.T) {
 }
 
 func TestValidatePromotionPlan_DuplicateStageName(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha1.Stage{
+	p := buildPromotionPlan([]kaprov1alpha2.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}},
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}}},
 	})
@@ -471,9 +471,9 @@ func TestValidatePromotionPlan_DuplicateStageName(t *testing.T) {
 }
 
 func TestValidateApproval_RefRequired(t *testing.T) {
-	approval := &kaprov1alpha1.Approval{
+	approval := &kaprov1alpha2.Approval{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1-target-a"},
-		Spec: kaprov1alpha1.ApprovalSpec{
+		Spec: kaprov1alpha2.ApprovalSpec{
 			PromotionRun: "rel-1",
 			Target:       "target-a",
 			ApprovedBy:   "alice",
@@ -485,9 +485,9 @@ func TestValidateApproval_RefRequired(t *testing.T) {
 }
 
 func TestValidateApproval_NameMatchesPromotionRunAndRef(t *testing.T) {
-	approval := &kaprov1alpha1.Approval{
+	approval := &kaprov1alpha2.Approval{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1-ref-a"},
-		Spec: kaprov1alpha1.ApprovalSpec{
+		Spec: kaprov1alpha2.ApprovalSpec{
 			PromotionRun: "rel-1",
 			Target:       "target-a",
 			Ref:          "ref-a",
@@ -501,19 +501,19 @@ func TestValidateApproval_NameMatchesPromotionRunAndRef(t *testing.T) {
 
 // ---- helpers ----------------------------------------------------------------
 
-func mcValidate(mc *kaprov1alpha1.FleetCluster) error {
+func mcValidate(mc *kaprov1alpha2.Cluster) error {
 	return admission.ValidateFleetCluster(mc)
 }
 
-func promotionrunValidate(r *kaprov1alpha1.PromotionRun) error {
+func promotionrunValidate(r *kaprov1alpha2.PromotionRun) error {
 	return admission.ValidatePromotionRun(r)
 }
 
-func promotionplanValidate(p *kaprov1alpha1.PromotionPlan) error {
+func promotionplanValidate(p *kaprov1alpha2.Plan) error {
 	return admission.ValidatePromotionPlan(p)
 }
 
-func approvalValidate(a *kaprov1alpha1.Approval) error {
+func approvalValidate(a *kaprov1alpha2.Approval) error {
 	return admission.ValidateApproval(a)
 }
 
@@ -521,10 +521,10 @@ func float64Ptr(v float64) *float64 {
 	return &v
 }
 
-func buildPromotionPlan(stages []kaprov1alpha1.Stage) *kaprov1alpha1.PromotionPlan {
-	return &kaprov1alpha1.PromotionPlan{
+func buildPromotionPlan(stages []kaprov1alpha2.Stage) *kaprov1alpha2.Plan {
+	return &kaprov1alpha2.Plan{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-promotionplan"},
-		Spec: kaprov1alpha1.PromotionPlanSpec{
+		Spec: kaprov1alpha2.PlanSpec{
 			Stages: stages,
 		},
 	}

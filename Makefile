@@ -90,7 +90,7 @@ generate: $(CONTROLLER_GEN) ## Generate DeepCopy methods
 .PHONY: check-deepcopy
 check-deepcopy: $(CONTROLLER_GEN) ## Verify zz_generated.deepcopy.go is up to date
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
-	@git diff --exit-code api/v1alpha1/zz_generated.deepcopy.go || \
+	@git diff --exit-code api/v1alpha2/zz_generated.deepcopy.go || \
 		(echo "ERROR: zz_generated.deepcopy.go is out of date. Run 'make generate'." && exit 1)
 
 .PHONY: manifests
@@ -100,9 +100,9 @@ manifests: $(CONTROLLER_GEN) ## Generate CRD YAML manifests and RBAC
 		output:crd:artifacts:config=config/crd/bases \
 		output:rbac:artifacts:config=config/rbac
 	@# controller-gen v0.17 emits an empty `subresources: {}` block for CRDs
-	@# without a +kubebuilder:subresource:status marker (PromotionPlan is
+	@# without a +kubebuilder:subresource:status marker (Plan is
 	@# spec-only). Strip it so the install surface matches the Go API intent.
-	@for f in config/crd/bases/kapro.io_promotionplans.yaml; do \
+	@for f in config/crd/bases/kapro.io_plans.yaml; do \
 		sed -i.bak '/^    subresources: {}$$/d' $$f && rm -f $$f.bak; \
 	done
 

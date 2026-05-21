@@ -1,9 +1,9 @@
-# PromotionPlan reference library
+# Plan reference library
 
-Six copy-paste-ready `PromotionPlan` examples covering the most common
+Six copy-paste-ready `Plan` examples covering the most common
 progressive-delivery shapes. Each plan is self-contained: apply the
-YAML, label your `FleetCluster` objects with the matching keys, and
-reference the plan from `Promotion.spec.promotionPlans[].promotionPlan`.
+YAML, label your `Cluster` objects with the matching keys, and
+reference the plan from `Promotion.spec.plans[].plan`.
 
 | Plan | Shape | When to use |
 |---|---|---|
@@ -20,8 +20,8 @@ reference the plan from `Promotion.spec.promotionPlans[].promotionPlan`.
 kubectl apply -f examples/plans/01-canary-then-full.yaml
 
 # label your clusters so the stage selectors find them
-kubectl label fleetcluster eu-canary    kapro.io/tier=canary
-kubectl label fleetcluster eu-prod-{1,2,3} kapro.io/tier=production
+kubectl label cluster eu-canary    kapro.io/tier=canary
+kubectl label cluster eu-prod-{1,2,3} kapro.io/tier=production
 
 # then promote through the plan
 kapro promote checkout --version v1.2.3 --plan canary-then-full

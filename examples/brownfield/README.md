@@ -33,7 +33,7 @@ promotion units by default. Prefer `--path-prefix` for unique monorepo layouts;
 raise `--max-files` or `--max-units` only when the generated report is still
 small enough to review.
 
-The generated `BackendProfile` starts with `managementPolicy: Observe`. Argo CD
+The generated `Backend` starts with `managementPolicy: Observe`. Argo CD
 keeps cluster credentials, repository credentials, Projects, Applications, and
 ApplicationSets. Kapro reads metadata and health through Kubernetes RBAC. After
 the discovered graph is correct, switch the profile to
@@ -54,13 +54,13 @@ kapro source apply \
 
 When a mapping matches multiple files, `kapro source apply` requires
 `--include` or `--all` before it writes. It also writes only tracked Git files,
-so local scratch files cannot be promoted by accident. Runtime `BackendProfile`
+so local scratch files cannot be promoted by accident. Runtime `Backend`
 status reports full counts and bounded object samples:
 
 ```bash
-kubectl get backendprofile checkout -o jsonpath='{.status.discoveredApplications}'
-kubectl get backendprofile checkout -o jsonpath='{.status.selectedObjects}'
-kubectl get backendprofile checkout -o jsonpath='{.status.unsupportedPatterns}'
+kubectl get backend checkout -o jsonpath='{.status.discoveredApplications}'
+kubectl get backend checkout -o jsonpath='{.status.selectedObjects}'
+kubectl get backend checkout -o jsonpath='{.status.unsupportedPatterns}'
 ```
 
 The bounded samples are diagnostic evidence. Counts remain accurate for large
@@ -196,5 +196,5 @@ kapro init ./promotion-repo --backend argo --name checkout --clusters none
 ```
 
 `--clusters none` is repo-first mode. It creates backends, source metadata,
-promotionplan metadata, and backend-native starter files, but skips `clusters/`,
-`kapro/`, and `promotions/` until real targets exist.
+plan metadata, and backend-native starter files, but skips `clusters/`,
+`fleets/`, and `promotions/` until real targets exist.

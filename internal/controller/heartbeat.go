@@ -11,14 +11,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 const (
 	defaultHeartbeatNamespace = "kapro-system"
 	heartbeatLeasePrefix      = "kapro-heartbeat-"
 	// heartbeatFreshTimeout is the window beyond which a Lease renewal is
-	// considered a miss. The FleetClusterHeartbeatReconciler reads the Lease
+	// considered a miss. The ClusterHeartbeatReconciler reads the Lease
 	// and counts misses; this constant defines what counts as a miss but
 	// NOT how many misses are tolerated (that is per-cluster via
 	// spec.consecutiveFailureThreshold).
@@ -31,7 +31,7 @@ func heartbeatLeaseName(clusterName string) string {
 
 // requireFreshHeartbeat blocks a target from progressing when the cluster's
 // heartbeat is not fresh. Reachability is decided by the
-// FleetClusterHeartbeatReconciler via Spec.ConsecutiveFailureThreshold — this
+// ClusterHeartbeatReconciler via Spec.ConsecutiveFailureThreshold — this
 // function only reads that decision (conditions[Ready] + status.heartbeat)
 // and surfaces it on the target.
 //
@@ -54,21 +54,21 @@ func heartbeatLeaseName(clusterName string) string {
 //
 // status.heartbeatStaleSince and status.heartbeatStaleCount stay updated for
 // dashboards and runbooks but are no longer load-bearing.
-func (r *PromotionTargetReconciler) requireFreshHeartbeat(
+func (r *TargetReconciler) requireFreshHeartbeat(
 	ctx context.Context,
-	promotionrun *kaprov1alpha1.PromotionRun,
-	target *kaprov1alpha1.TargetStatus,
-	mc *kaprov1alpha1.FleetCluster,
+	promotionrun *kaprov1alpha2.PromotionRun,
+	target *kaprov1alpha2.TargetExecutionState,
+	mc *kaprov1alpha2.Cluster,
 ) (ctrl.Result, bool, error) {
 	_ = ctx // ctx retained for future use (status patches, list calls)
-	if mc.Spec.Delivery.Mode != kaprov1alpha1.DeliveryModePull {
+	if mc.Spec.Delivery.Mode != kaprov1alpha2.DeliveryModePull {
 		target.HeartbeatStaleSince = ""
 		target.HeartbeatStaleCount = 0
 		return ctrl.Result{}, true, nil
 	}
 
 	now := time.Now().UTC()
-	ready := apimeta.FindStatusCondition(mc.Status.Conditions, kaprov1alpha1.ConditionTypeReady)
+	ready := apimeta.FindStatusCondition(mc.Status.Conditions, kaprov1alpha2.ConditionTypeReady)
 	switch {
 	case ready != nil && ready.Status == metav1.ConditionTrue:
 		// Heartbeat fresh per the reconciler. Clear per-target staleness state.
@@ -76,7 +76,7 @@ func (r *PromotionTargetReconciler) requireFreshHeartbeat(
 		target.HeartbeatStaleCount = 0
 		return ctrl.Result{}, true, nil
 
-	case ready != nil && ready.Status == metav1.ConditionFalse && ready.Reason == kaprov1alpha1.ReasonUnreachable:
+	case ready != nil && ready.Status == metav1.ConditionFalse && ready.Reason == kaprov1alpha2.ReasonUnreachable:
 		target.HeartbeatStaleCount++
 		if target.HeartbeatStaleSince == "" {
 			target.HeartbeatStaleSince = now.Format(time.RFC3339)

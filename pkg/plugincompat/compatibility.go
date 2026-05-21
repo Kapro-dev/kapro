@@ -21,7 +21,7 @@ package plugincompat
 import (
 	"strings"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 const (
@@ -51,13 +51,13 @@ func SupportedKPIContractVersions() []string {
 }
 
 // SupportedContractVersions returns the contract versions supported for a plugin type.
-func SupportedContractVersions(pluginType kaprov1alpha1.PluginType) []string {
+func SupportedContractVersions(pluginType kaprov1alpha2.PluginType) []string {
 	switch pluginType {
-	case kaprov1alpha1.PluginTypeActuator:
+	case kaprov1alpha2.PluginTypeActuator:
 		return SupportedKAIContractVersions()
-	case kaprov1alpha1.PluginTypeGate:
+	case kaprov1alpha2.PluginTypeGate:
 		return SupportedKGIContractVersions()
-	case kaprov1alpha1.PluginTypePlanner:
+	case kaprov1alpha2.PluginTypePlanner:
 		return SupportedKPIContractVersions()
 	default:
 		return nil
@@ -65,7 +65,7 @@ func SupportedContractVersions(pluginType kaprov1alpha1.PluginType) []string {
 }
 
 // IsContractVersionSupported returns true when version is supported for pluginType.
-func IsContractVersionSupported(pluginType kaprov1alpha1.PluginType, version string) bool {
+func IsContractVersionSupported(pluginType kaprov1alpha2.PluginType, version string) bool {
 	for _, supported := range SupportedContractVersions(pluginType) {
 		if version == supported {
 			return true
@@ -75,13 +75,13 @@ func IsContractVersionSupported(pluginType kaprov1alpha1.PluginType, version str
 }
 
 // ContractName returns the short interface name for a plugin type.
-func ContractName(pluginType kaprov1alpha1.PluginType) string {
+func ContractName(pluginType kaprov1alpha2.PluginType) string {
 	switch pluginType {
-	case kaprov1alpha1.PluginTypeActuator:
+	case kaprov1alpha2.PluginTypeActuator:
 		return "KAI"
-	case kaprov1alpha1.PluginTypeGate:
+	case kaprov1alpha2.PluginTypeGate:
 		return "KGI"
-	case kaprov1alpha1.PluginTypePlanner:
+	case kaprov1alpha2.PluginTypePlanner:
 		return "KPI"
 	default:
 		return string(pluginType)
@@ -89,6 +89,6 @@ func ContractName(pluginType kaprov1alpha1.PluginType) string {
 }
 
 // SupportedContractVersionsString returns a comma-separated version list for messages.
-func SupportedContractVersionsString(pluginType kaprov1alpha1.PluginType) string {
+func SupportedContractVersionsString(pluginType kaprov1alpha2.PluginType) string {
 	return strings.Join(SupportedContractVersions(pluginType), ", ")
 }

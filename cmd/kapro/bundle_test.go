@@ -9,19 +9,19 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
-func TestReadPackageSourceFromKaproInlineSource(t *testing.T) {
+func TestReadPackageSourceFromFleetInlineSource(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	source := &kaprov1alpha1.Kapro{
+	source := &kaprov1alpha2.Fleet{
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
-		Spec: kaprov1alpha1.KaproSpec{
-			Source: &kaprov1alpha1.PromotionSourceSpec{
-				Units: []kaprov1alpha1.PromotionUnit{{Name: "api", Version: "1.0.0"}},
+		Spec: kaprov1alpha2.FleetSpec{
+			Source: &kaprov1alpha2.SourceSpec{
+				Units: []kaprov1alpha2.Unit{{Name: "api", Version: "1.0.0"}},
 			},
 		},
 	}
@@ -36,14 +36,14 @@ func TestReadPackageSourceFromKaproInlineSource(t *testing.T) {
 	}
 }
 
-func TestReadPackageSourceRejectsKaproSourceRef(t *testing.T) {
+func TestReadPackageSourceRejectsFleetSourceRef(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	fleet := &kaprov1alpha1.Kapro{
+	fleet := &kaprov1alpha2.Fleet{
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
-		Spec:       kaprov1alpha1.KaproSpec{SourceRef: "checkout-source"},
+		Spec:       kaprov1alpha2.FleetSpec{SourceRef: "checkout-source"},
 	}
 	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(fleet).Build()
 

@@ -12,8 +12,8 @@ func TestRunSourceApplyUpdatesGitJSONFieldWithInclude(t *testing.T) {
 	writeTestFile(t, repo, "argocd/environments/dev.json", `{"env":"dev","gkProjectVersion":"1.0.0"}`)
 	writeTestFile(t, repo, "argocd/environments/prod.json", `{"env":"prod","gkProjectVersion":"1.0.0"}`)
 	sourcePath := filepath.Join(repo, "sources/checkout.yaml")
-	writeTestFile(t, repo, "sources/checkout.yaml", `apiVersion: kapro.io/v1alpha1
-kind: PromotionSource
+	writeTestFile(t, repo, "sources/checkout.yaml", `apiVersion: kapro.io/v1alpha2
+kind: Source
 metadata:
   name: checkout
 spec:
@@ -56,8 +56,8 @@ spec:
 	writeTestFile(t, repo, "argocd/environments/dev.json", `{"gkProjectVersion":"1.0.0"}`)
 	writeTestFile(t, repo, "argocd/environments/prod.json", `{"gkProjectVersion":"1.0.0"}`)
 	sourcePath := filepath.Join(repo, "source.yaml")
-	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
-kind: PromotionSource
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
+kind: Source
 metadata:
   name: checkout
 spec:
@@ -100,8 +100,8 @@ func TestRunSourceApplyFailsClosedForMultiFileGlob(t *testing.T) {
 	writeTestFile(t, repo, "env/dev.json", `{"version":"1.0.0"}`)
 	writeTestFile(t, repo, "env/prod.json", `{"version":"1.0.0"}`)
 	sourcePath := filepath.Join(repo, "source.yaml")
-	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
-kind: PromotionSource
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
+kind: Source
 metadata:
   name: checkout
 spec:
@@ -126,8 +126,8 @@ func TestRunSourceApplyRejectsUnknownUnit(t *testing.T) {
 	repo := t.TempDir()
 	writeTestFile(t, repo, "env/dev.json", `{"version":"1.0.0"}`)
 	sourcePath := filepath.Join(repo, "source.yaml")
-	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
-kind: PromotionSource
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
+kind: Source
 metadata:
   name: checkout
 spec:
@@ -152,8 +152,8 @@ func TestRunSourceApplyRejectsConflictingWrites(t *testing.T) {
 	repo := t.TempDir()
 	writeTestFile(t, repo, "env/dev.json", `{"version":"1.0.0"}`)
 	sourcePath := filepath.Join(repo, "source.yaml")
-	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
-kind: PromotionSource
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
+kind: Source
 metadata:
   name: checkout
 spec:
@@ -185,8 +185,8 @@ func TestRunSourceApplyDoesNotPartiallyWriteOnFailure(t *testing.T) {
   - tag: old
 `)
 	sourcePath := filepath.Join(repo, "source.yaml")
-	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
-kind: PromotionSource
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
+kind: Source
 metadata:
   name: checkout
 spec:
@@ -229,8 +229,8 @@ spec:
     path: apps/api
 `)
 	sourcePath := filepath.Join(repo, "source.yaml")
-	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
-kind: PromotionSource
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
+kind: Source
 metadata:
   name: checkout
 spec:
@@ -265,8 +265,8 @@ images:
   newTag: old
 `)
 	sourcePath := filepath.Join(repo, "source.yaml")
-	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
-kind: PromotionSource
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
+kind: Source
 metadata:
   name: checkout
 spec:
@@ -296,8 +296,8 @@ func TestRunSourceApplyIgnoresUntrackedFiles(t *testing.T) {
 	repo := t.TempDir()
 	writeTestFile(t, repo, "env/dev.json", `{"version":"1.0.0"}`)
 	sourcePath := filepath.Join(repo, "source.yaml")
-	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
-kind: PromotionSource
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
+kind: Source
 metadata:
   name: checkout
 spec:

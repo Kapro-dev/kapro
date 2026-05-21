@@ -19,8 +19,8 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.kaproRef
-      name: Kapro
+    - jsonPath: .spec.fleetRef
+      name: Fleet
       type: string
     - jsonPath: .spec.version
       name: Version
@@ -37,14 +37,13 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    name: v1alpha1
+    name: v1alpha2
     schema:
       openAPIV3Schema:
         description: |-
           Promotion is the durable user-facing intent to roll a version through a
-          Kapro fleet. The controller materializes intent into one or more
-          PromotionRun attempts; PromotionRun and PromotionTarget are observe-only
-          runtime objects.
+          Fleet. The controller materializes intent into one or more PromotionRun
+          attempts; PromotionRun and Target are observe-only runtime objects.
         properties:
           apiVersion:
             description: |-
@@ -65,13 +64,12 @@ spec:
             type: object
           spec:
             description: |-
-              PromotionSpec is the durable intent to deliver a version through a Kapro
-              fleet. It refers to a parent Kapro (which owns source, plan, clusters,
-              delivery) and adds the rollout target (version, scope, optional plan
-              override).
+              PromotionSpec is the durable intent to deliver a version through a Fleet.
+              It refers to a parent Fleet (which owns source, plan, clusters, delivery)
+              and adds the rollout target (version, scope, optional plan override).
             properties:
-              kaproRef:
-                description: KaproRef is the name of the Kapro fleet this intent targets.
+              fleetRef:
+                description: FleetRef is the name of the Fleet this intent targets.
                 minLength: 1
                 type: string
               lifecycle:
@@ -222,34 +220,33 @@ spec:
                     maxItems: 32
                     type: array
                 type: object
-              promotionPlans:
+              plans:
                 description: |-
-                  PromotionPlans optionally overrides the inline Kapro.spec.promotionplan
+                  Plans optionally overrides the inline Fleet.spec.plan
                   for this intent. When unset, the controller derives a single plan ref
-                  from the parent Kapro's inline plan.
+                  from the parent Fleet's inline plan.
                 items:
                   description: |-
-                    PromotionPlanRef is one node in the PromotionRun's promotionplan DAG.
-                    Multiple promotionplans can run in parallel; DependsOn declares ordering between them.
+                    PlanRef is one node in the PromotionRun's plan DAG.
+                    Multiple plans can run in parallel; DependsOn declares ordering between them.
                   properties:
                     dependsOn:
-                      description: DependsOn lists promotionplan node names that must
-                        reach Complete before this one starts.
+                      description: DependsOn lists plan node names that must reach
+                        Complete before this one starts.
                       items:
                         type: string
                       maxItems: 64
                       type: array
                     name:
-                      description: Name uniquely identifies this promotionplan node
-                        within the PromotionRun.
+                      description: Name uniquely identifies this plan node within
+                        the PromotionRun.
                       type: string
-                    promotionPlan:
-                      description: PromotionPlan is the name of the PromotionPlan
-                        CRD to execute.
+                    plan:
+                      description: Plan is the name of the Plan CRD to execute.
                       type: string
                   required:
                   - name
-                  - promotionPlan
+                  - plan
                   type: object
                 maxItems: 64
                 type: array
@@ -287,7 +284,7 @@ spec:
                   Either Version or at least one Versions entry must be set.
                 type: object
             required:
-            - kaproRef
+            - fleetRef
             type: object
           status:
             description: PromotionStatus is the observed state of a Promotion intent.

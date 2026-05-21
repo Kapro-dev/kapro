@@ -12,7 +12,7 @@ import (
 	pkgnotification "kapro.io/kapro/pkg/notification"
 )
 
-// helpers — build NotificationPolicy values without any api/v1alpha1 import.
+// helpers — build NotificationPolicy values without any api/v1alpha2 import.
 func slackPolicy(url string) pkgnotification.NotificationPolicy {
 	return pkgnotification.NotificationPolicy{
 		Channels: []pkgnotification.Channel{{Type: "slack", Target: url}},
@@ -144,13 +144,13 @@ func TestDispatcher_Notify_Webhook_SendsCloudEvents(t *testing.T) {
 
 	d := &notification.Dispatcher{HTTPClient: srv.Client()}
 	d.Notify(context.Background(), notification.Event{
-		Type:          pkgnotification.EventTargetApplying,
-		Phase:         "Applying",
-		Version:       "v1.0.0",
-		Target:        "prod",
-		PromotionRun:  "rel-2",
-		PromotionPlan: "main",
-		Stage:         "canary",
+		Type:         pkgnotification.EventTargetApplying,
+		Phase:        "Applying",
+		Version:      "v1.0.0",
+		Target:       "prod",
+		PromotionRun: "rel-2",
+		Plan:         "main",
+		Stage:        "canary",
 	}, webhookCloudEventsPolicy(srv.URL))
 
 	if len(received) == 0 {
@@ -173,8 +173,8 @@ func TestDispatcher_Notify_Webhook_SendsCloudEvents(t *testing.T) {
 	if ce["type"] != pkgnotification.EventTargetApplying {
 		t.Errorf("expected type=%s, got %v", pkgnotification.EventTargetApplying, ce["type"])
 	}
-	if ce["subject"] != "promotionplan/main/stage/canary/target/prod" {
-		t.Errorf("expected subject=promotionplan/main/stage/canary/target/prod, got %v", ce["subject"])
+	if ce["subject"] != "plan/main/stage/canary/target/prod" {
+		t.Errorf("expected subject=plan/main/stage/canary/target/prod, got %v", ce["subject"])
 	}
 	if ce["source"] != "/kapro/promotionruns/rel-2" {
 		t.Errorf("expected source=/kapro/promotionruns/rel-2, got %v", ce["source"])

@@ -12,21 +12,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 func newPromotionReconciler(t *testing.T, objects ...client.Object) (*PromotionReconciler, client.Client) {
 	t.Helper()
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objects...).
 		WithStatusSubresource(
-			&kaprov1alpha1.Promotion{},
-			&kaprov1alpha1.PromotionRun{},
+			&kaprov1alpha2.Promotion{},
+			&kaprov1alpha2.PromotionRun{},
 		).
 		Build()
 	return &PromotionReconciler{
@@ -36,17 +36,17 @@ func newPromotionReconciler(t *testing.T, objects ...client.Object) (*PromotionR
 	}, c
 }
 
-func newKapro(name string) *kaprov1alpha1.Kapro {
-	return &kaprov1alpha1.Kapro{
+func newKapro(name string) *kaprov1alpha2.Fleet {
+	return &kaprov1alpha2.Fleet{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec: kaprov1alpha1.KaproSpec{
+		Spec: kaprov1alpha2.FleetSpec{
 			SourceRef: "shared-catalog",
-			Delivery:  kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"},
-			Clusters: []kaprov1alpha1.KaproCluster{
+			Delivery:  kaprov1alpha2.DeliverySpec{Mode: "pull", BackendRef: "flux"},
+			Clusters: []kaprov1alpha2.ClusterRef{
 				{Name: "c1", Labels: map[string]string{"stage": "prod"}},
 			},
-			PromotionPlan: kaprov1alpha1.KaproPromotionPlan{
-				Stages: []kaprov1alpha1.KaproStage{
+			Plan: kaprov1alpha2.KaproPlan{
+				Stages: []kaprov1alpha2.StageSpec{
 					{Name: "prod", Selector: map[string]string{"stage": "prod"}},
 				},
 			},
@@ -54,11 +54,11 @@ func newKapro(name string) *kaprov1alpha1.Kapro {
 	}
 }
 
-func newPromotion(name, kaproRef, version string) *kaprov1alpha1.Promotion {
-	return &kaprov1alpha1.Promotion{
+func newPromotion(name, fleetRef, version string) *kaprov1alpha2.Promotion {
+	return &kaprov1alpha2.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Generation: 1},
-		Spec: kaprov1alpha1.PromotionSpec{
-			KaproRef: kaproRef,
+		Spec: kaprov1alpha2.PromotionSpec{
+			FleetRef: fleetRef,
 			Version:  version,
 		},
 	}
@@ -71,15 +71,15 @@ func TestPromotionMissingKaproIsPending(t *testing.T) {
 	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
 		t.Fatal(err)
 	}
-	var got kaprov1alpha1.Promotion
+	var got kaprov1alpha2.Promotion
 	if err := c.Get(ctx, client.ObjectKey{Name: p.Name}, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Status.Phase != kaprov1alpha1.PromotionPhasePending {
+	if got.Status.Phase != kaprov1alpha2.PromotionPhasePending {
 		t.Fatalf("phase = %q, want Pending", got.Status.Phase)
 	}
 	// No PromotionRun should be created.
-	var runs kaprov1alpha1.PromotionRunList
+	var runs kaprov1alpha2.PromotionRunList
 	if err := c.List(ctx, &runs); err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestPromotionStampsFirstAttempt(t *testing.T) {
 	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout-v1"}}); err != nil {
 		t.Fatal(err)
 	}
-	var runs kaprov1alpha1.PromotionRunList
+	var runs kaprov1alpha2.PromotionRunList
 	if err := c.List(ctx, &runs); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestPromotionStampsFirstAttempt(t *testing.T) {
 		t.Fatalf("run version = %q, want v1.2.3", runs.Items[0].Spec.Version)
 	}
 
-	var got kaprov1alpha1.Promotion
+	var got kaprov1alpha2.Promotion
 	if err := c.Get(ctx, client.ObjectKey{Name: "checkout-v1"}, &got); err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestPromotionSpecChangeStampsNewAttemptAndSupersedes(t *testing.T) {
 	}
 
 	// Mutate Promotion spec to v1.2.4 and bump generation.
-	var got kaprov1alpha1.Promotion
+	var got kaprov1alpha2.Promotion
 	if err := c.Get(ctx, client.ObjectKey{Name: p.Name}, &got); err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestPromotionSpecChangeStampsNewAttemptAndSupersedes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var runs kaprov1alpha1.PromotionRunList
+	var runs kaprov1alpha2.PromotionRunList
 	if err := c.List(ctx, &runs); err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestPromotionSpecChangeStampsNewAttemptAndSupersedes(t *testing.T) {
 		t.Fatalf("len(runs) = %d, want 2 (one superseded, one active)", len(runs.Items))
 	}
 
-	var superseded, active *kaprov1alpha1.PromotionRun
+	var superseded, active *kaprov1alpha2.PromotionRun
 	for i := range runs.Items {
 		switch runs.Items[i].Spec.Version {
 		case "v1.2.3":
@@ -172,10 +172,10 @@ func TestPromotionSpecChangeStampsNewAttemptAndSupersedes(t *testing.T) {
 	if active == nil {
 		t.Fatal("did not find v1.2.4 run")
 	}
-	if superseded.Status.Phase != kaprov1alpha1.PromotionRunPhaseSuperseded {
+	if superseded.Status.Phase != kaprov1alpha2.PromotionRunPhaseSuperseded {
 		t.Fatalf("v1.2.3 phase = %q, want Superseded", superseded.Status.Phase)
 	}
-	if active.Status.Phase == kaprov1alpha1.PromotionRunPhaseSuperseded {
+	if active.Status.Phase == kaprov1alpha2.PromotionRunPhaseSuperseded {
 		t.Fatal("v1.2.4 must not be Superseded")
 	}
 
@@ -202,7 +202,7 @@ func TestPromotionSuspendedSuspendsActiveRuns(t *testing.T) {
 	}
 
 	// Suspend the promotion.
-	var got kaprov1alpha1.Promotion
+	var got kaprov1alpha2.Promotion
 	if err := c.Get(ctx, client.ObjectKey{Name: p.Name}, &got); err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +215,7 @@ func TestPromotionSuspendedSuspendsActiveRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var runs kaprov1alpha1.PromotionRunList
+	var runs kaprov1alpha2.PromotionRunList
 	if err := c.List(ctx, &runs); err != nil {
 		t.Fatal(err)
 	}
@@ -228,9 +228,9 @@ func TestPromotionSuspendedSuspendsActiveRuns(t *testing.T) {
 }
 
 func TestPromotionSpecHashStableAndDriftDetectable(t *testing.T) {
-	a := kaprov1alpha1.PromotionSpec{KaproRef: "checkout", Version: "v1"}
-	b := kaprov1alpha1.PromotionSpec{KaproRef: "checkout", Version: "v1"}
-	c := kaprov1alpha1.PromotionSpec{KaproRef: "checkout", Version: "v2"}
+	a := kaprov1alpha2.PromotionSpec{FleetRef: "checkout", Version: "v1"}
+	b := kaprov1alpha2.PromotionSpec{FleetRef: "checkout", Version: "v1"}
+	c := kaprov1alpha2.PromotionSpec{FleetRef: "checkout", Version: "v2"}
 
 	if promotionSpecHash(&a) != promotionSpecHash(&b) {
 		t.Fatal("identical specs should hash equal")
@@ -241,16 +241,16 @@ func TestPromotionSpecHashStableAndDriftDetectable(t *testing.T) {
 }
 
 func TestPromotionAttemptsCappedAt20(t *testing.T) {
-	var list []kaprov1alpha1.PromotionAttemptRef
+	var list []kaprov1alpha2.PromotionAttemptRef
 	for i := 0; i < 30; i++ {
-		entry := kaprov1alpha1.PromotionAttemptRef{
+		entry := kaprov1alpha2.PromotionAttemptRef{
 			Name:     "run-" + string(rune('A'+i)),
 			SpecHash: "h" + string(rune('A'+i)),
 		}
 		list = upsertAttempt(list, entry)
 	}
-	if len(list) != kaprov1alpha1.MaxPromotionAttempts {
-		t.Fatalf("len = %d, want %d", len(list), kaprov1alpha1.MaxPromotionAttempts)
+	if len(list) != kaprov1alpha2.MaxPromotionAttempts {
+		t.Fatalf("len = %d, want %d", len(list), kaprov1alpha2.MaxPromotionAttempts)
 	}
 	// Newest first; the last entry inserted (i=29) must be at index 0.
 	if list[0].Name != "run-"+string(rune('A'+29)) {
@@ -272,7 +272,7 @@ func TestPromotionSuspendedAtCreationStampsSuspendedRun(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var runs kaprov1alpha1.PromotionRunList
+	var runs kaprov1alpha2.PromotionRunList
 	if err := c.List(ctx, &runs); err != nil {
 		t.Fatal(err)
 	}
@@ -283,11 +283,11 @@ func TestPromotionSuspendedAtCreationStampsSuspendedRun(t *testing.T) {
 		t.Fatalf("expected no PromotionRun while spec.suspended=true at creation, got %d", len(runs.Items))
 	}
 
-	var got kaprov1alpha1.Promotion
+	var got kaprov1alpha2.Promotion
 	if err := c.Get(ctx, client.ObjectKey{Name: p.Name}, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Status.Phase != kaprov1alpha1.PromotionPhasePaused {
+	if got.Status.Phase != kaprov1alpha2.PromotionPhasePaused {
 		t.Fatalf("phase = %q, want Paused", got.Status.Phase)
 	}
 
@@ -350,27 +350,27 @@ func TestPromotionPhaseLifecycle(t *testing.T) {
 	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
 		t.Fatal(err)
 	}
-	assertPromotionPhase(t, c, p.Name, kaprov1alpha1.PromotionPhasePending)
+	assertPromotionPhase(t, c, p.Name, kaprov1alpha2.PromotionPhasePending)
 
 	// 2. Run advances to Progressing → Promotion mirrors it.
-	advanceRun(t, ctx, c, p.Name, kaprov1alpha1.PromotionRunPhaseProgressing, "")
+	advanceRun(t, ctx, c, p.Name, kaprov1alpha2.PromotionRunPhaseProgressing, "")
 	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
 		t.Fatal(err)
 	}
-	assertPromotionPhase(t, c, p.Name, kaprov1alpha1.PromotionPhaseProgressing)
+	assertPromotionPhase(t, c, p.Name, kaprov1alpha2.PromotionPhaseProgressing)
 
 	// 3. Run completes → Promotion → Succeeded; Ready=True.
-	advanceRun(t, ctx, c, p.Name, kaprov1alpha1.PromotionRunPhaseComplete, "2024-01-01T00:00:00Z")
+	advanceRun(t, ctx, c, p.Name, kaprov1alpha2.PromotionRunPhaseComplete, "2024-01-01T00:00:00Z")
 	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
 		t.Fatal(err)
 	}
-	assertPromotionPhase(t, c, p.Name, kaprov1alpha1.PromotionPhaseSucceeded)
+	assertPromotionPhase(t, c, p.Name, kaprov1alpha2.PromotionPhaseSucceeded)
 	assertCondition(t, c, p.Name, "Ready", metav1.ConditionTrue)
 	assertCondition(t, c, p.Name, "RollbackAvailable", metav1.ConditionTrue)
 
 	// 4. New spec → controller stamps attempt #2 while a prior terminal
 	//    exists → Promotion → Restarting (run created in Pending).
-	var got kaprov1alpha1.Promotion
+	var got kaprov1alpha2.Promotion
 	if err := c.Get(ctx, client.ObjectKey{Name: p.Name}, &got); err != nil {
 		t.Fatal(err)
 	}
@@ -382,21 +382,21 @@ func TestPromotionPhaseLifecycle(t *testing.T) {
 	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
 		t.Fatal(err)
 	}
-	assertPromotionPhase(t, c, p.Name, kaprov1alpha1.PromotionPhaseRestarting)
+	assertPromotionPhase(t, c, p.Name, kaprov1alpha2.PromotionPhaseRestarting)
 
 	// 5. New run progresses → Promotion → Progressing.
-	advanceRun(t, ctx, c, p.Name, kaprov1alpha1.PromotionRunPhaseProgressing, "")
+	advanceRun(t, ctx, c, p.Name, kaprov1alpha2.PromotionRunPhaseProgressing, "")
 	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
 		t.Fatal(err)
 	}
-	assertPromotionPhase(t, c, p.Name, kaprov1alpha1.PromotionPhaseProgressing)
+	assertPromotionPhase(t, c, p.Name, kaprov1alpha2.PromotionPhaseProgressing)
 
 	// 6. New run fails → Promotion → Failed; Ready=False.
-	advanceRun(t, ctx, c, p.Name, kaprov1alpha1.PromotionRunPhaseFailed, "2024-01-02T00:00:00Z")
+	advanceRun(t, ctx, c, p.Name, kaprov1alpha2.PromotionRunPhaseFailed, "2024-01-02T00:00:00Z")
 	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
 		t.Fatal(err)
 	}
-	assertPromotionPhase(t, c, p.Name, kaprov1alpha1.PromotionPhaseFailed)
+	assertPromotionPhase(t, c, p.Name, kaprov1alpha2.PromotionPhaseFailed)
 	assertCondition(t, c, p.Name, "Ready", metav1.ConditionFalse)
 }
 
@@ -421,11 +421,11 @@ func TestPromotionDeletionTransitionsToTerminating(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var got kaprov1alpha1.Promotion
+	var got kaprov1alpha2.Promotion
 	if err := c.Get(ctx, client.ObjectKey{Name: p.Name}, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Status.Phase != kaprov1alpha1.PromotionPhaseTerminating {
+	if got.Status.Phase != kaprov1alpha2.PromotionPhaseTerminating {
 		t.Fatalf("phase = %q, want Terminating", got.Status.Phase)
 	}
 	if got.Status.ActiveAttemptRef != nil {
@@ -436,9 +436,9 @@ func TestPromotionDeletionTransitionsToTerminating(t *testing.T) {
 // advanceRun patches the (single) PromotionRun owned by the named Promotion
 // to the given phase and optional CompletedAt timestamp.
 func advanceRun(t *testing.T, ctx context.Context, c client.Client, promotionName string,
-	phase kaprov1alpha1.PromotionRunPhase, completedAt string) {
+	phase kaprov1alpha2.PromotionRunPhase, completedAt string) {
 	t.Helper()
-	var runs kaprov1alpha1.PromotionRunList
+	var runs kaprov1alpha2.PromotionRunList
 	if err := c.List(ctx, &runs, client.MatchingLabels{promotionOwnerLabel: promotionName}); err != nil {
 		t.Fatal(err)
 	}
@@ -462,9 +462,9 @@ func advanceRun(t *testing.T, ctx context.Context, c client.Client, promotionNam
 	}
 }
 
-func assertPromotionPhase(t *testing.T, c client.Client, name string, want kaprov1alpha1.PromotionPhase) {
+func assertPromotionPhase(t *testing.T, c client.Client, name string, want kaprov1alpha2.PromotionPhase) {
 	t.Helper()
-	var got kaprov1alpha1.Promotion
+	var got kaprov1alpha2.Promotion
 	if err := c.Get(context.Background(), client.ObjectKey{Name: name}, &got); err != nil {
 		t.Fatal(err)
 	}
@@ -475,7 +475,7 @@ func assertPromotionPhase(t *testing.T, c client.Client, name string, want kapro
 
 func assertCondition(t *testing.T, c client.Client, name, condType string, want metav1.ConditionStatus) {
 	t.Helper()
-	var got kaprov1alpha1.Promotion
+	var got kaprov1alpha2.Promotion
 	if err := c.Get(context.Background(), client.ObjectKey{Name: name}, &got); err != nil {
 		t.Fatal(err)
 	}
@@ -502,8 +502,8 @@ type fakeLifecycleDispatcher struct {
 
 type fakePhaseTransition struct {
 	promotion string
-	prev      kaprov1alpha1.PromotionPhase
-	next      kaprov1alpha1.PromotionPhase
+	prev      kaprov1alpha2.PromotionPhase
+	next      kaprov1alpha2.PromotionPhase
 }
 
 type fakeAttemptEvent struct {
@@ -513,7 +513,7 @@ type fakeAttemptEvent struct {
 }
 
 func (f *fakeLifecycleDispatcher) OnPhaseTransition(_ context.Context,
-	p *kaprov1alpha1.Promotion, prev, next kaprov1alpha1.PromotionPhase) {
+	p *kaprov1alpha2.Promotion, prev, next kaprov1alpha2.PromotionPhase) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.transitions = append(f.transitions, fakePhaseTransition{
@@ -525,7 +525,7 @@ func (f *fakeLifecycleDispatcher) OnPhaseTransition(_ context.Context,
 // checks via type assertion to emit kapro.io/promotion.attempt.*
 // CloudEvents.
 func (f *fakeLifecycleDispatcher) PublishAttemptEvent(_ context.Context,
-	p *kaprov1alpha1.Promotion, runName, kind string) {
+	p *kaprov1alpha2.Promotion, runName, kind string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.attemptEvents = append(f.attemptEvents, fakeAttemptEvent{
@@ -571,7 +571,7 @@ func TestAttemptEventsFireOnStampAndSupersede(t *testing.T) {
 	firstRunName := got[0].runName
 
 	// Mutate spec → second reconcile stamps a new attempt AND supersedes the first.
-	var fetched kaprov1alpha1.Promotion
+	var fetched kaprov1alpha2.Promotion
 	if err := c.Get(ctx, client.ObjectKey{Name: p.Name}, &fetched); err != nil {
 		t.Fatal(err)
 	}
@@ -619,12 +619,12 @@ func TestPromotionReconcilerInvokesLifecycleDispatcher(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Advance the active run + reconcile #2 -> Progressing.
-	advanceRun(t, ctx, c, p.Name, kaprov1alpha1.PromotionRunPhaseProgressing, "")
+	advanceRun(t, ctx, c, p.Name, kaprov1alpha2.PromotionRunPhaseProgressing, "")
 	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
 		t.Fatal(err)
 	}
 	// Run completes -> Succeeded.
-	advanceRun(t, ctx, c, p.Name, kaprov1alpha1.PromotionRunPhaseComplete, "2024-01-01T00:00:00Z")
+	advanceRun(t, ctx, c, p.Name, kaprov1alpha2.PromotionRunPhaseComplete, "2024-01-01T00:00:00Z")
 	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: p.Name}}); err != nil {
 		t.Fatal(err)
 	}
@@ -634,11 +634,11 @@ func TestPromotionReconcilerInvokesLifecycleDispatcher(t *testing.T) {
 		t.Fatalf("transitions = %d, want 3", len(got))
 	}
 	wantPairs := []struct {
-		prev, next kaprov1alpha1.PromotionPhase
+		prev, next kaprov1alpha2.PromotionPhase
 	}{
-		{"", kaprov1alpha1.PromotionPhasePending},
-		{kaprov1alpha1.PromotionPhasePending, kaprov1alpha1.PromotionPhaseProgressing},
-		{kaprov1alpha1.PromotionPhaseProgressing, kaprov1alpha1.PromotionPhaseSucceeded},
+		{"", kaprov1alpha2.PromotionPhasePending},
+		{kaprov1alpha2.PromotionPhasePending, kaprov1alpha2.PromotionPhaseProgressing},
+		{kaprov1alpha2.PromotionPhaseProgressing, kaprov1alpha2.PromotionPhaseSucceeded},
 	}
 	for i, want := range wantPairs {
 		if got[i].prev != want.prev || got[i].next != want.next {
@@ -653,7 +653,7 @@ func TestPromotionReconcilerInvokesLifecycleDispatcher(t *testing.T) {
 // kapro.io/promotion + kapro.io/promotion-spec-hash labels) must have
 // kapro.io/kapro and kapro.io/promotion-uid patched in when the new
 // stampAttempt path hits AlreadyExists. Without this, wave/stage/gate
-// CloudEvents would emit empty data.kaproRef / data.promotionUID
+// CloudEvents would emit empty data.fleetRef / data.promotionUID
 // during an in-flight attempt that crossed the upgrade boundary.
 func TestBackfillRunLabelsOnAlreadyExists(t *testing.T) {
 	ctx := context.Background()
@@ -661,7 +661,7 @@ func TestBackfillRunLabelsOnAlreadyExists(t *testing.T) {
 	p.UID = "promotion-uid-xyz"
 
 	// Pre-existing run with old label set only.
-	oldRun := &kaprov1alpha1.PromotionRun{
+	oldRun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: attemptName(p.Name, promotionSpecHash(&p.Spec)),
 			Labels: map[string]string{
@@ -676,13 +676,13 @@ func TestBackfillRunLabelsOnAlreadyExists(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var got kaprov1alpha1.PromotionRun
+	var got kaprov1alpha2.PromotionRun
 	if err := c.Get(ctx, client.ObjectKey{Name: oldRun.Name}, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Labels[promotionKaproLabel] != "checkout" {
+	if got.Labels[promotionFleetLabel] != "checkout" {
 		t.Fatalf("%s = %q, want %q (label must be backfilled on AlreadyExists)",
-			promotionKaproLabel, got.Labels[promotionKaproLabel], "checkout")
+			promotionFleetLabel, got.Labels[promotionFleetLabel], "checkout")
 	}
 	if got.Labels[promotionUIDLabel] != "promotion-uid-xyz" {
 		t.Fatalf("%s = %q, want %q (label must be backfilled on AlreadyExists)",

@@ -7,7 +7,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 // ApprovalGate blocks a target rollout until a cluster-scoped Approval object
@@ -49,11 +49,11 @@ func (g *ApprovalGate) Evaluate(ctx context.Context, req Request) (Result, error
 		ref = req.Context.Target
 	}
 	key := client.ObjectKey{Name: ApprovalName(req.Context.PromotionRunRef, ref)}
-	var approval kaprov1alpha1.Approval
+	var approval kaprov1alpha2.Approval
 	if err := g.Client.Get(ctx, key, &approval); err != nil {
 		if apierrors.IsNotFound(err) {
 			return Result{
-				Phase:      kaprov1alpha1.GatePhaseInconclusive,
+				Phase:      kaprov1alpha2.GatePhaseInconclusive,
 				Message:    fmt.Sprintf("waiting for Approval %q", key.Name),
 				RetryAfter: "30s",
 				Evidence: []Evidence{{
@@ -75,7 +75,7 @@ func (g *ApprovalGate) Evaluate(ctx context.Context, req Request) (Result, error
 		}
 		if !allowed {
 			return Result{
-				Phase:      kaprov1alpha1.GatePhaseFailed,
+				Phase:      kaprov1alpha2.GatePhaseFailed,
 				Message:    fmt.Sprintf("approval by %s is not allowed", approval.Spec.ApprovedBy),
 				RetryAfter: "0",
 				Evidence: []Evidence{{
@@ -88,7 +88,7 @@ func (g *ApprovalGate) Evaluate(ctx context.Context, req Request) (Result, error
 
 	if approval.Spec.Bypass {
 		return Result{
-			Phase:   kaprov1alpha1.GatePhasePassed,
+			Phase:   kaprov1alpha2.GatePhasePassed,
 			Message: fmt.Sprintf("approval bypassed by %s", approval.Spec.ApprovedBy),
 			Evidence: []Evidence{{
 				Type:   "approval",
@@ -97,7 +97,7 @@ func (g *ApprovalGate) Evaluate(ctx context.Context, req Request) (Result, error
 		}, nil
 	}
 	return Result{
-		Phase:   kaprov1alpha1.GatePhasePassed,
+		Phase:   kaprov1alpha2.GatePhasePassed,
 		Message: fmt.Sprintf("approved by %s: %s", approval.Spec.ApprovedBy, approval.Spec.Comment),
 		Evidence: []Evidence{{
 			Type:   "approval",

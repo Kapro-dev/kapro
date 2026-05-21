@@ -14,14 +14,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
-func TestGraphIncludesBackendProfiles(t *testing.T) {
+func TestGraphIncludesBackends(t *testing.T) {
 	c := testClient(t,
-		&kaprov1alpha1.BackendProfile{
+		&kaprov1alpha2.Backend{
 			ObjectMeta: metav1.ObjectMeta{Name: "flux"},
-			Spec:       kaprov1alpha1.BackendProfileSpec{Driver: kaprov1alpha1.BackendDriverFlux},
+			Spec:       kaprov1alpha2.BackendSpec{Driver: kaprov1alpha2.BackendDriverFlux},
 		},
 	)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/graph", nil)
@@ -33,14 +33,14 @@ func TestGraphIncludesBackendProfiles(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), `"backendProfiles"`) {
-		t.Fatalf("graph response missing backendProfiles: %s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), `"backends"`) {
+		t.Fatalf("graph response missing backends: %s", rec.Body.String())
 	}
 }
 
 func TestCreatePromotion(t *testing.T) {
 	c := testClient(t)
-	body := bytes.NewBufferString(`{"name":"checkout-1","kaproRef":"checkout","version":"1.2.3","promotionPlans":[{"name":"main","promotionplan":"checkout"}]}`)
+	body := bytes.NewBufferString(`{"name":"checkout-1","fleetRef":"checkout","version":"1.2.3","plans":[{"name":"main","plan":"checkout"}]}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/promotions", body)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -50,11 +50,11 @@ func TestCreatePromotion(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	var promotion kaprov1alpha1.Promotion
+	var promotion kaprov1alpha2.Promotion
 	if err := c.Get(context.Background(), client.ObjectKey{Name: "checkout-1"}, &promotion); err != nil {
 		t.Fatalf("promotion not created: %v", err)
 	}
-	if promotion.Spec.KaproRef != "checkout" || promotion.Spec.Version != "1.2.3" {
+	if promotion.Spec.FleetRef != "checkout" || promotion.Spec.Version != "1.2.3" {
 		t.Fatalf("spec=%+v", promotion.Spec)
 	}
 }
@@ -86,39 +86,39 @@ func TestGatewayRejectsWrongBearerToken(t *testing.T) {
 
 func TestGraphSupportsResourceLabelPhaseAndLimitFilters(t *testing.T) {
 	c := testClient(t,
-		&kaprov1alpha1.PromotionTarget{
+		&kaprov1alpha2.Target{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   "target-a",
 				Labels: map[string]string{"team": "checkout"},
 			},
-			Status: kaprov1alpha1.PromotionTargetStatus{
-				TargetStatus: kaprov1alpha1.TargetStatus{Phase: kaprov1alpha1.TargetPhaseApplying},
+			Status: kaprov1alpha2.TargetStatus{
+				TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseApplying},
 			},
 		},
-		&kaprov1alpha1.PromotionTarget{
+		&kaprov1alpha2.Target{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   "target-b",
 				Labels: map[string]string{"team": "checkout"},
 			},
-			Status: kaprov1alpha1.PromotionTargetStatus{
-				TargetStatus: kaprov1alpha1.TargetStatus{Phase: kaprov1alpha1.TargetPhaseConverged},
+			Status: kaprov1alpha2.TargetStatus{
+				TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseConverged},
 			},
 		},
-		&kaprov1alpha1.PromotionTarget{
+		&kaprov1alpha2.Target{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   "target-c",
 				Labels: map[string]string{"team": "payments"},
 			},
-			Status: kaprov1alpha1.PromotionTargetStatus{
-				TargetStatus: kaprov1alpha1.TargetStatus{Phase: kaprov1alpha1.TargetPhaseApplying},
+			Status: kaprov1alpha2.TargetStatus{
+				TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseApplying},
 			},
 		},
-		&kaprov1alpha1.FleetCluster{
+		&kaprov1alpha2.Cluster{
 			ObjectMeta: metav1.ObjectMeta{Name: "cluster-a", Labels: map[string]string{"team": "checkout"}},
-			Status:     kaprov1alpha1.FleetClusterStatus{Phase: kaprov1alpha1.ClusterPhaseConverged},
+			Status:     kaprov1alpha2.ClusterStatus{Phase: kaprov1alpha2.ClusterPhaseConverged},
 		},
 	)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/graph?resource=promotiontargets&labelSelector=team%3Dcheckout&phase=Applying&limit=1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/graph?resource=targets&labelSelector=team%3Dcheckout&phase=Applying&limit=1", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 
@@ -131,42 +131,42 @@ func TestGraphSupportsResourceLabelPhaseAndLimitFilters(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &graph); err != nil {
 		t.Fatal(err)
 	}
-	if len(graph.PromotionTargets) != 1 {
-		t.Fatalf("promotionTargets=%d, want 1; body=%s", len(graph.PromotionTargets), rec.Body.String())
+	if len(graph.Targets) != 1 {
+		t.Fatalf("targets=%d, want 1; body=%s", len(graph.Targets), rec.Body.String())
 	}
-	if graph.PromotionTargets[0].Status.Phase != kaprov1alpha1.TargetPhaseApplying {
-		t.Fatalf("phase=%q, want Applying", graph.PromotionTargets[0].Status.Phase)
+	if graph.Targets[0].Status.Phase != kaprov1alpha2.TargetPhaseApplying {
+		t.Fatalf("phase=%q, want Applying", graph.Targets[0].Status.Phase)
 	}
-	if len(graph.FleetClusters) != 0 {
-		t.Fatalf("fleetClusters=%d, want 0 when resource=promotiontargets", len(graph.FleetClusters))
+	if len(graph.Clusters) != 0 {
+		t.Fatalf("clusters=%d, want 0 when resource=targets", len(graph.Clusters))
 	}
-	if graph.Page.Resource != "promotiontargets" || graph.Page.Limit != 1 || graph.Page.Counts["promotiontargets"] != 1 {
+	if graph.Page.Resource != "targets" || graph.Page.Limit != 1 || graph.Page.Counts["targets"] != 1 {
 		t.Fatalf("unexpected page metadata: %+v", graph.Page)
 	}
 }
 
 func TestGraphPhaseFilterScansPastFirstLimitedPage(t *testing.T) {
 	c := testClient(t,
-		&kaprov1alpha1.PromotionTarget{
+		&kaprov1alpha2.Target{
 			ObjectMeta: metav1.ObjectMeta{Name: "target-a"},
-			Status: kaprov1alpha1.PromotionTargetStatus{
-				TargetStatus: kaprov1alpha1.TargetStatus{Phase: kaprov1alpha1.TargetPhaseConverged},
+			Status: kaprov1alpha2.TargetStatus{
+				TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseConverged},
 			},
 		},
-		&kaprov1alpha1.PromotionTarget{
+		&kaprov1alpha2.Target{
 			ObjectMeta: metav1.ObjectMeta{Name: "target-b"},
-			Status: kaprov1alpha1.PromotionTargetStatus{
-				TargetStatus: kaprov1alpha1.TargetStatus{Phase: kaprov1alpha1.TargetPhaseFailed},
+			Status: kaprov1alpha2.TargetStatus{
+				TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseFailed},
 			},
 		},
-		&kaprov1alpha1.PromotionTarget{
+		&kaprov1alpha2.Target{
 			ObjectMeta: metav1.ObjectMeta{Name: "target-c"},
-			Status: kaprov1alpha1.PromotionTargetStatus{
-				TargetStatus: kaprov1alpha1.TargetStatus{Phase: kaprov1alpha1.TargetPhaseApplying},
+			Status: kaprov1alpha2.TargetStatus{
+				TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseApplying},
 			},
 		},
 	)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/graph?resource=promotiontargets&phase=Applying&limit=1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/graph?resource=targets&phase=Applying&limit=1", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 
@@ -179,26 +179,26 @@ func TestGraphPhaseFilterScansPastFirstLimitedPage(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &graph); err != nil {
 		t.Fatal(err)
 	}
-	if len(graph.PromotionTargets) != 1 {
-		t.Fatalf("promotionTargets=%d, want 1; body=%s", len(graph.PromotionTargets), rec.Body.String())
+	if len(graph.Targets) != 1 {
+		t.Fatalf("targets=%d, want 1; body=%s", len(graph.Targets), rec.Body.String())
 	}
-	if graph.PromotionTargets[0].Name != "target-c" {
-		t.Fatalf("promotionTargets[0].name=%q, want target-c", graph.PromotionTargets[0].Name)
+	if graph.Targets[0].Name != "target-c" {
+		t.Fatalf("targets[0].name=%q, want target-c", graph.Targets[0].Name)
 	}
 }
 
 func TestGraphMarksLimitedResponsesAsTruncated(t *testing.T) {
 	c := testClient(t,
-		&kaprov1alpha1.BackendProfile{
+		&kaprov1alpha2.Backend{
 			ObjectMeta: metav1.ObjectMeta{Name: "flux"},
-			Spec:       kaprov1alpha1.BackendProfileSpec{Driver: kaprov1alpha1.BackendDriverFlux},
+			Spec:       kaprov1alpha2.BackendSpec{Driver: kaprov1alpha2.BackendDriverFlux},
 		},
-		&kaprov1alpha1.BackendProfile{
+		&kaprov1alpha2.Backend{
 			ObjectMeta: metav1.ObjectMeta{Name: "argo"},
-			Spec:       kaprov1alpha1.BackendProfileSpec{Driver: kaprov1alpha1.BackendDriverArgo},
+			Spec:       kaprov1alpha2.BackendSpec{Driver: kaprov1alpha2.BackendDriverArgo},
 		},
 	)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/graph?resource=backendprofiles&limit=1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/graph?resource=backends&limit=1", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 
@@ -211,8 +211,8 @@ func TestGraphMarksLimitedResponsesAsTruncated(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &graph); err != nil {
 		t.Fatal(err)
 	}
-	if len(graph.BackendProfiles) != 1 {
-		t.Fatalf("backendProfiles=%d, want 1", len(graph.BackendProfiles))
+	if len(graph.Backends) != 1 {
+		t.Fatalf("backends=%d, want 1", len(graph.Backends))
 	}
 	if !graph.Page.Truncated {
 		t.Fatalf("page not marked truncated: %+v", graph.Page)
@@ -247,7 +247,7 @@ func TestGraphRejectsUnknownResource(t *testing.T) {
 
 func TestCreatePromotionRejectsUnknownFields(t *testing.T) {
 	c := testClient(t)
-	body := bytes.NewBufferString(`{"name":"checkout-1","kaproRef":"checkout","version":"1.2.3","promotionPlans":[{"name":"main","promotionplan":"checkout"}],"extra":true}`)
+	body := bytes.NewBufferString(`{"name":"checkout-1","fleetRef":"checkout","version":"1.2.3","plans":[{"name":"main","plan":"checkout"}],"extra":true}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/promotions", body)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -262,7 +262,7 @@ func TestCreatePromotionRejectsUnknownFields(t *testing.T) {
 func testClient(t *testing.T, objects ...client.Object) client.Client {
 	t.Helper()
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
 	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()

@@ -130,7 +130,7 @@ decisionAPI:
   enabled: false
 
 pluginGateway:
-  # Opt-in preview. When true, the operator loads ready PluginRegistration
+  # Opt-in preview. When true, the operator loads ready Plugin
   # objects once at startup. This chart does not install demo plugins.
   enabled: false
 

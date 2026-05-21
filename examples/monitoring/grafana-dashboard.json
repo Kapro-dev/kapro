@@ -678,8 +678,8 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (promotionplan, le) (rate(kapro_stage_duration_seconds_bucket[30m])))",
-          "legendFormat": "{{promotionplan}} p95",
+          "expr": "histogram_quantile(0.95, sum by (plan, le) (rate(kapro_stage_duration_seconds_bucket[30m])))",
+          "legendFormat": "{{plan}} p95",
           "range": true,
           "refId": "A"
         }
@@ -901,13 +901,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count((kapro_promotiontrigger_status_condition{type=\"Stalled\"} == 1) or (kapro_promotiontrigger_status_condition{type=\"PromotionUpdated\",reason=~\"CooldownActive|MaxActiveReached\"} == 0))",
+          "expr": "count((kapro_trigger_status_condition{type=\"Stalled\"} == 1) or (kapro_trigger_status_condition{type=\"PromotionUpdated\",reason=~\"CooldownActive|MaxActiveReached\"} == 0))",
           "legendFormat": "blocked triggers",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Blocked PromotionTriggers",
+      "title": "Blocked Triggers",
       "type": "stat"
     },
     {
@@ -966,7 +966,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(kapro_pluginregistration_status_condition{type=\"Ready\"} == 0)",
+          "expr": "count(kapro_plugin_status_condition{type=\"Ready\"} == 0)",
           "legendFormat": "plugin probe failures",
           "range": true,
           "refId": "A"

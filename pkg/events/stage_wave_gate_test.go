@@ -14,7 +14,7 @@ func TestStageWaveGateFieldsRenderInData(t *testing.T) {
 	body, env, err := events.Render(events.Event{
 		Type:          events.EventPromotionStageGatePassed,
 		PromotionName: "checkout",
-		KaproRef:      "checkout-fleet",
+		FleetRef:      "checkout-fleet",
 		Phase:         "Progressing",
 		Version:       "v1.2.3",
 		AttemptName:   "checkout-att-1",

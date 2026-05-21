@@ -14,58 +14,37 @@ spec:
     listKind: PromotionRunList
     plural: promotionruns
     shortNames:
-    - rel
+    - prun
     singular: promotionrun
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.version
-      name: Version
-      type: string
     - jsonPath: .status.phase
       name: Phase
       type: string
-    - jsonPath: .status.conditions[?(@.type=="Ready")].status
-      name: Ready
+    - jsonPath: .spec.version
+      name: Version
       type: string
-    - jsonPath: .status.report.syncedTargets
-      name: Synced
-      type: integer
-    - jsonPath: .status.report.failedTargets
-      name: Failed
-      type: integer
-    - jsonPath: .status.report.pendingTargets
-      name: Pending
-      type: integer
-    - jsonPath: .status.report.totalTargets
-      name: Total
-      type: integer
-    - jsonPath: .status.report.duration
-      name: Duration
+    - jsonPath: .status.resolvedVersion
+      name: Resolved
+      priority: 1
       type: string
-    - jsonPath: .spec.suspended
-      name: Suspended
-      priority: 1
-      type: boolean
-    - jsonPath: .status.report.totalArtifacts
-      name: Artifacts
-      priority: 1
-      type: integer
+    - jsonPath: .status.startedAt
+      name: Started
+      type: date
+    - jsonPath: .status.completedAt
+      name: Completed
+      type: date
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    name: v1alpha1
+    name: v1alpha2
     schema:
       openAPIV3Schema:
         description: |-
-          PromotionRun is an immutable execution attempt for a progressive delivery rollout
-          across the cluster fleet. User-authored Promotion intent normally stamps
-          PromotionRun attempts through the Promotion controller.
-          It references an artifact version and PromotionPlans that define the delivery path.
-          The PromotionRun controller resolves the promotionplan DAG and creates child
-          targets; each PromotionTarget advances through its own delivery FSM.
-          Per-target execution state lives in child PromotionTarget objects; PromotionRun.status
-          stores only rollout summary, promotionplan progress, and audit metadata.
+          PromotionRun is one immutable execution attempt of a Promotion. Created and
+          updated by the controller; users typically write Promotion (the intent
+          object) and observe PromotionRun for execution detail.
         properties:
           apiVersion:
             description: |-
@@ -89,31 +68,30 @@ spec:
               Uniqueness and dependency-reference validation is enforced by the admission webhook,
               which can perform DAG checks without the quadratic CEL cost budget constraints.
             properties:
-              promotionPlans:
-                description: PromotionPlans is the DAG of promotionplan nodes.
+              plans:
+                description: Plans is the DAG of plan nodes.
                 items:
                   description: |-
-                    PromotionPlanRef is one node in the PromotionRun's promotionplan DAG.
-                    Multiple promotionplans can run in parallel; DependsOn declares ordering between them.
+                    PlanRef is one node in the PromotionRun's plan DAG.
+                    Multiple plans can run in parallel; DependsOn declares ordering between them.
                   properties:
                     dependsOn:
-                      description: DependsOn lists promotionplan node names that must
-                        reach Complete before this one starts.
+                      description: DependsOn lists plan node names that must reach
+                        Complete before this one starts.
                       items:
                         type: string
                       maxItems: 64
                       type: array
                     name:
-                      description: Name uniquely identifies this promotionplan node
-                        within the PromotionRun.
+                      description: Name uniquely identifies this plan node within
+                        the PromotionRun.
                       type: string
-                    promotionPlan:
-                      description: PromotionPlan is the name of the PromotionPlan
-                        CRD to execute.
+                    plan:
+                      description: Plan is the name of the Plan CRD to execute.
                       type: string
                   required:
                   - name
-                  - promotionPlan
+                  - plan
                   type: object
                 maxItems: 64
                 minItems: 1
@@ -151,7 +129,7 @@ spec:
                   objects together without creating a synthetic application object.
                 type: object
             required:
-            - promotionPlans
+            - plans
             type: object
           status:
             description: PromotionRunStatus defines the observed state of PromotionRun.
@@ -182,7 +160,7 @@ spec:
                     promotionRun:
                       description: PromotionRun is the PromotionRun name.
                       type: string
-                    promotionRunDerivedFrom:
+                    runDerivedFrom:
                       description: PromotionRunDerivedFrom is the parent PromotionRun
                         name.
                       type: string
@@ -260,12 +238,12 @@ spec:
                 type: integer
               phase:
                 type: string
-              promotionPlanProgress:
-                description: PromotionPlanProgress tracks execution state of each
-                  promotionplan node in the DAG.
+              planProgress:
+                description: PlanProgress tracks execution state of each plan node
+                  in the DAG.
                 items:
-                  description: PromotionPlanProgress tracks the execution state of
-                    one promotionplan node in a PromotionRun.
+                  description: PlanProgress tracks the execution state of one plan
+                    node in a PromotionRun.
                   properties:
                     activeStage:
                       description: |-
@@ -273,17 +251,17 @@ spec:
                         Gives operators a quick "where are we?" without expanding StageProgress.
                       type: string
                     name:
-                      description: Name matches PromotionPlanRef.name.
+                      description: Name matches PlanRef.name.
                       type: string
                     observedGeneration:
                       description: |-
-                        ObservedGeneration pins the PromotionPlan generation used by this
-                        PromotionRun. If the referenced PromotionPlan changes while the run is in
+                        ObservedGeneration pins the Plan generation used by this
+                        PromotionRun. If the referenced Plan changes while the run is in
                         flight, the controller fails the run instead of silently switching DAGs.
                       format: int64
                       type: integer
                     phase:
-                      description: Phase is the current execution state of this promotionplan
+                      description: Phase is the current execution state of this plan
                         node.
                       enum:
                       - Pending
@@ -291,17 +269,17 @@ spec:
                       - Complete
                       - Failed
                       type: string
-                    promotionPlan:
-                      description: PromotionPlan is the PromotionPlan CRD name.
+                    plan:
+                      description: Plan is the Plan CRD name.
                       type: string
                     stageProgress:
                       description: StageProgress summarises the state of each stage
-                        in this promotionplan.
+                        in this plan.
                       items:
                         description: |-
-                          StageProgress tracks the execution state of one Stage within a promotionplan.
+                          StageProgress tracks the execution state of one Stage within a plan.
                           Designed to render well in k9s describe view — operators see per-stage
-                          progress like CI promotionplan steps.
+                          progress like CI plan steps.
                         properties:
                           completedAt:
                             description: CompletedAt is when all targets in this stage
@@ -325,7 +303,7 @@ spec:
                                 "blocked: manual approval required for de-prod"
                             type: string
                           name:
-                            description: Name is the stage name from PromotionPlan.spec.stages[].name.
+                            description: Name is the stage name from Plan.spec.stages[].name.
                             type: string
                           phase:
                             description: Phase is the current state of this stage.
@@ -359,7 +337,7 @@ spec:
                                     reason.
                                   type: string
                                 target:
-                                  description: Target is the FleetCluster name affected
+                                  description: Target is the Cluster name affected
                                     by the decision.
                                   type: string
                               type: object
@@ -382,7 +360,7 @@ spec:
                       type: array
                   required:
                   - name
-                  - promotionPlan
+                  - plan
                   type: object
                 type: array
               report:
@@ -404,7 +382,7 @@ spec:
                   pendingApprovals:
                     description: |-
                       PendingApprovals lists "<promotionrun>-<ref>" Approval names that are
-                      awaiting human signal. Derived from PromotionTarget objects.
+                      awaiting human signal. Derived from Target objects.
                     items:
                       type: string
                     type: array
@@ -437,16 +415,16 @@ spec:
               targets:
                 description: |-
                   Targets is deprecated compatibility state. The authoritative per-target
-                  rollout state lives in child PromotionTarget objects.
+                  rollout state lives in child Target objects.
                 items:
                   description: |-
-                    TargetStatus records the rollout state of one target cluster rollout. It is
-                    used as the status payload of PromotionTarget and retained here as the
-                    controller's in-memory execution shape.
+                    TargetExecutionState records the rollout state of one target cluster.
+                    Embedded inside TargetStatus (the CRD status type) and retained here
+                    as the controller's in-memory execution shape.
                   properties:
                     appKey:
                       description: AppKey is the key used to look up the current version
-                        in FleetCluster.status.currentVersions.
+                        in Cluster.status.currentVersions.
                       type: string
                     applyIssued:
                       description: |-
@@ -466,7 +444,7 @@ spec:
                       items:
                         description: |-
                           BackendObjectStatus reports the health of one backend-native object expected
-                          to converge for a PromotionTarget.
+                          to converge for a Target.
                         properties:
                           apiVersion:
                             description: APIVersion is the backend object's API version.
@@ -476,7 +454,7 @@ spec:
                               reported by the backend object.
                             type: string
                           desiredVersion:
-                            description: DesiredVersion is the revision Kapro expects
+                            description: DesiredVersion is the revision Fleet expects
                               this object to run.
                             type: string
                           healthStatus:
@@ -505,8 +483,8 @@ spec:
                               available.
                             type: string
                           unit:
-                            description: Unit is the PromotionSource/promotionrun
-                              unit this object belongs to.
+                            description: Unit is the Source/promotionrun unit this
+                              object belongs to.
                             type: string
                         type: object
                       type: array
@@ -599,7 +577,7 @@ spec:
                                       minSamples:
                                         description: |-
                                           MinSamples is the minimum number of range samples required for sequential
-                                          analysis before Kapro can pass or fail the gate.
+                                          analysis before Fleet can pass or fail the gate.
                                         format: int32
                                         minimum: 1
                                         type: integer
@@ -643,7 +621,7 @@ spec:
                                     type: string
                                   preset:
                                     description: |-
-                                      Preset references PromotionPlan.spec.metricPresets by name.
+                                      Preset references Plan.spec.metricPresets by name.
                                       Inline fields override the preset when set.
                                     type: string
                                   provider:
@@ -912,11 +890,11 @@ spec:
                                     type: string
                                   plugin:
                                     description: PluginGateSpec references an external
-                                      gate registered through PluginRegistration.
+                                      gate registered through Plugin.
                                     properties:
                                       name:
-                                        description: Name is PluginRegistration.spec.name
-                                          for a ready gate plugin.
+                                        description: Name is Plugin.spec.name for
+                                          a ready gate plugin.
                                         type: string
                                     required:
                                     - name
@@ -1099,7 +1077,7 @@ spec:
                         onFailure:
                           default: halt
                           description: |-
-                            OnFailure controls what Kapro does when a gate fails or times out.
+                            OnFailure controls what Fleet does when a gate fails or times out.
                               halt (default): stop the rollout for this target and wait for human intervention.
                                 Use for checkout systems where automated rollback is too risky.
                               rollback: automatically revert to the previous version.
@@ -1117,7 +1095,7 @@ spec:
                       description: Gates is the authoritative snapshot of GateTemplate
                         evaluation state.
                       items:
-                        description: GateRunStatus is Kapro's authoritative snapshot
+                        description: GateRunStatus is Fleet's authoritative snapshot
                           of one gate evaluation.
                         properties:
                           attempts:
@@ -1336,12 +1314,12 @@ spec:
                     heartbeatStaleCount:
                       description: |-
                         HeartbeatStaleCount tracks consecutive reconciles that observed a stale
-                        FleetCluster heartbeat. The target fails only after both the stale timeout
+                        Cluster heartbeat. The target fails only after both the stale timeout
                         and the consecutive observation threshold are reached.
                       type: integer
                     heartbeatStaleSince:
                       description: |-
-                        HeartbeatStaleSince records when the target's FleetCluster heartbeat first
+                        HeartbeatStaleSince records when the target's Cluster heartbeat first
                         became stale. Used to implement a configurable timeout — if the heartbeat
                         remains stale for longer than the threshold, the target is failed.
                         Reset when the heartbeat becomes fresh again.
@@ -1350,7 +1328,7 @@ spec:
                       type: string
                     missingMCCount:
                       description: |-
-                        MissingMCCount tracks consecutive reconciles where the FleetCluster was not found.
+                        MissingMCCount tracks consecutive reconciles where the Cluster was not found.
                         When it reaches missingMCFailThreshold the target is transitioned to Failed.
                       type: integer
                     phase:
@@ -1371,6 +1349,14 @@ spec:
                       description: PhaseEnteredAt records when the current phase was
                         entered (used by gate timeouts).
                       type: string
+                    plan:
+                      description: Plan is the Plan CRD name this entry belongs to.
+                      type: string
+                    planRef:
+                      description: |-
+                        PlanRef is the logical plan reference name from PromotionRun.spec.plans[i].name.
+                        Used to disambiguate when the same Plan CRD is referenced multiple times.
+                      type: string
                     previousVersion:
                       description: PreviousVersion holds the version before this rollout,
                         used for rollback.
@@ -1381,18 +1367,6 @@ spec:
                       description: PreviousVersions holds the pre-rollout appKey ->
                         version snapshot used for rollback.
                       type: object
-                    promotionPlan:
-                      description: PromotionPlan is the PromotionPlan CRD name this
-                        entry belongs to.
-                      type: string
-                    promotionPlanRef:
-                      description: |-
-                        PromotionPlanRef is the logical promotionplan reference name from PromotionRun.spec.promotionPlans[i].name.
-                        Used to disambiguate when the same PromotionPlan CRD is referenced multiple times.
-                      type: string
-                    promotionRunRef:
-                      description: PromotionRunRef is the owning PromotionRun name.
-                      type: string
                     rejected:
                       description: Rejected is set when a user rejects the approval
                         via the webhook.
@@ -1405,8 +1379,11 @@ spec:
                       description: Rollback is true when this entry was created by
                         a rollback trigger.
                       type: boolean
+                    runRef:
+                      description: PromotionRunRef is the owning PromotionRun name.
+                      type: string
                     stage:
-                      description: Stage is the stage name within the PromotionPlan.
+                      description: Stage is the stage name within the Plan.
                       type: string
                     startedAt:
                       type: string
@@ -1417,7 +1394,7 @@ spec:
                       description: Version is the OCI digest being delivered.
                       type: string
                   required:
-                  - promotionPlan
+                  - plan
                   - stage
                   - target
                   type: object

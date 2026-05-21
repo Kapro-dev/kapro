@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	authnv1 "k8s.io/api/authentication/v1"
@@ -17,17 +18,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 func decisionTestServer(t *testing.T, objs ...client.Object) *Server {
 	t.Helper()
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatalf("add scheme: %v", err)
 	}
 	builder := fake.NewClientBuilder().WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha1.PromotionTarget{}, &kaprov1alpha1.AgentPolicy{})
+		WithStatusSubresource(&kaprov1alpha2.Target{}, &kaprov1alpha2.Policy{})
 	if len(objs) > 0 {
 		builder = builder.WithObjects(objs...)
 	}
@@ -78,56 +79,56 @@ func authorizeDecisionRequest(req *http.Request) {
 	req.Header.Set("Authorization", "Bearer test-token-123")
 }
 
-func decisionFixtures() (*kaprov1alpha1.PromotionRun, *kaprov1alpha1.FleetCluster, *kaprov1alpha1.PromotionPlan, *kaprov1alpha1.PromotionTarget) {
-	promotionrun := &kaprov1alpha1.PromotionRun{
+func decisionFixtures() (*kaprov1alpha2.PromotionRun, *kaprov1alpha2.Cluster, *kaprov1alpha2.Plan, *kaprov1alpha2.Target) {
+	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", UID: "uid-1"},
-		Spec: kaprov1alpha1.PromotionRunSpec{
-			Version:        "registry.example.com/myapp@sha256:v1",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{{Name: "main", PromotionPlan: "std-promotionplan"}},
+		Spec: kaprov1alpha2.PromotionRunSpec{
+			Version: "registry.example.com/myapp@sha256:v1",
+			Plans:   []kaprov1alpha2.PlanRef{{Name: "main", Plan: "std-plan"}},
 		},
-		Status: kaprov1alpha1.PromotionRunStatus{
-			Phase:     kaprov1alpha1.PromotionRunPhaseProgressing,
+		Status: kaprov1alpha2.PromotionRunStatus{
+			Phase:     kaprov1alpha2.PromotionRunPhaseProgressing,
 			StartedAt: "2026-05-09T10:00:00Z",
 		},
 	}
-	mc := &kaprov1alpha1.FleetCluster{
+	mc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "cluster-a",
 			Labels: map[string]string{"tier": "canary", "region": "eu-west"},
 		},
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"},
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{Mode: "pull", BackendRef: "flux"},
 		},
-		Status: kaprov1alpha1.FleetClusterStatus{
-			Phase:         kaprov1alpha1.ClusterPhaseConverged,
+		Status: kaprov1alpha2.ClusterStatus{
+			Phase:         kaprov1alpha2.ClusterPhaseConverged,
 			LastHeartbeat: "2026-05-09T14:00:00Z",
-			Health:        kaprov1alpha1.ClusterHealth{AllWorkloadsReady: true, ReadyWorkloads: 5, TotalWorkloads: 5},
+			Health:        kaprov1alpha2.ClusterHealth{AllWorkloadsReady: true, ReadyWorkloads: 5, TotalWorkloads: 5},
 		},
 	}
-	promotionplan := &kaprov1alpha1.PromotionPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "std-promotionplan"},
-		Spec: kaprov1alpha1.PromotionPlanSpec{
-			Stages: []kaprov1alpha1.Stage{
+	plan := &kaprov1alpha2.Plan{
+		ObjectMeta: metav1.ObjectMeta{Name: "std-plan"},
+		Spec: kaprov1alpha2.PlanSpec{
+			Stages: []kaprov1alpha2.Stage{
 				{Name: "canary", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}}},
 			},
 		},
 	}
-	target := &kaprov1alpha1.PromotionTarget{
+	target := &kaprov1alpha2.Target{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "rel-1-canary-cluster-a",
-			Labels: map[string]string{decisionPromotionRunLabel: "rel-1", decisionPhaseLabel: string(kaprov1alpha1.TargetPhaseWaitingApproval)},
+			Labels: map[string]string{decisionPromotionRunLabel: "rel-1", decisionPhaseLabel: string(kaprov1alpha2.TargetPhaseWaitingApproval)},
 		},
-		Spec: kaprov1alpha1.PromotionTargetSpec{
+		Spec: kaprov1alpha2.TargetSpec{
 			PromotionRunRef: "rel-1",
 			Target:          "cluster-a",
 			Stage:           "canary",
 			Version:         "sha256:abc",
 		},
-		Status: kaprov1alpha1.PromotionTargetStatus{
-			TargetStatus: kaprov1alpha1.TargetStatus{Phase: kaprov1alpha1.TargetPhaseWaitingApproval},
+		Status: kaprov1alpha2.TargetStatus{
+			TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseWaitingApproval},
 		},
 	}
-	return promotionrun, mc, promotionplan, target
+	return promotionrun, mc, plan, target
 }
 
 // --- Fleet endpoint ---
@@ -163,6 +164,9 @@ func TestFleet_ReturnsClusterAndPromotionRunSummary(t *testing.T) {
 	}
 	if resp.Page.Limit != defaultDecisionAPILimit {
 		t.Errorf("expected default limit %d, got %d", defaultDecisionAPILimit, resp.Page.Limit)
+	}
+	if !strings.Contains(rec.Body.String(), `"plan"`) || strings.Contains(rec.Body.String(), `"promotionplan"`) {
+		t.Fatalf("fleet JSON should use plan key, got: %s", rec.Body.String())
 	}
 }
 
@@ -203,25 +207,25 @@ func TestFleet_LimitsAndReportsTruncation(t *testing.T) {
 	if !resp.Page.Truncated {
 		t.Fatal("expected page to be marked truncated")
 	}
-	if resp.Page.Counts["fleetclusters"] != 2 {
-		t.Fatalf("expected fleetcluster count 2, got %d", resp.Page.Counts["fleetclusters"])
+	if resp.Page.Counts["clusters"] != 2 {
+		t.Fatalf("expected cluster count 2, got %d", resp.Page.Counts["clusters"])
 	}
 }
 
 func TestFleet_PhaseFilterScansPastFirstPage(t *testing.T) {
-	clusterA := &kaprov1alpha1.FleetCluster{
+	clusterA := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
-		Status:     kaprov1alpha1.FleetClusterStatus{Phase: kaprov1alpha1.ClusterPhaseFailed},
+		Status:     kaprov1alpha2.ClusterStatus{Phase: kaprov1alpha2.ClusterPhaseFailed},
 	}
-	clusterB := &kaprov1alpha1.FleetCluster{
+	clusterB := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-b"},
-		Status:     kaprov1alpha1.FleetClusterStatus{Phase: kaprov1alpha1.ClusterPhaseFailed},
+		Status:     kaprov1alpha2.ClusterStatus{Phase: kaprov1alpha2.ClusterPhaseFailed},
 	}
-	clusterC := &kaprov1alpha1.FleetCluster{
+	clusterC := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-c"},
-		Status: kaprov1alpha1.FleetClusterStatus{
-			Phase:  kaprov1alpha1.ClusterPhaseConverged,
-			Health: kaprov1alpha1.ClusterHealth{AllWorkloadsReady: true},
+		Status: kaprov1alpha2.ClusterStatus{
+			Phase:  kaprov1alpha2.ClusterPhaseConverged,
+			Health: kaprov1alpha2.ClusterHealth{AllWorkloadsReady: true},
 		},
 	}
 	s := decisionTestServer(t, clusterA, clusterB, clusterC)
@@ -249,9 +253,9 @@ func TestFleet_PhaseFilterScansPastFirstPage(t *testing.T) {
 func TestFleet_PhaseFilterStopsAtScanCap(t *testing.T) {
 	objs := make([]client.Object, 0, decisionAPIScanLimitMultiplier+1)
 	for i := 0; i < decisionAPIScanLimitMultiplier+1; i++ {
-		objs = append(objs, &kaprov1alpha1.FleetCluster{
+		objs = append(objs, &kaprov1alpha2.Cluster{
 			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("cluster-%02d", i)},
-			Status:     kaprov1alpha1.FleetClusterStatus{Phase: kaprov1alpha1.ClusterPhaseFailed},
+			Status:     kaprov1alpha2.ClusterStatus{Phase: kaprov1alpha2.ClusterPhaseFailed},
 		})
 	}
 	s := decisionTestServer(t, objs...)
@@ -315,8 +319,8 @@ func TestDecisionAPI_RequiresRBAC(t *testing.T) {
 // --- PromotionRun Context endpoint ---
 
 func TestPromotionRunContext_ReturnsPromotionRunAndTargets(t *testing.T) {
-	promotionrun, mc, promotionplan, target := decisionFixtures()
-	s := decisionTestServer(t, promotionrun, mc, promotionplan, target)
+	promotionrun, mc, plan, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, mc, plan, target)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/promotionruns/rel-1/context", nil)
 	authorizeDecisionRequest(req)
@@ -333,8 +337,11 @@ func TestPromotionRunContext_ReturnsPromotionRunAndTargets(t *testing.T) {
 	if resp.PromotionRun.Name != "rel-1" {
 		t.Errorf("expected promotionrun rel-1, got %s", resp.PromotionRun.Name)
 	}
-	if resp.PromotionPlan == nil {
-		t.Error("expected promotionplan to be resolved")
+	if resp.Plan == nil {
+		t.Error("expected plan to be resolved")
+	}
+	if !strings.Contains(rec.Body.String(), `"plan"`) || strings.Contains(rec.Body.String(), `"promotionplan"`) {
+		t.Fatalf("context JSON should use plan key, got: %s", rec.Body.String())
 	}
 	if len(resp.Targets) != 1 {
 		t.Errorf("expected 1 target, got %d", len(resp.Targets))
@@ -342,17 +349,17 @@ func TestPromotionRunContext_ReturnsPromotionRunAndTargets(t *testing.T) {
 }
 
 func TestPromotionRunContext_FiltersTargetsWithLimit(t *testing.T) {
-	promotionrun, _, promotionplan, target := decisionFixtures()
+	promotionrun, _, plan, target := decisionFixtures()
 	completeTarget := target.DeepCopy()
 	completeTarget.Name = "rel-1-canary-cluster-b"
 	completeTarget.Spec.Target = "cluster-b"
-	completeTarget.Status.Phase = kaprov1alpha1.TargetPhaseConverged
+	completeTarget.Status.Phase = kaprov1alpha2.TargetPhaseConverged
 
 	otherRunTarget := target.DeepCopy()
 	otherRunTarget.Name = "rel-2-canary-cluster-a"
 	otherRunTarget.Spec.PromotionRunRef = "rel-2"
 
-	s := decisionTestServer(t, promotionrun, promotionplan, completeTarget, target, otherRunTarget)
+	s := decisionTestServer(t, promotionrun, plan, completeTarget, target, otherRunTarget)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/promotionruns/rel-1/context?limit=1&phase=WaitingApproval", nil)
 	authorizeDecisionRequest(req)
@@ -369,11 +376,11 @@ func TestPromotionRunContext_FiltersTargetsWithLimit(t *testing.T) {
 	if len(resp.Targets) != 1 {
 		t.Fatalf("expected 1 filtered target, got %d", len(resp.Targets))
 	}
-	if resp.Targets[0].Spec.PromotionRunRef != "rel-1" || resp.Targets[0].Status.Phase != kaprov1alpha1.TargetPhaseWaitingApproval {
+	if resp.Targets[0].Spec.PromotionRunRef != "rel-1" || resp.Targets[0].Status.Phase != kaprov1alpha2.TargetPhaseWaitingApproval {
 		t.Fatalf("unexpected target returned: %#v", resp.Targets[0])
 	}
-	if resp.Page.Counts["promotiontargets"] != 1 {
-		t.Fatalf("expected target page count 1, got %d", resp.Page.Counts["promotiontargets"])
+	if resp.Page.Counts["targets"] != 1 {
+		t.Fatalf("expected target page count 1, got %d", resp.Page.Counts["targets"])
 	}
 }
 
@@ -490,7 +497,7 @@ func TestDecide_ApproveCreatesApprovalAndTrace(t *testing.T) {
 		Confidence:     0.95,
 		Reasoning:      "Canary looks healthy. Error rate 0.1% well below 1% threshold.",
 		IdempotencyKey: "test-agent-rel-1-cluster-a-1",
-		Factors: []kaprov1alpha1.DecisionFactor{
+		Factors: []kaprov1alpha2.DecisionFactor{
 			{Name: "error_rate", Value: 0.001, Weight: 0.5, Assessment: "pass"},
 		},
 	})
@@ -511,7 +518,7 @@ func TestDecide_ApproveCreatesApprovalAndTrace(t *testing.T) {
 	}
 
 	// Verify DecisionTrace was written to target status.
-	var updated kaprov1alpha1.PromotionTarget
+	var updated kaprov1alpha2.Target
 	if err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: "rel-1-canary-cluster-a"}, &updated); err != nil {
 		t.Fatalf("get updated target: %v", err)
 	}
@@ -535,7 +542,7 @@ func TestDecide_ApproveCreatesApprovalAndTrace(t *testing.T) {
 	}
 
 	// Verify Approval CR was created.
-	var approval kaprov1alpha1.Approval
+	var approval kaprov1alpha2.Approval
 	if err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: "rel-1-rel-1-canary-cluster-a"}, &approval); err != nil {
 		t.Fatalf("expected Approval to be created: %v", err)
 	}
@@ -559,7 +566,7 @@ func TestDecide_ApproveRequiresApprovalCreateRBACBeforeTraceWrite(t *testing.T) 
 		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	var updated kaprov1alpha1.PromotionTarget
+	var updated kaprov1alpha2.Target
 	if err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: "rel-1-canary-cluster-a"}, &updated); err != nil {
 		t.Fatalf("get target: %v", err)
 	}
@@ -568,7 +575,7 @@ func TestDecide_ApproveRequiresApprovalCreateRBACBeforeTraceWrite(t *testing.T) 
 	}
 }
 
-func TestDecide_AuthorizesPromotionTargetStatusPatchSubresource(t *testing.T) {
+func TestDecide_AuthorizesTargetStatusPatchSubresource(t *testing.T) {
 	promotionrun, mc, _, target := decisionFixtures()
 	authz := &recordingDecisionAuthorizer{}
 	s := decisionTestServer(t, promotionrun, mc, target)
@@ -587,13 +594,13 @@ func TestDecide_AuthorizesPromotionTargetStatusPatchSubresource(t *testing.T) {
 	for _, attr := range authz.attrs {
 		if attr.Group == "kapro.io" &&
 			attr.Verb == "patch" &&
-			attr.Resource == "promotiontargets" &&
+			attr.Resource == "targets" &&
 			attr.Subresource == "status" &&
 			attr.Name == "rel-1-canary-cluster-a" {
 			return
 		}
 	}
-	t.Fatalf("missing promotiontargets/status patch SAR; attrs=%#v", authz.attrs)
+	t.Fatalf("missing targets/status patch SAR; attrs=%#v", authz.attrs)
 }
 
 func TestDecide_RecordsUserIdentityType(t *testing.T) {
@@ -611,7 +618,7 @@ func TestDecide_RecordsUserIdentityType(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	var updated kaprov1alpha1.PromotionTarget
+	var updated kaprov1alpha2.Target
 	if err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: "rel-1-canary-cluster-a"}, &updated); err != nil {
 		t.Fatalf("get target: %v", err)
 	}
@@ -636,7 +643,7 @@ func TestDecide_RejectDoesNotCreateApproval(t *testing.T) {
 	}
 
 	// Verify no Approval was created.
-	var approval kaprov1alpha1.Approval
+	var approval kaprov1alpha2.Approval
 	err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: "rel-1-rel-1-canary-cluster-a"}, &approval)
 	if err == nil {
 		t.Error("expected no Approval CR for Reject decision")
@@ -658,7 +665,7 @@ func TestDecide_DeferRecordsWithoutApproval(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	var updated kaprov1alpha1.PromotionTarget
+	var updated kaprov1alpha2.Target
 	if err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: "rel-1-canary-cluster-a"}, &updated); err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -746,7 +753,7 @@ func TestDecide_FirstDecisionWins(t *testing.T) {
 
 func TestDecide_WrongPhase(t *testing.T) {
 	promotionrun, _, _, target := decisionFixtures()
-	target.Status.Phase = kaprov1alpha1.TargetPhaseApplying // not WaitingApproval
+	target.Status.Phase = kaprov1alpha2.TargetPhaseApplying // not WaitingApproval
 	s := decisionTestServer(t, promotionrun, target)
 
 	rec := postDecision(t, s, "rel-1", "rel-1-canary-cluster-a", DecisionRequest{
@@ -845,7 +852,7 @@ func TestOverride_RecordsHumanOverride(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	var updated kaprov1alpha1.PromotionTarget
+	var updated kaprov1alpha2.Target
 	if err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: "rel-1-canary-cluster-a"}, &updated); err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -875,7 +882,7 @@ func TestOverride_ApproveCreatesApprovalCR(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	var approval kaprov1alpha1.Approval
+	var approval kaprov1alpha2.Approval
 	if err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: "rel-1-rel-1-canary-cluster-a"}, &approval); err != nil {
 		t.Fatalf("expected Approval to be created: %v", err)
 	}
@@ -900,8 +907,8 @@ func TestOverride_MissingFields(t *testing.T) {
 // --- Router ---
 
 func TestRouter_DispatchesCorrectly(t *testing.T) {
-	promotionrun, mc, promotionplan, target := decisionFixtures()
-	s := decisionTestServer(t, promotionrun, mc, promotionplan, target)
+	promotionrun, mc, plan, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, mc, plan, target)
 
 	mux := http.NewServeMux()
 	s.RegisterDecisionAPI(mux)

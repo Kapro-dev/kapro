@@ -8,15 +8,15 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
-// makePromotionPlan creates a minimal PromotionPlan with one stage targeting the given label selector.
-func makePromotionPlan(name string, selectorLabels map[string]string) *kaprov1alpha1.PromotionPlan {
-	return &kaprov1alpha1.PromotionPlan{
+// makePromotionPlan creates a minimal Plan with one stage targeting the given label selector.
+func makePromotionPlan(name string, selectorLabels map[string]string) *kaprov1alpha2.Plan {
+	return &kaprov1alpha2.Plan{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec: kaprov1alpha1.PromotionPlanSpec{
-			Stages: []kaprov1alpha1.Stage{
+		Spec: kaprov1alpha2.PlanSpec{
+			Stages: []kaprov1alpha2.Stage{
 				{
 					Name:     "deploy",
 					Selector: metav1.LabelSelector{MatchLabels: selectorLabels},
@@ -38,19 +38,19 @@ func TestPromotionRunReconciler_PendingToPromoting(t *testing.T) {
 	env := makeFleetCluster("de-dev", map[string]string{"tier": "dev", "country": "de"})
 	mustCreate(t, ctx, c, env)
 
-	// 2. Create PromotionPlan with one stage targeting country=de.
+	// 2. Create Plan with one stage targeting country=de.
 	promotionplan := makePromotionPlan("standard-rollout-ptp", map[string]string{"country": "de"})
 	mustCreate(t, ctx, c, promotionplan)
 
 	// 3. Create PromotionRun with version.
-	promotionrun := &kaprov1alpha1.PromotionRun{
+	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-promotionrun", Namespace: ns},
-		Spec: kaprov1alpha1.PromotionRunSpec{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "registry.example.com/app@sha256:aaaa",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{
-					Name:          "initial",
-					PromotionPlan: promotionplan.Name,
+					Name: "initial",
+					Plan: promotionplan.Name,
 				},
 			},
 		},
@@ -62,7 +62,7 @@ func TestPromotionRunReconciler_PendingToPromoting(t *testing.T) {
 	// 4. Expect PromotionRun to leave Pending.
 	eventually(t, func() bool {
 		r := getPromotionRun(ctx, c, key)
-		return r.Status.Phase != "" && r.Status.Phase != kaprov1alpha1.PromotionRunPhasePending
+		return r.Status.Phase != "" && r.Status.Phase != kaprov1alpha2.PromotionRunPhasePending
 	}, "promotionrun should leave empty/pending phase")
 
 	t.Logf("promotionrun phase: %s", getPromotionRun(ctx, c, key).Status.Phase)
@@ -77,14 +77,14 @@ func TestPromotionRunReconciler_MissingVersion_StaysPending(t *testing.T) {
 	promotionplan := makePromotionPlan("standard-rollout-ma", map[string]string{"x": "y"})
 	mustCreate(t, ctx, c, promotionplan)
 
-	promotionrun := &kaprov1alpha1.PromotionRun{
+	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "missing-ver-promotionrun", Namespace: "default"},
-		Spec: kaprov1alpha1.PromotionRunSpec{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{
-					Name:          "initial",
-					PromotionPlan: promotionplan.Name,
+					Name: "initial",
+					Plan: promotionplan.Name,
 				},
 			},
 		},
@@ -97,7 +97,7 @@ func TestPromotionRunReconciler_MissingVersion_StaysPending(t *testing.T) {
 	eventually(t, func() bool {
 		r := getPromotionRun(ctx, c, key)
 		// Should stay pending (stalled with NoVersion condition).
-		return r.Status.Phase == kaprov1alpha1.PromotionRunPhasePending ||
+		return r.Status.Phase == kaprov1alpha2.PromotionRunPhasePending ||
 			r.Status.Phase == ""
 	}, "promotionrun with empty version should stay pending")
 }
@@ -116,14 +116,14 @@ func TestPromotionRunReconciler_EnvStatus_Populated(t *testing.T) {
 	promotionplan := makePromotionPlan("standard-rollout-or", map[string]string{"country": "de2"})
 	mustCreate(t, ctx, c, promotionplan)
 
-	promotionrun := &kaprov1alpha1.PromotionRun{
+	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "ownerref-promotionrun", Namespace: ns},
-		Spec: kaprov1alpha1.PromotionRunSpec{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "registry.example.com/app@sha256:bbbb",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{
-					Name:          "initial",
-					PromotionPlan: promotionplan.Name,
+					Name: "initial",
+					Plan: promotionplan.Name,
 				},
 			},
 		},
@@ -136,13 +136,13 @@ func TestPromotionRunReconciler_EnvStatus_Populated(t *testing.T) {
 	}, "PromotionTarget children should be populated after progressing starts")
 }
 
-func listPromotionTargets(t *testing.T, ctx context.Context, c client.Client, promotionrunName, _ string) []kaprov1alpha1.PromotionTarget {
+func listPromotionTargets(t *testing.T, ctx context.Context, c client.Client, promotionrunName, _ string) []kaprov1alpha2.Target {
 	t.Helper()
-	var list kaprov1alpha1.PromotionTargetList
+	var list kaprov1alpha2.TargetList
 	if err := c.List(ctx, &list); err != nil {
 		t.Fatalf("list PromotionTargets: %v", err)
 	}
-	targets := make([]kaprov1alpha1.PromotionTarget, 0)
+	targets := make([]kaprov1alpha2.Target, 0)
 	for _, target := range list.Items {
 		if target.Spec.PromotionRunRef == promotionrunName {
 			targets = append(targets, target)

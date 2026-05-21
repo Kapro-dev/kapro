@@ -3,22 +3,22 @@ package admission
 import (
 	"testing"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
-func validTrigger() *kaprov1alpha1.PromotionTrigger {
-	return &kaprov1alpha1.PromotionTrigger{
-		Spec: kaprov1alpha1.PromotionTriggerSpec{
-			Source: kaprov1alpha1.PromotionTriggerSource{
+func validTrigger() *kaprov1alpha2.Trigger {
+	return &kaprov1alpha2.Trigger{
+		Spec: kaprov1alpha2.TriggerSpec{
+			Source: kaprov1alpha2.TriggerSource{
 				Type: "oci",
-				OCI: &kaprov1alpha1.OCIPromotionTriggerSource{
+				OCI: &kaprov1alpha2.OCITriggerSource{
 					Repository: "oci://example.com/repo",
 					TagPattern: "v.*",
 				},
 			},
-			PromotionTemplate: kaprov1alpha1.PromotionTriggerTemplate{
-				KaproRef:       "checkout",
-				PromotionPlans: []kaprov1alpha1.PromotionPlanRef{{Name: "default-plan"}},
+			PromotionTemplate: kaprov1alpha2.TriggerTemplate{
+				FleetRef: "checkout",
+				Plans:    []kaprov1alpha2.PlanRef{{Name: "default-plan"}},
 			},
 		},
 	}
@@ -71,27 +71,27 @@ func TestValidatePromotionTrigger_OCIBlockMissing(t *testing.T) {
 }
 
 func TestValidatePromotionTrigger_TemplateMissingPlansIsValid(t *testing.T) {
-	// PromotionPlans is optional in the trigger template; the Promotion
-	// controller inherits the inline plan from the parent Kapro when empty.
+	// Plans is optional in the trigger template; the Promotion
+	// controller inherits the inline plan from the parent Fleet when empty.
 	pt := validTrigger()
-	pt.Spec.PromotionTemplate.PromotionPlans = nil
+	pt.Spec.PromotionTemplate.Plans = nil
 	if err := validatePromotionTrigger(pt); err != nil {
-		t.Fatalf("expected nil error for empty promotionPlans (controller falls back to Kapro inline plan), got %v", err)
+		t.Fatalf("expected nil error for empty plans (controller falls back to Fleet inline plan), got %v", err)
 	}
 }
 
-func TestValidatePromotionTrigger_TemplateMissingKaproRef(t *testing.T) {
+func TestValidatePromotionTrigger_TemplateMissingFleetRef(t *testing.T) {
 	pt := validTrigger()
-	pt.Spec.PromotionTemplate.KaproRef = ""
+	pt.Spec.PromotionTemplate.FleetRef = ""
 	if err := validatePromotionTrigger(pt); err == nil {
-		t.Fatal("expected error for missing kaproRef")
+		t.Fatal("expected error for missing fleetRef")
 	}
 }
 
 func TestValidatePromotionTrigger_PromotionPlanMissingName(t *testing.T) {
 	pt := validTrigger()
-	pt.Spec.PromotionTemplate.PromotionPlans = []kaprov1alpha1.PromotionPlanRef{{Name: ""}}
+	pt.Spec.PromotionTemplate.Plans = []kaprov1alpha2.PlanRef{{Name: ""}}
 	if err := validatePromotionTrigger(pt); err == nil {
-		t.Fatal("expected error for empty promotionPlan name")
+		t.Fatal("expected error for empty plan name")
 	}
 }

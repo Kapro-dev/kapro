@@ -13,7 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 // PromotionRun create/update is restricted to the Kapro controller service
@@ -82,8 +82,8 @@ func requireTeamLabel(labels map[string]string) *field.Error {
 //
 // Rules enforced:
 //  1. spec.version or spec.versions must be non-empty.
-//  2. spec.promotionPlans must have at least one promotionPlan reference.
-//  3. Each PromotionPlanRef must have a non-empty name and promotionPlan.
+//  2. spec.plans must have at least one Plan reference.
+//  3. Each PlanRef must have a non-empty name and plan.
 //  4. metadata.labels[kapro.io/team] must be set on CREATE (gate sprint).
 type PromotionRunValidator struct {
 	decoder admission.Decoder
@@ -108,7 +108,7 @@ func (v *PromotionRunValidator) Handle(_ context.Context, req admission.Request)
 		}
 	}
 
-	var promotionRun kaprov1alpha1.PromotionRun
+	var promotionRun kaprov1alpha2.PromotionRun
 	if err := v.decoder.DecodeRaw(req.Object, &promotionRun); err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
 	}
@@ -121,7 +121,7 @@ func (v *PromotionRunValidator) Handle(_ context.Context, req admission.Request)
 		}
 	}
 	if req.Operation == admissionv1.Update {
-		var old kaprov1alpha1.PromotionRun
+		var old kaprov1alpha2.PromotionRun
 		if err := v.decoder.DecodeRaw(req.OldObject, &old); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
@@ -132,7 +132,7 @@ func (v *PromotionRunValidator) Handle(_ context.Context, req admission.Request)
 	return admission.Allowed("")
 }
 
-func validatePromotionRun(r *kaprov1alpha1.PromotionRun) error {
+func validatePromotionRun(r *kaprov1alpha2.PromotionRun) error {
 	var allErrs field.ErrorList
 	if r.Spec.Version == "" && len(r.Spec.Versions) == 0 {
 		allErrs = append(allErrs, field.Required(field.NewPath("spec"), "version or versions is required"))
@@ -149,52 +149,52 @@ func validatePromotionRun(r *kaprov1alpha1.PromotionRun) error {
 		return fmt.Errorf("%s", allErrs.ToAggregate().Error())
 	}
 
-	if len(r.Spec.PromotionPlans) == 0 {
-		return fmt.Errorf("promotionRun.spec.promotionPlans must have at least one promotionPlan reference")
+	if len(r.Spec.Plans) == 0 {
+		return fmt.Errorf("promotionRun.spec.plans must have at least one plan reference")
 	}
 
-	index := make(map[string]int, len(r.Spec.PromotionPlans))
-	for i, ref := range r.Spec.PromotionPlans {
+	index := make(map[string]int, len(r.Spec.Plans))
+	for i, ref := range r.Spec.Plans {
 		if ref.Name == "" {
-			return fmt.Errorf("promotionRun.spec.promotionPlans[%d].name must be set", i)
+			return fmt.Errorf("promotionRun.spec.plans[%d].name must be set", i)
 		}
-		if ref.PromotionPlan == "" {
-			return fmt.Errorf("promotionRun.spec.promotionPlans[%d].promotionPlan must be set", i)
+		if ref.Plan == "" {
+			return fmt.Errorf("promotionRun.spec.plans[%d].plan must be set", i)
 		}
 		if _, exists := index[ref.Name]; exists {
-			return fmt.Errorf("promotionRun.spec.promotionPlans: duplicate promotionPlan node name %q", ref.Name)
+			return fmt.Errorf("promotionRun.spec.plans: duplicate plan node name %q", ref.Name)
 		}
 		index[ref.Name] = i
 	}
 
-	// Validate all dependsOn references name existing promotionPlan nodes.
-	for _, ref := range r.Spec.PromotionPlans {
+	// Validate all dependsOn references name existing plan nodes.
+	for _, ref := range r.Spec.Plans {
 		for _, dep := range ref.DependsOn {
 			if _, exists := index[dep]; !exists {
-				return fmt.Errorf("promotionRun.spec.promotionPlans[%q].dependsOn: unknown promotionPlan node %q", ref.Name, dep)
+				return fmt.Errorf("promotionRun.spec.plans[%q].dependsOn: unknown plan node %q", ref.Name, dep)
 			}
 		}
 	}
 
-	// DFS cycle detection on the promotionPlan node DAG.
+	// DFS cycle detection on the plan node DAG.
 	if cycle := detectCycle(index, func(name string) []string {
-		return r.Spec.PromotionPlans[index[name]].DependsOn
+		return r.Spec.Plans[index[name]].DependsOn
 	}); cycle != "" {
-		return fmt.Errorf("promotionRun.spec.promotionPlans: cycle detected: %s", cycle)
+		return fmt.Errorf("promotionRun.spec.plans: cycle detected: %s", cycle)
 	}
 
 	return nil
 }
 
-func validatePromotionRunUpdate(old, new *kaprov1alpha1.PromotionRun) error {
+func validatePromotionRunUpdate(old, new *kaprov1alpha2.PromotionRun) error {
 	if old.Spec.Version != new.Spec.Version {
 		return fmt.Errorf("promotionRun.spec.version is immutable after creation")
 	}
 	if !reflect.DeepEqual(old.Spec.Versions, new.Spec.Versions) {
 		return fmt.Errorf("promotionRun.spec.versions is immutable after creation")
 	}
-	if !reflect.DeepEqual(old.Spec.PromotionPlans, new.Spec.PromotionPlans) {
-		return fmt.Errorf("promotionRun.spec.promotionPlans is immutable after creation")
+	if !reflect.DeepEqual(old.Spec.Plans, new.Spec.Plans) {
+		return fmt.Errorf("promotionRun.spec.plans is immutable after creation")
 	}
 	if !reflect.DeepEqual(old.Spec.Scope, new.Spec.Scope) {
 		return fmt.Errorf("promotionRun.spec.scope is immutable after creation")
@@ -203,11 +203,11 @@ func validatePromotionRunUpdate(old, new *kaprov1alpha1.PromotionRun) error {
 }
 
 // ValidatePromotionRun is an exported test helper that exposes the internal validation logic.
-func ValidatePromotionRun(r *kaprov1alpha1.PromotionRun) error {
+func ValidatePromotionRun(r *kaprov1alpha2.PromotionRun) error {
 	return validatePromotionRun(r)
 }
 
 // ValidatePromotionRunUpdate is an exported test helper for update immutability rules.
-func ValidatePromotionRunUpdate(old, new *kaprov1alpha1.PromotionRun) error {
+func ValidatePromotionRunUpdate(old, new *kaprov1alpha2.PromotionRun) error {
 	return validatePromotionRunUpdate(old, new)
 }

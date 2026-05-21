@@ -31,7 +31,7 @@ import (
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	argoactuator "kapro.io/kapro/internal/actuator/argo"
 	fluxopactuator "kapro.io/kapro/internal/actuator/fluxoperator"
 	pullactuator "kapro.io/kapro/internal/actuator/pull"
@@ -52,7 +52,7 @@ var scheme = runtime.NewScheme()
 
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = kaprov1alpha1.AddToScheme(scheme)
+	_ = kaprov1alpha2.AddToScheme(scheme)
 }
 
 func defaultLeaderElectionID(shardName string) string {
@@ -70,8 +70,8 @@ func defaultLeaderElectionID(shardName string) string {
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create
 // +kubebuilder:rbac:groups=authentication.k8s.io,resources=tokenreviews,verbs=create
 // +kubebuilder:rbac:groups=authorization.k8s.io,resources=subjectaccessreviews,verbs=create
-// +kubebuilder:rbac:groups=kapro.io,resources=agentpolicies,verbs=get;list;watch
-// +kubebuilder:rbac:groups=kapro.io,resources=agentpolicies/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=policies,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=policies/status,verbs=get;update;patch
 
 func main() {
 	devMode := os.Getenv("KAPRO_DEV_MODE") == "1"
@@ -173,7 +173,7 @@ func main() {
 		log.Error(err, "failed to register push/flux actuator")
 		os.Exit(1)
 	}
-	// Pull-mode delivery records desired versions on FleetCluster; spoke-side
+	// Pull-mode delivery records desired versions on Cluster; spoke-side
 	// agents own applying those versions to their local backend.
 	pullAct := &pullactuator.PullActuator{HubClient: mgr.GetClient()}
 	if err := actuatorReg.Register("pull/flux", pullAct); err != nil {
@@ -212,7 +212,7 @@ func main() {
 
 	// Typed Kubernetes clients for verbs not exposed by controller-runtime's
 	// generic client: ServiceAccounts/token TokenRequest and CSR UpdateApproval.
-	// Used by the FleetCluster bootstrap controller. Cheap to construct; safe to
+	// Used by the Cluster bootstrap controller. Cheap to construct; safe to
 	// share across reconcilers.
 	kubeClient, err := kubernetes.NewForConfig(mgr.GetConfig())
 	if err != nil {
@@ -268,35 +268,35 @@ func main() {
 		trustedSA := "system:serviceaccount:" + podNS + ":" + podSA
 
 		mgr.GetWebhookServer().Register(
-			"/mutate-kapro-io-v1alpha1-approval",
+			"/mutate-kapro-io-v1alpha2-approval",
 			&crwebhook.Admission{Handler: kaploadmission.NewApprovalMutator(decoder, trustedSA)},
 		)
 		mgr.GetWebhookServer().Register(
-			"/mutate-kapro-io-v1alpha1-fleetcluster",
+			"/mutate-kapro-io-v1alpha2-cluster",
 			&crwebhook.Admission{Handler: kaploadmission.NewFleetClusterMutator(decoder)},
 		)
-		// Use APIReader (uncached, direct to apiserver) for the FleetCluster
+		// Use APIReader (uncached, direct to apiserver) for the Cluster
 		// admission webhook so a cold-start informer cache cannot produce a
-		// spurious BackendProfile-not-found rejection. Matches the pattern
+		// spurious Backend-not-found rejection. Matches the pattern
 		// already used by the plugin gateway registration above.
 		mgr.GetWebhookServer().Register(
-			"/validate-kapro-io-v1alpha1-fleetcluster",
+			"/validate-kapro-io-v1alpha2-cluster",
 			&crwebhook.Admission{Handler: kaploadmission.NewFleetClusterValidator(decoder, mgr.GetAPIReader())},
 		)
 		mgr.GetWebhookServer().Register(
-			"/validate-kapro-io-v1alpha1-promotionrun",
+			"/validate-kapro-io-v1alpha2-promotionrun",
 			&crwebhook.Admission{Handler: kaploadmission.NewPromotionRunValidator(decoder)},
 		)
 		mgr.GetWebhookServer().Register(
-			"/validate-kapro-io-v1alpha1-promotionplan",
+			"/validate-kapro-io-v1alpha2-plan",
 			&crwebhook.Admission{Handler: kaploadmission.NewPromotionPlanValidator(decoder)},
 		)
 		mgr.GetWebhookServer().Register(
-			"/validate-kapro-io-v1alpha1-approval",
+			"/validate-kapro-io-v1alpha2-approval",
 			&crwebhook.Admission{Handler: kaploadmission.NewApprovalValidator(decoder)},
 		)
 		mgr.GetWebhookServer().Register(
-			"/validate-kapro-io-v1alpha1-promotiontrigger",
+			"/validate-kapro-io-v1alpha2-trigger",
 			&crwebhook.Admission{Handler: kaploadmission.NewPromotionTriggerValidator(decoder)},
 		)
 	}

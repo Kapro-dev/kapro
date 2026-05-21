@@ -7,7 +7,7 @@ change Kubernetes API version strings by itself.
 
 The current release line is pre-stable. `v0.1.0` is the first public release
 for the full promotion-domain API, not a promise that all
-`kapro.io/v1alpha1` fields are stable. `CHANGELOG.md` and the release notes are
+`kapro.io/v1alpha2` fields are stable. `CHANGELOG.md` and the release notes are
 the binding upgrade record for each tag.
 
 ## Maturity Levels
@@ -26,11 +26,11 @@ Preview. The table below is the source of truth for the current contract level.
 
 | Surface | Path | Level |
 |---|---|---|
-| Core promotion CRDs | `api/v1alpha1` `Kapro`, `Promotion`, `PromotionRun`, `PromotionTarget`, `PromotionPlan`, `PromotionSource`, `PromotionUnit`, `FleetCluster`, `BackendProfile`, `Approval` | Alpha |
-| PromotionTrigger CRD | `api/v1alpha1` `PromotionTrigger` | Preview |
-| PluginRegistration CRD | `api/v1alpha1` `PluginRegistration` | Preview |
-| Agent decision APIs | `api/v1alpha1` `AgentPolicy`, `PromotionTarget.status.decisionTrace`, Decision API HTTP routes | Preview |
-| Fleet auto-import CRD | `api/v1alpha1` `FleetClusterTemplate` | Preview; only implemented sources are runtime features |
+| Core promotion CRDs | `api/v1alpha2` `Fleet`, `Promotion`, `PromotionRun`, `Target`, `Plan`, `Source`, `Unit`, `Cluster`, `Backend`, `Approval` | Alpha |
+| Trigger CRD | `api/v1alpha2` `Trigger` | Preview |
+| Plugin CRD | `api/v1alpha2` `Plugin` | Preview |
+| Agent decision APIs | `api/v1alpha2` `Policy`, `Target.status.decisionTrace`, Decision API HTTP routes | Preview |
+| Fleet auto-import CRD | `api/v1alpha2` `ClusterTemplate` | Preview; only implemented sources are runtime features |
 | In-process actuator interface | `pkg/actuator` | Preview |
 | In-process gate interface | `pkg/gate` | Preview |
 | In-process planner interface | `pkg/planner` | Preview |
@@ -40,9 +40,9 @@ Preview. The table below is the source of truth for the current contract level.
 | Conformance harnesses | `conformance/actuator`, `conformance/gate`, `conformance/planner` | Preview |
 | Lifecycle event schema | `docs/events.md` | Preview |
 
-All `v1alpha1` APIs remain below stable maturity until Kapro publishes a
+All `v1alpha2` APIs remain below stable maturity until Kapro publishes a
 stable API version. A surface can be Preview while the Kubernetes version is
-still `v1alpha1`; the table above is the source of truth for compatibility
+still `v1alpha2`; the table above is the source of truth for compatibility
 expectations.
 
 No public surface is Stable in `v0.1.0`.
@@ -50,17 +50,17 @@ No public surface is Stable in `v0.1.0`.
 ## Stable Core Versus Preview
 
 The core runtime path is the promotion execution model: `Promotion`,
-`PromotionRun`, `PromotionTarget`, `PromotionPlan`, `FleetCluster`, `BackendProfile`,
-`PromotionSource`, and `Approval`. These APIs are still versioned
-`v1alpha1`, but they are the durable product center and are exercised by the
+`PromotionRun`, `Target`, `Plan`, `Cluster`, `Backend`,
+`Source`, and `Approval`. These APIs are still versioned
+`v1alpha2`, but they are the durable product center and are exercised by the
 operator runtime.
 
 Preview APIs are intentionally separated from that core. Inline gate
 notifications remain the active runtime path; there is no public notification
-provider/policy CRD in the KISS API. `AgentPolicy`,
-`PromotionTarget.status.decisionTrace`, and the Decision API are opt-in surfaces
+provider/policy CRD in the KISS API. `Policy`,
+`Target.status.decisionTrace`, and the Decision API are opt-in surfaces
 for machine assistance, not required for deterministic promotion execution.
-`FleetClusterTemplate` auto-import sources are only runtime features when the
+`ClusterTemplate` auto-import sources are only runtime features when the
 source is implemented by the controller; unsupported sources must be documented
 as future work rather than claimed as supported behavior.
 
@@ -183,17 +183,17 @@ Kapro upgrades are designed around Kubernetes controller safety:
   against the same shard unless the release notes explicitly allow it.
 - Apply CRD updates before rolling operator pods.
 - Keep leader election enabled for multi-replica deployments.
-- Keep `PromotionRun` and `PromotionTarget` objects immutable from automation
+- Keep `PromotionRun` and `Target` objects immutable from automation
   while an operator upgrade is in progress; update `Promotion` intent or create
   a new `Promotion` for rollback.
 - Upgrade plugin servers before enabling a Kapro version that requires a newer
   KAI, KGI, or KPI contract.
 - Run the relevant conformance harness for each external plugin before
   upgrading production hubs.
-- Confirm `PluginRegistration.status.ready=true` and fresh
+- Confirm `Plugin.status.ready=true` and fresh
   `status.observedGeneration` before relying on runtime plugin dispatch. When
-  `KAPRO_ENABLE_PLUGIN_GATEWAY=true`, ready registrations are hot-loaded and
-  stale or incompatible registrations are unloaded.
+  `KAPRO_ENABLE_PLUGIN_GATEWAY=true`, ready plugins are hot-loaded and stale or
+  incompatible plugins are unloaded.
 
 Within a supported minor upgrade, existing in-flight PromotionRuns continue from
 Kubernetes status. Controllers may requeue work after restart, but gate
@@ -208,7 +208,7 @@ Recommended upgrade order:
 3. Apply CRDs and RBAC.
 4. Upgrade external plugin servers and run their conformance suites.
 5. Roll one hub operator deployment or shard at a time.
-6. Watch `PromotionRun`, `PromotionTarget`, `PluginRegistration`, and controller
+6. Watch `PromotionRun`, `Target`, `Plugin`, and controller
    workqueue metrics until queues drain and observed generations catch up.
 7. Resume automation that creates or updates `Promotion` objects.
 
@@ -225,7 +225,7 @@ plugin. The path is:
 
 1. Implement the published proto contract.
 2. Pass the matching conformance harness.
-3. Publish tested `PluginRegistration` manifests and operational defaults.
+3. Publish tested `Plugin` manifests and operational defaults.
 4. Document backend permissions, idempotency behavior, timeout behavior, and
    failure modes.
 5. Publish a compatibility matrix listing Kapro versions, contract versions,

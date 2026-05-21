@@ -3,6 +3,7 @@
 
 require "json"
 require "yaml"
+require "date"
 
 ROOT = File.expand_path("..", __dir__)
 Dir.chdir(ROOT)
@@ -14,6 +15,67 @@ YAML_PATTERNS = [
 
 GRAFANA_JSON_PATTERNS = [
   "examples/monitoring/*.json"
+].freeze
+
+SCRIPT_PATTERNS = [
+  "scripts/*.sh",
+  "examples/**/*.sh"
+].freeze
+
+KAPRO_API_VERSION = "kapro.io/v1alpha2"
+KAPRO_KINDS = %w[
+  Approval
+  Backend
+  Cluster
+  ClusterTemplate
+  Fleet
+  Plan
+  Plugin
+  Policy
+  Promotion
+  PromotionRun
+  Source
+  Target
+  Trigger
+].freeze
+STALE_KAPRO_KINDS = %w[
+  BackendProfile
+  FleetCluster
+  FleetClusterTemplate
+  PluginRegistration
+  PromotionPlan
+  PromotionSource
+  PromotionTarget
+  PromotionTrigger
+].freeze
+STALE_KAPRO_FIELDS = %w[
+  kaproRef
+  promotionPlan
+  promotionPlans
+  promotionrunTemplate
+].freeze
+STALE_KUBECTL_RESOURCES = %w[
+  backendprofile
+  backendprofiles
+  fleetcluster
+  fleetclusters
+  pluginregistration
+  pluginregistrations
+  promotionplan
+  promotionplans
+  promotionsource
+  promotionsources
+  promotiontarget
+  promotiontargets
+  promotiontrigger
+  promotiontriggers
+].freeze
+STALE_MONITORING_TEXT = %w[
+  kapro_promotiontrigger
+  kapro_pluginregistration
+  $labels.promotiontrigger
+  $labels.pluginregistration
+  runbook-blocked-promotiontrigger
 ].freeze
 
 def matching_files(patterns)
@@ -33,14 +95,90 @@ def validate_yaml(path)
   YAML.parse_file(path)
 end
 
+def yaml_documents(path)
+  YAML.load_stream(File.read(path))
+end
+
 def validate_json(path)
   JSON.parse(File.read(path))
+end
+
+def kapro_document?(doc)
+  api = doc["apiVersion"]
+  api.is_a?(String) && api.start_with?("kapro.io/")
+end
+
+def check_kapro_yaml(path)
+  failures = []
+
+  yaml_documents(path).each_with_index do |doc, index|
+    next unless doc.is_a?(Hash)
+    next unless kapro_document?(doc) || STALE_KAPRO_KINDS.include?(doc["kind"])
+
+    location = "#{path}: document #{index + 1}"
+    api = doc["apiVersion"]
+    kind = doc["kind"]
+
+    if api != KAPRO_API_VERSION
+      failures << "#{location}: Kapro apiVersion is #{api.inspect}, want #{KAPRO_API_VERSION}"
+    end
+    if STALE_KAPRO_KINDS.include?(kind)
+      failures << "#{location}: stale Kapro kind #{kind.inspect}"
+    elsif !KAPRO_KINDS.include?(kind)
+      failures << "#{location}: unknown Kapro kind #{kind.inspect}"
+    end
+
+    stale_field_paths(doc).each do |field_path|
+      failures << "#{location}: stale Kapro field #{field_path}"
+    end
+  end
+
+  failures
+end
+
+def stale_field_paths(value, prefix = [])
+  case value
+  when Hash
+    value.flat_map do |key, nested|
+      path = prefix + [key.to_s]
+      failures = STALE_KAPRO_FIELDS.include?(key.to_s) ? [path.join(".")] : []
+      failures + stale_field_paths(nested, path)
+    end
+  when Array
+    value.each_with_index.flat_map { |nested, index| stale_field_paths(nested, prefix + [index]) }
+  else
+    []
+  end
+end
+
+def check_script_kubectl_resources(path)
+  stale_re = Regexp.union(STALE_KUBECTL_RESOURCES)
+  failures = []
+  File.readlines(path).each_with_index do |line, index|
+    next unless line.include?("kubectl") || line.include?("KUBECTL")
+    next unless line.match?(/\b#{stale_re}\b/)
+
+    failures << "#{path}:#{index + 1}: stale kubectl Kapro resource in #{line.strip.inspect}"
+  end
+  failures
+end
+
+def check_monitoring_public_names(path)
+  return [] unless path.start_with?("examples/monitoring/")
+
+  text = File.read(path)
+  failures = []
+  STALE_MONITORING_TEXT.each do |stale|
+    failures << "#{path}: stale monitoring public name #{stale.inspect}" if text.include?(stale)
+  end
+  failures
 end
 
 failures = []
 begin
   yaml_files = matching_files(YAML_PATTERNS)
   json_files = matching_files(GRAFANA_JSON_PATTERNS)
+  script_files = matching_files(SCRIPT_PATTERNS)
 rescue RuntimeError => e
   warn "YAML/JSON validation failed: #{e.message}"
   exit 1
@@ -48,14 +186,21 @@ end
 
 yaml_files.each do |path|
   validate_yaml(path)
+  failures.concat(check_kapro_yaml(path))
+  failures.concat(check_monitoring_public_names(path))
 rescue Psych::Exception => e
   failures << "#{path}: #{e.message}"
 end
 
 json_files.each do |path|
   validate_json(path)
+  failures.concat(check_monitoring_public_names(path))
 rescue JSON::ParserError => e
   failures << "#{path}: #{e.message}"
+end
+
+script_files.each do |path|
+  failures.concat(check_script_kubectl_resources(path))
 end
 
 if failures.any?
@@ -64,4 +209,4 @@ if failures.any?
   exit 1
 end
 
-puts "Validated #{yaml_files.length} YAML files and #{json_files.length} Grafana dashboard JSON files."
+puts "Validated #{yaml_files.length} YAML files, #{json_files.length} Grafana dashboard JSON files, and #{script_files.length} scripts."

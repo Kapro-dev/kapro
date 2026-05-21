@@ -1,13 +1,14 @@
 resources:
-- bases/kapro.io_agentpolicies.yaml
 - bases/kapro.io_approvals.yaml
-- bases/kapro.io_promotionsources.yaml
-- bases/kapro.io_kaproes.yaml
-- bases/kapro.io_fleetclusters.yaml
-- bases/kapro.io_fleetclustertemplates.yaml
-- bases/kapro.io_promotionplans.yaml
-- bases/kapro.io_pluginregistrations.yaml
-- bases/kapro.io_promotions.yaml
+- bases/kapro.io_backends.yaml
+- bases/kapro.io_clusters.yaml
+- bases/kapro.io_clustertemplates.yaml
+- bases/kapro.io_fleets.yaml
+- bases/kapro.io_plans.yaml
+- bases/kapro.io_plugins.yaml
+- bases/kapro.io_policies.yaml
 - bases/kapro.io_promotionruns.yaml
-- bases/kapro.io_promotiontargets.yaml
-- bases/kapro.io_promotiontriggers.yaml
+- bases/kapro.io_promotions.yaml
+- bases/kapro.io_sources.yaml
+- bases/kapro.io_targets.yaml
+- bases/kapro.io_triggers.yaml

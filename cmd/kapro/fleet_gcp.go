@@ -35,7 +35,7 @@ func newFleetSyncCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sync",
 		Short: "Auto-discover Fleet clusters and add them as spokes",
-		Long: `Reads all Fleet memberships and creates FleetCluster CRDs +
+		Long: `Reads all Fleet memberships and creates Cluster CRDs +
 kubeconfig Secrets for each. Installs Flux on spokes that don't have it.
 
 This is the bulk-onboarding command for existing Fleet clusters.`,

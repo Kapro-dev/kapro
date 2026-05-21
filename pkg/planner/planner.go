@@ -7,7 +7,7 @@ import (
 	"sort"
 	"sync"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 const (
@@ -86,12 +86,12 @@ func (s *CycleState) Read(key string) (any, bool) {
 	return v, ok
 }
 
-// Request is the immutable planning context for one PromotionRun/PromotionPlan/Stage expansion.
+// Request is the immutable planning context for one PromotionRun/Plan/Stage expansion.
 type Request struct {
-	PromotionRun         *kaprov1alpha1.PromotionRun
-	PromotionPlanRefName string
-	PromotionPlan        *kaprov1alpha1.PromotionPlan
-	Stage                kaprov1alpha1.Stage
+	PromotionRun *kaprov1alpha2.PromotionRun
+	PlanRefName  string
+	Plan         *kaprov1alpha2.Plan
+	Stage        kaprov1alpha2.Stage
 }
 
 // Decision records one non-default planner decision for operator visibility.
@@ -105,7 +105,7 @@ type Decision struct {
 
 // Result is the output of one planning cycle.
 type Result struct {
-	Targets   []kaprov1alpha1.FleetCluster
+	Targets   []kaprov1alpha2.Cluster
 	Decisions []Decision
 }
 
@@ -117,19 +117,19 @@ type Plugin interface {
 // PreFilterPlugin runs once before target filtering.
 type PreFilterPlugin interface {
 	Plugin
-	PreFilter(ctx context.Context, state *CycleState, req Request, targets []kaprov1alpha1.FleetCluster) *Status
+	PreFilter(ctx context.Context, state *CycleState, req Request, targets []kaprov1alpha2.Cluster) *Status
 }
 
 // FilterPlugin decides whether one target remains eligible for this stage.
 type FilterPlugin interface {
 	Plugin
-	Filter(ctx context.Context, state *CycleState, req Request, target kaprov1alpha1.FleetCluster) *Status
+	Filter(ctx context.Context, state *CycleState, req Request, target kaprov1alpha2.Cluster) *Status
 }
 
 // ScorePlugin assigns a score to one eligible target.
 type ScorePlugin interface {
 	Plugin
-	Score(ctx context.Context, state *CycleState, req Request, target kaprov1alpha1.FleetCluster) (int64, *Status)
+	Score(ctx context.Context, state *CycleState, req Request, target kaprov1alpha2.Cluster) (int64, *Status)
 }
 
 // NormalizeScorePlugin can normalize scores after all targets have been scored.
@@ -141,13 +141,13 @@ type NormalizeScorePlugin interface {
 // ReservePlugin reserves one selected target before the controller binds it by creating a PromotionTarget.
 type ReservePlugin interface {
 	Plugin
-	Reserve(ctx context.Context, state *CycleState, req Request, target kaprov1alpha1.FleetCluster) *Status
+	Reserve(ctx context.Context, state *CycleState, req Request, target kaprov1alpha2.Cluster) *Status
 }
 
 // PermitPlugin is the final admission hook before a target is bound into the promotionrun plan.
 type PermitPlugin interface {
 	Plugin
-	Permit(ctx context.Context, state *CycleState, req Request, target kaprov1alpha1.FleetCluster) *Status
+	Permit(ctx context.Context, state *CycleState, req Request, target kaprov1alpha2.Cluster) *Status
 }
 
 // NodeScore mirrors the Kubernetes scheduler score shape for one target.
@@ -218,7 +218,7 @@ func (f *Framework) snapshot() []Plugin {
 }
 
 // Plan returns the eligible targets in deterministic execution order.
-func (f *Framework) Plan(ctx context.Context, req Request, targets []kaprov1alpha1.FleetCluster) ([]kaprov1alpha1.FleetCluster, error) {
+func (f *Framework) Plan(ctx context.Context, req Request, targets []kaprov1alpha2.Cluster) ([]kaprov1alpha2.Cluster, error) {
 	result, err := f.PlanWithResult(ctx, req, targets)
 	if err != nil {
 		return nil, err
@@ -227,14 +227,14 @@ func (f *Framework) Plan(ctx context.Context, req Request, targets []kaprov1alph
 }
 
 // PlanWithResult returns eligible targets and planner decisions for observability.
-func (f *Framework) PlanWithResult(ctx context.Context, req Request, targets []kaprov1alpha1.FleetCluster) (Result, error) {
+func (f *Framework) PlanWithResult(ctx context.Context, req Request, targets []kaprov1alpha2.Cluster) (Result, error) {
 	if f == nil {
 		f = NewFramework()
 	}
 	plugins := f.snapshot()
 	result := Result{}
 	state := NewCycleState()
-	targets = append([]kaprov1alpha1.FleetCluster(nil), targets...)
+	targets = append([]kaprov1alpha2.Cluster(nil), targets...)
 
 	for _, plugin := range plugins {
 		preFilter, ok := plugin.(PreFilterPlugin)
@@ -246,7 +246,7 @@ func (f *Framework) PlanWithResult(ctx context.Context, req Request, targets []k
 		}
 	}
 
-	filtered := make([]kaprov1alpha1.FleetCluster, 0, len(targets))
+	filtered := make([]kaprov1alpha2.Cluster, 0, len(targets))
 	for _, target := range targets {
 		allowed := true
 		for _, plugin := range plugins {
@@ -282,7 +282,7 @@ func (f *Framework) PlanWithResult(ctx context.Context, req Request, targets []k
 		return left > right
 	})
 
-	planned := make([]kaprov1alpha1.FleetCluster, 0, len(filtered))
+	planned := make([]kaprov1alpha2.Cluster, 0, len(filtered))
 	for _, target := range filtered {
 		if err := runReserve(ctx, plugins, state, req, target); err != nil {
 			return result, err
@@ -299,7 +299,7 @@ func (f *Framework) PlanWithResult(ctx context.Context, req Request, targets []k
 	return result, nil
 }
 
-func scoreTargets(ctx context.Context, plugins []Plugin, state *CycleState, req Request, targets []kaprov1alpha1.FleetCluster) map[string]int64 {
+func scoreTargets(ctx context.Context, plugins []Plugin, state *CycleState, req Request, targets []kaprov1alpha2.Cluster) map[string]int64 {
 	scores := make(map[string]int64, len(targets))
 	for _, target := range targets {
 		var total int64
@@ -340,7 +340,7 @@ func normalizeScores(ctx context.Context, plugins []Plugin, state *CycleState, r
 	return nil
 }
 
-func runReserve(ctx context.Context, plugins []Plugin, state *CycleState, req Request, target kaprov1alpha1.FleetCluster) error {
+func runReserve(ctx context.Context, plugins []Plugin, state *CycleState, req Request, target kaprov1alpha2.Cluster) error {
 	for _, plugin := range plugins {
 		reserve, ok := plugin.(ReservePlugin)
 		if !ok {
@@ -353,7 +353,7 @@ func runReserve(ctx context.Context, plugins []Plugin, state *CycleState, req Re
 	return nil
 }
 
-func runPermit(ctx context.Context, plugins []Plugin, state *CycleState, req Request, target kaprov1alpha1.FleetCluster) (bool, Decision, error) {
+func runPermit(ctx context.Context, plugins []Plugin, state *CycleState, req Request, target kaprov1alpha2.Cluster) (bool, Decision, error) {
 	for _, plugin := range plugins {
 		permit, ok := plugin.(PermitPlugin)
 		if !ok {

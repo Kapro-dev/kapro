@@ -71,42 +71,42 @@ spec:
           expr: |
             histogram_quantile(
               0.95,
-              sum by (promotionplan, le) (rate(kapro_stage_duration_seconds_bucket[30m]))
+              sum by (plan, le) (rate(kapro_stage_duration_seconds_bucket[30m]))
             ) > 3600
           for: 30m
           labels:
             severity: warning
           annotations:
-            summary: "Kapro {{ $labels.promotionplan }} rollout stage p95 is high"
-            description: "Stage completion p95 for promotionplan {{ $labels.promotionplan }} has been above 1 hour for 30 minutes."
+            summary: "Kapro {{ $labels.plan }} rollout stage p95 is high"
+            description: "Stage completion p95 for plan {{ $labels.plan }} has been above 1 hour for 30 minutes."
             runbook: "docs/operations.md#rate-limits-and-workqueue-tuning"
     - name: kapro.plugins
       rules:
         - alert: KaproPluginProbeFailure
           expr: |
-            kapro_pluginregistration_status_condition{type="Ready"} == 0
+            kapro_plugin_status_condition{type="Ready"} == 0
           for: 15m
           labels:
             severity: warning
           annotations:
-            summary: "Kapro plugin {{ $labels.pluginregistration }} probe is failing"
-            description: "PluginRegistration {{ $labels.pluginregistration }} has reported Ready=False for 15 minutes. This rule uses kube-state-metrics custom-resource state metrics."
+            summary: "Kapro plugin {{ $labels.plugin }} probe is failing"
+            description: "Plugin {{ $labels.plugin }} has reported Ready=False for 15 minutes. This rule uses kube-state-metrics custom-resource state metrics."
             runbook: "docs/operations.md#runbook-plugin-not-ready"
     - name: kapro.triggers
       rules:
-        - alert: KaproPromotionTriggerBlocked
+        - alert: KaproTriggerBlocked
           expr: |
             (
-              kapro_promotiontrigger_status_condition{type="Stalled"} == 1
+              kapro_trigger_status_condition{type="Stalled"} == 1
             )
             or
             (
-              kapro_promotiontrigger_status_condition{type="PromotionUpdated",reason=~"CooldownActive|MaxActiveReached"} == 0
+              kapro_trigger_status_condition{type="PromotionUpdated",reason=~"CooldownActive|MaxActiveReached"} == 0
             )
           for: 15m
           labels:
             severity: warning
           annotations:
-            summary: "Kapro promotion trigger {{ $labels.promotiontrigger }} is blocked"
-            description: "PromotionTrigger {{ $labels.promotiontrigger }} is blocked by reason {{ $labels.reason }}. This covers cooldown, max-active, source resolution, signature verification, and Promotion update failures via kube-state-metrics custom-resource state metrics."
-            runbook: "docs/operations.md#runbook-blocked-promotiontrigger"
+            summary: "Kapro trigger {{ $labels.trigger }} is blocked"
+            description: "Trigger {{ $labels.trigger }} is blocked by reason {{ $labels.reason }}. This covers cooldown, max-active, source resolution, signature verification, and Promotion update failures via kube-state-metrics custom-resource state metrics."
+            runbook: "docs/operations.md#runbook-blocked-trigger"

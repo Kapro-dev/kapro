@@ -50,8 +50,8 @@ The standalone manifest is
 `examples/plugins/capacity-planner-registration.yaml`.
 
 ```yaml
-apiVersion: kapro.io/v1alpha1
-kind: PluginRegistration
+apiVersion: kapro.io/v1alpha2
+kind: Plugin
 metadata:
   name: capacity-planner
 spec:

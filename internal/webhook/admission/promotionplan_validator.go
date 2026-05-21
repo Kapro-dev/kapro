@@ -8,10 +8,10 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
-// PromotionPlanValidator validates PromotionPlan objects on CREATE and UPDATE.
+// PromotionPlanValidator validates Plan objects on CREATE and UPDATE.
 //
 // Rules enforced:
 //  1. At least one stage must be defined.
@@ -30,7 +30,7 @@ func NewPromotionPlanValidator(decoder admission.Decoder) *PromotionPlanValidato
 
 // Handle implements admission.Handler.
 func (v *PromotionPlanValidator) Handle(_ context.Context, req admission.Request) admission.Response {
-	var promotionplan kaprov1alpha1.PromotionPlan
+	var promotionplan kaprov1alpha2.Plan
 	if err := v.decoder.DecodeRaw(req.Object, &promotionplan); err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
 	}
@@ -45,20 +45,20 @@ func (v *PromotionPlanValidator) Handle(_ context.Context, req admission.Request
 	return admission.Allowed("")
 }
 
-func validatePromotionPlan(p *kaprov1alpha1.PromotionPlan) error {
+func validatePromotionPlan(p *kaprov1alpha2.Plan) error {
 	if err := validateMetricPresets(p); err != nil {
 		return err
 	}
 	return validateStageDAG(p.Spec.Stages)
 }
 
-func validateMetricPresets(p *kaprov1alpha1.PromotionPlan) error {
+func validateMetricPresets(p *kaprov1alpha2.Plan) error {
 	for name, preset := range p.Spec.MetricPresets {
 		if preset.Provider == "" {
-			return fmt.Errorf("promotionplan.spec.metricPresets[%q].provider must be set", name)
+			return fmt.Errorf("plan.spec.metricPresets[%q].provider must be set", name)
 		}
 		if preset.Query == "" {
-			return fmt.Errorf("promotionplan.spec.metricPresets[%q].query must be set", name)
+			return fmt.Errorf("plan.spec.metricPresets[%q].query must be set", name)
 		}
 	}
 	for stageIndex, stage := range p.Spec.Stages {
@@ -68,15 +68,15 @@ func validateMetricPresets(p *kaprov1alpha1.PromotionPlan) error {
 		for metricIndex, metric := range stage.Gate.Gate.Metrics {
 			if metric.Preset == "" {
 				if metric.Provider == "" {
-					return fmt.Errorf("promotionplan.spec.stages[%d].gate.gate.metrics[%d].provider must be set when preset is empty", stageIndex, metricIndex)
+					return fmt.Errorf("plan.spec.stages[%d].gate.gate.metrics[%d].provider must be set when preset is empty", stageIndex, metricIndex)
 				}
 				if metric.Query == "" {
-					return fmt.Errorf("promotionplan.spec.stages[%d].gate.gate.metrics[%d].query must be set when preset is empty", stageIndex, metricIndex)
+					return fmt.Errorf("plan.spec.stages[%d].gate.gate.metrics[%d].query must be set when preset is empty", stageIndex, metricIndex)
 				}
 				continue
 			}
 			if _, ok := p.Spec.MetricPresets[metric.Preset]; !ok {
-				return fmt.Errorf("promotionplan.spec.stages[%d].gate.gate.metrics[%d].preset: unknown metric preset %q", stageIndex, metricIndex, metric.Preset)
+				return fmt.Errorf("plan.spec.stages[%d].gate.gate.metrics[%d].preset: unknown metric preset %q", stageIndex, metricIndex, metric.Preset)
 			}
 		}
 	}
@@ -84,18 +84,18 @@ func validateMetricPresets(p *kaprov1alpha1.PromotionPlan) error {
 }
 
 // validateStageDAG checks that the flat Stage DAG is a valid directed acyclic graph.
-func validateStageDAG(stages []kaprov1alpha1.Stage) error {
+func validateStageDAG(stages []kaprov1alpha2.Stage) error {
 	if len(stages) == 0 {
-		return fmt.Errorf("promotionplan.spec.stages must contain at least one stage")
+		return fmt.Errorf("plan.spec.stages must contain at least one stage")
 	}
 
 	index := make(map[string]int, len(stages))
 	for i, s := range stages {
 		if s.Name == "" {
-			return fmt.Errorf("promotionplan.spec.stages[%d].name must be set", i)
+			return fmt.Errorf("plan.spec.stages[%d].name must be set", i)
 		}
 		if _, exists := index[s.Name]; exists {
-			return fmt.Errorf("promotionplan.spec.stages: duplicate stage name %q", s.Name)
+			return fmt.Errorf("plan.spec.stages: duplicate stage name %q", s.Name)
 		}
 		index[s.Name] = i
 	}
@@ -104,16 +104,16 @@ func validateStageDAG(stages []kaprov1alpha1.Stage) error {
 	for _, s := range stages {
 		for _, dep := range s.DependsOn {
 			if dep.Stage == "" {
-				return fmt.Errorf("promotionplan.spec.stages[%q].dependsOn.stage must be set", s.Name)
+				return fmt.Errorf("plan.spec.stages[%q].dependsOn.stage must be set", s.Name)
 			}
 			if _, exists := index[dep.Stage]; !exists {
-				return fmt.Errorf("promotionplan.spec.stages[%q].dependsOn: unknown stage %q", s.Name, dep.Stage)
+				return fmt.Errorf("plan.spec.stages[%q].dependsOn: unknown stage %q", s.Name, dep.Stage)
 			}
-			if dep.Strategy != "" && dep.Strategy != kaprov1alpha1.StageDependencyAll && dep.Strategy != kaprov1alpha1.StageDependencyAny {
-				return fmt.Errorf("promotionplan.spec.stages[%q].dependsOn[%q].strategy: unsupported value %q", s.Name, dep.Stage, dep.Strategy)
+			if dep.Strategy != "" && dep.Strategy != kaprov1alpha2.StageDependencyAll && dep.Strategy != kaprov1alpha2.StageDependencyAny {
+				return fmt.Errorf("plan.spec.stages[%q].dependsOn[%q].strategy: unsupported value %q", s.Name, dep.Stage, dep.Strategy)
 			}
 			if dep.RequiredSoakTime != nil && dep.RequiredSoakTime.Duration < 0 {
-				return fmt.Errorf("promotionplan.spec.stages[%q].dependsOn[%q].requiredSoakTime must be non-negative", s.Name, dep.Stage)
+				return fmt.Errorf("plan.spec.stages[%q].dependsOn[%q].requiredSoakTime must be non-negative", s.Name, dep.Stage)
 			}
 		}
 	}
@@ -122,7 +122,7 @@ func validateStageDAG(stages []kaprov1alpha1.Stage) error {
 	if cycle := detectCycle(index, func(name string) []string {
 		return stageDependencyNames(stages[index[name]].DependsOn)
 	}); cycle != "" {
-		return fmt.Errorf("promotionplan.spec.stages: cycle detected: %s", cycle)
+		return fmt.Errorf("plan.spec.stages: cycle detected: %s", cycle)
 	}
 
 	return nil
@@ -173,7 +173,7 @@ func detectCycle(nodes map[string]int, deps func(string) []string) string {
 }
 
 // stageDependencyNames extracts stage names from StageDependency for DAG traversal.
-func stageDependencyNames(deps []kaprov1alpha1.StageDependency) []string {
+func stageDependencyNames(deps []kaprov1alpha2.StageDependency) []string {
 	names := make([]string, len(deps))
 	for i, d := range deps {
 		names[i] = d.Stage
@@ -182,6 +182,6 @@ func stageDependencyNames(deps []kaprov1alpha1.StageDependency) []string {
 }
 
 // ValidatePromotionPlan is an exported test helper that exposes the internal validation logic.
-func ValidatePromotionPlan(p *kaprov1alpha1.PromotionPlan) error {
+func ValidatePromotionPlan(p *kaprov1alpha2.Plan) error {
 	return validatePromotionPlan(p)
 }

@@ -17,7 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 // newTestDispatcher builds a Dispatcher backed by a fake client with the
@@ -27,7 +27,7 @@ func newTestDispatcher(t *testing.T, objs ...client.Object) (*Dispatcher, client
 	t.Helper()
 	t.Setenv(allowInsecureEnv, "1") // enable http:// + loopback for httptest
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -36,7 +36,7 @@ func newTestDispatcher(t *testing.T, objs ...client.Object) (*Dispatcher, client
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objs...).
-		WithStatusSubresource(&kaprov1alpha1.Promotion{}).
+		WithStatusSubresource(&kaprov1alpha2.Promotion{}).
 		Build()
 	rec := record.NewFakeRecorder(32)
 	d := &Dispatcher{
@@ -51,18 +51,18 @@ func newTestDispatcher(t *testing.T, objs ...client.Object) (*Dispatcher, client
 	return d, c, rec
 }
 
-func newTestPromotion(name string, handlers ...kaprov1alpha1.PromotionLifecycleHandler) *kaprov1alpha1.Promotion {
-	return &kaprov1alpha1.Promotion{
+func newTestPromotion(name string, handlers ...kaprov1alpha2.PromotionLifecycleHandler) *kaprov1alpha2.Promotion {
+	return &kaprov1alpha2.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec: kaprov1alpha1.PromotionSpec{
-			KaproRef: "checkout",
+		Spec: kaprov1alpha2.PromotionSpec{
+			FleetRef: "checkout",
 			Version:  "v1.2.3",
-			Lifecycle: &kaprov1alpha1.PromotionLifecycleSpec{
+			Lifecycle: &kaprov1alpha2.PromotionLifecycleSpec{
 				Handlers: handlers,
 			},
 		},
-		Status: kaprov1alpha1.PromotionStatus{
-			ActiveAttemptRef: &kaprov1alpha1.PromotionAttemptRef{Name: name + "-att-1"},
+		Status: kaprov1alpha2.PromotionStatus{
+			ActiveAttemptRef: &kaprov1alpha2.PromotionAttemptRef{Name: name + "-att-1"},
 		},
 	}
 }
@@ -79,17 +79,17 @@ func TestWebhookFiresOnceOnPhaseTransition(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := newTestPromotion("checkout", kaprov1alpha1.PromotionLifecycleHandler{
+	p := newTestPromotion("checkout", kaprov1alpha2.PromotionLifecycleHandler{
 		Name: "slack",
-		On:   []kaprov1alpha1.PromotionPhase{kaprov1alpha1.PromotionPhaseSucceeded},
-		Webhook: &kaprov1alpha1.PromotionLifecycleWebhook{
+		On:   []kaprov1alpha2.PromotionPhase{kaprov1alpha2.PromotionPhaseSucceeded},
+		Webhook: &kaprov1alpha2.PromotionLifecycleWebhook{
 			URL: srv.URL,
 		},
 	})
 	d, c, _ := newTestDispatcher(t, p)
 
 	d.OnPhaseTransition(context.Background(), p,
-		kaprov1alpha1.PromotionPhaseProgressing, kaprov1alpha1.PromotionPhaseSucceeded)
+		kaprov1alpha2.PromotionPhaseProgressing, kaprov1alpha2.PromotionPhaseSucceeded)
 	d.Wait()
 
 	if got := atomic.LoadInt32(&calls); got != 1 {
@@ -117,7 +117,7 @@ func TestWebhookFiresOnceOnPhaseTransition(t *testing.T) {
 	}
 
 	// Status is updated with a Succeeded result.
-	var got kaprov1alpha1.Promotion
+	var got kaprov1alpha2.Promotion
 	if err := c.Get(context.Background(), client.ObjectKey{Name: p.Name}, &got); err != nil {
 		t.Fatal(err)
 	}
@@ -141,10 +141,10 @@ func TestWebhookRetriesTransient5xx(t *testing.T) {
 	defer srv.Close()
 
 	maxRetries := int32(2)
-	p := newTestPromotion("checkout", kaprov1alpha1.PromotionLifecycleHandler{
+	p := newTestPromotion("checkout", kaprov1alpha2.PromotionLifecycleHandler{
 		Name:    "retrying",
-		On:      []kaprov1alpha1.PromotionPhase{kaprov1alpha1.PromotionPhaseFailed},
-		Webhook: &kaprov1alpha1.PromotionLifecycleWebhook{URL: srv.URL},
+		On:      []kaprov1alpha2.PromotionPhase{kaprov1alpha2.PromotionPhaseFailed},
+		Webhook: &kaprov1alpha2.PromotionLifecycleWebhook{URL: srv.URL},
 		// Tight per-handler budget so the test isn't slow.
 		Timeout:    &metav1.Duration{Duration: 5 * time.Second},
 		MaxRetries: &maxRetries,
@@ -156,14 +156,14 @@ func TestWebhookRetriesTransient5xx(t *testing.T) {
 	overrideBackoff(t, 5*time.Millisecond)
 
 	d.OnPhaseTransition(context.Background(), p,
-		kaprov1alpha1.PromotionPhaseProgressing, kaprov1alpha1.PromotionPhaseFailed)
+		kaprov1alpha2.PromotionPhaseProgressing, kaprov1alpha2.PromotionPhaseFailed)
 	d.Wait()
 
 	if got := atomic.LoadInt32(&calls); got != maxRetries+1 {
 		t.Fatalf("calls = %d, want %d (1 initial + %d retries)", got, maxRetries+1, maxRetries)
 	}
 
-	var got kaprov1alpha1.Promotion
+	var got kaprov1alpha2.Promotion
 	if err := c.Get(context.Background(), client.ObjectKey{Name: p.Name}, &got); err != nil {
 		t.Fatal(err)
 	}
@@ -183,16 +183,16 @@ func TestWebhookDoesNotRetry4xx(t *testing.T) {
 	defer srv.Close()
 
 	maxRetries := int32(3)
-	p := newTestPromotion("checkout", kaprov1alpha1.PromotionLifecycleHandler{
+	p := newTestPromotion("checkout", kaprov1alpha2.PromotionLifecycleHandler{
 		Name:       "no-retry",
-		On:         []kaprov1alpha1.PromotionPhase{kaprov1alpha1.PromotionPhaseSucceeded},
-		Webhook:    &kaprov1alpha1.PromotionLifecycleWebhook{URL: srv.URL},
+		On:         []kaprov1alpha2.PromotionPhase{kaprov1alpha2.PromotionPhaseSucceeded},
+		Webhook:    &kaprov1alpha2.PromotionLifecycleWebhook{URL: srv.URL},
 		MaxRetries: &maxRetries,
 	})
 	d, _, _ := newTestDispatcher(t, p)
 
 	d.OnPhaseTransition(context.Background(), p,
-		kaprov1alpha1.PromotionPhaseProgressing, kaprov1alpha1.PromotionPhaseSucceeded)
+		kaprov1alpha2.PromotionPhaseProgressing, kaprov1alpha2.PromotionPhaseSucceeded)
 	d.Wait()
 
 	if got := atomic.LoadInt32(&calls); got != 1 {
@@ -211,26 +211,26 @@ func TestIdempotencyOnRefire(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := newTestPromotion("checkout", kaprov1alpha1.PromotionLifecycleHandler{
+	p := newTestPromotion("checkout", kaprov1alpha2.PromotionLifecycleHandler{
 		Name:    "idempotent",
-		On:      []kaprov1alpha1.PromotionPhase{kaprov1alpha1.PromotionPhaseSucceeded},
-		Webhook: &kaprov1alpha1.PromotionLifecycleWebhook{URL: srv.URL},
+		On:      []kaprov1alpha2.PromotionPhase{kaprov1alpha2.PromotionPhaseSucceeded},
+		Webhook: &kaprov1alpha2.PromotionLifecycleWebhook{URL: srv.URL},
 	})
 	d, c, _ := newTestDispatcher(t, p)
 
 	d.OnPhaseTransition(context.Background(), p,
-		kaprov1alpha1.PromotionPhaseProgressing, kaprov1alpha1.PromotionPhaseSucceeded)
+		kaprov1alpha2.PromotionPhaseProgressing, kaprov1alpha2.PromotionPhaseSucceeded)
 	d.Wait()
 
 	// Refetch and replay — the status now records the prior success, so
 	// the second OnPhaseTransition should be a no-op.
-	var refetched kaprov1alpha1.Promotion
+	var refetched kaprov1alpha2.Promotion
 	if err := c.Get(context.Background(), client.ObjectKey{Name: p.Name}, &refetched); err != nil {
 		t.Fatal(err)
 	}
 	// Carry the spec.lifecycle through (fake client preserves it; sanity).
 	d.OnPhaseTransition(context.Background(), &refetched,
-		kaprov1alpha1.PromotionPhaseProgressing, kaprov1alpha1.PromotionPhaseSucceeded)
+		kaprov1alpha2.PromotionPhaseProgressing, kaprov1alpha2.PromotionPhaseSucceeded)
 	d.Wait()
 
 	if got := atomic.LoadInt32(&calls); got != 1 {
@@ -242,10 +242,10 @@ func TestIdempotencyOnRefire(t *testing.T) {
 // produces a Kubernetes Event with substituted message fields and never
 // makes an HTTP call.
 func TestEventHandlerEmitsKubernetesEvent(t *testing.T) {
-	p := newTestPromotion("checkout", kaprov1alpha1.PromotionLifecycleHandler{
+	p := newTestPromotion("checkout", kaprov1alpha2.PromotionLifecycleHandler{
 		Name: "shout",
-		On:   []kaprov1alpha1.PromotionPhase{kaprov1alpha1.PromotionPhaseSucceeded},
-		Event: &kaprov1alpha1.PromotionLifecycleEvent{
+		On:   []kaprov1alpha2.PromotionPhase{kaprov1alpha2.PromotionPhaseSucceeded},
+		Event: &kaprov1alpha2.PromotionLifecycleEvent{
 			Reason:  "PromotedToProd",
 			Message: "{{.Name}} promoted to prod at version {{.Version}}",
 			Type:    "Normal",
@@ -254,7 +254,7 @@ func TestEventHandlerEmitsKubernetesEvent(t *testing.T) {
 	d, c, rec := newTestDispatcher(t, p)
 
 	d.OnPhaseTransition(context.Background(), p,
-		kaprov1alpha1.PromotionPhaseProgressing, kaprov1alpha1.PromotionPhaseSucceeded)
+		kaprov1alpha2.PromotionPhaseProgressing, kaprov1alpha2.PromotionPhaseSucceeded)
 	d.Wait()
 
 	// Expect: one "LifecycleHookFired" and one user-defined "PromotedToProd".
@@ -266,7 +266,7 @@ func TestEventHandlerEmitsKubernetesEvent(t *testing.T) {
 		}
 	}
 
-	var got kaprov1alpha1.Promotion
+	var got kaprov1alpha2.Promotion
 	if err := c.Get(context.Background(), client.ObjectKey{Name: p.Name}, &got); err != nil {
 		t.Fatal(err)
 	}
@@ -284,15 +284,15 @@ func TestNoCrossPhaseFiring(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := newTestPromotion("checkout", kaprov1alpha1.PromotionLifecycleHandler{
+	p := newTestPromotion("checkout", kaprov1alpha2.PromotionLifecycleHandler{
 		Name:    "success-only",
-		On:      []kaprov1alpha1.PromotionPhase{kaprov1alpha1.PromotionPhaseSucceeded},
-		Webhook: &kaprov1alpha1.PromotionLifecycleWebhook{URL: srv.URL},
+		On:      []kaprov1alpha2.PromotionPhase{kaprov1alpha2.PromotionPhaseSucceeded},
+		Webhook: &kaprov1alpha2.PromotionLifecycleWebhook{URL: srv.URL},
 	})
 	d, _, _ := newTestDispatcher(t, p)
 
 	d.OnPhaseTransition(context.Background(), p,
-		kaprov1alpha1.PromotionPhaseProgressing, kaprov1alpha1.PromotionPhaseFailed)
+		kaprov1alpha2.PromotionPhaseProgressing, kaprov1alpha2.PromotionPhaseFailed)
 	d.Wait()
 
 	if got := atomic.LoadInt32(&calls); got != 0 {
@@ -314,12 +314,12 @@ func TestSecretAuthHeaderInjected(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "slack-hook", Namespace: "kapro-system"},
 		Data:       map[string][]byte{"token": []byte("Bearer xoxb-abc")},
 	}
-	p := newTestPromotion("checkout", kaprov1alpha1.PromotionLifecycleHandler{
+	p := newTestPromotion("checkout", kaprov1alpha2.PromotionLifecycleHandler{
 		Name: "authd",
-		On:   []kaprov1alpha1.PromotionPhase{kaprov1alpha1.PromotionPhaseSucceeded},
-		Webhook: &kaprov1alpha1.PromotionLifecycleWebhook{
+		On:   []kaprov1alpha2.PromotionPhase{kaprov1alpha2.PromotionPhaseSucceeded},
+		Webhook: &kaprov1alpha2.PromotionLifecycleWebhook{
 			URL: srv.URL,
-			AuthHeader: &kaprov1alpha1.PromotionLifecycleAuthHeader{
+			AuthHeader: &kaprov1alpha2.PromotionLifecycleAuthHeader{
 				Name:       "Authorization",
 				SecretName: "slack-hook",
 				SecretKey:  "token",
@@ -329,7 +329,7 @@ func TestSecretAuthHeaderInjected(t *testing.T) {
 	d, _, _ := newTestDispatcher(t, p, secret)
 
 	d.OnPhaseTransition(context.Background(), p,
-		kaprov1alpha1.PromotionPhaseProgressing, kaprov1alpha1.PromotionPhaseSucceeded)
+		kaprov1alpha2.PromotionPhaseProgressing, kaprov1alpha2.PromotionPhaseSucceeded)
 	d.Wait()
 
 	if gotAuth != "Bearer xoxb-abc" {
@@ -340,11 +340,11 @@ func TestSecretAuthHeaderInjected(t *testing.T) {
 // TestStatusBoundedAtMax verifies the lifecycleHandlerResults list does
 // not grow unbounded.
 func TestStatusBoundedAtMax(t *testing.T) {
-	var list []kaprov1alpha1.PromotionLifecycleHandlerResult
-	for i := range kaprov1alpha1.MaxLifecycleHandlerResults + 10 {
-		r := kaprov1alpha1.PromotionLifecycleHandlerResult{
+	var list []kaprov1alpha2.PromotionLifecycleHandlerResult
+	for i := range kaprov1alpha2.MaxLifecycleHandlerResults + 10 {
+		r := kaprov1alpha2.PromotionLifecycleHandlerResult{
 			Name:  "h",
-			Phase: kaprov1alpha1.PromotionPhaseSucceeded,
+			Phase: kaprov1alpha2.PromotionPhaseSucceeded,
 			// Unique attempt names keep upsertLifecycleResult from collapsing
 			// entries into a single slot.
 			AttemptName: time.Now().Format(time.RFC3339Nano) + "-" + string(rune('A'+i%26)),
@@ -353,8 +353,8 @@ func TestStatusBoundedAtMax(t *testing.T) {
 		}
 		list = upsertLifecycleResult(list, r)
 	}
-	if len(list) != kaprov1alpha1.MaxLifecycleHandlerResults {
-		t.Fatalf("len = %d, want %d", len(list), kaprov1alpha1.MaxLifecycleHandlerResults)
+	if len(list) != kaprov1alpha2.MaxLifecycleHandlerResults {
+		t.Fatalf("len = %d, want %d", len(list), kaprov1alpha2.MaxLifecycleHandlerResults)
 	}
 }
 
@@ -371,10 +371,10 @@ func TestX509ErrorShortCircuitsRetries(t *testing.T) {
 	defer srv.Close()
 
 	maxRetries := int32(5)
-	p := newTestPromotion("checkout", kaprov1alpha1.PromotionLifecycleHandler{
+	p := newTestPromotion("checkout", kaprov1alpha2.PromotionLifecycleHandler{
 		Name:       "cert-broken",
-		On:         []kaprov1alpha1.PromotionPhase{kaprov1alpha1.PromotionPhaseSucceeded},
-		Webhook:    &kaprov1alpha1.PromotionLifecycleWebhook{URL: srv.URL}, // httptest.NewTLSServer URL is https://
+		On:         []kaprov1alpha2.PromotionPhase{kaprov1alpha2.PromotionPhaseSucceeded},
+		Webhook:    &kaprov1alpha2.PromotionLifecycleWebhook{URL: srv.URL}, // httptest.NewTLSServer URL is https://
 		MaxRetries: &maxRetries,
 	})
 	// Build a dispatcher that does NOT trust the test server's cert.
@@ -384,7 +384,7 @@ func TestX509ErrorShortCircuitsRetries(t *testing.T) {
 	overrideBackoff(t, time.Millisecond)
 	start := time.Now()
 	d.OnPhaseTransition(context.Background(), p,
-		kaprov1alpha1.PromotionPhaseProgressing, kaprov1alpha1.PromotionPhaseSucceeded)
+		kaprov1alpha2.PromotionPhaseProgressing, kaprov1alpha2.PromotionPhaseSucceeded)
 	d.Wait()
 	elapsed := time.Since(start)
 
@@ -394,7 +394,7 @@ func TestX509ErrorShortCircuitsRetries(t *testing.T) {
 	if elapsed > 2*time.Second {
 		t.Fatalf("dispatcher took %v; x509 should short-circuit retries", elapsed)
 	}
-	var got kaprov1alpha1.Promotion
+	var got kaprov1alpha2.Promotion
 	if err := c.Get(context.Background(), client.ObjectKey{Name: p.Name}, &got); err != nil {
 		t.Fatal(err)
 	}
@@ -414,23 +414,23 @@ func TestX509ErrorShortCircuitsRetries(t *testing.T) {
 // both spec.webhook and spec.event set is recorded as Failed with a clear
 // message instead of silently picking one.
 func TestBothKindsSetRecordedAsFailed(t *testing.T) {
-	p := newTestPromotion("checkout", kaprov1alpha1.PromotionLifecycleHandler{
+	p := newTestPromotion("checkout", kaprov1alpha2.PromotionLifecycleHandler{
 		Name: "ambiguous",
-		On:   []kaprov1alpha1.PromotionPhase{kaprov1alpha1.PromotionPhaseSucceeded},
-		Webhook: &kaprov1alpha1.PromotionLifecycleWebhook{
+		On:   []kaprov1alpha2.PromotionPhase{kaprov1alpha2.PromotionPhaseSucceeded},
+		Webhook: &kaprov1alpha2.PromotionLifecycleWebhook{
 			URL: "https://example.com/hook",
 		},
-		Event: &kaprov1alpha1.PromotionLifecycleEvent{
+		Event: &kaprov1alpha2.PromotionLifecycleEvent{
 			Reason: "Shout",
 		},
 	})
 	d, c, _ := newTestDispatcher(t, p)
 
 	d.OnPhaseTransition(context.Background(), p,
-		kaprov1alpha1.PromotionPhaseProgressing, kaprov1alpha1.PromotionPhaseSucceeded)
+		kaprov1alpha2.PromotionPhaseProgressing, kaprov1alpha2.PromotionPhaseSucceeded)
 	d.Wait()
 
-	var got kaprov1alpha1.Promotion
+	var got kaprov1alpha2.Promotion
 	if err := c.Get(context.Background(), client.ObjectKey{Name: p.Name}, &got); err != nil {
 		t.Fatal(err)
 	}

@@ -34,7 +34,7 @@ cluster, pass `--kubeconfig` or use the default local kubeconfig loading rules.
 
 ## Parameters
 
-`PluginRegistration.spec.parameters` or request parameters may contain:
+`Plugin.spec.parameters` or request parameters may contain:
 
 | Name | Purpose |
 |---|---|
@@ -55,8 +55,8 @@ The standalone manifest is
 `examples/plugins/argocd-applicationset-actuator-registration.yaml`.
 
 ```yaml
-apiVersion: kapro.io/v1alpha1
-kind: PluginRegistration
+apiVersion: kapro.io/v1alpha2
+kind: Plugin
 metadata:
   name: argocd-applicationset-actuator
 spec:

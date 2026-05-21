@@ -40,7 +40,7 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    name: v1alpha1
+    name: v1alpha2
     schema:
       openAPIV3Schema:
         description: |-
@@ -70,7 +70,7 @@ spec:
 
               Identity is deterministic: one cluster-scoped Approval per (promotionrun, ref)
               pair. The object name is "<promotionrun>-<ref>". For target FSM approvals, ref is
-              the stable sync key "<promotionrun>-<promotionplanRef>-<stage>-<target>", so each
+              the stable sync key "<promotionrun>-<planRef>-<stage>-<target>", so each
               waiting-approval step requires its own approval object.
             properties:
               approvedBy:
@@ -96,12 +96,12 @@ spec:
               ref:
                 description: |-
                   Ref identifies the exact approval scope within the PromotionRun. For target FSM
-                  approvals this is the stable sync key "<promotionrun>-<promotionplanRef>-<stage>-<target>".
+                  approvals this is the stable sync key "<promotionrun>-<planRef>-<stage>-<target>".
                   External integrators may use another deterministic ref as long as
                   metadata.name is "<promotionrun>-<ref>".
                 type: string
               target:
-                description: Target is the FleetCluster name this approval is for.
+                description: Target is the Cluster name this approval is for.
                 type: string
             required:
             - promotionRun

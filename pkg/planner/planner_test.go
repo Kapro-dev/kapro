@@ -6,19 +6,19 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 func TestFrameworkFiltersScoresAndPermitsTargets(t *testing.T) {
 	plugin := &testPlugin{}
-	targets := []kaprov1alpha1.FleetCluster{
+	targets := []kaprov1alpha2.Cluster{
 		target("cluster-b", "10"),
 		target("cluster-a", "90"),
 		target("cluster-c", "50", "skip", "true"),
 		target("cluster-d", "100", "permit", "false"),
 	}
 
-	got, err := NewFramework(plugin).Plan(context.Background(), Request{Stage: kaprov1alpha1.Stage{Name: "canary"}}, targets)
+	got, err := NewFramework(plugin).Plan(context.Background(), Request{Stage: kaprov1alpha2.Stage{Name: "canary"}}, targets)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestFrameworkFiltersScoresAndPermitsTargets(t *testing.T) {
 }
 
 func TestFrameworkDefaultOrderingIsDeterministic(t *testing.T) {
-	got, err := NewFramework().Plan(context.Background(), Request{}, []kaprov1alpha1.FleetCluster{
+	got, err := NewFramework().Plan(context.Background(), Request{}, []kaprov1alpha2.Cluster{
 		target("cluster-c", ""),
 		target("cluster-a", ""),
 		target("cluster-b", ""),
@@ -56,7 +56,7 @@ func TestFrameworkDefaultOrderingIsDeterministic(t *testing.T) {
 }
 
 func TestFrameworkPlanWithResultRecordsSkippedTargets(t *testing.T) {
-	result, err := NewFramework(&testPlugin{}).PlanWithResult(context.Background(), Request{}, []kaprov1alpha1.FleetCluster{
+	result, err := NewFramework(&testPlugin{}).PlanWithResult(context.Background(), Request{}, []kaprov1alpha2.Cluster{
 		target("cluster-a", "10", "skip", "true"),
 		target("cluster-b", "10", "permit", "false"),
 	})
@@ -78,7 +78,7 @@ func TestFrameworkPlanWithResultRecordsSkippedTargets(t *testing.T) {
 }
 
 func TestDefaultFrameworkSkipsNotReadyAndDifferentActivePromotionRun(t *testing.T) {
-	promotionrun := &kaprov1alpha1.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "promotionrun-a"}}
+	promotionrun := &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "promotionrun-a"}}
 	ready := target("cluster-a", "")
 	notReady := target("cluster-b", "")
 	notReady.Status.Conditions = []metav1.Condition{{
@@ -89,7 +89,7 @@ func TestDefaultFrameworkSkipsNotReadyAndDifferentActivePromotionRun(t *testing.
 	busy := target("cluster-c", "")
 	busy.Status.ActivePromotionRun = "promotionrun-b"
 
-	result, err := NewDefaultFramework().PlanWithResult(context.Background(), Request{PromotionRun: promotionrun}, []kaprov1alpha1.FleetCluster{
+	result, err := NewDefaultFramework().PlanWithResult(context.Background(), Request{PromotionRun: promotionrun}, []kaprov1alpha2.Cluster{
 		busy,
 		notReady,
 		ready,
@@ -123,19 +123,19 @@ type testPlugin struct {
 
 func (p *testPlugin) Name() string { return "test" }
 
-func (p *testPlugin) PreFilter(context.Context, *CycleState, Request, []kaprov1alpha1.FleetCluster) *Status {
+func (p *testPlugin) PreFilter(context.Context, *CycleState, Request, []kaprov1alpha2.Cluster) *Status {
 	p.preFiltered = true
 	return nil
 }
 
-func (p *testPlugin) Filter(_ context.Context, _ *CycleState, _ Request, target kaprov1alpha1.FleetCluster) *Status {
+func (p *testPlugin) Filter(_ context.Context, _ *CycleState, _ Request, target kaprov1alpha2.Cluster) *Status {
 	if target.Labels["skip"] == "true" {
 		return NewStatus(Skip, "skipped by test")
 	}
 	return nil
 }
 
-func (p *testPlugin) Score(_ context.Context, _ *CycleState, _ Request, target kaprov1alpha1.FleetCluster) (int64, *Status) {
+func (p *testPlugin) Score(_ context.Context, _ *CycleState, _ Request, target kaprov1alpha2.Cluster) (int64, *Status) {
 	switch target.Labels["score"] {
 	case "90":
 		return 90, nil
@@ -148,19 +148,19 @@ func (p *testPlugin) Score(_ context.Context, _ *CycleState, _ Request, target k
 	}
 }
 
-func (p *testPlugin) Reserve(_ context.Context, _ *CycleState, _ Request, target kaprov1alpha1.FleetCluster) *Status {
+func (p *testPlugin) Reserve(_ context.Context, _ *CycleState, _ Request, target kaprov1alpha2.Cluster) *Status {
 	p.reserved = append(p.reserved, target.Name)
 	return nil
 }
 
-func (p *testPlugin) Permit(_ context.Context, _ *CycleState, _ Request, target kaprov1alpha1.FleetCluster) *Status {
+func (p *testPlugin) Permit(_ context.Context, _ *CycleState, _ Request, target kaprov1alpha2.Cluster) *Status {
 	if target.Labels["permit"] == "false" {
 		return NewStatus(Skip, "blocked by permit")
 	}
 	return nil
 }
 
-func target(name, score string, labels ...string) kaprov1alpha1.FleetCluster {
+func target(name, score string, labels ...string) kaprov1alpha2.Cluster {
 	allLabels := map[string]string{}
 	if score != "" {
 		allLabels["score"] = score
@@ -168,10 +168,10 @@ func target(name, score string, labels ...string) kaprov1alpha1.FleetCluster {
 	for i := 0; i+1 < len(labels); i += 2 {
 		allLabels[labels[i]] = labels[i+1]
 	}
-	return kaprov1alpha1.FleetCluster{ObjectMeta: metav1.ObjectMeta{Name: name, Labels: allLabels}}
+	return kaprov1alpha2.Cluster{ObjectMeta: metav1.ObjectMeta{Name: name, Labels: allLabels}}
 }
 
-func targetNames(targets []kaprov1alpha1.FleetCluster) []string {
+func targetNames(targets []kaprov1alpha2.Cluster) []string {
 	names := make([]string, 0, len(targets))
 	for _, target := range targets {
 		names = append(names, target.Name)

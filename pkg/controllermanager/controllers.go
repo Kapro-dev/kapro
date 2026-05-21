@@ -88,8 +88,8 @@ func startPromotionController(ctx context.Context, cc ControllerContext) (bool, 
 }
 
 // startPromotionRunController starts the PromotionRun reconciler.
-// Drives the two-level DAG orchestration — walks PromotionPlan nodes then Stages,
-// upserts one PromotionTarget per (PromotionRun, PromotionPlan, Stage, Target),
+// Drives the two-level DAG orchestration — walks Plan nodes then Stages,
+// upserts one PromotionTarget per (PromotionRun, Plan, Stage, Target),
 // and aggregates child execution state into PromotionRun status.
 func startPromotionRunController(ctx context.Context, cc ControllerContext) (bool, error) {
 	stageDispatcher, err := buildStageDispatcher(ctx, cc)
@@ -122,7 +122,7 @@ func startPromotionTargetController(ctx context.Context, cc ControllerContext) (
 	if err != nil {
 		return false, err
 	}
-	r := &controller.PromotionTargetReconciler{
+	r := &controller.TargetReconciler{
 		Client:           cc.Manager.GetClient(),
 		Recorder:         cc.Recorder,
 		Scheme:           cc.Manager.GetScheme(),
@@ -207,7 +207,7 @@ func startApprovalController(_ context.Context, cc ControllerContext) (bool, err
 // startPluginRegistrationController starts the PluginRegistration readiness reconciler.
 // It probes capabilities and records readiness for optional plugin runtime registration.
 func startPluginRegistrationController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.PluginRegistrationReconciler{
+	if err := (&controller.PluginReconciler{
 		Client:           cc.Manager.GetClient(),
 		Recorder:         cc.Recorder,
 		RuntimeEnabled:   pluginadapter.EnabledFromEnv(),
@@ -222,7 +222,7 @@ func startPluginRegistrationController(_ context.Context, cc ControllerContext) 
 
 // startBackendProfileController starts the backend readiness reconciler.
 func startBackendProfileController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.BackendProfileReconciler{
+	if err := (&controller.BackendReconciler{
 		Client:   cc.Manager.GetClient(),
 		Recorder: cc.Recorder,
 	}).SetupWithManager(cc.Manager); err != nil {
@@ -233,7 +233,7 @@ func startBackendProfileController(_ context.Context, cc ControllerContext) (boo
 
 // startPromotionTriggerController starts the safe-by-default artifact trigger reconciler.
 func startPromotionTriggerController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.PromotionTriggerReconciler{
+	if err := (&controller.TriggerReconciler{
 		Client:   cc.Manager.GetClient(),
 		Scheme:   cc.Manager.GetScheme(),
 		Recorder: cc.Recorder,
@@ -244,9 +244,9 @@ func startPromotionTriggerController(_ context.Context, cc ControllerContext) (b
 }
 
 // startKaproController starts the Kapro reconciler.
-// Pushes FluxInstance + OCIRepository to spokes, generates FleetClusters and PromotionPlan on the hub.
+// Pushes FluxInstance + OCIRepository to spokes, generates FleetClusters and Plan on the hub.
 func startKaproController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.KaproReconciler{
+	if err := (&controller.FleetReconciler{
 		Client:   cc.Manager.GetClient(),
 		Recorder: cc.Recorder,
 	}).SetupWithManager(cc.Manager); err != nil {
@@ -276,7 +276,7 @@ func startFleetClusterBootstrapController(_ context.Context, cc ControllerContex
 		)
 		return false, nil
 	}
-	r := &controller.FleetClusterBootstrapReconciler{
+	r := &controller.ClusterBootstrapReconciler{
 		Client:       cc.Manager.GetClient(),
 		Scheme:       cc.Manager.GetScheme(),
 		Recorder:     cc.Recorder,
@@ -297,7 +297,7 @@ func startFleetClusterBootstrapController(_ context.Context, cc ControllerContex
 // any supported source (GCP Fleet today; AWS / Azure / RHACM / CAPI / static
 // are preview stubs) and upserts FleetCluster objects.
 func startFleetClusterTemplateController(_ context.Context, cc ControllerContext) (bool, error) {
-	r := &controller.FleetClusterTemplateReconciler{
+	r := &controller.ClusterTemplateReconciler{
 		Client:   cc.Manager.GetClient(),
 		Scheme:   cc.Manager.GetScheme(),
 		Recorder: cc.Recorder,
@@ -316,7 +316,7 @@ func startFleetClusterTemplateController(_ context.Context, cc ControllerContext
 // Phase=Unreachable when this reconciler has set Ready=False
 // reason=Unreachable.
 func startFleetClusterHeartbeatController(_ context.Context, cc ControllerContext) (bool, error) {
-	r := &controller.FleetClusterHeartbeatReconciler{
+	r := &controller.ClusterHeartbeatReconciler{
 		Client:             cc.Manager.GetClient(),
 		Scheme:             cc.Manager.GetScheme(),
 		Recorder:           cc.Recorder,

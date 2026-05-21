@@ -19,7 +19,7 @@
 //   - specversion : "1.0"
 //   - id          : random 128-bit hex (subscribers may dedupe on this)
 //   - type        : one of the EventType constants in this package
-//   - source      : "/apis/kapro.io/v1alpha1/promotions/<name>"
+//   - source      : "/apis/kapro.io/v1alpha2/promotions/<name>"
 //   - subject     : <promotion-name>
 //   - time        : RFC3339 timestamp at emit
 //   - datacontenttype : "application/json"
@@ -32,7 +32,7 @@
 //
 //	kapro.io/promotion.*           - whole-Promotion transitions
 //	kapro.io/promotion.attempt.*   - per-PromotionRun execution attempts
-//	kapro.io/promotion.wave.*      - PromotionPlan DAG node transitions
+//	kapro.io/promotion.wave.*      - Plan DAG node transitions
 //	kapro.io/promotion.stage.*     - Stage transitions inside a wave
 //	kapro.io/promotion.stage.gate.* - gate evaluation outcomes per target
 //
@@ -104,14 +104,14 @@ const (
 	// was stamped under the same Promotion.
 	EventPromotionAttemptSuperseded EventType = "kapro.io/promotion.attempt.superseded"
 
-	// --- Wave-level events (one PromotionPlan node = one wave) ----------------
+	// --- Wave-level events (one Plan node = one wave) ----------------
 
-	// EventPromotionWaveEntered fires once when a PromotionPlan DAG node
+	// EventPromotionWaveEntered fires once when a Plan DAG node
 	// transitions from Pending to Progressing (its dependencies are
 	// satisfied and stage execution has started).
 	EventPromotionWaveEntered EventType = "kapro.io/promotion.wave.entered"
 
-	// EventPromotionWaveCompleted fires once when a PromotionPlan DAG node
+	// EventPromotionWaveCompleted fires once when a Plan DAG node
 	// reaches a terminal phase. Subscribers should branch on
 	// `data.reason`, which carries the canonical lowercase tokens
 	// "complete" (success) or "failed". The human-readable sentence
@@ -119,7 +119,7 @@ const (
 	// not the wave's local phase.
 	EventPromotionWaveCompleted EventType = "kapro.io/promotion.wave.completed"
 
-	// --- Stage-level events (one Stage inside a PromotionPlan) ----------------
+	// --- Stage-level events (one Stage inside a Plan) ----------------
 
 	// EventPromotionStageEntered fires once when a Stage transitions from
 	// Pending to Progressing (at least one matching target started rolling).
@@ -188,9 +188,9 @@ type Event struct {
 	// PromotionUID is the Kubernetes UID for traceability across renames.
 	// +optional
 	PromotionUID string
-	// KaproRef is the parent Kapro fleet name. Provided in `data` so
+	// FleetRef is the parent Fleet name. Provided in `data` so
 	// fleet-scope filtering works without re-fetching the Promotion.
-	KaproRef string
+	FleetRef string
 	// Phase is the dispatch-time phase the event was emitted under.
 	// For whole-Promotion and attempt events this is
 	// Promotion.status.phase. For wave / stage / stage.gate / target
@@ -210,12 +210,12 @@ type Event struct {
 	// transitions with no active run (e.g. Terminating, Paused on create).
 	// +optional
 	AttemptName string
-	// Wave is the PromotionPlan DAG node name (the value of
-	// PromotionRun.spec.promotionPlans[].name). Set for wave-, stage-,
+	// Wave is the Plan DAG node name (the value of
+	// PromotionRun.spec.plans[].name). Set for wave-, stage-,
 	// and gate-scoped events; empty otherwise.
 	// +optional
 	Wave string
-	// Stage is the Stage name within the PromotionPlan. Set for stage-
+	// Stage is the Stage name within the Plan. Set for stage-
 	// and gate-scoped events; empty otherwise.
 	// +optional
 	Stage string
@@ -245,11 +245,11 @@ type Event struct {
 // EventData is the struct serialized as the CloudEvents `data` field.
 // Subscribers should unmarshal CloudEvents `data` into this shape (or
 // the equivalent in their language). New fields may be added in minor
-// releases; existing fields are stable across v1alpha1.
+// releases; existing fields are stable across v1alpha2.
 type EventData struct {
 	Promotion    string `json:"promotion"`
 	PromotionUID string `json:"promotionUID,omitempty"`
-	KaproRef     string `json:"kaproRef,omitempty"`
+	FleetRef     string `json:"fleetRef,omitempty"`
 	// Phase is the Promotion.status.phase for whole-Promotion / attempt
 	// events, and the PromotionRun.status.phase for wave/stage/gate
 	// events. See Event.Phase for the full semantic.
@@ -305,14 +305,14 @@ func Render(e Event) ([]byte, Envelope, error) {
 		SpecVersion:     "1.0",
 		ID:              id,
 		Type:            e.Type,
-		Source:          "/apis/kapro.io/v1alpha1/promotions/" + e.PromotionName,
+		Source:          "/apis/kapro.io/v1alpha2/promotions/" + e.PromotionName,
 		Subject:         e.PromotionName,
 		Time:            t.Format(time.RFC3339Nano),
 		DataContentType: "application/json",
 		Data: EventData{
 			Promotion:     e.PromotionName,
 			PromotionUID:  e.PromotionUID,
-			KaproRef:      e.KaproRef,
+			FleetRef:      e.FleetRef,
 			Phase:         e.Phase,
 			PreviousPhase: e.PreviousPhase,
 			Version:       e.Version,

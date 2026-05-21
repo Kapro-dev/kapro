@@ -13,7 +13,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/cli"
 )
 
@@ -24,9 +24,9 @@ func newDemoCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "demo",
 		Short: "Run a local Kapro demo on a kind cluster",
-		Long: `Creates a kind cluster, installs CRDs, and sets up a demo promotionrun
+		Long: `Creates a kind cluster, installs CRDs, and sets up a demo PromotionRun
 with 3 simulated clusters (canary, prod-eu-west, prod-eu-east) and a
-progressive delivery promotionplan.
+progressive delivery plan.
 
 After the demo starts, try:
   kapro get promotionruns
@@ -135,7 +135,7 @@ func runDemo(ctx context.Context) error {
 	sp.StopSuccess(fmt.Sprintf("Installed %d CRDs", len(crdFiles)))
 
 	// Step 4: Create Kapro CRs.
-	sp = cli.NewSpinner("Creating Kapro resources")
+	sp = cli.NewSpinner("Creating Fleet resources")
 	sp.Start()
 
 	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
@@ -149,59 +149,59 @@ func runDemo(ctx context.Context) error {
 		return err
 	}
 
-	// Kapro — defines what and where to deploy.
-	kapro := &kaprov1alpha1.Kapro{
+	// Fleet defines what and where to deploy.
+	fleet := &kaprov1alpha2.Fleet{
 		ObjectMeta: metav1.ObjectMeta{Name: "demo"},
-		Spec: kaprov1alpha1.KaproSpec{
-			Registry: kaprov1alpha1.KaproRegistry{
+		Spec: kaprov1alpha2.FleetSpec{
+			Registry: kaprov1alpha2.KaproRegistry{
 				URL: "oci://registry.example.com/charts",
 			},
-			Source: &kaprov1alpha1.PromotionSourceSpec{
-				Units: []kaprov1alpha1.PromotionUnit{
+			Source: &kaprov1alpha2.SourceSpec{
+				Units: []kaprov1alpha2.Unit{
 					{Name: "pos-server", Version: "5.28.0"},
 					{Name: "auth-service", Version: "5.28.0"},
 					{Name: "sdc", Version: "5.28.0"},
 					{Name: "keycloak", Version: "6.5.0"},
 				},
 			},
-			Clusters: []kaprov1alpha1.KaproCluster{
+			Clusters: []kaprov1alpha2.ClusterRef{
 				{Name: "canary-eu", Labels: map[string]string{"tier": "canary", "region": "eu-west"}},
 				{Name: "prod-eu-west", Labels: map[string]string{"tier": "prod", "region": "eu-west"}},
 				{Name: "prod-eu-east", Labels: map[string]string{"tier": "prod", "region": "eu-east"}},
 			},
-			PromotionPlan: kaprov1alpha1.KaproPromotionPlan{
-				Stages: []kaprov1alpha1.KaproStage{
+			Plan: kaprov1alpha2.KaproPlan{
+				Stages: []kaprov1alpha2.StageSpec{
 					{Name: "canary", Selector: map[string]string{"tier": "canary"}},
 					{Name: "prod", Selector: map[string]string{"tier": "prod"},
-						DependsOn: []kaprov1alpha1.StageDependency{{Stage: "canary"}}},
+						DependsOn: []kaprov1alpha2.StageDependency{{Stage: "canary"}}},
 				},
 			},
 		},
 	}
-	if err := c.Create(ctx, kapro); err != nil && !isAlreadyExists(err) {
-		sp.StopFail("Failed to create Kapro")
+	if err := c.Create(ctx, fleet); err != nil && !isAlreadyExists(err) {
+		sp.StopFail("Failed to create Fleet")
 		return err
 	}
 
 	// Simulate healthy clusters (in production, Flux reports this).
 	now := time.Now().UTC().Format(time.RFC3339)
-	for _, cluster := range kapro.Spec.Clusters {
-		mc := &kaprov1alpha1.FleetCluster{}
+	for _, cluster := range fleet.Spec.Clusters {
+		mc := &kaprov1alpha2.Cluster{}
 		if err := c.Get(ctx, client.ObjectKey{Name: cluster.Name}, mc); err == nil {
 			patch := client.MergeFrom(mc.DeepCopy())
-			mc.Status.Phase = kaprov1alpha1.ClusterPhaseConverged
+			mc.Status.Phase = kaprov1alpha2.ClusterPhaseConverged
 			mc.Status.LastHeartbeat = now
-			mc.Status.Health = kaprov1alpha1.ClusterHealth{AllWorkloadsReady: true, ReadyWorkloads: 8, TotalWorkloads: 8}
+			mc.Status.Health = kaprov1alpha2.ClusterHealth{AllWorkloadsReady: true, ReadyWorkloads: 8, TotalWorkloads: 8}
 			_ = c.Status().Patch(ctx, mc, patch)
 		}
 	}
 
-	// Create a compatibility PromotionRun to trigger the promotionplan.
-	promotionrun := &kaprov1alpha1.PromotionRun{
+	// Create a compatibility PromotionRun to trigger the plan.
+	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "platform-v5.28"},
-		Spec: kaprov1alpha1.PromotionRunSpec{
-			Version:        "sha256:abc123",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{{Name: "initial", PromotionPlan: "demo-promotionplan"}},
+		Spec: kaprov1alpha2.PromotionRunSpec{
+			Version: "sha256:abc123",
+			Plans:   []kaprov1alpha2.PlanRef{{Name: "initial", Plan: "demo-plan"}},
 		},
 	}
 	if err := c.Create(ctx, promotionrun); err != nil && !isAlreadyExists(err) {
@@ -217,13 +217,13 @@ func runDemo(ctx context.Context) error {
 	fmt.Fprintln(cli.Out)
 
 	tbl := cli.NewTable("RESOURCE", "NAME", "DETAILS")
-	tbl.AddRow("Kapro", "demo", "4 units, 3 clusters, 2 stages")
-	tbl.AddRow("  FleetCluster", "canary-eu", "tier=canary (generated on hub)")
-	tbl.AddRow("  FleetCluster", "prod-eu-west", "tier=prod (generated on hub)")
-	tbl.AddRow("  FleetCluster", "prod-eu-east", "tier=prod (generated on hub)")
-	tbl.AddRow("  PromotionPlan", "demo-promotionplan", "canary → prod (generated on hub)")
+	tbl.AddRow("Fleet", "demo", "4 units, 3 clusters, 2 stages")
+	tbl.AddRow("  Cluster", "canary-eu", "tier=canary (generated on hub)")
+	tbl.AddRow("  Cluster", "prod-eu-west", "tier=prod (generated on hub)")
+	tbl.AddRow("  Cluster", "prod-eu-east", "tier=prod (generated on hub)")
+	tbl.AddRow("  Plan", "demo-plan", "canary → prod (generated on hub)")
 	tbl.AddRow("  ResourceSet", "demo-workloads", "4 HelmReleases × 3 clusters (hub)")
-	tbl.AddRow("PromotionRun", "platform-v5.28", "triggers promotionplan")
+	tbl.AddRow("PromotionRun", "platform-v5.28", "triggers plan")
 	tbl.Render()
 
 	cli.Header("Try these commands")
@@ -233,7 +233,7 @@ func runDemo(ctx context.Context) error {
 	cli.Info("kapro approve platform-v5.28/prod-eu-west   # approve production")
 	cli.Info("kapro fleet                                 # fleet overview")
 	cli.Info("kapro world                                 # all clusters")
-	cli.Info("kubectl get kapro demo -o yaml              # see the Kapro CRD")
+	cli.Info("kubectl get fleet demo -o yaml              # see the Fleet CRD")
 	fmt.Fprintln(cli.Out)
 	cli.Muted("Clean up:  kapro demo --cleanup")
 	cli.Muted("Kubeconfig: export KUBECONFIG=" + kubeconfigPath)

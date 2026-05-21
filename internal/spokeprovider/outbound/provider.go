@@ -7,7 +7,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/delivery"
 	"kapro.io/kapro/pkg/spokeprovider"
 )
@@ -40,7 +40,7 @@ func NewProvider(spoke client.Client) *Provider {
 
 // Driver returns BackendDriverOCI. The Registry key — not this method — is
 // what determines dispatch.
-func (p *Provider) Driver() kaprov1alpha1.BackendDriver { return kaprov1alpha1.BackendDriverOCI }
+func (p *Provider) Driver() kaprov1alpha2.BackendDriver { return kaprov1alpha2.BackendDriverOCI }
 
 // Reconcile resolves the OCI ArtifactRef from request parameters and
 // delegates to internal/delivery.Delivery. Returns a populated
@@ -59,11 +59,11 @@ func (p *Provider) Reconcile(ctx context.Context, req spokeprovider.ReconcileReq
 	out := spokeprovider.ReconcileResult{LastAttemptedAt: now()}
 
 	if req.Cluster != nil && req.Cluster.Spec.Suspend {
-		out.Phase = kaprov1alpha1.DeliveryPhaseSkipped
+		out.Phase = kaprov1alpha2.DeliveryPhaseSkipped
 		return out
 	}
 	if p.Delivery == nil {
-		out.Phase = kaprov1alpha1.DeliveryPhaseFailed
+		out.Phase = kaprov1alpha2.DeliveryPhaseFailed
 		out.Err = errors.New("Provider.Delivery is nil")
 		return out
 	}
@@ -74,7 +74,7 @@ func (p *Provider) Reconcile(ctx context.Context, req spokeprovider.ReconcileReq
 	}
 	ref, err := resolver.Resolve(ctx, req)
 	if err != nil {
-		out.Phase = kaprov1alpha1.DeliveryPhaseFailed
+		out.Phase = kaprov1alpha2.DeliveryPhaseFailed
 		out.Err = err
 		return out
 	}
@@ -84,7 +84,7 @@ func (p *Provider) Reconcile(ctx context.Context, req spokeprovider.ReconcileReq
 		Ref: ref,
 	})
 
-	out.Phase = kaprov1alpha1.DeliveryPhase(inner.Phase)
+	out.Phase = kaprov1alpha2.DeliveryPhase(inner.Phase)
 	out.Format = string(inner.Format)
 	out.ObservedDigest = inner.ObservedDigest
 	out.AppliedObjects = inner.AppliedObjects

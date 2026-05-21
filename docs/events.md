@@ -6,7 +6,7 @@ can also declare lightweight lifecycle handlers.
 
 `pkg/events.EventType` constants are public integration contract. New event
 types may be added, but existing `kapro.io/...` strings must not be renamed
-within `v1alpha1`.
+within the `v1alpha2` API line.
 
 ## Subscribe
 
@@ -32,13 +32,13 @@ transitions.
   "specversion": "1.0",
   "id": "f9c4d39c5a4d4eba9a6b8ee2c3d4f5a6",
   "type": "kapro.io/promotion.stage.gate.passed",
-  "source": "/apis/kapro.io/v1alpha1/promotions/checkout",
+  "source": "/apis/kapro.io/v1alpha2/promotions/checkout",
   "subject": "checkout",
   "time": "2026-05-19T14:23:11Z",
   "datacontenttype": "application/json",
   "data": {
     "promotion": "checkout",
-    "kaproRef": "checkout-fleet",
+    "fleetRef": "checkout-fleet",
     "phase": "Progressing",
     "version": "v1.2.3",
     "attemptName": "checkout-att-1",
@@ -67,8 +67,8 @@ transitions.
 | `kapro.io/promotion.terminating` | Promotion deletion starts. |
 | `kapro.io/promotion.attempt.stamped` | Controller created a new PromotionRun. |
 | `kapro.io/promotion.attempt.superseded` | An older non-terminal PromotionRun was superseded. |
-| `kapro.io/promotion.wave.entered` | A PromotionPlan DAG node starts. |
-| `kapro.io/promotion.wave.completed` | A PromotionPlan DAG node reaches terminal phase. |
+| `kapro.io/promotion.wave.entered` | A Plan DAG node starts. |
+| `kapro.io/promotion.wave.completed` | A Plan DAG node reaches terminal phase. |
 | `kapro.io/promotion.stage.entered` | A stage starts. |
 | `kapro.io/promotion.stage.completed` | Every target in a stage converged. |
 | `kapro.io/promotion.stage.gate.waiting` | A gate begins evaluation for a target. |
@@ -81,15 +81,15 @@ transitions.
 |---|---|
 | `promotion` | `Promotion.metadata.name`. |
 | `promotionUID` | Kubernetes UID for traceability. |
-| `kaproRef` | Parent `Kapro` fleet name. |
+| `fleetRef` | Parent `Fleet` name. |
 | `phase` | Promotion phase for whole-Promotion and attempt events; PromotionRun phase for wave, stage, gate, and target events. |
 | `previousPhase` | Prior phase for transition events. |
 | `version` | Requested artifact version. |
 | `attemptName` | Active or affected PromotionRun name. |
-| `wave` | PromotionPlan DAG node name. |
-| `stage` | Stage name inside a PromotionPlan. |
+| `wave` | Plan DAG node name. |
+| `stage` | Stage name inside a Plan. |
 | `gate` | Gate name. |
-| `target` | FleetCluster name. |
+| `target` | Cluster name. |
 | `reason` | Short machine-readable cause. |
 | `message` | One-line human summary. |
 
@@ -124,7 +124,7 @@ the actual reconcile loop:
 | Need | Where to subscribe |
 |---|---|
 | "Did cluster X converge on version Y?" | Flux Notification Controller `Alert` on `Kustomization`, or Argo CD Notifications on `Application` |
-| "Which targets are still pending?" | `PromotionTarget.status.phase` via the Kubernetes API |
+| "Which targets are still pending?" | `Target.status.phase` via the Kubernetes API |
 | "Did gate Z pass for cluster X?" | `kapro.io/promotion.stage.gate.passed` — `data.target` carries the cluster |
 
 Rationale is captured in

@@ -11,7 +11,7 @@
 //
 // # Decoupling from CRD types
 //
-// KNI deliberately has zero dependency on api/v1alpha1. The promotionrun controller
+// KNI deliberately has zero dependency on api/v1alpha2. The promotionrun controller
 // converts *GatePolicy → NotificationPolicy before calling Notify, so external
 // notifier implementations never need to import Kapro's CRD package.
 // This mirrors how Kubernetes events carry resource metadata as plain strings,
@@ -56,7 +56,7 @@ const (
 )
 
 // Event carries the context for a notification.
-// All fields are plain strings, no dependency on api/v1alpha1.
+// All fields are plain strings, no dependency on api/v1alpha2.
 //
 // Type is the semantic event name (e.g. "kapro.promotionrun.target.converged").
 // Phase is the raw FSM state (e.g. "Converged"). Type is for external
@@ -72,9 +72,9 @@ type Event struct {
 	Target string `json:"target,omitempty"`
 	// PromotionRun is the promotionrun name.
 	PromotionRun string `json:"promotionrun,omitempty"`
-	// PromotionPlan is the promotionplan name.
-	PromotionPlan string `json:"promotionplan,omitempty"`
-	// Stage is the stage name within the promotionplan.
+	// Plan is the Plan name.
+	Plan string `json:"plan,omitempty"`
+	// Stage is the stage name within the Plan.
 	Stage string `json:"stage,omitempty"`
 	// Message is additional context (e.g. error details).
 	Message string `json:"message,omitempty"`
@@ -87,7 +87,7 @@ type Event struct {
 }
 
 // NotificationPolicy carries the notification routing config for a delivery operation.
-// It is a plain value type — no dependency on api/v1alpha1 CRD types.
+// It is a plain value type — no dependency on api/v1alpha2 CRD types.
 //
 // The promotionrun controller converts *GatePolicy → NotificationPolicy using
 // notificationPolicyFrom() before calling Notify. External Notifier
@@ -162,8 +162,8 @@ func BuildCloudEvent(event Event, nowMillis int64, nowRFC3339 string) CloudEvent
 		typ = "kapro.promotionrun.target.unknown"
 	}
 	subject := event.Target
-	if event.PromotionPlan != "" && event.Stage != "" {
-		subject = "promotionplan/" + event.PromotionPlan + "/stage/" + event.Stage + "/target/" + event.Target
+	if event.Plan != "" && event.Stage != "" {
+		subject = "plan/" + event.Plan + "/stage/" + event.Stage + "/target/" + event.Target
 	}
 	return CloudEvent{
 		SpecVersion: "1.0",
@@ -180,8 +180,8 @@ func stableEventID(event Event, typ string, fallbackMillis int64) string {
 	switch {
 	case event.PromotionRun != "":
 		id := "promotionrun/" + event.PromotionRun + "/type/" + typ
-		if event.PromotionPlan != "" {
-			id += "/promotionplan/" + event.PromotionPlan
+		if event.Plan != "" {
+			id += "/plan/" + event.Plan
 		}
 		if event.Stage != "" {
 			id += "/stage/" + event.Stage

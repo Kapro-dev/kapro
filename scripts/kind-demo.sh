@@ -13,7 +13,7 @@ Usage: scripts/kind-demo.sh <up|approve|fixtures|status|down>
 Commands:
   up       Create the Kind cluster, install Kapro, apply demo config, and start the rollout.
   approve   Apply the production Approval objects so the rollout can finish.
-  fixtures  Re-patch fake Flux and FleetCluster statuses after a manual reset.
+  fixtures  Re-patch fake Flux and Cluster statuses after a manual reset.
   status    Print the key demo resources.
   down      Delete the Kind cluster.
 
@@ -86,20 +86,20 @@ apply_demo_objects() {
 
   echo "applying Kapro demo config"
   "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/00-plugins.yaml"
-  "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/01-fleetclusters.yaml"
-  patch_fleetcluster_status checkout-canary
-  patch_fleetcluster_status checkout-prod-eu
-  patch_fleetcluster_status checkout-prod-us
-  "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/02-promotionplan.yaml"
+  "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/01-clusters.yaml"
+  patch_cluster_status checkout-canary
+  patch_cluster_status checkout-prod-eu
+  patch_cluster_status checkout-prod-us
+  "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/02-plan.yaml"
   "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/03-promotion-trigger.yaml"
   "${KUBECTL[@]}" apply -f "${ROOT}/examples/kind-demo/config/04-promotionrun.yaml"
 }
 
-patch_fleetcluster_status() {
+patch_cluster_status() {
   local cluster="$1"
   local now
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  "${KUBECTL[@]}" patch fleetcluster "${cluster}" \
+  "${KUBECTL[@]}" patch cluster "${cluster}" \
     --subresource=status \
     --type=merge \
     -p "{\"status\":{\"phase\":\"Converged\",\"version\":\"v1.2.2-kind\",\"currentVersions\":{\"default\":\"v1.2.2-kind\"},\"deliverySystem\":\"flux\",\"lastHeartbeat\":\"${now}\",\"health\":{\"allWorkloadsReady\":true,\"readyWorkloads\":1,\"totalWorkloads\":1},\"conditions\":[{\"type\":\"Ready\",\"status\":\"True\",\"reason\":\"FixtureReady\",\"message\":\"Kind demo fixture reports ready\",\"lastTransitionTime\":\"${now}\"}]}}"
@@ -122,17 +122,17 @@ patch_fixture_status() {
   done
 }
 
-wait_for_promotiontargets() {
-  echo "waiting for PromotionTargets to be created"
+wait_for_targets() {
+  echo "waiting for Targets to be created"
   for _ in $(seq 1 60); do
-    if "${KUBECTL[@]}" get promotiontargets >/dev/null 2>&1; then
-      if [ "$("${KUBECTL[@]}" get promotiontargets --no-headers 2>/dev/null | wc -l | tr -d ' ')" != "0" ]; then
+    if "${KUBECTL[@]}" get targets >/dev/null 2>&1; then
+      if [ "$("${KUBECTL[@]}" get targets --no-headers 2>/dev/null | wc -l | tr -d ' ')" != "0" ]; then
         return
       fi
     fi
     sleep 2
   done
-  echo "timed out waiting for PromotionTargets; use scripts/kind-demo.sh status for details" >&2
+  echo "timed out waiting for Targets; use scripts/kind-demo.sh status for details" >&2
 }
 
 approve() {
@@ -142,9 +142,9 @@ approve() {
 
 fixtures() {
   patch_fixture_status
-  patch_fleetcluster_status checkout-canary
-  patch_fleetcluster_status checkout-prod-eu
-  patch_fleetcluster_status checkout-prod-us
+  patch_cluster_status checkout-canary
+  patch_cluster_status checkout-prod-eu
+  patch_cluster_status checkout-prod-us
   echo "fixture statuses patched"
 }
 
@@ -153,17 +153,17 @@ status() {
   echo "Kapro operator"
   "${KUBECTL[@]}" -n kapro-system get pods
   echo
-  echo "PromotionTrigger"
-  "${KUBECTL[@]}" get promotiontriggers checkout-kind-trigger -o wide || true
+  echo "Trigger"
+  "${KUBECTL[@]}" get triggers checkout-kind-trigger -o wide || true
   echo
   echo "PromotionRun"
   "${KUBECTL[@]}" get promotionruns checkout-kind -o wide || true
   echo
-  echo "PromotionTargets"
-  "${KUBECTL[@]}" get promotiontargets -o wide || true
+  echo "Targets"
+  "${KUBECTL[@]}" get targets -o wide || true
   echo
-  echo "FleetClusters"
-  "${KUBECTL[@]}" get fleetclusters -o wide || true
+  echo "Clusters"
+  "${KUBECTL[@]}" get clusters -o wide || true
   echo
   echo "ResourceSet inputs"
   "${KUBECTL[@]}" -n flux-system get resourceset checkout-demo -o jsonpath='{.spec.inputs}' || true
@@ -176,7 +176,7 @@ up() {
   build_and_load_operator
   install_kapro
   apply_demo_objects
-  wait_for_promotiontargets
+  wait_for_targets
   status
   cat <<EOF
 Demo is running.

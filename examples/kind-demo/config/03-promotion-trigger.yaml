@@ -1,5 +1,5 @@
-apiVersion: kapro.io/v1alpha1
-kind: PromotionTrigger
+apiVersion: kapro.io/v1alpha2
+kind: Trigger
 metadata:
   name: checkout-kind-trigger
 spec:
@@ -12,11 +12,11 @@ spec:
       requireSignature: false
       pollInterval: 1m
   promotionTemplate:
-    kaproRef: checkout
+    fleetRef: checkout
     nameTemplate: "checkout-kind"
-    promotionPlans:
+    plans:
       - name: main
-        promotionPlan: checkout-progressive-kind
+        plan: checkout-progressive-kind
     suspended: false
     timeout: 30m
     labels:

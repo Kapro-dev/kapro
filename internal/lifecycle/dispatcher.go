@@ -32,7 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/metrics"
 	"kapro.io/kapro/pkg/events"
 )
@@ -128,18 +128,18 @@ func (d *Dispatcher) Wait() { d.wg.Wait() }
 // to detect spec.suspended being cleared, since there is no dedicated
 // "Resumed" phase.
 func (d *Dispatcher) OnPhaseTransition(ctx context.Context,
-	promotion *kaprov1alpha1.Promotion,
-	prevPhase, newPhase kaprov1alpha1.PromotionPhase,
+	promotion *kaprov1alpha2.Promotion,
+	prevPhase, newPhase kaprov1alpha2.PromotionPhase,
 ) {
 	if promotion == nil || newPhase == "" || newPhase == prevPhase {
 		return
 	}
-	if prevPhase == kaprov1alpha1.PromotionPhasePaused && newPhase != kaprov1alpha1.PromotionPhasePaused {
+	if prevPhase == kaprov1alpha2.PromotionPhasePaused && newPhase != kaprov1alpha2.PromotionPhasePaused {
 		d.Publish(ctx, promotion, events.Event{
 			Type:          events.EventPromotionResumed,
 			PromotionName: promotion.Name,
 			PromotionUID:  string(promotion.UID),
-			KaproRef:      promotion.Spec.KaproRef,
+			FleetRef:      promotion.Spec.FleetRef,
 			Phase:         string(newPhase),
 			PreviousPhase: string(prevPhase),
 			Version:       promotion.Spec.Version,
@@ -151,7 +151,7 @@ func (d *Dispatcher) OnPhaseTransition(ctx context.Context,
 		Type:          eventTypeForPhase(newPhase),
 		PromotionName: promotion.Name,
 		PromotionUID:  string(promotion.UID),
-		KaproRef:      promotion.Spec.KaproRef,
+		FleetRef:      promotion.Spec.FleetRef,
 		Phase:         string(newPhase),
 		PreviousPhase: string(prevPhase),
 		Version:       promotion.Spec.Version,
@@ -198,7 +198,7 @@ func (d *Dispatcher) PublishToSink(ctx context.Context, ev events.Event) {
 // No-op when promotionNameFromRun(run) is empty — events without a
 // resolvable Promotion identity are not published (would emit invalid
 // CloudEvents `source`/`subject`).
-func (d *Dispatcher) PublishWaveEvent(ctx context.Context, run *kaprov1alpha1.PromotionRun,
+func (d *Dispatcher) PublishWaveEvent(ctx context.Context, run *kaprov1alpha2.PromotionRun,
 	waveName, kind, wavePhase, message string) {
 	if d == nil || run == nil {
 		return
@@ -231,7 +231,7 @@ func (d *Dispatcher) PublishWaveEvent(ctx context.Context, run *kaprov1alpha1.Pr
 		Type:          t,
 		PromotionName: promotionName,
 		PromotionUID:  promotionUIDFromRun(run),
-		KaproRef:      kaproRefFromRun(run),
+		FleetRef:      fleetRefFromRun(run),
 		Phase:         string(run.Status.Phase),
 		Version:       run.Spec.Version,
 		AttemptName:   run.Name,
@@ -245,7 +245,7 @@ func (d *Dispatcher) PublishWaveEvent(ctx context.Context, run *kaprov1alpha1.Pr
 // kind is "entered" or "completed". data.phase carries the PromotionRun
 // phase (consistent semantic across all event types); stage state is
 // conveyed via the event type + (wave, stage) fields.
-func (d *Dispatcher) PublishStageEvent(ctx context.Context, run *kaprov1alpha1.PromotionRun,
+func (d *Dispatcher) PublishStageEvent(ctx context.Context, run *kaprov1alpha2.PromotionRun,
 	waveName, stageName, kind, _ /*stagePhase reserved for future use*/, message string) {
 	if d == nil || run == nil {
 		return
@@ -270,7 +270,7 @@ func (d *Dispatcher) PublishStageEvent(ctx context.Context, run *kaprov1alpha1.P
 		Type:          t,
 		PromotionName: promotionName,
 		PromotionUID:  promotionUIDFromRun(run),
-		KaproRef:      kaproRefFromRun(run),
+		FleetRef:      fleetRefFromRun(run),
 		Phase:         string(run.Status.Phase),
 		Version:       run.Spec.Version,
 		AttemptName:   run.Name,
@@ -286,7 +286,7 @@ func (d *Dispatcher) PublishStageEvent(ctx context.Context, run *kaprov1alpha1.P
 // target; the resulting event is per-(stage, gate, target). data.phase
 // is the PromotionRun phase (consistent semantic); gate state is in the
 // event type + gate field.
-func (d *Dispatcher) PublishGateEvent(ctx context.Context, run *kaprov1alpha1.PromotionRun,
+func (d *Dispatcher) PublishGateEvent(ctx context.Context, run *kaprov1alpha2.PromotionRun,
 	waveName, stageName, gateName, targetName, kind, _ /*gatePhase reserved for future use*/, reason, message string) {
 	if d == nil || run == nil {
 		return
@@ -310,7 +310,7 @@ func (d *Dispatcher) PublishGateEvent(ctx context.Context, run *kaprov1alpha1.Pr
 		Type:          t,
 		PromotionName: promotionName,
 		PromotionUID:  promotionUIDFromRun(run),
-		KaproRef:      kaproRefFromRun(run),
+		FleetRef:      fleetRefFromRun(run),
 		Phase:         string(run.Status.Phase),
 		Version:       run.Spec.Version,
 		AttemptName:   run.Name,
@@ -326,7 +326,7 @@ func (d *Dispatcher) PublishGateEvent(ctx context.Context, run *kaprov1alpha1.Pr
 // promotionNameFromRun pulls the parent Promotion name from the
 // kapro.io/promotion label set by PromotionController when stamping the
 // run. Empty when the run was authored directly (advanced/debug path).
-func promotionNameFromRun(run *kaprov1alpha1.PromotionRun) string {
+func promotionNameFromRun(run *kaprov1alpha2.PromotionRun) string {
 	if run == nil || run.Labels == nil {
 		return ""
 	}
@@ -336,22 +336,22 @@ func promotionNameFromRun(run *kaprov1alpha1.PromotionRun) string {
 // promotionUIDFromRun reads the parent Promotion's metadata.uid from the
 // label PromotionController stamps onto every owned PromotionRun.
 // Empty for runs authored without the controller (rare break-glass).
-func promotionUIDFromRun(run *kaprov1alpha1.PromotionRun) string {
+func promotionUIDFromRun(run *kaprov1alpha2.PromotionRun) string {
 	if run == nil || run.Labels == nil {
 		return ""
 	}
 	return run.Labels["kapro.io/promotion-uid"]
 }
 
-// kaproRefFromRun reads the parent Kapro fleet name from the
+// fleetRefFromRun reads the parent Fleet name from the
 // kapro.io/kapro label PromotionController stamps onto every owned
-// PromotionRun. Returns the Kapro name (not a PromotionPlan name).
+// PromotionRun. Returns the Kapro name (not a Plan name).
 // Empty when the run lacks the label (e.g. authored directly).
-func kaproRefFromRun(run *kaprov1alpha1.PromotionRun) string {
+func fleetRefFromRun(run *kaprov1alpha2.PromotionRun) string {
 	if run == nil || run.Labels == nil {
 		return ""
 	}
-	return run.Labels["kapro.io/kapro"]
+	return run.Labels["kapro.io/fleet"]
 }
 
 // PublishAttemptEvent publishes a kapro.io/promotion.attempt.<kind>
@@ -362,7 +362,7 @@ func kaproRefFromRun(run *kaprov1alpha1.PromotionRun) string {
 // {kind, phase} metric label semantics stay aligned with regular
 // phase-transition events.
 func (d *Dispatcher) PublishAttemptEvent(ctx context.Context,
-	promotion *kaprov1alpha1.Promotion, runName, kind string) {
+	promotion *kaprov1alpha2.Promotion, runName, kind string) {
 	if promotion == nil || runName == "" {
 		return
 	}
@@ -382,7 +382,7 @@ func (d *Dispatcher) PublishAttemptEvent(ctx context.Context,
 		Type:          t,
 		PromotionName: promotion.Name,
 		PromotionUID:  string(promotion.UID),
-		KaproRef:      promotion.Spec.KaproRef,
+		FleetRef:      promotion.Spec.FleetRef,
 		Phase:         string(promotion.Status.Phase),
 		Version:       promotion.Spec.Version,
 		AttemptName:   runName,
@@ -402,7 +402,7 @@ func (d *Dispatcher) PublishAttemptEvent(ctx context.Context,
 //
 // Both paths run in independent goroutines: a sink delivery failure does
 // not block per-Promotion handlers, and vice versa.
-func (d *Dispatcher) Publish(_ context.Context, promotion *kaprov1alpha1.Promotion, ev events.Event) {
+func (d *Dispatcher) Publish(_ context.Context, promotion *kaprov1alpha2.Promotion, ev events.Event) {
 	if promotion == nil || ev.Type == "" {
 		return
 	}
@@ -420,7 +420,7 @@ func (d *Dispatcher) Publish(_ context.Context, promotion *kaprov1alpha1.Promoti
 	if promotion.Spec.Lifecycle == nil {
 		return
 	}
-	phase := kaprov1alpha1.PromotionPhase(ev.Phase)
+	phase := kaprov1alpha2.PromotionPhase(ev.Phase)
 	for i := range promotion.Spec.Lifecycle.Handlers {
 		h := promotion.Spec.Lifecycle.Handlers[i]
 		if !handlerMatchesPhase(&h, phase) {
@@ -438,10 +438,10 @@ func (d *Dispatcher) Publish(_ context.Context, promotion *kaprov1alpha1.Promoti
 			PromotionUID:  string(promotion.UID),
 			Generation:    promotion.Generation,
 			Phase:         phase,
-			PrevPhase:     kaprov1alpha1.PromotionPhase(ev.PreviousPhase),
+			PrevPhase:     kaprov1alpha2.PromotionPhase(ev.PreviousPhase),
 			AttemptName:   ev.AttemptName,
 			Version:       promotion.Spec.Version,
-			KaproRef:      promotion.Spec.KaproRef,
+			FleetRef:      promotion.Spec.FleetRef,
 			Handler:       h,
 			InflightKey:   key,
 		}
@@ -453,7 +453,7 @@ func (d *Dispatcher) Publish(_ context.Context, promotion *kaprov1alpha1.Promoti
 // activeAttemptName picks the most relevant PromotionRun name for an
 // event: the active attempt when one is in flight, otherwise the newest
 // attempt in history. Empty when no attempt exists yet.
-func activeAttemptName(p *kaprov1alpha1.Promotion) string {
+func activeAttemptName(p *kaprov1alpha2.Promotion) string {
 	if p.Status.ActiveAttemptRef != nil {
 		return p.Status.ActiveAttemptRef.Name
 	}
@@ -465,23 +465,23 @@ func activeAttemptName(p *kaprov1alpha1.Promotion) string {
 
 // eventTypeForPhase maps a coarse Promotion phase to its CloudEvents
 // type from the stable pkg/events vocabulary.
-func eventTypeForPhase(phase kaprov1alpha1.PromotionPhase) events.EventType {
+func eventTypeForPhase(phase kaprov1alpha2.PromotionPhase) events.EventType {
 	switch phase {
-	case kaprov1alpha1.PromotionPhasePending:
+	case kaprov1alpha2.PromotionPhasePending:
 		return events.EventPromotionCreated
-	case kaprov1alpha1.PromotionPhaseProgressing:
+	case kaprov1alpha2.PromotionPhaseProgressing:
 		return events.EventPromotionProgressing
-	case kaprov1alpha1.PromotionPhasePaused:
+	case kaprov1alpha2.PromotionPhasePaused:
 		return events.EventPromotionPaused
-	case kaprov1alpha1.PromotionPhaseRestarting:
+	case kaprov1alpha2.PromotionPhaseRestarting:
 		return events.EventPromotionRestarting
-	case kaprov1alpha1.PromotionPhaseSucceeded:
+	case kaprov1alpha2.PromotionPhaseSucceeded:
 		return events.EventPromotionSucceeded
-	case kaprov1alpha1.PromotionPhaseFailed:
+	case kaprov1alpha2.PromotionPhaseFailed:
 		return events.EventPromotionFailed
-	case kaprov1alpha1.PromotionPhaseRollingBack:
+	case kaprov1alpha2.PromotionPhaseRollingBack:
 		return events.EventPromotionRollingBack
-	case kaprov1alpha1.PromotionPhaseTerminating:
+	case kaprov1alpha2.PromotionPhaseTerminating:
 		return events.EventPromotionTerminating
 	}
 	// Unknown phase: still publish, with a synthetic type. This keeps the
@@ -493,9 +493,9 @@ func eventTypeForPhase(phase kaprov1alpha1.PromotionPhase) events.EventType {
 // Sink's observability events (Kubernetes Events about sink delivery).
 // The dispatcher already uses promotionRef for the handler goroutine; the
 // sink uses *corev1.ObjectReference directly.
-func promotionRefForEvent(p *kaprov1alpha1.Promotion) *corev1.ObjectReference {
+func promotionRefForEvent(p *kaprov1alpha2.Promotion) *corev1.ObjectReference {
 	return &corev1.ObjectReference{
-		APIVersion: kaprov1alpha1.GroupVersion.String(),
+		APIVersion: kaprov1alpha2.GroupVersion.String(),
 		Kind:       "Promotion",
 		Name:       p.Name,
 		UID:        p.UID,
@@ -507,12 +507,12 @@ type snapshot struct {
 	PromotionName string
 	PromotionUID  string
 	Generation    int64
-	Phase         kaprov1alpha1.PromotionPhase
-	PrevPhase     kaprov1alpha1.PromotionPhase
+	Phase         kaprov1alpha2.PromotionPhase
+	PrevPhase     kaprov1alpha2.PromotionPhase
 	AttemptName   string
 	Version       string
-	KaproRef      string
-	Handler       kaprov1alpha1.PromotionLifecycleHandler
+	FleetRef      string
+	Handler       kaprov1alpha2.PromotionLifecycleHandler
 	InflightKey   string
 }
 
@@ -594,9 +594,9 @@ func (d *Dispatcher) run(snap snapshot) {
 // promotionRef returns a minimal Promotion object suitable for use as the
 // Recorder target. The Recorder only reads ObjectMeta and TypeMeta, so we
 // don't need to fetch the live object.
-func (d *Dispatcher) promotionRef(snap snapshot) *kaprov1alpha1.Promotion {
-	return &kaprov1alpha1.Promotion{
-		TypeMeta: metav1.TypeMeta{APIVersion: kaprov1alpha1.GroupVersion.String(), Kind: "Promotion"},
+func (d *Dispatcher) promotionRef(snap snapshot) *kaprov1alpha2.Promotion {
+	return &kaprov1alpha2.Promotion{
+		TypeMeta: metav1.TypeMeta{APIVersion: kaprov1alpha2.GroupVersion.String(), Kind: "Promotion"},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       snap.PromotionName,
 			UID:        types.UID(snap.PromotionUID),
@@ -633,7 +633,7 @@ func (d *Dispatcher) fireWebhook(ctx context.Context, snap snapshot) (int, int32
 		Type:          eventTypeForPhase(snap.Phase),
 		PromotionName: snap.PromotionName,
 		PromotionUID:  snap.PromotionUID,
-		KaproRef:      snap.KaproRef,
+		FleetRef:      snap.FleetRef,
 		Phase:         string(snap.Phase),
 		PreviousPhase: string(snap.PrevPhase),
 		Version:       snap.Version,
@@ -719,7 +719,7 @@ func (d *Dispatcher) fireEvent(snap snapshot) error {
 
 // resolveAuthHeader reads the auth header value from the referenced
 // Secret in the operator's namespace.
-func (d *Dispatcher) resolveAuthHeader(ctx context.Context, ref *kaprov1alpha1.PromotionLifecycleAuthHeader) (string, error) {
+func (d *Dispatcher) resolveAuthHeader(ctx context.Context, ref *kaprov1alpha2.PromotionLifecycleAuthHeader) (string, error) {
 	if d.Namespace == "" {
 		return "", errors.New("operator namespace unset; cannot resolve auth header Secret")
 	}
@@ -741,7 +741,7 @@ func (d *Dispatcher) resolveAuthHeader(ctx context.Context, ref *kaprov1alpha1.P
 func (d *Dispatcher) recordResult(promotionName string, r PromotionLifecycleResult) error {
 	const maxAttempts = 5
 	for range maxAttempts {
-		var p kaprov1alpha1.Promotion
+		var p kaprov1alpha2.Promotion
 		if err := d.Client.Get(d.rootCtx, client.ObjectKey{Name: promotionName}, &p); err != nil {
 			if apierrors.IsNotFound(err) {
 				return nil
@@ -779,14 +779,14 @@ func (d *Dispatcher) releaseInflight(key string) {
 
 // ---- helpers --------------------------------------------------------------
 
-func handlerMatchesPhase(h *kaprov1alpha1.PromotionLifecycleHandler, p kaprov1alpha1.PromotionPhase) bool {
+func handlerMatchesPhase(h *kaprov1alpha2.PromotionLifecycleHandler, p kaprov1alpha2.PromotionPhase) bool {
 	return slices.Contains(h.On, p)
 }
 
 // alreadyFinal returns true when the status already contains a terminal
 // result for this (handler, phase, attempt) tuple. Used to dedup re-fires
 // after a controller restart or reconcile loop on the same transition.
-func alreadyFinal(p *kaprov1alpha1.Promotion, handlerName string, phase kaprov1alpha1.PromotionPhase, attempt string) bool {
+func alreadyFinal(p *kaprov1alpha2.Promotion, handlerName string, phase kaprov1alpha2.PromotionPhase, attempt string) bool {
 	for _, r := range p.Status.LifecycleHandlerResults {
 		if r.Name != handlerName || r.Phase != phase || r.AttemptName != attempt {
 			continue
@@ -826,7 +826,7 @@ func handlerMaxRetries(n *int32) int32 {
 // "Misconfigured" so the status entry surfaces the user error instead of
 // silently picking one. There is no in-tree admission validator yet; this
 // is the only place the contract is enforced.
-func handlerKind(h *kaprov1alpha1.PromotionLifecycleHandler) string {
+func handlerKind(h *kaprov1alpha2.PromotionLifecycleHandler) string {
 	hasWebhook := h.Webhook != nil
 	hasEvent := h.Event != nil
 	switch {
@@ -846,7 +846,7 @@ func handlerKind(h *kaprov1alpha1.PromotionLifecycleHandler) string {
 // conversion is a single function so the field set stays in sync.
 type PromotionLifecycleResult struct {
 	Name        string
-	Phase       kaprov1alpha1.PromotionPhase
+	Phase       kaprov1alpha2.PromotionPhase
 	AttemptName string
 	Kind        string
 	Result      string
@@ -858,8 +858,8 @@ type PromotionLifecycleResult struct {
 }
 
 // ToAPI converts the dispatcher's internal result shape to the API type.
-func (r PromotionLifecycleResult) ToAPI() kaprov1alpha1.PromotionLifecycleHandlerResult {
-	return kaprov1alpha1.PromotionLifecycleHandlerResult{
+func (r PromotionLifecycleResult) ToAPI() kaprov1alpha2.PromotionLifecycleHandlerResult {
+	return kaprov1alpha2.PromotionLifecycleHandlerResult{
 		Name:        r.Name,
 		Phase:       r.Phase,
 		AttemptName: r.AttemptName,
@@ -873,7 +873,7 @@ func (r PromotionLifecycleResult) ToAPI() kaprov1alpha1.PromotionLifecycleHandle
 	}
 }
 
-func upsertLifecycleResult(list []kaprov1alpha1.PromotionLifecycleHandlerResult, current kaprov1alpha1.PromotionLifecycleHandlerResult) []kaprov1alpha1.PromotionLifecycleHandlerResult {
+func upsertLifecycleResult(list []kaprov1alpha2.PromotionLifecycleHandlerResult, current kaprov1alpha2.PromotionLifecycleHandlerResult) []kaprov1alpha2.PromotionLifecycleHandlerResult {
 	for i := range list {
 		if list[i].Name == current.Name && list[i].Phase == current.Phase && list[i].AttemptName == current.AttemptName {
 			list[i] = current
@@ -882,20 +882,20 @@ func upsertLifecycleResult(list []kaprov1alpha1.PromotionLifecycleHandlerResult,
 			return list
 		}
 	}
-	out := append([]kaprov1alpha1.PromotionLifecycleHandlerResult{current}, list...)
-	if len(out) > kaprov1alpha1.MaxLifecycleHandlerResults {
-		out = out[:kaprov1alpha1.MaxLifecycleHandlerResults]
+	out := append([]kaprov1alpha2.PromotionLifecycleHandlerResult{current}, list...)
+	if len(out) > kaprov1alpha2.MaxLifecycleHandlerResults {
+		out = out[:kaprov1alpha2.MaxLifecycleHandlerResults]
 	}
 	return out
 }
 
-func sortByFiredAtDesc(list []kaprov1alpha1.PromotionLifecycleHandlerResult) {
+func sortByFiredAtDesc(list []kaprov1alpha2.PromotionLifecycleHandlerResult) {
 	sort.SliceStable(list, func(i, j int) bool {
 		return list[i].FiredAt.After(list[j].FiredAt.Time)
 	})
 }
 
-func inflightKey(promotion, handler string, phase kaprov1alpha1.PromotionPhase, attempt string) string {
+func inflightKey(promotion, handler string, phase kaprov1alpha2.PromotionPhase, attempt string) string {
 	return promotion + "|" + handler + "|" + string(phase) + "|" + attempt
 }
 

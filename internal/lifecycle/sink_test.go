@@ -17,21 +17,21 @@ import (
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/metrics"
 	"kapro.io/kapro/pkg/events"
 )
 
-func newSinkTestDispatcher(t *testing.T, sinkURL string, objs ...*kaprov1alpha1.Promotion) (*Dispatcher, *Sink) {
+func newSinkTestDispatcher(t *testing.T, sinkURL string, objs ...*kaprov1alpha2.Promotion) (*Dispatcher, *Sink) {
 	t.Helper()
 	t.Setenv(allowInsecureEnv, "1")
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
 	builder := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha1.Promotion{})
+		WithStatusSubresource(&kaprov1alpha2.Promotion{})
 	for _, p := range objs {
 		builder = builder.WithObjects(p)
 	}
@@ -79,19 +79,19 @@ func TestSinkReceivesCloudEventsForEveryTransition(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := &kaprov1alpha1.Promotion{
+	p := &kaprov1alpha2.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
-		Spec: kaprov1alpha1.PromotionSpec{
-			KaproRef: "checkout-fleet",
+		Spec: kaprov1alpha2.PromotionSpec{
+			FleetRef: "checkout-fleet",
 			Version:  "v1.2.3",
 		},
 	}
 	d, _ := newSinkTestDispatcher(t, srv.URL, p)
 
-	transitions := []struct{ prev, next kaprov1alpha1.PromotionPhase }{
-		{"", kaprov1alpha1.PromotionPhasePending},
-		{kaprov1alpha1.PromotionPhasePending, kaprov1alpha1.PromotionPhaseProgressing},
-		{kaprov1alpha1.PromotionPhaseProgressing, kaprov1alpha1.PromotionPhaseSucceeded},
+	transitions := []struct{ prev, next kaprov1alpha2.PromotionPhase }{
+		{"", kaprov1alpha2.PromotionPhasePending},
+		{kaprov1alpha2.PromotionPhasePending, kaprov1alpha2.PromotionPhaseProgressing},
+		{kaprov1alpha2.PromotionPhaseProgressing, kaprov1alpha2.PromotionPhaseSucceeded},
 	}
 	for _, tr := range transitions {
 		d.OnPhaseTransition(context.Background(), p, tr.prev, tr.next)
@@ -115,8 +115,8 @@ func TestSinkReceivesCloudEventsForEveryTransition(t *testing.T) {
 		if env.SpecVersion != "1.0" {
 			t.Fatalf("specversion = %q, want 1.0", env.SpecVersion)
 		}
-		if env.Data.KaproRef != "checkout-fleet" {
-			t.Fatalf("data.kaproRef = %q", env.Data.KaproRef)
+		if env.Data.FleetRef != "checkout-fleet" {
+			t.Fatalf("data.fleetRef = %q", env.Data.FleetRef)
 		}
 		gotTypes[env.Type]++
 	}
@@ -152,16 +152,16 @@ func TestSinkFailureDoesNotBlockPerPromotionHandlers(t *testing.T) {
 	}))
 	defer sinkSrv.Close()
 
-	p := &kaprov1alpha1.Promotion{
+	p := &kaprov1alpha2.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
-		Spec: kaprov1alpha1.PromotionSpec{
-			KaproRef: "checkout-fleet",
+		Spec: kaprov1alpha2.PromotionSpec{
+			FleetRef: "checkout-fleet",
 			Version:  "v1.2.3",
-			Lifecycle: &kaprov1alpha1.PromotionLifecycleSpec{
-				Handlers: []kaprov1alpha1.PromotionLifecycleHandler{{
+			Lifecycle: &kaprov1alpha2.PromotionLifecycleSpec{
+				Handlers: []kaprov1alpha2.PromotionLifecycleHandler{{
 					Name: "team-channel",
-					On:   []kaprov1alpha1.PromotionPhase{kaprov1alpha1.PromotionPhaseSucceeded},
-					Webhook: &kaprov1alpha1.PromotionLifecycleWebhook{
+					On:   []kaprov1alpha2.PromotionPhase{kaprov1alpha2.PromotionPhaseSucceeded},
+					Webhook: &kaprov1alpha2.PromotionLifecycleWebhook{
 						URL: handlerSrv.URL,
 					},
 				}},
@@ -172,7 +172,7 @@ func TestSinkFailureDoesNotBlockPerPromotionHandlers(t *testing.T) {
 	overrideBackoff(t, time.Millisecond)
 
 	d.OnPhaseTransition(context.Background(), p,
-		kaprov1alpha1.PromotionPhaseProgressing, kaprov1alpha1.PromotionPhaseSucceeded)
+		kaprov1alpha2.PromotionPhaseProgressing, kaprov1alpha2.PromotionPhaseSucceeded)
 	d.Wait()
 
 	if got := atomic.LoadInt32(&handlerCalls); got != 1 {
@@ -193,15 +193,15 @@ func TestSinkAuthHeaderInjected(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := &kaprov1alpha1.Promotion{
+	p := &kaprov1alpha2.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
-		Spec:       kaprov1alpha1.PromotionSpec{KaproRef: "k"},
+		Spec:       kaprov1alpha2.PromotionSpec{FleetRef: "k"},
 	}
 	d, sink := newSinkTestDispatcher(t, srv.URL, p)
 	sink.AuthHeaderName = "X-Operator-Token"
 	sink.AuthHeaderValue = "s3cret-token"
 
-	d.OnPhaseTransition(context.Background(), p, "", kaprov1alpha1.PromotionPhasePending)
+	d.OnPhaseTransition(context.Background(), p, "", kaprov1alpha2.PromotionPhasePending)
 	d.Wait()
 
 	if gotAuth != "s3cret-token" {
@@ -262,9 +262,9 @@ func TestSinkMetricLabelUsesPhaseNotType(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := &kaprov1alpha1.Promotion{
+	p := &kaprov1alpha2.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
-		Spec:       kaprov1alpha1.PromotionSpec{KaproRef: "k"},
+		Spec:       kaprov1alpha2.PromotionSpec{FleetRef: "k"},
 	}
 	d, _ := newSinkTestDispatcher(t, srv.URL, p)
 
@@ -272,7 +272,7 @@ func TestSinkMetricLabelUsesPhaseNotType(t *testing.T) {
 	wrongLabel := promtestutil.ToFloat64(metrics.LifecycleHookInvocations.WithLabelValues("Sink", "kapro.io/promotion.succeeded", "succeeded"))
 
 	d.OnPhaseTransition(context.Background(), p,
-		kaprov1alpha1.PromotionPhaseProgressing, kaprov1alpha1.PromotionPhaseSucceeded)
+		kaprov1alpha2.PromotionPhaseProgressing, kaprov1alpha2.PromotionPhaseSucceeded)
 	d.Wait()
 
 	after := promtestutil.ToFloat64(metrics.LifecycleHookInvocations.WithLabelValues("Sink", "Succeeded", "succeeded"))
@@ -295,16 +295,16 @@ func TestSinkFailureRecordsDurationHistogram(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := &kaprov1alpha1.Promotion{
+	p := &kaprov1alpha2.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout-fail"},
-		Spec:       kaprov1alpha1.PromotionSpec{KaproRef: "k"},
+		Spec:       kaprov1alpha2.PromotionSpec{FleetRef: "k"},
 	}
 	d, sink := newSinkTestDispatcher(t, srv.URL, p)
 	sink.MaxRetries = 0
 	overrideBackoff(t, time.Millisecond)
 
 	before := promtestutil.CollectAndCount(metrics.LifecycleHookDuration, "kapro_lifecycle_hook_duration_seconds")
-	d.OnPhaseTransition(context.Background(), p, "", kaprov1alpha1.PromotionPhasePending)
+	d.OnPhaseTransition(context.Background(), p, "", kaprov1alpha2.PromotionPhasePending)
 	d.Wait()
 	after := promtestutil.CollectAndCount(metrics.LifecycleHookDuration, "kapro_lifecycle_hook_duration_seconds")
 
@@ -334,9 +334,9 @@ func TestSinkRespectsOverallTimeout(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := &kaprov1alpha1.Promotion{
+	p := &kaprov1alpha2.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout-slow"},
-		Spec:       kaprov1alpha1.PromotionSpec{KaproRef: "k"},
+		Spec:       kaprov1alpha2.PromotionSpec{FleetRef: "k"},
 	}
 	d, sink := newSinkTestDispatcher(t, srv.URL, p)
 	sink.Timeout = 100 * time.Millisecond
@@ -344,7 +344,7 @@ func TestSinkRespectsOverallTimeout(t *testing.T) {
 	overrideBackoff(t, time.Millisecond)
 
 	start := time.Now()
-	d.OnPhaseTransition(context.Background(), p, "", kaprov1alpha1.PromotionPhasePending)
+	d.OnPhaseTransition(context.Background(), p, "", kaprov1alpha2.PromotionPhasePending)
 	d.Wait()
 	elapsed := time.Since(start)
 

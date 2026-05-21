@@ -14,13 +14,13 @@ package actuator
 import (
 	"context"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 // ApplyRequest carries everything an actuator needs to apply a version.
 type ApplyRequest struct {
 	// Cluster is the target fleet cluster.
-	Cluster *kaprov1alpha1.FleetCluster
+	Cluster *kaprov1alpha2.Cluster
 	// Version is the version string to apply (OCI tag or repo@sha256:digest).
 	Version string
 	// PreviousVersion is the currently running version — for rollback tracking.
@@ -34,7 +34,7 @@ type ApplyRequest struct {
 // DeltaApplyRequest carries a map of appKey → version for multi-artifact delta delivery.
 type DeltaApplyRequest struct {
 	// Cluster is the target fleet cluster.
-	Cluster *kaprov1alpha1.FleetCluster
+	Cluster *kaprov1alpha2.Cluster
 	// DesiredVersions maps appKey → version for all artifacts in this promotionrun.
 	DesiredVersions map[string]string
 }
@@ -58,13 +58,13 @@ type Actuator interface {
 	// clusters. This parameter makes the caller's intent explicit and symmetric
 	// with Apply(ApplyRequest{AppKey: ...}), removing the implicit coupling that existed
 	// when IsConverged had to re-read spec.desiredAppKey from the cluster itself.
-	IsConverged(ctx context.Context, cluster *kaprov1alpha1.FleetCluster, version, appKey string) (bool, error)
+	IsConverged(ctx context.Context, cluster *kaprov1alpha2.Cluster, version, appKey string) (bool, error)
 
 	// Rollback instructs the delivery system to revert to the given previous version.
 	// appKey identifies which application stream within the cluster should be
 	// rolled back; implementations must not implicitly reuse a possibly-mutated
 	// desiredAppKey from current cluster state.
-	Rollback(ctx context.Context, cluster *kaprov1alpha1.FleetCluster, previousVersion, appKey string) error
+	Rollback(ctx context.Context, cluster *kaprov1alpha2.Cluster, previousVersion, appKey string) error
 
 	// ApplyDelta compares desiredVersions against FleetCluster.status.currentVersions
 	// and only applies artifacts that changed. Returns the number of artifacts that
@@ -73,12 +73,12 @@ type Actuator interface {
 
 	// IsAllConverged returns true when ALL artifacts in desiredVersions match
 	// the cluster's currentVersions and Flux has converged.
-	IsAllConverged(ctx context.Context, cluster *kaprov1alpha1.FleetCluster, desiredVersions map[string]string) (bool, error)
+	IsAllConverged(ctx context.Context, cluster *kaprov1alpha2.Cluster, desiredVersions map[string]string) (bool, error)
 }
 
 // BackendObjectReporter is an optional actuator extension that reports the
 // backend-native objects expected to converge for a target rollout. Controllers
 // use it as status evidence; the Actuator interface remains the write contract.
 type BackendObjectReporter interface {
-	BackendObjects(ctx context.Context, cluster *kaprov1alpha1.FleetCluster, desiredVersions map[string]string) ([]kaprov1alpha1.BackendObjectStatus, error)
+	BackendObjects(ctx context.Context, cluster *kaprov1alpha2.Cluster, desiredVersions map[string]string) ([]kaprov1alpha2.BackendObjectStatus, error)
 }

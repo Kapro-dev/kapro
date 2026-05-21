@@ -36,7 +36,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 // ConditionResult is the per-metric/condition breakdown within a Result.
@@ -44,7 +44,7 @@ import (
 // Prometheus queries in a MetricsGate).
 type ConditionResult struct {
 	Name    string                  `json:"name"`
-	Phase   kaprov1alpha1.GatePhase `json:"phase"`
+	Phase   kaprov1alpha2.GatePhase `json:"phase"`
 	Value   string                  `json:"value,omitempty"`
 	Message string                  `json:"message,omitempty"`
 	// Evidence explains the facts and analysis behind this condition.
@@ -99,7 +99,7 @@ type Projection struct {
 type Result struct {
 	// Phase is the gate outcome. Always set this field.
 	// The controller uses Phase as the authoritative state.
-	Phase kaprov1alpha1.GatePhase
+	Phase kaprov1alpha2.GatePhase
 
 	// Message is a human-readable explanation shown in promotion status and
 	// notifications. Be specific: include metric values, threshold,
@@ -130,18 +130,18 @@ type Result struct {
 // IsPassed returns true when Phase is Passed.
 // This is the canonical way to test a gate result.
 func (r Result) IsPassed() bool {
-	return r.Phase == kaprov1alpha1.GatePhasePassed
+	return r.Phase == kaprov1alpha2.GatePhasePassed
 }
 
 // IsInconclusive returns true when Phase is Inconclusive.
 // The controller requeues after RetryAfter when this returns true.
 func (r Result) IsInconclusive() bool {
-	return r.Phase == kaprov1alpha1.GatePhaseInconclusive
+	return r.Phase == kaprov1alpha2.GatePhaseInconclusive
 }
 
 // IsFailed returns true when Phase is Failed.
 func (r Result) IsFailed() bool {
-	return r.Phase == kaprov1alpha1.GatePhaseFailed
+	return r.Phase == kaprov1alpha2.GatePhaseFailed
 }
 
 // Context is the per-target promotion context passed into gate evaluation.
@@ -151,7 +151,7 @@ type Context struct {
 	Namespace       string
 	PromotionRunRef string
 	Target          string
-	PromotionPlan   string
+	Plan            string
 	Stage           string
 	Version         string
 	StartedAt       string
@@ -173,7 +173,7 @@ type Request struct {
 
 	// Policy is the resolved gate policy for this sync.
 	// May be nil when no gate is configured for the stage.
-	Policy *kaprov1alpha1.GatePolicySpec
+	Policy *kaprov1alpha2.GatePolicySpec
 
 	// MetricIndex addresses a specific metric in Policy.Gate.Metrics.
 	// Meaningful only on the Metrics[] evaluation path.
@@ -181,7 +181,7 @@ type Request struct {
 
 	// Template is the inline gate template for template-based evaluation.
 	// Nil on the Metrics[] path; non-nil on the GateTemplate path.
-	Template *kaprov1alpha1.GateTemplateSpec
+	Template *kaprov1alpha2.GateTemplateSpec
 
 	// Args carries runtime-injected parameters merged with this precedence:
 	//   GateTemplateSpec defaults < sync context (version, target, stage)

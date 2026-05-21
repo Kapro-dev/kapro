@@ -76,16 +76,16 @@ Cross-project example:
 Create a CI service account that can register spokes:
 
 ```bash
-gcloud iam service-accounts create kapro-promotionplan \
+gcloud iam service-accounts create kapro-spoke-register \
   --project="$HUB_PROJECT" \
   --display-name="Kapro spoke registration"
 
 gcloud projects add-iam-policy-binding "$HUB_PROJECT" \
-  --member="serviceAccount:kapro-promotionplan@$HUB_PROJECT.iam.gserviceaccount.com" \
+  --member="serviceAccount:kapro-spoke-register@$HUB_PROJECT.iam.gserviceaccount.com" \
   --role="roles/container.developer"
 
 gcloud iam service-accounts add-iam-policy-binding \
-  "kapro-promotionplan@$HUB_PROJECT.iam.gserviceaccount.com" \
+  "kapro-spoke-register@$HUB_PROJECT.iam.gserviceaccount.com" \
   --role="roles/iam.workloadIdentityUser" \
   --member="principalSet://iam.googleapis.com/$WIF_POOL/attribute.repository/$GITHUB_REPO"
 ```

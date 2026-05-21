@@ -1,11 +1,11 @@
-# Registering a Fleet Cluster (Pull Mode)
+# Registering a Cluster (Pull Mode)
 
 This guide walks through the pull-mode registration flow: installing
 `kapro-cluster-controller` on a workload cluster so it self-registers with a
 running Kapro hub via a CSR-based handshake.
 
-If you are using the legacy push-mode flow (where the hub installs Flux on the
-spoke), see [`install.md`](install.md) under "Add a spoke cluster".
+For hub-driven push mode, use `kapro spoke add`; pull mode should use the
+bootstrap flow below.
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ spoke), see [`install.md`](install.md) under "Add a spoke cluster".
 - Helm 3 and the Kapro source tree (or the published chart artifact).
 - The `kapro` CLI built from this repo (`go build ./cmd/kapro`).
 
-The hub's `FleetClusterBootstrapReconciler` must be enabled; it is enabled by
+The hub's `ClusterBootstrapReconciler` must be enabled; it is enabled by
 default in the operator.
 
 ## Step 1 — Generate values + bootstrap Secret on the hub
@@ -30,7 +30,7 @@ kapro spoke bootstrap de-prod-01 \
 
 What this does:
 
-1. Creates (or patches) a `FleetCluster` named `de-prod-01` on the hub with a
+1. Creates (or patches) a `Cluster` named `de-prod-01` on the hub with a
    bootstrap slot (`spec.bootstrap.ttl=1h` by default).
 2. Waits for the hub reconciler to provision a per-cluster bootstrap
    `ServiceAccount`, RBAC, and a kubeconfig `Secret` containing a short-lived
@@ -45,7 +45,7 @@ Flags worth knowing:
 | Flag | Default | Notes |
 |---|---|---|
 | `--hub-url` | (required) | Hub kube-apiserver URL reachable from the spoke. |
-| `--ttl` | `1h` | Bootstrap slot TTL written to `FleetCluster.spec.bootstrap.ttl`. |
+| `--ttl` | `1h` | Bootstrap slot TTL written to `Cluster.spec.bootstrap.ttl`. |
 | `--ca-from` | `hub-kubeconfig` | Source for the hub CA bundle: `hub-kubeconfig`, `file`, `inline`, `none`. |
 | `--namespace` | `kapro-system` | Hub namespace where the bootstrap Secret lives. |
 | `--spoke-namespace` | `kapro-system` | Namespace the rendered Secret will target on the spoke. |
@@ -86,7 +86,7 @@ registered with hub                     cluster=de-prod-01
 ## Step 4 — Verify on the hub
 
 ```bash
-kubectl get fleetcluster de-prod-01 -o yaml
+kubectl get cluster de-prod-01 -o yaml
 ```
 
 Look for:
@@ -99,8 +99,8 @@ Look for:
 
 ## Reachability and Ready condition
 
-Once registered, this FleetCluster's `status.conditions[Ready]` and
-`status.phase` are maintained by the `FleetClusterHeartbeatReconciler`.
+Once registered, this Cluster's `status.conditions[Ready]` and
+`status.phase` are maintained by the `ClusterHeartbeatReconciler`.
 
 Each spoke renews a hub-side `Lease` named `kapro-heartbeat-<cluster>` in the
 operator namespace. The hub marks a cluster `Ready=False` and eventually
@@ -111,7 +111,7 @@ Operational behavior:
 
 - stale heartbeat blocks new pull-mode work for that cluster;
 - in-flight targets wait while the cluster is temporarily unreachable;
-- heartbeat staleness does not directly fail a `PromotionTarget`; the target
+- heartbeat staleness does not directly fail a `Target`; the target
   defers until the cluster recovers or an operator takes explicit action;
 - a `PromotionRun` may still fail if its own global timeout expires while
   targets are deferred;
@@ -124,7 +124,7 @@ Common Ready reasons:
 | `HeartbeatFresh` | Lease is current and the spoke is reachable. |
 | `HeartbeatStale` | Lease is stale but not yet past the failure threshold. |
 | `Unreachable` | Failure threshold exceeded; pull-mode promotion targets defer instead of failing directly. |
-| `Suspended` | `FleetCluster.spec.suspend=true`; heartbeat is intentionally ignored. |
+| `Suspended` | `Cluster.spec.suspend=true`; heartbeat is intentionally ignored. |
 | `PushModeNoHeartbeat` | Push-mode cluster; no spoke heartbeat is expected. |
 | `NotRegistered` | The cluster has not completed bootstrap registration yet. |
 
@@ -167,9 +167,9 @@ The hub approver isn't matching the CSR. Common causes:
   bootstrap SA is bound to a specific cluster name). Re-run
   `kapro spoke bootstrap` for **this** cluster name.
 - Slot TTL expired (`spec.bootstrap.expiresAt` in the past). Re-run with a
-  longer `--ttl` or recreate the FleetCluster.
+  longer `--ttl` or recreate the Cluster.
 - Slot already consumed (`status.bootstrap.used: true` with a different
-  `boundCSRName`). Delete and recreate the FleetCluster to mint a fresh
+  `boundCSRName`). Delete and recreate the Cluster to mint a fresh
   slot.
 
 ### Spoke logs: `tls: certificate signed by unknown authority`
@@ -183,6 +183,6 @@ publicly trusted cert, `--ca-from none` is fine.
 ### Heartbeat is stale but pod is running
 
 The spoke pod is up but its per-cluster RBAC binding on the hub is missing.
-Check `status.bootstrap` on the FleetCluster — `IssuedClusterRole` and
+Check `status.bootstrap` on the Cluster — `IssuedClusterRole` and
 `IssuedClusterRoleBinding` should be populated. If they aren't, the hub
 reconciler hit an error mid-provisioning; check operator logs.

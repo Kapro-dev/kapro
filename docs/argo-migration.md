@@ -19,10 +19,10 @@ platform-gitops/
     applications/
     applicationsets/
     app-of-apps/
-  kapro/
+  fleets/
     backends/argo-observe.yaml
     sources/checkout.yaml
-    promotionplans/checkout.yaml
+    plans/checkout.yaml
     promotions/
 ```
 
@@ -116,7 +116,7 @@ kapro discover argo https://github.com/example/platform.git \
 This generates:
 
 - `backends/checkout-observe.yaml` for observe-first runtime discovery;
-- `sources/checkout.yaml` with inferred `PromotionSource` units;
+- `sources/checkout.yaml` with inferred `Source` units;
 - `discovery/argo-discovery.yaml` with selected, skipped, and unsupported
   patterns;
 - `discovery/kapro-git-map.yaml` with confidence and write-target evidence for
@@ -131,7 +131,7 @@ source of truth.
 
 ```bash
 kubectl apply -f ./kapro-connect/backends/checkout-observe.yaml
-kubectl get backendprofile checkout -o yaml
+kubectl get backend checkout -o yaml
 ```
 
 Check:
@@ -152,13 +152,13 @@ writes.
 
 ## Step 4: Review Promotion Units
 
-Review the generated `PromotionSource`. In brownfield Argo mode, a unit points
+Review the generated `Source`. In brownfield Argo mode, a unit points
 to either an existing Application source or a Git parameter file that feeds an
 ApplicationSet.
 
 ```yaml
-apiVersion: kapro.io/v1alpha1
-kind: PromotionSource
+apiVersion: kapro.io/v1alpha2
+kind: Source
 metadata:
   name: checkout
 spec:
@@ -256,22 +256,22 @@ Create a `Promotion` with either one default version or per-unit versions. The
 controller stamps immutable `PromotionRun` attempts from that intent:
 
 ```yaml
-apiVersion: kapro.io/v1alpha1
+apiVersion: kapro.io/v1alpha2
 kind: Promotion
 metadata:
   name: checkout-2026-05-15
 spec:
-  kaproRef: checkout
+  fleetRef: checkout
   version: 1.5.0
-  promotionPlans:
+  plans:
     - name: main
-      promotionPlan: checkout
+      plan: checkout
   versions:
     api: 1.5.0
     web: 3.9.1
 ```
 
-Kapro creates a `PromotionRun`, then creates `PromotionTarget` records, runs
+Kapro creates a `PromotionRun`, then creates `Target` records, runs
 gates and approvals, and calls the Argo backend for selected targets. Argo CD
 remains responsible for reconciling the Application to the cluster.
 
@@ -286,9 +286,9 @@ scripts/argo-e2e.sh run
 The script creates a Kind cluster, installs Argo CD and Kapro, serves a
 throwaway Git repo inside the cluster, runs `kapro adopt argo`, applies the
 generated mapping, promotes the repo-native Argo fields with
-`kapro source apply`, creates a compatibility `PromotionRun` runtime fixture,
-and waits for all selected Argo Applications to become `Synced` and `Healthy`
-at the promoted revision.
+`kapro source apply`, exercises the runtime promotion flow, and waits for all
+selected Argo Applications to become `Synced` and `Healthy` at the promoted
+revision.
 
 This is the concrete acceptance test for the main brownfield patterns in this
 guide: plain Application, multi-source Application, ApplicationSet child backed

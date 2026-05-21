@@ -15,7 +15,7 @@ import (
 // heartbeatLoop refreshes a coordination.k8s.io/v1 Lease on the HUB cluster
 // named "kapro-heartbeat-<ClusterName>" in HubNamespace at Interval. The hub
 // reconciler reads this Lease (see internal/controller/heartbeat.go) and
-// flips FleetCluster Ready off once consecutive failures exceed the
+// flips Cluster Ready off once consecutive failures exceed the
 // per-cluster ConsecutiveFailureThreshold (PR-8 wiring).
 //
 // The per-cluster RBAC issued during bootstrap (PR-2) allows the spoke to

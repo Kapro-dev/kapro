@@ -2,10 +2,44 @@
 
 This changelog tracks user-visible API, behavior, packaging, and upgrade
 changes for Kapro releases. Kapro is still pre-stable: all Kubernetes APIs are
-served as `kapro.io/v1alpha1`, and release notes are the binding compatibility
+served as `kapro.io/v1alpha2`, and release notes are the binding compatibility
 record for each tag.
 
 ## Unreleased
+
+### ⚠️ Breaking — `kapro.io/v1alpha2` migration (clean break, no conversion)
+
+All CRDs moved from `kapro.io/v1alpha1` to `kapro.io/v1alpha2`. There is no
+conversion webhook and no v1alpha1 served version remains — this is a clean
+break appropriate for pre-stable software with no production users yet.
+
+**Kind renames** (the new short forms are the canonical names going forward):
+
+| v1alpha1                    | v1alpha2          |
+| --------------------------- | ----------------- |
+| `Kapro`                     | `Fleet`           |
+| `FleetCluster`              | `Cluster`         |
+| `FleetClusterTemplate`      | `ClusterTemplate` |
+| `AgentPolicy`               | `Policy`          |
+| `PromotionSource`           | `Source`          |
+| `PromotionTrigger`          | `Trigger`         |
+| `PromotionPlan`             | `Plan`            |
+| `PromotionTarget`           | `Target`          |
+| `BackendProfile`            | `Backend`         |
+| `PluginRegistration`        | `Plugin`          |
+| `PromotionUnit`             | `Unit`            |
+
+**Field renames** in `Promotion`, `Trigger`, and stamped `PromotionRun`:
+
+- `spec.kaproRef` → `spec.fleetRef`
+- `spec.promotionPlan` (inline plan on `Fleet`) → `spec.plan`
+- `spec.promotionPlans[].promotionPlanRef` → `spec.plans[].planRef`
+
+CloudEvents payload field `data.kaproRef` is renamed to `data.fleetRef`.
+
+**Upgrade path**: there is none in the operator. Apply the new
+`kapro.io/v1alpha2` CRDs and re-author manifests with the new Kinds and field
+names. Existing v1alpha1 objects must be deleted before installing v1alpha2.
 
 ### Added — `kapro lint`
 
@@ -21,12 +55,12 @@ kapro lint -o json promotion.yaml
 
 Checks:
 
-- **Kapro** — exactly one of `spec.source` / `spec.sourceRef`,
+- **Fleet** — exactly one of `spec.source` / `spec.sourceRef`,
   `spec.delivery.backendRef` set, `spec.clusters` non-empty.
-- **Promotion** — `spec.kaproRef` set, `spec.version` or
+- **Promotion** — `spec.fleetRef` set, `spec.version` or
   `spec.versions` set, `spec.timeout` set (advisory), no duplicate
-  scope targets, non-empty PromotionPlan refs.
-- **PromotionPlan** — unique stage names, every `dependsOn[].stage`
+  scope targets, non-empty Plan refs.
+- **Plan** — unique stage names, every `dependsOn[].stage`
   references a real stage, no self-dependencies, no cycles in the
   DAG, manual gates declare `approval.required: true` (silent
   auto-advance is an ERROR), manual gates with `required: true` list
@@ -36,7 +70,7 @@ Checks:
 Severity: `ERROR` fails (exit 1), `WARN` is advisory (exit 0).
 `--strict` upgrades warnings to errors. `-o json` emits the issue
 list as a stable JSON array. Other Kapro kinds
-(FleetCluster, BackendProfile, PromotionRun, …) are skipped silently
+(Cluster, Backend, PromotionRun, …) are skipped silently
 so `kapro lint **/*.yaml` does not flag manifests the linter has no
 rules for yet.
 
@@ -77,9 +111,9 @@ subcommand; it is now called out in `--help`. Example:
 kapro completion zsh > "${fpath[1]}/_kapro"
 ```
 
-### Added — reference `PromotionPlan` library (`examples/plans/`)
+### Added — reference `Plan` library (`examples/plans/`)
 
-Six copy-paste-ready PromotionPlans covering the most common shapes:
+Six copy-paste-ready Plans covering the most common shapes:
 
 1. `01-canary-then-full.yaml` — one canary, then everything else.
 2. `02-blue-green.yaml` — single-cluster blue/green with manual cutover.
@@ -89,7 +123,7 @@ Six copy-paste-ready PromotionPlans covering the most common shapes:
 6. `06-metrics-gated.yaml` — canary holds error_rate + p99_latency below thresholds.
 
 A unit test (`examples/plans/plans_validate_test.go`) parses each YAML
-into `kapro.io/v1alpha1.PromotionPlan` and checks DAG references, so
+into `kapro.io/v1alpha2.Plan` and checks DAG references, so
 schema drift between the docs and the CRD source-of-truth fails the
 build.
 
@@ -343,9 +377,9 @@ be rewritten with a one-liner.
   `Promotion.status`. The model mirrors `Deployment → ReplicaSet → Pod` and
   Docker Swarm `Service → Task → Container`: intent is durable, attempts are
   ephemeral.
-- `Promotion.spec.kaproRef` references the parent Kapro fleet; the
-  PromotionController inherits the rollout plan from `Kapro.spec.promotionplan`
-  when `Promotion.spec.promotionPlans` is unset.
+- `Promotion.spec.fleetRef` references the parent Fleet; the
+  PromotionController inherits the rollout plan from `Fleet.spec.plan`
+  when `Promotion.spec.plans` is unset.
 - `Promotion.status.activeAttemptRef` (current non-terminal `PromotionRun`)
   and `Promotion.status.attempts[]` (bounded last-20 history, newest-first).
 - `PromotionRun.status.phase` gained terminal `Superseded`. When a new
@@ -361,20 +395,20 @@ be rewritten with a one-liner.
 
 ### Changed
 
-- `kapro promote <kapro> --version <v>` now creates a `Promotion` (not a
+- `kapro promote <fleet> --version <v>` now creates a `Promotion` (not a
   `PromotionRun`). The CLI surface is unchanged for the common case.
 - `kapro promotionrun create` is now documented as advanced/debug usage that
   bypasses the intent layer.
 - `PromotionController` stamps a NEW `PromotionRun` whenever the deterministic
   hash of `Promotion.spec` changes; existing runs are never rolling-updated
-  for new desired versions. Spec hash covers kaproRef, version, versions,
+  for new desired versions. Spec hash covers fleetRef, version, versions,
   plans, scope, and timeout (suspended deliberately excluded).
 
 ### Changed (cont.) — PromotionTrigger now emits Promotion
 
 - Renamed `PromotionTrigger.spec.promotionrunTemplate` to
-  `spec.promotionTemplate`. The template adds a required `kaproRef` field
-  pointing at the parent Kapro fleet. Existing trigger manifests must be
+  `spec.promotionTemplate`. The template adds a required `fleetRef` field
+  pointing at the parent Fleet. Existing trigger manifests must be
   rewritten (alpha API, no migration tooling).
 - Renamed status `activePromotionRuns` (slice) to `managedPromotion`
   (single name) + `activePromotionRunCount`. Added
@@ -424,10 +458,10 @@ be rewritten with a one-liner.
   briefly stamp a non-suspended run; this is now sealed by writing the
   parent's current suspend state into `buildRunSpec`.
 - `PromotionController` now references the materialized inline
-  `PromotionPlan` by its generated name (`<kapro>-promotionplan`) via the
+  Plan by its generated name (`<fleet>-promotionplan`) via the
   shared `InlinePromotionPlanName` helper, instead of using the bare
-  Kapro name. This unblocks `PromotionRun` plan resolution when a
-  Promotion does not specify `spec.promotionPlans`.
+  Fleet name. This unblocks `PromotionRun` plan resolution when a
+  Promotion does not specify `spec.plans`.
 
 ### Changed
 
@@ -435,19 +469,19 @@ be rewritten with a one-liner.
   `PromotionTarget`; `PromotionRun` is now controller-authored runtime state
   and admission gates direct human writes. Advanced reusable objects remain
   available where they add real value.
-- `kapro init` now generates inline `Kapro.spec.source` for the default
-  greenfield path instead of teaching a separate `PromotionSource` first.
+- `kapro init` now generates inline `Fleet.spec.source` for the default
+  greenfield path instead of teaching a separate `Source` first.
 - `kapro source package` now reads inline source units from
-  `Kapro.spec.source` with `--kapro <name>` when pull-mode packaging.
+  `Fleet.spec.source` with `--fleet <name>` when pull-mode packaging.
 - Removed obsolete namespace flags from public CLI paths because
-  `PromotionRun`, `PromotionTarget`, `Approval`, and rollback are
+  `PromotionRun`, `Target`, `Approval`, and rollback are
   cluster-scoped.
 
 ### Performance
 
-- `PromotionController` now indexes `Promotion.spec.kaproRef` and uses
+- `PromotionController` now indexes `Promotion.spec.fleetRef` and uses
   `MatchingFields` to enqueue only the Promotions referencing a changed
-  Kapro fleet, instead of listing every Promotion and filtering in
+  Fleet, instead of listing every Promotion and filtering in
   memory.
 - Terminal coarse phases (`Succeeded`, `Failed`, `Paused`, `Terminating`)
   no longer trigger periodic 15s requeues; the controller relies on

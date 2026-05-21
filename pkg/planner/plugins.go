@@ -6,7 +6,7 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 // NewDefaultFramework returns Kapro's built-in planner stack.
@@ -23,7 +23,7 @@ type ReadinessFilter struct{}
 
 func (ReadinessFilter) Name() string { return "readiness" }
 
-func (ReadinessFilter) Filter(_ context.Context, _ *CycleState, _ Request, target kaprov1alpha1.FleetCluster) *Status {
+func (ReadinessFilter) Filter(_ context.Context, _ *CycleState, _ Request, target kaprov1alpha2.Cluster) *Status {
 	ready := apimeta.FindStatusCondition(target.Status.Conditions, "Ready")
 	if ready != nil && ready.Status == metav1.ConditionFalse {
 		return NewStatusReason(Skip, "ClusterNotReady", "cluster Ready condition is false")
@@ -36,7 +36,7 @@ type ActivePromotionRunFilter struct{}
 
 func (ActivePromotionRunFilter) Name() string { return "active-promotionrun" }
 
-func (ActivePromotionRunFilter) Filter(_ context.Context, _ *CycleState, req Request, target kaprov1alpha1.FleetCluster) *Status {
+func (ActivePromotionRunFilter) Filter(_ context.Context, _ *CycleState, req Request, target kaprov1alpha2.Cluster) *Status {
 	if req.PromotionRun == nil || target.Status.ActivePromotionRun == "" || target.Status.ActivePromotionRun == req.PromotionRun.Name {
 		return nil
 	}
@@ -49,6 +49,6 @@ type DeterministicOrder struct{}
 
 func (DeterministicOrder) Name() string { return "deterministic-order" }
 
-func (DeterministicOrder) Score(context.Context, *CycleState, Request, kaprov1alpha1.FleetCluster) (int64, *Status) {
+func (DeterministicOrder) Score(context.Context, *CycleState, Request, kaprov1alpha2.Cluster) (int64, *Status) {
 	return 0, nil
 }

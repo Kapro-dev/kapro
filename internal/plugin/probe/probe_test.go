@@ -12,7 +12,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	kaprometrics "kapro.io/kapro/internal/metrics"
 	kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
 	kgiv1alpha1 "kapro.io/kapro/spec/kgi/v1alpha1"
@@ -26,11 +26,11 @@ func TestProbeActuatorCapabilities(t *testing.T) {
 	go func() { _ = server.Serve(listener) }()
 	defer server.Stop()
 
-	result := Prober{DialOptions: bufDialOptions(listener)}.Probe(context.Background(), kaprov1alpha1.PluginRegistration{
-		Spec: kaprov1alpha1.PluginRegistrationSpec{
-			Type:     kaprov1alpha1.PluginTypeActuator,
+	result := Prober{DialOptions: bufDialOptions(listener)}.Probe(context.Background(), kaprov1alpha2.Plugin{
+		Spec: kaprov1alpha2.PluginSpec{
+			Type:     kaprov1alpha2.PluginTypeActuator,
 			Name:     "argo/pull",
-			Protocol: kaprov1alpha1.PluginProtocolGRPC,
+			Protocol: kaprov1alpha2.PluginProtocolGRPC,
 			Endpoint: "bufnet",
 			Timeout:  "1s",
 		},
@@ -57,11 +57,11 @@ func TestProbeGateCapabilities(t *testing.T) {
 	go func() { _ = server.Serve(listener) }()
 	defer server.Stop()
 
-	result := Prober{DialOptions: bufDialOptions(listener)}.Probe(context.Background(), kaprov1alpha1.PluginRegistration{
-		Spec: kaprov1alpha1.PluginRegistrationSpec{
-			Type:     kaprov1alpha1.PluginTypeGate,
+	result := Prober{DialOptions: bufDialOptions(listener)}.Probe(context.Background(), kaprov1alpha2.Plugin{
+		Spec: kaprov1alpha2.PluginSpec{
+			Type:     kaprov1alpha2.PluginTypeGate,
 			Name:     "slo",
-			Protocol: kaprov1alpha1.PluginProtocolGRPC,
+			Protocol: kaprov1alpha2.PluginProtocolGRPC,
 			Endpoint: "bufnet",
 			Timeout:  "1s",
 		},
@@ -85,11 +85,11 @@ func TestProbePlannerCapabilities(t *testing.T) {
 	go func() { _ = server.Serve(listener) }()
 	defer server.Stop()
 
-	result := Prober{DialOptions: bufDialOptions(listener)}.Probe(context.Background(), kaprov1alpha1.PluginRegistration{
-		Spec: kaprov1alpha1.PluginRegistrationSpec{
-			Type:     kaprov1alpha1.PluginTypePlanner,
+	result := Prober{DialOptions: bufDialOptions(listener)}.Probe(context.Background(), kaprov1alpha2.Plugin{
+		Spec: kaprov1alpha2.PluginSpec{
+			Type:     kaprov1alpha2.PluginTypePlanner,
 			Name:     "capacity",
-			Protocol: kaprov1alpha1.PluginProtocolGRPC,
+			Protocol: kaprov1alpha2.PluginProtocolGRPC,
 			Endpoint: "bufnet",
 			Timeout:  "1s",
 		},
@@ -113,11 +113,11 @@ func TestProbePlannerMissingCapability(t *testing.T) {
 	go func() { _ = server.Serve(listener) }()
 	defer server.Stop()
 
-	result := Prober{DialOptions: bufDialOptions(listener)}.Probe(context.Background(), kaprov1alpha1.PluginRegistration{
-		Spec: kaprov1alpha1.PluginRegistrationSpec{
-			Type:     kaprov1alpha1.PluginTypePlanner,
+	result := Prober{DialOptions: bufDialOptions(listener)}.Probe(context.Background(), kaprov1alpha2.Plugin{
+		Spec: kaprov1alpha2.PluginSpec{
+			Type:     kaprov1alpha2.PluginTypePlanner,
 			Name:     "capacity",
-			Protocol: kaprov1alpha1.PluginProtocolGRPC,
+			Protocol: kaprov1alpha2.PluginProtocolGRPC,
 			Endpoint: "bufnet",
 			Timeout:  "1s",
 		},
@@ -137,34 +137,34 @@ func TestProbePlannerMissingCapability(t *testing.T) {
 func TestProbeValidationFailures(t *testing.T) {
 	tests := []struct {
 		name string
-		spec kaprov1alpha1.PluginRegistrationSpec
+		spec kaprov1alpha2.PluginSpec
 		want string
 	}{
 		{
 			name: "unsupported type",
-			spec: kaprov1alpha1.PluginRegistrationSpec{Type: "other", Protocol: kaprov1alpha1.PluginProtocolGRPC, Endpoint: "dns:///plugin:9090"},
+			spec: kaprov1alpha2.PluginSpec{Type: "other", Protocol: kaprov1alpha2.PluginProtocolGRPC, Endpoint: "dns:///plugin:9090"},
 			want: "UnsupportedType",
 		},
 		{
 			name: "unsupported protocol",
-			spec: kaprov1alpha1.PluginRegistrationSpec{Type: kaprov1alpha1.PluginTypeGate, Protocol: "http", Endpoint: "dns:///plugin:9090"},
+			spec: kaprov1alpha2.PluginSpec{Type: kaprov1alpha2.PluginTypeGate, Protocol: "http", Endpoint: "dns:///plugin:9090"},
 			want: "UnsupportedProtocol",
 		},
 		{
 			name: "missing endpoint",
-			spec: kaprov1alpha1.PluginRegistrationSpec{Type: kaprov1alpha1.PluginTypeGate, Protocol: kaprov1alpha1.PluginProtocolGRPC},
+			spec: kaprov1alpha2.PluginSpec{Type: kaprov1alpha2.PluginTypeGate, Protocol: kaprov1alpha2.PluginProtocolGRPC},
 			want: "InvalidEndpoint",
 		},
 		{
 			name: "invalid timeout",
-			spec: kaprov1alpha1.PluginRegistrationSpec{Type: kaprov1alpha1.PluginTypeGate, Protocol: kaprov1alpha1.PluginProtocolGRPC, Endpoint: "dns:///plugin:9090", Timeout: "soon"},
+			spec: kaprov1alpha2.PluginSpec{Type: kaprov1alpha2.PluginTypeGate, Protocol: kaprov1alpha2.PluginProtocolGRPC, Endpoint: "dns:///plugin:9090", Timeout: "soon"},
 			want: "InvalidTimeout",
 		},
 		{
 			name: "tls requires secret client",
-			spec: kaprov1alpha1.PluginRegistrationSpec{
-				Type:         kaprov1alpha1.PluginTypeGate,
-				Protocol:     kaprov1alpha1.PluginProtocolGRPC,
+			spec: kaprov1alpha2.PluginSpec{
+				Type:         kaprov1alpha2.PluginTypeGate,
+				Protocol:     kaprov1alpha2.PluginProtocolGRPC,
 				Endpoint:     "dns:///plugin:9090",
 				TLSSecretRef: &corev1.SecretReference{Name: "plugin-tls", Namespace: "kapro-system"},
 			},
@@ -174,7 +174,7 @@ func TestProbeValidationFailures(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Prober{}.Probe(context.Background(), kaprov1alpha1.PluginRegistration{Spec: tt.spec})
+			result := Prober{}.Probe(context.Background(), kaprov1alpha2.Plugin{Spec: tt.spec})
 			if result.Ready {
 				t.Fatal("Ready = true")
 			}
@@ -223,11 +223,11 @@ func TestProbeContractVersionPolicy(t *testing.T) {
 			go func() { _ = server.Serve(listener) }()
 			defer server.Stop()
 
-			result := Prober{DialOptions: bufDialOptions(listener)}.Probe(context.Background(), kaprov1alpha1.PluginRegistration{
-				Spec: kaprov1alpha1.PluginRegistrationSpec{
-					Type:     kaprov1alpha1.PluginTypeActuator,
+			result := Prober{DialOptions: bufDialOptions(listener)}.Probe(context.Background(), kaprov1alpha2.Plugin{
+				Spec: kaprov1alpha2.PluginSpec{
+					Type:     kaprov1alpha2.PluginTypeActuator,
 					Name:     "argo/pull",
-					Protocol: kaprov1alpha1.PluginProtocolGRPC,
+					Protocol: kaprov1alpha2.PluginProtocolGRPC,
 					Endpoint: "bufnet",
 					Timeout:  "1s",
 				},
@@ -250,12 +250,12 @@ func TestProbeContractVersionPolicy(t *testing.T) {
 }
 
 func TestProbeObservesReadinessMetrics(t *testing.T) {
-	reg := kaprov1alpha1.PluginRegistration{
+	reg := kaprov1alpha2.Plugin{
 		ObjectMeta: metav1.ObjectMeta{Name: "metrics-probe-registration"},
-		Spec: kaprov1alpha1.PluginRegistrationSpec{
-			Type:     kaprov1alpha1.PluginTypeGate,
+		Spec: kaprov1alpha2.PluginSpec{
+			Type:     kaprov1alpha2.PluginTypeGate,
 			Name:     "metrics/probe",
-			Protocol: kaprov1alpha1.PluginProtocolGRPC,
+			Protocol: kaprov1alpha2.PluginProtocolGRPC,
 		},
 	}
 	counter := kaprometrics.PluginProbeResults.WithLabelValues("gate", "error", "InvalidEndpoint")

@@ -12,13 +12,13 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 // PolicyDecision is the result of evaluating an AgentPolicy against a decision.
 type PolicyDecision struct {
 	Allowed            bool
-	EffectiveMode      kaprov1alpha1.AgentPolicyMode
+	EffectiveMode      kaprov1alpha2.PolicyMode
 	EffectiveMinConf   float64
 	DenyReason         string
 	RequireHumanCosign bool
@@ -26,13 +26,13 @@ type PolicyDecision struct {
 
 // resolveAgentPolicy finds the highest-priority AgentPolicy matching the
 // authenticated Kubernetes identity.
-func (s *Server) resolveAgentPolicy(ctx context.Context, agentName string) (*kaprov1alpha1.AgentPolicy, error) {
-	var list kaprov1alpha1.AgentPolicyList
+func (s *Server) resolveAgentPolicy(ctx context.Context, agentName string) (*kaprov1alpha2.Policy, error) {
+	var list kaprov1alpha2.PolicyList
 	if err := s.decisionReader().List(ctx, &list); err != nil {
 		return nil, fmt.Errorf("list AgentPolicies: %w", err)
 	}
 	saNamespace, saName, isServiceAccount := parseServiceAccountUsername(agentName)
-	var best *kaprov1alpha1.AgentPolicy
+	var best *kaprov1alpha2.Policy
 	for i := range list.Items {
 		ap := &list.Items[i]
 		if isServiceAccount {
@@ -67,9 +67,9 @@ func parseServiceAccountUsername(username string) (string, string, bool) {
 // enforceAgentPolicy validates a decision against the resolved AgentPolicy.
 // Returns a PolicyDecision indicating whether the decision is allowed.
 func enforceAgentPolicy(
-	policy *kaprov1alpha1.AgentPolicy,
-	target *kaprov1alpha1.PromotionTarget,
-	cluster *kaprov1alpha1.FleetCluster,
+	policy *kaprov1alpha2.Policy,
+	target *kaprov1alpha2.Target,
+	cluster *kaprov1alpha2.Cluster,
 	confidence float64,
 	reasoningLen int,
 ) PolicyDecision {
@@ -83,7 +83,7 @@ func enforceAgentPolicy(
 
 	// Check mode.
 	mode := policy.Spec.Mode
-	if mode == kaprov1alpha1.AgentPolicyModeDisabled {
+	if mode == kaprov1alpha2.PolicyModeDisabled {
 		return PolicyDecision{Allowed: false, DenyReason: "AgentPolicy mode is disabled"}
 	}
 
@@ -193,7 +193,7 @@ func enforceAgentPolicy(
 	}
 }
 
-func isStageAllowed(scope kaprov1alpha1.AgentScope, stage string) bool {
+func isStageAllowed(scope kaprov1alpha2.AgentScope, stage string) bool {
 	// ExcludeStages always wins.
 	if slices.Contains(scope.ExcludeStages, stage) {
 		return false
@@ -205,7 +205,7 @@ func isStageAllowed(scope kaprov1alpha1.AgentScope, stage string) bool {
 	return slices.Contains(scope.Stages, stage)
 }
 
-func isWithinTimeWindows(windows []kaprov1alpha1.AgentTimeWindow) bool {
+func isWithinTimeWindows(windows []kaprov1alpha2.AgentTimeWindow) bool {
 	if len(windows) == 0 {
 		return true
 	}
@@ -295,7 +295,7 @@ func sameUTCDay(a, b time.Time) bool {
 // Retries on conflict (typical at high contention); gives up after maxRetries
 // and returns the conflict so the caller can fail the request rather than
 // silently overshooting the limit.
-func (s *Server) reserveAgentPolicySlot(ctx context.Context, policy *kaprov1alpha1.AgentPolicy) (bool, string, error) {
+func (s *Server) reserveAgentPolicySlot(ctx context.Context, policy *kaprov1alpha2.Policy) (bool, string, error) {
 	const maxRetries = 5
 	key := client.ObjectKey{Namespace: policy.Namespace, Name: policy.Name}
 	now := time.Now().UTC()
@@ -304,7 +304,7 @@ func (s *Server) reserveAgentPolicySlot(ctx context.Context, policy *kaprov1alph
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		// Refetch on retry to pick up the latest resourceVersion + counters.
 		if attempt > 0 {
-			var fresh kaprov1alpha1.AgentPolicy
+			var fresh kaprov1alpha2.Policy
 			if err := s.Client.Get(ctx, key, &fresh); err != nil {
 				return false, "", fmt.Errorf("refetch AgentPolicy %s for retry: %w", policy.Name, err)
 			}
@@ -382,12 +382,12 @@ func (s *Server) reserveAgentPolicySlot(ctx context.Context, policy *kaprov1alph
 // Retries on conflict up to maxRetries; non-conflict errors surface so the
 // caller can log them — leaking one slot is acceptable, swallowing the
 // underlying error is not.
-func (s *Server) releaseAgentPolicySlot(ctx context.Context, policy *kaprov1alpha1.AgentPolicy) error {
+func (s *Server) releaseAgentPolicySlot(ctx context.Context, policy *kaprov1alpha2.Policy) error {
 	const maxRetries = 5
 	key := client.ObjectKey{Namespace: policy.Namespace, Name: policy.Name}
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		var fresh kaprov1alpha1.AgentPolicy
+		var fresh kaprov1alpha2.Policy
 		if err := s.Client.Get(ctx, key, &fresh); err != nil {
 			return fmt.Errorf("refetch AgentPolicy %s for release: %w", policy.Name, err)
 		}

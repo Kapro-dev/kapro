@@ -18,10 +18,10 @@ platform-gitops/
     sources/
     kustomizations/
     helmreleases/
-  kapro/
+  fleets/
     backends/flux-observe.yaml
     sources/checkout.yaml
-    promotionplans/checkout.yaml
+    plans/checkout.yaml
     promotions/
 ```
 
@@ -58,10 +58,10 @@ Apply the observe profile:
 
 ```bash
 kubectl apply -f ./kapro-connect/backends/flux-observe.yaml
-kubectl get backendprofile flux -o yaml
+kubectl get backend flux -o yaml
 ```
 
-Check `BackendProfile.status.selectedObjects` before enabling adoption.
+Check `Backend.status.selectedObjects` before enabling adoption.
 
 ## Step 3: Model Promotion Units
 
@@ -81,11 +81,11 @@ Flux Git-native patterns:
 Flux `Kustomization` objects are reported but not treated as direct version
 write targets because `spec.path` and `spec.sourceRef` are topology/configuration
 fields, not a universal promotion version. Promote the referenced source object,
-the Kustomize image file, or an explicit field you add to `PromotionSource`.
+the Kustomize image file, or an explicit field you add to `Source`.
 
 ```yaml
-apiVersion: kapro.io/v1alpha1
-kind: PromotionSource
+apiVersion: kapro.io/v1alpha2
+kind: Source
 metadata:
   name: checkout
 spec:
@@ -127,15 +127,15 @@ Create a `Promotion` for one or more units. The controller stamps immutable
 `PromotionRun` attempts from that intent:
 
 ```yaml
-apiVersion: kapro.io/v1alpha1
+apiVersion: kapro.io/v1alpha2
 kind: Promotion
 metadata:
   name: checkout-2026-05-15
 spec:
-  kaproRef: checkout-flux
-  promotionPlans:
+  fleetRef: checkout-flux
+  plans:
     - name: main
-      promotionPlan: checkout
+      plan: checkout
   versions:
     api: 1.5.0
     web: main-20260515
@@ -169,6 +169,6 @@ scripts/verify-install.sh flux-e2e
 
 This creates a disposable Kind cluster, installs real Flux controllers, serves a
 Git fixture inside the cluster, bootstraps Flux from that repo, runs
-`kapro adopt flux`, applies the generated `PromotionSource` mapping from `v1`
+`kapro adopt flux`, applies the generated `Source` mapping from `v1`
 to `v2`, pushes the Git change, and waits for Flux to reconcile the workload
 ConfigMap to `v2`.

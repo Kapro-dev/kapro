@@ -8,7 +8,7 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/pkg/planner"
 	kpiv1alpha1 "kapro.io/kapro/spec/kpi/v1alpha1"
 
@@ -30,9 +30,9 @@ type plannerCycleResult struct {
 }
 
 // NewPlannerAdapter returns a planner adapter backed by a KPI client.
-func NewPlannerAdapter(reg kaprov1alpha1.PluginRegistration, client kpiv1alpha1.PlannerServiceClient) (*PlannerAdapter, error) {
-	if reg.Spec.Type != kaprov1alpha1.PluginTypePlanner {
-		return nil, fmt.Errorf("plugin %q is %q, expected %q", reg.Name, reg.Spec.Type, kaprov1alpha1.PluginTypePlanner)
+func NewPlannerAdapter(reg kaprov1alpha2.Plugin, client kpiv1alpha1.PlannerServiceClient) (*PlannerAdapter, error) {
+	if reg.Spec.Type != kaprov1alpha2.PluginTypePlanner {
+		return nil, fmt.Errorf("plugin %q is %q, expected %q", reg.Name, reg.Spec.Type, kaprov1alpha2.PluginTypePlanner)
 	}
 	if client == nil {
 		return nil, fmt.Errorf("planner plugin client is nil")
@@ -67,16 +67,16 @@ func (p *PlannerAdapter) Name() string {
 
 // PreFilter calls the external planner once per planning cycle and stores the
 // response for Filter and Score.
-func (p *PlannerAdapter) PreFilter(ctx context.Context, state *planner.CycleState, req planner.Request, targets []kaprov1alpha1.FleetCluster) *planner.Status {
+func (p *PlannerAdapter) PreFilter(ctx context.Context, state *planner.CycleState, req planner.Request, targets []kaprov1alpha2.Cluster) *planner.Status {
 	start := time.Now()
 	result := "success"
-	defer func() { observeRuntimeCall(kaprov1alpha1.PluginTypePlanner, p.name, "Plan", result, start) }()
+	defer func() { observeRuntimeCall(kaprov1alpha2.PluginTypePlanner, p.name, "Plan", result, start) }()
 
 	rpcCtx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
 	resp, err := p.client.Plan(rpcCtx, &kpiv1alpha1.PlanRequest{
 		PromotionRun:  promotionrunName(req.PromotionRun),
-		PromotionPlan: req.PromotionPlanRefName,
+		PromotionPlan: req.PlanRefName,
 		Stage:         req.Stage.Name,
 		Version:       promotionrunVersion(req.PromotionRun),
 		Strategy:      stageStrategy(req.Stage),
@@ -101,7 +101,7 @@ func (p *PlannerAdapter) PreFilter(ctx context.Context, state *planner.CycleStat
 
 // Filter skips or defers targets when the external planner says they should
 // not be bound in this cycle.
-func (p *PlannerAdapter) Filter(_ context.Context, state *planner.CycleState, _ planner.Request, target kaprov1alpha1.FleetCluster) *planner.Status {
+func (p *PlannerAdapter) Filter(_ context.Context, state *planner.CycleState, _ planner.Request, target kaprov1alpha2.Cluster) *planner.Status {
 	planned, ok := p.plannedTarget(state, target.Name)
 	if !ok {
 		return nil
@@ -117,7 +117,7 @@ func (p *PlannerAdapter) Filter(_ context.Context, state *planner.CycleState, _ 
 }
 
 // Score applies the external planner score for included targets.
-func (p *PlannerAdapter) Score(_ context.Context, state *planner.CycleState, _ planner.Request, target kaprov1alpha1.FleetCluster) (int64, *planner.Status) {
+func (p *PlannerAdapter) Score(_ context.Context, state *planner.CycleState, _ planner.Request, target kaprov1alpha2.Cluster) (int64, *planner.Status) {
 	planned, ok := p.plannedTarget(state, target.Name)
 	if !ok {
 		return 0, nil
@@ -142,21 +142,21 @@ func (p *PlannerAdapter) stateKey() string {
 	return "plugin.planner." + p.name
 }
 
-func promotionrunName(promotionrun *kaprov1alpha1.PromotionRun) string {
+func promotionrunName(promotionrun *kaprov1alpha2.PromotionRun) string {
 	if promotionrun == nil {
 		return ""
 	}
 	return promotionrun.Name
 }
 
-func promotionrunVersion(promotionrun *kaprov1alpha1.PromotionRun) string {
+func promotionrunVersion(promotionrun *kaprov1alpha2.PromotionRun) string {
 	if promotionrun == nil {
 		return ""
 	}
 	return promotionrun.Spec.Version
 }
 
-func stageStrategy(stage kaprov1alpha1.Stage) *kpiv1alpha1.StageStrategy {
+func stageStrategy(stage kaprov1alpha2.Stage) *kpiv1alpha1.StageStrategy {
 	if stage.Strategy == nil {
 		return nil
 	}
@@ -166,7 +166,7 @@ func stageStrategy(stage kaprov1alpha1.Stage) *kpiv1alpha1.StageStrategy {
 	}
 }
 
-func plannerTargets(targets []kaprov1alpha1.FleetCluster) []*kpiv1alpha1.Target {
+func plannerTargets(targets []kaprov1alpha2.Cluster) []*kpiv1alpha1.Target {
 	out := make([]*kpiv1alpha1.Target, 0, len(targets))
 	for _, target := range targets {
 		out = append(out, &kpiv1alpha1.Target{
@@ -179,7 +179,7 @@ func plannerTargets(targets []kaprov1alpha1.FleetCluster) []*kpiv1alpha1.Target 
 	return out
 }
 
-func targetReady(target kaprov1alpha1.FleetCluster) bool {
+func targetReady(target kaprov1alpha2.Cluster) bool {
 	ready := apimeta.FindStatusCondition(target.Status.Conditions, "Ready")
 	return ready == nil || ready.Status != metav1.ConditionFalse
 }

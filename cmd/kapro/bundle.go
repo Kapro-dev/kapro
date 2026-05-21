@@ -12,7 +12,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/bundle"
 	kaproconfig "kapro.io/kapro/internal/config"
 )
@@ -34,7 +34,7 @@ Kapro promotes revisions. The selected backend owns local sync and rollout.`,
 func newSourcePackageCmd() *cobra.Command {
 	var (
 		sourceRef  string
-		kaproName  string
+		fleetName  string
 		version    string
 		registry   string
 		outputDir  string
@@ -45,7 +45,7 @@ func newSourcePackageCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "package",
 		Short: "Package Kapro source units for pull-mode spokes",
-		Long: `Reads source units from a Kapro CR or advanced PromotionSource CR and
+		Long: `Reads source units from a Fleet CR or advanced Source CR and
 packages them into an OCI artifact containing per-wave directories with
 HelmReleases and HelmRepositories.
 
@@ -53,18 +53,18 @@ With --push, also pushes the artifact to the OCI registry.
 
 Examples:
   # Package to local directory (dry-run)
-  kapro source package --kapro checkout --version 2.0.0 --output /tmp/kapro-source
+  kapro source package --fleet checkout --version 2.0.0 --output /tmp/kapro-source
 
   # Package and push to GAR
-  kapro source package --kapro checkout --version 2.0.0 \
+  kapro source package --fleet checkout --version 2.0.0 \
     --registry oci://europe-west1-docker.pkg.dev/project/repo --push
 
-  # Advanced: package a reusable PromotionSource CR
+  # Advanced: package a reusable Source CR
   kapro source package --source checkout --version ${VERSION} \
     --registry ${OCI_REGISTRY} --push \
     --kubeconfig ${HUB_KUBECONFIG}`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name := kaproName
+			name := fleetName
 			if name == "" {
 				name = sourceRef
 			}
@@ -72,8 +72,8 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&sourceRef, "source", "", "Advanced PromotionSource CR name")
-	cmd.Flags().StringVar(&kaproName, "kapro", "", "Kapro artifact name; when --source is omitted, also the Kapro CR name")
+	cmd.Flags().StringVar(&sourceRef, "source", "", "Advanced Source CR name")
+	cmd.Flags().StringVar(&fleetName, "fleet", "", "Fleet artifact name; when --source is omitted, also the Fleet CR name")
 	cmd.Flags().StringVar(&version, "version", "", "Artifact version / OCI tag (required)")
 	cmd.Flags().StringVar(&registry, "registry", "", "OCI registry URL (required for --push)")
 	cmd.Flags().StringVar(&outputDir, "output", "", "Output directory (default: temp dir, printed to stdout)")
@@ -83,9 +83,9 @@ Examples:
 	return cmd
 }
 
-func runSourcePackage(ctx context.Context, sourceRef, kaproName, version, registry, outputDir string, push bool, kubeconfigPath string) error {
-	if sourceRef == "" && kaproName == "" {
-		return fmt.Errorf("one of --kapro or --source is required")
+func runSourcePackage(ctx context.Context, sourceRef, fleetName, version, registry, outputDir string, push bool, kubeconfigPath string) error {
+	if sourceRef == "" && fleetName == "" {
+		return fmt.Errorf("one of --fleet or --source is required")
 	}
 	if registry == "" {
 		cfg, _ := kaproconfig.Load()
@@ -101,12 +101,12 @@ func runSourcePackage(ctx context.Context, sourceRef, kaproName, version, regist
 		return fmt.Errorf("connect to hub: %w", err)
 	}
 
-	app, err := readPackageSource(ctx, hubClient, sourceRef, kaproName)
+	app, err := readPackageSource(ctx, hubClient, sourceRef, fleetName)
 	if err != nil {
 		return err
 	}
-	if kaproName == "" {
-		kaproName = app.Name
+	if fleetName == "" {
+		fleetName = app.Name
 	}
 
 	fmt.Fprintf(os.Stderr, "Read source units from %q: %d units, %d registries\n",
@@ -119,7 +119,7 @@ func runSourcePackage(ctx context.Context, sourceRef, kaproName, version, regist
 
 	// Generate artifact contents.
 	req := bundle.BundleRequest{
-		KaproName: kaproName,
+		KaproName: fleetName,
 		Source:    app,
 		Version:   version,
 		Registry:  registry,
@@ -164,26 +164,26 @@ func runSourcePackage(ctx context.Context, sourceRef, kaproName, version, regist
 	return nil
 }
 
-func readPackageSource(ctx context.Context, hubClient client.Client, sourceRef, kaproName string) (*kaprov1alpha1.PromotionSource, error) {
+func readPackageSource(ctx context.Context, hubClient client.Client, sourceRef, fleetName string) (*kaprov1alpha2.Source, error) {
 	if sourceRef != "" {
-		var source kaprov1alpha1.PromotionSource
+		var source kaprov1alpha2.Source
 		if err := hubClient.Get(ctx, client.ObjectKey{Name: sourceRef}, &source); err != nil {
-			return nil, fmt.Errorf("get PromotionSource %q: %w", sourceRef, err)
+			return nil, fmt.Errorf("get Source %q: %w", sourceRef, err)
 		}
 		return &source, nil
 	}
 
-	var fleet kaprov1alpha1.Kapro
-	if err := hubClient.Get(ctx, client.ObjectKey{Name: kaproName}, &fleet); err != nil {
-		return nil, fmt.Errorf("get Kapro %q: %w", kaproName, err)
+	var fleet kaprov1alpha2.Fleet
+	if err := hubClient.Get(ctx, client.ObjectKey{Name: fleetName}, &fleet); err != nil {
+		return nil, fmt.Errorf("get fleet %q: %w", fleetName, err)
 	}
 	if fleet.Spec.Source == nil {
 		if fleet.Spec.SourceRef != "" {
-			return nil, fmt.Errorf("kapro %q references PromotionSource %q; pass --source %s", kaproName, fleet.Spec.SourceRef, fleet.Spec.SourceRef)
+			return nil, fmt.Errorf("fleet %q references source %q; pass --source %s", fleetName, fleet.Spec.SourceRef, fleet.Spec.SourceRef)
 		}
-		return nil, fmt.Errorf("kapro %q has neither spec.source nor spec.sourceRef set", kaproName)
+		return nil, fmt.Errorf("fleet %q has neither spec.source nor spec.sourceRef set", fleetName)
 	}
-	return &kaprov1alpha1.PromotionSource{
+	return &kaprov1alpha2.Source{
 		ObjectMeta: fleet.ObjectMeta,
 		Spec:       *fleet.Spec.Source,
 	}, nil
@@ -192,7 +192,7 @@ func readPackageSource(ctx context.Context, hubClient client.Client, sourceRef, 
 func buildHubClient(kubeconfigPath string) (client.Client, error) {
 	scheme := runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = kaprov1alpha1.AddToScheme(scheme)
+	_ = kaprov1alpha2.AddToScheme(scheme)
 
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	if kubeconfigPath != "" {

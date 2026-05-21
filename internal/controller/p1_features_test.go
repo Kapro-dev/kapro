@@ -19,7 +19,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/controller"
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
@@ -39,7 +39,7 @@ type alwaysPassGate struct{}
 
 func (g *alwaysPassGate) Evaluate(_ context.Context, _ gate.Request) (gate.Result, error) {
 	return gate.Result{
-		Phase:   kaprov1alpha1.GatePhasePassed,
+		Phase:   kaprov1alpha2.GatePhasePassed,
 		Message: "mock: always passes",
 	}, nil
 }
@@ -56,7 +56,7 @@ func (g *alwaysPassGate) Evaluate(_ context.Context, _ gate.Request) (gate.Resul
 // the function only fast-paths when BOTH are empty.
 func TestPromotionRunReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetrics(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
 
@@ -68,24 +68,24 @@ func TestPromotionRunReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetric
 		envRefName        = "tmpl-env"
 	)
 
-	mc := &kaprov1alpha1.FleetCluster{
+	mc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: envRefName, Labels: map[string]string{"tier": "tmpl"}},
-		Spec:       kaprov1alpha1.FleetClusterSpec{Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"}},
+		Spec:       kaprov1alpha2.ClusterSpec{Delivery: kaprov1alpha2.DeliverySpec{Mode: "pull", BackendRef: "flux"}},
 	}
-	promotionplan := &kaprov1alpha1.PromotionPlan{
+	promotionplan := &kaprov1alpha2.Plan{
 		ObjectMeta: metav1.ObjectMeta{Name: promotionplanName},
-		Spec: kaprov1alpha1.PromotionPlanSpec{
-			Stages: []kaprov1alpha1.Stage{{
+		Spec: kaprov1alpha2.PlanSpec{
+			Stages: []kaprov1alpha2.Stage{{
 				Name:     stageName,
 				Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "tmpl"}},
 			}},
 		},
 	}
 
-	gatePolicy := &kaprov1alpha1.GatePolicySpec{
-		Mode: kaprov1alpha1.GateModeAuto,
-		Gate: kaprov1alpha1.GateSpec{
-			Templates: []kaprov1alpha1.GateTemplateSpec{
+	gatePolicy := &kaprov1alpha2.GatePolicySpec{
+		Mode: kaprov1alpha2.GateModeAuto,
+		Gate: kaprov1alpha2.GateSpec{
+			Templates: []kaprov1alpha2.GateTemplateSpec{
 				{Name: "mock-gate-template", Type: "mock"},
 			},
 			// Metrics intentionally absent — was the bug trigger.
@@ -94,68 +94,68 @@ func TestPromotionRunReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetric
 
 	// Pre-seed a PromotionTarget with the env already in MetricsCheck so the
 	// first reconcile exercises handleTargetMetricsCheck directly.
-	promotionrun := &kaprov1alpha1.PromotionRun{
+	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       promotionrunName,
-			Finalizers: []string{kaprov1alpha1.PromotionRunFinalizer},
+			Finalizers: []string{kaprov1alpha2.PromotionRunFinalizer},
 		},
-		Spec: kaprov1alpha1.PromotionRunSpec{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "v1.0.0",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{
-				{Name: promotionplanRef, PromotionPlan: promotionplanName},
+			Plans: []kaprov1alpha2.PlanRef{
+				{Name: promotionplanRef, Plan: promotionplanName},
 			},
 		},
-		Status: kaprov1alpha1.PromotionRunStatus{
-			Phase:           kaprov1alpha1.PromotionRunPhaseProgressing,
+		Status: kaprov1alpha2.PromotionRunStatus{
+			Phase:           kaprov1alpha2.PromotionRunPhaseProgressing,
 			ResolvedVersion: "v1.0.0",
-			PromotionPlanProgress: []kaprov1alpha1.PromotionPlanProgress{
-				{Name: promotionplanRef, PromotionPlan: promotionplanName, Phase: "Progressing"},
+			PlanProgress: []kaprov1alpha2.PlanProgress{
+				{Name: promotionplanRef, Plan: promotionplanName, Phase: "Progressing"},
 			},
 		},
 	}
-	rt := &kaprov1alpha1.PromotionTarget{
-		ObjectMeta: metav1.ObjectMeta{Name: controller.PromotionTargetObjectNameForTest(kaprov1alpha1.TargetStatus{
-			PromotionRunRef:  promotionrunName,
-			Target:           envRefName,
-			PromotionPlanRef: promotionplanRef,
-			PromotionPlan:    promotionplanName,
-			Stage:            stageName,
-			Version:          "v1.0.0",
+	rt := &kaprov1alpha2.Target{
+		ObjectMeta: metav1.ObjectMeta{Name: controller.PromotionTargetObjectNameForTest(kaprov1alpha2.TargetExecutionState{
+			PromotionRunRef: promotionrunName,
+			Target:          envRefName,
+			PlanRef:         promotionplanRef,
+			Plan:            promotionplanName,
+			Stage:           stageName,
+			Version:         "v1.0.0",
 		})},
-		Spec: kaprov1alpha1.PromotionTargetSpec{
-			PromotionRunRef:  promotionrunName,
-			Target:           envRefName,
-			PromotionPlanRef: promotionplanRef,
-			PromotionPlan:    promotionplanName,
-			Stage:            stageName,
-			Version:          "v1.0.0",
-			Gate:             gatePolicy,
-			AppKey:           "default",
+		Spec: kaprov1alpha2.TargetSpec{
+			PromotionRunRef: promotionrunName,
+			Target:          envRefName,
+			PlanRef:         promotionplanRef,
+			Plan:            promotionplanName,
+			Stage:           stageName,
+			Version:         "v1.0.0",
+			Gate:            gatePolicy,
+			AppKey:          "default",
 		},
-		Status: kaprov1alpha1.PromotionTargetStatus{TargetStatus: kaprov1alpha1.TargetStatus{
-			PromotionRunRef:  promotionrunName,
-			Target:           envRefName,
-			PromotionPlanRef: promotionplanRef,
-			PromotionPlan:    promotionplanName,
-			Stage:            stageName,
-			Version:          "v1.0.0",
-			Phase:            kaprov1alpha1.TargetPhaseMetricsCheck,
-			Gate:             gatePolicy,
-			AppKey:           "default",
+		Status: kaprov1alpha2.TargetStatus{TargetExecutionState: kaprov1alpha2.TargetExecutionState{
+			PromotionRunRef: promotionrunName,
+			Target:          envRefName,
+			PlanRef:         promotionplanRef,
+			Plan:            promotionplanName,
+			Stage:           stageName,
+			Version:         "v1.0.0",
+			Phase:           kaprov1alpha2.TargetPhaseMetricsCheck,
+			Gate:            gatePolicy,
+			AppKey:          "default",
 		}},
 	}
 
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha1.PromotionTarget{}).
-		WithStatusSubresource(&kaprov1alpha1.PromotionRun{}).
+		WithStatusSubresource(&kaprov1alpha2.Target{}).
+		WithStatusSubresource(&kaprov1alpha2.PromotionRun{}).
 		WithObjects(mc, promotionplan, promotionrun, rt).
 		Build()
 
 	gateReg := gate.NewRegistry()
 	gateReg.MustRegister("mock", &alwaysPassGate{})
 
-	r := &controller.PromotionTargetReconciler{
+	r := &controller.TargetReconciler{
 		Client:           c,
 		Recorder:         record.NewFakeRecorder(100),
 		Scheme:           scheme,
@@ -171,7 +171,7 @@ func TestPromotionRunReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetric
 	}
 
 	// Re-read the PromotionTarget to check FSM advanced.
-	var updatedRT kaprov1alpha1.PromotionTarget
+	var updatedRT kaprov1alpha2.Target
 	if err := c.Get(context.Background(), types.NamespacedName{Name: rt.Name}, &updatedRT); err != nil {
 		t.Fatalf("Get PromotionTarget: %v", err)
 	}
@@ -179,20 +179,20 @@ func TestPromotionRunReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetric
 
 	// The env must have left MetricsCheck. If the bug is present it stays in
 	// MetricsCheck because the GateTemplate is never evaluated.
-	if target.Status.Phase == kaprov1alpha1.TargetPhaseMetricsCheck {
+	if target.Status.Phase == kaprov1alpha2.TargetPhaseMetricsCheck {
 		t.Fatal("GateTemplate was not evaluated: target is still in MetricsCheck after reconcile. " +
 			"Bug: handleTargetMetricsCheck returned early when Metrics[] is empty, skipping Templates.")
 	}
 
 	// With no approval required the env advances from MetricsCheck to Applying.
-	if target.Status.Phase != kaprov1alpha1.TargetPhaseApplying {
+	if target.Status.Phase != kaprov1alpha2.TargetPhaseApplying {
 		t.Errorf("expected target phase=Applying after template passed, got %s", target.Status.Phase)
 	}
 
 	// The gate run status must be recorded in the env.
 	if len(target.Status.Gates) == 0 {
 		t.Error("expected target.Gates to be populated after GateTemplate evaluation")
-	} else if target.Status.Gates[0].Phase != kaprov1alpha1.GatePhasePassed {
+	} else if target.Status.Gates[0].Phase != kaprov1alpha2.GatePhasePassed {
 		t.Errorf("expected gate status Passed, got %s", target.Status.Gates[0].Phase)
 	}
 }
@@ -205,7 +205,7 @@ func TestPromotionRunReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetric
 // index has no hit yet for the new cluster.
 func TestPromotionRunReconciler_PromotionRunsForNewMatchingCluster(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
 
@@ -214,44 +214,44 @@ func TestPromotionRunReconciler_PromotionRunsForNewMatchingCluster(t *testing.T)
 		promotionplanName = "new-cluster-promotionplan"
 	)
 
-	mc := &kaprov1alpha1.FleetCluster{
+	mc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "new-cluster",
 			Labels: map[string]string{"tier": "prod", "region": "eu"},
 		},
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"},
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{Mode: "pull", BackendRef: "flux"},
 		},
 	}
 
-	promotionplan := &kaprov1alpha1.PromotionPlan{
+	promotionplan := &kaprov1alpha2.Plan{
 		ObjectMeta: metav1.ObjectMeta{Name: promotionplanName},
-		Spec: kaprov1alpha1.PromotionPlanSpec{
-			Stages: []kaprov1alpha1.Stage{{
+		Spec: kaprov1alpha2.PlanSpec{
+			Stages: []kaprov1alpha2.Stage{{
 				Name:     "prod",
 				Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}},
 			}},
 		},
 	}
 
-	promotionrun := &kaprov1alpha1.PromotionRun{
+	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: promotionrunName, Namespace: "default"},
-		Spec: kaprov1alpha1.PromotionRunSpec{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "registry.example.com/bundle@sha256:cccc",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{{
-				Name:          "main",
-				PromotionPlan: promotionplanName,
+			Plans: []kaprov1alpha2.PlanRef{{
+				Name: "main",
+				Plan: promotionplanName,
 			}},
 		},
-		Status: kaprov1alpha1.PromotionRunStatus{
-			Phase: kaprov1alpha1.PromotionRunPhaseProgressing,
+		Status: kaprov1alpha2.PromotionRunStatus{
+			Phase: kaprov1alpha2.PromotionRunPhaseProgressing,
 			// No PromotionTarget exists yet for the new cluster.
 		},
 	}
 
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha1.PromotionTarget{}).
+		WithStatusSubresource(&kaprov1alpha2.Target{}).
 		WithObjects(mc, promotionplan, promotionrun).
 		Build()
 

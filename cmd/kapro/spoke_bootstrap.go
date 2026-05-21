@@ -17,7 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/cli"
 )
 
@@ -46,7 +46,7 @@ func newSpokeBootstrapCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bootstrap <cluster-name>",
 		Short: "Prepare hub-side registration for a pull-mode spoke (kapro-cluster-controller)",
-		Long: `Creates (or patches) a FleetCluster on the hub with a bootstrap slot, waits
+		Long: `Creates (or patches) a Cluster on the hub with a bootstrap slot, waits
 for the hub reconciler to mint a bootstrap kubeconfig Secret, and emits the
 Helm values + Secret needed to install kapro-cluster-controller on the spoke.
 
@@ -84,7 +84,7 @@ Then on the spoke:
 	}
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to hub kubeconfig (default: $KUBECONFIG)")
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", defaultBootstrapNamespace, "Hub namespace where the bootstrap Secret lives")
-	cmd.Flags().DurationVar(&ttl, "ttl", time.Hour, "Bootstrap slot TTL written to FleetCluster.spec.bootstrap.ttl")
+	cmd.Flags().DurationVar(&ttl, "ttl", time.Hour, "Bootstrap slot TTL written to Cluster.spec.bootstrap.ttl")
 	cmd.Flags().StringVar(&hubURL, "hub-url", "", "Hub kube-apiserver URL reachable from the spoke (required)")
 	cmd.Flags().StringVar(&caFrom, "ca-from", caFromHubKubeconfig, "Source for hub CA bundle: hub-kubeconfig | file | inline | none")
 	cmd.Flags().StringVar(&caFile, "ca-file", "", "Path to PEM CA file (used when --ca-from=file)")
@@ -134,13 +134,13 @@ func runSpokeBootstrap(ctx context.Context, opts spokeBootstrapOptions) error {
 		return fmt.Errorf("connect to hub: %w", err)
 	}
 
-	sp := cli.NewSpinner(fmt.Sprintf("Ensuring FleetCluster %s with bootstrap slot", opts.ClusterName))
+	sp := cli.NewSpinner(fmt.Sprintf("Ensuring Cluster %s with bootstrap slot", opts.ClusterName))
 	sp.Start()
-	if err := ensureFleetClusterBootstrap(ctx, c, opts.ClusterName, opts.TTL); err != nil {
-		sp.StopFail("Failed to apply FleetCluster bootstrap spec")
+	if err := ensureClusterBootstrap(ctx, c, opts.ClusterName, opts.TTL); err != nil {
+		sp.StopFail("Failed to apply Cluster bootstrap spec")
 		return err
 	}
-	sp.StopSuccess("FleetCluster bootstrap slot ready")
+	sp.StopSuccess("Cluster bootstrap slot ready")
 
 	sp2 := cli.NewSpinner("Waiting for hub to mint bootstrap kubeconfig Secret")
 	sp2.Start()
@@ -178,14 +178,14 @@ func runSpokeBootstrap(ctx context.Context, opts spokeBootstrapOptions) error {
 	return nil
 }
 
-func ensureFleetClusterBootstrap(ctx context.Context, c client.Client, name string, ttl time.Duration) error {
-	existing := &kaprov1alpha1.FleetCluster{}
+func ensureClusterBootstrap(ctx context.Context, c client.Client, name string, ttl time.Duration) error {
+	existing := &kaprov1alpha2.Cluster{}
 	err := c.Get(ctx, client.ObjectKey{Name: name}, existing)
 	if apierrors.IsNotFound(err) {
-		fc := &kaprov1alpha1.FleetCluster{
+		fc := &kaprov1alpha2.Cluster{
 			ObjectMeta: metav1.ObjectMeta{Name: name},
-			Spec: kaprov1alpha1.FleetClusterSpec{
-				Bootstrap: &kaprov1alpha1.FleetClusterBootstrapSpec{
+			Spec: kaprov1alpha2.ClusterSpec{
+				Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{
 					TTL: ttl.String(),
 				},
 			},
@@ -193,11 +193,11 @@ func ensureFleetClusterBootstrap(ctx context.Context, c client.Client, name stri
 		return c.Create(ctx, fc)
 	}
 	if err != nil {
-		return fmt.Errorf("get FleetCluster %q: %w", name, err)
+		return fmt.Errorf("get Cluster %q: %w", name, err)
 	}
 	patch := client.MergeFrom(existing.DeepCopy())
 	if existing.Spec.Bootstrap == nil {
-		existing.Spec.Bootstrap = &kaprov1alpha1.FleetClusterBootstrapSpec{}
+		existing.Spec.Bootstrap = &kaprov1alpha2.ClusterBootstrapSpec{}
 	}
 	if existing.Spec.Bootstrap.TTL == "" && existing.Spec.Bootstrap.ExpiresAt == nil {
 		existing.Spec.Bootstrap.TTL = ttl.String()
@@ -208,7 +208,7 @@ func ensureFleetClusterBootstrap(ctx context.Context, c client.Client, name stri
 func waitForBootstrapSecret(ctx context.Context, c client.Client, name string, timeout time.Duration) (string, error) {
 	var secretName string
 	pollErr := wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
-		fc := &kaprov1alpha1.FleetCluster{}
+		fc := &kaprov1alpha2.Cluster{}
 		if err := c.Get(ctx, client.ObjectKey{Name: name}, fc); err != nil {
 			return false, err
 		}
@@ -281,7 +281,7 @@ func writeSpokeSecret(path string, hubSecret *corev1.Secret, spokeNS, spokeName,
 			Name:      spokeName,
 			Namespace: spokeNS,
 			Labels: map[string]string{
-				"kapro.io/fleetcluster":        clusterName,
+				"kapro.io/cluster":             clusterName,
 				"app.kubernetes.io/managed-by": "kapro-cluster-controller",
 			},
 		},

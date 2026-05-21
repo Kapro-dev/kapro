@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/pkg/plugincompat"
 	kpiv1alpha1 "kapro.io/kapro/spec/kpi/v1alpha1"
 
@@ -79,7 +79,7 @@ func Run(t *testing.T, client kpiv1alpha1.PlannerServiceClient, scenario Scenari
 		if resp == nil {
 			t.Fatal("GetCapabilities returned nil response")
 		}
-		if !plugincompat.IsContractVersionSupported(kaprov1alpha1.PluginTypePlanner, resp.GetContractVersion()) {
+		if !plugincompat.IsContractVersionSupported(kaprov1alpha2.PluginTypePlanner, resp.GetContractVersion()) {
 			t.Fatalf("contract_version = %q, supported versions = %v", resp.GetContractVersion(), plugincompat.SupportedKPIContractVersions())
 		}
 		if !hasPlannerCapability(resp.GetCapabilities()) {

@@ -9,8 +9,8 @@ Grafana stack.
 | `kapro-operations-dashboard.json` | Compact Grafana dashboard for the core Kapro metrics endpoint. |
 | `prometheus-rules.yaml` | PrometheusRule example for Kapro alerts. |
 | `grafana-dashboard.json` | Grafana dashboard that uses Kapro metrics and kube-state-metrics CRD state metrics. |
-| `kapro-lifecycle-dashboard.json` | Grafana dashboard for Promotion lifecycle hooks (CloudEvents sink + per-Promotion webhooks/events) and FleetCluster reachability. Pair with the operations dashboard for full coverage. |
-| `kube-state-metrics-crd-config.yaml` | CustomResourceStateMetrics example for `PromotionRun`, `PromotionTrigger`, and `PluginRegistration` status. |
+| `kapro-lifecycle-dashboard.json` | Grafana dashboard for Promotion lifecycle hooks (CloudEvents sink + per-Promotion webhooks/events) and Cluster reachability. Pair with the operations dashboard for full coverage. |
+| `kube-state-metrics-crd-config.yaml` | CustomResourceStateMetrics example for `PromotionRun`, `Trigger`, and `Plugin` status. |
 
 The PrometheusRule and full dashboard assume the CRD state metrics from
 `kube-state-metrics-crd-config.yaml` are installed. Adjust namespaces, labels,

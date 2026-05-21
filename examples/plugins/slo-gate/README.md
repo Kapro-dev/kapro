@@ -47,8 +47,8 @@ go run ./examples/plugins/slo-gate --listen :9090
 The standalone manifest is `examples/plugins/slo-gate-registration.yaml`.
 
 ```yaml
-apiVersion: kapro.io/v1alpha1
-kind: PluginRegistration
+apiVersion: kapro.io/v1alpha2
+kind: Plugin
 metadata:
   name: slo-gate
 spec:
@@ -91,9 +91,9 @@ Enable runtime plugin loading in the Kapro operator with:
 KAPRO_ENABLE_PLUGIN_GATEWAY=true
 ```
 
-The operator only registers `PluginRegistration` objects that are already
+The operator only registers `Plugin` objects that are already
 `status.ready=true` with a fresh `observedGeneration` when the operator starts.
-Apply the `PluginRegistration`, wait for the readiness probe to mark it ready,
+Apply the `Plugin`, wait for the readiness probe to mark it ready,
 then start or restart the Kapro operator. Registrations are not hot-loaded after
 startup.
 

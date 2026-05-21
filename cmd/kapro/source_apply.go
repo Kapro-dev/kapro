@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	sigsyaml "sigs.k8s.io/yaml"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/writetarget"
 )
 
@@ -32,8 +32,8 @@ func newSourceApplyCmd() *cobra.Command {
 	var opts sourceApplyOptions
 	cmd := &cobra.Command{
 		Use:   "apply",
-		Short: "Apply PromotionSource version mappings to a Git checkout",
-		Long: `Updates repo-native YAML or JSON version fields from a PromotionSource.
+		Short: "Apply Source version mappings to a Git checkout",
+		Long: `Updates repo-native YAML or JSON version fields from a Source.
 
 This is the Git-native brownfield path: Kapro writes only explicitly mapped
 fields, then users review and commit the Git diff. If a mapping expands to
@@ -44,7 +44,7 @@ revision must be applied to every matched file.`,
 		},
 	}
 	cmd.Flags().StringVar(&opts.RepoPath, "repo", ".", "Git checkout root")
-	cmd.Flags().StringVar(&opts.SourcePath, "source", "", "PromotionSource YAML file (required)")
+	cmd.Flags().StringVar(&opts.SourcePath, "source", "", "Source YAML file (required)")
 	cmd.Flags().StringVar(&opts.Version, "version", "", "Default revision for every mapped unit")
 	cmd.Flags().StringArrayVar(&opts.VersionSet, "set", nil, "Per-unit revision (repeatable: --set unit=revision)")
 	cmd.Flags().StringArrayVar(&opts.Include, "include", nil, "Repo-relative file glob to allow when a mapping matches multiple files")
@@ -174,25 +174,25 @@ type sourceWrite struct {
 	Version string
 }
 
-func readPromotionSourceFile(path string) (*kaprov1alpha1.PromotionSource, error) {
+func readPromotionSourceFile(path string) (*kaprov1alpha2.Source, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read source %s: %w", path, err)
 	}
-	var source kaprov1alpha1.PromotionSource
+	var source kaprov1alpha2.Source
 	if err := sigsyaml.Unmarshal(data, &source); err != nil {
-		return nil, fmt.Errorf("parse PromotionSource %s: %w", path, err)
+		return nil, fmt.Errorf("parse source %s: %w", path, err)
 	}
-	if source.Kind != "" && source.Kind != "PromotionSource" {
-		return nil, fmt.Errorf("source %s is kind %q, expected PromotionSource", path, source.Kind)
+	if source.Kind != "" && source.Kind != "Source" {
+		return nil, fmt.Errorf("source %s is kind %q, expected Source", path, source.Kind)
 	}
 	if len(source.Spec.Units) == 0 {
-		return nil, fmt.Errorf("PromotionSource %s has no units", path)
+		return nil, fmt.Errorf("source %s has no units", path)
 	}
 	return &source, nil
 }
 
-func planUnitSourceWrites(opts sourceApplyOptions, unit kaprov1alpha1.PromotionUnit, version string) ([]sourceWrite, error) {
+func planUnitSourceWrites(opts sourceApplyOptions, unit kaprov1alpha2.Unit, version string) ([]sourceWrite, error) {
 	pattern, field, err := unitWriteTarget(unit)
 	if err != nil {
 		return nil, err
@@ -222,7 +222,7 @@ func planUnitSourceWrites(opts sourceApplyOptions, unit kaprov1alpha1.PromotionU
 	return writes, nil
 }
 
-func unitWriteTarget(unit kaprov1alpha1.PromotionUnit) (string, string, error) {
+func unitWriteTarget(unit kaprov1alpha2.Unit) (string, string, error) {
 	if file, field, ok := strings.Cut(unit.VersionField, ":"); ok {
 		if strings.TrimSpace(file) == "" || strings.TrimSpace(field) == "" {
 			return "", "", fmt.Errorf("versionField must use file:field, got %q", unit.VersionField)

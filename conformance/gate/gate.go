@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/pkg/plugincompat"
 	kgiv1alpha1 "kapro.io/kapro/spec/kgi/v1alpha1"
 
@@ -54,7 +54,7 @@ func Run(t *testing.T, client kgiv1alpha1.GateServiceClient, scenario Scenario) 
 		if resp == nil {
 			t.Fatal("GetCapabilities returned nil response")
 		}
-		if !plugincompat.IsContractVersionSupported(kaprov1alpha1.PluginTypeGate, resp.GetContractVersion()) {
+		if !plugincompat.IsContractVersionSupported(kaprov1alpha2.PluginTypeGate, resp.GetContractVersion()) {
 			t.Fatalf("contract_version = %q, supported versions = %v", resp.GetContractVersion(), plugincompat.SupportedKGIContractVersions())
 		}
 	})

@@ -133,7 +133,7 @@ func newDiscoverArgoCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&opts.OutPath, "out", "kapro-connect", "Output directory for generated Kapro files")
-	cmd.Flags().StringVar(&opts.Name, "name", "argo", "BackendProfile and PromotionSource name")
+	cmd.Flags().StringVar(&opts.Name, "name", "argo", "Backend and Source name")
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "argocd", "Argo CD namespace")
 	cmd.Flags().StringVar(&opts.Selector, "selector", "kapro.io/import=true", "Label selector for imported backend objects")
 	cmd.Flags().StringVar(&opts.Revision, "revision", "", "Git branch/tag/SHA when discovering a remote repository URL")
@@ -723,8 +723,8 @@ func dedupeUnits(units []argoDiscoveredUnit) []argoDiscoveredUnit {
 }
 
 func renderArgoDiscoverBackend(opts argoDiscoverOptions, labels map[string]string) string {
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
-kind: BackendProfile
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
+kind: Backend
 metadata:
   name: %s
 spec:
@@ -743,8 +743,8 @@ spec:
 
 func renderArgoDiscoverSource(opts argoDiscoverOptions, result argoDiscoveryResult) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, `apiVersion: kapro.io/v1alpha1
-kind: PromotionSource
+	fmt.Fprintf(&b, `apiVersion: kapro.io/v1alpha2
+kind: Source
 metadata:
   name: %s
 spec:
@@ -872,11 +872,11 @@ Apply observe mode first:
 
 `+"```bash"+`
 kubectl apply -f backends/%s-observe.yaml
-kubectl get backendprofile %s -o yaml
+kubectl get backend %s -o yaml
 `+"```"+`
 
 Review `+"`discovery/argo-discovery.yaml`"+`, `+"`discovery/kapro-git-map.yaml`"+`,
-and `+"`sources/%s.yaml`"+` before switching the BackendProfile from
+and `+"`sources/%s.yaml`"+` before switching the Backend from
 `+"`Observe`"+` to `+"`Adopt`"+`.
 
 Use the generated source mapping to update Git-native version fields:

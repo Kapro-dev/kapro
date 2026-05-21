@@ -1,5 +1,5 @@
-apiVersion: kapro.io/v1alpha1
-kind: PromotionTrigger
+apiVersion: kapro.io/v1alpha2
+kind: Trigger
 metadata:
   name: checkout-oci
 spec:
@@ -12,10 +12,10 @@ spec:
       requireSignature: true
       pollInterval: 5m
   promotionTemplate:
-    kaproRef: checkout
-    promotionPlans:
+    fleetRef: checkout
+    plans:
       - name: production
-        promotionPlan: checkout-production
+        plan: checkout-production
     suspended: true
     scope:
       targets:

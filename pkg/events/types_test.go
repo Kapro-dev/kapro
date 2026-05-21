@@ -98,7 +98,7 @@ func TestRenderProducesValidCloudEventsV1(t *testing.T) {
 		Type:          events.EventPromotionSucceeded,
 		PromotionName: "checkout",
 		PromotionUID:  "uid-abc",
-		KaproRef:      "checkout-fleet",
+		FleetRef:      "checkout-fleet",
 		Phase:         "Succeeded",
 		PreviousPhase: "Progressing",
 		Version:       "v1.2.3",
@@ -119,7 +119,7 @@ func TestRenderProducesValidCloudEventsV1(t *testing.T) {
 	if env.Type != events.EventPromotionSucceeded {
 		t.Fatalf("type = %q, want %q", env.Type, events.EventPromotionSucceeded)
 	}
-	if env.Source != "/apis/kapro.io/v1alpha1/promotions/checkout" {
+	if env.Source != "/apis/kapro.io/v1alpha2/promotions/checkout" {
 		t.Fatalf("source = %q", env.Source)
 	}
 	if env.Subject != "checkout" {

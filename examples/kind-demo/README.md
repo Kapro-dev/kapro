@@ -4,12 +4,12 @@ This demo runs Kapro in a local Kind cluster and exercises the runtime
 control-plane flow:
 
 1. install Kapro CRDs and the Kapro operator;
-2. apply a small fleet config with `FleetCluster`, `PromotionPlan`,
-   `PluginRegistration`, and `PromotionTrigger`;
+2. apply a small fleet config with `Cluster`, `Plan`,
+   `Plugin`, and `Trigger`;
 3. create a compatibility `PromotionRun` fixture for the local runtime demo;
 4. watch the planner bind targets, gates advance, approvals unblock
    production, and the push/Flux actuator patch a `ResourceSet`;
-5. inspect rollout status through `PromotionRun` and `PromotionTarget`.
+5. inspect rollout status through `PromotionRun` and `Target`.
 
 The path is local-only. It does not require production OCI credentials, a real
 Flux Operator install, real Helm charts, or cosign signatures.
@@ -59,7 +59,7 @@ The demo manifests are split by role:
 
 ## What The Demo Shows
 
-`config/01-fleetclusters.yaml` defines three local fleet entries:
+`config/01-clusters.yaml` defines three local fleet entries:
 
 - `checkout-canary`
 - `checkout-prod-eu`
@@ -69,14 +69,14 @@ Each target uses `spec.delivery.mode: push` with `backendRef: flux`, pointed at
 the local fixture `ResourceSet` named `checkout-demo` through
 `spec.delivery.parameters.resourceSet`.
 
-`config/02-promotionplan.yaml` defines two stages:
+`config/02-plan.yaml` defines two stages:
 
 - `canary`: selects `kapro.io/tier=canary` and uses a short built-in soak gate.
 - `prod`: selects `kapro.io/tier=production`, depends on canary, uses
   `maxParallel: 1`, and requires manual approval by `demo-sre`.
 
 `config/03-promotion-trigger.yaml` creates a safe, suspended, dry-run
-`PromotionTrigger`. It documents the trigger-to-Promotion API path without
+`Trigger`. It documents the trigger-to-Promotion API path without
 calling a real registry.
 
 `config/04-promotionrun.yaml` creates the live compatibility PromotionRun
@@ -87,12 +87,12 @@ keeps the demo deterministic because its approval names are precomputed.
 ## Observe
 
 ```bash
-kubectl --context kind-kapro-kind-demo get promotionruns,promotiontargets,fleetclusters
+kubectl --context kind-kapro-kind-demo get promotionruns,targets,clusters
 kubectl --context kind-kapro-kind-demo get promotionrun checkout-kind -o yaml
-kubectl --context kind-kapro-kind-demo get promotiontargets -o yaml
+kubectl --context kind-kapro-kind-demo get targets -o yaml
 kubectl --context kind-kapro-kind-demo -n flux-system get resourceset checkout-demo -o yaml
-kubectl --context kind-kapro-kind-demo get promotiontrigger checkout-kind-trigger -o yaml
-kubectl --context kind-kapro-kind-demo get pluginregistrations
+kubectl --context kind-kapro-kind-demo get trigger checkout-kind-trigger -o yaml
+kubectl --context kind-kapro-kind-demo get plugins
 ```
 
 Before approval, production targets should pause in `WaitingApproval`. After
@@ -104,11 +104,11 @@ to advance.
 - The `ResourceSet` and `HelmRelease` resources are local fixtures. Their
   readiness is patched by `scripts/kind-demo.sh`; no Flux controller reconciles
   workloads.
-- `PluginRegistration` objects point at static demo endpoints. The plugin
+- `Plugin` objects point at static demo endpoints. The plugin
   readiness controller is expected to mark them not ready unless you run
   matching gRPC plugin servers. The built-in planner, gates, and Flux backend
   adapter drive the rollout.
-- The `PromotionTrigger` is suspended and dry-run because the demo does not
+- The `Trigger` is suspended and dry-run because the demo does not
   start a local OCI registry or signature verifier.
 - Webhooks are disabled in the demo operator overlay to keep local setup
   self-contained.

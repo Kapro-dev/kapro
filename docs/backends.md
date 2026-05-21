@@ -20,7 +20,7 @@ applied inside or for a target cluster.
 | Flux | Brownfield or generated Flux delivery, depending on cluster configuration. |
 | Argo CD | Brownfield Application delivery with reviewed adoption boundaries. |
 
-Backend behavior is selected through `BackendProfile` and cluster delivery
+Backend behavior is selected through `Backend` and cluster delivery
 settings. A fleet may mix modes across clusters.
 
 ## Brownfield Adoption
@@ -35,13 +35,13 @@ kapro adopt flux . --out ./kapro-connect --namespace flux-system --selector kapr
 `kapro adopt` is the brownfield-friendly wrapper around `kapro discover`; use
 `kapro discover` directly when you want the lower-level discovery command name.
 
-Review the generated `BackendProfile`, `PromotionSource`, and discovery status
+Review the generated `Backend`, `Source`, and discovery status
 before switching a backend to write mode. Kapro should only patch fields that
 the owning platform team has explicitly adopted.
 
 ## Plugins
 
-When built-in behavior is not enough, `PluginRegistration` can load external:
+When built-in behavior is not enough, `Plugin` can load external:
 
 - actuators for apply/convergence logic;
 - gates for safety checks;

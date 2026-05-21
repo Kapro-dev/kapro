@@ -41,29 +41,29 @@ kubectl apply -f examples/quickstart/kapro.yaml
 Expected:
 
 ```bash
-kubectl get backendprofiles,kaproes,promotionplans
+kubectl get backends,fleets,plans
 ```
 
-shows one backend profile, one Kapro fleet object, and one generated promotion
-plan. The example `Kapro` also generates two synthetic `FleetCluster` objects
+shows one `Backend`, one `Fleet`, and one generated `Plan`. The example
+`Fleet` also generates two synthetic `Cluster` objects
 from `spec.clusters`.
 
 ## 3. Add Or Confirm Targets
 
 ```bash
-kubectl get fleetclusters
+kubectl get clusters
 ```
 
-You should see the generated `canary-eu` and `prod-eu` targets from
+You should see the generated `canary-eu` and `prod-eu` clusters from
 `examples/quickstart/kapro.yaml`. If none appear, the operator is not
-reconciling the `Kapro` object; check the controller logs before creating
+reconciling the `Fleet` object; check the controller logs before creating
 manual test targets. Use the Kind demo for a fully scripted hub/spoke setup.
 
 ## 4. Promote A Version
 
 ```bash
 kapro promote checkout --version v1.2.3
-kubectl get promotions,promotionruns,promotiontargets
+kubectl get promotions,promotionruns,targets
 ```
 
 Expected:
@@ -71,21 +71,21 @@ Expected:
 ```text
 Promotion       created or updated
 PromotionRun    created by the controller
-PromotionTarget created for each selected target
+Target         created for each selected target
 ```
 
 ## 5. Watch The Evidence
 
 ```bash
-kubectl get promotions,promotionruns,promotiontargets -w
-kubectl describe promotiontarget <target-name>
+kubectl get promotions,promotionruns,targets -w
+kubectl describe target <target-name>
 ```
 
 Look for:
 
 - target phase progression;
 - gate evidence;
-- approval wait state, if the PromotionPlan requires approval;
+- approval wait state, if the Plan requires approval;
 - backend convergence messages.
 
 ## Next

@@ -11,14 +11,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
-// statusReporter periodically publishes FleetCluster.status with the spoke's
+// statusReporter periodically publishes Cluster.status with the spoke's
 // observed cluster capabilities (node count, K8s version, region heuristics)
 // and a best-effort health summary. The per-cluster RBAC issued during
 // bootstrap (PR-2) only allows writing this cluster's own
-// fleetclusters/status subresource — enforced via resourceNames.
+// clusters/status subresource — enforced via resourceNames.
 //
 // PR-3 scope: capabilities + nodeCount + heartbeat-influenced phase. Real
 // workload health (Pods/Deployments managed by Kapro) is computed in PR-4
@@ -73,9 +73,9 @@ func (s *statusReporter) tick(ctx context.Context) error {
 		return err
 	}
 
-	fc := &kaprov1alpha1.FleetCluster{}
+	fc := &kaprov1alpha2.Cluster{}
 	if err := hub.Get(tctx, client.ObjectKey{Name: s.ClusterName}, fc); err != nil {
-		return fmt.Errorf("get FleetCluster %q: %w", s.ClusterName, err)
+		return fmt.Errorf("get Cluster %q: %w", s.ClusterName, err)
 	}
 	patch := client.MergeFrom(fc.DeepCopy())
 
@@ -92,15 +92,15 @@ func (s *statusReporter) tick(ctx context.Context) error {
 		if apierrors.IsForbidden(err) {
 			return fmt.Errorf("per-cluster RBAC missing or not yet granted for status patch: %w", err)
 		}
-		return fmt.Errorf("patch FleetCluster status: %w", err)
+		return fmt.Errorf("patch Cluster status: %w", err)
 	}
 	return nil
 }
 
 // observeCapabilities returns the cluster's K8s version + node inventory.
 // Read from the LOCAL spoke cluster — we never call into the hub for these.
-func (s *statusReporter) observeCapabilities(ctx context.Context) (kaprov1alpha1.ClusterCapabilities, error) {
-	caps := kaprov1alpha1.ClusterCapabilities{}
+func (s *statusReporter) observeCapabilities(ctx context.Context) (kaprov1alpha2.ClusterCapabilities, error) {
+	caps := kaprov1alpha2.ClusterCapabilities{}
 
 	// Node count + a representative kubelet version. List failures are
 	// surfaced as errors (callers abort the status tick) rather than

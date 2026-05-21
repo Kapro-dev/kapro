@@ -11,7 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/pkg/spokeprovider"
 )
 
@@ -59,7 +59,7 @@ func NewProvider(spoke client.Client) *Provider {
 
 // Driver returns BackendDriverFlux. The Registry key — not this method —
 // determines dispatch.
-func (p *Provider) Driver() kaprov1alpha1.BackendDriver { return kaprov1alpha1.BackendDriverFlux }
+func (p *Provider) Driver() kaprov1alpha2.BackendDriver { return kaprov1alpha2.BackendDriverFlux }
 
 // Reconcile observes local Flux state for the request's app and returns
 // a populated ReconcileResult. Never panics; never mutates Flux state.
@@ -71,23 +71,23 @@ func (p *Provider) Reconcile(ctx context.Context, req spokeprovider.ReconcileReq
 	out := spokeprovider.ReconcileResult{LastAttemptedAt: now()}
 
 	if req.Cluster != nil && req.Cluster.Spec.Suspend {
-		out.Phase = kaprov1alpha1.DeliveryPhaseSkipped
+		out.Phase = kaprov1alpha2.DeliveryPhaseSkipped
 		return out
 	}
 	if p.Local == nil {
-		out.Phase = kaprov1alpha1.DeliveryPhaseFailed
+		out.Phase = kaprov1alpha2.DeliveryPhaseFailed
 		out.Err = errors.New("Provider.Local is nil")
 		return out
 	}
 	if req.DesiredVersion == "" {
-		out.Phase = kaprov1alpha1.DeliveryPhaseFailed
+		out.Phase = kaprov1alpha2.DeliveryPhaseFailed
 		out.Err = errors.New("DesiredVersion is empty")
 		return out
 	}
 
 	repoName := req.Parameters[paramOCIRepositoryName]
 	if repoName == "" {
-		out.Phase = kaprov1alpha1.DeliveryPhaseFailed
+		out.Phase = kaprov1alpha2.DeliveryPhaseFailed
 		out.Err = fmt.Errorf("missing required parameter %q", paramOCIRepositoryName)
 		return out
 	}
@@ -98,7 +98,7 @@ func (p *Provider) Reconcile(ctx context.Context, req spokeprovider.ReconcileReq
 
 	repo, repoErr := p.getUnstructured(ctx, ociRepositoryGVK, repoNS, repoName)
 	if repoErr != nil {
-		out.Phase = kaprov1alpha1.DeliveryPhaseFailed
+		out.Phase = kaprov1alpha2.DeliveryPhaseFailed
 		out.Err = fmt.Errorf("get OCIRepository %s/%s: %w", repoNS, repoName, repoErr)
 		return out
 	}
@@ -106,12 +106,12 @@ func (p *Provider) Reconcile(ctx context.Context, req spokeprovider.ReconcileReq
 	revision, hasArtifact := unstructuredString(repo.Object, "status", "artifact", "revision")
 	digest, _ := unstructuredString(repo.Object, "status", "artifact", "digest")
 	if !hasArtifact {
-		out.Phase = kaprov1alpha1.DeliveryPhasePulling
+		out.Phase = kaprov1alpha2.DeliveryPhasePulling
 		return out
 	}
 
 	if msg, ok := readyConditionFalse(repo.Object); ok {
-		out.Phase = kaprov1alpha1.DeliveryPhaseFailed
+		out.Phase = kaprov1alpha2.DeliveryPhaseFailed
 		out.Err = fmt.Errorf("OCIRepository %s/%s not Ready: %s", repoNS, repoName, msg)
 		out.ObservedDigest = digest
 		out.Format = "flux"
@@ -122,7 +122,7 @@ func (p *Provider) Reconcile(ctx context.Context, req spokeprovider.ReconcileReq
 	out.ObservedDigest = digest
 
 	if !revisionMatches(revision, req.DesiredVersion) {
-		out.Phase = kaprov1alpha1.DeliveryPhasePulling
+		out.Phase = kaprov1alpha2.DeliveryPhasePulling
 		return out
 	}
 
@@ -132,7 +132,7 @@ func (p *Provider) Reconcile(ctx context.Context, req spokeprovider.ReconcileReq
 	// Now require an explicit Ready=True before considering the OCI side
 	// converged; anything else is still Pulling.
 	if !isReady(repo.Object) {
-		out.Phase = kaprov1alpha1.DeliveryPhasePulling
+		out.Phase = kaprov1alpha2.DeliveryPhasePulling
 		return out
 	}
 
@@ -141,7 +141,7 @@ func (p *Provider) Reconcile(ctx context.Context, req spokeprovider.ReconcileReq
 	// otherwise mark Converged.
 	hrName := req.Parameters[paramHelmReleaseName]
 	if hrName == "" {
-		out.Phase = kaprov1alpha1.DeliveryPhaseConverged
+		out.Phase = kaprov1alpha2.DeliveryPhaseConverged
 		out.LastAppliedAt = now()
 		return out
 	}
@@ -151,23 +151,23 @@ func (p *Provider) Reconcile(ctx context.Context, req spokeprovider.ReconcileReq
 	}
 	hr, hrErr := p.getUnstructured(ctx, helmReleaseGVK, hrNS, hrName)
 	if hrErr != nil {
-		out.Phase = kaprov1alpha1.DeliveryPhaseFailed
+		out.Phase = kaprov1alpha2.DeliveryPhaseFailed
 		out.Err = fmt.Errorf("get HelmRelease %s/%s: %w", hrNS, hrName, hrErr)
 		return out
 	}
 	if msg, ok := readyConditionFalse(hr.Object); ok {
-		out.Phase = kaprov1alpha1.DeliveryPhaseFailed
+		out.Phase = kaprov1alpha2.DeliveryPhaseFailed
 		out.Err = fmt.Errorf("HelmRelease %s/%s not Ready: %s", hrNS, hrName, msg)
 		return out
 	}
 	if isReady(hr.Object) {
-		out.Phase = kaprov1alpha1.DeliveryPhaseConverged
+		out.Phase = kaprov1alpha2.DeliveryPhaseConverged
 		out.LastAppliedAt = now()
 		return out
 	}
 	// HelmRelease present, Ready not yet True and not False — Flux is
 	// still rolling out the new revision.
-	out.Phase = kaprov1alpha1.DeliveryPhaseApplying
+	out.Phase = kaprov1alpha2.DeliveryPhaseApplying
 	return out
 }
 

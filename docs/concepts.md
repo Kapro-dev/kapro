@@ -7,12 +7,12 @@ durable intent; controllers create execution records and per-target state.
 
 | Object | Authored by | Purpose |
 |---|---|---|
-| `Kapro` | Platform team | Defines the fleet root: source, delivery defaults, clusters, and stage plan. |
-| `PromotionSource` | Platform or app team | Declares deployable units and the backend-native fields Kapro may update. |
-| `Promotion` | App team or automation | Requests that a version move through a Kapro fleet. |
+| `Fleet` | Platform team | Defines the fleet root: source, delivery defaults, clusters, and stage plan. |
+| `Source` | Platform or app team | Declares deployable units and the backend-native fields Kapro may update. |
+| `Promotion` | App team or automation | Requests that a version move through a Fleet. |
 | `PromotionRun` | Controller | Records one execution attempt stamped from a Promotion. |
-| `PromotionTarget` | Controller | Tracks one cluster/stage execution inside a run. |
-| `FleetCluster` | Platform team or bootstrap controller | Represents one workload cluster and its delivery settings. |
+| `Target` | Controller | Tracks one cluster/stage execution inside a run. |
+| `Cluster` | Platform team or bootstrap controller | Represents one workload cluster and its delivery settings. |
 | `Approval` | Human or approval webhook | Carries approve/reject state for a gated target. |
 
 ## Promotion Lifecycle
@@ -21,7 +21,7 @@ durable intent; controllers create execution records and per-target state.
 2. The Promotion controller stamps a new `PromotionRun` when the effective
    rollout input changes.
 3. The PromotionRun controller resolves the selected plan and clusters.
-4. The controller creates `PromotionTarget` children for each selected
+4. The controller creates `Target` children for each selected
    cluster/stage.
 5. Each target moves through gates, approval, apply, health, and convergence.
 6. Status rolls up from targets to the run and from the active run to the
@@ -58,17 +58,17 @@ See [Backends](backends.md) for the supported modes.
 
 For the quickstart path, users normally write:
 
-- `Kapro`
-- `PromotionSource`
+- `Fleet`
+- `Source`
 - `Promotion`
 - `Approval` when a manual gate blocks
 
 Kapro or its controllers generate and update:
 
-- `FleetCluster` entries from `Kapro.spec.clusters`
-- `PromotionPlan` entries from `Kapro.spec.promotionPlan`
+- `Cluster` entries from `Fleet.spec.clusters`
+- `Plan` entries from `Fleet.spec.plan`
 - `PromotionRun`
-- `PromotionTarget`
+- `Target`
 
 Direct `PromotionRun` manifests remain an advanced compatibility path, not the
 recommended first-use API.
@@ -80,7 +80,7 @@ validates that repository and applies the rendered YAML to the Kapro hub with
 `kubectl apply`. Spoke clusters do not watch that repository directly; they
 either keep using their existing Argo or Flux source of truth, or they consume
 Kapro-generated greenfield delivery objects and report status through
-`FleetCluster`.
+`Cluster`.
 
 Typical layout:
 
@@ -89,7 +89,7 @@ hub-config/
   clusters/
   backends/
   sources/
-  promotionplans/
+  plans/
   promotions/
   .github/workflows/
 ```
@@ -99,7 +99,7 @@ promotions. Direct `promotionruns/` can exist as an advanced compatibility path,
 but first-use repositories should prefer `promotions/`.
 
 See [examples/quickstart](../examples/quickstart/) for the preferred
-Kapro-root Promotion path.
+Fleet-root Promotion path.
 
 ## Gate Semantics
 
@@ -110,7 +110,7 @@ Evidence -> Analysis -> Phase
 ```
 
 The phase is the rollout-control field. Evidence explains why the phase was
-returned and is stored on `PromotionTarget.status.gates[].evidence[]`.
+returned and is stored on `Target.status.gates[].evidence[]`.
 
 Gate evidence can include provider, query, window, interval, observed value,
 threshold, baseline value, sample count, confidence, reason, and projection.
