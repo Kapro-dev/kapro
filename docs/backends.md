@@ -3,22 +3,37 @@
 Kapro decides when a version can advance. Backends decide how that version is
 applied inside or for a target cluster.
 
-## Connection Modes
+## Delivery Modes
 
 | Mode | Best fit | How it works |
 |---|---|---|
 | `pull` | Edge, private, or outbound-only clusters | A spoke controller watches hub intent and applies from inside the workload cluster. |
 | `push` | Centrally reachable clusters | The hub patches a backend object or Kubernetes API directly. |
-| `observe` | Brownfield discovery | Kapro reads existing backend objects and reports what can be adopted. |
-| `adopt` | Brownfield management | Kapro updates only reviewed backend-native version fields. |
 
-## Built-In Backends
+These are the values used in `Fleet.spec.delivery.mode` and
+`Cluster.spec.delivery.mode`.
 
-| Backend | Current use |
-|---|---|
-| OCI pull | Greenfield outbound-only delivery through the spoke controller. |
-| Flux | Brownfield or generated Flux delivery, depending on cluster configuration. |
-| Argo CD | Brownfield Application delivery with reviewed adoption boundaries. |
+## Brownfield Management Policy
+
+`Observe` and `Adopt` are not delivery modes. They are discovery and management
+postures for existing Argo CD or Flux objects:
+
+| Policy | Best fit | How it works |
+|---|---|---|
+| `Observe` | Brownfield discovery | Kapro reads existing backend objects and reports what can be adopted. |
+| `Adopt` | Brownfield management | Kapro updates only reviewed backend-native version fields. |
+
+Use these policies through discovery/adoption configuration, for example
+`Backend.spec.discovery.managementPolicy`, not through
+`spec.delivery.mode`.
+
+## Built-In Backend Drivers
+
+| YAML driver | Common runtime | Current use |
+|---|---|---|
+| `oci` | `Spoke` | Greenfield outbound-only delivery through the spoke controller. |
+| `flux` | `Spoke` or `Hub` | Brownfield or generated Flux delivery, depending on cluster configuration. |
+| `argo` | `Hub` | Brownfield Application delivery with reviewed adoption boundaries. |
 
 Backend behavior is selected through `Backend` and cluster delivery
 settings. A fleet may mix modes across clusters.

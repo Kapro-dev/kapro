@@ -1,3 +1,5 @@
+# User-authored rollout intent. The controller creates PromotionRun and Target
+# records after this Promotion reconciles.
 apiVersion: kapro.io/v1alpha2
 kind: Promotion
 metadata:

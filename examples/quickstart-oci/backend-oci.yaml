@@ -1,3 +1,5 @@
+# Apply this before fleet.yaml and promotion.yaml. This Backend tells Kapro to
+# use spoke-side OCI pull delivery.
 apiVersion: kapro.io/v1alpha2
 kind: Backend
 metadata:

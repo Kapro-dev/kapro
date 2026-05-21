@@ -198,12 +198,14 @@ func printInitNextSteps(opts scaffoldOptions, count int) {
 	fmt.Fprintf(os.Stderr, "\nGenerated %d Kapro starter files in %s\n", count, opts.Path)
 	fmt.Fprintf(os.Stderr, "\nNext steps:\n")
 	if len(parseClusterScaffold(opts.Clusters)) == 0 {
+		fmt.Fprintf(os.Stderr, "Shape: Backend, Source, and backend-native sample manifests. Add clusters before creating Fleet and Promotion files.\n")
 		fmt.Fprintf(os.Stderr, "  kubectl apply --recursive -f %s\n", opts.Path)
-		fmt.Fprintf(os.Stderr, "  add clusters later, then add fleets/ and promotions/\n")
+		fmt.Fprintf(os.Stderr, "  add clusters/, then create fleets/%s.yaml and promotions/%s-promotion.yaml\n", opts.Name, opts.Name)
 		return
 	}
+	fmt.Fprintf(os.Stderr, "Shape: Backend, Fleet, Plan, Promotion, and backend-native sample manifests.\n")
 	fmt.Fprintf(os.Stderr, "  kubectl apply --recursive -f %s\n", opts.Path)
-	fmt.Fprintf(os.Stderr, "  kapro promote %s --version 0.1.1\n", opts.Name)
+	fmt.Fprintf(os.Stderr, "  kapro promote %s --version 0.1.1  # creates/updates Promotion intent; controller stamps PromotionRun\n", opts.Name)
 	fmt.Fprintf(os.Stderr, "  kapro diag %s\n", defaultPromotionRunName(opts.Name, "0.1.1", nil))
 }
 

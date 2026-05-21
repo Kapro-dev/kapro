@@ -877,9 +877,11 @@ func runPromotionCreate(ctx context.Context, name, fleetRef, version string,
 	}
 
 	var planRefs []kaprov1alpha2.PlanRef
-	for i, p := range plans {
+	usedPlanNames := map[string]struct{}{}
+	for _, p := range plans {
+		refName := uniquePlanRefName(p, usedPlanNames)
 		planRefs = append(planRefs, kaprov1alpha2.PlanRef{
-			Name: fmt.Sprintf("p%d", i+1),
+			Name: refName,
 			Plan: p,
 		})
 	}
@@ -924,7 +926,7 @@ func runPromotionCreate(ctx context.Context, name, fleetRef, version string,
 		op = "updated"
 	}
 
-	fmt.Printf("✅ Promotion %s: %s\n", op, name)
+	fmt.Printf("Promotion intent %s: %s\n", op, name)
 	fmt.Printf("   Fleet:     %s\n", fleetRef)
 	if version != "" {
 		fmt.Printf("   Version:   %s\n", version)
@@ -938,6 +940,7 @@ func runPromotionCreate(ctx context.Context, name, fleetRef, version string,
 	if len(scope) > 0 {
 		fmt.Printf("   Scope:     %s\n", strings.Join(scope, ", "))
 	}
+	fmt.Printf("\nA PromotionRun appears after the controller reconciles this intent.\n")
 	fmt.Printf("\nNext steps:\n  kapro diag %s\n  kapro status %s\n  kubectl get promotions,promotionruns,targets\n", name, fleetRef)
 	return nil
 }
@@ -963,6 +966,14 @@ func defaultPromotionRunName(app, version string, versions []string) string {
 }
 
 func dnsLabel(value string) string {
+	name := dnsLabelValue(value)
+	if name == "" {
+		return "promotion"
+	}
+	return name
+}
+
+func dnsLabelValue(value string) string {
 	var b strings.Builder
 	lastDash := false
 	for _, r := range strings.ToLower(value) {
@@ -986,10 +997,44 @@ func dnsLabel(value string) string {
 		}
 		name = prefix + "-" + hash
 	}
-	if name == "" {
-		return "promotion"
-	}
 	return name
+}
+
+func uniquePlanRefName(plan string, used map[string]struct{}) string {
+	base := dnsLabelValue(plan)
+	if base == "" {
+		base = "plan"
+	}
+	candidate := base
+	for suffix := 2; ; suffix++ {
+		if _, ok := used[candidate]; !ok {
+			used[candidate] = struct{}{}
+			return candidate
+		}
+		candidate = dnsLabelWithSuffix(base, fmt.Sprintf("%d", suffix))
+	}
+}
+
+func dnsLabelWithSuffix(base, suffix string) string {
+	if suffix == "" {
+		return dnsLabel(base)
+	}
+	suffix = dnsLabel(suffix)
+	if suffix == "" {
+		return dnsLabel(base)
+	}
+	base = dnsLabel(base)
+	maxBaseLen := 63 - len(suffix) - 1
+	if maxBaseLen < 1 {
+		return dnsLabel(suffix)
+	}
+	if len(base) > maxBaseLen {
+		base = strings.Trim(base[:maxBaseLen], "-")
+	}
+	if base == "" {
+		return dnsLabel(suffix)
+	}
+	return base + "-" + suffix
 }
 
 // ─── kapro promotionrun ────────────────────────────────────────────────────────────

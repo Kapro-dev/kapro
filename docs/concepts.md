@@ -31,6 +31,21 @@ In the quickstart `Fleet`, clusters carry intent labels such as
 those labels, and downstream stages use `dependsOn` to make the rollout order
 explicit.
 
+Inline Fleet plans use a compact selector map:
+
+```yaml
+selector:
+  kapro.io/stage: canary
+```
+
+Standalone `Plan` objects use Kubernetes `LabelSelector` syntax:
+
+```yaml
+selector:
+  matchLabels:
+    kapro.io/stage: canary
+```
+
 ## Promotion Lifecycle
 
 1. A user or CI system creates or updates a `Promotion`.

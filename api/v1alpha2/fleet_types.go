@@ -8,19 +8,20 @@ import (
 
 // ---- Fleet ------------------------------------------------------------------
 
-// FleetSpec defines the desired state of a Fleet fleet.
+// FleetSpec defines the desired source, delivery, target clusters, and stage
+// plan for one fleet.
 // +kubebuilder:validation:XValidation:rule="(has(self.sourceRef) && size(self.sourceRef) > 0) != has(self.source)",message="exactly one of sourceRef or source is required"
 type FleetSpec struct {
 	// Registry is the OCI registry URL for generated pull-mode artifacts.
 	// Native Argo/Flux sources may omit it when no Fleet-packaged artifact is used.
 	// +optional
 	Registry KaproRegistry `json:"registry,omitempty"`
-	// SourceRef is the optional name of a separate Source that defines
-	// units to deploy. Use Source for the KISS single-object path; use SourceRef
-	// when teams want to share a source catalog across multiple Fleet objects.
+	// SourceRef is the optional name of a separate Source that defines units to
+	// deploy. Use Source for the inline single-object path; use SourceRef when
+	// teams share a source catalog across multiple Fleet objects.
 	// +optional
 	SourceRef string `json:"sourceRef,omitempty"`
-	// Source defines deployable units inline for the KISS single-object path.
+	// Source defines deployable units inline for the single-object quickstart path.
 	// +optional
 	Source *SourceSpec `json:"source,omitempty"`
 	// Delivery selects the backend-neutral fleet delivery profile.
@@ -80,10 +81,11 @@ type ClusterGCP struct {
 	Region string `json:"region,omitempty"`
 }
 
-// KaproPlan defines the progressive delivery stages inline on a
-// single Fleet object (KISS path). For reuse across multiple Fleet objects
-// or across PromotionRuns, define stages on a standalone Plan CRD
-// and reference it via PromotionRun.spec.plans instead.
+// KaproPlan defines progressive delivery stages inline on a single Fleet
+// object. For reuse across multiple Fleet objects or per-Promotion overrides,
+// define stages on a standalone Plan CRD and reference it through
+// Promotion.spec.plans; the controller copies that choice into the stamped
+// PromotionRun.
 type KaproPlan struct {
 	// Stages defines the progressive delivery wave ordering.
 	Stages []StageSpec `json:"stages"`
@@ -93,7 +95,8 @@ type KaproPlan struct {
 type StageSpec struct {
 	// Name of the stage.
 	Name string `json:"name"`
-	// Selector matches clusters by labels.
+	// Selector is a simple label map that matches clusters by labels. Standalone
+	// Plan resources use Kubernetes LabelSelector syntax instead.
 	Selector map[string]string `json:"selector"`
 	// DependsOn declares upstream stage dependencies.
 	// +optional

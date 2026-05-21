@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -216,6 +217,38 @@ func TestDefaultPromotionRunNameAddsHashWhenTruncated(t *testing.T) {
 	}
 	if first == second {
 		t.Fatalf("long versions should keep unique hashed names, got %q", first)
+	}
+}
+
+func TestDNSLabelWithSuffixStaysWithinLabelLimit(t *testing.T) {
+	base := dnsLabel(strings.Repeat("a", 70))
+	got := dnsLabelWithSuffix(base, "2")
+	if len(got) > 63 {
+		t.Fatalf("dnsLabelWithSuffix length=%d, want <=63: %q", len(got), got)
+	}
+	if !strings.HasSuffix(got, "-2") {
+		t.Fatalf("dnsLabelWithSuffix()=%q, want suffixed name", got)
+	}
+}
+
+func TestUniquePlanRefNameUsesPlanDefaultForInvalidInput(t *testing.T) {
+	used := map[string]struct{}{}
+	got := uniquePlanRefName("@@@", used)
+	if got != "plan" {
+		t.Fatalf("uniquePlanRefName()=%q, want plan", got)
+	}
+}
+
+func TestUniquePlanRefNameAvoidsFinalNameCollisions(t *testing.T) {
+	used := map[string]struct{}{}
+	got := []string{
+		uniquePlanRefName("foo-2", used),
+		uniquePlanRefName("foo", used),
+		uniquePlanRefName("foo", used),
+	}
+	want := []string{"foo-2", "foo", "foo-3"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("uniquePlanRefName()=%v, want %v", got, want)
 	}
 }
 
