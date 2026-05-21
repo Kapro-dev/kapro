@@ -7,7 +7,7 @@ KIND_IMAGE="${KAPRO_CI_KIND_IMAGE:-kindest/node:v1.30.0}"
 IMAGE_REPOSITORY="${KAPRO_CI_IMAGE_REPOSITORY:-kapro-operator}"
 IMAGE_TAG="${KAPRO_CI_IMAGE_TAG:-ci-smoke}"
 CTX="kind-${CLUSTER}"
-REFRESH_PID=""
+REFRESH_PIDS=()
 
 need() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -18,9 +18,10 @@ need() {
 
 cleanup() {
   local status="${1:-0}"
-  if [ -n "${REFRESH_PID}" ]; then
-    kill "${REFRESH_PID}" >/dev/null 2>&1 || true
-  fi
+  local pid
+  for pid in "${REFRESH_PIDS[@]:-}"; do
+    kill "${pid}" >/dev/null 2>&1 || true
+  done
   if [ "${status}" != "0" ] && [ "${KAPRO_CI_KEEP_CLUSTER_ON_FAILURE:-false}" = "true" ]; then
     echo "keeping kind cluster ${CLUSTER} for failure diagnostics"
     return
@@ -75,6 +76,24 @@ wait_for_count() {
   kubectl --context "${CTX}" get promotions,promotionruns,targets,clusters -o wide || true
   kubectl --context "${CTX}" -n kapro-system logs deploy/kapro-kapro-operator --tail=120 || true
   exit 1
+}
+
+wait_for_clusters() {
+  local cluster
+  for cluster in "$@"; do
+    for _ in $(seq 1 90); do
+      if kubectl --context "${CTX}" get "cluster/${cluster}" >/dev/null 2>&1; then
+        break
+      fi
+      sleep 2
+    done
+    if ! kubectl --context "${CTX}" get "cluster/${cluster}" >/dev/null 2>&1; then
+      echo "timed out waiting for cluster/${cluster}" >&2
+      kubectl --context "${CTX}" get clusters -o wide || true
+      kubectl --context "${CTX}" -n kapro-system logs deploy/kapro-kapro-operator --tail=120 || true
+      exit 1
+    fi
+  done
 }
 
 mark_cluster_converged() {
@@ -132,14 +151,137 @@ EOF
 }
 
 start_cluster_convergence_refresher() {
+  local clusters=("$@")
   (
     while true; do
-      mark_cluster_converged checkout-canary-eu >/dev/null 2>&1 || true
-      mark_cluster_converged checkout-production-eu >/dev/null 2>&1 || true
+      local cluster
+      for cluster in "${clusters[@]}"; do
+        mark_cluster_converged "${cluster}" >/dev/null 2>&1 || true
+      done
       sleep 30
     done
   ) &
-  REFRESH_PID="$!"
+  REFRESH_PIDS+=("$!")
+}
+
+install_fake_argo_applications() {
+  kubectl --context "${CTX}" apply -f - <<'EOF'
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: applications.argoproj.io
+spec:
+  group: argoproj.io
+  names:
+    kind: Application
+    plural: applications
+    singular: application
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+      subresources:
+        status: {}
+EOF
+  kubectl --context "${CTX}" wait crd/applications.argoproj.io --for=condition=Established --timeout=60s
+  kubectl --context "${CTX}" create namespace argocd --dry-run=client -o yaml | kubectl --context "${CTX}" apply -f -
+  local app
+  for app in checkout-argo-canary checkout-argo-production; do
+    kubectl --context "${CTX}" -n argocd apply -f - <<EOF
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ${app}
+  labels:
+    app.kubernetes.io/name: checkout
+spec:
+  source:
+    repoURL: https://github.com/example/platform-config
+    path: apps/checkout
+    targetRevision: old
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: checkout
+EOF
+    kubectl --context "${CTX}" -n argocd patch "application/${app}" --subresource=status --type=merge -p '{
+      "status": {
+        "sync": {"status": "Synced"},
+        "health": {"status": "Healthy"}
+      }
+    }'
+  done
+}
+
+wait_for_quickstart() {
+  local promotion="$1"
+  local target_count="$2"
+  wait_for_count promotionruns 1 "kapro.io/promotion=${promotion}"
+  local run
+  run="$(kubectl --context "${CTX}" get promotionrun -l "kapro.io/promotion=${promotion}" -o jsonpath='{.items[0].metadata.name}')"
+  wait_for_count targets "${target_count}" "kapro.io/promotionrun=${run}"
+  kubectl --context "${CTX}" wait "promotionrun/${run}" \
+    --for=jsonpath='{.status.phase}'=Complete \
+    --timeout=600s
+  kubectl --context "${CTX}" wait target -l "kapro.io/promotionrun=${run}" \
+    --for=jsonpath='{.status.phase}'=Converged \
+    --timeout=600s
+}
+
+run_flux_quickstart() {
+  echo "running Flux quickstart"
+  kubectl --context "${CTX}" apply -f examples/quickstart/backend-flux.yaml
+  kubectl --context "${CTX}" apply -f examples/quickstart/kapro.yaml
+  wait_for_clusters checkout-canary-eu checkout-production-eu
+  mark_cluster_converged checkout-canary-eu
+  mark_cluster_converged checkout-production-eu
+  start_cluster_convergence_refresher checkout-canary-eu checkout-production-eu
+  kubectl --context "${CTX}" apply -f examples/quickstart/promotion.yaml
+  wait_for_quickstart checkout-v1-2-3 2
+}
+
+run_argo_quickstart() {
+  echo "running Argo CD quickstart"
+  install_fake_argo_applications
+  kubectl --context "${CTX}" apply -f examples/quickstart-argo/backend-argo.yaml
+  kubectl --context "${CTX}" apply -f examples/quickstart-argo/fleet.yaml
+  wait_for_clusters checkout-argo-canary checkout-argo-production
+  kubectl --context "${CTX}" apply -f examples/quickstart-argo/promotion.yaml
+  wait_for_quickstart checkout-argo-v1-2-3 2
+}
+
+run_oci_quickstart() {
+  echo "running OCI quickstart"
+  kubectl --context "${CTX}" apply -f examples/quickstart-oci/backend-oci.yaml
+  kubectl --context "${CTX}" apply -f examples/quickstart-oci/fleet.yaml
+  wait_for_clusters checkout-oci-canary checkout-oci-production
+  mark_cluster_converged checkout-oci-canary
+  mark_cluster_converged checkout-oci-production
+  start_cluster_convergence_refresher checkout-oci-canary checkout-oci-production
+  kubectl --context "${CTX}" apply -f examples/quickstart-oci/promotion.yaml
+  wait_for_quickstart checkout-oci-v1-2-3 2
+}
+
+run_configured_quickstarts() {
+  local quickstarts="${KAPRO_CI_QUICKSTARTS:-flux}"
+  local quickstart
+  IFS=',' read -r -a selected <<<"${quickstarts}"
+  for quickstart in "${selected[@]}"; do
+    case "${quickstart}" in
+      flux) run_flux_quickstart ;;
+      argo) run_argo_quickstart ;;
+      oci) run_oci_quickstart ;;
+      "") ;;
+      *)
+        echo "unknown quickstart ${quickstart}; expected flux, argo, or oci" >&2
+        exit 1
+        ;;
+    esac
+  done
 }
 
 main() {
@@ -174,22 +316,8 @@ main() {
     "${ROOT}/scripts/verify-install.sh" cluster
   wait_for_crds
 
-  echo "applying quickstart API objects"
-  kubectl --context "${CTX}" apply -f examples/quickstart/backend-flux.yaml
-  kubectl --context "${CTX}" apply -f examples/quickstart/kapro.yaml
-  wait_for_count clusters 2
-  mark_cluster_converged checkout-canary-eu
-  mark_cluster_converged checkout-production-eu
-  start_cluster_convergence_refresher
-  kubectl --context "${CTX}" apply -f examples/quickstart/promotion.yaml
-  wait_for_count promotionruns 1 "kapro.io/promotion=checkout-v1-2-3"
-  wait_for_count targets 2 "kapro.io/promotionrun"
-  kubectl --context "${CTX}" wait promotionrun -l kapro.io/promotion=checkout-v1-2-3 \
-    --for=jsonpath='{.status.phase}'=Complete \
-    --timeout=600s
-  kubectl --context "${CTX}" wait target -l kapro.io/promotionrun \
-    --for=jsonpath='{.status.phase}'=Converged \
-    --timeout=600s
+  echo "running configured quickstarts: ${KAPRO_CI_QUICKSTARTS:-flux}"
+  run_configured_quickstarts
 
   echo "kind install and quickstart smoke passed"
 }

@@ -1,0 +1,9 @@
+apiVersion: kapro.io/v1alpha2
+kind: Backend
+metadata:
+  name: argo
+spec:
+  driver: argo
+  runtime: Hub
+  parameters:
+    namespace: argocd

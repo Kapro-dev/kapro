@@ -192,6 +192,7 @@ jobs:
           KAPRO_CI_KIND_IMAGE: kindest/node:${{ matrix.k8s }}
           KAPRO_CI_KIND_CLUSTER: kapro-ci-${{ matrix.k8s }}
           KAPRO_CI_KEEP_CLUSTER_ON_FAILURE: "true"
+          KAPRO_CI_QUICKSTARTS: flux,argo,oci
         run: scripts/ci-kind-smoke.sh
       - name: Collect Kind smoke diagnostics
         if: failure()

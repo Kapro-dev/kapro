@@ -97,6 +97,8 @@ Look for:
 
 ## Next
 
+- Argo CD greenfield path: [Argo CD Quickstart](quickstart-argo.md).
+- OCI-only greenfield path: [OCI Quickstart](quickstart-oci.md).
 - Existing Argo CD users: [Argo Brownfield Migration](argo-migration.md).
 - Existing Flux users: [Flux Brownfield Migration](flux-migration.md).
 - Discovery or needs-review issues: [Discovery Troubleshooting](discovery-troubleshooting.md).

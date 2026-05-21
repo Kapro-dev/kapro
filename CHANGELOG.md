@@ -51,6 +51,12 @@ default: `fleet`, `plan`, `promotion`, `promotionrun`, and `cluster`. The
 `target` controller starts implicitly with `promotionrun`. Preview controllers
 such as `backend`, `approval`, `trigger`, `plugin`, `cluster-bootstrap`, and
 `clustertemplate` must be listed explicitly in `controllers` when needed.
+
+### Added — Argo CD and OCI quickstarts
+
+Added `examples/quickstart-argo`, `examples/quickstart-oci`, and matching docs
+so adopters can start from Flux, Argo CD, or Kapro's OCI delivery core without
+reading the brownfield migration guides first.
 Built-in `flux`, `argo`, and `oci` Backend specs remain admissible without the
 backend controller; external/plugin backends still require Ready status.
 
