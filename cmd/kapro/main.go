@@ -479,7 +479,7 @@ func runGetPromotionRuns(ctx context.Context, kubeconfigPath string) error {
 		cli.Theme.PhaseFailed.Render(fmt.Sprintf("%d failed", failed)),
 	)
 
-	tbl := cli.NewTable("NAME", "VERSION", "PHASE", "PIPELINES", "AGE")
+	tbl := cli.NewTable("NAME", "VERSION", "PHASE", "TARGETS", "SYNCED", "FAILED", "PENDING", "PIPELINES", "AGE")
 	for _, r := range list.Items {
 		plansText := ""
 		for i, p := range r.Spec.Plans {
@@ -488,7 +488,21 @@ func runGetPromotionRuns(ctx context.Context, kubeconfigPath string) error {
 			}
 			plansText += p.Plan
 		}
-		tbl.AddRow(r.Name, r.Spec.Version, string(r.Status.Phase), plansText, cli.Age(r.CreationTimestamp.Time))
+		summary := kaprov1alpha2.PromotionRunSummary{}
+		if r.Status.Summary != nil {
+			summary = *r.Status.Summary
+		}
+		tbl.AddRow(
+			r.Name,
+			r.Spec.Version,
+			string(r.Status.Phase),
+			fmt.Sprintf("%d", summary.TotalTargets),
+			fmt.Sprintf("%d", summary.SyncedTargets),
+			fmt.Sprintf("%d", summary.FailedTargets),
+			fmt.Sprintf("%d", summary.PendingTargets),
+			plansText,
+			cli.Age(r.CreationTimestamp.Time),
+		)
 	}
 	tbl.Render()
 	return nil

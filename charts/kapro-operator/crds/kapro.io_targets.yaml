@@ -53,7 +53,7 @@ spec:
         description: |-
           Target is the child execution resource for one target rollout entry
           within a PromotionRun. It is the authoritative live state store for rollout
-          execution and replaces PromotionRun.status.targets as the persistence layer.
+          execution and replaces the former inline PromotionRun target list.
         properties:
           apiVersion:
             description: |-
@@ -88,6 +88,22 @@ spec:
                   The child Target reconciler observes this and transitions to Failed.
                   This avoids cross-controller status writes — parent owns spec, child owns status.
                 type: boolean
+              cancelledPhase:
+                description: |-
+                  CancelledPhase is the terminal phase the child reconciler should record
+                  after observing Cancelled. Defaults to Failed.
+                enum:
+                - Pending
+                - Verification
+                - HealthCheck
+                - Soaking
+                - MetricsCheck
+                - WaitingApproval
+                - Applying
+                - Converged
+                - Failed
+                - Skipped
+                type: string
               cancelledReason:
                 description: CancelledReason explains why the target was cancelled.
                 type: string

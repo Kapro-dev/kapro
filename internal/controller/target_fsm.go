@@ -247,9 +247,9 @@ func approvalIdentityHint(target *kaprov1alpha2.TargetExecutionState) string {
 // triggerTargetRollback calls Actuator.Rollback() immediately, then appends a new
 // rollback TargetStatus entry targeting the previous version.
 // Called by PromotionRunReconciler when it detects a failed stage with onFailure=rollback.
-func (r *PromotionRunReconciler) triggerTargetRollback(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, i int) {
+func (r *PromotionRunReconciler) triggerTargetRollback(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, targets *[]kaprov1alpha2.TargetExecutionState, i int) {
 	log := log.FromContext(ctx)
-	target := &promotionrun.Status.Targets[i]
+	target := &(*targets)[i]
 
 	// 1. Call actuator.Rollback() immediately.
 	var mc kaprov1alpha2.Cluster
@@ -281,7 +281,7 @@ func (r *PromotionRunReconciler) triggerTargetRollback(ctx context.Context, prom
 	}
 
 	// 2. Append rollback entry (idempotent).
-	for _, t := range promotionrun.Status.Targets {
+	for _, t := range *targets {
 		if t.Rollback && t.Target == target.Target &&
 			t.PlanRef == target.PlanRef && t.Stage == target.Stage {
 			log.Info("rollback target entry already exists", "target", target.Target)
@@ -306,7 +306,7 @@ func (r *PromotionRunReconciler) triggerTargetRollback(ctx context.Context, prom
 	if len(rollbackTarget.DesiredVersions) > 0 {
 		rollbackTarget.Version, rollbackTarget.AppKey = primaryDesiredVersion(rollbackTarget.DesiredVersions, rollbackTarget.Version, rollbackTarget.AppKey)
 	}
-	promotionrun.Status.Targets = append(promotionrun.Status.Targets, rollbackTarget)
+	*targets = append(*targets, rollbackTarget)
 
 	log.Info("appended rollback target entry",
 		"target", target.Target,

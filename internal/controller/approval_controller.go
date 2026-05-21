@@ -22,7 +22,7 @@ import (
 //
 // This controller exists solely for audit: the Kubernetes Event stream gives
 // operators an immutable, time-ordered record of every human approval without
-// having to parse PromotionRun.status.targets.
+// having to inspect each child Target object.
 type ApprovalReconciler struct {
 	client.Client
 	Recorder record.EventRecorder

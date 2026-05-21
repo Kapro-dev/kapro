@@ -107,16 +107,17 @@ func (r *TargetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 	prevTarget := rt.Status.TargetExecutionState
 
-	// Terminal — nothing to do.
-	phase := rt.Status.Phase
-	switch phase {
-	case kaprov1alpha2.TargetPhaseConverged, kaprov1alpha2.TargetPhaseFailed, kaprov1alpha2.TargetPhaseSkipped:
-		if updateErr := r.syncPromotionTargetPhaseLabel(ctx, &rt); updateErr != nil {
-			kaprometrics.StatusWrites.WithLabelValues("promotiontarget", "error").Inc()
-			resultLabel = "error"
-			return ctrl.Result{}, fmt.Errorf("patch terminal PromotionTarget phase label %s: %w", rt.Name, updateErr)
+	if !rt.Spec.Cancelled {
+		phase := rt.Status.Phase
+		switch phase {
+		case kaprov1alpha2.TargetPhaseConverged, kaprov1alpha2.TargetPhaseFailed, kaprov1alpha2.TargetPhaseSkipped:
+			if updateErr := r.syncPromotionTargetPhaseLabel(ctx, &rt); updateErr != nil {
+				kaprometrics.StatusWrites.WithLabelValues("promotiontarget", "error").Inc()
+				resultLabel = "error"
+				return ctrl.Result{}, fmt.Errorf("patch terminal PromotionTarget phase label %s: %w", rt.Name, updateErr)
+			}
+			return ctrl.Result{}, nil
 		}
-		return ctrl.Result{}, nil
 	}
 
 	// Read parent PromotionRun — read-only, never mutated here.
@@ -139,9 +140,13 @@ func (r *TargetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		// status flip — perfect candidate for the retry helper. The mutate
 		// function is idempotent so a refetch + re-apply on conflict is safe.
 		cancelReason := rt.Spec.CancelledReason
+		cancelPhase := rt.Spec.CancelledPhase
+		if cancelPhase == "" {
+			cancelPhase = kaprov1alpha2.TargetPhaseFailed
+		}
 		nowStr := time.Now().UTC().Format(time.RFC3339)
 		if updateErr := StatusUpdateWithRetry(ctx, r.Client, &rt, func(fresh *kaprov1alpha2.Target) error {
-			fresh.Status.Phase = kaprov1alpha2.TargetPhaseFailed
+			fresh.Status.Phase = cancelPhase
 			fresh.Status.Message = "cancelled: " + cancelReason
 			fresh.Status.FinishedAt = nowStr
 			r.updatePromotionTargetStatusContract(fresh)

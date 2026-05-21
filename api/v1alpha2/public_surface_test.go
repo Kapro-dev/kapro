@@ -30,17 +30,20 @@ type crdDocument struct {
 			ShortNames []string `json:"shortNames"`
 			Categories []string `json:"categories"`
 		} `json:"names"`
-		Versions []struct {
-			Name                     string `json:"name"`
-			AdditionalPrinterColumns []struct {
-				Name     string `json:"name"`
-				JSONPath string `json:"jsonPath"`
-			} `json:"additionalPrinterColumns"`
-			Schema struct {
-				OpenAPIV3Schema map[string]any `json:"openAPIV3Schema"`
-			} `json:"schema"`
-		} `json:"versions"`
+		Versions []crdVersion `json:"versions"`
 	} `json:"spec"`
+}
+
+type crdVersion struct {
+	Name                     string `json:"name"`
+	AdditionalPrinterColumns []struct {
+		Name     string `json:"name"`
+		JSONPath string `json:"jsonPath"`
+		Priority int32  `json:"priority"`
+	} `json:"additionalPrinterColumns"`
+	Schema struct {
+		OpenAPIV3Schema map[string]any `json:"openAPIV3Schema"`
+	} `json:"schema"`
 }
 
 var kaproResources = []resourceContract{
@@ -334,18 +337,86 @@ func TestTargetCRDPrintColumnsUseCurrentFields(t *testing.T) {
 	}
 }
 
-func TestCRDPrintColumnsResolveToSchemaFields(t *testing.T) {
+func TestPromotionRunCRDUsesSummaryNotPersistedTargets(t *testing.T) {
 	root := repoRoot(t)
-	for _, name := range crdBaseNames(t, filepath.Join(root, "config", "crd", "bases")) {
-		path := filepath.Join(root, "config", "crd", "bases", name)
+	wantPrintColumns := map[string]string{
+		"Targets": ".status.summary.totalTargets",
+		"Synced":  ".status.summary.syncedTargets",
+		"Failed":  ".status.summary.failedTargets",
+	}
+	for _, relPath := range []string{
+		filepath.Join("config", "crd", "bases", "kapro.io_promotionruns.yaml"),
+		filepath.Join("charts", "kapro-operator", "crds", "kapro.io_promotionruns.yaml"),
+		filepath.Join("internal", "bootstrap", "kaprocrds", "kapro.io_promotionruns.yaml"),
+	} {
+		path := filepath.Join(root, relPath)
 		crd := readCRD(t, path)
 		version := servedCRDVersion(t, path, crd)
-		for _, column := range version.AdditionalPrinterColumns {
-			if column.JSONPath == "" || strings.HasPrefix(column.JSONPath, ".metadata.") {
-				continue
+		statusNode := crdSubtreeNode(t, path, version.Schema.OpenAPIV3Schema, "status")
+		if required, ok := statusNode["required"].([]any); ok && containsAny(required, "summary") {
+			t.Fatalf("%s requires PromotionRun.status.summary; summary must stay optional for status merge patches", path)
+		}
+		statusProps := crdSubtreeProperties(t, path, version.Schema.OpenAPIV3Schema, "status")
+		if _, ok := statusProps["targets"]; ok {
+			t.Fatalf("%s exposes removed PromotionRun.status.targets; per-target state must live in child Target objects", path)
+		}
+		summary, ok := statusProps["summary"].(map[string]any)
+		if !ok {
+			t.Fatalf("%s missing PromotionRun.status.summary", path)
+		}
+		summaryProps, _ := summary["properties"].(map[string]any)
+		for _, want := range []string{"totalTargets", "syncedTargets", "failedTargets", "pendingTargets", "convergedAt"} {
+			if _, ok := summaryProps[want]; !ok {
+				t.Fatalf("%s missing PromotionRun.status.summary.%s", path, want)
 			}
-			if !schemaHasJSONPath(version.Schema.OpenAPIV3Schema, column.JSONPath) {
-				t.Fatalf("%s printcolumn %q JSONPath %q does not resolve in CRD schema", name, column.Name, column.JSONPath)
+		}
+		printColumns := map[string]string{}
+		for _, column := range version.AdditionalPrinterColumns {
+			printColumns[column.Name] = column.JSONPath
+		}
+		for name, wantPath := range wantPrintColumns {
+			if got := printColumns[name]; got != wantPath {
+				t.Fatalf("%s printcolumn %s JSONPath=%q, want %q", path, name, got, wantPath)
+			}
+		}
+		for _, column := range version.AdditionalPrinterColumns {
+			if _, ok := wantPrintColumns[column.Name]; ok && column.Priority != 0 {
+				t.Fatalf("%s printcolumn %s priority=%d, want default-visible priority 0", path, column.Name, column.Priority)
+			}
+		}
+	}
+}
+
+func TestPromotionRunStatusHasNoRuntimeOnlyJSONFields(t *testing.T) {
+	root := repoRoot(t)
+	typesText := readText(t, filepath.Join(root, "api", "v1alpha2", "promotionrun_types.go"))
+	body := structBody(t, typesText, "PromotionRunStatus")
+	if strings.Contains(body, `json:"-"`) {
+		t.Fatalf("PromotionRunStatus contains json:\"-\" runtime-only fields; keep controller scratch state out of the exported API struct")
+	}
+	if strings.Contains(body, "RuntimeTargets") {
+		t.Fatalf("PromotionRunStatus contains RuntimeTargets; child Target objects must be the only per-target state surface")
+	}
+}
+
+func TestCRDPrintColumnsResolveToSchemaFields(t *testing.T) {
+	root := repoRoot(t)
+	for _, relDir := range []string{
+		filepath.Join("config", "crd", "bases"),
+		filepath.Join("charts", "kapro-operator", "crds"),
+		filepath.Join("internal", "bootstrap", "kaprocrds"),
+	} {
+		for _, name := range crdBaseNames(t, filepath.Join(root, relDir)) {
+			path := filepath.Join(root, relDir, name)
+			crd := readCRD(t, path)
+			version := servedCRDVersion(t, path, crd)
+			for _, column := range version.AdditionalPrinterColumns {
+				if column.JSONPath == "" || strings.HasPrefix(column.JSONPath, ".metadata.") {
+					continue
+				}
+				if !schemaHasJSONPath(version.Schema.OpenAPIV3Schema, column.JSONPath) {
+					t.Fatalf("%s printcolumn %q JSONPath %q does not resolve in CRD schema", path, column.Name, column.JSONPath)
+				}
 			}
 		}
 	}
@@ -481,6 +552,38 @@ func TestAPICommentsUseCurrentPublicResourceNames(t *testing.T) {
 	}
 }
 
+func TestExportedDocsDoNotReferenceRemovedPromotionRunTargets(t *testing.T) {
+	root := repoRoot(t)
+	stale := []*regexp.Regexp{
+		regexp.MustCompile(`PromotionRun\.Status\.Targets`),
+		regexp.MustCompile(`PromotionRun\.status\.targets`),
+		regexp.MustCompile(`promotionrun\.status\.targets`),
+	}
+	for _, relDir := range []string{
+		filepath.Join("api", "v1alpha2"),
+		"pkg",
+	} {
+		err := filepath.WalkDir(filepath.Join(root, relDir), func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			base := filepath.Base(path)
+			if d.IsDir() || filepath.Ext(path) != ".go" || strings.HasSuffix(base, "_test.go") || base == "zz_generated.deepcopy.go" {
+				return nil
+			}
+			for _, re := range stale {
+				if match := re.FindString(readText(t, path)); match != "" {
+					t.Fatalf("%s contains removed PromotionRun targets contract %q", path, match)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // TestCRDPropertiesMatchGoJSONTags asserts that every JSON tag declared on a
 // top-level CRD struct's Spec / Status (Fleet, Promotion, PromotionRun,
 // Cluster, Plan, Source, Trigger, Target, Backend, Plugin, Policy,
@@ -543,15 +646,7 @@ func TestCRDPropertiesMatchGoJSONTags(t *testing.T) {
 // fields (`json:",inline"`) and tags equal to "-" are skipped.
 func jsonTagsForStruct(t *testing.T, typesText, structName string) []string {
 	t.Helper()
-	pattern := regexp.MustCompile(`(?ms)^type\s+` + regexp.QuoteMeta(structName) + `\s+struct\s*\{(.*?)\n\}`)
-	match := pattern.FindStringSubmatch(typesText)
-	if match == nil {
-		// Some structs are declared in promotionrun_types.go alongside others;
-		// caller already supplied the right file. If not found, the test fails
-		// noisily.
-		t.Fatalf("could not find struct %s in supplied types file", structName)
-	}
-	body := match[1]
+	body := structBody(t, typesText, structName)
 	tagRE := regexp.MustCompile("`json:\"([^\"]+)\"`")
 	var tags []string
 	for line := range strings.SplitSeq(body, "\n") {
@@ -572,9 +667,39 @@ func jsonTagsForStruct(t *testing.T, typesText, structName string) []string {
 	return tags
 }
 
+func structBody(t *testing.T, typesText, structName string) string {
+	t.Helper()
+	pattern := regexp.MustCompile(`(?ms)^type\s+` + regexp.QuoteMeta(structName) + `\s+struct\s*\{(.*?)\n\}`)
+	match := pattern.FindStringSubmatch(typesText)
+	if match == nil {
+		t.Fatalf("could not find struct %s in supplied types file", structName)
+	}
+	return match[1]
+}
+
 // assertTagsInCRDSubtree verifies every tag appears as a property under
 // the given subtree key (spec or status) of the CRD's openAPIv3Schema.
 func assertTagsInCRDSubtree(t *testing.T, crdName, subtree string, schema map[string]any, tags []string) {
+	t.Helper()
+	props := crdSubtreeProperties(t, crdName, schema, subtree)
+	if props == nil && len(tags) > 0 {
+		t.Fatalf("%s: .%s has no properties but Go struct has %d JSON tags", crdName, subtree, len(tags))
+	}
+	for _, tag := range tags {
+		if _, ok := props[tag]; !ok {
+			t.Errorf("%s: Go JSON tag .%s.%s has no corresponding property in CRD openAPIv3Schema (run `make manifests sync-crds`)", crdName, subtree, tag)
+		}
+	}
+}
+
+func crdSubtreeProperties(t *testing.T, crdName string, schema map[string]any, subtree string) map[string]any {
+	t.Helper()
+	node := crdSubtreeNode(t, crdName, schema, subtree)
+	props, _ := node["properties"].(map[string]any)
+	return props
+}
+
+func crdSubtreeNode(t *testing.T, crdName string, schema map[string]any, subtree string) map[string]any {
 	t.Helper()
 	subtreeNode, _ := schema["properties"].(map[string]any)
 	if subtreeNode == nil {
@@ -584,15 +709,16 @@ func assertTagsInCRDSubtree(t *testing.T, crdName, subtree string, schema map[st
 	if node == nil {
 		t.Fatalf("%s: schema has no .%s properties", crdName, subtree)
 	}
-	props, _ := node["properties"].(map[string]any)
-	if props == nil && len(tags) > 0 {
-		t.Fatalf("%s: .%s has no properties but Go struct has %d JSON tags", crdName, subtree, len(tags))
-	}
-	for _, tag := range tags {
-		if _, ok := props[tag]; !ok {
-			t.Errorf("%s: Go JSON tag .%s.%s has no corresponding property in CRD openAPIv3Schema (run `make manifests sync-crds`)", crdName, subtree, tag)
+	return node
+}
+
+func containsAny(values []any, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
 		}
 	}
+	return false
 }
 
 // TestSpokeRBACRulesUseCurrentCRDPlurals asserts every resource name in the
@@ -723,16 +849,7 @@ func readCRD(t *testing.T, path string) crdDocument {
 	return crd
 }
 
-func servedCRDVersion(t *testing.T, path string, crd crdDocument) struct {
-	Name                     string `json:"name"`
-	AdditionalPrinterColumns []struct {
-		Name     string `json:"name"`
-		JSONPath string `json:"jsonPath"`
-	} `json:"additionalPrinterColumns"`
-	Schema struct {
-		OpenAPIV3Schema map[string]any `json:"openAPIV3Schema"`
-	} `json:"schema"`
-} {
+func servedCRDVersion(t *testing.T, path string, crd crdDocument) crdVersion {
 	t.Helper()
 	for _, version := range crd.Spec.Versions {
 		if version.Name == "v1alpha2" {
