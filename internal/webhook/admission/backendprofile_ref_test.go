@@ -52,7 +52,7 @@ func TestValidateFleetClusterBackendRef_Missing(t *testing.T) {
 	mc := fleetClusterWithBackend("ghost")
 	err := admission.ValidateFleetClusterBackendRef(context.Background(), reader, mc)
 	if err == nil {
-		t.Fatal("expected error for missing BackendProfile")
+		t.Fatal("expected error for missing Backend")
 	}
 	if !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("expected not-found error, got %v", err)
@@ -67,7 +67,7 @@ func TestValidateFleetClusterBackendRef_NotReady(t *testing.T) {
 	mc := fleetClusterWithBackend("flux")
 	err := admission.ValidateFleetClusterBackendRef(context.Background(), reader, mc)
 	if err == nil {
-		t.Fatal("expected error for NotReady BackendProfile")
+		t.Fatal("expected error for NotReady Backend")
 	}
 	if !strings.Contains(err.Error(), "not Ready") {
 		t.Fatalf("expected not-Ready error, got %v", err)

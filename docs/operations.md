@@ -87,7 +87,7 @@ Operational guidance:
 
 Tune rollout inputs before changing worker counts:
 
-- Use `Stage.spec.strategy.maxParallel` to bound backend write pressure.
+- Use stage `strategy.maxParallel` to bound backend write pressure.
 - Prefer more stages over one wide stage when backend APIs have tenant or
   region quotas.
 - Keep actuator `Apply` idempotent and cheap when the desired version is already
@@ -239,7 +239,7 @@ Mitigation:
 - If one target is blocked by a known transient backend issue, fix the backend
   and let the Target reconcile. Avoid patching status by hand.
 - If a stage is too wide for the backend, suspend the PromotionRun, reduce future
-  `Stage.spec.strategy.maxParallel`, and let the current target set drain or
+  stage `strategy.maxParallel`, and let the current target set drain or
   fail according to policy.
 - If the promotionrun is failed and the artifact should not continue, use the
   rollback runbook below.
@@ -366,7 +366,7 @@ Check:
 - referenced TLS Secret namespace and name;
 - plugin pod/service readiness in the plugin namespace.
 
-Runtime registration is hot-loaded for actuator, gate, and planner plugins when
+Runtime dispatch is hot-loaded for actuator, gate, and planner plugins when
 `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. If a `Plugin` becomes ready
 after the operator starts, changes generation, becomes incompatible, or is
 deleted, the operator refreshes the runtime adapter without requiring a restart.

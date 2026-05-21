@@ -343,7 +343,7 @@ func promotionUIDFromRun(run *kaprov1alpha2.PromotionRun) string {
 	return run.Labels["kapro.io/promotion-uid"]
 }
 
-// fleetRefFromRun reads the parent Kapro fleet name from the
+// fleetRefFromRun reads the parent Fleet name from the
 // kapro.io/kapro label PromotionController stamps onto every owned
 // PromotionRun. Returns the Kapro name (not a Plan name).
 // Empty when the run lacks the label (e.g. authored directly).

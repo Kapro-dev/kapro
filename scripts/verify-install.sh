@@ -47,13 +47,19 @@ check_crd_dir_sync() {
     rm -f "${config_list}" "${target_list}"
     exit 1
   fi
+  local mismatched_crd
+  mismatched_crd=""
   while IFS= read -r crd; do
     if ! cmp -s "${ROOT}/config/crd/bases/${crd}" "${target_dir}/${crd}"; then
-      echo "${target_label} CRD ${crd} differs from config/crd/bases; run: make sync-crds" >&2
-      rm -f "${config_list}" "${target_list}"
-      exit 1
+      mismatched_crd="${crd}"
+      break
     fi
   done <"${config_list}"
+  if [ -n "${mismatched_crd}" ]; then
+    echo "${target_label} CRD ${mismatched_crd} differs from config/crd/bases; run: make sync-crds" >&2
+    rm -f "${config_list}" "${target_list}"
+    exit 1
+  fi
   rm -f "${config_list}" "${target_list}"
 }
 

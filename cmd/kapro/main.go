@@ -3,7 +3,7 @@
 // Usage:
 //
 //	kapro cluster bootstrap --name <cluster-name> [--labels key=value,...]
-//	kapro promote <app> --version <version> --plan <promotionplan>
+//	kapro promote <app> --version <version> --plan <plan>
 //	kapro get promotionruns
 //	kapro get targets
 //	kapro approve <promotionrun>/<target> [--comment text]
@@ -471,14 +471,14 @@ func runGetPromotionRuns(ctx context.Context, kubeconfigPath string) error {
 
 	tbl := cli.NewTable("NAME", "VERSION", "PHASE", "PIPELINES", "AGE")
 	for _, r := range list.Items {
-		promotionplans := ""
-		for i, p := range r.Spec.PromotionPlans {
+		plansText := ""
+		for i, p := range r.Spec.Plans {
 			if i > 0 {
-				promotionplans += ", "
+				plansText += ", "
 			}
-			promotionplans += p.Plan
+			plansText += p.Plan
 		}
-		tbl.AddRow(r.Name, r.Spec.Version, string(r.Status.Phase), promotionplans, cli.Age(r.CreationTimestamp.Time))
+		tbl.AddRow(r.Name, r.Spec.Version, string(r.Status.Phase), plansText, cli.Age(r.CreationTimestamp.Time))
 	}
 	tbl.Render()
 	return nil
@@ -695,11 +695,11 @@ func runRollback(ctx context.Context, promotionrunName, toDigest string, targets
 	// Derive short suffix from digest for readable names.
 	suffix := shortHash(toDigest)
 
-	// Create a rollback PromotionRun with the same promotionplans but the rollback version.
+	// Create a rollback PromotionRun with the same plans but the rollback version.
 	rbPromotionRunName := promotionrunName + "-rb-" + suffix
 	rbSpec := kaprov1alpha2.PromotionRunSpec{
-		Version:        toDigest,
-		PromotionPlans: orig.Spec.PromotionPlans,
+		Version: toDigest,
+		Plans:   orig.Spec.Plans,
 	}
 	if len(targets) > 0 {
 		rbSpec.Scope = &kaprov1alpha2.PromotionRunScope{Targets: targets}
@@ -856,10 +856,10 @@ func runPromotionCreate(ctx context.Context, name, fleetRef, version string,
 	}
 
 	spec := kaprov1alpha2.PromotionSpec{
-		FleetRef:       fleetRef,
-		Version:        version,
-		Versions:       versions,
-		PromotionPlans: planRefs,
+		FleetRef: fleetRef,
+		Version:  version,
+		Versions: versions,
+		Plans:    planRefs,
 	}
 	if len(scope) > 0 {
 		spec.Scope = &kaprov1alpha2.PromotionRunScope{Targets: scope}
@@ -1012,8 +1012,6 @@ Examples:
 	cmd.Flags().StringVar(&version, "version", "", "Default revision to deliver")
 	cmd.Flags().StringArrayVar(&versions, "set", nil, "Per-unit revision (repeatable: --set api=sha256:abc)")
 	cmd.Flags().StringArrayVar(&plans, "plan", nil, "Plan name (repeatable; required at least once)")
-	cmd.Flags().StringArrayVar(&plans, "promotionplan", nil, "Deprecated alias for --plan")
-	_ = cmd.Flags().MarkHidden("promotionplan")
 	cmd.Flags().StringArrayVar(&scope, "scope", nil, "Restrict to target cluster (repeatable: --scope de-prod --scope fi-prod)")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	_ = cmd.MarkFlagRequired("name")
@@ -1047,9 +1045,9 @@ func runPromotionRunCreate(ctx context.Context, name, version string, versionPai
 	}
 
 	spec := kaprov1alpha2.PromotionRunSpec{
-		Version:        version,
-		Versions:       versions,
-		PromotionPlans: refs,
+		Version:  version,
+		Versions: versions,
+		Plans:    refs,
 	}
 	if len(scope) > 0 {
 		spec.Scope = &kaprov1alpha2.PromotionRunScope{Targets: scope}

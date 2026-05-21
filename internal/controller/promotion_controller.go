@@ -103,14 +103,14 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			"", "Terminating", "deletionTimestamp set; child PromotionRuns will be garbage-collected")
 	}
 
-	// Resolve parent Kapro (cluster-scoped, looked up by name).
+	// Resolve parent Fleet (cluster-scoped, looked up by name).
 	var parent kaprov1alpha2.Fleet
 	if err := r.Get(ctx, client.ObjectKey{Name: promotion.Spec.FleetRef}, &parent); err != nil {
 		if apierrors.IsNotFound(err) {
-			return r.patchUnresolved(ctx, &promotion, "KaproNotFound",
-				fmt.Sprintf("referenced Kapro %q does not exist", promotion.Spec.FleetRef))
+			return r.patchUnresolved(ctx, &promotion, "FleetNotFound",
+				fmt.Sprintf("referenced Fleet %q does not exist", promotion.Spec.FleetRef))
 		}
-		return ctrl.Result{}, fmt.Errorf("get parent Kapro %q: %w", promotion.Spec.FleetRef, err)
+		return ctrl.Result{}, fmt.Errorf("get parent Fleet %q: %w", promotion.Spec.FleetRef, err)
 	}
 
 	specHash := promotionSpecHash(&promotion.Spec)
@@ -120,7 +120,7 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return ctrl.Result{}, err
 		}
 		return r.patchStatus(ctx, &promotion, kaprov1alpha2.PromotionPhasePaused,
-			specHash, "Suspended", "Promotion or parent Kapro is suspended")
+			specHash, "Suspended", "Promotion or parent Fleet is suspended")
 	}
 
 	runSpec, err := buildRunSpec(&promotion, &parent)
@@ -482,9 +482,9 @@ func (r *PromotionReconciler) patchUnresolved(ctx context.Context, p *kaprov1alp
 	return r.patchStatus(ctx, p, kaprov1alpha2.PromotionPhasePending, "", reason, msg)
 }
 
-// buildRunSpec derives a PromotionRunSpec from a Promotion + parent Kapro.
+// buildRunSpec derives a PromotionRunSpec from a Promotion + parent Fleet.
 func buildRunSpec(p *kaprov1alpha2.Promotion, parent *kaprov1alpha2.Fleet) (kaprov1alpha2.PromotionRunSpec, error) {
-	plans := append([]kaprov1alpha2.PlanRef(nil), p.Spec.PromotionPlans...)
+	plans := append([]kaprov1alpha2.PlanRef(nil), p.Spec.Plans...)
 	if len(plans) == 0 {
 		// FleetReconciler materializes Kapro.spec.promotionplan as a separate
 		// Plan CR named via InlinePromotionPlanName; reference that
@@ -498,11 +498,11 @@ func buildRunSpec(p *kaprov1alpha2.Promotion, parent *kaprov1alpha2.Fleet) (kapr
 		return kaprov1alpha2.PromotionRunSpec{}, fmt.Errorf("either spec.version or spec.versions must be set")
 	}
 	return kaprov1alpha2.PromotionRunSpec{
-		Version:        p.Spec.Version,
-		Versions:       copyStringMap(p.Spec.Versions),
-		PromotionPlans: plans,
-		Scope:          p.Spec.Scope,
-		Timeout:        p.Spec.Timeout,
+		Version:  p.Spec.Version,
+		Versions: copyStringMap(p.Spec.Versions),
+		Plans:    plans,
+		Scope:    p.Spec.Scope,
+		Timeout:  p.Spec.Timeout,
 		// Bug A fix: suspend state must propagate from Promotion intent to
 		// the freshly stamped PromotionRun at t=0. Without this, a Promotion
 		// created with spec.suspended=true would stamp a non-suspended run;
@@ -527,7 +527,7 @@ func promotionSpecHash(s *kaprov1alpha2.PromotionSpec) string {
 	for _, k := range keys {
 		fmt.Fprintf(h, "u:%s=%s|", k, s.Versions[k])
 	}
-	for _, p := range s.PromotionPlans {
+	for _, p := range s.Plans {
 		fmt.Fprintf(h, "p:%s=%s|", p.Name, p.Plan)
 	}
 	if s.Scope != nil {

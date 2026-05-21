@@ -286,9 +286,9 @@ scripts/argo-e2e.sh run
 The script creates a Kind cluster, installs Argo CD and Kapro, serves a
 throwaway Git repo inside the cluster, runs `kapro adopt argo`, applies the
 generated mapping, promotes the repo-native Argo fields with
-`kapro source apply`, creates a compatibility `PromotionRun` runtime fixture,
-and waits for all selected Argo Applications to become `Synced` and `Healthy`
-at the promoted revision.
+`kapro source apply`, exercises the runtime promotion flow, and waits for all
+selected Argo Applications to become `Synced` and `Healthy` at the promoted
+revision.
 
 This is the concrete acceptance test for the main brownfield patterns in this
 guide: plain Application, multi-source Application, ApplicationSet child backed

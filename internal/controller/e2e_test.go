@@ -99,7 +99,7 @@ func TestE2E_PromotionRun_Sync_Converged(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "e2e-promotionrun-" + suffix, Namespace: ns},
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: resolvedVersion,
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{
 					Name: "initial",
 					Plan: promotionplan.Name,
@@ -216,7 +216,7 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "halt-promotionrun-" + suffix, Namespace: ns},
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: haltVersion,
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{Name: "initial", Plan: promotionplan.Name},
 			},
 		},

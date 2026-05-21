@@ -13,7 +13,7 @@ import (
 
 const labelAccelerator = "kapro.io/accelerator"
 
-// FleetClusterMutator is a mutating admission webhook for FleetCluster objects.
+// FleetClusterMutator is a mutating admission webhook for Cluster objects.
 //
 // Topology label injection: when spec.topology.accelerator is set, the webhook
 // ensures metadata.labels["kapro.io/accelerator"] mirrors that value so that

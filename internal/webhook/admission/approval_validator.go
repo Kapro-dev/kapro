@@ -14,7 +14,7 @@ import (
 // ApprovalValidator validates Approval objects on CREATE and UPDATE.
 //
 // Rules enforced:
-//  1. spec.promotionrun must be non-empty.
+//  1. spec.promotionRun must be non-empty.
 //  2. spec.target must be non-empty.
 //  3. spec.ref must be non-empty.
 //  4. spec.approvedBy must be non-empty (mutator fills it from UserInfo).
@@ -42,7 +42,7 @@ func (v *ApprovalValidator) Handle(_ context.Context, req admission.Request) adm
 
 func validateApproval(a *kaprov1alpha2.Approval) error {
 	if a.Spec.PromotionRun == "" {
-		return fmt.Errorf("approval.spec.promotionrun must be non-empty")
+		return fmt.Errorf("approval.spec.promotionRun must be non-empty")
 	}
 	if a.Spec.Target == "" {
 		return fmt.Errorf("approval.spec.target must be non-empty")

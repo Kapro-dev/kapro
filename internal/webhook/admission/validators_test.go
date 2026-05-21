@@ -84,7 +84,7 @@ func TestValidatePromotionRun_MissingVersion(t *testing.T) {
 	r := &kaprov1alpha2.PromotionRun{
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "",
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{Name: "initial", Plan: "pipe-1"},
 			},
 		},
@@ -101,7 +101,7 @@ func TestValidatePromotionRun_ValidVersionsMap(t *testing.T) {
 				"api":    "main@sha256:abc",
 				"worker": "main@sha256:def",
 			},
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{Name: "initial", Plan: "pipe-1"},
 			},
 		},
@@ -111,11 +111,11 @@ func TestValidatePromotionRun_ValidVersionsMap(t *testing.T) {
 	}
 }
 
-func TestValidatePromotionRun_MissingPromotionPlans(t *testing.T) {
+func TestValidatePromotionRun_MissingPlans(t *testing.T) {
 	r := &kaprov1alpha2.PromotionRun{
 		Spec: kaprov1alpha2.PromotionRunSpec{
-			Version:        "art-v1",
-			PromotionPlans: nil,
+			Version: "art-v1",
+			Plans:   nil,
 		},
 	}
 	if err := promotionrunValidate(r); err == nil {
@@ -127,7 +127,7 @@ func TestValidatePromotionRun_PromotionPlanRefMissingName(t *testing.T) {
 	r := &kaprov1alpha2.PromotionRun{
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{Name: "", Plan: "standard-rollout"},
 			},
 		},
@@ -141,7 +141,7 @@ func TestValidatePromotionRun_PromotionPlanRefMissingPromotionPlan(t *testing.T)
 	r := &kaprov1alpha2.PromotionRun{
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{Name: "initial", Plan: ""},
 			},
 		},
@@ -155,7 +155,7 @@ func TestValidatePromotionRun_Valid(t *testing.T) {
 	r := &kaprov1alpha2.PromotionRun{
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{Name: "initial", Plan: "standard-rollout"},
 			},
 		},
@@ -169,7 +169,7 @@ func TestValidatePromotionRun_ValidMultiPromotionPlanDAG(t *testing.T) {
 	r := &kaprov1alpha2.PromotionRun{
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{Name: "canary", Plan: "canary-rollout"},
 				{Name: "stable", Plan: "stable-rollout", DependsOn: []string{"canary"}},
 			},
@@ -184,7 +184,7 @@ func TestValidatePromotionRun_DuplicatePromotionPlanName(t *testing.T) {
 	r := &kaprov1alpha2.PromotionRun{
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{Name: "wave1", Plan: "rollout"},
 				{Name: "wave1", Plan: "rollout"},
 			},
@@ -199,7 +199,7 @@ func TestValidatePromotionRun_UnknownDependency(t *testing.T) {
 	r := &kaprov1alpha2.PromotionRun{
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{Name: "wave1", Plan: "rollout", DependsOn: []string{"does-not-exist"}},
 			},
 		},
@@ -213,7 +213,7 @@ func TestValidatePromotionRun_PromotionPlanCycle(t *testing.T) {
 	r := &kaprov1alpha2.PromotionRun{
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{Name: "a", Plan: "rollout", DependsOn: []string{"b"}},
 				{Name: "b", Plan: "rollout", DependsOn: []string{"a"}},
 			},
@@ -228,7 +228,7 @@ func TestValidatePromotionRun_SelfCycle(t *testing.T) {
 	r := &kaprov1alpha2.PromotionRun{
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{Name: "wave1", Plan: "rollout", DependsOn: []string{"wave1"}},
 			},
 		},
@@ -242,7 +242,7 @@ func TestValidatePromotionRunUpdate_VersionImmutable(t *testing.T) {
 	old := &kaprov1alpha2.PromotionRun{
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{Name: "wave1", Plan: "rollout"},
 			},
 		},
@@ -258,7 +258,7 @@ func TestValidatePromotionRunUpdate_VersionsImmutable(t *testing.T) {
 	old := &kaprov1alpha2.PromotionRun{
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Versions: map[string]string{"api": "main@sha256:abc"},
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{Name: "wave1", Plan: "rollout"},
 			},
 		},
@@ -270,17 +270,17 @@ func TestValidatePromotionRunUpdate_VersionsImmutable(t *testing.T) {
 	}
 }
 
-func TestValidatePromotionRunUpdate_PromotionPlansImmutable(t *testing.T) {
+func TestValidatePromotionRunUpdate_PlansImmutable(t *testing.T) {
 	old := &kaprov1alpha2.PromotionRun{
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{Name: "wave1", Plan: "rollout"},
 			},
 		},
 	}
 	new := old.DeepCopy()
-	new.Spec.PromotionPlans = append(new.Spec.PromotionPlans, kaprov1alpha2.PlanRef{Name: "wave2", Plan: "rollout-2"})
+	new.Spec.Plans = append(new.Spec.Plans, kaprov1alpha2.PlanRef{Name: "wave2", Plan: "rollout-2"})
 	if err := admission.ValidatePromotionRunUpdate(old, new); err == nil {
 		t.Fatal("expected error for immutable promotionplans update")
 	}
@@ -290,7 +290,7 @@ func TestValidatePromotionRunUpdate_ScopeImmutable(t *testing.T) {
 	old := &kaprov1alpha2.PromotionRun{
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{Name: "wave1", Plan: "rollout"},
 			},
 			Scope: &kaprov1alpha2.PromotionRunScope{Targets: []string{"cluster-a"}},
@@ -307,7 +307,7 @@ func TestValidatePromotionRunUpdate_SuspendedMutable(t *testing.T) {
 	old := &kaprov1alpha2.PromotionRun{
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "art-v1",
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{Name: "wave1", Plan: "rollout"},
 			},
 		},

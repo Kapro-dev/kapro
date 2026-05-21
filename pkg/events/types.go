@@ -188,7 +188,7 @@ type Event struct {
 	// PromotionUID is the Kubernetes UID for traceability across renames.
 	// +optional
 	PromotionUID string
-	// FleetRef is the parent Kapro fleet name. Provided in `data` so
+	// FleetRef is the parent Fleet name. Provided in `data` so
 	// fleet-scope filtering works without re-fetching the Promotion.
 	FleetRef string
 	// Phase is the dispatch-time phase the event was emitted under.

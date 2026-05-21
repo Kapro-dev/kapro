@@ -14,7 +14,7 @@ spec:
     listKind: PolicyList
     plural: policies
     shortNames:
-    - agp
+    - pol
     singular: policy
   scope: Cluster
   versions:

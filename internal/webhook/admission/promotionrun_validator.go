@@ -149,12 +149,12 @@ func validatePromotionRun(r *kaprov1alpha2.PromotionRun) error {
 		return fmt.Errorf("%s", allErrs.ToAggregate().Error())
 	}
 
-	if len(r.Spec.PromotionPlans) == 0 {
+	if len(r.Spec.Plans) == 0 {
 		return fmt.Errorf("promotionRun.spec.plans must have at least one plan reference")
 	}
 
-	index := make(map[string]int, len(r.Spec.PromotionPlans))
-	for i, ref := range r.Spec.PromotionPlans {
+	index := make(map[string]int, len(r.Spec.Plans))
+	for i, ref := range r.Spec.Plans {
 		if ref.Name == "" {
 			return fmt.Errorf("promotionRun.spec.plans[%d].name must be set", i)
 		}
@@ -168,7 +168,7 @@ func validatePromotionRun(r *kaprov1alpha2.PromotionRun) error {
 	}
 
 	// Validate all dependsOn references name existing plan nodes.
-	for _, ref := range r.Spec.PromotionPlans {
+	for _, ref := range r.Spec.Plans {
 		for _, dep := range ref.DependsOn {
 			if _, exists := index[dep]; !exists {
 				return fmt.Errorf("promotionRun.spec.plans[%q].dependsOn: unknown plan node %q", ref.Name, dep)
@@ -178,7 +178,7 @@ func validatePromotionRun(r *kaprov1alpha2.PromotionRun) error {
 
 	// DFS cycle detection on the plan node DAG.
 	if cycle := detectCycle(index, func(name string) []string {
-		return r.Spec.PromotionPlans[index[name]].DependsOn
+		return r.Spec.Plans[index[name]].DependsOn
 	}); cycle != "" {
 		return fmt.Errorf("promotionRun.spec.plans: cycle detected: %s", cycle)
 	}
@@ -193,7 +193,7 @@ func validatePromotionRunUpdate(old, new *kaprov1alpha2.PromotionRun) error {
 	if !reflect.DeepEqual(old.Spec.Versions, new.Spec.Versions) {
 		return fmt.Errorf("promotionRun.spec.versions is immutable after creation")
 	}
-	if !reflect.DeepEqual(old.Spec.PromotionPlans, new.Spec.PromotionPlans) {
+	if !reflect.DeepEqual(old.Spec.Plans, new.Spec.Plans) {
 		return fmt.Errorf("promotionRun.spec.plans is immutable after creation")
 	}
 	if !reflect.DeepEqual(old.Spec.Scope, new.Spec.Scope) {

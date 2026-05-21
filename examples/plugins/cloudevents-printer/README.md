@@ -46,7 +46,7 @@ curl -sS -X POST -H 'Content-Type: application/cloudevents+json' \
     "specversion": "1.0",
     "id": "f9c4d39c5a4d4eba9a6b8ee2c3d4f5a6",
     "type": "kapro.io/promotion.stage.gate.passed",
-    "source": "/apis/kapro.io/v1alpha1/promotions/checkout",
+    "source": "/apis/kapro.io/v1alpha2/promotions/checkout",
     "subject": "checkout",
     "time": "2026-05-19T22:00:00Z",
     "datacontenttype": "application/json",

@@ -186,7 +186,7 @@ func LintKapro(k *kaprov1alpha2.Fleet) []Issue {
 	if k.Name == "" {
 		out = append(out, errAt("metadata.name", "Kapro requires a name"))
 	}
-	// KaproSpec.Source is *PromotionSourceSpec — nil when the inline
+	// FleetSpec.Source is *SourceSpec — nil when the inline
 	// source path is not used. Treat "source is set" as "non-nil with
 	// at least one unit" so the exactly-one-of check is panic-safe.
 	inlineSourceSet := k.Spec.Source != nil && len(k.Spec.Source.Units) > 0
@@ -245,7 +245,7 @@ func LintPromotion(p *kaprov1alpha2.Promotion) []Issue {
 			seen[t] = true
 		}
 	}
-	for i, plan := range p.Spec.PromotionPlans {
+	for i, plan := range p.Spec.Plans {
 		if plan.Plan == "" {
 			out = append(out, errAt(fmt.Sprintf("spec.plans[%d].plan", i),
 				"Plan reference must not be empty"))

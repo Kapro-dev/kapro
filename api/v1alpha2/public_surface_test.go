@@ -1,6 +1,7 @@
 package v1alpha2_test
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -34,8 +35,36 @@ func TestHelmWebhookRulesUseServedVersion(t *testing.T) {
 	if strings.Contains(data, `apiVersions: ["v1alpha1"]`) {
 		t.Fatalf("%s still contains v1alpha1 webhook rules", path)
 	}
-	if !strings.Contains(data, `apiVersions: ["v1alpha2"]`) {
-		t.Fatalf("%s does not contain v1alpha2 webhook rules", path)
+	matches := regexp.MustCompile(`apiVersions:\s*\[([^\]]+)\]`).FindAllStringSubmatch(data, -1)
+	if len(matches) == 0 {
+		t.Fatalf("%s does not contain any webhook apiVersions rules", path)
+	}
+	for _, match := range matches {
+		if strings.TrimSpace(match[1]) != `"v1alpha2"` {
+			t.Fatalf("%s contains non-v1alpha2 webhook apiVersions rule %q", path, match[0])
+		}
+	}
+}
+
+func TestGeneratedCRDsAreSyncedAndServedVersion(t *testing.T) {
+	root := repoRoot(t)
+	configDir := filepath.Join(root, "config", "crd", "bases")
+	chartDir := filepath.Join(root, "charts", "kapro-operator", "crds")
+	bootstrapDir := filepath.Join(root, "internal", "bootstrap", "kaprocrds")
+
+	for _, name := range crdBaseNames(t, configDir) {
+		configPath := filepath.Join(configDir, name)
+		configData := readBytes(t, configPath)
+		checkCRDServedVersion(t, configPath, string(configData))
+
+		for _, dir := range []string{chartDir, bootstrapDir} {
+			path := filepath.Join(dir, name)
+			data := readBytes(t, path)
+			checkCRDServedVersion(t, path, string(data))
+			if !bytes.Equal(configData, data) {
+				t.Fatalf("%s differs from %s; generated CRD copy is stale", path, configPath)
+			}
+		}
 	}
 }
 
@@ -58,6 +87,71 @@ func TestTargetCRDPrintColumnsUseCurrentFields(t *testing.T) {
 				t.Fatalf("%s missing Target printcolumn %s", path, want)
 			}
 		}
+	}
+}
+
+func TestCRDShortNamesUseCurrentAliases(t *testing.T) {
+	root := repoRoot(t)
+	staleShortNames := map[string][]string{
+		"kapro.io_backends.yaml":         {"bp", "backend"},
+		"kapro.io_clusters.yaml":         {"mc", "fc", "fleetcluster"},
+		"kapro.io_clustertemplates.yaml": {"fct", "fleettemplate"},
+		"kapro.io_fleets.yaml":           {"kp"},
+		"kapro.io_plugins.yaml":          {"pluginreg"},
+		"kapro.io_policies.yaml":         {"agp"},
+		"kapro.io_promotionruns.yaml":    {"rel"},
+		"kapro.io_sources.yaml":          {"ps", "source", "sources"},
+		"kapro.io_targets.yaml":          {"relt"},
+		"kapro.io_triggers.yaml":         {"reltrig"},
+	}
+	for _, relDir := range []string{
+		filepath.Join("config", "crd", "bases"),
+		filepath.Join("charts", "kapro-operator", "crds"),
+		filepath.Join("internal", "bootstrap", "kaprocrds"),
+	} {
+		for file, names := range staleShortNames {
+			path := filepath.Join(root, relDir, file)
+			data := readText(t, path)
+			for _, name := range names {
+				if strings.Contains(data, "\n    - "+name+"\n") {
+					t.Fatalf("%s still exposes stale shortName %q", path, name)
+				}
+			}
+		}
+	}
+}
+
+func TestAPICommentsUseCurrentPublicResourceNames(t *testing.T) {
+	root := repoRoot(t)
+	stale := []*regexp.Regexp{
+		regexp.MustCompile(`kubectl[^\n]*(backendprofile|fleetcluster|promotiontarget|promotiontrigger|pluginregistration|promotionplan|promotionsource)s?\b`),
+		regexp.MustCompile(`kapro\.io/managed-by=fleetclustertemplate\b`),
+	}
+	err := filepath.WalkDir(filepath.Join(root, "api", "v1alpha2"), func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		base := filepath.Base(path)
+		if filepath.Ext(path) != ".go" || strings.HasSuffix(base, "_test.go") || base == "zz_generated.deepcopy.go" {
+			return nil
+		}
+		for _, line := range strings.Split(readText(t, path), "\n") {
+			if !strings.HasPrefix(strings.TrimSpace(line), "//") {
+				continue
+			}
+			for _, re := range stale {
+				if match := re.FindString(line); match != "" {
+					t.Fatalf("%s contains stale public API comment %q", path, match)
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -113,11 +207,47 @@ func isPublicTextFile(path string) bool {
 
 func readText(t *testing.T, path string) string {
 	t.Helper()
+	return string(readBytes(t, path))
+}
+
+func readBytes(t *testing.T, path string) []byte {
+	t.Helper()
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return string(data)
+	return data
+}
+
+func crdBaseNames(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".yaml" {
+			continue
+		}
+		names = append(names, entry.Name())
+	}
+	if len(names) == 0 {
+		t.Fatalf("no CRD YAML files found in %s", dir)
+	}
+	return names
+}
+
+func checkCRDServedVersion(t *testing.T, path, data string) {
+	t.Helper()
+	if strings.Contains(data, "name: v1alpha1") {
+		t.Fatalf("%s still contains a v1alpha1 CRD version", path)
+	}
+	for _, want := range []string{"name: v1alpha2", "served: true", "storage: true"} {
+		if !strings.Contains(data, want) {
+			t.Fatalf("%s missing CRD version field %q", path, want)
+		}
+	}
 }
 
 func repoRoot(t *testing.T) string {

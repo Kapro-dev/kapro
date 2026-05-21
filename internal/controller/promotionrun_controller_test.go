@@ -47,7 +47,7 @@ func TestPromotionRunReconciler_PendingToPromoting(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "test-promotionrun", Namespace: ns},
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "registry.example.com/app@sha256:aaaa",
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{
 					Name: "initial",
 					Plan: promotionplan.Name,
@@ -81,7 +81,7 @@ func TestPromotionRunReconciler_MissingVersion_StaysPending(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "missing-ver-promotionrun", Namespace: "default"},
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "",
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{
 					Name: "initial",
 					Plan: promotionplan.Name,
@@ -120,7 +120,7 @@ func TestPromotionRunReconciler_EnvStatus_Populated(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "ownerref-promotionrun", Namespace: ns},
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "registry.example.com/app@sha256:bbbb",
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{
 					Name: "initial",
 					Plan: promotionplan.Name,

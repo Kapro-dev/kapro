@@ -69,7 +69,7 @@ func validatePromotionTrigger(pt *kaprov1alpha2.Trigger) error {
 	}
 	// Plans are optional on the trigger template; when empty the Promotion
 	// controller inherits the inline plan from the parent Fleet.
-	for i, ref := range pt.Spec.PromotionTemplate.PromotionPlans {
+	for i, ref := range pt.Spec.PromotionTemplate.Plans {
 		if ref.Name == "" {
 			return fmt.Errorf("spec.promotionTemplate.plans[%d].name is required", i)
 		}

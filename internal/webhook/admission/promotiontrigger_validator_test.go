@@ -17,8 +17,8 @@ func validTrigger() *kaprov1alpha2.Trigger {
 				},
 			},
 			PromotionTemplate: kaprov1alpha2.TriggerTemplate{
-				FleetRef:       "checkout",
-				PromotionPlans: []kaprov1alpha2.PlanRef{{Name: "default-plan"}},
+				FleetRef: "checkout",
+				Plans:    []kaprov1alpha2.PlanRef{{Name: "default-plan"}},
 			},
 		},
 	}
@@ -71,12 +71,12 @@ func TestValidatePromotionTrigger_OCIBlockMissing(t *testing.T) {
 }
 
 func TestValidatePromotionTrigger_TemplateMissingPlansIsValid(t *testing.T) {
-	// PromotionPlans is optional in the trigger template; the Promotion
-	// controller inherits the inline plan from the parent Kapro when empty.
+	// Plans is optional in the trigger template; the Promotion
+	// controller inherits the inline plan from the parent Fleet when empty.
 	pt := validTrigger()
-	pt.Spec.PromotionTemplate.PromotionPlans = nil
+	pt.Spec.PromotionTemplate.Plans = nil
 	if err := validatePromotionTrigger(pt); err != nil {
-		t.Fatalf("expected nil error for empty promotionPlans (controller falls back to Kapro inline plan), got %v", err)
+		t.Fatalf("expected nil error for empty plans (controller falls back to Fleet inline plan), got %v", err)
 	}
 }
 
@@ -90,8 +90,8 @@ func TestValidatePromotionTrigger_TemplateMissingFleetRef(t *testing.T) {
 
 func TestValidatePromotionTrigger_PromotionPlanMissingName(t *testing.T) {
 	pt := validTrigger()
-	pt.Spec.PromotionTemplate.PromotionPlans = []kaprov1alpha2.PlanRef{{Name: ""}}
+	pt.Spec.PromotionTemplate.Plans = []kaprov1alpha2.PlanRef{{Name: ""}}
 	if err := validatePromotionTrigger(pt); err == nil {
-		t.Fatal("expected error for empty promotionPlan name")
+		t.Fatal("expected error for empty plan name")
 	}
 }

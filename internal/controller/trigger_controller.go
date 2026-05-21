@@ -442,12 +442,12 @@ func buildTriggeredPromotion(trigger *kaprov1alpha2.Trigger, artifact TriggerArt
 			Annotations: annotations,
 		},
 		Spec: kaprov1alpha2.PromotionSpec{
-			FleetRef:       tmpl.FleetRef,
-			Version:        version,
-			PromotionPlans: append([]kaprov1alpha2.PlanRef(nil), tmpl.PromotionPlans...),
-			Suspended:      tmpl.Suspended,
-			Scope:          tmpl.Scope.DeepCopy(),
-			Timeout:        tmpl.Timeout,
+			FleetRef:  tmpl.FleetRef,
+			Version:   version,
+			Plans:     append([]kaprov1alpha2.PlanRef(nil), tmpl.Plans...),
+			Suspended: tmpl.Suspended,
+			Scope:     tmpl.Scope.DeepCopy(),
+			Timeout:   tmpl.Timeout,
 		},
 	}
 	if scheme != nil {
@@ -481,15 +481,15 @@ func applyTriggerToPromotion(existing, desired *kaprov1alpha2.Promotion) {
 func triggerTemplateHash(trigger *kaprov1alpha2.Trigger) string {
 	t := trigger.Spec.PromotionTemplate
 	buf, _ := json.Marshal(struct {
-		FleetRef       string                           `json:"fleetRef"`
-		PromotionPlans []kaprov1alpha2.PlanRef          `json:"plans"`
-		Suspended      bool                             `json:"suspended"`
-		Scope          *kaprov1alpha2.PromotionRunScope `json:"scope"`
-		Timeout        string                           `json:"timeout"`
-		Labels         map[string]string                `json:"labels"`
-		Annotations    map[string]string                `json:"annotations"`
+		FleetRef    string                           `json:"fleetRef"`
+		Plans       []kaprov1alpha2.PlanRef          `json:"plans"`
+		Suspended   bool                             `json:"suspended"`
+		Scope       *kaprov1alpha2.PromotionRunScope `json:"scope"`
+		Timeout     string                           `json:"timeout"`
+		Labels      map[string]string                `json:"labels"`
+		Annotations map[string]string                `json:"annotations"`
 	}{
-		FleetRef: t.FleetRef, PromotionPlans: t.PromotionPlans, Suspended: t.Suspended,
+		FleetRef: t.FleetRef, Plans: t.Plans, Suspended: t.Suspended,
 		Scope: t.Scope, Timeout: t.Timeout, Labels: t.Labels, Annotations: t.Annotations,
 	})
 	h := sha256.Sum256(buf)

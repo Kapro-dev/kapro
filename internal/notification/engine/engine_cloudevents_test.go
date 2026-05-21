@@ -50,8 +50,8 @@ func TestSendCloudEvents_EnvelopeAndContentType(t *testing.T) {
 	if ce["type"] != notification.EventTargetConverged {
 		t.Errorf("type = %v, want %s", ce["type"], notification.EventTargetConverged)
 	}
-	if ce["subject"] != "promotionplan/eu-rollout/stage/prod/target/fi-prod" {
-		t.Errorf("subject = %v, want promotionplan/eu-rollout/stage/prod/target/fi-prod", ce["subject"])
+	if ce["subject"] != "plan/eu-rollout/stage/prod/target/fi-prod" {
+		t.Errorf("subject = %v, want plan/eu-rollout/stage/prod/target/fi-prod", ce["subject"])
 	}
 	if ce["source"] != "/kapro/promotionruns/app-v2" {
 		t.Errorf("source = %v, want /kapro/promotionruns/app-v2", ce["source"])

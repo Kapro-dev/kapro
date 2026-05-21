@@ -241,7 +241,7 @@ kubectl delete namespace kapro-system
 
 The plugin gateway is an opt-in runtime preview. Enabling it only sets
 `KAPRO_ENABLE_PLUGIN_GATEWAY=true`; it does not install any plugin service or
-demo registration.
+demo `Plugin`.
 
 ```bash
 helm upgrade --install kapro charts/kapro-operator \
@@ -250,7 +250,7 @@ helm upgrade --install kapro charts/kapro-operator \
   --set pluginGateway.enabled=true
 ```
 
-Install your plugin service, then apply a registration such as:
+Install your plugin service, then apply a `Plugin` manifest such as:
 
 ```bash
 kubectl apply -f examples/plugins/slo-gate-registration.yaml

@@ -45,7 +45,7 @@ func newKapro(name string) *kaprov1alpha2.Fleet {
 			Clusters: []kaprov1alpha2.ClusterRef{
 				{Name: "c1", Labels: map[string]string{"stage": "prod"}},
 			},
-			Plan: kaprov1alpha2.KaproPromotionPlan{
+			Plan: kaprov1alpha2.KaproPlan{
 				Stages: []kaprov1alpha2.StageSpec{
 					{Name: "prod", Selector: map[string]string{"stage": "prod"}},
 				},

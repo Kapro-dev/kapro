@@ -17,7 +17,7 @@ import (
 // matching Discoverer implementation, and each discovered cluster becomes a
 // Cluster carrying:
 //   - ownerReference back to this template (garbage-collection on delete);
-//   - label kapro.io/managed-by=fleetclustertemplate so the reconciler can
+//   - label kapro.io/managed-by=clustertemplate so the reconciler can
 //     identify what it owns and never touch hand-authored Cluster objects;
 //   - the spec from spec.template, plus a derived spec.provider.kind matching
 //     the source branch (gcp → gcp-fleet, aws → eks, rhacm → rhacm, etc.).
@@ -216,7 +216,7 @@ type ClusterTemplateStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=fct;fleettemplate,categories=kapro-all
+// +kubebuilder:resource:scope=Cluster,shortName=ct,categories=kapro-all
 // +kubebuilder:printcolumn:name="Source",type=string,JSONPath=`.status.sourceKind`
 // +kubebuilder:printcolumn:name="Discovered",type=integer,JSONPath=`.status.discoveredClusters`
 // +kubebuilder:printcolumn:name="Imported",type=integer,JSONPath=`.status.importedClusters`

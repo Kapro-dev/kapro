@@ -37,9 +37,9 @@ spec:
         group: kapro.io
         version: v1alpha2
         kind: Trigger
-      metricNamePrefix: kapro_promotiontrigger
+      metricNamePrefix: kapro_trigger
       labelsFromPath:
-        promotiontrigger: [metadata, name]
+        trigger: [metadata, name]
       metrics:
         - name: status_active_promotionrun_count
           help: Number of active non-terminal PromotionRuns tracked by a Kapro Trigger.
@@ -61,9 +61,9 @@ spec:
         group: kapro.io
         version: v1alpha2
         kind: Plugin
-      metricNamePrefix: kapro_pluginregistration
+      metricNamePrefix: kapro_plugin
       labelsFromPath:
-        pluginregistration: [metadata, name]
+        plugin: [metadata, name]
         plugin_type: [spec, type]
         plugin_name: [spec, name]
       metrics:

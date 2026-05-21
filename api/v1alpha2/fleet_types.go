@@ -29,7 +29,7 @@ type FleetSpec struct {
 	// +kubebuilder:validation:MinItems=1
 	Clusters []ClusterRef `json:"clusters"`
 	// Plan defines the progressive delivery stages.
-	Plan KaproPromotionPlan `json:"plan"`
+	Plan KaproPlan `json:"plan"`
 	// Suspended pauses Fleet reconciliation.
 	// +kubebuilder:default=false
 	Suspended bool `json:"suspended,omitempty"`
@@ -80,11 +80,11 @@ type ClusterGCP struct {
 	Region string `json:"region,omitempty"`
 }
 
-// KaproPromotionPlan defines the progressive delivery stages inline on a
+// KaproPlan defines the progressive delivery stages inline on a
 // single Fleet object (KISS path). For reuse across multiple Fleet objects
 // or across PromotionRuns, define stages on a standalone Plan CRD
 // and reference it via PromotionRun.spec.plans instead.
-type KaproPromotionPlan struct {
+type KaproPlan struct {
 	// Stages defines the progressive delivery wave ordering.
 	Stages []StageSpec `json:"stages"`
 }
@@ -124,7 +124,7 @@ type FleetStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=kp,categories=kapro-all
+// +kubebuilder:resource:scope=Cluster,shortName=flt,categories=kapro-all
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Units",type=integer,JSONPath=`.status.unitCount`
 // +kubebuilder:printcolumn:name="Clusters",type=integer,JSONPath=`.status.clusterCount`

@@ -96,7 +96,7 @@ type TriggerTemplate struct {
 	// managed Promotion.
 	// +kubebuilder:validation:MaxItems=64
 	// +optional
-	PromotionPlans []PlanRef `json:"plans,omitempty"`
+	Plans []PlanRef `json:"plans,omitempty"`
 	// Suspended controls Promotion.spec.suspended on creation. Defaults to
 	// true so detection does not equal deployment.
 	// +kubebuilder:default=true
@@ -166,7 +166,7 @@ type TriggerArtifact struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=reltrig,categories=kapro-all
+// +kubebuilder:resource:scope=Cluster,shortName=trig,categories=kapro-all
 // +kubebuilder:printcolumn:name="Source",type=string,JSONPath=`.spec.source.type`
 // +kubebuilder:printcolumn:name="Suspended",type=boolean,JSONPath=`.spec.suspended`
 // +kubebuilder:printcolumn:name="DryRun",type=boolean,JSONPath=`.spec.dryRun`

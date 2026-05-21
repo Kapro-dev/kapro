@@ -228,14 +228,14 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 		if rel.Status.Phase == kaprov1alpha2.PromotionRunPhaseProgressing {
 			activePromotionRuns++
 		}
-		promotionplan := ""
-		if len(rel.Spec.PromotionPlans) > 0 {
-			promotionplan = rel.Spec.PromotionPlans[0].Plan
+		plan := ""
+		if len(rel.Spec.Plans) > 0 {
+			plan = rel.Spec.Plans[0].Plan
 		}
 		promotionrunSummaries = append(promotionrunSummaries, PromotionRunSummary{
 			Name:      rel.Name,
 			Phase:     string(rel.Status.Phase),
-			Plan:      promotionplan,
+			Plan:      plan,
 			StartedAt: rel.Status.StartedAt,
 		})
 	}
@@ -373,12 +373,12 @@ func (s *Server) handlePromotionRunContext(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Resolve the first promotionplan for context.
-	var promotionplan *kaprov1alpha2.Plan
-	if len(promotionrun.Spec.PromotionPlans) > 0 {
+	// Resolve the first plan for context.
+	var plan *kaprov1alpha2.Plan
+	if len(promotionrun.Spec.Plans) > 0 {
 		var pl kaprov1alpha2.Plan
-		if err := s.decisionReader().Get(ctx, client.ObjectKey{Name: promotionrun.Spec.PromotionPlans[0].Plan}, &pl); err == nil {
-			promotionplan = &pl
+		if err := s.decisionReader().Get(ctx, client.ObjectKey{Name: promotionrun.Spec.Plans[0].Plan}, &pl); err == nil {
+			plan = &pl
 		}
 	}
 
@@ -402,7 +402,7 @@ func (s *Server) handlePromotionRunContext(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, PromotionRunContext{
 		GeneratedAt:  time.Now().UTC().Format(time.RFC3339),
 		PromotionRun: promotionrun,
-		Plan:         promotionplan,
+		Plan:         plan,
 		Targets:      targets,
 		Page: DecisionAPIPage{
 			Limit:         opts.limit,

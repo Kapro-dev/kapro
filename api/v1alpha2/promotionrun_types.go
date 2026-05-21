@@ -254,7 +254,7 @@ type PromotionRunSpec struct {
 	// Plans is the DAG of plan nodes.
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=64
-	PromotionPlans []PlanRef `json:"plans"`
+	Plans []PlanRef `json:"plans"`
 	// Suspended pauses all advancement when true.
 	// +kubebuilder:default=false
 	Suspended bool `json:"suspended,omitempty"`
@@ -313,7 +313,7 @@ type PromotionRunStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=rel,categories=kapro-all
+// +kubebuilder:resource:scope=Cluster,shortName=prun,categories=kapro-all
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.spec.version`
 // +kubebuilder:printcolumn:name="Resolved",type=string,JSONPath=`.status.resolvedVersion`,priority=1
@@ -509,7 +509,7 @@ type TargetStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=relt,categories=kapro-all
+// +kubebuilder:resource:scope=Cluster,shortName=tgt,categories=kapro-all
 // +kubebuilder:printcolumn:name="PromotionRun",type=string,JSONPath=`.spec.runRef`
 // +kubebuilder:printcolumn:name="Target",type=string,JSONPath=`.spec.target`
 // +kubebuilder:printcolumn:name="Plan",type=string,JSONPath=`.spec.planRef`

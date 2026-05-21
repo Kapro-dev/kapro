@@ -94,8 +94,8 @@ func TestHandleProgressingFailsWhenPromotionPlanGenerationChanges(t *testing.T) 
 	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Generation: 1},
 		Spec: kaprov1alpha2.PromotionRunSpec{
-			Version:        "repo@sha256:abc",
-			PromotionPlans: []kaprov1alpha2.PlanRef{{Name: "main", Plan: "progressive"}},
+			Version: "repo@sha256:abc",
+			Plans:   []kaprov1alpha2.PlanRef{{Name: "main", Plan: "progressive"}},
 		},
 		Status: kaprov1alpha2.PromotionRunStatus{
 			Phase:           kaprov1alpha2.PromotionRunPhaseProgressing,
@@ -175,8 +175,8 @@ func TestNotifyPromotionRunEvent_UsesPromotionPlanStageNotifications(t *testing.
 	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1"},
 		Spec: kaprov1alpha2.PromotionRunSpec{
-			Version:        "repo@sha256:abc",
-			PromotionPlans: []kaprov1alpha2.PlanRef{{Name: "main", Plan: "progressive"}},
+			Version: "repo@sha256:abc",
+			Plans:   []kaprov1alpha2.PlanRef{{Name: "main", Plan: "progressive"}},
 		},
 		Status: kaprov1alpha2.PromotionRunStatus{
 			Phase:           kaprov1alpha2.PromotionRunPhaseProgressing,
@@ -314,8 +314,8 @@ func TestNotifyStageEvent_UsesStageNotificationPolicy(t *testing.T) {
 	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1"},
 		Spec: kaprov1alpha2.PromotionRunSpec{
-			Version:        "repo@sha256:abc",
-			PromotionPlans: []kaprov1alpha2.PlanRef{{Name: "main", Plan: "progressive"}},
+			Version: "repo@sha256:abc",
+			Plans:   []kaprov1alpha2.PlanRef{{Name: "main", Plan: "progressive"}},
 		},
 		Status: kaprov1alpha2.PromotionRunStatus{ResolvedVersion: "repo@sha256:abc"},
 	}

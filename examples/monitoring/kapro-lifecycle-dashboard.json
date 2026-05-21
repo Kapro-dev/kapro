@@ -44,7 +44,7 @@
       "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
       "id": 4,
       "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"expr": "sum(max_over_time(kapro_fleetcluster_heartbeat_misses[5m]) > 0)", "legendFormat": "stale heartbeats", "refId": "A"}],
+      "targets": [{"expr": "sum(max_over_time(kapro_cluster_heartbeat_misses[5m]) > 0)", "legendFormat": "stale heartbeats", "refId": "A"}],
       "title": "Clusters with Stale Heartbeat",
       "type": "stat"
     },
@@ -88,7 +88,7 @@
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
       "id": 8,
       "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
-      "targets": [{"expr": "kapro_fleetcluster_heartbeat_misses", "legendFormat": "{{cluster}}", "refId": "A"}],
+      "targets": [{"expr": "kapro_cluster_heartbeat_misses", "legendFormat": "{{cluster}}", "refId": "A"}],
       "title": "Cluster Heartbeat Misses (current)",
       "type": "timeseries"
     },
@@ -99,8 +99,8 @@
       "id": 9,
       "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
       "targets": [
-        {"expr": "sum(rate(kapro_fleetcluster_unreachable_transitions_total[5m]))", "legendFormat": "→ unreachable", "refId": "A"},
-        {"expr": "sum(rate(kapro_fleetcluster_recovered_transitions_total[5m]))", "legendFormat": "→ recovered", "refId": "B"}
+        {"expr": "sum(rate(kapro_cluster_unreachable_transitions_total[5m]))", "legendFormat": "→ unreachable", "refId": "A"},
+        {"expr": "sum(rate(kapro_cluster_recovered_transitions_total[5m]))", "legendFormat": "→ recovered", "refId": "B"}
       ],
       "title": "Cluster Reachability Transitions",
       "type": "timeseries"

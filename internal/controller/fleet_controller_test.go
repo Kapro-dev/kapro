@@ -206,7 +206,7 @@ func TestBuildResourceSet_OverrideMerging(t *testing.T) {
 func TestBuildPromotionPlan(t *testing.T) {
 	kapro := &kaprov1alpha2.Fleet{
 		Spec: kaprov1alpha2.FleetSpec{
-			Plan: kaprov1alpha2.KaproPromotionPlan{
+			Plan: kaprov1alpha2.KaproPlan{
 				Stages: []kaprov1alpha2.StageSpec{
 					{Name: "canary", Selector: map[string]string{"tier": "canary"}},
 					{Name: "prod", Selector: map[string]string{"tier": "prod"},

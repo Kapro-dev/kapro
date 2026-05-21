@@ -72,9 +72,9 @@ type Event struct {
 	Target string `json:"target,omitempty"`
 	// PromotionRun is the promotionrun name.
 	PromotionRun string `json:"promotionrun,omitempty"`
-	// Plan is the promotionplan name.
-	Plan string `json:"promotionplan,omitempty"`
-	// Stage is the stage name within the promotionplan.
+	// Plan is the Plan name.
+	Plan string `json:"plan,omitempty"`
+	// Stage is the stage name within the Plan.
 	Stage string `json:"stage,omitempty"`
 	// Message is additional context (e.g. error details).
 	Message string `json:"message,omitempty"`
@@ -163,7 +163,7 @@ func BuildCloudEvent(event Event, nowMillis int64, nowRFC3339 string) CloudEvent
 	}
 	subject := event.Target
 	if event.Plan != "" && event.Stage != "" {
-		subject = "promotionplan/" + event.Plan + "/stage/" + event.Stage + "/target/" + event.Target
+		subject = "plan/" + event.Plan + "/stage/" + event.Stage + "/target/" + event.Target
 	}
 	return CloudEvent{
 		SpecVersion: "1.0",
@@ -181,7 +181,7 @@ func stableEventID(event Event, typ string, fallbackMillis int64) string {
 	case event.PromotionRun != "":
 		id := "promotionrun/" + event.PromotionRun + "/type/" + typ
 		if event.Plan != "" {
-			id += "/promotionplan/" + event.Plan
+			id += "/plan/" + event.Plan
 		}
 		if event.Stage != "" {
 			id += "/stage/" + event.Stage

@@ -88,7 +88,7 @@ type PluginStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=pluginreg,categories=kapro-all
+// +kubebuilder:resource:scope=Cluster,shortName=plug,categories=kapro-all
 // +kubebuilder:printcolumn:name="Type",type=string,JSONPath=`.spec.type`
 // +kubebuilder:printcolumn:name="Name",type=string,JSONPath=`.spec.name`
 // +kubebuilder:printcolumn:name="Protocol",type=string,JSONPath=`.spec.protocol`

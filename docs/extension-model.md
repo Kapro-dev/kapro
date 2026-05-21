@@ -151,8 +151,8 @@ Kapro controller
     -> external planner plugin
 ```
 
-Runtime registration through `Plugin` is an opt-in API preview.
-When `KAPRO_ENABLE_PLUGIN_GATEWAY=true`, the operator loads ready registrations
+Runtime plugin dispatch through `Plugin` is an opt-in API preview.
+When `KAPRO_ENABLE_PLUGIN_GATEWAY=true`, the operator loads ready plugins
 with fresh observed generation into the actuator, gate, and planner registries.
 Plugin changes are hot-loaded after readiness probes succeed; stale,
 incompatible, and deleted plugins are unloaded.
@@ -164,7 +164,7 @@ API pieces:
 | KAI proto | Language-neutral actuator contract. |
 | KGI proto | Language-neutral gate contract. |
 | KPI proto | Language-neutral planner contract for filtering and ordering targets. |
-| Plugin CRD | Declarative registration of external plugin endpoints. |
+| Plugin CRD | Declarative endpoint for external plugins. |
 | Conformance harnesses | Base checks external plugin authors can run. |
 | PluginGateway | Runtime boundary for enabled contracts, timeout handling, retries, and error normalization. |
 
@@ -236,12 +236,12 @@ Built-in planning behavior:
 | Readiness filter | Filter | Skips targets that explicitly report `Ready=False`. |
 | Active PromotionRun filter | Filter | Skips targets already processing a different PromotionRun. |
 | Deterministic ordering | Score | Keeps stable name-based ordering when scores tie. |
-| Stage strategy | Bind | Enforces `Stage.spec.strategy.maxParallel` before creating new `Target` entries. |
+| Stage strategy | Bind | Enforces stage `strategy.maxParallel` before creating new `Target` entries. |
 
-`Stage.status.plannerResults` records skip and defer reasons so operators can
-see why a target was not bound in the current planning cycle. External planner
-plugins can filter, defer, and score targets, but Kapro still owns
-`Target` creation and PromotionRun state.
+`PromotionRun.status.planProgress[].stageProgress[].plannerResults` records
+skip and defer reasons so operators can see why a target was not bound in the
+current planning cycle. External planner plugins can filter, defer, and score
+targets, but Kapro still owns `Target` creation and PromotionRun state.
 
 ## CRD Rule
 
@@ -254,7 +254,7 @@ Target CRD posture:
 | API surface | Posture |
 |---|---|
 | Existing `Promotion`, `Plan`, `Source`, unit, `Cluster`, `Target`, `Approval`, `Backend`, `Trigger`, and `Policy` CRDs | Core API |
-| `Plugin` | API preview; opt-in hot-loaded runtime registration |
+| `Plugin` | API preview; opt-in hot-loaded runtime dispatch |
 | `Trigger` | API preview with ADR-002 safeguards; OCI controller preview |
 | Notification provider/policy | Add only when shared credential ownership requires it |
 | Metric definition | Add only when metric reuse needs independent ownership |

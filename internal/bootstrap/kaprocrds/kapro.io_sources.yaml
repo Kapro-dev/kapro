@@ -14,9 +14,7 @@ spec:
     listKind: SourceList
     plural: sources
     shortNames:
-    - ps
-    - source
-    - sources
+    - src
     singular: source
   scope: Cluster
   versions:

@@ -18,7 +18,7 @@ import (
 // observed cluster capabilities (node count, K8s version, region heuristics)
 // and a best-effort health summary. The per-cluster RBAC issued during
 // bootstrap (PR-2) only allows writing this cluster's own
-// fleetclusters/status subresource — enforced via resourceNames.
+// clusters/status subresource — enforced via resourceNames.
 //
 // PR-3 scope: capabilities + nodeCount + heartbeat-influenced phase. Real
 // workload health (Pods/Deployments managed by Kapro) is computed in PR-4

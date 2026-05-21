@@ -39,7 +39,7 @@ func TestBuildCloudEvent_StableID(t *testing.T) {
 	first := BuildCloudEvent(event, 100, "2026-05-14T10:00:00Z")
 	second := BuildCloudEvent(event, 200, "2026-05-14T10:00:01Z")
 
-	want := "promotionrun/rel-1/type/kapro.promotionrun.target.converged/promotionplan/main/stage/canary/target/cluster-a/phase/Converged"
+	want := "promotionrun/rel-1/type/kapro.promotionrun.target.converged/plan/main/stage/canary/target/cluster-a/phase/Converged"
 	if first.ID != want {
 		t.Fatalf("CloudEvent ID = %q, want %q", first.ID, want)
 	}

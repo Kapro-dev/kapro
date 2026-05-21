@@ -176,7 +176,7 @@ func writeScaffoldFiles(root string, files map[string]string, force bool) error 
 func greenfieldFiles(opts scaffoldOptions) map[string]string {
 	files := map[string]string{
 		filepath.Join("backends", opts.Backend+".yaml"): renderGreenfieldBackend(opts),
-		filepath.Join("plans", opts.Name+".yaml"):       renderPromotionPlan(opts),
+		filepath.Join("plans", opts.Name+".yaml"):       renderPlan(opts),
 		filepath.Join("README.md"):                      renderGreenfieldReadme(opts),
 		filepath.Join(".gitignore"):                     ".DS_Store\n",
 	}
@@ -344,7 +344,7 @@ spec:
 `, opts.Name, opts.Backend, opts.Registry, opts.Name, opts.Name, opts.Name)
 }
 
-func renderPromotionPlan(opts scaffoldOptions) string {
+func renderPlan(opts scaffoldOptions) string {
 	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
 kind: Plan
 metadata:

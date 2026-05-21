@@ -131,7 +131,7 @@ type DiscoveredBackendObject struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=bp;backend,categories=kapro-all
+// +kubebuilder:resource:scope=Cluster,shortName=be,categories=kapro-all
 // +kubebuilder:printcolumn:name="Driver",type=string,JSONPath=`.spec.driver`
 // +kubebuilder:printcolumn:name="Runtime",type=string,JSONPath=`.spec.runtime`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`

@@ -14,7 +14,7 @@ spec:
     listKind: TriggerList
     plural: triggers
     shortNames:
-    - reltrig
+    - trig
     singular: trigger
   scope: Cluster
   versions:

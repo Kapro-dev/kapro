@@ -47,20 +47,20 @@ groups:
         annotations:
           summary: Kapro Trigger reconciles are failing
           description: Automatic Promotion updates may be blocked by source, signature, cooldown, or status update errors.
-          runbook: docs/operations.md#runbook-blocked-promotiontrigger
+          runbook: docs/operations.md#runbook-blocked-trigger
 
       - alert: KaproRolloutDurationP95High
         expr: |
           histogram_quantile(
             0.95,
-            sum(rate(kapro_stage_duration_seconds_bucket[30m])) by (le, promotionplan)
+            sum(rate(kapro_stage_duration_seconds_bucket[30m])) by (le, plan)
           ) > 3600
         for: 15m
         labels:
           severity: warning
         annotations:
           summary: Kapro rollout stage p95 is above one hour
-          description: Stage duration is above the expected fleet rollout objective for promotionplan {{ $labels.promotionplan }}.
+          description: Stage duration is above the expected fleet rollout objective for plan {{ $labels.plan }}.
           runbook: docs/controller-scalability.md#workqueue-tuning
 
       - alert: KaproControllerReconcileErrors

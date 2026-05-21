@@ -14,7 +14,7 @@ spec:
     listKind: PluginList
     plural: plugins
     shortNames:
-    - pluginreg
+    - plug
     singular: plugin
   scope: Cluster
   versions:

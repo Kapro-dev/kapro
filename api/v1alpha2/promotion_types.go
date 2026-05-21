@@ -26,7 +26,7 @@ type PromotionSpec struct {
 	// from the parent Fleet's inline plan.
 	// +kubebuilder:validation:MaxItems=64
 	// +optional
-	PromotionPlans []PlanRef `json:"plans,omitempty"`
+	Plans []PlanRef `json:"plans,omitempty"`
 	// Scope restricts this Promotion to a subset of the parent fleet.
 	// +optional
 	Scope *PromotionRunScope `json:"scope,omitempty"`

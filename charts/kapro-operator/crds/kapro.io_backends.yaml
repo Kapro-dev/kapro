@@ -14,8 +14,7 @@ spec:
     listKind: BackendList
     plural: backends
     shortNames:
-    - bp
-    - backend
+    - be
     singular: backend
   scope: Cluster
   versions:

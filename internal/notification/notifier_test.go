@@ -173,8 +173,8 @@ func TestDispatcher_Notify_Webhook_SendsCloudEvents(t *testing.T) {
 	if ce["type"] != pkgnotification.EventTargetApplying {
 		t.Errorf("expected type=%s, got %v", pkgnotification.EventTargetApplying, ce["type"])
 	}
-	if ce["subject"] != "promotionplan/main/stage/canary/target/prod" {
-		t.Errorf("expected subject=promotionplan/main/stage/canary/target/prod, got %v", ce["subject"])
+	if ce["subject"] != "plan/main/stage/canary/target/prod" {
+		t.Errorf("expected subject=plan/main/stage/canary/target/prod, got %v", ce["subject"])
 	}
 	if ce["source"] != "/kapro/promotionruns/rel-2" {
 		t.Errorf("expected source=/kapro/promotionruns/rel-2, got %v", ce["source"])

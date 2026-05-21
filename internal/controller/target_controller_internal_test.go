@@ -176,7 +176,7 @@ func TestPromotionTargetReconcilePullOCIRecordsDesiredState(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-oci"},
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "oci://registry.example.com/apps/checkout@sha256:222",
-			PromotionPlans: []kaprov1alpha2.PlanRef{{
+			Plans: []kaprov1alpha2.PlanRef{{
 				Name: "default", Plan: "plan",
 			}},
 		},

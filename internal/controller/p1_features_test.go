@@ -101,7 +101,7 @@ func TestPromotionRunReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetric
 		},
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "v1.0.0",
-			PromotionPlans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha2.PlanRef{
 				{Name: promotionplanRef, Plan: promotionplanName},
 			},
 		},
@@ -238,7 +238,7 @@ func TestPromotionRunReconciler_PromotionRunsForNewMatchingCluster(t *testing.T)
 		ObjectMeta: metav1.ObjectMeta{Name: promotionrunName, Namespace: "default"},
 		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "registry.example.com/bundle@sha256:cccc",
-			PromotionPlans: []kaprov1alpha2.PlanRef{{
+			Plans: []kaprov1alpha2.PlanRef{{
 				Name: "main",
 				Plan: promotionplanName,
 			}},

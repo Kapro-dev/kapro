@@ -4,8 +4,8 @@ This guide walks through the pull-mode registration flow: installing
 `kapro-cluster-controller` on a workload cluster so it self-registers with a
 running Kapro hub via a CSR-based handshake.
 
-If you are using the legacy push-mode flow (where the hub installs Flux on the
-spoke), see [`install.md`](install.md) under "Add a spoke cluster".
+For hub-driven push mode, use `kapro spoke add`; pull mode should use the
+bootstrap flow below.
 
 ## Prerequisites
 

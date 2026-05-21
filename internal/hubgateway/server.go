@@ -213,12 +213,12 @@ func (s *Server) createPromotion(w http.ResponseWriter, r *http.Request) {
 			Labels: req.Labels,
 		},
 		Spec: kaprov1alpha2.PromotionSpec{
-			FleetRef:       req.FleetRef,
-			Version:        req.Version,
-			Versions:       req.Versions,
-			PromotionPlans: req.PromotionPlans,
-			Timeout:        req.Timeout,
-			Suspended:      req.Suspended,
+			FleetRef:  req.FleetRef,
+			Version:   req.Version,
+			Versions:  req.Versions,
+			Plans:     req.Plans,
+			Timeout:   req.Timeout,
+			Suspended: req.Suspended,
 		},
 	}
 	if len(req.Targets) > 0 {
@@ -240,15 +240,15 @@ func (s *Server) createPromotion(w http.ResponseWriter, r *http.Request) {
 }
 
 type CreatePromotionRequest struct {
-	Name           string                  `json:"name"`
-	FleetRef       string                  `json:"fleetRef"`
-	Version        string                  `json:"version,omitempty"`
-	Versions       map[string]string       `json:"versions,omitempty"`
-	PromotionPlans []kaprov1alpha2.PlanRef `json:"plans,omitempty"`
-	Targets        []string                `json:"targets,omitempty"`
-	Timeout        string                  `json:"timeout,omitempty"`
-	Suspended      bool                    `json:"suspended,omitempty"`
-	Labels         map[string]string       `json:"labels,omitempty"`
+	Name      string                  `json:"name"`
+	FleetRef  string                  `json:"fleetRef"`
+	Version   string                  `json:"version,omitempty"`
+	Versions  map[string]string       `json:"versions,omitempty"`
+	Plans     []kaprov1alpha2.PlanRef `json:"plans,omitempty"`
+	Targets   []string                `json:"targets,omitempty"`
+	Timeout   string                  `json:"timeout,omitempty"`
+	Suspended bool                    `json:"suspended,omitempty"`
+	Labels    map[string]string       `json:"labels,omitempty"`
 }
 
 type GraphResponse struct {
@@ -326,7 +326,7 @@ func validateCreatePromotionRequest(req CreatePromotionRequest) error {
 	if errs := validation.IsDNS1123Subdomain(req.FleetRef); len(errs) > 0 {
 		return fmt.Errorf("fleetRef must be a DNS-1123 subdomain: %s", strings.Join(errs, "; "))
 	}
-	if len(req.PromotionPlans) > 64 {
+	if len(req.Plans) > 64 {
 		return fmt.Errorf("plans must contain at most 64 entries")
 	}
 	for unit, version := range req.Versions {
@@ -334,7 +334,7 @@ func validateCreatePromotionRequest(req CreatePromotionRequest) error {
 			return fmt.Errorf("versions must use non-empty unit and version values")
 		}
 	}
-	for i, p := range req.PromotionPlans {
+	for i, p := range req.Plans {
 		if p.Name == "" || p.Plan == "" {
 			return fmt.Errorf("plans[%d].name and plans[%d].plan are required", i, i)
 		}

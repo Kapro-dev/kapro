@@ -7,11 +7,11 @@ Kapro plugins implement one narrow extension contract:
 - KPI: planner plugins filter and order targets before binding.
 
 Built-in actuators, gates, and planners remain the default execution path.
-External plugin runtime registration is an API preview and is enabled explicitly
-with `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. When enabled, the operator registers
-ready actuator, gate, and planner `Plugin` objects after readiness
-probes succeed. Later readiness changes hot-load updated registrations and
-unload registrations that become stale, incompatible, or deleted.
+External plugin runtime dispatch is an API preview and is enabled explicitly
+with `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. When enabled, the operator loads ready
+actuator, gate, and planner `Plugin` objects after readiness probes succeed.
+Later readiness changes hot-load updated plugins and unload plugins that become
+stale, incompatible, or deleted.
 
 Notifications are not a plugin contract. The runtime notification path is
 inline gate configuration; Kapro does not expose separate public notification
@@ -67,7 +67,7 @@ make check-proto
 See `docs/api-stability.md` for the compatibility policy that applies to these
 contracts.
 
-## Registration
+## Plugin Manifests
 
 Plugins are declared with `Plugin`.
 
@@ -86,12 +86,12 @@ spec:
 
 `Plugin` is an API preview. Runtime use requires
 `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. Actuator, gate, and planner
-registrations with `status.ready=true` and fresh `status.observedGeneration` are
+plugins with `status.ready=true` and fresh `status.observedGeneration` are
 loaded into runtime registries.
 
 Only platform administrators should create or update `Plugin`
 objects. A plugin endpoint can influence deployment execution or gate decisions,
-so registration is part of the platform trust boundary. Production plugins
+so plugin ownership is part of the platform trust boundary. Production plugins
 should run behind TLS, use least-privilege Kubernetes RBAC for their backend, and
 store client certificates or CA data in platform-owned Secrets. See
 `docs/rbac-tenancy.md` for the RBAC and tenancy model.
@@ -137,11 +137,11 @@ func TestKAIConformance(t *testing.T) {
 ```
 
 A complete external actuator example is available in
-`examples/plugins/argocd-actuator`, with a sample registration manifest at
+`examples/plugins/argocd-actuator`, with a sample `Plugin` manifest at
 `examples/plugins/argocd-actuator-registration.yaml`. It implements KAI for
 Argo CD Applications by patching `spec.source.targetRevision` and checking
 Argo CD sync and health status for convergence.
-`examples/plugins/argocd-applicationset-actuator`, with a sample registration
+`examples/plugins/argocd-applicationset-actuator`, with a sample `Plugin`
 manifest at `examples/plugins/argocd-applicationset-actuator-registration.yaml`,
 implements the ApplicationSet-based `argo/push` variant by patching
 `spec.template.spec.source.targetRevision` and checking a generated
@@ -169,7 +169,7 @@ func TestKGIConformance(t *testing.T) {
 ```
 
 A gate plugin implementation example is available in
-`examples/plugins/slo-gate`, with a sample registration manifest at
+`examples/plugins/slo-gate`, with a sample `Plugin` manifest at
 `examples/plugins/slo-gate-registration.yaml`. It implements KGI for SLO checks
 using static values or Prometheus instant queries. Reference a runtime gate
 plugin from a gate template with `type: plugin` and `plugin.name` set to
@@ -187,7 +187,7 @@ A planner plugin must:
 - leave binding, retries, and failure policy decisions to Kapro.
 
 Register planner plugins with `spec.type: planner`. Kapro probes ready planner
-registrations and records their status. Built-in planning remains the runtime
+plugins and records their status. Built-in planning remains the runtime
 dispatch path until external planner dispatch is implemented.
 
 Run the base planner conformance harness from your plugin tests:
@@ -201,13 +201,13 @@ func TestKPIConformance(t *testing.T) {
 ```
 
 A planner plugin implementation example is available in
-`examples/plugins/capacity-planner`, with a sample registration manifest at
+`examples/plugins/capacity-planner`, with a sample `Plugin` manifest at
 `examples/plugins/capacity-planner-registration.yaml`. It implements KPI for
 capacity-aware filtering, ordering, and deferring promotion targets.
 
 ## Example Catalog
 
-| Example | Contract | Registration manifest | Runtime status |
+| Example | Contract | `Plugin` manifest | Runtime status |
 |---|---|---|---|
 | `examples/plugins/argocd-actuator` | KAI actuator | `examples/plugins/argocd-actuator-registration.yaml` | Hot-loaded dispatch preview |
 | `examples/plugins/argocd-applicationset-actuator` | KAI actuator | `examples/plugins/argocd-applicationset-actuator-registration.yaml` | Hot-loaded dispatch preview |

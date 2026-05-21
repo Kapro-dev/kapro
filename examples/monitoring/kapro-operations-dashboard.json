@@ -35,7 +35,7 @@
       "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
       "id": 3,
       "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
-      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(kapro_stage_duration_seconds_bucket[30m])) by (le, promotionplan))", "legendFormat": "{{promotionplan}}", "refId": "A"}],
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(kapro_stage_duration_seconds_bucket[30m])) by (le, plan))", "legendFormat": "{{plan}}", "refId": "A"}],
       "title": "Rollout Duration p95",
       "type": "stat"
     },

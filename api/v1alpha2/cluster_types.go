@@ -12,7 +12,7 @@ import (
 // registered workload cluster. Written by kapro-cluster-controller at bootstrap
 // time and refreshed on each heartbeat.
 //
-// Platform engineers and promotionplan authors can reference these fields in stage
+// Platform engineers and plan authors can reference these fields in stage
 // selectors for cloud-aware, GPU-aware, and compliance-aware delivery waves.
 //
 // Example stage selector:
@@ -416,7 +416,7 @@ type ClusterStatus struct {
 
 // ClusterHeartbeatStatus surfaces *why* Ready is what it is. Operators
 // debugging a stuck cluster should be able to answer "how many misses, since
-// when, what reason" from `kubectl get fleetcluster -o yaml` alone.
+// when, what reason" from `kubectl get cluster -o yaml` alone.
 type ClusterHeartbeatStatus struct {
 	// ObservedAt is when the reconciler last computed reachability. Always
 	// recent (≤ one reconcile interval). Distinct from LeaseObservedAt, which
@@ -523,7 +523,7 @@ func (s *ClusterStatus) IsHeartbeatFresh(timeout time.Duration) bool {
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=mc;fc,categories=kapro-all
+// +kubebuilder:resource:scope=Cluster,shortName=cl,categories=kapro-all
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Registered",type=string,JSONPath=`.status.conditions[?(@.type=="Registered")].status`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`

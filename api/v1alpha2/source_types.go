@@ -195,7 +195,7 @@ type SourceOverride struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
-// +kubebuilder:resource:scope=Cluster,shortName=ps;source;sources,categories=kapro-all
+// +kubebuilder:resource:scope=Cluster,shortName=src,categories=kapro-all
 // +kubebuilder:printcolumn:name="Units",type=integer,JSONPath=`.metadata.annotations.kapro\.io/unit-count`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 

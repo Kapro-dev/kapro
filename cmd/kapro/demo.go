@@ -24,9 +24,9 @@ func newDemoCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "demo",
 		Short: "Run a local Kapro demo on a kind cluster",
-		Long: `Creates a kind cluster, installs CRDs, and sets up a demo promotionrun
+		Long: `Creates a kind cluster, installs CRDs, and sets up a demo PromotionRun
 with 3 simulated clusters (canary, prod-eu-west, prod-eu-east) and a
-progressive delivery promotionplan.
+progressive delivery plan.
 
 After the demo starts, try:
   kapro get promotionruns
@@ -169,7 +169,7 @@ func runDemo(ctx context.Context) error {
 				{Name: "prod-eu-west", Labels: map[string]string{"tier": "prod", "region": "eu-west"}},
 				{Name: "prod-eu-east", Labels: map[string]string{"tier": "prod", "region": "eu-east"}},
 			},
-			Plan: kaprov1alpha2.KaproPromotionPlan{
+			Plan: kaprov1alpha2.KaproPlan{
 				Stages: []kaprov1alpha2.StageSpec{
 					{Name: "canary", Selector: map[string]string{"tier": "canary"}},
 					{Name: "prod", Selector: map[string]string{"tier": "prod"},
@@ -196,12 +196,12 @@ func runDemo(ctx context.Context) error {
 		}
 	}
 
-	// Create a compatibility PromotionRun to trigger the promotionplan.
+	// Create a compatibility PromotionRun to trigger the plan.
 	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "platform-v5.28"},
 		Spec: kaprov1alpha2.PromotionRunSpec{
-			Version:        "sha256:abc123",
-			PromotionPlans: []kaprov1alpha2.PlanRef{{Name: "initial", Plan: "demo-promotionplan"}},
+			Version: "sha256:abc123",
+			Plans:   []kaprov1alpha2.PlanRef{{Name: "initial", Plan: "demo-plan"}},
 		},
 	}
 	if err := c.Create(ctx, promotionrun); err != nil && !isAlreadyExists(err) {
@@ -221,7 +221,7 @@ func runDemo(ctx context.Context) error {
 	tbl.AddRow("  Cluster", "canary-eu", "tier=canary (generated on hub)")
 	tbl.AddRow("  Cluster", "prod-eu-west", "tier=prod (generated on hub)")
 	tbl.AddRow("  Cluster", "prod-eu-east", "tier=prod (generated on hub)")
-	tbl.AddRow("  Plan", "demo-promotionplan", "canary → prod (generated on hub)")
+	tbl.AddRow("  Plan", "demo-plan", "canary → prod (generated on hub)")
 	tbl.AddRow("  ResourceSet", "demo-workloads", "4 HelmReleases × 3 clusters (hub)")
 	tbl.AddRow("PromotionRun", "platform-v5.28", "triggers plan")
 	tbl.Render()

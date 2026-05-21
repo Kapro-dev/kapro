@@ -83,8 +83,8 @@ func decisionFixtures() (*kaprov1alpha2.PromotionRun, *kaprov1alpha2.Cluster, *k
 	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", UID: "uid-1"},
 		Spec: kaprov1alpha2.PromotionRunSpec{
-			Version:        "registry.example.com/myapp@sha256:v1",
-			PromotionPlans: []kaprov1alpha2.PlanRef{{Name: "main", Plan: "std-promotionplan"}},
+			Version: "registry.example.com/myapp@sha256:v1",
+			Plans:   []kaprov1alpha2.PlanRef{{Name: "main", Plan: "std-plan"}},
 		},
 		Status: kaprov1alpha2.PromotionRunStatus{
 			Phase:     kaprov1alpha2.PromotionRunPhaseProgressing,
@@ -105,8 +105,8 @@ func decisionFixtures() (*kaprov1alpha2.PromotionRun, *kaprov1alpha2.Cluster, *k
 			Health:        kaprov1alpha2.ClusterHealth{AllWorkloadsReady: true, ReadyWorkloads: 5, TotalWorkloads: 5},
 		},
 	}
-	promotionplan := &kaprov1alpha2.Plan{
-		ObjectMeta: metav1.ObjectMeta{Name: "std-promotionplan"},
+	plan := &kaprov1alpha2.Plan{
+		ObjectMeta: metav1.ObjectMeta{Name: "std-plan"},
 		Spec: kaprov1alpha2.PlanSpec{
 			Stages: []kaprov1alpha2.Stage{
 				{Name: "canary", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}}},
@@ -128,7 +128,7 @@ func decisionFixtures() (*kaprov1alpha2.PromotionRun, *kaprov1alpha2.Cluster, *k
 			TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseWaitingApproval},
 		},
 	}
-	return promotionrun, mc, promotionplan, target
+	return promotionrun, mc, plan, target
 }
 
 // --- Fleet endpoint ---
@@ -319,8 +319,8 @@ func TestDecisionAPI_RequiresRBAC(t *testing.T) {
 // --- PromotionRun Context endpoint ---
 
 func TestPromotionRunContext_ReturnsPromotionRunAndTargets(t *testing.T) {
-	promotionrun, mc, promotionplan, target := decisionFixtures()
-	s := decisionTestServer(t, promotionrun, mc, promotionplan, target)
+	promotionrun, mc, plan, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, mc, plan, target)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/promotionruns/rel-1/context", nil)
 	authorizeDecisionRequest(req)
@@ -338,7 +338,7 @@ func TestPromotionRunContext_ReturnsPromotionRunAndTargets(t *testing.T) {
 		t.Errorf("expected promotionrun rel-1, got %s", resp.PromotionRun.Name)
 	}
 	if resp.Plan == nil {
-		t.Error("expected promotionplan to be resolved")
+		t.Error("expected plan to be resolved")
 	}
 	if !strings.Contains(rec.Body.String(), `"plan"`) || strings.Contains(rec.Body.String(), `"promotionplan"`) {
 		t.Fatalf("context JSON should use plan key, got: %s", rec.Body.String())
@@ -349,7 +349,7 @@ func TestPromotionRunContext_ReturnsPromotionRunAndTargets(t *testing.T) {
 }
 
 func TestPromotionRunContext_FiltersTargetsWithLimit(t *testing.T) {
-	promotionrun, _, promotionplan, target := decisionFixtures()
+	promotionrun, _, plan, target := decisionFixtures()
 	completeTarget := target.DeepCopy()
 	completeTarget.Name = "rel-1-canary-cluster-b"
 	completeTarget.Spec.Target = "cluster-b"
@@ -359,7 +359,7 @@ func TestPromotionRunContext_FiltersTargetsWithLimit(t *testing.T) {
 	otherRunTarget.Name = "rel-2-canary-cluster-a"
 	otherRunTarget.Spec.PromotionRunRef = "rel-2"
 
-	s := decisionTestServer(t, promotionrun, promotionplan, completeTarget, target, otherRunTarget)
+	s := decisionTestServer(t, promotionrun, plan, completeTarget, target, otherRunTarget)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/promotionruns/rel-1/context?limit=1&phase=WaitingApproval", nil)
 	authorizeDecisionRequest(req)
@@ -907,8 +907,8 @@ func TestOverride_MissingFields(t *testing.T) {
 // --- Router ---
 
 func TestRouter_DispatchesCorrectly(t *testing.T) {
-	promotionrun, mc, promotionplan, target := decisionFixtures()
-	s := decisionTestServer(t, promotionrun, mc, promotionplan, target)
+	promotionrun, mc, plan, target := decisionFixtures()
+	s := decisionTestServer(t, promotionrun, mc, plan, target)
 
 	mux := http.NewServeMux()
 	s.RegisterDecisionAPI(mux)

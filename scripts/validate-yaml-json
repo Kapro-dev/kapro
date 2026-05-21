@@ -70,6 +70,13 @@ STALE_KUBECTL_RESOURCES = %w[
   promotiontrigger
   promotiontriggers
 ].freeze
+STALE_MONITORING_TEXT = %w[
+  kapro_promotiontrigger
+  kapro_pluginregistration
+  $labels.promotiontrigger
+  $labels.pluginregistration
+  runbook-blocked-promotiontrigger
+].freeze
 
 def matching_files(patterns)
   files = []
@@ -156,6 +163,17 @@ def check_script_kubectl_resources(path)
   failures
 end
 
+def check_monitoring_public_names(path)
+  return [] unless path.start_with?("examples/monitoring/")
+
+  text = File.read(path)
+  failures = []
+  STALE_MONITORING_TEXT.each do |stale|
+    failures << "#{path}: stale monitoring public name #{stale.inspect}" if text.include?(stale)
+  end
+  failures
+end
+
 failures = []
 begin
   yaml_files = matching_files(YAML_PATTERNS)
@@ -169,12 +187,14 @@ end
 yaml_files.each do |path|
   validate_yaml(path)
   failures.concat(check_kapro_yaml(path))
+  failures.concat(check_monitoring_public_names(path))
 rescue Psych::Exception => e
   failures << "#{path}: #{e.message}"
 end
 
 json_files.each do |path|
   validate_json(path)
+  failures.concat(check_monitoring_public_names(path))
 rescue JSON::ParserError => e
   failures << "#{path}: #{e.message}"
 end

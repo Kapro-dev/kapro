@@ -247,7 +247,7 @@ func resolveDefaultComputeSA(ctx context.Context, project string, ts oauth2.Toke
 	crmService, err := cloudresourcemanager.NewService(ctx, option.WithTokenSource(ts))
 	if err != nil {
 		// Try IAM-based resolution.
-		return resolveDefaultComputeSAFromIAM(ctx, project)
+		return resolveDefaultComputeSAFromIAM(ctx, project, ts)
 	}
 	p, err := crmService.Projects.Get(project).Do()
 	if err != nil {
@@ -257,8 +257,8 @@ func resolveDefaultComputeSA(ctx context.Context, project string, ts oauth2.Toke
 }
 
 // resolveDefaultComputeSAFromIAM tries to find the default compute SA via IAM API.
-func resolveDefaultComputeSAFromIAM(ctx context.Context, project string) (string, error) {
-	iamService, err := iam.NewService(ctx)
+func resolveDefaultComputeSAFromIAM(ctx context.Context, project string, ts oauth2.TokenSource) (string, error) {
+	iamService, err := iam.NewService(ctx, option.WithTokenSource(ts))
 	if err != nil {
 		return "", fmt.Errorf("create IAM client: %w", err)
 	}
@@ -278,9 +278,7 @@ func resolveDefaultComputeSAFromIAM(ctx context.Context, project string) (string
 
 // grantIAMRole adds an IAM binding to a project. Idempotent — skips if already bound.
 func grantIAMRole(ctx context.Context, project string, ts oauth2.TokenSource, member, role string) error {
-	_ = ts
-
-	crmService, err := cloudresourcemanager.NewService(ctx)
+	crmService, err := cloudresourcemanager.NewService(ctx, option.WithTokenSource(ts))
 	if err != nil {
 		return fmt.Errorf("create CRM client: %w", err)
 	}

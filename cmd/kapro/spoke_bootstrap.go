@@ -281,7 +281,7 @@ func writeSpokeSecret(path string, hubSecret *corev1.Secret, spokeNS, spokeName,
 			Name:      spokeName,
 			Namespace: spokeNS,
 			Labels: map[string]string{
-				"kapro.io/fleetcluster":        clusterName,
+				"kapro.io/cluster":             clusterName,
 				"app.kubernetes.io/managed-by": "kapro-cluster-controller",
 			},
 		},

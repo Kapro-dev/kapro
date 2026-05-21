@@ -74,8 +74,6 @@ Examples:
 
 	cmd.Flags().StringVar(&sourceRef, "source", "", "Advanced Source CR name")
 	cmd.Flags().StringVar(&fleetName, "fleet", "", "Fleet artifact name; when --source is omitted, also the Fleet CR name")
-	cmd.Flags().StringVar(&fleetName, "kapro", "", "Deprecated alias for --fleet")
-	_ = cmd.Flags().MarkHidden("kapro")
 	cmd.Flags().StringVar(&version, "version", "", "Artifact version / OCI tag (required)")
 	cmd.Flags().StringVar(&registry, "registry", "", "OCI registry URL (required for --push)")
 	cmd.Flags().StringVar(&outputDir, "output", "", "Output directory (default: temp dir, printed to stdout)")

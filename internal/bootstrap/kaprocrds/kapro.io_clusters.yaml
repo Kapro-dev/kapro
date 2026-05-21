@@ -14,8 +14,7 @@ spec:
     listKind: ClusterList
     plural: clusters
     shortNames:
-    - mc
-    - fc
+    - cl
     singular: cluster
   scope: Cluster
   versions:

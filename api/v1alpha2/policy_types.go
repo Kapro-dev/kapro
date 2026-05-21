@@ -226,7 +226,7 @@ type PolicyStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=agp,categories=kapro-all
+// +kubebuilder:resource:scope=Cluster,shortName=pol,categories=kapro-all
 // +kubebuilder:printcolumn:name="Mode",type=string,JSONPath=`.spec.mode`
 // +kubebuilder:printcolumn:name="SA",type=string,JSONPath=`.spec.identity.serviceAccountName`
 // +kubebuilder:printcolumn:name="Priority",type=integer,JSONPath=`.spec.priority`

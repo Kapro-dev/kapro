@@ -14,7 +14,7 @@ spec:
     listKind: TargetList
     plural: targets
     shortNames:
-    - relt
+    - tgt
     singular: target
   scope: Cluster
   versions:

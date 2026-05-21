@@ -10,7 +10,7 @@
 //
 // Optional/advanced user-authored CRDs:
 //   - Plan  — reusable promotion template composed of ordered stages,
-//     referenced from Promotion.spec.promotionPlans (override)
+//     referenced from Promotion.spec.plans (override)
 //     or Fleet.spec.plan (inline default).
 //   - Source — reusable promotion unit catalog (shared across Fleet objects)
 //   - Trigger — safe-by-default autonomous Promotion creation from verified artifacts

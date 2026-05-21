@@ -57,7 +57,7 @@ The operator currently registers these Kapro-specific metric names:
 | `kapro_spoke_reconciles_skipped_total` | Counter | none | Spoke reconciles skipped because the spec did not change. |
 | `kapro_plugin_probe_results_total` | Counter | `type`, `result`, `reason` | Plugin capability probe results. |
 | `kapro_plugin_probe_duration_seconds` | Histogram | `type`, `result` | Plugin capability probe latency. |
-| `kapro_plugin_probe_ready` | Gauge | `type`, `name` | Latest plugin probe readiness by registration. |
+| `kapro_plugin_probe_ready` | Gauge | `type`, `name` | Latest plugin readiness by type and name. |
 | `kapro_plugin_runtime_calls_total` | Counter | `type`, `name`, `method`, `result` | Runtime plugin adapter call results. |
 | `kapro_plugin_runtime_call_duration_seconds` | Histogram | `type`, `name`, `method`, `result` | Runtime plugin adapter call latency. |
 | `kapro_plugin_runtime_registered` | Gauge | `type` | Startup-time registered plugin adapters by plugin type. |

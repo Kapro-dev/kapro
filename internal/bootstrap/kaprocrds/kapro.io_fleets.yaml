@@ -14,7 +14,7 @@ spec:
     listKind: FleetList
     plural: fleets
     shortNames:
-    - kp
+    - flt
     singular: fleet
   scope: Cluster
   versions:

@@ -105,7 +105,7 @@ var (
 			Help:      "Duration in seconds from stage Pending to Complete.",
 			Buckets:   prometheus.ExponentialBuckets(30, 2, 10), // 30s → ~8h
 		},
-		[]string{"promotionplan"},
+		[]string{"plan"},
 	)
 
 	// ActivePromotionRuns tracks the current number of non-terminal PromotionRuns.
@@ -219,41 +219,41 @@ var (
 		[]string{"type"},
 	)
 
-	// FleetClusterHeartbeatMisses is the current consecutive-miss count per
-	// FleetCluster. Mirrors status.heartbeat.consecutiveMisses. Resets to 0 on
+	// ClusterHeartbeatMisses is the current consecutive-miss count per
+	// Cluster. Mirrors status.heartbeat.consecutiveMisses. Resets to 0 on
 	// every fresh observation. Compared against per-cluster
 	// spec.consecutiveFailureThreshold by the reconciler.
 	FleetClusterHeartbeatMisses = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "kapro",
-			Subsystem: "fleetcluster",
+			Subsystem: "cluster",
 			Name:      "heartbeat_misses",
-			Help:      "Current consecutive heartbeat misses per FleetCluster.",
+			Help:      "Current consecutive heartbeat misses per Cluster.",
 		},
 		[]string{"cluster"},
 	)
 
-	// FleetClusterUnreachableTransitions counts transitions to
+	// ClusterUnreachableTransitions counts transitions to
 	// Ready=False reason=Unreachable. Use this for alerting on cluster
 	// outages: rate over 5m > 0 = paging signal.
 	FleetClusterUnreachableTransitions = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "kapro",
-			Subsystem: "fleetcluster",
+			Subsystem: "cluster",
 			Name:      "unreachable_transitions_total",
-			Help:      "Total transitions to Ready=False reason=Unreachable per FleetCluster.",
+			Help:      "Total transitions to Ready=False reason=Unreachable per Cluster.",
 		},
 		[]string{"cluster"},
 	)
 
-	// FleetClusterRecoveredTransitions counts transitions out of Unreachable
-	// back to Ready=True. Inverse signal to FleetClusterUnreachableTransitions.
+	// ClusterRecoveredTransitions counts transitions out of Unreachable
+	// back to Ready=True. Inverse signal to ClusterUnreachableTransitions.
 	FleetClusterRecoveredTransitions = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "kapro",
-			Subsystem: "fleetcluster",
+			Subsystem: "cluster",
 			Name:      "recovered_transitions_total",
-			Help:      "Total transitions from Unreachable back to Ready=True per FleetCluster.",
+			Help:      "Total transitions from Unreachable back to Ready=True per Cluster.",
 		},
 		[]string{"cluster"},
 	)
