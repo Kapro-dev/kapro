@@ -282,7 +282,7 @@ Symptoms:
 
 - `KaproGateFailureRateHigh` fires.
 - A Target is in `MetricsCheck`, `Verification`, or `Failed`.
-- `status.gates[]` shows `Failed`, `Running`, or repeated `Inconclusive`.
+- `Target.status.gates[]` shows `Failed`, `Running`, or repeated `Inconclusive`.
 
 Triage:
 
@@ -305,7 +305,7 @@ Triage:
    Prometheus endpoint configured in the gate. Confirm the query returns a
    non-zero pass value for the same window.
 
-4. For template gates, check `status.gates[].attempts`,
+4. For template gates, check `Target.status.gates[].attempts`,
    `failurePolicy`, `inconclusivePolicy`, `timeout`, and backend logs for job,
    webhook, or plugin implementations.
 

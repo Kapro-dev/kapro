@@ -89,13 +89,14 @@ Enable runtime plugin loading in the Kapro operator with:
 
 ```bash
 KAPRO_ENABLE_PLUGIN_GATEWAY=true
+KAPRO_CONTROLLERS=fleet,plan,promotion,promotionrun,cluster,plugin
 ```
 
-The operator only registers `Plugin` objects that are already
-`status.ready=true` with a fresh `observedGeneration` when the operator starts.
-Apply the `Plugin`, wait for the readiness probe to mark it ready,
-then start or restart the Kapro operator. Registrations are not hot-loaded after
-startup.
+The operator hot-loads ready `Plugin` objects with a fresh
+`observedGeneration` when the plugin gateway is enabled and the `plugin`
+controller is running. Apply the `Plugin`, wait for the readiness probe to mark
+it ready, then reference it from a gate template. Later readiness changes are
+loaded without restarting the operator.
 
 ## Verify
 

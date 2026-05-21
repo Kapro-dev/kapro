@@ -101,7 +101,8 @@ exposed deliberately:
 | Backend readiness controller | Disabled | Built-in `flux`, `argo`, and `oci` Backend specs can be referenced without this controller. Add `backend` to `controllers` when external backend readiness or backend-native discovery status is needed. |
 | Approval controller | Disabled | Add `approval` to `controllers` when human approval objects should unblock gates. |
 | Trigger controller | Disabled | Add `trigger` to `controllers` for autonomous artifact-driven promotions. |
-| Plugin gateway runtime dispatch | Disabled | `pluginGateway.enabled=true` plus installed plugin services and `Plugin` objects. |
+| Plugin controller | Disabled | Add `plugin` to `controllers` so `Plugin.status` readiness is reconciled. |
+| Plugin gateway runtime dispatch | Disabled | `pluginGateway.enabled=true` plus `plugin` in `controllers`, installed plugin services, and `Plugin` objects. |
 | Hub Gateway service exposure | Internal only | `hubGateway.service.enabled=true`; place Kubernetes authn/authz or an identity-aware proxy in front of production exposure. |
 | Spoke CSR bootstrap controller | Disabled | Add `cluster-bootstrap` to `controllers` and set `hubAPIURL` to the hub API server URL reachable from spokes. |
 | Fleet auto-import providers beyond GCP | Stubbed | Use `ClusterTemplate` only for implemented sources; unsupported sources report `SourceNotImplemented`. |
@@ -305,7 +306,8 @@ helm upgrade --install kapro \
   "${KAPRO_CHART}" \
   --namespace kapro-system \
   --create-namespace \
-  --set pluginGateway.enabled=true
+  --set pluginGateway.enabled=true \
+  --set controllers='{fleet,plan,promotion,promotionrun,cluster,plugin}'
 ```
 
 Install your plugin service, then apply a `Plugin` manifest such as:
@@ -314,10 +316,10 @@ Install your plugin service, then apply a `Plugin` manifest such as:
 kubectl apply -f examples/plugins/slo-gate-registration.yaml
 ```
 
-The operator probes `Plugin` objects continuously. Ready plugins with a fresh
-`status.observedGeneration` are hot-loaded into the actuator, gate, and planner
-registries; stale, incompatible, or deleted plugins are unloaded without
-restarting the operator.
+The `plugin` controller probes `Plugin` objects continuously. Ready plugins
+with a fresh `status.observedGeneration` are hot-loaded into the actuator, gate,
+and planner registries when the gateway is enabled; stale, incompatible, or
+deleted plugins are unloaded without restarting the operator.
 
 ```bash
 kubectl get plugins.kapro.io

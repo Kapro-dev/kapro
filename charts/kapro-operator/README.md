@@ -83,7 +83,8 @@ helm upgrade --install kapro \
   https://github.com/Kapro-dev/kapro/releases/download/v0.1.2/kapro-operator-0.1.2.tgz \
   --namespace kapro-system \
   --create-namespace \
-  --set pluginGateway.enabled=true
+  --set pluginGateway.enabled=true \
+  --set controllers='{fleet,plan,promotion,promotionrun,cluster,plugin}'
 ```
 
 Then install your plugin service and apply a registration, for example:
@@ -106,7 +107,8 @@ Preview surfaces are explicit opt-ins or spec-only APIs:
 | Backend readiness controller | Disabled | Add `backend` to `controllers` |
 | Approval controller | Disabled | Add `approval` to `controllers` |
 | Trigger controller | Disabled | Add `trigger` to `controllers` |
-| Runtime plugin gateway | Disabled | `--set pluginGateway.enabled=true` |
+| Plugin controller | Disabled | Add `plugin` to `controllers` |
+| Runtime plugin gateway | Disabled | `--set pluginGateway.enabled=true` plus `plugin` in `controllers` |
 | Hub Gateway Service | Internal listener only | `--set hubGateway.service.enabled=true` and place Kubernetes authn/authz or an identity proxy in front |
 | Spoke CSR bootstrap controller | Disabled | Add `cluster-bootstrap` to `controllers` and set `hubAPIURL` |
 | Inline gate notifications | Runtime | No separate public notification provider/policy CRDs |

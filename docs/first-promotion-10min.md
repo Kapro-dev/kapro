@@ -96,7 +96,8 @@ kubectl describe target <target-name>
 Look for:
 
 - target phase progression;
-- target summary counts on the PromotionRun;
+- aggregate target counts in `PromotionRun.status.summary`;
+- per-target detail in child `Target` objects;
 - backend convergence messages, when spoke delivery is wired;
 - gate evidence or approval wait state, if you later add gates to the Plan.
 
