@@ -24,7 +24,7 @@ import (
 // already know. The envelope keys (`promotion`, `promotionRuns`,
 // `promotionTargets`, `events`, `blockedOn`, `suggestedNextActions`)
 // are the stable contract; the embedded types track their own
-// versioning policy (api/v1alpha1 stability via ADRs).
+// versioning policy (api/v1alpha2 stability via ADRs).
 type promotionDiag struct {
 	Promotion *kaprov1alpha2.Promotion        `json:"promotion"`
 	Runs      []kaprov1alpha2.PromotionRun    `json:"promotionRuns"`

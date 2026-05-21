@@ -87,7 +87,7 @@ type Event struct {
 }
 
 // NotificationPolicy carries the notification routing config for a delivery operation.
-// It is a plain value type — no dependency on api/v1alpha1 CRD types.
+// It is a plain value type — no dependency on api/v1alpha2 CRD types.
 //
 // The promotionrun controller converts *GatePolicy → NotificationPolicy using
 // notificationPolicyFrom() before calling Notify. External Notifier

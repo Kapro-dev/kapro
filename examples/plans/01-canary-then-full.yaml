@@ -8,7 +8,7 @@
 #   kapro.io/tier=canary       (exactly one cluster)
 #   kapro.io/tier=production   (the rest of the fleet)
 apiVersion: kapro.io/v1alpha2
-kind: PromotionPlan
+kind: Plan
 metadata:
   name: canary-then-full
 spec:

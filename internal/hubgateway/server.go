@@ -336,13 +336,13 @@ func validateCreatePromotionRequest(req CreatePromotionRequest) error {
 	}
 	for i, p := range req.PromotionPlans {
 		if p.Name == "" || p.Plan == "" {
-			return fmt.Errorf("promotionPlans[%d].name and promotionPlans[%d].promotionplan are required", i, i)
+			return fmt.Errorf("promotionPlans[%d].name and promotionPlans[%d].plan are required", i, i)
 		}
 		if errs := validation.IsDNS1123Subdomain(p.Name); len(errs) > 0 {
 			return fmt.Errorf("promotionPlans[%d].name must be a DNS-1123 subdomain: %s", i, strings.Join(errs, "; "))
 		}
 		if errs := validation.IsDNS1123Subdomain(p.Plan); len(errs) > 0 {
-			return fmt.Errorf("promotionPlans[%d].promotionplan must be a DNS-1123 subdomain: %s", i, strings.Join(errs, "; "))
+			return fmt.Errorf("promotionPlans[%d].plan must be a DNS-1123 subdomain: %s", i, strings.Join(errs, "; "))
 		}
 	}
 	if req.Timeout != "" {

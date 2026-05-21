@@ -178,7 +178,7 @@ kind: Promotion
 metadata:
   name: a
 spec:
-  kaproRef: k
+  fleetRef: k
   version: v1
   timeout: 30m
 ---
@@ -187,7 +187,7 @@ kind: Promotion
 metadata:
   name: b
 spec:
-  kaproRef: k
+  fleetRef: k
   # missing version
 `))
 	// First doc: clean.
@@ -391,7 +391,7 @@ kind: Promotion
 metadata:
   name: ok
 spec:
-  kaproRef: k
+  fleetRef: k
   version: v1
   timeout: 30m
 `))

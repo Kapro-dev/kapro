@@ -220,7 +220,7 @@ func LintPromotion(p *kaprov1alpha2.Promotion) []Issue {
 		out = append(out, errAt("metadata.name", "Promotion requires a name"))
 	}
 	if p.Spec.FleetRef == "" {
-		out = append(out, errAt("spec.kaproRef", "kaproRef is required"))
+		out = append(out, errAt("spec.fleetRef", "fleetRef is required"))
 	}
 	if p.Spec.Version == "" && len(p.Spec.Versions) == 0 {
 		out = append(out, errAt("spec.version / spec.versions",

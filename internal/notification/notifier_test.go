@@ -12,7 +12,7 @@ import (
 	pkgnotification "kapro.io/kapro/pkg/notification"
 )
 
-// helpers — build NotificationPolicy values without any api/v1alpha1 import.
+// helpers — build NotificationPolicy values without any api/v1alpha2 import.
 func slackPolicy(url string) pkgnotification.NotificationPolicy {
 	return pkgnotification.NotificationPolicy{
 		Channels: []pkgnotification.Channel{{Type: "slack", Target: url}},

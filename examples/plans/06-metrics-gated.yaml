@@ -11,7 +11,7 @@
 #   kapro.io/tier=canary
 #   kapro.io/tier=production
 apiVersion: kapro.io/v1alpha2
-kind: PromotionPlan
+kind: Plan
 metadata:
   name: metrics-gated
 spec:

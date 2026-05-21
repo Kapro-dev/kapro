@@ -113,7 +113,7 @@ spec:
                     type: object
                   fleetRef:
                     description: |-
-                      KaproRef is the name of the parent Fleet fleet the managed Promotion
+                      FleetRef is the name of the parent Fleet the managed Promotion
                       targets. Required; the PromotionController uses it to resolve the
                       inline plan and clusters.
                     minLength: 1

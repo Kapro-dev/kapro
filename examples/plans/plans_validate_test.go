@@ -1,7 +1,7 @@
 // Package plans_test ensures the reference Plan library
-// parses cleanly into the v1alpha1 Go types. It is the cheapest
+// parses cleanly into the v1alpha2 Go types. It is the cheapest
 // possible canary that catches schema drift between the documentation
-// (these YAMLs) and the CRD source-of-truth (api/v1alpha1).
+// (these YAMLs) and the CRD source-of-truth (api/v1alpha2).
 package plans_test
 
 import (

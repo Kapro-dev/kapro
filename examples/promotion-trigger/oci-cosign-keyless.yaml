@@ -1,5 +1,5 @@
 apiVersion: kapro.io/v1alpha2
-kind: PromotionPlan
+kind: Plan
 metadata:
   name: checkout-cosign-keyless
 spec:

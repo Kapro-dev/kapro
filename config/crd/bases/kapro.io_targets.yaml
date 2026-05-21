@@ -25,7 +25,7 @@ spec:
     - jsonPath: .spec.target
       name: Target
       type: string
-    - jsonPath: .spec.planRef
+    - jsonPath: .spec.promotionPlanRef
       name: Plan
       type: string
     - jsonPath: .spec.stage

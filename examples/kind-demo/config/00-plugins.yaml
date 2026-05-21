@@ -1,5 +1,5 @@
 apiVersion: kapro.io/v1alpha2
-kind: BackendProfile
+kind: Backend
 metadata:
   name: flux
 spec:
@@ -7,7 +7,7 @@ spec:
   runtime: Hub
 ---
 apiVersion: kapro.io/v1alpha2
-kind: PluginRegistration
+kind: Plugin
 metadata:
   name: kind-demo-capacity-planner
 spec:
@@ -20,7 +20,7 @@ spec:
     note: static demo registration; no plugin server is started
 ---
 apiVersion: kapro.io/v1alpha2
-kind: PluginRegistration
+kind: Plugin
 metadata:
   name: kind-demo-slo-gate
 spec:
@@ -33,7 +33,7 @@ spec:
     note: static demo registration; built-in gates drive this demo
 ---
 apiVersion: kapro.io/v1alpha2
-kind: PluginRegistration
+kind: Plugin
 metadata:
   name: kind-demo-actuator
 spec:

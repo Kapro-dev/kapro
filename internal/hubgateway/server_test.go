@@ -40,7 +40,7 @@ func TestGraphIncludesBackendProfiles(t *testing.T) {
 
 func TestCreatePromotion(t *testing.T) {
 	c := testClient(t)
-	body := bytes.NewBufferString(`{"name":"checkout-1","fleetRef":"checkout","version":"1.2.3","promotionPlans":[{"name":"main","promotionplan":"checkout"}]}`)
+	body := bytes.NewBufferString(`{"name":"checkout-1","fleetRef":"checkout","version":"1.2.3","promotionPlans":[{"name":"main","plan":"checkout"}]}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/promotions", body)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -247,7 +247,7 @@ func TestGraphRejectsUnknownResource(t *testing.T) {
 
 func TestCreatePromotionRejectsUnknownFields(t *testing.T) {
 	c := testClient(t)
-	body := bytes.NewBufferString(`{"name":"checkout-1","fleetRef":"checkout","version":"1.2.3","promotionPlans":[{"name":"main","promotionplan":"checkout"}],"extra":true}`)
+	body := bytes.NewBufferString(`{"name":"checkout-1","fleetRef":"checkout","version":"1.2.3","promotionPlans":[{"name":"main","plan":"checkout"}],"extra":true}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/promotions", body)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()

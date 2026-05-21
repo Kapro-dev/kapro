@@ -48,7 +48,7 @@ The standalone manifest is `examples/plugins/slo-gate-registration.yaml`.
 
 ```yaml
 apiVersion: kapro.io/v1alpha1
-kind: PluginRegistration
+kind: Plugin
 metadata:
   name: slo-gate
 spec:

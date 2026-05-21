@@ -13,7 +13,7 @@
 # operator's job. Kapro tells you "the candidate is healthy and an
 # operator approved it" — your network layer does the rest.
 apiVersion: kapro.io/v1alpha2
-kind: PromotionPlan
+kind: Plan
 metadata:
   name: blue-green
 spec:
