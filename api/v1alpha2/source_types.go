@@ -78,7 +78,6 @@ type SourceDefaults struct {
 	ValuesFrom []ValuesReference `json:"valuesFrom,omitempty"`
 	// Values are base Helm values applied to every unit (deep-merged with unit values).
 	// +optional
-	// +optional
 	// +kubebuilder:pruning:PreserveUnknownFields
 	Values *apiextensionsv1.JSON `json:"values,omitempty"`
 }
@@ -106,10 +105,10 @@ type Unit struct {
 	// VersionField does not already include a file path.
 	// +optional
 	SourcePath string `json:"sourcePath,omitempty"`
-	// Version is the default chart/revision for the unit at install time.
-	// This is the package/catalog default; the per-rollout target version
-	// comes from PromotionRun.spec.version (or --version on `kapro promote`)
-	// and is what advances the unit through the fleet.
+	// Version is the default chart/revision for the unit at install time. This is
+	// the package/catalog default; the per-rollout target version comes from
+	// Promotion.spec.version (or --version on `kapro promote`) and is copied
+	// into the controller-owned PromotionRun.
 	// Supports ${VARIABLE} substitution from cluster-vars.
 	// +optional
 	Version string `json:"version,omitempty"`

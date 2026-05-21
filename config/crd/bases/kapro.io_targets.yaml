@@ -118,17 +118,27 @@ spec:
                   target cluster.
                 properties:
                   approval:
+                    description: Approval configures the human approval requirement
+                      for manual gates.
                     properties:
                       approvers:
+                        description: |-
+                          Approvers lists identities allowed to approve this gate. Empty means the
+                          default approval policy decides who can approve.
                         items:
                           type: string
                         type: array
                       required:
+                        description: Required makes this gate wait for an Approval
+                          before the target can apply.
                         type: boolean
                     required:
                     - required
                     type: object
                   gate:
+                    description: |-
+                      Gate configures automated checks such as soak time, health checks,
+                      metrics, template gates, and artifact verification.
                     properties:
                       gateTimeout:
                         description: |-
@@ -238,7 +248,7 @@ spec:
                             preset:
                               description: |-
                                 Preset references Plan.spec.metricPresets by name.
-                                Inline fields override the preset when set.
+                                Preset fields are copied first; inline fields override the preset when set.
                               type: string
                             provider:
                               description: Provider selects the metrics backend. Required
@@ -246,7 +256,9 @@ spec:
                               type: string
                             query:
                               description: |-
-                                Query is a PromQL expression. The gate passes when the query returns a non-zero value.
+                                Query is a PromQL expression. When threshold or analysis is configured,
+                                that configuration decides pass/fail. Without threshold or analysis, a
+                                truthy/non-zero query result passes the gate.
                                 Use range functions directly in the query for window-based checks, e.g.:
                                   min_over_time(error_rate[30m]) < 0.01
                                 Or reference the Window field as a template: {{.Window}} is substituted at evaluation time.
@@ -577,12 +589,21 @@ spec:
                         type: object
                     type: object
                   mode:
+                    description: |-
+                      Mode controls how this stage gate is evaluated.
+                      auto evaluates configured gate checks without human approval.
+                      manual waits only when approval.required=true.
+                      scheduled is reserved for time-windowed gates.
                     enum:
                     - auto
                     - manual
                     - scheduled
                     type: string
                   notifications:
+                    description: |-
+                      Notifications configures stage-level notification targets for gate
+                      outcomes. Notification delivery is best-effort and does not decide the
+                      gate result.
                     items:
                       description: NotificationSpec configures where and when to send
                         delivery lifecycle events.
@@ -1264,17 +1285,27 @@ spec:
                   target cluster.
                 properties:
                   approval:
+                    description: Approval configures the human approval requirement
+                      for manual gates.
                     properties:
                       approvers:
+                        description: |-
+                          Approvers lists identities allowed to approve this gate. Empty means the
+                          default approval policy decides who can approve.
                         items:
                           type: string
                         type: array
                       required:
+                        description: Required makes this gate wait for an Approval
+                          before the target can apply.
                         type: boolean
                     required:
                     - required
                     type: object
                   gate:
+                    description: |-
+                      Gate configures automated checks such as soak time, health checks,
+                      metrics, template gates, and artifact verification.
                     properties:
                       gateTimeout:
                         description: |-
@@ -1384,7 +1415,7 @@ spec:
                             preset:
                               description: |-
                                 Preset references Plan.spec.metricPresets by name.
-                                Inline fields override the preset when set.
+                                Preset fields are copied first; inline fields override the preset when set.
                               type: string
                             provider:
                               description: Provider selects the metrics backend. Required
@@ -1392,7 +1423,9 @@ spec:
                               type: string
                             query:
                               description: |-
-                                Query is a PromQL expression. The gate passes when the query returns a non-zero value.
+                                Query is a PromQL expression. When threshold or analysis is configured,
+                                that configuration decides pass/fail. Without threshold or analysis, a
+                                truthy/non-zero query result passes the gate.
                                 Use range functions directly in the query for window-based checks, e.g.:
                                   min_over_time(error_rate[30m]) < 0.01
                                 Or reference the Window field as a template: {{.Window}} is substituted at evaluation time.
@@ -1723,12 +1756,21 @@ spec:
                         type: object
                     type: object
                   mode:
+                    description: |-
+                      Mode controls how this stage gate is evaluated.
+                      auto evaluates configured gate checks without human approval.
+                      manual waits only when approval.required=true.
+                      scheduled is reserved for time-windowed gates.
                     enum:
                     - auto
                     - manual
                     - scheduled
                     type: string
                   notifications:
+                    description: |-
+                      Notifications configures stage-level notification targets for gate
+                      outcomes. Notification delivery is best-effort and does not decide the
+                      gate result.
                     items:
                       description: NotificationSpec configures where and when to send
                         delivery lifecycle events.

@@ -22,3 +22,13 @@ The sample Fleet creates `checkout-argo-canary` and
 `checkout-argo-production` targets. If your Argo Applications use different
 names, set `spec.delivery.parameters.application` for one shared Application or
 `applicationSelector` for label selection.
+
+Kapro only writes Argo CD `Application` objects that explicitly opt in. Add one
+of these labels or annotations to each Application before running the
+quickstart:
+
+```yaml
+kapro.io/managed-by: kapro
+kapro.io/authorized-source: "*"
+kapro.io/authorized-unit: checkout
+```

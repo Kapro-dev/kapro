@@ -1,3 +1,7 @@
+# Apply after backend-oci.yaml and before promotion.yaml.
+# Replace ghcr.io/example with registries your spokes can reach.
+# Inline plan selectors are simple label maps; standalone Plan objects use
+# selector.matchLabels.
 apiVersion: kapro.io/v1alpha2
 kind: Fleet
 metadata:
@@ -19,6 +23,7 @@ spec:
     units:
       - name: checkout
         chartName: checkout
+        # Catalog/default version. Promotion.spec.version is the rollout input.
         version: 1.2.3
   delivery:
     mode: pull

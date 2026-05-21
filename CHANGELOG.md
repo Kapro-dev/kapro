@@ -7,6 +7,14 @@ record for each tag.
 
 ## Unreleased
 
+### Changed — user-facing YAML adoption polish
+
+Quickstart and demo YAML now explain the apply order, Promotion versus
+PromotionRun ownership, registry placeholders, and inline selector shorthand.
+CLI output from `kapro promote` and `kapro init` now uses clearer intent/run
+wording so first-time users know the controller stamps PromotionRun attempts
+asynchronously.
+
 ### Added — MkDocs public docs scaffold
 
 Added a Material for MkDocs site configuration, docs landing page, and GitHub

@@ -39,6 +39,11 @@ When working from a local checkout before the release is published, use
 
 ## 2. Apply A Minimal Hub Config
 
+The quickstart proves the hub API path: Backend, Fleet, generated Cluster and
+Plan records, Promotion intent, and controller-owned runtime objects. Pull-mode
+examples still need reachable registries and spoke delivery wiring before they
+can prove real workload convergence.
+
 ```bash
 kubectl apply -f examples/quickstart/backend-flux.yaml
 kubectl apply -f examples/quickstart/kapro.yaml
@@ -91,9 +96,9 @@ kubectl describe target <target-name>
 Look for:
 
 - target phase progression;
-- gate evidence;
-- approval wait state, if the Plan requires approval;
-- backend convergence messages.
+- target summary counts on the PromotionRun;
+- backend convergence messages, when spoke delivery is wired;
+- gate evidence or approval wait state, if you later add gates to the Plan.
 
 ## Next
 

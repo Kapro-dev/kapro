@@ -12,5 +12,16 @@ kubectl get promotions,promotionruns,targets
 
 The example expects Argo CD `Application` objects named
 `checkout-argo-canary` and `checkout-argo-production` in the `argocd`
-namespace. Override `spec.delivery.parameters.application` or
-`applicationSelector` when your Argo naming differs.
+namespace. By default, Kapro maps each target to the Application with the same
+name as that target. Those Applications must opt in to Kapro writes with one of
+these labels or annotations:
+
+```yaml
+kapro.io/managed-by: kapro
+kapro.io/authorized-source: "*"
+kapro.io/authorized-unit: checkout
+```
+
+Use a global `spec.delivery.parameters.application` only for single-target
+demos. For different Application names per cluster, use standalone `Cluster`
+objects with their own delivery parameters instead of the inline cluster list.

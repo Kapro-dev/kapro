@@ -11,5 +11,11 @@ kubectl get promotions,promotionruns,targets
 ```
 
 The example uses anonymous `ghcr.io/example/...` placeholders. Replace
-`spec.delivery.parameters.repository` and registry settings with the OCI
-registry that contains your rendered workload artifacts.
+`spec.delivery.parameters.repository` and registry settings with registries
+your spokes can reach.
+
+OCI fields have different jobs:
+
+- `Fleet.spec.source.registries` is where chart or source units come from.
+- `Fleet.spec.registry` is where Kapro-generated bundles can be published.
+- `delivery.parameters.repository` is what spoke-side OCI delivery pulls.

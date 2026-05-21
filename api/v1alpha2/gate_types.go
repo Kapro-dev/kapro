@@ -17,9 +17,18 @@ const (
 )
 
 type GatePolicySpec struct {
+	// Mode controls how this stage gate is evaluated.
+	// auto evaluates configured gate checks without human approval.
+	// manual waits only when approval.required=true.
+	// scheduled is reserved for time-windowed gates.
 	// +kubebuilder:validation:Enum=auto;manual;scheduled
-	Mode     GateMode        `json:"mode"`
-	Gate     GateSpec        `json:"gate,omitempty"`
+	Mode GateMode `json:"mode"`
+	// Gate configures automated checks such as soak time, health checks,
+	// metrics, template gates, and artifact verification.
+	// +optional
+	Gate GateSpec `json:"gate,omitempty"`
+	// Approval configures the human approval requirement for manual gates.
+	// +optional
 	Approval *ApprovalConfig `json:"approval,omitempty"`
 	// OnFailure controls what Fleet does when a gate fails or times out.
 	//   halt (default): stop the rollout for this target and wait for human intervention.
@@ -29,7 +38,11 @@ type GatePolicySpec struct {
 	//   continue: mark the gate as skipped and advance to the next phase.
 	// +kubebuilder:validation:Enum=halt;rollback;continue
 	// +kubebuilder:default=halt
-	OnFailure     string             `json:"onFailure,omitempty"`
+	OnFailure string `json:"onFailure,omitempty"`
+	// Notifications configures stage-level notification targets for gate
+	// outcomes. Notification delivery is best-effort and does not decide the
+	// gate result.
+	// +optional
 	Notifications []NotificationSpec `json:"notifications,omitempty"`
 }
 
@@ -82,13 +95,15 @@ type CosignKeySecretRef struct {
 
 type MetricGate struct {
 	// Preset references Plan.spec.metricPresets by name.
-	// Inline fields override the preset when set.
+	// Preset fields are copied first; inline fields override the preset when set.
 	// +optional
 	Preset string `json:"preset,omitempty"`
 	// Provider selects the metrics backend. Required when preset is empty.
 	// +optional
 	Provider string `json:"provider,omitempty"`
-	// Query is a PromQL expression. The gate passes when the query returns a non-zero value.
+	// Query is a PromQL expression. When threshold or analysis is configured,
+	// that configuration decides pass/fail. Without threshold or analysis, a
+	// truthy/non-zero query result passes the gate.
 	// Use range functions directly in the query for window-based checks, e.g.:
 	//   min_over_time(error_rate[30m]) < 0.01
 	// Or reference the Window field as a template: {{.Window}} is substituted at evaluation time.
@@ -178,7 +193,11 @@ type MetricAnalysisSpec struct {
 }
 
 type ApprovalConfig struct {
-	Required  bool     `json:"required"`
+	// Required makes this gate wait for an Approval before the target can apply.
+	Required bool `json:"required"`
+	// Approvers lists identities allowed to approve this gate. Empty means the
+	// default approval policy decides who can approve.
+	// +optional
 	Approvers []string `json:"approvers,omitempty"`
 }
 

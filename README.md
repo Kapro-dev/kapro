@@ -72,8 +72,9 @@ Kapro is backend-neutral. A fleet can mix delivery styles by cluster:
 - **Plugins:** custom actuators, gates, and planners can be loaded through
   `Plugin` after they pass the conformance harness.
 
-Start with [Backends](docs/backends.md) when deciding how Kapro should connect
-to existing delivery systems.
+Run [First Promotion in 10 Minutes](docs/first-promotion-10min.md) first to
+see the API lifecycle, then use [Backends](docs/backends.md) when deciding how
+Kapro should connect to existing delivery systems.
 
 ## Quick Start
 
