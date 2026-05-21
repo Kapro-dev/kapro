@@ -88,10 +88,10 @@ func (s *CycleState) Read(key string) (any, bool) {
 
 // Request is the immutable planning context for one PromotionRun/Plan/Stage expansion.
 type Request struct {
-	PromotionRun         *kaprov1alpha2.PromotionRun
-	PromotionPlanRefName string
-	Plan                 *kaprov1alpha2.Plan
-	Stage                kaprov1alpha2.Stage
+	PromotionRun *kaprov1alpha2.PromotionRun
+	PlanRefName  string
+	Plan         *kaprov1alpha2.Plan
+	Stage        kaprov1alpha2.Stage
 }
 
 // Decision records one non-default planner decision for operator visibility.

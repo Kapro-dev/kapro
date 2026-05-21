@@ -184,8 +184,8 @@ func TestPlannerAdapterMapsPlanDecisions(t *testing.T) {
 	}
 	framework := planner.NewFramework(adapter)
 	result, err := framework.PlanWithResult(context.Background(), planner.Request{
-		PromotionRun:         &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}, Spec: kaprov1alpha2.PromotionRunSpec{Version: "1.2.3"}},
-		PromotionPlanRefName: "checkout",
+		PromotionRun: &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}, Spec: kaprov1alpha2.PromotionRunSpec{Version: "1.2.3"}},
+		PlanRefName:  "checkout",
 		Stage: kaprov1alpha2.Stage{
 			Name:     "prod",
 			Strategy: &kaprov1alpha2.StageStrategySpec{MaxParallel: 5},

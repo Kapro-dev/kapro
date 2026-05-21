@@ -1133,10 +1133,10 @@ func (r *PromotionRunReconciler) planTargetsForStage(ctx context.Context, promot
 		framework = planner.NewDefaultFramework()
 	}
 	return framework.PlanWithResult(ctx, planner.Request{
-		PromotionRun:         promotionrun,
-		PromotionPlanRefName: promotionplanRefName,
-		Plan:                 promotionplan,
-		Stage:                stage,
+		PromotionRun: promotionrun,
+		PlanRefName:  promotionplanRefName,
+		Plan:         promotionplan,
+		Stage:        stage,
 	}, clusters)
 }
 
