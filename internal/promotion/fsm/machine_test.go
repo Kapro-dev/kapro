@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
@@ -20,7 +21,10 @@ func TestMachine_RegisterAndStep(t *testing.T) {
 	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
 	if err := m.Register(kaprov1alpha1.TargetPhaseVerification, func(_ context.Context, e *testEnv) (ctrl.Result, error) {
 		e.called = "verification"
-		return ctrl.Result{Requeue: true}, nil
+		// Requeue: true is deprecated in controller-runtime; use a
+		// non-zero RequeueAfter as the equivalent "ask for a follow-up
+		// reconcile" signal.
+		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -33,8 +37,8 @@ func TestMachine_RegisterAndStep(t *testing.T) {
 	if env.called != "verification" {
 		t.Fatalf("called = %q, want verification", env.called)
 	}
-	if !res.Requeue {
-		t.Fatalf("Requeue = false, want true")
+	if res.RequeueAfter == 0 {
+		t.Fatalf("RequeueAfter = 0, want non-zero")
 	}
 }
 
