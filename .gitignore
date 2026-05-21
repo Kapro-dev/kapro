@@ -6,6 +6,7 @@
 *.dylib
 bin/
 vendor/
+/site/
 
 # Go test artifacts
 *.test

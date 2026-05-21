@@ -1,0 +1,70 @@
+site_name: Kapro
+site_description: Promotion control plane for Kubernetes fleets
+site_url: https://kapro.dev/
+repo_url: https://github.com/Kapro-dev/kapro
+repo_name: Kapro-dev/kapro
+docs_dir: .
+site_dir: ../site
+exclude_docs: |
+  mkdocs.yml
+  requirements.txt
+
+theme:
+  name: material
+  logo: logo.png
+  favicon: logo.png
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Install: install.md
+      - First Promotion in 10 Minutes: first-promotion-10min.md
+      - Argo Quickstart: quickstart-argo.md
+      - OCI Quickstart: quickstart-oci.md
+  - Concepts:
+      - Object Model: concepts.md
+      - Backends: backends.md
+      - Events: events.md
+      - API Stability: api-stability.md
+      - Preview Controllers: preview-controllers.md
+  - Operations:
+      - Operations: operations.md
+      - Monitoring: monitoring.md
+      - Security: security.md
+      - RBAC and Tenancy: rbac-tenancy.md
+      - Cluster Bootstrap: cluster-bootstrap.md
+  - Migration:
+      - Argo Brownfield Migration: argo-migration.md
+      - Flux Brownfield Migration: flux-migration.md
+      - Discovery Troubleshooting: discovery-troubleshooting.md
+  - Extending Kapro:
+      - Extension Model: extension-model.md
+      - Plugin Authoring: plugin-authoring.md
+      - GCP Cloud: cloud-gcp.md
+  - ADRs:
+      - Overview: adr/README.md
+      - Runtime Split: adr/0001-promotion-runtime-split.md
+      - Docker Lifecycle: adr/0002-promotion-docker-lifecycle.md
+      - CloudEvents Posture: adr/0003-cloudevents-publisher-posture.md
+      - Field Harmonization: adr/0004-camelcase-field-harmonization.md
+      - Target Namespace: adr/0005-withdraw-target-namespace.md
+      - External Gates: adr/0006-external-gate-predicates.md
+      - Programmatic SDK: adr/0007-programmatic-sdk.md
+      - Conversion Webhook: adr/0011-conversion-webhook-scaffold.md
