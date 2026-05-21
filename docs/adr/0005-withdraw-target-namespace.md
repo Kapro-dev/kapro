@@ -80,7 +80,7 @@ separate `target.aggregate` event would be redundant.
 
 **Harder:**
 - Users who want "did cluster X converge?" must either watch
-  `PromotionTarget.status.phase` directly via the Kubernetes API or
+  `Target.status.phase` directly via the Kubernetes API or
   subscribe to Flux/Argo events for that cluster. Documented in the
   integrations cookbook (cross-link from docs/events.md added as part
   of this PR).

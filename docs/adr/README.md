@@ -14,6 +14,7 @@ relitigating it.
 | [0005](0005-withdraw-target-namespace.md) | Withdraw kapro.io/promotion.target.* from the reserved CloudEvents vocabulary | Accepted |
 | [0006](0006-external-gate-predicates.md) | External gate predicates — GateType (KEDA-shaped) | Proposed |
 | [0007](0007-programmatic-sdk.md) | Kapro programmatic SDK — builder + subscriber + gate | Proposed |
+| [0009](0009-promotionrun-target-status-collapse.md) | Target is the PromotionRun per-target state authority | Accepted |
 | [0011](0011-conversion-webhook-scaffold.md) | Conversion webhook scaffold without legacy migration guarantee | Accepted |
 
 ## Adding a new ADR
