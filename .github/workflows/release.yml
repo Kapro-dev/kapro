@@ -70,7 +70,7 @@ jobs:
           cosign sign --yes ghcr.io/kapro-dev/kapro-operator@${{ steps.build-operator.outputs.digest }}
 
       - name: Scan operator image for HIGH/CRITICAL CVEs (Trivy)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.24.0
         with:
           image-ref: ghcr.io/kapro-dev/kapro-operator@${{ steps.build-operator.outputs.digest }}
           format: sarif
@@ -134,7 +134,7 @@ jobs:
           cosign sign --yes ghcr.io/kapro-dev/kapro-cluster-controller@${{ steps.build-cluster-controller.outputs.digest }}
 
       - name: Scan cluster-controller image for HIGH/CRITICAL CVEs (Trivy)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.24.0
         with:
           image-ref: ghcr.io/kapro-dev/kapro-cluster-controller@${{ steps.build-cluster-controller.outputs.digest }}
           format: sarif

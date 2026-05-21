@@ -33,6 +33,25 @@ reject_workflow_line() {
   fi
 }
 
+require_workflow_occurrences() {
+  local pattern="$1"
+  local expected="$2"
+  local count
+  count="$(grep -Fc -- "$pattern" "${RELEASE_WORKFLOW}")"
+  if [[ "${count}" != "${expected}" ]]; then
+    echo "release workflow expected ${expected} occurrence(s) of ${pattern}, found ${count}" >&2
+    exit 1
+  fi
+}
+
+reject_workflow_regex() {
+  local pattern="$1"
+  if grep -Eq -- "$pattern" "${RELEASE_WORKFLOW}"; then
+    echo "release workflow must not contain forbidden pattern: ${pattern}" >&2
+    exit 1
+  fi
+}
+
 check_live_release_pointers() {
   if [[ -z "${EXPECTED_RELEASE_TAG}" ]]; then
     return 0
@@ -233,10 +252,12 @@ require_workflow_line "file: Dockerfile"
 require_workflow_line "file: Dockerfile.cluster-controller"
 require_workflow_line "ghcr.io/kapro-dev/kapro-operator:"
 require_workflow_line "ghcr.io/kapro-dev/kapro-cluster-controller:"
+require_workflow_occurrences "uses: aquasecurity/trivy-action@v0.24.0" 2
 require_workflow_line "cosign sign --yes ghcr.io/kapro-dev/kapro-operator"
 require_workflow_line "cosign sign --yes ghcr.io/kapro-dev/kapro-cluster-controller"
 require_workflow_line "security-events: write"
 require_workflow_line "uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0"
 reject_workflow_line "uses: anchore/sbom-action@v0"
+reject_workflow_regex "uses:[[:space:]]+aquasecurity/trivy-action@[^v]"
 
 echo "release smoke verification passed"
