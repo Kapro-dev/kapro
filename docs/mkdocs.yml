@@ -43,7 +43,7 @@ nav:
       - Backends: backends.md
       - Events: events.md
       - API Stability: api-stability.md
-      - Changelog: ../CHANGELOG.md
+      - Changelog: https://github.com/Kapro-dev/kapro/blob/main/CHANGELOG.md
       - Preview Controllers: preview-controllers.md
   - Operations:
       - Operations: operations.md
