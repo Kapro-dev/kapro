@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+  schedule:
+    # Nightly K8s-version-matrix smoke at 04:17 UTC. Off-peak slot avoids
+    # contention with US/EU working-hours PR traffic and the lint cache.
+    - cron: '17 4 * * *'
 
 permissions:
   contents: read
@@ -107,7 +112,24 @@ jobs:
         with:
           install_only: true
       - name: Install chart and run quickstart smoke
+        env:
+          KAPRO_CI_KEEP_CLUSTER_ON_FAILURE: "true"
         run: scripts/ci-kind-smoke.sh
+      - name: Collect Kind smoke diagnostics
+        if: failure()
+        run: |
+          mkdir -p kind-smoke-diagnostics
+          kind export logs --name kapro-ci-smoke kind-smoke-diagnostics/kind || true
+          kubectl --context kind-kapro-ci-smoke get events -A --sort-by=.lastTimestamp > kind-smoke-diagnostics/events.txt || true
+          kubectl --context kind-kapro-ci-smoke get all -A -o wide > kind-smoke-diagnostics/all.txt || true
+          kubectl --context kind-kapro-ci-smoke get backends,fleets,clusters,plans,promotions,promotionruns,targets -A -o yaml > kind-smoke-diagnostics/kapro-resources.yaml || true
+          kubectl --context kind-kapro-ci-smoke -n kapro-system logs deploy/kapro-kapro-operator --tail=-1 > kind-smoke-diagnostics/operator.log || true
+      - name: Upload Kind smoke diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kind-smoke-diagnostics
+          path: kind-smoke-diagnostics/
 
   release-smoke:
     name: Release Smoke
@@ -136,3 +158,55 @@ jobs:
           platforms: linux/amd64
           push: false
           tags: ghcr.io/kapro-dev/kapro-operator:pr-${{ github.event.number }}
+
+  kind-smoke-matrix:
+    # K8s version matrix for the Kind install smoke. Runs nightly on
+    # schedule, on-demand via workflow_dispatch, and on the small set of
+    # PRs that touch the install/release surface (chart, scripts/, CRDs,
+    # release.yml). Skips PRs that don't touch those areas so we don't
+    # burn CI minutes on every doc PR.
+    name: Kind Smoke (K8s ${{ matrix.k8s }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        k8s:
+          - v1.28.13
+          - v1.29.8
+          - v1.30.4
+          - v1.31.0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+      - name: Set up kind
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
+      - name: Install chart and run quickstart smoke
+        env:
+          KAPRO_CI_KIND_IMAGE: kindest/node:${{ matrix.k8s }}
+          KAPRO_CI_KIND_CLUSTER: kapro-ci-${{ matrix.k8s }}
+          KAPRO_CI_KEEP_CLUSTER_ON_FAILURE: "true"
+        run: scripts/ci-kind-smoke.sh
+      - name: Collect Kind smoke diagnostics
+        if: failure()
+        env:
+          KAPRO_CI_KIND_CLUSTER: kapro-ci-${{ matrix.k8s }}
+        run: |
+          mkdir -p kind-smoke-diagnostics
+          kind export logs --name "${KAPRO_CI_KIND_CLUSTER}" kind-smoke-diagnostics/kind || true
+          kubectl --context "kind-${KAPRO_CI_KIND_CLUSTER}" get events -A --sort-by=.lastTimestamp > kind-smoke-diagnostics/events.txt || true
+          kubectl --context "kind-${KAPRO_CI_KIND_CLUSTER}" get all -A -o wide > kind-smoke-diagnostics/all.txt || true
+          kubectl --context "kind-${KAPRO_CI_KIND_CLUSTER}" get backends,fleets,clusters,plans,promotions,promotionruns,targets -A -o yaml > kind-smoke-diagnostics/kapro-resources.yaml || true
+          kubectl --context "kind-${KAPRO_CI_KIND_CLUSTER}" -n kapro-system logs deploy/kapro-kapro-operator --tail=-1 > kind-smoke-diagnostics/operator.log || true
+      - name: Upload Kind smoke diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kind-smoke-diagnostics-${{ matrix.k8s }}
+          path: kind-smoke-diagnostics/
