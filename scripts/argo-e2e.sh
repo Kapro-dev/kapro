@@ -657,7 +657,7 @@ spec:
     yaml-appset: v2
   promotionPlans:
     - name: argo
-      promotionplan: argo-e2e
+      promotionPlan: argo-e2e
   timeout: 10m
 YAML
 }
