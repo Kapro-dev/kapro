@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -23,7 +24,24 @@ import (
 func TestPromotionTriggerSuspendedCreatesNothing(t *testing.T) {
 	ctx := context.Background()
 	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, nil, promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
-		rt.Spec.Suspended = true
+		rt.Spec.Suspended = ptr.To(true)
+	}))
+
+	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+	assertPromotionRunCount(t, ctx, c, 0)
+	got := getPromotionTrigger(t, ctx, c, "checkout")
+	cond := apimeta.FindStatusCondition(got.Status.Conditions, conditionSuspended)
+	if cond == nil || cond.Status != metav1.ConditionTrue {
+		t.Fatalf("Suspended condition = %+v", cond)
+	}
+}
+
+func TestPromotionTriggerOmittedSuspendedDefaultsSafe(t *testing.T) {
+	ctx := context.Background()
+	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, nil, promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
+		rt.Spec.Suspended = nil
 	}))
 
 	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
@@ -100,6 +118,36 @@ func TestPromotionTriggerCreatesDigestPinnedPromotion(t *testing.T) {
 	got := getPromotionTrigger(t, ctx, c, "checkout")
 	if got.Status.LastTriggeredAt == "" || got.Status.ManagedPromotion != "checkout" {
 		t.Fatalf("status = %+v", got.Status)
+	}
+}
+
+func TestPromotionTriggerOmittedTemplateSuspendedDefaultsPromotionSafe(t *testing.T) {
+	ctx := context.Background()
+	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
+		rt.Spec.PromotionTemplate.Suspended = nil
+	}))
+
+	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+	managed := getManagedPromotion(t, ctx, c, "checkout")
+	if !managed.Spec.Suspended {
+		t.Fatal("omitted template suspended should create a suspended Promotion")
+	}
+}
+
+func TestPromotionTriggerExplicitTemplateUnsuspendedCreatesActivePromotion(t *testing.T) {
+	ctx := context.Background()
+	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
+		rt.Spec.PromotionTemplate.Suspended = ptr.To(false)
+	}))
+
+	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+	managed := getManagedPromotion(t, ctx, c, "checkout")
+	if managed.Spec.Suspended {
+		t.Fatal("explicit template suspended=false should create an unsuspended Promotion")
 	}
 }
 
@@ -339,7 +387,7 @@ func promotionTriggerFixture(mutators ...func(*kaprov1alpha2.Trigger)) *kaprov1a
 	rt := &kaprov1alpha2.Trigger{
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout", Generation: 1},
 		Spec: kaprov1alpha2.TriggerSpec{
-			Suspended: false,
+			Suspended: ptr.To(false),
 			Source: kaprov1alpha2.TriggerSource{
 				Type: "oci",
 				OCI: &kaprov1alpha2.OCITriggerSource{
@@ -352,7 +400,7 @@ func promotionTriggerFixture(mutators ...func(*kaprov1alpha2.Trigger)) *kaprov1a
 			PromotionTemplate: kaprov1alpha2.TriggerTemplate{
 				FleetRef:  "checkout",
 				Plans:     []kaprov1alpha2.PlanRef{{Name: "prod", Plan: "checkout-prod"}},
-				Suspended: true,
+				Suspended: ptr.To(true),
 				Scope:     &kaprov1alpha2.PromotionRunScope{Targets: []string{"canary-eu"}},
 			},
 			Cooldown:  "30m",

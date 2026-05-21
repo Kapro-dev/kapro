@@ -1,5 +1,5 @@
 // Trigger CRD: autonomous source observation that creates or
-// updates a Promotion from verified artifact changes. The PromotionController
+// updates a Promotion from observed artifact changes. The PromotionController
 // then materializes each Promotion update into a PromotionRun attempt; the
 // trigger itself never writes PromotionRun directly.
 package v1alpha2
@@ -12,7 +12,7 @@ import (
 // ---- Trigger ---------------------------------------------------------
 
 // TriggerSpec defines an autonomous source that creates or updates
-// a Promotion from verified artifact changes. The controller currently
+// a Promotion from observed artifact changes. The controller currently
 // provides preview behavior for this API, and the API is intentionally safe
 // by default.
 //
@@ -21,7 +21,8 @@ import (
 type TriggerSpec struct {
 	// Suspended pauses source observation and Promotion creation/update.
 	// +kubebuilder:default=true
-	Suspended bool `json:"suspended,omitempty"`
+	// +optional
+	Suspended *bool `json:"suspended,omitempty"`
 	// Source configures where artifact changes are observed.
 	Source TriggerSource `json:"source"`
 	// PromotionTemplate defines the Promotion the trigger creates or updates.
@@ -79,8 +80,8 @@ type OCITriggerSource struct {
 	SecretRef *corev1.SecretReference `json:"secretRef,omitempty"`
 }
 
-// TriggerTemplate defines the Promotion created or updated from a
-// verified artifact. Mirrors PromotionSpec with the rollout-input fields the
+// TriggerTemplate defines the Promotion created or updated from an
+// observed artifact. Mirrors PromotionSpec with the rollout-input fields the
 // trigger is allowed to set.
 type TriggerTemplate struct {
 	// FleetRef is the name of the parent Fleet the managed Promotion
@@ -100,7 +101,8 @@ type TriggerTemplate struct {
 	// Suspended controls Promotion.spec.suspended on creation. Defaults to
 	// true so detection does not equal deployment.
 	// +kubebuilder:default=true
-	Suspended bool `json:"suspended,omitempty"`
+	// +optional
+	Suspended *bool `json:"suspended,omitempty"`
 	// Scope restricts the managed Promotion to a subset of clusters.
 	// +optional
 	Scope *PromotionRunScope `json:"scope,omitempty"`
@@ -159,7 +161,8 @@ type TriggerArtifact struct {
 	Version string `json:"version,omitempty"`
 	// ObservedAt is the RFC3339 time this artifact was observed.
 	ObservedAt string `json:"observedAt,omitempty"`
-	// SignatureVerified records whether signature policy passed.
+	// SignatureVerified records the signature gate result. It is true when
+	// verification passed or no signature policy was required.
 	SignatureVerified bool `json:"signatureVerified,omitempty"`
 }
 
@@ -174,7 +177,7 @@ type TriggerArtifact struct {
 // +kubebuilder:printcolumn:name="Active",type=integer,JSONPath=`.status.activePromotionRunCount`,priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// Trigger observes verified artifact changes and creates or updates
+// Trigger observes artifact changes and creates or updates
 // Promotion intent. It is safe by default for promotion-side concerns: triggers
 // are suspended by default and created Promotions default to suspended. OCI
 // signature verification is opt-in per source (`spec.source.oci.requireSignature`,

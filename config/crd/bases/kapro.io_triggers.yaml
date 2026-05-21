@@ -42,7 +42,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Trigger observes verified artifact changes and creates or updates
+          Trigger observes artifact changes and creates or updates
           Promotion intent. It is safe by default for promotion-side concerns: triggers
           are suspended by default and created Promotions default to suspended. OCI
           signature verification is opt-in per source (`spec.source.oci.requireSignature`,
@@ -69,7 +69,7 @@ spec:
           spec:
             description: |-
               TriggerSpec defines an autonomous source that creates or updates
-              a Promotion from verified artifact changes. The controller currently
+              a Promotion from observed artifact changes. The controller currently
               provides preview behavior for this API, and the API is intentionally safe
               by default.
             properties:
@@ -332,8 +332,9 @@ spec:
                       observed.
                     type: string
                   signatureVerified:
-                    description: SignatureVerified records whether signature policy
-                      passed.
+                    description: |-
+                      SignatureVerified records the signature gate result. It is true when
+                      verification passed or no signature policy was required.
                     type: boolean
                   tag:
                     description: Tag is the source tag that matched the trigger pattern.
@@ -374,8 +375,9 @@ spec:
                         observed.
                       type: string
                     signatureVerified:
-                      description: SignatureVerified records whether signature policy
-                        passed.
+                      description: |-
+                        SignatureVerified records the signature gate result. It is true when
+                        verification passed or no signature policy was required.
                       type: boolean
                     tag:
                       description: Tag is the source tag that matched the trigger

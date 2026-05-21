@@ -235,8 +235,8 @@ type ClusterSpec struct {
 	//     `tokenHash` (when supplied) is an opaque slot identifier — its
 	//     value isn't cryptographically verified by the hub today (the
 	//     bootstrap ServiceAccount identity is the effective auth factor).
-	//     Mutating it counts as a re-bootstrap intent (planned: hub resets
-	//     status.bootstrap; see RE-BOOTSTRAP below).
+	//     Changing it alone does not reset bootstrap state in this release;
+	//     delete and recreate the Cluster to issue a fresh bootstrap slot.
 	//
 	//  2. The hub Cluster bootstrap reconciler provisions a per-cluster
 	//     ServiceAccount `kapro-bootstrap-<cluster>` in kapro-system with a
@@ -280,10 +280,9 @@ type ClusterSpec struct {
 	//     the approver recognises the renewal class and skips the bootstrap
 	//     slot check).
 	//
-	// RE-BOOTSTRAP (planned, not yet wired): mutating
-	// spec.bootstrap.tokenHash signals re-bootstrap intent; the hub will
-	// reset status.bootstrap. For now the workaround is to delete and
-	// recreate the Cluster.
+	// RE-BOOTSTRAP: delete and recreate the Cluster to issue a fresh
+	// bootstrap slot. Mutating spec.bootstrap.tokenHash alone is recorded
+	// as desired state but does not reset status.bootstrap in this release.
 	// +optional
 	Bootstrap *ClusterBootstrapSpec `json:"bootstrap,omitempty"`
 
@@ -318,9 +317,8 @@ type ClusterBootstrapSpec struct {
 	// SHA-256-hex shape (exactly 64 lowercase hex chars). It is NOT a
 	// pre-image-of-token check today: the hub controller's effective
 	// authorization is the bootstrap ServiceAccount it provisions (see the
-	// ClusterSpec.Bootstrap protocol). Mutating this value counts as
-	// a re-bootstrap intent — a future change will have the hub controller
-	// reset status.bootstrap when it observes a TokenHash mutation.
+	// ClusterSpec.Bootstrap protocol). Changing this value is recorded in spec
+	// but does not reset status.bootstrap in this release.
 	// Validation pattern remains a SHA-256 hex so existing tooling that
 	// pre-computes the hash keeps working unmodified.
 	// +kubebuilder:validation:Pattern=`^[0-9a-f]{64}$`

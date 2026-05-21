@@ -141,18 +141,17 @@ spec:
                             description: "PromotionPhase is the coarse lifecycle state
                               of a Promotion intent,\nmodeled after the Docker container
                               lifecycle. All values are listed\nhere; `RollingBack`
-                              is reserved for a future `spec.rollbackTo` field\nand
-                              is not yet reachable from any controller transition.\n\n\tPending
-                              \     -> created, not yet stamped       (Docker: created)\n\tProgressing
-                              \ -> active PromotionRun running    (Docker: running)\n\tPaused
-                              \      -> spec.suspended=true            (Docker: paused)\n\tRestarting
-                              \  -> new attempt after terminal     (Docker: restarting)\n\tSucceeded
+                              is reserved and is not emitted by the current\ncontroller
+                              transitions.\n\n\tPending      -> created, not yet stamped
+                              \      (Docker: created)\n\tProgressing  -> active PromotionRun
+                              running    (Docker: running)\n\tPaused       -> spec.suspended=true
+                              \           (Docker: paused)\n\tRestarting   -> new
+                              attempt after terminal     (Docker: restarting)\n\tSucceeded
                               \   -> latest attempt completed       (Docker: exited
                               0)\n\tFailed       -> latest attempt failed          (Docker:
                               exited >0)\n\tRollingBack  -> rollback to a prior version
-                              \   (reserved; lights up\n\t                when spec.rollbackTo
-                              is wired)\n\tTerminating  -> deletionTimestamp set,
-                              GC      (Docker: removing)"
+                              \   (reserved; not emitted today)\n\tTerminating  ->
+                              deletionTimestamp set, GC      (Docker: removing)"
                             enum:
                             - Pending
                             - Progressing

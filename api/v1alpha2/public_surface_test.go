@@ -90,6 +90,78 @@ func TestPublicSurfaceUsesV1Alpha2Names(t *testing.T) {
 	}
 }
 
+func TestDefaultTrueBoolsCanRepresentExplicitFalse(t *testing.T) {
+	root := repoRoot(t)
+	re := regexp.MustCompile("(?m)\\+kubebuilder:default=true(?:\\n[ \\t]*//[^\\n]*)*\\n[ \\t]*([A-Za-z0-9_]+)[ \\t]+bool[ \\t]+`json:\"([^\"]*omitempty[^\"]*)\"`")
+
+	err := filepath.WalkDir(filepath.Join(root, "api", "v1alpha2"), func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		base := filepath.Base(path)
+		if d.IsDir() || filepath.Ext(path) != ".go" || strings.HasSuffix(base, "_test.go") || base == "zz_generated.deepcopy.go" {
+			return nil
+		}
+		for _, match := range re.FindAllStringSubmatch(readText(t, path), -1) {
+			t.Errorf("%s: default=true bool field %s uses omitempty JSON tag %q; use *bool or a non-omitempty tag so explicit false survives client serialization", path, match[1], match[2])
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGeneratedCRDDescriptionsDoNotPublishPreviewPromises(t *testing.T) {
+	root := repoRoot(t)
+	bad := []*regexp.Regexp{
+		regexp.MustCompile(`(?i)\bnot yet wired\b`),
+		regexp.MustCompile(`(?i)\bplanned:\b`),
+		regexp.MustCompile(`(?i)\bverified artifact changes\b`),
+		regexp.MustCompile(`(?i)\bfuture AI agents\b`),
+		regexp.MustCompile(`(?i)\blights up\s+when spec\.rollbackTo is wired\b`),
+	}
+
+	err := filepath.WalkDir(filepath.Join(root, "config", "crd", "bases"), func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || filepath.Ext(path) != ".yaml" {
+			return nil
+		}
+		data := readText(t, path)
+		for _, re := range bad {
+			if match := re.FindString(data); match != "" {
+				t.Errorf("%s contains public CRD description wording %q that over-promises preview behavior", path, match)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTriggerCRDDefaultTrueSuspensionFields(t *testing.T) {
+	root := repoRoot(t)
+	for _, relDir := range []string{
+		filepath.Join("config", "crd", "bases"),
+		filepath.Join("charts", "kapro-operator", "crds"),
+		filepath.Join("internal", "bootstrap", "kaprocrds"),
+	} {
+		path := filepath.Join(root, relDir, "kapro.io_triggers.yaml")
+		crd := readCRD(t, path)
+		version := servedCRDVersion(t, path, crd)
+		for _, jsonPath := range []string{".spec.suspended", ".spec.promotionTemplate.suspended"} {
+			node := schemaNodeForJSONPath(t, path, version.Schema.OpenAPIV3Schema, jsonPath)
+			got, ok := node["default"].(bool)
+			if !ok || !got {
+				t.Fatalf("%s schema %s default=%#v, want true", path, jsonPath, node["default"])
+			}
+		}
+	}
+}
+
 func TestHelmWebhookRulesUseServedVersion(t *testing.T) {
 	root := repoRoot(t)
 	path := filepath.Join(root, "charts", "kapro-operator", "templates", "validating-webhook.yaml")
@@ -883,23 +955,33 @@ func servedCRDVersion(t *testing.T, path string, crd crdDocument) crdVersion {
 }
 
 func schemaHasJSONPath(schema map[string]any, jsonPath string) bool {
-	parts := normalizedJSONPathParts(jsonPath)
-	if len(parts) == 0 {
-		return true
+	return schemaNodeForJSONPathNoFail(schema, jsonPath) != nil
+}
+
+func schemaNodeForJSONPath(t *testing.T, path string, schema map[string]any, jsonPath string) map[string]any {
+	t.Helper()
+	node := schemaNodeForJSONPathNoFail(schema, jsonPath)
+	if node == nil {
+		t.Fatalf("%s JSONPath %s does not resolve in CRD schema", path, jsonPath)
 	}
+	return node
+}
+
+func schemaNodeForJSONPathNoFail(schema map[string]any, jsonPath string) map[string]any {
+	parts := normalizedJSONPathParts(jsonPath)
 	current := schema
 	for i, part := range parts {
 		props, ok := current["properties"].(map[string]any)
 		if !ok {
-			return false
+			return nil
 		}
 		nextAny, ok := props[part]
 		if !ok {
-			return false
+			return nil
 		}
 		next, ok := nextAny.(map[string]any)
 		if !ok {
-			return false
+			return nil
 		}
 		if i < len(parts)-1 {
 			if items, ok := next["items"].(map[string]any); ok {
@@ -908,7 +990,7 @@ func schemaHasJSONPath(schema map[string]any, jsonPath string) bool {
 		}
 		current = next
 	}
-	return true
+	return current
 }
 
 func normalizedJSONPathParts(jsonPath string) []string {
