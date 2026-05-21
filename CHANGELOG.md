@@ -7,6 +7,10 @@ record for each tag.
 
 ## Unreleased
 
+No unreleased changes yet.
+
+## v0.1.2 — 2026-05-22
+
 ### Added — Go SDK scaffold
 
 Added the first public `kapro.io/kapro/pkg/kapro` SDK package with happy-path
