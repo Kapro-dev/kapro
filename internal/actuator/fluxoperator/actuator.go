@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/pkg/actuator"
 )
 
@@ -168,7 +168,7 @@ func (a *FluxOperatorActuator) ApplyDelta(ctx context.Context, req actuator.Delt
 // IsConverged checks if the ResourceSet input matches AND the rendered HelmRelease is Ready.
 // ResourceSet Ready only means "YAML was applied" — we also need to verify the spoke
 // HelmRelease actually succeeded (Ready=True on the HelmRelease itself).
-func (a *FluxOperatorActuator) IsConverged(ctx context.Context, mc *kaprov1alpha1.FleetCluster, appKey, version string) (bool, error) {
+func (a *FluxOperatorActuator) IsConverged(ctx context.Context, mc *kaprov1alpha2.Cluster, appKey, version string) (bool, error) {
 	delivery := mc.Spec.Delivery
 	resourceSet := delivery.Param("resourceSet", "")
 	if resourceSet == "" {
@@ -214,7 +214,7 @@ func (a *FluxOperatorActuator) IsConverged(ctx context.Context, mc *kaprov1alpha
 
 // IsAllConverged checks convergence for all desired versions.
 // Verifies both ResourceSet inputs AND rendered HelmRelease Ready status.
-func (a *FluxOperatorActuator) IsAllConverged(ctx context.Context, mc *kaprov1alpha1.FleetCluster, desiredVersions map[string]string) (bool, error) {
+func (a *FluxOperatorActuator) IsAllConverged(ctx context.Context, mc *kaprov1alpha2.Cluster, desiredVersions map[string]string) (bool, error) {
 	if mc == nil {
 		return false, fmt.Errorf("cluster is nil")
 	}
@@ -258,7 +258,7 @@ func (a *FluxOperatorActuator) IsAllConverged(ctx context.Context, mc *kaprov1al
 }
 
 // Rollback sets the ResourceSet input back to a previous version.
-func (a *FluxOperatorActuator) Rollback(ctx context.Context, mc *kaprov1alpha1.FleetCluster, previousVersion, appKey string) error {
+func (a *FluxOperatorActuator) Rollback(ctx context.Context, mc *kaprov1alpha2.Cluster, previousVersion, appKey string) error {
 	if mc == nil {
 		return fmt.Errorf("cluster is nil")
 	}
@@ -271,14 +271,14 @@ func (a *FluxOperatorActuator) Rollback(ctx context.Context, mc *kaprov1alpha1.F
 
 // --- Config helpers ---
 
-func resolveConfig(delivery *kaprov1alpha1.DeliverySpec) (ns, tenantField string) {
+func resolveConfig(delivery *kaprov1alpha2.DeliverySpec) (ns, tenantField string) {
 	return delivery.Param("namespace", "flux-system"), delivery.Param("tenantField", "tenant")
 }
 
 // resolveVersionField maps an appKey to the ResourceSet input field name.
 // For multi-unit PromotionSource: "pos-server" → "pos-server_version"
 // For single-app (backward compat): "" or "default" → configured inputField
-func resolveVersionField(delivery *kaprov1alpha1.DeliverySpec, appKey string) string {
+func resolveVersionField(delivery *kaprov1alpha2.DeliverySpec, appKey string) string {
 	if appKey != "" && appKey != "default" {
 		return appKey + "_version"
 	}

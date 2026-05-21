@@ -14,7 +14,7 @@ import (
 	"text/template"
 	"time"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/gate/statistics"
 )
 
@@ -53,7 +53,7 @@ const minInterval = 10 * time.Second
 const defaultSequentialConfidence = 0.95
 
 // retryAfter returns the poll interval for a metric gate, clamped to minInterval.
-func retryAfter(metric kaprov1alpha1.MetricGate) string {
+func retryAfter(metric kaprov1alpha2.MetricGate) string {
 	iv := strings.TrimSpace(metric.Interval)
 	if iv == "" {
 		return defaultInterval
@@ -67,7 +67,7 @@ func retryAfter(metric kaprov1alpha1.MetricGate) string {
 
 // resolveQuery substitutes {{.Window}} in the query template with the
 // configured window (defaulting to defaultWindow).
-func resolveQuery(metric kaprov1alpha1.MetricGate) (string, error) {
+func resolveQuery(metric kaprov1alpha2.MetricGate) (string, error) {
 	w := strings.TrimSpace(metric.Window)
 	if w == "" {
 		w = defaultWindow
@@ -87,7 +87,7 @@ func resolveQuery(metric kaprov1alpha1.MetricGate) (string, error) {
 	return buf.String(), nil
 }
 
-func metricWindow(metric kaprov1alpha1.MetricGate) string {
+func metricWindow(metric kaprov1alpha2.MetricGate) string {
 	w := strings.TrimSpace(metric.Window)
 	if w == "" {
 		return defaultWindow
@@ -101,7 +101,7 @@ func metricWindow(metric kaprov1alpha1.MetricGate) string {
 // The query window is injected via {{.Window}} template substitution using MetricGate.Window.
 func (g *MetricsGate) Evaluate(ctx context.Context, req Request) (Result, error) {
 	if req.Policy == nil || req.MetricIndex >= len(req.Policy.Gate.Metrics) {
-		return Result{Phase: kaprov1alpha1.GatePhasePassed, Message: "no metrics configured"}, nil
+		return Result{Phase: kaprov1alpha2.GatePhasePassed, Message: "no metrics configured"}, nil
 	}
 
 	metric := req.Policy.Gate.Metrics[req.MetricIndex]
@@ -115,10 +115,10 @@ func (g *MetricsGate) Evaluate(ctx context.Context, req Request) (Result, error)
 	query, err := resolveQuery(metric)
 	if err != nil {
 		return Result{
-			Phase:   kaprov1alpha1.GatePhaseFailed,
+			Phase:   kaprov1alpha2.GatePhaseFailed,
 			Message: fmt.Sprintf("query template error: %v", err),
 			Evidence: []Evidence{metricEvidence(metric, query, "", 0, 0, "invalid query template",
-				kaprov1alpha1.GatePhaseFailed)},
+				kaprov1alpha2.GatePhaseFailed)},
 		}, nil
 	}
 
@@ -136,23 +136,23 @@ func (g *MetricsGate) Evaluate(ctx context.Context, req Request) (Result, error)
 		return g.evaluateInstant(ctx, baseURL, metric, analysis, query, interval)
 	default:
 		return Result{
-			Phase:   kaprov1alpha1.GatePhaseFailed,
+			Phase:   kaprov1alpha2.GatePhaseFailed,
 			Message: fmt.Sprintf("unsupported metric analysis mode %q", analysis.Mode),
 			Evidence: []Evidence{metricEvidence(metric, query, "", 0, 0, "unsupported analysis mode",
-				kaprov1alpha1.GatePhaseFailed)},
+				kaprov1alpha2.GatePhaseFailed)},
 		}, nil
 	}
 }
 
-func (g *MetricsGate) evaluateInstant(ctx context.Context, baseURL string, metric kaprov1alpha1.MetricGate, analysis metricAnalysisConfig, query, interval string) (Result, error) {
+func (g *MetricsGate) evaluateInstant(ctx context.Context, baseURL string, metric kaprov1alpha2.MetricGate, analysis metricAnalysisConfig, query, interval string) (Result, error) {
 	ok, val, err := g.queryInstant(ctx, baseURL, query)
 	if err != nil {
 		return Result{
-			Phase:      kaprov1alpha1.GatePhaseInconclusive,
+			Phase:      kaprov1alpha2.GatePhaseInconclusive,
 			Message:    fmt.Sprintf("prometheus query error: %v", err),
 			RetryAfter: interval,
 			Evidence: []Evidence{metricEvidence(metric, query, "", 0, 0, err.Error(),
-				kaprov1alpha1.GatePhaseInconclusive)},
+				kaprov1alpha2.GatePhaseInconclusive)},
 		}, nil // don't propagate — retry is safer than blocking the promotionplan
 	}
 	if !ok {
@@ -162,31 +162,31 @@ func (g *MetricsGate) evaluateInstant(ctx context.Context, baseURL string, metri
 	threshold := analysis.threshold
 	if !compare(val, threshold, analysis.comparator) {
 		return Result{
-			Phase:      kaprov1alpha1.GatePhaseInconclusive,
+			Phase:      kaprov1alpha2.GatePhaseInconclusive,
 			Message:    fmt.Sprintf("metric gate blocked (mode=%s, value=%.4f, comparator=%s, threshold=%.4f, interval=%s): %s", analysis.Mode, val, analysis.comparator, threshold, interval, query),
 			RetryAfter: interval,
 			Evidence: []Evidence{metricEvidence(metric, query, "", val, 0,
 				fmt.Sprintf("value %.4f did not satisfy %s %.4f", val, analysis.comparator, threshold),
-				kaprov1alpha1.GatePhaseInconclusive)},
+				kaprov1alpha2.GatePhaseInconclusive)},
 		}, nil
 	}
 
 	return Result{
-		Phase:   kaprov1alpha1.GatePhasePassed,
+		Phase:   kaprov1alpha2.GatePhasePassed,
 		Message: fmt.Sprintf("metric query passed (mode=%s, value=%.4f, comparator=%s, threshold=%.4f): %s", analysis.Mode, val, analysis.comparator, threshold, query),
 		Evidence: []Evidence{metricEvidence(metric, query, "", val, 0,
 			fmt.Sprintf("value %.4f satisfied %s %.4f", val, analysis.comparator, threshold),
-			kaprov1alpha1.GatePhasePassed)},
+			kaprov1alpha2.GatePhasePassed)},
 	}, nil
 }
 
-func (g *MetricsGate) evaluateBaseline(ctx context.Context, baseURL string, metric kaprov1alpha1.MetricGate, analysis metricAnalysisConfig, query, interval string) (Result, error) {
+func (g *MetricsGate) evaluateBaseline(ctx context.Context, baseURL string, metric kaprov1alpha2.MetricGate, analysis metricAnalysisConfig, query, interval string) (Result, error) {
 	if strings.TrimSpace(analysis.baselineQuery) == "" {
 		return Result{
-			Phase:   kaprov1alpha1.GatePhaseFailed,
+			Phase:   kaprov1alpha2.GatePhaseFailed,
 			Message: "baseline metric analysis requires analysis.baselineQuery",
 			Evidence: []Evidence{metricEvidence(metric, query, "", 0, 0, "missing baseline query",
-				kaprov1alpha1.GatePhaseFailed)},
+				kaprov1alpha2.GatePhaseFailed)},
 		}, nil
 	}
 
@@ -194,20 +194,20 @@ func (g *MetricsGate) evaluateBaseline(ctx context.Context, baseURL string, metr
 		healthy, err := g.baselineHealthy(ctx, baseURL, analysis.baselineHealthQuery)
 		if err != nil {
 			return Result{
-				Phase:      kaprov1alpha1.GatePhaseInconclusive,
+				Phase:      kaprov1alpha2.GatePhaseInconclusive,
 				Message:    fmt.Sprintf("prometheus baseline health query error: %v", err),
 				RetryAfter: interval,
 				Evidence: []Evidence{metricEvidence(metric, query, analysis.baselineQuery, 0, 0, err.Error(),
-					kaprov1alpha1.GatePhaseInconclusive)},
+					kaprov1alpha2.GatePhaseInconclusive)},
 			}, nil
 		}
 		if !healthy {
 			return Result{
-				Phase:      kaprov1alpha1.GatePhaseInconclusive,
+				Phase:      kaprov1alpha2.GatePhaseInconclusive,
 				Message:    "baseline is not healthy; refusing baseline comparison",
 				RetryAfter: interval,
 				Evidence: []Evidence{metricEvidenceWithStats(metric, query, analysis.baselineQuery, 0, 0, 1, nil,
-					"baseline health query returned false", kaprov1alpha1.GatePhaseInconclusive, statEvidence{BaselineHealthy: ptrBool(false)})},
+					"baseline health query returned false", kaprov1alpha2.GatePhaseInconclusive, statEvidence{BaselineHealthy: ptrBool(false)})},
 			}, nil
 		}
 	}
@@ -215,11 +215,11 @@ func (g *MetricsGate) evaluateBaseline(ctx context.Context, baseURL string, metr
 	ok, val, err := g.queryInstant(ctx, baseURL, query)
 	if err != nil {
 		return Result{
-			Phase:      kaprov1alpha1.GatePhaseInconclusive,
+			Phase:      kaprov1alpha2.GatePhaseInconclusive,
 			Message:    fmt.Sprintf("prometheus query error: %v", err),
 			RetryAfter: interval,
 			Evidence: []Evidence{metricEvidence(metric, query, analysis.baselineQuery, 0, 0, err.Error(),
-				kaprov1alpha1.GatePhaseInconclusive)},
+				kaprov1alpha2.GatePhaseInconclusive)},
 		}, nil
 	}
 	if !ok {
@@ -228,11 +228,11 @@ func (g *MetricsGate) evaluateBaseline(ctx context.Context, baseURL string, metr
 	ok, baseline, err := g.queryInstant(ctx, baseURL, analysis.baselineQuery)
 	if err != nil {
 		return Result{
-			Phase:      kaprov1alpha1.GatePhaseInconclusive,
+			Phase:      kaprov1alpha2.GatePhaseInconclusive,
 			Message:    fmt.Sprintf("prometheus baseline query error: %v", err),
 			RetryAfter: interval,
 			Evidence: []Evidence{metricEvidence(metric, query, analysis.baselineQuery, val, 0, err.Error(),
-				kaprov1alpha1.GatePhaseInconclusive)},
+				kaprov1alpha2.GatePhaseInconclusive)},
 		}, nil
 	}
 	if !ok {
@@ -240,44 +240,44 @@ func (g *MetricsGate) evaluateBaseline(ctx context.Context, baseURL string, metr
 	}
 	if baseline <= 0 {
 		return Result{
-			Phase:      kaprov1alpha1.GatePhaseInconclusive,
+			Phase:      kaprov1alpha2.GatePhaseInconclusive,
 			Message:    fmt.Sprintf("baseline metric is not positive (baseline=%.4f)", baseline),
 			RetryAfter: interval,
 			Evidence: []Evidence{metricEvidence(metric, query, analysis.baselineQuery, val, baseline,
-				"baseline must be positive for ratio analysis", kaprov1alpha1.GatePhaseInconclusive)},
+				"baseline must be positive for ratio analysis", kaprov1alpha2.GatePhaseInconclusive)},
 		}, nil
 	}
 
 	ratio := val / baseline
 	if !compare(ratio, analysis.threshold, analysis.comparator) {
 		return Result{
-			Phase:      kaprov1alpha1.GatePhaseInconclusive,
+			Phase:      kaprov1alpha2.GatePhaseInconclusive,
 			Message:    fmt.Sprintf("baseline metric blocked (value=%.4f, baseline=%.4f, ratio=%.4f, comparator=%s, threshold=%.4f)", val, baseline, ratio, analysis.comparator, analysis.threshold),
 			RetryAfter: interval,
 			Evidence: []Evidence{metricEvidence(metric, query, analysis.baselineQuery, ratio, baseline,
 				fmt.Sprintf("ratio %.4f did not satisfy %s %.4f", ratio, analysis.comparator, analysis.threshold),
-				kaprov1alpha1.GatePhaseInconclusive)},
+				kaprov1alpha2.GatePhaseInconclusive)},
 		}, nil
 	}
 
 	return Result{
-		Phase:   kaprov1alpha1.GatePhasePassed,
+		Phase:   kaprov1alpha2.GatePhasePassed,
 		Message: fmt.Sprintf("baseline metric passed (value=%.4f, baseline=%.4f, ratio=%.4f, comparator=%s, threshold=%.4f)", val, baseline, ratio, analysis.comparator, analysis.threshold),
 		Evidence: []Evidence{metricEvidence(metric, query, analysis.baselineQuery, ratio, baseline,
 			fmt.Sprintf("ratio %.4f satisfied %s %.4f", ratio, analysis.comparator, analysis.threshold),
-			kaprov1alpha1.GatePhasePassed)},
+			kaprov1alpha2.GatePhasePassed)},
 	}, nil
 }
 
-func (g *MetricsGate) evaluateSequential(ctx context.Context, baseURL string, metric kaprov1alpha1.MetricGate, analysis metricAnalysisConfig, query, interval string) (Result, error) {
+func (g *MetricsGate) evaluateSequential(ctx context.Context, baseURL string, metric kaprov1alpha2.MetricGate, analysis metricAnalysisConfig, query, interval string) (Result, error) {
 	values, err := g.queryRange(ctx, baseURL, query, metricWindow(metric), interval)
 	if err != nil {
 		return Result{
-			Phase:      kaprov1alpha1.GatePhaseInconclusive,
+			Phase:      kaprov1alpha2.GatePhaseInconclusive,
 			Message:    fmt.Sprintf("prometheus range query error: %v", err),
 			RetryAfter: interval,
 			Evidence: []Evidence{metricEvidence(metric, query, "", 0, 0, err.Error(),
-				kaprov1alpha1.GatePhaseInconclusive)},
+				kaprov1alpha2.GatePhaseInconclusive)},
 		}, nil
 	}
 
@@ -287,11 +287,11 @@ func (g *MetricsGate) evaluateSequential(ctx context.Context, baseURL string, me
 	}
 	if int64(len(values)) < minSamples {
 		return Result{
-			Phase:      kaprov1alpha1.GatePhaseInconclusive,
+			Phase:      kaprov1alpha2.GatePhaseInconclusive,
 			Message:    fmt.Sprintf("sequential metric analysis needs more samples (samples=%d, minSamples=%d)", len(values), minSamples),
 			RetryAfter: interval,
 			Evidence: []Evidence{metricEvidenceWithConfidence(metric, query, "", statistics.Mean(values), 0, len(values), nil,
-				fmt.Sprintf("waiting for at least %d samples", minSamples), kaprov1alpha1.GatePhaseInconclusive)},
+				fmt.Sprintf("waiting for at least %d samples", minSamples), kaprov1alpha2.GatePhaseInconclusive)},
 		}, nil
 	}
 
@@ -299,21 +299,21 @@ func (g *MetricsGate) evaluateSequential(ctx context.Context, baseURL string, me
 	confidence := test.Confidence
 	if confidence < analysis.confidenceThreshold && (analysis.maxSamples <= 0 || int64(len(values)) < analysis.maxSamples) {
 		return Result{
-			Phase:      kaprov1alpha1.GatePhaseInconclusive,
+			Phase:      kaprov1alpha2.GatePhaseInconclusive,
 			Message:    fmt.Sprintf("sequential metric analysis is not confident yet (mean=%.4f, pValue=%.4f, confidence=%.3f, required=%.3f)", test.Mean, test.PValue, confidence, analysis.confidenceThreshold),
 			RetryAfter: interval,
 			Evidence: []Evidence{metricEvidenceWithStats(metric, query, "", test.Mean, 0, len(values), &confidence,
-				"confidence below threshold", kaprov1alpha1.GatePhaseInconclusive, statEvidence{
+				"confidence below threshold", kaprov1alpha2.GatePhaseInconclusive, statEvidence{
 					Alpha: analysis.alpha, PValue: &test.PValue, EffectSize: test.EffectSize,
 					DecisionRule: "one-sample threshold test",
 				})},
 		}, nil
 	}
 
-	phase := kaprov1alpha1.GatePhasePassed
+	phase := kaprov1alpha2.GatePhasePassed
 	reason := fmt.Sprintf("mean %.4f satisfied %s %.4f with confidence %.3f", test.Mean, analysis.comparator, analysis.threshold, confidence)
 	if !compare(test.Mean, analysis.threshold, analysis.comparator) {
-		phase = kaprov1alpha1.GatePhaseFailed
+		phase = kaprov1alpha2.GatePhaseFailed
 		reason = fmt.Sprintf("mean %.4f did not satisfy %s %.4f with confidence %.3f", test.Mean, analysis.comparator, analysis.threshold, confidence)
 	}
 	result := Result{
@@ -325,21 +325,21 @@ func (g *MetricsGate) evaluateSequential(ctx context.Context, baseURL string, me
 				DecisionRule: "one-sample threshold test",
 			})},
 	}
-	if phase == kaprov1alpha1.GatePhaseFailed {
+	if phase == kaprov1alpha2.GatePhaseFailed {
 		result.RetryAfter = "0"
 	}
 	return result, nil
 }
 
-func (g *MetricsGate) evaluateChangePoint(ctx context.Context, baseURL string, metric kaprov1alpha1.MetricGate, analysis metricAnalysisConfig, query, interval string) (Result, error) {
+func (g *MetricsGate) evaluateChangePoint(ctx context.Context, baseURL string, metric kaprov1alpha2.MetricGate, analysis metricAnalysisConfig, query, interval string) (Result, error) {
 	values, err := g.queryRange(ctx, baseURL, query, metricWindow(metric), interval)
 	if err != nil {
 		return Result{
-			Phase:      kaprov1alpha1.GatePhaseInconclusive,
+			Phase:      kaprov1alpha2.GatePhaseInconclusive,
 			Message:    fmt.Sprintf("prometheus range query error: %v", err),
 			RetryAfter: interval,
 			Evidence: []Evidence{metricEvidence(metric, query, "", 0, 0, err.Error(),
-				kaprov1alpha1.GatePhaseInconclusive)},
+				kaprov1alpha2.GatePhaseInconclusive)},
 		}, nil
 	}
 	minSamples := analysis.minSamples
@@ -348,11 +348,11 @@ func (g *MetricsGate) evaluateChangePoint(ctx context.Context, baseURL string, m
 	}
 	if int64(len(values)) < minSamples {
 		return Result{
-			Phase:      kaprov1alpha1.GatePhaseInconclusive,
+			Phase:      kaprov1alpha2.GatePhaseInconclusive,
 			Message:    fmt.Sprintf("change-point analysis needs more samples (samples=%d, minSamples=%d)", len(values), minSamples),
 			RetryAfter: interval,
 			Evidence: []Evidence{metricEvidenceWithStats(metric, query, "", statistics.Mean(values), 0, len(values), nil,
-				"waiting for enough samples", kaprov1alpha1.GatePhaseInconclusive, statEvidence{
+				"waiting for enough samples", kaprov1alpha2.GatePhaseInconclusive, statEvidence{
 					Alpha: analysis.alpha, DecisionRule: "split-window change-point test",
 				})},
 		}, nil
@@ -361,20 +361,20 @@ func (g *MetricsGate) evaluateChangePoint(ctx context.Context, baseURL string, m
 	confidence := test.Confidence
 	if test.PValue > analysis.alphaValue && (analysis.maxSamples <= 0 || int64(len(values)) < analysis.maxSamples) {
 		return Result{
-			Phase:      kaprov1alpha1.GatePhaseInconclusive,
+			Phase:      kaprov1alpha2.GatePhaseInconclusive,
 			Message:    fmt.Sprintf("change-point analysis has no significant shift yet (pValue=%.4f, alpha=%.4f)", test.PValue, analysis.alphaValue),
 			RetryAfter: interval,
 			Evidence: []Evidence{metricEvidenceWithStats(metric, query, "", test.Mean, 0, len(values), &confidence,
-				"no significant change point yet", kaprov1alpha1.GatePhaseInconclusive, statEvidence{
+				"no significant change point yet", kaprov1alpha2.GatePhaseInconclusive, statEvidence{
 					Alpha: analysis.alpha, PValue: &test.PValue, EffectSize: test.EffectSize,
 					DecisionRule: "split-window change-point test",
 				})},
 		}, nil
 	}
-	phase := kaprov1alpha1.GatePhasePassed
+	phase := kaprov1alpha2.GatePhasePassed
 	reason := "significant change is not a regression for the configured comparator"
 	if changeIsRegression(test.EffectSize, analysis.comparator) {
-		phase = kaprov1alpha1.GatePhaseFailed
+		phase = kaprov1alpha2.GatePhaseFailed
 		reason = "significant change point indicates regression"
 	}
 	result := Result{
@@ -386,31 +386,31 @@ func (g *MetricsGate) evaluateChangePoint(ctx context.Context, baseURL string, m
 				DecisionRule: "split-window change-point test",
 			})},
 	}
-	if phase == kaprov1alpha1.GatePhaseFailed {
+	if phase == kaprov1alpha2.GatePhaseFailed {
 		result.RetryAfter = "0"
 	}
 	return result, nil
 }
 
-func (g *MetricsGate) evaluateScore(ctx context.Context, baseURL string, metric kaprov1alpha1.MetricGate, analysis metricAnalysisConfig, query, interval string) (Result, error) {
+func (g *MetricsGate) evaluateScore(ctx context.Context, baseURL string, metric kaprov1alpha2.MetricGate, analysis metricAnalysisConfig, query, interval string) (Result, error) {
 	if analysis.baselineHealthQuery != "" {
 		healthy, err := g.baselineHealthy(ctx, baseURL, analysis.baselineHealthQuery)
 		if err != nil {
 			return Result{
-				Phase:      kaprov1alpha1.GatePhaseInconclusive,
+				Phase:      kaprov1alpha2.GatePhaseInconclusive,
 				Message:    fmt.Sprintf("prometheus baseline health query error: %v", err),
 				RetryAfter: interval,
 				Evidence: []Evidence{metricEvidence(metric, query, analysis.baselineQuery, 0, 0, err.Error(),
-					kaprov1alpha1.GatePhaseInconclusive)},
+					kaprov1alpha2.GatePhaseInconclusive)},
 			}, nil
 		}
 		if !healthy {
 			return Result{
-				Phase:      kaprov1alpha1.GatePhaseInconclusive,
+				Phase:      kaprov1alpha2.GatePhaseInconclusive,
 				Message:    "baseline is not healthy; refusing score analysis",
 				RetryAfter: interval,
 				Evidence: []Evidence{metricEvidenceWithStats(metric, query, analysis.baselineQuery, 0, 0, 1, nil,
-					"baseline health query returned false", kaprov1alpha1.GatePhaseInconclusive, statEvidence{
+					"baseline health query returned false", kaprov1alpha2.GatePhaseInconclusive, statEvidence{
 						BaselineHealthy: ptrBool(false), DecisionRule: "baseline health precondition",
 					})},
 			}, nil
@@ -419,11 +419,11 @@ func (g *MetricsGate) evaluateScore(ctx context.Context, baseURL string, metric 
 	ok, val, err := g.queryInstant(ctx, baseURL, query)
 	if err != nil {
 		return Result{
-			Phase:      kaprov1alpha1.GatePhaseInconclusive,
+			Phase:      kaprov1alpha2.GatePhaseInconclusive,
 			Message:    fmt.Sprintf("prometheus query error: %v", err),
 			RetryAfter: interval,
 			Evidence: []Evidence{metricEvidence(metric, query, "", 0, 0, err.Error(),
-				kaprov1alpha1.GatePhaseInconclusive)},
+				kaprov1alpha2.GatePhaseInconclusive)},
 		}, nil
 	}
 	if !ok {
@@ -432,26 +432,26 @@ func (g *MetricsGate) evaluateScore(ctx context.Context, baseURL string, metric 
 	score := statistics.Score(val, analysis.threshold, analysis.comparator)
 	if score < analysis.scoreThreshold {
 		return Result{
-			Phase:      kaprov1alpha1.GatePhaseInconclusive,
+			Phase:      kaprov1alpha2.GatePhaseInconclusive,
 			Message:    fmt.Sprintf("metric score blocked (score=%.1f, required=%.1f, value=%.4f)", score, analysis.scoreThreshold, val),
 			RetryAfter: interval,
 			Evidence: []Evidence{metricEvidenceWithStats(metric, query, analysis.baselineQuery, val, 0, 1, nil,
-				"score below threshold", kaprov1alpha1.GatePhaseInconclusive, statEvidence{
+				"score below threshold", kaprov1alpha2.GatePhaseInconclusive, statEvidence{
 					Score: &score, DecisionRule: "single-metric canary score",
 				})},
 		}, nil
 	}
 	return Result{
-		Phase:   kaprov1alpha1.GatePhasePassed,
+		Phase:   kaprov1alpha2.GatePhasePassed,
 		Message: fmt.Sprintf("metric score passed (score=%.1f, required=%.1f, value=%.4f)", score, analysis.scoreThreshold, val),
 		Evidence: []Evidence{metricEvidenceWithStats(metric, query, analysis.baselineQuery, val, 0, 1, nil,
-			"score satisfied threshold", kaprov1alpha1.GatePhasePassed, statEvidence{
+			"score satisfied threshold", kaprov1alpha2.GatePhasePassed, statEvidence{
 				Score: &score, DecisionRule: "single-metric canary score",
 			})},
 	}, nil
 }
 
-func metricThreshold(metric kaprov1alpha1.MetricGate) float64 {
+func metricThreshold(metric kaprov1alpha2.MetricGate) float64 {
 	if metric.Threshold == nil {
 		return 0
 	}
@@ -472,7 +472,7 @@ type metricAnalysisConfig struct {
 	scoreThreshold      float64
 }
 
-func metricAnalysis(metric kaprov1alpha1.MetricGate) metricAnalysisConfig {
+func metricAnalysis(metric kaprov1alpha2.MetricGate) metricAnalysisConfig {
 	mode := "threshold"
 	comparator := ""
 	minSamples := int64(0)
@@ -645,13 +645,13 @@ func (g *MetricsGate) queryInstant(ctx context.Context, baseURL, query string) (
 	}
 }
 
-func noInstantDataResult(metric kaprov1alpha1.MetricGate, query, baselineQuery, interval, reason string) Result {
+func noInstantDataResult(metric kaprov1alpha2.MetricGate, query, baselineQuery, interval, reason string) Result {
 	return Result{
-		Phase:      kaprov1alpha1.GatePhaseInconclusive,
+		Phase:      kaprov1alpha2.GatePhaseInconclusive,
 		Message:    reason,
 		RetryAfter: interval,
 		Evidence: []Evidence{metricEvidenceWithStats(metric, query, baselineQuery, 0, 0, 0, nil,
-			reason, kaprov1alpha1.GatePhaseInconclusive, statEvidence{})},
+			reason, kaprov1alpha2.GatePhaseInconclusive, statEvidence{})},
 	}
 }
 
@@ -737,11 +737,11 @@ func parsePromValue(raw json.RawMessage) (float64, error) {
 	return val, nil
 }
 
-func metricEvidence(metric kaprov1alpha1.MetricGate, query, baselineQuery string, observed, baseline float64, reason string, _ kaprov1alpha1.GatePhase) Evidence {
+func metricEvidence(metric kaprov1alpha2.MetricGate, query, baselineQuery string, observed, baseline float64, reason string, _ kaprov1alpha2.GatePhase) Evidence {
 	return metricEvidenceWithConfidence(metric, query, baselineQuery, observed, baseline, 1, nil, reason, "")
 }
 
-func metricEvidenceWithConfidence(metric kaprov1alpha1.MetricGate, query, baselineQuery string, observed, baseline float64, samples int, confidence *float64, reason string, _ kaprov1alpha1.GatePhase) Evidence {
+func metricEvidenceWithConfidence(metric kaprov1alpha2.MetricGate, query, baselineQuery string, observed, baseline float64, samples int, confidence *float64, reason string, _ kaprov1alpha2.GatePhase) Evidence {
 	return metricEvidenceWithStats(metric, query, baselineQuery, observed, baseline, samples, confidence, reason, "", statEvidence{})
 }
 
@@ -754,7 +754,7 @@ type statEvidence struct {
 	DecisionRule    string
 }
 
-func metricEvidenceWithStats(metric kaprov1alpha1.MetricGate, query, baselineQuery string, observed, baseline float64, samples int, confidence *float64, reason string, _ kaprov1alpha1.GatePhase, stats statEvidence) Evidence {
+func metricEvidenceWithStats(metric kaprov1alpha2.MetricGate, query, baselineQuery string, observed, baseline float64, samples int, confidence *float64, reason string, _ kaprov1alpha2.GatePhase, stats statEvidence) Evidence {
 	analysis := metricAnalysis(metric)
 	e := Evidence{
 		Type:                "metric",

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	kaprometrics "kapro.io/kapro/internal/metrics"
 	"kapro.io/kapro/internal/plugin/transport"
 	"kapro.io/kapro/pkg/plugincompat"
@@ -42,16 +42,16 @@ type Prober struct {
 }
 
 // Probe validates the registration, dials the endpoint, and reads capabilities.
-func (p Prober) Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration) (result Result) {
+func (p Prober) Probe(ctx context.Context, reg kaprov1alpha2.Plugin) (result Result) {
 	start := time.Now()
 	defer func() { observeProbe(reg, result, start) }()
 
-	if reg.Spec.Type != kaprov1alpha1.PluginTypeActuator &&
-		reg.Spec.Type != kaprov1alpha1.PluginTypeGate &&
-		reg.Spec.Type != kaprov1alpha1.PluginTypePlanner {
+	if reg.Spec.Type != kaprov1alpha2.PluginTypeActuator &&
+		reg.Spec.Type != kaprov1alpha2.PluginTypeGate &&
+		reg.Spec.Type != kaprov1alpha2.PluginTypePlanner {
 		return notReady("UnsupportedType", fmt.Sprintf("plugin registration %q has unsupported type %q", registrationName(reg), reg.Spec.Type))
 	}
-	if reg.Spec.Protocol != "" && reg.Spec.Protocol != kaprov1alpha1.PluginProtocolGRPC {
+	if reg.Spec.Protocol != "" && reg.Spec.Protocol != kaprov1alpha2.PluginProtocolGRPC {
 		return notReady("UnsupportedProtocol", fmt.Sprintf("plugin %q uses unsupported protocol %q", registrationName(reg), reg.Spec.Protocol))
 	}
 	if reg.Spec.Endpoint == "" {
@@ -81,7 +81,7 @@ func (p Prober) Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration)
 	defer conn.Close()
 
 	switch reg.Spec.Type {
-	case kaprov1alpha1.PluginTypeActuator:
+	case kaprov1alpha2.PluginTypeActuator:
 		resp, err := kaiv1alpha1.NewActuatorServiceClient(conn).GetCapabilities(ctx, &kaiv1alpha1.GetCapabilitiesRequest{})
 		if err != nil {
 			return notReady("ProbeFailed", fmt.Sprintf("actuator plugin %q GetCapabilities failed: %v", registrationName(reg), err))
@@ -90,7 +90,7 @@ func (p Prober) Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration)
 			return result
 		}
 		return ready(resp.GetPluginVersion(), resp.GetContractVersion(), resp.GetCapabilities())
-	case kaprov1alpha1.PluginTypeGate:
+	case kaprov1alpha2.PluginTypeGate:
 		resp, err := kgiv1alpha1.NewGateServiceClient(conn).GetCapabilities(ctx, &kgiv1alpha1.GetCapabilitiesRequest{})
 		if err != nil {
 			return notReady("ProbeFailed", fmt.Sprintf("gate plugin %q GetCapabilities failed: %v", registrationName(reg), err))
@@ -99,7 +99,7 @@ func (p Prober) Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration)
 			return result
 		}
 		return ready(resp.GetPluginVersion(), resp.GetContractVersion(), resp.GetCapabilities())
-	case kaprov1alpha1.PluginTypePlanner:
+	case kaprov1alpha2.PluginTypePlanner:
 		resp, err := kpiv1alpha1.NewPlannerServiceClient(conn).GetCapabilities(ctx, &kpiv1alpha1.GetCapabilitiesRequest{})
 		if err != nil {
 			return notReady("ProbeFailed", fmt.Sprintf("planner plugin %q GetCapabilities failed: %v", registrationName(reg), err))
@@ -116,7 +116,7 @@ func (p Prober) Probe(ctx context.Context, reg kaprov1alpha1.PluginRegistration)
 	}
 }
 
-func validateContract(pluginType kaprov1alpha1.PluginType, version string) Result {
+func validateContract(pluginType kaprov1alpha2.PluginType, version string) Result {
 	supported := plugincompat.SupportedContractVersionsString(pluginType)
 	contractName := plugincompat.ContractName(pluginType)
 	if version == "" {
@@ -175,7 +175,7 @@ func ContractVersion() string {
 	return plugincompat.VersionV1Alpha1
 }
 
-func observeProbe(reg kaprov1alpha1.PluginRegistration, result Result, start time.Time) {
+func observeProbe(reg kaprov1alpha2.Plugin, result Result, start time.Time) {
 	outcome := "error"
 	readyValue := 0.0
 	if result.Ready {
@@ -198,7 +198,7 @@ func observeProbe(reg kaprov1alpha1.PluginRegistration, result Result, start tim
 	}
 }
 
-func registrationName(reg kaprov1alpha1.PluginRegistration) string {
+func registrationName(reg kaprov1alpha2.Plugin) string {
 	if reg.Name != "" {
 		return reg.Name
 	}
@@ -208,7 +208,7 @@ func registrationName(reg kaprov1alpha1.PluginRegistration) string {
 	return "<unnamed>"
 }
 
-func registrationMetricName(reg kaprov1alpha1.PluginRegistration) string {
+func registrationMetricName(reg kaprov1alpha2.Plugin) string {
 	if reg.Spec.Name != "" {
 		return reg.Spec.Name
 	}
@@ -218,7 +218,7 @@ func registrationMetricName(reg kaprov1alpha1.PluginRegistration) string {
 // ForgetReadiness removes the per-registration readiness metric for a deleted
 // registration. Callers should pass the last observed object before finalizer
 // removal so the registry key is still available.
-func ForgetReadiness(reg kaprov1alpha1.PluginRegistration) {
+func ForgetReadiness(reg kaprov1alpha2.Plugin) {
 	pluginType := string(reg.Spec.Type)
 	if pluginType == "" {
 		pluginType = "unknown"

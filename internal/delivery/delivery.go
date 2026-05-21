@@ -7,7 +7,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 // Delivery is the single entry point spoke code calls per (app, version)
@@ -89,14 +89,14 @@ type ReconcileResult struct {
 //   - Skipped: caller short-circuited (e.g. spec.suspend=true).
 func (d *Delivery) Reconcile(ctx context.Context, req ReconcileRequest) ReconcileResult {
 	if d == nil {
-		return ReconcileResult{App: req.App, Phase: string(kaprov1alpha1.DeliveryPhaseFailed),
+		return ReconcileResult{App: req.App, Phase: string(kaprov1alpha2.DeliveryPhaseFailed),
 			Err: fmt.Errorf("nil Delivery")}
 	}
 	now := d.Now
 	if now == nil {
 		now = time.Now
 	}
-	out := ReconcileResult{App: req.App, LastAttemptedAt: now(), Phase: string(kaprov1alpha1.DeliveryPhaseFailed)}
+	out := ReconcileResult{App: req.App, LastAttemptedAt: now(), Phase: string(kaprov1alpha2.DeliveryPhaseFailed)}
 
 	// Guard against partially-constructed Delivery: a nil Puller / Engine /
 	// Renderers map would panic on dereference further down. Surface the
@@ -117,7 +117,7 @@ func (d *Delivery) Reconcile(ctx context.Context, req ReconcileRequest) Reconcil
 	// Pull.
 	pa, err := d.Puller.Pull(ctx, req.Ref)
 	if err != nil {
-		out.Phase = string(kaprov1alpha1.DeliveryPhaseFailed)
+		out.Phase = string(kaprov1alpha2.DeliveryPhaseFailed)
 		out.Err = fmt.Errorf("pull %s: %w", req.Ref.String(), err)
 		return out
 	}
@@ -126,7 +126,7 @@ func (d *Delivery) Reconcile(ctx context.Context, req ReconcileRequest) Reconcil
 	// Detect.
 	format, err := DetectFormat(pa)
 	if err != nil {
-		out.Phase = string(kaprov1alpha1.DeliveryPhaseFailed)
+		out.Phase = string(kaprov1alpha2.DeliveryPhaseFailed)
 		out.Err = fmt.Errorf("detect format: %w", err)
 		return out
 	}
@@ -135,13 +135,13 @@ func (d *Delivery) Reconcile(ctx context.Context, req ReconcileRequest) Reconcil
 	// Render.
 	renderer, ok := d.Renderers[format]
 	if !ok {
-		out.Phase = string(kaprov1alpha1.DeliveryPhaseFailed)
+		out.Phase = string(kaprov1alpha2.DeliveryPhaseFailed)
 		out.Err = fmt.Errorf("format %q not supported by this build", format)
 		return out
 	}
 	rendered, err := renderer.Render(ctx, pa, req.Options)
 	if err != nil {
-		out.Phase = string(kaprov1alpha1.DeliveryPhaseFailed)
+		out.Phase = string(kaprov1alpha2.DeliveryPhaseFailed)
 		out.Err = fmt.Errorf("render %s: %w", format, err)
 		return out
 	}
@@ -150,7 +150,7 @@ func (d *Delivery) Reconcile(ctx context.Context, req ReconcileRequest) Reconcil
 		// surface as Failed: the OCI bundle is well-formed but contains
 		// nothing the spoke can apply, which is almost always a bug in the
 		// promotion pipeline. Cheap to spot here, painful to debug later.
-		out.Phase = string(kaprov1alpha1.DeliveryPhaseFailed)
+		out.Phase = string(kaprov1alpha2.DeliveryPhaseFailed)
 		out.Err = fmt.Errorf("render %s: zero objects", format)
 		return out
 	}
@@ -159,11 +159,11 @@ func (d *Delivery) Reconcile(ctx context.Context, req ReconcileRequest) Reconcil
 	res, err := d.Engine.Apply(ctx, rendered.Objects)
 	out.AppliedObjects = int32(res.Committed)
 	if err != nil {
-		out.Phase = string(kaprov1alpha1.DeliveryPhaseFailed)
+		out.Phase = string(kaprov1alpha2.DeliveryPhaseFailed)
 		out.Err = err
 		return out
 	}
-	out.Phase = string(kaprov1alpha1.DeliveryPhaseConverged)
+	out.Phase = string(kaprov1alpha2.DeliveryPhaseConverged)
 	out.LastAppliedAt = now()
 	return out
 }

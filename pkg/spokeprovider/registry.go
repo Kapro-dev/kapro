@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 // Registry resolves Provider implementations by BackendDriver.
@@ -14,19 +14,19 @@ import (
 // register/resolve discipline so out-of-tree code can reuse the idiom.
 type Registry struct {
 	mu        sync.RWMutex
-	providers map[kaprov1alpha1.BackendDriver]Provider
+	providers map[kaprov1alpha2.BackendDriver]Provider
 }
 
 // NewRegistry returns an empty Registry ready to accept Register calls.
 func NewRegistry() *Registry {
-	return &Registry{providers: make(map[kaprov1alpha1.BackendDriver]Provider)}
+	return &Registry{providers: make(map[kaprov1alpha2.BackendDriver]Provider)}
 }
 
 // Register adds a Provider under the given driver. Returns an error if the
 // driver is empty or already registered. Use Upsert when replacement is the
 // intent — Register fails loudly on accidental duplicate registration to
 // surface wire-up bugs at startup, not at the first reconcile.
-func (r *Registry) Register(driver kaprov1alpha1.BackendDriver, p Provider) error {
+func (r *Registry) Register(driver kaprov1alpha2.BackendDriver, p Provider) error {
 	if driver == "" {
 		return fmt.Errorf("driver is required")
 	}
@@ -46,7 +46,7 @@ func (r *Registry) Register(driver kaprov1alpha1.BackendDriver, p Provider) erro
 // implementation when one existed. Rejects empty driver and nil provider
 // for the same reason Register does — a nil entry would let Resolve return
 // (nil, nil) and panic the dispatcher.
-func (r *Registry) Upsert(driver kaprov1alpha1.BackendDriver, p Provider) (Provider, error) {
+func (r *Registry) Upsert(driver kaprov1alpha2.BackendDriver, p Provider) (Provider, error) {
 	if driver == "" {
 		return nil, fmt.Errorf("driver is required")
 	}
@@ -62,7 +62,7 @@ func (r *Registry) Upsert(driver kaprov1alpha1.BackendDriver, p Provider) (Provi
 
 // Unregister removes the provider for driver and returns the previous
 // implementation plus an ok flag indicating whether one existed.
-func (r *Registry) Unregister(driver kaprov1alpha1.BackendDriver) (Provider, bool) {
+func (r *Registry) Unregister(driver kaprov1alpha2.BackendDriver) (Provider, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	old, ok := r.providers[driver]
@@ -74,7 +74,7 @@ func (r *Registry) Unregister(driver kaprov1alpha1.BackendDriver) (Provider, boo
 // driver. The error is human-readable and goes straight into
 // FleetCluster.status.delivery[app].lastError when an unknown driver is
 // referenced — keep it stable for SRE grep recipes.
-func (r *Registry) Resolve(driver kaprov1alpha1.BackendDriver) (Provider, error) {
+func (r *Registry) Resolve(driver kaprov1alpha2.BackendDriver) (Provider, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	p, ok := r.providers[driver]

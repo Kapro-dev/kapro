@@ -19,7 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/controller"
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
@@ -67,7 +67,7 @@ func setupEnv(t *testing.T) (context.Context, context.CancelFunc, client.Client)
 	}
 
 	s := runtime.NewScheme()
-	if err := kaprov1alpha1.AddToScheme(s); err != nil {
+	if err := kaprov1alpha2.AddToScheme(s); err != nil {
 		t.Fatalf("AddToScheme: %v", err)
 	}
 	if err := coordinationv1.AddToScheme(s); err != nil {
@@ -190,8 +190,8 @@ func eventuallyLong(t *testing.T, fn func() bool, msg string) {
 }
 
 // getPromotionRun fetches the latest PromotionRun state.
-func getPromotionRun(ctx context.Context, c client.Client, key types.NamespacedName) *kaprov1alpha1.PromotionRun {
-	r := &kaprov1alpha1.PromotionRun{}
+func getPromotionRun(ctx context.Context, c client.Client, key types.NamespacedName) *kaprov1alpha2.PromotionRun {
+	r := &kaprov1alpha2.PromotionRun{}
 	_ = c.Get(ctx, key, r)
 	return r
 }
@@ -205,26 +205,26 @@ type fakeActuator struct {
 }
 
 func (f *fakeActuator) Apply(_ context.Context, _ actuator.ApplyRequest) error { return f.applyErr }
-func (f *fakeActuator) IsConverged(_ context.Context, _ *kaprov1alpha1.FleetCluster, _, _ string) (bool, error) {
+func (f *fakeActuator) IsConverged(_ context.Context, _ *kaprov1alpha2.Cluster, _, _ string) (bool, error) {
 	return f.converged, f.convErr
 }
-func (f *fakeActuator) Rollback(_ context.Context, _ *kaprov1alpha1.FleetCluster, _, _ string) error {
+func (f *fakeActuator) Rollback(_ context.Context, _ *kaprov1alpha2.Cluster, _, _ string) error {
 	return f.applyErr
 }
 func (f *fakeActuator) ApplyDelta(_ context.Context, req actuator.DeltaApplyRequest) (int, error) {
 	return len(req.DesiredVersions), f.applyErr
 }
-func (f *fakeActuator) IsAllConverged(_ context.Context, _ *kaprov1alpha1.FleetCluster, _ map[string]string) (bool, error) {
+func (f *fakeActuator) IsAllConverged(_ context.Context, _ *kaprov1alpha2.Cluster, _ map[string]string) (bool, error) {
 	return f.converged, f.convErr
 }
 
 // ---- shared fixture builders ------------------------------------------------
 
-func makeFleetCluster(name string, labels map[string]string) *kaprov1alpha1.FleetCluster {
-	return &kaprov1alpha1.FleetCluster{
+func makeFleetCluster(name string, labels map[string]string) *kaprov1alpha2.Cluster {
+	return &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels},
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{
 				Mode: "pull", BackendRef: "flux",
 				Parameters: map[string]string{
 					"namespace":     "flux-system",
@@ -239,7 +239,7 @@ func makeFleetCluster(name string, labels map[string]string) *kaprov1alpha1.Flee
 type passGate struct{}
 
 func (passGate) Evaluate(_ context.Context, _ gate.Request) (gate.Result, error) {
-	return gate.Result{Phase: kaprov1alpha1.GatePhasePassed}, nil
+	return gate.Result{Phase: kaprov1alpha2.GatePhasePassed}, nil
 }
 
 // newNoopGateRegistry returns a gate.Registry with every built-in name

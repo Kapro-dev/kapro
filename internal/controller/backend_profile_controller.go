@@ -23,7 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 // argoClusterSecretLabel is the well-known Argo CD label that identifies a
@@ -69,7 +69,7 @@ const maxBackendDiscoveryStatusObjects = 128
 const defaultBackendDiscoveryMaxObjects int64 = 1000
 
 func (r *BackendProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	var profile kaprov1alpha1.BackendProfile
+	var profile kaprov1alpha2.Backend
 	if err := r.Get(ctx, req.NamespacedName, &profile); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -83,7 +83,7 @@ func (r *BackendProfileReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	profile.Status.Driver = profile.Spec.Driver
 	profile.Status.Runtime = profile.Spec.Runtime
 	if profile.Status.Runtime == "" {
-		profile.Status.Runtime = kaprov1alpha1.BackendRuntimeBoth
+		profile.Status.Runtime = kaprov1alpha2.BackendRuntimeBoth
 	}
 	discovery, discoveryReason, discoveryMessage := r.observeDiscovery(ctx, &profile)
 	profile.Status.DiscoveredClusters = discovery.clusters
@@ -124,10 +124,10 @@ func (r *BackendProfileReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		apimeta.RemoveStatusCondition(&profile.Status.Conditions, "DiscoveryReady")
 	}
 	if ready {
-		apimeta.RemoveStatusCondition(&profile.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
+		apimeta.RemoveStatusCondition(&profile.Status.Conditions, kaprov1alpha2.ConditionTypeStalled)
 	} else {
 		apimeta.SetStatusCondition(&profile.Status.Conditions, metav1.Condition{
-			Type:               kaprov1alpha1.ConditionTypeStalled,
+			Type:               kaprov1alpha2.ConditionTypeStalled,
 			Status:             metav1.ConditionTrue,
 			Reason:             reason,
 			Message:            message,
@@ -150,19 +150,19 @@ type backendDiscoveryCounts struct {
 	applications    int32
 	applicationSets int32
 	status          metav1.ConditionStatus
-	selected        []kaprov1alpha1.DiscoveredBackendObject
-	skipped         []kaprov1alpha1.DiscoveredBackendObject
-	unsupported     []kaprov1alpha1.DiscoveredBackendObject
+	selected        []kaprov1alpha2.DiscoveredBackendObject
+	skipped         []kaprov1alpha2.DiscoveredBackendObject
+	unsupported     []kaprov1alpha2.DiscoveredBackendObject
 	errors          []string
 }
 
-func (r *BackendProfileReconciler) observeDiscovery(ctx context.Context, profile *kaprov1alpha1.BackendProfile) (backendDiscoveryCounts, string, string) {
+func (r *BackendProfileReconciler) observeDiscovery(ctx context.Context, profile *kaprov1alpha2.Backend) (backendDiscoveryCounts, string, string) {
 	counts := backendDiscoveryCounts{status: metav1.ConditionTrue}
 	if profile.Spec.Discovery == nil || !profile.Spec.Discovery.Enabled {
 		return counts, "DiscoveryDisabled", "backend discovery is disabled"
 	}
 	namespace := "argocd"
-	if profile.Spec.Driver == kaprov1alpha1.BackendDriverFlux {
+	if profile.Spec.Driver == kaprov1alpha2.BackendDriverFlux {
 		namespace = "flux-system"
 	}
 	if profile.Spec.Parameters["namespace"] != "" {
@@ -170,16 +170,16 @@ func (r *BackendProfileReconciler) observeDiscovery(ctx context.Context, profile
 	}
 
 	switch profile.Spec.Driver {
-	case kaprov1alpha1.BackendDriverArgo:
+	case kaprov1alpha2.BackendDriverArgo:
 		return r.observeArgoDiscovery(ctx, profile, namespace)
-	case kaprov1alpha1.BackendDriverFlux:
+	case kaprov1alpha2.BackendDriverFlux:
 		return r.observeFluxDiscovery(ctx, profile, namespace)
 	default:
 		return counts, "DiscoveryUnsupported", fmt.Sprintf("discovery is not implemented for %s backends", profile.Spec.Driver)
 	}
 }
 
-func (r *BackendProfileReconciler) observeArgoDiscovery(ctx context.Context, profile *kaprov1alpha1.BackendProfile, namespace string) (backendDiscoveryCounts, string, string) {
+func (r *BackendProfileReconciler) observeArgoDiscovery(ctx context.Context, profile *kaprov1alpha2.Backend, namespace string) (backendDiscoveryCounts, string, string) {
 	counts := backendDiscoveryCounts{status: metav1.ConditionTrue}
 	selector := labels.Everything()
 	if profile.Spec.Discovery.Selector != nil {
@@ -205,7 +205,7 @@ func (r *BackendProfileReconciler) observeArgoDiscovery(ctx context.Context, pro
 	for _, secret := range secretList.Items {
 		if selector.Matches(labels.Set(secret.Labels)) {
 			counts.clusters++
-			counts.addSelected(kaprov1alpha1.DiscoveredBackendObject{
+			counts.addSelected(kaprov1alpha2.DiscoveredBackendObject{
 				APIVersion: "v1",
 				Kind:       "Secret",
 				Namespace:  secret.Namespace,
@@ -234,7 +234,7 @@ func (r *BackendProfileReconciler) observeArgoDiscovery(ctx context.Context, pro
 	for i := range appList.Items {
 		app := &appList.Items[i]
 		pattern := argoApplicationPattern(app)
-		entry := kaprov1alpha1.DiscoveredBackendObject{
+		entry := kaprov1alpha2.DiscoveredBackendObject{
 			APIVersion:   "argoproj.io/v1alpha1",
 			Kind:         "Application",
 			Namespace:    app.GetNamespace(),
@@ -272,7 +272,7 @@ func (r *BackendProfileReconciler) observeArgoDiscovery(ctx context.Context, pro
 		counts.applicationSets = int32(len(appSetList.Items))
 		for i := range appSetList.Items {
 			appSet := &appSetList.Items[i]
-			counts.addSkipped(kaprov1alpha1.DiscoveredBackendObject{
+			counts.addSkipped(kaprov1alpha2.DiscoveredBackendObject{
 				APIVersion:   "argoproj.io/v1alpha1",
 				Kind:         "ApplicationSet",
 				Namespace:    appSet.GetNamespace(),
@@ -287,7 +287,7 @@ func (r *BackendProfileReconciler) observeArgoDiscovery(ctx context.Context, pro
 	return counts, "DiscoverySucceeded", counts.summary("Argo")
 }
 
-func (r *BackendProfileReconciler) observeFluxDiscovery(ctx context.Context, profile *kaprov1alpha1.BackendProfile, namespace string) (backendDiscoveryCounts, string, string) {
+func (r *BackendProfileReconciler) observeFluxDiscovery(ctx context.Context, profile *kaprov1alpha2.Backend, namespace string) (backendDiscoveryCounts, string, string) {
 	counts := backendDiscoveryCounts{status: metav1.ConditionTrue}
 	appSelector := labels.Everything()
 	if profile.Spec.Discovery.Selector != nil {
@@ -354,7 +354,7 @@ func (r *BackendProfileReconciler) listFluxSourceObjects(ctx context.Context, na
 	counts.applications = int32(len(list.Items))
 	for i := range list.Items {
 		obj := &list.Items[i]
-		counts.addSelected(kaprov1alpha1.DiscoveredBackendObject{
+		counts.addSelected(kaprov1alpha2.DiscoveredBackendObject{
 			APIVersion:   gvk.GroupVersion().String(),
 			Kind:         kind,
 			Namespace:    obj.GetNamespace(),
@@ -385,7 +385,7 @@ func (r *BackendProfileReconciler) listFluxObjects(ctx context.Context, namespac
 	counts.applications = int32(len(list.Items))
 	for i := range list.Items {
 		obj := &list.Items[i]
-		counts.addSelected(kaprov1alpha1.DiscoveredBackendObject{
+		counts.addSelected(kaprov1alpha2.DiscoveredBackendObject{
 			APIVersion:   gvk.GroupVersion().String(),
 			Kind:         kind,
 			Namespace:    obj.GetNamespace(),
@@ -408,15 +408,15 @@ func fluxSourceVersionField(obj *unstructured.Unstructured) string {
 	return "spec.ref.tag"
 }
 
-func (r *BackendProfileReconciler) profileReadiness(ctx context.Context, profile *kaprov1alpha1.BackendProfile) (bool, string, string) {
+func (r *BackendProfileReconciler) profileReadiness(ctx context.Context, profile *kaprov1alpha2.Backend) (bool, string, string) {
 	switch profile.Spec.Driver {
-	case kaprov1alpha1.BackendDriverFlux, kaprov1alpha1.BackendDriverArgo, kaprov1alpha1.BackendDriverOCI:
+	case kaprov1alpha2.BackendDriverFlux, kaprov1alpha2.BackendDriverArgo, kaprov1alpha2.BackendDriverOCI:
 		return true, "BuiltInBackendReady", fmt.Sprintf("built-in %s backend is available", profile.Spec.Driver)
-	case kaprov1alpha1.BackendDriverExternal:
+	case kaprov1alpha2.BackendDriverExternal:
 		if profile.Spec.PluginRef == "" {
 			return false, "MissingPluginRef", "external backend requires spec.pluginRef"
 		}
-		var reg kaprov1alpha1.PluginRegistration
+		var reg kaprov1alpha2.Plugin
 		if err := r.Get(ctx, client.ObjectKey{Name: profile.Spec.PluginRef}, &reg); err != nil {
 			return false, "PluginRegistrationNotFound", err.Error()
 		}
@@ -429,7 +429,7 @@ func (r *BackendProfileReconciler) profileReadiness(ctx context.Context, profile
 	}
 }
 
-func backendDiscoveryListLimit(profile *kaprov1alpha1.BackendProfile) int64 {
+func backendDiscoveryListLimit(profile *kaprov1alpha2.Backend) int64 {
 	if profile.Spec.Discovery != nil && profile.Spec.Discovery.MaxObjects > 0 {
 		return int64(profile.Spec.Discovery.MaxObjects)
 	}
@@ -442,7 +442,7 @@ func exceededListLimit(continueToken string, count int, limit int64) bool {
 
 func (r *BackendProfileReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	b := ctrl.NewControllerManagedBy(mgr).
-		For(&kaprov1alpha1.BackendProfile{}).
+		For(&kaprov1alpha2.Backend{}).
 		Watches(
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.backendProfilesForBackendObject),
@@ -475,7 +475,7 @@ func backendDiscoveryWatchObject(gvk schema.GroupVersionKind) *unstructured.Unst
 }
 
 func (r *BackendProfileReconciler) backendProfilesForBackendObject(ctx context.Context, obj client.Object) []reconcile.Request {
-	var profiles kaprov1alpha1.BackendProfileList
+	var profiles kaprov1alpha2.BackendList
 	if err := r.List(ctx, &profiles); err != nil {
 		return nil
 	}
@@ -489,22 +489,22 @@ func (r *BackendProfileReconciler) backendProfilesForBackendObject(ctx context.C
 	return requests
 }
 
-func backendProfileMatchesObject(profile *kaprov1alpha1.BackendProfile, obj client.Object) bool {
+func backendProfileMatchesObject(profile *kaprov1alpha2.Backend, obj client.Object) bool {
 	if profile.Spec.Discovery == nil || !profile.Spec.Discovery.Enabled {
 		return false
 	}
 	gvk := obj.GetObjectKind().GroupVersionKind()
-	var objectDriver kaprov1alpha1.BackendDriver
+	var objectDriver kaprov1alpha2.BackendDriver
 	switch {
 	case isCoreSecretObject(obj):
 		if obj.GetLabels()["argocd.argoproj.io/secret-type"] != "cluster" {
 			return false
 		}
-		objectDriver = kaprov1alpha1.BackendDriverArgo
+		objectDriver = kaprov1alpha2.BackendDriverArgo
 	case gvk.Group == "argoproj.io":
-		objectDriver = kaprov1alpha1.BackendDriverArgo
+		objectDriver = kaprov1alpha2.BackendDriverArgo
 	case strings.HasSuffix(gvk.Group, "toolkit.fluxcd.io"):
-		objectDriver = kaprov1alpha1.BackendDriverFlux
+		objectDriver = kaprov1alpha2.BackendDriverFlux
 	default:
 		return false
 	}
@@ -512,7 +512,7 @@ func backendProfileMatchesObject(profile *kaprov1alpha1.BackendProfile, obj clie
 		return false
 	}
 	namespace := "argocd"
-	if profile.Spec.Driver == kaprov1alpha1.BackendDriverFlux {
+	if profile.Spec.Driver == kaprov1alpha2.BackendDriverFlux {
 		namespace = "flux-system"
 	}
 	if profile.Spec.Parameters["namespace"] != "" {
@@ -539,19 +539,19 @@ func isCoreSecretObject(obj client.Object) bool {
 	return gvk.Group == "" && gvk.Kind == "Secret"
 }
 
-func (d *backendDiscoveryCounts) addSelected(obj kaprov1alpha1.DiscoveredBackendObject) {
+func (d *backendDiscoveryCounts) addSelected(obj kaprov1alpha2.DiscoveredBackendObject) {
 	if len(d.selected) < maxBackendDiscoveryStatusObjects {
 		d.selected = append(d.selected, obj)
 	}
 }
 
-func (d *backendDiscoveryCounts) addSkipped(obj kaprov1alpha1.DiscoveredBackendObject) {
+func (d *backendDiscoveryCounts) addSkipped(obj kaprov1alpha2.DiscoveredBackendObject) {
 	if len(d.skipped) < maxBackendDiscoveryStatusObjects {
 		d.skipped = append(d.skipped, obj)
 	}
 }
 
-func (d *backendDiscoveryCounts) addUnsupported(obj kaprov1alpha1.DiscoveredBackendObject) {
+func (d *backendDiscoveryCounts) addUnsupported(obj kaprov1alpha2.DiscoveredBackendObject) {
 	if len(d.unsupported) < maxBackendDiscoveryStatusObjects {
 		d.unsupported = append(d.unsupported, obj)
 	}

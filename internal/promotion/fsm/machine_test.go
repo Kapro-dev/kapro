@@ -8,7 +8,7 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 // testEnv is a stand-in for the real PromotionTargetReconciler env passed
@@ -18,8 +18,8 @@ type testEnv struct {
 }
 
 func TestMachine_RegisterAndStep(t *testing.T) {
-	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
-	if err := m.Register(kaprov1alpha1.TargetPhaseVerification, func(_ context.Context, e *testEnv) (ctrl.Result, error) {
+	m := New[kaprov1alpha2.TargetPhase, *testEnv]()
+	if err := m.Register(kaprov1alpha2.TargetPhaseVerification, func(_ context.Context, e *testEnv) (ctrl.Result, error) {
 		e.called = "verification"
 		// Requeue: true is deprecated in controller-runtime; use a
 		// non-zero RequeueAfter as the equivalent "ask for a follow-up
@@ -30,7 +30,7 @@ func TestMachine_RegisterAndStep(t *testing.T) {
 	}
 
 	env := &testEnv{}
-	res, err := m.Step(context.Background(), kaprov1alpha1.TargetPhaseVerification, env)
+	res, err := m.Step(context.Background(), kaprov1alpha2.TargetPhaseVerification, env)
 	if err != nil {
 		t.Fatalf("Step: %v", err)
 	}
@@ -43,9 +43,9 @@ func TestMachine_RegisterAndStep(t *testing.T) {
 }
 
 func TestMachine_UnknownPhaseIsNoop(t *testing.T) {
-	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
+	m := New[kaprov1alpha2.TargetPhase, *testEnv]()
 	env := &testEnv{}
-	res, err := m.Step(context.Background(), kaprov1alpha1.TargetPhaseApplying, env)
+	res, err := m.Step(context.Background(), kaprov1alpha2.TargetPhaseApplying, env)
 	if err != nil {
 		t.Fatalf("Step: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestMachine_UnknownPhaseIsNoop(t *testing.T) {
 }
 
 func TestMachine_InitialHandler(t *testing.T) {
-	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
+	m := New[kaprov1alpha2.TargetPhase, *testEnv]()
 	if err := m.RegisterInitial(func(_ context.Context, e *testEnv) (ctrl.Result, error) {
 		e.called = "initial"
 		return ctrl.Result{}, nil
@@ -75,7 +75,7 @@ func TestMachine_InitialHandler(t *testing.T) {
 }
 
 func TestMachine_EmptyInitialIsNoop(t *testing.T) {
-	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
+	m := New[kaprov1alpha2.TargetPhase, *testEnv]()
 	res, err := m.Step(context.Background(), "", &testEnv{})
 	if err != nil {
 		t.Fatalf("Step: %v", err)
@@ -86,18 +86,18 @@ func TestMachine_EmptyInitialIsNoop(t *testing.T) {
 }
 
 func TestMachine_DuplicateRegisterFails(t *testing.T) {
-	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
+	m := New[kaprov1alpha2.TargetPhase, *testEnv]()
 	h := func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil }
-	if err := m.Register(kaprov1alpha1.TargetPhaseVerification, h); err != nil {
+	if err := m.Register(kaprov1alpha2.TargetPhaseVerification, h); err != nil {
 		t.Fatalf("first Register: %v", err)
 	}
-	if err := m.Register(kaprov1alpha1.TargetPhaseVerification, h); err == nil {
+	if err := m.Register(kaprov1alpha2.TargetPhaseVerification, h); err == nil {
 		t.Fatal("expected duplicate registration to fail")
 	}
 }
 
 func TestMachine_RegisterEmptyPhaseFails(t *testing.T) {
-	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
+	m := New[kaprov1alpha2.TargetPhase, *testEnv]()
 	h := func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil }
 	if err := m.Register("", h); err == nil {
 		t.Fatal("expected Register(\"\") to fail with guidance to use RegisterInitial")
@@ -105,8 +105,8 @@ func TestMachine_RegisterEmptyPhaseFails(t *testing.T) {
 }
 
 func TestMachine_RegisterNilHandlerFails(t *testing.T) {
-	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
-	if err := m.Register(kaprov1alpha1.TargetPhaseVerification, nil); err == nil {
+	m := New[kaprov1alpha2.TargetPhase, *testEnv]()
+	if err := m.Register(kaprov1alpha2.TargetPhaseVerification, nil); err == nil {
 		t.Fatal("expected nil handler registration to fail")
 	}
 	if err := m.RegisterInitial(nil); err == nil {
@@ -115,9 +115,9 @@ func TestMachine_RegisterNilHandlerFails(t *testing.T) {
 }
 
 func TestMachine_PhasesListsRegistered(t *testing.T) {
-	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
-	_ = m.Register(kaprov1alpha1.TargetPhaseVerification, func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil })
-	_ = m.Register(kaprov1alpha1.TargetPhaseSoaking, func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil })
+	m := New[kaprov1alpha2.TargetPhase, *testEnv]()
+	_ = m.Register(kaprov1alpha2.TargetPhaseVerification, func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil })
+	_ = m.Register(kaprov1alpha2.TargetPhaseSoaking, func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil })
 	phases := m.Phases()
 	if len(phases) != 2 {
 		t.Fatalf("Phases = %v, want 2 entries", phases)
@@ -125,72 +125,72 @@ func TestMachine_PhasesListsRegistered(t *testing.T) {
 }
 
 func TestMachine_HandlerErrorPropagates(t *testing.T) {
-	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
+	m := New[kaprov1alpha2.TargetPhase, *testEnv]()
 	want := errors.New("boom")
-	_ = m.Register(kaprov1alpha1.TargetPhaseApplying, func(_ context.Context, _ *testEnv) (ctrl.Result, error) {
+	_ = m.Register(kaprov1alpha2.TargetPhaseApplying, func(_ context.Context, _ *testEnv) (ctrl.Result, error) {
 		return ctrl.Result{}, want
 	})
-	_, err := m.Step(context.Background(), kaprov1alpha1.TargetPhaseApplying, &testEnv{})
+	_, err := m.Step(context.Background(), kaprov1alpha2.TargetPhaseApplying, &testEnv{})
 	if !errors.Is(err, want) {
 		t.Fatalf("err = %v, want %v", err, want)
 	}
 }
 
 func TestMachine_ValidateTransition_DeclaredAllowed(t *testing.T) {
-	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
-	_ = m.RegisterTransition(Transition[kaprov1alpha1.TargetPhase, *testEnv]{
-		Phase:       kaprov1alpha1.TargetPhasePending,
-		AllowedNext: []kaprov1alpha1.TargetPhase{kaprov1alpha1.TargetPhaseVerification},
+	m := New[kaprov1alpha2.TargetPhase, *testEnv]()
+	_ = m.RegisterTransition(Transition[kaprov1alpha2.TargetPhase, *testEnv]{
+		Phase:       kaprov1alpha2.TargetPhasePending,
+		AllowedNext: []kaprov1alpha2.TargetPhase{kaprov1alpha2.TargetPhaseVerification},
 		Handler:     func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil },
 	})
-	if err := m.ValidateTransition(kaprov1alpha1.TargetPhasePending, kaprov1alpha1.TargetPhaseVerification); err != nil {
+	if err := m.ValidateTransition(kaprov1alpha2.TargetPhasePending, kaprov1alpha2.TargetPhaseVerification); err != nil {
 		t.Fatalf("declared transition rejected: %v", err)
 	}
-	if err := m.ValidateTransition(kaprov1alpha1.TargetPhasePending, kaprov1alpha1.TargetPhaseApplying); err == nil {
+	if err := m.ValidateTransition(kaprov1alpha2.TargetPhasePending, kaprov1alpha2.TargetPhaseApplying); err == nil {
 		t.Fatal("undeclared transition Pending → Applying should fail")
 	}
 }
 
 func TestMachine_ValidateTransition_TerminalAlwaysAllowed(t *testing.T) {
-	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
-	_ = m.RegisterTransition(Transition[kaprov1alpha1.TargetPhase, *testEnv]{
-		Phase:       kaprov1alpha1.TargetPhasePending,
-		AllowedNext: []kaprov1alpha1.TargetPhase{kaprov1alpha1.TargetPhaseVerification},
+	m := New[kaprov1alpha2.TargetPhase, *testEnv]()
+	_ = m.RegisterTransition(Transition[kaprov1alpha2.TargetPhase, *testEnv]{
+		Phase:       kaprov1alpha2.TargetPhasePending,
+		AllowedNext: []kaprov1alpha2.TargetPhase{kaprov1alpha2.TargetPhaseVerification},
 		Handler:     func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil },
 	})
-	_ = m.RegisterTerminal(kaprov1alpha1.TargetPhaseFailed, kaprov1alpha1.TargetPhaseSkipped)
-	if err := m.ValidateTransition(kaprov1alpha1.TargetPhasePending, kaprov1alpha1.TargetPhaseFailed); err != nil {
+	_ = m.RegisterTerminal(kaprov1alpha2.TargetPhaseFailed, kaprov1alpha2.TargetPhaseSkipped)
+	if err := m.ValidateTransition(kaprov1alpha2.TargetPhasePending, kaprov1alpha2.TargetPhaseFailed); err != nil {
 		t.Fatalf("transition to terminal should always be allowed: %v", err)
 	}
 }
 
 func TestMachine_RegisterTerminal_RejectsRegisteredPhase(t *testing.T) {
-	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
-	_ = m.Register(kaprov1alpha1.TargetPhaseApplying, func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil })
-	if err := m.RegisterTerminal(kaprov1alpha1.TargetPhaseApplying); err == nil {
+	m := New[kaprov1alpha2.TargetPhase, *testEnv]()
+	_ = m.Register(kaprov1alpha2.TargetPhaseApplying, func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil })
+	if err := m.RegisterTerminal(kaprov1alpha2.TargetPhaseApplying); err == nil {
 		t.Fatal("expected RegisterTerminal on a Register'd phase to fail")
 	}
 }
 
 func TestMachine_ValidateGraph_FlagsMissingPhases(t *testing.T) {
-	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
-	_ = m.Register(kaprov1alpha1.TargetPhasePending, func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil })
-	_ = m.RegisterTerminal(kaprov1alpha1.TargetPhaseFailed)
-	required := []kaprov1alpha1.TargetPhase{
-		kaprov1alpha1.TargetPhasePending,
-		kaprov1alpha1.TargetPhaseVerification, // missing
-		kaprov1alpha1.TargetPhaseFailed,
+	m := New[kaprov1alpha2.TargetPhase, *testEnv]()
+	_ = m.Register(kaprov1alpha2.TargetPhasePending, func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil })
+	_ = m.RegisterTerminal(kaprov1alpha2.TargetPhaseFailed)
+	required := []kaprov1alpha2.TargetPhase{
+		kaprov1alpha2.TargetPhasePending,
+		kaprov1alpha2.TargetPhaseVerification, // missing
+		kaprov1alpha2.TargetPhaseFailed,
 	}
 	missing := m.ValidateGraph(required)
-	if len(missing) != 1 || missing[0] != kaprov1alpha1.TargetPhaseVerification {
+	if len(missing) != 1 || missing[0] != kaprov1alpha2.TargetPhaseVerification {
 		t.Fatalf("missing = %v, want [Verification]", missing)
 	}
 }
 
 func TestMachine_NoMetadataIsUnrestricted(t *testing.T) {
-	m := New[kaprov1alpha1.TargetPhase, *testEnv]()
-	_ = m.Register(kaprov1alpha1.TargetPhasePending, func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil })
-	if err := m.ValidateTransition(kaprov1alpha1.TargetPhasePending, kaprov1alpha1.TargetPhaseApplying); err != nil {
+	m := New[kaprov1alpha2.TargetPhase, *testEnv]()
+	_ = m.Register(kaprov1alpha2.TargetPhasePending, func(_ context.Context, _ *testEnv) (ctrl.Result, error) { return ctrl.Result{}, nil })
+	if err := m.ValidateTransition(kaprov1alpha2.TargetPhasePending, kaprov1alpha2.TargetPhaseApplying); err != nil {
 		t.Fatalf("unrestricted transition should be allowed: %v", err)
 	}
 }

@@ -5,12 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 func TestNewDiscoverer_GCP(t *testing.T) {
-	d, err := NewDiscoverer(kaprov1alpha1.FleetClusterTemplateSource{
-		GCP: &kaprov1alpha1.GCPFleetSource{Project: "p1"},
+	d, err := NewDiscoverer(kaprov1alpha2.FleetClusterTemplateSource{
+		GCP: &kaprov1alpha2.GCPFleetSource{Project: "p1"},
 	})
 	if err != nil {
 		t.Fatalf("NewDiscoverer: %v", err)
@@ -30,14 +30,14 @@ func TestNewDiscoverer_GCP(t *testing.T) {
 func TestNewDiscoverer_StubBranches(t *testing.T) {
 	cases := []struct {
 		name string
-		src  kaprov1alpha1.FleetClusterTemplateSource
+		src  kaprov1alpha2.FleetClusterTemplateSource
 		want string
 	}{
-		{"aws", kaprov1alpha1.FleetClusterTemplateSource{AWS: &kaprov1alpha1.AWSFleetSource{Region: "eu-west-1"}}, "aws"},
-		{"azure", kaprov1alpha1.FleetClusterTemplateSource{Azure: &kaprov1alpha1.AzureFleetSource{SubscriptionID: "sub"}}, "azure"},
-		{"rhacm", kaprov1alpha1.FleetClusterTemplateSource{RHACM: &kaprov1alpha1.RHACMFleetSource{}}, "rhacm"},
-		{"capi", kaprov1alpha1.FleetClusterTemplateSource{CAPI: &kaprov1alpha1.CAPIFleetSource{}}, "capi"},
-		{"static", kaprov1alpha1.FleetClusterTemplateSource{Static: &kaprov1alpha1.StaticFleetSource{Clusters: []kaprov1alpha1.StaticClusterEntry{{Name: "x"}}}}, "static"},
+		{"aws", kaprov1alpha2.FleetClusterTemplateSource{AWS: &kaprov1alpha2.AWSFleetSource{Region: "eu-west-1"}}, "aws"},
+		{"azure", kaprov1alpha2.FleetClusterTemplateSource{Azure: &kaprov1alpha2.AzureFleetSource{SubscriptionID: "sub"}}, "azure"},
+		{"rhacm", kaprov1alpha2.FleetClusterTemplateSource{RHACM: &kaprov1alpha2.RHACMFleetSource{}}, "rhacm"},
+		{"capi", kaprov1alpha2.FleetClusterTemplateSource{CAPI: &kaprov1alpha2.CAPIFleetSource{}}, "capi"},
+		{"static", kaprov1alpha2.FleetClusterTemplateSource{Static: &kaprov1alpha2.StaticFleetSource{Clusters: []kaprov1alpha2.StaticClusterEntry{{Name: "x"}}}}, "static"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -60,7 +60,7 @@ func TestNewDiscoverer_StubBranches(t *testing.T) {
 }
 
 func TestNewDiscoverer_NoBranch(t *testing.T) {
-	_, err := NewDiscoverer(kaprov1alpha1.FleetClusterTemplateSource{})
+	_, err := NewDiscoverer(kaprov1alpha2.FleetClusterTemplateSource{})
 	if err == nil {
 		t.Fatal("expected error when no source branch set")
 	}
@@ -70,9 +70,9 @@ func TestNewDiscoverer_NoBranch(t *testing.T) {
 }
 
 func TestNewDiscoverer_MultipleBranchesRejected(t *testing.T) {
-	_, err := NewDiscoverer(kaprov1alpha1.FleetClusterTemplateSource{
-		GCP: &kaprov1alpha1.GCPFleetSource{Project: "p1"},
-		AWS: &kaprov1alpha1.AWSFleetSource{Region: "eu-west-1"},
+	_, err := NewDiscoverer(kaprov1alpha2.FleetClusterTemplateSource{
+		GCP: &kaprov1alpha2.GCPFleetSource{Project: "p1"},
+		AWS: &kaprov1alpha2.AWSFleetSource{Region: "eu-west-1"},
 	})
 	if err == nil {
 		t.Fatal("expected error when multiple source branches set")

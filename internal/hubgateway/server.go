@@ -16,7 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 // Server is the stateless Hub Gateway facade used by UI and CLI clients.
@@ -72,8 +72,8 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 			ctx,
 			s.Client,
 			opts,
-			func() client.ObjectList { return &kaprov1alpha1.KaproList{} },
-			func(list client.ObjectList) []kaprov1alpha1.Kapro { return list.(*kaprov1alpha1.KaproList).Items },
+			func() client.ObjectList { return &kaprov1alpha2.FleetList{} },
+			func(list client.ObjectList) []kaprov1alpha2.Fleet { return list.(*kaprov1alpha2.FleetList).Items },
 			filterKaprosByPhase,
 		)
 		if err != nil {
@@ -89,9 +89,9 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 			ctx,
 			s.Client,
 			opts,
-			func() client.ObjectList { return &kaprov1alpha1.FleetClusterList{} },
-			func(list client.ObjectList) []kaprov1alpha1.FleetCluster {
-				return list.(*kaprov1alpha1.FleetClusterList).Items
+			func() client.ObjectList { return &kaprov1alpha2.ClusterList{} },
+			func(list client.ObjectList) []kaprov1alpha2.Cluster {
+				return list.(*kaprov1alpha2.ClusterList).Items
 			},
 			filterFleetClustersByPhase,
 		)
@@ -108,9 +108,9 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 			ctx,
 			s.Client,
 			opts,
-			func() client.ObjectList { return &kaprov1alpha1.PromotionList{} },
-			func(list client.ObjectList) []kaprov1alpha1.Promotion {
-				return list.(*kaprov1alpha1.PromotionList).Items
+			func() client.ObjectList { return &kaprov1alpha2.PromotionList{} },
+			func(list client.ObjectList) []kaprov1alpha2.Promotion {
+				return list.(*kaprov1alpha2.PromotionList).Items
 			},
 			filterPromotionsByPhase,
 		)
@@ -127,9 +127,9 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 			ctx,
 			s.Client,
 			opts,
-			func() client.ObjectList { return &kaprov1alpha1.PromotionRunList{} },
-			func(list client.ObjectList) []kaprov1alpha1.PromotionRun {
-				return list.(*kaprov1alpha1.PromotionRunList).Items
+			func() client.ObjectList { return &kaprov1alpha2.PromotionRunList{} },
+			func(list client.ObjectList) []kaprov1alpha2.PromotionRun {
+				return list.(*kaprov1alpha2.PromotionRunList).Items
 			},
 			filterPromotionRunsByPhase,
 		)
@@ -146,9 +146,9 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 			ctx,
 			s.Client,
 			opts,
-			func() client.ObjectList { return &kaprov1alpha1.PromotionTargetList{} },
-			func(list client.ObjectList) []kaprov1alpha1.PromotionTarget {
-				return list.(*kaprov1alpha1.PromotionTargetList).Items
+			func() client.ObjectList { return &kaprov1alpha2.TargetList{} },
+			func(list client.ObjectList) []kaprov1alpha2.Target {
+				return list.(*kaprov1alpha2.TargetList).Items
 			},
 			filterPromotionTargetsByPhase,
 		)
@@ -165,11 +165,11 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 			ctx,
 			s.Client,
 			opts,
-			func() client.ObjectList { return &kaprov1alpha1.BackendProfileList{} },
-			func(list client.ObjectList) []kaprov1alpha1.BackendProfile {
-				return list.(*kaprov1alpha1.BackendProfileList).Items
+			func() client.ObjectList { return &kaprov1alpha2.BackendList{} },
+			func(list client.ObjectList) []kaprov1alpha2.Backend {
+				return list.(*kaprov1alpha2.BackendList).Items
 			},
-			func(items []kaprov1alpha1.BackendProfile, _ string) []kaprov1alpha1.BackendProfile { return items },
+			func(items []kaprov1alpha2.Backend, _ string) []kaprov1alpha2.Backend { return items },
 		)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -206,14 +206,14 @@ func (s *Server) createPromotion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	promotion := &kaprov1alpha1.Promotion{
-		TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "Promotion"},
+	promotion := &kaprov1alpha2.Promotion{
+		TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha2", Kind: "Promotion"},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   req.Name,
 			Labels: req.Labels,
 		},
-		Spec: kaprov1alpha1.PromotionSpec{
-			KaproRef:       req.KaproRef,
+		Spec: kaprov1alpha2.PromotionSpec{
+			FleetRef:       req.FleetRef,
 			Version:        req.Version,
 			Versions:       req.Versions,
 			PromotionPlans: req.PromotionPlans,
@@ -222,7 +222,7 @@ func (s *Server) createPromotion(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	if len(req.Targets) > 0 {
-		promotion.Spec.Scope = &kaprov1alpha1.PromotionRunScope{Targets: req.Targets}
+		promotion.Spec.Scope = &kaprov1alpha2.PromotionRunScope{Targets: req.Targets}
 	}
 	if err := s.Client.Create(r.Context(), promotion); err != nil {
 		if apierrors.IsAlreadyExists(err) {
@@ -241,10 +241,10 @@ func (s *Server) createPromotion(w http.ResponseWriter, r *http.Request) {
 
 type CreatePromotionRequest struct {
 	Name           string                           `json:"name"`
-	KaproRef       string                           `json:"kaproRef"`
+	FleetRef       string                           `json:"fleetRef"`
 	Version        string                           `json:"version,omitempty"`
 	Versions       map[string]string                `json:"versions,omitempty"`
-	PromotionPlans []kaprov1alpha1.PromotionPlanRef `json:"promotionPlans,omitempty"`
+	PromotionPlans []kaprov1alpha2.PlanRef `json:"promotionPlans,omitempty"`
 	Targets        []string                         `json:"targets,omitempty"`
 	Timeout        string                           `json:"timeout,omitempty"`
 	Suspended      bool                             `json:"suspended,omitempty"`
@@ -252,12 +252,12 @@ type CreatePromotionRequest struct {
 }
 
 type GraphResponse struct {
-	Kapros           []kaprov1alpha1.Kapro           `json:"kapros"`
-	FleetClusters    []kaprov1alpha1.FleetCluster    `json:"fleetClusters"`
-	Promotions       []kaprov1alpha1.Promotion       `json:"promotions"`
-	PromotionRuns    []kaprov1alpha1.PromotionRun    `json:"promotionruns"`
-	PromotionTargets []kaprov1alpha1.PromotionTarget `json:"promotionTargets"`
-	BackendProfiles  []kaprov1alpha1.BackendProfile  `json:"backendProfiles"`
+	Kapros           []kaprov1alpha2.Fleet           `json:"kapros"`
+	FleetClusters    []kaprov1alpha2.Cluster    `json:"fleetClusters"`
+	Promotions       []kaprov1alpha2.Promotion       `json:"promotions"`
+	PromotionRuns    []kaprov1alpha2.PromotionRun    `json:"promotionruns"`
+	PromotionTargets []kaprov1alpha2.Target `json:"promotionTargets"`
+	BackendProfiles  []kaprov1alpha2.Backend  `json:"backendProfiles"`
 	Page             GraphPage                       `json:"page"`
 }
 
@@ -314,7 +314,7 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func validateCreatePromotionRequest(req CreatePromotionRequest) error {
-	if req.Name == "" || req.KaproRef == "" {
+	if req.Name == "" || req.FleetRef == "" {
 		return fmt.Errorf("name and kaproRef are required")
 	}
 	if req.Version == "" && len(req.Versions) == 0 {
@@ -323,7 +323,7 @@ func validateCreatePromotionRequest(req CreatePromotionRequest) error {
 	if errs := validation.IsDNS1123Subdomain(req.Name); len(errs) > 0 {
 		return fmt.Errorf("name must be a DNS-1123 subdomain: %s", strings.Join(errs, "; "))
 	}
-	if errs := validation.IsDNS1123Subdomain(req.KaproRef); len(errs) > 0 {
+	if errs := validation.IsDNS1123Subdomain(req.FleetRef); len(errs) > 0 {
 		return fmt.Errorf("kaproRef must be a DNS-1123 subdomain: %s", strings.Join(errs, "; "))
 	}
 	if len(req.PromotionPlans) > 64 {
@@ -335,13 +335,13 @@ func validateCreatePromotionRequest(req CreatePromotionRequest) error {
 		}
 	}
 	for i, p := range req.PromotionPlans {
-		if p.Name == "" || p.PromotionPlan == "" {
+		if p.Name == "" || p.Plan == "" {
 			return fmt.Errorf("promotionPlans[%d].name and promotionPlans[%d].promotionplan are required", i, i)
 		}
 		if errs := validation.IsDNS1123Subdomain(p.Name); len(errs) > 0 {
 			return fmt.Errorf("promotionPlans[%d].name must be a DNS-1123 subdomain: %s", i, strings.Join(errs, "; "))
 		}
-		if errs := validation.IsDNS1123Subdomain(p.PromotionPlan); len(errs) > 0 {
+		if errs := validation.IsDNS1123Subdomain(p.Plan); len(errs) > 0 {
 			return fmt.Errorf("promotionPlans[%d].promotionplan must be a DNS-1123 subdomain: %s", i, strings.Join(errs, "; "))
 		}
 	}
@@ -486,7 +486,7 @@ func listGraphItems[T any](
 	}
 }
 
-func filterKaprosByPhase(items []kaprov1alpha1.Kapro, phase string) []kaprov1alpha1.Kapro {
+func filterKaprosByPhase(items []kaprov1alpha2.Fleet, phase string) []kaprov1alpha2.Fleet {
 	if phase == "" {
 		return items
 	}
@@ -506,7 +506,7 @@ func filterKaprosByPhase(items []kaprov1alpha1.Kapro, phase string) []kaprov1alp
 	return out
 }
 
-func filterFleetClustersByPhase(items []kaprov1alpha1.FleetCluster, phase string) []kaprov1alpha1.FleetCluster {
+func filterFleetClustersByPhase(items []kaprov1alpha2.Cluster, phase string) []kaprov1alpha2.Cluster {
 	if phase == "" {
 		return items
 	}
@@ -519,7 +519,7 @@ func filterFleetClustersByPhase(items []kaprov1alpha1.FleetCluster, phase string
 	return out
 }
 
-func filterPromotionsByPhase(items []kaprov1alpha1.Promotion, phase string) []kaprov1alpha1.Promotion {
+func filterPromotionsByPhase(items []kaprov1alpha2.Promotion, phase string) []kaprov1alpha2.Promotion {
 	if phase == "" {
 		return items
 	}
@@ -532,7 +532,7 @@ func filterPromotionsByPhase(items []kaprov1alpha1.Promotion, phase string) []ka
 	return out
 }
 
-func filterPromotionRunsByPhase(items []kaprov1alpha1.PromotionRun, phase string) []kaprov1alpha1.PromotionRun {
+func filterPromotionRunsByPhase(items []kaprov1alpha2.PromotionRun, phase string) []kaprov1alpha2.PromotionRun {
 	if phase == "" {
 		return items
 	}
@@ -545,7 +545,7 @@ func filterPromotionRunsByPhase(items []kaprov1alpha1.PromotionRun, phase string
 	return out
 }
 
-func filterPromotionTargetsByPhase(items []kaprov1alpha1.PromotionTarget, phase string) []kaprov1alpha1.PromotionTarget {
+func filterPromotionTargetsByPhase(items []kaprov1alpha2.Target, phase string) []kaprov1alpha2.Target {
 	if phase == "" {
 		return items
 	}

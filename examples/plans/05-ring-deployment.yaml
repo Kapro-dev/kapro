@@ -12,7 +12,7 @@
 #
 # Cluster labels expected:
 #   kapro.io/ring=0  |  kapro.io/ring=1  |  kapro.io/ring=2  |  kapro.io/ring=3
-apiVersion: kapro.io/v1alpha1
+apiVersion: kapro.io/v1alpha2
 kind: PromotionPlan
 metadata:
   name: ring-deployment

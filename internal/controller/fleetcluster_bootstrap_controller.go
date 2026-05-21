@@ -45,7 +45,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 const (
@@ -132,7 +132,7 @@ type FleetClusterBootstrapReconciler struct {
 func (r *FleetClusterBootstrapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx).WithValues("fleetcluster", req.Name)
 
-	fc := &kaprov1alpha1.FleetCluster{}
+	fc := &kaprov1alpha2.Cluster{}
 	if err := r.Get(ctx, req.NamespacedName, fc); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -153,9 +153,9 @@ func (r *FleetClusterBootstrapReconciler) Reconcile(ctx context.Context, req ctr
 	// remains — operators who remove spec.bootstrap intentionally must clean up
 	// the RBAC themselves (or delete the FleetCluster outright).
 	if fc.Spec.Bootstrap == nil {
-		if containsString(fc.Finalizers, kaprov1alpha1.FleetClusterFinalizer) {
+		if containsString(fc.Finalizers, kaprov1alpha2.FleetClusterFinalizer) {
 			patch := client.MergeFrom(fc.DeepCopy())
-			fc.Finalizers = removeString(fc.Finalizers, kaprov1alpha1.FleetClusterFinalizer)
+			fc.Finalizers = removeString(fc.Finalizers, kaprov1alpha2.FleetClusterFinalizer)
 			if err := r.Patch(ctx, fc, patch); err != nil {
 				return ctrl.Result{}, fmt.Errorf("clear finalizer after bootstrap removed: %w", err)
 			}
@@ -164,9 +164,9 @@ func (r *FleetClusterBootstrapReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	// Add finalizer before any side-effecting work so cleanup always runs.
-	if !containsString(fc.Finalizers, kaprov1alpha1.FleetClusterFinalizer) {
+	if !containsString(fc.Finalizers, kaprov1alpha2.FleetClusterFinalizer) {
 		patch := client.MergeFrom(fc.DeepCopy())
-		fc.Finalizers = append(fc.Finalizers, kaprov1alpha1.FleetClusterFinalizer)
+		fc.Finalizers = append(fc.Finalizers, kaprov1alpha2.FleetClusterFinalizer)
 		if err := r.Patch(ctx, fc, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("add finalizer: %w", err)
 		}
@@ -222,9 +222,9 @@ func (r *FleetClusterBootstrapReconciler) Reconcile(ctx context.Context, req ctr
 
 // handleDeletion cleans up bootstrap SA, bootstrap RBAC, kubeconfig Secret,
 // and per-cluster long-lived RBAC. Then clears the finalizer.
-func (r *FleetClusterBootstrapReconciler) handleDeletion(ctx context.Context, fc *kaprov1alpha1.FleetCluster) (ctrl.Result, error) {
+func (r *FleetClusterBootstrapReconciler) handleDeletion(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
 	log := log.FromContext(ctx).WithValues("fleetcluster", fc.Name)
-	if !containsString(fc.Finalizers, kaprov1alpha1.FleetClusterFinalizer) {
+	if !containsString(fc.Finalizers, kaprov1alpha2.FleetClusterFinalizer) {
 		return ctrl.Result{}, nil
 	}
 
@@ -238,7 +238,7 @@ func (r *FleetClusterBootstrapReconciler) handleDeletion(ctx context.Context, fc
 	}
 
 	patch := client.MergeFrom(fc.DeepCopy())
-	fc.Finalizers = removeString(fc.Finalizers, kaprov1alpha1.FleetClusterFinalizer)
+	fc.Finalizers = removeString(fc.Finalizers, kaprov1alpha2.FleetClusterFinalizer)
 	if err := r.Patch(ctx, fc, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("clear finalizer: %w", err)
 	}
@@ -251,12 +251,12 @@ func (r *FleetClusterBootstrapReconciler) handleDeletion(ctx context.Context, fc
 }
 
 // handleSuspended sets reconciling=false/Suspended and clears Stalled.
-func (r *FleetClusterBootstrapReconciler) handleSuspended(ctx context.Context, fc *kaprov1alpha1.FleetCluster) (ctrl.Result, error) {
+func (r *FleetClusterBootstrapReconciler) handleSuspended(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
 	patch := client.MergeFrom(fc.DeepCopy())
 	fc.Status.ObservedGeneration = fc.Generation
 	now := time.Now()
-	setCondition(&fc.Status.Conditions, kaprov1alpha1.ConditionTypeReconciling, metav1.ConditionFalse, "Suspended", "fleetcluster is suspended", fc.Generation, now)
-	apimeta.RemoveStatusCondition(&fc.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
+	setCondition(&fc.Status.Conditions, kaprov1alpha2.ConditionTypeReconciling, metav1.ConditionFalse, "Suspended", "fleetcluster is suspended", fc.Generation, now)
+	apimeta.RemoveStatusCondition(&fc.Status.Conditions, kaprov1alpha2.ConditionTypeStalled)
 	if err := r.Status().Patch(ctx, fc, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch suspended condition: %w", err)
 	}
@@ -265,7 +265,7 @@ func (r *FleetClusterBootstrapReconciler) handleSuspended(ctx context.Context, f
 
 // computeExpiresAt fills in spec.bootstrap.expiresAt from TTL on first reconcile.
 // Returns (true, nil) if the resource was patched (caller should requeue).
-func (r *FleetClusterBootstrapReconciler) computeExpiresAt(ctx context.Context, fc *kaprov1alpha1.FleetCluster) (bool, error) {
+func (r *FleetClusterBootstrapReconciler) computeExpiresAt(ctx context.Context, fc *kaprov1alpha2.Cluster) (bool, error) {
 	if fc.Spec.Bootstrap.ExpiresAt != nil {
 		return false, nil
 	}
@@ -295,7 +295,7 @@ func (r *FleetClusterBootstrapReconciler) computeExpiresAt(ctx context.Context, 
 
 // expired returns true when bootstrap slot is past its expiresAt deadline
 // AND has not yet been consumed.
-func (r *FleetClusterBootstrapReconciler) expired(fc *kaprov1alpha1.FleetCluster) bool {
+func (r *FleetClusterBootstrapReconciler) expired(fc *kaprov1alpha2.Cluster) bool {
 	if fc.Status.Bootstrap != nil && fc.Status.Bootstrap.Used {
 		return false
 	}
@@ -306,14 +306,14 @@ func (r *FleetClusterBootstrapReconciler) expired(fc *kaprov1alpha1.FleetCluster
 }
 
 // markExpired patches Stalled=True with reason BootstrapExpired.
-func (r *FleetClusterBootstrapReconciler) markExpired(ctx context.Context, fc *kaprov1alpha1.FleetCluster) (ctrl.Result, error) {
+func (r *FleetClusterBootstrapReconciler) markExpired(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
 	patch := client.MergeFrom(fc.DeepCopy())
 	fc.Status.ObservedGeneration = fc.Generation
 	now := time.Now()
-	setCondition(&fc.Status.Conditions, kaprov1alpha1.ConditionTypeStalled, metav1.ConditionTrue, "BootstrapExpired", "bootstrap slot expired before any CSR was submitted; update spec.bootstrap to retry", fc.Generation, now)
-	setCondition(&fc.Status.Conditions, kaprov1alpha1.ConditionTypeReconciling, metav1.ConditionFalse, "BootstrapExpired", "stalled: bootstrap expired", fc.Generation, now)
-	setCondition(&fc.Status.Conditions, kaprov1alpha1.ConditionTypeRegistered, metav1.ConditionFalse, "BootstrapExpired", "fleetcluster never registered before bootstrap expired", fc.Generation, now)
-	setCondition(&fc.Status.Conditions, kaprov1alpha1.ConditionTypeReady, metav1.ConditionFalse, "BootstrapExpired", "fleetcluster is not ready: bootstrap expired", fc.Generation, now)
+	setCondition(&fc.Status.Conditions, kaprov1alpha2.ConditionTypeStalled, metav1.ConditionTrue, "BootstrapExpired", "bootstrap slot expired before any CSR was submitted; update spec.bootstrap to retry", fc.Generation, now)
+	setCondition(&fc.Status.Conditions, kaprov1alpha2.ConditionTypeReconciling, metav1.ConditionFalse, "BootstrapExpired", "stalled: bootstrap expired", fc.Generation, now)
+	setCondition(&fc.Status.Conditions, kaprov1alpha2.ConditionTypeRegistered, metav1.ConditionFalse, "BootstrapExpired", "fleetcluster never registered before bootstrap expired", fc.Generation, now)
+	setCondition(&fc.Status.Conditions, kaprov1alpha2.ConditionTypeReady, metav1.ConditionFalse, "BootstrapExpired", "fleetcluster is not ready: bootstrap expired", fc.Generation, now)
 	if err := r.Status().Patch(ctx, fc, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch expired condition: %w", err)
 	}
@@ -325,7 +325,7 @@ func (r *FleetClusterBootstrapReconciler) markExpired(ctx context.Context, fc *k
 
 // handleRegistered keeps long-lived per-cluster RBAC in sync after first
 // successful registration, and stamps Registered=True.
-func (r *FleetClusterBootstrapReconciler) handleRegistered(ctx context.Context, fc *kaprov1alpha1.FleetCluster) (ctrl.Result, error) {
+func (r *FleetClusterBootstrapReconciler) handleRegistered(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
 	if err := r.ensureClusterRBAC(ctx, fc.Name); err != nil {
 		return ctrl.Result{}, fmt.Errorf("ensure cluster RBAC: %w", err)
 	}
@@ -338,13 +338,13 @@ func (r *FleetClusterBootstrapReconciler) handleRegistered(ctx context.Context, 
 // during the first-time approval — we do not re-write them here.
 // setCondition is idempotent via apimeta.SetStatusCondition, so this is a
 // no-op patch when nothing changed.
-func (r *FleetClusterBootstrapReconciler) markRegistered(ctx context.Context, fc *kaprov1alpha1.FleetCluster) (ctrl.Result, error) {
+func (r *FleetClusterBootstrapReconciler) markRegistered(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
 	patch := client.MergeFrom(fc.DeepCopy())
 	fc.Status.ObservedGeneration = fc.Generation
 	now := time.Now()
-	setCondition(&fc.Status.Conditions, kaprov1alpha1.ConditionTypeRegistered, metav1.ConditionTrue, "BootstrapConsumed", "fleetcluster registered via approved CSR", fc.Generation, now)
-	setCondition(&fc.Status.Conditions, kaprov1alpha1.ConditionTypeReconciling, metav1.ConditionFalse, "Registered", "fleetcluster registration is complete; heartbeat owns Ready", fc.Generation, now)
-	apimeta.RemoveStatusCondition(&fc.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
+	setCondition(&fc.Status.Conditions, kaprov1alpha2.ConditionTypeRegistered, metav1.ConditionTrue, "BootstrapConsumed", "fleetcluster registered via approved CSR", fc.Generation, now)
+	setCondition(&fc.Status.Conditions, kaprov1alpha2.ConditionTypeReconciling, metav1.ConditionFalse, "Registered", "fleetcluster registration is complete; heartbeat owns Ready", fc.Generation, now)
+	apimeta.RemoveStatusCondition(&fc.Status.Conditions, kaprov1alpha2.ConditionTypeStalled)
 	if err := r.Status().Patch(ctx, fc, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch registered condition: %w", err)
 	}
@@ -352,13 +352,13 @@ func (r *FleetClusterBootstrapReconciler) markRegistered(ctx context.Context, fc
 }
 
 // markAwaitingCSR sets Reconciling=True/AwaitingCSR.
-func (r *FleetClusterBootstrapReconciler) markAwaitingCSR(ctx context.Context, fc *kaprov1alpha1.FleetCluster) (ctrl.Result, error) {
+func (r *FleetClusterBootstrapReconciler) markAwaitingCSR(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
 	patch := client.MergeFrom(fc.DeepCopy())
 	fc.Status.ObservedGeneration = fc.Generation
 	now := time.Now()
-	setCondition(&fc.Status.Conditions, kaprov1alpha1.ConditionTypeReconciling, metav1.ConditionTrue, "AwaitingCSR", "bootstrap kubeconfig issued; waiting for spoke to submit CSR", fc.Generation, now)
-	setCondition(&fc.Status.Conditions, kaprov1alpha1.ConditionTypeRegistered, metav1.ConditionFalse, "AwaitingCSR", "no CSR has been approved yet", fc.Generation, now)
-	apimeta.RemoveStatusCondition(&fc.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
+	setCondition(&fc.Status.Conditions, kaprov1alpha2.ConditionTypeReconciling, metav1.ConditionTrue, "AwaitingCSR", "bootstrap kubeconfig issued; waiting for spoke to submit CSR", fc.Generation, now)
+	setCondition(&fc.Status.Conditions, kaprov1alpha2.ConditionTypeRegistered, metav1.ConditionFalse, "AwaitingCSR", "no CSR has been approved yet", fc.Generation, now)
+	apimeta.RemoveStatusCondition(&fc.Status.Conditions, kaprov1alpha2.ConditionTypeStalled)
 	if err := r.Status().Patch(ctx, fc, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch awaiting CSR condition: %w", err)
 	}
@@ -372,7 +372,7 @@ func (r *FleetClusterBootstrapReconciler) markAwaitingCSR(ctx context.Context, f
 // frequent renewal CSRs (PR-3) this becomes expensive. Add a label selector
 // (kapro.io/fleetcluster=<name>) on CSRs at creation time and switch to a
 // filtered List.
-func (r *FleetClusterBootstrapReconciler) processCSRsForCluster(ctx context.Context, fc *kaprov1alpha1.FleetCluster) (ctrl.Result, error) {
+func (r *FleetClusterBootstrapReconciler) processCSRsForCluster(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
 	var csrList certificatesv1.CertificateSigningRequestList
 	if err := r.List(ctx, &csrList); err != nil {
 		return ctrl.Result{}, fmt.Errorf("list CSRs: %w", err)
@@ -422,7 +422,7 @@ func (r *FleetClusterBootstrapReconciler) processCSRsForCluster(ctx context.Cont
 // "kapro-cluster:<name>" instead of the bootstrap SA) are out of scope for
 // PR-2 since no spoke binary exists yet to submit them. Renewal handling
 // lands in PR-3 alongside the spoke binary.
-func (r *FleetClusterBootstrapReconciler) matchesFleetCluster(csr *certificatesv1.CertificateSigningRequest, fc *kaprov1alpha1.FleetCluster, expectedCN string) bool {
+func (r *FleetClusterBootstrapReconciler) matchesFleetCluster(csr *certificatesv1.CertificateSigningRequest, fc *kaprov1alpha2.Cluster, expectedCN string) bool {
 	if !isKaproCSR(csr) {
 		return false
 	}
@@ -447,7 +447,7 @@ func (r *FleetClusterBootstrapReconciler) matchesFleetCluster(csr *certificatesv
 // Each step is idempotent.
 func (r *FleetClusterBootstrapReconciler) handleBootstrapCSR(
 	ctx context.Context,
-	fc *kaprov1alpha1.FleetCluster,
+	fc *kaprov1alpha2.Cluster,
 	csr *certificatesv1.CertificateSigningRequest,
 ) error {
 	log := log.FromContext(ctx).WithValues("fleetcluster", fc.Name, "csr", csr.Name)
@@ -490,13 +490,13 @@ func (r *FleetClusterBootstrapReconciler) handleBootstrapCSR(
 // StatusUpdateWithRetry (gate-IsConflict) so transient races with the
 // heartbeat reconciler or admission-time mutations refetch + reapply
 // instead of bouncing the whole reconcile through workqueue backoff.
-func (r *FleetClusterBootstrapReconciler) markBootstrapUsed(ctx context.Context, fc *kaprov1alpha1.FleetCluster, csrName string) error {
+func (r *FleetClusterBootstrapReconciler) markBootstrapUsed(ctx context.Context, fc *kaprov1alpha2.Cluster, csrName string) error {
 	if fc.Status.Bootstrap != nil &&
 		fc.Status.Bootstrap.Used &&
 		fc.Status.Bootstrap.BoundCSRName == csrName {
 		return nil
 	}
-	return StatusUpdateWithRetry(ctx, r.Client, fc, func(fresh *kaprov1alpha1.FleetCluster) error {
+	return StatusUpdateWithRetry(ctx, r.Client, fc, func(fresh *kaprov1alpha2.Cluster) error {
 		// Idempotency: if a concurrent reconcile already marked the same CSR,
 		// drop out. If a DIFFERENT CSR claimed the slot between the caller's
 		// read and this retry's refetch, surface that as an error — the
@@ -511,7 +511,7 @@ func (r *FleetClusterBootstrapReconciler) markBootstrapUsed(ctx context.Context,
 		}
 		now := metav1.Now()
 		if fresh.Status.Bootstrap == nil {
-			fresh.Status.Bootstrap = &kaprov1alpha1.FleetClusterBootstrapStatus{}
+			fresh.Status.Bootstrap = &kaprov1alpha2.FleetClusterBootstrapStatus{}
 		}
 		fresh.Status.Bootstrap.Used = true
 		fresh.Status.Bootstrap.UsedAt = &now
@@ -520,7 +520,7 @@ func (r *FleetClusterBootstrapReconciler) markBootstrapUsed(ctx context.Context,
 		fresh.Status.Bootstrap.IssuedClusterRole = fmt.Sprintf(clusterRoleNameFmt, fresh.Name)
 		fresh.Status.Bootstrap.IssuedClusterRoleBinding = fmt.Sprintf(clusterRoleNameFmt, fresh.Name)
 		fresh.Status.ObservedGeneration = fresh.Generation
-		setCondition(&fresh.Status.Conditions, kaprov1alpha1.ConditionTypeRegistered, metav1.ConditionTrue, "BootstrapConsumed", fmt.Sprintf("bootstrap credential consumed by CSR %s", csrName), fresh.Generation, time.Now())
+		setCondition(&fresh.Status.Conditions, kaprov1alpha2.ConditionTypeRegistered, metav1.ConditionTrue, "BootstrapConsumed", fmt.Sprintf("bootstrap credential consumed by CSR %s", csrName), fresh.Generation, time.Now())
 		return nil
 	})
 }
@@ -606,7 +606,7 @@ func (r *FleetClusterBootstrapReconciler) SetupWithManager(mgr ctrl.Manager) err
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("fleetcluster-bootstrap").
-		For(&kaprov1alpha1.FleetCluster{}, builder.WithPredicates(fleetClusterBootstrapPredicate())).
+		For(&kaprov1alpha2.Cluster{}, builder.WithPredicates(fleetClusterBootstrapPredicate())).
 		Watches(&certificatesv1.CertificateSigningRequest{}, mapCSR, builder.WithPredicates(csrPredicate())).
 		Complete(r)
 }
@@ -617,8 +617,8 @@ func (r *FleetClusterBootstrapReconciler) SetupWithManager(mgr ctrl.Manager) err
 func fleetClusterBootstrapPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			oldFC, oldOK := e.ObjectOld.(*kaprov1alpha1.FleetCluster)
-			newFC, newOK := e.ObjectNew.(*kaprov1alpha1.FleetCluster)
+			oldFC, oldOK := e.ObjectOld.(*kaprov1alpha2.Cluster)
+			newFC, newOK := e.ObjectNew.(*kaprov1alpha2.Cluster)
 			if !oldOK || !newOK {
 				return true
 			}

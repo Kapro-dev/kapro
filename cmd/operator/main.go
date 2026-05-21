@@ -31,7 +31,7 @@ import (
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	argoactuator "kapro.io/kapro/internal/actuator/argo"
 	fluxopactuator "kapro.io/kapro/internal/actuator/fluxoperator"
 	pullactuator "kapro.io/kapro/internal/actuator/pull"
@@ -52,7 +52,7 @@ var scheme = runtime.NewScheme()
 
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = kaprov1alpha1.AddToScheme(scheme)
+	_ = kaprov1alpha2.AddToScheme(scheme)
 }
 
 func defaultLeaderElectionID(shardName string) string {

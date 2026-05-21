@@ -7,7 +7,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	internalgate "kapro.io/kapro/internal/gate"
 )
 
@@ -30,7 +30,7 @@ func NewApprovalValidator(decoder admission.Decoder) *ApprovalValidator {
 
 // Handle implements admission.Handler.
 func (v *ApprovalValidator) Handle(_ context.Context, req admission.Request) admission.Response {
-	var approval kaprov1alpha1.Approval
+	var approval kaprov1alpha2.Approval
 	if err := v.decoder.DecodeRaw(req.Object, &approval); err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
 	}
@@ -40,7 +40,7 @@ func (v *ApprovalValidator) Handle(_ context.Context, req admission.Request) adm
 	return admission.Allowed("")
 }
 
-func validateApproval(a *kaprov1alpha1.Approval) error {
+func validateApproval(a *kaprov1alpha2.Approval) error {
 	if a.Spec.PromotionRun == "" {
 		return fmt.Errorf("approval.spec.promotionrun must be non-empty")
 	}
@@ -61,6 +61,6 @@ func validateApproval(a *kaprov1alpha1.Approval) error {
 }
 
 // ValidateApproval is an exported test helper that exposes the internal validation logic.
-func ValidateApproval(a *kaprov1alpha1.Approval) error {
+func ValidateApproval(a *kaprov1alpha2.Approval) error {
 	return validateApproval(a)
 }

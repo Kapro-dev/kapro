@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 // fakePuller serves a hand-crafted PulledArtifact, optionally erroring.
@@ -79,7 +79,7 @@ func TestDelivery_Reconcile_HappyPath(t *testing.T) {
 	if res.Err != nil {
 		t.Fatalf("err: %v", res.Err)
 	}
-	if res.Phase != string(kaprov1alpha1.DeliveryPhaseConverged) {
+	if res.Phase != string(kaprov1alpha2.DeliveryPhaseConverged) {
 		t.Fatalf("phase=%s, want Converged", res.Phase)
 	}
 	if res.Format != FormatRawYAML {
@@ -105,7 +105,7 @@ func TestDelivery_Reconcile_PullErrorIsTerminal(t *testing.T) {
 	if res.Err == nil {
 		t.Fatal("expected error")
 	}
-	if res.Phase != string(kaprov1alpha1.DeliveryPhaseFailed) {
+	if res.Phase != string(kaprov1alpha2.DeliveryPhaseFailed) {
 		t.Fatalf("phase=%s, want Failed", res.Phase)
 	}
 	if !res.LastAppliedAt.IsZero() {
@@ -140,7 +140,7 @@ func TestDelivery_Reconcile_ZeroObjectsIsFailure(t *testing.T) {
 	if res.Err == nil {
 		t.Fatal("expected error for zero-object render")
 	}
-	if res.Phase != string(kaprov1alpha1.DeliveryPhaseFailed) {
+	if res.Phase != string(kaprov1alpha2.DeliveryPhaseFailed) {
 		t.Fatalf("phase=%s, want Failed", res.Phase)
 	}
 }
@@ -162,7 +162,7 @@ func TestDelivery_Reconcile_PartiallyConstructedNoPanic(t *testing.T) {
 			if res.Err == nil {
 				t.Fatal("expected error")
 			}
-			if res.Phase != string(kaprov1alpha1.DeliveryPhaseFailed) {
+			if res.Phase != string(kaprov1alpha2.DeliveryPhaseFailed) {
 				t.Fatalf("phase=%s, want Failed", res.Phase)
 			}
 			if !contains(res.Err.Error(), tc.want) {

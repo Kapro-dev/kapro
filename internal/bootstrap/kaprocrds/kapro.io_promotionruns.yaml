@@ -1385,7 +1385,7 @@ spec:
                       description: PromotionPlan is the PromotionPlan CRD name this
                         entry belongs to.
                       type: string
-                    promotionPlanRef:
+                    planRef:
                       description: |-
                         PromotionPlanRef is the logical promotionplan reference name from PromotionRun.spec.promotionPlans[i].name.
                         Used to disambiguate when the same PromotionPlan CRD is referenced multiple times.

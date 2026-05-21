@@ -463,7 +463,7 @@ func fluxUnitName(doc map[string]any, fallback string) string {
 }
 
 func renderFluxDiscoverBackend(opts fluxDiscoverOptions, labels map[string]string) string {
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
 kind: BackendProfile
 metadata:
   name: %s
@@ -483,7 +483,7 @@ spec:
 
 func renderFluxDiscoverSource(opts fluxDiscoverOptions, result fluxDiscoveryResult) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, `apiVersion: kapro.io/v1alpha1
+	fmt.Fprintf(&b, `apiVersion: kapro.io/v1alpha2
 kind: PromotionSource
 metadata:
   name: %s

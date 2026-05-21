@@ -88,8 +88,8 @@ func startPromotionController(ctx context.Context, cc ControllerContext) (bool, 
 }
 
 // startPromotionRunController starts the PromotionRun reconciler.
-// Drives the two-level DAG orchestration — walks PromotionPlan nodes then Stages,
-// upserts one PromotionTarget per (PromotionRun, PromotionPlan, Stage, Target),
+// Drives the two-level DAG orchestration — walks Plan nodes then Stages,
+// upserts one PromotionTarget per (PromotionRun, Plan, Stage, Target),
 // and aggregates child execution state into PromotionRun status.
 func startPromotionRunController(ctx context.Context, cc ControllerContext) (bool, error) {
 	stageDispatcher, err := buildStageDispatcher(ctx, cc)
@@ -244,7 +244,7 @@ func startPromotionTriggerController(_ context.Context, cc ControllerContext) (b
 }
 
 // startKaproController starts the Kapro reconciler.
-// Pushes FluxInstance + OCIRepository to spokes, generates FleetClusters and PromotionPlan on the hub.
+// Pushes FluxInstance + OCIRepository to spokes, generates FleetClusters and Plan on the hub.
 func startKaproController(_ context.Context, cc ControllerContext) (bool, error) {
 	if err := (&controller.KaproReconciler{
 		Client:   cc.Manager.GetClient(),

@@ -12,7 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/provider"
 )
 
@@ -21,14 +21,14 @@ import (
 type stubDiscoverer struct {
 	clusters []provider.ClusterInfo
 	err      error
-	provider kaprov1alpha1.FleetClusterProvider
+	provider kaprov1alpha2.FleetClusterProvider
 	source   string
 }
 
 func (s *stubDiscoverer) List(_ context.Context) ([]provider.ClusterInfo, error) {
 	return s.clusters, s.err
 }
-func (s *stubDiscoverer) Provider() kaprov1alpha1.FleetClusterProvider { return s.provider }
+func (s *stubDiscoverer) Provider() kaprov1alpha2.FleetClusterProvider { return s.provider }
 func (s *stubDiscoverer) SourceKind() string                           { return s.source }
 
 func newTestScheme(t *testing.T) *runtime.Scheme {
@@ -37,17 +37,17 @@ func newTestScheme(t *testing.T) *runtime.Scheme {
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
 	return scheme
 }
 
 func newGCPStubFactory(memberships []provider.ClusterInfo) DiscovererFactory {
-	return func(_ kaprov1alpha1.FleetClusterTemplateSource) (provider.Discoverer, error) {
+	return func(_ kaprov1alpha2.FleetClusterTemplateSource) (provider.Discoverer, error) {
 		return &stubDiscoverer{
 			clusters: memberships,
-			provider: kaprov1alpha1.FleetClusterProvider{
+			provider: kaprov1alpha2.FleetClusterProvider{
 				Kind:       "gcp-fleet",
 				Parameters: map[string]string{"project": "p1"},
 			},
@@ -60,20 +60,20 @@ func TestFleetClusterTemplate_ImportsDiscoveredClusters(t *testing.T) {
 	ctx := context.Background()
 	scheme := newTestScheme(t)
 
-	tmpl := &kaprov1alpha1.FleetClusterTemplate{
+	tmpl := &kaprov1alpha2.ClusterTemplate{
 		ObjectMeta: metav1.ObjectMeta{Name: "lidl-gke"},
-		Spec: kaprov1alpha1.FleetClusterTemplateSpec{
-			Source: kaprov1alpha1.FleetClusterTemplateSource{
-				GCP: &kaprov1alpha1.GCPFleetSource{Project: "p1"},
+		Spec: kaprov1alpha2.ClusterTemplateSpec{
+			Source: kaprov1alpha2.FleetClusterTemplateSource{
+				GCP: &kaprov1alpha2.GCPFleetSource{Project: "p1"},
 			},
 			Interval: "5m",
-			Template: kaprov1alpha1.FleetClusterTemplateBody{
-				Metadata: kaprov1alpha1.FleetClusterTemplateMetadata{
+			Template: kaprov1alpha2.FleetClusterTemplateBody{
+				Metadata: kaprov1alpha2.FleetClusterTemplateMetadata{
 					Labels: map[string]string{"managed-by": "kapro"},
 				},
-				Spec: kaprov1alpha1.FleetClusterSpec{
-					Delivery: kaprov1alpha1.DeliverySpec{
-						Mode:       kaprov1alpha1.DeliveryModePull,
+				Spec: kaprov1alpha2.ClusterSpec{
+					Delivery: kaprov1alpha2.DeliverySpec{
+						Mode:       kaprov1alpha2.DeliveryModePull,
 						BackendRef: "oci",
 					},
 				},
@@ -83,7 +83,7 @@ func TestFleetClusterTemplate_ImportsDiscoveredClusters(t *testing.T) {
 
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha1.FleetClusterTemplate{}).
+		WithStatusSubresource(&kaprov1alpha2.ClusterTemplate{}).
 		WithObjects(tmpl).
 		Build()
 
@@ -100,7 +100,7 @@ func TestFleetClusterTemplate_ImportsDiscoveredClusters(t *testing.T) {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	var fcs kaprov1alpha1.FleetClusterList
+	var fcs kaprov1alpha2.ClusterList
 	if err := c.List(ctx, &fcs); err != nil {
 		t.Fatal(err)
 	}
@@ -108,10 +108,10 @@ func TestFleetClusterTemplate_ImportsDiscoveredClusters(t *testing.T) {
 		t.Fatalf("imported FleetCluster count = %d, want 2", len(fcs.Items))
 	}
 	for _, fc := range fcs.Items {
-		if fc.Labels[kaprov1alpha1.FleetClusterTemplateManagedByLabel] != kaprov1alpha1.FleetClusterTemplateManagedByValue {
+		if fc.Labels[kaprov1alpha2.FleetClusterTemplateManagedByLabel] != kaprov1alpha2.FleetClusterTemplateManagedByValue {
 			t.Errorf("%s missing managed-by label: %v", fc.Name, fc.Labels)
 		}
-		if fc.Labels[kaprov1alpha1.FleetClusterTemplateNameLabel] != tmpl.Name {
+		if fc.Labels[kaprov1alpha2.FleetClusterTemplateNameLabel] != tmpl.Name {
 			t.Errorf("%s missing template-name label", fc.Name)
 		}
 		if fc.Spec.Provider == nil || fc.Spec.Provider.Kind != "gcp-fleet" {
@@ -125,7 +125,7 @@ func TestFleetClusterTemplate_ImportsDiscoveredClusters(t *testing.T) {
 		}
 	}
 
-	var got kaprov1alpha1.FleetClusterTemplate
+	var got kaprov1alpha2.ClusterTemplate
 	if err := c.Get(ctx, client.ObjectKey{Name: tmpl.Name}, &got); err != nil {
 		t.Fatal(err)
 	}
@@ -141,23 +141,23 @@ func TestFleetClusterTemplate_SelectorFilters(t *testing.T) {
 	ctx := context.Background()
 	scheme := newTestScheme(t)
 
-	tmpl := &kaprov1alpha1.FleetClusterTemplate{
+	tmpl := &kaprov1alpha2.ClusterTemplate{
 		ObjectMeta: metav1.ObjectMeta{Name: "prod-only"},
-		Spec: kaprov1alpha1.FleetClusterTemplateSpec{
-			Source: kaprov1alpha1.FleetClusterTemplateSource{
-				GCP: &kaprov1alpha1.GCPFleetSource{Project: "p1"},
+		Spec: kaprov1alpha2.ClusterTemplateSpec{
+			Source: kaprov1alpha2.FleetClusterTemplateSource{
+				GCP: &kaprov1alpha2.GCPFleetSource{Project: "p1"},
 			},
 			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"env": "prod"}},
-			Template: kaprov1alpha1.FleetClusterTemplateBody{
-				Spec: kaprov1alpha1.FleetClusterSpec{
-					Delivery: kaprov1alpha1.DeliverySpec{Mode: kaprov1alpha1.DeliveryModePull, BackendRef: "oci"},
+			Template: kaprov1alpha2.FleetClusterTemplateBody{
+				Spec: kaprov1alpha2.ClusterSpec{
+					Delivery: kaprov1alpha2.DeliverySpec{Mode: kaprov1alpha2.DeliveryModePull, BackendRef: "oci"},
 				},
 			},
 		},
 	}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha1.FleetClusterTemplate{}).
+		WithStatusSubresource(&kaprov1alpha2.ClusterTemplate{}).
 		WithObjects(tmpl).Build()
 
 	r := &FleetClusterTemplateReconciler{
@@ -171,7 +171,7 @@ func TestFleetClusterTemplate_SelectorFilters(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var fcs kaprov1alpha1.FleetClusterList
+	var fcs kaprov1alpha2.ClusterList
 	_ = c.List(ctx, &fcs)
 	if len(fcs.Items) != 1 || fcs.Items[0].Name != "prod-1" {
 		t.Errorf("expected only prod-1; got %+v", fcs.Items)
@@ -182,25 +182,25 @@ func TestFleetClusterTemplate_LeavesUnmanagedClustersAlone(t *testing.T) {
 	ctx := context.Background()
 	scheme := newTestScheme(t)
 
-	preExisting := &kaprov1alpha1.FleetCluster{
+	preExisting := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "fi-live",
 			Labels: map[string]string{"hand": "authored"},
 		},
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{Mode: kaprov1alpha1.DeliveryModePush, BackendRef: "flux"},
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{Mode: kaprov1alpha2.DeliveryModePush, BackendRef: "flux"},
 		},
 	}
-	tmpl := &kaprov1alpha1.FleetClusterTemplate{
+	tmpl := &kaprov1alpha2.ClusterTemplate{
 		ObjectMeta: metav1.ObjectMeta{Name: "tmpl"},
-		Spec: kaprov1alpha1.FleetClusterTemplateSpec{
-			Source:   kaprov1alpha1.FleetClusterTemplateSource{GCP: &kaprov1alpha1.GCPFleetSource{Project: "p1"}},
-			Template: kaprov1alpha1.FleetClusterTemplateBody{Spec: kaprov1alpha1.FleetClusterSpec{Delivery: kaprov1alpha1.DeliverySpec{Mode: kaprov1alpha1.DeliveryModePull, BackendRef: "oci"}}},
+		Spec: kaprov1alpha2.ClusterTemplateSpec{
+			Source:   kaprov1alpha2.FleetClusterTemplateSource{GCP: &kaprov1alpha2.GCPFleetSource{Project: "p1"}},
+			Template: kaprov1alpha2.FleetClusterTemplateBody{Spec: kaprov1alpha2.ClusterSpec{Delivery: kaprov1alpha2.DeliverySpec{Mode: kaprov1alpha2.DeliveryModePull, BackendRef: "oci"}}},
 		},
 	}
 
 	c := fake.NewClientBuilder().WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha1.FleetClusterTemplate{}).
+		WithStatusSubresource(&kaprov1alpha2.ClusterTemplate{}).
 		WithObjects(tmpl, preExisting).Build()
 
 	r := &FleetClusterTemplateReconciler{
@@ -213,14 +213,14 @@ func TestFleetClusterTemplate_LeavesUnmanagedClustersAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var got kaprov1alpha1.FleetCluster
+	var got kaprov1alpha2.Cluster
 	if err := c.Get(ctx, client.ObjectKey{Name: "fi-live"}, &got); err != nil {
 		t.Fatal(err)
 	}
 	if got.Labels["hand"] != "authored" {
 		t.Errorf("hand-authored label lost: %v", got.Labels)
 	}
-	if got.Labels[kaprov1alpha1.FleetClusterTemplateManagedByLabel] == kaprov1alpha1.FleetClusterTemplateManagedByValue {
+	if got.Labels[kaprov1alpha2.FleetClusterTemplateManagedByLabel] == kaprov1alpha2.FleetClusterTemplateManagedByValue {
 		t.Errorf("unmanaged FleetCluster was claimed by the template")
 	}
 	if got.Spec.Delivery.BackendRef != "flux" {
@@ -232,22 +232,22 @@ func TestFleetClusterTemplate_Suspend(t *testing.T) {
 	ctx := context.Background()
 	scheme := newTestScheme(t)
 
-	tmpl := &kaprov1alpha1.FleetClusterTemplate{
+	tmpl := &kaprov1alpha2.ClusterTemplate{
 		ObjectMeta: metav1.ObjectMeta{Name: "paused"},
-		Spec: kaprov1alpha1.FleetClusterTemplateSpec{
-			Source:   kaprov1alpha1.FleetClusterTemplateSource{GCP: &kaprov1alpha1.GCPFleetSource{Project: "p1"}},
+		Spec: kaprov1alpha2.ClusterTemplateSpec{
+			Source:   kaprov1alpha2.FleetClusterTemplateSource{GCP: &kaprov1alpha2.GCPFleetSource{Project: "p1"}},
 			Suspend:  true,
-			Template: kaprov1alpha1.FleetClusterTemplateBody{Spec: kaprov1alpha1.FleetClusterSpec{Delivery: kaprov1alpha1.DeliverySpec{Mode: kaprov1alpha1.DeliveryModePull, BackendRef: "oci"}}},
+			Template: kaprov1alpha2.FleetClusterTemplateBody{Spec: kaprov1alpha2.ClusterSpec{Delivery: kaprov1alpha2.DeliverySpec{Mode: kaprov1alpha2.DeliveryModePull, BackendRef: "oci"}}},
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha1.FleetClusterTemplate{}).
+		WithStatusSubresource(&kaprov1alpha2.ClusterTemplate{}).
 		WithObjects(tmpl).Build()
 
 	called := false
 	r := &FleetClusterTemplateReconciler{
 		Client: c, Scheme: scheme,
-		DiscovererFactory: func(_ kaprov1alpha1.FleetClusterTemplateSource) (provider.Discoverer, error) {
+		DiscovererFactory: func(_ kaprov1alpha2.FleetClusterTemplateSource) (provider.Discoverer, error) {
 			called = true
 			return nil, errors.New("should not be called when suspended")
 		},
@@ -259,7 +259,7 @@ func TestFleetClusterTemplate_Suspend(t *testing.T) {
 		t.Errorf("Discoverer was invoked despite suspend=true")
 	}
 
-	var fcs kaprov1alpha1.FleetClusterList
+	var fcs kaprov1alpha2.ClusterList
 	_ = c.List(ctx, &fcs)
 	if len(fcs.Items) != 0 {
 		t.Errorf("clusters imported despite suspend: %d", len(fcs.Items))
@@ -270,15 +270,15 @@ func TestFleetClusterTemplate_SourceNotImplementedSurfacesCondition(t *testing.T
 	ctx := context.Background()
 	scheme := newTestScheme(t)
 
-	tmpl := &kaprov1alpha1.FleetClusterTemplate{
+	tmpl := &kaprov1alpha2.ClusterTemplate{
 		ObjectMeta: metav1.ObjectMeta{Name: "aws-stub"},
-		Spec: kaprov1alpha1.FleetClusterTemplateSpec{
-			Source:   kaprov1alpha1.FleetClusterTemplateSource{AWS: &kaprov1alpha1.AWSFleetSource{Region: "eu-west-1"}},
-			Template: kaprov1alpha1.FleetClusterTemplateBody{Spec: kaprov1alpha1.FleetClusterSpec{Delivery: kaprov1alpha1.DeliverySpec{Mode: kaprov1alpha1.DeliveryModePush, BackendRef: "flux"}}},
+		Spec: kaprov1alpha2.ClusterTemplateSpec{
+			Source:   kaprov1alpha2.FleetClusterTemplateSource{AWS: &kaprov1alpha2.AWSFleetSource{Region: "eu-west-1"}},
+			Template: kaprov1alpha2.FleetClusterTemplateBody{Spec: kaprov1alpha2.ClusterSpec{Delivery: kaprov1alpha2.DeliverySpec{Mode: kaprov1alpha2.DeliveryModePush, BackendRef: "flux"}}},
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha1.FleetClusterTemplate{}).
+		WithStatusSubresource(&kaprov1alpha2.ClusterTemplate{}).
 		WithObjects(tmpl).Build()
 
 	// Use the real factory so we exercise the not-implemented path.
@@ -287,16 +287,16 @@ func TestFleetClusterTemplate_SourceNotImplementedSurfacesCondition(t *testing.T
 		t.Fatal(err)
 	}
 
-	var got kaprov1alpha1.FleetClusterTemplate
+	var got kaprov1alpha2.ClusterTemplate
 	if err := c.Get(ctx, client.ObjectKey{Name: tmpl.Name}, &got); err != nil {
 		t.Fatal(err)
 	}
 	var readyReason, stalledStatus string
 	for _, cond := range got.Status.Conditions {
 		switch cond.Type {
-		case kaprov1alpha1.ConditionTypeReady:
+		case kaprov1alpha2.ConditionTypeReady:
 			readyReason = cond.Reason
-		case kaprov1alpha1.ConditionTypeStalled:
+		case kaprov1alpha2.ConditionTypeStalled:
 			stalledStatus = string(cond.Status)
 		}
 	}
@@ -318,25 +318,25 @@ func TestFleetClusterTemplate_PrunesOrphans(t *testing.T) {
 	ctx := context.Background()
 	scheme := newTestScheme(t)
 
-	tmpl := &kaprov1alpha1.FleetClusterTemplate{
+	tmpl := &kaprov1alpha2.ClusterTemplate{
 		ObjectMeta: metav1.ObjectMeta{Name: "prune-on"},
-		Spec: kaprov1alpha1.FleetClusterTemplateSpec{
-			Source:   kaprov1alpha1.FleetClusterTemplateSource{GCP: &kaprov1alpha1.GCPFleetSource{Project: "p1"}},
+		Spec: kaprov1alpha2.ClusterTemplateSpec{
+			Source:   kaprov1alpha2.FleetClusterTemplateSource{GCP: &kaprov1alpha2.GCPFleetSource{Project: "p1"}},
 			Prune:    true,
-			Template: kaprov1alpha1.FleetClusterTemplateBody{Spec: kaprov1alpha1.FleetClusterSpec{Delivery: kaprov1alpha1.DeliverySpec{Mode: kaprov1alpha1.DeliveryModePull, BackendRef: "oci"}}},
+			Template: kaprov1alpha2.FleetClusterTemplateBody{Spec: kaprov1alpha2.ClusterSpec{Delivery: kaprov1alpha2.DeliverySpec{Mode: kaprov1alpha2.DeliveryModePull, BackendRef: "oci"}}},
 		},
 	}
-	orphan := &kaprov1alpha1.FleetCluster{
+	orphan := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "gone",
 			Labels: map[string]string{
-				kaprov1alpha1.FleetClusterTemplateManagedByLabel: kaprov1alpha1.FleetClusterTemplateManagedByValue,
-				kaprov1alpha1.FleetClusterTemplateNameLabel:      "prune-on",
+				kaprov1alpha2.FleetClusterTemplateManagedByLabel: kaprov1alpha2.FleetClusterTemplateManagedByValue,
+				kaprov1alpha2.FleetClusterTemplateNameLabel:      "prune-on",
 			},
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha1.FleetClusterTemplate{}).
+		WithStatusSubresource(&kaprov1alpha2.ClusterTemplate{}).
 		WithObjects(tmpl, orphan).Build()
 
 	r := &FleetClusterTemplateReconciler{
@@ -349,7 +349,7 @@ func TestFleetClusterTemplate_PrunesOrphans(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var deleted kaprov1alpha1.FleetCluster
+	var deleted kaprov1alpha2.Cluster
 	err := c.Get(ctx, client.ObjectKey{Name: "gone"}, &deleted)
 	if err == nil {
 		t.Errorf("orphan FleetCluster was not deleted")

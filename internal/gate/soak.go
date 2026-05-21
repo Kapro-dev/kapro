@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 // SoakGate blocks the promotion until a minimum duration (soak period) has
@@ -24,7 +24,7 @@ type SoakGate struct{}
 func (g *SoakGate) Evaluate(_ context.Context, req Request) (Result, error) {
 	if req.Policy == nil || req.Policy.Gate.SoakTime == "" {
 		return Result{
-			Phase:   kaprov1alpha1.GatePhasePassed,
+			Phase:   kaprov1alpha2.GatePhasePassed,
 			Message: "no soak configured",
 			Evidence: []Evidence{{
 				Type:   "soak",
@@ -42,7 +42,7 @@ func (g *SoakGate) Evaluate(_ context.Context, req Request) (Result, error) {
 	if req.Context == nil || req.Context.StartedAt == "" {
 		// Clock not started yet; caller must set StartedAt before calling again.
 		return Result{
-			Phase:      kaprov1alpha1.GatePhaseInconclusive,
+			Phase:      kaprov1alpha2.GatePhaseInconclusive,
 			Message:    "soak clock not started",
 			RetryAfter: soakDuration.String(),
 			Evidence: []Evidence{{
@@ -63,7 +63,7 @@ func (g *SoakGate) Evaluate(_ context.Context, req Request) (Result, error) {
 	if elapsed < soakDuration {
 		remaining := soakDuration - elapsed
 		return Result{
-			Phase:      kaprov1alpha1.GatePhaseInconclusive,
+			Phase:      kaprov1alpha2.GatePhaseInconclusive,
 			Message:    fmt.Sprintf("soaking: %s remaining", remaining.Round(time.Second)),
 			RetryAfter: remaining.String(),
 			Evidence: []Evidence{{
@@ -81,7 +81,7 @@ func (g *SoakGate) Evaluate(_ context.Context, req Request) (Result, error) {
 	}
 
 	return Result{
-		Phase:   kaprov1alpha1.GatePhasePassed,
+		Phase:   kaprov1alpha2.GatePhasePassed,
 		Message: fmt.Sprintf("soak period %s elapsed", soakDuration),
 		Evidence: []Evidence{{
 			Type:          "soak",

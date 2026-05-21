@@ -10,7 +10,7 @@ spec:
   names:
     categories:
     - kapro-all
-    kind: FleetClusterTemplate
+    kind: ClusterTemplate
     listKind: FleetClusterTemplateList
     plural: fleetclustertemplates
     shortNames:

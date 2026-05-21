@@ -1,5 +1,5 @@
-apiVersion: kapro.io/v1alpha1
-kind: FleetCluster
+apiVersion: kapro.io/v1alpha2
+kind: Cluster
 metadata:
   name: checkout-canary
   labels:
@@ -15,8 +15,8 @@ spec:
       inputField: tag
       tenantField: tenant
 ---
-apiVersion: kapro.io/v1alpha1
-kind: FleetCluster
+apiVersion: kapro.io/v1alpha2
+kind: Cluster
 metadata:
   name: checkout-prod-eu
   labels:
@@ -32,8 +32,8 @@ spec:
       inputField: tag
       tenantField: tenant
 ---
-apiVersion: kapro.io/v1alpha1
-kind: FleetCluster
+apiVersion: kapro.io/v1alpha2
+kind: Cluster
 metadata:
   name: checkout-prod-us
   labels:

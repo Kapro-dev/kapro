@@ -18,7 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 // heartbeatTestScheme builds the scheme the reconciler needs for its watches.
@@ -30,7 +30,7 @@ func heartbeatTestScheme(t *testing.T) *runtime.Scheme {
 	if err := clientgoscheme.AddToScheme(s); err != nil {
 		t.Fatalf("clientgoscheme: %v", err)
 	}
-	if err := kaprov1alpha1.AddToScheme(s); err != nil {
+	if err := kaprov1alpha2.AddToScheme(s); err != nil {
 		t.Fatalf("kapro scheme: %v", err)
 	}
 	if err := coordinationv1.AddToScheme(s); err != nil {
@@ -48,7 +48,7 @@ func newReconciler(t *testing.T, now time.Time, objs ...client.Object) *FleetClu
 		Client: fake.NewClientBuilder().
 			WithScheme(scheme).
 			WithObjects(objs...).
-			WithStatusSubresource(&kaprov1alpha1.FleetCluster{}).
+			WithStatusSubresource(&kaprov1alpha2.Cluster{}).
 			Build(),
 		Scheme:   scheme,
 		Recorder: record.NewFakeRecorder(32),
@@ -58,16 +58,16 @@ func newReconciler(t *testing.T, now time.Time, objs ...client.Object) *FleetClu
 
 // boostrapUsed returns a registered FleetCluster (status.bootstrap.used=true)
 // so the reconciler doesn't short-circuit to ReasonNotRegistered.
-func bootstrapUsedFleetCluster(name string, threshold int32) *kaprov1alpha1.FleetCluster {
+func bootstrapUsedFleetCluster(name string, threshold int32) *kaprov1alpha2.Cluster {
 	t := threshold
-	return &kaprov1alpha1.FleetCluster{
+	return &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery:                    kaprov1alpha1.DeliverySpec{Mode: kaprov1alpha1.DeliveryModePull, BackendRef: "flux"},
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery:                    kaprov1alpha2.DeliverySpec{Mode: kaprov1alpha2.DeliveryModePull, BackendRef: "flux"},
 			ConsecutiveFailureThreshold: &t,
 		},
-		Status: kaprov1alpha1.FleetClusterStatus{
-			Bootstrap: &kaprov1alpha1.FleetClusterBootstrapStatus{Used: true},
+		Status: kaprov1alpha2.ClusterStatus{
+			Bootstrap: &kaprov1alpha2.FleetClusterBootstrapStatus{Used: true},
 		},
 	}
 }
@@ -85,11 +85,11 @@ func freshLease(name string, namespace string, observed time.Time) *coordination
 
 func readyCondition(t *testing.T, c client.Client, name string) *metav1.Condition {
 	t.Helper()
-	fc := &kaprov1alpha1.FleetCluster{}
+	fc := &kaprov1alpha2.Cluster{}
 	if err := c.Get(context.Background(), types.NamespacedName{Name: name}, fc); err != nil {
 		t.Fatalf("get FleetCluster: %v", err)
 	}
-	return apimeta.FindStatusCondition(fc.Status.Conditions, kaprov1alpha1.ConditionTypeReady)
+	return apimeta.FindStatusCondition(fc.Status.Conditions, kaprov1alpha2.ConditionTypeReady)
 }
 
 func TestHeartbeat_FreshLease_ReadyTrue(t *testing.T) {
@@ -102,7 +102,7 @@ func TestHeartbeat_FreshLease_ReadyTrue(t *testing.T) {
 		t.Fatalf("reconcile: %v", err)
 	}
 	cond := readyCondition(t, r.Client, "cluster-a")
-	if cond == nil || cond.Status != metav1.ConditionTrue || cond.Reason != kaprov1alpha1.ReasonHeartbeatFresh {
+	if cond == nil || cond.Status != metav1.ConditionTrue || cond.Reason != kaprov1alpha2.ReasonHeartbeatFresh {
 		t.Fatalf("expected Ready=True reason=HeartbeatFresh, got %+v", cond)
 	}
 }
@@ -119,7 +119,7 @@ func TestHeartbeat_MissingLease_AccumulatesUntilThreshold(t *testing.T) {
 			t.Fatalf("reconcile %d: %v", i, err)
 		}
 		cond := readyCondition(t, r.Client, "cluster-a")
-		if cond == nil || cond.Status != metav1.ConditionUnknown || cond.Reason != kaprov1alpha1.ReasonHeartbeatStale {
+		if cond == nil || cond.Status != metav1.ConditionUnknown || cond.Reason != kaprov1alpha2.ReasonHeartbeatStale {
 			t.Fatalf("miss %d: expected Ready=Unknown reason=HeartbeatStale, got %+v", i, cond)
 		}
 	}
@@ -128,7 +128,7 @@ func TestHeartbeat_MissingLease_AccumulatesUntilThreshold(t *testing.T) {
 		t.Fatalf("reconcile 3: %v", err)
 	}
 	cond := readyCondition(t, r.Client, "cluster-a")
-	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != kaprov1alpha1.ReasonUnreachable {
+	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != kaprov1alpha2.ReasonUnreachable {
 		t.Fatalf("miss 3: expected Ready=False reason=Unreachable, got %+v", cond)
 	}
 }
@@ -139,11 +139,11 @@ func TestHeartbeat_Recovery_FlipsImmediately(t *testing.T) {
 	// Pre-seed status as Unreachable with 3 misses to simulate a cluster that's been down.
 	transition := metav1.NewTime(now.Add(-time.Hour))
 	fc.Status.Conditions = []metav1.Condition{{
-		Type: kaprov1alpha1.ConditionTypeReady, Status: metav1.ConditionFalse,
-		Reason: kaprov1alpha1.ReasonUnreachable, LastTransitionTime: transition,
+		Type: kaprov1alpha2.ConditionTypeReady, Status: metav1.ConditionFalse,
+		Reason: kaprov1alpha2.ReasonUnreachable, LastTransitionTime: transition,
 	}}
-	fc.Status.Heartbeat = &kaprov1alpha1.FleetClusterHeartbeatStatus{
-		ConsecutiveMisses: 5, Reason: kaprov1alpha1.ReasonUnreachable,
+	fc.Status.Heartbeat = &kaprov1alpha2.FleetClusterHeartbeatStatus{
+		ConsecutiveMisses: 5, Reason: kaprov1alpha2.ReasonUnreachable,
 	}
 	lease := freshLease("cluster-a", defaultHeartbeatNamespace, now.Add(-5*time.Second))
 	r := newReconciler(t, now, fc, lease)
@@ -152,11 +152,11 @@ func TestHeartbeat_Recovery_FlipsImmediately(t *testing.T) {
 		t.Fatalf("reconcile: %v", err)
 	}
 	cond := readyCondition(t, r.Client, "cluster-a")
-	if cond == nil || cond.Status != metav1.ConditionTrue || cond.Reason != kaprov1alpha1.ReasonHeartbeatFresh {
+	if cond == nil || cond.Status != metav1.ConditionTrue || cond.Reason != kaprov1alpha2.ReasonHeartbeatFresh {
 		t.Fatalf("expected immediate flip to Ready=True, got %+v", cond)
 	}
 	// Misses reset.
-	fcGot := &kaprov1alpha1.FleetCluster{}
+	fcGot := &kaprov1alpha2.Cluster{}
 	_ = r.Get(context.Background(), types.NamespacedName{Name: "cluster-a"}, fcGot)
 	if fcGot.Status.Heartbeat == nil || fcGot.Status.Heartbeat.ConsecutiveMisses != 0 {
 		t.Fatalf("expected misses reset to 0, got %+v", fcGot.Status.Heartbeat)
@@ -177,10 +177,10 @@ func TestHeartbeat_Suspended_NoMissAccumulation(t *testing.T) {
 		}
 	}
 	cond := readyCondition(t, r.Client, "cluster-a")
-	if cond == nil || cond.Status != metav1.ConditionUnknown || cond.Reason != kaprov1alpha1.ReasonSuspended {
+	if cond == nil || cond.Status != metav1.ConditionUnknown || cond.Reason != kaprov1alpha2.ReasonSuspended {
 		t.Fatalf("expected Ready=Unknown reason=Suspended, got %+v", cond)
 	}
-	fcGot := &kaprov1alpha1.FleetCluster{}
+	fcGot := &kaprov1alpha2.Cluster{}
 	_ = r.Get(context.Background(), types.NamespacedName{Name: "cluster-a"}, fcGot)
 	if fcGot.Status.Heartbeat == nil || fcGot.Status.Heartbeat.ConsecutiveMisses != 0 {
 		t.Fatalf("suspended cluster should not accumulate misses, got %+v", fcGot.Status.Heartbeat)
@@ -190,14 +190,14 @@ func TestHeartbeat_Suspended_NoMissAccumulation(t *testing.T) {
 func TestHeartbeat_PushMode_AlwaysReady(t *testing.T) {
 	now := time.Now()
 	fc := bootstrapUsedFleetCluster("cluster-a", 3)
-	fc.Spec.Delivery.Mode = kaprov1alpha1.DeliveryModePush
+	fc.Spec.Delivery.Mode = kaprov1alpha2.DeliveryModePush
 	r := newReconciler(t, now, fc) // no Lease
 
 	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "cluster-a"}}); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
 	cond := readyCondition(t, r.Client, "cluster-a")
-	if cond == nil || cond.Status != metav1.ConditionTrue || cond.Reason != kaprov1alpha1.ReasonPushModeNoHeartbeat {
+	if cond == nil || cond.Status != metav1.ConditionTrue || cond.Reason != kaprov1alpha2.ReasonPushModeNoHeartbeat {
 		t.Fatalf("expected Ready=True reason=PushModeNoHeartbeat, got %+v", cond)
 	}
 }
@@ -208,11 +208,11 @@ func TestHeartbeat_PushMode_AlwaysReady(t *testing.T) {
 func TestHeartbeat_NotYetRegistered(t *testing.T) {
 	now := time.Now()
 	tokenTTL := "1h"
-	fc := &kaprov1alpha1.FleetCluster{
+	fc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery:  kaprov1alpha1.DeliverySpec{Mode: kaprov1alpha1.DeliveryModePull, BackendRef: "flux"},
-			Bootstrap: &kaprov1alpha1.FleetClusterBootstrapSpec{TTL: tokenTTL},
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery:  kaprov1alpha2.DeliverySpec{Mode: kaprov1alpha2.DeliveryModePull, BackendRef: "flux"},
+			Bootstrap: &kaprov1alpha2.FleetClusterBootstrapSpec{TTL: tokenTTL},
 		},
 		// No Status.Bootstrap.Used — bootstrap workflow not yet complete.
 	}
@@ -221,7 +221,7 @@ func TestHeartbeat_NotYetRegistered(t *testing.T) {
 		t.Fatalf("reconcile: %v", err)
 	}
 	cond := readyCondition(t, r.Client, "cluster-a")
-	if cond == nil || cond.Status != metav1.ConditionUnknown || cond.Reason != kaprov1alpha1.ReasonNotRegistered {
+	if cond == nil || cond.Status != metav1.ConditionUnknown || cond.Reason != kaprov1alpha2.ReasonNotRegistered {
 		t.Fatalf("expected Ready=Unknown reason=NotRegistered, got %+v", cond)
 	}
 }
@@ -234,10 +234,10 @@ func TestHeartbeat_NotYetRegistered(t *testing.T) {
 // Otherwise requireFreshHeartbeat would defer their promotions indefinitely.
 func TestHeartbeat_LegacyClusterNoBootstrap_LeaseEstablishesReady(t *testing.T) {
 	now := time.Now()
-	fc := &kaprov1alpha1.FleetCluster{
+	fc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "legacy-cluster"},
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{Mode: kaprov1alpha1.DeliveryModePull, BackendRef: "flux"},
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{Mode: kaprov1alpha2.DeliveryModePull, BackendRef: "flux"},
 			// spec.Bootstrap intentionally nil — legacy / non-bootstrap path.
 		},
 	}
@@ -247,7 +247,7 @@ func TestHeartbeat_LegacyClusterNoBootstrap_LeaseEstablishesReady(t *testing.T) 
 		t.Fatalf("reconcile: %v", err)
 	}
 	cond := readyCondition(t, r.Client, "legacy-cluster")
-	if cond == nil || cond.Status != metav1.ConditionTrue || cond.Reason != kaprov1alpha1.ReasonHeartbeatFresh {
+	if cond == nil || cond.Status != metav1.ConditionTrue || cond.Reason != kaprov1alpha2.ReasonHeartbeatFresh {
 		t.Fatalf("legacy cluster with fresh Lease should reach Ready=True/HeartbeatFresh; got %+v", cond)
 	}
 }
@@ -259,10 +259,10 @@ func TestHeartbeat_LegacyClusterNoBootstrap_LeaseEstablishesReady(t *testing.T) 
 func TestHeartbeat_LegacyClusterNoBootstrap_MissingLeaseCountsAsMiss(t *testing.T) {
 	now := time.Now()
 	threshold := int32(1)
-	fc := &kaprov1alpha1.FleetCluster{
+	fc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "legacy-cluster"},
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery:                    kaprov1alpha1.DeliverySpec{Mode: kaprov1alpha1.DeliveryModePull, BackendRef: "flux"},
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery:                    kaprov1alpha2.DeliverySpec{Mode: kaprov1alpha2.DeliveryModePull, BackendRef: "flux"},
 			ConsecutiveFailureThreshold: &threshold,
 		},
 	}
@@ -271,7 +271,7 @@ func TestHeartbeat_LegacyClusterNoBootstrap_MissingLeaseCountsAsMiss(t *testing.
 		t.Fatalf("reconcile: %v", err)
 	}
 	cond := readyCondition(t, r.Client, "legacy-cluster")
-	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != kaprov1alpha1.ReasonUnreachable {
+	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != kaprov1alpha2.ReasonUnreachable {
 		t.Fatalf("legacy cluster with threshold=1 + no Lease should hit Unreachable, not NotRegistered; got %+v", cond)
 	}
 }
@@ -289,7 +289,7 @@ func TestHeartbeat_StaleLeaseCountedAsMiss(t *testing.T) {
 		t.Fatalf("reconcile: %v", err)
 	}
 	cond := readyCondition(t, r.Client, "cluster-a")
-	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != kaprov1alpha1.ReasonUnreachable {
+	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != kaprov1alpha2.ReasonUnreachable {
 		t.Fatalf("expected Ready=False reason=Unreachable, got %+v", cond)
 	}
 }
@@ -311,7 +311,7 @@ func TestHeartbeat_DefaultThresholdWhenSpecNil(t *testing.T) {
 		}
 	}
 	cond := readyCondition(t, r.Client, "cluster-a")
-	if cond == nil || cond.Status != metav1.ConditionUnknown || cond.Reason != kaprov1alpha1.ReasonHeartbeatStale {
+	if cond == nil || cond.Status != metav1.ConditionUnknown || cond.Reason != kaprov1alpha2.ReasonHeartbeatStale {
 		t.Fatalf("after 2 misses with default threshold=3, expected Stale; got %+v", cond)
 	}
 	// Third miss hits the default threshold.
@@ -319,7 +319,7 @@ func TestHeartbeat_DefaultThresholdWhenSpecNil(t *testing.T) {
 		t.Fatalf("reconcile 3: %v", err)
 	}
 	cond = readyCondition(t, r.Client, "cluster-a")
-	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != kaprov1alpha1.ReasonUnreachable {
+	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != kaprov1alpha2.ReasonUnreachable {
 		t.Fatalf("expected Ready=False reason=Unreachable after 3 misses, got %+v", cond)
 	}
 }
@@ -356,12 +356,12 @@ func TestLeaseToFleetCluster_MapsHeartbeatPrefix(t *testing.T) {
 // transitions should trigger reconcile.
 func TestSpecPredicate_StatusOnlyUpdatesIgnored(t *testing.T) {
 	pred := fleetClusterSpecOrBootstrapPredicate{}
-	oldFC := &kaprov1alpha1.FleetCluster{
+	oldFC := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "c", Generation: 1},
-		Status: kaprov1alpha1.FleetClusterStatus{
-			Bootstrap: &kaprov1alpha1.FleetClusterBootstrapStatus{Used: true},
+		Status: kaprov1alpha2.ClusterStatus{
+			Bootstrap: &kaprov1alpha2.FleetClusterBootstrapStatus{Used: true},
 			Conditions: []metav1.Condition{{
-				Type: kaprov1alpha1.ConditionTypeReady, Status: metav1.ConditionTrue,
+				Type: kaprov1alpha2.ConditionTypeReady, Status: metav1.ConditionTrue,
 			}},
 		},
 	}
@@ -396,7 +396,7 @@ func TestApplyDesired_LeaseObservedAtMatchesLeaseSpec(t *testing.T) {
 	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "cluster-a"}}); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
-	fcGot := &kaprov1alpha1.FleetCluster{}
+	fcGot := &kaprov1alpha2.Cluster{}
 	_ = r.Get(context.Background(), types.NamespacedName{Name: "cluster-a"}, fcGot)
 	if fcGot.Status.Heartbeat == nil || fcGot.Status.Heartbeat.LeaseObservedAt == nil {
 		t.Fatalf("expected LeaseObservedAt to be set, got %+v", fcGot.Status.Heartbeat)

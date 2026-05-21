@@ -15,7 +15,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 // Severity ranks an Issue. ERROR fails the lint; WARN is advisory
@@ -119,31 +119,31 @@ func lintOneDoc(data []byte) []Issue {
 	}
 	// Same apiVersion family but wrong version is still a Kapro
 	// manifest the user probably wants flagged.
-	if meta.APIVersion != "kapro.io/v1alpha1" {
+	if meta.APIVersion != "kapro.io/v1alpha2" {
 		return []Issue{{
 			Severity: SeverityWarn,
 			Kind:     meta.Kind,
 			Name:     meta.Metadata.Name,
 			Path:     "apiVersion",
-			Message:  fmt.Sprintf("expected kapro.io/v1alpha1, got %q", meta.APIVersion),
+			Message:  fmt.Sprintf("expected kapro.io/v1alpha2, got %q", meta.APIVersion),
 		}}
 	}
 
 	switch meta.Kind {
 	case "Kapro":
-		var k kaprov1alpha1.Kapro
+		var k kaprov1alpha2.Fleet
 		if err := yaml.Unmarshal(data, &k); err != nil {
 			return parseFail(meta.Kind, meta.Metadata.Name, err)
 		}
 		return tagIssues(LintKapro(&k), meta.Kind, k.Name)
 	case "Promotion":
-		var p kaprov1alpha1.Promotion
+		var p kaprov1alpha2.Promotion
 		if err := yaml.Unmarshal(data, &p); err != nil {
 			return parseFail(meta.Kind, meta.Metadata.Name, err)
 		}
 		return tagIssues(LintPromotion(&p), meta.Kind, p.Name)
-	case "PromotionPlan":
-		var pp kaprov1alpha1.PromotionPlan
+	case "Plan":
+		var pp kaprov1alpha2.Plan
 		if err := yaml.Unmarshal(data, &pp); err != nil {
 			return parseFail(meta.Kind, meta.Metadata.Name, err)
 		}
@@ -181,7 +181,7 @@ func tagIssues(issues []Issue, kind, name string) []Issue {
 
 // LintKapro checks a Kapro custom resource for required fields and
 // common foot-guns. It does not validate cluster connectivity.
-func LintKapro(k *kaprov1alpha1.Kapro) []Issue {
+func LintKapro(k *kaprov1alpha2.Fleet) []Issue {
 	var out []Issue
 	if k.Name == "" {
 		out = append(out, errAt("metadata.name", "Kapro requires a name"))
@@ -206,20 +206,20 @@ func LintKapro(k *kaprov1alpha1.Kapro) []Issue {
 		out = append(out, warnAt("spec.clusters",
 			"no clusters configured; the Kapro will not roll anything until a FleetCluster matches"))
 	}
-	if k.Spec.PromotionPlan.Stages == nil && k.Spec.SourceRef == "" {
+	if k.Spec.Plan.Stages == nil && k.Spec.SourceRef == "" {
 		out = append(out, warnAt("spec.promotionPlan",
-			"no inline promotionPlan; ensure a PromotionPlan CR exists and is referenced from Promotion.spec.promotionPlans[]"))
+			"no inline promotionPlan; ensure a Plan CR exists and is referenced from Promotion.spec.promotionPlans[]"))
 	}
 	return out
 }
 
 // LintPromotion checks a Promotion for required fields and shape problems.
-func LintPromotion(p *kaprov1alpha1.Promotion) []Issue {
+func LintPromotion(p *kaprov1alpha2.Promotion) []Issue {
 	var out []Issue
 	if p.Name == "" {
 		out = append(out, errAt("metadata.name", "Promotion requires a name"))
 	}
-	if p.Spec.KaproRef == "" {
+	if p.Spec.FleetRef == "" {
 		out = append(out, errAt("spec.kaproRef", "kaproRef is required"))
 	}
 	if p.Spec.Version == "" && len(p.Spec.Versions) == 0 {
@@ -246,9 +246,9 @@ func LintPromotion(p *kaprov1alpha1.Promotion) []Issue {
 		}
 	}
 	for i, plan := range p.Spec.PromotionPlans {
-		if plan.PromotionPlan == "" {
+		if plan.Plan == "" {
 			out = append(out, errAt(fmt.Sprintf("spec.promotionPlans[%d].promotionPlan", i),
-				"PromotionPlan reference must not be empty"))
+				"Plan reference must not be empty"))
 		}
 		if plan.Name == "" {
 			out = append(out, warnAt(fmt.Sprintf("spec.promotionPlans[%d].name", i),
@@ -258,13 +258,13 @@ func LintPromotion(p *kaprov1alpha1.Promotion) []Issue {
 	return out
 }
 
-// LintPromotionPlan checks a PromotionPlan DAG for the most common
+// LintPromotionPlan checks a Plan DAG for the most common
 // schema and structural violations (duplicate stage names, dangling
 // dependsOn references, cycles, manual gates without approvers, etc.).
-func LintPromotionPlan(pp *kaprov1alpha1.PromotionPlan) []Issue {
+func LintPromotionPlan(pp *kaprov1alpha2.Plan) []Issue {
 	var out []Issue
 	if pp.Name == "" {
-		out = append(out, errAt("metadata.name", "PromotionPlan requires a name"))
+		out = append(out, errAt("metadata.name", "Plan requires a name"))
 	}
 	if len(pp.Spec.Stages) == 0 {
 		out = append(out, errAt("spec.stages", "at least one stage is required"))
@@ -299,7 +299,7 @@ func LintPromotionPlan(pp *kaprov1alpha1.PromotionPlan) []Issue {
 			}
 		}
 		if s.Gate != nil {
-			if s.Gate.Mode == kaprov1alpha1.GateModeManual {
+			if s.Gate.Mode == kaprov1alpha2.GateModeManual {
 				if s.Gate.Approval == nil || !s.Gate.Approval.Required {
 					// Materially breaks the user's stated intent ("wait
 					// for a human") — the stage will silently auto-advance.
@@ -340,13 +340,13 @@ func LintPromotionPlan(pp *kaprov1alpha1.PromotionPlan) []Issue {
 // detectCycles runs a DFS over the stage DAG and reports the first
 // cycle found, if any. The admission webhook also blocks cycles, but
 // catching them at lint time is much cheaper.
-func detectCycles(pp *kaprov1alpha1.PromotionPlan) []Issue {
+func detectCycles(pp *kaprov1alpha2.Plan) []Issue {
 	const (
 		unseen = 0
 		open   = 1
 		closed = 2
 	)
-	stages := map[string]kaprov1alpha1.Stage{}
+	stages := map[string]kaprov1alpha2.Stage{}
 	state := map[string]int{}
 	for _, s := range pp.Spec.Stages {
 		if s.Name != "" {

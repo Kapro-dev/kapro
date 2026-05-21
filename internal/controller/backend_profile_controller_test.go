@@ -15,7 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 func TestBackendProfileReadinessBuiltIn(t *testing.T) {
@@ -23,14 +23,14 @@ func TestBackendProfileReadinessBuiltIn(t *testing.T) {
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	profile := &kaprov1alpha1.BackendProfile{
+	profile := &kaprov1alpha2.Backend{
 		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
-		Spec: kaprov1alpha1.BackendProfileSpec{
-			Driver:  kaprov1alpha1.BackendDriverArgo,
-			Runtime: kaprov1alpha1.BackendRuntimeHub,
+		Spec: kaprov1alpha2.BackendSpec{
+			Driver:  kaprov1alpha2.BackendDriverArgo,
+			Runtime: kaprov1alpha2.BackendRuntimeHub,
 		},
 	}
 	r := &BackendProfileReconciler{
@@ -51,26 +51,26 @@ func TestBackendProfileReadinessExternalRequiresReadyPlugin(t *testing.T) {
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	profile := &kaprov1alpha1.BackendProfile{
+	profile := &kaprov1alpha2.Backend{
 		ObjectMeta: metav1.ObjectMeta{Name: "custom"},
-		Spec: kaprov1alpha1.BackendProfileSpec{
-			Driver:    kaprov1alpha1.BackendDriverExternal,
-			Runtime:   kaprov1alpha1.BackendRuntimeBoth,
+		Spec: kaprov1alpha2.BackendSpec{
+			Driver:    kaprov1alpha2.BackendDriverExternal,
+			Runtime:   kaprov1alpha2.BackendRuntimeBoth,
 			PluginRef: "custom-backend",
 		},
 	}
-	plugin := &kaprov1alpha1.PluginRegistration{
+	plugin := &kaprov1alpha2.Plugin{
 		ObjectMeta: metav1.ObjectMeta{Name: "custom-backend", Generation: 2},
-		Spec: kaprov1alpha1.PluginRegistrationSpec{
-			Type:     kaprov1alpha1.PluginTypeActuator,
+		Spec: kaprov1alpha2.PluginSpec{
+			Type:     kaprov1alpha2.PluginTypeActuator,
 			Name:     "custom",
-			Protocol: kaprov1alpha1.PluginProtocolGRPC,
+			Protocol: kaprov1alpha2.PluginProtocolGRPC,
 			Endpoint: "dns:///custom-backend:9090",
 		},
-		Status: kaprov1alpha1.PluginRegistrationStatus{
+		Status: kaprov1alpha2.PluginStatus{
 			ObservedGeneration: 2,
 			Ready:              true,
 		},
@@ -93,14 +93,14 @@ func TestBackendProfilesForBackendObjectMatchesDiscoveryProfile(t *testing.T) {
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	profile := &kaprov1alpha1.BackendProfile{
+	profile := &kaprov1alpha2.Backend{
 		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
-		Spec: kaprov1alpha1.BackendProfileSpec{
-			Driver: kaprov1alpha1.BackendDriverArgo,
-			Discovery: &kaprov1alpha1.BackendDiscoverySpec{
+		Spec: kaprov1alpha2.BackendSpec{
+			Driver: kaprov1alpha2.BackendDriverArgo,
+			Discovery: &kaprov1alpha2.BackendDiscoverySpec{
 				Enabled: true,
 				Selector: &metav1.LabelSelector{
 					MatchLabels: map[string]string{"kapro.io/import": "true"},
@@ -109,11 +109,11 @@ func TestBackendProfilesForBackendObjectMatchesDiscoveryProfile(t *testing.T) {
 			Parameters: map[string]string{"namespace": "argocd"},
 		},
 	}
-	fluxProfile := &kaprov1alpha1.BackendProfile{
+	fluxProfile := &kaprov1alpha2.Backend{
 		ObjectMeta: metav1.ObjectMeta{Name: "flux"},
-		Spec: kaprov1alpha1.BackendProfileSpec{
-			Driver: kaprov1alpha1.BackendDriverFlux,
-			Discovery: &kaprov1alpha1.BackendDiscoverySpec{
+		Spec: kaprov1alpha2.BackendSpec{
+			Driver: kaprov1alpha2.BackendDriverFlux,
+			Discovery: &kaprov1alpha2.BackendDiscoverySpec{
 				Enabled: true,
 			},
 			Parameters: map[string]string{"namespace": "flux-system"},
@@ -135,14 +135,14 @@ func TestBackendProfilesForBackendObjectMatchesArgoClusterSecret(t *testing.T) {
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	profile := &kaprov1alpha1.BackendProfile{
+	profile := &kaprov1alpha2.Backend{
 		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
-		Spec: kaprov1alpha1.BackendProfileSpec{
-			Driver: kaprov1alpha1.BackendDriverArgo,
-			Discovery: &kaprov1alpha1.BackendDiscoverySpec{
+		Spec: kaprov1alpha2.BackendSpec{
+			Driver: kaprov1alpha2.BackendDriverArgo,
+			Discovery: &kaprov1alpha2.BackendDiscoverySpec{
 				Enabled: true,
 			},
 			Parameters: map[string]string{"namespace": "argocd"},
@@ -168,14 +168,14 @@ func TestBackendProfileArgoDiscoveryCountsExistingResources(t *testing.T) {
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	profile := &kaprov1alpha1.BackendProfile{
+	profile := &kaprov1alpha2.Backend{
 		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
-		Spec: kaprov1alpha1.BackendProfileSpec{
-			Driver: kaprov1alpha1.BackendDriverArgo,
-			Discovery: &kaprov1alpha1.BackendDiscoverySpec{
+		Spec: kaprov1alpha2.BackendSpec{
+			Driver: kaprov1alpha2.BackendDriverArgo,
+			Discovery: &kaprov1alpha2.BackendDiscoverySpec{
 				Enabled: true,
 			},
 			Parameters: map[string]string{"namespace": "argocd"},
@@ -217,14 +217,14 @@ func TestBackendProfileArgoDiscoveryClassifiesBrownfieldPatterns(t *testing.T) {
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	profile := &kaprov1alpha1.BackendProfile{
+	profile := &kaprov1alpha2.Backend{
 		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
-		Spec: kaprov1alpha1.BackendProfileSpec{
-			Driver: kaprov1alpha1.BackendDriverArgo,
-			Discovery: &kaprov1alpha1.BackendDiscoverySpec{
+		Spec: kaprov1alpha2.BackendSpec{
+			Driver: kaprov1alpha2.BackendDriverArgo,
+			Discovery: &kaprov1alpha2.BackendDiscoverySpec{
 				Enabled: true,
 				Selector: &metav1.LabelSelector{MatchLabels: map[string]string{
 					"kapro.io/import": "true",
@@ -280,14 +280,14 @@ func TestBackendProfileDiscoveryStatusSamplesAreBounded(t *testing.T) {
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	profile := &kaprov1alpha1.BackendProfile{
+	profile := &kaprov1alpha2.Backend{
 		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
-		Spec: kaprov1alpha1.BackendProfileSpec{
-			Driver: kaprov1alpha1.BackendDriverArgo,
-			Discovery: &kaprov1alpha1.BackendDiscoverySpec{
+		Spec: kaprov1alpha2.BackendSpec{
+			Driver: kaprov1alpha2.BackendDriverArgo,
+			Discovery: &kaprov1alpha2.BackendDiscoverySpec{
 				Enabled: true,
 			},
 			Parameters: map[string]string{"namespace": "argocd"},
@@ -321,14 +321,14 @@ func TestBackendProfileDiscoveryFailsClosedWhenMaxObjectsExceeded(t *testing.T) 
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	profile := &kaprov1alpha1.BackendProfile{
+	profile := &kaprov1alpha2.Backend{
 		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
-		Spec: kaprov1alpha1.BackendProfileSpec{
-			Driver: kaprov1alpha1.BackendDriverArgo,
-			Discovery: &kaprov1alpha1.BackendDiscoverySpec{
+		Spec: kaprov1alpha2.BackendSpec{
+			Driver: kaprov1alpha2.BackendDriverArgo,
+			Discovery: &kaprov1alpha2.BackendDiscoverySpec{
 				Enabled:    true,
 				MaxObjects: 1,
 			},
@@ -354,14 +354,14 @@ func TestBackendProfileFluxDiscoveryCountsExistingResources(t *testing.T) {
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	profile := &kaprov1alpha1.BackendProfile{
+	profile := &kaprov1alpha2.Backend{
 		ObjectMeta: metav1.ObjectMeta{Name: "flux"},
-		Spec: kaprov1alpha1.BackendProfileSpec{
-			Driver: kaprov1alpha1.BackendDriverFlux,
-			Discovery: &kaprov1alpha1.BackendDiscoverySpec{
+		Spec: kaprov1alpha2.BackendSpec{
+			Driver: kaprov1alpha2.BackendDriverFlux,
+			Discovery: &kaprov1alpha2.BackendDiscoverySpec{
 				Enabled: true,
 			},
 			Parameters: map[string]string{"namespace": "flux-system"},
@@ -436,7 +436,7 @@ func newApplicationSet(namespace, name string, labels map[string]string) *unstru
 	return appSet
 }
 
-func hasDiscoveryPattern(objects []kaprov1alpha1.DiscoveredBackendObject, pattern string) bool {
+func hasDiscoveryPattern(objects []kaprov1alpha2.DiscoveredBackendObject, pattern string) bool {
 	for _, obj := range objects {
 		if obj.Pattern == pattern {
 			return true
@@ -445,7 +445,7 @@ func hasDiscoveryPattern(objects []kaprov1alpha1.DiscoveredBackendObject, patter
 	return false
 }
 
-func hasDiscoveryKind(objects []kaprov1alpha1.DiscoveredBackendObject, kind string) bool {
+func hasDiscoveryKind(objects []kaprov1alpha2.DiscoveredBackendObject, kind string) bool {
 	for _, obj := range objects {
 		if obj.Kind == kind {
 			return true
@@ -454,7 +454,7 @@ func hasDiscoveryKind(objects []kaprov1alpha1.DiscoveredBackendObject, kind stri
 	return false
 }
 
-func hasDiscoveryVersionField(objects []kaprov1alpha1.DiscoveredBackendObject, field string) bool {
+func hasDiscoveryVersionField(objects []kaprov1alpha2.DiscoveredBackendObject, field string) bool {
 	for _, obj := range objects {
 		if obj.VersionField == field {
 			return true

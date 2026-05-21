@@ -31,7 +31,7 @@ func TestBuildCloudEvent_StableID(t *testing.T) {
 		Type:          EventTargetConverged,
 		Phase:         "Converged",
 		PromotionRun:  "rel-1",
-		PromotionPlan: "main",
+		Plan: "main",
 		Stage:         "canary",
 		Target:        "cluster-a",
 	}

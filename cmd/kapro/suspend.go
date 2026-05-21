@@ -8,7 +8,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/cli"
 )
 
@@ -76,7 +76,7 @@ func runSuspendResume(ctx context.Context, name string, suspended bool, kubeconf
 // (already in the desired state) but still prints a friendly message so
 // the user knows the CLI ran.
 func suspendResumeWithClient(ctx context.Context, c client.Client, name string, suspended bool) error {
-	var promo kaprov1alpha1.Promotion
+	var promo kaprov1alpha2.Promotion
 	if err := c.Get(ctx, client.ObjectKey{Name: name}, &promo); err != nil {
 		if apierrors.IsNotFound(err) {
 			return fmt.Errorf("promotion %q not found", name)

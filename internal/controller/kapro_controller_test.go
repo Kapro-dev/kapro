@@ -7,15 +7,15 @@ import (
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 func TestResolvePromotionSourceUsesInlineSource(t *testing.T) {
 	r := &KaproReconciler{}
-	source, ok, err := r.resolvePromotionSource(context.Background(), &kaprov1alpha1.Kapro{
-		Spec: kaprov1alpha1.KaproSpec{
-			Source: &kaprov1alpha1.PromotionSourceSpec{
-				Units: []kaprov1alpha1.PromotionUnit{{Name: "checkout", Version: "1.2.3"}},
+	source, ok, err := r.resolvePromotionSource(context.Background(), &kaprov1alpha2.Fleet{
+		Spec: kaprov1alpha2.FleetSpec{
+			Source: &kaprov1alpha2.SourceSpec{
+				Units: []kaprov1alpha2.Unit{{Name: "checkout", Version: "1.2.3"}},
 			},
 		},
 	})
@@ -31,13 +31,13 @@ func TestResolvePromotionSourceUsesInlineSource(t *testing.T) {
 }
 
 func TestBuildResourceSet_Units(t *testing.T) {
-	kapro := &kaprov1alpha1.Kapro{
-		Spec: kaprov1alpha1.KaproSpec{
-			Registry: kaprov1alpha1.KaproRegistry{
+	kapro := &kaprov1alpha2.Fleet{
+		Spec: kaprov1alpha2.FleetSpec{
+			Registry: kaprov1alpha2.KaproRegistry{
 				URL:      "oci://europe-west1-docker.pkg.dev/myproject/charts",
 				Provider: "gcp",
 			},
-			Clusters: []kaprov1alpha1.KaproCluster{
+			Clusters: []kaprov1alpha2.KaproCluster{
 				{Name: "canary-eu", Labels: map[string]string{"tier": "canary"}},
 				{Name: "prod-eu", Labels: map[string]string{"tier": "prod"}},
 			},
@@ -45,9 +45,9 @@ func TestBuildResourceSet_Units(t *testing.T) {
 	}
 	kapro.Name = "demo"
 
-	app := &kaprov1alpha1.PromotionSource{
-		Spec: kaprov1alpha1.PromotionSourceSpec{
-			Units: []kaprov1alpha1.PromotionUnit{
+	app := &kaprov1alpha2.Source{
+		Spec: kaprov1alpha2.SourceSpec{
+			Units: []kaprov1alpha2.Unit{
 				{Name: "pos-server", Version: "5.28.0"},
 				{Name: "sdc", Version: "5.28.0"},
 				{Name: "keycloak", Version: "6.5.0"},
@@ -128,10 +128,10 @@ func TestBuildResourceSet_Units(t *testing.T) {
 }
 
 func TestBuildResourceSet_OverrideMerging(t *testing.T) {
-	kapro := &kaprov1alpha1.Kapro{
-		Spec: kaprov1alpha1.KaproSpec{
-			Registry: kaprov1alpha1.KaproRegistry{URL: "oci://registry.example.com/charts"},
-			Clusters: []kaprov1alpha1.KaproCluster{
+	kapro := &kaprov1alpha2.Fleet{
+		Spec: kaprov1alpha2.FleetSpec{
+			Registry: kaprov1alpha2.KaproRegistry{URL: "oci://registry.example.com/charts"},
+			Clusters: []kaprov1alpha2.KaproCluster{
 				{Name: "canary", Labels: map[string]string{"tier": "canary"}},
 				{Name: "prod", Labels: map[string]string{"tier": "prod"}},
 			},
@@ -139,17 +139,17 @@ func TestBuildResourceSet_OverrideMerging(t *testing.T) {
 	}
 	kapro.Name = "test"
 
-	app := &kaprov1alpha1.PromotionSource{
-		Spec: kaprov1alpha1.PromotionSourceSpec{
-			Units: []kaprov1alpha1.PromotionUnit{
+	app := &kaprov1alpha2.Source{
+		Spec: kaprov1alpha2.SourceSpec{
+			Units: []kaprov1alpha2.Unit{
 				{Name: "app", Version: "1.0"},
 			},
-			Defaults: &kaprov1alpha1.SourceDefaults{
+			Defaults: &kaprov1alpha2.SourceDefaults{
 				Values: &apiextensionsv1.JSON{
 					Raw: []byte(`{"replicaCount":3,"logging":{"level":"info","format":"json"}}`),
 				},
 			},
-			Overrides: []kaprov1alpha1.SourceOverride{
+			Overrides: []kaprov1alpha2.SourceOverride{
 				{
 					Selector: map[string]string{"tier": "canary"},
 					Values: &apiextensionsv1.JSON{
@@ -204,13 +204,13 @@ func TestBuildResourceSet_OverrideMerging(t *testing.T) {
 }
 
 func TestBuildPromotionPlan(t *testing.T) {
-	kapro := &kaprov1alpha1.Kapro{
-		Spec: kaprov1alpha1.KaproSpec{
-			PromotionPlan: kaprov1alpha1.KaproPromotionPlan{
-				Stages: []kaprov1alpha1.KaproStage{
+	kapro := &kaprov1alpha2.Fleet{
+		Spec: kaprov1alpha2.FleetSpec{
+			Plan: kaprov1alpha2.KaproPromotionPlan{
+				Stages: []kaprov1alpha2.KaproStage{
 					{Name: "canary", Selector: map[string]string{"tier": "canary"}},
 					{Name: "prod", Selector: map[string]string{"tier": "prod"},
-						DependsOn: []kaprov1alpha1.StageDependency{{Stage: "canary"}}},
+						DependsOn: []kaprov1alpha2.StageDependency{{Stage: "canary"}}},
 				},
 			},
 		},

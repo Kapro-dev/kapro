@@ -9,7 +9,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/pkg/actuator"
 )
 
@@ -21,9 +21,9 @@ func TestApplyRequestsHardRefreshAndSyncOperation(t *testing.T) {
 		WithObjects(app).
 		Build()
 	act := &Actuator{Client: c}
-	cluster := &kaprov1alpha1.FleetCluster{
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{
+	cluster := &kaprov1alpha2.Cluster{
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{
 				Parameters: map[string]string{
 					"namespace":   "argocd",
 					"application": "checkout",
@@ -67,9 +67,9 @@ func TestApplyRequiresAuthorizedApplication(t *testing.T) {
 		WithObjects(app).
 		Build()
 	act := &Actuator{Client: c}
-	cluster := &kaprov1alpha1.FleetCluster{
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{
+	cluster := &kaprov1alpha2.Cluster{
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{
 				Parameters: map[string]string{
 					"namespace":   "argocd",
 					"application": "checkout",
@@ -95,9 +95,9 @@ func TestApplyByApplicationSelectorAndReportsBackendObjects(t *testing.T) {
 		WithObjects(appA, appB).
 		Build()
 	act := &Actuator{Client: c}
-	cluster := &kaprov1alpha1.FleetCluster{
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{
+	cluster := &kaprov1alpha2.Cluster{
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{
 				Parameters: map[string]string{
 					"namespace":           "argocd",
 					"applicationSelector": "team=checkout,env=dev",

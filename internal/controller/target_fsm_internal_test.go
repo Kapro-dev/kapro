@@ -13,7 +13,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/webhook/token"
 	gatepkg "kapro.io/kapro/pkg/gate"
 )
@@ -30,7 +30,7 @@ func (g staticGate) Evaluate(_ context.Context, _ gatepkg.Request) (gatepkg.Resu
 func controllerTestScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatalf("add scheme: %v", err)
 	}
 	if err := coordinationv1.AddToScheme(scheme); err != nil {
@@ -43,7 +43,7 @@ func TestHandleVerification_FailedResultFailsTarget(t *testing.T) {
 	reg := gatepkg.NewRegistry()
 	reg.MustRegister("verification", staticGate{
 		result: gatepkg.Result{
-			Phase:   kaprov1alpha1.GatePhaseFailed,
+			Phase:   kaprov1alpha2.GatePhaseFailed,
 			Message: "signature verification failed",
 		},
 	})
@@ -52,17 +52,17 @@ func TestHandleVerification_FailedResultFailsTarget(t *testing.T) {
 		Recorder:     record.NewFakeRecorder(10),
 		GateRegistry: reg,
 	}
-	promotionrun := &kaprov1alpha1.PromotionRun{
+	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default"},
 	}
-	target := &kaprov1alpha1.TargetStatus{
+	target := &kaprov1alpha2.TargetStatus{
 		PromotionRunRef:  "rel-1",
 		Target:           "cluster-a",
 		PromotionPlanRef: "wave-1",
-		PromotionPlan:    "promotionplan-a",
+		Plan:    "promotionplan-a",
 		Stage:            "prod",
 		Version:          "repo@sha256:abc",
-		Phase:            kaprov1alpha1.TargetPhaseVerification,
+		Phase:            kaprov1alpha2.TargetPhaseVerification,
 	}
 
 	result, err := r.handleVerification(context.Background(), promotionrun, target, nil)
@@ -72,17 +72,17 @@ func TestHandleVerification_FailedResultFailsTarget(t *testing.T) {
 	if result != (ctrl.Result{}) {
 		t.Fatalf("expected terminal result, got %+v", result)
 	}
-	if got := target.Phase; got != kaprov1alpha1.TargetPhaseFailed {
+	if got := target.Phase; got != kaprov1alpha2.TargetPhaseFailed {
 		t.Fatalf("expected target to fail, got %q", got)
 	}
 }
 
 func TestHandleApplying_RespectsActivePromotionRunClaim(t *testing.T) {
 	scheme := controllerTestScheme(t)
-	mc := &kaprov1alpha1.FleetCluster{
+	mc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
-		Spec:       kaprov1alpha1.FleetClusterSpec{Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"}},
-		Status: kaprov1alpha1.FleetClusterStatus{
+		Spec:       kaprov1alpha2.ClusterSpec{Delivery: kaprov1alpha2.DeliverySpec{Mode: "pull", BackendRef: "flux"}},
+		Status: kaprov1alpha2.ClusterStatus{
 			ActivePromotionRun: "other-promotionrun",
 			CurrentVersions:    map[string]string{"default": "repo@sha256:old"},
 			LastHeartbeat:      time.Now().UTC().Format(time.RFC3339),
@@ -90,20 +90,20 @@ func TestHandleApplying_RespectsActivePromotionRunClaim(t *testing.T) {
 	}
 
 	r := &PromotionTargetReconciler{
-		Client:   fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&kaprov1alpha1.FleetCluster{}).WithObjects(mc).Build(),
+		Client:   fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&kaprov1alpha2.Cluster{}).WithObjects(mc).Build(),
 		Recorder: record.NewFakeRecorder(10),
 	}
-	promotionrun := &kaprov1alpha1.PromotionRun{
+	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default"},
 	}
-	target := &kaprov1alpha1.TargetStatus{
+	target := &kaprov1alpha2.TargetStatus{
 		PromotionRunRef:  "rel-1",
 		Target:           "cluster-a",
 		PromotionPlanRef: "wave-1",
-		PromotionPlan:    "promotionplan-a",
+		Plan:    "promotionplan-a",
 		Stage:            "prod",
 		Version:          "repo@sha256:new",
-		Phase:            kaprov1alpha1.TargetPhaseApplying,
+		Phase:            kaprov1alpha2.TargetPhaseApplying,
 	}
 
 	result, err := r.handleApplying(context.Background(), promotionrun, target)
@@ -120,20 +120,20 @@ func TestHandleApplying_RespectsActivePromotionRunClaim(t *testing.T) {
 
 func TestHandlePending_PullModeWaitsForFreshHeartbeat(t *testing.T) {
 	scheme := controllerTestScheme(t)
-	mc := &kaprov1alpha1.FleetCluster{
+	mc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"},
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{Mode: "pull", BackendRef: "flux"},
 		},
 	}
 	r := &PromotionTargetReconciler{
 		Client:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(mc).Build(),
 		Recorder: record.NewFakeRecorder(10),
 	}
-	promotionrun := &kaprov1alpha1.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}}
-	target := &kaprov1alpha1.TargetStatus{
+	promotionrun := &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}}
+	target := &kaprov1alpha2.TargetStatus{
 		Target: "cluster-a",
-		Phase:  kaprov1alpha1.TargetPhasePending,
+		Phase:  kaprov1alpha2.TargetPhasePending,
 	}
 
 	result, err := r.handlePending(context.Background(), promotionrun, target)
@@ -143,7 +143,7 @@ func TestHandlePending_PullModeWaitsForFreshHeartbeat(t *testing.T) {
 	if result.RequeueAfter != requeueNormal {
 		t.Fatalf("expected normal requeue for stale heartbeat, got %+v", result)
 	}
-	if target.Phase != kaprov1alpha1.TargetPhasePending {
+	if target.Phase != kaprov1alpha2.TargetPhasePending {
 		t.Fatalf("expected target to remain Pending, got %q", target.Phase)
 	}
 	if target.HeartbeatStaleSince == "" {
@@ -153,16 +153,16 @@ func TestHandlePending_PullModeWaitsForFreshHeartbeat(t *testing.T) {
 
 func TestHandlePending_ReadyTrueAllowsPullTarget(t *testing.T) {
 	scheme := controllerTestScheme(t)
-	mc := &kaprov1alpha1.FleetCluster{
+	mc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"},
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{Mode: "pull", BackendRef: "flux"},
 		},
-		Status: kaprov1alpha1.FleetClusterStatus{
+		Status: kaprov1alpha2.ClusterStatus{
 			Conditions: []metav1.Condition{{
-				Type:               kaprov1alpha1.ConditionTypeReady,
+				Type:               kaprov1alpha2.ConditionTypeReady,
 				Status:             metav1.ConditionTrue,
-				Reason:             kaprov1alpha1.ReasonHeartbeatFresh,
+				Reason:             kaprov1alpha2.ReasonHeartbeatFresh,
 				LastTransitionTime: metav1.NewTime(time.Now()),
 			}},
 		},
@@ -171,10 +171,10 @@ func TestHandlePending_ReadyTrueAllowsPullTarget(t *testing.T) {
 		Client:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(mc).Build(),
 		Recorder: record.NewFakeRecorder(10),
 	}
-	promotionrun := &kaprov1alpha1.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}}
-	target := &kaprov1alpha1.TargetStatus{
+	promotionrun := &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}}
+	target := &kaprov1alpha2.TargetStatus{
 		Target:              "cluster-a",
-		Phase:               kaprov1alpha1.TargetPhasePending,
+		Phase:               kaprov1alpha2.TargetPhasePending,
 		HeartbeatStaleSince: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339),
 		HeartbeatStaleCount: 4,
 	}
@@ -186,7 +186,7 @@ func TestHandlePending_ReadyTrueAllowsPullTarget(t *testing.T) {
 	if !result.Requeue || result.RequeueAfter != 0 { //nolint:staticcheck
 		t.Fatalf("expected immediate requeue after phase advance, got %+v", result)
 	}
-	if target.Phase != kaprov1alpha1.TargetPhaseVerification {
+	if target.Phase != kaprov1alpha2.TargetPhaseVerification {
 		t.Fatalf("expected target to advance to Verification, got %q", target.Phase)
 	}
 	if target.HeartbeatStaleSince != "" {
@@ -205,17 +205,17 @@ func TestHandlePending_ReadyTrueAllowsPullTarget(t *testing.T) {
 // reject if they decide to give up.
 func TestHandlePending_UnreachableDefersPullTarget(t *testing.T) {
 	scheme := controllerTestScheme(t)
-	mc := &kaprov1alpha1.FleetCluster{
+	mc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"},
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{Mode: "pull", BackendRef: "flux"},
 		},
-		Status: kaprov1alpha1.FleetClusterStatus{
-			Phase: kaprov1alpha1.ClusterPhaseUnreachable,
+		Status: kaprov1alpha2.ClusterStatus{
+			Phase: kaprov1alpha2.ClusterPhaseUnreachable,
 			Conditions: []metav1.Condition{{
-				Type:               kaprov1alpha1.ConditionTypeReady,
+				Type:               kaprov1alpha2.ConditionTypeReady,
 				Status:             metav1.ConditionFalse,
-				Reason:             kaprov1alpha1.ReasonUnreachable,
+				Reason:             kaprov1alpha2.ReasonUnreachable,
 				Message:            "Lease kapro-system/kapro-heartbeat-cluster-a last renewed 10m0s ago; 3/3 consecutive misses",
 				LastTransitionTime: metav1.NewTime(time.Now()),
 			}},
@@ -225,10 +225,10 @@ func TestHandlePending_UnreachableDefersPullTarget(t *testing.T) {
 		Client:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(mc).Build(),
 		Recorder: record.NewFakeRecorder(10),
 	}
-	promotionrun := &kaprov1alpha1.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}}
-	target := &kaprov1alpha1.TargetStatus{
+	promotionrun := &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}}
+	target := &kaprov1alpha2.TargetStatus{
 		Target: "cluster-a",
-		Phase:  kaprov1alpha1.TargetPhasePending,
+		Phase:  kaprov1alpha2.TargetPhasePending,
 	}
 
 	result, err := r.handlePending(context.Background(), promotionrun, target)
@@ -238,7 +238,7 @@ func TestHandlePending_UnreachableDefersPullTarget(t *testing.T) {
 	if result.RequeueAfter != requeueNormal {
 		t.Fatalf("expected requeue (defer), got %+v", result)
 	}
-	if target.Phase != kaprov1alpha1.TargetPhasePending {
+	if target.Phase != kaprov1alpha2.TargetPhasePending {
 		t.Fatalf("expected target to remain Pending (deferred, not failed), got %q", target.Phase)
 	}
 	if target.HeartbeatStaleSince == "" {
@@ -250,20 +250,20 @@ func TestHandlePending_UnreachableDefersPullTarget(t *testing.T) {
 }
 
 func TestBuildApprovalURLs_SingleApproverHintSignedIntoToken(t *testing.T) {
-	promotionrun := &kaprov1alpha1.PromotionRun{
+	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "rel-1",
 			Namespace: "default",
 			UID:       "uid-1",
 		},
 	}
-	target := &kaprov1alpha1.TargetStatus{
+	target := &kaprov1alpha2.TargetStatus{
 		Target:           "cluster-a",
 		PromotionPlanRef: "wave-1",
 		Stage:            "prod",
 		Version:          "repo@sha256:abc",
-		Gate: &kaprov1alpha1.GatePolicySpec{
-			Approval: &kaprov1alpha1.ApprovalConfig{
+		Gate: &kaprov1alpha2.GatePolicySpec{
+			Approval: &kaprov1alpha2.ApprovalConfig{
 				Approvers: []string{"alice@example.com"},
 			},
 		},
@@ -285,18 +285,18 @@ func TestBuildApprovalURLs_SingleApproverHintSignedIntoToken(t *testing.T) {
 
 func TestAdvanceTargetUntilStable_CollapsesImmediateTransitions(t *testing.T) {
 	scheme := controllerTestScheme(t)
-	mc := &kaprov1alpha1.FleetCluster{
+	mc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
-		Status: kaprov1alpha1.FleetClusterStatus{
+		Status: kaprov1alpha2.ClusterStatus{
 			LastHeartbeat: time.Now().UTC().Format(time.RFC3339),
-			Health: kaprov1alpha1.ClusterHealth{
+			Health: kaprov1alpha2.ClusterHealth{
 				AllWorkloadsReady: true,
 			},
 		},
 	}
 	reg := gatepkg.NewRegistry()
 	reg.MustRegister("verification", staticGate{
-		result: gatepkg.Result{Phase: kaprov1alpha1.GatePhasePassed},
+		result: gatepkg.Result{Phase: kaprov1alpha2.GatePhasePassed},
 	})
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(mc).Build()
 	r := &PromotionTargetReconciler{
@@ -304,14 +304,14 @@ func TestAdvanceTargetUntilStable_CollapsesImmediateTransitions(t *testing.T) {
 		Recorder:     record.NewFakeRecorder(10),
 		GateRegistry: reg,
 	}
-	promotionrun := &kaprov1alpha1.PromotionRun{
+	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default"},
 	}
-	target := &kaprov1alpha1.TargetStatus{
+	target := &kaprov1alpha2.TargetStatus{
 		PromotionRunRef:  "rel-1",
 		Target:           "cluster-a",
 		PromotionPlanRef: "wave-1",
-		PromotionPlan:    "promotionplan-a",
+		Plan:    "promotionplan-a",
 		Stage:            "prod",
 		Version:          "repo@sha256:abc",
 	}
@@ -323,7 +323,7 @@ func TestAdvanceTargetUntilStable_CollapsesImmediateTransitions(t *testing.T) {
 	if !result.Requeue || result.RequeueAfter != 0 { //nolint:staticcheck
 		t.Fatalf("expected an immediate requeue after persisting Applying, got %+v", result)
 	}
-	if target.Phase != kaprov1alpha1.TargetPhaseApplying {
+	if target.Phase != kaprov1alpha2.TargetPhaseApplying {
 		t.Fatalf("expected collapsed phase to reach Applying, got %q", target.Phase)
 	}
 }
@@ -332,7 +332,7 @@ func TestEvaluateGateTemplates_InconclusiveSkipPasses(t *testing.T) {
 	reg := gatepkg.NewRegistry()
 	reg.MustRegister("mock", staticGate{
 		result: gatepkg.Result{
-			Phase:   kaprov1alpha1.GatePhaseInconclusive,
+			Phase:   kaprov1alpha2.GatePhaseInconclusive,
 			Message: "uncertain",
 		},
 	})
@@ -340,11 +340,11 @@ func TestEvaluateGateTemplates_InconclusiveSkipPasses(t *testing.T) {
 		Recorder:     record.NewFakeRecorder(10),
 		GateRegistry: reg,
 	}
-	promotionrun := &kaprov1alpha1.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default"}}
-	target := &kaprov1alpha1.TargetStatus{Target: "cluster-a", PhaseEnteredAt: time.Now().UTC().Format(time.RFC3339)}
-	policy := &kaprov1alpha1.GatePolicySpec{
-		Gate: kaprov1alpha1.GateSpec{
-			Templates: []kaprov1alpha1.GateTemplateSpec{{
+	promotionrun := &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default"}}
+	target := &kaprov1alpha2.TargetStatus{Target: "cluster-a", PhaseEnteredAt: time.Now().UTC().Format(time.RFC3339)}
+	policy := &kaprov1alpha2.GatePolicySpec{
+		Gate: kaprov1alpha2.GateSpec{
+			Templates: []kaprov1alpha2.GateTemplateSpec{{
 				Name:               "gate-1",
 				Type:               "mock",
 				InconclusivePolicy: "skip",
@@ -359,7 +359,7 @@ func TestEvaluateGateTemplates_InconclusiveSkipPasses(t *testing.T) {
 	if !allPassed {
 		t.Fatal("expected inconclusivePolicy=skip to allow progress")
 	}
-	if got := target.Gates[0].Phase; got != kaprov1alpha1.GatePhasePassed {
+	if got := target.Gates[0].Phase; got != kaprov1alpha2.GatePhasePassed {
 		t.Fatalf("expected skipped gate to be marked Passed, got %q", got)
 	}
 }
@@ -368,7 +368,7 @@ func TestEvaluateGateTemplates_PersistsEvidence(t *testing.T) {
 	reg := gatepkg.NewRegistry()
 	reg.MustRegister("mock", staticGate{
 		result: gatepkg.Result{
-			Phase:   kaprov1alpha1.GatePhasePassed,
+			Phase:   kaprov1alpha2.GatePhasePassed,
 			Message: "ok",
 			Evidence: []gatepkg.Evidence{{
 				Type:          "metric",
@@ -383,11 +383,11 @@ func TestEvaluateGateTemplates_PersistsEvidence(t *testing.T) {
 		Recorder:     record.NewFakeRecorder(10),
 		GateRegistry: reg,
 	}
-	promotionrun := &kaprov1alpha1.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default"}}
-	target := &kaprov1alpha1.TargetStatus{Target: "cluster-a", PhaseEnteredAt: time.Now().UTC().Format(time.RFC3339)}
-	policy := &kaprov1alpha1.GatePolicySpec{
-		Gate: kaprov1alpha1.GateSpec{
-			Templates: []kaprov1alpha1.GateTemplateSpec{{
+	promotionrun := &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default"}}
+	target := &kaprov1alpha2.TargetStatus{Target: "cluster-a", PhaseEnteredAt: time.Now().UTC().Format(time.RFC3339)}
+	policy := &kaprov1alpha2.GatePolicySpec{
+		Gate: kaprov1alpha2.GateSpec{
+			Templates: []kaprov1alpha2.GateTemplateSpec{{
 				Name: "gate-1",
 				Type: "mock",
 			}},
@@ -414,13 +414,13 @@ func TestEvaluateGateTemplates_PersistsEvidence(t *testing.T) {
 
 func TestGateForTemplate_PluginResolvesPluginName(t *testing.T) {
 	reg := gatepkg.NewRegistry()
-	pluginGate := staticGate{result: gatepkg.Result{Phase: kaprov1alpha1.GatePhasePassed}}
+	pluginGate := staticGate{result: gatepkg.Result{Phase: kaprov1alpha2.GatePhasePassed}}
 	reg.MustRegister("slo", pluginGate)
 
 	r := &PromotionTargetReconciler{GateRegistry: reg}
-	resolved, err := r.gateForTemplate(&kaprov1alpha1.GateTemplateSpec{
+	resolved, err := r.gateForTemplate(&kaprov1alpha2.GateTemplateSpec{
 		Type:   "plugin",
-		Plugin: &kaprov1alpha1.PluginGateSpec{Name: "slo"},
+		Plugin: &kaprov1alpha2.PluginGateSpec{Name: "slo"},
 	})
 	if err != nil {
 		t.Fatalf("gateForTemplate returned error: %v", err)
@@ -432,7 +432,7 @@ func TestGateForTemplate_PluginResolvesPluginName(t *testing.T) {
 
 func TestGateForTemplate_PluginRequiresName(t *testing.T) {
 	r := &PromotionTargetReconciler{GateRegistry: gatepkg.NewRegistry()}
-	_, err := r.gateForTemplate(&kaprov1alpha1.GateTemplateSpec{Type: "plugin"})
+	_, err := r.gateForTemplate(&kaprov1alpha2.GateTemplateSpec{Type: "plugin"})
 	if err == nil || !strings.Contains(err.Error(), "plugin.name") {
 		t.Fatalf("error=%v, want missing plugin.name error", err)
 	}
@@ -442,7 +442,7 @@ func TestEvaluateGateTemplates_FailureRetryStaysRetryableUntilMaxAttempts(t *tes
 	reg := gatepkg.NewRegistry()
 	reg.MustRegister("mock", staticGate{
 		result: gatepkg.Result{
-			Phase:      kaprov1alpha1.GatePhaseFailed,
+			Phase:      kaprov1alpha2.GatePhaseFailed,
 			Message:    "try again",
 			RetryAfter: "12s",
 		},
@@ -451,11 +451,11 @@ func TestEvaluateGateTemplates_FailureRetryStaysRetryableUntilMaxAttempts(t *tes
 		Recorder:     record.NewFakeRecorder(10),
 		GateRegistry: reg,
 	}
-	promotionrun := &kaprov1alpha1.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default"}}
-	target := &kaprov1alpha1.TargetStatus{Target: "cluster-a", PhaseEnteredAt: time.Now().UTC().Format(time.RFC3339)}
-	policy := &kaprov1alpha1.GatePolicySpec{
-		Gate: kaprov1alpha1.GateSpec{
-			Templates: []kaprov1alpha1.GateTemplateSpec{{
+	promotionrun := &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default"}}
+	target := &kaprov1alpha2.TargetStatus{Target: "cluster-a", PhaseEnteredAt: time.Now().UTC().Format(time.RFC3339)}
+	policy := &kaprov1alpha2.GatePolicySpec{
+		Gate: kaprov1alpha2.GateSpec{
+			Templates: []kaprov1alpha2.GateTemplateSpec{{
 				Name:          "gate-1",
 				Type:          "mock",
 				FailurePolicy: "retry",
@@ -474,7 +474,7 @@ func TestEvaluateGateTemplates_FailureRetryStaysRetryableUntilMaxAttempts(t *tes
 	if requeueAfter != 12*time.Second {
 		t.Fatalf("expected retryAfter=12s, got %s", requeueAfter)
 	}
-	if got := target.Gates[0].Phase; got != kaprov1alpha1.GatePhaseRunning {
+	if got := target.Gates[0].Phase; got != kaprov1alpha2.GatePhaseRunning {
 		t.Fatalf("expected retrying gate to be Running, got %q", got)
 	}
 
@@ -486,15 +486,15 @@ func TestEvaluateGateTemplates_FailureRetryStaysRetryableUntilMaxAttempts(t *tes
 	if allPassed {
 		t.Fatal("expected exhausted retries to fail the gate")
 	}
-	if got := target.Gates[0].Phase; got != kaprov1alpha1.GatePhaseFailed {
+	if got := target.Gates[0].Phase; got != kaprov1alpha2.GatePhaseFailed {
 		t.Fatalf("expected gate to fail after maxAttempts, got %q", got)
 	}
 }
 
 func TestMetricsGateTimedOut_InvalidTimeoutFailsClosed(t *testing.T) {
-	target := &kaprov1alpha1.TargetStatus{PhaseEnteredAt: time.Now().UTC().Format(time.RFC3339)}
-	policy := &kaprov1alpha1.GatePolicySpec{
-		Gate: kaprov1alpha1.GateSpec{GateTimeout: "not-a-duration"},
+	target := &kaprov1alpha2.TargetStatus{PhaseEnteredAt: time.Now().UTC().Format(time.RFC3339)}
+	policy := &kaprov1alpha2.GatePolicySpec{
+		Gate: kaprov1alpha2.GateSpec{GateTimeout: "not-a-duration"},
 	}
 	timedOut, msg := metricsGateTimedOut(target, policy)
 	if !timedOut {
@@ -506,17 +506,17 @@ func TestMetricsGateTimedOut_InvalidTimeoutFailsClosed(t *testing.T) {
 }
 
 func TestEventTypeForPhase_AllPhasesReturnNonEmpty(t *testing.T) {
-	phases := []kaprov1alpha1.TargetPhase{
-		kaprov1alpha1.TargetPhasePending,
-		kaprov1alpha1.TargetPhaseVerification,
-		kaprov1alpha1.TargetPhaseHealthCheck,
-		kaprov1alpha1.TargetPhaseSoaking,
-		kaprov1alpha1.TargetPhaseMetricsCheck,
-		kaprov1alpha1.TargetPhaseWaitingApproval,
-		kaprov1alpha1.TargetPhaseApplying,
-		kaprov1alpha1.TargetPhaseConverged,
-		kaprov1alpha1.TargetPhaseFailed,
-		kaprov1alpha1.TargetPhaseSkipped,
+	phases := []kaprov1alpha2.TargetPhase{
+		kaprov1alpha2.TargetPhasePending,
+		kaprov1alpha2.TargetPhaseVerification,
+		kaprov1alpha2.TargetPhaseHealthCheck,
+		kaprov1alpha2.TargetPhaseSoaking,
+		kaprov1alpha2.TargetPhaseMetricsCheck,
+		kaprov1alpha2.TargetPhaseWaitingApproval,
+		kaprov1alpha2.TargetPhaseApplying,
+		kaprov1alpha2.TargetPhaseConverged,
+		kaprov1alpha2.TargetPhaseFailed,
+		kaprov1alpha2.TargetPhaseSkipped,
 	}
 	for _, phase := range phases {
 		typ := eventTypeForPhase(phase)

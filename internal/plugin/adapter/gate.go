@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/pkg/gate"
 	kgiv1alpha1 "kapro.io/kapro/spec/kgi/v1alpha1"
 
@@ -23,9 +23,9 @@ type GateAdapter struct {
 }
 
 // NewGateAdapter returns a gate adapter backed by a KGI client.
-func NewGateAdapter(reg kaprov1alpha1.PluginRegistration, client kgiv1alpha1.GateServiceClient) (*GateAdapter, error) {
-	if reg.Spec.Type != kaprov1alpha1.PluginTypeGate {
-		return nil, fmt.Errorf("plugin %q is %q, expected %q", reg.Name, reg.Spec.Type, kaprov1alpha1.PluginTypeGate)
+func NewGateAdapter(reg kaprov1alpha2.Plugin, client kgiv1alpha1.GateServiceClient) (*GateAdapter, error) {
+	if reg.Spec.Type != kaprov1alpha2.PluginTypeGate {
+		return nil, fmt.Errorf("plugin %q is %q, expected %q", reg.Name, reg.Spec.Type, kaprov1alpha2.PluginTypeGate)
 	}
 	if client == nil {
 		return nil, fmt.Errorf("gate plugin client is nil")
@@ -58,7 +58,7 @@ func (g *GateAdapter) Close() error {
 func (g *GateAdapter) Evaluate(ctx context.Context, req gate.Request) (gate.Result, error) {
 	start := time.Now()
 	result := "success"
-	defer func() { observeRuntimeCall(kaprov1alpha1.PluginTypeGate, g.name, "Evaluate", result, start) }()
+	defer func() { observeRuntimeCall(kaprov1alpha2.PluginTypeGate, g.name, "Evaluate", result, start) }()
 
 	if req.Context == nil {
 		result = "error"
@@ -71,7 +71,7 @@ func (g *GateAdapter) Evaluate(ctx context.Context, req gate.Request) (gate.Resu
 	resp, err := g.client.Evaluate(rpcCtx, &kgiv1alpha1.EvaluateRequest{
 		PromotionRun:  req.Context.PromotionRunRef,
 		Target:        req.Context.Target,
-		PromotionPlan: req.Context.PromotionPlan,
+		Plan: req.Context.Plan,
 		Stage:         req.Context.Stage,
 		Version:       req.Context.Version,
 		Gate:          gateName(g.name, req.Template),
@@ -89,7 +89,7 @@ func (g *GateAdapter) Evaluate(ctx context.Context, req gate.Request) (gate.Resu
 	return gate.Result{Phase: phase, Message: resp.GetMessage(), Evidence: mapGateEvidence(resp.GetEvidence())}, nil
 }
 
-func gateName(defaultName string, tmpl *kaprov1alpha1.GateTemplateSpec) string {
+func gateName(defaultName string, tmpl *kaprov1alpha2.GateTemplateSpec) string {
 	if tmpl != nil && tmpl.Name != "" {
 		return tmpl.Name
 	}
@@ -155,16 +155,16 @@ func mapGateEvidence(in []*kgiv1alpha1.GateEvidence) []gate.Evidence {
 	return out
 }
 
-func mapGatePhase(phase kgiv1alpha1.GatePhase) (kaprov1alpha1.GatePhase, error) {
+func mapGatePhase(phase kgiv1alpha1.GatePhase) (kaprov1alpha2.GatePhase, error) {
 	switch phase {
 	case kgiv1alpha1.GatePhase_GATE_PHASE_PASSED:
-		return kaprov1alpha1.GatePhasePassed, nil
+		return kaprov1alpha2.GatePhasePassed, nil
 	case kgiv1alpha1.GatePhase_GATE_PHASE_FAILED:
-		return kaprov1alpha1.GatePhaseFailed, nil
+		return kaprov1alpha2.GatePhaseFailed, nil
 	case kgiv1alpha1.GatePhase_GATE_PHASE_RUNNING:
-		return kaprov1alpha1.GatePhaseRunning, nil
+		return kaprov1alpha2.GatePhaseRunning, nil
 	case kgiv1alpha1.GatePhase_GATE_PHASE_INCONCLUSIVE:
-		return kaprov1alpha1.GatePhaseInconclusive, nil
+		return kaprov1alpha2.GatePhaseInconclusive, nil
 	default:
 		return "", fmt.Errorf("unsupported gate phase %s", phase.String())
 	}

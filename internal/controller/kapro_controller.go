@@ -23,7 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	bundlepkg "kapro.io/kapro/internal/bundle"
 	"kapro.io/kapro/internal/provider"
 	"kapro.io/kapro/internal/webhook/admission"
@@ -38,7 +38,7 @@ var kaproResourceSetGVK = schema.GroupVersionKind{
 // KaproReconciler generates hub-side resources from a Kapro source spec.
 // It produces (all on the hub cluster):
 //   - FleetCluster CRs (one per cluster in the fleet)
-//   - A PromotionPlan CR (from kapro.spec.promotionplan)
+//   - A Plan CR (from kapro.spec.promotionplan)
 //   - A ResourceSet (Flux Operator) with HelmRelease templates per unit
 //
 // The ResourceSet contains per-cluster inputs with unit versions and
@@ -65,7 +65,7 @@ type KaproReconciler struct {
 func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	l := log.FromContext(ctx)
 
-	var kapro kaprov1alpha1.Kapro
+	var kapro kaprov1alpha2.Fleet
 	if err := r.Get(ctx, req.NamespacedName, &kapro); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -121,12 +121,12 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	delivery := kapro.Spec.Delivery
 	if delivery.Mode == "" {
-		delivery.Mode = kaprov1alpha1.DeliveryModePull
+		delivery.Mode = kaprov1alpha2.DeliveryModePull
 	}
 	if delivery.BackendRef == "" {
 		delivery.BackendRef = "flux"
 	}
-	spokeLocal := delivery.Mode == kaprov1alpha1.DeliveryModePull && delivery.BackendRef == "flux"
+	spokeLocal := delivery.Mode == kaprov1alpha2.DeliveryModePull && delivery.BackendRef == "flux"
 
 	// 2. Generate FleetClusters on the hub.
 	for _, cluster := range kapro.Spec.Clusters {
@@ -136,24 +136,24 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			clusterDelivery.Parameters = map[string]string{}
 		}
 		if clusterDelivery.BackendRef == "flux" {
-			if clusterDelivery.Mode == kaprov1alpha1.DeliveryModePush {
+			if clusterDelivery.Mode == kaprov1alpha2.DeliveryModePush {
 				setDefaultParam(clusterDelivery.Parameters, "resourceSet", kapro.Name+"-workloads")
 				setDefaultParam(clusterDelivery.Parameters, "namespace", "flux-system")
 				setDefaultParam(clusterDelivery.Parameters, "inputField", "version")
 				setDefaultParam(clusterDelivery.Parameters, "tenantField", "tenant")
 			}
-			if clusterDelivery.Mode == kaprov1alpha1.DeliveryModePull {
+			if clusterDelivery.Mode == kaprov1alpha2.DeliveryModePull {
 				setDefaultParam(clusterDelivery.Parameters, "namespace", "flux-system")
 				setDefaultParam(clusterDelivery.Parameters, "ociRepository", kapro.Name+"-bundle")
 			}
 		}
-		mc := &kaprov1alpha1.FleetCluster{
-			TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "FleetCluster"},
+		mc := &kaprov1alpha2.Cluster{
+			TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha2", Kind: "FleetCluster"},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   cluster.Name,
 				Labels: cluster.Labels,
 			},
-			Spec: kaprov1alpha1.FleetClusterSpec{
+			Spec: kaprov1alpha2.ClusterSpec{
 				Delivery: clusterDelivery,
 			},
 		}
@@ -167,16 +167,16 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		inventory = append(inventory, "FleetCluster/"+cluster.Name)
 	}
 
-	// 2. Generate PromotionPlan on the hub.
+	// 2. Generate Plan on the hub.
 	promotionplan := r.buildPromotionPlan(&kapro)
 	if err := r.Patch(ctx, promotionplan,
 		client.Apply, //nolint:staticcheck
 		client.FieldOwner("kapro-controller"),
 		client.ForceOwnership,
 	); err != nil {
-		return ctrl.Result{}, fmt.Errorf("apply PromotionPlan: %w", err)
+		return ctrl.Result{}, fmt.Errorf("apply Plan: %w", err)
 	}
-	inventory = append(inventory, "PromotionPlan/"+InlinePromotionPlanName(kapro.Name))
+	inventory = append(inventory, "Plan/"+InlinePromotionPlanName(kapro.Name))
 
 	if spokeLocal {
 		// 3a. Spoke-local mode: bootstrap each spoke in parallel.
@@ -256,9 +256,9 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
-func (r *KaproReconciler) resolvePromotionSource(ctx context.Context, kapro *kaprov1alpha1.Kapro) (*kaprov1alpha1.PromotionSource, bool, error) {
+func (r *KaproReconciler) resolvePromotionSource(ctx context.Context, kapro *kaprov1alpha2.Fleet) (*kaprov1alpha2.Source, bool, error) {
 	if kapro.Spec.SourceRef != "" {
-		var source kaprov1alpha1.PromotionSource
+		var source kaprov1alpha2.Source
 		if err := r.Get(ctx, client.ObjectKey{Name: kapro.Spec.SourceRef}, &source); err != nil {
 			return nil, false, err
 		}
@@ -267,16 +267,16 @@ func (r *KaproReconciler) resolvePromotionSource(ctx context.Context, kapro *kap
 	if kapro.Spec.Source == nil {
 		return nil, false, nil
 	}
-	return &kaprov1alpha1.PromotionSource{
+	return &kaprov1alpha2.Source{
 		ObjectMeta: metav1.ObjectMeta{Name: kapro.Name},
 		Spec:       *kapro.Spec.Source,
 	}, true, nil
 }
 
-func (r *KaproReconciler) buildPromotionPlan(kapro *kaprov1alpha1.Kapro) *kaprov1alpha1.PromotionPlan {
-	stages := make([]kaprov1alpha1.Stage, 0, len(kapro.Spec.PromotionPlan.Stages))
-	for _, s := range kapro.Spec.PromotionPlan.Stages {
-		stage := kaprov1alpha1.Stage{
+func (r *KaproReconciler) buildPromotionPlan(kapro *kaprov1alpha2.Fleet) *kaprov1alpha2.Plan {
+	stages := make([]kaprov1alpha2.Stage, 0, len(kapro.Spec.Plan.Stages))
+	for _, s := range kapro.Spec.Plan.Stages {
+		stage := kaprov1alpha2.Stage{
 			Name: s.Name,
 			Selector: metav1.LabelSelector{
 				MatchLabels: s.Selector,
@@ -289,7 +289,7 @@ func (r *KaproReconciler) buildPromotionPlan(kapro *kaprov1alpha1.Kapro) *kaprov
 		stages = append(stages, stage)
 	}
 	// Propagate the parent Kapro's tenancy + standard labels to the
-	// generated PromotionPlan. Without this the admission webhook
+	// generated Plan. Without this the admission webhook
 	// rejects the controller's own write with a missing-team error,
 	// because the generated plan inherits no labels from anywhere.
 	labels := map[string]string{}
@@ -299,17 +299,17 @@ func (r *KaproReconciler) buildPromotionPlan(kapro *kaprov1alpha1.Kapro) *kaprov
 	labels["app.kubernetes.io/managed-by"] = "kapro-operator"
 	labels["kapro.io/owned-by-kapro"] = kapro.Name
 
-	return &kaprov1alpha1.PromotionPlan{
-		TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "PromotionPlan"},
+	return &kaprov1alpha2.Plan{
+		TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha2", Kind: "Plan"},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   InlinePromotionPlanName(kapro.Name),
 			Labels: labels,
 		},
-		Spec: kaprov1alpha1.PromotionPlanSpec{Stages: stages},
+		Spec: kaprov1alpha2.PlanSpec{Stages: stages},
 	}
 }
 
-// InlinePromotionPlanName returns the deterministic name of the PromotionPlan
+// InlinePromotionPlanName returns the deterministic name of the Plan
 // CR generated by the Kapro reconciler from Kapro.spec.promotionplan.
 // PromotionController references the same name when stamping inline plan refs
 // on a PromotionRun, so any change here must update both call sites.
@@ -323,10 +323,10 @@ func InlinePromotionPlanName(kaproName string) string {
 //   - resources[]: HelmRepositories + HelmReleases with dependsOn, timeout, retries, prune
 //
 // Flux Operator renders one set of resources per input and distributes to spokes.
-func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha1.Kapro, source *kaprov1alpha1.PromotionSource) *unstructured.Unstructured {
+func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha2.Fleet, source *kaprov1alpha2.Source) *unstructured.Unstructured {
 	defaults := source.Spec.Defaults
 	if defaults == nil {
-		defaults = &kaprov1alpha1.SourceDefaults{}
+		defaults = &kaprov1alpha2.SourceDefaults{}
 	}
 
 	// Build inputs: one entry per cluster.
@@ -415,7 +415,7 @@ func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha1.Kapro, source *k
 
 // buildHelmRelease generates one HelmRelease from a unit spec + defaults.
 // Output matches the exact structure from the integration monorepo.
-func (r *KaproReconciler) buildHelmRelease(kapro *kaprov1alpha1.Kapro, defaults *kaprov1alpha1.SourceDefaults, comp kaprov1alpha1.PromotionUnit) map[string]any {
+func (r *KaproReconciler) buildHelmRelease(kapro *kaprov1alpha2.Fleet, defaults *kaprov1alpha2.SourceDefaults, comp kaprov1alpha2.Unit) map[string]any {
 	// Resolve fields: unit overrides defaults.
 	chartName := comp.Name
 	if comp.ChartName != "" {
@@ -527,7 +527,7 @@ func (r *KaproReconciler) buildHelmRelease(kapro *kaprov1alpha1.Kapro, defaults 
 }
 
 // mergeUnitValues deep-merges defaults.values + unit.values.
-func (r *KaproReconciler) mergeUnitValues(defaults *kaprov1alpha1.SourceDefaults, comp kaprov1alpha1.PromotionUnit) map[string]any {
+func (r *KaproReconciler) mergeUnitValues(defaults *kaprov1alpha2.SourceDefaults, comp kaprov1alpha2.Unit) map[string]any {
 	merged := map[string]any{}
 	if defaults.Values != nil && defaults.Values.Raw != nil {
 		_ = json.Unmarshal(defaults.Values.Raw, &merged)
@@ -542,7 +542,7 @@ func (r *KaproReconciler) mergeUnitValues(defaults *kaprov1alpha1.SourceDefaults
 }
 
 // resolveValuesFrom returns unit's valuesFrom if set, otherwise defaults'.
-func (r *KaproReconciler) resolveValuesFrom(defaults *kaprov1alpha1.SourceDefaults, comp kaprov1alpha1.PromotionUnit) []any {
+func (r *KaproReconciler) resolveValuesFrom(defaults *kaprov1alpha2.SourceDefaults, comp kaprov1alpha2.Unit) []any {
 	refs := defaults.ValuesFrom
 	if len(comp.ValuesFrom) > 0 {
 		refs = comp.ValuesFrom
@@ -574,7 +574,7 @@ func resolveDefault(value, fallback string) string {
 	return fallback
 }
 
-func promotionSourcePrimaryVersion(source *kaprov1alpha1.PromotionSource) string {
+func promotionSourcePrimaryVersion(source *kaprov1alpha2.Source) string {
 	if source == nil {
 		return ""
 	}
@@ -595,7 +595,7 @@ func kaproReadyMessage(converged int32, total int, version string) string {
 
 // mergeValues resolves PromotionSource defaults + matching overrides for a specific cluster.
 // Returns a JSON string of the merged values, or "" if no values apply.
-func (r *KaproReconciler) mergeValues(source *kaprov1alpha1.PromotionSource, clusterName string, clusterLabels map[string]string) string {
+func (r *KaproReconciler) mergeValues(source *kaprov1alpha2.Source, clusterName string, clusterLabels map[string]string) string {
 	// Start with defaults.
 	merged := map[string]interface{}{}
 	if source.Spec.Defaults != nil && source.Spec.Defaults.Values != nil && source.Spec.Defaults.Values.Raw != nil {
@@ -656,7 +656,7 @@ func deepMerge(dst, src map[string]interface{}) {
 }
 
 // overrideMatches returns true if the override applies to the given cluster.
-func overrideMatches(ov kaprov1alpha1.SourceOverride, clusterName string, clusterLabels map[string]string) bool {
+func overrideMatches(ov kaprov1alpha2.SourceOverride, clusterName string, clusterLabels map[string]string) bool {
 	// Explicit cluster list takes precedence.
 	if len(ov.Clusters) > 0 {
 		for _, c := range ov.Clusters {
@@ -681,15 +681,15 @@ func overrideMatches(ov kaprov1alpha1.SourceOverride, clusterName string, cluste
 
 // isSpokeLocalMode returns true if this Kapro still uses the built-in Flux
 // spoke bootstrap path. Non-Flux backends are handled by their adapters/agents.
-func isSpokeLocalMode(kapro *kaprov1alpha1.Kapro) bool {
+func isSpokeLocalMode(kapro *kaprov1alpha2.Fleet) bool {
 	delivery := kapro.Spec.Delivery
 	if delivery.Mode == "" {
-		delivery.Mode = kaprov1alpha1.DeliveryModePull
+		delivery.Mode = kaprov1alpha2.DeliveryModePull
 	}
 	if delivery.BackendRef == "" {
 		delivery.BackendRef = "flux"
 	}
-	return delivery.Mode == kaprov1alpha1.DeliveryModePull && delivery.BackendRef == "flux"
+	return delivery.Mode == kaprov1alpha2.DeliveryModePull && delivery.BackendRef == "flux"
 }
 
 func copyParamMap(in map[string]string) map[string]string {
@@ -714,7 +714,7 @@ const maxConcurrentBootstraps = 10
 // bootstrapSpokesParallel bootstraps all spokes concurrently with bounded parallelism.
 // Each spoke is independent — a failing spoke doesn't block others.
 // Returns a map of cluster name → error (nil = success).
-func (r *KaproReconciler) bootstrapSpokesParallel(ctx context.Context, kapro *kaprov1alpha1.Kapro, source *kaprov1alpha1.PromotionSource, version string) map[string]error {
+func (r *KaproReconciler) bootstrapSpokesParallel(ctx context.Context, kapro *kaprov1alpha2.Fleet, source *kaprov1alpha2.Source, version string) map[string]error {
 	l := log.FromContext(ctx)
 	results := make(map[string]error, len(kapro.Spec.Clusters))
 	var mu sync.Mutex
@@ -752,11 +752,11 @@ func (r *KaproReconciler) bootstrapSpokesParallel(ctx context.Context, kapro *ka
 // spokeAlreadyBootstrapped checks if the spoke's FleetCluster already reports
 // the target version. Avoids redundant bootstrap calls on every reconcile.
 func (r *KaproReconciler) spokeAlreadyBootstrapped(ctx context.Context, clusterName, targetVersion string) bool {
-	var mc kaprov1alpha1.FleetCluster
+	var mc kaprov1alpha2.Cluster
 	if err := r.Get(ctx, client.ObjectKey{Name: clusterName}, &mc); err != nil {
 		return false
 	}
-	return mc.Status.Version == targetVersion && mc.Status.Phase == kaprov1alpha1.ClusterPhaseConverged
+	return mc.Status.Version == targetVersion && mc.Status.Phase == kaprov1alpha2.ClusterPhaseConverged
 }
 
 // bootstrapSpoke connects to a spoke cluster via its kubeconfig secret and
@@ -766,7 +766,7 @@ func (r *KaproReconciler) spokeAlreadyBootstrapped(ctx context.Context, clusterN
 //
 // We apply directly to spoke instead of using ResourceSet because OCIRepository
 // has no kubeConfig field — it can't be created remotely via Flux.
-func (r *KaproReconciler) bootstrapSpoke(ctx context.Context, kapro *kaprov1alpha1.Kapro, source *kaprov1alpha1.PromotionSource, cluster kaprov1alpha1.KaproCluster, version string) error {
+func (r *KaproReconciler) bootstrapSpoke(ctx context.Context, kapro *kaprov1alpha2.Fleet, source *kaprov1alpha2.Source, cluster kaprov1alpha2.KaproCluster, version string) error {
 	l := log.FromContext(ctx)
 
 	if cluster.KubeconfigSecret == "" {
@@ -844,7 +844,7 @@ func (r *KaproReconciler) bootstrapSpoke(ctx context.Context, kapro *kaprov1alph
 }
 
 // hasKubeconfigClusters returns true if any cluster in the Kapro has a kubeconfigSecret.
-func hasKubeconfigClusters(kapro *kaprov1alpha1.Kapro) bool {
+func hasKubeconfigClusters(kapro *kaprov1alpha2.Fleet) bool {
 	for _, c := range kapro.Spec.Clusters {
 		if c.KubeconfigSecret != "" {
 			return true
@@ -861,11 +861,11 @@ func isNoMatchError(err error) bool {
 // syncFleetClusterStatus reads HelmRelease status and writes it to the
 // FleetCluster status. For push mode, reads from hub. For spoke-local mode,
 // connects to spoke and reads directly.
-func (r *KaproReconciler) syncFleetClusterStatus(ctx context.Context, kapro *kaprov1alpha1.Kapro, source *kaprov1alpha1.PromotionSource, cluster kaprov1alpha1.KaproCluster) bool {
+func (r *KaproReconciler) syncFleetClusterStatus(ctx context.Context, kapro *kaprov1alpha2.Fleet, source *kaprov1alpha2.Source, cluster kaprov1alpha2.KaproCluster) bool {
 	l := log.FromContext(ctx)
 
 	// Read the FleetCluster.
-	var mc kaprov1alpha1.FleetCluster
+	var mc kaprov1alpha2.Cluster
 	if err := r.Get(ctx, client.ObjectKey{Name: cluster.Name}, &mc); err != nil {
 		return false
 	}
@@ -953,13 +953,13 @@ func (r *KaproReconciler) syncFleetClusterStatus(ctx context.Context, kapro *kap
 	// writer of conditions[Ready]; this is the only place that reads it to
 	// influence Phase. See fleetcluster_heartbeat_controller.go for the
 	// state machine that produces the condition.
-	phase := kaprov1alpha1.ClusterPhaseConverging
+	phase := kaprov1alpha2.ClusterPhaseConverging
 	if allReady {
-		phase = kaprov1alpha1.ClusterPhaseConverged
+		phase = kaprov1alpha2.ClusterPhaseConverged
 	}
-	if ready := apimeta.FindStatusCondition(mc.Status.Conditions, kaprov1alpha1.ConditionTypeReady); ready != nil &&
-		ready.Status == metav1.ConditionFalse && ready.Reason == kaprov1alpha1.ReasonUnreachable {
-		phase = kaprov1alpha1.ClusterPhaseUnreachable
+	if ready := apimeta.FindStatusCondition(mc.Status.Conditions, kaprov1alpha2.ConditionTypeReady); ready != nil &&
+		ready.Status == metav1.ConditionFalse && ready.Reason == kaprov1alpha2.ReasonUnreachable {
+		phase = kaprov1alpha2.ClusterPhaseUnreachable
 	}
 
 	// For spoke-local: version is the OCIRepository tag (bundle version), not chart version.
@@ -997,7 +997,7 @@ func (r *KaproReconciler) syncFleetClusterStatus(ctx context.Context, kapro *kap
 	} else {
 		mc.Status.DeliverySystem = "flux-operator"
 	}
-	mc.Status.Health = kaprov1alpha1.ClusterHealth{
+	mc.Status.Health = kaprov1alpha2.ClusterHealth{
 		AllWorkloadsReady: allReady,
 		ReadyWorkloads:    len(versions),
 		TotalWorkloads:    len(source.Spec.Units),
@@ -1027,7 +1027,7 @@ func (r *KaproReconciler) syncFleetClusterStatus(ctx context.Context, kapro *kap
 
 // cleanupRemovedClusters deletes FleetClusters and kubeconfig Secrets
 // for clusters that were removed from the Kapro spec.
-func (r *KaproReconciler) cleanupRemovedClusters(ctx context.Context, kapro *kaprov1alpha1.Kapro) {
+func (r *KaproReconciler) cleanupRemovedClusters(ctx context.Context, kapro *kaprov1alpha2.Fleet) {
 	l := log.FromContext(ctx)
 
 	// Build set of current cluster names.
@@ -1037,7 +1037,7 @@ func (r *KaproReconciler) cleanupRemovedClusters(ctx context.Context, kapro *kap
 	}
 
 	// Delete orphaned FleetClusters.
-	var mcList kaprov1alpha1.FleetClusterList
+	var mcList kaprov1alpha2.ClusterList
 	if err := r.List(ctx, &mcList); err == nil {
 		for i := range mcList.Items {
 			mc := &mcList.Items[i]
@@ -1073,7 +1073,7 @@ func (r *KaproReconciler) cleanupRemovedClusters(ctx context.Context, kapro *kap
 	}
 }
 
-func isInInventory(kapro *kaprov1alpha1.Kapro, item string) bool {
+func isInInventory(kapro *kaprov1alpha2.Fleet, item string) bool {
 	for _, inv := range kapro.Status.Inventory {
 		if inv == item {
 			return true
@@ -1086,7 +1086,7 @@ func isInInventory(kapro *kaprov1alpha1.Kapro, item string) bool {
 // The kubeconfig uses gke-gcloud-auth-plugin for auth — WI tokens auto-refresh.
 // For gcp-fleet: resolves cluster endpoint from Fleet membership.
 // For gcp: uses the provided GCP config directly.
-func (r *KaproReconciler) ensureKubeconfigSecret(ctx context.Context, kapro *kaprov1alpha1.Kapro, cluster *kaprov1alpha1.KaproCluster) (string, error) {
+func (r *KaproReconciler) ensureKubeconfigSecret(ctx context.Context, kapro *kaprov1alpha2.Fleet, cluster *kaprov1alpha2.KaproCluster) (string, error) {
 	if cluster.GCP == nil {
 		return "", fmt.Errorf("cluster %q has provider=%s but no gcp config", cluster.Name, cluster.Provider)
 	}
@@ -1135,8 +1135,8 @@ func (r *KaproReconciler) ensureKubeconfigSecret(ctx context.Context, kapro *kap
 
 func (r *KaproReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kaprov1alpha1.Kapro{}).
-		Watches(&kaprov1alpha1.PromotionSource{}, handler.EnqueueRequestsFromMapFunc(r.kaproSourceToKapro)).
+		For(&kaprov1alpha2.Fleet{}).
+		Watches(&kaprov1alpha2.Source{}, handler.EnqueueRequestsFromMapFunc(r.kaproSourceToKapro)).
 		// FleetCluster.status.conditions[Ready] flips drive Phase=Unreachable
 		// in the status sync step. Without this watch the heartbeat
 		// reconciler's Ready=False reason=Unreachable transition would not
@@ -1144,7 +1144,7 @@ func (r *KaproReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// event fired. Predicate filters to Ready-condition transitions only —
 		// no feedback loop with our own status patches (which don't touch
 		// conditions[Ready]).
-		Watches(&kaprov1alpha1.FleetCluster{},
+		Watches(&kaprov1alpha2.Cluster{},
 			handler.EnqueueRequestsFromMapFunc(r.fleetClusterToKapro),
 			builder.WithPredicates(fleetClusterReadyConditionChangedPredicate{}),
 		).
@@ -1153,11 +1153,11 @@ func (r *KaproReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 // kaproSourceToKapro maps a PromotionSource change to the Kapro(s) that reference it.
 func (r *KaproReconciler) kaproSourceToKapro(ctx context.Context, obj client.Object) []reconcile.Request {
-	source, ok := obj.(*kaprov1alpha1.PromotionSource)
+	source, ok := obj.(*kaprov1alpha2.Source)
 	if !ok {
 		return nil
 	}
-	var kapros kaprov1alpha1.KaproList
+	var kapros kaprov1alpha2.FleetList
 	if err := r.List(ctx, &kapros); err != nil {
 		return nil
 	}
@@ -1176,11 +1176,11 @@ func (r *KaproReconciler) kaproSourceToKapro(ctx context.Context, obj client.Obj
 // spec.clusters references it by name. Matches the inventory ownership
 // pattern used by cleanupRemovedClusters.
 func (r *KaproReconciler) fleetClusterToKapro(ctx context.Context, obj client.Object) []reconcile.Request {
-	fc, ok := obj.(*kaprov1alpha1.FleetCluster)
+	fc, ok := obj.(*kaprov1alpha2.Cluster)
 	if !ok {
 		return nil
 	}
-	var kapros kaprov1alpha1.KaproList
+	var kapros kaprov1alpha2.FleetList
 	if err := r.List(ctx, &kapros); err != nil {
 		return nil
 	}
@@ -1210,16 +1210,16 @@ func (fleetClusterReadyConditionChangedPredicate) Generic(_ event.GenericEvent) 
 	return false
 }
 func (fleetClusterReadyConditionChangedPredicate) Update(e event.UpdateEvent) bool {
-	oldFC, ok := e.ObjectOld.(*kaprov1alpha1.FleetCluster)
+	oldFC, ok := e.ObjectOld.(*kaprov1alpha2.Cluster)
 	if !ok {
 		return false
 	}
-	newFC, ok := e.ObjectNew.(*kaprov1alpha1.FleetCluster)
+	newFC, ok := e.ObjectNew.(*kaprov1alpha2.Cluster)
 	if !ok {
 		return false
 	}
-	oldReady := apimeta.FindStatusCondition(oldFC.Status.Conditions, kaprov1alpha1.ConditionTypeReady)
-	newReady := apimeta.FindStatusCondition(newFC.Status.Conditions, kaprov1alpha1.ConditionTypeReady)
+	oldReady := apimeta.FindStatusCondition(oldFC.Status.Conditions, kaprov1alpha2.ConditionTypeReady)
+	newReady := apimeta.FindStatusCondition(newFC.Status.Conditions, kaprov1alpha2.ConditionTypeReady)
 	if oldReady == nil && newReady == nil {
 		return false
 	}

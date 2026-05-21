@@ -12,7 +12,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/bundle"
 	kaproconfig "kapro.io/kapro/internal/config"
 )
@@ -164,16 +164,16 @@ func runSourcePackage(ctx context.Context, sourceRef, kaproName, version, regist
 	return nil
 }
 
-func readPackageSource(ctx context.Context, hubClient client.Client, sourceRef, kaproName string) (*kaprov1alpha1.PromotionSource, error) {
+func readPackageSource(ctx context.Context, hubClient client.Client, sourceRef, kaproName string) (*kaprov1alpha2.Source, error) {
 	if sourceRef != "" {
-		var source kaprov1alpha1.PromotionSource
+		var source kaprov1alpha2.Source
 		if err := hubClient.Get(ctx, client.ObjectKey{Name: sourceRef}, &source); err != nil {
 			return nil, fmt.Errorf("get PromotionSource %q: %w", sourceRef, err)
 		}
 		return &source, nil
 	}
 
-	var fleet kaprov1alpha1.Kapro
+	var fleet kaprov1alpha2.Fleet
 	if err := hubClient.Get(ctx, client.ObjectKey{Name: kaproName}, &fleet); err != nil {
 		return nil, fmt.Errorf("get Kapro %q: %w", kaproName, err)
 	}
@@ -183,7 +183,7 @@ func readPackageSource(ctx context.Context, hubClient client.Client, sourceRef, 
 		}
 		return nil, fmt.Errorf("kapro %q has neither spec.source nor spec.sourceRef set", kaproName)
 	}
-	return &kaprov1alpha1.PromotionSource{
+	return &kaprov1alpha2.Source{
 		ObjectMeta: fleet.ObjectMeta,
 		Spec:       *fleet.Spec.Source,
 	}, nil
@@ -192,7 +192,7 @@ func readPackageSource(ctx context.Context, hubClient client.Client, sourceRef, 
 func buildHubClient(kubeconfigPath string) (client.Client, error) {
 	scheme := runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = kaprov1alpha1.AddToScheme(scheme)
+	_ = kaprov1alpha2.AddToScheme(scheme)
 
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	if kubeconfigPath != "" {

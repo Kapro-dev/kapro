@@ -7,7 +7,7 @@
 # Cluster labels expected:
 #   kapro.io/tier=canary       (exactly one cluster)
 #   kapro.io/tier=production   (the rest of the fleet)
-apiVersion: kapro.io/v1alpha1
+apiVersion: kapro.io/v1alpha2
 kind: PromotionPlan
 metadata:
   name: canary-then-full

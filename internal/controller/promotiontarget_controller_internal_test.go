@@ -14,7 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	pullactuator "kapro.io/kapro/internal/actuator/pull"
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
@@ -37,13 +37,13 @@ func TestSyncPromotionTargetPhaseLabelPersistsMetadata(t *testing.T) {
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	target := &kaprov1alpha1.PromotionTarget{
+	target := &kaprov1alpha2.Target{
 		ObjectMeta: metav1.ObjectMeta{Name: "promo-wave-cluster-a"},
-		Status: kaprov1alpha1.PromotionTargetStatus{
-			TargetStatus: kaprov1alpha1.TargetStatus{Phase: kaprov1alpha1.TargetPhaseWaitingApproval},
+		Status: kaprov1alpha2.TargetStatus{
+			TargetStatus: kaprov1alpha2.TargetStatus{Phase: kaprov1alpha2.TargetPhaseWaitingApproval},
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(target).Build()
@@ -52,11 +52,11 @@ func TestSyncPromotionTargetPhaseLabelPersistsMetadata(t *testing.T) {
 	if err := r.syncPromotionTargetPhaseLabel(ctx, target); err != nil {
 		t.Fatal(err)
 	}
-	var got kaprov1alpha1.PromotionTarget
+	var got kaprov1alpha2.Target
 	if err := c.Get(ctx, client.ObjectKey{Name: target.Name}, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Labels["kapro.io/phase"] != string(kaprov1alpha1.TargetPhaseWaitingApproval) {
+	if got.Labels["kapro.io/phase"] != string(kaprov1alpha2.TargetPhaseWaitingApproval) {
 		t.Fatalf("phase label = %q", got.Labels["kapro.io/phase"])
 	}
 }
@@ -67,13 +67,13 @@ func TestPromotionTargetReconcileSyncsTerminalPhaseLabel(t *testing.T) {
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	target := &kaprov1alpha1.PromotionTarget{
+	target := &kaprov1alpha2.Target{
 		ObjectMeta: metav1.ObjectMeta{Name: "promo-wave-cluster-a"},
-		Status: kaprov1alpha1.PromotionTargetStatus{
-			TargetStatus: kaprov1alpha1.TargetStatus{Phase: kaprov1alpha1.TargetPhaseFailed},
+		Status: kaprov1alpha2.TargetStatus{
+			TargetStatus: kaprov1alpha2.TargetStatus{Phase: kaprov1alpha2.TargetPhaseFailed},
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(target).Build()
@@ -82,25 +82,25 @@ func TestPromotionTargetReconcileSyncsTerminalPhaseLabel(t *testing.T) {
 	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: target.Name}}); err != nil {
 		t.Fatal(err)
 	}
-	var got kaprov1alpha1.PromotionTarget
+	var got kaprov1alpha2.Target
 	if err := c.Get(ctx, client.ObjectKey{Name: target.Name}, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Labels["kapro.io/phase"] != string(kaprov1alpha1.TargetPhaseFailed) {
+	if got.Labels["kapro.io/phase"] != string(kaprov1alpha2.TargetPhaseFailed) {
 		t.Fatalf("phase label = %q", got.Labels["kapro.io/phase"])
 	}
 }
 
 func TestPromotionTargetPredicates_RejectedStatusChangeEnqueues(t *testing.T) {
 	p := promotionTargetPredicates()
-	oldObj := &kaprov1alpha1.PromotionTarget{
+	oldObj := &kaprov1alpha2.Target{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       "rel-wave-prod-cluster-a",
 			Generation: 1,
 		},
-		Status: kaprov1alpha1.PromotionTargetStatus{
-			TargetStatus: kaprov1alpha1.TargetStatus{
-				Phase: kaprov1alpha1.TargetPhaseWaitingApproval,
+		Status: kaprov1alpha2.TargetStatus{
+			TargetStatus: kaprov1alpha2.TargetStatus{
+				Phase: kaprov1alpha2.TargetPhaseWaitingApproval,
 			},
 		},
 	}
@@ -115,10 +115,10 @@ func TestPromotionTargetPredicates_RejectedStatusChangeEnqueues(t *testing.T) {
 
 func TestPromotionTargetFleetClusterPredicates_HeartbeatOnlyIgnored(t *testing.T) {
 	p := promotionTargetFleetClusterPredicates()
-	oldObj := &kaprov1alpha1.FleetCluster{
+	oldObj := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
-		Status: kaprov1alpha1.FleetClusterStatus{
-			Phase:         kaprov1alpha1.ClusterPhaseConverged,
+		Status: kaprov1alpha2.ClusterStatus{
+			Phase:         kaprov1alpha2.ClusterPhaseConverged,
 			LastHeartbeat: "2025-01-01T00:00:00Z",
 		},
 	}
@@ -168,43 +168,43 @@ func TestPromotionTargetReconcilePullOCIRecordsDesiredState(t *testing.T) {
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
 
-	promotionrun := &kaprov1alpha1.PromotionRun{
+	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-oci"},
-		Spec: kaprov1alpha1.PromotionRunSpec{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "oci://registry.example.com/apps/checkout@sha256:222",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{{
-				Name: "default", PromotionPlan: "plan",
+			PromotionPlans: []kaprov1alpha2.PlanRef{{
+				Name: "default", Plan: "plan",
 			}},
 		},
 	}
-	cluster := &kaprov1alpha1.FleetCluster{
+	cluster := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{
-				Mode:       kaprov1alpha1.DeliveryModePull,
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{
+				Mode:       kaprov1alpha2.DeliveryModePull,
 				BackendRef: "oci",
 			},
 		},
-		Status: kaprov1alpha1.FleetClusterStatus{
+		Status: kaprov1alpha2.ClusterStatus{
 			Conditions: []metav1.Condition{{
-				Type:   kaprov1alpha1.ConditionTypeReady,
+				Type:   kaprov1alpha2.ConditionTypeReady,
 				Status: metav1.ConditionTrue,
-				Reason: kaprov1alpha1.ReasonHeartbeatFresh,
+				Reason: kaprov1alpha2.ReasonHeartbeatFresh,
 			}},
 			CurrentVersions: map[string]string{"default": "oci://registry.example.com/apps/checkout@sha256:111"},
-			Health:          kaprov1alpha1.ClusterHealth{AllWorkloadsReady: true},
+			Health:          kaprov1alpha2.ClusterHealth{AllWorkloadsReady: true},
 		},
 	}
-	target := &kaprov1alpha1.PromotionTarget{
+	target := &kaprov1alpha2.Target{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-oci-default-cluster-a"},
-		Spec: kaprov1alpha1.PromotionTargetSpec{
+		Spec: kaprov1alpha2.TargetSpec{
 			PromotionRunRef:  "rel-oci",
 			Target:           "cluster-a",
-			PromotionPlan:    "plan",
+			Plan:    "plan",
 			PromotionPlanRef: "default",
 			Stage:            "prod",
 			Version:          "oci://registry.example.com/apps/checkout@sha256:222",
@@ -213,11 +213,11 @@ func TestPromotionTargetReconcilePullOCIRecordsDesiredState(t *testing.T) {
 				"default": "oci://registry.example.com/apps/checkout@sha256:222",
 			},
 		},
-		Status: kaprov1alpha1.PromotionTargetStatus{
-			TargetStatus: kaprov1alpha1.TargetStatus{
+		Status: kaprov1alpha2.TargetStatus{
+			TargetStatus: kaprov1alpha2.TargetStatus{
 				PromotionRunRef:  "rel-oci",
 				Target:           "cluster-a",
-				PromotionPlan:    "plan",
+				Plan:    "plan",
 				PromotionPlanRef: "default",
 				Stage:            "prod",
 				Version:          "oci://registry.example.com/apps/checkout@sha256:222",
@@ -225,14 +225,14 @@ func TestPromotionTargetReconcilePullOCIRecordsDesiredState(t *testing.T) {
 				DesiredVersions: map[string]string{
 					"default": "oci://registry.example.com/apps/checkout@sha256:222",
 				},
-				Phase: kaprov1alpha1.TargetPhaseApplying,
+				Phase: kaprov1alpha2.TargetPhaseApplying,
 			},
 		},
 	}
 
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha1.PromotionTarget{}, &kaprov1alpha1.FleetCluster{}).
+		WithStatusSubresource(&kaprov1alpha2.Target{}, &kaprov1alpha2.Cluster{}).
 		WithObjects(promotionrun, cluster, target).
 		Build()
 	actuators := actuator.NewRegistry()
@@ -249,7 +249,7 @@ func TestPromotionTargetReconcilePullOCIRecordsDesiredState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var updatedCluster kaprov1alpha1.FleetCluster
+	var updatedCluster kaprov1alpha2.Cluster
 	if err := c.Get(ctx, client.ObjectKey{Name: "cluster-a"}, &updatedCluster); err != nil {
 		t.Fatal(err)
 	}
@@ -264,14 +264,14 @@ func TestPromotionTargetReconcilePullOCIRecordsDesiredState(t *testing.T) {
 
 func TestUpdatePromotionTargetStatusContract_SetsObservedGenerationAndConditions(t *testing.T) {
 	r := &PromotionTargetReconciler{}
-	rt := &kaprov1alpha1.PromotionTarget{
+	rt := &kaprov1alpha2.Target{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       "rel-wave-prod-cluster-a",
 			Generation: 3,
 		},
-		Status: kaprov1alpha1.PromotionTargetStatus{
-			TargetStatus: kaprov1alpha1.TargetStatus{
-				Phase:   kaprov1alpha1.TargetPhaseConverged,
+		Status: kaprov1alpha2.TargetStatus{
+			TargetStatus: kaprov1alpha2.TargetStatus{
+				Phase:   kaprov1alpha2.TargetPhaseConverged,
 				Message: "done",
 			},
 		},
@@ -296,23 +296,23 @@ func TestUpdatePromotionTargetStatusContract_SetsObservedGenerationAndConditions
 func TestNotifyPersistedTransitions_OnlyOnPersistedPhaseChange(t *testing.T) {
 	notifier := &recordingNotifier{}
 	r := &PromotionTargetReconciler{Notifier: notifier}
-	promotionrun := &kaprov1alpha1.PromotionRun{
+	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1"},
 	}
-	prev := &kaprov1alpha1.TargetStatus{
+	prev := &kaprov1alpha2.TargetStatus{
 		Target:  "cluster-a",
 		Version: "repo@sha256:abc",
-		Phase:   kaprov1alpha1.TargetPhasePending,
+		Phase:   kaprov1alpha2.TargetPhasePending,
 	}
 	curr := prev.DeepCopy()
-	curr.Phase = kaprov1alpha1.TargetPhaseHealthCheck
+	curr.Phase = kaprov1alpha2.TargetPhaseHealthCheck
 
 	r.notifyPersistedTransitions(context.Background(), promotionrun, prev, curr)
 
 	if len(notifier.events) != 1 {
 		t.Fatalf("expected 1 persisted phase notification, got %d", len(notifier.events))
 	}
-	if notifier.events[0].Phase != string(kaprov1alpha1.TargetPhaseHealthCheck) {
+	if notifier.events[0].Phase != string(kaprov1alpha2.TargetPhaseHealthCheck) {
 		t.Fatalf("expected HealthCheck notification, got %q", notifier.events[0].Phase)
 	}
 }
@@ -320,13 +320,13 @@ func TestNotifyPersistedTransitions_OnlyOnPersistedPhaseChange(t *testing.T) {
 func TestNotifyPersistedTransitions_ApprovalOnlyAfterPersistedStamp(t *testing.T) {
 	notifier := &recordingNotifier{}
 	r := &PromotionTargetReconciler{Notifier: notifier}
-	promotionrun := &kaprov1alpha1.PromotionRun{
+	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1"},
 	}
-	prev := &kaprov1alpha1.TargetStatus{
+	prev := &kaprov1alpha2.TargetStatus{
 		Target:  "cluster-a",
 		Version: "repo@sha256:abc",
-		Phase:   kaprov1alpha1.TargetPhaseWaitingApproval,
+		Phase:   kaprov1alpha2.TargetPhaseWaitingApproval,
 	}
 	curr := prev.DeepCopy()
 	curr.ApprovalSentAt = "2025-01-01T00:00:00Z"
@@ -336,7 +336,7 @@ func TestNotifyPersistedTransitions_ApprovalOnlyAfterPersistedStamp(t *testing.T
 	if len(notifier.events) != 1 {
 		t.Fatalf("expected 1 approval notification, got %d", len(notifier.events))
 	}
-	if notifier.events[0].Phase != string(kaprov1alpha1.TargetPhaseWaitingApproval) {
+	if notifier.events[0].Phase != string(kaprov1alpha2.TargetPhaseWaitingApproval) {
 		t.Fatalf("expected WaitingApproval notification, got %q", notifier.events[0].Phase)
 	}
 }
@@ -344,15 +344,15 @@ func TestNotifyPersistedTransitions_ApprovalOnlyAfterPersistedStamp(t *testing.T
 func TestNotifyGateEvent_SendsSemanticGateType(t *testing.T) {
 	notifier := &recordingNotifier{}
 	r := &PromotionTargetReconciler{Notifier: notifier}
-	promotionrun := &kaprov1alpha1.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}}
-	target := &kaprov1alpha1.TargetStatus{
+	promotionrun := &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}}
+	target := &kaprov1alpha2.TargetStatus{
 		Target:           "cluster-a",
 		Version:          "repo@sha256:abc",
 		PromotionPlanRef: "main",
 		Stage:            "canary",
-		Phase:            kaprov1alpha1.TargetPhaseMetricsCheck,
-		Gate: &kaprov1alpha1.GatePolicySpec{
-			Notifications: []kaprov1alpha1.NotificationSpec{{Type: "webhook", Events: []string{notification.EventGatePassed}}},
+		Phase:            kaprov1alpha2.TargetPhaseMetricsCheck,
+		Gate: &kaprov1alpha2.GatePolicySpec{
+			Notifications: []kaprov1alpha2.NotificationSpec{{Type: "webhook", Events: []string{notification.EventGatePassed}}},
 		},
 	}
 
@@ -364,7 +364,7 @@ func TestNotifyGateEvent_SendsSemanticGateType(t *testing.T) {
 	if notifier.events[0].Type != notification.EventGatePassed {
 		t.Fatalf("expected gate passed event, got %q", notifier.events[0].Type)
 	}
-	if notifier.events[0].PromotionPlan != "main" || notifier.events[0].Stage != "canary" || notifier.events[0].Target != "cluster-a" {
+	if notifier.events[0].Plan != "main" || notifier.events[0].Stage != "canary" || notifier.events[0].Target != "cluster-a" {
 		t.Fatalf("gate event context not populated: %#v", notifier.events[0])
 	}
 	if len(notifier.policies) != 1 || len(notifier.policies[0].Channels) != 1 {

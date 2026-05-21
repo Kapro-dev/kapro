@@ -9,20 +9,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/pkg/actuator"
 )
 
 func TestApplyDeltaRecordsDesiredVersionsOnFleetCluster(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatalf("add scheme: %v", err)
 	}
-	mc := &kaprov1alpha1.FleetCluster{
+	mc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
-		Spec: kaprov1alpha1.FleetClusterSpec{
+		Spec: kaprov1alpha2.ClusterSpec{
 			DesiredVersions: map[string]string{"worker": "v1"},
-			Delivery: kaprov1alpha1.DeliverySpec{
+			Delivery: kaprov1alpha2.DeliverySpec{
 				Mode:       "pull",
 				BackendRef: "flux",
 				Parameters: map[string]string{
@@ -30,7 +30,7 @@ func TestApplyDeltaRecordsDesiredVersionsOnFleetCluster(t *testing.T) {
 				},
 			},
 		},
-		Status: kaprov1alpha1.FleetClusterStatus{
+		Status: kaprov1alpha2.ClusterStatus{
 			CurrentVersions: map[string]string{"default": "v1"},
 		},
 	}
@@ -48,7 +48,7 @@ func TestApplyDeltaRecordsDesiredVersionsOnFleetCluster(t *testing.T) {
 		t.Fatalf("changed=%d, want 2", changed)
 	}
 
-	var updated kaprov1alpha1.FleetCluster
+	var updated kaprov1alpha2.Cluster
 	if err := c.Get(context.Background(), client.ObjectKey{Name: "cluster-a"}, &updated); err != nil {
 		t.Fatalf("get updated FleetCluster: %v", err)
 	}
@@ -64,11 +64,11 @@ func TestApplyDeltaRecordsDesiredVersionsOnFleetCluster(t *testing.T) {
 
 func TestIsAllConvergedUsesSpokeReportedStatus(t *testing.T) {
 	act := &PullActuator{}
-	mc := &kaprov1alpha1.FleetCluster{
+	mc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
-		Status: kaprov1alpha1.FleetClusterStatus{
+		Status: kaprov1alpha2.ClusterStatus{
 			CurrentVersions: map[string]string{"default": "v2", "api": "v2"},
-			Health:          kaprov1alpha1.ClusterHealth{AllWorkloadsReady: true},
+			Health:          kaprov1alpha2.ClusterHealth{AllWorkloadsReady: true},
 		},
 	}
 

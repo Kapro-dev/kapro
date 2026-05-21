@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/cli"
 )
 
@@ -49,28 +49,28 @@ func runStatus(ctx context.Context, kaproName, kubeconfigPath string) error {
 	}
 
 	// Load Kapro CRs.
-	var kapros kaprov1alpha1.KaproList
+	var kapros kaprov1alpha2.FleetList
 	if err := c.List(ctx, &kapros); err != nil {
 		sp.StopFail("Failed to list Kapro instances")
 		return err
 	}
 
 	// Load FleetClusters.
-	var allClusters kaprov1alpha1.FleetClusterList
+	var allClusters kaprov1alpha2.ClusterList
 	if err := c.List(ctx, &allClusters); err != nil {
 		sp.StopFail("Failed to list clusters")
 		return err
 	}
 
 	// Load active PromotionRuns.
-	var promotionruns kaprov1alpha1.PromotionRunList
+	var promotionruns kaprov1alpha2.PromotionRunList
 	if err := c.List(ctx, &promotionruns); err != nil {
 		sp.StopFail("Failed to list promotionruns")
 		return err
 	}
 
 	// Load PromotionTargets.
-	var targets kaprov1alpha1.PromotionTargetList
+	var targets kaprov1alpha2.TargetList
 	if err := c.List(ctx, &targets); err != nil {
 		sp.StopFail("Failed to list targets")
 		return err
@@ -87,7 +87,7 @@ func runStatus(ctx context.Context, kaproName, kubeconfigPath string) error {
 	}
 
 	// Filter by kaproName if specified.
-	var filteredKapros []kaprov1alpha1.Kapro
+	var filteredKapros []kaprov1alpha2.Fleet
 	for _, k := range kapros.Items {
 		if kaproName == "" || k.Name == kaproName {
 			filteredKapros = append(filteredKapros, k)
@@ -110,7 +110,7 @@ func runStatus(ctx context.Context, kaproName, kubeconfigPath string) error {
 	return nil
 }
 
-func renderKaproStatus(kapro kaprov1alpha1.Kapro, allClusters []kaprov1alpha1.FleetCluster, promotionruns []kaprov1alpha1.PromotionRun, targets []kaprov1alpha1.PromotionTarget) {
+func renderKaproStatus(kapro kaprov1alpha2.Fleet, allClusters []kaprov1alpha2.Cluster, promotionruns []kaprov1alpha2.PromotionRun, targets []kaprov1alpha2.Target) {
 	cli.Header(fmt.Sprintf("kapro/%s", kapro.Name))
 
 	// Summary line.
@@ -185,7 +185,7 @@ func renderKaproStatus(kapro kaprov1alpha1.Kapro, allClusters []kaprov1alpha1.Fl
 	// Pending approvals for this Kapro.
 	pendingApprovals := 0
 	for _, t := range targets {
-		if t.Status.Phase == kaprov1alpha1.TargetPhaseWaitingApproval {
+		if t.Status.Phase == kaprov1alpha2.TargetPhaseWaitingApproval {
 			pendingApprovals++
 		}
 	}
@@ -207,12 +207,12 @@ type clusterRow struct {
 }
 
 func colorPhase(phase string) string {
-	switch kaprov1alpha1.ClusterPhase(phase) {
-	case kaprov1alpha1.ClusterPhaseConverged:
+	switch kaprov1alpha2.ClusterPhase(phase) {
+	case kaprov1alpha2.ClusterPhaseConverged:
 		return cli.Theme.PhaseComplete.Render("✔ Converged")
-	case kaprov1alpha1.ClusterPhaseConverging:
+	case kaprov1alpha2.ClusterPhaseConverging:
 		return cli.Theme.PhaseProgressing.Render("⠿ Converging")
-	case kaprov1alpha1.ClusterPhaseFailed:
+	case kaprov1alpha2.ClusterPhaseFailed:
 		return cli.Theme.PhaseFailed.Render("✗ Failed")
 	default:
 		if phase == "" {
@@ -235,9 +235,9 @@ func colorHealth(healthy bool, ready, total int) string {
 	return cli.Theme.Muted.Render("—")
 }
 
-func findActivePromotionRun(promotionruns []kaprov1alpha1.PromotionRun) *kaprov1alpha1.PromotionRun {
+func findActivePromotionRun(promotionruns []kaprov1alpha2.PromotionRun) *kaprov1alpha2.PromotionRun {
 	for i := range promotionruns {
-		if promotionruns[i].Status.Phase == kaprov1alpha1.PromotionRunPhaseProgressing {
+		if promotionruns[i].Status.Phase == kaprov1alpha2.PromotionRunPhaseProgressing {
 			return &promotionruns[i]
 		}
 	}

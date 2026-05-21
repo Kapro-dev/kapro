@@ -15,7 +15,7 @@ func newInitCmd() *cobra.Command {
 		Use:   "init [directory]",
 		Short: "Scaffold a greenfield Kapro promotion repo",
 		Long: `Scaffolds a GitOps-ready promotion repository with BackendProfile,
-PromotionPlan, a Kapro fleet object with inline source units, and sample
+Plan, a Kapro fleet object with inline source units, and sample
 Promotion intent manifests.
 
 This bootstraps the promotion layer. Argo, Flux, Helm, and Kubernetes still own
@@ -251,7 +251,7 @@ func parseSelector(raw string) (map[string]string, error) {
 
 func renderGreenfieldBackend(opts scaffoldOptions) string {
 	if opts.Backend == "oci" {
-		return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
+		return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
 kind: BackendProfile
 metadata:
   name: oci
@@ -264,7 +264,7 @@ spec:
     auth: anonymous
 `, strings.TrimSuffix(strings.TrimPrefix(opts.Registry, "oci://"), "/"))
 	}
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
 kind: BackendProfile
 metadata:
   name: %s
@@ -277,7 +277,7 @@ spec:
 }
 
 func renderConnectBackend(opts connectOptions, labels map[string]string) string {
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
 kind: BackendProfile
 metadata:
   name: %s
@@ -296,7 +296,7 @@ spec:
 }
 
 func renderCluster(opts scaffoldOptions, suffix, tier string) string {
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
 kind: FleetCluster
 metadata:
   name: %s-%s
@@ -326,7 +326,7 @@ func renderDeliveryParameters(opts scaffoldOptions, suffix string) string {
 }
 
 func renderPromotionSource(opts scaffoldOptions) string {
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
 kind: PromotionSource
 metadata:
   name: %s
@@ -345,8 +345,8 @@ spec:
 }
 
 func renderPromotionPlan(opts scaffoldOptions) string {
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
-kind: PromotionPlan
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
+kind: Plan
 metadata:
   name: %s
 spec:
@@ -376,7 +376,7 @@ func renderKapro(opts scaffoldOptions, clusters []scaffoldCluster) string {
         kapro.io/tier: %s
 `, opts.Name, cluster.Name, cluster.Tier)
 	}
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
 kind: Kapro
 metadata:
   name: %s
@@ -415,7 +415,7 @@ spec:
 }
 
 func renderPromotion(opts scaffoldOptions) string {
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
 kind: Promotion
 metadata:
   name: %s-0-1-0

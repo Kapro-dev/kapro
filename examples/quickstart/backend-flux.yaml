@@ -1,4 +1,4 @@
-apiVersion: kapro.io/v1alpha1
+apiVersion: kapro.io/v1alpha2
 kind: BackendProfile
 metadata:
   name: flux

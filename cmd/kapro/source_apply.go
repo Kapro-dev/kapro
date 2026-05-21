@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	sigsyaml "sigs.k8s.io/yaml"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/writetarget"
 )
 
@@ -174,12 +174,12 @@ type sourceWrite struct {
 	Version string
 }
 
-func readPromotionSourceFile(path string) (*kaprov1alpha1.PromotionSource, error) {
+func readPromotionSourceFile(path string) (*kaprov1alpha2.Source, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read source %s: %w", path, err)
 	}
-	var source kaprov1alpha1.PromotionSource
+	var source kaprov1alpha2.Source
 	if err := sigsyaml.Unmarshal(data, &source); err != nil {
 		return nil, fmt.Errorf("parse PromotionSource %s: %w", path, err)
 	}
@@ -192,7 +192,7 @@ func readPromotionSourceFile(path string) (*kaprov1alpha1.PromotionSource, error
 	return &source, nil
 }
 
-func planUnitSourceWrites(opts sourceApplyOptions, unit kaprov1alpha1.PromotionUnit, version string) ([]sourceWrite, error) {
+func planUnitSourceWrites(opts sourceApplyOptions, unit kaprov1alpha2.Unit, version string) ([]sourceWrite, error) {
 	pattern, field, err := unitWriteTarget(unit)
 	if err != nil {
 		return nil, err
@@ -222,7 +222,7 @@ func planUnitSourceWrites(opts sourceApplyOptions, unit kaprov1alpha1.PromotionU
 	return writes, nil
 }
 
-func unitWriteTarget(unit kaprov1alpha1.PromotionUnit) (string, string, error) {
+func unitWriteTarget(unit kaprov1alpha2.Unit) (string, string, error) {
 	if file, field, ok := strings.Cut(unit.VersionField, ":"); ok {
 		if strings.TrimSpace(file) == "" || strings.TrimSpace(field) == "" {
 			return "", "", fmt.Errorf("versionField must use file:field, got %q", unit.VersionField)

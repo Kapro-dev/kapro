@@ -17,11 +17,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/pkg/notification"
 )
 
-func (r *PromotionRunReconciler) notifyPromotionRunEvent(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, eventType, message string) {
+func (r *PromotionRunReconciler) notifyPromotionRunEvent(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, eventType, message string) {
 	if r.Notifier == nil {
 		return
 	}
@@ -36,7 +36,7 @@ func (r *PromotionRunReconciler) notifyPromotionRunEvent(ctx context.Context, pr
 	}, policy)
 }
 
-func (r *PromotionRunReconciler) notifyStageEvent(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, promotionplanRef, stage, eventType, message string) {
+func (r *PromotionRunReconciler) notifyStageEvent(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, promotionplanRef, stage, eventType, message string) {
 	if r.Notifier == nil {
 		return
 	}
@@ -46,18 +46,18 @@ func (r *PromotionRunReconciler) notifyStageEvent(ctx context.Context, promotion
 		Phase:         "Complete",
 		Version:       promotionrun.Status.ResolvedVersion,
 		PromotionRun:  promotionrun.Name,
-		PromotionPlan: promotionplanRef,
+		Plan: promotionplanRef,
 		Stage:         stage,
 		Message:       message,
 	}, policy)
 }
 
-func (r *PromotionRunReconciler) notificationPolicyForPromotionRun(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun) notification.NotificationPolicy {
+func (r *PromotionRunReconciler) notificationPolicyForPromotionRun(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun) notification.NotificationPolicy {
 	policies := make([]notification.NotificationPolicy, 0)
 	for _, promotionplanRef := range promotionrun.Spec.PromotionPlans {
-		var promotionplan kaprov1alpha1.PromotionPlan
-		if err := r.Get(ctx, client.ObjectKey{Name: promotionplanRef.PromotionPlan}, &promotionplan); err != nil {
-			log.FromContext(ctx).Error(err, "failed to load promotionplan for promotionrun notification policy", "promotionplan", promotionplanRef.PromotionPlan)
+		var promotionplan kaprov1alpha2.Plan
+		if err := r.Get(ctx, client.ObjectKey{Name: promotionplanRef.Plan}, &promotionplan); err != nil {
+			log.FromContext(ctx).Error(err, "failed to load promotionplan for promotionrun notification policy", "promotionplan", promotionplanRef.Plan)
 			continue
 		}
 		for _, stage := range promotionplan.Spec.Stages {
@@ -67,14 +67,14 @@ func (r *PromotionRunReconciler) notificationPolicyForPromotionRun(ctx context.C
 	return mergeNotificationPolicies(policies...)
 }
 
-func (r *PromotionRunReconciler) notificationPolicyForStage(ctx context.Context, promotionrun *kaprov1alpha1.PromotionRun, promotionplanRefName, stageName string) notification.NotificationPolicy {
+func (r *PromotionRunReconciler) notificationPolicyForStage(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, promotionplanRefName, stageName string) notification.NotificationPolicy {
 	for _, promotionplanRef := range promotionrun.Spec.PromotionPlans {
 		if promotionplanRef.Name != promotionplanRefName {
 			continue
 		}
-		var promotionplan kaprov1alpha1.PromotionPlan
-		if err := r.Get(ctx, client.ObjectKey{Name: promotionplanRef.PromotionPlan}, &promotionplan); err != nil {
-			log.FromContext(ctx).Error(err, "failed to load promotionplan for stage notification policy", "promotionplan", promotionplanRef.PromotionPlan)
+		var promotionplan kaprov1alpha2.Plan
+		if err := r.Get(ctx, client.ObjectKey{Name: promotionplanRef.Plan}, &promotionplan); err != nil {
+			log.FromContext(ctx).Error(err, "failed to load promotionplan for stage notification policy", "promotionplan", promotionplanRef.Plan)
 			return notification.EmptyPolicy
 		}
 		for _, stage := range promotionplan.Spec.Stages {

@@ -15,7 +15,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 func TestContainsString(t *testing.T) {
@@ -122,26 +122,26 @@ func TestBootstrapStatusEqual(t *testing.T) {
 
 	cases := []struct {
 		name string
-		a, b *kaprov1alpha1.FleetClusterBootstrapStatus
+		a, b *kaprov1alpha2.FleetClusterBootstrapStatus
 		want bool
 	}{
 		{"both nil", nil, nil, true},
-		{"one nil", nil, &kaprov1alpha1.FleetClusterBootstrapStatus{}, false},
-		{"empty match", &kaprov1alpha1.FleetClusterBootstrapStatus{}, &kaprov1alpha1.FleetClusterBootstrapStatus{}, true},
+		{"one nil", nil, &kaprov1alpha2.FleetClusterBootstrapStatus{}, false},
+		{"empty match", &kaprov1alpha2.FleetClusterBootstrapStatus{}, &kaprov1alpha2.FleetClusterBootstrapStatus{}, true},
 		{
 			"used diff",
-			&kaprov1alpha1.FleetClusterBootstrapStatus{Used: true},
-			&kaprov1alpha1.FleetClusterBootstrapStatus{Used: false},
+			&kaprov1alpha2.FleetClusterBootstrapStatus{Used: true},
+			&kaprov1alpha2.FleetClusterBootstrapStatus{Used: false},
 			false,
 		},
 		{
 			"deeply equal (no UsedAt)",
-			&kaprov1alpha1.FleetClusterBootstrapStatus{
+			&kaprov1alpha2.FleetClusterBootstrapStatus{
 				Used:                true,
 				IssuedCredentialFor: "de-prod-01",
 				BoundCSRName:        "csr-abc",
 			},
-			&kaprov1alpha1.FleetClusterBootstrapStatus{
+			&kaprov1alpha2.FleetClusterBootstrapStatus{
 				Used:                true,
 				IssuedCredentialFor: "de-prod-01",
 				BoundCSRName:        "csr-abc",
@@ -154,14 +154,14 @@ func TestBootstrapStatusEqual(t *testing.T) {
 			// allocations holding the same instant. The semantic-compare fix
 			// makes this case pass.
 			"semantically equal UsedAt with distinct pointer addresses",
-			&kaprov1alpha1.FleetClusterBootstrapStatus{Used: true, UsedAt: &timeA},
-			&kaprov1alpha1.FleetClusterBootstrapStatus{Used: true, UsedAt: &timeB},
+			&kaprov1alpha2.FleetClusterBootstrapStatus{Used: true, UsedAt: &timeA},
+			&kaprov1alpha2.FleetClusterBootstrapStatus{Used: true, UsedAt: &timeB},
 			true,
 		},
 		{
 			"genuinely different UsedAt",
-			&kaprov1alpha1.FleetClusterBootstrapStatus{Used: true, UsedAt: &timeA},
-			&kaprov1alpha1.FleetClusterBootstrapStatus{Used: true, UsedAt: func() *metav1.Time {
+			&kaprov1alpha2.FleetClusterBootstrapStatus{Used: true, UsedAt: &timeA},
+			&kaprov1alpha2.FleetClusterBootstrapStatus{Used: true, UsedAt: func() *metav1.Time {
 				t := metav1.NewTime(instant.Add(time.Hour))
 				return &t
 			}()},
@@ -169,8 +169,8 @@ func TestBootstrapStatusEqual(t *testing.T) {
 		},
 		{
 			"one UsedAt nil, the other set",
-			&kaprov1alpha1.FleetClusterBootstrapStatus{Used: true, UsedAt: nil},
-			&kaprov1alpha1.FleetClusterBootstrapStatus{Used: true, UsedAt: &timeA},
+			&kaprov1alpha2.FleetClusterBootstrapStatus{Used: true, UsedAt: nil},
+			&kaprov1alpha2.FleetClusterBootstrapStatus{Used: true, UsedAt: &timeA},
 			false,
 		},
 	}
@@ -378,27 +378,27 @@ func TestIsKaproCSR(t *testing.T) {
 func TestShouldProvision(t *testing.T) {
 	cases := []struct {
 		name string
-		fc   *kaprov1alpha1.FleetCluster
+		fc   *kaprov1alpha2.Cluster
 		want bool
 	}{
 		{
 			name: "no bootstrap spec",
-			fc:   &kaprov1alpha1.FleetCluster{},
+			fc:   &kaprov1alpha2.Cluster{},
 			want: false,
 		},
 		{
 			name: "no status yet",
-			fc: &kaprov1alpha1.FleetCluster{
-				Spec: kaprov1alpha1.FleetClusterSpec{Bootstrap: &kaprov1alpha1.FleetClusterBootstrapSpec{}},
+			fc: &kaprov1alpha2.Cluster{
+				Spec: kaprov1alpha2.ClusterSpec{Bootstrap: &kaprov1alpha2.FleetClusterBootstrapSpec{}},
 			},
 			want: true,
 		},
 		{
 			name: "already used",
-			fc: &kaprov1alpha1.FleetCluster{
-				Spec: kaprov1alpha1.FleetClusterSpec{Bootstrap: &kaprov1alpha1.FleetClusterBootstrapSpec{}},
-				Status: kaprov1alpha1.FleetClusterStatus{
-					Bootstrap: &kaprov1alpha1.FleetClusterBootstrapStatus{Used: true},
+			fc: &kaprov1alpha2.Cluster{
+				Spec: kaprov1alpha2.ClusterSpec{Bootstrap: &kaprov1alpha2.FleetClusterBootstrapSpec{}},
+				Status: kaprov1alpha2.ClusterStatus{
+					Bootstrap: &kaprov1alpha2.FleetClusterBootstrapStatus{Used: true},
 				},
 			},
 			want: false,
@@ -425,11 +425,11 @@ func TestShouldProvision(t *testing.T) {
 // being significantly longer than the TokenRequest TTL.
 func TestShouldProvision_SecretBased(t *testing.T) {
 	secretName := "kapro-bootstrap-kubeconfig-de-prod-01"
-	fc := &kaprov1alpha1.FleetCluster{
+	fc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "de-prod-01"},
-		Spec:       kaprov1alpha1.FleetClusterSpec{Bootstrap: &kaprov1alpha1.FleetClusterBootstrapSpec{}},
-		Status: kaprov1alpha1.FleetClusterStatus{
-			Bootstrap: &kaprov1alpha1.FleetClusterBootstrapStatus{
+		Spec:       kaprov1alpha2.ClusterSpec{Bootstrap: &kaprov1alpha2.FleetClusterBootstrapSpec{}},
+		Status: kaprov1alpha2.ClusterStatus{
+			Bootstrap: &kaprov1alpha2.FleetClusterBootstrapStatus{
 				IssuedBootstrapKubeconfig: secretName,
 			},
 		},

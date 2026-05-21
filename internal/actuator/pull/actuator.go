@@ -19,7 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/pkg/actuator"
 )
 
@@ -66,7 +66,7 @@ func (a *PullActuator) ApplyDelta(ctx context.Context, req actuator.DeltaApplyRe
 		return 0, nil
 	}
 
-	var latest kaprov1alpha1.FleetCluster
+	var latest kaprov1alpha2.Cluster
 	if err := a.HubClient.Get(ctx, client.ObjectKey{Name: req.Cluster.Name}, &latest); err != nil {
 		return 0, fmt.Errorf("get FleetCluster %s: %w", req.Cluster.Name, err)
 	}
@@ -101,7 +101,7 @@ func (a *PullActuator) ApplyDelta(ctx context.Context, req actuator.DeltaApplyRe
 }
 
 // IsConverged checks the spoke-reported FleetCluster status.
-func (a *PullActuator) IsConverged(ctx context.Context, mc *kaprov1alpha1.FleetCluster, appKey, version string) (bool, error) {
+func (a *PullActuator) IsConverged(ctx context.Context, mc *kaprov1alpha2.Cluster, appKey, version string) (bool, error) {
 	if appKey == "" {
 		appKey = "default"
 	}
@@ -109,7 +109,7 @@ func (a *PullActuator) IsConverged(ctx context.Context, mc *kaprov1alpha1.FleetC
 }
 
 // IsAllConverged checks the spoke-reported version map and health summary.
-func (a *PullActuator) IsAllConverged(ctx context.Context, mc *kaprov1alpha1.FleetCluster, desiredVersions map[string]string) (bool, error) {
+func (a *PullActuator) IsAllConverged(ctx context.Context, mc *kaprov1alpha2.Cluster, desiredVersions map[string]string) (bool, error) {
 	_ = ctx
 	if mc == nil {
 		return false, fmt.Errorf("cluster is nil")
@@ -119,17 +119,17 @@ func (a *PullActuator) IsAllConverged(ctx context.Context, mc *kaprov1alpha1.Fle
 			return false, nil
 		}
 	}
-	if mc.Status.Phase == kaprov1alpha1.ClusterPhaseFailed {
+	if mc.Status.Phase == kaprov1alpha2.ClusterPhaseFailed {
 		return false, fmt.Errorf("cluster %s reported Failed phase", mc.Name)
 	}
-	if mc.Status.Phase == kaprov1alpha1.ClusterPhaseConverged {
+	if mc.Status.Phase == kaprov1alpha2.ClusterPhaseConverged {
 		return true, nil
 	}
 	return mc.Status.Health.AllWorkloadsReady, nil
 }
 
 // Rollback records the previous version as desired state.
-func (a *PullActuator) Rollback(ctx context.Context, mc *kaprov1alpha1.FleetCluster, previousVersion, appKey string) error {
+func (a *PullActuator) Rollback(ctx context.Context, mc *kaprov1alpha2.Cluster, previousVersion, appKey string) error {
 	return a.Apply(ctx, actuator.ApplyRequest{
 		Cluster: mc,
 		Version: previousVersion,

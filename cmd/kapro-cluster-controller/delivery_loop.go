@@ -12,7 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/pkg/spokeprovider"
 )
 
@@ -83,7 +83,7 @@ func (l *deliveryLoop) tick(ctx context.Context) error {
 		return err
 	}
 
-	fc := &kaprov1alpha1.FleetCluster{}
+	fc := &kaprov1alpha2.Cluster{}
 	if err := hub.Get(tctx, client.ObjectKey{Name: l.ClusterName}, fc); err != nil {
 		return fmt.Errorf("get FleetCluster %q: %w", l.ClusterName, err)
 	}
@@ -121,19 +121,19 @@ func (l *deliveryLoop) tick(ctx context.Context) error {
 // an error to the caller.
 func (l *deliveryLoop) reconcileOne(
 	ctx context.Context,
-	fc *kaprov1alpha1.FleetCluster,
-	profile *kaprov1alpha1.BackendProfile,
+	fc *kaprov1alpha2.Cluster,
+	profile *kaprov1alpha2.Backend,
 	profErr error,
 	appKey, version string,
 ) spokeprovider.ReconcileResult {
 	out := spokeprovider.ReconcileResult{LastAttemptedAt: l.now()}
 	if profErr != nil {
-		out.Phase = kaprov1alpha1.DeliveryPhaseFailed
+		out.Phase = kaprov1alpha2.DeliveryPhaseFailed
 		out.Err = profErr
 		return out
 	}
 	if profile == nil {
-		out.Phase = kaprov1alpha1.DeliveryPhaseFailed
+		out.Phase = kaprov1alpha2.DeliveryPhaseFailed
 		out.Err = fmt.Errorf("BackendProfile %q not found", fc.Spec.Delivery.BackendRef)
 		return out
 	}
@@ -141,19 +141,19 @@ func (l *deliveryLoop) reconcileOne(
 	// actuator owns delivery (it patches backend-native objects on the
 	// hub, e.g. Flux OCIRepository.tag) and the spoke MUST stay out of the
 	// way. Surface Skipped so SREs see why the spoke didn't act.
-	if profile.Spec.Runtime == kaprov1alpha1.BackendRuntimeHub {
-		out.Phase = kaprov1alpha1.DeliveryPhaseSkipped
+	if profile.Spec.Runtime == kaprov1alpha2.BackendRuntimeHub {
+		out.Phase = kaprov1alpha2.DeliveryPhaseSkipped
 		out.Err = fmt.Errorf("BackendProfile %q runtime is Hub; spoke delivery is a no-op", profile.Name)
 		return out
 	}
 	if l.Registry == nil {
-		out.Phase = kaprov1alpha1.DeliveryPhaseFailed
+		out.Phase = kaprov1alpha2.DeliveryPhaseFailed
 		out.Err = fmt.Errorf("delivery loop has no provider registry")
 		return out
 	}
 	provider, err := l.Registry.Resolve(profile.Spec.Driver)
 	if err != nil {
-		out.Phase = kaprov1alpha1.DeliveryPhaseFailed
+		out.Phase = kaprov1alpha2.DeliveryPhaseFailed
 		out.Err = err
 		return out
 	}
@@ -178,11 +178,11 @@ func (l *deliveryLoop) reconcileOne(
 // fc.spec.delivery.backendRef. Returns a configuration error (not a wrapped
 // IsNotFound) when the ref is missing/empty so per-app status carries a
 // stable human-readable message.
-func (l *deliveryLoop) resolveBackendProfile(ctx context.Context, hub client.Client, name string) (*kaprov1alpha1.BackendProfile, error) {
+func (l *deliveryLoop) resolveBackendProfile(ctx context.Context, hub client.Client, name string) (*kaprov1alpha2.Backend, error) {
 	if name == "" {
 		return nil, fmt.Errorf("FleetCluster.spec.delivery.backendRef is empty")
 	}
-	bp := &kaprov1alpha1.BackendProfile{}
+	bp := &kaprov1alpha2.Backend{}
 	if err := hub.Get(ctx, client.ObjectKey{Name: name}, bp); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, fmt.Errorf("BackendProfile %q not found", name)
@@ -199,21 +199,21 @@ func (l *deliveryLoop) resolveBackendProfile(ctx context.Context, hub client.Cli
 func (l *deliveryLoop) writeStatus(
 	ctx context.Context,
 	hub client.Client,
-	fc *kaprov1alpha1.FleetCluster,
+	fc *kaprov1alpha2.Cluster,
 	results map[string]spokeprovider.ReconcileResult,
 	desired map[string]string,
 ) error {
 	patch := client.MergeFrom(fc.DeepCopy())
 
 	if fc.Status.Delivery == nil {
-		fc.Status.Delivery = map[string]kaprov1alpha1.FleetClusterDeliveryStatus{}
+		fc.Status.Delivery = map[string]kaprov1alpha2.FleetClusterDeliveryStatus{}
 	}
 	if fc.Status.CurrentVersions == nil {
 		fc.Status.CurrentVersions = map[string]string{}
 	}
 
 	for appKey, res := range results {
-		entry := kaprov1alpha1.FleetClusterDeliveryStatus{
+		entry := kaprov1alpha2.FleetClusterDeliveryStatus{
 			Phase:          res.Phase,
 			DesiredVersion: desired[appKey],
 			ObservedDigest: res.ObservedDigest,
@@ -233,7 +233,7 @@ func (l *deliveryLoop) writeStatus(
 		}
 		fc.Status.Delivery[appKey] = entry
 
-		if res.Phase == kaprov1alpha1.DeliveryPhaseConverged {
+		if res.Phase == kaprov1alpha2.DeliveryPhaseConverged {
 			fc.Status.CurrentVersions[appKey] = entry.DesiredVersion
 		}
 	}
@@ -253,7 +253,7 @@ func (l *deliveryLoop) writeStatus(
 func (l *deliveryLoop) writeSuspended(
 	ctx context.Context,
 	hub client.Client,
-	fc *kaprov1alpha1.FleetCluster,
+	fc *kaprov1alpha2.Cluster,
 	desired map[string]string,
 ) {
 	if len(desired) == 0 {
@@ -262,7 +262,7 @@ func (l *deliveryLoop) writeSuspended(
 	results := make(map[string]spokeprovider.ReconcileResult, len(desired))
 	for appKey := range desired {
 		results[appKey] = spokeprovider.ReconcileResult{
-			Phase:           kaprov1alpha1.DeliveryPhaseSkipped,
+			Phase:           kaprov1alpha2.DeliveryPhaseSkipped,
 			LastAttemptedAt: l.now(),
 		}
 	}
@@ -274,7 +274,7 @@ func (l *deliveryLoop) writeSuspended(
 // mergedDesiredVersions returns spec.desiredVersions augmented with the
 // legacy single-app pair (spec.desiredVersion + spec.desiredAppKey). The
 // map form wins on collision since it is the modern field.
-func mergedDesiredVersions(spec kaprov1alpha1.FleetClusterSpec) map[string]string {
+func mergedDesiredVersions(spec kaprov1alpha2.ClusterSpec) map[string]string {
 	out := make(map[string]string, len(spec.DesiredVersions)+1)
 	if spec.DesiredVersion != "" {
 		key := spec.DesiredAppKey

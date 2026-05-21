@@ -1,4 +1,4 @@
-apiVersion: kapro.io/v1alpha1
+apiVersion: kapro.io/v1alpha2
 kind: PromotionPlan
 metadata:
   name: checkout-cosign-keyless
@@ -17,8 +17,8 @@ spec:
                 issuer: https://token.actions.githubusercontent.com
                 subject: repo:example/checkout:ref:refs/heads/main
 ---
-apiVersion: kapro.io/v1alpha1
-kind: PromotionTrigger
+apiVersion: kapro.io/v1alpha2
+kind: Trigger
 metadata:
   name: checkout-oci-keyless
 spec:
@@ -31,7 +31,7 @@ spec:
       requireSignature: true
       pollInterval: 5m
   promotionTemplate:
-    kaproRef: checkout
+    fleetRef: checkout
     nameTemplate: "checkout-cosign"
     promotionPlans:
       - name: production

@@ -3,12 +3,12 @@ package admission
 import (
 	"testing"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 func TestValidateApprovalBypassComment_RequiresComment(t *testing.T) {
-	approval := &kaprov1alpha1.Approval{
-		Spec: kaprov1alpha1.ApprovalSpec{
+	approval := &kaprov1alpha2.Approval{
+		Spec: kaprov1alpha2.ApprovalSpec{
 			Bypass:  true,
 			Comment: "",
 		},

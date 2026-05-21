@@ -10,14 +10,14 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/webhook/token"
 )
 
 func webhookTestScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatalf("add scheme: %v", err)
 	}
 	return scheme
@@ -25,15 +25,15 @@ func webhookTestScheme(t *testing.T) *runtime.Scheme {
 
 func TestHandleStatus_RequiresPromotionRunInOperatorNamespace(t *testing.T) {
 	scheme := webhookTestScheme(t)
-	target := &kaprov1alpha1.PromotionTarget{
+	target := &kaprov1alpha2.Target{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-wave-prod-cluster-a"},
-		Spec: kaprov1alpha1.PromotionTargetSpec{
+		Spec: kaprov1alpha2.TargetSpec{
 			PromotionRunRef: "rel-1",
 			Target:          "cluster-a",
 			Version:         "repo@sha256:abc",
 		},
-		Status: kaprov1alpha1.PromotionTargetStatus{
-			TargetStatus: kaprov1alpha1.TargetStatus{Phase: kaprov1alpha1.TargetPhaseWaitingApproval},
+		Status: kaprov1alpha2.TargetStatus{
+			TargetStatus: kaprov1alpha2.TargetStatus{Phase: kaprov1alpha2.TargetPhaseWaitingApproval},
 		},
 	}
 	s := &Server{
@@ -54,12 +54,12 @@ func TestHandleStatus_RequiresPromotionRunInOperatorNamespace(t *testing.T) {
 
 func TestHandleReject_TargetPromotionRunMismatchRejected(t *testing.T) {
 	scheme := webhookTestScheme(t)
-	promotionrun := &kaprov1alpha1.PromotionRun{
+	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default", UID: "uid-1"},
 	}
-	target := &kaprov1alpha1.PromotionTarget{
+	target := &kaprov1alpha2.Target{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1-deadbeef"},
-		Spec: kaprov1alpha1.PromotionTargetSpec{
+		Spec: kaprov1alpha2.TargetSpec{
 			PromotionRunRef: "other-promotionrun",
 			Target:          "cluster-a",
 		},

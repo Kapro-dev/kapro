@@ -83,11 +83,11 @@ type OCIPromotionTriggerSource struct {
 // verified artifact. Mirrors PromotionSpec with the rollout-input fields the
 // trigger is allowed to set.
 type PromotionTriggerTemplate struct {
-	// KaproRef is the name of the parent Fleet fleet the managed Promotion
+	// FleetRef is the name of the parent Fleet the managed Promotion
 	// targets. Required; the PromotionController uses it to resolve the
 	// inline plan and clusters.
 	// +kubebuilder:validation:MinLength=1
-	KaproRef string `json:"fleetRef"`
+	FleetRef string `json:"fleetRef"`
 	// NameTemplate controls the managed Promotion name. Empty means the
 	// controller derives a deterministic name from the trigger name.
 	// +optional

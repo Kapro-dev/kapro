@@ -17,7 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/provider"
 )
 
@@ -27,7 +27,7 @@ const (
 
 // DiscovererFactory returns a Discoverer for a given template source. Pluggable
 // so tests can inject fakes without hitting live cloud APIs.
-type DiscovererFactory func(kaprov1alpha1.FleetClusterTemplateSource) (provider.Discoverer, error)
+type DiscovererFactory func(kaprov1alpha2.FleetClusterTemplateSource) (provider.Discoverer, error)
 
 // FleetClusterTemplateReconciler is the universal fleet auto-import reconciler.
 //
@@ -66,7 +66,7 @@ type FleetClusterTemplateReconciler struct {
 func (r *FleetClusterTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues("fleetclustertemplate", req.Name)
 
-	var tmpl kaprov1alpha1.FleetClusterTemplate
+	var tmpl kaprov1alpha2.ClusterTemplate
 	if err := r.Get(ctx, req.NamespacedName, &tmpl); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -85,13 +85,13 @@ func (r *FleetClusterTemplateReconciler) Reconcile(ctx context.Context, req ctrl
 		// Suspended is intentional pause — Ready stays False but Stalled
 		// is not set (it would falsely alert that the controller is stuck).
 		apimeta.SetStatusCondition(&tmpl.Status.Conditions, metav1.Condition{
-			Type:               kaprov1alpha1.ConditionTypeReady,
+			Type:               kaprov1alpha2.ConditionTypeReady,
 			Status:             metav1.ConditionFalse,
 			Reason:             "Suspended",
 			Message:            "reconciliation suspended by spec.suspend",
 			ObservedGeneration: tmpl.Generation,
 		})
-		apimeta.RemoveStatusCondition(&tmpl.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
+		apimeta.RemoveStatusCondition(&tmpl.Status.Conditions, kaprov1alpha2.ConditionTypeStalled)
 		if err := r.patchStatus(ctx, statusBase, &tmpl); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -186,7 +186,7 @@ func (r *FleetClusterTemplateReconciler) factory() DiscovererFactory {
 	return provider.NewDiscoverer
 }
 
-func (r *FleetClusterTemplateReconciler) intervalOrDefault(tmpl *kaprov1alpha1.FleetClusterTemplate) time.Duration {
+func (r *FleetClusterTemplateReconciler) intervalOrDefault(tmpl *kaprov1alpha2.ClusterTemplate) time.Duration {
 	if tmpl.Spec.Interval == "" {
 		return defaultFleetTemplateInterval
 	}
@@ -201,7 +201,7 @@ func (r *FleetClusterTemplateReconciler) intervalOrDefault(tmpl *kaprov1alpha1.F
 // is set on the template. Used to populate status.sourceKind even when the
 // discoverer for that branch isn't implemented yet (otherwise the printcolumn
 // would render empty for in-flight stubs).
-func sourceKindFromSpec(src kaprov1alpha1.FleetClusterTemplateSource) string {
+func sourceKindFromSpec(src kaprov1alpha2.FleetClusterTemplateSource) string {
 	switch {
 	case src.GCP != nil:
 		return "gcp"
@@ -233,16 +233,16 @@ func labelSelectorOrAll(sel *metav1.LabelSelector) (labels.Selector, error) {
 // touched.
 func (r *FleetClusterTemplateReconciler) upsertFleetCluster(
 	ctx context.Context,
-	tmpl *kaprov1alpha1.FleetClusterTemplate,
+	tmpl *kaprov1alpha2.ClusterTemplate,
 	c provider.ClusterInfo,
-	providerSpec kaprov1alpha1.FleetClusterProvider,
+	providerSpec kaprov1alpha2.FleetClusterProvider,
 	name string,
 ) error {
-	var fc kaprov1alpha1.FleetCluster
+	var fc kaprov1alpha2.Cluster
 	err := r.Get(ctx, client.ObjectKey{Name: name}, &fc)
 	switch {
 	case apierrors.IsNotFound(err):
-		fc = kaprov1alpha1.FleetCluster{
+		fc = kaprov1alpha2.Cluster{
 			ObjectMeta: metav1.ObjectMeta{Name: name},
 		}
 		r.applyManagedMetadata(tmpl, &fc, c)
@@ -263,7 +263,7 @@ func (r *FleetClusterTemplateReconciler) upsertFleetCluster(
 		return fmt.Errorf("get FleetCluster: %w", err)
 	}
 
-	if fc.Labels[kaprov1alpha1.FleetClusterTemplateManagedByLabel] != kaprov1alpha1.FleetClusterTemplateManagedByValue {
+	if fc.Labels[kaprov1alpha2.FleetClusterTemplateManagedByLabel] != kaprov1alpha2.FleetClusterTemplateManagedByValue {
 		r.eventf(tmpl, "Warning", "FleetClusterUnmanaged",
 			"FleetCluster %q exists but is not managed by a FleetClusterTemplate — skipping", name)
 		return nil
@@ -289,8 +289,8 @@ func (r *FleetClusterTemplateReconciler) upsertFleetCluster(
 //  2. Template's metadata.labels.
 //  3. The managed-by markers (always win).
 func (r *FleetClusterTemplateReconciler) applyManagedMetadata(
-	tmpl *kaprov1alpha1.FleetClusterTemplate,
-	fc *kaprov1alpha1.FleetCluster,
+	tmpl *kaprov1alpha2.ClusterTemplate,
+	fc *kaprov1alpha2.Cluster,
 	c provider.ClusterInfo,
 ) {
 	if fc.Labels == nil {
@@ -302,8 +302,8 @@ func (r *FleetClusterTemplateReconciler) applyManagedMetadata(
 	for k, v := range tmpl.Spec.Template.Metadata.Labels {
 		fc.Labels[k] = v
 	}
-	fc.Labels[kaprov1alpha1.FleetClusterTemplateManagedByLabel] = kaprov1alpha1.FleetClusterTemplateManagedByValue
-	fc.Labels[kaprov1alpha1.FleetClusterTemplateNameLabel] = tmpl.Name
+	fc.Labels[kaprov1alpha2.FleetClusterTemplateManagedByLabel] = kaprov1alpha2.FleetClusterTemplateManagedByValue
+	fc.Labels[kaprov1alpha2.FleetClusterTemplateNameLabel] = tmpl.Name
 
 	if len(tmpl.Spec.Template.Metadata.Annotations) > 0 {
 		if fc.Annotations == nil {
@@ -319,13 +319,13 @@ func (r *FleetClusterTemplateReconciler) applyManagedMetadata(
 // has disappeared from the source. Only fires when spec.prune=true.
 func (r *FleetClusterTemplateReconciler) pruneOrphans(
 	ctx context.Context,
-	tmpl *kaprov1alpha1.FleetClusterTemplate,
+	tmpl *kaprov1alpha2.ClusterTemplate,
 	kept map[string]struct{},
 ) error {
-	var owned kaprov1alpha1.FleetClusterList
+	var owned kaprov1alpha2.ClusterList
 	if err := r.List(ctx, &owned, client.MatchingLabels{
-		kaprov1alpha1.FleetClusterTemplateManagedByLabel: kaprov1alpha1.FleetClusterTemplateManagedByValue,
-		kaprov1alpha1.FleetClusterTemplateNameLabel:      tmpl.Name,
+		kaprov1alpha2.FleetClusterTemplateManagedByLabel: kaprov1alpha2.FleetClusterTemplateManagedByValue,
+		kaprov1alpha2.FleetClusterTemplateNameLabel:      tmpl.Name,
 	}); err != nil {
 		return fmt.Errorf("list owned FleetClusters: %w", err)
 	}
@@ -361,20 +361,20 @@ func sanitiseClusterName(name string) string {
 // is also Stalled (cannot progress without operator action — invalid source,
 // not-yet-implemented branch, label-selector parse error, etc.). When
 // Ready=True the Stalled condition is removed.
-func (r *FleetClusterTemplateReconciler) setReady(tmpl *kaprov1alpha1.FleetClusterTemplate, status metav1.ConditionStatus, reason, message string) {
+func (r *FleetClusterTemplateReconciler) setReady(tmpl *kaprov1alpha2.ClusterTemplate, status metav1.ConditionStatus, reason, message string) {
 	apimeta.SetStatusCondition(&tmpl.Status.Conditions, metav1.Condition{
-		Type:               kaprov1alpha1.ConditionTypeReady,
+		Type:               kaprov1alpha2.ConditionTypeReady,
 		Status:             status,
 		Reason:             reason,
 		Message:            message,
 		ObservedGeneration: tmpl.Generation,
 	})
 	if status == metav1.ConditionTrue {
-		apimeta.RemoveStatusCondition(&tmpl.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
+		apimeta.RemoveStatusCondition(&tmpl.Status.Conditions, kaprov1alpha2.ConditionTypeStalled)
 		return
 	}
 	apimeta.SetStatusCondition(&tmpl.Status.Conditions, metav1.Condition{
-		Type:               kaprov1alpha1.ConditionTypeStalled,
+		Type:               kaprov1alpha2.ConditionTypeStalled,
 		Status:             metav1.ConditionTrue,
 		Reason:             reason,
 		Message:            message,
@@ -386,7 +386,7 @@ func (r *FleetClusterTemplateReconciler) setReady(tmpl *kaprov1alpha1.FleetClust
 // base+mutated pair. Using MergeFrom+Patch (rather than Status().Update) is
 // the convention in the codebase (see BackendProfileReconciler) — it's
 // less conflict-prone and only the diff is transmitted.
-func (r *FleetClusterTemplateReconciler) patchStatus(ctx context.Context, base, tmpl *kaprov1alpha1.FleetClusterTemplate) error {
+func (r *FleetClusterTemplateReconciler) patchStatus(ctx context.Context, base, tmpl *kaprov1alpha2.ClusterTemplate) error {
 	tmpl.Status.ObservedGeneration = tmpl.Generation
 	if err := r.Status().Patch(ctx, tmpl, client.MergeFrom(base)); err != nil {
 		return fmt.Errorf("patch FleetClusterTemplate status: %w", err)
@@ -394,7 +394,7 @@ func (r *FleetClusterTemplateReconciler) patchStatus(ctx context.Context, base, 
 	return nil
 }
 
-func (r *FleetClusterTemplateReconciler) eventf(tmpl *kaprov1alpha1.FleetClusterTemplate, eventType, reason, format string, args ...any) {
+func (r *FleetClusterTemplateReconciler) eventf(tmpl *kaprov1alpha2.ClusterTemplate, eventType, reason, format string, args ...any) {
 	if r.Recorder == nil {
 		return
 	}
@@ -403,7 +403,7 @@ func (r *FleetClusterTemplateReconciler) eventf(tmpl *kaprov1alpha1.FleetCluster
 
 func (r *FleetClusterTemplateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kaprov1alpha1.FleetClusterTemplate{}).
-		Owns(&kaprov1alpha1.FleetCluster{}).
+		For(&kaprov1alpha2.ClusterTemplate{}).
+		Owns(&kaprov1alpha2.Cluster{}).
 		Complete(r)
 }

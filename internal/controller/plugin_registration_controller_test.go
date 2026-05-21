@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	kaprometrics "kapro.io/kapro/internal/metrics"
 	"kapro.io/kapro/internal/plugin/probe"
 
@@ -21,19 +21,19 @@ import (
 
 func TestPluginRegistrationReconcilerSetsReadyStatus(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	reg := &kaprov1alpha1.PluginRegistration{
+	reg := &kaprov1alpha2.Plugin{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-plugin"},
-		Spec: kaprov1alpha1.PluginRegistrationSpec{
-			Type:     kaprov1alpha1.PluginTypeActuator,
+		Spec: kaprov1alpha2.PluginSpec{
+			Type:     kaprov1alpha2.PluginTypeActuator,
 			Name:     "test",
-			Protocol: kaprov1alpha1.PluginProtocolGRPC,
+			Protocol: kaprov1alpha2.PluginProtocolGRPC,
 			Endpoint: "bufnet",
 		},
 	}
-	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(reg).WithStatusSubresource(&kaprov1alpha1.PluginRegistration{}).Build()
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(reg).WithStatusSubresource(&kaprov1alpha2.Plugin{}).Build()
 	r := &PluginRegistrationReconciler{
 		Client:   c,
 		Recorder: record.NewFakeRecorder(8),
@@ -51,7 +51,7 @@ func TestPluginRegistrationReconcilerSetsReadyStatus(t *testing.T) {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	var got kaprov1alpha1.PluginRegistration
+	var got kaprov1alpha2.Plugin
 	if err := c.Get(context.Background(), objectKey(reg.Name), &got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestPluginRegistrationReconcilerSetsReadyStatus(t *testing.T) {
 	if ready == nil || ready.Status != metav1.ConditionTrue {
 		t.Fatalf("Ready condition = %#v", ready)
 	}
-	compatible := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha1.ConditionTypeCompatible)
+	compatible := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha2.ConditionTypeCompatible)
 	if compatible == nil || compatible.Status != metav1.ConditionTrue {
 		t.Fatalf("Compatible condition = %#v", compatible)
 	}
@@ -82,19 +82,19 @@ func TestPluginRegistrationReconcilerSetsReadyStatus(t *testing.T) {
 
 func TestPluginRegistrationReconcilerSetsStalledStatus(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	reg := &kaprov1alpha1.PluginRegistration{
+	reg := &kaprov1alpha2.Plugin{
 		ObjectMeta: metav1.ObjectMeta{Name: "bad-plugin"},
-		Spec: kaprov1alpha1.PluginRegistrationSpec{
-			Type:     kaprov1alpha1.PluginTypeGate,
+		Spec: kaprov1alpha2.PluginSpec{
+			Type:     kaprov1alpha2.PluginTypeGate,
 			Name:     "bad",
-			Protocol: kaprov1alpha1.PluginProtocolGRPC,
+			Protocol: kaprov1alpha2.PluginProtocolGRPC,
 			Endpoint: "bufnet",
 		},
 	}
-	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(reg).WithStatusSubresource(&kaprov1alpha1.PluginRegistration{}).Build()
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(reg).WithStatusSubresource(&kaprov1alpha2.Plugin{}).Build()
 	r := &PluginRegistrationReconciler{
 		Client:   c,
 		Recorder: record.NewFakeRecorder(8),
@@ -109,7 +109,7 @@ func TestPluginRegistrationReconcilerSetsStalledStatus(t *testing.T) {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	var got kaprov1alpha1.PluginRegistration
+	var got kaprov1alpha2.Plugin
 	if err := c.Get(context.Background(), objectKey(reg.Name), &got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -120,11 +120,11 @@ func TestPluginRegistrationReconcilerSetsStalledStatus(t *testing.T) {
 	if ready == nil || ready.Status != metav1.ConditionFalse || ready.Reason != "DialFailed" {
 		t.Fatalf("Ready condition = %#v", ready)
 	}
-	stalled := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
+	stalled := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha2.ConditionTypeStalled)
 	if stalled == nil || stalled.Status != metav1.ConditionTrue {
 		t.Fatalf("Stalled condition = %#v", stalled)
 	}
-	compatible := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha1.ConditionTypeCompatible)
+	compatible := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha2.ConditionTypeCompatible)
 	if compatible == nil || compatible.Status != metav1.ConditionUnknown {
 		t.Fatalf("Compatible condition = %#v", compatible)
 	}
@@ -132,19 +132,19 @@ func TestPluginRegistrationReconcilerSetsStalledStatus(t *testing.T) {
 
 func TestPluginRegistrationReconcilerSetsIncompatibleStatus(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	reg := &kaprov1alpha1.PluginRegistration{
+	reg := &kaprov1alpha2.Plugin{
 		ObjectMeta: metav1.ObjectMeta{Name: "newer-plugin"},
-		Spec: kaprov1alpha1.PluginRegistrationSpec{
-			Type:     kaprov1alpha1.PluginTypeGate,
+		Spec: kaprov1alpha2.PluginSpec{
+			Type:     kaprov1alpha2.PluginTypeGate,
 			Name:     "newer",
-			Protocol: kaprov1alpha1.PluginProtocolGRPC,
+			Protocol: kaprov1alpha2.PluginProtocolGRPC,
 			Endpoint: "bufnet",
 		},
 	}
-	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(reg).WithStatusSubresource(&kaprov1alpha1.PluginRegistration{}).Build()
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(reg).WithStatusSubresource(&kaprov1alpha2.Plugin{}).Build()
 	r := &PluginRegistrationReconciler{
 		Client:   c,
 		Recorder: record.NewFakeRecorder(8),
@@ -160,7 +160,7 @@ func TestPluginRegistrationReconcilerSetsIncompatibleStatus(t *testing.T) {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	var got kaprov1alpha1.PluginRegistration
+	var got kaprov1alpha2.Plugin
 	if err := c.Get(context.Background(), objectKey(reg.Name), &got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestPluginRegistrationReconcilerSetsIncompatibleStatus(t *testing.T) {
 	if ready == nil || ready.Status != metav1.ConditionFalse || ready.Reason != "UnsupportedContractVersion" {
 		t.Fatalf("Ready condition = %#v", ready)
 	}
-	compatible := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha1.ConditionTypeCompatible)
+	compatible := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha2.ConditionTypeCompatible)
 	if compatible == nil || compatible.Status != metav1.ConditionFalse || compatible.Reason != "UnsupportedContractVersion" {
 		t.Fatalf("Compatible condition = %#v", compatible)
 	}
@@ -182,22 +182,22 @@ func TestPluginRegistrationReconcilerSetsIncompatibleStatus(t *testing.T) {
 
 func TestPluginRegistrationReconcilerDeletesReadinessMetricOnDelete(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	reg := &kaprov1alpha1.PluginRegistration{
+	reg := &kaprov1alpha2.Plugin{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       "slo-gate",
 			Finalizers: []string{pluginRegistrationMetricsFinalizer},
 		},
-		Spec: kaprov1alpha1.PluginRegistrationSpec{
-			Type:     kaprov1alpha1.PluginTypeGate,
+		Spec: kaprov1alpha2.PluginSpec{
+			Type:     kaprov1alpha2.PluginTypeGate,
 			Name:     "slo/gate",
-			Protocol: kaprov1alpha1.PluginProtocolGRPC,
+			Protocol: kaprov1alpha2.PluginProtocolGRPC,
 			Endpoint: "bufnet",
 		},
 	}
-	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(reg).WithStatusSubresource(&kaprov1alpha1.PluginRegistration{}).Build()
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(reg).WithStatusSubresource(&kaprov1alpha2.Plugin{}).Build()
 	r := &PluginRegistrationReconciler{Client: c, Recorder: record.NewFakeRecorder(8)}
 
 	readiness := kaprometrics.PluginProbeReady.WithLabelValues("gate", "slo/gate")
@@ -217,7 +217,7 @@ type fakePluginProber struct {
 	result probe.Result
 }
 
-func (f fakePluginProber) Probe(context.Context, kaprov1alpha1.PluginRegistration) probe.Result {
+func (f fakePluginProber) Probe(context.Context, kaprov1alpha2.Plugin) probe.Result {
 	return f.result
 }
 

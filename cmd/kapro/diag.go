@@ -13,7 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/cli"
 )
 
@@ -26,9 +26,9 @@ import (
 // are the stable contract; the embedded types track their own
 // versioning policy (api/v1alpha1 stability via ADRs).
 type promotionDiag struct {
-	Promotion *kaprov1alpha1.Promotion        `json:"promotion"`
-	Runs      []kaprov1alpha1.PromotionRun    `json:"promotionRuns"`
-	Targets   []kaprov1alpha1.PromotionTarget `json:"promotionTargets"`
+	Promotion *kaprov1alpha2.Promotion        `json:"promotion"`
+	Runs      []kaprov1alpha2.PromotionRun    `json:"promotionRuns"`
+	Targets   []kaprov1alpha2.Target `json:"promotionTargets"`
 	Events    []corev1.Event                  `json:"events"`
 	BlockedOn []string                        `json:"blockedOn,omitempty"`
 	Next      []string                        `json:"suggestedNextActions,omitempty"`
@@ -86,7 +86,7 @@ func runDiagWithClient(ctx context.Context, c client.Client, name string, events
 }
 
 func collectDiag(ctx context.Context, c client.Client, name string, eventsLimit int) (*promotionDiag, error) {
-	var promo kaprov1alpha1.Promotion
+	var promo kaprov1alpha2.Promotion
 	if err := c.Get(ctx, client.ObjectKey{Name: name}, &promo); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, fmt.Errorf("promotion %q not found", name)
@@ -94,7 +94,7 @@ func collectDiag(ctx context.Context, c client.Client, name string, eventsLimit 
 		return nil, fmt.Errorf("get promotion: %w", err)
 	}
 
-	var runs kaprov1alpha1.PromotionRunList
+	var runs kaprov1alpha2.PromotionRunList
 	if err := c.List(ctx, &runs, client.MatchingLabels{"kapro.io/promotion": name}); err != nil {
 		return nil, fmt.Errorf("list promotionruns: %w", err)
 	}
@@ -117,7 +117,7 @@ func collectDiag(ctx context.Context, c client.Client, name string, eventsLimit 
 		// scoped run list produced.
 		relevantRunName = runs.Items[0].Name
 	}
-	var targets []kaprov1alpha1.PromotionTarget
+	var targets []kaprov1alpha2.Target
 	if relevantRunName != "" {
 		t, err := listPromotionTargetsForPromotionRun(ctx, c, relevantRunName)
 		if err != nil {
@@ -161,8 +161,8 @@ func collectDiag(ctx context.Context, c client.Client, name string, eventsLimit 
 // Each list is best-effort: failures are accumulated into a single
 // warning log but never block the rest of diag — events are
 // context, not load-bearing for the rollout state diagnosis.
-func collectScopedEvents(ctx context.Context, c client.Client, p *kaprov1alpha1.Promotion,
-	runs []kaprov1alpha1.PromotionRun, targets []kaprov1alpha1.PromotionTarget) []corev1.Event {
+func collectScopedEvents(ctx context.Context, c client.Client, p *kaprov1alpha2.Promotion,
+	runs []kaprov1alpha2.PromotionRun, targets []kaprov1alpha2.Target) []corev1.Event {
 
 	names := []string{p.Name}
 	for _, r := range runs {
@@ -196,8 +196,8 @@ func collectScopedEvents(ctx context.Context, c client.Client, p *kaprov1alpha1.
 // (notably the controller-runtime fake client without a registered
 // index). It is intentionally only reachable from collectScopedEvents
 // — production clients use the scoped path.
-func fallbackUnscopedEvents(ctx context.Context, c client.Client, p *kaprov1alpha1.Promotion,
-	runs []kaprov1alpha1.PromotionRun, targets []kaprov1alpha1.PromotionTarget) []corev1.Event {
+func fallbackUnscopedEvents(ctx context.Context, c client.Client, p *kaprov1alpha2.Promotion,
+	runs []kaprov1alpha2.PromotionRun, targets []kaprov1alpha2.Target) []corev1.Event {
 	var list corev1.EventList
 	if err := c.List(ctx, &list); err != nil {
 		return nil
@@ -205,8 +205,8 @@ func fallbackUnscopedEvents(ctx context.Context, c client.Client, p *kaprov1alph
 	return filterPromotionEvents(list.Items, p, runs, targets)
 }
 
-func filterPromotionEvents(all []corev1.Event, p *kaprov1alpha1.Promotion,
-	runs []kaprov1alpha1.PromotionRun, targets []kaprov1alpha1.PromotionTarget) []corev1.Event {
+func filterPromotionEvents(all []corev1.Event, p *kaprov1alpha2.Promotion,
+	runs []kaprov1alpha2.PromotionRun, targets []kaprov1alpha2.Target) []corev1.Event {
 
 	wanted := map[string]bool{}
 	add := func(kind, name string) {
@@ -241,17 +241,17 @@ func eventTime(e corev1.Event) time.Time {
 	return e.CreationTimestamp.Time
 }
 
-func computeBlockedOn(p *kaprov1alpha1.Promotion, targets []kaprov1alpha1.PromotionTarget) []string {
+func computeBlockedOn(p *kaprov1alpha2.Promotion, targets []kaprov1alpha2.Target) []string {
 	var blocked []string
 	if p.Spec.Suspended {
 		blocked = append(blocked, "Promotion is suspended (spec.suspended=true)")
 	}
 	for _, t := range targets {
 		switch t.Status.Phase {
-		case kaprov1alpha1.TargetPhaseWaitingApproval:
+		case kaprov1alpha2.TargetPhaseWaitingApproval:
 			blocked = append(blocked, fmt.Sprintf("Target %q waiting for approval (stage=%s)",
 				t.Spec.Target, t.Spec.Stage))
-		case kaprov1alpha1.TargetPhaseFailed:
+		case kaprov1alpha2.TargetPhaseFailed:
 			msg := t.Status.Message
 			if msg == "" {
 				msg = "no message"
@@ -263,18 +263,18 @@ func computeBlockedOn(p *kaprov1alpha1.Promotion, targets []kaprov1alpha1.Promot
 	return blocked
 }
 
-func computeNextActions(p *kaprov1alpha1.Promotion, targets []kaprov1alpha1.PromotionTarget) []string {
+func computeNextActions(p *kaprov1alpha2.Promotion, targets []kaprov1alpha2.Target) []string {
 	var next []string
 	active := p.Status.ActiveAttemptRef
 	for _, t := range targets {
-		if t.Status.Phase == kaprov1alpha1.TargetPhaseWaitingApproval && active != nil {
+		if t.Status.Phase == kaprov1alpha2.TargetPhaseWaitingApproval && active != nil {
 			next = append(next, fmt.Sprintf("kapro approve %s/%s", active.Name, t.Spec.Target))
 		}
 	}
 	if p.Spec.Suspended {
 		next = append(next, fmt.Sprintf("kubectl patch promotion %s --type=merge -p '{\"spec\":{\"suspended\":false}}'", p.Name))
 	}
-	if p.Status.Phase == kaprov1alpha1.PromotionPhaseFailed {
+	if p.Status.Phase == kaprov1alpha2.PromotionPhaseFailed {
 		next = append(next, fmt.Sprintf("kubectl describe promotion %s   # inspect failure conditions", p.Name))
 		// Only suggest a rollback command when we have a concrete
 		// PromotionRun name to roll back. Emitting "kapro rollback
@@ -289,7 +289,7 @@ func computeNextActions(p *kaprov1alpha1.Promotion, targets []kaprov1alpha1.Prom
 
 // attemptName returns the most recent concrete PromotionRun name for
 // this Promotion, or "" if no attempt has been stamped yet.
-func attemptName(p *kaprov1alpha1.Promotion) string {
+func attemptName(p *kaprov1alpha2.Promotion) string {
 	if p.Status.ActiveAttemptRef != nil {
 		return p.Status.ActiveAttemptRef.Name
 	}
@@ -303,7 +303,7 @@ func renderDiag(d *promotionDiag) {
 	p := d.Promotion
 	cli.Header(fmt.Sprintf("promotion/%s", p.Name))
 
-	cli.KV("Kapro", p.Spec.KaproRef)
+	cli.KV("Kapro", p.Spec.FleetRef)
 	if p.Spec.Version != "" {
 		cli.KV("Version", p.Spec.Version)
 	}
@@ -343,7 +343,7 @@ func renderConditions(conds []metav1.Condition) {
 	tbl.Render()
 }
 
-func renderAttempts(attempts []kaprov1alpha1.PromotionAttemptRef) {
+func renderAttempts(attempts []kaprov1alpha2.PromotionAttemptRef) {
 	if len(attempts) == 0 {
 		return
 	}
@@ -364,7 +364,7 @@ func renderAttempts(attempts []kaprov1alpha1.PromotionAttemptRef) {
 	tbl.Render()
 }
 
-func renderTargets(targets []kaprov1alpha1.PromotionTarget) {
+func renderTargets(targets []kaprov1alpha2.Target) {
 	if len(targets) == 0 {
 		return
 	}
@@ -378,7 +378,7 @@ func renderTargets(targets []kaprov1alpha1.PromotionTarget) {
 	tbl := cli.NewTable("TARGET", "STAGE", "PLAN", "PHASE", "VERSION", "AGE")
 	for _, t := range targets {
 		tbl.AddRow(
-			t.Spec.Target, t.Spec.Stage, t.Spec.PromotionPlan,
+			t.Spec.Target, t.Spec.Stage, t.Spec.Plan,
 			string(t.Status.Phase), truncate(t.Spec.Version, 22),
 			cli.Age(t.CreationTimestamp.Time),
 		)
@@ -419,19 +419,19 @@ func renderNext(items []string) {
 	}
 }
 
-func styledPromotionPhase(phase kaprov1alpha1.PromotionPhase) string {
+func styledPromotionPhase(phase kaprov1alpha2.PromotionPhase) string {
 	s := string(phase)
 	switch phase {
-	case kaprov1alpha1.PromotionPhaseSucceeded:
+	case kaprov1alpha2.PromotionPhaseSucceeded:
 		return cli.Theme.PhaseComplete.Render(s)
-	case kaprov1alpha1.PromotionPhaseProgressing, kaprov1alpha1.PromotionPhaseRestarting:
+	case kaprov1alpha2.PromotionPhaseProgressing, kaprov1alpha2.PromotionPhaseRestarting:
 		return cli.Theme.PhaseProgressing.Render(s)
-	case kaprov1alpha1.PromotionPhaseFailed:
+	case kaprov1alpha2.PromotionPhaseFailed:
 		return cli.Theme.PhaseFailed.Render(s)
-	case kaprov1alpha1.PromotionPhasePaused:
+	case kaprov1alpha2.PromotionPhasePaused:
 		return cli.Theme.PhaseWaiting.Render(s)
-	case kaprov1alpha1.PromotionPhasePending, kaprov1alpha1.PromotionPhaseTerminating,
-		kaprov1alpha1.PromotionPhaseRollingBack:
+	case kaprov1alpha2.PromotionPhasePending, kaprov1alpha2.PromotionPhaseTerminating,
+		kaprov1alpha2.PromotionPhaseRollingBack:
 		return cli.Theme.PhasePending.Render(s)
 	}
 	if s == "" {

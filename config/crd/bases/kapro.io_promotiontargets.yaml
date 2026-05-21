@@ -25,7 +25,7 @@ spec:
     - jsonPath: .spec.target
       name: Target
       type: string
-    - jsonPath: .spec.promotionPlanRef
+    - jsonPath: .spec.planRef
       name: PromotionPlan
       type: string
     - jsonPath: .spec.stage
@@ -686,7 +686,7 @@ spec:
                 description: PromotionPlan is the PromotionPlan CRD name this entry
                   belongs to.
                 type: string
-              promotionPlanRef:
+              planRef:
                 description: PromotionPlanRef is the logical promotionplan reference
                   name from PromotionRun.spec.promotionPlans[i].name.
                 type: string
@@ -2109,7 +2109,7 @@ spec:
                 description: PromotionPlan is the PromotionPlan CRD name this entry
                   belongs to.
                 type: string
-              promotionPlanRef:
+              planRef:
                 description: |-
                   PromotionPlanRef is the logical promotionplan reference name from PromotionRun.spec.promotionPlans[i].name.
                   Used to disambiguate when the same PromotionPlan CRD is referenced multiple times.

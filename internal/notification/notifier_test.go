@@ -149,7 +149,7 @@ func TestDispatcher_Notify_Webhook_SendsCloudEvents(t *testing.T) {
 		Version:       "v1.0.0",
 		Target:        "prod",
 		PromotionRun:  "rel-2",
-		PromotionPlan: "main",
+		Plan: "main",
 		Stage:         "canary",
 	}, webhookCloudEventsPolicy(srv.URL))
 

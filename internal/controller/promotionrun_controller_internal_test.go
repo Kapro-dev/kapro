@@ -12,7 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/pkg/notification"
 	"kapro.io/kapro/pkg/planner"
 )
@@ -25,30 +25,30 @@ func TestStageDependencySatisfied_AnyUnlocksFromOneConvergedTarget(t *testing.T)
 			fleetClusterForStage("cluster-b", "canary"),
 		).Build(),
 	}
-	promotionrun := &kaprov1alpha1.PromotionRun{
-		Status: kaprov1alpha1.PromotionRunStatus{
-			Targets: []kaprov1alpha1.TargetStatus{
+	promotionrun := &kaprov1alpha2.PromotionRun{
+		Status: kaprov1alpha2.PromotionRunStatus{
+			Targets: []kaprov1alpha2.TargetStatus{
 				{
 					Target:           "cluster-a",
 					PromotionPlanRef: "main",
 					Stage:            "canary",
-					Phase:            kaprov1alpha1.TargetPhaseConverged,
+					Phase:            kaprov1alpha2.TargetPhaseConverged,
 					FinishedAt:       time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339),
 				},
 				{
 					Target:           "cluster-b",
 					PromotionPlanRef: "main",
 					Stage:            "canary",
-					Phase:            kaprov1alpha1.TargetPhaseHealthCheck,
+					Phase:            kaprov1alpha2.TargetPhaseHealthCheck,
 				},
 			},
 		},
 	}
 	promotionplan := promotionplanWithCanaryStage()
 
-	satisfied, wait, err := r.stageDependencySatisfied(context.Background(), promotionrun, "main", promotionplan, kaprov1alpha1.StageDependency{
+	satisfied, wait, err := r.stageDependencySatisfied(context.Background(), promotionrun, "main", promotionplan, kaprov1alpha2.StageDependency{
 		Stage:            "canary",
-		Strategy:         kaprov1alpha1.StageDependencyAny,
+		Strategy:         kaprov1alpha2.StageDependencyAny,
 		RequiredSoakTime: &metav1.Duration{Duration: time.Hour},
 	})
 	if err != nil {
@@ -63,8 +63,8 @@ func TestStageDependencySatisfied_AnyUnlocksFromOneConvergedTarget(t *testing.T)
 }
 
 func TestPromotionRunDesiredVersions_ExplicitDefaultOverridesSpecVersion(t *testing.T) {
-	promotionrun := &kaprov1alpha1.PromotionRun{
-		Spec: kaprov1alpha1.PromotionRunSpec{
+	promotionrun := &kaprov1alpha2.PromotionRun{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version: "fallback",
 			Versions: map[string]string{
 				"default": "explicit",
@@ -84,25 +84,25 @@ func TestPromotionRunDesiredVersions_ExplicitDefaultOverridesSpecVersion(t *test
 
 func TestHandleProgressingFailsWhenPromotionPlanGenerationChanges(t *testing.T) {
 	scheme := controllerTestScheme(t)
-	promotionplan := &kaprov1alpha1.PromotionPlan{
+	promotionplan := &kaprov1alpha2.Plan{
 		ObjectMeta: metav1.ObjectMeta{Name: "progressive", Generation: 2},
-		Spec: kaprov1alpha1.PromotionPlanSpec{Stages: []kaprov1alpha1.Stage{{
+		Spec: kaprov1alpha2.PlanSpec{Stages: []kaprov1alpha2.Stage{{
 			Name:     "canary",
 			Selector: metav1.LabelSelector{MatchLabels: map[string]string{"stage": "canary"}},
 		}}},
 	}
-	promotionrun := &kaprov1alpha1.PromotionRun{
+	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Generation: 1},
-		Spec: kaprov1alpha1.PromotionRunSpec{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version:        "repo@sha256:abc",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{{Name: "main", PromotionPlan: "progressive"}},
+			PromotionPlans: []kaprov1alpha2.PlanRef{{Name: "main", Plan: "progressive"}},
 		},
-		Status: kaprov1alpha1.PromotionRunStatus{
-			Phase:           kaprov1alpha1.PromotionRunPhaseProgressing,
+		Status: kaprov1alpha2.PromotionRunStatus{
+			Phase:           kaprov1alpha2.PromotionRunPhaseProgressing,
 			ResolvedVersion: "repo@sha256:abc",
-			PromotionPlanProgress: []kaprov1alpha1.PromotionPlanProgress{{
+			PromotionPlanProgress: []kaprov1alpha2.PromotionPlanProgress{{
 				Name:               "main",
-				PromotionPlan:      "progressive",
+				Plan:      "progressive",
 				ObservedGeneration: 1,
 				Phase:              "Progressing",
 			}},
@@ -111,8 +111,8 @@ func TestHandleProgressingFailsWhenPromotionPlanGenerationChanges(t *testing.T) 
 
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha1.PromotionRun{}).
-		WithIndex(&kaprov1alpha1.PromotionTarget{}, IndexKeyPromotionTargetPromotionRun, func(obj client.Object) []string {
+		WithStatusSubresource(&kaprov1alpha2.PromotionRun{}).
+		WithIndex(&kaprov1alpha2.Target{}, IndexKeyPromotionTargetPromotionRun, func(obj client.Object) []string {
 			return PromotionTargetPromotionRunExtractor(obj)
 		}).
 		WithObjects(promotionplan, promotionrun).
@@ -127,18 +127,18 @@ func TestHandleProgressingFailsWhenPromotionPlanGenerationChanges(t *testing.T) 
 		t.Fatalf("handleProgressing returned error: %v", err)
 	}
 
-	var updated kaprov1alpha1.PromotionRun
+	var updated kaprov1alpha2.PromotionRun
 	if err := c.Get(context.Background(), client.ObjectKey{Name: "rel-1"}, &updated); err != nil {
 		t.Fatalf("get PromotionRun: %v", err)
 	}
-	if updated.Status.Phase != kaprov1alpha1.PromotionRunPhaseFailed {
+	if updated.Status.Phase != kaprov1alpha2.PromotionRunPhaseFailed {
 		t.Fatalf("phase = %s, want Failed", updated.Status.Phase)
 	}
 	ready := apimeta.FindStatusCondition(updated.Status.Conditions, "Ready")
 	if ready == nil || ready.Reason != "PromotionPlanChanged" {
 		t.Fatalf("Ready condition = %#v, want reason PromotionPlanChanged", ready)
 	}
-	stalled := apimeta.FindStatusCondition(updated.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
+	stalled := apimeta.FindStatusCondition(updated.Status.Conditions, kaprov1alpha2.ConditionTypeStalled)
 	if stalled == nil || stalled.Reason != "PromotionPlanChanged" {
 		t.Fatalf("Stalled condition = %#v, want reason PromotionPlanChanged", stalled)
 	}
@@ -155,13 +155,13 @@ func TestHandleProgressingFailsWhenPromotionPlanGenerationChanges(t *testing.T) 
 func TestNotifyPromotionRunEvent_UsesPromotionPlanStageNotifications(t *testing.T) {
 	scheme := controllerTestScheme(t)
 	notifier := &recordingNotifier{}
-	promotionplan := &kaprov1alpha1.PromotionPlan{
+	promotionplan := &kaprov1alpha2.Plan{
 		ObjectMeta: metav1.ObjectMeta{Name: "progressive"},
-		Spec: kaprov1alpha1.PromotionPlanSpec{Stages: []kaprov1alpha1.Stage{{
+		Spec: kaprov1alpha2.PlanSpec{Stages: []kaprov1alpha2.Stage{{
 			Name:     "canary",
 			Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
-			Gate: &kaprov1alpha1.GatePolicySpec{
-				Notifications: []kaprov1alpha1.NotificationSpec{{
+			Gate: &kaprov1alpha2.GatePolicySpec{
+				Notifications: []kaprov1alpha2.NotificationSpec{{
 					Type:   "webhook",
 					Events: []string{notification.EventPromotionRunStarted},
 				}},
@@ -172,14 +172,14 @@ func TestNotifyPromotionRunEvent_UsesPromotionPlanStageNotifications(t *testing.
 		Client:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(promotionplan).Build(),
 		Notifier: notifier,
 	}
-	promotionrun := &kaprov1alpha1.PromotionRun{
+	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1"},
-		Spec: kaprov1alpha1.PromotionRunSpec{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version:        "repo@sha256:abc",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{{Name: "main", PromotionPlan: "progressive"}},
+			PromotionPlans: []kaprov1alpha2.PlanRef{{Name: "main", Plan: "progressive"}},
 		},
-		Status: kaprov1alpha1.PromotionRunStatus{
-			Phase:           kaprov1alpha1.PromotionRunPhaseProgressing,
+		Status: kaprov1alpha2.PromotionRunStatus{
+			Phase:           kaprov1alpha2.PromotionRunPhaseProgressing,
 			ResolvedVersion: "repo@sha256:abc",
 		},
 	}
@@ -198,10 +198,10 @@ func TestNotifyPromotionRunEvent_UsesPromotionPlanStageNotifications(t *testing.
 }
 
 func TestResolveStageGate_ExpandsMetricPreset(t *testing.T) {
-	promotionplan := &kaprov1alpha1.PromotionPlan{
+	promotionplan := &kaprov1alpha2.Plan{
 		ObjectMeta: metav1.ObjectMeta{Name: "progressive"},
-		Spec: kaprov1alpha1.PromotionPlanSpec{
-			MetricPresets: map[string]kaprov1alpha1.MetricGate{
+		Spec: kaprov1alpha2.PlanSpec{
+			MetricPresets: map[string]kaprov1alpha2.MetricGate{
 				"error-rate": {
 					Provider:  "prometheus",
 					Query:     `sum(rate(errors[{{.Window}}])) / sum(rate(requests[{{.Window}}]))`,
@@ -213,11 +213,11 @@ func TestResolveStageGate_ExpandsMetricPreset(t *testing.T) {
 			},
 		},
 	}
-	stage := kaprov1alpha1.Stage{
+	stage := kaprov1alpha2.Stage{
 		Name: "canary",
-		Gate: &kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{
-				Metrics: []kaprov1alpha1.MetricGate{{
+		Gate: &kaprov1alpha2.GatePolicySpec{
+			Gate: kaprov1alpha2.GateSpec{
+				Metrics: []kaprov1alpha2.MetricGate{{
 					Preset:   "error-rate",
 					Window:   "10m",
 					Interval: "1m",
@@ -243,9 +243,9 @@ func TestResolveStageGate_ExpandsMetricPreset(t *testing.T) {
 }
 
 func TestResolveStageGate_CanOverridePresetThresholdToZero(t *testing.T) {
-	gatePolicy, err := resolveStageGate(&kaprov1alpha1.PromotionPlan{
-		Spec: kaprov1alpha1.PromotionPlanSpec{
-			MetricPresets: map[string]kaprov1alpha1.MetricGate{
+	gatePolicy, err := resolveStageGate(&kaprov1alpha2.Plan{
+		Spec: kaprov1alpha2.PlanSpec{
+			MetricPresets: map[string]kaprov1alpha2.MetricGate{
 				"error-rate": {
 					Provider:  "prometheus",
 					Query:     "rate(errors[5m])",
@@ -253,11 +253,11 @@ func TestResolveStageGate_CanOverridePresetThresholdToZero(t *testing.T) {
 				},
 			},
 		},
-	}, kaprov1alpha1.Stage{
+	}, kaprov1alpha2.Stage{
 		Name: "canary",
-		Gate: &kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{
-				Metrics: []kaprov1alpha1.MetricGate{{
+		Gate: &kaprov1alpha2.GatePolicySpec{
+			Gate: kaprov1alpha2.GateSpec{
+				Metrics: []kaprov1alpha2.MetricGate{{
 					Preset:    "error-rate",
 					Threshold: float64Ptr(0),
 				}},
@@ -274,11 +274,11 @@ func TestResolveStageGate_CanOverridePresetThresholdToZero(t *testing.T) {
 }
 
 func TestResolveStageGate_UnknownMetricPreset(t *testing.T) {
-	_, err := resolveStageGate(&kaprov1alpha1.PromotionPlan{}, kaprov1alpha1.Stage{
+	_, err := resolveStageGate(&kaprov1alpha2.Plan{}, kaprov1alpha2.Stage{
 		Name: "canary",
-		Gate: &kaprov1alpha1.GatePolicySpec{
-			Gate: kaprov1alpha1.GateSpec{
-				Metrics: []kaprov1alpha1.MetricGate{{Preset: "missing"}},
+		Gate: &kaprov1alpha2.GatePolicySpec{
+			Gate: kaprov1alpha2.GateSpec{
+				Metrics: []kaprov1alpha2.MetricGate{{Preset: "missing"}},
 			},
 		},
 	})
@@ -294,13 +294,13 @@ func float64Ptr(v float64) *float64 {
 func TestNotifyStageEvent_UsesStageNotificationPolicy(t *testing.T) {
 	scheme := controllerTestScheme(t)
 	notifier := &recordingNotifier{}
-	promotionplan := &kaprov1alpha1.PromotionPlan{
+	promotionplan := &kaprov1alpha2.Plan{
 		ObjectMeta: metav1.ObjectMeta{Name: "progressive"},
-		Spec: kaprov1alpha1.PromotionPlanSpec{Stages: []kaprov1alpha1.Stage{{
+		Spec: kaprov1alpha2.PlanSpec{Stages: []kaprov1alpha2.Stage{{
 			Name:     "canary",
 			Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
-			Gate: &kaprov1alpha1.GatePolicySpec{
-				Notifications: []kaprov1alpha1.NotificationSpec{{
+			Gate: &kaprov1alpha2.GatePolicySpec{
+				Notifications: []kaprov1alpha2.NotificationSpec{{
 					Type:   "webhook",
 					Events: []string{notification.EventStageCompleted},
 				}},
@@ -311,13 +311,13 @@ func TestNotifyStageEvent_UsesStageNotificationPolicy(t *testing.T) {
 		Client:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(promotionplan).Build(),
 		Notifier: notifier,
 	}
-	promotionrun := &kaprov1alpha1.PromotionRun{
+	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1"},
-		Spec: kaprov1alpha1.PromotionRunSpec{
+		Spec: kaprov1alpha2.PromotionRunSpec{
 			Version:        "repo@sha256:abc",
-			PromotionPlans: []kaprov1alpha1.PromotionPlanRef{{Name: "main", PromotionPlan: "progressive"}},
+			PromotionPlans: []kaprov1alpha2.PlanRef{{Name: "main", Plan: "progressive"}},
 		},
-		Status: kaprov1alpha1.PromotionRunStatus{ResolvedVersion: "repo@sha256:abc"},
+		Status: kaprov1alpha2.PromotionRunStatus{ResolvedVersion: "repo@sha256:abc"},
 	}
 
 	r.notifyStageEvent(context.Background(), promotionrun, "main", "canary", notification.EventStageCompleted, "complete")
@@ -328,7 +328,7 @@ func TestNotifyStageEvent_UsesStageNotificationPolicy(t *testing.T) {
 	if notifier.events[0].Type != notification.EventStageCompleted {
 		t.Fatalf("expected stage completed event, got %q", notifier.events[0].Type)
 	}
-	if notifier.events[0].PromotionPlan != "main" || notifier.events[0].Stage != "canary" {
+	if notifier.events[0].Plan != "main" || notifier.events[0].Stage != "canary" {
 		t.Fatalf("stage event context not populated: %#v", notifier.events[0])
 	}
 	if len(notifier.policies) != 1 || len(notifier.policies[0].Channels) != 1 {
@@ -344,30 +344,30 @@ func TestStageDependencySatisfied_AllRequiresEveryTarget(t *testing.T) {
 			fleetClusterForStage("cluster-b", "canary"),
 		).Build(),
 	}
-	promotionrun := &kaprov1alpha1.PromotionRun{
-		Status: kaprov1alpha1.PromotionRunStatus{
-			Targets: []kaprov1alpha1.TargetStatus{
+	promotionrun := &kaprov1alpha2.PromotionRun{
+		Status: kaprov1alpha2.PromotionRunStatus{
+			Targets: []kaprov1alpha2.TargetStatus{
 				{
 					Target:           "cluster-a",
 					PromotionPlanRef: "main",
 					Stage:            "canary",
-					Phase:            kaprov1alpha1.TargetPhaseConverged,
+					Phase:            kaprov1alpha2.TargetPhaseConverged,
 					FinishedAt:       time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339),
 				},
 				{
 					Target:           "cluster-b",
 					PromotionPlanRef: "main",
 					Stage:            "canary",
-					Phase:            kaprov1alpha1.TargetPhaseApplying,
+					Phase:            kaprov1alpha2.TargetPhaseApplying,
 				},
 			},
 		},
 	}
 	promotionplan := promotionplanWithCanaryStage()
 
-	satisfied, wait, err := r.stageDependencySatisfied(context.Background(), promotionrun, "main", promotionplan, kaprov1alpha1.StageDependency{
+	satisfied, wait, err := r.stageDependencySatisfied(context.Background(), promotionrun, "main", promotionplan, kaprov1alpha2.StageDependency{
 		Stage:    "canary",
-		Strategy: kaprov1alpha1.StageDependencyAll,
+		Strategy: kaprov1alpha2.StageDependencyAll,
 	})
 	if err != nil {
 		t.Fatalf("stageDependencySatisfied returned error: %v", err)
@@ -387,14 +387,14 @@ func TestStageDependencySatisfied_ReturnsRemainingSoakTime(t *testing.T) {
 			fleetClusterForStage("cluster-a", "canary"),
 		).Build(),
 	}
-	promotionrun := &kaprov1alpha1.PromotionRun{
-		Status: kaprov1alpha1.PromotionRunStatus{
-			Targets: []kaprov1alpha1.TargetStatus{
+	promotionrun := &kaprov1alpha2.PromotionRun{
+		Status: kaprov1alpha2.PromotionRunStatus{
+			Targets: []kaprov1alpha2.TargetStatus{
 				{
 					Target:           "cluster-a",
 					PromotionPlanRef: "main",
 					Stage:            "canary",
-					Phase:            kaprov1alpha1.TargetPhaseConverged,
+					Phase:            kaprov1alpha2.TargetPhaseConverged,
 					FinishedAt:       time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339),
 				},
 			},
@@ -402,7 +402,7 @@ func TestStageDependencySatisfied_ReturnsRemainingSoakTime(t *testing.T) {
 	}
 	promotionplan := promotionplanWithCanaryStage()
 
-	satisfied, wait, err := r.stageDependencySatisfied(context.Background(), promotionrun, "main", promotionplan, kaprov1alpha1.StageDependency{
+	satisfied, wait, err := r.stageDependencySatisfied(context.Background(), promotionrun, "main", promotionplan, kaprov1alpha2.StageDependency{
 		Stage:            "canary",
 		RequiredSoakTime: &metav1.Duration{Duration: time.Hour},
 	})
@@ -429,7 +429,7 @@ func TestListTargetsForStageUsesPromotionRunPlanner(t *testing.T) {
 		).Build(),
 		Planner: planner.NewFramework(testPlannerFilter{NameValue: "cluster-b"}),
 	}
-	promotionrun := &kaprov1alpha1.PromotionRun{}
+	promotionrun := &kaprov1alpha2.PromotionRun{}
 	promotionplan := promotionplanWithCanaryStage()
 
 	targets, err := r.listTargetsForStage(context.Background(), "main", promotionplan, promotionplan.Spec.Stages[0], promotionrun)
@@ -451,11 +451,11 @@ func TestReconcilePromotionPlanStagesHonorsStageMaxParallel(t *testing.T) {
 		).Build(),
 	}
 	promotionplan := promotionplanWithCanaryStage()
-	promotionplan.Spec.Stages[0].Strategy = &kaprov1alpha1.StageStrategySpec{MaxParallel: 1}
-	promotionrun := &kaprov1alpha1.PromotionRun{
+	promotionplan.Spec.Stages[0].Strategy = &kaprov1alpha2.StageStrategySpec{MaxParallel: 1}
+	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "promotionrun-a"},
-		Spec:       kaprov1alpha1.PromotionRunSpec{Version: "1.2.3"},
-		Status:     kaprov1alpha1.PromotionRunStatus{ResolvedVersion: "1.2.3"},
+		Spec:       kaprov1alpha2.PromotionRunSpec{Version: "1.2.3"},
+		Status:     kaprov1alpha2.PromotionRunStatus{ResolvedVersion: "1.2.3"},
 	}
 
 	progress, allComplete, anyFailed, _, _, err := r.reconcilePromotionPlanStages(context.Background(), promotionrun, "main", promotionplan)
@@ -484,7 +484,7 @@ func TestReconcilePromotionPlanStagesHonorsStageMaxParallel(t *testing.T) {
 		}
 	}
 
-	promotionrun.Status.Targets[0].Phase = kaprov1alpha1.TargetPhaseConverged
+	promotionrun.Status.Targets[0].Phase = kaprov1alpha2.TargetPhaseConverged
 	progress, allComplete, anyFailed, _, _, err = r.reconcilePromotionPlanStages(context.Background(), promotionrun, "main", promotionplan)
 	if err != nil {
 		t.Fatal(err)
@@ -500,14 +500,14 @@ func TestReconcilePromotionPlanStagesHonorsStageMaxParallel(t *testing.T) {
 	}
 }
 
-func fleetClusterForStage(name, stage string) *kaprov1alpha1.FleetCluster {
-	return &kaprov1alpha1.FleetCluster{
+func fleetClusterForStage(name, stage string) *kaprov1alpha2.Cluster {
+	return &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
 			Labels: map[string]string{"stage": stage},
 		},
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", BackendRef: "flux"},
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{Mode: "pull", BackendRef: "flux"},
 		},
 	}
 }
@@ -518,18 +518,18 @@ type testPlannerFilter struct {
 
 func (t testPlannerFilter) Name() string { return "test-filter" }
 
-func (t testPlannerFilter) Filter(_ context.Context, _ *planner.CycleState, _ planner.Request, target kaprov1alpha1.FleetCluster) *planner.Status {
+func (t testPlannerFilter) Filter(_ context.Context, _ *planner.CycleState, _ planner.Request, target kaprov1alpha2.Cluster) *planner.Status {
 	if target.Name != t.NameValue {
 		return planner.NewStatus(planner.Skip, "filtered by test")
 	}
 	return nil
 }
 
-func promotionplanWithCanaryStage() *kaprov1alpha1.PromotionPlan {
-	return &kaprov1alpha1.PromotionPlan{
+func promotionplanWithCanaryStage() *kaprov1alpha2.Plan {
+	return &kaprov1alpha2.Plan{
 		ObjectMeta: metav1.ObjectMeta{Name: "promotionplan"},
-		Spec: kaprov1alpha1.PromotionPlanSpec{
-			Stages: []kaprov1alpha1.Stage{
+		Spec: kaprov1alpha2.PlanSpec{
+			Stages: []kaprov1alpha2.Stage{
 				{
 					Name:     "canary",
 					Selector: metav1.LabelSelector{MatchLabels: map[string]string{"stage": "canary"}},

@@ -11,7 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 // statusReporter periodically publishes FleetCluster.status with the spoke's
@@ -73,7 +73,7 @@ func (s *statusReporter) tick(ctx context.Context) error {
 		return err
 	}
 
-	fc := &kaprov1alpha1.FleetCluster{}
+	fc := &kaprov1alpha2.Cluster{}
 	if err := hub.Get(tctx, client.ObjectKey{Name: s.ClusterName}, fc); err != nil {
 		return fmt.Errorf("get FleetCluster %q: %w", s.ClusterName, err)
 	}
@@ -99,8 +99,8 @@ func (s *statusReporter) tick(ctx context.Context) error {
 
 // observeCapabilities returns the cluster's K8s version + node inventory.
 // Read from the LOCAL spoke cluster — we never call into the hub for these.
-func (s *statusReporter) observeCapabilities(ctx context.Context) (kaprov1alpha1.ClusterCapabilities, error) {
-	caps := kaprov1alpha1.ClusterCapabilities{}
+func (s *statusReporter) observeCapabilities(ctx context.Context) (kaprov1alpha2.ClusterCapabilities, error) {
+	caps := kaprov1alpha2.ClusterCapabilities{}
 
 	// Node count + a representative kubelet version. List failures are
 	// surfaced as errors (callers abort the status tick) rather than

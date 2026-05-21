@@ -9,36 +9,36 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/webhook/admission"
 )
 
 func newBackendRefScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
 	s := runtime.NewScheme()
-	if err := kaprov1alpha1.AddToScheme(s); err != nil {
+	if err := kaprov1alpha2.AddToScheme(s); err != nil {
 		t.Fatalf("add scheme: %v", err)
 	}
 	return s
 }
 
-func backendProfile(name string, ready bool) *kaprov1alpha1.BackendProfile {
-	p := &kaprov1alpha1.BackendProfile{
+func backendProfile(name string, ready bool) *kaprov1alpha2.Backend {
+	p := &kaprov1alpha2.Backend{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec: kaprov1alpha1.BackendProfileSpec{
-			Driver: kaprov1alpha1.BackendDriverFlux,
+		Spec: kaprov1alpha2.BackendSpec{
+			Driver: kaprov1alpha2.BackendDriverFlux,
 		},
-		Status: kaprov1alpha1.BackendProfileStatus{Ready: ready},
+		Status: kaprov1alpha2.BackendStatus{Ready: ready},
 	}
 	return p
 }
 
-func fleetClusterWithBackend(ref string) *kaprov1alpha1.FleetCluster {
-	return &kaprov1alpha1.FleetCluster{
+func fleetClusterWithBackend(ref string) *kaprov1alpha2.Cluster {
+	return &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
-		Spec: kaprov1alpha1.FleetClusterSpec{
-			Delivery: kaprov1alpha1.DeliverySpec{
-				Mode:       kaprov1alpha1.DeliveryModePull,
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{
+				Mode:       kaprov1alpha2.DeliveryModePull,
 				BackendRef: ref,
 				Parameters: map[string]string{"ociRepository": "cluster-a"},
 			},

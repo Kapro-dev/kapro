@@ -18,7 +18,7 @@ import (
 	"net/url"
 	"time"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	pkggate "kapro.io/kapro/pkg/gate"
 )
 
@@ -167,7 +167,7 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 	}
 
 	return pkggate.Result{
-		Phase:      kaprov1alpha1.GatePhase(wr.Phase),
+		Phase:      kaprov1alpha2.GatePhase(wr.Phase),
 		Message:    wr.Message,
 		RetryAfter: wr.RetryAfter,
 		Evidence: []pkggate.Evidence{{

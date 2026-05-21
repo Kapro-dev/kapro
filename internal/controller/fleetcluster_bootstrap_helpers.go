@@ -23,7 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 // ---- CSR predicates & parsing ----------------------------------------------
@@ -112,7 +112,7 @@ const (
 // matters whenever spec.bootstrap.ttl is significantly longer than the
 // TokenRequest TTL (default 1h): without refresh, a late-arriving spoke would
 // find an expired token and never register.
-func (r *FleetClusterBootstrapReconciler) shouldProvision(ctx context.Context, fc *kaprov1alpha1.FleetCluster) bool {
+func (r *FleetClusterBootstrapReconciler) shouldProvision(ctx context.Context, fc *kaprov1alpha2.Cluster) bool {
 	if fc.Spec.Bootstrap == nil {
 		return false
 	}
@@ -152,7 +152,7 @@ func (r *FleetClusterBootstrapReconciler) shouldProvision(ctx context.Context, f
 //
 // On success it patches status.bootstrap.IssuedBootstrapKubeconfig to the
 // Secret name so subsequent reconciles skip this work.
-func (r *FleetClusterBootstrapReconciler) ensureBootstrapProvisioned(ctx context.Context, fc *kaprov1alpha1.FleetCluster) (ctrl.Result, error) {
+func (r *FleetClusterBootstrapReconciler) ensureBootstrapProvisioned(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
 	log := log.FromContext(ctx).WithValues("fleetcluster", fc.Name)
 	if !r.shouldProvision(ctx, fc) {
 		return ctrl.Result{}, nil
@@ -259,7 +259,7 @@ func (r *FleetClusterBootstrapReconciler) ensureBootstrapProvisioned(ctx context
 	// 5) Record the Secret name in status so subsequent reconciles skip provisioning.
 	patch := client.MergeFrom(fc.DeepCopy())
 	if fc.Status.Bootstrap == nil {
-		fc.Status.Bootstrap = &kaprov1alpha1.FleetClusterBootstrapStatus{}
+		fc.Status.Bootstrap = &kaprov1alpha2.FleetClusterBootstrapStatus{}
 	}
 	fc.Status.Bootstrap.IssuedBootstrapKubeconfig = secretName
 	if err := r.Status().Patch(ctx, fc, patch); err != nil {
@@ -538,7 +538,7 @@ func sameFinalizers(a, b []string) bool {
 // false for two distinct *metav1.Time allocations that hold the same
 // instant. This drove spurious reconciles whenever the informer cache and
 // a freshly-decoded apiserver response disagreed on pointer identity.
-func bootstrapStatusEqual(a, b *kaprov1alpha1.FleetClusterBootstrapStatus) bool {
+func bootstrapStatusEqual(a, b *kaprov1alpha2.FleetClusterBootstrapStatus) bool {
 	if a == nil && b == nil {
 		return true
 	}

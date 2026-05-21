@@ -10,7 +10,7 @@ spec:
   names:
     categories:
     - kapro-all
-    kind: PromotionTrigger
+    kind: Trigger
     listKind: PromotionTriggerList
     plural: promotiontriggers
     shortNames:
@@ -111,7 +111,7 @@ spec:
                       type: string
                     description: Annotations are added to the managed Promotion.
                     type: object
-                  kaproRef:
+                  fleetRef:
                     description: |-
                       KaproRef is the name of the parent Kapro fleet the managed Promotion
                       targets. Required; the PromotionController uses it to resolve the

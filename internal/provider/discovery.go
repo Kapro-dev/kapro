@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 // Discoverer enumerates clusters from one fleet source. Implementations are
@@ -23,7 +23,7 @@ type Discoverer interface {
 	// FleetCluster's spec.provider. Kind is fixed per discoverer (gcp →
 	// gcp-fleet, rhacm → rhacm, etc.); parameters may include source
 	// identifiers that downstream actuators need (e.g. GCP project).
-	Provider() kaprov1alpha1.FleetClusterProvider
+	Provider() kaprov1alpha2.FleetClusterProvider
 
 	// SourceKind returns the short identifier echoed on
 	// FleetClusterTemplate.status.sourceKind (gcp, aws, rhacm, ...).
@@ -55,7 +55,7 @@ func IsSourceNotImplemented(err error) bool {
 // will reject these at admission time once wired (PR-7+); this function is
 // defensive so the reconciler never imports from an unintended source even
 // if a webhook bypass exists.
-func NewDiscoverer(src kaprov1alpha1.FleetClusterTemplateSource) (Discoverer, error) {
+func NewDiscoverer(src kaprov1alpha2.FleetClusterTemplateSource) (Discoverer, error) {
 	var set []string
 	if src.GCP != nil {
 		set = append(set, "gcp")
@@ -113,8 +113,8 @@ func (d *gcpFleetDiscoverer) List(ctx context.Context) ([]ClusterInfo, error) {
 	return (&GCPFleetProvider{Project: d.project}).ListClusters(ctx)
 }
 
-func (d *gcpFleetDiscoverer) Provider() kaprov1alpha1.FleetClusterProvider {
-	return kaprov1alpha1.FleetClusterProvider{
+func (d *gcpFleetDiscoverer) Provider() kaprov1alpha2.FleetClusterProvider {
+	return kaprov1alpha2.FleetClusterProvider{
 		Kind:       "gcp-fleet",
 		Parameters: map[string]string{"project": d.project},
 	}

@@ -80,7 +80,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/metrics"
 )
 
@@ -130,7 +130,7 @@ type FleetClusterHeartbeatReconciler struct {
 func (r *FleetClusterHeartbeatReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues("fleetcluster", req.Name)
 
-	fc := &kaprov1alpha1.FleetCluster{}
+	fc := &kaprov1alpha2.Cluster{}
 	if err := r.Get(ctx, req.NamespacedName, fc); err != nil {
 		if apierrors.IsNotFound(err) {
 			// FleetCluster gone — drop any orphan metric series.
@@ -167,23 +167,23 @@ type desiredReady struct {
 	LeaseObservedAt *metav1.Time
 }
 
-func (r *FleetClusterHeartbeatReconciler) computeDesiredReady(ctx context.Context, fc *kaprov1alpha1.FleetCluster, now time.Time) desiredReady {
+func (r *FleetClusterHeartbeatReconciler) computeDesiredReady(ctx context.Context, fc *kaprov1alpha2.Cluster, now time.Time) desiredReady {
 	// Suspend wins. Operators have asked us to stop reasoning about this
 	// cluster's reachability.
 	if fc.Spec.Suspend {
 		return desiredReady{
 			Status:  metav1.ConditionUnknown,
-			Reason:  kaprov1alpha1.ReasonSuspended,
+			Reason:  kaprov1alpha2.ReasonSuspended,
 			Message: "FleetCluster is suspended; heartbeat tracking disabled",
 		}
 	}
 
 	// Push mode has no spoke agent and no Lease. Reachability is whatever
 	// the hub-side adapter says — we don't override.
-	if fc.Spec.Delivery.Mode == kaprov1alpha1.DeliveryModePush {
+	if fc.Spec.Delivery.Mode == kaprov1alpha2.DeliveryModePush {
 		return desiredReady{
 			Status:  metav1.ConditionTrue,
-			Reason:  kaprov1alpha1.ReasonPushModeNoHeartbeat,
+			Reason:  kaprov1alpha2.ReasonPushModeNoHeartbeat,
 			Message: "push-mode cluster — heartbeat not applicable",
 		}
 	}
@@ -205,7 +205,7 @@ func (r *FleetClusterHeartbeatReconciler) computeDesiredReady(ctx context.Contex
 	if fc.Spec.Bootstrap != nil && (fc.Status.Bootstrap == nil || !fc.Status.Bootstrap.Used) {
 		return desiredReady{
 			Status:  metav1.ConditionUnknown,
-			Reason:  kaprov1alpha1.ReasonNotRegistered,
+			Reason:  kaprov1alpha2.ReasonNotRegistered,
 			Message: "FleetCluster has spec.bootstrap set but bootstrap workflow has not yet completed",
 		}
 	}
@@ -222,7 +222,7 @@ func (r *FleetClusterHeartbeatReconciler) computeDesiredReady(ctx context.Contex
 		// NOT flip Ready on a single API error.
 		return desiredReady{
 			Status:  metav1.ConditionUnknown,
-			Reason:  kaprov1alpha1.ReasonHeartbeatStale,
+			Reason:  kaprov1alpha2.ReasonHeartbeatStale,
 			Message: fmt.Sprintf("error reading heartbeat Lease: %v", err),
 			Misses:  currentMisses(fc),
 		}
@@ -230,7 +230,7 @@ func (r *FleetClusterHeartbeatReconciler) computeDesiredReady(ctx context.Contex
 	if freshness == freshnessFresh {
 		return desiredReady{
 			Status:          metav1.ConditionTrue,
-			Reason:          kaprov1alpha1.ReasonHeartbeatFresh,
+			Reason:          kaprov1alpha2.ReasonHeartbeatFresh,
 			Message:         fmt.Sprintf("Lease renewed %s ago", now.Sub(leaseObserved.Time).Round(time.Second)),
 			LeaseObservedAt: leaseObserved,
 			Misses:          0,
@@ -250,7 +250,7 @@ func (r *FleetClusterHeartbeatReconciler) computeDesiredReady(ctx context.Contex
 		}
 		return desiredReady{
 			Status:          metav1.ConditionFalse,
-			Reason:          kaprov1alpha1.ReasonUnreachable,
+			Reason:          kaprov1alpha2.ReasonUnreachable,
 			Message:         msg,
 			LeaseObservedAt: leaseObserved,
 			Misses:          newMisses,
@@ -267,7 +267,7 @@ func (r *FleetClusterHeartbeatReconciler) computeDesiredReady(ctx context.Contex
 	}
 	return desiredReady{
 		Status:          metav1.ConditionUnknown,
-		Reason:          kaprov1alpha1.ReasonHeartbeatStale,
+		Reason:          kaprov1alpha2.ReasonHeartbeatStale,
 		Message:         msg,
 		LeaseObservedAt: leaseObserved,
 		Misses:          newMisses,
@@ -286,7 +286,7 @@ const (
 // extracted observation timestamp (nil if no Lease) plus a freshness verdict.
 // An apiserver error (not NotFound) is returned to the caller so it can
 // decide whether to count it as a miss.
-func (r *FleetClusterHeartbeatReconciler) readLeaseFreshness(ctx context.Context, fc *kaprov1alpha1.FleetCluster, now time.Time) (*metav1.Time, freshnessVerdict, error) {
+func (r *FleetClusterHeartbeatReconciler) readLeaseFreshness(ctx context.Context, fc *kaprov1alpha2.Cluster, now time.Time) (*metav1.Time, freshnessVerdict, error) {
 	lease := &coordinationv1.Lease{}
 	err := r.Get(ctx, client.ObjectKey{
 		Namespace: r.heartbeatNamespace(),
@@ -329,10 +329,10 @@ func (r *FleetClusterHeartbeatReconciler) readLeaseFreshness(ctx context.Context
 // stale condition does not affect promotion behavior because Phase
 // (not Ready) is the gate kapro_controller and the promotion target
 // controller read.
-func (r *FleetClusterHeartbeatReconciler) applyDesired(ctx context.Context, fc *kaprov1alpha1.FleetCluster, desired desiredReady, now time.Time) error {
+func (r *FleetClusterHeartbeatReconciler) applyDesired(ctx context.Context, fc *kaprov1alpha2.Cluster, desired desiredReady, now time.Time) error {
 	before := fc.DeepCopy()
 
-	prev := apimeta.FindStatusCondition(fc.Status.Conditions, kaprov1alpha1.ConditionTypeReady)
+	prev := apimeta.FindStatusCondition(fc.Status.Conditions, kaprov1alpha2.ConditionTypeReady)
 	prevStatus := metav1.ConditionUnknown
 	prevReason := ""
 	if prev != nil {
@@ -342,7 +342,7 @@ func (r *FleetClusterHeartbeatReconciler) applyDesired(ctx context.Context, fc *
 
 	nowMeta := metav1.NewTime(now)
 	cond := metav1.Condition{
-		Type:               kaprov1alpha1.ConditionTypeReady,
+		Type:               kaprov1alpha2.ConditionTypeReady,
 		Status:             desired.Status,
 		Reason:             desired.Reason,
 		Message:            desired.Message,
@@ -353,7 +353,7 @@ func (r *FleetClusterHeartbeatReconciler) applyDesired(ctx context.Context, fc *
 
 	hb := fc.Status.Heartbeat
 	if hb == nil {
-		hb = &kaprov1alpha1.FleetClusterHeartbeatStatus{}
+		hb = &kaprov1alpha2.FleetClusterHeartbeatStatus{}
 	}
 	hb.ObservedAt = &nowMeta
 	hb.LeaseObservedAt = desired.LeaseObservedAt
@@ -376,7 +376,7 @@ func (r *FleetClusterHeartbeatReconciler) applyDesired(ctx context.Context, fc *
 	return nil
 }
 
-func (r *FleetClusterHeartbeatReconciler) emitTransitionEvents(fc *kaprov1alpha1.FleetCluster, prevStatus metav1.ConditionStatus, prevReason string, desired desiredReady) {
+func (r *FleetClusterHeartbeatReconciler) emitTransitionEvents(fc *kaprov1alpha2.Cluster, prevStatus metav1.ConditionStatus, prevReason string, desired desiredReady) {
 	if r.Recorder == nil {
 		return
 	}
@@ -385,15 +385,15 @@ func (r *FleetClusterHeartbeatReconciler) emitTransitionEvents(fc *kaprov1alpha1
 	}
 	// Unreachable transitions are the headline operator concern.
 	switch {
-	case desired.Reason == kaprov1alpha1.ReasonUnreachable && prevReason != kaprov1alpha1.ReasonUnreachable:
+	case desired.Reason == kaprov1alpha2.ReasonUnreachable && prevReason != kaprov1alpha2.ReasonUnreachable:
 		r.Recorder.Event(fc, corev1.EventTypeWarning, eventReasonClusterUnreachable, desired.Message)
 		metrics.FleetClusterUnreachableTransitions.WithLabelValues(fc.Name).Inc()
-	case prevReason == kaprov1alpha1.ReasonUnreachable && desired.Status == metav1.ConditionTrue:
+	case prevReason == kaprov1alpha2.ReasonUnreachable && desired.Status == metav1.ConditionTrue:
 		r.Recorder.Event(fc, corev1.EventTypeNormal, eventReasonClusterRecovered, desired.Message)
 		metrics.FleetClusterRecoveredTransitions.WithLabelValues(fc.Name).Inc()
-	case desired.Reason == kaprov1alpha1.ReasonHeartbeatStale && prevReason != kaprov1alpha1.ReasonHeartbeatStale:
+	case desired.Reason == kaprov1alpha2.ReasonHeartbeatStale && prevReason != kaprov1alpha2.ReasonHeartbeatStale:
 		r.Recorder.Event(fc, corev1.EventTypeWarning, eventReasonHeartbeatStale, desired.Message)
-	case prevReason == kaprov1alpha1.ReasonHeartbeatStale && desired.Status == metav1.ConditionTrue:
+	case prevReason == kaprov1alpha2.ReasonHeartbeatStale && desired.Status == metav1.ConditionTrue:
 		r.Recorder.Event(fc, corev1.EventTypeNormal, eventReasonHeartbeatRecovered, desired.Message)
 	}
 }
@@ -412,7 +412,7 @@ func (r *FleetClusterHeartbeatReconciler) now() time.Time {
 	return time.Now()
 }
 
-func currentMisses(fc *kaprov1alpha1.FleetCluster) int32 {
+func currentMisses(fc *kaprov1alpha2.Cluster) int32 {
 	if fc.Status.Heartbeat == nil {
 		return 0
 	}
@@ -427,7 +427,7 @@ func currentMisses(fc *kaprov1alpha1.FleetCluster) int32 {
 func (r *FleetClusterHeartbeatReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("fleetcluster-heartbeat").
-		For(&kaprov1alpha1.FleetCluster{}, builder.WithPredicates(fleetClusterSpecOrBootstrapPredicate{})).
+		For(&kaprov1alpha2.Cluster{}, builder.WithPredicates(fleetClusterSpecOrBootstrapPredicate{})).
 		Watches(
 			&coordinationv1.Lease{},
 			handler.EnqueueRequestsFromMapFunc(leaseToFleetCluster(r.heartbeatNamespace())),
@@ -467,11 +467,11 @@ func (fleetClusterSpecOrBootstrapPredicate) Generic(_ event.GenericEvent) bool {
 	return true
 }
 func (fleetClusterSpecOrBootstrapPredicate) Update(e event.UpdateEvent) bool {
-	oldFC, ok := e.ObjectOld.(*kaprov1alpha1.FleetCluster)
+	oldFC, ok := e.ObjectOld.(*kaprov1alpha2.Cluster)
 	if !ok {
 		return true
 	}
-	newFC, ok := e.ObjectNew.(*kaprov1alpha1.FleetCluster)
+	newFC, ok := e.ObjectNew.(*kaprov1alpha2.Cluster)
 	if !ok {
 		return true
 	}

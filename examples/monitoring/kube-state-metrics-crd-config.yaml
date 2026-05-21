@@ -36,7 +36,7 @@ spec:
     - groupVersionKind:
         group: kapro.io
         version: v1alpha1
-        kind: PromotionTrigger
+        kind: Trigger
       metricNamePrefix: kapro_promotiontrigger
       labelsFromPath:
         promotiontrigger: [metadata, name]

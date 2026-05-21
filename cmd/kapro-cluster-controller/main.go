@@ -48,7 +48,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	fluxspoke "kapro.io/kapro/internal/spokeprovider/flux"
 	"kapro.io/kapro/internal/spokeprovider/outbound"
 	"kapro.io/kapro/pkg/spokeprovider"
@@ -58,7 +58,7 @@ var scheme = runtime.NewScheme()
 
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = kaprov1alpha1.AddToScheme(scheme)
+	_ = kaprov1alpha2.AddToScheme(scheme)
 }
 
 // Config carries the runtime configuration of the spoke binary. Sourced from
@@ -251,10 +251,10 @@ func run() error {
 	// External drivers are loaded via PluginRegistration + the plugin
 	// gateway when KAPRO_ENABLE_PLUGIN_GATEWAY=true.
 	registry := spokeprovider.NewRegistry()
-	if err := registry.Register(kaprov1alpha1.BackendDriverOCI, outbound.NewProvider(localKubeClient)); err != nil {
+	if err := registry.Register(kaprov1alpha2.BackendDriverOCI, outbound.NewProvider(localKubeClient)); err != nil {
 		return fmt.Errorf("register oci provider: %w", err)
 	}
-	if err := registry.Register(kaprov1alpha1.BackendDriverFlux, fluxspoke.NewProvider(localKubeClient)); err != nil {
+	if err := registry.Register(kaprov1alpha2.BackendDriverFlux, fluxspoke.NewProvider(localKubeClient)); err != nil {
 		return fmt.Errorf("register flux provider: %w", err)
 	}
 	dl := &deliveryLoop{

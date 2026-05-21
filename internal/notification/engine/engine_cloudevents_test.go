@@ -27,7 +27,7 @@ func TestSendCloudEvents_EnvelopeAndContentType(t *testing.T) {
 		Version:       "v2.0.0",
 		Target:        "fi-prod",
 		PromotionRun:  "app-v2",
-		PromotionPlan: "eu-rollout",
+		Plan: "eu-rollout",
 		Stage:         "prod",
 	}
 
