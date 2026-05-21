@@ -7,6 +7,12 @@ record for each tag.
 
 ## Unreleased
 
+### Added — competitive positioning
+
+Added ADR-0012 and an announcement draft that position Kapro as the
+multi-cluster promotion layer beside Sveltos, Argo Rollouts, Flagger, GitOps
+Toolkit, Flux, and Argo CD.
+
 ### Added — `kapro doctor`
 
 Added a read-only preflight command for hub install health checks. `kapro

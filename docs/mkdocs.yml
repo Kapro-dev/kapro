@@ -45,6 +45,9 @@ nav:
       - API Stability: api-stability.md
       - Changelog: https://github.com/Kapro-dev/kapro/blob/main/CHANGELOG.md
       - Preview Controllers: preview-controllers.md
+      - Competitive Positioning: adr/0012-competitive-positioning.md
+  - Blog:
+      - Announcing Kapro v0.1: blog/announcing-kapro-v0.1.md
   - Operations:
       - Operations: operations.md
       - Monitoring: monitoring.md
@@ -69,4 +72,7 @@ nav:
       - Target Namespace: adr/0005-withdraw-target-namespace.md
       - External Gates: adr/0006-external-gate-predicates.md
       - Programmatic SDK: adr/0007-programmatic-sdk.md
+      - Target Status Authority: adr/0009-promotionrun-target-status-collapse.md
+      - Controller Tier: adr/0010-core-and-preview-controller-tier.md
       - Conversion Webhook: adr/0011-conversion-webhook-scaffold.md
+      - Competitive Positioning: adr/0012-competitive-positioning.md
