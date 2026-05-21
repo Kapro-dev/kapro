@@ -92,8 +92,11 @@ type PromotionTriggerTemplate struct {
 	// controller derives a deterministic name from the trigger name.
 	// +optional
 	NameTemplate string `json:"nameTemplate,omitempty"`
-	// PromotionPlans optionally overrides Fleet.spec.promotionplan on the
-	// managed Promotion.
+	// Plans optionally overrides Fleet.spec.plan on the managed Promotion.
+	// Flat list of Plan CRD names — v1alpha2 dropped the PlanRef object form
+	// (no fake-name disambiguator, no cross-plan dependsOn). To run the same
+	// Plan against a different cluster subset, create a second Trigger with a
+	// narrower scope rather than listing the Plan twice.
 	// +kubebuilder:validation:MaxItems=64
 	// +optional
 	Plans []string `json:"plans,omitempty"`
