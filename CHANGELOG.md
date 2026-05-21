@@ -7,6 +7,13 @@ record for each tag.
 
 ## Unreleased
 
+### Added — operator SLO documentation
+
+Added operator SLI/SLO guidance, Prometheus recording rules, and dashboard
+panels for existing Kapro metrics. The docs now distinguish first-class Kapro
+metrics from kube-state-metrics-derived signals and call out remaining metric
+gaps without advertising non-exported metric names as live telemetry.
+
 ### Added — competitive positioning
 
 Added ADR-0012 and an announcement draft that position Kapro as the
@@ -200,8 +207,8 @@ the older dashboards did not cover:
   subscribers can see exactly which Promotion phases are emitting.
 - **FleetCluster health** — heartbeat misses per cluster, unreachable
   vs recovered transition rates. Uses
-  `kapro_fleetcluster_heartbeat_misses` and the
-  `kapro_fleetcluster_{unreachable,recovered}_transitions_total`
+  `kapro_cluster_heartbeat_misses` and the
+  `kapro_cluster_{unreachable,recovered}_transitions_total`
   pair.
 - **FSM drift signal** —
   `kapro_fsm_unexpected_transitions_total{from,to}` non-zero rates as
