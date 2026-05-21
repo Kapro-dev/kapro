@@ -51,6 +51,7 @@ nav:
       - RBAC and Tenancy: rbac-tenancy.md
       - Cluster Bootstrap: cluster-bootstrap.md
   - Migration:
+      - v1alpha1 to v1alpha2 Migration: migration-v1alpha1-to-v1alpha2.md
       - Argo Brownfield Migration: argo-migration.md
       - Flux Brownfield Migration: flux-migration.md
       - Discovery Troubleshooting: discovery-troubleshooting.md

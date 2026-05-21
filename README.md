@@ -18,6 +18,9 @@ Flux, Argo CD, OCI pull agents, and other delivery systems keep owning the local
 
 Kapro is **pre-stable public release software**, not GA. The current public
 release line is `v0.1.0`; all Kubernetes APIs are now `kapro.io/v1alpha2`.
+If you have legacy `kapro.io/v1alpha1` manifests, follow the
+[v1alpha1 to v1alpha2 migration guide](docs/migration-v1alpha1-to-v1alpha2.md);
+this release does not provide automatic legacy conversion.
 
 ## What Kapro Does
 
@@ -121,6 +124,7 @@ Start here:
 - [Operations](docs/operations.md)
 - [Security](docs/security.md)
 - [API Stability](docs/api-stability.md)
+- [v1alpha1 to v1alpha2 Migration](docs/migration-v1alpha1-to-v1alpha2.md)
 - [Changelog](CHANGELOG.md)
 
 Deeper references:

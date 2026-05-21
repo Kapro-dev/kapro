@@ -253,6 +253,12 @@ kubectl kustomize config/default
 
 ## Upgrade
 
+!!! warning "Upgrading from v1alpha1"
+    The v1alpha1 to v1alpha2 move is a clean break. Follow the
+    [v1alpha1 to v1alpha2 migration guide](migration-v1alpha1-to-v1alpha2.md)
+    before applying v1alpha2 CRDs; the chart does not serve v1alpha1 or run
+    automatic conversion.
+
 Apply CRD changes first, then upgrade the chart. For the release package,
 pull and unpack the chart before applying CRDs:
 

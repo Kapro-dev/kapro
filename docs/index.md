@@ -14,6 +14,8 @@ Which clusters are allowed to receive this artifact version now, and why?
 
 - [Concepts](concepts.md) explains the API objects and lifecycle.
 - [Install](install.md) shows the supported operator install paths.
+- [v1alpha1 to v1alpha2 Migration](migration-v1alpha1-to-v1alpha2.md) explains
+  the clean-break upgrade path for legacy alpha manifests.
 - [First Promotion in 10 Minutes](first-promotion-10min.md) is the shortest
   working path.
 - [Backends](backends.md) explains Flux, Argo CD, OCI, and plugin delivery

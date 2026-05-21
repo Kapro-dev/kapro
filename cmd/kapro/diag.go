@@ -19,7 +19,7 @@ import (
 )
 
 // promotionDiag is the JSON payload shape for `kapro diag -o json`.
-// It is intentionally a thin envelope around the live v1alpha1 /
+// It is intentionally a thin envelope around the live v1alpha2 /
 // corev1 types — scripts that key on `.promotion.spec.version` or
 // `.events[0].reason` get the full Kubernetes object shape they
 // already know. The envelope keys (`promotion`, `promotionRuns`,

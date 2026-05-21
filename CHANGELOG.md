@@ -63,6 +63,8 @@ CloudEvents payload field `data.kaproRef` is renamed to `data.fleetRef`.
 objects. Delete legacy v1alpha1 objects and old prototype CRDs before applying
 the new `kapro.io/v1alpha2` CRDs, then re-author manifests with the new Kinds
 and field names.
+For step-by-step cleanup and manifest rewrites, see
+[v1alpha1 to v1alpha2 Migration](docs/migration-v1alpha1-to-v1alpha2.md).
 
 ### Changed — default controller set narrowed
 
