@@ -8,11 +8,42 @@ metadata:
     app.kubernetes.io/component: monitoring
 spec:
   groups:
+    - name: kapro.slo-recording
+      rules:
+        - record: kapro:slo_controller_reconcile_error_rate10m
+          expr: |
+            sum by (controller) (rate(kapro_controller_reconciles_total{result="error"}[10m]))
+        - record: kapro:slo_controller_reconcile_p95_seconds10m
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (controller, le) (rate(kapro_controller_reconcile_duration_seconds_bucket[10m]))
+            )
+        - record: kapro:slo_gate_failure_ratio15m
+          expr: |
+            sum by (gate_type) (rate(kapro_gate_evaluations_total{result=~"failed|error"}[15m]))
+            /
+            clamp_min(sum by (gate_type) (rate(kapro_gate_evaluations_total[15m])), 0.001)
+        - record: kapro:slo_stage_duration_p95_seconds30m
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (plan, le) (rate(kapro_stage_duration_seconds_bucket[30m]))
+            )
+        - record: kapro:slo_lifecycle_sink_p99_seconds10m
+          expr: |
+            histogram_quantile(
+              0.99,
+              sum by (kind, le) (rate(kapro_lifecycle_hook_duration_seconds_bucket{kind="Sink"}[10m]))
+            )
+        - record: kapro:slo_plugin_probe_failure_rate10m
+          expr: |
+            sum by (type, reason) (rate(kapro_plugin_probe_results_total{result!="success"}[10m]))
     - name: kapro.controller
       rules:
         - alert: KaproControllerReconcileErrors
           expr: |
-            sum by (controller) (rate(kapro_controller_reconciles_total{result="error"}[10m])) > 0
+            kapro:slo_controller_reconcile_error_rate10m > 0
           for: 10m
           labels:
             severity: warning
@@ -22,10 +53,7 @@ spec:
             runbook: "docs/operations.md#first-response"
         - alert: KaproControllerReconcileLatencyP95High
           expr: |
-            histogram_quantile(
-              0.95,
-              sum by (controller, le) (rate(kapro_controller_reconcile_duration_seconds_bucket[10m]))
-            ) > 30
+            kapro:slo_controller_reconcile_p95_seconds10m > 30
           for: 15m
           labels:
             severity: warning
@@ -37,11 +65,7 @@ spec:
       rules:
         - alert: KaproGateFailureRateHigh
           expr: |
-            (
-              sum by (gate_type) (rate(kapro_gate_evaluations_total{result="failed"}[15m]))
-              /
-              clamp_min(sum by (gate_type) (rate(kapro_gate_evaluations_total[15m])), 0.001)
-            ) > 0.20
+            kapro:slo_gate_failure_ratio15m > 0.20
           for: 15m
           labels:
             severity: warning
@@ -69,10 +93,7 @@ spec:
             runbook: "docs/operations.md#runbook-stuck-promotionrun"
         - alert: KaproRolloutDurationP95High
           expr: |
-            histogram_quantile(
-              0.95,
-              sum by (plan, le) (rate(kapro_stage_duration_seconds_bucket[30m]))
-            ) > 3600
+            kapro:slo_stage_duration_p95_seconds30m > 3600
           for: 30m
           labels:
             severity: warning
@@ -80,16 +101,36 @@ spec:
             summary: "Kapro {{ $labels.plan }} rollout stage p95 is high"
             description: "Stage completion p95 for plan {{ $labels.plan }} has been above 1 hour for 30 minutes."
             runbook: "docs/operations.md#rate-limits-and-workqueue-tuning"
+        - alert: KaproLifecycleSinkP99High
+          expr: |
+            kapro:slo_lifecycle_sink_p99_seconds10m > 5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kapro CloudEvents sink dispatch p99 is high"
+            description: "CloudEvents sink dispatch p99 has been above 5 seconds for 10 minutes. Check sink endpoint health, retries, and lifecycle hook backoff."
+            runbook: "docs/operations.md#first-response"
     - name: kapro.plugins
       rules:
         - alert: KaproPluginProbeFailure
+          expr: |
+            kapro:slo_plugin_probe_failure_rate10m > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kapro {{ $labels.type }} plugin probe failures detected"
+            description: "Kapro {{ $labels.type }} plugin probes have failed with reason {{ $labels.reason }} over the last 10 minutes."
+            runbook: "docs/operations.md#runbook-plugin-not-ready"
+        - alert: KaproPluginNotReady
           expr: |
             kapro_plugin_status_condition{type="Ready"} == 0
           for: 15m
           labels:
             severity: warning
           annotations:
-            summary: "Kapro plugin {{ $labels.plugin }} probe is failing"
+            summary: "Kapro plugin {{ $labels.plugin }} is not ready"
             description: "Plugin {{ $labels.plugin }} has reported Ready=False for 15 minutes. This rule uses kube-state-metrics custom-resource state metrics."
             runbook: "docs/operations.md#runbook-plugin-not-ready"
     - name: kapro.triggers

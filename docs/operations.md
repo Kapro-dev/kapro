@@ -45,6 +45,8 @@ Installable examples for Prometheus Operator and kube-state-metrics live under
 - `examples/monitoring/kube-state-metrics-crd-config.yaml`
 
 See `docs/monitoring.md` for the metric inventory and installation notes.
+See `docs/operator-slos.md` for recommended SLI queries, thresholds, and known
+first-class metric gaps.
 
 The dashboard covers:
 
@@ -60,10 +62,11 @@ The alert rules cover:
 | Alert | Signal |
 |---|---|
 | `KaproPromotionRunStuck` | Active PromotionRuns remain non-terminal for a sustained window |
-| `KaproGateFailureRateHigh` | Gate failures/errors exceed 10% of evaluations |
+| `KaproGateFailureRateHigh` | Gate failures/errors exceed 20% of evaluations |
 | `KaproPluginProbeFailures` | Plugin probe failures or plugin readiness drops |
 | `KaproTriggerBlocked` | Trigger reconciles are failing |
 | `KaproRolloutDurationP95High` | Stage duration p95 exceeds the configured threshold |
+| `KaproLifecycleSinkP99High` | CloudEvents sink dispatch p99 exceeds the configured threshold |
 | `KaproControllerReconcileErrors` | Any controller has sustained reconcile errors |
 
 Tune alert windows and thresholds per fleet size. Small test clusters should use

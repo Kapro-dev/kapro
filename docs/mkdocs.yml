@@ -51,6 +51,7 @@ nav:
   - Operations:
       - Operations: operations.md
       - Monitoring: monitoring.md
+      - Operator SLOs: operator-slos.md
       - Security: security.md
       - RBAC and Tenancy: rbac-tenancy.md
       - Cluster Bootstrap: cluster-bootstrap.md
