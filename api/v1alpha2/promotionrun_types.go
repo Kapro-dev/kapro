@@ -216,7 +216,11 @@ type PromotionRunSpec struct {
 	// objects together without creating a synthetic application object.
 	// +optional
 	Versions map[string]string `json:"versions,omitempty"`
-	// PromotionPlans is the DAG of promotionplan nodes.
+	// Plans is the list of Plan CRD names this PromotionRun executes.
+	// Flat list of metadata.name strings. v1alpha1's per-node
+	// `dependsOn` for cross-plan ordering is intentionally dropped —
+	// users wanting that compose a single Plan with the full
+	// dependency topology instead of listing multiple Plans here.
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=64
 	Plans []string `json:"plans"`

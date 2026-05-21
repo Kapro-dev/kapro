@@ -42,7 +42,9 @@ type GatePolicySpec struct {
 	// Approvers is the list of usernames or group names whose approval
 	// unlocks the gate. PRESENCE OF THIS FIELD implies manual mode in
 	// v1alpha2 — the explicit `mode:` enum was removed because the data
-	// already encodes the mode.
+	// already encodes the mode. An empty list cannot satisfy the gate
+	// (no one is authorized to approve), so MinItems=1 is enforced.
+	// +kubebuilder:validation:MinItems=1
 	// +optional
 	Approvers []string `json:"approvers,omitempty"`
 	// OnFailure controls what Fleet does when a gate fails or times out.

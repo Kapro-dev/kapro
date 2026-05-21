@@ -155,9 +155,11 @@ spec:
                                 Approvers is the list of usernames or group names whose approval
                                 unlocks the gate. PRESENCE OF THIS FIELD implies manual mode in
                                 v1alpha2 — the explicit `mode:` enum was removed because the data
-                                already encodes the mode.
+                                already encodes the mode. An empty list cannot satisfy the gate
+                                (no one is authorized to approve), so MinItems=1 is enforced.
                               items:
                                 type: string
+                              minItems: 1
                               type: array
                             gateTimeout:
                               description: |-
@@ -793,9 +795,12 @@ spec:
             - plan
             type: object
             x-kubernetes-validations:
-            - message: exactly one of sourceRef or chart+version is required
+            - message: exactly one of sourceRef or chart is required
               rule: (has(self.sourceRef) && size(self.sourceRef) > 0) != (has(self.chart)
                 && size(self.chart) > 0)
+            - message: version is required when chart is set
+              rule: '!(has(self.chart) && size(self.chart) > 0) || (has(self.version)
+                && size(self.version) > 0)'
           status:
             description: FleetStatus defines the observed state of Fleet.
             properties:

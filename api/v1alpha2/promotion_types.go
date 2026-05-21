@@ -24,9 +24,12 @@ type PromotionSpec struct {
 	Versions map[string]string `json:"versions,omitempty"`
 	// Plans optionally overrides the inline Fleet.spec.plan with one or more
 	// named Plan CRDs. Each entry is the metadata.name of a Plan resource.
-	// Listing the same name twice is rejected by the admission webhook —
-	// to apply the same Plan to a different cluster subset, create a
-	// second Promotion with a narrower spec.scope.
+	// Duplicate names in this list have no behavioural meaning — to apply
+	// the same Plan to a different cluster subset, create a second
+	// Promotion with a narrower spec.scope. A future admission webhook
+	// (planned in the v1alpha2 controller migration) may reject
+	// duplicates outright; today the runtime silently treats repeats as
+	// a single entry.
 	// +kubebuilder:validation:MaxItems=64
 	// +optional
 	Plans []string `json:"plans,omitempty"`

@@ -1500,7 +1500,12 @@ spec:
               which can perform DAG checks without the quadratic CEL cost budget constraints.
             properties:
               plans:
-                description: PromotionPlans is the DAG of promotionplan nodes.
+                description: |-
+                  Plans is the list of Plan CRD names this PromotionRun executes.
+                  Flat list of metadata.name strings. v1alpha1's per-node
+                  `dependsOn` for cross-plan ordering is intentionally dropped —
+                  users wanting that compose a single Plan with the full
+                  dependency topology instead of listing multiple Plans here.
                 items:
                   type: string
                 maxItems: 64
@@ -1916,9 +1921,11 @@ spec:
                             Approvers is the list of usernames or group names whose approval
                             unlocks the gate. PRESENCE OF THIS FIELD implies manual mode in
                             v1alpha2 — the explicit `mode:` enum was removed because the data
-                            already encodes the mode.
+                            already encodes the mode. An empty list cannot satisfy the gate
+                            (no one is authorized to approve), so MinItems=1 is enforced.
                           items:
                             type: string
+                          minItems: 1
                           type: array
                         gateTimeout:
                           description: |-

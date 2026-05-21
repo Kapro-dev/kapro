@@ -9,7 +9,8 @@ import (
 // ---- Fleet ------------------------------------------------------------------
 
 // FleetSpec defines the desired state of a Fleet fleet.
-// +kubebuilder:validation:XValidation:rule="(has(self.sourceRef) && size(self.sourceRef) > 0) != (has(self.chart) && size(self.chart) > 0)",message="exactly one of sourceRef or chart+version is required"
+// +kubebuilder:validation:XValidation:rule="(has(self.sourceRef) && size(self.sourceRef) > 0) != (has(self.chart) && size(self.chart) > 0)",message="exactly one of sourceRef or chart is required"
+// +kubebuilder:validation:XValidation:rule="!(has(self.chart) && size(self.chart) > 0) || (has(self.version) && size(self.version) > 0)",message="version is required when chart is set"
 type FleetSpec struct {
 	// Registry is the OCI registry URL for generated pull-mode artifacts.
 	// Native Argo/Flux sources may omit it when no Fleet-packaged artifact is used.
