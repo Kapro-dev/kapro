@@ -146,7 +146,7 @@ install_kapro() {
   "${KUBECTL[@]}" -n kapro-system set image deployment/kapro-operator manager=kapro-operator:argo-e2e
   "${KUBECTL[@]}" -n kapro-system set env deployment/kapro-operator \
     KAPRO_DEV_MODE=1 \
-    KAPRO_CONTROLLERS=promotionrun,promotion-target,backend-profile,approval,plugin-registration
+    KAPRO_CONTROLLERS=promotionrun,backend,approval,plugin
   "${KUBECTL[@]}" -n kapro-system rollout status deployment/kapro-operator --timeout=180s
 }
 

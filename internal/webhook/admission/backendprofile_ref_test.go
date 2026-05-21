@@ -22,13 +22,16 @@ func newBackendRefScheme(t *testing.T) *runtime.Scheme {
 	return s
 }
 
-func backendProfile(name string, ready bool) *kaprov1alpha2.Backend {
+func backendProfile(name string, driver kaprov1alpha2.BackendDriver, ready bool) *kaprov1alpha2.Backend {
 	p := &kaprov1alpha2.Backend{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: kaprov1alpha2.BackendSpec{
-			Driver: kaprov1alpha2.BackendDriverFlux,
+			Driver: driver,
 		},
 		Status: kaprov1alpha2.BackendStatus{Ready: ready},
+	}
+	if driver == kaprov1alpha2.BackendDriverExternal {
+		p.Spec.PluginRef = "external-plugin"
 	}
 	return p
 }
@@ -59,15 +62,26 @@ func TestValidateFleetClusterBackendRef_Missing(t *testing.T) {
 	}
 }
 
-func TestValidateFleetClusterBackendRef_NotReady(t *testing.T) {
+func TestValidateFleetClusterBackendRef_BuiltInBackendDoesNotRequireStatusReady(t *testing.T) {
 	scheme := newBackendRefScheme(t)
 	reader := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(backendProfile("flux", false)).
+		WithObjects(backendProfile("flux", kaprov1alpha2.BackendDriverFlux, false)).
 		Build()
 	mc := fleetClusterWithBackend("flux")
+	if err := admission.ValidateFleetClusterBackendRef(context.Background(), reader, mc); err != nil {
+		t.Fatalf("unexpected error for built-in Backend without status Ready: %v", err)
+	}
+}
+
+func TestValidateFleetClusterBackendRef_ExternalNotReady(t *testing.T) {
+	scheme := newBackendRefScheme(t)
+	reader := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(backendProfile("external", kaprov1alpha2.BackendDriverExternal, false)).
+		Build()
+	mc := fleetClusterWithBackend("external")
 	err := admission.ValidateFleetClusterBackendRef(context.Background(), reader, mc)
 	if err == nil {
-		t.Fatal("expected error for NotReady Backend")
+		t.Fatal("expected error for NotReady external Backend")
 	}
 	if !strings.Contains(err.Error(), "not Ready") {
 		t.Fatalf("expected not-Ready error, got %v", err)
@@ -77,7 +91,7 @@ func TestValidateFleetClusterBackendRef_NotReady(t *testing.T) {
 func TestValidateFleetClusterBackendRef_Ready(t *testing.T) {
 	scheme := newBackendRefScheme(t)
 	reader := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(backendProfile("flux", true)).
+		WithObjects(backendProfile("flux", kaprov1alpha2.BackendDriverFlux, true)).
 		Build()
 	mc := fleetClusterWithBackend("flux")
 	if err := admission.ValidateFleetClusterBackendRef(context.Background(), reader, mc); err != nil {

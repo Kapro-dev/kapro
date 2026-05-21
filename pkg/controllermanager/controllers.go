@@ -24,28 +24,38 @@ import (
 )
 
 func init() {
+	Register("fleet", startKaproController)
+	Register("plan", startPlanController)
 	Register("promotion", startPromotionController)
 	Register("promotionrun", startPromotionRunController)
-	Register("promotion-target", startPromotionTargetController)
+	Register("target", startPromotionTargetController)
+	Register("cluster", startFleetClusterHeartbeatController)
 	Register("approval", startApprovalController)
-	Register("kapro", startKaproController)
-	Register("backend-profile", startBackendProfileController)
-	Register("plugin-registration", startPluginRegistrationController)
-	Register("promotion-trigger", startPromotionTriggerController)
-	// fleetcluster-bootstrap: CSR-native cluster registration + per-cluster RBAC.
-	// Opt-in for now (off-by-default) until OCI Delivery Core (PR-3, PR-4) ships
-	// a spoke binary to consume the issued bootstrap kubeconfig. Set
-	// KAPRO_CONTROLLERS=*,fleetcluster-bootstrap or list it explicitly to enable.
-	Register("fleetcluster-bootstrap", startFleetClusterBootstrapController)
-	// fleetcluster-template: universal fleet auto-import (PR-6). Opt-in until
-	// per-source IAM is documented (PR-7). Set
-	// KAPRO_CONTROLLERS=*,fleetcluster-template or list it explicitly to enable.
-	Register("fleetcluster-template", startFleetClusterTemplateController)
-	// fleetcluster-heartbeat: cluster reachability via consecutive-failure
-	// threshold (PR-8). Sole writer of FleetCluster conditions[Ready] and
-	// status.heartbeat. kapro_controller reads conditions[Ready] to surface
-	// Phase=Unreachable. Always-on: no cost when no FleetCluster exists.
-	Register("fleetcluster-heartbeat", startFleetClusterHeartbeatController)
+	Register("backend", startBackendProfileController)
+	Register("plugin", startPluginRegistrationController)
+	Register("trigger", startPromotionTriggerController)
+	Register("cluster-bootstrap", startFleetClusterBootstrapController)
+	Register("clustertemplate", startFleetClusterTemplateController)
+
+	// Compatibility names for existing explicit KAPRO_CONTROLLERS selections.
+	// These normalize to canonical names before startup and are intentionally
+	// excluded from wildcard/default expansion.
+	RegisterAlias("kapro", "fleet")
+	RegisterAlias("promotion-target", "target")
+	RegisterAlias("fleetcluster-heartbeat", "cluster")
+	RegisterAlias("backend-profile", "backend")
+	RegisterAlias("plugin-registration", "plugin")
+	RegisterAlias("promotion-trigger", "trigger")
+	RegisterAlias("fleetcluster-bootstrap", "cluster-bootstrap")
+	RegisterAlias("fleetcluster-template", "clustertemplate")
+}
+
+// startPlanController exists so controller selection can name the ADR-0010
+// core Plan surface. Plan is a pure template API; Fleet materializes inline
+// plans and PromotionRun executes referenced Plan objects.
+func startPlanController(_ context.Context, _ ControllerContext) (bool, error) {
+	ctrl.Log.WithName("controllermanager").Info("plan controller skipped: Plan is a template API with no reconciler")
+	return false, nil
 }
 
 // startPromotionController starts the Promotion intent reconciler.
@@ -270,7 +280,7 @@ func startKaproController(_ context.Context, cc ControllerContext) (bool, error)
 func startFleetClusterBootstrapController(_ context.Context, cc ControllerContext) (bool, error) {
 	if cc.KubeClient == nil || cc.CertClient == nil {
 		ctrl.Log.WithName("controllermanager").Info(
-			"fleetcluster-bootstrap controller skipped: KubeClient or CertClient is nil — expected only in tests, log a bug if you see this in production",
+			"cluster-bootstrap controller skipped: KubeClient or CertClient is nil - expected only in tests, log a bug if you see this in production",
 			"kubeClientPresent", cc.KubeClient != nil,
 			"certClientPresent", cc.CertClient != nil,
 		)
