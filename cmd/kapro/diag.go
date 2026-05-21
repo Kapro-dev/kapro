@@ -22,13 +22,13 @@ import (
 // corev1 types — scripts that key on `.promotion.spec.version` or
 // `.events[0].reason` get the full Kubernetes object shape they
 // already know. The envelope keys (`promotion`, `promotionRuns`,
-// `promotionTargets`, `events`, `blockedOn`, `suggestedNextActions`)
+// `targets`, `events`, `blockedOn`, `suggestedNextActions`)
 // are the stable contract; the embedded types track their own
 // versioning policy (api/v1alpha2 stability via ADRs).
 type promotionDiag struct {
 	Promotion *kaprov1alpha2.Promotion     `json:"promotion"`
 	Runs      []kaprov1alpha2.PromotionRun `json:"promotionRuns"`
-	Targets   []kaprov1alpha2.Target       `json:"promotionTargets"`
+	Targets   []kaprov1alpha2.Target       `json:"targets"`
 	Events    []corev1.Event               `json:"events"`
 	BlockedOn []string                     `json:"blockedOn,omitempty"`
 	Next      []string                     `json:"suggestedNextActions,omitempty"`
@@ -119,7 +119,7 @@ func collectDiag(ctx context.Context, c client.Client, name string, eventsLimit 
 	}
 	var targets []kaprov1alpha2.Target
 	if relevantRunName != "" {
-		t, err := listPromotionTargetsForPromotionRun(ctx, c, relevantRunName)
+		t, err := listTargetsForPromotionRun(ctx, c, relevantRunName)
 		if err != nil {
 			return nil, err
 		}
@@ -219,7 +219,7 @@ func filterPromotionEvents(all []corev1.Event, p *kaprov1alpha2.Promotion,
 		add("PromotionRun", r.Name)
 	}
 	for _, t := range targets {
-		add("PromotionTarget", t.Name)
+		add("Target", t.Name)
 	}
 
 	out := make([]corev1.Event, 0, len(all))
@@ -303,7 +303,7 @@ func renderDiag(d *promotionDiag) {
 	p := d.Promotion
 	cli.Header(fmt.Sprintf("promotion/%s", p.Name))
 
-	cli.KV("Kapro", p.Spec.FleetRef)
+	cli.KV("Fleet", p.Spec.FleetRef)
 	if p.Spec.Version != "" {
 		cli.KV("Version", p.Spec.Version)
 	}

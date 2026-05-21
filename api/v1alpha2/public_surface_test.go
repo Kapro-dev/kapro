@@ -22,7 +22,7 @@ func TestPublicSurfaceUsesV1Alpha2Names(t *testing.T) {
 		regexp.MustCompile(`kubectl[^\n]*(backendprofile|fleetcluster|promotiontarget|promotiontrigger|pluginregistration|promotionplan|promotionsource)s?\b`),
 	}
 
-	for _, rel := range []string{"README.md", "docs", "examples", "scripts"} {
+	for _, rel := range []string{"README.md", "docs", "examples", "scripts", "charts"} {
 		scanPublicSurface(t, filepath.Join(root, rel), bad)
 	}
 }
@@ -41,16 +41,22 @@ func TestHelmWebhookRulesUseServedVersion(t *testing.T) {
 
 func TestTargetCRDPrintColumnsUseCurrentFields(t *testing.T) {
 	root := repoRoot(t)
-	path := filepath.Join(root, "config", "crd", "bases", "kapro.io_targets.yaml")
-	data := readText(t, path)
-	for _, stale := range []string{".spec.promotionRunRef", ".spec.promotionPlanRef"} {
-		if strings.Contains(data, stale) {
-			t.Fatalf("%s still contains stale Target printcolumn %s", path, stale)
+	for _, relPath := range []string{
+		filepath.Join("config", "crd", "bases", "kapro.io_targets.yaml"),
+		filepath.Join("charts", "kapro-operator", "crds", "kapro.io_targets.yaml"),
+		filepath.Join("internal", "bootstrap", "kaprocrds", "kapro.io_targets.yaml"),
+	} {
+		path := filepath.Join(root, relPath)
+		data := readText(t, path)
+		for _, stale := range []string{".spec.promotionRunRef", ".spec.promotionPlanRef"} {
+			if strings.Contains(data, stale) {
+				t.Fatalf("%s still contains stale Target printcolumn %s", path, stale)
+			}
 		}
-	}
-	for _, want := range []string{".spec.runRef", ".spec.planRef"} {
-		if !strings.Contains(data, want) {
-			t.Fatalf("%s missing Target printcolumn %s", path, want)
+		for _, want := range []string{".spec.runRef", ".spec.planRef"} {
+			if !strings.Contains(data, want) {
+				t.Fatalf("%s missing Target printcolumn %s", path, want)
+			}
 		}
 	}
 }

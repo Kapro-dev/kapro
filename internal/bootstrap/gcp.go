@@ -109,7 +109,7 @@ type RegistryInfo struct {
 
 // EnsureGARRegistry creates a Docker/OCI Artifact Registry repository.
 // Idempotent — skips if already exists.
-// Returns the registry URL for use in PromotionSource registries and artifact push.
+// Returns the registry URL for use in Source registries and artifact push.
 func EnsureGARRegistry(ctx context.Context, project, location, repoName string) (*RegistryInfo, error) {
 	ts := provider.GCPTokenSource(ctx)
 	c, err := artifactregistry.NewClient(ctx, option.WithTokenSource(ts))

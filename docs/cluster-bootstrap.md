@@ -1,4 +1,4 @@
-# Registering a Fleet Cluster (Pull Mode)
+# Registering a Cluster (Pull Mode)
 
 This guide walks through the pull-mode registration flow: installing
 `kapro-cluster-controller` on a workload cluster so it self-registers with a

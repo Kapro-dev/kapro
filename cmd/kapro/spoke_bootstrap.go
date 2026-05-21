@@ -136,7 +136,7 @@ func runSpokeBootstrap(ctx context.Context, opts spokeBootstrapOptions) error {
 
 	sp := cli.NewSpinner(fmt.Sprintf("Ensuring Cluster %s with bootstrap slot", opts.ClusterName))
 	sp.Start()
-	if err := ensureFleetClusterBootstrap(ctx, c, opts.ClusterName, opts.TTL); err != nil {
+	if err := ensureClusterBootstrap(ctx, c, opts.ClusterName, opts.TTL); err != nil {
 		sp.StopFail("Failed to apply Cluster bootstrap spec")
 		return err
 	}
@@ -178,7 +178,7 @@ func runSpokeBootstrap(ctx context.Context, opts spokeBootstrapOptions) error {
 	return nil
 }
 
-func ensureFleetClusterBootstrap(ctx context.Context, c client.Client, name string, ttl time.Duration) error {
+func ensureClusterBootstrap(ctx context.Context, c client.Client, name string, ttl time.Duration) error {
 	existing := &kaprov1alpha2.Cluster{}
 	err := c.Get(ctx, client.ObjectKey{Name: name}, existing)
 	if apierrors.IsNotFound(err) {

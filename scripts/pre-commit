@@ -31,10 +31,14 @@ go build ./...
 # Check if types.go changed - if so, verify manifests are up to date
 if echo "$STAGED" | grep -q "types.go"; then
     echo "pre-commit: types.go changed, verifying generated manifests..."
-    make generate manifests 2>/dev/null
-    if ! git diff --quiet config/crd/ api/v1alpha1/zz_generated.deepcopy.go 2>/dev/null; then
+    make generate sync-crds 2>/dev/null
+    if ! git diff --quiet \
+        config/crd/ \
+        charts/kapro-operator/crds/ \
+        internal/bootstrap/kaprocrds/ \
+        api/v1alpha2/zz_generated.deepcopy.go 2>/dev/null; then
         echo "  CRD manifests or deepcopy are out of date."
-        echo "  run: make generate manifests && git add config/ api/"
+        echo "  run: make generate sync-crds && git add config/ charts/kapro-operator/crds/ internal/bootstrap/kaprocrds/ api/"
         exit 1
     fi
 fi

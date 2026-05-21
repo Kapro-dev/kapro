@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHART="${ROOT}/charts/kapro-operator"
+BOOTSTRAP_CRDS="${ROOT}/internal/bootstrap/kaprocrds"
 
 usage() {
   cat <<EOF
@@ -33,25 +34,32 @@ need() {
   fi
 }
 
-check_crd_sync() {
-  local config_list chart_list
+check_crd_dir_sync() {
+  local target_dir target_label config_list target_list
+  target_dir="$1"
+  target_label="$2"
   config_list="$(mktemp)"
-  chart_list="$(mktemp)"
+  target_list="$(mktemp)"
   find "${ROOT}/config/crd/bases" -maxdepth 1 -type f -name '*.yaml' -exec basename {} \; | sort >"${config_list}"
-  find "${CHART}/crds" -maxdepth 1 -type f -name '*.yaml' -exec basename {} \; | sort >"${chart_list}"
-  if ! diff -u "${config_list}" "${chart_list}"; then
-    echo "chart CRDs differ from config/crd/bases; run: make sync-crds" >&2
-    rm -f "${config_list}" "${chart_list}"
+  find "${target_dir}" -maxdepth 1 -type f -name '*.yaml' -exec basename {} \; | sort >"${target_list}"
+  if ! diff -u "${config_list}" "${target_list}"; then
+    echo "${target_label} CRDs differ from config/crd/bases; run: make sync-crds" >&2
+    rm -f "${config_list}" "${target_list}"
     exit 1
   fi
   while IFS= read -r crd; do
-    if ! cmp -s "${ROOT}/config/crd/bases/${crd}" "${CHART}/crds/${crd}"; then
-      echo "chart CRD ${crd} differs from config/crd/bases; run: make sync-crds" >&2
-      rm -f "${config_list}" "${chart_list}"
+    if ! cmp -s "${ROOT}/config/crd/bases/${crd}" "${target_dir}/${crd}"; then
+      echo "${target_label} CRD ${crd} differs from config/crd/bases; run: make sync-crds" >&2
+      rm -f "${config_list}" "${target_list}"
       exit 1
     fi
   done <"${config_list}"
-  rm -f "${config_list}" "${chart_list}"
+  rm -f "${config_list}" "${target_list}"
+}
+
+check_crd_sync() {
+  check_crd_dir_sync "${CHART}/crds" "chart"
+  check_crd_dir_sync "${BOOTSTRAP_CRDS}" "bootstrap"
 }
 
 render() {

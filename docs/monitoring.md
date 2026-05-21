@@ -50,7 +50,7 @@ The operator currently registers these Kapro-specific metric names:
 | `kapro_controller_status_writes_total` | Counter | `resource`, `result` | Status write attempts by resource and result. |
 | `kapro_sync_transitions_total` | Counter | `phase`, `result` | Target rollout phase transitions. |
 | `kapro_gate_evaluations_total` | Counter | `gate_type`, `result` | Gate evaluation outcomes. |
-| `kapro_stage_duration_seconds` | Histogram | `promotionplan` | Stage completion duration. |
+| `kapro_stage_duration_seconds` | Histogram | `plan` | Stage completion duration. |
 | `kapro_promotionrun_active_total` | Gauge | none | Current non-terminal promotionrun count. |
 | `kapro_wave_environments_promoted_total` | Gauge | `promotionrun`, `stage` | Number of promoted targets per promotionrun stage. |
 | `kapro_spoke_reconciles_total` | Counter | `result` | Spoke controller reconcile attempts. |
@@ -81,10 +81,10 @@ That config emits these example metric names:
 | `kapro_promotionrun_created` | `PromotionRun.metadata.creationTimestamp` | PromotionRun age calculations. |
 | `kapro_promotionrun_status_phase` | `PromotionRun.status.phase` | Non-terminal promotionrun detection. |
 | `kapro_promotionrun_status_condition` | `PromotionRun.status.conditions[]` | Stalled/ready promotionrun state. |
-| `kapro_promotiontrigger_status_condition` | `Trigger.status.conditions[]` | Cooldown, max-active, source, signature, and Promotion update blocking reasons. |
-| `kapro_promotiontrigger_status_active_promotionrun_count` | `Trigger.status.activePromotionRunCount` | Active attempt count for the trigger-managed Promotion. |
-| `kapro_pluginregistration_status_ready` | `Plugin.status.ready` | Plugin readiness. |
-| `kapro_pluginregistration_status_condition` | `Plugin.status.conditions[]` | Plugin probe status and failure reason. |
+| `kapro_trigger_status_condition` | `Trigger.status.conditions[]` | Cooldown, max-active, source, signature, and Promotion update blocking reasons. |
+| `kapro_trigger_status_active_promotionrun_count` | `Trigger.status.activePromotionRunCount` | Active attempt count for the trigger-managed Promotion. |
+| `kapro_plugin_status_ready` | `Plugin.status.ready` | Plugin readiness. |
+| `kapro_plugin_status_condition` | `Plugin.status.conditions[]` | Plugin probe status and failure reason. |
 
 Installations must allow kube-state-metrics to list and watch these cluster
 scoped CRDs:
@@ -142,8 +142,8 @@ for these signals over parsing logs or relying on environment-specific queries.
 
 | Operational question | Future metric |
 | --- | --- |
-| PromotionRun is stuck in a non-terminal state past its expected timeout. | `kapro_promotionrun_stuck_total{reason,promotionplan,stage}` or a promotionrun age gauge by phase. |
-| Trigger is blocked by cooldown, max-active, signature, or source errors. | `kapro_promotiontrigger_status_condition{type,reason}` until a controller-owned blocked counter exists. |
+| PromotionRun is stuck in a non-terminal state past its expected timeout. | `kapro_promotionrun_stuck_total{reason,plan,stage}` or a promotionrun age gauge by phase. |
+| Trigger is blocked by cooldown, max-active, signature, or source errors. | `kapro_trigger_status_condition{type,reason}` until a controller-owned blocked counter exists. |
 | Active promotionrun count by namespace or shard. | Extend `kapro_promotionrun_active_total` with bounded labels or emit per-shard gauges. |
 
 When these metrics are implemented, update the concrete alert rules to use the

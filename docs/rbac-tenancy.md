@@ -35,7 +35,7 @@ webhook layer.
 Only platform admins and extension admins should create or update
 `Plugin` objects.
 
-Plugin registration is a privileged action because an actuator plugin can change
+Creating or updating a `Plugin` is privileged because an actuator plugin can change
 delivery backend state and a gate plugin can unblock or block production
 promotion. External plugins must run in a platform-controlled namespace, expose
 TLS, and use a namespaced `spec.tlsSecretRef` when custom CA or mTLS material is

@@ -74,7 +74,7 @@ helm upgrade --install kapro charts/kapro-operator \
 ## Core and Preview Surfaces
 
 The default install runs the core runtime controllers for promotion orchestration,
-target execution, backend profiles, approvals, triggers, plugins, and cluster
+target execution, backends, approvals, triggers, plugins, and cluster
 heartbeat. The core APIs operators should rely on for fleet promotion are:
 `Fleet`, `Promotion`, `Source`, `Backend`, `Approval`,
 `Cluster`, `Plan`, `PromotionRun`, and `Target`.
@@ -86,7 +86,7 @@ exposed deliberately:
 
 | Surface | Default | Enablement |
 |---|---|---|
-| Decision API and `AgentPolicy` | Disabled | `decisionAPI.enabled=true` and explicit Kubernetes RBAC. |
+| Decision API and `Policy` | Disabled | `decisionAPI.enabled=true` and explicit Kubernetes RBAC. |
 | Plugin gateway runtime dispatch | Disabled | `pluginGateway.enabled=true` plus installed plugin services and `Plugin` objects. |
 | Hub Gateway service exposure | Internal only | `hubGateway.service.enabled=true`; place Kubernetes authn/authz or an identity-aware proxy in front of production exposure. |
 | Fleet auto-import providers beyond GCP | Stubbed | Use `ClusterTemplate` only for implemented sources; unsupported sources report `SourceNotImplemented`. |
@@ -216,7 +216,7 @@ helm upgrade kapro charts/kapro-operator --namespace kapro-system
 kubectl -n kapro-system rollout status deployment/kapro-kapro-operator
 ```
 
-## Registering fleet clusters (pull mode)
+## Registering clusters (pull mode)
 
 Kapro supports a pull-mode spoke agent (`kapro-cluster-controller`) that
 runs inside each workload cluster and reports back to the hub. To register a
@@ -256,10 +256,10 @@ Install your plugin service, then apply a registration such as:
 kubectl apply -f examples/plugins/slo-gate-registration.yaml
 ```
 
-The operator probes `Plugin` objects continuously. Ready
-registrations with a fresh `status.observedGeneration` are hot-loaded into the
-actuator, gate, and planner registries; stale, incompatible, or deleted
-registrations are unloaded without restarting the operator.
+The operator probes `Plugin` objects continuously. Ready plugins with a fresh
+`status.observedGeneration` are hot-loaded into the actuator, gate, and planner
+registries; stale, incompatible, or deleted plugins are unloaded without
+restarting the operator.
 
 ```bash
 kubectl get plugins.kapro.io

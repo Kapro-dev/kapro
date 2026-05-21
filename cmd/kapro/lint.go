@@ -22,7 +22,7 @@ func newLintCmd() *cobra.Command {
 		Short: "Statically check Kapro YAML for schema + best-practice issues",
 		Long: `Lint Kapro YAML manifests without contacting a cluster.
 
-Checks Kapro, Promotion, and Plan resources for:
+Checks Fleet, Promotion, and Plan resources for:
   - missing required fields
   - duplicate or dangling stage references
   - dependency cycles in Plan DAGs

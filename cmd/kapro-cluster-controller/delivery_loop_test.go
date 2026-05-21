@@ -222,7 +222,7 @@ func TestDeliveryLoop_UnknownDriverFailsLoudly(t *testing.T) {
 	}
 }
 
-func TestDeliveryLoop_MissingBackendProfileFails(t *testing.T) {
+func TestDeliveryLoop_MissingBackendFails(t *testing.T) {
 	fc := newDeliveryFC("c1", map[string]string{"api": "1.0"}, false, "nonexistent")
 	hub := deliveryHub(t, fc, nil)
 

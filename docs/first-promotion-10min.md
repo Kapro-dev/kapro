@@ -44,8 +44,8 @@ Expected:
 kubectl get backends,fleets,plans
 ```
 
-shows one backend profile, one Kapro fleet object, and one generated promotion
-plan. The example `Kapro` also generates two synthetic `Cluster` objects
+shows one `Backend`, one `Fleet`, and one generated `Plan`. The example
+`Fleet` also generates two synthetic `Cluster` objects
 from `spec.clusters`.
 
 ## 3. Add Or Confirm Targets
@@ -54,7 +54,7 @@ from `spec.clusters`.
 kubectl get clusters
 ```
 
-You should see the generated `canary-eu` and `prod-eu` targets from
+You should see the generated `canary-eu` and `prod-eu` clusters from
 `examples/quickstart/kapro.yaml`. If none appear, the operator is not
 reconciling the `Fleet` object; check the controller logs before creating
 manual test targets. Use the Kind demo for a fully scripted hub/spoke setup.

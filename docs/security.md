@@ -2,7 +2,7 @@
 
 Kapro is a promotion control plane. It can cause production changes across many
 clusters, so the security model assumes that Promotion updates, PromotionRun
-attempt creation, plugin registration, approval, artifact verification, and
+attempt creation, `Plugin` changes, approval, artifact verification, and
 webhook gates are privileged operations.
 
 For role design, see `docs/rbac-tenancy.md`.

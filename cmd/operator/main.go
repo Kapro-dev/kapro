@@ -173,7 +173,7 @@ func main() {
 		log.Error(err, "failed to register push/flux actuator")
 		os.Exit(1)
 	}
-	// Pull-mode delivery records desired versions on FleetCluster; spoke-side
+	// Pull-mode delivery records desired versions on Cluster; spoke-side
 	// agents own applying those versions to their local backend.
 	pullAct := &pullactuator.PullActuator{HubClient: mgr.GetClient()}
 	if err := actuatorReg.Register("pull/flux", pullAct); err != nil {
@@ -212,7 +212,7 @@ func main() {
 
 	// Typed Kubernetes clients for verbs not exposed by controller-runtime's
 	// generic client: ServiceAccounts/token TokenRequest and CSR UpdateApproval.
-	// Used by the FleetCluster bootstrap controller. Cheap to construct; safe to
+	// Used by the Cluster bootstrap controller. Cheap to construct; safe to
 	// share across reconcilers.
 	kubeClient, err := kubernetes.NewForConfig(mgr.GetConfig())
 	if err != nil {
@@ -275,9 +275,9 @@ func main() {
 			"/mutate-kapro-io-v1alpha2-cluster",
 			&crwebhook.Admission{Handler: kaploadmission.NewFleetClusterMutator(decoder)},
 		)
-		// Use APIReader (uncached, direct to apiserver) for the FleetCluster
+		// Use APIReader (uncached, direct to apiserver) for the Cluster
 		// admission webhook so a cold-start informer cache cannot produce a
-		// spurious BackendProfile-not-found rejection. Matches the pattern
+		// spurious Backend-not-found rejection. Matches the pattern
 		// already used by the plugin gateway registration above.
 		mgr.GetWebhookServer().Register(
 			"/validate-kapro-io-v1alpha2-cluster",

@@ -151,7 +151,7 @@ func TestStatusTick_PatchesCapabilities(t *testing.T) {
 	}
 	got := &kaprov1alpha2.Cluster{}
 	if err := hub.Get(context.Background(), client.ObjectKey{Name: "de-prod-01"}, got); err != nil {
-		t.Fatalf("get FleetCluster: %v", err)
+		t.Fatalf("get Cluster: %v", err)
 	}
 	if got.Status.Capabilities.NodeCount != 1 {
 		t.Errorf("status not patched: NodeCount=%d", got.Status.Capabilities.NodeCount)
@@ -164,13 +164,13 @@ func TestStatusTick_PatchesCapabilities(t *testing.T) {
 	}
 }
 
-func TestStatusTick_HandlesMissingFleetCluster(t *testing.T) {
+func TestStatusTick_HandlesMissingCluster(t *testing.T) {
 	scheme := newStatusScheme(t)
 	hub := fake.NewClientBuilder().WithScheme(scheme).
 		WithStatusSubresource(&kaprov1alpha2.Cluster{}).Build()
 	local := fake.NewClientBuilder().WithScheme(scheme).Build()
 	sr := &statusReporter{Hub: newHubClientFromStatic(hub), Local: local, ClusterName: "nope"}
 	if err := sr.tick(context.Background()); err == nil {
-		t.Fatal("expected error when FleetCluster missing")
+		t.Fatal("expected error when Cluster missing")
 	}
 }

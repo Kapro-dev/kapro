@@ -9,7 +9,7 @@ Verify the agent locally:
   kubectl -n {{ .Release.Namespace }} logs deployment/{{ include "kapro-cluster-controller.fullname" . }}
 
 Then on the HUB cluster:
-  kubectl get fleetcluster {{ .Values.cluster.name }} -o yaml
+  kubectl get cluster {{ .Values.cluster.name }} -o yaml
 
 Look for:
   status.phase: Ready

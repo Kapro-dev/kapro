@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	authnv1 "k8s.io/api/authentication/v1"
@@ -163,6 +164,9 @@ func TestFleet_ReturnsClusterAndPromotionRunSummary(t *testing.T) {
 	}
 	if resp.Page.Limit != defaultDecisionAPILimit {
 		t.Errorf("expected default limit %d, got %d", defaultDecisionAPILimit, resp.Page.Limit)
+	}
+	if !strings.Contains(rec.Body.String(), `"plan"`) || strings.Contains(rec.Body.String(), `"promotionplan"`) {
+		t.Fatalf("fleet JSON should use plan key, got: %s", rec.Body.String())
 	}
 }
 
@@ -335,6 +339,9 @@ func TestPromotionRunContext_ReturnsPromotionRunAndTargets(t *testing.T) {
 	}
 	if resp.Plan == nil {
 		t.Error("expected promotionplan to be resolved")
+	}
+	if !strings.Contains(rec.Body.String(), `"plan"`) || strings.Contains(rec.Body.String(), `"promotionplan"`) {
+		t.Fatalf("context JSON should use plan key, got: %s", rec.Body.String())
 	}
 	if len(resp.Targets) != 1 {
 		t.Errorf("expected 1 target, got %d", len(resp.Targets))
@@ -568,7 +575,7 @@ func TestDecide_ApproveRequiresApprovalCreateRBACBeforeTraceWrite(t *testing.T) 
 	}
 }
 
-func TestDecide_AuthorizesPromotionTargetStatusPatchSubresource(t *testing.T) {
+func TestDecide_AuthorizesTargetStatusPatchSubresource(t *testing.T) {
 	promotionrun, mc, _, target := decisionFixtures()
 	authz := &recordingDecisionAuthorizer{}
 	s := decisionTestServer(t, promotionrun, mc, target)

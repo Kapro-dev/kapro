@@ -122,8 +122,8 @@ Kapro emits semantic event types for:
 - target phase changes.
 
 Webhook notifications can use plain JSON or CloudEvents v1.0 structured JSON.
-CloudEvents IDs are stable for a given PromotionRun, event type, promotion plan, stage,
-target, and phase, allowing receivers to de-duplicate retries.
+CloudEvents IDs are stable for a given PromotionRun, event type, `Plan` node,
+stage, target, and phase, allowing receivers to de-duplicate retries.
 
 Inline notifications on gate policies remain supported and are the active
 runtime path today. Kapro does not expose separate public notification
@@ -154,8 +154,8 @@ Kapro controller
 Runtime registration through `Plugin` is an opt-in API preview.
 When `KAPRO_ENABLE_PLUGIN_GATEWAY=true`, the operator loads ready registrations
 with fresh observed generation into the actuator, gate, and planner registries.
-Registration changes are hot-loaded after readiness probes succeed; stale,
-incompatible, and deleted registrations are unloaded.
+Plugin changes are hot-loaded after readiness probes succeed; stale,
+incompatible, and deleted plugins are unloaded.
 
 API pieces:
 
@@ -175,8 +175,8 @@ API maturity, deprecation rules, upgrade policy, and the future non-binding
 certified plugin path are defined in `docs/api-stability.md`. KAI, KGI, and KPI
 conformance instructions are defined in `docs/plugin-authoring.md`.
 
-Plugin registration is a platform-admin action. External plugins are inside the
-delivery integration boundary, not inside Kapro's control-plane trust boundary.
+Creating or updating a `Plugin` is a platform-admin action. External plugins are
+inside the delivery integration boundary, not inside Kapro's control-plane trust boundary.
 They must not create or mutate Kapro PromotionRun state directly. See
 `docs/security.md` and `docs/rbac-tenancy.md` for trust boundary, Secret
 handling, RBAC, and tenancy rules.
@@ -253,7 +253,7 @@ Target CRD posture:
 
 | API surface | Posture |
 |---|---|
-| Existing promotion, promotion plan, source, unit, cluster, target, approval, backend, trigger, and policy CRDs | Core API |
+| Existing `Promotion`, `Plan`, `Source`, unit, `Cluster`, `Target`, `Approval`, `Backend`, `Trigger`, and `Policy` CRDs | Core API |
 | `Plugin` | API preview; opt-in hot-loaded runtime registration |
 | `Trigger` | API preview with ADR-002 safeguards; OCI controller preview |
 | Notification provider/policy | Add only when shared credential ownership requires it |

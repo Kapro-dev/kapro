@@ -1,6 +1,6 @@
 // Command kapro-cluster-controller is the spoke-side agent that registers a
 // workload cluster with the Kapro hub, maintains a heartbeat Lease, reports
-// cluster status, and reconciles FleetCluster.spec.desiredVersions onto the
+// cluster status, and reconciles Cluster.spec.desiredVersions onto the
 // local cluster through a pluggable spoke Provider registry.
 //
 // Lifecycle:
@@ -14,16 +14,16 @@
 //  4. Build a steady-state hub client using the cert.
 //  5. Start three background loops:
 //     - heartbeat: refresh Lease kapro-heartbeat-<name> every 30s
-//     - status:    report cluster capabilities + health to FleetCluster.status
-//     - delivery:  watch FleetCluster.spec.desiredVersions, dispatch to a
+//     - status:    report cluster capabilities + health to Cluster.status
+//     - delivery:  watch Cluster.spec.desiredVersions, dispatch to a
 //     spoke Provider (oci/flux/argo/external) via the registry,
-//     and write per-app progress to FleetCluster.status.delivery
+//     and write per-app progress to Cluster.status.delivery
 //  6. Cert rotation is handled automatically by certificate.Manager — when the
 //     cert is approaching expiry it submits a renewal CSR (Username =
 //     "kapro-cluster:<name>" so the hub approver recognizes it as a renewal,
 //     not a bootstrap).
 //
-// All work happens against ONE FleetCluster (KAPRO_CLUSTER_NAME). The
+// All work happens against ONE Cluster (KAPRO_CLUSTER_NAME). The
 // per-cluster RBAC issued during bootstrap allows nothing else.
 package main
 
@@ -64,7 +64,7 @@ func init() {
 // Config carries the runtime configuration of the spoke binary. Sourced from
 // env vars (Helm chart populates these from values in PR-7).
 type Config struct {
-	// ClusterName is the FleetCluster name this spoke registers as.
+	// ClusterName is the Cluster name this spoke registers as.
 	// Required. Set from KAPRO_CLUSTER_NAME or --cluster-name.
 	ClusterName string
 
@@ -100,13 +100,13 @@ type Config struct {
 	// HeartbeatInterval is how often to refresh the Lease. Defaults to 30s.
 	HeartbeatInterval time.Duration
 
-	// StatusReportInterval is how often to publish FleetCluster.status.
+	// StatusReportInterval is how often to publish Cluster.status.
 	// Defaults to 60s — slower than heartbeat because Health probes are
 	// more expensive and the status doesn't change as fast.
 	StatusReportInterval time.Duration
 
 	// DeliveryInterval is how often the delivery loop reconciles
-	// FleetCluster.spec.desiredVersions on the local spoke cluster.
+	// Cluster.spec.desiredVersions on the local spoke cluster.
 	// Defaults to 30s — same cadence as heartbeat so a freshly-promoted
 	// version starts converging within one heartbeat window.
 	DeliveryInterval time.Duration
@@ -240,7 +240,7 @@ func run() error {
 	}
 	go sr.Run(ctx)
 
-	// Delivery loop: watches FleetCluster.spec.desiredVersions and reconciles
+	// Delivery loop: watches Cluster.spec.desiredVersions and reconciles
 	// each (app, version) tuple via the spoke Provider registry. Two
 	// first-party drivers are wired:
 	//   - oci  — internal/spokeprovider/outbound: pulls OCI artifacts and
@@ -327,7 +327,7 @@ func hostname() string {
 //     kubeconfig left on the node) would silently make the spoke persist
 //     credentials into — and read node info from — a DIFFERENT cluster.
 //     That's a data-corruption-class bug: the wrong cluster's node count
-//     would land on this cluster's FleetCluster.status.capabilities.
+//     would land on this cluster's Cluster.status.capabilities.
 //   - Outside a pod (local dev) we fall back to kubeconfig loading rules
 //     so `go run` against kind still works.
 //

@@ -74,13 +74,13 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 			opts,
 			func() client.ObjectList { return &kaprov1alpha2.FleetList{} },
 			func(list client.ObjectList) []kaprov1alpha2.Fleet { return list.(*kaprov1alpha2.FleetList).Items },
-			filterKaprosByPhase,
+			filterFleetsByPhase,
 		)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		response.Kapros = items
+		response.Fleets = items
 		response.Page.Counts["fleets"] = count
 		response.Page.Truncated = response.Page.Truncated || truncated
 	}
@@ -150,13 +150,13 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 			func(list client.ObjectList) []kaprov1alpha2.Target {
 				return list.(*kaprov1alpha2.TargetList).Items
 			},
-			filterPromotionTargetsByPhase,
+			filterTargetsByPhase,
 		)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		response.PromotionTargets = items
+		response.Targets = items
 		response.Page.Counts["targets"] = count
 		response.Page.Truncated = response.Page.Truncated || truncated
 	}
@@ -175,7 +175,7 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		response.BackendProfiles = items
+		response.Backends = items
 		response.Page.Counts["backends"] = count
 		response.Page.Truncated = response.Page.Truncated || truncated
 	}
@@ -252,13 +252,13 @@ type CreatePromotionRequest struct {
 }
 
 type GraphResponse struct {
-	Kapros           []kaprov1alpha2.Fleet        `json:"fleets"`
-	Clusters         []kaprov1alpha2.Cluster      `json:"clusters"`
-	Promotions       []kaprov1alpha2.Promotion    `json:"promotions"`
-	PromotionRuns    []kaprov1alpha2.PromotionRun `json:"promotionruns"`
-	PromotionTargets []kaprov1alpha2.Target       `json:"targets"`
-	BackendProfiles  []kaprov1alpha2.Backend      `json:"backends"`
-	Page             GraphPage                    `json:"page"`
+	Fleets        []kaprov1alpha2.Fleet        `json:"fleets"`
+	Clusters      []kaprov1alpha2.Cluster      `json:"clusters"`
+	Promotions    []kaprov1alpha2.Promotion    `json:"promotions"`
+	PromotionRuns []kaprov1alpha2.PromotionRun `json:"promotionruns"`
+	Targets       []kaprov1alpha2.Target       `json:"targets"`
+	Backends      []kaprov1alpha2.Backend      `json:"backends"`
+	Page          GraphPage                    `json:"page"`
 }
 
 type GraphPage struct {
@@ -486,7 +486,7 @@ func listGraphItems[T any](
 	}
 }
 
-func filterKaprosByPhase(items []kaprov1alpha2.Fleet, phase string) []kaprov1alpha2.Fleet {
+func filterFleetsByPhase(items []kaprov1alpha2.Fleet, phase string) []kaprov1alpha2.Fleet {
 	if phase == "" {
 		return items
 	}
@@ -545,7 +545,7 @@ func filterPromotionRunsByPhase(items []kaprov1alpha2.PromotionRun, phase string
 	return out
 }
 
-func filterPromotionTargetsByPhase(items []kaprov1alpha2.Target, phase string) []kaprov1alpha2.Target {
+func filterTargetsByPhase(items []kaprov1alpha2.Target, phase string) []kaprov1alpha2.Target {
 	if phase == "" {
 		return items
 	}

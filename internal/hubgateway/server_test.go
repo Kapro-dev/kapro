@@ -17,7 +17,7 @@ import (
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
-func TestGraphIncludesBackendProfiles(t *testing.T) {
+func TestGraphIncludesBackends(t *testing.T) {
 	c := testClient(t,
 		&kaprov1alpha2.Backend{
 			ObjectMeta: metav1.ObjectMeta{Name: "flux"},
@@ -131,11 +131,11 @@ func TestGraphSupportsResourceLabelPhaseAndLimitFilters(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &graph); err != nil {
 		t.Fatal(err)
 	}
-	if len(graph.PromotionTargets) != 1 {
-		t.Fatalf("promotionTargets=%d, want 1; body=%s", len(graph.PromotionTargets), rec.Body.String())
+	if len(graph.Targets) != 1 {
+		t.Fatalf("targets=%d, want 1; body=%s", len(graph.Targets), rec.Body.String())
 	}
-	if graph.PromotionTargets[0].Status.Phase != kaprov1alpha2.TargetPhaseApplying {
-		t.Fatalf("phase=%q, want Applying", graph.PromotionTargets[0].Status.Phase)
+	if graph.Targets[0].Status.Phase != kaprov1alpha2.TargetPhaseApplying {
+		t.Fatalf("phase=%q, want Applying", graph.Targets[0].Status.Phase)
 	}
 	if len(graph.Clusters) != 0 {
 		t.Fatalf("clusters=%d, want 0 when resource=targets", len(graph.Clusters))
@@ -179,11 +179,11 @@ func TestGraphPhaseFilterScansPastFirstLimitedPage(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &graph); err != nil {
 		t.Fatal(err)
 	}
-	if len(graph.PromotionTargets) != 1 {
-		t.Fatalf("promotionTargets=%d, want 1; body=%s", len(graph.PromotionTargets), rec.Body.String())
+	if len(graph.Targets) != 1 {
+		t.Fatalf("targets=%d, want 1; body=%s", len(graph.Targets), rec.Body.String())
 	}
-	if graph.PromotionTargets[0].Name != "target-c" {
-		t.Fatalf("promotionTargets[0].name=%q, want target-c", graph.PromotionTargets[0].Name)
+	if graph.Targets[0].Name != "target-c" {
+		t.Fatalf("targets[0].name=%q, want target-c", graph.Targets[0].Name)
 	}
 }
 
@@ -211,8 +211,8 @@ func TestGraphMarksLimitedResponsesAsTruncated(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &graph); err != nil {
 		t.Fatal(err)
 	}
-	if len(graph.BackendProfiles) != 1 {
-		t.Fatalf("backendProfiles=%d, want 1", len(graph.BackendProfiles))
+	if len(graph.Backends) != 1 {
+		t.Fatalf("backends=%d, want 1", len(graph.Backends))
 	}
 	if !graph.Page.Truncated {
 		t.Fatalf("page not marked truncated: %+v", graph.Page)

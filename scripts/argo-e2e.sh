@@ -563,7 +563,7 @@ discover_and_apply_kapro_mapping() {
   echo "running kapro adopt argo against fixture repo"
   "${TMPDIR}/bin/kapro" adopt argo "${repo}" --out "${out}" --name argo-e2e --force
   "${KUBECTL[@]}" apply -f "${out}/backends/argo-e2e-observe.yaml"
-  "${KUBECTL[@]}" patch backendprofile argo-e2e --type=merge \
+  "${KUBECTL[@]}" patch backend argo-e2e --type=merge \
     -p '{"spec":{"discovery":{"managementPolicy":"Adopt"}}}'
   "${KUBECTL[@]}" apply -f "${out}/sources/argo-e2e.yaml"
 }

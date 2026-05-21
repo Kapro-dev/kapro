@@ -203,7 +203,7 @@ func runClusterAdd(ctx context.Context, clusterName, providerName string, labels
 		_ = c.Patch(ctx, secret, patch)
 	}
 
-	// Create FleetCluster with spoke-local actuator.
+	// Create Cluster with spoke-local actuator.
 	mc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   clusterName,
@@ -221,7 +221,7 @@ func runClusterAdd(ctx context.Context, clusterName, providerName string, labels
 	}
 	if err := c.Create(ctx, mc); err != nil {
 		if !strings.Contains(err.Error(), "already exists") {
-			sp.StopFail("Failed to create FleetCluster")
+			sp.StopFail("Failed to create Cluster")
 			return err
 		}
 	}
@@ -359,7 +359,7 @@ func runClusterSync(ctx context.Context, project string) error {
 			}
 		}
 
-		// Create/update FleetCluster with Fleet labels.
+		// Create/update Cluster with Fleet labels.
 		mc := &kaprov1alpha2.Cluster{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   cluster.Name,
@@ -517,7 +517,7 @@ func runGetTargets(ctx context.Context, phase, kubeconfigPath string) error {
 	var targetList kaprov1alpha2.TargetList
 	if err := c.List(ctx, &targetList); err != nil {
 		sp.StopFail("Failed to list targets")
-		return fmt.Errorf("list promotion targets: %w", err)
+		return fmt.Errorf("list targets: %w", err)
 	}
 	sp.Stop()
 
@@ -599,7 +599,7 @@ func runApprove(ctx context.Context, promotionTarget, comment, kubeconfigPath st
 		return fmt.Errorf("get promotionrun %q: %w", promotionrunName, err)
 	}
 
-	targets, err := listPromotionTargetsForPromotionRun(ctx, c, promotionrunName)
+	targets, err := listTargetsForPromotionRun(ctx, c, promotionrunName)
 	if err != nil {
 		return err
 	}
@@ -773,10 +773,10 @@ func selectApprovalTarget(targets []kaprov1alpha2.Target, targetName string) *ka
 	return nil
 }
 
-func listPromotionTargetsForPromotionRun(ctx context.Context, c client.Client, promotionrunName string) ([]kaprov1alpha2.Target, error) {
+func listTargetsForPromotionRun(ctx context.Context, c client.Client, promotionrunName string) ([]kaprov1alpha2.Target, error) {
 	var targetList kaprov1alpha2.TargetList
 	if err := c.List(ctx, &targetList); err != nil {
-		return nil, fmt.Errorf("list promotion targets: %w", err)
+		return nil, fmt.Errorf("list targets: %w", err)
 	}
 	targets := make([]kaprov1alpha2.Target, 0)
 	for _, target := range targetList.Items {
@@ -799,9 +799,9 @@ func newPromoteCmd() *cobra.Command {
 		kubeconfig string
 	)
 	cmd := &cobra.Command{
-		Use:   "promote <kapro>",
-		Short: "Promote a version through a Kapro fleet",
-		Long: `Create a Promotion intent to roll a version through the named Kapro fleet.
+		Use:   "promote <fleet>",
+		Short: "Promote a version through a Fleet",
+		Long: `Create a Promotion intent to roll a version through the named Fleet.
 
 The controller materializes each Promotion into one or more PromotionRun
 attempts; users normally observe PromotionRun, they do not author it.
@@ -823,10 +823,10 @@ Examples:
 			return runPromotionCreate(cmd.Context(), promotionName, args[0], version, versions, plans, scope, kubeconfig)
 		},
 	}
-	cmd.Flags().StringVar(&name, "name", "", "Promotion name; defaults to <kapro>-<version>")
+	cmd.Flags().StringVar(&name, "name", "", "Promotion name; defaults to <fleet>-<version>")
 	cmd.Flags().StringVar(&version, "version", "", "Default revision to deliver")
 	cmd.Flags().StringArrayVar(&versions, "set", nil, "Per-unit revision (repeatable: --set api=sha256:abc)")
-	cmd.Flags().StringArrayVar(&plans, "plan", nil, "Plan override (repeatable); defaults to the parent Kapro's inline plan")
+	cmd.Flags().StringArrayVar(&plans, "plan", nil, "Plan override (repeatable); defaults to the parent Fleet's inline plan")
 	cmd.Flags().StringArrayVar(&scope, "scope", nil, "Restrict to target cluster (repeatable: --scope de-prod --scope fi-prod)")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	return cmd
@@ -968,7 +968,7 @@ func dnsLabel(value string) string {
 func newPromotionRunCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "promotionrun",
-		Short: "Manage Kapro PromotionRuns",
+		Short: "Manage PromotionRuns",
 	}
 	cmd.AddCommand(newPromotionRunCreateCmd())
 	return cmd
@@ -976,17 +976,17 @@ func newPromotionRunCmd() *cobra.Command {
 
 func newPromotionRunCreateCmd() *cobra.Command {
 	var (
-		name           string
-		version        string
-		versions       []string
-		promotionplans []string
-		scope          []string
-		kubeconfig     string
+		name       string
+		version    string
+		versions   []string
+		plans      []string
+		scope      []string
+		kubeconfig string
 	)
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a PromotionRun directly (advanced; bypasses Promotion intent)",
-		Long: `Create a Kapro PromotionRun CR directly.
+		Long: `Create a PromotionRun CR directly.
 
 Most users should use 'kapro promote' to create a Promotion; the controller
 will create a PromotionRun under it. This command is for debugging, plugin
@@ -994,34 +994,36 @@ authors, and other advanced cases that need to bypass the intent layer.
 
 Examples:
   # Full-fleet promotionrun
-  kapro promotionrun create --name v1.2.3 --version sha256:abc123 --promotionplan global
+  kapro promotionrun create --name v1.2.3 --version sha256:abc123 --plan global
 
   # Hotfix targeting specific clusters only
   kapro promotionrun create --name v1.2.3-hotfix --version sha256:def456 \
-    --promotionplan global --scope de-prod --scope fi-prod
+    --plan global --scope de-prod --scope fi-prod
 
   # Brownfield/native promotionrun with per-unit revisions
   kapro promotionrun create --name checkout-2026-05-15 \
     --set api=main@sha256:abc123 --set worker=main@sha256:def456 \
-    --promotionplan global`,
+    --plan global`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runPromotionRunCreate(cmd.Context(), name, version, versions, promotionplans, scope, kubeconfig)
+			return runPromotionRunCreate(cmd.Context(), name, version, versions, plans, scope, kubeconfig)
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "PromotionRun name (required)")
 	cmd.Flags().StringVar(&version, "version", "", "Default revision to deliver")
 	cmd.Flags().StringArrayVar(&versions, "set", nil, "Per-unit revision (repeatable: --set api=sha256:abc)")
-	cmd.Flags().StringArrayVar(&promotionplans, "promotionplan", nil, "Plan name (repeatable; required at least once)")
+	cmd.Flags().StringArrayVar(&plans, "plan", nil, "Plan name (repeatable; required at least once)")
+	cmd.Flags().StringArrayVar(&plans, "promotionplan", nil, "Deprecated alias for --plan")
+	_ = cmd.Flags().MarkHidden("promotionplan")
 	cmd.Flags().StringArrayVar(&scope, "scope", nil, "Restrict to target cluster (repeatable: --scope de-prod --scope fi-prod)")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	_ = cmd.MarkFlagRequired("name")
 	return cmd
 }
 
-func runPromotionRunCreate(ctx context.Context, name, version string, versionPairs, promotionplans, scope []string,
+func runPromotionRunCreate(ctx context.Context, name, version string, versionPairs, plans, scope []string,
 	kubeconfigPath string) error {
-	if len(promotionplans) == 0 {
-		return fmt.Errorf("at least one --promotionplan is required")
+	if len(plans) == 0 {
+		return fmt.Errorf("at least one --plan is required")
 	}
 	versions, err := parsePromotionRunVersions(versionPairs)
 	if err != nil {
@@ -1036,8 +1038,8 @@ func runPromotionRunCreate(ctx context.Context, name, version string, versionPai
 		return err
 	}
 
-	refs := make([]kaprov1alpha2.PlanRef, 0, len(promotionplans))
-	for i, p := range promotionplans {
+	refs := make([]kaprov1alpha2.PlanRef, 0, len(plans))
+	for i, p := range plans {
 		refs = append(refs, kaprov1alpha2.PlanRef{
 			Name: fmt.Sprintf("p%d", i+1),
 			Plan: p,
@@ -1071,9 +1073,9 @@ func runPromotionRunCreate(ctx context.Context, name, version string, versionPai
 	if len(versions) > 0 {
 		fmt.Printf("   Versions:  %s\n", formatPromotionRunVersions(versions))
 	}
-	promotionplanNames := make([]string, len(promotionplans))
-	copy(promotionplanNames, promotionplans)
-	fmt.Printf("   Plans:     %s\n", strings.Join(promotionplanNames, ", "))
+	planNames := make([]string, len(plans))
+	copy(planNames, plans)
+	fmt.Printf("   Plans:     %s\n", strings.Join(planNames, ", "))
 	if len(scope) > 0 {
 		fmt.Printf("   Scope:     %s\n", strings.Join(scope, ", "))
 	}
@@ -1147,7 +1149,7 @@ func runReject(ctx context.Context, promotionTarget, reason, kubeconfigPath stri
 		return err
 	}
 
-	targets, err := listPromotionTargetsForPromotionRun(ctx, c, promotionrunName)
+	targets, err := listTargetsForPromotionRun(ctx, c, promotionrunName)
 	if err != nil {
 		return err
 	}

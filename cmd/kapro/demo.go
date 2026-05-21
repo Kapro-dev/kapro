@@ -135,7 +135,7 @@ func runDemo(ctx context.Context) error {
 	sp.StopSuccess(fmt.Sprintf("Installed %d CRDs", len(crdFiles)))
 
 	// Step 4: Create Kapro CRs.
-	sp = cli.NewSpinner("Creating Kapro resources")
+	sp = cli.NewSpinner("Creating Fleet resources")
 	sp.Start()
 
 	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
@@ -149,8 +149,8 @@ func runDemo(ctx context.Context) error {
 		return err
 	}
 
-	// Kapro — defines what and where to deploy.
-	kapro := &kaprov1alpha2.Fleet{
+	// Fleet defines what and where to deploy.
+	fleet := &kaprov1alpha2.Fleet{
 		ObjectMeta: metav1.ObjectMeta{Name: "demo"},
 		Spec: kaprov1alpha2.FleetSpec{
 			Registry: kaprov1alpha2.KaproRegistry{
@@ -178,14 +178,14 @@ func runDemo(ctx context.Context) error {
 			},
 		},
 	}
-	if err := c.Create(ctx, kapro); err != nil && !isAlreadyExists(err) {
-		sp.StopFail("Failed to create Kapro")
+	if err := c.Create(ctx, fleet); err != nil && !isAlreadyExists(err) {
+		sp.StopFail("Failed to create Fleet")
 		return err
 	}
 
 	// Simulate healthy clusters (in production, Flux reports this).
 	now := time.Now().UTC().Format(time.RFC3339)
-	for _, cluster := range kapro.Spec.Clusters {
+	for _, cluster := range fleet.Spec.Clusters {
 		mc := &kaprov1alpha2.Cluster{}
 		if err := c.Get(ctx, client.ObjectKey{Name: cluster.Name}, mc); err == nil {
 			patch := client.MergeFrom(mc.DeepCopy())

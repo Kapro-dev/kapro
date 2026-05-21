@@ -16,7 +16,7 @@ import (
 	"kapro.io/kapro/pkg/spokeprovider"
 )
 
-// deliveryLoop watches FleetCluster.spec.desiredVersions and dispatches each
+// deliveryLoop watches Cluster.spec.desiredVersions and dispatches each
 // (appKey, version) tuple through the spoke Provider registry once per tick.
 //
 // One Get + one Status().Patch per tick — no per-app round-trips — so a
@@ -25,13 +25,13 @@ import (
 // not abort the rest of the tick.
 //
 // The loop is the SINGLE writer of status.delivery and status.currentVersions
-// on this cluster's FleetCluster — same RBAC owner as status.lastHeartbeat.
+// on this cluster's Cluster — same RBAC owner as status.lastHeartbeat.
 type deliveryLoop struct {
 	Hub         *HubClient
 	ClusterName string
 	Interval    time.Duration
 
-	// Registry resolves Provider implementations by BackendProfile.spec.driver.
+	// Registry resolves Provider implementations by Backend.spec.driver.
 	Registry *spokeprovider.Registry
 
 	// Now is injected so tests can stamp deterministic timestamps.
@@ -72,7 +72,7 @@ func (l *deliveryLoop) Run(ctx context.Context) {
 }
 
 // tick performs one reconcile pass over all desiredVersions on this cluster's
-// FleetCluster. Returns an error only when the hub round-trip fails outright;
+// Cluster. Returns an error only when the hub round-trip fails outright;
 // per-app reconcile failures are written into status and not returned.
 func (l *deliveryLoop) tick(ctx context.Context) error {
 	tctx, cancel := context.WithTimeout(ctx, 60*time.Second)
@@ -85,7 +85,7 @@ func (l *deliveryLoop) tick(ctx context.Context) error {
 
 	fc := &kaprov1alpha2.Cluster{}
 	if err := hub.Get(tctx, client.ObjectKey{Name: l.ClusterName}, fc); err != nil {
-		return fmt.Errorf("get FleetCluster %q: %w", l.ClusterName, err)
+		return fmt.Errorf("get Cluster %q: %w", l.ClusterName, err)
 	}
 
 	desired := mergedDesiredVersions(fc.Spec)
@@ -104,7 +104,7 @@ func (l *deliveryLoop) tick(ctx context.Context) error {
 	}
 
 	// Resolve the backend profile once per tick.
-	profile, profErr := l.resolveBackendProfile(tctx, hub, fc.Spec.Delivery.BackendRef)
+	profile, profErr := l.resolveBackend(tctx, hub, fc.Spec.Delivery.BackendRef)
 
 	results := make(map[string]spokeprovider.ReconcileResult, len(desired))
 	for _, appKey := range sortedKeys(desired) {
@@ -137,7 +137,7 @@ func (l *deliveryLoop) reconcileOne(
 		out.Err = fmt.Errorf("Backend %q not found", fc.Spec.Delivery.BackendRef)
 		return out
 	}
-	// Runtime gating: if this BackendProfile is hub-only, the hub-side
+	// Runtime gating: if this Backend is hub-only, the hub-side
 	// actuator owns delivery (it patches backend-native objects on the
 	// hub, e.g. Flux OCIRepository.tag) and the spoke MUST stay out of the
 	// way. Surface Skipped so SREs see why the spoke didn't act.
@@ -174,11 +174,11 @@ func (l *deliveryLoop) reconcileOne(
 	return res
 }
 
-// resolveBackendProfile reads the cluster-scoped BackendProfile referenced by
+// resolveBackend reads the cluster-scoped Backend referenced by
 // fc.spec.delivery.backendRef. Returns a configuration error (not a wrapped
 // IsNotFound) when the ref is missing/empty so per-app status carries a
 // stable human-readable message.
-func (l *deliveryLoop) resolveBackendProfile(ctx context.Context, hub client.Client, name string) (*kaprov1alpha2.Backend, error) {
+func (l *deliveryLoop) resolveBackend(ctx context.Context, hub client.Client, name string) (*kaprov1alpha2.Backend, error) {
 	if name == "" {
 		return nil, fmt.Errorf("Cluster.spec.delivery.backendRef is empty")
 	}

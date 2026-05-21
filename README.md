@@ -85,7 +85,7 @@ helm upgrade --install kapro charts/kapro-operator \
   --create-namespace
 ```
 
-Apply a minimal source and fleet setup:
+Apply a minimal backend and Fleet setup:
 
 ```bash
 kubectl apply -f examples/quickstart/backend-flux.yaml

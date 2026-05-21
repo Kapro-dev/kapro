@@ -15,30 +15,30 @@ import (
 func newStatusCmd() *cobra.Command {
 	var kubeconfig string
 	cmd := &cobra.Command{
-		Use:   "status [kapro-name]",
+		Use:   "status [fleet-name]",
 		Short: "Live fleet delivery status",
-		Long: `Shows real-time delivery status for all clusters in a Kapro fleet.
+		Long: `Shows real-time delivery status for all clusters in a Fleet.
 
 Displays per-cluster: version, delivery phase, wave progress,
 convergence status, and last heartbeat. Color-coded by health.
 
 Examples:
-  kapro status                  # all Kapro instances
-  kapro status hello-spoke      # specific Kapro
+  kapro status                  # all fleets
+  kapro status hello-spoke      # specific Fleet
   kapro status -o json          # machine-readable`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			kaproName := ""
+			fleetName := ""
 			if len(args) > 0 {
-				kaproName = args[0]
+				fleetName = args[0]
 			}
-			return runStatus(cmd.Context(), kaproName, kubeconfig)
+			return runStatus(cmd.Context(), fleetName, kubeconfig)
 		},
 	}
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	return cmd
 }
 
-func runStatus(ctx context.Context, kaproName, kubeconfigPath string) error {
+func runStatus(ctx context.Context, fleetName, kubeconfigPath string) error {
 	sp := cli.NewSpinner("Loading fleet status")
 	sp.Start()
 
@@ -48,14 +48,14 @@ func runStatus(ctx context.Context, kaproName, kubeconfigPath string) error {
 		return err
 	}
 
-	// Load Kapro CRs.
-	var kapros kaprov1alpha2.FleetList
-	if err := c.List(ctx, &kapros); err != nil {
-		sp.StopFail("Failed to list Kapro instances")
+	// Load Fleet CRs.
+	var fleets kaprov1alpha2.FleetList
+	if err := c.List(ctx, &fleets); err != nil {
+		sp.StopFail("Failed to list fleets")
 		return err
 	}
 
-	// Load FleetClusters.
+	// Load Clusters.
 	var allClusters kaprov1alpha2.ClusterList
 	if err := c.List(ctx, &allClusters); err != nil {
 		sp.StopFail("Failed to list clusters")
@@ -69,7 +69,7 @@ func runStatus(ctx context.Context, kaproName, kubeconfigPath string) error {
 		return err
 	}
 
-	// Load PromotionTargets.
+	// Load Targets.
 	var targets kaprov1alpha2.TargetList
 	if err := c.List(ctx, &targets); err != nil {
 		sp.StopFail("Failed to list targets")
@@ -79,51 +79,51 @@ func runStatus(ctx context.Context, kaproName, kubeconfigPath string) error {
 
 	if cli.IsJSON() {
 		return cli.JSON(map[string]any{
-			"kapros":        kapros.Items,
+			"fleets":        fleets.Items,
 			"clusters":      allClusters.Items,
 			"promotionruns": promotionruns.Items,
 			"targets":       targets.Items,
 		})
 	}
 
-	// Filter by kaproName if specified.
-	var filteredKapros []kaprov1alpha2.Fleet
-	for _, k := range kapros.Items {
-		if kaproName == "" || k.Name == kaproName {
-			filteredKapros = append(filteredKapros, k)
+	// Filter by fleetName if specified.
+	var filteredFleets []kaprov1alpha2.Fleet
+	for _, fleet := range fleets.Items {
+		if fleetName == "" || fleet.Name == fleetName {
+			filteredFleets = append(filteredFleets, fleet)
 		}
 	}
 
-	if len(filteredKapros) == 0 {
-		if kaproName != "" {
-			cli.Warn(fmt.Sprintf("Kapro %q not found", kaproName))
+	if len(filteredFleets) == 0 {
+		if fleetName != "" {
+			cli.Warn(fmt.Sprintf("Fleet %q not found", fleetName))
 		} else {
-			cli.Muted("No Kapro instances found")
+			cli.Muted("No fleets found")
 		}
 		return nil
 	}
 
-	for _, kapro := range filteredKapros {
-		renderKaproStatus(kapro, allClusters.Items, promotionruns.Items, targets.Items)
+	for _, fleet := range filteredFleets {
+		renderFleetStatus(fleet, allClusters.Items, promotionruns.Items, targets.Items)
 	}
 
 	return nil
 }
 
-func renderKaproStatus(kapro kaprov1alpha2.Fleet, allClusters []kaprov1alpha2.Cluster, promotionruns []kaprov1alpha2.PromotionRun, targets []kaprov1alpha2.Target) {
-	cli.Header(fmt.Sprintf("kapro/%s", kapro.Name))
+func renderFleetStatus(fleet kaprov1alpha2.Fleet, allClusters []kaprov1alpha2.Cluster, promotionruns []kaprov1alpha2.PromotionRun, targets []kaprov1alpha2.Target) {
+	cli.Header(fmt.Sprintf("fleet/%s", fleet.Name))
 
 	// Summary line.
-	mode := string(kapro.Spec.Delivery.Mode)
+	mode := string(fleet.Spec.Delivery.Mode)
 	if mode == "" {
 		mode = "pull"
 	}
-	cli.KV("Source", kapro.Spec.SourceRef)
+	cli.KV("Source", fleet.Spec.SourceRef)
 	cli.KV("Mode", mode)
-	cli.KV("Backend", kapro.Spec.Delivery.BackendRef)
-	cli.KV("Version", kapro.Status.Version)
+	cli.KV("Backend", fleet.Spec.Delivery.BackendRef)
+	cli.KV("Version", fleet.Status.Version)
 	cli.KV("Clusters", fmt.Sprintf("%d total, %d converged",
-		kapro.Status.ClusterCount, kapro.Status.ConvergedCount))
+		fleet.Status.ClusterCount, fleet.Status.ConvergedCount))
 
 	// Active promotionrun.
 	activePromotionRun := findActivePromotionRun(promotionruns)
@@ -137,15 +137,15 @@ func renderKaproStatus(kapro kaprov1alpha2.Fleet, allClusters []kaprov1alpha2.Cl
 	fmt.Fprintln(cli.Out)
 	tbl := cli.NewTable("CLUSTER", "VERSION", "PHASE", "HEALTH", "BACKEND", "HEARTBEAT")
 
-	// Collect clusters that belong to this Kapro.
-	kaproClusters := map[string]bool{}
-	for _, cluster := range kapro.Spec.Clusters {
-		kaproClusters[cluster.Name] = true
+	// Collect clusters that belong to this Fleet.
+	fleetClusters := map[string]bool{}
+	for _, cluster := range fleet.Spec.Clusters {
+		fleetClusters[cluster.Name] = true
 	}
 
 	var rows []clusterRow
 	for _, mc := range allClusters {
-		if !kaproClusters[mc.Name] {
+		if !fleetClusters[mc.Name] {
 			continue
 		}
 		rows = append(rows, clusterRow{
@@ -182,7 +182,7 @@ func renderKaproStatus(kapro kaprov1alpha2.Fleet, allClusters []kaprov1alpha2.Cl
 	}
 	tbl.Render()
 
-	// Pending approvals for this Kapro.
+	// Pending approvals for this Fleet.
 	pendingApprovals := 0
 	for _, t := range targets {
 		if t.Status.Phase == kaprov1alpha2.TargetPhaseWaitingApproval {

@@ -16,7 +16,6 @@ spec:
     shortNames:
     - mc
     - fc
-    - fleetcluster
     singular: cluster
   scope: Cluster
   versions:

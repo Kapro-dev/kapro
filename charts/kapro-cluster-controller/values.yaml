@@ -25,7 +25,7 @@ rbac:
   # credential Secret. Disable to bring your own RBAC.
   create: true
 
-# REQUIRED: name of this FleetCluster on the hub.
+# REQUIRED: name of this Cluster on the hub.
 cluster:
   name: ""
 

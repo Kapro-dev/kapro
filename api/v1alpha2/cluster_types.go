@@ -523,7 +523,7 @@ func (s *ClusterStatus) IsHeartbeatFresh(timeout time.Duration) bool {
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=mc;fc;fleetcluster,categories=kapro-all
+// +kubebuilder:resource:scope=Cluster,shortName=mc;fc,categories=kapro-all
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Registered",type=string,JSONPath=`.status.conditions[?(@.type=="Registered")].status`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`

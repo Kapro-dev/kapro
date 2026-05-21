@@ -106,7 +106,7 @@ func (s *Server) decisionReader() client.Reader {
 	return s.Client
 }
 
-// ClusterSummary is a compact view of one FleetCluster.
+// ClusterSummary is a compact view of one Cluster.
 type ClusterSummary struct {
 	Name          string            `json:"name"`
 	Labels        map[string]string `json:"labels"`
@@ -120,7 +120,7 @@ type ClusterSummary struct {
 type PromotionRunSummary struct {
 	Name      string `json:"name"`
 	Phase     string `json:"phase"`
-	Plan      string `json:"promotionplan,omitempty"`
+	Plan      string `json:"plan,omitempty"`
 	StartedAt string `json:"startedAt,omitempty"`
 }
 
@@ -152,7 +152,7 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 		func(list client.ObjectList) []kaprov1alpha2.Cluster {
 			return list.(*kaprov1alpha2.ClusterList).Items
 		},
-		filterDecisionFleetClustersByPhase,
+		filterDecisionClustersByPhase,
 	)
 	if err != nil {
 		http.Error(w, "failed to list clusters", http.StatusInternalServerError)
@@ -269,7 +269,7 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 type PromotionRunContext struct {
 	GeneratedAt  string                     `json:"generatedAt"`
 	PromotionRun kaprov1alpha2.PromotionRun `json:"promotionrun"`
-	Plan         *kaprov1alpha2.Plan        `json:"promotionplan,omitempty"`
+	Plan         *kaprov1alpha2.Plan        `json:"plan,omitempty"`
 	Targets      []kaprov1alpha2.Target     `json:"targets"`
 	Page         DecisionAPIPage            `json:"page"`
 }
@@ -391,7 +391,7 @@ func (s *Server) handlePromotionRunContext(w http.ResponseWriter, r *http.Reques
 			return list.(*kaprov1alpha2.TargetList).Items
 		},
 		func(items []kaprov1alpha2.Target, phase string) []kaprov1alpha2.Target {
-			return filterDecisionPromotionTargetsForRunByPhase(items, promotionrunName, phase)
+			return filterDecisionTargetsForRunByPhase(items, promotionrunName, phase)
 		},
 	)
 	if err != nil {
@@ -509,7 +509,7 @@ func listDecisionItems[T any](
 	}
 }
 
-func filterDecisionFleetClustersByPhase(items []kaprov1alpha2.Cluster, phase string) []kaprov1alpha2.Cluster {
+func filterDecisionClustersByPhase(items []kaprov1alpha2.Cluster, phase string) []kaprov1alpha2.Cluster {
 	if phase == "" {
 		return items
 	}
@@ -535,7 +535,7 @@ func filterDecisionPromotionRunsByPhase(items []kaprov1alpha2.PromotionRun, phas
 	return out
 }
 
-func filterDecisionPromotionTargetsForRunByPhase(items []kaprov1alpha2.Target, promotionrunName, phase string) []kaprov1alpha2.Target {
+func filterDecisionTargetsForRunByPhase(items []kaprov1alpha2.Target, promotionrunName, phase string) []kaprov1alpha2.Target {
 	out := items[:0]
 	for _, item := range items {
 		if item.Spec.PromotionRunRef != promotionrunName {
@@ -869,7 +869,7 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 		ExpiresAt:  req.ExpiresAt,
 	}
 
-	// Write DecisionTrace to PromotionTarget.status using MergeFrom patch
+	// Write DecisionTrace to Target.status using MergeFrom patch
 	// to avoid conflicting with TargetReconciler's status writes.
 	patch := client.MergeFrom(target.DeepCopy())
 	if target.Status.DecisionTrace == nil {

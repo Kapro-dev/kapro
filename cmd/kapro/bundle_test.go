@@ -12,7 +12,7 @@ import (
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
-func TestReadPackageSourceFromKaproInlineSource(t *testing.T) {
+func TestReadPackageSourceFromFleetInlineSource(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
@@ -36,7 +36,7 @@ func TestReadPackageSourceFromKaproInlineSource(t *testing.T) {
 	}
 }
 
-func TestReadPackageSourceRejectsKaproSourceRef(t *testing.T) {
+func TestReadPackageSourceRejectsFleetSourceRef(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)

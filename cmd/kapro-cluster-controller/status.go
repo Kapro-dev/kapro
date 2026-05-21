@@ -14,7 +14,7 @@ import (
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
-// statusReporter periodically publishes FleetCluster.status with the spoke's
+// statusReporter periodically publishes Cluster.status with the spoke's
 // observed cluster capabilities (node count, K8s version, region heuristics)
 // and a best-effort health summary. The per-cluster RBAC issued during
 // bootstrap (PR-2) only allows writing this cluster's own

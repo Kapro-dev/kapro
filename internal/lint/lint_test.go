@@ -1,6 +1,9 @@
 package lint
 
 import (
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -220,6 +223,42 @@ spec:
 	}
 }
 
+func TestExampleYAMLHasNoKaproLintErrors(t *testing.T) {
+	root := lintRepoRoot(t)
+	examplesDir := filepath.Join(root, "examples")
+	err := filepath.WalkDir(examplesDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		switch filepath.Ext(path) {
+		case ".yaml", ".yml":
+		default:
+			return nil
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			rel = path
+		}
+		for _, issue := range LintFile(filepath.ToSlash(rel), data) {
+			if issue.Severity == SeverityError {
+				t.Errorf("%s", issue.String())
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // ---- LintKapro -------------------------------------------------------------
 
 func TestLintKapro_NilSourceDoesNotPanic(t *testing.T) {
@@ -414,5 +453,24 @@ func TestHasErrors_StrictUpgrades(t *testing.T) {
 	errs := []Issue{{Severity: SeverityError}}
 	if !HasErrors(errs, false) {
 		t.Fatal("ERROR should always be an error")
+	}
+}
+
+func lintRepoRoot(t *testing.T) string {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	dir := filepath.Dir(file)
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatal("go.mod not found")
+		}
+		dir = parent
 	}
 }

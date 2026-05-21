@@ -518,7 +518,7 @@ kubectl apply -f backends/%s-observe.yaml
 `+"```"+`
 
 When the observed graph is correct, switch managementPolicy from Observe to
-Adopt for the selected backend profile. Kapro still references backend-owned
+Adopt for the selected Backend. Kapro still references backend-owned
 Secrets and configuration; it does not copy Argo CD or Flux credentials into
 Kapro objects.
 `, opts.Backend, opts.Backend, opts.Backend)

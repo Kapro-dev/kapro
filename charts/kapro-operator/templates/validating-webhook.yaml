@@ -106,7 +106,7 @@ metadata:
     cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "kapro-operator.fullname" . }}-webhook-cert
   {{- end }}
 webhooks:
-  - name: validate.fleetcluster.kapro.io
+  - name: validate.cluster.kapro.io
     admissionReviewVersions: ["v1"]
     sideEffects: None
     failurePolicy: {{ .Values.webhook.failurePolicy }}
@@ -156,7 +156,7 @@ webhooks:
           operator: NotIn
           values: [kube-system]
 
-  - name: validate.promotionplan.kapro.io
+  - name: validate.plan.kapro.io
     admissionReviewVersions: ["v1"]
     sideEffects: None
     failurePolicy: {{ .Values.webhook.failurePolicy }}
@@ -201,7 +201,7 @@ webhooks:
       caBundle: {{ $caBundle | quote }}
       {{- end }}
 
-  - name: validate.promotiontrigger.kapro.io
+  - name: validate.trigger.kapro.io
     admissionReviewVersions: ["v1"]
     sideEffects: None
     failurePolicy: {{ .Values.webhook.failurePolicy }}
@@ -239,7 +239,7 @@ metadata:
     cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "kapro-operator.fullname" . }}-webhook-cert
   {{- end }}
 webhooks:
-  - name: mutate.fleetcluster.kapro.io
+  - name: mutate.cluster.kapro.io
     admissionReviewVersions: ["v1"]
     sideEffects: None
     failurePolicy: {{ .Values.webhook.failurePolicy }}
