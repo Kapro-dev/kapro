@@ -13,24 +13,21 @@ var (
 
 func init() {
 	SchemeBuilder.Register(
-		// Promotion-domain API
-		&Cluster{}, &ClusterList{},
-		&Plan{}, &PlanList{},
-		&PromotionRun{}, &PromotionRunList{},
-		&Target{}, &TargetList{},
-		&Trigger{}, &TriggerList{},
-		&Backend{}, &BackendList{},
-		&Plugin{}, &PluginList{},
-		&ClusterTemplate{}, &ClusterTemplateList{},
-		// Internal / system objects
-		&Approval{}, &ApprovalList{},
-
-		// AI agent trust boundaries
-		&Policy{}, &PolicyList{},
-
-		// Fleet entry point + promotion source
+		// v1alpha2 Kinds declared in PR 1 of the migration. The shared-
+		// name Kinds (Approval, Promotion, PromotionRun) are intentionally
+		// NOT registered yet — they would force a multi-version CRD that
+		// kube-apiserver refuses to establish without a conversion
+		// strategy. They are added back in PRs 5-9 when the controllers
+		// migrate and v1alpha1 stops being served.
 		&Fleet{}, &FleetList{},
+		&Plan{}, &PlanList{},
 		&Source{}, &SourceList{},
-		&Promotion{}, &PromotionList{},
+		&Trigger{}, &TriggerList{},
+		&Target{}, &TargetList{},
+		&Backend{}, &BackendList{},
+		&Cluster{}, &ClusterList{},
+		&ClusterTemplate{}, &ClusterTemplateList{},
+		&Plugin{}, &PluginList{},
+		&Policy{}, &PolicyList{},
 	)
 }

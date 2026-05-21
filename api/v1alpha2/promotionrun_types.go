@@ -310,43 +310,14 @@ type PromotionRunStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// +kubebuilder:object:root=true
-// +kubebuilder:storageversion
-// +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=rel,categories=kapro-all
-// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.spec.version`,priority=0
-// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`,priority=0
-// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`,priority=0
-// +kubebuilder:printcolumn:name="Synced",type=integer,JSONPath=`.status.report.syncedTargets`,priority=0
-// +kubebuilder:printcolumn:name="Failed",type=integer,JSONPath=`.status.report.failedTargets`,priority=0
-// +kubebuilder:printcolumn:name="Pending",type=integer,JSONPath=`.status.report.pendingTargets`,priority=0
-// +kubebuilder:printcolumn:name="Total",type=integer,JSONPath=`.status.report.totalTargets`,priority=0
-// +kubebuilder:printcolumn:name="Duration",type=string,JSONPath=`.status.report.duration`,priority=0
-// +kubebuilder:printcolumn:name="Suspended",type=boolean,JSONPath=`.spec.suspended`,priority=1
-// +kubebuilder:printcolumn:name="Artifacts",type=integer,JSONPath=`.status.report.totalArtifacts`,priority=1
-// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`,priority=0
-
-// PromotionRun is an immutable execution attempt for a progressive delivery rollout
-// across the cluster fleet. User-authored Promotion intent normally stamps
-// PromotionRun attempts through the Promotion controller.
-// It references an artifact version and PromotionPlans that define the delivery path.
-// The PromotionRun controller resolves the promotionplan DAG and creates child
-// targets; each Target advances through its own delivery FSM.
-// Per-target execution state lives in child Target objects; PromotionRun.status
-// stores only rollout summary, promotionplan progress, and audit metadata.
-type PromotionRun struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              PromotionRunSpec   `json:"spec,omitempty"`
-	Status            PromotionRunStatus `json:"status,omitempty"`
-}
-
-// +kubebuilder:object:root=true
-type PromotionRunList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []PromotionRun `json:"items"`
-}
+// PromotionRun is intentionally NOT declared as a v1alpha2 Kind in
+// PR 1 of the migration. v1alpha1 still serves PromotionRun and the
+// controllers still operate on it. Once the controllers migrate
+// (PRs 5-9), the Kind is re-declared on v1alpha2 with the compacted
+// shape (and v1alpha1 served=false then). The supporting types
+// (PromotionRunSpec, PromotionRunStatus, PromotionRunScope,
+// PromotionRunPhase, StageProgress, …) remain in this file because
+// other v1alpha2 types (Trigger.spec) reference them.
 
 // ---- Per-target execution ---------------------------------------------------
 

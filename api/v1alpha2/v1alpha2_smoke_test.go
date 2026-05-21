@@ -21,9 +21,8 @@ func TestSchemeRegistersAllNewKinds(t *testing.T) {
 	}
 	// Every CRD's singular Kind we care about.
 	wantKinds := []string{
-		"Fleet", "Promotion", "PromotionRun", "Target", "Plan",
-		"Source", "Trigger", "Backend", "Cluster", "Approval", "Plugin",
-		"Policy", "ClusterTemplate",
+		"Fleet", "Plan", "Source", "Trigger", "Target",
+		"Backend", "Cluster", "ClusterTemplate", "Plugin", "Policy",
 	}
 	for _, kind := range wantKinds {
 		gvk := GroupVersion.WithKind(kind)
