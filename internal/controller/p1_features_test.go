@@ -114,10 +114,10 @@ func TestPromotionRunReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetric
 		},
 	}
 	rt := &kaprov1alpha2.Target{
-		ObjectMeta: metav1.ObjectMeta{Name: controller.PromotionTargetObjectNameForTest(kaprov1alpha2.TargetStatus{
+		ObjectMeta: metav1.ObjectMeta{Name: controller.PromotionTargetObjectNameForTest(kaprov1alpha2.TargetExecutionState{
 			PromotionRunRef:  promotionrunName,
 			Target:           envRefName,
-			PromotionPlanRef: promotionplanRef,
+			PlanRef: promotionplanRef,
 			Plan:    promotionplanName,
 			Stage:            stageName,
 			Version:          "v1.0.0",
@@ -125,17 +125,17 @@ func TestPromotionRunReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetric
 		Spec: kaprov1alpha2.TargetSpec{
 			PromotionRunRef:  promotionrunName,
 			Target:           envRefName,
-			PromotionPlanRef: promotionplanRef,
+			PlanRef: promotionplanRef,
 			Plan:    promotionplanName,
 			Stage:            stageName,
 			Version:          "v1.0.0",
 			Gate:             gatePolicy,
 			AppKey:           "default",
 		},
-		Status: kaprov1alpha2.TargetStatus{TargetStatus: kaprov1alpha2.TargetStatus{
+		Status: kaprov1alpha2.TargetStatus{TargetExecutionState: kaprov1alpha2.TargetExecutionState{
 			PromotionRunRef:  promotionrunName,
 			Target:           envRefName,
-			PromotionPlanRef: promotionplanRef,
+			PlanRef: promotionplanRef,
 			Plan:    promotionplanName,
 			Stage:            stageName,
 			Version:          "v1.0.0",

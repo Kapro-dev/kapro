@@ -766,7 +766,7 @@ func (r *KaproReconciler) spokeAlreadyBootstrapped(ctx context.Context, clusterN
 //
 // We apply directly to spoke instead of using ResourceSet because OCIRepository
 // has no kubeConfig field — it can't be created remotely via Flux.
-func (r *KaproReconciler) bootstrapSpoke(ctx context.Context, kapro *kaprov1alpha2.Fleet, source *kaprov1alpha2.Source, cluster kaprov1alpha2.KaproCluster, version string) error {
+func (r *KaproReconciler) bootstrapSpoke(ctx context.Context, kapro *kaprov1alpha2.Fleet, source *kaprov1alpha2.Source, cluster kaprov1alpha2.ClusterRef, version string) error {
 	l := log.FromContext(ctx)
 
 	if cluster.KubeconfigSecret == "" {
@@ -861,7 +861,7 @@ func isNoMatchError(err error) bool {
 // syncFleetClusterStatus reads HelmRelease status and writes it to the
 // FleetCluster status. For push mode, reads from hub. For spoke-local mode,
 // connects to spoke and reads directly.
-func (r *KaproReconciler) syncFleetClusterStatus(ctx context.Context, kapro *kaprov1alpha2.Fleet, source *kaprov1alpha2.Source, cluster kaprov1alpha2.KaproCluster) bool {
+func (r *KaproReconciler) syncFleetClusterStatus(ctx context.Context, kapro *kaprov1alpha2.Fleet, source *kaprov1alpha2.Source, cluster kaprov1alpha2.ClusterRef) bool {
 	l := log.FromContext(ctx)
 
 	// Read the FleetCluster.
@@ -1086,7 +1086,7 @@ func isInInventory(kapro *kaprov1alpha2.Fleet, item string) bool {
 // The kubeconfig uses gke-gcloud-auth-plugin for auth — WI tokens auto-refresh.
 // For gcp-fleet: resolves cluster endpoint from Fleet membership.
 // For gcp: uses the provided GCP config directly.
-func (r *KaproReconciler) ensureKubeconfigSecret(ctx context.Context, kapro *kaprov1alpha2.Fleet, cluster *kaprov1alpha2.KaproCluster) (string, error) {
+func (r *KaproReconciler) ensureKubeconfigSecret(ctx context.Context, kapro *kaprov1alpha2.Fleet, cluster *kaprov1alpha2.ClusterRef) (string, error) {
 	if cluster.GCP == nil {
 		return "", fmt.Errorf("cluster %q has provider=%s but no gcp config", cluster.Name, cluster.Provider)
 	}

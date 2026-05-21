@@ -37,7 +37,7 @@ func TestBuildResourceSet_Units(t *testing.T) {
 				URL:      "oci://europe-west1-docker.pkg.dev/myproject/charts",
 				Provider: "gcp",
 			},
-			Clusters: []kaprov1alpha2.KaproCluster{
+			Clusters: []kaprov1alpha2.ClusterRef{
 				{Name: "canary-eu", Labels: map[string]string{"tier": "canary"}},
 				{Name: "prod-eu", Labels: map[string]string{"tier": "prod"}},
 			},
@@ -131,7 +131,7 @@ func TestBuildResourceSet_OverrideMerging(t *testing.T) {
 	kapro := &kaprov1alpha2.Fleet{
 		Spec: kaprov1alpha2.FleetSpec{
 			Registry: kaprov1alpha2.KaproRegistry{URL: "oci://registry.example.com/charts"},
-			Clusters: []kaprov1alpha2.KaproCluster{
+			Clusters: []kaprov1alpha2.ClusterRef{
 				{Name: "canary", Labels: map[string]string{"tier": "canary"}},
 				{Name: "prod", Labels: map[string]string{"tier": "prod"}},
 			},
@@ -207,7 +207,7 @@ func TestBuildPromotionPlan(t *testing.T) {
 	kapro := &kaprov1alpha2.Fleet{
 		Spec: kaprov1alpha2.FleetSpec{
 			Plan: kaprov1alpha2.KaproPromotionPlan{
-				Stages: []kaprov1alpha2.KaproStage{
+				Stages: []kaprov1alpha2.StageSpec{
 					{Name: "canary", Selector: map[string]string{"tier": "canary"}},
 					{Name: "prod", Selector: map[string]string{"tier": "prod"},
 						DependsOn: []kaprov1alpha2.StageDependency{{Stage: "canary"}}},

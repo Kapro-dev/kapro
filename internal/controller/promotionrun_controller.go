@@ -1298,7 +1298,7 @@ func mergeMetricPreset(preset, override kaprov1alpha2.MetricGate) kaprov1alpha2.
 // clearActivePromotionRun clears mc.status.activePromotionRun for all FleetClusters
 // targeted by this PromotionRun, found via promotionrun.Status.Targets.
 
-func promotionTargetObjectName(target kaprov1alpha2.TargetStatus) string {
+func promotionTargetObjectName(target kaprov1alpha2.TargetExecutionState) string {
 	name := syncName(target.PromotionRunRef, target.PlanRef, target.Stage, target.Target)
 	if target.Rollback {
 		return name + "-rollback"
@@ -1308,12 +1308,12 @@ func promotionTargetObjectName(target kaprov1alpha2.TargetStatus) string {
 
 // PromotionTargetObjectNameForTest exposes the deterministic child-object naming
 // contract to external tests without widening production behavior.
-func PromotionTargetObjectNameForTest(target kaprov1alpha2.TargetStatus) string {
+func PromotionTargetObjectNameForTest(target kaprov1alpha2.TargetExecutionState) string {
 	return promotionTargetObjectName(target)
 }
 
-func targetStatusFromPromotionTarget(rt *kaprov1alpha2.Target) kaprov1alpha2.TargetStatus {
-	target := rt.Status.TargetStatus
+func targetStatusFromPromotionTarget(rt *kaprov1alpha2.Target) kaprov1alpha2.TargetExecutionState {
+	target := rt.Status.TargetExecutionState
 	target.PromotionRunRef = rt.Spec.PromotionRunRef
 	target.Target = rt.Spec.Target
 	target.PlanRef = rt.Spec.PlanRef
@@ -1752,7 +1752,7 @@ func (r *PromotionRunReconciler) normalizePromotionRunStatus(promotionrun *kapro
 	// Keep the latest current-state row for each logical target, plus at most one
 	// rollback row. This prevents PromotionRun.status.targets from becoming an append-only log.
 	seen := make(map[string]struct{}, len(promotionrun.Status.Targets))
-	normalized := make([]kaprov1alpha2.TargetStatus, 0, len(promotionrun.Status.Targets))
+	normalized := make([]kaprov1alpha2.TargetExecutionState, 0, len(promotionrun.Status.Targets))
 	for i := len(promotionrun.Status.Targets) - 1; i >= 0; i-- {
 		target := promotionrun.Status.Targets[i]
 		r.normalizeTargetEntry(&target)
@@ -1774,7 +1774,7 @@ func (r *PromotionRunReconciler) normalizePromotionRunStatus(promotionrun *kapro
 	promotionrun.Status.Targets = normalized
 }
 
-func (r *PromotionRunReconciler) normalizeTargetEntry(target *kaprov1alpha2.TargetStatus) {
+func (r *PromotionRunReconciler) normalizeTargetEntry(target *kaprov1alpha2.TargetExecutionState) {
 	if len(target.Gates) > maxGateRunsPerTarget {
 		target.Gates = target.Gates[len(target.Gates)-maxGateRunsPerTarget:]
 	}

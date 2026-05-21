@@ -76,7 +76,7 @@ func (p *PlannerAdapter) PreFilter(ctx context.Context, state *planner.CycleStat
 	defer cancel()
 	resp, err := p.client.Plan(rpcCtx, &kpiv1alpha1.PlanRequest{
 		PromotionRun:  promotionrunName(req.PromotionRun),
-		Plan: req.PromotionPlanRefName,
+		PromotionPlan: req.PromotionPlanRefName,
 		Stage:         req.Stage.Name,
 		Version:       promotionrunVersion(req.PromotionRun),
 		Strategy:      stageStrategy(req.Stage),

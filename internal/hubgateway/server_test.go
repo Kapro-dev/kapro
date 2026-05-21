@@ -92,7 +92,7 @@ func TestGraphSupportsResourceLabelPhaseAndLimitFilters(t *testing.T) {
 				Labels: map[string]string{"team": "checkout"},
 			},
 			Status: kaprov1alpha2.TargetStatus{
-				TargetStatus: kaprov1alpha2.TargetStatus{Phase: kaprov1alpha2.TargetPhaseApplying},
+				TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseApplying},
 			},
 		},
 		&kaprov1alpha2.Target{
@@ -101,7 +101,7 @@ func TestGraphSupportsResourceLabelPhaseAndLimitFilters(t *testing.T) {
 				Labels: map[string]string{"team": "checkout"},
 			},
 			Status: kaprov1alpha2.TargetStatus{
-				TargetStatus: kaprov1alpha2.TargetStatus{Phase: kaprov1alpha2.TargetPhaseConverged},
+				TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseConverged},
 			},
 		},
 		&kaprov1alpha2.Target{
@@ -110,7 +110,7 @@ func TestGraphSupportsResourceLabelPhaseAndLimitFilters(t *testing.T) {
 				Labels: map[string]string{"team": "payments"},
 			},
 			Status: kaprov1alpha2.TargetStatus{
-				TargetStatus: kaprov1alpha2.TargetStatus{Phase: kaprov1alpha2.TargetPhaseApplying},
+				TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseApplying},
 			},
 		},
 		&kaprov1alpha2.Cluster{
@@ -150,19 +150,19 @@ func TestGraphPhaseFilterScansPastFirstLimitedPage(t *testing.T) {
 		&kaprov1alpha2.Target{
 			ObjectMeta: metav1.ObjectMeta{Name: "target-a"},
 			Status: kaprov1alpha2.TargetStatus{
-				TargetStatus: kaprov1alpha2.TargetStatus{Phase: kaprov1alpha2.TargetPhaseConverged},
+				TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseConverged},
 			},
 		},
 		&kaprov1alpha2.Target{
 			ObjectMeta: metav1.ObjectMeta{Name: "target-b"},
 			Status: kaprov1alpha2.TargetStatus{
-				TargetStatus: kaprov1alpha2.TargetStatus{Phase: kaprov1alpha2.TargetPhaseFailed},
+				TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseFailed},
 			},
 		},
 		&kaprov1alpha2.Target{
 			ObjectMeta: metav1.ObjectMeta{Name: "target-c"},
 			Status: kaprov1alpha2.TargetStatus{
-				TargetStatus: kaprov1alpha2.TargetStatus{Phase: kaprov1alpha2.TargetPhaseApplying},
+				TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseApplying},
 			},
 		},
 	)

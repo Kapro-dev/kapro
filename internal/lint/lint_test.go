@@ -232,7 +232,7 @@ func TestLintKapro_NilSourceDoesNotPanic(t *testing.T) {
 		Spec: kaprov1alpha2.FleetSpec{
 			SourceRef: "shared-catalog",
 			Delivery:  kaprov1alpha2.DeliverySpec{BackendRef: "flux"},
-			Clusters:  []kaprov1alpha2.KaproCluster{{Name: "c1"}},
+			Clusters:  []kaprov1alpha2.ClusterRef{{Name: "c1"}},
 		},
 	}
 	defer func() {
@@ -282,7 +282,7 @@ func TestLintKapro_ExactlyOneOfSourceSourceRef(t *testing.T) {
 					SourceRef: tc.sourceRef,
 					Source:    tc.source,
 					Delivery:  kaprov1alpha2.DeliverySpec{BackendRef: "flux"},
-					Clusters:  []kaprov1alpha2.KaproCluster{{Name: "c1"}},
+					Clusters:  []kaprov1alpha2.ClusterRef{{Name: "c1"}},
 				},
 			}
 			issues := LintKapro(k)
@@ -303,7 +303,7 @@ func TestLintKapro_MissingBackendIsError(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "k1"},
 		Spec: kaprov1alpha2.FleetSpec{
 			SourceRef: "shared",
-			Clusters:  []kaprov1alpha2.KaproCluster{{Name: "c1"}},
+			Clusters:  []kaprov1alpha2.ClusterRef{{Name: "c1"}},
 		},
 	}
 	issues := LintKapro(k)

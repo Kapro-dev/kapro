@@ -43,7 +43,7 @@ func TestSyncPromotionTargetPhaseLabelPersistsMetadata(t *testing.T) {
 	target := &kaprov1alpha2.Target{
 		ObjectMeta: metav1.ObjectMeta{Name: "promo-wave-cluster-a"},
 		Status: kaprov1alpha2.TargetStatus{
-			TargetStatus: kaprov1alpha2.TargetStatus{Phase: kaprov1alpha2.TargetPhaseWaitingApproval},
+			TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseWaitingApproval},
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(target).Build()
@@ -73,7 +73,7 @@ func TestPromotionTargetReconcileSyncsTerminalPhaseLabel(t *testing.T) {
 	target := &kaprov1alpha2.Target{
 		ObjectMeta: metav1.ObjectMeta{Name: "promo-wave-cluster-a"},
 		Status: kaprov1alpha2.TargetStatus{
-			TargetStatus: kaprov1alpha2.TargetStatus{Phase: kaprov1alpha2.TargetPhaseFailed},
+			TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseFailed},
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(target).Build()
@@ -99,7 +99,7 @@ func TestPromotionTargetPredicates_RejectedStatusChangeEnqueues(t *testing.T) {
 			Generation: 1,
 		},
 		Status: kaprov1alpha2.TargetStatus{
-			TargetStatus: kaprov1alpha2.TargetStatus{
+			TargetExecutionState: kaprov1alpha2.TargetExecutionState{
 				Phase: kaprov1alpha2.TargetPhaseWaitingApproval,
 			},
 		},
@@ -205,7 +205,7 @@ func TestPromotionTargetReconcilePullOCIRecordsDesiredState(t *testing.T) {
 			PromotionRunRef:  "rel-oci",
 			Target:           "cluster-a",
 			Plan:    "plan",
-			PromotionPlanRef: "default",
+			PlanRef: "default",
 			Stage:            "prod",
 			Version:          "oci://registry.example.com/apps/checkout@sha256:222",
 			AppKey:           "default",
@@ -214,11 +214,11 @@ func TestPromotionTargetReconcilePullOCIRecordsDesiredState(t *testing.T) {
 			},
 		},
 		Status: kaprov1alpha2.TargetStatus{
-			TargetStatus: kaprov1alpha2.TargetStatus{
+			TargetExecutionState: kaprov1alpha2.TargetExecutionState{
 				PromotionRunRef:  "rel-oci",
 				Target:           "cluster-a",
 				Plan:    "plan",
-				PromotionPlanRef: "default",
+				PlanRef: "default",
 				Stage:            "prod",
 				Version:          "oci://registry.example.com/apps/checkout@sha256:222",
 				AppKey:           "default",
@@ -270,7 +270,7 @@ func TestUpdatePromotionTargetStatusContract_SetsObservedGenerationAndConditions
 			Generation: 3,
 		},
 		Status: kaprov1alpha2.TargetStatus{
-			TargetStatus: kaprov1alpha2.TargetStatus{
+			TargetExecutionState: kaprov1alpha2.TargetExecutionState{
 				Phase:   kaprov1alpha2.TargetPhaseConverged,
 				Message: "done",
 			},
@@ -299,7 +299,7 @@ func TestNotifyPersistedTransitions_OnlyOnPersistedPhaseChange(t *testing.T) {
 	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1"},
 	}
-	prev := &kaprov1alpha2.TargetStatus{
+	prev := &kaprov1alpha2.TargetExecutionState{
 		Target:  "cluster-a",
 		Version: "repo@sha256:abc",
 		Phase:   kaprov1alpha2.TargetPhasePending,
@@ -323,7 +323,7 @@ func TestNotifyPersistedTransitions_ApprovalOnlyAfterPersistedStamp(t *testing.T
 	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1"},
 	}
-	prev := &kaprov1alpha2.TargetStatus{
+	prev := &kaprov1alpha2.TargetExecutionState{
 		Target:  "cluster-a",
 		Version: "repo@sha256:abc",
 		Phase:   kaprov1alpha2.TargetPhaseWaitingApproval,
@@ -345,10 +345,10 @@ func TestNotifyGateEvent_SendsSemanticGateType(t *testing.T) {
 	notifier := &recordingNotifier{}
 	r := &PromotionTargetReconciler{Notifier: notifier}
 	promotionrun := &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}}
-	target := &kaprov1alpha2.TargetStatus{
+	target := &kaprov1alpha2.TargetExecutionState{
 		Target:           "cluster-a",
 		Version:          "repo@sha256:abc",
-		PromotionPlanRef: "main",
+		PlanRef: "main",
 		Stage:            "canary",
 		Phase:            kaprov1alpha2.TargetPhaseMetricsCheck,
 		Gate: &kaprov1alpha2.GatePolicySpec{

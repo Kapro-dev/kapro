@@ -105,7 +105,7 @@ func (r *PromotionTargetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		resultLabel = "error"
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	prevTarget := rt.Status.TargetStatus
+	prevTarget := rt.Status.TargetExecutionState
 
 	// Terminal — nothing to do.
 	phase := rt.Status.Phase
@@ -172,7 +172,7 @@ func (r *PromotionTargetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	// Write back to PromotionTarget.status.
-	rt.Status.TargetStatus = target
+	rt.Status.TargetExecutionState = target
 	r.updatePromotionTargetStatusContract(&rt)
 	if updateErr := r.Status().Update(ctx, &rt); updateErr != nil {
 		// gate-IsConflict: don't bury the FSM in a refetch-and-retry loop —
@@ -202,7 +202,7 @@ func (r *PromotionTargetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	return result, nil
 }
 
-func (r *PromotionTargetReconciler) advanceTargetUntilStable(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetStatus, rt *kaprov1alpha2.Target) (ctrl.Result, error) {
+func (r *PromotionTargetReconciler) advanceTargetUntilStable(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState, rt *kaprov1alpha2.Target) (ctrl.Result, error) {
 	for i := 0; i < maxImmediatePhaseAdvances; i++ {
 		beforePhase := target.Phase
 		result, err := r.advanceTarget(ctx, promotionrun, target, rt)
@@ -234,7 +234,7 @@ func isImmediateRequeue(result ctrl.Result) bool {
 // stable for the lifetime of the controller).
 type fsmEnv struct {
 	promotionrun *kaprov1alpha2.PromotionRun
-	target       *kaprov1alpha2.TargetStatus
+	target       *kaprov1alpha2.TargetExecutionState
 	rt           *kaprov1alpha2.Target
 }
 
@@ -369,7 +369,7 @@ func (r *PromotionTargetReconciler) ensureFSM() {
 // implementation was a switch statement; this delegates to the cached
 // Machine built by ensureFSM so the dispatch is declarative (Phases()
 // lists everything supported) and no table is rebuilt per phase tick.
-func (r *PromotionTargetReconciler) advanceTarget(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetStatus, rt *kaprov1alpha2.Target) (ctrl.Result, error) {
+func (r *PromotionTargetReconciler) advanceTarget(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState, rt *kaprov1alpha2.Target) (ctrl.Result, error) {
 	r.ensureFSM()
 	return r.fsmMachine.Step(ctx, target.Phase, &fsmEnv{
 		promotionrun: promotionrun,
@@ -378,7 +378,7 @@ func (r *PromotionTargetReconciler) advanceTarget(ctx context.Context, promotion
 	})
 }
 
-func (r *PromotionTargetReconciler) handlePending(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetStatus) (ctrl.Result, error) {
+func (r *PromotionTargetReconciler) handlePending(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState) (ctrl.Result, error) {
 	var mc kaprov1alpha2.Cluster
 	if err := r.Get(ctx, client.ObjectKey{Name: target.Target}, &mc); err != nil {
 		if client.IgnoreNotFound(err) != nil {
@@ -402,7 +402,7 @@ func (r *PromotionTargetReconciler) handlePending(ctx context.Context, promotion
 	return ctrl.Result{Requeue: true}, nil
 }
 
-func (r *PromotionTargetReconciler) handleVerification(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetStatus, rt *kaprov1alpha2.Target) (ctrl.Result, error) {
+func (r *PromotionTargetReconciler) handleVerification(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState, rt *kaprov1alpha2.Target) (ctrl.Result, error) {
 	g, err := r.GateRegistry.Resolve("verification")
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("verification gate: %w", err)
@@ -437,7 +437,7 @@ func (r *PromotionTargetReconciler) handleVerification(ctx context.Context, prom
 	return ctrl.Result{RequeueAfter: parseDurationOrDefault(result.RetryAfter)}, nil
 }
 
-func (r *PromotionTargetReconciler) handleHealthCheck(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetStatus) (ctrl.Result, error) {
+func (r *PromotionTargetReconciler) handleHealthCheck(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState) (ctrl.Result, error) {
 	l := log.FromContext(ctx)
 
 	var mc kaprov1alpha2.Cluster
@@ -475,7 +475,7 @@ func (r *PromotionTargetReconciler) handleHealthCheck(ctx context.Context, promo
 	}
 }
 
-func (r *PromotionTargetReconciler) transitionToSoakOrMetrics(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetStatus) (ctrl.Result, error) {
+func (r *PromotionTargetReconciler) transitionToSoakOrMetrics(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState) (ctrl.Result, error) {
 	if target.Gate == nil || target.Gate.Gate.SoakTime == "" {
 		r.transitionTo(ctx, promotionrun, target, kaprov1alpha2.TargetPhaseMetricsCheck)
 		return ctrl.Result{Requeue: true}, nil
@@ -484,7 +484,7 @@ func (r *PromotionTargetReconciler) transitionToSoakOrMetrics(ctx context.Contex
 	return ctrl.Result{Requeue: true}, nil
 }
 
-func (r *PromotionTargetReconciler) handleSoaking(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetStatus, rt *kaprov1alpha2.Target) (ctrl.Result, error) {
+func (r *PromotionTargetReconciler) handleSoaking(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState, rt *kaprov1alpha2.Target) (ctrl.Result, error) {
 	if target.Gate == nil {
 		r.transitionTo(ctx, promotionrun, target, kaprov1alpha2.TargetPhaseMetricsCheck)
 		return ctrl.Result{Requeue: true}, nil
@@ -516,7 +516,7 @@ func (r *PromotionTargetReconciler) handleSoaking(ctx context.Context, promotion
 	return ctrl.Result{RequeueAfter: parseDurationOrDefault(result.RetryAfter)}, nil
 }
 
-func (r *PromotionTargetReconciler) handleMetricsCheck(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetStatus, rt *kaprov1alpha2.Target) (ctrl.Result, error) {
+func (r *PromotionTargetReconciler) handleMetricsCheck(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState, rt *kaprov1alpha2.Target) (ctrl.Result, error) {
 	policy := target.Gate
 
 	if policy == nil || (len(policy.Gate.Metrics) == 0 && len(policy.Gate.Templates) == 0) {
@@ -595,7 +595,7 @@ func (r *PromotionTargetReconciler) handleMetricsCheck(ctx context.Context, prom
 }
 
 // metricsGateTimedOut checks if the gate has exceeded its timeout.
-func metricsGateTimedOut(target *kaprov1alpha2.TargetStatus, policy *kaprov1alpha2.GatePolicySpec) (bool, string) {
+func metricsGateTimedOut(target *kaprov1alpha2.TargetExecutionState, policy *kaprov1alpha2.GatePolicySpec) (bool, string) {
 	if policy.Gate.GateTimeout == "" || target.PhaseEnteredAt == "" {
 		return false, ""
 	}
@@ -616,7 +616,7 @@ func metricsGateTimedOut(target *kaprov1alpha2.TargetStatus, policy *kaprov1alph
 func (r *PromotionTargetReconciler) evaluateGateTemplates(
 	ctx context.Context,
 	promotionrun *kaprov1alpha2.PromotionRun,
-	target *kaprov1alpha2.TargetStatus,
+	target *kaprov1alpha2.TargetExecutionState,
 	gateCtx *gate.Context,
 	policy *kaprov1alpha2.GatePolicySpec,
 ) (bool, time.Duration, error) {
@@ -783,7 +783,7 @@ func (r *PromotionTargetReconciler) evaluateGateTemplates(
 // publishGateEvent forwards a kapro.io/promotion.stage.gate.* emission
 // to the operator-level CloudEvents sink. Nil-safe.
 func (r *PromotionTargetReconciler) publishGateEvent(ctx context.Context,
-	promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetStatus,
+	promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState,
 	gateName, kind, phase, reason, message string) {
 	if r.StagePublisher == nil || promotionrun == nil || target == nil {
 		return
@@ -793,7 +793,7 @@ func (r *PromotionTargetReconciler) publishGateEvent(ctx context.Context,
 		kind, phase, reason, message)
 }
 
-func (r *PromotionTargetReconciler) notifyGateEvent(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetStatus, eventType, gateName, message string, isFailure bool) {
+func (r *PromotionTargetReconciler) notifyGateEvent(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState, eventType, gateName, message string, isFailure bool) {
 	if r.Notifier == nil {
 		return
 	}
@@ -826,7 +826,7 @@ func (r *PromotionTargetReconciler) gateForTemplate(tmpl *kaprov1alpha2.GateTemp
 	return r.GateRegistry.Resolve(tmpl.Type)
 }
 
-func (r *PromotionTargetReconciler) nextAfterMetrics(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetStatus) (ctrl.Result, error) {
+func (r *PromotionTargetReconciler) nextAfterMetrics(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState) (ctrl.Result, error) {
 	if target.Gate != nil && target.Gate.Approval != nil && target.Gate.Approval.Required {
 		r.transitionTo(ctx, promotionrun, target, kaprov1alpha2.TargetPhaseWaitingApproval)
 		return ctrl.Result{Requeue: true}, nil
@@ -835,7 +835,7 @@ func (r *PromotionTargetReconciler) nextAfterMetrics(ctx context.Context, promot
 	return ctrl.Result{Requeue: true}, nil
 }
 
-func (r *PromotionTargetReconciler) handleWaitingApproval(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetStatus, rt *kaprov1alpha2.Target) (ctrl.Result, error) {
+func (r *PromotionTargetReconciler) handleWaitingApproval(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState, rt *kaprov1alpha2.Target) (ctrl.Result, error) {
 	if target.Rejected {
 		rejectedBy := target.RejectedBy
 		if rejectedBy == "" {
@@ -872,13 +872,13 @@ func (r *PromotionTargetReconciler) handleWaitingApproval(ctx context.Context, p
 	return ctrl.Result{RequeueAfter: requeueNormal}, nil
 }
 
-func (r *PromotionTargetReconciler) sendApprovalNotification(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetStatus) {
+func (r *PromotionTargetReconciler) sendApprovalNotification(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState) {
 	_ = ctx
 	_ = promotionrun
 	target.ApprovalSentAt = time.Now().UTC().Format(time.RFC3339)
 }
 
-func (r *PromotionTargetReconciler) handleApplying(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetStatus) (ctrl.Result, error) {
+func (r *PromotionTargetReconciler) handleApplying(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState) (ctrl.Result, error) {
 	l := log.FromContext(ctx)
 	desiredVersions := targetDesiredVersions(target)
 	if len(desiredVersions) == 0 {
@@ -1021,7 +1021,7 @@ func (r *PromotionTargetReconciler) handleApplying(ctx context.Context, promotio
 	return ctrl.Result{RequeueAfter: requeueNormal}, nil
 }
 
-func capturePreviousVersions(target *kaprov1alpha2.TargetStatus, mc *kaprov1alpha2.Cluster, desiredVersions map[string]string) {
+func capturePreviousVersions(target *kaprov1alpha2.TargetExecutionState, mc *kaprov1alpha2.Cluster, desiredVersions map[string]string) {
 	if len(target.PreviousVersions) == 0 {
 		target.PreviousVersions = make(map[string]string, len(desiredVersions))
 		for appKey := range desiredVersions {
@@ -1058,7 +1058,7 @@ func validateTargetTopology(mc *kaprov1alpha2.Cluster, desiredVersions map[strin
 // drift in production would be strictly worse than letting the transition
 // through with a loud alert; the graph is documentation and a violation
 // means the documentation is stale, not that the rollout is unsafe.
-func (r *PromotionTargetReconciler) transitionTo(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetStatus, phase kaprov1alpha2.TargetPhase) {
+func (r *PromotionTargetReconciler) transitionTo(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState, phase kaprov1alpha2.TargetPhase) {
 	prevPhase := target.Phase
 
 	r.ensureFSM()
@@ -1092,7 +1092,7 @@ func (r *PromotionTargetReconciler) transitionTo(ctx context.Context, promotionr
 
 // phaseTransitionMessage returns a human-readable message for the FSM transition,
 // giving operators CI-promotionplan-like context when reading k9s events.
-func phaseTransitionMessage(from kaprov1alpha2.TargetPhase, to kaprov1alpha2.TargetPhase, target *kaprov1alpha2.TargetStatus) string {
+func phaseTransitionMessage(from kaprov1alpha2.TargetPhase, to kaprov1alpha2.TargetPhase, target *kaprov1alpha2.TargetExecutionState) string {
 	switch to {
 	case kaprov1alpha2.TargetPhasePending:
 		return fmt.Sprintf("queued for delivery of %s", target.Version)
@@ -1126,7 +1126,7 @@ func phaseTransitionMessage(from kaprov1alpha2.TargetPhase, to kaprov1alpha2.Tar
 }
 
 // failTarget records a failure and applies the onFailure policy.
-func (r *PromotionTargetReconciler) failTarget(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetStatus, msg string) {
+func (r *PromotionTargetReconciler) failTarget(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState, msg string) {
 	target.FinishedAt = time.Now().UTC().Format(time.RFC3339)
 	target.Message = msg
 
@@ -1157,7 +1157,7 @@ func (r *PromotionTargetReconciler) failTarget(ctx context.Context, promotionrun
 	// The child never creates sibling PromotionTarget objects.
 }
 
-func (r *PromotionTargetReconciler) notifyPersistedTransitions(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, previous, current *kaprov1alpha2.TargetStatus) {
+func (r *PromotionTargetReconciler) notifyPersistedTransitions(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, previous, current *kaprov1alpha2.TargetExecutionState) {
 	if r.Notifier == nil {
 		return
 	}
@@ -1183,7 +1183,7 @@ func (r *PromotionTargetReconciler) notifyPersistedTransitions(ctx context.Conte
 	}
 }
 
-func (r *PromotionTargetReconciler) notifyApprovalRequest(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetStatus) {
+func (r *PromotionTargetReconciler) notifyApprovalRequest(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState) {
 	var approveURL, rejectURL string
 	if len(r.ApprovalSecret) > 0 && r.ExternalURL != "" {
 		var err error

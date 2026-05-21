@@ -164,13 +164,13 @@ func runDemo(ctx context.Context) error {
 					{Name: "keycloak", Version: "6.5.0"},
 				},
 			},
-			Clusters: []kaprov1alpha2.KaproCluster{
+			Clusters: []kaprov1alpha2.ClusterRef{
 				{Name: "canary-eu", Labels: map[string]string{"tier": "canary", "region": "eu-west"}},
 				{Name: "prod-eu-west", Labels: map[string]string{"tier": "prod", "region": "eu-west"}},
 				{Name: "prod-eu-east", Labels: map[string]string{"tier": "prod", "region": "eu-east"}},
 			},
 			Plan: kaprov1alpha2.KaproPromotionPlan{
-				Stages: []kaprov1alpha2.KaproStage{
+				Stages: []kaprov1alpha2.StageSpec{
 					{Name: "canary", Selector: map[string]string{"tier": "canary"}},
 					{Name: "prod", Selector: map[string]string{"tier": "prod"},
 						DependsOn: []kaprov1alpha2.StageDependency{{Stage: "canary"}}},

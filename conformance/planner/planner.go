@@ -24,7 +24,7 @@ func DefaultScenario() Scenario {
 	return Scenario{
 		Plan: &kpiv1alpha1.PlanRequest{
 			PromotionRun:  "conformance-promotionrun",
-			Plan: "main",
+			PromotionPlan: "main",
 			Stage:         "canary",
 			Version:       "oci://example.com/app@sha256:1111111111111111111111111111111111111111111111111111111111111111",
 			Strategy: &kpiv1alpha1.StageStrategy{

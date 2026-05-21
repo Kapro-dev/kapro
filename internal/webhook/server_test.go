@@ -33,7 +33,7 @@ func TestHandleStatus_RequiresPromotionRunInOperatorNamespace(t *testing.T) {
 			Version:         "repo@sha256:abc",
 		},
 		Status: kaprov1alpha2.TargetStatus{
-			TargetStatus: kaprov1alpha2.TargetStatus{Phase: kaprov1alpha2.TargetPhaseWaitingApproval},
+			TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseWaitingApproval},
 		},
 	}
 	s := &Server{

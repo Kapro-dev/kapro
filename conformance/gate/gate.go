@@ -25,7 +25,7 @@ func DefaultScenario() Scenario {
 		Evaluate: &kgiv1alpha1.EvaluateRequest{
 			PromotionRun:  "conformance-promotionrun",
 			Target:        "conformance-target",
-			Plan: "main",
+			PromotionPlan: "main",
 			Stage:         "canary",
 			Version:       "oci://example.com/app@sha256:1111111111111111111111111111111111111111111111111111111111111111",
 			Gate:          "conformance",

@@ -42,11 +42,11 @@ func newKapro(name string) *kaprov1alpha2.Fleet {
 		Spec: kaprov1alpha2.FleetSpec{
 			SourceRef: "shared-catalog",
 			Delivery:  kaprov1alpha2.DeliverySpec{Mode: "pull", BackendRef: "flux"},
-			Clusters: []kaprov1alpha2.KaproCluster{
+			Clusters: []kaprov1alpha2.ClusterRef{
 				{Name: "c1", Labels: map[string]string{"stage": "prod"}},
 			},
 			Plan: kaprov1alpha2.KaproPromotionPlan{
-				Stages: []kaprov1alpha2.KaproStage{
+				Stages: []kaprov1alpha2.StageSpec{
 					{Name: "prod", Selector: map[string]string{"stage": "prod"}},
 				},
 			},

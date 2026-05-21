@@ -57,7 +57,7 @@ func heartbeatLeaseName(clusterName string) string {
 func (r *PromotionTargetReconciler) requireFreshHeartbeat(
 	ctx context.Context,
 	promotionrun *kaprov1alpha2.PromotionRun,
-	target *kaprov1alpha2.TargetStatus,
+	target *kaprov1alpha2.TargetExecutionState,
 	mc *kaprov1alpha2.Cluster,
 ) (ctrl.Result, bool, error) {
 	_ = ctx // ctx retained for future use (status patches, list calls)

@@ -47,10 +47,10 @@ func (r *PromotionRunReconciler) upsertTarget(
 			return i, nil
 		}
 	}
-	newTarget := kaprov1alpha2.TargetStatus{
+	newTarget := kaprov1alpha2.TargetExecutionState{
 		PromotionRunRef:  promotionrun.Name,
 		Target:           mc.Name,
-		PromotionPlanRef: promotionplanRefName,
+		PlanRef: promotionplanRefName,
 		Plan:    promotionplan.Name,
 		Stage:            stage.Name,
 		Version:          version,
@@ -179,7 +179,7 @@ func (r *PromotionRunReconciler) clearActivePromotionRun(ctx context.Context, pr
 	}
 }
 
-func (r *PromotionRunReconciler) promotionTargetFromStatus(promotionrun *kaprov1alpha2.PromotionRun, target kaprov1alpha2.TargetStatus) *kaprov1alpha2.Target {
+func (r *PromotionRunReconciler) promotionTargetFromStatus(promotionrun *kaprov1alpha2.PromotionRun, target kaprov1alpha2.TargetExecutionState) *kaprov1alpha2.Target {
 	rt := &kaprov1alpha2.Target{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: promotionTargetObjectName(target),
@@ -193,7 +193,7 @@ func (r *PromotionRunReconciler) promotionTargetFromStatus(promotionrun *kaprov1
 		Spec: kaprov1alpha2.TargetSpec{
 			PromotionRunRef:  target.PromotionRunRef,
 			Target:           target.Target,
-			PromotionPlanRef: target.PlanRef,
+			PlanRef: target.PlanRef,
 			Plan:    target.Plan,
 			Stage:            target.Stage,
 			Version:          target.Version,
@@ -202,7 +202,7 @@ func (r *PromotionRunReconciler) promotionTargetFromStatus(promotionrun *kaprov1
 			DesiredVersions:  copyStringMap(target.DesiredVersions),
 			Rollback:         target.Rollback,
 		},
-		Status: kaprov1alpha2.TargetStatus{TargetStatus: target},
+		Status: kaprov1alpha2.TargetStatus{TargetExecutionState: target},
 	}
 	if err := ctrl.SetControllerReference(promotionrun, rt, r.Scheme); err == nil {
 		return rt
@@ -217,7 +217,7 @@ func (r *PromotionRunReconciler) loadPromotionTargets(ctx context.Context, promo
 	); err != nil {
 		return err
 	}
-	targets := make([]kaprov1alpha2.TargetStatus, 0, len(list.Items))
+	targets := make([]kaprov1alpha2.TargetExecutionState, 0, len(list.Items))
 	for i := range list.Items {
 		rt := &list.Items[i]
 		targets = append(targets, targetStatusFromPromotionTarget(rt))

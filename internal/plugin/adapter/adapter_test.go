@@ -203,7 +203,7 @@ func TestPlannerAdapterMapsPlanDecisions(t *testing.T) {
 	if len(result.Decisions) != 1 || result.Decisions[0].Target != "cluster-a" || result.Decisions[0].Reason != "CapacityFull" {
 		t.Fatalf("decisions = %#v", result.Decisions)
 	}
-	if server.plan.PromotionRun != "rel-1" || server.plan.Plan != "checkout" || server.plan.Stage != "prod" || server.plan.Version != "1.2.3" {
+	if server.plan.PromotionRun != "rel-1" || server.plan.PromotionPlan != "checkout" || server.plan.Stage != "prod" || server.plan.Version != "1.2.3" {
 		t.Fatalf("PlanRequest = %+v", server.plan)
 	}
 	if server.plan.Strategy.GetMaxParallel() != 5 || len(server.plan.Targets) != 2 || server.plan.Targets[0].Labels["region"] != "eu" {

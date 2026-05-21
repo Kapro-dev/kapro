@@ -124,7 +124,7 @@ func decisionFixtures() (*kaprov1alpha2.PromotionRun, *kaprov1alpha2.Cluster, *k
 			Version:         "sha256:abc",
 		},
 		Status: kaprov1alpha2.TargetStatus{
-			TargetStatus: kaprov1alpha2.TargetStatus{Phase: kaprov1alpha2.TargetPhaseWaitingApproval},
+			TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseWaitingApproval},
 		},
 	}
 	return promotionrun, mc, promotionplan, target

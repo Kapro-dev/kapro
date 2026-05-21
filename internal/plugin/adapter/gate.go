@@ -71,7 +71,7 @@ func (g *GateAdapter) Evaluate(ctx context.Context, req gate.Request) (gate.Resu
 	resp, err := g.client.Evaluate(rpcCtx, &kgiv1alpha1.EvaluateRequest{
 		PromotionRun:  req.Context.PromotionRunRef,
 		Target:        req.Context.Target,
-		Plan: req.Context.Plan,
+		PromotionPlan: req.Context.Plan,
 		Stage:         req.Context.Stage,
 		Version:       req.Context.Version,
 		Gate:          gateName(g.name, req.Template),

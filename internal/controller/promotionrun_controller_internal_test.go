@@ -27,17 +27,17 @@ func TestStageDependencySatisfied_AnyUnlocksFromOneConvergedTarget(t *testing.T)
 	}
 	promotionrun := &kaprov1alpha2.PromotionRun{
 		Status: kaprov1alpha2.PromotionRunStatus{
-			Targets: []kaprov1alpha2.TargetStatus{
+			Targets: []kaprov1alpha2.TargetExecutionState{
 				{
 					Target:           "cluster-a",
-					PromotionPlanRef: "main",
+					PlanRef: "main",
 					Stage:            "canary",
 					Phase:            kaprov1alpha2.TargetPhaseConverged,
 					FinishedAt:       time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339),
 				},
 				{
 					Target:           "cluster-b",
-					PromotionPlanRef: "main",
+					PlanRef: "main",
 					Stage:            "canary",
 					Phase:            kaprov1alpha2.TargetPhaseHealthCheck,
 				},
@@ -346,17 +346,17 @@ func TestStageDependencySatisfied_AllRequiresEveryTarget(t *testing.T) {
 	}
 	promotionrun := &kaprov1alpha2.PromotionRun{
 		Status: kaprov1alpha2.PromotionRunStatus{
-			Targets: []kaprov1alpha2.TargetStatus{
+			Targets: []kaprov1alpha2.TargetExecutionState{
 				{
 					Target:           "cluster-a",
-					PromotionPlanRef: "main",
+					PlanRef: "main",
 					Stage:            "canary",
 					Phase:            kaprov1alpha2.TargetPhaseConverged,
 					FinishedAt:       time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339),
 				},
 				{
 					Target:           "cluster-b",
-					PromotionPlanRef: "main",
+					PlanRef: "main",
 					Stage:            "canary",
 					Phase:            kaprov1alpha2.TargetPhaseApplying,
 				},
@@ -389,10 +389,10 @@ func TestStageDependencySatisfied_ReturnsRemainingSoakTime(t *testing.T) {
 	}
 	promotionrun := &kaprov1alpha2.PromotionRun{
 		Status: kaprov1alpha2.PromotionRunStatus{
-			Targets: []kaprov1alpha2.TargetStatus{
+			Targets: []kaprov1alpha2.TargetExecutionState{
 				{
 					Target:           "cluster-a",
-					PromotionPlanRef: "main",
+					PlanRef: "main",
 					Stage:            "canary",
 					Phase:            kaprov1alpha2.TargetPhaseConverged,
 					FinishedAt:       time.Now().Add(-10 * time.Minute).UTC().Format(time.RFC3339),

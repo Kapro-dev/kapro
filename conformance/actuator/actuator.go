@@ -27,7 +27,7 @@ func DefaultScenario() Scenario {
 		Apply: &kaiv1alpha1.ApplyRequest{
 			PromotionRun:    "conformance-promotionrun",
 			Target:          "conformance-target",
-			Plan:   "main",
+			PromotionPlan:   "main",
 			Stage:           "canary",
 			Version:         "oci://example.com/app@sha256:1111111111111111111111111111111111111111111111111111111111111111",
 			PreviousVersion: "oci://example.com/app@sha256:0000000000000000000000000000000000000000000000000000000000000000",

@@ -55,10 +55,10 @@ func TestHandleVerification_FailedResultFailsTarget(t *testing.T) {
 	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default"},
 	}
-	target := &kaprov1alpha2.TargetStatus{
+	target := &kaprov1alpha2.TargetExecutionState{
 		PromotionRunRef:  "rel-1",
 		Target:           "cluster-a",
-		PromotionPlanRef: "wave-1",
+		PlanRef: "wave-1",
 		Plan:    "promotionplan-a",
 		Stage:            "prod",
 		Version:          "repo@sha256:abc",
@@ -96,10 +96,10 @@ func TestHandleApplying_RespectsActivePromotionRunClaim(t *testing.T) {
 	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default"},
 	}
-	target := &kaprov1alpha2.TargetStatus{
+	target := &kaprov1alpha2.TargetExecutionState{
 		PromotionRunRef:  "rel-1",
 		Target:           "cluster-a",
-		PromotionPlanRef: "wave-1",
+		PlanRef: "wave-1",
 		Plan:    "promotionplan-a",
 		Stage:            "prod",
 		Version:          "repo@sha256:new",
@@ -131,7 +131,7 @@ func TestHandlePending_PullModeWaitsForFreshHeartbeat(t *testing.T) {
 		Recorder: record.NewFakeRecorder(10),
 	}
 	promotionrun := &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}}
-	target := &kaprov1alpha2.TargetStatus{
+	target := &kaprov1alpha2.TargetExecutionState{
 		Target: "cluster-a",
 		Phase:  kaprov1alpha2.TargetPhasePending,
 	}
@@ -172,7 +172,7 @@ func TestHandlePending_ReadyTrueAllowsPullTarget(t *testing.T) {
 		Recorder: record.NewFakeRecorder(10),
 	}
 	promotionrun := &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}}
-	target := &kaprov1alpha2.TargetStatus{
+	target := &kaprov1alpha2.TargetExecutionState{
 		Target:              "cluster-a",
 		Phase:               kaprov1alpha2.TargetPhasePending,
 		HeartbeatStaleSince: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339),
@@ -226,7 +226,7 @@ func TestHandlePending_UnreachableDefersPullTarget(t *testing.T) {
 		Recorder: record.NewFakeRecorder(10),
 	}
 	promotionrun := &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}}
-	target := &kaprov1alpha2.TargetStatus{
+	target := &kaprov1alpha2.TargetExecutionState{
 		Target: "cluster-a",
 		Phase:  kaprov1alpha2.TargetPhasePending,
 	}
@@ -257,9 +257,9 @@ func TestBuildApprovalURLs_SingleApproverHintSignedIntoToken(t *testing.T) {
 			UID:       "uid-1",
 		},
 	}
-	target := &kaprov1alpha2.TargetStatus{
+	target := &kaprov1alpha2.TargetExecutionState{
 		Target:           "cluster-a",
-		PromotionPlanRef: "wave-1",
+		PlanRef: "wave-1",
 		Stage:            "prod",
 		Version:          "repo@sha256:abc",
 		Gate: &kaprov1alpha2.GatePolicySpec{
@@ -307,10 +307,10 @@ func TestAdvanceTargetUntilStable_CollapsesImmediateTransitions(t *testing.T) {
 	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default"},
 	}
-	target := &kaprov1alpha2.TargetStatus{
+	target := &kaprov1alpha2.TargetExecutionState{
 		PromotionRunRef:  "rel-1",
 		Target:           "cluster-a",
-		PromotionPlanRef: "wave-1",
+		PlanRef: "wave-1",
 		Plan:    "promotionplan-a",
 		Stage:            "prod",
 		Version:          "repo@sha256:abc",
@@ -341,7 +341,7 @@ func TestEvaluateGateTemplates_InconclusiveSkipPasses(t *testing.T) {
 		GateRegistry: reg,
 	}
 	promotionrun := &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default"}}
-	target := &kaprov1alpha2.TargetStatus{Target: "cluster-a", PhaseEnteredAt: time.Now().UTC().Format(time.RFC3339)}
+	target := &kaprov1alpha2.TargetExecutionState{Target: "cluster-a", PhaseEnteredAt: time.Now().UTC().Format(time.RFC3339)}
 	policy := &kaprov1alpha2.GatePolicySpec{
 		Gate: kaprov1alpha2.GateSpec{
 			Templates: []kaprov1alpha2.GateTemplateSpec{{
@@ -384,7 +384,7 @@ func TestEvaluateGateTemplates_PersistsEvidence(t *testing.T) {
 		GateRegistry: reg,
 	}
 	promotionrun := &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default"}}
-	target := &kaprov1alpha2.TargetStatus{Target: "cluster-a", PhaseEnteredAt: time.Now().UTC().Format(time.RFC3339)}
+	target := &kaprov1alpha2.TargetExecutionState{Target: "cluster-a", PhaseEnteredAt: time.Now().UTC().Format(time.RFC3339)}
 	policy := &kaprov1alpha2.GatePolicySpec{
 		Gate: kaprov1alpha2.GateSpec{
 			Templates: []kaprov1alpha2.GateTemplateSpec{{
@@ -452,7 +452,7 @@ func TestEvaluateGateTemplates_FailureRetryStaysRetryableUntilMaxAttempts(t *tes
 		GateRegistry: reg,
 	}
 	promotionrun := &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default"}}
-	target := &kaprov1alpha2.TargetStatus{Target: "cluster-a", PhaseEnteredAt: time.Now().UTC().Format(time.RFC3339)}
+	target := &kaprov1alpha2.TargetExecutionState{Target: "cluster-a", PhaseEnteredAt: time.Now().UTC().Format(time.RFC3339)}
 	policy := &kaprov1alpha2.GatePolicySpec{
 		Gate: kaprov1alpha2.GateSpec{
 			Templates: []kaprov1alpha2.GateTemplateSpec{{
@@ -492,7 +492,7 @@ func TestEvaluateGateTemplates_FailureRetryStaysRetryableUntilMaxAttempts(t *tes
 }
 
 func TestMetricsGateTimedOut_InvalidTimeoutFailsClosed(t *testing.T) {
-	target := &kaprov1alpha2.TargetStatus{PhaseEnteredAt: time.Now().UTC().Format(time.RFC3339)}
+	target := &kaprov1alpha2.TargetExecutionState{PhaseEnteredAt: time.Now().UTC().Format(time.RFC3339)}
 	policy := &kaprov1alpha2.GatePolicySpec{
 		Gate: kaprov1alpha2.GateSpec{GateTimeout: "not-a-duration"},
 	}

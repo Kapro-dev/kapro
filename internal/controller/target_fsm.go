@@ -136,7 +136,7 @@ func notificationPolicyFrom(policy *kaprov1alpha2.GatePolicySpec) notification.N
 // targetToGateContext builds the gate evaluation context from a target entry.
 // rt is the PromotionTarget owner — its UID and Name are carried into the gate context
 // so that gates that create Kubernetes resources (e.g. Job gate) can set OwnerReferences.
-func targetToGateContext(promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetStatus, rt *kaprov1alpha2.Target) *gate.Context {
+func targetToGateContext(promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState, rt *kaprov1alpha2.Target) *gate.Context {
 	ctx := &gate.Context{
 		Name:            syncName(promotionrun.Name, target.PlanRef, target.Stage, target.Target),
 		Namespace:       promotionrun.Namespace,
@@ -155,7 +155,7 @@ func targetToGateContext(promotionrun *kaprov1alpha2.PromotionRun, target *kapro
 }
 
 // targetAppKey returns the FleetCluster.status.currentVersions key for this target.
-func targetAppKey(target *kaprov1alpha2.TargetStatus) string {
+func targetAppKey(target *kaprov1alpha2.TargetExecutionState) string {
 	if target.AppKey != "" {
 		return target.AppKey
 	}
@@ -168,7 +168,7 @@ func targetAppKey(target *kaprov1alpha2.TargetStatus) string {
 	return target.PromotionRunRef
 }
 
-func targetDesiredVersions(target *kaprov1alpha2.TargetStatus) map[string]string {
+func targetDesiredVersions(target *kaprov1alpha2.TargetExecutionState) map[string]string {
 	if len(target.DesiredVersions) > 0 {
 		return copyStringMap(target.DesiredVersions)
 	}
@@ -197,7 +197,7 @@ func resolveSyncArgs(tmpl *kaprov1alpha2.GateTemplateSpec, ctx *gate.Context) ma
 }
 
 // buildApprovalURLs returns signed approve and reject URLs for the given target.
-func buildApprovalURLs(externalURL string, secret []byte, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetStatus) (approveURL, rejectURL string, err error) {
+func buildApprovalURLs(externalURL string, secret []byte, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState) (approveURL, rejectURL string, err error) {
 	exp := time.Now().Add(token.DefaultTTL).Unix()
 	targetKey := syncName(promotionrun.Name, target.PlanRef, target.Stage, target.Target)
 
@@ -232,7 +232,7 @@ func buildApprovalURLs(externalURL string, secret []byte, promotionrun *kaprov1a
 	return approveURL, rejectURL, nil
 }
 
-func approvalIdentityHint(target *kaprov1alpha2.TargetStatus) string {
+func approvalIdentityHint(target *kaprov1alpha2.TargetExecutionState) string {
 	if target == nil || target.Gate == nil || target.Gate.Approval == nil {
 		return ""
 	}
@@ -289,10 +289,10 @@ func (r *PromotionRunReconciler) triggerTargetRollback(ctx context.Context, prom
 		}
 	}
 
-	rollbackTarget := kaprov1alpha2.TargetStatus{
+	rollbackTarget := kaprov1alpha2.TargetExecutionState{
 		PromotionRunRef:  promotionrun.Name,
 		Target:           target.Target,
-		PromotionPlanRef: target.PlanRef,
+		PlanRef: target.PlanRef,
 		Plan:    target.Plan,
 		Stage:            target.Stage,
 		Version:          target.PreviousVersion,

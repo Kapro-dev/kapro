@@ -104,7 +104,7 @@ func TestRunDiag_HappyPathRendersExpectedSections(t *testing.T) {
 			Version:         "v1.2.3",
 		},
 		Status: kaprov1alpha2.TargetStatus{
-			TargetStatus: kaprov1alpha2.TargetStatus{Phase: kaprov1alpha2.TargetPhaseWaitingApproval},
+			TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseWaitingApproval},
 		},
 	}
 	event := &corev1.Event{
@@ -189,7 +189,7 @@ func TestComputeBlockedOn_FailedTarget(t *testing.T) {
 	targets := []kaprov1alpha2.Target{{
 		Spec: kaprov1alpha2.TargetSpec{Target: "de-prod", Stage: "canary"},
 		Status: kaprov1alpha2.TargetStatus{
-			TargetStatus: kaprov1alpha2.TargetStatus{Phase: kaprov1alpha2.TargetPhaseFailed, Message: "gate timeout"},
+			TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseFailed, Message: "gate timeout"},
 		},
 	}}
 	got := computeBlockedOn(promo, targets)
