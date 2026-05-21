@@ -42,6 +42,7 @@ the existing `controllers` setting:
 
 - `approval`
 - `backend`
+- `gateexpression`
 - `cluster-bootstrap`
 - `clustertemplate`
 - `plugin`

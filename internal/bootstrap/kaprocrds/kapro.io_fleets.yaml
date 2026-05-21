@@ -211,6 +211,12 @@ spec:
                               required:
                               - required
                               type: object
+                            expressionRef:
+                              description: |-
+                                ExpressionRef is reserved for future GateExpression runtime resolution.
+                                v0.1.2 rejects this field so referenced gates cannot become a silent no-op.
+                              minLength: 1
+                              type: string
                             gate:
                               description: |-
                                 Gate configures automated checks such as soak time, health checks,
@@ -806,9 +812,13 @@ spec:
                               - rollback
                               - continue
                               type: string
-                          required:
-                          - mode
                           type: object
+                          x-kubernetes-validations:
+                          - message: mode is required
+                            rule: has(self.mode)
+                          - message: expressionRef is reserved until GateExpression
+                              runtime resolution is implemented
+                            rule: '!has(self.expressionRef)'
                         name:
                           description: Name of the stage.
                           type: string

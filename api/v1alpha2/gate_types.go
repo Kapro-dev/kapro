@@ -16,13 +16,21 @@ const (
 	GateModeScheduled GateMode = "scheduled"
 )
 
+// +kubebuilder:validation:XValidation:rule="has(self.mode)",message="mode is required"
+// +kubebuilder:validation:XValidation:rule="!has(self.expressionRef)",message="expressionRef is reserved until GateExpression runtime resolution is implemented"
 type GatePolicySpec struct {
+	// ExpressionRef is reserved for future GateExpression runtime resolution.
+	// v0.1.2 rejects this field so referenced gates cannot become a silent no-op.
+	// +kubebuilder:validation:MinLength=1
+	// +optional
+	ExpressionRef string `json:"expressionRef,omitempty"`
 	// Mode controls how this stage gate is evaluated.
 	// auto evaluates configured gate checks without human approval.
 	// manual waits only when approval.required=true.
 	// scheduled is reserved for time-windowed gates.
 	// +kubebuilder:validation:Enum=auto;manual;scheduled
-	Mode GateMode `json:"mode"`
+	// +optional
+	Mode GateMode `json:"mode,omitempty"`
 	// Gate configures automated checks such as soak time, health checks,
 	// metrics, template gates, and delegated verification policy.
 	// +optional

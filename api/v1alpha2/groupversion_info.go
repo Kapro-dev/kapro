@@ -18,6 +18,7 @@ func init() {
 		&Cluster{}, &ClusterList{},
 		&ClusterTemplate{}, &ClusterTemplateList{},
 		&Fleet{}, &FleetList{},
+		&GateExpression{}, &GateExpressionList{},
 		&Plan{}, &PlanList{},
 		&Plugin{}, &PluginList{},
 		&Policy{}, &PolicyList{},

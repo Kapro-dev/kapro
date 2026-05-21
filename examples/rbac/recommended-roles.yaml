@@ -14,6 +14,7 @@ rules:
       - policies
       - sources
       - fleets
+      - gateexpressions
       - clusters
       - plans
       - plugins
@@ -30,6 +31,7 @@ rules:
       - policies/status
       - approvals/status
       - fleets/status
+      - gateexpressions/status
       - clusters/status
       - plugins/status
       - promotionruns/status
@@ -49,6 +51,7 @@ rules:
       - promotions
       - sources
       - clusters
+      - gateexpressions
       - plans
       - promotionruns
       - targets
@@ -60,6 +63,7 @@ rules:
   - apiGroups: ["kapro.io"]
     resources:
       - promotions/status
+      - gateexpressions/status
       - promotionruns/status
       - targets/status
     verbs: ["get", "list", "watch"]
@@ -73,6 +77,7 @@ rules:
     resources:
       - sources
       - clusters
+      - gateexpressions
       - plans
       - promotionruns
       - triggers
@@ -84,6 +89,7 @@ rules:
   - apiGroups: ["kapro.io"]
     resources:
       - promotionruns/status
+      - gateexpressions/status
       - targets/status
       - triggers/status
     verbs: ["get", "list", "watch"]
@@ -98,6 +104,7 @@ rules:
       - approvals
       - sources
       - clusters
+      - gateexpressions
       - plans
       - promotionruns
       - targets
@@ -109,6 +116,7 @@ rules:
   - apiGroups: ["kapro.io"]
     resources:
       - approvals/status
+      - gateexpressions/status
       - promotionruns/status
       - targets/status
     verbs: ["get", "list", "watch"]
@@ -134,6 +142,7 @@ rules:
       - clusters
       - clustertemplates
       - fleets
+      - gateexpressions
       - plugins
       - plans
       - promotionruns
@@ -148,6 +157,7 @@ rules:
       - clusters/status
       - clustertemplates/status
       - fleets/status
+      - gateexpressions/status
       - plugins/status
       - promotionruns/status
       - targets/status

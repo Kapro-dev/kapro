@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -46,10 +47,47 @@ func (v *PromotionPlanValidator) Handle(_ context.Context, req admission.Request
 }
 
 func validatePromotionPlan(p *kaprov1alpha2.Plan) error {
+	if err := validateStageGateExpressionRefs(p); err != nil {
+		return err
+	}
 	if err := validateMetricPresets(p); err != nil {
 		return err
 	}
 	return validateStageDAG(p.Spec.Stages)
+}
+
+func validateStageGateExpressionRefs(p *kaprov1alpha2.Plan) error {
+	for i, stage := range p.Spec.Stages {
+		if stage.Gate == nil || stage.Gate.ExpressionRef == "" {
+			continue
+		}
+		if strings.TrimSpace(stage.Gate.ExpressionRef) != stage.Gate.ExpressionRef {
+			return fmt.Errorf("plan.spec.stages[%d].gate.expressionRef must not contain surrounding whitespace", i)
+		}
+		if gatePolicyHasInlineFields(stage.Gate) {
+			return fmt.Errorf("plan.spec.stages[%d].gate.expressionRef is mutually exclusive with inline gate fields", i)
+		}
+		return fmt.Errorf("plan.spec.stages[%d].gate.expressionRef is reserved until GateExpression runtime resolution is implemented; keep enforceable gates inline", i)
+	}
+	return nil
+}
+
+func gatePolicyHasInlineFields(gate *kaprov1alpha2.GatePolicySpec) bool {
+	if gate == nil {
+		return false
+	}
+	if gate.Mode != "" || gate.Approval != nil || len(gate.Notifications) > 0 {
+		return true
+	}
+	if gate.OnFailure != "" && gate.OnFailure != "halt" {
+		return true
+	}
+	return gate.Gate.SoakTime != "" ||
+		gate.Gate.GateTimeout != "" ||
+		gate.Gate.HealthCheck ||
+		len(gate.Gate.Metrics) > 0 ||
+		len(gate.Gate.Templates) > 0 ||
+		gate.Gate.Verification != nil
 }
 
 func validateMetricPresets(p *kaprov1alpha2.Plan) error {

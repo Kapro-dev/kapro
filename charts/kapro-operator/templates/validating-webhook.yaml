@@ -201,6 +201,31 @@ webhooks:
       caBundle: {{ $caBundle | quote }}
       {{- end }}
 
+  - name: validate.gateexpression.kapro.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ .Values.webhook.failurePolicy }}
+    matchPolicy: Equivalent
+    rules:
+      - apiGroups: ["kapro.io"]
+        apiVersions: ["v1alpha2"]
+        resources: ["gateexpressions"]
+        operations: ["CREATE", "UPDATE"]
+    clientConfig:
+      service:
+        namespace: {{ .Release.Namespace }}
+        name: {{ include "kapro-operator.fullname" . }}-webhook
+        path: /validate-kapro-io-v1alpha2-gateexpression
+        port: 443
+      {{- if not .Values.webhook.certManager.enabled }}
+      caBundle: {{ $caBundle | quote }}
+      {{- end }}
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values: [kube-system]
+
   - name: validate.trigger.kapro.io
     admissionReviewVersions: ["v1"]
     sideEffects: None

@@ -14,6 +14,14 @@ builders for `Fleet`, `Plan`, and `Promotion`, a lightweight CloudEvents
 subscriber, a minimal gate interface, runnable Go examples, SDK docs, and
 ADR-0013 covering SDK versioning policy.
 
+### Added — composable gates preview
+
+Added the Tier-B `GateExpression` preview CRD, ALL-only composition
+controller, admission validation for unsupported operators and reference
+cycles, examples, and ADR-0014. Plan-stage `gate.expressionRef` is reserved in
+the schema but rejected by admission until runtime resolution is implemented.
+The controller is not enabled by default.
+
 ### Changed — announce-ready README and governance docs
 
 Refreshed the README with release, CI, and docs badges; a shorter why-Kapro

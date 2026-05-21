@@ -86,7 +86,7 @@ aliases, but new values should use the canonical names.
 | `fleetcluster-template` | `clustertemplate` |
 
 Current canonical keys are `fleet`, `plan`, `promotion`, `promotionrun`,
-`target`, `cluster`, `approval`, `backend`, `plugin`, `trigger`,
+`target`, `cluster`, `approval`, `backend`, `gateexpression`, `plugin`, `trigger`,
 `cluster-bootstrap`, and `clustertemplate`.
 
 ## Clean-Break Upgrade

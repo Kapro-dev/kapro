@@ -100,12 +100,13 @@ exposed deliberately:
 | Decision API and `Policy` | Disabled | `decisionAPI.enabled=true` and explicit Kubernetes RBAC. |
 | Backend readiness controller | Disabled | Built-in `flux`, `argo`, and `oci` Backend specs can be referenced without this controller. Add `backend` to `controllers` when external backend readiness or backend-native discovery status is needed. |
 | Approval controller | Disabled | Add `approval` to `controllers` when human approval objects should unblock gates. |
+| GateExpression controller | Disabled | Add `gateexpression` to `controllers` when preview gate composition status should be reconciled. |
 | Trigger controller | Disabled | Add `trigger` to `controllers` for autonomous artifact-driven promotions. |
 | Plugin controller | Disabled | Add `plugin` to `controllers` so `Plugin.status` readiness is reconciled. |
 | Plugin gateway runtime dispatch | Disabled | `pluginGateway.enabled=true` plus `plugin` in `controllers`, installed plugin services, and `Plugin` objects. |
 | Hub Gateway service exposure | Internal only | `hubGateway.service.enabled=true`; place Kubernetes authn/authz or an identity-aware proxy in front of production exposure. |
 | Spoke CSR bootstrap controller | Disabled | Add `cluster-bootstrap` to `controllers` and set `hubAPIURL` to the hub API server URL reachable from spokes. |
-| Fleet auto-import providers beyond GCP | Stubbed | Use `ClusterTemplate` only for implemented sources; unsupported sources report `SourceNotImplemented`. |
+| Fleet auto-import providers beyond GCP | Stubbed | Add `clustertemplate` to `controllers` when using `ClusterTemplate`; unsupported sources report `SourceNotImplemented`. |
 | Inline gate notifications | Runtime | Notification routing is configured inside gate/stage policy; there is no separate public notification provider/policy CRD. |
 
 See [Preview Controllers](preview-controllers.md) for the full controller key
@@ -292,6 +293,15 @@ custom resources, remove CRDs explicitly:
 
 ```bash
 kubectl delete -f charts/kapro-operator/crds
+kubectl delete namespace kapro-system
+```
+
+For a packaged release install without a source checkout, pull the chart before
+deleting CRDs:
+
+```bash
+helm pull https://github.com/Kapro-dev/kapro/releases/download/v0.1.2/kapro-operator-0.1.2.tgz --untar
+kubectl delete -f kapro-operator/crds
 kubectl delete namespace kapro-system
 ```
 

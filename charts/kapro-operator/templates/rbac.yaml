@@ -146,6 +146,7 @@ rules:
   - approvals/status
   - backends/status
   - fleets/status
+  - gateexpressions/status
   - clusters/status
   - clustertemplates/status
   - plugins/status
@@ -162,6 +163,7 @@ rules:
   resources:
   - policies
   - backends
+  - gateexpressions
   - sources
   - triggers
   verbs:

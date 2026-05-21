@@ -52,6 +52,7 @@ var kaproResources = []resourceContract{
 	{Kind: "Cluster", Singular: "cluster", Plural: "clusters"},
 	{Kind: "ClusterTemplate", Singular: "clustertemplate", Plural: "clustertemplates"},
 	{Kind: "Fleet", Singular: "fleet", Plural: "fleets"},
+	{Kind: "GateExpression", Singular: "gateexpression", Plural: "gateexpressions"},
 	{Kind: "Plan", Singular: "plan", Plural: "plans"},
 	{Kind: "Plugin", Singular: "plugin", Plural: "plugins"},
 	{Kind: "Policy", Singular: "policy", Plural: "policies"},
@@ -537,6 +538,7 @@ func TestCRDShortNamesAndCategoriesUseExpectedAliases(t *testing.T) {
 		"kapro.io_clusters.yaml":         {"cl"},
 		"kapro.io_clustertemplates.yaml": {"ct"},
 		"kapro.io_fleets.yaml":           {"flt"},
+		"kapro.io_gateexpressions.yaml":  {"gex"},
 		"kapro.io_plans.yaml":            {"pl"},
 		"kapro.io_plugins.yaml":          {"plug"},
 		"kapro.io_policies.yaml":         {"pol"},
@@ -561,6 +563,33 @@ func TestCRDShortNamesAndCategoriesUseExpectedAliases(t *testing.T) {
 				t.Fatalf("%s categories=%v, want [kapro-all]", path, got)
 			}
 		}
+	}
+}
+
+func TestGateExpressionCRDPublishesOnlyImplementedPreviewShape(t *testing.T) {
+	root := repoRoot(t)
+	crdPath := filepath.Join(root, "config", "crd", "bases", "kapro.io_gateexpressions.yaml")
+	crd := readCRD(t, crdPath)
+	version := servedCRDVersion(t, crdPath, crd)
+	operator := schemaNodeForJSONPath(t, crdPath, version.Schema.OpenAPIV3Schema, ".spec.operator")
+	enum, _ := operator["enum"].([]any)
+	if fmt.Sprint(enum) != fmt.Sprint([]any{"ALL"}) {
+		t.Fatalf("%s spec.operator enum=%v, want [ALL]", crdPath, enum)
+	}
+	spec := schemaNodeForJSONPath(t, crdPath, version.Schema.OpenAPIV3Schema, ".spec")
+	if !hasValidationRule(spec, "!has(self.weights) && !has(self.threshold)") {
+		t.Fatalf("%s spec is missing reserved weights/threshold validation", crdPath)
+	}
+}
+
+func TestGatePolicyExpressionRefIsReservedInCRDSchema(t *testing.T) {
+	root := repoRoot(t)
+	crdPath := filepath.Join(root, "config", "crd", "bases", "kapro.io_plans.yaml")
+	crd := readCRD(t, crdPath)
+	version := servedCRDVersion(t, crdPath, crd)
+	gate := schemaNodeForJSONPath(t, crdPath, version.Schema.OpenAPIV3Schema, ".spec.stages.gate")
+	if !hasValidationRule(gate, "!has(self.expressionRef)") {
+		t.Fatalf("%s stage gate is missing expressionRef reserved validation", crdPath)
 	}
 }
 
@@ -714,6 +743,7 @@ func TestCRDPropertiesMatchGoJSONTags(t *testing.T) {
 		"Cluster":         {"cluster_types.go", "ClusterSpec", "ClusterStatus"},
 		"ClusterTemplate": {"clustertemplate_types.go", "ClusterTemplateSpec", "ClusterTemplateStatus"},
 		"Fleet":           {"fleet_types.go", "FleetSpec", "FleetStatus"},
+		"GateExpression":  {"gateexpression_types.go", "GateExpressionSpec", "GateExpressionStatus"},
 		"Plan":            {"promotionrun_types.go", "PlanSpec", ""},
 		"Plugin":          {"plugin_types.go", "PluginSpec", "PluginStatus"},
 		"Policy":          {"policy_types.go", "PolicySpec", "PolicyStatus"},
@@ -822,6 +852,18 @@ func crdSubtreeNode(t *testing.T, crdName string, schema map[string]any, subtree
 func containsAny(values []any, want string) bool {
 	for _, value := range values {
 		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func hasValidationRule(schema map[string]any, wantSubstring string) bool {
+	validations, _ := schema["x-kubernetes-validations"].([]any)
+	for _, validation := range validations {
+		entry, _ := validation.(map[string]any)
+		rule, _ := entry["rule"].(string)
+		if strings.Contains(rule, wantSubstring) {
 			return true
 		}
 	}

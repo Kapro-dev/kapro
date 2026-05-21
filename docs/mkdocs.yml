@@ -41,6 +41,7 @@ nav:
   - Concepts:
       - Object Model: concepts.md
       - Backends: backends.md
+      - Composable Gates: composable-gates.md
       - Events: events.md
       - API Stability: api-stability.md
       - Changelog: https://github.com/Kapro-dev/kapro/blob/main/CHANGELOG.md
@@ -79,3 +80,4 @@ nav:
       - Controller Tier: adr/0010-core-and-preview-controller-tier.md
       - Conversion Webhook: adr/0011-conversion-webhook-scaffold.md
       - Competitive Positioning: adr/0012-competitive-positioning.md
+      - Composable Gates: adr/0014-composable-gates.md

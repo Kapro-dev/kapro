@@ -75,6 +75,25 @@ check_crd_sync() {
   check_crd_dir_sync "${BOOTSTRAP_CRDS}" "bootstrap"
 }
 
+expected_kapro_crds() {
+  cat <<'EOF'
+approvals.kapro.io
+backends.kapro.io
+clusters.kapro.io
+clustertemplates.kapro.io
+fleets.kapro.io
+gateexpressions.kapro.io
+plans.kapro.io
+plugins.kapro.io
+policies.kapro.io
+promotionruns.kapro.io
+promotions.kapro.io
+sources.kapro.io
+targets.kapro.io
+triggers.kapro.io
+EOF
+}
+
 render() {
   need helm
   need kubectl
@@ -153,8 +172,16 @@ install_chart() {
   echo "checking installed resources"
   local crds
   crds="$(kubectl get crd -o name)"
-  if ! grep -q '^customresourcedefinition.apiextensions.k8s.io/.*\.kapro\.io$' <<<"${crds}"; then
-    echo "no kapro.io CRDs were installed" >&2
+  local missing_crd
+  missing_crd=""
+  while IFS= read -r crd; do
+    if ! grep -q "^customresourcedefinition.apiextensions.k8s.io/${crd}$" <<<"${crds}"; then
+      missing_crd="${crd}"
+      break
+    fi
+  done < <(expected_kapro_crds)
+  if [ -n "${missing_crd}" ]; then
+    echo "missing required kapro.io CRD: ${missing_crd}" >&2
     return 1
   fi
   kubectl -n "${namespace}" get deploy,svc,sa

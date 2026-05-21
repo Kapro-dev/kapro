@@ -107,8 +107,10 @@ Preview surfaces are explicit opt-ins or spec-only APIs:
 | Backend readiness controller | Disabled | Add `backend` to `controllers` |
 | Approval controller | Disabled | Add `approval` to `controllers` |
 | Trigger controller | Disabled | Add `trigger` to `controllers` |
+| GateExpression controller | Disabled | Add `gateexpression` to `controllers` |
 | Plugin controller | Disabled | Add `plugin` to `controllers` |
 | Runtime plugin gateway | Disabled | `--set pluginGateway.enabled=true` plus `plugin` in `controllers` |
 | Hub Gateway Service | Internal listener only | `--set hubGateway.service.enabled=true` and place Kubernetes authn/authz or an identity proxy in front |
 | Spoke CSR bootstrap controller | Disabled | Add `cluster-bootstrap` to `controllers` and set `hubAPIURL` |
+| ClusterTemplate controller | Disabled | Add `clustertemplate` to `controllers` |
 | Inline gate notifications | Runtime | No separate public notification provider/policy CRDs |

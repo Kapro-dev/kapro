@@ -19,6 +19,7 @@ relitigating it.
 | [0011](0011-conversion-webhook-scaffold.md) | Conversion webhook scaffold without legacy migration guarantee | Accepted |
 | [0012](0012-competitive-positioning.md) | Competitive positioning | Accepted |
 | [0013](0013-sdk-versioning-policy.md) | Go SDK versioning policy | Accepted |
+| [0014](0014-composable-gates.md) | Composable gates scaffold | Accepted |
 
 ## Adding a new ADR
 

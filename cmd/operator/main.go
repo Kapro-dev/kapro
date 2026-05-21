@@ -304,6 +304,10 @@ func main() {
 			&crwebhook.Admission{Handler: kaploadmission.NewPromotionPlanValidator(decoder)},
 		)
 		mgr.GetWebhookServer().Register(
+			"/validate-kapro-io-v1alpha2-gateexpression",
+			&crwebhook.Admission{Handler: kaploadmission.NewGateExpressionValidator(decoder, mgr.GetAPIReader())},
+		)
+		mgr.GetWebhookServer().Register(
 			"/validate-kapro-io-v1alpha2-approval",
 			&crwebhook.Admission{Handler: kaploadmission.NewApprovalValidator(decoder)},
 		)

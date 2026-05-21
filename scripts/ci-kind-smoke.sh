@@ -37,6 +37,7 @@ wait_for_crds() {
     clusters.kapro.io \
     clustertemplates.kapro.io \
     fleets.kapro.io \
+    gateexpressions.kapro.io \
     plans.kapro.io \
     plugins.kapro.io \
     policies.kapro.io \
