@@ -11,7 +11,7 @@ configuration yourself. For a fully scripted local cluster, use the
 
 ```bash
 helm upgrade --install kapro \
-  https://github.com/Kapro-dev/kapro/releases/download/v0.1.0/kapro-operator-0.1.0.tgz \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.1.2/kapro-operator-0.1.2.tgz \
   --namespace kapro-system \
   --create-namespace
 kubectl -n kapro-system rollout status deployment/kapro-kapro-operator
@@ -28,7 +28,7 @@ webhooks:
 
 ```bash
 helm upgrade --install kapro \
-  https://github.com/Kapro-dev/kapro/releases/download/v0.1.0/kapro-operator-0.1.0.tgz \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.1.2/kapro-operator-0.1.2.tgz \
   --namespace kapro-system \
   --create-namespace \
   --set webhook.enabled=false

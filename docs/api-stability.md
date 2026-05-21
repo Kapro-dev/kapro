@@ -5,8 +5,9 @@ lifecycle events, and language-neutral plugin contracts. The maturity level
 describes compatibility expectations for users and plugin authors; it does not
 change Kubernetes API version strings by itself.
 
-The current release line is pre-stable. `v0.1.0` is the first public release
-for the full promotion-domain API, not a promise that all
+The current release line is pre-stable; `v0.1.2` is the current public preview
+release. `v0.1.0` was the first public release for the full promotion-domain
+API, not a promise that all
 `kapro.io/v1alpha2` fields are stable. `CHANGELOG.md` and the release notes are
 the binding upgrade record for each tag.
 
@@ -45,7 +46,7 @@ stable API version. A surface can be Preview while the Kubernetes version is
 still `v1alpha2`; the table above is the source of truth for compatibility
 expectations.
 
-No public surface is Stable in `v0.1.0`.
+No public surface is Stable in the `v0.1.x` line.
 
 ## Stable Core Versus Preview
 
@@ -132,7 +133,7 @@ tests still include migration notes.
 
 ## Schema Compatibility Expectations
 
-Kapro includes the ADR-0011 `/convert` handler scaffold, but `v0.1.0` does not
+Kapro includes the ADR-0011 `/convert` handler scaffold, but `v0.1.x` does not
 enable CRD conversion strategy or rely on it for any automatic upgrade path.
 Operators should therefore assume that the storage schema in a tagged release
 must be readable by that same operator version and by any downgrade version

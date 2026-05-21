@@ -17,7 +17,7 @@ Flux, Argo CD, OCI pull agents, and other delivery systems keep owning the local
 ---
 
 Kapro is **pre-stable public release software**, not GA. The current public
-release line is `v0.1.0`; all Kubernetes APIs are now `kapro.io/v1alpha2`.
+release line is `v0.1.2`; all Kubernetes APIs are now `kapro.io/v1alpha2`.
 If you have legacy `kapro.io/v1alpha1` manifests, follow the
 [v1alpha1 to v1alpha2 migration guide](docs/migration-v1alpha1-to-v1alpha2.md);
 this release does not provide automatic legacy conversion.
@@ -87,7 +87,7 @@ Install the operator:
 
 ```bash
 helm upgrade --install kapro \
-  https://github.com/Kapro-dev/kapro/releases/download/v0.1.0/kapro-operator-0.1.0.tgz \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.1.2/kapro-operator-0.1.2.tgz \
   --namespace kapro-system \
   --create-namespace
 ```

@@ -166,7 +166,7 @@ kubectl delete crd \
 Install the current chart and CRDs:
 
 ```bash
-KAPRO_VERSION=0.1.0
+KAPRO_VERSION=0.1.2
 KAPRO_CHART="https://github.com/Kapro-dev/kapro/releases/download/v${KAPRO_VERSION}/kapro-operator-${KAPRO_VERSION}.tgz"
 
 helm upgrade --install kapro \
