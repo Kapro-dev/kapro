@@ -43,6 +43,7 @@ import (
 	"kapro.io/kapro/internal/version"
 	"kapro.io/kapro/internal/webhook"
 	kaploadmission "kapro.io/kapro/internal/webhook/admission"
+	kaplconversion "kapro.io/kapro/internal/webhook/conversion"
 	"kapro.io/kapro/pkg/actuator"
 	cm "kapro.io/kapro/pkg/controllermanager"
 	"kapro.io/kapro/pkg/planner"
@@ -267,6 +268,7 @@ func main() {
 	// Register admission webhooks unless KAPRO_DISABLE_WEBHOOKS=true (used in local dev / kind).
 	if os.Getenv("KAPRO_DISABLE_WEBHOOKS") != "true" {
 		decoder := admission.NewDecoder(mgr.GetScheme())
+		mgr.GetWebhookServer().Register("/convert", kaplconversion.NewIdentityHandler())
 
 		// Build the trusted SA identity from the pod's own namespace + SA name.
 		// podNS is defined at the top of main(); POD_SERVICE_ACCOUNT is projected

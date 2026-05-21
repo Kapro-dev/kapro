@@ -132,16 +132,19 @@ tests still include migration notes.
 
 ## Schema Compatibility Expectations
 
-Kapro does not publish conversion webhooks in `v0.1.0`. Operators should
-therefore assume that the storage schema in a tagged release must be readable by
-that same operator version and by any downgrade version named in release notes.
+Kapro includes the ADR-0011 `/convert` handler scaffold, but `v0.1.0` does not
+enable CRD conversion strategy or rely on it for any automatic upgrade path.
+Operators should therefore assume that the storage schema in a tagged release
+must be readable by that same operator version and by any downgrade version
+named in release notes.
 
 There is no automatic legacy conversion for unreleased prototype objects. The
-project had no supported public install before the promotion-domain
-architecture; users testing old branches should recreate objects from the
-generated examples instead of relying on controller-side migration code. The
-first tagged release that documents a CRD as Preview must include explicit
-migration notes before removing or renaming that surface.
+ADR-0011 scaffold is infrastructure for future served-version transitions, not a
+compatibility promise for old prototype schemas. Users testing old branches
+should recreate objects from the generated examples instead of relying on
+controller-side migration code. The first tagged release that documents a CRD as
+Preview must include explicit migration notes before removing or renaming that
+surface.
 
 CRD schema changes should follow these rules:
 
