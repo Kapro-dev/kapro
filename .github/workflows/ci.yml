@@ -158,13 +158,19 @@ jobs:
           platforms: linux/amd64
           push: false
           tags: ghcr.io/kapro-dev/kapro-operator:pr-${{ github.event.number }}
+      - name: Build cluster-controller image (no push)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.cluster-controller
+          platforms: linux/amd64
+          push: false
+          tags: ghcr.io/kapro-dev/kapro-cluster-controller:pr-${{ github.event.number }}
 
   kind-smoke-matrix:
     # K8s version matrix for the Kind install smoke. Runs nightly on
-    # schedule, on-demand via workflow_dispatch, and on the small set of
-    # PRs that touch the install/release surface (chart, scripts/, CRDs,
-    # release.yml). Skips PRs that don't touch those areas so we don't
-    # burn CI minutes on every doc PR.
+    # schedule and on-demand via workflow_dispatch. The single-version
+    # Kind Install Smoke job above runs on pull requests.
     name: Kind Smoke (K8s ${{ matrix.k8s }})
     runs-on: ubuntu-latest
     timeout-minutes: 25

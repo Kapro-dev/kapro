@@ -101,8 +101,9 @@ for crd in $(kubectl get crd -o name | grep '[.]kapro[.]io$'); do
 done
 ```
 
-Back up old objects before deleting anything. The loop skips resources that were
-not installed in your prototype cluster and writes one file per resource:
+Back up old objects, then delete them while the old CRDs still exist. The loop
+skips resources that were not installed in your prototype cluster and writes one
+backup file per resource:
 
 ```bash
 legacy_resources=(
@@ -121,19 +122,22 @@ legacy_resources=(
   approvals
 )
 
+has_legacy_crd() {
+  local resource="$1"
+  kubectl get "crd/${resource}.kapro.io" \
+    -o jsonpath='{range .spec.versions[*]}{.name}{"\n"}{end}' 2>/dev/null |
+    grep -qx v1alpha1
+}
+
 mkdir -p kapro-v1alpha1-backup
 for resource in "${legacy_resources[@]}"; do
-  if kubectl api-resources --api-group=kapro.io --api-version=kapro.io/v1alpha1 -o name | sed 's/[.].*$//' | grep -qx "${resource}"; then
+  if has_legacy_crd "${resource}"; then
     kubectl get "${resource}" -o yaml > "kapro-v1alpha1-backup/${resource}.yaml"
   fi
 done
-```
 
-Delete legacy objects while the old CRDs still exist:
-
-```bash
 for resource in "${legacy_resources[@]}"; do
-  if kubectl api-resources --api-group=kapro.io --api-version=kapro.io/v1alpha1 -o name | sed 's/[.].*$//' | grep -qx "${resource}"; then
+  if has_legacy_crd "${resource}"; then
     kubectl delete "${resource}" --all --ignore-not-found
   fi
 done
