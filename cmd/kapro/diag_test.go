@@ -109,7 +109,7 @@ func TestRunDiag_HappyPathRendersExpectedSections(t *testing.T) {
 	}
 	event := &corev1.Event{
 		ObjectMeta:     metav1.ObjectMeta{Name: "evt-1", Namespace: "default"},
-		InvolvedObject: corev1.ObjectReference{Kind: "Promotion", Name: "checkout-v1.2.3"},
+		InvolvedObject: corev1.ObjectReference{APIVersion: "kapro.io/v1alpha2", Kind: "Promotion", Name: "checkout-v1.2.3"},
 		Type:           corev1.EventTypeNormal,
 		Reason:         "AttemptStamped",
 		Message:        "stamped attempt 1",
@@ -206,10 +206,10 @@ func TestFilterPromotionEvents_OnlyMatchingObjects(t *testing.T) {
 	runs := []kaprov1alpha2.PromotionRun{{ObjectMeta: metav1.ObjectMeta{Name: "r1"}}}
 	targets := []kaprov1alpha2.Target{{ObjectMeta: metav1.ObjectMeta{Name: "t1"}}}
 	all := []corev1.Event{
-		{InvolvedObject: corev1.ObjectReference{Kind: "Promotion", Name: "p"}, Reason: "A"},
-		{InvolvedObject: corev1.ObjectReference{Kind: "PromotionRun", Name: "r1"}, Reason: "B"},
-		{InvolvedObject: corev1.ObjectReference{Kind: "Target", Name: "t1"}, Reason: "C"},
-		{InvolvedObject: corev1.ObjectReference{Kind: "Promotion", Name: "other"}, Reason: "C"},
+		{InvolvedObject: corev1.ObjectReference{APIVersion: "kapro.io/v1alpha2", Kind: "Promotion", Name: "p"}, Reason: "A"},
+		{InvolvedObject: corev1.ObjectReference{APIVersion: "kapro.io/v1alpha2", Kind: "PromotionRun", Name: "r1"}, Reason: "B"},
+		{InvolvedObject: corev1.ObjectReference{APIVersion: "kapro.io/v1alpha2", Kind: "Target", Name: "t1"}, Reason: "C"},
+		{InvolvedObject: corev1.ObjectReference{APIVersion: "kapro.io/v1alpha2", Kind: "Promotion", Name: "other"}, Reason: "C"},
 		{InvolvedObject: corev1.ObjectReference{Kind: "Pod", Name: "noise"}, Reason: "D"},
 	}
 	got := filterPromotionEvents(all, promo, runs, targets)

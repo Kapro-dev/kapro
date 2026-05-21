@@ -136,8 +136,9 @@ For multi-cloud and air-gapped fleets, prefer
 promotionrun. Each spoke applies the desired state locally through its selected
 backend, reports `status.currentVersions` and `status.health`, and renews
 `Lease/kapro-heartbeat-<cluster>` in the operator namespace. The Target
-controller blocks pull-mode targets while that heartbeat is stale and fails them
-if it remains stale.
+controller defers pull-mode targets while that heartbeat is stale. A
+PromotionRun can still fail on its global timeout while individual Targets
+remain deferred by heartbeat state.
 
 Current practical assumptions:
 
@@ -152,11 +153,36 @@ For fleets above roughly 1,000 targets per hub, use sharding, conservative stage
 `maxParallel`, and external long-term event storage. Kapro Events and status are
 operational state, not an infinite audit warehouse.
 
+## CLI Observability
+
+Use the Kapro CLI for the first operational read before dropping to raw
+`kubectl` YAML:
+
+```bash
+kapro top
+kapro get promotion checkout
+kapro tree checkout
+kapro events --promotion checkout --since=30m
+kapro diag checkout
+```
+
+`kapro top` renders Promotion intent rows with active-attempt target counts.
+Use `kapro top --watch --watch-interval=2s` during a rollout. JSON output is
+one-shot only. `kapro tree` shows the runtime hierarchy from Promotion to
+PromotionRun attempts to Target children. `kapro get promotion` summarizes the
+active attempt, lifecycle handler outcomes, recent Events, and current or most
+recent Target state. `kapro events` reads Kubernetes Events for Kapro API
+objects; it is the CLI fallback view when an operator CloudEvents sink is not
+exposed directly to the user.
+
 ## First Response
 
 Use the same first checks for every incident:
 
 ```bash
+kapro top
+kapro tree <promotion>
+kapro events --promotion <promotion> --since=30m
 kubectl get promotionruns,targets,triggers,plugins
 kubectl describe promotionrun <promotionrun>
 kubectl get targets -l kapro.io/promotionrun=<promotionrun> -o wide

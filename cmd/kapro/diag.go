@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -188,7 +189,7 @@ func collectScopedEvents(ctx context.Context, c client.Client, p *kaprov1alpha2.
 		}
 		out = append(out, list.Items...)
 	}
-	return out
+	return filterPromotionEvents(out, p, runs, targets)
 }
 
 // fallbackUnscopedEvents preserves the original cluster-wide list
@@ -224,7 +225,8 @@ func filterPromotionEvents(all []corev1.Event, p *kaprov1alpha2.Promotion,
 
 	out := make([]corev1.Event, 0, len(all))
 	for _, e := range all {
-		if wanted[e.InvolvedObject.Kind+"/"+e.InvolvedObject.Name] {
+		if strings.HasPrefix(e.InvolvedObject.APIVersion, "kapro.io/") &&
+			wanted[e.InvolvedObject.Kind+"/"+e.InvolvedObject.Name] {
 			out = append(out, e)
 		}
 	}

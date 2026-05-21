@@ -76,6 +76,9 @@ For existing GitOps repositories:
 	root.AddCommand(newStatusCmd())
 	root.AddCommand(newPromoteCmd())
 	root.AddCommand(newPromotionRunCmd())
+	root.AddCommand(newTopCmd())
+	root.AddCommand(newTreeCmd())
+	root.AddCommand(newEventsCmd())
 	root.AddCommand(newApproveCmd())
 	root.AddCommand(newRejectCmd())
 	root.AddCommand(newRollbackCmd())
@@ -410,9 +413,10 @@ func runClusterSync(ctx context.Context, project string) error {
 
 func newGetCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "get <promotionruns|targets>",
+		Use:   "get <promotion|promotionruns|targets>",
 		Short: "Display Kapro resources",
 	}
+	cmd.AddCommand(newGetPromotionCmd())
 	cmd.AddCommand(newGetPromotionRunsCmd())
 	cmd.AddCommand(newGetTargetsCmd())
 	return cmd
