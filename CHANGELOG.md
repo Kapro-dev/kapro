@@ -48,6 +48,8 @@ default: `fleet`, `plan`, `promotion`, `promotionrun`, and `cluster`. The
 `target` controller starts implicitly with `promotionrun`. Preview controllers
 such as `backend`, `approval`, `trigger`, `plugin`, `cluster-bootstrap`, and
 `clustertemplate` must be listed explicitly in `controllers` when needed.
+Built-in `flux`, `argo`, and `oci` Backend specs remain admissible without the
+backend controller; external/plugin backends still require Ready status.
 
 Older controller keys such as `kapro`, `promotion-target`, `backend-profile`,
 and `promotion-trigger` are still accepted as compatibility aliases, but new

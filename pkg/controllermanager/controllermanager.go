@@ -118,10 +118,10 @@ type ControllerContext struct {
 var Registry = map[string]InitFunc{}
 var controllerAliases = map[string]string{}
 
-// DefaultControllers is the ADR-0010 public-preview core controller set. Target
+// defaultControllers is the ADR-0010 public-preview core controller set. Target
 // is intentionally omitted from user-facing defaults and selected implicitly
 // whenever promotionrun is enabled.
-var DefaultControllers = []string{"fleet", "plan", "promotion", "promotionrun", "cluster"}
+var defaultControllers = []string{"fleet", "plan", "promotion", "promotionrun", "cluster"}
 
 var implicitControllerDependencies = map[string][]string{
 	"promotionrun": {"target"},
@@ -153,13 +153,13 @@ func KnownControllers() []string {
 // DefaultControllerNames returns a copy of the default public-preview core
 // controller set.
 func DefaultControllerNames() []string {
-	names := append([]string(nil), DefaultControllers...)
+	names := append([]string(nil), defaultControllers...)
 	return names
 }
 
 // DefaultControllersFlag returns the comma-separated default controller flag.
 func DefaultControllersFlag() string {
-	return strings.Join(DefaultControllers, ",")
+	return strings.Join(defaultControllers, ",")
 }
 
 func canonicalControllerName(name string) string {

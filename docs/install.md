@@ -98,7 +98,7 @@ exposed deliberately:
 | Surface | Default | Enablement |
 |---|---|---|
 | Decision API and `Policy` | Disabled | `decisionAPI.enabled=true` and explicit Kubernetes RBAC. |
-| Backend readiness controller | Disabled | Add `backend` to `controllers` when backend status discovery is needed. |
+| Backend readiness controller | Disabled | Built-in `flux`, `argo`, and `oci` Backend specs can be referenced without this controller. Add `backend` to `controllers` when external backend readiness or backend-native discovery status is needed. |
 | Approval controller | Disabled | Add `approval` to `controllers` when human approval objects should unblock gates. |
 | Trigger controller | Disabled | Add `trigger` to `controllers` for autonomous artifact-driven promotions. |
 | Plugin gateway runtime dispatch | Disabled | `pluginGateway.enabled=true` plus installed plugin services and `Plugin` objects. |

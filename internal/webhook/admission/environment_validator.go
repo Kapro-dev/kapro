@@ -68,7 +68,7 @@ func validateFleetClusterBackendRef(ctx context.Context, reader client.Reader, m
 		}
 		return fmt.Errorf("cluster.spec.delivery.backendRef=%q: lookup failed: %w", name, err)
 	}
-	if !profile.Status.Ready {
+	if !backendUsableForCluster(profile) {
 		return fmt.Errorf("cluster.spec.delivery.backendRef=%q: backend is not Ready; resolve its Ready condition before referencing", name)
 	}
 	return nil
@@ -78,6 +78,18 @@ func validateFleetClusterBackendRef(ctx context.Context, reader client.Reader, m
 // reference-resolution check.
 func ValidateFleetClusterBackendRef(ctx context.Context, reader client.Reader, mc *kaprov1alpha2.Cluster) error {
 	return validateFleetClusterBackendRef(ctx, reader, mc)
+}
+
+func backendUsableForCluster(profile kaprov1alpha2.Backend) bool {
+	if profile.Status.Ready {
+		return true
+	}
+	switch profile.Spec.Driver {
+	case kaprov1alpha2.BackendDriverFlux, kaprov1alpha2.BackendDriverArgo, kaprov1alpha2.BackendDriverOCI:
+		return true
+	default:
+		return false
+	}
 }
 
 func validateFleetCluster(mc *kaprov1alpha2.Cluster) error {

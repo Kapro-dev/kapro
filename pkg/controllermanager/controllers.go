@@ -54,6 +54,7 @@ func init() {
 // core Plan surface. Plan is a pure template API; Fleet materializes inline
 // plans and PromotionRun executes referenced Plan objects.
 func startPlanController(_ context.Context, _ ControllerContext) (bool, error) {
+	ctrl.Log.WithName("controllermanager").Info("plan controller skipped: Plan is a template API with no reconciler")
 	return false, nil
 }
 

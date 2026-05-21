@@ -26,7 +26,7 @@ runtime child state for each execution attempt. You do not need to list
 | `promotionrun` | Yes | Orchestrates run execution and creates `Target` children. |
 | `target` | Implicit | Executes per-cluster or per-stage runtime state for a run. |
 | `cluster` | Yes | Maintains cluster heartbeat and readiness status. |
-| `backend` | No | Writes backend discovery/readiness status. Enable when you need backend status as an operational signal. |
+| `backend` | No | Writes external backend readiness and backend-native discovery status. Built-in `flux`, `argo`, and `oci` Backend specs are usable without this controller. |
 | `approval` | No | Reconciles `Approval` objects that unblock approval gates. |
 | `trigger` | No | Creates or updates `Promotion` from artifact changes. |
 | `plugin` | No | Reconciles plugin readiness when the plugin gateway is enabled. |

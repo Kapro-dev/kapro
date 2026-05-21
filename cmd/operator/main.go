@@ -108,8 +108,8 @@ func main() {
 	log.Info(
 		"controller selection",
 		"requested", controllersFlag,
-		"enabled", cm.SelectedControllerNames(selected),
-		"disabled", cm.DisabledControllerNames(selected),
+		"selected", cm.SelectedControllerNames(selected),
+		"notSelected", cm.DisabledControllerNames(selected),
 		"unknown", unknownControllers,
 	)
 
