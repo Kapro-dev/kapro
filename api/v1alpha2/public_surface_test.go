@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -18,6 +19,28 @@ type resourceContract struct {
 	Kind     string
 	Singular string
 	Plural   string
+}
+
+type crdDocument struct {
+	Spec struct {
+		Names struct {
+			Kind       string   `json:"kind"`
+			Singular   string   `json:"singular"`
+			Plural     string   `json:"plural"`
+			ShortNames []string `json:"shortNames"`
+			Categories []string `json:"categories"`
+		} `json:"names"`
+		Versions []struct {
+			Name                     string `json:"name"`
+			AdditionalPrinterColumns []struct {
+				Name     string `json:"name"`
+				JSONPath string `json:"jsonPath"`
+			} `json:"additionalPrinterColumns"`
+			Schema struct {
+				OpenAPIV3Schema map[string]any `json:"openAPIV3Schema"`
+			} `json:"schema"`
+		} `json:"versions"`
+	} `json:"spec"`
 }
 
 var kaproResources = []resourceContract{
@@ -306,32 +329,81 @@ func TestTargetCRDPrintColumnsUseCurrentFields(t *testing.T) {
 	}
 }
 
-func TestCRDShortNamesUseCurrentAliases(t *testing.T) {
+func TestCRDPrintColumnsResolveToSchemaFields(t *testing.T) {
 	root := repoRoot(t)
-	staleShortNames := map[string][]string{
-		"kapro.io_backends.yaml":         {"bp", "backend"},
-		"kapro.io_clusters.yaml":         {"mc", "fc", "fleetcluster"},
-		"kapro.io_clustertemplates.yaml": {"fct", "fleettemplate"},
-		"kapro.io_fleets.yaml":           {"kp"},
-		"kapro.io_plugins.yaml":          {"pluginreg"},
-		"kapro.io_policies.yaml":         {"agp"},
-		"kapro.io_promotionruns.yaml":    {"rel"},
-		"kapro.io_sources.yaml":          {"ps", "source", "sources"},
-		"kapro.io_targets.yaml":          {"relt"},
-		"kapro.io_triggers.yaml":         {"reltrig"},
+	for _, name := range crdBaseNames(t, filepath.Join(root, "config", "crd", "bases")) {
+		path := filepath.Join(root, "config", "crd", "bases", name)
+		crd := readCRD(t, path)
+		version := servedCRDVersion(t, path, crd)
+		for _, column := range version.AdditionalPrinterColumns {
+			if column.JSONPath == "" || strings.HasPrefix(column.JSONPath, ".metadata.") {
+				continue
+			}
+			if !schemaHasJSONPath(version.Schema.OpenAPIV3Schema, column.JSONPath) {
+				t.Fatalf("%s printcolumn %q JSONPath %q does not resolve in CRD schema", name, column.Name, column.JSONPath)
+			}
+		}
+	}
+}
+
+func TestCRDShortNamesAndCategoriesUseExpectedAliases(t *testing.T) {
+	root := repoRoot(t)
+	expectedShortNames := map[string][]string{
+		"kapro.io_approvals.yaml":        {"ap"},
+		"kapro.io_backends.yaml":         {"be"},
+		"kapro.io_clusters.yaml":         {"cl"},
+		"kapro.io_clustertemplates.yaml": {"ct"},
+		"kapro.io_fleets.yaml":           {"flt"},
+		"kapro.io_plans.yaml":            {"pl"},
+		"kapro.io_plugins.yaml":          {"plug"},
+		"kapro.io_policies.yaml":         {"pol"},
+		"kapro.io_promotionruns.yaml":    {"prun"},
+		"kapro.io_promotions.yaml":       {"promo"},
+		"kapro.io_sources.yaml":          {"src"},
+		"kapro.io_targets.yaml":          {"tgt"},
+		"kapro.io_triggers.yaml":         {"trig"},
 	}
 	for _, relDir := range []string{
 		filepath.Join("config", "crd", "bases"),
 		filepath.Join("charts", "kapro-operator", "crds"),
 		filepath.Join("internal", "bootstrap", "kaprocrds"),
 	} {
-		for file, names := range staleShortNames {
+		for file, wantShortNames := range expectedShortNames {
 			path := filepath.Join(root, relDir, file)
-			data := readText(t, path)
-			for _, name := range names {
-				if strings.Contains(data, "\n    - "+name+"\n") {
-					t.Fatalf("%s still exposes stale shortName %q", path, name)
-				}
+			crd := readCRD(t, path)
+			if got := crd.Spec.Names.ShortNames; fmt.Sprint(got) != fmt.Sprint(wantShortNames) {
+				t.Fatalf("%s shortNames=%v, want %v", path, got, wantShortNames)
+			}
+			if got := crd.Spec.Names.Categories; fmt.Sprint(got) != fmt.Sprint([]string{"kapro-all"}) {
+				t.Fatalf("%s categories=%v, want [kapro-all]", path, got)
+			}
+		}
+	}
+}
+
+func TestKaproResourceAttributeLiteralsMatchCRDPlurals(t *testing.T) {
+	root := repoRoot(t)
+	decisionAPI := readText(t, filepath.Join(root, "internal", "webhook", "decision_api.go"))
+	attrRE := regexp.MustCompile(`kaproAttrs\("[^"]+",\s*"([^"]+)"`)
+	for _, match := range attrRE.FindAllStringSubmatch(decisionAPI, -1) {
+		if !kaproPluralSet[match[1]] {
+			t.Fatalf("Decision API uses unknown kapro.io resource %q", match[1])
+		}
+	}
+	subresourceRE := regexp.MustCompile(`kaproSubresourceAttrs\("[^"]+",\s*"([^"]+)",\s*"([^"]+)"`)
+	for _, match := range subresourceRE.FindAllStringSubmatch(decisionAPI, -1) {
+		resource := match[1] + "/" + match[2]
+		if !kaproPluralSet[resource] {
+			t.Fatalf("Decision API uses unknown kapro.io subresource %q", resource)
+		}
+	}
+
+	bootstrap := readText(t, filepath.Join(root, "internal", "controller", "cluster_bootstrap_helpers.go"))
+	kaproRuleRE := regexp.MustCompile(`(?s)APIGroups:\s*\[\]string\{"kapro\.io"\},\s*Resources:\s*\[\]string\{([^}]+)\}`)
+	for _, match := range kaproRuleRE.FindAllStringSubmatch(bootstrap, -1) {
+		for _, resource := range commaList(match[1]) {
+			if !kaproPluralSet[resource] {
+				t.Fatalf("cluster bootstrap RBAC uses unknown kapro.io resource %q", resource)
 			}
 		}
 	}
@@ -404,6 +476,175 @@ func TestAPICommentsUseCurrentPublicResourceNames(t *testing.T) {
 	}
 }
 
+// TestCRDPropertiesMatchGoJSONTags asserts that every JSON tag declared on a
+// top-level CRD struct's Spec / Status (Fleet, Promotion, PromotionRun,
+// Cluster, Plan, Source, Trigger, Target, Backend, Plugin, Policy,
+// ClusterTemplate, Approval) appears as a property in the corresponding
+// CRD's openAPIv3Schema. Catches drift where a Go field was renamed but the
+// CRD wasn't regenerated, or where a JSON tag was hand-edited and the
+// generator wasn't rerun.
+func TestCRDPropertiesMatchGoJSONTags(t *testing.T) {
+	root := repoRoot(t)
+	// Map Kind → (typesFile, specStructName, statusStructName?).
+	// statusStructName is empty for Kinds whose Status is opaque
+	// (e.g. Plan has no status).
+	type fixture struct {
+		typesFile  string
+		specStruct string
+		statusName string
+	}
+	fixtures := map[string]fixture{
+		"Approval":        {"approval_types.go", "ApprovalSpec", "ApprovalStatus"},
+		"Backend":         {"backend_types.go", "BackendSpec", "BackendStatus"},
+		"Cluster":         {"cluster_types.go", "ClusterSpec", "ClusterStatus"},
+		"ClusterTemplate": {"clustertemplate_types.go", "ClusterTemplateSpec", "ClusterTemplateStatus"},
+		"Fleet":           {"fleet_types.go", "FleetSpec", "FleetStatus"},
+		"Plan":            {"promotionrun_types.go", "PlanSpec", ""},
+		"Plugin":          {"plugin_types.go", "PluginSpec", "PluginStatus"},
+		"Policy":          {"policy_types.go", "PolicySpec", "PolicyStatus"},
+		"Promotion":       {"promotion_types.go", "PromotionSpec", "PromotionStatus"},
+		"PromotionRun":    {"promotionrun_types.go", "PromotionRunSpec", "PromotionRunStatus"},
+		"Source":          {"source_types.go", "SourceSpec", ""},
+		"Target":          {"promotionrun_types.go", "TargetSpec", "TargetStatus"},
+		"Trigger":         {"trigger_types.go", "TriggerSpec", "TriggerStatus"},
+	}
+
+	for _, contract := range kaproResources {
+		fix, ok := fixtures[contract.Kind]
+		if !ok {
+			t.Errorf("no test fixture for Kind %s — please add one when introducing a new CRD", contract.Kind)
+			continue
+		}
+		typesPath := filepath.Join(root, "api", "v1alpha2", fix.typesFile)
+		typesText := readText(t, typesPath)
+
+		crdName := "kapro.io_" + contract.Plural + ".yaml"
+		crdPath := filepath.Join(root, "config", "crd", "bases", crdName)
+		crd := readCRD(t, crdPath)
+		version := servedCRDVersion(t, crdPath, crd)
+
+		specTags := jsonTagsForStruct(t, typesText, fix.specStruct)
+		assertTagsInCRDSubtree(t, crdName, "spec", version.Schema.OpenAPIV3Schema, specTags)
+
+		if fix.statusName != "" {
+			statusTags := jsonTagsForStruct(t, typesText, fix.statusName)
+			assertTagsInCRDSubtree(t, crdName, "status", version.Schema.OpenAPIV3Schema, statusTags)
+		}
+	}
+}
+
+// jsonTagsForStruct returns the JSON-tag names (the part before the first
+// comma) of every field on the named struct in typesText. Inlined embedded
+// fields (`json:",inline"`) and tags equal to "-" are skipped.
+func jsonTagsForStruct(t *testing.T, typesText, structName string) []string {
+	t.Helper()
+	pattern := regexp.MustCompile(`(?ms)^type\s+` + regexp.QuoteMeta(structName) + `\s+struct\s*\{(.*?)\n\}`)
+	match := pattern.FindStringSubmatch(typesText)
+	if match == nil {
+		// Some structs are declared in promotionrun_types.go alongside others;
+		// caller already supplied the right file. If not found, the test fails
+		// noisily.
+		t.Fatalf("could not find struct %s in supplied types file", structName)
+	}
+	body := match[1]
+	tagRE := regexp.MustCompile("`json:\"([^\"]+)\"`")
+	var tags []string
+	for line := range strings.SplitSeq(body, "\n") {
+		tagMatch := tagRE.FindStringSubmatch(line)
+		if tagMatch == nil {
+			continue
+		}
+		raw := tagMatch[1]
+		name := strings.SplitN(raw, ",", 2)[0]
+		if name == "" || name == "-" {
+			// `json:",inline"` — promoted; embedded fields are not testable
+			// here without true reflect, and they don't add to the spec
+			// surface independently. Skip safely.
+			continue
+		}
+		tags = append(tags, name)
+	}
+	return tags
+}
+
+// assertTagsInCRDSubtree verifies every tag appears as a property under
+// the given subtree key (spec or status) of the CRD's openAPIv3Schema.
+func assertTagsInCRDSubtree(t *testing.T, crdName, subtree string, schema map[string]any, tags []string) {
+	t.Helper()
+	subtreeNode, _ := schema["properties"].(map[string]any)
+	if subtreeNode == nil {
+		t.Fatalf("%s: schema has no properties", crdName)
+	}
+	node, _ := subtreeNode[subtree].(map[string]any)
+	if node == nil {
+		t.Fatalf("%s: schema has no .%s properties", crdName, subtree)
+	}
+	props, _ := node["properties"].(map[string]any)
+	if props == nil && len(tags) > 0 {
+		t.Fatalf("%s: .%s has no properties but Go struct has %d JSON tags", crdName, subtree, len(tags))
+	}
+	for _, tag := range tags {
+		if _, ok := props[tag]; !ok {
+			t.Errorf("%s: Go JSON tag .%s.%s has no corresponding property in CRD openAPIv3Schema (run `make manifests sync-crds`)", crdName, subtree, tag)
+		}
+	}
+}
+
+// TestSpokeRBACRulesUseCurrentCRDPlurals asserts every resource name in the
+// hardcoded RBAC PolicyRule list inside internal/controller/cluster_bootstrap_helpers.go
+// matches a current v1alpha2 CRD plural. Catches drift like requesting
+// `fleetclusters` (which no longer exists) after the v1alpha1 → v1alpha2
+// rename — a Role grant on a nonexistent resource silently fails closed in
+// production.
+func TestSpokeRBACRulesUseCurrentCRDPlurals(t *testing.T) {
+	root := repoRoot(t)
+	helpersPath := filepath.Join(root, "internal", "controller", "cluster_bootstrap_helpers.go")
+	helpers := readText(t, helpersPath)
+
+	// Find every `Resources: []string{"x", "y/status", ...}` block and
+	// extract every quoted string inside it.
+	blockRE := regexp.MustCompile(`(?s)Resources:\s*\[\]string\{([^}]*)\}`)
+	stringRE := regexp.MustCompile(`"([^"]+)"`)
+
+	for _, block := range blockRE.FindAllStringSubmatch(helpers, -1) {
+		for _, lit := range stringRE.FindAllStringSubmatch(block[1], -1) {
+			res := lit[1]
+			// Allow non-kapro.io resource literals (e.g. "leases",
+			// "selfsubjectaccessreviews") — they're scoped to other API
+			// groups elsewhere in the same rule block. We only care that
+			// stale kapro.io plurals like "fleetclusters" aren't present.
+			if !looksLikeKaproPlural(res) {
+				continue
+			}
+			if !kaproPluralSet[res] {
+				t.Errorf("cluster_bootstrap_helpers.go: stale kapro.io RBAC resource literal %q — not a current CRD plural (compare to kaproResources)", res)
+			}
+		}
+	}
+}
+
+// legacyKaproPlurals are the v1alpha1 plurals we want to fail loudly on.
+// If any persist as RBAC resource literals, the granted role does nothing
+// at runtime because the resource no longer exists in v1alpha2.
+var legacyKaproPlurals = []string{
+	"kaproes", "fleetclusters", "fleetclustertemplates",
+	"agentpolicies", "promotionsources", "promotiontriggers",
+	"promotionplans", "promotiontargets", "backendprofiles",
+	"pluginregistrations",
+}
+
+// looksLikeKaproPlural returns true for strings that should be checked
+// against the current CRD plural set — i.e. anything that is either a
+// current kapro.io plural OR a known legacy v1alpha1 plural we still want
+// the test to flag.
+func looksLikeKaproPlural(s string) bool {
+	if kaproPluralSet[s] {
+		return true
+	}
+	base := strings.TrimSuffix(strings.TrimSuffix(s, "/status"), "/finalizers")
+	return slices.Contains(legacyKaproPlurals, base)
+}
+
 func scanPublicSurface(t *testing.T, root string, bad []*regexp.Regexp) {
 	t.Helper()
 	info, err := os.Stat(root)
@@ -466,6 +707,83 @@ func readBytes(t *testing.T, path string) []byte {
 		t.Fatal(err)
 	}
 	return data
+}
+
+func readCRD(t *testing.T, path string) crdDocument {
+	t.Helper()
+	var crd crdDocument
+	if err := yaml.Unmarshal(readBytes(t, path), &crd); err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	return crd
+}
+
+func servedCRDVersion(t *testing.T, path string, crd crdDocument) struct {
+	Name                     string `json:"name"`
+	AdditionalPrinterColumns []struct {
+		Name     string `json:"name"`
+		JSONPath string `json:"jsonPath"`
+	} `json:"additionalPrinterColumns"`
+	Schema struct {
+		OpenAPIV3Schema map[string]any `json:"openAPIV3Schema"`
+	} `json:"schema"`
+} {
+	t.Helper()
+	for _, version := range crd.Spec.Versions {
+		if version.Name == "v1alpha2" {
+			return version
+		}
+	}
+	t.Fatalf("%s missing v1alpha2 CRD version", path)
+	return crd.Spec.Versions[0]
+}
+
+func schemaHasJSONPath(schema map[string]any, jsonPath string) bool {
+	parts := normalizedJSONPathParts(jsonPath)
+	if len(parts) == 0 {
+		return true
+	}
+	current := schema
+	for i, part := range parts {
+		props, ok := current["properties"].(map[string]any)
+		if !ok {
+			return false
+		}
+		nextAny, ok := props[part]
+		if !ok {
+			return false
+		}
+		next, ok := nextAny.(map[string]any)
+		if !ok {
+			return false
+		}
+		if i < len(parts)-1 {
+			if items, ok := next["items"].(map[string]any); ok {
+				next = items
+			}
+		}
+		current = next
+	}
+	return true
+}
+
+func normalizedJSONPathParts(jsonPath string) []string {
+	path := strings.TrimPrefix(jsonPath, ".")
+	if strings.HasPrefix(path, "metadata.") {
+		return nil
+	}
+	path = regexp.MustCompile(`\[\?\([^\]]+\)\]`).ReplaceAllString(path, "")
+	path = strings.TrimSuffix(path, ".length()")
+	path = strings.ReplaceAll(path, `\.`, "\x00")
+	raw := strings.Split(path, ".")
+	parts := make([]string, 0, len(raw))
+	for _, part := range raw {
+		part = strings.ReplaceAll(part, "\x00", ".")
+		if part != "" {
+			parts = append(parts, part)
+		}
+	}
+	return parts
 }
 
 func crdBaseNames(t *testing.T, dir string) []string {
