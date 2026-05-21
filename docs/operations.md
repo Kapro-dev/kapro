@@ -159,7 +159,7 @@ Use the same first checks for every incident:
 ```bash
 kubectl get promotionruns,promotiontargets,promotiontriggers,pluginregistrations
 kubectl describe promotionrun <promotionrun>
-kubectl get promotiontargets -l kapro.io/promotionrun=<promotionrun> -o wide
+kubectl get targets -l kapro.io/promotionrun=<promotionrun> -o wide
 kubectl get events --field-selector involvedObject.name=<promotionrun> --sort-by=.lastTimestamp
 kubectl logs -n kapro-system deploy/kapro-operator --since=30m
 ```
@@ -198,8 +198,8 @@ Triage:
 2. Inspect child execution objects:
 
    ```bash
-   kubectl get promotiontargets -l kapro.io/promotionrun=<promotionrun> -o wide
-   kubectl get promotiontargets -l kapro.io/promotionrun=<promotionrun> -o yaml
+   kubectl get targets -l kapro.io/promotionrun=<promotionrun> -o wide
+   kubectl get targets -l kapro.io/promotionrun=<promotionrun> -o yaml
    ```
 
    The phase that matters is `PromotionTarget.status.phase`: `Verification`,
@@ -257,7 +257,7 @@ Triage:
 1. Identify the target and gate:
 
    ```bash
-   kubectl get promotiontargets -l kapro.io/promotionrun=<promotionrun> -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.phase}{"\t"}{.status.message}{"\n"}{end}'
+   kubectl get targets -l kapro.io/promotionrun=<promotionrun> -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.phase}{"\t"}{.status.message}{"\n"}{end}'
    kubectl describe promotiontarget <promotion-target>
    ```
 
@@ -349,7 +349,7 @@ Symptoms:
 Triage:
 
 ```bash
-kubectl get pluginregistrations
+kubectl get plugins
 kubectl describe pluginregistration <pluginregistration>
 kubectl get pluginregistration <pluginregistration> -o yaml
 kubectl logs -n kapro-system deploy/kapro-operator --since=30m
@@ -407,7 +407,7 @@ Automatic rollback path:
 3. Watch for a rollback PromotionTarget:
 
    ```bash
-   kubectl get promotiontargets -l kapro.io/promotionrun=<promotionrun> -o wide
+   kubectl get targets -l kapro.io/promotionrun=<promotionrun> -o wide
    kubectl get events --field-selector reason=RollbackTriggered --sort-by=.lastTimestamp
    ```
 
@@ -429,7 +429,7 @@ Post-rollback checks:
 
 ```bash
 kubectl get promotionruns,promotiontargets
-kubectl get fleetclusters -o yaml
+kubectl get clusters -o yaml
 ```
 
 Confirm target `currentVersions` match the rollback version and that downstream

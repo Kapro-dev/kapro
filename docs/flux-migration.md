@@ -85,7 +85,7 @@ the Kustomize image file, or an explicit field you add to `PromotionSource`.
 
 ```yaml
 apiVersion: kapro.io/v1alpha1
-kind: PromotionSource
+kind: Source
 metadata:
   name: checkout
 spec:

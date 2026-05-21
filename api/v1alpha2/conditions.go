@@ -8,8 +8,8 @@ const (
 	PromotionRunFinalizer = "kapro.io/promotionrun-finalizer"
 	// BootstrapTokenFinalizer is added to BootstrapToken objects to allow RBAC cleanup on deletion.
 	BootstrapTokenFinalizer = "kapro.io/bootstrap-token-finalizer" //nolint:gosec // not a credential
-	// FleetClusterFinalizer is added to Cluster objects to allow bootstrap RBAC cleanup on deletion.
-	FleetClusterFinalizer = "kapro.io/member-cluster-finalizer" //nolint:gosec // not a credential
+	// ClusterFinalizer is added to Cluster objects to allow bootstrap RBAC cleanup on deletion.
+	ClusterFinalizer = "kapro.io/member-cluster-finalizer" //nolint:gosec // not a credential
 )
 
 // Condition type constants — Flux three-condition framework for operator status reporting.
@@ -36,7 +36,7 @@ const (
 )
 
 // Reason codes attached to Cluster ConditionTypeReady by the
-// FleetClusterHeartbeatReconciler. Kept as exported constants so consumers
+// Cluster heartbeat reconciler. Kept as exported constants so consumers
 // (decision API, promotion controller, dashboards) can compare without
 // string-literal drift.
 const (

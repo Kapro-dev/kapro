@@ -259,7 +259,7 @@ func (r *FleetClusterBootstrapReconciler) ensureBootstrapProvisioned(ctx context
 	// 5) Record the Secret name in status so subsequent reconciles skip provisioning.
 	patch := client.MergeFrom(fc.DeepCopy())
 	if fc.Status.Bootstrap == nil {
-		fc.Status.Bootstrap = &kaprov1alpha2.FleetClusterBootstrapStatus{}
+		fc.Status.Bootstrap = &kaprov1alpha2.ClusterBootstrapStatus{}
 	}
 	fc.Status.Bootstrap.IssuedBootstrapKubeconfig = secretName
 	if err := r.Status().Patch(ctx, fc, patch); err != nil {
@@ -532,13 +532,13 @@ func sameFinalizers(a, b []string) bool {
 	return true
 }
 
-// bootstrapStatusEqual compares two FleetClusterBootstrapStatus values
+// bootstrapStatusEqual compares two ClusterBootstrapStatus values
 // SEMANTICALLY, not by raw struct equality. The UsedAt field is
 // `*metav1.Time` — `*a == *b` would compare pointer addresses, returning
 // false for two distinct *metav1.Time allocations that hold the same
 // instant. This drove spurious reconciles whenever the informer cache and
 // a freshly-decoded apiserver response disagreed on pointer identity.
-func bootstrapStatusEqual(a, b *kaprov1alpha2.FleetClusterBootstrapStatus) bool {
+func bootstrapStatusEqual(a, b *kaprov1alpha2.ClusterBootstrapStatus) bool {
 	if a == nil && b == nil {
 		return true
 	}

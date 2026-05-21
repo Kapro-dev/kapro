@@ -18,7 +18,7 @@ import (
 // PolicyDecision is the result of evaluating an AgentPolicy against a decision.
 type PolicyDecision struct {
 	Allowed            bool
-	EffectiveMode      kaprov1alpha2.AgentPolicyMode
+	EffectiveMode      kaprov1alpha2.PolicyMode
 	EffectiveMinConf   float64
 	DenyReason         string
 	RequireHumanCosign bool
@@ -83,7 +83,7 @@ func enforceAgentPolicy(
 
 	// Check mode.
 	mode := policy.Spec.Mode
-	if mode == kaprov1alpha2.AgentPolicyModeDisabled {
+	if mode == kaprov1alpha2.PolicyModeDisabled {
 		return PolicyDecision{Allowed: false, DenyReason: "AgentPolicy mode is disabled"}
 	}
 

@@ -100,7 +100,7 @@ func TestHandleProgressingFailsWhenPromotionPlanGenerationChanges(t *testing.T) 
 		Status: kaprov1alpha2.PromotionRunStatus{
 			Phase:           kaprov1alpha2.PromotionRunPhaseProgressing,
 			ResolvedVersion: "repo@sha256:abc",
-			PromotionPlanProgress: []kaprov1alpha2.PromotionPlanProgress{{
+			PlanProgress: []kaprov1alpha2.PlanProgress{{
 				Name:               "main",
 				Plan:               "progressive",
 				ObservedGeneration: 1,

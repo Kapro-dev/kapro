@@ -106,7 +106,7 @@ the trigger controller; otherwise the trigger intentionally blocks.
 
 ```yaml
 apiVersion: kapro.io/v1alpha1
-kind: PromotionPlan
+kind: Plan
 metadata:
   name: checkout-keyless
 spec:
@@ -119,7 +119,7 @@ spec:
         mode: auto
 ---
 apiVersion: kapro.io/v1alpha1
-kind: PromotionTrigger
+kind: Trigger
 metadata:
   name: checkout-oci-keyless
 spec:
@@ -158,7 +158,7 @@ data:
   cosign.pub: <base64-encoded-public-key>
 ---
 apiVersion: kapro.io/v1alpha1
-kind: PromotionTrigger
+kind: Trigger
 metadata:
   name: checkout-oci-keyed
 spec:

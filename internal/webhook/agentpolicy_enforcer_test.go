@@ -14,11 +14,11 @@ import (
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
-func makeAgentPolicy(name string, saName string, mode kaprov1alpha2.AgentPolicyMode, minConf float64) *kaprov1alpha2.Policy {
+func makeAgentPolicy(name string, saName string, mode kaprov1alpha2.PolicyMode, minConf float64) *kaprov1alpha2.Policy {
 	return &kaprov1alpha2.Policy{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: kaprov1alpha2.PolicySpec{
-			Identity: kaprov1alpha2.AgentPolicyIdentity{
+			Identity: kaprov1alpha2.PolicyIdentity{
 				ServiceAccountName:      saName,
 				ServiceAccountNamespace: "kapro-system",
 			},
@@ -43,19 +43,19 @@ func makeAgentPolicy(name string, saName string, mode kaprov1alpha2.AgentPolicyM
 }
 
 func TestEnforce_AllowsValidDecision(t *testing.T) {
-	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.AgentPolicyModeAuto, 0.8)
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.PolicyModeAuto, 0.8)
 	_, mc, _, target := decisionFixtures()
 	pd := enforceAgentPolicy(policy, target, mc, 0.95, 50)
 	if !pd.Allowed {
 		t.Fatalf("expected allowed, got denied: %s", pd.DenyReason)
 	}
-	if pd.EffectiveMode != kaprov1alpha2.AgentPolicyModeAuto {
+	if pd.EffectiveMode != kaprov1alpha2.PolicyModeAuto {
 		t.Errorf("expected auto mode, got %s", pd.EffectiveMode)
 	}
 }
 
 func TestEnforce_DeniesLowConfidence(t *testing.T) {
-	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.AgentPolicyModeAuto, 0.9)
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.PolicyModeAuto, 0.9)
 	_, mc, _, target := decisionFixtures()
 	pd := enforceAgentPolicy(policy, target, mc, 0.7, 50)
 	if pd.Allowed {
@@ -67,7 +67,7 @@ func TestEnforce_DeniesLowConfidence(t *testing.T) {
 }
 
 func TestEnforce_DeniesExcludedStage(t *testing.T) {
-	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.AgentPolicyModeAuto, 0.5)
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.PolicyModeAuto, 0.5)
 	policy.Spec.Scope.ExcludeStages = []string{"canary"}
 	_, mc, _, target := decisionFixtures()
 	pd := enforceAgentPolicy(policy, target, mc, 0.95, 50)
@@ -77,7 +77,7 @@ func TestEnforce_DeniesExcludedStage(t *testing.T) {
 }
 
 func TestEnforce_DeniesStageNotInScope(t *testing.T) {
-	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.AgentPolicyModeAuto, 0.5)
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.PolicyModeAuto, 0.5)
 	policy.Spec.Scope.Stages = []string{"prod-wave-1"} // canary not in list
 	_, mc, _, target := decisionFixtures()
 	pd := enforceAgentPolicy(policy, target, mc, 0.95, 50)
@@ -87,7 +87,7 @@ func TestEnforce_DeniesStageNotInScope(t *testing.T) {
 }
 
 func TestEnforce_DeniesExcludedCluster(t *testing.T) {
-	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.AgentPolicyModeAuto, 0.5)
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.PolicyModeAuto, 0.5)
 	policy.Spec.Scope.ExcludeClusters = []string{"cluster-a"}
 	_, mc, _, target := decisionFixtures()
 	pd := enforceAgentPolicy(policy, target, mc, 0.95, 50)
@@ -97,7 +97,7 @@ func TestEnforce_DeniesExcludedCluster(t *testing.T) {
 }
 
 func TestEnforce_DeniesSuspendedPolicy(t *testing.T) {
-	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.AgentPolicyModeAuto, 0.5)
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.PolicyModeAuto, 0.5)
 	policy.Spec.Suspended = true
 	_, mc, _, target := decisionFixtures()
 	pd := enforceAgentPolicy(policy, target, mc, 0.95, 50)
@@ -107,7 +107,7 @@ func TestEnforce_DeniesSuspendedPolicy(t *testing.T) {
 }
 
 func TestEnforce_DeniesDisabledMode(t *testing.T) {
-	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.AgentPolicyModeDisabled, 0.5)
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.PolicyModeDisabled, 0.5)
 	_, mc, _, target := decisionFixtures()
 	pd := enforceAgentPolicy(policy, target, mc, 0.95, 50)
 	if pd.Allowed {
@@ -116,7 +116,7 @@ func TestEnforce_DeniesDisabledMode(t *testing.T) {
 }
 
 func TestEnforce_DeniesShortReasoning(t *testing.T) {
-	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.AgentPolicyModeAuto, 0.5)
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.PolicyModeAuto, 0.5)
 	policy.Spec.Audit.MinReasoningLength = 100
 	_, mc, _, target := decisionFixtures()
 	pd := enforceAgentPolicy(policy, target, mc, 0.95, 20) // too short
@@ -134,19 +134,19 @@ func TestEnforce_NoPolicyDenies(t *testing.T) {
 }
 
 func TestEnforce_RecommendModeChangesEffective(t *testing.T) {
-	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.AgentPolicyModeRecommend, 0.5)
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.PolicyModeRecommend, 0.5)
 	_, mc, _, target := decisionFixtures()
 	pd := enforceAgentPolicy(policy, target, mc, 0.95, 50)
 	if !pd.Allowed {
 		t.Fatalf("expected allowed, got: %s", pd.DenyReason)
 	}
-	if pd.EffectiveMode != kaprov1alpha2.AgentPolicyModeRecommend {
+	if pd.EffectiveMode != kaprov1alpha2.PolicyModeRecommend {
 		t.Errorf("expected recommend mode, got %s", pd.EffectiveMode)
 	}
 }
 
 func TestEnforce_CountryProfileTightensConfidence(t *testing.T) {
-	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.AgentPolicyModeAuto, 0.8)
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.PolicyModeAuto, 0.8)
 	policy.Spec.Scope.CountryProfiles = []kaprov1alpha2.CountryRiskProfile{
 		{
 			Countries:     []string{"eu-west"},
@@ -164,7 +164,7 @@ func TestEnforce_CountryProfileTightensConfidence(t *testing.T) {
 }
 
 func TestEnforce_CountryProfileRequiresHumanCosign(t *testing.T) {
-	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.AgentPolicyModeAuto, 0.5)
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.PolicyModeAuto, 0.5)
 	policy.Spec.Scope.CountryProfiles = []kaprov1alpha2.CountryRiskProfile{
 		{
 			Countries:          []string{"fi"},
@@ -185,7 +185,7 @@ func TestEnforce_CountryProfileRequiresHumanCosign(t *testing.T) {
 }
 
 func TestEnforce_TierOverrideTightensConfidence(t *testing.T) {
-	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.AgentPolicyModeAuto, 0.7)
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.PolicyModeAuto, 0.7)
 	policy.Spec.Confidence.TierOverrides = map[string]float64{"canary": 0.95}
 	_, mc, _, target := decisionFixtures()
 	pd := enforceAgentPolicy(policy, target, mc, 0.9, 50) // below 0.95 tier override
@@ -197,7 +197,7 @@ func TestEnforce_TierOverrideTightensConfidence(t *testing.T) {
 func TestReserve_RateLimitDeniesAtMax(t *testing.T) {
 	// Rate limits moved from enforceAgentPolicy to reserveAgentPolicySlot in
 	// gate-B2 so the check + counter increment happen in one CAS pass.
-	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.AgentPolicyModeAuto, 0.5)
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.PolicyModeAuto, 0.5)
 	policy.Spec.RateLimits = &kaprov1alpha2.AgentRateLimits{MaxApprovalsPerDay: 5}
 	policy.Status.DecisionsToday = 5
 	s := decisionTestServer(t, policy)
@@ -214,7 +214,7 @@ func TestReserve_RateLimitDeniesAtMax(t *testing.T) {
 }
 
 func TestReserve_ConcurrentLimitDenies(t *testing.T) {
-	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.AgentPolicyModeAuto, 0.5)
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.PolicyModeAuto, 0.5)
 	policy.Spec.RateLimits = &kaprov1alpha2.AgentRateLimits{MaxConcurrent: 3}
 	policy.Status.ActiveDecisions = 3
 	s := decisionTestServer(t, policy)
@@ -231,7 +231,7 @@ func TestReserve_ConcurrentLimitDenies(t *testing.T) {
 }
 
 func TestReserve_IncrementsCountersOnSuccess(t *testing.T) {
-	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.AgentPolicyModeAuto, 0.5)
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.PolicyModeAuto, 0.5)
 	policy.Spec.RateLimits = &kaprov1alpha2.AgentRateLimits{MaxApprovalsPerDay: 5}
 	s := decisionTestServer(t, policy)
 	local := policy.DeepCopy()
@@ -256,7 +256,7 @@ func TestReserve_IncrementsCountersOnSuccess(t *testing.T) {
 }
 
 func TestEnforce_ClusterSelectorMismatch(t *testing.T) {
-	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.AgentPolicyModeAuto, 0.5)
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.PolicyModeAuto, 0.5)
 	policy.Spec.Scope.ClusterSelector = &metav1.LabelSelector{
 		MatchLabels: map[string]string{"tier": "prod"},
 	}
@@ -272,7 +272,7 @@ func TestEnforce_ClusterSelectorMismatch(t *testing.T) {
 
 func TestDecide_WithAgentPolicy_Denied(t *testing.T) {
 	promotionrun, mc, _, target := decisionFixtures()
-	policy := makeAgentPolicy("strict-policy", "test-agent", kaprov1alpha2.AgentPolicyModeAuto, 0.99)
+	policy := makeAgentPolicy("strict-policy", "test-agent", kaprov1alpha2.PolicyModeAuto, 0.99)
 	s := decisionTestServer(t, promotionrun, mc, target, policy)
 
 	body, _ := json.Marshal(DecisionRequest{
@@ -293,7 +293,7 @@ func TestDecide_WithAgentPolicy_Denied(t *testing.T) {
 
 func TestDecide_WithAgentPolicy_Allowed(t *testing.T) {
 	promotionrun, mc, _, target := decisionFixtures()
-	policy := makeAgentPolicy("loose-policy", "test-agent", kaprov1alpha2.AgentPolicyModeAuto, 0.7)
+	policy := makeAgentPolicy("loose-policy", "test-agent", kaprov1alpha2.PolicyModeAuto, 0.7)
 	s := decisionTestServer(t, promotionrun, mc, target, policy)
 
 	body, _ := json.Marshal(DecisionRequest{
@@ -314,7 +314,7 @@ func TestDecide_WithAgentPolicy_Allowed(t *testing.T) {
 
 func TestDecide_RecommendModeDoesNotCreateApproval(t *testing.T) {
 	promotionrun, mc, _, target := decisionFixtures()
-	policy := makeAgentPolicy("recommend-policy", "test-agent", kaprov1alpha2.AgentPolicyModeRecommend, 0.5)
+	policy := makeAgentPolicy("recommend-policy", "test-agent", kaprov1alpha2.PolicyModeRecommend, 0.5)
 	s := decisionTestServer(t, promotionrun, mc, target, policy)
 
 	body, _ := json.Marshal(DecisionRequest{
@@ -347,7 +347,7 @@ func TestDecide_RecommendModeDoesNotCreateApproval(t *testing.T) {
 }
 
 func TestReserve_ResetsDecisionsTodayAcrossUTCDay(t *testing.T) {
-	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.AgentPolicyModeAuto, 0.5)
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.PolicyModeAuto, 0.5)
 	policy.Spec.RateLimits = &kaprov1alpha2.AgentRateLimits{MaxApprovalsPerDay: 5}
 	// Simulate yesterday's decision count at the limit, with LastDecisionAt
 	// from a prior UTC day. The reservation should reset DecisionsToday
@@ -374,7 +374,7 @@ func TestReserve_ResetsDecisionsTodayAcrossUTCDay(t *testing.T) {
 }
 
 func TestRelease_DecrementsActiveDecisions(t *testing.T) {
-	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.AgentPolicyModeAuto, 0.5)
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.PolicyModeAuto, 0.5)
 	policy.Status.ActiveDecisions = 3
 	s := decisionTestServer(t, policy)
 	if err := s.releaseAgentPolicySlot(httpReq(t).Context(), policy); err != nil {
@@ -388,7 +388,7 @@ func TestRelease_DecrementsActiveDecisions(t *testing.T) {
 }
 
 func TestRelease_FloorsAtZero(t *testing.T) {
-	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.AgentPolicyModeAuto, 0.5)
+	policy := makeAgentPolicy("test-policy", "test-agent", kaprov1alpha2.PolicyModeAuto, 0.5)
 	policy.Status.ActiveDecisions = 0
 	s := decisionTestServer(t, policy)
 	if err := s.releaseAgentPolicySlot(httpReq(t).Context(), policy); err != nil {

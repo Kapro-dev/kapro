@@ -262,7 +262,7 @@ actuator, gate, and planner registries; stale, incompatible, or deleted
 registrations are unloaded without restarting the operator.
 
 ```bash
-kubectl get pluginregistrations.kapro.io
+kubectl get plugins.kapro.io
 ```
 
 ## Optional Hub Gateway

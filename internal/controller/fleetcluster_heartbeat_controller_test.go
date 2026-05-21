@@ -67,7 +67,7 @@ func bootstrapUsedFleetCluster(name string, threshold int32) *kaprov1alpha2.Clus
 			ConsecutiveFailureThreshold: &t,
 		},
 		Status: kaprov1alpha2.ClusterStatus{
-			Bootstrap: &kaprov1alpha2.FleetClusterBootstrapStatus{Used: true},
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapStatus{Used: true},
 		},
 	}
 }
@@ -142,7 +142,7 @@ func TestHeartbeat_Recovery_FlipsImmediately(t *testing.T) {
 		Type: kaprov1alpha2.ConditionTypeReady, Status: metav1.ConditionFalse,
 		Reason: kaprov1alpha2.ReasonUnreachable, LastTransitionTime: transition,
 	}}
-	fc.Status.Heartbeat = &kaprov1alpha2.FleetClusterHeartbeatStatus{
+	fc.Status.Heartbeat = &kaprov1alpha2.ClusterHeartbeatStatus{
 		ConsecutiveMisses: 5, Reason: kaprov1alpha2.ReasonUnreachable,
 	}
 	lease := freshLease("cluster-a", defaultHeartbeatNamespace, now.Add(-5*time.Second))
@@ -212,7 +212,7 @@ func TestHeartbeat_NotYetRegistered(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
 		Spec: kaprov1alpha2.ClusterSpec{
 			Delivery:  kaprov1alpha2.DeliverySpec{Mode: kaprov1alpha2.DeliveryModePull, BackendRef: "flux"},
-			Bootstrap: &kaprov1alpha2.FleetClusterBootstrapSpec{TTL: tokenTTL},
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{TTL: tokenTTL},
 		},
 		// No Status.Bootstrap.Used — bootstrap workflow not yet complete.
 	}
@@ -359,7 +359,7 @@ func TestSpecPredicate_StatusOnlyUpdatesIgnored(t *testing.T) {
 	oldFC := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "c", Generation: 1},
 		Status: kaprov1alpha2.ClusterStatus{
-			Bootstrap: &kaprov1alpha2.FleetClusterBootstrapStatus{Used: true},
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapStatus{Used: true},
 			Conditions: []metav1.Condition{{
 				Type: kaprov1alpha2.ConditionTypeReady, Status: metav1.ConditionTrue,
 			}},

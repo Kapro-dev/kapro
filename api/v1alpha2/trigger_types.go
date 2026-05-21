@@ -23,11 +23,11 @@ type TriggerSpec struct {
 	// +kubebuilder:default=true
 	Suspended bool `json:"suspended,omitempty"`
 	// Source configures where artifact changes are observed.
-	Source PromotionTriggerSource `json:"source"`
+	Source TriggerSource `json:"source"`
 	// PromotionTemplate defines the Promotion the trigger creates or updates.
 	// Renamed from promotionrunTemplate when the trigger moved from emitting
 	// PromotionRun directly to emitting Promotion intent.
-	PromotionTemplate PromotionTriggerTemplate `json:"promotionTemplate"`
+	PromotionTemplate TriggerTemplate `json:"promotionTemplate"`
 	// Cooldown is the minimum duration between Promotion updates created by
 	// this trigger.
 	// +kubebuilder:default="30m"
@@ -47,18 +47,18 @@ type TriggerSpec struct {
 	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
-// PromotionTriggerSource selects the artifact source observed by a Trigger.
-type PromotionTriggerSource struct {
+// TriggerSource selects the artifact source observed by a Trigger.
+type TriggerSource struct {
 	// Type selects the source backend.
 	// +kubebuilder:validation:Enum=oci
 	Type string `json:"type"`
 	// OCI configures OCI registry tag observation.
 	// +optional
-	OCI *OCIPromotionTriggerSource `json:"oci,omitempty"`
+	OCI *OCITriggerSource `json:"oci,omitempty"`
 }
 
-// OCIPromotionTriggerSource configures OCI registry observation.
-type OCIPromotionTriggerSource struct {
+// OCITriggerSource configures OCI registry observation.
+type OCITriggerSource struct {
 	// Repository is the OCI repository to observe.
 	Repository string `json:"repository"`
 	// TagPattern is a regular expression. Only matching tags can create or update
@@ -79,10 +79,10 @@ type OCIPromotionTriggerSource struct {
 	SecretRef *corev1.SecretReference `json:"secretRef,omitempty"`
 }
 
-// PromotionTriggerTemplate defines the Promotion created or updated from a
+// TriggerTemplate defines the Promotion created or updated from a
 // verified artifact. Mirrors PromotionSpec with the rollout-input fields the
 // trigger is allowed to set.
-type PromotionTriggerTemplate struct {
+type TriggerTemplate struct {
 	// FleetRef is the name of the parent Fleet the managed Promotion
 	// targets. Required; the PromotionController uses it to resolve the
 	// inline plan and clusters.
@@ -92,7 +92,7 @@ type PromotionTriggerTemplate struct {
 	// controller derives a deterministic name from the trigger name.
 	// +optional
 	NameTemplate string `json:"nameTemplate,omitempty"`
-	// PromotionPlans optionally overrides Fleet.spec.promotionplan on the
+	// Plans optionally overrides Fleet.spec.plan on the
 	// managed Promotion.
 	// +kubebuilder:validation:MaxItems=64
 	// +optional
@@ -125,7 +125,7 @@ type TriggerStatus struct {
 	// updated.
 	LastTriggeredAt string `json:"lastTriggeredAt,omitempty"`
 	// LastArtifact is the most recent artifact observed by the trigger.
-	LastArtifact *PromotionTriggerArtifact `json:"lastArtifact,omitempty"`
+	LastArtifact *TriggerArtifact `json:"lastArtifact,omitempty"`
 	// ManagedPromotion is the name of the Promotion this trigger
 	// creates and updates.
 	ManagedPromotion string `json:"managedPromotion,omitempty"`
@@ -139,7 +139,7 @@ type TriggerStatus struct {
 	// suppresses a Promotion update.
 	// +kubebuilder:validation:MaxItems=20
 	// +optional
-	RecentArtifacts []PromotionTriggerArtifact `json:"recentArtifacts,omitempty"`
+	RecentArtifacts []TriggerArtifact `json:"recentArtifacts,omitempty"`
 	// Conditions summarize readiness, suspension, verification, and the
 	// managed Promotion's creation/update state.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
@@ -149,8 +149,8 @@ type TriggerStatus struct {
 // status size bounded.
 const MaxRecentArtifacts = 20
 
-// PromotionTriggerArtifact identifies an observed immutable artifact.
-type PromotionTriggerArtifact struct {
+// TriggerArtifact identifies an observed immutable artifact.
+type TriggerArtifact struct {
 	// Tag is the source tag that matched the trigger pattern.
 	Tag string `json:"tag,omitempty"`
 	// Digest is the immutable artifact digest.

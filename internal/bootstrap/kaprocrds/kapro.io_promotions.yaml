@@ -222,7 +222,7 @@ spec:
                 type: object
               plans:
                 description: |-
-                  PromotionPlans optionally overrides the inline Fleet.spec.plan
+                  Plans optionally overrides the inline Fleet.spec.plan
                   for this intent. When unset, the controller derives a single plan ref
                   from the parent Fleet's inline plan.
                 items:

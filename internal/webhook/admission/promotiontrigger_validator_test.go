@@ -9,14 +9,14 @@ import (
 func validTrigger() *kaprov1alpha2.Trigger {
 	return &kaprov1alpha2.Trigger{
 		Spec: kaprov1alpha2.TriggerSpec{
-			Source: kaprov1alpha2.PromotionTriggerSource{
+			Source: kaprov1alpha2.TriggerSource{
 				Type: "oci",
-				OCI: &kaprov1alpha2.OCIPromotionTriggerSource{
+				OCI: &kaprov1alpha2.OCITriggerSource{
 					Repository: "oci://example.com/repo",
 					TagPattern: "v.*",
 				},
 			},
-			PromotionTemplate: kaprov1alpha2.PromotionTriggerTemplate{
+			PromotionTemplate: kaprov1alpha2.TriggerTemplate{
 				FleetRef:       "checkout",
 				PromotionPlans: []kaprov1alpha2.PlanRef{{Name: "default-plan"}},
 			},

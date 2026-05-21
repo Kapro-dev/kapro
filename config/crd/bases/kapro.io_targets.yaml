@@ -85,7 +85,7 @@ spec:
                 description: |-
                   Cancelled is set by the parent PromotionRunReconciler to signal that this
                   target should stop progressing (e.g., stage halted due to peer failure).
-                  The child PromotionTargetReconciler observes this and transitions to Failed.
+                  The child Target reconciler observes this and transitions to Failed.
                   This avoids cross-controller status writes — parent owns spec, child owns status.
                 type: boolean
               cancelledReason:
@@ -841,7 +841,7 @@ spec:
                 description: |-
                   DecisionTrace stores the audit trail of AI agent and human decisions
                   for this target's approval gates. Written by the Decision API (webhook
-                  server), never by the PromotionTargetReconciler.
+                  server), never by the Target reconciler.
                 properties:
                   current:
                     description: Current is the active decision for this target's

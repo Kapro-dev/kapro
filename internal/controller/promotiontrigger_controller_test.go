@@ -340,16 +340,16 @@ func promotionTriggerFixture(mutators ...func(*kaprov1alpha2.Trigger)) *kaprov1a
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout", Generation: 1},
 		Spec: kaprov1alpha2.TriggerSpec{
 			Suspended: false,
-			Source: kaprov1alpha2.PromotionTriggerSource{
+			Source: kaprov1alpha2.TriggerSource{
 				Type: "oci",
-				OCI: &kaprov1alpha2.OCIPromotionTriggerSource{
+				OCI: &kaprov1alpha2.OCITriggerSource{
 					Repository:       "oci://registry.example.com/checkout",
 					TagPattern:       "^v[0-9]+\\.[0-9]+\\.[0-9]+$",
 					RequireSignature: true,
 					PollInterval:     "1m",
 				},
 			},
-			PromotionTemplate: kaprov1alpha2.PromotionTriggerTemplate{
+			PromotionTemplate: kaprov1alpha2.TriggerTemplate{
 				FleetRef:       "checkout",
 				PromotionPlans: []kaprov1alpha2.PlanRef{{Name: "prod", Plan: "checkout-prod"}},
 				Suspended:      true,
@@ -365,8 +365,8 @@ func promotionTriggerFixture(mutators ...func(*kaprov1alpha2.Trigger)) *kaprov1a
 	return rt
 }
 
-func testArtifact() *PromotionTriggerArtifactObservation {
-	return &PromotionTriggerArtifactObservation{Tag: "v1.2.3", Digest: "sha256:abcdef1234567890"}
+func testArtifact() *TriggerArtifactObservation {
+	return &TriggerArtifactObservation{Tag: "v1.2.3", Digest: "sha256:abcdef1234567890"}
 }
 
 func fixedNow() time.Time {
@@ -414,12 +414,12 @@ func getManagedPromotion(t *testing.T, ctx context.Context, c client.Client, nam
 }
 
 type fakeTriggerResolver struct {
-	artifact *PromotionTriggerArtifactObservation
+	artifact *TriggerArtifactObservation
 	err      error
 	calls    *int
 }
 
-func (f *fakeTriggerResolver) Resolve(context.Context, *kaprov1alpha2.Trigger) (*PromotionTriggerArtifactObservation, error) {
+func (f *fakeTriggerResolver) Resolve(context.Context, *kaprov1alpha2.Trigger) (*TriggerArtifactObservation, error) {
 	if f.calls != nil {
 		(*f.calls)++
 	}
@@ -433,13 +433,13 @@ type fakeVerifier struct {
 	err error
 }
 
-func (f fakeVerifier) Verify(context.Context, *kaprov1alpha2.Trigger, PromotionTriggerArtifactObservation) error {
+func (f fakeVerifier) Verify(context.Context, *kaprov1alpha2.Trigger, TriggerArtifactObservation) error {
 	return f.err
 }
 
 func TestPromotionTriggerTagFlipUpdatesManagedPromotion(t *testing.T) {
 	ctx := context.Background()
-	artifact := &PromotionTriggerArtifactObservation{Tag: "v1.2.3", Digest: "sha256:aaaa"}
+	artifact := &TriggerArtifactObservation{Tag: "v1.2.3", Digest: "sha256:aaaa"}
 	resolver := &fakeTriggerResolver{artifact: artifact}
 	trigger := promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
 		rt.Spec.Cooldown = "1m"
@@ -463,7 +463,7 @@ func TestPromotionTriggerTagFlipUpdatesManagedPromotion(t *testing.T) {
 	}
 
 	// Tag B → managed Promotion updated to digest B.
-	resolver.artifact = &PromotionTriggerArtifactObservation{Tag: "v1.2.4", Digest: "sha256:bbbb"}
+	resolver.artifact = &TriggerArtifactObservation{Tag: "v1.2.4", Digest: "sha256:bbbb"}
 	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -473,7 +473,7 @@ func TestPromotionTriggerTagFlipUpdatesManagedPromotion(t *testing.T) {
 	}
 
 	// Tag A again → managed Promotion updated back to digest A (active is B).
-	resolver.artifact = &PromotionTriggerArtifactObservation{Tag: "v1.2.3", Digest: "sha256:aaaa"}
+	resolver.artifact = &TriggerArtifactObservation{Tag: "v1.2.3", Digest: "sha256:aaaa"}
 	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -483,7 +483,7 @@ func TestPromotionTriggerTagFlipUpdatesManagedPromotion(t *testing.T) {
 	}
 }
 
-func TestPromotionTriggerTemplateHashStableAndChangeDetectable(t *testing.T) {
+func TestTriggerTemplateHashStableAndChangeDetectable(t *testing.T) {
 	a := promotionTriggerFixture()
 	b := promotionTriggerFixture()
 	if triggerTemplateHash(a) != triggerTemplateHash(b) {
@@ -498,24 +498,24 @@ func TestPromotionTriggerTemplateHashStableAndChangeDetectable(t *testing.T) {
 }
 
 func TestPromotionTriggerRecentArtifactsBoundedAndDedupedByDigest(t *testing.T) {
-	var list []kaprov1alpha2.PromotionTriggerArtifact
+	var list []kaprov1alpha2.TriggerArtifact
 	// Same digest + tag twice → coalesced to one entry, refreshed.
-	first := kaprov1alpha2.PromotionTriggerArtifact{Tag: "v1", Digest: "sha256:a", ObservedAt: "t1"}
-	second := kaprov1alpha2.PromotionTriggerArtifact{Tag: "v1", Digest: "sha256:a", ObservedAt: "t2"}
+	first := kaprov1alpha2.TriggerArtifact{Tag: "v1", Digest: "sha256:a", ObservedAt: "t1"}
+	second := kaprov1alpha2.TriggerArtifact{Tag: "v1", Digest: "sha256:a", ObservedAt: "t2"}
 	list = recordRecentArtifact(list, first)
 	list = recordRecentArtifact(list, second)
 	if len(list) != 1 || list[0].ObservedAt != "t2" {
 		t.Fatalf("same digest+tag should coalesce; got %+v", list)
 	}
 	// Different digest → new entry prepended.
-	third := kaprov1alpha2.PromotionTriggerArtifact{Tag: "v2", Digest: "sha256:b", ObservedAt: "t3"}
+	third := kaprov1alpha2.TriggerArtifact{Tag: "v2", Digest: "sha256:b", ObservedAt: "t3"}
 	list = recordRecentArtifact(list, third)
 	if len(list) != 2 || list[0].Digest != "sha256:b" {
 		t.Fatalf("different digest should prepend; got %+v", list)
 	}
 	// Fill past cap; oldest should fall off.
 	for i := 0; i < kaprov1alpha2.MaxRecentArtifacts+5; i++ {
-		list = recordRecentArtifact(list, kaprov1alpha2.PromotionTriggerArtifact{
+		list = recordRecentArtifact(list, kaprov1alpha2.TriggerArtifact{
 			Tag:    "v",
 			Digest: fmt.Sprintf("sha256:fill-%d", i),
 		})

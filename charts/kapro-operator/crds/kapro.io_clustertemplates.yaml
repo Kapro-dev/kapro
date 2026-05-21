@@ -44,7 +44,7 @@ spec:
         description: |-
           ClusterTemplate is the universal fleet auto-import CRD. One template
           per cohort: one Fleet/Account/Subscription/ManagedClusterSet × one
-          delivery shape. Imported FleetClusters carry ownerRef + managed-by label.
+          delivery shape. Imported Cluster objects carry ownerRef + managed-by label.
         properties:
           apiVersion:
             description: |-
@@ -75,7 +75,7 @@ spec:
                 type: string
               prune:
                 description: |-
-                  Prune deletes imported FleetClusters whose source entry has
+                  Prune deletes imported Cluster objects whose source entry has
                   disappeared. Default false (conservative) — operator opts into the
                   spec §3.5 "full lifecycle" intent. Deletion runs the Cluster
                   finalizer so per-cluster RBAC is cleaned up.
@@ -256,7 +256,7 @@ spec:
                 type: object
               suspend:
                 description: |-
-                  Suspend pauses reconciliation. Existing imported FleetClusters are
+                  Suspend pauses reconciliation. Existing imported Cluster objects are
                   left untouched.
                 type: boolean
               template:
@@ -299,7 +299,7 @@ spec:
                               Mutating it counts as a re-bootstrap intent (planned: hub resets
                               status.bootstrap; see RE-BOOTSTRAP below).
 
-                           2. The hub FleetClusterBootstrapReconciler provisions a per-cluster
+                           2. The hub Cluster bootstrap reconciler provisions a per-cluster
                               ServiceAccount `kapro-bootstrap-<cluster>` in kapro-system with a
                               narrowly-scoped ClusterRole (CSR-create only, for this signer
                               name). It issues a TokenRequest for that SA (default 1h TTL,
@@ -460,7 +460,7 @@ spec:
 
                           When unset, the hub falls back to the legacy behaviour of looking up
                           a Secret-referenced kubeconfig from cluster annotations — kept for
-                          backwards compatibility while existing FleetClusters migrate.
+                          backwards compatibility while existing Cluster objects migrate.
                         properties:
                           kind:
                             description: Kind selects a registered provider implementation.

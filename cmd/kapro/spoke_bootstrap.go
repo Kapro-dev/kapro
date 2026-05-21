@@ -185,7 +185,7 @@ func ensureFleetClusterBootstrap(ctx context.Context, c client.Client, name stri
 		fc := &kaprov1alpha2.Cluster{
 			ObjectMeta: metav1.ObjectMeta{Name: name},
 			Spec: kaprov1alpha2.ClusterSpec{
-				Bootstrap: &kaprov1alpha2.FleetClusterBootstrapSpec{
+				Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{
 					TTL: ttl.String(),
 				},
 			},
@@ -197,7 +197,7 @@ func ensureFleetClusterBootstrap(ctx context.Context, c client.Client, name stri
 	}
 	patch := client.MergeFrom(existing.DeepCopy())
 	if existing.Spec.Bootstrap == nil {
-		existing.Spec.Bootstrap = &kaprov1alpha2.FleetClusterBootstrapSpec{}
+		existing.Spec.Bootstrap = &kaprov1alpha2.ClusterBootstrapSpec{}
 	}
 	if existing.Spec.Bootstrap.TTL == "" && existing.Spec.Bootstrap.ExpiresAt == nil {
 		existing.Spec.Bootstrap.TTL = ttl.String()

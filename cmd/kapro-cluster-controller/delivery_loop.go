@@ -206,14 +206,14 @@ func (l *deliveryLoop) writeStatus(
 	patch := client.MergeFrom(fc.DeepCopy())
 
 	if fc.Status.Delivery == nil {
-		fc.Status.Delivery = map[string]kaprov1alpha2.FleetClusterDeliveryStatus{}
+		fc.Status.Delivery = map[string]kaprov1alpha2.ClusterDeliveryStatus{}
 	}
 	if fc.Status.CurrentVersions == nil {
 		fc.Status.CurrentVersions = map[string]string{}
 	}
 
 	for appKey, res := range results {
-		entry := kaprov1alpha2.FleetClusterDeliveryStatus{
+		entry := kaprov1alpha2.ClusterDeliveryStatus{
 			Phase:          res.Phase,
 			DesiredVersion: desired[appKey],
 			ObservedDigest: res.ObservedDigest,

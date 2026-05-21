@@ -293,9 +293,9 @@ func (r *PromotionRunReconciler) handlePending(ctx context.Context, promotionrun
 	resolvedVersion := promotionrunPrimaryVersion(promotionrun, desiredVersions)
 	log.Info("version resolved", "version", resolvedVersion, "versions", len(desiredVersions))
 
-	progress := make([]kaprov1alpha2.PromotionPlanProgress, 0, len(promotionrun.Spec.PromotionPlans))
+	progress := make([]kaprov1alpha2.PlanProgress, 0, len(promotionrun.Spec.PromotionPlans))
 	for _, ref := range promotionrun.Spec.PromotionPlans {
-		progress = append(progress, kaprov1alpha2.PromotionPlanProgress{
+		progress = append(progress, kaprov1alpha2.PlanProgress{
 			Name: ref.Name, Plan: ref.Plan, Phase: "Pending",
 		})
 	}
@@ -303,7 +303,7 @@ func (r *PromotionRunReconciler) handlePending(ctx context.Context, promotionrun
 	patch := client.MergeFrom(promotionrun.DeepCopy())
 	r.setRunPhase(promotionrun, kaprov1alpha2.PromotionRunPhaseProgressing)
 	promotionrun.Status.ResolvedVersion = resolvedVersion
-	promotionrun.Status.PromotionPlanProgress = progress
+	promotionrun.Status.PlanProgress = progress
 	promotionrun.Status.ObservedGeneration = promotionrun.Generation
 	promotionrun.Status.StartedAt = time.Now().UTC().Format(time.RFC3339)
 	r.setPromotionRunReadyCondition(promotionrun, metav1.ConditionFalse, "Progressing", "promotionrun is advancing")
@@ -357,16 +357,16 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 		return ctrl.Result{}, fmt.Errorf("load promotion targets: %w", err)
 	}
 
-	// Build promotionplan phase map from current PromotionPlanProgress.
-	promotionplanPhase := make(map[string]string, len(promotionrun.Status.PromotionPlanProgress))
-	promotionplanProgress := make(map[string]kaprov1alpha2.PromotionPlanProgress, len(promotionrun.Status.PromotionPlanProgress))
-	for _, p := range promotionrun.Status.PromotionPlanProgress {
+	// Build promotionplan phase map from current PlanProgress.
+	promotionplanPhase := make(map[string]string, len(promotionrun.Status.PlanProgress))
+	promotionplanProgress := make(map[string]kaprov1alpha2.PlanProgress, len(promotionrun.Status.PlanProgress))
+	for _, p := range promotionrun.Status.PlanProgress {
 		promotionplanPhase[p.Name] = p.Phase
 		promotionplanProgress[p.Name] = p
 	}
 
 	// Track updated progress (written back once at the end).
-	updatedPromotionPlans := make([]kaprov1alpha2.PromotionPlanProgress, 0, len(promotionrun.Spec.PromotionPlans))
+	updatedPromotionPlans := make([]kaprov1alpha2.PlanProgress, 0, len(promotionrun.Spec.PromotionPlans))
 	allPromotionPlansComplete := true
 	var failureMsg string
 	var pendingCancels []cancelRequest
@@ -377,7 +377,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 
 		if currentPhase == "Complete" {
 			previous := promotionplanProgress[promotionplanRef.Name]
-			updatedPromotionPlans = append(updatedPromotionPlans, kaprov1alpha2.PromotionPlanProgress{
+			updatedPromotionPlans = append(updatedPromotionPlans, kaprov1alpha2.PlanProgress{
 				Name:               promotionplanRef.Name,
 				Plan:               promotionplanRef.Plan,
 				ObservedGeneration: previous.ObservedGeneration,
@@ -390,7 +390,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 		if currentPhase == "Failed" {
 			allPromotionPlansComplete = false
 			previous := promotionplanProgress[promotionplanRef.Name]
-			updatedPromotionPlans = append(updatedPromotionPlans, kaprov1alpha2.PromotionPlanProgress{
+			updatedPromotionPlans = append(updatedPromotionPlans, kaprov1alpha2.PlanProgress{
 				Name:               promotionplanRef.Name,
 				Plan:               promotionplanRef.Plan,
 				ObservedGeneration: previous.ObservedGeneration,
@@ -412,7 +412,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 		if !depsComplete {
 			allPromotionPlansComplete = false
 			previous := promotionplanProgress[promotionplanRef.Name]
-			updatedPromotionPlans = append(updatedPromotionPlans, kaprov1alpha2.PromotionPlanProgress{
+			updatedPromotionPlans = append(updatedPromotionPlans, kaprov1alpha2.PlanProgress{
 				Name:               promotionplanRef.Name,
 				Plan:               promotionplanRef.Plan,
 				ObservedGeneration: previous.ObservedGeneration,
@@ -468,7 +468,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 
 		// kapro.io/promotion.wave.* fleet-narrative events. Guard against
 		// re-emission by comparing against the previously observed phase
-		// recorded in promotionrun.Status.PromotionPlanProgress.
+		// recorded in promotionrun.Status.PlanProgress.
 		prevPlanPhase := previousPromotionPlanPhase(promotionrun, promotionplanRef.Name)
 		if newPhase == "Progressing" && prevPlanPhase != "Progressing" && prevPlanPhase != "Complete" && prevPlanPhase != "Failed" {
 			r.publishWaveEvent(ctx, promotionrun, promotionplanRef.Name, "entered", newPhase,
@@ -491,7 +491,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 			}
 		}
 
-		updatedPromotionPlans = append(updatedPromotionPlans, kaprov1alpha2.PromotionPlanProgress{
+		updatedPromotionPlans = append(updatedPromotionPlans, kaprov1alpha2.PlanProgress{
 			Name:               promotionplanRef.Name,
 			Plan:               promotionplanRef.Plan,
 			ObservedGeneration: promotionplan.Generation,
@@ -506,7 +506,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 			r.setRunPhase(promotionrun, kaprov1alpha2.PromotionRunPhaseFailed)
 			promotionrun.Status.ObservedGeneration = promotionrun.Generation
 			promotionrun.Status.CompletedAt = time.Now().UTC().Format(time.RFC3339)
-			promotionrun.Status.PromotionPlanProgress = updatedPromotionPlans
+			promotionrun.Status.PlanProgress = updatedPromotionPlans
 			promotionrun.Status.Report = r.computeReport(promotionrun)
 			r.normalizePromotionRunStatus(promotionrun)
 			if err := r.persistPromotionTargets(ctx, promotionrun); err != nil {
@@ -542,7 +542,7 @@ func (r *PromotionRunReconciler) handleProgressing(ctx context.Context, promotio
 	// Child PromotionTarget reconciles advance per-target FSM state; the PromotionRun
 	// reconcile only persists orchestration-side mutations (upserts, cancels,
 	// rollback target creation) and aggregates child state.
-	promotionrun.Status.PromotionPlanProgress = updatedPromotionPlans
+	promotionrun.Status.PlanProgress = updatedPromotionPlans
 	promotionrun.Status.ObservedGeneration = promotionrun.Generation
 	// Set terminal phase fields BEFORE computeReport so the report captures the
 	// correct Phase and CompletedAt (B50: previously set after targets were cleared).
@@ -850,7 +850,7 @@ func (r *PromotionRunReconciler) reconcilePromotionPlanStages(
 }
 
 func previousStagePhase(promotionrun *kaprov1alpha2.PromotionRun, promotionplanRef, stageName string) string {
-	for _, promotionplanProgress := range promotionrun.Status.PromotionPlanProgress {
+	for _, promotionplanProgress := range promotionrun.Status.PlanProgress {
 		if promotionplanProgress.Name != promotionplanRef {
 			continue
 		}
@@ -869,7 +869,7 @@ func previousStagePhase(promotionrun *kaprov1alpha2.PromotionRun, promotionplanR
 // dedupe kapro.io/promotion.wave.* CloudEvent emission so a single
 // transition fires exactly one event.
 func previousPromotionPlanPhase(promotionrun *kaprov1alpha2.PromotionRun, promotionplanRef string) string {
-	for _, promotionplanProgress := range promotionrun.Status.PromotionPlanProgress {
+	for _, promotionplanProgress := range promotionrun.Status.PlanProgress {
 		if promotionplanProgress.Name == promotionplanRef {
 			return promotionplanProgress.Phase
 		}
@@ -1722,7 +1722,7 @@ func (r *PromotionRunReconciler) clearStalledCondition(promotionrun *kaprov1alph
 
 func promotionrunProgressSummary(promotionrun *kaprov1alpha2.PromotionRun) string {
 	activePromotionPlans := 0
-	for _, p := range promotionrun.Status.PromotionPlanProgress {
+	for _, p := range promotionrun.Status.PlanProgress {
 		if p.Phase == "Progressing" || p.Phase == "Pending" {
 			activePromotionPlans++
 		}

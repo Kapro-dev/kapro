@@ -69,7 +69,7 @@ spec:
               which can perform DAG checks without the quadratic CEL cost budget constraints.
             properties:
               plans:
-                description: PromotionPlans is the DAG of promotionplan nodes.
+                description: Plans is the DAG of plan nodes.
                 items:
                   description: |-
                     PlanRef is one node in the PromotionRun's promotionplan DAG.
@@ -239,11 +239,11 @@ spec:
               phase:
                 type: string
               planProgress:
-                description: PromotionPlanProgress tracks execution state of each
-                  promotionplan node in the DAG.
+                description: PlanProgress tracks execution state of each promotionplan
+                  node in the DAG.
                 items:
-                  description: PromotionPlanProgress tracks the execution state of
-                    one promotionplan node in a PromotionRun.
+                  description: PlanProgress tracks the execution state of one promotionplan
+                    node in a PromotionRun.
                   properties:
                     activeStage:
                       description: |-

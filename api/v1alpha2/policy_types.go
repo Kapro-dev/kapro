@@ -8,19 +8,19 @@ import (
 
 // ---- Policy ---------------------------------------------------------------
 
-// AgentPolicyMode controls the agent's authority level.
+// PolicyMode controls the agent's authority level.
 // +kubebuilder:validation:Enum=auto;recommend;disabled
-type AgentPolicyMode string
+type PolicyMode string
 
 const (
-	// AgentPolicyModeAuto allows the agent to create Approval objects autonomously
+	// PolicyModeAuto allows the agent to create Approval objects autonomously
 	// when confidence meets the threshold.
-	AgentPolicyModeAuto AgentPolicyMode = "auto"
-	// AgentPolicyModeRecommend allows the agent to post a recommendation
+	PolicyModeAuto PolicyMode = "auto"
+	// PolicyModeRecommend allows the agent to post a recommendation
 	// but a human must still create the Approval object.
-	AgentPolicyModeRecommend AgentPolicyMode = "recommend"
-	// AgentPolicyModeDisabled suspends the agent entirely.
-	AgentPolicyModeDisabled AgentPolicyMode = "disabled"
+	PolicyModeRecommend PolicyMode = "recommend"
+	// PolicyModeDisabled suspends the agent entirely.
+	PolicyModeDisabled PolicyMode = "disabled"
 )
 
 // EscalationAction controls behavior when confidence is below threshold.
@@ -36,10 +36,10 @@ const (
 // PolicySpec defines the trust boundary for one AI agent identity.
 type PolicySpec struct {
 	// Identity binds this policy to a specific agent ServiceAccount.
-	Identity AgentPolicyIdentity `json:"identity"`
+	Identity PolicyIdentity `json:"identity"`
 	// Mode controls the agent's authority level.
 	// +kubebuilder:default=recommend
-	Mode AgentPolicyMode `json:"mode"`
+	Mode PolicyMode `json:"mode"`
 	// Scope restricts which stages and clusters this agent may act on.
 	Scope AgentScope `json:"scope"`
 	// Confidence defines minimum confidence thresholds.
@@ -68,8 +68,8 @@ type PolicySpec struct {
 	Suspended bool `json:"suspended,omitempty"`
 }
 
-// AgentPolicyIdentity binds a policy to a ServiceAccount.
-type AgentPolicyIdentity struct {
+// PolicyIdentity binds a policy to a ServiceAccount.
+type PolicyIdentity struct {
 	// ServiceAccountName is the Kubernetes ServiceAccount the agent authenticates as.
 	ServiceAccountName string `json:"serviceAccountName"`
 	// ServiceAccountNamespace is the namespace of the ServiceAccount.
@@ -110,7 +110,7 @@ type CountryRiskProfile struct {
 	MinConfidence float64 `json:"minConfidence"`
 	// Mode overrides the agent mode for these countries.
 	// +optional
-	Mode *AgentPolicyMode `json:"mode,omitempty"`
+	Mode *PolicyMode `json:"mode,omitempty"`
 	// RequireHumanCosign requires human Approval in addition to agent decision.
 	// +optional
 	RequireHumanCosign bool `json:"requireHumanCosign,omitempty"`

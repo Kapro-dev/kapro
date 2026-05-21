@@ -115,10 +115,10 @@ const (
 	DeliveryPhaseSkipped DeliveryPhase = "Skipped"
 )
 
-// FleetClusterDeliveryStatus is the per-app delivery progress reported by the
+// ClusterDeliveryStatus is the per-app delivery progress reported by the
 // spoke-side cluster-controller. Written by exactly one writer: the spoke's
 // own delivery loop on its own Cluster (RBAC-locked via resourceNames).
-type FleetClusterDeliveryStatus struct {
+type ClusterDeliveryStatus struct {
 	// Phase is the current phase of the delivery loop for this app.
 	// +optional
 	Phase DeliveryPhase `json:"phase,omitempty"`
@@ -238,7 +238,7 @@ type ClusterSpec struct {
 	//     Mutating it counts as a re-bootstrap intent (planned: hub resets
 	//     status.bootstrap; see RE-BOOTSTRAP below).
 	//
-	//  2. The hub FleetClusterBootstrapReconciler provisions a per-cluster
+	//  2. The hub Cluster bootstrap reconciler provisions a per-cluster
 	//     ServiceAccount `kapro-bootstrap-<cluster>` in kapro-system with a
 	//     narrowly-scoped ClusterRole (CSR-create only, for this signer
 	//     name). It issues a TokenRequest for that SA (default 1h TTL,
@@ -285,7 +285,7 @@ type ClusterSpec struct {
 	// reset status.bootstrap. For now the workaround is to delete and
 	// recreate the Cluster.
 	// +optional
-	Bootstrap *FleetClusterBootstrapSpec `json:"bootstrap,omitempty"`
+	Bootstrap *ClusterBootstrapSpec `json:"bootstrap,omitempty"`
 
 	// Provider declares how the hub discovers this cluster and reaches it.
 	// The kind is one of the registered providers (outbound-agent,
@@ -294,14 +294,14 @@ type ClusterSpec struct {
 	//
 	// When unset, the hub falls back to the legacy behaviour of looking up
 	// a Secret-referenced kubeconfig from cluster annotations — kept for
-	// backwards compatibility while existing FleetClusters migrate.
+	// backwards compatibility while existing Cluster objects migrate.
 	// +optional
-	Provider *FleetClusterProvider `json:"provider,omitempty"`
+	Provider *ClusterProvider `json:"provider,omitempty"`
 }
 
-// FleetClusterProvider identifies the connectivity & identity model for a
+// ClusterProvider identifies the connectivity & identity model for a
 // cluster. See projects/kapro/specs/fleet-and-oci-delivery-core-spec §3.2.
-type FleetClusterProvider struct {
+type ClusterProvider struct {
 	// Kind selects a registered provider implementation.
 	// +kubebuilder:validation:Enum=outbound-agent;gcp-fleet;gcp-connect-gateway;eks;aks-arc;rhacm;capi;kubeconfig
 	Kind string `json:"kind"`
@@ -311,9 +311,9 @@ type FleetClusterProvider struct {
 	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
-// FleetClusterBootstrapSpec holds the one-time registration slot for a
+// ClusterBootstrapSpec holds the one-time registration slot for a
 // Cluster. See ClusterSpec.Bootstrap doc for the full protocol.
-type FleetClusterBootstrapSpec struct {
+type ClusterBootstrapSpec struct {
 	// TokenHash is an opaque, platform-supplied bootstrap-slot identifier in
 	// SHA-256-hex shape (exactly 64 lowercase hex chars). It is NOT a
 	// pre-image-of-token check today: the hub controller's effective
@@ -379,7 +379,7 @@ type ClusterStatus struct {
 	// committed version per app, while Delivery exposes in-flight phase,
 	// observed digest, and last error for human and Decision API consumption.
 	// +optional
-	Delivery map[string]FleetClusterDeliveryStatus `json:"delivery,omitempty"`
+	Delivery map[string]ClusterDeliveryStatus `json:"delivery,omitempty"`
 
 	// ActivePromotionRun is the PromotionRun currently being processed for this cluster.
 	// +optional
@@ -402,22 +402,22 @@ type ClusterStatus struct {
 
 	// Bootstrap tracks the one-time registration state. Written by the hub.
 	// +optional
-	Bootstrap *FleetClusterBootstrapStatus `json:"bootstrap,omitempty"`
+	Bootstrap *ClusterBootstrapStatus `json:"bootstrap,omitempty"`
 
 	// Heartbeat tracks cluster reachability based on the spoke's coordination
 	// Lease (`kapro-heartbeat-<cluster>` in kapro-system). Written exclusively
-	// by the FleetClusterHeartbeatReconciler. The reconciler is the single
+	// by the Cluster heartbeat reconciler. The reconciler is the single
 	// writer of both this substruct AND the ConditionTypeReady condition; it
 	// does NOT write Phase (kapro_controller reads conditions[Ready] and
 	// computes Phase=Unreachable when Ready=False reason=Unreachable).
 	// +optional
-	Heartbeat *FleetClusterHeartbeatStatus `json:"heartbeat,omitempty"`
+	Heartbeat *ClusterHeartbeatStatus `json:"heartbeat,omitempty"`
 }
 
-// FleetClusterHeartbeatStatus surfaces *why* Ready is what it is. Operators
+// ClusterHeartbeatStatus surfaces *why* Ready is what it is. Operators
 // debugging a stuck cluster should be able to answer "how many misses, since
 // when, what reason" from `kubectl get fleetcluster -o yaml` alone.
-type FleetClusterHeartbeatStatus struct {
+type ClusterHeartbeatStatus struct {
 	// ObservedAt is when the reconciler last computed reachability. Always
 	// recent (≤ one reconcile interval). Distinct from LeaseObservedAt, which
 	// is the spoke's last renewal.
@@ -451,11 +451,11 @@ type FleetClusterHeartbeatStatus struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-// FleetClusterBootstrapStatus tracks the one-time bootstrap registration state.
-// Written by the hub FleetClusterBootstrapReconciler — first when it provisions
+// ClusterBootstrapStatus tracks the one-time bootstrap registration state.
+// Written by the hub Cluster bootstrap reconciler — first when it provisions
 // the bootstrap SA + kubeconfig Secret, then again when a matching CSR is
 // approved.
-type FleetClusterBootstrapStatus struct {
+type ClusterBootstrapStatus struct {
 	// Used is true once a matching CSR has been approved and the per-cluster
 	// long-lived RBAC has been created. Enforces one-bootstrap-slot-per-
 	// Cluster: a second CSR matching this slot but with a different

@@ -21,7 +21,7 @@ type PromotionSpec struct {
 	// Either Version or at least one Versions entry must be set.
 	// +optional
 	Versions map[string]string `json:"versions,omitempty"`
-	// PromotionPlans optionally overrides the inline Fleet.spec.plan
+	// Plans optionally overrides the inline Fleet.spec.plan
 	// for this intent. When unset, the controller derives a single plan ref
 	// from the parent Fleet's inline plan.
 	// +kubebuilder:validation:MaxItems=64

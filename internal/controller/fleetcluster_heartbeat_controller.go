@@ -353,7 +353,7 @@ func (r *FleetClusterHeartbeatReconciler) applyDesired(ctx context.Context, fc *
 
 	hb := fc.Status.Heartbeat
 	if hb == nil {
-		hb = &kaprov1alpha2.FleetClusterHeartbeatStatus{}
+		hb = &kaprov1alpha2.ClusterHeartbeatStatus{}
 	}
 	hb.ObservedAt = &nowMeta
 	hb.LeaseObservedAt = desired.LeaseObservedAt

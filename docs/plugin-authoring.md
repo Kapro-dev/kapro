@@ -73,7 +73,7 @@ Plugins are declared with `PluginRegistration`.
 
 ```yaml
 apiVersion: kapro.io/v1alpha1
-kind: PluginRegistration
+kind: Plugin
 metadata:
   name: argocd-actuator
 spec:

@@ -108,7 +108,7 @@ func TestPromotionRunReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetric
 		Status: kaprov1alpha2.PromotionRunStatus{
 			Phase:           kaprov1alpha2.PromotionRunPhaseProgressing,
 			ResolvedVersion: "v1.0.0",
-			PromotionPlanProgress: []kaprov1alpha2.PromotionPlanProgress{
+			PlanProgress: []kaprov1alpha2.PlanProgress{
 				{Name: promotionplanRef, Plan: promotionplanName, Phase: "Progressing"},
 			},
 		},

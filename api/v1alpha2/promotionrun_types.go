@@ -209,8 +209,8 @@ type PlannerResult struct {
 	Message string `json:"message,omitempty"`
 }
 
-// PromotionPlanProgress tracks the execution state of one promotionplan node in a PromotionRun.
-type PromotionPlanProgress struct {
+// PlanProgress tracks the execution state of one promotionplan node in a PromotionRun.
+type PlanProgress struct {
 	// Name matches PlanRef.name.
 	Name string `json:"name"`
 	// Plan is the Plan CRD name.
@@ -251,7 +251,7 @@ type PromotionRunSpec struct {
 	// objects together without creating a synthetic application object.
 	// +optional
 	Versions map[string]string `json:"versions,omitempty"`
-	// PromotionPlans is the DAG of promotionplan nodes.
+	// Plans is the DAG of plan nodes.
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=64
 	PromotionPlans []PlanRef `json:"plans"`
@@ -298,8 +298,8 @@ type PromotionRunStatus struct {
 	ResolvedVersion string `json:"resolvedVersion,omitempty"`
 	StartedAt       string `json:"startedAt,omitempty"`
 	CompletedAt     string `json:"completedAt,omitempty"`
-	// PromotionPlanProgress tracks execution state of each promotionplan node in the DAG.
-	PromotionPlanProgress []PromotionPlanProgress `json:"planProgress,omitempty"`
+	// PlanProgress tracks execution state of each promotionplan node in the DAG.
+	PlanProgress []PlanProgress `json:"planProgress,omitempty"`
 	// Targets is deprecated compatibility state. The authoritative per-target
 	// rollout state lives in child Target objects.
 	Targets []TargetExecutionState `json:"targets,omitempty"`
@@ -481,7 +481,7 @@ type TargetSpec struct {
 	Rollback bool `json:"rollback,omitempty"`
 	// Cancelled is set by the parent PromotionRunReconciler to signal that this
 	// target should stop progressing (e.g., stage halted due to peer failure).
-	// The child PromotionTargetReconciler observes this and transitions to Failed.
+	// The child Target reconciler observes this and transitions to Failed.
 	// This avoids cross-controller status writes — parent owns spec, child owns status.
 	// +optional
 	Cancelled bool `json:"cancelled,omitempty"`
@@ -501,7 +501,7 @@ type TargetStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 	// DecisionTrace stores the audit trail of AI agent and human decisions
 	// for this target's approval gates. Written by the Decision API (webhook
-	// server), never by the PromotionTargetReconciler.
+	// server), never by the Target reconciler.
 	// +optional
 	DecisionTrace *DecisionTrace `json:"decisionTrace,omitempty"`
 }

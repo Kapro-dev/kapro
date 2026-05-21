@@ -95,7 +95,7 @@ spec:
                       Mutating it counts as a re-bootstrap intent (planned: hub resets
                       status.bootstrap; see RE-BOOTSTRAP below).
 
-                   2. The hub FleetClusterBootstrapReconciler provisions a per-cluster
+                   2. The hub Cluster bootstrap reconciler provisions a per-cluster
                       ServiceAccount `kapro-bootstrap-<cluster>` in kapro-system with a
                       narrowly-scoped ClusterRole (CSR-create only, for this signer
                       name). It issues a TokenRequest for that SA (default 1h TTL,
@@ -256,7 +256,7 @@ spec:
 
                   When unset, the hub falls back to the legacy behaviour of looking up
                   a Secret-referenced kubeconfig from cluster annotations — kept for
-                  backwards compatibility while existing FleetClusters migrate.
+                  backwards compatibility while existing Cluster objects migrate.
                 properties:
                   kind:
                     description: Kind selects a registered provider implementation.
@@ -508,7 +508,7 @@ spec:
               delivery:
                 additionalProperties:
                   description: |-
-                    FleetClusterDeliveryStatus is the per-app delivery progress reported by the
+                    ClusterDeliveryStatus is the per-app delivery progress reported by the
                     spoke-side cluster-controller. Written by exactly one writer: the spoke's
                     own delivery loop on its own Cluster (RBAC-locked via resourceNames).
                   properties:
@@ -597,7 +597,7 @@ spec:
                 description: |-
                   Heartbeat tracks cluster reachability based on the spoke's coordination
                   Lease (`kapro-heartbeat-<cluster>` in kapro-system). Written exclusively
-                  by the FleetClusterHeartbeatReconciler. The reconciler is the single
+                  by the Cluster heartbeat reconciler. The reconciler is the single
                   writer of both this substruct AND the ConditionTypeReady condition; it
                   does NOT write Phase (kapro_controller reads conditions[Ready] and
                   computes Phase=Unreachable when Ready=False reason=Unreachable).

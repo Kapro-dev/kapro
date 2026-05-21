@@ -791,7 +791,7 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 			return
 		}
 		trustLevel = string(pd.EffectiveMode)
-		if pd.EffectiveMode == kaprov1alpha2.AgentPolicyModeRecommend {
+		if pd.EffectiveMode == kaprov1alpha2.PolicyModeRecommend {
 			effectiveDecision = "Recommended"
 		}
 		if pd.RequireHumanCosign && req.Decision == "Approve" {

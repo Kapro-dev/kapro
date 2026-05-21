@@ -41,17 +41,17 @@ kubectl apply -f examples/quickstart/kapro.yaml
 Expected:
 
 ```bash
-kubectl get backendprofiles,kaproes,promotionplans
+kubectl get backends,fleets,plans
 ```
 
 shows one backend profile, one Kapro fleet object, and one generated promotion
-plan. The example `Kapro` also generates two synthetic `FleetCluster` objects
+plan. The example `Kapro` also generates two synthetic `Cluster` objects
 from `spec.clusters`.
 
 ## 3. Add Or Confirm Targets
 
 ```bash
-kubectl get fleetclusters
+kubectl get clusters
 ```
 
 You should see the generated `canary-eu` and `prod-eu` targets from
@@ -85,7 +85,7 @@ Look for:
 
 - target phase progression;
 - gate evidence;
-- approval wait state, if the PromotionPlan requires approval;
+- approval wait state, if the Plan requires approval;
 - backend convergence messages.
 
 ## Next

@@ -49,20 +49,20 @@ const (
 	conditionSuspended                = "Suspended"
 )
 
-// PromotionTriggerArtifactObservation is the immutable source artifact selected by a trigger.
-type PromotionTriggerArtifactObservation struct {
+// TriggerArtifactObservation is the immutable source artifact selected by a trigger.
+type TriggerArtifactObservation struct {
 	Tag    string
 	Digest string
 }
 
 // PromotionTriggerResolver resolves the latest matching artifact for a trigger.
 type PromotionTriggerResolver interface {
-	Resolve(ctx context.Context, trigger *kaprov1alpha2.Trigger) (*PromotionTriggerArtifactObservation, error)
+	Resolve(ctx context.Context, trigger *kaprov1alpha2.Trigger) (*TriggerArtifactObservation, error)
 }
 
 // PromotionTriggerVerifier verifies an artifact before Promotion intent is updated.
 type PromotionTriggerVerifier interface {
-	Verify(ctx context.Context, trigger *kaprov1alpha2.Trigger, artifact PromotionTriggerArtifactObservation) error
+	Verify(ctx context.Context, trigger *kaprov1alpha2.Trigger, artifact TriggerArtifactObservation) error
 }
 
 // PromotionTriggerReconciler observes artifact sources and updates guarded Promotions.
@@ -136,7 +136,7 @@ func (r *PromotionTriggerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	version := artifactVersion(&trigger, *artifact)
-	trigger.Status.LastArtifact = &kaprov1alpha2.PromotionTriggerArtifact{
+	trigger.Status.LastArtifact = &kaprov1alpha2.TriggerArtifact{
 		Tag:        artifact.Tag,
 		Digest:     artifact.Digest,
 		Version:    version,
@@ -294,7 +294,7 @@ type OCIPromotionTriggerResolver struct {
 	Client client.Reader
 }
 
-func (r OCIPromotionTriggerResolver) Resolve(ctx context.Context, trigger *kaprov1alpha2.Trigger) (*PromotionTriggerArtifactObservation, error) {
+func (r OCIPromotionTriggerResolver) Resolve(ctx context.Context, trigger *kaprov1alpha2.Trigger) (*TriggerArtifactObservation, error) {
 	if trigger.Spec.Source.Type != "oci" || trigger.Spec.Source.OCI == nil {
 		return nil, fmt.Errorf("only oci promotion trigger sources are supported")
 	}
@@ -341,7 +341,7 @@ func (r OCIPromotionTriggerResolver) Resolve(ctx context.Context, trigger *kapro
 	if err != nil {
 		return nil, fmt.Errorf("resolve OCI tag %q: %w", tag, err)
 	}
-	return &PromotionTriggerArtifactObservation{
+	return &TriggerArtifactObservation{
 		Tag:    tag,
 		Digest: desc.Digest.String(),
 	}, nil
@@ -421,7 +421,7 @@ func normalizeRegistryHost(host string) string {
 // buildTriggeredPromotion constructs the desired Promotion spec for this
 // trigger + observed artifact. The PromotionController owns stamping a
 // PromotionRun under it.
-func buildTriggeredPromotion(trigger *kaprov1alpha2.Trigger, artifact PromotionTriggerArtifactObservation, version, managedName, templateHash string, scheme *runtime.Scheme, now time.Time) (*kaprov1alpha2.Promotion, error) {
+func buildTriggeredPromotion(trigger *kaprov1alpha2.Trigger, artifact TriggerArtifactObservation, version, managedName, templateHash string, scheme *runtime.Scheme, now time.Time) (*kaprov1alpha2.Promotion, error) {
 	tmpl := &trigger.Spec.PromotionTemplate
 	if tmpl.FleetRef == "" {
 		return nil, fmt.Errorf("spec.promotionTemplate.fleetRef is required")
@@ -499,13 +499,13 @@ func triggerTemplateHash(trigger *kaprov1alpha2.Trigger) string {
 // recordRecentArtifact prepends a new artifact observation, dedupes by
 // digest (an A→B→A flip is recorded as separate entries since each carries
 // a fresh ObservedAt), and caps the slice at MaxRecentArtifacts.
-func recordRecentArtifact(list []kaprov1alpha2.PromotionTriggerArtifact, current kaprov1alpha2.PromotionTriggerArtifact) []kaprov1alpha2.PromotionTriggerArtifact {
+func recordRecentArtifact(list []kaprov1alpha2.TriggerArtifact, current kaprov1alpha2.TriggerArtifact) []kaprov1alpha2.TriggerArtifact {
 	if len(list) > 0 && list[0].Digest == current.Digest && list[0].Tag == current.Tag {
 		// Same artifact, same tag — just refresh the latest entry's ObservedAt.
 		list[0] = current
 		return list
 	}
-	out := append([]kaprov1alpha2.PromotionTriggerArtifact{current}, list...)
+	out := append([]kaprov1alpha2.TriggerArtifact{current}, list...)
 	if len(out) > kaprov1alpha2.MaxRecentArtifacts {
 		out = out[:kaprov1alpha2.MaxRecentArtifacts]
 	}
@@ -536,7 +536,7 @@ func managedPromotionName(trigger *kaprov1alpha2.Trigger) (string, error) {
 	return name, nil
 }
 
-func artifactVersion(trigger *kaprov1alpha2.Trigger, artifact PromotionTriggerArtifactObservation) string {
+func artifactVersion(trigger *kaprov1alpha2.Trigger, artifact TriggerArtifactObservation) string {
 	repo := trigger.Spec.Source.OCI.Repository
 	if !strings.HasPrefix(repo, "oci://") {
 		repo = "oci://" + repo

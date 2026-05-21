@@ -153,9 +153,9 @@ func (r *FleetClusterBootstrapReconciler) Reconcile(ctx context.Context, req ctr
 	// remains — operators who remove spec.bootstrap intentionally must clean up
 	// the RBAC themselves (or delete the FleetCluster outright).
 	if fc.Spec.Bootstrap == nil {
-		if containsString(fc.Finalizers, kaprov1alpha2.FleetClusterFinalizer) {
+		if containsString(fc.Finalizers, kaprov1alpha2.ClusterFinalizer) {
 			patch := client.MergeFrom(fc.DeepCopy())
-			fc.Finalizers = removeString(fc.Finalizers, kaprov1alpha2.FleetClusterFinalizer)
+			fc.Finalizers = removeString(fc.Finalizers, kaprov1alpha2.ClusterFinalizer)
 			if err := r.Patch(ctx, fc, patch); err != nil {
 				return ctrl.Result{}, fmt.Errorf("clear finalizer after bootstrap removed: %w", err)
 			}
@@ -164,9 +164,9 @@ func (r *FleetClusterBootstrapReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	// Add finalizer before any side-effecting work so cleanup always runs.
-	if !containsString(fc.Finalizers, kaprov1alpha2.FleetClusterFinalizer) {
+	if !containsString(fc.Finalizers, kaprov1alpha2.ClusterFinalizer) {
 		patch := client.MergeFrom(fc.DeepCopy())
-		fc.Finalizers = append(fc.Finalizers, kaprov1alpha2.FleetClusterFinalizer)
+		fc.Finalizers = append(fc.Finalizers, kaprov1alpha2.ClusterFinalizer)
 		if err := r.Patch(ctx, fc, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("add finalizer: %w", err)
 		}
@@ -224,7 +224,7 @@ func (r *FleetClusterBootstrapReconciler) Reconcile(ctx context.Context, req ctr
 // and per-cluster long-lived RBAC. Then clears the finalizer.
 func (r *FleetClusterBootstrapReconciler) handleDeletion(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
 	log := log.FromContext(ctx).WithValues("fleetcluster", fc.Name)
-	if !containsString(fc.Finalizers, kaprov1alpha2.FleetClusterFinalizer) {
+	if !containsString(fc.Finalizers, kaprov1alpha2.ClusterFinalizer) {
 		return ctrl.Result{}, nil
 	}
 
@@ -238,7 +238,7 @@ func (r *FleetClusterBootstrapReconciler) handleDeletion(ctx context.Context, fc
 	}
 
 	patch := client.MergeFrom(fc.DeepCopy())
-	fc.Finalizers = removeString(fc.Finalizers, kaprov1alpha2.FleetClusterFinalizer)
+	fc.Finalizers = removeString(fc.Finalizers, kaprov1alpha2.ClusterFinalizer)
 	if err := r.Patch(ctx, fc, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("clear finalizer: %w", err)
 	}
@@ -511,7 +511,7 @@ func (r *FleetClusterBootstrapReconciler) markBootstrapUsed(ctx context.Context,
 		}
 		now := metav1.Now()
 		if fresh.Status.Bootstrap == nil {
-			fresh.Status.Bootstrap = &kaprov1alpha2.FleetClusterBootstrapStatus{}
+			fresh.Status.Bootstrap = &kaprov1alpha2.ClusterBootstrapStatus{}
 		}
 		fresh.Status.Bootstrap.Used = true
 		fresh.Status.Bootstrap.UsedAt = &now

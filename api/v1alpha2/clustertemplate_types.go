@@ -18,13 +18,13 @@ import (
 // Cluster carrying:
 //   - ownerReference back to this template (garbage-collection on delete);
 //   - label kapro.io/managed-by=fleetclustertemplate so the reconciler can
-//     identify what it owns and never touch hand-authored FleetClusters;
+//     identify what it owns and never touch hand-authored Cluster objects;
 //   - the spec from spec.template, plus a derived spec.provider.kind matching
 //     the source branch (gcp → gcp-fleet, aws → eks, rhacm → rhacm, etc.).
 //
 // New cloud or platform support adds one Discoverer implementation and one
-// branch on FleetClusterTemplateSource — no new CRD per cloud.
-type FleetClusterTemplateSource struct {
+// branch on ClusterTemplateSource — no new CRD per cloud.
+type ClusterTemplateSource struct {
 	// GCP discovers memberships from GKE Fleet (Hub) API in a project.
 	// Imported clusters get spec.provider.kind=gcp-fleet (Connect Gateway).
 	// +optional
@@ -132,7 +132,7 @@ type StaticClusterEntry struct {
 type ClusterTemplateSpec struct {
 	// Source selects exactly one discovery branch. Mis-set combinations
 	// (none or multiple) are rejected at admission time.
-	Source FleetClusterTemplateSource `json:"source"`
+	Source ClusterTemplateSource `json:"source"`
 
 	// Selector filters the discovered cluster set by labels reported by the
 	// source. Empty selector imports everything the source returns.
@@ -146,12 +146,12 @@ type ClusterTemplateSpec struct {
 	// +optional
 	Interval string `json:"interval,omitempty"`
 
-	// Suspend pauses reconciliation. Existing imported FleetClusters are
+	// Suspend pauses reconciliation. Existing imported Cluster objects are
 	// left untouched.
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
 
-	// Prune deletes imported FleetClusters whose source entry has
+	// Prune deletes imported Cluster objects whose source entry has
 	// disappeared. Default false (conservative) — operator opts into the
 	// spec §3.5 "full lifecycle" intent. Deletion runs the Cluster
 	// finalizer so per-cluster RBAC is cleaned up.
@@ -161,26 +161,26 @@ type ClusterTemplateSpec struct {
 	// Template is applied verbatim to each imported Cluster.
 	// spec.provider.kind is derived from the source branch and ignored
 	// here if set.
-	Template FleetClusterTemplateBody `json:"template"`
+	Template ClusterTemplateBody `json:"template"`
 }
 
-// FleetClusterTemplateBody is the Cluster shape rendered for each
+// ClusterTemplateBody is the Cluster shape rendered for each
 // discovered cluster. Mirrors corev1.PodTemplateSpec layout: metadata
 // (labels/annotations) + spec.
-type FleetClusterTemplateBody struct {
+type ClusterTemplateBody struct {
 	// Metadata holds labels and annotations merged onto each imported
 	// Cluster. Source-reported labels are layered underneath these
 	// (template labels win on conflict).
 	// +optional
-	Metadata FleetClusterTemplateMetadata `json:"metadata,omitempty"`
+	Metadata ClusterTemplateMetadata `json:"metadata,omitempty"`
 	// Spec is the ClusterSpec applied to each imported cluster.
 	// spec.provider.kind is derived from the source branch.
 	Spec ClusterSpec `json:"spec"`
 }
 
-// FleetClusterTemplateMetadata is the subset of ObjectMeta supported in
+// ClusterTemplateMetadata is the subset of ObjectMeta supported in
 // templates. Name is derived from the discovered cluster name.
-type FleetClusterTemplateMetadata struct {
+type ClusterTemplateMetadata struct {
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
 	// +optional
@@ -226,7 +226,7 @@ type ClusterTemplateStatus struct {
 
 // ClusterTemplate is the universal fleet auto-import CRD. One template
 // per cohort: one Fleet/Account/Subscription/ManagedClusterSet × one
-// delivery shape. Imported FleetClusters carry ownerRef + managed-by label.
+// delivery shape. Imported Cluster objects carry ownerRef + managed-by label.
 type ClusterTemplate struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -241,16 +241,16 @@ type ClusterTemplateList struct {
 	Items           []ClusterTemplate `json:"items"`
 }
 
-// FleetClusterTemplateManagedByLabel marks Cluster objects produced
+// ClusterTemplateManagedByLabel marks Cluster objects produced
 // by a ClusterTemplate. The reconciler updates only objects carrying
 // this label — absence means hand-authored, do not touch.
-const FleetClusterTemplateManagedByLabel = "kapro.io/managed-by"
+const ClusterTemplateManagedByLabel = "kapro.io/managed-by"
 
-// FleetClusterTemplateManagedByValue is the value written to
-// FleetClusterTemplateManagedByLabel by the template reconciler.
-const FleetClusterTemplateManagedByValue = "fleetclustertemplate"
+// ClusterTemplateManagedByValue is the value written to
+// ClusterTemplateManagedByLabel by the template reconciler.
+const ClusterTemplateManagedByValue = "clustertemplate"
 
-// FleetClusterTemplateNameLabel records which ClusterTemplate owns
+// ClusterTemplateNameLabel records which ClusterTemplate owns
 // an imported Cluster. Useful for label-selecting all clusters from
 // one template.
-const FleetClusterTemplateNameLabel = "kapro.io/fleet-cluster-template"
+const ClusterTemplateNameLabel = "kapro.io/cluster-template"

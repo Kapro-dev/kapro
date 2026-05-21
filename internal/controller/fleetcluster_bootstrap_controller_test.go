@@ -99,7 +99,7 @@ func TestComputeExpiresAt_DefaultsTo24h(t *testing.T) {
 	fc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "de-prod-01", CreationTimestamp: created},
 		Spec: kaprov1alpha2.ClusterSpec{
-			Bootstrap: &kaprov1alpha2.FleetClusterBootstrapSpec{},
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{},
 		},
 	}
 	r, c := newBootstrapReconciler(t, fc)
@@ -131,7 +131,7 @@ func TestComputeExpiresAt_HonoursTTL(t *testing.T) {
 	fc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "de-prod-01", CreationTimestamp: created},
 		Spec: kaprov1alpha2.ClusterSpec{
-			Bootstrap: &kaprov1alpha2.FleetClusterBootstrapSpec{TTL: "6h"},
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{TTL: "6h"},
 		},
 	}
 	r, c := newBootstrapReconciler(t, fc)
@@ -155,7 +155,7 @@ func TestComputeExpiresAt_CapsAtMax(t *testing.T) {
 	fc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "de-prod-01", CreationTimestamp: created},
 		Spec: kaprov1alpha2.ClusterSpec{
-			Bootstrap: &kaprov1alpha2.FleetClusterBootstrapSpec{TTL: "720h"}, // 30 days, way over max
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{TTL: "720h"}, // 30 days, way over max
 		},
 	}
 	r, c := newBootstrapReconciler(t, fc)
@@ -175,7 +175,7 @@ func TestComputeExpiresAt_RejectsInvalidTTL(t *testing.T) {
 	fc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "de-prod-01"},
 		Spec: kaprov1alpha2.ClusterSpec{
-			Bootstrap: &kaprov1alpha2.FleetClusterBootstrapSpec{TTL: "garbage"},
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{TTL: "garbage"},
 		},
 	}
 	r, _ := newBootstrapReconciler(t, fc)
@@ -193,7 +193,7 @@ func TestComputeExpiresAt_RejectsZeroTTL(t *testing.T) {
 	fc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "de-prod-01"},
 		Spec: kaprov1alpha2.ClusterSpec{
-			Bootstrap: &kaprov1alpha2.FleetClusterBootstrapSpec{TTL: "0s"},
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{TTL: "0s"},
 		},
 	}
 	r, _ := newBootstrapReconciler(t, fc)
@@ -208,7 +208,7 @@ func TestComputeExpiresAt_NoopWhenAlreadySet(t *testing.T) {
 	fc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "de-prod-01"},
 		Spec: kaprov1alpha2.ClusterSpec{
-			Bootstrap: &kaprov1alpha2.FleetClusterBootstrapSpec{ExpiresAt: &already},
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{ExpiresAt: &already},
 		},
 	}
 	r, _ := newBootstrapReconciler(t, fc)
@@ -233,23 +233,23 @@ func TestExpired(t *testing.T) {
 		{
 			name: "past expiresAt + unused = expired",
 			fc: &kaprov1alpha2.Cluster{
-				Spec: kaprov1alpha2.ClusterSpec{Bootstrap: &kaprov1alpha2.FleetClusterBootstrapSpec{ExpiresAt: &past}},
+				Spec: kaprov1alpha2.ClusterSpec{Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{ExpiresAt: &past}},
 			},
 			want: true,
 		},
 		{
 			name: "future expiresAt = not expired",
 			fc: &kaprov1alpha2.Cluster{
-				Spec: kaprov1alpha2.ClusterSpec{Bootstrap: &kaprov1alpha2.FleetClusterBootstrapSpec{ExpiresAt: &future}},
+				Spec: kaprov1alpha2.ClusterSpec{Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{ExpiresAt: &future}},
 			},
 			want: false,
 		},
 		{
 			name: "past expiresAt + used = NOT expired (already registered)",
 			fc: &kaprov1alpha2.Cluster{
-				Spec: kaprov1alpha2.ClusterSpec{Bootstrap: &kaprov1alpha2.FleetClusterBootstrapSpec{ExpiresAt: &past}},
+				Spec: kaprov1alpha2.ClusterSpec{Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{ExpiresAt: &past}},
 				Status: kaprov1alpha2.ClusterStatus{
-					Bootstrap: &kaprov1alpha2.FleetClusterBootstrapStatus{Used: true},
+					Bootstrap: &kaprov1alpha2.ClusterBootstrapStatus{Used: true},
 				},
 			},
 			want: false,
@@ -257,7 +257,7 @@ func TestExpired(t *testing.T) {
 		{
 			name: "no expiresAt set = not expired",
 			fc: &kaprov1alpha2.Cluster{
-				Spec: kaprov1alpha2.ClusterSpec{Bootstrap: &kaprov1alpha2.FleetClusterBootstrapSpec{}},
+				Spec: kaprov1alpha2.ClusterSpec{Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{}},
 			},
 			want: false,
 		},
@@ -323,7 +323,7 @@ func TestReconcile_NoBootstrapSpec_StaleFinalizer(t *testing.T) {
 	fc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       "de-prod-01",
-			Finalizers: []string{kaprov1alpha2.FleetClusterFinalizer},
+			Finalizers: []string{kaprov1alpha2.ClusterFinalizer},
 		},
 		Spec: kaprov1alpha2.ClusterSpec{}, // bootstrap removed
 	}
@@ -337,7 +337,7 @@ func TestReconcile_NoBootstrapSpec_StaleFinalizer(t *testing.T) {
 	if err := c.Get(context.Background(), client.ObjectKey{Name: fc.Name}, got); err != nil {
 		t.Fatalf("re-fetch: %v", err)
 	}
-	if containsString(got.Finalizers, kaprov1alpha2.FleetClusterFinalizer) {
+	if containsString(got.Finalizers, kaprov1alpha2.ClusterFinalizer) {
 		t.Errorf("stale finalizer should be dropped; got %v", got.Finalizers)
 	}
 }
@@ -346,7 +346,7 @@ func TestReconcile_AddsFinalizer(t *testing.T) {
 	fc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "de-prod-01"},
 		Spec: kaprov1alpha2.ClusterSpec{
-			Bootstrap: &kaprov1alpha2.FleetClusterBootstrapSpec{TTL: "1h"},
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{TTL: "1h"},
 		},
 	}
 	r, c := newBootstrapReconciler(t, fc)
@@ -360,7 +360,7 @@ func TestReconcile_AddsFinalizer(t *testing.T) {
 	}
 	got := &kaprov1alpha2.Cluster{}
 	_ = c.Get(context.Background(), client.ObjectKey{Name: fc.Name}, got)
-	if !containsString(got.Finalizers, kaprov1alpha2.FleetClusterFinalizer) {
+	if !containsString(got.Finalizers, kaprov1alpha2.ClusterFinalizer) {
 		t.Errorf("finalizer not added; got %v", got.Finalizers)
 	}
 }
@@ -392,15 +392,15 @@ func TestReconcile_CrashRecovery_ApprovesPendingCSR(t *testing.T) {
 	fc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       clusterName,
-			Finalizers: []string{kaprov1alpha2.FleetClusterFinalizer},
+			Finalizers: []string{kaprov1alpha2.ClusterFinalizer},
 		},
 		Spec: kaprov1alpha2.ClusterSpec{
-			Bootstrap: &kaprov1alpha2.FleetClusterBootstrapSpec{
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{
 				ExpiresAt: &metav1.Time{Time: time.Now().Add(1 * time.Hour)},
 			},
 		},
 		Status: kaprov1alpha2.ClusterStatus{
-			Bootstrap: &kaprov1alpha2.FleetClusterBootstrapStatus{
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapStatus{
 				Used:                true,
 				UsedAt:              &usedAt,
 				IssuedCredentialFor: clusterName,
@@ -445,15 +445,15 @@ func TestProcessCSRsForCluster_RecoversFromCrashMidApprove(t *testing.T) {
 	fc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       clusterName,
-			Finalizers: []string{kaprov1alpha2.FleetClusterFinalizer},
+			Finalizers: []string{kaprov1alpha2.ClusterFinalizer},
 		},
 		Spec: kaprov1alpha2.ClusterSpec{
-			Bootstrap: &kaprov1alpha2.FleetClusterBootstrapSpec{
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{
 				ExpiresAt: &metav1.Time{Time: time.Now().Add(1 * time.Hour)},
 			},
 		},
 		Status: kaprov1alpha2.ClusterStatus{
-			Bootstrap: &kaprov1alpha2.FleetClusterBootstrapStatus{
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapStatus{
 				Used:                true,
 				UsedAt:              &usedAt,
 				IssuedCredentialFor: clusterName,
@@ -505,7 +505,7 @@ func TestProcessCSRsForCluster_SkipsFinalizedCSRs(t *testing.T) {
 	fc := &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: clusterName},
 		Spec: kaprov1alpha2.ClusterSpec{
-			Bootstrap: &kaprov1alpha2.FleetClusterBootstrapSpec{
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{
 				ExpiresAt: &metav1.Time{Time: time.Now().Add(1 * time.Hour)},
 			},
 		},
