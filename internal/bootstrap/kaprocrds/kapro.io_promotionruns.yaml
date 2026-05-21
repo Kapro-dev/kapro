@@ -72,19 +72,19 @@ spec:
                 description: Plans is the DAG of plan nodes.
                 items:
                   description: |-
-                    PlanRef is one node in the PromotionRun's promotionplan DAG.
-                    Multiple promotionplans can run in parallel; DependsOn declares ordering between them.
+                    PlanRef is one node in the PromotionRun's plan DAG.
+                    Multiple plans can run in parallel; DependsOn declares ordering between them.
                   properties:
                     dependsOn:
-                      description: DependsOn lists promotionplan node names that must
-                        reach Complete before this one starts.
+                      description: DependsOn lists plan node names that must reach
+                        Complete before this one starts.
                       items:
                         type: string
                       maxItems: 64
                       type: array
                     name:
-                      description: Name uniquely identifies this promotionplan node
-                        within the PromotionRun.
+                      description: Name uniquely identifies this plan node within
+                        the PromotionRun.
                       type: string
                     plan:
                       description: Plan is the name of the Plan CRD to execute.
@@ -239,10 +239,10 @@ spec:
               phase:
                 type: string
               planProgress:
-                description: PlanProgress tracks execution state of each promotionplan
-                  node in the DAG.
+                description: PlanProgress tracks execution state of each plan node
+                  in the DAG.
                 items:
-                  description: PlanProgress tracks the execution state of one promotionplan
+                  description: PlanProgress tracks the execution state of one plan
                     node in a PromotionRun.
                   properties:
                     activeStage:
@@ -261,7 +261,7 @@ spec:
                       format: int64
                       type: integer
                     phase:
-                      description: Phase is the current execution state of this promotionplan
+                      description: Phase is the current execution state of this plan
                         node.
                       enum:
                       - Pending
@@ -274,12 +274,12 @@ spec:
                       type: string
                     stageProgress:
                       description: StageProgress summarises the state of each stage
-                        in this promotionplan.
+                        in this plan.
                       items:
                         description: |-
-                          StageProgress tracks the execution state of one Stage within a promotionplan.
+                          StageProgress tracks the execution state of one Stage within a plan.
                           Designed to render well in k9s describe view — operators see per-stage
-                          progress like CI promotionplan steps.
+                          progress like CI plan steps.
                         properties:
                           completedAt:
                             description: CompletedAt is when all targets in this stage
@@ -1354,7 +1354,7 @@ spec:
                       type: string
                     planRef:
                       description: |-
-                        PlanRef is the logical promotionplan reference name from PromotionRun.spec.promotionPlans[i].name.
+                        PlanRef is the logical plan reference name from PromotionRun.spec.plans[i].name.
                         Used to disambiguate when the same Plan CRD is referenced multiple times.
                       type: string
                     previousVersion:

@@ -19,7 +19,7 @@ import (
 // non-empty slug, then the .yaml extension. Anchored at both ends.
 var plansFileRe = regexp.MustCompile(`^[0-9]{2}-[a-z0-9][a-z0-9-]*\.yaml$`)
 
-func TestEveryPlanParsesAsPromotionPlan(t *testing.T) {
+func TestEveryPlanParsesAsPlan(t *testing.T) {
 	matches, err := filepath.Glob("*.yaml")
 	if err != nil {
 		t.Fatalf("glob: %v", err)

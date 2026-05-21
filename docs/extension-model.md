@@ -27,16 +27,16 @@ This document defines the target architecture for those contracts.
 | PromotionRun planner | `pkg/planner` and KPI proto | Filter, score, reserve, and permit rollout targets before binding. | In-process framework; KPI API preview |
 | Lifecycle events | CloudEvents webhook payloads | Publish PromotionRun, stage, gate, approval, and target events. | Implemented |
 | Notifications | Inline gate/stage notification settings | Route gate events without adding a separate public notification API. | Runtime path |
-| Plugin gateway | KAI/KGI/KPI proto contracts and `PluginRegistration` | Register and probe out-of-process actuators, gates, and planner plugins. | Hot-loaded actuator, gate, and planner dispatch preview |
-| PromotionTrigger | CRD API | Define safe autonomous Promotion creation/update policy. | OCI controller preview |
+| Plugin gateway | KAI/KGI/KPI proto contracts and `Plugin` | Register and probe out-of-process actuators, gates, and planner plugins. | Hot-loaded actuator, gate, and planner dispatch preview |
+| Trigger | CRD API | Define safe autonomous Promotion creation/update policy. | OCI controller preview |
 
 ## Core Boundary
 
 Kapro core is responsible for:
 
-- resolving `PromotionPlan` stages and dependencies;
-- selecting `FleetCluster` targets;
-- creating and updating `PromotionTarget` state;
+- resolving `Plan` stages and dependencies;
+- selecting `Cluster` targets;
+- creating and updating `Target` state;
 - evaluating retries, timeouts, failure policy, and rollback intent;
 - recording status and Kubernetes Events;
 - emitting lifecycle notifications.
@@ -88,7 +88,7 @@ Gate results are normalized:
 | Running | The gate is still evaluating. |
 | Inconclusive | The gate could not make a final decision yet. |
 
-Gate state is persisted on `PromotionTarget` status. A controller restart must not
+Gate state is persisted on `Target` status. A controller restart must not
 lose gate progress.
 
 Gate results may include structured evidence. Evidence records the observed
@@ -141,7 +141,7 @@ surface for out-of-process actuator, gate, and planner plugins:
 - `spec/kai/v1alpha1/actuator.proto`
 - `spec/kgi/v1alpha1/gate.proto`
 - `spec/kpi/v1alpha1/planner.proto`
-- `PluginRegistration`
+- `Plugin`
 
 ```text
 Kapro controller
@@ -151,7 +151,7 @@ Kapro controller
     -> external planner plugin
 ```
 
-Runtime registration through `PluginRegistration` is an opt-in API preview.
+Runtime registration through `Plugin` is an opt-in API preview.
 When `KAPRO_ENABLE_PLUGIN_GATEWAY=true`, the operator loads ready registrations
 with fresh observed generation into the actuator, gate, and planner registries.
 Registration changes are hot-loaded after readiness probes succeed; stale,
@@ -164,7 +164,7 @@ API pieces:
 | KAI proto | Language-neutral actuator contract. |
 | KGI proto | Language-neutral gate contract. |
 | KPI proto | Language-neutral planner contract for filtering and ordering targets. |
-| PluginRegistration CRD | Declarative registration of external plugin endpoints. |
+| Plugin CRD | Declarative registration of external plugin endpoints. |
 | Conformance harnesses | Base checks external plugin authors can run. |
 | PluginGateway | Runtime boundary for enabled contracts, timeout handling, retries, and error normalization. |
 
@@ -184,11 +184,11 @@ handling, RBAC, and tenancy rules.
 Plugin readiness follows the compatibility matrix in
 `docs/plugin-authoring.md`. Unsupported or missing KAI/KGI/KPI contract
 versions are reported as `Ready=False` and `Compatible=False` on
-`PluginRegistration` status and are not loaded for runtime dispatch.
+`Plugin` status and are not loaded for runtime dispatch.
 
-## PromotionTrigger Target
+## Trigger Target
 
-`PromotionTrigger` is the API boundary for autonomous Promotion creation and
+`Trigger` is the API boundary for autonomous Promotion creation and
 updates. The CRD defines safe source observation and Promotion update policy.
 The controller observes OCI registries and updates digest-pinned Promotion
 intent after safeguards pass; the Promotion controller then stamps
@@ -197,7 +197,7 @@ intent after safeguards pass; the Promotion controller then stamps
 The safe flow is:
 
 ```text
-artifact source -> PromotionTrigger -> suspended Promotion -> PromotionRun attempt -> PromotionPlan
+artifact source -> Trigger -> suspended Promotion -> PromotionRun attempt -> Plan
 ```
 
 Required safeguards:
@@ -222,12 +222,12 @@ The PromotionRun planner is the target-selection boundary inside `PromotionRunRe
 It follows Kubernetes scheduler-style phases:
 
 ```text
-PreFilter -> Filter -> Score -> NormalizeScore -> Reserve -> Permit -> bind PromotionTarget
+PreFilter -> Filter -> Score -> NormalizeScore -> Reserve -> Permit -> bind Target
 ```
 
 Kapro keeps ownership of PromotionRun state. Planner plugins can influence which
 targets are eligible and in what order they are bound, but they do not create
-or mutate `PromotionTarget` objects directly.
+or mutate `Target` objects directly.
 
 Built-in planning behavior:
 
@@ -236,12 +236,12 @@ Built-in planning behavior:
 | Readiness filter | Filter | Skips targets that explicitly report `Ready=False`. |
 | Active PromotionRun filter | Filter | Skips targets already processing a different PromotionRun. |
 | Deterministic ordering | Score | Keeps stable name-based ordering when scores tie. |
-| Stage strategy | Bind | Enforces `Stage.spec.strategy.maxParallel` before creating new `PromotionTarget` entries. |
+| Stage strategy | Bind | Enforces `Stage.spec.strategy.maxParallel` before creating new `Target` entries. |
 
 `Stage.status.plannerResults` records skip and defer reasons so operators can
 see why a target was not bound in the current planning cycle. External planner
 plugins can filter, defer, and score targets, but Kapro still owns
-`PromotionTarget` creation and PromotionRun state.
+`Target` creation and PromotionRun state.
 
 ## CRD Rule
 
@@ -254,8 +254,8 @@ Target CRD posture:
 | API surface | Posture |
 |---|---|
 | Existing promotion, promotion plan, source, unit, cluster, target, approval, backend, trigger, and policy CRDs | Core API |
-| `PluginRegistration` | API preview; opt-in hot-loaded runtime registration |
-| `PromotionTrigger` | API preview with ADR-002 safeguards; OCI controller preview |
+| `Plugin` | API preview; opt-in hot-loaded runtime registration |
+| `Trigger` | API preview with ADR-002 safeguards; OCI controller preview |
 | Notification provider/policy | Add only when shared credential ownership requires it |
 | Metric definition | Add only when metric reuse needs independent ownership |
 | Gate template | Keep inline until it needs independent lifecycle |

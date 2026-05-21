@@ -604,10 +604,10 @@ promote_git_mapping_to_v2() {
 }
 
 apply_kapro_rollout() {
-  echo "creating Kapro FleetCluster and PromotionPlan"
+  echo "creating Kapro Cluster and Plan"
   cat <<YAML | "${KUBECTL[@]}" apply -f -
-apiVersion: kapro.io/v1alpha1
-kind: FleetCluster
+apiVersion: kapro.io/v1alpha2
+kind: Cluster
 metadata:
   name: argo-e2e
   labels:
@@ -626,8 +626,8 @@ spec:
       applicationSelector.yaml-appset: kapro.io/unit=yaml-appset
       versionField.multi-source: spec.sources[0].targetRevision
 ---
-apiVersion: kapro.io/v1alpha1
-kind: PromotionPlan
+apiVersion: kapro.io/v1alpha2
+kind: Plan
 metadata:
   name: argo-e2e
 spec:
@@ -638,13 +638,13 @@ spec:
           kapro.io/e2e: argo
 YAML
 
-  "${KUBECTL[@]}" patch fleetcluster argo-e2e --subresource=status --type=merge \
+  "${KUBECTL[@]}" patch cluster argo-e2e --subresource=status --type=merge \
     -p '{"status":{"health":{"allWorkloadsReady":true,"readyWorkloads":5,"totalWorkloads":5,"message":"Argo E2E fixture reports ready"}}}'
 
   echo "creating Kapro PromotionRun"
   cat <<YAML | "${KUBECTL[@]}" apply -f -
 ---
-apiVersion: kapro.io/v1alpha1
+apiVersion: kapro.io/v1alpha2
 kind: PromotionRun
 metadata:
   name: argo-e2e
@@ -655,9 +655,9 @@ spec:
     root-child: v2
     multi-source: v2
     yaml-appset: v2
-  promotionPlans:
+  plans:
     - name: argo
-      promotionPlan: argo-e2e
+      plan: argo-e2e
   timeout: 10m
 YAML
 }
@@ -695,26 +695,26 @@ wait_for_promotionrun_complete() {
     fi
     if [ "${phase}" = "Failed" ]; then
       "${KUBECTL[@]}" get promotionrun argo-e2e -o yaml || true
-      "${KUBECTL[@]}" get promotiontargets -o yaml || true
+      "${KUBECTL[@]}" get targets -o yaml || true
       echo "Kapro PromotionRun failed" >&2
       exit 1
     fi
     sleep 2
   done
   "${KUBECTL[@]}" get promotionrun argo-e2e -o yaml || true
-  "${KUBECTL[@]}" get promotiontargets -o yaml || true
+  "${KUBECTL[@]}" get targets -o yaml || true
   echo "timed out waiting for Kapro PromotionRun to complete" >&2
   exit 1
 }
 
 assert_backend_objects_reported() {
   local names count
-  names="$("${KUBECTL[@]}" get promotiontargets -o jsonpath='{range .items[*]}{.status.backendObjects[*].name}{"\n"}{end}' || true)"
+  names="$("${KUBECTL[@]}" get targets -o jsonpath='{range .items[*]}{.status.backendObjects[*].name}{"\n"}{end}' || true)"
   count="$(printf "%s\n" "${names}" | tr ' ' '\n' | grep -E 'checkout-(plain|appset-prod|root-child|multi-source|yaml-appset-prod)' || true)"
   count="$(printf "%s\n" "${count}" | sed '/^$/d' | wc -l | tr -d ' ')"
   if [ "${count}" -lt 5 ]; then
-    "${KUBECTL[@]}" get promotiontargets -o yaml || true
-    echo "expected PromotionTarget.status.backendObjects to include all five Argo Applications" >&2
+    "${KUBECTL[@]}" get targets -o yaml || true
+    echo "expected Target.status.backendObjects to include all five Argo Applications" >&2
     exit 1
   fi
 }
@@ -773,7 +773,7 @@ run() {
 status() {
   echo
   echo "Kapro resources"
-  "${KUBECTL[@]}" get backendprofiles,promotionsources,fleetclusters,promotionplans,promotionruns,promotiontargets -o wide || true
+  "${KUBECTL[@]}" get backends,sources,clusters,plans,promotionruns,targets -o wide || true
   echo
   echo "Argo Applications"
   "${KUBECTL[@]}" -n "${ARGO_NAMESPACE}" get applications,applicationsets -o wide || true

@@ -33,14 +33,14 @@ func TestGraphIncludesBackendProfiles(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), `"backendProfiles"`) {
-		t.Fatalf("graph response missing backendProfiles: %s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), `"backends"`) {
+		t.Fatalf("graph response missing backends: %s", rec.Body.String())
 	}
 }
 
 func TestCreatePromotion(t *testing.T) {
 	c := testClient(t)
-	body := bytes.NewBufferString(`{"name":"checkout-1","fleetRef":"checkout","version":"1.2.3","promotionPlans":[{"name":"main","plan":"checkout"}]}`)
+	body := bytes.NewBufferString(`{"name":"checkout-1","fleetRef":"checkout","version":"1.2.3","plans":[{"name":"main","plan":"checkout"}]}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/promotions", body)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
@@ -247,7 +247,7 @@ func TestGraphRejectsUnknownResource(t *testing.T) {
 
 func TestCreatePromotionRejectsUnknownFields(t *testing.T) {
 	c := testClient(t)
-	body := bytes.NewBufferString(`{"name":"checkout-1","fleetRef":"checkout","version":"1.2.3","promotionPlans":[{"name":"main","plan":"checkout"}],"extra":true}`)
+	body := bytes.NewBufferString(`{"name":"checkout-1","fleetRef":"checkout","version":"1.2.3","plans":[{"name":"main","plan":"checkout"}],"extra":true}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/promotions", body)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()

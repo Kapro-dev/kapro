@@ -74,7 +74,7 @@ type StageStrategySpec struct {
 // fleet subset. Add a cluster to a wave by labeling its Cluster object;
 // no Plan changes required.
 type Stage struct {
-	// Name uniquely identifies this stage within the promotionplan.
+	// Name uniquely identifies this stage within the plan.
 	Name string `json:"name"`
 	// Selector matches the target clusters that belong to this stage.
 	Selector metav1.LabelSelector `json:"selector"`
@@ -95,7 +95,7 @@ type Stage struct {
 	// +optional
 	Gate *GatePolicySpec `json:"gate,omitempty"`
 	// OnFailure controls what Fleet does when this stage fails.
-	// halt (default): stop the promotionplan, mark PromotionRun Failed.
+	// halt (default): stop the plan, mark PromotionRun Failed.
 	// skip: continue to downstream stages.
 	// rollback: stop AND revert all targets promoted by earlier stages.
 	// +kubebuilder:default=halt
@@ -104,7 +104,7 @@ type Stage struct {
 }
 
 // PlanSpec defines a reusable progressive delivery path as a flat DAG of stages.
-// A Plan is a template — referenced by PromotionRun.spec.promotionplans[].
+// A Plan is a template referenced by PromotionRun.spec.plans[].
 // Uniqueness and dependency-reference validation is enforced by the admission webhook,
 // which can perform DAG checks without the quadratic CEL cost budget constraints.
 type PlanSpec struct {
@@ -127,7 +127,7 @@ type PlanSpec struct {
 
 // Plan defines a reusable progressive delivery path as a DAG of stages.
 // Each stage selects a fleet subset via label selectors and optionally gates
-// advancement with a GatePolicy. Referenced by PromotionRun.spec.promotionplans[].
+// advancement with a GatePolicy. Referenced by PromotionRun.spec.plans[].
 // Plan is a pure template — it has no controller, no status, no reconciler.
 // Validation is enforced by the admission webhook. Execution state lives in PromotionRun.
 type Plan struct {
@@ -145,22 +145,22 @@ type PlanList struct {
 
 // ---- PromotionRun ----------------------------------------------------------------
 
-// PlanRef is one node in the PromotionRun's promotionplan DAG.
-// Multiple promotionplans can run in parallel; DependsOn declares ordering between them.
+// PlanRef is one node in the PromotionRun's plan DAG.
+// Multiple plans can run in parallel; DependsOn declares ordering between them.
 type PlanRef struct {
-	// Name uniquely identifies this promotionplan node within the PromotionRun.
+	// Name uniquely identifies this plan node within the PromotionRun.
 	Name string `json:"name"`
 	// Plan is the name of the Plan CRD to execute.
 	Plan string `json:"plan"`
-	// DependsOn lists promotionplan node names that must reach Complete before this one starts.
+	// DependsOn lists plan node names that must reach Complete before this one starts.
 	// +optional
 	// +kubebuilder:validation:MaxItems=64
 	DependsOn []string `json:"dependsOn,omitempty"`
 }
 
-// StageProgress tracks the execution state of one Stage within a promotionplan.
+// StageProgress tracks the execution state of one Stage within a plan.
 // Designed to render well in k9s describe view — operators see per-stage
-// progress like CI promotionplan steps.
+// progress like CI plan steps.
 type StageProgress struct {
 	// Name is the stage name from Plan.spec.stages[].name.
 	Name string `json:"name"`
@@ -209,7 +209,7 @@ type PlannerResult struct {
 	Message string `json:"message,omitempty"`
 }
 
-// PlanProgress tracks the execution state of one promotionplan node in a PromotionRun.
+// PlanProgress tracks the execution state of one plan node in a PromotionRun.
 type PlanProgress struct {
 	// Name matches PlanRef.name.
 	Name string `json:"name"`
@@ -219,14 +219,14 @@ type PlanProgress struct {
 	// PromotionRun. If the referenced Plan changes while the run is in
 	// flight, the controller fails the run instead of silently switching DAGs.
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-	// Phase is the current execution state of this promotionplan node.
+	// Phase is the current execution state of this plan node.
 	// +kubebuilder:validation:Enum=Pending;Progressing;Complete;Failed
 	Phase string `json:"phase,omitempty"`
 	// ActiveStage is the name of the currently progressing stage (or the last completed one).
 	// Gives operators a quick "where are we?" without expanding StageProgress.
 	// +optional
 	ActiveStage string `json:"activeStage,omitempty"`
-	// StageProgress summarises the state of each stage in this promotionplan.
+	// StageProgress summarises the state of each stage in this plan.
 	StageProgress []StageProgress `json:"stageProgress,omitempty"`
 }
 
@@ -298,7 +298,7 @@ type PromotionRunStatus struct {
 	ResolvedVersion string `json:"resolvedVersion,omitempty"`
 	StartedAt       string `json:"startedAt,omitempty"`
 	CompletedAt     string `json:"completedAt,omitempty"`
-	// PlanProgress tracks execution state of each promotionplan node in the DAG.
+	// PlanProgress tracks execution state of each plan node in the DAG.
 	PlanProgress []PlanProgress `json:"planProgress,omitempty"`
 	// Targets is deprecated compatibility state. The authoritative per-target
 	// rollout state lives in child Target objects.
@@ -348,7 +348,7 @@ type TargetExecutionState struct {
 	PromotionRunRef string `json:"runRef,omitempty"`
 	// Target is the target cluster name.
 	Target string `json:"target"`
-	// PlanRef is the logical promotionplan reference name from PromotionRun.spec.promotionPlans[i].name.
+	// PlanRef is the logical plan reference name from PromotionRun.spec.plans[i].name.
 	// Used to disambiguate when the same Plan CRD is referenced multiple times.
 	PlanRef string `json:"planRef,omitempty"`
 	// Plan is the Plan CRD name this entry belongs to.
@@ -460,7 +460,7 @@ type TargetSpec struct {
 	PromotionRunRef string `json:"runRef"`
 	// Target is the target cluster name.
 	Target string `json:"target"`
-	// PlanRef is the logical promotionplan reference name from PromotionRun.spec.promotionPlans[i].name.
+	// PlanRef is the logical plan reference name from PromotionRun.spec.plans[i].name.
 	PlanRef string `json:"planRef,omitempty"`
 	// Plan is the Plan CRD name this entry belongs to.
 	Plan string `json:"plan"`
@@ -510,9 +510,9 @@ type TargetStatus struct {
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=relt,categories=kapro-all
-// +kubebuilder:printcolumn:name="PromotionRun",type=string,JSONPath=`.spec.promotionRunRef`
+// +kubebuilder:printcolumn:name="PromotionRun",type=string,JSONPath=`.spec.runRef`
 // +kubebuilder:printcolumn:name="Target",type=string,JSONPath=`.spec.target`
-// +kubebuilder:printcolumn:name="Plan",type=string,JSONPath=`.spec.promotionPlanRef`
+// +kubebuilder:printcolumn:name="Plan",type=string,JSONPath=`.spec.planRef`
 // +kubebuilder:printcolumn:name="Stage",type=string,JSONPath=`.spec.stage`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.spec.version`
@@ -603,6 +603,6 @@ const (
 	TargetPhaseConverged       TargetPhase = "Converged"
 	TargetPhaseFailed          TargetPhase = "Failed"
 	// TargetPhaseSkipped means the target was bypassed because onFailure=continue was set
-	// on a gate policy. A skipped target does not block subsequent targets in the promotionplan.
+	// on a gate policy. A skipped target does not block subsequent targets in the plan.
 	TargetPhaseSkipped TargetPhase = "Skipped"
 )

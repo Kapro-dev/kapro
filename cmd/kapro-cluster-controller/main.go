@@ -127,7 +127,7 @@ func loadConfig() (*Config, error) {
 		DeliveryInterval:          envDurationOrDefault("KAPRO_DELIVERY_INTERVAL", 30*time.Second),
 	}
 
-	flag.StringVar(&cfg.ClusterName, "cluster-name", cfg.ClusterName, "FleetCluster name this spoke registers as (env: KAPRO_CLUSTER_NAME)")
+	flag.StringVar(&cfg.ClusterName, "cluster-name", cfg.ClusterName, "Cluster name this spoke registers as (env: KAPRO_CLUSTER_NAME)")
 	flag.StringVar(&cfg.HubAPIURL, "hub-url", cfg.HubAPIURL, "Hub kube-apiserver URL (env: KAPRO_HUB_URL)")
 	flag.StringVar(&cfg.BootstrapKubeconfigPath, "bootstrap-kubeconfig", cfg.BootstrapKubeconfigPath, "Path to bootstrap kubeconfig from hub (env: KAPRO_BOOTSTRAP_KUBECONFIG_PATH)")
 	opts := zap.Options{Development: true}

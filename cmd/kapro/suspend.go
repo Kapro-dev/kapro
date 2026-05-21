@@ -26,7 +26,7 @@ func newSuspendCmd() *cobra.Command {
 
 The controller stops stamping new PromotionRun attempts and any in-flight
 PromotionRun's FSM advance is halted at its current phase. Existing
-PromotionTarget objects keep their state; nothing is rolled back.
+Target objects keep their state; nothing is rolled back.
 
 Use kapro resume to unpause.
 

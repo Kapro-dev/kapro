@@ -1,6 +1,6 @@
 {
   "annotations": {"list": []},
-  "description": "Kapro Promotion lifecycle hooks + CloudEvents sink + FleetCluster health. Pair with kapro-operations-dashboard.json for full coverage.",
+  "description": "Kapro Promotion lifecycle hooks + CloudEvents sink + Cluster health. Pair with kapro-operations-dashboard.json for full coverage.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
@@ -89,7 +89,7 @@
       "id": 8,
       "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
       "targets": [{"expr": "kapro_fleetcluster_heartbeat_misses", "legendFormat": "{{cluster}}", "refId": "A"}],
-      "title": "FleetCluster Heartbeat Misses (current)",
+      "title": "Cluster Heartbeat Misses (current)",
       "type": "timeseries"
     },
     {
@@ -102,7 +102,7 @@
         {"expr": "sum(rate(kapro_fleetcluster_unreachable_transitions_total[5m]))", "legendFormat": "→ unreachable", "refId": "A"},
         {"expr": "sum(rate(kapro_fleetcluster_recovered_transitions_total[5m]))", "legendFormat": "→ recovered", "refId": "B"}
       ],
-      "title": "FleetCluster Reachability Transitions",
+      "title": "Cluster Reachability Transitions",
       "type": "timeseries"
     },
     {

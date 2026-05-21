@@ -492,9 +492,9 @@ func newGetTargetsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "targets",
 		Short: "List target cluster rollout status across all PromotionRuns",
-		Long: `List target cluster rollout entries from PromotionTarget objects.
+		Long: `List target cluster rollout entries from Target objects.
 
-PromotionTarget is the authoritative per-target execution state store.`,
+Target is the authoritative per-target execution state store.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runGetTargets(cmd.Context(), phase, kubeconfig)
 		},
@@ -1073,7 +1073,7 @@ func runPromotionRunCreate(ctx context.Context, name, version string, versionPai
 	}
 	promotionplanNames := make([]string, len(promotionplans))
 	copy(promotionplanNames, promotionplans)
-	fmt.Printf("   PromotionPlans: %s\n", strings.Join(promotionplanNames, ", "))
+	fmt.Printf("   Plans:     %s\n", strings.Join(promotionplanNames, ", "))
 	if len(scope) > 0 {
 		fmt.Printf("   Scope:     %s\n", strings.Join(scope, ", "))
 	}

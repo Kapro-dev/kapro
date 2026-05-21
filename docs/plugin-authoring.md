@@ -9,7 +9,7 @@ Kapro plugins implement one narrow extension contract:
 Built-in actuators, gates, and planners remain the default execution path.
 External plugin runtime registration is an API preview and is enabled explicitly
 with `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. When enabled, the operator registers
-ready actuator, gate, and planner `PluginRegistration` objects after readiness
+ready actuator, gate, and planner `Plugin` objects after readiness
 probes succeed. Later readiness changes hot-load updated registrations and
 unload registrations that become stale, incompatible, or deleted.
 
@@ -69,10 +69,10 @@ contracts.
 
 ## Registration
 
-Plugins are declared with `PluginRegistration`.
+Plugins are declared with `Plugin`.
 
 ```yaml
-apiVersion: kapro.io/v1alpha1
+apiVersion: kapro.io/v1alpha2
 kind: Plugin
 metadata:
   name: argocd-actuator
@@ -84,12 +84,12 @@ spec:
   timeout: 10s
 ```
 
-`PluginRegistration` is an API preview. Runtime use requires
+`Plugin` is an API preview. Runtime use requires
 `KAPRO_ENABLE_PLUGIN_GATEWAY=true`. Actuator, gate, and planner
 registrations with `status.ready=true` and fresh `status.observedGeneration` are
 loaded into runtime registries.
 
-Only platform administrators should create or update `PluginRegistration`
+Only platform administrators should create or update `Plugin`
 objects. A plugin endpoint can influence deployment execution or gate decisions,
 so registration is part of the platform trust boundary. Production plugins
 should run behind TLS, use least-privilege Kubernetes RBAC for their backend, and
@@ -101,7 +101,7 @@ When a plugin omits `contract_version` or reports an unsupported version,
 message lists the supported contract versions.
 
 TLS is configured with a namespaced Secret reference because
-`PluginRegistration` is cluster-scoped:
+`Plugin` is cluster-scoped:
 
 ```yaml
 spec:
@@ -173,7 +173,7 @@ A gate plugin implementation example is available in
 `examples/plugins/slo-gate-registration.yaml`. It implements KGI for SLO checks
 using static values or Prometheus instant queries. Reference a runtime gate
 plugin from a gate template with `type: plugin` and `plugin.name` set to
-`PluginRegistration.spec.name`.
+`Plugin.spec.name`.
 
 ## Planner Requirements
 
@@ -182,7 +182,7 @@ A planner plugin must:
 - implement `GetCapabilities` and return `contractVersion: v1alpha1`;
 - return one decision per target it wants to include, skip, or defer;
 - keep responses deterministic for the same request;
-- not create or mutate `PromotionTarget` objects;
+- not create or mutate `Target` objects;
 - respect request context cancellation;
 - leave binding, retries, and failure policy decisions to Kapro.
 
@@ -217,7 +217,7 @@ capacity-aware filtering, ordering, and deferring promotion targets.
 ## Conformance Rules
 
 Run the matching conformance harness in the plugin repository before publishing
-a `PluginRegistration`. Use deterministic inputs, immutable versions, stable
+a `Plugin`. Use deterministic inputs, immutable versions, stable
 target names, and isolated backend resources. Do not point conformance tests at
 shared production systems.
 

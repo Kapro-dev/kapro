@@ -85,8 +85,8 @@
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
       "id": 8,
       "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single", "sort": "none"}},
-      "targets": [{"expr": "rate(kapro_controller_reconciles_total{controller=\"promotion_trigger\",result=\"error\"}[5m])", "legendFormat": "PromotionTrigger errors", "refId": "A"}],
-      "title": "PromotionTrigger Blocked Signal",
+      "targets": [{"expr": "rate(kapro_controller_reconciles_total{controller=\"promotion_trigger\",result=\"error\"}[5m])", "legendFormat": "Trigger errors", "refId": "A"}],
+      "title": "Trigger Blocked Signal",
       "type": "timeseries"
     },
     {

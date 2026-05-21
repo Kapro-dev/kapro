@@ -1,7 +1,7 @@
 # RBAC and Tenancy Model
 
-Kapro uses cluster-scoped CRDs because Promotions, PromotionRuns, fleet clusters, plugin
-registrations, and approvals coordinate work across namespaces and clusters.
+Kapro uses cluster-scoped CRDs because Promotions, PromotionRuns, clusters,
+plugins, and approvals coordinate work across namespaces and clusters.
 Tenancy is expressed through labels, admission policy, and narrowly scoped
 ClusterRoles rather than by making the core APIs namespaced.
 
@@ -10,9 +10,9 @@ ClusterRoles rather than by making the core APIs namespaced.
 | Persona | Owns | Typical permissions |
 |---|---|---|
 | Platform admin | Operator install, CRDs, controller flags, cluster-wide policy | Full admin on `kapro.io/*` and install namespace |
-| Extension admin | External plugin endpoints and plugin credentials | Create/update `PluginRegistration`; read referenced plugin Secrets |
-| Promotion manager | Promotion and trigger policy for one team or app | Create/update `Promotion`, `PromotionTrigger`, `PromotionPlan`, `PromotionSource` with team labels; read `PromotionRun` execution records |
-| Approver | Human gate decisions for assigned teams/environments | Create `Approval`; read relevant `PromotionRun` and `PromotionTarget` status |
+| Extension admin | External plugin endpoints and plugin credentials | Create/update `Plugin`; read referenced plugin Secrets |
+| Promotion manager | Promotion and trigger policy for one team or app | Create/update `Promotion`, `Trigger`, `Plan`, `Source` with team labels; read `PromotionRun` execution records |
+| Approver | Human gate decisions for assigned teams/environments | Create `Approval`; read relevant `PromotionRun` and `Target` status |
 | Auditor | Evidence and status | Read-only on Kapro CRDs and Events |
 
 ## Ownership Labels
@@ -21,9 +21,9 @@ Every user-created Kapro object should carry these labels:
 
 | Label | Required on | Meaning |
 |---|---|---|
-| `kapro.io/team` | `Promotion`, `PromotionTrigger`, `PromotionPlan`, `PromotionSource`, `Approval` | Owning team or service group |
-| `kapro.io/environment` | `FleetCluster`, `PromotionPlan`, `Approval` | Environment boundary such as `dev`, `staging`, `prod` |
-| `kapro.io/plugin-owner` | `PluginRegistration` | Team accountable for the plugin endpoint |
+| `kapro.io/team` | `Promotion`, `Trigger`, `Plan`, `Source`, `Approval` | Owning team or service group |
+| `kapro.io/environment` | `Cluster`, `Plan`, `Approval` | Environment boundary such as `dev`, `staging`, `prod` |
+| `kapro.io/plugin-owner` | `Plugin` | Team accountable for the plugin endpoint |
 
 Admission policy should reject objects that omit the ownership labels in shared
 clusters. Kapro treats these labels as authorization inputs for policy engines
@@ -33,7 +33,7 @@ webhook layer.
 ## Who Can Register Plugins?
 
 Only platform admins and extension admins should create or update
-`PluginRegistration` objects.
+`Plugin` objects.
 
 Plugin registration is a privileged action because an actuator plugin can change
 delivery backend state and a gate plugin can unblock or block production
@@ -43,16 +43,16 @@ required.
 
 Baseline rule:
 
-- `create`, `update`, `patch`, `delete` on `pluginregistrations.kapro.io`:
+- `create`, `update`, `patch`, `delete` on `plugins.kapro.io`:
   extension admins only.
-- `get`, `list`, `watch` on `pluginregistrations.kapro.io`: Promotion managers
+- `get`, `list`, `watch` on `plugins.kapro.io`: Promotion managers
   and auditors may read status.
 - Secrets referenced by `spec.tlsSecretRef`: readable only by the Kapro operator
   service account and the owning extension admin group.
 
-## Who Can Create PromotionTriggers?
+## Who Can Create Triggers?
 
-Promotion managers may create `PromotionTrigger` objects for their own team labels.
+Promotion managers may create `Trigger` objects for their own team labels.
 Production triggers should require platform review before being unsuspended.
 
 Baseline rule:
@@ -64,7 +64,7 @@ Baseline rule:
 - Registry credential Secrets referenced by `spec.source.oci.secretRef` must be
   namespaced and readable only by the Kapro operator service account.
 
-`PromotionTrigger` creates or updates `Promotion` objects through the controller
+`Trigger` creates or updates `Promotion` objects through the controller
 service account; the `Promotion` controller then stamps `PromotionRun`
 attempts. Admission should still validate that generated runtime objects keep
 the same `kapro.io/team` and approved scope as the trigger.
@@ -119,10 +119,10 @@ metadata:
   name: kapro-promotion-manager
 rules:
   - apiGroups: ["kapro.io"]
-    resources: ["promotions", "promotiontriggers", "promotionplans", "promotionsources"]
+    resources: ["promotions", "triggers", "plans", "sources"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: ["kapro.io"]
-    resources: ["promotionruns", "promotiontargets", "fleetclusters", "pluginregistrations"]
+    resources: ["promotionruns", "targets", "clusters", "plugins"]
     verbs: ["get", "list", "watch"]
 ---
 kind: ClusterRole
@@ -133,7 +133,7 @@ rules:
     resources: ["approvals"]
     verbs: ["get", "list", "watch", "create"]
   - apiGroups: ["kapro.io"]
-    resources: ["promotionruns", "promotiontargets"]
+    resources: ["promotionruns", "targets"]
     verbs: ["get", "list", "watch"]
 ---
 kind: ClusterRole
@@ -141,7 +141,7 @@ metadata:
   name: kapro-extension-admin
 rules:
   - apiGroups: ["kapro.io"]
-    resources: ["pluginregistrations"]
+    resources: ["plugins"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ```
 
@@ -156,7 +156,7 @@ promotion writes. The example roles in
 
 | Mode | Required access | Notes |
 |---|---|---|
-| Argo `Observe` | Read Argo cluster Secrets, Applications, and ApplicationSets in the Argo namespace. | No patch rights. Kapro reports selected, skipped, and unsupported objects in `BackendProfile.status`. |
+| Argo `Observe` | Read Argo cluster Secrets, Applications, and ApplicationSets in the Argo namespace. | No patch rights. Kapro reports selected, skipped, and unsupported objects in `Backend.status`. |
 | Argo `Adopt` | Patch selected Applications. | The built-in actuator writes only `spec.source.targetRevision`. ApplicationSet template writes require the ApplicationSet actuator plugin and separate RBAC. |
 | Flux `Observe` | Read GitRepository, OCIRepository, HelmRelease, and Kustomization objects in the Flux namespace. | No patch rights. |
 | Flux `Adopt` | Patch selected HelmRelease or Kustomization objects. | Bind per namespace and pair with admission or policy rules that enforce the team selector. |
@@ -166,7 +166,7 @@ itself. In shared namespaces, combine these roles with admission policy or
 separate namespaces per tenant so `managementPolicy: Adopt` cannot mutate
 another team's backend objects.
 
-For large Argo or Flux control planes, set `BackendProfile.spec.discovery.selector`
+For large Argo or Flux control planes, set `Backend.spec.discovery.selector`
 and keep `spec.discovery.maxObjects` near the default `1000`. If a backend list
 exceeds that bound, Kapro marks discovery not ready instead of importing an
 unreviewable set of objects. Raise the limit only after the selector expresses a

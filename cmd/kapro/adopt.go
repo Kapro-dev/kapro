@@ -8,7 +8,7 @@ func newAdoptCmd() *cobra.Command {
 		Short: "Generate brownfield adoption mappings",
 		Long: `Adoption commands generate observe-first Kapro mappings from
 existing backend-native GitOps repositories. They do not mutate live backend
-objects; switching a BackendProfile to Adopt and applying Git changes are
+objects; switching a Backend to Adopt and applying Git changes are
 separate, explicit steps.`,
 	}
 	cmd.AddCommand(newAdoptArgoCmd())
@@ -22,7 +22,7 @@ func newAdoptArgoCmd() *cobra.Command {
 		Use:   "argo [repo]",
 		Short: "Generate Kapro adoption files for an existing Argo CD repo",
 		Long: `Scans an existing Argo CD Git repository using git ls-files and
-generates BackendProfile, PromotionSource, and reviewable Git adoption mapping
+generates Backend, Source, and reviewable Git adoption mapping
 files. Output starts in observe mode so the generated graph can be reviewed
 before any write permissions are granted.`,
 		Args: cobra.MaximumNArgs(1),
@@ -35,7 +35,7 @@ before any write permissions are granted.`,
 		},
 	}
 	cmd.Flags().StringVar(&opts.OutPath, "out", "kapro-connect", "Output directory for generated Kapro files")
-	cmd.Flags().StringVar(&opts.Name, "name", "argo", "BackendProfile and PromotionSource name")
+	cmd.Flags().StringVar(&opts.Name, "name", "argo", "Backend and Source name")
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "argocd", "Argo CD namespace")
 	cmd.Flags().StringVar(&opts.Selector, "selector", "kapro.io/import=true", "Label selector for imported backend objects")
 	cmd.Flags().StringVar(&opts.Revision, "revision", "", "Git branch/tag/SHA when discovering a remote repository URL")
@@ -54,7 +54,7 @@ func newAdoptFluxCmd() *cobra.Command {
 		Use:   "flux [repo]",
 		Short: "Generate Kapro adoption files for an existing Flux repo",
 		Long: `Scans an existing Flux Git repository using git ls-files and
-generates BackendProfile, PromotionSource, and reviewable Git adoption mapping
+generates Backend, Source, and reviewable Git adoption mapping
 files. Output starts in observe mode so the generated graph can be reviewed
 before any write permissions are granted.`,
 		Args: cobra.MaximumNArgs(1),
@@ -67,7 +67,7 @@ before any write permissions are granted.`,
 		},
 	}
 	cmd.Flags().StringVar(&opts.OutPath, "out", "kapro-connect", "Output directory for generated Kapro files")
-	cmd.Flags().StringVar(&opts.Name, "name", "flux", "BackendProfile and PromotionSource name")
+	cmd.Flags().StringVar(&opts.Name, "name", "flux", "Backend and Source name")
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "flux-system", "Flux namespace")
 	cmd.Flags().StringVar(&opts.Selector, "selector", "kapro.io/import=true", "Label selector for imported backend objects")
 	cmd.Flags().StringSliceVar(&opts.PathPrefixes, "path-prefix", nil, "Repo path prefix to scan (repeatable; default: common Flux/GitOps paths)")

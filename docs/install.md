@@ -56,7 +56,7 @@ helm upgrade --install kapro charts/kapro-operator \
 
 Not recommended for production — the webhook is where multi-tenancy
 ownership labels, controller-only writes to `PromotionRun`, and
-PromotionPlan DAG validity are enforced.
+Plan DAG validity is enforced.
 
 Useful baseline settings:
 
@@ -76,9 +76,9 @@ helm upgrade --install kapro charts/kapro-operator \
 The default install runs the core runtime controllers for promotion orchestration,
 target execution, backend profiles, approvals, triggers, plugins, and cluster
 heartbeat. The core APIs operators should rely on for fleet promotion are:
-`Kapro`, `Promotion`, `PromotionSource`, `BackendProfile`, `Approval`,
-`FleetCluster`, `PromotionPlan`, `PromotionRun`, and `PromotionTarget`.
-Users normally author `Kapro`, `PromotionSource`, and `Promotion`; the
+`Fleet`, `Promotion`, `Source`, `Backend`, `Approval`,
+`Cluster`, `Plan`, `PromotionRun`, and `Target`.
+Users normally author `Fleet`, `Source`, and `Promotion`; the
 controllers generate or update the runtime records.
 
 Preview surfaces are available for early adopters but should be enabled or
@@ -87,9 +87,9 @@ exposed deliberately:
 | Surface | Default | Enablement |
 |---|---|---|
 | Decision API and `AgentPolicy` | Disabled | `decisionAPI.enabled=true` and explicit Kubernetes RBAC. |
-| Plugin gateway runtime dispatch | Disabled | `pluginGateway.enabled=true` plus installed plugin services and `PluginRegistration` objects. |
+| Plugin gateway runtime dispatch | Disabled | `pluginGateway.enabled=true` plus installed plugin services and `Plugin` objects. |
 | Hub Gateway service exposure | Internal only | `hubGateway.service.enabled=true`; place Kubernetes authn/authz or an identity-aware proxy in front of production exposure. |
-| Fleet auto-import providers beyond GCP | Stubbed | Use `FleetClusterTemplate` only for implemented sources; unsupported sources report `SourceNotImplemented`. |
+| Fleet auto-import providers beyond GCP | Stubbed | Use `ClusterTemplate` only for implemented sources; unsupported sources report `SourceNotImplemented`. |
 | Inline gate notifications | Runtime | Notification routing is configured inside gate/stage policy; there is no separate public notification provider/policy CRD. |
 
 ## Optional Decision API
@@ -110,7 +110,7 @@ helm upgrade --install kapro charts/kapro-operator \
 Every Decision API request must include a Kubernetes bearer token. The operator
 validates the token with `TokenReview` and checks each requested action with
 `SubjectAccessReview` before reading fleet state, writing
-`PromotionTarget.status`, or creating `Approval` objects.
+`Target.status`, or creating `Approval` objects.
 
 Read endpoints are bounded. `GET /api/v1/fleet` and
 `GET /api/v1/promotionruns/{name}/context` accept `limit`, `labelSelector`, and
@@ -127,10 +127,10 @@ metadata:
   name: kapro-decision-approver
 rules:
   - apiGroups: ["kapro.io"]
-    resources: ["promotionruns", "promotiontargets"]
+    resources: ["promotionruns", "targets"]
     verbs: ["get"]
   - apiGroups: ["kapro.io"]
-    resources: ["promotiontargets/status"]
+    resources: ["targets/status"]
     verbs: ["update", "patch"]
   - apiGroups: ["kapro.io"]
     resources: ["approvals"]
@@ -256,7 +256,7 @@ Install your plugin service, then apply a registration such as:
 kubectl apply -f examples/plugins/slo-gate-registration.yaml
 ```
 
-The operator probes `PluginRegistration` objects continuously. Ready
+The operator probes `Plugin` objects continuously. Ready
 registrations with a fresh `status.observedGeneration` are hot-loaded into the
 actuator, gate, and planner registries; stale, incompatible, or deleted
 registrations are unloaded without restarting the operator.

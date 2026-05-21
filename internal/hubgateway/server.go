@@ -244,7 +244,7 @@ type CreatePromotionRequest struct {
 	FleetRef       string                  `json:"fleetRef"`
 	Version        string                  `json:"version,omitempty"`
 	Versions       map[string]string       `json:"versions,omitempty"`
-	PromotionPlans []kaprov1alpha2.PlanRef `json:"promotionPlans,omitempty"`
+	PromotionPlans []kaprov1alpha2.PlanRef `json:"plans,omitempty"`
 	Targets        []string                `json:"targets,omitempty"`
 	Timeout        string                  `json:"timeout,omitempty"`
 	Suspended      bool                    `json:"suspended,omitempty"`
@@ -256,8 +256,8 @@ type GraphResponse struct {
 	Clusters         []kaprov1alpha2.Cluster      `json:"clusters"`
 	Promotions       []kaprov1alpha2.Promotion    `json:"promotions"`
 	PromotionRuns    []kaprov1alpha2.PromotionRun `json:"promotionruns"`
-	PromotionTargets []kaprov1alpha2.Target       `json:"promotionTargets"`
-	BackendProfiles  []kaprov1alpha2.Backend      `json:"backendProfiles"`
+	PromotionTargets []kaprov1alpha2.Target       `json:"targets"`
+	BackendProfiles  []kaprov1alpha2.Backend      `json:"backends"`
 	Page             GraphPage                    `json:"page"`
 }
 
@@ -327,7 +327,7 @@ func validateCreatePromotionRequest(req CreatePromotionRequest) error {
 		return fmt.Errorf("fleetRef must be a DNS-1123 subdomain: %s", strings.Join(errs, "; "))
 	}
 	if len(req.PromotionPlans) > 64 {
-		return fmt.Errorf("promotionPlans must contain at most 64 entries")
+		return fmt.Errorf("plans must contain at most 64 entries")
 	}
 	for unit, version := range req.Versions {
 		if unit == "" || version == "" {
@@ -336,13 +336,13 @@ func validateCreatePromotionRequest(req CreatePromotionRequest) error {
 	}
 	for i, p := range req.PromotionPlans {
 		if p.Name == "" || p.Plan == "" {
-			return fmt.Errorf("promotionPlans[%d].name and promotionPlans[%d].plan are required", i, i)
+			return fmt.Errorf("plans[%d].name and plans[%d].plan are required", i, i)
 		}
 		if errs := validation.IsDNS1123Subdomain(p.Name); len(errs) > 0 {
-			return fmt.Errorf("promotionPlans[%d].name must be a DNS-1123 subdomain: %s", i, strings.Join(errs, "; "))
+			return fmt.Errorf("plans[%d].name must be a DNS-1123 subdomain: %s", i, strings.Join(errs, "; "))
 		}
 		if errs := validation.IsDNS1123Subdomain(p.Plan); len(errs) > 0 {
-			return fmt.Errorf("promotionPlans[%d].plan must be a DNS-1123 subdomain: %s", i, strings.Join(errs, "; "))
+			return fmt.Errorf("plans[%d].plan must be a DNS-1123 subdomain: %s", i, strings.Join(errs, "; "))
 		}
 	}
 	if req.Timeout != "" {

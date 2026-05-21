@@ -56,14 +56,14 @@ kubectl get clusters
 
 You should see the generated `canary-eu` and `prod-eu` targets from
 `examples/quickstart/kapro.yaml`. If none appear, the operator is not
-reconciling the `Kapro` object; check the controller logs before creating
+reconciling the `Fleet` object; check the controller logs before creating
 manual test targets. Use the Kind demo for a fully scripted hub/spoke setup.
 
 ## 4. Promote A Version
 
 ```bash
 kapro promote checkout --version v1.2.3
-kubectl get promotions,promotionruns,promotiontargets
+kubectl get promotions,promotionruns,targets
 ```
 
 Expected:
@@ -71,14 +71,14 @@ Expected:
 ```text
 Promotion       created or updated
 PromotionRun    created by the controller
-PromotionTarget created for each selected target
+Target         created for each selected target
 ```
 
 ## 5. Watch The Evidence
 
 ```bash
-kubectl get promotions,promotionruns,promotiontargets -w
-kubectl describe promotiontarget <target-name>
+kubectl get promotions,promotionruns,targets -w
+kubectl describe target <target-name>
 ```
 
 Look for:

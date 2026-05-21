@@ -227,19 +227,19 @@ spec:
                   from the parent Fleet's inline plan.
                 items:
                   description: |-
-                    PlanRef is one node in the PromotionRun's promotionplan DAG.
-                    Multiple promotionplans can run in parallel; DependsOn declares ordering between them.
+                    PlanRef is one node in the PromotionRun's plan DAG.
+                    Multiple plans can run in parallel; DependsOn declares ordering between them.
                   properties:
                     dependsOn:
-                      description: DependsOn lists promotionplan node names that must
-                        reach Complete before this one starts.
+                      description: DependsOn lists plan node names that must reach
+                        Complete before this one starts.
                       items:
                         type: string
                       maxItems: 64
                       type: array
                     name:
-                      description: Name uniquely identifies this promotionplan node
-                        within the PromotionRun.
+                      description: Name uniquely identifies this plan node within
+                        the PromotionRun.
                       type: string
                     plan:
                       description: Plan is the name of the Plan CRD to execute.

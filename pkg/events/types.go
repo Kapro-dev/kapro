@@ -211,7 +211,7 @@ type Event struct {
 	// +optional
 	AttemptName string
 	// Wave is the Plan DAG node name (the value of
-	// PromotionRun.spec.promotionPlans[].name). Set for wave-, stage-,
+	// PromotionRun.spec.plans[].name). Set for wave-, stage-,
 	// and gate-scoped events; empty otherwise.
 	// +optional
 	Wave string

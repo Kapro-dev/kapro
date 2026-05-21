@@ -134,7 +134,7 @@ func (l *deliveryLoop) reconcileOne(
 	}
 	if profile == nil {
 		out.Phase = kaprov1alpha2.DeliveryPhaseFailed
-		out.Err = fmt.Errorf("BackendProfile %q not found", fc.Spec.Delivery.BackendRef)
+		out.Err = fmt.Errorf("Backend %q not found", fc.Spec.Delivery.BackendRef)
 		return out
 	}
 	// Runtime gating: if this BackendProfile is hub-only, the hub-side
@@ -143,7 +143,7 @@ func (l *deliveryLoop) reconcileOne(
 	// way. Surface Skipped so SREs see why the spoke didn't act.
 	if profile.Spec.Runtime == kaprov1alpha2.BackendRuntimeHub {
 		out.Phase = kaprov1alpha2.DeliveryPhaseSkipped
-		out.Err = fmt.Errorf("BackendProfile %q runtime is Hub; spoke delivery is a no-op", profile.Name)
+		out.Err = fmt.Errorf("Backend %q runtime is Hub; spoke delivery is a no-op", profile.Name)
 		return out
 	}
 	if l.Registry == nil {
@@ -180,14 +180,14 @@ func (l *deliveryLoop) reconcileOne(
 // stable human-readable message.
 func (l *deliveryLoop) resolveBackendProfile(ctx context.Context, hub client.Client, name string) (*kaprov1alpha2.Backend, error) {
 	if name == "" {
-		return nil, fmt.Errorf("FleetCluster.spec.delivery.backendRef is empty")
+		return nil, fmt.Errorf("Cluster.spec.delivery.backendRef is empty")
 	}
 	bp := &kaprov1alpha2.Backend{}
 	if err := hub.Get(ctx, client.ObjectKey{Name: name}, bp); err != nil {
 		if apierrors.IsNotFound(err) {
-			return nil, fmt.Errorf("BackendProfile %q not found", name)
+			return nil, fmt.Errorf("Backend %q not found", name)
 		}
-		return nil, fmt.Errorf("get BackendProfile %q: %w", name, err)
+		return nil, fmt.Errorf("get Backend %q: %w", name, err)
 	}
 	return bp, nil
 }
@@ -242,7 +242,7 @@ func (l *deliveryLoop) writeStatus(
 		if apierrors.IsForbidden(err) {
 			return fmt.Errorf("per-cluster RBAC missing for status patch: %w", err)
 		}
-		return fmt.Errorf("patch FleetCluster delivery status: %w", err)
+		return fmt.Errorf("patch Cluster delivery status: %w", err)
 	}
 	return nil
 }

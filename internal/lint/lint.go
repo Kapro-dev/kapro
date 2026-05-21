@@ -204,11 +204,11 @@ func LintKapro(k *kaprov1alpha2.Fleet) []Issue {
 	}
 	if len(k.Spec.Clusters) == 0 {
 		out = append(out, warnAt("spec.clusters",
-			"no clusters configured; the Kapro will not roll anything until a FleetCluster matches"))
+			"no clusters configured; the Fleet will not roll anything until a Cluster matches"))
 	}
 	if k.Spec.Plan.Stages == nil && k.Spec.SourceRef == "" {
-		out = append(out, warnAt("spec.promotionPlan",
-			"no inline promotionPlan; ensure a Plan CR exists and is referenced from Promotion.spec.promotionPlans[]"))
+		out = append(out, warnAt("spec.plan",
+			"no inline plan; ensure a Plan CR exists and is referenced from Promotion.spec.plans[]"))
 	}
 	return out
 }
@@ -247,11 +247,11 @@ func LintPromotion(p *kaprov1alpha2.Promotion) []Issue {
 	}
 	for i, plan := range p.Spec.PromotionPlans {
 		if plan.Plan == "" {
-			out = append(out, errAt(fmt.Sprintf("spec.promotionPlans[%d].promotionPlan", i),
+			out = append(out, errAt(fmt.Sprintf("spec.plans[%d].plan", i),
 				"Plan reference must not be empty"))
 		}
 		if plan.Name == "" {
-			out = append(out, warnAt(fmt.Sprintf("spec.promotionPlans[%d].name", i),
+			out = append(out, warnAt(fmt.Sprintf("spec.plans[%d].name", i),
 				"logical name is empty; the controller will autogenerate one"))
 		}
 	}

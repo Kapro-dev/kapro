@@ -1,7 +1,7 @@
 # Plugin Examples
 
 This directory contains runnable external plugin examples and matching
-`PluginRegistration` manifests.
+`Plugin` manifests.
 
 | Example | Contract | Registry name | Manifest | Verify |
 |---|---|---|---|---|

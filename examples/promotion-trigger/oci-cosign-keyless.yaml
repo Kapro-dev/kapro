@@ -33,7 +33,7 @@ spec:
   promotionTemplate:
     fleetRef: checkout
     nameTemplate: "checkout-cosign"
-    promotionPlans:
+    plans:
       - name: production
         plan: checkout-cosign-keyless
     suspended: true

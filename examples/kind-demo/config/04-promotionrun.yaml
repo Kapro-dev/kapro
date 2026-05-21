@@ -6,7 +6,7 @@ metadata:
     kapro.io/demo: kind
 spec:
   version: v1.2.3-kind
-  promotionPlans:
+  plans:
     - name: main
       plan: checkout-progressive-kind
   suspended: false

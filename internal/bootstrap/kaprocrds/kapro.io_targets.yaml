@@ -19,13 +19,13 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.promotionRunRef
+    - jsonPath: .spec.runRef
       name: PromotionRun
       type: string
     - jsonPath: .spec.target
       name: Target
       type: string
-    - jsonPath: .spec.promotionPlanRef
+    - jsonPath: .spec.planRef
       name: Plan
       type: string
     - jsonPath: .spec.stage
@@ -686,8 +686,7 @@ spec:
                 description: Plan is the Plan CRD name this entry belongs to.
                 type: string
               planRef:
-                description: PlanRef is the logical promotionplan reference name from
-                  PromotionRun.spec.promotionPlans[i].name.
+                description: PlanRef is the logical plan reference name from PromotionRun.spec.plans[i].name.
                 type: string
               rollback:
                 description: Rollback is true when this entry was created by a rollback
@@ -2098,7 +2097,7 @@ spec:
                 type: string
               planRef:
                 description: |-
-                  PlanRef is the logical promotionplan reference name from PromotionRun.spec.promotionPlans[i].name.
+                  PlanRef is the logical plan reference name from PromotionRun.spec.plans[i].name.
                   Used to disambiguate when the same Plan CRD is referenced multiple times.
                 type: string
               previousVersion:

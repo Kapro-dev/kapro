@@ -1,6 +1,6 @@
 # canary-then-full
 # -----------------
-# The smallest non-trivial PromotionPlan: deliver to one canary cluster,
+# The smallest non-trivial Plan: deliver to one canary cluster,
 # soak for 10 minutes, then deliver to every production cluster in
 # parallel.
 #

@@ -21,8 +21,8 @@ func TestRunInitScaffoldArgo(t *testing.T) {
 	}
 	for _, relPath := range []string{
 		"backends/argo.yaml",
-		"promotionplans/checkout.yaml",
-		"kapro/checkout.yaml",
+		"plans/checkout.yaml",
+		"fleets/checkout.yaml",
 		"argo/applications/checkout.yaml",
 	} {
 		if _, err := os.Stat(filepath.Join(dir, relPath)); err != nil {
@@ -33,7 +33,7 @@ func TestRunInitScaffoldArgo(t *testing.T) {
 	if !strings.Contains(content, "driver: argo") {
 		t.Fatalf("backend file missing argo driver:\n%s", content)
 	}
-	kapro := readFile(t, filepath.Join(dir, "kapro/checkout.yaml"))
+	kapro := readFile(t, filepath.Join(dir, "fleets/checkout.yaml"))
 	for _, want := range []string{
 		"source:",
 		"backendRef: argo",
@@ -67,7 +67,7 @@ func TestRunInitScaffoldRepoOnly(t *testing.T) {
 	for _, relPath := range []string{
 		"backends/argo.yaml",
 		"sources/checkout.yaml",
-		"promotionplans/checkout.yaml",
+		"plans/checkout.yaml",
 		"argo/applications/checkout.yaml",
 	} {
 		if _, err := os.Stat(filepath.Join(dir, relPath)); err != nil {
@@ -76,7 +76,7 @@ func TestRunInitScaffoldRepoOnly(t *testing.T) {
 	}
 	for _, relPath := range []string{
 		"clusters/canary.yaml",
-		"kapro/checkout.yaml",
+		"fleets/checkout.yaml",
 		"promotions/checkout-promotion.yaml",
 	} {
 		if _, err := os.Stat(filepath.Join(dir, relPath)); !os.IsNotExist(err) {
@@ -99,10 +99,10 @@ func TestRunInitScaffoldOCIPull(t *testing.T) {
 	}
 	for _, relPath := range []string{
 		"backends/oci.yaml",
-		"promotionplans/checkout.yaml",
+		"plans/checkout.yaml",
 		"clusters/canary.yaml",
 		"clusters/prod.yaml",
-		"kapro/checkout.yaml",
+		"fleets/checkout.yaml",
 		"promotions/checkout-promotion.yaml",
 	} {
 		if _, err := os.Stat(filepath.Join(dir, relPath)); err != nil {

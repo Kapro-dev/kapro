@@ -82,8 +82,8 @@ func requireTeamLabel(labels map[string]string) *field.Error {
 //
 // Rules enforced:
 //  1. spec.version or spec.versions must be non-empty.
-//  2. spec.plans must have at least one promotionPlan reference.
-//  3. Each PromotionPlanRef must have a non-empty name and promotionPlan.
+//  2. spec.plans must have at least one Plan reference.
+//  3. Each PlanRef must have a non-empty name and plan.
 //  4. metadata.labels[kapro.io/team] must be set on CREATE (gate sprint).
 type PromotionRunValidator struct {
 	decoder admission.Decoder
@@ -150,7 +150,7 @@ func validatePromotionRun(r *kaprov1alpha2.PromotionRun) error {
 	}
 
 	if len(r.Spec.PromotionPlans) == 0 {
-		return fmt.Errorf("promotionRun.spec.plans must have at least one promotionPlan reference")
+		return fmt.Errorf("promotionRun.spec.plans must have at least one plan reference")
 	}
 
 	index := make(map[string]int, len(r.Spec.PromotionPlans))
@@ -159,24 +159,24 @@ func validatePromotionRun(r *kaprov1alpha2.PromotionRun) error {
 			return fmt.Errorf("promotionRun.spec.plans[%d].name must be set", i)
 		}
 		if ref.Plan == "" {
-			return fmt.Errorf("promotionRun.spec.plans[%d].promotionPlan must be set", i)
+			return fmt.Errorf("promotionRun.spec.plans[%d].plan must be set", i)
 		}
 		if _, exists := index[ref.Name]; exists {
-			return fmt.Errorf("promotionRun.spec.plans: duplicate promotionPlan node name %q", ref.Name)
+			return fmt.Errorf("promotionRun.spec.plans: duplicate plan node name %q", ref.Name)
 		}
 		index[ref.Name] = i
 	}
 
-	// Validate all dependsOn references name existing promotionPlan nodes.
+	// Validate all dependsOn references name existing plan nodes.
 	for _, ref := range r.Spec.PromotionPlans {
 		for _, dep := range ref.DependsOn {
 			if _, exists := index[dep]; !exists {
-				return fmt.Errorf("promotionRun.spec.plans[%q].dependsOn: unknown promotionPlan node %q", ref.Name, dep)
+				return fmt.Errorf("promotionRun.spec.plans[%q].dependsOn: unknown plan node %q", ref.Name, dep)
 			}
 		}
 	}
 
-	// DFS cycle detection on the promotionPlan node DAG.
+	// DFS cycle detection on the plan node DAG.
 	if cycle := detectCycle(index, func(name string) []string {
 		return r.Spec.PromotionPlans[index[name]].DependsOn
 	}); cycle != "" {

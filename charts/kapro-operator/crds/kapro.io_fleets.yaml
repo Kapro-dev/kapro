@@ -150,7 +150,7 @@ spec:
                   stages:
                     description: Stages defines the progressive delivery wave ordering.
                     items:
-                      description: StageSpec is one wave in the delivery promotionplan.
+                      description: StageSpec is one wave in the delivery plan.
                       properties:
                         dependsOn:
                           description: DependsOn declares upstream stage dependencies.

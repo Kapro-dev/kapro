@@ -90,11 +90,11 @@ spec:
             severity: warning
           annotations:
             summary: "Kapro plugin {{ $labels.pluginregistration }} probe is failing"
-            description: "PluginRegistration {{ $labels.pluginregistration }} has reported Ready=False for 15 minutes. This rule uses kube-state-metrics custom-resource state metrics."
+            description: "Plugin {{ $labels.pluginregistration }} has reported Ready=False for 15 minutes. This rule uses kube-state-metrics custom-resource state metrics."
             runbook: "docs/operations.md#runbook-plugin-not-ready"
     - name: kapro.triggers
       rules:
-        - alert: KaproPromotionTriggerBlocked
+        - alert: KaproTriggerBlocked
           expr: |
             (
               kapro_promotiontrigger_status_condition{type="Stalled"} == 1
@@ -108,5 +108,5 @@ spec:
             severity: warning
           annotations:
             summary: "Kapro promotion trigger {{ $labels.promotiontrigger }} is blocked"
-            description: "PromotionTrigger {{ $labels.promotiontrigger }} is blocked by reason {{ $labels.reason }}. This covers cooldown, max-active, source resolution, signature verification, and Promotion update failures via kube-state-metrics custom-resource state metrics."
+            description: "Trigger {{ $labels.promotiontrigger }} is blocked by reason {{ $labels.reason }}. This covers cooldown, max-active, source resolution, signature verification, and Promotion update failures via kube-state-metrics custom-resource state metrics."
             runbook: "docs/operations.md#runbook-blocked-promotiontrigger"

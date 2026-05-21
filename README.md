@@ -49,12 +49,12 @@ platform tooling.
 
 | Kind | Role |
 |---|---|
-| `Kapro` | Fleet setup root: source, delivery defaults, clusters, and embedded stage plan. |
-| `PromotionSource` | Reusable catalog of deployable units and backend write targets. |
-| `Promotion` | User-authored rollout intent: "promote this version through this Kapro fleet." |
+| `Fleet` | Fleet setup root: source, delivery defaults, clusters, and embedded stage plan. |
+| `Source` | Reusable catalog of deployable units and backend write targets. |
+| `Promotion` | User-authored rollout intent: "promote this version through this Fleet." |
 | `PromotionRun` | Controller-authored execution attempt and audit record. |
-| `PromotionTarget` | Per-cluster, per-stage runtime state. |
-| `FleetCluster` | A workload cluster known to the hub. |
+| `Target` | Per-cluster, per-stage runtime state. |
+| `Cluster` | A workload cluster known to the hub. |
 | `Approval` | Human approval or rejection for a gated target. |
 
 See [Concepts](docs/concepts.md) for the object model and lifecycle.
@@ -70,7 +70,7 @@ Kapro is backend-neutral. A fleet can mix delivery styles by cluster:
 - **Hub push mode:** the hub patches a backend object directly when network and
   RBAC policy allow it.
 - **Plugins:** custom actuators, gates, and planners can be loaded through
-  `PluginRegistration` after they pass the conformance harness.
+  `Plugin` after they pass the conformance harness.
 
 Start with [Backends](docs/backends.md) when deciding how Kapro should connect
 to existing delivery systems.
@@ -96,7 +96,7 @@ Promote a version:
 
 ```bash
 kubectl apply -f examples/quickstart/promotion.yaml
-kubectl get promotions,promotionruns,promotiontargets
+kubectl get promotions,promotionruns,targets
 ```
 
 For a step-by-step minimal path, use [First Promotion in 10 Minutes](docs/first-promotion-10min.md).

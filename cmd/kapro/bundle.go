@@ -45,7 +45,7 @@ func newSourcePackageCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "package",
 		Short: "Package Kapro source units for pull-mode spokes",
-		Long: `Reads source units from a Kapro CR or advanced PromotionSource CR and
+		Long: `Reads source units from a Fleet CR or advanced Source CR and
 packages them into an OCI artifact containing per-wave directories with
 HelmReleases and HelmRepositories.
 
@@ -59,7 +59,7 @@ Examples:
   kapro source package --kapro checkout --version 2.0.0 \
     --registry oci://europe-west1-docker.pkg.dev/project/repo --push
 
-  # Advanced: package a reusable PromotionSource CR
+  # Advanced: package a reusable Source CR
   kapro source package --source checkout --version ${VERSION} \
     --registry ${OCI_REGISTRY} --push \
     --kubeconfig ${HUB_KUBECONFIG}`,
@@ -72,8 +72,8 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&sourceRef, "source", "", "Advanced PromotionSource CR name")
-	cmd.Flags().StringVar(&kaproName, "kapro", "", "Kapro artifact name; when --source is omitted, also the Kapro CR name")
+	cmd.Flags().StringVar(&sourceRef, "source", "", "Advanced Source CR name")
+	cmd.Flags().StringVar(&kaproName, "kapro", "", "Fleet artifact name; when --source is omitted, also the Fleet CR name")
 	cmd.Flags().StringVar(&version, "version", "", "Artifact version / OCI tag (required)")
 	cmd.Flags().StringVar(&registry, "registry", "", "OCI registry URL (required for --push)")
 	cmd.Flags().StringVar(&outputDir, "output", "", "Output directory (default: temp dir, printed to stdout)")
@@ -168,20 +168,20 @@ func readPackageSource(ctx context.Context, hubClient client.Client, sourceRef, 
 	if sourceRef != "" {
 		var source kaprov1alpha2.Source
 		if err := hubClient.Get(ctx, client.ObjectKey{Name: sourceRef}, &source); err != nil {
-			return nil, fmt.Errorf("get PromotionSource %q: %w", sourceRef, err)
+			return nil, fmt.Errorf("get Source %q: %w", sourceRef, err)
 		}
 		return &source, nil
 	}
 
 	var fleet kaprov1alpha2.Fleet
 	if err := hubClient.Get(ctx, client.ObjectKey{Name: kaproName}, &fleet); err != nil {
-		return nil, fmt.Errorf("get Kapro %q: %w", kaproName, err)
+		return nil, fmt.Errorf("get Fleet %q: %w", kaproName, err)
 	}
 	if fleet.Spec.Source == nil {
 		if fleet.Spec.SourceRef != "" {
-			return nil, fmt.Errorf("kapro %q references PromotionSource %q; pass --source %s", kaproName, fleet.Spec.SourceRef, fleet.Spec.SourceRef)
+			return nil, fmt.Errorf("Fleet %q references Source %q; pass --source %s", kaproName, fleet.Spec.SourceRef, fleet.Spec.SourceRef)
 		}
-		return nil, fmt.Errorf("kapro %q has neither spec.source nor spec.sourceRef set", kaproName)
+		return nil, fmt.Errorf("Fleet %q has neither spec.source nor spec.sourceRef set", kaproName)
 	}
 	return &kaprov1alpha2.Source{
 		ObjectMeta: fleet.ObjectMeta,

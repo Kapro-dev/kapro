@@ -32,8 +32,8 @@ func newSourceApplyCmd() *cobra.Command {
 	var opts sourceApplyOptions
 	cmd := &cobra.Command{
 		Use:   "apply",
-		Short: "Apply PromotionSource version mappings to a Git checkout",
-		Long: `Updates repo-native YAML or JSON version fields from a PromotionSource.
+		Short: "Apply Source version mappings to a Git checkout",
+		Long: `Updates repo-native YAML or JSON version fields from a Source.
 
 This is the Git-native brownfield path: Kapro writes only explicitly mapped
 fields, then users review and commit the Git diff. If a mapping expands to
@@ -44,7 +44,7 @@ revision must be applied to every matched file.`,
 		},
 	}
 	cmd.Flags().StringVar(&opts.RepoPath, "repo", ".", "Git checkout root")
-	cmd.Flags().StringVar(&opts.SourcePath, "source", "", "PromotionSource YAML file (required)")
+	cmd.Flags().StringVar(&opts.SourcePath, "source", "", "Source YAML file (required)")
 	cmd.Flags().StringVar(&opts.Version, "version", "", "Default revision for every mapped unit")
 	cmd.Flags().StringArrayVar(&opts.VersionSet, "set", nil, "Per-unit revision (repeatable: --set unit=revision)")
 	cmd.Flags().StringArrayVar(&opts.Include, "include", nil, "Repo-relative file glob to allow when a mapping matches multiple files")

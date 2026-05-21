@@ -268,11 +268,11 @@ func main() {
 		trustedSA := "system:serviceaccount:" + podNS + ":" + podSA
 
 		mgr.GetWebhookServer().Register(
-			"/mutate-kapro-io-v1alpha1-approval",
+			"/mutate-kapro-io-v1alpha2-approval",
 			&crwebhook.Admission{Handler: kaploadmission.NewApprovalMutator(decoder, trustedSA)},
 		)
 		mgr.GetWebhookServer().Register(
-			"/mutate-kapro-io-v1alpha1-fleetcluster",
+			"/mutate-kapro-io-v1alpha2-cluster",
 			&crwebhook.Admission{Handler: kaploadmission.NewFleetClusterMutator(decoder)},
 		)
 		// Use APIReader (uncached, direct to apiserver) for the FleetCluster
@@ -280,23 +280,23 @@ func main() {
 		// spurious BackendProfile-not-found rejection. Matches the pattern
 		// already used by the plugin gateway registration above.
 		mgr.GetWebhookServer().Register(
-			"/validate-kapro-io-v1alpha1-fleetcluster",
+			"/validate-kapro-io-v1alpha2-cluster",
 			&crwebhook.Admission{Handler: kaploadmission.NewFleetClusterValidator(decoder, mgr.GetAPIReader())},
 		)
 		mgr.GetWebhookServer().Register(
-			"/validate-kapro-io-v1alpha1-promotionrun",
+			"/validate-kapro-io-v1alpha2-promotionrun",
 			&crwebhook.Admission{Handler: kaploadmission.NewPromotionRunValidator(decoder)},
 		)
 		mgr.GetWebhookServer().Register(
-			"/validate-kapro-io-v1alpha1-promotionplan",
+			"/validate-kapro-io-v1alpha2-plan",
 			&crwebhook.Admission{Handler: kaploadmission.NewPromotionPlanValidator(decoder)},
 		)
 		mgr.GetWebhookServer().Register(
-			"/validate-kapro-io-v1alpha1-approval",
+			"/validate-kapro-io-v1alpha2-approval",
 			&crwebhook.Admission{Handler: kaploadmission.NewApprovalValidator(decoder)},
 		)
 		mgr.GetWebhookServer().Register(
-			"/validate-kapro-io-v1alpha1-promotiontrigger",
+			"/validate-kapro-io-v1alpha2-trigger",
 			&crwebhook.Admission{Handler: kaploadmission.NewPromotionTriggerValidator(decoder)},
 		)
 	}

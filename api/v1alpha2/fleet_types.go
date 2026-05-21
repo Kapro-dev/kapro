@@ -83,13 +83,13 @@ type ClusterGCP struct {
 // KaproPromotionPlan defines the progressive delivery stages inline on a
 // single Fleet object (KISS path). For reuse across multiple Fleet objects
 // or across PromotionRuns, define stages on a standalone Plan CRD
-// and reference it via PromotionRun.spec.promotionplans instead.
+// and reference it via PromotionRun.spec.plans instead.
 type KaproPromotionPlan struct {
 	// Stages defines the progressive delivery wave ordering.
 	Stages []StageSpec `json:"stages"`
 }
 
-// StageSpec is one wave in the delivery promotionplan.
+// StageSpec is one wave in the delivery plan.
 type StageSpec struct {
 	// Name of the stage.
 	Name string `json:"name"`

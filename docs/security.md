@@ -27,9 +27,9 @@ also stop at a server-side scan budget and return `page.truncated=true`.
 
 Grant narrow RBAC:
 
-- read-only agents may `get`/`list` `PromotionRun`, `PromotionTarget`, and
-  `FleetCluster` objects;
-- decision agents may also `update` `promotiontargets/status`;
+- read-only agents may `get`/`list` `PromotionRun`, `Target`, and
+  `Cluster` objects;
+- decision agents may also `update` `targets/status`;
 - agents that can approve must separately be able to `create` `approvals`;
 - override access should be bound to a different emergency role.
 
@@ -38,7 +38,7 @@ Grant narrow RBAC:
 | Threat | Mitigation |
 |---|---|
 | Untrusted artifact triggers an automatic Promotion | Digest pinning, signature verification, suspended-by-default triggers and Promotions |
-| Compromised plugin unblocks or mutates production | Restricted `PluginRegistration` RBAC, TLS/mTLS, short timeouts, narrow KAI/KGI/KPI contracts |
+| Compromised plugin unblocks or mutates production | Restricted `Plugin` RBAC, TLS/mTLS, short timeouts, narrow KAI/KGI/KPI contracts |
 | User approves a gate outside their team or environment | Admission policy on `Approval` labels, request user info, and bypass use |
 | Webhook gate is spoofed or replayed | HTTPS, shared secret or mTLS at the webhook backend, idempotent decision refs |
 | Registry credential leaks | Namespaced Secret refs, least-privilege registry tokens, operator-only Secret reads |
@@ -53,7 +53,7 @@ backend results, not as ownership of PromotionRun state.
 
 Plugins must not:
 
-- create or mutate `PromotionTarget` objects;
+- create or mutate `Target` objects;
 - change `PromotionRun.status`;
 - bypass Kapro retries, timeouts, or failure policy;
 - store irreplaceable PromotionRun state only in plugin memory;
@@ -70,7 +70,7 @@ Plugins should:
 
 ## OCI and Signature Trust Model
 
-`PromotionTrigger` is conservative by default:
+`Trigger` is conservative by default:
 
 - `spec.suspended` defaults to `true`;
 - generated Promotions default to suspended, and stamped PromotionRuns inherit
@@ -98,14 +98,14 @@ verification should use a trusted public key distributed through a
 platform-owned Secret or ConfigMap. Unsigned artifacts must not create automatic
 production PromotionRuns.
 
-### PromotionTrigger with cosign keyless policy
+### Trigger with cosign keyless policy
 
-`PromotionTrigger` observes tags and creates or updates a digest-pinned Promotion. Set
+`Trigger` observes tags and creates or updates a digest-pinned Promotion. Set
 `requireSignature: true` only after installing a verifier implementation for
 the trigger controller; otherwise the trigger intentionally blocks.
 
 ```yaml
-apiVersion: kapro.io/v1alpha1
+apiVersion: kapro.io/v1alpha2
 kind: Plan
 metadata:
   name: checkout-keyless
@@ -118,7 +118,7 @@ spec:
       gate:
         mode: auto
 ---
-apiVersion: kapro.io/v1alpha1
+apiVersion: kapro.io/v1alpha2
 kind: Trigger
 metadata:
   name: checkout-oci-keyless
@@ -133,9 +133,9 @@ spec:
       pollInterval: 5m
   promotionTemplate:
     fleetRef: checkout
-    promotionPlans:
+    plans:
       - name: production
-        promotionPlan: checkout-keyless
+        plan: checkout-keyless
     suspended: true
     scope:
       targets:
@@ -157,7 +157,7 @@ type: Opaque
 data:
   cosign.pub: <base64-encoded-public-key>
 ---
-apiVersion: kapro.io/v1alpha1
+apiVersion: kapro.io/v1alpha2
 kind: Trigger
 metadata:
   name: checkout-oci-keyed
@@ -171,9 +171,9 @@ spec:
       requireSignature: true
   promotionTemplate:
     fleetRef: checkout
-    promotionPlans:
+    plans:
       - name: production
-        promotionPlan: checkout
+        plan: checkout
     suspended: true
 ```
 
@@ -209,11 +209,11 @@ Rules:
 - the operator service account should read only the Secret names and namespaces
   required by enabled features;
 - plugin credentials should be mounted into plugin pods, not copied into
-  `PluginRegistration.parameters`;
+  `Plugin.spec.parameters`;
 - never write credential values into status, Events, logs, or notifications.
 
 Rotate registry and plugin credentials independently from PromotionRun state. A
-credential rotation should not require recreating PromotionRun or PromotionPlan objects.
+credential rotation should not require recreating PromotionRun or Plan objects.
 
 ## Audit Evidence
 
@@ -222,7 +222,7 @@ For regulated environments, send lifecycle notifications to an append-only
 external sink and retain:
 
 - artifact digest and signature verification result;
-- PromotionRun and PromotionTrigger object metadata;
+- PromotionRun and Trigger object metadata;
 - gate result and message;
 - approver identity and bypass flag;
 - plugin name, version, and endpoint identity;

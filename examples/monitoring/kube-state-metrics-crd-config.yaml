@@ -3,7 +3,7 @@ spec:
   resources:
     - groupVersionKind:
         group: kapro.io
-        version: v1alpha1
+        version: v1alpha2
         kind: PromotionRun
       metricNamePrefix: kapro_promotionrun
       labelsFromPath:
@@ -35,20 +35,20 @@ spec:
               valueFrom: [status]
     - groupVersionKind:
         group: kapro.io
-        version: v1alpha1
+        version: v1alpha2
         kind: Trigger
       metricNamePrefix: kapro_promotiontrigger
       labelsFromPath:
         promotiontrigger: [metadata, name]
       metrics:
         - name: status_active_promotionrun_count
-          help: Number of active non-terminal PromotionRuns tracked by a Kapro PromotionTrigger.
+          help: Number of active non-terminal PromotionRuns tracked by a Kapro Trigger.
           each:
             type: Gauge
             gauge:
               path: [status, activePromotionRunCount]
         - name: status_condition
-          help: Kapro PromotionTrigger status condition.
+          help: Kapro Trigger status condition.
           each:
             type: Gauge
             gauge:
@@ -59,8 +59,8 @@ spec:
               valueFrom: [status]
     - groupVersionKind:
         group: kapro.io
-        version: v1alpha1
-        kind: PluginRegistration
+        version: v1alpha2
+        kind: Plugin
       metricNamePrefix: kapro_pluginregistration
       labelsFromPath:
         pluginregistration: [metadata, name]
@@ -68,13 +68,13 @@ spec:
         plugin_name: [spec, name]
       metrics:
         - name: status_ready
-          help: Kapro PluginRegistration ready status.
+          help: Kapro Plugin ready status.
           each:
             type: Gauge
             gauge:
               path: [status, ready]
         - name: status_condition
-          help: Kapro PluginRegistration status condition.
+          help: Kapro Plugin status condition.
           each:
             type: Gauge
             gauge:

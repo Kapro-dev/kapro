@@ -46,7 +46,7 @@ func newSpokeBootstrapCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bootstrap <cluster-name>",
 		Short: "Prepare hub-side registration for a pull-mode spoke (kapro-cluster-controller)",
-		Long: `Creates (or patches) a FleetCluster on the hub with a bootstrap slot, waits
+		Long: `Creates (or patches) a Cluster on the hub with a bootstrap slot, waits
 for the hub reconciler to mint a bootstrap kubeconfig Secret, and emits the
 Helm values + Secret needed to install kapro-cluster-controller on the spoke.
 
@@ -84,7 +84,7 @@ Then on the spoke:
 	}
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to hub kubeconfig (default: $KUBECONFIG)")
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", defaultBootstrapNamespace, "Hub namespace where the bootstrap Secret lives")
-	cmd.Flags().DurationVar(&ttl, "ttl", time.Hour, "Bootstrap slot TTL written to FleetCluster.spec.bootstrap.ttl")
+	cmd.Flags().DurationVar(&ttl, "ttl", time.Hour, "Bootstrap slot TTL written to Cluster.spec.bootstrap.ttl")
 	cmd.Flags().StringVar(&hubURL, "hub-url", "", "Hub kube-apiserver URL reachable from the spoke (required)")
 	cmd.Flags().StringVar(&caFrom, "ca-from", caFromHubKubeconfig, "Source for hub CA bundle: hub-kubeconfig | file | inline | none")
 	cmd.Flags().StringVar(&caFile, "ca-file", "", "Path to PEM CA file (used when --ca-from=file)")
@@ -134,13 +134,13 @@ func runSpokeBootstrap(ctx context.Context, opts spokeBootstrapOptions) error {
 		return fmt.Errorf("connect to hub: %w", err)
 	}
 
-	sp := cli.NewSpinner(fmt.Sprintf("Ensuring FleetCluster %s with bootstrap slot", opts.ClusterName))
+	sp := cli.NewSpinner(fmt.Sprintf("Ensuring Cluster %s with bootstrap slot", opts.ClusterName))
 	sp.Start()
 	if err := ensureFleetClusterBootstrap(ctx, c, opts.ClusterName, opts.TTL); err != nil {
-		sp.StopFail("Failed to apply FleetCluster bootstrap spec")
+		sp.StopFail("Failed to apply Cluster bootstrap spec")
 		return err
 	}
-	sp.StopSuccess("FleetCluster bootstrap slot ready")
+	sp.StopSuccess("Cluster bootstrap slot ready")
 
 	sp2 := cli.NewSpinner("Waiting for hub to mint bootstrap kubeconfig Secret")
 	sp2.Start()
@@ -193,7 +193,7 @@ func ensureFleetClusterBootstrap(ctx context.Context, c client.Client, name stri
 		return c.Create(ctx, fc)
 	}
 	if err != nil {
-		return fmt.Errorf("get FleetCluster %q: %w", name, err)
+		return fmt.Errorf("get Cluster %q: %w", name, err)
 	}
 	patch := client.MergeFrom(existing.DeepCopy())
 	if existing.Spec.Bootstrap == nil {

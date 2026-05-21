@@ -14,7 +14,7 @@ spec:
   promotionTemplate:
     fleetRef: checkout
     nameTemplate: "checkout-kind"
-    promotionPlans:
+    plans:
       - name: main
         plan: checkout-progressive-kind
     suspended: false

@@ -75,7 +75,7 @@ func (s *statusReporter) tick(ctx context.Context) error {
 
 	fc := &kaprov1alpha2.Cluster{}
 	if err := hub.Get(tctx, client.ObjectKey{Name: s.ClusterName}, fc); err != nil {
-		return fmt.Errorf("get FleetCluster %q: %w", s.ClusterName, err)
+		return fmt.Errorf("get Cluster %q: %w", s.ClusterName, err)
 	}
 	patch := client.MergeFrom(fc.DeepCopy())
 
@@ -92,7 +92,7 @@ func (s *statusReporter) tick(ctx context.Context) error {
 		if apierrors.IsForbidden(err) {
 			return fmt.Errorf("per-cluster RBAC missing or not yet granted for status patch: %w", err)
 		}
-		return fmt.Errorf("patch FleetCluster status: %w", err)
+		return fmt.Errorf("patch Cluster status: %w", err)
 	}
 	return nil
 }

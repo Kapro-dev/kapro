@@ -18,7 +18,7 @@ import (
 //  2. spec.source.oci.url must be non-empty when type=oci.
 //  3. spec.source.oci.tagPattern must be non-empty when type=oci.
 //  4. spec.pollInterval must parse as a duration when set.
-//  5. spec.template.promotionPlans must contain at least one ref.
+//  5. spec.promotionTemplate.plans entries must have names.
 //  6. metadata.labels[kapro.io/team] must be set on CREATE (gate sprint).
 type PromotionTriggerValidator struct {
 	decoder admission.Decoder
@@ -67,11 +67,11 @@ func validatePromotionTrigger(pt *kaprov1alpha2.Trigger) error {
 	if pt.Spec.PromotionTemplate.FleetRef == "" {
 		return fmt.Errorf("spec.promotionTemplate.fleetRef is required")
 	}
-	// PromotionPlans is optional on the trigger template; when empty the
-	// Promotion controller inherits the inline plan from the parent Kapro.
+	// Plans are optional on the trigger template; when empty the Promotion
+	// controller inherits the inline plan from the parent Fleet.
 	for i, ref := range pt.Spec.PromotionTemplate.PromotionPlans {
 		if ref.Name == "" {
-			return fmt.Errorf("spec.promotionTemplate.promotionPlans[%d].name is required", i)
+			return fmt.Errorf("spec.promotionTemplate.plans[%d].name is required", i)
 		}
 	}
 	return nil

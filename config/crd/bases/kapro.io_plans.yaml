@@ -28,7 +28,7 @@ spec:
         description: |-
           Plan defines a reusable progressive delivery path as a DAG of stages.
           Each stage selects a fleet subset via label selectors and optionally gates
-          advancement with a GatePolicy. Referenced by PromotionRun.spec.promotionplans[].
+          advancement with a GatePolicy. Referenced by PromotionRun.spec.plans[].
           Plan is a pure template — it has no controller, no status, no reconciler.
           Validation is enforced by the admission webhook. Execution state lives in PromotionRun.
         properties:
@@ -52,7 +52,7 @@ spec:
           spec:
             description: |-
               PlanSpec defines a reusable progressive delivery path as a flat DAG of stages.
-              A Plan is a template — referenced by PromotionRun.spec.promotionplans[].
+              A Plan is a template referenced by PromotionRun.spec.plans[].
               Uniqueness and dependency-reference validation is enforced by the admission webhook,
               which can perform DAG checks without the quadratic CEL cost budget constraints.
             properties:
@@ -840,13 +840,13 @@ spec:
                       type: object
                     name:
                       description: Name uniquely identifies this stage within the
-                        promotionplan.
+                        plan.
                       type: string
                     onFailure:
                       default: halt
                       description: |-
                         OnFailure controls what Fleet does when this stage fails.
-                        halt (default): stop the promotionplan, mark PromotionRun Failed.
+                        halt (default): stop the plan, mark PromotionRun Failed.
                         skip: continue to downstream stages.
                         rollback: stop AND revert all targets promoted by earlier stages.
                       enum:

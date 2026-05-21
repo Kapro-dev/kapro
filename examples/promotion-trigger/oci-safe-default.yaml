@@ -13,7 +13,7 @@ spec:
       pollInterval: 5m
   promotionTemplate:
     fleetRef: checkout
-    promotionPlans:
+    plans:
       - name: production
         plan: checkout-production
     suspended: true
