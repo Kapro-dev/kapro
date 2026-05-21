@@ -488,6 +488,24 @@ func TestPromotionRunStatusHasNoRuntimeOnlyJSONFields(t *testing.T) {
 	}
 }
 
+func TestPromotionRunSummaryStaysAggregateOnly(t *testing.T) {
+	root := repoRoot(t)
+	typesText := readText(t, filepath.Join(root, "api", "v1alpha2", "promotionrun_types.go"))
+	got := jsonTagsForStruct(t, typesText, "PromotionRunSummary")
+	want := []string{"totalTargets", "syncedTargets", "failedTargets", "pendingTargets", "convergedAt"}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("PromotionRunSummary JSON fields = %v, want aggregate-only fields %v", got, want)
+	}
+	for _, field := range got {
+		if strings.Contains(strings.ToLower(field), "targetname") ||
+			strings.Contains(strings.ToLower(field), "cluster") ||
+			strings.Contains(strings.ToLower(field), "stage") ||
+			strings.Contains(strings.ToLower(field), "message") {
+			t.Fatalf("PromotionRunSummary field %q looks like per-target detail; keep detail in child Target objects", field)
+		}
+	}
+}
+
 func TestCRDPrintColumnsResolveToSchemaFields(t *testing.T) {
 	root := repoRoot(t)
 	for _, relDir := range []string{

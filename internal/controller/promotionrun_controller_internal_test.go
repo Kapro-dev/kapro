@@ -213,6 +213,56 @@ func TestPromotionRunSummaryConvergedAtFromCompleteReport(t *testing.T) {
 	}
 }
 
+func TestTargetStatusFromPromotionTargetSpecIdentityWins(t *testing.T) {
+	rt := &kaprov1alpha2.Target{
+		Spec: kaprov1alpha2.TargetSpec{
+			PromotionRunRef: "run-from-spec",
+			Target:          "cluster-from-spec",
+			PlanRef:         "plan-ref-from-spec",
+			Plan:            "plan-from-spec",
+			Stage:           "stage-from-spec",
+			Version:         "version-from-spec",
+			AppKey:          "app-from-spec",
+			DesiredVersions: map[string]string{"api": "v2"},
+		},
+		Status: kaprov1alpha2.TargetStatus{
+			TargetExecutionState: kaprov1alpha2.TargetExecutionState{
+				PromotionRunRef: "stale-run",
+				Target:          "stale-cluster",
+				PlanRef:         "stale-plan-ref",
+				Plan:            "stale-plan",
+				Stage:           "stale-stage",
+				Version:         "stale-version",
+				AppKey:          "stale-app",
+				DesiredVersions: map[string]string{"api": "stale"},
+				Phase:           kaprov1alpha2.TargetPhaseFailed,
+				Message:         "gate timeout",
+			},
+		},
+	}
+
+	got := targetStatusFromPromotionTarget(rt)
+	if got.PromotionRunRef != "run-from-spec" ||
+		got.Target != "cluster-from-spec" ||
+		got.PlanRef != "plan-ref-from-spec" ||
+		got.Plan != "plan-from-spec" ||
+		got.Stage != "stage-from-spec" ||
+		got.Version != "version-from-spec" ||
+		got.AppKey != "app-from-spec" {
+		t.Fatalf("identity fields came from stale status, got %#v", got)
+	}
+	if got.Phase != kaprov1alpha2.TargetPhaseFailed || got.Message != "gate timeout" {
+		t.Fatalf("execution fields = phase %q message %q, want status-owned execution state", got.Phase, got.Message)
+	}
+	if got.DesiredVersions["api"] != "v2" {
+		t.Fatalf("desiredVersions = %#v, want spec-owned values", got.DesiredVersions)
+	}
+	got.DesiredVersions["api"] = "mutated"
+	if rt.Spec.DesiredVersions["api"] != "v2" {
+		t.Fatalf("targetStatusFromPromotionTarget returned aliased desiredVersions map")
+	}
+}
+
 func TestNotifyPromotionRunEvent_UsesPromotionPlanStageNotifications(t *testing.T) {
 	scheme := controllerTestScheme(t)
 	notifier := &recordingNotifier{}
