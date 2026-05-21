@@ -8,9 +8,11 @@ webhooks, and baseline approval service together.
 
 - Kubernetes cluster access with permission to create CRDs and cluster-scoped RBAC.
 - Helm 3.
-- cert-manager when `webhook.enabled=true` (the default).
 
-For local clusters without cert-manager, set `webhook.enabled=false`.
+The chart has no other dependencies. By default the admission webhook
+uses an auto-generated self-signed serving certificate, so cert-manager
+is not required to install. Production clusters that already run
+cert-manager can opt back in (see below).
 
 ## Install
 
@@ -20,7 +22,30 @@ helm upgrade --install kapro charts/kapro-operator \
   --create-namespace
 ```
 
-Local install without admission webhooks:
+That is the full install for kind, k3d, EKS without the cert-manager
+add-on, and any other cluster where you do not have cert-manager
+installed.
+
+### Install with cert-manager
+
+If you already run cert-manager (≥ 1.5) and prefer its certificate
+lifecycle, enable the cert-manager path:
+
+```bash
+helm upgrade --install kapro charts/kapro-operator \
+  --namespace kapro-system \
+  --create-namespace \
+  --set webhook.certManager.enabled=true
+```
+
+The chart then emits a cert-manager Issuer + Certificate and
+annotates the webhook configs for caBundle injection. No
+chart-managed Secret is created in that mode.
+
+### Install without admission webhooks
+
+If you want the smallest possible install (no webhook = no admission
+validation of CRD invariants), turn the webhook off entirely:
 
 ```bash
 helm upgrade --install kapro charts/kapro-operator \
@@ -28,6 +53,10 @@ helm upgrade --install kapro charts/kapro-operator \
   --create-namespace \
   --set webhook.enabled=false
 ```
+
+Not recommended for production — the webhook is where multi-tenancy
+ownership labels, controller-only writes to `PromotionRun`, and
+PromotionPlan DAG validity are enforced.
 
 Useful baseline settings:
 

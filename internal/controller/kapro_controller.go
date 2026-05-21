@@ -26,6 +26,7 @@ import (
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
 	bundlepkg "kapro.io/kapro/internal/bundle"
 	"kapro.io/kapro/internal/provider"
+	"kapro.io/kapro/internal/webhook/admission"
 )
 
 var kaproResourceSetGVK = schema.GroupVersionKind{
@@ -287,10 +288,22 @@ func (r *KaproReconciler) buildPromotionPlan(kapro *kaprov1alpha1.Kapro) *kaprov
 		}
 		stages = append(stages, stage)
 	}
+	// Propagate the parent Kapro's tenancy + standard labels to the
+	// generated PromotionPlan. Without this the admission webhook
+	// rejects the controller's own write with a missing-team error,
+	// because the generated plan inherits no labels from anywhere.
+	labels := map[string]string{}
+	if team, ok := kapro.Labels[admission.LabelKaproTeam]; ok && team != "" {
+		labels[admission.LabelKaproTeam] = team
+	}
+	labels["app.kubernetes.io/managed-by"] = "kapro-operator"
+	labels["kapro.io/owned-by-kapro"] = kapro.Name
+
 	return &kaprov1alpha1.PromotionPlan{
 		TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "PromotionPlan"},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: InlinePromotionPlanName(kapro.Name),
+			Name:   InlinePromotionPlanName(kapro.Name),
+			Labels: labels,
 		},
 		Spec: kaprov1alpha1.PromotionPlanSpec{Stages: stages},
 	}

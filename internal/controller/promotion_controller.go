@@ -22,6 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kaprov1alpha1 "kapro.io/kapro/api/v1alpha1"
+	"kapro.io/kapro/internal/webhook/admission"
 )
 
 const (
@@ -230,6 +231,13 @@ func (r *PromotionReconciler) stampAttempt(ctx context.Context, p *kaprov1alpha1
 	}
 	if p.UID != "" {
 		labels[promotionUIDLabel] = string(p.UID)
+	}
+	// Propagate the parent Promotion's tenancy ownership label. Without
+	// this the PromotionRun admission webhook denies the controller's
+	// own create for missing kapro.io/team. The label is required on
+	// CREATE for parity with the Promotion that triggered it.
+	if team := p.Labels[admission.LabelKaproTeam]; team != "" {
+		labels[admission.LabelKaproTeam] = team
 	}
 	run := &kaprov1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{

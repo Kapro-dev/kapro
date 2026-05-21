@@ -564,15 +564,25 @@ func (r *FleetClusterBootstrapReconciler) denyCSR(ctx context.Context, csr *cert
 // mapped back to FleetCluster keys via clusterNameFromCSR so the reconciler
 // is keyed exclusively on FleetCluster — preserving single-writer semantics
 // for status.bootstrap.
+//
+// When HubAPIURL is empty the controller registers itself as a no-op:
+// most single-cluster, hub-only, or kind-demo installs never use the
+// spoke-bootstrap flow, and forcing operators to set KAPRO_HUB_API_URL
+// just to start the operator turns the README quickstart into a
+// crashloop. Spokes that actually need bootstrap pick the URL up from
+// the Helm value `hub.apiURL` (or set the env var directly) and the
+// controller starts as normal.
 func (r *FleetClusterBootstrapReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if r.HubAPIURL == "" {
+		ctrl.Log.WithName("fleetcluster-bootstrap").Info(
+			"hub API URL not set (KAPRO_HUB_API_URL empty); FleetCluster bootstrap controller is disabled — set the env var (or Helm `hub.apiURL`) on the hub operator to enable spoke CSR approval")
+		return nil
+	}
 	if r.CertClient == nil {
 		return fmt.Errorf("FleetClusterBootstrapReconciler: CertClient is required for CSR approval")
 	}
 	if r.KubeClient == nil {
 		return fmt.Errorf("FleetClusterBootstrapReconciler: KubeClient is required for bootstrap SA provisioning")
-	}
-	if r.HubAPIURL == "" {
-		return fmt.Errorf("FleetClusterBootstrapReconciler: HubAPIURL is required (set KAPRO_HUB_API_URL)")
 	}
 
 	mapCSR := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
