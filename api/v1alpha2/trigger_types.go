@@ -96,7 +96,7 @@ type PromotionTriggerTemplate struct {
 	// managed Promotion.
 	// +kubebuilder:validation:MaxItems=64
 	// +optional
-	PromotionPlans []PlanRef `json:"plans,omitempty"`
+	Plans []string `json:"plans,omitempty"`
 	// Suspended controls Promotion.spec.suspended on creation. Defaults to
 	// true so detection does not equal deployment.
 	// +kubebuilder:default=true

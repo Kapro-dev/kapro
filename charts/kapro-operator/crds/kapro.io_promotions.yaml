@@ -744,32 +744,13 @@ spec:
                 type: object
               plans:
                 description: |-
-                  PromotionPlans optionally overrides the inline Fleet.spec.promotionplan
-                  for this intent. When unset, the controller derives a single plan ref
-                  from the parent Fleet's inline plan.
+                  Plans optionally overrides the inline Fleet.spec.plan with one or more
+                  named Plan CRDs. Each entry is the metadata.name of a Plan resource.
+                  Listing the same name twice is rejected by the admission webhook —
+                  to apply the same Plan to a different cluster subset, create a
+                  second Promotion with a narrower spec.scope.
                 items:
-                  description: |-
-                    PlanRef is one node in the PromotionRun's promotionplan DAG.
-                    Multiple promotionplans can run in parallel; DependsOn declares ordering between them.
-                  properties:
-                    dependsOn:
-                      description: DependsOn lists promotionplan node names that must
-                        reach Complete before this one starts.
-                      items:
-                        type: string
-                      maxItems: 64
-                      type: array
-                    name:
-                      description: Name uniquely identifies this promotionplan node
-                        within the PromotionRun.
-                      type: string
-                    plan:
-                      description: Plan is the name of the Plan CRD to execute.
-                      type: string
-                  required:
-                  - name
-                  - plan
-                  type: object
+                  type: string
                 maxItems: 64
                 type: array
               scope:

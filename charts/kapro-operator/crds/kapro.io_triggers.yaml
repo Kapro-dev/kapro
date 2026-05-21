@@ -133,28 +133,7 @@ spec:
                       PromotionPlans optionally overrides Fleet.spec.promotionplan on the
                       managed Promotion.
                     items:
-                      description: |-
-                        PlanRef is one node in the PromotionRun's promotionplan DAG.
-                        Multiple promotionplans can run in parallel; DependsOn declares ordering between them.
-                      properties:
-                        dependsOn:
-                          description: DependsOn lists promotionplan node names that
-                            must reach Complete before this one starts.
-                          items:
-                            type: string
-                          maxItems: 64
-                          type: array
-                        name:
-                          description: Name uniquely identifies this promotionplan
-                            node within the PromotionRun.
-                          type: string
-                        plan:
-                          description: Plan is the name of the Plan CRD to execute.
-                          type: string
-                      required:
-                      - name
-                      - plan
-                      type: object
+                      type: string
                     maxItems: 64
                     type: array
                   scope:

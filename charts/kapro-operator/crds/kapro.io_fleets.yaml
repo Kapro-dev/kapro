@@ -65,6 +65,18 @@ spec:
           spec:
             description: FleetSpec defines the desired state of a Fleet fleet.
             properties:
+              backend:
+                description: |-
+                  Backend selects the delivery backend by Backend CRD name.
+                  Examples: "flux", "argocd", "oci". When empty, the operator
+                  defaults to HubConfig.spec.defaultBackend.
+                type: string
+              chart:
+                description: |-
+                  Chart is the chart name for the single-chart (KISS) Fleet path.
+                  Combined with Version, replaces the v1alpha1 inline Source.units[0].
+                  Mutually exclusive with SourceRef.
+                type: string
               clusters:
                 description: Clusters defines the target clusters in the fleet.
                 items:
@@ -118,32 +130,6 @@ spec:
                   type: object
                 minItems: 1
                 type: array
-              delivery:
-                description: Delivery selects the backend-neutral fleet delivery profile.
-                properties:
-                  backendRef:
-                    description: |-
-                      BackendRef is the Backend name. Built-in profiles commonly use
-                      "flux" or "argo"; external profiles may use any platform-defined name.
-                    type: string
-                  mode:
-                    default: pull
-                    description: Mode controls who performs delivery.
-                    enum:
-                    - push
-                    - pull
-                    type: string
-                  parameters:
-                    additionalProperties:
-                      type: string
-                    description: |-
-                      Parameters are opaque backend-specific settings, following the
-                      StorageClass.parameters pattern. Fleet core does not interpret them.
-                    type: object
-                required:
-                - backendRef
-                - mode
-                type: object
               plan:
                 description: Plan defines the progressive delivery stages.
                 properties:
@@ -153,521 +139,169 @@ spec:
                       description: StageSpec is one wave in the delivery promotionplan.
                       properties:
                         dependsOn:
-                          description: DependsOn declares upstream stage dependencies.
+                          description: |-
+                            DependsOn is the list of upstream stage names. Flat string list
+                            in v1alpha2 — see Stage.DependsOn in promotionrun_types.go for the
+                            design rationale.
                           items:
-                            description: |-
-                              StageDependency declares that a stage depends on an upstream stage,
-                              with optional soak time and availability strategy.
-                              This replaces bare stage name strings — enabling canary-unlock and
-                              soak-time patterns without heavyweight GateTemplate configuration.
-                            properties:
-                              requiredSoakTime:
-                                description: |-
-                                  RequiredSoakTime is how long ALL (or ANY, per Strategy) targets in the
-                                  upstream stage must have been continuously healthy before this stage
-                                  becomes eligible. Replaces GateTemplate for the most common gate pattern.
-                                  Zero or nil means no soak — advance as soon as the upstream stage completes.
-                                type: string
-                              stage:
-                                description: Stage is the upstream stage name that
-                                  must be satisfied.
-                                type: string
-                              strategy:
-                                default: all
-                                description: |-
-                                  Strategy controls when this dependency is considered satisfied.
-                                    "all" (default): every target in the upstream stage must be verified.
-                                    "any": at least one target in the upstream stage must be verified
-                                           (canary-unlock pattern).
-                                enum:
-                                - all
-                                - any
-                                type: string
-                            required:
-                            - stage
-                            type: object
+                            type: string
                           type: array
                         gate:
                           description: Gate defines approval/soak/metrics requirements
                             for this stage.
                           properties:
-                            approval:
-                              properties:
-                                approvers:
-                                  items:
-                                    type: string
-                                  type: array
-                                required:
-                                  type: boolean
-                              required:
-                              - required
-                              type: object
-                            gate:
-                              properties:
-                                gateTimeout:
-                                  description: |-
-                                    GateTimeout is the maximum duration the metrics gate may remain un-passed
-                                    before the target is failed. Only applies to MetricsCheck; infrastructure
-                                    errors (e.g. Prometheus unreachable) do not consume this budget.
-                                    Uses Go duration format, e.g. "30m", "1h". Empty means retry indefinitely.
-                                  type: string
-                                healthCheck:
-                                  type: boolean
-                                metrics:
-                                  items:
-                                    properties:
-                                      analysis:
-                                        description: |-
-                                          Analysis selects optional research-backed metric semantics. Empty keeps
-                                          the original threshold behavior for backwards compatibility.
-                                        properties:
-                                          alpha:
-                                            description: |-
-                                              Alpha is the false-positive budget for statistical tests. Defaults to
-                                              0.05. Lower values are more conservative.
-                                            maximum: 1
-                                            minimum: 0
-                                            type: number
-                                          baselineHealthQuery:
-                                            description: |-
-                                              BaselineHealthQuery must pass before baseline or score analysis can use
-                                              the baseline as a control. It should return a positive/true value when
-                                              the baseline is healthy.
-                                            type: string
-                                          baselineQuery:
-                                            description: |-
-                                              BaselineQuery is required for baseline analysis. The current value is
-                                              divided by the baseline value before applying the threshold.
-                                            type: string
-                                          comparator:
-                                            description: |-
-                                              Comparator controls threshold comparison.
-                                              Defaults to "gt" for threshold/sequential and "lte" for sloBurnRate/baseline.
-                                            enum:
-                                            - gt
-                                            - gte
-                                            - lt
-                                            - lte
-                                            type: string
-                                          confidenceThreshold:
-                                            description: |-
-                                              ConfidenceThreshold is the minimum confidence required for sequential
-                                              analysis to make a terminal decision. Defaults to 0.95.
-                                            maximum: 1
-                                            minimum: 0
-                                            type: number
-                                          maxSamples:
-                                            description: |-
-                                              MaxSamples is the maximum number of samples to wait for before a
-                                              statistical analysis must return a terminal decision using the evidence
-                                              available. Empty means no maximum.
-                                            format: int32
-                                            minimum: 1
-                                            type: integer
-                                          minSamples:
-                                            description: |-
-                                              MinSamples is the minimum number of range samples required for sequential
-                                              analysis before Fleet can pass or fail the gate.
-                                            format: int32
-                                            minimum: 1
-                                            type: integer
-                                          mode:
-                                            description: |-
-                                              Mode selects the metric analysis algorithm.
-                                              threshold: compare the current value to threshold.
-                                              sloBurnRate: treat the current value as an error-budget burn rate.
-                                              baseline: compare the current value to a baseline query as a ratio.
-                                              sequential: sample over the window and require enough confidence before deciding.
-                                              changePoint: detect a statistically meaningful change inside the window.
-                                              score: convert the metric into a 0-100 canary score.
-                                            enum:
-                                            - threshold
-                                            - sloBurnRate
-                                            - baseline
-                                            - sequential
-                                            - changePoint
-                                            - score
-                                            type: string
-                                          scoreThreshold:
-                                            description: |-
-                                              ScoreThreshold is the minimum score required for score analysis. Defaults
-                                              to 95.
-                                            maximum: 100
-                                            minimum: 0
-                                            type: number
-                                        type: object
-                                      config:
-                                        format: byte
-                                        type: string
-                                        x-kubernetes-preserve-unknown-fields: true
-                                      endpoint:
-                                        type: string
-                                      interval:
-                                        default: 30s
-                                        description: |-
-                                          Interval controls how often the metric is re-evaluated while the gate is blocking.
-                                          Equivalent to Grafana's "Evaluate every" setting.
-                                          Defaults to "30s". Minimum "10s".
-                                        type: string
-                                      preset:
-                                        description: |-
-                                          Preset references Plan.spec.metricPresets by name.
-                                          Inline fields override the preset when set.
-                                        type: string
-                                      provider:
-                                        description: Provider selects the metrics
-                                          backend. Required when preset is empty.
-                                        type: string
-                                      query:
-                                        description: |-
-                                          Query is a PromQL expression. The gate passes when the query returns a non-zero value.
-                                          Use range functions directly in the query for window-based checks, e.g.:
-                                            min_over_time(error_rate[30m]) < 0.01
-                                          Or reference the Window field as a template: {{.Window}} is substituted at evaluation time.
-                                          Required when preset is empty.
-                                        type: string
-                                      threshold:
-                                        description: |-
-                                          Threshold is optional and presence-aware so an inline metric can
-                                          intentionally override a preset threshold to 0.
-                                        type: number
-                                      window:
-                                        default: 5m
-                                        description: |-
-                                          Window is the lookback duration injected into the query template as {{.Window}}.
-                                          When Query already contains a hardcoded range (e.g. [5m]), this field is ignored.
-                                          Defaults to "5m".
-                                        type: string
-                                    type: object
-                                  type: array
-                                soakTime:
-                                  type: string
-                                templates:
-                                  items:
-                                    description: |-
-                                      GateTemplateSpec defines an inline, parameterised gate evaluation config.
-                                      Embedded directly in GateSpec.Templates — no separate CRD needed.
-                                    properties:
-                                      args:
-                                        items:
-                                          description: GateArg declares a named parameter
-                                            with an optional default value.
-                                          properties:
-                                            name:
-                                              type: string
-                                            value:
-                                              type: string
-                                          required:
-                                          - name
-                                          type: object
-                                        type: array
-                                      cel:
-                                        description: CELGateSpec configures the built-in
-                                          CEL expression gate.
-                                        properties:
-                                          expression:
-                                            type: string
-                                        required:
-                                        - expression
-                                        type: object
-                                      failurePolicy:
-                                        default: halt
-                                        enum:
-                                        - halt
-                                        - retry
-                                        - skip
-                                        type: string
-                                      inconclusivePolicy:
-                                        default: retry
-                                        enum:
-                                        - retry
-                                        - skip
-                                        - halt
-                                        type: string
-                                      job:
-                                        description: JobGateSpec configures the Kubernetes
-                                          Job gate.
-                                        properties:
-                                          args:
-                                            items:
-                                              type: string
-                                            type: array
-                                          command:
-                                            items:
-                                              type: string
-                                            type: array
-                                          env:
-                                            items:
-                                              description: EnvVar represents an environment
-                                                variable present in a Container.
-                                              properties:
-                                                name:
-                                                  description: |-
-                                                    Name of the environment variable.
-                                                    May consist of any printable ASCII characters except '='.
-                                                  type: string
-                                                value:
-                                                  description: |-
-                                                    Variable references $(VAR_NAME) are expanded
-                                                    using the previously defined environment variables in the container and
-                                                    any service environment variables. If a variable cannot be resolved,
-                                                    the reference in the input string will be unchanged. Double $$ are reduced
-                                                    to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e.
-                                                    "$$(VAR_NAME)" will produce the string literal "$(VAR_NAME)".
-                                                    Escaped references will never be expanded, regardless of whether the variable
-                                                    exists or not.
-                                                    Defaults to "".
-                                                  type: string
-                                                valueFrom:
-                                                  description: Source for the environment
-                                                    variable's value. Cannot be used
-                                                    if value is not empty.
-                                                  properties:
-                                                    configMapKeyRef:
-                                                      description: Selects a key of
-                                                        a ConfigMap.
-                                                      properties:
-                                                        key:
-                                                          description: The key to
-                                                            select.
-                                                          type: string
-                                                        name:
-                                                          default: ""
-                                                          description: |-
-                                                            Name of the referent.
-                                                            This field is effectively required, but due to backwards compatibility is
-                                                            allowed to be empty. Instances of this type with an empty value here are
-                                                            almost certainly wrong.
-                                                            More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                                                          type: string
-                                                        optional:
-                                                          description: Specify whether
-                                                            the ConfigMap or its key
-                                                            must be defined
-                                                          type: boolean
-                                                      required:
-                                                      - key
-                                                      type: object
-                                                      x-kubernetes-map-type: atomic
-                                                    fieldRef:
-                                                      description: |-
-                                                        Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,
-                                                        spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.
-                                                      properties:
-                                                        apiVersion:
-                                                          description: Version of
-                                                            the schema the FieldPath
-                                                            is written in terms of,
-                                                            defaults to "v1".
-                                                          type: string
-                                                        fieldPath:
-                                                          description: Path of the
-                                                            field to select in the
-                                                            specified API version.
-                                                          type: string
-                                                      required:
-                                                      - fieldPath
-                                                      type: object
-                                                      x-kubernetes-map-type: atomic
-                                                    fileKeyRef:
-                                                      description: |-
-                                                        FileKeyRef selects a key of the env file.
-                                                        Requires the EnvFiles feature gate to be enabled.
-                                                      properties:
-                                                        key:
-                                                          description: |-
-                                                            The key within the env file. An invalid key will prevent the pod from starting.
-                                                            The keys defined within a source may consist of any printable ASCII characters except '='.
-                                                            During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
-                                                          type: string
-                                                        optional:
-                                                          default: false
-                                                          description: |-
-                                                            Specify whether the file or its key must be defined. If the file or key
-                                                            does not exist, then the env var is not published.
-                                                            If optional is set to true and the specified key does not exist,
-                                                            the environment variable will not be set in the Pod's containers.
-
-                                                            If optional is set to false and the specified key does not exist,
-                                                            an error will be returned during Pod creation.
-                                                          type: boolean
-                                                        path:
-                                                          description: |-
-                                                            The path within the volume from which to select the file.
-                                                            Must be relative and may not contain the '..' path or start with '..'.
-                                                          type: string
-                                                        volumeName:
-                                                          description: The name of
-                                                            the volume mount containing
-                                                            the env file.
-                                                          type: string
-                                                      required:
-                                                      - key
-                                                      - path
-                                                      - volumeName
-                                                      type: object
-                                                      x-kubernetes-map-type: atomic
-                                                    resourceFieldRef:
-                                                      description: |-
-                                                        Selects a resource of the container: only resources limits and requests
-                                                        (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.
-                                                      properties:
-                                                        containerName:
-                                                          description: 'Container
-                                                            name: required for volumes,
-                                                            optional for env vars'
-                                                          type: string
-                                                        divisor:
-                                                          anyOf:
-                                                          - type: integer
-                                                          - type: string
-                                                          description: Specifies the
-                                                            output format of the exposed
-                                                            resources, defaults to
-                                                            "1"
-                                                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                                                          x-kubernetes-int-or-string: true
-                                                        resource:
-                                                          description: 'Required:
-                                                            resource to select'
-                                                          type: string
-                                                      required:
-                                                      - resource
-                                                      type: object
-                                                      x-kubernetes-map-type: atomic
-                                                    secretKeyRef:
-                                                      description: Selects a key of
-                                                        a secret in the pod's namespace
-                                                      properties:
-                                                        key:
-                                                          description: The key of
-                                                            the secret to select from.  Must
-                                                            be a valid secret key.
-                                                          type: string
-                                                        name:
-                                                          default: ""
-                                                          description: |-
-                                                            Name of the referent.
-                                                            This field is effectively required, but due to backwards compatibility is
-                                                            allowed to be empty. Instances of this type with an empty value here are
-                                                            almost certainly wrong.
-                                                            More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                                                          type: string
-                                                        optional:
-                                                          description: Specify whether
-                                                            the Secret or its key
-                                                            must be defined
-                                                          type: boolean
-                                                      required:
-                                                      - key
-                                                      type: object
-                                                      x-kubernetes-map-type: atomic
-                                                  type: object
-                                              required:
-                                              - name
-                                              type: object
-                                            type: array
-                                            x-kubernetes-preserve-unknown-fields: true
-                                          image:
-                                            type: string
-                                        required:
-                                        - image
-                                        type: object
-                                      maxAttempts:
-                                        default: 3
-                                        type: integer
-                                      name:
-                                        description: |-
-                                          Name uniquely identifies this template within the gate for status tracking
-                                          and Job naming. Required when type == "job" (used to generate Job name).
-                                        type: string
-                                      plugin:
-                                        description: PluginGateSpec references an
-                                          external gate registered through Plugin.
-                                        properties:
-                                          name:
-                                            description: Name is Plugin.spec.name
-                                              for a ready gate plugin.
-                                            type: string
-                                        required:
-                                        - name
-                                        type: object
-                                      timeout:
-                                        type: string
-                                      type:
-                                        enum:
-                                        - cel
-                                        - job
-                                        - webhook
-                                        - plugin
-                                        type: string
-                                      webhook:
-                                        description: WebhookGateSpec configures the
-                                          HTTP webhook gate.
-                                        properties:
-                                          pollInterval:
-                                            type: string
-                                          url:
-                                            type: string
-                                        required:
-                                        - url
-                                        type: object
-                                    required:
-                                    - type
-                                    type: object
-                                  type: array
-                                verification:
-                                  description: VerificationGateSpec configures per-policy
-                                    artifact signature verification.
-                                  properties:
-                                    cosignPolicy:
-                                      description: CosignPolicySpec specifies how
-                                        cosign should verify the artifact signature.
-                                      properties:
-                                        key:
-                                          description: KeyVerificationSpec configures
-                                            static public key cosign verification.
-                                          properties:
-                                            secretRef:
-                                              description: CosignKeySecretRef identifies
-                                                a cosign public key stored in a Kubernetes
-                                                Secret.
-                                              properties:
-                                                key:
-                                                  default: cosign.pub
-                                                  type: string
-                                                name:
-                                                  type: string
-                                                namespace:
-                                                  default: kapro-system
-                                                  type: string
-                                              required:
-                                              - name
-                                              type: object
-                                          required:
-                                          - secretRef
-                                          type: object
-                                        keyless:
-                                          description: KeylessVerificationSpec configures
-                                            OIDC keyless cosign verification.
-                                          properties:
-                                            issuer:
-                                              type: string
-                                            rekorURL:
-                                              type: string
-                                            subject:
-                                              type: string
-                                          type: object
-                                      type: object
-                                  type: object
-                              type: object
-                            mode:
-                              enum:
-                              - auto
-                              - manual
-                              - scheduled
+                            approvers:
+                              description: |-
+                                Approvers is the list of usernames or group names whose approval
+                                unlocks the gate. PRESENCE OF THIS FIELD implies manual mode in
+                                v1alpha2 — the explicit `mode:` enum was removed because the data
+                                already encodes the mode.
+                              items:
+                                type: string
+                              type: array
+                            gateTimeout:
+                              description: |-
+                                GateTimeout is the maximum duration the gate may remain un-passed
+                                before targets are failed. Empty = retry indefinitely.
                               type: string
+                            healthCheck:
+                              description: |-
+                                HealthCheck enables the basic workload-readiness check. Was
+                                `gate.gate.healthCheck` in v1alpha1.
+                              type: boolean
+                            metrics:
+                              description: |-
+                                Metrics is the list of metric gates. Order is preserved (sequential
+                                evaluation). Was `gate.gate.metrics` in v1alpha1.
+                              items:
+                                properties:
+                                  analysis:
+                                    description: |-
+                                      Analysis selects optional research-backed metric semantics. Empty keeps
+                                      the original threshold behavior for backwards compatibility.
+                                    properties:
+                                      alpha:
+                                        description: |-
+                                          Alpha is the false-positive budget for statistical tests. Defaults to
+                                          0.05. Lower values are more conservative.
+                                        maximum: 1
+                                        minimum: 0
+                                        type: number
+                                      baselineHealthQuery:
+                                        description: |-
+                                          BaselineHealthQuery must pass before baseline or score analysis can use
+                                          the baseline as a control. It should return a positive/true value when
+                                          the baseline is healthy.
+                                        type: string
+                                      baselineQuery:
+                                        description: |-
+                                          BaselineQuery is required for baseline analysis. The current value is
+                                          divided by the baseline value before applying the threshold.
+                                        type: string
+                                      comparator:
+                                        description: |-
+                                          Comparator controls threshold comparison.
+                                          Defaults to "gt" for threshold/sequential and "lte" for sloBurnRate/baseline.
+                                        enum:
+                                        - gt
+                                        - gte
+                                        - lt
+                                        - lte
+                                        type: string
+                                      confidenceThreshold:
+                                        description: |-
+                                          ConfidenceThreshold is the minimum confidence required for sequential
+                                          analysis to make a terminal decision. Defaults to 0.95.
+                                        maximum: 1
+                                        minimum: 0
+                                        type: number
+                                      maxSamples:
+                                        description: |-
+                                          MaxSamples is the maximum number of samples to wait for before a
+                                          statistical analysis must return a terminal decision using the evidence
+                                          available. Empty means no maximum.
+                                        format: int32
+                                        minimum: 1
+                                        type: integer
+                                      minSamples:
+                                        description: |-
+                                          MinSamples is the minimum number of range samples required for sequential
+                                          analysis before Fleet can pass or fail the gate.
+                                        format: int32
+                                        minimum: 1
+                                        type: integer
+                                      mode:
+                                        description: |-
+                                          Mode selects the metric analysis algorithm.
+                                          threshold: compare the current value to threshold.
+                                          sloBurnRate: treat the current value as an error-budget burn rate.
+                                          baseline: compare the current value to a baseline query as a ratio.
+                                          sequential: sample over the window and require enough confidence before deciding.
+                                          changePoint: detect a statistically meaningful change inside the window.
+                                          score: convert the metric into a 0-100 canary score.
+                                        enum:
+                                        - threshold
+                                        - sloBurnRate
+                                        - baseline
+                                        - sequential
+                                        - changePoint
+                                        - score
+                                        type: string
+                                      scoreThreshold:
+                                        description: |-
+                                          ScoreThreshold is the minimum score required for score analysis. Defaults
+                                          to 95.
+                                        maximum: 100
+                                        minimum: 0
+                                        type: number
+                                    type: object
+                                  config:
+                                    format: byte
+                                    type: string
+                                    x-kubernetes-preserve-unknown-fields: true
+                                  endpoint:
+                                    type: string
+                                  interval:
+                                    default: 30s
+                                    description: |-
+                                      Interval controls how often the metric is re-evaluated while the gate is blocking.
+                                      Equivalent to Grafana's "Evaluate every" setting.
+                                      Defaults to "30s". Minimum "10s".
+                                    type: string
+                                  preset:
+                                    description: |-
+                                      Preset references Plan.spec.metricPresets by name.
+                                      Inline fields override the preset when set.
+                                    type: string
+                                  provider:
+                                    description: Provider selects the metrics backend.
+                                      Required when preset is empty.
+                                    type: string
+                                  query:
+                                    description: |-
+                                      Query is a PromQL expression. The gate passes when the query returns a non-zero value.
+                                      Use range functions directly in the query for window-based checks, e.g.:
+                                        min_over_time(error_rate[30m]) < 0.01
+                                      Or reference the Window field as a template: {{.Window}} is substituted at evaluation time.
+                                      Required when preset is empty.
+                                    type: string
+                                  threshold:
+                                    description: |-
+                                      Threshold is optional and presence-aware so an inline metric can
+                                      intentionally override a preset threshold to 0.
+                                    type: number
+                                  window:
+                                    default: 5m
+                                    description: |-
+                                      Window is the lookback duration injected into the query template as {{.Window}}.
+                                      When Query already contains a hardcoded range (e.g. [5m]), this field is ignored.
+                                      Defaults to "5m".
+                                    type: string
+                                type: object
+                              type: array
                             notifications:
+                              description: Notifications fires per-channel events
+                                on gate state changes.
                               items:
                                 description: NotificationSpec configures where and
                                   when to send delivery lifecycle events.
@@ -772,17 +406,337 @@ spec:
                               description: |-
                                 OnFailure controls what Fleet does when a gate fails or times out.
                                   halt (default): stop the rollout for this target and wait for human intervention.
-                                    Use for checkout systems where automated rollback is too risky.
                                   rollback: automatically revert to the previous version.
-                                    Only effective when a previous successful apply exists (PreviousVersion is set).
                                   continue: mark the gate as skipped and advance to the next phase.
                               enum:
                               - halt
                               - rollback
                               - continue
                               type: string
-                          required:
-                          - mode
+                            soak:
+                              description: |-
+                                Soak is the minimum duration a stage's targets must stay healthy
+                                before the stage advances. Was `gate.gate.soakTime` in v1alpha1.
+                              type: string
+                            templates:
+                              description: |-
+                                Templates is the list of inline gate templates (cel/job/webhook/plugin).
+                                Was `gate.gate.templates` in v1alpha1.
+                              items:
+                                description: |-
+                                  GateTemplateSpec defines an inline, parameterised gate evaluation config.
+                                  Embedded directly in GateSpec.Templates — no separate CRD needed.
+                                properties:
+                                  args:
+                                    items:
+                                      description: GateArg declares a named parameter
+                                        with an optional default value.
+                                      properties:
+                                        name:
+                                          type: string
+                                        value:
+                                          type: string
+                                      required:
+                                      - name
+                                      type: object
+                                    type: array
+                                  cel:
+                                    description: CELGateSpec configures the built-in
+                                      CEL expression gate.
+                                    properties:
+                                      expression:
+                                        type: string
+                                    required:
+                                    - expression
+                                    type: object
+                                  failurePolicy:
+                                    default: halt
+                                    enum:
+                                    - halt
+                                    - retry
+                                    - skip
+                                    type: string
+                                  inconclusivePolicy:
+                                    default: retry
+                                    enum:
+                                    - retry
+                                    - skip
+                                    - halt
+                                    type: string
+                                  job:
+                                    description: JobGateSpec configures the Kubernetes
+                                      Job gate.
+                                    properties:
+                                      args:
+                                        items:
+                                          type: string
+                                        type: array
+                                      command:
+                                        items:
+                                          type: string
+                                        type: array
+                                      env:
+                                        items:
+                                          description: EnvVar represents an environment
+                                            variable present in a Container.
+                                          properties:
+                                            name:
+                                              description: |-
+                                                Name of the environment variable.
+                                                May consist of any printable ASCII characters except '='.
+                                              type: string
+                                            value:
+                                              description: |-
+                                                Variable references $(VAR_NAME) are expanded
+                                                using the previously defined environment variables in the container and
+                                                any service environment variables. If a variable cannot be resolved,
+                                                the reference in the input string will be unchanged. Double $$ are reduced
+                                                to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e.
+                                                "$$(VAR_NAME)" will produce the string literal "$(VAR_NAME)".
+                                                Escaped references will never be expanded, regardless of whether the variable
+                                                exists or not.
+                                                Defaults to "".
+                                              type: string
+                                            valueFrom:
+                                              description: Source for the environment
+                                                variable's value. Cannot be used if
+                                                value is not empty.
+                                              properties:
+                                                configMapKeyRef:
+                                                  description: Selects a key of a
+                                                    ConfigMap.
+                                                  properties:
+                                                    key:
+                                                      description: The key to select.
+                                                      type: string
+                                                    name:
+                                                      default: ""
+                                                      description: |-
+                                                        Name of the referent.
+                                                        This field is effectively required, but due to backwards compatibility is
+                                                        allowed to be empty. Instances of this type with an empty value here are
+                                                        almost certainly wrong.
+                                                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                                      type: string
+                                                    optional:
+                                                      description: Specify whether
+                                                        the ConfigMap or its key must
+                                                        be defined
+                                                      type: boolean
+                                                  required:
+                                                  - key
+                                                  type: object
+                                                  x-kubernetes-map-type: atomic
+                                                fieldRef:
+                                                  description: |-
+                                                    Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,
+                                                    spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.
+                                                  properties:
+                                                    apiVersion:
+                                                      description: Version of the
+                                                        schema the FieldPath is written
+                                                        in terms of, defaults to "v1".
+                                                      type: string
+                                                    fieldPath:
+                                                      description: Path of the field
+                                                        to select in the specified
+                                                        API version.
+                                                      type: string
+                                                  required:
+                                                  - fieldPath
+                                                  type: object
+                                                  x-kubernetes-map-type: atomic
+                                                fileKeyRef:
+                                                  description: |-
+                                                    FileKeyRef selects a key of the env file.
+                                                    Requires the EnvFiles feature gate to be enabled.
+                                                  properties:
+                                                    key:
+                                                      description: |-
+                                                        The key within the env file. An invalid key will prevent the pod from starting.
+                                                        The keys defined within a source may consist of any printable ASCII characters except '='.
+                                                        During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                                      type: string
+                                                    optional:
+                                                      default: false
+                                                      description: |-
+                                                        Specify whether the file or its key must be defined. If the file or key
+                                                        does not exist, then the env var is not published.
+                                                        If optional is set to true and the specified key does not exist,
+                                                        the environment variable will not be set in the Pod's containers.
+
+                                                        If optional is set to false and the specified key does not exist,
+                                                        an error will be returned during Pod creation.
+                                                      type: boolean
+                                                    path:
+                                                      description: |-
+                                                        The path within the volume from which to select the file.
+                                                        Must be relative and may not contain the '..' path or start with '..'.
+                                                      type: string
+                                                    volumeName:
+                                                      description: The name of the
+                                                        volume mount containing the
+                                                        env file.
+                                                      type: string
+                                                  required:
+                                                  - key
+                                                  - path
+                                                  - volumeName
+                                                  type: object
+                                                  x-kubernetes-map-type: atomic
+                                                resourceFieldRef:
+                                                  description: |-
+                                                    Selects a resource of the container: only resources limits and requests
+                                                    (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.
+                                                  properties:
+                                                    containerName:
+                                                      description: 'Container name:
+                                                        required for volumes, optional
+                                                        for env vars'
+                                                      type: string
+                                                    divisor:
+                                                      anyOf:
+                                                      - type: integer
+                                                      - type: string
+                                                      description: Specifies the output
+                                                        format of the exposed resources,
+                                                        defaults to "1"
+                                                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                                      x-kubernetes-int-or-string: true
+                                                    resource:
+                                                      description: 'Required: resource
+                                                        to select'
+                                                      type: string
+                                                  required:
+                                                  - resource
+                                                  type: object
+                                                  x-kubernetes-map-type: atomic
+                                                secretKeyRef:
+                                                  description: Selects a key of a
+                                                    secret in the pod's namespace
+                                                  properties:
+                                                    key:
+                                                      description: The key of the
+                                                        secret to select from.  Must
+                                                        be a valid secret key.
+                                                      type: string
+                                                    name:
+                                                      default: ""
+                                                      description: |-
+                                                        Name of the referent.
+                                                        This field is effectively required, but due to backwards compatibility is
+                                                        allowed to be empty. Instances of this type with an empty value here are
+                                                        almost certainly wrong.
+                                                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                                      type: string
+                                                    optional:
+                                                      description: Specify whether
+                                                        the Secret or its key must
+                                                        be defined
+                                                      type: boolean
+                                                  required:
+                                                  - key
+                                                  type: object
+                                                  x-kubernetes-map-type: atomic
+                                              type: object
+                                          required:
+                                          - name
+                                          type: object
+                                        type: array
+                                        x-kubernetes-preserve-unknown-fields: true
+                                      image:
+                                        type: string
+                                    required:
+                                    - image
+                                    type: object
+                                  maxAttempts:
+                                    default: 3
+                                    type: integer
+                                  name:
+                                    description: |-
+                                      Name uniquely identifies this template within the gate for status tracking
+                                      and Job naming. Required when type == "job" (used to generate Job name).
+                                    type: string
+                                  plugin:
+                                    description: PluginGateSpec references an external
+                                      gate registered through Plugin.
+                                    properties:
+                                      name:
+                                        description: Name is Plugin.spec.name for
+                                          a ready gate plugin.
+                                        type: string
+                                    required:
+                                    - name
+                                    type: object
+                                  timeout:
+                                    type: string
+                                  type:
+                                    enum:
+                                    - cel
+                                    - job
+                                    - webhook
+                                    - plugin
+                                    type: string
+                                  webhook:
+                                    description: WebhookGateSpec configures the HTTP
+                                      webhook gate.
+                                    properties:
+                                      pollInterval:
+                                        type: string
+                                      url:
+                                        type: string
+                                    required:
+                                    - url
+                                    type: object
+                                required:
+                                - type
+                                type: object
+                              type: array
+                            verification:
+                              description: |-
+                                Verification is the per-policy artifact signature gate. Was
+                                `gate.gate.verification` in v1alpha1.
+                              properties:
+                                cosignPolicy:
+                                  description: CosignPolicySpec specifies how cosign
+                                    should verify the artifact signature.
+                                  properties:
+                                    key:
+                                      description: KeyVerificationSpec configures
+                                        static public key cosign verification.
+                                      properties:
+                                        secretRef:
+                                          description: CosignKeySecretRef identifies
+                                            a cosign public key stored in a Kubernetes
+                                            Secret.
+                                          properties:
+                                            key:
+                                              default: cosign.pub
+                                              type: string
+                                            name:
+                                              type: string
+                                            namespace:
+                                              default: kapro-system
+                                              type: string
+                                          required:
+                                          - name
+                                          type: object
+                                      required:
+                                      - secretRef
+                                      type: object
+                                    keyless:
+                                      description: KeylessVerificationSpec configures
+                                        OIDC keyless cosign verification.
+                                      properties:
+                                        issuer:
+                                          type: string
+                                        rekorURL:
+                                          type: string
+                                        subject:
+                                          type: string
+                                      type: object
+                                  type: object
+                              type: object
                           type: object
                         name:
                           description: Name of the stage.
@@ -820,286 +774,28 @@ spec:
                 required:
                 - url
                 type: object
-              source:
-                description: Source defines deployable units inline for the KISS single-object
-                  path.
-                properties:
-                  backendRef:
-                    description: |-
-                      BackendRef is the Backend this source is normally discovered from
-                      or packaged for. Fleet uses it as metadata; delivery still comes from
-                      Fleet.spec.delivery and Cluster.spec.delivery.
-                    type: string
-                  defaults:
-                    description: Defaults are inherited by every unit unless overridden.
-                    properties:
-                      repo:
-                        description: Repo is the default registry name (from spec.registries).
-                        type: string
-                      retries:
-                        default: 3
-                        description: Retries is the number of install/upgrade retry
-                          attempts.
-                        format: int32
-                        type: integer
-                      targetNamespace:
-                        description: TargetNamespace is where workload pods run. Supports
-                          ${variable} substitution.
-                        type: string
-                      timeout:
-                        default: 10m
-                        description: Timeout for install and upgrade operations.
-                        type: string
-                      values:
-                        description: Values are base Helm values applied to every
-                          unit (deep-merged with unit values).
-                        x-kubernetes-preserve-unknown-fields: true
-                      valuesFrom:
-                        description: ValuesFrom references ConfigMaps/Secrets with
-                          Helm values applied to all units.
-                        items:
-                          description: ValuesReference references a ConfigMap or Secret
-                            for Helm values.
-                          properties:
-                            kind:
-                              default: ConfigMap
-                              description: Kind is "ConfigMap" (default) or "Secret".
-                              type: string
-                            name:
-                              description: Name of the ConfigMap or Secret.
-                              type: string
-                            optional:
-                              description: Optional marks this values source as non-required.
-                              type: boolean
-                            valuesKey:
-                              description: 'ValuesKey is the data key to use. Default:
-                                "values.yaml".'
-                              type: string
-                          required:
-                          - name
-                          type: object
-                        type: array
-                    type: object
-                  helmReleaseNamespace:
-                    default: flux-system
-                    description: HelmReleaseNamespace is where HelmRelease CRs live
-                      on spokes (not the workloads).
-                    type: string
-                  overrides:
-                    description: Overrides are per-cluster or per-label value patches
-                      layered on top of defaults.
-                    items:
-                      description: SourceOverride patches Helm values for a subset
-                        of clusters.
-                      properties:
-                        clusters:
-                          description: Clusters is an explicit list of cluster names.
-                            Takes precedence over selector.
-                          items:
-                            type: string
-                          type: array
-                        selector:
-                          additionalProperties:
-                            type: string
-                          description: Selector matches clusters by labels. Applied
-                            to all matching clusters.
-                          type: object
-                        unit:
-                          description: Unit restricts this override to a single unit.
-                            Empty means all.
-                          type: string
-                        values:
-                          description: Values are Helm value patches merged on top
-                            of defaults.
-                          x-kubernetes-preserve-unknown-fields: true
-                      type: object
-                    type: array
-                  registries:
-                    description: Registries defines HelmRepository sources for generated
-                      Flux resources.
-                    items:
-                      description: SourceRegistry defines a Helm chart source. Generates
-                        a HelmRepository on spoke.
-                      properties:
-                        interval:
-                          default: 5m
-                          description: Interval is how often to check for new chart
-                            versions.
-                          type: string
-                        name:
-                          description: Name is the registry identifier referenced
-                            by units via repo field.
-                          type: string
-                        provider:
-                          default: generic
-                          description: |-
-                            Provider is the auth provider: "generic" (default), "gcp", "aws", "azure".
-                            "gcp" uses Workload Identity — no credentials needed.
-                          type: string
-                        type:
-                          description: Type is "oci" (auto-detected for oci:// URLs)
-                            or "default" (HTTPS).
-                          type: string
-                        url:
-                          description: |-
-                            URL is the Helm repository URL (OCI or HTTPS).
-                            Supports ${variable} substitution (e.g. oci://${gcpArtifactRegistry}/helm/ldl).
-                          type: string
-                      required:
-                      - name
-                      - url
-                      type: object
-                    type: array
-                  units:
-                    description: Units defines the native deployable units Fleet promotes.
-                    items:
-                      description: |-
-                        Unit is one deployable unit within a Source.
-                        It can describe a generated Helm unit for greenfield scaffolds or an existing
-                        backend-native object discovered from Argo/Flux.
-                      properties:
-                        backendKind:
-                          description: |-
-                            BackendKind identifies the backend-native object kind when this unit maps
-                            to an existing object, for example Application, ApplicationSet,
-                            Kustomization, or HelmRelease.
-                          type: string
-                        chartName:
-                          description: |-
-                            ChartName overrides the Helm chart name when different from unit name.
-                            Example: unit "keycloak" uses chart "keycloakx".
-                          type: string
-                        crds:
-                          description: 'CRDs controls CRD install policy: "Skip" (default),
-                            "Create", "CreateReplace".'
-                          enum:
-                          - Skip
-                          - Create
-                          - CreateReplace
-                          type: string
-                        dependsOn:
-                          description: |-
-                            DependsOn lists unit names that must be Ready before this one starts.
-                            Creates HelmRelease-level dependsOn within the same wave.
-                          items:
-                            type: string
-                          type: array
-                        name:
-                          description: Name is the stable Fleet unit identifier.
-                          type: string
-                        namespace:
-                          description: Namespace is the backend-native object namespace
-                            when applicable.
-                          type: string
-                        prune:
-                          description: |-
-                            Prune controls whether Flux deletes resources when removed. Default: true.
-                            Set to false for databases, Kafka, PVCs.
-                          type: boolean
-                        repo:
-                          description: Repo references a registry from spec.registries
-                            by name. Inherits from defaults if empty.
-                          type: string
-                        retries:
-                          description: Retries for install/upgrade remediation. Inherits
-                            from defaults if empty.
-                          format: int32
-                          type: integer
-                        sourcePath:
-                          description: |-
-                            SourcePath is the repo-relative file path Fleet updates for Git-native
-                            brownfield promotion. It is required for file-backed units whose
-                            VersionField does not already include a file path.
-                          type: string
-                        suspend:
-                          description: Suspend pauses reconciliation for this unit.
-                          type: boolean
-                        targetNamespace:
-                          description: |-
-                            TargetNamespace is where workload pods run on spoke. Inherits from defaults if empty.
-                            Supports ${variable} substitution.
-                          type: string
-                        timeout:
-                          description: Timeout for install and upgrade. Inherits from
-                            defaults if empty.
-                          type: string
-                        values:
-                          description: Values are inline Helm values. Deep-merged
-                            with defaults.values (unit wins on conflict).
-                          x-kubernetes-preserve-unknown-fields: true
-                        valuesFrom:
-                          description: |-
-                            ValuesFrom references ConfigMaps/Secrets with Helm values.
-                            When set, REPLACES defaults.valuesFrom (not appended).
-                          items:
-                            description: ValuesReference references a ConfigMap or
-                              Secret for Helm values.
-                            properties:
-                              kind:
-                                default: ConfigMap
-                                description: Kind is "ConfigMap" (default) or "Secret".
-                                type: string
-                              name:
-                                description: Name of the ConfigMap or Secret.
-                                type: string
-                              optional:
-                                description: Optional marks this values source as
-                                  non-required.
-                                type: boolean
-                              valuesKey:
-                                description: 'ValuesKey is the data key to use. Default:
-                                  "values.yaml".'
-                                type: string
-                            required:
-                            - name
-                            type: object
-                          type: array
-                        version:
-                          description: |-
-                            Version is the default chart/revision for the unit at install time.
-                            This is the package/catalog default; the per-rollout target version
-                            comes from PromotionRun.spec.version (or --version on `kapro promote`)
-                            and is what advances the unit through the fleet.
-                            Supports ${VARIABLE} substitution from cluster-vars.
-                          type: string
-                        versionField:
-                          description: |-
-                            VersionField is the backend-native field Fleet changes for this unit,
-                            for example spec.source.targetRevision for Argo CD Applications.
-                          type: string
-                        wave:
-                          description: |-
-                            Wave controls deployment ordering (lower = earlier). Units in the same wave
-                            deploy in parallel. Wave N waits for wave N-1 to be Ready.
-                          format: int32
-                          minimum: 0
-                          type: integer
-                      required:
-                      - name
-                      type: object
-                    minItems: 1
-                    type: array
-                required:
-                - units
-                type: object
               sourceRef:
                 description: |-
-                  SourceRef is the optional name of a separate Source that defines
-                  units to deploy. Use Source for the KISS single-object path; use SourceRef
-                  when teams want to share a source catalog across multiple Fleet objects.
+                  SourceRef is the name of a separate Source CRD listing one or more
+                  units to deploy. Use when the Fleet ships more than one chart, or to
+                  share a unit catalog across multiple Fleets. Mutually exclusive with
+                  Chart / Version above.
                 type: string
               suspended:
                 default: false
                 description: Suspended pauses Fleet reconciliation.
                 type: boolean
+              version:
+                description: Version is the chart version for the KISS Fleet path.
+                type: string
             required:
             - clusters
-            - delivery
             - plan
             type: object
             x-kubernetes-validations:
-            - message: exactly one of sourceRef or source is required
-              rule: (has(self.sourceRef) && size(self.sourceRef) > 0) != has(self.source)
+            - message: exactly one of sourceRef or chart+version is required
+              rule: (has(self.sourceRef) && size(self.sourceRef) > 0) != (has(self.chart)
+                && size(self.chart) > 0)
           status:
             description: FleetStatus defines the observed state of Fleet.
             properties:

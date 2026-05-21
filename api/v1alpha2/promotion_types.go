@@ -22,12 +22,14 @@ type PromotionSpec struct {
 	// Either Version or at least one Versions entry must be set.
 	// +optional
 	Versions map[string]string `json:"versions,omitempty"`
-	// PromotionPlans optionally overrides the inline Fleet.spec.promotionplan
-	// for this intent. When unset, the controller derives a single plan ref
-	// from the parent Fleet's inline plan.
+	// Plans optionally overrides the inline Fleet.spec.plan with one or more
+	// named Plan CRDs. Each entry is the metadata.name of a Plan resource.
+	// Listing the same name twice is rejected by the admission webhook —
+	// to apply the same Plan to a different cluster subset, create a
+	// second Promotion with a narrower spec.scope.
 	// +kubebuilder:validation:MaxItems=64
 	// +optional
-	PromotionPlans []PlanRef `json:"plans,omitempty"`
+	Plans []string `json:"plans,omitempty"`
 	// Scope restricts this Promotion to a subset of the parent fleet.
 	// +optional
 	Scope *PromotionRunScope `json:"scope,omitempty"`

@@ -9,22 +9,31 @@ import (
 // ---- Fleet ------------------------------------------------------------------
 
 // FleetSpec defines the desired state of a Fleet fleet.
-// +kubebuilder:validation:XValidation:rule="(has(self.sourceRef) && size(self.sourceRef) > 0) != has(self.source)",message="exactly one of sourceRef or source is required"
+// +kubebuilder:validation:XValidation:rule="(has(self.sourceRef) && size(self.sourceRef) > 0) != (has(self.chart) && size(self.chart) > 0)",message="exactly one of sourceRef or chart+version is required"
 type FleetSpec struct {
 	// Registry is the OCI registry URL for generated pull-mode artifacts.
 	// Native Argo/Flux sources may omit it when no Fleet-packaged artifact is used.
 	// +optional
 	Registry KaproRegistry `json:"registry,omitempty"`
-	// SourceRef is the optional name of a separate Source that defines
-	// units to deploy. Use Source for the KISS single-object path; use SourceRef
-	// when teams want to share a source catalog across multiple Fleet objects.
+	// Chart is the chart name for the single-chart (KISS) Fleet path.
+	// Combined with Version, replaces the v1alpha1 inline Source.units[0].
+	// Mutually exclusive with SourceRef.
+	// +optional
+	Chart string `json:"chart,omitempty"`
+	// Version is the chart version for the KISS Fleet path.
+	// +optional
+	Version string `json:"version,omitempty"`
+	// SourceRef is the name of a separate Source CRD listing one or more
+	// units to deploy. Use when the Fleet ships more than one chart, or to
+	// share a unit catalog across multiple Fleets. Mutually exclusive with
+	// Chart / Version above.
 	// +optional
 	SourceRef string `json:"sourceRef,omitempty"`
-	// Source defines deployable units inline for the KISS single-object path.
+	// Backend selects the delivery backend by Backend CRD name.
+	// Examples: "flux", "argocd", "oci". When empty, the operator
+	// defaults to HubConfig.spec.defaultBackend.
 	// +optional
-	Source *SourceSpec `json:"source,omitempty"`
-	// Delivery selects the backend-neutral fleet delivery profile.
-	Delivery DeliverySpec `json:"delivery"`
+	Backend string `json:"backend,omitempty"`
 	// Clusters defines the target clusters in the fleet.
 	// +kubebuilder:validation:MinItems=1
 	Clusters []ClusterRef `json:"clusters"`
@@ -95,9 +104,11 @@ type StageSpec struct {
 	Name string `json:"name"`
 	// Selector matches clusters by labels.
 	Selector map[string]string `json:"selector"`
-	// DependsOn declares upstream stage dependencies.
+	// DependsOn is the list of upstream stage names. Flat string list
+	// in v1alpha2 — see Stage.DependsOn in promotionrun_types.go for the
+	// design rationale.
 	// +optional
-	DependsOn []StageDependency `json:"dependsOn,omitempty"`
+	DependsOn []string `json:"dependsOn,omitempty"`
 	// Gate defines approval/soak/metrics requirements for this stage.
 	// +optional
 	Gate *GatePolicySpec `json:"gate,omitempty"`

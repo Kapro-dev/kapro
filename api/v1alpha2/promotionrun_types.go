@@ -18,39 +18,13 @@ const (
 	StageFailurePolicyRollback StageFailurePolicy = "rollback"
 )
 
-// StageDependency declares that a stage depends on an upstream stage,
-// with optional soak time and availability strategy.
-// This replaces bare stage name strings — enabling canary-unlock and
-// soak-time patterns without heavyweight GateTemplate configuration.
-type StageDependency struct {
-	// Stage is the upstream stage name that must be satisfied.
-	Stage string `json:"stage"`
-	// RequiredSoakTime is how long ALL (or ANY, per Strategy) targets in the
-	// upstream stage must have been continuously healthy before this stage
-	// becomes eligible. Replaces GateTemplate for the most common gate pattern.
-	// Zero or nil means no soak — advance as soon as the upstream stage completes.
-	// +optional
-	RequiredSoakTime *metav1.Duration `json:"requiredSoakTime,omitempty"`
-	// Strategy controls when this dependency is considered satisfied.
-	//   "all" (default): every target in the upstream stage must be verified.
-	//   "any": at least one target in the upstream stage must be verified
-	//          (canary-unlock pattern).
-	// +kubebuilder:validation:Enum=all;any
-	// +kubebuilder:default=all
-	// +optional
-	Strategy StageDependencyStrategy `json:"strategy,omitempty"`
-}
-
-// StageDependencyStrategy controls when an upstream dependency is satisfied.
-// +kubebuilder:validation:Enum=all;any
-type StageDependencyStrategy string
-
-const (
-	// StageDependencyAll requires every target in the upstream stage to be verified.
-	StageDependencyAll StageDependencyStrategy = "all"
-	// StageDependencyAny requires at least one target in the upstream stage to be verified (canary pattern).
-	StageDependencyAny StageDependencyStrategy = "any"
-)
+// StageDependency was an object in v1alpha1 that carried
+// {stage, requiredSoakTime, strategy}. In v1alpha2 stage dependencies
+// are flat string lists — soak time lives on the upstream stage's own
+// `Gate.Soak`, and the rare canary-unlock "any" strategy is expressed
+// by composing a custom Plan with an explicit topology. The type is
+// intentionally removed. `Stage.DependsOn` is now `[]string` per
+// ADR-0008.
 
 // StageStrategySpec controls how many targets a stage may bind concurrently.
 type StageStrategySpec struct {
@@ -66,6 +40,7 @@ type StageStrategySpec struct {
 	MaxUnavailable int32 `json:"maxUnavailable,omitempty"`
 }
 
+
 // Stage is one node in a Plan's delivery DAG.
 // It selects a set of target clusters by label selector, optionally gates them
 // with a GatePolicy, and declares ordering via DependsOn.
@@ -78,20 +53,22 @@ type Stage struct {
 	Name string `json:"name"`
 	// Selector matches the target clusters that belong to this stage.
 	Selector metav1.LabelSelector `json:"selector"`
-	// DependsOn declares upstream stage dependencies with optional soak time
-	// and availability strategy. Each entry names an upstream stage and
-	// optionally specifies how long it must be healthy (RequiredSoakTime)
-	// and whether all or any upstream targets must pass (Strategy).
+	// DependsOn is the list of upstream stage names that must reach a
+	// terminal phase before this stage starts. v1alpha2 collapses the
+	// v1alpha1 {stage, requiredSoakTime, strategy} object to a flat
+	// list of stage names — soak time moves onto the upstream stage's
+	// own Gate.Soak, and the rare canary-unlock "any" strategy is
+	// expressed by composing a custom Plan with an explicit topology.
 	// +optional
 	// +kubebuilder:validation:MaxItems=64
-	DependsOn []StageDependency `json:"dependsOn,omitempty"`
+	DependsOn []string `json:"dependsOn,omitempty"`
 	// Strategy controls target binding concurrency for this stage.
 	// +optional
 	Strategy *StageStrategySpec `json:"strategy,omitempty"`
 	// Gate is the inline gate policy evaluated after all targets in this
 	// stage converge. If nil, the stage advances immediately on convergence.
 	// Use for complex gates (webhook, job, approval). For simple soak time,
-	// prefer StageDependency.RequiredSoakTime instead.
+	// set Gate.Soak directly — there is no separate dependency-edge soak.
 	// +optional
 	Gate *GatePolicySpec `json:"gate,omitempty"`
 	// OnFailure controls what Fleet does when this stage fails.
@@ -145,18 +122,6 @@ type PlanList struct {
 
 // ---- PromotionRun ----------------------------------------------------------------
 
-// PlanRef is one node in the PromotionRun's promotionplan DAG.
-// Multiple promotionplans can run in parallel; DependsOn declares ordering between them.
-type PlanRef struct {
-	// Name uniquely identifies this promotionplan node within the PromotionRun.
-	Name string `json:"name"`
-	// Plan is the name of the Plan CRD to execute.
-	Plan string `json:"plan"`
-	// DependsOn lists promotionplan node names that must reach Complete before this one starts.
-	// +optional
-	// +kubebuilder:validation:MaxItems=64
-	DependsOn []string `json:"dependsOn,omitempty"`
-}
 
 // StageProgress tracks the execution state of one Stage within a promotionplan.
 // Designed to render well in k9s describe view — operators see per-stage
@@ -254,7 +219,7 @@ type PromotionRunSpec struct {
 	// PromotionPlans is the DAG of promotionplan nodes.
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=64
-	PromotionPlans []PlanRef `json:"plans"`
+	Plans []string `json:"plans"`
 	// Suspended pauses all advancement when true.
 	// +kubebuilder:default=false
 	Suspended bool `json:"suspended,omitempty"`

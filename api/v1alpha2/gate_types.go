@@ -8,45 +8,63 @@ import (
 
 // ---- GatePolicy -------------------------------------------------------------
 
-type GateMode string
-
-const (
-	GateModeAuto      GateMode = "auto"
-	GateModeManual    GateMode = "manual"
-	GateModeScheduled GateMode = "scheduled"
-)
-
+// GatePolicySpec is the flat gate configuration block embedded inside Stage
+// in v1alpha2. Two layers of nesting (`gate.mode` + `gate.gate.*`) were
+// folded into one in this version per ADR-0008. Mode is now derived from
+// presence: `approvers:` set ⇒ manual; otherwise auto.
+//
+// Inspired by Flagger Canary.spec.analysis: flat keys, no enum wrapper.
 type GatePolicySpec struct {
-	// +kubebuilder:validation:Enum=auto;manual;scheduled
-	Mode     GateMode        `json:"mode"`
-	Gate     GateSpec        `json:"gate,omitempty"`
-	Approval *ApprovalConfig `json:"approval,omitempty"`
+	// Soak is the minimum duration a stage's targets must stay healthy
+	// before the stage advances. Was `gate.gate.soakTime` in v1alpha1.
+	// +optional
+	Soak string `json:"soak,omitempty"`
+	// GateTimeout is the maximum duration the gate may remain un-passed
+	// before targets are failed. Empty = retry indefinitely.
+	// +optional
+	GateTimeout string `json:"gateTimeout,omitempty"`
+	// HealthCheck enables the basic workload-readiness check. Was
+	// `gate.gate.healthCheck` in v1alpha1.
+	// +optional
+	HealthCheck bool `json:"healthCheck,omitempty"`
+	// Metrics is the list of metric gates. Order is preserved (sequential
+	// evaluation). Was `gate.gate.metrics` in v1alpha1.
+	// +optional
+	Metrics []MetricGate `json:"metrics,omitempty"`
+	// Templates is the list of inline gate templates (cel/job/webhook/plugin).
+	// Was `gate.gate.templates` in v1alpha1.
+	// +optional
+	Templates []GateTemplateSpec `json:"templates,omitempty"`
+	// Verification is the per-policy artifact signature gate. Was
+	// `gate.gate.verification` in v1alpha1.
+	// +optional
+	Verification *VerificationGateSpec `json:"verification,omitempty"`
+	// Approvers is the list of usernames or group names whose approval
+	// unlocks the gate. PRESENCE OF THIS FIELD implies manual mode in
+	// v1alpha2 — the explicit `mode:` enum was removed because the data
+	// already encodes the mode.
+	// +optional
+	Approvers []string `json:"approvers,omitempty"`
 	// OnFailure controls what Fleet does when a gate fails or times out.
 	//   halt (default): stop the rollout for this target and wait for human intervention.
-	//     Use for checkout systems where automated rollback is too risky.
 	//   rollback: automatically revert to the previous version.
-	//     Only effective when a previous successful apply exists (PreviousVersion is set).
 	//   continue: mark the gate as skipped and advance to the next phase.
 	// +kubebuilder:validation:Enum=halt;rollback;continue
 	// +kubebuilder:default=halt
-	OnFailure     string             `json:"onFailure,omitempty"`
+	// +optional
+	OnFailure string `json:"onFailure,omitempty"`
+	// Notifications fires per-channel events on gate state changes.
+	// +optional
 	Notifications []NotificationSpec `json:"notifications,omitempty"`
 }
 
-// ---- GateSpec (embedded in Stage.gate) --------------------------------------
-
-type GateSpec struct {
-	SoakTime string `json:"soakTime,omitempty"`
-	// GateTimeout is the maximum duration the metrics gate may remain un-passed
-	// before the target is failed. Only applies to MetricsCheck; infrastructure
-	// errors (e.g. Prometheus unreachable) do not consume this budget.
-	// Uses Go duration format, e.g. "30m", "1h". Empty means retry indefinitely.
-	GateTimeout  string                `json:"gateTimeout,omitempty"`
-	HealthCheck  bool                  `json:"healthCheck,omitempty"`
-	Metrics      []MetricGate          `json:"metrics,omitempty"`
-	Templates    []GateTemplateSpec    `json:"templates,omitempty"`
-	Verification *VerificationGateSpec `json:"verification,omitempty"`
-}
+// GateSpec is the v1alpha1 nested gate block; in v1alpha2 every field
+// it carried lives directly on GatePolicySpec above. Kept as a transitional
+// alias so generated deepcopy doesn't trip; the type itself is unused.
+//
+// Deprecated: use GatePolicySpec directly in v1alpha2. Removed in the next
+// alpha rev.
+type GateSpec = GatePolicySpec
 
 // VerificationGateSpec configures per-policy artifact signature verification.
 type VerificationGateSpec struct {

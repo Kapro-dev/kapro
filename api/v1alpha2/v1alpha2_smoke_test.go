@@ -38,11 +38,9 @@ func TestFleetRoundTripsThroughYAML(t *testing.T) {
 		TypeMeta:   metav1.TypeMeta{APIVersion: "kapro.io/v1alpha2", Kind: "Fleet"},
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
 		Spec: FleetSpec{
-			SourceRef: "checkout-catalog",
-			Delivery: DeliverySpec{
-				Mode:       "pull",
-				BackendRef: "flux",
-			},
+			Chart:   "checkout",
+			Version: "1.2.3",
+			Backend: "flux",
 		},
 	}
 	data, err := yaml.Marshal(in)
@@ -56,8 +54,11 @@ func TestFleetRoundTripsThroughYAML(t *testing.T) {
 	if out.Name != "checkout" {
 		t.Errorf("name lost across round-trip: %q", out.Name)
 	}
-	if out.Spec.Delivery.BackendRef != "flux" {
-		t.Errorf("backendRef lost across round-trip: %q", out.Spec.Delivery.BackendRef)
+	if out.Spec.Backend != "flux" {
+		t.Errorf("backend lost across round-trip: %q", out.Spec.Backend)
+	}
+	if out.Spec.Chart != "checkout" || out.Spec.Version != "1.2.3" {
+		t.Errorf("chart/version lost across round-trip: %q@%q", out.Spec.Chart, out.Spec.Version)
 	}
 }
 
