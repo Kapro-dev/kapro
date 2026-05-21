@@ -1,0 +1,27 @@
+name: Feature request
+description: A new capability or improvement to existing behavior.
+labels: [enhancement, triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you solving?
+      description: |
+        Lead with the operational problem, not the proposed solution. The
+        clearer the use case, the easier it is for us to evaluate whether
+        Kapro is the right layer for it.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed direction (optional)
+      description: |
+        A sketch is fine. If this would change CRDs or the public event
+        vocabulary, please mention it explicitly — those changes typically
+        need an ADR (see docs/adr/).
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other ways you could solve this today (CI hacks, kubectl glue, other tools).

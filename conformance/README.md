@@ -12,4 +12,4 @@ gRPC plugin server. They intentionally test contract behavior only: idempotency,
 determinism, valid result shapes, request immutability, capabilities, and
 context cancellation.
 
-Full usage instructions are in [`docs/conformance.md`](../docs/conformance.md).
+Usage examples and per-suite invariants are documented in the Go doc comments of each subpackage (`go doc kapro.io/kapro/conformance/actuator`, `go doc kapro.io/kapro/conformance/gate`, `go doc kapro.io/kapro/conformance/planner`).

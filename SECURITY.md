@@ -44,5 +44,5 @@ Kapro's RBAC, multi-tenancy, plugin trust boundary, OCI signature model,
 webhook security, Secret handling, and threat model are documented in
 [docs/security.md](docs/security.md) and
 [docs/rbac-tenancy.md](docs/rbac-tenancy.md). Plugin trust details are in
-[docs/plugin-authoring.md](docs/plugin-authoring.md), and autonomous promotionrun
-creation policy is in [docs/ADR-002-promotionrun-trigger.md](docs/ADR-002-promotionrun-trigger.md).
+[docs/plugin-authoring.md](docs/plugin-authoring.md), and autonomous PromotionRun
+creation policy is in [docs/adr/0001-promotion-runtime-split.md](docs/adr/0001-promotion-runtime-split.md), which restricts PromotionRun writes to the controller's service account.

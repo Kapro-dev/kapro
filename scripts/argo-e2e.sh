@@ -655,7 +655,7 @@ spec:
     root-child: v2
     multi-source: v2
     yaml-appset: v2
-  promotionplans:
+  promotionPlans:
     - name: argo
       promotionplan: argo-e2e
   timeout: 10m
