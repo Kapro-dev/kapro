@@ -10,6 +10,7 @@ permissions:
   packages: write
   id-token: write       # OIDC for cosign keyless + SLSA build provenance
   attestations: write   # actions/attest-build-provenance writes attestations
+  security-events: write # github/codeql-action/upload-sarif publishes Trivy SARIF
 
 jobs:
   release:
@@ -84,7 +85,7 @@ jobs:
           category: trivy-operator
 
       - name: Generate SBOM for operator image (Syft / SPDX-JSON)
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           image: ghcr.io/kapro-dev/kapro-operator@${{ steps.build-operator.outputs.digest }}
           format: spdx-json
@@ -148,7 +149,7 @@ jobs:
           category: trivy-cluster-controller
 
       - name: Generate SBOM for cluster-controller image (Syft / SPDX-JSON)
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           image: ghcr.io/kapro-dev/kapro-cluster-controller@${{ steps.build-cluster-controller.outputs.digest }}
           format: spdx-json
