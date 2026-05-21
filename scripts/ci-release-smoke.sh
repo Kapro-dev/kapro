@@ -175,5 +175,8 @@ require_workflow_line "ghcr.io/kapro-dev/kapro-operator:"
 require_workflow_line "ghcr.io/kapro-dev/kapro-cluster-controller:"
 require_workflow_line "cosign sign --yes ghcr.io/kapro-dev/kapro-operator"
 require_workflow_line "cosign sign --yes ghcr.io/kapro-dev/kapro-cluster-controller"
+require_workflow_line "security-events: write"
+require_workflow_line "uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0"
+reject_workflow_line "uses: anchore/sbom-action@v0"
 
 echo "release smoke verification passed"

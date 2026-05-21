@@ -10,8 +10,8 @@ changelog:
       - ignore-for-release
       - skip-changelog
     authors:
-      - dependabot
-      - github-actions
+      - dependabot[bot]
+      - github-actions[bot]
   categories:
     - title: Breaking Changes
       labels:
