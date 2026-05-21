@@ -1,0 +1,36 @@
+apiVersion: kapro.io/v1alpha2
+kind: GateExpression
+metadata:
+  name: checkout-security-checks
+  labels:
+    kapro.io/team: platform
+spec:
+  operator: ALL
+  operands:
+    - inlineGate:
+        mode: auto
+        gate:
+          verification:
+            cosignPolicy:
+              keyless:
+                issuer: https://token.actions.githubusercontent.com
+                subject: repo:example/checkout:ref:refs/heads/main
+---
+apiVersion: kapro.io/v1alpha2
+kind: GateExpression
+metadata:
+  name: checkout-all-of
+  labels:
+    kapro.io/team: platform
+spec:
+  operator: ALL
+  operands:
+    - expressionRef: checkout-security-checks
+    - inlineGate:
+        mode: auto
+        gate:
+          templates:
+            - name: smoke
+              type: cel
+              cel:
+                expression: "target.phase == 'Converged'"

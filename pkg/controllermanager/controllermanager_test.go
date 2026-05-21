@@ -5,7 +5,7 @@ import "testing"
 func TestParseControllerNamesWildcardUsesCanonicalNames(t *testing.T) {
 	selected := ParseControllerNames("*")
 
-	for _, name := range []string{"fleet", "plan", "promotion", "promotionrun", "target", "cluster", "approval", "backend", "plugin", "trigger", "cluster-bootstrap", "clustertemplate"} {
+	for _, name := range []string{"fleet", "plan", "promotion", "promotionrun", "target", "cluster", "gateexpression", "approval", "backend", "plugin", "trigger", "cluster-bootstrap", "clustertemplate"} {
 		if !selected[name] {
 			t.Fatalf("wildcard selection missing canonical controller %q: %#v", name, selected)
 		}
@@ -22,6 +22,7 @@ func TestParseControllerNamesAllowsExplicitAliases(t *testing.T) {
 		"kapro":                  "fleet",
 		"promotion-target":       "target",
 		"fleetcluster-heartbeat": "cluster",
+		"gate-expression":        "gateexpression",
 		"backend-profile":        "backend",
 		"plugin-registration":    "plugin",
 		"promotion-trigger":      "trigger",
@@ -59,10 +60,21 @@ func TestDefaultControllersFlagUsesCoreControllers(t *testing.T) {
 			t.Fatalf("default controller selection missing %q: %#v", name, selected)
 		}
 	}
-	for _, name := range []string{"approval", "backend", "plugin", "trigger", "cluster-bootstrap", "clustertemplate"} {
+	for _, name := range []string{"approval", "backend", "gateexpression", "plugin", "trigger", "cluster-bootstrap", "clustertemplate"} {
 		if selected[name] {
 			t.Fatalf("default controller selection included preview controller %q: %#v", name, selected)
 		}
+	}
+}
+
+func TestParseControllerNamesAllowsGateExpressionOptIn(t *testing.T) {
+	selected := ParseControllerNames("gateexpression")
+
+	if !selected["gateexpression"] {
+		t.Fatalf("gateexpression opt-in did not select controller: %#v", selected)
+	}
+	if selected["promotionrun"] || selected["target"] {
+		t.Fatalf("gateexpression opt-in unexpectedly selected runtime controllers: %#v", selected)
 	}
 }
 

@@ -14,6 +14,7 @@
 //     or Fleet.spec.plan (inline default).
 //   - Source — reusable promotion unit catalog (shared across Fleet objects)
 //   - Trigger — safe-by-default autonomous Promotion creation from observed artifacts
+//   - GateExpression — preview composition API for reusable gate policies
 //   - Plugin — external actuator, gate, and planner plugin registration
 //   - Policy    — AI trust boundary and audit policy
 //   - ClusterTemplate — fleet auto-import template (ApplicationSet-shaped);

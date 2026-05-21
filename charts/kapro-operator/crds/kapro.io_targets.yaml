@@ -135,6 +135,12 @@ spec:
                     required:
                     - required
                     type: object
+                  expressionRef:
+                    description: |-
+                      ExpressionRef is reserved for future GateExpression runtime resolution.
+                      v0.1.2 rejects this field so referenced gates cannot become a silent no-op.
+                    minLength: 1
+                    type: string
                   gate:
                     description: |-
                       Gate configures automated checks such as soak time, health checks,
@@ -718,9 +724,13 @@ spec:
                     - rollback
                     - continue
                     type: string
-                required:
-                - mode
                 type: object
+                x-kubernetes-validations:
+                - message: mode is required
+                  rule: has(self.mode)
+                - message: expressionRef is reserved until GateExpression runtime
+                    resolution is implemented
+                  rule: '!has(self.expressionRef)'
               plan:
                 description: Plan is the Plan CRD name this entry belongs to.
                 type: string
@@ -1304,6 +1314,12 @@ spec:
                     required:
                     - required
                     type: object
+                  expressionRef:
+                    description: |-
+                      ExpressionRef is reserved for future GateExpression runtime resolution.
+                      v0.1.2 rejects this field so referenced gates cannot become a silent no-op.
+                    minLength: 1
+                    type: string
                   gate:
                     description: |-
                       Gate configures automated checks such as soak time, health checks,
@@ -1887,9 +1903,13 @@ spec:
                     - rollback
                     - continue
                     type: string
-                required:
-                - mode
                 type: object
+                x-kubernetes-validations:
+                - message: mode is required
+                  rule: has(self.mode)
+                - message: expressionRef is reserved until GateExpression runtime
+                    resolution is implemented
+                  rule: '!has(self.expressionRef)'
               gates:
                 description: Gates is the authoritative snapshot of GateTemplate evaluation
                   state.

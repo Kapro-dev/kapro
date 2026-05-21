@@ -29,6 +29,7 @@ KAPRO_KINDS = %w[
   Cluster
   ClusterTemplate
   Fleet
+  GateExpression
   Plan
   Plugin
   Policy

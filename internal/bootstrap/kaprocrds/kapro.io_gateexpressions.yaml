@@ -4,21 +4,30 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.21.0
-  name: plans.kapro.io
+  name: gateexpressions.kapro.io
 spec:
   group: kapro.io
   names:
     categories:
     - kapro-all
-    kind: Plan
-    listKind: PlanList
-    plural: plans
+    kind: GateExpression
+    listKind: GateExpressionList
+    plural: gateexpressions
     shortNames:
-    - pl
-    singular: plan
+    - gex
+    singular: gateexpression
   scope: Cluster
   versions:
   - additionalPrinterColumns:
+    - jsonPath: .spec.operator
+      name: Operator
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -26,11 +35,8 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Plan defines a reusable progressive delivery path as a DAG of stages.
-          Each stage selects a fleet subset via label selectors and optionally gates
-          advancement with a GatePolicy. Referenced by PromotionRun.spec.plans[].
-          Plan is a pure template — it has no controller, no status, no reconciler.
-          Validation is enforced by the admission webhook. Execution state lives in PromotionRun.
+          GateExpression is a preview API for composing gate policies. In v0.1.2 only
+          ALL is accepted; other operators are reserved until their semantics graduate.
         properties:
           apiVersion:
             description: |-
@@ -51,204 +57,28 @@ spec:
             type: object
           spec:
             description: |-
-              PlanSpec defines a reusable progressive delivery path as a flat DAG of stages.
-              A Plan is a template referenced by PromotionRun.spec.plans[].
-              Uniqueness and dependency-reference validation is enforced by the admission webhook,
-              which can perform DAG checks without the quadratic CEL cost budget constraints.
+              GateExpressionSpec composes existing gates via named operators. v0.1.2
+              implements ALL only. Other operators and weighted fields are reserved for
+              v0.2.0.
             properties:
-              metricPresets:
-                additionalProperties:
-                  properties:
-                    analysis:
-                      description: |-
-                        Analysis selects optional research-backed metric semantics. Empty keeps
-                        the original threshold behavior for backwards compatibility.
-                      properties:
-                        alpha:
-                          description: |-
-                            Alpha is the false-positive budget for statistical tests. Defaults to
-                            0.05. Lower values are more conservative.
-                          maximum: 1
-                          minimum: 0
-                          type: number
-                        baselineHealthQuery:
-                          description: |-
-                            BaselineHealthQuery must pass before baseline or score analysis can use
-                            the baseline as a control. It should return a positive/true value when
-                            the baseline is healthy.
-                          type: string
-                        baselineQuery:
-                          description: |-
-                            BaselineQuery is required for baseline analysis. The current value is
-                            divided by the baseline value before applying the threshold.
-                          type: string
-                        comparator:
-                          description: |-
-                            Comparator controls threshold comparison.
-                            Defaults to "gt" for threshold/sequential and "lte" for sloBurnRate/baseline.
-                          enum:
-                          - gt
-                          - gte
-                          - lt
-                          - lte
-                          type: string
-                        confidenceThreshold:
-                          description: |-
-                            ConfidenceThreshold is the minimum confidence required for sequential
-                            analysis to make a terminal decision. Defaults to 0.95.
-                          maximum: 1
-                          minimum: 0
-                          type: number
-                        maxSamples:
-                          description: |-
-                            MaxSamples is the maximum number of samples to wait for before a
-                            statistical analysis must return a terminal decision using the evidence
-                            available. Empty means no maximum.
-                          format: int32
-                          minimum: 1
-                          type: integer
-                        minSamples:
-                          description: |-
-                            MinSamples is the minimum number of range samples required for sequential
-                            analysis before Fleet can pass or fail the gate.
-                          format: int32
-                          minimum: 1
-                          type: integer
-                        mode:
-                          description: |-
-                            Mode selects the metric analysis algorithm.
-                            threshold: compare the current value to threshold.
-                            sloBurnRate: treat the current value as an error-budget burn rate.
-                            baseline: compare the current value to a baseline query as a ratio.
-                            sequential: sample over the window and require enough confidence before deciding.
-                            changePoint: detect a statistically meaningful change inside the window.
-                            score: convert the metric into a 0-100 canary score.
-                          enum:
-                          - threshold
-                          - sloBurnRate
-                          - baseline
-                          - sequential
-                          - changePoint
-                          - score
-                          type: string
-                        scoreThreshold:
-                          description: |-
-                            ScoreThreshold is the minimum score required for score analysis. Defaults
-                            to 95.
-                          maximum: 100
-                          minimum: 0
-                          type: number
-                      type: object
-                    config:
-                      format: byte
-                      type: string
-                      x-kubernetes-preserve-unknown-fields: true
-                    endpoint:
-                      type: string
-                    interval:
-                      default: 30s
-                      description: |-
-                        Interval controls how often the metric is re-evaluated while the gate is blocking.
-                        Equivalent to Grafana's "Evaluate every" setting.
-                        Defaults to "30s". Minimum "10s".
-                      type: string
-                    preset:
-                      description: |-
-                        Preset references Plan.spec.metricPresets by name.
-                        Preset fields are copied first; inline fields override the preset when set.
-                      type: string
-                    provider:
-                      description: Provider selects the metrics backend. Required
-                        when preset is empty.
-                      type: string
-                    query:
-                      description: |-
-                        Query is a PromQL expression. When threshold or analysis is configured,
-                        that configuration decides pass/fail. Without threshold or analysis, a
-                        truthy/non-zero query result passes the gate.
-                        Use range functions directly in the query for window-based checks, e.g.:
-                          min_over_time(error_rate[30m]) < 0.01
-                        Or reference the Window field as a template: {{.Window}} is substituted at evaluation time.
-                        Required when preset is empty.
-                      type: string
-                    threshold:
-                      description: |-
-                        Threshold is optional and presence-aware so an inline metric can
-                        intentionally override a preset threshold to 0.
-                      type: number
-                    window:
-                      default: 5m
-                      description: |-
-                        Window is the lookback duration injected into the query template as {{.Window}}.
-                        When Query already contains a hardcoded range (e.g. [5m]), this field is ignored.
-                        Defaults to "5m".
-                      type: string
-                  type: object
-                description: |-
-                  MetricPresets defines reusable metric gate snippets referenced by
-                  Stage.gate.metrics[].preset. Presets are expanded into each target's
-                  gate policy when a PromotionRun binds targets.
-                type: object
-              stages:
-                description: |-
-                  Stages is the flat DAG of delivery stages.
-                  Order is declared via DependsOn, not list position.
+              operands:
+                description: Operands are the gates or child expressions evaluated
+                  by this expression.
                 items:
                   description: |-
-                    Stage is one node in a Plan's delivery DAG.
-                    It selects a set of target clusters by label selector, optionally gates them
-                    with a GatePolicy, and declares ordering via DependsOn.
-
-                    A single stage can target one or many clusters — the selector determines the
-                    fleet subset. Add a cluster to a wave by labeling its Cluster object;
-                    no Plan changes required.
+                    GateExpressionOperand points at either an inline gate policy or another
+                    GateExpression. Exactly one field must be set.
                   properties:
-                    dependsOn:
+                    expressionRef:
+                      description: ExpressionRef names another GateExpression in the
+                        same cluster scope.
+                      minLength: 1
+                      type: string
+                    inlineGate:
                       description: |-
-                        DependsOn declares upstream stage dependencies with optional soak time
-                        and availability strategy. Each entry names an upstream stage and
-                        optionally specifies how long it must be healthy (RequiredSoakTime)
-                        and whether all or any upstream targets must pass (Strategy).
-                      items:
-                        description: |-
-                          StageDependency declares that a stage depends on an upstream stage,
-                          with optional soak time and availability strategy.
-                          This replaces bare stage name strings — enabling canary-unlock and
-                          soak-time patterns without heavyweight GateTemplate configuration.
-                        properties:
-                          requiredSoakTime:
-                            description: |-
-                              RequiredSoakTime is how long ALL (or ANY, per Strategy) targets in the
-                              upstream stage must have been continuously healthy before this stage
-                              becomes eligible. Replaces GateTemplate for the most common gate pattern.
-                              Zero or nil means no soak — advance as soon as the upstream stage completes.
-                            type: string
-                          stage:
-                            description: Stage is the upstream stage name that must
-                              be satisfied.
-                            type: string
-                          strategy:
-                            default: all
-                            description: |-
-                              Strategy controls when this dependency is considered satisfied.
-                                "all" (default): every target in the upstream stage must be verified.
-                                "any": at least one target in the upstream stage must be verified
-                                       (canary-unlock pattern).
-                            enum:
-                            - all
-                            - any
-                            type: string
-                        required:
-                        - stage
-                        type: object
-                      maxItems: 64
-                      type: array
-                    gate:
-                      description: |-
-                        Gate is the inline gate policy evaluated after all targets in this
-                        stage converge. If nil, the stage advances immediately on convergence.
-                        Use for complex gates (webhook, job, approval). For simple soak time,
-                        prefer StageDependency.RequiredSoakTime instead.
+                        InlineGate is a normal Kapro gate policy evaluated at runtime by the
+                        target controller. The GateExpression controller treats inline gates as
+                        Pending because it has no target-specific context.
                       properties:
                         approval:
                           description: Approval configures the human approval requirement
@@ -873,98 +703,107 @@ spec:
                       - message: expressionRef is reserved until GateExpression runtime
                           resolution is implemented
                         rule: '!has(self.expressionRef)'
-                    name:
-                      description: Name uniquely identifies this stage within the
-                        plan.
-                      type: string
-                    onFailure:
-                      default: halt
-                      description: |-
-                        OnFailure controls what Fleet does when this stage fails.
-                        halt (default): stop the plan, mark PromotionRun Failed.
-                        skip: continue to downstream stages.
-                        rollback: stop AND revert all targets promoted by earlier stages.
-                      enum:
-                      - halt
-                      - skip
-                      - rollback
-                      type: string
-                    selector:
-                      description: Selector matches the target clusters that belong
-                        to this stage.
-                      properties:
-                        matchExpressions:
-                          description: matchExpressions is a list of label selector
-                            requirements. The requirements are ANDed.
-                          items:
-                            description: |-
-                              A label selector requirement is a selector that contains values, a key, and an operator that
-                              relates the key and values.
-                            properties:
-                              key:
-                                description: key is the label key that the selector
-                                  applies to.
-                                type: string
-                              operator:
-                                description: |-
-                                  operator represents a key's relationship to a set of values.
-                                  Valid operators are In, NotIn, Exists and DoesNotExist.
-                                type: string
-                              values:
-                                description: |-
-                                  values is an array of string values. If the operator is In or NotIn,
-                                  the values array must be non-empty. If the operator is Exists or DoesNotExist,
-                                  the values array must be empty. This array is replaced during a strategic
-                                  merge patch.
-                                items:
-                                  type: string
-                                type: array
-                                x-kubernetes-list-type: atomic
-                            required:
-                            - key
-                            - operator
-                            type: object
-                          type: array
-                          x-kubernetes-list-type: atomic
-                        matchLabels:
-                          additionalProperties:
-                            type: string
-                          description: |-
-                            matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
-                            map is equivalent to an element of matchExpressions, whose key field is "key", the
-                            operator is "In", and the values array contains only "value". The requirements are ANDed.
-                          type: object
-                      type: object
-                      x-kubernetes-map-type: atomic
-                    strategy:
-                      description: Strategy controls target binding concurrency for
-                        this stage.
-                      properties:
-                        maxParallel:
-                          description: |-
-                            MaxParallel limits how many targets in this stage may be non-terminal at once.
-                            Zero means unlimited.
-                          format: int32
-                          minimum: 1
-                          type: integer
-                        maxUnavailable:
-                          description: |-
-                            MaxUnavailable is reserved for availability-aware strategies. The current
-                            controller records the field but only enforces MaxParallel.
-                          format: int32
-                          minimum: 0
-                          type: integer
-                      type: object
-                  required:
-                  - name
-                  - selector
                   type: object
-                maxItems: 64
+                  x-kubernetes-validations:
+                  - message: exactly one of inlineGate or expressionRef must be set
+                    rule: has(self.inlineGate) != has(self.expressionRef)
+                  - message: inlineGate must not set expressionRef; use operand.expressionRef
+                    rule: '!has(self.inlineGate) || !has(self.inlineGate.expressionRef)'
                 minItems: 1
                 type: array
+              operator:
+                description: Operator selects the composition operator.
+                enum:
+                - ALL
+                type: string
+              threshold:
+                description: Threshold applies to THRESHOLD and WEIGHTED_SUM. Reserved
+                  for v0.2.0.
+                format: int32
+                type: integer
+              weights:
+                description: Weights[i] applies to Operands[i] for WEIGHTED_SUM. Reserved
+                  for v0.2.0.
+                items:
+                  format: int32
+                  type: integer
+                type: array
             required:
-            - stages
+            - operands
+            - operator
+            type: object
+            x-kubernetes-validations:
+            - message: weights and threshold are reserved for v0.2.0
+              rule: '!has(self.weights) && !has(self.threshold)'
+          status:
+            description: GateExpressionStatus records the latest composition outcome.
+            properties:
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              observedGeneration:
+                format: int64
+                type: integer
+              phase:
+                type: string
+              reason:
+                type: string
             type: object
         type: object
     served: true
     storage: true
+    subresources:
+      status: {}

@@ -30,6 +30,7 @@ func init() {
 	Register("promotionrun", startPromotionRunController)
 	Register("target", startPromotionTargetController)
 	Register("cluster", startFleetClusterHeartbeatController)
+	Register("gateexpression", startGateExpressionController)
 	Register("approval", startApprovalController)
 	Register("backend", startBackendProfileController)
 	Register("plugin", startPluginRegistrationController)
@@ -43,6 +44,7 @@ func init() {
 	RegisterAlias("kapro", "fleet")
 	RegisterAlias("promotion-target", "target")
 	RegisterAlias("fleetcluster-heartbeat", "cluster")
+	RegisterAlias("gate-expression", "gateexpression")
 	RegisterAlias("backend-profile", "backend")
 	RegisterAlias("plugin-registration", "plugin")
 	RegisterAlias("promotion-trigger", "trigger")
@@ -206,6 +208,16 @@ func BuildGateRegistry(c client.Client) (*pkggate.Registry, error) {
 // Watches Approval objects and unblocks targets waiting in WaitingApproval phase.
 func startApprovalController(_ context.Context, cc ControllerContext) (bool, error) {
 	if err := (&controller.ApprovalReconciler{
+		Client:   cc.Manager.GetClient(),
+		Recorder: cc.Recorder,
+	}).SetupWithManager(cc.Manager); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func startGateExpressionController(_ context.Context, cc ControllerContext) (bool, error) {
+	if err := (&controller.GateExpressionReconciler{
 		Client:   cc.Manager.GetClient(),
 		Recorder: cc.Recorder,
 	}).SetupWithManager(cc.Manager); err != nil {

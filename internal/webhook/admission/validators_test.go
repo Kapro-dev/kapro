@@ -1,9 +1,14 @@
 package admission_test
 
 import (
+	"context"
+	"strings"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/webhook/admission"
@@ -432,6 +437,44 @@ func TestValidatePromotionPlan_MetricWithoutPresetRequiresProviderAndQuery(t *te
 	}
 }
 
+func TestValidatePromotionPlan_GateExpressionRefMutualExclusive(t *testing.T) {
+	p := buildPromotionPlan([]kaprov1alpha2.Stage{{
+		Name:     "s1",
+		Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
+		Gate: &kaprov1alpha2.GatePolicySpec{
+			ExpressionRef: "all-of",
+			Mode:          kaprov1alpha2.GateModeAuto,
+		},
+	}})
+	if err := promotionplanValidate(p); err == nil {
+		t.Fatal("expected expressionRef mutual exclusivity error")
+	}
+}
+
+func TestValidatePromotionPlan_GateExpressionRefOnlyIsReserved(t *testing.T) {
+	p := buildPromotionPlan([]kaprov1alpha2.Stage{{
+		Name:     "s1",
+		Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
+		Gate:     &kaprov1alpha2.GatePolicySpec{ExpressionRef: "all-of"},
+	}})
+	err := promotionplanValidate(p)
+	if err == nil || !strings.Contains(err.Error(), "reserved until GateExpression runtime resolution is implemented") {
+		t.Fatalf("error = %v, want runtime-resolution reserved error", err)
+	}
+}
+
+func TestValidatePromotionPlan_GateExpressionRefRejectsWhitespace(t *testing.T) {
+	p := buildPromotionPlan([]kaprov1alpha2.Stage{{
+		Name:     "s1",
+		Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
+		Gate:     &kaprov1alpha2.GatePolicySpec{ExpressionRef: " all-of "},
+	}})
+	err := promotionplanValidate(p)
+	if err == nil || !strings.Contains(err.Error(), "must not contain surrounding whitespace") {
+		t.Fatalf("error = %v, want whitespace rejection", err)
+	}
+}
+
 func TestValidatePromotionPlan_UnknownMetricPresetReference(t *testing.T) {
 	p := buildPromotionPlan([]kaprov1alpha2.Stage{{
 		Name:     "s1",
@@ -499,6 +542,128 @@ func TestValidateApproval_NameMatchesPromotionRunAndRef(t *testing.T) {
 	}
 }
 
+// ---- GateExpressionValidator ------------------------------------------------
+
+func TestValidateGateExpression_ValidAll(t *testing.T) {
+	expr := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "all-of"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator: "ALL",
+			Operands: []kaprov1alpha2.GateExpressionOperand{
+				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+			},
+		},
+	}
+	if err := gateexpressionValidate(expr); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateGateExpression_RejectsReservedOperator(t *testing.T) {
+	expr := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "any-of"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator: "ANY",
+			Operands: []kaprov1alpha2.GateExpressionOperand{
+				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+			},
+		},
+	}
+	err := gateexpressionValidate(expr)
+	if err == nil || !strings.Contains(err.Error(), "operator ANY is reserved for v0.2.0; use ALL") {
+		t.Fatalf("error = %v, want reserved operator message", err)
+	}
+}
+
+func TestValidateGateExpression_RejectsReservedWeightedFields(t *testing.T) {
+	threshold := int32(2)
+	expr := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "weighted"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator:  "ALL",
+			Weights:   []int32{1},
+			Threshold: &threshold,
+			Operands: []kaprov1alpha2.GateExpressionOperand{
+				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+			},
+		},
+	}
+	err := gateexpressionValidate(expr)
+	if err == nil || !strings.Contains(err.Error(), "reserved for v0.2.0") {
+		t.Fatalf("error = %v, want reserved weighted-field message", err)
+	}
+}
+
+func TestValidateGateExpression_OperandExactlyOne(t *testing.T) {
+	expr := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "bad"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator: "ALL",
+			Operands: []kaprov1alpha2.GateExpressionOperand{{
+				InlineGate:    &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto},
+				ExpressionRef: "other",
+			}},
+		},
+	}
+	if err := gateexpressionValidate(expr); err == nil {
+		t.Fatal("expected exactly-one operand error")
+	}
+}
+
+func TestValidateGateExpression_RejectsNestedInlineExpressionRef(t *testing.T) {
+	expr := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "bad"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator: "ALL",
+			Operands: []kaprov1alpha2.GateExpressionOperand{{
+				InlineGate: &kaprov1alpha2.GatePolicySpec{ExpressionRef: "nested"},
+			}},
+		},
+	}
+	err := gateexpressionValidate(expr)
+	if err == nil || !strings.Contains(err.Error(), "inlineGate.expressionRef") {
+		t.Fatalf("error = %v, want nested expressionRef rejection", err)
+	}
+}
+
+func TestValidateGateExpression_DetectsCycle(t *testing.T) {
+	ctx := context.Background()
+	child := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "b"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator: "ALL",
+			Operands: []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "a"}},
+		},
+	}
+	reader := gateExpressionReader(t, child)
+	root := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "a"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator: "ALL",
+			Operands: []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "b"}},
+		},
+	}
+	err := admission.ValidateGateExpressionWithReader(ctx, reader, root)
+	if err == nil || !strings.Contains(err.Error(), "a→b→a") {
+		t.Fatalf("error = %v, want cycle path", err)
+	}
+}
+
+func TestValidateGateExpression_UnknownReference(t *testing.T) {
+	ctx := context.Background()
+	root := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "a"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator: "ALL",
+			Operands: []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "missing"}},
+		},
+	}
+	err := admission.ValidateGateExpressionWithReader(ctx, gateExpressionReader(t), root)
+	if err == nil || !strings.Contains(err.Error(), "unknown GateExpression") {
+		t.Fatalf("error = %v, want unknown reference", err)
+	}
+}
+
 // ---- helpers ----------------------------------------------------------------
 
 func mcValidate(mc *kaprov1alpha2.Cluster) error {
@@ -515,6 +680,19 @@ func promotionplanValidate(p *kaprov1alpha2.Plan) error {
 
 func approvalValidate(a *kaprov1alpha2.Approval) error {
 	return admission.ValidateApproval(a)
+}
+
+func gateexpressionValidate(e *kaprov1alpha2.GateExpression) error {
+	return admission.ValidateGateExpression(e)
+}
+
+func gateExpressionReader(t *testing.T, objects ...client.Object) client.Reader {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+		t.Fatalf("add scheme: %v", err)
+	}
+	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 }
 
 func float64Ptr(v float64) *float64 {

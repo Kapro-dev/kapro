@@ -151,6 +151,7 @@ rules:
   - clusters/status
   - clustertemplates/status
   - fleets/status
+  - gateexpressions/status
   - plugins/status
   - policies/status
   - promotionruns/status
@@ -165,6 +166,7 @@ rules:
   - kapro.io
   resources:
   - backends
+  - gateexpressions
   - policies
   - sources
   - triggers

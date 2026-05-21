@@ -22,7 +22,7 @@ func TestSchemeRegistersAllNewKinds(t *testing.T) {
 	// Every CRD's singular Kind we care about.
 	wantKinds := []string{
 		"Approval", "Backend", "Cluster", "ClusterTemplate",
-		"Fleet", "Plan", "Plugin", "Policy",
+		"Fleet", "GateExpression", "Plan", "Plugin", "Policy",
 		"Promotion", "PromotionRun",
 		"Source", "Target", "Trigger",
 	}

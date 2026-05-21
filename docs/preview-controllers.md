@@ -28,6 +28,7 @@ runtime child state for each execution attempt. You do not need to list
 | `cluster` | Yes | Maintains cluster heartbeat and readiness status. |
 | `backend` | No | Writes external backend readiness and backend-native discovery status. Built-in `flux`, `argo`, and `oci` Backend specs are usable without this controller. |
 | `approval` | No | Reconciles `Approval` objects that unblock approval gates. |
+| `gateexpression` | No | Reconciles `GateExpression` preview composition status. |
 | `trigger` | No | Creates or updates `Promotion` from artifact changes. |
 | `plugin` | No | Reconciles plugin readiness when the plugin gateway is enabled. |
 | `cluster-bootstrap` | No | Provisions CSR bootstrap material for spoke cluster registration. |
@@ -71,6 +72,7 @@ they do not start duplicate controllers:
 | `kapro` | `fleet` |
 | `promotion-target` | `target` |
 | `fleetcluster-heartbeat` | `cluster` |
+| `gate-expression` | `gateexpression` |
 | `backend-profile` | `backend` |
 | `plugin-registration` | `plugin` |
 | `promotion-trigger` | `trigger` |
