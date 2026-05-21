@@ -30,7 +30,7 @@ lifecycle, set `webhook.certManager.enabled=true`.
 ## Upgrade
 
 If the cluster still has legacy `kapro.io/v1alpha1` objects or CRDs, follow the
-[v1alpha1 to v1alpha2 migration guide](../../docs/migration-v1alpha1-to-v1alpha2.md)
+[v1alpha1 to v1alpha2 migration guide](https://github.com/Kapro-dev/kapro/blob/main/docs/migration-v1alpha1-to-v1alpha2.md)
 before applying this chart's CRDs. The chart does not serve v1alpha1 or perform
 automatic conversion.
 

@@ -102,8 +102,7 @@ done
 ```
 
 Back up old objects before deleting anything. The loop skips resources that were
-not installed in your prototype cluster and writes a valid multi-document YAML
-backup:
+not installed in your prototype cluster and writes one file per resource:
 
 ```bash
 legacy_resources=(
@@ -122,11 +121,10 @@ legacy_resources=(
   approvals
 )
 
-: > kapro-v1alpha1-backup.yaml
+mkdir -p kapro-v1alpha1-backup
 for resource in "${legacy_resources[@]}"; do
   if kubectl api-resources --api-group=kapro.io --api-version=kapro.io/v1alpha1 -o name | sed 's/[.].*$//' | grep -qx "${resource}"; then
-    printf -- '---\n' >> kapro-v1alpha1-backup.yaml
-    kubectl get "${resource}" -o yaml >> kapro-v1alpha1-backup.yaml
+    kubectl get "${resource}" -o yaml > "kapro-v1alpha1-backup/${resource}.yaml"
   fi
 done
 ```
