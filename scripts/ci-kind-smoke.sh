@@ -27,8 +27,15 @@ wait_for_count() {
     args+=("-l" "${label_selector}")
   fi
   for _ in $(seq 1 90); do
-    local count
-    count="$(kubectl --context "${CTX}" get "${args[@]}" --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+    local out=""
+    # Capture stdout separately so a kubectl failure (CRD discovery lag,
+    # transient API error) under `set -euo pipefail` doesn't abort the
+    # whole script — we just treat it as count=0 and keep polling.
+    out="$(kubectl --context "${CTX}" get "${args[@]}" --no-headers 2>/dev/null)" || out=""
+    local count=0
+    if [ -n "${out}" ]; then
+      count="$(printf '%s\n' "${out}" | wc -l | tr -d ' ')"
+    fi
     if [ "${count}" -ge "${min_count}" ]; then
       return
     fi
@@ -61,9 +68,14 @@ main() {
   kind load docker-image "${IMAGE_REPOSITORY}:${IMAGE_TAG}" --name "${CLUSTER}"
 
   echo "installing local Helm chart with PR image"
+  # Exercise the chart's default webhook-on install path so CI catches
+  # regressions in the validating webhook handshake. Without this the
+  # smoke installs with webhook.enabled=false (verify-install.sh default)
+  # and misses chart-default regressions.
   KAPRO_IMAGE_REPOSITORY="${IMAGE_REPOSITORY}" \
     KAPRO_IMAGE_TAG="${IMAGE_TAG}" \
     KAPRO_VERIFY_CLEANUP=false \
+    KAPRO_VERIFY_WEBHOOKS=true \
     "${ROOT}/scripts/verify-install.sh" cluster
 
   echo "applying quickstart API objects"
