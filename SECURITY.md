@@ -8,6 +8,7 @@ production-change authority.
 
 | Version | Supported |
 |---------|-----------|
+| 0.1.x   | ✅ |
 | main    | ✅ |
 | < 0.1   | ❌ |
 
