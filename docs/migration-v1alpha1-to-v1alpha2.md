@@ -92,8 +92,19 @@ Current canonical keys are `fleet`, `plan`, `promotion`, `promotionrun`,
 
 ## Clean-Break Upgrade
 
+First confirm that the installed CRDs still serve the legacy version. Do not run
+the destructive cleanup after installing the `v1alpha2` chart:
+
+```bash
+for crd in $(kubectl get crd -o name | grep '[.]kapro[.]io$'); do
+  kubectl get "${crd}" \
+    -o jsonpath='{.metadata.name}{"\t"}{range .spec.versions[*]}{.name}{" "}{end}{"\n"}'
+done
+```
+
 Back up old objects before deleting anything. The loop skips resources that were
-not installed in your prototype cluster:
+not installed in your prototype cluster and writes a valid multi-document YAML
+backup:
 
 ```bash
 legacy_resources=(
@@ -114,7 +125,8 @@ legacy_resources=(
 
 : > kapro-v1alpha1-backup.yaml
 for resource in "${legacy_resources[@]}"; do
-  if kubectl api-resources --api-group=kapro.io -o name | sed 's/[.].*$//' | grep -qx "${resource}"; then
+  if kubectl api-resources --api-group=kapro.io --api-version=kapro.io/v1alpha1 -o name | sed 's/[.].*$//' | grep -qx "${resource}"; then
+    printf -- '---\n' >> kapro-v1alpha1-backup.yaml
     kubectl get "${resource}" -o yaml >> kapro-v1alpha1-backup.yaml
   fi
 done
@@ -124,7 +136,7 @@ Delete legacy objects while the old CRDs still exist:
 
 ```bash
 for resource in "${legacy_resources[@]}"; do
-  if kubectl api-resources --api-group=kapro.io -o name | sed 's/[.].*$//' | grep -qx "${resource}"; then
+  if kubectl api-resources --api-group=kapro.io --api-version=kapro.io/v1alpha1 -o name | sed 's/[.].*$//' | grep -qx "${resource}"; then
     kubectl delete "${resource}" --all --ignore-not-found
   fi
 done
@@ -182,7 +194,7 @@ perl -pi -e 's#promotionrunTemplate:#promotionTemplate:#g' *.yaml
 perl -pi -e 's#promotionPlans:#plans:#g' *.yaml
 perl -pi -e 's#promotionPlanRef:#planRef:#g' *.yaml
 perl -pi -e 's#promotionPlan:#plan:#g' *.yaml
-perl -pi -e 's#promotionrunRef:#runRef:#g' *.yaml
+perl -pi -e 's#promotionRunRef:#runRef:#g' *.yaml
 ```
 
 Validate and apply:
