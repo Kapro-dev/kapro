@@ -13,7 +13,7 @@ func TestRunSourceApplyUpdatesGitJSONFieldWithInclude(t *testing.T) {
 	writeTestFile(t, repo, "argocd/environments/prod.json", `{"env":"prod","gkProjectVersion":"1.0.0"}`)
 	sourcePath := filepath.Join(repo, "sources/checkout.yaml")
 	writeTestFile(t, repo, "sources/checkout.yaml", `apiVersion: kapro.io/v1alpha2
-kind: PromotionSource
+kind: Source
 metadata:
   name: checkout
 spec:
@@ -57,7 +57,7 @@ spec:
 	writeTestFile(t, repo, "argocd/environments/prod.json", `{"gkProjectVersion":"1.0.0"}`)
 	sourcePath := filepath.Join(repo, "source.yaml")
 	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
-kind: PromotionSource
+kind: Source
 metadata:
   name: checkout
 spec:
@@ -101,7 +101,7 @@ func TestRunSourceApplyFailsClosedForMultiFileGlob(t *testing.T) {
 	writeTestFile(t, repo, "env/prod.json", `{"version":"1.0.0"}`)
 	sourcePath := filepath.Join(repo, "source.yaml")
 	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
-kind: PromotionSource
+kind: Source
 metadata:
   name: checkout
 spec:
@@ -127,7 +127,7 @@ func TestRunSourceApplyRejectsUnknownUnit(t *testing.T) {
 	writeTestFile(t, repo, "env/dev.json", `{"version":"1.0.0"}`)
 	sourcePath := filepath.Join(repo, "source.yaml")
 	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
-kind: PromotionSource
+kind: Source
 metadata:
   name: checkout
 spec:
@@ -153,7 +153,7 @@ func TestRunSourceApplyRejectsConflictingWrites(t *testing.T) {
 	writeTestFile(t, repo, "env/dev.json", `{"version":"1.0.0"}`)
 	sourcePath := filepath.Join(repo, "source.yaml")
 	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
-kind: PromotionSource
+kind: Source
 metadata:
   name: checkout
 spec:
@@ -186,7 +186,7 @@ func TestRunSourceApplyDoesNotPartiallyWriteOnFailure(t *testing.T) {
 `)
 	sourcePath := filepath.Join(repo, "source.yaml")
 	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
-kind: PromotionSource
+kind: Source
 metadata:
   name: checkout
 spec:
@@ -230,7 +230,7 @@ spec:
 `)
 	sourcePath := filepath.Join(repo, "source.yaml")
 	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
-kind: PromotionSource
+kind: Source
 metadata:
   name: checkout
 spec:
@@ -266,7 +266,7 @@ images:
 `)
 	sourcePath := filepath.Join(repo, "source.yaml")
 	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
-kind: PromotionSource
+kind: Source
 metadata:
   name: checkout
 spec:
@@ -297,7 +297,7 @@ func TestRunSourceApplyIgnoresUntrackedFiles(t *testing.T) {
 	writeTestFile(t, repo, "env/dev.json", `{"version":"1.0.0"}`)
 	sourcePath := filepath.Join(repo, "source.yaml")
 	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
-kind: PromotionSource
+kind: Source
 metadata:
   name: checkout
 spec:

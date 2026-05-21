@@ -181,13 +181,13 @@ func readPromotionSourceFile(path string) (*kaprov1alpha2.Source, error) {
 	}
 	var source kaprov1alpha2.Source
 	if err := sigsyaml.Unmarshal(data, &source); err != nil {
-		return nil, fmt.Errorf("parse PromotionSource %s: %w", path, err)
+		return nil, fmt.Errorf("parse Source %s: %w", path, err)
 	}
-	if source.Kind != "" && source.Kind != "PromotionSource" {
-		return nil, fmt.Errorf("source %s is kind %q, expected PromotionSource", path, source.Kind)
+	if source.Kind != "" && source.Kind != "Source" {
+		return nil, fmt.Errorf("source %s is kind %q, expected Source", path, source.Kind)
 	}
 	if len(source.Spec.Units) == 0 {
-		return nil, fmt.Errorf("PromotionSource %s has no units", path)
+		return nil, fmt.Errorf("Source %s has no units", path)
 	}
 	return &source, nil
 }

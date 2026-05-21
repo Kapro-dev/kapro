@@ -252,7 +252,7 @@ func parseSelector(raw string) (map[string]string, error) {
 func renderGreenfieldBackend(opts scaffoldOptions) string {
 	if opts.Backend == "oci" {
 		return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
-kind: BackendProfile
+kind: Backend
 metadata:
   name: oci
 spec:
@@ -265,7 +265,7 @@ spec:
 `, strings.TrimSuffix(strings.TrimPrefix(opts.Registry, "oci://"), "/"))
 	}
 	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
-kind: BackendProfile
+kind: Backend
 metadata:
   name: %s
 spec:
@@ -278,7 +278,7 @@ spec:
 
 func renderConnectBackend(opts connectOptions, labels map[string]string) string {
 	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
-kind: BackendProfile
+kind: Backend
 metadata:
   name: %s
 spec:
@@ -297,7 +297,7 @@ spec:
 
 func renderCluster(opts scaffoldOptions, suffix, tier string) string {
 	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
-kind: FleetCluster
+kind: Cluster
 metadata:
   name: %s-%s
   labels:
@@ -327,7 +327,7 @@ func renderDeliveryParameters(opts scaffoldOptions, suffix string) string {
 
 func renderPromotionSource(opts scaffoldOptions) string {
 	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
-kind: PromotionSource
+kind: Source
 metadata:
   name: %s
 spec:
@@ -377,7 +377,7 @@ func renderKapro(opts scaffoldOptions, clusters []scaffoldCluster) string {
 `, opts.Name, cluster.Name, cluster.Tier)
 	}
 	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
-kind: Kapro
+kind: Fleet
 metadata:
   name: %s
 spec:
@@ -401,7 +401,7 @@ spec:
       namespace: %s
   clusters:
 %s
-  promotionPlan:
+  plan:
     stages:
       - name: canary
         selector:
@@ -420,7 +420,7 @@ kind: Promotion
 metadata:
   name: %s-0-1-0
 spec:
-  kaproRef: %s
+  fleetRef: %s
   version: 0.1.0
 `, opts.Name, opts.Name)
 }

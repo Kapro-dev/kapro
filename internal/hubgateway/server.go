@@ -315,7 +315,7 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 
 func validateCreatePromotionRequest(req CreatePromotionRequest) error {
 	if req.Name == "" || req.FleetRef == "" {
-		return fmt.Errorf("name and kaproRef are required")
+		return fmt.Errorf("name and fleetRef are required")
 	}
 	if req.Version == "" && len(req.Versions) == 0 {
 		return fmt.Errorf("version or versions is required")
@@ -324,7 +324,7 @@ func validateCreatePromotionRequest(req CreatePromotionRequest) error {
 		return fmt.Errorf("name must be a DNS-1123 subdomain: %s", strings.Join(errs, "; "))
 	}
 	if errs := validation.IsDNS1123Subdomain(req.FleetRef); len(errs) > 0 {
-		return fmt.Errorf("kaproRef must be a DNS-1123 subdomain: %s", strings.Join(errs, "; "))
+		return fmt.Errorf("fleetRef must be a DNS-1123 subdomain: %s", strings.Join(errs, "; "))
 	}
 	if len(req.PromotionPlans) > 64 {
 		return fmt.Errorf("promotionPlans must contain at most 64 entries")

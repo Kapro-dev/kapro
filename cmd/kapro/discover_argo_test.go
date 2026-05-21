@@ -114,7 +114,7 @@ spec:
 	}
 	source := readFile(t, filepath.Join(out, "sources/checkout.yaml"))
 	for _, want := range []string{
-		"kind: PromotionSource",
+		"kind: Source",
 		"name: checkout-api",
 		"backendKind: ArgoApplicationSource",
 		"sourcePath: apps/api.yaml",

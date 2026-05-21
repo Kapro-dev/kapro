@@ -51,7 +51,7 @@ func TestRunFluxDiscoverWritesMapping(t *testing.T) {
 	}
 	source := readFile(t, filepath.Join(out, "sources/checkout.yaml"))
 	for _, want := range []string{
-		"kind: PromotionSource",
+		"kind: Source",
 		"name: api",
 		"backendKind: GitYAMLField",
 		"sourcePath: flux/sources/api-gitrepository.yaml",

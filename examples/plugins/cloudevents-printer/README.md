@@ -52,7 +52,7 @@ curl -sS -X POST -H 'Content-Type: application/cloudevents+json' \
     "datacontenttype": "application/json",
     "data": {
       "promotion": "checkout",
-      "kaproRef": "checkout-fleet",
+      "fleetRef": "checkout-fleet",
       "phase": "Progressing",
       "version": "v1.2.3",
       "attemptName": "checkout-att-1",

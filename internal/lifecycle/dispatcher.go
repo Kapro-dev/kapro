@@ -231,7 +231,7 @@ func (d *Dispatcher) PublishWaveEvent(ctx context.Context, run *kaprov1alpha2.Pr
 		Type:          t,
 		PromotionName: promotionName,
 		PromotionUID:  promotionUIDFromRun(run),
-		FleetRef:      kaproRefFromRun(run),
+		FleetRef:      fleetRefFromRun(run),
 		Phase:         string(run.Status.Phase),
 		Version:       run.Spec.Version,
 		AttemptName:   run.Name,
@@ -270,7 +270,7 @@ func (d *Dispatcher) PublishStageEvent(ctx context.Context, run *kaprov1alpha2.P
 		Type:          t,
 		PromotionName: promotionName,
 		PromotionUID:  promotionUIDFromRun(run),
-		FleetRef:      kaproRefFromRun(run),
+		FleetRef:      fleetRefFromRun(run),
 		Phase:         string(run.Status.Phase),
 		Version:       run.Spec.Version,
 		AttemptName:   run.Name,
@@ -310,7 +310,7 @@ func (d *Dispatcher) PublishGateEvent(ctx context.Context, run *kaprov1alpha2.Pr
 		Type:          t,
 		PromotionName: promotionName,
 		PromotionUID:  promotionUIDFromRun(run),
-		FleetRef:      kaproRefFromRun(run),
+		FleetRef:      fleetRefFromRun(run),
 		Phase:         string(run.Status.Phase),
 		Version:       run.Spec.Version,
 		AttemptName:   run.Name,
@@ -343,11 +343,11 @@ func promotionUIDFromRun(run *kaprov1alpha2.PromotionRun) string {
 	return run.Labels["kapro.io/promotion-uid"]
 }
 
-// kaproRefFromRun reads the parent Kapro fleet name from the
+// fleetRefFromRun reads the parent Kapro fleet name from the
 // kapro.io/kapro label PromotionController stamps onto every owned
 // PromotionRun. Returns the Kapro name (not a Plan name).
 // Empty when the run lacks the label (e.g. authored directly).
-func kaproRefFromRun(run *kaprov1alpha2.PromotionRun) string {
+func fleetRefFromRun(run *kaprov1alpha2.PromotionRun) string {
 	if run == nil || run.Labels == nil {
 		return ""
 	}

@@ -2,10 +2,44 @@
 
 This changelog tracks user-visible API, behavior, packaging, and upgrade
 changes for Kapro releases. Kapro is still pre-stable: all Kubernetes APIs are
-served as `kapro.io/v1alpha1`, and release notes are the binding compatibility
+served as `kapro.io/v1alpha2`, and release notes are the binding compatibility
 record for each tag.
 
 ## Unreleased
+
+### ⚠️ Breaking — `kapro.io/v1alpha2` migration (clean break, no conversion)
+
+All CRDs moved from `kapro.io/v1alpha1` to `kapro.io/v1alpha2`. There is no
+conversion webhook and no v1alpha1 served version remains — this is a clean
+break appropriate for pre-stable software with no production users yet.
+
+**Kind renames** (the new short forms are the canonical names going forward):
+
+| v1alpha1                    | v1alpha2          |
+| --------------------------- | ----------------- |
+| `Kapro`                     | `Fleet`           |
+| `FleetCluster`              | `Cluster`         |
+| `FleetClusterTemplate`      | `ClusterTemplate` |
+| `AgentPolicy`               | `Policy`          |
+| `PromotionSource`           | `Source`          |
+| `PromotionTrigger`          | `Trigger`         |
+| `PromotionPlan`             | `Plan`            |
+| `PromotionTarget`           | `Target`          |
+| `BackendProfile`            | `Backend`         |
+| `PluginRegistration`        | `Plugin`          |
+| `PromotionUnit`             | `Unit`            |
+
+**Field renames** in `Promotion`, `Trigger`, and stamped `PromotionRun`:
+
+- `spec.kaproRef` → `spec.fleetRef`
+- `spec.promotionPlan` (inline plan on `Fleet`) → `spec.plan`
+- `spec.promotionPlans[].promotionPlanRef` → `spec.plans[].planRef`
+
+CloudEvents payload field `data.kaproRef` is renamed to `data.fleetRef`.
+
+**Upgrade path**: there is none in the operator. Apply the new
+`kapro.io/v1alpha2` CRDs and re-author manifests with the new Kinds and field
+names. Existing v1alpha1 objects must be deleted before installing v1alpha2.
 
 ### Added — `kapro lint`
 

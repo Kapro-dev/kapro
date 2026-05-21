@@ -424,7 +424,7 @@ func normalizeRegistryHost(host string) string {
 func buildTriggeredPromotion(trigger *kaprov1alpha2.Trigger, artifact PromotionTriggerArtifactObservation, version, managedName, templateHash string, scheme *runtime.Scheme, now time.Time) (*kaprov1alpha2.Promotion, error) {
 	tmpl := &trigger.Spec.PromotionTemplate
 	if tmpl.FleetRef == "" {
-		return nil, fmt.Errorf("spec.promotionTemplate.kaproRef is required")
+		return nil, fmt.Errorf("spec.promotionTemplate.fleetRef is required")
 	}
 	labels := copyTriggerStringMap(tmpl.Labels)
 	labels[promotionTriggerLabel] = trigger.Name

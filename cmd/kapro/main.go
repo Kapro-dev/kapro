@@ -835,7 +835,7 @@ Examples:
 // runPromotionCreate creates or updates a Promotion intent. The
 // PromotionController materializes each effective spec change into a
 // PromotionRun attempt.
-func runPromotionCreate(ctx context.Context, name, kaproRef, version string,
+func runPromotionCreate(ctx context.Context, name, fleetRef, version string,
 	versionPairs, plans, scope []string, kubeconfigPath string) error {
 
 	versions, err := parsePromotionRunVersions(versionPairs)
@@ -856,7 +856,7 @@ func runPromotionCreate(ctx context.Context, name, kaproRef, version string,
 	}
 
 	spec := kaprov1alpha2.PromotionSpec{
-		FleetRef:       kaproRef,
+		FleetRef:       fleetRef,
 		Version:        version,
 		Versions:       versions,
 		PromotionPlans: planRefs,
@@ -896,7 +896,7 @@ func runPromotionCreate(ctx context.Context, name, kaproRef, version string,
 	}
 
 	fmt.Printf("✅ Promotion %s: %s\n", op, name)
-	fmt.Printf("   Kapro:     %s\n", kaproRef)
+	fmt.Printf("   Fleet:     %s\n", fleetRef)
 	if version != "" {
 		fmt.Printf("   Version:   %s\n", version)
 	}

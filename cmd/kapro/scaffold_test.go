@@ -141,7 +141,7 @@ func TestRunInitScaffoldOCIPull(t *testing.T) {
 	promotion := readFile(t, filepath.Join(dir, "promotions/checkout-promotion.yaml"))
 	for _, want := range []string{
 		"kind: Promotion",
-		"kaproRef: checkout",
+		"fleetRef: checkout",
 		"version: 0.1.0",
 	} {
 		if !strings.Contains(promotion, want) {

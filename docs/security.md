@@ -132,7 +132,7 @@ spec:
       requireSignature: true
       pollInterval: 5m
   promotionTemplate:
-    kaproRef: checkout
+    fleetRef: checkout
     promotionPlans:
       - name: production
         promotionPlan: checkout-keyless
@@ -170,7 +170,7 @@ spec:
       tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
       requireSignature: true
   promotionTemplate:
-    kaproRef: checkout
+    fleetRef: checkout
     promotionPlans:
       - name: production
         promotionPlan: checkout

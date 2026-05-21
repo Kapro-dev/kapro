@@ -132,7 +132,7 @@ kind: Promotion
 metadata:
   name: checkout-2026-05-15
 spec:
-  kaproRef: checkout-flux
+  fleetRef: checkout-flux
   promotionPlans:
     - name: main
       promotionPlan: checkout

@@ -80,11 +80,11 @@ func TestValidatePromotionTrigger_TemplateMissingPlansIsValid(t *testing.T) {
 	}
 }
 
-func TestValidatePromotionTrigger_TemplateMissingKaproRef(t *testing.T) {
+func TestValidatePromotionTrigger_TemplateMissingFleetRef(t *testing.T) {
 	pt := validTrigger()
 	pt.Spec.PromotionTemplate.FleetRef = ""
 	if err := validatePromotionTrigger(pt); err == nil {
-		t.Fatal("expected error for missing kaproRef")
+		t.Fatal("expected error for missing fleetRef")
 	}
 }
 

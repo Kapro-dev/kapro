@@ -65,7 +65,7 @@ func validatePromotionTrigger(pt *kaprov1alpha2.Trigger) error {
 		return fmt.Errorf("spec.source.type %q is unsupported (built-in: oci)", src.Type)
 	}
 	if pt.Spec.PromotionTemplate.FleetRef == "" {
-		return fmt.Errorf("spec.promotionTemplate.kaproRef is required")
+		return fmt.Errorf("spec.promotionTemplate.fleetRef is required")
 	}
 	// PromotionPlans is optional on the trigger template; when empty the
 	// Promotion controller inherits the inline plan from the parent Kapro.

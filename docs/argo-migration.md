@@ -261,7 +261,7 @@ kind: Promotion
 metadata:
   name: checkout-2026-05-15
 spec:
-  kaproRef: checkout
+  fleetRef: checkout
   version: 1.5.0
   promotionPlans:
     - name: main
