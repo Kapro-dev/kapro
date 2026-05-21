@@ -7,13 +7,14 @@
 //
 // Usage:
 //
-//	KAPRO_CONTROLLERS=*                                # all (default)
-//	KAPRO_CONTROLLERS=*,-promotion-trigger             # all except promotion-trigger
-//	KAPRO_CONTROLLERS=promotionrun,promotion-target    # only specified controllers
+//	KAPRO_CONTROLLERS=*                          # all canonical controllers
+//	KAPRO_CONTROLLERS=*,-trigger                 # all except trigger
+//	KAPRO_CONTROLLERS=fleet,promotionrun,cluster # selected core controllers
 package controllermanager
 
 import (
 	"context"
+	"sort"
 	"strings"
 
 	"k8s.io/client-go/kubernetes"
@@ -115,11 +116,28 @@ type ControllerContext struct {
 // Order is not significant — controllers are started concurrently by
 // controller-runtime.  Registration is done in controllers.go.
 var Registry = map[string]InitFunc{}
+var controllerAliases = map[string]string{}
+
+// DefaultControllers is the ADR-0010 public-preview core controller set. Target
+// is intentionally omitted from user-facing defaults and selected implicitly
+// whenever promotionrun is enabled.
+var DefaultControllers = []string{"fleet", "plan", "promotion", "promotionrun", "cluster"}
+
+var implicitControllerDependencies = map[string][]string{
+	"promotionrun": {"target"},
+}
 
 // Register adds an InitFunc to the global Registry.
 // Call from init() in controllers.go or from tests.
 func Register(name string, fn InitFunc) {
 	Registry[name] = fn
+}
+
+// RegisterAlias adds a selectable compatibility name for an existing canonical
+// controller. Aliases are normalized before startup, so a controller cannot be
+// started twice through two names.
+func RegisterAlias(alias, canonical string) {
+	controllerAliases[alias] = canonical
 }
 
 // KnownControllers returns a sorted slice of all registered controller names.
@@ -128,15 +146,36 @@ func KnownControllers() []string {
 	for name := range Registry {
 		names = append(names, name)
 	}
+	sort.Strings(names)
 	return names
+}
+
+// DefaultControllerNames returns a copy of the default public-preview core
+// controller set.
+func DefaultControllerNames() []string {
+	names := append([]string(nil), DefaultControllers...)
+	return names
+}
+
+// DefaultControllersFlag returns the comma-separated default controller flag.
+func DefaultControllersFlag() string {
+	return strings.Join(DefaultControllers, ",")
+}
+
+func canonicalControllerName(name string) string {
+	if canonical, ok := controllerAliases[name]; ok {
+		return canonical
+	}
+	return name
 }
 
 // ParseControllerNames resolves a comma-separated --controllers flag value
 // into a set of enabled names.
 //
-//	"*"           → all registered controllers
-//	"a,b,c"       → only a, b, c
-//	"*,-promotion-trigger"   → all except promotion-trigger
+//	"*"                 → all canonical controllers
+//	"a,b,c"             → only a, b, c
+//	"*,-trigger"        → all except trigger
+//	"promotionrun"      → promotionrun plus its implicit target controller
 func ParseControllerNames(flag string) map[string]bool {
 	selected := map[string]bool{}
 	tokens := strings.Split(flag, ",")
@@ -158,11 +197,57 @@ func ParseControllerNames(flag string) map[string]bool {
 			continue
 		}
 		if strings.HasPrefix(t, "-") {
-			delete(selected, t[1:])
+			delete(selected, canonicalControllerName(strings.TrimPrefix(t, "-")))
 		} else {
-			selected[t] = true
+			selected[canonicalControllerName(t)] = true
+		}
+	}
+
+	for name, dependencies := range implicitControllerDependencies {
+		if !selected[name] {
+			continue
+		}
+		for _, dependency := range dependencies {
+			selected[dependency] = true
 		}
 	}
 
 	return selected
+}
+
+// SelectedControllerNames returns known selected controller names in stable
+// order, excluding unknown requests.
+func SelectedControllerNames(selected map[string]bool) []string {
+	var names []string
+	for _, name := range KnownControllers() {
+		if selected[name] {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// DisabledControllerNames returns known disabled controller names in stable
+// order.
+func DisabledControllerNames(selected map[string]bool) []string {
+	var names []string
+	for _, name := range KnownControllers() {
+		if !selected[name] {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// UnknownControllerNames returns requested names that do not match any
+// canonical controller or compatibility alias.
+func UnknownControllerNames(selected map[string]bool) []string {
+	var names []string
+	for name := range selected {
+		if _, ok := Registry[name]; !ok {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }

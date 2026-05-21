@@ -41,6 +41,18 @@ CloudEvents payload field `data.kaproRef` is renamed to `data.fleetRef`.
 `kapro.io/v1alpha2` CRDs and re-author manifests with the new Kinds and field
 names. Existing v1alpha1 objects must be deleted before installing v1alpha2.
 
+### Changed — default controller set narrowed
+
+The Helm chart and operator fallback now start the ADR-0010 core controllers by
+default: `fleet`, `plan`, `promotion`, `promotionrun`, and `cluster`. The
+`target` controller starts implicitly with `promotionrun`. Preview controllers
+such as `backend`, `approval`, `trigger`, `plugin`, `cluster-bootstrap`, and
+`clustertemplate` must be listed explicitly in `controllers` when needed.
+
+Older controller keys such as `kapro`, `promotion-target`, `backend-profile`,
+and `promotion-trigger` are still accepted as compatibility aliases, but new
+manifests and Helm values should use the canonical keys.
+
 ### Added — `kapro lint`
 
 Static analysis for Kapro YAML manifests. Runs without a cluster

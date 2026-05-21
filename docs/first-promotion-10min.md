@@ -41,7 +41,6 @@ When working from a local checkout before the release is published, use
 
 ```bash
 kubectl apply -f examples/quickstart/backend-flux.yaml
-kubectl wait backend/flux --for=condition=Ready --timeout=60s
 kubectl apply -f examples/quickstart/kapro.yaml
 ```
 
