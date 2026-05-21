@@ -40,17 +40,20 @@ need() {
   fi
 }
 
-check_crd_dir_sync() {
+check_crd_dir_sync() (
+  # Subshell so the EXIT trap fires on every return path (normal,
+  # `exit 1`, OR `set -e` abort on a failed find/diff/cmp) and never
+  # leaks across the two invocations from check_crd_sync.
   local target_dir target_label config_list target_list
   target_dir="$1"
   target_label="$2"
   config_list="$(mktemp)"
   target_list="$(mktemp)"
+  trap 'rm -f "${config_list}" "${target_list}"' EXIT
   find "${ROOT}/config/crd/bases" -maxdepth 1 -type f -name '*.yaml' -exec basename {} \; | sort >"${config_list}"
   find "${target_dir}" -maxdepth 1 -type f -name '*.yaml' -exec basename {} \; | sort >"${target_list}"
   if ! diff -u "${config_list}" "${target_list}"; then
     echo "${target_label} CRDs differ from config/crd/bases; run: make sync-crds" >&2
-    rm -f "${config_list}" "${target_list}"
     exit 1
   fi
   local mismatched_crd
@@ -63,11 +66,9 @@ check_crd_dir_sync() {
   done <"${config_list}"
   if [ -n "${mismatched_crd}" ]; then
     echo "${target_label} CRD ${mismatched_crd} differs from config/crd/bases; run: make sync-crds" >&2
-    rm -f "${config_list}" "${target_list}"
     exit 1
   fi
-  rm -f "${config_list}" "${target_list}"
-}
+)
 
 check_crd_sync() {
   check_crd_dir_sync "${CHART}/crds" "chart"
@@ -150,7 +151,12 @@ install_chart() {
   kubectl -n "${namespace}" rollout status "deployment/${release}-kapro-operator" --timeout=180s
 
   echo "checking installed resources"
-  kubectl get crd -o name | grep -q '^customresourcedefinition.apiextensions.k8s.io/.*\.kapro\.io$'
+  local crds
+  crds="$(kubectl get crd -o name)"
+  if ! grep -q '^customresourcedefinition.apiextensions.k8s.io/.*\.kapro\.io$' <<<"${crds}"; then
+    echo "no kapro.io CRDs were installed" >&2
+    return 1
+  fi
   kubectl -n "${namespace}" get deploy,svc,sa
   kubectl auth can-i get promotionruns.kapro.io \
     --as="system:serviceaccount:${namespace}:${release}-kapro-operator"

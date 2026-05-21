@@ -91,6 +91,24 @@ jobs:
       - name: Verify install render
         run: scripts/verify-install.sh render
 
+  kind-smoke:
+    name: Kind Install Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+      - name: Set up kind
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
+      - name: Install chart and run quickstart smoke
+        run: scripts/ci-kind-smoke.sh
+
   release-smoke:
     name: Release Smoke
     runs-on: ubuntu-latest
