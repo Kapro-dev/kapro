@@ -33,6 +33,42 @@ reject_workflow_line() {
   fi
 }
 
+check_live_release_pointers() {
+  if [[ -z "${EXPECTED_RELEASE_TAG}" ]]; then
+    return 0
+  fi
+
+  local expected_version old_release_regex old_chart_regex found
+  expected_version="$(expected_chart_version)"
+  old_release_regex='v0\.1\.(0|1)'
+  old_chart_regex='0\.1\.(0|1)'
+  found="$(grep -RInE "${old_release_regex}|${old_chart_regex}" \
+    "${ROOT}/README.md" \
+    "${ROOT}/docs" \
+    "${ROOT}/charts" \
+    "${ROOT}/scripts" \
+    "${ROOT}/.github" \
+    --exclude-dir=adr \
+    --exclude='api-stability.md' \
+    --exclude='RELEASING.md' \
+    --exclude='ci-release-smoke.sh' \
+    --exclude='*.png' \
+    || true)"
+
+  if [[ -n "${found}" ]]; then
+    echo "live release docs/config still reference old v0.1.0/v0.1.1 artifacts:" >&2
+    echo "${found}" >&2
+    exit 1
+  fi
+
+  grep -RInF "v${expected_version}" \
+    "${ROOT}/README.md" \
+    "${ROOT}/docs/install.md" \
+    "${ROOT}/docs/first-promotion-10min.md" \
+    "${ROOT}/charts/kapro-operator/README.md" \
+    "${ROOT}/scripts/verify-install.sh" >/dev/null
+}
+
 chart_value() {
   local chart_dir="$1"
   local key="$2"
@@ -161,6 +197,7 @@ if [[ "${#cluster_controller_packages[@]}" -ne 1 ]]; then
 fi
 
 echo "checking packaged Helm chart metadata and published files"
+check_live_release_pointers
 if grep -Fxq '  - "*"' "${CHART}/values.yaml"; then
   echo "kapro-operator values.yaml must not default controllers to wildcard; opt-in controllers can require extra configuration" >&2
   exit 1

@@ -10,7 +10,7 @@ body:
     id: kapro-version
     attributes:
       label: Kapro version
-      placeholder: "v0.1.0 (output of kapro --version)"
+      placeholder: "v0.1.2 (output of kapro --version)"
     validations:
       required: true
   - type: input
