@@ -116,6 +116,45 @@ the older dashboards did not cover:
   an early warning that the documented FSM has drifted from handler code.
 
 Import alongside `kapro-operations-dashboard.json`.
+## Unreleased
+
+### Fixed — README quickstart now works on a fresh cluster, no prereqs
+
+Five fixes that, together, make `helm upgrade --install kapro ...`
+followed by `kubectl apply -f examples/quickstart/*.yaml` reach
+`Promotion: Succeeded` on a vanilla `kind` cluster with nothing
+pre-installed.
+
+- **Helm chart now ships a self-signed webhook serving cert by
+  default** (`webhook.certManager.enabled: false`). The cert is
+  generated at first install via `genCA` / `genSignedCert` and
+  reused across `helm upgrade` via `lookup`, so the webhook is not
+  briefly broken on every release. cert-manager remains supported
+  (`--set webhook.certManager.enabled=true`) for installs that
+  prefer its certificate lifecycle.
+- **Chart auto-injects the operator service account into
+  `KAPRO_PROMOTIONRUN_WRITERS`**. The admission webhook restricts
+  `PromotionRun` writes to a service-account allowlist; previously
+  the chart did not set this and the operator was rejected when
+  trying to create its own `PromotionRun` for the controller's own
+  Promotion reconcile. Extra writers can be appended via
+  `.Values.promotionRunWriters`.
+- **`KAPRO_HUB_API_URL` is no longer required** for the operator to
+  start. The `FleetClusterBootstrap` controller self-disables when
+  the URL is empty (typical for single-cluster, hub-only, or
+  quickstart installs) instead of crashing the whole operator on
+  startup.
+- **Tenancy ownership label propagates from `Kapro` → child
+  `PromotionPlan`** in the inline-plan path, and from `Promotion` →
+  child `PromotionRun`. Without this, the controller's own writes
+  were denied by its own webhook for missing `kapro.io/team`.
+- **Quickstart manifests carry `kapro.io/team: platform`** so a
+  fresh apply hits the tenancy webhook with a valid value.
+
+End-to-end verified on `kind-kind`: install → apply quickstart →
+`Promotion.status.phase: Succeeded` and `PromotionRun.status.phase:
+Complete` reached in under 15 seconds.
+
 ## v0.1.0 - 2026-05-19
 
 `v0.1.0` is the first public Kapro release. It supersedes the earlier alpha

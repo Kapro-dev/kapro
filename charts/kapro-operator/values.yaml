@@ -89,9 +89,16 @@ webhook:
     # When true, cert-manager injects the caBundle via the
     # cert-manager.io/inject-ca-from annotation on the webhook config.
     # Requires cert-manager >= 1.5 to be installed in the cluster.
-    enabled: true
+    #
+    # When false (the default), the chart generates a self-signed CA +
+    # serving cert at install time and stores them in a Secret in the
+    # release namespace. The cert is reused across `helm upgrade` so
+    # the running webhook is not disrupted. Use this path on any
+    # cluster that does not have cert-manager (kind, k3d, EKS without
+    # the cert-manager add-on, …).
+    enabled: false
     # When issuerRef.name is empty, this chart creates a self-signed Issuer
-    # in the promotionrun namespace. Set issuerRef to use an existing Issuer or
+    # in the release namespace. Set issuerRef to use an existing Issuer or
     # ClusterIssuer instead.
     issuerRef:
       name: ""
@@ -153,3 +160,12 @@ approvalSecret:
   value: ""
   # secretName: override the Secret name if you manage the Secret externally.
   secretName: ""
+
+# Comma-separated list of extra usernames allowed to write PromotionRun
+# objects (in addition to the operator's own service account, which is
+# always allowed). Used for break-glass: e.g. a CI service account that
+# needs to bypass the Promotion→PromotionRun controller path.
+#
+# Example:
+#   promotionRunWriters: "system:serviceaccount:ci:tekton,system:serviceaccount:ci:argo"
+promotionRunWriters: ""

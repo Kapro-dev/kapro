@@ -1,0 +1,52 @@
+name: Bug report
+description: Something Kapro did wrong, or didn't do that it should have.
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. The more concrete the repro, the faster the fix.
+  - type: input
+    id: kapro-version
+    attributes:
+      label: Kapro version
+      placeholder: "v0.1.0 (output of kapro --version)"
+    validations:
+      required: true
+  - type: input
+    id: kube-version
+    attributes:
+      label: Kubernetes version + distribution
+      placeholder: "v1.30.0 on kind, GKE 1.29, EKS 1.30, …"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Concrete observed behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: |
+        YAML for the Kapro/Promotion/PromotionPlan involved, the `kapro` /
+        `kubectl` commands you ran, and the cluster context (kind, GKE, etc.).
+        `kapro diag <promotion> -o json` output is gold.
+      render: yaml
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Operator logs / events
+      description: Last 50 lines from kapro-operator + relevant `kubectl describe` output.
+      render: shell

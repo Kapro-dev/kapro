@@ -72,6 +72,13 @@ spec:
                   fieldPath: spec.serviceAccountName
             - name: KAPRO_EXTERNAL_URL
               value: {{ .Values.externalURL | default "" | quote }}
+            # PromotionRun writes are restricted to the controller
+            # service account. Auto-inject the operator's own SA so
+            # the controller's own create/update calls are accepted
+            # by its own admission webhook. Additional break-glass
+            # writers can be appended via .Values.promotionRunWriters.
+            - name: KAPRO_PROMOTIONRUN_WRITERS
+              value: {{ printf "system:serviceaccount:%s:%s" .Release.Namespace (include "kapro-operator.serviceAccountName" .) }}{{- with .Values.promotionRunWriters }},{{ . }}{{- end }}
             - name: KAPRO_HUB_API_URL
               value: {{ .Values.hubAPIURL | default "" | quote }}
             - name: KAPRO_ENABLE_PLUGIN_GATEWAY
@@ -112,9 +119,9 @@ spec:
             - name: KAPRO_DISABLE_WEBHOOKS
               value: "true"
             {{- end }}
-          {{- if or (and .Values.webhook.enabled (or .Values.webhook.certManager.enabled .Values.webhook.tlsSecretName)) (or .Values.approvalSecret.value .Values.approvalSecret.secretName) }}
+          {{- if or (.Values.webhook.enabled) (or .Values.approvalSecret.value .Values.approvalSecret.secretName) }}
           volumeMounts:
-            {{- if and .Values.webhook.enabled (or .Values.webhook.certManager.enabled .Values.webhook.tlsSecretName) }}
+            {{- if .Values.webhook.enabled }}
             - name: webhook-tls
               mountPath: /tmp/k8s-webhook-server/serving-certs
               readOnly: true
@@ -125,9 +132,9 @@ spec:
               readOnly: true
             {{- end }}
           {{- end }}
-      {{- if or (and .Values.webhook.enabled (or .Values.webhook.certManager.enabled .Values.webhook.tlsSecretName)) (or .Values.approvalSecret.value .Values.approvalSecret.secretName) }}
+      {{- if or (.Values.webhook.enabled) (or .Values.approvalSecret.value .Values.approvalSecret.secretName) }}
       volumes:
-        {{- if and .Values.webhook.enabled (or .Values.webhook.certManager.enabled .Values.webhook.tlsSecretName) }}
+        {{- if .Values.webhook.enabled }}
         - name: webhook-tls
           secret:
             secretName: {{ .Values.webhook.tlsSecretName | default (printf "%s-webhook-tls" (include "kapro-operator.fullname" .)) }}

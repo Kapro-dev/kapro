@@ -2,6 +2,9 @@ apiVersion: kapro.io/v1alpha1
 kind: Promotion
 metadata:
   name: checkout-v1.2.3
+  labels:
+    # Tenancy ownership label — see examples/quickstart/kapro.yaml.
+    kapro.io/team: platform
 spec:
   kaproRef: checkout
   version: v1.2.3

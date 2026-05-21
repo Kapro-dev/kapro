@@ -2,6 +2,15 @@ apiVersion: kapro.io/v1alpha1
 kind: Kapro
 metadata:
   name: checkout
+  labels:
+    # Tenancy ownership label. Required on every Kapro / Promotion /
+    # PromotionPlan because the admission webhook enforces it on CREATE.
+    # The controller propagates this value into every child object it
+    # generates (PromotionPlan, PromotionRun, PromotionTarget). Real
+    # multi-tenant clusters typically set this from an OIDC claim or a
+    # platform-team label; for a single-team quickstart "platform" is
+    # a fine default. See docs/rbac-tenancy.md for the full model.
+    kapro.io/team: platform
 spec:
   registry:
     url: oci://registry.example.com/kapro

@@ -192,7 +192,7 @@ Triage:
    kubectl describe promotionrun <promotionrun>
    ```
 
-   Check `status.promotionplanProgress`, `status.report`, `status.conditions`, and
+   Check `status.promotionPlanProgress`, `status.report`, `status.conditions`, and
    `spec.suspended`.
 
 2. Inspect child execution objects:
@@ -210,7 +210,7 @@ Triage:
 
 | Phase | Likely blocker | Next check |
 |---|---|---|
-| `Pending` | Stage dependency, planner deferral, missing target selection, suspended PromotionRun | `status.promotionplanProgress[].stageProgress[].plannerResults`, `spec.suspended` |
+| `Pending` | Stage dependency, planner deferral, missing target selection, suspended PromotionRun | `status.promotionPlanProgress[].stageProgress[].plannerResults`, `spec.suspended` |
 | `Verification` | Artifact verification failure or retry | PromotionTarget Events and verification gate message |
 | `HealthCheck` | `FleetCluster.status.health` not ready or heartbeat stale | `kubectl get fleetcluster <target> -o yaml` |
 | `Soaking` | Normal soak delay | `status.phaseEnteredAt` and configured soak duration |
