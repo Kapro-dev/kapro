@@ -1,0 +1,11 @@
+apiVersion: kapro.io/v1alpha2
+kind: Backend
+metadata:
+  name: oci
+spec:
+  driver: oci
+  runtime: Spoke
+  parameters:
+    repository: ghcr.io/example/checkout/{appKey}
+    tag: "{version}"
+    auth: anonymous

@@ -1,0 +1,40 @@
+apiVersion: kapro.io/v1alpha2
+kind: Fleet
+metadata:
+  name: checkout-argo
+  labels:
+    kapro.io/team: platform
+    app.kubernetes.io/name: checkout
+spec:
+  source:
+    backendRef: argo
+    units:
+      - name: checkout
+        backendKind: Application
+        namespace: argocd
+        versionField: spec.source.targetRevision
+        version: v1.2.3
+  delivery:
+    mode: push
+    backendRef: argo
+    parameters:
+      namespace: argocd
+  clusters:
+    - name: checkout-argo-canary
+      labels:
+        kapro.io/stage: canary
+        kapro.io/region: eu
+    - name: checkout-argo-production
+      labels:
+        kapro.io/stage: production
+        kapro.io/region: eu
+  plan:
+    stages:
+      - name: canary
+        selector:
+          kapro.io/stage: canary
+      - name: production
+        selector:
+          kapro.io/stage: production
+        dependsOn:
+          - stage: canary

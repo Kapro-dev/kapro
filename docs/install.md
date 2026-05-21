@@ -110,6 +110,17 @@ exposed deliberately:
 See [Preview Controllers](preview-controllers.md) for the full controller key
 map and compatibility aliases.
 
+## Quickstart Paths
+
+Choose the smallest backend path that matches the delivery system you already
+run:
+
+| Path | Use when | Example |
+|---|---|---|
+| Flux | Spokes already reconcile with Flux or Flux Operator. | [First Promotion](first-promotion-10min.md) |
+| Argo CD | Argo CD owns one Application per target cluster. | [Argo CD Quickstart](quickstart-argo.md) |
+| OCI | Spokes should pull OCI artifacts without Flux or Argo CD. | [OCI Quickstart](quickstart-oci.md) |
+
 ## Optional Decision API
 
 The approval HTTP server is installed for signed human approval links. The

@@ -1,0 +1,48 @@
+apiVersion: kapro.io/v1alpha2
+kind: Fleet
+metadata:
+  name: checkout-oci
+  labels:
+    kapro.io/team: platform
+    app.kubernetes.io/name: checkout
+spec:
+  registry:
+    url: oci://ghcr.io/example/checkout-bundles
+  source:
+    registries:
+      - name: app
+        url: oci://ghcr.io/example/charts
+        type: oci
+    defaults:
+      repo: app
+      targetNamespace: checkout
+    units:
+      - name: checkout
+        chartName: checkout
+        version: 1.2.3
+  delivery:
+    mode: pull
+    backendRef: oci
+    parameters:
+      repository: ghcr.io/example/checkout/{appKey}
+      tag: "{version}"
+      auth: anonymous
+  clusters:
+    - name: checkout-oci-canary
+      labels:
+        kapro.io/stage: canary
+        kapro.io/region: eu
+    - name: checkout-oci-production
+      labels:
+        kapro.io/stage: production
+        kapro.io/region: eu
+  plan:
+    stages:
+      - name: canary
+        selector:
+          kapro.io/stage: canary
+      - name: production
+        selector:
+          kapro.io/stage: production
+        dependsOn:
+          - stage: canary
