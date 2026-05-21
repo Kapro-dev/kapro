@@ -77,6 +77,13 @@ func setupEnv(t *testing.T) (context.Context, context.CancelFunc, client.Client)
 	env := &envtest.Environment{
 		CRDDirectoryPaths: []string{filepath.Join("..", "..", "config", "crd", "bases")},
 		Scheme:            s,
+		// PR 1 of the v1alpha2 migration doubles the CRD count (v1alpha1
+		// + v1alpha2 served side by side, plus 7 newly-renamed Kinds).
+		// envtest's default 60s wait-for-established is too tight on the
+		// slower GitHub Actions runner — bump to 5 min.
+		CRDInstallOptions: envtest.CRDInstallOptions{
+			MaxTime: 5 * time.Minute,
+		},
 	}
 
 	cfg, err := env.Start()
