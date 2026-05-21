@@ -42,6 +42,9 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v4
 
+      - name: Verify release metadata matches tag
+        run: VERSION="${{ github.ref_name }}" scripts/ci-release-smoke.sh
+
       # ---- operator image -----------------------------------------------------
 
       - name: Build and push operator image

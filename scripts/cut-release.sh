@@ -106,7 +106,7 @@ echo "cutting release ${VERSION} on ${GH_NWO} (branch=${branch}, remote=${REMOTE
 
 if [ "${DRY_RUN}" != "true" ]; then
   echo "running release-smoke target before tagging"
-  if ! make release-smoke >/tmp/kapro-release-smoke.log 2>&1; then
+  if ! VERSION="${VERSION}" make release-smoke >/tmp/kapro-release-smoke.log 2>&1; then
     echo "release-smoke target failed; tail:" >&2
     tail -40 /tmp/kapro-release-smoke.log >&2 || true
     abort "release-smoke must pass before pushing the tag"

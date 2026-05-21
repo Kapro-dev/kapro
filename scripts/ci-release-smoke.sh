@@ -5,6 +5,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHART="${ROOT}/charts/kapro-operator"
 CLUSTER_CONTROLLER_CHART="${ROOT}/charts/kapro-cluster-controller"
 RELEASE_WORKFLOW="${ROOT}/.github/workflows/release.yml"
+EXPECTED_RELEASE_TAG="${VERSION:-}"
+if [[ -z "${EXPECTED_RELEASE_TAG}" && "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+  EXPECTED_RELEASE_TAG="${GITHUB_REF_NAME:-}"
+fi
 
 need() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -44,6 +48,18 @@ chart_value() {
   ' "${chart_dir}/Chart.yaml"
 }
 
+expected_chart_version() {
+	if [[ -z "${EXPECTED_RELEASE_TAG}" ]]; then
+		return 0
+	fi
+	if [[ "${EXPECTED_RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+		printf '%s\n' "${EXPECTED_RELEASE_TAG#v}"
+		return 0
+	fi
+	echo "release tag ${EXPECTED_RELEASE_TAG} is not a supported semver tag; expected vMAJOR.MINOR.PATCH[-PRE]" >&2
+	exit 1
+}
+
 assert_packaged_file_matches() {
   local package_path="$1"
   local chart_name="$2"
@@ -76,6 +92,12 @@ check_chart_package() {
   fi
   if [[ "${app_version}" != "v${version}" ]]; then
     echo "${chart_dir}/Chart.yaml appVersion ${app_version} must match chart version v${version}" >&2
+    exit 1
+  fi
+  local expected_version
+  expected_version="$(expected_chart_version)"
+  if [[ -n "${expected_version}" && "${version}" != "${expected_version}" ]]; then
+    echo "${chart_dir}/Chart.yaml version ${version} must match release tag ${EXPECTED_RELEASE_TAG}" >&2
     exit 1
   fi
   if [[ "$(basename "${package_path}")" != "${chart_name}-${version}.tgz" ]]; then
@@ -156,6 +178,7 @@ require_workflow_line "uses: azure/setup-helm@v4"
 require_workflow_line "name: Package Helm charts"
 require_workflow_line "helm package charts/kapro-operator --destination dist"
 require_workflow_line "helm package charts/kapro-cluster-controller --destination dist"
+require_workflow_line 'VERSION="${{ github.ref_name }}" scripts/ci-release-smoke.sh'
 require_workflow_line "name: Sign Helm chart artifacts with cosign (sign-blob)"
 require_workflow_line "cosign sign-blob --yes"
 require_workflow_line "name: Generate checksums for release assets"
