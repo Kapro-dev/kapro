@@ -58,7 +58,8 @@ scripts/verify-install.sh render
 
 - All CRD changes require a `+kubebuilder:` marker update
 - Run `make manifests` to regenerate CRD YAMLs after type changes
-- Breaking API changes are not allowed in `v1alpha1` without a new API version
+- Breaking API changes are not allowed in `v1alpha2` without a new API version
+  or an explicit migration plan. See [API Stability](docs/api-stability.md).
 
 ## Reporting Issues
 

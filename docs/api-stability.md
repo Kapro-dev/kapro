@@ -146,6 +146,9 @@ controller-side migration code. The first tagged release that documents a CRD as
 Preview must include explicit migration notes before removing or renaming that
 surface.
 
+For concrete cleanup and manifest rewrite steps, see the
+[v1alpha1 to v1alpha2 migration guide](migration-v1alpha1-to-v1alpha2.md).
+
 CRD schema changes should follow these rules:
 
 - Prefer additive spec fields with explicit safe defaults.

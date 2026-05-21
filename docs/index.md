@@ -19,6 +19,8 @@ Which clusters are allowed to receive this artifact version now, and why?
 - [Backends](backends.md) explains Flux, Argo CD, OCI, and plugin delivery
   options.
 - [Operations](operations.md) covers day-two status, debugging, and metrics.
+- [v1alpha1 to v1alpha2 Migration](migration-v1alpha1-to-v1alpha2.md) explains
+  the clean-break upgrade path for legacy alpha manifests.
 
 ## Core Objects
 

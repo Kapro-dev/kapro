@@ -826,6 +826,11 @@ func scanPublicSurface(t *testing.T, root string, bad []*regexp.Regexp) {
 
 func checkFile(t *testing.T, path string, bad []*regexp.Regexp) {
 	t.Helper()
+	if filepath.Base(path) == "migration-v1alpha1-to-v1alpha2.md" {
+		// This page is the only user-facing document allowed to spell the
+		// legacy API surface because it is the explicit migration guide.
+		return
+	}
 	data := readText(t, path)
 	for _, re := range bad {
 		if match := re.FindString(data); match != "" {

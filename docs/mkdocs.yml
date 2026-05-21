@@ -43,6 +43,7 @@ nav:
       - Backends: backends.md
       - Events: events.md
       - API Stability: api-stability.md
+      - Changelog: https://github.com/Kapro-dev/kapro/blob/main/CHANGELOG.md
       - Preview Controllers: preview-controllers.md
   - Operations:
       - Operations: operations.md
@@ -51,6 +52,7 @@ nav:
       - RBAC and Tenancy: rbac-tenancy.md
       - Cluster Bootstrap: cluster-bootstrap.md
   - Migration:
+      - v1alpha1 to v1alpha2 Migration: migration-v1alpha1-to-v1alpha2.md
       - Argo Brownfield Migration: argo-migration.md
       - Flux Brownfield Migration: flux-migration.md
       - Discovery Troubleshooting: discovery-troubleshooting.md
