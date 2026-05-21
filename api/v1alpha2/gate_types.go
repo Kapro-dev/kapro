@@ -1,4 +1,4 @@
-// Gate policy, gate template, metric analysis, and cosign verification
+// Gate policy, gate template, metric analysis, and verification policy
 // types embedded inside Plan stages.
 package v1alpha2
 
@@ -24,7 +24,7 @@ type GatePolicySpec struct {
 	// +kubebuilder:validation:Enum=auto;manual;scheduled
 	Mode GateMode `json:"mode"`
 	// Gate configures automated checks such as soak time, health checks,
-	// metrics, template gates, and artifact verification.
+	// metrics, template gates, and delegated verification policy.
 	// +optional
 	Gate GateSpec `json:"gate,omitempty"`
 	// Approval configures the human approval requirement for manual gates.
@@ -61,12 +61,14 @@ type GateSpec struct {
 	Verification *VerificationGateSpec `json:"verification,omitempty"`
 }
 
-// VerificationGateSpec configures per-policy artifact signature verification.
+// VerificationGateSpec configures verification policy that Kapro delegates to
+// the configured delivery backend.
 type VerificationGateSpec struct {
 	CosignPolicy *CosignPolicySpec `json:"cosignPolicy,omitempty"`
 }
 
-// CosignPolicySpec specifies how cosign should verify the artifact signature.
+// CosignPolicySpec records the cosign policy the delivery backend should
+// enforce for the artifact.
 type CosignPolicySpec struct {
 	Keyless *KeylessVerificationSpec `json:"keyless,omitempty"`
 	Key     *KeyVerificationSpec     `json:"key,omitempty"`
@@ -283,7 +285,7 @@ type GateRunStatus struct {
 	// +kubebuilder:validation:MaxItems=16
 	Results []GateConditionResult `json:"results,omitempty"`
 	// Evidence is structured, non-secret data that explains the gate decision.
-	// It is intended for audit, debugging, notifications, and future AI agents.
+	// It is intended for audit, debugging, and notifications.
 	// +optional
 	Evidence []GateEvidence `json:"evidence,omitempty"`
 }

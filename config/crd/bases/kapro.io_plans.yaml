@@ -271,7 +271,7 @@ spec:
                         gate:
                           description: |-
                             Gate configures automated checks such as soak time, health checks,
-                            metrics, template gates, and artifact verification.
+                            metrics, template gates, and delegated verification policy.
                           properties:
                             gateTimeout:
                               description: |-
@@ -685,12 +685,14 @@ spec:
                                 type: object
                               type: array
                             verification:
-                              description: VerificationGateSpec configures per-policy
-                                artifact signature verification.
+                              description: |-
+                                VerificationGateSpec configures verification policy that Kapro delegates to
+                                the configured delivery backend.
                               properties:
                                 cosignPolicy:
-                                  description: CosignPolicySpec specifies how cosign
-                                    should verify the artifact signature.
+                                  description: |-
+                                    CosignPolicySpec records the cosign policy the delivery backend should
+                                    enforce for the artifact.
                                   properties:
                                     key:
                                       description: KeyVerificationSpec configures

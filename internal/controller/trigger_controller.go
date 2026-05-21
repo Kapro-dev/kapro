@@ -113,7 +113,7 @@ func (r *TriggerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 	trigger.Status.ActivePromotionRunCount = activeCount
 
-	if trigger.Spec.Suspended {
+	if triggerSuspended(trigger.Spec.Suspended) {
 		setTriggerSuspended(&trigger, now)
 		if err := r.patchStatus(ctx, &trigger, patch); err != nil {
 			return ctrl.Result{}, err
@@ -445,7 +445,7 @@ func buildTriggeredPromotion(trigger *kaprov1alpha2.Trigger, artifact TriggerArt
 			FleetRef:  tmpl.FleetRef,
 			Version:   version,
 			Plans:     append([]kaprov1alpha2.PlanRef(nil), tmpl.Plans...),
-			Suspended: tmpl.Suspended,
+			Suspended: triggerSuspended(tmpl.Suspended),
 			Scope:     tmpl.Scope.DeepCopy(),
 			Timeout:   tmpl.Timeout,
 		},
@@ -489,7 +489,7 @@ func triggerTemplateHash(trigger *kaprov1alpha2.Trigger) string {
 		Labels      map[string]string                `json:"labels"`
 		Annotations map[string]string                `json:"annotations"`
 	}{
-		FleetRef: t.FleetRef, Plans: t.Plans, Suspended: t.Suspended,
+		FleetRef: t.FleetRef, Plans: t.Plans, Suspended: triggerSuspended(t.Suspended),
 		Scope: t.Scope, Timeout: t.Timeout, Labels: t.Labels, Annotations: t.Annotations,
 	})
 	h := sha256.Sum256(buf)
@@ -542,6 +542,13 @@ func artifactVersion(trigger *kaprov1alpha2.Trigger, artifact TriggerArtifactObs
 		repo = "oci://" + repo
 	}
 	return repo + "@" + artifact.Digest
+}
+
+func triggerSuspended(value *bool) bool {
+	if value == nil {
+		return true
+	}
+	return *value
 }
 
 func validatePromotionTriggerConfig(trigger *kaprov1alpha2.Trigger) (time.Duration, string, error) {

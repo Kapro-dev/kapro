@@ -175,8 +175,8 @@ type PromotionLifecycleHandlerResult struct {
 
 // PromotionPhase is the coarse lifecycle state of a Promotion intent,
 // modeled after the Docker container lifecycle. All values are listed
-// here; `RollingBack` is reserved for a future `spec.rollbackTo` field
-// and is not yet reachable from any controller transition.
+// here; `RollingBack` is reserved and is not emitted by the current
+// controller transitions.
 //
 //	Pending      -> created, not yet stamped       (Docker: created)
 //	Progressing  -> active PromotionRun running    (Docker: running)
@@ -184,8 +184,7 @@ type PromotionLifecycleHandlerResult struct {
 //	Restarting   -> new attempt after terminal     (Docker: restarting)
 //	Succeeded    -> latest attempt completed       (Docker: exited 0)
 //	Failed       -> latest attempt failed          (Docker: exited >0)
-//	RollingBack  -> rollback to a prior version    (reserved; lights up
-//	                when spec.rollbackTo is wired)
+//	RollingBack  -> rollback to a prior version    (reserved; not emitted today)
 //	Terminating  -> deletionTimestamp set, GC      (Docker: removing)
 //
 // +kubebuilder:validation:Enum=Pending;Progressing;Paused;Restarting;Succeeded;Failed;RollingBack;Terminating
