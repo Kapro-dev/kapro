@@ -7,6 +7,13 @@ record for each tag.
 
 ## Unreleased
 
+### Added — Go SDK scaffold
+
+Added the first public `kapro.io/kapro/pkg/kapro` SDK package with happy-path
+builders for `Fleet`, `Plan`, and `Promotion`, a lightweight CloudEvents
+subscriber, a minimal gate interface, runnable Go examples, SDK docs, and
+ADR-0013 covering SDK versioning policy.
+
 ### Changed — announce-ready README and governance docs
 
 Refreshed the README with release, CI, and docs badges; a shorter why-Kapro

@@ -18,6 +18,7 @@ relitigating it.
 | [0010](0010-core-and-preview-controller-tier.md) | Core and preview controller tier | Accepted |
 | [0011](0011-conversion-webhook-scaffold.md) | Conversion webhook scaffold without legacy migration guarantee | Accepted |
 | [0012](0012-competitive-positioning.md) | Competitive positioning | Accepted |
+| [0013](0013-sdk-versioning-policy.md) | Go SDK versioning policy | Accepted |
 
 ## Adding a new ADR
 
