@@ -18,7 +18,7 @@ const (
 	defaultHeartbeatNamespace = "kapro-system"
 	heartbeatLeasePrefix      = "kapro-heartbeat-"
 	// heartbeatFreshTimeout is the window beyond which a Lease renewal is
-	// considered a miss. The FleetClusterHeartbeatReconciler reads the Lease
+	// considered a miss. The ClusterHeartbeatReconciler reads the Lease
 	// and counts misses; this constant defines what counts as a miss but
 	// NOT how many misses are tolerated (that is per-cluster via
 	// spec.consecutiveFailureThreshold).
@@ -31,7 +31,7 @@ func heartbeatLeaseName(clusterName string) string {
 
 // requireFreshHeartbeat blocks a target from progressing when the cluster's
 // heartbeat is not fresh. Reachability is decided by the
-// FleetClusterHeartbeatReconciler via Spec.ConsecutiveFailureThreshold — this
+// ClusterHeartbeatReconciler via Spec.ConsecutiveFailureThreshold — this
 // function only reads that decision (conditions[Ready] + status.heartbeat)
 // and surfaces it on the target.
 //
@@ -54,7 +54,7 @@ func heartbeatLeaseName(clusterName string) string {
 //
 // status.heartbeatStaleSince and status.heartbeatStaleCount stay updated for
 // dashboards and runbooks but are no longer load-bearing.
-func (r *PromotionTargetReconciler) requireFreshHeartbeat(
+func (r *TargetReconciler) requireFreshHeartbeat(
 	ctx context.Context,
 	promotionrun *kaprov1alpha2.PromotionRun,
 	target *kaprov1alpha2.TargetExecutionState,

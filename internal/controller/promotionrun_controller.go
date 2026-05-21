@@ -1292,7 +1292,7 @@ func mergeMetricPreset(preset, override kaprov1alpha2.MetricGate) kaprov1alpha2.
 // This implements failurePolicy: halt — sibling targets stop advancing.
 //
 // Ownership contract: the parent writes spec.cancelled (parent owns spec),
-// the child PromotionTargetReconciler observes it and transitions to Failed
+// the child TargetReconciler observes it and transitions to Failed
 // (child owns status). This avoids cross-controller status writes.
 
 // clearActivePromotionRun clears mc.status.activePromotionRun for all FleetClusters
@@ -1329,7 +1329,7 @@ func targetStatusFromPromotionTarget(rt *kaprov1alpha2.Target) kaprov1alpha2.Tar
 
 // persistPromotionTargets ensures a PromotionTarget CRD exists for each in-memory
 // target entry. The parent creates new children and updates their specs/labels/
-// ownerRefs, but NEVER writes child status — that's owned by PromotionTargetReconciler.
+// ownerRefs, but NEVER writes child status — that's owned by TargetReconciler.
 
 // handleDeletion clears FleetCluster activePromotionRun references and removes the finalizer.
 // Targets are inline status — nothing to delete externally.

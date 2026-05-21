@@ -110,10 +110,10 @@ const (
 	eventReasonClusterRecovered = "ClusterRecovered"
 )
 
-// FleetClusterHeartbeatReconciler watches FleetClusters and their associated
+// ClusterHeartbeatReconciler watches FleetClusters and their associated
 // coordination Leases to maintain the Ready condition + heartbeat status
 // substruct.
-type FleetClusterHeartbeatReconciler struct {
+type ClusterHeartbeatReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
@@ -127,7 +127,7 @@ type FleetClusterHeartbeatReconciler struct {
 }
 
 // Reconcile implements reconcile.Reconciler.
-func (r *FleetClusterHeartbeatReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *ClusterHeartbeatReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues("fleetcluster", req.Name)
 
 	fc := &kaprov1alpha2.Cluster{}
@@ -167,7 +167,7 @@ type desiredReady struct {
 	LeaseObservedAt *metav1.Time
 }
 
-func (r *FleetClusterHeartbeatReconciler) computeDesiredReady(ctx context.Context, fc *kaprov1alpha2.Cluster, now time.Time) desiredReady {
+func (r *ClusterHeartbeatReconciler) computeDesiredReady(ctx context.Context, fc *kaprov1alpha2.Cluster, now time.Time) desiredReady {
 	// Suspend wins. Operators have asked us to stop reasoning about this
 	// cluster's reachability.
 	if fc.Spec.Suspend {
@@ -286,7 +286,7 @@ const (
 // extracted observation timestamp (nil if no Lease) plus a freshness verdict.
 // An apiserver error (not NotFound) is returned to the caller so it can
 // decide whether to count it as a miss.
-func (r *FleetClusterHeartbeatReconciler) readLeaseFreshness(ctx context.Context, fc *kaprov1alpha2.Cluster, now time.Time) (*metav1.Time, freshnessVerdict, error) {
+func (r *ClusterHeartbeatReconciler) readLeaseFreshness(ctx context.Context, fc *kaprov1alpha2.Cluster, now time.Time) (*metav1.Time, freshnessVerdict, error) {
 	lease := &coordinationv1.Lease{}
 	err := r.Get(ctx, client.ObjectKey{
 		Namespace: r.heartbeatNamespace(),
@@ -329,7 +329,7 @@ func (r *FleetClusterHeartbeatReconciler) readLeaseFreshness(ctx context.Context
 // stale condition does not affect promotion behavior because Phase
 // (not Ready) is the gate kapro_controller and the promotion target
 // controller read.
-func (r *FleetClusterHeartbeatReconciler) applyDesired(ctx context.Context, fc *kaprov1alpha2.Cluster, desired desiredReady, now time.Time) error {
+func (r *ClusterHeartbeatReconciler) applyDesired(ctx context.Context, fc *kaprov1alpha2.Cluster, desired desiredReady, now time.Time) error {
 	before := fc.DeepCopy()
 
 	prev := apimeta.FindStatusCondition(fc.Status.Conditions, kaprov1alpha2.ConditionTypeReady)
@@ -376,7 +376,7 @@ func (r *FleetClusterHeartbeatReconciler) applyDesired(ctx context.Context, fc *
 	return nil
 }
 
-func (r *FleetClusterHeartbeatReconciler) emitTransitionEvents(fc *kaprov1alpha2.Cluster, prevStatus metav1.ConditionStatus, prevReason string, desired desiredReady) {
+func (r *ClusterHeartbeatReconciler) emitTransitionEvents(fc *kaprov1alpha2.Cluster, prevStatus metav1.ConditionStatus, prevReason string, desired desiredReady) {
 	if r.Recorder == nil {
 		return
 	}
@@ -398,14 +398,14 @@ func (r *FleetClusterHeartbeatReconciler) emitTransitionEvents(fc *kaprov1alpha2
 	}
 }
 
-func (r *FleetClusterHeartbeatReconciler) heartbeatNamespace() string {
+func (r *ClusterHeartbeatReconciler) heartbeatNamespace() string {
 	if r.HeartbeatNamespace != "" {
 		return r.HeartbeatNamespace
 	}
 	return defaultHeartbeatNamespace
 }
 
-func (r *FleetClusterHeartbeatReconciler) now() time.Time {
+func (r *ClusterHeartbeatReconciler) now() time.Time {
 	if r.Now != nil {
 		return r.Now()
 	}
@@ -424,7 +424,7 @@ func currentMisses(fc *kaprov1alpha2.Cluster) int32 {
 // (secondary). The Lease watch maps each event to the owning FleetCluster
 // reconcile request by stripping the heartbeatLeasePrefix from the Lease
 // name.
-func (r *FleetClusterHeartbeatReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *ClusterHeartbeatReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("fleetcluster-heartbeat").
 		For(&kaprov1alpha2.Cluster{}, builder.WithPredicates(fleetClusterSpecOrBootstrapPredicate{})).

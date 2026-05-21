@@ -33,7 +33,7 @@ func TestBackendProfileReadinessBuiltIn(t *testing.T) {
 			Runtime: kaprov1alpha2.BackendRuntimeHub,
 		},
 	}
-	r := &BackendProfileReconciler{
+	r := &BackendReconciler{
 		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(profile).Build(),
 	}
 
@@ -75,7 +75,7 @@ func TestBackendProfileReadinessExternalRequiresReadyPlugin(t *testing.T) {
 			Ready:              true,
 		},
 	}
-	r := &BackendProfileReconciler{
+	r := &BackendReconciler{
 		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(profile, plugin).Build(),
 	}
 
@@ -119,7 +119,7 @@ func TestBackendProfilesForBackendObjectMatchesDiscoveryProfile(t *testing.T) {
 			Parameters: map[string]string{"namespace": "flux-system"},
 		},
 	}
-	r := &BackendProfileReconciler{
+	r := &BackendReconciler{
 		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(profile, fluxProfile).Build(),
 	}
 	app := newArgoApplication("argocd", "checkout", map[string]string{"kapro.io/import": "true"}, nil)
@@ -148,7 +148,7 @@ func TestBackendProfilesForBackendObjectMatchesArgoClusterSecret(t *testing.T) {
 			Parameters: map[string]string{"namespace": "argocd"},
 		},
 	}
-	r := &BackendProfileReconciler{
+	r := &BackendReconciler{
 		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(profile).Build(),
 	}
 	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
@@ -183,7 +183,7 @@ func TestBackendProfileArgoDiscoveryCountsExistingResources(t *testing.T) {
 	}
 	app := newArgoApplication("argocd", "checkout-prod", map[string]string{"kapro.io/import": "true", "service": "checkout"}, nil)
 
-	r := &BackendProfileReconciler{
+	r := &BackendReconciler{
 		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(
 			profile,
 			&corev1.Secret{
@@ -244,7 +244,7 @@ func TestBackendProfileArgoDiscoveryClassifiesBrownfieldPatterns(t *testing.T) {
 	root := newArgoApplication("argocd", "platform-root", map[string]string{"kapro.io/import": "true", "pattern": "app-of-apps"}, nil)
 	appSet := newApplicationSet("argocd", "checkout-prod", map[string]string{"kapro.io/import": "true", "service": "api"})
 
-	r := &BackendProfileReconciler{
+	r := &BackendReconciler{
 		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(profile, plain, appSetChild, root, appSet).Build(),
 	}
 
@@ -297,7 +297,7 @@ func TestBackendProfileDiscoveryStatusSamplesAreBounded(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		objects = append(objects, newArgoApplication("argocd", fmt.Sprintf("app-%04d", i), map[string]string{"service": "checkout"}, nil))
 	}
-	r := &BackendProfileReconciler{
+	r := &BackendReconciler{
 		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build(),
 	}
 
@@ -335,7 +335,7 @@ func TestBackendProfileDiscoveryFailsClosedWhenMaxObjectsExceeded(t *testing.T) 
 			Parameters: map[string]string{"namespace": "argocd"},
 		},
 	}
-	r := &BackendProfileReconciler{
+	r := &BackendReconciler{
 		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(
 			profile,
 			newArgoApplication("argocd", "app-1", map[string]string{"service": "checkout"}, nil),
@@ -392,7 +392,7 @@ func TestBackendProfileFluxDiscoveryCountsExistingResources(t *testing.T) {
 	kustomization.SetNamespace("flux-system")
 	kustomization.SetName("checkout")
 
-	r := &BackendProfileReconciler{
+	r := &BackendReconciler{
 		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(profile, gitRepository, ociRepository, helmRelease, kustomization).Build(),
 	}
 

@@ -76,7 +76,7 @@ func newBootstrapScheme(t *testing.T) *runtime.Scheme {
 // newReconciler builds a reconciler backed by a fake client preloaded with
 // the supplied objects. KubeClient and CertClient are left nil — they are
 // only required for paths under test that actually call them.
-func newBootstrapReconciler(t *testing.T, objs ...client.Object) (*FleetClusterBootstrapReconciler, client.Client) {
+func newBootstrapReconciler(t *testing.T, objs ...client.Object) (*ClusterBootstrapReconciler, client.Client) {
 	t.Helper()
 	scheme := newBootstrapScheme(t)
 	fc := fake.NewClientBuilder().
@@ -84,7 +84,7 @@ func newBootstrapReconciler(t *testing.T, objs ...client.Object) (*FleetClusterB
 		WithObjects(objs...).
 		WithStatusSubresource(&kaprov1alpha2.Cluster{}).
 		Build()
-	return &FleetClusterBootstrapReconciler{
+	return &ClusterBootstrapReconciler{
 		Client:       fc,
 		Scheme:       scheme,
 		Recorder:     record.NewFakeRecorder(16),
@@ -262,7 +262,7 @@ func TestExpired(t *testing.T) {
 			want: false,
 		},
 	}
-	r := &FleetClusterBootstrapReconciler{}
+	r := &ClusterBootstrapReconciler{}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			if got := r.expired(c.fc); got != c.want {

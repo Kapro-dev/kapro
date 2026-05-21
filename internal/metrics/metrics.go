@@ -63,7 +63,7 @@ var (
 	// (internal/promotion/fsm) did NOT permit. Shared across every
 	// FSM in the operator:
 	//
-	//   - PromotionTargetReconciler.transitionTo (D3 — 10-phase target FSM)
+	//   - TargetReconciler.transitionTo (D3 — 10-phase target FSM)
 	//   - PromotionRunReconciler.setRunPhase    (D2 — 4-phase run FSM)
 	//
 	// A non-zero rate here is a strong signal that the FSM graph

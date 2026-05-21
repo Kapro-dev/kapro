@@ -47,7 +47,7 @@ func TestSyncPromotionTargetPhaseLabelPersistsMetadata(t *testing.T) {
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(target).Build()
-	r := &PromotionTargetReconciler{Client: c}
+	r := &TargetReconciler{Client: c}
 
 	if err := r.syncPromotionTargetPhaseLabel(ctx, target); err != nil {
 		t.Fatal(err)
@@ -77,7 +77,7 @@ func TestPromotionTargetReconcileSyncsTerminalPhaseLabel(t *testing.T) {
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(target).Build()
-	r := &PromotionTargetReconciler{Client: c}
+	r := &TargetReconciler{Client: c}
 
 	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: target.Name}}); err != nil {
 		t.Fatal(err)
@@ -239,7 +239,7 @@ func TestPromotionTargetReconcilePullOCIRecordsDesiredState(t *testing.T) {
 	if err := actuators.Register("pull/oci", &pullactuator.PullActuator{HubClient: c}); err != nil {
 		t.Fatal(err)
 	}
-	r := &PromotionTargetReconciler{
+	r := &TargetReconciler{
 		Client:           c,
 		ActuatorRegistry: actuators,
 		GateRegistry:     gate.NewRegistry(),
@@ -263,7 +263,7 @@ func TestPromotionTargetReconcilePullOCIRecordsDesiredState(t *testing.T) {
 }
 
 func TestUpdatePromotionTargetStatusContract_SetsObservedGenerationAndConditions(t *testing.T) {
-	r := &PromotionTargetReconciler{}
+	r := &TargetReconciler{}
 	rt := &kaprov1alpha2.Target{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       "rel-wave-prod-cluster-a",
@@ -295,7 +295,7 @@ func TestUpdatePromotionTargetStatusContract_SetsObservedGenerationAndConditions
 
 func TestNotifyPersistedTransitions_OnlyOnPersistedPhaseChange(t *testing.T) {
 	notifier := &recordingNotifier{}
-	r := &PromotionTargetReconciler{Notifier: notifier}
+	r := &TargetReconciler{Notifier: notifier}
 	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1"},
 	}
@@ -319,7 +319,7 @@ func TestNotifyPersistedTransitions_OnlyOnPersistedPhaseChange(t *testing.T) {
 
 func TestNotifyPersistedTransitions_ApprovalOnlyAfterPersistedStamp(t *testing.T) {
 	notifier := &recordingNotifier{}
-	r := &PromotionTargetReconciler{Notifier: notifier}
+	r := &TargetReconciler{Notifier: notifier}
 	promotionrun := &kaprov1alpha2.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1"},
 	}
@@ -343,7 +343,7 @@ func TestNotifyPersistedTransitions_ApprovalOnlyAfterPersistedStamp(t *testing.T
 
 func TestNotifyGateEvent_SendsSemanticGateType(t *testing.T) {
 	notifier := &recordingNotifier{}
-	r := &PromotionTargetReconciler{Notifier: notifier}
+	r := &TargetReconciler{Notifier: notifier}
 	promotionrun := &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}}
 	target := &kaprov1alpha2.TargetExecutionState{
 		Target:  "cluster-a",

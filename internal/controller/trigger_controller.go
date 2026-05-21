@@ -65,8 +65,8 @@ type PromotionTriggerVerifier interface {
 	Verify(ctx context.Context, trigger *kaprov1alpha2.Trigger, artifact TriggerArtifactObservation) error
 }
 
-// PromotionTriggerReconciler observes artifact sources and updates guarded Promotions.
-type PromotionTriggerReconciler struct {
+// TriggerReconciler observes artifact sources and updates guarded Promotions.
+type TriggerReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
@@ -81,7 +81,7 @@ type PromotionTriggerReconciler struct {
 // +kubebuilder:rbac:groups=kapro.io,resources=promotionruns,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 
-func (r *PromotionTriggerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *TriggerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	l := log.FromContext(ctx)
 
 	var trigger kaprov1alpha2.Trigger
@@ -249,21 +249,21 @@ func (r *PromotionTriggerReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return ctrl.Result{RequeueAfter: pollAfter}, r.patchStatus(ctx, &trigger, patch)
 }
 
-func (r *PromotionTriggerReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *TriggerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kaprov1alpha2.Trigger{}).
 		Owns(&kaprov1alpha2.Promotion{}).
 		Complete(r)
 }
 
-func (r *PromotionTriggerReconciler) patchStatus(ctx context.Context, trigger *kaprov1alpha2.Trigger, patch client.Patch) error {
+func (r *TriggerReconciler) patchStatus(ctx context.Context, trigger *kaprov1alpha2.Trigger, patch client.Patch) error {
 	if err := r.Status().Patch(ctx, trigger, patch); err != nil {
 		return fmt.Errorf("patch promotion trigger status: %w", err)
 	}
 	return nil
 }
 
-func (r *PromotionTriggerReconciler) now() time.Time {
+func (r *TriggerReconciler) now() time.Time {
 	if r.Now != nil {
 		return r.Now().UTC()
 	}
@@ -272,7 +272,7 @@ func (r *PromotionTriggerReconciler) now() time.Time {
 
 // activePromotionRunCount counts non-terminal PromotionRuns owned by the
 // trigger's managed Promotion (via promotion-owner label).
-func (r *PromotionTriggerReconciler) activePromotionRunCount(ctx context.Context, managedPromotion string) (int32, error) {
+func (r *TriggerReconciler) activePromotionRunCount(ctx context.Context, managedPromotion string) (int32, error) {
 	if managedPromotion == "" {
 		return 0, nil
 	}
@@ -615,7 +615,7 @@ func cooldownRemaining(trigger *kaprov1alpha2.Trigger, now time.Time) (time.Dura
 	return 0, nil
 }
 
-func (r *PromotionTriggerReconciler) cooldownRemaining(ctx context.Context, trigger *kaprov1alpha2.Trigger, now time.Time) (time.Duration, error) {
+func (r *TriggerReconciler) cooldownRemaining(ctx context.Context, trigger *kaprov1alpha2.Trigger, now time.Time) (time.Duration, error) {
 	lastTriggeredAt, err := lastTriggerPromotionCreatedAt(ctx, r.Client, trigger)
 	if err != nil {
 		return 0, err

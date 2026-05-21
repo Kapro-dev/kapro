@@ -41,10 +41,10 @@ func heartbeatTestScheme(t *testing.T) *runtime.Scheme {
 
 // newReconciler wires a reconciler with an injected clock so freshness checks
 // are deterministic across CI runs.
-func newReconciler(t *testing.T, now time.Time, objs ...client.Object) *FleetClusterHeartbeatReconciler {
+func newReconciler(t *testing.T, now time.Time, objs ...client.Object) *ClusterHeartbeatReconciler {
 	t.Helper()
 	scheme := heartbeatTestScheme(t)
-	return &FleetClusterHeartbeatReconciler{
+	return &ClusterHeartbeatReconciler{
 		Client: fake.NewClientBuilder().
 			WithScheme(scheme).
 			WithObjects(objs...).

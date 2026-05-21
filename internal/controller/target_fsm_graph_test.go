@@ -30,7 +30,7 @@ func TestPromotionTargetFSM_GraphCoversAllPhases(t *testing.T) {
 		kaprov1alpha2.TargetPhaseSkipped,
 	}
 
-	r := &PromotionTargetReconciler{
+	r := &TargetReconciler{
 		Recorder: record.NewFakeRecorder(8),
 	}
 	r.ensureFSM()
@@ -44,7 +44,7 @@ func TestPromotionTargetFSM_GraphCoversAllPhases(t *testing.T) {
 // AllowedNext sets match the comment-block "graph" in buildFSM. Keeping
 // these in sync is the entire point of the declarative table.
 func TestPromotionTargetFSM_GraphAdjacencyMatchesDocs(t *testing.T) {
-	r := &PromotionTargetReconciler{Recorder: record.NewFakeRecorder(8)}
+	r := &TargetReconciler{Recorder: record.NewFakeRecorder(8)}
 	r.ensureFSM()
 	graph := r.fsmMachine.Graph()
 
@@ -129,7 +129,7 @@ func TestPromotionTargetFSM_GraphAdjacencyMatchesDocs(t *testing.T) {
 // so we verify them too — terminal phases drive
 // EventTargetConverged/Failed/Skipped which downstream notifiers depend on.
 func TestEventTypeForPhase_CoversAllRegisteredPhases(t *testing.T) {
-	r := &PromotionTargetReconciler{Recorder: record.NewFakeRecorder(8)}
+	r := &TargetReconciler{Recorder: record.NewFakeRecorder(8)}
 	r.ensureFSM()
 	phases := r.fsmMachine.Phases()
 	phases = append(phases,

@@ -149,7 +149,7 @@ func TestE2E_PromotionRun_Sync_Converged(t *testing.T) {
 //  2. One target's status is patched to Failed (simulating actuator failure).
 //  3. PromotionRunReconciler detects the failure and sets spec.cancelled=true on the
 //     sibling PromotionTarget (parent owns spec).
-//  4. PromotionTargetReconciler observes spec.cancelled and transitions the sibling
+//  4. TargetReconciler observes spec.cancelled and transitions the sibling
 //     to Failed (child owns status).
 //  5. PromotionRun reaches Failed.
 //
@@ -288,7 +288,7 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 		}
 	}
 
-	// ── 9. Wait: cancelled sibling transitions to Failed via PromotionTargetReconciler
+	// ── 9. Wait: cancelled sibling transitions to Failed via TargetReconciler
 	eventually(t, func() bool {
 		targets := listPromotionTargets(t, ctx, c, promotionrun.Name, ns)
 		for _, rt := range targets {
@@ -325,8 +325,8 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 // currentVersions should map appKey→version for all syncs that should converge.
 //
 // Sets conditions[Ready]=True too — that is what
-// FleetClusterHeartbeatReconciler writes for a healthy pull-mode cluster and
-// what PromotionTargetReconciler.requireFreshHeartbeat now reads to decide
+// ClusterHeartbeatReconciler writes for a healthy pull-mode cluster and
+// what TargetReconciler.requireFreshHeartbeat now reads to decide
 // whether to proceed. Without this, the e2e would defer indefinitely
 // because no Ready condition is observed.
 func patchRegistrationConverged(t *testing.T, ctx context.Context, c client.Client, reg *kaprov1alpha2.Cluster, currentVersions map[string]string) {

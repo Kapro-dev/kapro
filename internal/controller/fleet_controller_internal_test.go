@@ -12,7 +12,7 @@ import (
 // TestFleetClusterReadyConditionChangedPredicate covers the watch-filter that
 // requeues Kapro reconciles only when a FleetCluster's Ready condition changes
 // — the trigger that drives Phase=Unreachable computation. Without this filter
-// KaproReconciler would feedback-loop on its own Phase/CurrentVersions writes.
+// FleetReconciler would feedback-loop on its own Phase/CurrentVersions writes.
 func TestFleetClusterReadyConditionChangedPredicate(t *testing.T) {
 	pred := fleetClusterReadyConditionChangedPredicate{}
 

@@ -19,7 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-func TestPluginRegistrationReconcilerSetsReadyStatus(t *testing.T) {
+func TestPluginReconcilerSetsReadyStatus(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
@@ -34,7 +34,7 @@ func TestPluginRegistrationReconcilerSetsReadyStatus(t *testing.T) {
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(reg).WithStatusSubresource(&kaprov1alpha2.Plugin{}).Build()
-	r := &PluginRegistrationReconciler{
+	r := &PluginReconciler{
 		Client:   c,
 		Recorder: record.NewFakeRecorder(8),
 		Prober: fakePluginProber{result: probe.Result{
@@ -80,7 +80,7 @@ func TestPluginRegistrationReconcilerSetsReadyStatus(t *testing.T) {
 	}
 }
 
-func TestPluginRegistrationReconcilerSetsStalledStatus(t *testing.T) {
+func TestPluginReconcilerSetsStalledStatus(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
@@ -95,7 +95,7 @@ func TestPluginRegistrationReconcilerSetsStalledStatus(t *testing.T) {
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(reg).WithStatusSubresource(&kaprov1alpha2.Plugin{}).Build()
-	r := &PluginRegistrationReconciler{
+	r := &PluginReconciler{
 		Client:   c,
 		Recorder: record.NewFakeRecorder(8),
 		Prober: fakePluginProber{result: probe.Result{
@@ -130,7 +130,7 @@ func TestPluginRegistrationReconcilerSetsStalledStatus(t *testing.T) {
 	}
 }
 
-func TestPluginRegistrationReconcilerSetsIncompatibleStatus(t *testing.T) {
+func TestPluginReconcilerSetsIncompatibleStatus(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
@@ -145,7 +145,7 @@ func TestPluginRegistrationReconcilerSetsIncompatibleStatus(t *testing.T) {
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(reg).WithStatusSubresource(&kaprov1alpha2.Plugin{}).Build()
-	r := &PluginRegistrationReconciler{
+	r := &PluginReconciler{
 		Client:   c,
 		Recorder: record.NewFakeRecorder(8),
 		Prober: fakePluginProber{result: probe.Result{
@@ -180,7 +180,7 @@ func TestPluginRegistrationReconcilerSetsIncompatibleStatus(t *testing.T) {
 	}
 }
 
-func TestPluginRegistrationReconcilerDeletesReadinessMetricOnDelete(t *testing.T) {
+func TestPluginReconcilerDeletesReadinessMetricOnDelete(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
@@ -198,7 +198,7 @@ func TestPluginRegistrationReconcilerDeletesReadinessMetricOnDelete(t *testing.T
 		},
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(reg).WithStatusSubresource(&kaprov1alpha2.Plugin{}).Build()
-	r := &PluginRegistrationReconciler{Client: c, Recorder: record.NewFakeRecorder(8)}
+	r := &PluginReconciler{Client: c, Recorder: record.NewFakeRecorder(8)}
 
 	readiness := kaprometrics.PluginProbeReady.WithLabelValues("gate", "slo/gate")
 	readiness.Set(1)

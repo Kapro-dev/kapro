@@ -87,7 +87,7 @@ func TestFleetClusterTemplate_ImportsDiscoveredClusters(t *testing.T) {
 		WithObjects(tmpl).
 		Build()
 
-	r := &FleetClusterTemplateReconciler{
+	r := &ClusterTemplateReconciler{
 		Client: c,
 		Scheme: scheme,
 		DiscovererFactory: newGCPStubFactory([]provider.ClusterInfo{
@@ -160,7 +160,7 @@ func TestFleetClusterTemplate_SelectorFilters(t *testing.T) {
 		WithStatusSubresource(&kaprov1alpha2.ClusterTemplate{}).
 		WithObjects(tmpl).Build()
 
-	r := &FleetClusterTemplateReconciler{
+	r := &ClusterTemplateReconciler{
 		Client: c, Scheme: scheme,
 		DiscovererFactory: newGCPStubFactory([]provider.ClusterInfo{
 			{Name: "prod-1", Labels: map[string]string{"env": "prod"}},
@@ -203,7 +203,7 @@ func TestFleetClusterTemplate_LeavesUnmanagedClustersAlone(t *testing.T) {
 		WithStatusSubresource(&kaprov1alpha2.ClusterTemplate{}).
 		WithObjects(tmpl, preExisting).Build()
 
-	r := &FleetClusterTemplateReconciler{
+	r := &ClusterTemplateReconciler{
 		Client: c, Scheme: scheme,
 		DiscovererFactory: newGCPStubFactory([]provider.ClusterInfo{
 			{Name: "fi-live", Labels: map[string]string{}},
@@ -245,7 +245,7 @@ func TestFleetClusterTemplate_Suspend(t *testing.T) {
 		WithObjects(tmpl).Build()
 
 	called := false
-	r := &FleetClusterTemplateReconciler{
+	r := &ClusterTemplateReconciler{
 		Client: c, Scheme: scheme,
 		DiscovererFactory: func(_ kaprov1alpha2.ClusterTemplateSource) (provider.Discoverer, error) {
 			called = true
@@ -282,7 +282,7 @@ func TestFleetClusterTemplate_SourceNotImplementedSurfacesCondition(t *testing.T
 		WithObjects(tmpl).Build()
 
 	// Use the real factory so we exercise the not-implemented path.
-	r := &FleetClusterTemplateReconciler{Client: c, Scheme: scheme}
+	r := &ClusterTemplateReconciler{Client: c, Scheme: scheme}
 	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: tmpl.Name}}); err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +339,7 @@ func TestFleetClusterTemplate_PrunesOrphans(t *testing.T) {
 		WithStatusSubresource(&kaprov1alpha2.ClusterTemplate{}).
 		WithObjects(tmpl, orphan).Build()
 
-	r := &FleetClusterTemplateReconciler{
+	r := &ClusterTemplateReconciler{
 		Client: c, Scheme: scheme,
 		DiscovererFactory: newGCPStubFactory([]provider.ClusterInfo{
 			{Name: "alive"},

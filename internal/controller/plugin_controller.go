@@ -44,10 +44,10 @@ func pluginSchemaHash(contractVersion string, capabilities []string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// PluginRegistrationReconciler probes external plugin registrations and records
+// PluginReconciler probes external plugin registrations and records
 // readiness status. When the plugin gateway is enabled, it also hot-loads ready
 // runtime adapters and unloads adapters whose registration is no longer ready.
-type PluginRegistrationReconciler struct {
+type PluginReconciler struct {
 	client.Client
 	Recorder         record.EventRecorder
 	Prober           PluginProber
@@ -70,7 +70,7 @@ type PluginProber interface {
 // +kubebuilder:rbac:groups=kapro.io,resources=plugins/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 
-func (r *PluginRegistrationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *PluginReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
 	var reg kaprov1alpha2.Plugin
@@ -237,7 +237,7 @@ func compatibleCondition(pluginType kaprov1alpha2.PluginType, result probe.Resul
 	return condition
 }
 
-func (r *PluginRegistrationReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *PluginReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kaprov1alpha2.Plugin{}).
 		Complete(r)

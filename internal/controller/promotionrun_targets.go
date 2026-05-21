@@ -248,7 +248,7 @@ func (r *PromotionRunReconciler) persistPromotionTargets(ctx context.Context, pr
 		name := promotionTargetObjectName(target)
 		desired := r.promotionTargetFromStatus(promotionrun, target)
 		if _, ok := existing[name]; !ok {
-			// Create new child — status starts empty, PromotionTargetReconciler will drive it.
+			// Create new child — status starts empty, TargetReconciler will drive it.
 			toCreate := desired.DeepCopy()
 			toCreate.Status = kaprov1alpha2.TargetStatus{}
 			if err := r.Create(ctx, toCreate); err != nil && !apierrors.IsAlreadyExists(err) {

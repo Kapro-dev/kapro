@@ -486,7 +486,7 @@ func (r *PromotionReconciler) patchUnresolved(ctx context.Context, p *kaprov1alp
 func buildRunSpec(p *kaprov1alpha2.Promotion, parent *kaprov1alpha2.Fleet) (kaprov1alpha2.PromotionRunSpec, error) {
 	plans := append([]kaprov1alpha2.PlanRef(nil), p.Spec.PromotionPlans...)
 	if len(plans) == 0 {
-		// KaproReconciler materializes Kapro.spec.promotionplan as a separate
+		// FleetReconciler materializes Kapro.spec.promotionplan as a separate
 		// Plan CR named via InlinePromotionPlanName; reference that
 		// generated object, not the bare Kapro name.
 		plans = []kaprov1alpha2.PlanRef{{

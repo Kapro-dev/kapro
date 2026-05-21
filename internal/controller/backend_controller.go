@@ -49,8 +49,8 @@ var _ = event.CreateEvent{}
 
 const backendProfileDiscoveryRequeue = 2 * time.Minute
 
-// BackendProfileReconciler records readiness for selectable delivery backends.
-type BackendProfileReconciler struct {
+// BackendReconciler records readiness for selectable delivery backends.
+type BackendReconciler struct {
 	client.Client
 	Recorder record.EventRecorder
 }
@@ -68,7 +68,7 @@ type BackendProfileReconciler struct {
 const maxBackendDiscoveryStatusObjects = 128
 const defaultBackendDiscoveryMaxObjects int64 = 1000
 
-func (r *BackendProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *BackendReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var profile kaprov1alpha2.Backend
 	if err := r.Get(ctx, req.NamespacedName, &profile); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -156,7 +156,7 @@ type backendDiscoveryCounts struct {
 	errors          []string
 }
 
-func (r *BackendProfileReconciler) observeDiscovery(ctx context.Context, profile *kaprov1alpha2.Backend) (backendDiscoveryCounts, string, string) {
+func (r *BackendReconciler) observeDiscovery(ctx context.Context, profile *kaprov1alpha2.Backend) (backendDiscoveryCounts, string, string) {
 	counts := backendDiscoveryCounts{status: metav1.ConditionTrue}
 	if profile.Spec.Discovery == nil || !profile.Spec.Discovery.Enabled {
 		return counts, "DiscoveryDisabled", "backend discovery is disabled"
@@ -179,7 +179,7 @@ func (r *BackendProfileReconciler) observeDiscovery(ctx context.Context, profile
 	}
 }
 
-func (r *BackendProfileReconciler) observeArgoDiscovery(ctx context.Context, profile *kaprov1alpha2.Backend, namespace string) (backendDiscoveryCounts, string, string) {
+func (r *BackendReconciler) observeArgoDiscovery(ctx context.Context, profile *kaprov1alpha2.Backend, namespace string) (backendDiscoveryCounts, string, string) {
 	counts := backendDiscoveryCounts{status: metav1.ConditionTrue}
 	selector := labels.Everything()
 	if profile.Spec.Discovery.Selector != nil {
@@ -287,7 +287,7 @@ func (r *BackendProfileReconciler) observeArgoDiscovery(ctx context.Context, pro
 	return counts, "DiscoverySucceeded", counts.summary("Argo")
 }
 
-func (r *BackendProfileReconciler) observeFluxDiscovery(ctx context.Context, profile *kaprov1alpha2.Backend, namespace string) (backendDiscoveryCounts, string, string) {
+func (r *BackendReconciler) observeFluxDiscovery(ctx context.Context, profile *kaprov1alpha2.Backend, namespace string) (backendDiscoveryCounts, string, string) {
 	counts := backendDiscoveryCounts{status: metav1.ConditionTrue}
 	appSelector := labels.Everything()
 	if profile.Spec.Discovery.Selector != nil {
@@ -337,7 +337,7 @@ func (r *BackendProfileReconciler) observeFluxDiscovery(ctx context.Context, pro
 	return counts, "DiscoverySucceeded", counts.summary("Flux")
 }
 
-func (r *BackendProfileReconciler) listFluxSourceObjects(ctx context.Context, namespace string, selector labels.Selector, gvk schema.GroupVersionKind, kind, pattern string, limit int64) (backendDiscoveryCounts, string, string) {
+func (r *BackendReconciler) listFluxSourceObjects(ctx context.Context, namespace string, selector labels.Selector, gvk schema.GroupVersionKind, kind, pattern string, limit int64) (backendDiscoveryCounts, string, string) {
 	counts := backendDiscoveryCounts{status: metav1.ConditionTrue}
 	list := &unstructured.UnstructuredList{}
 	list.SetGroupVersionKind(gvk)
@@ -368,7 +368,7 @@ func (r *BackendProfileReconciler) listFluxSourceObjects(ctx context.Context, na
 	return counts, "", ""
 }
 
-func (r *BackendProfileReconciler) listFluxObjects(ctx context.Context, namespace string, selector labels.Selector, gvk schema.GroupVersionKind, kind, pattern, versionField string, limit int64) (backendDiscoveryCounts, string, string) {
+func (r *BackendReconciler) listFluxObjects(ctx context.Context, namespace string, selector labels.Selector, gvk schema.GroupVersionKind, kind, pattern, versionField string, limit int64) (backendDiscoveryCounts, string, string) {
 	counts := backendDiscoveryCounts{status: metav1.ConditionTrue}
 	list := &unstructured.UnstructuredList{}
 	list.SetGroupVersionKind(gvk)
@@ -408,7 +408,7 @@ func fluxSourceVersionField(obj *unstructured.Unstructured) string {
 	return "spec.ref.tag"
 }
 
-func (r *BackendProfileReconciler) profileReadiness(ctx context.Context, profile *kaprov1alpha2.Backend) (bool, string, string) {
+func (r *BackendReconciler) profileReadiness(ctx context.Context, profile *kaprov1alpha2.Backend) (bool, string, string) {
 	switch profile.Spec.Driver {
 	case kaprov1alpha2.BackendDriverFlux, kaprov1alpha2.BackendDriverArgo, kaprov1alpha2.BackendDriverOCI:
 		return true, "BuiltInBackendReady", fmt.Sprintf("built-in %s backend is available", profile.Spec.Driver)
@@ -440,7 +440,7 @@ func exceededListLimit(continueToken string, count int, limit int64) bool {
 	return continueToken != "" || int64(count) > limit
 }
 
-func (r *BackendProfileReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *BackendReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&kaprov1alpha2.Backend{}).
 		Watches(
@@ -474,7 +474,7 @@ func backendDiscoveryWatchObject(gvk schema.GroupVersionKind) *unstructured.Unst
 	return obj
 }
 
-func (r *BackendProfileReconciler) backendProfilesForBackendObject(ctx context.Context, obj client.Object) []reconcile.Request {
+func (r *BackendReconciler) backendProfilesForBackendObject(ctx context.Context, obj client.Object) []reconcile.Request {
 	var profiles kaprov1alpha2.BackendList
 	if err := r.List(ctx, &profiles); err != nil {
 		return nil

@@ -48,7 +48,7 @@ func TestHandleVerification_FailedResultFailsTarget(t *testing.T) {
 		},
 	})
 
-	r := &PromotionTargetReconciler{
+	r := &TargetReconciler{
 		Recorder:     record.NewFakeRecorder(10),
 		GateRegistry: reg,
 	}
@@ -89,7 +89,7 @@ func TestHandleApplying_RespectsActivePromotionRunClaim(t *testing.T) {
 		},
 	}
 
-	r := &PromotionTargetReconciler{
+	r := &TargetReconciler{
 		Client:   fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&kaprov1alpha2.Cluster{}).WithObjects(mc).Build(),
 		Recorder: record.NewFakeRecorder(10),
 	}
@@ -126,7 +126,7 @@ func TestHandlePending_PullModeWaitsForFreshHeartbeat(t *testing.T) {
 			Delivery: kaprov1alpha2.DeliverySpec{Mode: "pull", BackendRef: "flux"},
 		},
 	}
-	r := &PromotionTargetReconciler{
+	r := &TargetReconciler{
 		Client:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(mc).Build(),
 		Recorder: record.NewFakeRecorder(10),
 	}
@@ -167,7 +167,7 @@ func TestHandlePending_ReadyTrueAllowsPullTarget(t *testing.T) {
 			}},
 		},
 	}
-	r := &PromotionTargetReconciler{
+	r := &TargetReconciler{
 		Client:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(mc).Build(),
 		Recorder: record.NewFakeRecorder(10),
 	}
@@ -221,7 +221,7 @@ func TestHandlePending_UnreachableDefersPullTarget(t *testing.T) {
 			}},
 		},
 	}
-	r := &PromotionTargetReconciler{
+	r := &TargetReconciler{
 		Client:   fake.NewClientBuilder().WithScheme(scheme).WithObjects(mc).Build(),
 		Recorder: record.NewFakeRecorder(10),
 	}
@@ -299,7 +299,7 @@ func TestAdvanceTargetUntilStable_CollapsesImmediateTransitions(t *testing.T) {
 		result: gatepkg.Result{Phase: kaprov1alpha2.GatePhasePassed},
 	})
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(mc).Build()
-	r := &PromotionTargetReconciler{
+	r := &TargetReconciler{
 		Client:       fakeClient,
 		Recorder:     record.NewFakeRecorder(10),
 		GateRegistry: reg,
@@ -336,7 +336,7 @@ func TestEvaluateGateTemplates_InconclusiveSkipPasses(t *testing.T) {
 			Message: "uncertain",
 		},
 	})
-	r := &PromotionTargetReconciler{
+	r := &TargetReconciler{
 		Recorder:     record.NewFakeRecorder(10),
 		GateRegistry: reg,
 	}
@@ -379,7 +379,7 @@ func TestEvaluateGateTemplates_PersistsEvidence(t *testing.T) {
 			}},
 		},
 	})
-	r := &PromotionTargetReconciler{
+	r := &TargetReconciler{
 		Recorder:     record.NewFakeRecorder(10),
 		GateRegistry: reg,
 	}
@@ -417,7 +417,7 @@ func TestGateForTemplate_PluginResolvesPluginName(t *testing.T) {
 	pluginGate := staticGate{result: gatepkg.Result{Phase: kaprov1alpha2.GatePhasePassed}}
 	reg.MustRegister("slo", pluginGate)
 
-	r := &PromotionTargetReconciler{GateRegistry: reg}
+	r := &TargetReconciler{GateRegistry: reg}
 	resolved, err := r.gateForTemplate(&kaprov1alpha2.GateTemplateSpec{
 		Type:   "plugin",
 		Plugin: &kaprov1alpha2.PluginGateSpec{Name: "slo"},
@@ -431,7 +431,7 @@ func TestGateForTemplate_PluginResolvesPluginName(t *testing.T) {
 }
 
 func TestGateForTemplate_PluginRequiresName(t *testing.T) {
-	r := &PromotionTargetReconciler{GateRegistry: gatepkg.NewRegistry()}
+	r := &TargetReconciler{GateRegistry: gatepkg.NewRegistry()}
 	_, err := r.gateForTemplate(&kaprov1alpha2.GateTemplateSpec{Type: "plugin"})
 	if err == nil || !strings.Contains(err.Error(), "plugin.name") {
 		t.Fatalf("error=%v, want missing plugin.name error", err)
@@ -447,7 +447,7 @@ func TestEvaluateGateTemplates_FailureRetryStaysRetryableUntilMaxAttempts(t *tes
 			RetryAfter: "12s",
 		},
 	})
-	r := &PromotionTargetReconciler{
+	r := &TargetReconciler{
 		Recorder:     record.NewFakeRecorder(10),
 		GateRegistry: reg,
 	}

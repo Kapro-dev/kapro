@@ -11,7 +11,7 @@ import (
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
-// testEnv is a stand-in for the real PromotionTargetReconciler env passed
+// testEnv is a stand-in for the real TargetReconciler env passed
 // at the call site. It just lets handlers record which one fired.
 type testEnv struct {
 	called string

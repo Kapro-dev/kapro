@@ -35,7 +35,7 @@ var kaproResourceSetGVK = schema.GroupVersionKind{
 	Kind:    "ResourceSet",
 }
 
-// KaproReconciler generates hub-side resources from a Kapro source spec.
+// FleetReconciler generates hub-side resources from a Kapro source spec.
 // It produces (all on the hub cluster):
 //   - FleetCluster CRs (one per cluster in the fleet)
 //   - A Plan CR (from kapro.spec.promotionplan)
@@ -47,7 +47,7 @@ var kaproResourceSetGVK = schema.GroupVersionKind{
 //
 // Version promotion is handled by the FluxOperatorActuator (via PromotionRun),
 // which patches ResourceSet inputs — not by this controller.
-type KaproReconciler struct {
+type FleetReconciler struct {
 	client.Client
 	Recorder record.EventRecorder
 }
@@ -62,7 +62,7 @@ type KaproReconciler struct {
 // +kubebuilder:rbac:groups=fluxcd.controlplane.io,resources=resourcesets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=helm.toolkit.fluxcd.io,resources=helmreleases,verbs=get;list;watch
 
-func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	l := log.FromContext(ctx)
 
 	var kapro kaprov1alpha2.Fleet
@@ -256,7 +256,7 @@ func (r *KaproReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
-func (r *KaproReconciler) resolvePromotionSource(ctx context.Context, kapro *kaprov1alpha2.Fleet) (*kaprov1alpha2.Source, bool, error) {
+func (r *FleetReconciler) resolvePromotionSource(ctx context.Context, kapro *kaprov1alpha2.Fleet) (*kaprov1alpha2.Source, bool, error) {
 	if kapro.Spec.SourceRef != "" {
 		var source kaprov1alpha2.Source
 		if err := r.Get(ctx, client.ObjectKey{Name: kapro.Spec.SourceRef}, &source); err != nil {
@@ -273,7 +273,7 @@ func (r *KaproReconciler) resolvePromotionSource(ctx context.Context, kapro *kap
 	}, true, nil
 }
 
-func (r *KaproReconciler) buildPromotionPlan(kapro *kaprov1alpha2.Fleet) *kaprov1alpha2.Plan {
+func (r *FleetReconciler) buildPromotionPlan(kapro *kaprov1alpha2.Fleet) *kaprov1alpha2.Plan {
 	stages := make([]kaprov1alpha2.Stage, 0, len(kapro.Spec.Plan.Stages))
 	for _, s := range kapro.Spec.Plan.Stages {
 		stage := kaprov1alpha2.Stage{
@@ -323,7 +323,7 @@ func InlinePromotionPlanName(kaproName string) string {
 //   - resources[]: HelmRepositories + HelmReleases with dependsOn, timeout, retries, prune
 //
 // Flux Operator renders one set of resources per input and distributes to spokes.
-func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha2.Fleet, source *kaprov1alpha2.Source) *unstructured.Unstructured {
+func (r *FleetReconciler) buildResourceSet(kapro *kaprov1alpha2.Fleet, source *kaprov1alpha2.Source) *unstructured.Unstructured {
 	defaults := source.Spec.Defaults
 	if defaults == nil {
 		defaults = &kaprov1alpha2.SourceDefaults{}
@@ -415,7 +415,7 @@ func (r *KaproReconciler) buildResourceSet(kapro *kaprov1alpha2.Fleet, source *k
 
 // buildHelmRelease generates one HelmRelease from a unit spec + defaults.
 // Output matches the exact structure from the integration monorepo.
-func (r *KaproReconciler) buildHelmRelease(kapro *kaprov1alpha2.Fleet, defaults *kaprov1alpha2.SourceDefaults, comp kaprov1alpha2.Unit) map[string]any {
+func (r *FleetReconciler) buildHelmRelease(kapro *kaprov1alpha2.Fleet, defaults *kaprov1alpha2.SourceDefaults, comp kaprov1alpha2.Unit) map[string]any {
 	// Resolve fields: unit overrides defaults.
 	chartName := comp.Name
 	if comp.ChartName != "" {
@@ -527,7 +527,7 @@ func (r *KaproReconciler) buildHelmRelease(kapro *kaprov1alpha2.Fleet, defaults 
 }
 
 // mergeUnitValues deep-merges defaults.values + unit.values.
-func (r *KaproReconciler) mergeUnitValues(defaults *kaprov1alpha2.SourceDefaults, comp kaprov1alpha2.Unit) map[string]any {
+func (r *FleetReconciler) mergeUnitValues(defaults *kaprov1alpha2.SourceDefaults, comp kaprov1alpha2.Unit) map[string]any {
 	merged := map[string]any{}
 	if defaults.Values != nil && defaults.Values.Raw != nil {
 		_ = json.Unmarshal(defaults.Values.Raw, &merged)
@@ -542,7 +542,7 @@ func (r *KaproReconciler) mergeUnitValues(defaults *kaprov1alpha2.SourceDefaults
 }
 
 // resolveValuesFrom returns unit's valuesFrom if set, otherwise defaults'.
-func (r *KaproReconciler) resolveValuesFrom(defaults *kaprov1alpha2.SourceDefaults, comp kaprov1alpha2.Unit) []any {
+func (r *FleetReconciler) resolveValuesFrom(defaults *kaprov1alpha2.SourceDefaults, comp kaprov1alpha2.Unit) []any {
 	refs := defaults.ValuesFrom
 	if len(comp.ValuesFrom) > 0 {
 		refs = comp.ValuesFrom
@@ -595,7 +595,7 @@ func kaproReadyMessage(converged int32, total int, version string) string {
 
 // mergeValues resolves PromotionSource defaults + matching overrides for a specific cluster.
 // Returns a JSON string of the merged values, or "" if no values apply.
-func (r *KaproReconciler) mergeValues(source *kaprov1alpha2.Source, clusterName string, clusterLabels map[string]string) string {
+func (r *FleetReconciler) mergeValues(source *kaprov1alpha2.Source, clusterName string, clusterLabels map[string]string) string {
 	// Start with defaults.
 	merged := map[string]interface{}{}
 	if source.Spec.Defaults != nil && source.Spec.Defaults.Values != nil && source.Spec.Defaults.Values.Raw != nil {
@@ -714,7 +714,7 @@ const maxConcurrentBootstraps = 10
 // bootstrapSpokesParallel bootstraps all spokes concurrently with bounded parallelism.
 // Each spoke is independent — a failing spoke doesn't block others.
 // Returns a map of cluster name → error (nil = success).
-func (r *KaproReconciler) bootstrapSpokesParallel(ctx context.Context, kapro *kaprov1alpha2.Fleet, source *kaprov1alpha2.Source, version string) map[string]error {
+func (r *FleetReconciler) bootstrapSpokesParallel(ctx context.Context, kapro *kaprov1alpha2.Fleet, source *kaprov1alpha2.Source, version string) map[string]error {
 	l := log.FromContext(ctx)
 	results := make(map[string]error, len(kapro.Spec.Clusters))
 	var mu sync.Mutex
@@ -751,7 +751,7 @@ func (r *KaproReconciler) bootstrapSpokesParallel(ctx context.Context, kapro *ka
 
 // spokeAlreadyBootstrapped checks if the spoke's FleetCluster already reports
 // the target version. Avoids redundant bootstrap calls on every reconcile.
-func (r *KaproReconciler) spokeAlreadyBootstrapped(ctx context.Context, clusterName, targetVersion string) bool {
+func (r *FleetReconciler) spokeAlreadyBootstrapped(ctx context.Context, clusterName, targetVersion string) bool {
 	var mc kaprov1alpha2.Cluster
 	if err := r.Get(ctx, client.ObjectKey{Name: clusterName}, &mc); err != nil {
 		return false
@@ -766,7 +766,7 @@ func (r *KaproReconciler) spokeAlreadyBootstrapped(ctx context.Context, clusterN
 //
 // We apply directly to spoke instead of using ResourceSet because OCIRepository
 // has no kubeConfig field — it can't be created remotely via Flux.
-func (r *KaproReconciler) bootstrapSpoke(ctx context.Context, kapro *kaprov1alpha2.Fleet, source *kaprov1alpha2.Source, cluster kaprov1alpha2.ClusterRef, version string) error {
+func (r *FleetReconciler) bootstrapSpoke(ctx context.Context, kapro *kaprov1alpha2.Fleet, source *kaprov1alpha2.Source, cluster kaprov1alpha2.ClusterRef, version string) error {
 	l := log.FromContext(ctx)
 
 	if cluster.KubeconfigSecret == "" {
@@ -861,7 +861,7 @@ func isNoMatchError(err error) bool {
 // syncFleetClusterStatus reads HelmRelease status and writes it to the
 // FleetCluster status. For push mode, reads from hub. For spoke-local mode,
 // connects to spoke and reads directly.
-func (r *KaproReconciler) syncFleetClusterStatus(ctx context.Context, kapro *kaprov1alpha2.Fleet, source *kaprov1alpha2.Source, cluster kaprov1alpha2.ClusterRef) bool {
+func (r *FleetReconciler) syncFleetClusterStatus(ctx context.Context, kapro *kaprov1alpha2.Fleet, source *kaprov1alpha2.Source, cluster kaprov1alpha2.ClusterRef) bool {
 	l := log.FromContext(ctx)
 
 	// Read the FleetCluster.
@@ -1027,7 +1027,7 @@ func (r *KaproReconciler) syncFleetClusterStatus(ctx context.Context, kapro *kap
 
 // cleanupRemovedClusters deletes FleetClusters and kubeconfig Secrets
 // for clusters that were removed from the Kapro spec.
-func (r *KaproReconciler) cleanupRemovedClusters(ctx context.Context, kapro *kaprov1alpha2.Fleet) {
+func (r *FleetReconciler) cleanupRemovedClusters(ctx context.Context, kapro *kaprov1alpha2.Fleet) {
 	l := log.FromContext(ctx)
 
 	// Build set of current cluster names.
@@ -1086,7 +1086,7 @@ func isInInventory(kapro *kaprov1alpha2.Fleet, item string) bool {
 // The kubeconfig uses gke-gcloud-auth-plugin for auth — WI tokens auto-refresh.
 // For gcp-fleet: resolves cluster endpoint from Fleet membership.
 // For gcp: uses the provided GCP config directly.
-func (r *KaproReconciler) ensureKubeconfigSecret(ctx context.Context, kapro *kaprov1alpha2.Fleet, cluster *kaprov1alpha2.ClusterRef) (string, error) {
+func (r *FleetReconciler) ensureKubeconfigSecret(ctx context.Context, kapro *kaprov1alpha2.Fleet, cluster *kaprov1alpha2.ClusterRef) (string, error) {
 	if cluster.GCP == nil {
 		return "", fmt.Errorf("cluster %q has provider=%s but no gcp config", cluster.Name, cluster.Provider)
 	}
@@ -1133,7 +1133,7 @@ func (r *KaproReconciler) ensureKubeconfigSecret(ctx context.Context, kapro *kap
 	return secretName, nil
 }
 
-func (r *KaproReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *FleetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kaprov1alpha2.Fleet{}).
 		Watches(&kaprov1alpha2.Source{}, handler.EnqueueRequestsFromMapFunc(r.kaproSourceToKapro)).
@@ -1152,7 +1152,7 @@ func (r *KaproReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 // kaproSourceToKapro maps a PromotionSource change to the Kapro(s) that reference it.
-func (r *KaproReconciler) kaproSourceToKapro(ctx context.Context, obj client.Object) []reconcile.Request {
+func (r *FleetReconciler) kaproSourceToKapro(ctx context.Context, obj client.Object) []reconcile.Request {
 	source, ok := obj.(*kaprov1alpha2.Source)
 	if !ok {
 		return nil
@@ -1175,7 +1175,7 @@ func (r *KaproReconciler) kaproSourceToKapro(ctx context.Context, obj client.Obj
 // fleetClusterToKapro maps a FleetCluster change to the Kapro(s) whose
 // spec.clusters references it by name. Matches the inventory ownership
 // pattern used by cleanupRemovedClusters.
-func (r *KaproReconciler) fleetClusterToKapro(ctx context.Context, obj client.Object) []reconcile.Request {
+func (r *FleetReconciler) fleetClusterToKapro(ctx context.Context, obj client.Object) []reconcile.Request {
 	fc, ok := obj.(*kaprov1alpha2.Cluster)
 	if !ok {
 		return nil

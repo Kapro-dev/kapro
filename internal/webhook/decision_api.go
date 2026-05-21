@@ -870,7 +870,7 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 	}
 
 	// Write DecisionTrace to PromotionTarget.status using MergeFrom patch
-	// to avoid conflicting with PromotionTargetReconciler's status writes.
+	// to avoid conflicting with TargetReconciler's status writes.
 	patch := client.MergeFrom(target.DeepCopy())
 	if target.Status.DecisionTrace == nil {
 		target.Status.DecisionTrace = &kaprov1alpha2.DecisionTrace{}

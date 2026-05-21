@@ -99,8 +99,8 @@ const (
 	bootstrapMaxTTL = 7 * 24 * time.Hour
 )
 
-// FleetClusterBootstrapReconciler is the sole owner of FleetCluster.status.bootstrap.
-type FleetClusterBootstrapReconciler struct {
+// ClusterBootstrapReconciler is the sole owner of FleetCluster.status.bootstrap.
+type ClusterBootstrapReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
 	Recorder   record.EventRecorder
@@ -129,7 +129,7 @@ type FleetClusterBootstrapReconciler struct {
 
 // Reconcile is keyed on FleetCluster. CSR events are mapped to FleetCluster
 // names via csrToFleetCluster() in SetupWithManager.
-func (r *FleetClusterBootstrapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *ClusterBootstrapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx).WithValues("fleetcluster", req.Name)
 
 	fc := &kaprov1alpha2.Cluster{}
@@ -222,7 +222,7 @@ func (r *FleetClusterBootstrapReconciler) Reconcile(ctx context.Context, req ctr
 
 // handleDeletion cleans up bootstrap SA, bootstrap RBAC, kubeconfig Secret,
 // and per-cluster long-lived RBAC. Then clears the finalizer.
-func (r *FleetClusterBootstrapReconciler) handleDeletion(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
+func (r *ClusterBootstrapReconciler) handleDeletion(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
 	log := log.FromContext(ctx).WithValues("fleetcluster", fc.Name)
 	if !containsString(fc.Finalizers, kaprov1alpha2.ClusterFinalizer) {
 		return ctrl.Result{}, nil
@@ -251,7 +251,7 @@ func (r *FleetClusterBootstrapReconciler) handleDeletion(ctx context.Context, fc
 }
 
 // handleSuspended sets reconciling=false/Suspended and clears Stalled.
-func (r *FleetClusterBootstrapReconciler) handleSuspended(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
+func (r *ClusterBootstrapReconciler) handleSuspended(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
 	patch := client.MergeFrom(fc.DeepCopy())
 	fc.Status.ObservedGeneration = fc.Generation
 	now := time.Now()
@@ -265,7 +265,7 @@ func (r *FleetClusterBootstrapReconciler) handleSuspended(ctx context.Context, f
 
 // computeExpiresAt fills in spec.bootstrap.expiresAt from TTL on first reconcile.
 // Returns (true, nil) if the resource was patched (caller should requeue).
-func (r *FleetClusterBootstrapReconciler) computeExpiresAt(ctx context.Context, fc *kaprov1alpha2.Cluster) (bool, error) {
+func (r *ClusterBootstrapReconciler) computeExpiresAt(ctx context.Context, fc *kaprov1alpha2.Cluster) (bool, error) {
 	if fc.Spec.Bootstrap.ExpiresAt != nil {
 		return false, nil
 	}
@@ -295,7 +295,7 @@ func (r *FleetClusterBootstrapReconciler) computeExpiresAt(ctx context.Context, 
 
 // expired returns true when bootstrap slot is past its expiresAt deadline
 // AND has not yet been consumed.
-func (r *FleetClusterBootstrapReconciler) expired(fc *kaprov1alpha2.Cluster) bool {
+func (r *ClusterBootstrapReconciler) expired(fc *kaprov1alpha2.Cluster) bool {
 	if fc.Status.Bootstrap != nil && fc.Status.Bootstrap.Used {
 		return false
 	}
@@ -306,7 +306,7 @@ func (r *FleetClusterBootstrapReconciler) expired(fc *kaprov1alpha2.Cluster) boo
 }
 
 // markExpired patches Stalled=True with reason BootstrapExpired.
-func (r *FleetClusterBootstrapReconciler) markExpired(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
+func (r *ClusterBootstrapReconciler) markExpired(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
 	patch := client.MergeFrom(fc.DeepCopy())
 	fc.Status.ObservedGeneration = fc.Generation
 	now := time.Now()
@@ -325,7 +325,7 @@ func (r *FleetClusterBootstrapReconciler) markExpired(ctx context.Context, fc *k
 
 // handleRegistered keeps long-lived per-cluster RBAC in sync after first
 // successful registration, and stamps Registered=True.
-func (r *FleetClusterBootstrapReconciler) handleRegistered(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
+func (r *ClusterBootstrapReconciler) handleRegistered(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
 	if err := r.ensureClusterRBAC(ctx, fc.Name); err != nil {
 		return ctrl.Result{}, fmt.Errorf("ensure cluster RBAC: %w", err)
 	}
@@ -338,7 +338,7 @@ func (r *FleetClusterBootstrapReconciler) handleRegistered(ctx context.Context, 
 // during the first-time approval — we do not re-write them here.
 // setCondition is idempotent via apimeta.SetStatusCondition, so this is a
 // no-op patch when nothing changed.
-func (r *FleetClusterBootstrapReconciler) markRegistered(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
+func (r *ClusterBootstrapReconciler) markRegistered(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
 	patch := client.MergeFrom(fc.DeepCopy())
 	fc.Status.ObservedGeneration = fc.Generation
 	now := time.Now()
@@ -352,7 +352,7 @@ func (r *FleetClusterBootstrapReconciler) markRegistered(ctx context.Context, fc
 }
 
 // markAwaitingCSR sets Reconciling=True/AwaitingCSR.
-func (r *FleetClusterBootstrapReconciler) markAwaitingCSR(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
+func (r *ClusterBootstrapReconciler) markAwaitingCSR(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
 	patch := client.MergeFrom(fc.DeepCopy())
 	fc.Status.ObservedGeneration = fc.Generation
 	now := time.Now()
@@ -372,7 +372,7 @@ func (r *FleetClusterBootstrapReconciler) markAwaitingCSR(ctx context.Context, f
 // frequent renewal CSRs (PR-3) this becomes expensive. Add a label selector
 // (kapro.io/fleetcluster=<name>) on CSRs at creation time and switch to a
 // filtered List.
-func (r *FleetClusterBootstrapReconciler) processCSRsForCluster(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
+func (r *ClusterBootstrapReconciler) processCSRsForCluster(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
 	var csrList certificatesv1.CertificateSigningRequestList
 	if err := r.List(ctx, &csrList); err != nil {
 		return ctrl.Result{}, fmt.Errorf("list CSRs: %w", err)
@@ -422,7 +422,7 @@ func (r *FleetClusterBootstrapReconciler) processCSRsForCluster(ctx context.Cont
 // "kapro-cluster:<name>" instead of the bootstrap SA) are out of scope for
 // PR-2 since no spoke binary exists yet to submit them. Renewal handling
 // lands in PR-3 alongside the spoke binary.
-func (r *FleetClusterBootstrapReconciler) matchesFleetCluster(csr *certificatesv1.CertificateSigningRequest, fc *kaprov1alpha2.Cluster, expectedCN string) bool {
+func (r *ClusterBootstrapReconciler) matchesFleetCluster(csr *certificatesv1.CertificateSigningRequest, fc *kaprov1alpha2.Cluster, expectedCN string) bool {
 	if !isKaproCSR(csr) {
 		return false
 	}
@@ -445,7 +445,7 @@ func (r *FleetClusterBootstrapReconciler) matchesFleetCluster(csr *certificatesv
 //  3. approve LAST so a transient approval failure does not leak the slot
 //
 // Each step is idempotent.
-func (r *FleetClusterBootstrapReconciler) handleBootstrapCSR(
+func (r *ClusterBootstrapReconciler) handleBootstrapCSR(
 	ctx context.Context,
 	fc *kaprov1alpha2.Cluster,
 	csr *certificatesv1.CertificateSigningRequest,
@@ -490,7 +490,7 @@ func (r *FleetClusterBootstrapReconciler) handleBootstrapCSR(
 // StatusUpdateWithRetry (gate-IsConflict) so transient races with the
 // heartbeat reconciler or admission-time mutations refetch + reapply
 // instead of bouncing the whole reconcile through workqueue backoff.
-func (r *FleetClusterBootstrapReconciler) markBootstrapUsed(ctx context.Context, fc *kaprov1alpha2.Cluster, csrName string) error {
+func (r *ClusterBootstrapReconciler) markBootstrapUsed(ctx context.Context, fc *kaprov1alpha2.Cluster, csrName string) error {
 	if fc.Status.Bootstrap != nil &&
 		fc.Status.Bootstrap.Used &&
 		fc.Status.Bootstrap.BoundCSRName == csrName {
@@ -528,7 +528,7 @@ func (r *FleetClusterBootstrapReconciler) markBootstrapUsed(ctx context.Context,
 // approveCSR appends the Approved condition and submits via the typed
 // CertificatesV1 client. controller-runtime's Status().Update() does NOT route
 // through the /approval subresource — using it silently no-ops.
-func (r *FleetClusterBootstrapReconciler) approveCSR(ctx context.Context, csr *certificatesv1.CertificateSigningRequest) error {
+func (r *ClusterBootstrapReconciler) approveCSR(ctx context.Context, csr *certificatesv1.CertificateSigningRequest) error {
 	csr.Status.Conditions = append(csr.Status.Conditions, certificatesv1.CertificateSigningRequestCondition{
 		Type:           certificatesv1.CertificateApproved,
 		Status:         corev1.ConditionTrue,
@@ -541,7 +541,7 @@ func (r *FleetClusterBootstrapReconciler) approveCSR(ctx context.Context, csr *c
 }
 
 // denyCSR appends the Denied condition.
-func (r *FleetClusterBootstrapReconciler) denyCSR(ctx context.Context, csr *certificatesv1.CertificateSigningRequest, reason string) error {
+func (r *ClusterBootstrapReconciler) denyCSR(ctx context.Context, csr *certificatesv1.CertificateSigningRequest, reason string) error {
 	if isCSRApproved(csr) || isCSRDenied(csr) {
 		return nil
 	}
@@ -572,17 +572,17 @@ func (r *FleetClusterBootstrapReconciler) denyCSR(ctx context.Context, csr *cert
 // crashloop. Spokes that actually need bootstrap pick the URL up from
 // the Helm value `hub.apiURL` (or set the env var directly) and the
 // controller starts as normal.
-func (r *FleetClusterBootstrapReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *ClusterBootstrapReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if r.HubAPIURL == "" {
 		ctrl.Log.WithName("fleetcluster-bootstrap").Info(
 			"hub API URL not set (KAPRO_HUB_API_URL empty); FleetCluster bootstrap controller is disabled — set the env var (or Helm `hub.apiURL`) on the hub operator to enable spoke CSR approval")
 		return nil
 	}
 	if r.CertClient == nil {
-		return fmt.Errorf("FleetClusterBootstrapReconciler: CertClient is required for CSR approval")
+		return fmt.Errorf("ClusterBootstrapReconciler: CertClient is required for CSR approval")
 	}
 	if r.KubeClient == nil {
-		return fmt.Errorf("FleetClusterBootstrapReconciler: KubeClient is required for bootstrap SA provisioning")
+		return fmt.Errorf("ClusterBootstrapReconciler: KubeClient is required for bootstrap SA provisioning")
 	}
 
 	mapCSR := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
@@ -655,7 +655,7 @@ func csrPredicate() predicate.Predicate {
 	})
 }
 
-func (r *FleetClusterBootstrapReconciler) podNS() string {
+func (r *ClusterBootstrapReconciler) podNS() string {
 	if r.PodNamespace != "" {
 		return r.PodNamespace
 	}
@@ -665,7 +665,7 @@ func (r *FleetClusterBootstrapReconciler) podNS() string {
 // ensureClusterRBAC is the long-lived per-cluster RBAC: a ClusterRole and
 // ClusterRoleBinding with resourceNames=[clusterName] that grants the spoke
 // the minimum it needs to operate. Idempotent; safe to call repeatedly.
-func (r *FleetClusterBootstrapReconciler) ensureClusterRBAC(ctx context.Context, clusterName string) error {
+func (r *ClusterBootstrapReconciler) ensureClusterRBAC(ctx context.Context, clusterName string) error {
 	roleName := fmt.Sprintf(clusterRoleNameFmt, clusterName)
 	if err := r.upsertClusterRole(ctx, roleName, clusterName); err != nil {
 		return err
@@ -676,13 +676,13 @@ func (r *FleetClusterBootstrapReconciler) ensureClusterRBAC(ctx context.Context,
 
 // cleanupClusterRBAC deletes the per-cluster ClusterRole + Binding.
 // Non-fatal if missing.
-func (r *FleetClusterBootstrapReconciler) cleanupClusterRBAC(ctx context.Context, clusterName string) error {
+func (r *ClusterBootstrapReconciler) cleanupClusterRBAC(ctx context.Context, clusterName string) error {
 	return r.deleteClusterRBAC(ctx, fmt.Sprintf(clusterRoleNameFmt, clusterName))
 }
 
 // cleanupBootstrapResources deletes the bootstrap SA, ClusterRole, Binding,
 // and kubeconfig Secret. Called on FleetCluster delete or after TTL expiry.
-func (r *FleetClusterBootstrapReconciler) cleanupBootstrapResources(ctx context.Context, clusterName string) error {
+func (r *ClusterBootstrapReconciler) cleanupBootstrapResources(ctx context.Context, clusterName string) error {
 	saName := fmt.Sprintf(bootstrapSAFormat, clusterName)
 	roleName := fmt.Sprintf(bootstrapRoleNameFmt, clusterName)
 	secretName := fmt.Sprintf(bootstrapKubeconfigSecretFmt, clusterName)

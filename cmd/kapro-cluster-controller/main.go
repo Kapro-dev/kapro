@@ -6,7 +6,7 @@
 // Lifecycle:
 //
 //  1. Read bootstrap kubeconfig from a mounted Secret (provisioned by the hub
-//     FleetClusterBootstrapReconciler from PR-2).
+//     ClusterBootstrapReconciler from PR-2).
 //  2. Start a `client-go` certificate.Manager configured with our CN/O,
 //     SignerName = kubernetes.io/kube-apiserver-client, and a Secret-backed
 //     Store so the issued cert survives pod restarts.

@@ -155,7 +155,7 @@ func TestPromotionRunReconciler_MetricsCheck_GateTemplatesEvaluatedWithoutMetric
 	gateReg := gate.NewRegistry()
 	gateReg.MustRegister("mock", &alwaysPassGate{})
 
-	r := &controller.PromotionTargetReconciler{
+	r := &controller.TargetReconciler{
 		Client:           c,
 		Recorder:         record.NewFakeRecorder(100),
 		Scheme:           scheme,

@@ -409,7 +409,7 @@ func TestShouldProvision(t *testing.T) {
 			// Spec-only branches don't need a client; nil is fine — the only
 			// path that calls r.Get is the Secret-lookup branch, which is
 			// exercised separately by TestShouldProvision_SecretBased.
-			r := &FleetClusterBootstrapReconciler{PodNamespace: "kapro-system"}
+			r := &ClusterBootstrapReconciler{PodNamespace: "kapro-system"}
 			if got := r.shouldProvision(context.Background(), c.fc); got != c.want {
 				t.Errorf("shouldProvision = %v, want %v", got, c.want)
 			}
@@ -463,7 +463,7 @@ func TestShouldProvision_SecretBased(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			var r *FleetClusterBootstrapReconciler
+			var r *ClusterBootstrapReconciler
 			if c.secret == nil {
 				r, _ = newBootstrapReconciler(t)
 			} else {

@@ -22,7 +22,7 @@ import (
 
 func TestPromotionTriggerSuspendedCreatesNothing(t *testing.T) {
 	ctx := context.Background()
-	reconciler, c := newPromotionTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, nil, promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
+	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, nil, promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
 		rt.Spec.Suspended = true
 	}))
 
@@ -39,7 +39,7 @@ func TestPromotionTriggerSuspendedCreatesNothing(t *testing.T) {
 
 func TestPromotionTriggerDryRunCreatesNothingAndRecordsArtifact(t *testing.T) {
 	ctx := context.Background()
-	reconciler, c := newPromotionTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
+	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
 		rt.Spec.DryRun = true
 	}))
 
@@ -59,7 +59,7 @@ func TestPromotionTriggerDryRunCreatesNothingAndRecordsArtifact(t *testing.T) {
 
 func TestPromotionTriggerSignatureFailureBlocksPromotionRun(t *testing.T) {
 	ctx := context.Background()
-	reconciler, c := newPromotionTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{err: errors.New("bad signature")}, promotionTriggerFixture())
+	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{err: errors.New("bad signature")}, promotionTriggerFixture())
 
 	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
 		t.Fatal(err)
@@ -74,7 +74,7 @@ func TestPromotionTriggerSignatureFailureBlocksPromotionRun(t *testing.T) {
 
 func TestPromotionTriggerCreatesDigestPinnedPromotion(t *testing.T) {
 	ctx := context.Background()
-	reconciler, c := newPromotionTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, promotionTriggerFixture())
+	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, promotionTriggerFixture())
 
 	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
 		t.Fatal(err)
@@ -105,7 +105,7 @@ func TestPromotionTriggerCreatesDigestPinnedPromotion(t *testing.T) {
 
 func TestPromotionTriggerCreatedAtUsesCreationTime(t *testing.T) {
 	ctx := context.Background()
-	reconciler, c := newPromotionTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, promotionTriggerFixture())
+	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, promotionTriggerFixture())
 	checkTime := fixedNow()
 	createTime := fixedNow().Add(2 * time.Minute)
 	calls := 0
@@ -155,7 +155,7 @@ func TestPromotionTriggerDoesNotDuplicateSameDigest(t *testing.T) {
 			Version:  "oci://registry.example.com/checkout@sha256:abcdef1234567890",
 		},
 	}
-	reconciler, c := newPromotionTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, trigger, existing)
+	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, trigger, existing)
 
 	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
 		t.Fatal(err)
@@ -179,7 +179,7 @@ func TestPromotionTriggerMaxActiveBlocksCreation(t *testing.T) {
 		},
 		Status: kaprov1alpha2.PromotionRunStatus{Phase: kaprov1alpha2.PromotionRunPhaseProgressing},
 	}
-	reconciler, c := newPromotionTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, promotionTriggerFixture(), active)
+	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, promotionTriggerFixture(), active)
 
 	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
 		t.Fatal(err)
@@ -197,7 +197,7 @@ func TestPromotionTriggerCooldownBlocksCreation(t *testing.T) {
 	trigger := promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
 		rt.Status.LastTriggeredAt = fixedNow().Add(-5 * time.Minute).Format(time.RFC3339)
 	})
-	reconciler, c := newPromotionTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, trigger)
+	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, trigger)
 
 	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
 		t.Fatal(err)
@@ -217,7 +217,7 @@ func TestPromotionTriggerInvalidCooldownBlocksCreation(t *testing.T) {
 		rt.Spec.Cooldown = "soon"
 		rt.Status.LastTriggeredAt = fixedNow().Add(-5 * time.Minute).Format(time.RFC3339)
 	})
-	reconciler, c := newPromotionTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact(), calls: &resolveCalls}, fakeVerifier{}, trigger)
+	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact(), calls: &resolveCalls}, fakeVerifier{}, trigger)
 
 	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
 		t.Fatal(err)
@@ -239,7 +239,7 @@ func TestPromotionTriggerInvalidPollIntervalBlocksCreation(t *testing.T) {
 	trigger := promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
 		rt.Spec.Source.OCI.PollInterval = "0s"
 	})
-	reconciler, c := newPromotionTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact(), calls: &resolveCalls}, fakeVerifier{}, trigger)
+	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact(), calls: &resolveCalls}, fakeVerifier{}, trigger)
 
 	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
 		t.Fatal(err)
@@ -271,7 +271,7 @@ func TestPromotionTriggerExistingPromotionRunCooldownPreventsRapidBypass(t *test
 	trigger := promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
 		rt.Status.LastTriggeredAt = ""
 	})
-	reconciler, c := newPromotionTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, trigger, existing)
+	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, trigger, existing)
 
 	if _, err := reconciler.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
 		t.Fatal(err)
@@ -314,7 +314,7 @@ func TestPromotionTriggerTagOrderingPrefersSemverLikeTags(t *testing.T) {
 	}
 }
 
-func newPromotionTriggerReconciler(t *testing.T, resolver PromotionTriggerResolver, verifier PromotionTriggerVerifier, objects ...client.Object) (*PromotionTriggerReconciler, client.Client) {
+func newTriggerReconciler(t *testing.T, resolver PromotionTriggerResolver, verifier PromotionTriggerVerifier, objects ...client.Object) (*TriggerReconciler, client.Client) {
 	t.Helper()
 	scheme := runtime.NewScheme()
 	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
@@ -325,7 +325,7 @@ func newPromotionTriggerReconciler(t *testing.T, resolver PromotionTriggerResolv
 		WithObjects(objects...).
 		WithStatusSubresource(&kaprov1alpha2.Trigger{}, &kaprov1alpha2.PromotionRun{}, &kaprov1alpha2.Promotion{}).
 		Build()
-	return &PromotionTriggerReconciler{
+	return &TriggerReconciler{
 		Client:   c,
 		Scheme:   scheme,
 		Recorder: record.NewFakeRecorder(32),
@@ -444,7 +444,7 @@ func TestPromotionTriggerTagFlipUpdatesManagedPromotion(t *testing.T) {
 	trigger := promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
 		rt.Spec.Cooldown = "1m"
 	})
-	reconciler, c := newPromotionTriggerReconciler(t, resolver, fakeVerifier{}, trigger)
+	reconciler, c := newTriggerReconciler(t, resolver, fakeVerifier{}, trigger)
 	// Advance Now() by 1h between reconciles so cooldown does not block tag flips.
 	tick := fixedNow()
 	reconciler.Now = func() time.Time {

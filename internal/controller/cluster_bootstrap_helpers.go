@@ -112,7 +112,7 @@ const (
 // matters whenever spec.bootstrap.ttl is significantly longer than the
 // TokenRequest TTL (default 1h): without refresh, a late-arriving spoke would
 // find an expired token and never register.
-func (r *FleetClusterBootstrapReconciler) shouldProvision(ctx context.Context, fc *kaprov1alpha2.Cluster) bool {
+func (r *ClusterBootstrapReconciler) shouldProvision(ctx context.Context, fc *kaprov1alpha2.Cluster) bool {
 	if fc.Spec.Bootstrap == nil {
 		return false
 	}
@@ -152,7 +152,7 @@ func (r *FleetClusterBootstrapReconciler) shouldProvision(ctx context.Context, f
 //
 // On success it patches status.bootstrap.IssuedBootstrapKubeconfig to the
 // Secret name so subsequent reconciles skip this work.
-func (r *FleetClusterBootstrapReconciler) ensureBootstrapProvisioned(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
+func (r *ClusterBootstrapReconciler) ensureBootstrapProvisioned(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
 	log := log.FromContext(ctx).WithValues("fleetcluster", fc.Name)
 	if !r.shouldProvision(ctx, fc) {
 		return ctrl.Result{}, nil
@@ -315,7 +315,7 @@ func buildBootstrapKubeconfig(hubURL string, caData []byte, token, clusterName, 
 
 // upsertClusterRole creates or updates the per-cluster long-lived ClusterRole
 // that the spoke's issued client cert authorises against.
-func (r *FleetClusterBootstrapReconciler) upsertClusterRole(ctx context.Context, roleName, clusterName string) error {
+func (r *ClusterBootstrapReconciler) upsertClusterRole(ctx context.Context, roleName, clusterName string) error {
 	role := &rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   roleName,
@@ -357,7 +357,7 @@ func (r *FleetClusterBootstrapReconciler) upsertClusterRole(ctx context.Context,
 
 // upsertClusterRoleBinding binds the cluster ClusterRole to the User identity
 // the spoke's issued client cert presents (CN=kapro-cluster:<name>).
-func (r *FleetClusterBootstrapReconciler) upsertClusterRoleBinding(ctx context.Context, roleName, user, clusterName string) error {
+func (r *ClusterBootstrapReconciler) upsertClusterRoleBinding(ctx context.Context, roleName, user, clusterName string) error {
 	binding := &rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   roleName,
@@ -377,7 +377,7 @@ func (r *FleetClusterBootstrapReconciler) upsertClusterRoleBinding(ctx context.C
 	return r.upsertClusterRoleBindingObject(ctx, binding)
 }
 
-func (r *FleetClusterBootstrapReconciler) upsertClusterRoleObject(ctx context.Context, role *rbacv1.ClusterRole) error {
+func (r *ClusterBootstrapReconciler) upsertClusterRoleObject(ctx context.Context, role *rbacv1.ClusterRole) error {
 	existing := &rbacv1.ClusterRole{}
 	err := r.Get(ctx, types.NamespacedName{Name: role.Name}, existing)
 	if apierrors.IsNotFound(err) {
@@ -400,7 +400,7 @@ func (r *FleetClusterBootstrapReconciler) upsertClusterRoleObject(ctx context.Co
 	return r.Patch(ctx, existing, patch)
 }
 
-func (r *FleetClusterBootstrapReconciler) upsertClusterRoleBindingObject(ctx context.Context, binding *rbacv1.ClusterRoleBinding) error {
+func (r *ClusterBootstrapReconciler) upsertClusterRoleBindingObject(ctx context.Context, binding *rbacv1.ClusterRoleBinding) error {
 	existing := &rbacv1.ClusterRoleBinding{}
 	err := r.Get(ctx, types.NamespacedName{Name: binding.Name}, existing)
 	if apierrors.IsNotFound(err) {
@@ -432,7 +432,7 @@ func (r *FleetClusterBootstrapReconciler) upsertClusterRoleBindingObject(ctx con
 	return r.Patch(ctx, existing, patch)
 }
 
-func (r *FleetClusterBootstrapReconciler) upsertSecret(ctx context.Context, secret *corev1.Secret) error {
+func (r *ClusterBootstrapReconciler) upsertSecret(ctx context.Context, secret *corev1.Secret) error {
 	existing := &corev1.Secret{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: secret.Namespace, Name: secret.Name}, existing)
 	if apierrors.IsNotFound(err) {
@@ -459,7 +459,7 @@ func (r *FleetClusterBootstrapReconciler) upsertSecret(ctx context.Context, secr
 	return r.Patch(ctx, existing, patch)
 }
 
-func (r *FleetClusterBootstrapReconciler) deleteClusterRBAC(ctx context.Context, roleName string) error {
+func (r *ClusterBootstrapReconciler) deleteClusterRBAC(ctx context.Context, roleName string) error {
 	for _, obj := range []client.Object{
 		&rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: roleName}},
 		&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: roleName}},

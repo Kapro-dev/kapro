@@ -206,7 +206,7 @@ func (a *FluxOperatorActuator) IsConverged(ctx context.Context, mc *kaprov1alpha
 	hrReady, err := a.checkHelmReleaseFromInventory(ctx, resourceSet, ns, mc.Name)
 	if err != nil {
 		// Can't determine HR name — fall through to FleetCluster status check
-		// in the PromotionTargetReconciler fallback.
+		// in the TargetReconciler fallback.
 		return false, nil
 	}
 	return hrReady, nil

@@ -123,7 +123,7 @@ func setupEnv(t *testing.T) (context.Context, context.CancelFunc, client.Client)
 	if err := promotionrunReconciler.SetupWithManager(mgr); err != nil {
 		t.Fatalf("PromotionRunReconciler.SetupWithManager: %v", err)
 	}
-	promotionTargetReconciler := &controller.PromotionTargetReconciler{
+	promotionTargetReconciler := &controller.TargetReconciler{
 		Client:           mgr.GetClient(),
 		Recorder:         recorder,
 		Scheme:           mgr.GetScheme(),
@@ -131,7 +131,7 @@ func setupEnv(t *testing.T) (context.Context, context.CancelFunc, client.Client)
 		GateRegistry:     newNoopGateRegistry(t),
 	}
 	if err := promotionTargetReconciler.SetupWithManager(mgr); err != nil {
-		t.Fatalf("PromotionTargetReconciler.SetupWithManager: %v", err)
+		t.Fatalf("TargetReconciler.SetupWithManager: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

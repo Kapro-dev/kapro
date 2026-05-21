@@ -11,7 +11,7 @@ import (
 )
 
 func TestResolvePromotionSourceUsesInlineSource(t *testing.T) {
-	r := &KaproReconciler{}
+	r := &FleetReconciler{}
 	source, ok, err := r.resolvePromotionSource(context.Background(), &kaprov1alpha2.Fleet{
 		Spec: kaprov1alpha2.FleetSpec{
 			Source: &kaprov1alpha2.SourceSpec{
@@ -55,7 +55,7 @@ func TestBuildResourceSet_Units(t *testing.T) {
 		},
 	}
 
-	r := &KaproReconciler{}
+	r := &FleetReconciler{}
 	rs := r.buildResourceSet(kapro, app)
 
 	// Verify ResourceSet metadata.
@@ -160,7 +160,7 @@ func TestBuildResourceSet_OverrideMerging(t *testing.T) {
 		},
 	}
 
-	r := &KaproReconciler{}
+	r := &FleetReconciler{}
 	rs := r.buildResourceSet(kapro, app)
 
 	spec, _ := rs.Object["spec"].(map[string]interface{})
@@ -217,7 +217,7 @@ func TestBuildPromotionPlan(t *testing.T) {
 	}
 	kapro.Name = "demo"
 
-	r := &KaproReconciler{}
+	r := &FleetReconciler{}
 	promotionplan := r.buildPromotionPlan(kapro)
 
 	if promotionplan.Name != "demo-promotionplan" {
