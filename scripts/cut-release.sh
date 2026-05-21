@@ -51,6 +51,11 @@ ALLOW_BRANCH="${KAPRO_RELEASE_ALLOW_BRANCH:-false}"
 # target the upstream release.
 GH_NWO="$(git remote get-url "${REMOTE}" \
   | sed -E 's#(.*github\.com[:/])([^/]+/[^/]+)\.git#\2#; s#(.*github\.com[:/])([^/]+/[^/]+)#\2#')"
+if [[ -z "${GH_NWO}" || ! "${GH_NWO}" =~ ^[^/]+/[^/]+$ ]]; then
+  echo "abort: could not parse GitHub owner/repo from remote ${REMOTE}; got ${GH_NWO:-<empty>}" >&2
+  echo "set KAPRO_RELEASE_REMOTE to a GitHub remote such as git@github.com:owner/repo.git or https://github.com/owner/repo.git" >&2
+  exit 1
+fi
 
 need() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -87,8 +92,8 @@ if [ "${branch}" != "main" ] && [ "${ALLOW_BRANCH}" != "true" ]; then
   abort "current branch ${branch} is not main; set KAPRO_RELEASE_ALLOW_BRANCH=true to override"
 fi
 
-if ! git diff --quiet HEAD; then
-  abort "working tree is dirty; commit or stash before cutting release"
+if [ -n "$(git status --porcelain)" ]; then
+  abort "working tree is dirty, including untracked files; commit, stash, or remove changes before cutting release"
 fi
 
 if [ "${SKIP_TAG}" != "true" ] && git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null; then

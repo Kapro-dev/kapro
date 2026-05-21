@@ -535,8 +535,7 @@ func TestCRDPropertiesMatchGoJSONTags(t *testing.T) {
 
 // jsonTagsForStruct returns the JSON-tag names (the part before the first
 // comma) of every field on the named struct in typesText. Inlined embedded
-// fields (`json:",inline"`) are unwrapped to their parent's fields via
-// recursion. Tags equal to "-" are skipped.
+// fields (`json:",inline"`) and tags equal to "-" are skipped.
 func jsonTagsForStruct(t *testing.T, typesText, structName string) []string {
 	t.Helper()
 	pattern := regexp.MustCompile(`(?ms)^type\s+` + regexp.QuoteMeta(structName) + `\s+struct\s*\{(.*?)\n\}`)
