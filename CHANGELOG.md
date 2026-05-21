@@ -7,6 +7,14 @@ record for each tag.
 
 ## Unreleased
 
+### Changed — announce-ready README and governance docs
+
+Refreshed the README with release, CI, and docs badges; a shorter why-Kapro
+pitch; a copy-paste quickstart; and clearer links to docs, security reporting,
+contributing, and the code of conduct. Governance docs now state the DCO
+sign-off expectation, supported release line, and Contributor Covenant 2.1
+source.
+
 ### Added — operator SLO documentation
 
 Added operator SLI/SLO guidance, Prometheus recording rules, and dashboard

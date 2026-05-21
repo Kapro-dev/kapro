@@ -1,10 +1,10 @@
 # Contributing to Kapro
 
-Thank you for your interest in contributing! Kapro follows [CNCF Community](https://github.com/cncf/foundation/blob/main/code-of-conduct.md) standards.
+Thank you for your interest in contributing to Kapro.
 
 ## Code of Conduct
 
-This project follows the [CNCF Code of Conduct](CODE_OF_CONDUCT.md).
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Development Requirements
 
@@ -44,7 +44,9 @@ scripts/verify-install.sh render
    - A clear description of the change
    - Test coverage for new code
    - Updated docs if behaviour changes
-5. DCO sign-off is required: `git commit -s`
+5. DCO sign-off is required: `git commit -s`. This adds a
+   `Signed-off-by:` line certifying the
+   [Developer Certificate of Origin](https://developercertificate.org/).
 
 ## Coding Standards
 

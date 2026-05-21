@@ -10,19 +10,23 @@ Flux, Argo CD, OCI pull agents, and other delivery systems keep owning the local
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
+  <a href="https://github.com/Kapro-dev/kapro/releases/latest"><img src="https://img.shields.io/github/v/release/Kapro-dev/kapro?sort=semver" alt="Latest release"></a>
+  <a href="https://github.com/Kapro-dev/kapro/actions/workflows/ci.yml"><img src="https://github.com/Kapro-dev/kapro/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://goreportcard.com/report/kapro.io/kapro"><img src="https://goreportcard.com/badge/kapro.io/kapro" alt="Go Report Card"></a>
   <a href="api/v1alpha2"><img src="https://img.shields.io/badge/API-kapro.io%2Fv1alpha2-purple" alt="API Group"></a>
+  <a href="https://kapro.dev"><img src="https://img.shields.io/badge/docs-kapro.dev-0a7" alt="Docs"></a>
 </p>
 
 ---
 
-Kapro is **pre-stable public release software**, not GA. The current public
-release line is `v0.1.2`; all Kubernetes APIs are now `kapro.io/v1alpha2`.
+Kapro is **pre-stable public release software**, not GA. The next public
+preview release is planned as `v0.1.2`; all Kubernetes APIs are now
+`kapro.io/v1alpha2`.
 If you have legacy `kapro.io/v1alpha1` manifests, follow the
 [v1alpha1 to v1alpha2 migration guide](docs/migration-v1alpha1-to-v1alpha2.md);
 this release does not provide automatic legacy conversion.
 
-## What Kapro Does
+## Why Kapro
 
 Kapro answers one operational question:
 
@@ -31,8 +35,17 @@ Which clusters are allowed to receive this artifact version now, and why?
 ```
 
 It is useful when one application version must move through many clusters,
-regions, environments, or connectivity models without putting all promotion
-logic into CI scripts.
+regions, environments, or connectivity models without burying promotion state in
+CI scripts.
+
+- **Fleet-wide promotion intent:** model waves, gates, approvals, and target
+  selection as Kubernetes API state.
+- **Backend-neutral delivery:** keep Flux, Argo CD, OCI pull agents, and custom
+  plugins in charge of local rollout mechanics.
+- **Auditable attempts:** inspect durable `Promotion` intent, immutable
+  `PromotionRun` attempts, and per-target runtime records after CI has exited.
+
+## Boundaries
 
 Kapro owns:
 
@@ -64,6 +77,14 @@ platform tooling.
 
 See [Concepts](docs/concepts.md) for the object model and lifecycle.
 
+## How It Compares
+
+Kapro is not a replacement for Flux, Argo CD, Argo Rollouts, Flagger, or
+Sveltos. It sits above delivery and add-on systems as the promotion layer that
+decides when a version may advance across a fleet. See
+[ADR-0012: Competitive Positioning](docs/adr/0012-competitive-positioning.md)
+for the architectural comparison.
+
 ## Adapt To Your Fleet
 
 Kapro is backend-neutral. A fleet can mix delivery styles by cluster:
@@ -80,33 +101,21 @@ Kapro is backend-neutral. A fleet can mix delivery styles by cluster:
 Run [First Promotion in 10 Minutes](docs/first-promotion-10min.md) first to
 see the API lifecycle, then use [Backends](docs/backends.md) when deciding how
 Kapro should connect to existing delivery systems.
-For the architectural positioning against adjacent Kubernetes projects, see
-[ADR-0012](docs/adr/0012-competitive-positioning.md).
 
 ## Quick Start
 
-Install the operator:
+From a clone of this repository, install the operator, apply the starter fleet,
+and inspect the controller-owned runtime records:
 
 ```bash
+git clone https://github.com/Kapro-dev/kapro.git
+cd kapro
 helm upgrade --install kapro \
-  https://github.com/Kapro-dev/kapro/releases/download/v0.1.2/kapro-operator-0.1.2.tgz \
+  charts/kapro-operator \
   --namespace kapro-system \
-  --create-namespace
-```
-
-For local development, use `charts/kapro-operator` instead of the release URL.
-
-Apply a minimal backend and Fleet setup:
-
-```bash
-kubectl apply -f examples/quickstart/backend-flux.yaml
-kubectl apply -f examples/quickstart/kapro.yaml
-```
-
-Promote a version:
-
-```bash
-kubectl apply -f examples/quickstart/promotion.yaml
+  --create-namespace \
+  --wait
+kubectl apply -f examples/quickstart/
 kubectl get promotions,promotionruns,targets
 ```
 
@@ -115,10 +124,12 @@ controller-owned runtime records for inspection in `kubectl` or k9s.
 
 For a step-by-step minimal path, use [First Promotion in 10 Minutes](docs/first-promotion-10min.md).
 For a complete local walkthrough, use the [Kind demo](examples/kind-demo/README.md).
+After `v0.1.2` is published, [Install](docs/install.md) has the release-asset
+Helm command.
 
 ## Documentation
 
-Start here:
+Start at [kapro.dev](https://kapro.dev) or use these repo docs:
 
 - [Concepts](docs/concepts.md)
 - [Install](docs/install.md)
@@ -144,9 +155,15 @@ Deeper references:
 
 ## Contributing
 
-Issues and pull requests are welcome. Keep changes tied to implemented behavior:
-public docs should describe what users can run today, while larger design
-decisions belong in [ADRs](docs/adr/README.md).
+Issues and pull requests are welcome. Keep changes tied to implemented
+behavior: public docs should describe what users can run today, while larger
+design decisions belong in [ADRs](docs/adr/README.md).
+
+- Open issues and feature requests in
+  [GitHub Issues](https://github.com/Kapro-dev/kapro/issues).
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+- Report vulnerabilities through [SECURITY.md](SECURITY.md), not public issues.
+- Follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
