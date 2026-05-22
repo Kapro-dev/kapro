@@ -10,6 +10,7 @@ together. The `0.1.2` chart defaults to
 
 - Kubernetes cluster access with permission to create CRDs and cluster-scoped RBAC.
 - Helm 3.
+- Go 1.25+ when you want the optional `kapro` CLI from source.
 
 The chart has no other dependencies. By default the admission webhook
 uses an auto-generated self-signed serving certificate, so cert-manager
@@ -35,6 +36,29 @@ installed.
 For development from a local checkout, set
 `KAPRO_CHART=charts/kapro-operator` instead of using the release URL.
 The remaining Helm examples use the same `KAPRO_CHART` value.
+
+## CLI
+
+The operator can be used with `kubectl` alone. Install the CLI when you want
+guided repository scaffolding, brownfield discovery, promotion creation, or
+diagnostics:
+
+```bash
+git clone https://github.com/Kapro-dev/kapro.git
+cd kapro
+git checkout v0.1.2
+make build
+export PATH="$PWD/bin:$PATH"
+kapro bootstrap guide
+```
+
+From an existing local checkout:
+
+```bash
+make build
+export PATH="$PWD/bin:$PATH"
+kapro bootstrap guide
+```
 
 ### Install with cert-manager
 
@@ -122,6 +146,15 @@ run:
 | Flux | Spokes already reconcile with Flux or Flux Operator. | [First Promotion](first-promotion-10min.md) |
 | Argo CD | Argo CD owns one Application per target cluster. | [Argo CD Quickstart](quickstart-argo.md) |
 | OCI | Spokes should pull OCI artifacts without Flux or Argo CD. | [OCI Quickstart](quickstart-oci.md) |
+
+For a guided CLI decision tree, run:
+
+```bash
+kapro bootstrap guide
+```
+
+The same paths are documented in the [Adoption Guide](adoption.md), including
+observe-first Argo CD and Flux brownfield onboarding.
 
 ## Optional Decision API
 

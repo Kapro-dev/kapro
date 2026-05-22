@@ -2,6 +2,9 @@
 //
 // Usage:
 //
+//	kapro bootstrap guide
+//	kapro bootstrap greenfield ./promotion-repo --backend flux --mode pull --name checkout
+//	kapro bootstrap brownfield argo . --out ./kapro-connect --name checkout
 //	kapro init ./promotion-repo --backend flux --mode pull --name checkout
 //	kapro promote <fleet> --version <version>
 //	kapro diag <promotion>
@@ -56,18 +59,20 @@ func main() {
 Pass versions forward across targets, clusters, and waves.
 
 Start here:
-  kapro init ./promotion-repo --backend flux --mode pull --name checkout
+  kapro bootstrap guide
+  kapro bootstrap greenfield ./promotion-repo --backend flux --mode pull --name checkout
   kapro promote checkout --version v1.2.3
   kapro diag checkout-v1-2-3
 
 For existing GitOps repositories:
-  kapro connect argo ./kapro-connect
-  kapro adopt argo . --out ./kapro-connect --name checkout`,
+  kapro bootstrap brownfield argo . --out ./kapro-connect --name checkout
+  kapro bootstrap brownfield flux . --out ./kapro-connect --name checkout`,
 	}
 
 	root.PersistentFlags().StringVarP(&cli.OutputFormat, "output", "o", "", "Output format (json for machine-readable)")
 
 	root.AddCommand(newInitCmd())
+	root.AddCommand(newBootstrapCmd())
 	root.AddCommand(newConnectCmd())
 	root.AddCommand(newDiscoverCmd())
 	root.AddCommand(newAdoptCmd())

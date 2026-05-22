@@ -101,6 +101,23 @@ Run [First Promotion in 10 Minutes](docs/first-promotion-10min.md) first to
 see the API lifecycle, then use [Backends](docs/backends.md) when deciding how
 Kapro should connect to existing delivery systems.
 
+For guided repository setup, use the bootstrap CLI:
+
+```bash
+git clone https://github.com/Kapro-dev/kapro.git
+cd kapro
+git checkout v0.1.2
+make build
+export PATH="$PWD/bin:$PATH"
+kapro bootstrap guide
+kapro bootstrap greenfield ./promotion-repo --backend flux --mode pull --name checkout
+kapro bootstrap brownfield argo . --out ./kapro-connect --name checkout
+kapro bootstrap brownfield flux . --out ./kapro-connect --name checkout
+```
+
+See the [Adoption Guide](docs/adoption.md) for the greenfield and brownfield
+decision tree.
+
 ## Quick Start
 
 Install the released operator, apply the starter fleet from a clone, and inspect
@@ -132,6 +149,7 @@ Start at [kapro.dev](https://kapro.dev) or use these repo docs:
 
 - [Concepts](docs/concepts.md)
 - [Install](docs/install.md)
+- [Adoption Guide](docs/adoption.md)
 - [First Promotion in 10 Minutes](docs/first-promotion-10min.md)
 - [Kind Demo](examples/kind-demo/README.md)
 - [Backends](docs/backends.md)

@@ -50,6 +50,21 @@ GitRepository or OCIRepository too. Kapro does not need source credentials.
 
 ## Step 2: Generate An Observe Profile
 
+Use the guided brownfield bootstrap first:
+
+```bash
+kapro bootstrap brownfield flux . \
+  --out ./kapro-connect \
+  --name checkout \
+  --namespace flux-system \
+  --selector kapro.io/import=true,team=checkout
+```
+
+This is the recommended first command for new adopters. It delegates to the
+same discovery engine as `kapro discover flux`.
+
+You can also run discovery directly:
+
 ```bash
 kapro discover flux . \
   --out ./kapro-connect \
