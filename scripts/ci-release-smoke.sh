@@ -230,7 +230,7 @@ grep -Fq "$(basename "${chart_packages[0]}")" "${tmpdir}/checksums.txt"
 grep -Fq "$(basename "${cluster_controller_packages[0]}")" "${tmpdir}/checksums.txt"
 
 echo "checking release workflow packages the charts and publishes checksums"
-require_workflow_line "uses: azure/setup-helm@v4"
+require_workflow_line "# azure/setup-helm@v5"
 require_workflow_line "name: Package Helm charts"
 require_workflow_line "helm package charts/kapro-operator --destination dist"
 require_workflow_line "helm package charts/kapro-cluster-controller --destination dist"
@@ -252,12 +252,12 @@ require_workflow_line "file: Dockerfile"
 require_workflow_line "file: Dockerfile.cluster-controller"
 require_workflow_line "ghcr.io/kapro-dev/kapro-operator:"
 require_workflow_line "ghcr.io/kapro-dev/kapro-cluster-controller:"
-require_workflow_occurrences "uses: aquasecurity/trivy-action@v0.24.0" 2
+require_workflow_occurrences "# aquasecurity/trivy-action@v0.24.0" 2
 require_workflow_line "cosign sign --yes ghcr.io/kapro-dev/kapro-operator"
 require_workflow_line "cosign sign --yes ghcr.io/kapro-dev/kapro-cluster-controller"
 require_workflow_line "security-events: write"
 require_workflow_line "uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0"
 reject_workflow_line "uses: anchore/sbom-action@v0"
-reject_workflow_regex "uses:[[:space:]]+aquasecurity/trivy-action@[^v]"
+reject_workflow_regex "uses:[[:space:]]+aquasecurity/trivy-action@v"
 
 echo "release smoke verification passed"
