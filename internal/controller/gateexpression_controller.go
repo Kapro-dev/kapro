@@ -204,7 +204,7 @@ func (r *GateExpressionReconciler) evaluate(ctx context.Context, expr *kaprov1al
 			expr.Status.FirstObservedAt = &now
 			return gateExpressionPhasePending, "DelayPending", fmt.Sprintf("waiting %s before evaluating operand", duration), duration, nil
 		}
-		remaining := time.Until(expr.Status.FirstObservedAt.Time.Add(duration))
+		remaining := time.Until(expr.Status.FirstObservedAt.Add(duration))
 		if remaining > 0 {
 			return gateExpressionPhasePending, "DelayPending", fmt.Sprintf("waiting %s before evaluating operand", remaining.Round(time.Second)), remaining, nil
 		}
