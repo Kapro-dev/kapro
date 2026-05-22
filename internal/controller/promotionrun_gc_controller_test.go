@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	promtestutil "github.com/prometheus/client_golang/prometheus/testutil"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
@@ -15,6 +16,7 @@ import (
 
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/controller"
+	kaprometrics "kapro.io/kapro/internal/metrics"
 )
 
 // fixture helper — builds a PromotionRun child of a Promotion at a given age.
@@ -267,6 +269,42 @@ func TestGC_BoundedDeletesPerReconcile(t *testing.T) {
 	// Started at 30, deleted exactly 10 this pass → 20 remain.
 	if len(remaining.Items) != 20 {
 		t.Fatalf("expected per-reconcile cap to bound deletes to 10 (20 remaining); got %d remaining", len(remaining.Items))
+	}
+}
+
+// TestGC_MetricsRecordRetentionPass asserts ADR-0015 pruning emits stable
+// Prometheus counters for alerting before adopters enable retention.
+func TestGC_MetricsRecordRetentionPass(t *testing.T) {
+	promo := &kaprov1alpha2.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "checkout"}}
+	var objs []client.Object
+	objs = append(objs, promo)
+	for i := 1; i <= 8; i++ {
+		objs = append(objs, mkRun(fmt.Sprintf("succ-%d", i), "checkout", kaprov1alpha2.PromotionRunPhaseComplete, 100-i))
+	}
+
+	beforeDeleted := promtestutil.ToFloat64(kaprometrics.PromotionRunPruned.WithLabelValues("deleted"))
+	beforeRetained := promtestutil.ToFloat64(kaprometrics.PromotionRunRetained)
+
+	c, s := gcTestClient(t, objs...)
+	r := &controller.PromotionRunGCReconciler{
+		Client:                  c,
+		Recorder:                record.NewFakeRecorder(200),
+		Scheme:                  s,
+		MaxRetainedPerPromotion: 5,
+		MinRetainedPerOutcome:   1,
+		MaxDeletesPerReconcile:  10,
+	}
+	if _, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: client.ObjectKeyFromObject(promo)}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	deletedDelta := promtestutil.ToFloat64(kaprometrics.PromotionRunPruned.WithLabelValues("deleted")) - beforeDeleted
+	if deletedDelta != 3 {
+		t.Fatalf("deleted metric delta: got %.0f, want 3", deletedDelta)
+	}
+	retainedDelta := promtestutil.ToFloat64(kaprometrics.PromotionRunRetained) - beforeRetained
+	if retainedDelta != 5 {
+		t.Fatalf("retained metric delta: got %.0f, want 5", retainedDelta)
 	}
 }
 

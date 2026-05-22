@@ -57,6 +57,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprometrics "kapro.io/kapro/internal/metrics"
 )
 
 // PromotionRunGCReconciler enforces ADR-0015 retention on PromotionRun
@@ -103,6 +104,7 @@ func (r *PromotionRunGCReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	victims := r.selectVictims(runs.Items)
+	kaprometrics.PromotionRunRetained.Add(float64(len(runs.Items) - len(victims)))
 	if len(victims) == 0 {
 		return ctrl.Result{}, nil
 	}
@@ -127,15 +129,19 @@ func (r *PromotionRunGCReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		v := &victims[i]
 		if err := r.Delete(ctx, v); err != nil {
 			if apierrors.IsNotFound(err) {
+				kaprometrics.PromotionRunPruned.WithLabelValues("not_found").Inc()
 				continue
 			}
 			if apierrors.IsForbidden(err) {
+				kaprometrics.PromotionRunPruned.WithLabelValues("forbidden").Inc()
 				logger.Info("skipping delete: forbidden", "promotionrun", v.Name)
 				continue
 			}
 			// Transient — return error so controller-runtime retries.
+			kaprometrics.PromotionRunPruned.WithLabelValues("error").Inc()
 			return ctrl.Result{}, fmt.Errorf("delete PromotionRun %s: %w", v.Name, err)
 		}
+		kaprometrics.PromotionRunPruned.WithLabelValues("deleted").Inc()
 		deleted++
 		r.Recorder.Eventf(&promotion, "Normal", "AttemptPruned",
 			"Pruned terminal PromotionRun %s (phase=%s, age=%s) per ADR-0015 retention",
