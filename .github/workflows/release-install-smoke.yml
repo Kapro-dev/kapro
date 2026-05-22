@@ -1,0 +1,65 @@
+name: Release Install Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published release tag to install.
+        required: true
+        default: v0.1.2
+      kind_image:
+        description: Kind node image for the smoke cluster.
+        required: true
+        default: kindest/node:v1.30.0
+
+permissions:
+  contents: read
+
+jobs:
+  release-install-smoke:
+    name: Release Install Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v5
+
+      - name: Set up kind
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
+
+      - name: Create fresh Kind cluster
+        run: |
+          kind create cluster \
+            --name kapro-release-install \
+            --image "${{ inputs.kind_image }}"
+
+      - name: Install published release artifacts
+        env:
+          KAPRO_RELEASE_VERSION: ${{ inputs.version }}
+          KAPRO_VERIFY_CLEANUP: "true"
+        run: scripts/verify-install.sh release-cluster
+
+      - name: Collect diagnostics
+        if: failure()
+        run: |
+          mkdir -p release-install-diagnostics
+          kind export logs --name kapro-release-install release-install-diagnostics/kind || true
+          kubectl --context kind-kapro-release-install get events -A --sort-by=.lastTimestamp > release-install-diagnostics/events.txt || true
+          kubectl --context kind-kapro-release-install get all -A -o wide > release-install-diagnostics/all.txt || true
+          kubectl --context kind-kapro-release-install get crd -o wide > release-install-diagnostics/crds.txt || true
+          kubectl --context kind-kapro-release-install get backends,fleets,clusters,plans,promotions,promotionruns,targets -A -o yaml > release-install-diagnostics/kapro-resources.yaml || true
+          kubectl --context kind-kapro-release-install -n kapro-system logs deploy/kapro-kapro-operator --tail=-1 > release-install-diagnostics/operator.log || true
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-install-diagnostics
+          path: release-install-diagnostics/
