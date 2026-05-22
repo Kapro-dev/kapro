@@ -14,6 +14,10 @@ import (
 type BackendSpec struct {
 	// Driver identifies the backend implementation family.
 	Driver BackendDriver `json:"driver"`
+	// Adapter explicitly names the adapter implementation. When empty, Kapro
+	// derives the built-in adapter name from driver for compatibility.
+	// +optional
+	Adapter string `json:"adapter,omitempty"`
 	// Runtime identifies where this backend can run.
 	// +kubebuilder:default="Both"
 	Runtime BackendRuntime `json:"runtime,omitempty"`

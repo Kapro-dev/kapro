@@ -33,6 +33,7 @@ func init() {
 	Register("gateexpression", startGateExpressionController)
 	Register("approval", startApprovalController)
 	Register("backend", startBackendProfileController)
+	Register("adapterpolicy", startAdapterPolicyController)
 	Register("plugin", startPluginRegistrationController)
 	Register("trigger", startPromotionTriggerController)
 	Register("cluster-bootstrap", startFleetClusterBootstrapController)
@@ -47,6 +48,7 @@ func init() {
 	RegisterAlias("fleetcluster-heartbeat", "cluster")
 	RegisterAlias("gate-expression", "gateexpression")
 	RegisterAlias("backend-profile", "backend")
+	RegisterAlias("adapter-policy", "adapterpolicy")
 	RegisterAlias("plugin-registration", "plugin")
 	RegisterAlias("promotion-trigger", "trigger")
 	RegisterAlias("fleetcluster-bootstrap", "cluster-bootstrap")
@@ -246,6 +248,16 @@ func startPluginRegistrationController(_ context.Context, cc ControllerContext) 
 // startBackendProfileController starts the backend readiness reconciler.
 func startBackendProfileController(_ context.Context, cc ControllerContext) (bool, error) {
 	if err := (&controller.BackendReconciler{
+		Client:   cc.Manager.GetClient(),
+		Recorder: cc.Recorder,
+	}).SetupWithManager(cc.Manager); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func startAdapterPolicyController(_ context.Context, cc ControllerContext) (bool, error) {
+	if err := (&controller.AdapterPolicyReconciler{
 		Client:   cc.Manager.GetClient(),
 		Recorder: cc.Recorder,
 	}).SetupWithManager(cc.Manager); err != nil {

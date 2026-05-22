@@ -60,6 +60,11 @@ spec:
               BackendSpec registers a delivery backend profile that can be selected
               by Fleet or Cluster delivery.backendRef.
             properties:
+              adapter:
+                description: |-
+                  Adapter explicitly names the adapter implementation. When empty, Kapro
+                  derives the built-in adapter name from driver for compatibility.
+                type: string
               discovery:
                 description: |-
                   Discovery configures optional adoption of objects already owned by the

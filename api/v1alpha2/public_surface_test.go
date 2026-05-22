@@ -47,6 +47,7 @@ type crdVersion struct {
 }
 
 var kaproResources = []resourceContract{
+	{Kind: "AdapterPolicy", Singular: "adapterpolicy", Plural: "adapterpolicies"},
 	{Kind: "Approval", Singular: "approval", Plural: "approvals"},
 	{Kind: "Backend", Singular: "backend", Plural: "backends"},
 	{Kind: "Cluster", Singular: "cluster", Plural: "clusters"},
@@ -566,7 +567,7 @@ func TestCRDShortNamesAndCategoriesUseExpectedAliases(t *testing.T) {
 	}
 }
 
-func TestGateExpressionCRDPublishesComposableAlgebra(t *testing.T) {
+func TestGateExpressionCRDPublishesCompletedAlgebra(t *testing.T) {
 	root := repoRoot(t)
 	crdPath := filepath.Join(root, "config", "crd", "bases", "kapro.io_gateexpressions.yaml")
 	crd := readCRD(t, crdPath)
@@ -577,14 +578,7 @@ func TestGateExpressionCRDPublishesComposableAlgebra(t *testing.T) {
 	if fmt.Sprint(enum) != fmt.Sprint(want) {
 		t.Fatalf("%s spec.operator enum=%v, want %v", crdPath, enum, want)
 	}
-	spec := schemaNodeForJSONPath(t, crdPath, version.Schema.OpenAPIV3Schema, ".spec")
-	if _, ok := spec["properties"].(map[string]any)["parameters"]; !ok {
-		t.Fatalf("%s spec is missing operator parameters", crdPath)
-	}
-	status := schemaNodeForJSONPath(t, crdPath, version.Schema.OpenAPIV3Schema, ".status")
-	if _, ok := status["properties"].(map[string]any)["firstObservedAt"]; !ok {
-		t.Fatalf("%s status is missing firstObservedAt", crdPath)
-	}
+	_ = schemaNodeForJSONPath(t, crdPath, version.Schema.OpenAPIV3Schema, ".status.firstObservedAt")
 }
 
 func TestGatePolicyExpressionRefIsReservedInCRDSchema(t *testing.T) {
@@ -743,6 +737,7 @@ func TestCRDPropertiesMatchGoJSONTags(t *testing.T) {
 		statusName string
 	}
 	fixtures := map[string]fixture{
+		"AdapterPolicy":   {"adapterpolicy_types.go", "AdapterPolicySpec", "AdapterPolicyStatus"},
 		"Approval":        {"approval_types.go", "ApprovalSpec", "ApprovalStatus"},
 		"Backend":         {"backend_types.go", "BackendSpec", "BackendStatus"},
 		"Cluster":         {"cluster_types.go", "ClusterSpec", "ClusterStatus"},

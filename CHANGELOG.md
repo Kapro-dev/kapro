@@ -84,6 +84,11 @@ Graduated `GateExpression` from `ALL`-only preview to the full `ALL`, `ANY`,
 `NOT`, `WEIGHTED_SUM`, `THRESHOLD`, and `DELAY` algebra with admission
 validation, delay first-observation status, examples, and docs.
 
+### Added — adapter SDK
+
+Added the public `pkg/kapro/adapter` SDK surface with a registry and reference
+Argo CD, Flux, and OCI adapter packages.
+
 ## v0.1.2 — 2026-05-22
 
 ### Added — Go SDK scaffold
