@@ -251,6 +251,9 @@ run_argo_quickstart() {
   kubectl --context "${CTX}" apply -f examples/quickstart-argo/backend-argo.yaml
   kubectl --context "${CTX}" apply -f examples/quickstart-argo/fleet.yaml
   wait_for_clusters checkout-argo-canary checkout-argo-production
+  mark_cluster_converged checkout-argo-canary
+  mark_cluster_converged checkout-argo-production
+  start_cluster_convergence_refresher checkout-argo-canary checkout-argo-production
   kubectl --context "${CTX}" apply -f examples/quickstart-argo/promotion.yaml
   wait_for_quickstart checkout-argo-v1-2-3 2
 }

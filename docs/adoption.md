@@ -19,12 +19,13 @@ agents, or plugins still own local reconciliation.
 Use `kapro bootstrap guide` when you want the same decision tree in the
 terminal.
 
-Install the CLI first when you are not working from a local checkout:
+Install the source-built CLI first when you are not working from a local
+checkout. Bootstrap is available on `main`; use a tagged CLI release here once
+one includes the bootstrap command.
 
 ```bash
-git clone https://github.com/Kapro-dev/kapro.git
+git clone --branch main https://github.com/Kapro-dev/kapro.git
 cd kapro
-git checkout v0.1.2
 make build
 export PATH="$PWD/bin:$PATH"
 ```
