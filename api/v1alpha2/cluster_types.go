@@ -342,6 +342,67 @@ type ClusterBootstrapSpec struct {
 	// Cluster.metadata.labels for that.
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
+
+	// MaterialSource selects where the hub publishes the short-lived bootstrap
+	// kubeconfig material. When omitted, the existing Kubernetes Secret path is
+	// used. Vault is a v0.2.3 preview contract and is rejected fail-closed by the
+	// controller unless explicitly implemented by platform automation.
+	// +optional
+	MaterialSource *ClusterBootstrapMaterialSource `json:"materialSource,omitempty"`
+}
+
+// ClusterBootstrapMaterialSourceType names the publication target for
+// short-lived CSR bootstrap material.
+// +kubebuilder:validation:Enum=KubernetesSecret;Vault
+type ClusterBootstrapMaterialSourceType string
+
+const (
+	// ClusterBootstrapMaterialKubernetesSecret preserves the existing behavior:
+	// the hub writes the rendered bootstrap kubeconfig to a Kubernetes Secret.
+	ClusterBootstrapMaterialKubernetesSecret ClusterBootstrapMaterialSourceType = "KubernetesSecret"
+	// ClusterBootstrapMaterialVault declares that bootstrap material should be
+	// published through a Vault path instead of a Kubernetes Secret. The built-in
+	// controller records this intent but fails closed in v0.2.3.
+	ClusterBootstrapMaterialVault ClusterBootstrapMaterialSourceType = "Vault"
+)
+
+// ClusterBootstrapMaterialSource configures where CSR bootstrap material is
+// published.
+// +kubebuilder:validation:XValidation:rule="(!has(self.type) || self.type == 'KubernetesSecret') ? !has(self.vault) : has(self.vault)",message="vault must be set only when type=Vault"
+type ClusterBootstrapMaterialSource struct {
+	// Type selects the material publication target.
+	// +kubebuilder:default=KubernetesSecret
+	// +optional
+	Type ClusterBootstrapMaterialSourceType `json:"type,omitempty"`
+
+	// Vault describes the external Vault location to publish or read bootstrap
+	// kubeconfig material from. This is a preview API contract only in v0.2.3.
+	// +optional
+	Vault *VaultBootstrapMaterialSource `json:"vault,omitempty"`
+}
+
+// VaultBootstrapMaterialSource describes a Vault location for bootstrap
+// kubeconfig material. It intentionally carries location metadata only; Vault
+// auth is expected to come from the operator's runtime identity or an external
+// platform integration, not from credentials embedded in the Cluster object.
+type VaultBootstrapMaterialSource struct {
+	// Address is the Vault server URL. When empty, platform automation may use
+	// its runtime default.
+	// +optional
+	Address string `json:"address,omitempty"`
+
+	// Mount is the Vault secrets engine mount, for example "secret" or "kv".
+	// +optional
+	Mount string `json:"mount,omitempty"`
+
+	// Path is the Vault path for this cluster's bootstrap material.
+	// +kubebuilder:validation:MinLength=1
+	Path string `json:"path"`
+
+	// KubeconfigField is the field name containing the rendered kubeconfig.
+	// Defaults to "kubeconfig" for external automation.
+	// +optional
+	KubeconfigField string `json:"kubeconfigField,omitempty"`
 }
 
 // ClusterStatus is the observed state — written by cluster-controller and hub.

@@ -365,6 +365,54 @@ func TestReconcile_AddsFinalizer(t *testing.T) {
 	}
 }
 
+func TestReconcile_VaultBootstrapMaterialFailsClosed(t *testing.T) {
+	future := metav1.NewTime(time.Now().Add(1 * time.Hour))
+	fc := &kaprov1alpha2.Cluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "de-prod-01",
+			Finalizers: []string{kaprov1alpha2.ClusterFinalizer},
+		},
+		Spec: kaprov1alpha2.ClusterSpec{
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{
+				ExpiresAt: &future,
+				MaterialSource: &kaprov1alpha2.ClusterBootstrapMaterialSource{
+					Type: kaprov1alpha2.ClusterBootstrapMaterialVault,
+					Vault: &kaprov1alpha2.VaultBootstrapMaterialSource{
+						Path: "kapro/bootstrap/de-prod-01",
+					},
+				},
+			},
+		},
+	}
+	r, c := newBootstrapReconciler(t, fc)
+
+	res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: client.ObjectKey{Name: fc.Name}})
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if !res.IsZero() {
+		t.Errorf("Reconcile should stop without requeue for disabled Vault bootstrap; got %+v", res)
+	}
+
+	got := &kaprov1alpha2.Cluster{}
+	if err := c.Get(context.Background(), client.ObjectKey{Name: fc.Name}, got); err != nil {
+		t.Fatalf("re-fetch Cluster: %v", err)
+	}
+	if got.Status.Bootstrap != nil && got.Status.Bootstrap.IssuedBootstrapKubeconfig != "" {
+		t.Fatalf("Vault bootstrap must not fall back to Kubernetes Secret, got status.bootstrap=%+v", got.Status.Bootstrap)
+	}
+	if cond := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha2.ConditionTypeStalled); cond == nil ||
+		cond.Status != metav1.ConditionTrue || cond.Reason != "BootstrapVaultDisabled" {
+		t.Fatalf("Stalled condition = %+v; want True/BootstrapVaultDisabled", cond)
+	}
+
+	secret := &corev1.Secret{}
+	err = c.Get(context.Background(), client.ObjectKey{Namespace: "kapro-system", Name: "kapro-bootstrap-kubeconfig-de-prod-01"}, secret)
+	if err == nil {
+		t.Fatal("Vault bootstrap path created a Kubernetes Secret fallback")
+	}
+}
+
 // TestReconcile_CrashRecovery_ApprovesPendingCSR verifies the END-TO-END
 // crash-recovery path through the public Reconcile entry point: when the
 // controller previously marked status.bootstrap.Used=true with

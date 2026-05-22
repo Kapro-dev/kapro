@@ -9,6 +9,7 @@ import (
 	"net"
 	"strings"
 
+	"kapro.io/kapro/pkg/plugincompat"
 	kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
 
 	"google.golang.org/grpc"
@@ -22,8 +23,7 @@ import (
 )
 
 const (
-	contractVersion = "v1alpha1"
-	pluginVersion   = "0.1.0"
+	pluginVersion = "0.2.4"
 
 	defaultListenAddr = ":9090"
 	defaultNamespace  = "argocd"
@@ -44,7 +44,7 @@ type argoActuatorServer struct {
 
 func (s *argoActuatorServer) GetCapabilities(context.Context, *kaiv1alpha1.GetCapabilitiesRequest) (*kaiv1alpha1.GetCapabilitiesResponse, error) {
 	return &kaiv1alpha1.GetCapabilitiesResponse{
-		ContractVersion: contractVersion,
+		ContractVersion: plugincompat.VersionV1Alpha1,
 		PluginVersion:   pluginVersion,
 		Capabilities: []string{
 			"argocd.application.targetRevision.apply",

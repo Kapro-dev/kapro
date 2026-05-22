@@ -75,6 +75,11 @@ type DeliverySpec struct {
 	// BackendRef is the Backend name. Built-in profiles commonly use
 	// "flux" or "argo"; external profiles may use any platform-defined name.
 	BackendRef string `json:"backendRef"`
+	// Staging declares optional pre-commit safety semantics for backends that
+	// support staging. When omitted, existing backend defaults are preserved.
+	// The built-in OCI pull backend already uses TwoPhase/Abort behavior.
+	// +optional
+	Staging *DeliveryStagingSpec `json:"staging,omitempty"`
 	// Parameters are opaque backend-specific settings, following the
 	// StorageClass.parameters pattern. Fleet core does not interpret them.
 	// +optional

@@ -63,6 +63,39 @@ Flags worth knowing:
 | `--spoke-namespace` | `kapro-system` | Namespace the rendered Secret will target on the spoke. |
 | `--wait-timeout` | `30s` | How long to wait for the hub to populate `status.bootstrap.issuedBootstrapKubeconfig`. |
 
+### Bootstrap material source
+
+By default the hub publishes bootstrap material as a Kubernetes Secret:
+
+```yaml
+spec:
+  bootstrap:
+    ttl: 1h
+    materialSource:
+      type: KubernetesSecret
+```
+
+`spec.bootstrap.materialSource.type: Vault` is a v0.2.3 preview API contract
+for platforms that want the short-lived bootstrap kubeconfig published through
+Vault instead of a Kubernetes Secret. The built-in hub controller does **not**
+write to Vault in this release. When a Cluster selects Vault and no external
+platform automation handles it, the controller fails closed with
+`Stalled=True, reason=BootstrapVaultDisabled` and does not mint a fallback
+Kubernetes Secret.
+
+```yaml
+spec:
+  bootstrap:
+    ttl: 1h
+    materialSource:
+      type: Vault
+      vault:
+        address: https://vault.example.com
+        mount: secret
+        path: kapro/bootstrap/de-prod-01
+        kubeconfigField: kubeconfig
+```
+
 ## Step 2 — Switch kubectl context to the spoke
 
 ```bash
@@ -168,6 +201,12 @@ kubectl -n kapro-system logs deployment/kapro-kapro-operator | grep -i bootstrap
 
 The CLI surfaces this as: `status.bootstrap.issuedBootstrapKubeconfig not
 populated within 30s` (or whatever `--wait-timeout` was set to).
+
+If the Cluster sets `spec.bootstrap.materialSource.type: Vault`, this status
+field is intentionally empty unless external Vault automation writes back a
+compatible status. Check for `Stalled=True` with reason
+`BootstrapVaultDisabled`; remove `materialSource` or use
+`type: KubernetesSecret` to use the built-in controller path.
 
 ### Spoke pod CrashLoopBackOff with `KAPRO_CLUSTER_NAME is required`
 

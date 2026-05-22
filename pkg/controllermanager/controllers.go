@@ -258,8 +258,9 @@ func startBackendProfileController(_ context.Context, cc ControllerContext) (boo
 
 func startAdapterPolicyController(_ context.Context, cc ControllerContext) (bool, error) {
 	if err := (&controller.AdapterPolicyReconciler{
-		Client:   cc.Manager.GetClient(),
-		Recorder: cc.Recorder,
+		Client:          cc.Manager.GetClient(),
+		Recorder:        cc.Recorder,
+		AdapterRegistry: cc.AdapterRegistry,
 	}).SetupWithManager(cc.Manager); err != nil {
 		return false, err
 	}

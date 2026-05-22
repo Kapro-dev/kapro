@@ -82,3 +82,26 @@ go test ./examples/plugins/argocd-actuator
 
 The test suite runs the shared KAI conformance harness and backend-specific
 tests against a fake Kubernetes API.
+
+You can also run the external conformance binary against a live plugin server:
+
+```bash
+go run ./cmd/kapro-conformance actuator \
+  --endpoint localhost:9090 \
+  --param argocdNamespace=argocd \
+  --param application=checkout
+```
+
+The conformance run applies the default test version and then rolls the
+Application back to the default previous version, so point it at an isolated
+test Application.
+
+## Public Surfaces
+
+The plugin imports only public Kapro packages:
+
+- `kapro.io/kapro/spec/kai/v1alpha1` for the KAI gRPC contract.
+- `kapro.io/kapro/pkg/plugincompat` for the supported contract version.
+- `kapro.io/kapro/conformance/actuator` from tests.
+
+It does not import Kapro controller internals.

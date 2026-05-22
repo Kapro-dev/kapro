@@ -21,7 +21,7 @@ This document defines the target architecture for those contracts.
 
 | Surface | Contract | Responsibility | Status |
 |---|---|---|---|
-| Actuator | `pkg/actuator` | Apply one version to one target and report convergence. | In-process registry |
+| Actuator/substrate | `pkg/kapro/actuator` | Apply one version to one target and report convergence. | Public in-process registry; KAI plugin axis |
 | Gate | `pkg/gate` | Decide whether one target may advance. | In-process registry |
 | Template gate | CEL, Job, Webhook gate templates | Configure custom gate behavior through CRDs. | Implemented |
 | PromotionRun planner | `pkg/planner` and KPI proto | Filter, score, reserve, and permit rollout targets before binding. | In-process framework; KPI API preview |
@@ -70,6 +70,37 @@ Target actuator examples:
 | Argo CD | Application or ApplicationSet revision | Synced and Healthy status |
 | Kubernetes | Workload image reference | Workload Available condition |
 | KServe | Model storage URI | InferenceService Ready condition |
+
+## Actuator Plugin Axis
+
+The stable Go SDK import path for in-process delivery substrates is
+`kapro.io/kapro/pkg/kapro/actuator`. The older
+`kapro.io/kapro/pkg/actuator` package remains as a v0.2.x compatibility bridge,
+but new external authors should use the `pkg/kapro/actuator` path.
+
+An actuator registration has two pieces:
+
+- the runtime registry key Kapro resolves from `DeliverySpec.RegistryKey()`,
+  for example `push/flux`, `pull/oci`, or `push/argo`;
+- capability metadata that maps the implementation to `Backend.spec.driver`,
+  optional `Backend.spec.adapter`, `Backend.spec.runtime`, and supported
+  delivery modes.
+
+Built-in registrations are composed through `pkg/kapro/server` registrar
+functions:
+
+| Registrar | Runtime keys |
+|---|---|
+| `server.RegisterFlux()` | `push/flux`, `pull/flux` |
+| `server.RegisterOCI()` | `pull/oci` |
+| `server.RegisterArgoCD()` | `push/argo`, `pull/argo` |
+| `server.RegisterActuator(...)` | Custom in-process substrate registration |
+
+`server.New` uses `server.DefaultActuatorRegistrars()` when
+`Options.ActuatorRegistrars` is nil. A custom binary can replace that slice or
+append to it before constructing the server. Out-of-process KAI plugins still
+load through `Plugin` when `KAPRO_ENABLE_PLUGIN_GATEWAY=true`; those adapters
+are inserted into the same actuator registry path as in-process substrates.
 
 ## Gate Contract
 
@@ -166,6 +197,7 @@ API pieces:
 | KPI proto | Language-neutral planner contract for filtering and ordering targets. |
 | Plugin CRD | Declarative endpoint for external plugins. |
 | Conformance harnesses | Base checks external plugin authors can run. |
+| `kapro-conformance` | CLI wrapper around the base KAI/KGI/KPI checks for live plugin endpoints. |
 | PluginGateway | Runtime boundary for enabled contracts, timeout handling, retries, and error normalization. |
 
 The gateway must preserve the same state ownership rule: plugins do backend
@@ -174,6 +206,9 @@ work, Kapro owns PromotionRun state.
 API maturity, deprecation rules, upgrade policy, and the future non-binding
 certified plugin path are defined in `docs/api-stability.md`. KAI, KGI, and KPI
 conformance instructions are defined in `docs/plugin-authoring.md`.
+The first external proof points are `examples/plugins/argocd-actuator`, a KAI
+server for Argo CD Applications, and `examples/sdk-go/argocd-substrate`, a
+public-SDK-only adapter registry example for Argo CD discovery modeling.
 
 Creating or updating a `Plugin` is a platform-admin action. External plugins are
 inside the delivery integration boundary, not inside Kapro's control-plane trust boundary.

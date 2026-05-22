@@ -207,6 +207,14 @@ func (r *ClusterBootstrapReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return r.handleRegistered(ctx, fc)
 	}
 
+	// Phase 4.5 — Vault-published bootstrap material is a preview contract in
+	// v0.2.3. Existing pending CSRs are still processed above, but new bootstrap
+	// material must fail closed instead of silently falling back to a Kubernetes
+	// Secret and surprising operators who selected Vault.
+	if usesVaultBootstrapMaterial(fc) {
+		return r.markVaultBootstrapDisabled(ctx, fc)
+	}
+
 	// Phase 5 — not registered yet: provision the bootstrap SA + kubeconfig
 	// Secret so the spoke has something to authenticate with. Idempotent;
 	// also re-issues when the issued SA token is approaching expiry.
@@ -361,6 +369,26 @@ func (r *ClusterBootstrapReconciler) markAwaitingCSR(ctx context.Context, fc *ka
 	apimeta.RemoveStatusCondition(&fc.Status.Conditions, kaprov1alpha2.ConditionTypeStalled)
 	if err := r.Status().Patch(ctx, fc, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch awaiting CSR condition: %w", err)
+	}
+	return ctrl.Result{}, nil
+}
+
+// markVaultBootstrapDisabled records that the Cluster selected Vault material
+// publication, which the built-in bootstrap reconciler does not implement in
+// v0.2.3. This is fail-closed by design: no Kubernetes Secret is minted as a
+// fallback because that would violate the operator's selected trust boundary.
+func (r *ClusterBootstrapReconciler) markVaultBootstrapDisabled(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
+	patch := client.MergeFrom(fc.DeepCopy())
+	fc.Status.ObservedGeneration = fc.Generation
+	now := time.Now()
+	setCondition(&fc.Status.Conditions, kaprov1alpha2.ConditionTypeStalled, metav1.ConditionTrue, "BootstrapVaultDisabled", "spec.bootstrap.materialSource.type=Vault is a preview contract; built-in Vault publication is disabled in this release", fc.Generation, now)
+	setCondition(&fc.Status.Conditions, kaprov1alpha2.ConditionTypeReconciling, metav1.ConditionFalse, "BootstrapVaultDisabled", "stalled: Vault bootstrap material publication is disabled", fc.Generation, now)
+	setCondition(&fc.Status.Conditions, kaprov1alpha2.ConditionTypeRegistered, metav1.ConditionFalse, "BootstrapVaultDisabled", "no CSR has been approved because bootstrap material was not published", fc.Generation, now)
+	if err := r.Status().Patch(ctx, fc, patch); err != nil {
+		return ctrl.Result{}, fmt.Errorf("patch vault bootstrap disabled condition: %w", err)
+	}
+	if r.Recorder != nil {
+		r.Recorder.Eventf(fc, corev1.EventTypeWarning, "BootstrapVaultDisabled", "Vault bootstrap material publication is disabled in this release")
 	}
 	return ctrl.Result{}, nil
 }

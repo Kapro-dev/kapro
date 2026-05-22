@@ -32,9 +32,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
-	argoactuator "kapro.io/kapro/internal/actuator/argo"
-	fluxopactuator "kapro.io/kapro/internal/actuator/fluxoperator"
-	pullactuator "kapro.io/kapro/internal/actuator/pull"
 	"kapro.io/kapro/internal/hubgateway"
 	_ "kapro.io/kapro/internal/metrics" // register custom Prometheus metrics at init
 	enginenotifier "kapro.io/kapro/internal/notification/engine"
@@ -44,9 +41,13 @@ import (
 	"kapro.io/kapro/internal/webhook"
 	kaploadmission "kapro.io/kapro/internal/webhook/admission"
 	kaplconversion "kapro.io/kapro/internal/webhook/conversion"
-	"kapro.io/kapro/pkg/actuator"
 	cm "kapro.io/kapro/pkg/controllermanager"
 	"kapro.io/kapro/pkg/gate"
+	"kapro.io/kapro/pkg/kapro/actuator"
+	kaproadapter "kapro.io/kapro/pkg/kapro/adapter"
+	adapterargocd "kapro.io/kapro/pkg/kapro/adapter/argocd"
+	adapterflux "kapro.io/kapro/pkg/kapro/adapter/flux"
+	adapteroci "kapro.io/kapro/pkg/kapro/adapter/oci"
 	"kapro.io/kapro/pkg/planner"
 )
 
@@ -75,6 +76,9 @@ type Options struct {
 	WebhookPort            int
 	DevMode                bool
 	ZapOptions             zap.Options
+	// ActuatorRegistrars overrides the built-in actuator registrar list when
+	// non-nil. Leave nil to use DefaultActuatorRegistrars().
+	ActuatorRegistrars []ActuatorRegistrar
 }
 
 // OptionsFromEnv returns the same defaults used by the reference binary,
@@ -113,6 +117,7 @@ type Server struct {
 	Manager   ctrl.Manager
 	Gates     *gate.Registry
 	Actuators *actuator.Registry
+	Adapters  *kaproadapter.Registry
 	Planner   *planner.Framework
 }
 
@@ -242,31 +247,32 @@ func New(opts Options) (*Server, error) {
 
 	recorder := mgr.GetEventRecorderFor("kapro-operator") //nolint:staticcheck // migrate to GetEventRecorder when controller-runtime drops this
 
-	// Build actuator registry — resolves per-target actuator at apply time.
-	actuatorReg := actuator.NewRegistry()
-	foAct := &fluxopactuator.FluxOperatorActuator{Client: mgr.GetClient()}
-	if err := actuatorReg.Register("push/flux", foAct); err != nil {
-		log.Error(err, "failed to register push/flux actuator")
-		return nil, fmt.Errorf("register push/flux actuator: %w", err)
+	ctx := context.Background()
+	actuatorRegistrars := opts.ActuatorRegistrars
+	if actuatorRegistrars == nil {
+		actuatorRegistrars = DefaultActuatorRegistrars()
 	}
-	// Pull-mode delivery records desired versions on Cluster; spoke-side
-	// agents own applying those versions to their local backend.
-	pullAct := &pullactuator.PullActuator{HubClient: mgr.GetClient()}
-	if err := actuatorReg.Register("pull/flux", pullAct); err != nil {
-		log.Error(err, "failed to register pull/flux actuator")
-		return nil, fmt.Errorf("register pull/flux actuator: %w", err)
+	actuatorReg, err := registerActuators(ctx, actuatorRegistrars, ActuatorRegistrationContext{
+		Manager:   mgr,
+		Log:       log.WithName("actuators"),
+		DevMode:   opts.DevMode,
+		ShardName: shardName,
+	})
+	if err != nil {
+		log.Error(err, "failed to register actuators")
+		return nil, fmt.Errorf("register actuators: %w", err)
 	}
-	if err := actuatorReg.Register("pull/oci", pullAct); err != nil {
-		log.Error(err, "failed to register pull/oci actuator")
-		return nil, fmt.Errorf("register pull/oci actuator: %w", err)
-	}
-	if err := actuatorReg.Register("push/argo", &argoactuator.Actuator{Client: mgr.GetClient()}); err != nil {
-		log.Error(err, "failed to register push/argo actuator")
-		return nil, fmt.Errorf("register push/argo actuator: %w", err)
-	}
-	if err := actuatorReg.Register("pull/argo", pullAct); err != nil {
-		log.Error(err, "failed to register pull/argo actuator")
-		return nil, fmt.Errorf("register pull/argo actuator: %w", err)
+
+	adapterReg := kaproadapter.NewRegistry()
+	for _, adapter := range []kaproadapter.Adapter{
+		adapterargocd.New(),
+		adapterflux.New(),
+		adapteroci.New(),
+	} {
+		if err := adapterReg.Register(adapter); err != nil {
+			log.Error(err, "failed to register built-in adapter", "driver", adapter.Driver())
+			return nil, fmt.Errorf("register built-in adapter %q: %w", adapter.Driver(), err)
+		}
 	}
 
 	gateRegistry, err := cm.BuildGateRegistry(mgr.GetClient())
@@ -276,7 +282,6 @@ func New(opts Options) (*Server, error) {
 	}
 	plannerFramework := planner.NewDefaultFramework()
 
-	ctx := context.Background()
 	if pluginadapter.EnabledFromEnv() {
 		registered, err := pluginadapter.Registrar{}.RegisterReady(ctx, mgr.GetAPIReader(), actuatorReg, gateRegistry, plannerFramework)
 		if err != nil {
@@ -301,6 +306,7 @@ func New(opts Options) (*Server, error) {
 		Recorder:         recorder,
 		ActuatorRegistry: actuatorReg,
 		GateRegistry:     gateRegistry,
+		AdapterRegistry:  adapterReg,
 		Notifier: &enginenotifier.Notifier{
 			SecretName: "kapro-notifications-secret",
 			Namespace:  podNS,
@@ -454,6 +460,7 @@ func New(opts Options) (*Server, error) {
 		Manager:   mgr,
 		Gates:     gateRegistry,
 		Actuators: actuatorReg,
+		Adapters:  adapterReg,
 		Planner:   plannerFramework,
 	}, nil
 }

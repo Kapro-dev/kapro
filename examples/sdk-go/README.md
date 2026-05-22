@@ -20,3 +20,13 @@ registers a handler for successful promotions.
 ```bash
 go run ./examples/sdk-go/cloudevents-subscriber
 ```
+
+## Argo CD substrate
+
+`argocd-substrate` registers and resolves the public Argo CD adapter through
+the public SDK registry. It is a no-cluster proof that an external integration
+can model Argo CD discovery without importing Kapro internals.
+
+```bash
+go run ./examples/sdk-go/argocd-substrate
+```

@@ -142,6 +142,29 @@ spec:
                       Parameters are opaque backend-specific settings, following the
                       StorageClass.parameters pattern. Fleet core does not interpret them.
                     type: object
+                  staging:
+                    description: |-
+                      Staging declares optional pre-commit safety semantics for backends that
+                      support staging. When omitted, existing backend defaults are preserved.
+                      The built-in OCI pull backend already uses TwoPhase/Abort behavior.
+                    properties:
+                      failurePolicy:
+                        default: Abort
+                        description: |-
+                          FailurePolicy selects how dry-run failures affect commit. Abort is the
+                          only supported policy and means no object is committed when any staged
+                          object fails validation.
+                        enum:
+                        - Abort
+                        type: string
+                      type:
+                        default: TwoPhase
+                        description: Type selects the staging strategy. TwoPhase is
+                          the only supported value.
+                        enum:
+                        - TwoPhase
+                        type: string
+                    type: object
                 required:
                 - backendRef
                 - mode

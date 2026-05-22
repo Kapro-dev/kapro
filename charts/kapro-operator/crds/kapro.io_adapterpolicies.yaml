@@ -57,8 +57,11 @@ spec:
               discovery.
             properties:
               adapter:
-                description: Adapter names the registered adapter to run, for example
-                  argo-cd or flux.
+                description: |-
+                  Adapter names the adapter expected for BackendRef, for example argo-cd
+                  or flux. The controller resolves the backend driver through the public
+                  adapter registry and fails closed when this value does not match the
+                  referenced Backend's adapter.
                 minLength: 1
                 type: string
               backendRef:
@@ -76,8 +79,8 @@ spec:
             - backendRef
             type: object
           status:
-            description: AdapterPolicyStatus records the latest continuous discovery
-              observation.
+            description: AdapterPolicyStatus records the latest continuous adapter
+              discovery attempt.
             properties:
               conditions:
                 items:

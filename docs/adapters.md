@@ -3,10 +3,10 @@
 Kapro exposes a public Go adapter package at
 `kapro.io/kapro/pkg/kapro/adapter`.
 
-The package is an SDK boundary for delivery backends. It does not change the
-current CRDs or controller wiring. Controllers still use the existing actuator,
-spoke-provider, and Backend discovery paths until the rest of issue #144 wires
-the public contract into runtime selection.
+The package is an SDK boundary for delivery backends. AdapterPolicy discovery
+uses this public registry to resolve `Backend.spec.driver` and call
+`Adapter.Discover`. Delivery side effects still use the existing actuator and
+spoke-provider paths until runtime selection moves to the public contract.
 
 ## Public Contract
 
@@ -75,9 +75,21 @@ Apply, observe, and rollback on these reference adapters return a failed
 runtime actuators for side effects until public adapter runtime selection is
 wired in a later increment.
 
-## Wiring Status
+## AdapterPolicy Discovery
 
-This package is intentionally additive. Full #144 wiring still needs controller
-runtime registration to resolve `Backend.spec.driver` through
-`adapter.Registry`, migration from direct actuator/spoke-provider registries
-where appropriate, and conformance coverage for out-of-tree adapter authors.
+`AdapterPolicy` runs a continuous discovery/status loop for a referenced
+`Backend`:
+
+- the Backend must exist and have `spec.discovery.enabled=true`;
+- `AdapterPolicy.spec.adapter` must match `Backend.spec.adapter`, or the
+  built-in adapter name derived from `Backend.spec.driver`;
+- the controller resolves the backend driver through `adapter.Registry`;
+- `Adapter.Discover` receives the Backend, driver, runtime, namespace
+  parameter, selector, max object limit, and backend parameters;
+- `AdapterPolicy.status.ready`, `reason`, `message`, `lastSyncTime`, and the
+  Ready condition report the actual discovery outcome.
+
+Discovery inventory from the adapter is mirrored onto `Backend.status` using
+the existing bounded discovery fields. Full public-adapter delivery wiring
+still needs migration from direct actuator/spoke-provider registries where
+appropriate and conformance coverage for out-of-tree adapter authors.
