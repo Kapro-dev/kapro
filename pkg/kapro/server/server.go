@@ -77,6 +77,7 @@ type Options struct {
 	ZapOptions             zap.Options
 }
 
+<<<<<<< HEAD
 // OptionsFromEnv returns the same defaults used by the reference binary,
 // derived from environment variables only. It does NOT touch the flag
 // system or call flag.Parse, so this package can be safely embedded in
@@ -86,6 +87,12 @@ type Options struct {
 func OptionsFromEnv() Options {
 	devMode := os.Getenv("KAPRO_DEV_MODE") == "1"
 	return Options{
+=======
+// OptionsFromEnv returns the same defaults used by the reference binary.
+func OptionsFromEnv() Options {
+	devMode := os.Getenv("KAPRO_DEV_MODE") == "1"
+	opts := Options{
+>>>>>>> 2cc15bb (feat(server): expose kapro operator library mode)
 		LeaderElect:            !devMode,
 		MetricsBindAddress:     ":8080",
 		HealthProbeBindAddress: ":8081",
@@ -93,6 +100,7 @@ func OptionsFromEnv() Options {
 		DevMode:                devMode,
 		ZapOptions:             zap.Options{Development: true},
 	}
+<<<<<<< HEAD
 }
 
 // BindFlags registers Kapro server flags on the given FlagSet. It is
@@ -105,6 +113,18 @@ func (o *Options) BindFlags(fs *flag.FlagSet) {
 	fs.StringVar(&o.MetricsBindAddress, "metrics-bind-address", o.MetricsBindAddress, "The address the metric endpoint binds to.")
 	fs.StringVar(&o.HealthProbeBindAddress, "health-probe-bind-address", o.HealthProbeBindAddress, "The address the health probe endpoint binds to.")
 	fs.IntVar(&o.WebhookPort, "webhook-port", o.WebhookPort, "The port the admission webhook server binds to.")
+=======
+	opts.ZapOptions.BindFlags(flag.CommandLine)
+	flag.BoolVar(&opts.LeaderElect, "leader-elect", opts.LeaderElect, "Enable leader election for controller manager.")
+	flag.StringVar(&opts.MetricsBindAddress, "metrics-bind-address", opts.MetricsBindAddress, "The address the metric endpoint binds to.")
+	flag.StringVar(&opts.HealthProbeBindAddress, "health-probe-bind-address", opts.HealthProbeBindAddress, "The address the health probe endpoint binds to.")
+	flag.IntVar(&opts.WebhookPort, "webhook-port", opts.WebhookPort, "The port the admission webhook server binds to.")
+	flag.Parse()
+	if devMode {
+		opts.LeaderElect = false
+	}
+	return opts
+>>>>>>> 2cc15bb (feat(server): expose kapro operator library mode)
 }
 
 // Server is the composable promotion engine. Adopters construct one in their
@@ -127,11 +147,22 @@ func (s *Server) Run(ctx context.Context) error {
 	return s.Manager.Start(ctx)
 }
 
+<<<<<<< HEAD
 // Manager-level RBAC requirements (leases, events, secrets, subject-access
 // reviews, kapro.io/policies) live as +kubebuilder:rbac markers in
 // cmd/operator/main.go so controller-gen picks them up via its standard
 // ./cmd/... path. Duplicating them here would be ignored by the
 // generator and would drift over time.
+=======
+// Manager-level RBAC requirements not tied to a specific controller.
+// +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create
+// +kubebuilder:rbac:groups=authentication.k8s.io,resources=tokenreviews,verbs=create
+// +kubebuilder:rbac:groups=authorization.k8s.io,resources=subjectaccessreviews,verbs=create
+// +kubebuilder:rbac:groups=kapro.io,resources=policies,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=policies/status,verbs=get;update;patch
+>>>>>>> 2cc15bb (feat(server): expose kapro operator library mode)
 
 func New(opts Options) (*Server, error) {
 	if opts.MetricsBindAddress == "" {
@@ -196,11 +227,15 @@ func New(opts Options) (*Server, error) {
 
 	webhookCertDir := os.Getenv("KAPRO_WEBHOOK_CERT_DIR")
 	if opts.DevMode && webhookCertDir == "" {
+<<<<<<< HEAD
 		dir, err := ensureDevWebhookCerts()
 		if err != nil {
 			return nil, fmt.Errorf("ensure dev webhook certs: %w", err)
 		}
 		webhookCertDir = dir
+=======
+		webhookCertDir = ensureDevWebhookCerts()
+>>>>>>> 2cc15bb (feat(server): expose kapro operator library mode)
 		log.Info("dev mode: auto-generated webhook TLS certs", "dir", webhookCertDir)
 	}
 	if opts.DevMode {
@@ -547,14 +582,20 @@ func (h *httpRunnable) Start(ctx context.Context) error {
 // mcpRunnable and its methods have been removed — MCP server is not part of MVP.
 
 // ensureDevWebhookCerts generates self-signed TLS certs for local dev mode.
+<<<<<<< HEAD
 // Returns the directory containing tls.crt and tls.key, or an error that
 // the caller must propagate so dev-mode startup fails fast on bad TLS
 // material instead of producing an unreachable webhook.
 func ensureDevWebhookCerts() (string, error) {
+=======
+// Returns the directory containing tls.crt and tls.key.
+func ensureDevWebhookCerts() string {
+>>>>>>> 2cc15bb (feat(server): expose kapro operator library mode)
 	dir := os.TempDir() + "/kapro-dev-webhook-certs"
 	certPath := dir + "/tls.crt"
 	keyPath := dir + "/tls.key"
 
+<<<<<<< HEAD
 	// Reuse only when BOTH files exist; otherwise regenerate so a partial
 	// previous attempt can't poison subsequent runs.
 	_, certErr := os.Stat(certPath)
@@ -571,6 +612,17 @@ func ensureDevWebhookCerts() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("generate dev webhook key: %w", err)
 	}
+=======
+	// Reuse if already exists.
+	if _, err := os.Stat(certPath); err == nil {
+		return dir
+	}
+
+	_ = os.MkdirAll(dir, 0700)
+
+	// Generate self-signed cert using crypto/x509.
+	import_key, _ := ecdsa.GenerateKey(elliptic.P256(), crypto_rand.Reader)
+>>>>>>> 2cc15bb (feat(server): expose kapro operator library mode)
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
 		Subject:      pkix.Name{CommonName: "kapro-dev-webhook"},
@@ -580,6 +632,7 @@ func ensureDevWebhookCerts() (string, error) {
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		DNSNames:     []string{"localhost"},
 	}
+<<<<<<< HEAD
 	certDER, err := x509.CreateCertificate(crypto_rand.Reader, template, template, &key.PublicKey, key)
 	if err != nil {
 		return "", fmt.Errorf("create dev webhook certificate: %w", err)
@@ -598,4 +651,14 @@ func ensureDevWebhookCerts() (string, error) {
 		return "", fmt.Errorf("write dev webhook key: %w", err)
 	}
 	return dir, nil
+=======
+	certDER, _ := x509.CreateCertificate(crypto_rand.Reader, template, template, &import_key.PublicKey, import_key)
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyDER, _ := x509.MarshalECPrivateKey(import_key)
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+
+	_ = os.WriteFile(certPath, certPEM, 0600)
+	_ = os.WriteFile(keyPath, keyPEM, 0600)
+	return dir
+>>>>>>> 2cc15bb (feat(server): expose kapro operator library mode)
 }
