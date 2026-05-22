@@ -39,6 +39,10 @@ Each prune emits a `Normal` event `AttemptPruned` on the parent Promotion
 recording the pruned run name, terminal phase, and age — moves the audit
 signal from etcd to the event stream.
 
+Added Prometheus counters `kapro_promotionrun_pruned_total{outcome}` and
+`kapro_promotionrun_retained_total` so adopters can alert on retention impact
+before and after opting in to the controller.
+
 ### Added — guided adoption bootstrap
 
 Added `kapro bootstrap` as the guided CLI entrypoint for first-time adoption:

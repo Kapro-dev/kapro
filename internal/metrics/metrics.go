@@ -118,6 +118,29 @@ var (
 		},
 	)
 
+	// PromotionRunPruned counts PromotionRun retention delete outcomes.
+	// Labels:
+	//   outcome - deleted | not_found | forbidden | error
+	PromotionRunPruned = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "kapro",
+			Subsystem: "promotionrun",
+			Name:      "pruned_total",
+			Help:      "Total PromotionRun retention prune attempts by outcome.",
+		},
+		[]string{"outcome"},
+	)
+
+	// PromotionRunRetained counts PromotionRuns retained by retention passes.
+	PromotionRunRetained = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: "kapro",
+			Subsystem: "promotionrun",
+			Name:      "retained_total",
+			Help:      "Total PromotionRuns retained by retention controller passes.",
+		},
+	)
+
 	// WaveProgress tracks how many Targets have been successfully
 	// promoted per promotionrun stage.
 	WaveProgress = prometheus.NewGaugeVec(
@@ -305,6 +328,8 @@ func init() {
 		GateEvaluations,
 		StageDuration,
 		ActivePromotionRuns,
+		PromotionRunPruned,
+		PromotionRunRetained,
 		WaveProgress,
 		SpokeReconciles,
 		SpokeReconcilesSkipped,
