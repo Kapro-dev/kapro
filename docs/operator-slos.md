@@ -34,6 +34,11 @@ Rules that inspect PromotionRun, Trigger, or Plugin object state require the
 kube-state-metrics custom-resource configuration in
 `examples/monitoring/kube-state-metrics-crd-config.yaml`.
 
+Validate monitoring examples with `make validate-yaml-json`. The check extracts
+`spec.groups` from Prometheus Operator `PrometheusRule` manifests before running
+`promtool check rules`, because `promtool` expects raw Prometheus rule groups
+rather than Kubernetes CRD YAML.
+
 ## Triage Flow
 
 1. Start with the alert annotation and the linked runbook in
