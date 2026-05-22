@@ -1,0 +1,29 @@
+apiVersion: kapro.io/v1alpha2
+kind: GateExpression
+metadata:
+  name: checkout-weighted-canary
+  labels:
+    kapro.io/team: platform
+spec:
+  operator: WEIGHTED_SUM
+  threshold: 70
+  weights: [50, 30, 25]
+  operands:
+    - inlineGate:
+        mode: auto
+        gate:
+          templates:
+            - name: error-rate
+              type: canary-error-rate
+    - inlineGate:
+        mode: auto
+        gate:
+          templates:
+            - name: latency
+              type: cel
+              cel:
+                expression: "target.p99 < 500"
+    - inlineGate:
+        mode: auto
+        gate:
+          healthCheck: true

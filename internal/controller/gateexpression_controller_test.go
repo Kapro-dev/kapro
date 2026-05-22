@@ -171,15 +171,18 @@ func TestGateExpressionReconcilerDetectsCycleWithChildStatus(t *testing.T) {
 	}
 }
 
-func TestGateExpressionReconcilerUnsupportedOperator(t *testing.T) {
+func TestGateExpressionReconcilerAnyPassed(t *testing.T) {
 	ctx := context.Background()
-	c := gateExpressionClient(t, &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "any", Generation: 1},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator: "ANY",
-			Operands: []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "child"}},
-		},
-	})
+	c := gateExpressionClient(t,
+		gateExpressionWithStatus("a", gateExpressionPhasePending),
+		gateExpressionWithStatus("b", gateExpressionPhasePassed),
+		&kaprov1alpha2.GateExpression{
+			ObjectMeta: metav1.ObjectMeta{Name: "any", Generation: 1},
+			Spec: kaprov1alpha2.GateExpressionSpec{
+				Operator: "ANY",
+				Operands: []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "a"}, {ExpressionRef: "b"}},
+			},
+		})
 	r := &GateExpressionReconciler{Client: c}
 
 	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: "any"}}); err != nil {
@@ -187,8 +190,152 @@ func TestGateExpressionReconcilerUnsupportedOperator(t *testing.T) {
 	}
 
 	got := getGateExpression(t, c, "any")
-	if got.Status.Phase != gateExpressionPhaseFailed || got.Status.Reason != "UnsupportedOperator" {
-		t.Fatalf("status = %s/%s, want Failed/UnsupportedOperator", got.Status.Phase, got.Status.Reason)
+	if got.Status.Phase != gateExpressionPhasePassed {
+		t.Fatalf("phase = %q, want Passed", got.Status.Phase)
+	}
+}
+
+func TestGateExpressionReconcilerNotInvertsFailed(t *testing.T) {
+	ctx := context.Background()
+	c := gateExpressionClient(t,
+		gateExpressionWithStatus("child", gateExpressionPhaseFailed),
+		&kaprov1alpha2.GateExpression{
+			ObjectMeta: metav1.ObjectMeta{Name: "not", Generation: 1},
+			Spec: kaprov1alpha2.GateExpressionSpec{
+				Operator: "NOT",
+				Operands: []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "child"}},
+			},
+		},
+	)
+	r := &GateExpressionReconciler{Client: c}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: "not"}}); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+
+	got := getGateExpression(t, c, "not")
+	if got.Status.Phase != gateExpressionPhasePassed || got.Status.Reason != "NotOperandFailed" {
+		t.Fatalf("status = %s/%s, want Passed/NotOperandFailed", got.Status.Phase, got.Status.Reason)
+	}
+}
+
+func TestGateExpressionReconcilerThresholdEarlyFailed(t *testing.T) {
+	threshold := int32(2)
+	ctx := context.Background()
+	c := gateExpressionClient(t,
+		gateExpressionWithStatus("a", gateExpressionPhaseFailed),
+		gateExpressionWithStatus("b", gateExpressionPhaseFailed),
+		gateExpressionWithStatus("c", gateExpressionPhasePending),
+		&kaprov1alpha2.GateExpression{
+			ObjectMeta: metav1.ObjectMeta{Name: "threshold", Generation: 1},
+			Spec: kaprov1alpha2.GateExpressionSpec{
+				Operator:  "THRESHOLD",
+				Threshold: &threshold,
+				Operands:  []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "a"}, {ExpressionRef: "b"}, {ExpressionRef: "c"}},
+			},
+		},
+	)
+	r := &GateExpressionReconciler{Client: c}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: "threshold"}}); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+
+	got := getGateExpression(t, c, "threshold")
+	if got.Status.Phase != gateExpressionPhaseFailed || got.Status.Reason != "ThresholdUnreachable" {
+		t.Fatalf("status = %s/%s, want Failed/ThresholdUnreachable", got.Status.Phase, got.Status.Reason)
+	}
+}
+
+func TestGateExpressionReconcilerWeightedSumEarlyFailed(t *testing.T) {
+	threshold := int32(5)
+	ctx := context.Background()
+	c := gateExpressionClient(t,
+		gateExpressionWithStatus("a", gateExpressionPhaseFailed),
+		gateExpressionWithStatus("b", gateExpressionPhasePending),
+		&kaprov1alpha2.GateExpression{
+			ObjectMeta: metav1.ObjectMeta{Name: "weighted", Generation: 1},
+			Spec: kaprov1alpha2.GateExpressionSpec{
+				Operator:  "WEIGHTED_SUM",
+				Weights:   []int32{10, 5},
+				Threshold: &threshold,
+				Operands:  []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "a"}, {ExpressionRef: "b"}},
+			},
+		},
+	)
+	r := &GateExpressionReconciler{Client: c}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: "weighted"}}); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+
+	got := getGateExpression(t, c, "weighted")
+	if got.Status.Phase != gateExpressionPhaseFailed || got.Status.Reason != "WeightedSumUnreachable" {
+		t.Fatalf("status = %s/%s, want Failed/WeightedSumUnreachable", got.Status.Phase, got.Status.Reason)
+	}
+}
+
+func TestGateExpressionReconcilerDelayPersistsFirstObservation(t *testing.T) {
+	ctx := context.Background()
+	c := gateExpressionClient(t,
+		gateExpressionWithStatus("child", gateExpressionPhasePassed),
+		&kaprov1alpha2.GateExpression{
+			ObjectMeta: metav1.ObjectMeta{Name: "delay", Generation: 1},
+			Spec: kaprov1alpha2.GateExpressionSpec{
+				Operator:   "DELAY",
+				Parameters: map[string]string{"duration": "1h"},
+				Operands:   []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "child"}},
+			},
+		},
+	)
+	r := &GateExpressionReconciler{Client: c}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: "delay"}}); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+
+	got := getGateExpression(t, c, "delay")
+	if got.Status.Phase != gateExpressionPhasePending || got.Status.FirstObservedAt == nil {
+		t.Fatalf("status = %s firstObservedAt=%v, want Pending with firstObservedAt", got.Status.Phase, got.Status.FirstObservedAt)
+	}
+}
+
+func TestGateExpressionReconcilerReferencedDelayUsesPersistedChildStatus(t *testing.T) {
+	ctx := context.Background()
+	child := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "delay-child", Generation: 1},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator:   "DELAY",
+			Parameters: map[string]string{"duration": "1h"},
+			Operands: []kaprov1alpha2.GateExpressionOperand{
+				{ExpressionRef: "passed"},
+			},
+		},
+	}
+	c := gateExpressionClient(t,
+		gateExpressionWithStatus("passed", gateExpressionPhasePassed),
+		child,
+		&kaprov1alpha2.GateExpression{
+			ObjectMeta: metav1.ObjectMeta{Name: "parent", Generation: 1},
+			Spec: kaprov1alpha2.GateExpressionSpec{
+				Operator: "ALL",
+				Operands: []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "delay-child"}},
+			},
+		},
+	)
+	r := &GateExpressionReconciler{Client: c}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: "parent"}}); err != nil {
+		t.Fatalf("reconcile parent: %v", err)
+	}
+
+	parent := getGateExpression(t, c, "parent")
+	if parent.Status.Phase != gateExpressionPhasePending || parent.Status.Reason != "OperandPending" {
+		t.Fatalf("parent status = %s/%s, want Pending/OperandPending", parent.Status.Phase, parent.Status.Reason)
+	}
+	childAfter := getGateExpression(t, c, "delay-child")
+	if childAfter.Status.FirstObservedAt != nil {
+		t.Fatalf("parent reconcile mutated referenced DELAY firstObservedAt: %v", childAfter.Status.FirstObservedAt)
 	}
 }
 

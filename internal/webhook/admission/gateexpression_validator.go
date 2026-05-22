@@ -3,8 +3,10 @@ package admission
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
+	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -14,6 +16,8 @@ import (
 
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
+
+const maxGateExpressionOperands = 128
 
 // GateExpressionValidator validates GateExpression objects on CREATE and
 // UPDATE. v0.1.2 admits only the ALL operator and rejects reference cycles.
@@ -45,14 +49,14 @@ func (v *GateExpressionValidator) Handle(ctx context.Context, req admission.Requ
 }
 
 func validateGateExpression(ctx context.Context, reader client.Reader, expr *kaprov1alpha2.GateExpression) error {
-	if expr.Spec.Operator != "ALL" {
-		return fmt.Errorf("operator %s is reserved for v0.2.0; use ALL", expr.Spec.Operator)
-	}
-	if len(expr.Spec.Weights) > 0 || expr.Spec.Threshold != nil {
-		return fmt.Errorf("spec.weights and spec.threshold are reserved for v0.2.0")
-	}
 	if len(expr.Spec.Operands) == 0 {
 		return fmt.Errorf("spec.operands must contain at least one operand")
+	}
+	if len(expr.Spec.Operands) > maxGateExpressionOperands {
+		return fmt.Errorf("spec.operands must contain at most %d operands", maxGateExpressionOperands)
+	}
+	if err := validateGateExpressionOperator(expr); err != nil {
+		return err
 	}
 	for i, operand := range expr.Spec.Operands {
 		inline := operand.InlineGate != nil
@@ -73,6 +77,75 @@ func validateGateExpression(ctx context.Context, reader client.Reader, expr *kap
 		return err
 	} else if cycle != "" {
 		return fmt.Errorf("spec.operands.expressionRef cycle detected: %s", cycle)
+	}
+	return nil
+}
+
+func validateGateExpressionOperator(expr *kaprov1alpha2.GateExpression) error {
+	switch expr.Spec.Operator {
+	case "ALL", "ANY":
+		if len(expr.Spec.Weights) > 0 {
+			return fmt.Errorf("operator %s does not accept spec.weights", expr.Spec.Operator)
+		}
+		if expr.Spec.Threshold != nil {
+			return fmt.Errorf("operator %s does not accept spec.threshold", expr.Spec.Operator)
+		}
+	case "NOT":
+		if len(expr.Spec.Operands) != 1 {
+			return fmt.Errorf("operator NOT requires exactly one operand")
+		}
+		if len(expr.Spec.Weights) > 0 {
+			return fmt.Errorf("operator NOT does not accept spec.weights")
+		}
+		if expr.Spec.Threshold != nil {
+			return fmt.Errorf("operator NOT does not accept spec.threshold")
+		}
+	case "WEIGHTED_SUM":
+		if len(expr.Spec.Weights) != len(expr.Spec.Operands) {
+			return fmt.Errorf("operator WEIGHTED_SUM requires len(weights) == len(operands)")
+		}
+		if expr.Spec.Threshold == nil || *expr.Spec.Threshold <= 0 {
+			return fmt.Errorf("operator WEIGHTED_SUM requires threshold > 0")
+		}
+		sum := int64(0)
+		for i, weight := range expr.Spec.Weights {
+			if weight < 0 {
+				return fmt.Errorf("spec.weights[%d] must be non-negative", i)
+			}
+			sum += int64(weight)
+			if sum > math.MaxInt32 {
+				return fmt.Errorf("operator WEIGHTED_SUM total weight must be <= %d", math.MaxInt32)
+			}
+		}
+		// Controller pass condition is strict (passedSum > threshold),
+		// so threshold >= total weight is unsatisfiable. Reject these
+		// at admission instead of admitting expressions that can only
+		// ever Fail.
+		if int64(*expr.Spec.Threshold) >= sum {
+			return fmt.Errorf("operator WEIGHTED_SUM requires threshold < sum(weights); got threshold=%d sum=%d", *expr.Spec.Threshold, sum)
+		}
+	case "THRESHOLD":
+		if expr.Spec.Threshold == nil || *expr.Spec.Threshold <= 0 || int(*expr.Spec.Threshold) > len(expr.Spec.Operands) {
+			return fmt.Errorf("operator THRESHOLD requires 0 < threshold <= len(operands)")
+		}
+		if len(expr.Spec.Weights) > 0 {
+			return fmt.Errorf("operator THRESHOLD does not accept spec.weights")
+		}
+	case "DELAY":
+		if len(expr.Spec.Operands) != 1 {
+			return fmt.Errorf("operator DELAY requires exactly one operand")
+		}
+		if len(expr.Spec.Weights) > 0 {
+			return fmt.Errorf("operator DELAY does not accept spec.weights")
+		}
+		if expr.Spec.Threshold != nil {
+			return fmt.Errorf("operator DELAY does not accept spec.threshold")
+		}
+		if _, err := time.ParseDuration(strings.TrimSpace(expr.Spec.Parameters["duration"])); err != nil {
+			return fmt.Errorf("operator DELAY requires parameters.duration as a Go duration: %w", err)
+		}
+	default:
+		return fmt.Errorf("unsupported operator %s", expr.Spec.Operator)
 	}
 	return nil
 }

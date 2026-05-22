@@ -3,23 +3,35 @@ package v1alpha2
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-// GateExpressionSpec composes existing gates via named operators. v0.1.2
-// implements ALL only. Other operators and weighted fields are reserved for
-// v0.2.0.
-// +kubebuilder:validation:XValidation:rule="!has(self.weights) && !has(self.threshold)",message="weights and threshold are reserved for v0.2.0"
+// GateExpressionSpec composes existing gates via named operators.
 type GateExpressionSpec struct {
 	// Operator selects the composition operator.
-	// +kubebuilder:validation:Enum=ALL
+	// +kubebuilder:validation:Enum=ALL;ANY;NOT;WEIGHTED_SUM;THRESHOLD;DELAY
 	Operator string `json:"operator"`
 	// Operands are the gates or child expressions evaluated by this expression.
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=128
 	Operands []GateExpressionOperand `json:"operands"`
-	// Weights[i] applies to Operands[i] for WEIGHTED_SUM. Reserved for v0.2.0.
+	// Weights[i] is the non-negative integer weight assigned to
+	// Operands[i] for WEIGHTED_SUM. Required and len(weights) must
+	// equal len(operands) when Operator is WEIGHTED_SUM. Forbidden for
+	// other operators.
+	// +kubebuilder:validation:MaxItems=128
+	// +kubebuilder:validation:items:Minimum=0
 	// +optional
 	Weights []int32 `json:"weights,omitempty"`
-	// Threshold applies to THRESHOLD and WEIGHTED_SUM. Reserved for v0.2.0.
+	// Threshold is required for THRESHOLD and WEIGHTED_SUM.
+	// THRESHOLD: number of operands that must pass (0 < threshold <=
+	// len(operands)). WEIGHTED_SUM: weighted sum must strictly exceed
+	// this value to pass (0 < threshold < sum(weights)). Forbidden for
+	// other operators.
+	// +kubebuilder:validation:Minimum=1
 	// +optional
 	Threshold *int32 `json:"threshold,omitempty"`
+	// Parameters carries operator-specific options. DELAY requires
+	// parameters.duration as a Go duration string.
+	// +optional
+	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
 // GateExpressionOperand points at either an inline gate policy or another
@@ -40,10 +52,13 @@ type GateExpressionOperand struct {
 
 // GateExpressionStatus records the latest composition outcome.
 type GateExpressionStatus struct {
-	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
-	Phase              string             `json:"phase,omitempty"`
-	Reason             string             `json:"reason,omitempty"`
-	Conditions         []metav1.Condition `json:"conditions,omitempty"`
+	ObservedGeneration int64  `json:"observedGeneration,omitempty"`
+	Phase              string `json:"phase,omitempty"`
+	Reason             string `json:"reason,omitempty"`
+	// FirstObservedAt records when a DELAY expression first began waiting.
+	// +optional
+	FirstObservedAt *metav1.Time       `json:"firstObservedAt,omitempty"`
+	Conditions      []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true

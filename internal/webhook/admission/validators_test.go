@@ -559,7 +559,7 @@ func TestValidateGateExpression_ValidAll(t *testing.T) {
 	}
 }
 
-func TestValidateGateExpression_RejectsReservedOperator(t *testing.T) {
+func TestValidateGateExpression_ValidAny(t *testing.T) {
 	expr := &kaprov1alpha2.GateExpression{
 		ObjectMeta: metav1.ObjectMeta{Name: "any-of"},
 		Spec: kaprov1alpha2.GateExpressionSpec{
@@ -569,28 +569,134 @@ func TestValidateGateExpression_RejectsReservedOperator(t *testing.T) {
 			},
 		},
 	}
-	err := gateexpressionValidate(expr)
-	if err == nil || !strings.Contains(err.Error(), "operator ANY is reserved for v0.2.0; use ALL") {
-		t.Fatalf("error = %v, want reserved operator message", err)
+	if err := gateexpressionValidate(expr); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestValidateGateExpression_RejectsReservedWeightedFields(t *testing.T) {
-	threshold := int32(2)
-	expr := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "weighted"},
+func TestValidateGateExpression_AllRejectsWeightsAndThreshold(t *testing.T) {
+	threshold := int32(1)
+	weights := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "all-with-weights"},
 		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator:  "ALL",
-			Weights:   []int32{1},
+			Operator: "ALL",
+			Weights:  []int32{1},
+			Operands: []kaprov1alpha2.GateExpressionOperand{
+				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+			},
+		},
+	}
+	if err := gateexpressionValidate(weights); err == nil || !strings.Contains(err.Error(), "does not accept spec.weights") {
+		t.Fatalf("ALL with weights err = %v", err)
+	}
+	thresh := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "any-with-threshold"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator:  "ANY",
 			Threshold: &threshold,
 			Operands: []kaprov1alpha2.GateExpressionOperand{
 				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
 			},
 		},
 	}
+	if err := gateexpressionValidate(thresh); err == nil || !strings.Contains(err.Error(), "does not accept spec.threshold") {
+		t.Fatalf("ANY with threshold err = %v", err)
+	}
+}
+
+func TestValidateGateExpression_RejectsUnsatisfiableWeightedThreshold(t *testing.T) {
+	// passedSum > threshold is strict; threshold == sum(weights) can
+	// never pass. Admission must reject it instead of admitting a
+	// configuration that can only Fail.
+	threshold := int32(3)
+	expr := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "weighted-unsat"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator:  "WEIGHTED_SUM",
+			Weights:   []int32{1, 2},
+			Threshold: &threshold,
+			Operands: []kaprov1alpha2.GateExpressionOperand{
+				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+			},
+		},
+	}
+	if err := gateexpressionValidate(expr); err == nil || !strings.Contains(err.Error(), "threshold < sum(weights)") {
+		t.Fatalf("err = %v, want unsatisfiable threshold rejection", err)
+	}
+}
+
+func TestValidateGateExpression_RejectsInvalidWeightedFields(t *testing.T) {
+	threshold := int32(2)
+	expr := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "weighted"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator:  "WEIGHTED_SUM",
+			Weights:   []int32{1},
+			Threshold: &threshold,
+			Operands: []kaprov1alpha2.GateExpressionOperand{
+				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+				{ExpressionRef: "other"},
+			},
+		},
+	}
 	err := gateexpressionValidate(expr)
-	if err == nil || !strings.Contains(err.Error(), "reserved for v0.2.0") {
-		t.Fatalf("error = %v, want reserved weighted-field message", err)
+	if err == nil || !strings.Contains(err.Error(), "len(weights) == len(operands)") {
+		t.Fatalf("error = %v, want weights length message", err)
+	}
+}
+
+func TestValidateGateExpression_RejectsWeightedOverflow(t *testing.T) {
+	threshold := int32(1)
+	expr := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "weighted"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator:  "WEIGHTED_SUM",
+			Weights:   []int32{1<<30 + 1, 1 << 30},
+			Threshold: &threshold,
+			Operands: []kaprov1alpha2.GateExpressionOperand{
+				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+				{ExpressionRef: "other"},
+			},
+		},
+	}
+	err := gateexpressionValidate(expr)
+	if err == nil || !strings.Contains(err.Error(), "total weight") {
+		t.Fatalf("error = %v, want total weight message", err)
+	}
+}
+
+func TestValidateGateExpression_RejectsTooManyOperands(t *testing.T) {
+	operands := make([]kaprov1alpha2.GateExpressionOperand, 129)
+	for i := range operands {
+		operands[i] = kaprov1alpha2.GateExpressionOperand{ExpressionRef: "child"}
+	}
+	expr := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "too-many"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator: "ALL",
+			Operands: operands,
+		},
+	}
+	err := gateexpressionValidate(expr)
+	if err == nil || !strings.Contains(err.Error(), "at most") {
+		t.Fatalf("error = %v, want max operands message", err)
+	}
+}
+
+func TestValidateGateExpression_ValidDelay(t *testing.T) {
+	expr := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "delay"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator:   "DELAY",
+			Parameters: map[string]string{"duration": "30m"},
+			Operands: []kaprov1alpha2.GateExpressionOperand{
+				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+			},
+		},
+	}
+	if err := gateexpressionValidate(expr); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

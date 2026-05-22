@@ -566,19 +566,24 @@ func TestCRDShortNamesAndCategoriesUseExpectedAliases(t *testing.T) {
 	}
 }
 
-func TestGateExpressionCRDPublishesOnlyImplementedPreviewShape(t *testing.T) {
+func TestGateExpressionCRDPublishesComposableAlgebra(t *testing.T) {
 	root := repoRoot(t)
 	crdPath := filepath.Join(root, "config", "crd", "bases", "kapro.io_gateexpressions.yaml")
 	crd := readCRD(t, crdPath)
 	version := servedCRDVersion(t, crdPath, crd)
 	operator := schemaNodeForJSONPath(t, crdPath, version.Schema.OpenAPIV3Schema, ".spec.operator")
 	enum, _ := operator["enum"].([]any)
-	if fmt.Sprint(enum) != fmt.Sprint([]any{"ALL"}) {
-		t.Fatalf("%s spec.operator enum=%v, want [ALL]", crdPath, enum)
+	want := []any{"ALL", "ANY", "NOT", "WEIGHTED_SUM", "THRESHOLD", "DELAY"}
+	if fmt.Sprint(enum) != fmt.Sprint(want) {
+		t.Fatalf("%s spec.operator enum=%v, want %v", crdPath, enum, want)
 	}
 	spec := schemaNodeForJSONPath(t, crdPath, version.Schema.OpenAPIV3Schema, ".spec")
-	if !hasValidationRule(spec, "!has(self.weights) && !has(self.threshold)") {
-		t.Fatalf("%s spec is missing reserved weights/threshold validation", crdPath)
+	if _, ok := spec["properties"].(map[string]any)["parameters"]; !ok {
+		t.Fatalf("%s spec is missing operator parameters", crdPath)
+	}
+	status := schemaNodeForJSONPath(t, crdPath, version.Schema.OpenAPIV3Schema, ".status")
+	if _, ok := status["properties"].(map[string]any)["firstObservedAt"]; !ok {
+		t.Fatalf("%s status is missing firstObservedAt", crdPath)
 	}
 }
 
