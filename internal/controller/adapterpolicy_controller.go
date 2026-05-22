@@ -47,7 +47,27 @@ func (r *AdapterPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		message = fmt.Sprintf("backend %s was not found: %v", policy.Spec.BackendRef, err)
 	}
 
+	interval := adapterPolicySyncInterval(policy.Spec.SyncInterval)
 	now := metav1.Now()
+
+	// Decide whether to patch. We must NOT patch on every reconcile —
+	// the Status().Patch generates an update event the manager observes,
+	// which schedules another reconcile, which patches again. With only
+	// the rate limiter to bound it the controller can spin. Two distinct
+	// signals warrant a patch:
+	//   1) the computed material state (ready/reason/message/observedGen)
+	//      differs from what's stored, or
+	//   2) the recorded LastSyncTime is stale relative to syncInterval.
+	materialUnchanged := policy.Status.Ready == ready &&
+		policy.Status.Reason == reason &&
+		policy.Status.Message == message &&
+		policy.Status.ObservedGeneration == policy.Generation
+	syncFresh := policy.Status.LastSyncTime != nil &&
+		now.Time.Sub(policy.Status.LastSyncTime.Time) < interval/2
+	if materialUnchanged && syncFresh {
+		return ctrl.Result{RequeueAfter: interval}, nil
+	}
+
 	patch := client.MergeFrom(policy.DeepCopy())
 	policy.Status.ObservedGeneration = policy.Generation
 	policy.Status.LastSyncTime = &now
@@ -69,7 +89,7 @@ func (r *AdapterPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if err := r.Status().Patch(ctx, &policy, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch AdapterPolicy status: %w", err)
 	}
-	return ctrl.Result{RequeueAfter: adapterPolicySyncInterval(policy.Spec.SyncInterval)}, nil
+	return ctrl.Result{RequeueAfter: interval}, nil
 }
 
 func adapterPolicySyncInterval(raw string) time.Duration {

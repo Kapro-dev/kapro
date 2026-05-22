@@ -107,6 +107,7 @@ before any write permissions are granted.`,
 	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum Source units to generate (0 = unlimited)")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
 	cmd.Flags().BoolVar(&adapterOpts.Apply, "apply", false, "Create or update Backend and AdapterPolicy in the current cluster instead of writing files")
+	cmd.Flags().StringVar(&adapterOpts.DryRun, "dry-run", "", "Set to client to validate the live --apply writes without persisting")
 	cmd.Flags().StringVar(&adapterOpts.Kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	cmd.Flags().StringVar(&adapterOpts.SyncInterval, "sync-interval", adapterOpts.SyncInterval, "AdapterPolicy discovery sync interval")
 	return cmd
@@ -198,21 +199,24 @@ func runAdoptAdapter(ctx context.Context, opts adoptAdapterOptions) error {
 
 func createOrUpdateObject(ctx context.Context, c client.Client, obj client.Object, dryRun bool) error {
 	createOpts := []client.CreateOption{}
-	updateOpts := []client.UpdateOption{}
+	patchOpts := []client.PatchOption{}
 	if dryRun {
 		createOpts = append(createOpts, client.DryRunAll)
-		updateOpts = append(updateOpts, client.DryRunAll)
+		patchOpts = append(patchOpts, client.DryRunAll)
 	}
 	if err := c.Create(ctx, obj, createOpts...); err != nil {
 		if !apierrors.IsAlreadyExists(err) {
 			return err
 		}
+		// Update via merge patch against the live object: a full
+		// Update() would clobber labels/annotations the operator (or
+		// another tool) set after the initial adoption. Patch sends
+		// only the fields we care about.
 		current := obj.DeepCopyObject().(client.Object)
 		if getErr := c.Get(ctx, client.ObjectKeyFromObject(obj), current); getErr != nil {
 			return getErr
 		}
-		obj.SetResourceVersion(current.GetResourceVersion())
-		return c.Update(ctx, obj, updateOpts...)
+		return c.Patch(ctx, obj, client.MergeFrom(current), patchOpts...)
 	}
 	return nil
 }
