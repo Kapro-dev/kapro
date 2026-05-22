@@ -120,24 +120,40 @@ decision tree.
 
 ## Quick Start
 
-Install the released operator, apply the starter fleet from a clone, and inspect
-the controller-owned runtime records:
+Install the released operator, apply the starter fleet from a source clone, and
+inspect the controller-owned runtime records:
 
 ```bash
 KAPRO_VERSION=0.1.2
-git clone https://github.com/Kapro-dev/kapro.git
+git clone --branch main https://github.com/Kapro-dev/kapro.git
 cd kapro
 helm upgrade --install kapro \
   "https://github.com/Kapro-dev/kapro/releases/download/v${KAPRO_VERSION}/kapro-operator-${KAPRO_VERSION}.tgz" \
   --namespace kapro-system \
   --create-namespace \
   --wait
-kubectl apply -f examples/quickstart/
+kubectl wait crd/promotions.kapro.io crd/promotionruns.kapro.io crd/targets.kapro.io \
+  --for=condition=Established \
+  --timeout=60s
+kubectl -n kapro-system rollout status deployment/kapro-kapro-operator
+kubectl apply -f examples/quickstart/backend-flux.yaml
+kubectl apply -f examples/quickstart/kapro.yaml
+kubectl apply -f examples/quickstart/promotion.yaml
 kubectl get promotions,promotionruns,targets
 ```
 
 The user-authored object is `Promotion`. `PromotionRun` and `Target` are
-controller-owned runtime records for inspection in `kubectl` or k9s.
+controller-owned runtime records for inspection in `kubectl` or k9s. This
+starter path proves that the hub API stamps `PromotionRun` and `Target`
+records. Real `Complete` / `Converged` status requires a wired delivery backend
+or the local CI smoke fixture to report workload health.
+
+To run the same local convergence smoke used by CI, use Docker, Kind, Helm, and
+kubectl:
+
+```bash
+KAPRO_CI_QUICKSTARTS=flux,argo,oci scripts/ci-kind-smoke.sh
+```
 
 For a step-by-step minimal path, use [First Promotion in 10 Minutes](docs/first-promotion-10min.md).
 For a complete local walkthrough, use the [Kind demo](examples/kind-demo/README.md).

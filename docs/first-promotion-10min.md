@@ -12,10 +12,17 @@ start with the [Adoption Guide](adoption.md).
 ## 1. Install The Operator
 
 ```bash
+KAPRO_VERSION=0.1.2
+git clone --branch main https://github.com/Kapro-dev/kapro.git
+cd kapro
 helm upgrade --install kapro \
-  https://github.com/Kapro-dev/kapro/releases/download/v0.1.2/kapro-operator-0.1.2.tgz \
+  "https://github.com/Kapro-dev/kapro/releases/download/v${KAPRO_VERSION}/kapro-operator-${KAPRO_VERSION}.tgz" \
   --namespace kapro-system \
-  --create-namespace
+  --create-namespace \
+  --wait
+kubectl wait crd/promotions.kapro.io crd/promotionruns.kapro.io crd/targets.kapro.io \
+  --for=condition=Established \
+  --timeout=60s
 kubectl -n kapro-system rollout status deployment/kapro-kapro-operator
 ```
 
@@ -30,9 +37,10 @@ webhooks:
 
 ```bash
 helm upgrade --install kapro \
-  https://github.com/Kapro-dev/kapro/releases/download/v0.1.2/kapro-operator-0.1.2.tgz \
+  "https://github.com/Kapro-dev/kapro/releases/download/v${KAPRO_VERSION}/kapro-operator-${KAPRO_VERSION}.tgz" \
   --namespace kapro-system \
   --create-namespace \
+  --wait \
   --set webhook.enabled=false
 ```
 
@@ -100,8 +108,17 @@ Look for:
 - target phase progression;
 - aggregate target counts in `PromotionRun.status.summary`;
 - per-target detail in child `Target` objects;
-- backend convergence messages, when spoke delivery is wired;
+- backend convergence messages, when spoke delivery is wired. Without a real
+  Flux/Argo/OCI backend reporting health, this quickstart can stop at
+  `Progressing` after proving that PromotionRun and Target records are stamped;
 - gate evidence or approval wait state, if you later add gates to the Plan.
+
+For a fully automated local proof that reaches `PromotionRun=Complete` and
+`Target=Converged`, run the CI Kind fixture from the repository root:
+
+```bash
+KAPRO_CI_QUICKSTARTS=flux,argo,oci scripts/ci-kind-smoke.sh
+```
 
 ## Next
 

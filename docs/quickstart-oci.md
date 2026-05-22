@@ -12,8 +12,12 @@ Prerequisites:
   [Registering a Cluster (Pull Mode)](cluster-bootstrap.md) for the bootstrap
   flow and required chart values.
 - OCI artifacts published for each promoted unit.
+- A clone of this repository, because the commands below apply manifests from
+  `examples/quickstart-oci/`.
 
 ```bash
+git clone --branch main https://github.com/Kapro-dev/kapro.git
+cd kapro
 kubectl apply -f examples/quickstart-oci/backend-oci.yaml
 kubectl apply -f examples/quickstart-oci/fleet.yaml
 kubectl apply -f examples/quickstart-oci/promotion.yaml

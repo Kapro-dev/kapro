@@ -4,6 +4,8 @@ Use this path when spokes should pull OCI artifacts directly with Kapro's
 spoke-side OCI delivery core, without requiring Flux or Argo CD on the spoke.
 
 ```bash
+git clone --branch main https://github.com/Kapro-dev/kapro.git
+cd kapro
 kubectl apply -f examples/quickstart-oci/backend-oci.yaml
 kubectl apply -f examples/quickstart-oci/fleet.yaml
 kubectl apply -f examples/quickstart-oci/promotion.yaml

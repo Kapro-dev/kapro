@@ -4,6 +4,8 @@ Use this path when Argo CD already owns one `Application` per target cluster
 and Kapro should promote by updating `spec.source.targetRevision`.
 
 ```bash
+git clone --branch main https://github.com/Kapro-dev/kapro.git
+cd kapro
 kubectl apply -f examples/quickstart-argo/backend-argo.yaml
 kubectl apply -f examples/quickstart-argo/fleet.yaml
 kubectl apply -f examples/quickstart-argo/promotion.yaml
