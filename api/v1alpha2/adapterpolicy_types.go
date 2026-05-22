@@ -29,7 +29,7 @@ type AdapterPolicyStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=ap,categories=kapro-all
+// +kubebuilder:resource:scope=Cluster,shortName=adp,categories=kapro-all
 // +kubebuilder:printcolumn:name="Adapter",type=string,JSONPath=`.spec.adapter`
 // +kubebuilder:printcolumn:name="Backend",type=string,JSONPath=`.spec.backendRef`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`

@@ -14,7 +14,7 @@ spec:
     listKind: AdapterPolicyList
     plural: adapterpolicies
     shortNames:
-    - ap
+    - adp
     singular: adapterpolicy
   scope: Cluster
   versions:

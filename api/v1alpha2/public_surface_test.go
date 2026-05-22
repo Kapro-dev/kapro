@@ -534,6 +534,7 @@ func TestCRDPrintColumnsResolveToSchemaFields(t *testing.T) {
 func TestCRDShortNamesAndCategoriesUseExpectedAliases(t *testing.T) {
 	root := repoRoot(t)
 	expectedShortNames := map[string][]string{
+		"kapro.io_adapterpolicies.yaml":  {"adp"},
 		"kapro.io_approvals.yaml":        {"ap"},
 		"kapro.io_backends.yaml":         {"be"},
 		"kapro.io_clusters.yaml":         {"cl"},
@@ -554,11 +555,18 @@ func TestCRDShortNamesAndCategoriesUseExpectedAliases(t *testing.T) {
 		filepath.Join("charts", "kapro-operator", "crds"),
 		filepath.Join("internal", "bootstrap", "kaprocrds"),
 	} {
+		seenShortNames := map[string]string{}
 		for file, wantShortNames := range expectedShortNames {
 			path := filepath.Join(root, relDir, file)
 			crd := readCRD(t, path)
 			if got := crd.Spec.Names.ShortNames; fmt.Sprint(got) != fmt.Sprint(wantShortNames) {
 				t.Fatalf("%s shortNames=%v, want %v", path, got, wantShortNames)
+			}
+			for _, shortName := range crd.Spec.Names.ShortNames {
+				if previous := seenShortNames[shortName]; previous != "" {
+					t.Fatalf("%s shortName %q duplicates %s", path, shortName, previous)
+				}
+				seenShortNames[shortName] = file
 			}
 			if got := crd.Spec.Names.Categories; fmt.Sprint(got) != fmt.Sprint([]string{"kapro-all"}) {
 				t.Fatalf("%s categories=%v, want [kapro-all]", path, got)
