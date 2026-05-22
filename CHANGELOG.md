@@ -57,6 +57,12 @@ backend, first-promotion, Argo migration, and Flux migration pages. CLI install
 docs now use the verified clone/tag/`make build` path until release binary
 assets or Go vanity import metadata are available.
 
+### Added — embedded operator mode
+
+Added `pkg/kapro/server`, a composable Go library entry point for building a
+custom Kapro operator binary while keeping the reference `cmd/operator` binary
+thin and behavior-compatible.
+
 ## v0.1.2 — 2026-05-22
 
 ### Added — Go SDK scaffold

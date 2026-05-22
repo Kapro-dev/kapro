@@ -65,6 +65,7 @@ nav:
   - Extending Kapro:
       - Extension Model: extension-model.md
       - Go SDK: sdk.md
+      - Server SDK: sdk-server.md
       - Plugin Authoring: plugin-authoring.md
       - GCP Cloud: cloud-gcp.md
   - ADRs:
