@@ -725,14 +725,21 @@ spec:
                   parameters.duration as a Go duration string.
                 type: object
               threshold:
-                description: Threshold applies to THRESHOLD and WEIGHTED_SUM. Reserved
-                  for v0.2.0.
+                description: |-
+                  Threshold is required for THRESHOLD and WEIGHTED_SUM.
+                  THRESHOLD: number of operands that must pass (0 < threshold <=
+                  len(operands)). WEIGHTED_SUM: weighted sum must strictly exceed
+                  this value to pass (0 < threshold < sum(weights)). Forbidden for
+                  other operators.
                 format: int32
                 minimum: 1
                 type: integer
               weights:
-                description: Weights[i] applies to Operands[i] for WEIGHTED_SUM. Reserved
-                  for v0.2.0.
+                description: |-
+                  Weights[i] is the non-negative integer weight assigned to
+                  Operands[i] for WEIGHTED_SUM. Required and len(weights) must
+                  equal len(operands) when Operator is WEIGHTED_SUM. Forbidden for
+                  other operators.
                 items:
                   format: int32
                   minimum: 0

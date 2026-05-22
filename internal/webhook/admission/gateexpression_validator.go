@@ -84,10 +84,21 @@ func validateGateExpression(ctx context.Context, reader client.Reader, expr *kap
 func validateGateExpressionOperator(expr *kaprov1alpha2.GateExpression) error {
 	switch expr.Spec.Operator {
 	case "ALL", "ANY":
-		return nil
+		if len(expr.Spec.Weights) > 0 {
+			return fmt.Errorf("operator %s does not accept spec.weights", expr.Spec.Operator)
+		}
+		if expr.Spec.Threshold != nil {
+			return fmt.Errorf("operator %s does not accept spec.threshold", expr.Spec.Operator)
+		}
 	case "NOT":
 		if len(expr.Spec.Operands) != 1 {
 			return fmt.Errorf("operator NOT requires exactly one operand")
+		}
+		if len(expr.Spec.Weights) > 0 {
+			return fmt.Errorf("operator NOT does not accept spec.weights")
+		}
+		if expr.Spec.Threshold != nil {
+			return fmt.Errorf("operator NOT does not accept spec.threshold")
 		}
 	case "WEIGHTED_SUM":
 		if len(expr.Spec.Weights) != len(expr.Spec.Operands) {
@@ -106,16 +117,29 @@ func validateGateExpressionOperator(expr *kaprov1alpha2.GateExpression) error {
 				return fmt.Errorf("operator WEIGHTED_SUM total weight must be <= %d", math.MaxInt32)
 			}
 		}
-		if int64(*expr.Spec.Threshold) > sum {
-			return fmt.Errorf("operator WEIGHTED_SUM requires threshold <= total weight")
+		// Controller pass condition is strict (passedSum > threshold),
+		// so threshold >= total weight is unsatisfiable. Reject these
+		// at admission instead of admitting expressions that can only
+		// ever Fail.
+		if int64(*expr.Spec.Threshold) >= sum {
+			return fmt.Errorf("operator WEIGHTED_SUM requires threshold < sum(weights); got threshold=%d sum=%d", *expr.Spec.Threshold, sum)
 		}
 	case "THRESHOLD":
 		if expr.Spec.Threshold == nil || *expr.Spec.Threshold <= 0 || int(*expr.Spec.Threshold) > len(expr.Spec.Operands) {
 			return fmt.Errorf("operator THRESHOLD requires 0 < threshold <= len(operands)")
 		}
+		if len(expr.Spec.Weights) > 0 {
+			return fmt.Errorf("operator THRESHOLD does not accept spec.weights")
+		}
 	case "DELAY":
 		if len(expr.Spec.Operands) != 1 {
 			return fmt.Errorf("operator DELAY requires exactly one operand")
+		}
+		if len(expr.Spec.Weights) > 0 {
+			return fmt.Errorf("operator DELAY does not accept spec.weights")
+		}
+		if expr.Spec.Threshold != nil {
+			return fmt.Errorf("operator DELAY does not accept spec.threshold")
 		}
 		if _, err := time.ParseDuration(strings.TrimSpace(expr.Spec.Parameters["duration"])); err != nil {
 			return fmt.Errorf("operator DELAY requires parameters.duration as a Go duration: %w", err)

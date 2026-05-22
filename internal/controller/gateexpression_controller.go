@@ -141,7 +141,7 @@ func (r *GateExpressionReconciler) evaluate(ctx context.Context, expr *kaprov1al
 		case gateExpressionPhaseFailed:
 			return gateExpressionPhasePassed, "NotOperandFailed", "operand failed", 0, nil
 		default:
-			return gateExpressionPhasePending, "OperandPending", reasons[0], 0, nil
+			return gateExpressionPhasePending, "OperandPending", messages[0], 0, nil
 		}
 	case "THRESHOLD":
 		if expr.Spec.Threshold == nil {
@@ -158,10 +158,20 @@ func (r *GateExpressionReconciler) evaluate(ctx context.Context, expr *kaprov1al
 			return gateExpressionPhasePending, "OperandPending", strings.Join(pendingReasons, ", "), 0, nil
 		}
 	case "WEIGHTED_SUM":
-		threshold := int64(0)
-		if expr.Spec.Threshold != nil {
-			threshold = int64(*expr.Spec.Threshold)
+		// Admission rejects nil/<=0 threshold and len(weights) !=
+		// len(operands), but a persisted object created before that
+		// validation existed (or one that bypasses the webhook) could
+		// reach the controller in an invalid shape. Fail loudly here
+		// rather than panic.
+		if expr.Spec.Threshold == nil || *expr.Spec.Threshold <= 0 {
+			return gateExpressionPhaseFailed, "InvalidThreshold",
+				"WEIGHTED_SUM requires spec.threshold > 0", 0, nil
 		}
+		if len(expr.Spec.Weights) != len(phases) {
+			return gateExpressionPhaseFailed, "InvalidWeights",
+				fmt.Sprintf("WEIGHTED_SUM has %d operands but %d weights", len(phases), len(expr.Spec.Weights)), 0, nil
+		}
+		threshold := int64(*expr.Spec.Threshold)
 		passedSum := int64(0)
 		possibleSum := int64(0)
 		for i, phase := range phases {
@@ -182,7 +192,10 @@ func (r *GateExpressionReconciler) evaluate(ctx context.Context, expr *kaprov1al
 			return gateExpressionPhasePending, "OperandPending", strings.Join(pendingReasons, ", "), 0, nil
 		}
 	case "DELAY":
-		duration, err := time.ParseDuration(expr.Spec.Parameters["duration"])
+		// Admission trims surrounding whitespace before parsing; mirror
+		// that here so an admitted object never fails at runtime with
+		// InvalidDuration for purely cosmetic input.
+		duration, err := time.ParseDuration(strings.TrimSpace(expr.Spec.Parameters["duration"]))
 		if err != nil {
 			return gateExpressionPhaseFailed, "InvalidDuration", err.Error(), 0, nil
 		}

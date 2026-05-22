@@ -12,12 +12,19 @@ type GateExpressionSpec struct {
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=128
 	Operands []GateExpressionOperand `json:"operands"`
-	// Weights[i] applies to Operands[i] for WEIGHTED_SUM. Reserved for v0.2.0.
+	// Weights[i] is the non-negative integer weight assigned to
+	// Operands[i] for WEIGHTED_SUM. Required and len(weights) must
+	// equal len(operands) when Operator is WEIGHTED_SUM. Forbidden for
+	// other operators.
 	// +kubebuilder:validation:MaxItems=128
 	// +kubebuilder:validation:items:Minimum=0
 	// +optional
 	Weights []int32 `json:"weights,omitempty"`
-	// Threshold applies to THRESHOLD and WEIGHTED_SUM. Reserved for v0.2.0.
+	// Threshold is required for THRESHOLD and WEIGHTED_SUM.
+	// THRESHOLD: number of operands that must pass (0 < threshold <=
+	// len(operands)). WEIGHTED_SUM: weighted sum must strictly exceed
+	// this value to pass (0 < threshold < sum(weights)). Forbidden for
+	// other operators.
 	// +kubebuilder:validation:Minimum=1
 	// +optional
 	Threshold *int32 `json:"threshold,omitempty"`

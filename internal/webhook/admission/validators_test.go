@@ -574,6 +574,58 @@ func TestValidateGateExpression_ValidAny(t *testing.T) {
 	}
 }
 
+func TestValidateGateExpression_AllRejectsWeightsAndThreshold(t *testing.T) {
+	threshold := int32(1)
+	weights := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "all-with-weights"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator: "ALL",
+			Weights:  []int32{1},
+			Operands: []kaprov1alpha2.GateExpressionOperand{
+				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+			},
+		},
+	}
+	if err := gateexpressionValidate(weights); err == nil || !strings.Contains(err.Error(), "does not accept spec.weights") {
+		t.Fatalf("ALL with weights err = %v", err)
+	}
+	thresh := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "any-with-threshold"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator:  "ANY",
+			Threshold: &threshold,
+			Operands: []kaprov1alpha2.GateExpressionOperand{
+				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+			},
+		},
+	}
+	if err := gateexpressionValidate(thresh); err == nil || !strings.Contains(err.Error(), "does not accept spec.threshold") {
+		t.Fatalf("ANY with threshold err = %v", err)
+	}
+}
+
+func TestValidateGateExpression_RejectsUnsatisfiableWeightedThreshold(t *testing.T) {
+	// passedSum > threshold is strict; threshold == sum(weights) can
+	// never pass. Admission must reject it instead of admitting a
+	// configuration that can only Fail.
+	threshold := int32(3)
+	expr := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "weighted-unsat"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator:  "WEIGHTED_SUM",
+			Weights:   []int32{1, 2},
+			Threshold: &threshold,
+			Operands: []kaprov1alpha2.GateExpressionOperand{
+				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+			},
+		},
+	}
+	if err := gateexpressionValidate(expr); err == nil || !strings.Contains(err.Error(), "threshold < sum(weights)") {
+		t.Fatalf("err = %v, want unsatisfiable threshold rejection", err)
+	}
+}
+
 func TestValidateGateExpression_RejectsInvalidWeightedFields(t *testing.T) {
 	threshold := int32(2)
 	expr := &kaprov1alpha2.GateExpression{
