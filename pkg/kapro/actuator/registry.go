@@ -96,18 +96,20 @@ func (r *Registry) Upsert(name string, a Actuator) Actuator {
 }
 
 // UpsertRegistration adds or replaces a substrate registration and returns the
-// previous implementation, when one existed.
-func (r *Registry) UpsertRegistration(reg Registration) Actuator {
+// previous implementation when one existed. A nil previous return value is
+// ambiguous with a registration failure, so this method surfaces
+// normalizeRegistration errors explicitly instead of swallowing them.
+func (r *Registry) UpsertRegistration(reg Registration) (Actuator, error) {
 	key, normalized, err := normalizeRegistration(reg)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	old := r.actuators[key]
 	r.actuators[key] = normalized.Actuator
 	r.registrations[key] = normalized
-	return old
+	return old, nil
 }
 
 // Unregister removes an actuator by key and returns the previous
@@ -166,6 +168,14 @@ func normalizeRegistration(reg Registration) (string, Registration, error) {
 	key := reg.RegistryKey()
 	if key == "" || key == "/" {
 		return "", Registration{}, fmt.Errorf("actuator registry key is required")
+	}
+	// RegistryKey() falls back to "<mode>/<adapter>". When Name is empty
+	// and mode is empty too, we'd produce "/argo" — a key that never
+	// matches DeliverySpec.RegistryKey() at resolution time. Reject the
+	// leading-slash form rather than silently registering an unreachable
+	// actuator.
+	if reg.Name == "" && len(key) > 0 && key[0] == '/' {
+		return "", Registration{}, fmt.Errorf("actuator registration requires Name or non-empty Mode/Capabilities.Modes; got key %q", key)
 	}
 	reg.Name = key
 	return key, reg, nil

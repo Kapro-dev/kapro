@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"time"
 
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -26,8 +25,17 @@ const adapterPolicyBackendRefIndex = ".spec.backendRef"
 
 var defaultAdapterPolicyRegistry = newDefaultAdapterPolicyRegistry()
 
-// AdapterPolicyReconciler runs continuous adapter discovery and records the
-// latest discovery outcome on AdapterPolicy and Backend status.
+// AdapterPolicyReconciler validates that the policy can talk to its
+// referenced Backend through the registered adapter and records the
+// outcome on AdapterPolicy.status.
+//
+// The reconciler deliberately does NOT write Backend.status discovery
+// fields. BackendReconciler is the single writer for Backend.status —
+// having both controllers patch the same fields was producing flip-flop
+// updates and merge conflicts. Discovery result details (selected /
+// skipped objects, counts) surface via Kubernetes Events for now;
+// adding them to AdapterPolicyStatus as first-class fields is tracked
+// as a v0.2.x follow-up.
 type AdapterPolicyReconciler struct {
 	client.Client
 	Recorder        record.EventRecorder
@@ -37,7 +45,6 @@ type AdapterPolicyReconciler struct {
 // +kubebuilder:rbac:groups=kapro.io,resources=adapterpolicies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kapro.io,resources=adapterpolicies/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=backends,verbs=get;list;watch
-// +kubebuilder:rbac:groups=kapro.io,resources=backends/status,verbs=get;update;patch
 
 func (r *AdapterPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var policy kaprov1alpha2.AdapterPolicy
@@ -47,7 +54,7 @@ func (r *AdapterPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	interval := adapterPolicySyncInterval(policy.Spec.SyncInterval)
 	now := metav1.Now()
-	ready, reason, message, err := r.discover(ctx, &policy, now, interval)
+	ready, reason, message, err := r.discover(ctx, &policy)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -94,28 +101,28 @@ func (r *AdapterPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return ctrl.Result{RequeueAfter: interval}, nil
 }
 
-func (r *AdapterPolicyReconciler) discover(ctx context.Context, policy *kaprov1alpha2.AdapterPolicy, now metav1.Time, interval time.Duration) (bool, string, string, error) {
+func (r *AdapterPolicyReconciler) discover(ctx context.Context, policy *kaprov1alpha2.AdapterPolicy) (bool, string, string, error) {
 	var backend kaprov1alpha2.Backend
 	if err := r.Get(ctx, client.ObjectKey{Name: policy.Spec.BackendRef}, &backend); err != nil {
 		return false, "BackendNotFound", fmt.Sprintf("backend %s was not found: %v", policy.Spec.BackendRef, err), nil
 	}
 	if expected := adapterPolicyBackendAdapterName(&backend); policy.Spec.Adapter != expected {
-		ready, reason, message := false, "AdapterMismatch", fmt.Sprintf("policy adapter %q does not match backend %q adapter %q", policy.Spec.Adapter, backend.Name, expected)
-		return ready, reason, message, r.patchBackendDiscoveryStatus(ctx, &backend, now, interval, kaproadapter.DiscoveryResult{Ready: ready, Reason: reason, Message: message})
+		return false, "AdapterMismatch", fmt.Sprintf("policy adapter %q does not match backend %q adapter %q", policy.Spec.Adapter, backend.Name, expected), nil
 	}
 	if backend.Spec.Discovery == nil || !backend.Spec.Discovery.Enabled {
-		ready, reason, message := false, "DiscoveryDisabled", fmt.Sprintf("backend %s does not have spec.discovery.enabled=true", backend.Name)
-		return ready, reason, message, r.patchBackendDiscoveryStatus(ctx, &backend, now, interval, kaproadapter.DiscoveryResult{Ready: ready, Reason: reason, Message: message})
+		// Backend opted out of discovery. BackendReconciler is the
+		// single writer for Backend.status discovery fields; it
+		// already clears them when discovery is disabled. Do not
+		// mirror anything from here.
+		return false, "DiscoveryDisabled", fmt.Sprintf("backend %s does not have spec.discovery.enabled=true", backend.Name), nil
 	}
 	a, err := r.adapterRegistry().Resolve(backend.Spec.Driver)
 	if err != nil {
-		ready, reason, message := false, "AdapterResolveFailed", err.Error()
-		return ready, reason, message, r.patchBackendDiscoveryStatus(ctx, &backend, now, interval, kaproadapter.DiscoveryResult{Ready: ready, Reason: reason, Message: message})
+		return false, "AdapterResolveFailed", err.Error(), nil
 	}
 	result, err := a.Discover(ctx, adapterPolicyDiscoveryRequest(&backend))
 	if err != nil {
-		ready, reason, message := false, "DiscoveryFailed", err.Error()
-		return ready, reason, message, r.patchBackendDiscoveryStatus(ctx, &backend, now, interval, kaproadapter.DiscoveryResult{Ready: ready, Reason: reason, Message: message})
+		return false, "DiscoveryFailed", err.Error(), nil
 	}
 	reason := result.Reason
 	if reason == "" {
@@ -123,80 +130,20 @@ func (r *AdapterPolicyReconciler) discover(ctx context.Context, policy *kaprov1a
 	}
 	message := result.Message
 	if message == "" {
-		message = fmt.Sprintf("adapter %s discovery completed for backend %s", policy.Spec.Adapter, backend.Name)
+		message = fmt.Sprintf("adapter %s discovery completed for backend %s (clusters=%d, applications=%d, applicationSets=%d)",
+			policy.Spec.Adapter, backend.Name, result.DiscoveredClusters, result.DiscoveredApplications, result.DiscoveredApplicationSets)
 	}
-	result.Reason = reason
-	result.Message = message
-	if err := r.patchBackendDiscoveryStatus(ctx, &backend, now, interval, result); err != nil {
-		return false, "", "", err
+	if r.Recorder != nil {
+		eventType := "Normal"
+		if !result.Ready {
+			eventType = "Warning"
+		}
+		r.Recorder.Eventf(policy, eventType, reason,
+			"clusters=%d applications=%d applicationSets=%d selected=%d skipped=%d unsupported=%d errors=%d",
+			result.DiscoveredClusters, result.DiscoveredApplications, result.DiscoveredApplicationSets,
+			len(result.SelectedObjects), len(result.SkippedObjects), len(result.UnsupportedPatterns), len(result.DiscoveryErrors))
 	}
 	return result.Ready, reason, message, nil
-}
-
-func (r *AdapterPolicyReconciler) patchBackendDiscoveryStatus(ctx context.Context, backend *kaprov1alpha2.Backend, now metav1.Time, interval time.Duration, result kaproadapter.DiscoveryResult) error {
-	if backendDiscoveryStatusCurrent(backend, now, interval, result) {
-		return nil
-	}
-	patch := client.MergeFrom(backend.DeepCopy())
-	backend.Status.ObservedGeneration = backend.Generation
-	backend.Status.Driver = backend.Spec.Driver
-	backend.Status.Runtime = backend.Spec.Runtime
-	if backend.Status.Runtime == "" {
-		backend.Status.Runtime = kaprov1alpha2.BackendRuntimeBoth
-	}
-	backend.Status.LastDiscoveryTime = &now
-	backend.Status.DiscoveredClusters = result.DiscoveredClusters
-	backend.Status.DiscoveredApplications = result.DiscoveredApplications
-	backend.Status.DiscoveredApplicationSets = result.DiscoveredApplicationSets
-	backend.Status.SelectedObjects = boundedDiscoveredObjects(result.SelectedObjects)
-	backend.Status.SkippedObjects = boundedDiscoveredObjects(result.SkippedObjects)
-	backend.Status.UnsupportedPatterns = boundedDiscoveredObjects(result.UnsupportedPatterns)
-	backend.Status.DiscoveryErrors = boundedDiscoveryErrors(result.DiscoveryErrors)
-	status := metav1.ConditionFalse
-	if result.Ready {
-		status = metav1.ConditionTrue
-	}
-	apimeta.SetStatusCondition(&backend.Status.Conditions, metav1.Condition{
-		Type:               "DiscoveryReady",
-		Status:             status,
-		Reason:             result.Reason,
-		Message:            result.Message,
-		ObservedGeneration: backend.Generation,
-		LastTransitionTime: now,
-	})
-	if err := r.Status().Patch(ctx, backend, patch); err != nil {
-		return fmt.Errorf("patch Backend discovery status: %w", err)
-	}
-	return nil
-}
-
-func backendDiscoveryStatusCurrent(backend *kaprov1alpha2.Backend, now metav1.Time, interval time.Duration, result kaproadapter.DiscoveryResult) bool {
-	if backend.Status.LastDiscoveryTime == nil || now.Sub(backend.Status.LastDiscoveryTime.Time) >= interval/2 {
-		return false
-	}
-	if backend.Status.ObservedGeneration != backend.Generation ||
-		backend.Status.Driver != backend.Spec.Driver ||
-		backend.Status.DiscoveredClusters != result.DiscoveredClusters ||
-		backend.Status.DiscoveredApplications != result.DiscoveredApplications ||
-		backend.Status.DiscoveredApplicationSets != result.DiscoveredApplicationSets ||
-		!reflect.DeepEqual(backend.Status.SelectedObjects, boundedDiscoveredObjects(result.SelectedObjects)) ||
-		!reflect.DeepEqual(backend.Status.SkippedObjects, boundedDiscoveredObjects(result.SkippedObjects)) ||
-		!reflect.DeepEqual(backend.Status.UnsupportedPatterns, boundedDiscoveredObjects(result.UnsupportedPatterns)) ||
-		!reflect.DeepEqual(backend.Status.DiscoveryErrors, boundedDiscoveryErrors(result.DiscoveryErrors)) {
-		return false
-	}
-	wantStatus := metav1.ConditionFalse
-	if result.Ready {
-		wantStatus = metav1.ConditionTrue
-	}
-	cond := apimeta.FindStatusCondition(backend.Status.Conditions, "DiscoveryReady")
-	if cond == nil {
-		return false
-	}
-	return cond.Status == wantStatus &&
-		cond.Reason == result.Reason &&
-		cond.Message == result.Message &&
-		cond.ObservedGeneration == backend.Generation
 }
 
 func (r *AdapterPolicyReconciler) adapterRegistry() *kaproadapter.Registry {
@@ -248,32 +195,6 @@ func adapterPolicyDiscoveryRequest(backend *kaprov1alpha2.Backend) kaproadapter.
 		req.MaxObjects = int32(defaultBackendDiscoveryMaxObjects)
 	}
 	return req
-}
-
-func boundedDiscoveredObjects(in []kaprov1alpha2.DiscoveredBackendObject) []kaprov1alpha2.DiscoveredBackendObject {
-	if len(in) == 0 {
-		return nil
-	}
-	limit := len(in)
-	if limit > maxBackendDiscoveryStatusObjects {
-		limit = maxBackendDiscoveryStatusObjects
-	}
-	out := make([]kaprov1alpha2.DiscoveredBackendObject, limit)
-	copy(out, in[:limit])
-	return out
-}
-
-func boundedDiscoveryErrors(in []string) []string {
-	if len(in) == 0 {
-		return nil
-	}
-	limit := len(in)
-	if limit > maxBackendDiscoveryStatusObjects {
-		limit = maxBackendDiscoveryStatusObjects
-	}
-	out := make([]string, limit)
-	copy(out, in[:limit])
-	return out
 }
 
 func adapterPolicyStatusCurrent(policy *kaprov1alpha2.AdapterPolicy, ready bool, reason, message string) bool {

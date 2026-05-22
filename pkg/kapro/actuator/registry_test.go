@@ -60,6 +60,28 @@ func TestRegistryRejectsInvalidRegistration(t *testing.T) {
 	if err := registry.RegisterRegistration(Registration{Name: "push/flux"}); err == nil {
 		t.Fatalf("RegisterRegistration with nil actuator succeeded")
 	}
+	// When Name is empty and Mode/Capabilities.Modes are empty too,
+	// RegistryKey() falls back to "/<adapter>" — a key that no
+	// DeliverySpec.RegistryKey() at resolve time can ever match. Reject
+	// instead of silently registering an unreachable actuator.
+	leadingSlash := Registration{
+		Actuator:     stubActuator{},
+		Capabilities: Capabilities{Adapter: "argo"},
+	}
+	if err := registry.RegisterRegistration(leadingSlash); err == nil {
+		t.Fatalf("RegisterRegistration accepted leading-slash key from empty Mode+Name")
+	}
+}
+
+func TestRegistryUpsertRegistrationSurfacesValidationError(t *testing.T) {
+	registry := NewRegistry()
+	prev, err := registry.UpsertRegistration(Registration{Actuator: nil})
+	if err == nil {
+		t.Fatalf("UpsertRegistration must surface nil-actuator error")
+	}
+	if prev != nil {
+		t.Fatalf("UpsertRegistration returned non-nil prev on validation failure: %#v", prev)
+	}
 }
 
 func TestRegistryRegisterKeepsLegacyPermissiveBehavior(t *testing.T) {

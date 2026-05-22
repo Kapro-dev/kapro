@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -95,18 +96,23 @@ func TestAdapterPolicyReconcilerRecordsDiscoveryResult(t *testing.T) {
 		t.Fatalf("LastSyncTime was not set")
 	}
 
+	// AdapterPolicyReconciler is no longer the writer for Backend.status
+	// discovery fields — BackendReconciler owns them. Confirm here that
+	// running a single AdapterPolicy reconcile does NOT touch Backend
+	// status (the assertion that previously expected LastDiscoveryTime
+	// to be set is the inverse of this invariant).
 	var backend kaprov1alpha2.Backend
 	if err := c.Get(ctx, client.ObjectKey{Name: "argo"}, &backend); err != nil {
 		t.Fatalf("get backend: %v", err)
 	}
-	if backend.Status.LastDiscoveryTime == nil {
-		t.Fatalf("backend LastDiscoveryTime was not set")
+	if backend.Status.LastDiscoveryTime != nil {
+		t.Fatalf("AdapterPolicyReconciler must not write Backend.status.lastDiscoveryTime; got %v", backend.Status.LastDiscoveryTime)
 	}
-	if backend.Status.DiscoveredClusters != 1 || backend.Status.DiscoveredApplications != 1 || len(backend.Status.SelectedObjects) != 1 {
-		t.Fatalf("backend discovery status = %#v, want discovered object counts", backend.Status)
+	if backend.Status.DiscoveredClusters != 0 || backend.Status.DiscoveredApplications != 0 || len(backend.Status.SelectedObjects) != 0 {
+		t.Fatalf("AdapterPolicyReconciler must not write Backend.status discovery counts; got %#v", backend.Status)
 	}
-	if cond := adapterPolicyConditionByType(t, backend.Status.Conditions, "DiscoveryReady"); cond.Status != metav1.ConditionTrue || cond.Reason != "DiscoverySucceeded" {
-		t.Fatalf("backend DiscoveryReady = %#v, want true DiscoverySucceeded", cond)
+	if cond := apimeta.FindStatusCondition(backend.Status.Conditions, "DiscoveryReady"); cond != nil {
+		t.Fatalf("AdapterPolicyReconciler must not set Backend.DiscoveryReady; got %#v", cond)
 	}
 }
 
