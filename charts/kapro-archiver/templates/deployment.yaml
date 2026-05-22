@@ -1,0 +1,114 @@
+{{- $sink := required "archiver.sink is required" .Values.archiver.sink -}}
+{{- if not (has $sink (list "file" "s3")) -}}
+{{- fail "archiver.sink must be one of: file, s3" -}}
+{{- end -}}
+{{- if and (eq $sink "s3") (not .Values.s3.bucket) -}}
+{{- fail "s3.bucket is required when archiver.sink=s3" -}}
+{{- end -}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kapro-archiver.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kapro-archiver.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kapro-archiver.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kapro-archiver.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "kapro-archiver.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: kapro-archiver
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: KAPRO_ARCHIVER_ADDR
+              value: ":{{ .Values.service.port }}"
+            - name: KAPRO_ARCHIVER_SINK
+              value: {{ $sink | quote }}
+            - name: KAPRO_ARCHIVER_MAX_BODY_BYTES
+              value: {{ .Values.archiver.maxBodyBytes | int64 | quote }}
+            {{- if eq $sink "file" }}
+            - name: KAPRO_ARCHIVE_DIR
+              value: {{ .Values.file.dir | quote }}
+            {{- end }}
+            {{- if eq $sink "s3" }}
+            - name: KAPRO_ARCHIVE_S3_BUCKET
+              value: {{ .Values.s3.bucket | quote }}
+            - name: KAPRO_ARCHIVE_S3_PREFIX
+              value: {{ .Values.s3.prefix | quote }}
+            {{- with .Values.s3.region }}
+            - name: KAPRO_ARCHIVE_S3_REGION
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.s3.endpoint }}
+            - name: KAPRO_ARCHIVE_S3_ENDPOINT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if eq $sink "file" }}
+          volumeMounts:
+            - name: archive-data
+              mountPath: {{ dir .Values.file.dir }}
+          {{- end }}
+      {{- if eq $sink "file" }}
+      volumes:
+        - name: archive-data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default (include "kapro-archiver.fullname" .) .Values.persistence.existingClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}

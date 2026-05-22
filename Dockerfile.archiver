@@ -1,0 +1,31 @@
+# Build stage
+FROM golang:1.25-alpine AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /workspace
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" \
+    -o /workspace/kapro-archiver \
+    ./cmd/kapro-archiver
+
+# Runtime stage - distroless, non-root
+FROM gcr.io/distroless/static:nonroot
+
+LABEL org.opencontainers.image.title="kapro-archiver" \
+      org.opencontainers.image.description="Optional Kapro CloudEvents archive subscriber with file and S3 sinks" \
+      org.opencontainers.image.source="https://github.com/Kapro-dev/kapro" \
+      org.opencontainers.image.licenses="Apache-2.0"
+
+COPY --from=builder /workspace/kapro-archiver /kapro-archiver
+
+USER 65532:65532
+
+ENTRYPOINT ["/kapro-archiver"]

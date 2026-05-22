@@ -1,0 +1,14 @@
+{
+  "specversion": "1.0",
+  "id": "example-go-subscriber-1",
+  "source": "/apis/kapro.io/v1alpha2/promotions/demo",
+  "type": "kapro.io/promotion.succeeded",
+  "subject": "demo",
+  "time": "2026-05-22T10:00:00Z",
+  "datacontenttype": "application/json",
+  "data": {
+    "promotion": "demo",
+    "phase": "Succeeded",
+    "version": "v1.2.3"
+  }
+}

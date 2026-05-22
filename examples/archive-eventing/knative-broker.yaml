@@ -1,0 +1,13 @@
+apiVersion: eventing.knative.dev/v1
+kind: Broker
+metadata:
+  name: kapro-archive
+---
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: kapro-archive-all
+spec:
+  broker: kapro-archive
+  subscriber:
+    uri: http://archive-receiver.kapro-events.svc.cluster.local/

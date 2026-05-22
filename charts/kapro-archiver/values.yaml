@@ -1,0 +1,77 @@
+# Default values for kapro-archiver.
+#
+# This chart is opt-in. It deploys a standalone CloudEvents receiver that
+# archives Kapro promotion history outside the operator and outside etcd.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/kapro-dev/kapro-archiver
+  pullPolicy: IfNotPresent
+  # Empty defaults to Chart.appVersion, which matches the published release image tag.
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+service:
+  type: ClusterIP
+  port: 8080
+
+archiver:
+  # Supported sinks: file, s3.
+  sink: file
+  maxBodyBytes: 1048576
+
+file:
+  dir: /var/lib/kapro-archiver/events
+
+s3:
+  bucket: ""
+  prefix: kapro/events
+  region: ""
+  # Optional S3-compatible endpoint. When set, the archiver uses path-style URLs.
+  endpoint: ""
+
+persistence:
+  # Enable when archiver.sink=file and file archives must survive pod reschedule.
+  enabled: false
+  existingClaim: ""
+  storageClassName: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+
+envFrom: []
+extraEnv: []
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+priorityClassName: ""

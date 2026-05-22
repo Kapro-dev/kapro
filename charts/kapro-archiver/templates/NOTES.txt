@@ -1,0 +1,12 @@
+kapro-archiver is installed as an opt-in CloudEvents archive receiver.
+
+Point the Kapro operator CloudEvents sink at:
+
+  http://{{ include "kapro-archiver.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}/
+
+For example:
+
+  KAPRO_EVENTS_SINK_URL=http://{{ include "kapro-archiver.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}/
+
+The chart does not modify the operator deployment. Configure the operator sink
+explicitly in your existing Kapro operator installation.
