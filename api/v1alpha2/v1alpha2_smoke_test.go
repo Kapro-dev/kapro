@@ -21,7 +21,7 @@ func TestSchemeRegistersAllNewKinds(t *testing.T) {
 	}
 	// Every CRD's singular Kind we care about.
 	wantKinds := []string{
-		"Approval", "Backend", "Cluster", "ClusterTemplate",
+		"Approval", "Backend", "Cluster", "ClusterClassifier", "ClusterTemplate",
 		"Fleet", "GateExpression", "Plan", "Plugin", "Policy",
 		"Promotion", "PromotionRun",
 		"Source", "Target", "Trigger",
@@ -59,6 +59,79 @@ func TestFleetRoundTripsThroughYAML(t *testing.T) {
 	}
 	if out.Spec.Delivery.BackendRef != "flux" {
 		t.Errorf("backendRef lost across round-trip: %q", out.Spec.Delivery.BackendRef)
+	}
+}
+
+func TestDeliveryStagingRoundTripsThroughYAML(t *testing.T) {
+	in := &Cluster{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "kapro.io/v1alpha2", Kind: "Cluster"},
+		ObjectMeta: metav1.ObjectMeta{Name: "de-prod-01"},
+		Spec: ClusterSpec{
+			Delivery: DeliverySpec{
+				Mode:       DeliveryModePull,
+				BackendRef: "oci",
+				Staging: &DeliveryStagingSpec{
+					Type:          DeliveryStagingTwoPhase,
+					FailurePolicy: DeliveryStagingFailureAbort,
+				},
+			},
+		},
+	}
+	data, err := yaml.Marshal(in)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var out Cluster
+	if err := yaml.Unmarshal(data, &out); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if out.Spec.Delivery.Staging == nil {
+		t.Fatal("staging lost across round-trip")
+	}
+	if out.Spec.Delivery.Staging.Type != DeliveryStagingTwoPhase {
+		t.Errorf("staging.type = %q, want %q", out.Spec.Delivery.Staging.Type, DeliveryStagingTwoPhase)
+	}
+	if out.Spec.Delivery.Staging.FailurePolicy != DeliveryStagingFailureAbort {
+		t.Errorf("staging.failurePolicy = %q, want %q", out.Spec.Delivery.Staging.FailurePolicy, DeliveryStagingFailureAbort)
+	}
+}
+
+func TestClusterClassifierRoundTripsThroughYAML(t *testing.T) {
+	in := &ClusterClassifier{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "kapro.io/v1alpha2", Kind: "ClusterClassifier"},
+		ObjectMeta: metav1.ObjectMeta{Name: "gcp-prod"},
+		Spec: ClusterClassifierSpec{
+			Rules: []ClusterClassifierRule{{
+				Name: "gcp-prod",
+				Match: ClusterClassifierMatch{
+					Capabilities: &ClusterCapabilitySelector{
+						Cloud:        "gcp",
+						DeliveryMode: "pull",
+					},
+				},
+				Labels: map[string]string{"kapro.io/tier": "prod"},
+				Delivery: &ClusterClassifierDeliveryHints{
+					Staging: &DeliveryStagingSpec{
+						Type:          DeliveryStagingTwoPhase,
+						FailurePolicy: DeliveryStagingFailureAbort,
+					},
+				},
+			}},
+		},
+	}
+	data, err := yaml.Marshal(in)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var out ClusterClassifier
+	if err := yaml.Unmarshal(data, &out); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if out.Name != "gcp-prod" || len(out.Spec.Rules) != 1 {
+		t.Fatalf("classifier round-trip lost fields: name=%q rules=%d", out.Name, len(out.Spec.Rules))
+	}
+	if out.Spec.Rules[0].Delivery == nil || out.Spec.Rules[0].Delivery.Staging == nil {
+		t.Fatal("classifier delivery staging hint lost across round-trip")
 	}
 }
 

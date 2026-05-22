@@ -116,6 +116,9 @@ func (r *ClusterBootstrapReconciler) shouldProvision(ctx context.Context, fc *ka
 	if fc.Spec.Bootstrap == nil {
 		return false
 	}
+	if usesVaultBootstrapMaterial(fc) {
+		return false
+	}
 	if fc.Status.Bootstrap != nil && fc.Status.Bootstrap.Used {
 		return false
 	}
@@ -309,6 +312,13 @@ func buildBootstrapKubeconfig(hubURL string, caData []byte, token, clusterName, 
 	}
 	cfg.CurrentContext = contextName
 	return clientcmd.Write(*cfg)
+}
+
+func usesVaultBootstrapMaterial(fc *kaprov1alpha2.Cluster) bool {
+	if fc == nil || fc.Spec.Bootstrap == nil || fc.Spec.Bootstrap.MaterialSource == nil {
+		return false
+	}
+	return fc.Spec.Bootstrap.MaterialSource.Type == kaprov1alpha2.ClusterBootstrapMaterialVault
 }
 
 // ---- Per-cluster long-lived RBAC -------------------------------------------

@@ -154,6 +154,52 @@ spec:
                       (ServiceAccount, kubeconfig Secret). Not used for stage selection — use
                       Cluster.metadata.labels for that.
                     type: object
+                  materialSource:
+                    description: |-
+                      MaterialSource selects where the hub publishes the short-lived bootstrap
+                      kubeconfig material. When omitted, the existing Kubernetes Secret path is
+                      used. Vault is a v0.2.3 preview contract and is rejected fail-closed by the
+                      controller unless explicitly implemented by platform automation.
+                    properties:
+                      type:
+                        default: KubernetesSecret
+                        description: Type selects the material publication target.
+                        enum:
+                        - KubernetesSecret
+                        - Vault
+                        type: string
+                      vault:
+                        description: |-
+                          Vault describes the external Vault location to publish or read bootstrap
+                          kubeconfig material from. This is a preview API contract only in v0.2.3.
+                        properties:
+                          address:
+                            description: |-
+                              Address is the Vault server URL. When empty, platform automation may use
+                              its runtime default.
+                            type: string
+                          kubeconfigField:
+                            description: |-
+                              KubeconfigField is the field name containing the rendered kubeconfig.
+                              Defaults to "kubeconfig" for external automation.
+                            type: string
+                          mount:
+                            description: Mount is the Vault secrets engine mount,
+                              for example "secret" or "kv".
+                            type: string
+                          path:
+                            description: Path is the Vault path for this cluster's
+                              bootstrap material.
+                            minLength: 1
+                            type: string
+                        required:
+                        - path
+                        type: object
+                    type: object
+                    x-kubernetes-validations:
+                    - message: vault must be set only when type=Vault
+                      rule: '(!has(self.type) || self.type == ''KubernetesSecret'')
+                        ? !has(self.vault) : has(self.vault)'
                   tokenHash:
                     description: |-
                       TokenHash is an opaque, platform-supplied bootstrap-slot identifier in
@@ -206,6 +252,29 @@ spec:
                     description: |-
                       Parameters are opaque backend-specific settings, following the
                       StorageClass.parameters pattern. Fleet core does not interpret them.
+                    type: object
+                  staging:
+                    description: |-
+                      Staging declares optional pre-commit safety semantics for backends that
+                      support staging. When omitted, existing backend defaults are preserved.
+                      The built-in OCI pull backend already uses TwoPhase/Abort behavior.
+                    properties:
+                      failurePolicy:
+                        default: Abort
+                        description: |-
+                          FailurePolicy selects how dry-run failures affect commit. Abort is the
+                          only supported policy and means no object is committed when any staged
+                          object fails validation.
+                        enum:
+                        - Abort
+                        type: string
+                      type:
+                        default: TwoPhase
+                        description: Type selects the staging strategy. TwoPhase is
+                          the only supported value.
+                        enum:
+                        - TwoPhase
+                        type: string
                     type: object
                 required:
                 - backendRef

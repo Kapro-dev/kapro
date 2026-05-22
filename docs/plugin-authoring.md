@@ -41,6 +41,13 @@ certification process exists.
 Compatibility is based on the `contract_version` returned by
 `GetCapabilities`, not the plugin implementation version.
 
+For trusted in-process actuator substrates, use the stable SDK package
+`kapro.io/kapro/pkg/kapro/actuator`. The legacy
+`kapro.io/kapro/pkg/actuator` import path remains as a v0.2.x compatibility
+bridge, but new plugins and custom operator binaries should not depend on it.
+Register in-process substrates with `server.RegisterActuator(...)` or append to
+`server.DefaultActuatorRegistrars()` before calling `server.New`.
+
 ## Compatibility Matrix
 
 | Plugin type | Contract | Supported versions | Conformance package | Example |
@@ -66,6 +73,37 @@ make check-proto
 
 See `docs/api-stability.md` for the compatibility policy that applies to these
 contracts.
+
+## Conformance CLI
+
+External authors can run the same base harnesses against a live gRPC plugin
+with `kapro-conformance`:
+
+```bash
+go run ./cmd/kapro-conformance actuator --endpoint localhost:9090
+go run ./cmd/kapro-conformance gate --endpoint localhost:9090
+go run ./cmd/kapro-conformance planner --endpoint localhost:9090
+```
+
+Build the binary when testing from a checkout:
+
+```bash
+go build ./cmd/kapro-conformance
+```
+
+Use repeated `--param key=value` flags for plugin-specific scenario parameters.
+For the Argo CD actuator example:
+
+```bash
+go run ./cmd/kapro-conformance actuator \
+  --endpoint localhost:9090 \
+  --param argocdNamespace=argocd \
+  --param application=checkout
+```
+
+The actuator conformance scenario calls `Apply` twice, `IsConverged` twice, and
+`Rollback` twice. Use isolated backend resources because the plugin may perform
+real backend mutations while proving idempotency.
 
 ## Plugin Manifests
 
@@ -126,6 +164,13 @@ An actuator plugin must:
 - respect request context cancellation;
 - avoid storing PromotionRun state outside the backend it controls.
 
+An in-process actuator substrate should publish matching
+`actuator.Capabilities` metadata for `Backend.spec.driver`,
+`Backend.spec.adapter`, `Backend.spec.runtime`, and supported delivery modes.
+Built-in Argo CD, Flux, OCI, and pull-mode bridges are exposed through the
+server registrar functions, so external authors do not need to import
+`internal/...` packages to compose the reference operator behavior.
+
 Run the base actuator conformance harness from your plugin tests:
 
 ```go
@@ -140,7 +185,10 @@ A complete external actuator example is available in
 `examples/plugins/argocd-actuator`, with a sample `Plugin` manifest at
 `examples/plugins/argocd-actuator-registration.yaml`. It implements KAI for
 Argo CD Applications by patching `spec.source.targetRevision` and checking
-Argo CD sync and health status for convergence.
+Argo CD sync and health status for convergence. Argo CD is the first external
+substrate proof for the actuator plugin axis.
+The example uses only public Kapro packages: `spec/kai/v1alpha1`,
+`pkg/plugincompat`, and the test-only `conformance/actuator` harness.
 `examples/plugins/argocd-applicationset-actuator`, with a sample `Plugin`
 manifest at `examples/plugins/argocd-applicationset-actuator-registration.yaml`,
 implements the ApplicationSet-based `argo/push` variant by patching
@@ -217,9 +265,9 @@ capacity-aware filtering, ordering, and deferring promotion targets.
 ## Conformance Rules
 
 Run the matching conformance harness in the plugin repository before publishing
-a `Plugin`. Use deterministic inputs, immutable versions, stable
-target names, and isolated backend resources. Do not point conformance tests at
-shared production systems.
+a `Plugin`, either through Go tests or with `cmd/kapro-conformance`. Use
+deterministic inputs, immutable versions, stable target names, and isolated
+backend resources. Do not point conformance tests at shared production systems.
 
 The harnesses check the base contract:
 
@@ -243,6 +291,7 @@ import (
     actuatorconformance "kapro.io/kapro/conformance/actuator"
     gateconformance "kapro.io/kapro/conformance/gate"
     plannerconformance "kapro.io/kapro/conformance/planner"
+    actuator "kapro.io/kapro/pkg/kapro/actuator"
     kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
     kgiv1alpha1 "kapro.io/kapro/spec/kgi/v1alpha1"
     kpiv1alpha1 "kapro.io/kapro/spec/kpi/v1alpha1"

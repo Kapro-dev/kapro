@@ -4,7 +4,10 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // AdapterPolicySpec configures continuous brownfield adapter discovery.
 type AdapterPolicySpec struct {
-	// Adapter names the registered adapter to run, for example argo-cd or flux.
+	// Adapter names the adapter expected for BackendRef, for example argo-cd
+	// or flux. The controller resolves the backend driver through the public
+	// adapter registry and fails closed when this value does not match the
+	// referenced Backend's adapter.
 	// +kubebuilder:validation:MinLength=1
 	Adapter string `json:"adapter"`
 	// BackendRef names the Backend profile this policy keeps in sync.
@@ -16,7 +19,7 @@ type AdapterPolicySpec struct {
 	SyncInterval string `json:"syncInterval,omitempty"`
 }
 
-// AdapterPolicyStatus records the latest continuous discovery observation.
+// AdapterPolicyStatus records the latest continuous adapter discovery attempt.
 type AdapterPolicyStatus struct {
 	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
 	LastSyncTime       *metav1.Time       `json:"lastSyncTime,omitempty"`

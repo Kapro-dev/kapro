@@ -29,6 +29,7 @@ KAPRO_KINDS = %w[
   Approval
   Backend
   Cluster
+  ClusterClassifier
   ClusterTemplate
   Fleet
   GateExpression

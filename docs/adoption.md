@@ -96,6 +96,13 @@ Nothing is adopted yet. Review the generated files first. Switch
 `Backend.spec.discovery.managementPolicy` from `Observe` to `Adopt` only after
 the owning team approves exactly which fields Kapro may write.
 
+For continuous in-cluster discovery, `kapro adopt argo-cd --apply` or
+`kapro adopt flux --apply` creates or updates a `Backend` and matching
+`AdapterPolicy`. The policy fails closed when the Backend is missing, discovery
+is disabled, the policy adapter does not match the Backend adapter, or the
+registered adapter cannot complete discovery. Use `--dry-run=client` with
+`--apply` to validate the live writes without persisting resources.
+
 ## Promotion Flow
 
 After greenfield scaffolding or brownfield mapping review, promotion looks the
@@ -117,6 +124,16 @@ stamps immutable `PromotionRun` attempts and per-target `Target` records.
 - Git-native writes require explicit `kapro source apply`; Kapro does not push
   unless `--commit --push` is set.
 - Live Argo CD Application writes require opt-in labels or annotations.
+- OCI pull delivery uses two-phase staging: server-side dry-run apply for every
+  object first, then commit only when the whole staging pass succeeds. The
+  optional `spec.delivery.staging` API currently exposes this conservative
+  `TwoPhase`/`Abort` contract without changing existing backend defaults.
+- `ClusterClassifier` is a preview API for deriving stable Cluster labels and
+  delivery staging hints used by stage selectors. It is inert unless classifier
+  automation is explicitly installed.
+- Vault bootstrap material is a preview contract. The built-in CSR bootstrap
+  controller fails closed with `BootstrapVaultDisabled` rather than falling
+  back to Kubernetes Secrets when `spec.bootstrap.materialSource.type=Vault`.
 - Direct `PromotionRun` creation is advanced/debug usage, not the default user
   workflow.
 

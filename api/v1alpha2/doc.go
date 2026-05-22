@@ -17,6 +17,8 @@
 //   - GateExpression — preview composition API for reusable gate policies
 //   - Plugin — external actuator, gate, and planner plugin registration
 //   - Policy    — AI trust boundary and audit policy
+//   - ClusterClassifier — preview policy for deriving stage-selection labels
+//     and delivery staging hints; inert unless classifier automation is installed.
 //   - ClusterTemplate — fleet auto-import template (ApplicationSet-shaped);
 //     the controller generates Cluster objects from it.
 //   - Backend — delivery backend configuration referenced by Fleet.spec.delivery.backendRef.

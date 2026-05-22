@@ -44,9 +44,42 @@ func main() {
 ```
 
 `server.New` wires the same defaults as the reference binary: manager options,
-built-in gates, built-in actuators, selected controllers, admission webhooks,
-the plugin gateway, approval server, hub gateway, metrics, health checks, and
-leader election. Register custom hooks after `New` returns and before `Run`.
+built-in gates, built-in actuator registrars, selected controllers, admission
+webhooks, the plugin gateway, approval server, hub gateway, metrics, health
+checks, and leader election. Register custom hooks after `New` returns and
+before `Run`.
+
+The stable actuator SDK import path is
+`kapro.io/kapro/pkg/kapro/actuator`. The legacy `kapro.io/kapro/pkg/actuator`
+package remains as a v0.2.x compatibility bridge for existing in-tree and
+out-of-tree code.
+
+Use `Options.ActuatorRegistrars` when a custom binary needs to replace or
+extend the reference actuator set before controllers start:
+
+```go
+opts := server.OptionsFromEnv()
+opts.ActuatorRegistrars = append(server.DefaultActuatorRegistrars(),
+	server.RegisterActuator(actuator.Registration{
+		Name: "push/external",
+		Mode: kaprov1alpha2.DeliveryModePush,
+		Capabilities: actuator.Capabilities{
+			Driver:              kaprov1alpha2.BackendDriverExternal,
+			Adapter:             "external",
+			Runtime:             kaprov1alpha2.BackendRuntimeHub,
+			Modes:               []kaprov1alpha2.DeliveryMode{kaprov1alpha2.DeliveryModePush},
+			SupportsApply:       true,
+			SupportsRollback:    true,
+			SupportsConvergence: true,
+		},
+		Actuator: myActuator,
+	}),
+)
+```
+
+Leaving `ActuatorRegistrars` nil keeps the reference behavior. Setting it to a
+non-nil slice replaces the built-in list; append to
+`DefaultActuatorRegistrars()` when you want built-ins plus custom substrates.
 
 The first server SDK is intentionally a full embedded operator rather than a
 minimal dependency graph. Importing `pkg/kapro/server` pulls the built-in

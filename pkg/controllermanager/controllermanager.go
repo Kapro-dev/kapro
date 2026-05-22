@@ -24,6 +24,7 @@ import (
 
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
+	kaproadapter "kapro.io/kapro/pkg/kapro/adapter"
 	"kapro.io/kapro/pkg/notification"
 	"kapro.io/kapro/pkg/planner"
 )
@@ -59,6 +60,12 @@ type ControllerContext struct {
 	// External gate types register at startup:
 	// cc.GateRegistry.Register("my-type", impl). Never nil in production.
 	GateRegistry *gate.Registry
+
+	// AdapterRegistry resolves public delivery adapters by Backend.spec.driver.
+	// AdapterPolicy uses this for continuous brownfield discovery. Promotion
+	// execution continues to use ActuatorRegistry until the substrate plugin
+	// axis fully replaces the legacy actuator bridge.
+	AdapterRegistry *kaproadapter.Registry
 
 	// Planner orders and filters promotion targets. Built-in planner plugins are
 	// always present; external KPI plugins can be hot-loaded when the plugin

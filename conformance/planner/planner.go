@@ -3,10 +3,12 @@ package planner
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	"kapro.io/kapro/conformance"
 	"kapro.io/kapro/pkg/plugincompat"
 	kpiv1alpha1 "kapro.io/kapro/spec/kpi/v1alpha1"
 
@@ -152,9 +154,132 @@ func Run(t *testing.T, client kpiv1alpha1.PlannerServiceClient, scenario Scenari
 	})
 }
 
+// Check executes the base KPI conformance checks against a gRPC planner client
+// and returns structured results for CLIs and custom test runners.
+func Check(ctx context.Context, client kpiv1alpha1.PlannerServiceClient, scenario Scenario) conformance.Report {
+	if scenario.Timeout == 0 {
+		scenario.Timeout = 10 * time.Second
+	}
+	if ctx == nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.Background(), scenario.Timeout)
+		defer cancel()
+	}
+	return conformance.Report{
+		Suite: "KPI planner",
+		Results: []conformance.Result{
+			checkCapabilities(ctx, client),
+			checkPlanHandlesEmptyTargetList(ctx, client, scenario),
+			checkPlanIsDeterministicForSameRequest(ctx, client, scenario),
+			checkPlanDoesNotMutateRequest(ctx, client, scenario),
+			checkPlanReturnsValidTargetsAndDecisions(ctx, client, scenario),
+			checkPlanRespectsContextCancellation(client, scenario),
+		},
+	}
+}
+
+func checkCapabilities(ctx context.Context, client kpiv1alpha1.PlannerServiceClient) conformance.Result {
+	const name = "GetCapabilitiesReturnsContractVersion"
+	resp, err := client.GetCapabilities(ctx, &kpiv1alpha1.GetCapabilitiesRequest{})
+	if err != nil {
+		return conformance.Fail(name, "GetCapabilities returned error: %v", err)
+	}
+	if resp == nil {
+		return conformance.Fail(name, "GetCapabilities returned nil response")
+	}
+	if !plugincompat.IsContractVersionSupported(kaprov1alpha2.PluginTypePlanner, resp.GetContractVersion()) {
+		return conformance.Fail(name, "contract_version = %q, supported versions = %v", resp.GetContractVersion(), plugincompat.SupportedKPIContractVersions())
+	}
+	if !hasPlannerCapability(resp.GetCapabilities()) {
+		return conformance.Fail(name, "capabilities = %v, want at least one of filter, score, order, defer", resp.GetCapabilities())
+	}
+	return conformance.Pass(name)
+}
+
+func checkPlanHandlesEmptyTargetList(ctx context.Context, client kpiv1alpha1.PlannerServiceClient, scenario Scenario) conformance.Result {
+	const name = "PlanHandlesEmptyTargetList"
+	req := clonePlan(scenario.Plan)
+	if req == nil {
+		return conformance.Fail(name, "scenario Plan request is nil")
+	}
+	req.Targets = nil
+
+	resp, err := client.Plan(ctx, req)
+	if err != nil {
+		return conformance.Fail(name, "Plan with empty target list returned error: %v", err)
+	}
+	if resp == nil {
+		return conformance.Fail(name, "Plan with empty target list returned nil response")
+	}
+	if len(resp.GetTargets()) != 0 {
+		return conformance.Fail(name, "Plan with empty target list returned targets: %v", resp.GetTargets())
+	}
+	return conformance.Pass(name)
+}
+
+func checkPlanIsDeterministicForSameRequest(ctx context.Context, client kpiv1alpha1.PlannerServiceClient, scenario Scenario) conformance.Result {
+	const name = "PlanIsDeterministicForSameRequest"
+	first, err := client.Plan(ctx, clonePlan(scenario.Plan))
+	if err != nil {
+		return conformance.Fail(name, "first Plan returned error: %v", err)
+	}
+	second, err := client.Plan(ctx, clonePlan(scenario.Plan))
+	if err != nil {
+		return conformance.Fail(name, "second Plan returned error: %v", err)
+	}
+	if !proto.Equal(first, second) {
+		return conformance.Fail(name, "Plan is not deterministic: first=%v second=%v", first, second)
+	}
+	return conformance.Pass(name)
+}
+
+func checkPlanDoesNotMutateRequest(ctx context.Context, client kpiv1alpha1.PlannerServiceClient, scenario Scenario) conformance.Result {
+	const name = "PlanDoesNotMutateRequest"
+	req := clonePlan(scenario.Plan)
+	before := clonePlan(req)
+	if _, err := client.Plan(ctx, req); err != nil {
+		return conformance.Fail(name, "Plan returned error: %v", err)
+	}
+	if !proto.Equal(req, before) {
+		return conformance.Fail(name, "Plan mutated request: before=%v after=%v", before, req)
+	}
+	return conformance.Pass(name)
+}
+
+func checkPlanReturnsValidTargetsAndDecisions(ctx context.Context, client kpiv1alpha1.PlannerServiceClient, scenario Scenario) conformance.Result {
+	const name = "PlanReturnsValidTargetsAndDecisions"
+	req := clonePlan(scenario.Plan)
+	resp, err := client.Plan(ctx, req)
+	if err != nil {
+		return conformance.Fail(name, "Plan returned error: %v", err)
+	}
+	if resp == nil {
+		return conformance.Fail(name, "Plan returned nil response")
+	}
+	if message := validatePlannedTargetsMessage(req, resp); message != "" {
+		return conformance.Fail(name, "%s", message)
+	}
+	return conformance.Pass(name)
+}
+
+func checkPlanRespectsContextCancellation(client kpiv1alpha1.PlannerServiceClient, scenario Scenario) conformance.Result {
+	const name = "PlanRespectsContextCancellation"
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := client.Plan(cancelledCtx, clonePlan(scenario.Plan)); err == nil {
+		return conformance.Fail(name, "Plan with cancelled context returned nil error")
+	}
+	return conformance.Pass(name)
+}
+
 func validatePlannedTargets(t *testing.T, req *kpiv1alpha1.PlanRequest, resp *kpiv1alpha1.PlanResponse) {
 	t.Helper()
+	if message := validatePlannedTargetsMessage(req, resp); message != "" {
+		t.Fatal(message)
+	}
+}
 
+func validatePlannedTargetsMessage(req *kpiv1alpha1.PlanRequest, resp *kpiv1alpha1.PlanResponse) string {
 	requestTargets := make(map[string]struct{}, len(req.GetTargets()))
 	for _, target := range req.GetTargets() {
 		requestTargets[target.GetName()] = struct{}{}
@@ -164,16 +289,17 @@ func validatePlannedTargets(t *testing.T, req *kpiv1alpha1.PlanRequest, resp *kp
 	for _, target := range resp.GetTargets() {
 		name := target.GetName()
 		if _, ok := requestTargets[name]; !ok {
-			t.Fatalf("Plan returned target %q not present in request", name)
+			return fmt.Sprintf("Plan returned target %q not present in request", name)
 		}
 		if _, ok := seen[name]; ok {
-			t.Fatalf("Plan returned duplicate target %q", name)
+			return fmt.Sprintf("Plan returned duplicate target %q", name)
 		}
 		seen[name] = struct{}{}
 		if !isValidDecision(target.GetDecision()) {
-			t.Fatalf("Plan returned invalid decision for target %q: %s", name, target.GetDecision())
+			return fmt.Sprintf("Plan returned invalid decision for target %q: %s", name, target.GetDecision())
 		}
 	}
+	return ""
 }
 
 func isValidDecision(decision kpiv1alpha1.PlanningDecision) bool {
