@@ -41,6 +41,10 @@ Prometheus Operator, set the `metadata.namespace` and labels in
 `prometheus-rules.yaml` to match the namespace and rule selector used by your
 Prometheus instance.
 
+Run `make validate-yaml-json` before changing monitoring assets. The validator
+checks the Kubernetes `PrometheusRule` shape and, when `promtool` is installed,
+extracts `spec.groups` before checking PromQL syntax.
+
 For SLI definitions, suggested thresholds, and the current split between
 first-class Kapro metrics and inferred kube-state-metrics signals, see
 `docs/operator-slos.md`.

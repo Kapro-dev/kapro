@@ -18,9 +18,22 @@ jobs:
   validate-yaml-json:
     name: Validate YAML/JSON
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+      - name: Set up promtool
+        env:
+          PROMETHEUS_VERSION: 2.55.1
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/prometheus
+          asset="prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz"
+          base_url="https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}"
+          curl -sSLO "${base_url}/${asset}"
+          curl -sSLO "${base_url}/sha256sums.txt"
+          grep "  ${asset}$" sha256sums.txt | sha256sum -c -
+          tar -xzf "${asset}" --strip-components=1 -C /tmp/prometheus "prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool"
+          echo "/tmp/prometheus" >> "${GITHUB_PATH}"
       - name: Validate YAML and Grafana JSON
         run: make validate-yaml-json
 
