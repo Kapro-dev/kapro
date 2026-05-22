@@ -70,8 +70,8 @@ type GateExpressionStatus struct {
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// GateExpression is a preview API for composing gate policies. In v0.1.2 only
-// ALL is accepted; other operators are reserved until their semantics graduate.
+// GateExpression is a preview API for composing reusable gate policies with
+// named operators such as ALL, ANY, NOT, WEIGHTED_SUM, THRESHOLD, and DELAY.
 type GateExpression struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

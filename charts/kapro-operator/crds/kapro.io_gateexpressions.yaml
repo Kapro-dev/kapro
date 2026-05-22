@@ -35,8 +35,8 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          GateExpression is a preview API for composing gate policies. In v0.1.2 only
-          ALL is accepted; other operators are reserved until their semantics graduate.
+          GateExpression is a preview API for composing reusable gate policies with
+          named operators such as ALL, ANY, NOT, WEIGHTED_SUM, THRESHOLD, and DELAY.
         properties:
           apiVersion:
             description: |-

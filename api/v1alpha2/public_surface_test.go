@@ -122,6 +122,7 @@ func TestGeneratedCRDDescriptionsDoNotPublishPreviewPromises(t *testing.T) {
 		regexp.MustCompile(`(?i)\bverified artifact changes\b`),
 		regexp.MustCompile(`(?i)\bfuture AI agents\b`),
 		regexp.MustCompile(`(?i)\blights up\s+when spec\.rollbackTo is wired\b`),
+		regexp.MustCompile(`(?i)\bALL is accepted; other operators are reserved\b`),
 	}
 
 	err := filepath.WalkDir(filepath.Join(root, "config", "crd", "bases"), func(path string, d os.DirEntry, err error) error {

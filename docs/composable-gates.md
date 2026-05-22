@@ -80,8 +80,13 @@ spec:
 | `THRESHOLD` | at least `threshold` operands passed | too many operands failed to reach `threshold` | the final count still depends on pending operands |
 | `DELAY` | `parameters.duration` has elapsed, then the operand passes | `parameters.duration` has elapsed, then the operand fails | the delay window or operand is still pending |
 
-`DELAY` stores `status.firstObservedAt` the first time the controller evaluates
-the expression, then mirrors its single operand once the duration has elapsed.
+`DELAY` requires `parameters.duration` to be a positive Go duration such as
+`30m` or `2h`. It stores `status.firstObservedAt` the first time the controller
+evaluates the current spec generation, then mirrors its single operand once the
+duration has elapsed. Keep `DELAY` at the root of an expression object.
+Admission rejects `DELAY` anywhere below an `expressionRef` dependency tree so
+the object that owns `status.firstObservedAt` is always the object being
+reconciled.
 
 Inline gate operands remain `Pending` in `GateExpression.status` because only
 the target runtime has enough context to evaluate a real gate. Referenced child
