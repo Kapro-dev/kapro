@@ -7,6 +7,38 @@ record for each tag.
 
 ## Unreleased
 
+### Added — `promotionrun-gc` retention controller (preview, ADR-0015)
+
+Tier B opt-in controller that prunes terminal `PromotionRun` objects beyond
+a bounded retention window per parent `Promotion`. Defaults:
+
+- `DefaultMaxRetainedPerPromotion = 50` — total cap (active + terminal).
+- `DefaultMinRetainedPerOutcome = 10` — floor per terminal phase
+  (`Complete` / `Failed` / `Superseded`) so old failures survive even
+  when successes fill the cap.
+- Non-terminal `PromotionRun` objects are **never** deleted.
+- `MaxDeletesPerReconcile = 25` — bounds per-pass deletes; remaining
+  victims drain over subsequent reconciles to avoid API-server and
+  event-broadcaster pressure on large backlogs.
+
+Not in the default `controllers:` list. Adopters managing high promotion
+volume (where unbounded `PromotionRun` accumulation becomes etcd pressure)
+opt in via Helm values:
+
+```yaml
+controllers:
+  - fleet
+  - plan
+  - promotion
+  - promotionrun
+  - cluster
+  - promotionrun-gc
+```
+
+Each prune emits a `Normal` event `AttemptPruned` on the parent Promotion
+recording the pruned run name, terminal phase, and age — moves the audit
+signal from etcd to the event stream.
+
 ### Added — guided adoption bootstrap
 
 Added `kapro bootstrap` as the guided CLI entrypoint for first-time adoption:

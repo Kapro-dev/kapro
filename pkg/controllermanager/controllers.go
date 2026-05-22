@@ -37,6 +37,7 @@ func init() {
 	Register("trigger", startPromotionTriggerController)
 	Register("cluster-bootstrap", startFleetClusterBootstrapController)
 	Register("clustertemplate", startFleetClusterTemplateController)
+	Register("promotionrun-gc", startPromotionRunGCController)
 
 	// Compatibility names for existing explicit KAPRO_CONTROLLERS selections.
 	// These normalize to canonical names before startup and are intentionally
@@ -343,6 +344,23 @@ func startFleetClusterHeartbeatController(_ context.Context, cc ControllerContex
 		Scheme:             cc.Manager.GetScheme(),
 		Recorder:           cc.Recorder,
 		HeartbeatNamespace: cc.HeartbeatNamespace,
+	}
+	if err := r.SetupWithManager(cc.Manager); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// startPromotionRunGCController starts the Tier B PromotionRun retention
+// reconciler (ADR-0015). Watches Promotion and prunes terminal child
+// PromotionRun attempts beyond DefaultMaxRetainedPerPromotion while honouring
+// DefaultMinRetainedPerOutcome. Non-terminal runs are NEVER deleted.
+// Not in the default `controllers:` list — adopters must opt in.
+func startPromotionRunGCController(_ context.Context, cc ControllerContext) (bool, error) {
+	r := &controller.PromotionRunGCReconciler{
+		Client:   cc.Manager.GetClient(),
+		Recorder: cc.Recorder,
+		Scheme:   cc.Manager.GetScheme(),
 	}
 	if err := r.SetupWithManager(cc.Manager); err != nil {
 		return false, err
