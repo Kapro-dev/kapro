@@ -142,6 +142,7 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
+  - adapterpolicies/status
   - policies/status
   - approvals/status
   - backends/status
@@ -161,6 +162,7 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
+  - adapterpolicies
   - policies
   - backends
   - gateexpressions

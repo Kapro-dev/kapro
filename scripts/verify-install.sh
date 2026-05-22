@@ -77,6 +77,7 @@ check_crd_sync() {
 
 expected_kapro_crds() {
   cat <<'EOF'
+adapterpolicies.kapro.io
 approvals.kapro.io
 backends.kapro.io
 clusters.kapro.io

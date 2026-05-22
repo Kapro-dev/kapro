@@ -128,24 +128,20 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - approvals
-  - clusters
-  - fleets
-  - plans
-  - promotionruns
-  - promotions
-  - targets
+  - adapterpolicies
+  - backends
+  - gateexpressions
+  - policies
+  - sources
+  - triggers
   verbs:
-  - create
-  - delete
   - get
   - list
-  - patch
-  - update
   - watch
 - apiGroups:
   - kapro.io
   resources:
+  - adapterpolicies/status
   - approvals/status
   - backends/status
   - clusters/status
@@ -165,14 +161,20 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - backends
-  - gateexpressions
-  - policies
-  - sources
-  - triggers
+  - approvals
+  - clusters
+  - fleets
+  - plans
+  - promotionruns
+  - promotions
+  - targets
   verbs:
+  - create
+  - delete
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - kapro.io

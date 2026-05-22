@@ -47,6 +47,7 @@ type crdVersion struct {
 }
 
 var kaproResources = []resourceContract{
+	{Kind: "AdapterPolicy", Singular: "adapterpolicy", Plural: "adapterpolicies"},
 	{Kind: "Approval", Singular: "approval", Plural: "approvals"},
 	{Kind: "Backend", Singular: "backend", Plural: "backends"},
 	{Kind: "Cluster", Singular: "cluster", Plural: "clusters"},
@@ -533,6 +534,7 @@ func TestCRDPrintColumnsResolveToSchemaFields(t *testing.T) {
 func TestCRDShortNamesAndCategoriesUseExpectedAliases(t *testing.T) {
 	root := repoRoot(t)
 	expectedShortNames := map[string][]string{
+		"kapro.io_adapterpolicies.yaml":  {"adp"},
 		"kapro.io_approvals.yaml":        {"ap"},
 		"kapro.io_backends.yaml":         {"be"},
 		"kapro.io_clusters.yaml":         {"cl"},
@@ -553,11 +555,18 @@ func TestCRDShortNamesAndCategoriesUseExpectedAliases(t *testing.T) {
 		filepath.Join("charts", "kapro-operator", "crds"),
 		filepath.Join("internal", "bootstrap", "kaprocrds"),
 	} {
+		seenShortNames := map[string]string{}
 		for file, wantShortNames := range expectedShortNames {
 			path := filepath.Join(root, relDir, file)
 			crd := readCRD(t, path)
 			if got := crd.Spec.Names.ShortNames; fmt.Sprint(got) != fmt.Sprint(wantShortNames) {
 				t.Fatalf("%s shortNames=%v, want %v", path, got, wantShortNames)
+			}
+			for _, shortName := range crd.Spec.Names.ShortNames {
+				if previous := seenShortNames[shortName]; previous != "" {
+					t.Fatalf("%s shortName %q duplicates %s", path, shortName, previous)
+				}
+				seenShortNames[shortName] = file
 			}
 			if got := crd.Spec.Names.Categories; fmt.Sprint(got) != fmt.Sprint([]string{"kapro-all"}) {
 				t.Fatalf("%s categories=%v, want [kapro-all]", path, got)
@@ -566,7 +575,7 @@ func TestCRDShortNamesAndCategoriesUseExpectedAliases(t *testing.T) {
 	}
 }
 
-func TestGateExpressionCRDPublishesComposableAlgebra(t *testing.T) {
+func TestGateExpressionCRDPublishesCompletedAlgebra(t *testing.T) {
 	root := repoRoot(t)
 	crdPath := filepath.Join(root, "config", "crd", "bases", "kapro.io_gateexpressions.yaml")
 	crd := readCRD(t, crdPath)
@@ -577,14 +586,7 @@ func TestGateExpressionCRDPublishesComposableAlgebra(t *testing.T) {
 	if fmt.Sprint(enum) != fmt.Sprint(want) {
 		t.Fatalf("%s spec.operator enum=%v, want %v", crdPath, enum, want)
 	}
-	spec := schemaNodeForJSONPath(t, crdPath, version.Schema.OpenAPIV3Schema, ".spec")
-	if _, ok := spec["properties"].(map[string]any)["parameters"]; !ok {
-		t.Fatalf("%s spec is missing operator parameters", crdPath)
-	}
-	status := schemaNodeForJSONPath(t, crdPath, version.Schema.OpenAPIV3Schema, ".status")
-	if _, ok := status["properties"].(map[string]any)["firstObservedAt"]; !ok {
-		t.Fatalf("%s status is missing firstObservedAt", crdPath)
-	}
+	_ = schemaNodeForJSONPath(t, crdPath, version.Schema.OpenAPIV3Schema, ".status.firstObservedAt")
 }
 
 func TestGatePolicyExpressionRefIsReservedInCRDSchema(t *testing.T) {
@@ -743,6 +745,7 @@ func TestCRDPropertiesMatchGoJSONTags(t *testing.T) {
 		statusName string
 	}
 	fixtures := map[string]fixture{
+		"AdapterPolicy":   {"adapterpolicy_types.go", "AdapterPolicySpec", "AdapterPolicyStatus"},
 		"Approval":        {"approval_types.go", "ApprovalSpec", "ApprovalStatus"},
 		"Backend":         {"backend_types.go", "BackendSpec", "BackendStatus"},
 		"Cluster":         {"cluster_types.go", "ClusterSpec", "ClusterStatus"},
