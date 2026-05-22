@@ -9,33 +9,15 @@ package main
 
 import (
 	"context"
-<<<<<<< HEAD
 	"flag"
-=======
->>>>>>> 2cc15bb (feat(server): expose kapro operator library mode)
 	"log"
 	"time"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
-<<<<<<< HEAD
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
-=======
->>>>>>> 2cc15bb (feat(server): expose kapro operator library mode)
-	"kapro.io/kapro/pkg/gate"
+	"kapro.io/kapro/pkg/kapro/gate"
 	"kapro.io/kapro/pkg/kapro/server"
 )
-
-<<<<<<< HEAD
-type businessHours struct{}
-
-func (businessHours) Evaluate(ctx context.Context, req gate.Request) (gate.Result, error) {
-	hour := time.Now().UTC().Hour()
-	if hour >= 8 && hour < 18 {
-		return gate.Result{Phase: kaprov1alpha2.GatePhasePassed, Reason: "InsideBusinessHours"}, nil
-	}
-	return gate.Result{Phase: kaprov1alpha2.GatePhaseInconclusive, Reason: "OutsideBusinessHours", RetryAfter: "30m"}, nil
-}
 
 func main() {
 	opts := server.OptionsFromEnv()
@@ -43,25 +25,17 @@ func main() {
 	flag.Parse()
 
 	s, err := server.New(opts)
-=======
-func main() {
-	s, err := server.New(server.OptionsFromEnv())
->>>>>>> 2cc15bb (feat(server): expose kapro operator library mode)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-<<<<<<< HEAD
-	s.Gates.MustRegister("business-hours", businessHours{})
-=======
 	s.Gates.MustRegister("business-hours", gate.Func(func(ctx context.Context, req gate.Request) (gate.Result, error) {
 		hour := time.Now().UTC().Hour()
 		if hour >= 8 && hour < 18 {
 			return gate.MakePassed("inside business hours"), nil
 		}
-		return gate.MakePending("OutsideBusinessHours", time.Now().UTC().Add(30*time.Minute)), nil
+		return gate.MakeInconclusive("OutsideBusinessHours", time.Now().UTC().Add(30*time.Minute)), nil
 	}))
->>>>>>> 2cc15bb (feat(server): expose kapro operator library mode)
 
 	if err := s.Run(ctrl.SetupSignalHandler()); err != nil {
 		log.Fatal(err)
@@ -79,14 +53,11 @@ minimal dependency graph. Importing `pkg/kapro/server` pulls the built-in
 controllers, actuators, webhooks, and gateway packages so the reference binary
 and custom binaries stay behavior-compatible.
 
-<<<<<<< HEAD
 `OptionsFromEnv` returns env-derived defaults without touching the flag
 system. Bind the optional CLI flags onto your own `*flag.FlagSet` via
 `(*Options).BindFlags`, then call `Parse` yourself. Cobra/pflag binaries can
 copy the same fields onto a `pflag.FlagSet` and skip `BindFlags` entirely.
 
-=======
->>>>>>> 2cc15bb (feat(server): expose kapro operator library mode)
 Use Helm's existing image override to run a custom operator image:
 
 ```bash
@@ -98,4 +69,5 @@ helm upgrade --install kapro charts/kapro-operator \
 
 Gate code runs in the operator process. Only compile trusted code into a custom
 operator; use the gRPC plugin path when a separate security or ownership
-boundary is required.
+boundary is required. See `docs/programmable-gates.md` for the full trust
+boundary discussion.

@@ -67,6 +67,7 @@ nav:
       - Extension Model: extension-model.md
       - Go SDK: sdk.md
       - Server SDK: sdk-server.md
+      - Programmable Gates: programmable-gates.md
       - Plugin Authoring: plugin-authoring.md
       - GCP Cloud: cloud-gcp.md
   - ADRs:

@@ -72,6 +72,12 @@ Dockerfile, and an opt-in Helm chart. The archiver stores the original
 CloudEvents envelope bytes plus request and CloudEvents metadata for
 retry-safe dedupe.
 
+### Added — programmable Gate API
+
+Added the in-process programmable Gate API with `gate.Func`, result
+constructors, panic recovery middleware, SDK-facing `pkg/kapro/gate` aliases,
+custom gate type dispatch, and gate evaluation metrics.
+
 ## v0.1.2 — 2026-05-22
 
 ### Added — Go SDK scaffold
