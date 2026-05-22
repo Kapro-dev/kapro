@@ -3,6 +3,11 @@
 ## Status
 Accepted
 
+Superseded in part by the v0.2.x gate algebra work: `ANY`, `NOT`,
+`WEIGHTED_SUM`, `THRESHOLD`, and `DELAY` are now implemented for the
+`GateExpression` preview controller. The original decision below records the
+v0.1.2 scaffold and remains useful historical context.
+
 ## Context
 
 Kapro stages already support inline gate policies for approval, soak, metrics,

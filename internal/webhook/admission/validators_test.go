@@ -700,6 +700,109 @@ func TestValidateGateExpression_ValidDelay(t *testing.T) {
 	}
 }
 
+func TestValidateGateExpression_RejectsNonPositiveDelayDuration(t *testing.T) {
+	for _, duration := range []string{"0s", "-1s"} {
+		t.Run(duration, func(t *testing.T) {
+			expr := &kaprov1alpha2.GateExpression{
+				ObjectMeta: metav1.ObjectMeta{Name: "delay"},
+				Spec: kaprov1alpha2.GateExpressionSpec{
+					Operator:   "DELAY",
+					Parameters: map[string]string{"duration": duration},
+					Operands: []kaprov1alpha2.GateExpressionOperand{
+						{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+					},
+				},
+			}
+			err := gateexpressionValidate(expr)
+			if err == nil || !strings.Contains(err.Error(), "duration > 0") {
+				t.Fatalf("error = %v, want positive duration rejection", err)
+			}
+		})
+	}
+}
+
+func TestValidateGateExpression_RejectsReferencedDelay(t *testing.T) {
+	ctx := context.Background()
+	delay := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "delay-child"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator:   "DELAY",
+			Parameters: map[string]string{"duration": "30m"},
+			Operands: []kaprov1alpha2.GateExpressionOperand{
+				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+			},
+		},
+	}
+	root := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "root"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator: "ALL",
+			Operands: []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "delay-child"}},
+		},
+	}
+	err := admission.ValidateGateExpressionWithReader(ctx, gateExpressionReader(t, delay), root)
+	if err == nil || !strings.Contains(err.Error(), "cannot reference DELAY GateExpression: root→delay-child") {
+		t.Fatalf("error = %v, want referenced DELAY rejection", err)
+	}
+}
+
+func TestValidateGateExpression_RejectsReferencedObjectBecomingDelay(t *testing.T) {
+	ctx := context.Background()
+	parent := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "parent"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator: "ALL",
+			Operands: []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "child"}},
+		},
+	}
+	child := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "child"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator:   "DELAY",
+			Parameters: map[string]string{"duration": "30m"},
+			Operands: []kaprov1alpha2.GateExpressionOperand{
+				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+			},
+		},
+	}
+	err := admission.ValidateGateExpressionWithReader(ctx, gateExpressionReader(t, parent), child)
+	if err == nil || !strings.Contains(err.Error(), `referenced by "parent"`) {
+		t.Fatalf("error = %v, want reverse referenced DELAY rejection", err)
+	}
+}
+
+func TestValidateGateExpression_RejectsIndirectReferencedDelay(t *testing.T) {
+	ctx := context.Background()
+	delay := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "delay-child"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator:   "DELAY",
+			Parameters: map[string]string{"duration": "30m"},
+			Operands: []kaprov1alpha2.GateExpressionOperand{
+				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+			},
+		},
+	}
+	middle := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "middle"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator: "ALL",
+			Operands: []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "delay-child"}},
+		},
+	}
+	root := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "root"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator: "ALL",
+			Operands: []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "middle"}},
+		},
+	}
+	err := admission.ValidateGateExpressionWithReader(ctx, gateExpressionReader(t, delay, middle), root)
+	if err == nil || !strings.Contains(err.Error(), "root→middle→delay-child") {
+		t.Fatalf("error = %v, want indirect referenced DELAY rejection", err)
+	}
+}
+
 func TestValidateGateExpression_OperandExactlyOne(t *testing.T) {
 	expr := &kaprov1alpha2.GateExpression{
 		ObjectMeta: metav1.ObjectMeta{Name: "bad"},

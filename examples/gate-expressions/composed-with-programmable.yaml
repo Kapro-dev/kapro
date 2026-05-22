@@ -16,5 +16,4 @@ spec:
               args:
                 - name: threshold
                   value: "0.001"
-    - expressionRef: checkout-soak-delay
     - expressionRef: checkout-any-readiness

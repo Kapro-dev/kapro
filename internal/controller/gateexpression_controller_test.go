@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"testing"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -290,13 +291,135 @@ func TestGateExpressionReconcilerDelayPersistsFirstObservation(t *testing.T) {
 	)
 	r := &GateExpressionReconciler{Client: c}
 
-	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: "delay"}}); err != nil {
+	res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: "delay"}})
+	if err != nil {
 		t.Fatalf("reconcile: %v", err)
+	}
+	if res.RequeueAfter <= 0 {
+		t.Fatalf("requeueAfter = %s, want positive delay requeue", res.RequeueAfter)
 	}
 
 	got := getGateExpression(t, c, "delay")
 	if got.Status.Phase != gateExpressionPhasePending || got.Status.FirstObservedAt == nil {
 		t.Fatalf("status = %s firstObservedAt=%v, want Pending with firstObservedAt", got.Status.Phase, got.Status.FirstObservedAt)
+	}
+}
+
+func TestGateExpressionReconcilerDelayResetsOnNewGeneration(t *testing.T) {
+	ctx := context.Background()
+	oldFirstObserved := metav1.NewTime(time.Now().Add(-2 * time.Hour).Truncate(time.Second))
+	delay := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "delay", Generation: 2},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator:   "DELAY",
+			Parameters: map[string]string{"duration": "1h"},
+			Operands:   []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "child"}},
+		},
+		Status: kaprov1alpha2.GateExpressionStatus{
+			ObservedGeneration: 1,
+			Phase:              gateExpressionPhasePending,
+			Reason:             "DelayPending",
+			FirstObservedAt:    &oldFirstObserved,
+		},
+	}
+	c := gateExpressionClient(t,
+		gateExpressionWithStatus("child", gateExpressionPhasePassed),
+		delay,
+	)
+	r := &GateExpressionReconciler{Client: c}
+
+	res, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: "delay"}})
+	if err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if res.RequeueAfter <= 0 {
+		t.Fatalf("requeueAfter = %s, want positive delay requeue", res.RequeueAfter)
+	}
+
+	got := getGateExpression(t, c, "delay")
+	if got.Status.ObservedGeneration != 2 {
+		t.Fatalf("observedGeneration = %d, want 2", got.Status.ObservedGeneration)
+	}
+	if got.Status.Phase != gateExpressionPhasePending || got.Status.Reason != "DelayPending" {
+		t.Fatalf("status = %s/%s, want Pending/DelayPending", got.Status.Phase, got.Status.Reason)
+	}
+	if got.Status.FirstObservedAt == nil || !got.Status.FirstObservedAt.After(oldFirstObserved.Time) {
+		t.Fatalf("firstObservedAt = %v, want reset after %v", got.Status.FirstObservedAt, oldFirstObserved)
+	}
+}
+
+func TestGateExpressionReconcilerDelayRestartUsesPersistedFirstObservation(t *testing.T) {
+	ctx := context.Background()
+	firstObserved := metav1.NewTime(time.Now().Add(-2 * time.Hour).Truncate(time.Second))
+	delay := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "delay", Generation: 1},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator:   "DELAY",
+			Parameters: map[string]string{"duration": "1h"},
+			Operands:   []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "child"}},
+		},
+		Status: kaprov1alpha2.GateExpressionStatus{
+			ObservedGeneration: 1,
+			Phase:              gateExpressionPhasePending,
+			Reason:             "DelayPending",
+			FirstObservedAt:    &firstObserved,
+		},
+	}
+	c := gateExpressionClient(t,
+		gateExpressionWithStatus("child", gateExpressionPhasePassed),
+		delay,
+	)
+	r := &GateExpressionReconciler{Client: c}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: "delay"}}); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+
+	got := getGateExpression(t, c, "delay")
+	if got.Status.Phase != gateExpressionPhasePassed {
+		t.Fatalf("status = %s/%s, want Passed after persisted delay window", got.Status.Phase, got.Status.Reason)
+	}
+	if got.Status.FirstObservedAt == nil || !got.Status.FirstObservedAt.Time.Equal(firstObserved.Time) {
+		t.Fatalf("firstObservedAt = %v, want preserved %v", got.Status.FirstObservedAt, firstObserved)
+	}
+}
+
+func TestGateExpressionReconcilerDelayInvalidDurationFails(t *testing.T) {
+	for _, duration := range []string{"0s", "-1s", "notaduration"} {
+		t.Run(duration, func(t *testing.T) {
+			ctx := context.Background()
+			oldFirstObserved := metav1.NewTime(time.Now().Add(-1 * time.Hour).Truncate(time.Second))
+			c := gateExpressionClient(t,
+				gateExpressionWithStatus("child", gateExpressionPhasePassed),
+				&kaprov1alpha2.GateExpression{
+					ObjectMeta: metav1.ObjectMeta{Name: "delay", Generation: 1},
+					Spec: kaprov1alpha2.GateExpressionSpec{
+						Operator:   "DELAY",
+						Parameters: map[string]string{"duration": duration},
+						Operands:   []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "child"}},
+					},
+					Status: kaprov1alpha2.GateExpressionStatus{
+						ObservedGeneration: 1,
+						Phase:              gateExpressionPhasePending,
+						Reason:             "DelayPending",
+						FirstObservedAt:    &oldFirstObserved,
+					},
+				},
+			)
+			r := &GateExpressionReconciler{Client: c}
+
+			if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: "delay"}}); err != nil {
+				t.Fatalf("reconcile: %v", err)
+			}
+
+			got := getGateExpression(t, c, "delay")
+			if got.Status.Phase != gateExpressionPhaseFailed || got.Status.Reason != "InvalidDuration" {
+				t.Fatalf("status = %s/%s, want Failed/InvalidDuration", got.Status.Phase, got.Status.Reason)
+			}
+			if got.Status.FirstObservedAt != nil {
+				t.Fatalf("firstObservedAt = %v, want nil for invalid duration", got.Status.FirstObservedAt)
+			}
+		})
 	}
 }
 

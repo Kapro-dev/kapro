@@ -28,9 +28,8 @@ const (
 )
 
 // GateExpressionReconciler records the preview composition outcome for
-// GateExpression objects. v0.1.2 executes ALL over referenced child
-// GateExpressions; inline gates remain Pending because target-specific runtime
-// context belongs to the Target reconciler.
+// GateExpression objects. Inline gates remain Pending because target-specific
+// runtime context belongs to the Target reconciler.
 type GateExpressionReconciler struct {
 	client.Client
 	Recorder record.EventRecorder
@@ -71,6 +70,9 @@ func (r *GateExpressionReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		LastTransitionTime: metav1.Now(),
 	})
 	if reflect.DeepEqual(before.Status, desired.Status) {
+		if requeueAfter > 0 {
+			return ctrl.Result{RequeueAfter: requeueAfter}, nil
+		}
 		return ctrl.Result{}, nil
 	}
 	if err := r.Status().Patch(ctx, desired, client.MergeFrom(before)); err != nil {
@@ -197,10 +199,16 @@ func (r *GateExpressionReconciler) evaluate(ctx context.Context, expr *kaprov1al
 		// InvalidDuration for purely cosmetic input.
 		duration, err := time.ParseDuration(strings.TrimSpace(expr.Spec.Parameters["duration"]))
 		if err != nil {
-			return gateExpressionPhaseFailed, "InvalidDuration", err.Error(), 0, nil
+			expr.Status.FirstObservedAt = nil
+			return gateExpressionPhaseFailed, "InvalidDuration",
+				"DELAY requires parameters.duration as a Go duration", 0, nil
+		}
+		if duration <= 0 {
+			expr.Status.FirstObservedAt = nil
+			return gateExpressionPhaseFailed, "InvalidDuration", "DELAY requires parameters.duration > 0", 0, nil
 		}
 		now := metav1.Now()
-		if expr.Status.FirstObservedAt == nil {
+		if expr.Status.ObservedGeneration != expr.Generation || expr.Status.FirstObservedAt == nil {
 			expr.Status.FirstObservedAt = &now
 			return gateExpressionPhasePending, "DelayPending", fmt.Sprintf("waiting %s before evaluating operand", duration), duration, nil
 		}

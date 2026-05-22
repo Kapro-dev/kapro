@@ -30,7 +30,7 @@ Preview. The table below is the source of truth for the current contract level.
 | Core promotion CRDs | `api/v1alpha2` `Fleet`, `Promotion`, `PromotionRun`, `Target`, `Plan`, `Source`, `Unit`, `Cluster`, `Backend`, `Approval` | Alpha |
 | Trigger CRD | `api/v1alpha2` `Trigger` | Preview |
 | Plugin CRD | `api/v1alpha2` `Plugin` | Preview |
-| GateExpression CRD | `api/v1alpha2` `GateExpression` | Preview; `ALL` only in `v0.1.x` |
+| GateExpression CRD | `api/v1alpha2` `GateExpression` | Preview; full algebra enabled in `v0.2.x` |
 | Agent decision APIs | `api/v1alpha2` `Policy`, `Target.status.decisionTrace`, Decision API HTTP routes | Preview |
 | Fleet auto-import CRD | `api/v1alpha2` `ClusterTemplate` | Preview; only implemented sources are runtime features |
 | In-process actuator interface | `pkg/actuator` | Preview |

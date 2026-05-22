@@ -19,8 +19,7 @@ import (
 
 const maxGateExpressionOperands = 128
 
-// GateExpressionValidator validates GateExpression objects on CREATE and
-// UPDATE. v0.1.2 admits only the ALL operator and rejects reference cycles.
+// GateExpressionValidator validates GateExpression objects on CREATE and UPDATE.
 type GateExpressionValidator struct {
 	decoder admission.Decoder
 	reader  client.Reader
@@ -37,7 +36,15 @@ func (v *GateExpressionValidator) Handle(ctx context.Context, req admission.Requ
 	if err := v.decoder.DecodeRaw(req.Object, &expr); err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
 	}
-	if err := validateGateExpression(ctx, v.reader, &expr); err != nil {
+	var oldExpr *kaprov1alpha2.GateExpression
+	if req.Operation == admissionv1.Update && len(req.OldObject.Raw) > 0 {
+		var old kaprov1alpha2.GateExpression
+		if err := v.decoder.DecodeRaw(req.OldObject, &old); err != nil {
+			return admission.Errored(http.StatusBadRequest, err)
+		}
+		oldExpr = &old
+	}
+	if err := validateGateExpression(ctx, v.reader, &expr, oldExpr); err != nil {
 		return admission.Denied(err.Error())
 	}
 	if req.Operation == admissionv1.Create {
@@ -48,7 +55,7 @@ func (v *GateExpressionValidator) Handle(ctx context.Context, req admission.Requ
 	return admission.Allowed("")
 }
 
-func validateGateExpression(ctx context.Context, reader client.Reader, expr *kaprov1alpha2.GateExpression) error {
+func validateGateExpression(ctx context.Context, reader client.Reader, expr *kaprov1alpha2.GateExpression, oldExpr *kaprov1alpha2.GateExpression) error {
 	if len(expr.Spec.Operands) == 0 {
 		return fmt.Errorf("spec.operands must contain at least one operand")
 	}
@@ -73,10 +80,19 @@ func validateGateExpression(ctx context.Context, reader client.Reader, expr *kap
 	if reader == nil || expr.Name == "" {
 		return nil
 	}
-	if cycle, err := gateExpressionCycle(ctx, reader, expr); err != nil {
+	if cycle, delayPath, err := gateExpressionReferenceAnalysis(ctx, reader, expr); err != nil {
 		return err
 	} else if cycle != "" {
 		return fmt.Errorf("spec.operands.expressionRef cycle detected: %s", cycle)
+	} else if delayPath != "" {
+		return fmt.Errorf("spec.operands.expressionRef cannot reference DELAY GateExpression: %s", delayPath)
+	}
+	if expr.Spec.Operator == "DELAY" && (oldExpr == nil || oldExpr.Spec.Operator != "DELAY") {
+		if parent, err := existingGateExpressionParent(ctx, reader, expr.Name); err != nil {
+			return err
+		} else if parent != "" {
+			return fmt.Errorf("cannot make GateExpression %q a DELAY because it is referenced by %q", expr.Name, parent)
+		}
 	}
 	return nil
 }
@@ -141,8 +157,12 @@ func validateGateExpressionOperator(expr *kaprov1alpha2.GateExpression) error {
 		if expr.Spec.Threshold != nil {
 			return fmt.Errorf("operator DELAY does not accept spec.threshold")
 		}
-		if _, err := time.ParseDuration(strings.TrimSpace(expr.Spec.Parameters["duration"])); err != nil {
+		duration, err := time.ParseDuration(strings.TrimSpace(expr.Spec.Parameters["duration"]))
+		if err != nil {
 			return fmt.Errorf("operator DELAY requires parameters.duration as a Go duration: %w", err)
+		}
+		if duration <= 0 {
+			return fmt.Errorf("operator DELAY requires parameters.duration > 0")
 		}
 	default:
 		return fmt.Errorf("unsupported operator %s", expr.Spec.Operator)
@@ -150,7 +170,7 @@ func validateGateExpressionOperator(expr *kaprov1alpha2.GateExpression) error {
 	return nil
 }
 
-func gateExpressionCycle(ctx context.Context, reader client.Reader, root *kaprov1alpha2.GateExpression) (string, error) {
+func gateExpressionReferenceAnalysis(ctx context.Context, reader client.Reader, root *kaprov1alpha2.GateExpression) (cyclePath, delayPath string, err error) {
 	const (
 		unvisited = 0
 		inStack   = 1
@@ -175,30 +195,56 @@ func gateExpressionCycle(ctx context.Context, reader client.Reader, root *kaprov
 		return &expr, nil
 	}
 
-	var dfs func(string) (string, error)
-	dfs = func(name string) (string, error) {
+	var dfs func(string) (string, string, error)
+	dfs = func(name string) (string, string, error) {
 		state[name] = inStack
 		path = append(path, name)
 		expr, err := load(name)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		for _, dep := range gateExpressionDependencyNames(expr.Spec.Operands) {
 			switch state[dep] {
 			case inStack:
 				cycle := append(append([]string{}, path...), dep)
-				return strings.Join(cycle, "→"), nil
+				return strings.Join(cycle, "→"), "", nil
 			case unvisited:
-				if result, err := dfs(dep); result != "" || err != nil {
-					return result, err
+				child, err := load(dep)
+				if err != nil {
+					return "", "", err
+				}
+				if child.Spec.Operator == "DELAY" {
+					delay := append(append([]string{}, path...), dep)
+					return "", strings.Join(delay, "→"), nil
+				}
+				if cycle, delay, err := dfs(dep); cycle != "" || delay != "" || err != nil {
+					return cycle, delay, err
 				}
 			}
 		}
 		path = path[:len(path)-1]
 		state[name] = visited
-		return "", nil
+		return "", "", nil
 	}
 	return dfs(root.Name)
+}
+
+func existingGateExpressionParent(ctx context.Context, reader client.Reader, childName string) (string, error) {
+	var list kaprov1alpha2.GateExpressionList
+	if err := reader.List(ctx, &list); err != nil {
+		return "", fmt.Errorf("list GateExpressions referencing %q: %w", childName, err)
+	}
+	for _, candidate := range list.Items {
+		if candidate.Name == childName {
+			continue
+		}
+		for _, operand := range candidate.Spec.Operands {
+			if operand.ExpressionRef == childName {
+				return candidate.Name, nil
+			}
+		}
+	}
+	return "", nil
 }
 
 func gateExpressionDependencyNames(operands []kaprov1alpha2.GateExpressionOperand) []string {
@@ -214,11 +260,11 @@ func gateExpressionDependencyNames(operands []kaprov1alpha2.GateExpressionOperan
 // ValidateGateExpression is an exported test helper for validation that does
 // not require API lookup.
 func ValidateGateExpression(expr *kaprov1alpha2.GateExpression) error {
-	return validateGateExpression(context.Background(), nil, expr)
+	return validateGateExpression(context.Background(), nil, expr, nil)
 }
 
 // ValidateGateExpressionWithReader is an exported test helper for reference
 // and cycle validation.
 func ValidateGateExpressionWithReader(ctx context.Context, reader client.Reader, expr *kaprov1alpha2.GateExpression) error {
-	return validateGateExpression(ctx, reader, expr)
+	return validateGateExpression(ctx, reader, expr, nil)
 }
