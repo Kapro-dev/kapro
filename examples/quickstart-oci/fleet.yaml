@@ -37,17 +37,21 @@ spec:
       labels:
         kapro.io/stage: canary
         kapro.io/region: eu
+        kapro.io/quickstart: oci
     - name: checkout-oci-production
       labels:
         kapro.io/stage: production
         kapro.io/region: eu
+        kapro.io/quickstart: oci
   plan:
     stages:
       - name: canary
         selector:
           kapro.io/stage: canary
+          kapro.io/quickstart: oci
       - name: production
         selector:
           kapro.io/stage: production
+          kapro.io/quickstart: oci
         dependsOn:
           - stage: canary

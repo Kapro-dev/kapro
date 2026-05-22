@@ -34,17 +34,21 @@ spec:
       labels:
         kapro.io/stage: canary
         kapro.io/region: eu
+        kapro.io/quickstart: flux
     - name: checkout-production-eu
       labels:
         kapro.io/stage: production
         kapro.io/region: eu
+        kapro.io/quickstart: flux
   plan:
     stages:
       - name: canary
         selector:
           kapro.io/stage: canary
+          kapro.io/quickstart: flux
       - name: production
         selector:
           kapro.io/stage: production
+          kapro.io/quickstart: flux
         dependsOn:
           - stage: canary

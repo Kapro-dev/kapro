@@ -24,7 +24,6 @@ Install the CLI first when you are not working from a local checkout:
 ```bash
 git clone https://github.com/Kapro-dev/kapro.git
 cd kapro
-git checkout v0.1.2
 make build
 export PATH="$PWD/bin:$PATH"
 ```

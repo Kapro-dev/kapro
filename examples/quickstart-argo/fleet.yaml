@@ -29,17 +29,21 @@ spec:
       labels:
         kapro.io/stage: canary
         kapro.io/region: eu
+        kapro.io/quickstart: argo
     - name: checkout-argo-production
       labels:
         kapro.io/stage: production
         kapro.io/region: eu
+        kapro.io/quickstart: argo
   plan:
     stages:
       - name: canary
         selector:
           kapro.io/stage: canary
+          kapro.io/quickstart: argo
       - name: production
         selector:
           kapro.io/stage: production
+          kapro.io/quickstart: argo
         dependsOn:
           - stage: canary

@@ -46,7 +46,6 @@ diagnostics:
 ```bash
 git clone https://github.com/Kapro-dev/kapro.git
 cd kapro
-git checkout v0.1.2
 make build
 export PATH="$PWD/bin:$PATH"
 kapro bootstrap guide
