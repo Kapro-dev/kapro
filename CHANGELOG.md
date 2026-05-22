@@ -7,7 +7,19 @@ record for each tag.
 
 ## Unreleased
 
-No unreleased changes yet.
+### Added — guided adoption bootstrap
+
+Added `kapro bootstrap` as the guided CLI entrypoint for first-time adoption:
+`bootstrap guide`, `bootstrap greenfield`, and `bootstrap brownfield`. The
+greenfield path defaults to Flux pull mode, while brownfield Argo CD and Flux
+paths generate observe-first Backend, Source, and discovery review files.
+
+### Changed — onboarding documentation
+
+Added an Adoption Guide and linked it from the README, docs home, install,
+backend, first-promotion, Argo migration, and Flux migration pages. CLI install
+docs now use the verified clone/tag/`make build` path until release binary
+assets or Go vanity import metadata are available.
 
 ## v0.1.2 — 2026-05-22
 

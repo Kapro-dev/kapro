@@ -6,6 +6,8 @@ you want a fully local scripted environment; use this page when you already
 have a Kubernetes cluster and want to apply the smallest useful hub
 configuration yourself. For a fully scripted local cluster, use the
 [Kind demo](https://github.com/Kapro-dev/kapro/tree/main/examples/kind-demo).
+If you are deciding between Flux, Argo CD, OCI, or brownfield adoption first,
+start with the [Adoption Guide](adoption.md).
 
 ## 1. Install The Operator
 

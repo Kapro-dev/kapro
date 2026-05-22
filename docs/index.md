@@ -14,6 +14,8 @@ Which clusters are allowed to receive this artifact version now, and why?
 
 - [Concepts](concepts.md) explains the API objects and lifecycle.
 - [Install](install.md) shows the supported operator install paths.
+- [Adoption Guide](adoption.md) helps choose greenfield, Argo brownfield,
+  Flux brownfield, or OCI pull mode.
 - [First Promotion in 10 Minutes](first-promotion-10min.md) is the shortest
   working path.
 - [Backends](backends.md) explains Flux, Argo CD, OCI, and plugin delivery
