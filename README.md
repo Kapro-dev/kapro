@@ -101,10 +101,11 @@ Run [First Promotion in 10 Minutes](docs/first-promotion-10min.md) first to
 see the API lifecycle, then use [Backends](docs/backends.md) when deciding how
 Kapro should connect to existing delivery systems.
 
-For guided repository setup, use the bootstrap CLI:
+For guided repository setup, use the source-built bootstrap CLI from `main`
+until the bootstrap command is included in a tagged CLI release:
 
 ```bash
-git clone https://github.com/Kapro-dev/kapro.git
+git clone --branch main https://github.com/Kapro-dev/kapro.git
 cd kapro
 make build
 export PATH="$PWD/bin:$PATH"

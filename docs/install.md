@@ -44,12 +44,15 @@ guided repository scaffolding, brownfield discovery, promotion creation, or
 diagnostics:
 
 ```bash
-git clone https://github.com/Kapro-dev/kapro.git
+git clone --branch main https://github.com/Kapro-dev/kapro.git
 cd kapro
 make build
 export PATH="$PWD/bin:$PATH"
 kapro bootstrap guide
 ```
+
+This source-built path intentionally tracks `main` until the bootstrap command
+is included in a tagged CLI release.
 
 From an existing local checkout:
 
