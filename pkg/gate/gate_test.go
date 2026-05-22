@@ -30,9 +30,16 @@ func TestConstructors(t *testing.T) {
 		t.Fatalf("failed result = %#v", failed)
 	}
 
-	pending := MakePending("Wait", time.Now().Add(time.Second))
-	if pending.Phase != kaprov1alpha2.GatePhasePending || pending.Reason != "Wait" || pending.RetryAfter == "" {
-		t.Fatalf("pending result = %#v", pending)
+	inconclusive := MakeInconclusive("Wait", time.Now().Add(time.Second))
+	if inconclusive.Phase != kaprov1alpha2.GatePhaseInconclusive || inconclusive.Reason != "Wait" || inconclusive.RetryAfter == "" {
+		t.Fatalf("inconclusive result = %#v", inconclusive)
+	}
+
+	// RetryAfter clamps a retryAt in the past to empty so the controller's
+	// default backoff applies instead of looping at zero delay.
+	clamped := MakeInconclusive("Wait", time.Now().Add(-time.Minute))
+	if clamped.RetryAfter != "" {
+		t.Fatalf("clamped RetryAfter = %q, want empty for past retryAt", clamped.RetryAfter)
 	}
 }
 

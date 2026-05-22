@@ -253,9 +253,9 @@ func (f Func) Evaluate(ctx context.Context, req Request) (Result, error) {
 type Phase = kaprov1alpha2.GatePhase
 
 const (
-	Passed  Phase = kaprov1alpha2.GatePhasePassed
-	Failed  Phase = kaprov1alpha2.GatePhaseFailed
-	Pending Phase = kaprov1alpha2.GatePhasePending
+	Passed       Phase = kaprov1alpha2.GatePhasePassed
+	Failed       Phase = kaprov1alpha2.GatePhaseFailed
+	Inconclusive Phase = kaprov1alpha2.GatePhaseInconclusive
 )
 
 // MakePassed returns a passed gate result.
@@ -272,11 +272,22 @@ func MakeFailed(reason, msgFmt string, args ...any) Result {
 	}
 }
 
-// MakePending returns a pending gate result with an optional retry time.
-func MakePending(reason string, retryAt time.Time) Result {
-	result := Result{Phase: kaprov1alpha2.GatePhasePending, Reason: reason}
+// MakeInconclusive returns an inconclusive gate result with an optional
+// retry time. The controller's inconclusivePolicy applies only to
+// inconclusive results, so programmable gates that need more time MUST
+// use this constructor rather than directly emitting GatePhasePending
+// (which means "queued, not yet evaluated" and is reserved for the
+// controller).
+//
+// A retryAt in the past is clamped: RetryAfter is left empty so the
+// controller falls back to its default backoff instead of looping at
+// zero delay under clock skew or caller bugs.
+func MakeInconclusive(reason string, retryAt time.Time) Result {
+	result := Result{Phase: kaprov1alpha2.GatePhaseInconclusive, Reason: reason}
 	if !retryAt.IsZero() {
-		result.RetryAfter = time.Until(retryAt).String()
+		if d := time.Until(retryAt); d > 0 {
+			result.RetryAfter = d.String()
+		}
 	}
 	return result
 }

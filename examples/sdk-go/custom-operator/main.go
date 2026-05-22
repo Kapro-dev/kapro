@@ -22,7 +22,7 @@ func main() {
 		if now.Hour() >= 8 && now.Hour() < 18 {
 			return gate.MakePassed("inside business hours"), nil
 		}
-		return gate.MakePending("OutsideBusinessHours", now.Add(30*time.Minute)), nil
+		return gate.MakeInconclusive("OutsideBusinessHours", now.Add(30*time.Minute)), nil
 	}))
 
 	if err := s.Run(ctrl.SetupSignalHandler()); err != nil {

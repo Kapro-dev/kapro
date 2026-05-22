@@ -178,14 +178,13 @@ func targetDesiredVersions(target *kaprov1alpha2.TargetExecutionState) map[strin
 	return map[string]string{targetAppKey(target): target.Version}
 }
 
-// resolveSyncArgs builds the final args map for a GateTemplate.
+// resolveSyncArgs builds the final args map for a GateTemplate. Used by
+// the legacy gate.Request.Args contract, which merges user template
+// parameters with runtime-injected identity (version/target/etc.).
+// Programmable Gate Request.Parameters should NOT use this map —
+// see userGateTemplateParameters for the user-only view.
 func resolveSyncArgs(tmpl *kaprov1alpha2.GateTemplateSpec, ctx *gate.Context) map[string]string {
-	args := make(map[string]string)
-	for _, a := range tmpl.Args {
-		if a.Value != "" {
-			args[a.Name] = a.Value
-		}
-	}
+	args := userGateTemplateParameters(tmpl)
 	if ctx != nil {
 		args["version"] = ctx.Version
 		args["target"] = ctx.Target
@@ -194,6 +193,24 @@ func resolveSyncArgs(tmpl *kaprov1alpha2.GateTemplateSpec, ctx *gate.Context) ma
 		args["stage"] = ctx.Stage
 	}
 	return args
+}
+
+// userGateTemplateParameters returns the user-supplied template
+// parameters verbatim, without runtime injection. Programmable Gate
+// Request.Parameters uses this so callers see exactly what the Plan
+// author wrote; runtime identity (Version/Target/Stage/PromotionRun/
+// Plan) is exposed via dedicated Request fields.
+func userGateTemplateParameters(tmpl *kaprov1alpha2.GateTemplateSpec) map[string]string {
+	out := make(map[string]string, len(tmpl.Args))
+	if tmpl == nil {
+		return out
+	}
+	for _, a := range tmpl.Args {
+		if a.Value != "" {
+			out[a.Name] = a.Value
+		}
+	}
+	return out
 }
 
 // buildApprovalURLs returns signed approve and reject URLs for the given target.

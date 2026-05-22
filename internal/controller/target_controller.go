@@ -679,7 +679,7 @@ func (r *TargetReconciler) evaluateGateTemplates(
 			Stage:        target.Stage,
 			Target:       target.Target,
 			Version:      target.Version,
-			Parameters:   args,
+			Parameters:   userGateTemplateParameters(tmpl),
 			Logger: log.FromContext(ctx).WithValues(
 				"fleet", promotionrun.Labels["kapro.io/fleet"],
 				"promotion", promotionrun.Labels["kapro.io/promotion"],
@@ -859,20 +859,20 @@ func gateMetricName(tmpl *kaprov1alpha2.GateTemplateSpec) string {
 	return tmpl.Type
 }
 
+// gateMetricResult maps gate phases to the documented GateEvaluations
+// label set (passed|failed|inconclusive|error). Non-terminal phases
+// (Pending, Running, Inconclusive, and any future value) collapse into
+// "inconclusive" so existing dashboards/alerts that key off the
+// documented label values continue to work. "error" is emitted directly
+// at the evaluation error call site, not here.
 func gateMetricResult(phase kaprov1alpha2.GatePhase) string {
 	switch phase {
 	case kaprov1alpha2.GatePhasePassed:
 		return "passed"
 	case kaprov1alpha2.GatePhaseFailed:
 		return "failed"
-	case kaprov1alpha2.GatePhasePending:
-		return "pending"
-	case kaprov1alpha2.GatePhaseRunning:
-		return "running"
-	case kaprov1alpha2.GatePhaseInconclusive:
-		return "inconclusive"
 	default:
-		return "unknown"
+		return "inconclusive"
 	}
 }
 

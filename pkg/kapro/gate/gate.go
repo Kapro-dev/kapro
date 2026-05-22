@@ -17,15 +17,15 @@ type (
 )
 
 const (
-	Passed  = pkggate.Passed
-	Failed  = pkggate.Failed
-	Pending = pkggate.Pending
+	Passed       = pkggate.Passed
+	Failed       = pkggate.Failed
+	Inconclusive = pkggate.Inconclusive
 )
 
 var (
-	NewRegistry = pkggate.NewRegistry
-	MakePassed  = pkggate.MakePassed
-	MakeFailed  = pkggate.MakeFailed
-	MakePending = pkggate.MakePending
-	Recover     = pkggate.Recover
+	NewRegistry      = pkggate.NewRegistry
+	MakePassed       = pkggate.MakePassed
+	MakeFailed       = pkggate.MakeFailed
+	MakeInconclusive = pkggate.MakeInconclusive
+	Recover          = pkggate.Recover
 )

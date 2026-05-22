@@ -40,7 +40,7 @@ func main() {
 		}
 		resp, err := http.DefaultClient.Do(httpReq)
 		if err != nil {
-			return gate.MakePending("UpstreamUnavailable", time.Now().Add(15*time.Second)), nil
+			return gate.MakeInconclusive("UpstreamUnavailable", time.Now().Add(15*time.Second)), nil
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
