@@ -201,10 +201,10 @@ func resolveSyncArgs(tmpl *kaprov1alpha2.GateTemplateSpec, ctx *gate.Context) ma
 // author wrote; runtime identity (Version/Target/Stage/PromotionRun/
 // Plan) is exposed via dedicated Request fields.
 func userGateTemplateParameters(tmpl *kaprov1alpha2.GateTemplateSpec) map[string]string {
-	out := make(map[string]string, len(tmpl.Args))
 	if tmpl == nil {
-		return out
+		return map[string]string{}
 	}
+	out := make(map[string]string, len(tmpl.Args))
 	for _, a := range tmpl.Args {
 		if a.Value != "" {
 			out[a.Name] = a.Value
