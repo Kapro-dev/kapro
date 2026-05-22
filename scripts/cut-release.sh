@@ -69,6 +69,16 @@ abort() {
   exit 1
 }
 
+remote_tag_commit() {
+  local version="$1"
+  local sha
+  sha="$(git ls-remote --tags "${REMOTE}" "refs/tags/${version}^{}" | awk '{print $1; exit}')"
+  if [ -z "${sha}" ]; then
+    sha="$(git ls-remote --tags "${REMOTE}" "refs/tags/${version}" | awk '{print $1; exit}')"
+  fi
+  printf '%s\n' "${sha}"
+}
+
 dry() {
   if [ "${DRY_RUN}" = "true" ]; then
     echo "(dry-run) $*"
@@ -142,12 +152,21 @@ if [ "${SKIP_WATCH}" = "true" ]; then
   exit 0
 fi
 
-# Find the release workflow run for this tag. The tag push event may take a
-# second to register; poll briefly.
+# Find the release workflow run for this exact tag target. A deleted and
+# recreated tag can leave older failed runs under the same tag branch name, so
+# branch alone is not enough.
+tag_sha="$(remote_tag_commit "${VERSION}")"
+if [ -z "${tag_sha}" ]; then
+  abort "could not resolve remote tag ${VERSION} on ${REMOTE}; ensure the tag exists there or rerun without KAPRO_RELEASE_SKIP_TAG=true"
+fi
+
+# The tag push event may take a second to register; poll briefly.
 run_id=""
 for _ in $(seq 1 30); do
   run_id="$(gh run list --repo "${GH_NWO}" --workflow=Release --event=push \
-    --branch "${VERSION}" --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null || true)"
+    --branch "${VERSION}" --limit 20 --json databaseId,headSha,createdAt \
+    --jq "map(select(.headSha == \"${tag_sha}\")) | sort_by(.createdAt) | reverse | .[0].databaseId // \"\"" \
+    2>/dev/null || true)"
   if [ -n "${run_id}" ] && [ "${run_id}" != "null" ]; then
     break
   fi
@@ -155,10 +174,10 @@ for _ in $(seq 1 30); do
 done
 
 if [ -z "${run_id}" ] || [ "${run_id}" = "null" ]; then
-  abort "could not find a Release workflow run for tag ${VERSION} — check https://github.com/${GH_NWO}/actions"
+  abort "could not find a Release workflow run for tag ${VERSION} at ${tag_sha} — check https://github.com/${GH_NWO}/actions"
 fi
 
-echo "watching release workflow run ${run_id}"
+echo "watching release workflow run ${run_id} for ${VERSION} (${tag_sha})"
 echo "  https://github.com/${GH_NWO}/actions/runs/${run_id}"
 
 if ! gh run watch --repo "${GH_NWO}" --exit-status "${run_id}"; then
