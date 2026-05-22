@@ -85,7 +85,7 @@ spec:
           {{- if eq $sink "file" }}
           volumeMounts:
             - name: archive-data
-              mountPath: {{ dir .Values.file.dir }}
+              mountPath: {{ .Values.file.dir | quote }}
           {{- end }}
       {{- if eq $sink "file" }}
       volumes:

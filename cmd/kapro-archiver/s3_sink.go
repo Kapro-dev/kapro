@@ -35,7 +35,12 @@ type S3SinkOptions struct {
 	Prefix   string
 	Region   string
 	Endpoint string
+	// Timeout bounds each S3 PUT. Zero applies a 30s default so a stuck
+	// connection cannot block delivery retries indefinitely.
+	Timeout time.Duration
 }
+
+const defaultS3SinkTimeout = 30 * time.Second
 
 func NewS3Sink(ctx context.Context, opts S3SinkOptions) (*S3Sink, error) {
 	if strings.TrimSpace(opts.Bucket) == "" {
@@ -56,8 +61,12 @@ func NewS3Sink(ctx context.Context, opts S3SinkOptions) (*S3Sink, error) {
 	if region == "" {
 		return nil, errors.New("aws region is required for s3 sink")
 	}
+	timeout := opts.Timeout
+	if timeout <= 0 {
+		timeout = defaultS3SinkTimeout
+	}
 	return &S3Sink{
-		client:      http.DefaultClient,
+		client:      &http.Client{Timeout: timeout},
 		creds:       cfg.Credentials,
 		bucket:      opts.Bucket,
 		prefix:      strings.Trim(opts.Prefix, "/"),
@@ -69,9 +78,12 @@ func NewS3Sink(ctx context.Context, opts S3SinkOptions) (*S3Sink, error) {
 }
 
 func (s *S3Sink) Write(ctx context.Context, record ArchiveRecord) error {
+	// Always attempt both PUTs so a partial first delivery (event written,
+	// metadata failed) can heal on retry. putOnce uses If-None-Match:* so a
+	// duplicate event.json or metadata.json is a no-op that preserves the
+	// first-received body.
 	eventKey := s.objectKey(record.Metadata.DedupeKey, "event.json")
-	created, err := s.putOnce(ctx, eventKey, "application/cloudevents+json", record.Body)
-	if err != nil || !created {
+	if _, err := s.putOnce(ctx, eventKey, "application/cloudevents+json", record.Body); err != nil {
 		return err
 	}
 
@@ -80,8 +92,10 @@ func (s *S3Sink) Write(ctx context.Context, record ArchiveRecord) error {
 		return fmt.Errorf("marshal metadata: %w", err)
 	}
 	metadataKey := s.objectKey(record.Metadata.DedupeKey, "metadata.json")
-	_, err = s.putOnce(ctx, metadataKey, "application/json", metadata)
-	return err
+	if _, err := s.putOnce(ctx, metadataKey, "application/json", metadata); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *S3Sink) Close() error {
