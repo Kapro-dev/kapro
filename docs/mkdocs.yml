@@ -35,6 +35,7 @@ nav:
   - Home: index.md
   - Getting Started:
       - Install: install.md
+      - Adoption Guide: adoption.md
       - First Promotion in 10 Minutes: first-promotion-10min.md
       - Argo Quickstart: quickstart-argo.md
       - OCI Quickstart: quickstart-oci.md

@@ -17,6 +17,9 @@ a bounded retention window per parent `Promotion`. Defaults:
   (`Complete` / `Failed` / `Superseded`) so old failures survive even
   when successes fill the cap.
 - Non-terminal `PromotionRun` objects are **never** deleted.
+- `MaxDeletesPerReconcile = 25` — bounds per-pass deletes; remaining
+  victims drain over subsequent reconciles to avoid API-server and
+  event-broadcaster pressure on large backlogs.
 
 Not in the default `controllers:` list. Adopters managing high promotion
 volume (where unbounded `PromotionRun` accumulation becomes etcd pressure)
@@ -35,6 +38,20 @@ controllers:
 Each prune emits a `Normal` event `AttemptPruned` on the parent Promotion
 recording the pruned run name, terminal phase, and age — moves the audit
 signal from etcd to the event stream.
+
+### Added — guided adoption bootstrap
+
+Added `kapro bootstrap` as the guided CLI entrypoint for first-time adoption:
+`bootstrap guide`, `bootstrap greenfield`, and `bootstrap brownfield`. The
+greenfield path defaults to Flux pull mode, while brownfield Argo CD and Flux
+paths generate observe-first Backend, Source, and discovery review files.
+
+### Changed — onboarding documentation
+
+Added an Adoption Guide and linked it from the README, docs home, install,
+backend, first-promotion, Argo migration, and Flux migration pages. CLI install
+docs now use the verified clone/tag/`make build` path until release binary
+assets or Go vanity import metadata are available.
 
 ## v0.1.2 — 2026-05-22
 

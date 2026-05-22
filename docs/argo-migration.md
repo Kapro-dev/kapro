@@ -76,7 +76,21 @@ spec:
 
 ## Step 2: Discover The Existing Repo
 
-Run discovery against the Git repository that already contains Argo
+Run the guided brownfield bootstrap against the Git repository that already
+contains Argo Applications, ApplicationSets, and environment files:
+
+```bash
+kapro bootstrap brownfield argo . \
+  --out kapro-connect \
+  --name checkout \
+  --namespace argocd \
+  --selector kapro.io/import=true,team=checkout
+```
+
+This is the recommended first command for new adopters. It delegates to the
+same discovery engine as `kapro discover argo`.
+
+You can also run discovery directly against the Git repository that contains Argo
 Applications, ApplicationSets, and environment files. Discovery requires the
 `git` CLI and a Git worktree; it reads tracked files from Git's index instead
 of walking every file in the checkout.

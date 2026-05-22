@@ -28,10 +28,18 @@
 // in. Reasoning: deletion is destructive; for first-touch users running
 // `kubectl get promotionruns` is the audit trail. Mature deployments opt in.
 //
-// Failure mode: a delete that returns NotFound or Forbidden is logged and
-// skipped — the controller never retries indefinitely. A delete that
-// returns a transient error is retried at the standard backoff. The
-// controller is idempotent; a re-run is always safe.
+// Failure mode: a delete that returns NotFound is silently skipped (the
+// object is already gone — the controller is idempotent). A delete that
+// returns Forbidden is logged and skipped so a permission gap on one
+// attempt never blocks pruning of the rest. A transient API-server error
+// surfaces back to controller-runtime which retries at the standard
+// backoff. A re-run is always safe.
+//
+// Volume control: per-reconcile deletes are capped by
+// DefaultMaxDeletesPerReconcile so a Promotion that opts in with a large
+// backlog cannot saturate the API server or the event broadcaster in a
+// single pass. When the cap is hit the controller requeues to drain the
+// remaining victims across subsequent reconciles.
 package controller
 
 import (
@@ -64,7 +72,17 @@ type PromotionRunGCReconciler struct {
 	// MinRetainedPerOutcome overrides the default per-outcome floor. Zero
 	// means use kaprov1alpha2.DefaultMinRetainedPerOutcome.
 	MinRetainedPerOutcome int
+	// MaxDeletesPerReconcile bounds the number of PromotionRun deletes
+	// performed in a single reconcile. Zero means use
+	// kaprov1alpha2.DefaultMaxDeletesPerReconcile. When more victims exist
+	// than the cap, the controller requeues itself to drain across passes.
+	MaxDeletesPerReconcile int
+	// RequeueAfter overrides how long to wait before draining the next
+	// batch when victims exceed MaxDeletesPerReconcile. Zero means 30s.
+	RequeueAfter time.Duration
 }
+
+const defaultDrainRequeueAfter = 30 * time.Second
 
 // +kubebuilder:rbac:groups=kapro.io,resources=promotions,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kapro.io,resources=promotionruns,verbs=get;list;watch;delete
@@ -89,9 +107,17 @@ func (r *PromotionRunGCReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, nil
 	}
 
+	cap := r.maxDeletesPerReconcile()
+	remaining := 0
+	if len(victims) > cap {
+		remaining = len(victims) - cap
+		victims = victims[:cap]
+	}
+
 	logger.Info("pruning terminal PromotionRun attempts beyond retention cap",
 		"total", len(runs.Items),
 		"toDelete", len(victims),
+		"deferred", remaining,
 		"maxRetained", r.maxRetained(),
 		"minPerOutcome", r.minPerOutcome(),
 	)
@@ -117,7 +143,10 @@ func (r *PromotionRunGCReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	if deleted > 0 {
-		logger.Info("retention pass complete", "deleted", deleted)
+		logger.Info("retention pass complete", "deleted", deleted, "deferred", remaining)
+	}
+	if remaining > 0 {
+		return ctrl.Result{RequeueAfter: r.drainRequeueAfter()}, nil
 	}
 	return ctrl.Result{}, nil
 }
@@ -178,19 +207,51 @@ func (r *PromotionRunGCReconciler) selectVictims(runs []kaprov1alpha2.PromotionR
 	excess := totalTerminal - budget
 	var victims []kaprov1alpha2.PromotionRun
 
-	// Pass 1: each bucket donates everything above its per-outcome floor.
-	// Donations are taken from the OLDEST end of the bucket.
+	// Pass 1: collect every above-floor candidate from all buckets into a
+	// single slice, sort GLOBALLY by CreationTimestamp ascending (name tie-
+	// break), then take the first `excess` from the head. Map iteration is
+	// non-deterministic, so per-bucket victim selection would yield
+	// different runs deleted on different reconciles given the same inputs.
+	// A global sort guarantees the same victims for the same backlog
+	// regardless of map iteration order.
+	type candidate struct {
+		phase kaprov1alpha2.PromotionRunPhase
+		idx   int
+		run   kaprov1alpha2.PromotionRun
+	}
+	var candidates []candidate
 	for phase, bucket := range bucketByPhase {
 		if len(bucket) <= minPerOutcome {
 			continue
 		}
-		donate := min(len(bucket)-minPerOutcome, excess)
-		victims = append(victims, bucket[:donate]...)
-		bucketByPhase[phase] = bucket[donate:]
-		excess -= donate
-		if excess == 0 {
-			return victims
+		// Each bucket donates from its OLDEST end (already sorted ascending).
+		// The cutoff is len(bucket) - minPerOutcome.
+		for i := 0; i < len(bucket)-minPerOutcome; i++ {
+			candidates = append(candidates, candidate{phase: phase, idx: i, run: bucket[i]})
 		}
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		a, b := candidates[i].run.CreationTimestamp, candidates[j].run.CreationTimestamp
+		if a.Equal(&b) {
+			return candidates[i].run.Name < candidates[j].run.Name
+		}
+		return a.Before(&b)
+	})
+	take := min(len(candidates), excess)
+	donatedPerPhase := map[kaprov1alpha2.PromotionRunPhase]int{}
+	for i := range take {
+		victims = append(victims, candidates[i].run)
+		donatedPerPhase[candidates[i].phase]++
+	}
+	excess -= take
+
+	// Trim donated entries off the front of each bucket so Pass 2 sees the
+	// remaining (within-floor) runs only.
+	for phase, n := range donatedPerPhase {
+		bucketByPhase[phase] = bucketByPhase[phase][n:]
+	}
+	if excess == 0 {
+		return victims
 	}
 
 	// Pass 2: still over budget even after each bucket trimmed to its
@@ -242,6 +303,20 @@ func (r *PromotionRunGCReconciler) minPerOutcome() int {
 		return r.MinRetainedPerOutcome
 	}
 	return kaprov1alpha2.DefaultMinRetainedPerOutcome
+}
+
+func (r *PromotionRunGCReconciler) maxDeletesPerReconcile() int {
+	if r.MaxDeletesPerReconcile > 0 {
+		return r.MaxDeletesPerReconcile
+	}
+	return kaprov1alpha2.DefaultMaxDeletesPerReconcile
+}
+
+func (r *PromotionRunGCReconciler) drainRequeueAfter() time.Duration {
+	if r.RequeueAfter > 0 {
+		return r.RequeueAfter
+	}
+	return defaultDrainRequeueAfter
 }
 
 // SetupWithManager registers the reconciler on the parent Promotion. We

@@ -179,6 +179,97 @@ func TestGC_MissingPromotionNoOp(t *testing.T) {
 	}
 }
 
+// TestGC_GlobalOldestFirst asserts above-floor victims across buckets are
+// selected by global oldest-first ordering. Two terminal phases each have
+// excess-above-floor candidates; the oldest entries — wherever they live —
+// must be picked first regardless of map iteration order.
+func TestGC_GlobalOldestFirst(t *testing.T) {
+	promo := &kaprov1alpha2.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "checkout"}}
+	var objs []client.Object
+	objs = append(objs, promo)
+
+	// 4 Complete (ages 10,20,30,40m) and 4 Failed (ages 5,15,25,35m).
+	// Cap=4, floor-per-outcome=1 → must delete 4 (one excess per bucket
+	// after floor for Complete: 3, for Failed: 3; budget=4-0=4; excess=4).
+	// Globally oldest 4: complete-40, failed-35, complete-30, failed-25.
+	for i, age := range []int{10, 20, 30, 40} {
+		objs = append(objs, mkRun(fmt.Sprintf("complete-%d", age), "checkout", kaprov1alpha2.PromotionRunPhaseComplete, age))
+		_ = i
+	}
+	for _, age := range []int{5, 15, 25, 35} {
+		objs = append(objs, mkRun(fmt.Sprintf("failed-%d", age), "checkout", kaprov1alpha2.PromotionRunPhaseFailed, age))
+	}
+
+	c, s := gcTestClient(t, objs...)
+	r := &controller.PromotionRunGCReconciler{
+		Client:                  c,
+		Recorder:                record.NewFakeRecorder(200),
+		Scheme:                  s,
+		MaxRetainedPerPromotion: 4,
+		MinRetainedPerOutcome:   1,
+	}
+	if _, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: client.ObjectKeyFromObject(promo)}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	var remaining kaprov1alpha2.PromotionRunList
+	_ = c.List(context.Background(), &remaining)
+
+	survivors := map[string]bool{}
+	for _, run := range remaining.Items {
+		survivors[run.Name] = true
+	}
+	wantSurvive := []string{"complete-10", "complete-20", "failed-5", "failed-15"}
+	wantDelete := []string{"complete-30", "complete-40", "failed-25", "failed-35"}
+	for _, n := range wantSurvive {
+		if !survivors[n] {
+			t.Errorf("expected %s to survive, got deleted", n)
+		}
+	}
+	for _, n := range wantDelete {
+		if survivors[n] {
+			t.Errorf("expected %s to be deleted, got retained", n)
+		}
+	}
+}
+
+// TestGC_BoundedDeletesPerReconcile asserts a large backlog drains over
+// multiple reconciles instead of one mega-pass that could saturate the API
+// server or event broadcaster.
+func TestGC_BoundedDeletesPerReconcile(t *testing.T) {
+	promo := &kaprov1alpha2.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "checkout"}}
+	var objs []client.Object
+	objs = append(objs, promo)
+	// 30 terminal Completes, cap=5 → 25 to delete. With per-reconcile
+	// cap=10 the first reconcile deletes 10 and requeues; we don't drain
+	// the rest here, we just assert the cap held + RequeueAfter set.
+	for i := 1; i <= 30; i++ {
+		objs = append(objs, mkRun(fmt.Sprintf("succ-%d", i), "checkout", kaprov1alpha2.PromotionRunPhaseComplete, 100-i))
+	}
+	c, s := gcTestClient(t, objs...)
+	r := &controller.PromotionRunGCReconciler{
+		Client:                  c,
+		Recorder:                record.NewFakeRecorder(200),
+		Scheme:                  s,
+		MaxRetainedPerPromotion: 5,
+		MinRetainedPerOutcome:   1,
+		MaxDeletesPerReconcile:  10,
+		RequeueAfter:            time.Second,
+	}
+	res, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: client.ObjectKeyFromObject(promo)})
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if res.RequeueAfter != time.Second {
+		t.Fatalf("expected RequeueAfter=1s to drain remaining backlog, got %+v", res)
+	}
+	var remaining kaprov1alpha2.PromotionRunList
+	_ = c.List(context.Background(), &remaining)
+	// Started at 30, deleted exactly 10 this pass → 20 remain.
+	if len(remaining.Items) != 20 {
+		t.Fatalf("expected per-reconcile cap to bound deletes to 10 (20 remaining); got %d remaining", len(remaining.Items))
+	}
+}
+
 // TestGC_DefaultsApplied asserts zero overrides resolve to the
 // kaprov1alpha2.Default* constants.
 func TestGC_DefaultsApplied(t *testing.T) {

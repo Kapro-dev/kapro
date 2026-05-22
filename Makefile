@@ -53,7 +53,7 @@ lint: $(GOLANGCI_LINT) ## Run golangci-lint
 	$(GOLANGCI_LINT) run --timeout 5m
 
 .PHONY: validate-yaml-json
-validate-yaml-json: ## Validate CI, example, monitoring YAML and Grafana dashboard JSON
+validate-yaml-json: ## Validate CI, example, monitoring YAML, Prometheus rules, and Grafana dashboard JSON
 	scripts/validate-yaml-json
 
 .PHONY: check-markdown-links

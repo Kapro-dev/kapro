@@ -285,7 +285,7 @@ const MaxLifecycleHandlerResults = 50
 // keeps a bounded forensic window per Promotion under these caps. Active
 // (non-terminal) attempts are NEVER deleted regardless of count — they are
 // the live execution record. Deletion is age-based within each terminal
-// outcome bucket so the most recent Succeeded / Failed / Superseded
+// outcome bucket so the most recent Complete / Failed / Superseded
 // attempts survive even when the total cap is exceeded.
 //
 // All three values are constants today; ADR-0015 keeps the door open for a
@@ -301,6 +301,12 @@ const (
 	// terminal phase (Complete / Failed / Superseded) survive — adopters
 	// debugging the most recent failure still have the immediate history.
 	DefaultMinRetainedPerOutcome = 10
+
+	// DefaultMaxDeletesPerReconcile bounds per-pass deletes so a Promotion
+	// that opts in with a large backlog cannot saturate the API server or
+	// the event broadcaster in one reconcile. Remaining victims drain on
+	// the next reconcile (the controller requeues itself).
+	DefaultMaxDeletesPerReconcile = 25
 )
 
 // +kubebuilder:object:root=true

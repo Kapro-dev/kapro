@@ -2,6 +2,8 @@
 # frozen_string_literal: true
 
 require "json"
+require "open3"
+require "tempfile"
 require "yaml"
 require "date"
 
@@ -104,6 +106,10 @@ def validate_json(path)
   JSON.parse(File.read(path))
 end
 
+def promtool_available?
+  system("promtool", "--version", out: File::NULL, err: File::NULL)
+end
+
 def kapro_document?(doc)
   api = doc["apiVersion"]
   api.is_a?(String) && api.start_with?("kapro.io/")
@@ -175,6 +181,83 @@ def check_monitoring_public_names(path)
   failures
 end
 
+def prometheus_rule_groups_for(doc)
+  return doc["groups"] if doc.is_a?(Hash) && doc["groups"].is_a?(Array)
+
+  return nil unless doc.is_a?(Hash)
+  return nil unless doc["apiVersion"] == "monitoring.coreos.com/v1"
+  return nil unless doc["kind"] == "PrometheusRule"
+
+  doc.dig("spec", "groups")
+end
+
+def check_prometheus_rule_shape(path, groups)
+  failures = []
+
+  unless groups.is_a?(Array) && groups.any?
+    return ["#{path}: Prometheus rules must contain at least one group"]
+  end
+
+  groups.each_with_index do |group, group_index|
+    location = "#{path}: groups[#{group_index}]"
+    unless group.is_a?(Hash)
+      failures << "#{location}: group must be a mapping"
+      next
+    end
+
+    failures << "#{location}.name must be set" unless group["name"].is_a?(String) && !group["name"].empty?
+    rules = group["rules"]
+    unless rules.is_a?(Array) && rules.any?
+      failures << "#{location}.rules must contain at least one rule"
+      next
+    end
+
+    rules.each_with_index do |rule, rule_index|
+      rule_location = "#{location}.rules[#{rule_index}]"
+      unless rule.is_a?(Hash)
+        failures << "#{rule_location}: rule must be a mapping"
+        next
+      end
+
+      has_alert = rule["alert"].is_a?(String) && !rule["alert"].empty?
+      has_record = rule["record"].is_a?(String) && !rule["record"].empty?
+      failures << "#{rule_location}: exactly one of alert or record must be set" if has_alert == has_record
+      failures << "#{rule_location}.expr must be set" unless rule["expr"].is_a?(String) && !rule["expr"].strip.empty?
+    end
+  end
+
+  failures
+end
+
+def check_prometheus_rules_with_promtool(path, groups)
+  return [] unless promtool_available?
+
+  Tempfile.create(["kapro-prometheus-rules", ".yaml"]) do |file|
+    file.write(YAML.dump("groups" => groups))
+    file.flush
+
+    output, status = Open3.capture2e("promtool", "check", "rules", file.path)
+    return [] if status.success?
+
+    return ["#{path}: promtool check rules failed after preparing rule groups:\n#{output}"]
+  end
+end
+
+def check_prometheus_rules(path)
+  failures = []
+
+  yaml_documents(path).each_with_index do |doc, index|
+    groups = prometheus_rule_groups_for(doc)
+    next if groups.nil?
+
+    location = "#{path}: document #{index + 1}"
+    failures.concat(check_prometheus_rule_shape(location, groups))
+    failures.concat(check_prometheus_rules_with_promtool(location, groups))
+  end
+
+  failures
+end
+
 failures = []
 begin
   yaml_files = matching_files(YAML_PATTERNS)
@@ -189,6 +272,7 @@ yaml_files.each do |path|
   validate_yaml(path)
   failures.concat(check_kapro_yaml(path))
   failures.concat(check_monitoring_public_names(path))
+  failures.concat(check_prometheus_rules(path))
 rescue Psych::Exception => e
   failures << "#{path}: #{e.message}"
 end
