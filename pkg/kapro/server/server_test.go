@@ -33,14 +33,10 @@ func TestServerNewPopulatesRegistries(t *testing.T) {
 	t.Setenv("KAPRO_DISABLE_APPROVAL_SERVER", "true")
 	t.Setenv("KAPRO_DISABLE_HUB_GATEWAY", "true")
 	t.Setenv("KAPRO_APPROVAL_SECRET", "test-secret")
-<<<<<<< HEAD
 	// pluginadapter.EnableEnv is KAPRO_ENABLE_PLUGIN_GATEWAY (not
 	// KAPRO_PLUGIN_GATEWAY_ENABLED) — clear it explicitly so the test
 	// can't be influenced by ambient process state.
 	t.Setenv("KAPRO_ENABLE_PLUGIN_GATEWAY", "")
-=======
-	t.Setenv("KAPRO_PLUGIN_GATEWAY_ENABLED", "false")
->>>>>>> 2cc15bb (feat(server): expose kapro operator library mode)
 
 	srv, err := New(Options{
 		Config: &rest.Config{
