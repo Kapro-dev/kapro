@@ -1,8 +1,8 @@
 # Composable Gates
 
-`GateExpression` is a preview API for naming and composing gate policies. The
-first scaffold supports the `ALL` operator only: every referenced expression
-must pass before the parent expression passes.
+`GateExpression` names and composes gate policies. It supports `ALL`, `ANY`,
+`NOT`, `WEIGHTED_SUM`, `THRESHOLD`, and `DELAY` over inline gates and referenced
+child expressions.
 
 Use it to model and inspect reusable gate bundles before wiring them into
 runtime policy. Keep enforceable v0.1.2 rollout checks inline on
@@ -69,11 +69,19 @@ spec:
                 expression: "target.phase == 'Converged'"
 ```
 
-## v0.1.2 Limits
+## Operators
 
-`ANY`, `NOT`, `WEIGHTED_SUM`, `THRESHOLD`, and `DELAY` are reserved for a later
-release. The CRD enum only accepts `ALL` in v0.1.2, and admission returns a
-clear reserved-operator message if a bypassed client submits another operator.
+| Operator | Passes when | Fails when | Pending when |
+|---|---|---|---|
+| `ALL` | every operand passed | any operand failed | at least one operand is pending |
+| `ANY` | any operand passed | every operand failed | no operand passed and at least one is pending |
+| `NOT` | the single operand failed | the single operand passed | the operand is pending |
+| `WEIGHTED_SUM` | passed weights sum to more than `threshold` | even all non-failed operands cannot exceed `threshold` | the final sum still depends on pending operands |
+| `THRESHOLD` | at least `threshold` operands passed | too many operands failed to reach `threshold` | the final count still depends on pending operands |
+| `DELAY` | `parameters.duration` has elapsed, then the operand passes | `parameters.duration` has elapsed, then the operand fails | the delay window or operand is still pending |
+
+`DELAY` stores `status.firstObservedAt` the first time the controller evaluates
+the expression, then mirrors its single operand once the duration has elapsed.
 
 Inline gate operands remain `Pending` in `GateExpression.status` because only
 the target runtime has enough context to evaluate a real gate. Referenced child

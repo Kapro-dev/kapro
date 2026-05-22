@@ -78,6 +78,12 @@ Added the in-process programmable Gate API with `gate.Func`, result
 constructors, panic recovery middleware, SDK-facing `pkg/kapro/gate` aliases,
 custom gate type dispatch, and gate evaluation metrics.
 
+### Added — completed GateExpression algebra
+
+Graduated `GateExpression` from `ALL`-only preview to the full `ALL`, `ANY`,
+`NOT`, `WEIGHTED_SUM`, `THRESHOLD`, and `DELAY` algebra with admission
+validation, delay first-observation status, examples, and docs.
+
 ## v0.1.2 — 2026-05-22
 
 ### Added — Go SDK scaffold

@@ -56,10 +56,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: |-
-              GateExpressionSpec composes existing gates via named operators. v0.1.2
-              implements ALL only. Other operators and weighted fields are reserved for
-              v0.2.0.
+            description: GateExpressionSpec composes existing gates via named operators.
             properties:
               operands:
                 description: Operands are the gates or child expressions evaluated
@@ -707,32 +704,45 @@ spec:
                     rule: has(self.inlineGate) != has(self.expressionRef)
                   - message: inlineGate must not set expressionRef; use operand.expressionRef
                     rule: '!has(self.inlineGate) || !has(self.inlineGate.expressionRef)'
+                maxItems: 128
                 minItems: 1
                 type: array
               operator:
                 description: Operator selects the composition operator.
                 enum:
                 - ALL
+                - ANY
+                - NOT
+                - WEIGHTED_SUM
+                - THRESHOLD
+                - DELAY
                 type: string
+              parameters:
+                additionalProperties:
+                  type: string
+                description: |-
+                  Parameters carries operator-specific options. DELAY requires
+                  parameters.duration as a Go duration string.
+                type: object
               threshold:
                 description: Threshold applies to THRESHOLD and WEIGHTED_SUM. Reserved
                   for v0.2.0.
                 format: int32
+                minimum: 1
                 type: integer
               weights:
                 description: Weights[i] applies to Operands[i] for WEIGHTED_SUM. Reserved
                   for v0.2.0.
                 items:
                   format: int32
+                  minimum: 0
                   type: integer
+                maxItems: 128
                 type: array
             required:
             - operands
             - operator
             type: object
-            x-kubernetes-validations:
-            - message: weights and threshold are reserved for v0.2.0
-              rule: '!has(self.weights) && !has(self.threshold)'
           status:
             description: GateExpressionStatus records the latest composition outcome.
             properties:
@@ -792,6 +802,11 @@ spec:
                   - type
                   type: object
                 type: array
+              firstObservedAt:
+                description: FirstObservedAt records when a DELAY expression first
+                  began waiting.
+                format: date-time
+                type: string
               observedGeneration:
                 format: int64
                 type: integer
