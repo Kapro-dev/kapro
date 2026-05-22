@@ -104,8 +104,9 @@ func (r *PromotionRunGCReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	victims := r.selectVictims(runs.Items)
-	kaprometrics.PromotionRunRetained.Add(float64(len(runs.Items) - len(victims)))
 	if len(victims) == 0 {
+		// Nothing to prune this pass: every run survives.
+		kaprometrics.PromotionRunRetained.Add(float64(len(runs.Items)))
 		return ctrl.Result{}, nil
 	}
 
@@ -124,12 +125,17 @@ func (r *PromotionRunGCReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		"minPerOutcome", r.minPerOutcome(),
 	)
 
-	var deleted int
+	// pruned counts victims that no longer exist after this pass (Delete OK
+	// or NotFound). Forbidden and deferred-by-cap victims still survive and
+	// are counted as retained. On transient error we return early WITHOUT
+	// updating PromotionRunRetained so the retry doesn't double-count it.
+	var deleted, pruned int
 	for i := range victims {
 		v := &victims[i]
 		if err := r.Delete(ctx, v); err != nil {
 			if apierrors.IsNotFound(err) {
 				kaprometrics.PromotionRunPruned.WithLabelValues("not_found").Inc()
+				pruned++
 				continue
 			}
 			if apierrors.IsForbidden(err) {
@@ -143,10 +149,13 @@ func (r *PromotionRunGCReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 		kaprometrics.PromotionRunPruned.WithLabelValues("deleted").Inc()
 		deleted++
+		pruned++
 		r.Recorder.Eventf(&promotion, "Normal", "AttemptPruned",
 			"Pruned terminal PromotionRun %s (phase=%s, age=%s) per ADR-0015 retention",
 			v.Name, v.Status.Phase, time.Since(v.CreationTimestamp.Time).Round(time.Second))
 	}
+
+	kaprometrics.PromotionRunRetained.Add(float64(len(runs.Items) - pruned))
 
 	if deleted > 0 {
 		logger.Info("retention pass complete", "deleted", deleted, "deferred", remaining)

@@ -257,6 +257,7 @@ func TestGC_BoundedDeletesPerReconcile(t *testing.T) {
 		MaxDeletesPerReconcile:  10,
 		RequeueAfter:            time.Second,
 	}
+	beforeRetained := promtestutil.ToFloat64(kaprometrics.PromotionRunRetained)
 	res, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: client.ObjectKeyFromObject(promo)})
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
@@ -269,6 +270,12 @@ func TestGC_BoundedDeletesPerReconcile(t *testing.T) {
 	// Started at 30, deleted exactly 10 this pass → 20 remain.
 	if len(remaining.Items) != 20 {
 		t.Fatalf("expected per-reconcile cap to bound deletes to 10 (20 remaining); got %d remaining", len(remaining.Items))
+	}
+	// Retained THIS pass = total - actually pruned = 30 - 10 = 20. The
+	// deferred 15 victims survive this reconcile and must be counted as
+	// retained, not silently dropped.
+	if got := promtestutil.ToFloat64(kaprometrics.PromotionRunRetained) - beforeRetained; got != 20 {
+		t.Fatalf("retained delta on capped pass: got %.0f, want 20 (must count deferred victims as retained this pass)", got)
 	}
 }
 
