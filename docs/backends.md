@@ -43,16 +43,27 @@ settings. A fleet may mix modes across clusters.
 For existing Flux or Argo CD estates, use observe-first workflows:
 
 ```bash
-kapro adopt argo . --out ./kapro-connect --namespace argocd --selector kapro.io/import=true
-kapro adopt flux . --out ./kapro-connect --namespace flux-system --selector kapro.io/import=true
+kapro bootstrap brownfield argo . --out ./kapro-connect --namespace argocd --selector kapro.io/import=true
+kapro bootstrap brownfield flux . --out ./kapro-connect --namespace flux-system --selector kapro.io/import=true
 ```
 
-`kapro adopt` is the brownfield-friendly wrapper around `kapro discover`; use
-`kapro discover` directly when you want the lower-level discovery command name.
+`kapro bootstrap brownfield` is the guided wrapper for first-time users.
+`kapro adopt` is the shorter brownfield command, and `kapro discover` is the
+lower-level discovery command name.
 
 Review the generated `Backend`, `Source`, and discovery status
 before switching a backend to write mode. Kapro should only patch fields that
 the owning platform team has explicitly adopted.
+
+For new promotion repositories, use greenfield bootstrap:
+
+```bash
+kapro bootstrap greenfield ./promotion-repo --backend flux --mode pull --name checkout
+kapro bootstrap greenfield ./promotion-repo --backend argo --mode push --name checkout
+kapro bootstrap greenfield ./promotion-repo --backend oci --mode pull --name checkout
+```
+
+See [Adoption Guide](adoption.md) for the full decision tree.
 
 ## Plugins
 

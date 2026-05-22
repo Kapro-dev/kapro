@@ -62,6 +62,14 @@ require_text "${TMPDIR}/greenfield-flux/promotions/checkout-promotion.yaml" "kin
 require_text "${TMPDIR}/greenfield-flux/promotions/checkout-promotion.yaml" "fleetRef: checkout"
 require_text "${TMPDIR}/greenfield-flux/promotions/checkout-promotion.yaml" "timeout: 30m"
 
+echo "smoke: guided bootstrap greenfield defaults"
+kapro bootstrap greenfield "${TMPDIR}/bootstrap-greenfield" --name checkout --force >/dev/null
+require_file "${TMPDIR}/bootstrap-greenfield/backends/flux.yaml"
+require_file "${TMPDIR}/bootstrap-greenfield/fleets/checkout.yaml"
+require_file "${TMPDIR}/bootstrap-greenfield/promotions/checkout-promotion.yaml"
+require_text "${TMPDIR}/bootstrap-greenfield/clusters/canary-eu.yaml" "mode: pull"
+require_text "${TMPDIR}/bootstrap-greenfield/clusters/canary-eu.yaml" "backendRef: flux"
+
 echo "smoke: brownfield argo connect"
 kapro connect argo "${TMPDIR}/connect-argo" --namespace argocd --selector kapro.io/import=true,team=checkout --force >/dev/null
 require_file "${TMPDIR}/connect-argo/backends/argo-observe.yaml"
@@ -118,6 +126,12 @@ kapro adopt argo "${TMPDIR}/argo-repo" --out "${TMPDIR}/adopt-argo" --name check
 require_file "${TMPDIR}/adopt-argo/discovery/kapro-git-map.yaml"
 kapro source apply --repo "${TMPDIR}/argo-repo" --source "${TMPDIR}/discover-argo/sources/checkout.yaml" --set checkout-api=2.0.0 --all >/dev/null
 require_text "${TMPDIR}/argo-repo/argocd/environments/dev.json" '"gkProjectVersion": "2.0.0"'
+
+echo "smoke: guided bootstrap brownfield argo"
+kapro bootstrap brownfield argo "${TMPDIR}/argo-repo" --out "${TMPDIR}/bootstrap-argo" --name checkout --force >/dev/null
+require_file "${TMPDIR}/bootstrap-argo/backends/checkout-observe.yaml"
+require_file "${TMPDIR}/bootstrap-argo/sources/checkout.yaml"
+require_file "${TMPDIR}/bootstrap-argo/discovery/kapro-git-map.yaml"
 
 echo "smoke: brownfield flux connect"
 kapro connect flux "${TMPDIR}/connect-flux" --namespace flux-system --selector kapro.io/import=true,team=checkout --force >/dev/null
