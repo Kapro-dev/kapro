@@ -26,7 +26,8 @@ KAPRO_CHART="https://github.com/Kapro-dev/kapro/releases/download/v${KAPRO_VERSI
 helm upgrade --install kapro \
   "${KAPRO_CHART}" \
   --namespace kapro-system \
-  --create-namespace
+  --create-namespace \
+  --wait
 ```
 
 That is the full install for kind, k3d, EKS without the cert-manager
@@ -229,13 +230,12 @@ and `kubectl kustomize config/default`. `cluster` installs the chart into the
 current cluster and verifies the operator Deployment, CRDs, ServiceAccount, and
 basic PromotionRun read access.
 
-For a fresh clone release check:
+For a fresh clone check of the current docs, examples, and scripts:
 
 ```bash
 tmpdir="$(mktemp -d)"
-git clone https://github.com/Kapro-dev/kapro "${tmpdir}/kapro"
+git clone --branch main https://github.com/Kapro-dev/kapro "${tmpdir}/kapro"
 cd "${tmpdir}/kapro"
-git checkout v0.1.2
 scripts/verify-install.sh render
 ```
 
@@ -271,9 +271,29 @@ KAPRO_VERIFY_CLEANUP=true scripts/verify-install.sh release-cluster
 kind delete cluster --name kapro-release-verify
 ```
 
+To combine the published chart install with the quickstart object model, run
+the release install check first, then apply the starter manifests from the same
+checkout:
+
+```bash
+kind create cluster --name kapro-release-quickstart
+kubectl config use-context kind-kapro-release-quickstart
+KAPRO_VERIFY_CLEANUP=false scripts/verify-install.sh release-cluster
+kubectl apply -f examples/quickstart/backend-flux.yaml
+kubectl apply -f examples/quickstart/kapro.yaml
+kubectl apply -f examples/quickstart/promotion.yaml
+kubectl get promotions,promotionruns,targets
+kind delete cluster --name kapro-release-quickstart
+```
+
+That proves the released chart can install the current public quickstart API
+shape. Full `PromotionRun=Complete` and `Target=Converged` checks are covered by
+the Kind smoke fixture below, which injects synthetic backend health.
+
 Heavier validation targets are available when you need backend coverage:
 
 ```bash
+KAPRO_CI_QUICKSTARTS=flux,argo,oci scripts/ci-kind-smoke.sh
 scripts/verify-install.sh kind-demo
 scripts/verify-install.sh argo-e2e
 scripts/verify-install.sh flux-git-e2e
