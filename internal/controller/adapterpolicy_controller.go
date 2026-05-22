@@ -63,7 +63,7 @@ func (r *AdapterPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		policy.Status.Message == message &&
 		policy.Status.ObservedGeneration == policy.Generation
 	syncFresh := policy.Status.LastSyncTime != nil &&
-		now.Time.Sub(policy.Status.LastSyncTime.Time) < interval/2
+		now.Sub(policy.Status.LastSyncTime.Time) < interval/2
 	if materialUnchanged && syncFresh {
 		return ctrl.Result{RequeueAfter: interval}, nil
 	}
