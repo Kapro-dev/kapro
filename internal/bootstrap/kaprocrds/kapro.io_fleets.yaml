@@ -615,11 +615,10 @@ spec:
                                       timeout:
                                         type: string
                                       type:
-                                        enum:
-                                        - cel
-                                        - job
-                                        - webhook
-                                        - plugin
+                                        description: Type dispatches to a built-in,
+                                          plugin-backed, or in-process registered
+                                          gate.
+                                        minLength: 1
                                         type: string
                                       webhook:
                                         description: WebhookGateSpec configures the

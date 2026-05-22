@@ -32,7 +32,10 @@ package gate
 
 import (
 	"context"
+	"fmt"
+	"time"
 
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 
@@ -106,6 +109,10 @@ type Result struct {
 	// actual vs expected. Good: "p99 latency 48ms > threshold 40ms".
 	Message string
 
+	// Reason is a short machine-readable token for programmable gates and
+	// status consumers. Existing built-in gates may leave it empty.
+	Reason string
+
 	// RetryAfter is the recommended requeue delay for Inconclusive results.
 	// Format: Go duration string (e.g. "30s", "5m").
 	// Empty means requeue with the controller's default backoff.
@@ -171,22 +178,48 @@ type Request struct {
 	// Never nil.
 	Context *Context
 
-	// Policy is the resolved gate policy for this sync.
-	// May be nil when no gate is configured for the stage.
+	// Policy is the resolved gate policy for this sync. May be nil when
+	// no gate is configured for the stage. Built-in controller paths
+	// (cel/job/webhook/metrics/approval) require Policy; programmable
+	// gates should prefer the ergonomic fields below plus Parameters.
 	Policy *kaprov1alpha2.GatePolicySpec
 
 	// MetricIndex addresses a specific metric in Policy.Gate.Metrics.
-	// Meaningful only on the Metrics[] evaluation path.
+	// Meaningful only on the built-in Metrics[] evaluation path.
 	MetricIndex int
 
-	// Template is the inline gate template for template-based evaluation.
-	// Nil on the Metrics[] path; non-nil on the GateTemplate path.
+	// Template is the inline gate template for template-based
+	// evaluation. Nil on the Metrics[] path; non-nil on the GateTemplate
+	// path. Built-in cel/job/webhook gates read Template; programmable
+	// gates should prefer Parameters and the ergonomic request identity
+	// fields.
 	Template *kaprov1alpha2.GateTemplateSpec
 
-	// Args carries runtime-injected parameters merged with this precedence:
-	//   GateTemplateSpec defaults < sync context (version, target, stage)
-	// Nil on the Metrics[] path.
+	// Args carries the merged template parameters AND runtime-injected
+	// identity (version/target/stage/promotionrun/promotionplan).
+	// Built-in cel/job/webhook gates read Args; programmable gates
+	// should use Parameters (user-supplied only) plus the ergonomic
+	// request identity fields.
 	Args map[string]string
+
+	// Fleet identifies the owning Fleet for ergonomic programmable gates.
+	Fleet string
+	// Promotion identifies the owning Promotion when known.
+	Promotion string
+	// PromotionRun identifies the immutable PromotionRun attempt.
+	PromotionRun string
+	// Plan identifies the plan node being evaluated.
+	Plan string
+	// Stage identifies the stage being evaluated.
+	Stage string
+	// Target identifies the target Cluster.
+	Target string
+	// Version is the artifact version under rollout.
+	Version string
+	// Parameters passes through the GateTemplate args or GatePolicy parameters.
+	Parameters map[string]string
+	// Logger is pre-tagged by callers when available.
+	Logger logr.Logger
 }
 
 // Gate is KGI v1alpha1: the Kapro Gate Interface.
@@ -203,4 +236,68 @@ type Request struct {
 //   - Evaluate MUST be idempotent for a given (promotionrun/env/stage, gate state) tuple
 type Gate interface {
 	Evaluate(ctx context.Context, req Request) (Result, error)
+}
+
+// Func adapts a plain function into a Gate.
+type Func func(ctx context.Context, req Request) (Result, error)
+
+// Evaluate implements Gate.
+func (f Func) Evaluate(ctx context.Context, req Request) (Result, error) {
+	return f(ctx, req)
+}
+
+// Phase is the public programmable-gate phase type.
+type Phase = kaprov1alpha2.GatePhase
+
+const (
+	Passed       Phase = kaprov1alpha2.GatePhasePassed
+	Failed       Phase = kaprov1alpha2.GatePhaseFailed
+	Inconclusive Phase = kaprov1alpha2.GatePhaseInconclusive
+)
+
+// MakePassed returns a passed gate result.
+func MakePassed(msg string) Result {
+	return Result{Phase: kaprov1alpha2.GatePhasePassed, Message: msg}
+}
+
+// MakeFailed returns a failed gate result.
+func MakeFailed(reason, msgFmt string, args ...any) Result {
+	return Result{
+		Phase:   kaprov1alpha2.GatePhaseFailed,
+		Reason:  reason,
+		Message: fmt.Sprintf(msgFmt, args...),
+	}
+}
+
+// MakeInconclusive returns an inconclusive gate result with an optional
+// retry time. The controller's inconclusivePolicy applies only to
+// inconclusive results, so programmable gates that need more time MUST
+// use this constructor rather than directly emitting GatePhasePending
+// (which means "queued, not yet evaluated" and is reserved for the
+// controller).
+//
+// A retryAt in the past is clamped: RetryAfter is left empty so the
+// controller falls back to its default backoff instead of looping at
+// zero delay under clock skew or caller bugs.
+func MakeInconclusive(reason string, retryAt time.Time) Result {
+	result := Result{Phase: kaprov1alpha2.GatePhaseInconclusive, Reason: reason}
+	if !retryAt.IsZero() {
+		if d := time.Until(retryAt); d > 0 {
+			result.RetryAfter = d.String()
+		}
+	}
+	return result
+}
+
+// Recover converts panics from trusted in-process gates into failed results.
+func Recover(next Gate) Gate {
+	return Func(func(ctx context.Context, req Request) (result Result, err error) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				result = MakeFailed("PanicRecovered", "gate panic: %v", recovered)
+				err = nil
+			}
+		}()
+		return next.Evaluate(ctx, req)
+	})
 }

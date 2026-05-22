@@ -15,20 +15,9 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
-	"kapro.io/kapro/pkg/gate"
+	"kapro.io/kapro/pkg/kapro/gate"
 	"kapro.io/kapro/pkg/kapro/server"
 )
-
-type businessHours struct{}
-
-func (businessHours) Evaluate(ctx context.Context, req gate.Request) (gate.Result, error) {
-	hour := time.Now().UTC().Hour()
-	if hour >= 8 && hour < 18 {
-		return gate.Result{Phase: kaprov1alpha2.GatePhasePassed, Reason: "InsideBusinessHours"}, nil
-	}
-	return gate.Result{Phase: kaprov1alpha2.GatePhaseInconclusive, Reason: "OutsideBusinessHours", RetryAfter: "30m"}, nil
-}
 
 func main() {
 	opts := server.OptionsFromEnv()
@@ -40,7 +29,13 @@ func main() {
 		log.Fatal(err)
 	}
 
-	s.Gates.MustRegister("business-hours", businessHours{})
+	s.Gates.MustRegister("business-hours", gate.Func(func(ctx context.Context, req gate.Request) (gate.Result, error) {
+		hour := time.Now().UTC().Hour()
+		if hour >= 8 && hour < 18 {
+			return gate.MakePassed("inside business hours"), nil
+		}
+		return gate.MakeInconclusive("OutsideBusinessHours", time.Now().UTC().Add(30*time.Minute)), nil
+	}))
 
 	if err := s.Run(ctrl.SetupSignalHandler()); err != nil {
 		log.Fatal(err)
@@ -74,4 +69,5 @@ helm upgrade --install kapro charts/kapro-operator \
 
 Gate code runs in the operator process. Only compile trusted code into a custom
 operator; use the gRPC plugin path when a separate security or ownership
-boundary is required.
+boundary is required. See `docs/programmable-gates.md` for the full trust
+boundary discussion.

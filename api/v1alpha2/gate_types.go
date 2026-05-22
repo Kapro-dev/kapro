@@ -230,7 +230,8 @@ type GateTemplateSpec struct {
 	// Name uniquely identifies this template within the gate for status tracking
 	// and Job naming. Required when type == "job" (used to generate Job name).
 	Name string `json:"name,omitempty"`
-	// +kubebuilder:validation:Enum=cel;job;webhook;plugin
+	// Type dispatches to a built-in, plugin-backed, or in-process registered gate.
+	// +kubebuilder:validation:MinLength=1
 	Type string    `json:"type"`
 	Args []GateArg `json:"args,omitempty"`
 	// +kubebuilder:validation:Enum=halt;retry;skip
