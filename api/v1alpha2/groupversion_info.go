@@ -17,7 +17,6 @@ func init() {
 		&Approval{}, &ApprovalList{},
 		&Backend{}, &BackendList{},
 		&Cluster{}, &ClusterList{},
-		&ClusterClassifier{}, &ClusterClassifierList{},
 		&ClusterTemplate{}, &ClusterTemplateList{},
 		&Fleet{}, &FleetList{},
 		&GateExpression{}, &GateExpressionList{},

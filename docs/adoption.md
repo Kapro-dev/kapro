@@ -128,9 +128,6 @@ stamps immutable `PromotionRun` attempts and per-target `Target` records.
   object first, then commit only when the whole staging pass succeeds. The
   optional `spec.delivery.staging` API currently exposes this conservative
   `TwoPhase`/`Abort` contract without changing existing backend defaults.
-- `ClusterClassifier` is a preview API for deriving stable Cluster labels and
-  delivery staging hints used by stage selectors. It is inert unless classifier
-  automation is explicitly installed.
 - Vault bootstrap material is a preview contract. The built-in CSR bootstrap
   controller fails closed with `BootstrapVaultDisabled` rather than falling
   back to Kubernetes Secrets when `spec.bootstrap.materialSource.type=Vault`.
