@@ -1,0 +1,22 @@
+apiVersion: v2
+name: kapro-archiver
+description: Optional Kapro CloudEvents archive subscriber with file and S3 sinks.
+type: application
+version: 0.2.0
+appVersion: "v0.2.0"
+home: https://github.com/Kapro-dev/kapro
+sources:
+  - https://github.com/Kapro-dev/kapro
+maintainers:
+  - name: Vinayaka Krishnamurthy
+    email: vinnxcapital@gmail.com
+    url: https://github.com/Kapro-dev
+icon: https://raw.githubusercontent.com/Kapro-dev/kapro/main/docs/logo.png
+keywords:
+  - kubernetes
+  - cloudevents
+  - archive
+  - promotion
+  - kapro
+annotations:
+  artifacthub.io/license: Apache-2.0

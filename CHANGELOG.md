@@ -63,6 +63,15 @@ Added `pkg/kapro/server`, a composable Go library entry point for building a
 custom Kapro operator binary while keeping the reference `cmd/operator` binary
 thin and behavior-compatible.
 
+### Added — external promotion history archive (#140)
+
+Added the v0.2.0 long-term archive cookbook with Vector, Fluent Bit,
+Argo Events / Knative Eventing, and Go subscriber recipes. Added an optional
+`kapro-archiver` reference subscriber with file and S3 sinks, a dedicated
+Dockerfile, and an opt-in Helm chart. The archiver stores the original
+CloudEvents envelope bytes plus request and CloudEvents metadata for
+retry-safe dedupe.
+
 ## v0.1.2 — 2026-05-22
 
 ### Added — Go SDK scaffold

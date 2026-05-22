@@ -1,0 +1,51 @@
+sources:
+  kapro_events:
+    type: http_server
+    address: 0.0.0.0:8080
+    path: /
+    decoding:
+      codec: json
+
+transforms:
+  kapro_archive_shape:
+    type: remap
+    inputs: [kapro_events]
+    source: |
+      .kapro_archive = {
+        "id": .id,
+        "source": .source,
+        "type": .type,
+        "subject": .subject,
+        "time": .time,
+        "promotion": .data.promotion,
+        "phase": .data.phase
+      }
+
+sinks:
+  console_smoke:
+    type: console
+    inputs: [kapro_archive_shape]
+    encoding:
+      codec: json
+
+  # Production examples:
+  # elasticsearch:
+  #   type: elasticsearch
+  #   inputs: [kapro_archive_shape]
+  #   endpoints: ["https://elasticsearch.example.com:9200"]
+  #   bulk:
+  #     index: kapro-events-%Y-%m-%d
+  #
+  # loki:
+  #   type: loki
+  #   inputs: [kapro_archive_shape]
+  #   endpoint: https://loki.example.com
+  #   labels:
+  #     source: kapro
+  #     event_type: "{{ type }}"
+  #
+  # splunk_hec:
+  #   type: splunk_hec_logs
+  #   inputs: [kapro_archive_shape]
+  #   endpoint: https://splunk.example.com:8088
+  #   token: "${SPLUNK_HEC_TOKEN}"

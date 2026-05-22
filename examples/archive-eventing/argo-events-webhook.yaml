@@ -1,0 +1,43 @@
+apiVersion: argoproj.io/v1alpha1
+kind: EventSource
+metadata:
+  name: kapro-archive
+spec:
+  service:
+    ports:
+      - port: 12000
+        targetPort: 12000
+  webhook:
+    kapro:
+      endpoint: /kapro
+      method: POST
+      port: "12000"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Sensor
+metadata:
+  name: kapro-archive-log
+spec:
+  dependencies:
+    - name: kapro-event
+      eventSourceName: kapro-archive
+      eventName: kapro
+  triggers:
+    - template:
+        name: log-kapro-event
+        k8s:
+          operation: create
+          source:
+            resource:
+              apiVersion: batch/v1
+              kind: Job
+              metadata:
+                generateName: kapro-archive-log-
+              spec:
+                template:
+                  spec:
+                    restartPolicy: Never
+                    containers:
+                      - name: log
+                        image: busybox:1.36
+                        command: ["sh", "-c", "echo received Kapro CloudEvent"]

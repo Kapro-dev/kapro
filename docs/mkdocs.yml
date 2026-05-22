@@ -52,6 +52,7 @@ nav:
       - Announcing Kapro v0.1: blog/announcing-kapro-v0.1.md
   - Operations:
       - Operations: operations.md
+      - Long-term Archive: long-term-archive.md
       - Monitoring: monitoring.md
       - Operator SLOs: operator-slos.md
       - Security: security.md
