@@ -9,28 +9,38 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"time"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
+	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/pkg/gate"
 	"kapro.io/kapro/pkg/kapro/server"
 )
 
+type businessHours struct{}
+
+func (businessHours) Evaluate(ctx context.Context, req gate.Request) (gate.Result, error) {
+	hour := time.Now().UTC().Hour()
+	if hour >= 8 && hour < 18 {
+		return gate.Result{Phase: kaprov1alpha2.GatePhasePassed, Reason: "InsideBusinessHours"}, nil
+	}
+	return gate.Result{Phase: kaprov1alpha2.GatePhaseInconclusive, Reason: "OutsideBusinessHours", RetryAfter: "30m"}, nil
+}
+
 func main() {
-	s, err := server.New(server.OptionsFromEnv())
+	opts := server.OptionsFromEnv()
+	opts.BindFlags(flag.CommandLine)
+	flag.Parse()
+
+	s, err := server.New(opts)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	s.Gates.MustRegister("business-hours", gate.Func(func(ctx context.Context, req gate.Request) (gate.Result, error) {
-		hour := time.Now().UTC().Hour()
-		if hour >= 8 && hour < 18 {
-			return gate.MakePassed("inside business hours"), nil
-		}
-		return gate.MakePending("OutsideBusinessHours", time.Now().UTC().Add(30*time.Minute)), nil
-	}))
+	s.Gates.MustRegister("business-hours", businessHours{})
 
 	if err := s.Run(ctrl.SetupSignalHandler()); err != nil {
 		log.Fatal(err)
@@ -47,6 +57,11 @@ The first server SDK is intentionally a full embedded operator rather than a
 minimal dependency graph. Importing `pkg/kapro/server` pulls the built-in
 controllers, actuators, webhooks, and gateway packages so the reference binary
 and custom binaries stay behavior-compatible.
+
+`OptionsFromEnv` returns env-derived defaults without touching the flag
+system. Bind the optional CLI flags onto your own `*flag.FlagSet` via
+`(*Options).BindFlags`, then call `Parse` yourself. Cobra/pflag binaries can
+copy the same fields onto a `pflag.FlagSet` and skip `BindFlags` entirely.
 
 Use Helm's existing image override to run a custom operator image:
 

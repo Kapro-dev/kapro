@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -18,7 +19,11 @@ import (
 // +kubebuilder:rbac:groups=kapro.io,resources=policies/status,verbs=get;update;patch
 
 func main() {
-	s, err := server.New(server.OptionsFromEnv())
+	opts := server.OptionsFromEnv()
+	opts.BindFlags(flag.CommandLine)
+	flag.Parse()
+
+	s, err := server.New(opts)
 	if err != nil {
 		log.Fatal(err)
 	}
