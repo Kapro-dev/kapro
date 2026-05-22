@@ -178,31 +178,28 @@ type Request struct {
 	// Never nil.
 	Context *Context
 
-	// Policy is the resolved gate policy for this sync.
-	// May be nil when no gate is configured for the stage.
-	//
-	// Deprecated: programmable gates should prefer the ergonomic fields below
-	// and Parameters. Built-in controller paths still populate Policy.
+	// Policy is the resolved gate policy for this sync. May be nil when
+	// no gate is configured for the stage. Built-in controller paths
+	// (cel/job/webhook/metrics/approval) require Policy; programmable
+	// gates should prefer the ergonomic fields below plus Parameters.
 	Policy *kaprov1alpha2.GatePolicySpec
 
 	// MetricIndex addresses a specific metric in Policy.Gate.Metrics.
-	// Meaningful only on the Metrics[] evaluation path.
-	//
-	// Deprecated: this is for the legacy built-in metrics gate path.
+	// Meaningful only on the built-in Metrics[] evaluation path.
 	MetricIndex int
 
-	// Template is the inline gate template for template-based evaluation.
-	// Nil on the Metrics[] path; non-nil on the GateTemplate path.
-	//
-	// Deprecated: programmable gates should use Parameters and the ergonomic
-	// request identity fields.
+	// Template is the inline gate template for template-based
+	// evaluation. Nil on the Metrics[] path; non-nil on the GateTemplate
+	// path. Built-in cel/job/webhook gates read Template; programmable
+	// gates should prefer Parameters and the ergonomic request identity
+	// fields.
 	Template *kaprov1alpha2.GateTemplateSpec
 
-	// Args carries runtime-injected parameters merged with this precedence:
-	//   GateTemplateSpec defaults < sync context (version, target, stage)
-	// Nil on the Metrics[] path.
-	//
-	// Deprecated: use Parameters.
+	// Args carries the merged template parameters AND runtime-injected
+	// identity (version/target/stage/promotionrun/promotionplan).
+	// Built-in cel/job/webhook gates read Args; programmable gates
+	// should use Parameters (user-supplied only) plus the ergonomic
+	// request identity fields.
 	Args map[string]string
 
 	// Fleet identifies the owning Fleet for ergonomic programmable gates.
