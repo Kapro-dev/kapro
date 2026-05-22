@@ -279,6 +279,30 @@ const MaxPromotionAttempts = 20
 // cluster's event TTL).
 const MaxLifecycleHandlerResults = 50
 
+// Defaults for the Tier B PromotionRun retention controller (ADR-0015).
+// At ~10 promotions/day with 5 attempts each, an active Kapro install
+// accumulates ~18k PromotionRun objects per year. The retention controller
+// keeps a bounded forensic window per Promotion under these caps. Active
+// (non-terminal) attempts are NEVER deleted regardless of count — they are
+// the live execution record. Deletion is age-based within each terminal
+// outcome bucket so the most recent Succeeded / Failed / Superseded
+// attempts survive even when the total cap is exceeded.
+//
+// All three values are constants today; ADR-0015 keeps the door open for a
+// future Promotion.spec.retention field if adopters need per-Promotion tuning.
+const (
+	// DefaultMaxRetainedPerPromotion caps the total PromotionRun objects
+	// retained per parent Promotion (active + terminal). Non-terminal
+	// attempts are exempt from this cap — they are never deleted.
+	DefaultMaxRetainedPerPromotion = 50
+
+	// DefaultMinRetainedPerOutcome guarantees a per-outcome forensic floor.
+	// Even when MaxRetainedPerPromotion is exceeded, this many of each
+	// terminal phase (Complete / Failed / Superseded) survive — adopters
+	// debugging the most recent failure still have the immediate history.
+	DefaultMinRetainedPerOutcome = 10
+)
+
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
