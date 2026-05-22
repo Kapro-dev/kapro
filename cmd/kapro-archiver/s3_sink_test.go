@@ -11,11 +11,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 )
 
-// fakeRoundTripper records every request and returns canned responses in
-// order. After the last canned response it returns 500 so missing fixtures
-// fail loudly instead of silently exercising default behaviour.
+// fakeRoundTripper records every request and returns canned status codes
+// (and optional bodies) in order. We hold ints, not *http.Response, so
+// bodyclose can't flag the test for unclosed test fixtures — the response
+// objects only exist inside putOnce, which already defers Close.
+type fakedResponse struct {
+	status int
+	body   string
+}
+
 type fakeRoundTripper struct {
-	responses []*http.Response
+	responses []fakedResponse
 	requests  []*http.Request
 	bodies    [][]byte
 }
@@ -35,23 +41,24 @@ func (f *fakeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 			Header:     make(http.Header),
 		}, nil
 	}
-	resp := f.responses[0]
+	r := f.responses[0]
 	f.responses = f.responses[1:]
-	return resp, nil
+	return &http.Response{
+		StatusCode: r.status,
+		Body:       io.NopCloser(strings.NewReader(r.body)),
+		Header:     make(http.Header),
+	}, nil
 }
 
-func okResponse() *http.Response {
-	return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("")), Header: make(http.Header)}
-}
-
-func preconditionFailedResponse() *http.Response {
-	return &http.Response{StatusCode: http.StatusPreconditionFailed, Body: io.NopCloser(strings.NewReader("")), Header: make(http.Header)}
-}
+func ok() fakedResponse                 { return fakedResponse{status: 200} }
+func preconditionFailed() fakedResponse { return fakedResponse{status: http.StatusPreconditionFailed} }
 
 func newTestS3Sink(rt http.RoundTripper) *S3Sink {
 	return &S3Sink{
-		client:      &http.Client{Transport: rt, Timeout: time.Second},
-		creds:       aws.CredentialsProviderFunc(func(_ context.Context) (aws.Credentials, error) { return aws.Credentials{AccessKeyID: "AKIA", SecretAccessKey: "secret"}, nil }),
+		client: &http.Client{Transport: rt, Timeout: time.Second},
+		creds: aws.CredentialsProviderFunc(func(_ context.Context) (aws.Credentials, error) {
+			return aws.Credentials{AccessKeyID: "AKIA", SecretAccessKey: "secret"}, nil
+		}),
 		bucket:      "test-bucket",
 		prefix:      "kapro/events",
 		region:      "us-east-1",
@@ -74,7 +81,7 @@ func sampleRecord() ArchiveRecord {
 }
 
 func TestS3SinkPutsBothEventAndMetadata(t *testing.T) {
-	rt := &fakeRoundTripper{responses: []*http.Response{okResponse(), okResponse()}}
+	rt := &fakeRoundTripper{responses: []fakedResponse{ok(), ok()}}
 	sink := newTestS3Sink(rt)
 	if err := sink.Write(context.Background(), sampleRecord()); err != nil {
 		t.Fatalf("Write: %v", err)
@@ -104,7 +111,7 @@ func TestS3SinkPutsBothEventAndMetadata(t *testing.T) {
 // PreconditionFailed (If-None-Match: *) and the sink MUST still attempt
 // the metadata PUT so the archive can heal.
 func TestS3SinkHealsPartialDelivery(t *testing.T) {
-	rt := &fakeRoundTripper{responses: []*http.Response{preconditionFailedResponse(), okResponse()}}
+	rt := &fakeRoundTripper{responses: []fakedResponse{preconditionFailed(), ok()}}
 	sink := newTestS3Sink(rt)
 	if err := sink.Write(context.Background(), sampleRecord()); err != nil {
 		t.Fatalf("Write: %v", err)
@@ -120,7 +127,7 @@ func TestS3SinkHealsPartialDelivery(t *testing.T) {
 // A fully duplicate delivery returns 412 for both objects; both calls are
 // no-ops and Write succeeds.
 func TestS3SinkDuplicateDeliveryIsNoOp(t *testing.T) {
-	rt := &fakeRoundTripper{responses: []*http.Response{preconditionFailedResponse(), preconditionFailedResponse()}}
+	rt := &fakeRoundTripper{responses: []fakedResponse{preconditionFailed(), preconditionFailed()}}
 	sink := newTestS3Sink(rt)
 	if err := sink.Write(context.Background(), sampleRecord()); err != nil {
 		t.Fatalf("Write: %v", err)
@@ -152,11 +159,7 @@ func TestS3SinkObjectURLPathStyle(t *testing.T) {
 }
 
 func TestS3SinkSurfacesNon2xxError(t *testing.T) {
-	rt := &fakeRoundTripper{responses: []*http.Response{{
-		StatusCode: 403,
-		Body:       io.NopCloser(strings.NewReader("AccessDenied")),
-		Header:     make(http.Header),
-	}}}
+	rt := &fakeRoundTripper{responses: []fakedResponse{{status: 403, body: "AccessDenied"}}}
 	sink := newTestS3Sink(rt)
 	err := sink.Write(context.Background(), sampleRecord())
 	if err == nil || !strings.Contains(err.Error(), "403") || !strings.Contains(err.Error(), "AccessDenied") {
