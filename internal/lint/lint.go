@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	admissionvalidation "kapro.io/kapro/internal/webhook/admission"
 )
 
 // Severity ranks an Issue. ERROR fails the lint; WARN is advisory
@@ -76,6 +77,7 @@ func LintFile(file string, data []byte) []Issue {
 		}
 		issues = append(issues, docIssues...)
 	}
+	issues = append(issues, lintGateExpressionBundle(file, docs)...)
 	return issues
 }
 
@@ -148,6 +150,12 @@ func lintOneDoc(data []byte) []Issue {
 			return parseFail(meta.Kind, meta.Metadata.Name, err)
 		}
 		return tagIssues(LintPromotionPlan(&pp), meta.Kind, pp.Name)
+	case "GateExpression":
+		var expr kaprov1alpha2.GateExpression
+		if err := yaml.Unmarshal(data, &expr); err != nil {
+			return parseFail(meta.Kind, meta.Metadata.Name, err)
+		}
+		return tagIssues(LintGateExpression(&expr), meta.Kind, expr.Name)
 	default:
 		// Other Kapro kinds (BackendProfile, FleetCluster, Approval,
 		// PromotionRun, PromotionTrigger, etc.) are out of scope for
@@ -256,6 +264,111 @@ func LintPromotion(p *kaprov1alpha2.Promotion) []Issue {
 		}
 	}
 	return out
+}
+
+// LintGateExpression checks the offline shape of a GateExpression. It mirrors
+// admission rules that do not require API lookups; reference existence, cycles,
+// and referenced DELAY ancestry still require the admission webhook.
+func LintGateExpression(expr *kaprov1alpha2.GateExpression) []Issue {
+	var out []Issue
+	if expr.Name == "" {
+		out = append(out, errAt("metadata.name", "GateExpression requires a name"))
+	}
+	if err := admissionvalidation.ValidateGateExpression(expr); err != nil {
+		out = append(out, errAt(gateExpressionIssuePath(err.Error()), err.Error()))
+	}
+	return out
+}
+
+func gateExpressionIssuePath(message string) string {
+	switch {
+	case strings.Contains(message, "duration"):
+		return "spec.parameters.duration"
+	case strings.Contains(message, "threshold"):
+		return "spec.threshold"
+	case strings.Contains(message, "weights"), strings.Contains(message, "weight"):
+		return "spec.weights"
+	case strings.Contains(message, "spec.operands"):
+		return "spec.operands"
+	case strings.Contains(message, "operator"):
+		return "spec.operator"
+	default:
+		return "spec"
+	}
+}
+
+type gateExpressionLintDoc struct {
+	docIndex int
+	expr     kaprov1alpha2.GateExpression
+}
+
+func lintGateExpressionBundle(file string, docs [][]byte) []Issue {
+	byName := map[string]gateExpressionLintDoc{}
+	for i, doc := range docs {
+		if len(bytes.TrimSpace(doc)) == 0 {
+			continue
+		}
+		var meta struct {
+			APIVersion string `json:"apiVersion"`
+			Kind       string `json:"kind"`
+		}
+		if err := yaml.Unmarshal(doc, &meta); err != nil || meta.APIVersion != "kapro.io/v1alpha2" || meta.Kind != "GateExpression" {
+			continue
+		}
+		var expr kaprov1alpha2.GateExpression
+		if err := yaml.Unmarshal(doc, &expr); err != nil || expr.Name == "" {
+			continue
+		}
+		byName[expr.Name] = gateExpressionLintDoc{docIndex: i, expr: expr}
+	}
+	if len(byName) == 0 {
+		return nil
+	}
+
+	var issues []Issue
+	for name, root := range byName {
+		if path := referencedDelayLintPath(name, byName, nil, map[string]bool{}); path != "" {
+			issues = append(issues, Issue{
+				Severity: SeverityError,
+				File:     file,
+				DocIndex: root.docIndex,
+				Kind:     "GateExpression",
+				Name:     root.expr.Name,
+				Path:     "spec.operands",
+				Message:  fmt.Sprintf("expressionRef cannot reference DELAY GateExpression: %s", path),
+			})
+		}
+	}
+	return issues
+}
+
+func referencedDelayLintPath(name string, byName map[string]gateExpressionLintDoc, path []string, seen map[string]bool) string {
+	if seen[name] {
+		return ""
+	}
+	seen[name] = true
+	root, ok := byName[name]
+	if !ok {
+		return ""
+	}
+	path = append(path, name)
+	for _, operand := range root.expr.Spec.Operands {
+		if operand.ExpressionRef == "" {
+			continue
+		}
+		child, ok := byName[operand.ExpressionRef]
+		if !ok {
+			continue
+		}
+		childPath := append(append([]string{}, path...), child.expr.Name)
+		if child.expr.Spec.Operator == "DELAY" {
+			return strings.Join(childPath, "→")
+		}
+		if found := referencedDelayLintPath(child.expr.Name, byName, path, seen); found != "" {
+			return found
+		}
+	}
+	return ""
 }
 
 // LintPromotionPlan checks a Plan DAG for the most common
