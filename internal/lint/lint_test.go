@@ -159,6 +159,190 @@ func TestLintPromotionPlan_ManualGateWithoutApproversWarns(t *testing.T) {
 	}
 }
 
+func TestLintGateExpression_ValidDelay(t *testing.T) {
+	expr := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "delay"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator:   "DELAY",
+			Parameters: map[string]string{"duration": "30m"},
+			Operands: []kaprov1alpha2.GateExpressionOperand{
+				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+			},
+		},
+	}
+	if issues := LintGateExpression(expr); len(issues) != 0 {
+		t.Fatalf("valid DELAY should be lint-clean; got %+v", issues)
+	}
+}
+
+func TestLintGateExpression_RejectsBadWeightedShape(t *testing.T) {
+	threshold := int32(5)
+	expr := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "weighted"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator:  "WEIGHTED_SUM",
+			Threshold: &threshold,
+			Weights:   []int32{5},
+			Operands: []kaprov1alpha2.GateExpressionOperand{
+				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+			},
+		},
+	}
+	issues := LintGateExpression(expr)
+	hit := findIssue(t, issues, "len(weights) == len(operands)")
+	if hit == nil || hit.Severity != SeverityError {
+		t.Fatalf("expected weighted shape ERROR; got %+v", issues)
+	}
+}
+
+func TestLintGateExpression_AttributesWeightedThresholdAndWeightErrors(t *testing.T) {
+	t.Run("unsatisfiable threshold", func(t *testing.T) {
+		threshold := int32(5)
+		expr := &kaprov1alpha2.GateExpression{
+			ObjectMeta: metav1.ObjectMeta{Name: "weighted"},
+			Spec: kaprov1alpha2.GateExpressionSpec{
+				Operator:  "WEIGHTED_SUM",
+				Threshold: &threshold,
+				Weights:   []int32{2, 3},
+				Operands: []kaprov1alpha2.GateExpressionOperand{
+					{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+					{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+				},
+			},
+		}
+		hit := findIssue(t, LintGateExpression(expr), "threshold < sum(weights)")
+		if hit == nil || hit.Path != "spec.threshold" {
+			t.Fatalf("expected threshold path; got %+v", hit)
+		}
+	})
+
+	t.Run("total weight overflow", func(t *testing.T) {
+		threshold := int32(1)
+		expr := &kaprov1alpha2.GateExpression{
+			ObjectMeta: metav1.ObjectMeta{Name: "weighted"},
+			Spec: kaprov1alpha2.GateExpressionSpec{
+				Operator:  "WEIGHTED_SUM",
+				Threshold: &threshold,
+				Weights:   []int32{1<<30 + 1, 1 << 30},
+				Operands: []kaprov1alpha2.GateExpressionOperand{
+					{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+					{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+				},
+			},
+		}
+		hit := findIssue(t, LintGateExpression(expr), "total weight")
+		if hit == nil || hit.Path != "spec.weights" {
+			t.Fatalf("expected weights path; got %+v", hit)
+		}
+	})
+}
+
+func TestLintGateExpression_RejectsNonPositiveDelayDuration(t *testing.T) {
+	expr := &kaprov1alpha2.GateExpression{
+		ObjectMeta: metav1.ObjectMeta{Name: "delay"},
+		Spec: kaprov1alpha2.GateExpressionSpec{
+			Operator:   "DELAY",
+			Parameters: map[string]string{"duration": "0s"},
+			Operands: []kaprov1alpha2.GateExpressionOperand{
+				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
+			},
+		},
+	}
+	issues := LintGateExpression(expr)
+	hit := findIssue(t, issues, "duration > 0")
+	if hit == nil || hit.Path != "spec.parameters.duration" {
+		t.Fatalf("expected duration ERROR with duration path; got %+v", issues)
+	}
+}
+
+func TestLintFile_DispatchesGateExpression(t *testing.T) {
+	issues := LintFile("gate.yaml", []byte(`
+apiVersion: kapro.io/v1alpha2
+kind: GateExpression
+metadata:
+  name: bad-not
+spec:
+  operator: NOT
+  operands:
+    - inlineGate:
+        mode: auto
+    - inlineGate:
+        mode: auto
+`))
+	hit := findIssue(t, issues, "operator NOT requires exactly one operand")
+	if hit == nil || hit.Kind != "GateExpression" || hit.Name != "bad-not" {
+		t.Fatalf("expected tagged GateExpression lint issue; got %+v", issues)
+	}
+}
+
+func TestLintFile_RejectsGateExpressionBundleReferencingDelay(t *testing.T) {
+	issues := LintFile("gates.yaml", []byte(`
+apiVersion: kapro.io/v1alpha2
+kind: GateExpression
+metadata:
+  name: parent
+spec:
+  operator: ALL
+  operands:
+    - expressionRef: delay-child
+---
+apiVersion: kapro.io/v1alpha2
+kind: GateExpression
+metadata:
+  name: delay-child
+spec:
+  operator: DELAY
+  parameters:
+    duration: 30m
+  operands:
+    - inlineGate:
+        mode: auto
+`))
+	hit := findIssue(t, issues, "parent→delay-child")
+	if hit == nil || hit.Kind != "GateExpression" || hit.Name != "parent" {
+		t.Fatalf("expected referenced DELAY bundle error on parent; got %+v", issues)
+	}
+}
+
+func TestLintFile_RejectsGateExpressionBundleIndirectReferencingDelay(t *testing.T) {
+	issues := LintFile("gates.yaml", []byte(`
+apiVersion: kapro.io/v1alpha2
+kind: GateExpression
+metadata:
+  name: parent
+spec:
+  operator: ALL
+  operands:
+    - expressionRef: middle
+---
+apiVersion: kapro.io/v1alpha2
+kind: GateExpression
+metadata:
+  name: middle
+spec:
+  operator: ALL
+  operands:
+    - expressionRef: delay-child
+---
+apiVersion: kapro.io/v1alpha2
+kind: GateExpression
+metadata:
+  name: delay-child
+spec:
+  operator: DELAY
+  parameters:
+    duration: 30m
+  operands:
+    - inlineGate:
+        mode: auto
+`))
+	hit := findIssue(t, issues, "parent→middle→delay-child")
+	if hit == nil || hit.Kind != "GateExpression" || hit.Name != "parent" {
+		t.Fatalf("expected indirect referenced DELAY bundle error on parent; got %+v", issues)
+	}
+}
+
 func TestLintFile_UnknownKaproKindSkipsSilently(t *testing.T) {
 	// Other Kapro kinds (FleetCluster, BackendProfile, etc.) have
 	// no rules yet; the linter must NOT flag them just because
