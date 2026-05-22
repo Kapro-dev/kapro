@@ -60,6 +60,31 @@ Kapro records programmable and built-in evaluations in
 `kapro_gate_evaluations_total{gate_type,result}`. Non-terminal phases collapse
 into the `inconclusive` label so existing dashboards continue to work.
 
+## Request Field Guide
+
+`gate.Request` is shared by built-in gates and programmable gates. New
+programmable gates should read the ergonomic identity fields and
+`Parameters`:
+
+- `Fleet`, `Promotion`, `PromotionRun`, `Plan`, `Stage`, `Target`, and
+  `Version` identify the rollout being evaluated.
+- `Parameters` contains user-supplied gate parameters from `GateTemplate` args
+  or gate policy parameters.
+- `Logger` is pre-tagged by the controller when one is available.
+
+The older fields remain populated for the built-in controller paths:
+
+- `Policy` is the resolved `GatePolicySpec`; metrics, approval, verification,
+  and other built-in gates may still inspect it.
+- `MetricIndex` selects one metric from the legacy metrics gate path.
+- `Template` is the resolved `GateTemplateSpec` for template-dispatched
+  built-in gates such as CEL, Job, and Webhook.
+- `Args` contains merged template defaults plus runtime-injected values.
+
+For new in-process gate code, prefer `Parameters` and the identity fields. Use
+`Policy`, `Template`, `MetricIndex`, and `Args` only when adapting existing
+built-in gate logic.
+
 ## Trust boundary
 
 Programmable gates run inside the operator process and are fully trusted. The
