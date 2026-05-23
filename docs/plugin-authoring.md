@@ -119,7 +119,7 @@ KSP is an in-process Go SDK contract; custom providers should import
 
 Before publishing a plugin for other teams:
 
-- return `contractVersion: v1alpha1` from `GetCapabilities`;
+- return `contract_version: v1alpha1` from `GetCapabilities`;
 - run the matching conformance suite in CI;
 - document backend permissions, Kubernetes RBAC, and Secret requirements;
 - document timeout, retry, and failure behavior;

@@ -10,7 +10,7 @@
 //     Recorded on status for operators, never used in admission decisions.
 //
 // Adding a new contract version (e.g. v1alpha2) means:
-//  1. add the constant + supported-list entry here;
+//  1. add the constant, supported-list entry, and ContractPolicy entry here;
 //  2. update docs/plugin-compatibility-policy.md and docs/plugin-authoring.md;
 //  3. ship the matching conformance/* harness for the new version.
 //
