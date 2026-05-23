@@ -229,9 +229,11 @@ func RegisterBuiltInGates(reg *pkggate.Registry, c client.Client) error {
 		"approval":     &internalgate.ApprovalGate{Client: c},
 		"verification": &internalgate.VerificationGate{},
 		// Template-dispatch gates (resolved by GateTemplate.spec.type).
-		"cel":     &celgate.Gate{Client: c},
-		"job":     &jobgate.Gate{Client: c},
-		"webhook": &webhookgate.Gate{},
+		"cel":       &celgate.Gate{Client: c},
+		"job":       &jobgate.Gate{Client: c},
+		"max-drift": &internalgate.MaxDriftGate{Client: c},
+		"maxdrift":  &internalgate.MaxDriftGate{Client: c},
+		"webhook":   &webhookgate.Gate{},
 	} {
 		if err := reg.Register(typeName, impl); err != nil {
 			return fmt.Errorf("register built-in gate %q: %w", typeName, err)

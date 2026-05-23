@@ -77,6 +77,9 @@ The operator currently registers these Kapro-specific metric names:
 | `kapro_plugin_runtime_registered` | Gauge | `type` | Startup-time registered plugin adapters by plugin type. |
 | `kapro_lifecycle_hook_invocations_total` | Counter | `kind`, `phase`, `result` | Promotion lifecycle webhook/Event/CloudEvents sink dispatch results. |
 | `kapro_lifecycle_hook_duration_seconds` | Histogram | `kind`, `phase` | End-to-end lifecycle dispatch duration including retries and backoff. |
+| `kapro_fleetdriftreport_targets` | Gauge | `report`, `state` | Latest FleetDriftReport target counts for total/current/drifted/pending/failed/unknown. |
+| `kapro_fleetdriftreport_backend_objects` | Gauge | `report`, `state` | Latest FleetDriftReport backend object counts for total/drifted. |
+| `kapro_fleetdriftreport_phase` | Gauge | `report`, `phase` | One-hot latest FleetDriftReport phase. |
 
 Controller reconcile and status write metrics are emitted by the current
 controllers. The remaining Kapro-specific metric names are registered for the

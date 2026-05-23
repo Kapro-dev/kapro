@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	promtestutil "github.com/prometheus/client_golang/prometheus/testutil"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -15,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprometrics "kapro.io/kapro/internal/metrics"
 )
 
 func TestFleetDriftReportCurrent(t *testing.T) {
@@ -121,6 +123,60 @@ func TestFleetDriftReportCountsBackendObjectDrift(t *testing.T) {
 	}
 	if got.Status.Targets[0].Reason != "BackendObjectDrift" {
 		t.Fatalf("reason=%q, want BackendObjectDrift", got.Status.Targets[0].Reason)
+	}
+}
+
+func TestFleetDriftReportRecordsMetrics(t *testing.T) {
+	ctx := context.Background()
+	target := targetFixture("checkout-run", "prod", "v2", kaprov1alpha2.TargetPhaseConverged)
+	target.Status.BackendObjects = []kaprov1alpha2.BackendObjectStatus{{
+		Kind:           "Application",
+		Name:           "checkout",
+		DesiredVersion: "v2",
+		CurrentVersion: "v1",
+	}}
+	report := fleetDriftReportFixture("metrics-prod")
+	c := fleetDriftReportClient(t,
+		report,
+		clusterWithCurrentVersion("prod", "default", "v1"),
+		target,
+	)
+	r := newFleetDriftReportReconciler(c)
+
+	reconcileFleetDriftReport(t, ctx, r, "metrics-prod")
+
+	if got := promtestutil.ToFloat64(kaprometrics.FleetDriftReportTargets.WithLabelValues("metrics-prod", "drifted")); got != 1 {
+		t.Fatalf("drifted target metric=%v, want 1", got)
+	}
+	if got := promtestutil.ToFloat64(kaprometrics.FleetDriftReportBackendObjects.WithLabelValues("metrics-prod", "drifted")); got != 1 {
+		t.Fatalf("drifted backend object metric=%v, want 1", got)
+	}
+	if got := promtestutil.ToFloat64(kaprometrics.FleetDriftReportPhase.WithLabelValues("metrics-prod", string(kaprov1alpha2.FleetDriftReportPhaseDrifted))); got != 1 {
+		t.Fatalf("drifted phase metric=%v, want 1", got)
+	}
+	if got := promtestutil.ToFloat64(kaprometrics.FleetDriftReportPhase.WithLabelValues("metrics-prod", string(kaprov1alpha2.FleetDriftReportPhaseCurrent))); got != 0 {
+		t.Fatalf("current phase metric=%v, want 0", got)
+	}
+}
+
+func TestFleetDriftReportDeletesMetricsWhenReportGone(t *testing.T) {
+	ctx := context.Background()
+	c := fleetDriftReportClient(t)
+	r := newFleetDriftReportReconciler(c)
+	kaprometrics.FleetDriftReportTargets.WithLabelValues("deleted-report", "drifted").Set(3)
+	kaprometrics.FleetDriftReportBackendObjects.WithLabelValues("deleted-report", "drifted").Set(2)
+	kaprometrics.FleetDriftReportPhase.WithLabelValues("deleted-report", string(kaprov1alpha2.FleetDriftReportPhaseDrifted)).Set(1)
+
+	reconcileFleetDriftReport(t, ctx, r, "deleted-report")
+
+	if got := promtestutil.ToFloat64(kaprometrics.FleetDriftReportTargets.WithLabelValues("deleted-report", "drifted")); got != 0 {
+		t.Fatalf("deleted report drifted target metric=%v, want 0", got)
+	}
+	if got := promtestutil.ToFloat64(kaprometrics.FleetDriftReportBackendObjects.WithLabelValues("deleted-report", "drifted")); got != 0 {
+		t.Fatalf("deleted report backend object metric=%v, want 0", got)
+	}
+	if got := promtestutil.ToFloat64(kaprometrics.FleetDriftReportPhase.WithLabelValues("deleted-report", string(kaprov1alpha2.FleetDriftReportPhaseDrifted))); got != 0 {
+		t.Fatalf("deleted report phase metric=%v, want 0", got)
 	}
 }
 

@@ -79,3 +79,58 @@ When both `fleetRef` and `promotionRunRef` are set, both must match.
 `FleetDriftReport` is an observation surface. It must not be used as a rollout
 source of truth, and the reconciler writes only its own status. Rollout state
 remains owned by `PromotionRun`, `Target`, and `Cluster` controllers.
+
+## Metrics
+
+When the controller reconciles a report, it records bounded Prometheus gauges:
+
+| Metric | Labels | Meaning |
+|---|---|---|
+| `kapro_fleetdriftreport_targets` | `report`, `state` | Target counts for `total`, `current`, `drifted`, `pending`, `failed`, and `unknown`. |
+| `kapro_fleetdriftreport_backend_objects` | `report`, `state` | Backend object counts for `total` and `drifted`. |
+| `kapro_fleetdriftreport_phase` | `report`, `phase` | One-hot current phase over `Pending`, `Current`, `Drifted`, `Unknown`, and `Failed`. |
+
+Use these for drift-duration alerts and dashboards. The only unbounded label is
+the report name, so prefer one report per fleet, environment, or promotion
+slice rather than one report per application instance.
+
+## `max-drift` Gate
+
+The built-in `max-drift` gate reads an existing `FleetDriftReport` and blocks a
+promotion when drift exceeds the configured budget. It does not observe
+clusters directly. Drift, missing reports, and stale observations return
+`Inconclusive`, so the default template policy keeps retrying instead of
+halting the stage.
+
+```yaml
+gate:
+  mode: auto
+  gate:
+    templates:
+      - name: prod-drift-budget
+        type: max-drift
+        args:
+          - name: reportRef
+            value: checkout-prod
+          - name: maxDriftedTargets
+            value: "0"
+          - name: maxDriftedBackendObjects
+            value: "0"
+          - name: maxPendingTargets
+            value: "0"
+          - name: maxFailedTargets
+            value: "0"
+          - name: maxUnknownTargets
+            value: "0"
+          - name: maxAge
+            value: 10m
+```
+
+Parameters:
+
+- `reportRef` or `report` is required.
+- `maxDriftedTargets`, `maxDriftedBackendObjects`, `maxPendingTargets`,
+  `maxFailedTargets`, and `maxUnknownTargets` default to `0`.
+- `maxAge` blocks and retries when `status.observedAt` is missing or stale.
+- `allowMissing=true` and `allowStale=true` are explicit escape hatches for
+  bootstrap and migration windows.
