@@ -164,6 +164,10 @@ An actuator plugin must:
 - respect request context cancellation;
 - avoid storing PromotionRun state outside the backend it controls.
 
+KAI conformance enforces context cancellation for `Apply`, so plugin tests
+should run against isolated resources that can tolerate failed conformance
+attempts.
+
 An in-process actuator substrate should publish matching
 `actuator.Capabilities` metadata for `Backend.spec.driver`,
 `Backend.spec.adapter`, `Backend.spec.runtime`, and supported delivery modes.

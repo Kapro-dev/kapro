@@ -126,6 +126,14 @@ func Run(t *testing.T, client kaiv1alpha1.ActuatorServiceClient, scenario Scenar
 			t.Fatalf("second Rollback accepted = false, response=%v", second)
 		}
 	})
+
+	t.Run("ApplyRespectsContextCancellation", func(t *testing.T) {
+		cancelledCtx, cancel := context.WithCancel(context.Background())
+		cancel()
+		if _, err := client.Apply(cancelledCtx, cloneApply(scenario.Apply)); err == nil {
+			t.Fatal("Apply with cancelled context returned nil error")
+		}
+	})
 }
 
 // Check executes the base KAI conformance checks against a gRPC actuator
@@ -146,6 +154,7 @@ func Check(ctx context.Context, client kaiv1alpha1.ActuatorServiceClient, scenar
 			checkApplyIsIdempotent(ctx, client, scenario),
 			checkIsConvergedIsDeterministic(ctx, client, scenario),
 			checkRollbackIsIdempotent(ctx, client, scenario),
+			checkApplyRespectsContextCancellation(client, scenario),
 		},
 	}
 }
@@ -215,6 +224,16 @@ func checkRollbackIsIdempotent(ctx context.Context, client kaiv1alpha1.ActuatorS
 	}
 	if second == nil || !second.GetAccepted() {
 		return conformance.Fail(name, "second Rollback accepted = false, response=%v", second)
+	}
+	return conformance.Pass(name)
+}
+
+func checkApplyRespectsContextCancellation(client kaiv1alpha1.ActuatorServiceClient, scenario Scenario) conformance.Result {
+	const name = "ApplyRespectsContextCancellation"
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := client.Apply(cancelledCtx, cloneApply(scenario.Apply)); err == nil {
+		return conformance.Fail(name, "Apply with cancelled context returned nil error")
 	}
 	return conformance.Pass(name)
 }
