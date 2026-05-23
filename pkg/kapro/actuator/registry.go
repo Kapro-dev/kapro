@@ -131,7 +131,8 @@ func (r *Registry) Resolve(name string) (Actuator, error) {
 	if !ok {
 		return nil, fmt.Errorf("unknown actuator type %q", name)
 	}
-	return a, nil
+	reg := r.registrations[name]
+	return withTracingCapabilities(name, a, reg.Capabilities), nil
 }
 
 // Registration returns the substrate metadata registered under the given key.

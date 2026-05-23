@@ -15,3 +15,5 @@ type Actuator = kaproactuator.Actuator
 type BackendObjectReporter = kaproactuator.BackendObjectReporter
 type Capabilities = kaproactuator.Capabilities
 type Substrate = kaproactuator.Substrate
+
+var WithTracing = kaproactuator.WithTracing
