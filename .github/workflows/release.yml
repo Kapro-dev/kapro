@@ -89,7 +89,7 @@ jobs:
           vuln-type: 'os,library'
 
       - name: Upload operator Trivy SARIF to GitHub code scanning
-        if: always()
+        if: ${{ always() && hashFiles('trivy-operator.sarif') != '' }}
         # github/codeql-action/upload-sarif@v4
         uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba
         with:
@@ -157,7 +157,7 @@ jobs:
           vuln-type: 'os,library'
 
       - name: Upload cluster-controller Trivy SARIF to GitHub code scanning
-        if: always()
+        if: ${{ always() && hashFiles('trivy-cluster-controller.sarif') != '' }}
         # github/codeql-action/upload-sarif@v4
         uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba
         with:

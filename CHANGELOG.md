@@ -7,16 +7,22 @@ record for each tag.
 
 ## Unreleased
 
+### Changed — release SARIF upload guards
+
+Release Trivy SARIF upload steps now run only when the expected SARIF file
+exists, avoiding misleading secondary upload failures when an earlier release
+step fails before image scanning.
+
 ### Changed — pre-stable release train budgeting
 
 Clarified release-train guidance so patch increments are treated as a planning
 budget and review trigger while still allowing concrete milestones such as
 `v0.4.20` under the project’s `0.x.y` pre-stable strategy.
 
-### Changed — release metadata for v0.4.15
+### Changed — release metadata for v0.4.16
 
 Updated Helm chart versions, install examples, and release smoke defaults so
-the next release tag packages `0.4.15` artifacts consistently.
+the next release tag packages `0.4.16` artifacts consistently.
 
 ### Added — reference adapter package tests
 
