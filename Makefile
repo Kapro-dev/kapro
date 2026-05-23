@@ -43,10 +43,10 @@ vet: ## Run go vet
 	go vet ./...
 
 .PHONY: verify
-verify: validate-yaml-json check-markdown-links fmt vet lint build test ## Run full checks with coverage (use before pushing)
+verify: validate-yaml-json check-markdown-links check-release-train fmt vet lint build test ## Run full checks with coverage (use before pushing)
 
 .PHONY: verify-local
-verify-local: validate-yaml-json check-markdown-links fmt vet lint build test-no-cover ## Run local checks without coverage tooling
+verify-local: validate-yaml-json check-markdown-links check-release-train fmt vet lint build test-no-cover ## Run local checks without coverage tooling
 
 .PHONY: lint
 lint: $(GOLANGCI_LINT) ## Run golangci-lint
@@ -59,6 +59,10 @@ validate-yaml-json: ## Validate CI, example, monitoring YAML, Prometheus rules, 
 .PHONY: check-markdown-links
 check-markdown-links: ## Check local links in README/docs/examples/monitoring Markdown
 	python3 scripts/check-markdown-links.py
+
+.PHONY: check-release-train
+check-release-train: ## Check pre-stable release train guidance stays explicit
+	scripts/check-release-train
 
 .PHONY: tidy
 tidy: ## Run go mod tidy

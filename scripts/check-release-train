@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+release_train="${ROOT}/docs/release-train.md"
+roadmap="${ROOT}/docs/pre-stable-roadmap.md"
+
+require() {
+  local file="$1"
+  local needle="$2"
+  if ! grep -Fq -- "${needle}" "${file}"; then
+    echo "${file#${ROOT}/} is missing required release-train text: ${needle}" >&2
+    exit 1
+  fi
+}
+
+require "${release_train}" '0.<capability-line>.<feature-increment>'
+require "${release_train}" '## Train Budget'
+require "${release_train}" 'planning review after'
+require "${release_train}" 'It is not a hard limit'
+require "${release_train}" '`v0.4.20`'
+require "${release_train}" '`v0.30.0`'
+
+require "${roadmap}" 'The first version digit remains'
+require "${roadmap}" 'Patch increments are a planning budget'
+require "${roadmap}" 'scope review'
+require "${roadmap}" '`v0.4.20`'
+require "${roadmap}" '`v0.30.0`'
+
+echo "release-train guidance is present"

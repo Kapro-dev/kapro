@@ -68,6 +68,24 @@ Each minor train should have a narrow theme and a short ship list:
 - avoid widening public CRDs or SDK types unless the field or method has an
   immediate user path and an upgrade story.
 
+## Train Budget
+
+The third digit is meaningful during pre-stable development, so Kapro can ship
+feature increments such as `v0.4.15` or `v0.4.20` without changing the first
+digit. Those releases must still be concrete increments, not broad planning
+buckets.
+
+As a default budget, a capability line should trigger a planning review after
+roughly 10 patch-level increments. The review asks whether the line is still
+finishing the same adoption story or whether the next coherent capability line
+should begin. It is not a hard limit: continuing to `v0.4.20` is acceptable
+when the individual milestones are specific, independently reviewable, and the
+release notes explain why the work still belongs to the `0.4.x` line.
+
+Do not create broad train-start placeholders such as `v0.10.0`, `v0.20.0`, or
+`v0.30.0` just to reserve space. Pick an exact `v0.x.y` milestone only when the
+feature increment is concrete enough to describe, implement, test, and release.
+
 When a train introduces an Alpha or Preview surface, the release notes must say
 which parts are supported now and which parts are future work. Avoid naming a
 release after an aspiration that the shipped code does not yet satisfy.
