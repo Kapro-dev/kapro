@@ -147,6 +147,8 @@ The PrometheusRule example includes alert expressions for:
   signature, and Promotion update condition reasons from kube-state-metrics.
 - sustained FleetDriftReport `Drifted`, `Unknown`, `Failed`, and `Pending`
   phases using first-class Kapro metrics.
+- spoke delivery error rate and p95 latency using
+  `kapro_spoke_delivery_*` metrics from `kapro-cluster-controller`.
 
 These alerts are examples, not universal SLOs. Tune thresholds to your promotionrun
 cadence, cluster count, and expected gate retry behavior.
@@ -166,6 +168,7 @@ Use alerts as routing signals, then follow the operational runbooks in
 | `KaproLifecycleSinkP99High` | First Response | lifecycle hook duration histogram, sink endpoint logs, retry/backoff settings |
 | `KaproControllerReconcileErrors` | First Response | controller logs, status write metrics, Kubernetes Events |
 | `KaproFleetDriftDetected` / `KaproFleetDriftSignalsIncomplete` / `KaproFleetDriftReportFailed` / `KaproFleetDriftReportPending` | Fleet Drift | FleetDriftReport status, drift metrics, Target and Cluster status |
+| `KaproSpokeDeliveryErrors` / `KaproSpokeDeliveryLatencyHigh` | Spoke Delivery | Cluster delivery status, spoke logs, spoke delivery metrics |
 
 Alert names differ slightly between the generic alert rules and the Prometheus
 Operator examples, but they intentionally route to the same runbooks.

@@ -103,6 +103,30 @@ groups:
           description: FleetDriftReport {{ $labels.report }} has remained Pending for 2 hours.
           runbook: docs/operations.md#runbook-fleet-drift
 
+      - alert: KaproSpokeDeliveryErrors
+        expr: sum(rate(kapro_spoke_delivery_reconciles_total{result="error"}[10m])) by (cluster, backend) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Kapro spoke {{ $labels.cluster }} delivery errors detected
+          description: Backend {{ $labels.backend }} has had delivery reconcile errors for 15 minutes.
+          runbook: docs/operations.md#runbook-spoke-delivery
+
+      - alert: KaproSpokeDeliveryLatencyHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(kapro_spoke_delivery_reconcile_duration_seconds_bucket[10m])) by (cluster, backend, le)
+          ) > 30
+        for: 20m
+        labels:
+          severity: warning
+        annotations:
+          summary: Kapro spoke {{ $labels.cluster }} delivery p95 is high
+          description: Backend {{ $labels.backend }} delivery reconcile p95 has been above 30 seconds for 20 minutes.
+          runbook: docs/operations.md#runbook-spoke-delivery
+
       - alert: KaproControllerReconcileErrors
         expr: sum(rate(kapro_controller_reconciles_total{result="error"}[10m])) by (controller) > 0
         for: 10m
