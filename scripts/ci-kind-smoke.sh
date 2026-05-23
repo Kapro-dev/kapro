@@ -288,6 +288,16 @@ run_configured_quickstarts() {
   done
 }
 
+run_upgrade_smoke() {
+  echo "running Helm upgrade smoke with PR image"
+  KAPRO_IMAGE_REPOSITORY="${IMAGE_REPOSITORY}" \
+    KAPRO_IMAGE_TAG="${IMAGE_TAG}" \
+    KAPRO_VERIFY_CLEANUP=false \
+    KAPRO_VERIFY_WEBHOOKS=true \
+    "${ROOT}/scripts/verify-install.sh" cluster
+  wait_for_crds
+}
+
 main() {
   need docker
   need helm
@@ -319,6 +329,7 @@ main() {
     KAPRO_VERIFY_WEBHOOKS=true \
     "${ROOT}/scripts/verify-install.sh" cluster
   wait_for_crds
+  run_upgrade_smoke
 
   echo "running configured quickstarts: ${KAPRO_CI_QUICKSTARTS:-flux}"
   run_configured_quickstarts
