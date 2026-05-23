@@ -1,6 +1,7 @@
 package decisiontrace
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -123,6 +124,29 @@ func TestSignerFromEnvLoadsPKCS8Ed25519Key(t *testing.T) {
 	}
 	if sig.KeyID != "env-key" {
 		t.Fatalf("key id = %q", sig.KeyID)
+	}
+}
+
+func TestLoadEd25519PublicKeyFile(t *testing.T) {
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	der, err := x509.MarshalPKIXPublicKey(publicKey)
+	if err != nil {
+		t.Fatalf("MarshalPKIXPublicKey: %v", err)
+	}
+	keyFile := t.TempDir() + "/decisiontrace-public.pem"
+	if err := os.WriteFile(keyFile, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := LoadEd25519PublicKeyFile(keyFile)
+	if err != nil {
+		t.Fatalf("LoadEd25519PublicKeyFile: %v", err)
+	}
+	if !bytes.Equal(got, publicKey) {
+		t.Fatal("loaded public key differs from input key")
 	}
 }
 
