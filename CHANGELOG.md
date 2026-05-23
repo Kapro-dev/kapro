@@ -92,6 +92,12 @@ SDK, conformance, upgrade, and operational contracts are ready for stability
 graduation. Larger roadmap phases use second-digit trains such as `0.10.0`,
 `0.20.0`, and `0.30.0` rather than treating `1.0.0` as a planning bucket.
 
+### Added — pre-stable roadmap
+
+Added a `0.x.x` roadmap guide for `0.2.x`, `0.10.x`, `0.20.x`, and `0.30.x`
+trains, with practical ship criteria and non-goals that keep Kapro focused on
+delivery promotion instead of broad cluster-management scope creep.
+
 ### Added — completed GateExpression algebra
 
 Graduated `GateExpression` from `ALL`-only preview to the full `ALL`, `ANY`,
