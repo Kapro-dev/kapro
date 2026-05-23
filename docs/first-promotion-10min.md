@@ -12,7 +12,7 @@ start with the [Adoption Guide](adoption.md).
 ## 1. Install The Operator
 
 ```bash
-KAPRO_VERSION=0.1.2
+KAPRO_VERSION=0.3.6
 git clone --branch main https://github.com/Kapro-dev/kapro.git
 cd kapro
 helm upgrade --install kapro \
