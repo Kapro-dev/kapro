@@ -77,6 +77,68 @@ func TestRunFluxDiscoverWritesMapping(t *testing.T) {
 	}
 }
 
+func TestRunFluxDiscoverRemoteRepoRevisionAndCache(t *testing.T) {
+	repo := t.TempDir()
+	out := t.TempDir()
+	writeFluxFixture(t, repo)
+	initTestGitRepo(t, repo)
+	runTestGit(t, repo, "commit", "-m", "flux fixture")
+	runTestGit(t, repo, "checkout", "-b", "discovery")
+
+	err := runFluxDiscover(fluxDiscoverOptions{
+		RepoPath:  "file://" + repo,
+		Revision:  "discovery",
+		OutPath:   out,
+		Name:      "checkout",
+		Namespace: "flux-system",
+		Selector:  "kapro.io/import=true",
+		Cache:     true,
+		MaxFiles:  defaultArgoDiscoveryMaxFiles,
+		MaxUnits:  defaultArgoDiscoveryMaxUnits,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source := readFile(t, filepath.Join(out, "sources/checkout.yaml")); !strings.Contains(source, "name: api") {
+		t.Fatalf("remote discovery source missing api unit:\n%s", source)
+	}
+	report := readFile(t, filepath.Join(out, "discovery/flux-discovery.yaml"))
+	for _, want := range []string{"repoPath: file://", "cache:", "misses:"} {
+		if !strings.Contains(report, want) {
+			t.Fatalf("remote discovery report missing %q:\n%s", want, report)
+		}
+	}
+	cache := readFile(t, filepath.Join(out, "discovery/flux-cache.json"))
+	if !strings.Contains(cache, `"version": 1`) || !strings.Contains(cache, `"files"`) {
+		t.Fatalf("cache file did not render expected schema:\n%s", cache)
+	}
+}
+
+func TestDiscoverFluxRepoReusesBlobCache(t *testing.T) {
+	repo := t.TempDir()
+	writeFluxFixture(t, repo)
+	initTestGitRepo(t, repo)
+	cache := &argoDiscoveryCache{Version: 1, Files: map[string]argoCachedFile{}}
+
+	if _, err := discoverFluxRepo(repo, argoDiscoveryScanOptions{Cache: cache}); err != nil {
+		t.Fatal(err)
+	}
+	if cache.Stats.Misses == 0 {
+		t.Fatalf("expected initial cache miss, got %#v", cache.Stats)
+	}
+	cache.Stats = argoDiscoveryCacheCounters{}
+	result, err := discoverFluxRepo(repo, argoDiscoveryScanOptions{Cache: cache})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cache.Stats.Hits == 0 {
+		t.Fatalf("expected cache hit, got %#v", cache.Stats)
+	}
+	if len(result.Objects) == 0 || len(result.SelectedUnits) == 0 {
+		t.Fatalf("cached result objects=%d units=%d, want discovered objects and units", len(result.Objects), len(result.SelectedUnits))
+	}
+}
+
 func writeFluxFixture(t *testing.T, repo string) {
 	t.Helper()
 	writeTestFile(t, repo, "flux/sources/api-gitrepository.yaml", `apiVersion: source.toolkit.fluxcd.io/v1

@@ -73,6 +73,18 @@ kapro discover flux . \
   --selector kapro.io/import=true,team=checkout
 ```
 
+Remote Git URLs work the same way as local worktrees. Kapro clones the repo to
+a temporary directory for read-only discovery and can pin the scan to a branch,
+tag, or SHA:
+
+```bash
+kapro discover flux https://github.com/example/platform.git \
+  --revision main \
+  --out ./kapro-connect \
+  --name checkout \
+  --namespace flux-system
+```
+
 Apply the observe profile:
 
 ```bash

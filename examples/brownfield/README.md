@@ -180,6 +180,16 @@ kapro discover flux . \
 kubectl apply -f ./kapro-connect/backends/checkout-observe.yaml
 ```
 
+For remote Flux repositories, pass the Git URL and optionally pin the discovery
+scan:
+
+```bash
+kapro discover flux https://github.com/example/platform.git \
+  --revision main \
+  --out ./kapro-connect \
+  --name checkout
+```
+
 Flux keeps its repository credentials and source references. Kapro stores only
 backend references, selected object names, and reviewed `Source` version-field
 mappings. Use `kapro connect flux` only when you want a Backend-only scaffold

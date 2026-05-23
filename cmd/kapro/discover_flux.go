@@ -32,8 +32,10 @@ type fluxDiscoverOptions struct {
 	Name         string
 	Namespace    string
 	Selector     string
+	Revision     string
 	PathPrefixes []string
 	ScanAll      bool
+	Cache        bool
 	MaxFiles     int
 	MaxUnits     int
 	Force        bool
@@ -47,10 +49,11 @@ type fluxDiscoveryResult struct {
 	SelectedUnits  []argoDiscoveredUnit
 	SkippedObjects []argoDiscoveredObject
 	Errors         []string
+	CacheStats     argoDiscoveryCacheCounters
 }
 
 func newDiscoverFluxCmd() *cobra.Command {
-	opts := fluxDiscoverOptions{MaxFiles: defaultArgoDiscoveryMaxFiles, MaxUnits: defaultArgoDiscoveryMaxUnits}
+	opts := fluxDiscoverOptions{Cache: true, MaxFiles: defaultArgoDiscoveryMaxFiles, MaxUnits: defaultArgoDiscoveryMaxUnits}
 	cmd := &cobra.Command{
 		Use:   "flux [repo]",
 		Short: "Discover an existing Flux repo and generate Kapro mapping files",
@@ -67,8 +70,10 @@ func newDiscoverFluxCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.Name, "name", "flux", "Backend and Source name")
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "flux-system", "Flux namespace")
 	cmd.Flags().StringVar(&opts.Selector, "selector", "kapro.io/import=true", "Label selector for imported backend objects")
+	cmd.Flags().StringVar(&opts.Revision, "revision", "", "Git branch/tag/SHA when discovering a remote repository URL")
 	cmd.Flags().StringSliceVar(&opts.PathPrefixes, "path-prefix", nil, "Repo path prefix to scan (repeatable; default: common Flux/GitOps paths)")
 	cmd.Flags().BoolVar(&opts.ScanAll, "scan-all", false, "Scan all tracked YAML/JSON files instead of GitOps path prefixes")
+	cmd.Flags().BoolVar(&opts.Cache, "cache", true, "Reuse discovery cache for unchanged Git blobs")
 	cmd.Flags().IntVar(&opts.MaxFiles, "max-files", defaultArgoDiscoveryMaxFiles, "Maximum tracked YAML/JSON candidate files to parse (0 = unlimited)")
 	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum Source units to generate (0 = unlimited)")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
@@ -89,13 +94,20 @@ func runFluxDiscover(opts fluxDiscoverOptions) error {
 	if err != nil {
 		return err
 	}
-	root, err := gitWorktreeRoot(opts.RepoPath)
+	discoverPath, cleanup, err := prepareFluxDiscoverRepo(opts)
 	if err != nil {
 		return err
 	}
-	result, err := discoverFluxRepo(root, argoDiscoveryScanOptions{
+	defer cleanup()
+	cachePath := filepath.Join(opts.OutPath, "discovery", "flux-cache.json")
+	cache := &argoDiscoveryCache{Version: 1, Files: map[string]argoCachedFile{}}
+	if opts.Cache {
+		cache = loadArgoDiscoveryCache(cachePath)
+	}
+	result, err := discoverFluxRepo(discoverPath, argoDiscoveryScanOptions{
 		PathPrefixes: opts.PathPrefixes,
 		ScanAll:      opts.ScanAll,
+		Cache:        cache,
 		MaxFiles:     opts.MaxFiles,
 		MaxUnits:     opts.MaxUnits,
 	})
@@ -103,6 +115,9 @@ func runFluxDiscover(opts fluxDiscoverOptions) error {
 		return err
 	}
 	result.RepoPath = opts.RepoPath
+	if opts.Cache {
+		result.CacheStats = cache.Stats
+	}
 	files := map[string]string{
 		filepath.Join("backends", opts.Name+"-observe.yaml"): renderFluxDiscoverBackend(opts, matchLabels),
 		filepath.Join("sources", opts.Name+".yaml"):          renderFluxDiscoverSource(opts, result),
@@ -113,10 +128,19 @@ func runFluxDiscover(opts fluxDiscoverOptions) error {
 	if err := writeScaffoldFiles(opts.OutPath, files, opts.Force); err != nil {
 		return err
 	}
+	if opts.Cache {
+		if err := writeArgoDiscoveryCache(cachePath, cache); err != nil {
+			return err
+		}
+	}
 	summary := confidenceSummary(result.SelectedUnits)
 	fmt.Fprintf(os.Stderr, "Discovered %d Flux objects and %d Source units from %s (confidence: high=%d medium=%d needs-review=%d)\n",
 		len(result.Objects), len(result.SelectedUnits), opts.RepoPath, summary.High, summary.Medium, summary.NeedsReview)
 	return nil
+}
+
+func prepareFluxDiscoverRepo(opts fluxDiscoverOptions) (string, func(), error) {
+	return prepareGitDiscoverRepo("flux", opts.RepoPath, opts.Revision)
 }
 
 func discoverFluxRepo(root string, opts argoDiscoveryScanOptions) (fluxDiscoveryResult, error) {
@@ -130,14 +154,19 @@ func discoverFluxRepo(root string, opts argoDiscoveryScanOptions) (fluxDiscovery
 	}
 	for _, file := range files {
 		result.ScannedFiles++
-		parsed := parseFluxDiscoveryFile(file)
-		if parsed.parsed {
-			result.ParsedFiles++
+		if opts.Cache != nil {
+			if cached, ok := opts.Cache.Files[file.RelPath]; ok && cached.BlobSHA == file.BlobSHA {
+				replayFluxCachedFile(&result, cached)
+				opts.Cache.Stats.Hits++
+				continue
+			}
+			opts.Cache.Stats.Misses++
 		}
-		result.Objects = append(result.Objects, parsed.objects...)
-		result.SelectedUnits = append(result.SelectedUnits, parsed.units...)
-		result.SkippedObjects = append(result.SkippedObjects, parsed.skipped...)
-		result.Errors = append(result.Errors, parsed.errors...)
+		parsed := parseFluxDiscoveryFile(file)
+		replayFluxCachedFile(&result, parsed)
+		if opts.Cache != nil {
+			opts.Cache.Files[file.RelPath] = parsed
+		}
 	}
 	result.SelectedUnits = dedupeUnits(result.SelectedUnits)
 	if opts.MaxUnits > 0 && len(result.SelectedUnits) > opts.MaxUnits {
@@ -153,61 +182,63 @@ func discoverFluxRepo(root string, opts argoDiscoveryScanOptions) (fluxDiscovery
 	return result, nil
 }
 
-type parsedFluxFile struct {
-	parsed  bool
-	objects []argoDiscoveredObject
-	units   []argoDiscoveredUnit
-	skipped []argoDiscoveredObject
-	errors  []string
-}
-
-func parseFluxDiscoveryFile(file argoDiscoveryFile) parsedFluxFile {
-	var parsed parsedFluxFile
+func parseFluxDiscoveryFile(file argoDiscoveryFile) argoCachedFile {
+	parsed := argoCachedFile{BlobSHA: file.BlobSHA}
 	if file.Size > maxArgoDiscoveryFileSize {
-		parsed.skipped = append(parsed.skipped, argoDiscoveredObject{
+		parsed.SkippedObjects = append(parsed.SkippedObjects, argoDiscoveredObject{
 			Kind: "File", Path: file.RelPath, Pattern: "large-file", Reason: "file exceeds discovery size limit",
 		})
 		return parsed
 	}
 	docs, err := readYAMLOrJSONDocuments(file.AbsPath)
 	if err != nil {
-		parsed.errors = append(parsed.errors, fmt.Sprintf("%s: %v", file.RelPath, err))
+		parsed.Errors = append(parsed.Errors, fmt.Sprintf("%s: %v", file.RelPath, err))
 		return parsed
 	}
 	if len(docs) > 0 {
-		parsed.parsed = true
+		parsed.Parsed = true
 	}
 	for _, doc := range docs {
 		units, obj, ok := fluxUnitsFromObject(doc, file.RelPath)
 		if ok {
-			parsed.objects = append(parsed.objects, obj)
-			parsed.units = append(parsed.units, units...)
+			parsed.Objects = append(parsed.Objects, obj)
+			parsed.SelectedUnits = append(parsed.SelectedUnits, units...)
 			continue
 		}
 		if skipped, ok := skippedFluxObject(doc, file.RelPath); ok {
-			parsed.skipped = append(parsed.skipped, skipped)
+			parsed.SkippedObjects = append(parsed.SkippedObjects, skipped)
 			continue
 		}
 		if units := fluxKustomizeImageUnits(doc, file.RelPath); len(units) > 0 {
-			parsed.objects = append(parsed.objects, argoObjectFromDoc("", file.RelPath, doc))
-			if parsed.objects[len(parsed.objects)-1].Kind == "" {
-				parsed.objects[len(parsed.objects)-1] = argoDiscoveredObject{
+			parsed.Objects = append(parsed.Objects, argoObjectFromDoc("", file.RelPath, doc))
+			if parsed.Objects[len(parsed.Objects)-1].Kind == "" {
+				parsed.Objects[len(parsed.Objects)-1] = argoDiscoveredObject{
 					Kind: "KustomizationFile", Name: filepath.Base(file.RelPath), Path: file.RelPath, Pattern: "kustomize-images",
 					Reason: "Kustomize image tags can be updated in Git",
 				}
 			}
-			parsed.units = append(parsed.units, units...)
+			parsed.SelectedUnits = append(parsed.SelectedUnits, units...)
 			continue
 		}
 		if units := helmChartUnits(doc, file.RelPath); len(units) > 0 {
-			parsed.objects = append(parsed.objects, argoDiscoveredObject{
+			parsed.Objects = append(parsed.Objects, argoDiscoveredObject{
 				Kind: "HelmChart", Name: filepath.Base(filepath.Dir(file.RelPath)), Path: file.RelPath, Pattern: "helm-chart",
 				Reason: "Helm chart version fields can be updated in Git",
 			})
-			parsed.units = append(parsed.units, units...)
+			parsed.SelectedUnits = append(parsed.SelectedUnits, units...)
 		}
 	}
 	return parsed
+}
+
+func replayFluxCachedFile(result *fluxDiscoveryResult, cached argoCachedFile) {
+	if cached.Parsed {
+		result.ParsedFiles++
+	}
+	result.Objects = append(result.Objects, cached.Objects...)
+	result.SelectedUnits = append(result.SelectedUnits, cached.SelectedUnits...)
+	result.SkippedObjects = append(result.SkippedObjects, cached.SkippedObjects...)
+	result.Errors = append(result.Errors, cached.Errors...)
 }
 
 func fluxUnitsFromObject(doc map[string]any, rel string) ([]argoDiscoveredUnit, argoDiscoveredObject, bool) {
@@ -512,6 +543,9 @@ func renderFluxDiscoveryReport(result fluxDiscoveryResult) string {
 	fmt.Fprintf(&b, "objects: %d\npromotionUnits: %d\n", len(result.Objects), len(result.SelectedUnits))
 	summary := confidenceSummary(result.SelectedUnits)
 	fmt.Fprintf(&b, "confidence:\n  high: %d\n  medium: %d\n  needsReview: %d\n", summary.High, summary.Medium, summary.NeedsReview)
+	if result.CacheStats.Hits > 0 || result.CacheStats.Misses > 0 {
+		fmt.Fprintf(&b, "cache:\n  hits: %d\n  misses: %d\n", result.CacheStats.Hits, result.CacheStats.Misses)
+	}
 	writeReportObjects(&b, "selectedUnits", result.SelectedUnits)
 	writeReportBackendObjects(&b, "skippedObjects", result.SkippedObjects)
 	if len(result.Errors) > 0 {
