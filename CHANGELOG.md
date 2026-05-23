@@ -115,6 +115,12 @@ Added composable `pkg/kapro/server` adapter registrars so embedded operators
 can override or disable the built-in Argo CD, Flux, and OCI reference adapter
 registration independently from actuator registration.
 
+### Changed — actuator conformance
+
+KAI actuator conformance now checks that `Apply` respects canceled request
+contexts, matching the plugin authoring requirement for cancellation-aware
+external actuators.
+
 ## v0.1.2 — 2026-05-22
 
 ### Added — Go SDK scaffold
