@@ -662,6 +662,29 @@ func TestReleaseVersionMarkersStayInSync(t *testing.T) {
 	}
 }
 
+func TestPreStableReleaseTrainMarkersStayDocumented(t *testing.T) {
+	root := repoRoot(t)
+	releaseTrain := readText(t, filepath.Join(root, "docs", "release-train.md"))
+	apiStability := readText(t, filepath.Join(root, "docs", "api-stability.md"))
+	sdkVersioning := readText(t, filepath.Join(root, "docs", "adr", "0013-sdk-versioning-policy.md"))
+
+	for _, want := range []string{"0.x.x", "0.10.0", "0.20.0", "0.30.0"} {
+		if !strings.Contains(releaseTrain, want) {
+			t.Fatalf("docs/release-train.md does not mention %s", want)
+		}
+	}
+	for path, body := range map[string]string{
+		"docs/api-stability.md":                  apiStability,
+		"docs/adr/0013-sdk-versioning-policy.md": sdkVersioning,
+	} {
+		for _, want := range []string{"0.x.x", "1.0.0"} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("%s does not mention %s", path, want)
+			}
+		}
+	}
+}
+
 func TestAPICommentsUseCurrentPublicResourceNames(t *testing.T) {
 	root := repoRoot(t)
 	stale := []*regexp.Regexp{
