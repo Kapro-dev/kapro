@@ -92,6 +92,12 @@ Made `pkg/kapro/gate` the canonical in-process gate SDK with `Predicate` and
 remain compatibility aliases. Gate registries now wrap registered predicates
 with OpenTelemetry spans by default.
 
+### Added — server composition split
+
+Added `server.NewBare` and public subsystem registrars for embedded operators
+that want a smaller in-process Kapro runtime. `server.New` still wires the full
+reference operator path by calling the default registrar chain.
+
 ### Changed — pre-stable release train policy
 
 Documented that Kapro stays in the `0.x.x` release series until public API,

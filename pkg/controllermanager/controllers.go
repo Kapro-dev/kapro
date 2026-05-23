@@ -189,6 +189,17 @@ func buildStageDispatcher(ctx context.Context, cc ControllerContext) (controller
 //	if err := reg.Register("argo-analysis", &mygate.ArgoAnalysisGate{...}); err != nil { return err }
 func BuildGateRegistry(c client.Client) (*pkggate.Registry, error) {
 	reg := pkggate.NewRegistry()
+	if err := RegisterBuiltInGates(reg, c); err != nil {
+		return nil, err
+	}
+	return reg, nil
+}
+
+// RegisterBuiltInGates registers every built-in Gate into reg.
+func RegisterBuiltInGates(reg *pkggate.Registry, c client.Client) error {
+	if reg == nil {
+		return fmt.Errorf("gate registry is nil")
+	}
 	for typeName, impl := range map[string]pkggate.Gate{
 		// FSM-phase gates (resolved by fixed name from target_fsm.go handlers).
 		"soak":         &internalgate.SoakGate{},
@@ -201,10 +212,10 @@ func BuildGateRegistry(c client.Client) (*pkggate.Registry, error) {
 		"webhook": &webhookgate.Gate{},
 	} {
 		if err := reg.Register(typeName, impl); err != nil {
-			return nil, fmt.Errorf("register built-in gate %q: %w", typeName, err)
+			return fmt.Errorf("register built-in gate %q: %w", typeName, err)
 		}
 	}
-	return reg, nil
+	return nil
 }
 
 // startApprovalController starts the Approval reconciler.

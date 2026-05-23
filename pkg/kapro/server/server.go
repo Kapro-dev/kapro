@@ -71,8 +71,11 @@ type Options struct {
 	MetricsBindAddress     string
 	HealthProbeBindAddress string
 	WebhookPort            int
-	DevMode                bool
-	ZapOptions             zap.Options
+	// WebhookCertDir overrides KAPRO_WEBHOOK_CERT_DIR. server.New auto-generates
+	// dev certs for the full reference path; NewBare never generates cert files.
+	WebhookCertDir string
+	DevMode        bool
+	ZapOptions     zap.Options
 	// ActuatorRegistrars overrides the built-in actuator registrar list when
 	// non-nil. Leave nil to use DefaultActuatorRegistrars().
 	ActuatorRegistrars []ActuatorRegistrar
@@ -119,6 +122,16 @@ type Server struct {
 	Actuators *actuator.Registry
 	Adapters  *kaproadapter.Registry
 	Planner   *planner.Framework
+
+	opts              Options
+	config            *rest.Config
+	log               logr.Logger
+	podNamespace      string
+	shardName         string
+	leaderElectionID  string
+	approvalSecret    []byte
+	kubeClient        kubernetes.Interface
+	controllerContext *cm.ControllerContext
 }
 
 // Run blocks until ctx is cancelled or the controller-runtime manager exits.
@@ -138,40 +151,52 @@ func (s *Server) Run(ctx context.Context) error {
 // ./cmd/... path. Duplicating them here would be ignored by the
 // generator and would drift over time.
 
+// Registrar wires one server subsystem into a Server created by NewBare.
+type Registrar func(context.Context, *Server) error
+
+// DefaultRegistrars returns the reference operator subsystem order. New calls
+// these registrars to preserve the stock operator behavior.
+func DefaultRegistrars() []Registrar {
+	return []Registrar{
+		RegisterActuators,
+		RegisterAdapters,
+		RegisterGates,
+		RegisterPluginGateway,
+		RegisterAdmission,
+		RegisterControllers,
+		RegisterApprovalServer,
+		RegisterHubGateway,
+	}
+}
+
+// New returns the behavior-compatible reference Kapro operator server.
 func New(opts Options) (*Server, error) {
-	if opts.MetricsBindAddress == "" {
-		opts.MetricsBindAddress = ":8080"
+	var err error
+	opts, err = prepareReferenceOptions(opts)
+	if err != nil {
+		return nil, err
 	}
-	if opts.HealthProbeBindAddress == "" {
-		opts.HealthProbeBindAddress = ":8081"
+	s, err := NewBare(opts)
+	if err != nil {
+		return nil, err
 	}
-	if opts.WebhookPort == 0 {
-		opts.WebhookPort = 9443
+	ctx := context.Background()
+	for _, registrar := range DefaultRegistrars() {
+		if err := registrar(ctx, s); err != nil {
+			return nil, err
+		}
 	}
-	if opts.DevMode {
-		opts.LeaderElect = false
-	}
+	return s, nil
+}
+
+// NewBare returns a Kapro server with only the controller-runtime manager,
+// scheme, health checks, and empty extension registries. Call subsystem
+// registrars before Run to compose a smaller embedded operator.
+func NewBare(opts Options) (*Server, error) {
+	opts = normalizeOptions(opts)
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts.ZapOptions)))
 	log := ctrl.Log.WithName("kapro-operator")
 	log.Info("starting kapro-operator", "version", version.Version, "commit", version.Commit, "date", version.Date)
-
-	// KAPRO_CONTROLLERS selects which controllers to run (CCM-style).
-	controllersFlag := os.Getenv("KAPRO_CONTROLLERS")
-	if controllersFlag == "" {
-		controllersFlag = cm.DefaultControllersFlag()
-	}
-	selected := cm.ParseControllerNames(controllersFlag)
-	unknownControllers := cm.UnknownControllerNames(selected)
-	if len(unknownControllers) > 0 {
-		log.Info("unknown controllers requested; skipping", "controllers", unknownControllers)
-	}
-	log.Info(
-		"controller selection",
-		"requested", controllersFlag,
-		"selected", cm.SelectedControllerNames(selected),
-		"notSelected", cm.DisabledControllerNames(selected),
-		"unknown", unknownControllers,
-	)
 
 	// POD_NAMESPACE is projected from the downward API in both the Helm chart
 	// and the dev kustomize manifest. It drives leader election, notification
@@ -199,15 +224,7 @@ func New(opts Options) (*Server, error) {
 		}
 	}
 
-	webhookCertDir := os.Getenv("KAPRO_WEBHOOK_CERT_DIR")
-	if opts.DevMode && webhookCertDir == "" {
-		dir, err := ensureDevWebhookCerts()
-		if err != nil {
-			return nil, fmt.Errorf("ensure dev webhook certs: %w", err)
-		}
-		webhookCertDir = dir
-		log.Info("dev mode: auto-generated webhook TLS certs", "dir", webhookCertDir)
-	}
+	webhookCertDir := opts.WebhookCertDir
 	if opts.DevMode {
 		log.Info("dev mode: leader election disabled, self-signed webhook certs")
 	}
@@ -245,101 +262,217 @@ func New(opts Options) (*Server, error) {
 		return nil, fmt.Errorf("add readyz check: %w", err)
 	}
 
-	recorder := mgr.GetEventRecorderFor("kapro-operator") //nolint:staticcheck // migrate to GetEventRecorder when controller-runtime drops this
+	return &Server{
+		Manager:          mgr,
+		Gates:            gate.NewRegistry(),
+		Actuators:        actuator.NewRegistry(),
+		Adapters:         kaproadapter.NewRegistry(),
+		Planner:          planner.NewDefaultFramework(),
+		opts:             opts,
+		config:           cfg,
+		log:              log,
+		podNamespace:     podNS,
+		shardName:        shardName,
+		leaderElectionID: leaderElectionID,
+	}, nil
+}
 
-	ctx := context.Background()
-	actuatorRegistrars := opts.ActuatorRegistrars
+func normalizeOptions(opts Options) Options {
+	if opts.MetricsBindAddress == "" {
+		opts.MetricsBindAddress = ":8080"
+	}
+	if opts.HealthProbeBindAddress == "" {
+		opts.HealthProbeBindAddress = ":8081"
+	}
+	if opts.WebhookPort == 0 {
+		opts.WebhookPort = 9443
+	}
+	if opts.WebhookCertDir == "" {
+		opts.WebhookCertDir = os.Getenv("KAPRO_WEBHOOK_CERT_DIR")
+	}
+	if opts.DevMode {
+		opts.LeaderElect = false
+	}
+	return opts
+}
+
+func prepareReferenceOptions(opts Options) (Options, error) {
+	opts = normalizeOptions(opts)
+	if opts.DevMode && opts.WebhookCertDir == "" && os.Getenv("KAPRO_DISABLE_WEBHOOKS") != "true" {
+		dir, err := ensureDevWebhookCerts()
+		if err != nil {
+			return opts, fmt.Errorf("ensure dev webhook certs: %w", err)
+		}
+		opts.WebhookCertDir = dir
+	}
+	return opts, nil
+}
+
+// RegisterActuators wires the configured actuator registrars into the server.
+func RegisterActuators(ctx context.Context, s *Server) error {
+	if err := requireServer(s); err != nil {
+		return err
+	}
+	if s.Actuators == nil {
+		s.Actuators = actuator.NewRegistry()
+	}
+	actuatorRegistrars := s.opts.ActuatorRegistrars
 	if actuatorRegistrars == nil {
 		actuatorRegistrars = DefaultActuatorRegistrars()
 	}
-	actuatorReg, err := registerActuators(ctx, actuatorRegistrars, ActuatorRegistrationContext{
-		Manager:   mgr,
-		Log:       log.WithName("actuators"),
-		DevMode:   opts.DevMode,
-		ShardName: shardName,
-	})
-	if err != nil {
-		log.Error(err, "failed to register actuators")
-		return nil, fmt.Errorf("register actuators: %w", err)
+	cc := ActuatorRegistrationContext{
+		Manager:   s.Manager,
+		Registry:  s.Actuators,
+		Log:       s.log.WithName("actuators"),
+		DevMode:   s.opts.DevMode,
+		ShardName: s.shardName,
 	}
+	for _, registrar := range actuatorRegistrars {
+		if registrar == nil {
+			continue
+		}
+		if err := registrar(ctx, cc); err != nil {
+			s.log.Error(err, "failed to register actuators")
+			return fmt.Errorf("register actuators: %w", err)
+		}
+	}
+	return nil
+}
 
-	adapterRegistrars := opts.AdapterRegistrars
+// RegisterAdapters wires the configured delivery adapter registrars.
+func RegisterAdapters(ctx context.Context, s *Server) error {
+	if err := requireServer(s); err != nil {
+		return err
+	}
+	if s.Adapters == nil {
+		s.Adapters = kaproadapter.NewRegistry()
+	}
+	adapterRegistrars := s.opts.AdapterRegistrars
 	if adapterRegistrars == nil {
 		adapterRegistrars = DefaultAdapterRegistrars()
 	}
-	adapterReg, err := registerAdapters(ctx, adapterRegistrars, AdapterRegistrationContext{
-		Log: log.WithName("adapters"),
-	})
-	if err != nil {
-		log.Error(err, "failed to register adapters")
-		return nil, fmt.Errorf("register adapters: %w", err)
+	cc := AdapterRegistrationContext{
+		Registry: s.Adapters,
+		Log:      s.log.WithName("adapters"),
 	}
-
-	gateRegistry, err := cm.BuildGateRegistry(mgr.GetClient())
-	if err != nil {
-		log.Error(err, "failed to register built-in gates")
-		return nil, fmt.Errorf("register built-in gates: %w", err)
-	}
-	plannerFramework := planner.NewDefaultFramework()
-
-	if pluginadapter.EnabledFromEnv() {
-		registered, err := pluginadapter.Registrar{}.RegisterReady(ctx, mgr.GetAPIReader(), actuatorReg, gateRegistry, plannerFramework)
-		if err != nil {
-			log.Error(err, "failed to register plugin gateway adapters")
-			return nil, fmt.Errorf("register plugin gateway adapters: %w", err)
+	for _, registrar := range adapterRegistrars {
+		if registrar == nil {
+			continue
 		}
-		log.Info("plugin gateway enabled", "registered", registered)
+		if err := registrar(ctx, cc); err != nil {
+			s.log.Error(err, "failed to register adapters")
+			return fmt.Errorf("register adapters: %w", err)
+		}
 	}
+	return nil
+}
 
+// RegisterGates replaces the empty gate registry with the built-in gate set.
+func RegisterGates(_ context.Context, s *Server) error {
+	if err := requireServer(s); err != nil {
+		return err
+	}
+	if s.Gates == nil {
+		s.Gates = gate.NewRegistry()
+	}
+	if err := cm.RegisterBuiltInGates(s.Gates, s.Manager.GetClient()); err != nil {
+		s.log.Error(err, "failed to register built-in gates")
+		return fmt.Errorf("register built-in gates: %w", err)
+	}
+	return nil
+}
+
+// RegisterPluginGateway loads ready plugin gateway registrations when enabled.
+func RegisterPluginGateway(ctx context.Context, s *Server) error {
+	if err := requireServer(s); err != nil {
+		return err
+	}
+	if pluginadapter.EnabledFromEnv() {
+		registered, err := pluginadapter.Registrar{}.RegisterReady(ctx, s.Manager.GetAPIReader(), s.Actuators, s.Gates, s.Planner)
+		if err != nil {
+			s.log.Error(err, "failed to register plugin gateway adapters")
+			return fmt.Errorf("register plugin gateway adapters: %w", err)
+		}
+		s.log.Info("plugin gateway enabled", "registered", registered)
+	}
+	return nil
+}
+
+func (s *Server) ensureControllerContext() (*cm.ControllerContext, error) {
+	if s.controllerContext != nil {
+		return s.controllerContext, nil
+	}
+	if s.Gates == nil {
+		s.Gates = gate.NewRegistry()
+	}
+	if s.Actuators == nil {
+		s.Actuators = actuator.NewRegistry()
+	}
+	if s.Adapters == nil {
+		s.Adapters = kaproadapter.NewRegistry()
+	}
+	if s.Planner == nil {
+		s.Planner = planner.NewDefaultFramework()
+	}
 	// Typed Kubernetes clients for verbs not exposed by controller-runtime's
 	// generic client: ServiceAccounts/token TokenRequest and CSR UpdateApproval.
 	// Used by the Cluster bootstrap controller. Cheap to construct; safe to
 	// share across reconcilers.
-	kubeClient, err := kubernetes.NewForConfig(mgr.GetConfig())
+	kubeClient, err := kubernetes.NewForConfig(s.Manager.GetConfig())
 	if err != nil {
-		log.Error(err, "unable to build typed Kubernetes client")
+		s.log.Error(err, "unable to build typed Kubernetes client")
 		return nil, fmt.Errorf("build typed Kubernetes client: %w", err)
 	}
+	s.kubeClient = kubeClient
+	s.approvalSecret = loadApprovalSecret(s.config, s.podNamespace, s.log)
 
 	cc := cm.ControllerContext{
-		Manager:          mgr,
-		Recorder:         recorder,
-		ActuatorRegistry: actuatorReg,
-		GateRegistry:     gateRegistry,
-		AdapterRegistry:  adapterReg,
+		Manager:          s.Manager,
+		Recorder:         s.Manager.GetEventRecorderFor("kapro-operator"), //nolint:staticcheck // migrate to GetEventRecorder when controller-runtime drops this
+		ActuatorRegistry: s.Actuators,
+		GateRegistry:     s.Gates,
+		AdapterRegistry:  s.Adapters,
 		Notifier: &enginenotifier.Notifier{
 			SecretName: "kapro-notifications-secret",
-			Namespace:  podNS,
-			Client:     mgr.GetClient(),
+			Namespace:  s.podNamespace,
+			Client:     s.Manager.GetClient(),
 		},
-		Planner:            plannerFramework,
-		ApprovalSecret:     loadApprovalSecret(cfg, podNS, log),
+		Planner:            s.Planner,
+		ApprovalSecret:     s.approvalSecret,
 		ExternalURL:        os.Getenv("KAPRO_EXTERNAL_URL"),
 		HubAPIURL:          os.Getenv("KAPRO_HUB_API_URL"),
-		HubCAData:          loadHubCAData(mgr.GetConfig()),
-		HeartbeatNamespace: podNS,
-		ShardName:          shardName,
+		HubCAData:          loadHubCAData(s.Manager.GetConfig()),
+		HeartbeatNamespace: s.podNamespace,
+		ShardName:          s.shardName,
 		ShardIsDefault:     strings.EqualFold(os.Getenv("KAPRO_SHARD_DEFAULT"), "true"),
 		KubeClient:         kubeClient,
 		CertClient:         kubeClient.CertificatesV1(),
-		PodNamespace:       podNS,
+		PodNamespace:       s.podNamespace,
 	}
 
 	if cc.ShardName != "" {
-		log.Info("controller sharding enabled", "shard", cc.ShardName, "default", cc.ShardIsDefault, "leaderElectionID", leaderElectionID)
+		s.log.Info("controller sharding enabled", "shard", cc.ShardName, "default", cc.ShardIsDefault, "leaderElectionID", s.leaderElectionID)
 	}
 
 	// ApprovalSecret is loaded by ensureApprovalSecret — it either reads the existing
 	// K8s Secret, creates one with a random key, or falls back to env var/file mount.
 	if len(cc.ApprovalSecret) == 0 {
-		log.Error(nil, "approval-secret could not be loaded or generated")
+		s.log.Error(nil, "approval-secret could not be loaded or generated")
 		return nil, fmt.Errorf("approval-secret could not be loaded or generated")
 	}
+	s.controllerContext = &cc
+	return s.controllerContext, nil
+}
 
+// RegisterAdmission registers conversion, mutating, and validating webhooks.
+func RegisterAdmission(_ context.Context, s *Server) error {
+	if err := requireServer(s); err != nil {
+		return err
+	}
 	// Register admission webhooks unless KAPRO_DISABLE_WEBHOOKS=true (used in local dev / kind).
 	if os.Getenv("KAPRO_DISABLE_WEBHOOKS") != "true" {
-		decoder := admission.NewDecoder(mgr.GetScheme())
-		mgr.GetWebhookServer().Register("/convert", kaplconversion.NewIdentityHandler())
+		decoder := admission.NewDecoder(s.Manager.GetScheme())
+		s.Manager.GetWebhookServer().Register("/convert", kaplconversion.NewIdentityHandler())
 
 		// Build the trusted SA identity from the pod's own namespace + SA name.
 		// podNS is defined at the top of main(); POD_SERVICE_ACCOUNT is projected
@@ -348,13 +481,13 @@ func New(opts Options) (*Server, error) {
 		if podSA == "" {
 			podSA = "kapro-operator"
 		}
-		trustedSA := "system:serviceaccount:" + podNS + ":" + podSA
+		trustedSA := "system:serviceaccount:" + s.podNamespace + ":" + podSA
 
-		mgr.GetWebhookServer().Register(
+		s.Manager.GetWebhookServer().Register(
 			"/mutate-kapro-io-v1alpha2-approval",
 			&crwebhook.Admission{Handler: kaploadmission.NewApprovalMutator(decoder, trustedSA)},
 		)
-		mgr.GetWebhookServer().Register(
+		s.Manager.GetWebhookServer().Register(
 			"/mutate-kapro-io-v1alpha2-cluster",
 			&crwebhook.Admission{Handler: kaploadmission.NewFleetClusterMutator(decoder)},
 		)
@@ -362,107 +495,167 @@ func New(opts Options) (*Server, error) {
 		// admission webhook so a cold-start informer cache cannot produce a
 		// spurious Backend-not-found rejection. Matches the pattern
 		// already used by the plugin gateway registration above.
-		mgr.GetWebhookServer().Register(
+		s.Manager.GetWebhookServer().Register(
 			"/validate-kapro-io-v1alpha2-cluster",
-			&crwebhook.Admission{Handler: kaploadmission.NewFleetClusterValidator(decoder, mgr.GetAPIReader())},
+			&crwebhook.Admission{Handler: kaploadmission.NewFleetClusterValidator(decoder, s.Manager.GetAPIReader())},
 		)
-		mgr.GetWebhookServer().Register(
+		s.Manager.GetWebhookServer().Register(
 			"/validate-kapro-io-v1alpha2-promotionrun",
 			&crwebhook.Admission{Handler: kaploadmission.NewPromotionRunValidator(decoder)},
 		)
-		mgr.GetWebhookServer().Register(
+		s.Manager.GetWebhookServer().Register(
 			"/validate-kapro-io-v1alpha2-plan",
 			&crwebhook.Admission{Handler: kaploadmission.NewPromotionPlanValidator(decoder)},
 		)
-		mgr.GetWebhookServer().Register(
+		s.Manager.GetWebhookServer().Register(
 			"/validate-kapro-io-v1alpha2-gateexpression",
-			&crwebhook.Admission{Handler: kaploadmission.NewGateExpressionValidator(decoder, mgr.GetAPIReader())},
+			&crwebhook.Admission{Handler: kaploadmission.NewGateExpressionValidator(decoder, s.Manager.GetAPIReader())},
 		)
-		mgr.GetWebhookServer().Register(
+		s.Manager.GetWebhookServer().Register(
 			"/validate-kapro-io-v1alpha2-approval",
 			&crwebhook.Admission{Handler: kaploadmission.NewApprovalValidator(decoder)},
 		)
-		mgr.GetWebhookServer().Register(
+		s.Manager.GetWebhookServer().Register(
 			"/validate-kapro-io-v1alpha2-trigger",
 			&crwebhook.Admission{Handler: kaploadmission.NewPromotionTriggerValidator(decoder)},
 		)
 	}
+	return nil
+}
+
+// RegisterControllers starts the selected controller set.
+func RegisterControllers(ctx context.Context, s *Server) error {
+	if err := requireServer(s); err != nil {
+		return err
+	}
+	// KAPRO_CONTROLLERS selects which controllers to run (CCM-style).
+	controllersFlag := os.Getenv("KAPRO_CONTROLLERS")
+	if controllersFlag == "" {
+		controllersFlag = cm.DefaultControllersFlag()
+	}
+	selected := cm.ParseControllerNames(controllersFlag)
+	unknownControllers := cm.UnknownControllerNames(selected)
+	if len(unknownControllers) > 0 {
+		s.log.Info("unknown controllers requested; skipping", "controllers", unknownControllers)
+	}
+	s.log.Info(
+		"controller selection",
+		"requested", controllersFlag,
+		"selected", cm.SelectedControllerNames(selected),
+		"notSelected", cm.DisabledControllerNames(selected),
+		"unknown", unknownControllers,
+	)
+
+	cc, err := s.ensureControllerContext()
+	if err != nil {
+		return err
+	}
 
 	for _, name := range cm.KnownControllers() {
 		if !selected[name] {
-			log.Info("controller disabled", "name", name)
+			s.log.Info("controller disabled", "name", name)
 			continue
 		}
 		initFn := cm.Registry[name]
-		enabled, err := initFn(ctx, cc)
+		enabled, err := initFn(ctx, *cc)
 		if err != nil {
-			log.Error(err, "unable to start controller", "name", name)
-			return nil, fmt.Errorf("start controller %s: %w", name, err)
+			s.log.Error(err, "unable to start controller", "name", name)
+			return fmt.Errorf("start controller %s: %w", name, err)
 		}
 		if !enabled {
-			log.Info("controller skipped", "name", name)
+			s.log.Info("controller skipped", "name", name)
 			continue
 		}
-		log.Info("controller started", "name", name)
+		s.log.Info("controller started", "name", name)
 	}
+	return nil
+}
 
-	if os.Getenv("KAPRO_DISABLE_APPROVAL_SERVER") != "true" {
-		// Register mutating HTTP servers as leader-only runnables.
-		// controller-runtime calls NeedLeaderElection()=true runnables only on the
-		// elected leader — prevents split-brain when running 2+ replicas.
-		approvalAddr := os.Getenv("KAPRO_APPROVAL_ADDR")
-		if approvalAddr == "" {
-			approvalAddr = ":8091"
-		}
-		decisionAPIEnabled := strings.EqualFold(os.Getenv("KAPRO_ENABLE_DECISION_API"), "true")
-		var decisionAuthenticator webhook.DecisionAuthenticator
-		var decisionAuthorizer webhook.DecisionAuthorizer
-		if decisionAPIEnabled {
-			kubeClient, err := kubernetes.NewForConfig(mgr.GetConfig())
-			if err != nil {
-				log.Error(err, "unable to create Kubernetes auth client for Decision API")
-				return nil, fmt.Errorf("create Kubernetes auth client for Decision API: %w", err)
-			}
-			decisionAuthenticator = webhook.KubernetesDecisionAuthenticator{Client: kubeClient.AuthenticationV1()}
-			decisionAuthorizer = webhook.KubernetesDecisionAuthorizer{Client: kubeClient.AuthorizationV1()}
-		}
-		approvalHandler := (&webhook.Server{
-			Client:                mgr.GetClient(),
-			DecisionReader:        mgr.GetAPIReader(),
-			TokenSecret:           cc.ApprovalSecret, // reuse already-validated secret
-			OperatorNamespace:     podNS,
-			DecisionAPIEnabled:    decisionAPIEnabled,
-			DecisionAuthenticator: decisionAuthenticator,
-			DecisionAuthorizer:    decisionAuthorizer,
-		}).Handler()
-		if err := mgr.Add(leaderOnlyHTTP(approvalAddr, approvalHandler, 10*time.Second)); err != nil {
-			log.Error(err, "unable to add approval server")
-			return nil, fmt.Errorf("add approval server: %w", err)
-		}
-	} else {
-		log.Info("approval/decision API server disabled")
+// RegisterApprovalServer adds the approval and Decision API HTTP server.
+func RegisterApprovalServer(_ context.Context, s *Server) error {
+	if err := requireServer(s); err != nil {
+		return err
 	}
-
-	if os.Getenv("KAPRO_DISABLE_HUB_GATEWAY") != "true" {
-		gatewayAddr := os.Getenv("KAPRO_HUB_GATEWAY_ADDR")
-		if gatewayAddr == "" {
-			gatewayAddr = ":8092"
-		}
-		if err := mgr.Add(leaderOnlyHTTP(gatewayAddr, hubgateway.NewHandler(mgr.GetClient(), cc.ApprovalSecret), 10*time.Second)); err != nil {
-			log.Error(err, "unable to add hub gateway")
-			return nil, fmt.Errorf("add hub gateway: %w", err)
-		}
-	} else {
-		log.Info("hub gateway disabled")
+	if os.Getenv("KAPRO_DISABLE_APPROVAL_SERVER") == "true" {
+		s.log.Info("approval/decision API server disabled")
+		return nil
 	}
+	cc, err := s.ensureControllerContext()
+	if err != nil {
+		return err
+	}
+	// Register mutating HTTP servers as leader-only runnables.
+	// controller-runtime calls NeedLeaderElection()=true runnables only on the
+	// elected leader — prevents split-brain when running 2+ replicas.
+	approvalAddr := os.Getenv("KAPRO_APPROVAL_ADDR")
+	if approvalAddr == "" {
+		approvalAddr = ":8091"
+	}
+	decisionAPIEnabled := strings.EqualFold(os.Getenv("KAPRO_ENABLE_DECISION_API"), "true")
+	var decisionAuthenticator webhook.DecisionAuthenticator
+	var decisionAuthorizer webhook.DecisionAuthorizer
+	if decisionAPIEnabled {
+		decisionAuthenticator = webhook.KubernetesDecisionAuthenticator{Client: s.kubeClient.AuthenticationV1()}
+		decisionAuthorizer = webhook.KubernetesDecisionAuthorizer{Client: s.kubeClient.AuthorizationV1()}
+	}
+	approvalHandler := (&webhook.Server{
+		Client:                s.Manager.GetClient(),
+		DecisionReader:        s.Manager.GetAPIReader(),
+		TokenSecret:           cc.ApprovalSecret, // reuse already-validated secret
+		OperatorNamespace:     s.podNamespace,
+		DecisionAPIEnabled:    decisionAPIEnabled,
+		DecisionAuthenticator: decisionAuthenticator,
+		DecisionAuthorizer:    decisionAuthorizer,
+	}).Handler()
+	if err := s.Manager.Add(leaderOnlyHTTP(approvalAddr, approvalHandler, 10*time.Second)); err != nil {
+		s.log.Error(err, "unable to add approval server")
+		return fmt.Errorf("add approval server: %w", err)
+	}
+	return nil
+}
 
-	return &Server{
-		Manager:   mgr,
-		Gates:     gateRegistry,
-		Actuators: actuatorReg,
-		Adapters:  adapterReg,
-		Planner:   plannerFramework,
-	}, nil
+// RegisterHubGateway adds the hub gateway HTTP server.
+func RegisterHubGateway(_ context.Context, s *Server) error {
+	if err := requireServer(s); err != nil {
+		return err
+	}
+	if os.Getenv("KAPRO_DISABLE_HUB_GATEWAY") == "true" {
+		s.log.Info("hub gateway disabled")
+		return nil
+	}
+	cc, err := s.ensureControllerContext()
+	if err != nil {
+		return err
+	}
+	gatewayAddr := os.Getenv("KAPRO_HUB_GATEWAY_ADDR")
+	if gatewayAddr == "" {
+		gatewayAddr = ":8092"
+	}
+	if err := s.Manager.Add(leaderOnlyHTTP(gatewayAddr, hubgateway.NewHandler(s.Manager.GetClient(), cc.ApprovalSecret), 10*time.Second)); err != nil {
+		s.log.Error(err, "unable to add hub gateway")
+		return fmt.Errorf("add hub gateway: %w", err)
+	}
+	return nil
+}
+
+func requireServer(s *Server) error {
+	if s == nil || s.Manager == nil {
+		return fmt.Errorf("kapro server is not initialized")
+	}
+	if s.config == nil {
+		s.config = s.Manager.GetConfig()
+	}
+	if s.config == nil {
+		return fmt.Errorf("kapro server config is not initialized; construct the server with NewBare")
+	}
+	if s.log.GetSink() == nil {
+		s.log = ctrl.Log.WithName("kapro-operator")
+	}
+	if s.podNamespace == "" {
+		s.podNamespace = "kapro-system"
+	}
+	s.opts = normalizeOptions(s.opts)
+	return nil
 }
 
 // loadApprovalSecret loads the HMAC approval secret with this priority:
