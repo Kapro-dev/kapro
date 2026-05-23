@@ -13,6 +13,15 @@ type AdapterPolicySpec struct {
 	// BackendRef names the Backend profile this policy keeps in sync.
 	// +kubebuilder:validation:MinLength=1
 	BackendRef string `json:"backendRef"`
+	// Selector further narrows Backend.spec.discovery.selector for this
+	// continuous adoption policy. It is ANDed with the Backend selector before
+	// reaching the adapter.
+	// +optional
+	Selector *metav1.LabelSelector `json:"selector,omitempty"`
+	// DryRun validates the policy and referenced Backend without invoking
+	// adapter discovery.
+	// +optional
+	DryRun bool `json:"dryRun,omitempty"`
 	// SyncInterval controls how often discovery runs. Defaults to 5m.
 	// +kubebuilder:default="5m"
 	// +optional
@@ -21,12 +30,17 @@ type AdapterPolicySpec struct {
 
 // AdapterPolicyStatus records the latest continuous adapter discovery attempt.
 type AdapterPolicyStatus struct {
-	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
-	LastSyncTime       *metav1.Time       `json:"lastSyncTime,omitempty"`
-	Ready              bool               `json:"ready,omitempty"`
-	Reason             string             `json:"reason,omitempty"`
-	Message            string             `json:"message,omitempty"`
-	Conditions         []metav1.Condition `json:"conditions,omitempty"`
+	ObservedGeneration int64        `json:"observedGeneration,omitempty"`
+	LastSyncTime       *metav1.Time `json:"lastSyncTime,omitempty"`
+	Ready              bool         `json:"ready,omitempty"`
+	Reason             string       `json:"reason,omitempty"`
+	Message            string       `json:"message,omitempty"`
+	// DiscoveredObjects reports the latest aggregate discovery count for quick
+	// status inspection. Built-in Argo CD and Flux policies without their own
+	// selector mirror Backend.status counts; policies with their own selector
+	// and other adapters report the adapter discovery result.
+	DiscoveredObjects int32              `json:"discoveredObjects,omitempty"`
+	Conditions        []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -36,6 +50,7 @@ type AdapterPolicyStatus struct {
 // +kubebuilder:printcolumn:name="Adapter",type=string,JSONPath=`.spec.adapter`
 // +kubebuilder:printcolumn:name="Backend",type=string,JSONPath=`.spec.backendRef`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
+// +kubebuilder:printcolumn:name="Objects",type=integer,JSONPath=`.status.discoveredObjects`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 type AdapterPolicy struct {
 	metav1.TypeMeta   `json:",inline"`

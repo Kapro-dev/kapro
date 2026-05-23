@@ -111,6 +111,13 @@ validation, delay first-observation status, examples, and docs.
 Added the public `pkg/kapro/adapter` SDK surface with a registry and reference
 Argo CD, Flux, and OCI adapter packages.
 
+### Changed — AdapterPolicy discovery loop
+
+Added `AdapterPolicy.spec.selector`, `spec.dryRun`, and
+`status.discoveredObjects`. AdapterPolicy now validates merged discovery
+selectors, resolves adapters before dry-run success, records quick discovery
+counts, and keeps `Backend.status` ownership with `BackendReconciler`.
+
 ### Added — server adapter registrars
 
 Added composable `pkg/kapro/server` adapter registrars so embedded operators

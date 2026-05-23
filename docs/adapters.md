@@ -83,13 +83,20 @@ wired in a later increment.
 - the Backend must exist and have `spec.discovery.enabled=true`;
 - `AdapterPolicy.spec.adapter` must match `Backend.spec.adapter`, or the
   built-in adapter name derived from `Backend.spec.driver`;
+- `AdapterPolicy.spec.selector` is ANDed with `Backend.spec.discovery.selector`
+  before discovery reaches the adapter;
+- `AdapterPolicy.spec.dryRun=true` validates the policy, Backend reference,
+  adapter resolution, and merged selector without invoking adapter discovery;
 - the controller resolves the backend driver through `adapter.Registry`;
 - `Adapter.Discover` receives the Backend, driver, runtime, namespace
   parameter, selector, max object limit, and backend parameters;
-- `AdapterPolicy.status.ready`, `reason`, `message`, `lastSyncTime`, and the
-  Ready condition report the actual discovery outcome.
+- `AdapterPolicy.status.discoveredObjects` mirrors the latest aggregate object
+  count for quick inspection. For built-in Argo CD and Flux discovery this
+  mirrors the live `Backend.status` counts written by `BackendReconciler`; for
+  other registered adapters it uses the adapter discovery result.
 
-Discovery inventory from the adapter is mirrored onto `Backend.status` using
-the existing bounded discovery fields. Full public-adapter delivery wiring
-still needs migration from direct actuator/spoke-provider registries where
-appropriate and conformance coverage for out-of-tree adapter authors.
+`BackendReconciler` remains the single writer for `Backend.status`.
+`AdapterPolicy` records its own health and quick counts only. Full
+public-adapter delivery wiring still needs migration from direct
+actuator/spoke-provider registries where appropriate and conformance coverage
+for out-of-tree adapter authors.
