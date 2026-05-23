@@ -6,8 +6,14 @@ package v1alpha2
 const (
 	// PromotionRunFinalizer is added to PromotionRun objects to allow cleanup of owned rollout state.
 	PromotionRunFinalizer = "kapro.io/promotionrun-finalizer"
-	// BootstrapTokenFinalizer is added to BootstrapToken objects to allow RBAC cleanup on deletion.
-	BootstrapTokenFinalizer = "kapro.io/bootstrap-token-finalizer" //nolint:gosec // not a credential
+	// ClusterBootstrapFinalizer is reserved for embedded Cluster bootstrap cleanup.
+	ClusterBootstrapFinalizer = "kapro.io/bootstrap-token-finalizer" //nolint:gosec // not a credential
+	// BootstrapTokenFinalizer is kept for source compatibility with pre-v0.4.20
+	// SDK users. There is no standalone BootstrapToken API; bootstrap state is
+	// embedded in Cluster.spec.bootstrap and Cluster.status.bootstrap.
+	//
+	// Deprecated: use ClusterBootstrapFinalizer.
+	BootstrapTokenFinalizer = ClusterBootstrapFinalizer
 	// ClusterFinalizer is added to Cluster objects to allow bootstrap RBAC cleanup on deletion.
 	ClusterFinalizer = "kapro.io/member-cluster-finalizer" //nolint:gosec // not a credential
 )

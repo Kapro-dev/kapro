@@ -75,8 +75,8 @@ spec:
       type: KubernetesSecret
 ```
 
-`spec.bootstrap.materialSource.type: Vault` is a v0.2.3 preview API contract
-for platforms that want the short-lived bootstrap kubeconfig published through
+`spec.bootstrap.materialSource.type: Vault` is a preview API contract for
+platforms that want the short-lived bootstrap kubeconfig published through
 Vault instead of a Kubernetes Secret. The built-in hub controller does **not**
 write to Vault in this release. When a Cluster selects Vault and no external
 platform automation handles it, the controller fails closed with

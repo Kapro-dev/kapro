@@ -7,6 +7,13 @@ record for each tag.
 
 ## Unreleased
 
+### Changed — bootstrap API terminology
+
+Clarified that one-time registration credentials are embedded in
+`Cluster.spec.bootstrap` and `Cluster.status.bootstrap`, not a standalone
+`BootstrapToken` API. The old `BootstrapTokenFinalizer` Go constant remains as
+a deprecated alias for source compatibility.
+
 ### Changed — spoke hub RBAC verbs
 
 The long-lived spoke ClusterRole now grants only named-object `get`, `patch`,
@@ -39,10 +46,10 @@ Clarified release-train guidance so patch increments are treated as a planning
 budget and review trigger while still allowing concrete milestones such as
 `v0.4.20` under the project’s `0.x.y` pre-stable strategy.
 
-### Changed — release metadata for v0.4.19
+### Changed — release metadata for v0.4.20
 
 Updated Helm chart versions, install examples, and release smoke defaults so
-the next release tag packages `0.4.19` artifacts consistently.
+the next release tag packages `0.4.20` artifacts consistently.
 
 ### Added — reference adapter package tests
 
