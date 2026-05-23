@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -190,6 +193,58 @@ func TestEmitterReturnsCreateError(t *testing.T) {
 	}
 }
 
+func TestEmitterEmitsSpanWithDecisionTraceAttributes(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	defer otel.SetTracerProvider(previous)
+
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme: %v", err)
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	err := Emitter{Client: c}.Emit(context.Background(), kaprov1alpha2.DecisionTraceSpec{
+		PromotionRun: "run-a",
+		Plan:         "canary",
+		Stage:        "prod",
+		Target:       "cluster-a",
+		EventType:    kaprov1alpha2.DecisionTraceEventGateEvaluate,
+		Source:       "gate/slo",
+		Phase:        "Passed",
+		Reason:       "GateEvaluated",
+	})
+	if err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+
+	spans := recorder.Ended()
+	if len(spans) != 1 {
+		t.Fatalf("ended spans = %d, want 1", len(spans))
+	}
+	span := spans[0]
+	if span.Name() != "kapro.decisiontrace.emit" {
+		t.Fatalf("span name = %q", span.Name())
+	}
+	attrs := spanAttributes(span)
+	for key, want := range map[string]string{
+		"kapro.promotionrun":             "run-a",
+		"kapro.plan":                     "canary",
+		"kapro.stage":                    "prod",
+		"kapro.target":                   "cluster-a",
+		"kapro.decisiontrace.event_type": "GateEvaluate",
+		"kapro.decisiontrace.source":     "gate/slo",
+		"kapro.decisiontrace.phase":      "Passed",
+		"kapro.decisiontrace.reason":     "GateEvaluated",
+	} {
+		if got := attrs[key]; got != want {
+			t.Fatalf("attribute %s = %q, want %q", key, got, want)
+		}
+	}
+}
+
 type failingSigner struct {
 	err error
 }
@@ -233,4 +288,12 @@ func TestEmitterValidatesRequiredFields(t *testing.T) {
 			t.Fatalf("%s: error = %v", name, err)
 		}
 	}
+}
+
+func spanAttributes(span sdktrace.ReadOnlySpan) map[string]string {
+	attrs := map[string]string{}
+	for _, attr := range span.Attributes() {
+		attrs[string(attr.Key)] = attr.Value.AsString()
+	}
+	return attrs
 }

@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"fmt"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -36,7 +37,10 @@ func DialOptions(ctx context.Context, c client.Reader, reg kaprov1alpha2.Plugin)
 	if err != nil {
 		return nil, err
 	}
-	return []grpc.DialOption{grpc.WithTransportCredentials(creds)}, nil
+	return []grpc.DialOption{
+		grpc.WithTransportCredentials(creds),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+	}, nil
 }
 
 // Credentials returns insecure credentials when no TLSSecretRef is configured,

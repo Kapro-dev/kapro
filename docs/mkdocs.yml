@@ -59,6 +59,7 @@ nav:
       - Decision Traces: decision-traces.md
       - Fleet Drift Reports: fleet-drift-report.md
       - Monitoring: monitoring.md
+      - Observability: observability.md
       - Operator SLOs: operator-slos.md
       - Industry Requirements: industry-requirements.md
       - Security: security.md

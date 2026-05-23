@@ -9,6 +9,10 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
@@ -21,6 +25,8 @@ const (
 	defaultMaxMessageRunes = 512
 	defaultMaxEvidence     = 16
 	defaultMaxDetailRunes  = 256
+
+	tracerName = "kapro.io/kapro/internal/decisiontrace"
 )
 
 // Emitter writes DecisionTrace objects. Callers decide whether to surface the
@@ -40,6 +46,29 @@ func (e Emitter) Emit(ctx context.Context, spec kaprov1alpha2.DecisionTraceSpec)
 		return nil
 	}
 	spec = e.normalize(spec)
+	ctx, span := otel.Tracer(tracerName).Start(ctx, "kapro.decisiontrace.emit",
+		trace.WithAttributes(
+			attribute.String("kapro.promotionrun", spec.PromotionRun),
+			attribute.String("kapro.plan", spec.Plan),
+			attribute.String("kapro.stage", spec.Stage),
+			attribute.String("kapro.target", spec.Target),
+			attribute.String("kapro.decisiontrace.event_type", string(spec.EventType)),
+			attribute.String("kapro.decisiontrace.source", spec.Source),
+			attribute.String("kapro.decisiontrace.phase", spec.Phase),
+			attribute.String("kapro.decisiontrace.reason", spec.Reason),
+		),
+	)
+	defer span.End()
+
+	err := e.emit(ctx, spec)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	return err
+}
+
+func (e Emitter) emit(ctx context.Context, spec kaprov1alpha2.DecisionTraceSpec) error {
 	if spec.PromotionRun == "" {
 		return fmt.Errorf("decision trace promotionRun is required")
 	}
@@ -49,7 +78,7 @@ func (e Emitter) Emit(ctx context.Context, spec kaprov1alpha2.DecisionTraceSpec)
 	if spec.Source == "" {
 		return fmt.Errorf("decision trace source is required")
 	}
-	trace := &kaprov1alpha2.DecisionTrace{
+	decisionTrace := &kaprov1alpha2.DecisionTrace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: nameFor(spec),
 			Labels: map[string]string{
@@ -59,13 +88,13 @@ func (e Emitter) Emit(ctx context.Context, spec kaprov1alpha2.DecisionTraceSpec)
 		},
 		Spec: spec,
 	}
-	if err := e.Client.Create(ctx, trace); err != nil {
+	if err := e.Client.Create(ctx, decisionTrace); err != nil {
 		if !apierrors.IsAlreadyExists(err) {
 			return err
 		}
-		return e.signExisting(ctx, trace.Name)
+		return e.signExisting(ctx, decisionTrace.Name)
 	}
-	return e.signExisting(ctx, trace.Name)
+	return e.signExisting(ctx, decisionTrace.Name)
 }
 
 func (e Emitter) signExisting(ctx context.Context, name string) error {
