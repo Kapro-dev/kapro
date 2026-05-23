@@ -77,3 +77,13 @@ func TestKSPConformance(t *testing.T) {
 The harness checks that capability metadata is populated, the contract version
 is supported, `Reconcile` never panics, and repeated reconciles for the same
 request produce a stable result shape.
+
+The CLI can run the same suite against Kapro's reference provider:
+
+```bash
+go run ./cmd/kapro-conformance provider
+go run ./cmd/kapro-conformance provider -o json
+```
+
+Custom KSP providers should keep using the Go harness from their own tests
+because KSP is an in-process SDK contract, not a live gRPC endpoint.

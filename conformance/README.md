@@ -14,16 +14,21 @@ determinism, valid result shapes, request immutability, capabilities, and
 context cancellation.
 
 Kapro also ships a CLI wrapper for authors who want to test a running plugin
-without writing Go tests:
+without writing Go tests, or run the reference suites locally in CI:
 
 ```bash
+go run ./cmd/kapro-conformance all
+go run ./cmd/kapro-conformance all -o json
 go run ./cmd/kapro-conformance actuator --endpoint localhost:9090
 go run ./cmd/kapro-conformance gate --endpoint localhost:9090
 go run ./cmd/kapro-conformance planner --endpoint localhost:9090
+go run ./cmd/kapro-conformance provider
 ```
 
 KSP provider conformance is currently a Go harness because KSP is an
-in-process spoke-side SDK contract.
+in-process spoke-side SDK contract. `kapro-conformance provider` runs the
+same suite against Kapro's reference provider; custom providers should import
+`kapro.io/kapro/conformance/provider` from their own tests.
 
 Use repeated `--param key=value` flags to pass plugin-specific scenario
 parameters.

@@ -87,9 +87,12 @@ External authors can run the same base harnesses against a live gRPC plugin
 with `kapro-conformance`:
 
 ```bash
+go run ./cmd/kapro-conformance all
+go run ./cmd/kapro-conformance all -o json
 go run ./cmd/kapro-conformance actuator --endpoint localhost:9090
 go run ./cmd/kapro-conformance gate --endpoint localhost:9090
 go run ./cmd/kapro-conformance planner --endpoint localhost:9090
+go run ./cmd/kapro-conformance provider
 ```
 
 Build the binary when testing from a checkout:
@@ -99,6 +102,11 @@ go build ./cmd/kapro-conformance
 ```
 
 Use repeated `--param key=value` flags for plugin-specific scenario parameters.
+`all` runs Kapro's local reference suites for actuator, gate, planner, and
+provider contracts. `provider` runs the KSP reference provider suite because
+KSP is an in-process Go SDK contract; custom providers should import
+`kapro.io/kapro/conformance/provider` from their own tests.
+
 For the Argo CD actuator example:
 
 ```bash
@@ -308,11 +316,18 @@ The harnesses check the base contract:
 - KGI: valid phases, no request mutation, gRPC errors for unsupported work.
 - KPI: capabilities, empty target handling, deterministic planning, valid
   target decisions, no request mutation, and context cancellation.
+- KSP: capability metadata, supported contract version, panic-safe reconcile,
+  and stable repeated reconcile result shapes.
 
 Add plugin-specific tests for authentication, backend permissions, timeouts,
 retryable and terminal failures, cleanup, rollback, and concurrency. Passing
 the conformance package means the plugin obeys the Kapro contract; it does not
 prove backend-specific production readiness.
+
+External projects may describe a plugin as "Kapro-compatible" for the contract
+version they test, for example "Kapro-compatible KAI v1alpha1". Avoid
+"certified" or "official" language unless a future Kapro certification program
+explicitly grants that badge.
 
 When a new contract version is added, update `pkg/plugincompat`, this matrix,
 and the matching conformance harness in the same change.

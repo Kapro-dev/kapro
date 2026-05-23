@@ -48,7 +48,7 @@ Preview. The table below is the source of truth for the current contract level.
 | KAI actuator plugin contract | `spec/kai/v1alpha1` | Preview |
 | KGI gate plugin contract | `spec/kgi/v1alpha1` | Preview |
 | KPI planner plugin contract | `spec/kpi/v1alpha1` | Preview |
-| Conformance harnesses | `conformance/actuator`, `conformance/gate`, `conformance/planner` | Preview |
+| Conformance harnesses | `conformance/actuator`, `conformance/gate`, `conformance/planner`, `conformance/provider`, `cmd/kapro-conformance` | Preview |
 | Lifecycle event schema | `docs/events.md` | Preview |
 
 All `v1alpha2` APIs remain below stable maturity until Kapro publishes a

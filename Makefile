@@ -120,10 +120,11 @@ test: generate manifests $(ENVTEST) ## Run unit + integration tests with envtest
 ##@ Build
 
 .PHONY: build
-build: generate ## Build operator, cluster-controller, and CLI binaries
+build: generate ## Build operator, cluster-controller, CLI, and conformance binaries
 	go build -trimpath -ldflags="-s -w" -o bin/kapro-operator ./cmd/operator
 	go build -trimpath -ldflags="-s -w" -o bin/kapro-cluster-controller ./cmd/kapro-cluster-controller
 	go build -trimpath -ldflags="-s -w" -o bin/kapro ./cmd/kapro
+	go build -trimpath -ldflags="-s -w" -o bin/kapro-conformance ./cmd/kapro-conformance
 
 .PHONY: release-smoke
 release-smoke: ## Smoke-test Helm packaging and release workflow chart artifacts
