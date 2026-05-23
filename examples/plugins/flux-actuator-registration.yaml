@@ -1,0 +1,13 @@
+apiVersion: kapro.io/v1alpha2
+kind: Plugin
+metadata:
+  name: flux-actuator
+spec:
+  type: actuator
+  name: flux/helmrelease
+  protocol: grpc
+  endpoint: dns:///flux-actuator.kapro-system.svc:9090
+  timeout: 10s
+  parameters:
+    fluxNamespace: flux-system
+    helmRelease: checkout

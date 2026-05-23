@@ -20,7 +20,7 @@ Flux, Argo CD, OCI pull agents, and other delivery systems keep owning the local
 ---
 
 Kapro is **pre-stable public release software**, not GA. The current public
-preview release is `v0.3.6`; all Kubernetes APIs are now `kapro.io/v1alpha2`.
+preview release is `v0.3.7`; all Kubernetes APIs are now `kapro.io/v1alpha2`.
 If you have legacy `kapro.io/v1alpha1` manifests, follow the
 [v1alpha1 to v1alpha2 migration guide](docs/migration-v1alpha1-to-v1alpha2.md);
 this release does not provide automatic legacy conversion.
@@ -124,7 +124,7 @@ Install the released operator, apply the starter fleet from a source clone, and
 inspect the controller-owned runtime records:
 
 ```bash
-KAPRO_VERSION=0.3.6
+KAPRO_VERSION=0.3.7
 git clone --branch "v${KAPRO_VERSION}" https://github.com/Kapro-dev/kapro.git
 cd kapro
 helm upgrade --install kapro \
