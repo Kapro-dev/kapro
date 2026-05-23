@@ -11,9 +11,17 @@ const ContractVersionV1Alpha1 = kaproactuator.ContractVersionV1Alpha1
 
 type ApplyRequest = kaproactuator.ApplyRequest
 type DeltaApplyRequest = kaproactuator.DeltaApplyRequest
+type StageRequest = kaproactuator.StageRequest
+type StageHandle = kaproactuator.StageHandle
+type CommitResult = kaproactuator.CommitResult
 type Actuator = kaproactuator.Actuator
+type TwoPhaseStaging = kaproactuator.TwoPhaseStaging
 type BackendObjectReporter = kaproactuator.BackendObjectReporter
 type Capabilities = kaproactuator.Capabilities
 type Substrate = kaproactuator.Substrate
 
-var WithTracing = kaproactuator.WithTracing
+var (
+	ErrTwoPhaseUnsupported = kaproactuator.ErrTwoPhaseUnsupported
+	AsTwoPhase             = kaproactuator.AsTwoPhase
+	WithTracing            = kaproactuator.WithTracing
+)

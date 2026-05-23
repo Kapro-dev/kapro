@@ -24,6 +24,17 @@ type tracedBackendObjectReporter struct {
 	reporter BackendObjectReporter
 }
 
+type tracedTwoPhaseActuator struct {
+	*tracedActuator
+	staging TwoPhaseStaging
+}
+
+type tracedBackendObjectReporterTwoPhase struct {
+	*tracedActuator
+	reporter BackendObjectReporter
+	staging  TwoPhaseStaging
+}
+
 // WithTracing wraps an actuator with the standard Kapro OpenTelemetry span
 // contract. Registry.Resolve applies this automatically; SDK users can call it
 // directly when they invoke an actuator outside a Registry.
@@ -41,6 +52,12 @@ func withTracingCapabilities(name string, a Actuator, capabilities Capabilities)
 	if _, ok := a.(*tracedBackendObjectReporter); ok {
 		return a
 	}
+	if _, ok := a.(*tracedTwoPhaseActuator); ok {
+		return a
+	}
+	if _, ok := a.(*tracedBackendObjectReporterTwoPhase); ok {
+		return a
+	}
 	if substrate, ok := a.(Substrate); ok && capabilitiesEmpty(capabilities) {
 		capabilities = substrate.Capabilities()
 	}
@@ -48,6 +65,18 @@ func withTracingCapabilities(name string, a Actuator, capabilities Capabilities)
 		name:         name,
 		delegate:     a,
 		capabilities: capabilities.Normalize(),
+	}
+	reporter, hasReporter := a.(BackendObjectReporter)
+	staging, hasStaging := a.(TwoPhaseStaging)
+	if hasReporter && hasStaging {
+		return &tracedBackendObjectReporterTwoPhase{
+			tracedActuator: traced,
+			reporter:       reporter,
+			staging:        staging,
+		}
+	}
+	if hasStaging {
+		return &tracedTwoPhaseActuator{tracedActuator: traced, staging: staging}
 	}
 	if reporter, ok := a.(BackendObjectReporter); ok {
 		return &tracedBackendObjectReporter{tracedActuator: traced, reporter: reporter}
@@ -134,6 +163,87 @@ func (a *tracedBackendObjectReporter) BackendObjects(ctx context.Context, cluste
 	span.SetAttributes(attribute.Int("kapro.actuator.backend_objects", len(objects)))
 	recordActuatorError(span, err)
 	return objects, err
+}
+
+func (a *tracedTwoPhaseActuator) Prepare(ctx context.Context, req StageRequest) (StageHandle, error) {
+	return a.prepare(ctx, req, a.staging)
+}
+
+func (a *tracedTwoPhaseActuator) Commit(ctx context.Context, handle StageHandle) (CommitResult, error) {
+	return a.commit(ctx, handle, a.staging)
+}
+
+func (a *tracedTwoPhaseActuator) Discard(ctx context.Context, handle StageHandle) error {
+	return a.discard(ctx, handle, a.staging)
+}
+
+func (a *tracedBackendObjectReporterTwoPhase) BackendObjects(ctx context.Context, cluster *kaprov1alpha2.Cluster, desiredVersions map[string]string) ([]kaprov1alpha2.BackendObjectStatus, error) {
+	ctx, span := a.start(ctx, "kapro.actuator.backend_objects",
+		attribute.String("kapro.cluster", clusterName(cluster)),
+		attribute.Int("kapro.actuator.desired_versions", len(desiredVersions)),
+	)
+	defer span.End()
+	objects, err := a.reporter.BackendObjects(ctx, cluster, desiredVersions)
+	span.SetAttributes(attribute.Int("kapro.actuator.backend_objects", len(objects)))
+	recordActuatorError(span, err)
+	return objects, err
+}
+
+func (a *tracedBackendObjectReporterTwoPhase) Prepare(ctx context.Context, req StageRequest) (StageHandle, error) {
+	return a.prepare(ctx, req, a.staging)
+}
+
+func (a *tracedBackendObjectReporterTwoPhase) Commit(ctx context.Context, handle StageHandle) (CommitResult, error) {
+	return a.commit(ctx, handle, a.staging)
+}
+
+func (a *tracedBackendObjectReporterTwoPhase) Discard(ctx context.Context, handle StageHandle) error {
+	return a.discard(ctx, handle, a.staging)
+}
+
+func (a *tracedActuator) prepare(ctx context.Context, req StageRequest, staging TwoPhaseStaging) (StageHandle, error) {
+	ctx, span := a.start(ctx, "kapro.actuator.prepare",
+		attribute.String("kapro.cluster", clusterName(req.Cluster)),
+		attribute.Int("kapro.actuator.desired_versions", len(req.DesiredVersions)),
+		attribute.Bool("kapro.actuator.dry_run", req.DryRun),
+	)
+	defer span.End()
+	handle, err := staging.Prepare(ctx, req)
+	span.SetAttributes(
+		attribute.String("kapro.actuator.stage_handle", handle.ID),
+		attribute.String("kapro.actuator.backend", string(handle.Backend)),
+		attribute.Int("kapro.actuator.app_keys", len(handle.AppKeys)),
+	)
+	recordActuatorError(span, err)
+	return handle, err
+}
+
+func (a *tracedActuator) commit(ctx context.Context, handle StageHandle, staging TwoPhaseStaging) (CommitResult, error) {
+	ctx, span := a.start(ctx, "kapro.actuator.commit",
+		attribute.String("kapro.actuator.stage_handle", handle.ID),
+		attribute.String("kapro.actuator.backend", string(handle.Backend)),
+		attribute.Int("kapro.actuator.app_keys", len(handle.AppKeys)),
+	)
+	defer span.End()
+	result, err := staging.Commit(ctx, handle)
+	span.SetAttributes(
+		attribute.Int("kapro.actuator.applied", result.Applied),
+		attribute.String("kapro.delivery.phase", string(result.Phase)),
+	)
+	recordActuatorError(span, err)
+	return result, err
+}
+
+func (a *tracedActuator) discard(ctx context.Context, handle StageHandle, staging TwoPhaseStaging) error {
+	ctx, span := a.start(ctx, "kapro.actuator.discard",
+		attribute.String("kapro.actuator.stage_handle", handle.ID),
+		attribute.String("kapro.actuator.backend", string(handle.Backend)),
+		attribute.Int("kapro.actuator.app_keys", len(handle.AppKeys)),
+	)
+	defer span.End()
+	err := staging.Discard(ctx, handle)
+	recordActuatorError(span, err)
+	return err
 }
 
 func (a *tracedActuator) start(ctx context.Context, spanName string, attrs ...attribute.KeyValue) (context.Context, trace.Span) {

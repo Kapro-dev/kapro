@@ -1155,6 +1155,7 @@ func hasActuatorSupportBits(c actuator.Capabilities) bool {
 		c.SupportsRollback ||
 		c.SupportsConvergence ||
 		c.SupportsDelta ||
+		c.SupportsTwoPhase ||
 		c.SupportsBackendObjects ||
 		c.SupportsDryRun
 }

@@ -7,6 +7,14 @@ record for each tag.
 
 ## Unreleased
 
+### Added — two-phase actuator SDK extension
+
+Added the optional `pkg/kapro/actuator.TwoPhaseStaging` interface with
+`Prepare`, `Commit`, and `Discard`, plus stage request/handle/result types and
+the `SupportsTwoPhase` capability bit. The existing OCI pull delivery path
+continues to report spoke-side two-phase diagnostics without overclaiming
+hub-side staged-apply support.
+
 ### Added — actuator and spoke delivery trace coverage
 
 Actuator registry resolution now wraps hub-side delivery operations with
