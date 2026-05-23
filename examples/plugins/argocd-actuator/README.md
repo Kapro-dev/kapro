@@ -37,7 +37,7 @@ Build the external substrate image from the repository root:
 
 ```bash
 docker build -f examples/plugins/argocd-actuator/Dockerfile \
-  -t ghcr.io/kapro-dev/argocd-actuator:v0.3.6 .
+  -t ghcr.io/kapro-dev/argocd-actuator:v0.3.7 .
 ```
 
 For local testing against a kubeconfig:
@@ -45,7 +45,7 @@ For local testing against a kubeconfig:
 ```bash
 docker run --rm -p 9090:9090 \
   -v "$KUBECONFIG:/kubeconfig:ro" \
-  ghcr.io/kapro-dev/argocd-actuator:v0.3.6 \
+  ghcr.io/kapro-dev/argocd-actuator:v0.3.7 \
   --listen :9090 \
   --kubeconfig /kubeconfig \
   --namespace argocd

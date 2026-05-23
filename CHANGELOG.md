@@ -7,6 +7,13 @@ record for each tag.
 
 ## Unreleased
 
+### Added — external Flux substrate proof
+
+Added a deployable external Flux HelmRelease actuator substrate example with a
+distroless Dockerfile, scoped RBAC/Deployment/Service manifest, plugin
+registration manifest, conformance tests, and live `kapro-conformance`
+instructions.
+
 ### Added — external Argo CD substrate proof
 
 Added a deployable external Argo CD actuator substrate example with a
