@@ -13,7 +13,7 @@ start with the [Adoption Guide](adoption.md).
 
 ```bash
 KAPRO_VERSION=0.3.6
-git clone --branch main https://github.com/Kapro-dev/kapro.git
+git clone --branch "v${KAPRO_VERSION}" https://github.com/Kapro-dev/kapro.git
 cd kapro
 helm upgrade --install kapro \
   "https://github.com/Kapro-dev/kapro/releases/download/v${KAPRO_VERSION}/kapro-operator-${KAPRO_VERSION}.tgz" \

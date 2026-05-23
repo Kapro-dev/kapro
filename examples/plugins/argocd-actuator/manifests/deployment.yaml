@@ -23,6 +23,7 @@ metadata:
 rules:
   - apiGroups: ["argoproj.io"]
     resources: ["applications"]
+    resourceNames: ["checkout"]
     verbs: ["get", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -70,7 +71,7 @@ spec:
         fsGroup: 65532
       containers:
         - name: plugin
-          image: ghcr.io/kapro-dev/argocd-actuator:latest
+          image: ghcr.io/kapro-dev/argocd-actuator:v0.3.6
           imagePullPolicy: IfNotPresent
           args:
             - --listen

@@ -37,7 +37,7 @@ Build the external substrate image from the repository root:
 
 ```bash
 docker build -f examples/plugins/argocd-actuator/Dockerfile \
-  -t ghcr.io/kapro-dev/argocd-actuator:latest .
+  -t ghcr.io/kapro-dev/argocd-actuator:v0.3.6 .
 ```
 
 For local testing against a kubeconfig:
@@ -45,7 +45,7 @@ For local testing against a kubeconfig:
 ```bash
 docker run --rm -p 9090:9090 \
   -v "$KUBECONFIG:/kubeconfig:ro" \
-  ghcr.io/kapro-dev/argocd-actuator:latest \
+  ghcr.io/kapro-dev/argocd-actuator:v0.3.6 \
   --listen :9090 \
   --kubeconfig /kubeconfig \
   --namespace argocd
@@ -72,10 +72,11 @@ The deployable substrate manifest is
 
 - a `kapro-system/argocd-actuator` ServiceAccount, Deployment, and Service;
 - an `argocd/argocd-actuator` Role that can `get` and `patch` Argo CD
-  `Application` objects;
+  the `checkout` Argo CD `Application`;
 - a RoleBinding from the Argo CD namespace to the Kapro plugin ServiceAccount.
 
-Apply it after replacing the image with your published build:
+Apply it after replacing the image with your published build and adjusting
+`rules[].resourceNames` if your Application is not named `checkout`:
 
 ```bash
 kubectl apply -f examples/plugins/argocd-actuator/manifests/deployment.yaml
