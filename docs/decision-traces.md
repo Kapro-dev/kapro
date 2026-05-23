@@ -33,11 +33,20 @@ spec:
 | `Rollback` | Automatic rollback target creation or rollback action. |
 | `Suspend` | PromotionRun, target, or cluster suspend prevented progress. |
 | `Stage` | Stage entry, completion, failure policy, skip, or halt decision. |
+| `Delivery` | Hub-observed spoke delivery status, including OCI staging and commit diagnostics. |
 
 Each trace includes `promotionRun`, `source`, `eventType`, `phase`, `reason`,
 `message`, and optional `plan`, `stage`, `target`, and bounded `evidence`.
 Evidence is intentionally small and non-secret. Long-term archive integrations
 store full CloudEvents envelopes separately.
+
+Delivery traces are emitted by the hub operator from observed
+`Cluster.status.delivery`, not directly by spokes. This keeps per-cluster RBAC
+narrow and lets optional DecisionTrace signing remain centralized. For OCI
+spoke delivery, evidence includes the app key, desired version, observed digest,
+artifact format, applied object count, and staged-delivery counts such as
+`stagedObjects`, `stagingFailedObjects`, `committedObjects`,
+`commitFailedObjects`, and `stagingFailurePhase`.
 
 ## Explain a PromotionRun
 
