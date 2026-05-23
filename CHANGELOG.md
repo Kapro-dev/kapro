@@ -109,6 +109,12 @@ validation, delay first-observation status, examples, and docs.
 Added the public `pkg/kapro/adapter` SDK surface with a registry and reference
 Argo CD, Flux, and OCI adapter packages.
 
+### Added — server adapter registrars
+
+Added composable `pkg/kapro/server` adapter registrars so embedded operators
+can override or disable the built-in Argo CD, Flux, and OCI reference adapter
+registration independently from actuator registration.
+
 ## v0.1.2 — 2026-05-22
 
 ### Added — Go SDK scaffold
