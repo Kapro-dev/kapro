@@ -89,6 +89,8 @@ The alert rules cover:
 | `KaproFleetDriftSignalsIncomplete` | A FleetDriftReport stays `Unknown` because cluster/version signals are missing |
 | `KaproFleetDriftReportFailed` | A FleetDriftReport stays `Failed` |
 | `KaproFleetDriftReportPending` | A FleetDriftReport stays `Pending` beyond the rollout window |
+| `KaproSpokeDeliveryErrors` | A spoke reports sustained delivery reconcile errors |
+| `KaproSpokeDeliveryLatencyHigh` | Spoke delivery p95 exceeds the configured threshold |
 
 Tune alert windows and thresholds per fleet size. Small test clusters should use
 longer `for` windows to avoid noise from deliberate failure tests.
@@ -353,6 +355,48 @@ Mitigation:
   refresh.
 - Use `allowMissing=true` or `allowStale=true` on `max-drift` only for
   deliberate bootstrap windows; remove it after the report controller is healthy.
+
+## Runbook: Spoke Delivery
+
+Symptoms:
+
+- `KaproSpokeDeliveryErrors` or `KaproSpokeDeliveryLatencyHigh` fires.
+- `kapro_spoke_delivery_reconciles_total{result="error"}` increases.
+- `Cluster.status.delivery[app].lastError` is populated or stale.
+
+Triage:
+
+1. Inspect the hub-side Cluster delivery status:
+
+   ```bash
+   kubectl get cluster <cluster> -o yaml
+   ```
+
+   Check `status.delivery`, `status.currentVersions`, heartbeat freshness, and
+   whether `spec.suspend=true`.
+
+2. Inspect the spoke pod and local backend:
+
+   ```bash
+   kubectl -n kapro-system logs -l app.kubernetes.io/component=spoke-agent --since=30m
+   kubectl -n kapro-system get svc -l app.kubernetes.io/component=spoke-agent
+   ```
+
+3. Check whether errors are backend-specific:
+
+   ```promql
+   sum by (cluster, backend, result) (rate(kapro_spoke_delivery_reconciles_total[10m]))
+   histogram_quantile(0.95, sum by (cluster, backend, le) (rate(kapro_spoke_delivery_reconcile_duration_seconds_bucket[10m])))
+   ```
+
+Mitigation:
+
+- For `backend="oci"`, verify artifact pull credentials, artifact existence,
+  and server-side apply conflicts in the spoke logs.
+- For `backend="flux"`, inspect local `OCIRepository` and `HelmRelease`
+  readiness.
+- If latency rises without errors, check spoke API server throttling and plugin
+  or backend controller response time before increasing delivery interval.
 
 ## Runbook: Gate Failure
 

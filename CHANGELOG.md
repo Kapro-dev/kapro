@@ -7,6 +7,12 @@ record for each tag.
 
 ## Unreleased
 
+### Added — spoke delivery SLO assets
+
+Added Prometheus recording rules, alerts, dashboard panels, and runbook
+guidance for `kapro-cluster-controller` delivery error rate and p95 latency
+using the v0.4.3 spoke delivery metrics.
+
 ### Added — spoke delivery metrics
 
 Added a Prometheus `/metrics` endpoint to `kapro-cluster-controller`, plus

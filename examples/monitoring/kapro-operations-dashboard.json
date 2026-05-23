@@ -121,6 +121,26 @@
       ],
       "title": "Fleet Drift Counts",
       "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 36},
+      "id": 12,
+      "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single", "sort": "none"}},
+      "targets": [{"expr": "sum(rate(kapro_spoke_delivery_reconciles_total[5m])) by (cluster, backend, result)", "legendFormat": "{{cluster}} {{backend}} {{result}}", "refId": "A"}],
+      "title": "Spoke Delivery Outcomes",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 36},
+      "id": 13,
+      "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single", "sort": "none"}},
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(kapro_spoke_delivery_reconcile_duration_seconds_bucket[10m])) by (cluster, backend, le))", "legendFormat": "{{cluster}} {{backend}} p95", "refId": "A"}],
+      "title": "Spoke Delivery Latency p95",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",

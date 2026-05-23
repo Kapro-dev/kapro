@@ -48,6 +48,15 @@ spec:
         - record: kapro:slo_fleetdriftreport_drifted_backend_objects
           expr: |
             kapro_fleetdriftreport_backend_objects{state="drifted"}
+        - record: kapro:slo_spoke_delivery_error_rate10m
+          expr: |
+            sum by (cluster, backend) (rate(kapro_spoke_delivery_reconciles_total{result="error"}[10m]))
+        - record: kapro:slo_spoke_delivery_p95_seconds10m
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (cluster, backend, le) (rate(kapro_spoke_delivery_reconcile_duration_seconds_bucket[10m]))
+            )
     - name: kapro.controller
       rules:
         - alert: KaproControllerReconcileErrors
@@ -162,6 +171,28 @@ spec:
             summary: "Kapro drift report {{ $labels.report }} is pending for too long"
             description: "FleetDriftReport {{ $labels.report }} has remained Pending for 2 hours. Check rollout progress and whether Targets are still converging."
             runbook: "docs/operations.md#runbook-fleet-drift"
+    - name: kapro.spokes
+      rules:
+        - alert: KaproSpokeDeliveryErrors
+          expr: |
+            kapro:slo_spoke_delivery_error_rate10m > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kapro spoke {{ $labels.cluster }} delivery errors detected"
+            description: "Cluster {{ $labels.cluster }} backend {{ $labels.backend }} has had delivery reconcile errors for 15 minutes."
+            runbook: "docs/operations.md#runbook-spoke-delivery"
+        - alert: KaproSpokeDeliveryLatencyHigh
+          expr: |
+            kapro:slo_spoke_delivery_p95_seconds10m > 30
+          for: 20m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kapro spoke {{ $labels.cluster }} delivery p95 is high"
+            description: "Cluster {{ $labels.cluster }} backend {{ $labels.backend }} delivery reconcile p95 has been above 30 seconds for 20 minutes."
+            runbook: "docs/operations.md#runbook-spoke-delivery"
     - name: kapro.plugins
       rules:
         - alert: KaproPluginProbeFailure
