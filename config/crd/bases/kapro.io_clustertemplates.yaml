@@ -363,8 +363,8 @@ spec:
                             description: |-
                               MaterialSource selects where the hub publishes the short-lived bootstrap
                               kubeconfig material. When omitted, the existing Kubernetes Secret path is
-                              used. Vault is a v0.2.3 preview contract and is rejected fail-closed by the
-                              controller unless explicitly implemented by platform automation.
+                              used. Vault is a preview contract and is rejected fail-closed by the
+                              built-in controller unless explicitly implemented by platform automation.
                             properties:
                               type:
                                 default: KubernetesSecret
@@ -377,7 +377,8 @@ spec:
                               vault:
                                 description: |-
                                   Vault describes the external Vault location to publish or read bootstrap
-                                  kubeconfig material from. This is a preview API contract only in v0.2.3.
+                                  kubeconfig material from. This is a preview API contract; the built-in
+                                  controller does not publish Vault material.
                                 properties:
                                   address:
                                     description: |-

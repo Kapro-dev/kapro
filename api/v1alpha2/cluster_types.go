@@ -349,8 +349,8 @@ type ClusterBootstrapSpec struct {
 
 	// MaterialSource selects where the hub publishes the short-lived bootstrap
 	// kubeconfig material. When omitted, the existing Kubernetes Secret path is
-	// used. Vault is a v0.2.3 preview contract and is rejected fail-closed by the
-	// controller unless explicitly implemented by platform automation.
+	// used. Vault is a preview contract and is rejected fail-closed by the
+	// built-in controller unless explicitly implemented by platform automation.
 	// +optional
 	MaterialSource *ClusterBootstrapMaterialSource `json:"materialSource,omitempty"`
 }
@@ -366,7 +366,8 @@ const (
 	ClusterBootstrapMaterialKubernetesSecret ClusterBootstrapMaterialSourceType = "KubernetesSecret"
 	// ClusterBootstrapMaterialVault declares that bootstrap material should be
 	// published through a Vault path instead of a Kubernetes Secret. The built-in
-	// controller records this intent but fails closed in v0.2.3.
+	// controller records this intent but fails closed unless an external
+	// material publisher implements the Vault path.
 	ClusterBootstrapMaterialVault ClusterBootstrapMaterialSourceType = "Vault"
 )
 
@@ -380,7 +381,8 @@ type ClusterBootstrapMaterialSource struct {
 	Type ClusterBootstrapMaterialSourceType `json:"type,omitempty"`
 
 	// Vault describes the external Vault location to publish or read bootstrap
-	// kubeconfig material from. This is a preview API contract only in v0.2.3.
+	// kubeconfig material from. This is a preview API contract; the built-in
+	// controller does not publish Vault material.
 	// +optional
 	Vault *VaultBootstrapMaterialSource `json:"vault,omitempty"`
 }
@@ -598,8 +600,8 @@ func (s *ClusterStatus) IsHeartbeatFresh(timeout time.Duration) bool {
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Cluster represents one physical cluster in the Fleet fleet.
-// It merges delivery config, fleet registration state,
-// and BootstrapToken (one-time registration credential) into a single resource.
+// It merges delivery config, fleet registration state, and the embedded
+// one-time CSR bootstrap credential slot into a single resource.
 //
 // Labels on Cluster drive Plan stage selection (tier, region, wave, cloud, etc.).
 type Cluster struct {

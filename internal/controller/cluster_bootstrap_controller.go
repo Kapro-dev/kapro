@@ -210,8 +210,8 @@ func (r *ClusterBootstrapReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return r.handleRegistered(ctx, fc)
 	}
 
-	// Phase 4.5 — Vault-published bootstrap material is a preview contract in
-	// v0.2.3. Existing pending CSRs are still processed above, but new bootstrap
+	// Phase 4.5 — Vault-published bootstrap material is a preview contract.
+	// Existing pending CSRs are still processed above, but new bootstrap
 	// material must fail closed instead of silently falling back to a Kubernetes
 	// Secret and surprising operators who selected Vault.
 	if usesVaultBootstrapMaterial(fc) {
@@ -378,8 +378,8 @@ func (r *ClusterBootstrapReconciler) markAwaitingCSR(ctx context.Context, fc *ka
 
 // markVaultBootstrapDisabled records that the Cluster selected Vault material
 // publication, which the built-in bootstrap reconciler does not implement in
-// v0.2.3. This is fail-closed by design: no Kubernetes Secret is minted as a
-// fallback because that would violate the operator's selected trust boundary.
+// this release. This is fail-closed by design: no Kubernetes Secret is minted
+// as a fallback because that would violate the operator's selected trust boundary.
 func (r *ClusterBootstrapReconciler) markVaultBootstrapDisabled(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
 	patch := client.MergeFrom(fc.DeepCopy())
 	fc.Status.ObservedGeneration = fc.Generation
