@@ -28,13 +28,39 @@ func TestCheckReportsContextCancellationFailure(t *testing.T) {
 	t.Fatalf("Check did not report ApplyRespectsContextCancellation failure: %#v", report.Failed())
 }
 
+func TestCheckReportsMissingRequiredCapabilities(t *testing.T) {
+	report := Check(context.Background(), missingCapabilitiesActuatorClient{}, DefaultScenario())
+	if report.Passed() {
+		t.Fatalf("Check passed for actuator with missing capabilities: %#v", report)
+	}
+	for _, result := range report.Failed() {
+		if result.Name == "GetCapabilitiesReportsRequiredCapabilities" &&
+			strings.Contains(result.Message, "missing required capabilities") {
+			return
+		}
+	}
+	t.Fatalf("Check did not report missing capabilities: %#v", report.Failed())
+}
+
+type missingCapabilitiesActuatorClient struct {
+	fakeActuatorClient
+}
+
+func (missingCapabilitiesActuatorClient) GetCapabilities(context.Context, *kaiv1alpha1.GetCapabilitiesRequest, ...grpc.CallOption) (*kaiv1alpha1.GetCapabilitiesResponse, error) {
+	return &kaiv1alpha1.GetCapabilitiesResponse{
+		ContractVersion: "v1alpha1",
+		PluginVersion:   "test",
+		Capabilities:    []string{"apply"},
+	}, nil
+}
+
 type fakeActuatorClient struct{}
 
 func (fakeActuatorClient) GetCapabilities(context.Context, *kaiv1alpha1.GetCapabilitiesRequest, ...grpc.CallOption) (*kaiv1alpha1.GetCapabilitiesResponse, error) {
 	return &kaiv1alpha1.GetCapabilitiesResponse{
 		ContractVersion: "v1alpha1",
 		PluginVersion:   "test",
-		Capabilities:    []string{"apply", "rollback"},
+		Capabilities:    []string{"apply", "convergence", "rollback"},
 	}, nil
 }
 

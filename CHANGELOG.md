@@ -7,6 +7,13 @@ record for each tag.
 
 ## Unreleased
 
+### Added — versioned actuator plugin contract
+
+Published canonical KAI v1alpha1 capability names for actuator plugin authors,
+tightened actuator conformance so plugins must report the base capabilities the
+suite exercises, and documented how the in-process actuator SDK maps to the
+gRPC KAI plugin contract.
+
 ### Added — `promotionrun-gc` retention controller (preview, ADR-0015)
 
 Tier B opt-in controller that prunes terminal `PromotionRun` objects beyond

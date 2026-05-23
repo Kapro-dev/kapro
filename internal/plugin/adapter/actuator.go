@@ -3,7 +3,6 @@ package adapter
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
@@ -216,20 +215,19 @@ func actuatorCapabilitiesForPlugin(reg kaprov1alpha2.Plugin) actuator.Capabiliti
 		Runtime:         kaprov1alpha2.BackendRuntimeBoth,
 	}
 	for _, capability := range reg.Status.Capabilities {
-		capability = strings.ToLower(capability)
 		switch {
-		case strings.Contains(capability, "apply"):
+		case kaiv1alpha1.HasCapability([]string{capability}, kaiv1alpha1.CapabilityApply):
 			caps.SupportsApply = true
-		case strings.Contains(capability, "rollback"):
+		case kaiv1alpha1.HasCapability([]string{capability}, kaiv1alpha1.CapabilityRollback):
 			caps.SupportsRollback = true
-		case strings.Contains(capability, "convergence") || strings.Contains(capability, "observe"):
+		case kaiv1alpha1.HasAnyCapability([]string{capability}, kaiv1alpha1.CapabilityConvergence, kaiv1alpha1.CapabilityObserve):
 			caps.SupportsObserve = true
 			caps.SupportsConvergence = true
-		case strings.Contains(capability, "delta"):
+		case kaiv1alpha1.HasCapability([]string{capability}, kaiv1alpha1.CapabilityDelta):
 			caps.SupportsDelta = true
-		case strings.Contains(capability, "backendobject") || strings.Contains(capability, "backend-object"):
+		case kaiv1alpha1.HasCapability([]string{capability}, kaiv1alpha1.CapabilityBackendObjects):
 			caps.SupportsBackendObjects = true
-		case strings.Contains(capability, "dry-run") || strings.Contains(capability, "dryrun"):
+		case kaiv1alpha1.HasCapability([]string{capability}, kaiv1alpha1.CapabilityDryRun):
 			caps.SupportsDryRun = true
 		}
 	}
