@@ -39,6 +39,7 @@ Preview. The table below is the source of truth for the current contract level.
 | Trigger CRD | `api/v1alpha2` `Trigger` | Preview |
 | Plugin CRD | `api/v1alpha2` `Plugin` | Preview |
 | GateExpression CRD | `api/v1alpha2` `GateExpression` | Preview; full algebra enabled in `v0.2.x` |
+| DecisionTrace CRD | `api/v1alpha2` `DecisionTrace` | Preview |
 | Agent decision APIs | `api/v1alpha2` `Policy`, `Target.status.decisionTrace`, Decision API HTTP routes | Preview |
 | Fleet auto-import CRD | `api/v1alpha2` `ClusterTemplate` | Preview; only implemented sources are runtime features |
 | In-process actuator interface | `pkg/actuator` | Preview |
@@ -67,9 +68,10 @@ operator runtime.
 
 Preview APIs are intentionally separated from that core. Inline gate
 notifications remain the active runtime path; there is no public notification
-provider/policy CRD in the KISS API. `Policy`,
-`Target.status.decisionTrace`, and the Decision API are opt-in surfaces
-for machine assistance, not required for deterministic promotion execution.
+provider/policy CRD in the KISS API. `DecisionTrace` records the durable
+controller audit stream. `Policy`, `Target.status.decisionTrace`, and the
+Decision API are opt-in surfaces for machine assistance, not required for
+deterministic promotion execution.
 `ClusterTemplate` auto-import sources are only runtime features when the
 source is implemented by the controller; unsupported sources must be documented
 as future work rather than claimed as supported behavior.

@@ -13,6 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"kapro.io/kapro/internal/controller"
+	"kapro.io/kapro/internal/decisiontrace"
 	internalgate "kapro.io/kapro/internal/gate"
 	celgate "kapro.io/kapro/internal/gate/cel"
 	jobgate "kapro.io/kapro/internal/gate/job"
@@ -122,6 +123,9 @@ func startPromotionRunController(ctx context.Context, cc ControllerContext) (boo
 		GateRegistry:     cc.GateRegistry,
 		Planner:          cc.Planner,
 		StagePublisher:   stageDispatcher,
+		DecisionTraceEmitter: decisiontrace.Emitter{
+			Client: cc.Manager.GetClient(),
+		},
 	}
 	if cc.ShardName != "" {
 		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: cc.ShardIsDefault}
@@ -147,6 +151,9 @@ func startPromotionTargetController(ctx context.Context, cc ControllerContext) (
 		ExternalURL:      cc.ExternalURL,
 		GateRegistry:     cc.GateRegistry,
 		StagePublisher:   stageDispatcher,
+		DecisionTraceEmitter: decisiontrace.Emitter{
+			Client: cc.Manager.GetClient(),
+		},
 	}
 	if cc.ShardName != "" {
 		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: cc.ShardIsDefault}

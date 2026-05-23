@@ -1,0 +1,158 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: decisiontraces.kapro.io
+spec:
+  group: kapro.io
+  names:
+    categories:
+    - kapro-all
+    kind: DecisionTrace
+    listKind: DecisionTraceList
+    plural: decisiontraces
+    shortNames:
+    - dtrace
+    singular: decisiontrace
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.promotionRun
+      name: Run
+      type: string
+    - jsonPath: .spec.eventType
+      name: Type
+      type: string
+    - jsonPath: .spec.stage
+      name: Stage
+      type: string
+    - jsonPath: .spec.target
+      name: Target
+      type: string
+    - jsonPath: .spec.phase
+      name: Phase
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha2
+    schema:
+      openAPIV3Schema:
+        description: |-
+          DecisionTrace is a durable append-only audit record for promotion decisions.
+          Target.status.decisionTrace remains the Decision API's inline approval trace;
+          this CRD is the cluster-wide controller decision stream used by audit tools.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: DecisionTraceSpec is one durable audit record for a controller
+              decision.
+            properties:
+              eventType:
+                description: EventType identifies the controller decision category.
+                enum:
+                - GateEvaluate
+                - BatchProgress
+                - Rollback
+                - Suspend
+                - Stage
+                type: string
+              evidence:
+                description: Evidence contains small, non-secret supporting facts
+                  for the decision.
+                items:
+                  description: |-
+                    DecisionTraceEvidence records bounded, non-secret supporting facts for a
+                    controller decision.
+                  properties:
+                    detail:
+                      additionalProperties:
+                        type: string
+                      description: |-
+                        Detail carries small key-value facts. Do not store secrets or large
+                        payloads here; external archive integrations keep full event envelopes.
+                      type: object
+                    source:
+                      description: Source identifies the subsystem or plugin that
+                        produced this evidence.
+                      type: string
+                    type:
+                      description: Type identifies the evidence kind, for example
+                        gate, planner, or policy.
+                      type: string
+                  type: object
+                type: array
+              message:
+                description: Message is a bounded human-readable explanation.
+                type: string
+              phase:
+                description: Phase is the resulting phase or decision outcome.
+                type: string
+              plan:
+                description: Plan is the plan node within the PromotionRun, when applicable.
+                type: string
+              promotionRun:
+                description: PromotionRun is the PromotionRun this decision belongs
+                  to.
+                minLength: 1
+                type: string
+              reason:
+                description: Reason is a short machine-readable reason.
+                type: string
+              source:
+                description: Source is the controller, gate, planner, or plugin that
+                  made the decision.
+                minLength: 1
+                type: string
+              stage:
+                description: Stage is the stage name within the plan, when applicable.
+                type: string
+              target:
+                description: Target is the cluster or rollout target, when applicable.
+                type: string
+              time:
+                description: Time is when the decision was made.
+                format: date-time
+                type: string
+            required:
+            - eventType
+            - promotionRun
+            - source
+            - time
+            type: object
+          status:
+            description: DecisionTraceStatus reserves the signing surface for v0.3.x
+              follow-up work.
+            properties:
+              signatureRef:
+                description: |-
+                  SignatureRef points at the external signature record, for example a Rekor
+                  entry, when signing is enabled.
+                type: string
+              signed:
+                description: Signed records whether this trace has an attached signature.
+                type: boolean
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

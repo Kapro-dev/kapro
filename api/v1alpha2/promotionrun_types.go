@@ -511,7 +511,7 @@ type TargetStatus struct {
 	// for this target's approval gates. Written by the Decision API (webhook
 	// server), never by the Target reconciler.
 	// +optional
-	DecisionTrace *DecisionTrace `json:"decisionTrace,omitempty"`
+	DecisionTrace *TargetDecisionTrace `json:"decisionTrace,omitempty"`
 }
 
 // +kubebuilder:object:root=true

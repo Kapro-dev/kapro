@@ -4,6 +4,7 @@ resources:
 - bases/kapro.io_backends.yaml
 - bases/kapro.io_clusters.yaml
 - bases/kapro.io_clustertemplates.yaml
+- bases/kapro.io_decisiontraces.yaml
 - bases/kapro.io_fleets.yaml
 - bases/kapro.io_gateexpressions.yaml
 - bases/kapro.io_plans.yaml

@@ -7,6 +7,13 @@ record for each tag.
 
 ## Unreleased
 
+### Added — DecisionTrace audit stream
+
+Added the cluster-scoped `DecisionTrace` CRD plus non-blocking controller
+emitters for gate evaluation, planner and stage-strategy decisions, rollback,
+suspend, and stage progress. Existing `Target.status.decisionTrace` approval
+audit data remains in place for Decision API approvals.
+
 ### Added — versioned actuator plugin contract
 
 Published canonical KAI v1alpha1 capability names for actuator plugin authors,

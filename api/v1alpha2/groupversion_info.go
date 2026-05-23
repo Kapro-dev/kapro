@@ -18,6 +18,7 @@ func init() {
 		&Backend{}, &BackendList{},
 		&Cluster{}, &ClusterList{},
 		&ClusterTemplate{}, &ClusterTemplateList{},
+		&DecisionTrace{}, &DecisionTraceList{},
 		&Fleet{}, &FleetList{},
 		&GateExpression{}, &GateExpressionList{},
 		&Plan{}, &PlanList{},
