@@ -362,6 +362,7 @@ Symptoms:
 
 - `KaproSpokeDeliveryErrors` or `KaproSpokeDeliveryLatencyHigh` fires.
 - `kapro_spoke_delivery_reconciles_total{result="error"}` increases.
+- `kapro_spoke_delivery_staging_results_total{result="error"}` increases.
 - `Cluster.status.delivery[app].lastError` is populated or stale.
 
 Triage:
@@ -373,7 +374,10 @@ Triage:
    ```
 
    Check `status.delivery`, `status.currentVersions`, heartbeat freshness, and
-   whether `spec.suspend=true`.
+   whether `spec.suspend=true`. For OCI delivery, inspect
+   `status.delivery[app].staging.failurePhase`: `Staging` means render or
+   server-side dry-run failed before live mutation, while `Applying` means the
+   commit phase started and may have partially applied objects before failing.
 
 2. Inspect the spoke pod and local backend:
 
@@ -387,12 +391,17 @@ Triage:
    ```promql
    sum by (cluster, backend, result) (rate(kapro_spoke_delivery_reconciles_total[10m]))
    histogram_quantile(0.95, sum by (cluster, backend, le) (rate(kapro_spoke_delivery_reconcile_duration_seconds_bucket[10m])))
+   sum by (cluster, backend, phase, result) (rate(kapro_spoke_delivery_staging_results_total[10m]))
    ```
 
 Mitigation:
 
 - For `backend="oci"`, verify artifact pull credentials, artifact existence,
-  and server-side apply conflicts in the spoke logs.
+  renderer output, and server-side apply conflicts in the spoke logs. A
+  `Staging` failure is safe to retry after fixing the artifact or invalid object
+  because no commit ran. An `Applying` failure should be compared against the
+  local cluster state because Kubernetes does not provide multi-object rollback
+  after commit starts.
 - For `backend="flux"`, inspect local `OCIRepository` and `HelmRelease`
   readiness.
 - If latency rises without errors, check spoke API server throttling and plugin

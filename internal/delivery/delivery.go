@@ -66,6 +66,7 @@ type ReconcileResult struct {
 	Phase           string
 	Format          Format
 	ObservedDigest  string
+	Staging         *kaprov1alpha2.DeliveryStagingStatus
 	AppliedObjects  int32
 	LastAttemptedAt time.Time
 	LastAppliedAt   time.Time
@@ -118,6 +119,7 @@ func (d *Delivery) Reconcile(ctx context.Context, req ReconcileRequest) Reconcil
 	pa, err := d.Puller.Pull(ctx, req.Ref)
 	if err != nil {
 		out.Phase = string(kaprov1alpha2.DeliveryPhaseFailed)
+		out.Staging = stagingFailureStatus(kaprov1alpha2.DeliveryPhasePulling, ApplyResult{})
 		out.Err = fmt.Errorf("pull %s: %w", req.Ref.String(), err)
 		return out
 	}
@@ -127,6 +129,7 @@ func (d *Delivery) Reconcile(ctx context.Context, req ReconcileRequest) Reconcil
 	format, err := DetectFormat(pa)
 	if err != nil {
 		out.Phase = string(kaprov1alpha2.DeliveryPhaseFailed)
+		out.Staging = stagingFailureStatus(kaprov1alpha2.DeliveryPhaseStaging, ApplyResult{})
 		out.Err = fmt.Errorf("detect format: %w", err)
 		return out
 	}
@@ -136,12 +139,14 @@ func (d *Delivery) Reconcile(ctx context.Context, req ReconcileRequest) Reconcil
 	renderer, ok := d.Renderers[format]
 	if !ok {
 		out.Phase = string(kaprov1alpha2.DeliveryPhaseFailed)
+		out.Staging = stagingFailureStatus(kaprov1alpha2.DeliveryPhaseStaging, ApplyResult{})
 		out.Err = fmt.Errorf("format %q not supported by this build", format)
 		return out
 	}
 	rendered, err := renderer.Render(ctx, pa, req.Options)
 	if err != nil {
 		out.Phase = string(kaprov1alpha2.DeliveryPhaseFailed)
+		out.Staging = stagingFailureStatus(kaprov1alpha2.DeliveryPhaseStaging, ApplyResult{})
 		out.Err = fmt.Errorf("render %s: %w", format, err)
 		return out
 	}
@@ -151,21 +156,50 @@ func (d *Delivery) Reconcile(ctx context.Context, req ReconcileRequest) Reconcil
 		// nothing the spoke can apply, which is almost always a bug in the
 		// promotion pipeline. Cheap to spot here, painful to debug later.
 		out.Phase = string(kaprov1alpha2.DeliveryPhaseFailed)
+		out.Staging = stagingFailureStatus(kaprov1alpha2.DeliveryPhaseStaging, ApplyResult{})
 		out.Err = fmt.Errorf("render %s: zero objects", format)
 		return out
 	}
 
 	// Apply (two-phase).
 	res, err := d.Engine.Apply(ctx, rendered.Objects)
+	out.Staging = stagingStatusFromApply(res)
 	out.AppliedObjects = int32(res.Committed)
 	if err != nil {
 		out.Phase = string(kaprov1alpha2.DeliveryPhaseFailed)
+		if out.Staging.FailurePhase == "" {
+			out.Staging.FailurePhase = kaprov1alpha2.DeliveryPhaseStaging
+		}
 		out.Err = err
 		return out
 	}
 	out.Phase = string(kaprov1alpha2.DeliveryPhaseConverged)
 	out.LastAppliedAt = now()
 	return out
+}
+
+func stagingStatusFromApply(res ApplyResult) *kaprov1alpha2.DeliveryStagingStatus {
+	status := &kaprov1alpha2.DeliveryStagingStatus{
+		Type:                 kaprov1alpha2.DeliveryStagingTwoPhase,
+		FailurePolicy:        kaprov1alpha2.DeliveryStagingFailureAbort,
+		StagedObjects:        int32(res.Staged),
+		StagingFailedObjects: int32(res.StagingFailedObjects()),
+		CommittedObjects:     int32(res.Committed),
+		CommitFailedObjects:  int32(res.CommitFailedObjects()),
+	}
+	switch {
+	case res.StagingFailed():
+		status.FailurePhase = kaprov1alpha2.DeliveryPhaseStaging
+	case res.CommitFailed():
+		status.FailurePhase = kaprov1alpha2.DeliveryPhaseApplying
+	}
+	return status
+}
+
+func stagingFailureStatus(phase kaprov1alpha2.DeliveryPhase, res ApplyResult) *kaprov1alpha2.DeliveryStagingStatus {
+	status := stagingStatusFromApply(res)
+	status.FailurePhase = phase
+	return status
 }
 
 // RegisterRenderer adds (or replaces) a Renderer for the given format.

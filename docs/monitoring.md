@@ -96,6 +96,7 @@ and a metrics Service by default.
 | --- | --- | --- | --- |
 | `kapro_spoke_delivery_reconciles_total` | Counter | `cluster`, `backend`, `phase`, `result` | Spoke delivery reconcile outcomes. |
 | `kapro_spoke_delivery_reconcile_duration_seconds` | Histogram | `cluster`, `backend`, `phase`, `result` | Spoke delivery reconcile duration. |
+| `kapro_spoke_delivery_staging_results_total` | Counter | `cluster`, `backend`, `phase`, `result` | OCI spoke staging/apply phase outcomes. `phase` is `Staging` or `Applying`; `result` is `success` or `error`. |
 
 ## kube-state-metrics CRD Metrics
 
@@ -149,6 +150,8 @@ The PrometheusRule example includes alert expressions for:
   phases using first-class Kapro metrics.
 - spoke delivery error rate and p95 latency using
   `kapro_spoke_delivery_*` metrics from `kapro-cluster-controller`.
+- OCI staged delivery dry-run and commit outcomes using
+  `kapro_spoke_delivery_staging_results_total`.
 
 These alerts are examples, not universal SLOs. Tune thresholds to your promotionrun
 cadence, cluster count, and expected gate retry behavior.
@@ -168,7 +171,7 @@ Use alerts as routing signals, then follow the operational runbooks in
 | `KaproLifecycleSinkP99High` | First Response | lifecycle hook duration histogram, sink endpoint logs, retry/backoff settings |
 | `KaproControllerReconcileErrors` | First Response | controller logs, status write metrics, Kubernetes Events |
 | `KaproFleetDriftDetected` / `KaproFleetDriftSignalsIncomplete` / `KaproFleetDriftReportFailed` / `KaproFleetDriftReportPending` | Fleet Drift | FleetDriftReport status, drift metrics, Target and Cluster status |
-| `KaproSpokeDeliveryErrors` / `KaproSpokeDeliveryLatencyHigh` | Spoke Delivery | Cluster delivery status, spoke logs, spoke delivery metrics |
+| `KaproSpokeDeliveryErrors` / `KaproSpokeDeliveryStagingErrors` / `KaproSpokeDeliveryLatencyHigh` | Spoke Delivery | Cluster delivery status, spoke logs, spoke delivery metrics |
 
 Alert names differ slightly between the generic alert rules and the Prometheus
 Operator examples, but they intentionally route to the same runbooks.

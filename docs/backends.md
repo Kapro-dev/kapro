@@ -38,6 +38,18 @@ Use these policies through discovery/adoption configuration, for example
 Backend behavior is selected through `Backend` and cluster delivery
 settings. A fleet may mix modes across clusters.
 
+## Staged Delivery Semantics
+
+The OCI spoke backend uses validation-atomic staged delivery. Kapro renders the
+artifact, server-side dry-runs every object, and commits only after the full
+dry-run pass succeeds. A dry-run failure leaves live objects untouched and is
+reported in `Cluster.status.delivery[app].staging`.
+
+This is not a Kubernetes multi-object transaction. If the commit phase starts
+and the API server or network fails partway through, some objects may already be
+committed. Kapro reports that as `failurePhase: Applying`, records staged,
+committed, and failed object counts, and retries on the next spoke reconcile.
+
 ## Brownfield Adoption
 
 For existing Flux or Argo CD estates, use observe-first workflows:

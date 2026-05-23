@@ -55,6 +55,7 @@ type ReconcileResult struct {
 	Phase           kaprov1alpha2.DeliveryPhase
 	Format          string
 	ObservedDigest  string
+	Staging         *kaprov1alpha2.DeliveryStagingStatus
 	AppliedObjects  int32
 	LastAttemptedAt time.Time
 	LastAppliedAt   time.Time

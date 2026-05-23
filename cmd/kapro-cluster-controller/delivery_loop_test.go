@@ -194,6 +194,67 @@ func TestDeliveryLoop_FailedDoesNotAdvanceCurrentVersions(t *testing.T) {
 	}
 }
 
+func TestDeliveryLoop_WritesStagingDiagnostics(t *testing.T) {
+	fc := newDeliveryFC("c1", map[string]string{"api": "1.0"}, false, "oci-default")
+	fc.Status.CurrentVersions = map[string]string{"api": "0.9"}
+	fc.Spec.Delivery.Staging = &kaprov1alpha2.DeliveryStagingSpec{
+		Type:          kaprov1alpha2.DeliveryStagingTwoPhase,
+		FailurePolicy: kaprov1alpha2.DeliveryStagingFailureAbort,
+	}
+	bp := newDeliveryBP("oci-default", kaprov1alpha2.BackendDriverOCI)
+	hub := deliveryHub(t, fc, bp)
+
+	provider := &scriptedProvider{
+		driver: kaprov1alpha2.BackendDriverOCI,
+		results: map[string]spokeprovider.ReconcileResult{
+			"api": {
+				Phase: kaprov1alpha2.DeliveryPhaseFailed,
+				Staging: &kaprov1alpha2.DeliveryStagingStatus{
+					StagedObjects:        3,
+					StagingFailedObjects: 1,
+					FailurePhase:         kaprov1alpha2.DeliveryPhaseStaging,
+				},
+				Err: errors.New("staging failed for api"),
+			},
+		},
+	}
+	reg := spokeprovider.NewRegistry()
+	_ = reg.Register(kaprov1alpha2.BackendDriverOCI, provider)
+	l := &deliveryLoop{
+		Hub:         newHubClientFromStatic(hub),
+		ClusterName: "c1",
+		Registry:    reg,
+	}
+
+	if err := l.tick(context.Background()); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+
+	var got kaprov1alpha2.Cluster
+	if err := hub.Get(context.Background(), client.ObjectKey{Name: "c1"}, &got); err != nil {
+		t.Fatalf("re-get: %v", err)
+	}
+	if got.Status.CurrentVersions["api"] != "0.9" {
+		t.Fatalf("currentVersions[api] = %q, want unchanged 0.9", got.Status.CurrentVersions["api"])
+	}
+	entry := got.Status.Delivery["api"]
+	if entry.Staging == nil {
+		t.Fatal("status.delivery[api].staging not written")
+	}
+	if entry.Staging.Type != kaprov1alpha2.DeliveryStagingTwoPhase {
+		t.Fatalf("staging.type = %q, want TwoPhase", entry.Staging.Type)
+	}
+	if entry.Staging.FailurePolicy != kaprov1alpha2.DeliveryStagingFailureAbort {
+		t.Fatalf("staging.failurePolicy = %q, want Abort", entry.Staging.FailurePolicy)
+	}
+	if entry.Staging.StagedObjects != 3 || entry.Staging.StagingFailedObjects != 1 {
+		t.Fatalf("staging counts = %+v, want staged=3 failed=1", entry.Staging)
+	}
+	if entry.Staging.FailurePhase != kaprov1alpha2.DeliveryPhaseStaging {
+		t.Fatalf("failurePhase = %q, want Staging", entry.Staging.FailurePhase)
+	}
+}
+
 func TestDeliveryLoop_SuspendedWritesSkipped(t *testing.T) {
 	fc := newDeliveryFC("c1", map[string]string{"api": "1.0", "web": "2.0"}, true, "oci-default")
 	fc.Status.CurrentVersions = map[string]string{"api": "0.9"}

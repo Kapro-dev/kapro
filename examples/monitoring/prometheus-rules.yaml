@@ -51,6 +51,9 @@ spec:
         - record: kapro:slo_spoke_delivery_error_rate10m
           expr: |
             sum by (cluster, backend) (rate(kapro_spoke_delivery_reconciles_total{result="error"}[10m]))
+        - record: kapro:slo_spoke_delivery_staging_error_rate10m
+          expr: |
+            sum by (cluster, backend, phase) (rate(kapro_spoke_delivery_staging_results_total{result="error"}[10m]))
         - record: kapro:slo_spoke_delivery_p95_seconds10m
           expr: |
             histogram_quantile(
@@ -182,6 +185,16 @@ spec:
           annotations:
             summary: "Kapro spoke {{ $labels.cluster }} delivery errors detected"
             description: "Cluster {{ $labels.cluster }} backend {{ $labels.backend }} has had delivery reconcile errors for 15 minutes."
+            runbook: "docs/operations.md#runbook-spoke-delivery"
+        - alert: KaproSpokeDeliveryStagingErrors
+          expr: |
+            kapro:slo_spoke_delivery_staging_error_rate10m > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kapro spoke {{ $labels.cluster }} {{ $labels.phase }} failures detected"
+            description: "Cluster {{ $labels.cluster }} backend {{ $labels.backend }} has had OCI staged delivery {{ $labels.phase }} failures for 10 minutes."
             runbook: "docs/operations.md#runbook-spoke-delivery"
         - alert: KaproSpokeDeliveryLatencyHigh
           expr: |

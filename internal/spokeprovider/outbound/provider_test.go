@@ -169,6 +169,12 @@ func TestProvider_DelegatesToDeliveryAndForwardsResult(t *testing.T) {
 	if res.AppliedObjects != 1 {
 		t.Fatalf("appliedObjects = %d, want 1", res.AppliedObjects)
 	}
+	if res.Staging == nil {
+		t.Fatal("staging status not forwarded")
+	}
+	if res.Staging.StagedObjects != 1 || res.Staging.CommittedObjects != 1 {
+		t.Fatalf("staging counts = %+v, want staged=1 committed=1", res.Staging)
+	}
 	if res.Format != string(delivery.FormatRawYAML) {
 		t.Fatalf("format = %q, want raw-yaml", res.Format)
 	}
@@ -184,5 +190,13 @@ func TestProvider_Driver(t *testing.T) {
 	p := &Provider{}
 	if p.Driver() != kaprov1alpha2.BackendDriverOCI {
 		t.Fatalf("Driver() = %q, want oci", p.Driver())
+	}
+}
+
+func TestProvider_CapabilitiesAdvertiseDryRun(t *testing.T) {
+	p := &Provider{}
+	caps := p.Capabilities()
+	if !caps.SupportsDryRun {
+		t.Fatal("SupportsDryRun=false, want true for OCI two-phase delivery")
 	}
 }

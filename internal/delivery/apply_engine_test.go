@@ -101,6 +101,18 @@ func TestApplyEngine_StagingFailureAbortsCommit(t *testing.T) {
 	if len(res.StagingErrors) != 1 {
 		t.Fatalf("staging errors=%d, want 1", len(res.StagingErrors))
 	}
+	if !res.StagingFailed() {
+		t.Fatal("StagingFailed()=false, want true")
+	}
+	if res.CommitFailed() {
+		t.Fatal("CommitFailed()=true on staging failure, want false")
+	}
+	if res.StagingFailedObjects() != 1 {
+		t.Fatalf("StagingFailedObjects()=%d, want 1", res.StagingFailedObjects())
+	}
+	if res.CommitFailedObjects() != 0 {
+		t.Fatalf("CommitFailedObjects()=%d, want 0", res.CommitFailedObjects())
+	}
 	if res.StagingErrors[0].Key == "" {
 		t.Fatal("staging error missing key")
 	}
@@ -136,6 +148,18 @@ func TestApplyEngine_CommitFailureSurfacesError(t *testing.T) {
 	}
 	if len(res.CommitErrors) != 1 {
 		t.Fatalf("commit errors=%d, want 1", len(res.CommitErrors))
+	}
+	if res.StagingFailed() {
+		t.Fatal("StagingFailed()=true on commit failure, want false")
+	}
+	if !res.CommitFailed() {
+		t.Fatal("CommitFailed()=false, want true")
+	}
+	if res.StagingFailedObjects() != 0 {
+		t.Fatalf("StagingFailedObjects()=%d, want 0", res.StagingFailedObjects())
+	}
+	if res.CommitFailedObjects() != 1 {
+		t.Fatalf("CommitFailedObjects()=%d, want 1", res.CommitFailedObjects())
 	}
 }
 

@@ -145,6 +145,10 @@ type ClusterDeliveryStatus struct {
 	// writing to keep the status object small.
 	// +optional
 	LastError string `json:"lastError,omitempty"`
+	// Staging records the latest staged apply diagnostics for providers that
+	// support server-side dry-run before commit.
+	// +optional
+	Staging *DeliveryStagingStatus `json:"staging,omitempty"`
 	// AppliedObjects is the count of distinct GVK+namespace+name tuples
 	// committed by the most recent successful apply. Useful for "did this
 	// just regress to applying 1 object instead of 47?" diagnostics.
