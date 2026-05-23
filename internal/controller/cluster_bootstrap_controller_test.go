@@ -595,3 +595,119 @@ func TestMatchesFleetCluster_AcceptsCorrectSA(t *testing.T) {
 		t.Error("CSR with correct CN + SA must match")
 	}
 }
+
+func TestProcessCSRsForCluster_ApprovesRenewalCSR(t *testing.T) {
+	clusterName := "de-prod-01"
+	csr := makeTestCSR(t, csrCNPrefix+clusterName, []string{csrOrganization}, csrCNPrefix+clusterName)
+	csr.Name = "csr-renewal"
+
+	usedAt := metav1.Now()
+	fc := &kaprov1alpha2.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterName},
+		Spec: kaprov1alpha2.ClusterSpec{
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{
+				ExpiresAt: &metav1.Time{Time: time.Now().Add(1 * time.Hour)},
+			},
+		},
+		Status: kaprov1alpha2.ClusterStatus{
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapStatus{
+				Used:                true,
+				UsedAt:              &usedAt,
+				IssuedCredentialFor: clusterName,
+				BoundCSRName:        "csr-initial-bootstrap",
+			},
+		},
+	}
+	r, c := newBootstrapReconciler(t, fc, csr)
+	fakeClient := k8sfake.NewClientset(csr)
+	r.CertClient = fakeClient.CertificatesV1()
+
+	res, err := r.processCSRsForCluster(context.Background(), fc)
+	if err != nil {
+		t.Fatalf("processCSRsForCluster: %v", err)
+	}
+	if res.RequeueAfter == 0 {
+		t.Fatal("expected requeue after approving renewal CSR")
+	}
+
+	gotCSR, err := fakeClient.CertificatesV1().CertificateSigningRequests().Get(context.Background(), csr.Name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("re-fetch CSR: %v", err)
+	}
+	if !isCSRApproved(gotCSR) {
+		t.Fatalf("renewal CSR should be approved; status=%+v", gotCSR.Status)
+	}
+	gotCluster := &kaprov1alpha2.Cluster{}
+	if err := c.Get(context.Background(), client.ObjectKey{Name: clusterName}, gotCluster); err != nil {
+		t.Fatalf("re-fetch Cluster: %v", err)
+	}
+	if gotCluster.Status.Bootstrap == nil || gotCluster.Status.Bootstrap.BoundCSRName != "csr-initial-bootstrap" {
+		t.Fatalf("renewal must not replace bootstrap BoundCSRName; status=%+v", gotCluster.Status.Bootstrap)
+	}
+}
+
+func TestProcessCSRsForCluster_DeniesRenewalBeforeRegistration(t *testing.T) {
+	clusterName := "de-prod-01"
+	csr := makeTestCSR(t, csrCNPrefix+clusterName, []string{csrOrganization}, csrCNPrefix+clusterName)
+	csr.Name = "csr-renewal-before-registration"
+
+	fc := &kaprov1alpha2.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterName},
+		Spec: kaprov1alpha2.ClusterSpec{
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{
+				ExpiresAt: &metav1.Time{Time: time.Now().Add(1 * time.Hour)},
+			},
+		},
+	}
+	r, _ := newBootstrapReconciler(t, fc, csr)
+	fakeClient := k8sfake.NewClientset(csr)
+	r.CertClient = fakeClient.CertificatesV1()
+
+	res, err := r.processCSRsForCluster(context.Background(), fc)
+	if err != nil {
+		t.Fatalf("processCSRsForCluster: %v", err)
+	}
+	if !res.IsZero() {
+		t.Fatalf("expected no requeue after denying invalid renewal CSR, got %+v", res)
+	}
+
+	gotCSR, err := fakeClient.CertificatesV1().CertificateSigningRequests().Get(context.Background(), csr.Name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("re-fetch CSR: %v", err)
+	}
+	if !isCSRDenied(gotCSR) {
+		t.Fatalf("renewal CSR before registration should be denied; status=%+v", gotCSR.Status)
+	}
+}
+
+func TestMatchesFleetCluster_AcceptsRenewalAfterRegistration(t *testing.T) {
+	r, _ := newBootstrapReconciler(t)
+	clusterName := "de-prod-01"
+	csr := makeTestCSR(t, csrCNPrefix+clusterName, []string{csrOrganization}, csrCNPrefix+clusterName)
+	fc := &kaprov1alpha2.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterName},
+		Status: kaprov1alpha2.ClusterStatus{
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapStatus{Used: true},
+		},
+	}
+
+	if !r.matchesFleetCluster(csr, fc, csrCNPrefix+clusterName) {
+		t.Fatal("registered cluster renewal CSR should match")
+	}
+}
+
+func TestMatchesFleetCluster_RejectsRenewalForWrongIdentity(t *testing.T) {
+	r, _ := newBootstrapReconciler(t)
+	clusterName := "de-prod-01"
+	csr := makeTestCSR(t, csrCNPrefix+clusterName, []string{csrOrganization}, csrCNPrefix+"fr-prod-99")
+	fc := &kaprov1alpha2.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterName},
+		Status: kaprov1alpha2.ClusterStatus{
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapStatus{Used: true},
+		},
+	}
+
+	if r.matchesFleetCluster(csr, fc, csrCNPrefix+clusterName) {
+		t.Fatal("renewal CSR with a different cluster username must not match")
+	}
+}

@@ -7,6 +7,12 @@ record for each tag.
 
 ## Unreleased
 
+### Fixed — spoke renewal CSR approval
+
+Registered pull-mode spokes can now renew client certificates through the hub
+CSR approver. Renewal CSRs are accepted only for the existing per-cluster
+identity and do not consume or replace the original bootstrap slot binding.
+
 ### Changed — release SARIF upload guards
 
 Release Trivy SARIF upload steps now run only when the expected SARIF file
@@ -19,10 +25,10 @@ Clarified release-train guidance so patch increments are treated as a planning
 budget and review trigger while still allowing concrete milestones such as
 `v0.4.20` under the project’s `0.x.y` pre-stable strategy.
 
-### Changed — release metadata for v0.4.16
+### Changed — release metadata for v0.4.17
 
 Updated Helm chart versions, install examples, and release smoke defaults so
-the next release tag packages `0.4.16` artifacts consistently.
+the next release tag packages `0.4.17` artifacts consistently.
 
 ### Added — reference adapter package tests
 
