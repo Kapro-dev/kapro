@@ -249,6 +249,54 @@ func TestProbeContractVersionPolicy(t *testing.T) {
 	}
 }
 
+func TestValidateContractMessagesUsePluginContractName(t *testing.T) {
+	tests := []struct {
+		name       string
+		pluginType kaprov1alpha2.PluginType
+		contract   string
+	}{
+		{name: "actuator", pluginType: kaprov1alpha2.PluginTypeActuator, contract: "KAI"},
+		{name: "gate", pluginType: kaprov1alpha2.PluginTypeGate, contract: "KGI"},
+		{name: "planner", pluginType: kaprov1alpha2.PluginTypePlanner, contract: "KPI"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name+"/missing", func(t *testing.T) {
+			result := validateContract(tt.pluginType, "")
+			if result.Ready {
+				t.Fatal("Ready = true")
+			}
+			if result.Reason != "MissingContractVersion" {
+				t.Fatalf("Reason = %q", result.Reason)
+			}
+			if !strings.Contains(result.Message, "did not report "+tt.contract+" contract version") {
+				t.Fatalf("Message = %q", result.Message)
+			}
+			if !strings.Contains(result.Message, "supported versions: "+ContractVersion()) {
+				t.Fatalf("Message = %q", result.Message)
+			}
+		})
+		t.Run(tt.name+"/unsupported", func(t *testing.T) {
+			result := validateContract(tt.pluginType, "v2")
+			if result.Ready {
+				t.Fatal("Ready = true")
+			}
+			if result.Reason != "UnsupportedContractVersion" {
+				t.Fatalf("Reason = %q", result.Reason)
+			}
+			if result.ContractVersion != "v2" {
+				t.Fatalf("ContractVersion = %q", result.ContractVersion)
+			}
+			if !strings.Contains(result.Message, "unsupported "+tt.contract+" contract version \"v2\"") {
+				t.Fatalf("Message = %q", result.Message)
+			}
+			if !strings.Contains(result.Message, "supported versions: "+ContractVersion()) {
+				t.Fatalf("Message = %q", result.Message)
+			}
+		})
+	}
+}
+
 func TestProbeObservesReadinessMetrics(t *testing.T) {
 	reg := kaprov1alpha2.Plugin{
 		ObjectMeta: metav1.ObjectMeta{Name: "metrics-probe-registration"},

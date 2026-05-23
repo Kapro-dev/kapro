@@ -203,9 +203,11 @@ API pieces:
 The gateway must preserve the same state ownership rule: plugins do backend
 work, Kapro owns PromotionRun state.
 
-API maturity, deprecation rules, upgrade policy, and the future non-binding
-certified plugin path are defined in `docs/api-stability.md`. KAI, KGI, KPI,
-and KSP conformance instructions are defined in `docs/plugin-authoring.md`.
+API maturity and the general upgrade policy are defined in
+`docs/api-stability.md`. Plugin contract-version support, status behavior,
+Kapro-compatible badge guidance, and the reserved future certification path are
+defined in `docs/plugin-compatibility-policy.md`. KAI, KGI, KPI, and KSP
+conformance instructions are defined in `docs/plugin-authoring.md`.
 The first external proof points are `examples/plugins/argocd-actuator`, a
 deployable KAI server for Argo CD Applications,
 `examples/plugins/flux-actuator`, a deployable KAI server for Flux
