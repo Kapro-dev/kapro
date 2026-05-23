@@ -74,6 +74,9 @@ make check-proto
 See `docs/api-stability.md` for the compatibility policy that applies to these
 contracts.
 
+The actuator contract has a dedicated transport and capability guide at
+`docs/actuator-plugin-contract.md`.
+
 ## Conformance CLI
 
 External authors can run the same base harnesses against a live gRPC plugin

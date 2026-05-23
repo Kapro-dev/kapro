@@ -16,10 +16,11 @@ import (
 
 // Scenario contains the requests used by the actuator conformance harness.
 type Scenario struct {
-	Apply       *kaiv1alpha1.ApplyRequest
-	IsConverged *kaiv1alpha1.IsConvergedRequest
-	Rollback    *kaiv1alpha1.RollbackRequest
-	Timeout     time.Duration
+	Apply                *kaiv1alpha1.ApplyRequest
+	IsConverged          *kaiv1alpha1.IsConvergedRequest
+	Rollback             *kaiv1alpha1.RollbackRequest
+	RequiredCapabilities []string
+	Timeout              time.Duration
 }
 
 // DefaultScenario returns a minimal deterministic actuator test scenario.
@@ -53,6 +54,11 @@ func DefaultScenario() Scenario {
 				"conformance": "true",
 			},
 		},
+		RequiredCapabilities: []string{
+			kaiv1alpha1.CapabilityApply,
+			kaiv1alpha1.CapabilityConvergence,
+			kaiv1alpha1.CapabilityRollback,
+		},
 		Timeout: 10 * time.Second,
 	}
 }
@@ -76,6 +82,19 @@ func Run(t *testing.T, client kaiv1alpha1.ActuatorServiceClient, scenario Scenar
 		}
 		if !plugincompat.IsContractVersionSupported(kaprov1alpha2.PluginTypeActuator, resp.GetContractVersion()) {
 			t.Fatalf("contract_version = %q, supported versions = %v", resp.GetContractVersion(), plugincompat.SupportedKAIContractVersions())
+		}
+	})
+
+	t.Run("GetCapabilitiesReportsRequiredCapabilities", func(t *testing.T) {
+		resp, err := client.GetCapabilities(ctx, &kaiv1alpha1.GetCapabilitiesRequest{})
+		if err != nil {
+			t.Fatalf("GetCapabilities returned error: %v", err)
+		}
+		if resp == nil {
+			t.Fatal("GetCapabilities returned nil response")
+		}
+		if missing := missingCapabilities(resp.GetCapabilities(), requiredCapabilities(scenario)); len(missing) > 0 {
+			t.Fatalf("missing required capabilities %v from %v", missing, resp.GetCapabilities())
 		}
 	})
 
@@ -150,7 +169,8 @@ func Check(ctx context.Context, client kaiv1alpha1.ActuatorServiceClient, scenar
 	return conformance.Report{
 		Suite: "KAI actuator",
 		Results: []conformance.Result{
-			checkCapabilities(ctx, client),
+			checkCapabilitiesContractVersion(ctx, client),
+			checkRequiredCapabilities(ctx, client, scenario),
 			checkApplyIsIdempotent(ctx, client, scenario),
 			checkIsConvergedIsDeterministic(ctx, client, scenario),
 			checkRollbackIsIdempotent(ctx, client, scenario),
@@ -159,7 +179,7 @@ func Check(ctx context.Context, client kaiv1alpha1.ActuatorServiceClient, scenar
 	}
 }
 
-func checkCapabilities(ctx context.Context, client kaiv1alpha1.ActuatorServiceClient) conformance.Result {
+func checkCapabilitiesContractVersion(ctx context.Context, client kaiv1alpha1.ActuatorServiceClient) conformance.Result {
 	const name = "GetCapabilitiesReturnsSupportedContractVersion"
 	resp, err := client.GetCapabilities(ctx, &kaiv1alpha1.GetCapabilitiesRequest{})
 	if err != nil {
@@ -172,6 +192,49 @@ func checkCapabilities(ctx context.Context, client kaiv1alpha1.ActuatorServiceCl
 		return conformance.Fail(name, "contract_version = %q, supported versions = %v", resp.GetContractVersion(), plugincompat.SupportedKAIContractVersions())
 	}
 	return conformance.Pass(name)
+}
+
+func checkRequiredCapabilities(ctx context.Context, client kaiv1alpha1.ActuatorServiceClient, scenario Scenario) conformance.Result {
+	const name = "GetCapabilitiesReportsRequiredCapabilities"
+	resp, err := client.GetCapabilities(ctx, &kaiv1alpha1.GetCapabilitiesRequest{})
+	if err != nil {
+		return conformance.Fail(name, "GetCapabilities returned error: %v", err)
+	}
+	if resp == nil {
+		return conformance.Fail(name, "GetCapabilities returned nil response")
+	}
+	if missing := missingCapabilities(resp.GetCapabilities(), requiredCapabilities(scenario)); len(missing) > 0 {
+		return conformance.Fail(name, "missing required capabilities %v from %v", missing, resp.GetCapabilities())
+	}
+	return conformance.Pass(name)
+}
+
+func requiredCapabilities(scenario Scenario) []string {
+	if len(scenario.RequiredCapabilities) > 0 {
+		return append([]string(nil), scenario.RequiredCapabilities...)
+	}
+	return []string{
+		kaiv1alpha1.CapabilityApply,
+		kaiv1alpha1.CapabilityConvergence,
+		kaiv1alpha1.CapabilityRollback,
+	}
+}
+
+func missingCapabilities(actual, required []string) []string {
+	missing := make([]string, 0)
+	for _, capability := range required {
+		if capability == kaiv1alpha1.CapabilityConvergence {
+			if kaiv1alpha1.HasAnyCapability(actual, kaiv1alpha1.CapabilityConvergence, kaiv1alpha1.CapabilityObserve) {
+				continue
+			}
+			missing = append(missing, capability)
+			continue
+		}
+		if !kaiv1alpha1.HasCapability(actual, capability) {
+			missing = append(missing, capability)
+		}
+	}
+	return missing
 }
 
 func checkApplyIsIdempotent(ctx context.Context, client kaiv1alpha1.ActuatorServiceClient, scenario Scenario) conformance.Result {
