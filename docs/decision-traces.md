@@ -116,6 +116,9 @@ Example key generation:
 
 ```bash
 openssl genpkey -algorithm ED25519 -out decisiontrace-ed25519.pem
+openssl pkey -in decisiontrace-ed25519.pem -pubout -out decisiontrace-ed25519.pub
+kapro verify decisiontrace dtrace-example --public-key decisiontrace-ed25519.pub
+kapro verify decisiontrace dtrace-example --public-key decisiontrace-ed25519.pub -o json
 ```
 
 `status.signatureRef` remains reserved for an external transparency-log record,

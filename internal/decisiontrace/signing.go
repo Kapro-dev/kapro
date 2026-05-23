@@ -155,6 +155,27 @@ func LoadEd25519PrivateKeyFile(path string) (ed25519.PrivateKey, error) {
 	return nil, fmt.Errorf("decision trace signing key must be Ed25519")
 }
 
+// LoadEd25519PublicKeyFile reads a PEM-encoded SubjectPublicKeyInfo Ed25519 key.
+func LoadEd25519PublicKeyFile(path string) (ed25519.PublicKey, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read decision trace public key: %w", err)
+	}
+	block, _ := pem.Decode(body)
+	if block == nil {
+		return nil, errors.New("decision trace public key must be PEM encoded")
+	}
+	key, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse decision trace public key: %w", err)
+	}
+	switch k := key.(type) {
+	case ed25519.PublicKey:
+		return k, nil
+	}
+	return nil, fmt.Errorf("decision trace public key must be Ed25519")
+}
+
 func statusForSignature(sig Signature) kaprov1alpha2.DecisionTraceStatus {
 	return kaprov1alpha2.DecisionTraceStatus{
 		Signed:             true,

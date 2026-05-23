@@ -7,6 +7,13 @@ record for each tag.
 
 ## Unreleased
 
+### Added — DecisionTrace signature verification
+
+Added `kapro verify decisiontrace <name> --public-key <pem>` to verify signed
+`DecisionTrace` records against an Ed25519 public key. JSON output reports the
+verification result, key ID, algorithm, payload digest, and failure reason for
+audit tooling.
+
 ### Added — `kapro reconstruct --at` groundwork
 
 Added `kapro reconstruct <promotionrun> --at <RFC3339>` to replay durable
