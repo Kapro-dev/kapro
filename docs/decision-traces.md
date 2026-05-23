@@ -39,6 +39,21 @@ Each trace includes `promotionRun`, `source`, `eventType`, `phase`, `reason`,
 Evidence is intentionally small and non-secret. Long-term archive integrations
 store full CloudEvents envelopes separately.
 
+## Explain A PromotionRun
+
+Use `kapro why` to read the DecisionTrace stream for one PromotionRun:
+
+```bash
+kapro why checkout-7f4c9
+kapro why checkout-7f4c9 -o json
+```
+
+The command lists records by the `kapro.io/promotionrun` label written by the
+operator. The text view prints a chronological timeline with event type, phase,
+reason, scope, source, signing state, and message. JSON output is intended for
+tooling that wants to turn the same trace list into incident reports or
+dashboards.
+
 ## Decision API Compatibility
 
 `Target.status.decisionTrace` still stores the Decision API approval trace for a

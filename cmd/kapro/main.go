@@ -86,6 +86,7 @@ For existing GitOps repositories:
 	root.AddCommand(newTopCmd())
 	root.AddCommand(newTreeCmd())
 	root.AddCommand(newEventsCmd())
+	root.AddCommand(newWhyCmd())
 	root.AddCommand(newDoctorCmd())
 	root.AddCommand(newApproveCmd())
 	root.AddCommand(newRejectCmd())

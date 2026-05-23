@@ -192,9 +192,11 @@ kapro doctor
 kapro top
 kapro tree <promotion>
 kapro events --promotion <promotion> --since=30m
+kapro why <promotionrun>
 kubectl get promotionruns,targets,triggers,plugins
 kubectl describe promotionrun <promotionrun>
 kubectl get targets -l kapro.io/promotionrun=<promotionrun> -o wide
+kubectl get decisiontraces -l kapro.io/promotionrun=<promotionrun>
 kubectl get events --field-selector involvedObject.name=<promotionrun> --sort-by=.lastTimestamp
 kubectl logs -n kapro-system deploy/kapro-operator --since=30m
 ```
@@ -233,6 +235,7 @@ Triage:
 2. Inspect child execution objects:
 
    ```bash
+   kapro why <promotionrun>
    kubectl get targets -l kapro.io/promotionrun=<promotionrun> -o wide
    kubectl get targets -l kapro.io/promotionrun=<promotionrun> -o yaml
    ```
