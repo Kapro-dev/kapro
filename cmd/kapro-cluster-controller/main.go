@@ -206,6 +206,7 @@ func run() error {
 	}
 	certMgr, err := startCertManager(ctx, certManagerOptions{
 		Template:            template,
+		ClusterName:         cfg.ClusterName,
 		SignerName:          certificatesv1.KubeAPIServerClientSignerName,
 		Usages:              []certificatesv1.KeyUsage{certificatesv1.UsageClientAuth},
 		BootstrapClient:     bootstrap,

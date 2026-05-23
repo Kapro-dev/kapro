@@ -9,9 +9,11 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"strings"
 	"testing"
 	"time"
 
+	certificatesv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -233,6 +235,64 @@ func TestSanitizeName(t *testing.T) {
 		if got := sanitizeName(c.in); got != c.want {
 			t.Errorf("sanitizeName(%q) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+func TestBuildCertificateSigningRequestLabelsBootstrapAndRenewal(t *testing.T) {
+	tpl := &x509.CertificateRequest{Subject: pkix.Name{CommonName: "kapro-cluster:de-prod-01"}}
+	m := &certManager{
+		opts: certManagerOptions{
+			Template:         tpl,
+			ClusterName:      "de-prod-01",
+			SignerName:       certificatesv1.KubeAPIServerClientSignerName,
+			Usages:           []certificatesv1.KeyUsage{certificatesv1.UsageClientAuth},
+			RequestedCertTTL: 24 * time.Hour,
+		},
+	}
+
+	csr := m.buildCertificateSigningRequest("csr-bootstrap", []byte("request"), csrSubmissionPurposeBootstrap)
+	if got := csr.Labels[spokeCSRLabelFleetCluster]; got != "de-prod-01" {
+		t.Fatalf("fleetcluster label = %q, want de-prod-01", got)
+	}
+	if got := csr.Labels[spokeCSRLabelPurpose]; got != "bootstrap" {
+		t.Fatalf("purpose label = %q, want bootstrap", got)
+	}
+	if got := csr.Labels[spokeCSRLabelManagedBy]; got != spokeCSRManagedBy {
+		t.Fatalf("managed-by label = %q, want %q", got, spokeCSRManagedBy)
+	}
+	if got := csr.Annotations[spokeCSRAnnotationID]; got != "kapro-cluster:de-prod-01" {
+		t.Fatalf("identity annotation = %q, want kapro-cluster:de-prod-01", got)
+	}
+
+	renewal := m.buildCertificateSigningRequest("csr-renewal", []byte("request"), csrSubmissionPurposeRenewal)
+	if got := renewal.Labels[spokeCSRLabelPurpose]; got != "renewal" {
+		t.Fatalf("renewal purpose label = %q, want renewal", got)
+	}
+	if renewal.Spec.SignerName != certificatesv1.KubeAPIServerClientSignerName {
+		t.Fatalf("signer = %q", renewal.Spec.SignerName)
+	}
+	if renewal.Spec.ExpirationSeconds == nil || *renewal.Spec.ExpirationSeconds == 0 {
+		t.Fatal("expected requested cert TTL to be set on CSR")
+	}
+}
+
+func TestBuildCertificateSigningRequestSkipsInvalidFleetClusterLabel(t *testing.T) {
+	longClusterName := strings.Repeat("a", 64)
+	tpl := &x509.CertificateRequest{Subject: pkix.Name{CommonName: "kapro-cluster:" + longClusterName}}
+	m := &certManager{
+		opts: certManagerOptions{
+			Template:    tpl,
+			ClusterName: longClusterName,
+			SignerName:  certificatesv1.KubeAPIServerClientSignerName,
+		},
+	}
+
+	csr := m.buildCertificateSigningRequest("csr-long-name", []byte("request"), csrSubmissionPurposeBootstrap)
+	if _, ok := csr.Labels[spokeCSRLabelFleetCluster]; ok {
+		t.Fatalf("fleetcluster label must be omitted for invalid label value; labels=%v", csr.Labels)
+	}
+	if got := csr.Annotations[spokeCSRAnnotationID]; got != "kapro-cluster:"+longClusterName {
+		t.Fatalf("identity annotation = %q, want full CN", got)
 	}
 }
 

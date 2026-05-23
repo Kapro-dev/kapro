@@ -7,6 +7,13 @@ record for each tag.
 
 ## Unreleased
 
+### Added — CSR purpose diagnostics
+
+Spoke bootstrap and renewal CSRs now carry bounded diagnostic labels and
+annotations for the FleetCluster name, CSR purpose, and spoke identity. The hub
+prefers the FleetCluster label when listing CSR candidates while retaining a
+legacy fallback for unlabeled pending CSRs.
+
 ### Fixed — spoke renewal CSR approval
 
 Registered pull-mode spokes can now renew client certificates through the hub
@@ -25,10 +32,10 @@ Clarified release-train guidance so patch increments are treated as a planning
 budget and review trigger while still allowing concrete milestones such as
 `v0.4.20` under the project’s `0.x.y` pre-stable strategy.
 
-### Changed — release metadata for v0.4.17
+### Changed — release metadata for v0.4.18
 
 Updated Helm chart versions, install examples, and release smoke defaults so
-the next release tag packages `0.4.17` artifacts consistently.
+the next release tag packages `0.4.18` artifacts consistently.
 
 ### Added — reference adapter package tests
 

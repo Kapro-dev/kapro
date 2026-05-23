@@ -600,6 +600,7 @@ func TestProcessCSRsForCluster_ApprovesRenewalCSR(t *testing.T) {
 	clusterName := "de-prod-01"
 	csr := makeTestCSR(t, csrCNPrefix+clusterName, []string{csrOrganization}, csrCNPrefix+clusterName)
 	csr.Name = "csr-renewal"
+	csr.Labels = map[string]string{csrFleetClusterLabel: clusterName}
 
 	usedAt := metav1.Now()
 	fc := &kaprov1alpha2.Cluster{
@@ -643,6 +644,66 @@ func TestProcessCSRsForCluster_ApprovesRenewalCSR(t *testing.T) {
 	}
 	if gotCluster.Status.Bootstrap == nil || gotCluster.Status.Bootstrap.BoundCSRName != "csr-initial-bootstrap" {
 		t.Fatalf("renewal must not replace bootstrap BoundCSRName; status=%+v", gotCluster.Status.Bootstrap)
+	}
+}
+
+func TestProcessCSRsForCluster_RejectsMisleadingCSRLabel(t *testing.T) {
+	clusterName := "de-prod-01"
+	csr := makeTestCSR(t, csrCNPrefix+clusterName, []string{csrOrganization}, csrCNPrefix+"fr-prod-99")
+	csr.Name = "csr-misleading-label"
+	csr.Labels = map[string]string{csrFleetClusterLabel: clusterName}
+	fc := &kaprov1alpha2.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: clusterName},
+		Status: kaprov1alpha2.ClusterStatus{
+			Bootstrap: &kaprov1alpha2.ClusterBootstrapStatus{Used: true},
+		},
+	}
+	r, _ := newBootstrapReconciler(t, fc, csr)
+	fakeClient := k8sfake.NewClientset(csr)
+	r.CertClient = fakeClient.CertificatesV1()
+
+	res, err := r.processCSRsForCluster(context.Background(), fc)
+	if err != nil {
+		t.Fatalf("processCSRsForCluster: %v", err)
+	}
+	if !res.IsZero() {
+		t.Fatalf("expected no requeue for CSR rejected by authoritative username classification, got %+v", res)
+	}
+	gotCSR, err := fakeClient.CertificatesV1().CertificateSigningRequests().Get(context.Background(), csr.Name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("re-fetch CSR: %v", err)
+	}
+	if isCSRApproved(gotCSR) || isCSRDenied(gotCSR) {
+		t.Fatalf("misleading label must not make CSR actionable; status=%+v", gotCSR.Status)
+	}
+}
+
+func TestListCSRsForCluster_UsesLabeledAndLegacyUnlabeledCandidates(t *testing.T) {
+	clusterName := "de-prod-01"
+	labeled := makeTestCSR(t, csrCNPrefix+clusterName, []string{csrOrganization}, csrCNPrefix+clusterName)
+	labeled.Name = "csr-labeled"
+	labeled.Labels = map[string]string{csrFleetClusterLabel: clusterName}
+	legacy := makeTestCSR(t, csrCNPrefix+clusterName, []string{csrOrganization}, csrCNPrefix+clusterName)
+	legacy.Name = "csr-legacy"
+	otherLabeled := makeTestCSR(t, csrCNPrefix+"fr-prod-99", []string{csrOrganization}, csrCNPrefix+"fr-prod-99")
+	otherLabeled.Name = "csr-other"
+	otherLabeled.Labels = map[string]string{csrFleetClusterLabel: "fr-prod-99"}
+	fc := &kaprov1alpha2.Cluster{ObjectMeta: metav1.ObjectMeta{Name: clusterName}}
+	r, _ := newBootstrapReconciler(t, fc, labeled, legacy, otherLabeled)
+
+	got, err := r.listCSRsForCluster(context.Background(), fc)
+	if err != nil {
+		t.Fatalf("listCSRsForCluster: %v", err)
+	}
+	names := map[string]bool{}
+	for _, csr := range got {
+		names[csr.Name] = true
+	}
+	if !names["csr-labeled"] || !names["csr-legacy"] {
+		t.Fatalf("expected labeled and legacy CSRs, got %v", names)
+	}
+	if names["csr-other"] {
+		t.Fatalf("other cluster's labeled CSR must be excluded, got %v", names)
 	}
 }
 

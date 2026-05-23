@@ -33,6 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
 	certificatesv1client "k8s.io/client-go/kubernetes/typed/certificates/v1"
 	"k8s.io/client-go/tools/record"
@@ -97,6 +98,8 @@ const (
 
 	// bootstrapMaxTTL caps any operator-supplied TTL. Stops "ttl: 87600h" footguns.
 	bootstrapMaxTTL = 7 * 24 * time.Hour
+
+	csrFleetClusterLabel = "kapro.io/fleetcluster"
 )
 
 // ClusterBootstrapReconciler is the sole owner of FleetCluster.status.bootstrap.
@@ -395,19 +398,14 @@ func (r *ClusterBootstrapReconciler) markVaultBootstrapDisabled(ctx context.Cont
 
 // processCSRsForCluster scans for pending CSRs whose CN matches this cluster.
 // Validates, approves, marks used, ensures RBAC. Idempotent on retry.
-//
-// TODO(perf, v0.6): list is O(all CSRs in the cluster). At fleet scales with
-// frequent renewal CSRs (PR-3) this becomes expensive. Add a label selector
-// (kapro.io/fleetcluster=<name>) on CSRs at creation time and switch to a
-// filtered List.
 func (r *ClusterBootstrapReconciler) processCSRsForCluster(ctx context.Context, fc *kaprov1alpha2.Cluster) (ctrl.Result, error) {
-	var csrList certificatesv1.CertificateSigningRequestList
-	if err := r.List(ctx, &csrList); err != nil {
-		return ctrl.Result{}, fmt.Errorf("list CSRs: %w", err)
+	csrList, err := r.listCSRsForCluster(ctx, fc)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 	expectedCN := csrCNPrefix + fc.Name
-	for i := range csrList.Items {
-		csr := &csrList.Items[i]
+	for i := range csrList {
+		csr := &csrList[i]
 		purpose := r.classifyClusterCSR(csr, fc, expectedCN)
 		// Skip only CSRs that have already been finalized (approved or denied).
 		// Pending CSRs that previously bound this slot (status.bootstrap.Used
@@ -456,6 +454,39 @@ func (r *ClusterBootstrapReconciler) processCSRsForCluster(ctx context.Context, 
 		return ctrl.Result{RequeueAfter: time.Nanosecond}, nil
 	}
 	return ctrl.Result{}, nil
+}
+
+func (r *ClusterBootstrapReconciler) listCSRsForCluster(ctx context.Context, fc *kaprov1alpha2.Cluster) ([]certificatesv1.CertificateSigningRequest, error) {
+	candidates := make([]certificatesv1.CertificateSigningRequest, 0)
+	seen := make(map[string]struct{})
+	if errs := validation.IsValidLabelValue(fc.Name); len(errs) == 0 {
+		var labeled certificatesv1.CertificateSigningRequestList
+		if err := r.List(ctx, &labeled, client.MatchingLabels{csrFleetClusterLabel: fc.Name}); err != nil {
+			return nil, fmt.Errorf("list labeled CSRs for %s: %w", fc.Name, err)
+		}
+		for _, csr := range labeled.Items {
+			candidates = append(candidates, csr)
+			seen[csr.Name] = struct{}{}
+		}
+	}
+
+	// Compatibility fallback: older spokes created unlabeled CSRs. Keep scanning
+	// only unlabeled legacy CSRs so a mislabeled CSR cannot bypass the strict
+	// subject/username classifier.
+	var legacy certificatesv1.CertificateSigningRequestList
+	if err := r.List(ctx, &legacy); err != nil {
+		return nil, fmt.Errorf("list legacy CSRs: %w", err)
+	}
+	for _, csr := range legacy.Items {
+		if _, ok := seen[csr.Name]; ok {
+			continue
+		}
+		if csr.Labels != nil && csr.Labels[csrFleetClusterLabel] != "" {
+			continue
+		}
+		candidates = append(candidates, csr)
+	}
+	return candidates, nil
 }
 
 type clusterCSRPurpose string

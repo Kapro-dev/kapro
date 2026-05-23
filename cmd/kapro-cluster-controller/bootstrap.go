@@ -16,11 +16,30 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+)
+
+const (
+	spokeCSRLabelFleetCluster = "kapro.io/fleetcluster"
+	spokeCSRLabelPurpose      = "kapro.io/csr-purpose"
+	spokeCSRLabelManagedBy    = "app.kubernetes.io/managed-by"
+
+	spokeCSRAnnotationPurpose = "kapro.io/csr-purpose"
+	spokeCSRAnnotationID      = "kapro.io/cluster-identity"
+
+	spokeCSRManagedBy = "kapro-cluster-controller"
+)
+
+type csrSubmissionPurpose string
+
+const (
+	csrSubmissionPurposeBootstrap csrSubmissionPurpose = "bootstrap"
+	csrSubmissionPurposeRenewal   csrSubmissionPurpose = "renewal"
 )
 
 // BootstrapClient is the kubeconfig used for the FIRST CSR submission.
@@ -34,6 +53,7 @@ type BootstrapClient struct {
 // Kept separate from cmd Config so this file can be tested in isolation.
 type certManagerOptions struct {
 	Template            *x509.CertificateRequest
+	ClusterName         string
 	SignerName          string
 	Usages              []certificatesv1.KeyUsage
 	BootstrapClient     *BootstrapClient
@@ -99,7 +119,7 @@ func startCertManager(ctx context.Context, opts certManagerOptions) (*certManage
 	if opts.BootstrapClient == nil || opts.BootstrapClient.RestConfig == nil {
 		return nil, fmt.Errorf("no usable cert in local Secret and no bootstrap kubeconfig; set KAPRO_BOOTSTRAP_KUBECONFIG_PATH")
 	}
-	cert, key, err := cm.submitAndWaitForCert(ctx, opts.BootstrapClient.RestConfig)
+	cert, key, err := cm.submitAndWaitForCert(ctx, opts.BootstrapClient.RestConfig, csrSubmissionPurposeBootstrap)
 	if err != nil {
 		return nil, fmt.Errorf("first bootstrap CSR: %w", err)
 	}
@@ -174,7 +194,7 @@ func (m *certManager) runRotation(ctx context.Context) {
 			}
 			logger.Info("cert approaching expiry, submitting renewal CSR", "expires", m.CurrentNotAfter())
 			cfg := m.currentRestConfig()
-			cert, key, err := m.submitAndWaitForCert(ctx, cfg)
+			cert, key, err := m.submitAndWaitForCert(ctx, cfg, csrSubmissionPurposeRenewal)
 			if err != nil {
 				logger.Error(err, "renewal CSR failed, will retry next tick")
 				continue
@@ -212,7 +232,7 @@ func (m *certManager) currentRestConfig() *rest.Config {
 // submitAndWaitForCert generates a fresh keypair, sends a CSR via the given
 // rest.Config (bootstrap or current-cert), and polls until status.certificate
 // is populated AND the CertificateApproved condition is set.
-func (m *certManager) submitAndWaitForCert(ctx context.Context, cfg *rest.Config) (*x509.Certificate, *ecdsa.PrivateKey, error) {
+func (m *certManager) submitAndWaitForCert(ctx context.Context, cfg *rest.Config, purpose csrSubmissionPurpose) (*x509.Certificate, *ecdsa.PrivateKey, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate private key: %w", err)
@@ -228,20 +248,12 @@ func (m *certManager) submitAndWaitForCert(ctx context.Context, cfg *rest.Config
 	}
 
 	csrName := fmt.Sprintf("kapro-cluster-%s-%d", strings.ToLower(sanitizeName(m.opts.Template.Subject.CommonName)), time.Now().UnixMilli())
-	csrObj := &certificatesv1.CertificateSigningRequest{
-		ObjectMeta: metav1.ObjectMeta{Name: csrName},
-		Spec: certificatesv1.CertificateSigningRequestSpec{
-			Request:           pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER}),
-			SignerName:        m.opts.SignerName,
-			Usages:            m.opts.Usages,
-			ExpirationSeconds: int32Ptr(int32(m.opts.RequestedCertTTL.Seconds())),
-		},
-	}
+	csrObj := m.buildCertificateSigningRequest(csrName, csrDER, purpose)
 	if _, err := clientset.CertificatesV1().CertificateSigningRequests().Create(ctx, csrObj, metav1.CreateOptions{}); err != nil {
 		return nil, nil, fmt.Errorf("create CSR %q: %w", csrName, err)
 	}
 
-	logger := log.Log.WithName("csr").WithValues("csr", csrName)
+	logger := log.Log.WithName("csr").WithValues("csr", csrName, "purpose", purpose)
 	logger.Info("CSR submitted, waiting for approver")
 
 	// Plain fixed-interval polling. The earlier wait.Backoff was a footgun:
@@ -292,6 +304,36 @@ func (m *certManager) submitAndWaitForCert(ctx context.Context, cfg *rest.Config
 		return cert, key, nil
 	}
 	return nil, nil, fmt.Errorf("CSR %q not approved within %s", csrName, m.opts.WaitForFirstCert)
+}
+
+func (m *certManager) buildCertificateSigningRequest(csrName string, csrDER []byte, purpose csrSubmissionPurpose) *certificatesv1.CertificateSigningRequest {
+	clusterName := m.opts.ClusterName
+	if clusterName == "" {
+		clusterName = strings.TrimPrefix(m.opts.Template.Subject.CommonName, "kapro-cluster:")
+	}
+	labels := map[string]string{
+		spokeCSRLabelPurpose:   string(purpose),
+		spokeCSRLabelManagedBy: spokeCSRManagedBy,
+	}
+	if errs := validation.IsValidLabelValue(clusterName); len(errs) == 0 {
+		labels[spokeCSRLabelFleetCluster] = clusterName
+	}
+	return &certificatesv1.CertificateSigningRequest{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   csrName,
+			Labels: labels,
+			Annotations: map[string]string{
+				spokeCSRAnnotationPurpose: string(purpose),
+				spokeCSRAnnotationID:      m.opts.Template.Subject.CommonName,
+			},
+		},
+		Spec: certificatesv1.CertificateSigningRequestSpec{
+			Request:           pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER}),
+			SignerName:        m.opts.SignerName,
+			Usages:            m.opts.Usages,
+			ExpirationSeconds: int32Ptr(int32(m.opts.RequestedCertTTL.Seconds())),
+		},
+	}
 }
 
 func (m *certManager) acceptIfValid(cert *x509.Certificate, key *ecdsa.PrivateKey) bool {
