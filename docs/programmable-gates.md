@@ -83,7 +83,8 @@ The older fields remain populated for the built-in controller paths:
 
 For new in-process gate code, prefer `Parameters` and the identity fields. Use
 `Policy`, `Template`, `MetricIndex`, and `Args` only when adapting existing
-built-in gate logic.
+built-in gate logic. See the [Gate Request SDK Guide](sdk-gate-request.md) for
+the migration pattern and field-by-field contract.
 
 ## Trust boundary
 

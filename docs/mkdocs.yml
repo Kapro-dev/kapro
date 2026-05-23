@@ -69,6 +69,7 @@ nav:
       - Go SDK: sdk.md
       - Server SDK: sdk-server.md
       - Programmable Gates: programmable-gates.md
+      - Gate Request SDK Guide: sdk-gate-request.md
       - Adapters: adapters.md
       - Plugin Authoring: plugin-authoring.md
       - GCP Cloud: cloud-gcp.md

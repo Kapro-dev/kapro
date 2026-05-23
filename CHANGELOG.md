@@ -78,6 +78,13 @@ Added the in-process programmable Gate API with `gate.Func`, result
 constructors, panic recovery middleware, SDK-facing `pkg/kapro/gate` aliases,
 custom gate type dispatch, and gate evaluation metrics.
 
+### Changed — programmable Gate SDK docs
+
+Added a Gate Request SDK guide that separates the programmable gate request
+contract (`Fleet`, `PromotionRun`, `Plan`, `Stage`, `Target`, `Version`,
+`Parameters`, and `Logger`) from compatibility fields used by built-in gate
+paths (`Policy`, `MetricIndex`, `Template`, and `Args`).
+
 ### Added — completed GateExpression algebra
 
 Graduated `GateExpression` from `ALL`-only preview to the full `ALL`, `ANY`,
