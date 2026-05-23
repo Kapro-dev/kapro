@@ -22,7 +22,7 @@ This document defines the target architecture for those contracts.
 | Surface | Contract | Responsibility | Status |
 |---|---|---|---|
 | Actuator/substrate | `pkg/kapro/actuator` | Apply one version to one target and report convergence. | Public in-process registry; KAI plugin axis |
-| Gate | `pkg/gate` | Decide whether one target may advance. | In-process registry |
+| Gate predicate | `pkg/kapro/gate` (`pkg/gate` compatibility alias) | Decide whether one target may advance. | In-process registry |
 | Template gate | CEL, Job, Webhook gate templates | Configure custom gate behavior through CRDs. | Implemented |
 | PromotionRun planner | `pkg/planner` and KPI proto | Filter, score, reserve, and permit rollout targets before binding. | In-process framework; KPI API preview |
 | Lifecycle events | CloudEvents webhook payloads | Publish PromotionRun, stage, gate, approval, and target events. | Implemented |

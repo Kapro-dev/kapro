@@ -1,10 +1,16 @@
 # Programmable Gates
 
-Programmable gates let a custom Kapro operator register a Go function as a gate
-type. Plans reference the registered gate via `type: plugin` and the registered
-name, exactly like the existing gRPC plugin path. The registry is shared so an
-in-process gate resolves first; the gateway is consulted only when no Go gate
-is registered under that name.
+Programmable gates let a custom Kapro operator register a Go predicate as a
+gate type. Plans reference the registered predicate via `type: plugin` and the
+registered name, exactly like the existing gRPC plugin path. The registry is
+shared so an in-process predicate resolves first; the gateway is consulted only
+when no Go predicate is registered under that name.
+
+The canonical SDK import path is `kapro.io/kapro/pkg/kapro/gate`.
+`gate.Predicate` is the canonical interface, `gate.PredicateFunc` adapts a
+plain function, and `gate.Gate` / `gate.Func` remain aliases. Registered
+predicates are wrapped with OpenTelemetry spans by default; each evaluation
+emits `kapro.predicate.evaluate` with rollout identity and result attributes.
 
 ```go
 s.Gates.MustRegister("canary-error-rate", gate.Func(func(ctx context.Context, req gate.Request) (gate.Result, error) {

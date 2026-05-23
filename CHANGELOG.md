@@ -85,6 +85,13 @@ contract (`Fleet`, `PromotionRun`, `Plan`, `Stage`, `Target`, `Version`,
 `Parameters`, and `Logger`) from compatibility fields used by built-in gate
 paths (`Policy`, `MetricIndex`, `Template`, and `Args`).
 
+### Changed — canonical Gate Predicate SDK
+
+Made `pkg/kapro/gate` the canonical in-process gate SDK with `Predicate` and
+`PredicateFunc` as the primary authoring names. `Gate`, `Func`, and `pkg/gate`
+remain compatibility aliases. Gate registries now wrap registered predicates
+with OpenTelemetry spans by default.
+
 ### Changed — pre-stable release train policy
 
 Documented that Kapro stays in the `0.x.x` release series until public API,
