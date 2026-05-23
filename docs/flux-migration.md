@@ -92,9 +92,9 @@ kubectl apply -f ./kapro-connect/backends/checkout-observe.yaml
 kubectl get backend checkout -o yaml
 ```
 
-Check `Backend.status.selectedObjects`, `discovery/flux-discovery.yaml`, and
-`discovery/kapro-git-map.yaml` before enabling adoption. Observe mode does not
-patch Flux objects.
+Check `Backend.status.selectedObjects`, `discovery/review-summary.yaml`,
+`discovery/flux-discovery.yaml`, and `discovery/kapro-git-map.yaml` before
+enabling adoption. Observe mode does not patch Flux objects.
 
 ## Step 3: Review Source Units
 

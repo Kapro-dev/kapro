@@ -123,6 +123,7 @@ func runFluxDiscover(opts fluxDiscoverOptions) error {
 		filepath.Join("sources", opts.Name+".yaml"):          renderFluxDiscoverSource(opts, result),
 		filepath.Join("discovery", "flux-discovery.yaml"):    renderFluxDiscoveryReport(result),
 		filepath.Join("discovery", "kapro-git-map.yaml"):     renderFluxGitAdoptionMap(opts, result),
+		filepath.Join("discovery", "review-summary.yaml"):    renderDiscoveryReviewSummary("flux", opts.Name, result.RepoPath, result.SelectedUnits, result.SkippedObjects, result.Errors),
 		filepath.Join("README.md"):                           renderFluxDiscoverReadme(opts, result),
 	}
 	if err := writeScaffoldFiles(opts.OutPath, files, opts.Force); err != nil {
@@ -598,8 +599,8 @@ kubectl apply -f backends/%s-observe.yaml
 kubectl get backend %s -o yaml
 `+"```"+`
 
-Review `+"`discovery/flux-discovery.yaml`"+`, `+"`discovery/kapro-git-map.yaml`"+`,
-and `+"`sources/%s.yaml`"+` before switching the Backend from
+Review `+"`discovery/review-summary.yaml`"+`, `+"`discovery/flux-discovery.yaml`"+`,
+`+"`discovery/kapro-git-map.yaml`"+`, and `+"`sources/%s.yaml`"+` before switching the Backend from
 `+"`Observe`"+` to `+"`Adopt`"+`.
 
 Use the generated source mapping to update Git-native version fields:

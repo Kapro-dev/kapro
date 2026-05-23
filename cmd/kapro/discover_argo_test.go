@@ -134,6 +134,19 @@ spec:
 			t.Fatalf("git map missing %q:\n%s", want, gitMap)
 		}
 	}
+	review := readFile(t, filepath.Join(out, "discovery/review-summary.yaml"))
+	for _, want := range []string{
+		"schemaVersion: kapro.io/discovery-review/v1alpha1",
+		"kind: argo",
+		"readyForAdopt: true",
+		"reviewRequired: false",
+		"selectedUnits: 1",
+		"Apply the observe Backend first",
+	} {
+		if !strings.Contains(review, want) {
+			t.Fatalf("review summary missing %q:\n%s", want, review)
+		}
+	}
 }
 
 func TestDiscoverArgoRepoMultiSourceApplication(t *testing.T) {

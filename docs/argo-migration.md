@@ -135,6 +135,8 @@ This generates:
 
 - `backends/checkout-observe.yaml` for observe-first runtime discovery;
 - `sources/checkout.yaml` with inferred `Source` units;
+- `discovery/review-summary.yaml` with the adoption-readiness checklist and
+  next actions;
 - `discovery/argo-discovery.yaml` with selected, skipped, and unsupported
   patterns;
 - `discovery/kapro-git-map.yaml` with confidence and write-target evidence for

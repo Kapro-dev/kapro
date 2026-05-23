@@ -75,6 +75,20 @@ func TestRunFluxDiscoverWritesMapping(t *testing.T) {
 			t.Fatalf("git map missing %q:\n%s", want, gitMap)
 		}
 	}
+	review := readFile(t, filepath.Join(out, "discovery/review-summary.yaml"))
+	for _, want := range []string{
+		"schemaVersion: kapro.io/discovery-review/v1alpha1",
+		"kind: flux",
+		"readyForAdopt: false",
+		"reviewRequired: true",
+		"needsReview:",
+		"Review every selected unit with confidence=needs-review",
+		"Inspect skippedObjects",
+	} {
+		if !strings.Contains(review, want) {
+			t.Fatalf("review summary missing %q:\n%s", want, review)
+		}
+	}
 }
 
 func TestRunFluxDiscoverRemoteRepoRevisionAndCache(t *testing.T) {
