@@ -24,7 +24,7 @@ func DefaultScenario() Scenario {
 			Cluster: &v1alpha2.Cluster{},
 			AppKey:  "conformance",
 			BackendProfile: &v1alpha2.Backend{
-				Spec: v1alpha2.BackendSpec{Driver: v1alpha2.BackendDriverOCI},
+				Spec: v1alpha2.BackendSpec{},
 			},
 			DesiredVersion: "v1.0.0",
 			Parameters:     map[string]string{"conformance": "true"},
@@ -53,6 +53,7 @@ func Check(ctx context.Context, p spokeprovider.Provider, scenario Scenario) con
 		ctx, cancel = context.WithTimeout(ctx, scenario.Timeout)
 		defer cancel()
 	}
+	scenario = normalizeScenario(p, scenario)
 	return conformance.Report{
 		Suite: "KSP provider",
 		Results: []conformance.Result{
@@ -61,6 +62,19 @@ func Check(ctx context.Context, p spokeprovider.Provider, scenario Scenario) con
 			checkReconcileDeterministicShape(ctx, p, scenario),
 		},
 	}
+}
+
+func normalizeScenario(p spokeprovider.Provider, scenario Scenario) Scenario {
+	if p == nil {
+		return scenario
+	}
+	if scenario.Request.BackendProfile == nil {
+		scenario.Request.BackendProfile = &v1alpha2.Backend{}
+	}
+	if scenario.Request.BackendProfile.Spec.Driver == "" {
+		scenario.Request.BackendProfile.Spec.Driver = p.Driver()
+	}
+	return scenario
 }
 
 func checkCapabilities(p spokeprovider.Provider, scenario Scenario) conformance.Result {

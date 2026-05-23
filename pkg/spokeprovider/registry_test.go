@@ -129,6 +129,18 @@ func TestRegistry_RegisterRegistrationRejectsMetadataMismatch(t *testing.T) {
 	}
 }
 
+func TestRegistry_RegisterRegistrationRejectsProviderDriverMismatch(t *testing.T) {
+	r := NewRegistry()
+	p := &stubProvider{driver: kaprov1alpha2.BackendDriverFlux}
+	err := r.RegisterRegistration(Registration{
+		Driver:   kaprov1alpha2.BackendDriverOCI,
+		Provider: p,
+	})
+	if err == nil || !strings.Contains(err.Error(), "provider driver") {
+		t.Fatalf("expected provider-driver mismatch error, got %v", err)
+	}
+}
+
 func TestRegistry_RegisterRegistrationRejectsUnknownContract(t *testing.T) {
 	r := NewRegistry()
 	p := &stubProvider{driver: kaprov1alpha2.BackendDriverFlux}

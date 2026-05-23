@@ -136,11 +136,21 @@ func (r *Registry) Registration(driver kaprov1alpha2.BackendDriver) (Registratio
 
 func normalizeRegistration(reg Registration) (kaprov1alpha2.BackendDriver, Registration, error) {
 	if reg.Provider == nil {
+		if reg.Driver != "" {
+			return "", Registration{}, fmt.Errorf("provider for driver %q is nil", reg.Driver)
+		}
 		return "", Registration{}, fmt.Errorf("provider is nil")
 	}
 	driver := reg.Driver
+	providerDriver := reg.Provider.Driver()
+	if providerDriver == "" {
+		return "", Registration{}, fmt.Errorf("provider driver is required")
+	}
 	if driver == "" {
-		driver = reg.Provider.Driver()
+		driver = providerDriver
+	}
+	if driver != providerDriver {
+		return "", Registration{}, fmt.Errorf("provider driver %q does not match registration driver %q", providerDriver, driver)
 	}
 	if driver == "" {
 		return "", Registration{}, fmt.Errorf("driver is required")

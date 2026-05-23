@@ -37,6 +37,15 @@ func TestCheckPasses(t *testing.T) {
 	}
 }
 
+func TestCheckDefaultsScenarioDriverFromProvider(t *testing.T) {
+	report := Check(context.Background(), driverCheckingProvider{
+		driver: v1alpha2.BackendDriverFlux,
+	}, DefaultScenario())
+	if !report.Passed() {
+		t.Fatalf("report failed: %#v", report.Failed())
+	}
+}
+
 func TestCheckReportsMissingCapability(t *testing.T) {
 	report := Check(context.Background(), fakeProvider{
 		caps: spokeprovider.Capabilities{Driver: v1alpha2.BackendDriverOCI},
@@ -84,6 +93,26 @@ func (p *togglingProvider) Reconcile(context.Context, spokeprovider.ReconcileReq
 	p.calls++
 	if p.calls%2 == 0 {
 		return spokeprovider.ReconcileResult{Phase: v1alpha2.DeliveryPhaseFailed, Err: errors.New("changed")}
+	}
+	return spokeprovider.ReconcileResult{Phase: v1alpha2.DeliveryPhaseConverged}
+}
+
+type driverCheckingProvider struct {
+	driver v1alpha2.BackendDriver
+}
+
+func (p driverCheckingProvider) Driver() v1alpha2.BackendDriver { return p.driver }
+
+func (p driverCheckingProvider) Capabilities() spokeprovider.Capabilities {
+	return spokeprovider.Capabilities{
+		Driver:            p.driver,
+		SupportsReconcile: true,
+	}
+}
+
+func (p driverCheckingProvider) Reconcile(_ context.Context, req spokeprovider.ReconcileRequest) spokeprovider.ReconcileResult {
+	if req.BackendProfile == nil || req.BackendProfile.Spec.Driver != p.driver {
+		panic("scenario driver did not match provider")
 	}
 	return spokeprovider.ReconcileResult{Phase: v1alpha2.DeliveryPhaseConverged}
 }
