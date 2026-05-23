@@ -7,6 +7,12 @@ record for each tag.
 
 ## Unreleased
 
+### Changed — `kapro why` delivery evidence
+
+`kapro why <promotionrun>` now renders a compact evidence column in text output.
+Delivery traces show app key, desired version, delivery phase, observed digest,
+artifact format, and OCI staged-delivery counts without requiring JSON output.
+
 ### Added — delivery DecisionTrace coverage
 
 Added `DecisionTrace` event type `Delivery` and hub-side trace emission from

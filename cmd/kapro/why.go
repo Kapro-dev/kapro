@@ -135,7 +135,7 @@ func renderWhy(report *whyReport) {
 		cli.Muted("No DecisionTrace records found.")
 		return
 	}
-	tbl := cli.NewTable("TIME", "TRACE", "TYPE", "PHASE", "REASON", "SCOPE", "SOURCE", "SIGNED", "MESSAGE")
+	tbl := cli.NewTable("TIME", "TRACE", "TYPE", "PHASE", "REASON", "SCOPE", "SOURCE", "SIGNED", "EVIDENCE", "MESSAGE")
 	for _, trace := range report.Traces {
 		tbl.AddRow(
 			trace.Time,
@@ -146,10 +146,88 @@ func renderWhy(report *whyReport) {
 			whyScope(trace),
 			stringOrUnset(trace.Source),
 			signatureText(trace),
+			truncate(whyEvidenceSummary(trace), 140),
 			truncate(trace.Message, 72),
 		)
 	}
 	tbl.Render()
+}
+
+func whyEvidenceSummary(trace whyTrace) string {
+	if len(trace.Evidence) == 0 {
+		return "-"
+	}
+	if trace.EventType == kaprov1alpha2.DecisionTraceEventDelivery {
+		for _, e := range trace.Evidence {
+			if e.Type == "cluster-delivery" {
+				return deliveryEvidenceSummary(e.Detail)
+			}
+		}
+	}
+	e := trace.Evidence[0]
+	var parts []string
+	if e.Type != "" {
+		parts = append(parts, e.Type)
+	}
+	if e.Source != "" {
+		parts = append(parts, "source="+e.Source)
+	}
+	for _, key := range sortedDetailKeys(e.Detail) {
+		if len(parts) >= 4 {
+			break
+		}
+		parts = append(parts, key+"="+e.Detail[key])
+	}
+	if len(trace.Evidence) > 1 {
+		parts = append(parts, fmt.Sprintf("+%d more", len(trace.Evidence)-1))
+	}
+	if len(parts) == 0 {
+		return "-"
+	}
+	return strings.Join(parts, " ")
+}
+
+func deliveryEvidenceSummary(detail map[string]string) string {
+	var parts []string
+	for _, key := range []string{
+		"appKey",
+		"desiredVersion",
+		"phase",
+		"observedDigest",
+		"format",
+		"stagingFailurePhase",
+		"stagingFailedObjects",
+		"commitFailedObjects",
+		"stagedObjects",
+		"committedObjects",
+		"appliedObjects",
+	} {
+		if value := detail[key]; value != "" && (value != "0" || !isDeliveryCountKey(key)) {
+			parts = append(parts, key+"="+value)
+		}
+	}
+	if len(parts) == 0 {
+		return "-"
+	}
+	return strings.Join(parts, " ")
+}
+
+func isDeliveryCountKey(key string) bool {
+	switch key {
+	case "stagedObjects", "stagingFailedObjects", "committedObjects", "commitFailedObjects", "appliedObjects":
+		return true
+	default:
+		return false
+	}
+}
+
+func sortedDetailKeys(detail map[string]string) []string {
+	keys := make([]string, 0, len(detail))
+	for key := range detail {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func whyScope(trace whyTrace) string {
