@@ -7,7 +7,7 @@ BOOTSTRAP_CRDS="${ROOT}/internal/bootstrap/kaprocrds"
 
 usage() {
   cat <<EOF
-Usage: scripts/verify-install.sh <render|release-render|cluster|release-cluster|release-upgrade-cluster|kind-demo|argo-e2e|flux-git-e2e|flux-e2e>
+Usage: scripts/verify-install.sh <render|release-render|cluster|release-cluster|release-upgrade-cluster|release-rollback-cluster|kind-demo|argo-e2e|flux-git-e2e|flux-e2e>
 
 Modes:
   render          Validate local chart rendering, CRD sync, and kustomize output. Default.
@@ -15,6 +15,7 @@ Modes:
   cluster         Install the local Helm chart into the active Kubernetes context and verify rollout.
   release-cluster Install the published GitHub Release chart package and verify rollout.
   release-upgrade-cluster Install the previous published chart, upgrade to the current published chart, and verify rollout.
+  release-rollback-cluster Install the previous published chart, upgrade to current, roll back, and verify rollout.
   kind-demo       Run the local Kind demo through create, approve, status, and cleanup.
   argo-e2e        Run the Kind + real Argo CD brownfield promotion E2E.
   flux-git-e2e Run the Flux brownfield Git-native source apply E2E.
@@ -29,9 +30,9 @@ Environment for cluster mode:
   KAPRO_VERIFY_CLEANUP       Uninstall the Helm release and namespace after verification (default: false)
 
 Environment for release-render and release-cluster modes:
-  KAPRO_RELEASE_VERSION       Release tag to verify (default: v0.5.3)
+  KAPRO_RELEASE_VERSION       Release tag to verify (default: v0.5.4)
   KAPRO_RELEASE_CHART_URL     Optional chart package URL override
-  KAPRO_PREVIOUS_RELEASE_VERSION Previous release tag for release-upgrade-cluster (default: v0.5.2)
+  KAPRO_PREVIOUS_RELEASE_VERSION Previous release tag for upgrade/rollback modes (default: v0.5.3)
   KAPRO_PREVIOUS_RELEASE_CHART_URL Optional previous chart package URL override
 EOF
 }
@@ -131,7 +132,7 @@ download_chart_version() {
 }
 
 download_release_chart() {
-  download_chart_version "${KAPRO_RELEASE_VERSION:-v0.5.3}" "${KAPRO_RELEASE_CHART_URL:-}"
+  download_chart_version "${KAPRO_RELEASE_VERSION:-v0.5.4}" "${KAPRO_RELEASE_CHART_URL:-}"
 }
 
 release_render() (
@@ -148,6 +149,34 @@ release_render() (
 
   echo "release render verification passed"
 )
+
+verify_installed_chart() {
+  local namespace release
+  namespace="${KAPRO_VERIFY_NAMESPACE:-kapro-system}"
+  release="${KAPRO_VERIFY_RELEASE:-kapro}"
+
+  echo "waiting for operator rollout"
+  kubectl -n "${namespace}" rollout status "deployment/${release}-kapro-operator" --timeout=180s
+
+  echo "checking installed resources"
+  local crds
+  crds="$(kubectl get crd -o name)"
+  local missing_crd
+  missing_crd=""
+  while IFS= read -r crd; do
+    if ! grep -q "^customresourcedefinition.apiextensions.k8s.io/${crd}$" <<<"${crds}"; then
+      missing_crd="${crd}"
+      break
+    fi
+  done < <(expected_kapro_crds)
+  if [ -n "${missing_crd}" ]; then
+    echo "missing required kapro.io CRD: ${missing_crd}" >&2
+    return 1
+  fi
+  kubectl -n "${namespace}" get deploy,svc,sa
+  kubectl auth can-i get promotionruns.kapro.io \
+    --as="system:serviceaccount:${namespace}:${release}-kapro-operator"
+}
 
 install_chart() {
   local chart_ref="$1"
@@ -174,27 +203,7 @@ install_chart() {
     --create-namespace \
     "${set_args[@]}"
 
-  echo "waiting for operator rollout"
-  kubectl -n "${namespace}" rollout status "deployment/${release}-kapro-operator" --timeout=180s
-
-  echo "checking installed resources"
-  local crds
-  crds="$(kubectl get crd -o name)"
-  local missing_crd
-  missing_crd=""
-  while IFS= read -r crd; do
-    if ! grep -q "^customresourcedefinition.apiextensions.k8s.io/${crd}$" <<<"${crds}"; then
-      missing_crd="${crd}"
-      break
-    fi
-  done < <(expected_kapro_crds)
-  if [ -n "${missing_crd}" ]; then
-    echo "missing required kapro.io CRD: ${missing_crd}" >&2
-    return 1
-  fi
-  kubectl -n "${namespace}" get deploy,svc,sa
-  kubectl auth can-i get promotionruns.kapro.io \
-    --as="system:serviceaccount:${namespace}:${release}-kapro-operator"
+  verify_installed_chart
 
   if [ "${cleanup}" = "true" ]; then
     echo "cleaning up ${release} from namespace ${namespace}"
@@ -211,7 +220,7 @@ cluster() {
 
 release_cluster() (
   local version chart_package
-  version="${KAPRO_RELEASE_VERSION:-v0.5.3}"
+  version="${KAPRO_RELEASE_VERSION:-v0.5.4}"
   chart_package="$(download_release_chart)"
   trap 'rm -rf "$(dirname "${chart_package}")"' EXIT
   KAPRO_IMAGE_TAG="${KAPRO_IMAGE_TAG:-${version}}" install_chart "${chart_package}"
@@ -219,8 +228,8 @@ release_cluster() (
 
 release_upgrade_cluster() (
   local current previous current_chart previous_chart cleanup
-  current="${KAPRO_RELEASE_VERSION:-v0.5.3}"
-  previous="${KAPRO_PREVIOUS_RELEASE_VERSION:-v0.5.2}"
+  current="${KAPRO_RELEASE_VERSION:-v0.5.4}"
+  previous="${KAPRO_PREVIOUS_RELEASE_VERSION:-v0.5.3}"
   cleanup="${KAPRO_VERIFY_CLEANUP:-false}"
 
   previous_chart="$(download_chart_version "${previous}" "${KAPRO_PREVIOUS_RELEASE_CHART_URL:-}")"
@@ -233,6 +242,37 @@ release_upgrade_cluster() (
   echo "upgrading ${previous} to ${current}"
   KAPRO_VERIFY_CLEANUP="${cleanup}" KAPRO_IMAGE_TAG="${KAPRO_IMAGE_TAG:-${current}}" install_chart "${current_chart}"
   echo "release upgrade verification passed"
+)
+
+release_rollback_cluster() (
+  local current previous current_chart previous_chart cleanup namespace release
+  current="${KAPRO_RELEASE_VERSION:-v0.5.4}"
+  previous="${KAPRO_PREVIOUS_RELEASE_VERSION:-v0.5.3}"
+  cleanup="${KAPRO_VERIFY_CLEANUP:-false}"
+  namespace="${KAPRO_VERIFY_NAMESPACE:-kapro-system}"
+  release="${KAPRO_VERIFY_RELEASE:-kapro}"
+
+  previous_chart="$(download_chart_version "${previous}" "${KAPRO_PREVIOUS_RELEASE_CHART_URL:-}")"
+  current_chart="$(download_release_chart)"
+  trap 'rm -rf "$(dirname "${previous_chart}")" "$(dirname "${current_chart}")"' EXIT
+
+  echo "installing previous release ${previous} before rollback smoke"
+  KAPRO_VERIFY_CLEANUP=false KAPRO_IMAGE_TAG="${KAPRO_PREVIOUS_IMAGE_TAG:-${previous}}" install_chart "${previous_chart}"
+
+  echo "upgrading ${previous} to ${current} before rollback"
+  KAPRO_VERIFY_CLEANUP=false KAPRO_IMAGE_TAG="${KAPRO_IMAGE_TAG:-${current}}" install_chart "${current_chart}"
+
+  echo "rolling back ${release} in namespace ${namespace} to previous Helm revision"
+  helm rollback "${release}" 1 --namespace "${namespace}" --wait --timeout 180s
+  verify_installed_chart
+
+  if [ "${cleanup}" = "true" ]; then
+    echo "cleaning up ${release} from namespace ${namespace}"
+    helm uninstall "${release}" --namespace "${namespace}"
+    kubectl delete namespace "${namespace}" --ignore-not-found
+  fi
+
+  echo "release rollback verification passed"
 )
 
 kind_demo() {
@@ -262,6 +302,7 @@ case "${cmd}" in
   cluster) cluster ;;
   release-cluster) release_cluster ;;
   release-upgrade-cluster) release_upgrade_cluster ;;
+  release-rollback-cluster) release_rollback_cluster ;;
   kind-demo) kind_demo ;;
   argo-e2e) argo_e2e ;;
   flux-git-e2e) flux_git_e2e ;;
