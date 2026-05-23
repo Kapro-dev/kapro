@@ -65,6 +65,29 @@ func (r ApplyResult) Succeeded() bool {
 	return len(r.StagingErrors) == 0 && len(r.CommitErrors) == 0 && r.Committed > 0
 }
 
+// StagingFailed reports whether the dry-run validation phase failed. When true
+// the commit phase did not run.
+func (r ApplyResult) StagingFailed() bool {
+	return len(r.StagingErrors) > 0
+}
+
+// CommitFailed reports whether the commit phase failed after all objects
+// passed dry-run validation.
+func (r ApplyResult) CommitFailed() bool {
+	return len(r.CommitErrors) > 0
+}
+
+// StagingFailedObjects returns the number of objects that failed dry-run
+// validation.
+func (r ApplyResult) StagingFailedObjects() int {
+	return len(r.StagingErrors)
+}
+
+// CommitFailedObjects returns the number of objects that failed during commit.
+func (r ApplyResult) CommitFailedObjects() int {
+	return len(r.CommitErrors)
+}
+
 // Err returns the combined staging/commit error, or nil on success / empty input.
 func (r ApplyResult) Err() error {
 	if len(r.StagingErrors) > 0 {

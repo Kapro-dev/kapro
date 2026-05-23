@@ -632,6 +632,61 @@ spec:
                       - Failed
                       - Skipped
                       type: string
+                    staging:
+                      description: |-
+                        Staging records the latest staged apply diagnostics for providers that
+                        support server-side dry-run before commit.
+                      properties:
+                        commitFailedObjects:
+                          description: |-
+                            CommitFailedObjects is the count of objects that failed during the commit
+                            phase after staging succeeded.
+                          format: int32
+                          type: integer
+                        committedObjects:
+                          description: |-
+                            CommittedObjects is the count of objects successfully committed through
+                            server-side apply.
+                          format: int32
+                          type: integer
+                        failurePhase:
+                          description: |-
+                            FailurePhase records where the latest failed attempt stopped. It is empty
+                            on success.
+                          enum:
+                          - Pending
+                          - Pulling
+                          - Staging
+                          - Applying
+                          - Converged
+                          - Failed
+                          - Skipped
+                          type: string
+                        failurePolicy:
+                          description: FailurePolicy records how staging failures
+                            affected commit.
+                          enum:
+                          - Abort
+                          type: string
+                        stagedObjects:
+                          description: |-
+                            StagedObjects is the count of objects that passed server-side dry-run
+                            validation.
+                          format: int32
+                          type: integer
+                        stagingFailedObjects:
+                          description: |-
+                            StagingFailedObjects is the count of objects that failed server-side
+                            dry-run validation. When this is non-zero, no commit phase ran.
+                          format: int32
+                          type: integer
+                        type:
+                          description: Type records the staging algorithm used for
+                            this attempt.
+                          enum:
+                          - TwoPhase
+                          type: string
+                      type: object
                   type: object
                 description: |-
                   Delivery tracks the spoke-side delivery loop's progress for each app.

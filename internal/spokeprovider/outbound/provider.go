@@ -49,6 +49,7 @@ func (p *Provider) Capabilities() spokeprovider.Capabilities {
 		SupportsReconcile: true,
 		SupportsObserve:   true,
 		SupportsApply:     true,
+		SupportsDryRun:    true,
 	}
 }
 
@@ -97,6 +98,7 @@ func (p *Provider) Reconcile(ctx context.Context, req spokeprovider.ReconcileReq
 	out.Phase = kaprov1alpha2.DeliveryPhase(inner.Phase)
 	out.Format = string(inner.Format)
 	out.ObservedDigest = inner.ObservedDigest
+	out.Staging = inner.Staging
 	out.AppliedObjects = inner.AppliedObjects
 	out.Err = inner.Err
 	if !inner.LastAttemptedAt.IsZero() {

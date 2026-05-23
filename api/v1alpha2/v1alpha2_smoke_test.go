@@ -76,6 +76,21 @@ func TestDeliveryStagingRoundTripsThroughYAML(t *testing.T) {
 				},
 			},
 		},
+		Status: ClusterStatus{
+			Delivery: map[string]ClusterDeliveryStatus{
+				"api": {
+					Phase:          DeliveryPhaseFailed,
+					DesiredVersion: "1.2.3",
+					Staging: &DeliveryStagingStatus{
+						Type:                 DeliveryStagingTwoPhase,
+						FailurePolicy:        DeliveryStagingFailureAbort,
+						StagedObjects:        4,
+						StagingFailedObjects: 1,
+						FailurePhase:         DeliveryPhaseStaging,
+					},
+				},
+			},
+		},
 	}
 	data, err := yaml.Marshal(in)
 	if err != nil {
@@ -93,6 +108,16 @@ func TestDeliveryStagingRoundTripsThroughYAML(t *testing.T) {
 	}
 	if out.Spec.Delivery.Staging.FailurePolicy != DeliveryStagingFailureAbort {
 		t.Errorf("staging.failurePolicy = %q, want %q", out.Spec.Delivery.Staging.FailurePolicy, DeliveryStagingFailureAbort)
+	}
+	status := out.Status.Delivery["api"].Staging
+	if status == nil {
+		t.Fatal("status.delivery[api].staging lost across round-trip")
+	}
+	if status.StagedObjects != 4 || status.StagingFailedObjects != 1 {
+		t.Fatalf("status staging counts = %+v, want staged=4 failed=1", status)
+	}
+	if status.FailurePhase != DeliveryPhaseStaging {
+		t.Fatalf("status failurePhase = %q, want Staging", status.FailurePhase)
 	}
 }
 

@@ -230,6 +230,7 @@ func (l *deliveryLoop) writeStatus(
 			Phase:          res.Phase,
 			DesiredVersion: desired[appKey],
 			ObservedDigest: res.ObservedDigest,
+			Staging:        effectiveStagingStatus(fc.Spec.Delivery.Staging, res.Staging),
 			AppliedObjects: res.AppliedObjects,
 			Format:         res.Format,
 		}
@@ -258,6 +259,28 @@ func (l *deliveryLoop) writeStatus(
 		return fmt.Errorf("patch Cluster delivery status: %w", err)
 	}
 	return nil
+}
+
+func effectiveStagingStatus(spec *kaprov1alpha2.DeliveryStagingSpec, observed *kaprov1alpha2.DeliveryStagingStatus) *kaprov1alpha2.DeliveryStagingStatus {
+	if observed == nil {
+		return nil
+	}
+	out := *observed
+	if out.Type == "" {
+		out.Type = kaprov1alpha2.DeliveryStagingTwoPhase
+	}
+	if out.FailurePolicy == "" {
+		out.FailurePolicy = kaprov1alpha2.DeliveryStagingFailureAbort
+	}
+	if spec != nil {
+		if spec.Type != "" {
+			out.Type = spec.Type
+		}
+		if spec.FailurePolicy != "" {
+			out.FailurePolicy = spec.FailurePolicy
+		}
+	}
+	return &out
 }
 
 // writeSuspended marks every desired app as Skipped without touching

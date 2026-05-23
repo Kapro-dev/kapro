@@ -7,6 +7,15 @@ record for each tag.
 
 ## Unreleased
 
+### Added — spoke staging diagnostics
+
+Added nested `Cluster.status.delivery[app].staging` diagnostics for OCI
+two-phase delivery, including staged, committed, staging-failed, commit-failed,
+and failure-phase counts. Added
+`kapro_spoke_delivery_staging_results_total{cluster,backend,phase,result}` so
+operators can alert separately on dry-run validation failures and commit-phase
+failures.
+
 ### Added — spoke delivery SLO assets
 
 Added Prometheus recording rules, alerts, dashboard panels, and runbook

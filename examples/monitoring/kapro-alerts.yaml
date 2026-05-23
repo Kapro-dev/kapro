@@ -113,6 +113,16 @@ groups:
           description: Backend {{ $labels.backend }} has had delivery reconcile errors for 15 minutes.
           runbook: docs/operations.md#runbook-spoke-delivery
 
+      - alert: KaproSpokeDeliveryStagingErrors
+        expr: sum by (cluster, backend, phase) (rate(kapro_spoke_delivery_staging_results_total{result="error"}[10m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Kapro spoke {{ $labels.cluster }} {{ $labels.phase }} failures detected
+          description: Backend {{ $labels.backend }} has had OCI staged delivery {{ $labels.phase }} failures for 10 minutes.
+          runbook: docs/operations.md#runbook-spoke-delivery
+
       - alert: KaproSpokeDeliveryLatencyHigh
         expr: |
           histogram_quantile(

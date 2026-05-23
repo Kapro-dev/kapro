@@ -36,10 +36,19 @@ var (
 		},
 		[]string{"cluster", "backend", "phase", "result"},
 	)
+	spokeDeliveryStagingResults = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "kapro",
+			Subsystem: "spoke_delivery",
+			Name:      "staging_results_total",
+			Help:      "Total spoke delivery staging/apply phase outcomes by cluster, backend, phase, and result.",
+		},
+		[]string{"cluster", "backend", "phase", "result"},
+	)
 )
 
 func init() {
-	prometheus.MustRegister(spokeDeliveryReconciles, spokeDeliveryDuration)
+	prometheus.MustRegister(spokeDeliveryReconciles, spokeDeliveryDuration, spokeDeliveryStagingResults)
 }
 
 func startMetricsServer(ctx context.Context, addr string) error {
@@ -101,6 +110,25 @@ func observeSpokeDelivery(cluster, backend string, result spokeprovider.Reconcil
 	}
 	spokeDeliveryReconciles.WithLabelValues(cluster, backend, phase, outcome).Inc()
 	spokeDeliveryDuration.WithLabelValues(cluster, backend, phase, outcome).Observe(duration.Seconds())
+	observeSpokeDeliveryStaging(cluster, backend, result.Staging)
+}
+
+func observeSpokeDeliveryStaging(cluster, backend string, staging *kaprov1alpha2.DeliveryStagingStatus) {
+	if staging == nil {
+		return
+	}
+	switch staging.FailurePhase {
+	case kaprov1alpha2.DeliveryPhaseStaging:
+		spokeDeliveryStagingResults.WithLabelValues(cluster, backend, string(kaprov1alpha2.DeliveryPhaseStaging), "error").Inc()
+	case kaprov1alpha2.DeliveryPhaseApplying:
+		spokeDeliveryStagingResults.WithLabelValues(cluster, backend, string(kaprov1alpha2.DeliveryPhaseStaging), "success").Inc()
+		spokeDeliveryStagingResults.WithLabelValues(cluster, backend, string(kaprov1alpha2.DeliveryPhaseApplying), "error").Inc()
+	case "":
+		if staging.StagedObjects > 0 || staging.CommittedObjects > 0 {
+			spokeDeliveryStagingResults.WithLabelValues(cluster, backend, string(kaprov1alpha2.DeliveryPhaseStaging), "success").Inc()
+			spokeDeliveryStagingResults.WithLabelValues(cluster, backend, string(kaprov1alpha2.DeliveryPhaseApplying), "success").Inc()
+		}
+	}
 }
 
 func deliveryBackendMetricLabel(profile *kaprov1alpha2.Backend) string {
