@@ -71,7 +71,7 @@ Each minor train should have a narrow theme and a short ship list:
 ## Train Budget
 
 The third digit is meaningful during pre-stable development, so Kapro can ship
-feature increments such as `v0.4.18` or `v0.4.20` without changing the first
+feature increments such as `v0.4.19` or `v0.4.20` without changing the first
 digit. Those releases must still be concrete increments, not broad planning
 buckets.
 

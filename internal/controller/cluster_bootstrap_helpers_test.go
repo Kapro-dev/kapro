@@ -8,11 +8,13 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"reflect"
 	"testing"
 	"time"
 
 	certificatesv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
@@ -108,6 +110,45 @@ func TestManagedResourceLabels(t *testing.T) {
 	}
 	if l["kapro.io/fleetcluster"] != "de-prod-01" {
 		t.Errorf("missing fleetcluster label: %v", l)
+	}
+}
+
+func TestBuildClusterRoleUsesNamedVerbsOnly(t *testing.T) {
+	role := buildClusterRole("kapro:cluster-controller:de-prod-01", "de-prod-01")
+
+	clusterRule := findPolicyRule(t, role.Rules, "kapro.io", "clusters")
+	if got, want := clusterRule.ResourceNames, []string{"de-prod-01"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("cluster resourceNames = %v, want %v", got, want)
+	}
+	assertVerbs(t, clusterRule.Verbs, []string{"get", "patch", "update"})
+
+	statusRule := findPolicyRule(t, role.Rules, "kapro.io", "clusters/status")
+	assertVerbs(t, statusRule.Verbs, []string{"get", "patch", "update"})
+
+	csrRule := findPolicyRule(t, role.Rules, "certificates.k8s.io", "certificatesigningrequests")
+	assertVerbs(t, csrRule.Verbs, []string{"create", "get"})
+}
+
+func findPolicyRule(t *testing.T, rules []rbacv1.PolicyRule, apiGroup, resource string) rbacv1.PolicyRule {
+	t.Helper()
+	for _, rule := range rules {
+		if containsString(rule.APIGroups, apiGroup) && containsString(rule.Resources, resource) {
+			return rule
+		}
+	}
+	t.Fatalf("policy rule for %s/%s not found: %#v", apiGroup, resource, rules)
+	return rbacv1.PolicyRule{}
+}
+
+func assertVerbs(t *testing.T, got, want []string) {
+	t.Helper()
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("verbs = %v, want %v", got, want)
+	}
+	for _, forbidden := range []string{"list", "watch"} {
+		if containsString(got, forbidden) {
+			t.Fatalf("verbs must not include %q: %v", forbidden, got)
+		}
 	}
 }
 
