@@ -9,10 +9,18 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"net"
 	"strings"
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	oteltrace "go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/test/bufconn"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -71,6 +79,65 @@ func TestCredentialsLoadsTLSSecret(t *testing.T) {
 	if creds.Info().SecurityProtocol == "" {
 		t.Fatalf("credentials info = %+v", creds.Info())
 	}
+}
+
+func TestDialOptionsInstallOTelClientStatsHandler(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	defer otel.SetTracerProvider(previous)
+
+	listener := bufconn.Listen(1024 * 1024)
+	t.Cleanup(func() { _ = listener.Close() })
+	server := grpc.NewServer()
+	healthpb.RegisterHealthServer(server, healthServer{})
+	go func() {
+		_ = server.Serve(listener)
+	}()
+	defer server.Stop()
+
+	opts, err := DialOptions(context.Background(), nil, kaprov1alpha2.Plugin{})
+	if err != nil {
+		t.Fatalf("DialOptions: %v", err)
+	}
+	opts = append(opts,
+		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+			return listener.DialContext(ctx)
+		}),
+		grpc.WithBlock(), //nolint:staticcheck // grpc.NewClient lacks WithBlock equivalent in older supported versions.
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, err := grpc.DialContext(ctx, "bufnet", opts...) //nolint:staticcheck // grpc.NewClient lacks WithBlock equivalent in older supported versions.
+	if err != nil {
+		t.Fatalf("DialContext: %v", err)
+	}
+	defer conn.Close()
+
+	if _, err := healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{}); err != nil {
+		t.Fatalf("health check: %v", err)
+	}
+	if !hasClientSpan(recorder.Ended()) {
+		t.Fatalf("expected OTel client span, got %d ended spans", len(recorder.Ended()))
+	}
+}
+
+type healthServer struct {
+	healthpb.UnimplementedHealthServer
+}
+
+func (healthServer) Check(context.Context, *healthpb.HealthCheckRequest) (*healthpb.HealthCheckResponse, error) {
+	return &healthpb.HealthCheckResponse{Status: healthpb.HealthCheckResponse_SERVING}, nil
+}
+
+func hasClientSpan(spans []sdktrace.ReadOnlySpan) bool {
+	for _, span := range spans {
+		if span.SpanKind() == oteltrace.SpanKindClient && strings.Contains(span.Name(), "Health/Check") {
+			return true
+		}
+	}
+	return false
 }
 
 func testCAPEM(t *testing.T) []byte {

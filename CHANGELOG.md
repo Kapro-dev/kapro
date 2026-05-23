@@ -7,6 +7,13 @@ record for each tag.
 
 ## Unreleased
 
+### Added — OpenTelemetry trace propagation
+
+Plugin gRPC clients now install OpenTelemetry client stats handlers, and
+DecisionTrace emission creates `kapro.decisiontrace.emit` spans with stable
+promotion, scope, event type, source, phase, and reason attributes. Added
+`docs/observability.md` to document the initial span contract.
+
 ### Added — DecisionTrace signature verification
 
 Added `kapro verify decisiontrace <name> --public-key <pem>` to verify signed
