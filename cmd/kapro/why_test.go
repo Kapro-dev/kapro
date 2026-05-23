@@ -47,6 +47,41 @@ func TestRunWhyRendersDecisionTraceTimeline(t *testing.T) {
 	}
 }
 
+func TestRunWhyRendersDeliveryEvidenceSummary(t *testing.T) {
+	c := fake.NewClientBuilder().
+		WithScheme(diagTestScheme(t)).
+		WithObjects(whyDeliveryTraceObject("delivery", "run-a")).
+		Build()
+
+	out := withCapturedOutput(t, func() {
+		if err := runWhyWithClient(context.Background(), c, "run-a"); err != nil {
+			t.Fatalf("runWhyWithClient: %v", err)
+		}
+	})
+
+	for _, want := range []string{
+		"Delivery",
+		"DeliveryFailed",
+		"appKey=api",
+		"stagingFailurePhase=Staging",
+		"stagingFailedObjects=1",
+		"observedDigest=sha256:abc",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output missing %q:\n%s", want, out)
+		}
+	}
+	for _, unwanted := range []string{
+		"committedObjects=0",
+		"commitFailedObjects=0",
+		"appliedObjects=0",
+	} {
+		if strings.Contains(out, unwanted) {
+			t.Fatalf("output included zero delivery counter %q:\n%s", unwanted, out)
+		}
+	}
+}
+
 func TestRunWhyJSONOutput(t *testing.T) {
 	c := fake.NewClientBuilder().
 		WithScheme(diagTestScheme(t)).
@@ -146,4 +181,29 @@ func whyTraceObject(name, run, ts string, eventType kaprov1alpha2.DecisionTraceE
 			PayloadDigest:      "sha256:abc",
 		},
 	}
+}
+
+func whyDeliveryTraceObject(name, run string) *kaprov1alpha2.DecisionTrace {
+	trace := whyTraceObject(name, run, "2026-05-23T10:03:00Z", kaprov1alpha2.DecisionTraceEventDelivery)
+	trace.Spec.Source = "cluster-delivery"
+	trace.Spec.Reason = "DeliveryFailed"
+	trace.Spec.Message = "cluster cluster-a app api delivery Failed: dry-run rejected configmap"
+	trace.Spec.Evidence = []kaprov1alpha2.DecisionTraceEvidence{{
+		Type:   "cluster-delivery",
+		Source: "cluster-a",
+		Detail: map[string]string{
+			"appKey":               "api",
+			"desiredVersion":       "v2",
+			"phase":                "Failed",
+			"stagingFailurePhase":  "Staging",
+			"stagedObjects":        "3",
+			"stagingFailedObjects": "1",
+			"committedObjects":     "0",
+			"commitFailedObjects":  "0",
+			"appliedObjects":       "0",
+			"format":               "raw-yaml",
+			"observedDigest":       "sha256:abc",
+		},
+	}}
+	return trace
 }
