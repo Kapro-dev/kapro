@@ -8,7 +8,12 @@ promotion controller.
 The operator exposes Prometheus metrics on `:8080` by default. The Helm chart
 and kustomize manifests should expose this port as `metrics`.
 
-Kapro-specific metrics use the `kapro_` namespace:
+`kapro-cluster-controller` exposes a separate spoke-side `/metrics` endpoint
+using `KAPRO_METRICS_ADDR` (`:8080` by default, `off` to disable). The
+cluster-controller Helm chart creates a metrics Service when
+`metrics.enabled=true`.
+
+Operator metrics use the `kapro_` namespace:
 
 | Metric | Type | Use |
 |---|---|---|
@@ -32,6 +37,14 @@ Kapro-specific metrics use the `kapro_` namespace:
 
 Controller-runtime and Go runtime metrics are also exposed from the same
 endpoint.
+
+Spoke metrics use the same namespace but are emitted by each
+`kapro-cluster-controller` pod:
+
+| Metric | Type | Use |
+|---|---|---|
+| `kapro_spoke_delivery_reconciles_total` | counter | Spoke delivery outcomes by cluster, backend, phase, and result |
+| `kapro_spoke_delivery_reconcile_duration_seconds` | histogram | Spoke delivery reconcile duration |
 
 ## Dashboard and Alerts
 

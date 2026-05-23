@@ -63,6 +63,16 @@ status:
 delivery:
   intervalSeconds: 30  # minimum 10
 
+metrics:
+  enabled: true
+  port: 8080
+  service:
+    type: ClusterIP
+    annotations: {}
+  serviceMonitor:
+    enabled: false
+    labels: {}
+
 resources:
   requests:
     cpu: 50m
@@ -82,10 +92,6 @@ securityContext:
     drop: [ALL]
   readOnlyRootFilesystem: true
   runAsNonRoot: true
-
-# Note: kapro-cluster-controller does not yet expose a Prometheus metrics
-# endpoint. When the spoke binary gains one, this chart will add a Service +
-# ServiceMonitor block here.
 
 nodeSelector: {}
 tolerations: []

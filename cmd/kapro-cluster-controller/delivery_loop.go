@@ -126,6 +126,19 @@ func (l *deliveryLoop) reconcileOne(
 	profErr error,
 	appKey, version string,
 ) spokeprovider.ReconcileResult {
+	started := time.Now()
+	out := l.reconcileOneResult(ctx, fc, profile, profErr, appKey, version)
+	observeSpokeDelivery(l.ClusterName, deliveryBackendMetricLabel(profile), out, time.Since(started))
+	return out
+}
+
+func (l *deliveryLoop) reconcileOneResult(
+	ctx context.Context,
+	fc *kaprov1alpha2.Cluster,
+	profile *kaprov1alpha2.Backend,
+	profErr error,
+	appKey, version string,
+) spokeprovider.ReconcileResult {
 	out := spokeprovider.ReconcileResult{LastAttemptedAt: l.now()}
 	if profErr != nil {
 		out.Phase = kaprov1alpha2.DeliveryPhaseFailed

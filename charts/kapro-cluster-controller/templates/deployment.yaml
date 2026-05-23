@@ -35,6 +35,12 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- if .Values.metrics.enabled }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+              protocol: TCP
+          {{- end }}
           env:
             - name: KAPRO_CLUSTER_NAME
               value: {{ $clusterName | quote }}
@@ -58,6 +64,8 @@ spec:
               value: "{{ .Values.status.reportIntervalSeconds }}s"
             - name: KAPRO_DELIVERY_INTERVAL
               value: "{{ .Values.delivery.intervalSeconds }}s"
+            - name: KAPRO_METRICS_ADDR
+              value: {{ ternary (printf ":%v" .Values.metrics.port) "off" .Values.metrics.enabled | quote }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
