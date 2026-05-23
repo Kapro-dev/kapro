@@ -216,7 +216,34 @@ func createOrUpdateObject(ctx context.Context, c client.Client, obj client.Objec
 		if getErr := c.Get(ctx, client.ObjectKeyFromObject(obj), current); getErr != nil {
 			return getErr
 		}
+		preserveObjectMetadata(current, obj)
 		return c.Patch(ctx, obj, client.MergeFrom(current), patchOpts...)
 	}
 	return nil
+}
+
+func preserveObjectMetadata(current, desired client.Object) {
+	desired.SetResourceVersion(current.GetResourceVersion())
+	desired.SetUID(current.GetUID())
+	desired.SetCreationTimestamp(current.GetCreationTimestamp())
+	desired.SetGeneration(current.GetGeneration())
+	desired.SetManagedFields(current.GetManagedFields())
+	desired.SetFinalizers(current.GetFinalizers())
+	desired.SetOwnerReferences(current.GetOwnerReferences())
+	desired.SetLabels(mergeStringMaps(current.GetLabels(), desired.GetLabels()))
+	desired.SetAnnotations(mergeStringMaps(current.GetAnnotations(), desired.GetAnnotations()))
+}
+
+func mergeStringMaps(base, overlay map[string]string) map[string]string {
+	if len(base) == 0 && len(overlay) == 0 {
+		return nil
+	}
+	out := map[string]string{}
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range overlay {
+		out[k] = v
+	}
+	return out
 }
