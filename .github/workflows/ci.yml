@@ -152,7 +152,7 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v5
       - name: Verify release packaging
-        run: VERSION=v0.4.12 make release-smoke
+        run: VERSION=v0.4.14 make release-smoke
 
   docker:
     name: Docker Build (dry-run)

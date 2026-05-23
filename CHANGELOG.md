@@ -7,6 +7,17 @@ record for each tag.
 
 ## Unreleased
 
+### Changed — release metadata for v0.4.14
+
+Updated Helm chart versions, install examples, and release smoke defaults so
+the next release tag packages `0.4.14` artifacts consistently.
+
+### Added — reference adapter package tests
+
+Added public-surface unit tests for the Argo CD, Flux, and OCI reference
+adapter packages so their discovery topology, capability bits, and modeled
+result contracts are covered independently of controller integration tests.
+
 ### Added — target FSM DecisionTrace coverage
 
 Target phase transitions, terminal failures/skips, direct convergence,
