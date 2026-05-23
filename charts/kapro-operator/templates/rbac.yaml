@@ -147,6 +147,7 @@ rules:
   - approvals/status
   - backends/status
   - decisiontraces/status
+  - fleetdriftreports/status
   - fleets/status
   - gateexpressions/status
   - clusters/status
@@ -164,9 +165,10 @@ rules:
   - kapro.io
   resources:
   - adapterpolicies
-  - policies
   - backends
+  - fleetdriftreports
   - gateexpressions
+  - policies
   - sources
   - triggers
   verbs:

@@ -35,6 +35,7 @@ func init() {
 	Register("approval", startApprovalController)
 	Register("backend", startBackendProfileController)
 	Register("adapterpolicy", startAdapterPolicyController)
+	Register("fleetdriftreport", startFleetDriftReportController)
 	Register("plugin", startPluginRegistrationController)
 	Register("trigger", startPromotionTriggerController)
 	Register("cluster-bootstrap", startFleetClusterBootstrapController)
@@ -50,6 +51,7 @@ func init() {
 	RegisterAlias("gate-expression", "gateexpression")
 	RegisterAlias("backend-profile", "backend")
 	RegisterAlias("adapter-policy", "adapterpolicy")
+	RegisterAlias("fleet-drift-report", "fleetdriftreport")
 	RegisterAlias("plugin-registration", "plugin")
 	RegisterAlias("promotion-trigger", "trigger")
 	RegisterAlias("fleetcluster-bootstrap", "cluster-bootstrap")
@@ -293,6 +295,21 @@ func startAdapterPolicyController(_ context.Context, cc ControllerContext) (bool
 		Recorder:        cc.Recorder,
 		AdapterRegistry: cc.AdapterRegistry,
 	}).SetupWithManager(cc.Manager); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// startFleetDriftReportController starts the opt-in drift report reconciler.
+// It derives FleetDriftReport.status from existing Cluster, PromotionRun, and
+// Target state and does not mutate rollout resources.
+func startFleetDriftReportController(_ context.Context, cc ControllerContext) (bool, error) {
+	r := &controller.FleetDriftReportReconciler{
+		Client:   cc.Manager.GetClient(),
+		Recorder: cc.Recorder,
+		Scheme:   cc.Manager.GetScheme(),
+	}
+	if err := r.SetupWithManager(cc.Manager); err != nil {
 		return false, err
 	}
 	return true, nil

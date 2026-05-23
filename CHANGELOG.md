@@ -7,6 +7,13 @@ record for each tag.
 
 ## Unreleased
 
+### Added — FleetDriftReport drift read model
+
+Added the preview `FleetDriftReport` CRD and opt-in `fleetdriftreport`
+controller. Reports derive desired-vs-observed drift from existing `Target`
+and `Cluster` status, scope by Fleet, PromotionRun, or Target labels, and keep
+bounded non-current target evidence in status without mutating rollout state.
+
 ### Added — plugin compatibility policy
 
 Added a plugin compatibility policy and exported `pkg/plugincompat` policy

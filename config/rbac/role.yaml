@@ -130,6 +130,7 @@ rules:
   resources:
   - adapterpolicies
   - backends
+  - fleetdriftreports
   - gateexpressions
   - policies
   - sources
@@ -147,6 +148,7 @@ rules:
   - clusters/status
   - clustertemplates/status
   - decisiontraces/status
+  - fleetdriftreports/status
   - fleets/status
   - gateexpressions/status
   - plugins/status
