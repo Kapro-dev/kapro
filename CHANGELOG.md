@@ -7,6 +7,12 @@ record for each tag.
 
 ## Unreleased
 
+### Added — `kapro why`
+
+Added `kapro why <promotionrun>` to render a chronological DecisionTrace
+timeline for a PromotionRun, with text and JSON output for operators and
+automation.
+
 ### Added — DecisionTrace signing foundation
 
 Added optional Ed25519 detached signatures for `DecisionTrace` records. When
