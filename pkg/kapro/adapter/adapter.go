@@ -26,6 +26,8 @@ type Adapter interface {
 	Driver() kaprov1alpha2.BackendDriver
 	// Runtime returns where the adapter can run.
 	Runtime() kaprov1alpha2.BackendRuntime
+	// Capabilities returns the operations this adapter supports.
+	Capabilities() Capabilities
 	// Apply asks the backend to move one target toward the requested version.
 	Apply(ctx context.Context, req Request) (Result, error)
 	// Observe reports convergence without taking ownership of PromotionRun state.
@@ -34,6 +36,33 @@ type Adapter interface {
 	Rollback(ctx context.Context, req Request) (Result, error)
 	// Discover reports backend-native objects that can be observed or adopted.
 	Discover(ctx context.Context, req DiscoveryRequest) (DiscoveryResult, error)
+}
+
+// Capabilities describes which adapter operations are supported. Callers should
+// branch on these bits instead of invoking an unsupported method and treating
+// the expected unsupported result as an error path.
+type Capabilities struct {
+	ContractVersion string
+	Driver          kaprov1alpha2.BackendDriver
+	Runtime         kaprov1alpha2.BackendRuntime
+
+	SupportsApply     bool
+	SupportsObserve   bool
+	SupportsRollback  bool
+	SupportsDiscover  bool
+	SupportsDryRun    bool
+	SupportsBackendIO bool
+}
+
+// Normalize returns a copy with stable defaults applied.
+func (c Capabilities) Normalize() Capabilities {
+	if c.ContractVersion == "" {
+		c.ContractVersion = "v1alpha1"
+	}
+	if c.Runtime == "" {
+		c.Runtime = kaprov1alpha2.BackendRuntimeBoth
+	}
+	return c
 }
 
 // Request is the common input for apply, observe, and rollback operations.
@@ -202,6 +231,14 @@ func NewReferenceAdapter(driver kaprov1alpha2.BackendDriver, runtime kaprov1alph
 func (a *ReferenceAdapter) Driver() kaprov1alpha2.BackendDriver { return a.driver }
 func (a *ReferenceAdapter) Runtime() kaprov1alpha2.BackendRuntime {
 	return a.runtime
+}
+
+func (a *ReferenceAdapter) Capabilities() Capabilities {
+	return Capabilities{
+		Driver:           a.driver,
+		Runtime:          a.runtime,
+		SupportsDiscover: a.discovery.Supported,
+	}.Normalize()
 }
 
 func (a *ReferenceAdapter) Apply(_ context.Context, _ Request) (Result, error) {

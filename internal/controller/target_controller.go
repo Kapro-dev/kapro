@@ -977,38 +977,56 @@ func (r *TargetReconciler) handleApplying(ctx context.Context, promotionrun *kap
 
 	// Issue Apply exactly once per Applying entry.
 	if r.ActuatorRegistry != nil && !target.ApplyIssued {
-		act, err := r.ActuatorRegistry.Resolve(mc.Spec.Delivery.RegistryKey())
+		key := mc.Spec.Delivery.RegistryKey()
+		act, err := r.ActuatorRegistry.Resolve(key)
 		if err != nil {
 			l.Error(err, "failed to resolve actuator")
 			return ctrl.Result{RequeueAfter: requeueFast}, nil
 		}
-		deltaCount, err := act.ApplyDelta(ctx, actuator.DeltaApplyRequest{
-			Cluster:         &mc,
-			DesiredVersions: desiredVersions,
-		})
+		caps := actuatorCapabilitiesFor(r.ActuatorRegistry, key)
+		if !supportsActuatorApply(caps) {
+			r.failTarget(ctx, promotionrun, target, fmt.Sprintf("actuator %q does not support apply", key))
+			return ctrl.Result{}, nil
+		}
+		deltaCount, err := applyDesiredVersions(ctx, act, caps, &mc, desiredVersions)
 		if err != nil {
-			l.Error(err, "Actuator.ApplyDelta failed, will retry")
+			l.Error(err, "Actuator apply failed, will retry")
 			return ctrl.Result{RequeueAfter: requeueFast}, nil
 		}
 		target.ApplyIssued = true
-		l.Info("Actuator.ApplyDelta issued", "cluster", target.Target, "deltaCount", deltaCount, "desiredVersions", desiredVersions)
+		l.Info("Actuator apply issued", "cluster", target.Target, "deltaCount", deltaCount, "desiredVersions", desiredVersions)
 	}
 
 	// Poll for convergence.
 	currentVersion := mc.Status.CurrentVersions[targetAppKey(target)] // nil map read returns "" safely
 	if r.ActuatorRegistry != nil {
-		act, err := r.ActuatorRegistry.Resolve(mc.Spec.Delivery.RegistryKey())
+		key := mc.Spec.Delivery.RegistryKey()
+		act, err := r.ActuatorRegistry.Resolve(key)
 		if err != nil {
 			l.Error(err, "failed to resolve actuator for convergence check")
 			return ctrl.Result{RequeueAfter: requeueFast}, nil
 		}
-		if reporter, ok := act.(actuator.BackendObjectReporter); ok {
-			objects, err := reporter.BackendObjects(ctx, &mc, desiredVersions)
-			if err != nil {
-				l.Error(err, "Actuator.BackendObjects failed, will retry")
-				return ctrl.Result{RequeueAfter: requeueNormal}, nil
+		caps := actuatorCapabilitiesFor(r.ActuatorRegistry, key)
+		if supportsActuatorBackendObjects(caps) {
+			reporter, ok := act.(actuator.BackendObjectReporter)
+			if !ok {
+				if hasActuatorSupportBits(caps) && caps.SupportsBackendObjects {
+					l.Info("actuator declared backend objects but does not implement reporter", "actuator", key)
+				}
+			} else {
+				objects, err := reporter.BackendObjects(ctx, &mc, desiredVersions)
+				if err != nil {
+					l.Error(err, "Actuator.BackendObjects failed, will retry")
+					return ctrl.Result{RequeueAfter: requeueNormal}, nil
+				}
+				target.BackendObjects = objects
 			}
-			target.BackendObjects = objects
+		}
+		if !supportsActuatorObserve(caps) {
+			l.Info("actuator does not support observe; trusting apply outcome", "actuator", key)
+			target.Phase = kaprov1alpha2.TargetPhaseConverged
+			target.FinishedAt = time.Now().UTC().Format(time.RFC3339)
+			return ctrl.Result{}, nil
 		}
 		converged, err := act.IsAllConverged(ctx, &mc, desiredVersions)
 		if err != nil {
@@ -1069,6 +1087,71 @@ func (r *TargetReconciler) handleApplying(ctx context.Context, promotionrun *kap
 			"currentVersion", currentVersion, "wantVersion", target.Version)
 	}
 	return ctrl.Result{RequeueAfter: requeueNormal}, nil
+}
+
+func applyDesiredVersions(ctx context.Context, act actuator.Actuator, caps actuator.Capabilities, cluster *kaprov1alpha2.Cluster, desiredVersions map[string]string) (int, error) {
+	if supportsActuatorDelta(caps) {
+		return act.ApplyDelta(ctx, actuator.DeltaApplyRequest{
+			Cluster:         cluster,
+			DesiredVersions: desiredVersions,
+		})
+	}
+	applied := 0
+	for appKey, version := range desiredVersions {
+		current := ""
+		if cluster != nil && cluster.Status.CurrentVersions != nil {
+			current = cluster.Status.CurrentVersions[appKey]
+		}
+		if current == version {
+			continue
+		}
+		if err := act.Apply(ctx, actuator.ApplyRequest{Cluster: cluster, Version: version, PreviousVersion: current, AppKey: appKey}); err != nil {
+			return applied, err
+		}
+		applied++
+	}
+	return applied, nil
+}
+
+func actuatorCapabilitiesFor(registry *actuator.Registry, key string) actuator.Capabilities {
+	if registry == nil {
+		return actuator.Capabilities{}
+	}
+	reg, ok := registry.Registration(key)
+	if !ok {
+		return actuator.Capabilities{}
+	}
+	return reg.Capabilities.Normalize()
+}
+
+func hasActuatorSupportBits(c actuator.Capabilities) bool {
+	return c.SupportsApply ||
+		c.SupportsObserve ||
+		c.SupportsRollback ||
+		c.SupportsConvergence ||
+		c.SupportsDelta ||
+		c.SupportsBackendObjects ||
+		c.SupportsDryRun
+}
+
+func supportsActuatorApply(c actuator.Capabilities) bool {
+	return !hasActuatorSupportBits(c) || c.SupportsApply
+}
+
+func supportsActuatorDelta(c actuator.Capabilities) bool {
+	return !hasActuatorSupportBits(c) || c.SupportsDelta
+}
+
+func supportsActuatorObserve(c actuator.Capabilities) bool {
+	return !hasActuatorSupportBits(c) || c.SupportsObserve || c.SupportsConvergence
+}
+
+func supportsActuatorRollback(c actuator.Capabilities) bool {
+	return !hasActuatorSupportBits(c) || c.SupportsRollback
+}
+
+func supportsActuatorBackendObjects(c actuator.Capabilities) bool {
+	return !hasActuatorSupportBits(c) || c.SupportsBackendObjects
 }
 
 func capturePreviousVersions(target *kaprov1alpha2.TargetExecutionState, mc *kaprov1alpha2.Cluster, desiredVersions map[string]string) {

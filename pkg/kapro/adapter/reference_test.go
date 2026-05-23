@@ -70,6 +70,21 @@ func TestReferenceAdaptersExposeDriversAndDiscoveryModels(t *testing.T) {
 	}
 }
 
+func TestReferenceAdaptersExposeCapabilities(t *testing.T) {
+	for _, a := range []adapter.Adapter{argocd.New(), flux.New(), oci.New()} {
+		caps := a.Capabilities()
+		if caps.Driver != a.Driver() || caps.Runtime == "" {
+			t.Fatalf("%s capabilities = %#v", a.Driver(), caps)
+		}
+		if caps.SupportsApply || caps.SupportsObserve || caps.SupportsRollback {
+			t.Fatalf("%s reference adapter should not advertise side-effect capabilities: %#v", a.Driver(), caps)
+		}
+		if caps.SupportsDiscover != (a.Driver() != kaprov1alpha2.BackendDriverOCI) {
+			t.Fatalf("%s SupportsDiscover = %v", a.Driver(), caps.SupportsDiscover)
+		}
+	}
+}
+
 func discoveryRequest(driver kaprov1alpha2.BackendDriver) adapter.DiscoveryRequest {
 	return adapter.DiscoveryRequest{Driver: driver}
 }

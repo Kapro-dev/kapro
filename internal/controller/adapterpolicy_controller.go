@@ -133,6 +133,9 @@ func (r *AdapterPolicyReconciler) discover(ctx context.Context, policy *kaprov1a
 	if err != nil {
 		return adapterPolicyDiscoveryOutcome{reason: "AdapterResolveFailed", message: err.Error()}, nil
 	}
+	if !a.Capabilities().SupportsDiscover {
+		return adapterPolicyDiscoveryOutcome{reason: "DiscoveryUnsupported", message: fmt.Sprintf("adapter %s does not support discovery", policy.Spec.Adapter)}, nil
+	}
 	req, err := adapterPolicyDiscoveryRequest(&backend, policy)
 	if err != nil {
 		return adapterPolicyDiscoveryOutcome{reason: "InvalidSelector", message: err.Error()}, nil

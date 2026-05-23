@@ -486,6 +486,13 @@ func (a *fakeDiscoveryAdapter) Driver() kaprov1alpha2.BackendDriver { return a.d
 func (a *fakeDiscoveryAdapter) Runtime() kaprov1alpha2.BackendRuntime {
 	return a.runtime
 }
+func (a *fakeDiscoveryAdapter) Capabilities() kaproadapter.Capabilities {
+	return kaproadapter.Capabilities{
+		Driver:           a.driver,
+		Runtime:          a.runtime,
+		SupportsDiscover: true,
+	}.Normalize()
+}
 func (a *fakeDiscoveryAdapter) Apply(context.Context, kaproadapter.Request) (kaproadapter.Result, error) {
 	return kaproadapter.Result{}, nil
 }

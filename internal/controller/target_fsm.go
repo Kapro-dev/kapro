@@ -272,9 +272,13 @@ func (r *PromotionRunReconciler) triggerTargetRollback(ctx context.Context, prom
 	var mc kaprov1alpha2.Cluster
 	if err := r.Get(ctx, client.ObjectKey{Name: target.Target}, &mc); err == nil {
 		if r.ActuatorRegistry != nil {
-			if act, actErr := r.ActuatorRegistry.Resolve(mc.Spec.Delivery.RegistryKey()); actErr == nil {
+			key := mc.Spec.Delivery.RegistryKey()
+			if act, actErr := r.ActuatorRegistry.Resolve(key); actErr == nil {
+				caps := actuatorCapabilitiesFor(r.ActuatorRegistry, key)
 				if len(target.PreviousVersions) > 0 {
-					if _, rbErr := act.ApplyDelta(ctx, actuator.DeltaApplyRequest{
+					if !supportsActuatorDelta(caps) {
+						log.Info("actuator does not support delta rollback — rollback target will re-apply it", "actuator", key)
+					} else if _, rbErr := act.ApplyDelta(ctx, actuator.DeltaApplyRequest{
 						Cluster:         &mc,
 						DesiredVersions: target.PreviousVersions,
 					}); rbErr != nil {
@@ -285,6 +289,8 @@ func (r *PromotionRunReconciler) triggerTargetRollback(ctx context.Context, prom
 							"desiredVersions", target.PreviousVersions,
 						)
 					}
+				} else if !supportsActuatorRollback(caps) {
+					log.Info("actuator does not support direct rollback — rollback target will re-apply it", "actuator", key)
 				} else if rbErr := act.Rollback(ctx, &mc, target.PreviousVersion, targetAppKey(target)); rbErr != nil {
 					log.Error(rbErr, "actuator Rollback() failed — rollback target will re-apply it")
 				} else {

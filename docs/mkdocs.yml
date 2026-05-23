@@ -74,6 +74,7 @@ nav:
       - Programmable Gates: programmable-gates.md
       - Gate Request SDK Guide: sdk-gate-request.md
       - Adapters: adapters.md
+      - Adapter Capabilities: adapter-capabilities.md
       - Plugin Authoring: plugin-authoring.md
       - GCP Cloud: cloud-gcp.md
   - ADRs:

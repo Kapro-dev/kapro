@@ -98,6 +98,14 @@ Added `server.NewBare` and public subsystem registrars for embedded operators
 that want a smaller in-process Kapro runtime. `server.New` still wires the full
 reference operator path by calling the default registrar chain.
 
+### Changed — actuator and adapter capability bits
+
+Adapters and actuator registrations now expose explicit operation capabilities
+so controllers can branch before calling unsupported apply, observe, rollback,
+delta, discovery, dry-run, or backend-object paths. Legacy actuator
+registrations with no capability bits keep full-support behavior for backwards
+compatibility.
+
 ### Changed — pre-stable release train policy
 
 Documented that Kapro stays in the `0.x.x` release series until public API,

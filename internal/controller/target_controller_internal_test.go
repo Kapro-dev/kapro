@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -29,6 +30,134 @@ type recordingNotifier struct {
 func (n *recordingNotifier) Notify(_ context.Context, event notification.Event, policy notification.NotificationPolicy) {
 	n.events = append(n.events, event)
 	n.policies = append(n.policies, policy)
+}
+
+type capabilityActuator struct {
+	applyCount   int
+	deltaCount   int
+	observeCount int
+}
+
+func (a *capabilityActuator) Apply(context.Context, actuator.ApplyRequest) error {
+	a.applyCount++
+	return nil
+}
+
+func (a *capabilityActuator) IsConverged(context.Context, *kaprov1alpha2.Cluster, string, string) (bool, error) {
+	return true, nil
+}
+
+func (a *capabilityActuator) Rollback(context.Context, *kaprov1alpha2.Cluster, string, string) error {
+	return nil
+}
+
+func (a *capabilityActuator) ApplyDelta(context.Context, actuator.DeltaApplyRequest) (int, error) {
+	a.deltaCount++
+	return 1, nil
+}
+
+func (a *capabilityActuator) IsAllConverged(context.Context, *kaprov1alpha2.Cluster, map[string]string) (bool, error) {
+	a.observeCount++
+	return true, nil
+}
+
+func TestApplyDesiredVersionsHonorsDeltaCapability(t *testing.T) {
+	cluster := &kaprov1alpha2.Cluster{
+		Status: kaprov1alpha2.ClusterStatus{CurrentVersions: map[string]string{"api": "old"}},
+	}
+	desired := map[string]string{"api": "new", "worker": "new"}
+
+	withDelta := &capabilityActuator{}
+	if _, err := applyDesiredVersions(context.Background(), withDelta, actuator.Capabilities{SupportsApply: true, SupportsDelta: true}, cluster, desired); err != nil {
+		t.Fatalf("apply with delta: %v", err)
+	}
+	if withDelta.deltaCount != 1 || withDelta.applyCount != 0 {
+		t.Fatalf("with delta apply=%d delta=%d", withDelta.applyCount, withDelta.deltaCount)
+	}
+
+	withoutDelta := &capabilityActuator{}
+	if _, err := applyDesiredVersions(context.Background(), withoutDelta, actuator.Capabilities{SupportsApply: true}, cluster, desired); err != nil {
+		t.Fatalf("apply without delta: %v", err)
+	}
+	if withoutDelta.deltaCount != 0 || withoutDelta.applyCount != 2 {
+		t.Fatalf("without delta apply=%d delta=%d", withoutDelta.applyCount, withoutDelta.deltaCount)
+	}
+}
+
+func TestHandleApplyingSkipsConvergenceWhenObserveUnsupported(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	cluster := &kaprov1alpha2.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{
+				Mode:       kaprov1alpha2.DeliveryModePull,
+				BackendRef: "flux",
+			},
+		},
+		Status: kaprov1alpha2.ClusterStatus{
+			CurrentVersions: map[string]string{"api": "old"},
+			Conditions: []metav1.Condition{{
+				Type:   kaprov1alpha2.ConditionTypeReady,
+				Status: metav1.ConditionTrue,
+				Reason: "HeartbeatFresh",
+			}},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cluster).
+		WithStatusSubresource(&kaprov1alpha2.Cluster{}).
+		Build()
+
+	act := &capabilityActuator{}
+	reg := actuator.NewRegistry()
+	if err := reg.RegisterRegistration(actuator.Registration{
+		Name: "pull/flux",
+		Capabilities: actuator.Capabilities{
+			Adapter:       "flux",
+			Modes:         []kaprov1alpha2.DeliveryMode{kaprov1alpha2.DeliveryModePull},
+			SupportsApply: true,
+		},
+		Actuator: act,
+	}); err != nil {
+		t.Fatalf("register actuator: %v", err)
+	}
+	r := &TargetReconciler{
+		Client:           c,
+		Recorder:         record.NewFakeRecorder(4),
+		ActuatorRegistry: reg,
+	}
+	promotionrun := &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "promo-1"}}
+	target := &kaprov1alpha2.TargetExecutionState{
+		PromotionRunRef: "promo-1",
+		Target:          "cluster-a",
+		PlanRef:         "wave-1",
+		Stage:           "prod",
+		AppKey:          "api",
+		Version:         "new",
+		DesiredVersions: map[string]string{"api": "new"},
+	}
+
+	result, err := r.handleApplying(ctx, promotionrun, target)
+	if err != nil {
+		t.Fatalf("handleApplying: %v", err)
+	}
+	if result != (ctrl.Result{}) {
+		t.Fatalf("result = %+v, want no requeue", result)
+	}
+	if target.Phase != kaprov1alpha2.TargetPhaseConverged {
+		t.Fatalf("target phase = %q, want Converged", target.Phase)
+	}
+	if act.applyCount != 1 || act.observeCount != 0 {
+		t.Fatalf("apply/observe counts = %d/%d, want 1/0", act.applyCount, act.observeCount)
+	}
 }
 
 func TestSyncPromotionTargetPhaseLabelPersistsMetadata(t *testing.T) {

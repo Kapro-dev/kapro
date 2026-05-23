@@ -3,6 +3,7 @@ package adapter
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
@@ -14,12 +15,13 @@ import (
 
 // ActuatorAdapter adapts a KAI gRPC plugin to pkg/actuator.Actuator.
 type ActuatorAdapter struct {
-	name       string
-	endpoint   string
-	client     kaiv1alpha1.ActuatorServiceClient
-	timeout    time.Duration
-	parameters map[string]string
-	conn       *grpc.ClientConn
+	name         string
+	endpoint     string
+	client       kaiv1alpha1.ActuatorServiceClient
+	timeout      time.Duration
+	parameters   map[string]string
+	capabilities actuator.Capabilities
+	conn         *grpc.ClientConn
 }
 
 // NewActuatorAdapter returns an actuator adapter backed by a KAI client.
@@ -38,12 +40,20 @@ func NewActuatorAdapter(reg kaprov1alpha2.Plugin, client kaiv1alpha1.ActuatorSer
 		return nil, err
 	}
 	return &ActuatorAdapter{
-		name:       reg.Spec.Name,
-		endpoint:   reg.Spec.Endpoint,
-		client:     client,
-		timeout:    timeout,
-		parameters: copyParameters(reg.Spec.Parameters),
+		name:         reg.Spec.Name,
+		endpoint:     reg.Spec.Endpoint,
+		client:       client,
+		timeout:      timeout,
+		parameters:   copyParameters(reg.Spec.Parameters),
+		capabilities: actuatorCapabilitiesForPlugin(reg).Normalize(),
 	}, nil
+}
+
+func (a *ActuatorAdapter) Capabilities() actuator.Capabilities {
+	if a == nil {
+		return actuator.Capabilities{}.Normalize()
+	}
+	return a.capabilities.Normalize()
 }
 
 // Close closes the underlying plugin connection when this adapter owns one.
@@ -197,4 +207,36 @@ func responseMessage(message string) string {
 		return "plugin returned no message"
 	}
 	return message
+}
+
+func actuatorCapabilitiesForPlugin(reg kaprov1alpha2.Plugin) actuator.Capabilities {
+	caps := actuator.Capabilities{
+		ContractVersion: reg.Status.ContractVersion,
+		Adapter:         reg.Spec.Name,
+		Runtime:         kaprov1alpha2.BackendRuntimeBoth,
+	}
+	for _, capability := range reg.Status.Capabilities {
+		capability = strings.ToLower(capability)
+		switch {
+		case strings.Contains(capability, "apply"):
+			caps.SupportsApply = true
+		case strings.Contains(capability, "rollback"):
+			caps.SupportsRollback = true
+		case strings.Contains(capability, "convergence") || strings.Contains(capability, "observe"):
+			caps.SupportsObserve = true
+			caps.SupportsConvergence = true
+		case strings.Contains(capability, "delta"):
+			caps.SupportsDelta = true
+		case strings.Contains(capability, "backendobject") || strings.Contains(capability, "backend-object"):
+			caps.SupportsBackendObjects = true
+		case strings.Contains(capability, "dry-run") || strings.Contains(capability, "dryrun"):
+			caps.SupportsDryRun = true
+		}
+	}
+	if caps.SupportsApply {
+		// KAI v1alpha1 exposes single-artifact Apply; this adapter implements
+		// ApplyDelta by issuing Apply once per changed app key.
+		caps.SupportsDelta = true
+	}
+	return caps
 }

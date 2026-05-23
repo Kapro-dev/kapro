@@ -17,6 +17,16 @@ func (s stubAdapter) Driver() kaprov1alpha2.BackendDriver { return s.driver }
 func (s stubAdapter) Runtime() kaprov1alpha2.BackendRuntime {
 	return s.runtime
 }
+func (s stubAdapter) Capabilities() Capabilities {
+	return Capabilities{
+		Driver:           s.driver,
+		Runtime:          s.runtime,
+		SupportsApply:    true,
+		SupportsObserve:  true,
+		SupportsRollback: true,
+		SupportsDiscover: true,
+	}.Normalize()
+}
 func (s stubAdapter) Apply(context.Context, Request) (Result, error) {
 	return Result{Driver: s.driver, Runtime: s.runtime}, nil
 }
