@@ -5,6 +5,7 @@ Kapro plugins implement one narrow extension contract:
 - KAI: actuator plugins apply a version and report convergence.
 - KGI: gate plugins decide whether a target may advance.
 - KPI: planner plugins filter and order targets before binding.
+- KSP: spoke providers reconcile one app/version tuple on a target cluster.
 
 Built-in actuators, gates, and planners remain the default execution path.
 External plugin runtime dispatch is an API preview and is enabled explicitly
@@ -37,6 +38,7 @@ certification process exists.
 | KAI actuator | `spec/kai/v1alpha1/actuator.proto` | `kapro.io/kapro/spec/kai/v1alpha1` |
 | KGI gate | `spec/kgi/v1alpha1/gate.proto` | `kapro.io/kapro/spec/kgi/v1alpha1` |
 | KPI planner | `spec/kpi/v1alpha1/planner.proto` | `kapro.io/kapro/spec/kpi/v1alpha1` |
+| KSP provider | Go SDK | `kapro.io/kapro/pkg/spokeprovider` |
 
 Compatibility is based on the `contract_version` returned by
 `GetCapabilities`, not the plugin implementation version.
@@ -76,6 +78,8 @@ contracts.
 
 The actuator contract has a dedicated transport and capability guide at
 `docs/actuator-plugin-contract.md`.
+The spoke provider contract has a dedicated guide at
+`docs/provider-plugin-contract.md`.
 
 ## Conformance CLI
 
@@ -259,6 +263,28 @@ A planner plugin implementation example is available in
 `examples/plugins/capacity-planner`, with a sample `Plugin` manifest at
 `examples/plugins/capacity-planner-registration.yaml`. It implements KPI for
 capacity-aware filtering, ordering, and deferring promotion targets.
+
+## Provider Requirements
+
+A spoke provider must:
+
+- implement `pkg/spokeprovider.Provider`;
+- return `Capabilities().ContractVersion == v1alpha1`;
+- advertise at least `SupportsReconcile` for the base KSP conformance suite;
+- return a populated `ReconcileResult` on every path;
+- not panic on malformed parameters or missing backend objects;
+- keep result shape deterministic for the same backend state.
+
+Run the base provider conformance harness from provider tests:
+
+```go
+func TestKSPConformance(t *testing.T) {
+    providerconformance.Run(t, provider, providerconformance.DefaultScenario())
+}
+```
+
+Provider plugins are spoke-side delivery contracts. They are not the same as
+cloud discovery providers used by `ClusterTemplate` to import clusters.
 
 ## Example Catalog
 

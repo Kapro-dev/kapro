@@ -14,6 +14,12 @@ tightened actuator conformance so plugins must report the base capabilities the
 suite exercises, and documented how the in-process actuator SDK maps to the
 gRPC KAI plugin contract.
 
+### Added — versioned provider plugin contract
+
+Added KSP v1alpha1 capability metadata for spoke providers, registry support
+for explicit provider registrations, built-in OCI and Flux provider capability
+advertising, a provider conformance harness, and provider authoring docs.
+
 ### Added — `promotionrun-gc` retention controller (preview, ADR-0015)
 
 Tier B opt-in controller that prunes terminal `PromotionRun` objects beyond

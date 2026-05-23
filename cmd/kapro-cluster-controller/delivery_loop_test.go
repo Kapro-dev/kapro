@@ -23,6 +23,14 @@ type scriptedProvider struct {
 }
 
 func (s *scriptedProvider) Driver() kaprov1alpha2.BackendDriver { return s.driver }
+func (s *scriptedProvider) Capabilities() spokeprovider.Capabilities {
+	return spokeprovider.Capabilities{
+		Driver:            s.driver,
+		SupportsReconcile: true,
+		SupportsObserve:   true,
+		SupportsApply:     true,
+	}
+}
 func (s *scriptedProvider) Reconcile(_ context.Context, req spokeprovider.ReconcileRequest) spokeprovider.ReconcileResult {
 	s.calls = append(s.calls, req)
 	if r, ok := s.results[req.AppKey]; ok {

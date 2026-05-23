@@ -26,6 +26,15 @@ import (
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
+const ContractVersionV1Alpha1 = "v1alpha1"
+
+const (
+	CapabilityReconcile = "reconcile"
+	CapabilityObserve   = "observe"
+	CapabilityApply     = "apply"
+	CapabilityDryRun    = "dry-run"
+)
+
 // ReconcileRequest carries the inputs the loop hands to a Provider once per
 // (cluster, app, version) tick. Cluster and BackendProfile are non-nil;
 // callers guarantee this before calling Reconcile.
@@ -52,6 +61,24 @@ type ReconcileResult struct {
 	Err             error
 }
 
+// Capabilities describes the KSP contract and operations a provider supports.
+type Capabilities struct {
+	ContractVersion   string
+	Driver            kaprov1alpha2.BackendDriver
+	SupportsReconcile bool
+	SupportsObserve   bool
+	SupportsApply     bool
+	SupportsDryRun    bool
+}
+
+// Normalize returns a copy with stable defaults applied.
+func (c Capabilities) Normalize() Capabilities {
+	if c.ContractVersion == "" {
+		c.ContractVersion = ContractVersionV1Alpha1
+	}
+	return c
+}
+
 // Provider services one BackendDriver.
 //
 // Implementations MUST be safe for concurrent use. Reconcile MUST NOT panic
@@ -60,6 +87,8 @@ type ReconcileResult struct {
 type Provider interface {
 	// Driver returns the BackendDriver value this provider services.
 	Driver() kaprov1alpha2.BackendDriver
+	// Capabilities returns the KSP contract metadata for this provider.
+	Capabilities() Capabilities
 	// Reconcile reconciles ONE (cluster, app, version) tuple on the local
 	// spoke cluster and returns a ReconcileResult.
 	Reconcile(ctx context.Context, req ReconcileRequest) ReconcileResult

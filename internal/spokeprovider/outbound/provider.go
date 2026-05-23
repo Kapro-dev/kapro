@@ -42,6 +42,16 @@ func NewProvider(spoke client.Client) *Provider {
 // what determines dispatch.
 func (p *Provider) Driver() kaprov1alpha2.BackendDriver { return kaprov1alpha2.BackendDriverOCI }
 
+func (p *Provider) Capabilities() spokeprovider.Capabilities {
+	return spokeprovider.Capabilities{
+		ContractVersion:   spokeprovider.ContractVersionV1Alpha1,
+		Driver:            kaprov1alpha2.BackendDriverOCI,
+		SupportsReconcile: true,
+		SupportsObserve:   true,
+		SupportsApply:     true,
+	}
+}
+
 // Reconcile resolves the OCI ArtifactRef from request parameters and
 // delegates to internal/delivery.Delivery. Returns a populated
 // spokeprovider.ReconcileResult on every code path — never panics.

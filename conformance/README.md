@@ -6,6 +6,7 @@ contracts:
 - `actuator`: KAI actuator conformance.
 - `gate`: KGI gate conformance.
 - `planner`: KPI planner conformance.
+- `provider`: KSP spoke provider conformance.
 
 The harnesses are imported by plugin repositories and executed against a live
 gRPC plugin server. They intentionally test contract behavior only: idempotency,
@@ -20,6 +21,9 @@ go run ./cmd/kapro-conformance actuator --endpoint localhost:9090
 go run ./cmd/kapro-conformance gate --endpoint localhost:9090
 go run ./cmd/kapro-conformance planner --endpoint localhost:9090
 ```
+
+KSP provider conformance is currently a Go harness because KSP is an
+in-process spoke-side SDK contract.
 
 Use repeated `--param key=value` flags to pass plugin-specific scenario
 parameters.
