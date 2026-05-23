@@ -45,6 +45,7 @@ nav:
       - Composable Gates: composable-gates.md
       - Events: events.md
       - API Stability: api-stability.md
+      - Release Train: release-train.md
       - Changelog: https://github.com/Kapro-dev/kapro/blob/main/CHANGELOG.md
       - Preview Controllers: preview-controllers.md
       - Competitive Positioning: adr/0012-competitive-positioning.md

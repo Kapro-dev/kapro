@@ -85,6 +85,13 @@ contract (`Fleet`, `PromotionRun`, `Plan`, `Stage`, `Target`, `Version`,
 `Parameters`, and `Logger`) from compatibility fields used by built-in gate
 paths (`Policy`, `MetricIndex`, `Template`, and `Args`).
 
+### Changed — pre-stable release train policy
+
+Documented that Kapro stays in the `0.x.x` release series until public API,
+SDK, conformance, upgrade, and operational contracts are ready for stability
+graduation. Larger roadmap phases use second-digit trains such as `0.10.0`,
+`0.20.0`, and `0.30.0` rather than treating `1.0.0` as a planning bucket.
+
 ### Added — completed GateExpression algebra
 
 Graduated `GateExpression` from `ALL`-only preview to the full `ALL`, `ANY`,

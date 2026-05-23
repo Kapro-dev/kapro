@@ -6,10 +6,15 @@ describes compatibility expectations for users and plugin authors; it does not
 change Kubernetes API version strings by itself.
 
 The current release line is pre-stable; `v0.1.2` is the current public preview
-release. `v0.1.0` was the first public release for the full promotion-domain
-API, not a promise that all
+release, and Kapro releases stay in the `0.x.x` series until the project
+explicitly graduates its public contracts. `v0.1.0` was the first public
+release for the full promotion-domain API, not a promise that all
 `kapro.io/v1alpha2` fields are stable. `CHANGELOG.md` and the release notes are
 the binding upgrade record for each tag.
+
+Large pre-stable phases use the second version digit, for example `0.10.0`,
+`0.20.0`, and `0.30.0`. `1.0.0` is reserved for a future stability graduation,
+not for ordinary roadmap planning. See the [pre-stable release train](release-train.md).
 
 ## Maturity Levels
 
