@@ -39,6 +39,15 @@ spec:
         - record: kapro:slo_plugin_probe_failure_rate10m
           expr: |
             sum by (type, reason) (rate(kapro_plugin_probe_results_total{result!="success"}[10m]))
+        - record: kapro:slo_fleetdriftreport_non_current
+          expr: |
+            sum by (report, phase) (kapro_fleetdriftreport_phase{phase!="Current"} == 1)
+        - record: kapro:slo_fleetdriftreport_drifted_targets
+          expr: |
+            kapro_fleetdriftreport_targets{state="drifted"}
+        - record: kapro:slo_fleetdriftreport_drifted_backend_objects
+          expr: |
+            kapro_fleetdriftreport_backend_objects{state="drifted"}
     - name: kapro.controller
       rules:
         - alert: KaproControllerReconcileErrors
@@ -111,6 +120,48 @@ spec:
             summary: "Kapro CloudEvents sink dispatch p99 is high"
             description: "CloudEvents sink dispatch p99 has been above 5 seconds for 10 minutes. Check sink endpoint health, retries, and lifecycle hook backoff."
             runbook: "docs/operations.md#first-response"
+    - name: kapro.drift
+      rules:
+        - alert: KaproFleetDriftDetected
+          expr: |
+            kapro_fleetdriftreport_phase{phase="Drifted"} == 1
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kapro drift report {{ $labels.report }} has sustained drift"
+            description: "FleetDriftReport {{ $labels.report }} has remained Drifted for 30 minutes. Inspect status.summary and status.targets, then check backend object evidence and Cluster status."
+            runbook: "docs/operations.md#runbook-fleet-drift"
+        - alert: KaproFleetDriftSignalsIncomplete
+          expr: |
+            kapro_fleetdriftreport_phase{phase="Unknown"} == 1
+          for: 20m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kapro drift report {{ $labels.report }} has incomplete signals"
+            description: "FleetDriftReport {{ $labels.report }} has remained Unknown for 20 minutes. A Cluster may be missing, stale, or not reporting current versions."
+            runbook: "docs/operations.md#runbook-fleet-drift"
+        - alert: KaproFleetDriftReportFailed
+          expr: |
+            kapro_fleetdriftreport_phase{phase="Failed"} == 1
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Kapro drift report {{ $labels.report }} is failed"
+            description: "FleetDriftReport {{ $labels.report }} has remained Failed for 10 minutes. One or more targets or delivery loops report failure."
+            runbook: "docs/operations.md#runbook-fleet-drift"
+        - alert: KaproFleetDriftReportPending
+          expr: |
+            kapro_fleetdriftreport_phase{phase="Pending"} == 1
+          for: 2h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kapro drift report {{ $labels.report }} is pending for too long"
+            description: "FleetDriftReport {{ $labels.report }} has remained Pending for 2 hours. Check rollout progress and whether Targets are still converging."
+            runbook: "docs/operations.md#runbook-fleet-drift"
     - name: kapro.plugins
       rules:
         - alert: KaproPluginProbeFailure

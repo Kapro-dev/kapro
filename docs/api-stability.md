@@ -5,7 +5,7 @@ lifecycle events, and language-neutral plugin contracts. The maturity level
 describes compatibility expectations for users and plugin authors; it does not
 change Kubernetes API version strings by itself.
 
-The current release line is pre-stable; `v0.4.1` is the current public preview
+The current release line is pre-stable; `v0.4.2` is the current public preview
 release, and Kapro releases stay in the `0.x.x` series until the project
 explicitly graduates its public contracts. `v0.1.0` was the first public
 release for the full promotion-domain API, not a promise that all

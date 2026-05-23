@@ -98,6 +98,29 @@
       "targets": [{"expr": "kapro_wave_environments_promoted_total", "legendFormat": "{{promotionrun}} {{stage}}", "refId": "A"}],
       "title": "Wave Progress",
       "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
+      "id": 10,
+      "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single", "sort": "none"}},
+      "targets": [{"expr": "kapro_fleetdriftreport_phase == 1", "legendFormat": "{{report}} {{phase}}", "refId": "A"}],
+      "title": "Fleet Drift Report Phase",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
+      "id": 11,
+      "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single", "sort": "none"}},
+      "targets": [
+        {"expr": "kapro_fleetdriftreport_targets{state=~\"drifted|failed|unknown|pending\"}", "legendFormat": "{{report}} targets {{state}}", "refId": "A"},
+        {"expr": "kapro_fleetdriftreport_backend_objects{state=\"drifted\"}", "legendFormat": "{{report}} backend objects drifted", "refId": "B"}
+      ],
+      "title": "Fleet Drift Counts",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",

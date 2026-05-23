@@ -26,6 +26,9 @@ Kapro-specific metrics use the `kapro_` namespace:
 | `kapro_plugin_runtime_calls_total` | counter | Runtime plugin call result counts |
 | `kapro_plugin_runtime_call_duration_seconds` | histogram | Runtime plugin latency |
 | `kapro_plugin_runtime_registered` | gauge | Startup-time registered plugin adapters |
+| `kapro_fleetdriftreport_targets` | gauge | FleetDriftReport target counts by report and state |
+| `kapro_fleetdriftreport_backend_objects` | gauge | FleetDriftReport backend object counts by report and state |
+| `kapro_fleetdriftreport_phase` | gauge | One-hot FleetDriftReport phase by report |
 
 Controller-runtime and Go runtime metrics are also exposed from the same
 endpoint.
@@ -56,6 +59,7 @@ The dashboard covers:
 - plugin probe failures and readiness;
 - trigger blocked symptoms through Trigger reconcile errors;
 - rollout duration p95 via stage duration histogram.
+- FleetDriftReport phase and drift count panels.
 
 The alert rules cover:
 
@@ -68,6 +72,10 @@ The alert rules cover:
 | `KaproRolloutDurationP95High` | Stage duration p95 exceeds the configured threshold |
 | `KaproLifecycleSinkP99High` | CloudEvents sink dispatch p99 exceeds the configured threshold |
 | `KaproControllerReconcileErrors` | Any controller has sustained reconcile errors |
+| `KaproFleetDriftDetected` | A FleetDriftReport stays `Drifted` beyond the allowed window |
+| `KaproFleetDriftSignalsIncomplete` | A FleetDriftReport stays `Unknown` because cluster/version signals are missing |
+| `KaproFleetDriftReportFailed` | A FleetDriftReport stays `Failed` |
+| `KaproFleetDriftReportPending` | A FleetDriftReport stays `Pending` beyond the rollout window |
 
 Tune alert windows and thresholds per fleet size. Small test clusters should use
 longer `for` windows to avoid noise from deliberate failure tests.
@@ -281,6 +289,57 @@ Mitigation:
   fail according to policy.
 - If the promotionrun is failed and the artifact should not continue, use the
   rollback runbook below.
+
+## Runbook: Fleet Drift
+
+Symptoms:
+
+- `KaproFleetDriftDetected`, `KaproFleetDriftSignalsIncomplete`,
+  `KaproFleetDriftReportFailed`, or `KaproFleetDriftReportPending` fires.
+- `kapro_fleetdriftreport_phase{phase!="Current"} == 1` returns an active
+  non-current phase.
+- A `max-drift` gate is repeatedly `Inconclusive`.
+
+Triage:
+
+1. Inspect the report summary and bounded evidence:
+
+   ```bash
+   kubectl get fleetdriftreport <report> -o yaml
+   kubectl describe fleetdriftreport <report>
+   ```
+
+   Start with `status.phase`, `status.summary`, and `status.targets[]`.
+   Current targets are intentionally omitted from `status.targets`; use summary
+   counts to understand fleet-wide impact.
+
+2. Map the report phase to the likely source:
+
+| Phase | Likely source | Next check |
+|---|---|---|
+| `Drifted` | Converged target or backend-native object differs from desired state | `status.targets[].appVersions`, `status.targets[].objects`, backend controller status |
+| `Unknown` | Missing Cluster object or incomplete version signal | `kubectl get cluster <cluster> -o yaml`, spoke heartbeat and delivery status |
+| `Failed` | Target or delivery loop reports failure | Target status, `Cluster.status.delivery`, backend/plugin logs |
+| `Pending` | Rollout is still converging | PromotionRun/Target progress and stage maxParallel |
+
+3. Check whether the problem is one target or the full slice:
+
+   ```promql
+   kapro_fleetdriftreport_targets{report="<report>"}
+   kapro_fleetdriftreport_backend_objects{report="<report>"}
+   kapro_fleetdriftreport_phase{report="<report>"} == 1
+   ```
+
+Mitigation:
+
+- For `Drifted`, fix the backend source of truth or allow the backend to
+  reconcile; do not patch report status.
+- For `Unknown`, restore the missing Cluster/status signal before relaxing a
+  `max-drift` gate.
+- For `Failed`, follow the Target or backend failure first, then let the report
+  refresh.
+- Use `allowMissing=true` or `allowStale=true` on `max-drift` only for
+  deliberate bootstrap windows; remove it after the report controller is healthy.
 
 ## Runbook: Gate Failure
 
