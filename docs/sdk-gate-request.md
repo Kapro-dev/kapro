@@ -51,7 +51,7 @@ The following fields remain populated because built-in gates still use them:
 
 | Field | Compatibility use |
 | --- | --- |
-| `Context` | Controller-owned target promotion state. Never mutate it. |
+| `Context` | `*gate.Context` holding the controller-owned target promotion state. Never mutate it. |
 | `Policy` | Resolved `GatePolicySpec` for built-in metrics, approval, and verification paths. |
 | `MetricIndex` | Index into `Policy.Gate.Metrics` for the legacy metrics path. |
 | `Template` | Resolved `GateTemplateSpec` for built-in template gates. |

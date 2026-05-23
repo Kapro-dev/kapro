@@ -90,8 +90,8 @@ the migration pattern and field-by-field contract.
 
 Programmable gates run inside the operator process and are fully trusted. The
 runtime applies no sandbox, no resource budget, and no syscall filter. A buggy
-gate can panic the reconciler (the SDK's `gate.Recover` wrapper translates
-panics into `Failed` results, but the goroutine still bounces) and a malicious
+gate can panic the reconciler (wrap it with `gate.Recover` to convert panics
+into `Failed` results without crashing the goroutine) and a malicious
 gate can read every secret the operator's ServiceAccount can read.
 
 Compile only code you own and review into a custom Kapro binary. Code from
