@@ -7,6 +7,13 @@ record for each tag.
 
 ## Unreleased
 
+### Added — delivery DecisionTrace coverage
+
+Added `DecisionTrace` event type `Delivery` and hub-side trace emission from
+observed `Cluster.status.delivery` while a target is applying. Delivery traces
+record bounded per-app evidence for desired version, observed digest, artifact
+format, applied objects, last delivery error, and OCI staged-delivery counts.
+
 ### Added — spoke staging diagnostics
 
 Added nested `Cluster.status.delivery[app].staging` diagnostics for OCI

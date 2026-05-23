@@ -53,6 +53,95 @@ func (r *TargetReconciler) emitGateDecisionTrace(
 	})
 }
 
+func (r *TargetReconciler) emitDeliveryDecisionTraces(
+	ctx context.Context,
+	promotionrun *kaprov1alpha2.PromotionRun,
+	target *kaprov1alpha2.TargetExecutionState,
+	cluster *kaprov1alpha2.Cluster,
+	desiredVersions map[string]string,
+) {
+	if promotionrun == nil || target == nil || cluster == nil {
+		return
+	}
+	for appKey, desiredVersion := range desiredVersions {
+		entry, ok := cluster.Status.Delivery[appKey]
+		if !ok || entry.Phase == "" {
+			continue
+		}
+		spec := kaprov1alpha2.DecisionTraceSpec{
+			PromotionRun: promotionrun.Name,
+			Plan:         target.PlanRef,
+			Stage:        target.Stage,
+			Target:       target.Target,
+			EventType:    kaprov1alpha2.DecisionTraceEventDelivery,
+			Source:       "cluster-delivery",
+			Phase:        string(entry.Phase),
+			Reason:       deliveryDecisionReason(entry),
+			Message:      deliveryDecisionMessage(target.Target, appKey, entry),
+			Evidence: []kaprov1alpha2.DecisionTraceEvidence{{
+				Type:   "cluster-delivery",
+				Source: cluster.Name,
+				Detail: deliveryDecisionEvidence(appKey, desiredVersion, entry),
+			}},
+		}
+		if entry.LastAttemptedAt != nil {
+			spec.Time = *entry.LastAttemptedAt
+		}
+		r.emitDecisionTrace(ctx, spec)
+	}
+}
+
+func deliveryDecisionReason(entry kaprov1alpha2.ClusterDeliveryStatus) string {
+	switch entry.Phase {
+	case kaprov1alpha2.DeliveryPhaseConverged:
+		return "DeliveryConverged"
+	case kaprov1alpha2.DeliveryPhaseFailed:
+		return "DeliveryFailed"
+	case kaprov1alpha2.DeliveryPhaseSkipped:
+		return "DeliverySkipped"
+	default:
+		return "DeliveryProgressing"
+	}
+}
+
+func deliveryDecisionMessage(clusterName, appKey string, entry kaprov1alpha2.ClusterDeliveryStatus) string {
+	msg := fmt.Sprintf("cluster %s app %s delivery %s", clusterName, appKey, entry.Phase)
+	if entry.LastError != "" {
+		return msg + ": " + entry.LastError
+	}
+	return msg
+}
+
+func deliveryDecisionEvidence(appKey, desiredVersion string, entry kaprov1alpha2.ClusterDeliveryStatus) map[string]string {
+	detail := map[string]string{}
+	addDetail(detail, "appKey", appKey)
+	addDetail(detail, "desiredVersion", desiredVersion)
+	addDetail(detail, "reportedDesiredVersion", entry.DesiredVersion)
+	addDetail(detail, "observedDigest", entry.ObservedDigest)
+	addDetail(detail, "format", entry.Format)
+	addDetail(detail, "phase", string(entry.Phase))
+	addDetail(detail, "appliedObjects", fmt.Sprint(entry.AppliedObjects))
+	if entry.LastAttemptedAt != nil {
+		addDetail(detail, "lastAttemptedAt", entry.LastAttemptedAt.Format(timeRFC3339Nano))
+	}
+	if entry.LastAppliedAt != nil {
+		addDetail(detail, "lastAppliedAt", entry.LastAppliedAt.Format(timeRFC3339Nano))
+	}
+	addDetail(detail, "lastError", entry.LastError)
+	if entry.Staging != nil {
+		addDetail(detail, "stagingType", string(entry.Staging.Type))
+		addDetail(detail, "stagingFailurePolicy", string(entry.Staging.FailurePolicy))
+		addDetail(detail, "stagingFailurePhase", string(entry.Staging.FailurePhase))
+		addDetail(detail, "stagedObjects", fmt.Sprint(entry.Staging.StagedObjects))
+		addDetail(detail, "stagingFailedObjects", fmt.Sprint(entry.Staging.StagingFailedObjects))
+		addDetail(detail, "committedObjects", fmt.Sprint(entry.Staging.CommittedObjects))
+		addDetail(detail, "commitFailedObjects", fmt.Sprint(entry.Staging.CommitFailedObjects))
+	}
+	return detail
+}
+
+const timeRFC3339Nano = "2006-01-02T15:04:05.999999999Z07:00"
+
 func decisionTraceEvidenceFromPlanner(decision planner.Decision) kaprov1alpha2.DecisionTraceEvidence {
 	return kaprov1alpha2.DecisionTraceEvidence{
 		Type:   "planner",

@@ -4,7 +4,7 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // DecisionTraceEventType identifies the controller decision category recorded
 // by a DecisionTrace.
-// +kubebuilder:validation:Enum=GateEvaluate;BatchProgress;Rollback;Suspend;Stage
+// +kubebuilder:validation:Enum=GateEvaluate;BatchProgress;Rollback;Suspend;Stage;Delivery
 type DecisionTraceEventType string
 
 const (
@@ -13,6 +13,7 @@ const (
 	DecisionTraceEventRollback      DecisionTraceEventType = "Rollback"
 	DecisionTraceEventSuspend       DecisionTraceEventType = "Suspend"
 	DecisionTraceEventStage         DecisionTraceEventType = "Stage"
+	DecisionTraceEventDelivery      DecisionTraceEventType = "Delivery"
 )
 
 // DecisionTraceEvidence records bounded, non-secret supporting facts for a

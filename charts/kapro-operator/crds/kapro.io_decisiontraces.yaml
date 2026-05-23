@@ -74,6 +74,7 @@ spec:
                 - Rollback
                 - Suspend
                 - Stage
+                - Delivery
                 type: string
               evidence:
                 description: Evidence contains small, non-secret supporting facts

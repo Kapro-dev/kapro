@@ -998,6 +998,7 @@ func (r *TargetReconciler) handleApplying(ctx context.Context, promotionrun *kap
 	}
 
 	capturePreviousVersions(target, &mc, desiredVersions)
+	r.emitDeliveryDecisionTraces(ctx, promotionrun, target, &mc, desiredVersions)
 
 	// Issue Apply exactly once per Applying entry.
 	if r.ActuatorRegistry != nil && !target.ApplyIssued {
