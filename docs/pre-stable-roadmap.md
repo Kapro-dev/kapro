@@ -9,19 +9,25 @@ This page is a planning guide, not a compatibility promise. The binding record
 for a release is still `CHANGELOG.md` plus the release notes for that tag.
 
 GitHub milestones must use exact pre-stable semver names. Use names such as
-`v0.2.4`, `v0.4.7`, or `v0.4.20`; do not use shorthand names such as `v0.6`.
+`v0.2.4`, `v0.4.7`, or `v0.4.20`; do not use shorthand names such as `v0.6`
+or broad train-start buckets such as `v0.10.0`.
 
-## Release Trains
+The numbering strategy is `0.<capability-line>.<feature-increment>`. The second
+digit groups a capability line; the third digit names the concrete feature
+increment inside that line.
 
-| Train | Theme | Practical ship criteria |
+## Roadmap Lines
+
+| Line | Theme | Practical ship criteria |
 | --- | --- | --- |
 | `0.2.x` | Programmable engine hardening | AdapterPolicy discovery is real, programmable gates are documented and tested, release-train policy is enforced, and retention metrics are available before opt-in GC. |
-| `0.10.x` | Adoption and operator ergonomics | `pkg/kapro/server` can be assembled from smaller registrars, CLI adoption paths are observe-first by default, and brownfield users have clear rollback points. |
-| `0.20.x` | Ecosystem and conformance | External adapter authors can run conformance locally, at least one substrate adapter proves the plugin contract outside the in-tree controller path, and examples compile in CI. |
-| `0.30.x` | Operational scale and security | Upgrade, rollback, observability, tenancy, signing, provenance, and failure-mode tests are strong enough for production change-control review. |
+| `0.4.x` | Adoption and operator ergonomics | `pkg/kapro/server` can be assembled from smaller registrars, CLI adoption paths are observe-first by default, and brownfield users have clear rollback points. |
+| `0.6.x` | Ecosystem and conformance | External adapter authors can run conformance locally, at least one substrate adapter proves the plugin contract outside the in-tree controller path, and examples compile in CI. |
+| `0.8.x` | Operational scale and security | Upgrade, rollback, observability, tenancy, signing, provenance, and failure-mode tests are strong enough for production change-control review. |
 
-Train starts such as `0.10.0`, `0.20.0`, and `0.30.0` mark coherent product
-increments inside the pre-stable series. They are not major-version targets.
+Concrete milestones inside those lines still need all three digits, for example
+`v0.4.7` or `v0.4.20`. Do not create a milestone until the feature increment is
+specific enough to name that patch digit.
 
 ## Train Rules
 

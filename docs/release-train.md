@@ -3,22 +3,38 @@
 Kapro is pre-stable software. Until the project explicitly graduates its public
 contracts, releases stay in the `0.x.x` series.
 
-The first version digit remains `0` for roadmap work. Larger product phases use
-the second digit:
+The first version digit remains `0` for roadmap work. GitHub milestones must
+name exact feature releases with all three SemVer digits chosen:
 
-| Train | Purpose |
+| Milestone shape | Purpose |
 | --- | --- |
-| `0.2.x` | Current programmable engine, adapter, archive, and adoption hardening line. |
-| `0.10.x` | Next adoption and operator ergonomics line when `0.2.x` is complete. |
-| `0.20.x` | Broader ecosystem and conformance line after the SDK contracts prove useful. |
-| `0.30.x` | Larger operational scale, security, and multi-substrate line. |
+| `v0.2.4` | A concrete patch-level release for a known feature increment. |
+| `v0.4.7` | A later pre-stable feature release; the third digit is still meaningful. |
+| `v0.4.20` | A larger pre-stable feature increment without changing the first digit. |
 
-Patch releases in a train, such as `0.2.1` or `0.10.3`, are for bug fixes,
-documentation, compatibility hardening, and narrow polish. Minor train releases,
-such as `0.10.0`, `0.20.0`, and `0.30.0`, are for coherent product increments
-that may add Preview surfaces or change Alpha surfaces with migration notes.
-GitHub milestones must be exact pre-stable semver names, such as `v0.2.4`,
-`v0.4.7`, or `v0.4.20`; avoid shorthand names like `v0.6`.
+Roadmap discussions may refer to broader `0.x` lines, but active GitHub
+milestones should not be broad buckets like `v0.10.0` or shorthand names like
+`v0.6`. Create the milestone only when the feature increment is concrete enough
+to pick the third digit.
+
+## Numbering Strategy
+
+Until stability graduation, Kapro uses both remaining SemVer digits
+intentionally:
+
+- `0.<capability-line>.<feature-increment>` is the required shape.
+- `<capability-line>` groups a coherent capability line, risk level, and adoption story.
+  For example, `0.2.y` is programmable-engine and adapter hardening, while
+  `0.4.y` can hold later adoption and operator-ergonomics work.
+- `<feature-increment>` names the concrete feature release in that line. It is
+  not only for bug fixes while Kapro is pre-stable. Examples: `v0.2.4`,
+  `v0.4.7`, `v0.4.20`.
+- Patch-only fixes can still use the next increment in the same line, but the
+  milestone title must name the actual shipped scope.
+
+This keeps the project honest: versions communicate which capability line a
+change belongs to and which concrete increment shipped it, without pretending
+the public API has reached a stable first digit.
 
 ## Why Not 1.0 Yet
 
