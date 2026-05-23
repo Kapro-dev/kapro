@@ -775,7 +775,7 @@ func (r *PromotionRunReconciler) reconcilePromotionPlanStages(
 
 		// Upsert selected target entries; observe phases across the full planned set.
 		for _, target := range bindTargets {
-			i, err := r.upsertTarget(targets, promotionrun, promotionplanRefName, promotionplan, stage, target, resolvedGate)
+			i, err := r.upsertTarget(ctx, targets, promotionrun, promotionplanRefName, promotionplan, stage, target, resolvedGate)
 			if err != nil {
 				return nil, false, false, 0, nil, err
 			}

@@ -7,6 +7,13 @@ record for each tag.
 
 ## Unreleased
 
+### Added — target FSM DecisionTrace coverage
+
+Target phase transitions, terminal failures/skips, direct convergence,
+target binding, and timeout cancellation now emit durable `DecisionTrace`
+records so `kapro why` and reconstruction tooling can show the target FSM
+path instead of only delivery and gate evidence.
+
 ### Added — two-phase actuator SDK extension
 
 Added the optional `pkg/kapro/actuator.TwoPhaseStaging` interface with

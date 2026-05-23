@@ -27,6 +27,7 @@ import (
 )
 
 func (r *PromotionRunReconciler) upsertTarget(
+	ctx context.Context,
 	targets *[]kaprov1alpha2.TargetExecutionState,
 	promotionrun *kaprov1alpha2.PromotionRun,
 	promotionplanRefName string,
@@ -60,6 +61,22 @@ func (r *PromotionRunReconciler) upsertTarget(
 		DesiredVersions: copyStringMap(desiredVersions),
 	}
 	*targets = append(*targets, newTarget)
+	r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+		PromotionRun: promotionrun.Name,
+		Plan:         promotionplanRefName,
+		Stage:        stage.Name,
+		Target:       mc.Name,
+		EventType:    kaprov1alpha2.DecisionTraceEventBatchProgress,
+		Source:       "promotionrun-controller",
+		Phase:        "Bind",
+		Reason:       "TargetBound",
+		Message:      fmt.Sprintf("target %s bound to stage %s", mc.Name, stage.Name),
+		Evidence: []kaprov1alpha2.DecisionTraceEvidence{{
+			Type:   "target-bind",
+			Source: "promotionrun-controller",
+			Detail: targetBindDecisionEvidence(newTarget),
+		}},
+	})
 	return len(*targets) - 1, nil
 }
 
@@ -217,8 +234,39 @@ func (r *PromotionRunReconciler) cancelPromotionRunTargets(ctx context.Context, 
 		if err := r.Patch(ctx, rt, rawPatch); err != nil {
 			return fmt.Errorf("cancel PromotionTarget %s: %w", rt.Name, err)
 		}
+		r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+			PromotionRun: promotionrunName,
+			Plan:         rt.Spec.PlanRef,
+			Stage:        rt.Spec.Stage,
+			Target:       rt.Spec.Target,
+			EventType:    kaprov1alpha2.DecisionTraceEventStage,
+			Source:       "promotionrun-controller",
+			Phase:        string(kaprov1alpha2.TargetPhaseFailed),
+			Reason:       "PromotionRunTimeoutCancelled",
+			Message:      reason,
+			Evidence: []kaprov1alpha2.DecisionTraceEvidence{{
+				Type:   "target-cancel",
+				Source: "promotionrun-controller",
+				Detail: map[string]string{
+					"cancelledPhase":  string(kaprov1alpha2.TargetPhaseFailed),
+					"cancelledReason": reason,
+					"fromPhase":       string(rt.Status.Phase),
+				},
+			}},
+		})
 	}
 	return nil
+}
+
+func targetBindDecisionEvidence(target kaprov1alpha2.TargetExecutionState) map[string]string {
+	detail := map[string]string{}
+	addDetail(detail, "plan", target.PlanRef)
+	addDetail(detail, "stage", target.Stage)
+	addDetail(detail, "target", target.Target)
+	addDetail(detail, "version", target.Version)
+	addDetail(detail, "appKey", target.AppKey)
+	addDetail(detail, "desiredVersionCount", fmt.Sprint(len(target.DesiredVersions)))
+	return detail
 }
 
 func (r *PromotionRunReconciler) clearActivePromotionRun(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, targets []kaprov1alpha2.TargetExecutionState) {
