@@ -8,6 +8,11 @@ import (
 	"unicode/utf8"
 
 	promtestutil "github.com/prometheus/client_golang/prometheus/testutil"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -151,6 +156,119 @@ func TestDeliveryLoop_RecordsDeliveryMetrics(t *testing.T) {
 
 	if got := promtestutil.ToFloat64(spokeDeliveryReconciles.WithLabelValues(labels...)) - before; got != 1 {
 		t.Fatalf("spoke delivery counter delta=%v, want 1", got)
+	}
+}
+
+func TestDeliveryLoop_EmitsDeliverySpans(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	defer otel.SetTracerProvider(previous)
+
+	fc := newDeliveryFC("trace-c1", map[string]string{"api": "1.0"}, false, "oci-default")
+	bp := newDeliveryBP("oci-default", kaprov1alpha2.BackendDriverOCI)
+	hub := deliveryHub(t, fc, bp)
+
+	providerImpl := &scriptedProvider{
+		driver: kaprov1alpha2.BackendDriverOCI,
+		results: map[string]spokeprovider.ReconcileResult{
+			"api": {
+				Phase:          kaprov1alpha2.DeliveryPhaseConverged,
+				ObservedDigest: "sha256:aaa",
+				AppliedObjects: 2,
+				Format:         "raw-yaml",
+			},
+		},
+	}
+	reg := spokeprovider.NewRegistry()
+	_ = reg.Register(kaprov1alpha2.BackendDriverOCI, providerImpl)
+	l := &deliveryLoop{
+		Hub:         newHubClientFromStatic(hub),
+		ClusterName: "trace-c1",
+		Registry:    reg,
+	}
+
+	if err := l.tick(context.Background()); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+
+	tick := findSpan(t, recorder.Ended(), "kapro.spoke.delivery.tick")
+	tickAttrs := deliverySpanAttributes(tick)
+	for key, want := range map[string]string{
+		"kapro.cluster":              "trace-c1",
+		"kapro.delivery.backend_ref": "oci-default",
+	} {
+		if got := tickAttrs[key].AsString(); got != want {
+			t.Fatalf("tick attribute %s = %q, want %q (all attrs %#v)", key, got, want, tickAttrs)
+		}
+	}
+	if got := tickAttrs["kapro.desired_version_count"].AsInt64(); got != 1 {
+		t.Fatalf("desired_version_count = %d, want 1", got)
+	}
+	if got := tickAttrs["kapro.spoke.delivery.status_write"].AsBool(); !got {
+		t.Fatalf("status_write = false, want true")
+	}
+
+	reconcile := findSpan(t, recorder.Ended(), "kapro.spoke.delivery.reconcile")
+	reconcileAttrs := deliverySpanAttributes(reconcile)
+	for key, want := range map[string]string{
+		"kapro.cluster":                  "trace-c1",
+		"kapro.app_key":                  "api",
+		"kapro.version":                  "1.0",
+		"kapro.delivery.backend_ref":     "oci-default",
+		"kapro.delivery.backend":         "oci-default",
+		"kapro.delivery.driver":          string(kaprov1alpha2.BackendDriverOCI),
+		"kapro.delivery.phase":           string(kaprov1alpha2.DeliveryPhaseConverged),
+		"kapro.delivery.result":          "success",
+		"kapro.delivery.format":          "raw-yaml",
+		"kapro.delivery.observed_digest": "sha256:aaa",
+	} {
+		if got := reconcileAttrs[key].AsString(); got != want {
+			t.Fatalf("reconcile attribute %s = %q, want %q (all attrs %#v)", key, got, want, reconcileAttrs)
+		}
+	}
+	if got := reconcileAttrs["kapro.delivery.applied_objects"].AsInt64(); got != 2 {
+		t.Fatalf("applied_objects = %d, want 2", got)
+	}
+}
+
+func TestDeliveryLoop_FailedDeliverySpanIsError(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	previous := otel.GetTracerProvider()
+	otel.SetTracerProvider(provider)
+	defer otel.SetTracerProvider(previous)
+
+	fc := newDeliveryFC("trace-fail", map[string]string{"api": "1.0"}, false, "oci-default")
+	bp := newDeliveryBP("oci-default", kaprov1alpha2.BackendDriverOCI)
+	hub := deliveryHub(t, fc, bp)
+
+	providerImpl := &scriptedProvider{
+		driver: kaprov1alpha2.BackendDriverOCI,
+		results: map[string]spokeprovider.ReconcileResult{
+			"api": {Phase: kaprov1alpha2.DeliveryPhaseFailed, Err: errors.New("registry 503")},
+		},
+	}
+	reg := spokeprovider.NewRegistry()
+	_ = reg.Register(kaprov1alpha2.BackendDriverOCI, providerImpl)
+	l := &deliveryLoop{
+		Hub:         newHubClientFromStatic(hub),
+		ClusterName: "trace-fail",
+		Registry:    reg,
+	}
+
+	if err := l.tick(context.Background()); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+
+	reconcile := findSpan(t, recorder.Ended(), "kapro.spoke.delivery.reconcile")
+	if reconcile.Status().Code != codes.Error {
+		t.Fatalf("reconcile status = %v, want error", reconcile.Status())
+	}
+	attrs := deliverySpanAttributes(reconcile)
+	if got := attrs["kapro.delivery.result"].AsString(); got != "error" {
+		t.Fatalf("delivery result = %q, want error", got)
 	}
 }
 
@@ -589,4 +707,23 @@ func TestMergedDesiredVersions_MapWinsOverLegacy(t *testing.T) {
 	if got := mergedDesiredVersions(spec)["api"]; got != "new" {
 		t.Fatalf("map should win: got %q", got)
 	}
+}
+
+func findSpan(t *testing.T, spans []sdktrace.ReadOnlySpan, name string) sdktrace.ReadOnlySpan {
+	t.Helper()
+	for _, span := range spans {
+		if span.Name() == name {
+			return span
+		}
+	}
+	t.Fatalf("span %q not found in %d spans", name, len(spans))
+	return nil
+}
+
+func deliverySpanAttributes(span sdktrace.ReadOnlySpan) map[string]attribute.Value {
+	attrs := map[string]attribute.Value{}
+	for _, attr := range span.Attributes() {
+		attrs[string(attr.Key)] = attr.Value
+	}
+	return attrs
 }

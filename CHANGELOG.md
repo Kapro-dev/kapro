@@ -7,6 +7,14 @@ record for each tag.
 
 ## Unreleased
 
+### Added — actuator and spoke delivery trace coverage
+
+Actuator registry resolution now wraps hub-side delivery operations with
+OpenTelemetry spans for apply, observe, rollback, delta apply, observe-all, and
+backend-object reporting. `kapro-cluster-controller` now emits tick and per-app
+reconcile spans so spoke delivery failures can be correlated with hub-side
+DecisionTrace and plugin spans.
+
 ### Added — OpenTelemetry trace propagation
 
 Plugin gRPC clients now install OpenTelemetry client stats handlers, and

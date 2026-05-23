@@ -7,6 +7,10 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -44,6 +48,7 @@ type deliveryLoop struct {
 
 const defaultDeliveryInterval = 30 * time.Second
 const defaultMaxLastErrorBytes = 4096
+const spokeDeliveryTracerName = "kapro.io/kapro/cmd/kapro-cluster-controller/delivery"
 
 // Run drives the delivery loop until ctx is cancelled. Errors from
 // individual ticks are logged and never propagated — the loop is best-effort
@@ -77,22 +82,36 @@ func (l *deliveryLoop) Run(ctx context.Context) {
 func (l *deliveryLoop) tick(ctx context.Context) error {
 	tctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
+	tctx, span := otel.Tracer(spokeDeliveryTracerName).Start(tctx, "kapro.spoke.delivery.tick",
+		trace.WithAttributes(attribute.String("kapro.cluster", l.ClusterName)),
+	)
+	defer span.End()
 
 	hub, err := l.Hub.Client()
 	if err != nil {
+		recordSpokeDeliveryError(span, err)
 		return err
 	}
 
 	fc := &kaprov1alpha2.Cluster{}
 	if err := hub.Get(tctx, client.ObjectKey{Name: l.ClusterName}, fc); err != nil {
-		return fmt.Errorf("get Cluster %q: %w", l.ClusterName, err)
+		err = fmt.Errorf("get Cluster %q: %w", l.ClusterName, err)
+		recordSpokeDeliveryError(span, err)
+		return err
 	}
 
 	desired := mergedDesiredVersions(fc.Spec)
+	span.SetAttributes(
+		attribute.Int("kapro.desired_version_count", len(desired)),
+		attribute.String("kapro.delivery.backend_ref", fc.Spec.Delivery.BackendRef),
+		attribute.Bool("kapro.cluster.suspended", fc.Spec.Suspend),
+	)
 
 	// Suspend short-circuit: write Skipped for every app and return.
 	if fc.Spec.Suspend {
 		l.writeSuspended(tctx, hub, fc, desired)
+		span.SetAttributes(attribute.Bool("kapro.spoke.delivery.status_write", len(desired) > 0))
+		span.SetStatus(codes.Ok, "")
 		return nil
 	}
 
@@ -100,6 +119,8 @@ func (l *deliveryLoop) tick(ctx context.Context) error {
 		// Nothing to do; do not touch status. A previously-populated
 		// status.delivery is preserved so SREs still see the last attempt
 		// after a deliberate rollback to empty desiredVersions.
+		span.SetAttributes(attribute.Bool("kapro.spoke.delivery.status_write", false))
+		span.SetStatus(codes.Ok, "")
 		return nil
 	}
 
@@ -113,7 +134,13 @@ func (l *deliveryLoop) tick(ctx context.Context) error {
 		results[appKey] = res
 	}
 
-	return l.writeStatus(tctx, hub, fc, results, desired)
+	if err := l.writeStatus(tctx, hub, fc, results, desired); err != nil {
+		recordSpokeDeliveryError(span, err)
+		return err
+	}
+	span.SetAttributes(attribute.Bool("kapro.spoke.delivery.status_write", true))
+	span.SetStatus(codes.Ok, "")
+	return nil
 }
 
 // reconcileOne resolves the right provider and runs one Reconcile call.
@@ -127,7 +154,35 @@ func (l *deliveryLoop) reconcileOne(
 	appKey, version string,
 ) spokeprovider.ReconcileResult {
 	started := time.Now()
+	ctx, span := otel.Tracer(spokeDeliveryTracerName).Start(ctx, "kapro.spoke.delivery.reconcile",
+		trace.WithAttributes(
+			attribute.String("kapro.cluster", clusterName(fc)),
+			attribute.String("kapro.app_key", appKey),
+			attribute.String("kapro.version", version),
+			attribute.String("kapro.delivery.backend_ref", backendRef(fc)),
+			attribute.String("kapro.delivery.backend", backendName(profile)),
+			attribute.String("kapro.delivery.driver", backendDriver(profile)),
+		),
+	)
+	defer span.End()
 	out := l.reconcileOneResult(ctx, fc, profile, profErr, appKey, version)
+	span.SetAttributes(
+		attribute.String("kapro.delivery.phase", string(out.Phase)),
+		attribute.String("kapro.delivery.result", deliveryResult(out)),
+		attribute.String("kapro.delivery.format", out.Format),
+		attribute.String("kapro.delivery.observed_digest", out.ObservedDigest),
+		attribute.Int64("kapro.delivery.applied_objects", int64(out.AppliedObjects)),
+	)
+	if out.Err != nil || out.Phase == kaprov1alpha2.DeliveryPhaseFailed {
+		if out.Err != nil {
+			span.RecordError(out.Err)
+			span.SetStatus(codes.Error, out.Err.Error())
+		} else {
+			span.SetStatus(codes.Error, string(out.Phase))
+		}
+	} else {
+		span.SetStatus(codes.Ok, "")
+	}
 	observeSpokeDelivery(l.ClusterName, deliveryBackendMetricLabel(profile), out, time.Since(started))
 	return out
 }
@@ -376,4 +431,48 @@ func (l *deliveryLoop) maxLastErrorBytes() int {
 		return l.MaxLastErrorBytes
 	}
 	return defaultMaxLastErrorBytes
+}
+
+func recordSpokeDeliveryError(span trace.Span, err error) {
+	if err == nil {
+		span.SetStatus(codes.Ok, "")
+		return
+	}
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
+}
+
+func clusterName(cluster *kaprov1alpha2.Cluster) string {
+	if cluster == nil {
+		return ""
+	}
+	return cluster.Name
+}
+
+func backendRef(cluster *kaprov1alpha2.Cluster) string {
+	if cluster == nil {
+		return ""
+	}
+	return cluster.Spec.Delivery.BackendRef
+}
+
+func backendName(profile *kaprov1alpha2.Backend) string {
+	if profile == nil {
+		return ""
+	}
+	return profile.Name
+}
+
+func backendDriver(profile *kaprov1alpha2.Backend) string {
+	if profile == nil {
+		return ""
+	}
+	return string(profile.Spec.Driver)
+}
+
+func deliveryResult(result spokeprovider.ReconcileResult) string {
+	if result.Err != nil || result.Phase == kaprov1alpha2.DeliveryPhaseFailed {
+		return "error"
+	}
+	return "success"
 }
