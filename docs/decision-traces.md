@@ -63,6 +63,22 @@ reason, scope, source, signing state, and message. JSON output is intended for
 tooling that wants to turn the same trace list into incident reports or
 dashboards.
 
+## Reconstruct At A Time
+
+Use `kapro reconstruct` when you need the latest known controller decisions at a
+specific point in time:
+
+```bash
+kapro reconstruct checkout-7f4c9 --at 2026-05-23T15:30:00Z
+kapro reconstruct checkout-7f4c9 --at 2026-05-23T15:30:00Z -o json
+```
+
+The command replays `DecisionTrace` records for the PromotionRun up to `--at`
+and summarizes the latest record per scope. The text output is optimized for
+operators; JSON includes the filtered timeline for tools that need richer
+reconstruction or incident-report rendering. This is trace reconstruction
+groundwork, not full Kubernetes object replay from an external archive.
+
 ## Decision API Compatibility
 
 `Target.status.decisionTrace` still stores the Decision API approval trace for a

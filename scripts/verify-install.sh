@@ -28,7 +28,7 @@ Environment for cluster mode:
   KAPRO_VERIFY_CLEANUP       Uninstall the Helm release and namespace after verification (default: false)
 
 Environment for release-render and release-cluster modes:
-  KAPRO_RELEASE_VERSION       Release tag to verify (default: v0.4.7)
+  KAPRO_RELEASE_VERSION       Release tag to verify (default: v0.4.8)
   KAPRO_RELEASE_CHART_URL     Optional chart package URL override
 EOF
 }
@@ -117,7 +117,7 @@ render() {
 download_release_chart() {
   need curl
   local version chart_url tmpdir chart_package
-  version="${KAPRO_RELEASE_VERSION:-v0.4.7}"
+  version="${KAPRO_RELEASE_VERSION:-v0.4.8}"
   chart_url="${KAPRO_RELEASE_CHART_URL:-https://github.com/Kapro-dev/kapro/releases/download/${version}/kapro-operator-${version#v}.tgz}"
   tmpdir="$(mktemp -d)"
   chart_package="${tmpdir}/kapro-operator-${version#v}.tgz"
@@ -204,7 +204,7 @@ cluster() {
 
 release_cluster() (
   local version chart_package
-  version="${KAPRO_RELEASE_VERSION:-v0.4.7}"
+  version="${KAPRO_RELEASE_VERSION:-v0.4.8}"
   chart_package="$(download_release_chart)"
   trap 'rm -rf "$(dirname "${chart_package}")"' EXIT
   KAPRO_IMAGE_TAG="${KAPRO_IMAGE_TAG:-${version}}" install_chart "${chart_package}"
