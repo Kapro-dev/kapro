@@ -40,6 +40,13 @@ type options struct {
 	output     string
 }
 
+type optionSet struct {
+	endpoint        bool
+	requireEndpoint bool
+	params          bool
+	tls             bool
+}
+
 type keyValues map[string]string
 
 func (v *keyValues) String() string {
@@ -100,7 +107,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 }
 
 func runAll(args []string, out io.Writer) error {
-	opts, err := parseOptions("all", args, false, out)
+	opts, err := parseOptions("all", args, optionSet{}, out)
 	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -120,7 +127,7 @@ func runAll(args []string, out io.Writer) error {
 }
 
 func runActuator(args []string, out io.Writer) error {
-	opts, err := parseOptions("actuator", args, true, out)
+	opts, err := parseOptions("actuator", args, endpointOptionSet(), out)
 	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -146,7 +153,7 @@ func runActuator(args []string, out io.Writer) error {
 }
 
 func runGate(args []string, out io.Writer) error {
-	opts, err := parseOptions("gate", args, true, out)
+	opts, err := parseOptions("gate", args, endpointOptionSet(), out)
 	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -170,7 +177,7 @@ func runGate(args []string, out io.Writer) error {
 }
 
 func runPlanner(args []string, out io.Writer) error {
-	opts, err := parseOptions("planner", args, true, out)
+	opts, err := parseOptions("planner", args, endpointOptionSet(), out)
 	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -194,7 +201,7 @@ func runPlanner(args []string, out io.Writer) error {
 }
 
 func runProvider(args []string, out io.Writer) error {
-	opts, err := parseOptions("provider", args, false, out)
+	opts, err := parseOptions("provider", args, optionSet{}, out)
 	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -207,22 +214,37 @@ func runProvider(args []string, out io.Writer) error {
 	return printReports(out, opts, []suiteReport{suiteReportFromConformance("reference", report)})
 }
 
-func parseOptions(suite string, args []string, requireEndpoint bool, out io.Writer) (options, error) {
+func endpointOptionSet() optionSet {
+	return optionSet{
+		endpoint:        true,
+		requireEndpoint: true,
+		params:          true,
+		tls:             true,
+	}
+}
+
+func parseOptions(suite string, args []string, optsFor optionSet, out io.Writer) (options, error) {
 	opts := options{timeout: 10 * time.Second}
 	fs := flag.NewFlagSet("kapro-conformance "+suite, flag.ContinueOnError)
 	fs.SetOutput(out)
-	fs.StringVar(&opts.endpoint, "endpoint", "", "gRPC target, for example localhost:9090 or dns:///plugin.namespace.svc:9090")
 	fs.DurationVar(&opts.timeout, "timeout", opts.timeout, "overall conformance timeout")
-	fs.Var(&opts.params, "param", "scenario parameter as key=value; repeat for multiple parameters")
-	fs.BoolVar(&opts.tls, "tls", false, "use TLS for the gRPC connection")
-	fs.StringVar(&opts.caFile, "ca-file", "", "CA bundle for TLS server verification")
-	fs.StringVar(&opts.serverName, "server-name", "", "TLS server name override")
 	fs.StringVar(&opts.output, "o", "", "Output format: json")
 	fs.StringVar(&opts.output, "output", "", "Output format: json")
+	if optsFor.endpoint {
+		fs.StringVar(&opts.endpoint, "endpoint", "", "gRPC target, for example localhost:9090 or dns:///plugin.namespace.svc:9090")
+	}
+	if optsFor.params {
+		fs.Var(&opts.params, "param", "scenario parameter as key=value; repeat for multiple parameters")
+	}
+	if optsFor.tls {
+		fs.BoolVar(&opts.tls, "tls", false, "use TLS for the gRPC connection")
+		fs.StringVar(&opts.caFile, "ca-file", "", "CA bundle for TLS server verification")
+		fs.StringVar(&opts.serverName, "server-name", "", "TLS server name override")
+	}
 	if err := fs.Parse(args); err != nil {
 		return options{}, err
 	}
-	if requireEndpoint && opts.endpoint == "" {
+	if optsFor.requireEndpoint && opts.endpoint == "" {
 		return options{}, fmt.Errorf("--endpoint is required")
 	}
 	if opts.timeout <= 0 {
@@ -366,13 +388,15 @@ func usage(out io.Writer) {
   kapro-conformance provider [-o json]
 
 Common flags:
-  --endpoint     gRPC target, for example localhost:9090 or dns:///plugin.svc:9090
   --timeout      overall conformance timeout, default 10s
+  -o, --output   output format: json
+
+Live endpoint suite flags:
+  --endpoint     gRPC target, for example localhost:9090 or dns:///plugin.svc:9090
   --param        scenario parameter as key=value; repeat for multiple parameters
   --tls          use TLS instead of plaintext gRPC
   --ca-file      CA bundle for TLS server verification
   --server-name  TLS server name override
-  -o, --output   output format: json
 
 Notes:
   all and provider run local reference suites. KSP provider conformance is a Go

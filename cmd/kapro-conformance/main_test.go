@@ -37,6 +37,23 @@ func TestRunSuiteHelp(t *testing.T) {
 	}
 }
 
+func TestRunReferenceSuiteHelpOmitsEndpointFlags(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := run([]string{"provider", "--help"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run provider --help: %v", err)
+	}
+	if strings.Contains(stdout.String(), "-endpoint") {
+		t.Fatalf("provider help included endpoint flag: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "-output string") {
+		t.Fatalf("provider help output did not include output flag: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
 func TestRunNoArgsShowsUsage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := run(nil, &stdout, &stderr)
@@ -115,5 +132,19 @@ func TestRunRejectsUnknownOutput(t *testing.T) {
 	}
 	if stdout.Len() != 0 || stderr.Len() != 0 {
 		t.Fatalf("stdout=%q stderr=%q, want empty", stdout.String(), stderr.String())
+	}
+}
+
+func TestRunReferenceSuiteRejectsEndpoint(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := run([]string{"all", "--endpoint", "localhost:9090"}, &stdout, &stderr)
+	if err == nil || !strings.Contains(err.Error(), "flag provided but not defined: -endpoint") {
+		t.Fatalf("run all with endpoint error = %v, want unsupported flag", err)
+	}
+	if !strings.Contains(stdout.String(), "Usage of kapro-conformance all") {
+		t.Fatalf("stdout did not include flag usage: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
 	}
 }
