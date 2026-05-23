@@ -7,6 +7,15 @@ record for each tag.
 
 ## Unreleased
 
+### Added — drift metrics and `max-drift` gate
+
+Added first-class Prometheus gauges for `FleetDriftReport` status:
+`kapro_fleetdriftreport_targets{report,state}`,
+`kapro_fleetdriftreport_backend_objects{report,state}`, and
+`kapro_fleetdriftreport_phase{report,phase}`. Added the built-in `max-drift`
+gate so plans can require a fresh report to stay within target and
+backend-object drift budgets before promotion advances.
+
 ### Added — FleetDriftReport drift read model
 
 Added the preview `FleetDriftReport` CRD and opt-in `fleetdriftreport`

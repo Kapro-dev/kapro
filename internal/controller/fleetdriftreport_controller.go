@@ -19,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprometrics "kapro.io/kapro/internal/metrics"
 )
 
 const (
@@ -45,6 +46,9 @@ type FleetDriftReportReconciler struct {
 func (r *FleetDriftReportReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var report kaprov1alpha2.FleetDriftReport
 	if err := r.Get(ctx, req.NamespacedName, &report); err != nil {
+		if apierrors.IsNotFound(err) {
+			kaprometrics.DeleteFleetDriftReport(req.Name)
+		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	if !report.DeletionTimestamp.IsZero() {
@@ -69,6 +73,7 @@ func (r *FleetDriftReportReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return ctrl.Result{}, fmt.Errorf("patch FleetDriftReport status: %w", patchErr)
 		}
 	}
+	kaprometrics.ObserveFleetDriftReport(report.Name, next)
 
 	return ctrl.Result{RequeueAfter: fleetDriftReportSyncInterval(&report)}, nil
 }
