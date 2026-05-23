@@ -15,8 +15,8 @@ the second digit:
 
 Patch releases in a train, such as `0.2.1` or `0.10.3`, are for bug fixes,
 documentation, compatibility hardening, and narrow polish. Minor train releases,
-such as `0.10.0`, are for coherent product increments that may add Preview
-surfaces or change Alpha surfaces with migration notes.
+such as `0.10.0`, `0.20.0`, and `0.30.0`, are for coherent product increments
+that may add Preview surfaces or change Alpha surfaces with migration notes.
 
 ## Why Not 1.0 Yet
 
