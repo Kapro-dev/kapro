@@ -103,4 +103,5 @@ helm upgrade --install kapro charts/kapro-operator \
 Gate code runs in the operator process. Only compile trusted code into a custom
 operator; use the gRPC plugin path when a separate security or ownership
 boundary is required. See `docs/programmable-gates.md` for the full trust
-boundary discussion.
+boundary discussion and `docs/sdk-gate-request.md` for the programmable gate
+request field contract.
