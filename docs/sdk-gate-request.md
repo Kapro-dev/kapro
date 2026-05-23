@@ -94,13 +94,18 @@ s.Gates.MustRegister("legacy-budget", gate.Recover(gate.Func(func(ctx context.Co
 
 ## Stability Notes
 
-`pkg/kapro/gate` is the SDK import path for programmable gates. It currently
-aliases `pkg/gate` so existing controller and SDK code use the same engine
-types. Prefer the SDK path in new examples and custom operators:
+`pkg/kapro/gate` is the canonical SDK import path for programmable gates.
+`Predicate` is the canonical authoring interface and `PredicateFunc` adapts a
+plain Go function. `Gate` and `Func` remain aliases for the same runtime
+contract, and `pkg/gate` remains as a compatibility import path.
 
 ```go
 import "kapro.io/kapro/pkg/kapro/gate"
 ```
+
+Registries wrap predicates with OpenTelemetry tracing by default. Use
+`gate.NewRegistryWithoutTracing()` only in tests or when the predicate is
+already wrapped by the caller.
 
 The request type is immutable from the gate's perspective. Implementations
 must not mutate maps, pointed-to objects, or status-like fields they receive.

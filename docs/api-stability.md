@@ -42,7 +42,7 @@ Preview. The table below is the source of truth for the current contract level.
 | Agent decision APIs | `api/v1alpha2` `Policy`, `Target.status.decisionTrace`, Decision API HTTP routes | Preview |
 | Fleet auto-import CRD | `api/v1alpha2` `ClusterTemplate` | Preview; only implemented sources are runtime features |
 | In-process actuator interface | `pkg/actuator` | Preview |
-| In-process gate interface | `pkg/gate` | Preview |
+| In-process gate predicate interface | `pkg/kapro/gate` (`pkg/gate` compatibility alias) | Preview |
 | In-process planner interface | `pkg/planner` | Preview |
 | KAI actuator plugin contract | `spec/kai/v1alpha1` | Preview |
 | KGI gate plugin contract | `spec/kgi/v1alpha1` | Preview |
