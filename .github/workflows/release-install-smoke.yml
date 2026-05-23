@@ -10,6 +10,9 @@ on:
         description: Kind node image for the smoke cluster.
         required: true
         default: kindest/node:v1.30.0
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
 
 permissions:
   contents: read
@@ -19,6 +22,7 @@ jobs:
     name: Release Install Smoke
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'v'))
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
 
@@ -34,14 +38,16 @@ jobs:
           install_only: true
 
       - name: Create fresh Kind cluster
+        env:
+          KAPRO_RELEASE_INSTALL_KIND_IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.kind_image || 'kindest/node:v1.30.0' }}
         run: |
           kind create cluster \
             --name kapro-release-install \
-            --image "${{ inputs.kind_image }}"
+            --image "${KAPRO_RELEASE_INSTALL_KIND_IMAGE}"
 
       - name: Install published release artifacts
         env:
-          KAPRO_RELEASE_VERSION: ${{ inputs.version }}
+          KAPRO_RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.workflow_run.head_branch }}
           KAPRO_VERIFY_CLEANUP: "true"
         run: scripts/verify-install.sh release-cluster
 

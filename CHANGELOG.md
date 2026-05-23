@@ -7,6 +7,12 @@ record for each tag.
 
 ## Unreleased
 
+### Added — automatic release install smoke
+
+Successful tag release workflows now trigger the published-release install
+smoke automatically against a fresh Kind cluster. Manual dispatch remains
+available for targeted re-runs against a chosen tag and Kubernetes image.
+
 ### Added — Kind Helm upgrade smoke
 
 Pull-request Kind smoke now performs a second `helm upgrade --install` with the
@@ -50,12 +56,12 @@ step fails before image scanning.
 
 Clarified release-train guidance so patch increments are treated as a planning
 budget and review trigger while still allowing concrete milestones such as
-`v0.5.0` under the project’s `0.x.y` pre-stable strategy.
+`v0.5.1` under the project’s `0.x.y` pre-stable strategy.
 
-### Changed — release metadata for v0.5.0
+### Changed — release metadata for v0.5.1
 
 Updated Helm chart versions, install examples, and release smoke defaults so
-the next release tag packages `0.5.0` artifacts consistently.
+the next release tag packages `0.5.1` artifacts consistently.
 
 ### Added — reference adapter package tests
 
@@ -332,7 +338,7 @@ compatibility.
 Documented that Kapro stays in the `0.x.x` release series until public API,
 SDK, conformance, upgrade, and operational contracts are ready for stability
 graduation. Active GitHub milestones use exact feature-release names such as
-`v0.2.4`, `v0.4.7`, or `v0.5.0` rather than broad train buckets or a `1.0.0`
+`v0.2.4`, `v0.4.7`, or `v0.5.1` rather than broad train buckets or a `1.0.0`
 planning bucket. The pre-stable strategy is `0.<capability-line>.<feature-increment>`,
 so both remaining digits carry product meaning.
 
