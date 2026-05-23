@@ -326,18 +326,24 @@ func usesVaultBootstrapMaterial(fc *kaprov1alpha2.Cluster) bool {
 // upsertClusterRole creates or updates the per-cluster long-lived ClusterRole
 // that the spoke's issued client cert authorises against.
 func (r *ClusterBootstrapReconciler) upsertClusterRole(ctx context.Context, roleName, clusterName string) error {
-	role := &rbacv1.ClusterRole{
+	return r.upsertClusterRoleObject(ctx, buildClusterRole(roleName, clusterName))
+}
+
+func buildClusterRole(roleName, clusterName string) *rbacv1.ClusterRole {
+	return &rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   roleName,
 			Labels: managedResourceLabels(clusterName, "cluster-controller-rbac"),
 		},
 		Rules: []rbacv1.PolicyRule{
-			// Read its own Cluster.
+			// Read and update its own Cluster. Avoid list/watch here: resourceNames
+			// does not provide a useful isolation boundary for collection reads, and
+			// the spoke uses explicit Get/Patch calls by name.
 			{
 				APIGroups:     []string{"kapro.io"},
 				Resources:     []string{"clusters"},
 				ResourceNames: []string{clusterName},
-				Verbs:         []string{"get", "list", "watch", "patch", "update"},
+				Verbs:         []string{"get", "patch", "update"},
 			},
 			// Update its own Cluster status.
 			{
@@ -354,15 +360,14 @@ func (r *ClusterBootstrapReconciler) upsertClusterRole(ctx context.Context, role
 				ResourceNames: []string{heartbeatLeaseName(clusterName)},
 				Verbs:         []string{"get", "create", "update", "patch"},
 			},
-			// Submit renewal CSRs for this signer name. Cluster-scoped (CSRs have no namespace).
+			// Submit and poll renewal CSRs by name. Cluster-scoped (CSRs have no namespace).
 			{
 				APIGroups: []string{"certificates.k8s.io"},
 				Resources: []string{"certificatesigningrequests"},
-				Verbs:     []string{"create", "get", "watch"},
+				Verbs:     []string{"create", "get"},
 			},
 		},
 	}
-	return r.upsertClusterRoleObject(ctx, role)
 }
 
 // upsertClusterRoleBinding binds the cluster ClusterRole to the User identity

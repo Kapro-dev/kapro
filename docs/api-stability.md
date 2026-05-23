@@ -5,7 +5,7 @@ lifecycle events, and language-neutral plugin contracts. The maturity level
 describes compatibility expectations for users and plugin authors; it does not
 change Kubernetes API version strings by itself.
 
-The current release line is pre-stable; `v0.4.18` is the current public preview
+The current release line is pre-stable; `v0.4.19` is the current public preview
 release, and Kapro releases stay in the `0.x.x` series until the project
 explicitly graduates its public contracts. `v0.1.0` was the first public
 release for the full promotion-domain API, not a promise that all
@@ -13,7 +13,7 @@ release for the full promotion-domain API, not a promise that all
 the binding upgrade record for each tag.
 
 Pre-stable milestones use exact `v0.x.y` names, for example `v0.2.4`,
-`v0.4.18`, or `v0.4.20`, once the feature increment is concrete enough to pick
+`v0.4.19`, or `v0.4.20`, once the feature increment is concrete enough to pick
 the third digit. The project uses `0.<capability-line>.<feature-increment>`:
 the second digit groups the capability line and the third digit names the
 actual shipped increment. `1.0.0` is reserved for a future stability

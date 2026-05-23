@@ -7,6 +7,13 @@ record for each tag.
 
 ## Unreleased
 
+### Changed — spoke hub RBAC verbs
+
+The long-lived spoke ClusterRole now grants only named-object `get`, `patch`,
+and `update` access for its own `Cluster`, plus `create`/`get` for renewal CSR
+polling. It no longer grants collection `list`/`watch` verbs where
+`resourceNames` could be misread as an isolation boundary.
+
 ### Added — CSR purpose diagnostics
 
 Spoke bootstrap and renewal CSRs now carry bounded diagnostic labels and
@@ -32,10 +39,10 @@ Clarified release-train guidance so patch increments are treated as a planning
 budget and review trigger while still allowing concrete milestones such as
 `v0.4.20` under the project’s `0.x.y` pre-stable strategy.
 
-### Changed — release metadata for v0.4.18
+### Changed — release metadata for v0.4.19
 
 Updated Helm chart versions, install examples, and release smoke defaults so
-the next release tag packages `0.4.18` artifacts consistently.
+the next release tag packages `0.4.19` artifacts consistently.
 
 ### Added — reference adapter package tests
 
