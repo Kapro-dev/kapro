@@ -39,7 +39,7 @@ Each trace includes `promotionRun`, `source`, `eventType`, `phase`, `reason`,
 Evidence is intentionally small and non-secret. Long-term archive integrations
 store full CloudEvents envelopes separately.
 
-## Explain A PromotionRun
+## Explain a PromotionRun
 
 Use `kapro why` to read the DecisionTrace stream for one PromotionRun:
 

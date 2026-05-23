@@ -14,11 +14,6 @@ import (
 	"kapro.io/kapro/internal/cli"
 )
 
-const (
-	promotionLabelKey    = "kapro.io/promotion"
-	promotionRunLabelKey = "kapro.io/promotionrun"
-)
-
 func newTreeCmd() *cobra.Command {
 	var kubeconfig string
 	cmd := &cobra.Command{

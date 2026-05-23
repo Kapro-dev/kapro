@@ -40,7 +40,7 @@ func TestRunWhyRendersDecisionTraceTimeline(t *testing.T) {
 	if first < 0 || second < 0 || first > second {
 		t.Fatalf("traces not rendered in time order:\n%s", out)
 	}
-	for _, want := range []string{"GateEvaluate", "Stage", "plan=canary", "stage=prod", "target=cluster-a", "signed", "error budget"} {
+	for _, want := range []string{"GateEvaluate", "Stage", "plan=canary", "stage=prod", "target=cluster-a", "Ed25519 key=test-key", "error budget"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("output missing %q:\n%s", want, out)
 		}
@@ -72,8 +72,11 @@ func TestRunWhyJSONOutput(t *testing.T) {
 	if len(got.Traces) != 1 || got.Traces[0].Name != "trace-a" {
 		t.Fatalf("unexpected traces: %+v", got.Traces)
 	}
-	if !got.Traces[0].Signed || !strings.Contains(got.Traces[0].Signature, "key=test-key") {
-		t.Fatalf("signature summary missing: %+v", got.Traces[0])
+	if !got.Traces[0].Signed || got.Traces[0].Signature == nil {
+		t.Fatalf("signature details missing: %+v", got.Traces[0])
+	}
+	if got.Traces[0].Signature.KeyID != "test-key" || got.Traces[0].Signature.PayloadDigest != "sha256:abc" {
+		t.Fatalf("signature details wrong: %+v", got.Traces[0].Signature)
 	}
 }
 

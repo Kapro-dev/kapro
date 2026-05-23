@@ -67,8 +67,16 @@ type whyTrace struct {
 	Target    string                                `json:"target,omitempty"`
 	Message   string                                `json:"message,omitempty"`
 	Signed    bool                                  `json:"signed"`
-	Signature string                                `json:"signature,omitempty"`
+	Signature *whyTraceSignature                    `json:"signature,omitempty"`
 	Evidence  []kaprov1alpha2.DecisionTraceEvidence `json:"evidence,omitempty"`
+}
+
+type whyTraceSignature struct {
+	Algorithm     string `json:"algorithm,omitempty"`
+	KeyID         string `json:"keyID,omitempty"`
+	PayloadDigest string `json:"payloadDigest,omitempty"`
+	Signature     string `json:"signature,omitempty"`
+	SignatureRef  string `json:"signatureRef,omitempty"`
 }
 
 func collectWhy(ctx context.Context, c client.Client, promotionRun string) (*whyReport, error) {
@@ -98,7 +106,7 @@ func whyTraceFromDecisionTrace(trace kaprov1alpha2.DecisionTrace) whyTrace {
 		Target:    trace.Spec.Target,
 		Message:   trace.Spec.Message,
 		Signed:    status.Signed,
-		Signature: signatureSummary(status),
+		Signature: signatureDetails(status),
 		Evidence:  trace.Spec.Evidence,
 	}
 }
@@ -137,7 +145,7 @@ func renderWhy(report *whyReport) {
 			stringOrUnset(trace.Reason),
 			whyScope(trace),
 			stringOrUnset(trace.Source),
-			signedState(trace.Signed),
+			signatureText(trace),
 			truncate(trace.Message, 72),
 		)
 	}
@@ -161,26 +169,32 @@ func whyScope(trace whyTrace) string {
 	return strings.Join(parts, " ")
 }
 
-func signatureSummary(status kaprov1alpha2.DecisionTraceStatus) string {
+func signatureDetails(status kaprov1alpha2.DecisionTraceStatus) *whyTraceSignature {
 	if !status.Signed {
-		return ""
+		return nil
 	}
-	parts := []string{status.SignatureAlgorithm}
-	if status.SignatureKeyID != "" {
-		parts = append(parts, "key="+status.SignatureKeyID)
+	return &whyTraceSignature{
+		Algorithm:     status.SignatureAlgorithm,
+		KeyID:         status.SignatureKeyID,
+		PayloadDigest: status.PayloadDigest,
+		Signature:     status.Signature,
+		SignatureRef:  status.SignatureRef,
 	}
-	if status.PayloadDigest != "" {
-		parts = append(parts, status.PayloadDigest)
-	}
-	if status.SignatureRef != "" {
-		parts = append(parts, "ref="+status.SignatureRef)
-	}
-	return strings.Join(parts, " ")
 }
 
-func signedState(value bool) string {
-	if value {
+func signatureText(trace whyTrace) string {
+	if !trace.Signed {
+		return "unsigned"
+	}
+	var parts []string
+	if trace.Signature != nil && trace.Signature.Algorithm != "" {
+		parts = append(parts, trace.Signature.Algorithm)
+	}
+	if trace.Signature != nil && trace.Signature.KeyID != "" {
+		parts = append(parts, "key="+trace.Signature.KeyID)
+	}
+	if len(parts) == 0 {
 		return "signed"
 	}
-	return "unsigned"
+	return strings.Join(parts, " ")
 }
