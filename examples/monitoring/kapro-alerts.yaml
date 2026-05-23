@@ -63,6 +63,46 @@ groups:
           description: Stage duration is above the expected fleet rollout objective for plan {{ $labels.plan }}.
           runbook: docs/controller-scalability.md#workqueue-tuning
 
+      - alert: KaproFleetDriftDetected
+        expr: kapro_fleetdriftreport_phase{phase="Drifted"} == 1
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: Kapro drift report {{ $labels.report }} has sustained drift
+          description: FleetDriftReport {{ $labels.report }} has remained Drifted for 30 minutes.
+          runbook: docs/operations.md#runbook-fleet-drift
+
+      - alert: KaproFleetDriftSignalsIncomplete
+        expr: kapro_fleetdriftreport_phase{phase="Unknown"} == 1
+        for: 20m
+        labels:
+          severity: warning
+        annotations:
+          summary: Kapro drift report {{ $labels.report }} has incomplete signals
+          description: FleetDriftReport {{ $labels.report }} has remained Unknown for 20 minutes.
+          runbook: docs/operations.md#runbook-fleet-drift
+
+      - alert: KaproFleetDriftReportFailed
+        expr: kapro_fleetdriftreport_phase{phase="Failed"} == 1
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: Kapro drift report {{ $labels.report }} is failed
+          description: FleetDriftReport {{ $labels.report }} has remained Failed for 10 minutes.
+          runbook: docs/operations.md#runbook-fleet-drift
+
+      - alert: KaproFleetDriftReportPending
+        expr: kapro_fleetdriftreport_phase{phase="Pending"} == 1
+        for: 2h
+        labels:
+          severity: warning
+        annotations:
+          summary: Kapro drift report {{ $labels.report }} is pending for too long
+          description: FleetDriftReport {{ $labels.report }} has remained Pending for 2 hours.
+          runbook: docs/operations.md#runbook-fleet-drift
+
       - alert: KaproControllerReconcileErrors
         expr: sum(rate(kapro_controller_reconciles_total{result="error"}[10m])) by (controller) > 0
         for: 10m

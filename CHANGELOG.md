@@ -7,6 +7,13 @@ record for each tag.
 
 ## Unreleased
 
+### Added — drift-duration SLO assets
+
+Added Prometheus recording rules, alerts, dashboard panels, and runbook
+guidance for sustained `FleetDriftReport` phases. Operators can now alert on
+long-running `Drifted`, `Unknown`, `Failed`, and `Pending` report states using
+the v0.4.1 drift metrics surface.
+
 ### Added — drift metrics and `max-drift` gate
 
 Added first-class Prometheus gauges for `FleetDriftReport` status:

@@ -26,9 +26,9 @@ alerts.
 - `examples/monitoring/grafana-dashboard.json` provides a Grafana dashboard for
   controller health, reconcile latency, status writes, gate results, target
   transitions, stage duration, active promotionruns, promotionrun stuck candidates,
-  blocked triggers, CloudEvents sink p99, and plugin probe failures. Import
-  `prometheus-rules.yaml` first so panels backed by `kapro:slo_*` recording
-  rules have data.
+  blocked triggers, CloudEvents sink p99, FleetDriftReport phase/counts, and
+  plugin probe failures. Import `prometheus-rules.yaml` first so panels backed
+  by `kapro:slo_*` recording rules have data.
 - `examples/monitoring/prometheus-rules.yaml` provides PrometheusRule-style
   alert examples for emitted Kapro metric names and kube-state-metrics custom
   resource state metrics.
@@ -134,6 +134,8 @@ The PrometheusRule example includes alert expressions for:
   kube-state-metrics;
 - blocked `Trigger` state using cooldown, max-active, source,
   signature, and Promotion update condition reasons from kube-state-metrics.
+- sustained FleetDriftReport `Drifted`, `Unknown`, `Failed`, and `Pending`
+  phases using first-class Kapro metrics.
 
 These alerts are examples, not universal SLOs. Tune thresholds to your promotionrun
 cadence, cluster count, and expected gate retry behavior.
@@ -152,6 +154,7 @@ Use alerts as routing signals, then follow the operational runbooks in
 | `KaproRolloutDurationP95High` | Stuck PromotionRun or scalability review | stage duration histogram, stage `maxParallel`, backend latency |
 | `KaproLifecycleSinkP99High` | First Response | lifecycle hook duration histogram, sink endpoint logs, retry/backoff settings |
 | `KaproControllerReconcileErrors` | First Response | controller logs, status write metrics, Kubernetes Events |
+| `KaproFleetDriftDetected` / `KaproFleetDriftSignalsIncomplete` / `KaproFleetDriftReportFailed` / `KaproFleetDriftReportPending` | Fleet Drift | FleetDriftReport status, drift metrics, Target and Cluster status |
 
 Alert names differ slightly between the generic alert rules and the Prometheus
 Operator examples, but they intentionally route to the same runbooks.
