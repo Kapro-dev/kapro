@@ -162,6 +162,7 @@ func (r *TargetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		if cancelPhase == "" {
 			cancelPhase = kaprov1alpha2.TargetPhaseFailed
 		}
+		prevPhase := rt.Status.Phase
 		nowStr := time.Now().UTC().Format(time.RFC3339)
 		if updateErr := StatusUpdateWithRetry(ctx, r.Client, &rt, func(fresh *kaprov1alpha2.Target) error {
 			fresh.Status.Phase = cancelPhase
@@ -177,6 +178,10 @@ func (r *TargetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			resultLabel = "error"
 			return ctrl.Result{}, fmt.Errorf("patch cancelled PromotionTarget phase label %s: %w", rt.Name, updateErr)
 		}
+		target := targetStatusFromPromotionTarget(&rt)
+		target.Phase = cancelPhase
+		target.Message = "cancelled: " + cancelReason
+		r.emitTargetPhaseDecisionTrace(ctx, &promotionrun, &target, prevPhase, cancelPhase, "TargetCancelled", target.Message)
 		return ctrl.Result{}, nil
 	}
 
@@ -1049,7 +1054,7 @@ func (r *TargetReconciler) handleApplying(ctx context.Context, promotionrun *kap
 		}
 		if !supportsActuatorObserve(caps) {
 			l.Info("actuator does not support observe; trusting apply outcome", "actuator", key)
-			target.Phase = kaprov1alpha2.TargetPhaseConverged
+			r.transitionTo(ctx, promotionrun, target, kaprov1alpha2.TargetPhaseConverged)
 			target.FinishedAt = time.Now().UTC().Format(time.RFC3339)
 			return ctrl.Result{}, nil
 		}
@@ -1062,7 +1067,7 @@ func (r *TargetReconciler) handleApplying(ctx context.Context, promotionrun *kap
 			l.Info("cluster converged", "cluster", target.Target, "desiredVersions", desiredVersions)
 			r.Recorder.Eventf(promotionrun, corev1.EventTypeNormal, "Applied",
 				"Desired versions applied to %s", target.Target)
-			target.Phase = kaprov1alpha2.TargetPhaseConverged
+			r.transitionTo(ctx, promotionrun, target, kaprov1alpha2.TargetPhaseConverged)
 			target.FinishedAt = time.Now().UTC().Format(time.RFC3339)
 			return ctrl.Result{}, nil
 		}
@@ -1073,7 +1078,7 @@ func (r *TargetReconciler) handleApplying(ctx context.Context, promotionrun *kap
 		l.Info("cluster converged", "cluster", target.Target, "version", target.Version)
 		r.Recorder.Eventf(promotionrun, corev1.EventTypeNormal, "Applied",
 			"Version %s applied to %s", target.Version, target.Target)
-		target.Phase = kaprov1alpha2.TargetPhaseConverged
+		r.transitionTo(ctx, promotionrun, target, kaprov1alpha2.TargetPhaseConverged)
 		target.FinishedAt = time.Now().UTC().Format(time.RFC3339)
 		return ctrl.Result{}, nil
 	}
@@ -1247,6 +1252,7 @@ func (r *TargetReconciler) transitionTo(ctx context.Context, promotionrun *kapro
 	if rt := promotionTargetFromContext(ctx); rt != nil {
 		r.Recorder.Eventf(rt, corev1.EventTypeNormal, string(phase), msg)
 	}
+	r.emitTargetPhaseDecisionTrace(ctx, promotionrun, target, prevPhase, phase, "TargetPhaseTransition", msg)
 }
 
 // phaseTransitionMessage returns a human-readable message for the FSM transition,
@@ -1286,6 +1292,7 @@ func phaseTransitionMessage(from kaprov1alpha2.TargetPhase, to kaprov1alpha2.Tar
 
 // failTarget records a failure and applies the onFailure policy.
 func (r *TargetReconciler) failTarget(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, target *kaprov1alpha2.TargetExecutionState, msg string) {
+	prevPhase := target.Phase
 	target.FinishedAt = time.Now().UTC().Format(time.RFC3339)
 	target.Message = msg
 
@@ -1301,6 +1308,7 @@ func (r *TargetReconciler) failTarget(ctx context.Context, promotionrun *kaprov1
 		if rt := promotionTargetFromContext(ctx); rt != nil {
 			r.Recorder.Eventf(rt, corev1.EventTypeWarning, "Skipped", "skipped: %s", msg)
 		}
+		r.emitTargetPhaseDecisionTrace(ctx, promotionrun, target, prevPhase, target.Phase, "TargetSkippedOnFailureContinue", msg)
 		return
 	}
 
@@ -1310,6 +1318,7 @@ func (r *TargetReconciler) failTarget(ctx context.Context, promotionrun *kaprov1
 	if rt := promotionTargetFromContext(ctx); rt != nil {
 		r.Recorder.Eventf(rt, corev1.EventTypeWarning, "Failed", "failed: %s", msg)
 	}
+	r.emitTargetPhaseDecisionTrace(ctx, promotionrun, target, prevPhase, target.Phase, "TargetFailed", msg)
 
 	// Rollback is triggered by the parent PromotionRunReconciler when it aggregates
 	// child statuses and detects a Failed target with onFailure=rollback.

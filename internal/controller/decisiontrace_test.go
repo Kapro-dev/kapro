@@ -9,6 +9,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -181,4 +182,190 @@ func TestTargetDeliveryStatusEmitsDecisionTraces(t *testing.T) {
 		detail["observedDigest"] != "sha256:abc" {
 		t.Fatalf("api trace evidence = %#v", detail)
 	}
+}
+
+func TestTargetTransitionToEmitsDecisionTrace(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme: %v", err)
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha2.DecisionTrace{}).
+		Build()
+	r := &TargetReconciler{
+		Client:               c,
+		Recorder:             record.NewFakeRecorder(10),
+		DecisionTraceEmitter: decisiontrace.Emitter{Client: c},
+	}
+	promotionrun := &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "run-a"}}
+	target := &kaprov1alpha2.TargetExecutionState{
+		PromotionRunRef: "run-a",
+		PlanRef:         "plan-a",
+		Stage:           "canary",
+		Target:          "cluster-a",
+		Phase:           kaprov1alpha2.TargetPhasePending,
+		Version:         "v2",
+		AppKey:          "api",
+	}
+
+	r.transitionTo(context.Background(), promotionrun, target, kaprov1alpha2.TargetPhaseVerification)
+
+	trace := singleDecisionTrace(t, c)
+	if trace.Spec.EventType != kaprov1alpha2.DecisionTraceEventStage ||
+		trace.Spec.Source != "target-controller" ||
+		trace.Spec.Reason != "TargetPhaseTransition" ||
+		trace.Spec.Phase != string(kaprov1alpha2.TargetPhaseVerification) {
+		t.Fatalf("trace spec = %#v", trace.Spec)
+	}
+	detail := trace.Spec.Evidence[0].Detail
+	if detail["fromPhase"] != string(kaprov1alpha2.TargetPhasePending) ||
+		detail["toPhase"] != string(kaprov1alpha2.TargetPhaseVerification) ||
+		detail["version"] != "v2" ||
+		detail["appKey"] != "api" {
+		t.Fatalf("trace evidence = %#v", detail)
+	}
+}
+
+func TestTargetFailTargetEmitsDecisionTrace(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme: %v", err)
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha2.DecisionTrace{}).
+		Build()
+	r := &TargetReconciler{
+		Client:               c,
+		Recorder:             record.NewFakeRecorder(10),
+		DecisionTraceEmitter: decisiontrace.Emitter{Client: c},
+	}
+	promotionrun := &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "run-a"}}
+	target := &kaprov1alpha2.TargetExecutionState{
+		PromotionRunRef: "run-a",
+		PlanRef:         "plan-a",
+		Stage:           "canary",
+		Target:          "cluster-a",
+		Phase:           kaprov1alpha2.TargetPhaseMetricsCheck,
+		Version:         "v2",
+		Gate:            &kaprov1alpha2.GatePolicySpec{OnFailure: "continue"},
+	}
+
+	r.failTarget(context.Background(), promotionrun, target, "metric gate failed")
+
+	trace := singleDecisionTrace(t, c)
+	if target.Phase != kaprov1alpha2.TargetPhaseSkipped {
+		t.Fatalf("target phase = %q, want Skipped", target.Phase)
+	}
+	if trace.Spec.Reason != "TargetSkippedOnFailureContinue" ||
+		trace.Spec.Phase != string(kaprov1alpha2.TargetPhaseSkipped) ||
+		trace.Spec.Message != "metric gate failed" {
+		t.Fatalf("trace spec = %#v", trace.Spec)
+	}
+	if got := trace.Spec.Evidence[0].Detail["onFailure"]; got != "continue" {
+		t.Fatalf("onFailure evidence = %q, want continue", got)
+	}
+}
+
+func TestPromotionRunUpsertTargetEmitsBindDecisionTrace(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme: %v", err)
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha2.DecisionTrace{}).
+		Build()
+	r := &PromotionRunReconciler{
+		Client:               c,
+		DecisionTraceEmitter: decisiontrace.Emitter{Client: c},
+	}
+	promotionrun := &kaprov1alpha2.PromotionRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "run-a"},
+		Spec: kaprov1alpha2.PromotionRunSpec{
+			Versions: map[string]string{"api": "v2", "worker": "v3"},
+		},
+	}
+	plan := &kaprov1alpha2.Plan{ObjectMeta: metav1.ObjectMeta{Name: "plan-cr"}}
+	stage := kaprov1alpha2.Stage{Name: "canary"}
+	cluster := kaprov1alpha2.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"}}
+	var targets []kaprov1alpha2.TargetExecutionState
+
+	if _, err := r.upsertTarget(context.Background(), &targets, promotionrun, "plan-a", plan, stage, cluster, nil); err != nil {
+		t.Fatalf("upsertTarget: %v", err)
+	}
+
+	trace := singleDecisionTrace(t, c)
+	if trace.Spec.EventType != kaprov1alpha2.DecisionTraceEventBatchProgress ||
+		trace.Spec.Source != "promotionrun-controller" ||
+		trace.Spec.Reason != "TargetBound" ||
+		trace.Spec.Phase != "Bind" {
+		t.Fatalf("trace spec = %#v", trace.Spec)
+	}
+	detail := trace.Spec.Evidence[0].Detail
+	if detail["target"] != "cluster-a" || detail["stage"] != "canary" || detail["desiredVersionCount"] != "2" {
+		t.Fatalf("trace evidence = %#v", detail)
+	}
+}
+
+func TestCancelPromotionRunTargetsEmitsDecisionTrace(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme: %v", err)
+	}
+	target := &kaprov1alpha2.Target{
+		ObjectMeta: metav1.ObjectMeta{Name: "run-a-plan-a-canary-cluster-a"},
+		Spec: kaprov1alpha2.TargetSpec{
+			PromotionRunRef: "run-a",
+			Target:          "cluster-a",
+			PlanRef:         "plan-a",
+			Plan:            "plan-cr",
+			Stage:           "canary",
+			Version:         "v2",
+		},
+		Status: kaprov1alpha2.TargetStatus{
+			TargetExecutionState: kaprov1alpha2.TargetExecutionState{
+				Phase: kaprov1alpha2.TargetPhaseApplying,
+			},
+		},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha2.DecisionTrace{}).
+		WithIndex(&kaprov1alpha2.Target{}, IndexKeyPromotionTargetPromotionRun, func(obj client.Object) []string {
+			return PromotionTargetPromotionRunExtractor(obj)
+		}).
+		WithObjects(target).
+		Build()
+	r := &PromotionRunReconciler{
+		Client:               c,
+		DecisionTraceEmitter: decisiontrace.Emitter{Client: c},
+	}
+
+	if err := r.cancelPromotionRunTargets(context.Background(), "run-a", "promotionrun exceeded timeout"); err != nil {
+		t.Fatalf("cancelPromotionRunTargets: %v", err)
+	}
+
+	trace := singleDecisionTrace(t, c)
+	if trace.Spec.Reason != "PromotionRunTimeoutCancelled" ||
+		trace.Spec.Phase != string(kaprov1alpha2.TargetPhaseFailed) ||
+		trace.Spec.Target != "cluster-a" {
+		t.Fatalf("trace spec = %#v", trace.Spec)
+	}
+	if got := trace.Spec.Evidence[0].Detail["fromPhase"]; got != string(kaprov1alpha2.TargetPhaseApplying) {
+		t.Fatalf("fromPhase evidence = %q, want Applying", got)
+	}
+}
+
+func singleDecisionTrace(t *testing.T, c client.Client) kaprov1alpha2.DecisionTrace {
+	t.Helper()
+	var traces kaprov1alpha2.DecisionTraceList
+	if err := c.List(context.Background(), &traces); err != nil {
+		t.Fatalf("List traces: %v", err)
+	}
+	if len(traces.Items) != 1 {
+		t.Fatalf("trace count = %d, want 1: %#v", len(traces.Items), traces.Items)
+	}
+	return traces.Items[0]
 }

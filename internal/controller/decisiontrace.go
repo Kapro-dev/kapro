@@ -91,6 +91,50 @@ func (r *TargetReconciler) emitDeliveryDecisionTraces(
 	}
 }
 
+func (r *TargetReconciler) emitTargetPhaseDecisionTrace(
+	ctx context.Context,
+	promotionrun *kaprov1alpha2.PromotionRun,
+	target *kaprov1alpha2.TargetExecutionState,
+	fromPhase kaprov1alpha2.TargetPhase,
+	toPhase kaprov1alpha2.TargetPhase,
+	reason string,
+	message string,
+) {
+	if promotionrun == nil || target == nil {
+		return
+	}
+	r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+		PromotionRun: promotionrun.Name,
+		Plan:         target.PlanRef,
+		Stage:        target.Stage,
+		Target:       target.Target,
+		EventType:    kaprov1alpha2.DecisionTraceEventStage,
+		Source:       "target-controller",
+		Phase:        string(toPhase),
+		Reason:       reason,
+		Message:      message,
+		Evidence: []kaprov1alpha2.DecisionTraceEvidence{{
+			Type:   "target-fsm",
+			Source: "target-controller",
+			Detail: targetPhaseDecisionEvidence(target, fromPhase, toPhase),
+		}},
+	})
+}
+
+func targetPhaseDecisionEvidence(target *kaprov1alpha2.TargetExecutionState, fromPhase, toPhase kaprov1alpha2.TargetPhase) map[string]string {
+	detail := map[string]string{}
+	addDetail(detail, "fromPhase", string(fromPhase))
+	addDetail(detail, "toPhase", string(toPhase))
+	addDetail(detail, "version", target.Version)
+	addDetail(detail, "appKey", target.AppKey)
+	addDetail(detail, "rollback", strconv.FormatBool(target.Rollback))
+	addDetail(detail, "applyIssued", strconv.FormatBool(target.ApplyIssued))
+	if target.Gate != nil {
+		addDetail(detail, "onFailure", target.Gate.OnFailure)
+	}
+	return detail
+}
+
 func deliveryDecisionReason(entry kaprov1alpha2.ClusterDeliveryStatus) string {
 	switch entry.Phase {
 	case kaprov1alpha2.DeliveryPhaseConverged:
