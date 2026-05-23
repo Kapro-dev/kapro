@@ -17,6 +17,8 @@ Patch releases in a train, such as `0.2.1` or `0.10.3`, are for bug fixes,
 documentation, compatibility hardening, and narrow polish. Minor train releases,
 such as `0.10.0`, `0.20.0`, and `0.30.0`, are for coherent product increments
 that may add Preview surfaces or change Alpha surfaces with migration notes.
+GitHub milestones must be exact pre-stable semver names, such as `v0.2.4`,
+`v0.4.7`, or `v0.4.20`; avoid shorthand names like `v0.6`.
 
 ## Why Not 1.0 Yet
 
