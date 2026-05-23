@@ -1,0 +1,124 @@
+# Deployable external Argo CD actuator substrate.
+#
+# This keeps Argo-specific code outside the Kapro operator. Apply this manifest,
+# then apply ../argocd-actuator-registration.yaml in the Kapro namespace with
+# KAPRO_ENABLE_PLUGIN_GATEWAY=true on the operator.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argocd-actuator
+  namespace: kapro-system
+  labels:
+    app.kubernetes.io/name: argocd-actuator
+    app.kubernetes.io/component: kapro-actuator-plugin
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argocd-actuator
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-actuator
+    app.kubernetes.io/component: kapro-actuator-plugin
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    resourceNames: ["checkout"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-actuator
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-actuator
+    app.kubernetes.io/component: kapro-actuator-plugin
+subjects:
+  - kind: ServiceAccount
+    name: argocd-actuator
+    namespace: kapro-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argocd-actuator
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-actuator
+  namespace: kapro-system
+  labels:
+    app.kubernetes.io/name: argocd-actuator
+    app.kubernetes.io/component: kapro-actuator-plugin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-actuator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: argocd-actuator
+        app.kubernetes.io/component: kapro-actuator-plugin
+    spec:
+      serviceAccountName: argocd-actuator
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+      containers:
+        - name: plugin
+          image: ghcr.io/kapro-dev/argocd-actuator:v0.3.6
+          imagePullPolicy: IfNotPresent
+          args:
+            - --listen
+            - :9090
+            - --namespace
+            - argocd
+          ports:
+            - name: grpc
+              containerPort: 9090
+          readinessProbe:
+            tcpSocket:
+              port: grpc
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: grpc
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 10m
+              memory: 48Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: argocd-actuator
+  namespace: kapro-system
+  labels:
+    app.kubernetes.io/name: argocd-actuator
+    app.kubernetes.io/component: kapro-actuator-plugin
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: argocd-actuator
+  ports:
+    - name: grpc
+      port: 9090
+      targetPort: grpc

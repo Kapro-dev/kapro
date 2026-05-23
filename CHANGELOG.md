@@ -7,6 +7,14 @@ record for each tag.
 
 ## Unreleased
 
+### Added — external Argo CD substrate proof
+
+Added a deployable external Argo CD actuator substrate example with a
+distroless Dockerfile, Kubernetes RBAC/Deployment/Service manifest,
+registration guidance, and conformance instructions. The example keeps
+Argo-specific code outside the Kapro operator while proving the KAI plugin
+contract against Argo CD Applications.
+
 ### Added — `kapro-conformance` suite runner
 
 Added `kapro-conformance all`, `kapro-conformance provider`, and JSON output

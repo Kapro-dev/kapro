@@ -298,7 +298,7 @@ cloud discovery providers used by `ClusterTemplate` to import clusters.
 
 | Example | Contract | `Plugin` manifest | Runtime status |
 |---|---|---|---|
-| `examples/plugins/argocd-actuator` | KAI actuator | `examples/plugins/argocd-actuator-registration.yaml` | Hot-loaded dispatch preview |
+| `examples/plugins/argocd-actuator` | KAI actuator | `examples/plugins/argocd-actuator-registration.yaml` + `examples/plugins/argocd-actuator/manifests/deployment.yaml` | Deployable external substrate proof |
 | `examples/plugins/argocd-applicationset-actuator` | KAI actuator | `examples/plugins/argocd-applicationset-actuator-registration.yaml` | Hot-loaded dispatch preview |
 | `examples/plugins/slo-gate` | KGI gate | `examples/plugins/slo-gate-registration.yaml` | Hot-loaded dispatch preview |
 | `examples/plugins/capacity-planner` | KPI planner | `examples/plugins/capacity-planner-registration.yaml` | Hot-loaded planner dispatch preview |

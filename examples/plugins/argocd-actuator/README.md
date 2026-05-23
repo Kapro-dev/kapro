@@ -31,6 +31,26 @@ go run ./examples/plugins/argocd-actuator --listen :9090 --namespace argocd
 The plugin uses in-cluster Kubernetes configuration by default. Outside a
 cluster, pass `--kubeconfig` or set `KUBECONFIG`.
 
+## Container
+
+Build the external substrate image from the repository root:
+
+```bash
+docker build -f examples/plugins/argocd-actuator/Dockerfile \
+  -t ghcr.io/kapro-dev/argocd-actuator:v0.3.6 .
+```
+
+For local testing against a kubeconfig:
+
+```bash
+docker run --rm -p 9090:9090 \
+  -v "$KUBECONFIG:/kubeconfig:ro" \
+  ghcr.io/kapro-dev/argocd-actuator:v0.3.6 \
+  --listen :9090 \
+  --kubeconfig /kubeconfig \
+  --namespace argocd
+```
+
 ## Parameters
 
 `Plugin.spec.parameters` or request parameters may contain:
@@ -47,8 +67,23 @@ If no application parameter is set, the plugin uses the request target name.
 
 ## Registration
 
-The standalone manifest is
-`examples/plugins/argocd-actuator-registration.yaml`.
+The deployable substrate manifest is
+`examples/plugins/argocd-actuator/manifests/deployment.yaml`. It creates:
+
+- a `kapro-system/argocd-actuator` ServiceAccount, Deployment, and Service;
+- an `argocd/argocd-actuator` Role that can `get` and `patch` Argo CD
+  the `checkout` Argo CD `Application`;
+- a RoleBinding from the Argo CD namespace to the Kapro plugin ServiceAccount.
+
+Apply it after replacing the image with your published build and adjusting
+`rules[].resourceNames` if your Application is not named `checkout`:
+
+```bash
+kubectl apply -f examples/plugins/argocd-actuator/manifests/deployment.yaml
+```
+
+The standalone Kapro `Plugin` registration is
+`examples/plugins/argocd-actuator-registration.yaml`:
 
 ```yaml
 apiVersion: kapro.io/v1alpha2
@@ -74,6 +109,12 @@ KAPRO_ENABLE_PLUGIN_GATEWAY=true
 
 The operator loads ready actuator registrations at startup.
 
+The registration endpoint points at the Service from the deployment manifest:
+
+```text
+dns:///argocd-actuator.kapro-system.svc:9090
+```
+
 ## Verify
 
 ```bash
@@ -90,6 +131,16 @@ go run ./cmd/kapro-conformance actuator \
   --endpoint localhost:9090 \
   --param argocdNamespace=argocd \
   --param application=checkout
+```
+
+For CI systems that need structured output:
+
+```bash
+go run ./cmd/kapro-conformance actuator \
+  --endpoint localhost:9090 \
+  --param argocdNamespace=argocd \
+  --param application=checkout \
+  -o json
 ```
 
 The conformance run applies the default test version and then rolls the
