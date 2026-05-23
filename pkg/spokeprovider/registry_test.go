@@ -13,6 +13,13 @@ type stubProvider struct {
 }
 
 func (s *stubProvider) Driver() kaprov1alpha2.BackendDriver { return s.driver }
+func (s *stubProvider) Capabilities() Capabilities {
+	return Capabilities{
+		Driver:            s.driver,
+		SupportsReconcile: true,
+		SupportsObserve:   true,
+	}
+}
 func (s *stubProvider) Reconcile(ctx context.Context, req ReconcileRequest) ReconcileResult {
 	return ReconcileResult{Phase: kaprov1alpha2.DeliveryPhaseConverged}
 }
@@ -29,6 +36,10 @@ func TestRegistry_RegisterAndResolve(t *testing.T) {
 	}
 	if got != p {
 		t.Fatalf("Resolve returned a different provider instance")
+	}
+	reg, ok := r.Registration(kaprov1alpha2.BackendDriverOCI)
+	if !ok || reg.Capabilities.Driver != kaprov1alpha2.BackendDriverOCI || !reg.Capabilities.SupportsReconcile {
+		t.Fatalf("registration = %#v/%v, want OCI reconcile metadata", reg, ok)
 	}
 }
 
@@ -79,6 +90,71 @@ func TestRegistry_UpsertReturnsPrevious(t *testing.T) {
 	}
 	if got != second {
 		t.Fatalf("Resolve did not return the replaced provider")
+	}
+}
+
+func TestRegistry_RegisterRegistrationStoresMetadata(t *testing.T) {
+	r := NewRegistry()
+	p := &stubProvider{driver: kaprov1alpha2.BackendDriverFlux}
+	if err := r.RegisterRegistration(Registration{
+		Capabilities: Capabilities{
+			Driver:            kaprov1alpha2.BackendDriverFlux,
+			SupportsReconcile: true,
+			SupportsObserve:   true,
+		},
+		Provider: p,
+	}); err != nil {
+		t.Fatalf("RegisterRegistration: %v", err)
+	}
+	reg, ok := r.Registration(kaprov1alpha2.BackendDriverFlux)
+	if !ok || reg.Provider != p || reg.Capabilities.ContractVersion != ContractVersionV1Alpha1 {
+		t.Fatalf("registration = %#v/%v", reg, ok)
+	}
+}
+
+func TestRegistry_RegisterRegistrationRejectsMetadataMismatch(t *testing.T) {
+	r := NewRegistry()
+	p := &stubProvider{driver: kaprov1alpha2.BackendDriverFlux}
+	err := r.RegisterRegistration(Registration{
+		Driver: kaprov1alpha2.BackendDriverFlux,
+		Capabilities: Capabilities{
+			ContractVersion:   ContractVersionV1Alpha1,
+			Driver:            kaprov1alpha2.BackendDriverOCI,
+			SupportsReconcile: true,
+		},
+		Provider: p,
+	})
+	if err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("expected capabilities-driver mismatch error, got %v", err)
+	}
+}
+
+func TestRegistry_RegisterRegistrationRejectsProviderDriverMismatch(t *testing.T) {
+	r := NewRegistry()
+	p := &stubProvider{driver: kaprov1alpha2.BackendDriverFlux}
+	err := r.RegisterRegistration(Registration{
+		Driver:   kaprov1alpha2.BackendDriverOCI,
+		Provider: p,
+	})
+	if err == nil || !strings.Contains(err.Error(), "provider driver") {
+		t.Fatalf("expected provider-driver mismatch error, got %v", err)
+	}
+}
+
+func TestRegistry_RegisterRegistrationRejectsUnknownContract(t *testing.T) {
+	r := NewRegistry()
+	p := &stubProvider{driver: kaprov1alpha2.BackendDriverFlux}
+	err := r.RegisterRegistration(Registration{
+		Driver: kaprov1alpha2.BackendDriverFlux,
+		Capabilities: Capabilities{
+			ContractVersion:   "v9",
+			Driver:            kaprov1alpha2.BackendDriverFlux,
+			SupportsReconcile: true,
+		},
+		Provider: p,
+	})
+	if err == nil || !strings.Contains(err.Error(), "unsupported provider contract version") {
+		t.Fatalf("expected unsupported-contract error, got %v", err)
 	}
 }
 

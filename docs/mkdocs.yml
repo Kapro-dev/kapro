@@ -76,6 +76,7 @@ nav:
       - Adapters: adapters.md
       - Adapter Capabilities: adapter-capabilities.md
       - Actuator Plugin Contract: actuator-plugin-contract.md
+      - Provider Plugin Contract: provider-plugin-contract.md
       - Plugin Authoring: plugin-authoring.md
       - GCP Cloud: cloud-gcp.md
   - ADRs:

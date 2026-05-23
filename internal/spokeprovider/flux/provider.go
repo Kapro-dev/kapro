@@ -61,6 +61,15 @@ func NewProvider(spoke client.Client) *Provider {
 // determines dispatch.
 func (p *Provider) Driver() kaprov1alpha2.BackendDriver { return kaprov1alpha2.BackendDriverFlux }
 
+func (p *Provider) Capabilities() spokeprovider.Capabilities {
+	return spokeprovider.Capabilities{
+		ContractVersion:   spokeprovider.ContractVersionV1Alpha1,
+		Driver:            kaprov1alpha2.BackendDriverFlux,
+		SupportsReconcile: true,
+		SupportsObserve:   true,
+	}
+}
+
 // Reconcile observes local Flux state for the request's app and returns
 // a populated ReconcileResult. Never panics; never mutates Flux state.
 func (p *Provider) Reconcile(ctx context.Context, req spokeprovider.ReconcileRequest) spokeprovider.ReconcileResult {
