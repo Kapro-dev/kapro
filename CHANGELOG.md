@@ -7,6 +7,13 @@ record for each tag.
 
 ## Unreleased
 
+### Added — `kapro reconstruct --at` groundwork
+
+Added `kapro reconstruct <promotionrun> --at <RFC3339>` to replay durable
+`DecisionTrace` records up to a point in time and summarize the latest known
+controller decision per scope. JSON output includes the filtered timeline so
+external tools can build richer reconstruction views without scraping tables.
+
 ### Changed — `kapro why` delivery evidence
 
 `kapro why <promotionrun>` now renders a compact evidence column in text output.
