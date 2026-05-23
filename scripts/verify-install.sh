@@ -7,13 +7,14 @@ BOOTSTRAP_CRDS="${ROOT}/internal/bootstrap/kaprocrds"
 
 usage() {
   cat <<EOF
-Usage: scripts/verify-install.sh <render|release-render|cluster|release-cluster|kind-demo|argo-e2e|flux-git-e2e|flux-e2e>
+Usage: scripts/verify-install.sh <render|release-render|cluster|release-cluster|release-upgrade-cluster|kind-demo|argo-e2e|flux-git-e2e|flux-e2e>
 
 Modes:
   render          Validate local chart rendering, CRD sync, and kustomize output. Default.
   release-render  Validate rendering for the published GitHub Release chart package.
   cluster         Install the local Helm chart into the active Kubernetes context and verify rollout.
   release-cluster Install the published GitHub Release chart package and verify rollout.
+  release-upgrade-cluster Install the previous published chart, upgrade to the current published chart, and verify rollout.
   kind-demo       Run the local Kind demo through create, approve, status, and cleanup.
   argo-e2e        Run the Kind + real Argo CD brownfield promotion E2E.
   flux-git-e2e Run the Flux brownfield Git-native source apply E2E.
@@ -28,8 +29,10 @@ Environment for cluster mode:
   KAPRO_VERIFY_CLEANUP       Uninstall the Helm release and namespace after verification (default: false)
 
 Environment for release-render and release-cluster modes:
-  KAPRO_RELEASE_VERSION       Release tag to verify (default: v0.5.2)
+  KAPRO_RELEASE_VERSION       Release tag to verify (default: v0.5.3)
   KAPRO_RELEASE_CHART_URL     Optional chart package URL override
+  KAPRO_PREVIOUS_RELEASE_VERSION Previous release tag for release-upgrade-cluster (default: v0.5.2)
+  KAPRO_PREVIOUS_RELEASE_CHART_URL Optional previous chart package URL override
 EOF
 }
 
@@ -114,17 +117,21 @@ render() {
   echo "install render verification passed"
 }
 
-download_release_chart() {
+download_chart_version() {
   need curl
   local version chart_url tmpdir chart_package
-  version="${KAPRO_RELEASE_VERSION:-v0.5.2}"
-  chart_url="${KAPRO_RELEASE_CHART_URL:-https://github.com/Kapro-dev/kapro/releases/download/${version}/kapro-operator-${version#v}.tgz}"
+  version="$1"
+  chart_url="${2:-https://github.com/Kapro-dev/kapro/releases/download/${version}/kapro-operator-${version#v}.tgz}"
   tmpdir="$(mktemp -d)"
   chart_package="${tmpdir}/kapro-operator-${version#v}.tgz"
 
   echo "downloading published chart ${chart_url}" >&2
   curl -fsSL "${chart_url}" -o "${chart_package}"
   printf '%s\n' "${chart_package}"
+}
+
+download_release_chart() {
+  download_chart_version "${KAPRO_RELEASE_VERSION:-v0.5.3}" "${KAPRO_RELEASE_CHART_URL:-}"
 }
 
 release_render() (
@@ -204,10 +211,28 @@ cluster() {
 
 release_cluster() (
   local version chart_package
-  version="${KAPRO_RELEASE_VERSION:-v0.5.2}"
+  version="${KAPRO_RELEASE_VERSION:-v0.5.3}"
   chart_package="$(download_release_chart)"
   trap 'rm -rf "$(dirname "${chart_package}")"' EXIT
   KAPRO_IMAGE_TAG="${KAPRO_IMAGE_TAG:-${version}}" install_chart "${chart_package}"
+)
+
+release_upgrade_cluster() (
+  local current previous current_chart previous_chart cleanup
+  current="${KAPRO_RELEASE_VERSION:-v0.5.3}"
+  previous="${KAPRO_PREVIOUS_RELEASE_VERSION:-v0.5.2}"
+  cleanup="${KAPRO_VERIFY_CLEANUP:-false}"
+
+  previous_chart="$(download_chart_version "${previous}" "${KAPRO_PREVIOUS_RELEASE_CHART_URL:-}")"
+  current_chart="$(download_release_chart)"
+  trap 'rm -rf "$(dirname "${previous_chart}")" "$(dirname "${current_chart}")"' EXIT
+
+  echo "installing previous release ${previous} before upgrade"
+  KAPRO_VERIFY_CLEANUP=false KAPRO_IMAGE_TAG="${KAPRO_PREVIOUS_IMAGE_TAG:-${previous}}" install_chart "${previous_chart}"
+
+  echo "upgrading ${previous} to ${current}"
+  KAPRO_VERIFY_CLEANUP="${cleanup}" KAPRO_IMAGE_TAG="${KAPRO_IMAGE_TAG:-${current}}" install_chart "${current_chart}"
+  echo "release upgrade verification passed"
 )
 
 kind_demo() {
@@ -236,6 +261,7 @@ case "${cmd}" in
   release-render) release_render ;;
   cluster) cluster ;;
   release-cluster) release_cluster ;;
+  release-upgrade-cluster) release_upgrade_cluster ;;
   kind-demo) kind_demo ;;
   argo-e2e) argo_e2e ;;
   flux-git-e2e) flux_git_e2e ;;

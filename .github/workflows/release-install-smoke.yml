@@ -6,6 +6,10 @@ on:
       version:
         description: Published release tag to install (e.g. v0.1.2).
         required: true
+      previous_version:
+        description: Previous published release tag for upgrade smoke.
+        required: false
+        default: v0.5.2
       kind_image:
         description: Kind node image for the smoke cluster.
         required: true
@@ -50,6 +54,13 @@ jobs:
           KAPRO_RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.workflow_run.head_branch }}
           KAPRO_VERIFY_CLEANUP: "true"
         run: scripts/verify-install.sh release-cluster
+
+      - name: Upgrade from previous published release
+        env:
+          KAPRO_RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.workflow_run.head_branch }}
+          KAPRO_PREVIOUS_RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.previous_version || 'v0.5.2' }}
+          KAPRO_VERIFY_CLEANUP: "true"
+        run: scripts/verify-install.sh release-upgrade-cluster
 
       - name: Collect diagnostics
         if: failure()
