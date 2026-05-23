@@ -67,6 +67,21 @@ type DecisionTraceSpec struct {
 type DecisionTraceStatus struct {
 	// Signed records whether this trace has an attached signature.
 	Signed bool `json:"signed,omitempty"`
+	// SignatureAlgorithm is the signing algorithm used for Signature.
+	// +optional
+	// +kubebuilder:validation:Enum=Ed25519
+	SignatureAlgorithm string `json:"signatureAlgorithm,omitempty"`
+	// SignatureKeyID identifies the public key operators should use to verify
+	// Signature.
+	// +optional
+	SignatureKeyID string `json:"signatureKeyID,omitempty"`
+	// PayloadDigest is the digest of the canonical DecisionTrace spec payload.
+	// +optional
+	PayloadDigest string `json:"payloadDigest,omitempty"`
+	// Signature is a base64-encoded detached signature over the canonical
+	// DecisionTrace spec payload.
+	// +optional
+	Signature string `json:"signature,omitempty"`
 	// SignatureRef points at the external signature record, for example a Rekor
 	// entry, when signing is enabled.
 	// +optional

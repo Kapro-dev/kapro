@@ -142,6 +142,26 @@ spec:
             description: DecisionTraceStatus reserves the signing surface for v0.3.x
               follow-up work.
             properties:
+              payloadDigest:
+                description: PayloadDigest is the digest of the canonical DecisionTrace
+                  spec payload.
+                type: string
+              signature:
+                description: |-
+                  Signature is a base64-encoded detached signature over the canonical
+                  DecisionTrace spec payload.
+                type: string
+              signatureAlgorithm:
+                description: SignatureAlgorithm is the signing algorithm used for
+                  Signature.
+                enum:
+                - Ed25519
+                type: string
+              signatureKeyID:
+                description: |-
+                  SignatureKeyID identifies the public key operators should use to verify
+                  Signature.
+                type: string
               signatureRef:
                 description: |-
                   SignatureRef points at the external signature record, for example a Rekor

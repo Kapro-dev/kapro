@@ -115,7 +115,8 @@ type runFsmEnv struct {
 // +kubebuilder:rbac:groups=kapro.io,resources=clusters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=plans,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kapro.io,resources=approvals,verbs=get;list;watch
-// +kubebuilder:rbac:groups=kapro.io,resources=decisiontraces,verbs=create
+// +kubebuilder:rbac:groups=kapro.io,resources=decisiontraces,verbs=create;get
+// +kubebuilder:rbac:groups=kapro.io,resources=decisiontraces/status,verbs=get;update;patch
 
 func (r *PromotionRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	start := time.Now()

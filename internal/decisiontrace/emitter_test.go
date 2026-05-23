@@ -2,6 +2,8 @@ package decisiontrace
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"errors"
 	"strings"
 	"testing"
@@ -79,6 +81,90 @@ func TestEmitterCreatesBoundedDecisionTrace(t *testing.T) {
 	}
 }
 
+func TestEmitterSignsDecisionTraceWhenSignerConfigured(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme: %v", err)
+	}
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	signer, err := NewEd25519Signer("test-key", privateKey)
+	if err != nil {
+		t.Fatalf("NewEd25519Signer: %v", err)
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha2.DecisionTrace{}).
+		Build()
+
+	spec := kaprov1alpha2.DecisionTraceSpec{
+		PromotionRun: "run-a",
+		EventType:    kaprov1alpha2.DecisionTraceEventGateEvaluate,
+		Source:       "gate/slo",
+		Phase:        "Passed",
+		Reason:       "GateEvaluated",
+		Message:      "healthy",
+	}
+	if err := (Emitter{Client: c, Signer: signer}).Emit(context.Background(), spec); err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+
+	var list kaprov1alpha2.DecisionTraceList
+	if err := c.List(context.Background(), &list); err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(list.Items) != 1 {
+		t.Fatalf("len traces = %d, want 1", len(list.Items))
+	}
+	trace := list.Items[0]
+	if !trace.Status.Signed {
+		t.Fatal("trace was not marked signed")
+	}
+	sig := Signature{
+		Algorithm:     trace.Status.SignatureAlgorithm,
+		KeyID:         trace.Status.SignatureKeyID,
+		PayloadDigest: trace.Status.PayloadDigest,
+		Signature:     trace.Status.Signature,
+	}
+	if err := VerifyEd25519(trace.Spec, sig, publicKey); err != nil {
+		t.Fatalf("VerifyEd25519: %v", err)
+	}
+}
+
+func TestEmitterSigningFailureLeavesTraceUnsigned(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme: %v", err)
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha2.DecisionTrace{}).
+		Build()
+	boom := errors.New("sign boom")
+
+	err := (Emitter{Client: c, Signer: failingSigner{err: boom}}).Emit(context.Background(), kaprov1alpha2.DecisionTraceSpec{
+		PromotionRun: "run-a",
+		EventType:    kaprov1alpha2.DecisionTraceEventStage,
+		Source:       "promotionrun-controller",
+	})
+	if !errors.Is(err, boom) {
+		t.Fatalf("Emit error = %v, want boom", err)
+	}
+
+	var list kaprov1alpha2.DecisionTraceList
+	if err := c.List(context.Background(), &list); err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(list.Items) != 1 {
+		t.Fatalf("len traces = %d, want 1", len(list.Items))
+	}
+	if list.Items[0].Status.Signed {
+		t.Fatal("trace was marked signed after signing failure")
+	}
+}
+
 func TestEmitterReturnsCreateError(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
@@ -102,6 +188,14 @@ func TestEmitterReturnsCreateError(t *testing.T) {
 	if !errors.Is(err, boom) {
 		t.Fatalf("Emit error = %v, want boom", err)
 	}
+}
+
+type failingSigner struct {
+	err error
+}
+
+func (s failingSigner) SignDecisionTrace(context.Context, kaprov1alpha2.DecisionTraceSpec) (Signature, error) {
+	return Signature{}, s.err
 }
 
 func TestEmitterIgnoresAlreadyExists(t *testing.T) {

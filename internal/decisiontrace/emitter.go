@@ -26,6 +26,7 @@ const (
 // returned error; promotion logic should log and continue.
 type Emitter struct {
 	Client          client.Client
+	Signer          Signer
 	MaxMessageRunes int
 	MaxEvidence     int
 	MaxDetailRunes  int
@@ -57,10 +58,44 @@ func (e Emitter) Emit(ctx context.Context, spec kaprov1alpha2.DecisionTraceSpec)
 		},
 		Spec: spec,
 	}
-	if err := e.Client.Create(ctx, trace); err != nil && !apierrors.IsAlreadyExists(err) {
+	if err := e.Client.Create(ctx, trace); err != nil {
+		if !apierrors.IsAlreadyExists(err) {
+			return err
+		}
+		return e.signExisting(ctx, trace.Name)
+	}
+	return e.signCreated(ctx, trace)
+}
+
+func (e Emitter) signCreated(ctx context.Context, trace *kaprov1alpha2.DecisionTrace) error {
+	if e.Signer == nil {
+		return nil
+	}
+	sig, err := e.Signer.SignDecisionTrace(ctx, trace.Spec)
+	if err != nil {
 		return err
 	}
-	return nil
+	trace.Status = statusForSignature(sig)
+	return e.Client.Status().Update(ctx, trace)
+}
+
+func (e Emitter) signExisting(ctx context.Context, name string) error {
+	if e.Signer == nil {
+		return nil
+	}
+	var trace kaprov1alpha2.DecisionTrace
+	if err := e.Client.Get(ctx, client.ObjectKey{Name: name}, &trace); err != nil {
+		return err
+	}
+	if trace.Status.Signed {
+		return nil
+	}
+	sig, err := e.Signer.SignDecisionTrace(ctx, trace.Spec)
+	if err != nil {
+		return err
+	}
+	trace.Status = statusForSignature(sig)
+	return e.Client.Status().Update(ctx, &trace)
 }
 
 func (e Emitter) normalize(spec kaprov1alpha2.DecisionTraceSpec) kaprov1alpha2.DecisionTraceSpec {

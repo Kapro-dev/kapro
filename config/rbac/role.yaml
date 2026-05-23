@@ -146,6 +146,7 @@ rules:
   - backends/status
   - clusters/status
   - clustertemplates/status
+  - decisiontraces/status
   - fleets/status
   - gateexpressions/status
   - plugins/status
@@ -202,6 +203,7 @@ rules:
   - decisiontraces
   verbs:
   - create
+  - get
 - apiGroups:
   - kustomize.toolkit.fluxcd.io
   resources:
