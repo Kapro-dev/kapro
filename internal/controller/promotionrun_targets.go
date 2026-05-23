@@ -137,6 +137,17 @@ func (r *PromotionRunReconciler) cancelPendingStageTargets(ctx context.Context, 
 			continue
 		}
 		log.Info("cancel: signalled cancellation", "target", rt.Name)
+		r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+			PromotionRun: promotionrun.Name,
+			Plan:         promotionplanRefName,
+			Stage:        stageName,
+			Target:       rt.Spec.Target,
+			EventType:    kaprov1alpha2.DecisionTraceEventStage,
+			Source:       "promotionrun-controller",
+			Phase:        string(kaprov1alpha2.TargetPhaseFailed),
+			Reason:       "StageHalted",
+			Message:      "stage halted due to peer failure (failurePolicy: halt)",
+		})
 
 		// Also update inline targets for immediate aggregation so the parent
 		// can compute the correct PromotionRun phase without waiting for child reconcile.
@@ -172,6 +183,17 @@ func (r *PromotionRunReconciler) markFailedStageTargetsSkipped(ctx context.Conte
 		if err := r.Patch(ctx, rt, rawPatch); err != nil {
 			return fmt.Errorf("mark failed PromotionTarget %s skipped: %w", rt.Name, err)
 		}
+		r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+			PromotionRun: promotionrun.Name,
+			Plan:         promotionplanRefName,
+			Stage:        stageName,
+			Target:       rt.Spec.Target,
+			EventType:    kaprov1alpha2.DecisionTraceEventStage,
+			Source:       "promotionrun-controller",
+			Phase:        string(kaprov1alpha2.TargetPhaseSkipped),
+			Reason:       "SkippedAfterFailurePolicy",
+			Message:      "skipped after failure policy",
+		})
 	}
 	return nil
 }

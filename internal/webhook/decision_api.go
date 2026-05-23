@@ -873,7 +873,7 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 	// to avoid conflicting with TargetReconciler's status writes.
 	patch := client.MergeFrom(target.DeepCopy())
 	if target.Status.DecisionTrace == nil {
-		target.Status.DecisionTrace = &kaprov1alpha2.DecisionTrace{}
+		target.Status.DecisionTrace = &kaprov1alpha2.TargetDecisionTrace{}
 	}
 
 	// Move current to history if exists.
@@ -1005,7 +1005,7 @@ func (s *Server) handleOverride(w http.ResponseWriter, r *http.Request, promotio
 
 	patch := client.MergeFrom(target.DeepCopy())
 	if target.Status.DecisionTrace == nil {
-		target.Status.DecisionTrace = &kaprov1alpha2.DecisionTrace{}
+		target.Status.DecisionTrace = &kaprov1alpha2.TargetDecisionTrace{}
 	}
 	target.Status.DecisionTrace.HumanOverrides = append(target.Status.DecisionTrace.HumanOverrides, override)
 

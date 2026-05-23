@@ -56,6 +56,7 @@ nav:
   - Operations:
       - Operations: operations.md
       - Long-term Archive: long-term-archive.md
+      - Decision Traces: decision-traces.md
       - Monitoring: monitoring.md
       - Operator SLOs: operator-slos.md
       - Industry Requirements: industry-requirements.md

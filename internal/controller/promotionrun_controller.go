@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	"kapro.io/kapro/internal/decisiontrace"
 	internalgate "kapro.io/kapro/internal/gate"
 	kaprometrics "kapro.io/kapro/internal/metrics"
 	"kapro.io/kapro/internal/promotion/fsm"
@@ -89,6 +90,10 @@ type PromotionRunReconciler struct {
 	// transitions. Nil-safe — when unset, no fleet-narrative events fire.
 	StagePublisher StageEventPublisher
 
+	// DecisionTraceEmitter writes durable audit records. Tracing failures are
+	// logged and never block promotion progress.
+	DecisionTraceEmitter decisiontrace.Emitter
+
 	// runFsmMachine is the declarative dispatch table for the PromotionRun
 	// phase FSM (D2-PR1). Built lazily via ensureRunFSM so direct
 	// reconciler construction in tests works without SetupWithManager.
@@ -110,6 +115,7 @@ type runFsmEnv struct {
 // +kubebuilder:rbac:groups=kapro.io,resources=clusters/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=plans,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kapro.io,resources=approvals,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=decisiontraces,verbs=create
 
 func (r *PromotionRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	start := time.Now()
@@ -148,6 +154,14 @@ func (r *PromotionRunReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	if promotionrun.Spec.Suspended {
 		log.Info("PromotionRun is suspended — skipping FSM advancement")
+		r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+			PromotionRun: promotionrun.Name,
+			EventType:    kaprov1alpha2.DecisionTraceEventSuspend,
+			Source:       "promotionrun-controller",
+			Phase:        string(promotionrun.Status.Phase),
+			Reason:       "Suspended",
+			Message:      "PromotionRun is suspended",
+		})
 		patch := client.MergeFrom(promotionrun.DeepCopy())
 		r.setPromotionRunReadyCondition(&promotionrun, metav1.ConditionFalse, "Suspended", "PromotionRun is suspended")
 		r.setReconcilingCondition(&promotionrun, metav1.ConditionFalse, "Suspended", "PromotionRun is suspended")
@@ -736,7 +750,22 @@ func (r *PromotionRunReconciler) reconcilePromotionPlanStages(
 		}
 
 		bindTargets, deferred, strategyDecisions := r.applyStageStrategy(promotionrun, *targets, promotionplanRefName, stage, envList)
-		plannerResults := apiPlannerResults(append(planned.Decisions, strategyDecisions...))
+		decisions := append(planned.Decisions, strategyDecisions...)
+		for _, decision := range decisions {
+			r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+				PromotionRun: promotionrun.Name,
+				Plan:         promotionplanRefName,
+				Stage:        stage.Name,
+				Target:       decision.Target,
+				EventType:    kaprov1alpha2.DecisionTraceEventBatchProgress,
+				Source:       decision.Plugin,
+				Phase:        decision.Phase,
+				Reason:       decision.Reason,
+				Message:      decision.Message,
+				Evidence:     []kaprov1alpha2.DecisionTraceEvidence{decisionTraceEvidenceFromPlanner(decision)},
+			})
+		}
+		plannerResults := apiPlannerResults(decisions)
 
 		resolvedGate, err := resolveStageGate(promotionplan, stage)
 		if err != nil {
@@ -794,6 +823,16 @@ func (r *PromotionRunReconciler) reconcilePromotionPlanStages(
 			case kaprov1alpha2.StageFailurePolicySkip:
 				log.Info("stage has failed targets with OnFailure=skip, treating as complete",
 					"stage", stage.Name, "promotionplanRef", promotionplanRefName, "failed", failed)
+				r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+					PromotionRun: promotionrun.Name,
+					Plan:         promotionplanRefName,
+					Stage:        stage.Name,
+					EventType:    kaprov1alpha2.DecisionTraceEventStage,
+					Source:       "promotionrun-controller",
+					Phase:        "Progressing",
+					Reason:       "StageFailurePolicySkip",
+					Message:      fmt.Sprintf("stage has %d failed targets; failure policy skips them", failed),
+				})
 				if err := r.markFailedStageTargetsSkipped(ctx, promotionrun, promotionplanRefName, stage.Name); err != nil {
 					return nil, false, false, 0, nil, err
 				}
@@ -806,6 +845,16 @@ func (r *PromotionRunReconciler) reconcilePromotionPlanStages(
 			case kaprov1alpha2.StageFailurePolicyRollback:
 				log.Info("stage has failed targets with OnFailure=rollback",
 					"stage", stage.Name, "promotionplanRef", promotionplanRefName)
+				r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+					PromotionRun: promotionrun.Name,
+					Plan:         promotionplanRefName,
+					Stage:        stage.Name,
+					EventType:    kaprov1alpha2.DecisionTraceEventStage,
+					Source:       "promotionrun-controller",
+					Phase:        "Failed",
+					Reason:       "StageFailurePolicyRollback",
+					Message:      fmt.Sprintf("stage has %d failed targets; rollback policy triggered", failed),
+				})
 				r.triggerRollbackTargets(ctx, promotionrun, targets, promotionplanRefName, promotionplan, stage.Name)
 				sp.Phase = "Failed"
 				stagePhase[stage.Name] = "Failed"
@@ -816,6 +865,16 @@ func (r *PromotionRunReconciler) reconcilePromotionPlanStages(
 				stagePhase[stage.Name] = "Failed"
 				anyFailed = true
 				allComplete = false
+				r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+					PromotionRun: promotionrun.Name,
+					Plan:         promotionplanRefName,
+					Stage:        stage.Name,
+					EventType:    kaprov1alpha2.DecisionTraceEventStage,
+					Source:       "promotionrun-controller",
+					Phase:        "Failed",
+					Reason:       "StageFailurePolicyHalt",
+					Message:      fmt.Sprintf("stage has %d failed targets; halting remaining targets", failed),
+				})
 				// Defer cancellation until after persistPromotionTargets to avoid
 				// the stale-cache overwriting spec.cancelled.
 				cancels = append(cancels, cancelRequest{promotionplanRef: promotionplanRefName, stage: stage.Name})
@@ -884,6 +943,17 @@ func previousPromotionPlanPhase(promotionrun *kaprov1alpha2.PromotionRun, promot
 // optional StagePublisher (operator-level CloudEvents sink). Nil-safe.
 func (r *PromotionRunReconciler) publishWaveEvent(ctx context.Context,
 	run *kaprov1alpha2.PromotionRun, wave, kind, phase, reason string) {
+	if run != nil {
+		r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+			PromotionRun: run.Name,
+			Plan:         wave,
+			EventType:    kaprov1alpha2.DecisionTraceEventBatchProgress,
+			Source:       "promotionrun-controller",
+			Phase:        phase,
+			Reason:       kind,
+			Message:      reason,
+		})
+	}
 	if r.StagePublisher == nil {
 		return
 	}
@@ -894,6 +964,18 @@ func (r *PromotionRunReconciler) publishWaveEvent(ctx context.Context,
 // Nil-safe.
 func (r *PromotionRunReconciler) publishStageEvent(ctx context.Context,
 	run *kaprov1alpha2.PromotionRun, wave, stage, kind, phase, reason string) {
+	if run != nil {
+		r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+			PromotionRun: run.Name,
+			Plan:         wave,
+			Stage:        stage,
+			EventType:    kaprov1alpha2.DecisionTraceEventStage,
+			Source:       "promotionrun-controller",
+			Phase:        phase,
+			Reason:       kind,
+			Message:      reason,
+		})
+	}
 	if r.StagePublisher == nil {
 		return
 	}
@@ -1088,6 +1170,15 @@ func (r *PromotionRunReconciler) listRawTargetsForStage(ctx context.Context, sta
 	for _, mc := range clusters {
 		if mc.Spec.Suspend {
 			log.FromContext(ctx).Info("skipping suspended cluster", "cluster", mc.Name, "stage", stage.Name)
+			r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+				PromotionRun: promotionrun.Name,
+				Stage:        stage.Name,
+				Target:       mc.Name,
+				EventType:    kaprov1alpha2.DecisionTraceEventSuspend,
+				Source:       "promotionrun-controller",
+				Reason:       "ClusterSuspended",
+				Message:      "cluster is suspended and was skipped for this stage",
+			})
 			continue
 		}
 		filtered = append(filtered, mc)

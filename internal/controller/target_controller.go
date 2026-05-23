@@ -27,6 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	"kapro.io/kapro/internal/decisiontrace"
 	kaprometrics "kapro.io/kapro/internal/metrics"
 	"kapro.io/kapro/internal/promotion/fsm"
 	"kapro.io/kapro/pkg/actuator"
@@ -74,6 +75,10 @@ type TargetReconciler struct {
 	// Nil-safe — when unset, no gate-narrative events fire.
 	StagePublisher StageEventPublisher
 
+	// DecisionTraceEmitter writes durable audit records. Tracing failures are
+	// logged and never block target progress.
+	DecisionTraceEmitter decisiontrace.Emitter
+
 	// ShardPredicate optionally filters objects by shard label for horizontal scaling.
 	// When nil, all objects are processed.
 	ShardPredicate predicate.Predicate
@@ -91,6 +96,7 @@ type TargetReconciler struct {
 // +kubebuilder:rbac:groups=kapro.io,resources=promotionruns,verbs=get
 // +kubebuilder:rbac:groups=kapro.io,resources=clusters,verbs=get
 // +kubebuilder:rbac:groups=kapro.io,resources=clusters/status,verbs=get;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=decisiontraces,verbs=create
 
 func (r *TargetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	start := time.Now()
@@ -129,6 +135,17 @@ func (r *TargetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// Honor parent suspend.
 	if promotionrun.Spec.Suspended {
 		log.FromContext(ctx).Info("parent PromotionRun suspended, skipping", "promotionrun", promotionrun.Name)
+		r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+			PromotionRun: promotionrun.Name,
+			Plan:         rt.Spec.PlanRef,
+			Stage:        rt.Spec.Stage,
+			Target:       rt.Spec.Target,
+			EventType:    kaprov1alpha2.DecisionTraceEventSuspend,
+			Source:       "target-controller",
+			Phase:        string(rt.Status.Phase),
+			Reason:       "PromotionRunSuspended",
+			Message:      "parent PromotionRun is suspended",
+		})
 		return ctrl.Result{}, nil
 	}
 
@@ -507,6 +524,7 @@ func (r *TargetReconciler) handleSoaking(ctx context.Context, promotionrun *kapr
 	}
 
 	log.FromContext(ctx).Info("soak gate", "phase", result.Phase, "target", target.Target)
+	r.emitGateDecisionTrace(ctx, promotionrun, target, "soak", result.Phase, "SoakEvaluated", result.Message, result.Evidence)
 
 	if result.IsPassed() {
 		r.Recorder.Eventf(promotionrun, corev1.EventTypeNormal, "GatePassed", "[%s/%s] soak timer completed", target.Stage, target.Target)
@@ -546,6 +564,7 @@ func (r *TargetReconciler) handleMetricsCheck(ctx context.Context, promotionrun 
 			result, err := metricsGate.Evaluate(ctx, gate.Request{Context: gateCtx, Policy: policy, MetricIndex: idx})
 			if err != nil {
 				log.FromContext(ctx).Error(err, "metrics gate error, will retry", "index", idx)
+				r.emitGateDecisionTrace(ctx, promotionrun, target, gateName, kaprov1alpha2.GatePhaseRunning, "GateEvaluationError", err.Error(), nil)
 				return ctrl.Result{RequeueAfter: requeueNormal}, nil
 			}
 			phase := result.Phase
@@ -566,6 +585,7 @@ func (r *TargetReconciler) handleMetricsCheck(ctx context.Context, promotionrun 
 			setGateStatus(&gates, gateStatus)
 			target.Gates = gates
 			log.FromContext(ctx).Info("metrics gate", "index", idx, "provider", metric.Provider, "phase", result.Phase)
+			r.emitGateDecisionTrace(ctx, promotionrun, target, gateName, phase, "MetricsGateEvaluated", result.Message, result.Evidence)
 			if !result.IsPassed() {
 				r.Recorder.Eventf(promotionrun, corev1.EventTypeWarning, "GateFailed", "[%s/%s] MetricsGate[%d]: %s", target.Stage, target.Target, idx, result.Message)
 				if rt := promotionTargetFromContext(ctx); rt != nil {
@@ -705,6 +725,7 @@ func (r *TargetReconciler) evaluateGateTemplates(
 				gateStatus.FinishedAt = now
 			}
 			setGateStatus(&gates, gateStatus)
+			r.emitGateDecisionTrace(ctx, promotionrun, target, gateName, gateStatus.Phase, "GateEvaluationError", gateStatus.Message, nil)
 			allPassed = false
 			if gateStatus.Phase == kaprov1alpha2.GatePhaseFailed {
 				continue
@@ -741,6 +762,7 @@ func (r *TargetReconciler) evaluateGateTemplates(
 		l.Info("gate template evaluated", "gate", gateName, "phase", phase, "target", target.Target)
 		r.Recorder.Eventf(promotionrun, corev1.EventTypeNormal, "GateEvaluated",
 			"gate %s for %s: %s — %s", gateName, target.Target, phase, result.Message)
+		r.emitGateDecisionTrace(ctx, promotionrun, target, gateName, phase, "GateEvaluated", gateStatus.Message, result.Evidence)
 
 		switch phase {
 		case kaprov1alpha2.GatePhaseFailed:
@@ -911,6 +933,7 @@ func (r *TargetReconciler) handleWaitingApproval(ctx context.Context, promotionr
 	}
 
 	log.FromContext(ctx).Info("approval gate", "phase", result.Phase, "target", target.Target)
+	r.emitGateDecisionTrace(ctx, promotionrun, target, "approval", result.Phase, "ApprovalGateEvaluated", result.Message, result.Evidence)
 
 	if result.IsPassed() {
 		r.transitionTo(ctx, promotionrun, target, kaprov1alpha2.TargetPhaseApplying)

@@ -1,4 +1,4 @@
-// Policy CRD plus the DecisionTrace audit types written by the
+// Policy CRD plus the TargetDecisionTrace audit types written by the
 // Decision API for AI-agent and human override accountability.
 package v1alpha2
 
@@ -250,9 +250,11 @@ type PolicyList struct {
 	Items           []Policy `json:"items"`
 }
 
-// DecisionTrace is the full audit trail of deployment decisions for one target.
+// TargetDecisionTrace is the full audit trail of Decision API approval
+// decisions for one target. It is stored inline at Target.status.decisionTrace.
+// Durable controller decisions are recorded as DecisionTrace CR objects.
 // It stores the current decision, historical decisions, and human overrides.
-type DecisionTrace struct {
+type TargetDecisionTrace struct {
 	// Current is the active decision for this target's gate.
 	// +optional
 	Current *DecisionEntry `json:"current,omitempty"`

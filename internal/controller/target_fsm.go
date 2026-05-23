@@ -335,6 +335,25 @@ func (r *PromotionRunReconciler) triggerTargetRollback(ctx context.Context, prom
 		"target", target.Target,
 		"targetVersion", target.PreviousVersion,
 	)
+	r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+		PromotionRun: promotionrun.Name,
+		Plan:         rollbackTarget.PlanRef,
+		Stage:        rollbackTarget.Stage,
+		Target:       rollbackTarget.Target,
+		EventType:    kaprov1alpha2.DecisionTraceEventRollback,
+		Source:       "promotionrun-controller",
+		Phase:        string(kaprov1alpha2.TargetPhasePending),
+		Reason:       "RollbackTriggered",
+		Message:      fmt.Sprintf("rollback to %s triggered for %s", rollbackTarget.Version, rollbackTarget.Target),
+		Evidence: []kaprov1alpha2.DecisionTraceEvidence{{
+			Type:   "rollback",
+			Source: "promotionrun-controller",
+			Detail: map[string]string{
+				"previousVersion": target.PreviousVersion,
+				"version":         rollbackTarget.Version,
+			},
+		}},
+	})
 	r.Recorder.Eventf(promotionrun, corev1.EventTypeWarning, "RollbackTriggered",
 		"Auto-rollback to %s triggered for %s", target.PreviousVersion, target.Target)
 	if r.Notifier != nil {
