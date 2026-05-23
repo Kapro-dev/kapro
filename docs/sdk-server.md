@@ -49,6 +49,40 @@ webhooks, the plugin gateway, approval server, hub gateway, metrics, health
 checks, and leader election. Register custom hooks after `New` returns and
 before `Run`.
 
+Use `server.NewBare` when you want a smaller embedded operator. It creates only
+the controller-runtime manager, scheme, health checks, and empty registries; it
+does not load the approval secret, register built-in gates, start controllers,
+or add HTTP gateway servers until you call registrars:
+
+```go
+opts := server.OptionsFromEnv()
+s, err := server.NewBare(opts)
+if err != nil {
+	log.Fatal(err)
+}
+if err := server.RegisterActuators(context.Background(), s); err != nil {
+	log.Fatal(err)
+}
+if err := server.RegisterAdapters(context.Background(), s); err != nil {
+	log.Fatal(err)
+}
+if err := server.RegisterGates(context.Background(), s); err != nil {
+	log.Fatal(err)
+}
+if err := server.RegisterControllers(context.Background(), s); err != nil {
+	log.Fatal(err)
+}
+```
+
+`server.DefaultRegistrars()` is the reference order used by `server.New`:
+actuators, adapters, gates, plugin gateway, admission webhooks, controllers,
+approval server, and hub gateway. Call individual registrars when an embedded
+binary intentionally omits a subsystem. Register custom predicates after
+`RegisterGates` so the built-in gate set is present before your additions.
+When using `NewBare` with `RegisterAdmission` in local dev, set
+`Options.WebhookCertDir` or `KAPRO_WEBHOOK_CERT_DIR`; only `server.New`
+auto-generates dev webhook certificates for the full reference path.
+
 The stable actuator SDK import path is
 `kapro.io/kapro/pkg/kapro/actuator`. The legacy `kapro.io/kapro/pkg/actuator`
 package remains as a v0.2.x compatibility bridge for existing in-tree and
@@ -84,7 +118,8 @@ non-nil slice replaces the built-in list; append to
 The first server SDK is intentionally a full embedded operator rather than a
 minimal dependency graph. Importing `pkg/kapro/server` pulls the built-in
 controllers, actuators, webhooks, and gateway packages so the reference binary
-and custom binaries stay behavior-compatible.
+and custom binaries stay behavior-compatible. `NewBare` controls runtime
+wiring; it does not yet make the package import graph minimal.
 
 `OptionsFromEnv` returns env-derived defaults without touching the flag
 system. Bind the optional CLI flags onto your own `*flag.FlagSet` via

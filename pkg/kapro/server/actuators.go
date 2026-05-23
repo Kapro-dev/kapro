@@ -113,20 +113,6 @@ func RegisterArgoCD() ActuatorRegistrar {
 	}
 }
 
-func registerActuators(ctx context.Context, registrars []ActuatorRegistrar, cc ActuatorRegistrationContext) (*actuator.Registry, error) {
-	registry := actuator.NewRegistry()
-	cc.Registry = registry
-	for _, registrar := range registrars {
-		if registrar == nil {
-			continue
-		}
-		if err := registrar(ctx, cc); err != nil {
-			return nil, err
-		}
-	}
-	return registry, nil
-}
-
 func registerBuiltInActuator(registry *actuator.Registry, reg actuator.Registration) error {
 	if registry == nil {
 		return fmt.Errorf("actuator registry is nil")

@@ -61,17 +61,3 @@ func RegisterFluxAdapter() AdapterRegistrar {
 func RegisterOCIAdapter() AdapterRegistrar {
 	return RegisterAdapter(adapteroci.New())
 }
-
-func registerAdapters(ctx context.Context, registrars []AdapterRegistrar, cc AdapterRegistrationContext) (*kaproadapter.Registry, error) {
-	registry := kaproadapter.NewRegistry()
-	cc.Registry = registry
-	for _, registrar := range registrars {
-		if registrar == nil {
-			continue
-		}
-		if err := registrar(ctx, cc); err != nil {
-			return nil, err
-		}
-	}
-	return registry, nil
-}
