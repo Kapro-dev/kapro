@@ -197,15 +197,15 @@ API pieces:
 | KPI proto | Language-neutral planner contract for filtering and ordering targets. |
 | Plugin CRD | Declarative endpoint for external plugins. |
 | Conformance harnesses | Base checks external plugin authors can run. |
-| `kapro-conformance` | CLI wrapper around the base KAI/KGI/KPI checks for live plugin endpoints. |
+| `kapro-conformance` | CLI wrapper around the base KAI/KGI/KPI live endpoint checks plus local reference suites. |
 | PluginGateway | Runtime boundary for enabled contracts, timeout handling, retries, and error normalization. |
 
 The gateway must preserve the same state ownership rule: plugins do backend
 work, Kapro owns PromotionRun state.
 
 API maturity, deprecation rules, upgrade policy, and the future non-binding
-certified plugin path are defined in `docs/api-stability.md`. KAI, KGI, and KPI
-conformance instructions are defined in `docs/plugin-authoring.md`.
+certified plugin path are defined in `docs/api-stability.md`. KAI, KGI, KPI,
+and KSP conformance instructions are defined in `docs/plugin-authoring.md`.
 The first external proof points are `examples/plugins/argocd-actuator`, a KAI
 server for Argo CD Applications, and `examples/sdk-go/argocd-substrate`, a
 public-SDK-only adapter registry example for Argo CD discovery modeling.

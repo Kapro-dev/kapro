@@ -7,6 +7,13 @@ record for each tag.
 
 ## Unreleased
 
+### Added — `kapro-conformance` suite runner
+
+Added `kapro-conformance all`, `kapro-conformance provider`, and JSON output
+for CI-friendly conformance reports. The CLI now covers local reference
+actuator, gate, planner, and provider suites while preserving live gRPC checks
+for KAI, KGI, and KPI plugin endpoints.
+
 ### Added — `kapro why`
 
 Added `kapro why <promotionrun>` to render a chronological DecisionTrace
