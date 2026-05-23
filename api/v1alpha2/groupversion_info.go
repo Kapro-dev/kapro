@@ -20,6 +20,7 @@ func init() {
 		&ClusterTemplate{}, &ClusterTemplateList{},
 		&DecisionTrace{}, &DecisionTraceList{},
 		&Fleet{}, &FleetList{},
+		&FleetDriftReport{}, &FleetDriftReportList{},
 		&GateExpression{}, &GateExpressionList{},
 		&Plan{}, &PlanList{},
 		&Plugin{}, &PluginList{},

@@ -17,6 +17,7 @@
 //   - GateExpression — preview composition API for reusable gate policies
 //   - Plugin — external actuator, gate, and planner plugin registration
 //   - Policy    — AI trust boundary and audit policy
+//   - FleetDriftReport — preview, read-only drift report over existing runtime status
 //   - ClusterTemplate — fleet auto-import template (ApplicationSet-shaped);
 //     the controller generates Cluster objects from it.
 //   - Backend — delivery backend configuration referenced by Fleet.spec.delivery.backendRef.
