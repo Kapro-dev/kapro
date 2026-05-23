@@ -47,6 +47,7 @@ nav:
       - API Stability: api-stability.md
       - Release Train: release-train.md
       - Pre-stable Roadmap: pre-stable-roadmap.md
+      - v0.2.3 Scope: v0.2.3-scope.md
       - Changelog: https://github.com/Kapro-dev/kapro/blob/main/CHANGELOG.md
       - Preview Controllers: preview-controllers.md
       - Competitive Positioning: adr/0012-competitive-positioning.md

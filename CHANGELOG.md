@@ -89,12 +89,14 @@ paths (`Policy`, `MetricIndex`, `Template`, and `Args`).
 
 Documented that Kapro stays in the `0.x.x` release series until public API,
 SDK, conformance, upgrade, and operational contracts are ready for stability
-graduation. Larger roadmap phases use second-digit trains such as `0.10.0`,
-`0.20.0`, and `0.30.0` rather than treating `1.0.0` as a planning bucket.
+graduation. Active GitHub milestones use exact feature-release names such as
+`v0.2.4`, `v0.4.7`, or `v0.4.20` rather than broad train buckets or a `1.0.0`
+planning bucket. The pre-stable strategy is `0.<capability-line>.<feature-increment>`,
+so both remaining digits carry product meaning.
 
 ### Added — pre-stable roadmap
 
-Added a `0.x.x` roadmap guide for `0.2.x`, `0.10.x`, `0.20.x`, and `0.30.x`
+Added a `0.x.x` roadmap guide for `0.2.x`, `0.4.x`, `0.6.x`, and `0.8.x`
 trains, with practical ship criteria and non-goals that keep Kapro focused on
 delivery promotion instead of broad cluster-management scope creep.
 
@@ -120,6 +122,12 @@ registration independently from actuator registration.
 KAI actuator conformance now checks that `Apply` respects canceled request
 contexts, matching the plugin authoring requirement for cancellation-aware
 external actuators.
+
+### Added — v0.2.3 scope guardrails
+
+Documented the `v0.2.3` ship-list guardrails for two-phase staging, CSR
+bootstrap, and ClusterClassifier work so the milestone stays focused on
+delivery promotion instead of broad cluster-management scope.
 
 ## v0.1.2 — 2026-05-22
 

@@ -12,9 +12,12 @@ release for the full promotion-domain API, not a promise that all
 `kapro.io/v1alpha2` fields are stable. `CHANGELOG.md` and the release notes are
 the binding upgrade record for each tag.
 
-Large pre-stable phases use the second version digit, for example `0.10.0`,
-`0.20.0`, and `0.30.0`. `1.0.0` is reserved for a future stability graduation,
-not for ordinary roadmap planning. See the [pre-stable release train](release-train.md).
+Pre-stable milestones use exact `v0.x.y` names, for example `v0.2.4`,
+`v0.4.7`, or `v0.4.20`, once the feature increment is concrete enough to pick
+the third digit. The project uses `0.<capability-line>.<feature-increment>`:
+the second digit groups the capability line and the third digit names the
+actual shipped increment. `1.0.0` is reserved for a future stability
+graduation, not for ordinary roadmap planning. See the [pre-stable release train](release-train.md).
 
 ## Maturity Levels
 

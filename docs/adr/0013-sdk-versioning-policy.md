@@ -21,9 +21,11 @@ Ship the Go SDK at `kapro.io/kapro/pkg/kapro`, versioned with the main Kapro Go
 module and aligned to the currently served Kubernetes API version.
 
 Kapro remains on pre-stable `0.x.x` release trains until the public API and SDK
-contracts graduate. Larger roadmap phases should advance the second digit, such
-as `0.10.0` or `0.20.0`, rather than treating `1.0.0` as an implementation
-bucket.
+contracts graduate. Active GitHub milestones should use exact feature-release
+names such as `v0.2.4`, `v0.4.7`, or `v0.4.20`; avoid broad buckets such as
+`v0.10.0` and do not treat `1.0.0` as an implementation bucket. The pre-stable
+strategy is `0.<capability-line>.<feature-increment>` so both remaining digits
+carry product meaning.
 
 For the `v0.1.x` release line:
 

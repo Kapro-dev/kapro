@@ -666,10 +666,11 @@ func TestPreStableReleaseTrainMarkersStayDocumented(t *testing.T) {
 	root := repoRoot(t)
 	releaseTrain := readText(t, filepath.Join(root, "docs", "release-train.md"))
 	roadmap := readText(t, filepath.Join(root, "docs", "pre-stable-roadmap.md"))
+	v023Scope := readText(t, filepath.Join(root, "docs", "v0.2.3-scope.md"))
 	apiStability := readText(t, filepath.Join(root, "docs", "api-stability.md"))
 	sdkVersioning := readText(t, filepath.Join(root, "docs", "adr", "0013-sdk-versioning-policy.md"))
 
-	for _, want := range []string{"0.x.x", "0.10.0", "0.20.0", "0.30.0"} {
+	for _, want := range []string{"0.x.x", "v0.2.4", "v0.4.7", "v0.4.20"} {
 		if !strings.Contains(releaseTrain, want) {
 			t.Fatalf("docs/release-train.md does not mention %s", want)
 		}
@@ -688,9 +689,19 @@ func TestPreStableReleaseTrainMarkersStayDocumented(t *testing.T) {
 			t.Fatalf("docs/pre-stable-roadmap.md does not mention exact milestone example %s", want)
 		}
 	}
-	for _, bad := range []string{"`v0.6`"} {
+	for _, bad := range []string{"`v0.6`", "`v0.10.0`"} {
 		if !strings.Contains(releaseTrain, bad) || !strings.Contains(roadmap, bad) {
 			t.Fatalf("release train docs should explicitly reject shorthand milestone %s", bad)
+		}
+	}
+	for _, want := range []string{"v0.2.3", "0.x.x", "ClusterClassifier", "delivery promotion"} {
+		if !strings.Contains(v023Scope, want) {
+			t.Fatalf("docs/v0.2.3-scope.md does not mention %s", want)
+		}
+	}
+	for _, body := range []string{releaseTrain, roadmap, apiStability, sdkVersioning} {
+		if !strings.Contains(body, "0.<capability-line>.<feature-increment>") {
+			t.Fatalf("pre-stable release docs do not define the capability-line/feature-increment numbering strategy")
 		}
 	}
 	for path, body := range map[string]string{
