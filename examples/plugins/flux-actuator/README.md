@@ -44,7 +44,7 @@ docker build -f examples/plugins/flux-actuator/Dockerfile \
 | `helmRelease` | HelmRelease name. May be `namespace/name`. |
 | `helmReleaseName` | Alias for `helmRelease`. |
 | `fluxHelmRelease` | Alias for `helmRelease`. |
-| `appKey` | Fallback HelmRelease name supplied by Kapro for multi-app promotionruns. |
+| `appKey` | Fallback HelmRelease name supplied by Kapro for multi-app promotion runs. |
 
 If no HelmRelease parameter is set, the plugin uses the request target name.
 
