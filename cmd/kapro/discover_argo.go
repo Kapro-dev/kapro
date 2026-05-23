@@ -70,6 +70,7 @@ type argoDiscoveryCacheCounters struct {
 type argoCachedFile struct {
 	BlobSHA         string                 `json:"blobSHA"`
 	Parsed          bool                   `json:"parsed,omitempty"`
+	Objects         []argoDiscoveredObject `json:"objects,omitempty"`
 	Applications    []argoDiscoveredObject `json:"applications,omitempty"`
 	ApplicationSets []argoDiscoveredObject `json:"applicationSets,omitempty"`
 	SelectedUnits   []argoDiscoveredUnit   `json:"selectedUnits,omitempty"`
@@ -204,11 +205,15 @@ func runArgoDiscover(opts argoDiscoverOptions) error {
 }
 
 func prepareArgoDiscoverRepo(opts argoDiscoverOptions) (string, func(), error) {
+	return prepareGitDiscoverRepo("argo", opts.RepoPath, opts.Revision)
+}
+
+func prepareGitDiscoverRepo(commandName, repoPath, revision string) (string, func(), error) {
 	if _, err := exec.LookPath("git"); err != nil {
-		return "", func() {}, fmt.Errorf("kapro discover argo requires git CLI in PATH")
+		return "", func() {}, fmt.Errorf("kapro discover %s requires git CLI in PATH", commandName)
 	}
-	if !looksLikeGitRemote(opts.RepoPath) {
-		root, err := gitWorktreeRoot(opts.RepoPath)
+	if !looksLikeGitRemote(repoPath) {
+		root, err := gitWorktreeRootFor(commandName, repoPath)
 		if err != nil {
 			return "", func() {}, err
 		}
@@ -219,15 +224,15 @@ func prepareArgoDiscoverRepo(opts argoDiscoverOptions) (string, func(), error) {
 		return "", func() {}, fmt.Errorf("create temp clone dir: %w", err)
 	}
 	args := []string{"clone", "--depth=1"}
-	if opts.Revision != "" {
-		args = append(args, "--branch", opts.Revision)
+	if revision != "" {
+		args = append(args, "--branch", revision)
 	}
-	args = append(args, opts.RepoPath, dir)
+	args = append(args, repoPath, dir)
 	cmd := exec.Command("git", args...)
 	cmd.Env = cleanGitEnv()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		_ = os.RemoveAll(dir)
-		return "", func() {}, fmt.Errorf("clone %s: %w\n%s", opts.RepoPath, err, strings.TrimSpace(string(out)))
+		return "", func() {}, fmt.Errorf("clone %s: %w\n%s", repoPath, err, strings.TrimSpace(string(out)))
 	}
 	return dir, func() { _ = os.RemoveAll(dir) }, nil
 }
@@ -237,11 +242,19 @@ func looksLikeGitRemote(path string) bool {
 }
 
 func gitWorktreeRoot(path string) (string, error) {
+	return gitWorktreeRootFor("", path)
+}
+
+func gitWorktreeRootFor(commandName, path string) (string, error) {
 	cmd := exec.Command("git", "-C", path, "rev-parse", "--show-toplevel")
 	cmd.Env = cleanGitEnv()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("%s is not a Git worktree; kapro discover argo requires a Git checkout\n%s", path, strings.TrimSpace(string(out)))
+		action := "Kapro requires a Git checkout"
+		if commandName != "" {
+			action = fmt.Sprintf("kapro discover %s requires a Git checkout", commandName)
+		}
+		return "", fmt.Errorf("%s is not a Git worktree; %s\n%s", path, action, strings.TrimSpace(string(out)))
 	}
 	return strings.TrimSpace(string(out)), nil
 }
