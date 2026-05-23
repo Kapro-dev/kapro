@@ -123,9 +123,10 @@ func startPromotionRunController(ctx context.Context, cc ControllerContext) (boo
 		GateRegistry:     cc.GateRegistry,
 		Planner:          cc.Planner,
 		StagePublisher:   stageDispatcher,
-		DecisionTraceEmitter: decisiontrace.Emitter{
-			Client: cc.Manager.GetClient(),
-		},
+	}
+	r.DecisionTraceEmitter, err = decisionTraceEmitterFromEnv(cc.Manager.GetClient())
+	if err != nil {
+		return false, err
 	}
 	if cc.ShardName != "" {
 		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: cc.ShardIsDefault}
@@ -151,9 +152,10 @@ func startPromotionTargetController(ctx context.Context, cc ControllerContext) (
 		ExternalURL:      cc.ExternalURL,
 		GateRegistry:     cc.GateRegistry,
 		StagePublisher:   stageDispatcher,
-		DecisionTraceEmitter: decisiontrace.Emitter{
-			Client: cc.Manager.GetClient(),
-		},
+	}
+	r.DecisionTraceEmitter, err = decisionTraceEmitterFromEnv(cc.Manager.GetClient())
+	if err != nil {
+		return false, err
 	}
 	if cc.ShardName != "" {
 		r.ShardPredicate = shard.ShardFilter{ShardName: cc.ShardName, IsDefault: cc.ShardIsDefault}
@@ -162,6 +164,17 @@ func startPromotionTargetController(ctx context.Context, cc ControllerContext) (
 		return false, err
 	}
 	return true, nil
+}
+
+func decisionTraceEmitterFromEnv(c client.Client) (decisiontrace.Emitter, error) {
+	signer, err := decisiontrace.SignerFromEnv()
+	if err != nil {
+		return decisiontrace.Emitter{}, fmt.Errorf("configure DecisionTrace signer: %w", err)
+	}
+	return decisiontrace.Emitter{
+		Client: c,
+		Signer: signer,
+	}, nil
 }
 
 // buildStageDispatcher constructs a lifecycle Dispatcher just for the

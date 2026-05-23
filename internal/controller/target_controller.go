@@ -96,7 +96,8 @@ type TargetReconciler struct {
 // +kubebuilder:rbac:groups=kapro.io,resources=promotionruns,verbs=get
 // +kubebuilder:rbac:groups=kapro.io,resources=clusters,verbs=get
 // +kubebuilder:rbac:groups=kapro.io,resources=clusters/status,verbs=get;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=decisiontraces,verbs=create
+// +kubebuilder:rbac:groups=kapro.io,resources=decisiontraces,verbs=create;get
+// +kubebuilder:rbac:groups=kapro.io,resources=decisiontraces/status,verbs=get;update;patch
 
 func (r *TargetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	start := time.Now()

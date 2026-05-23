@@ -49,5 +49,34 @@ the operator decide across gates, stages, batches, rollback, and suspend paths?"
 
 ## Signing
 
-`DecisionTrace.status.signed` and `status.signatureRef` are reserved for the
-v0.3.x signing increment. v0.3.2 writes unsigned traces only.
+DecisionTrace signing is optional. When `KAPRO_DECISIONTRACE_SIGNING_KEY_FILE`
+points at a PEM-encoded PKCS#8 Ed25519 private key, the controller signs the
+canonical `spec` payload and writes a detached signature to status:
+
+```yaml
+status:
+  signed: true
+  signatureAlgorithm: Ed25519
+  signatureKeyID: prod-audit-key
+  payloadDigest: sha256:...
+  signature: ...
+```
+
+Set `KAPRO_DECISIONTRACE_SIGNING_KEY_ID` to the verifier-facing key identity.
+If it is unset, Kapro uses the key file basename. The operator still runs and
+writes unsigned traces when no signing key is configured.
+
+The signed payload is domain-separated with Kapro's DecisionTrace message type
+and intentionally excludes Kubernetes metadata and status. That makes
+verification stable across label changes, resourceVersion updates, and future
+status fields. Evidence should still be treated as bounded audit context, not
+as a secret or full event archive.
+
+Example key generation:
+
+```bash
+openssl genpkey -algorithm ED25519 -out decisiontrace-ed25519.pem
+```
+
+`status.signatureRef` remains reserved for an external transparency-log record,
+such as Rekor, once the Sigstore backend lands.

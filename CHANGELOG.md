@@ -7,6 +7,13 @@ record for each tag.
 
 ## Unreleased
 
+### Added — DecisionTrace signing foundation
+
+Added optional Ed25519 detached signatures for `DecisionTrace` records. When
+configured, Kapro signs the canonical trace `spec` payload and records the
+algorithm, key ID, payload digest, and signature in `status`; unsigned trace
+emission remains the default.
+
 ### Added — DecisionTrace audit stream
 
 Added the cluster-scoped `DecisionTrace` CRD plus non-blocking controller
