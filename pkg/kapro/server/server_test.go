@@ -10,6 +10,7 @@ import (
 
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/pkg/kapro/actuator"
+	kaproadapter "kapro.io/kapro/pkg/kapro/adapter"
 )
 
 type stubActuator struct{}
@@ -145,5 +146,43 @@ func TestServerNewUsesCustomActuatorRegistrars(t *testing.T) {
 	}
 	if _, err := srv.Actuators.Resolve("push/flux"); err == nil {
 		t.Fatalf("default actuator registered despite custom registrar override")
+	}
+}
+
+func TestServerNewUsesCustomAdapterRegistrars(t *testing.T) {
+	t.Setenv("KAPRO_CONTROLLERS", "plan")
+	t.Setenv("KAPRO_DISABLE_WEBHOOKS", "true")
+	t.Setenv("KAPRO_DISABLE_APPROVAL_SERVER", "true")
+	t.Setenv("KAPRO_DISABLE_HUB_GATEWAY", "true")
+	t.Setenv("KAPRO_APPROVAL_SECRET", "test-secret")
+	t.Setenv("KAPRO_ENABLE_PLUGIN_GATEWAY", "")
+
+	srv, err := New(Options{
+		Config: &rest.Config{
+			Host: "https://127.0.0.1:65535",
+			TLSClientConfig: rest.TLSClientConfig{
+				Insecure: true,
+			},
+		},
+		DevMode:                true,
+		MetricsBindAddress:     "0",
+		HealthProbeBindAddress: "0",
+		WebhookPort:            19445,
+		AdapterRegistrars: []AdapterRegistrar{
+			RegisterAdapter(kaproadapter.NewReferenceAdapter(
+				kaprov1alpha2.BackendDriverExternal,
+				kaprov1alpha2.BackendRuntimeBoth,
+				kaproadapter.DiscoveryModel{Supported: true},
+			)),
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := srv.Adapters.Resolve(kaprov1alpha2.BackendDriverExternal); err != nil {
+		t.Fatalf("resolve custom adapter: %v", err)
+	}
+	if _, err := srv.Adapters.Resolve(kaprov1alpha2.BackendDriverFlux); err == nil {
+		t.Fatalf("default adapter registered despite custom registrar override")
 	}
 }

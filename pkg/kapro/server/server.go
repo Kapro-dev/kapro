@@ -45,9 +45,6 @@ import (
 	"kapro.io/kapro/pkg/gate"
 	"kapro.io/kapro/pkg/kapro/actuator"
 	kaproadapter "kapro.io/kapro/pkg/kapro/adapter"
-	adapterargocd "kapro.io/kapro/pkg/kapro/adapter/argocd"
-	adapterflux "kapro.io/kapro/pkg/kapro/adapter/flux"
-	adapteroci "kapro.io/kapro/pkg/kapro/adapter/oci"
 	"kapro.io/kapro/pkg/planner"
 )
 
@@ -79,6 +76,9 @@ type Options struct {
 	// ActuatorRegistrars overrides the built-in actuator registrar list when
 	// non-nil. Leave nil to use DefaultActuatorRegistrars().
 	ActuatorRegistrars []ActuatorRegistrar
+	// AdapterRegistrars overrides the built-in adapter registrar list when
+	// non-nil. Leave nil to use DefaultAdapterRegistrars().
+	AdapterRegistrars []AdapterRegistrar
 }
 
 // OptionsFromEnv returns the same defaults used by the reference binary,
@@ -263,16 +263,16 @@ func New(opts Options) (*Server, error) {
 		return nil, fmt.Errorf("register actuators: %w", err)
 	}
 
-	adapterReg := kaproadapter.NewRegistry()
-	for _, adapter := range []kaproadapter.Adapter{
-		adapterargocd.New(),
-		adapterflux.New(),
-		adapteroci.New(),
-	} {
-		if err := adapterReg.Register(adapter); err != nil {
-			log.Error(err, "failed to register built-in adapter", "driver", adapter.Driver())
-			return nil, fmt.Errorf("register built-in adapter %q: %w", adapter.Driver(), err)
-		}
+	adapterRegistrars := opts.AdapterRegistrars
+	if adapterRegistrars == nil {
+		adapterRegistrars = DefaultAdapterRegistrars()
+	}
+	adapterReg, err := registerAdapters(ctx, adapterRegistrars, AdapterRegistrationContext{
+		Log: log.WithName("adapters"),
+	})
+	if err != nil {
+		log.Error(err, "failed to register adapters")
+		return nil, fmt.Errorf("register adapters: %w", err)
 	}
 
 	gateRegistry, err := cm.BuildGateRegistry(mgr.GetClient())
