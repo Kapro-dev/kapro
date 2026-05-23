@@ -218,6 +218,13 @@ func TestServerNewPopulatesRegistries(t *testing.T) {
 	if reg.Capabilities.Driver != kaprov1alpha2.BackendDriverArgo || !reg.Capabilities.SupportsBackendObjects {
 		t.Fatalf("push/argo capabilities = %#v", reg.Capabilities)
 	}
+	oci, ok := srv.Actuators.Registration("pull/oci")
+	if !ok {
+		t.Fatalf("pull/oci registration metadata missing")
+	}
+	if oci.Capabilities.SupportsTwoPhase {
+		t.Fatalf("pull/oci must not claim hub-side two-phase support: %#v", oci.Capabilities)
+	}
 	for _, name := range []string{"approval", "soak", "webhook"} {
 		if _, err := srv.Gates.Resolve(name); err != nil {
 			t.Fatalf("resolve gate %s: %v", name, err)

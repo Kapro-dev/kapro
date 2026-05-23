@@ -38,6 +38,7 @@ func TestRegistryRegisterRegistrationStoresCapabilities(t *testing.T) {
 			Runtime:             kaprov1alpha2.BackendRuntimeHub,
 			SupportsApply:       true,
 			SupportsConvergence: true,
+			SupportsTwoPhase:    true,
 		},
 		Actuator: stubActuator{},
 	})
@@ -57,6 +58,9 @@ func TestRegistryRegisterRegistrationStoresCapabilities(t *testing.T) {
 	}
 	if !reg.Capabilities.SupportsMode(kaprov1alpha2.DeliveryModePush) {
 		t.Fatalf("capabilities do not include push mode: %#v", reg.Capabilities)
+	}
+	if !reg.Capabilities.SupportsTwoPhase {
+		t.Fatalf("SupportsTwoPhase=false, want true")
 	}
 }
 

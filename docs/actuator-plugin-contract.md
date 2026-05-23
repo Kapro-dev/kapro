@@ -64,6 +64,25 @@ type Actuator interface {
 }
 ```
 
+In-process actuators that can stage work before committing it may also
+implement the optional extension:
+
+```go
+type TwoPhaseStaging interface {
+    Prepare(context.Context, actuator.StageRequest) (actuator.StageHandle, error)
+    Commit(context.Context, actuator.StageHandle) (actuator.CommitResult, error)
+    Discard(context.Context, actuator.StageHandle) error
+}
+```
+
+Return `actuator.ErrTwoPhaseUnsupported` when the backend cannot support this
+extension. `Prepare` validates or reserves the whole desired-version batch,
+`Commit` makes a prepared handle live, and `Discard` releases the prepared
+handle without committing it. The existing OCI pull path already performs
+two-phase server-side apply on the spoke and reports diagnostics through
+`Cluster.status.delivery[app].staging`; that is not the same as hub-side
+`Prepare`/`Commit`/`Discard` support.
+
 Register in-process substrates with explicit `actuator.Capabilities` through
 `server.RegisterActuator` or `Registry.RegisterRegistration`. Legacy
 registrations without capability bits still work, but new substrates should

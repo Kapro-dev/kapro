@@ -57,6 +57,7 @@ type Capabilities struct {
 	SupportsRollback       bool
 	SupportsConvergence    bool
 	SupportsDelta          bool
+	SupportsTwoPhase       bool
 	SupportsBackendObjects bool
 	SupportsDryRun         bool
 }

@@ -32,6 +32,7 @@ registration:
 | `SupportsDelta` | The actuator can apply a multi-artifact desired-version map directly. |
 | `SupportsObserve` / `SupportsConvergence` | The actuator can poll target convergence after apply. |
 | `SupportsRollback` | The actuator can perform direct rollback before the rollback target re-applies prior versions. |
+| `SupportsTwoPhase` | The actuator implements the optional `TwoPhaseStaging` SDK extension for prepare, commit, and discard. |
 | `SupportsBackendObjects` | The actuator can report backend-native objects into target status. |
 | `SupportsDryRun` | The actuator can validate without making backend changes. |
 
@@ -54,4 +55,9 @@ The target controller now branches on actuator capabilities:
   re-applies the previous desired versions.
 
 Plugin actuators derive these bits from the probed plugin status capabilities
-and register them with the actuator registry.
+and register them with the actuator registry. `SupportsTwoPhase` is currently a
+Go SDK extension bit; gRPC actuator plugins should not advertise it until the
+KAI wire contract grows explicit staged-apply RPCs. OCI pull delivery already
+performs two-phase server-side apply on the spoke and reports diagnostics in
+`Cluster.status.delivery[app].staging`, but the hub-side pull actuator does not
+implement `Prepare`, `Commit`, or `Discard`.
