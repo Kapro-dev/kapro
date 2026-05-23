@@ -187,6 +187,7 @@ func runArgoDiscover(opts argoDiscoverOptions) error {
 		filepath.Join("sources", opts.Name+".yaml"):          renderArgoDiscoverSource(opts, result),
 		filepath.Join("discovery", "argo-discovery.yaml"):    renderArgoDiscoveryReport(result),
 		filepath.Join("discovery", "kapro-git-map.yaml"):     renderArgoGitAdoptionMap(opts, result),
+		filepath.Join("discovery", "review-summary.yaml"):    renderDiscoveryReviewSummary("argo", opts.Name, result.RepoPath, result.SelectedUnits, result.SkippedObjects, result.Errors),
 		filepath.Join("README.md"):                           renderArgoDiscoverReadme(opts, result),
 	}
 	if err := writeScaffoldFiles(opts.OutPath, files, opts.Force); err != nil {
@@ -848,6 +849,47 @@ units:
 	return b.String()
 }
 
+func renderDiscoveryReviewSummary(kind, name, repoPath string, units []argoDiscoveredUnit, skipped []argoDiscoveredObject, errors []string) string {
+	summary := confidenceSummary(units)
+	ready := len(units) > 0 && len(errors) == 0 && summary.NeedsReview == 0
+	reviewRequired := summary.NeedsReview > 0 || len(skipped) > 0 || len(errors) > 0
+
+	var b strings.Builder
+	fmt.Fprintf(&b, `schemaVersion: kapro.io/discovery-review/v1alpha1
+kind: %s
+name: %s
+repoPath: %s
+readyForAdopt: %t
+reviewRequired: %t
+counts:
+  selectedUnits: %d
+  highConfidence: %d
+  mediumConfidence: %d
+  needsReview: %d
+  skippedObjects: %d
+  errors: %d
+nextActions:
+`, kind, name, repoPath, ready, reviewRequired, len(units), summary.High, summary.Medium, summary.NeedsReview, len(skipped), len(errors))
+	if len(units) == 0 {
+		b.WriteString("  - Add or select at least one Source unit before switching a Backend to Adopt.\n")
+	}
+	if summary.NeedsReview > 0 {
+		b.WriteString("  - Review every selected unit with confidence=needs-review in discovery/kapro-git-map.yaml.\n")
+	}
+	if summary.Medium > 0 {
+		b.WriteString("  - Spot-check medium-confidence units against the owning GitOps controller before first promotion.\n")
+	}
+	if len(skipped) > 0 {
+		b.WriteString("  - Inspect skippedObjects in the discovery report and decide whether any need manual Source units.\n")
+	}
+	if len(errors) > 0 {
+		b.WriteString("  - Resolve discovery errors and rerun discovery before adoption.\n")
+	}
+	b.WriteString("  - Apply the observe Backend first and compare Backend.status.selectedObjects with this review summary.\n")
+	b.WriteString("  - Commit sources/*.yaml and discovery/*.yaml for review before changing managementPolicy to Adopt.\n")
+	return b.String()
+}
+
 func writeReportObjects(b *strings.Builder, key string, units []argoDiscoveredUnit) {
 	b.WriteString(key + ":\n")
 	if len(units) == 0 {
@@ -888,8 +930,8 @@ kubectl apply -f backends/%s-observe.yaml
 kubectl get backend %s -o yaml
 `+"```"+`
 
-Review `+"`discovery/argo-discovery.yaml`"+`, `+"`discovery/kapro-git-map.yaml`"+`,
-and `+"`sources/%s.yaml`"+` before switching the Backend from
+Review `+"`discovery/review-summary.yaml`"+`, `+"`discovery/argo-discovery.yaml`"+`,
+`+"`discovery/kapro-git-map.yaml`"+`, and `+"`sources/%s.yaml`"+` before switching the Backend from
 `+"`Observe`"+` to `+"`Adopt`"+`.
 
 Use the generated source mapping to update Git-native version fields:

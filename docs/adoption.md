@@ -89,6 +89,8 @@ This generates:
 
 - an observe-mode `Backend`;
 - a `Source` mapping of deployable units to backend-native version fields;
+- `discovery/review-summary.yaml` with adoption-readiness counts and next
+  actions;
 - `discovery/*-discovery.yaml` with selected and skipped objects;
 - `discovery/kapro-git-map.yaml` with write-target evidence.
 

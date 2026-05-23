@@ -45,9 +45,10 @@ the discovered graph and `Source` are correct, switch the profile to
 `managementPolicy: Adopt` for selected version writes such as
 `spec.source.targetRevision`.
 
-Discovery writes `sources/checkout.yaml`, `discovery/argo-discovery.yaml`, and
-`discovery/kapro-git-map.yaml`. The source file is the executable mapping used
-for Git-native promotion writes:
+Discovery writes `sources/checkout.yaml`, `discovery/review-summary.yaml`,
+`discovery/argo-discovery.yaml`, and `discovery/kapro-git-map.yaml`. The review
+summary is the sign-off checklist; the source file is the executable mapping
+used for Git-native promotion writes:
 
 ```bash
 kapro source apply \
