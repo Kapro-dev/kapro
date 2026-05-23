@@ -188,7 +188,7 @@ func (r *ClusterBootstrapReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	// Phase 3 — always process matching CSRs (bootstrap-pending OR renewal).
 	// processCSRsForCluster is idempotent: it skips approved/denied CSRs and
-	// re-invokes handleBootstrapCSR / handleRenewalCSR for the rest.
+	// routes bootstrap and renewal CSRs to their respective handlers.
 	//
 	// Crash-recovery: if a previous reconcile marked status.bootstrap.Used=true
 	// but crashed before calling UpdateApproval, the CSR is still pending. We
@@ -408,9 +408,7 @@ func (r *ClusterBootstrapReconciler) processCSRsForCluster(ctx context.Context, 
 	expectedCN := csrCNPrefix + fc.Name
 	for i := range csrList.Items {
 		csr := &csrList.Items[i]
-		if !r.matchesFleetCluster(csr, fc, expectedCN) {
-			continue
-		}
+		purpose := r.classifyClusterCSR(csr, fc, expectedCN)
 		// Skip only CSRs that have already been finalized (approved or denied).
 		// Pending CSRs that previously bound this slot (status.bootstrap.Used
 		// but never finalized — e.g., controller crashed between
@@ -420,6 +418,21 @@ func (r *ClusterBootstrapReconciler) processCSRsForCluster(ctx context.Context, 
 		// isCSRApproved.
 		if isCSRApproved(csr) || isCSRDenied(csr) {
 			continue
+		}
+		if purpose == clusterCSRPurposeNone {
+			continue
+		}
+		if purpose == clusterCSRPurposeRenewalBeforeRegistration {
+			if err := r.denyCSR(ctx, csr, "cluster is not registered; renewal CSR rejected"); err != nil {
+				return ctrl.Result{}, err
+			}
+			continue
+		}
+		if purpose == clusterCSRPurposeRenewal {
+			if err := r.handleRenewalCSR(ctx, fc, csr); err != nil {
+				return ctrl.Result{}, err
+			}
+			return ctrl.Result{RequeueAfter: time.Nanosecond}, nil
 		}
 		// Defense in depth (security audit B3): if the slot is already bound
 		// to a different CSR, deny this one IMMEDIATELY at the loop entry
@@ -445,24 +458,71 @@ func (r *ClusterBootstrapReconciler) processCSRsForCluster(ctx context.Context, 
 	return ctrl.Result{}, nil
 }
 
-// matchesFleetCluster returns true when the CSR is a Kapro bootstrap CSR for
-// THIS FleetCluster. Bootstrap-only — renewal CSRs (Username =
-// "kapro-cluster:<name>" instead of the bootstrap SA) are out of scope for
-// PR-2 since no spoke binary exists yet to submit them. Renewal handling
-// lands in PR-3 alongside the spoke binary.
+type clusterCSRPurpose string
+
+const (
+	clusterCSRPurposeNone                      clusterCSRPurpose = ""
+	clusterCSRPurposeBootstrap                 clusterCSRPurpose = "bootstrap"
+	clusterCSRPurposeRenewal                   clusterCSRPurpose = "renewal"
+	clusterCSRPurposeRenewalBeforeRegistration clusterCSRPurpose = "renewal-before-registration"
+)
+
+// matchesFleetCluster returns true when the CSR is a Kapro bootstrap or
+// renewal CSR for THIS FleetCluster.
 func (r *ClusterBootstrapReconciler) matchesFleetCluster(csr *certificatesv1.CertificateSigningRequest, fc *kaprov1alpha2.Cluster, expectedCN string) bool {
+	purpose := r.classifyClusterCSR(csr, fc, expectedCN)
+	return purpose == clusterCSRPurposeBootstrap || purpose == clusterCSRPurposeRenewal
+}
+
+func (r *ClusterBootstrapReconciler) classifyClusterCSR(csr *certificatesv1.CertificateSigningRequest, fc *kaprov1alpha2.Cluster, expectedCN string) clusterCSRPurpose {
 	if !isKaproCSR(csr) {
-		return false
+		return clusterCSRPurposeNone
 	}
 	req, err := parseCSRRequest(csr.Spec.Request)
 	if err != nil {
-		return false
+		return clusterCSRPurposeNone
 	}
 	if req.Subject.CommonName != expectedCN {
-		return false
+		return clusterCSRPurposeNone
 	}
 	expectedSA := fmt.Sprintf("system:serviceaccount:%s:%s", r.podNS(), fmt.Sprintf(bootstrapSAFormat, fc.Name))
-	return csr.Spec.Username == expectedSA
+	if csr.Spec.Username == expectedSA {
+		return clusterCSRPurposeBootstrap
+	}
+	if csr.Spec.Username == expectedCN {
+		if fc.Status.Bootstrap != nil && fc.Status.Bootstrap.Used {
+			return clusterCSRPurposeRenewal
+		}
+		return clusterCSRPurposeRenewalBeforeRegistration
+	}
+	return clusterCSRPurposeNone
+}
+
+// handleRenewalCSR approves an already-registered spoke's cert renewal CSR.
+// It does not mutate status.bootstrap.BoundCSRName; that field records the
+// one-time bootstrap CSR that consumed the slot.
+func (r *ClusterBootstrapReconciler) handleRenewalCSR(
+	ctx context.Context,
+	fc *kaprov1alpha2.Cluster,
+	csr *certificatesv1.CertificateSigningRequest,
+) error {
+	log := log.FromContext(ctx).WithValues("fleetcluster", fc.Name, "csr", csr.Name)
+	if fc.Status.Bootstrap == nil || !fc.Status.Bootstrap.Used {
+		return r.denyCSR(ctx, csr, "cluster is not registered; renewal CSR rejected")
+	}
+	if err := r.ensureClusterRBAC(ctx, fc.Name); err != nil {
+		return fmt.Errorf("ensure cluster RBAC for renewal: %w", err)
+	}
+	if !isCSRApproved(csr) {
+		if err := r.approveCSR(ctx, csr); err != nil {
+			return fmt.Errorf("approve renewal CSR: %w", err)
+		}
+		log.Info("renewal CSR approved")
+		if r.Recorder != nil {
+			r.Recorder.Eventf(fc, corev1.EventTypeNormal, "Renewed", "Renewal CSR %s approved", csr.Name)
+		}
+	}
+	return nil
 }
 
 // handleBootstrapCSR validates the bootstrap CSR, marks the slot used, ensures
