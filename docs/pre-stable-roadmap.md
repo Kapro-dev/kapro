@@ -32,7 +32,7 @@ specific enough to name that patch digit.
 Patch increments are a planning budget, not a promise that every capability
 line stops at `.10`. Once a line crosses roughly 10 increments, do an explicit
 scope review: either continue the line with concrete milestones such as
-`v0.4.20` or `v0.5.1`, or move the next work into a new capability line. Avoid
+`v0.4.20` or `v0.5.2`, or move the next work into a new capability line. Avoid
 placeholder milestones such as `v0.10.0`, `v0.20.0`, or `v0.30.0` unless that
 exact patch release has a real feature scope.
 

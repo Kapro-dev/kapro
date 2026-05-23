@@ -7,6 +7,12 @@ record for each tag.
 
 ## Unreleased
 
+### Changed — release workflow runtime bounds
+
+The tag release workflow now has a 90-minute job timeout so release publishing
+cannot remain in progress indefinitely when a registry, scanner, signer, or
+attestation service stalls.
+
 ### Added — automatic release install smoke
 
 Successful tag release workflows now trigger the published-release install
@@ -56,12 +62,12 @@ step fails before image scanning.
 
 Clarified release-train guidance so patch increments are treated as a planning
 budget and review trigger while still allowing concrete milestones such as
-`v0.5.1` under the project’s `0.x.y` pre-stable strategy.
+`v0.5.2` under the project’s `0.x.y` pre-stable strategy.
 
-### Changed — release metadata for v0.5.1
+### Changed — release metadata for v0.5.2
 
 Updated Helm chart versions, install examples, and release smoke defaults so
-the next release tag packages `0.5.1` artifacts consistently.
+the next release tag packages `0.5.2` artifacts consistently.
 
 ### Added — reference adapter package tests
 
@@ -338,7 +344,7 @@ compatibility.
 Documented that Kapro stays in the `0.x.x` release series until public API,
 SDK, conformance, upgrade, and operational contracts are ready for stability
 graduation. Active GitHub milestones use exact feature-release names such as
-`v0.2.4`, `v0.4.7`, or `v0.5.1` rather than broad train buckets or a `1.0.0`
+`v0.2.4`, `v0.4.7`, or `v0.5.2` rather than broad train buckets or a `1.0.0`
 planning bucket. The pre-stable strategy is `0.<capability-line>.<feature-increment>`,
 so both remaining digits carry product meaning.
 
