@@ -66,10 +66,11 @@ Set `KAPRO_DECISIONTRACE_SIGNING_KEY_ID` to the verifier-facing key identity.
 If it is unset, Kapro uses the key file basename. The operator still runs and
 writes unsigned traces when no signing key is configured.
 
-The signature payload intentionally excludes Kubernetes metadata and status.
-That makes verification stable across label changes, resourceVersion updates,
-and future status fields. Evidence should still be treated as bounded audit
-context, not as a secret or full event archive.
+The signed payload is domain-separated with Kapro's DecisionTrace message type
+and intentionally excludes Kubernetes metadata and status. That makes
+verification stable across label changes, resourceVersion updates, and future
+status fields. Evidence should still be treated as bounded audit context, not
+as a secret or full event archive.
 
 Example key generation:
 

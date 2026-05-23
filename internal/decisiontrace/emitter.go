@@ -11,6 +11,7 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
@@ -64,38 +65,29 @@ func (e Emitter) Emit(ctx context.Context, spec kaprov1alpha2.DecisionTraceSpec)
 		}
 		return e.signExisting(ctx, trace.Name)
 	}
-	return e.signCreated(ctx, trace)
-}
-
-func (e Emitter) signCreated(ctx context.Context, trace *kaprov1alpha2.DecisionTrace) error {
-	if e.Signer == nil {
-		return nil
-	}
-	sig, err := e.Signer.SignDecisionTrace(ctx, trace.Spec)
-	if err != nil {
-		return err
-	}
-	trace.Status = statusForSignature(sig)
-	return e.Client.Status().Update(ctx, trace)
+	return e.signExisting(ctx, trace.Name)
 }
 
 func (e Emitter) signExisting(ctx context.Context, name string) error {
 	if e.Signer == nil {
 		return nil
 	}
-	var trace kaprov1alpha2.DecisionTrace
-	if err := e.Client.Get(ctx, client.ObjectKey{Name: name}, &trace); err != nil {
-		return err
-	}
-	if trace.Status.Signed {
-		return nil
-	}
-	sig, err := e.Signer.SignDecisionTrace(ctx, trace.Spec)
-	if err != nil {
-		return err
-	}
-	trace.Status = statusForSignature(sig)
-	return e.Client.Status().Update(ctx, &trace)
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var trace kaprov1alpha2.DecisionTrace
+		if err := e.Client.Get(ctx, client.ObjectKey{Name: name}, &trace); err != nil {
+			return err
+		}
+		if trace.Status.Signed {
+			return nil
+		}
+		sig, err := e.Signer.SignDecisionTrace(ctx, trace.Spec)
+		if err != nil {
+			return err
+		}
+		before := trace.DeepCopy()
+		trace.Status = statusForSignature(sig)
+		return e.Client.Status().Patch(ctx, &trace, client.MergeFrom(before))
+	})
 }
 
 func (e Emitter) normalize(spec kaprov1alpha2.DecisionTraceSpec) kaprov1alpha2.DecisionTraceSpec {

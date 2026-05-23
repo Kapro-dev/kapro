@@ -146,6 +146,7 @@ rules:
   - policies/status
   - approvals/status
   - backends/status
+  - decisiontraces/status
   - fleets/status
   - gateexpressions/status
   - clusters/status
@@ -172,6 +173,13 @@ rules:
   - get
   - list
   - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - decisiontraces
+  verbs:
+  - create
+  - get
 - apiGroups:
   - kapro.io
   resources:

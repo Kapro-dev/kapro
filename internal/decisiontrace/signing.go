@@ -23,6 +23,7 @@ const (
 	SigningKeyIDEnv   = "KAPRO_DECISIONTRACE_SIGNING_KEY_ID"
 
 	signatureAlgorithmEd25519 = "Ed25519"
+	signatureContext          = "kapro.io/DecisionTrace/v1alpha2\n"
 )
 
 // Signature is a detached signature over a canonical DecisionTrace spec.
@@ -65,7 +66,7 @@ func (s Ed25519Signer) SignDecisionTrace(_ context.Context, spec kaprov1alpha2.D
 		Algorithm:     signatureAlgorithmEd25519,
 		KeyID:         s.KeyID,
 		PayloadDigest: digest,
-		Signature:     base64.StdEncoding.EncodeToString(ed25519.Sign(s.PrivateKey, payload)),
+		Signature:     base64.StdEncoding.EncodeToString(ed25519.Sign(s.PrivateKey, signingMessage(payload))),
 	}, nil
 }
 
@@ -88,7 +89,7 @@ func VerifyEd25519(spec kaprov1alpha2.DecisionTraceSpec, sig Signature, publicKe
 	if err != nil {
 		return fmt.Errorf("decode decision trace signature: %w", err)
 	}
-	if !ed25519.Verify(publicKey, payload, raw) {
+	if !ed25519.Verify(publicKey, signingMessage(payload), raw) {
 		return errors.New("decision trace signature verification failed")
 	}
 	return nil
@@ -103,6 +104,13 @@ func CanonicalPayload(spec kaprov1alpha2.DecisionTraceSpec) ([]byte, string, err
 	}
 	sum := sha256.Sum256(payload)
 	return payload, "sha256:" + hex.EncodeToString(sum[:]), nil
+}
+
+func signingMessage(payload []byte) []byte {
+	message := make([]byte, 0, len(signatureContext)+len(payload))
+	message = append(message, signatureContext...)
+	message = append(message, payload...)
+	return message
 }
 
 // SignerFromEnv loads an optional local Ed25519 signer. Unset env returns nil.
