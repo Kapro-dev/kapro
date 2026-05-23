@@ -7,6 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	promtestutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -120,6 +121,36 @@ func TestDeliveryLoop_ConvergedAdvancesCurrentVersions(t *testing.T) {
 	}
 	if len(provider.calls) != 2 {
 		t.Fatalf("provider called %d times, want 2", len(provider.calls))
+	}
+}
+
+func TestDeliveryLoop_RecordsDeliveryMetrics(t *testing.T) {
+	fc := newDeliveryFC("metrics-c1", map[string]string{"api": "1.0"}, false, "oci-default")
+	bp := newDeliveryBP("oci-default", kaprov1alpha2.BackendDriverOCI)
+	hub := deliveryHub(t, fc, bp)
+
+	provider := &scriptedProvider{
+		driver: kaprov1alpha2.BackendDriverOCI,
+		results: map[string]spokeprovider.ReconcileResult{
+			"api": {Phase: kaprov1alpha2.DeliveryPhaseConverged},
+		},
+	}
+	reg := spokeprovider.NewRegistry()
+	_ = reg.Register(kaprov1alpha2.BackendDriverOCI, provider)
+	l := &deliveryLoop{
+		Hub:         newHubClientFromStatic(hub),
+		ClusterName: "metrics-c1",
+		Registry:    reg,
+	}
+	labels := []string{"metrics-c1", "oci", string(kaprov1alpha2.DeliveryPhaseConverged), "success"}
+	before := promtestutil.ToFloat64(spokeDeliveryReconciles.WithLabelValues(labels...))
+
+	if err := l.tick(context.Background()); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+
+	if got := promtestutil.ToFloat64(spokeDeliveryReconciles.WithLabelValues(labels...)) - before; got != 1 {
+		t.Fatalf("spoke delivery counter delta=%v, want 1", got)
 	}
 }
 

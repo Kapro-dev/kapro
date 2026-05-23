@@ -7,6 +7,13 @@ record for each tag.
 
 ## Unreleased
 
+### Added — spoke delivery metrics
+
+Added a Prometheus `/metrics` endpoint to `kapro-cluster-controller`, plus
+bounded spoke delivery reconcile counters and latency histograms. The
+cluster-controller Helm chart now exposes a metrics Service by default and can
+optionally emit a Prometheus Operator `ServiceMonitor`.
+
 ### Added — drift-duration SLO assets
 
 Added Prometheus recording rules, alerts, dashboard panels, and runbook

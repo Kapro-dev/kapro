@@ -49,7 +49,7 @@ For SLI definitions, suggested thresholds, and the current split between
 first-class Kapro metrics and inferred kube-state-metrics signals, see
 `docs/operator-slos.md`.
 
-## Current Metrics
+## Operator Metrics
 
 The operator currently registers these Kapro-specific metric names:
 
@@ -85,6 +85,17 @@ Controller reconcile and status write metrics are emitted by the current
 controllers. The remaining Kapro-specific metric names are registered for the
 operator metrics endpoint and should be treated as rollout instrumentation
 surfaces as their corresponding controller paths are wired.
+
+## Spoke Metrics
+
+`kapro-cluster-controller` exposes its own Prometheus endpoint on `/metrics`
+when `KAPRO_METRICS_ADDR` is not `off`. The Helm chart enables this endpoint
+and a metrics Service by default.
+
+| Metric | Type | Labels | Intent |
+| --- | --- | --- | --- |
+| `kapro_spoke_delivery_reconciles_total` | Counter | `cluster`, `backend`, `phase`, `result` | Spoke delivery reconcile outcomes. |
+| `kapro_spoke_delivery_reconcile_duration_seconds` | Histogram | `cluster`, `backend`, `phase`, `result` | Spoke delivery reconcile duration. |
 
 ## kube-state-metrics CRD Metrics
 

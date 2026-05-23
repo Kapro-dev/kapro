@@ -110,6 +110,9 @@ type Config struct {
 	// Defaults to 30s — same cadence as heartbeat so a freshly-promoted
 	// version starts converging within one heartbeat window.
 	DeliveryInterval time.Duration
+
+	// MetricsAddr is the Prometheus listen address. Set to "off" to disable.
+	MetricsAddr string
 }
 
 // loadConfig populates Config from env vars + flags.
@@ -125,11 +128,13 @@ func loadConfig() (*Config, error) {
 		HeartbeatInterval:         envDurationOrDefault("KAPRO_HEARTBEAT_INTERVAL", 30*time.Second),
 		StatusReportInterval:      envDurationOrDefault("KAPRO_STATUS_REPORT_INTERVAL", 60*time.Second),
 		DeliveryInterval:          envDurationOrDefault("KAPRO_DELIVERY_INTERVAL", 30*time.Second),
+		MetricsAddr:               envOrDefault("KAPRO_METRICS_ADDR", ":8080"),
 	}
 
 	flag.StringVar(&cfg.ClusterName, "cluster-name", cfg.ClusterName, "Cluster name this spoke registers as (env: KAPRO_CLUSTER_NAME)")
 	flag.StringVar(&cfg.HubAPIURL, "hub-url", cfg.HubAPIURL, "Hub kube-apiserver URL (env: KAPRO_HUB_URL)")
 	flag.StringVar(&cfg.BootstrapKubeconfigPath, "bootstrap-kubeconfig", cfg.BootstrapKubeconfigPath, "Path to bootstrap kubeconfig from hub (env: KAPRO_BOOTSTRAP_KUBECONFIG_PATH)")
+	flag.StringVar(&cfg.MetricsAddr, "metrics-addr", cfg.MetricsAddr, "Prometheus metrics listen address, or off to disable (env: KAPRO_METRICS_ADDR)")
 	opts := zap.Options{Development: true}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -216,6 +221,9 @@ func run() error {
 	}
 	defer certMgr.Stop()
 	logger.Info("registered with hub", "cluster", cfg.ClusterName)
+	if err := startMetricsServer(ctx, cfg.MetricsAddr); err != nil {
+		return fmt.Errorf("start metrics server: %w", err)
+	}
 
 	hubClient := newHubClient(certMgr, cfg.HubAPIURL, cfg.HubCAData)
 

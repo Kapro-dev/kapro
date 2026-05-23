@@ -46,3 +46,15 @@ For the full workflow and troubleshooting, see
 
 The CLI-generated values file fills these fields, plus the hub CA bundle when
 needed.
+
+## Metrics
+
+The spoke agent exposes Prometheus metrics on `/metrics` by default:
+
+| Value | Default | Meaning |
+|---|---:|---|
+| `metrics.enabled` | `true` | Adds `KAPRO_METRICS_ADDR`, container port, and a metrics Service. |
+| `metrics.port` | `8080` | Metrics listen and Service port. |
+| `metrics.serviceMonitor.enabled` | `false` | Emits a Prometheus Operator `ServiceMonitor` when enabled. |
+
+Set `metrics.enabled=false` to run the binary with `KAPRO_METRICS_ADDR=off`.
