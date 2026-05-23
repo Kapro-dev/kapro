@@ -14,6 +14,10 @@ actuator, gate, and planner `Plugin` objects after readiness probes succeed.
 Later readiness changes hot-load updated plugins and unload plugins that become
 stale, incompatible, or deleted.
 
+The compatibility source of truth for plugin authors is the
+[plugin compatibility policy](plugin-compatibility-policy.md). This guide keeps
+the implementation workflow, examples, and test commands in one place.
+
 Notifications are not a plugin contract. The runtime notification path is
 inline gate configuration; Kapro does not expose separate public notification
 provider/policy CRDs in the KISS API.
@@ -42,6 +46,8 @@ certification process exists.
 
 Compatibility is based on the `contract_version` returned by
 `GetCapabilities`, not the plugin implementation version.
+Kapro records `plugin_version` in status for operators, but readiness and
+runtime loading only use `contract_version`.
 
 For trusted in-process actuator substrates, use the stable SDK package
 `kapro.io/kapro/pkg/kapro/actuator`. The legacy
@@ -60,6 +66,8 @@ Register in-process substrates with `server.RegisterActuator(...)` or append to
 
 The supported versions are also defined in
 `pkg/plugincompat/compatibility.go`.
+Deprecation, removal, status condition, and badge guidance is documented in the
+[plugin compatibility policy](plugin-compatibility-policy.md).
 
 Generate stubs with:
 
@@ -106,6 +114,21 @@ Use repeated `--param key=value` flags for plugin-specific scenario parameters.
 provider contracts. `provider` runs the KSP reference provider suite because
 KSP is an in-process Go SDK contract; custom providers should import
 `kapro.io/kapro/conformance/provider` from their own tests.
+
+## Before Publishing
+
+Before publishing a plugin for other teams:
+
+- return `contract_version: v1alpha1` from `GetCapabilities`;
+- run the matching conformance suite in CI;
+- document backend permissions, Kubernetes RBAC, and Secret requirements;
+- document timeout, retry, and failure behavior;
+- publish a tested `Plugin` manifest;
+- avoid creating or mutating Kapro CRDs directly.
+
+After those checks pass, the README may say the plugin is
+`Kapro-compatible`. Do not call it certified unless Kapro later publishes a
+separate certification process.
 
 For the Argo CD actuator example:
 

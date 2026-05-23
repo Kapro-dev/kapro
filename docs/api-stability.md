@@ -5,7 +5,7 @@ lifecycle events, and language-neutral plugin contracts. The maturity level
 describes compatibility expectations for users and plugin authors; it does not
 change Kubernetes API version strings by itself.
 
-The current release line is pre-stable; `v0.3.7` is the current public preview
+The current release line is pre-stable; `v0.3.8` is the current public preview
 release, and Kapro releases stay in the `0.x.x` series until the project
 explicitly graduates its public contracts. `v0.1.0` was the first public
 release for the full promotion-domain API, not a promise that all
@@ -50,6 +50,10 @@ Preview. The table below is the source of truth for the current contract level.
 | KPI planner plugin contract | `spec/kpi/v1alpha1` | Preview |
 | Conformance harnesses | `conformance/actuator`, `conformance/gate`, `conformance/planner`, `conformance/provider`, `cmd/kapro-conformance` | Preview |
 | Lifecycle event schema | `docs/events.md` | Preview |
+
+Plugin-specific compatibility, conformance labels, status conditions, and
+future contract-version deprecation rules are defined in the
+[plugin compatibility policy](plugin-compatibility-policy.md).
 
 All `v1alpha2` APIs remain below stable maturity until Kapro publishes a
 stable API version. A surface can be Preview while the Kubernetes version is

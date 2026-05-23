@@ -7,6 +7,14 @@ record for each tag.
 
 ## Unreleased
 
+### Added — plugin compatibility policy
+
+Added a plugin compatibility policy and exported `pkg/plugincompat` policy
+helpers so plugin authors can see the supported KAI, KGI, and KPI contract
+versions programmatically and in documentation. The current wire contracts
+remain `v1alpha1`; this release adds policy, badge, and authoring guidance
+without introducing a new proto version.
+
 ### Added — external Flux substrate proof
 
 Added a deployable external Flux HelmRelease actuator substrate example with a
