@@ -23,6 +23,10 @@ func TestReferenceAdapterDiscoveryAndUnsupportedOperations(t *testing.T) {
 	if !discovery.Ready || len(discovery.SelectedObjects) != 1 {
 		t.Fatalf("discovery = %#v, want ready with one selected object", discovery)
 	}
+	caps := a.Capabilities()
+	if caps.SupportsApply || caps.SupportsObserve || caps.SupportsRollback || !caps.SupportsDiscover {
+		t.Fatalf("capabilities = %#v, want discover-only reference adapter", caps)
+	}
 
 	result, err := a.Apply(context.Background(), Request{})
 	if err != nil {

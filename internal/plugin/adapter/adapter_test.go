@@ -53,6 +53,24 @@ func TestActuatorAdapterApplyMapsRequest(t *testing.T) {
 	}
 }
 
+func TestActuatorAdapterCapabilitiesFromPluginStatus(t *testing.T) {
+	reg := pluginReg(kaprov1alpha2.PluginTypeActuator, "argo/pull")
+	reg.Status.ContractVersion = "v1alpha1"
+	reg.Status.Capabilities = []string{
+		"argocd.application.targetRevision.apply",
+		"argocd.application.sync-health.convergence",
+		"argocd.application.targetRevision.rollback",
+	}
+	adapter, err := NewActuatorAdapter(reg, fakeActuatorClient{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	caps := adapter.Capabilities()
+	if !caps.SupportsApply || !caps.SupportsDelta || !caps.SupportsObserve || !caps.SupportsConvergence || !caps.SupportsRollback {
+		t.Fatalf("capabilities = %#v, want apply/delta/observe/convergence/rollback", caps)
+	}
+}
+
 func TestActuatorAdapterReturnsGRPCError(t *testing.T) {
 	client, stop := actuatorClient(t, &recordingActuatorServer{applyErr: status.Error(codes.Unavailable, "down")})
 	defer stop()
@@ -227,6 +245,7 @@ func TestRegisterReadyPluginsSkipsStaleAndRegistersReady(t *testing.T) {
 	ready.Spec.Endpoint = "bufnet"
 	ready.Status.Ready = true
 	ready.Status.ObservedGeneration = 3
+	ready.Status.Capabilities = []string{"apply", "convergence", "rollback"}
 	stale := pluginReg(kaprov1alpha2.PluginTypeActuator, "stale/pull")
 	stale.Name = "stale"
 	stale.Generation = 4
@@ -249,6 +268,10 @@ func TestRegisterReadyPluginsSkipsStaleAndRegistersReady(t *testing.T) {
 	}
 	if _, err := actuatorReg.Resolve("argo/pull"); err != nil {
 		t.Fatalf("ready plugin not registered: %v", err)
+	}
+	reg, ok := actuatorReg.Registration("argo/pull")
+	if !ok || !reg.Capabilities.SupportsApply || !reg.Capabilities.SupportsObserve || !reg.Capabilities.SupportsRollback {
+		t.Fatalf("ready plugin capabilities = %#v/%v", reg.Capabilities, ok)
 	}
 	if _, err := actuatorReg.Resolve("stale/pull"); err == nil {
 		t.Fatal("stale plugin was registered")

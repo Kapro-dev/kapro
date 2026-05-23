@@ -17,12 +17,18 @@ An adapter owns backend-specific delivery work for one
 type Adapter interface {
 	Driver() v1alpha2.BackendDriver
 	Runtime() v1alpha2.BackendRuntime
+	Capabilities() adapter.Capabilities
 	Apply(ctx context.Context, req adapter.Request) (adapter.Result, error)
 	Observe(ctx context.Context, req adapter.Request) (adapter.Result, error)
 	Rollback(ctx context.Context, req adapter.Request) (adapter.Result, error)
 	Discover(ctx context.Context, req adapter.DiscoveryRequest) (adapter.DiscoveryResult, error)
 }
 ```
+
+`Capabilities` is the first thing controllers should read. It tells callers
+which methods are meaningful for a backend so unsupported operations do not
+become normal error-path control flow. See
+[Adapter Capabilities](adapter-capabilities.md) for each bit.
 
 `Request` carries the PromotionRun identity, target cluster, selected Backend,
 delivery mode, app key, version, previous version, desired version map, and
@@ -70,10 +76,12 @@ fluxAdapter := flux.New()
 ociAdapter := oci.New()
 ```
 
-Apply, observe, and rollback on these reference adapters return a failed
-`OperationUnsupported` result. The operator continues to use the existing
-runtime actuators for side effects until public adapter runtime selection is
-wired in a later increment.
+The reference adapters advertise discovery-only capabilities. Apply, observe,
+and rollback return a failed `OperationUnsupported` result for direct callers,
+and controllers branch on the capability bits before calling unsupported
+operations. The operator continues to use the existing runtime actuators for
+side effects until public adapter runtime selection is wired in a later
+increment.
 
 ## AdapterPolicy Discovery
 

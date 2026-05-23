@@ -97,7 +97,16 @@ func (r Registrar) RegisterOne(ctx context.Context, c client.Reader, reg kaprov1
 			return fmt.Errorf("create actuator plugin adapter for registration %q: %w", reg.Name, err)
 		}
 		adapter.conn = conn
-		closeRuntime(actuatorReg.Upsert(reg.Spec.Name, adapter))
+		old, err := actuatorReg.UpsertRegistration(actuator.Registration{
+			Name:         reg.Spec.Name,
+			Capabilities: adapter.Capabilities(),
+			Actuator:     adapter,
+		})
+		if err != nil {
+			_ = conn.Close()
+			return fmt.Errorf("register actuator plugin adapter for registration %q: %w", reg.Name, err)
+		}
+		closeRuntime(old)
 	case kaprov1alpha2.PluginTypeGate:
 		if gateReg == nil {
 			return fmt.Errorf("gate registry is nil")
