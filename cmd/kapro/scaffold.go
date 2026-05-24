@@ -65,7 +65,7 @@ func newConnectCmd() *cobra.Command {
 or Flux installations. Observe mode discovers existing substrate objects without
 taking over writes.
 
-This command is Substrate-only. Use kapro discover or kapro adopt when you also
+This command is Substrate-only. Use kapro discover or kapro import when you also
 want generated Source units and discovery review reports.`,
 	}
 	cmd.AddCommand(newConnectSubstrateCmd("argo"))
@@ -1078,7 +1078,7 @@ This scaffold starts in observe mode. Kapro discovers existing %s objects and
 reports them through Substrate status without taking over writes.
 
 This is a Substrate-only scaffold. Use `+"`kapro discover %s`"+` or
-`+"`kapro adopt %s`"+` when you want generated Source units and discovery review
+`+"`kapro import %s`"+` when you want generated Source units and discovery review
 reports.
 
 Apply:

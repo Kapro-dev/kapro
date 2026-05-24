@@ -12,10 +12,10 @@ func TestBootstrapGuideExplainsAdoptionPaths(t *testing.T) {
 	printBootstrapGuide(&buf)
 	got := buf.String()
 	for _, want := range []string{
-		"kapro quickstart flux ./promotion-repo --name checkout",
-		"kapro quickstart direct ./promotion-repo --name checkout",
+		"kapro create flux ./promotion-repo --name checkout",
+		"kapro create direct ./promotion-repo --name checkout",
 		"kapro bootstrap generate ./promotion-repo --profile direct|argo|flux|oci --name checkout",
-		"kapro adopt argo . --out ./kapro-connect --name checkout",
+		"kapro import argo . --out ./kapro-connect --name checkout",
 		"pull: each cluster pulls desired state",
 		"existing GitOps adoption starts in Observe mode",
 	} {

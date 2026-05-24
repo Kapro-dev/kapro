@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -35,21 +36,42 @@ func TestCreateOrUpdateObjectDryRunUsesClientDryRun(t *testing.T) {
 	}
 }
 
-func TestAdoptArgoLiveApplyFlags(t *testing.T) {
-	cmd := newAdoptArgoCmd()
-	for _, name := range []string{"apply", "dry-run", "kubeconfig", "sync-interval"} {
+func TestImportArgoLiveApplyFlags(t *testing.T) {
+	cmd := newImportArgoCmd()
+	for _, name := range []string{"apply", "dry-run", "kubeconfig", "sync-interval", "take"} {
 		if cmd.Flags().Lookup(name) == nil {
-			t.Fatalf("adopt argo missing --%s flag", name)
+			t.Fatalf("import argo missing --%s flag", name)
 		}
 	}
 }
 
-func TestAdoptFluxLiveApplyFlags(t *testing.T) {
-	cmd := newAdoptFluxCmd()
-	for _, name := range []string{"apply", "dry-run", "kubeconfig", "sync-interval"} {
+func TestImportFluxLiveApplyFlags(t *testing.T) {
+	cmd := newImportFluxCmd()
+	for _, name := range []string{"apply", "dry-run", "kubeconfig", "sync-interval", "take"} {
 		if cmd.Flags().Lookup(name) == nil {
-			t.Fatalf("adopt flux missing --%s flag", name)
+			t.Fatalf("import flux missing --%s flag", name)
 		}
+	}
+}
+
+func TestDiscoverSubstrateFileSuffix(t *testing.T) {
+	if got := discoverSubstrateFileSuffix(false); got != "-observe" {
+		t.Fatalf("observe suffix=%q", got)
+	}
+	if got := discoverSubstrateFileSuffix(true); got != "-adopt" {
+		t.Fatalf("take suffix=%q", got)
+	}
+}
+
+func TestImportTakeRendersAdoptModeSubstrates(t *testing.T) {
+	labels := map[string]string{"kapro.io/import": "true"}
+	argo := renderArgoDiscoverSubstrate(argoDiscoverOptions{Name: "checkout", Namespace: "argocd", Take: true}, labels)
+	if !strings.Contains(argo, "managementPolicy: Adopt") {
+		t.Fatalf("argo substrate missing Adopt policy:\n%s", argo)
+	}
+	flux := renderFluxDiscoverSubstrate(fluxDiscoverOptions{Name: "checkout", Namespace: "flux-system", Take: false}, labels)
+	if !strings.Contains(flux, "managementPolicy: Observe") {
+		t.Fatalf("flux substrate missing Observe policy:\n%s", flux)
 	}
 }
 
@@ -81,7 +103,7 @@ func TestCreateOrUpdateObjectPatchPreservesExistingMetadata(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        "flux",
 			Labels:      map[string]string{"kapro.io/managed-by": "kapro"},
-			Annotations: map[string]string{"kapro.io/source": "adopt"},
+			Annotations: map[string]string{"kapro.io/source": "import"},
 		},
 		Spec: testSubstrateSpec("flux", kaprov1alpha1.ExecutionModeSpokePull),
 	}
@@ -98,7 +120,7 @@ func TestCreateOrUpdateObjectPatchPreservesExistingMetadata(t *testing.T) {
 			t.Fatalf("label %s=%q, want %q; labels=%#v", key, got.Labels[key], want, got.Labels)
 		}
 	}
-	for key, want := range map[string]string{"note": "kept", "kapro.io/source": "adopt"} {
+	for key, want := range map[string]string{"note": "kept", "kapro.io/source": "import"} {
 		if got.Annotations[key] != want {
 			t.Fatalf("annotation %s=%q, want %q; annotations=%#v", key, got.Annotations[key], want, got.Annotations)
 		}
@@ -119,7 +141,7 @@ func TestCreateOrUpdateObjectPatchPreservesExistingMetadata(t *testing.T) {
 		t.Fatalf("generation=%d, want %d", got.Generation, existing.Generation)
 	}
 	if got.Spec.Substrate == nil || got.Spec.Substrate.Actuator != "flux" || got.Spec.Execution == nil || got.Spec.Execution.Mode != kaprov1alpha1.ExecutionModeSpokePull {
-		t.Fatalf("spec=%#v, want adopt spec patched", got.Spec)
+		t.Fatalf("spec=%#v, want import spec patched", got.Spec)
 	}
 }
 

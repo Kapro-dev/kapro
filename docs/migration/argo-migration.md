@@ -80,7 +80,7 @@ Run observe-first adoption against the Git repository that already contains
 Argo Applications, ApplicationSets, and environment files:
 
 ```bash
-kapro adopt argo . \
+kapro import argo . \
   --out kapro-connect \
   --name checkout \
   --namespace argocd \
@@ -103,10 +103,10 @@ kapro discover argo . \
   --selector kapro.io/import=true,team=checkout
 ```
 
-`kapro adopt argo` is the public path for the same observe-first workflow:
+`kapro import argo` is the public path for the same observe-first workflow:
 
 ```bash
-kapro adopt argo . --out kapro-connect --name checkout
+kapro import argo . --out kapro-connect --name checkout
 ```
 
 By default, discovery scans tracked YAML/JSON files under common GitOps
@@ -314,7 +314,7 @@ scripts/argo-e2e.sh run
 ```
 
 The script creates a Kind cluster, installs Argo CD and Kapro, serves a
-throwaway Git repo inside the cluster, runs `kapro adopt argo`, applies the
+throwaway Git repo inside the cluster, runs `kapro import argo`, applies the
 generated mapping, promotes the repo-native Argo fields with
 `kapro source apply`, exercises the runtime promotion flow, and waits for all
 selected Argo Applications to become `Synced` and `Healthy` at the promoted

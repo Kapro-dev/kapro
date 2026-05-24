@@ -150,8 +150,8 @@ when a policy pack is enabled. A standalone `kapro plan` command is follow-up
 work only after it has a real dry-run/runtime contract.
 
 Existing GitOps adoption output must use the same repo shape where possible and
-remain observe-first by default. The public CLI should use `quickstart` for new
-repos, `adopt` for existing GitOps repositories, and `connect`/`discover` for
+remain observe-first by default. The public CLI should use `create` for new
+repos, `import` for existing GitOps repositories, and `connect`/`discover` for
 lower-level substrate-only or inventory workflows. Avoid legacy-estate jargon
 as public command names.
 
@@ -169,7 +169,7 @@ such as `kapro bootstrap diff` or `kapro bootstrap upgrade` is Phase 2.
   targeted actuator/controller tests.
 - `docs/specs/substrate-parameter-spec.md` is published as the `v1alpha1`
   substrate author contract.
-- `kapro adopt argo` and `kapro adopt flux` work against real Argo CD and Flux
+- `kapro import argo` and `kapro import flux` work against real Argo CD and Flux
   installs, not only unit tests or repository fixtures.
 - Greenfield and existing GitOps connect/adopt walkthroughs exist for Argo CD
   and Flux.

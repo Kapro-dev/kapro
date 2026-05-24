@@ -53,7 +53,7 @@ GitRepository or OCIRepository too. Kapro does not need source credentials.
 Use observe-first adoption first:
 
 ```bash
-kapro adopt flux . \
+kapro import flux . \
   --out ./kapro-connect \
   --name checkout \
   --namespace flux-system \
@@ -206,6 +206,6 @@ scripts/verify-install.sh flux-e2e
 
 This creates a disposable Kind cluster, installs real Flux controllers, serves a
 Git fixture inside the cluster, bootstraps Flux from that repo, runs
-`kapro adopt flux`, applies the generated `Source` mapping from `v1`
+`kapro import flux`, applies the generated `Source` mapping from `v1`
 to `v2`, pushes the Git change, and waits for Flux to reconcile the workload
 ConfigMap to `v2`.

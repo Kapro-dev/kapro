@@ -14,48 +14,52 @@ import (
 	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
-type adoptSubstrateOptions struct {
+type importSubstrateOptions struct {
 	SubstrateKind string
 	SubstrateName string
 	Namespace     string
 	Selector      string
 	SyncInterval  string
+	Take          bool
 	Apply         bool
 	DryRun        string
 	Kubeconfig    string
 }
 
-func newAdoptCmd() *cobra.Command {
+func newImportCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "adopt",
-		Short: "Generate existing GitOps adoption mappings",
-		Long: `Adoption commands generate observe-first Kapro mappings from
+		Use:   "import",
+		Short: "Import existing GitOps repositories into Kapro",
+		Long: `Import commands generate observe-first Kapro mappings from
 existing substrate-native GitOps repositories: a read-only Substrate, Source units,
-and discovery reports. They do not mutate live substrate objects; switching a
-Substrate to Adopt and applying Git changes are separate, explicit steps.`,
+and discovery reports. They do not mutate live substrate objects unless --take
+is set; --take switches the generated or live Substrate discovery policy to
+Adopt after review.`,
 	}
-	cmd.AddCommand(newAdoptArgoCmd())
-	cmd.AddCommand(newAdoptFluxCmd())
+	cmd.AddCommand(newImportArgoCmd())
+	cmd.AddCommand(newImportFluxCmd())
 	return cmd
 }
 
-func newAdoptArgoCmd() *cobra.Command {
+func newImportArgoCmd() *cobra.Command {
 	opts := argoDiscoverOptions{Cache: true, MaxFiles: defaultArgoDiscoveryMaxFiles, MaxUnits: defaultArgoDiscoveryMaxUnits}
-	substrateOpts := adoptSubstrateOptions{SubstrateKind: "argo", SubstrateName: "argo", Namespace: "argocd", Selector: "kapro.io/import=true", SyncInterval: "5m"}
+	substrateOpts := importSubstrateOptions{SubstrateKind: "argo", SubstrateName: "argo", Namespace: "argocd", Selector: "kapro.io/import=true", SyncInterval: "5m"}
 	cmd := &cobra.Command{
 		Use:   "argo [repo]",
-		Short: "Generate Kapro adoption files for an existing Argo CD repo",
+		Short: "Import an existing Argo CD repo into Kapro",
 		Long: `Scans an existing Argo CD Git repository using git ls-files and
 generates Substrate, Source, and reviewable Git adoption mapping
 files. Output starts in observe mode so the generated graph can be reviewed
-before any write permissions are granted.`,
+before any write permissions are granted. Pass --take only after review to
+generate or apply an Adopt-mode Substrate.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			if substrateOpts.Apply {
 				substrateOpts.SubstrateName = opts.Name
 				substrateOpts.Namespace = opts.Namespace
 				substrateOpts.Selector = opts.Selector
-				return runAdoptSubstrate(context.Background(), substrateOpts)
+				substrateOpts.Take = opts.Take
+				return runImportSubstrate(context.Background(), substrateOpts)
 			}
 			opts.RepoPath = "."
 			if len(args) > 0 {
@@ -74,6 +78,7 @@ before any write permissions are granted.`,
 	cmd.Flags().BoolVar(&opts.Cache, "cache", true, "Reuse discovery cache for unchanged Git blobs")
 	cmd.Flags().IntVar(&opts.MaxFiles, "max-files", defaultArgoDiscoveryMaxFiles, "Maximum tracked YAML/JSON candidate files to parse (0 = unlimited)")
 	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum Source units to generate (0 = unlimited)")
+	cmd.Flags().BoolVar(&opts.Take, "take", false, "Generate or apply Adopt-mode substrate discovery after review")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
 	cmd.Flags().BoolVar(&substrateOpts.Apply, "apply", false, "Create or update Substrate and SubstrateDiscoveryPolicy in the current cluster instead of writing files")
 	cmd.Flags().StringVar(&substrateOpts.DryRun, "dry-run", "", "Set to client to validate the live --apply writes without persisting")
@@ -82,23 +87,25 @@ before any write permissions are granted.`,
 	return cmd
 }
 
-func newAdoptFluxCmd() *cobra.Command {
+func newImportFluxCmd() *cobra.Command {
 	opts := fluxDiscoverOptions{MaxFiles: defaultArgoDiscoveryMaxFiles, MaxUnits: defaultArgoDiscoveryMaxUnits}
-	substrateOpts := adoptSubstrateOptions{SubstrateKind: "flux", SubstrateName: "flux", Namespace: "flux-system", Selector: "kapro.io/import=true", SyncInterval: "5m"}
+	substrateOpts := importSubstrateOptions{SubstrateKind: "flux", SubstrateName: "flux", Namespace: "flux-system", Selector: "kapro.io/import=true", SyncInterval: "5m"}
 	cmd := &cobra.Command{
 		Use:   "flux [repo]",
-		Short: "Generate Kapro adoption files for an existing Flux repo",
+		Short: "Import an existing Flux repo into Kapro",
 		Long: `Scans an existing Flux Git repository using git ls-files and
 generates Substrate, Source, and reviewable Git adoption mapping
 files. Output starts in observe mode so the generated graph can be reviewed
-before any write permissions are granted.`,
+before any write permissions are granted. Pass --take only after review to
+generate or apply an Adopt-mode Substrate.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			if substrateOpts.Apply {
 				substrateOpts.SubstrateName = opts.Name
 				substrateOpts.Namespace = opts.Namespace
 				substrateOpts.Selector = opts.Selector
-				return runAdoptSubstrate(context.Background(), substrateOpts)
+				substrateOpts.Take = opts.Take
+				return runImportSubstrate(context.Background(), substrateOpts)
 			}
 			opts.RepoPath = "."
 			if len(args) > 0 {
@@ -115,6 +122,7 @@ before any write permissions are granted.`,
 	cmd.Flags().BoolVar(&opts.ScanAll, "scan-all", false, "Scan all tracked YAML/JSON files instead of GitOps path prefixes")
 	cmd.Flags().IntVar(&opts.MaxFiles, "max-files", defaultArgoDiscoveryMaxFiles, "Maximum tracked YAML/JSON candidate files to parse (0 = unlimited)")
 	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum Source units to generate (0 = unlimited)")
+	cmd.Flags().BoolVar(&opts.Take, "take", false, "Generate or apply Adopt-mode substrate discovery after review")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
 	cmd.Flags().BoolVar(&substrateOpts.Apply, "apply", false, "Create or update Substrate and SubstrateDiscoveryPolicy in the current cluster instead of writing files")
 	cmd.Flags().StringVar(&substrateOpts.DryRun, "dry-run", "", "Set to client to validate the live --apply writes without persisting")
@@ -123,7 +131,7 @@ before any write permissions are granted.`,
 	return cmd
 }
 
-func runAdoptSubstrate(ctx context.Context, opts adoptSubstrateOptions) error {
+func runImportSubstrate(ctx context.Context, opts importSubstrateOptions) error {
 	if opts.DryRun != "" && opts.DryRun != "client" {
 		return fmt.Errorf("--dry-run must be empty or client")
 	}
@@ -142,6 +150,10 @@ func runAdoptSubstrate(ctx context.Context, opts adoptSubstrateOptions) error {
 	if opts.SubstrateKind == "argo" {
 		substrateKind = "argo"
 	}
+	managementPolicy := "Observe"
+	if opts.Take {
+		managementPolicy = "Adopt"
+	}
 	substrate := &kaprov1alpha1.Substrate{
 		ObjectMeta: metav1.ObjectMeta{Name: opts.SubstrateName},
 		Spec: kaprov1alpha1.SubstrateSpec{
@@ -152,14 +164,14 @@ func runAdoptSubstrate(ctx context.Context, opts adoptSubstrateOptions) error {
 			Execution: &kaprov1alpha1.SubstrateExecutionSpec{Mode: kaprov1alpha1.ExecutionModeHubPush},
 			Discovery: &kaprov1alpha1.SubstrateDiscoverySpec{
 				Enabled:          true,
-				ManagementPolicy: "Observe",
+				ManagementPolicy: managementPolicy,
 				Selector:         &metav1.LabelSelector{MatchLabels: matchLabels},
 			},
 			Parameters: map[string]string{"namespace": opts.Namespace},
 		},
 	}
 	policy := &kaprov1alpha1.SubstrateDiscoveryPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: opts.SubstrateName + "-adopt"},
+		ObjectMeta: metav1.ObjectMeta{Name: opts.SubstrateName + "-import"},
 		Spec: kaprov1alpha1.SubstrateDiscoveryPolicySpec{
 			SubstrateRef: opts.SubstrateName,
 			ExpectedKind: opts.SubstrateKind,
@@ -179,6 +191,13 @@ func runAdoptSubstrate(ctx context.Context, opts adoptSubstrateOptions) error {
 	}
 	fmt.Printf("Created/updated Substrate %s and SubstrateDiscoveryPolicy %s\n", substrate.Name, policy.Name)
 	return nil
+}
+
+func discoverSubstrateFileSuffix(take bool) string {
+	if take {
+		return "-adopt"
+	}
+	return "-observe"
 }
 
 func createOrUpdateObject(ctx context.Context, c client.Client, obj client.Object, dryRun bool) error {

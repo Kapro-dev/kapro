@@ -38,6 +38,7 @@ type fluxDiscoverOptions struct {
 	Cache        bool
 	MaxFiles     int
 	MaxUnits     int
+	Take         bool
 	Force        bool
 }
 
@@ -119,12 +120,12 @@ func runFluxDiscover(opts fluxDiscoverOptions) error {
 		result.CacheStats = cache.Stats
 	}
 	files := map[string]string{
-		filepath.Join("substrates", opts.Name+"-observe.yaml"): renderFluxDiscoverSubstrate(opts, matchLabels),
-		filepath.Join("sources", opts.Name+".yaml"):            renderFluxDiscoverSource(opts, result),
-		filepath.Join("discovery", "flux-discovery.yaml"):      renderFluxDiscoveryReport(result),
-		filepath.Join("discovery", "kapro-git-map.yaml"):       renderFluxGitAdoptionMap(opts, result),
-		filepath.Join("discovery", "review-summary.yaml"):      renderDiscoveryReviewSummary("flux", opts.Name, result.RepoPath, result.SelectedUnits, result.SkippedObjects, result.Errors),
-		filepath.Join("README.md"):                             renderFluxDiscoverReadme(opts, result),
+		filepath.Join("substrates", opts.Name+discoverSubstrateFileSuffix(opts.Take)+".yaml"): renderFluxDiscoverSubstrate(opts, matchLabels),
+		filepath.Join("sources", opts.Name+".yaml"):                                           renderFluxDiscoverSource(opts, result),
+		filepath.Join("discovery", "flux-discovery.yaml"):                                     renderFluxDiscoveryReport(result),
+		filepath.Join("discovery", "kapro-git-map.yaml"):                                      renderFluxGitAdoptionMap(opts, result),
+		filepath.Join("discovery", "review-summary.yaml"):                                     renderDiscoveryReviewSummary("flux", opts.Name, result.RepoPath, result.SelectedUnits, result.SkippedObjects, result.Errors),
+		filepath.Join("README.md"):                                                            renderFluxDiscoverReadme(opts, result),
 	}
 	if err := writeScaffoldFiles(opts.OutPath, files, opts.Force); err != nil {
 		return err
@@ -495,6 +496,10 @@ func fluxUnitName(doc map[string]any, fallback string) string {
 }
 
 func renderFluxDiscoverSubstrate(opts fluxDiscoverOptions, labels map[string]string) string {
+	managementPolicy := "Observe"
+	if opts.Take {
+		managementPolicy = "Adopt"
+	}
 	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
 kind: Substrate
 metadata:
@@ -509,11 +514,11 @@ spec:
     namespace: %s
   discovery:
     enabled: true
-    managementPolicy: Observe
+    managementPolicy: %s
     maxObjects: 1000
     selector:
       matchLabels:
-%s`, opts.Name, opts.Namespace, renderYAMLMap(labels, 8))
+%s`, opts.Name, opts.Namespace, managementPolicy, renderYAMLMap(labels, 8))
 }
 
 func renderFluxDiscoverSource(opts fluxDiscoverOptions, result fluxDiscoveryResult) string {

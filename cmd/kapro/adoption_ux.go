@@ -11,12 +11,13 @@ import (
 	"kapro.io/kapro/internal/cli"
 )
 
-func newQuickstartCmd() *cobra.Command {
+func newCreateCmd() *cobra.Command {
 	var opts scaffoldOptions
 	cmd := &cobra.Command{
-		Use:   "quickstart [direct|argo|flux|oci|demo] [directory]",
-		Short: "Start the fastest Kapro path for a new user",
-		Long: `Create a runnable starter repo or local demo with adoption-first defaults.
+		Use:   "create [direct|argo|flux|oci|demo] [directory]",
+		Short: "Create a Kapro workspace for a delivery profile",
+		Long: `Create a Kapro workspace with substrate, cluster, fleet, plan, and
+promotion manifests for the selected profile.
 
 Use direct for the smallest no-GitOps dependency path. Use Flux when clusters
 should pull desired state from inside their own network boundary. Use Argo when
@@ -24,20 +25,20 @@ Argo CD owns Applications and the hub promotes versions by updating Argo-managed
 intent. Use OCI when spokes should pull OCI artifacts without Flux or Argo CD.
 
 Examples:
-  kapro quickstart
-  kapro quickstart direct ./promotion-repo --name checkout
-  kapro quickstart flux ./promotion-repo --name checkout
-  kapro quickstart argo ./promotion-repo --name checkout
-  kapro quickstart oci ./promotion-repo --name checkout
-  kapro quickstart demo`,
+  kapro create
+  kapro create direct ./promotion-repo --name checkout
+  kapro create flux ./promotion-repo --name checkout
+  kapro create argo ./promotion-repo --name checkout
+  kapro create oci ./promotion-repo --name checkout
+  kapro create demo`,
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			substrate := "direct"
-			dir := "./kapro-quickstart"
+			dir := "./promotion-repo"
 			if len(args) > 0 {
-				candidate := normalizeQuickstartProfile(args[0])
+				candidate := normalizeCreateProfile(args[0])
 				switch {
-				case candidate == "demo" || isQuickstartProfile(candidate):
+				case candidate == "demo" || isCreateProfile(candidate):
 					substrate = candidate
 					if len(args) > 1 {
 						dir = args[1]
@@ -45,7 +46,7 @@ Examples:
 				case len(args) == 1:
 					dir = args[0]
 				default:
-					return fmt.Errorf("quickstart profile must be direct, argo, flux, oci, or demo")
+					return fmt.Errorf("create profile must be direct, argo, flux, oci, or demo")
 				}
 			}
 			if substrate == "demo" {
@@ -55,7 +56,7 @@ Examples:
 			opts.Substrate = substrate
 			opts.Profile = substrate
 			if opts.Mode == "" {
-				opts.Mode = quickstartDefaultMode(substrate)
+				opts.Mode = createDefaultMode(substrate)
 			}
 			if opts.Name == "" {
 				opts.Name = "checkout"
@@ -70,8 +71,8 @@ Examples:
 				opts.Team = "platform"
 			}
 			opts.UseSubstrateClass = true
-			cli.Header("Kapro quickstart")
-			cli.Info(quickstartSubstrateSummary(substrate, opts.Mode))
+			cli.Header("Kapro create")
+			cli.Info(createSubstrateSummary(substrate, opts.Mode))
 			return runInitScaffold(opts)
 		},
 	}
@@ -85,7 +86,7 @@ Examples:
 	return cmd
 }
 
-func quickstartDefaultMode(substrate string) string {
+func createDefaultMode(substrate string) string {
 	switch substrate {
 	case "direct", "argo":
 		return "push"
@@ -94,7 +95,7 @@ func quickstartDefaultMode(substrate string) string {
 	}
 }
 
-func quickstartSubstrateSummary(substrate, mode string) string {
+func createSubstrateSummary(substrate, mode string) string {
 	switch substrate {
 	case "direct":
 		return "Direct apply uses the Kubernetes API; no Flux, Argo CD, or OCI registry is required."
@@ -109,7 +110,7 @@ func quickstartSubstrateSummary(substrate, mode string) string {
 	}
 }
 
-func normalizeQuickstartProfile(raw string) string {
+func normalizeCreateProfile(raw string) string {
 	profile := strings.ToLower(strings.TrimSpace(raw))
 	switch profile {
 	case "argocd":
@@ -121,7 +122,7 @@ func normalizeQuickstartProfile(raw string) string {
 	}
 }
 
-func isQuickstartProfile(profile string) bool {
+func isCreateProfile(profile string) bool {
 	switch profile {
 	case "direct", "argo", "flux", "oci":
 		return true

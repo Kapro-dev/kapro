@@ -56,11 +56,11 @@ committed, and failed object counts, and retries on the next spoke reconcile.
 For existing Flux or Argo CD estates, use observe-first workflows:
 
 ```bash
-kapro adopt argo . --out ./kapro-connect --namespace argocd --selector kapro.io/import=true
-kapro adopt flux . --out ./kapro-connect --namespace flux-system --selector kapro.io/import=true
+kapro import argo . --out ./kapro-connect --namespace argocd --selector kapro.io/import=true
+kapro import flux . --out ./kapro-connect --namespace flux-system --selector kapro.io/import=true
 ```
 
-`kapro adopt` is the public command for connecting an existing GitOps repo.
+`kapro import` is the public command for connecting an existing GitOps repo.
 `kapro discover` is the lower-level discovery command name used by diagnostics
 and scripted inventory workflows.
 
@@ -71,10 +71,10 @@ the owning platform team has explicitly adopted.
 For new promotion repositories, use greenfield bootstrap:
 
 ```bash
-kapro quickstart direct ./promotion-repo --name checkout
-kapro quickstart argo ./promotion-repo --name checkout
-kapro quickstart flux ./promotion-repo --name checkout
-kapro quickstart oci ./promotion-repo --name checkout
+kapro create direct ./promotion-repo --name checkout
+kapro create argo ./promotion-repo --name checkout
+kapro create flux ./promotion-repo --name checkout
+kapro create oci ./promotion-repo --name checkout
 ```
 
 See [Adoption Guide](../getting-started/adoption.md) for the full decision tree.

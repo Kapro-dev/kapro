@@ -459,7 +459,7 @@ func checkGitOpsSubstrates(ctx context.Context, c client.Client) doctorFinding {
 		return doctorFinding{
 			Name:    "gitops-substrates",
 			Status:  doctorStatusSkip,
-			Message: "no Substrate objects found yet; start with `kapro quickstart direct` or `kapro adopt argo|flux`",
+			Message: "no Substrate objects found yet; start with `kapro create direct` or `kapro import argo|flux`",
 		}
 	}
 	var details, namespaceWarnings []string

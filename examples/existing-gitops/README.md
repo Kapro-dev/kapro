@@ -25,7 +25,7 @@ kapro discover argo . \
 kubectl apply -f ./kapro-connect/substrates/checkout-observe.yaml
 ```
 
-`kapro adopt argo . --out ./kapro-connect --name checkout` is an alias for the
+`kapro import argo . --out ./kapro-connect --name checkout` is an alias for the
 same observe-first Argo onboarding workflow.
 
 `kapro discover argo` requires the `git` CLI and a Git worktree. It reads

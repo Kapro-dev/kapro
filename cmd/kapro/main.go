@@ -3,12 +3,12 @@
 // Usage:
 //
 //	kapro bootstrap guide
-//	kapro quickstart direct ./promotion-repo --name checkout
-//	kapro quickstart flux ./promotion-repo --name checkout
-//	kapro quickstart argo ./promotion-repo --name checkout
-//	kapro quickstart oci ./promotion-repo --name checkout
+//	kapro create direct ./promotion-repo --name checkout
+//	kapro create flux ./promotion-repo --name checkout
+//	kapro create argo ./promotion-repo --name checkout
+//	kapro create oci ./promotion-repo --name checkout
 //	kapro bootstrap generate ./promotion-repo --profile direct --name checkout
-//	kapro adopt argo . --out ./kapro-connect --name checkout
+//	kapro import argo . --out ./kapro-connect --name checkout
 //	kapro init ./promotion-repo --substrate flux --mode pull --name checkout
 //	kapro promote <fleet> --version <version>
 //	kapro diag <promotion>
@@ -67,18 +67,18 @@ func main() {
 Pass versions forward across targets, clusters, and waves.
 
 Start here:
-  kapro quickstart direct ./promotion-repo --name checkout
-  kapro quickstart flux ./promotion-repo --name checkout
-  kapro quickstart argo ./promotion-repo --name checkout
-  kapro quickstart oci ./promotion-repo --name checkout
+  kapro create direct ./promotion-repo --name checkout
+  kapro create flux ./promotion-repo --name checkout
+  kapro create argo ./promotion-repo --name checkout
+  kapro create oci ./promotion-repo --name checkout
   kapro bootstrap guide
   kapro doctor
   kapro promote checkout --version v1.2.3
   kapro explain checkout-v1-2-3
 
 For existing GitOps repositories:
-  kapro adopt argo . --out ./kapro-connect --name checkout
-  kapro adopt flux . --out ./kapro-connect --name checkout
+  kapro import argo . --out ./kapro-connect --name checkout
+  kapro import flux . --out ./kapro-connect --name checkout
 
 Kapro keeps Argo CD and Flux in charge of local sync. Kapro adds promotion
 intent, gates, approvals, and audit traces across clusters.`,
@@ -87,12 +87,12 @@ intent, gates, approvals, and audit traces across clusters.`,
 	root.PersistentFlags().StringVarP(&cli.OutputFormat, "output", "o", "", "Output format (json for machine-readable)")
 
 	root.AddCommand(newInitCmd())
-	root.AddCommand(newQuickstartCmd())
+	root.AddCommand(newCreateCmd())
 	root.AddCommand(newSampleCmd())
 	root.AddCommand(newBootstrapCmd())
 	root.AddCommand(newConnectCmd())
 	root.AddCommand(newDiscoverCmd())
-	root.AddCommand(newAdoptCmd())
+	root.AddCommand(newImportCmd())
 	root.AddCommand(newHubCmd())
 	root.AddCommand(newSpokeCmd())
 	root.AddCommand(newFleetMgmtCmd())
