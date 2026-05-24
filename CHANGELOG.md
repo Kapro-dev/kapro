@@ -7,6 +7,13 @@ record for each tag.
 
 ## Unreleased
 
+### Fixed — release smoke delayed tag handling
+
+Automatic release-install smoke now runs upgrade and rollback checks only for
+the current release tag in workflow-run mode, while keeping manual dispatch
+fully configurable. Missing release chart assets now fail at download time
+instead of flowing into a later Helm install error.
+
 ### Added — published release rollback smoke
 
 The published-release install smoke can now verify that Helm can roll back from
@@ -75,12 +82,12 @@ step fails before image scanning.
 
 Clarified release-train guidance so patch increments are treated as a planning
 budget and review trigger while still allowing concrete milestones such as
-`v0.5.4` under the project’s `0.x.y` pre-stable strategy.
+`v0.5.5` under the project’s `0.x.y` pre-stable strategy.
 
-### Changed — release metadata for v0.5.4
+### Changed — release metadata for v0.5.5
 
 Updated Helm chart versions, install examples, and release smoke defaults so
-the next release tag packages `0.5.4` artifacts consistently.
+the next release tag packages `0.5.5` artifacts consistently.
 
 ### Added — reference adapter package tests
 
@@ -357,7 +364,7 @@ compatibility.
 Documented that Kapro stays in the `0.x.x` release series until public API,
 SDK, conformance, upgrade, and operational contracts are ready for stability
 graduation. Active GitHub milestones use exact feature-release names such as
-`v0.2.4`, `v0.4.7`, or `v0.5.4` rather than broad train buckets or a `1.0.0`
+`v0.2.4`, `v0.4.7`, or `v0.5.5` rather than broad train buckets or a `1.0.0`
 planning bucket. The pre-stable strategy is `0.<capability-line>.<feature-increment>`,
 so both remaining digits carry product meaning.
 
