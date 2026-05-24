@@ -120,7 +120,7 @@ registration and plugin process management stay outside this package.
 During Kapro `v0.1.x`, `pkg/kapro` targets `kapro.io/v1alpha2`. Existing
 exported names are treated as preview-compatible within the release line unless
 a security or correctness fix requires a documented break. See
-[ADR-0013](adr/0013-sdk-versioning-policy.md) for the policy.
+[ADR-0013](../adr/0013-sdk-versioning-policy.md) for the policy.
 
 ## Examples
 

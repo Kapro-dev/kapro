@@ -71,7 +71,7 @@ spec:
           annotations:
             summary: "Kapro {{ $labels.controller }} controller is returning reconcile errors"
             description: "The {{ $labels.controller }} controller has reported a non-zero reconcile error rate over the last 10 minutes."
-            runbook: "docs/operations.md#first-response"
+            runbook: "docs/operations/operations.md#first-response"
         - alert: KaproControllerReconcileLatencyP95High
           expr: |
             kapro:slo_controller_reconcile_p95_seconds10m > 30
@@ -81,7 +81,7 @@ spec:
           annotations:
             summary: "Kapro {{ $labels.controller }} reconcile p95 is high"
             description: "The {{ $labels.controller }} controller p95 reconcile duration has been above 30 seconds for 15 minutes."
-            runbook: "docs/operations.md#rate-limits-and-workqueue-tuning"
+            runbook: "docs/operations/operations.md#rate-limits-and-workqueue-tuning"
     - name: kapro.gates
       rules:
         - alert: KaproGateFailureRateHigh
@@ -93,7 +93,7 @@ spec:
           annotations:
             summary: "Kapro {{ $labels.gate_type }} gate failure ratio is high"
             description: "More than 20% of {{ $labels.gate_type }} gate evaluations failed over the last 15 minutes."
-            runbook: "docs/operations.md#runbook-gate-failure"
+            runbook: "docs/operations/operations.md#runbook-gate-failure"
     - name: kapro.rollouts
       rules:
         - alert: KaproPromotionRunStuck
@@ -111,7 +111,7 @@ spec:
           annotations:
             summary: "Kapro promotionrun {{ $labels.promotionrun }} appears stuck"
             description: "PromotionRun {{ $labels.promotionrun }} has remained non-terminal for more than 2 hours. This rule uses kube-state-metrics custom-resource state metrics; tune the threshold to match PromotionRun spec.timeout and normal rollout cadence."
-            runbook: "docs/operations.md#runbook-stuck-promotionrun"
+            runbook: "docs/operations/operations.md#runbook-stuck-promotionrun"
         - alert: KaproRolloutDurationP95High
           expr: |
             kapro:slo_stage_duration_p95_seconds30m > 3600
@@ -121,7 +121,7 @@ spec:
           annotations:
             summary: "Kapro {{ $labels.plan }} rollout stage p95 is high"
             description: "Stage completion p95 for plan {{ $labels.plan }} has been above 1 hour for 30 minutes."
-            runbook: "docs/operations.md#rate-limits-and-workqueue-tuning"
+            runbook: "docs/operations/operations.md#rate-limits-and-workqueue-tuning"
         - alert: KaproLifecycleSinkP99High
           expr: |
             kapro:slo_lifecycle_sink_p99_seconds10m > 5
@@ -131,7 +131,7 @@ spec:
           annotations:
             summary: "Kapro CloudEvents sink dispatch p99 is high"
             description: "CloudEvents sink dispatch p99 has been above 5 seconds for 10 minutes. Check sink endpoint health, retries, and lifecycle hook backoff."
-            runbook: "docs/operations.md#first-response"
+            runbook: "docs/operations/operations.md#first-response"
     - name: kapro.drift
       rules:
         - alert: KaproFleetDriftDetected
@@ -143,7 +143,7 @@ spec:
           annotations:
             summary: "Kapro drift report {{ $labels.report }} has sustained drift"
             description: "FleetDriftReport {{ $labels.report }} has remained Drifted for 30 minutes. Inspect status.summary and status.targets, then check backend object evidence and Cluster status."
-            runbook: "docs/operations.md#runbook-fleet-drift"
+            runbook: "docs/operations/operations.md#runbook-fleet-drift"
         - alert: KaproFleetDriftSignalsIncomplete
           expr: |
             kapro_fleetdriftreport_phase{phase="Unknown"} == 1
@@ -153,7 +153,7 @@ spec:
           annotations:
             summary: "Kapro drift report {{ $labels.report }} has incomplete signals"
             description: "FleetDriftReport {{ $labels.report }} has remained Unknown for 20 minutes. A Cluster may be missing, stale, or not reporting current versions."
-            runbook: "docs/operations.md#runbook-fleet-drift"
+            runbook: "docs/operations/operations.md#runbook-fleet-drift"
         - alert: KaproFleetDriftReportFailed
           expr: |
             kapro_fleetdriftreport_phase{phase="Failed"} == 1
@@ -163,7 +163,7 @@ spec:
           annotations:
             summary: "Kapro drift report {{ $labels.report }} is failed"
             description: "FleetDriftReport {{ $labels.report }} has remained Failed for 10 minutes. One or more targets or delivery loops report failure."
-            runbook: "docs/operations.md#runbook-fleet-drift"
+            runbook: "docs/operations/operations.md#runbook-fleet-drift"
         - alert: KaproFleetDriftReportPending
           expr: |
             kapro_fleetdriftreport_phase{phase="Pending"} == 1
@@ -173,7 +173,7 @@ spec:
           annotations:
             summary: "Kapro drift report {{ $labels.report }} is pending for too long"
             description: "FleetDriftReport {{ $labels.report }} has remained Pending for 2 hours. Check rollout progress and whether Targets are still converging."
-            runbook: "docs/operations.md#runbook-fleet-drift"
+            runbook: "docs/operations/operations.md#runbook-fleet-drift"
     - name: kapro.spokes
       rules:
         - alert: KaproSpokeDeliveryErrors
@@ -185,7 +185,7 @@ spec:
           annotations:
             summary: "Kapro spoke {{ $labels.cluster }} delivery errors detected"
             description: "Cluster {{ $labels.cluster }} backend {{ $labels.backend }} has had delivery reconcile errors for 15 minutes."
-            runbook: "docs/operations.md#runbook-spoke-delivery"
+            runbook: "docs/operations/operations.md#runbook-spoke-delivery"
         - alert: KaproSpokeDeliveryStagingErrors
           expr: |
             kapro:slo_spoke_delivery_staging_error_rate10m > 0
@@ -195,7 +195,7 @@ spec:
           annotations:
             summary: "Kapro spoke {{ $labels.cluster }} {{ $labels.phase }} failures detected"
             description: "Cluster {{ $labels.cluster }} backend {{ $labels.backend }} has had OCI staged delivery {{ $labels.phase }} failures for 10 minutes."
-            runbook: "docs/operations.md#runbook-spoke-delivery"
+            runbook: "docs/operations/operations.md#runbook-spoke-delivery"
         - alert: KaproSpokeDeliveryLatencyHigh
           expr: |
             kapro:slo_spoke_delivery_p95_seconds10m > 30
@@ -205,7 +205,7 @@ spec:
           annotations:
             summary: "Kapro spoke {{ $labels.cluster }} delivery p95 is high"
             description: "Cluster {{ $labels.cluster }} backend {{ $labels.backend }} delivery reconcile p95 has been above 30 seconds for 20 minutes."
-            runbook: "docs/operations.md#runbook-spoke-delivery"
+            runbook: "docs/operations/operations.md#runbook-spoke-delivery"
     - name: kapro.plugins
       rules:
         - alert: KaproPluginProbeFailure
@@ -217,7 +217,7 @@ spec:
           annotations:
             summary: "Kapro {{ $labels.type }} plugin probe failures detected"
             description: "Kapro {{ $labels.type }} plugin probes have failed with reason {{ $labels.reason }} over the last 10 minutes."
-            runbook: "docs/operations.md#runbook-plugin-not-ready"
+            runbook: "docs/operations/operations.md#runbook-plugin-not-ready"
         - alert: KaproPluginNotReady
           expr: |
             kapro_plugin_status_condition{type="Ready"} == 0
@@ -227,7 +227,7 @@ spec:
           annotations:
             summary: "Kapro plugin {{ $labels.plugin }} is not ready"
             description: "Plugin {{ $labels.plugin }} has reported Ready=False for 15 minutes. This rule uses kube-state-metrics custom-resource state metrics."
-            runbook: "docs/operations.md#runbook-plugin-not-ready"
+            runbook: "docs/operations/operations.md#runbook-plugin-not-ready"
     - name: kapro.triggers
       rules:
         - alert: KaproTriggerBlocked
@@ -245,4 +245,4 @@ spec:
           annotations:
             summary: "Kapro trigger {{ $labels.trigger }} is blocked"
             description: "Trigger {{ $labels.trigger }} is blocked by reason {{ $labels.reason }}. This covers cooldown, max-active, source resolution, signature verification, and Promotion update failures via kube-state-metrics custom-resource state metrics."
-            runbook: "docs/operations.md#runbook-blocked-trigger"
+            runbook: "docs/operations/operations.md#runbook-blocked-trigger"

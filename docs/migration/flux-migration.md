@@ -139,7 +139,7 @@ spec:
 The exact field depends on how the Flux repo models versions. Generated units
 with `confidence: needs-review` should be edited or removed before adoption.
 The canonical list of automatic, skipped, and review-required patterns is
-[Backends](backends.md).
+[Backends](../concepts/backends.md).
 For concrete failure modes and editing guidance, see
 [Discovery Troubleshooting](discovery-troubleshooting.md).
 

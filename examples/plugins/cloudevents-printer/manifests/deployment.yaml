@@ -8,7 +8,7 @@
 # This is a reference subscriber — for production multi-backend
 # notification, install Argo CD Notifications or Flux Notification
 # Controller and point the Kapro sink at their webhook endpoint
-# instead. See docs/events.md and docs/adr/0003-cloudevents-publisher-posture.md.
+# instead. See docs/concepts/events.md and docs/adr/0003-cloudevents-publisher-posture.md.
 apiVersion: v1
 kind: ServiceAccount
 metadata:

@@ -124,6 +124,6 @@ KAPRO_CI_QUICKSTARTS=flux,argo,oci scripts/ci-kind-smoke.sh
 
 - Argo CD greenfield path: [Argo CD Quickstart](quickstart-argo.md).
 - OCI-only greenfield path: [OCI Quickstart](quickstart-oci.md).
-- Existing Argo CD users: [Argo Brownfield Migration](argo-migration.md).
-- Existing Flux users: [Flux Brownfield Migration](flux-migration.md).
-- Discovery or needs-review issues: [Discovery Troubleshooting](discovery-troubleshooting.md).
+- Existing Argo CD users: [Argo Brownfield Migration](../migration/argo-migration.md).
+- Existing Flux users: [Flux Brownfield Migration](../migration/flux-migration.md).
+- Discovery or needs-review issues: [Discovery Troubleshooting](../migration/discovery-troubleshooting.md).

@@ -34,56 +34,56 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting Started:
-      - Install: install.md
-      - Adoption Guide: adoption.md
-      - First Promotion in 10 Minutes: first-promotion-10min.md
-      - Argo Quickstart: quickstart-argo.md
-      - OCI Quickstart: quickstart-oci.md
+      - Install: getting-started/install.md
+      - Adoption Guide: getting-started/adoption.md
+      - First Promotion in 10 Minutes: getting-started/first-promotion-10min.md
+      - Argo Quickstart: getting-started/quickstart-argo.md
+      - OCI Quickstart: getting-started/quickstart-oci.md
   - Concepts:
-      - Object Model: concepts.md
-      - Backends: backends.md
-      - Composable Gates: composable-gates.md
-      - Events: events.md
-      - API Stability: api-stability.md
-      - Release Train: release-train.md
-      - Pre-stable Roadmap: pre-stable-roadmap.md
-      - v0.2.3 Scope: v0.2.3-scope.md
+      - Object Model: concepts/concepts.md
+      - Backends: concepts/backends.md
+      - Composable Gates: concepts/composable-gates.md
+      - Events: concepts/events.md
+      - API Stability: concepts/api-stability.md
+      - Release Train: concepts/release-train.md
+      - Pre-stable Roadmap: concepts/pre-stable-roadmap.md
+      - v0.2.3 Scope: concepts/v0.2.3-scope.md
       - Changelog: https://github.com/Kapro-dev/kapro/blob/main/CHANGELOG.md
-      - Preview Controllers: preview-controllers.md
+      - Preview Controllers: concepts/preview-controllers.md
       - Competitive Positioning: adr/0012-competitive-positioning.md
   - Blog:
       - Announcing Kapro v0.1: blog/announcing-kapro-v0.1.md
   - Operations:
-      - Operations: operations.md
-      - Long-term Archive: long-term-archive.md
-      - Decision Traces: decision-traces.md
-      - Fleet Drift Reports: fleet-drift-report.md
-      - Monitoring: monitoring.md
-      - Observability: observability.md
-      - Operator SLOs: operator-slos.md
-      - Industry Requirements: industry-requirements.md
-      - Security: security.md
-      - Release Verification: release-verification.md
-      - RBAC and Tenancy: rbac-tenancy.md
-      - Cluster Bootstrap: cluster-bootstrap.md
+      - Operations: operations/operations.md
+      - Long-term Archive: operations/long-term-archive.md
+      - Decision Traces: operations/decision-traces.md
+      - Fleet Drift Reports: operations/fleet-drift-report.md
+      - Monitoring: operations/monitoring.md
+      - Observability: operations/observability.md
+      - Operator SLOs: operations/operator-slos.md
+      - Industry Requirements: operations/industry-requirements.md
+      - Security: operations/security.md
+      - Release Verification: operations/release-verification.md
+      - RBAC and Tenancy: operations/rbac-tenancy.md
+      - Cluster Bootstrap: operations/cluster-bootstrap.md
   - Migration:
-      - v1alpha1 to v1alpha2 Migration: migration-v1alpha1-to-v1alpha2.md
-      - Argo Brownfield Migration: argo-migration.md
-      - Flux Brownfield Migration: flux-migration.md
-      - Discovery Troubleshooting: discovery-troubleshooting.md
+      - v1alpha1 to v1alpha2 Migration: migration/migration-v1alpha1-to-v1alpha2.md
+      - Argo Brownfield Migration: migration/argo-migration.md
+      - Flux Brownfield Migration: migration/flux-migration.md
+      - Discovery Troubleshooting: migration/discovery-troubleshooting.md
   - Extending Kapro:
-      - Extension Model: extension-model.md
-      - Go SDK: sdk.md
-      - Server SDK: sdk-server.md
-      - Programmable Gates: programmable-gates.md
-      - Gate Request SDK Guide: sdk-gate-request.md
-      - Adapters: adapters.md
-      - Adapter Capabilities: adapter-capabilities.md
-      - Actuator Plugin Contract: actuator-plugin-contract.md
-      - Provider Plugin Contract: provider-plugin-contract.md
-      - Plugin Compatibility Policy: plugin-compatibility-policy.md
-      - Plugin Authoring: plugin-authoring.md
-      - GCP Cloud: cloud-gcp.md
+      - Extension Model: extending/extension-model.md
+      - Go SDK: extending/sdk.md
+      - Server SDK: extending/sdk-server.md
+      - Programmable Gates: extending/programmable-gates.md
+      - Gate Request SDK Guide: extending/sdk-gate-request.md
+      - Adapters: extending/adapters.md
+      - Adapter Capabilities: extending/adapter-capabilities.md
+      - Actuator Plugin Contract: extending/actuator-plugin-contract.md
+      - Provider Plugin Contract: extending/provider-plugin-contract.md
+      - Plugin Compatibility Policy: extending/plugin-compatibility-policy.md
+      - Plugin Authoring: extending/plugin-authoring.md
+      - GCP Cloud: extending/cloud-gcp.md
   - ADRs:
       - Overview: adr/README.md
       - Runtime Split: adr/0001-promotion-runtime-split.md
@@ -99,3 +99,4 @@ nav:
       - Conversion Webhook: adr/0011-conversion-webhook-scaffold.md
       - Competitive Positioning: adr/0012-competitive-positioning.md
       - Composable Gates: adr/0014-composable-gates.md
+      - PromotionRun Retention: adr/0015-promotionrun-retention.md

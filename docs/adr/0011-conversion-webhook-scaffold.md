@@ -57,4 +57,4 @@ to a templated/install-time path without breaking upgrades.
 
 ## References
 - [ADR-0004](0004-camelcase-field-harmonization.md)
-- [API stability](../api-stability.md)
+- [API stability](../concepts/api-stability.md)

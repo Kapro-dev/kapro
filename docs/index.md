@@ -12,16 +12,16 @@ Which clusters are allowed to receive this artifact version now, and why?
 
 ## Start Here
 
-- [Concepts](concepts.md) explains the API objects and lifecycle.
-- [Install](install.md) shows the supported operator install paths.
-- [Adoption Guide](adoption.md) helps choose greenfield, Argo brownfield,
+- [Concepts](concepts/concepts.md) explains the API objects and lifecycle.
+- [Install](getting-started/install.md) shows the supported operator install paths.
+- [Adoption Guide](getting-started/adoption.md) helps choose greenfield, Argo brownfield,
   Flux brownfield, or OCI pull mode.
-- [First Promotion in 10 Minutes](first-promotion-10min.md) is the shortest
+- [First Promotion in 10 Minutes](getting-started/first-promotion-10min.md) is the shortest
   working path.
-- [Backends](backends.md) explains Flux, Argo CD, OCI, and plugin delivery
+- [Backends](concepts/backends.md) explains Flux, Argo CD, OCI, and plugin delivery
   options.
-- [Operations](operations.md) covers day-two status, debugging, and metrics.
-- [v1alpha1 to v1alpha2 Migration](migration-v1alpha1-to-v1alpha2.md) explains
+- [Operations](operations/operations.md) covers day-two status, debugging, and metrics.
+- [v1alpha1 to v1alpha2 Migration](migration/migration-v1alpha1-to-v1alpha2.md) explains
   the clean-break upgrade path for legacy alpha manifests.
 - [Competitive Positioning](adr/0012-competitive-positioning.md) explains where
   Kapro fits beside Sveltos, Argo Rollouts, Flagger, and GitOps Toolkit.

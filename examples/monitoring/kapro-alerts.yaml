@@ -9,7 +9,7 @@ groups:
         annotations:
           summary: Kapro has active promotionruns for more than 30 minutes
           description: Check PromotionRun and Target status for blocked gates, pending approvals, or actuator failures.
-          runbook: docs/operations.md#runbook-stuck-promotionrun
+          runbook: docs/operations/operations.md#runbook-stuck-promotionrun
 
       - alert: KaproGateFailureRateHigh
         expr: |
@@ -24,7 +24,7 @@ groups:
         annotations:
           summary: Kapro gate failure rate is above 10 percent
           description: Gate failures or errors are blocking a significant share of promotion attempts.
-          runbook: docs/operations.md#runbook-gate-failure
+          runbook: docs/operations/operations.md#runbook-gate-failure
 
       - alert: KaproPluginProbeFailures
         expr: |
@@ -37,7 +37,7 @@ groups:
         annotations:
           summary: Kapro plugin probe failures detected
           description: One or more registered plugins are failing capability probes or reporting not-ready.
-          runbook: docs/operations.md#runbook-plugin-not-ready
+          runbook: docs/operations/operations.md#runbook-plugin-not-ready
 
       - alert: KaproTriggerBlocked
         expr: rate(kapro_controller_reconciles_total{controller="promotion_trigger",result="error"}[10m]) > 0
@@ -47,7 +47,7 @@ groups:
         annotations:
           summary: Kapro Trigger reconciles are failing
           description: Automatic Promotion updates may be blocked by source, signature, cooldown, or status update errors.
-          runbook: docs/operations.md#runbook-blocked-trigger
+          runbook: docs/operations/operations.md#runbook-blocked-trigger
 
       - alert: KaproRolloutDurationP95High
         expr: |
@@ -71,7 +71,7 @@ groups:
         annotations:
           summary: Kapro drift report {{ $labels.report }} has sustained drift
           description: FleetDriftReport {{ $labels.report }} has remained Drifted for 30 minutes.
-          runbook: docs/operations.md#runbook-fleet-drift
+          runbook: docs/operations/operations.md#runbook-fleet-drift
 
       - alert: KaproFleetDriftSignalsIncomplete
         expr: kapro_fleetdriftreport_phase{phase="Unknown"} == 1
@@ -81,7 +81,7 @@ groups:
         annotations:
           summary: Kapro drift report {{ $labels.report }} has incomplete signals
           description: FleetDriftReport {{ $labels.report }} has remained Unknown for 20 minutes.
-          runbook: docs/operations.md#runbook-fleet-drift
+          runbook: docs/operations/operations.md#runbook-fleet-drift
 
       - alert: KaproFleetDriftReportFailed
         expr: kapro_fleetdriftreport_phase{phase="Failed"} == 1
@@ -91,7 +91,7 @@ groups:
         annotations:
           summary: Kapro drift report {{ $labels.report }} is failed
           description: FleetDriftReport {{ $labels.report }} has remained Failed for 10 minutes.
-          runbook: docs/operations.md#runbook-fleet-drift
+          runbook: docs/operations/operations.md#runbook-fleet-drift
 
       - alert: KaproFleetDriftReportPending
         expr: kapro_fleetdriftreport_phase{phase="Pending"} == 1
@@ -101,7 +101,7 @@ groups:
         annotations:
           summary: Kapro drift report {{ $labels.report }} is pending for too long
           description: FleetDriftReport {{ $labels.report }} has remained Pending for 2 hours.
-          runbook: docs/operations.md#runbook-fleet-drift
+          runbook: docs/operations/operations.md#runbook-fleet-drift
 
       - alert: KaproSpokeDeliveryErrors
         expr: sum(rate(kapro_spoke_delivery_reconciles_total{result="error"}[10m])) by (cluster, backend) > 0
@@ -111,7 +111,7 @@ groups:
         annotations:
           summary: Kapro spoke {{ $labels.cluster }} delivery errors detected
           description: Backend {{ $labels.backend }} has had delivery reconcile errors for 15 minutes.
-          runbook: docs/operations.md#runbook-spoke-delivery
+          runbook: docs/operations/operations.md#runbook-spoke-delivery
 
       - alert: KaproSpokeDeliveryStagingErrors
         expr: sum by (cluster, backend, phase) (rate(kapro_spoke_delivery_staging_results_total{result="error"}[10m])) > 0
@@ -121,7 +121,7 @@ groups:
         annotations:
           summary: Kapro spoke {{ $labels.cluster }} {{ $labels.phase }} failures detected
           description: Backend {{ $labels.backend }} has had OCI staged delivery {{ $labels.phase }} failures for 10 minutes.
-          runbook: docs/operations.md#runbook-spoke-delivery
+          runbook: docs/operations/operations.md#runbook-spoke-delivery
 
       - alert: KaproSpokeDeliveryLatencyHigh
         expr: |
@@ -135,7 +135,7 @@ groups:
         annotations:
           summary: Kapro spoke {{ $labels.cluster }} delivery p95 is high
           description: Backend {{ $labels.backend }} delivery reconcile p95 has been above 30 seconds for 20 minutes.
-          runbook: docs/operations.md#runbook-spoke-delivery
+          runbook: docs/operations/operations.md#runbook-spoke-delivery
 
       - alert: KaproControllerReconcileErrors
         expr: sum(rate(kapro_controller_reconciles_total{result="error"}[10m])) by (controller) > 0
@@ -145,4 +145,4 @@ groups:
         annotations:
           summary: Kapro controller reconcile errors detected
           description: Controller {{ $labels.controller }} is returning reconcile errors.
-          runbook: docs/operations.md#first-response
+          runbook: docs/operations/operations.md#first-response

@@ -22,7 +22,7 @@ Flux, Argo CD, OCI pull agents, and other delivery systems keep owning the local
 Kapro is **pre-stable public release software**, not GA. The current public
 preview release is `v0.5.8`; all Kubernetes APIs are now `kapro.io/v1alpha2`.
 If you have legacy `kapro.io/v1alpha1` manifests, follow the
-[v1alpha1 to v1alpha2 migration guide](docs/migration-v1alpha1-to-v1alpha2.md);
+[v1alpha1 to v1alpha2 migration guide](docs/migration/migration-v1alpha1-to-v1alpha2.md);
 this release does not provide automatic legacy conversion.
 
 ## Why Kapro
@@ -74,7 +74,7 @@ platform tooling.
 | `Cluster` | A workload cluster known to the hub. |
 | `Approval` | Human approval or rejection for a gated target. |
 
-See [Concepts](docs/concepts.md) for the object model and lifecycle.
+See [Concepts](docs/concepts/concepts.md) for the object model and lifecycle.
 
 ## How It Compares
 
@@ -97,8 +97,8 @@ Kapro is backend-neutral. A fleet can mix delivery styles by cluster:
 - **Plugins:** custom actuators, gates, and planners can be loaded through
   `Plugin` after they pass the conformance harness.
 
-Run [First Promotion in 10 Minutes](docs/first-promotion-10min.md) first to
-see the API lifecycle, then use [Backends](docs/backends.md) when deciding how
+Run [First Promotion in 10 Minutes](docs/getting-started/first-promotion-10min.md) first to
+see the API lifecycle, then use [Backends](docs/concepts/backends.md) when deciding how
 Kapro should connect to existing delivery systems.
 
 For guided repository setup, use the source-built bootstrap CLI from `main`
@@ -115,7 +115,7 @@ kapro bootstrap brownfield argo . --out ./kapro-connect --name checkout
 kapro bootstrap brownfield flux . --out ./kapro-connect --name checkout
 ```
 
-See the [Adoption Guide](docs/adoption.md) for the greenfield and brownfield
+See the [Adoption Guide](docs/getting-started/adoption.md) for the greenfield and brownfield
 decision tree.
 
 ## Quick Start
@@ -155,35 +155,35 @@ kubectl:
 KAPRO_CI_QUICKSTARTS=flux,argo,oci scripts/ci-kind-smoke.sh
 ```
 
-For a step-by-step minimal path, use [First Promotion in 10 Minutes](docs/first-promotion-10min.md).
+For a step-by-step minimal path, use [First Promotion in 10 Minutes](docs/getting-started/first-promotion-10min.md).
 For a complete local walkthrough, use the [Kind demo](examples/kind-demo/README.md).
-[Install](docs/install.md) has local-checkout and release-asset variants.
+[Install](docs/getting-started/install.md) has local-checkout and release-asset variants.
 
 ## Documentation
 
 Start at [kapro.dev](https://kapro.dev) or use these repo docs:
 
-- [Concepts](docs/concepts.md)
-- [Install](docs/install.md)
-- [Adoption Guide](docs/adoption.md)
-- [First Promotion in 10 Minutes](docs/first-promotion-10min.md)
+- [Concepts](docs/concepts/concepts.md)
+- [Install](docs/getting-started/install.md)
+- [Adoption Guide](docs/getting-started/adoption.md)
+- [First Promotion in 10 Minutes](docs/getting-started/first-promotion-10min.md)
 - [Kind Demo](examples/kind-demo/README.md)
-- [Backends](docs/backends.md)
-- [Operations](docs/operations.md)
-- [Security](docs/security.md)
-- [API Stability](docs/api-stability.md)
+- [Backends](docs/concepts/backends.md)
+- [Operations](docs/operations/operations.md)
+- [Security](docs/operations/security.md)
+- [API Stability](docs/concepts/api-stability.md)
 - [Competitive Positioning](docs/adr/0012-competitive-positioning.md)
-- [v1alpha1 to v1alpha2 Migration](docs/migration-v1alpha1-to-v1alpha2.md)
+- [v1alpha1 to v1alpha2 Migration](docs/migration/migration-v1alpha1-to-v1alpha2.md)
 - [Changelog](CHANGELOG.md)
 
 Deeper references:
 
-- [Argo Brownfield Migration](docs/argo-migration.md)
-- [Flux Brownfield Migration](docs/flux-migration.md)
-- [RBAC and Tenancy](docs/rbac-tenancy.md)
-- [Monitoring](docs/monitoring.md)
-- [Extension Model](docs/extension-model.md)
-- [Plugin Authoring](docs/plugin-authoring.md)
+- [Argo Brownfield Migration](docs/migration/argo-migration.md)
+- [Flux Brownfield Migration](docs/migration/flux-migration.md)
+- [RBAC and Tenancy](docs/operations/rbac-tenancy.md)
+- [Monitoring](docs/operations/monitoring.md)
+- [Extension Model](docs/extending/extension-model.md)
+- [Plugin Authoring](docs/extending/plugin-authoring.md)
 - [Architecture Decision Records](docs/adr/README.md)
 
 ## Contributing

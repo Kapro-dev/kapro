@@ -128,4 +128,4 @@ the actual reconcile loop:
 | "Did gate Z pass for cluster X?" | `kapro.io/promotion.stage.gate.passed` — `data.target` carries the cluster |
 
 Rationale is captured in
-[ADR-0005](adr/0005-withdraw-target-namespace.md).
+[ADR-0005](../adr/0005-withdraw-target-namespace.md).

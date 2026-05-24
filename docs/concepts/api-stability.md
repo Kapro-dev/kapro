@@ -53,7 +53,7 @@ Preview. The table below is the source of truth for the current contract level.
 
 Plugin-specific compatibility, conformance labels, status conditions, and
 future contract-version deprecation rules are defined in the
-[plugin compatibility policy](plugin-compatibility-policy.md).
+[plugin compatibility policy](../extending/plugin-compatibility-policy.md).
 
 All `v1alpha2` APIs remain below stable maturity until Kapro publishes a
 stable API version. A surface can be Preview while the Kubernetes version is
@@ -164,7 +164,7 @@ Preview must include explicit migration notes before removing or renaming that
 surface.
 
 For concrete cleanup and manifest rewrite steps, see the
-[v1alpha1 to v1alpha2 migration guide](migration-v1alpha1-to-v1alpha2.md).
+[v1alpha1 to v1alpha2 migration guide](../migration/migration-v1alpha1-to-v1alpha2.md).
 
 CRD schema changes should follow these rules:
 

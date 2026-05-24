@@ -97,7 +97,7 @@ also enabling plugin runtime dispatch, cluster bootstrap, or backend discovery.
 
 ## References
 
-- [Install Guide](../install.md)
-- [Preview Controllers](../preview-controllers.md)
+- [Install Guide](../getting-started/install.md)
+- [Preview Controllers](../concepts/preview-controllers.md)
 - [ADR-0001](0001-promotion-runtime-split.md)
 - [ADR-0009](0009-promotionrun-target-status-collapse.md)

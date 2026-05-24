@@ -60,7 +60,7 @@ func isAllowedPromotionRunWriter(user authenticationv1.UserInfo) bool {
 
 // LabelKaproTeam is the ownership label every promotion-affecting CR must
 // carry. Enforced at CREATE by the admission validators per
-// docs/rbac-tenancy.md. Use a constant so adding the same check to a new
+// docs/operations/rbac-tenancy.md. Use a constant so adding the same check to a new
 // CRD validator is a one-line change.
 const LabelKaproTeam = "kapro.io/team"
 
@@ -72,7 +72,7 @@ func requireTeamLabel(labels map[string]string) *field.Error {
 	if labels == nil || labels[LabelKaproTeam] == "" {
 		return field.Required(
 			field.NewPath("metadata", "labels").Key(LabelKaproTeam),
-			"is required (multi-tenancy ownership label; see docs/rbac-tenancy.md)",
+			"is required (multi-tenancy ownership label; see docs/operations/rbac-tenancy.md)",
 		)
 	}
 	return nil
