@@ -36,6 +36,33 @@ func backendProfile(name string, driver kaprov1alpha2.BackendDriver, ready bool)
 	return p
 }
 
+func classRefBackendProfile(name, className string, ready bool) *kaprov1alpha2.Backend {
+	configRef := kaprov1alpha2.SubstrateObjectReference{
+		APIVersion: "example.com/v1alpha1",
+		Kind:       "ExampleConfig",
+		Name:       name,
+	}
+	switch className {
+	case "kubernetes-apply":
+		configRef.APIVersion = "kubernetes.substrate.kapro.io/v1alpha1"
+		configRef.Kind = "KubernetesApplyConfig"
+	case "argo-cd":
+		configRef.APIVersion = "argocd.substrate.kapro.io/v1alpha1"
+		configRef.Kind = "ArgoCDSubstrateConfig"
+	case "flux":
+		configRef.APIVersion = "flux.substrate.kapro.io/v1alpha1"
+		configRef.Kind = "FluxSubstrateConfig"
+	}
+	return &kaprov1alpha2.Backend{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: kaprov1alpha2.BackendSpec{
+			ClassRef:  &kaprov1alpha2.SubstrateClassReference{Name: className},
+			ConfigRef: &configRef,
+		},
+		Status: kaprov1alpha2.BackendStatus{Ready: ready},
+	}
+}
+
 func fleetClusterWithBackend(ref string) *kaprov1alpha2.Cluster {
 	return &kaprov1alpha2.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
@@ -70,6 +97,58 @@ func TestValidateFleetClusterBackendRef_BuiltInBackendDoesNotRequireStatusReady(
 	mc := fleetClusterWithBackend("flux")
 	if err := admission.ValidateFleetClusterBackendRef(context.Background(), reader, mc); err != nil {
 		t.Fatalf("unexpected error for built-in Backend without status Ready: %v", err)
+	}
+}
+
+func TestValidateFleetClusterBackendRef_ClassRefRequiresStatusReady(t *testing.T) {
+	scheme := newBackendRefScheme(t)
+	for _, tc := range []struct {
+		name      string
+		className string
+	}{
+		{name: "direct", className: "kubernetes-apply"},
+		{name: "argo", className: "argo-cd"},
+		{name: "flux", className: "flux"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reader := fake.NewClientBuilder().WithScheme(scheme).
+				WithObjects(classRefBackendProfile(tc.name, tc.className, false)).
+				Build()
+			mc := fleetClusterWithBackend(tc.name)
+			err := admission.ValidateFleetClusterBackendRef(context.Background(), reader, mc)
+			if err == nil {
+				t.Fatal("expected error for classRef Backend without status Ready")
+			}
+			if !strings.Contains(err.Error(), "not Ready") {
+				t.Fatalf("expected not-Ready error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateFleetClusterBackendRef_ReadyClassRefAllowsCluster(t *testing.T) {
+	scheme := newBackendRefScheme(t)
+	reader := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(classRefBackendProfile("direct", "kubernetes-apply", true)).
+		Build()
+	mc := fleetClusterWithBackend("direct")
+	if err := admission.ValidateFleetClusterBackendRef(context.Background(), reader, mc); err != nil {
+		t.Fatalf("unexpected error for ready classRef Backend: %v", err)
+	}
+}
+
+func TestValidateFleetClusterBackendRef_UnknownClassRefNotReady(t *testing.T) {
+	scheme := newBackendRefScheme(t)
+	reader := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(classRefBackendProfile("custom", "example-platform", false)).
+		Build()
+	mc := fleetClusterWithBackend("custom")
+	err := admission.ValidateFleetClusterBackendRef(context.Background(), reader, mc)
+	if err == nil {
+		t.Fatal("expected error for NotReady custom classRef Backend")
+	}
+	if !strings.Contains(err.Error(), "not Ready") {
+		t.Fatalf("expected not-Ready error, got %v", err)
 	}
 }
 

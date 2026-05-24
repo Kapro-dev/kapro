@@ -205,13 +205,17 @@ func (l *deliveryLoop) reconcileOneResult(
 		out.Err = fmt.Errorf("backend %q not found", fc.Spec.Delivery.BackendRef)
 		return out
 	}
-	// Runtime gating: if this Backend is hub-only, the hub-side
-	// actuator owns delivery (it patches backend-native objects on the
-	// hub, e.g. Flux OCIRepository.tag) and the spoke MUST stay out of the
-	// way. Surface Skipped so SREs see why the spoke didn't act.
-	if profile.Spec.Runtime == kaprov1alpha2.BackendRuntimeHub {
+	// Runtime gating: if this Backend is hub-only, the hub-side actuator owns
+	// delivery and the spoke MUST stay out of the way. External-pull backends
+	// are owned by an external system, not the Kapro spoke loop.
+	switch profile.Spec.ExecutionMode() {
+	case kaprov1alpha2.ExecutionModeHubPush:
 		out.Phase = kaprov1alpha2.DeliveryPhaseSkipped
 		out.Err = fmt.Errorf("backend %q runtime is hub; spoke delivery is a no-op", profile.Name)
+		return out
+	case kaprov1alpha2.ExecutionModeExternalPull:
+		out.Phase = kaprov1alpha2.DeliveryPhaseSkipped
+		out.Err = fmt.Errorf("backend %q runtime is external-pull; spoke delivery is a no-op", profile.Name)
 		return out
 	}
 	if l.Registry == nil {
@@ -219,7 +223,8 @@ func (l *deliveryLoop) reconcileOneResult(
 		out.Err = fmt.Errorf("delivery loop has no provider registry")
 		return out
 	}
-	provider, err := l.Registry.Resolve(profile.Spec.Driver)
+	driver := providerDriverForBackend(profile.Spec)
+	provider, err := l.Registry.Resolve(driver)
 	if err != nil {
 		out.Phase = kaprov1alpha2.DeliveryPhaseFailed
 		out.Err = err
@@ -240,6 +245,22 @@ func (l *deliveryLoop) reconcileOneResult(
 		res.LastAttemptedAt = l.now()
 	}
 	return res
+}
+
+func providerDriverForBackend(spec kaprov1alpha2.BackendSpec) kaprov1alpha2.BackendDriver {
+	if spec.Driver != "" {
+		return spec.Driver
+	}
+	switch spec.SubstrateKind() {
+	case "flux":
+		return kaprov1alpha2.BackendDriverFlux
+	case "oci":
+		return kaprov1alpha2.BackendDriverOCI
+	case "argo", "argo-cd":
+		return kaprov1alpha2.BackendDriverArgo
+	default:
+		return kaprov1alpha2.BackendDriverExternal
+	}
 }
 
 // resolveBackend reads the cluster-scoped Backend referenced by

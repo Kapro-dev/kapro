@@ -6,6 +6,12 @@ import (
 	"testing"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
@@ -228,6 +234,64 @@ func TestBuildPromotionPlan(t *testing.T) {
 	}
 	if promotionplan.Spec.Stages[1].DependsOn[0].Stage != "canary" {
 		t.Errorf("prod dependsOn = %v, want canary", promotionplan.Spec.Stages[1].DependsOn)
+	}
+}
+
+func TestFleetReconcilerSkipsResourceSetForNativeBackends(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	fleet := &kaprov1alpha2.Fleet{
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
+		Spec: kaprov1alpha2.FleetSpec{
+			Source: &kaprov1alpha2.SourceSpec{
+				Units: []kaprov1alpha2.Unit{{Name: "checkout", Version: "ghcr.io/example/checkout:0.1.0"}},
+			},
+			Delivery: kaprov1alpha2.DeliverySpec{
+				Mode:       kaprov1alpha2.DeliveryModePush,
+				BackendRef: "direct",
+			},
+			Clusters: []kaprov1alpha2.ClusterRef{{Name: "canary-eu", Labels: map[string]string{"kapro.io/stage": "canary"}}},
+			Plan: kaprov1alpha2.KaproPlan{
+				Stages: []kaprov1alpha2.StageSpec{{Name: "canary", Selector: map[string]string{"kapro.io/stage": "canary"}}},
+			},
+		},
+	}
+	r := &FleetReconciler{
+		Client: fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(fleet).
+			WithStatusSubresource(&kaprov1alpha2.Fleet{}, &kaprov1alpha2.Cluster{}).
+			Build(),
+	}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var got kaprov1alpha2.Fleet
+	if err := r.Get(ctx, client.ObjectKey{Name: "checkout"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range got.Status.Inventory {
+		if item == "ResourceSet/checkout-workloads" {
+			t.Fatalf("native backend should not generate ResourceSet inventory: %v", got.Status.Inventory)
+		}
+	}
+	if len(got.Status.Inventory) == 0 {
+		t.Fatal("expected generated inventory")
+	}
+	var cluster kaprov1alpha2.Cluster
+	if err := r.Get(ctx, client.ObjectKey{Name: "canary-eu"}, &cluster); err != nil {
+		t.Fatal(err)
+	}
+	if cluster.Spec.Delivery.BackendRef != "direct" || cluster.Spec.Delivery.Mode != kaprov1alpha2.DeliveryModePush {
+		t.Fatalf("cluster delivery = %#v", cluster.Spec.Delivery)
 	}
 }
 

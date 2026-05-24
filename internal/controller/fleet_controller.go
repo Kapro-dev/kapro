@@ -126,7 +126,7 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	if delivery.BackendRef == "" {
 		delivery.BackendRef = "flux"
 	}
-	spokeLocal := delivery.Mode == kaprov1alpha2.DeliveryModePull && delivery.BackendRef == "flux"
+	deliveryPath := resolveFleetDeliveryPath(delivery)
 
 	// 2. Generate Clusters on the hub.
 	for _, cluster := range kapro.Spec.Clusters {
@@ -162,7 +162,7 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			client.FieldOwner("kapro-controller"),
 			client.ForceOwnership,
 		); err != nil {
-			l.Error(err, "failed to apply Cluster", "cluster", cluster.Name)
+			return ctrl.Result{}, fmt.Errorf("apply Cluster %s: %w", cluster.Name, err)
 		}
 		inventory = append(inventory, "Cluster/"+cluster.Name)
 	}
@@ -178,7 +178,8 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 	inventory = append(inventory, "Plan/"+InlinePromotionPlanName(kapro.Name))
 
-	if spokeLocal {
+	switch deliveryPath {
+	case fleetDeliveryPathFluxSpoke:
 		// 3a. Spoke-local mode: bootstrap each spoke in parallel.
 		// Source packaging + push is done by CI via `kapro source package --push`.
 		// The operator only creates the spoke-side Flux resources (OCIRepository + wave Kustomizations).
@@ -194,7 +195,7 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			l.Info("skipping spoke bootstrap: PromotionSource has no packaged unit version", "source", source.Name)
 		}
 		inventory = append(inventory, "SpokeBootstrap/"+kapro.Name)
-	} else {
+	case fleetDeliveryPathFluxOperator:
 		// 3b. Push mode: generate ResourceSet on the hub (Flux Operator distributes to spokes).
 		rs := r.buildResourceSet(&kapro, source)
 		if err := r.Patch(ctx, rs,
@@ -218,15 +219,19 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			return ctrl.Result{}, fmt.Errorf("apply ResourceSet: %w", err)
 		}
 		inventory = append(inventory, "ResourceSet/"+kapro.Name+"-workloads")
+	case fleetDeliveryPathNative:
+		inventory = append(inventory, "Backend/"+delivery.BackendRef)
 	}
 
 	// 4. Sync Cluster status from HelmRelease status (push model observability).
 	// For spoke-local mode, this reads from spoke Flux resources directly.
 	convergedCount := int32(0)
-	for _, cluster := range kapro.Spec.Clusters {
-		converged := r.syncFleetClusterStatus(ctx, &kapro, source, cluster)
-		if converged {
-			convergedCount++
+	if deliveryPath == fleetDeliveryPathFluxSpoke || deliveryPath == fleetDeliveryPathFluxOperator {
+		for _, cluster := range kapro.Spec.Clusters {
+			converged := r.syncFleetClusterStatus(ctx, &kapro, source, cluster)
+			if converged {
+				convergedCount++
+			}
 		}
 	}
 
@@ -247,7 +252,7 @@ func (r *FleetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		Status:             metav1.ConditionTrue,
 		ObservedGeneration: kapro.Generation,
 		Reason:             "ReconcileSuccess",
-		Message:            kaproReadyMessage(convergedCount, len(kapro.Spec.Clusters), primaryVersion),
+		Message:            kaproReadyMessage(deliveryPath, convergedCount, len(kapro.Spec.Clusters), primaryVersion),
 	})
 	if err := r.Status().Patch(ctx, &kapro, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch Kapro status: %w", err)
@@ -586,11 +591,52 @@ func promotionSourcePrimaryVersion(source *kaprov1alpha2.Source) string {
 	return ""
 }
 
-func kaproReadyMessage(converged int32, total int, version string) string {
+func kaproReadyMessage(path fleetDeliveryPath, converged int32, total int, version string) string {
+	if path == fleetDeliveryPathNative {
+		return fmt.Sprintf("%d/%d clusters configured; promotion convergence is tracked on Targets", total, total)
+	}
 	if version == "" {
 		return fmt.Sprintf("%d/%d clusters converged", converged, total)
 	}
 	return fmt.Sprintf("%d/%d clusters converged at %s", converged, total, version)
+}
+
+type fleetDeliveryPath string
+
+const (
+	fleetDeliveryPathNative       fleetDeliveryPath = "native"
+	fleetDeliveryPathFluxSpoke    fleetDeliveryPath = "flux-spoke"
+	fleetDeliveryPathFluxOperator fleetDeliveryPath = "flux-operator"
+)
+
+func fleetDeliveryPathForFleet(kapro *kaprov1alpha2.Fleet) fleetDeliveryPath {
+	if kapro == nil {
+		return fleetDeliveryPathFluxSpoke
+	}
+	delivery := kapro.Spec.Delivery
+	if delivery.Mode == "" {
+		delivery.Mode = kaprov1alpha2.DeliveryModePull
+	}
+	if delivery.BackendRef == "" {
+		delivery.BackendRef = "flux"
+	}
+	return resolveFleetDeliveryPath(delivery)
+}
+
+func resolveFleetDeliveryPath(delivery kaprov1alpha2.DeliverySpec) fleetDeliveryPath {
+	if delivery.Mode == "" {
+		delivery.Mode = kaprov1alpha2.DeliveryModePull
+	}
+	if delivery.BackendRef == "" {
+		delivery.BackendRef = "flux"
+	}
+	if delivery.BackendRef != "flux" {
+		return fleetDeliveryPathNative
+	}
+	if delivery.Mode == kaprov1alpha2.DeliveryModePull {
+		return fleetDeliveryPathFluxSpoke
+	}
+	return fleetDeliveryPathFluxOperator
 }
 
 // mergeValues resolves PromotionSource defaults + matching overrides for a specific cluster.
@@ -679,17 +725,10 @@ func overrideMatches(ov kaprov1alpha2.SourceOverride, clusterName string, cluste
 	return true
 }
 
-// isSpokeLocalMode returns true if this Kapro still uses the built-in Flux
-// spoke bootstrap path. Non-Flux backends are handled by their adapters/agents.
+// isSpokeLocalMode returns true if this Fleet still uses the built-in Flux
+// spoke bootstrap path. Non-Flux backends are handled by their adapters.
 func isSpokeLocalMode(kapro *kaprov1alpha2.Fleet) bool {
-	delivery := kapro.Spec.Delivery
-	if delivery.Mode == "" {
-		delivery.Mode = kaprov1alpha2.DeliveryModePull
-	}
-	if delivery.BackendRef == "" {
-		delivery.BackendRef = "flux"
-	}
-	return delivery.Mode == kaprov1alpha2.DeliveryModePull && delivery.BackendRef == "flux"
+	return fleetDeliveryPathForFleet(kapro) == fleetDeliveryPathFluxSpoke
 }
 
 func copyParamMap(in map[string]string) map[string]string {

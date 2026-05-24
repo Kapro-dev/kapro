@@ -230,6 +230,29 @@ Optional extensions are advertised through capabilities and Go type assertion:
 KSI implementations must be idempotent for repeated `Apply` calls with the
 same request identity and desired versions.
 
+### KSI And Legacy Actuators In 0.6
+
+KSI is the public substrate author contract. Third-party delivery integrations
+should target `pkg/kapro/substrate.Substrate`, typed config CRDs, and this
+parameter spec.
+
+Some in-tree `0.6` runtime paths still execute through Kapro's older
+`pkg/kapro/actuator.Actuator` interface while they are being bridged into KSI.
+That legacy actuator layer is an internal runtime adapter for existing hub and
+spoke delivery code; it is not the preferred extension point for new substrate
+authors.
+
+The `0.6.0` conformance gate therefore has two parts:
+
+- KSI reference class scenarios for `kubernetes-apply`, `argo-cd`, and `flux`
+  prove the public request/result contract.
+- Runtime actuator/controller tests prove the current in-tree direct, Argo CD,
+  and Flux delivery paths.
+
+Before KSI is promoted beyond alpha, each launch substrate should either expose
+a native KSI implementation or an explicit, tested bridge from the legacy
+actuator path into KSI.
+
 ## Status Contract
 
 Substrate controllers should write these core `Backend.status.conditions`
@@ -281,5 +304,8 @@ A conformant substrate should pass tests that verify:
   state.
 
 The conformance suite is the enforcement mechanism for this spec. The first
-reference classes are `kubernetes-apply`, `argo-cd`, `flux`, `oci`, and
-`webhook`.
+`0.6.0` reference classes are `kubernetes-apply`, `argo-cd`, and `flux`.
+The suite may start as an internal Go test contract; a public
+`kapro substrate conformance <class>` CLI is later `0.7.x` work. OCI, webhook,
+pipeline, platform, and custom API classes remain valid extension families once
+they can pass the same contract.

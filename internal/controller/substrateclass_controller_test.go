@@ -62,6 +62,97 @@ func TestSubstrateClassReconcilerPublishesBuiltInArgoContract(t *testing.T) {
 	}
 }
 
+func TestSubstrateClassReconcilerPublishesPublicPreviewContracts(t *testing.T) {
+	tests := []struct {
+		name       string
+		controller string
+		configKind string
+		configAPI  string
+		inputType  string
+		discover   bool
+	}{
+		{
+			name:       "kubernetes-apply",
+			controller: "kapro.io/kubernetes-apply",
+			configKind: "KubernetesApplyConfig",
+			configAPI:  "kubernetes.substrate.kapro.io/v1alpha1",
+			inputType:  "raw-yaml",
+		},
+		{
+			name:       "argo-cd",
+			controller: "kapro.io/argo-cd",
+			configKind: "ArgoCDSubstrateConfig",
+			configAPI:  "argocd.substrate.kapro.io/v1alpha1",
+			inputType:  "git-revision",
+			discover:   true,
+		},
+		{
+			name:       "flux",
+			controller: "kapro.io/flux",
+			configKind: "FluxSubstrateConfig",
+			configAPI:  "flux.substrate.kapro.io/v1alpha1",
+			inputType:  "git-revision",
+			discover:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scheme := runtime.NewScheme()
+			if err := clientgoscheme.AddToScheme(scheme); err != nil {
+				t.Fatal(err)
+			}
+			if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+				t.Fatal(err)
+			}
+			class := &kaprov1alpha2.SubstrateClass{
+				ObjectMeta: metav1.ObjectMeta{Name: tt.name, Generation: 3},
+				Spec: kaprov1alpha2.SubstrateClassSpec{
+					ControllerName: tt.controller,
+				},
+			}
+			r := &SubstrateClassReconciler{
+				Client: fake.NewClientBuilder().
+					WithScheme(scheme).
+					WithObjects(class).
+					WithStatusSubresource(&kaprov1alpha2.SubstrateClass{}).
+					Build(),
+			}
+
+			if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: client.ObjectKey{Name: tt.name}}); err != nil {
+				t.Fatalf("Reconcile: %v", err)
+			}
+			var got kaprov1alpha2.SubstrateClass
+			if err := r.Get(context.Background(), client.ObjectKey{Name: tt.name}, &got); err != nil {
+				t.Fatal(err)
+			}
+			accepted := apimeta.FindStatusCondition(got.Status.Conditions, "Accepted")
+			if accepted == nil || accepted.Status != metav1.ConditionTrue {
+				t.Fatalf("Accepted condition = %#v, want True", accepted)
+			}
+			if len(got.Status.AcceptedConfigKinds) != 1 {
+				t.Fatalf("accepted config kinds = %#v", got.Status.AcceptedConfigKinds)
+			}
+			if got.Status.AcceptedConfigKinds[0].APIVersion != tt.configAPI ||
+				got.Status.AcceptedConfigKinds[0].Kind != tt.configKind {
+				t.Fatalf("accepted config kinds = %#v, want %s/%s", got.Status.AcceptedConfigKinds, tt.configAPI, tt.configKind)
+			}
+			if got.Status.Capabilities == nil || got.Status.Capabilities.Operations == nil {
+				t.Fatalf("capabilities = %#v, want operation bits", got.Status.Capabilities)
+			}
+			if !got.Status.Capabilities.Operations.Apply || !got.Status.Capabilities.Operations.Observe || !got.Status.Capabilities.Operations.DryRun {
+				t.Fatalf("capabilities = %#v, want apply/observe/dryRun", got.Status.Capabilities.Operations)
+			}
+			if got.Status.Capabilities.Operations.Discover != tt.discover {
+				t.Fatalf("discover=%v, want %v", got.Status.Capabilities.Operations.Discover, tt.discover)
+			}
+			if !containsSubstrateInputType(got.Status.Capabilities.InputTypes, tt.inputType) {
+				t.Fatalf("inputTypes=%v, want %q", got.Status.Capabilities.InputTypes, tt.inputType)
+			}
+		})
+	}
+}
+
 func TestSubstrateClassReconcilerRejectsUnknownKaproController(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
@@ -95,4 +186,13 @@ func TestSubstrateClassReconcilerRejectsUnknownKaproController(t *testing.T) {
 	if accepted == nil || accepted.Status != metav1.ConditionFalse || accepted.Reason != "UnknownController" {
 		t.Fatalf("Accepted condition = %#v, want UnknownController false", accepted)
 	}
+}
+
+func containsSubstrateInputType(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }

@@ -10,16 +10,29 @@ Kapro answers one operational question:
 Which clusters are allowed to receive this artifact version now, and why?
 ```
 
+## Product Boundaries
+
+Kapro owns promotion policy, ordering, approvals, decision traces, and delivery
+evidence. It does not own artifact builds, cluster lifecycle, secret storage,
+or the local reconciler that actually rolls out workloads.
+
+Permanent non-goals: Kapro is not a Helm registry, CI runner, manifest store,
+cluster provisioner, or secret store.
+
 ## Start Here
 
 - [Concepts](concepts/concepts.md) explains the API objects and lifecycle.
 - [Install](getting-started/install.md) shows the supported operator install paths.
-- [Adoption Guide](getting-started/adoption.md) helps choose greenfield, Argo brownfield,
-  Flux brownfield, or OCI pull mode.
+- [Adoption Guide](getting-started/adoption.md) helps choose greenfield,
+  existing Argo CD, existing Flux, or OCI pull mode.
 - [Adoption CLI](getting-started/adoption-cli.md) shows the guided `kapro quickstart`,
   `kapro sample`, `kapro doctor`, and `kapro explain` paths.
 - [First Promotion in 10 Minutes](getting-started/first-promotion-10min.md) is the shortest
   working path.
+- [Direct Apply Quickstart](getting-started/quickstart-direct.md),
+  [Flux Quickstart](getting-started/quickstart-flux.md), and
+  [Argo CD Quickstart](getting-started/quickstart-argo.md) cover the 0.6 public
+  preview profiles.
 - [Backends](concepts/backends.md) explains Flux, Argo CD, OCI, and plugin delivery
   options.
 - [Operations](operations/operations.md) covers day-two status, debugging, and metrics.

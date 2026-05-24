@@ -1,4 +1,4 @@
-# Argo CD Brownfield Migration
+# Argo CD Existing GitOps Migration
 
 This guide is for teams that already run Argo CD with Applications,
 ApplicationSets, app-of-apps, and registered clusters.
@@ -76,11 +76,11 @@ spec:
 
 ## Step 2: Discover The Existing Repo
 
-Run the guided brownfield bootstrap against the Git repository that already
-contains Argo Applications, ApplicationSets, and environment files:
+Run observe-first adoption against the Git repository that already contains
+Argo Applications, ApplicationSets, and environment files:
 
 ```bash
-kapro bootstrap brownfield argo . \
+kapro adopt argo . \
   --out kapro-connect \
   --name checkout \
   --namespace argocd \
@@ -103,8 +103,7 @@ kapro discover argo . \
   --selector kapro.io/import=true,team=checkout
 ```
 
-`kapro adopt argo` is the higher-level alias for the same observe-first
-workflow. It exists for teams thinking in brownfield adoption terms:
+`kapro adopt argo` is the public path for the same observe-first workflow:
 
 ```bash
 kapro adopt argo . --out kapro-connect --name checkout
@@ -178,7 +177,7 @@ writes.
 
 ## Step 4: Review Source Units
 
-Review the generated `Source`. In brownfield Argo mode, a unit points
+Review the generated `Source`. In existing Argo CD adoption mode, a unit points
 to either an existing Application source or a Git parameter file that feeds an
 ApplicationSet.
 
@@ -321,8 +320,8 @@ generated mapping, promotes the repo-native Argo fields with
 selected Argo Applications to become `Synced` and `Healthy` at the promoted
 revision.
 
-This is the concrete acceptance test for the main brownfield patterns in this
-guide: plain Application, multi-source Application, ApplicationSet child backed
-by JSON or YAML generator inputs, and app-of-apps child. The root app-of-apps
-Application is discovered as packaging evidence but is not used as a write
-target.
+This is the concrete acceptance test for the main existing Argo CD adoption
+patterns in this guide: plain Application, multi-source Application,
+ApplicationSet child backed by JSON or YAML generator inputs, and app-of-apps
+child. The root app-of-apps Application is discovered as packaging evidence but
+is not used as a write target.

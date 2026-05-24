@@ -3,10 +3,13 @@
 // Usage:
 //
 //	kapro bootstrap guide
+//	kapro bootstrap generate ./promotion-repo --profile direct --name checkout
+//	kapro bootstrap generate ./promotion-repo --profile argocd --name checkout
+//	kapro bootstrap generate ./promotion-repo --profile flux --name checkout
 //	kapro quickstart flux ./promotion-repo --name checkout
 //	kapro bootstrap greenfield ./promotion-repo --backend flux --mode pull --name checkout
 //	kapro bootstrap argo ./promotion-repo --name checkout
-//	kapro bootstrap brownfield argo . --out ./kapro-connect --name checkout
+//	kapro adopt argo . --out ./kapro-connect --name checkout
 //	kapro init ./promotion-repo --backend flux --mode pull --name checkout
 //	kapro promote <fleet> --version <version>
 //	kapro diag <promotion>
@@ -62,10 +65,12 @@ func main() {
 Pass versions forward across targets, clusters, and waves.
 
 Start here:
+  kapro bootstrap generate ./promotion-repo --profile direct --name checkout
+  kapro bootstrap generate ./promotion-repo --profile argocd --name checkout
+  kapro bootstrap generate ./promotion-repo --profile flux --name checkout
   kapro quickstart flux ./promotion-repo --name checkout
   kapro bootstrap guide
   kapro doctor
-  kapro bootstrap greenfield ./promotion-repo --backend flux --mode pull --name checkout
   kapro promote checkout --version v1.2.3
   kapro explain checkout-v1-2-3
 
@@ -1097,7 +1102,7 @@ Examples:
   kapro promotionrun create --name v1.2.3-hotfix --version sha256:def456 \
     --plan global --scope de-prod --scope fi-prod
 
-  # Brownfield/native promotionrun with per-unit revisions
+  # Existing/native promotionrun with per-unit revisions
   kapro promotionrun create --name checkout-2026-05-15 \
     --set api=main@sha256:abc123 --set worker=main@sha256:def456 \
     --plan global`,

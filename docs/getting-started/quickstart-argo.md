@@ -6,33 +6,47 @@ each target cluster, then waits for Argo to report `Synced` and `Healthy`.
 
 Prerequisites:
 
-- Kapro operator installed.
+- Kapro operator installed with the preview `substrateclass` and `backend`
+  controllers enabled.
 - Argo CD installed in the `argocd` namespace.
-- One Argo CD `Application` per target cluster, named to match the generated
-  Kapro `Cluster` names or selected with `applicationSelector`.
-- A clone of this repository, because the commands below apply manifests from
-  `examples/quickstart-argo/`.
+
+For a local preview install:
 
 ```bash
-git clone --branch main https://github.com/Kapro-dev/kapro.git
-cd kapro
-kubectl apply -f examples/quickstart-argo/backend-argo.yaml
-kubectl apply -f examples/quickstart-argo/fleet.yaml
-kubectl apply -f examples/quickstart-argo/promotion.yaml
+helm upgrade --install kapro "$KAPRO_CHART" \
+  --namespace kapro-system \
+  --create-namespace \
+  --set controllers='{fleet,plan,promotion,promotionrun,cluster,substrateclass,backend}'
+```
+
+```bash
+kapro bootstrap generate ./promotion-repo \
+  --profile argocd \
+  --name checkout
+cd promotion-repo
+kubectl apply -f backends/argo.yaml
+kubectl wait --for=condition=Ready backend/argo --timeout=90s
+kubectl apply --recursive -f apps -f argo -f clusters -f plans -f fleets -f promotions
 kubectl get promotions,promotionruns,targets
 ```
 
-The sample Fleet creates `checkout-argo-canary` and
-`checkout-argo-production` targets. If your Argo Applications use different
-names, set `spec.delivery.parameters.application` for one shared Application or
-`applicationSelector` for label selection.
+The generated repo includes a `SubstrateClass`, typed `ArgoCDSubstrateConfig`,
+`Backend`, target-specific Argo CD `Application` objects, starter workload
+manifests under `apps/`, and Kapro `Fleet`, `Plan`, and `Promotion` objects.
+Push the generated repo and replace the placeholder `repoURL` values before
+expecting Argo CD to sync. If your Argo Applications already exist with
+different names, set `spec.delivery.parameters.application` for one shared
+Application or `applicationSelector` for label selection.
 
-Kapro only writes Argo CD `Application` objects that explicitly opt in. Add one
-of these labels or annotations to each Application before running the
-quickstart:
+Kapro only writes Argo CD `Application` objects that explicitly opt in. The
+generated Applications already include the authorization labels. For existing
+Applications, add one of these labels or annotations before adopting them:
 
 ```yaml
 kapro.io/managed-by: kapro
 kapro.io/authorized-source: "*"
 kapro.io/authorized-unit: checkout
 ```
+
+For the older checked-in minimal hub API example, use
+`examples/quickstart-argo/`.

@@ -1,0 +1,15 @@
+apiVersion: kapro.io/v1alpha2
+kind: Cluster
+metadata:
+  name: prod-eu
+  labels:
+    kapro.io/stage: production
+spec:
+  delivery:
+    mode: push
+    backendRef: direct
+    parameters:
+      namespace: default
+      deployment: checkout-direct
+      container: app
+      manifestPath: apps/checkout-direct

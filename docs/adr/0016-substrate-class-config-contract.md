@@ -46,6 +46,10 @@ We introduce a Phase-1 substrate contract:
   discovery extensions.
 - The external substrate author contract is documented in
   `docs/specs/substrate-parameter-spec.md`.
+- During the `0.6` migration, some in-tree runtime adapters still use the
+  older `pkg/kapro/actuator.Actuator` interface. KSI is the public substrate
+  contract; the legacy actuator layer is an internal compatibility path until
+  the launch substrates are ported or bridged.
 
 ## Rejected alternatives
 
