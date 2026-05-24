@@ -205,8 +205,8 @@ spec:
                     format: int32
                     type: integer
                   maxConcurrent:
-                    description: MaxConcurrent is the maximum in-flight approvals
-                      at any time.
+                    description: MaxConcurrent is the maximum in-flight Decision API
+                      submissions at any time.
                     format: int32
                     type: integer
                 type: object
@@ -378,8 +378,8 @@ spec:
             description: PolicyStatus is the observed state of the Policy.
             properties:
               activeDecisions:
-                description: ActiveDecisions is the count of in-flight decisions by
-                  this agent.
+                description: ActiveDecisions is the count of in-flight Decision API
+                  submissions by this agent.
                 format: int32
                 type: integer
               conditions:

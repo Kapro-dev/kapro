@@ -1,0 +1,31 @@
+apiVersion: kapro.io/v1alpha2
+kind: ClusterTemplate
+metadata:
+  name: static-edge-sites
+spec:
+  source:
+    static:
+      clusters:
+        - name: edge-berlin
+          kubeconfigSecretRef:
+            namespace: kapro-system
+            name: edge-berlin-kubeconfig
+          labels:
+            kapro.io/site: berlin
+            kapro.io/tier: canary
+        - name: edge-madrid
+          kubeconfigSecretRef:
+            namespace: kapro-system
+            name: edge-madrid-kubeconfig
+          labels:
+            kapro.io/site: madrid
+            kapro.io/tier: prod
+  interval: 5m
+  template:
+    metadata:
+      labels:
+        kapro.io/managed-fleet: edge
+    spec:
+      delivery:
+        mode: pull
+        backendRef: oci

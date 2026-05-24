@@ -923,13 +923,20 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 		}
 	}
 
-	// Decision recorded successfully — mark the slot reservation as
-	// committed so the deferred release does NOT decrement
-	// ActiveDecisions. The slot is decremented later by the
-	// Approval/decision-completion controller (TODO v0.7: wire this
-	// release path) or by the daily reset; for now we just retain the
-	// in-flight count for the duration of the active rollout.
-	released = true
+	// Decision recorded successfully. Release the in-flight AgentPolicy slot
+	// now: DecisionsToday remains consumed as the daily quota, while
+	// ActiveDecisions returns to zero once the HTTP decision is durably
+	// recorded. This makes MaxConcurrent deterministic and avoids depending
+	// on a future rollout-completion controller to free capacity.
+	if policy != nil {
+		if relErr := s.releaseAgentPolicySlot(ctx, policy); relErr != nil {
+			l.Error(relErr, "AgentPolicy slot release failed after successful decision; deferred release will retry")
+		} else {
+			released = true
+		}
+	} else {
+		released = true
+	}
 
 	writeJSON(w, http.StatusOK, DecisionResponse{
 		Accepted:          true,

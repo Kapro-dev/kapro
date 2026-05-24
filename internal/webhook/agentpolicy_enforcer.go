@@ -366,9 +366,10 @@ func (s *Server) reserveAgentPolicySlot(ctx context.Context, policy *kaprov1alph
 }
 
 // releaseAgentPolicySlot decrements ActiveDecisions when an in-flight
-// reservation will NOT lead to a recorded decision (review fix gate-v6.1).
-// Called by the deferred-release path in handleDecide on any non-2xx exit
-// after reserveAgentPolicySlot succeeded.
+// reservation leaves the active Decision API write path. Called by the
+// deferred-release path in handleDecide on any non-2xx exit after
+// reserveAgentPolicySlot succeeded, and after successful durable decision
+// recording.
 //
 // DecisionsToday is intentionally NOT decremented — it's a daily quota
 // counted against the request RATE, not in-flight load. If the decision

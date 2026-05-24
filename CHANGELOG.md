@@ -7,6 +7,35 @@ record for each tag.
 
 ## Unreleased
 
+### Added — static ClusterTemplate discovery
+
+`ClusterTemplate.spec.source.static` now imports operator-supplied kubeconfig
+Secret entries as `Cluster` objects with `spec.provider.kind=kubeconfig` and
+per-cluster provider parameters. This gives on-prem, edge, and brownfield
+fleets a working auto-import path while cloud-specific discoverers continue to
+land incrementally.
+
+### Added — operator NetworkPolicy chart surface
+
+The `kapro-operator` Helm chart now supports opt-in NetworkPolicy rendering via
+`networkPolicy.enabled`. The policy limits ingress to the operator's known
+health, metrics, webhook, approval, and hub-gateway ports, with value hooks for
+stricter ingress sources and optional egress rules.
+
+### Added — conformance verification target
+
+Added `make conformance` and a dedicated CI job that run the actuator, gate,
+planner, and provider conformance suites against local reference
+implementations and produce a JSON `kapro-conformance all` report.
+
+### Fixed — Decision API AgentPolicy active-slot release
+
+Successful Decision API submissions now release their AgentPolicy
+`status.activeDecisions` reservation after the decision trace and any approval
+object are durably recorded. `status.decisionsToday` still counts the request,
+but `maxConcurrent` no longer depends on a future completion controller to free
+capacity.
+
 ### Added — release verification guide
 
 Added a release verification guide with checksum, Sigstore chart signature,
@@ -94,12 +123,12 @@ step fails before image scanning.
 
 Clarified release-train guidance so patch increments are treated as a planning
 budget and review trigger while still allowing concrete milestones such as
-`v0.5.7` under the project’s `0.x.y` pre-stable strategy.
+`v0.5.8` under the project’s `0.x.y` pre-stable strategy.
 
-### Changed — release metadata for v0.5.7
+### Changed — release metadata for v0.5.8
 
 Updated Helm chart versions, install examples, and release smoke defaults so
-the next release tag packages `0.5.7` artifacts consistently.
+the next release tag packages `0.5.8` artifacts consistently.
 
 ### Added — reference adapter package tests
 
@@ -376,7 +405,7 @@ compatibility.
 Documented that Kapro stays in the `0.x.x` release series until public API,
 SDK, conformance, upgrade, and operational contracts are ready for stability
 graduation. Active GitHub milestones use exact feature-release names such as
-`v0.2.4`, `v0.4.7`, or `v0.5.7` rather than broad train buckets or a `1.0.0`
+`v0.2.4`, `v0.4.7`, or `v0.5.8` rather than broad train buckets or a `1.0.0`
 planning bucket. The pre-stable strategy is `0.<capability-line>.<feature-increment>`,
 so both remaining digits carry product meaning.
 

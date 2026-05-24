@@ -43,10 +43,10 @@ vet: ## Run go vet
 	go vet ./...
 
 .PHONY: verify
-verify: validate-yaml-json check-markdown-links check-release-train fmt vet lint build test ## Run full checks with coverage (use before pushing)
+verify: validate-yaml-json check-markdown-links check-release-train fmt vet lint build test conformance ## Run full checks with coverage (use before pushing)
 
 .PHONY: verify-local
-verify-local: validate-yaml-json check-markdown-links check-release-train fmt vet lint build test-no-cover ## Run local checks without coverage tooling
+verify-local: validate-yaml-json check-markdown-links check-release-train fmt vet lint build test-no-cover conformance ## Run local checks without coverage tooling
 
 .PHONY: lint
 lint: $(GOLANGCI_LINT) ## Run golangci-lint
@@ -120,6 +120,12 @@ test: generate manifests $(ENVTEST) ## Run unit + integration tests with envtest
 	KUBEBUILDER_ASSETS="$$($(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" \
 		go test ./... -coverprofile cover.out -covermode=atomic
 	go tool cover -func cover.out
+
+.PHONY: conformance
+conformance: ## Run plugin/provider conformance suites against local reference implementations
+	go test ./conformance/...
+	go test ./cmd/kapro-conformance
+	go run ./cmd/kapro-conformance all -o json >/tmp/kapro-conformance-report.json
 
 ##@ Build
 

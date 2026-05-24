@@ -4,7 +4,7 @@ Kapro release artifacts are intended to be consumed by immutable version, not
 by mutable image tags. Pin charts and images to the same `v0.x.y` release tag
 and verify the artifacts before installing them in production change windows.
 
-The current public preview release is `v0.5.7`.
+The current public preview release is `v0.5.8`.
 
 ## Prerequisites
 
@@ -25,7 +25,7 @@ gh auth status
 ## Download Release Assets
 
 ```bash
-KAPRO_VERSION=v0.5.7
+KAPRO_VERSION=v0.5.8
 KAPRO_REPO=Kapro-dev/kapro
 
 mkdir -p "kapro-${KAPRO_VERSION}"
@@ -147,7 +147,7 @@ release:
 
 ```bash
 KAPRO_RELEASE_VERSION="${KAPRO_VERSION}" \
-KAPRO_PREVIOUS_RELEASE_VERSION=v0.5.6 \
+KAPRO_PREVIOUS_RELEASE_VERSION=v0.5.7 \
 KAPRO_VERIFY_CLEANUP=true \
 scripts/verify-install.sh release-upgrade-cluster
 ```
@@ -156,7 +156,7 @@ For rollback evidence:
 
 ```bash
 KAPRO_RELEASE_VERSION="${KAPRO_VERSION}" \
-KAPRO_PREVIOUS_RELEASE_VERSION=v0.5.6 \
+KAPRO_PREVIOUS_RELEASE_VERSION=v0.5.7 \
 KAPRO_VERIFY_CLEANUP=true \
 scripts/verify-install.sh release-rollback-cluster
 ```

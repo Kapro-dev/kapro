@@ -56,7 +56,7 @@ type ClusterTemplateSource struct {
 
 	// Static is an operator-supplied list with kubeconfig Secret references
 	// for on-prem / bare-metal clusters with no Fleet API. Imported
-	// clusters get spec.provider.kind=kubeconfig. Preview stub.
+	// clusters get spec.provider.kind=kubeconfig.
 	// +optional
 	Static *StaticFleetSource `json:"static,omitempty"`
 }
@@ -108,7 +108,7 @@ type CAPIFleetSource struct {
 }
 
 // StaticFleetSource enumerates on-prem clusters via operator-supplied
-// kubeconfig Secret references. Preview stub.
+// kubeconfig Secret references.
 type StaticFleetSource struct {
 	// Clusters lists each on-prem cluster and its kubeconfig Secret.
 	// +kubebuilder:validation:MinItems=1

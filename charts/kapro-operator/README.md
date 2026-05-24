@@ -18,7 +18,7 @@ Release:
 
 ```bash
 helm upgrade --install kapro \
-  https://github.com/Kapro-dev/kapro/releases/download/v0.5.7/kapro-operator-0.5.7.tgz \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.5.8/kapro-operator-0.5.8.tgz \
   --namespace kapro-system \
   --create-namespace
 ```
@@ -26,6 +26,21 @@ helm upgrade --install kapro \
 The default webhook configuration generates a self-signed serving certificate
 without cert-manager. If you already run cert-manager and prefer its certificate
 lifecycle, set `webhook.certManager.enabled=true`.
+
+For clusters with NetworkPolicy enforcement, opt in to the chart-managed
+operator policy:
+
+```bash
+helm upgrade --install kapro \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.5.8/kapro-operator-0.5.8.tgz \
+  --namespace kapro-system \
+  --create-namespace \
+  --set networkPolicy.enabled=true
+```
+
+The policy admits only the operator's known health, metrics, webhook, approval,
+and hub-gateway ports. Use `networkPolicy.ingress.from` and
+`networkPolicy.egress.*` values for stricter production namespaces.
 
 ## Upgrade
 
@@ -80,7 +95,7 @@ install demo plugins. To opt in:
 
 ```bash
 helm upgrade --install kapro \
-  https://github.com/Kapro-dev/kapro/releases/download/v0.5.7/kapro-operator-0.5.7.tgz \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.5.8/kapro-operator-0.5.8.tgz \
   --namespace kapro-system \
   --create-namespace \
   --set pluginGateway.enabled=true \

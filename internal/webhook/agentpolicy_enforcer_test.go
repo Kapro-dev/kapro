@@ -294,6 +294,7 @@ func TestDecide_WithAgentPolicy_Denied(t *testing.T) {
 func TestDecide_WithAgentPolicy_Allowed(t *testing.T) {
 	promotionrun, mc, _, target := decisionFixtures()
 	policy := makeAgentPolicy("loose-policy", "test-agent", kaprov1alpha2.PolicyModeAuto, 0.7)
+	policy.Spec.RateLimits = &kaprov1alpha2.AgentRateLimits{MaxConcurrent: 1, MaxApprovalsPerDay: 10}
 	s := decisionTestServer(t, promotionrun, mc, target, policy)
 
 	body, _ := json.Marshal(DecisionRequest{
@@ -309,6 +310,17 @@ func TestDecide_WithAgentPolicy_Allowed(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var fresh kaprov1alpha2.Policy
+	if err := s.Client.Get(httpReq(t).Context(), client.ObjectKey{Name: policy.Name}, &fresh); err != nil {
+		t.Fatalf("get policy: %v", err)
+	}
+	if fresh.Status.ActiveDecisions != 0 {
+		t.Fatalf("ActiveDecisions = %d, want 0 after recorded decision releases slot", fresh.Status.ActiveDecisions)
+	}
+	if fresh.Status.DecisionsToday != 1 {
+		t.Fatalf("DecisionsToday = %d, want 1", fresh.Status.DecisionsToday)
 	}
 }
 

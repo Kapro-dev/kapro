@@ -39,6 +39,10 @@ type ClusterInfo struct {
 	Endpoint string
 	// Provider is the mode that discovered this cluster.
 	Provider string
+	// ProviderParameters are per-cluster settings layered on top of the
+	// discoverer's Provider().Parameters when ClusterTemplate imports the
+	// cluster. Static/on-prem sources use this for kubeconfig Secret refs.
+	ProviderParameters map[string]string
 }
 
 // Provider abstracts spoke cluster access.
