@@ -459,7 +459,7 @@ func checkGitOpsSubstrates(ctx context.Context, c client.Client) doctorFinding {
 		return doctorFinding{
 			Name:    "gitops-substrates",
 			Status:  doctorStatusSkip,
-			Message: "no Substrate objects found yet; start with `kapro quickstart flux` or `kapro adopt argo|flux`",
+			Message: "no Substrate objects found yet; start with `kapro quickstart direct` or `kapro adopt argo|flux`",
 		}
 	}
 	var details, namespaceWarnings []string
@@ -688,6 +688,11 @@ var requiredOperatorAccess = []authv1.ResourceAttributes{
 	{Group: "oci.substrate.kapro.io", Resource: "ocibundleapplyconfigs", Verb: "get"},
 	{Group: "oci.substrate.kapro.io", Resource: "ocibundleapplyconfigs", Verb: "list"},
 	{Group: "oci.substrate.kapro.io", Resource: "ocibundleapplyconfigs", Verb: "watch"},
+	{Group: "apps", Resource: "deployments", Verb: "get"},
+	{Group: "apps", Resource: "deployments", Verb: "list"},
+	{Group: "apps", Resource: "deployments", Verb: "watch"},
+	{Group: "apps", Resource: "deployments", Verb: "patch"},
+	{Group: "apps", Resource: "deployments", Verb: "update"},
 	{Group: "kapro.io", Resource: "promotions", Verb: "get"},
 	{Group: "kapro.io", Resource: "promotions", Verb: "list"},
 	{Group: "kapro.io", Resource: "promotions", Verb: "watch"},

@@ -63,6 +63,15 @@ platform tooling.
 Permanent non-goals: Kapro is not a Helm registry, CI runner, manifest store,
 cluster provisioner, or secret store.
 
+Public preview product boundaries:
+
+- Kapro does not build artifacts or run CI.
+- Kapro does not provision clusters.
+- Kapro does not store secrets.
+- Kapro does not act as a Helm registry or manifest store.
+- Kapro does not replace Flux, Argo CD, OCI agents, Argo Rollouts, Flagger,
+  Sveltos, Terraform, Cluster API, or secret managers.
+
 ## Core Concepts
 
 | Kind | Role |
@@ -115,11 +124,11 @@ cd kapro
 make build
 export PATH="$PWD/bin:$PATH"
 kapro bootstrap guide
-kapro bootstrap generate ./promotion-repo --profile direct --name checkout
-kapro bootstrap generate ./promotion-repo --profile argo --name checkout
-kapro bootstrap generate ./promotion-repo --profile flux --name checkout
+kapro quickstart direct ./promotion-repo --name checkout
 kapro quickstart flux ./promotion-repo --name checkout
 kapro quickstart argo ./promotion-repo --name checkout
+kapro quickstart oci ./promotion-repo --name checkout
+kapro bootstrap generate ./promotion-repo --profile direct --name checkout
 kapro adopt argo . --out ./kapro-connect --name checkout
 kapro adopt flux . --out ./kapro-connect --name checkout
 ```
@@ -161,7 +170,7 @@ To run the same local convergence smoke used by CI, use Docker, Kind, Helm, and
 kubectl:
 
 ```bash
-KAPRO_CI_QUICKSTARTS=flux,argo,oci scripts/ci-kind-smoke.sh
+KAPRO_CI_QUICKSTARTS=direct,flux,argo,oci scripts/ci-kind-smoke.sh
 ```
 
 For a step-by-step minimal path, use [First Promotion in 10 Minutes](docs/getting-started/first-promotion-10min.md).
@@ -191,6 +200,7 @@ Deeper references:
 - [Flux Existing GitOps Migration](docs/migration/flux-migration.md)
 - [RBAC and Tenancy](docs/operations/rbac-tenancy.md)
 - [Monitoring](docs/operations/monitoring.md)
+- [Interface Overview](docs/extending/interface-overview.md)
 - [Extension Model](docs/extending/extension-model.md)
 - [Plugin Authoring](docs/extending/plugin-authoring.md)
 - [Architecture Decision Records](docs/adr/README.md)

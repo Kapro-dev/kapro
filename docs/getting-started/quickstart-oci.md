@@ -4,7 +4,20 @@ This quickstart uses Kapro's spoke-side OCI delivery core. Spokes pull rendered
 OCI artifacts and apply them directly, so this path does not require Flux or
 Argo CD on target clusters.
 
-Prerequisites:
+For a generated repo shape, start with:
+
+```bash
+kapro quickstart oci ./promotion-repo --name checkout
+cd promotion-repo
+kubectl apply -f substrates/oci.yaml
+kubectl wait --for=condition=Ready substrate/oci --timeout=90s
+kubectl apply --recursive -f clusters -f plans -f fleets -f promotions
+```
+
+The checked-in static example below is useful for smoke tests and release
+verification.
+
+Prerequisites for a real OCI pull deployment:
 
 - Kapro operator installed on the hub with the `cluster-bootstrap` controller
   enabled and `hubAPIURL` set for spoke reachability.

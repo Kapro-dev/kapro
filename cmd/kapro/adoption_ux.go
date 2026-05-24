@@ -14,36 +14,46 @@ import (
 func newQuickstartCmd() *cobra.Command {
 	var opts scaffoldOptions
 	cmd := &cobra.Command{
-		Use:   "quickstart [flux|argo|oci|demo] [directory]",
+		Use:   "quickstart [direct|argo|flux|oci|demo] [directory]",
 		Short: "Start the fastest Kapro path for a new user",
 		Long: `Create a runnable starter repo or local demo with adoption-first defaults.
 
-Use Flux when you want clusters to pull desired state from inside their own
-network boundary. Use Argo when Argo CD owns Applications and the hub promotes
-versions by updating Argo-managed intent. Use OCI when spokes should pull OCI
-artifacts without Flux or Argo CD.
+Use direct for the smallest no-GitOps dependency path. Use Flux when clusters
+should pull desired state from inside their own network boundary. Use Argo when
+Argo CD owns Applications and the hub promotes versions by updating Argo-managed
+intent. Use OCI when spokes should pull OCI artifacts without Flux or Argo CD.
 
 Examples:
   kapro quickstart
+  kapro quickstart direct ./promotion-repo --name checkout
   kapro quickstart flux ./promotion-repo --name checkout
   kapro quickstart argo ./promotion-repo --name checkout
   kapro quickstart oci ./promotion-repo --name checkout
   kapro quickstart demo`,
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			substrate := "flux"
+			substrate := "direct"
 			dir := "./kapro-quickstart"
 			if len(args) > 0 {
-				substrate = strings.ToLower(args[0])
+				candidate := normalizeQuickstartProfile(args[0])
+				switch {
+				case candidate == "demo" || isQuickstartProfile(candidate):
+					substrate = candidate
+					if len(args) > 1 {
+						dir = args[1]
+					}
+				case len(args) == 1:
+					dir = args[0]
+				default:
+					return fmt.Errorf("quickstart profile must be direct, argo, flux, oci, or demo")
+				}
 			}
 			if substrate == "demo" {
 				return runDemo(cmd.Context())
 			}
-			if len(args) > 1 {
-				dir = args[1]
-			}
 			opts.Path = dir
 			opts.Substrate = substrate
+			opts.Profile = substrate
 			if opts.Mode == "" {
 				opts.Mode = quickstartDefaultMode(substrate)
 			}
@@ -76,14 +86,18 @@ Examples:
 }
 
 func quickstartDefaultMode(substrate string) string {
-	if substrate == "argo" {
+	switch substrate {
+	case "direct", "argo":
 		return "push"
+	default:
+		return "pull"
 	}
-	return "pull"
 }
 
 func quickstartSubstrateSummary(substrate, mode string) string {
 	switch substrate {
+	case "direct":
+		return "Direct apply uses the Kubernetes API; no Flux, Argo CD, or OCI registry is required."
 	case "argo":
 		return "Argo CD remains the application reconciler; Kapro promotes versions and records the decision path."
 	case "flux":
@@ -92,6 +106,27 @@ func quickstartSubstrateSummary(substrate, mode string) string {
 		return "Kapro spokes pull OCI artifacts directly; no Argo CD or Flux installation is required on spokes."
 	default:
 		return fmt.Sprintf("%s substrate using %s delivery", substrate, mode)
+	}
+}
+
+func normalizeQuickstartProfile(raw string) string {
+	profile := strings.ToLower(strings.TrimSpace(raw))
+	switch profile {
+	case "argocd":
+		return "argo"
+	case "kubernetes-apply", "kubernetes":
+		return "direct"
+	default:
+		return profile
+	}
+}
+
+func isQuickstartProfile(profile string) bool {
+	switch profile {
+	case "direct", "argo", "flux", "oci":
+		return true
+	default:
+		return false
 	}
 }
 

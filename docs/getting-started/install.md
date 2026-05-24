@@ -348,7 +348,7 @@ the Kind smoke fixture below, which injects synthetic substrate health.
 Heavier validation targets are available when you need substrate coverage:
 
 ```bash
-KAPRO_CI_QUICKSTARTS=flux,argo,oci scripts/ci-kind-smoke.sh
+KAPRO_CI_QUICKSTARTS=direct,flux,argo,oci scripts/ci-kind-smoke.sh
 scripts/verify-install.sh kind-demo
 scripts/verify-install.sh argo-e2e
 scripts/verify-install.sh flux-git-e2e

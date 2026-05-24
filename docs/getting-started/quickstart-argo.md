@@ -18,9 +18,7 @@ helm upgrade --install kapro "$KAPRO_CHART" \
 ```
 
 ```bash
-kapro bootstrap generate ./promotion-repo \
-  --profile argo \
-  --name checkout
+kapro quickstart argo ./promotion-repo --name checkout
 cd promotion-repo
 kubectl apply -f substrates/argo.yaml
 kubectl wait --for=condition=Ready substrate/argo --timeout=90s

@@ -10,9 +10,9 @@ agents, or plugins still own local reconciliation.
 
 | Situation | Start with | What Kapro creates |
 |---|---|---|
-| New repo, direct Kubernetes apply | `kapro bootstrap generate ./promotion-repo --profile direct --name checkout` | `kubernetes-apply` class/config, Substrate, raw YAML, clusters, Fleet, Plan, and Promotion scaffold. |
-| New repo, Flux or spoke pull delivery | `kapro bootstrap generate ./promotion-repo --profile flux --name checkout` | Flux class/config, Substrate, clusters, Fleet, Plan, Promotion, and Flux starter files. |
-| New repo, Argo CD Applications already planned | `kapro bootstrap generate ./promotion-repo --profile argo --name checkout` | Argo CD class/config, Substrate, clusters, Fleet, Plan, Promotion, and Argo starter Application. |
+| New repo, direct Kubernetes apply | `kapro quickstart direct ./promotion-repo --name checkout` | `kubernetes-apply` class/config, Substrate, raw YAML, clusters, Fleet, Plan, and Promotion scaffold. |
+| New repo, Flux or spoke pull delivery | `kapro quickstart flux ./promotion-repo --name checkout` | Flux class/config, Substrate, clusters, Fleet, Plan, Promotion, and Flux starter files. |
+| New repo, Argo CD Applications already planned | `kapro quickstart argo ./promotion-repo --name checkout` | Argo CD class/config, Substrate, clusters, Fleet, Plan, Promotion, and Argo starter Application. |
 | Existing Argo CD repo | `kapro adopt argo . --out ./kapro-connect --name checkout` | Observe-mode Substrate, Source mappings, and discovery reports. |
 | Existing Flux repo | `kapro adopt flux . --out ./kapro-connect --name checkout` | Observe-mode Substrate, Source mappings, and discovery reports. |
 | Outbound-only clusters that must pull OCI artifacts | `kapro quickstart oci ./promotion-repo --name checkout` | OCI Substrate, clusters, Fleet, Plan, and Promotion skeleton. |
@@ -39,17 +39,19 @@ export PATH="$PWD/bin:$PATH"
 Greenfield means you want Kapro to scaffold the promotion repository shape.
 
 ```bash
-kapro bootstrap generate ./promotion-repo \
-  --profile direct \
-  --name checkout
+kapro quickstart direct ./promotion-repo --name checkout
 ```
 
 Other public-preview profiles use the same command:
 
 ```bash
-kapro bootstrap generate ./promotion-repo --profile argo --name checkout
-kapro bootstrap generate ./promotion-repo --profile flux --name checkout
+kapro quickstart argo ./promotion-repo --name checkout
+kapro quickstart flux ./promotion-repo --name checkout
+kapro quickstart oci ./promotion-repo --name checkout
 ```
+
+`kapro bootstrap generate` exposes the same `direct`, `argo`, `flux`, and `oci`
+profiles for generator and template work when you need a lower-level command.
 
 The generated repository has the first-use objects in dependency order:
 

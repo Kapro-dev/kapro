@@ -3,12 +3,11 @@
 // Usage:
 //
 //	kapro bootstrap guide
-//	kapro bootstrap generate ./promotion-repo --profile direct --name checkout
-//	kapro bootstrap generate ./promotion-repo --profile argo --name checkout
-//	kapro bootstrap generate ./promotion-repo --profile flux --name checkout
+//	kapro quickstart direct ./promotion-repo --name checkout
 //	kapro quickstart flux ./promotion-repo --name checkout
-//	kapro bootstrap greenfield ./promotion-repo --substrate flux --mode pull --name checkout
-//	kapro bootstrap argo ./promotion-repo --name checkout
+//	kapro quickstart argo ./promotion-repo --name checkout
+//	kapro quickstart oci ./promotion-repo --name checkout
+//	kapro bootstrap generate ./promotion-repo --profile direct --name checkout
 //	kapro adopt argo . --out ./kapro-connect --name checkout
 //	kapro init ./promotion-repo --substrate flux --mode pull --name checkout
 //	kapro promote <fleet> --version <version>
@@ -68,10 +67,10 @@ func main() {
 Pass versions forward across targets, clusters, and waves.
 
 Start here:
-  kapro bootstrap generate ./promotion-repo --profile direct --name checkout
-  kapro bootstrap generate ./promotion-repo --profile argo --name checkout
-  kapro bootstrap generate ./promotion-repo --profile flux --name checkout
+  kapro quickstart direct ./promotion-repo --name checkout
   kapro quickstart flux ./promotion-repo --name checkout
+  kapro quickstart argo ./promotion-repo --name checkout
+  kapro quickstart oci ./promotion-repo --name checkout
   kapro bootstrap guide
   kapro doctor
   kapro promote checkout --version v1.2.3

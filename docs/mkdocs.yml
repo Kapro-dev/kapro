@@ -67,6 +67,7 @@ nav:
       - Operator SLOs: operations/operator-slos.md
       - Industry Requirements: operations/industry-requirements.md
       - Security: operations/security.md
+      - Public Preview 0.6 Checklist: operations/public-preview-0.6-checklist.md
       - Release Verification: operations/release-verification.md
       - RBAC and Tenancy: operations/rbac-tenancy.md
       - Cluster Bootstrap: operations/cluster-bootstrap.md
@@ -77,6 +78,7 @@ nav:
       - Flux Existing GitOps Migration: migration/flux-migration.md
       - Discovery Troubleshooting: migration/discovery-troubleshooting.md
   - Extending Kapro:
+      - Interface Overview: extending/interface-overview.md
       - Extension Model: extending/extension-model.md
       - Go SDK: extending/sdk.md
       - Server SDK: extending/sdk-server.md

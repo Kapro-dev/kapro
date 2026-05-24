@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-release_train="${ROOT}/docs/release-train.md"
-roadmap="${ROOT}/docs/pre-stable-roadmap.md"
+release_train="${ROOT}/docs/concepts/release-train.md"
+roadmap="${ROOT}/docs/concepts/pre-stable-roadmap.md"
 
 require() {
   local file="$1"
