@@ -71,9 +71,9 @@ the owning platform team has explicitly adopted.
 For new promotion repositories, use greenfield bootstrap:
 
 ```bash
-kapro bootstrap greenfield ./promotion-repo --backend flux --mode pull --name checkout
-kapro bootstrap greenfield ./promotion-repo --backend argo --mode push --name checkout
-kapro bootstrap greenfield ./promotion-repo --backend oci --mode pull --name checkout
+kapro bootstrap generate ./promotion-repo --profile direct --name checkout
+kapro bootstrap generate ./promotion-repo --profile argocd --name checkout
+kapro bootstrap generate ./promotion-repo --profile flux --name checkout
 ```
 
 See [Adoption Guide](../getting-started/adoption.md) for the full decision tree.

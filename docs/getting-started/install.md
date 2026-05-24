@@ -130,7 +130,7 @@ exposed deliberately:
 |---|---|---|
 | Decision API and `Policy` | Disabled | `decisionAPI.enabled=true` and explicit Kubernetes RBAC. |
 | SubstrateClass status controller | Disabled | Add `substrateclass` to `controllers` when using `Backend.spec.classRef` and typed substrate config CRDs. |
-| Backend readiness controller | Disabled | Built-in `flux`, `argo`, and `oci` Backend specs can be referenced without this controller. Add `backend` to `controllers` when external backend readiness or backend-native discovery status is needed. |
+| Backend readiness controller | Disabled | Built-in legacy `flux`, `argo`, and `oci` Backend specs can be referenced without this controller. Generated `bootstrap generate` profiles use `classRef`; add `backend` and wait for `Backend` Ready before applying generated `Cluster` objects. |
 | Approval controller | Disabled | Add `approval` to `controllers` when human approval objects should unblock gates. |
 | GateExpression controller | Disabled | Add `gateexpression` to `controllers` when preview gate composition status should be reconciled. |
 | Trigger controller | Disabled | Add `trigger` to `controllers` for autonomous artifact-driven promotions. |
@@ -138,6 +138,17 @@ exposed deliberately:
 | Plugin gateway runtime dispatch | Disabled | `pluginGateway.enabled=true` plus `plugin` in `controllers`, installed plugin services, and `Plugin` objects. |
 | Hub Gateway service exposure | Internal only | `hubGateway.service.enabled=true`; place Kubernetes authn/authz or an identity-aware proxy in front of production exposure. |
 | Spoke CSR bootstrap controller | Disabled | Add `cluster-bootstrap` to `controllers` and set `hubAPIURL` to the hub API server URL reachable from spokes. |
+
+For the `0.6` bootstrap profiles, use the core controllers plus
+`substrateclass` and `backend`:
+
+```bash
+helm upgrade --install kapro \
+  "${KAPRO_CHART}" \
+  --namespace kapro-system \
+  --create-namespace \
+  --set controllers='{fleet,plan,promotion,promotionrun,cluster,substrateclass,backend}'
+```
 | Fleet auto-import providers | GCP and static lists implemented | Add `clustertemplate` to `controllers` when using `ClusterTemplate`; AWS, Azure, RHACM, and CAPI sources report `SourceNotImplemented` until their discoverers land. |
 | Inline gate notifications | Runtime | Notification routing is configured inside gate/stage policy; there is no separate public notification provider/policy CRD. |
 
@@ -151,9 +162,10 @@ run:
 
 | Path | Use when | Example |
 |---|---|---|
-| Flux | Spokes already reconcile with Flux or Flux Operator. | [First Promotion](first-promotion-10min.md) |
+| Direct | Kapro should generate rendered Kubernetes manifests for direct apply. | [Direct Apply Quickstart](quickstart-direct.md) |
+| Flux | Spokes already reconcile with Flux or Flux Operator. | [Flux Quickstart](quickstart-flux.md) |
 | Argo CD | Argo CD owns one Application per target cluster. | [Argo CD Quickstart](quickstart-argo.md) |
-| OCI | Spokes should pull OCI artifacts without Flux or Argo CD. | [OCI Quickstart](quickstart-oci.md) |
+| OCI | Spokes must pull OCI artifacts without Flux or Argo CD. | [OCI Quickstart](quickstart-oci.md) |
 
 For a guided CLI decision tree, run:
 

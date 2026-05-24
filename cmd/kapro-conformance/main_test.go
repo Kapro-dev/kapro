@@ -82,8 +82,8 @@ func TestRunAllJSON(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &reports); err != nil {
 		t.Fatalf("unmarshal reports: %v\n%s", err, stdout.String())
 	}
-	if len(reports) != 4 {
-		t.Fatalf("len(reports) = %d, want 4", len(reports))
+	if len(reports) != 7 {
+		t.Fatalf("len(reports) = %d, want 7", len(reports))
 	}
 	for _, report := range reports {
 		if !report.Passed {

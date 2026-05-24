@@ -115,6 +115,9 @@ cd kapro
 make build
 export PATH="$PWD/bin:$PATH"
 kapro bootstrap guide
+kapro bootstrap generate ./promotion-repo --profile direct --name checkout
+kapro bootstrap generate ./promotion-repo --profile argocd --name checkout
+kapro bootstrap generate ./promotion-repo --profile flux --name checkout
 kapro quickstart flux ./promotion-repo --name checkout
 kapro quickstart argo ./promotion-repo --name checkout
 kapro bootstrap greenfield ./promotion-repo --backend flux --mode pull --name checkout

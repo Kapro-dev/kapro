@@ -271,6 +271,10 @@ func (s BackendSpec) CanonicalExecution() *BackendExecutionSpec {
 // documented substrate kind. Unknown custom substrates resolve to their kind.
 func DefaultActuatorForSubstrate(kind string) string {
 	switch kind {
+	case "kubernetes-apply":
+		return "direct"
+	case "argo-cd":
+		return "argo"
 	case string(BackendDriverArgo):
 		return "argo-cd"
 	case string(BackendDriverFlux):

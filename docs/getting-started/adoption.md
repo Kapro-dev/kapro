@@ -10,11 +10,12 @@ agents, or plugins still own local reconciliation.
 
 | Situation | Start with | What Kapro creates |
 |---|---|---|
-| New platform repo, Flux or spoke pull delivery | `kapro quickstart flux ./promotion-repo --name checkout` | Backend, clusters, Fleet, Plan, Promotion, and Flux starter files. |
-| New platform repo, Argo CD Applications already planned | `kapro quickstart argo ./promotion-repo --name checkout` | Backend, clusters, Fleet, Plan, Promotion, and Argo starter Application. |
+| New repo, direct Kubernetes apply | `kapro bootstrap generate ./promotion-repo --profile direct --name checkout` | `kubernetes-apply` class/config, Backend, raw YAML, clusters, Fleet, Plan, and Promotion scaffold. |
+| New repo, Flux or spoke pull delivery | `kapro bootstrap generate ./promotion-repo --profile flux --name checkout` | Flux class/config, Backend, clusters, Fleet, Plan, Promotion, and Flux starter files. |
+| New repo, Argo CD Applications already planned | `kapro bootstrap generate ./promotion-repo --profile argocd --name checkout` | Argo CD class/config, Backend, clusters, Fleet, Plan, Promotion, and Argo starter Application. |
 | Existing Argo CD repo | `kapro adopt argo . --out ./kapro-connect --name checkout` | Observe-mode Backend, Source mappings, and discovery reports. |
 | Existing Flux repo | `kapro adopt flux . --out ./kapro-connect --name checkout` | Observe-mode Backend, Source mappings, and discovery reports. |
-| Outbound-only clusters without Flux or Argo CD | `kapro quickstart oci ./promotion-repo --name checkout` | OCI Backend, clusters, Fleet, Plan, and Promotion skeleton. |
+| Outbound-only clusters that must pull OCI artifacts | `kapro quickstart oci ./promotion-repo --name checkout` | OCI Backend, clusters, Fleet, Plan, and Promotion skeleton. |
 
 Use `kapro bootstrap guide` when you want the same decision tree in the
 terminal.
@@ -38,32 +39,42 @@ export PATH="$PWD/bin:$PATH"
 Greenfield means you want Kapro to scaffold the promotion repository shape.
 
 ```bash
-kapro bootstrap greenfield ./promotion-repo \
-  --backend flux \
-  --mode pull \
+kapro bootstrap generate ./promotion-repo \
+  --profile direct \
   --name checkout
 ```
 
-The shorter equivalent is:
+Other public-preview profiles use the same command:
 
 ```bash
-kapro quickstart flux ./promotion-repo --name checkout
+kapro bootstrap generate ./promotion-repo --profile argocd --name checkout
+kapro bootstrap generate ./promotion-repo --profile flux --name checkout
 ```
 
 The generated repository has the first-use objects in dependency order:
 
 ```text
 backends/
+apps/ or backend-native starter manifests/
 clusters/
 plans/
 fleets/
 promotions/
 ```
 
-Apply it after installing the operator:
+Generated public-preview profiles use `Backend.spec.classRef`, so install Kapro
+with `substrateclass` and `backend` enabled, apply the backend first, and wait
+for readiness before applying generated clusters:
 
 ```bash
-kubectl apply --recursive -f ./promotion-repo
+kubectl apply -f ./promotion-repo/backends/direct.yaml
+kubectl wait --for=condition=Ready backend/direct --timeout=90s
+kubectl apply --recursive \
+  -f ./promotion-repo/apps \
+  -f ./promotion-repo/clusters \
+  -f ./promotion-repo/plans \
+  -f ./promotion-repo/fleets \
+  -f ./promotion-repo/promotions
 kubectl get fleets,plans,promotions,promotionruns,targets
 ```
 
@@ -112,7 +123,9 @@ For continuous in-cluster discovery, `kapro adopt argo-cd --apply` or
 `AdapterPolicy`. The policy fails closed when the Backend is missing, discovery
 is disabled, the policy adapter does not match the Backend adapter, or the
 registered adapter cannot complete discovery. Use `--dry-run=client` with
-`--apply` to validate the live writes without persisting resources.
+`--apply` to validate the live writes without persisting resources. Run the
+operator with `backend` and `adapterpolicy` controllers when using this live
+apply path.
 
 ## Promotion Flow
 

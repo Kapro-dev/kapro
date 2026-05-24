@@ -1,0 +1,22 @@
+apiVersion: kapro.io/v1alpha2
+kind: Plan
+metadata:
+  name: checkout-direct
+  labels:
+    kapro.io/team: platform
+spec:
+  stages:
+    - name: canary
+      selector:
+        matchLabels:
+          kapro.io/stage: canary
+      strategy:
+        maxParallel: 1
+    - name: production
+      selector:
+        matchLabels:
+          kapro.io/stage: production
+      dependsOn:
+        - stage: canary
+      strategy:
+        maxParallel: 1

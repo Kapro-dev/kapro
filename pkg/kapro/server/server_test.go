@@ -206,10 +206,17 @@ func TestServerNewPopulatesRegistries(t *testing.T) {
 	if srv.Manager == nil || srv.Gates == nil || srv.Actuators == nil || srv.Adapters == nil || srv.Planner == nil {
 		t.Fatalf("server registries not populated: %#v", srv)
 	}
-	for _, name := range []string{"push/flux", "pull/flux", "pull/oci", "push/argo", "pull/argo"} {
+	for _, name := range []string{"push/direct", "push/flux", "pull/flux", "pull/oci", "push/argo", "pull/argo"} {
 		if _, err := srv.Actuators.Resolve(name); err != nil {
 			t.Fatalf("resolve actuator %s: %v", name, err)
 		}
+	}
+	direct, ok := srv.Actuators.Registration("push/direct")
+	if !ok {
+		t.Fatalf("push/direct registration metadata missing")
+	}
+	if direct.Capabilities.SubstrateKind != "kubernetes-apply" || !direct.Capabilities.SupportsBackendObjects {
+		t.Fatalf("push/direct capabilities = %#v", direct.Capabilities)
 	}
 	reg, ok := srv.Actuators.Registration("push/argo")
 	if !ok {

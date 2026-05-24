@@ -20,6 +20,10 @@ Which clusters are allowed to receive this artifact version now, and why?
   `kapro sample`, `kapro doctor`, and `kapro explain` paths.
 - [First Promotion in 10 Minutes](getting-started/first-promotion-10min.md) is the shortest
   working path.
+- [Direct Apply Quickstart](getting-started/quickstart-direct.md),
+  [Flux Quickstart](getting-started/quickstart-flux.md), and
+  [Argo CD Quickstart](getting-started/quickstart-argo.md) cover the 0.6 public
+  preview profiles.
 - [Backends](concepts/backends.md) explains Flux, Argo CD, OCI, and plugin delivery
   options.
 - [Operations](operations/operations.md) covers day-two status, debugging, and metrics.

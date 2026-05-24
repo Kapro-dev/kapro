@@ -28,6 +28,7 @@ runtime child state for each execution attempt. You do not need to list
 | `cluster` | Yes | Maintains cluster heartbeat and readiness status. |
 | `substrateclass` | No | Publishes status and capabilities for Kapro-owned `SubstrateClass` objects. |
 | `backend` | No | Writes external backend readiness and backend-native discovery status. Built-in `flux`, `argo`, and `oci` Backend specs are usable without this controller. |
+| `adapterpolicy` | No | Runs continuous backend-native discovery for `AdapterPolicy` objects created by live `kapro adopt --apply` flows. |
 | `approval` | No | Reconciles `Approval` objects that unblock approval gates. |
 | `gateexpression` | No | Reconciles `GateExpression` preview composition status. |
 | `fleetdriftreport` | No | Computes read-only desired-vs-observed drift summaries from `Target` and `Cluster` status. |
@@ -53,6 +54,25 @@ helm upgrade --install kapro "$KAPRO_CHART" \
   --namespace kapro-system \
   --create-namespace \
   --set controllers='{fleet,plan,promotion,promotionrun,cluster,trigger,approval}'
+```
+
+Run generated `bootstrap generate` profiles that use `Backend.spec.classRef`:
+
+```bash
+helm upgrade --install kapro "$KAPRO_CHART" \
+  --namespace kapro-system \
+  --create-namespace \
+  --set controllers='{fleet,plan,promotion,promotionrun,cluster,substrateclass,backend}'
+```
+
+Run live existing-GitOps adoption with `kapro adopt argo --apply` or
+`kapro adopt flux --apply`:
+
+```bash
+helm upgrade --install kapro "$KAPRO_CHART" \
+  --namespace kapro-system \
+  --create-namespace \
+  --set controllers='{fleet,plan,promotion,promotionrun,cluster,backend,adapterpolicy}'
 ```
 
 Run every canonical controller:

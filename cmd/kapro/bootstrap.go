@@ -20,6 +20,7 @@ Use adopt when Argo CD or Flux already owns delivery and Kapro should start in
 observe-first mode with reviewable mappings.`,
 	}
 	cmd.AddCommand(newBootstrapGuideCmd())
+	cmd.AddCommand(newBootstrapGenerateCmd())
 	cmd.AddCommand(newBootstrapGreenfieldCmd())
 	cmd.AddCommand(newBootstrapBrownfieldCmd())
 	cmd.AddCommand(newBootstrapBackendCmd("argo"))
@@ -40,22 +41,109 @@ func newBootstrapGuideCmd() *cobra.Command {
 	}
 }
 
+func newBootstrapGenerateCmd() *cobra.Command {
+	var opts scaffoldOptions
+	profile := "direct"
+	cmd := &cobra.Command{
+		Use:   "generate [directory]",
+		Short: "Generate a 0.6 profile repo",
+		Long: `Generate a Kapro public-preview profile repository.
+
+Profiles:
+  direct  Kubernetes direct apply with raw YAML and no OCI registry requirement
+  argocd  Argo CD remains the reconciler; Kapro promotes Argo-managed intent
+  flux    Flux remains the reconciler; Kapro promotes Flux-managed intent`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			opts.Path = "."
+			if len(args) > 0 {
+				opts.Path = args[0]
+			}
+			if err := applyBootstrapGenerateProfile(&opts, profile); err != nil {
+				return err
+			}
+			return runInitScaffold(opts)
+		},
+	}
+	cmd.Flags().StringVar(&profile, "profile", profile, "Bootstrap profile: direct, argocd, or flux")
+	cmd.Flags().StringVar(&opts.Name, "name", "checkout", "Application or fleet name")
+	cmd.Flags().StringVar(&opts.Mode, "mode", "", "Delivery mode: push or pull (defaults per profile)")
+	cmd.Flags().StringVar(&opts.Registry, "registry", "oci://registry.example.com/platform", "OCI registry URL for GitOps bundle examples")
+	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Workload/backend namespace")
+	cmd.Flags().StringVar(&opts.Clusters, "clusters", "canary-eu:canary,prod-eu:production", "Cluster scaffold list as name:stage pairs, or none for repo-only setup")
+	cmd.Flags().StringVar(&opts.Team, "team", "platform", "Value for metadata.labels[kapro.io/team]")
+	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
+	return cmd
+}
+
+func applyBootstrapGenerateProfile(opts *scaffoldOptions, profile string) error {
+	normalized := strings.ToLower(strings.TrimSpace(profile))
+	switch normalized {
+	case "direct":
+		opts.Profile = "direct"
+		opts.Backend = "direct"
+		if opts.Mode == "" {
+			opts.Mode = "push"
+		}
+		if opts.Namespace == "" {
+			opts.Namespace = "default"
+		}
+	case "argocd", "argo":
+		opts.Profile = "argocd"
+		opts.Backend = "argo"
+		if opts.Mode == "" {
+			opts.Mode = "push"
+		}
+		if opts.Namespace == "" {
+			opts.Namespace = "argocd"
+		}
+	case "flux":
+		opts.Profile = "flux"
+		opts.Backend = "flux"
+		if opts.Mode == "" {
+			opts.Mode = "pull"
+		}
+		if opts.Namespace == "" {
+			opts.Namespace = "flux-system"
+		}
+	default:
+		return fmt.Errorf("--profile must be direct, argocd, or flux")
+	}
+	if opts.Name == "" {
+		opts.Name = "checkout"
+	}
+	if opts.Registry == "" {
+		opts.Registry = "oci://registry.example.com/platform"
+	}
+	if opts.Clusters == "" {
+		opts.Clusters = "canary-eu:canary,prod-eu:production"
+	}
+	if opts.Team == "" {
+		opts.Team = "platform"
+	}
+	opts.UseSubstrateClass = true
+	return nil
+}
+
 func printBootstrapGuide(out io.Writer) {
 	fmt.Fprintln(out, `Kapro adoption paths:
 
 1. Try Kapro in a new Flux pull-mode repo
-   kapro quickstart flux ./promotion-repo --name checkout
+   kapro bootstrap generate ./promotion-repo --profile flux --name checkout
 
 2. Try Kapro in a new Argo CD repo
-   kapro quickstart argo ./promotion-repo --name checkout
+   kapro bootstrap generate ./promotion-repo --profile argocd --name checkout
 
-3. Existing Argo CD repository
+3. Try Kapro with direct Kubernetes apply
+   kapro bootstrap generate ./promotion-repo --profile direct --name checkout
+
+4. Existing Argo CD repository
    kapro adopt argo . --out ./kapro-connect --name checkout
 
-4. Existing Flux repository
+5. Existing Flux repository
    kapro adopt flux . --out ./kapro-connect --name checkout
 
-5. Outbound-only clusters without Flux or Argo CD
+6. Outbound-only clusters that must pull OCI artifacts
    kapro quickstart oci ./promotion-repo --name checkout
 
 Safe default:

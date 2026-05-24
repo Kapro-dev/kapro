@@ -1,0 +1,35 @@
+name: Kapro Validate
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  yaml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - run: python -m pip install pyyaml
+      - name: Parse YAML
+        run: |
+          python - <<'PY'
+          import pathlib
+          import sys
+          import yaml
+
+          failed = False
+          for path in sorted(pathlib.Path(".").rglob("*.y*ml")):
+              if ".git" in path.parts:
+                  continue
+              try:
+                  with path.open() as fh:
+                      list(yaml.safe_load_all(fh))
+              except Exception as exc:
+                  print(f"{path}: {exc}", file=sys.stderr)
+                  failed = True
+          if failed:
+              sys.exit(1)
+          PY

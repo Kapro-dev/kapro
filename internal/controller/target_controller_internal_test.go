@@ -160,6 +160,89 @@ func TestHandleApplyingSkipsConvergenceWhenObserveUnsupported(t *testing.T) {
 	}
 }
 
+func TestHandleApplyingResolvesClassRefBackendToBuiltInActuator(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	cluster := &kaprov1alpha2.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{
+				Mode:       kaprov1alpha2.DeliveryModePush,
+				BackendRef: "local-direct",
+			},
+		},
+		Status: kaprov1alpha2.ClusterStatus{CurrentVersions: map[string]string{"api": "old"}},
+	}
+	backend := &kaprov1alpha2.Backend{
+		ObjectMeta: metav1.ObjectMeta{Name: "local-direct"},
+		Spec: kaprov1alpha2.BackendSpec{
+			ClassRef: &kaprov1alpha2.SubstrateClassReference{Name: "kubernetes-apply"},
+			ConfigRef: &kaprov1alpha2.SubstrateObjectReference{
+				APIVersion: "kubernetes.substrate.kapro.io/v1alpha1",
+				Kind:       "KubernetesApplyConfig",
+				Name:       "local-direct",
+			},
+		},
+		Status: kaprov1alpha2.BackendStatus{Ready: true},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cluster, backend).
+		WithStatusSubresource(&kaprov1alpha2.Cluster{}).
+		Build()
+
+	act := &capabilityActuator{}
+	reg := actuator.NewRegistry()
+	if err := reg.RegisterRegistration(actuator.Registration{
+		Name: "push/direct",
+		Capabilities: actuator.Capabilities{
+			Adapter:         "direct",
+			Modes:           []kaprov1alpha2.DeliveryMode{kaprov1alpha2.DeliveryModePush},
+			SupportsApply:   true,
+			SupportsObserve: true,
+			SupportsDelta:   true,
+		},
+		Actuator: act,
+	}); err != nil {
+		t.Fatalf("register actuator: %v", err)
+	}
+	r := &TargetReconciler{
+		Client:           c,
+		Recorder:         record.NewFakeRecorder(4),
+		ActuatorRegistry: reg,
+	}
+	promotionrun := &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "promo-1"}}
+	target := &kaprov1alpha2.TargetExecutionState{
+		PromotionRunRef: "promo-1",
+		Target:          "cluster-a",
+		PlanRef:         "wave-1",
+		Stage:           "prod",
+		AppKey:          "api",
+		Version:         "new",
+		DesiredVersions: map[string]string{"api": "new"},
+	}
+
+	result, err := r.handleApplying(ctx, promotionrun, target)
+	if err != nil {
+		t.Fatalf("handleApplying: %v", err)
+	}
+	if result != (ctrl.Result{}) {
+		t.Fatalf("result = %+v, want no requeue", result)
+	}
+	if target.Phase != kaprov1alpha2.TargetPhaseConverged {
+		t.Fatalf("target phase = %q, want Converged", target.Phase)
+	}
+	if act.deltaCount != 1 || act.observeCount != 1 {
+		t.Fatalf("delta/observe counts = %d/%d, want 1/1", act.deltaCount, act.observeCount)
+	}
+}
+
 func TestSyncPromotionTargetPhaseLabelPersistsMetadata(t *testing.T) {
 	ctx := context.Background()
 	scheme := runtime.NewScheme()

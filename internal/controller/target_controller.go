@@ -1005,24 +1005,31 @@ func (r *TargetReconciler) handleApplying(ctx context.Context, promotionrun *kap
 	capturePreviousVersions(target, &mc, desiredVersions)
 	r.emitDeliveryDecisionTraces(ctx, promotionrun, target, &mc, desiredVersions)
 
-	// Issue Apply exactly once per Applying entry.
-	if r.ActuatorRegistry != nil && !target.ApplyIssued {
-		key := mc.Spec.Delivery.RegistryKey()
-		act, err := r.ActuatorRegistry.Resolve(key)
+	var (
+		actuatorKey  string
+		act          actuator.Actuator
+		actuatorCaps actuator.Capabilities
+	)
+	if r.ActuatorRegistry != nil {
+		var err error
+		actuatorKey, act, actuatorCaps, err = r.resolveActuatorForCluster(ctx, &mc)
 		if err != nil {
 			l.Error(err, "failed to resolve actuator")
 			return ctrl.Result{RequeueAfter: requeueFast}, nil
 		}
-		caps := actuatorCapabilitiesFor(r.ActuatorRegistry, key)
-		if !supportsActuatorApply(caps) {
-			msg := fmt.Sprintf("actuator %q does not support apply", key)
+	}
+
+	// Issue Apply exactly once per Applying entry.
+	if act != nil && !target.ApplyIssued {
+		if !supportsActuatorApply(actuatorCaps) {
+			msg := fmt.Sprintf("actuator %q does not support apply", actuatorKey)
 			r.emitCapabilityUnsupportedTrace(ctx, promotionrun, target,
 				kaprov1alpha2.DecisionTraceEventStage,
 				DecisionTraceReasonApplyUnsupported, msg)
 			r.failTarget(ctx, promotionrun, target, msg)
 			return ctrl.Result{}, nil
 		}
-		deltaCount, err := applyDesiredVersions(ctx, act, caps, &mc, desiredVersions)
+		deltaCount, err := applyDesiredVersions(ctx, act, actuatorCaps, &mc, desiredVersions)
 		if err != nil {
 			l.Error(err, "Actuator apply failed, will retry")
 			return ctrl.Result{RequeueAfter: requeueFast}, nil
@@ -1033,19 +1040,12 @@ func (r *TargetReconciler) handleApplying(ctx context.Context, promotionrun *kap
 
 	// Poll for convergence.
 	currentVersion := mc.Status.CurrentVersions[targetAppKey(target)] // nil map read returns "" safely
-	if r.ActuatorRegistry != nil {
-		key := mc.Spec.Delivery.RegistryKey()
-		act, err := r.ActuatorRegistry.Resolve(key)
-		if err != nil {
-			l.Error(err, "failed to resolve actuator for convergence check")
-			return ctrl.Result{RequeueAfter: requeueFast}, nil
-		}
-		caps := actuatorCapabilitiesFor(r.ActuatorRegistry, key)
-		if supportsActuatorBackendObjects(caps) {
+	if act != nil {
+		if supportsActuatorBackendObjects(actuatorCaps) {
 			reporter, ok := act.(actuator.BackendObjectReporter)
 			if !ok {
-				if hasActuatorSupportBits(caps) && caps.SupportsBackendObjects {
-					l.Info("actuator declared backend objects but does not implement reporter", "actuator", key)
+				if hasActuatorSupportBits(actuatorCaps) && actuatorCaps.SupportsBackendObjects {
+					l.Info("actuator declared backend objects but does not implement reporter", "actuator", actuatorKey)
 				}
 			} else {
 				objects, err := reporter.BackendObjects(ctx, &mc, desiredVersions)
@@ -1056,8 +1056,8 @@ func (r *TargetReconciler) handleApplying(ctx context.Context, promotionrun *kap
 				target.BackendObjects = objects
 			}
 		}
-		if !supportsActuatorObserve(caps) {
-			msg := fmt.Sprintf("actuator %q does not support observe; trusting apply outcome", key)
+		if !supportsActuatorObserve(actuatorCaps) {
+			msg := fmt.Sprintf("actuator %q does not support observe; trusting apply outcome", actuatorKey)
 			l.Info(msg)
 			r.emitCapabilityUnsupportedTrace(ctx, promotionrun, target,
 				kaprov1alpha2.DecisionTraceEventStage,
@@ -1125,6 +1125,74 @@ func (r *TargetReconciler) handleApplying(ctx context.Context, promotionrun *kap
 			"currentVersion", currentVersion, "wantVersion", target.Version)
 	}
 	return ctrl.Result{RequeueAfter: requeueNormal}, nil
+}
+
+func (r *TargetReconciler) resolveActuatorForCluster(ctx context.Context, cluster *kaprov1alpha2.Cluster) (string, actuator.Actuator, actuator.Capabilities, error) {
+	if r.ActuatorRegistry == nil {
+		return "", nil, actuator.Capabilities{}, fmt.Errorf("actuator registry is nil")
+	}
+	if cluster == nil {
+		return "", nil, actuator.Capabilities{}, fmt.Errorf("cluster is nil")
+	}
+	delivery := cluster.Spec.Delivery
+	key := delivery.RegistryKey()
+	act, err := r.ActuatorRegistry.Resolve(key)
+	if err == nil {
+		return key, act, actuatorCapabilitiesFor(r.ActuatorRegistry, key), nil
+	}
+	if r.Client == nil || delivery.BackendRef == "" {
+		return key, nil, actuator.Capabilities{}, err
+	}
+
+	var backend kaprov1alpha2.Backend
+	if getErr := r.Get(ctx, client.ObjectKey{Name: delivery.BackendRef}, &backend); getErr != nil {
+		if apierrors.IsNotFound(getErr) {
+			return key, nil, actuator.Capabilities{}, fmt.Errorf("resolve actuator %q: %w; backend %q not found", key, err, delivery.BackendRef)
+		}
+		return key, nil, actuator.Capabilities{}, fmt.Errorf("resolve actuator %q: %w; lookup backend %q: %v", key, err, delivery.BackendRef, getErr)
+	}
+
+	canonical := canonicalActuatorKeyForBackend(delivery, backend.Spec)
+	if canonical == "" || canonical == key {
+		return key, nil, actuator.Capabilities{}, err
+	}
+	act, canonicalErr := r.ActuatorRegistry.Resolve(canonical)
+	if canonicalErr != nil {
+		return canonical, nil, actuator.Capabilities{}, fmt.Errorf("resolve actuator %q via backend %q: %w", canonical, backend.Name, canonicalErr)
+	}
+	return canonical, act, actuatorCapabilitiesFor(r.ActuatorRegistry, canonical), nil
+}
+
+func canonicalActuatorKeyForBackend(delivery kaprov1alpha2.DeliverySpec, backend kaprov1alpha2.BackendSpec) string {
+	mode := delivery.Mode
+	if mode == "" {
+		switch backend.ExecutionMode() {
+		case kaprov1alpha2.ExecutionModeHubPush:
+			mode = kaprov1alpha2.DeliveryModePush
+		case kaprov1alpha2.ExecutionModeSpokePull, kaprov1alpha2.ExecutionModeExternalPull:
+			mode = kaprov1alpha2.DeliveryModePull
+		}
+	}
+	name := runtimeActuatorNameForBackend(backend)
+	if mode == "" || name == "" {
+		return ""
+	}
+	return string(mode) + "/" + name
+}
+
+func runtimeActuatorNameForBackend(backend kaprov1alpha2.BackendSpec) string {
+	kind := backend.SubstrateKind()
+	switch kind {
+	case "kubernetes-apply":
+		return "direct"
+	case "argo", "argo-cd":
+		return "argo"
+	case "flux":
+		return "flux"
+	case "oci":
+		return "oci"
+	}
+	return backend.ActuatorName()
 }
 
 func applyDesiredVersions(ctx context.Context, act actuator.Actuator, caps actuator.Capabilities, cluster *kaprov1alpha2.Cluster, desiredVersions map[string]string) (int, error) {

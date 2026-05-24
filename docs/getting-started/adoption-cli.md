@@ -8,7 +8,7 @@ but do not want to learn every Kapro object before trying promotion workflows.
 For a new repo, start with:
 
 ```bash
-kapro quickstart flux ./promotion-repo --name checkout
+kapro bootstrap generate ./promotion-repo --profile direct --name checkout
 ```
 
 Use Flux when clusters should pull desired state from inside their own network
@@ -16,10 +16,12 @@ boundary. Use Argo CD when Argo already owns Applications and Kapro should
 promote versions through that existing control plane:
 
 ```bash
-kapro quickstart argo ./promotion-repo --name checkout
+kapro bootstrap generate ./promotion-repo --profile flux --name checkout
+kapro bootstrap generate ./promotion-repo --profile argocd --name checkout
 ```
 
-Use OCI when spokes should pull artifacts directly without Argo CD or Flux:
+Use OCI only when spokes must pull OCI artifacts directly without Argo CD or
+Flux:
 
 ```bash
 kapro quickstart oci ./promotion-repo --name checkout

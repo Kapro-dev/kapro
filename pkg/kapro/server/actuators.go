@@ -9,6 +9,7 @@ import (
 
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	argoactuator "kapro.io/kapro/internal/actuator/argo"
+	directactuator "kapro.io/kapro/internal/actuator/direct"
 	fluxopactuator "kapro.io/kapro/internal/actuator/fluxoperator"
 	pullactuator "kapro.io/kapro/internal/actuator/pull"
 	"kapro.io/kapro/pkg/kapro/actuator"
@@ -30,6 +31,7 @@ type ActuatorRegistrar func(context.Context, ActuatorRegistrationContext) error
 // registrations.
 func DefaultActuatorRegistrars() []ActuatorRegistrar {
 	return []ActuatorRegistrar{
+		RegisterDirect(),
 		RegisterFlux(),
 		RegisterOCI(),
 		RegisterArgoCD(),
@@ -47,6 +49,33 @@ func RegisterActuator(reg actuator.Registration) ActuatorRegistrar {
 			return fmt.Errorf("register actuator %q: %w", reg.RegistryKey(), err)
 		}
 		return nil
+	}
+}
+
+// RegisterDirect registers hub-side direct Kubernetes apply.
+func RegisterDirect() ActuatorRegistrar {
+	return func(_ context.Context, cc ActuatorRegistrationContext) error {
+		return registerBuiltInActuator(cc.Registry, actuator.Registration{
+			Name: "push/direct",
+			Mode: kaprov1alpha2.DeliveryModePush,
+			Capabilities: actuator.Capabilities{
+				ContractVersion:        actuator.ContractVersionV1Alpha1,
+				SubstrateKind:          "kubernetes-apply",
+				Adapter:                "direct",
+				Runtime:                kaprov1alpha2.BackendRuntimeHub,
+				ExecutionModes:         []kaprov1alpha2.ExecutionMode{kaprov1alpha2.ExecutionModeHubPush},
+				Modes:                  []kaprov1alpha2.DeliveryMode{kaprov1alpha2.DeliveryModePush},
+				SupportsApply:          true,
+				SupportsObserve:        true,
+				SupportsRollback:       true,
+				SupportsConvergence:    true,
+				SupportsDelta:          true,
+				SupportsBackendObjects: true,
+				SupportsDryRun:         true,
+				SupportsHubExecution:   true,
+			},
+			Actuator: &directactuator.Actuator{Client: cc.Manager.GetClient()},
+		})
 	}
 }
 

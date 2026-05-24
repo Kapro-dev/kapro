@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -437,6 +438,50 @@ func TestDeliveryLoop_UnknownDriverFailsLoudly(t *testing.T) {
 	}
 	if entry.LastError == "" {
 		t.Fatalf("expected lastError to be populated")
+	}
+}
+
+func TestDeliveryLoop_ClassRefFluxResolvesProvider(t *testing.T) {
+	fc := newDeliveryFC("c1", map[string]string{"api": "1.0"}, false, "team-flux")
+	bp := &kaprov1alpha2.Backend{
+		ObjectMeta: metav1.ObjectMeta{Name: "team-flux"},
+		Spec: kaprov1alpha2.BackendSpec{
+			ClassRef: &kaprov1alpha2.SubstrateClassReference{Name: "flux"},
+			ConfigRef: &kaprov1alpha2.SubstrateObjectReference{
+				APIVersion: "flux.substrate.kapro.io/v1alpha1",
+				Kind:       "FluxSubstrateConfig",
+				Name:       "team-flux",
+			},
+			Execution: &kaprov1alpha2.BackendExecutionSpec{Mode: kaprov1alpha2.ExecutionModeSpokePull},
+		},
+		Status: kaprov1alpha2.BackendStatus{Ready: true},
+	}
+	hub := deliveryHub(t, fc, bp)
+
+	provider := &scriptedProvider{
+		driver: kaprov1alpha2.BackendDriverFlux,
+		results: map[string]spokeprovider.ReconcileResult{
+			"api": {Phase: kaprov1alpha2.DeliveryPhaseConverged},
+		},
+	}
+	reg := spokeprovider.NewRegistry()
+	if err := reg.Register(kaprov1alpha2.BackendDriverFlux, provider); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	l := &deliveryLoop{
+		Hub:         newHubClientFromStatic(hub),
+		ClusterName: "c1",
+		Registry:    reg,
+	}
+
+	if err := l.tick(context.Background()); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	if len(provider.calls) != 1 {
+		t.Fatalf("provider called %d times, want 1", len(provider.calls))
+	}
+	if provider.calls[0].BackendProfile.Name != "team-flux" {
+		t.Fatalf("backend profile = %q", provider.calls[0].BackendProfile.Name)
 	}
 }
 

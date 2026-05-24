@@ -84,8 +84,9 @@ promoted to a milestone, use exact patch versions such as `v0.5.11` or
    because it gives Helm release-state ownership, hooks, and rollback semantics.
 7. **Build `bootstrapgen` with a small matrix.** Replace hardcoded scaffold
    strings with schema-backed embedded templates, but ship only three canonical
-   profile/template pairs first: `direct` + raw YAML, `argocd` + Helm, and
-   `flux` + Kustomize.
+   profile/template pairs first: `direct` + raw YAML, `argocd` + rendered
+   manifests/Application, and `flux` + Kustomize. Helm remains a render input
+   until a dedicated Helm release-state substrate exists.
 8. **Define the pipeline substrate profile.** Specify correlation IDs,
    idempotent triggering, observe semantics, terminal and retryable status
    mapping, cancellation, and evidence before implementing individual pipeline
@@ -101,9 +102,10 @@ promoted to a milestone, use exact patch versions such as `v0.5.11` or
    the default Kapro-native path is stable. Do not copy Sveltos into Kapro
    core.
 12. **Open the third-party substrate path.** In `0.6.0`, ship the internal Go
-   conformance suite for `kubernetes-apply`, `argo-cd`, and `flux`. Promote it
-   to a public `kapro substrate conformance <class>` CLI in `0.7.x` after the
-   launch substrates prove the contract.
+   conformance suite and reference class scenarios for `kubernetes-apply`,
+   `argo-cd`, and `flux`. Promote it to a public
+   `kapro substrate conformance <class>` CLI in `0.7.x` after the launch
+   substrates prove the contract as standalone packages.
 
 ## Technical Foundation
 
@@ -129,16 +131,17 @@ The first public preview should ship a focused matrix:
 | Profile | Canonical app template | Generated Kapro objects |
 | --- | --- | --- |
 | `direct` | raw YAML | `SubstrateClass`, `Backend`, `Cluster`, `Fleet`, `Plan`, `Promotion` |
-| `argocd` | Helm | `SubstrateClass`, `Backend`, `Cluster`, `Fleet`, `Plan`, `Promotion` |
+| `argocd` | rendered manifests/Application | `SubstrateClass`, `Backend`, `Cluster`, `Fleet`, `Plan`, `Promotion` |
 | `flux` | Kustomize | `SubstrateClass`, `Backend`, `Cluster`, `Fleet`, `Plan`, `Promotion` |
 
 Additional app templates are allowed after the canonical three pass smoke tests.
 Do not create the full profile x app-template cross-product before `0.6.0`.
 
-The substrate conformance suite is part of `0.6.0`, even if the public CLI
-wrapper is not. The three launch substrates must pass the same Go contract so
-they work by design, not by fixture coincidence, and so third-party authors have
-a reference to copy before `0.7.x` opens broader substrate packaging.
+The substrate conformance suite is part of `0.6.0`, even if the public
+`kapro substrate conformance <class>` wrapper is not. The `kapro-conformance
+all` reference run includes the three launch classes; runtime delivery remains
+covered by direct, Argo CD, and Flux actuator/controller tests until standalone
+KSI packages are promoted.
 
 Each generated repo should include minimal CI that runs YAML validation,
 `kapro plan` or the nearest available static planner, and optional policy tests
@@ -158,8 +161,9 @@ such as `kapro bootstrap diff` or `kapro bootstrap upgrade` is Phase 2.
 
 - `direct`, `argocd`, and `flux` profiles each have an end-to-end demo that
   runs `init -> generate -> plan -> promote dev -> stage -> prod` on kind.
-- `kubernetes-apply`, `argo-cd`, and `flux` reference substrates pass the
-  internal Go substrate conformance suite.
+- `kubernetes-apply`, `argo-cd`, and `flux` reference class scenarios pass the
+  internal Go substrate conformance suite, and their runtime delivery paths pass
+  targeted actuator/controller tests.
 - `docs/specs/substrate-parameter-spec.md` is published as the `v1alpha2`
   substrate author contract.
 - `kapro adopt argo` and `kapro adopt flux` work against real Argo CD and Flux

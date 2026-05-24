@@ -70,7 +70,40 @@ require_file "${TMPDIR}/bootstrap-greenfield/promotions/checkout-promotion.yaml"
 require_text "${TMPDIR}/bootstrap-greenfield/clusters/canary-eu.yaml" "mode: pull"
 require_text "${TMPDIR}/bootstrap-greenfield/clusters/canary-eu.yaml" "backendRef: flux"
 
-echo "smoke: brownfield argo connect"
+echo "smoke: bootstrap generate direct profile"
+kapro bootstrap generate "${TMPDIR}/generate-direct" --profile direct --name checkout --force >/dev/null
+require_file "${TMPDIR}/generate-direct/backends/direct.yaml"
+require_file "${TMPDIR}/generate-direct/apps/checkout/deployment.yaml"
+require_file "${TMPDIR}/generate-direct/fleets/checkout.yaml"
+require_text "${TMPDIR}/generate-direct/backends/direct.yaml" "kind: KubernetesApplyConfig"
+require_text "${TMPDIR}/generate-direct/backends/direct.yaml" "name: kubernetes-apply"
+require_text "${TMPDIR}/generate-direct/clusters/canary-eu.yaml" "backendRef: direct"
+require_text "${TMPDIR}/generate-direct/fleets/checkout.yaml" "backendKind: KubernetesManifest"
+
+echo "smoke: bootstrap generate Argo CD profile"
+kapro bootstrap generate "${TMPDIR}/generate-argocd" --profile argocd --name checkout --force >/dev/null
+require_file "${TMPDIR}/generate-argocd/backends/argo.yaml"
+require_file "${TMPDIR}/generate-argocd/argo/applications/checkout.yaml"
+require_file "${TMPDIR}/generate-argocd/apps/checkout/deployment.yaml"
+require_file "${TMPDIR}/generate-argocd/apps/checkout/service.yaml"
+require_text "${TMPDIR}/generate-argocd/backends/argo.yaml" "kind: ArgoCDSubstrateConfig"
+require_text "${TMPDIR}/generate-argocd/argo/applications/checkout.yaml" "name: checkout-canary-eu"
+require_text "${TMPDIR}/generate-argocd/argo/applications/checkout.yaml" "name: checkout-prod-eu"
+require_text "${TMPDIR}/generate-argocd/argo/applications/checkout.yaml" "kapro.io/managed-by: kapro"
+require_text "${TMPDIR}/generate-argocd/clusters/canary-eu.yaml" "application: checkout-canary-eu"
+
+echo "smoke: bootstrap generate Flux profile"
+kapro bootstrap generate "${TMPDIR}/generate-flux" --profile flux --name checkout --force >/dev/null
+require_file "${TMPDIR}/generate-flux/backends/flux.yaml"
+require_file "${TMPDIR}/generate-flux/apps/checkout/deployment.yaml"
+require_file "${TMPDIR}/generate-flux/apps/checkout/kustomization.yaml"
+require_file "${TMPDIR}/generate-flux/flux/kustomizations/checkout.yaml"
+require_text "${TMPDIR}/generate-flux/backends/flux.yaml" "kind: FluxSubstrateConfig"
+require_text "${TMPDIR}/generate-flux/backends/flux.yaml" "name: flux"
+require_text "${TMPDIR}/generate-flux/flux/kustomizations/checkout.yaml" "kind: GitRepository"
+require_text "${TMPDIR}/generate-flux/clusters/canary-eu.yaml" "backendRef: flux"
+
+echo "smoke: existing Argo CD connect"
 kapro connect argo "${TMPDIR}/connect-argo" --namespace argocd --selector kapro.io/import=true,team=checkout --force >/dev/null
 require_file "${TMPDIR}/connect-argo/backends/argo-observe.yaml"
 require_text "${TMPDIR}/connect-argo/backends/argo-observe.yaml" "driver: argo"
@@ -80,7 +113,7 @@ require_text "${TMPDIR}/connect-argo/README.md" "switch managementPolicy from Ob
 require_text "${TMPDIR}/connect-argo/README.md" "Adopt"
 require_text "${TMPDIR}/connect-argo/README.md" "does not copy Argo CD or Flux credentials"
 
-echo "smoke: brownfield argo discover"
+echo "smoke: existing Argo CD discover"
 mkdir -p "${TMPDIR}/argo-repo/argocd/applicationsets" "${TMPDIR}/argo-repo/argocd/environments"
 cat >"${TMPDIR}/argo-repo/argocd/applicationsets/checkout.yaml" <<'YAML'
 apiVersion: argoproj.io/v1alpha1
@@ -127,13 +160,13 @@ require_file "${TMPDIR}/adopt-argo/discovery/kapro-git-map.yaml"
 kapro source apply --repo "${TMPDIR}/argo-repo" --source "${TMPDIR}/discover-argo/sources/checkout.yaml" --set checkout-api=2.0.0 --all >/dev/null
 require_text "${TMPDIR}/argo-repo/argocd/environments/dev.json" '"gkProjectVersion": "2.0.0"'
 
-echo "smoke: guided bootstrap brownfield argo"
+echo "smoke: deprecated bootstrap existing Argo CD alias"
 kapro bootstrap brownfield argo "${TMPDIR}/argo-repo" --out "${TMPDIR}/bootstrap-argo" --name checkout --force >/dev/null
 require_file "${TMPDIR}/bootstrap-argo/backends/checkout-observe.yaml"
 require_file "${TMPDIR}/bootstrap-argo/sources/checkout.yaml"
 require_file "${TMPDIR}/bootstrap-argo/discovery/kapro-git-map.yaml"
 
-echo "smoke: brownfield flux connect"
+echo "smoke: existing Flux connect"
 kapro connect flux "${TMPDIR}/connect-flux" --namespace flux-system --selector kapro.io/import=true,team=checkout --force >/dev/null
 require_file "${TMPDIR}/connect-flux/backends/flux-observe.yaml"
 require_text "${TMPDIR}/connect-flux/backends/flux-observe.yaml" "driver: flux"

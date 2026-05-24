@@ -38,6 +38,8 @@ nav:
       - Adoption Guide: getting-started/adoption.md
       - Adoption CLI: getting-started/adoption-cli.md
       - First Promotion in 10 Minutes: getting-started/first-promotion-10min.md
+      - Direct Apply Quickstart: getting-started/quickstart-direct.md
+      - Flux Quickstart: getting-started/quickstart-flux.md
       - Argo Quickstart: getting-started/quickstart-argo.md
       - OCI Quickstart: getting-started/quickstart-oci.md
   - Concepts:
