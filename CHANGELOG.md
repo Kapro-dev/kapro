@@ -7,6 +7,24 @@ record for each tag.
 
 ## Unreleased
 
+### Added — capability-skip DecisionTraces (#317)
+
+When an actuator declares an operation unsupported via its `Capabilities()`
+profile, the controller now emits a `DecisionTrace` with a stable
+`*Unsupported` reason in addition to the existing log line. `kapro why
+<promotion>` surfaces the skip as a `Skipped` decision so an operator can
+see why a rollback, observe, or apply path was bypassed. New reason
+constants: `ApplyUnsupported`, `ObserveUnsupported`, `RollbackUnsupported`.
+The existing `DiscoverUnsupported` and `DryRunUnsupported` reasons remain on
+the discovery path.
+
+### Added — CI-verified hello-world custom substrate (#318)
+
+`examples/actuator-hello-world` now ships with a README walkthrough,
+public-SDK-only `hello_test.go`, and a `make conformance-hello-world`
+target run on every PR. A change to `pkg/kapro/actuator` that breaks the
+authoring shape used by custom substrates fails CI before merge.
+
 ### Added — open substrate Backend API foundation
 
 `Backend.spec.substrate` and `Backend.spec.execution` introduce the

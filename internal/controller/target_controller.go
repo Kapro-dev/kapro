@@ -1015,7 +1015,11 @@ func (r *TargetReconciler) handleApplying(ctx context.Context, promotionrun *kap
 		}
 		caps := actuatorCapabilitiesFor(r.ActuatorRegistry, key)
 		if !supportsActuatorApply(caps) {
-			r.failTarget(ctx, promotionrun, target, fmt.Sprintf("actuator %q does not support apply", key))
+			msg := fmt.Sprintf("actuator %q does not support apply", key)
+			r.emitCapabilityUnsupportedTrace(ctx, promotionrun, target,
+				kaprov1alpha2.DecisionTraceEventStage,
+				DecisionTraceReasonApplyUnsupported, msg)
+			r.failTarget(ctx, promotionrun, target, msg)
 			return ctrl.Result{}, nil
 		}
 		deltaCount, err := applyDesiredVersions(ctx, act, caps, &mc, desiredVersions)
@@ -1053,7 +1057,11 @@ func (r *TargetReconciler) handleApplying(ctx context.Context, promotionrun *kap
 			}
 		}
 		if !supportsActuatorObserve(caps) {
-			l.Info("actuator does not support observe; trusting apply outcome", "actuator", key)
+			msg := fmt.Sprintf("actuator %q does not support observe; trusting apply outcome", key)
+			l.Info(msg)
+			r.emitCapabilityUnsupportedTrace(ctx, promotionrun, target,
+				kaprov1alpha2.DecisionTraceEventStage,
+				DecisionTraceReasonObserveUnsupported, msg)
 			r.transitionTo(ctx, promotionrun, target, kaprov1alpha2.TargetPhaseConverged)
 			target.FinishedAt = time.Now().UTC().Format(time.RFC3339)
 			return ctrl.Result{}, nil

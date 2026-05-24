@@ -17,6 +17,7 @@ import (
 
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/decisiontrace"
+	"kapro.io/kapro/pkg/kapro/actuator"
 )
 
 func TestPromotionRunSuspendedEmitsDecisionTrace(t *testing.T) {
@@ -368,4 +369,136 @@ func singleDecisionTrace(t *testing.T, c client.Client) kaprov1alpha2.DecisionTr
 		t.Fatalf("trace count = %d, want 1: %#v", len(traces.Items), traces.Items)
 	}
 	return traces.Items[0]
+}
+
+// TestTriggerTargetRollbackEmitsTraceWhenRollbackUnsupported is the
+// regression guarantee for issue #317: when an actuator declares
+// SupportsRollback=false (and SupportsDelta=false so the delta path is
+// also unavailable), triggerTargetRollback must NOT call Rollback or
+// ApplyDelta on the actuator AND must emit a DecisionTrace with reason
+// RollbackUnsupported so `kapro why <promotion>` shows the audit trail.
+func TestTriggerTargetRollbackEmitsTraceWhenRollbackUnsupported(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme: %v", err)
+	}
+
+	cluster := &kaprov1alpha2.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "cluster-a"},
+		Spec: kaprov1alpha2.ClusterSpec{
+			Delivery: kaprov1alpha2.DeliverySpec{
+				Mode:       "pull",
+				BackendRef: "rollbackless",
+			},
+		},
+	}
+	run := &kaprov1alpha2.PromotionRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "run-rb"},
+	}
+	c := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha2.DecisionTrace{}).
+		WithObjects(cluster, run).
+		Build()
+
+	// fakeRollbacklessActuator counts calls to Rollback / ApplyDelta. The
+	// regression test asserts both counters stay at 0.
+	stub := &countingActuator{}
+	registry := actuator.NewRegistry()
+	if err := registry.RegisterRegistration(actuator.Registration{
+		Name:     "pull/rollbackless",
+		Mode:     kaprov1alpha2.DeliveryModePull,
+		Actuator: stub,
+		Capabilities: actuator.Capabilities{
+			Driver:           kaprov1alpha2.BackendDriverExternal,
+			Adapter:          "rollbackless",
+			SupportsApply:    true,
+			SupportsRollback: false, // <-- the focus of this test
+			SupportsDelta:    false, // <-- delta path also unavailable
+		},
+	}); err != nil {
+		t.Fatalf("RegisterRegistration: %v", err)
+	}
+
+	r := &PromotionRunReconciler{
+		Client:               c,
+		Recorder:             record.NewFakeRecorder(50),
+		ActuatorRegistry:     registry,
+		DecisionTraceEmitter: decisiontrace.Emitter{Client: c},
+	}
+
+	targets := []kaprov1alpha2.TargetExecutionState{
+		{
+			PromotionRunRef: run.Name,
+			Target:          "cluster-a",
+			PlanRef:         "plan-a",
+			Stage:           "stage-a",
+			Version:         "v2.0.0",
+			PreviousVersion: "v1.0.0",
+		},
+	}
+
+	r.triggerTargetRollback(context.Background(), run, &targets, 0)
+
+	if stub.rollbackCalls != 0 {
+		t.Fatalf("Rollback called %d times; expected 0 because SupportsRollback=false",
+			stub.rollbackCalls)
+	}
+	if stub.applyDeltaCalls != 0 {
+		t.Fatalf("ApplyDelta called %d times; expected 0 because SupportsDelta=false",
+			stub.applyDeltaCalls)
+	}
+
+	var traces kaprov1alpha2.DecisionTraceList
+	if err := c.List(context.Background(), &traces); err != nil {
+		t.Fatalf("List traces: %v", err)
+	}
+	var foundUnsupported bool
+	for _, tr := range traces.Items {
+		if tr.Spec.Reason == DecisionTraceReasonRollbackUnsupported &&
+			tr.Spec.EventType == kaprov1alpha2.DecisionTraceEventRollback &&
+			tr.Spec.PromotionRun == run.Name &&
+			tr.Spec.Target == "cluster-a" {
+			foundUnsupported = true
+			break
+		}
+	}
+	if !foundUnsupported {
+		t.Fatalf("expected DecisionTrace reason=%s eventType=Rollback target=cluster-a; got %d traces: %v",
+			DecisionTraceReasonRollbackUnsupported, len(traces.Items), tracesSummary(traces.Items))
+	}
+}
+
+type countingActuator struct {
+	rollbackCalls   int
+	applyDeltaCalls int
+	applyCalls      int
+}
+
+func (a *countingActuator) Apply(_ context.Context, _ actuator.ApplyRequest) error {
+	a.applyCalls++
+	return nil
+}
+func (a *countingActuator) IsConverged(_ context.Context, _ *kaprov1alpha2.Cluster, _, _ string) (bool, error) {
+	return true, nil
+}
+func (a *countingActuator) Rollback(_ context.Context, _ *kaprov1alpha2.Cluster, _, _ string) error {
+	a.rollbackCalls++
+	return nil
+}
+func (a *countingActuator) ApplyDelta(_ context.Context, req actuator.DeltaApplyRequest) (int, error) {
+	a.applyDeltaCalls++
+	return len(req.DesiredVersions), nil
+}
+func (a *countingActuator) IsAllConverged(_ context.Context, _ *kaprov1alpha2.Cluster, _ map[string]string) (bool, error) {
+	return true, nil
+}
+
+func tracesSummary(items []kaprov1alpha2.DecisionTrace) []string {
+	out := make([]string, 0, len(items))
+	for _, tr := range items {
+		out = append(out, tr.Spec.Reason+"/"+string(tr.Spec.EventType))
+	}
+	sort.Strings(out)
+	return out
 }

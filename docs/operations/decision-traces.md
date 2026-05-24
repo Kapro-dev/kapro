@@ -46,6 +46,12 @@ Common delivery capability reasons:
 | `DiscoverUnsupported` | The adapter discovery path does not support discovery for this substrate. |
 | `DryRunUnsupported` | The adapter discovery path was asked to dry-run a substrate that does not support dry-run. |
 
+Since v0.5.10, the FSM emits a `DecisionTrace` (not only a controller log
+line) whenever it skips an actuator call because the resolved actuator's
+`Capabilities()` declares the operation unsupported. `kapro why <promotion>`
+surfaces these as `Skipped` decisions with the matching reason, so an operator
+sees why a rollback or observe path was bypassed without grepping logs.
+
 Each trace includes `promotionRun`, `source`, `eventType`, `phase`, `reason`,
 `message`, and optional `plan`, `stage`, `target`, and bounded `evidence`.
 Evidence is intentionally small and non-secret. Long-term archive integrations

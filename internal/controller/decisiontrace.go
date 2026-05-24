@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
@@ -238,4 +239,78 @@ func addDetail(detail map[string]string, key, value string) {
 	if value != "" {
 		detail[key] = value
 	}
+}
+
+// --- Capability-skip DecisionTrace helpers (v0.5.10, issue #317) ---
+//
+// When the controller resolves an actuator and discovers it does not implement
+// a required capability (Apply/Observe/Rollback/Discover/DryRun), the
+// controller MUST emit a DecisionTrace so the audit trail explains the skip.
+// `kapro why <promotion>` surfaces these events alongside other decisions; an
+// operator sees "RollbackUnsupported" instead of a silent log line.
+//
+// Reason constants are wire-stable strings; do not rename them lightly.
+
+const (
+	DecisionTraceReasonApplyUnsupported    = "ApplyUnsupported"
+	DecisionTraceReasonObserveUnsupported  = "ObserveUnsupported"
+	DecisionTraceReasonRollbackUnsupported = "RollbackUnsupported"
+	DecisionTraceReasonDiscoverUnsupported = "DiscoverUnsupported"
+	DecisionTraceReasonDryRunUnsupported   = "DryRunUnsupported"
+)
+
+// emitCapabilityUnsupportedTrace emits a DecisionTrace for an actuator
+// capability gap during target FSM execution. Use the matching
+// DecisionTraceReason* constant for reason; the message should name the
+// actuator key and the operation that was skipped.
+func (r *TargetReconciler) emitCapabilityUnsupportedTrace(
+	ctx context.Context,
+	promotionrun *kaprov1alpha2.PromotionRun,
+	target *kaprov1alpha2.TargetExecutionState,
+	eventType kaprov1alpha2.DecisionTraceEventType,
+	reason string,
+	message string,
+) {
+	if promotionrun == nil || target == nil {
+		return
+	}
+	r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+		PromotionRun: promotionrun.Name,
+		Plan:         target.PlanRef,
+		Stage:        target.Stage,
+		Target:       target.Target,
+		EventType:    eventType,
+		Source:       "target-controller",
+		Phase:        "Skipped",
+		Reason:       reason,
+		Message:      message,
+		Time:         metav1.Now(),
+	})
+}
+
+// emitCapabilityUnsupportedTracePR is the PromotionRunReconciler-side variant
+// used from parent rollback flows in target_fsm.go.
+func (r *PromotionRunReconciler) emitCapabilityUnsupportedTracePR(
+	ctx context.Context,
+	promotionrun *kaprov1alpha2.PromotionRun,
+	target *kaprov1alpha2.TargetExecutionState,
+	eventType kaprov1alpha2.DecisionTraceEventType,
+	reason string,
+	message string,
+) {
+	if promotionrun == nil || target == nil {
+		return
+	}
+	r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+		PromotionRun: promotionrun.Name,
+		Plan:         target.PlanRef,
+		Stage:        target.Stage,
+		Target:       target.Target,
+		EventType:    eventType,
+		Source:       "promotionrun-controller",
+		Phase:        "Skipped",
+		Reason:       reason,
+		Message:      message,
+		Time:         metav1.Now(),
+	})
 }
