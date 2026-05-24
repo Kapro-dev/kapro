@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	kaproadapter "kapro.io/kapro/pkg/kapro/adapter"
 	"kapro.io/kapro/pkg/kapro/adapter/flux"
 )
@@ -20,11 +20,11 @@ type objectShape struct {
 func TestModelDescribesFluxDiscoveryTopology(t *testing.T) {
 	model := flux.Model()
 
-	if model.Driver != kaprov1alpha2.BackendDriverFlux {
-		t.Fatalf("driver = %q, want flux", model.Driver)
+	if model.SubstrateKind != kaprov1alpha1.SubstrateKindFlux {
+		t.Fatalf("driver = %q, want flux", model.SubstrateKind)
 	}
-	if model.Runtime != kaprov1alpha2.BackendRuntimeBoth {
-		t.Fatalf("runtime = %q, want Both", model.Runtime)
+	if model.ExecutionScope != kaprov1alpha1.ExecutionScopeBoth {
+		t.Fatalf("runtime = %q, want Both", model.ExecutionScope)
 	}
 	if model.DefaultNamespace != "flux-system" {
 		t.Fatalf("default namespace = %q, want flux-system", model.DefaultNamespace)
@@ -53,8 +53,8 @@ func TestDiscoverReturnsFluxModeledResult(t *testing.T) {
 	if !result.Ready || result.Reason != "DiscoveryModeled" {
 		t.Fatalf("discovery readiness = %t/%q, want ready DiscoveryModeled", result.Ready, result.Reason)
 	}
-	if result.Driver != kaprov1alpha2.BackendDriverFlux || result.Runtime != kaprov1alpha2.BackendRuntimeBoth {
-		t.Fatalf("driver/runtime = %q/%q, want flux/Both", result.Driver, result.Runtime)
+	if result.SubstrateKind != kaprov1alpha1.SubstrateKindFlux || result.ExecutionScope != kaprov1alpha1.ExecutionScopeBoth {
+		t.Fatalf("driver/runtime = %q/%q, want flux/Both", result.SubstrateKind, result.ExecutionScope)
 	}
 	if !strings.Contains(result.Message, "flux-system") {
 		t.Fatalf("message %q does not mention default namespace", result.Message)
@@ -62,21 +62,21 @@ func TestDiscoverReturnsFluxModeledResult(t *testing.T) {
 	if result.DiscoveredApplications != 5 {
 		t.Fatalf("discovered applications = %d, want 5", result.DiscoveredApplications)
 	}
-	if len(result.BackendObjectStatusExamples) != 5 {
-		t.Fatalf("backend examples = %d, want 5", len(result.BackendObjectStatusExamples))
+	if len(result.SubstrateObjectStatusExamples) != 5 {
+		t.Fatalf("substrate examples = %d, want 5", len(result.SubstrateObjectStatusExamples))
 	}
-	for i, example := range result.BackendObjectStatusExamples {
+	for i, example := range result.SubstrateObjectStatusExamples {
 		selected := result.SelectedObjects[i]
 		if example.APIVersion != selected.APIVersion ||
 			example.Kind != selected.Kind ||
-			example.Phase != string(kaprov1alpha2.DeliveryPhasePending) ||
+			example.Phase != string(kaprov1alpha1.DeliveryPhasePending) ||
 			example.Message != selected.Reason {
 			t.Fatalf("example[%d] = %#v, selected = %#v", i, example, selected)
 		}
 	}
 }
 
-func assertObjectShapes(t *testing.T, name string, got []kaprov1alpha2.DiscoveredBackendObject, want []objectShape) {
+func assertObjectShapes(t *testing.T, name string, got []kaprov1alpha1.DiscoveredSubstrateObject, want []objectShape) {
 	t.Helper()
 	if len(got) != len(want) {
 		t.Fatalf("%s objects = %d, want %d: %#v", name, len(got), len(want), got)

@@ -2,7 +2,7 @@
 
 Kapro is a Kubernetes-native fleet promotion control plane. The core
 controllers own promotion ordering, stage fan-out, retries, rollback intent, and
-status. Extension points are narrow contracts around backend-specific work.
+status. Extension points are narrow contracts around substrate-specific work.
 
 This document defines the target architecture for those contracts.
 
@@ -10,7 +10,7 @@ This document defines the target architecture for those contracts.
 
 - Keep the CRD API small and stable.
 - Keep controller state in Kubernetes, not process memory.
-- Let platform teams integrate delivery backends without changing the promotion
+- Let platform teams integrate delivery substrates without changing the promotion
   state machine.
 - Let teams add safety checks without turning Kapro into a CI workflow engine.
 - Emit standard lifecycle events that external systems can consume without
@@ -42,7 +42,7 @@ Kapro core is responsible for:
 - emitting lifecycle notifications.
 
 Extensions must not own those responsibilities. They receive a bounded request,
-perform backend-specific work, and return a bounded result.
+perform substrate-specific work, and return a bounded result.
 
 ## Actuator Contract
 
@@ -57,13 +57,13 @@ Rollback(previousVersion, target) -> accepted or error
 ```
 
 The actuator can patch a GitOps object, call an external delivery API, or update
-a Kubernetes workload. Kapro does not interpret backend-specific rollout
-strategy. The backend controller owns how the workload changes after Kapro
+a Kubernetes workload. Kapro does not interpret substrate-specific rollout
+strategy. The substrate controller owns how the workload changes after Kapro
 patches the version field.
 
 Target actuator examples:
 
-| Backend | Version mutation | Readiness signal |
+| Substrate | Version mutation | Readiness signal |
 |---|---|---|
 | Flux pull | OCI source reference | Workload Ready condition |
 | Flux push | ResourceSet input version | Workload Ready condition |
@@ -82,9 +82,8 @@ An actuator registration has two pieces:
 
 - the runtime registry key Kapro resolves from `DeliverySpec.RegistryKey()`,
   for example `push/flux`, `pull/oci`, or `push/argo`;
-- capability metadata that maps the implementation to `Backend.spec.driver`,
-  optional `Backend.spec.adapter`, `Backend.spec.runtime`, and supported
-  delivery modes.
+- capability metadata that maps the implementation to a substrate kind,
+  actuator name, execution mode, and supported delivery modes.
 
 Built-in registrations are composed through `pkg/kapro/server` registrar
 functions:
@@ -292,7 +291,7 @@ Target CRD posture:
 
 | API surface | Posture |
 |---|---|
-| Existing `Promotion`, `Plan`, `Source`, unit, `Cluster`, `Target`, `Approval`, `Backend`, `Trigger`, and `Policy` CRDs | Core API |
+| Existing `Promotion`, `Plan`, `Source`, unit, `Cluster`, `Target`, `Approval`, `Substrate`, `Trigger`, and `Policy` CRDs | Core API |
 | `Plugin` | API preview; opt-in hot-loaded runtime dispatch |
 | `Trigger` | API preview with ADR-002 safeguards; OCI controller preview |
 | Notification provider/policy | Add only when shared credential ownership requires it |

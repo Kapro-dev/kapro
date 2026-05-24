@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -18,13 +20,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 func TestEmitterCreatesBoundedDecisionTrace(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme: %v", err)
+	}
+	if err := kaproruntimev1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("Add runtime scheme: %v", err)
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
 
@@ -33,14 +38,14 @@ func TestEmitterCreatesBoundedDecisionTrace(t *testing.T) {
 		MaxMessageRunes: 5,
 		MaxEvidence:     1,
 		MaxDetailRunes:  4,
-	}.Emit(context.Background(), kaprov1alpha2.DecisionTraceSpec{
+	}.Emit(context.Background(), kaproruntimev1alpha1.DecisionTraceSpec{
 		PromotionRun: "run-a",
-		EventType:    kaprov1alpha2.DecisionTraceEventGateEvaluate,
+		EventType:    kaproruntimev1alpha1.DecisionTraceEventGateEvaluate,
 		Source:       "gate/slo",
 		Phase:        "Failed",
 		Reason:       "SLOViolation",
 		Message:      "too much error budget burned",
-		Evidence: []kaprov1alpha2.DecisionTraceEvidence{
+		Evidence: []kaproruntimev1alpha1.DecisionTraceEvidence{
 			{Type: "metrics", Source: "prometheus", Detail: map[string]string{"query": "sum(rate(errors_total[5m]))"}},
 			{Type: "extra"},
 		},
@@ -49,7 +54,7 @@ func TestEmitterCreatesBoundedDecisionTrace(t *testing.T) {
 		t.Fatalf("Emit: %v", err)
 	}
 
-	var list kaprov1alpha2.DecisionTraceList
+	var list kaproruntimev1alpha1.DecisionTraceList
 	if err := c.List(context.Background(), &list); err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -86,8 +91,11 @@ func TestEmitterCreatesBoundedDecisionTrace(t *testing.T) {
 
 func TestEmitterSignsDecisionTraceWhenSignerConfigured(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme: %v", err)
+	}
+	if err := kaproruntimev1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("Add runtime scheme: %v", err)
 	}
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -99,12 +107,12 @@ func TestEmitterSignsDecisionTraceWhenSignerConfigured(t *testing.T) {
 	}
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha2.DecisionTrace{}).
+		WithStatusSubresource(&kaproruntimev1alpha1.DecisionTrace{}).
 		Build()
 
-	spec := kaprov1alpha2.DecisionTraceSpec{
+	spec := kaproruntimev1alpha1.DecisionTraceSpec{
 		PromotionRun: "run-a",
-		EventType:    kaprov1alpha2.DecisionTraceEventGateEvaluate,
+		EventType:    kaproruntimev1alpha1.DecisionTraceEventGateEvaluate,
 		Source:       "gate/slo",
 		Phase:        "Passed",
 		Reason:       "GateEvaluated",
@@ -114,7 +122,7 @@ func TestEmitterSignsDecisionTraceWhenSignerConfigured(t *testing.T) {
 		t.Fatalf("Emit: %v", err)
 	}
 
-	var list kaprov1alpha2.DecisionTraceList
+	var list kaproruntimev1alpha1.DecisionTraceList
 	if err := c.List(context.Background(), &list); err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -138,25 +146,28 @@ func TestEmitterSignsDecisionTraceWhenSignerConfigured(t *testing.T) {
 
 func TestEmitterSigningFailureLeavesTraceUnsigned(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme: %v", err)
+	}
+	if err := kaproruntimev1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("Add runtime scheme: %v", err)
 	}
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha2.DecisionTrace{}).
+		WithStatusSubresource(&kaproruntimev1alpha1.DecisionTrace{}).
 		Build()
 	boom := errors.New("sign boom")
 
-	err := (Emitter{Client: c, Signer: failingSigner{err: boom}}).Emit(context.Background(), kaprov1alpha2.DecisionTraceSpec{
+	err := (Emitter{Client: c, Signer: failingSigner{err: boom}}).Emit(context.Background(), kaproruntimev1alpha1.DecisionTraceSpec{
 		PromotionRun: "run-a",
-		EventType:    kaprov1alpha2.DecisionTraceEventStage,
+		EventType:    kaproruntimev1alpha1.DecisionTraceEventStage,
 		Source:       "promotionrun-controller",
 	})
 	if !errors.Is(err, boom) {
 		t.Fatalf("Emit error = %v, want boom", err)
 	}
 
-	var list kaprov1alpha2.DecisionTraceList
+	var list kaproruntimev1alpha1.DecisionTraceList
 	if err := c.List(context.Background(), &list); err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -170,8 +181,11 @@ func TestEmitterSigningFailureLeavesTraceUnsigned(t *testing.T) {
 
 func TestEmitterReturnsCreateError(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme: %v", err)
+	}
+	if err := kaproruntimev1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("Add runtime scheme: %v", err)
 	}
 	boom := errors.New("boom")
 	c := fake.NewClientBuilder().
@@ -183,9 +197,9 @@ func TestEmitterReturnsCreateError(t *testing.T) {
 		}).
 		Build()
 
-	err := (Emitter{Client: c}).Emit(context.Background(), kaprov1alpha2.DecisionTraceSpec{
+	err := (Emitter{Client: c}).Emit(context.Background(), kaproruntimev1alpha1.DecisionTraceSpec{
 		PromotionRun: "run-a",
-		EventType:    kaprov1alpha2.DecisionTraceEventRollback,
+		EventType:    kaproruntimev1alpha1.DecisionTraceEventRollback,
 		Source:       "promotionrun-controller",
 	})
 	if !errors.Is(err, boom) {
@@ -201,17 +215,20 @@ func TestEmitterEmitsSpanWithDecisionTraceAttributes(t *testing.T) {
 	defer otel.SetTracerProvider(previous)
 
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme: %v", err)
+	}
+	if err := kaproruntimev1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("Add runtime scheme: %v", err)
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
 
-	err := Emitter{Client: c}.Emit(context.Background(), kaprov1alpha2.DecisionTraceSpec{
+	err := Emitter{Client: c}.Emit(context.Background(), kaproruntimev1alpha1.DecisionTraceSpec{
 		PromotionRun: "run-a",
 		Plan:         "canary",
 		Stage:        "prod",
 		Target:       "cluster-a",
-		EventType:    kaprov1alpha2.DecisionTraceEventGateEvaluate,
+		EventType:    kaproruntimev1alpha1.DecisionTraceEventGateEvaluate,
 		Source:       "gate/slo",
 		Phase:        "Passed",
 		Reason:       "GateEvaluated",
@@ -249,14 +266,17 @@ type failingSigner struct {
 	err error
 }
 
-func (s failingSigner) SignDecisionTrace(context.Context, kaprov1alpha2.DecisionTraceSpec) (Signature, error) {
+func (s failingSigner) SignDecisionTrace(context.Context, kaproruntimev1alpha1.DecisionTraceSpec) (Signature, error) {
 	return Signature{}, s.err
 }
 
 func TestEmitterIgnoresAlreadyExists(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme: %v", err)
+	}
+	if err := kaproruntimev1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("Add runtime scheme: %v", err)
 	}
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
@@ -267,9 +287,9 @@ func TestEmitterIgnoresAlreadyExists(t *testing.T) {
 		}).
 		Build()
 
-	err := (Emitter{Client: c}).Emit(context.Background(), kaprov1alpha2.DecisionTraceSpec{
+	err := (Emitter{Client: c}).Emit(context.Background(), kaproruntimev1alpha1.DecisionTraceSpec{
 		PromotionRun: "run-a",
-		EventType:    kaprov1alpha2.DecisionTraceEventStage,
+		EventType:    kaproruntimev1alpha1.DecisionTraceEventStage,
 		Source:       "promotionrun-controller",
 	})
 	if err != nil {
@@ -278,10 +298,10 @@ func TestEmitterIgnoresAlreadyExists(t *testing.T) {
 }
 
 func TestEmitterValidatesRequiredFields(t *testing.T) {
-	for name, spec := range map[string]kaprov1alpha2.DecisionTraceSpec{
-		"promotionRun": {EventType: kaprov1alpha2.DecisionTraceEventStage, Source: "controller"},
+	for name, spec := range map[string]kaproruntimev1alpha1.DecisionTraceSpec{
+		"promotionRun": {EventType: kaproruntimev1alpha1.DecisionTraceEventStage, Source: "controller"},
 		"eventType":    {PromotionRun: "run-a", Source: "controller"},
-		"source":       {PromotionRun: "run-a", EventType: kaprov1alpha2.DecisionTraceEventStage},
+		"source":       {PromotionRun: "run-a", EventType: kaproruntimev1alpha1.DecisionTraceEventStage},
 	} {
 		err := (Emitter{Client: fake.NewClientBuilder().Build()}).Emit(context.Background(), spec)
 		if err == nil || !strings.Contains(err.Error(), name) {

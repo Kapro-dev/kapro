@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	coordinationv1 "k8s.io/api/coordination/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -19,7 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/controller"
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
@@ -67,8 +69,11 @@ func setupEnv(t *testing.T) (context.Context, context.CancelFunc, client.Client)
 	}
 
 	s := runtime.NewScheme()
-	if err := kaprov1alpha2.AddToScheme(s); err != nil {
+	if err := kaprov1alpha1.AddToScheme(s); err != nil {
 		t.Fatalf("AddToScheme: %v", err)
+	}
+	if err := kaproruntimev1alpha1.AddToScheme(s); err != nil {
+		t.Fatalf("Add runtime scheme: %v", err)
 	}
 	if err := coordinationv1.AddToScheme(s); err != nil {
 		t.Fatalf("Add coordination scheme: %v", err)
@@ -77,8 +82,8 @@ func setupEnv(t *testing.T) (context.Context, context.CancelFunc, client.Client)
 	env := &envtest.Environment{
 		CRDDirectoryPaths: []string{filepath.Join("..", "..", "config", "crd", "bases")},
 		Scheme:            s,
-		// PR 1 of the v1alpha2 migration doubles the CRD count (v1alpha1
-		// + v1alpha2 served side by side, plus 7 newly-renamed Kinds).
+		// PR 1 of the v1alpha1 migration doubles the CRD count (v1alpha1
+		// + v1alpha1 served side by side, plus 7 newly-renamed Kinds).
 		// envtest's default 60s wait-for-established is too tight on the
 		// slower GitHub Actions runner — bump to 5 min.
 		CRDInstallOptions: envtest.CRDInstallOptions{
@@ -145,8 +150,28 @@ func setupEnv(t *testing.T) (context.Context, context.CancelFunc, client.Client)
 		cancel()
 		t.Fatal("cache did not sync")
 	}
+	seedReadyFluxSubstrate(t, ctx, mgr.GetClient())
 
 	return ctx, cancel, mgr.GetClient()
+}
+
+func seedReadyFluxSubstrate(t *testing.T, ctx context.Context, c client.Client) {
+	t.Helper()
+	substrate := &kaprov1alpha1.Substrate{
+		ObjectMeta: metav1.ObjectMeta{Name: "flux"},
+		Spec: kaprov1alpha1.SubstrateSpec{
+			Substrate: &kaprov1alpha1.SubstrateImplementationSpec{Kind: "flux", Actuator: "flux"},
+			Execution: &kaprov1alpha1.SubstrateExecutionSpec{Mode: kaprov1alpha1.ExecutionModeSpokePull},
+		},
+	}
+	if err := c.Create(ctx, substrate); err != nil {
+		t.Fatalf("Create default flux Substrate: %v", err)
+	}
+	substrate.Status.Ready = true
+	substrate.Status.ObservedGeneration = substrate.Generation
+	if err := c.Status().Update(ctx, substrate); err != nil {
+		t.Fatalf("mark default flux Substrate Ready: %v", err)
+	}
 }
 
 // ---- shared test helpers ----------------------------------------------------
@@ -190,8 +215,8 @@ func eventuallyLong(t *testing.T, fn func() bool, msg string) {
 }
 
 // getPromotionRun fetches the latest PromotionRun state.
-func getPromotionRun(ctx context.Context, c client.Client, key types.NamespacedName) *kaprov1alpha2.PromotionRun {
-	r := &kaprov1alpha2.PromotionRun{}
+func getPromotionRun(ctx context.Context, c client.Client, key types.NamespacedName) *kaproruntimev1alpha1.PromotionRun {
+	r := &kaproruntimev1alpha1.PromotionRun{}
 	_ = c.Get(ctx, key, r)
 	return r
 }
@@ -205,27 +230,27 @@ type fakeActuator struct {
 }
 
 func (f *fakeActuator) Apply(_ context.Context, _ actuator.ApplyRequest) error { return f.applyErr }
-func (f *fakeActuator) IsConverged(_ context.Context, _ *kaprov1alpha2.Cluster, _, _ string) (bool, error) {
+func (f *fakeActuator) IsConverged(_ context.Context, _ *kaprov1alpha1.Cluster, _, _ string) (bool, error) {
 	return f.converged, f.convErr
 }
-func (f *fakeActuator) Rollback(_ context.Context, _ *kaprov1alpha2.Cluster, _, _ string) error {
+func (f *fakeActuator) Rollback(_ context.Context, _ *kaprov1alpha1.Cluster, _, _ string) error {
 	return f.applyErr
 }
 func (f *fakeActuator) ApplyDelta(_ context.Context, req actuator.DeltaApplyRequest) (int, error) {
 	return len(req.DesiredVersions), f.applyErr
 }
-func (f *fakeActuator) IsAllConverged(_ context.Context, _ *kaprov1alpha2.Cluster, _ map[string]string) (bool, error) {
+func (f *fakeActuator) IsAllConverged(_ context.Context, _ *kaprov1alpha1.Cluster, _ map[string]string) (bool, error) {
 	return f.converged, f.convErr
 }
 
 // ---- shared fixture builders ------------------------------------------------
 
-func makeFleetCluster(name string, labels map[string]string) *kaprov1alpha2.Cluster {
-	return &kaprov1alpha2.Cluster{
+func makeFleetCluster(name string, labels map[string]string) *kaprov1alpha1.Cluster {
+	return &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels},
-		Spec: kaprov1alpha2.ClusterSpec{
-			Delivery: kaprov1alpha2.DeliverySpec{
-				Mode: "pull", BackendRef: "flux",
+		Spec: kaprov1alpha1.ClusterSpec{
+			Delivery: kaprov1alpha1.DeliverySpec{
+				Mode: "pull", SubstrateRef: "flux",
 				Parameters: map[string]string{
 					"namespace":     "flux-system",
 					"ociRepository": "test-repo",
@@ -239,7 +264,7 @@ func makeFleetCluster(name string, labels map[string]string) *kaprov1alpha2.Clus
 type passGate struct{}
 
 func (passGate) Evaluate(_ context.Context, _ gate.Request) (gate.Result, error) {
-	return gate.Result{Phase: kaprov1alpha2.GatePhasePassed}, nil
+	return gate.Result{Phase: kaprov1alpha1.GatePhasePassed}, nil
 }
 
 // newNoopGateRegistry returns a gate.Registry with every built-in name

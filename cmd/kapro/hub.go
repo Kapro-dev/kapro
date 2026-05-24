@@ -14,7 +14,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/bootstrap"
 	"kapro.io/kapro/internal/cli"
 	kaproconfig "kapro.io/kapro/internal/config"
@@ -351,7 +351,7 @@ func runHubInit(ctx context.Context, kubeconfigPath, project, clusterName, locat
 func resolveHubClient(ctx context.Context, kubeconfigPath, project, clusterName, location string) (client.Client, error) {
 	scheme := runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = kaprov1alpha2.AddToScheme(scheme)
+	_ = kaprov1alpha1.AddToScheme(scheme)
 
 	// GCP mode: resolve cluster via SDK, generate kubeconfig in memory.
 	if project != "" && clusterName != "" {

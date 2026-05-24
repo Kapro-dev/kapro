@@ -24,15 +24,15 @@ func TestBootstrapGuideExplainsAdoptionPaths(t *testing.T) {
 	}
 }
 
-func TestBootstrapBackendAliasDefaults(t *testing.T) {
+func TestBootstrapSubstrateAliasDefaults(t *testing.T) {
 	dir := t.TempDir()
-	cmd := newBootstrapBackendCmd("argo")
+	cmd := newBootstrapSubstrateCmd("argo")
 	cmd.SetArgs([]string{dir, "--name", "checkout"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
 	cluster := readFile(t, filepath.Join(dir, "clusters/canary-eu.yaml"))
-	for _, want := range []string{"mode: push", "backendRef: argo"} {
+	for _, want := range []string{"mode: push", "substrateRef: argo"} {
 		if !strings.Contains(cluster, want) {
 			t.Fatalf("cluster missing %q:\n%s", want, cluster)
 		}
@@ -47,14 +47,14 @@ func TestBootstrapGreenfieldCommandDefaultsToFluxPull(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	backend := readFile(t, filepath.Join(dir, "backends/flux.yaml"))
-	for _, want := range []string{"driver: flux", "namespace: flux-system"} {
-		if !strings.Contains(backend, want) {
-			t.Fatalf("backend missing %q:\n%s", want, backend)
+	substrate := readFile(t, filepath.Join(dir, "substrates/flux.yaml"))
+	for _, want := range []string{"kind: FluxSubstrateConfig", "namespace: flux-system", "classRef:"} {
+		if !strings.Contains(substrate, want) {
+			t.Fatalf("substrate missing %q:\n%s", want, substrate)
 		}
 	}
 	cluster := readFile(t, filepath.Join(dir, "clusters/canary-eu.yaml"))
-	for _, want := range []string{"mode: pull", "backendRef: flux", "ociRepository: checkout-bundle"} {
+	for _, want := range []string{"mode: pull", "substrateRef: flux", "ociRepository: checkout-bundle"} {
 		if !strings.Contains(cluster, want) {
 			t.Fatalf("cluster missing %q:\n%s", want, cluster)
 		}
@@ -69,7 +69,7 @@ func TestBootstrapGenerateDirectProfileWritesSubstrateClassRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	backend := readFile(t, filepath.Join(dir, "backends/direct.yaml"))
+	substrate := readFile(t, filepath.Join(dir, "substrates/direct.yaml"))
 	for _, want := range []string{
 		"name: kubernetes-apply",
 		"kind: KubernetesApplyConfig",
@@ -78,12 +78,12 @@ func TestBootstrapGenerateDirectProfileWritesSubstrateClassRepo(t *testing.T) {
 		"name: kubernetes-apply",
 		"mode: hub-push",
 	} {
-		if !strings.Contains(backend, want) {
-			t.Fatalf("direct backend missing %q:\n%s", want, backend)
+		if !strings.Contains(substrate, want) {
+			t.Fatalf("direct substrate missing %q:\n%s", want, substrate)
 		}
 	}
 	cluster := readFile(t, filepath.Join(dir, "clusters/canary-eu.yaml"))
-	for _, want := range []string{"mode: push", "backendRef: direct", "manifestPath: apps/checkout"} {
+	for _, want := range []string{"mode: push", "substrateRef: direct", "manifestPath: apps/checkout"} {
 		if !strings.Contains(cluster, want) {
 			t.Fatalf("direct cluster missing %q:\n%s", want, cluster)
 		}
@@ -94,7 +94,7 @@ func TestBootstrapGenerateDirectProfileWritesSubstrateClassRepo(t *testing.T) {
 	}
 	fleet := readFile(t, filepath.Join(dir, "fleets/checkout.yaml"))
 	for _, want := range []string{
-		"backendKind: KubernetesManifest",
+		"substrateKind: KubernetesManifest",
 		"sourcePath: apps/checkout/deployment.yaml",
 		"versionField: spec.template.spec.containers[0].image",
 		"version: ghcr.io/example/checkout:0.1.0",
@@ -117,21 +117,21 @@ func TestBootstrapGenerateArgocdProfileWritesClassConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	backend := readFile(t, filepath.Join(dir, "backends/argo.yaml"))
+	substrate := readFile(t, filepath.Join(dir, "substrates/argo.yaml"))
 	for _, want := range []string{
-		"name: argo-cd",
+		"name: argo",
 		"kind: ArgoCDSubstrateConfig",
 		"name: argo",
 		"namespace: argocd",
 		"classRef:",
-		"name: argo-cd",
+		"name: argo",
 	} {
-		if !strings.Contains(backend, want) {
-			t.Fatalf("argocd backend missing %q:\n%s", want, backend)
+		if !strings.Contains(substrate, want) {
+			t.Fatalf("argocd substrate missing %q:\n%s", want, substrate)
 		}
 	}
 	cluster := readFile(t, filepath.Join(dir, "clusters/canary-eu.yaml"))
-	for _, want := range []string{"mode: push", "backendRef: argo", "application: checkout-canary-eu"} {
+	for _, want := range []string{"mode: push", "substrateRef: argo", "application: checkout-canary-eu"} {
 		if !strings.Contains(cluster, want) {
 			t.Fatalf("argocd cluster missing %q:\n%s", want, cluster)
 		}
@@ -153,7 +153,7 @@ func TestBootstrapGenerateFluxProfileWritesClassConfigAndWorkload(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	backend := readFile(t, filepath.Join(dir, "backends/flux.yaml"))
+	substrate := readFile(t, filepath.Join(dir, "substrates/flux.yaml"))
 	for _, want := range []string{
 		"name: flux",
 		"kind: FluxSubstrateConfig",
@@ -161,8 +161,8 @@ func TestBootstrapGenerateFluxProfileWritesClassConfigAndWorkload(t *testing.T) 
 		"classRef:",
 		"mode: spoke-pull",
 	} {
-		if !strings.Contains(backend, want) {
-			t.Fatalf("flux backend missing %q:\n%s", want, backend)
+		if !strings.Contains(substrate, want) {
+			t.Fatalf("flux substrate missing %q:\n%s", want, substrate)
 		}
 	}
 	flux := readFile(t, filepath.Join(dir, "flux/kustomizations/checkout.yaml"))
@@ -179,46 +179,46 @@ func TestBootstrapGenerateRejectsUnknownProfile(t *testing.T) {
 	cmd := newBootstrapGenerateCmd()
 	cmd.SetArgs([]string{t.TempDir(), "--profile", "tekton"})
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "--profile must be direct, argocd, or flux") {
+	if err == nil || !strings.Contains(err.Error(), "--profile must be direct, argo, or flux") {
 		t.Fatalf("err=%v, want profile validation", err)
 	}
 }
 
-func TestBootstrapBrownfieldFluxWritesObserveMapping(t *testing.T) {
+func TestBootstrapExistingGitOpsFluxWritesObserveMapping(t *testing.T) {
 	repo := t.TempDir()
 	out := t.TempDir()
 	writeFluxFixture(t, repo)
 	initTestGitRepo(t, repo)
 
-	if err := runBootstrapBrownfield(bootstrapBrownfieldOptions{
-		Backend:  "flux",
-		RepoPath: repo,
-		OutPath:  out,
-		Name:     "checkout",
-		Selector: "kapro.io/import=true",
-		MaxFiles: defaultArgoDiscoveryMaxFiles,
-		MaxUnits: defaultArgoDiscoveryMaxUnits,
+	if err := runBootstrapExistingGitOps(bootstrapExistingGitOpsOptions{
+		Substrate: "flux",
+		RepoPath:  repo,
+		OutPath:   out,
+		Name:      "checkout",
+		Selector:  "kapro.io/import=true",
+		MaxFiles:  defaultArgoDiscoveryMaxFiles,
+		MaxUnits:  defaultArgoDiscoveryMaxUnits,
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	backend := readFile(t, filepath.Join(out, "backends/checkout-observe.yaml"))
-	for _, want := range []string{"driver: flux", "managementPolicy: Observe"} {
-		if !strings.Contains(backend, want) {
-			t.Fatalf("backend missing %q:\n%s", want, backend)
+	substrate := readFile(t, filepath.Join(out, "substrates/checkout-observe.yaml"))
+	for _, want := range []string{"kind: flux", "mode: hub-push", "managementPolicy: Observe"} {
+		if !strings.Contains(substrate, want) {
+			t.Fatalf("substrate missing %q:\n%s", want, substrate)
 		}
 	}
 	source := readFile(t, filepath.Join(out, "sources/checkout.yaml"))
-	for _, want := range []string{"kind: Source", "backendKind: GitYAMLField", "versionField: spec.ref.tag"} {
+	for _, want := range []string{"kind: Source", "substrateKind: GitYAMLField", "versionField: spec.ref.tag"} {
 		if !strings.Contains(source, want) {
 			t.Fatalf("source missing %q:\n%s", want, source)
 		}
 	}
 }
 
-func TestBootstrapBrownfieldRejectsUnknownBackend(t *testing.T) {
-	err := runBootstrapBrownfield(bootstrapBrownfieldOptions{Backend: "jenkins"})
-	if err == nil || !strings.Contains(err.Error(), "backend must be argo or flux") {
-		t.Fatalf("err=%v, want backend validation", err)
+func TestBootstrapExistingGitOpsRejectsUnknownSubstrate(t *testing.T) {
+	err := runBootstrapExistingGitOps(bootstrapExistingGitOpsOptions{Substrate: "jenkins"})
+	if err == nil || !strings.Contains(err.Error(), "substrate must be argo or flux") {
+		t.Fatalf("err=%v, want substrate validation", err)
 	}
 }

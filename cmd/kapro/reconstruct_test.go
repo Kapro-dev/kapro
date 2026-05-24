@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/cli"
 )
 
@@ -17,10 +18,10 @@ func TestRunReconstructFiltersTimelineAtTimestamp(t *testing.T) {
 	c := fake.NewClientBuilder().
 		WithScheme(diagTestScheme(t)).
 		WithObjects(
-			whyTraceObject("gate-failed", "run-a", "2026-05-23T10:01:00Z", kaprov1alpha2.DecisionTraceEventGateEvaluate),
-			whyTraceObject("stage-ready", "run-a", "2026-05-23T10:02:00Z", kaprov1alpha2.DecisionTraceEventStage),
-			whyTraceObject("rollback-later", "run-a", "2026-05-23T10:03:00Z", kaprov1alpha2.DecisionTraceEventRollback),
-			whyTraceObject("other-run", "run-b", "2026-05-23T10:01:00Z", kaprov1alpha2.DecisionTraceEventStage),
+			whyTraceObject("gate-failed", "run-a", "2026-05-23T10:01:00Z", kaproruntimev1alpha1.DecisionTraceEventGateEvaluate),
+			whyTraceObject("stage-ready", "run-a", "2026-05-23T10:02:00Z", kaproruntimev1alpha1.DecisionTraceEventStage),
+			whyTraceObject("rollback-later", "run-a", "2026-05-23T10:03:00Z", kaproruntimev1alpha1.DecisionTraceEventRollback),
+			whyTraceObject("other-run", "run-b", "2026-05-23T10:01:00Z", kaproruntimev1alpha1.DecisionTraceEventStage),
 		).
 		Build()
 	at := mustParseRFC3339(t, "2026-05-23T10:02:30Z")
@@ -52,8 +53,8 @@ func TestRunReconstructJSONIncludesTimeline(t *testing.T) {
 	c := fake.NewClientBuilder().
 		WithScheme(diagTestScheme(t)).
 		WithObjects(
-			whyTraceObject("gate-failed", "run-a", "2026-05-23T10:01:00Z", kaprov1alpha2.DecisionTraceEventGateEvaluate),
-			whyTraceObject("rollback-later", "run-a", "2026-05-23T10:03:00Z", kaprov1alpha2.DecisionTraceEventRollback),
+			whyTraceObject("gate-failed", "run-a", "2026-05-23T10:01:00Z", kaproruntimev1alpha1.DecisionTraceEventGateEvaluate),
+			whyTraceObject("rollback-later", "run-a", "2026-05-23T10:03:00Z", kaproruntimev1alpha1.DecisionTraceEventRollback),
 		).
 		Build()
 	prev := cli.OutputFormat
@@ -76,7 +77,7 @@ func TestRunReconstructJSONIncludesTimeline(t *testing.T) {
 	if got.TraceCount != 1 || len(got.Timeline) != 1 || got.Timeline[0].Name != "gate-failed" {
 		t.Fatalf("unexpected timeline: %+v", got)
 	}
-	if len(got.Decisions) != 1 || got.Decisions[0].EventType != string(kaprov1alpha2.DecisionTraceEventGateEvaluate) {
+	if len(got.Decisions) != 1 || got.Decisions[0].EventType != string(kaproruntimev1alpha1.DecisionTraceEventGateEvaluate) {
 		t.Fatalf("unexpected decisions: %+v", got.Decisions)
 	}
 }
@@ -84,7 +85,7 @@ func TestRunReconstructJSONIncludesTimeline(t *testing.T) {
 func TestRunReconstructJSONUsesEmptySlicesWhenNoTraceMatches(t *testing.T) {
 	c := fake.NewClientBuilder().
 		WithScheme(diagTestScheme(t)).
-		WithObjects(whyTraceObject("future", "run-a", "2026-05-23T10:03:00Z", kaprov1alpha2.DecisionTraceEventRollback)).
+		WithObjects(whyTraceObject("future", "run-a", "2026-05-23T10:03:00Z", kaproruntimev1alpha1.DecisionTraceEventRollback)).
 		Build()
 	prev := cli.OutputFormat
 	defer func() { cli.OutputFormat = prev }()
@@ -113,7 +114,7 @@ func TestLatestDecisionsByScopeUsesLatestTimestampForUnsortedInput(t *testing.T)
 		{
 			Name:      "newer",
 			Time:      "2026-05-23T10:03:00Z",
-			EventType: kaprov1alpha2.DecisionTraceEventStage,
+			EventType: kaproruntimev1alpha1.DecisionTraceEventStage,
 			Plan:      "canary",
 			Stage:     "prod",
 			Target:    "cluster-a",
@@ -122,7 +123,7 @@ func TestLatestDecisionsByScopeUsesLatestTimestampForUnsortedInput(t *testing.T)
 		{
 			Name:      "older",
 			Time:      "2026-05-23T10:01:00Z",
-			EventType: kaprov1alpha2.DecisionTraceEventStage,
+			EventType: kaproruntimev1alpha1.DecisionTraceEventStage,
 			Plan:      "canary",
 			Stage:     "prod",
 			Target:    "cluster-a",

@@ -146,7 +146,7 @@ install_kapro() {
   "${KUBECTL[@]}" -n kapro-system set image deployment/kapro-operator manager=kapro-operator:argo-e2e
   "${KUBECTL[@]}" -n kapro-system set env deployment/kapro-operator \
     KAPRO_DEV_MODE=1 \
-    KAPRO_CONTROLLERS=promotionrun,backend,approval,plugin
+    KAPRO_CONTROLLERS=promotionrun,substrate,approval,plugin
   "${KUBECTL[@]}" -n kapro-system rollout status deployment/kapro-operator --timeout=180s
 }
 
@@ -562,8 +562,8 @@ discover_and_apply_kapro_mapping() {
   local out="${TMPDIR}/kapro-connect"
   echo "running kapro adopt argo against fixture repo"
   "${TMPDIR}/bin/kapro" adopt argo "${repo}" --out "${out}" --name argo-e2e --force
-  "${KUBECTL[@]}" apply -f "${out}/backends/argo-e2e-observe.yaml"
-  "${KUBECTL[@]}" patch backend argo-e2e --type=merge \
+  "${KUBECTL[@]}" apply -f "${out}/substrates/argo-e2e-observe.yaml"
+  "${KUBECTL[@]}" patch substrate argo-e2e --type=merge \
     -p '{"spec":{"discovery":{"managementPolicy":"Adopt"}}}'
   "${KUBECTL[@]}" apply -f "${out}/sources/argo-e2e.yaml"
 }
@@ -606,7 +606,7 @@ promote_git_mapping_to_v2() {
 apply_kapro_rollout() {
   echo "creating Kapro Cluster and Plan"
   cat <<YAML | "${KUBECTL[@]}" apply -f -
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Cluster
 metadata:
   name: argo-e2e
@@ -615,7 +615,7 @@ metadata:
 spec:
   delivery:
     mode: push
-    backendRef: argo
+    substrateRef: argo
     parameters:
       namespace: ${ARGO_NAMESPACE}
       authorizedSource: argo-e2e
@@ -626,7 +626,7 @@ spec:
       applicationSelector.yaml-appset: kapro.io/unit=yaml-appset
       versionField.multi-source: spec.sources[0].targetRevision
 ---
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Plan
 metadata:
   name: argo-e2e
@@ -644,7 +644,7 @@ YAML
   echo "creating Kapro PromotionRun"
   cat <<YAML | "${KUBECTL[@]}" apply -f -
 ---
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: PromotionRun
 metadata:
   name: argo-e2e
@@ -707,14 +707,14 @@ wait_for_promotionrun_complete() {
   exit 1
 }
 
-assert_backend_objects_reported() {
+assert_substrate_objects_reported() {
   local names count
-  names="$("${KUBECTL[@]}" get targets -o jsonpath='{range .items[*]}{.status.backendObjects[*].name}{"\n"}{end}' || true)"
+  names="$("${KUBECTL[@]}" get targets -o jsonpath='{range .items[*]}{.status.substrateObjects[*].name}{"\n"}{end}' || true)"
   count="$(printf "%s\n" "${names}" | tr ' ' '\n' | grep -E 'checkout-(plain|appset-prod|root-child|multi-source|yaml-appset-prod)' || true)"
   count="$(printf "%s\n" "${count}" | sed '/^$/d' | wc -l | tr -d ' ')"
   if [ "${count}" -lt 5 ]; then
     "${KUBECTL[@]}" get targets -o yaml || true
-    echo "expected Target.status.backendObjects to include all five Argo Applications" >&2
+    echo "expected Target.status.substrateObjects to include all five Argo Applications" >&2
     exit 1
   fi
 }
@@ -760,7 +760,7 @@ run() {
   wait_for_application checkout-multi-source v2
   wait_for_application checkout-yaml-appset-prod v2
   wait_for_promotionrun_complete
-  assert_backend_objects_reported
+  assert_substrate_objects_reported
 
   status
   echo "Argo E2E passed: discover/adopt/source-apply/promote/sync/converge all completed."
@@ -773,7 +773,7 @@ run() {
 status() {
   echo
   echo "Kapro resources"
-  "${KUBECTL[@]}" get backends,sources,clusters,plans,promotionruns,targets -o wide || true
+  "${KUBECTL[@]}" get substrates.kapro.io,sources.kapro.io,clusters.kapro.io,plans.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io -o wide || true
   echo
   echo "Argo Applications"
   "${KUBECTL[@]}" -n "${ARGO_NAMESPACE}" get applications,applicationsets -o wide || true

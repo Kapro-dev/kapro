@@ -1,0 +1,454 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: promotionruns.runtime.kapro.io
+spec:
+  group: runtime.kapro.io
+  names:
+    categories:
+    - kapro-runtime
+    kind: PromotionRun
+    listKind: PromotionRunList
+    plural: promotionruns
+    shortNames:
+    - prun
+    singular: promotionrun
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .spec.version
+      name: Version
+      type: string
+    - jsonPath: .status.summary.totalTargets
+      name: Targets
+      type: integer
+    - jsonPath: .status.summary.syncedTargets
+      name: Synced
+      type: integer
+    - jsonPath: .status.summary.failedTargets
+      name: Failed
+      type: integer
+    - jsonPath: .status.resolvedVersion
+      name: Resolved
+      priority: 1
+      type: string
+    - jsonPath: .status.startedAt
+      name: Started
+      type: date
+    - jsonPath: .status.completedAt
+      name: Completed
+      type: date
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          PromotionRun is one immutable execution attempt of a Promotion. Created and
+          updated by the controller; users write Promotion and observe PromotionRun for
+          execution detail.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              Uniqueness and dependency-reference validation is enforced by the admission webhook,
+              which can perform DAG checks without the quadratic CEL cost budget constraints.
+            properties:
+              plans:
+                description: Plans is the DAG of plan nodes.
+                items:
+                  description: |-
+                    PlanRef is one node in the PromotionRun's plan DAG.
+                    Multiple plans can run in parallel; DependsOn declares ordering between them.
+                  properties:
+                    dependsOn:
+                      description: DependsOn lists plan node names that must reach
+                        Complete before this one starts.
+                      items:
+                        type: string
+                      maxItems: 64
+                      type: array
+                    name:
+                      description: Name uniquely identifies this plan node within
+                        the PromotionRun.
+                      type: string
+                    plan:
+                      description: Plan is the name of the Plan CRD to execute.
+                      type: string
+                  required:
+                  - name
+                  - plan
+                  type: object
+                maxItems: 64
+                minItems: 1
+                type: array
+              scope:
+                description: Scope restricts this PromotionRun to a subset of clusters.
+                properties:
+                  targets:
+                    description: |-
+                      Targets is the allowlist of target cluster names.
+                      Must be non-empty when Scope is set — an empty list is ignored.
+                    items:
+                      type: string
+                    type: array
+                type: object
+              suspended:
+                default: false
+                description: Suspended pauses all advancement when true.
+                type: boolean
+              timeout:
+                description: Timeout is the maximum duration for the entire PromotionRun.
+                type: string
+              version:
+                description: |-
+                  Version is the default revision to deliver across the fleet.
+                  For existing substrate-native sources this is the revision for every unit that is
+                  not explicitly listed in versions.
+                type: string
+              versions:
+                additionalProperties:
+                  type: string
+                description: |-
+                  Versions maps promotion unit name to the substrate-native revision to
+                  deliver. Use this when a PromotionRun promotes multiple existing Argo/Flux
+                  objects together without creating a synthetic application object.
+                type: object
+            required:
+            - plans
+            type: object
+          status:
+            description: PromotionRunStatus defines the observed state of PromotionRun.
+            properties:
+              auditTrail:
+                description: AuditTrail records immutable delivery provenance. Capped
+                  at 50 entries.
+                items:
+                  description: |-
+                    AuditEntry records the immutable delivery provenance of a completed PromotionRun.
+                    Stored in PromotionRun.status.auditTrail.
+                  properties:
+                    artifact:
+                      description: Artifact is the OCI artifact that was delivered.
+                      type: string
+                    changedUnits:
+                      description: ChangedUnits lists the units that changed relative
+                        to the parent artifact.
+                      items:
+                        type: string
+                      type: array
+                    completedAt:
+                      description: CompletedAt is when the PromotionRun completed.
+                      type: string
+                    derivedFrom:
+                      description: DerivedFrom is the parent Artifact name.
+                      type: string
+                    promotionRun:
+                      description: PromotionRun is the PromotionRun name.
+                      type: string
+                    runDerivedFrom:
+                      description: PromotionRunDerivedFrom is the parent PromotionRun
+                        name.
+                      type: string
+                    scope:
+                      description: Scope lists the target cluster names that were
+                        targeted. Nil = full-fleet rollout.
+                      items:
+                        type: string
+                      type: array
+                  required:
+                  - artifact
+                  - promotionRun
+                  type: object
+                type: array
+              completedAt:
+                type: string
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              observedGeneration:
+                format: int64
+                type: integer
+              phase:
+                type: string
+              planProgress:
+                description: PlanProgress tracks execution state of each plan node
+                  in the DAG.
+                items:
+                  description: PlanProgress tracks the execution state of one plan
+                    node in a PromotionRun.
+                  properties:
+                    activeStage:
+                      description: |-
+                        ActiveStage is the name of the currently progressing stage (or the last completed one).
+                        Gives operators a quick "where are we?" without expanding StageProgress.
+                      type: string
+                    name:
+                      description: Name matches PlanRef.name.
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        ObservedGeneration pins the Plan generation used by this
+                        PromotionRun. If the referenced Plan changes while the run is in
+                        flight, the controller fails the run instead of silently switching DAGs.
+                      format: int64
+                      type: integer
+                    phase:
+                      description: Phase is the current execution state of this plan
+                        node.
+                      enum:
+                      - Pending
+                      - Progressing
+                      - Complete
+                      - Failed
+                      type: string
+                    plan:
+                      description: Plan is the Plan CRD name.
+                      type: string
+                    stageProgress:
+                      description: StageProgress summarises the state of each stage
+                        in this plan.
+                      items:
+                        description: |-
+                          StageProgress tracks the execution state of one Stage within a plan.
+                          Designed to render well in k9s describe view — operators see per-stage
+                          progress like CI plan steps.
+                        properties:
+                          completedAt:
+                            description: CompletedAt is when all targets in this stage
+                              reached a terminal state.
+                            type: string
+                          deferred:
+                            description: |-
+                              Deferred is the number of eligible targets not yet bound by the planner
+                              or stage strategy.
+                            type: integer
+                          failed:
+                            description: Failed is the number of targets that have
+                              reached Failed.
+                            type: integer
+                          message:
+                            description: |-
+                              Message is a human-readable summary of stage progress, designed for
+                              k9s describe output. Examples:
+                                "2/5 clusters converged, soak: 12m/30m remaining"
+                                "waiting for canary stage"
+                                "blocked: manual approval required for de-prod"
+                            type: string
+                          name:
+                            description: Name is the stage name from Plan.spec.stages[].name.
+                            type: string
+                          phase:
+                            description: Phase is the current state of this stage.
+                            enum:
+                            - Pending
+                            - Progressing
+                            - Complete
+                            - Failed
+                            type: string
+                          plannerResults:
+                            description: |-
+                              PlannerResults records why targets were skipped or deferred during the
+                              latest planning cycle. Capped by the controller.
+                            items:
+                              description: PlannerResult explains one planner decision
+                                for operator visibility.
+                              properties:
+                                message:
+                                  description: Message is a human-readable explanation.
+                                  type: string
+                                phase:
+                                  description: Phase is the planner phase, for example
+                                    Filter, Score, Permit, or Bind.
+                                  type: string
+                                plugin:
+                                  description: Plugin is the planner plugin or built-in
+                                    strategy that made the decision.
+                                  type: string
+                                reason:
+                                  description: Reason is a short machine-readable
+                                    reason.
+                                  type: string
+                                target:
+                                  description: Target is the Cluster name affected
+                                    by the decision.
+                                  type: string
+                              type: object
+                            type: array
+                          startedAt:
+                            description: StartedAt is when this stage first had a
+                              Progressing target.
+                            type: string
+                          synced:
+                            description: Synced is the number of targets that have
+                              reached Converged.
+                            type: integer
+                          total:
+                            description: Total is the number of targets selected by
+                              this stage.
+                            type: integer
+                        required:
+                        - name
+                        type: object
+                      type: array
+                  required:
+                  - name
+                  - plan
+                  type: object
+                type: array
+              report:
+                description: Report is the inline delivery summary.
+                properties:
+                  artifact:
+                    type: string
+                  completedAt:
+                    type: string
+                  deltaArtifacts:
+                    description: |-
+                      DeltaArtifacts is the number of artifacts explicitly changed by this PromotionRun.
+                      For derivedFrom promotionruns, inherited artifacts are excluded.
+                    type: integer
+                  duration:
+                    type: string
+                  failedTargets:
+                    type: integer
+                  pendingApprovals:
+                    description: |-
+                      PendingApprovals lists "<promotionrun>-<ref>" Approval names that are
+                      awaiting human signal. Derived from Target objects.
+                    items:
+                      type: string
+                    type: array
+                  pendingTargets:
+                    type: integer
+                  phase:
+                    type: string
+                  resolvedVersion:
+                    type: string
+                  rolledBackTargets:
+                    type: integer
+                  startedAt:
+                    type: string
+                  syncedTargets:
+                    type: integer
+                  totalArtifacts:
+                    description: TotalArtifacts is the number of artifacts in the
+                      resolved (merged) artifact list.
+                    type: integer
+                  totalTargets:
+                    type: integer
+                type: object
+              resolvedVersion:
+                description: |-
+                  ResolvedVersion is the OCI digest or tag resolved from spec.version.
+                  Set once in Pending and never changed.
+                type: string
+              startedAt:
+                type: string
+              summary:
+                description: |-
+                  Summary is the compact target aggregate for kubectl, dashboards, and
+                  scripts. Per-target detail lives in child Target objects.
+                properties:
+                  convergedAt:
+                    type: string
+                  failedTargets:
+                    format: int32
+                    type: integer
+                  pendingTargets:
+                    format: int32
+                    type: integer
+                  syncedTargets:
+                    format: int32
+                    type: integer
+                  totalTargets:
+                    format: int32
+                    type: integer
+                required:
+                - failedTargets
+                - pendingTargets
+                - syncedTargets
+                - totalTargets
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

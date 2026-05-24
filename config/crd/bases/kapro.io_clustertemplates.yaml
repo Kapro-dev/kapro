@@ -37,7 +37,7 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    name: v1alpha2
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: |-
@@ -438,14 +438,9 @@ spec:
                         minimum: 1
                         type: integer
                       delivery:
-                        description: Delivery configures the backend-neutral delivery
+                        description: Delivery configures the substrate-neutral delivery
                           adapter for this cluster.
                         properties:
-                          backendRef:
-                            description: |-
-                              BackendRef is the Backend name. Built-in profiles commonly use
-                              "flux" or "argo"; external profiles may use any platform-defined name.
-                            type: string
                           mode:
                             default: pull
                             description: Mode controls who performs delivery.
@@ -457,14 +452,14 @@ spec:
                             additionalProperties:
                               type: string
                             description: |-
-                              Parameters are opaque backend-specific settings, following the
+                              Parameters are opaque substrate-specific settings, following the
                               StorageClass.parameters pattern. Fleet core does not interpret them.
                             type: object
                           staging:
                             description: |-
-                              Staging declares optional pre-commit safety semantics for backends that
-                              support staging. When omitted, existing backend defaults are preserved.
-                              The built-in OCI pull backend already uses TwoPhase/Abort behavior.
+                              Staging declares optional pre-commit safety semantics for substrates that
+                              support staging. When omitted, existing substrate defaults are preserved.
+                              The built-in OCI pull substrate already uses TwoPhase/Abort behavior.
                             properties:
                               failurePolicy:
                                 default: Abort
@@ -483,9 +478,14 @@ spec:
                                 - TwoPhase
                                 type: string
                             type: object
+                          substrateRef:
+                            description: |-
+                              SubstrateRef is the Substrate name. Built-in profiles commonly use
+                              "flux" or "argo"; external profiles may use any platform-defined name.
+                            type: string
                         required:
-                        - backendRef
                         - mode
+                        - substrateRef
                         type: object
                       desiredAppKey:
                         description: |-

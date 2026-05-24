@@ -96,12 +96,12 @@ opts := server.OptionsFromEnv()
 opts.ActuatorRegistrars = append(server.DefaultActuatorRegistrars(),
 	server.RegisterActuator(actuator.Registration{
 		Name: "push/external",
-		Mode: kaprov1alpha2.DeliveryModePush,
+		Mode: kaprov1alpha1.DeliveryModePush,
 		Capabilities: actuator.Capabilities{
-			Driver:              kaprov1alpha2.BackendDriverExternal,
-			Adapter:             "external",
-			Runtime:             kaprov1alpha2.BackendRuntimeHub,
-			Modes:               []kaprov1alpha2.DeliveryMode{kaprov1alpha2.DeliveryModePush},
+			SubstrateKind:       kaprov1alpha1.SubstrateKindExternal,
+			Actuator:            "external",
+			ExecutionScope:      kaprov1alpha1.ExecutionScopeHub,
+			Modes:               []kaprov1alpha1.DeliveryMode{kaprov1alpha1.DeliveryModePush},
 			SupportsApply:       true,
 			SupportsRollback:    true,
 			SupportsConvergence: true,

@@ -12,7 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/cli"
 )
 
@@ -22,7 +22,7 @@ func suspendTestScheme(t *testing.T) *runtime.Scheme {
 	if err := clientgoscheme.AddToScheme(s); err != nil {
 		t.Fatalf("clientgoscheme: %v", err)
 	}
-	if err := kaprov1alpha2.AddToScheme(s); err != nil {
+	if err := kaprov1alpha1.AddToScheme(s); err != nil {
 		t.Fatalf("kapro scheme: %v", err)
 	}
 	return s
@@ -38,7 +38,7 @@ func captureSuspendOutput(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
-func newFakeClientWithPromo(t *testing.T, promo *kaprov1alpha2.Promotion) client.Client {
+func newFakeClientWithPromo(t *testing.T, promo *kaprov1alpha1.Promotion) client.Client {
 	t.Helper()
 	objs := []client.Object{}
 	if promo != nil {
@@ -51,9 +51,9 @@ func newFakeClientWithPromo(t *testing.T, promo *kaprov1alpha2.Promotion) client
 }
 
 func TestSuspend_FlipsTrueAndPatches(t *testing.T) {
-	promo := &kaprov1alpha2.Promotion{
+	promo := &kaprov1alpha1.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: "p1"},
-		Spec:       kaprov1alpha2.PromotionSpec{FleetRef: "k", Suspended: false},
+		Spec:       kaprov1alpha1.PromotionSpec{FleetRef: "k", Suspended: false},
 	}
 	c := newFakeClientWithPromo(t, promo)
 
@@ -66,7 +66,7 @@ func TestSuspend_FlipsTrueAndPatches(t *testing.T) {
 		t.Errorf("output missing 'suspended': %q", out)
 	}
 
-	var got kaprov1alpha2.Promotion
+	var got kaprov1alpha1.Promotion
 	if err := c.Get(context.Background(), client.ObjectKey{Name: "p1"}, &got); err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -76,9 +76,9 @@ func TestSuspend_FlipsTrueAndPatches(t *testing.T) {
 }
 
 func TestResume_FlipsFalseAndPatches(t *testing.T) {
-	promo := &kaprov1alpha2.Promotion{
+	promo := &kaprov1alpha1.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: "p1"},
-		Spec:       kaprov1alpha2.PromotionSpec{FleetRef: "k", Suspended: true},
+		Spec:       kaprov1alpha1.PromotionSpec{FleetRef: "k", Suspended: true},
 	}
 	c := newFakeClientWithPromo(t, promo)
 
@@ -91,7 +91,7 @@ func TestResume_FlipsFalseAndPatches(t *testing.T) {
 		t.Errorf("output missing 'resumed': %q", out)
 	}
 
-	var got kaprov1alpha2.Promotion
+	var got kaprov1alpha1.Promotion
 	if err := c.Get(context.Background(), client.ObjectKey{Name: "p1"}, &got); err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -101,9 +101,9 @@ func TestResume_FlipsFalseAndPatches(t *testing.T) {
 }
 
 func TestSuspend_NoOpWhenAlreadySuspended(t *testing.T) {
-	promo := &kaprov1alpha2.Promotion{
+	promo := &kaprov1alpha1.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: "p1"},
-		Spec:       kaprov1alpha2.PromotionSpec{FleetRef: "k", Suspended: true},
+		Spec:       kaprov1alpha1.PromotionSpec{FleetRef: "k", Suspended: true},
 	}
 	c := newFakeClientWithPromo(t, promo)
 
@@ -125,9 +125,9 @@ func TestSuspend_NoOpWhenAlreadySuspended(t *testing.T) {
 // resume side — the formatter picks a different past-tense word
 // ("resumed" vs "suspended"), so this is a real second branch.
 func TestResume_NoOpWhenAlreadyResumed(t *testing.T) {
-	promo := &kaprov1alpha2.Promotion{
+	promo := &kaprov1alpha1.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: "p1"},
-		Spec:       kaprov1alpha2.PromotionSpec{FleetRef: "k", Suspended: false},
+		Spec:       kaprov1alpha1.PromotionSpec{FleetRef: "k", Suspended: false},
 	}
 	c := newFakeClientWithPromo(t, promo)
 

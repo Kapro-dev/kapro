@@ -4,13 +4,13 @@
 //
 //	kapro bootstrap guide
 //	kapro bootstrap generate ./promotion-repo --profile direct --name checkout
-//	kapro bootstrap generate ./promotion-repo --profile argocd --name checkout
+//	kapro bootstrap generate ./promotion-repo --profile argo --name checkout
 //	kapro bootstrap generate ./promotion-repo --profile flux --name checkout
 //	kapro quickstart flux ./promotion-repo --name checkout
-//	kapro bootstrap greenfield ./promotion-repo --backend flux --mode pull --name checkout
+//	kapro bootstrap greenfield ./promotion-repo --substrate flux --mode pull --name checkout
 //	kapro bootstrap argo ./promotion-repo --name checkout
 //	kapro adopt argo . --out ./kapro-connect --name checkout
-//	kapro init ./promotion-repo --backend flux --mode pull --name checkout
+//	kapro init ./promotion-repo --substrate flux --mode pull --name checkout
 //	kapro promote <fleet> --version <version>
 //	kapro diag <promotion>
 //	kapro explain <promotionrun>
@@ -29,6 +29,8 @@ import (
 	"sort"
 	"strings"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	"github.com/spf13/cobra"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -40,7 +42,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/bootstrap"
 	"kapro.io/kapro/internal/cli"
 	kaproconfig "kapro.io/kapro/internal/config"
@@ -53,7 +55,8 @@ var scheme = runtime.NewScheme()
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
 	_ = apiextensionsv1.AddToScheme(scheme)
-	_ = kaprov1alpha2.AddToScheme(scheme)
+	_ = kaprov1alpha1.AddToScheme(scheme)
+	_ = kaproruntimev1alpha1.AddToScheme(scheme)
 }
 
 func main() {
@@ -66,7 +69,7 @@ Pass versions forward across targets, clusters, and waves.
 
 Start here:
   kapro bootstrap generate ./promotion-repo --profile direct --name checkout
-  kapro bootstrap generate ./promotion-repo --profile argocd --name checkout
+  kapro bootstrap generate ./promotion-repo --profile argo --name checkout
   kapro bootstrap generate ./promotion-repo --profile flux --name checkout
   kapro quickstart flux ./promotion-repo --name checkout
   kapro bootstrap guide
@@ -245,14 +248,14 @@ func runClusterAdd(ctx context.Context, clusterName, providerName string, labels
 	}
 
 	// Create Cluster with spoke-local actuator.
-	mc := &kaprov1alpha2.Cluster{
+	mc := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   clusterName,
 			Labels: labels,
 		},
-		Spec: kaprov1alpha2.ClusterSpec{
-			Delivery: kaprov1alpha2.DeliverySpec{
-				Mode: "pull", BackendRef: "flux",
+		Spec: kaprov1alpha1.ClusterSpec{
+			Delivery: kaprov1alpha1.DeliverySpec{
+				Mode: "pull", SubstrateRef: "flux",
 				Parameters: map[string]string{
 					"namespace":     "flux-system",
 					"ociRepository": clusterName + "-bundle",
@@ -401,14 +404,14 @@ func runClusterSync(ctx context.Context, project string) error {
 		}
 
 		// Create/update Cluster with Fleet labels.
-		mc := &kaprov1alpha2.Cluster{
+		mc := &kaprov1alpha1.Cluster{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   cluster.Name,
 				Labels: cluster.Labels,
 			},
-			Spec: kaprov1alpha2.ClusterSpec{
-				Delivery: kaprov1alpha2.DeliverySpec{
-					Mode: "push", BackendRef: "flux",
+			Spec: kaprov1alpha1.ClusterSpec{
+				Delivery: kaprov1alpha1.DeliverySpec{
+					Mode: "push", SubstrateRef: "flux",
 					Parameters: map[string]string{
 						"resourceSet": "fleet-workloads",
 						"namespace":   "flux-system",
@@ -418,7 +421,7 @@ func runClusterSync(ctx context.Context, project string) error {
 		}
 		if err := c.Create(ctx, mc); err != nil {
 			if strings.Contains(err.Error(), "already exists") {
-				existing := &kaprov1alpha2.Cluster{}
+				existing := &kaprov1alpha1.Cluster{}
 				if getErr := c.Get(ctx, client.ObjectKey{Name: cluster.Name}, existing); getErr == nil {
 					patch := client.MergeFrom(existing.DeepCopy())
 					existing.Labels = cluster.Labels
@@ -475,7 +478,7 @@ func runGetPromotionRuns(ctx context.Context, kubeconfigPath string) error {
 		return err
 	}
 
-	var list kaprov1alpha2.PromotionRunList
+	var list kaproruntimev1alpha1.PromotionRunList
 	if err := c.List(ctx, &list); err != nil {
 		sp.StopFail("Failed to list promotionruns")
 		return fmt.Errorf("list promotionruns: %w", err)
@@ -495,11 +498,11 @@ func runGetPromotionRuns(ctx context.Context, kubeconfigPath string) error {
 	progressing, complete, failed := 0, 0, 0
 	for _, r := range list.Items {
 		switch r.Status.Phase {
-		case kaprov1alpha2.PromotionRunPhaseProgressing:
+		case kaprov1alpha1.PromotionRunPhaseProgressing:
 			progressing++
-		case kaprov1alpha2.PromotionRunPhaseComplete:
+		case kaprov1alpha1.PromotionRunPhaseComplete:
 			complete++
-		case kaprov1alpha2.PromotionRunPhaseFailed:
+		case kaprov1alpha1.PromotionRunPhaseFailed:
 			failed++
 		}
 	}
@@ -520,7 +523,7 @@ func runGetPromotionRuns(ctx context.Context, kubeconfigPath string) error {
 			}
 			plansText += p.Plan
 		}
-		summary := kaprov1alpha2.PromotionRunSummary{}
+		summary := kaprov1alpha1.PromotionRunSummary{}
 		if r.Status.Summary != nil {
 			summary = *r.Status.Summary
 		}
@@ -570,7 +573,7 @@ func runGetTargets(ctx context.Context, phase, kubeconfigPath string) error {
 		return err
 	}
 
-	var targetList kaprov1alpha2.TargetList
+	var targetList kaproruntimev1alpha1.TargetList
 	if err := c.List(ctx, &targetList); err != nil {
 		sp.StopFail("Failed to list targets")
 		return fmt.Errorf("list targets: %w", err)
@@ -578,7 +581,7 @@ func runGetTargets(ctx context.Context, phase, kubeconfigPath string) error {
 	sp.Stop()
 
 	// Filter by phase if specified.
-	var filtered []kaprov1alpha2.Target
+	var filtered []kaproruntimev1alpha1.Target
 	for _, t := range targetList.Items {
 		if phase == "" || string(t.Status.Phase) == phase {
 			filtered = append(filtered, t)
@@ -650,7 +653,7 @@ func runApprove(ctx context.Context, promotionTarget, comment, kubeconfigPath st
 		return err
 	}
 
-	var rel kaprov1alpha2.PromotionRun
+	var rel kaproruntimev1alpha1.PromotionRun
 	if err := c.Get(ctx, client.ObjectKey{Name: promotionrunName}, &rel); err != nil {
 		return fmt.Errorf("get promotionrun %q: %w", promotionrunName, err)
 	}
@@ -663,18 +666,18 @@ func runApprove(ctx context.Context, promotionTarget, comment, kubeconfigPath st
 	if selected == nil {
 		return fmt.Errorf("target %q not found in promotionrun %q", targetName, promotionrunName)
 	}
-	if selected.Status.Phase != kaprov1alpha2.TargetPhaseWaitingApproval {
+	if selected.Status.Phase != kaprov1alpha1.TargetPhaseWaitingApproval {
 		fmt.Printf("⚠️  Target %q is in phase %q (not WaitingApproval) — approving anyway.\n",
 			targetName, selected.Status.Phase)
 	}
 
 	ref := approvalRefForTarget(*selected)
 	approvalName := internalgate.ApprovalName(promotionrunName, ref)
-	approval := &kaprov1alpha2.Approval{
+	approval := &kaprov1alpha1.Approval{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: approvalName,
 		},
-		Spec: kaprov1alpha2.ApprovalSpec{
+		Spec: kaprov1alpha1.ApprovalSpec{
 			Ref:          ref,
 			PromotionRun: promotionrunName,
 			Target:       targetName,
@@ -707,6 +710,7 @@ func newRollbackCmd() *cobra.Command {
 	var (
 		toDigest   string
 		targets    []string
+		team       string
 		kubeconfig string
 	)
 	cmd := &cobra.Command{
@@ -724,26 +728,27 @@ Examples:
   kapro rollback my-promotionrun --to sha256:abc123def456 --target de-prod --target fi-prod`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRollback(cmd.Context(), args[0], toDigest, targets, kubeconfig)
+			return runRollback(cmd.Context(), args[0], toDigest, targets, team, kubeconfig)
 		},
 	}
 	cmd.Flags().StringVar(&toDigest, "to", "", "OCI digest to roll back to (required)")
 	cmd.Flags().StringArrayVar(&targets, "target", nil, "Restrict rollback to specific target clusters (repeatable)")
 	cmd.Flags().StringArrayVar(&targets, "env", nil, "Deprecated alias for --target")
 	_ = cmd.Flags().MarkHidden("env")
+	cmd.Flags().StringVar(&team, "team", "", "Value for metadata.labels[kapro.io/team] when the original PromotionRun has no team label")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	_ = cmd.MarkFlagRequired("to")
 	return cmd
 }
 
-func runRollback(ctx context.Context, promotionrunName, toDigest string, targets []string, kubeconfigPath string) error {
+func runRollback(ctx context.Context, promotionrunName, toDigest string, targets []string, team, kubeconfigPath string) error {
 	c, err := buildClient(kubeconfigPath)
 	if err != nil {
 		return err
 	}
 
 	// Fetch the original PromotionRun.
-	var orig kaprov1alpha2.PromotionRun
+	var orig kaproruntimev1alpha1.PromotionRun
 	if err := c.Get(ctx, client.ObjectKey{Name: promotionrunName}, &orig); err != nil {
 		return fmt.Errorf("get promotionrun %q: %w", promotionrunName, err)
 	}
@@ -753,16 +758,27 @@ func runRollback(ctx context.Context, promotionrunName, toDigest string, targets
 
 	// Create a rollback PromotionRun with the same plans but the rollback version.
 	rbPromotionRunName := promotionrunName + "-rb-" + suffix
-	rbSpec := kaprov1alpha2.PromotionRunSpec{
+	labels := cloneStringMap(orig.Labels)
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	if team != "" {
+		labels["kapro.io/team"] = team
+	}
+	if labels["kapro.io/team"] == "" {
+		labels["kapro.io/team"] = "platform"
+	}
+	rbSpec := kaprov1alpha1.PromotionRunSpec{
 		Version: toDigest,
 		Plans:   orig.Spec.Plans,
 	}
 	if len(targets) > 0 {
-		rbSpec.Scope = &kaprov1alpha2.PromotionRunScope{Targets: targets}
+		rbSpec.Scope = &kaprov1alpha1.PromotionRunScope{Targets: targets}
 	}
-	rbPromotionRun := &kaprov1alpha2.PromotionRun{
+	rbPromotionRun := &kaproruntimev1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: rbPromotionRunName,
+			Name:   rbPromotionRunName,
+			Labels: labels,
 			Annotations: map[string]string{
 				"kapro.io/rollback-from":   promotionrunName,
 				"kapro.io/rollback-digest": toDigest,
@@ -809,14 +825,14 @@ func shortHash(s string) string {
 	return hex.EncodeToString(h[:])[:8]
 }
 
-func approvalRefForTarget(target kaprov1alpha2.Target) string {
+func approvalRefForTarget(target kaproruntimev1alpha1.Target) string {
 	return target.Name
 }
 
-func selectApprovalTarget(targets []kaprov1alpha2.Target, targetName string) *kaprov1alpha2.Target {
+func selectApprovalTarget(targets []kaproruntimev1alpha1.Target, targetName string) *kaproruntimev1alpha1.Target {
 	for i := range targets {
 		target := &targets[i]
-		if target.Spec.Target == targetName && target.Status.Phase == kaprov1alpha2.TargetPhaseWaitingApproval {
+		if target.Spec.Target == targetName && target.Status.Phase == kaprov1alpha1.TargetPhaseWaitingApproval {
 			return target
 		}
 	}
@@ -829,12 +845,12 @@ func selectApprovalTarget(targets []kaprov1alpha2.Target, targetName string) *ka
 	return nil
 }
 
-func listTargetsForPromotionRun(ctx context.Context, c client.Client, promotionrunName string) ([]kaprov1alpha2.Target, error) {
-	var targetList kaprov1alpha2.TargetList
+func listTargetsForPromotionRun(ctx context.Context, c client.Client, promotionrunName string) ([]kaproruntimev1alpha1.Target, error) {
+	var targetList kaproruntimev1alpha1.TargetList
 	if err := c.List(ctx, &targetList); err != nil {
 		return nil, fmt.Errorf("list targets: %w", err)
 	}
-	targets := make([]kaprov1alpha2.Target, 0)
+	targets := make([]kaproruntimev1alpha1.Target, 0)
 	for _, target := range targetList.Items {
 		if target.Spec.PromotionRunRef == promotionrunName {
 			targets = append(targets, target)
@@ -904,33 +920,33 @@ func runPromotionCreate(ctx context.Context, name, fleetRef, version string,
 		return err
 	}
 
-	var planRefs []kaprov1alpha2.PlanRef
+	var planRefs []kaprov1alpha1.PlanRef
 	usedPlanNames := map[string]struct{}{}
 	for _, p := range plans {
 		refName := uniquePlanRefName(p, usedPlanNames)
-		planRefs = append(planRefs, kaprov1alpha2.PlanRef{
+		planRefs = append(planRefs, kaprov1alpha1.PlanRef{
 			Name: refName,
 			Plan: p,
 		})
 	}
 
-	spec := kaprov1alpha2.PromotionSpec{
+	spec := kaprov1alpha1.PromotionSpec{
 		FleetRef: fleetRef,
 		Version:  version,
 		Versions: versions,
 		Plans:    planRefs,
 	}
 	if len(scope) > 0 {
-		spec.Scope = &kaprov1alpha2.PromotionRunScope{Targets: scope}
+		spec.Scope = &kaprov1alpha1.PromotionRunScope{Targets: scope}
 	}
 
 	op := "created"
-	promo := &kaprov1alpha2.Promotion{}
+	promo := &kaprov1alpha1.Promotion{}
 	if err := c.Get(ctx, client.ObjectKey{Name: name}, promo); err != nil {
 		if !apierrors.IsNotFound(err) {
 			return fmt.Errorf("get Promotion: %w", err)
 		}
-		promo = &kaprov1alpha2.Promotion{
+		promo = &kaprov1alpha1.Promotion{
 			ObjectMeta: metav1.ObjectMeta{Name: name},
 			Spec:       spec,
 		}
@@ -938,7 +954,7 @@ func runPromotionCreate(ctx context.Context, name, fleetRef, version string,
 			if !apierrors.IsAlreadyExists(err) {
 				return fmt.Errorf("create Promotion: %w", err)
 			}
-			promo = &kaprov1alpha2.Promotion{}
+			promo = &kaprov1alpha1.Promotion{}
 			if err := c.Get(ctx, client.ObjectKey{Name: name}, promo); err != nil {
 				return fmt.Errorf("get existing Promotion after create race: %w", err)
 			}
@@ -969,11 +985,11 @@ func runPromotionCreate(ctx context.Context, name, fleetRef, version string,
 		fmt.Printf("   Scope:     %s\n", strings.Join(scope, ", "))
 	}
 	fmt.Printf("\nA PromotionRun appears after the controller reconciles this intent.\n")
-	fmt.Printf("\nNext steps:\n  kapro diag %s\n  kapro status %s\n  kubectl get promotions,promotionruns,targets\n", name, fleetRef)
+	fmt.Printf("\nNext steps:\n  kapro diag %s\n  kapro status %s\n  kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io\n", name, fleetRef)
 	return nil
 }
 
-func updatePromotionSpec(ctx context.Context, c client.Client, promo *kaprov1alpha2.Promotion, spec kaprov1alpha2.PromotionSpec) error {
+func updatePromotionSpec(ctx context.Context, c client.Client, promo *kaprov1alpha1.Promotion, spec kaprov1alpha1.PromotionSpec) error {
 	patch := client.MergeFrom(promo.DeepCopy())
 	promo.Spec = spec
 	if err := c.Patch(ctx, promo, patch); err != nil {
@@ -1083,6 +1099,7 @@ func newPromotionRunCreateCmd() *cobra.Command {
 		versions   []string
 		plans      []string
 		scope      []string
+		team       string
 		kubeconfig string
 	)
 	cmd := &cobra.Command{
@@ -1107,7 +1124,7 @@ Examples:
     --set api=main@sha256:abc123 --set worker=main@sha256:def456 \
     --plan global`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runPromotionRunCreate(cmd.Context(), name, version, versions, plans, scope, kubeconfig)
+			return runPromotionRunCreate(cmd.Context(), name, version, versions, plans, scope, team, kubeconfig)
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "PromotionRun name (required)")
@@ -1115,13 +1132,14 @@ Examples:
 	cmd.Flags().StringArrayVar(&versions, "set", nil, "Per-unit revision (repeatable: --set api=sha256:abc)")
 	cmd.Flags().StringArrayVar(&plans, "plan", nil, "Plan name (repeatable; required at least once)")
 	cmd.Flags().StringArrayVar(&scope, "scope", nil, "Restrict to target cluster (repeatable: --scope de-prod --scope fi-prod)")
+	cmd.Flags().StringVar(&team, "team", "platform", "Value for metadata.labels[kapro.io/team]")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	_ = cmd.MarkFlagRequired("name")
 	return cmd
 }
 
 func runPromotionRunCreate(ctx context.Context, name, version string, versionPairs, plans, scope []string,
-	kubeconfigPath string) error {
+	team, kubeconfigPath string) error {
 	if len(plans) == 0 {
 		return fmt.Errorf("at least one --plan is required")
 	}
@@ -1138,26 +1156,29 @@ func runPromotionRunCreate(ctx context.Context, name, version string, versionPai
 		return err
 	}
 
-	refs := make([]kaprov1alpha2.PlanRef, 0, len(plans))
+	refs := make([]kaprov1alpha1.PlanRef, 0, len(plans))
 	for i, p := range plans {
-		refs = append(refs, kaprov1alpha2.PlanRef{
+		refs = append(refs, kaprov1alpha1.PlanRef{
 			Name: fmt.Sprintf("p%d", i+1),
 			Plan: p,
 		})
 	}
 
-	spec := kaprov1alpha2.PromotionRunSpec{
+	spec := kaprov1alpha1.PromotionRunSpec{
 		Version:  version,
 		Versions: versions,
 		Plans:    refs,
 	}
 	if len(scope) > 0 {
-		spec.Scope = &kaprov1alpha2.PromotionRunScope{Targets: scope}
+		spec.Scope = &kaprov1alpha1.PromotionRunScope{Targets: scope}
 	}
 
-	rel := &kaprov1alpha2.PromotionRun{
+	rel := &kaproruntimev1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
+			Labels: map[string]string{
+				"kapro.io/team": firstNonEmpty(team, "platform"),
+			},
 		},
 		Spec: spec,
 	}

@@ -63,78 +63,38 @@ groups:
           description: Stage duration is above the expected fleet rollout objective for plan {{ $labels.plan }}.
           runbook: docs/controller-scalability.md#workqueue-tuning
 
-      - alert: KaproFleetDriftDetected
-        expr: kapro_fleetdriftreport_phase{phase="Drifted"} == 1
-        for: 30m
-        labels:
-          severity: warning
-        annotations:
-          summary: Kapro drift report {{ $labels.report }} has sustained drift
-          description: FleetDriftReport {{ $labels.report }} has remained Drifted for 30 minutes.
-          runbook: docs/operations/operations.md#runbook-fleet-drift
-
-      - alert: KaproFleetDriftSignalsIncomplete
-        expr: kapro_fleetdriftreport_phase{phase="Unknown"} == 1
-        for: 20m
-        labels:
-          severity: warning
-        annotations:
-          summary: Kapro drift report {{ $labels.report }} has incomplete signals
-          description: FleetDriftReport {{ $labels.report }} has remained Unknown for 20 minutes.
-          runbook: docs/operations/operations.md#runbook-fleet-drift
-
-      - alert: KaproFleetDriftReportFailed
-        expr: kapro_fleetdriftreport_phase{phase="Failed"} == 1
-        for: 10m
-        labels:
-          severity: critical
-        annotations:
-          summary: Kapro drift report {{ $labels.report }} is failed
-          description: FleetDriftReport {{ $labels.report }} has remained Failed for 10 minutes.
-          runbook: docs/operations/operations.md#runbook-fleet-drift
-
-      - alert: KaproFleetDriftReportPending
-        expr: kapro_fleetdriftreport_phase{phase="Pending"} == 1
-        for: 2h
-        labels:
-          severity: warning
-        annotations:
-          summary: Kapro drift report {{ $labels.report }} is pending for too long
-          description: FleetDriftReport {{ $labels.report }} has remained Pending for 2 hours.
-          runbook: docs/operations/operations.md#runbook-fleet-drift
-
       - alert: KaproSpokeDeliveryErrors
-        expr: sum(rate(kapro_spoke_delivery_reconciles_total{result="error"}[10m])) by (cluster, backend) > 0
+        expr: sum(rate(kapro_spoke_delivery_reconciles_total{result="error"}[10m])) by (cluster, substrate) > 0
         for: 15m
         labels:
           severity: warning
         annotations:
           summary: Kapro spoke {{ $labels.cluster }} delivery errors detected
-          description: Backend {{ $labels.backend }} has had delivery reconcile errors for 15 minutes.
+          description: Substrate {{ $labels.substrate }} has had delivery reconcile errors for 15 minutes.
           runbook: docs/operations/operations.md#runbook-spoke-delivery
 
       - alert: KaproSpokeDeliveryStagingErrors
-        expr: sum by (cluster, backend, phase) (rate(kapro_spoke_delivery_staging_results_total{result="error"}[10m])) > 0
+        expr: sum by (cluster, substrate, phase) (rate(kapro_spoke_delivery_staging_results_total{result="error"}[10m])) > 0
         for: 10m
         labels:
           severity: warning
         annotations:
           summary: Kapro spoke {{ $labels.cluster }} {{ $labels.phase }} failures detected
-          description: Backend {{ $labels.backend }} has had OCI staged delivery {{ $labels.phase }} failures for 10 minutes.
+          description: Substrate {{ $labels.substrate }} has had OCI staged delivery {{ $labels.phase }} failures for 10 minutes.
           runbook: docs/operations/operations.md#runbook-spoke-delivery
 
       - alert: KaproSpokeDeliveryLatencyHigh
         expr: |
           histogram_quantile(
             0.95,
-            sum(rate(kapro_spoke_delivery_reconcile_duration_seconds_bucket[10m])) by (cluster, backend, le)
+            sum(rate(kapro_spoke_delivery_reconcile_duration_seconds_bucket[10m])) by (cluster, substrate, le)
           ) > 30
         for: 20m
         labels:
           severity: warning
         annotations:
           summary: Kapro spoke {{ $labels.cluster }} delivery p95 is high
-          description: Backend {{ $labels.backend }} delivery reconcile p95 has been above 30 seconds for 20 minutes.
+          description: Substrate {{ $labels.substrate }} delivery reconcile p95 has been above 30 seconds for 20 minutes.
           runbook: docs/operations/operations.md#runbook-spoke-delivery
 
       - alert: KaproControllerReconcileErrors

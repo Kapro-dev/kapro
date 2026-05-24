@@ -1,0 +1,34 @@
+apiVersion: kapro.io/v1alpha1
+kind: SubstrateClass
+metadata:
+  name: argo
+  labels:
+    kapro.io/family: gitops
+    kapro.io/ledger: git
+spec:
+  controllerName: kapro.io/argo
+  executionModes:
+    default: hub-push
+---
+apiVersion: argocd.substrate.kapro.io/v1alpha1
+kind: ArgoCDSubstrateConfig
+metadata:
+  name: argo
+spec:
+  endpoint: https://argocd.example.com
+  namespace: argocd
+  defaultProject: platform
+---
+apiVersion: kapro.io/v1alpha1
+kind: Substrate
+metadata:
+  name: argo
+spec:
+  classRef:
+    name: argo
+  configRef:
+    apiVersion: argocd.substrate.kapro.io/v1alpha1
+    kind: ArgoCDSubstrateConfig
+    name: argo
+  execution:
+    mode: hub-push

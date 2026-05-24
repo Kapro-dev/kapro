@@ -13,17 +13,17 @@ Flux, Argo CD, OCI pull agents, and other delivery systems keep owning the local
   <a href="https://github.com/Kapro-dev/kapro/releases/latest"><img src="https://img.shields.io/github/v/release/Kapro-dev/kapro?sort=semver" alt="Latest release"></a>
   <a href="https://github.com/Kapro-dev/kapro/actions/workflows/ci.yml"><img src="https://github.com/Kapro-dev/kapro/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://goreportcard.com/report/kapro.io/kapro"><img src="https://goreportcard.com/badge/kapro.io/kapro" alt="Go Report Card"></a>
-  <a href="api/v1alpha2"><img src="https://img.shields.io/badge/API-kapro.io%2Fv1alpha2-purple" alt="API Group"></a>
+  <a href="api/kapro/v1alpha1"><img src="https://img.shields.io/badge/API-kapro.io%2Fv1alpha1-purple" alt="API Group"></a>
   <a href="https://kapro.dev"><img src="https://img.shields.io/badge/docs-kapro.dev-0a7" alt="Docs"></a>
 </p>
 
 ---
 
 Kapro is **pre-stable public release software**, not GA. The current public
-preview release is `v0.5.8`; all Kubernetes APIs are now `kapro.io/v1alpha2`.
-If you have legacy `kapro.io/v1alpha1` manifests, follow the
-[v1alpha1 to v1alpha2 migration guide](docs/migration/migration-v1alpha1-to-v1alpha2.md);
-this release does not provide automatic legacy conversion.
+preview line is `v0.6.x`; user-authored APIs live in `kapro.io/v1alpha1` and
+controller-owned runtime records live in `runtime.kapro.io/v1alpha1`. This is a
+clean pre-stable break; there is no automatic conversion for older alpha
+manifests.
 
 ## Why Kapro
 
@@ -39,7 +39,7 @@ CI scripts.
 
 - **Fleet-wide promotion intent:** model waves, gates, approvals, and target
   selection as Kubernetes API state.
-- **Backend-neutral delivery:** keep Flux, Argo CD, OCI pull agents, and custom
+- **Substrate-neutral delivery:** keep Flux, Argo CD, OCI pull agents, and custom
   plugins in charge of local rollout mechanics.
 - **Auditable attempts:** inspect durable `Promotion` intent, immutable
   `PromotionRun` attempts, and per-target runtime records after CI has exited.
@@ -53,7 +53,7 @@ Kapro owns:
 - target selection;
 - gate and approval state;
 - per-target execution records;
-- backend convergence evidence.
+- substrate convergence evidence.
 
 Kapro does not build artifacts, render manifests, replace GitOps controllers,
 or implement in-cluster traffic shifting. Those jobs stay with CI, Helm,
@@ -68,8 +68,8 @@ cluster provisioner, or secret store.
 | Kind | Role |
 |---|---|
 | `Fleet` | Fleet setup root: source, delivery defaults, clusters, and embedded stage plan. |
-| `Source` | Reusable catalog of deployable units and backend write targets. |
-| `Backend` | Delivery driver configuration for Flux, Argo CD, OCI, or plugin-backed execution. |
+| `Source` | Reusable catalog of deployable units and substrate write targets. |
+| `Substrate` | Delivery driver configuration for Flux, Argo CD, OCI, direct apply, or plugin-backed execution. |
 | `Plan` | Stage order, target selection, and gates generated from or referenced by a Fleet. |
 | `Promotion` | User-authored rollout intent: "promote this version through this Fleet." |
 | `PromotionRun` | Controller-authored execution attempt and audit record. |
@@ -89,13 +89,13 @@ for the architectural comparison.
 
 ## Adapt To Your Fleet
 
-Kapro is backend-neutral. A fleet can mix delivery styles by cluster:
+Kapro is substrate-neutral. A fleet can mix delivery styles by cluster:
 
 - **Existing Flux or Argo CD:** discover existing apps first, review the
   generated mappings, then opt selected objects into managed promotion.
 - **OCI pull mode:** spoke clusters pull artifacts from inside their own network
   boundary and report status back to the hub.
-- **Hub push mode:** the hub patches a backend object directly when network and
+- **Hub push mode:** the hub patches a substrate object directly when network and
   RBAC policy allow it.
 - **Plugins:** custom actuators, gates, and planners can be loaded through
   `Plugin` after they pass the conformance harness.
@@ -103,7 +103,7 @@ Kapro is backend-neutral. A fleet can mix delivery styles by cluster:
 Run [First Promotion in 10 Minutes](docs/getting-started/first-promotion-10min.md) first to
 see the API lifecycle, or start with the [Adoption CLI](docs/getting-started/adoption-cli.md)
 when you want `kapro quickstart`, `kapro sample`, `kapro doctor`, and
-`kapro explain` as the guided path. Use [Backends](docs/concepts/backends.md) when
+`kapro explain` as the guided path. Use [Substrates](docs/concepts/substrates.md) when
 deciding how Kapro should connect to existing delivery systems.
 
 For guided repository setup, use the source-built bootstrap CLI from `main`
@@ -116,11 +116,10 @@ make build
 export PATH="$PWD/bin:$PATH"
 kapro bootstrap guide
 kapro bootstrap generate ./promotion-repo --profile direct --name checkout
-kapro bootstrap generate ./promotion-repo --profile argocd --name checkout
+kapro bootstrap generate ./promotion-repo --profile argo --name checkout
 kapro bootstrap generate ./promotion-repo --profile flux --name checkout
 kapro quickstart flux ./promotion-repo --name checkout
 kapro quickstart argo ./promotion-repo --name checkout
-kapro bootstrap greenfield ./promotion-repo --backend flux --mode pull --name checkout
 kapro adopt argo . --out ./kapro-connect --name checkout
 kapro adopt flux . --out ./kapro-connect --name checkout
 ```
@@ -134,7 +133,7 @@ Install the released operator, apply the starter fleet from a source clone, and
 inspect the controller-owned runtime records:
 
 ```bash
-KAPRO_VERSION=0.5.8
+KAPRO_VERSION=0.6.0
 git clone --branch "v${KAPRO_VERSION}" https://github.com/Kapro-dev/kapro.git
 cd kapro
 helm upgrade --install kapro \
@@ -142,20 +141,20 @@ helm upgrade --install kapro \
   --namespace kapro-system \
   --create-namespace \
   --wait
-kubectl wait crd/promotions.kapro.io crd/promotionruns.kapro.io crd/targets.kapro.io \
+kubectl wait crd/promotions.kapro.io crd/promotionruns.runtime.kapro.io crd/targets.runtime.kapro.io \
   --for=condition=Established \
   --timeout=60s
 kubectl -n kapro-system rollout status deployment/kapro-kapro-operator
-kubectl apply -f examples/quickstart/backend-flux.yaml
+kubectl apply -f examples/quickstart/substrates/flux.yaml
 kubectl apply -f examples/quickstart/kapro.yaml
 kubectl apply -f examples/quickstart/promotion.yaml
-kubectl get promotions,promotionruns,targets
+kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
 ```
 
 The user-authored object is `Promotion`. `PromotionRun` and `Target` are
 controller-owned runtime records for inspection in `kubectl` or k9s. This
 starter path proves that the hub API stamps `PromotionRun` and `Target`
-records. Real `Complete` / `Converged` status requires a wired delivery backend
+records. Real `Complete` / `Converged` status requires a wired delivery substrate
 or the local CI smoke fixture to report workload health.
 
 To run the same local convergence smoke used by CI, use Docker, Kind, Helm, and
@@ -179,12 +178,11 @@ Start at [kapro.dev](https://kapro.dev) or use these repo docs:
 - [Adoption CLI](docs/getting-started/adoption-cli.md)
 - [First Promotion in 10 Minutes](docs/getting-started/first-promotion-10min.md)
 - [Kind Demo](examples/kind-demo/README.md)
-- [Backends](docs/concepts/backends.md)
+- [Substrates](docs/concepts/substrates.md)
 - [Operations](docs/operations/operations.md)
 - [Security](docs/operations/security.md)
 - [API Stability](docs/concepts/api-stability.md)
 - [Competitive Positioning](docs/adr/0012-competitive-positioning.md)
-- [v1alpha1 to v1alpha2 Migration](docs/migration/migration-v1alpha1-to-v1alpha2.md)
 - [Changelog](CHANGELOG.md)
 
 Deeper references:

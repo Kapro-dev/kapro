@@ -18,7 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	pluginadapter "kapro.io/kapro/internal/plugin/adapter"
 	"kapro.io/kapro/internal/plugin/probe"
 	"kapro.io/kapro/pkg/actuator"
@@ -62,7 +62,7 @@ const pluginRegistrationMetricsFinalizer = "kapro.io/plugin-registration-metrics
 
 // PluginProber is the dependency used to probe plugin endpoints.
 type PluginProber interface {
-	Probe(ctx context.Context, reg kaprov1alpha2.Plugin) probe.Result
+	Probe(ctx context.Context, reg kaprov1alpha1.Plugin) probe.Result
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=plugins,verbs=get;list;watch
@@ -73,7 +73,7 @@ type PluginProber interface {
 func (r *PluginReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	var reg kaprov1alpha2.Plugin
+	var reg kaprov1alpha1.Plugin
 	if err := r.Get(ctx, req.NamespacedName, &reg); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -142,7 +142,7 @@ func (r *PluginReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	})
 	apimeta.SetStatusCondition(&reg.Status.Conditions, compatibleCondition(reg.Spec.Type, result, reg.Generation, now))
 	apimeta.SetStatusCondition(&reg.Status.Conditions, metav1.Condition{
-		Type:               kaprov1alpha2.ConditionTypeReconciling,
+		Type:               kaprov1alpha1.ConditionTypeReconciling,
 		Status:             metav1.ConditionFalse,
 		Reason:             result.Reason,
 		Message:            "plugin registration probe completed",
@@ -150,10 +150,10 @@ func (r *PluginReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		LastTransitionTime: now,
 	})
 	if result.Ready {
-		apimeta.RemoveStatusCondition(&reg.Status.Conditions, kaprov1alpha2.ConditionTypeStalled)
+		apimeta.RemoveStatusCondition(&reg.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
 	} else {
 		apimeta.SetStatusCondition(&reg.Status.Conditions, metav1.Condition{
-			Type:               kaprov1alpha2.ConditionTypeStalled,
+			Type:               kaprov1alpha1.ConditionTypeStalled,
 			Status:             metav1.ConditionTrue,
 			Reason:             result.Reason,
 			Message:            result.Message,
@@ -204,13 +204,13 @@ func (r *PluginReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
-func isRuntimeReady(reg kaprov1alpha2.Plugin) bool {
+func isRuntimeReady(reg kaprov1alpha1.Plugin) bool {
 	return reg.Status.Ready && reg.Status.ObservedGeneration == reg.Generation
 }
 
-func compatibleCondition(pluginType kaprov1alpha2.PluginType, result probe.Result, observedGeneration int64, now metav1.Time) metav1.Condition {
+func compatibleCondition(pluginType kaprov1alpha1.PluginType, result probe.Result, observedGeneration int64, now metav1.Time) metav1.Condition {
 	condition := metav1.Condition{
-		Type:               kaprov1alpha2.ConditionTypeCompatible,
+		Type:               kaprov1alpha1.ConditionTypeCompatible,
 		Status:             metav1.ConditionUnknown,
 		Reason:             result.Reason,
 		Message:            "plugin contract compatibility could not be determined",
@@ -239,7 +239,7 @@ func compatibleCondition(pluginType kaprov1alpha2.PluginType, result probe.Resul
 
 func (r *PluginReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kaprov1alpha2.Plugin{}).
+		For(&kaprov1alpha1.Plugin{}).
 		Complete(r)
 }
 

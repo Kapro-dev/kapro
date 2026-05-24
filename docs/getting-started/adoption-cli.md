@@ -17,7 +17,7 @@ promote versions through that existing control plane:
 
 ```bash
 kapro bootstrap generate ./promotion-repo --profile flux --name checkout
-kapro bootstrap generate ./promotion-repo --profile argocd --name checkout
+kapro bootstrap generate ./promotion-repo --profile argo --name checkout
 ```
 
 Use OCI only when spokes must pull OCI artifacts directly without Argo CD or
@@ -36,7 +36,7 @@ kapro adopt argo . --out ./kapro-connect --name checkout
 kapro adopt flux . --out ./kapro-connect --name checkout
 ```
 
-Observe-first adoption generates Backend, Source, and discovery review files.
+Observe-first adoption generates Substrate, Source, and discovery review files.
 It does not mutate live Argo CD or Flux objects and it does not push Git
 changes.
 
@@ -61,7 +61,7 @@ kapro doctor
 ```
 
 `kapro doctor` checks CRDs, operator readiness, admission webhooks, RBAC, pull
-secrets, and configured GitOps backends.
+secrets, and configured GitOps substrates.
 
 When a promotion is waiting or blocked, run:
 
@@ -79,7 +79,7 @@ Kapro exposes only one delivery distinction during onboarding:
 
 - `pull`: each cluster pulls desired state from inside its own network
   boundary.
-- `push`: the hub promotes desired versions through a backend such as Argo CD.
+- `push`: the hub promotes desired versions through a substrate such as Argo CD.
 
 Argo CD and Flux still own local sync and rollout mechanics. Kapro adds the
 promotion intent, gates, approvals, and audit trail across clusters.

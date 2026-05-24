@@ -36,7 +36,8 @@ if echo "$STAGED" | grep -q "types.go"; then
         config/crd/ \
         charts/kapro-operator/crds/ \
         internal/bootstrap/kaprocrds/ \
-        api/v1alpha2/zz_generated.deepcopy.go 2>/dev/null; then
+        api/kapro/v1alpha1/zz_generated.deepcopy.go \
+        api/kaproruntime/v1alpha1/zz_generated.deepcopy.go 2>/dev/null; then
         echo "  CRD manifests or deepcopy are out of date."
         echo "  run: make generate sync-crds && git add config/ charts/kapro-operator/crds/ internal/bootstrap/kaprocrds/ api/"
         exit 1

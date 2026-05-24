@@ -13,7 +13,7 @@ reference the plan from `Promotion.spec.plans[].plan`.
 | [`04-region-failover.yaml`](04-region-failover.yaml) | primary → standby (depends on `all`) | Standby promotes only after the entire primary stage holds for 30m. |
 | [`05-ring-deployment.yaml`](05-ring-deployment.yaml) | ring0 → ring1 → ring2 → ring3 | Microsoft-shaped concentric rings with parallelism increasing per ring. |
 | [`06-metrics-gated.yaml`](06-metrics-gated.yaml) | canary with PromQL gate | Canary must hold `error_rate < 1%` over a 10-min window before prod. |
-| [`07-drift-guarded-prod.yaml`](07-drift-guarded-prod.yaml) | canary → drift-guarded prod | Prod waits for a fresh `FleetDriftReport` inside a zero-drift budget. |
+| [`07-webhook-guarded-prod.yaml`](07-webhook-guarded-prod.yaml) | canary → webhook-guarded prod | Prod waits for a platform-owned policy/custom API check. |
 
 ## How to apply one
 

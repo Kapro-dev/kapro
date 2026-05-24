@@ -1,12 +1,15 @@
 # ADR-0014: Composable gates scaffold
 
 ## Status
-Accepted
+Superseded in part by [ADR-0018](0018-public-runtime-api-split.md)
 
 Superseded in part by the v0.2.x gate algebra work: `ANY`, `NOT`,
 `WEIGHTED_SUM`, `THRESHOLD`, and `DELAY` are now implemented for the
 `GateExpression` preview controller. The original decision below records the
 v0.1.2 scaffold and remains useful historical context.
+
+ADR-0018 removes `GateExpression` from the first public-preview CRD set. Inline
+`Plan.spec.stages[].gate` remains the active gate authoring path.
 
 ## Context
 

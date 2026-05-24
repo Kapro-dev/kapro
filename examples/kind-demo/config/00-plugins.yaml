@@ -1,12 +1,15 @@
-apiVersion: kapro.io/v1alpha2
-kind: Backend
+apiVersion: kapro.io/v1alpha1
+kind: Substrate
 metadata:
   name: flux
 spec:
-  driver: flux
-  runtime: Hub
+  substrate:
+    kind: flux
+    actuator: flux
+  execution:
+    mode: hub-push
 ---
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Plugin
 metadata:
   name: kind-demo-capacity-planner
@@ -19,7 +22,7 @@ spec:
   parameters:
     note: static demo registration; no plugin server is started
 ---
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Plugin
 metadata:
   name: kind-demo-slo-gate
@@ -32,7 +35,7 @@ spec:
   parameters:
     note: static demo registration; built-in gates drive this demo
 ---
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Plugin
 metadata:
   name: kind-demo-actuator

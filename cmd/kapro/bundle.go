@@ -12,7 +12,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/bundle"
 	kaproconfig "kapro.io/kapro/internal/config"
 )
@@ -22,9 +22,9 @@ func newSourceCmd() *cobra.Command {
 		Use:   "source",
 		Short: "Work with Kapro source units",
 		Long: `Source commands package Kapro source units into deployable artifacts
-for pull-mode spokes when a backend needs an OCI artifact.
+for pull-mode spokes when a substrate needs an OCI artifact.
 
-Kapro promotes revisions. The selected backend owns local sync and rollout.`,
+Kapro promotes revisions. The selected substrate owns local sync and rollout.`,
 	}
 	cmd.AddCommand(newSourcePackageCmd())
 	cmd.AddCommand(newSourceApplyCmd())
@@ -164,16 +164,16 @@ func runSourcePackage(ctx context.Context, sourceRef, fleetName, version, regist
 	return nil
 }
 
-func readPackageSource(ctx context.Context, hubClient client.Client, sourceRef, fleetName string) (*kaprov1alpha2.Source, error) {
+func readPackageSource(ctx context.Context, hubClient client.Client, sourceRef, fleetName string) (*kaprov1alpha1.Source, error) {
 	if sourceRef != "" {
-		var source kaprov1alpha2.Source
+		var source kaprov1alpha1.Source
 		if err := hubClient.Get(ctx, client.ObjectKey{Name: sourceRef}, &source); err != nil {
 			return nil, fmt.Errorf("get Source %q: %w", sourceRef, err)
 		}
 		return &source, nil
 	}
 
-	var fleet kaprov1alpha2.Fleet
+	var fleet kaprov1alpha1.Fleet
 	if err := hubClient.Get(ctx, client.ObjectKey{Name: fleetName}, &fleet); err != nil {
 		return nil, fmt.Errorf("get fleet %q: %w", fleetName, err)
 	}
@@ -183,7 +183,7 @@ func readPackageSource(ctx context.Context, hubClient client.Client, sourceRef, 
 		}
 		return nil, fmt.Errorf("fleet %q has neither spec.source nor spec.sourceRef set", fleetName)
 	}
-	return &kaprov1alpha2.Source{
+	return &kaprov1alpha1.Source{
 		ObjectMeta: fleet.ObjectMeta,
 		Spec:       *fleet.Spec.Source,
 	}, nil
@@ -192,7 +192,7 @@ func readPackageSource(ctx context.Context, hubClient client.Client, sourceRef, 
 func buildHubClient(kubeconfigPath string) (client.Client, error) {
 	scheme := runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = kaprov1alpha2.AddToScheme(scheme)
+	_ = kaprov1alpha1.AddToScheme(scheme)
 
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	if kubeconfigPath != "" {

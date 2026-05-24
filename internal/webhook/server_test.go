@@ -6,34 +6,39 @@ import (
 	"net/url"
 	"testing"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/webhook/token"
 )
 
 func webhookTestScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatalf("add scheme: %v", err)
+	}
+	if err := kaproruntimev1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add runtime scheme: %v", err)
 	}
 	return scheme
 }
 
 func TestHandleStatus_RequiresPromotionRunInOperatorNamespace(t *testing.T) {
 	scheme := webhookTestScheme(t)
-	target := &kaprov1alpha2.Target{
+	target := &kaproruntimev1alpha1.Target{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-wave-prod-cluster-a"},
-		Spec: kaprov1alpha2.TargetSpec{
+		Spec: kaprov1alpha1.TargetSpec{
 			PromotionRunRef: "rel-1",
 			Target:          "cluster-a",
 			Version:         "repo@sha256:abc",
 		},
-		Status: kaprov1alpha2.TargetStatus{
-			TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseWaitingApproval},
+		Status: kaprov1alpha1.TargetStatus{
+			TargetExecutionState: kaprov1alpha1.TargetExecutionState{Phase: kaprov1alpha1.TargetPhaseWaitingApproval},
 		},
 	}
 	s := &Server{
@@ -54,12 +59,12 @@ func TestHandleStatus_RequiresPromotionRunInOperatorNamespace(t *testing.T) {
 
 func TestHandleReject_TargetPromotionRunMismatchRejected(t *testing.T) {
 	scheme := webhookTestScheme(t)
-	promotionrun := &kaprov1alpha2.PromotionRun{
+	promotionrun := &kaproruntimev1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default", UID: "uid-1"},
 	}
-	target := &kaprov1alpha2.Target{
+	target := &kaproruntimev1alpha1.Target{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1-deadbeef"},
-		Spec: kaprov1alpha2.TargetSpec{
+		Spec: kaprov1alpha1.TargetSpec{
 			PromotionRunRef: "other-promotionrun",
 			Target:          "cluster-a",
 		},

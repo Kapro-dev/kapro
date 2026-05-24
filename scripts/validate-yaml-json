@@ -24,28 +24,34 @@ SCRIPT_PATTERNS = [
   "examples/**/*.sh"
 ].freeze
 
-KAPRO_API_VERSION = "kapro.io/v1alpha2"
+KAPRO_API_VERSION = "kapro.io/v1alpha1"
+KAPRO_RUNTIME_API_VERSION = "runtime.kapro.io/v1alpha1"
 KAPRO_KINDS = %w[
   Approval
-  Backend
   Cluster
   ClusterTemplate
   Fleet
-  GateExpression
   Plan
   Plugin
   Policy
   Promotion
-  PromotionRun
   Source
+  Substrate
   SubstrateClass
-  Target
   Trigger
 ].freeze
+KAPRO_RUNTIME_KINDS = %w[
+  DecisionTrace
+  PromotionRun
+  Target
+].freeze
 STALE_KAPRO_KINDS = %w[
+  Backend
   BackendProfile
   FleetCluster
   FleetClusterTemplate
+  FleetDriftReport
+  GateExpression
   PluginRegistration
   PromotionPlan
   PromotionSource
@@ -54,6 +60,7 @@ STALE_KAPRO_KINDS = %w[
 ].freeze
 STALE_KAPRO_FIELDS = %w[
   kaproRef
+  backendRef
   promotionPlan
   promotionPlans
   promotionrunTemplate
@@ -61,6 +68,12 @@ STALE_KAPRO_FIELDS = %w[
 STALE_KUBECTL_RESOURCES = %w[
   backendprofile
   backendprofiles
+  backend
+  backends
+  fleetdriftreport
+  fleetdriftreports
+  gateexpression
+  gateexpressions
   fleetcluster
   fleetclusters
   pluginregistration
@@ -113,7 +126,7 @@ end
 
 def kapro_document?(doc)
   api = doc["apiVersion"]
-  api.is_a?(String) && api.start_with?("kapro.io/")
+  api.is_a?(String) && (api.start_with?("kapro.io/") || api.start_with?("runtime.kapro.io/"))
 end
 
 def check_kapro_yaml(path)
@@ -127,12 +140,17 @@ def check_kapro_yaml(path)
     api = doc["apiVersion"]
     kind = doc["kind"]
 
-    if api != KAPRO_API_VERSION
-      failures << "#{location}: Kapro apiVersion is #{api.inspect}, want #{KAPRO_API_VERSION}"
-    end
     if STALE_KAPRO_KINDS.include?(kind)
       failures << "#{location}: stale Kapro kind #{kind.inspect}"
-    elsif !KAPRO_KINDS.include?(kind)
+    elsif KAPRO_KINDS.include?(kind)
+      if api != KAPRO_API_VERSION
+        failures << "#{location}: Kapro apiVersion is #{api.inspect}, want #{KAPRO_API_VERSION}"
+      end
+    elsif KAPRO_RUNTIME_KINDS.include?(kind)
+      if api != KAPRO_RUNTIME_API_VERSION
+        failures << "#{location}: Kapro runtime apiVersion is #{api.inspect}, want #{KAPRO_RUNTIME_API_VERSION}"
+      end
+    else
       failures << "#{location}: unknown Kapro kind #{kind.inspect}"
     end
 

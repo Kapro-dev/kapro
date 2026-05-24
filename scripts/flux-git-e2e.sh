@@ -8,7 +8,7 @@ usage() {
   cat <<EOF
 Usage: scripts/flux-git-e2e.sh
 
-Creates a disposable Git repo with common Flux brownfield files, runs
+Creates a disposable Git repo with common Flux existing-GitOps files, runs
 kapro discover flux, applies the generated repo-native mapping, and verifies
 the intended Flux/Kustomize/Helm fields changed.
 
@@ -131,7 +131,7 @@ appVersion: 1.0.0
 YAML
 
   git -C "${repo}" add .
-  git -C "${repo}" commit -m "Initial Flux brownfield fixture"
+  git -C "${repo}" commit -m "Initial Flux existing-GitOps fixture"
 }
 
 assert_contains() {
@@ -200,7 +200,7 @@ run() {
   assert_contains "${repo}/charts/checkout/Chart.yaml" "appVersion: 2.5.0"
 
   git -C "${repo}" add flux apps charts kapro-connect
-  git -C "${repo}" commit -m "Promote Flux brownfield fixture"
+  git -C "${repo}" commit -m "Promote Flux existing-GitOps fixture"
 
   echo "Flux Git-native E2E passed: discovery generated GitRepository, OCIRepository, HelmRelease, Kustomize image, and Helm chart mappings."
 }

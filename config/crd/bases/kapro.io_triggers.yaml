@@ -38,7 +38,7 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    name: v1alpha2
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: |-
@@ -228,7 +228,7 @@ spec:
                     - tagPattern
                     type: object
                   type:
-                    description: Type selects the source backend.
+                    description: Type selects the source substrate.
                     enum:
                     - oci
                     type: string

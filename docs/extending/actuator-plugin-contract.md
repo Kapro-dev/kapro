@@ -31,8 +31,8 @@ KAI v1alpha1 publishes canonical capability names in
 | `observe` | Alias-style capability accepted for convergence reporting. |
 | `rollback` | Plugin can directly roll a target back to a previous version. |
 | `delta` | Plugin can apply multi-artifact desired-version deltas directly. |
-| `backendobjects` | Plugin can report backend-native object status. |
-| `dry-run` | Plugin can validate without persisting backend changes. |
+| `substrateobjects` | Plugin can report substrate-native object status. Legacy `backendobjects` is accepted as an alias. |
+| `dry-run` | Plugin can validate without persisting substrate changes. |
 | `hub-push` | Plugin can be invoked by the Kapro hub. |
 | `spoke-pull` | Plugin can run behind a cluster-side spoke pull loop. |
 | `external-pull` | Plugin can pull approved Kapro decisions from outside the hub. |
@@ -47,7 +47,7 @@ The base actuator conformance suite requires `apply`, convergence/observe, and
 ## Request Ownership
 
 Kapro owns PromotionRun ordering, retries, rollback intent, target status, and
-failure policy. The actuator owns backend mutation and backend readiness checks.
+failure policy. The actuator owns substrate mutation and substrate readiness checks.
 
 KAI methods must be idempotent for the same request. They must also respect
 request context cancellation so controller shutdowns and timed-out reconciles do
@@ -60,10 +60,10 @@ The in-process SDK mirrors the same shape:
 ```go
 type Actuator interface {
     Apply(context.Context, actuator.ApplyRequest) error
-    IsConverged(context.Context, *v1alpha2.Cluster, string, string) (bool, error)
-    Rollback(context.Context, *v1alpha2.Cluster, string, string) error
+    IsConverged(context.Context, *kaprov1alpha1.Cluster, string, string) (bool, error)
+    Rollback(context.Context, *kaprov1alpha1.Cluster, string, string) error
     ApplyDelta(context.Context, actuator.DeltaApplyRequest) (int, error)
-    IsAllConverged(context.Context, *v1alpha2.Cluster, map[string]string) (bool, error)
+    IsAllConverged(context.Context, *kaprov1alpha1.Cluster, map[string]string) (bool, error)
 }
 ```
 
@@ -105,6 +105,6 @@ Run the live gRPC conformance suite before publishing an external actuator:
 go run ./cmd/kapro-conformance actuator --endpoint localhost:9090
 ```
 
-Use `--param key=value` for backend-specific test resources. The suite calls
+Use `--param key=value` for substrate-specific test resources. The suite calls
 `Apply` twice, `IsConverged` twice, and `Rollback` twice, so point it at
 isolated resources that tolerate idempotency checks.

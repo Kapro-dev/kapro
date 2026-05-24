@@ -6,10 +6,11 @@ import (
 	"strings"
 	"testing"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/cli"
 )
 
@@ -17,9 +18,9 @@ func TestRunWhyRendersDecisionTraceTimeline(t *testing.T) {
 	c := fake.NewClientBuilder().
 		WithScheme(diagTestScheme(t)).
 		WithObjects(
-			whyTraceObject("later", "run-a", "2026-05-23T10:02:00Z", kaprov1alpha2.DecisionTraceEventGateEvaluate),
-			whyTraceObject("earlier", "run-a", "2026-05-23T10:01:00Z", kaprov1alpha2.DecisionTraceEventStage),
-			whyTraceObject("other", "run-b", "2026-05-23T10:00:00Z", kaprov1alpha2.DecisionTraceEventRollback),
+			whyTraceObject("later", "run-a", "2026-05-23T10:02:00Z", kaproruntimev1alpha1.DecisionTraceEventGateEvaluate),
+			whyTraceObject("earlier", "run-a", "2026-05-23T10:01:00Z", kaproruntimev1alpha1.DecisionTraceEventStage),
+			whyTraceObject("other", "run-b", "2026-05-23T10:00:00Z", kaproruntimev1alpha1.DecisionTraceEventRollback),
 		).
 		Build()
 
@@ -85,7 +86,7 @@ func TestRunWhyRendersDeliveryEvidenceSummary(t *testing.T) {
 func TestRunWhyJSONOutput(t *testing.T) {
 	c := fake.NewClientBuilder().
 		WithScheme(diagTestScheme(t)).
-		WithObjects(whyTraceObject("trace-a", "run-a", "2026-05-23T10:01:00Z", kaprov1alpha2.DecisionTraceEventSuspend)).
+		WithObjects(whyTraceObject("trace-a", "run-a", "2026-05-23T10:01:00Z", kaproruntimev1alpha1.DecisionTraceEventSuspend)).
 		Build()
 	prev := cli.OutputFormat
 	defer func() { cli.OutputFormat = prev }()
@@ -151,13 +152,13 @@ func TestRunWhyNoDecisionTracesJSONUsesEmptySlice(t *testing.T) {
 	}
 }
 
-func whyTraceObject(name, run, ts string, eventType kaprov1alpha2.DecisionTraceEventType) *kaprov1alpha2.DecisionTrace {
-	return &kaprov1alpha2.DecisionTrace{
+func whyTraceObject(name, run, ts string, eventType kaproruntimev1alpha1.DecisionTraceEventType) *kaproruntimev1alpha1.DecisionTrace {
+	return &kaproruntimev1alpha1.DecisionTrace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
 			Labels: map[string]string{promotionRunLabelKey: run},
 		},
-		Spec: kaprov1alpha2.DecisionTraceSpec{
+		Spec: kaproruntimev1alpha1.DecisionTraceSpec{
 			PromotionRun: run,
 			Plan:         "canary",
 			Stage:        "prod",
@@ -168,13 +169,13 @@ func whyTraceObject(name, run, ts string, eventType kaprov1alpha2.DecisionTraceE
 			Reason:       "SLOViolation",
 			Message:      "error budget exhausted",
 			Time:         mustTime(ts),
-			Evidence: []kaprov1alpha2.DecisionTraceEvidence{{
+			Evidence: []kaproruntimev1alpha1.DecisionTraceEvidence{{
 				Type:   "gate",
 				Source: "prometheus",
 				Detail: map[string]string{"query": "sum(errors_total)"},
 			}},
 		},
-		Status: kaprov1alpha2.DecisionTraceStatus{
+		Status: kaproruntimev1alpha1.DecisionTraceStatus{
 			Signed:             true,
 			SignatureAlgorithm: "Ed25519",
 			SignatureKeyID:     "test-key",
@@ -183,12 +184,12 @@ func whyTraceObject(name, run, ts string, eventType kaprov1alpha2.DecisionTraceE
 	}
 }
 
-func whyDeliveryTraceObject(name, run string) *kaprov1alpha2.DecisionTrace {
-	trace := whyTraceObject(name, run, "2026-05-23T10:03:00Z", kaprov1alpha2.DecisionTraceEventDelivery)
+func whyDeliveryTraceObject(name, run string) *kaproruntimev1alpha1.DecisionTrace {
+	trace := whyTraceObject(name, run, "2026-05-23T10:03:00Z", kaproruntimev1alpha1.DecisionTraceEventDelivery)
 	trace.Spec.Source = "cluster-delivery"
 	trace.Spec.Reason = "DeliveryFailed"
 	trace.Spec.Message = "cluster cluster-a app api delivery Failed: dry-run rejected configmap"
-	trace.Spec.Evidence = []kaprov1alpha2.DecisionTraceEvidence{{
+	trace.Spec.Evidence = []kaproruntimev1alpha1.DecisionTraceEvidence{{
 		Type:   "cluster-delivery",
 		Source: "cluster-a",
 		Detail: map[string]string{

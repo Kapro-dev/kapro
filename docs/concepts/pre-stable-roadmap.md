@@ -20,7 +20,7 @@ increment inside that line.
 
 | Line | Theme | Practical ship criteria |
 | --- | --- | --- |
-| `0.2.x` | Programmable engine hardening | AdapterPolicy discovery is real, programmable gates are documented and tested, release-train policy is enforced, and retention metrics are available before opt-in GC. |
+| `0.2.x` | Programmable engine hardening | SubstrateDiscoveryPolicy discovery is real, programmable gates are documented and tested, release-train policy is enforced, and retention metrics are available before opt-in GC. |
 | `0.4.x` | Adoption and operator ergonomics | `pkg/kapro/server` can be assembled from smaller registrars, CLI adoption paths are observe-first by default, and existing GitOps adopters have clear rollback points. |
 | `0.6.x` | Ecosystem and conformance | External adapter authors can run conformance locally, at least one substrate adapter proves the plugin contract outside the in-tree controller path, and examples compile in CI. |
 | `0.8.x` | Operational scale and security | Upgrade, rollback, observability, tenancy, signing, provenance, and failure-mode tests are strong enough for production change-control review. |
@@ -66,14 +66,14 @@ promoted to a milestone, use exact patch versions such as `v0.5.11` or
    dependencies.
 3. **Stabilize the class/config contract.** Finish docs, examples,
    controller status, RBAC, migration guidance, and conformance checks around
-   `SubstrateClass`, `Backend.spec.classRef`, and `Backend.spec.configRef`.
+   `SubstrateClass`, `Substrate.spec.classRef`, and `Substrate.spec.configRef`.
    `docs/specs/substrate-parameter-spec.md` must ship publicly in `0.6.0` as
-   the `v1alpha2` author contract, with breaking changes still allowed while
+   the `v1alpha1` author contract, with breaking changes still allowed while
    the surface remains alpha.
 4. **Prove launch substrate families.** Keep the `0.6.0` reference set focused
-   on `kubernetes-apply`, `argo-cd`, and `flux`. OCI and webhook stay valid
-   substrate families, but they must not distract the first public preview from
-   direct apply plus the two CNCF GitOps engines.
+   on `kubernetes-apply`, `argo`, `flux`, and `oci`. Webhook/custom API
+   delivery stays valid future work, but 0.6 must not ship empty webhook
+   delivery CRDs.
 5. **Clarify rendering versus delivery.** `Source` remains the unit/source
    catalog. Rendering turns raw YAML, Helm, or Kustomize into Kubernetes
    objects. Delivery applies or delegates those objects through a substrate.
@@ -84,7 +84,7 @@ promoted to a milestone, use exact patch versions such as `v0.5.11` or
    because it gives Helm release-state ownership, hooks, and rollback semantics.
 7. **Build `bootstrapgen` with a small matrix.** Replace hardcoded scaffold
    strings with schema-backed embedded templates, but ship only three canonical
-   profile/template pairs first: `direct` + raw YAML, `argocd` + rendered
+   profile/template pairs first: `direct` + raw YAML, `argo` + rendered
    manifests/Application, and `flux` + Kustomize. Helm remains a render input
    until a dedicated Helm release-state substrate exists.
 8. **Define the pipeline substrate profile.** Specify correlation IDs,
@@ -103,7 +103,7 @@ promoted to a milestone, use exact patch versions such as `v0.5.11` or
    core.
 12. **Open the third-party substrate path.** In `0.6.0`, ship the internal Go
    conformance suite and reference class scenarios for `kubernetes-apply`,
-   `argo-cd`, and `flux`. Promote it to a public
+   `argo`, and `flux`. Promote it to a public
    `kapro substrate conformance <class>` CLI in `0.7.x` after the launch
    substrates prove the contract as standalone packages.
 
@@ -113,7 +113,7 @@ All delivery work in this roadmap must connect back to ADR-0016's substrate
 contract:
 
 - `SubstrateClass` declares the delivery implementation and capability family.
-- `Backend.spec.classRef` and `Backend.spec.configRef` select the substrate and
+- `Substrate.spec.classRef` and `Substrate.spec.configRef` select the substrate and
   its typed configuration.
 - KSI is the Go contract for `Validate`, `Apply`, `Observe`, and
   `Capabilities`.
@@ -130,9 +130,9 @@ The first public preview should ship a focused matrix:
 
 | Profile | Canonical app template | Generated Kapro objects |
 | --- | --- | --- |
-| `direct` | raw YAML | `SubstrateClass`, `Backend`, `Cluster`, `Fleet`, `Plan`, `Promotion` |
-| `argocd` | rendered manifests/Application | `SubstrateClass`, `Backend`, `Cluster`, `Fleet`, `Plan`, `Promotion` |
-| `flux` | Kustomize | `SubstrateClass`, `Backend`, `Cluster`, `Fleet`, `Plan`, `Promotion` |
+| `direct` | raw YAML | `SubstrateClass`, `Substrate`, `Cluster`, `Fleet`, `Plan`, `Promotion` |
+| `argo` | rendered manifests/Application | `SubstrateClass`, `Substrate`, `Cluster`, `Fleet`, `Plan`, `Promotion` |
+| `flux` | Kustomize | `SubstrateClass`, `Substrate`, `Cluster`, `Fleet`, `Plan`, `Promotion` |
 
 Additional app templates are allowed after the canonical three pass smoke tests.
 Do not create the full profile x app-template cross-product before `0.6.0`.
@@ -149,7 +149,7 @@ when a policy pack is enabled.
 
 Existing GitOps adoption output must use the same repo shape where possible and
 remain observe-first by default. The public CLI should use `connect`,
-`discover`, and `adopt`; `brownfield` is internal migration vocabulary and
+`discover`, and `adopt`; existing-GitOps adoption is the user-facing vocabulary and
 should not be the marketed command name.
 
 Generated repos are frozen at generation time in milestone 1. Upgrade tooling
@@ -159,19 +159,19 @@ such as `kapro bootstrap diff` or `kapro bootstrap upgrade` is Phase 2.
 
 `0.6.0` is ready only when:
 
-- `direct`, `argocd`, and `flux` profiles each have an end-to-end demo that
+- `direct`, `argo`, `flux`, and `oci` profiles each have an end-to-end demo that
   runs `init -> generate -> plan -> promote dev -> stage -> prod` on kind.
-- `kubernetes-apply`, `argo-cd`, and `flux` reference class scenarios pass the
+- `kubernetes-apply`, `argo`, `flux`, and `oci` reference class scenarios pass the
   internal Go substrate conformance suite, and their runtime delivery paths pass
   targeted actuator/controller tests.
-- `docs/specs/substrate-parameter-spec.md` is published as the `v1alpha2`
+- `docs/specs/substrate-parameter-spec.md` is published as the `v1alpha1`
   substrate author contract.
 - `kapro adopt argo` and `kapro adopt flux` work against real Argo CD and Flux
   installs, not only unit tests or repository fixtures.
 - Greenfield and existing GitOps connect/adopt walkthroughs exist for Argo CD
   and Flux.
-- One quickstart exists for each public profile: `direct`, `argocd`, and
-  `flux`.
+- One quickstart exists for each public profile: `direct`, `argo`, `flux`, and
+  `oci`.
 - Direct delivery has a five-minute quickstart with raw YAML and a documented
   Helm render path.
 - Generated repos include reviewable CI and do not require an OCI registry.
@@ -181,6 +181,19 @@ such as `kapro bootstrap diff` or `kapro bootstrap upgrade` is Phase 2.
   closed before the public preview tag.
 - At least one internal dogfood repo has completed repeated greenfield and
   existing GitOps adoption runs without manual manifest surgery.
+
+## 0.6.x Follow-up Work
+
+These are tracked follow-ups, not launch blockers:
+
+- Generalize `Cluster.spec.delivery.parameters` validation through
+  `SubstrateClass`/typed config metadata instead of adding substrate-specific
+  webhook cases for every future class.
+- Add a file-based `kapro migrate v0.5 v0.6 <path>` rewriter for internal
+  dogfood repositories that still contain prototype manifests.
+- Add a generic webhook/custom API substrate only after it has an actuator,
+  deterministic status mapping, evidence, cancellation, rollback, and
+  conformance coverage.
 
 ## Permanent Product Non-goals
 

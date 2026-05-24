@@ -7,10 +7,11 @@ import (
 	"strings"
 	"time"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/cli"
 )
 
@@ -56,19 +57,19 @@ type whyReport struct {
 }
 
 type whyTrace struct {
-	Name      string                                `json:"name"`
-	Time      string                                `json:"time,omitempty"`
-	EventType kaprov1alpha2.DecisionTraceEventType  `json:"eventType"`
-	Source    string                                `json:"source"`
-	Phase     string                                `json:"phase,omitempty"`
-	Reason    string                                `json:"reason,omitempty"`
-	Plan      string                                `json:"plan,omitempty"`
-	Stage     string                                `json:"stage,omitempty"`
-	Target    string                                `json:"target,omitempty"`
-	Message   string                                `json:"message,omitempty"`
-	Signed    bool                                  `json:"signed"`
-	Signature *whyTraceSignature                    `json:"signature,omitempty"`
-	Evidence  []kaprov1alpha2.DecisionTraceEvidence `json:"evidence,omitempty"`
+	Name      string                                       `json:"name"`
+	Time      string                                       `json:"time,omitempty"`
+	EventType kaproruntimev1alpha1.DecisionTraceEventType  `json:"eventType"`
+	Source    string                                       `json:"source"`
+	Phase     string                                       `json:"phase,omitempty"`
+	Reason    string                                       `json:"reason,omitempty"`
+	Plan      string                                       `json:"plan,omitempty"`
+	Stage     string                                       `json:"stage,omitempty"`
+	Target    string                                       `json:"target,omitempty"`
+	Message   string                                       `json:"message,omitempty"`
+	Signed    bool                                         `json:"signed"`
+	Signature *whyTraceSignature                           `json:"signature,omitempty"`
+	Evidence  []kaproruntimev1alpha1.DecisionTraceEvidence `json:"evidence,omitempty"`
 }
 
 type whyTraceSignature struct {
@@ -80,7 +81,7 @@ type whyTraceSignature struct {
 }
 
 func collectWhy(ctx context.Context, c client.Client, promotionRun string) (*whyReport, error) {
-	var list kaprov1alpha2.DecisionTraceList
+	var list kaproruntimev1alpha1.DecisionTraceList
 	if err := c.List(ctx, &list, client.MatchingLabels{promotionRunLabelKey: promotionRun}); err != nil {
 		return nil, fmt.Errorf("list decisiontraces for promotionrun %q: %w", promotionRun, err)
 	}
@@ -92,7 +93,7 @@ func collectWhy(ctx context.Context, c client.Client, promotionRun string) (*why
 	return report, nil
 }
 
-func whyTraceFromDecisionTrace(trace kaprov1alpha2.DecisionTrace) whyTrace {
+func whyTraceFromDecisionTrace(trace kaproruntimev1alpha1.DecisionTrace) whyTrace {
 	status := trace.Status
 	return whyTrace{
 		Name:      trace.Name,
@@ -111,7 +112,7 @@ func whyTraceFromDecisionTrace(trace kaprov1alpha2.DecisionTrace) whyTrace {
 	}
 }
 
-func sortDecisionTraces(items []kaprov1alpha2.DecisionTrace) {
+func sortDecisionTraces(items []kaproruntimev1alpha1.DecisionTrace) {
 	sort.Slice(items, func(i, j int) bool {
 		ti := decisionTraceTime(items[i])
 		tj := decisionTraceTime(items[j])
@@ -122,7 +123,7 @@ func sortDecisionTraces(items []kaprov1alpha2.DecisionTrace) {
 	})
 }
 
-func decisionTraceTime(trace kaprov1alpha2.DecisionTrace) time.Time {
+func decisionTraceTime(trace kaproruntimev1alpha1.DecisionTrace) time.Time {
 	if !trace.Spec.Time.IsZero() {
 		return trace.Spec.Time.Time
 	}
@@ -157,7 +158,7 @@ func whyEvidenceSummary(trace whyTrace) string {
 	if len(trace.Evidence) == 0 {
 		return "-"
 	}
-	if trace.EventType == kaprov1alpha2.DecisionTraceEventDelivery {
+	if trace.EventType == kaproruntimev1alpha1.DecisionTraceEventDelivery {
 		for _, e := range trace.Evidence {
 			if e.Type == "cluster-delivery" {
 				return deliveryEvidenceSummary(e.Detail)
@@ -247,7 +248,7 @@ func whyScope(trace whyTrace) string {
 	return strings.Join(parts, " ")
 }
 
-func signatureDetails(status kaprov1alpha2.DecisionTraceStatus) *whyTraceSignature {
+func signatureDetails(status kaproruntimev1alpha1.DecisionTraceStatus) *whyTraceSignature {
 	if !status.Signed {
 		return nil
 	}

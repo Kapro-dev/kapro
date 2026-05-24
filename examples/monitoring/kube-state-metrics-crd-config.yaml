@@ -2,8 +2,8 @@ kind: CustomResourceStateMetrics
 spec:
   resources:
     - groupVersionKind:
-        group: kapro.io
-        version: v1alpha2
+        group: runtime.kapro.io
+        version: v1alpha1
         kind: PromotionRun
       metricNamePrefix: kapro_promotionrun
       labelsFromPath:
@@ -35,7 +35,7 @@ spec:
               valueFrom: [status]
     - groupVersionKind:
         group: kapro.io
-        version: v1alpha2
+        version: v1alpha1
         kind: Trigger
       metricNamePrefix: kapro_trigger
       labelsFromPath:
@@ -59,7 +59,7 @@ spec:
               valueFrom: [status]
     - groupVersionKind:
         group: kapro.io
-        version: v1alpha2
+        version: v1alpha1
         kind: Plugin
       metricNamePrefix: kapro_plugin
       labelsFromPath:

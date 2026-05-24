@@ -1,4 +1,4 @@
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: SubstrateClass
 metadata:
   name: oci
@@ -21,8 +21,8 @@ spec:
     name: prod-registry
     namespace: kapro-system
 ---
-apiVersion: kapro.io/v1alpha2
-kind: Backend
+apiVersion: kapro.io/v1alpha1
+kind: Substrate
 metadata:
   name: prod-oci
 spec:

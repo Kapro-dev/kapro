@@ -11,7 +11,7 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // SubstrateClassReconciler publishes the built-in Kapro substrate class
@@ -25,7 +25,7 @@ type SubstrateClassReconciler struct {
 // +kubebuilder:rbac:groups=kapro.io,resources=substrateclasses/status,verbs=get;update;patch
 
 func (r *SubstrateClassReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	var class kaprov1alpha2.SubstrateClass
+	var class kaprov1alpha1.SubstrateClass
 	if err := r.Get(ctx, req.NamespacedName, &class); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -70,24 +70,24 @@ func (r *SubstrateClassReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 func (r *SubstrateClassReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kaprov1alpha2.SubstrateClass{}).
+		For(&kaprov1alpha1.SubstrateClass{}).
 		Complete(r)
 }
 
 type substrateClassProfile struct {
-	executionModes      *kaprov1alpha2.SubstrateClassExecutionModesStatus
-	acceptedConfigKinds []kaprov1alpha2.SubstrateObjectKindReference
-	capabilities        *kaprov1alpha2.SubstrateCapabilities
+	executionModes      *kaprov1alpha1.SubstrateClassExecutionModesStatus
+	acceptedConfigKinds []kaprov1alpha1.SubstrateObjectKindReference
+	capabilities        *kaprov1alpha1.SubstrateCapabilities
 	reason              string
 	message             string
 }
 
 func builtInSubstrateClassProfile(controllerName string) (substrateClassProfile, bool) {
 	switch controllerName {
-	case "kapro.io/argo-cd":
+	case "kapro.io/argo":
 		return substrateClassProfile{
-			executionModes: supportedExecutionModes(kaprov1alpha2.ExecutionModeHubPush, kaprov1alpha2.ExecutionModeSpokePull),
-			acceptedConfigKinds: []kaprov1alpha2.SubstrateObjectKindReference{{
+			executionModes: supportedExecutionModes(kaprov1alpha1.ExecutionModeHubPush, kaprov1alpha1.ExecutionModeSpokePull),
+			acceptedConfigKinds: []kaprov1alpha1.SubstrateObjectKindReference{{
 				APIVersion: "argocd.substrate.kapro.io/v1alpha1",
 				Kind:       "ArgoCDSubstrateConfig",
 			}},
@@ -97,8 +97,8 @@ func builtInSubstrateClassProfile(controllerName string) (substrateClassProfile,
 		}, true
 	case "kapro.io/flux":
 		return substrateClassProfile{
-			executionModes: supportedExecutionModes(kaprov1alpha2.ExecutionModeHubPush, kaprov1alpha2.ExecutionModeSpokePull),
-			acceptedConfigKinds: []kaprov1alpha2.SubstrateObjectKindReference{{
+			executionModes: supportedExecutionModes(kaprov1alpha1.ExecutionModeHubPush, kaprov1alpha1.ExecutionModeSpokePull),
+			acceptedConfigKinds: []kaprov1alpha1.SubstrateObjectKindReference{{
 				APIVersion: "flux.substrate.kapro.io/v1alpha1",
 				Kind:       "FluxSubstrateConfig",
 			}},
@@ -108,8 +108,8 @@ func builtInSubstrateClassProfile(controllerName string) (substrateClassProfile,
 		}, true
 	case "kapro.io/oci":
 		return substrateClassProfile{
-			executionModes: supportedExecutionModes(kaprov1alpha2.ExecutionModeSpokePull),
-			acceptedConfigKinds: []kaprov1alpha2.SubstrateObjectKindReference{{
+			executionModes: supportedExecutionModes(kaprov1alpha1.ExecutionModeSpokePull),
+			acceptedConfigKinds: []kaprov1alpha1.SubstrateObjectKindReference{{
 				APIVersion: "oci.substrate.kapro.io/v1alpha1",
 				Kind:       "OCIBundleApplyConfig",
 			}},
@@ -119,8 +119,8 @@ func builtInSubstrateClassProfile(controllerName string) (substrateClassProfile,
 		}, true
 	case "kapro.io/kubernetes-apply":
 		return substrateClassProfile{
-			executionModes: supportedExecutionModes(kaprov1alpha2.ExecutionModeHubPush, kaprov1alpha2.ExecutionModeSpokePull),
-			acceptedConfigKinds: []kaprov1alpha2.SubstrateObjectKindReference{{
+			executionModes: supportedExecutionModes(kaprov1alpha1.ExecutionModeHubPush, kaprov1alpha1.ExecutionModeSpokePull),
+			acceptedConfigKinds: []kaprov1alpha1.SubstrateObjectKindReference{{
 				APIVersion: "kubernetes.substrate.kapro.io/v1alpha1",
 				Kind:       "KubernetesApplyConfig",
 			}},
@@ -128,36 +128,25 @@ func builtInSubstrateClassProfile(controllerName string) (substrateClassProfile,
 			reason:       "BuiltInClassAccepted",
 			message:      "built-in Kubernetes apply substrate class is accepted",
 		}, true
-	case "kapro.io/webhook":
-		return substrateClassProfile{
-			executionModes: supportedExecutionModes(kaprov1alpha2.ExecutionModeHubPush, kaprov1alpha2.ExecutionModeExternalPull),
-			acceptedConfigKinds: []kaprov1alpha2.SubstrateObjectKindReference{{
-				APIVersion: "webhook.substrate.kapro.io/v1alpha1",
-				Kind:       "WebhookSubstrateConfig",
-			}},
-			capabilities: operations(true, false, false, false, false, false, "webhook-payload"),
-			reason:       "BuiltInClassAccepted",
-			message:      "built-in webhook substrate class is accepted",
-		}, true
 	default:
 		return substrateClassProfile{}, false
 	}
 }
 
-func supportedExecutionModes(modes ...kaprov1alpha2.ExecutionMode) *kaprov1alpha2.SubstrateClassExecutionModesStatus {
-	return &kaprov1alpha2.SubstrateClassExecutionModesStatus{Supported: modes}
+func supportedExecutionModes(modes ...kaprov1alpha1.ExecutionMode) *kaprov1alpha1.SubstrateClassExecutionModesStatus {
+	return &kaprov1alpha1.SubstrateClassExecutionModesStatus{Supported: modes}
 }
 
-func operations(apply, observe, dryRun, rollback, discover, twoPhase bool, inputTypes ...string) *kaprov1alpha2.SubstrateCapabilities {
-	return &kaprov1alpha2.SubstrateCapabilities{
-		Operations: &kaprov1alpha2.SubstrateOperationCapabilities{
+func operations(apply, observe, dryRun, rollback, discover, twoPhase bool, inputTypes ...string) *kaprov1alpha1.SubstrateCapabilities {
+	return &kaprov1alpha1.SubstrateCapabilities{
+		Operations: &kaprov1alpha1.SubstrateOperationCapabilities{
 			Apply:    apply,
 			Observe:  observe,
 			DryRun:   dryRun,
 			Rollback: rollback,
 			Discover: discover,
 		},
-		Staging:    &kaprov1alpha2.SubstrateStagingCapabilities{TwoPhase: twoPhase},
+		Staging:    &kaprov1alpha1.SubstrateStagingCapabilities{TwoPhase: twoPhase},
 		InputTypes: inputTypes,
 	}
 }

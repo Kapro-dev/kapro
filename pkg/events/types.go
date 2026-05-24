@@ -8,7 +8,7 @@
 //
 // EventType constants are part of the public API. Once an EventType is
 // added to a Kapro release it MUST NOT be renamed or removed in any
-// subsequent v1alpha2 release; subscribers depend on the literal string.
+// subsequent v1alpha1 release; subscribers depend on the literal string.
 // New EventType values may be added in minor releases. Removal requires
 // a major version bump (v1beta1, v1).
 //
@@ -19,7 +19,7 @@
 //   - specversion : "1.0"
 //   - id          : random 128-bit hex (subscribers may dedupe on this)
 //   - type        : one of the EventType constants in this package
-//   - source      : "/apis/kapro.io/v1alpha2/promotions/<name>"
+//   - source      : "/apis/kapro.io/v1alpha1/promotions/<name>"
 //   - subject     : <promotion-name>
 //   - time        : RFC3339 timestamp at emit
 //   - datacontenttype : "application/json"
@@ -245,7 +245,7 @@ type Event struct {
 // EventData is the struct serialized as the CloudEvents `data` field.
 // Subscribers should unmarshal CloudEvents `data` into this shape (or
 // the equivalent in their language). New fields may be added in minor
-// releases; existing fields are stable across v1alpha2.
+// releases; existing fields are stable across v1alpha1.
 type EventData struct {
 	Promotion    string `json:"promotion"`
 	PromotionUID string `json:"promotionUID,omitempty"`
@@ -305,7 +305,7 @@ func Render(e Event) ([]byte, Envelope, error) {
 		SpecVersion:     "1.0",
 		ID:              id,
 		Type:            e.Type,
-		Source:          "/apis/kapro.io/v1alpha2/promotions/" + e.PromotionName,
+		Source:          "/apis/kapro.io/v1alpha1/promotions/" + e.PromotionName,
 		Subject:         e.PromotionName,
 		Time:            t.Format(time.RFC3339Nano),
 		DataContentType: "application/json",

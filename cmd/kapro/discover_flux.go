@@ -67,9 +67,9 @@ func newDiscoverFluxCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&opts.OutPath, "out", "kapro-connect", "Output directory for generated Kapro files")
-	cmd.Flags().StringVar(&opts.Name, "name", "flux", "Backend and Source name")
+	cmd.Flags().StringVar(&opts.Name, "name", "flux", "Substrate and Source name")
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "flux-system", "Flux namespace")
-	cmd.Flags().StringVar(&opts.Selector, "selector", "kapro.io/import=true", "Label selector for imported backend objects")
+	cmd.Flags().StringVar(&opts.Selector, "selector", "kapro.io/import=true", "Label selector for imported substrate objects")
 	cmd.Flags().StringVar(&opts.Revision, "revision", "", "Git branch/tag/SHA when discovering a remote repository URL")
 	cmd.Flags().StringSliceVar(&opts.PathPrefixes, "path-prefix", nil, "Repo path prefix to scan (repeatable; default: common Flux/GitOps paths)")
 	cmd.Flags().BoolVar(&opts.ScanAll, "scan-all", false, "Scan all tracked YAML/JSON files instead of GitOps path prefixes")
@@ -119,12 +119,12 @@ func runFluxDiscover(opts fluxDiscoverOptions) error {
 		result.CacheStats = cache.Stats
 	}
 	files := map[string]string{
-		filepath.Join("backends", opts.Name+"-observe.yaml"): renderFluxDiscoverBackend(opts, matchLabels),
-		filepath.Join("sources", opts.Name+".yaml"):          renderFluxDiscoverSource(opts, result),
-		filepath.Join("discovery", "flux-discovery.yaml"):    renderFluxDiscoveryReport(result),
-		filepath.Join("discovery", "kapro-git-map.yaml"):     renderFluxGitAdoptionMap(opts, result),
-		filepath.Join("discovery", "review-summary.yaml"):    renderDiscoveryReviewSummary("flux", opts.Name, result.RepoPath, result.SelectedUnits, result.SkippedObjects, result.Errors),
-		filepath.Join("README.md"):                           renderFluxDiscoverReadme(opts, result),
+		filepath.Join("substrates", opts.Name+"-observe.yaml"): renderFluxDiscoverSubstrate(opts, matchLabels),
+		filepath.Join("sources", opts.Name+".yaml"):            renderFluxDiscoverSource(opts, result),
+		filepath.Join("discovery", "flux-discovery.yaml"):      renderFluxDiscoveryReport(result),
+		filepath.Join("discovery", "kapro-git-map.yaml"):       renderFluxGitAdoptionMap(opts, result),
+		filepath.Join("discovery", "review-summary.yaml"):      renderDiscoveryReviewSummary("flux", opts.Name, result.RepoPath, result.SelectedUnits, result.SkippedObjects, result.Errors),
+		filepath.Join("README.md"):                             renderFluxDiscoverReadme(opts, result),
 	}
 	if err := writeScaffoldFiles(opts.OutPath, files, opts.Force); err != nil {
 		return err
@@ -262,14 +262,14 @@ func fluxUnitsFromObject(doc map[string]any, rel string) ([]argoDiscoveredUnit, 
 		units := make([]argoDiscoveredUnit, 0, 4)
 		if stringAt(doc, "spec", "chart", "spec", "version") != "" {
 			units = append(units, argoDiscoveredUnit{
-				Name: name, BackendKind: "GitYAMLField", Namespace: namespace, SourcePath: rel,
+				Name: name, SubstrateKind: "GitYAMLField", Namespace: namespace, SourcePath: rel,
 				VersionField: "spec.chart.spec.version", Confidence: "high",
 				Reason: "writes Flux HelmRelease chart version in Git",
 			})
 		}
 		if stringAt(doc, "spec", "values", "image", "tag") != "" {
 			units = append(units, argoDiscoveredUnit{
-				Name: name + "-image", BackendKind: "GitYAMLField", Namespace: namespace, SourcePath: rel,
+				Name: name + "-image", SubstrateKind: "GitYAMLField", Namespace: namespace, SourcePath: rel,
 				VersionField: "spec.values.image.tag", Confidence: "medium",
 				Reason: "writes obvious Flux HelmRelease values image tag in Git",
 			})
@@ -322,13 +322,13 @@ func skippedFluxObject(doc map[string]any, rel string) (argoDiscoveredObject, bo
 func fluxSourceRefUnit(doc map[string]any, rel, namespace, name, kind string) (argoDiscoveredUnit, bool) {
 	switch {
 	case stringAt(doc, "spec", "ref", "tag") != "":
-		return argoDiscoveredUnit{Name: name, BackendKind: "GitYAMLField", Namespace: namespace, SourcePath: rel, VersionField: "spec.ref.tag", Confidence: "high", Reason: "writes Flux " + kind + " tag ref in Git"}, true
+		return argoDiscoveredUnit{Name: name, SubstrateKind: "GitYAMLField", Namespace: namespace, SourcePath: rel, VersionField: "spec.ref.tag", Confidence: "high", Reason: "writes Flux " + kind + " tag ref in Git"}, true
 	case stringAt(doc, "spec", "ref", "semver") != "":
-		return argoDiscoveredUnit{Name: name, BackendKind: "GitYAMLField", Namespace: namespace, SourcePath: rel, VersionField: "spec.ref.semver", Confidence: "high", Reason: "writes Flux " + kind + " semver ref in Git"}, true
+		return argoDiscoveredUnit{Name: name, SubstrateKind: "GitYAMLField", Namespace: namespace, SourcePath: rel, VersionField: "spec.ref.semver", Confidence: "high", Reason: "writes Flux " + kind + " semver ref in Git"}, true
 	case stringAt(doc, "spec", "ref", "digest") != "":
-		return argoDiscoveredUnit{Name: name, BackendKind: "GitYAMLField", Namespace: namespace, SourcePath: rel, VersionField: "spec.ref.digest", Confidence: "high", Reason: "writes Flux " + kind + " digest ref in Git"}, true
+		return argoDiscoveredUnit{Name: name, SubstrateKind: "GitYAMLField", Namespace: namespace, SourcePath: rel, VersionField: "spec.ref.digest", Confidence: "high", Reason: "writes Flux " + kind + " digest ref in Git"}, true
 	case stringAt(doc, "spec", "ref", "branch") != "":
-		return argoDiscoveredUnit{Name: name, BackendKind: "GitYAMLField", Namespace: namespace, SourcePath: rel, VersionField: "spec.ref.branch", Confidence: "medium", Reason: "writes Flux " + kind + " branch ref in Git; confirm branch promotion is intended"}, true
+		return argoDiscoveredUnit{Name: name, SubstrateKind: "GitYAMLField", Namespace: namespace, SourcePath: rel, VersionField: "spec.ref.branch", Confidence: "medium", Reason: "writes Flux " + kind + " branch ref in Git; confirm branch promotion is intended"}, true
 	default:
 		return argoDiscoveredUnit{}, false
 	}
@@ -355,7 +355,7 @@ func fluxKustomizeImageUnits(doc map[string]any, rel string) []argoDiscoveredUni
 			unitName = fmt.Sprintf("%s-%d", unitName, seenNames[unitName])
 		}
 		units = append(units, argoDiscoveredUnit{
-			Name: unitName, BackendKind: "KustomizeImage", SourcePath: rel, VersionField: imageName, Confidence: "high",
+			Name: unitName, SubstrateKind: "KustomizeImage", SourcePath: rel, VersionField: imageName, Confidence: "high",
 			Reason: "writes Kustomize image tag in Git",
 		})
 	}
@@ -381,14 +381,14 @@ func helmChartUnits(doc map[string]any, rel string) []argoDiscoveredUnit {
 	var units []argoDiscoveredUnit
 	if stringAt(doc, "version") != "" {
 		units = append(units, argoDiscoveredUnit{
-			Name: name + "-chart", BackendKind: "GitYAMLField", SourcePath: rel,
+			Name: name + "-chart", SubstrateKind: "GitYAMLField", SourcePath: rel,
 			VersionField: "version", Confidence: "medium",
 			Reason: "writes Helm chart package version in Git",
 		})
 	}
 	if stringAt(doc, "appVersion") != "" {
 		units = append(units, argoDiscoveredUnit{
-			Name: name + "-app", BackendKind: "GitYAMLField", SourcePath: rel,
+			Name: name + "-app", SubstrateKind: "GitYAMLField", SourcePath: rel,
 			VersionField: "appVersion", Confidence: "medium",
 			Reason: "writes Helm chart appVersion in Git",
 		})
@@ -408,7 +408,7 @@ func helmReleaseValuesImageUnits(doc map[string]any, rel, namespace, baseName st
 		}
 		unitName := baseName + "-" + sanitizeUnitSuffix(path)
 		units = append(units, argoDiscoveredUnit{
-			Name: unitName, BackendKind: "GitYAMLField", Namespace: namespace, SourcePath: rel,
+			Name: unitName, SubstrateKind: "GitYAMLField", Namespace: namespace, SourcePath: rel,
 			VersionField: path, Confidence: "needs-review",
 			Reason: "writes a discovered HelmRelease values image tag; review custom values schema before adopting",
 		})
@@ -494,14 +494,17 @@ func fluxUnitName(doc map[string]any, fallback string) string {
 	)
 }
 
-func renderFluxDiscoverBackend(opts fluxDiscoverOptions, labels map[string]string) string {
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
-kind: Backend
+func renderFluxDiscoverSubstrate(opts fluxDiscoverOptions, labels map[string]string) string {
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
+kind: Substrate
 metadata:
   name: %s
 spec:
-  driver: flux
-  runtime: Hub
+  substrate:
+    kind: flux
+    actuator: flux
+  execution:
+    mode: hub-push
   parameters:
     namespace: %s
   discovery:
@@ -515,25 +518,25 @@ spec:
 
 func renderFluxDiscoverSource(opts fluxDiscoverOptions, result fluxDiscoveryResult) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, `apiVersion: kapro.io/v1alpha2
+	fmt.Fprintf(&b, `apiVersion: kapro.io/v1alpha1
 kind: Source
 metadata:
   name: %s
 spec:
-  backendRef: %s
+  substrateRef: %s
   units:
 `, opts.Name, opts.Name)
 	for _, unit := range result.SelectedUnits {
 		namespace := firstNonEmpty(unit.Namespace, opts.Namespace)
 		fmt.Fprintf(&b, `    - name: %s
-      backendKind: %s
+      substrateKind: %s
       namespace: %s
       sourcePath: %s
       versionField: %s
-`, unit.Name, unit.BackendKind, namespace, unit.SourcePath, unit.VersionField)
+`, unit.Name, unit.SubstrateKind, namespace, unit.SourcePath, unit.VersionField)
 	}
 	if len(result.SelectedUnits) == 0 {
-		b.WriteString("    - name: TODO\n      backendKind: GitYAMLField\n      namespace: flux-system\n      sourcePath: path/to/flux-resource.yaml\n      versionField: spec.ref.tag\n")
+		b.WriteString("    - name: TODO\n      substrateKind: GitYAMLField\n      namespace: flux-system\n      sourcePath: path/to/flux-resource.yaml\n      versionField: spec.ref.tag\n")
 	}
 	return b.String()
 }
@@ -548,7 +551,7 @@ func renderFluxDiscoveryReport(result fluxDiscoveryResult) string {
 		fmt.Fprintf(&b, "cache:\n  hits: %d\n  misses: %d\n", result.CacheStats.Hits, result.CacheStats.Misses)
 	}
 	writeReportObjects(&b, "selectedUnits", result.SelectedUnits)
-	writeReportBackendObjects(&b, "skippedObjects", result.SkippedObjects)
+	writeReportSubstrateObjects(&b, "skippedObjects", result.SkippedObjects)
 	if len(result.Errors) > 0 {
 		b.WriteString("errors:\n")
 		for _, err := range result.Errors {
@@ -578,11 +581,11 @@ units:
 		fmt.Fprintf(&b, `  - name: %s
     confidence: %s
     write:
-      backendKind: %s
+      substrateKind: %s
       sourcePath: %s
       versionField: %s
     reason: %q
-`, unit.Name, confidence, unit.BackendKind, unit.SourcePath, unit.VersionField, unit.Reason)
+`, unit.Name, confidence, unit.SubstrateKind, unit.SourcePath, unit.VersionField, unit.Reason)
 	}
 	return b.String()
 }
@@ -595,12 +598,12 @@ This directory was generated from an existing Flux repository.
 Apply observe mode first:
 
 `+"```bash"+`
-kubectl apply -f backends/%s-observe.yaml
-kubectl get backend %s -o yaml
+kubectl apply -f substrates/%s-observe.yaml
+kubectl get substrate %s -o yaml
 `+"```"+`
 
 Review `+"`discovery/review-summary.yaml`"+`, `+"`discovery/flux-discovery.yaml`"+`,
-`+"`discovery/kapro-git-map.yaml`"+`, and `+"`sources/%s.yaml`"+` before switching the Backend from
+`+"`discovery/kapro-git-map.yaml`"+`, and `+"`sources/%s.yaml`"+` before switching the Substrate from
 `+"`Observe`"+` to `+"`Adopt`"+`.
 
 Use the generated source mapping to update Git-native version fields:

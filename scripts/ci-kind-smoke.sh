@@ -33,18 +33,19 @@ wait_for_crds() {
   local crd
   for crd in \
     approvals.kapro.io \
-    backends.kapro.io \
     clusters.kapro.io \
     clustertemplates.kapro.io \
+    decisiontraces.runtime.kapro.io \
     fleets.kapro.io \
-    gateexpressions.kapro.io \
     plans.kapro.io \
     plugins.kapro.io \
     policies.kapro.io \
     promotions.kapro.io \
-    promotionruns.kapro.io \
+    promotionruns.runtime.kapro.io \
     sources.kapro.io \
-    targets.kapro.io \
+    substrateclasses.kapro.io \
+    substrates.kapro.io \
+    targets.runtime.kapro.io \
     triggers.kapro.io; do
     kubectl --context "${CTX}" wait "crd/${crd}" --for=condition=Established --timeout=60s
   done
@@ -74,7 +75,7 @@ wait_for_count() {
     sleep 2
   done
   echo "timed out waiting for at least ${min_count} ${resource}" >&2
-  kubectl --context "${CTX}" get promotions,promotionruns,targets,clusters -o wide || true
+  kubectl --context "${CTX}" get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io,clusters.kapro.io -o wide || true
   kubectl --context "${CTX}" -n kapro-system logs deploy/kapro-kapro-operator --tail=120 || true
   exit 1
 }
@@ -95,6 +96,13 @@ wait_for_clusters() {
       exit 1
     fi
   done
+}
+
+wait_for_substrate_ready() {
+  local name="$1"
+  kubectl --context "${CTX}" wait "substrate/${name}" \
+    --for=condition=Ready \
+    --timeout=120s
 }
 
 mark_cluster_converged() {
@@ -235,7 +243,8 @@ wait_for_quickstart() {
 
 run_flux_quickstart() {
   echo "running Flux quickstart"
-  kubectl --context "${CTX}" apply -f examples/quickstart/backend-flux.yaml
+  kubectl --context "${CTX}" apply -f examples/quickstart/substrates/flux.yaml
+  wait_for_substrate_ready flux
   kubectl --context "${CTX}" apply -f examples/quickstart/kapro.yaml
   wait_for_clusters checkout-canary-eu checkout-production-eu
   mark_cluster_converged checkout-canary-eu
@@ -248,7 +257,8 @@ run_flux_quickstart() {
 run_argo_quickstart() {
   echo "running Argo CD quickstart"
   install_fake_argo_applications
-  kubectl --context "${CTX}" apply -f examples/quickstart-argo/backend-argo.yaml
+  kubectl --context "${CTX}" apply -f examples/quickstart-argo/substrates/argo.yaml
+  wait_for_substrate_ready argo
   kubectl --context "${CTX}" apply -f examples/quickstart-argo/fleet.yaml
   wait_for_clusters checkout-argo-canary checkout-argo-production
   mark_cluster_converged checkout-argo-canary
@@ -260,7 +270,8 @@ run_argo_quickstart() {
 
 run_oci_quickstart() {
   echo "running OCI quickstart"
-  kubectl --context "${CTX}" apply -f examples/quickstart-oci/backend-oci.yaml
+  kubectl --context "${CTX}" apply -f examples/quickstart-oci/substrates/oci.yaml
+  wait_for_substrate_ready oci
   kubectl --context "${CTX}" apply -f examples/quickstart-oci/fleet.yaml
   wait_for_clusters checkout-oci-canary checkout-oci-production
   mark_cluster_converged checkout-oci-canary

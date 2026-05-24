@@ -3,22 +3,22 @@ package admission
 import (
 	"testing"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
-func validTrigger() *kaprov1alpha2.Trigger {
-	return &kaprov1alpha2.Trigger{
-		Spec: kaprov1alpha2.TriggerSpec{
-			Source: kaprov1alpha2.TriggerSource{
+func validTrigger() *kaprov1alpha1.Trigger {
+	return &kaprov1alpha1.Trigger{
+		Spec: kaprov1alpha1.TriggerSpec{
+			Source: kaprov1alpha1.TriggerSource{
 				Type: "oci",
-				OCI: &kaprov1alpha2.OCITriggerSource{
+				OCI: &kaprov1alpha1.OCITriggerSource{
 					Repository: "oci://example.com/repo",
 					TagPattern: "v.*",
 				},
 			},
-			PromotionTemplate: kaprov1alpha2.TriggerTemplate{
+			PromotionTemplate: kaprov1alpha1.TriggerTemplate{
 				FleetRef: "checkout",
-				Plans:    []kaprov1alpha2.PlanRef{{Name: "default-plan"}},
+				Plans:    []kaprov1alpha1.PlanRef{{Name: "default-plan"}},
 			},
 		},
 	}
@@ -90,7 +90,7 @@ func TestValidatePromotionTrigger_TemplateMissingFleetRef(t *testing.T) {
 
 func TestValidatePromotionTrigger_PromotionPlanMissingName(t *testing.T) {
 	pt := validTrigger()
-	pt.Spec.PromotionTemplate.Plans = []kaprov1alpha2.PlanRef{{Name: ""}}
+	pt.Spec.PromotionTemplate.Plans = []kaprov1alpha1.PlanRef{{Name: ""}}
 	if err := validatePromotionTrigger(pt); err == nil {
 		t.Fatal("expected error for empty plan name")
 	}

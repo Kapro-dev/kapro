@@ -5,18 +5,20 @@ import (
 	"strings"
 	"testing"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 func TestRenderTopShowsPromotionTargetSummary(t *testing.T) {
 	promo := testPromotion("checkout")
-	promo.Status.ActiveAttemptRef = &kaprov1alpha2.PromotionAttemptRef{Name: "checkout-g1"}
+	promo.Status.ActiveAttemptRef = &kaprov1alpha1.PromotionAttemptRef{Name: "checkout-g1"}
 	run := testPromotionRun("checkout-g1", "checkout")
-	run.Status.Summary = &kaprov1alpha2.PromotionRunSummary{
+	run.Status.Summary = &kaprov1alpha1.PromotionRunSummary{
 		TotalTargets:  3,
 		SyncedTargets: 2,
 	}
@@ -49,21 +51,21 @@ func TestRenderTopRejectsNamespacedScope(t *testing.T) {
 func TestRenderTreeShowsRunsAndTargets(t *testing.T) {
 	promo := testPromotion("checkout")
 	run := testPromotionRun("checkout-g1", "checkout")
-	run.Status.Summary = &kaprov1alpha2.PromotionRunSummary{TotalTargets: 1, SyncedTargets: 1}
-	target := &kaprov1alpha2.Target{
+	run.Status.Summary = &kaprov1alpha1.PromotionRunSummary{TotalTargets: 1, SyncedTargets: 1}
+	target := &kaproruntimev1alpha1.Target{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "checkout-g1-prod",
 			Labels: map[string]string{promotionRunLabelKey: "checkout-g1"},
 		},
-		Spec: kaprov1alpha2.TargetSpec{
+		Spec: kaprov1alpha1.TargetSpec{
 			PromotionRunRef: "checkout-g1",
 			Target:          "prod",
 			Stage:           "prod",
 			Version:         "v1.2.3",
 		},
-		Status: kaprov1alpha2.TargetStatus{
-			TargetExecutionState: kaprov1alpha2.TargetExecutionState{
-				Phase:   kaprov1alpha2.TargetPhaseConverged,
+		Status: kaprov1alpha1.TargetStatus{
+			TargetExecutionState: kaprov1alpha1.TargetExecutionState{
+				Phase:   kaprov1alpha1.TargetPhaseConverged,
 				Message: "ok",
 			},
 		},
@@ -89,7 +91,7 @@ func TestRenderTreeShowsRunsAndTargets(t *testing.T) {
 func TestCollectKaproEventsFiltersNonKaproEvents(t *testing.T) {
 	kaproEvent := &corev1.Event{
 		ObjectMeta:     metav1.ObjectMeta{Name: "kapro-event", Namespace: "default"},
-		InvolvedObject: corev1.ObjectReference{APIVersion: "kapro.io/v1alpha2", Kind: "Promotion", Name: "checkout"},
+		InvolvedObject: corev1.ObjectReference{APIVersion: "kapro.io/v1alpha1", Kind: "Promotion", Name: "checkout"},
 		Type:           corev1.EventTypeNormal,
 		Reason:         "AttemptStamped",
 		Message:        "stamped",
@@ -121,7 +123,7 @@ func TestPromotionScopedEventsFilterSameNameDifferentKind(t *testing.T) {
 	run := testPromotionRun("checkout-g1", "checkout")
 	kaproEvent := &corev1.Event{
 		ObjectMeta:     metav1.ObjectMeta{Name: "kapro-event", Namespace: "default"},
-		InvolvedObject: corev1.ObjectReference{APIVersion: "kapro.io/v1alpha2", Kind: "Promotion", Name: "checkout"},
+		InvolvedObject: corev1.ObjectReference{APIVersion: "kapro.io/v1alpha1", Kind: "Promotion", Name: "checkout"},
 		Type:           corev1.EventTypeNormal,
 		Reason:         "AttemptStamped",
 		LastTimestamp:  mustTime("2026-05-21T10:00:00Z"),
@@ -152,7 +154,7 @@ func TestPromotionScopedEventsRejectSameKindDifferentAPIGroup(t *testing.T) {
 	run := testPromotionRun("checkout-g1", "checkout")
 	kaproEvent := &corev1.Event{
 		ObjectMeta:     metav1.ObjectMeta{Name: "kapro-event", Namespace: "default"},
-		InvolvedObject: corev1.ObjectReference{APIVersion: "kapro.io/v1alpha2", Kind: "Promotion", Name: "checkout"},
+		InvolvedObject: corev1.ObjectReference{APIVersion: "kapro.io/v1alpha1", Kind: "Promotion", Name: "checkout"},
 		Type:           corev1.EventTypeNormal,
 		Reason:         "AttemptStamped",
 		LastTimestamp:  mustTime("2026-05-21T10:00:00Z"),
@@ -180,10 +182,10 @@ func TestPromotionScopedEventsRejectSameKindDifferentAPIGroup(t *testing.T) {
 
 func TestRunGetPromotionShowsActiveAttemptProgress(t *testing.T) {
 	promo := testPromotion("checkout")
-	promo.Status.ActiveAttemptRef = &kaprov1alpha2.PromotionAttemptRef{Name: "checkout-g1"}
-	promo.Status.LifecycleHandlerResults = []kaprov1alpha2.PromotionLifecycleHandlerResult{{
+	promo.Status.ActiveAttemptRef = &kaprov1alpha1.PromotionAttemptRef{Name: "checkout-g1"}
+	promo.Status.LifecycleHandlerResults = []kaprov1alpha1.PromotionLifecycleHandlerResult{{
 		Name:     "notify",
-		Phase:    kaprov1alpha2.PromotionPhaseSucceeded,
+		Phase:    kaprov1alpha1.PromotionPhaseSucceeded,
 		Kind:     "Event",
 		Result:   "Succeeded",
 		Attempts: 1,
@@ -191,7 +193,7 @@ func TestRunGetPromotionShowsActiveAttemptProgress(t *testing.T) {
 		FiredAt:  mustTime("2026-05-21T10:00:00Z"),
 	}}
 	run := testPromotionRun("checkout-g1", "checkout")
-	run.Status.Summary = &kaprov1alpha2.PromotionRunSummary{
+	run.Status.Summary = &kaprov1alpha1.PromotionRunSummary{
 		TotalTargets:   2,
 		SyncedTargets:  1,
 		FailedTargets:  0,
@@ -215,40 +217,40 @@ func TestRunGetPromotionShowsActiveAttemptProgress(t *testing.T) {
 	}
 }
 
-func testPromotion(name string) *kaprov1alpha2.Promotion {
-	return &kaprov1alpha2.Promotion{
+func testPromotion(name string) *kaprov1alpha1.Promotion {
+	return &kaprov1alpha1.Promotion{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              name,
 			CreationTimestamp: mustTime("2026-05-21T09:00:00Z"),
 		},
-		Spec: kaprov1alpha2.PromotionSpec{
+		Spec: kaprov1alpha1.PromotionSpec{
 			FleetRef: "retail",
 			Version:  "v1.2.3",
 		},
-		Status: kaprov1alpha2.PromotionStatus{
-			Phase: kaprov1alpha2.PromotionPhaseProgressing,
-			Attempts: []kaprov1alpha2.PromotionAttemptRef{{
+		Status: kaprov1alpha1.PromotionStatus{
+			Phase: kaprov1alpha1.PromotionPhaseProgressing,
+			Attempts: []kaprov1alpha1.PromotionAttemptRef{{
 				Name:    name + "-g1",
 				Version: "v1.2.3",
-				Phase:   kaprov1alpha2.PromotionRunPhaseProgressing,
+				Phase:   kaprov1alpha1.PromotionRunPhaseProgressing,
 			}},
 			ResolvedVersion: "v1.2.3",
 		},
 	}
 }
 
-func testPromotionRun(name, promotion string) *kaprov1alpha2.PromotionRun {
-	return &kaprov1alpha2.PromotionRun{
+func testPromotionRun(name, promotion string) *kaproruntimev1alpha1.PromotionRun {
+	return &kaproruntimev1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              name,
 			Labels:            map[string]string{promotionLabelKey: promotion},
 			CreationTimestamp: mustTime("2026-05-21T09:05:00Z"),
 		},
-		Spec: kaprov1alpha2.PromotionRunSpec{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "v1.2.3",
 		},
-		Status: kaprov1alpha2.PromotionRunStatus{
-			Phase: kaprov1alpha2.PromotionRunPhaseProgressing,
+		Status: kaprov1alpha1.PromotionRunStatus{
+			Phase: kaprov1alpha1.PromotionRunPhaseProgressing,
 		},
 	}
 }

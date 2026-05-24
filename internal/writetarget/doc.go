@@ -1,5 +1,5 @@
 // Package writetarget renders PromotionTarget version writes as concrete
-// in-tree file mutations for backends that consume YAML/Kustomize trees
+// in-tree file mutations for substrates that consume YAML/Kustomize trees
 // (e.g. a Git-based source-of-truth). It does not talk to a cluster API;
 // it produces deterministic byte-level patches.
 //

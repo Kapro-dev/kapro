@@ -7,12 +7,12 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/delivery"
 	"kapro.io/kapro/pkg/spokeprovider"
 )
 
-// Provider is the first-party spoke Provider for BackendDriverOCI. It wraps
+// Provider is the first-party spoke Provider for SubstrateKindOCI. It wraps
 // internal/delivery.Delivery (the OCI Delivery Core from PR-4) and exposes
 // the spokeprovider.Provider contract the delivery loop dispatches against.
 type Provider struct {
@@ -38,14 +38,14 @@ func NewProvider(spoke client.Client) *Provider {
 	}
 }
 
-// Driver returns BackendDriverOCI. The Registry key — not this method — is
+// SubstrateKind returns SubstrateKindOCI. The Registry key — not this method — is
 // what determines dispatch.
-func (p *Provider) Driver() kaprov1alpha2.BackendDriver { return kaprov1alpha2.BackendDriverOCI }
+func (p *Provider) SubstrateKind() kaprov1alpha1.SubstrateKind { return kaprov1alpha1.SubstrateKindOCI }
 
 func (p *Provider) Capabilities() spokeprovider.Capabilities {
 	return spokeprovider.Capabilities{
 		ContractVersion:   spokeprovider.ContractVersionV1Alpha1,
-		Driver:            kaprov1alpha2.BackendDriverOCI,
+		SubstrateKind:     kaprov1alpha1.SubstrateKindOCI,
 		SupportsReconcile: true,
 		SupportsObserve:   true,
 		SupportsApply:     true,
@@ -70,11 +70,11 @@ func (p *Provider) Reconcile(ctx context.Context, req spokeprovider.ReconcileReq
 	out := spokeprovider.ReconcileResult{LastAttemptedAt: now()}
 
 	if req.Cluster != nil && req.Cluster.Spec.Suspend {
-		out.Phase = kaprov1alpha2.DeliveryPhaseSkipped
+		out.Phase = kaprov1alpha1.DeliveryPhaseSkipped
 		return out
 	}
 	if p.Delivery == nil {
-		out.Phase = kaprov1alpha2.DeliveryPhaseFailed
+		out.Phase = kaprov1alpha1.DeliveryPhaseFailed
 		out.Err = errors.New("Provider.Delivery is nil")
 		return out
 	}
@@ -85,7 +85,7 @@ func (p *Provider) Reconcile(ctx context.Context, req spokeprovider.ReconcileReq
 	}
 	ref, err := resolver.Resolve(ctx, req)
 	if err != nil {
-		out.Phase = kaprov1alpha2.DeliveryPhaseFailed
+		out.Phase = kaprov1alpha1.DeliveryPhaseFailed
 		out.Err = err
 		return out
 	}
@@ -95,7 +95,7 @@ func (p *Provider) Reconcile(ctx context.Context, req spokeprovider.ReconcileReq
 		Ref: ref,
 	})
 
-	out.Phase = kaprov1alpha2.DeliveryPhase(inner.Phase)
+	out.Phase = kaprov1alpha1.DeliveryPhase(inner.Phase)
 	out.Format = string(inner.Format)
 	out.ObservedDigest = inner.ObservedDigest
 	out.Staging = inner.Staging

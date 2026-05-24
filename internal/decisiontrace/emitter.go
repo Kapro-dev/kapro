@@ -9,6 +9,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -17,8 +19,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 const (
@@ -41,7 +41,7 @@ type Emitter struct {
 
 // Emit creates one bounded DecisionTrace object. Duplicate traces are treated
 // as success so reconcilers can retry safely.
-func (e Emitter) Emit(ctx context.Context, spec kaprov1alpha2.DecisionTraceSpec) error {
+func (e Emitter) Emit(ctx context.Context, spec kaproruntimev1alpha1.DecisionTraceSpec) error {
 	if e.Client == nil {
 		return nil
 	}
@@ -68,7 +68,7 @@ func (e Emitter) Emit(ctx context.Context, spec kaprov1alpha2.DecisionTraceSpec)
 	return err
 }
 
-func (e Emitter) emit(ctx context.Context, spec kaprov1alpha2.DecisionTraceSpec) error {
+func (e Emitter) emit(ctx context.Context, spec kaproruntimev1alpha1.DecisionTraceSpec) error {
 	if spec.PromotionRun == "" {
 		return fmt.Errorf("decision trace promotionRun is required")
 	}
@@ -78,7 +78,7 @@ func (e Emitter) emit(ctx context.Context, spec kaprov1alpha2.DecisionTraceSpec)
 	if spec.Source == "" {
 		return fmt.Errorf("decision trace source is required")
 	}
-	decisionTrace := &kaprov1alpha2.DecisionTrace{
+	decisionTrace := &kaproruntimev1alpha1.DecisionTrace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: nameFor(spec),
 			Labels: map[string]string{
@@ -102,7 +102,7 @@ func (e Emitter) signExisting(ctx context.Context, name string) error {
 		return nil
 	}
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		var trace kaprov1alpha2.DecisionTrace
+		var trace kaproruntimev1alpha1.DecisionTrace
 		if err := e.Client.Get(ctx, client.ObjectKey{Name: name}, &trace); err != nil {
 			return err
 		}
@@ -119,7 +119,7 @@ func (e Emitter) signExisting(ctx context.Context, name string) error {
 	})
 }
 
-func (e Emitter) normalize(spec kaprov1alpha2.DecisionTraceSpec) kaprov1alpha2.DecisionTraceSpec {
+func (e Emitter) normalize(spec kaproruntimev1alpha1.DecisionTraceSpec) kaproruntimev1alpha1.DecisionTraceSpec {
 	if spec.Time.IsZero() {
 		spec.Time = metav1.Now()
 	}
@@ -137,7 +137,7 @@ func (e Emitter) normalize(spec kaprov1alpha2.DecisionTraceSpec) kaprov1alpha2.D
 	}
 	spec.Message = truncateRunes(spec.Message, maxMessage)
 	if len(spec.Evidence) > maxEvidence {
-		spec.Evidence = append([]kaprov1alpha2.DecisionTraceEvidence(nil), spec.Evidence[:maxEvidence]...)
+		spec.Evidence = append([]kaproruntimev1alpha1.DecisionTraceEvidence(nil), spec.Evidence[:maxEvidence]...)
 	}
 	for i := range spec.Evidence {
 		spec.Evidence[i].Type = truncateRunes(spec.Evidence[i].Type, maxDetail)
@@ -149,7 +149,7 @@ func (e Emitter) normalize(spec kaprov1alpha2.DecisionTraceSpec) kaprov1alpha2.D
 	return spec
 }
 
-func nameFor(spec kaprov1alpha2.DecisionTraceSpec) string {
+func nameFor(spec kaproruntimev1alpha1.DecisionTraceSpec) string {
 	h := fnv.New64a()
 	writeHash(h, spec.PromotionRun)
 	writeHash(h, spec.Plan)

@@ -49,7 +49,7 @@ type ControllerContext struct {
 
 	// ActuatorRegistry resolves KAI implementations by FleetCluster.spec.delivery.
 	// Controllers call ActuatorRegistry.Resolve(env.Spec.Delivery.RegistryKey())
-	// to get the correct adapter — Flux, Argo, or any registered backend.
+	// to get the correct adapter — Flux, Argo, or any registered substrate.
 	ActuatorRegistry *actuator.Registry
 
 	// GateRegistry resolves gate names to pkg/gate.Gate implementations.
@@ -61,8 +61,8 @@ type ControllerContext struct {
 	// cc.GateRegistry.Register("my-type", impl). Never nil in production.
 	GateRegistry *gate.Registry
 
-	// AdapterRegistry resolves public delivery adapters by Backend.spec.driver.
-	// AdapterPolicy uses this for continuous brownfield discovery. Promotion
+	// AdapterRegistry resolves public delivery adapters by substrate kind.
+	// SubstrateDiscoveryPolicy uses this for continuous existing-cluster discovery. Promotion
 	// execution continues to use ActuatorRegistry until the substrate plugin
 	// axis fully replaces the legacy actuator bridge.
 	AdapterRegistry *kaproadapter.Registry
@@ -125,10 +125,10 @@ type ControllerContext struct {
 var Registry = map[string]InitFunc{}
 var controllerAliases = map[string]string{}
 
-// defaultControllers is the ADR-0010 public-preview core controller set. Target
-// is intentionally omitted from user-facing defaults and selected implicitly
+// defaultControllers is the public-preview core controller set. Target is
+// intentionally omitted from user-facing defaults and selected implicitly
 // whenever promotionrun is enabled.
-var defaultControllers = []string{"fleet", "plan", "promotion", "promotionrun", "cluster"}
+var defaultControllers = []string{"fleet", "plan", "promotion", "promotionrun", "cluster", "substrateclass", "substrate"}
 
 var implicitControllerDependencies = map[string][]string{
 	"promotionrun": {"target"},

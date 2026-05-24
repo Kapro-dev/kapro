@@ -1,25 +1,25 @@
-// Package flux provides public reference adapters for Flux backends.
+// Package flux provides public reference adapters for Flux substrates.
 package flux
 
 import (
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/pkg/kapro/adapter"
 )
 
 // New returns a discovery-first Flux reference adapter.
 func New() adapter.Adapter {
-	return adapter.NewReferenceAdapter(kaprov1alpha2.BackendDriverFlux, kaprov1alpha2.BackendRuntimeBoth, Model())
+	return adapter.NewReferenceAdapter(kaprov1alpha1.SubstrateKindFlux, kaprov1alpha1.ExecutionScopeBoth, Model())
 }
 
-// Model returns the Flux discovery shape currently modeled by Backend
+// Model returns the Flux discovery shape currently modeled by Substrate
 // discovery: source objects plus HelmRelease and Kustomization targets.
 func Model() adapter.DiscoveryModel {
 	return adapter.DiscoveryModel{
-		Driver:           kaprov1alpha2.BackendDriverFlux,
-		Runtime:          kaprov1alpha2.BackendRuntimeBoth,
+		SubstrateKind:    kaprov1alpha1.SubstrateKindFlux,
+		ExecutionScope:   kaprov1alpha1.ExecutionScopeBoth,
 		DefaultNamespace: "flux-system",
 		Supported:        true,
-		SelectedObjects: []kaprov1alpha2.DiscoveredBackendObject{
+		SelectedObjects: []kaprov1alpha1.DiscoveredSubstrateObject{
 			{
 				APIVersion:   "source.toolkit.fluxcd.io/v1",
 				Kind:         "GitRepository",

@@ -1,13 +1,13 @@
 # Discovery Troubleshooting
 
-Use this guide when `Backend.status.conditions[type=DiscoveryReady]` is
+Use this guide when `Substrate.status.conditions[type=DiscoveryReady]` is
 `False`, discovery finds too little, or generated units have
 `confidence: needs-review`.
 
 ## First Checks
 
 ```bash
-kubectl get backend <name> -o yaml
+kubectl get substrate <name> -o yaml
 kubectl logs -n kapro-system deployment/kapro-kapro-operator
 ```
 
@@ -26,8 +26,8 @@ Check these status fields first:
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `DiscoveryReady=False` with RBAC errors | Operator cannot list backend objects | Grant observe RBAC for Argo Applications/ApplicationSets or Flux source/workload objects. |
-| No Argo Applications selected | Missing `kapro.io/import=true` label or wrong namespace | Add labels and set the Backend namespace/selector correctly. |
+| `DiscoveryReady=False` with RBAC errors | Operator cannot list substrate objects | Grant observe RBAC for Argo Applications/ApplicationSets or Flux source/workload objects. |
+| No Argo Applications selected | Missing `kapro.io/import=true` label or wrong namespace | Add labels and set the Substrate namespace/selector correctly. |
 | ApplicationSet object missing from status | Labels exist only on `spec.template.metadata` | Put import labels on both ApplicationSet `metadata.labels` and template labels. |
 | ApplicationSet children skipped | The ApplicationSet owns generated Applications | Adopt the ApplicationSet template or generator input file, not the generated child Application. |
 | App-of-apps root unsupported | Root app packages child Applications | Select child Applications for writes; keep the root as topology. |

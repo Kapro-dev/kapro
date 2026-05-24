@@ -9,11 +9,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/cli"
 )
 
-type migrateBackendOptions struct {
+type migrateSubstrateOptions struct {
 	Kubeconfig string
 }
 
@@ -22,34 +22,34 @@ func newMigrateCmd() *cobra.Command {
 		Use:   "migrate",
 		Short: "Render migrated Kapro manifests",
 	}
-	cmd.AddCommand(newMigrateBackendCmd())
+	cmd.AddCommand(newMigrateSubstrateCmd())
 	return cmd
 }
 
-func newMigrateBackendCmd() *cobra.Command {
-	opts := migrateBackendOptions{}
+func newMigrateSubstrateCmd() *cobra.Command {
+	opts := migrateSubstrateOptions{}
 	cmd := &cobra.Command{
-		Use:   "backend NAME",
-		Short: "Render a Backend using substrate/execution fields",
+		Use:   "substrate NAME",
+		Short: "Render a Substrate using substrate/execution fields",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMigrateBackend(cmd.Context(), opts, args[0])
+			return runMigrateSubstrate(cmd.Context(), opts, args[0])
 		},
 	}
 	cmd.Flags().StringVar(&opts.Kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	return cmd
 }
 
-func runMigrateBackend(ctx context.Context, opts migrateBackendOptions, name string) error {
+func runMigrateSubstrate(ctx context.Context, opts migrateSubstrateOptions, name string) error {
 	c, err := buildClient(opts.Kubeconfig)
 	if err != nil {
 		return err
 	}
-	var backend kaprov1alpha2.Backend
-	if err := c.Get(ctx, client.ObjectKey{Name: name}, &backend); err != nil {
+	var substrate kaprov1alpha1.Substrate
+	if err := c.Get(ctx, client.ObjectKey{Name: name}, &substrate); err != nil {
 		return err
 	}
-	migrated := migrateBackendObject(&backend)
+	migrated := migrateSubstrateObject(&substrate)
 	if cli.IsJSON() {
 		return cli.JSON(migrated)
 	}
@@ -61,9 +61,9 @@ func runMigrateBackend(ctx context.Context, opts migrateBackendOptions, name str
 	return err
 }
 
-func migrateBackendObject(in *kaprov1alpha2.Backend) *kaprov1alpha2.Backend {
+func migrateSubstrateObject(in *kaprov1alpha1.Substrate) *kaprov1alpha1.Substrate {
 	out := in.DeepCopy()
-	out.TypeMeta = metav1.TypeMeta{APIVersion: "kapro.io/v1alpha2", Kind: "Backend"}
+	out.TypeMeta = metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "Substrate"}
 	out.ObjectMeta = metav1.ObjectMeta{
 		Name:        in.Name,
 		Labels:      cloneStringMap(in.Labels),
@@ -71,10 +71,7 @@ func migrateBackendObject(in *kaprov1alpha2.Backend) *kaprov1alpha2.Backend {
 	}
 	out.Spec.Substrate = in.Spec.CanonicalSubstrate()
 	out.Spec.Execution = in.Spec.CanonicalExecution()
-	out.Spec.Driver = ""
-	out.Spec.Adapter = ""
-	out.Spec.Runtime = ""
-	out.Status = kaprov1alpha2.BackendStatus{}
+	out.Status = kaprov1alpha1.SubstrateStatus{}
 	return out
 }
 

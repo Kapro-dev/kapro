@@ -11,10 +11,11 @@ import (
 	"strings"
 	"testing"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/cli"
 	"kapro.io/kapro/internal/decisiontrace"
 )
@@ -123,14 +124,14 @@ func TestNewVerifyDecisionTraceCmdRequiresPublicKey(t *testing.T) {
 	}
 }
 
-func signedDecisionTraceForVerifyTest(t *testing.T, name string, privateKey ed25519.PrivateKey) *kaprov1alpha2.DecisionTrace {
+func signedDecisionTraceForVerifyTest(t *testing.T, name string, privateKey ed25519.PrivateKey) *kaproruntimev1alpha1.DecisionTrace {
 	t.Helper()
-	spec := kaprov1alpha2.DecisionTraceSpec{
+	spec := kaproruntimev1alpha1.DecisionTraceSpec{
 		PromotionRun: "run-a",
 		Plan:         "canary",
 		Stage:        "prod",
 		Target:       "cluster-a",
-		EventType:    kaprov1alpha2.DecisionTraceEventGateEvaluate,
+		EventType:    kaproruntimev1alpha1.DecisionTraceEventGateEvaluate,
 		Source:       "slo",
 		Phase:        "Failed",
 		Reason:       "SLOViolation",
@@ -145,10 +146,10 @@ func signedDecisionTraceForVerifyTest(t *testing.T, name string, privateKey ed25
 	if err != nil {
 		t.Fatalf("SignDecisionTrace: %v", err)
 	}
-	return &kaprov1alpha2.DecisionTrace{
+	return &kaproruntimev1alpha1.DecisionTrace{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec:       spec,
-		Status: kaprov1alpha2.DecisionTraceStatus{
+		Status: kaproruntimev1alpha1.DecisionTraceStatus{
 			Signed:             true,
 			SignatureAlgorithm: sig.Algorithm,
 			SignatureKeyID:     sig.KeyID,

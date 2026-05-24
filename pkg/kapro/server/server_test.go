@@ -8,7 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/rest"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/pkg/kapro/actuator"
 	kaproadapter "kapro.io/kapro/pkg/kapro/adapter"
 )
@@ -16,16 +16,16 @@ import (
 type stubActuator struct{}
 
 func (stubActuator) Apply(context.Context, actuator.ApplyRequest) error { return nil }
-func (stubActuator) IsConverged(context.Context, *kaprov1alpha2.Cluster, string, string) (bool, error) {
+func (stubActuator) IsConverged(context.Context, *kaprov1alpha1.Cluster, string, string) (bool, error) {
 	return true, nil
 }
-func (stubActuator) Rollback(context.Context, *kaprov1alpha2.Cluster, string, string) error {
+func (stubActuator) Rollback(context.Context, *kaprov1alpha1.Cluster, string, string) error {
 	return nil
 }
 func (stubActuator) ApplyDelta(context.Context, actuator.DeltaApplyRequest) (int, error) {
 	return 0, nil
 }
-func (stubActuator) IsAllConverged(context.Context, *kaprov1alpha2.Cluster, map[string]string) (bool, error) {
+func (stubActuator) IsAllConverged(context.Context, *kaprov1alpha1.Cluster, map[string]string) (bool, error) {
 	return true, nil
 }
 
@@ -82,7 +82,7 @@ func TestNewBareCreatesMinimalServer(t *testing.T) {
 	if _, err := srv.Actuators.Resolve("push/flux"); err == nil {
 		t.Fatalf("NewBare registered built-in actuators")
 	}
-	if _, err := srv.Adapters.Resolve(kaprov1alpha2.BackendDriverFlux); err == nil {
+	if _, err := srv.Adapters.Resolve(kaprov1alpha1.SubstrateKindFlux); err == nil {
 		t.Fatalf("NewBare registered built-in adapters")
 	}
 }
@@ -141,7 +141,7 @@ func TestRegistrarsMutateExistingRegistries(t *testing.T) {
 	if _, err := actuators.Resolve("push/flux"); err != nil {
 		t.Fatalf("original actuator registry not populated: %v", err)
 	}
-	if _, err := adapters.Resolve(kaprov1alpha2.BackendDriverFlux); err != nil {
+	if _, err := adapters.Resolve(kaprov1alpha1.SubstrateKindFlux); err != nil {
 		t.Fatalf("original adapter registry not populated: %v", err)
 	}
 }
@@ -215,14 +215,14 @@ func TestServerNewPopulatesRegistries(t *testing.T) {
 	if !ok {
 		t.Fatalf("push/direct registration metadata missing")
 	}
-	if direct.Capabilities.SubstrateKind != "kubernetes-apply" || !direct.Capabilities.SupportsBackendObjects {
+	if direct.Capabilities.SubstrateKind != "kubernetes-apply" || !direct.Capabilities.SupportsSubstrateObjects {
 		t.Fatalf("push/direct capabilities = %#v", direct.Capabilities)
 	}
 	reg, ok := srv.Actuators.Registration("push/argo")
 	if !ok {
 		t.Fatalf("push/argo registration metadata missing")
 	}
-	if reg.Capabilities.Driver != kaprov1alpha2.BackendDriverArgo || !reg.Capabilities.SupportsBackendObjects {
+	if reg.Capabilities.SubstrateKind != kaprov1alpha1.SubstrateKindArgo || !reg.Capabilities.SupportsSubstrateObjects {
 		t.Fatalf("push/argo capabilities = %#v", reg.Capabilities)
 	}
 	oci, ok := srv.Actuators.Registration("pull/oci")
@@ -237,10 +237,10 @@ func TestServerNewPopulatesRegistries(t *testing.T) {
 			t.Fatalf("resolve gate %s: %v", name, err)
 		}
 	}
-	for _, driver := range []kaprov1alpha2.BackendDriver{
-		kaprov1alpha2.BackendDriverArgo,
-		kaprov1alpha2.BackendDriverFlux,
-		kaprov1alpha2.BackendDriverOCI,
+	for _, driver := range []kaprov1alpha1.SubstrateKind{
+		kaprov1alpha1.SubstrateKindArgo,
+		kaprov1alpha1.SubstrateKindFlux,
+		kaprov1alpha1.SubstrateKindOCI,
 	} {
 		if _, err := srv.Adapters.Resolve(driver); err != nil {
 			t.Fatalf("resolve adapter %s: %v", driver, err)
@@ -271,11 +271,11 @@ func TestServerNewUsesCustomActuatorRegistrars(t *testing.T) {
 			RegisterActuator(actuator.Registration{
 				Name: "push/external",
 				Capabilities: actuator.Capabilities{
-					Driver:        kaprov1alpha2.BackendDriverExternal,
-					Adapter:       "external",
-					Runtime:       kaprov1alpha2.BackendRuntimeHub,
-					Modes:         []kaprov1alpha2.DeliveryMode{kaprov1alpha2.DeliveryModePush},
-					SupportsApply: true,
+					SubstrateKind:  kaprov1alpha1.SubstrateKindExternal,
+					Actuator:       "external",
+					ExecutionScope: kaprov1alpha1.ExecutionScopeHub,
+					Modes:          []kaprov1alpha1.DeliveryMode{kaprov1alpha1.DeliveryModePush},
+					SupportsApply:  true,
 				},
 				Actuator: stubActuator{},
 			}),
@@ -313,8 +313,8 @@ func TestServerNewUsesCustomAdapterRegistrars(t *testing.T) {
 		WebhookPort:            19445,
 		AdapterRegistrars: []AdapterRegistrar{
 			RegisterAdapter(kaproadapter.NewReferenceAdapter(
-				kaprov1alpha2.BackendDriverExternal,
-				kaprov1alpha2.BackendRuntimeBoth,
+				kaprov1alpha1.SubstrateKindExternal,
+				kaprov1alpha1.ExecutionScopeBoth,
 				kaproadapter.DiscoveryModel{Supported: true},
 			)),
 		},
@@ -322,10 +322,10 @@ func TestServerNewUsesCustomAdapterRegistrars(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	if _, err := srv.Adapters.Resolve(kaprov1alpha2.BackendDriverExternal); err != nil {
+	if _, err := srv.Adapters.Resolve(kaprov1alpha1.SubstrateKindExternal); err != nil {
 		t.Fatalf("resolve custom adapter: %v", err)
 	}
-	if _, err := srv.Adapters.Resolve(kaprov1alpha2.BackendDriverFlux); err == nil {
+	if _, err := srv.Adapters.Resolve(kaprov1alpha1.SubstrateKindFlux); err == nil {
 		t.Fatalf("default adapter registered despite custom registrar override")
 	}
 }

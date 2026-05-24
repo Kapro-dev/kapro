@@ -1,7 +1,7 @@
 # Compatibility/demo shortcut: this authors a PromotionRun directly so the Kind
 # demo can exercise runtime controllers in isolation. Most users should author a
 # Promotion and let the controller create PromotionRun attempts.
-apiVersion: kapro.io/v1alpha2
+apiVersion: runtime.kapro.io/v1alpha1
 kind: PromotionRun
 metadata:
   name: checkout-kind

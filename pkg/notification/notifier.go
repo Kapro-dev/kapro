@@ -11,7 +11,7 @@
 //
 // # Decoupling from CRD types
 //
-// KNI deliberately has zero dependency on api/v1alpha2. The promotionrun controller
+// KNI deliberately has zero dependency on api/v1alpha1. The promotionrun controller
 // converts *GatePolicy → NotificationPolicy before calling Notify, so external
 // notifier implementations never need to import Kapro's CRD package.
 // This mirrors how Kubernetes events carry resource metadata as plain strings,
@@ -56,7 +56,7 @@ const (
 )
 
 // Event carries the context for a notification.
-// All fields are plain strings, no dependency on api/v1alpha2.
+// All fields are plain strings, no dependency on api/v1alpha1.
 //
 // Type is the semantic event name (e.g. "kapro.promotionrun.target.converged").
 // Phase is the raw FSM state (e.g. "Converged"). Type is for external
@@ -87,7 +87,7 @@ type Event struct {
 }
 
 // NotificationPolicy carries the notification routing config for a delivery operation.
-// It is a plain value type — no dependency on api/v1alpha2 CRD types.
+// It is a plain value type — no dependency on api/v1alpha1 CRD types.
 //
 // The promotionrun controller converts *GatePolicy → NotificationPolicy using
 // notificationPolicyFrom() before calling Notify. External Notifier

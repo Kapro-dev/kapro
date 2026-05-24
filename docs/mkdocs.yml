@@ -44,7 +44,7 @@ nav:
       - OCI Quickstart: getting-started/quickstart-oci.md
   - Concepts:
       - Object Model: concepts/concepts.md
-      - Backends: concepts/backends.md
+      - Substrates: concepts/substrates.md
       - API Naming: concepts/api-naming.md
       - Composable Gates: concepts/composable-gates.md
       - Events: concepts/events.md
@@ -62,7 +62,6 @@ nav:
       - Operations: operations/operations.md
       - Long-term Archive: operations/long-term-archive.md
       - Decision Traces: operations/decision-traces.md
-      - Fleet Drift Reports: operations/fleet-drift-report.md
       - Monitoring: operations/monitoring.md
       - Observability: operations/observability.md
       - Operator SLOs: operations/operator-slos.md
@@ -72,7 +71,7 @@ nav:
       - RBAC and Tenancy: operations/rbac-tenancy.md
       - Cluster Bootstrap: operations/cluster-bootstrap.md
   - Migration:
-      - v1alpha1 to v1alpha2 Migration: migration/migration-v1alpha1-to-v1alpha2.md
+      - Pre-0.6 API Reset: migration/pre-0.6-api-reset.md
       - v0.4 to v0.5 Field Migration: migration/v0.4-to-v0.5-fields.md
       - Argo CD Existing GitOps Migration: migration/argo-migration.md
       - Flux Existing GitOps Migration: migration/flux-migration.md
@@ -111,3 +110,4 @@ nav:
       - PromotionRun Retention: adr/0015-promotionrun-retention.md
       - Substrate Class And Config: adr/0016-substrate-class-config-contract.md
       - Promotion Control Plane: adr/0017-promotion-control-plane-for-any-delivery-substrate.md
+      - Public Runtime API Split: adr/0018-public-runtime-api-split.md

@@ -67,10 +67,10 @@ Plugins should:
 
 - implement TLS and, for production, mTLS;
 - run in platform-controlled namespaces;
-- use least-privilege service accounts for backend access;
+- use least-privilege service accounts for substrate access;
 - return deterministic decisions for identical inputs;
 - respect context cancellation and configured timeouts;
-- emit their own audit logs for backend changes.
+- emit their own audit logs for substrate changes.
 
 ## OCI and Signature Trust Model
 
@@ -109,7 +109,7 @@ production PromotionRuns.
 the trigger controller; otherwise the trigger intentionally blocks.
 
 ```yaml
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Plan
 metadata:
   name: checkout-keyless
@@ -122,7 +122,7 @@ spec:
       gate:
         mode: auto
 ---
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Trigger
 metadata:
   name: checkout-oci-keyless
@@ -161,7 +161,7 @@ type: Opaque
 data:
   cosign.pub: <base64-encoded-public-key>
 ---
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Trigger
 metadata:
   name: checkout-oci-keyed
@@ -190,7 +190,7 @@ Requirements:
 
 - use HTTPS for all non-development webhook endpoints;
 - authenticate requests with mTLS or a shared secret;
-- validate request timestamp or nonce when the backend supports it;
+- validate request timestamp or nonce when the substrate supports it;
 - make decisions idempotent for a PromotionRun, stage, target, and gate ref;
 - return a bounded response containing only the normalized gate result and
   operator-facing message;

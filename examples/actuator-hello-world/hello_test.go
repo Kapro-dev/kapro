@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/pkg/kapro/actuator"
 )
 
@@ -25,7 +25,7 @@ func TestHelloWorldRegistersAsCustomSubstrate(t *testing.T) {
 	})
 	if err := reg.RegisterRegistration(actuator.Registration{
 		Name:     "hub-push/hello-world",
-		Mode:     kaprov1alpha2.DeliveryModePush,
+		Mode:     kaprov1alpha1.DeliveryModePush,
 		Actuator: sub,
 	}); err != nil {
 		t.Fatalf("RegisterRegistration: %v", err)
@@ -39,7 +39,7 @@ func TestHelloWorldRegistersAsCustomSubstrate(t *testing.T) {
 		t.Fatalf("Resolve returned nil actuator")
 	}
 
-	cluster := &kaprov1alpha2.Cluster{}
+	cluster := &kaprov1alpha1.Cluster{}
 	if err := resolved.Apply(context.Background(), actuator.ApplyRequest{Cluster: cluster, Version: "v1.2.3"}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -89,14 +89,14 @@ func TestHelloWorldRejectsConflictingRegistration(t *testing.T) {
 
 	if err := reg.RegisterRegistration(actuator.Registration{
 		Name:     "hub-push/hello-world",
-		Mode:     kaprov1alpha2.DeliveryModePush,
+		Mode:     kaprov1alpha1.DeliveryModePush,
 		Actuator: sub,
 	}); err != nil {
 		t.Fatalf("first register: %v", err)
 	}
 	err := reg.RegisterRegistration(actuator.Registration{
 		Name:     "hub-push/hello-world",
-		Mode:     kaprov1alpha2.DeliveryModePush,
+		Mode:     kaprov1alpha1.DeliveryModePush,
 		Actuator: sub,
 	})
 	if err == nil {

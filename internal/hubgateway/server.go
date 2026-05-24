@@ -10,13 +10,15 @@ import (
 	"strings"
 	"time"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // Server is the stateless Hub Gateway facade used by UI and CLI clients.
@@ -72,8 +74,8 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 			ctx,
 			s.Client,
 			opts,
-			func() client.ObjectList { return &kaprov1alpha2.FleetList{} },
-			func(list client.ObjectList) []kaprov1alpha2.Fleet { return list.(*kaprov1alpha2.FleetList).Items },
+			func() client.ObjectList { return &kaprov1alpha1.FleetList{} },
+			func(list client.ObjectList) []kaprov1alpha1.Fleet { return list.(*kaprov1alpha1.FleetList).Items },
 			filterFleetsByPhase,
 		)
 		if err != nil {
@@ -89,9 +91,9 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 			ctx,
 			s.Client,
 			opts,
-			func() client.ObjectList { return &kaprov1alpha2.ClusterList{} },
-			func(list client.ObjectList) []kaprov1alpha2.Cluster {
-				return list.(*kaprov1alpha2.ClusterList).Items
+			func() client.ObjectList { return &kaprov1alpha1.ClusterList{} },
+			func(list client.ObjectList) []kaprov1alpha1.Cluster {
+				return list.(*kaprov1alpha1.ClusterList).Items
 			},
 			filterClustersByPhase,
 		)
@@ -108,9 +110,9 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 			ctx,
 			s.Client,
 			opts,
-			func() client.ObjectList { return &kaprov1alpha2.PromotionList{} },
-			func(list client.ObjectList) []kaprov1alpha2.Promotion {
-				return list.(*kaprov1alpha2.PromotionList).Items
+			func() client.ObjectList { return &kaprov1alpha1.PromotionList{} },
+			func(list client.ObjectList) []kaprov1alpha1.Promotion {
+				return list.(*kaprov1alpha1.PromotionList).Items
 			},
 			filterPromotionsByPhase,
 		)
@@ -127,9 +129,9 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 			ctx,
 			s.Client,
 			opts,
-			func() client.ObjectList { return &kaprov1alpha2.PromotionRunList{} },
-			func(list client.ObjectList) []kaprov1alpha2.PromotionRun {
-				return list.(*kaprov1alpha2.PromotionRunList).Items
+			func() client.ObjectList { return &kaproruntimev1alpha1.PromotionRunList{} },
+			func(list client.ObjectList) []kaproruntimev1alpha1.PromotionRun {
+				return list.(*kaproruntimev1alpha1.PromotionRunList).Items
 			},
 			filterPromotionRunsByPhase,
 		)
@@ -146,9 +148,9 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 			ctx,
 			s.Client,
 			opts,
-			func() client.ObjectList { return &kaprov1alpha2.TargetList{} },
-			func(list client.ObjectList) []kaprov1alpha2.Target {
-				return list.(*kaprov1alpha2.TargetList).Items
+			func() client.ObjectList { return &kaproruntimev1alpha1.TargetList{} },
+			func(list client.ObjectList) []kaproruntimev1alpha1.Target {
+				return list.(*kaproruntimev1alpha1.TargetList).Items
 			},
 			filterTargetsByPhase,
 		)
@@ -160,23 +162,23 @@ func (s *Server) graph(w http.ResponseWriter, r *http.Request) {
 		response.Page.Counts["targets"] = count
 		response.Page.Truncated = response.Page.Truncated || truncated
 	}
-	if opts.wants("backends") {
+	if opts.wants("substrates") {
 		items, count, truncated, err := listGraphItems(
 			ctx,
 			s.Client,
 			opts,
-			func() client.ObjectList { return &kaprov1alpha2.BackendList{} },
-			func(list client.ObjectList) []kaprov1alpha2.Backend {
-				return list.(*kaprov1alpha2.BackendList).Items
+			func() client.ObjectList { return &kaprov1alpha1.SubstrateList{} },
+			func(list client.ObjectList) []kaprov1alpha1.Substrate {
+				return list.(*kaprov1alpha1.SubstrateList).Items
 			},
-			func(items []kaprov1alpha2.Backend, _ string) []kaprov1alpha2.Backend { return items },
+			func(items []kaprov1alpha1.Substrate, _ string) []kaprov1alpha1.Substrate { return items },
 		)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		response.Backends = items
-		response.Page.Counts["backends"] = count
+		response.Substrates = items
+		response.Page.Counts["substrates"] = count
 		response.Page.Truncated = response.Page.Truncated || truncated
 	}
 
@@ -206,13 +208,13 @@ func (s *Server) createPromotion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	promotion := &kaprov1alpha2.Promotion{
-		TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha2", Kind: "Promotion"},
+	promotion := &kaprov1alpha1.Promotion{
+		TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "Promotion"},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   req.Name,
 			Labels: req.Labels,
 		},
-		Spec: kaprov1alpha2.PromotionSpec{
+		Spec: kaprov1alpha1.PromotionSpec{
 			FleetRef:  req.FleetRef,
 			Version:   req.Version,
 			Versions:  req.Versions,
@@ -222,7 +224,7 @@ func (s *Server) createPromotion(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	if len(req.Targets) > 0 {
-		promotion.Spec.Scope = &kaprov1alpha2.PromotionRunScope{Targets: req.Targets}
+		promotion.Spec.Scope = &kaprov1alpha1.PromotionRunScope{Targets: req.Targets}
 	}
 	if err := s.Client.Create(r.Context(), promotion); err != nil {
 		if apierrors.IsAlreadyExists(err) {
@@ -244,7 +246,7 @@ type CreatePromotionRequest struct {
 	FleetRef  string                  `json:"fleetRef"`
 	Version   string                  `json:"version,omitempty"`
 	Versions  map[string]string       `json:"versions,omitempty"`
-	Plans     []kaprov1alpha2.PlanRef `json:"plans,omitempty"`
+	Plans     []kaprov1alpha1.PlanRef `json:"plans,omitempty"`
 	Targets   []string                `json:"targets,omitempty"`
 	Timeout   string                  `json:"timeout,omitempty"`
 	Suspended bool                    `json:"suspended,omitempty"`
@@ -252,13 +254,13 @@ type CreatePromotionRequest struct {
 }
 
 type GraphResponse struct {
-	Fleets        []kaprov1alpha2.Fleet        `json:"fleets"`
-	Clusters      []kaprov1alpha2.Cluster      `json:"clusters"`
-	Promotions    []kaprov1alpha2.Promotion    `json:"promotions"`
-	PromotionRuns []kaprov1alpha2.PromotionRun `json:"promotionruns"`
-	Targets       []kaprov1alpha2.Target       `json:"targets"`
-	Backends      []kaprov1alpha2.Backend      `json:"backends"`
-	Page          GraphPage                    `json:"page"`
+	Fleets        []kaprov1alpha1.Fleet               `json:"fleets"`
+	Clusters      []kaprov1alpha1.Cluster             `json:"clusters"`
+	Promotions    []kaprov1alpha1.Promotion           `json:"promotions"`
+	PromotionRuns []kaproruntimev1alpha1.PromotionRun `json:"promotionruns"`
+	Targets       []kaproruntimev1alpha1.Target       `json:"targets"`
+	Substrates    []kaprov1alpha1.Substrate           `json:"substrates"`
+	Page          GraphPage                           `json:"page"`
 }
 
 type GraphPage struct {
@@ -406,7 +408,7 @@ func parseGraphResources(raw string) (map[string]bool, string, error) {
 			"promotions":    true,
 			"promotionruns": true,
 			"targets":       true,
-			"backends":      true,
+			"substrates":    true,
 		}, "all", nil
 	}
 
@@ -419,7 +421,7 @@ func parseGraphResources(raw string) (map[string]bool, string, error) {
 		}
 		out[name] = true
 	}
-	for _, name := range []string{"fleets", "clusters", "promotions", "promotionruns", "targets", "backends"} {
+	for _, name := range []string{"fleets", "clusters", "promotions", "promotionruns", "targets", "substrates"} {
 		if out[name] {
 			canonical = append(canonical, name)
 		}
@@ -439,8 +441,8 @@ func canonicalGraphResource(raw string) string {
 		return "promotionruns"
 	case "target", "targets":
 		return "targets"
-	case "backend", "backends":
-		return "backends"
+	case "substrate", "substrates":
+		return "substrates"
 	default:
 		return ""
 	}
@@ -486,7 +488,7 @@ func listGraphItems[T any](
 	}
 }
 
-func filterFleetsByPhase(items []kaprov1alpha2.Fleet, phase string) []kaprov1alpha2.Fleet {
+func filterFleetsByPhase(items []kaprov1alpha1.Fleet, phase string) []kaprov1alpha1.Fleet {
 	if phase == "" {
 		return items
 	}
@@ -506,7 +508,7 @@ func filterFleetsByPhase(items []kaprov1alpha2.Fleet, phase string) []kaprov1alp
 	return out
 }
 
-func filterClustersByPhase(items []kaprov1alpha2.Cluster, phase string) []kaprov1alpha2.Cluster {
+func filterClustersByPhase(items []kaprov1alpha1.Cluster, phase string) []kaprov1alpha1.Cluster {
 	if phase == "" {
 		return items
 	}
@@ -519,7 +521,7 @@ func filterClustersByPhase(items []kaprov1alpha2.Cluster, phase string) []kaprov
 	return out
 }
 
-func filterPromotionsByPhase(items []kaprov1alpha2.Promotion, phase string) []kaprov1alpha2.Promotion {
+func filterPromotionsByPhase(items []kaprov1alpha1.Promotion, phase string) []kaprov1alpha1.Promotion {
 	if phase == "" {
 		return items
 	}
@@ -532,7 +534,7 @@ func filterPromotionsByPhase(items []kaprov1alpha2.Promotion, phase string) []ka
 	return out
 }
 
-func filterPromotionRunsByPhase(items []kaprov1alpha2.PromotionRun, phase string) []kaprov1alpha2.PromotionRun {
+func filterPromotionRunsByPhase(items []kaproruntimev1alpha1.PromotionRun, phase string) []kaproruntimev1alpha1.PromotionRun {
 	if phase == "" {
 		return items
 	}
@@ -545,7 +547,7 @@ func filterPromotionRunsByPhase(items []kaprov1alpha2.PromotionRun, phase string
 	return out
 }
 
-func filterTargetsByPhase(items []kaprov1alpha2.Target, phase string) []kaprov1alpha2.Target {
+func filterTargetsByPhase(items []kaproruntimev1alpha1.Target, phase string) []kaproruntimev1alpha1.Target {
 	if phase == "" {
 		return items
 	}

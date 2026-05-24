@@ -4,13 +4,12 @@ This quickstart keeps Flux as the cluster reconciler and uses Kapro as the
 promotion layer. Kapro decides when a version may advance; Flux still owns
 local sync, health, and drift correction.
 
-Install Kapro with the preview class/status controllers enabled:
+Install Kapro with the default public-preview controllers:
 
 ```bash
 helm upgrade --install kapro "$KAPRO_CHART" \
   --namespace kapro-system \
-  --create-namespace \
-  --set controllers='{fleet,plan,promotion,promotionrun,cluster,substrateclass,backend}'
+  --create-namespace
 ```
 
 Generate a Flux profile repo:
@@ -20,15 +19,15 @@ kapro bootstrap generate ./promotion-repo \
   --profile flux \
   --name checkout
 cd promotion-repo
-kubectl apply -f backends/flux.yaml
-kubectl wait --for=condition=Ready backend/flux --timeout=90s
+kubectl apply -f substrates/flux.yaml
+kubectl wait --for=condition=Ready substrate/flux --timeout=90s
 kubectl apply --recursive -f apps -f flux -f clusters -f plans -f fleets -f promotions
-kubectl get backend flux -o yaml
-kubectl get fleets,plans,promotions,promotionruns,targets
+kubectl get substrate flux -o yaml
+kubectl get fleets.kapro.io,plans.kapro.io,promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
 ```
 
 The generated repo includes a Flux-shaped starter under `flux/`, workload
-manifests under `apps/`, and Kapro `Backend`, `Fleet`, `Plan`, and `Promotion`
+manifests under `apps/`, and Kapro `Substrate`, `Fleet`, `Plan`, and `Promotion`
 objects. Push the generated repo and replace the placeholder `GitRepository`
 URL before expecting Flux to sync. For the older checked-in minimal hub API
 example, use `examples/quickstart/`.

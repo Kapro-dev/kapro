@@ -1221,7 +1221,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "kapro_fleetdriftreport_phase == 1",
+          "expr": "kapro_promotionrun_active_total",
           "legendFormat": "{{report}} {{phase}}",
           "range": true,
           "refId": "A"
@@ -1286,7 +1286,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "kapro_fleetdriftreport_targets{state=~\"drifted|failed|unknown|pending\"}",
+          "expr": "kapro_promotionrun_active_total",
           "legendFormat": "{{report}} targets {{state}}",
           "range": true,
           "refId": "A"
@@ -1297,8 +1297,8 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "kapro_fleetdriftreport_backend_objects{state=\"drifted\"}",
-          "legendFormat": "{{report}} backend objects drifted",
+          "expr": "kapro_promotionrun_active_total",
+          "legendFormat": "{{report}} substrate objects drifted",
           "range": true,
           "refId": "B"
         }
@@ -1390,8 +1390,8 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (cluster, backend, result) (rate(kapro_spoke_delivery_reconciles_total[$__rate_interval]))",
-          "legendFormat": "{{cluster}} {{backend}} {{result}}",
+          "expr": "sum by (cluster, substrate, result) (rate(kapro_spoke_delivery_reconciles_total[$__rate_interval]))",
+          "legendFormat": "{{cluster}} {{substrate}} {{result}}",
           "range": true,
           "refId": "A"
         }
@@ -1455,8 +1455,8 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (cluster, backend, le) (rate(kapro_spoke_delivery_reconcile_duration_seconds_bucket[$__rate_interval])))",
-          "legendFormat": "{{cluster}} {{backend}} p95",
+          "expr": "histogram_quantile(0.95, sum by (cluster, substrate, le) (rate(kapro_spoke_delivery_reconcile_duration_seconds_bucket[$__rate_interval])))",
+          "legendFormat": "{{cluster}} {{substrate}} p95",
           "range": true,
           "refId": "A"
         }

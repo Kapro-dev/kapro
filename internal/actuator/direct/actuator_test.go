@@ -12,7 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/pkg/actuator"
 )
 
@@ -139,7 +139,7 @@ func TestIsConvergedWaitsForUpdatedReplicas(t *testing.T) {
 	}
 }
 
-func TestBackendObjectsReportsDeploymentStatus(t *testing.T) {
+func TestSubstrateObjectsReportsDeploymentStatus(t *testing.T) {
 	ctx := context.Background()
 	scheme := testScheme(t)
 	deployment := testDeployment("default", "checkout", "ghcr.io/example/checkout:0.1.1")
@@ -147,7 +147,7 @@ func TestBackendObjectsReportsDeploymentStatus(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(deployment).Build()
 	act := &Actuator{Client: c}
 
-	statuses, err := act.BackendObjects(ctx, directCluster("checkout"), map[string]string{"default": "ghcr.io/example/checkout:0.1.1"})
+	statuses, err := act.SubstrateObjects(ctx, directCluster("checkout"), map[string]string{"default": "ghcr.io/example/checkout:0.1.1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,13 +168,13 @@ func testScheme(t *testing.T) *runtime.Scheme {
 	return scheme
 }
 
-func directCluster(deployment string) *kaprov1alpha2.Cluster {
-	return &kaprov1alpha2.Cluster{
+func directCluster(deployment string) *kaprov1alpha1.Cluster {
+	return &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "canary-eu"},
-		Spec: kaprov1alpha2.ClusterSpec{
-			Delivery: kaprov1alpha2.DeliverySpec{
-				Mode:       kaprov1alpha2.DeliveryModePush,
-				BackendRef: "direct",
+		Spec: kaprov1alpha1.ClusterSpec{
+			Delivery: kaprov1alpha1.DeliverySpec{
+				Mode:         kaprov1alpha1.DeliveryModePush,
+				SubstrateRef: "direct",
 				Parameters: map[string]string{
 					"namespace":  "default",
 					"deployment": deployment,

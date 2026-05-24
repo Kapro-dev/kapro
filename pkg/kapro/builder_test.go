@@ -5,18 +5,18 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 func TestFleetBuilder(t *testing.T) {
 	labels := map[string]string{"env": "dev"}
 
 	fleet := NewFleet("checkout").
-		WithBackend("flux").
+		WithSubstrate("flux").
 		WithCluster("kind-dev", labels).
 		Build()
 
-	if fleet.APIVersion != kaprov1alpha2.GroupVersion.String() {
+	if fleet.APIVersion != kaprov1alpha1.GroupVersion.String() {
 		t.Fatalf("APIVersion = %q", fleet.APIVersion)
 	}
 	if fleet.Kind != "Fleet" {
@@ -25,8 +25,8 @@ func TestFleetBuilder(t *testing.T) {
 	if fleet.Name != "checkout" {
 		t.Fatalf("Name = %q", fleet.Name)
 	}
-	if fleet.Spec.Delivery.BackendRef != "flux" {
-		t.Fatalf("backendRef = %q", fleet.Spec.Delivery.BackendRef)
+	if fleet.Spec.Delivery.SubstrateRef != "flux" {
+		t.Fatalf("substrateRef = %q", fleet.Spec.Delivery.SubstrateRef)
 	}
 	if got := fleet.Spec.Clusters[0].Labels["env"]; got != "dev" {
 		t.Fatalf("cluster label env = %q", got)
@@ -44,7 +44,7 @@ func TestPromotionBuilder(t *testing.T) {
 		AtVersion("v1.2.3").
 		Build()
 
-	if promotion.APIVersion != kaprov1alpha2.GroupVersion.String() {
+	if promotion.APIVersion != kaprov1alpha1.GroupVersion.String() {
 		t.Fatalf("APIVersion = %q", promotion.APIVersion)
 	}
 	if promotion.Kind != "Promotion" {
@@ -62,7 +62,7 @@ func TestPromotionBuilder(t *testing.T) {
 }
 
 func TestPlanBuilder(t *testing.T) {
-	stage := kaprov1alpha2.Stage{
+	stage := kaprov1alpha1.Stage{
 		Name: "dev",
 		Selector: metav1.LabelSelector{
 			MatchLabels: map[string]string{"env": "dev"},
@@ -71,7 +71,7 @@ func TestPlanBuilder(t *testing.T) {
 
 	plan := NewPlan("progressive").WithStage(stage).Build()
 
-	if plan.APIVersion != kaprov1alpha2.GroupVersion.String() {
+	if plan.APIVersion != kaprov1alpha1.GroupVersion.String() {
 		t.Fatalf("APIVersion = %q", plan.APIVersion)
 	}
 	if plan.Kind != "Plan" {

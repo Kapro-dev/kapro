@@ -5,7 +5,7 @@ import (
 	"sort"
 	"sync"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // Registry resolves public delivery adapters by open substrate kind.
@@ -19,38 +19,38 @@ func NewRegistry() *Registry {
 	return &Registry{adapters: make(map[string]Adapter)}
 }
 
-// Register adds an adapter under its Driver value.
+// Register adds an adapter under its SubstrateKind value.
 func (r *Registry) Register(a Adapter) error {
-	driver, err := validateAdapter(a)
+	kind, err := validateAdapter(a)
 	if err != nil {
 		return err
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, ok := r.adapters[string(driver)]; ok {
-		return fmt.Errorf("adapter for driver %q already registered", driver)
+	if _, ok := r.adapters[string(kind)]; ok {
+		return fmt.Errorf("adapter for substrate kind %q already registered", kind)
 	}
-	r.adapters[string(driver)] = a
+	r.adapters[string(kind)] = a
 	return nil
 }
 
 // Upsert adds or replaces an adapter and returns the previous implementation,
 // when one existed.
 func (r *Registry) Upsert(a Adapter) (Adapter, error) {
-	driver, err := validateAdapter(a)
+	kind, err := validateAdapter(a)
 	if err != nil {
 		return nil, err
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	old := r.adapters[string(driver)]
-	r.adapters[string(driver)] = a
+	old := r.adapters[string(kind)]
+	r.adapters[string(kind)] = a
 	return old, nil
 }
 
-// Unregister removes the adapter for driver.
-func (r *Registry) Unregister(driver kaprov1alpha2.BackendDriver) (Adapter, bool) {
-	return r.UnregisterKind(string(driver))
+// Unregister removes the adapter for substrate kind.
+func (r *Registry) Unregister(kind kaprov1alpha1.SubstrateKind) (Adapter, bool) {
+	return r.UnregisterKind(string(kind))
 }
 
 // UnregisterKind removes the adapter for an open substrate kind.
@@ -62,9 +62,9 @@ func (r *Registry) UnregisterKind(kind string) (Adapter, bool) {
 	return old, ok
 }
 
-// Resolve returns the adapter registered for driver.
-func (r *Registry) Resolve(driver kaprov1alpha2.BackendDriver) (Adapter, error) {
-	return r.ResolveKind(string(driver))
+// Resolve returns the adapter registered for substrate kind.
+func (r *Registry) Resolve(kind kaprov1alpha1.SubstrateKind) (Adapter, error) {
+	return r.ResolveKind(string(kind))
 }
 
 // ResolveKind returns the adapter registered for an open substrate kind.
@@ -78,16 +78,16 @@ func (r *Registry) ResolveKind(kind string) (Adapter, error) {
 	return a, nil
 }
 
-// Drivers returns registered drivers in stable lexical order.
-func (r *Registry) Drivers() []kaprov1alpha2.BackendDriver {
+// SubstrateKinds returns registered substrate kinds in stable lexical order.
+func (r *Registry) SubstrateKinds() []kaprov1alpha1.SubstrateKind {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	drivers := make([]kaprov1alpha2.BackendDriver, 0, len(r.adapters))
-	for driver := range r.adapters {
-		drivers = append(drivers, kaprov1alpha2.BackendDriver(driver))
+	kinds := make([]kaprov1alpha1.SubstrateKind, 0, len(r.adapters))
+	for kind := range r.adapters {
+		kinds = append(kinds, kaprov1alpha1.SubstrateKind(kind))
 	}
-	sort.Slice(drivers, func(i, j int) bool { return drivers[i] < drivers[j] })
-	return drivers
+	sort.Slice(kinds, func(i, j int) bool { return kinds[i] < kinds[j] })
+	return kinds
 }
 
 // Kinds returns registered open substrate kinds in stable lexical order.
@@ -102,13 +102,13 @@ func (r *Registry) Kinds() []string {
 	return kinds
 }
 
-func validateAdapter(a Adapter) (kaprov1alpha2.BackendDriver, error) {
+func validateAdapter(a Adapter) (kaprov1alpha1.SubstrateKind, error) {
 	if a == nil {
 		return "", fmt.Errorf("adapter is nil")
 	}
-	driver := a.Driver()
-	if driver == "" {
-		return "", fmt.Errorf("adapter driver is required")
+	kind := a.SubstrateKind()
+	if kind == "" {
+		return "", fmt.Errorf("adapter substrate kind is required")
 	}
-	return driver, nil
+	return kind, nil
 }

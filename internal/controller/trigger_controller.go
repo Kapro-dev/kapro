@@ -13,6 +13,8 @@ import (
 	"text/template"
 	"time"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	"golang.org/x/mod/semver"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -26,7 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
@@ -57,12 +59,12 @@ type TriggerArtifactObservation struct {
 
 // PromotionTriggerResolver resolves the latest matching artifact for a trigger.
 type PromotionTriggerResolver interface {
-	Resolve(ctx context.Context, trigger *kaprov1alpha2.Trigger) (*TriggerArtifactObservation, error)
+	Resolve(ctx context.Context, trigger *kaprov1alpha1.Trigger) (*TriggerArtifactObservation, error)
 }
 
 // PromotionTriggerVerifier verifies an artifact before Promotion intent is updated.
 type PromotionTriggerVerifier interface {
-	Verify(ctx context.Context, trigger *kaprov1alpha2.Trigger, artifact TriggerArtifactObservation) error
+	Verify(ctx context.Context, trigger *kaprov1alpha1.Trigger, artifact TriggerArtifactObservation) error
 }
 
 // TriggerReconciler observes artifact sources and updates guarded Promotions.
@@ -78,13 +80,13 @@ type TriggerReconciler struct {
 // +kubebuilder:rbac:groups=kapro.io,resources=triggers,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kapro.io,resources=triggers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=promotions,verbs=get;list;watch;create;patch;update
-// +kubebuilder:rbac:groups=kapro.io,resources=promotionruns,verbs=get;list;watch
+// +kubebuilder:rbac:groups=runtime.kapro.io,resources=promotionruns,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 
 func (r *TriggerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	l := log.FromContext(ctx)
 
-	var trigger kaprov1alpha2.Trigger
+	var trigger kaprov1alpha1.Trigger
 	if err := r.Get(ctx, req.NamespacedName, &trigger); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -136,7 +138,7 @@ func (r *TriggerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	version := artifactVersion(&trigger, *artifact)
-	trigger.Status.LastArtifact = &kaprov1alpha2.TriggerArtifact{
+	trigger.Status.LastArtifact = &kaprov1alpha1.TriggerArtifact{
 		Tag:        artifact.Tag,
 		Digest:     artifact.Digest,
 		Version:    version,
@@ -165,7 +167,7 @@ func (r *TriggerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	// Look up the managed Promotion. Dedup: if it already targets this
 	// digest AND was last stamped from the same template hash, skip.
-	var managed kaprov1alpha2.Promotion
+	var managed kaprov1alpha1.Promotion
 	managedExists := false
 	if err := r.Get(ctx, client.ObjectKey{Name: managedName}, &managed); err == nil {
 		managedExists = true
@@ -251,12 +253,12 @@ func (r *TriggerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 func (r *TriggerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kaprov1alpha2.Trigger{}).
-		Owns(&kaprov1alpha2.Promotion{}).
+		For(&kaprov1alpha1.Trigger{}).
+		Owns(&kaprov1alpha1.Promotion{}).
 		Complete(r)
 }
 
-func (r *TriggerReconciler) patchStatus(ctx context.Context, trigger *kaprov1alpha2.Trigger, patch client.Patch) error {
+func (r *TriggerReconciler) patchStatus(ctx context.Context, trigger *kaprov1alpha1.Trigger, patch client.Patch) error {
 	if err := r.Status().Patch(ctx, trigger, patch); err != nil {
 		return fmt.Errorf("patch promotion trigger status: %w", err)
 	}
@@ -276,7 +278,7 @@ func (r *TriggerReconciler) activePromotionRunCount(ctx context.Context, managed
 	if managedPromotion == "" {
 		return 0, nil
 	}
-	var list kaprov1alpha2.PromotionRunList
+	var list kaproruntimev1alpha1.PromotionRunList
 	if err := r.List(ctx, &list, client.MatchingLabels{promotionOwnerLabel: managedPromotion}); err != nil {
 		return 0, err
 	}
@@ -294,7 +296,7 @@ type OCIPromotionTriggerResolver struct {
 	Client client.Reader
 }
 
-func (r OCIPromotionTriggerResolver) Resolve(ctx context.Context, trigger *kaprov1alpha2.Trigger) (*TriggerArtifactObservation, error) {
+func (r OCIPromotionTriggerResolver) Resolve(ctx context.Context, trigger *kaprov1alpha1.Trigger) (*TriggerArtifactObservation, error) {
 	if trigger.Spec.Source.Type != "oci" || trigger.Spec.Source.OCI == nil {
 		return nil, fmt.Errorf("only oci promotion trigger sources are supported")
 	}
@@ -421,7 +423,7 @@ func normalizeRegistryHost(host string) string {
 // buildTriggeredPromotion constructs the desired Promotion spec for this
 // trigger + observed artifact. The PromotionController owns stamping a
 // PromotionRun under it.
-func buildTriggeredPromotion(trigger *kaprov1alpha2.Trigger, artifact TriggerArtifactObservation, version, managedName, templateHash string, scheme *runtime.Scheme, now time.Time) (*kaprov1alpha2.Promotion, error) {
+func buildTriggeredPromotion(trigger *kaprov1alpha1.Trigger, artifact TriggerArtifactObservation, version, managedName, templateHash string, scheme *runtime.Scheme, now time.Time) (*kaprov1alpha1.Promotion, error) {
 	tmpl := &trigger.Spec.PromotionTemplate
 	if tmpl.FleetRef == "" {
 		return nil, fmt.Errorf("spec.promotionTemplate.fleetRef is required")
@@ -435,23 +437,23 @@ func buildTriggeredPromotion(trigger *kaprov1alpha2.Trigger, artifact TriggerArt
 	annotations[promotionTriggerDigestAnno] = artifact.Digest
 	annotations[promotionTriggerCreatedAnno] = now.UTC().Format(time.RFC3339)
 
-	promo := &kaprov1alpha2.Promotion{
+	promo := &kaprov1alpha1.Promotion{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        managedName,
 			Labels:      labels,
 			Annotations: annotations,
 		},
-		Spec: kaprov1alpha2.PromotionSpec{
+		Spec: kaprov1alpha1.PromotionSpec{
 			FleetRef:  tmpl.FleetRef,
 			Version:   version,
-			Plans:     append([]kaprov1alpha2.PlanRef(nil), tmpl.Plans...),
+			Plans:     append([]kaprov1alpha1.PlanRef(nil), tmpl.Plans...),
 			Suspended: triggerSuspended(tmpl.Suspended),
 			Scope:     tmpl.Scope.DeepCopy(),
 			Timeout:   tmpl.Timeout,
 		},
 	}
 	if scheme != nil {
-		gvk := schema.GroupVersionKind{Group: kaprov1alpha2.GroupVersion.Group, Version: kaprov1alpha2.GroupVersion.Version, Kind: "PromotionTrigger"}
+		gvk := schema.GroupVersionKind{Group: kaprov1alpha1.GroupVersion.Group, Version: kaprov1alpha1.GroupVersion.Version, Kind: "PromotionTrigger"}
 		promo.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(trigger, gvk)}
 	}
 	return promo, nil
@@ -459,7 +461,7 @@ func buildTriggeredPromotion(trigger *kaprov1alpha2.Trigger, artifact TriggerArt
 
 // applyTriggerToPromotion mutates `existing` toward `desired` (spec + labels
 // + annotations) without disturbing fields the trigger does not own.
-func applyTriggerToPromotion(existing, desired *kaprov1alpha2.Promotion) {
+func applyTriggerToPromotion(existing, desired *kaprov1alpha1.Promotion) {
 	existing.Spec = desired.Spec
 	if existing.Labels == nil {
 		existing.Labels = map[string]string{}
@@ -478,13 +480,13 @@ func applyTriggerToPromotion(existing, desired *kaprov1alpha2.Promotion) {
 // triggerTemplateHash is a deterministic hash of the parts of the trigger
 // template that affect Promotion identity. Used to detect template drift
 // and force a Promotion update even when the digest is unchanged.
-func triggerTemplateHash(trigger *kaprov1alpha2.Trigger) string {
+func triggerTemplateHash(trigger *kaprov1alpha1.Trigger) string {
 	t := trigger.Spec.PromotionTemplate
 	buf, _ := json.Marshal(struct {
 		FleetRef    string                           `json:"fleetRef"`
-		Plans       []kaprov1alpha2.PlanRef          `json:"plans"`
+		Plans       []kaprov1alpha1.PlanRef          `json:"plans"`
 		Suspended   bool                             `json:"suspended"`
-		Scope       *kaprov1alpha2.PromotionRunScope `json:"scope"`
+		Scope       *kaprov1alpha1.PromotionRunScope `json:"scope"`
 		Timeout     string                           `json:"timeout"`
 		Labels      map[string]string                `json:"labels"`
 		Annotations map[string]string                `json:"annotations"`
@@ -499,20 +501,20 @@ func triggerTemplateHash(trigger *kaprov1alpha2.Trigger) string {
 // recordRecentArtifact prepends a new artifact observation, dedupes by
 // digest (an A→B→A flip is recorded as separate entries since each carries
 // a fresh ObservedAt), and caps the slice at MaxRecentArtifacts.
-func recordRecentArtifact(list []kaprov1alpha2.TriggerArtifact, current kaprov1alpha2.TriggerArtifact) []kaprov1alpha2.TriggerArtifact {
+func recordRecentArtifact(list []kaprov1alpha1.TriggerArtifact, current kaprov1alpha1.TriggerArtifact) []kaprov1alpha1.TriggerArtifact {
 	if len(list) > 0 && list[0].Digest == current.Digest && list[0].Tag == current.Tag {
 		// Same artifact, same tag — just refresh the latest entry's ObservedAt.
 		list[0] = current
 		return list
 	}
-	out := append([]kaprov1alpha2.TriggerArtifact{current}, list...)
-	if len(out) > kaprov1alpha2.MaxRecentArtifacts {
-		out = out[:kaprov1alpha2.MaxRecentArtifacts]
+	out := append([]kaprov1alpha1.TriggerArtifact{current}, list...)
+	if len(out) > kaprov1alpha1.MaxRecentArtifacts {
+		out = out[:kaprov1alpha1.MaxRecentArtifacts]
 	}
 	return out
 }
 
-func managedPromotionName(trigger *kaprov1alpha2.Trigger) (string, error) {
+func managedPromotionName(trigger *kaprov1alpha1.Trigger) (string, error) {
 	tmpl := trigger.Spec.PromotionTemplate.NameTemplate
 	if tmpl == "" {
 		return dnsName(trigger.Name), nil
@@ -536,7 +538,7 @@ func managedPromotionName(trigger *kaprov1alpha2.Trigger) (string, error) {
 	return name, nil
 }
 
-func artifactVersion(trigger *kaprov1alpha2.Trigger, artifact TriggerArtifactObservation) string {
+func artifactVersion(trigger *kaprov1alpha1.Trigger, artifact TriggerArtifactObservation) string {
 	repo := trigger.Spec.Source.OCI.Repository
 	if !strings.HasPrefix(repo, "oci://") {
 		repo = "oci://" + repo
@@ -551,7 +553,7 @@ func triggerSuspended(value *bool) bool {
 	return *value
 }
 
-func validatePromotionTriggerConfig(trigger *kaprov1alpha2.Trigger) (time.Duration, string, error) {
+func validatePromotionTriggerConfig(trigger *kaprov1alpha1.Trigger) (time.Duration, string, error) {
 	if trigger.Spec.Source.Type != "oci" {
 		return 0, "InvalidSource", fmt.Errorf("unsupported source.type %q", trigger.Spec.Source.Type)
 	}
@@ -582,7 +584,7 @@ func validatePromotionTriggerConfig(trigger *kaprov1alpha2.Trigger) (time.Durati
 	return pollAfter, "", nil
 }
 
-func pollInterval(trigger *kaprov1alpha2.Trigger) (time.Duration, error) {
+func pollInterval(trigger *kaprov1alpha1.Trigger) (time.Duration, error) {
 	if trigger.Spec.Source.OCI == nil || trigger.Spec.Source.OCI.PollInterval == "" {
 		return defaultTriggerPoll, nil
 	}
@@ -600,7 +602,7 @@ func positiveDuration(field, value string) (time.Duration, error) {
 	return parsed, nil
 }
 
-func cooldownRemaining(trigger *kaprov1alpha2.Trigger, now time.Time) (time.Duration, error) {
+func cooldownRemaining(trigger *kaprov1alpha1.Trigger, now time.Time) (time.Duration, error) {
 	if trigger.Status.LastTriggeredAt == "" {
 		return 0, nil
 	}
@@ -622,7 +624,7 @@ func cooldownRemaining(trigger *kaprov1alpha2.Trigger, now time.Time) (time.Dura
 	return 0, nil
 }
 
-func (r *TriggerReconciler) cooldownRemaining(ctx context.Context, trigger *kaprov1alpha2.Trigger, now time.Time) (time.Duration, error) {
+func (r *TriggerReconciler) cooldownRemaining(ctx context.Context, trigger *kaprov1alpha1.Trigger, now time.Time) (time.Duration, error) {
 	lastTriggeredAt, err := lastTriggerPromotionCreatedAt(ctx, r.Client, trigger)
 	if err != nil {
 		return 0, err
@@ -648,7 +650,7 @@ func (r *TriggerReconciler) cooldownRemaining(ctx context.Context, trigger *kapr
 // either the managed Promotion's annotation or a child PromotionRun's
 // annotation (legacy/back-compat). Used to seed the cooldown when the
 // trigger's own status.lastTriggeredAt has been cleared (e.g. operator restart).
-func lastTriggerPromotionCreatedAt(ctx context.Context, c client.Reader, trigger *kaprov1alpha2.Trigger) (time.Time, error) {
+func lastTriggerPromotionCreatedAt(ctx context.Context, c client.Reader, trigger *kaprov1alpha1.Trigger) (time.Time, error) {
 	var latest time.Time
 	pick := func(annotations map[string]string, fallback time.Time) (time.Time, error) {
 		if raw := annotations[promotionTriggerCreatedAnno]; raw != "" {
@@ -660,7 +662,7 @@ func lastTriggerPromotionCreatedAt(ctx context.Context, c client.Reader, trigger
 		}
 		return fallback, nil
 	}
-	var promotions kaprov1alpha2.PromotionList
+	var promotions kaprov1alpha1.PromotionList
 	if err := c.List(ctx, &promotions, client.MatchingLabels{promotionTriggerLabel: trigger.Name}); err != nil {
 		return time.Time{}, fmt.Errorf("list managed Promotions for cooldown: %w", err)
 	}
@@ -675,7 +677,7 @@ func lastTriggerPromotionCreatedAt(ctx context.Context, c client.Reader, trigger
 	}
 	// Back-compat: legacy PromotionRuns created by the old trigger model
 	// still count toward cooldown until they age out.
-	var runs kaprov1alpha2.PromotionRunList
+	var runs kaproruntimev1alpha1.PromotionRunList
 	if err := c.List(ctx, &runs, client.MatchingLabels{promotionTriggerLabel: trigger.Name}); err != nil {
 		return time.Time{}, fmt.Errorf("list legacy PromotionRuns for cooldown: %w", err)
 	}
@@ -713,33 +715,33 @@ func promotionTriggerSemverCanonical(tag string) string {
 	return semver.Canonical("v" + tag)
 }
 
-func setTriggerSuspended(trigger *kaprov1alpha2.Trigger, now time.Time) {
+func setTriggerSuspended(trigger *kaprov1alpha1.Trigger, now time.Time) {
 	setCondition(&trigger.Status.Conditions, conditionSuspended, metav1.ConditionTrue, "Suspended", "promotion trigger is suspended", trigger.Generation, now)
 	setCondition(&trigger.Status.Conditions, "Ready", metav1.ConditionFalse, "Suspended", "promotion trigger is suspended", trigger.Generation, now)
-	setCondition(&trigger.Status.Conditions, kaprov1alpha2.ConditionTypeReconciling, metav1.ConditionFalse, "Suspended", "promotion trigger is suspended", trigger.Generation, now)
-	apimeta.RemoveStatusCondition(&trigger.Status.Conditions, kaprov1alpha2.ConditionTypeStalled)
+	setCondition(&trigger.Status.Conditions, kaprov1alpha1.ConditionTypeReconciling, metav1.ConditionFalse, "Suspended", "promotion trigger is suspended", trigger.Generation, now)
+	apimeta.RemoveStatusCondition(&trigger.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
 }
 
-func setTriggerNoArtifact(trigger *kaprov1alpha2.Trigger, now time.Time) {
+func setTriggerNoArtifact(trigger *kaprov1alpha1.Trigger, now time.Time) {
 	setCondition(&trigger.Status.Conditions, conditionSuspended, metav1.ConditionFalse, "Active", "promotion trigger is active", trigger.Generation, now)
 	setCondition(&trigger.Status.Conditions, "Ready", metav1.ConditionFalse, "NoMatchingArtifact", "no matching artifact observed", trigger.Generation, now)
 	setCondition(&trigger.Status.Conditions, conditionArtifactObserved, metav1.ConditionFalse, "NoMatchingArtifact", "no matching artifact observed", trigger.Generation, now)
-	setCondition(&trigger.Status.Conditions, kaprov1alpha2.ConditionTypeReconciling, metav1.ConditionFalse, "NoMatchingArtifact", "source check completed", trigger.Generation, now)
-	apimeta.RemoveStatusCondition(&trigger.Status.Conditions, kaprov1alpha2.ConditionTypeStalled)
+	setCondition(&trigger.Status.Conditions, kaprov1alpha1.ConditionTypeReconciling, metav1.ConditionFalse, "NoMatchingArtifact", "source check completed", trigger.Generation, now)
+	apimeta.RemoveStatusCondition(&trigger.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
 }
 
-func setTriggerReady(trigger *kaprov1alpha2.Trigger, now time.Time, reason, message string) {
+func setTriggerReady(trigger *kaprov1alpha1.Trigger, now time.Time, reason, message string) {
 	setCondition(&trigger.Status.Conditions, conditionSuspended, metav1.ConditionFalse, "Active", "promotion trigger is active", trigger.Generation, now)
 	setCondition(&trigger.Status.Conditions, "Ready", metav1.ConditionTrue, reason, message, trigger.Generation, now)
-	setCondition(&trigger.Status.Conditions, kaprov1alpha2.ConditionTypeReconciling, metav1.ConditionFalse, reason, "source check completed", trigger.Generation, now)
-	apimeta.RemoveStatusCondition(&trigger.Status.Conditions, kaprov1alpha2.ConditionTypeStalled)
+	setCondition(&trigger.Status.Conditions, kaprov1alpha1.ConditionTypeReconciling, metav1.ConditionFalse, reason, "source check completed", trigger.Generation, now)
+	apimeta.RemoveStatusCondition(&trigger.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
 }
 
-func setTriggerBlocked(trigger *kaprov1alpha2.Trigger, now time.Time, reason, message string) {
+func setTriggerBlocked(trigger *kaprov1alpha1.Trigger, now time.Time, reason, message string) {
 	setCondition(&trigger.Status.Conditions, conditionSuspended, metav1.ConditionFalse, "Active", "promotion trigger is active", trigger.Generation, now)
 	setCondition(&trigger.Status.Conditions, "Ready", metav1.ConditionFalse, reason, message, trigger.Generation, now)
-	setCondition(&trigger.Status.Conditions, kaprov1alpha2.ConditionTypeReconciling, metav1.ConditionFalse, reason, "source check completed", trigger.Generation, now)
-	setCondition(&trigger.Status.Conditions, kaprov1alpha2.ConditionTypeStalled, metav1.ConditionTrue, reason, message, trigger.Generation, now)
+	setCondition(&trigger.Status.Conditions, kaprov1alpha1.ConditionTypeReconciling, metav1.ConditionFalse, reason, "source check completed", trigger.Generation, now)
+	setCondition(&trigger.Status.Conditions, kaprov1alpha1.ConditionTypeStalled, metav1.ConditionTrue, reason, message, trigger.Generation, now)
 }
 
 func setCondition(conditions *[]metav1.Condition, conditionType string, status metav1.ConditionStatus, reason, message string, observedGeneration int64, now time.Time) {

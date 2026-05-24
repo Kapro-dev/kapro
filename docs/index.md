@@ -33,11 +33,11 @@ cluster provisioner, or secret store.
   [Flux Quickstart](getting-started/quickstart-flux.md), and
   [Argo CD Quickstart](getting-started/quickstart-argo.md) cover the 0.6 public
   preview profiles.
-- [Backends](concepts/backends.md) explains Flux, Argo CD, OCI, and plugin delivery
+- [Substrates](concepts/substrates.md) explains Flux, Argo CD, OCI, and plugin delivery
   options.
 - [Operations](operations/operations.md) covers day-two status, debugging, and metrics.
-- [v1alpha1 to v1alpha2 Migration](migration/migration-v1alpha1-to-v1alpha2.md) explains
-  the clean-break upgrade path for legacy alpha manifests.
+- [API Stability](concepts/api-stability.md) explains the pre-stable clean-break
+  policy and the public/runtime API split.
 - [Competitive Positioning](adr/0012-competitive-positioning.md) explains where
   Kapro fits beside Sveltos, Argo Rollouts, Flagger, and GitOps Toolkit.
 
@@ -46,8 +46,8 @@ cluster provisioner, or secret store.
 | Kind | Role |
 |---|---|
 | `Fleet` | Fleet setup root: source, delivery defaults, clusters, and embedded stage plan. |
-| `Source` | Reusable catalog of deployable units and backend write targets. |
-| `Backend` | Delivery driver configuration for Flux, Argo CD, OCI, or plugin-backed execution. |
+| `Source` | Reusable catalog of deployable units and substrate write targets. |
+| `Substrate` | Delivery driver configuration for Flux, Argo CD, OCI, direct apply, or plugin-backed execution. |
 | `Plan` | Stage order, target selection, and gates generated from or referenced by a Fleet. |
 | `Promotion` | User-authored rollout intent. |
 | `PromotionRun` | Controller-authored execution attempt and audit record. |
@@ -55,5 +55,6 @@ cluster provisioner, or secret store.
 | `Cluster` | A workload cluster known to the hub. |
 | `Approval` | Human approval or rejection for a gated target. |
 
-Kapro is pre-stable public release software. The current Kubernetes API group is
-`kapro.io/v1alpha2`.
+Kapro is pre-stable public release software. User-authored APIs live in
+`kapro.io/v1alpha1`; controller-owned runtime records live in
+`runtime.kapro.io/v1alpha1`.

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/conformance"
 	ksisubstrate "kapro.io/kapro/pkg/kapro/substrate"
 )
@@ -27,15 +27,15 @@ type Scenario struct {
 
 // DefaultScenario returns a minimal deterministic KSI scenario.
 func DefaultScenario() Scenario {
-	backend := &kaprov1alpha2.Backend{
-		Spec: kaprov1alpha2.BackendSpec{
-			ClassRef: &kaprov1alpha2.SubstrateClassReference{Name: "conformance"},
+	substrate := &kaprov1alpha1.Substrate{
+		Spec: kaprov1alpha1.SubstrateSpec{
+			ClassRef: &kaprov1alpha1.SubstrateClassReference{Name: "conformance"},
 		},
 	}
-	cluster := &kaprov1alpha2.Cluster{}
+	cluster := &kaprov1alpha1.Cluster{}
 	versions := map[string]string{"app": "v1.0.0"}
 	envelope := ksisubstrate.RequestEnvelope{
-		Backend:    backend,
+		Substrate:  substrate,
 		Cluster:    cluster,
 		Parameters: map[string]string{"conformance": "true"},
 	}
@@ -280,7 +280,7 @@ func checkApplyDoesNotMutateRequest(ctx context.Context, s ksisubstrate.Substrat
 	return conformance.Pass(name)
 }
 
-func missingOperations(ops *kaprov1alpha2.SubstrateOperationCapabilities, required []string) []string {
+func missingOperations(ops *kaprov1alpha1.SubstrateOperationCapabilities, required []string) []string {
 	var missing []string
 	for _, op := range required {
 		switch op {
@@ -319,7 +319,7 @@ func sameApplyShape(first, second *ksisubstrate.ApplyResult) bool {
 		first.Applied == second.Applied &&
 		first.Reason == second.Reason &&
 		first.Message == second.Message &&
-		reflect.DeepEqual(sortedBackendObjects(first.BackendObjects), sortedBackendObjects(second.BackendObjects))
+		reflect.DeepEqual(sortedSubstrateObjects(first.SubstrateObjects), sortedSubstrateObjects(second.SubstrateObjects))
 }
 
 func sameObserveShape(first, second *ksisubstrate.ObserveResult) bool {
@@ -330,18 +330,18 @@ func sameObserveShape(first, second *ksisubstrate.ObserveResult) bool {
 		first.Phase == second.Phase &&
 		first.Reason == second.Reason &&
 		first.Message == second.Message &&
-		reflect.DeepEqual(sortedBackendObjects(first.BackendObjects), sortedBackendObjects(second.BackendObjects))
+		reflect.DeepEqual(sortedSubstrateObjects(first.SubstrateObjects), sortedSubstrateObjects(second.SubstrateObjects))
 }
 
-func sortedBackendObjects(in []kaprov1alpha2.BackendObjectStatus) []kaprov1alpha2.BackendObjectStatus {
-	out := append([]kaprov1alpha2.BackendObjectStatus(nil), in...)
+func sortedSubstrateObjects(in []kaprov1alpha1.SubstrateObjectStatus) []kaprov1alpha1.SubstrateObjectStatus {
+	out := append([]kaprov1alpha1.SubstrateObjectStatus(nil), in...)
 	sort.SliceStable(out, func(i, j int) bool {
-		return backendObjectKey(out[i]) < backendObjectKey(out[j])
+		return substrateObjectKey(out[i]) < substrateObjectKey(out[j])
 	})
 	return out
 }
 
-func backendObjectKey(in kaprov1alpha2.BackendObjectStatus) string {
+func substrateObjectKey(in kaprov1alpha1.SubstrateObjectStatus) string {
 	return in.APIVersion + "\x00" +
 		in.Kind + "\x00" +
 		in.Namespace + "\x00" +
@@ -380,8 +380,8 @@ func cloneEnvelope(in ksisubstrate.RequestEnvelope) ksisubstrate.RequestEnvelope
 	if in.Class != nil {
 		out.Class = in.Class.DeepCopy()
 	}
-	if in.Backend != nil {
-		out.Backend = in.Backend.DeepCopy()
+	if in.Substrate != nil {
+		out.Substrate = in.Substrate.DeepCopy()
 	}
 	if in.Config != nil {
 		out.Config = in.Config.DeepCopyObject()

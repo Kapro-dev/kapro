@@ -10,6 +10,8 @@ controllers:
   - promotion
   - promotionrun
   - cluster
+  - substrateclass
+  - substrate
 ```
 
 `promotionrun` also starts the `target` controller because `Target` is the
@@ -26,12 +28,10 @@ runtime child state for each execution attempt. You do not need to list
 | `promotionrun` | Yes | Orchestrates run execution and creates `Target` children. |
 | `target` | Implicit | Executes per-cluster or per-stage runtime state for a run. |
 | `cluster` | Yes | Maintains cluster heartbeat and readiness status. |
-| `substrateclass` | No | Publishes status and capabilities for Kapro-owned `SubstrateClass` objects. |
-| `backend` | No | Writes external backend readiness and backend-native discovery status. Built-in `flux`, `argo`, and `oci` Backend specs are usable without this controller. |
-| `adapterpolicy` | No | Runs continuous backend-native discovery for `AdapterPolicy` objects created by live `kapro adopt --apply` flows. |
+| `substrateclass` | Yes | Publishes status and capabilities for Kapro-owned `SubstrateClass` objects. |
+| `substrate` | Yes | Writes substrate readiness and substrate-native discovery status. Required by generated `Substrate.spec.classRef` profiles before `Cluster` objects can reference a substrate. |
+| `substratediscoverypolicy` | No | Runs continuous substrate-native discovery for `SubstrateDiscoveryPolicy` objects created by live `kapro adopt --apply` flows. |
 | `approval` | No | Reconciles `Approval` objects that unblock approval gates. |
-| `gateexpression` | No | Reconciles `GateExpression` preview composition status. |
-| `fleetdriftreport` | No | Computes read-only desired-vs-observed drift summaries from `Target` and `Cluster` status. |
 | `trigger` | No | Creates or updates `Promotion` from artifact changes. |
 | `plugin` | No | Reconciles plugin readiness when the plugin gateway is enabled. |
 | `cluster-bootstrap` | No | Provisions CSR bootstrap material for spoke cluster registration. |
@@ -56,15 +56,6 @@ helm upgrade --install kapro "$KAPRO_CHART" \
   --set controllers='{fleet,plan,promotion,promotionrun,cluster,trigger,approval}'
 ```
 
-Run generated `bootstrap generate` profiles that use `Backend.spec.classRef`:
-
-```bash
-helm upgrade --install kapro "$KAPRO_CHART" \
-  --namespace kapro-system \
-  --create-namespace \
-  --set controllers='{fleet,plan,promotion,promotionrun,cluster,substrateclass,backend}'
-```
-
 Run live existing-GitOps adoption with `kapro adopt argo --apply` or
 `kapro adopt flux --apply`:
 
@@ -72,7 +63,7 @@ Run live existing-GitOps adoption with `kapro adopt argo --apply` or
 helm upgrade --install kapro "$KAPRO_CHART" \
   --namespace kapro-system \
   --create-namespace \
-  --set controllers='{fleet,plan,promotion,promotionrun,cluster,backend,adapterpolicy}'
+  --set controllers='{fleet,plan,promotion,promotionrun,cluster,substrateclass,substrate,substratediscoverypolicy}'
 ```
 
 Run every canonical controller:
@@ -94,10 +85,8 @@ they do not start duplicate controllers:
 | `kapro` | `fleet` |
 | `promotion-target` | `target` |
 | `fleetcluster-heartbeat` | `cluster` |
-| `gate-expression` | `gateexpression` |
 | `substrate-class` | `substrateclass` |
-| `backend-profile` | `backend` |
-| `fleet-drift-report` | `fleetdriftreport` |
+| `substrate-profile` | `substrate` |
 | `plugin-registration` | `plugin` |
 | `promotion-trigger` | `trigger` |
 | `fleetcluster-bootstrap` | `cluster-bootstrap` |

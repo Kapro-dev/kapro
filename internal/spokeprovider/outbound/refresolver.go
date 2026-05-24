@@ -25,7 +25,7 @@ type RefResolver interface {
 	Resolve(ctx context.Context, req spokeprovider.ReconcileRequest) (delivery.ArtifactRef, error)
 }
 
-// Recognised parameter keys on BackendProfile.Spec.Parameters /
+// Recognised parameter keys on SubstrateProfile.Spec.Parameters /
 // FleetCluster.Spec.Delivery.Parameters. Kept exported so tests and the
 // scaffolding CLI can reference them by name rather than re-typing strings.
 const (
@@ -68,7 +68,7 @@ func (r *ParametersRefResolver) Resolve(ctx context.Context, req spokeprovider.R
 	}
 	repoTpl := strings.TrimSpace(req.Parameters[ParamRepository])
 	if repoTpl == "" {
-		return delivery.ArtifactRef{}, fmt.Errorf("parameter %q required for driver=oci", ParamRepository)
+		return delivery.ArtifactRef{}, fmt.Errorf("parameter %q required for substrate kind=oci", ParamRepository)
 	}
 	tagTpl := req.Parameters[ParamTag]
 	if tagTpl == "" {

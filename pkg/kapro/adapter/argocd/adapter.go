@@ -1,25 +1,25 @@
-// Package argocd provides a public reference adapter for Argo CD backends.
+// Package argocd provides a public reference adapter for Argo CD substrates.
 package argocd
 
 import (
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/pkg/kapro/adapter"
 )
 
 // New returns a discovery-first Argo CD reference adapter.
 func New() adapter.Adapter {
-	return adapter.NewReferenceAdapter(kaprov1alpha2.BackendDriverArgo, kaprov1alpha2.BackendRuntimeHub, Model())
+	return adapter.NewReferenceAdapter(kaprov1alpha1.SubstrateKindArgo, kaprov1alpha1.ExecutionScopeHub, Model())
 }
 
-// Model returns the Argo CD discovery shape currently modeled by Backend
+// Model returns the Argo CD discovery shape currently modeled by Substrate
 // discovery: cluster Secrets, Applications, and ApplicationSets.
 func Model() adapter.DiscoveryModel {
 	return adapter.DiscoveryModel{
-		Driver:           kaprov1alpha2.BackendDriverArgo,
-		Runtime:          kaprov1alpha2.BackendRuntimeHub,
+		SubstrateKind:    kaprov1alpha1.SubstrateKindArgo,
+		ExecutionScope:   kaprov1alpha1.ExecutionScopeHub,
 		DefaultNamespace: "argocd",
 		Supported:        true,
-		SelectedObjects: []kaprov1alpha2.DiscoveredBackendObject{
+		SelectedObjects: []kaprov1alpha1.DiscoveredSubstrateObject{
 			{
 				APIVersion: "v1",
 				Kind:       "Secret",
@@ -34,7 +34,7 @@ func Model() adapter.DiscoveryModel {
 				VersionField: "spec.source.targetRevision",
 			},
 		},
-		SkippedObjects: []kaprov1alpha2.DiscoveredBackendObject{
+		SkippedObjects: []kaprov1alpha1.DiscoveredSubstrateObject{
 			{
 				APIVersion:   "argoproj.io/v1alpha1",
 				Kind:         "Application",
@@ -50,7 +50,7 @@ func Model() adapter.DiscoveryModel {
 				VersionField: "spec.template.spec.source.targetRevision",
 			},
 		},
-		UnsupportedObjects: []kaprov1alpha2.DiscoveredBackendObject{
+		UnsupportedObjects: []kaprov1alpha1.DiscoveredSubstrateObject{
 			{
 				APIVersion:   "argoproj.io/v1alpha1",
 				Kind:         "Application",

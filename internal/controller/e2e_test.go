@@ -7,12 +7,14 @@ import (
 	"testing"
 	"time"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // TestE2E_PromotionRun_Sync_Converged is the full integration test of
@@ -43,14 +45,14 @@ func TestE2E_PromotionRun_Sync_Converged(t *testing.T) {
 	// Tier labels are used by promotionplan stage selectors.
 	// SyncReconciler.handlePending checks LastHeartbeat freshness.
 	// handleApplying checks CurrentVersions[appKey] == sync.Spec.Version.
-	devReg := &kaprov1alpha2.Cluster{
+	devReg := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "e2e-dev-" + suffix,
 			Labels: map[string]string{"tier": "dev", "e2e": suffix},
 		},
-		Spec: kaprov1alpha2.ClusterSpec{
-			Delivery: kaprov1alpha2.DeliverySpec{
-				Mode: "pull", BackendRef: "flux",
+		Spec: kaprov1alpha1.ClusterSpec{
+			Delivery: kaprov1alpha1.DeliverySpec{
+				Mode: "pull", SubstrateRef: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "test-repo"},
 			},
 		},
@@ -58,14 +60,14 @@ func TestE2E_PromotionRun_Sync_Converged(t *testing.T) {
 	mustCreate(t, ctx, c, devReg)
 	patchRegistrationConverged(t, ctx, c, devReg, versions)
 
-	prodReg := &kaprov1alpha2.Cluster{
+	prodReg := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "e2e-prod-" + suffix,
 			Labels: map[string]string{"tier": "prod", "e2e": suffix},
 		},
-		Spec: kaprov1alpha2.ClusterSpec{
-			Delivery: kaprov1alpha2.DeliverySpec{
-				Mode: "pull", BackendRef: "flux",
+		Spec: kaprov1alpha1.ClusterSpec{
+			Delivery: kaprov1alpha1.DeliverySpec{
+				Mode: "pull", SubstrateRef: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "test-repo"},
 			},
 		},
@@ -75,10 +77,10 @@ func TestE2E_PromotionRun_Sync_Converged(t *testing.T) {
 
 	// ── 4. Create Plan ────────────────────────────────────────────────────
 	// Two stages: "dev" runs first, "prod" depends on it.
-	promotionplan := &kaprov1alpha2.Plan{
+	promotionplan := &kaprov1alpha1.Plan{
 		ObjectMeta: metav1.ObjectMeta{Name: "e2e-promotionplan-" + suffix},
-		Spec: kaprov1alpha2.PlanSpec{
-			Stages: []kaprov1alpha2.Stage{
+		Spec: kaprov1alpha1.PlanSpec{
+			Stages: []kaprov1alpha1.Stage{
 				{
 					Name:     "dev",
 					Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev", "e2e": suffix}},
@@ -86,7 +88,7 @@ func TestE2E_PromotionRun_Sync_Converged(t *testing.T) {
 				{
 					Name:      "prod",
 					Selector:  metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod", "e2e": suffix}},
-					DependsOn: []kaprov1alpha2.StageDependency{{Stage: "dev"}},
+					DependsOn: []kaprov1alpha1.StageDependency{{Stage: "dev"}},
 				},
 			},
 		},
@@ -95,11 +97,11 @@ func TestE2E_PromotionRun_Sync_Converged(t *testing.T) {
 
 	// ── 5. Create PromotionRun ─────────────────────────────────────────────────────
 	// Single promotionplan node referencing the promotionplan CRD.
-	promotionrun := &kaprov1alpha2.PromotionRun{
+	promotionrun := &kaproruntimev1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "e2e-promotionrun-" + suffix, Namespace: ns},
-		Spec: kaprov1alpha2.PromotionRunSpec{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: resolvedVersion,
-			Plans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha1.PlanRef{
 				{
 					Name: "initial",
 					Plan: promotionplan.Name,
@@ -114,7 +116,7 @@ func TestE2E_PromotionRun_Sync_Converged(t *testing.T) {
 	// ── 6. Wait: PromotionRun leaves Pending ──────────────────────────────────────
 	eventually(t, func() bool {
 		r := getPromotionRun(ctx, c, promotionrunKey)
-		return r.Status.Phase != "" && r.Status.Phase != kaprov1alpha2.PromotionRunPhasePending
+		return r.Status.Phase != "" && r.Status.Phase != kaprov1alpha1.PromotionRunPhasePending
 	}, "promotionrun should leave Pending")
 	t.Logf("promotionrun phase after Pending: %s", getPromotionRun(ctx, c, promotionrunKey).Status.Phase)
 
@@ -137,7 +139,7 @@ func TestE2E_PromotionRun_Sync_Converged(t *testing.T) {
 		}
 		r := getPromotionRun(ctx, c, promotionrunKey)
 		t.Logf("  PromotionRun phase=%s", r.Status.Phase)
-		return r.Status.Phase == kaprov1alpha2.PromotionRunPhaseComplete
+		return r.Status.Phase == kaprov1alpha1.PromotionRunPhaseComplete
 	}, "promotionrun should reach Complete — full chain PromotionRun→Env FSM→Converged→Complete")
 
 	t.Logf("✅ E2E chain complete — PromotionRun %s reached Complete", promotionrun.Name)
@@ -169,26 +171,26 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 	haltVersion := "172.17.0.1:5000/halt-bundle@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 	// ── 2. Create two FleetClusters matching the same stage ─────────────────
-	mc1 := &kaprov1alpha2.Cluster{
+	mc1 := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "halt-cluster1-" + suffix,
 			Labels: map[string]string{"tier": "halt", "halt-test": suffix},
 		},
-		Spec: kaprov1alpha2.ClusterSpec{
-			Delivery: kaprov1alpha2.DeliverySpec{
-				Mode: "pull", BackendRef: "flux",
+		Spec: kaprov1alpha1.ClusterSpec{
+			Delivery: kaprov1alpha1.DeliverySpec{
+				Mode: "pull", SubstrateRef: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "test-repo"},
 			},
 		},
 	}
-	mc2 := &kaprov1alpha2.Cluster{
+	mc2 := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "halt-cluster2-" + suffix,
 			Labels: map[string]string{"tier": "halt", "halt-test": suffix},
 		},
-		Spec: kaprov1alpha2.ClusterSpec{
-			Delivery: kaprov1alpha2.DeliverySpec{
-				Mode: "pull", BackendRef: "flux",
+		Spec: kaprov1alpha1.ClusterSpec{
+			Delivery: kaprov1alpha1.DeliverySpec{
+				Mode: "pull", SubstrateRef: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "test-repo"},
 			},
 		},
@@ -199,10 +201,10 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 	// We'll patch one target to Failed manually after it's created.
 
 	// ── 3. Create Plan: one stage, default onFailure (halt) ──────────────
-	promotionplan := &kaprov1alpha2.Plan{
+	promotionplan := &kaprov1alpha1.Plan{
 		ObjectMeta: metav1.ObjectMeta{Name: "halt-promotionplan-" + suffix},
-		Spec: kaprov1alpha2.PlanSpec{
-			Stages: []kaprov1alpha2.Stage{{
+		Spec: kaprov1alpha1.PlanSpec{
+			Stages: []kaprov1alpha1.Stage{{
 				Name:     "deploy",
 				Selector: metav1.LabelSelector{MatchLabels: map[string]string{"halt-test": suffix}},
 				// OnFailure not set → defaults to halt
@@ -212,11 +214,11 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 	mustCreate(t, ctx, c, promotionplan)
 
 	// ── 4. Create PromotionRun ────────────────────────────────────────────────────
-	promotionrun := &kaprov1alpha2.PromotionRun{
+	promotionrun := &kaproruntimev1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "halt-promotionrun-" + suffix, Namespace: ns},
-		Spec: kaprov1alpha2.PromotionRunSpec{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: haltVersion,
-			Plans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha1.PlanRef{
 				{Name: "initial", Plan: promotionplan.Name},
 			},
 		},
@@ -235,7 +237,7 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 	// Wait a moment for the controller to process, then patch.
 	time.Sleep(500 * time.Millisecond)
 	targets := listPromotionTargets(t, ctx, c, promotionrun.Name, ns)
-	var victim *kaprov1alpha2.Target
+	var victim *kaproruntimev1alpha1.Target
 	for i := range targets {
 		if targets[i].Spec.Target == mc1.Name {
 			victim = &targets[i]
@@ -246,7 +248,7 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 		t.Fatal("could not find PromotionTarget for " + mc1.Name)
 	}
 	patch := client.MergeFrom(victim.DeepCopy())
-	victim.Status.Phase = kaprov1alpha2.TargetPhaseFailed
+	victim.Status.Phase = kaprov1alpha1.TargetPhaseFailed
 	victim.Status.Message = "deploy failed: simulated"
 	victim.Status.FinishedAt = time.Now().UTC().Format(time.RFC3339)
 	if err := c.Status().Patch(ctx, victim, patch); err != nil {
@@ -255,7 +257,7 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 	t.Logf("patched %s to Failed", victim.Name)
 
 	// Nudge the PromotionRun to trigger re-aggregation of child statuses.
-	var rel kaprov1alpha2.PromotionRun
+	var rel kaproruntimev1alpha1.PromotionRun
 	if err := c.Get(ctx, promotionrunKey, &rel); err == nil {
 		relPatch := client.MergeFrom(rel.DeepCopy())
 		if rel.Annotations == nil {
@@ -293,7 +295,7 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 		targets := listPromotionTargets(t, ctx, c, promotionrun.Name, ns)
 		for _, rt := range targets {
 			if rt.Spec.Target == mc2.Name {
-				return rt.Status.Phase == kaprov1alpha2.TargetPhaseFailed
+				return rt.Status.Phase == kaprov1alpha1.TargetPhaseFailed
 			}
 		}
 		return false
@@ -302,14 +304,14 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 	// ── 10. Wait: PromotionRun reaches Failed ─────────────────────────────────────
 	eventually(t, func() bool {
 		r := getPromotionRun(ctx, c, promotionrunKey)
-		return r.Status.Phase == kaprov1alpha2.PromotionRunPhaseFailed
+		return r.Status.Phase == kaprov1alpha1.PromotionRunPhaseFailed
 	}, "promotionrun should reach Failed after halt policy")
 
 	// ── 11. Verify the trigger target is still Failed (not overwritten) ──────
 	finalTargets := listPromotionTargets(t, ctx, c, promotionrun.Name, ns)
 	for _, rt := range finalTargets {
 		if rt.Spec.Target == mc1.Name {
-			if rt.Status.Phase != kaprov1alpha2.TargetPhaseFailed {
+			if rt.Status.Phase != kaprov1alpha1.TargetPhaseFailed {
 				t.Errorf("trigger target phase changed to %s — expected Failed", rt.Status.Phase)
 			}
 			break
@@ -329,23 +331,23 @@ func TestE2E_HaltPolicy_CancelsSiblingTarget(t *testing.T) {
 // what TargetReconciler.requireFreshHeartbeat now reads to decide
 // whether to proceed. Without this, the e2e would defer indefinitely
 // because no Ready condition is observed.
-func patchRegistrationConverged(t *testing.T, ctx context.Context, c client.Client, reg *kaprov1alpha2.Cluster, currentVersions map[string]string) {
+func patchRegistrationConverged(t *testing.T, ctx context.Context, c client.Client, reg *kaprov1alpha1.Cluster, currentVersions map[string]string) {
 	t.Helper()
 	// Retry Get — caching client may not have synced immediately after Create.
-	latest := &kaprov1alpha2.Cluster{}
+	latest := &kaprov1alpha1.Cluster{}
 	eventually(t, func() bool {
 		err := c.Get(ctx, types.NamespacedName{Name: reg.Name}, latest)
 		return err == nil
 	}, "FleetCluster "+reg.Name+" to appear in cache")
 	patch := client.MergeFrom(latest.DeepCopy())
 	latest.Status.LastHeartbeat = time.Now().UTC().Format(time.RFC3339)
-	latest.Status.Phase = kaprov1alpha2.ClusterPhaseConverged
+	latest.Status.Phase = kaprov1alpha1.ClusterPhaseConverged
 	latest.Status.CurrentVersions = currentVersions
-	latest.Status.Health = kaprov1alpha2.ClusterHealth{AllWorkloadsReady: true}
+	latest.Status.Health = kaprov1alpha1.ClusterHealth{AllWorkloadsReady: true}
 	apimeta.SetStatusCondition(&latest.Status.Conditions, metav1.Condition{
-		Type:    kaprov1alpha2.ConditionTypeReady,
+		Type:    kaprov1alpha1.ConditionTypeReady,
 		Status:  metav1.ConditionTrue,
-		Reason:  kaprov1alpha2.ReasonHeartbeatFresh,
+		Reason:  kaprov1alpha1.ReasonHeartbeatFresh,
 		Message: "simulated by e2e patchRegistrationConverged",
 	})
 	if err := c.Status().Patch(ctx, latest, patch); err != nil {

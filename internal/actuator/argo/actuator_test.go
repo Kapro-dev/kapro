@@ -9,7 +9,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/pkg/actuator"
 )
 
@@ -21,9 +21,9 @@ func TestApplyRequestsHardRefreshAndSyncOperation(t *testing.T) {
 		WithObjects(app).
 		Build()
 	act := &Actuator{Client: c}
-	cluster := &kaprov1alpha2.Cluster{
-		Spec: kaprov1alpha2.ClusterSpec{
-			Delivery: kaprov1alpha2.DeliverySpec{
+	cluster := &kaprov1alpha1.Cluster{
+		Spec: kaprov1alpha1.ClusterSpec{
+			Delivery: kaprov1alpha1.DeliverySpec{
 				Parameters: map[string]string{
 					"namespace":   "argocd",
 					"application": "checkout",
@@ -67,9 +67,9 @@ func TestApplyRequiresAuthorizedApplication(t *testing.T) {
 		WithObjects(app).
 		Build()
 	act := &Actuator{Client: c}
-	cluster := &kaprov1alpha2.Cluster{
-		Spec: kaprov1alpha2.ClusterSpec{
-			Delivery: kaprov1alpha2.DeliverySpec{
+	cluster := &kaprov1alpha1.Cluster{
+		Spec: kaprov1alpha1.ClusterSpec{
+			Delivery: kaprov1alpha1.DeliverySpec{
 				Parameters: map[string]string{
 					"namespace":   "argocd",
 					"application": "checkout",
@@ -84,7 +84,7 @@ func TestApplyRequiresAuthorizedApplication(t *testing.T) {
 	}
 }
 
-func TestApplyByApplicationSelectorAndReportsBackendObjects(t *testing.T) {
+func TestApplyByApplicationSelectorAndReportsSubstrateObjects(t *testing.T) {
 	ctx := context.Background()
 	appA := newArgoApplication("argocd", "checkout-dev-a", "old")
 	appA.SetLabels(map[string]string{"kapro.io/managed-by": "kapro", "team": "checkout", "env": "dev"})
@@ -95,9 +95,9 @@ func TestApplyByApplicationSelectorAndReportsBackendObjects(t *testing.T) {
 		WithObjects(appA, appB).
 		Build()
 	act := &Actuator{Client: c}
-	cluster := &kaprov1alpha2.Cluster{
-		Spec: kaprov1alpha2.ClusterSpec{
-			Delivery: kaprov1alpha2.DeliverySpec{
+	cluster := &kaprov1alpha1.Cluster{
+		Spec: kaprov1alpha1.ClusterSpec{
+			Delivery: kaprov1alpha1.DeliverySpec{
 				Parameters: map[string]string{
 					"namespace":           "argocd",
 					"applicationSelector": "team=checkout,env=dev",
@@ -109,15 +109,15 @@ func TestApplyByApplicationSelectorAndReportsBackendObjects(t *testing.T) {
 	if err := act.Apply(ctx, actuator.ApplyRequest{Cluster: cluster, Version: "v1.2.3"}); err != nil {
 		t.Fatal(err)
 	}
-	statuses, err := act.BackendObjects(ctx, cluster, map[string]string{"default": "v1.2.3"})
+	statuses, err := act.SubstrateObjects(ctx, cluster, map[string]string{"default": "v1.2.3"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(statuses) != 2 {
-		t.Fatalf("backend objects=%d, want 2", len(statuses))
+		t.Fatalf("substrate objects=%d, want 2", len(statuses))
 	}
 	if statuses[0].Name != "checkout-dev-a" || statuses[0].CurrentVersion != "v1.2.3" {
-		t.Fatalf("unexpected first backend status: %#v", statuses[0])
+		t.Fatalf("unexpected first substrate status: %#v", statuses[0])
 	}
 }
 

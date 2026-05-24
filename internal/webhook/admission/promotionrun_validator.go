@@ -8,12 +8,12 @@ import (
 	"reflect"
 	"strings"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	admissionv1 "k8s.io/api/admission/v1"
 	authenticationv1 "k8s.io/api/authentication/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
-
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 // PromotionRun create/update is restricted to the Kapro controller service
@@ -108,7 +108,7 @@ func (v *PromotionRunValidator) Handle(_ context.Context, req admission.Request)
 		}
 	}
 
-	var promotionRun kaprov1alpha2.PromotionRun
+	var promotionRun kaproruntimev1alpha1.PromotionRun
 	if err := v.decoder.DecodeRaw(req.Object, &promotionRun); err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
 	}
@@ -121,7 +121,7 @@ func (v *PromotionRunValidator) Handle(_ context.Context, req admission.Request)
 		}
 	}
 	if req.Operation == admissionv1.Update {
-		var old kaprov1alpha2.PromotionRun
+		var old kaproruntimev1alpha1.PromotionRun
 		if err := v.decoder.DecodeRaw(req.OldObject, &old); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}
@@ -132,7 +132,7 @@ func (v *PromotionRunValidator) Handle(_ context.Context, req admission.Request)
 	return admission.Allowed("")
 }
 
-func validatePromotionRun(r *kaprov1alpha2.PromotionRun) error {
+func validatePromotionRun(r *kaproruntimev1alpha1.PromotionRun) error {
 	var allErrs field.ErrorList
 	if r.Spec.Version == "" && len(r.Spec.Versions) == 0 {
 		allErrs = append(allErrs, field.Required(field.NewPath("spec"), "version or versions is required"))
@@ -186,7 +186,7 @@ func validatePromotionRun(r *kaprov1alpha2.PromotionRun) error {
 	return nil
 }
 
-func validatePromotionRunUpdate(old, new *kaprov1alpha2.PromotionRun) error {
+func validatePromotionRunUpdate(old, new *kaproruntimev1alpha1.PromotionRun) error {
 	if old.Spec.Version != new.Spec.Version {
 		return fmt.Errorf("promotionRun.spec.version is immutable after creation")
 	}
@@ -203,11 +203,11 @@ func validatePromotionRunUpdate(old, new *kaprov1alpha2.PromotionRun) error {
 }
 
 // ValidatePromotionRun is an exported test helper that exposes the internal validation logic.
-func ValidatePromotionRun(r *kaprov1alpha2.PromotionRun) error {
+func ValidatePromotionRun(r *kaproruntimev1alpha1.PromotionRun) error {
 	return validatePromotionRun(r)
 }
 
 // ValidatePromotionRunUpdate is an exported test helper for update immutability rules.
-func ValidatePromotionRunUpdate(old, new *kaprov1alpha2.PromotionRun) error {
+func ValidatePromotionRunUpdate(old, new *kaproruntimev1alpha1.PromotionRun) error {
 	return validatePromotionRunUpdate(old, new)
 }

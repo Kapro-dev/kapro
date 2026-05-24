@@ -92,4 +92,4 @@ failed.
 ## References
 
 - [ADR-0001](0001-promotion-runtime-split.md)
-- [Migration guide: v1alpha1 to v1alpha2](../migration/migration-v1alpha1-to-v1alpha2.md)
+- [Pre-0.6 API reset](../migration/pre-0.6-api-reset.md)

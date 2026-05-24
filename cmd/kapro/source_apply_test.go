@@ -12,14 +12,14 @@ func TestRunSourceApplyUpdatesGitJSONFieldWithInclude(t *testing.T) {
 	writeTestFile(t, repo, "argocd/environments/dev.json", `{"env":"dev","gkProjectVersion":"1.0.0"}`)
 	writeTestFile(t, repo, "argocd/environments/prod.json", `{"env":"prod","gkProjectVersion":"1.0.0"}`)
 	sourcePath := filepath.Join(repo, "sources/checkout.yaml")
-	writeTestFile(t, repo, "sources/checkout.yaml", `apiVersion: kapro.io/v1alpha2
+	writeTestFile(t, repo, "sources/checkout.yaml", `apiVersion: kapro.io/v1alpha1
 kind: Source
 metadata:
   name: checkout
 spec:
   units:
   - name: checkout-api
-    backendKind: GitJSONField
+    substrateKind: GitJSONField
     versionField: argocd/environments/*.json:gkProjectVersion
 `)
 	initTestGitRepo(t, repo)
@@ -56,18 +56,18 @@ spec:
 	writeTestFile(t, repo, "argocd/environments/dev.json", `{"gkProjectVersion":"1.0.0"}`)
 	writeTestFile(t, repo, "argocd/environments/prod.json", `{"gkProjectVersion":"1.0.0"}`)
 	sourcePath := filepath.Join(repo, "source.yaml")
-	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
 kind: Source
 metadata:
   name: checkout
 spec:
   units:
   - name: api
-    backendKind: ArgoApplicationSource
+    substrateKind: ArgoApplicationSource
     sourcePath: argocd/applications/api.yaml
     versionField: spec.source.targetRevision
   - name: appset
-    backendKind: GitJSONField
+    substrateKind: GitJSONField
     versionField: argocd/environments/*.json:gkProjectVersion
 `)
 	initTestGitRepo(t, repo)
@@ -100,14 +100,14 @@ func TestRunSourceApplyFailsClosedForMultiFileGlob(t *testing.T) {
 	writeTestFile(t, repo, "env/dev.json", `{"version":"1.0.0"}`)
 	writeTestFile(t, repo, "env/prod.json", `{"version":"1.0.0"}`)
 	sourcePath := filepath.Join(repo, "source.yaml")
-	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
 kind: Source
 metadata:
   name: checkout
 spec:
   units:
   - name: api
-    backendKind: GitJSONField
+    substrateKind: GitJSONField
     versionField: env/*.json:version
 `)
 	initTestGitRepo(t, repo)
@@ -126,14 +126,14 @@ func TestRunSourceApplyRejectsUnknownUnit(t *testing.T) {
 	repo := t.TempDir()
 	writeTestFile(t, repo, "env/dev.json", `{"version":"1.0.0"}`)
 	sourcePath := filepath.Join(repo, "source.yaml")
-	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
 kind: Source
 metadata:
   name: checkout
 spec:
   units:
   - name: api
-    backendKind: GitJSONField
+    substrateKind: GitJSONField
     versionField: env/dev.json:version
 `)
 	initTestGitRepo(t, repo)
@@ -152,17 +152,17 @@ func TestRunSourceApplyRejectsConflictingWrites(t *testing.T) {
 	repo := t.TempDir()
 	writeTestFile(t, repo, "env/dev.json", `{"version":"1.0.0"}`)
 	sourcePath := filepath.Join(repo, "source.yaml")
-	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
 kind: Source
 metadata:
   name: checkout
 spec:
   units:
   - name: api
-    backendKind: GitJSONField
+    substrateKind: GitJSONField
     versionField: env/dev.json:version
   - name: worker
-    backendKind: GitJSONField
+    substrateKind: GitJSONField
     versionField: env/dev.json:version
 `)
 	initTestGitRepo(t, repo)
@@ -185,18 +185,18 @@ func TestRunSourceApplyDoesNotPartiallyWriteOnFailure(t *testing.T) {
   - tag: old
 `)
 	sourcePath := filepath.Join(repo, "source.yaml")
-	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
 kind: Source
 metadata:
   name: checkout
 spec:
   units:
   - name: valid
-    backendKind: GitYAMLField
+    substrateKind: GitYAMLField
     sourcePath: app.yaml
     versionField: spec.good
   - name: invalid
-    backendKind: GitYAMLField
+    substrateKind: GitYAMLField
     sourcePath: app.yaml
     versionField: spec.items[9].tag
 `)
@@ -229,14 +229,14 @@ spec:
     path: apps/api
 `)
 	sourcePath := filepath.Join(repo, "source.yaml")
-	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
 kind: Source
 metadata:
   name: checkout
 spec:
   units:
   - name: api
-    backendKind: ArgoApplicationSource
+    substrateKind: ArgoApplicationSource
     sourcePath: apps/api.yaml
     versionField: spec.source.targetRevision
 `)
@@ -265,14 +265,14 @@ images:
   newTag: old
 `)
 	sourcePath := filepath.Join(repo, "source.yaml")
-	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
 kind: Source
 metadata:
   name: checkout
 spec:
   units:
   - name: api
-    backendKind: KustomizeImage
+    substrateKind: KustomizeImage
     sourcePath: apps/api/kustomization.yaml
     versionField: example.com/api
 `)
@@ -296,14 +296,14 @@ func TestRunSourceApplyIgnoresUntrackedFiles(t *testing.T) {
 	repo := t.TempDir()
 	writeTestFile(t, repo, "env/dev.json", `{"version":"1.0.0"}`)
 	sourcePath := filepath.Join(repo, "source.yaml")
-	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha2
+	writeTestFile(t, repo, "source.yaml", `apiVersion: kapro.io/v1alpha1
 kind: Source
 metadata:
   name: checkout
 spec:
   units:
   - name: api
-    backendKind: GitJSONField
+    substrateKind: GitJSONField
     versionField: env/prod.json:version
 `)
 	initTestGitRepo(t, repo)

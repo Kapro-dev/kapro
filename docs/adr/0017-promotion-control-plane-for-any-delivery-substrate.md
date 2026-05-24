@@ -16,10 +16,12 @@ such as Kargo. Some flows are Git-backed, some are Gitless, some are
 artifact-backed, and some are API-driven.
 
 ADR-0016 introduced `SubstrateClass`, typed config CRDs, and KSI as the
-technical contract for this extension model. This ADR records the higher-level
-positioning decision behind that contract: Kapro should be delivery-engine
-neutral while still retaining ownership of promotion policy, workflow,
-approval, trace, and compliance semantics.
+hub-side technical contract for this extension model. Spoke-side pull delivery
+uses KSP (`pkg/spokeprovider.Provider`) when work must execute from the
+cluster-side controller. This ADR records the higher-level positioning decision
+behind those contracts: Kapro should be delivery-engine neutral while still
+retaining ownership of promotion policy, workflow, approval, trace, and
+compliance semantics.
 
 ## Decision
 
@@ -135,6 +137,9 @@ contract:
   `SubstrateClass` implementations until the conformance suite is stable.
 - Keep direct Kubernetes apply as the smallest default delivery path. Treat OCI
   as one artifact source, not a mandatory default dependency.
+- Keep KSI and KSP distinct in documentation and conformance: KSI defines the
+  public hub-side substrate package/class contract, while KSP is only required
+  for substrate implementations that need spoke-side pull execution.
 - Add Helm direct delivery as either a renderer behind `kubernetes-apply` or a
   dedicated `helm-upgrade` substrate once release-state ownership is specified.
 - Add a `sveltos` substrate only after the default direct delivery path is
@@ -194,26 +199,31 @@ still be invoked externally, but they are not conformant Kapro substrates.
   class/config contract; it explains why that contract exists.
 - Reference substrates should continue to prove multiple families over time,
   but the `0.6.0` launch set is intentionally narrow: `kubernetes-apply`,
-  `argo-cd`, and `flux`. OCI and webhook remain valid substrate families after
-  the direct/GitOps bootstrap preview is credible.
+  `argo`, `flux`, and `oci`. Webhook/custom API delivery remains a valid
+  substrate family after a concrete actuator, status model, and conformance
+  profile exist; 0.6 should not ship empty webhook delivery CRDs.
+- OCI is intentionally included as the fourth `0.6.0` reference substrate
+  because it proves artifact-backed Gitless delivery and spoke-side execution.
+  It is not a default dependency for direct Kubernetes apply, Helm rendering,
+  or raw manifest delivery.
 - The `0.6.0` launch set must pass an internal Go substrate conformance suite.
   A public `kapro substrate conformance <class>` CLI can follow in `0.7.x`
   after the reference contract has proved itself.
 - The `0.6.0` launch set is a transition state: KSI reference scenarios prove
-  the public substrate contract, while the current in-tree direct, Argo CD, and
-  Flux runtime paths are still covered by actuator/controller tests until those
-  adapters expose native KSI implementations or tested KSI bridges.
-- OCI proves artifact-backed Gitless delivery, but it is not required for the
-  default direct path. Helm and raw manifests should be able to work without an
-  OCI registry when the selected substrate supports another source.
+  the public substrate contract, KSP provider conformance proves spoke-side
+  provider behavior where needed, and the current in-tree direct, Argo CD, Flux,
+  and OCI runtime paths are still covered by actuator/controller tests until
+  those adapters expose native KSI implementations or tested KSI bridges.
 - `tekton`, GitLab-style pipeline delivery, and similar systems fit the
   `pipeline` family once they can meet KSI and conformance requirements.
 - Kargo belongs in a later coexistence or migration lane unless a specific
   adapter can preserve Kapro's authority over the Kapro-managed promotion flow.
 - Sveltos can be an optional substrate for fleet add-on and application
   delivery, but Kapro's default delivery path remains Kapro-native direct apply.
-- Custom APIs are first-class through `webhook` for simple cases and
-  domain-specific substrate packages for richer semantics.
+- Custom APIs remain first-class in the model, but 0.6 implements them through
+  domain-specific substrate packages first. A generic webhook substrate should
+  ship only after it can report deterministic status, evidence, cancellation,
+  rollback, and conformance results.
 
 ## References
 

@@ -6,10 +6,11 @@ func TestHasCapabilityAcceptsPlainAndQualifiedNames(t *testing.T) {
 	capabilities := []string{
 		"argocd.application.targetRevision.apply",
 		"argocd.application.sync-health.convergence",
-		"argocd.application.backend-object",
+		"argocd.application.substrate-object",
+		"argocd.application.backend-objects",
 		"dryrun",
 	}
-	for _, required := range []string{CapabilityApply, CapabilityConvergence, CapabilityBackendObjects, CapabilityDryRun} {
+	for _, required := range []string{CapabilityApply, CapabilityConvergence, CapabilitySubstrateObjects, CapabilityBackendObjects, CapabilityDryRun} {
 		if !HasCapability(capabilities, required) {
 			t.Fatalf("HasCapability(%q) = false, want true", required)
 		}

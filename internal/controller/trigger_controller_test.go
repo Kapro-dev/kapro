@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -18,12 +20,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 func TestPromotionTriggerSuspendedCreatesNothing(t *testing.T) {
 	ctx := context.Background()
-	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, nil, promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
+	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, nil, promotionTriggerFixture(func(rt *kaprov1alpha1.Trigger) {
 		rt.Spec.Suspended = ptr.To(true)
 	}))
 
@@ -40,7 +42,7 @@ func TestPromotionTriggerSuspendedCreatesNothing(t *testing.T) {
 
 func TestPromotionTriggerOmittedSuspendedDefaultsSafe(t *testing.T) {
 	ctx := context.Background()
-	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, nil, promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
+	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, nil, promotionTriggerFixture(func(rt *kaprov1alpha1.Trigger) {
 		rt.Spec.Suspended = nil
 	}))
 
@@ -57,7 +59,7 @@ func TestPromotionTriggerOmittedSuspendedDefaultsSafe(t *testing.T) {
 
 func TestPromotionTriggerDryRunCreatesNothingAndRecordsArtifact(t *testing.T) {
 	ctx := context.Background()
-	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
+	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, promotionTriggerFixture(func(rt *kaprov1alpha1.Trigger) {
 		rt.Spec.DryRun = true
 	}))
 
@@ -84,7 +86,7 @@ func TestPromotionTriggerSignatureFailureBlocksPromotionRun(t *testing.T) {
 	}
 	assertPromotionRunCount(t, ctx, c, 0)
 	got := getPromotionTrigger(t, ctx, c, "checkout")
-	cond := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha2.ConditionTypeStalled)
+	cond := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
 	if cond == nil || cond.Reason != "SignatureVerificationFailed" {
 		t.Fatalf("Stalled condition = %+v", cond)
 	}
@@ -123,7 +125,7 @@ func TestPromotionTriggerCreatesDigestPinnedPromotion(t *testing.T) {
 
 func TestPromotionTriggerOmittedTemplateSuspendedDefaultsPromotionSafe(t *testing.T) {
 	ctx := context.Background()
-	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
+	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, promotionTriggerFixture(func(rt *kaprov1alpha1.Trigger) {
 		rt.Spec.PromotionTemplate.Suspended = nil
 	}))
 
@@ -138,7 +140,7 @@ func TestPromotionTriggerOmittedTemplateSuspendedDefaultsPromotionSafe(t *testin
 
 func TestPromotionTriggerExplicitTemplateUnsuspendedCreatesActivePromotion(t *testing.T) {
 	ctx := context.Background()
-	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
+	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, promotionTriggerFixture(func(rt *kaprov1alpha1.Trigger) {
 		rt.Spec.PromotionTemplate.Suspended = ptr.To(false)
 	}))
 
@@ -189,7 +191,7 @@ func TestPromotionTriggerDoesNotDuplicateSameDigest(t *testing.T) {
 	// Pre-existing managed Promotion already targets the same digest with the
 	// same template hash; the trigger must dedupe.
 	tmplHash := triggerTemplateHash(trigger)
-	existing := &kaprov1alpha2.Promotion{
+	existing := &kaprov1alpha1.Promotion{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "checkout",
 			Labels: map[string]string{
@@ -198,7 +200,7 @@ func TestPromotionTriggerDoesNotDuplicateSameDigest(t *testing.T) {
 			},
 			Annotations: map[string]string{promotionTriggerDigestAnno: testArtifact().Digest},
 		},
-		Spec: kaprov1alpha2.PromotionSpec{
+		Spec: kaprov1alpha1.PromotionSpec{
 			FleetRef: "checkout",
 			Version:  "oci://registry.example.com/checkout@sha256:abcdef1234567890",
 		},
@@ -220,12 +222,12 @@ func TestPromotionTriggerDoesNotDuplicateSameDigest(t *testing.T) {
 func TestPromotionTriggerMaxActiveBlocksCreation(t *testing.T) {
 	ctx := context.Background()
 	// Active PromotionRun under the managed Promotion (label points at it).
-	active := &kaprov1alpha2.PromotionRun{
+	active := &kaproruntimev1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "checkout-active",
 			Labels: map[string]string{promotionOwnerLabel: "checkout"},
 		},
-		Status: kaprov1alpha2.PromotionRunStatus{Phase: kaprov1alpha2.PromotionRunPhaseProgressing},
+		Status: kaprov1alpha1.PromotionRunStatus{Phase: kaprov1alpha1.PromotionRunPhaseProgressing},
 	}
 	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, promotionTriggerFixture(), active)
 
@@ -242,7 +244,7 @@ func TestPromotionTriggerMaxActiveBlocksCreation(t *testing.T) {
 
 func TestPromotionTriggerCooldownBlocksCreation(t *testing.T) {
 	ctx := context.Background()
-	trigger := promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
+	trigger := promotionTriggerFixture(func(rt *kaprov1alpha1.Trigger) {
 		rt.Status.LastTriggeredAt = fixedNow().Add(-5 * time.Minute).Format(time.RFC3339)
 	})
 	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, trigger)
@@ -261,7 +263,7 @@ func TestPromotionTriggerCooldownBlocksCreation(t *testing.T) {
 func TestPromotionTriggerInvalidCooldownBlocksCreation(t *testing.T) {
 	ctx := context.Background()
 	resolveCalls := 0
-	trigger := promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
+	trigger := promotionTriggerFixture(func(rt *kaprov1alpha1.Trigger) {
 		rt.Spec.Cooldown = "soon"
 		rt.Status.LastTriggeredAt = fixedNow().Add(-5 * time.Minute).Format(time.RFC3339)
 	})
@@ -275,7 +277,7 @@ func TestPromotionTriggerInvalidCooldownBlocksCreation(t *testing.T) {
 		t.Fatalf("resolver calls = %d, want 0", resolveCalls)
 	}
 	got := getPromotionTrigger(t, ctx, c, "checkout")
-	cond := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha2.ConditionTypeStalled)
+	cond := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
 	if cond == nil || cond.Reason != "InvalidCooldown" {
 		t.Fatalf("Stalled condition = %+v", cond)
 	}
@@ -284,7 +286,7 @@ func TestPromotionTriggerInvalidCooldownBlocksCreation(t *testing.T) {
 func TestPromotionTriggerInvalidPollIntervalBlocksCreation(t *testing.T) {
 	ctx := context.Background()
 	resolveCalls := 0
-	trigger := promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
+	trigger := promotionTriggerFixture(func(rt *kaprov1alpha1.Trigger) {
 		rt.Spec.Source.OCI.PollInterval = "0s"
 	})
 	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact(), calls: &resolveCalls}, fakeVerifier{}, trigger)
@@ -297,7 +299,7 @@ func TestPromotionTriggerInvalidPollIntervalBlocksCreation(t *testing.T) {
 		t.Fatalf("resolver calls = %d, want 0", resolveCalls)
 	}
 	got := getPromotionTrigger(t, ctx, c, "checkout")
-	cond := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha2.ConditionTypeStalled)
+	cond := apimeta.FindStatusCondition(got.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
 	if cond == nil || cond.Reason != "InvalidPollInterval" {
 		t.Fatalf("Stalled condition = %+v", cond)
 	}
@@ -305,7 +307,7 @@ func TestPromotionTriggerInvalidPollIntervalBlocksCreation(t *testing.T) {
 
 func TestPromotionTriggerExistingPromotionRunCooldownPreventsRapidBypass(t *testing.T) {
 	ctx := context.Background()
-	existing := &kaprov1alpha2.PromotionRun{
+	existing := &kaproruntimev1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "checkout-recent",
 			Labels: map[string]string{promotionTriggerLabel: "checkout"},
@@ -314,9 +316,9 @@ func TestPromotionTriggerExistingPromotionRunCooldownPreventsRapidBypass(t *test
 				promotionTriggerDigestAnno:  "sha256:previous",
 			},
 		},
-		Status: kaprov1alpha2.PromotionRunStatus{Phase: kaprov1alpha2.PromotionRunPhaseComplete},
+		Status: kaprov1alpha1.PromotionRunStatus{Phase: kaprov1alpha1.PromotionRunPhaseComplete},
 	}
-	trigger := promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
+	trigger := promotionTriggerFixture(func(rt *kaprov1alpha1.Trigger) {
 		rt.Status.LastTriggeredAt = ""
 	})
 	reconciler, c := newTriggerReconciler(t, &fakeTriggerResolver{artifact: testArtifact()}, fakeVerifier{}, trigger, existing)
@@ -333,7 +335,7 @@ func TestPromotionTriggerExistingPromotionRunCooldownPreventsRapidBypass(t *test
 }
 
 func TestPromotionTriggerNameTemplateFailsOnMissingKey(t *testing.T) {
-	trigger := promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
+	trigger := promotionTriggerFixture(func(rt *kaprov1alpha1.Trigger) {
 		rt.Spec.PromotionTemplate.NameTemplate = "{{ .Missing.Value }}"
 	})
 
@@ -365,13 +367,16 @@ func TestPromotionTriggerTagOrderingPrefersSemverLikeTags(t *testing.T) {
 func newTriggerReconciler(t *testing.T, resolver PromotionTriggerResolver, verifier PromotionTriggerVerifier, objects ...client.Object) (*TriggerReconciler, client.Client) {
 	t.Helper()
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
+	}
+	if err := kaproruntimev1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("Add runtime scheme: %v", err)
 	}
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objects...).
-		WithStatusSubresource(&kaprov1alpha2.Trigger{}, &kaprov1alpha2.PromotionRun{}, &kaprov1alpha2.Promotion{}).
+		WithStatusSubresource(&kaprov1alpha1.Trigger{}, &kaproruntimev1alpha1.PromotionRun{}, &kaprov1alpha1.Promotion{}).
 		Build()
 	return &TriggerReconciler{
 		Client:   c,
@@ -383,25 +388,25 @@ func newTriggerReconciler(t *testing.T, resolver PromotionTriggerResolver, verif
 	}, c
 }
 
-func promotionTriggerFixture(mutators ...func(*kaprov1alpha2.Trigger)) *kaprov1alpha2.Trigger {
-	rt := &kaprov1alpha2.Trigger{
+func promotionTriggerFixture(mutators ...func(*kaprov1alpha1.Trigger)) *kaprov1alpha1.Trigger {
+	rt := &kaprov1alpha1.Trigger{
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout", Generation: 1},
-		Spec: kaprov1alpha2.TriggerSpec{
+		Spec: kaprov1alpha1.TriggerSpec{
 			Suspended: ptr.To(false),
-			Source: kaprov1alpha2.TriggerSource{
+			Source: kaprov1alpha1.TriggerSource{
 				Type: "oci",
-				OCI: &kaprov1alpha2.OCITriggerSource{
+				OCI: &kaprov1alpha1.OCITriggerSource{
 					Repository:       "oci://registry.example.com/checkout",
 					TagPattern:       "^v[0-9]+\\.[0-9]+\\.[0-9]+$",
 					RequireSignature: true,
 					PollInterval:     "1m",
 				},
 			},
-			PromotionTemplate: kaprov1alpha2.TriggerTemplate{
+			PromotionTemplate: kaprov1alpha1.TriggerTemplate{
 				FleetRef:  "checkout",
-				Plans:     []kaprov1alpha2.PlanRef{{Name: "prod", Plan: "checkout-prod"}},
+				Plans:     []kaprov1alpha1.PlanRef{{Name: "prod", Plan: "checkout-prod"}},
 				Suspended: ptr.To(true),
-				Scope:     &kaprov1alpha2.PromotionRunScope{Targets: []string{"canary-eu"}},
+				Scope:     &kaprov1alpha1.PromotionRunScope{Targets: []string{"canary-eu"}},
 			},
 			Cooldown:  "30m",
 			MaxActive: 1,
@@ -421,9 +426,9 @@ func fixedNow() time.Time {
 	return time.Date(2026, 5, 14, 10, 0, 0, 0, time.UTC)
 }
 
-func getPromotionTrigger(t *testing.T, ctx context.Context, c client.Client, name string) kaprov1alpha2.Trigger {
+func getPromotionTrigger(t *testing.T, ctx context.Context, c client.Client, name string) kaprov1alpha1.Trigger {
 	t.Helper()
-	var got kaprov1alpha2.Trigger
+	var got kaprov1alpha1.Trigger
 	if err := c.Get(ctx, client.ObjectKey{Name: name}, &got); err != nil {
 		t.Fatal(err)
 	}
@@ -432,7 +437,7 @@ func getPromotionTrigger(t *testing.T, ctx context.Context, c client.Client, nam
 
 func assertPromotionRunCount(t *testing.T, ctx context.Context, c client.Client, want int) {
 	t.Helper()
-	var promotionruns kaprov1alpha2.PromotionRunList
+	var promotionruns kaproruntimev1alpha1.PromotionRunList
 	if err := c.List(ctx, &promotionruns); err != nil {
 		t.Fatal(err)
 	}
@@ -443,7 +448,7 @@ func assertPromotionRunCount(t *testing.T, ctx context.Context, c client.Client,
 
 func assertPromotionCount(t *testing.T, ctx context.Context, c client.Client, want int) {
 	t.Helper()
-	var promotions kaprov1alpha2.PromotionList
+	var promotions kaprov1alpha1.PromotionList
 	if err := c.List(ctx, &promotions); err != nil {
 		t.Fatal(err)
 	}
@@ -452,9 +457,9 @@ func assertPromotionCount(t *testing.T, ctx context.Context, c client.Client, wa
 	}
 }
 
-func getManagedPromotion(t *testing.T, ctx context.Context, c client.Client, name string) kaprov1alpha2.Promotion {
+func getManagedPromotion(t *testing.T, ctx context.Context, c client.Client, name string) kaprov1alpha1.Promotion {
 	t.Helper()
-	var got kaprov1alpha2.Promotion
+	var got kaprov1alpha1.Promotion
 	if err := c.Get(ctx, client.ObjectKey{Name: name}, &got); err != nil {
 		t.Fatal(err)
 	}
@@ -467,7 +472,7 @@ type fakeTriggerResolver struct {
 	calls    *int
 }
 
-func (f *fakeTriggerResolver) Resolve(context.Context, *kaprov1alpha2.Trigger) (*TriggerArtifactObservation, error) {
+func (f *fakeTriggerResolver) Resolve(context.Context, *kaprov1alpha1.Trigger) (*TriggerArtifactObservation, error) {
 	if f.calls != nil {
 		(*f.calls)++
 	}
@@ -481,7 +486,7 @@ type fakeVerifier struct {
 	err error
 }
 
-func (f fakeVerifier) Verify(context.Context, *kaprov1alpha2.Trigger, TriggerArtifactObservation) error {
+func (f fakeVerifier) Verify(context.Context, *kaprov1alpha1.Trigger, TriggerArtifactObservation) error {
 	return f.err
 }
 
@@ -489,7 +494,7 @@ func TestPromotionTriggerTagFlipUpdatesManagedPromotion(t *testing.T) {
 	ctx := context.Background()
 	artifact := &TriggerArtifactObservation{Tag: "v1.2.3", Digest: "sha256:aaaa"}
 	resolver := &fakeTriggerResolver{artifact: artifact}
-	trigger := promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
+	trigger := promotionTriggerFixture(func(rt *kaprov1alpha1.Trigger) {
 		rt.Spec.Cooldown = "1m"
 	})
 	reconciler, c := newTriggerReconciler(t, resolver, fakeVerifier{}, trigger)
@@ -537,7 +542,7 @@ func TestTriggerTemplateHashStableAndChangeDetectable(t *testing.T) {
 	if triggerTemplateHash(a) != triggerTemplateHash(b) {
 		t.Fatal("identical templates should hash equal")
 	}
-	c := promotionTriggerFixture(func(rt *kaprov1alpha2.Trigger) {
+	c := promotionTriggerFixture(func(rt *kaprov1alpha1.Trigger) {
 		rt.Spec.PromotionTemplate.Timeout = "1h"
 	})
 	if triggerTemplateHash(a) == triggerTemplateHash(c) {
@@ -546,29 +551,29 @@ func TestTriggerTemplateHashStableAndChangeDetectable(t *testing.T) {
 }
 
 func TestPromotionTriggerRecentArtifactsBoundedAndDedupedByDigest(t *testing.T) {
-	var list []kaprov1alpha2.TriggerArtifact
+	var list []kaprov1alpha1.TriggerArtifact
 	// Same digest + tag twice → coalesced to one entry, refreshed.
-	first := kaprov1alpha2.TriggerArtifact{Tag: "v1", Digest: "sha256:a", ObservedAt: "t1"}
-	second := kaprov1alpha2.TriggerArtifact{Tag: "v1", Digest: "sha256:a", ObservedAt: "t2"}
+	first := kaprov1alpha1.TriggerArtifact{Tag: "v1", Digest: "sha256:a", ObservedAt: "t1"}
+	second := kaprov1alpha1.TriggerArtifact{Tag: "v1", Digest: "sha256:a", ObservedAt: "t2"}
 	list = recordRecentArtifact(list, first)
 	list = recordRecentArtifact(list, second)
 	if len(list) != 1 || list[0].ObservedAt != "t2" {
 		t.Fatalf("same digest+tag should coalesce; got %+v", list)
 	}
 	// Different digest → new entry prepended.
-	third := kaprov1alpha2.TriggerArtifact{Tag: "v2", Digest: "sha256:b", ObservedAt: "t3"}
+	third := kaprov1alpha1.TriggerArtifact{Tag: "v2", Digest: "sha256:b", ObservedAt: "t3"}
 	list = recordRecentArtifact(list, third)
 	if len(list) != 2 || list[0].Digest != "sha256:b" {
 		t.Fatalf("different digest should prepend; got %+v", list)
 	}
 	// Fill past cap; oldest should fall off.
-	for i := 0; i < kaprov1alpha2.MaxRecentArtifacts+5; i++ {
-		list = recordRecentArtifact(list, kaprov1alpha2.TriggerArtifact{
+	for i := 0; i < kaprov1alpha1.MaxRecentArtifacts+5; i++ {
+		list = recordRecentArtifact(list, kaprov1alpha1.TriggerArtifact{
 			Tag:    "v",
 			Digest: fmt.Sprintf("sha256:fill-%d", i),
 		})
 	}
-	if len(list) != kaprov1alpha2.MaxRecentArtifacts {
-		t.Fatalf("len = %d, want %d", len(list), kaprov1alpha2.MaxRecentArtifacts)
+	if len(list) != kaprov1alpha1.MaxRecentArtifacts {
+		t.Fatalf("len = %d, want %d", len(list), kaprov1alpha1.MaxRecentArtifacts)
 	}
 }

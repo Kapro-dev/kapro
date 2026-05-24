@@ -6,9 +6,9 @@ option go_package = "kapro.io/kapro/spec/kai/v1alpha1;kaiv1alpha1";
 
 // ActuatorService is the Kapro Actuator Interface (KAI).
 //
-// An actuator applies one artifact version to one target and reports backend
+// An actuator applies one artifact version to one target and reports substrate
 // convergence. Kapro owns promotion_run ordering, retries, rollback intent, and
-// status; the actuator owns backend-specific mutation and readiness checks.
+// status; the actuator owns substrate-specific mutation and readiness checks.
 service ActuatorService {
   rpc GetCapabilities(GetCapabilitiesRequest) returns (GetCapabilitiesResponse);
   rpc Apply(ApplyRequest) returns (ApplyResponse);

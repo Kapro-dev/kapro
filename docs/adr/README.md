@@ -15,14 +15,15 @@ relitigating it.
 | [0006](0006-external-gate-predicates.md) | External gate predicates — GateType (KEDA-shaped) | Proposed |
 | [0007](0007-programmatic-sdk.md) | Kapro programmatic SDK — builder + subscriber + gate | Proposed |
 | [0009](0009-promotionrun-target-status-collapse.md) | Target is the PromotionRun per-target state authority | Accepted |
-| [0010](0010-core-and-preview-controller-tier.md) | Core and preview controller tier | Accepted |
-| [0011](0011-conversion-webhook-scaffold.md) | Conversion webhook scaffold without legacy migration guarantee | Accepted |
+| [0010](0010-core-and-preview-controller-tier.md) | Core and preview controller tier | Superseded in part by 0018 |
+| [0011](0011-conversion-webhook-scaffold.md) | Conversion webhook scaffold without legacy migration guarantee | Superseded by 0018 |
 | [0012](0012-competitive-positioning.md) | Competitive positioning | Accepted |
-| [0013](0013-sdk-versioning-policy.md) | Go SDK versioning policy | Accepted |
-| [0014](0014-composable-gates.md) | Composable gates scaffold | Accepted |
-| [0015](0015-promotionrun-retention.md) | PromotionRun retention | Accepted |
-| [0016](0016-substrate-class-config-contract.md) | Substrate class and typed config contract | Accepted |
+| [0013](0013-sdk-versioning-policy.md) | Go SDK versioning policy | Superseded in part by 0018 |
+| [0014](0014-composable-gates.md) | Composable gates scaffold | Superseded in part by 0018 |
+| [0015](0015-promotionrun-retention.md) | PromotionRun retention | Superseded in part by 0018 |
+| [0016](0016-substrate-class-config-contract.md) | Substrate class and typed config contract | Superseded in part by 0018 |
 | [0017](0017-promotion-control-plane-for-any-delivery-substrate.md) | Promotion control plane for any delivery substrate | Accepted |
+| [0018](0018-public-runtime-api-split.md) | Public and runtime API split | Accepted |
 
 ## Adding a new ADR
 
@@ -30,7 +31,7 @@ relitigating it.
 2. Write the decision in present tense ("we choose X").
 3. Document the alternatives considered and why they were rejected — that is the most useful part for future readers.
 4. Link the ADR from `docs/adr/README.md`.
-5. ADRs are immutable: amend a decision by writing a new ADR that supersedes the old one. Do not edit the old one except to add a `Status: Superseded by NNNN` line at the top.
+5. ADRs are immutable: amend a decision by writing a new ADR that supersedes the old one. Do not edit the old one except to add a `Status: Superseded by NNNN` line and a short supersession note near the top; substantive changes belong in the new ADR.
 
 ## Template
 

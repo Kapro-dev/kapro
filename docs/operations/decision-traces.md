@@ -7,7 +7,7 @@ promotion without requiring access to controller logs.
 `DecisionTrace` is cluster-scoped:
 
 ```yaml
-apiVersion: kapro.io/v1alpha2
+apiVersion: runtime.kapro.io/v1alpha1
 kind: DecisionTrace
 metadata:
   name: dtrace-...
@@ -39,7 +39,7 @@ Common delivery capability reasons:
 
 | Reason | Meaning |
 | --- | --- |
-| `ActuatorNotRegistered` | A Backend references an open substrate kind that has no registered actuator yet. |
+| `ActuatorNotRegistered` | A Substrate references an open substrate kind that has no registered actuator yet. |
 | `ApplyUnsupported` | The resolved actuator does not advertise apply support. |
 | `ObserveUnsupported` | The resolved actuator does not advertise observe/convergence support. |
 | `RollbackUnsupported` | The resolved actuator does not advertise rollback support. |

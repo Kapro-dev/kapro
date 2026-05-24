@@ -4,7 +4,7 @@ Kapro release artifacts are intended to be consumed by immutable version, not
 by mutable image tags. Pin charts and images to the same `v0.x.y` release tag
 and verify the artifacts before installing them in production change windows.
 
-The current public preview release is `v0.5.8`.
+The current public preview release is `v0.6.0`.
 
 ## Prerequisites
 
@@ -25,7 +25,7 @@ gh auth status
 ## Download Release Assets
 
 ```bash
-KAPRO_VERSION=v0.5.8
+KAPRO_VERSION=v0.6.0
 KAPRO_REPO=Kapro-dev/kapro
 
 mkdir -p "kapro-${KAPRO_VERSION}"

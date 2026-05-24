@@ -2,21 +2,33 @@
 
 This changelog tracks user-visible API, behavior, packaging, and upgrade
 changes for Kapro releases. Kapro is still pre-stable: all Kubernetes APIs are
-served as `kapro.io/v1alpha2`, and release notes are the binding compatibility
-record for each tag.
+served from the current public-preview groups, and release notes are the
+binding compatibility record for each tag.
 
 ## Unreleased
 
+### ⚠️ Breaking — 0.6 public/runtime API reset
+
+Kapro now serves user-authored desired state from `kapro.io/v1alpha1` and
+controller-owned execution records from `runtime.kapro.io/v1alpha1`.
+`Backend` is renamed to `Substrate`, delivery references use
+`spec.delivery.substrateRef`, and user-facing Argo substrate names use `argo`.
+
+The 0.6 reset intentionally has no conversion webhook: no public-preview or
+production users depend on the prototype shape. Delete old prototype CRDs and
+recreate desired state from generated 0.6 manifests. Do not commit
+`PromotionRun`, `Target`, or `DecisionTrace` runtime objects to Git.
+
 ### Added — SubstrateClass and typed config contract
 
-Added the v1alpha2 substrate class/config foundation: `SubstrateClass`,
-`Backend.spec.classRef`, `Backend.spec.configRef`, the KSI Go package at
+Added the substrate class/config foundation: `SubstrateClass`,
+`Substrate.spec.classRef`, `Substrate.spec.configRef`, the KSI Go package at
 `pkg/kapro/substrate`, and typed reference config CRDs for Argo CD, Flux,
-Kubernetes direct apply, OCI bundle apply, and webhook delivery. The
+Kubernetes direct apply, and OCI bundle apply. The
 `substrateclass` controller publishes capabilities for Kapro-owned classes, and
-the `backend` controller validates class/config references before marking typed
-backends ready. Existing `Backend.spec.substrate`, `driver`, `adapter`,
-`runtime`, and parameter-map paths remain accepted for migration.
+the `substrate` controller validates class/config references before marking
+typed substrates ready. The old prototype `driver`, `adapter`, and `runtime`
+fields are removed from the 0.6 public-preview CRD.
 
 ### Added — capability-skip DecisionTraces (#317)
 
@@ -36,21 +48,19 @@ public-SDK-only `hello_test.go`, and a `make conformance-hello-world`
 target run on every PR. A change to `pkg/kapro/actuator` that breaks the
 authoring shape used by custom substrates fails CI before merge.
 
-### Added — open substrate Backend API foundation
+### Added — open Substrate API foundation
 
-`Backend.spec.substrate` and `Backend.spec.execution` introduce the
+`Substrate.spec.substrate` and `Substrate.spec.execution` are the
 backend-neutral public shape for custom delivery substrates. `substrate.kind`
 is an open DNS-style string so platform teams can register domains such as
-`hello-world` or `company-paas` without Kapro adding enum values. The older
-`driver`, `adapter`, and `runtime` fields remain accepted as deprecated
-compatibility aliases during the v0.x migration window.
+`hello-world` or `company-paas` without Kapro adding enum values.
 
 ### Added — minimal actuator BoolFunc
 
 `pkg/kapro/actuator.NewBoolFunc` adapts a tiny
 `(ctx, req) -> (bool, message, error)` function to the in-process actuator
 interface for examples and tests. A new `examples/actuator-hello-world` sample
-shows a custom substrate Backend and matching Go actuator.
+shows a custom `Substrate` and matching Go actuator.
 
 ### Changed — Cluster provider kinds are open strings
 
@@ -405,12 +415,12 @@ before and after opting in to the controller.
 Added `kapro bootstrap` as the guided CLI entrypoint for first-time adoption:
 `bootstrap guide`, `bootstrap greenfield`, and `bootstrap brownfield`. The
 greenfield path defaults to Flux pull mode, while brownfield Argo CD and Flux
-paths generate observe-first Backend, Source, and discovery review files.
+paths generate observe-first Substrate, Source, and discovery review files.
 
 ### Changed — onboarding documentation
 
 Added an Adoption Guide and linked it from the README, docs home, install,
-backend, first-promotion, Argo migration, and Flux migration pages. CLI install
+substrate, first-promotion, Argo migration, and Flux migration pages. CLI install
 docs now use the verified clone/tag/`make build` path until release binary
 assets or Go vanity import metadata are available.
 
@@ -489,12 +499,12 @@ validation, delay first-observation status, examples, and docs.
 Added the public `pkg/kapro/adapter` SDK surface with a registry and reference
 Argo CD, Flux, and OCI adapter packages.
 
-### Changed — AdapterPolicy discovery loop
+### Changed — SubstrateDiscoveryPolicy discovery loop
 
-Added `AdapterPolicy.spec.selector`, `spec.dryRun`, and
-`status.discoveredObjects`. AdapterPolicy now validates merged discovery
+Added `SubstrateDiscoveryPolicy.spec.selector`, `spec.dryRun`, and
+`status.discoveredObjects`. SubstrateDiscoveryPolicy now validates merged discovery
 selectors, resolves adapters before dry-run success, records quick discovery
-counts, and keeps `Backend.status` ownership with `BackendReconciler`.
+counts, and keeps `Substrate.status` ownership with `SubstrateReconciler`.
 
 ### Added — server adapter registrars
 
@@ -624,10 +634,10 @@ such as `backend`, `approval`, `trigger`, `plugin`, `cluster-bootstrap`, and
 Added `examples/quickstart-argo`, `examples/quickstart-oci`, and matching docs
 so adopters can start from Flux, Argo CD, or Kapro's OCI delivery core without
 reading the brownfield migration guides first.
-Built-in `flux`, `argo`, and `oci` Backend specs remain admissible without the
-backend controller; external/plugin backends still require Ready status.
+Built-in `flux`, `argo`, and `oci` Substrate specs remain admissible without the
+substrate controller; external/plugin substrates still require Ready status.
 
-Older controller keys such as `kapro`, `promotion-target`, `backend-profile`,
+Older controller keys such as `kapro`, `promotion-target`, `substrate-profile`,
 and `promotion-trigger` are still accepted as compatibility aliases, but new
 manifests and Helm values should use the canonical keys.
 
@@ -653,7 +663,7 @@ kapro lint -o json promotion.yaml
 Checks:
 
 - **Fleet** — exactly one of `spec.source` / `spec.sourceRef`,
-  `spec.delivery.backendRef` set, `spec.clusters` non-empty.
+  `spec.delivery.substrateRef` set, `spec.clusters` non-empty.
 - **Promotion** — `spec.fleetRef` set, `spec.version` or
   `spec.versions` set, `spec.timeout` set (advisory), no duplicate
   scope targets, non-empty Plan refs.

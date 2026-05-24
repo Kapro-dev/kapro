@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/conformance"
 	"kapro.io/kapro/pkg/plugincompat"
 	kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
@@ -80,7 +80,7 @@ func Run(t *testing.T, client kaiv1alpha1.ActuatorServiceClient, scenario Scenar
 		if resp == nil {
 			t.Fatal("GetCapabilities returned nil response")
 		}
-		if !plugincompat.IsContractVersionSupported(kaprov1alpha2.PluginTypeActuator, resp.GetContractVersion()) {
+		if !plugincompat.IsContractVersionSupported(kaprov1alpha1.PluginTypeActuator, resp.GetContractVersion()) {
 			t.Fatalf("contract_version = %q, supported versions = %v", resp.GetContractVersion(), plugincompat.SupportedKAIContractVersions())
 		}
 	})
@@ -188,7 +188,7 @@ func checkCapabilitiesContractVersion(ctx context.Context, client kaiv1alpha1.Ac
 	if resp == nil {
 		return conformance.Fail(name, "GetCapabilities returned nil response")
 	}
-	if !plugincompat.IsContractVersionSupported(kaprov1alpha2.PluginTypeActuator, resp.GetContractVersion()) {
+	if !plugincompat.IsContractVersionSupported(kaprov1alpha1.PluginTypeActuator, resp.GetContractVersion()) {
 		return conformance.Fail(name, "contract_version = %q, supported versions = %v", resp.GetContractVersion(), plugincompat.SupportedKAIContractVersions())
 	}
 	return conformance.Pass(name)

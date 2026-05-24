@@ -26,7 +26,7 @@ alerts.
 - `examples/monitoring/grafana-dashboard.json` provides a Grafana dashboard for
   controller health, reconcile latency, status writes, gate results, target
   transitions, stage duration, active promotionruns, promotionrun stuck candidates,
-  blocked triggers, CloudEvents sink p99, FleetDriftReport phase/counts, and
+  blocked triggers, CloudEvents sink p99, and
   plugin probe failures. Import `prometheus-rules.yaml` first so panels backed
   by `kapro:slo_*` recording rules have data.
 - `examples/monitoring/prometheus-rules.yaml` provides PrometheusRule-style
@@ -77,9 +77,6 @@ The operator currently registers these Kapro-specific metric names:
 | `kapro_plugin_runtime_registered` | Gauge | `type` | Startup-time registered plugin adapters by plugin type. |
 | `kapro_lifecycle_hook_invocations_total` | Counter | `kind`, `phase`, `result` | Promotion lifecycle webhook/Event/CloudEvents sink dispatch results. |
 | `kapro_lifecycle_hook_duration_seconds` | Histogram | `kind`, `phase` | End-to-end lifecycle dispatch duration including retries and backoff. |
-| `kapro_fleetdriftreport_targets` | Gauge | `report`, `state` | Latest FleetDriftReport target counts for total/current/drifted/pending/failed/unknown. |
-| `kapro_fleetdriftreport_backend_objects` | Gauge | `report`, `state` | Latest FleetDriftReport backend object counts for total/drifted. |
-| `kapro_fleetdriftreport_phase` | Gauge | `report`, `phase` | One-hot latest FleetDriftReport phase. |
 
 Controller reconcile and status write metrics are emitted by the current
 controllers. The remaining Kapro-specific metric names are registered for the
@@ -94,9 +91,9 @@ and a metrics Service by default.
 
 | Metric | Type | Labels | Intent |
 | --- | --- | --- | --- |
-| `kapro_spoke_delivery_reconciles_total` | Counter | `cluster`, `backend`, `phase`, `result` | Spoke delivery reconcile outcomes. |
-| `kapro_spoke_delivery_reconcile_duration_seconds` | Histogram | `cluster`, `backend`, `phase`, `result` | Spoke delivery reconcile duration. |
-| `kapro_spoke_delivery_staging_results_total` | Counter | `cluster`, `backend`, `phase`, `result` | OCI spoke staging/apply phase outcomes. `phase` is `Staging` or `Applying`; `result` is `success` or `error`. |
+| `kapro_spoke_delivery_reconciles_total` | Counter | `cluster`, `substrate`, `phase`, `result` | Spoke delivery reconcile outcomes. |
+| `kapro_spoke_delivery_reconcile_duration_seconds` | Histogram | `cluster`, `substrate`, `phase`, `result` | Spoke delivery reconcile duration. |
+| `kapro_spoke_delivery_staging_results_total` | Counter | `cluster`, `substrate`, `phase`, `result` | OCI spoke staging/apply phase outcomes. `phase` is `Staging` or `Applying`; `result` is `success` or `error`. |
 
 ## kube-state-metrics CRD Metrics
 
@@ -120,16 +117,17 @@ That config emits these example metric names:
 Installations must allow kube-state-metrics to list and watch these cluster
 scoped CRDs:
 
-- `promotionruns.kapro.io`
+- `promotionruns.runtime.kapro.io`
 - `triggers.kapro.io`
 - `plugins.kapro.io`
 
 When using the kube-state-metrics Helm chart, mount the example as custom
 resource state configuration and add matching `rbac.extraRules` for
-`apiGroups: ["kapro.io"]`, `resources:
-["promotionruns", "triggers", "plugins"]`, and `verbs:
-["list", "watch"]`. The exact chart values vary by chart version, so keep the
-example file as the source of the metric names used by the dashboard and rules.
+`apiGroups: ["runtime.kapro.io"]`, `resources: ["promotionruns"]`, plus
+`apiGroups: ["kapro.io"]`, `resources: ["triggers", "plugins"]`, and
+`verbs: ["list", "watch"]`. The exact chart values vary by chart version, so
+keep the example file as the source of the metric names used by the dashboard
+and rules.
 
 ## Alert Coverage
 
@@ -146,8 +144,6 @@ The PrometheusRule example includes alert expressions for:
   kube-state-metrics;
 - blocked `Trigger` state using cooldown, max-active, source,
   signature, and Promotion update condition reasons from kube-state-metrics.
-- sustained FleetDriftReport `Drifted`, `Unknown`, `Failed`, and `Pending`
-  phases using first-class Kapro metrics.
 - spoke delivery error rate and p95 latency using
   `kapro_spoke_delivery_*` metrics from `kapro-cluster-controller`.
 - OCI staged delivery dry-run and commit outcomes using
@@ -164,13 +160,12 @@ Use alerts as routing signals, then follow the operational runbooks in
 | Alert | Primary runbook | Main data sources |
 | --- | --- | --- |
 | `KaproPromotionRunStuck` | Stuck PromotionRun | `PromotionRun.status`, `Target.status`, Events, dashboard promotionrun panels |
-| `KaproGateFailureRateHigh` | Gate Failure | `Target.status.gates[]`, `kapro_gate_evaluations_total`, backend telemetry |
+| `KaproGateFailureRateHigh` | Gate Failure | `Target.status.gates[]`, `kapro_gate_evaluations_total`, substrate telemetry |
 | `KaproPluginProbeFailure` / `KaproPluginProbeFailures` | Plugin Not Ready | `Plugin.status`, plugin probe metrics, operator logs |
 | `KaproTriggerBlocked` | Blocked Trigger | `Trigger.status.conditions`, active attempts, OCI source health |
-| `KaproRolloutDurationP95High` | Stuck PromotionRun or scalability review | stage duration histogram, stage `maxParallel`, backend latency |
+| `KaproRolloutDurationP95High` | Stuck PromotionRun or scalability review | stage duration histogram, stage `maxParallel`, substrate latency |
 | `KaproLifecycleSinkP99High` | First Response | lifecycle hook duration histogram, sink endpoint logs, retry/backoff settings |
 | `KaproControllerReconcileErrors` | First Response | controller logs, status write metrics, Kubernetes Events |
-| `KaproFleetDriftDetected` / `KaproFleetDriftSignalsIncomplete` / `KaproFleetDriftReportFailed` / `KaproFleetDriftReportPending` | Fleet Drift | FleetDriftReport status, drift metrics, Target and Cluster status |
 | `KaproSpokeDeliveryErrors` / `KaproSpokeDeliveryStagingErrors` / `KaproSpokeDeliveryLatencyHigh` | Spoke Delivery | Cluster delivery status, spoke logs, spoke delivery metrics |
 
 Alert names differ slightly between the generic alert rules and the Prometheus

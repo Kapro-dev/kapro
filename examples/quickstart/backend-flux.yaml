@@ -1,9 +1,0 @@
-# Apply this before fleet and promotion. This Backend tells Kapro to use Flux
-# pull delivery for generated quickstart targets.
-apiVersion: kapro.io/v1alpha2
-kind: Backend
-metadata:
-  name: flux
-spec:
-  driver: flux
-  runtime: Spoke

@@ -16,6 +16,7 @@ const (
 	argoCDSubstrateConfigAPIVersion     = "argocd.substrate.kapro.io/" + "v1alpha1"
 	fluxSubstrateConfigAPIVersion       = "flux.substrate.kapro.io/" + "v1alpha1"
 	kubernetesSubstrateConfigAPIVersion = "kubernetes.substrate.kapro.io/" + "v1alpha1"
+	ociSubstrateConfigAPIVersion        = "oci.substrate.kapro.io/" + "v1alpha1"
 )
 
 func newInitCmd() *cobra.Command {
@@ -23,16 +24,16 @@ func newInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init [directory]",
 		Short: "Create a starter Kapro promotion repo",
-		Long: `Create a GitOps-ready promotion repository with Backend, Fleet,
+		Long: `Create a GitOps-ready promotion repository with Substrate, Fleet,
 Plan, and sample Promotion manifests.
 
 This bootstraps the promotion layer. Argo, Flux, Helm, and Kubernetes still own
 local sync and rollout mechanics.
 
 Examples:
-  kapro init ./promotion-repo --backend flux --mode pull --name checkout
-  kapro init ./promotion-repo --backend argo --name checkout
-  kapro init ./promotion-repo --backend argo --name checkout --clusters none`,
+  kapro init ./promotion-repo --substrate flux --mode pull --name checkout
+  kapro init ./promotion-repo --substrate argo --name checkout
+  kapro init ./promotion-repo --substrate argo --name checkout --clusters none`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			dir := "."
@@ -40,14 +41,15 @@ Examples:
 				dir = args[0]
 			}
 			opts.Path = dir
+			opts.UseSubstrateClass = true
 			return runInitScaffold(opts)
 		},
 	}
 	cmd.Flags().StringVar(&opts.Name, "name", "checkout", "Application or fleet name")
-	cmd.Flags().StringVar(&opts.Backend, "backend", "argo", "Delivery backend: argo, flux, or oci")
+	cmd.Flags().StringVar(&opts.Substrate, "substrate", "argo", "Delivery substrate: argo, flux, or oci")
 	cmd.Flags().StringVar(&opts.Mode, "mode", "push", "Delivery mode: push or pull")
 	cmd.Flags().StringVar(&opts.Registry, "registry", "oci://registry.example.com/platform", "OCI registry URL for bundles")
-	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Backend namespace (default: argocd for argo, flux-system for flux, kapro-system for oci)")
+	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Substrate namespace (default: argocd for argo, flux-system for flux, kapro-system for oci)")
 	cmd.Flags().StringVar(&opts.Clusters, "clusters", "canary-eu:canary,prod-eu:production", "Cluster scaffold list as name:stage pairs, or none for repo-only setup")
 	cmd.Flags().StringVar(&opts.Team, "team", "platform", "Value for metadata.labels[kapro.io/team]")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
@@ -58,24 +60,24 @@ func newConnectCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "connect",
 		Short: "Scaffold observe-first connect manifests",
-		Long: `Scaffolds observe-first Backend manifests for existing Argo CD
-or Flux installations. Observe mode discovers existing backend objects without
+		Long: `Scaffolds observe-first Substrate manifests for existing Argo CD
+or Flux installations. Observe mode discovers existing substrate objects without
 taking over writes.
 
-This command is Backend-only. Use kapro discover or kapro adopt when you also
+This command is Substrate-only. Use kapro discover or kapro adopt when you also
 want generated Source units and discovery review reports.`,
 	}
-	cmd.AddCommand(newConnectBackendCmd("argo"))
-	cmd.AddCommand(newConnectBackendCmd("flux"))
+	cmd.AddCommand(newConnectSubstrateCmd("argo"))
+	cmd.AddCommand(newConnectSubstrateCmd("flux"))
 	return cmd
 }
 
-func newConnectBackendCmd(backend string) *cobra.Command {
+func newConnectSubstrateCmd(substrate string) *cobra.Command {
 	var opts connectOptions
-	opts.Backend = backend
+	opts.Substrate = substrate
 	cmd := &cobra.Command{
-		Use:   backend + " [directory]",
-		Short: "Scaffold observe-first " + backend + " connect manifests",
+		Use:   substrate + " [directory]",
+		Short: "Scaffold observe-first " + substrate + " connect manifests",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			dir := "."
@@ -86,9 +88,9 @@ func newConnectBackendCmd(backend string) *cobra.Command {
 			return runConnectScaffold(opts)
 		},
 	}
-	cmd.Flags().StringVar(&opts.Name, "name", backend, "Backend name")
-	cmd.Flags().StringVar(&opts.Namespace, "namespace", defaultBackendNamespace(backend), "Backend namespace")
-	cmd.Flags().StringVar(&opts.Selector, "selector", "kapro.io/import=true", "Label selector for imported backend objects")
+	cmd.Flags().StringVar(&opts.Name, "name", substrate, "Substrate name")
+	cmd.Flags().StringVar(&opts.Namespace, "namespace", defaultSubstrateNamespace(substrate), "Substrate namespace")
+	cmd.Flags().StringVar(&opts.Selector, "selector", "kapro.io/import=true", "Label selector for imported substrate objects")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
 	return cmd
 }
@@ -96,7 +98,7 @@ func newConnectBackendCmd(backend string) *cobra.Command {
 type scaffoldOptions struct {
 	Path              string
 	Name              string
-	Backend           string
+	Substrate         string
 	Profile           string
 	Mode              string
 	Registry          string
@@ -110,7 +112,7 @@ type scaffoldOptions struct {
 type connectOptions struct {
 	Path      string
 	Name      string
-	Backend   string
+	Substrate string
 	Namespace string
 	Selector  string
 	Force     bool
@@ -120,30 +122,31 @@ func runInitScaffold(opts scaffoldOptions) error {
 	if opts.Name == "" {
 		return fmt.Errorf("--name is required")
 	}
-	opts.Backend = strings.ToLower(opts.Backend)
+	opts.UseSubstrateClass = true
+	opts.Substrate = strings.ToLower(opts.Substrate)
 	if opts.Profile != "" {
 		opts.Profile = strings.ToLower(opts.Profile)
 	}
 	if opts.UseSubstrateClass {
 		switch scaffoldProfile(opts) {
-		case "direct", "argocd", "flux":
+		case "direct", "argo", "flux", "oci":
 		default:
-			return fmt.Errorf("--profile must be direct, argocd, or flux")
+			return fmt.Errorf("--profile must be direct, argo, flux, or oci")
 		}
-	} else if opts.Backend != "argo" && opts.Backend != "flux" && opts.Backend != "oci" {
-		return fmt.Errorf("--backend must be argo, flux, or oci")
+	} else if opts.Substrate != "argo" && opts.Substrate != "flux" && opts.Substrate != "oci" {
+		return fmt.Errorf("--substrate must be argo, flux, or oci")
 	}
 	if opts.Mode != "push" && opts.Mode != "pull" {
 		return fmt.Errorf("--mode must be push or pull")
 	}
-	if opts.Backend == "oci" && opts.Mode != "pull" {
-		return fmt.Errorf("--backend oci requires --mode pull")
+	if opts.Substrate == "oci" && opts.Mode != "pull" {
+		return fmt.Errorf("--substrate oci requires --mode pull")
 	}
 	if scaffoldProfile(opts) == "direct" && opts.Mode != "push" {
 		return fmt.Errorf("--profile direct requires --mode push")
 	}
 	if opts.Namespace == "" {
-		opts.Namespace = defaultBackendNamespace(opts.Backend)
+		opts.Namespace = defaultSubstrateNamespace(opts.Substrate)
 	}
 	if opts.Clusters == "" {
 		opts.Clusters = "canary-eu:canary,prod-eu:production"
@@ -162,15 +165,15 @@ func runInitScaffold(opts scaffoldOptions) error {
 }
 
 func runConnectScaffold(opts connectOptions) error {
-	opts.Backend = strings.ToLower(opts.Backend)
-	if opts.Backend != "argo" && opts.Backend != "flux" {
-		return fmt.Errorf("backend must be argo or flux")
+	opts.Substrate = strings.ToLower(opts.Substrate)
+	if opts.Substrate != "argo" && opts.Substrate != "flux" {
+		return fmt.Errorf("substrate must be argo or flux")
 	}
 	if opts.Name == "" {
-		opts.Name = opts.Backend
+		opts.Name = opts.Substrate
 	}
 	if opts.Namespace == "" {
-		opts.Namespace = defaultBackendNamespace(opts.Backend)
+		opts.Namespace = defaultSubstrateNamespace(opts.Substrate)
 	}
 	matchLabels, err := parseSelector(opts.Selector)
 	if err != nil {
@@ -178,14 +181,14 @@ func runConnectScaffold(opts connectOptions) error {
 	}
 
 	files := map[string]string{
-		filepath.Join("backends", opts.Backend+"-observe.yaml"): renderConnectBackend(opts, matchLabels),
-		filepath.Join("README.md"):                              renderConnectReadme(opts),
+		filepath.Join("substrates", opts.Substrate+"-observe.yaml"): renderConnectSubstrate(opts, matchLabels),
+		filepath.Join("README.md"):                                  renderConnectReadme(opts),
 	}
 	if err := writeScaffoldFiles(opts.Path, files, opts.Force); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "\nGenerated %d Kapro %s connect files in %s\n", len(files), opts.Backend, opts.Path)
-	fmt.Fprintf(os.Stderr, "\nNext steps:\n  kubectl apply -f %s\n  kubectl get backend %s -o yaml\n", filepath.Join(opts.Path, "backends", opts.Backend+"-observe.yaml"), opts.Name)
+	fmt.Fprintf(os.Stderr, "\nGenerated %d Kapro %s connect files in %s\n", len(files), opts.Substrate, opts.Path)
+	fmt.Fprintf(os.Stderr, "\nNext steps:\n  kubectl apply -f %s\n  kubectl get substrate %s -o yaml\n", filepath.Join(opts.Path, "substrates", opts.Substrate+"-observe.yaml"), opts.Name)
 	return nil
 }
 
@@ -247,13 +250,13 @@ func printInitNextSteps(opts scaffoldOptions, count int) {
 	fmt.Fprintf(os.Stderr, "\nGenerated %d Kapro starter files in %s\n", count, opts.Path)
 	fmt.Fprintf(os.Stderr, "\nNext steps:\n")
 	if len(parseClusterScaffold(opts.Clusters)) == 0 {
-		fmt.Fprintf(os.Stderr, "Shape: Backend, Source, and backend-native sample manifests. Add clusters before creating Fleet and Promotion files.\n")
+		fmt.Fprintf(os.Stderr, "Shape: Substrate, Source, and substrate-native sample manifests. Add clusters before creating Fleet and Promotion files.\n")
 		printIndentedApplyInstructions(opts)
 		fmt.Fprintf(os.Stderr, "  add clusters/, then create fleets/%s.yaml and promotions/%s-promotion.yaml\n", opts.Name, opts.Name)
 		printScaffoldFooter(opts)
 		return
 	}
-	fmt.Fprintf(os.Stderr, "Shape: Backend, Fleet, Plan, Promotion, and backend-native sample manifests.\n")
+	fmt.Fprintf(os.Stderr, "Shape: Substrate, Fleet, Plan, Promotion, and substrate-native sample manifests.\n")
 	printIndentedApplyInstructions(opts)
 	nextVersion := nextScaffoldVersion(opts)
 	fmt.Fprintf(os.Stderr, "  kapro promote %s --version %s  # creates/updates Promotion intent; controller stamps PromotionRun\n", opts.Name, nextVersion)
@@ -266,7 +269,7 @@ func printScaffoldFooter(opts scaffoldOptions) {
 		printAdoptionFooter(opts.Path)
 		return
 	}
-	fmt.Fprintln(os.Stderr, "\nAdoption tip: run `kapro doctor` after installing the chart, then apply generated Backends and wait for Backend Ready before applying generated Clusters.")
+	fmt.Fprintln(os.Stderr, "\nAdoption tip: run `kapro doctor` after installing the chart, then apply generated Substrates and wait for Substrate Ready before applying generated Clusters.")
 }
 
 func printIndentedApplyInstructions(opts scaffoldOptions) {
@@ -292,7 +295,7 @@ func prefixKubectlFileArgs(line, root string) string {
 
 func greenfieldFiles(opts scaffoldOptions) map[string]string {
 	files := map[string]string{
-		filepath.Join("backends", opts.Backend+".yaml"):              renderGreenfieldBackend(opts),
+		filepath.Join("substrates", opts.Substrate+".yaml"):          renderGreenfieldSubstrate(opts),
 		filepath.Join("plans", opts.Name+".yaml"):                    renderPlan(opts),
 		filepath.Join("README.md"):                                   renderGreenfieldReadme(opts),
 		filepath.Join(".github", "workflows", "kapro-validate.yaml"): renderValidationWorkflow(),
@@ -308,7 +311,7 @@ func greenfieldFiles(opts scaffoldOptions) map[string]string {
 	} else {
 		files[filepath.Join("sources", opts.Name+".yaml")] = renderPromotionSource(opts)
 	}
-	switch opts.Backend {
+	switch opts.Substrate {
 	case "argo":
 		files[filepath.Join("argo", "applications", opts.Name+".yaml")] = renderArgoApplications(opts, clusters)
 		files[filepath.Join("apps", opts.Name, "deployment.yaml")] = renderDirectDeployment(opts)
@@ -348,14 +351,14 @@ func parseClusterScaffold(raw string) []scaffoldCluster {
 	return clusters
 }
 
-func defaultBackendNamespace(backend string) string {
-	if backend == "argo" || backend == "argocd" {
+func defaultSubstrateNamespace(substrate string) string {
+	if substrate == "argo" || substrate == "argocd" {
 		return "argocd"
 	}
-	if backend == "direct" {
+	if substrate == "direct" {
 		return "default"
 	}
-	if backend == "oci" {
+	if substrate == "oci" {
 		return "kapro-system"
 	}
 	return "flux-system"
@@ -377,40 +380,14 @@ func parseSelector(raw string) (map[string]string, error) {
 	return labels, nil
 }
 
-func renderGreenfieldBackend(opts scaffoldOptions) string {
-	if opts.UseSubstrateClass {
-		return renderSubstrateClassBackend(opts)
-	}
-	if opts.Backend == "oci" {
-		return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
-kind: Backend
-metadata:
-  name: oci
-spec:
-  driver: oci
-  runtime: Spoke
-  parameters:
-    repository: %s/{appKey}
-    tag: "{version}"
-    auth: anonymous
-`, strings.TrimSuffix(strings.TrimPrefix(opts.Registry, "oci://"), "/"))
-	}
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
-kind: Backend
-metadata:
-  name: %s
-spec:
-  driver: %s
-  runtime: Hub
-  parameters:
-    namespace: %s
-`, opts.Backend, opts.Backend, opts.Namespace)
+func renderGreenfieldSubstrate(opts scaffoldOptions) string {
+	return renderSubstrateClassSubstrate(opts)
 }
 
-func renderSubstrateClassBackend(opts scaffoldOptions) string {
+func renderSubstrateClassSubstrate(opts scaffoldOptions) string {
 	switch scaffoldProfile(opts) {
 	case "direct":
-		return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
+		return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
 kind: SubstrateClass
 metadata:
   name: kubernetes-apply
@@ -431,8 +408,8 @@ spec:
   fieldManager: kapro
   namespace: %s
 ---
-apiVersion: kapro.io/v1alpha2
-kind: Backend
+apiVersion: kapro.io/v1alpha1
+kind: Substrate
 metadata:
   name: %s
 spec:
@@ -444,17 +421,17 @@ spec:
     name: %s
   execution:
     mode: %s
-`, kubernetesSubstrateConfigAPIVersion, opts.Backend, opts.Namespace, opts.Backend, kubernetesSubstrateConfigAPIVersion, opts.Backend, executionModeForDelivery(opts.Mode))
-	case "argocd":
-		return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
+`, kubernetesSubstrateConfigAPIVersion, opts.Substrate, opts.Namespace, opts.Substrate, kubernetesSubstrateConfigAPIVersion, opts.Substrate, executionModeForDelivery(opts.Mode))
+	case "argo":
+		return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
 kind: SubstrateClass
 metadata:
-  name: argo-cd
+  name: argo
   labels:
     kapro.io/family: gitops
     kapro.io/ledger: git
 spec:
-  controllerName: kapro.io/argo-cd
+  controllerName: kapro.io/argo
   executionModes:
     default: hub-push
 ---
@@ -467,22 +444,62 @@ spec:
   namespace: %s
   defaultProject: platform
 ---
-apiVersion: kapro.io/v1alpha2
-kind: Backend
+apiVersion: kapro.io/v1alpha1
+kind: Substrate
 metadata:
   name: %s
 spec:
   classRef:
-    name: argo-cd
+    name: argo
   configRef:
     apiVersion: %s
     kind: ArgoCDSubstrateConfig
     name: %s
   execution:
     mode: %s
-`, argoCDSubstrateConfigAPIVersion, opts.Backend, opts.Namespace, opts.Backend, argoCDSubstrateConfigAPIVersion, opts.Backend, executionModeForDelivery(opts.Mode))
+`, argoCDSubstrateConfigAPIVersion, opts.Substrate, opts.Namespace, opts.Substrate, argoCDSubstrateConfigAPIVersion, opts.Substrate, executionModeForDelivery(opts.Mode))
+	case "oci":
+		return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
+kind: SubstrateClass
+metadata:
+  name: oci
+  labels:
+    kapro.io/family: artifact
+    kapro.io/ledger: oci-registry
+spec:
+  controllerName: kapro.io/oci
+  executionModes:
+    default: spoke-pull
+---
+apiVersion: %s
+kind: OCIBundleApplyConfig
+metadata:
+  name: %s
+spec:
+  serverSideApply: true
+  fieldManager: kapro
+  namespace: %s
+---
+apiVersion: kapro.io/v1alpha1
+kind: Substrate
+metadata:
+  name: %s
+spec:
+  classRef:
+    name: oci
+  configRef:
+    apiVersion: %s
+    kind: OCIBundleApplyConfig
+    name: %s
+  execution:
+    mode: %s
+  parameters:
+    repository: %s/{appKey}
+    tag: "{version}"
+    auth: anonymous
+`, ociSubstrateConfigAPIVersion, opts.Substrate, opts.Namespace, opts.Substrate, ociSubstrateConfigAPIVersion, opts.Substrate, executionModeForDelivery(opts.Mode), strings.TrimSuffix(strings.TrimPrefix(opts.Registry, "oci://"), "/"))
 	default:
-		return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
+		return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
 kind: SubstrateClass
 metadata:
   name: flux
@@ -501,8 +518,8 @@ metadata:
 spec:
   namespace: %s
 ---
-apiVersion: kapro.io/v1alpha2
-kind: Backend
+apiVersion: kapro.io/v1alpha1
+kind: Substrate
 metadata:
   name: %s
 spec:
@@ -514,18 +531,21 @@ spec:
     name: %s
   execution:
     mode: %s
-`, fluxSubstrateConfigAPIVersion, opts.Backend, opts.Namespace, opts.Backend, fluxSubstrateConfigAPIVersion, opts.Backend, executionModeForDelivery(opts.Mode))
+`, fluxSubstrateConfigAPIVersion, opts.Substrate, opts.Namespace, opts.Substrate, fluxSubstrateConfigAPIVersion, opts.Substrate, executionModeForDelivery(opts.Mode))
 	}
 }
 
-func renderConnectBackend(opts connectOptions, labels map[string]string) string {
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
-kind: Backend
+func renderConnectSubstrate(opts connectOptions, labels map[string]string) string {
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
+kind: Substrate
 metadata:
   name: %s
 spec:
-  driver: %s
-  runtime: Hub
+  substrate:
+    kind: %s
+    actuator: %s
+  execution:
+    mode: hub-push
   parameters:
     namespace: %s
   discovery:
@@ -534,11 +554,11 @@ spec:
     maxObjects: 1000
     selector:
       matchLabels:
-%s`, opts.Name, opts.Backend, opts.Namespace, renderYAMLMap(labels, 8))
+%s`, opts.Name, opts.Substrate, opts.Substrate, opts.Namespace, renderYAMLMap(labels, 8))
 }
 
 func renderCluster(opts scaffoldOptions, suffix, stage string) string {
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
 kind: Cluster
 metadata:
   name: %s
@@ -547,14 +567,14 @@ metadata:
 spec:
   delivery:
     mode: %s
-    backendRef: %s
+    substrateRef: %s
     parameters:
       namespace: %s
-%s`, suffix, stage, opts.Mode, opts.Backend, opts.Namespace, renderDeliveryParameters(opts, suffix))
+%s`, suffix, stage, opts.Mode, opts.Substrate, opts.Namespace, renderDeliveryParameters(opts, suffix))
 }
 
 func renderDeliveryParameters(opts scaffoldOptions, suffix string) string {
-	switch opts.Backend {
+	switch opts.Substrate {
 	case "argo":
 		return fmt.Sprintf("      application: %s-%s\n", opts.Name, suffix)
 	case "direct":
@@ -571,32 +591,32 @@ func renderDeliveryParameters(opts scaffoldOptions, suffix string) string {
 
 func renderPromotionSource(opts scaffoldOptions) string {
 	if scaffoldProfile(opts) == "direct" {
-		return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
+		return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
 kind: Source
 metadata:
   name: %s
   labels:
     kapro.io/team: %s
 spec:
-  backendRef: %s
+  substrateRef: %s
   defaults:
     targetNamespace: %s
   units:
     - name: %s
-      backendKind: KubernetesManifest
+      substrateKind: KubernetesManifest
       sourcePath: apps/%s/deployment.yaml
       versionField: spec.template.spec.containers[0].image
       version: %s
-`, opts.Name, opts.Team, opts.Backend, opts.Namespace, opts.Name, opts.Name, defaultScaffoldVersion(opts))
+`, opts.Name, opts.Team, opts.Substrate, opts.Namespace, opts.Name, opts.Name, defaultScaffoldVersion(opts))
 	}
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
 kind: Source
 metadata:
   name: %s
   labels:
     kapro.io/team: %s
 spec:
-  backendRef: %s
+  substrateRef: %s
   registries:
     - name: app
       url: %s
@@ -608,11 +628,11 @@ spec:
     - name: %s
       version: 0.1.0
       chartName: %s
-`, opts.Name, opts.Team, opts.Backend, opts.Registry, registryType(opts.Registry), opts.Name, opts.Name, opts.Name)
+`, opts.Name, opts.Team, opts.Substrate, opts.Registry, registryType(opts.Registry), opts.Name, opts.Name, opts.Name)
 }
 
 func renderPlan(opts scaffoldOptions) string {
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
 kind: Plan
 metadata:
   name: %s
@@ -646,7 +666,7 @@ func renderKapro(opts scaffoldOptions, clusters []scaffoldCluster) string {
 `, cluster.Name, cluster.Tier)
 	}
 	if scaffoldProfile(opts) == "direct" {
-		return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
+		return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
 kind: Fleet
 metadata:
   name: %s
@@ -654,18 +674,18 @@ metadata:
     kapro.io/team: %s
 spec:
   source:
-    backendRef: %s
+    substrateRef: %s
     defaults:
       targetNamespace: %s
     units:
       - name: %s
-        backendKind: KubernetesManifest
+        substrateKind: KubernetesManifest
         sourcePath: apps/%s/deployment.yaml
         versionField: spec.template.spec.containers[0].image
         version: %s
   delivery:
     mode: %s
-    backendRef: %s
+    substrateRef: %s
     parameters:
       deployment: %s
       container: app
@@ -683,9 +703,9 @@ spec:
           kapro.io/stage: production
         dependsOn:
           - stage: canary
-`, opts.Name, opts.Team, opts.Backend, opts.Namespace, opts.Name, opts.Name, defaultScaffoldVersion(opts), opts.Mode, opts.Backend, opts.Name, opts.Name, opts.Namespace, clusterItems.String())
+`, opts.Name, opts.Team, opts.Substrate, opts.Namespace, opts.Name, opts.Name, defaultScaffoldVersion(opts), opts.Mode, opts.Substrate, opts.Name, opts.Name, opts.Namespace, clusterItems.String())
 	}
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
 kind: Fleet
 metadata:
   name: %s
@@ -695,7 +715,7 @@ spec:
   registry:
     url: %s
   source:
-    backendRef: %s
+    substrateRef: %s
     registries:
       - name: app
         url: %s
@@ -709,7 +729,7 @@ spec:
         chartName: %s
   delivery:
     mode: %s
-    backendRef: %s
+    substrateRef: %s
     parameters:
       namespace: %s
   clusters:
@@ -724,11 +744,11 @@ spec:
           kapro.io/stage: production
         dependsOn:
           - stage: canary
-`, opts.Name, opts.Team, opts.Registry, opts.Backend, opts.Registry, registryType(opts.Registry), opts.Name, opts.Name, opts.Name, opts.Mode, opts.Backend, opts.Namespace, clusterItems.String())
+`, opts.Name, opts.Team, opts.Registry, opts.Substrate, opts.Registry, registryType(opts.Registry), opts.Name, opts.Name, opts.Name, opts.Mode, opts.Substrate, opts.Namespace, clusterItems.String())
 }
 
 func renderPromotion(opts scaffoldOptions) string {
-	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha2
+	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
 kind: Promotion
 metadata:
   name: %s-0-1-0
@@ -867,17 +887,17 @@ resources:
 
 func renderGreenfieldReadme(opts scaffoldOptions) string {
 	if len(parseClusterScaffold(opts.Clusters)) == 0 {
-		backendStep := ""
-		if opts.Backend == "argo" || opts.Backend == "flux" || opts.Backend == "direct" {
-			backendStep = fmt.Sprintf("4. %s/\n", opts.Backend)
+		substrateStep := ""
+		if opts.Substrate == "argo" || opts.Substrate == "flux" || opts.Substrate == "direct" {
+			substrateStep = fmt.Sprintf("4. %s/\n", opts.Substrate)
 		}
 		return fmt.Sprintf(`# %s Kapro Promotion Repo
 
-This repo is a repo-first Kapro scaffold for the %s backend.
+This repo is a repo-first Kapro scaffold for the %s substrate.
 
 Apply order:
 
-1. backends/
+1. substrates/
 2. sources/
 3. plans/
 %s
@@ -890,11 +910,11 @@ Apply with:
 Clusters are intentionally not generated yet. Add clusters later, then add
 clusters/, fleets/, and promotions/ when real target clusters exist.
 
-Kapro coordinates promotion. The %s backend owns local sync and rollout mechanics.
+Kapro coordinates promotion. The %s substrate owns local sync and rollout mechanics.
 
 Before expecting Argo CD or Flux to sync, push this repo and update the generated
-backend-native Git URL placeholders to point at your repository.
-`, opts.Name, opts.Backend, backendStep, renderApplyInstructions(opts), opts.Backend)
+substrate-native Git URL placeholders to point at your repository.
+`, opts.Name, opts.Substrate, substrateStep, renderApplyInstructions(opts), opts.Substrate)
 	}
 	if scaffoldProfile(opts) == "direct" {
 		return fmt.Sprintf(`# %s Kapro Direct Profile Repo
@@ -903,7 +923,7 @@ This repo is a greenfield Kapro scaffold for direct Kubernetes apply.
 
 Apply order:
 
-1. backends/
+1. substrates/
 2. apps/
 3. clusters/
 4. plans/
@@ -923,11 +943,11 @@ API during promotion.
 	}
 	return fmt.Sprintf(`# %s Kapro Promotion Repo
 
-This repo is a greenfield Kapro scaffold for the %s backend.
+This repo is a greenfield Kapro scaffold for the %s substrate.
 
 Apply order:
 
-1. backends/
+1. substrates/
 2. clusters/
 3. plans/
 4. fleets/
@@ -939,22 +959,26 @@ Apply with:
 %s
 `+"```"+`
 
-Kapro coordinates promotion. The %s backend owns local sync and rollout mechanics.
+Kapro coordinates promotion. The %s substrate owns local sync and rollout mechanics.
 
 Before expecting Argo CD or Flux to sync, push this repo and update the generated
-backend-native Git URL placeholders to point at your repository.
-`, opts.Name, opts.Backend, renderApplyInstructions(opts), opts.Backend)
+substrate-native Git URL placeholders to point at your repository.
+`, opts.Name, opts.Substrate, renderApplyInstructions(opts), opts.Substrate)
 }
 
 func renderApplyInstructions(opts scaffoldOptions) string {
 	if !opts.UseSubstrateClass {
 		return "kubectl apply --recursive -f ."
 	}
-	paths := []string{"apps"}
-	switch opts.Backend {
+	paths := []string{}
+	switch opts.Substrate {
+	case "direct":
+		paths = append(paths, "apps")
 	case "argo":
+		paths = append(paths, "apps")
 		paths = append(paths, "argo")
 	case "flux":
+		paths = append(paths, "apps")
 		paths = append(paths, "flux")
 	}
 	if len(parseClusterScaffold(opts.Clusters)) == 0 {
@@ -966,8 +990,8 @@ func renderApplyInstructions(opts scaffoldOptions) string {
 	for _, path := range paths {
 		args = append(args, "-f", path)
 	}
-	return fmt.Sprintf("kubectl apply -f backends/%s.yaml\nkubectl wait --for=condition=Ready backend/%s --timeout=90s\nkubectl apply --recursive %s",
-		opts.Backend, opts.Backend, strings.Join(args, " "))
+	return fmt.Sprintf("kubectl apply -f substrates/%s.yaml\nkubectl wait --for=condition=Ready substrate/%s --timeout=90s\nkubectl apply --recursive %s",
+		opts.Substrate, opts.Substrate, strings.Join(args, " "))
 }
 
 func renderValidationWorkflow() string {
@@ -1011,13 +1035,17 @@ jobs:
 
 func scaffoldProfile(opts scaffoldOptions) string {
 	if opts.Profile != "" {
-		return strings.ToLower(opts.Profile)
+		profile := strings.ToLower(opts.Profile)
+		if profile == "argocd" {
+			return "argo"
+		}
+		return profile
 	}
-	switch opts.Backend {
+	switch opts.Substrate {
 	case "argo":
-		return "argocd"
+		return "argo"
 	default:
-		return opts.Backend
+		return opts.Substrate
 	}
 }
 
@@ -1046,23 +1074,23 @@ func renderConnectReadme(opts connectOptions) string {
 	return fmt.Sprintf(`# Kapro %s Existing GitOps Connection
 
 This scaffold starts in observe mode. Kapro discovers existing %s objects and
-reports them through Backend status without taking over writes.
+reports them through Substrate status without taking over writes.
 
-This is a Backend-only scaffold. Use `+"`kapro discover %s`"+` or
+This is a Substrate-only scaffold. Use `+"`kapro discover %s`"+` or
 `+"`kapro adopt %s`"+` when you want generated Source units and discovery review
 reports.
 
 Apply:
 
 `+"```bash"+`
-kubectl apply -f backends/%s-observe.yaml
+kubectl apply -f substrates/%s-observe.yaml
 `+"```"+`
 
 When the observed graph is correct, switch managementPolicy from Observe to
-Adopt for the selected Backend. Kapro still references backend-owned
+Adopt for the selected Substrate. Kapro still references substrate-owned
 Secrets and configuration; it does not copy Argo CD or Flux credentials into
 Kapro objects.
-`, opts.Backend, opts.Backend, opts.Backend, opts.Backend, opts.Backend)
+`, opts.Substrate, opts.Substrate, opts.Substrate, opts.Substrate, opts.Substrate)
 }
 
 func renderYAMLMap(labels map[string]string, indent int) string {

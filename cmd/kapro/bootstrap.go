@@ -22,10 +22,9 @@ observe-first mode with reviewable mappings.`,
 	cmd.AddCommand(newBootstrapGuideCmd())
 	cmd.AddCommand(newBootstrapGenerateCmd())
 	cmd.AddCommand(newBootstrapGreenfieldCmd())
-	cmd.AddCommand(newBootstrapBrownfieldCmd())
-	cmd.AddCommand(newBootstrapBackendCmd("argo"))
-	cmd.AddCommand(newBootstrapBackendCmd("flux"))
-	cmd.AddCommand(newBootstrapBackendCmd("oci"))
+	cmd.AddCommand(newBootstrapSubstrateCmd("argo"))
+	cmd.AddCommand(newBootstrapSubstrateCmd("flux"))
+	cmd.AddCommand(newBootstrapSubstrateCmd("oci"))
 	return cmd
 }
 
@@ -51,7 +50,7 @@ func newBootstrapGenerateCmd() *cobra.Command {
 
 Profiles:
   direct  Kubernetes direct apply with raw YAML and no OCI registry requirement
-  argocd  Argo CD remains the reconciler; Kapro promotes Argo-managed intent
+  argo    Argo CD remains the reconciler; Kapro promotes Argo-managed intent
   flux    Flux remains the reconciler; Kapro promotes Flux-managed intent`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
@@ -65,11 +64,11 @@ Profiles:
 			return runInitScaffold(opts)
 		},
 	}
-	cmd.Flags().StringVar(&profile, "profile", profile, "Bootstrap profile: direct, argocd, or flux")
+	cmd.Flags().StringVar(&profile, "profile", profile, "Bootstrap profile: direct, argo, or flux")
 	cmd.Flags().StringVar(&opts.Name, "name", "checkout", "Application or fleet name")
 	cmd.Flags().StringVar(&opts.Mode, "mode", "", "Delivery mode: push or pull (defaults per profile)")
 	cmd.Flags().StringVar(&opts.Registry, "registry", "oci://registry.example.com/platform", "OCI registry URL for GitOps bundle examples")
-	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Workload/backend namespace")
+	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Workload/substrate namespace")
 	cmd.Flags().StringVar(&opts.Clusters, "clusters", "canary-eu:canary,prod-eu:production", "Cluster scaffold list as name:stage pairs, or none for repo-only setup")
 	cmd.Flags().StringVar(&opts.Team, "team", "platform", "Value for metadata.labels[kapro.io/team]")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
@@ -81,7 +80,7 @@ func applyBootstrapGenerateProfile(opts *scaffoldOptions, profile string) error 
 	switch normalized {
 	case "direct":
 		opts.Profile = "direct"
-		opts.Backend = "direct"
+		opts.Substrate = "direct"
 		if opts.Mode == "" {
 			opts.Mode = "push"
 		}
@@ -89,8 +88,8 @@ func applyBootstrapGenerateProfile(opts *scaffoldOptions, profile string) error 
 			opts.Namespace = "default"
 		}
 	case "argocd", "argo":
-		opts.Profile = "argocd"
-		opts.Backend = "argo"
+		opts.Profile = "argo"
+		opts.Substrate = "argo"
 		if opts.Mode == "" {
 			opts.Mode = "push"
 		}
@@ -99,7 +98,7 @@ func applyBootstrapGenerateProfile(opts *scaffoldOptions, profile string) error 
 		}
 	case "flux":
 		opts.Profile = "flux"
-		opts.Backend = "flux"
+		opts.Substrate = "flux"
 		if opts.Mode == "" {
 			opts.Mode = "pull"
 		}
@@ -107,7 +106,7 @@ func applyBootstrapGenerateProfile(opts *scaffoldOptions, profile string) error 
 			opts.Namespace = "flux-system"
 		}
 	default:
-		return fmt.Errorf("--profile must be direct, argocd, or flux")
+		return fmt.Errorf("--profile must be direct, argo, or flux")
 	}
 	if opts.Name == "" {
 		opts.Name = "checkout"
@@ -132,7 +131,7 @@ func printBootstrapGuide(out io.Writer) {
    kapro bootstrap generate ./promotion-repo --profile flux --name checkout
 
 2. Try Kapro in a new Argo CD repo
-   kapro bootstrap generate ./promotion-repo --profile argocd --name checkout
+   kapro bootstrap generate ./promotion-repo --profile argo --name checkout
 
 3. Try Kapro with direct Kubernetes apply
    kapro bootstrap generate ./promotion-repo --profile direct --name checkout
@@ -147,51 +146,52 @@ func printBootstrapGuide(out io.Writer) {
    kapro quickstart oci ./promotion-repo --name checkout
 
 Safe default:
-  existing GitOps adoption starts in Observe mode. Review generated Backend,
-  Source, and discovery reports before switching any Backend to Adopt.
+  existing GitOps adoption starts in Observe mode. Review generated Substrate,
+  Source, and discovery reports before switching any Substrate to Adopt.
 
 Delivery modes in plain language:
   pull: each cluster pulls desired state from inside its own network boundary.
-  push: the hub tells a backend such as Argo CD what version to promote.`)
+  push: the hub tells a substrate such as Argo CD what version to promote.`)
 }
 
-func newBootstrapBackendCmd(backend string) *cobra.Command {
+func newBootstrapSubstrateCmd(substrate string) *cobra.Command {
 	var opts scaffoldOptions
 	defaultMode := "pull"
-	if backend == "argo" {
+	if substrate == "argo" {
 		defaultMode = "push"
 	}
-	existingHint := "For an existing GitOps repository, use:\n  kapro adopt " + backend + " . --out ./kapro-connect --name checkout"
-	if backend == "oci" {
+	existingHint := "For an existing GitOps repository, use:\n  kapro adopt " + substrate + " . --out ./kapro-connect --name checkout"
+	if substrate == "oci" {
 		existingHint = "OCI is the existing spoke-side pull helper, not one of the new 0.6 launch profiles. Use it when you do not want Argo CD or Flux on spokes."
 	}
 	cmd := &cobra.Command{
-		Use:   backend + " [directory]",
-		Short: fmt.Sprintf("Generate a new %s-backed promotion repo", backend),
+		Use:   substrate + " [directory]",
+		Short: fmt.Sprintf("Generate a new %s-backed promotion repo", substrate),
 		Long: fmt.Sprintf(`Generate a new Kapro promotion repository for %s.
 
 This is a shorter, adoption-friendly alias for:
-  kapro bootstrap greenfield [directory] --backend %s
+  kapro bootstrap greenfield [directory] --substrate %s
 
 The 0.6 public-preview profile matrix is exposed through:
-  kapro bootstrap generate [directory] --profile direct|argocd|flux
+  kapro bootstrap generate [directory] --profile direct|argo|flux
 
-Use this command when you are starting fresh with an existing backend-specific
-helper. %s`, backend, backend, existingHint),
+Use this command when you are starting fresh with an existing substrate-specific
+helper. %s`, substrate, substrate, existingHint),
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			opts.Path = "."
 			if len(args) > 0 {
 				opts.Path = args[0]
 			}
-			opts.Backend = backend
+			opts.Substrate = substrate
+			opts.UseSubstrateClass = true
 			return runInitScaffold(opts)
 		},
 	}
 	cmd.Flags().StringVar(&opts.Name, "name", "checkout", "Application or fleet name")
 	cmd.Flags().StringVar(&opts.Mode, "mode", defaultMode, "Delivery mode: push or pull")
 	cmd.Flags().StringVar(&opts.Registry, "registry", "oci://registry.example.com/platform", "OCI registry URL for bundles")
-	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Backend namespace (default: argocd for argo, flux-system for flux, kapro-system for oci)")
+	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Substrate namespace (default: argocd for argo, flux-system for flux, kapro-system for oci)")
 	cmd.Flags().StringVar(&opts.Clusters, "clusters", "canary-eu:canary,prod-eu:production", "Cluster scaffold list as name:stage pairs, or none for repo-only setup")
 	cmd.Flags().StringVar(&opts.Team, "team", "platform", "Value for metadata.labels[kapro.io/team]")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
@@ -203,7 +203,7 @@ func newBootstrapGreenfieldCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "greenfield [directory]",
 		Short: "Generate a new promotion lifecycle repo",
-		Long: `Generate Backend, Fleet, Plan, Promotion, and backend-native starter
+		Long: `Generate Substrate, Fleet, Plan, Promotion, and substrate-native starter
 files for a new promotion lifecycle repository.
 
 This is a friendly wrapper around kapro init. It defaults to Flux pull mode
@@ -215,58 +215,23 @@ pull from inside their network boundary.`,
 			if len(args) > 0 {
 				opts.Path = args[0]
 			}
+			opts.UseSubstrateClass = true
 			return runInitScaffold(opts)
 		},
 	}
 	cmd.Flags().StringVar(&opts.Name, "name", "checkout", "Application or fleet name")
-	cmd.Flags().StringVar(&opts.Backend, "backend", "flux", "Delivery backend: argo, flux, or oci")
+	cmd.Flags().StringVar(&opts.Substrate, "substrate", "flux", "Delivery substrate: argo, flux, or oci")
 	cmd.Flags().StringVar(&opts.Mode, "mode", "pull", "Delivery mode: push or pull")
 	cmd.Flags().StringVar(&opts.Registry, "registry", "oci://registry.example.com/platform", "OCI registry URL for bundles")
-	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Backend namespace (default: argocd for argo, flux-system for flux, kapro-system for oci)")
+	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Substrate namespace (default: argocd for argo, flux-system for flux, kapro-system for oci)")
 	cmd.Flags().StringVar(&opts.Clusters, "clusters", "canary-eu:canary,prod-eu:production", "Cluster scaffold list as name:stage pairs, or none for repo-only setup")
 	cmd.Flags().StringVar(&opts.Team, "team", "platform", "Value for metadata.labels[kapro.io/team]")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
 	return cmd
 }
 
-func newBootstrapBrownfieldCmd() *cobra.Command {
-	var opts bootstrapBrownfieldOptions
-	cmd := &cobra.Command{
-		Use:   "brownfield <argo|flux> [repo]",
-		Short: "Generate observe-first mappings for an existing GitOps repo",
-		Long: `Generate observe-first Backend, Source, and discovery review files
-for an existing Argo CD or Flux repository.
-
-The command does not mutate live backend objects and does not push Git changes.
-Review the generated files before granting Adopt permissions or running
-kapro source apply.`,
-		Deprecated: "use 'kapro adopt argo' or 'kapro adopt flux' instead",
-		Args:       cobra.RangeArgs(1, 2),
-		RunE: func(_ *cobra.Command, args []string) error {
-			opts.Backend = strings.ToLower(args[0])
-			opts.RepoPath = "."
-			if len(args) > 1 {
-				opts.RepoPath = args[1]
-			}
-			return runBootstrapBrownfield(opts)
-		},
-	}
-	cmd.Flags().StringVar(&opts.OutPath, "out", "kapro-connect", "Output directory for generated Kapro files")
-	cmd.Flags().StringVar(&opts.Name, "name", "checkout", "Backend and Source name")
-	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Backend namespace (default: argocd for argo, flux-system for flux)")
-	cmd.Flags().StringVar(&opts.Selector, "selector", "kapro.io/import=true", "Label selector for imported backend objects")
-	cmd.Flags().StringVar(&opts.Revision, "revision", "", "Git branch/tag/SHA when discovering a remote Argo repository URL")
-	cmd.Flags().StringSliceVar(&opts.PathPrefixes, "path-prefix", nil, "Repo path prefix to scan (repeatable; default: common GitOps paths)")
-	cmd.Flags().BoolVar(&opts.ScanAll, "scan-all", false, "Scan all tracked YAML/JSON files instead of GitOps path prefixes")
-	cmd.Flags().BoolVar(&opts.Cache, "cache", true, "Reuse discovery cache when supported")
-	cmd.Flags().IntVar(&opts.MaxFiles, "max-files", defaultArgoDiscoveryMaxFiles, "Maximum tracked YAML/JSON candidate files to parse (0 = unlimited)")
-	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum Source units to generate (0 = unlimited)")
-	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
-	return cmd
-}
-
-type bootstrapBrownfieldOptions struct {
-	Backend      string
+type bootstrapExistingGitOpsOptions struct {
+	Substrate    string
 	RepoPath     string
 	OutPath      string
 	Name         string
@@ -281,8 +246,8 @@ type bootstrapBrownfieldOptions struct {
 	Force        bool
 }
 
-func runBootstrapBrownfield(opts bootstrapBrownfieldOptions) error {
-	switch opts.Backend {
+func runBootstrapExistingGitOps(opts bootstrapExistingGitOpsOptions) error {
+	switch opts.Substrate {
 	case "argo":
 		namespace := opts.Namespace
 		if namespace == "" {
@@ -320,6 +285,6 @@ func runBootstrapBrownfield(opts bootstrapBrownfieldOptions) error {
 			Force:        opts.Force,
 		})
 	default:
-		return fmt.Errorf("backend must be argo or flux")
+		return fmt.Errorf("substrate must be argo or flux")
 	}
 }

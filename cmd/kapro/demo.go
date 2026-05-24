@@ -8,12 +8,14 @@ import (
 	"path/filepath"
 	"time"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/cli"
 )
 
@@ -150,30 +152,30 @@ func runDemo(ctx context.Context) error {
 	}
 
 	// Fleet defines what and where to deploy.
-	fleet := &kaprov1alpha2.Fleet{
+	fleet := &kaprov1alpha1.Fleet{
 		ObjectMeta: metav1.ObjectMeta{Name: "demo"},
-		Spec: kaprov1alpha2.FleetSpec{
-			Registry: kaprov1alpha2.KaproRegistry{
+		Spec: kaprov1alpha1.FleetSpec{
+			Registry: kaprov1alpha1.KaproRegistry{
 				URL: "oci://registry.example.com/charts",
 			},
-			Source: &kaprov1alpha2.SourceSpec{
-				Units: []kaprov1alpha2.Unit{
+			Source: &kaprov1alpha1.SourceSpec{
+				Units: []kaprov1alpha1.Unit{
 					{Name: "pos-server", Version: "5.28.0"},
 					{Name: "auth-service", Version: "5.28.0"},
 					{Name: "sdc", Version: "5.28.0"},
 					{Name: "keycloak", Version: "6.5.0"},
 				},
 			},
-			Clusters: []kaprov1alpha2.ClusterRef{
+			Clusters: []kaprov1alpha1.ClusterRef{
 				{Name: "canary-eu", Labels: map[string]string{"tier": "canary", "region": "eu-west"}},
 				{Name: "prod-eu-west", Labels: map[string]string{"tier": "prod", "region": "eu-west"}},
 				{Name: "prod-eu-east", Labels: map[string]string{"tier": "prod", "region": "eu-east"}},
 			},
-			Plan: kaprov1alpha2.KaproPlan{
-				Stages: []kaprov1alpha2.StageSpec{
+			Plan: kaprov1alpha1.KaproPlan{
+				Stages: []kaprov1alpha1.StageSpec{
 					{Name: "canary", Selector: map[string]string{"tier": "canary"}},
 					{Name: "prod", Selector: map[string]string{"tier": "prod"},
-						DependsOn: []kaprov1alpha2.StageDependency{{Stage: "canary"}}},
+						DependsOn: []kaprov1alpha1.StageDependency{{Stage: "canary"}}},
 				},
 			},
 		},
@@ -186,22 +188,22 @@ func runDemo(ctx context.Context) error {
 	// Simulate healthy clusters (in production, Flux reports this).
 	now := time.Now().UTC().Format(time.RFC3339)
 	for _, cluster := range fleet.Spec.Clusters {
-		mc := &kaprov1alpha2.Cluster{}
+		mc := &kaprov1alpha1.Cluster{}
 		if err := c.Get(ctx, client.ObjectKey{Name: cluster.Name}, mc); err == nil {
 			patch := client.MergeFrom(mc.DeepCopy())
-			mc.Status.Phase = kaprov1alpha2.ClusterPhaseConverged
+			mc.Status.Phase = kaprov1alpha1.ClusterPhaseConverged
 			mc.Status.LastHeartbeat = now
-			mc.Status.Health = kaprov1alpha2.ClusterHealth{AllWorkloadsReady: true, ReadyWorkloads: 8, TotalWorkloads: 8}
+			mc.Status.Health = kaprov1alpha1.ClusterHealth{AllWorkloadsReady: true, ReadyWorkloads: 8, TotalWorkloads: 8}
 			_ = c.Status().Patch(ctx, mc, patch)
 		}
 	}
 
 	// Create a compatibility PromotionRun to trigger the plan.
-	promotionrun := &kaprov1alpha2.PromotionRun{
+	promotionrun := &kaproruntimev1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "platform-v5.28"},
-		Spec: kaprov1alpha2.PromotionRunSpec{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "sha256:abc123",
-			Plans:   []kaprov1alpha2.PlanRef{{Name: "initial", Plan: "demo-plan"}},
+			Plans:   []kaprov1alpha1.PlanRef{{Name: "initial", Plan: "demo-plan"}},
 		},
 	}
 	if err := c.Create(ctx, promotionrun); err != nil && !isAlreadyExists(err) {

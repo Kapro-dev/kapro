@@ -36,7 +36,7 @@ Only platform admins and extension admins should create or update
 `Plugin` objects.
 
 Creating or updating a `Plugin` is privileged because an actuator plugin can change
-delivery backend state and a gate plugin can unblock or block production
+delivery substrate state and a gate plugin can unblock or block production
 promotion. External plugins must run in a platform-controlled namespace, expose
 TLS, and use a namespaced `spec.tlsSecretRef` when custom CA or mTLS material is
 required.
@@ -89,9 +89,9 @@ which prevents one approval from unintentionally unblocking unrelated targets.
 
 ## Namespace and Team Boundaries
 
-The operator runs in `kapro-system`. Plugin workloads, webhook backends, and
-notification integrations should also live in platform-controlled namespaces,
-not in application namespaces.
+The operator runs in `kapro-system`. Plugin workloads and notification
+integrations should also live in platform-controlled namespaces, not in
+application namespaces.
 
 Recommended namespace pattern:
 
@@ -148,15 +148,15 @@ rules:
 These roles are intentionally broad examples. Production clusters should pair
 them with admission checks for team and environment ownership.
 
-## Backend Observe and Adopt RBAC
+## Substrate Observe and Adopt RBAC
 
-Existing GitOps backends should use different permissions for discovery and
+Existing GitOps substrates should use different permissions for discovery and
 promotion writes. The example roles in
-`examples/rbac/backend-observe-adopt-roles.yaml` split those surfaces:
+`examples/rbac/substrate-observe-adopt-roles.yaml` split those surfaces:
 
 | Mode | Required access | Notes |
 |---|---|---|
-| Argo `Observe` | Read Argo cluster Secrets, Applications, and ApplicationSets in the Argo namespace. | No patch rights. Kapro reports selected, skipped, and unsupported objects in `Backend.status`. |
+| Argo `Observe` | Read Argo cluster Secrets, Applications, and ApplicationSets in the Argo namespace. | No patch rights. Kapro reports selected, skipped, and unsupported objects in `Substrate.status`. |
 | Argo `Adopt` | Patch selected Applications. | The built-in actuator writes only `spec.source.targetRevision`. ApplicationSet template writes require the ApplicationSet actuator plugin and separate RBAC. |
 | Flux `Observe` | Read GitRepository, OCIRepository, HelmRelease, and Kustomization objects in the Flux namespace. | No patch rights. |
 | Flux `Adopt` | Patch selected HelmRelease or Kustomization objects. | Bind per namespace and pair with admission or policy rules that enforce the team selector. |
@@ -164,10 +164,10 @@ promotion writes. The example roles in
 Kubernetes RBAC cannot express label-selector-scoped patch permissions by
 itself. In shared namespaces, combine these roles with admission policy or
 separate namespaces per tenant so `managementPolicy: Adopt` cannot mutate
-another team's backend objects.
+another team's substrate objects.
 
-For large Argo or Flux control planes, set `Backend.spec.discovery.selector`
-and keep `spec.discovery.maxObjects` near the default `1000`. If a backend list
+For large Argo or Flux control planes, set `Substrate.spec.discovery.selector`
+and keep `spec.discovery.maxObjects` near the default `1000`. If a substrate list
 exceeds that bound, Kapro marks discovery not ready instead of importing an
 unreviewable set of objects. Raise the limit only after the selector expresses a
 clear team or application boundary.

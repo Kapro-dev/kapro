@@ -31,7 +31,7 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    name: v1alpha2
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: |-
@@ -63,9 +63,9 @@ spec:
               controllerName:
                 description: |-
                   ControllerName identifies the controller or plugin responsible for
-                  Backends that select this class. It follows the GatewayClass
+                  Substrates that select this class. It follows the GatewayClass
                   controllerName convention: a domain-prefixed path such as
-                  kapro.io/argo-cd or example.com/company-deployer.
+                  kapro.io/argo or example.com/company-deployer.
                 maxLength: 253
                 minLength: 1
                 type: string
@@ -77,9 +77,9 @@ spec:
                   default:
                     default: hub-push
                     description: |-
-                      Default is the execution mode used when a Backend selecting this class
+                      Default is the execution mode used when a Substrate selecting this class
                       omits spec.execution.mode. The controller must report support for this
-                      mode in status before Backends can become Ready.
+                      mode in status before Substrates can become Ready.
                     enum:
                     - hub-push
                     - spoke-pull
@@ -96,7 +96,7 @@ spec:
               acceptedConfigKinds:
                 description: |-
                   AcceptedConfigKinds lists typed substrate configuration kinds this class
-                  accepts through Backend.spec.configRef.
+                  accepts through Substrate.spec.configRef.
                 items:
                   description: |-
                     SubstrateObjectKindReference identifies a typed substrate-owned CRD kind
@@ -123,6 +123,15 @@ spec:
                 description: Capabilities reports what the responsible controller
                   can do.
                 properties:
+                  attributes:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Attributes carries stable, controller-reported capability attributes used
+                      by future selector grammar. Keys are lowercase DNS-label style names;
+                      values are strings so controllers can publish booleans, numbers, and
+                      enums without changing the CRD schema while Kapro is pre-stable.
+                    type: object
                   inputTypes:
                     description: |-
                       InputTypes names accepted version input shapes such as git-revision,
@@ -139,18 +148,18 @@ spec:
                         type: boolean
                       discover:
                         description: |-
-                          Discover means the substrate can discover backend-native objects for
-                          brownfield adoption.
+                          Discover means the substrate can discover substrate-native objects for
+                          existing GitOps adoption.
                         type: boolean
                       dryRun:
                         description: |-
                           DryRun means the substrate can validate an operation without persisting
-                          backend changes.
+                          substrate changes.
                         type: boolean
                       observe:
                         description: |-
                           Observe means the substrate can report convergence without changing
-                          backend state.
+                          substrate state.
                         type: boolean
                       rollback:
                         description: Rollback means the substrate has a direct rollback

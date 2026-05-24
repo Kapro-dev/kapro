@@ -7,7 +7,7 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // Delivery is the single entry point spoke code calls per (app, version)
@@ -66,7 +66,7 @@ type ReconcileResult struct {
 	Phase           string
 	Format          Format
 	ObservedDigest  string
-	Staging         *kaprov1alpha2.DeliveryStagingStatus
+	Staging         *kaprov1alpha1.DeliveryStagingStatus
 	AppliedObjects  int32
 	LastAttemptedAt time.Time
 	LastAppliedAt   time.Time
@@ -90,14 +90,14 @@ type ReconcileResult struct {
 //   - Skipped: caller short-circuited (e.g. spec.suspend=true).
 func (d *Delivery) Reconcile(ctx context.Context, req ReconcileRequest) ReconcileResult {
 	if d == nil {
-		return ReconcileResult{App: req.App, Phase: string(kaprov1alpha2.DeliveryPhaseFailed),
+		return ReconcileResult{App: req.App, Phase: string(kaprov1alpha1.DeliveryPhaseFailed),
 			Err: fmt.Errorf("nil Delivery")}
 	}
 	now := d.Now
 	if now == nil {
 		now = time.Now
 	}
-	out := ReconcileResult{App: req.App, LastAttemptedAt: now(), Phase: string(kaprov1alpha2.DeliveryPhaseFailed)}
+	out := ReconcileResult{App: req.App, LastAttemptedAt: now(), Phase: string(kaprov1alpha1.DeliveryPhaseFailed)}
 
 	// Guard against partially-constructed Delivery: a nil Puller / Engine /
 	// Renderers map would panic on dereference further down. Surface the
@@ -118,8 +118,8 @@ func (d *Delivery) Reconcile(ctx context.Context, req ReconcileRequest) Reconcil
 	// Pull.
 	pa, err := d.Puller.Pull(ctx, req.Ref)
 	if err != nil {
-		out.Phase = string(kaprov1alpha2.DeliveryPhaseFailed)
-		out.Staging = stagingFailureStatus(kaprov1alpha2.DeliveryPhasePulling, ApplyResult{})
+		out.Phase = string(kaprov1alpha1.DeliveryPhaseFailed)
+		out.Staging = stagingFailureStatus(kaprov1alpha1.DeliveryPhasePulling, ApplyResult{})
 		out.Err = fmt.Errorf("pull %s: %w", req.Ref.String(), err)
 		return out
 	}
@@ -128,8 +128,8 @@ func (d *Delivery) Reconcile(ctx context.Context, req ReconcileRequest) Reconcil
 	// Detect.
 	format, err := DetectFormat(pa)
 	if err != nil {
-		out.Phase = string(kaprov1alpha2.DeliveryPhaseFailed)
-		out.Staging = stagingFailureStatus(kaprov1alpha2.DeliveryPhaseStaging, ApplyResult{})
+		out.Phase = string(kaprov1alpha1.DeliveryPhaseFailed)
+		out.Staging = stagingFailureStatus(kaprov1alpha1.DeliveryPhaseStaging, ApplyResult{})
 		out.Err = fmt.Errorf("detect format: %w", err)
 		return out
 	}
@@ -138,15 +138,15 @@ func (d *Delivery) Reconcile(ctx context.Context, req ReconcileRequest) Reconcil
 	// Render.
 	renderer, ok := d.Renderers[format]
 	if !ok {
-		out.Phase = string(kaprov1alpha2.DeliveryPhaseFailed)
-		out.Staging = stagingFailureStatus(kaprov1alpha2.DeliveryPhaseStaging, ApplyResult{})
+		out.Phase = string(kaprov1alpha1.DeliveryPhaseFailed)
+		out.Staging = stagingFailureStatus(kaprov1alpha1.DeliveryPhaseStaging, ApplyResult{})
 		out.Err = fmt.Errorf("format %q not supported by this build", format)
 		return out
 	}
 	rendered, err := renderer.Render(ctx, pa, req.Options)
 	if err != nil {
-		out.Phase = string(kaprov1alpha2.DeliveryPhaseFailed)
-		out.Staging = stagingFailureStatus(kaprov1alpha2.DeliveryPhaseStaging, ApplyResult{})
+		out.Phase = string(kaprov1alpha1.DeliveryPhaseFailed)
+		out.Staging = stagingFailureStatus(kaprov1alpha1.DeliveryPhaseStaging, ApplyResult{})
 		out.Err = fmt.Errorf("render %s: %w", format, err)
 		return out
 	}
@@ -155,8 +155,8 @@ func (d *Delivery) Reconcile(ctx context.Context, req ReconcileRequest) Reconcil
 		// surface as Failed: the OCI bundle is well-formed but contains
 		// nothing the spoke can apply, which is almost always a bug in the
 		// promotion pipeline. Cheap to spot here, painful to debug later.
-		out.Phase = string(kaprov1alpha2.DeliveryPhaseFailed)
-		out.Staging = stagingFailureStatus(kaprov1alpha2.DeliveryPhaseStaging, ApplyResult{})
+		out.Phase = string(kaprov1alpha1.DeliveryPhaseFailed)
+		out.Staging = stagingFailureStatus(kaprov1alpha1.DeliveryPhaseStaging, ApplyResult{})
 		out.Err = fmt.Errorf("render %s: zero objects", format)
 		return out
 	}
@@ -166,22 +166,22 @@ func (d *Delivery) Reconcile(ctx context.Context, req ReconcileRequest) Reconcil
 	out.Staging = stagingStatusFromApply(res)
 	out.AppliedObjects = int32(res.Committed)
 	if err != nil {
-		out.Phase = string(kaprov1alpha2.DeliveryPhaseFailed)
+		out.Phase = string(kaprov1alpha1.DeliveryPhaseFailed)
 		if out.Staging.FailurePhase == "" {
-			out.Staging.FailurePhase = kaprov1alpha2.DeliveryPhaseStaging
+			out.Staging.FailurePhase = kaprov1alpha1.DeliveryPhaseStaging
 		}
 		out.Err = err
 		return out
 	}
-	out.Phase = string(kaprov1alpha2.DeliveryPhaseConverged)
+	out.Phase = string(kaprov1alpha1.DeliveryPhaseConverged)
 	out.LastAppliedAt = now()
 	return out
 }
 
-func stagingStatusFromApply(res ApplyResult) *kaprov1alpha2.DeliveryStagingStatus {
-	status := &kaprov1alpha2.DeliveryStagingStatus{
-		Type:                 kaprov1alpha2.DeliveryStagingTwoPhase,
-		FailurePolicy:        kaprov1alpha2.DeliveryStagingFailureAbort,
+func stagingStatusFromApply(res ApplyResult) *kaprov1alpha1.DeliveryStagingStatus {
+	status := &kaprov1alpha1.DeliveryStagingStatus{
+		Type:                 kaprov1alpha1.DeliveryStagingTwoPhase,
+		FailurePolicy:        kaprov1alpha1.DeliveryStagingFailureAbort,
 		StagedObjects:        int32(res.Staged),
 		StagingFailedObjects: int32(res.StagingFailedObjects()),
 		CommittedObjects:     int32(res.Committed),
@@ -189,14 +189,14 @@ func stagingStatusFromApply(res ApplyResult) *kaprov1alpha2.DeliveryStagingStatu
 	}
 	switch {
 	case res.StagingFailed():
-		status.FailurePhase = kaprov1alpha2.DeliveryPhaseStaging
+		status.FailurePhase = kaprov1alpha1.DeliveryPhaseStaging
 	case res.CommitFailed():
-		status.FailurePhase = kaprov1alpha2.DeliveryPhaseApplying
+		status.FailurePhase = kaprov1alpha1.DeliveryPhaseApplying
 	}
 	return status
 }
 
-func stagingFailureStatus(phase kaprov1alpha2.DeliveryPhase, res ApplyResult) *kaprov1alpha2.DeliveryStagingStatus {
+func stagingFailureStatus(phase kaprov1alpha1.DeliveryPhase, res ApplyResult) *kaprov1alpha1.DeliveryStagingStatus {
 	status := stagingStatusFromApply(res)
 	status.FailurePhase = phase
 	return status

@@ -5,13 +5,13 @@ import (
 	"sort"
 	"sync"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // Registration binds one runtime registry key to an actuator implementation.
 type Registration struct {
 	Name         string
-	Mode         kaprov1alpha2.DeliveryMode
+	Mode         kaprov1alpha1.DeliveryMode
 	Capabilities Capabilities
 	Actuator     Actuator
 }
@@ -25,11 +25,11 @@ func (r Registration) RegistryKey() string {
 	if mode == "" && len(r.Capabilities.Modes) > 0 {
 		mode = r.Capabilities.Modes[0]
 	}
-	adapter := r.Capabilities.Adapter
-	if adapter == "" {
-		adapter = string(r.Capabilities.Driver)
+	actuator := r.Capabilities.Actuator
+	if actuator == "" {
+		actuator = string(r.Capabilities.SubstrateKind)
 	}
-	return string(mode) + "/" + adapter
+	return string(mode) + "/" + actuator
 }
 
 // Registry resolves actuator implementations by runtime key and retains
@@ -164,7 +164,7 @@ func normalizeRegistration(reg Registration) (string, Registration, error) {
 	}
 	reg.Capabilities = reg.Capabilities.Normalize()
 	if reg.Mode != "" && len(reg.Capabilities.Modes) == 0 {
-		reg.Capabilities.Modes = []kaprov1alpha2.DeliveryMode{reg.Mode}
+		reg.Capabilities.Modes = []kaprov1alpha1.DeliveryMode{reg.Mode}
 	}
 	key := reg.RegistryKey()
 	if key == "" || key == "/" {
@@ -185,9 +185,8 @@ func normalizeRegistration(reg Registration) (string, Registration, error) {
 func capabilitiesEmpty(c Capabilities) bool {
 	return c.ContractVersion == "" &&
 		c.SubstrateKind == "" &&
-		c.Driver == "" &&
-		c.Adapter == "" &&
-		c.Runtime == "" &&
+		c.Actuator == "" &&
+		c.ExecutionScope == "" &&
 		len(c.ExecutionModes) == 0 &&
 		len(c.Modes) == 0 &&
 		!c.SupportsApply &&
@@ -196,7 +195,7 @@ func capabilitiesEmpty(c Capabilities) bool {
 		!c.SupportsConvergence &&
 		!c.SupportsDelta &&
 		!c.SupportsTwoPhase &&
-		!c.SupportsBackendObjects &&
+		!c.SupportsSubstrateObjects &&
 		!c.SupportsDryRun &&
 		!c.SupportsHubExecution &&
 		!c.SupportsSpokeExecution &&

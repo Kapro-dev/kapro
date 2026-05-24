@@ -10,12 +10,12 @@ agents, or plugins still own local reconciliation.
 
 | Situation | Start with | What Kapro creates |
 |---|---|---|
-| New repo, direct Kubernetes apply | `kapro bootstrap generate ./promotion-repo --profile direct --name checkout` | `kubernetes-apply` class/config, Backend, raw YAML, clusters, Fleet, Plan, and Promotion scaffold. |
-| New repo, Flux or spoke pull delivery | `kapro bootstrap generate ./promotion-repo --profile flux --name checkout` | Flux class/config, Backend, clusters, Fleet, Plan, Promotion, and Flux starter files. |
-| New repo, Argo CD Applications already planned | `kapro bootstrap generate ./promotion-repo --profile argocd --name checkout` | Argo CD class/config, Backend, clusters, Fleet, Plan, Promotion, and Argo starter Application. |
-| Existing Argo CD repo | `kapro adopt argo . --out ./kapro-connect --name checkout` | Observe-mode Backend, Source mappings, and discovery reports. |
-| Existing Flux repo | `kapro adopt flux . --out ./kapro-connect --name checkout` | Observe-mode Backend, Source mappings, and discovery reports. |
-| Outbound-only clusters that must pull OCI artifacts | `kapro quickstart oci ./promotion-repo --name checkout` | OCI Backend, clusters, Fleet, Plan, and Promotion skeleton. |
+| New repo, direct Kubernetes apply | `kapro bootstrap generate ./promotion-repo --profile direct --name checkout` | `kubernetes-apply` class/config, Substrate, raw YAML, clusters, Fleet, Plan, and Promotion scaffold. |
+| New repo, Flux or spoke pull delivery | `kapro bootstrap generate ./promotion-repo --profile flux --name checkout` | Flux class/config, Substrate, clusters, Fleet, Plan, Promotion, and Flux starter files. |
+| New repo, Argo CD Applications already planned | `kapro bootstrap generate ./promotion-repo --profile argo --name checkout` | Argo CD class/config, Substrate, clusters, Fleet, Plan, Promotion, and Argo starter Application. |
+| Existing Argo CD repo | `kapro adopt argo . --out ./kapro-connect --name checkout` | Observe-mode Substrate, Source mappings, and discovery reports. |
+| Existing Flux repo | `kapro adopt flux . --out ./kapro-connect --name checkout` | Observe-mode Substrate, Source mappings, and discovery reports. |
+| Outbound-only clusters that must pull OCI artifacts | `kapro quickstart oci ./promotion-repo --name checkout` | OCI Substrate, clusters, Fleet, Plan, and Promotion skeleton. |
 
 Use `kapro bootstrap guide` when you want the same decision tree in the
 terminal.
@@ -47,35 +47,35 @@ kapro bootstrap generate ./promotion-repo \
 Other public-preview profiles use the same command:
 
 ```bash
-kapro bootstrap generate ./promotion-repo --profile argocd --name checkout
+kapro bootstrap generate ./promotion-repo --profile argo --name checkout
 kapro bootstrap generate ./promotion-repo --profile flux --name checkout
 ```
 
 The generated repository has the first-use objects in dependency order:
 
 ```text
-backends/
-apps/ or backend-native starter manifests/
+substrates/
+apps/ or substrate-native starter manifests/
 clusters/
 plans/
 fleets/
 promotions/
 ```
 
-Generated public-preview profiles use `Backend.spec.classRef`, so install Kapro
-with `substrateclass` and `backend` enabled, apply the backend first, and wait
-for readiness before applying generated clusters:
+Generated public-preview profiles use `Substrate.spec.classRef`, so keep the
+default `substrateclass` and `substrate` controllers enabled, apply the
+substrate first, and wait for readiness before applying generated clusters:
 
 ```bash
-kubectl apply -f ./promotion-repo/backends/direct.yaml
-kubectl wait --for=condition=Ready backend/direct --timeout=90s
+kubectl apply -f ./promotion-repo/substrates/direct.yaml
+kubectl wait --for=condition=Ready substrate/direct --timeout=90s
 kubectl apply --recursive \
   -f ./promotion-repo/apps \
   -f ./promotion-repo/clusters \
   -f ./promotion-repo/plans \
   -f ./promotion-repo/fleets \
   -f ./promotion-repo/promotions
-kubectl get fleets,plans,promotions,promotionruns,targets
+kubectl get fleets.kapro.io,plans.kapro.io,promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
 ```
 
 The user-authored object is `Promotion`. The controller creates
@@ -107,24 +107,24 @@ kapro adopt flux . \
 
 This generates:
 
-- an observe-mode `Backend`;
-- a `Source` mapping of deployable units to backend-native version fields;
+- an observe-mode `Substrate`;
+- a `Source` mapping of deployable units to substrate-native version fields;
 - `discovery/review-summary.yaml` with adoption-readiness counts and next
   actions;
 - `discovery/*-discovery.yaml` with selected and skipped objects;
 - `discovery/kapro-git-map.yaml` with write-target evidence.
 
 Nothing is adopted yet. Review the generated files first. Switch
-`Backend.spec.discovery.managementPolicy` from `Observe` to `Adopt` only after
+`Substrate.spec.discovery.managementPolicy` from `Observe` to `Adopt` only after
 the owning team approves exactly which fields Kapro may write.
 
-For continuous in-cluster discovery, `kapro adopt argo-cd --apply` or
-`kapro adopt flux --apply` creates or updates a `Backend` and matching
-`AdapterPolicy`. The policy fails closed when the Backend is missing, discovery
-is disabled, the policy adapter does not match the Backend adapter, or the
+For continuous in-cluster discovery, `kapro adopt argo --apply` or
+`kapro adopt flux --apply` creates or updates a `Substrate` and matching
+`SubstrateDiscoveryPolicy`. The policy fails closed when the Substrate is missing, discovery
+is disabled, the policy adapter does not match the Substrate adapter, or the
 registered adapter cannot complete discovery. Use `--dry-run=client` with
 `--apply` to validate the live writes without persisting resources. Run the
-operator with `backend` and `adapterpolicy` controllers when using this live
+operator with `substrate` and `substratediscoverypolicy` controllers when using this live
 apply path.
 
 ## Promotion Flow
@@ -151,7 +151,7 @@ stamps immutable `PromotionRun` attempts and per-target `Target` records.
 - OCI pull delivery uses two-phase staging: server-side dry-run apply for every
   object first, then commit only when the whole staging pass succeeds. The
   optional `spec.delivery.staging` API currently exposes this conservative
-  `TwoPhase`/`Abort` contract without changing existing backend defaults. This
+  `TwoPhase`/`Abort` contract without changing existing substrate defaults. This
   is validation-atomic before commit, not a Kubernetes transactional rollback:
   commit-phase infrastructure failures are reported and retried rather than
   undone destructively.
@@ -170,7 +170,7 @@ kapro lint --strict ./promotion-repo/**/*.yaml
 scripts/cli-scaffold-smoke.sh
 ```
 
-For backend-specific proof:
+For substrate-specific proof:
 
 ```bash
 scripts/verify-install.sh argo-e2e

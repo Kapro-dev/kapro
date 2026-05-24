@@ -16,7 +16,7 @@ type StageHandle = kaproactuator.StageHandle
 type CommitResult = kaproactuator.CommitResult
 type Actuator = kaproactuator.Actuator
 type TwoPhaseStaging = kaproactuator.TwoPhaseStaging
-type BackendObjectReporter = kaproactuator.BackendObjectReporter
+type SubstrateObjectReporter = kaproactuator.SubstrateObjectReporter
 type Capabilities = kaproactuator.Capabilities
 type Substrate = kaproactuator.Substrate
 

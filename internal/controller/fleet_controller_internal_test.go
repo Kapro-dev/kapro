@@ -6,7 +6,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // TestFleetClusterReadyConditionChangedPredicate covers the watch-filter that
@@ -16,13 +16,13 @@ import (
 func TestFleetClusterReadyConditionChangedPredicate(t *testing.T) {
 	pred := fleetClusterReadyConditionChangedPredicate{}
 
-	base := &kaprov1alpha2.Cluster{
+	base := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "c"},
-		Status: kaprov1alpha2.ClusterStatus{
+		Status: kaprov1alpha1.ClusterStatus{
 			Conditions: []metav1.Condition{{
-				Type:   kaprov1alpha2.ConditionTypeReady,
+				Type:   kaprov1alpha1.ConditionTypeReady,
 				Status: metav1.ConditionTrue,
-				Reason: kaprov1alpha2.ReasonHeartbeatFresh,
+				Reason: kaprov1alpha1.ReasonHeartbeatFresh,
 			}},
 		},
 	}
@@ -48,7 +48,7 @@ func TestFleetClusterReadyConditionChangedPredicate(t *testing.T) {
 
 	// Phase/CurrentVersions change but conditions[Ready] unchanged → no requeue.
 	versionsOnly := base.DeepCopy()
-	versionsOnly.Status.Phase = kaprov1alpha2.ClusterPhaseConverged
+	versionsOnly.Status.Phase = kaprov1alpha1.ClusterPhaseConverged
 	versionsOnly.Status.CurrentVersions = map[string]string{"default": "v1"}
 	if pred.Update(event.UpdateEvent{ObjectOld: base, ObjectNew: versionsOnly}) {
 		t.Error("Phase/CurrentVersions change without Ready change should NOT trigger")
@@ -57,7 +57,7 @@ func TestFleetClusterReadyConditionChangedPredicate(t *testing.T) {
 	// Ready transitions to False/Unreachable → MUST trigger.
 	flipped := base.DeepCopy()
 	flipped.Status.Conditions[0].Status = metav1.ConditionFalse
-	flipped.Status.Conditions[0].Reason = kaprov1alpha2.ReasonUnreachable
+	flipped.Status.Conditions[0].Reason = kaprov1alpha1.ReasonUnreachable
 	if !pred.Update(event.UpdateEvent{ObjectOld: base, ObjectNew: flipped}) {
 		t.Error("Ready True→False/Unreachable should trigger")
 	}
@@ -65,15 +65,15 @@ func TestFleetClusterReadyConditionChangedPredicate(t *testing.T) {
 	// Ready reason flips while status stays the same (Stale→Unreachable both Unknown) → trigger.
 	staleBase := base.DeepCopy()
 	staleBase.Status.Conditions[0].Status = metav1.ConditionUnknown
-	staleBase.Status.Conditions[0].Reason = kaprov1alpha2.ReasonHeartbeatStale
+	staleBase.Status.Conditions[0].Reason = kaprov1alpha1.ReasonHeartbeatStale
 	staleToOther := staleBase.DeepCopy()
-	staleToOther.Status.Conditions[0].Reason = kaprov1alpha2.ReasonSuspended
+	staleToOther.Status.Conditions[0].Reason = kaprov1alpha1.ReasonSuspended
 	if !pred.Update(event.UpdateEvent{ObjectOld: staleBase, ObjectNew: staleToOther}) {
 		t.Error("Ready reason flip (Stale→Suspended) should trigger")
 	}
 
 	// Adding Ready when previously absent → trigger.
-	noCond := &kaprov1alpha2.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "c"}}
+	noCond := &kaprov1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "c"}}
 	if !pred.Update(event.UpdateEvent{ObjectOld: noCond, ObjectNew: base}) {
 		t.Error("adding Ready condition should trigger")
 	}
@@ -84,7 +84,7 @@ func TestFleetClusterReadyConditionChangedPredicate(t *testing.T) {
 	}
 
 	// Both nil → no trigger.
-	emptyOld := &kaprov1alpha2.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "c"}}
+	emptyOld := &kaprov1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "c"}}
 	emptyNew := emptyOld.DeepCopy()
 	if pred.Update(event.UpdateEvent{ObjectOld: emptyOld, ObjectNew: emptyNew}) {
 		t.Error("both-nil Ready should not trigger")

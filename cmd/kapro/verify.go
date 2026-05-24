@@ -5,11 +5,12 @@ import (
 	"errors"
 	"fmt"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 	"kapro.io/kapro/internal/cli"
 	"kapro.io/kapro/internal/decisiontrace"
 )
@@ -87,7 +88,7 @@ type decisionTraceVerificationReport struct {
 }
 
 func collectDecisionTraceVerification(ctx context.Context, c client.Client, name, publicKeyFile string) (decisionTraceVerificationReport, error) {
-	var trace kaprov1alpha2.DecisionTrace
+	var trace kaproruntimev1alpha1.DecisionTrace
 	if err := c.Get(ctx, types.NamespacedName{Name: name}, &trace); err != nil {
 		return decisionTraceVerificationReport{}, fmt.Errorf("get DecisionTrace %q: %w", name, err)
 	}

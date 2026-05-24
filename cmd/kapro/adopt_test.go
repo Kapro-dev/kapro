@@ -13,21 +13,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 func TestCreateOrUpdateObjectDryRunUsesClientDryRun(t *testing.T) {
 	ctx := context.Background()
 	c := &recordingAdoptClient{Client: fakeAdoptClient(t)}
-	backend := &kaprov1alpha2.Backend{ObjectMeta: metav1.ObjectMeta{Name: "flux"}}
+	substrate := &kaprov1alpha1.Substrate{ObjectMeta: metav1.ObjectMeta{Name: "flux"}}
 
-	if err := createOrUpdateObject(ctx, c, backend, true); err != nil {
+	if err := createOrUpdateObject(ctx, c, substrate, true); err != nil {
 		t.Fatalf("createOrUpdateObject dry-run: %v", err)
 	}
 	if !c.createDryRun {
 		t.Fatal("expected create to receive client.DryRunAll")
 	}
-	var got kaprov1alpha2.Backend
+	var got kaprov1alpha1.Substrate
 	if err := c.Get(ctx, client.ObjectKey{Name: "flux"}, &got); err == nil {
 		t.Fatal("dry-run create persisted object")
 	} else if !apierrors.IsNotFound(err) {
@@ -35,49 +35,63 @@ func TestCreateOrUpdateObjectDryRunUsesClientDryRun(t *testing.T) {
 	}
 }
 
+func TestAdoptArgoLiveApplyFlags(t *testing.T) {
+	cmd := newAdoptArgoCmd()
+	for _, name := range []string{"apply", "dry-run", "kubeconfig", "sync-interval"} {
+		if cmd.Flags().Lookup(name) == nil {
+			t.Fatalf("adopt argo missing --%s flag", name)
+		}
+	}
+}
+
+func TestAdoptFluxLiveApplyFlags(t *testing.T) {
+	cmd := newAdoptFluxCmd()
+	for _, name := range []string{"apply", "dry-run", "kubeconfig", "sync-interval"} {
+		if cmd.Flags().Lookup(name) == nil {
+			t.Fatalf("adopt flux missing --%s flag", name)
+		}
+	}
+}
+
 func TestCreateOrUpdateObjectPatchPreservesExistingMetadata(t *testing.T) {
 	ctx := context.Background()
-	existing := &kaprov1alpha2.Backend{
+	existing := &kaprov1alpha1.Substrate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              "flux",
 			Labels:            map[string]string{"user": "kept"},
 			Annotations:       map[string]string{"note": "kept"},
 			Finalizers:        []string{"kapro.io/finalizer"},
-			OwnerReferences:   []metav1.OwnerReference{{APIVersion: "kapro.io/v1alpha2", Kind: "Source", Name: "owner", UID: types.UID("owner-uid")}},
-			UID:               types.UID("backend-uid"),
+			OwnerReferences:   []metav1.OwnerReference{{APIVersion: "kapro.io/v1alpha1", Kind: "Source", Name: "owner", UID: types.UID("owner-uid")}},
+			UID:               types.UID("substrate-uid"),
 			CreationTimestamp: metav1.NewTime(time.Unix(1700000000, 0).UTC()),
 			Generation:        7,
 			ResourceVersion:   "1",
 			ManagedFields: []metav1.ManagedFieldsEntry{{
 				Manager:    "kubectl",
 				Operation:  metav1.ManagedFieldsOperationApply,
-				APIVersion: "kapro.io/v1alpha2",
+				APIVersion: "kapro.io/v1alpha1",
 				FieldsType: "FieldsV1",
 				FieldsV1:   &metav1.FieldsV1{Raw: []byte("{}")},
 			}},
 		},
-		Spec: kaprov1alpha2.BackendSpec{Driver: kaprov1alpha2.BackendDriverFlux},
+		Spec: testSubstrateSpec("flux", kaprov1alpha1.ExecutionModeSpokePull),
 	}
 	c := fakeAdoptClient(t, existing)
-	desired := &kaprov1alpha2.Backend{
+	desired := &kaprov1alpha1.Substrate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        "flux",
 			Labels:      map[string]string{"kapro.io/managed-by": "kapro"},
 			Annotations: map[string]string{"kapro.io/source": "adopt"},
 		},
-		Spec: kaprov1alpha2.BackendSpec{
-			Driver:  kaprov1alpha2.BackendDriverFlux,
-			Adapter: "flux",
-			Runtime: kaprov1alpha2.BackendRuntimeBoth,
-		},
+		Spec: testSubstrateSpec("flux", kaprov1alpha1.ExecutionModeSpokePull),
 	}
 
 	if err := createOrUpdateObject(ctx, c, desired, false); err != nil {
 		t.Fatalf("createOrUpdateObject patch: %v", err)
 	}
-	var got kaprov1alpha2.Backend
+	var got kaprov1alpha1.Substrate
 	if err := c.Get(ctx, client.ObjectKey{Name: "flux"}, &got); err != nil {
-		t.Fatalf("get patched backend: %v", err)
+		t.Fatalf("get patched substrate: %v", err)
 	}
 	for key, want := range map[string]string{"user": "kept", "kapro.io/managed-by": "kapro"} {
 		if got.Labels[key] != want {
@@ -104,29 +118,29 @@ func TestCreateOrUpdateObjectPatchPreservesExistingMetadata(t *testing.T) {
 	if got.Generation != existing.Generation {
 		t.Fatalf("generation=%d, want %d", got.Generation, existing.Generation)
 	}
-	if got.Spec.Adapter != "flux" || got.Spec.Runtime != kaprov1alpha2.BackendRuntimeBoth {
+	if got.Spec.Substrate == nil || got.Spec.Substrate.Actuator != "flux" || got.Spec.Execution == nil || got.Spec.Execution.Mode != kaprov1alpha1.ExecutionModeSpokePull {
 		t.Fatalf("spec=%#v, want adopt spec patched", got.Spec)
 	}
 }
 
 func TestPreserveObjectMetadataKeepsServerOwnedFields(t *testing.T) {
-	current := &kaprov1alpha2.Backend{
+	current := &kaprov1alpha1.Substrate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              "flux",
-			UID:               types.UID("backend-uid"),
+			UID:               types.UID("substrate-uid"),
 			CreationTimestamp: metav1.NewTime(time.Unix(1700000000, 0).UTC()),
 			Generation:        7,
 			ResourceVersion:   "11",
 			ManagedFields: []metav1.ManagedFieldsEntry{{
 				Manager:    "kubectl",
 				Operation:  metav1.ManagedFieldsOperationApply,
-				APIVersion: "kapro.io/v1alpha2",
+				APIVersion: "kapro.io/v1alpha1",
 				FieldsType: "FieldsV1",
 				FieldsV1:   &metav1.FieldsV1{Raw: []byte("{}")},
 			}},
 		},
 	}
-	desired := &kaprov1alpha2.Backend{ObjectMeta: metav1.ObjectMeta{Name: "flux"}}
+	desired := &kaprov1alpha1.Substrate{ObjectMeta: metav1.ObjectMeta{Name: "flux"}}
 
 	preserveObjectMetadata(current, desired)
 
@@ -149,18 +163,16 @@ func TestPreserveObjectMetadataKeepsServerOwnedFields(t *testing.T) {
 
 func TestCreateOrUpdateObjectPatchDryRunUsesClientDryRun(t *testing.T) {
 	ctx := context.Background()
-	existing := &kaprov1alpha2.Backend{
+	existing := &kaprov1alpha1.Substrate{
 		ObjectMeta: metav1.ObjectMeta{Name: "flux"},
-		Spec:       kaprov1alpha2.BackendSpec{Driver: kaprov1alpha2.BackendDriverFlux},
+		Spec: kaprov1alpha1.SubstrateSpec{
+			Substrate: &kaprov1alpha1.SubstrateImplementationSpec{Kind: "flux", Actuator: "flux"},
+		},
 	}
 	c := &recordingAdoptClient{Client: fakeAdoptClient(t, existing)}
-	desired := &kaprov1alpha2.Backend{
+	desired := &kaprov1alpha1.Substrate{
 		ObjectMeta: metav1.ObjectMeta{Name: "flux"},
-		Spec: kaprov1alpha2.BackendSpec{
-			Driver:  kaprov1alpha2.BackendDriverFlux,
-			Adapter: "flux",
-			Runtime: kaprov1alpha2.BackendRuntimeBoth,
-		},
+		Spec:       testSubstrateSpec("flux", kaprov1alpha1.ExecutionModeSpokePull),
 	}
 
 	if err := createOrUpdateObject(ctx, c, desired, true); err != nil {
@@ -169,12 +181,19 @@ func TestCreateOrUpdateObjectPatchDryRunUsesClientDryRun(t *testing.T) {
 	if !c.patchDryRun {
 		t.Fatal("expected patch to receive client.DryRunAll")
 	}
-	var got kaprov1alpha2.Backend
+	var got kaprov1alpha1.Substrate
 	if err := c.Get(ctx, client.ObjectKey{Name: "flux"}, &got); err != nil {
 		t.Fatalf("get dry-run patch object: %v", err)
 	}
-	if got.Spec.Adapter != "" || got.Spec.Runtime != "" {
+	if got.Spec.Execution != nil {
 		t.Fatalf("dry-run patch persisted spec=%#v", got.Spec)
+	}
+}
+
+func testSubstrateSpec(kind string, mode kaprov1alpha1.ExecutionMode) kaprov1alpha1.SubstrateSpec {
+	return kaprov1alpha1.SubstrateSpec{
+		Substrate: &kaprov1alpha1.SubstrateImplementationSpec{Kind: kind, Actuator: kind},
+		Execution: &kaprov1alpha1.SubstrateExecutionSpec{Mode: mode},
 	}
 }
 
@@ -213,12 +232,12 @@ func (c *recordingAdoptClient) Patch(ctx context.Context, obj client.Object, pat
 func fakeAdoptClient(t *testing.T, objects ...client.Object) client.Client {
 	t.Helper()
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatalf("add scheme: %v", err)
 	}
 	return fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objects...).
-		WithStatusSubresource(&kaprov1alpha2.Backend{}, &kaprov1alpha2.AdapterPolicy{}).
+		WithStatusSubresource(&kaprov1alpha1.Substrate{}, &kaprov1alpha1.SubstrateDiscoveryPolicy{}).
 		Build()
 }

@@ -7,9 +7,9 @@ durable intent; controllers create execution records and per-target state.
 
 | Object | Authored by | Purpose |
 |---|---|---|
-| `Backend` | Platform team | Registers a delivery adapter and its default settings. |
+| `Substrate` | Platform team | Registers a delivery adapter and its default settings. |
 | `Fleet` | Platform team | Defines the fleet root: source, delivery defaults, clusters, and stage plan. |
-| `Source` | Platform or app team | Declares deployable units and the backend-native fields Kapro may update. |
+| `Source` | Platform or app team | Declares deployable units and the substrate-native fields Kapro may update. |
 | `Promotion` | App team or automation | Requests that a version move through a Fleet. |
 | `PromotionRun` | Controller | Records one execution attempt stamped from a Promotion. |
 | `Target` | Controller | Tracks one cluster/stage execution inside a run. |
@@ -21,7 +21,7 @@ durable intent; controllers create execution records and per-target state.
 The first user-authored path is three objects:
 
 ```text
-Backend    names the delivery adapter, for example flux
+Substrate    names the delivery adapter, for example flux
 Fleet      names the app/fleet, declares clusters, and defines the stage plan
 Promotion  points at the Fleet and asks for one version to move through it
 ```
@@ -68,14 +68,14 @@ A stage selects clusters by label and may declare:
 - dependencies on earlier stages;
 - maximum parallelism;
 - gates such as soak, CEL checks, metrics, or approvals;
-- backend-specific delivery settings inherited from the fleet or cluster.
+- substrate-specific delivery settings inherited from the fleet or cluster.
 
 The plan is reusable. A Promotion supplies the version and optional scope; the
 plan supplies rollout shape.
 
-## Backend Adaptability
+## Substrate Adaptability
 
-Kapro does not require a single deployment backend. Each cluster can point to a
+Kapro does not require a single deployment substrate. Each cluster can point to a
 delivery mode that fits its network and ownership boundary:
 
 - hub-to-cluster push for centrally reachable clusters;
@@ -83,13 +83,13 @@ delivery mode that fits its network and ownership boundary:
 - Flux or Argo CD integration for existing GitOps estates;
 - external plugins for platform-specific apply, gate, or planning logic.
 
-See [Backends](backends.md) for the supported modes.
+See [Substrates](substrates.md) for the supported modes.
 
 ## Generated Objects
 
 For the quickstart path, users normally write:
 
-- `Backend`
+- `Substrate`
 - `Fleet`
 - `Promotion`
 - `Approval` when a manual gate blocks
@@ -122,7 +122,7 @@ Typical layout:
 ```text
 hub-config/
   clusters/
-  backends/
+  substrates/
   fleets/
   sources/
   plans/
@@ -130,7 +130,7 @@ hub-config/
   .github/workflows/
 ```
 
-Apply objects in dependency order: backends and any standalone clusters,
+Apply objects in dependency order: substrates and any standalone clusters,
 sources, or plans first; fleets next; promotions last. Direct `promotionruns/`
 can exist as an advanced compatibility path, but first-use repositories should
 prefer `promotions/`.

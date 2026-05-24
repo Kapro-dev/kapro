@@ -70,8 +70,8 @@ spec:
 	if unit.Name != "pos-server" {
 		t.Fatalf("unit name=%q", unit.Name)
 	}
-	if unit.BackendKind != "GitJSONField" {
-		t.Fatalf("backendKind=%q", unit.BackendKind)
+	if unit.SubstrateKind != "GitJSONField" {
+		t.Fatalf("substrateKind=%q", unit.SubstrateKind)
 	}
 	if unit.VersionField != "argocd/environments/*.json:gkProjectVersion" {
 		t.Fatalf("versionField=%q", unit.VersionField)
@@ -116,7 +116,7 @@ spec:
 	for _, want := range []string{
 		"kind: Source",
 		"name: checkout-api",
-		"backendKind: ArgoApplicationSource",
+		"substrateKind: ArgoApplicationSource",
 		"sourcePath: apps/api.yaml",
 		"versionField: spec.source.targetRevision",
 	} {
@@ -141,7 +141,7 @@ spec:
 		"readyForAdopt: true",
 		"reviewRequired: false",
 		"selectedUnits: 1",
-		"Apply the observe Backend first",
+		"Apply the observe Substrate first",
 	} {
 		if !strings.Contains(review, want) {
 			t.Fatalf("review summary missing %q:\n%s", want, review)

@@ -8,7 +8,7 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // PromotionTriggerValidator validates PromotionTrigger on CREATE and UPDATE.
@@ -31,7 +31,7 @@ func NewPromotionTriggerValidator(decoder admission.Decoder) *PromotionTriggerVa
 
 // Handle implements admission.Handler.
 func (v *PromotionTriggerValidator) Handle(_ context.Context, req admission.Request) admission.Response {
-	var pt kaprov1alpha2.Trigger
+	var pt kaprov1alpha1.Trigger
 	if err := v.decoder.DecodeRaw(req.Object, &pt); err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
 	}
@@ -46,7 +46,7 @@ func (v *PromotionTriggerValidator) Handle(_ context.Context, req admission.Requ
 	return admission.Allowed("")
 }
 
-func validatePromotionTrigger(pt *kaprov1alpha2.Trigger) error {
+func validatePromotionTrigger(pt *kaprov1alpha1.Trigger) error {
 	src := pt.Spec.Source
 	switch src.Type {
 	case "":

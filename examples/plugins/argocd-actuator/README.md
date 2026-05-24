@@ -6,7 +6,7 @@ logic to the Kapro controller.
 
 ## Behavior
 
-The plugin applies exactly one backend mutation:
+The plugin applies exactly one substrate mutation:
 
 ```text
 Application.spec.source.targetRevision = <requested version>
@@ -86,7 +86,7 @@ The standalone Kapro `Plugin` registration is
 `examples/plugins/argocd-actuator-registration.yaml`:
 
 ```yaml
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Plugin
 metadata:
   name: argocd-actuator
@@ -121,7 +121,7 @@ dns:///argocd-actuator.kapro-system.svc:9090
 go test ./examples/plugins/argocd-actuator
 ```
 
-The test suite runs the shared KAI conformance harness and backend-specific
+The test suite runs the shared KAI conformance harness and substrate-specific
 tests against a fake Kubernetes API.
 
 You can also run the external conformance binary against a live plugin server:

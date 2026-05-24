@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 const (
@@ -25,14 +25,14 @@ const (
 
 	// ParameterAllowTLS12 opts a registration into accepting TLS 1.2 servers.
 	// The default is TLS 1.3 (modern, drops CBC/RC4 weak-cipher exposure).
-	// Set to "true" only when wrapping a legacy backend the operator cannot
+	// Set to "true" only when wrapping a legacy substrate the operator cannot
 	// upgrade — emits a warning log each time the registration is probed so
 	// the downgrade is auditable.
 	ParameterAllowTLS12 = "allowTLS12"
 )
 
 // DialOptions returns the base gRPC dial options for a plugin registration.
-func DialOptions(ctx context.Context, c client.Reader, reg kaprov1alpha2.Plugin) ([]grpc.DialOption, error) {
+func DialOptions(ctx context.Context, c client.Reader, reg kaprov1alpha1.Plugin) ([]grpc.DialOption, error) {
 	creds, err := Credentials(ctx, c, reg)
 	if err != nil {
 		return nil, err
@@ -47,7 +47,7 @@ func DialOptions(ctx context.Context, c client.Reader, reg kaprov1alpha2.Plugin)
 // otherwise it builds TLS credentials from the referenced Kubernetes Secret.
 // Default MinVersion is TLS 1.3; set spec.parameters.allowTLS12=true to
 // downgrade for legacy plugin servers (emits a warning log).
-func Credentials(ctx context.Context, c client.Reader, reg kaprov1alpha2.Plugin) (credentials.TransportCredentials, error) {
+func Credentials(ctx context.Context, c client.Reader, reg kaprov1alpha1.Plugin) (credentials.TransportCredentials, error) {
 	logger := log.FromContext(ctx).WithName("plugin-transport").WithValues("plugin", reg.Name)
 	if reg.Spec.TLSSecretRef == nil {
 		// Loud warning every time we hand back insecure creds — operators

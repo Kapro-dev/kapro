@@ -9,7 +9,7 @@
 #
 # Cluster labels expected:
 #   kapro.io/region=eu  |  kapro.io/region=us  |  kapro.io/region=apac
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Plan
 metadata:
   name: multi-region-staggered

@@ -10,7 +10,7 @@
 # Cluster labels expected:
 #   kapro.io/tier=canary
 #   kapro.io/tier=production
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Plan
 metadata:
   name: metrics-gated
@@ -62,7 +62,7 @@ spec:
             - preset: p99-latency
         # If either metric exceeds threshold, halt the rollout and
         # wait for an operator. Use "rollback" instead if your
-        # backend supports it and the previous version was healthy.
+        # substrate supports it and the previous version was healthy.
         onFailure: halt
     - name: prod
       selector:

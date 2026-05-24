@@ -96,10 +96,10 @@ Kapro should not claim `1.0.0` until these are true.
 
 The practical sequence is:
 
-1. Fix public v0.2.x surfaces: AdapterPolicy, Gate API docs, DELAY semantics, server composition.
+1. Fix public v0.2.x surfaces: SubstrateDiscoveryPolicy, Gate API docs, DELAY semantics, server composition.
 2. Finish the plugin keystone: versioned actuator/provider contracts and conformance.
 3. Add auditability: `DecisionTrace`, archive integration, and `kapro why`.
-4. Add drift and atomicity: `FleetDriftReport`, drift metrics, `MaxDrift`, and two-phase staging.
+4. Add drift and atomicity later: first ship two-phase staging and keep fleet drift reporting as post-0.6 work.
 5. Add bootstrap/air-gap identity: CSR bootstrap, outbound spoke, signed bundles.
 6. Add fleet classification only after drift and provider discovery are real.
 7. Add compliance/release trust: SLSA, SBOM, signed releases, Scorecard hardening.

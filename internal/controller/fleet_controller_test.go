@@ -13,15 +13,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 func TestResolvePromotionSourceUsesInlineSource(t *testing.T) {
 	r := &FleetReconciler{}
-	source, ok, err := r.resolvePromotionSource(context.Background(), &kaprov1alpha2.Fleet{
-		Spec: kaprov1alpha2.FleetSpec{
-			Source: &kaprov1alpha2.SourceSpec{
-				Units: []kaprov1alpha2.Unit{{Name: "checkout", Version: "1.2.3"}},
+	source, ok, err := r.resolvePromotionSource(context.Background(), &kaprov1alpha1.Fleet{
+		Spec: kaprov1alpha1.FleetSpec{
+			Source: &kaprov1alpha1.SourceSpec{
+				Units: []kaprov1alpha1.Unit{{Name: "checkout", Version: "1.2.3"}},
 			},
 		},
 	})
@@ -37,13 +37,13 @@ func TestResolvePromotionSourceUsesInlineSource(t *testing.T) {
 }
 
 func TestBuildResourceSet_Units(t *testing.T) {
-	kapro := &kaprov1alpha2.Fleet{
-		Spec: kaprov1alpha2.FleetSpec{
-			Registry: kaprov1alpha2.KaproRegistry{
+	kapro := &kaprov1alpha1.Fleet{
+		Spec: kaprov1alpha1.FleetSpec{
+			Registry: kaprov1alpha1.KaproRegistry{
 				URL:      "oci://europe-west1-docker.pkg.dev/myproject/charts",
 				Provider: "gcp",
 			},
-			Clusters: []kaprov1alpha2.ClusterRef{
+			Clusters: []kaprov1alpha1.ClusterRef{
 				{Name: "canary-eu", Labels: map[string]string{"tier": "canary"}},
 				{Name: "prod-eu", Labels: map[string]string{"tier": "prod"}},
 			},
@@ -51,9 +51,9 @@ func TestBuildResourceSet_Units(t *testing.T) {
 	}
 	kapro.Name = "demo"
 
-	app := &kaprov1alpha2.Source{
-		Spec: kaprov1alpha2.SourceSpec{
-			Units: []kaprov1alpha2.Unit{
+	app := &kaprov1alpha1.Source{
+		Spec: kaprov1alpha1.SourceSpec{
+			Units: []kaprov1alpha1.Unit{
 				{Name: "pos-server", Version: "5.28.0"},
 				{Name: "sdc", Version: "5.28.0"},
 				{Name: "keycloak", Version: "6.5.0"},
@@ -134,10 +134,10 @@ func TestBuildResourceSet_Units(t *testing.T) {
 }
 
 func TestBuildResourceSet_OverrideMerging(t *testing.T) {
-	kapro := &kaprov1alpha2.Fleet{
-		Spec: kaprov1alpha2.FleetSpec{
-			Registry: kaprov1alpha2.KaproRegistry{URL: "oci://registry.example.com/charts"},
-			Clusters: []kaprov1alpha2.ClusterRef{
+	kapro := &kaprov1alpha1.Fleet{
+		Spec: kaprov1alpha1.FleetSpec{
+			Registry: kaprov1alpha1.KaproRegistry{URL: "oci://registry.example.com/charts"},
+			Clusters: []kaprov1alpha1.ClusterRef{
 				{Name: "canary", Labels: map[string]string{"tier": "canary"}},
 				{Name: "prod", Labels: map[string]string{"tier": "prod"}},
 			},
@@ -145,17 +145,17 @@ func TestBuildResourceSet_OverrideMerging(t *testing.T) {
 	}
 	kapro.Name = "test"
 
-	app := &kaprov1alpha2.Source{
-		Spec: kaprov1alpha2.SourceSpec{
-			Units: []kaprov1alpha2.Unit{
+	app := &kaprov1alpha1.Source{
+		Spec: kaprov1alpha1.SourceSpec{
+			Units: []kaprov1alpha1.Unit{
 				{Name: "app", Version: "1.0"},
 			},
-			Defaults: &kaprov1alpha2.SourceDefaults{
+			Defaults: &kaprov1alpha1.SourceDefaults{
 				Values: &apiextensionsv1.JSON{
 					Raw: []byte(`{"replicaCount":3,"logging":{"level":"info","format":"json"}}`),
 				},
 			},
-			Overrides: []kaprov1alpha2.SourceOverride{
+			Overrides: []kaprov1alpha1.SourceOverride{
 				{
 					Selector: map[string]string{"tier": "canary"},
 					Values: &apiextensionsv1.JSON{
@@ -210,13 +210,13 @@ func TestBuildResourceSet_OverrideMerging(t *testing.T) {
 }
 
 func TestBuildPromotionPlan(t *testing.T) {
-	kapro := &kaprov1alpha2.Fleet{
-		Spec: kaprov1alpha2.FleetSpec{
-			Plan: kaprov1alpha2.KaproPlan{
-				Stages: []kaprov1alpha2.StageSpec{
+	kapro := &kaprov1alpha1.Fleet{
+		Spec: kaprov1alpha1.FleetSpec{
+			Plan: kaprov1alpha1.KaproPlan{
+				Stages: []kaprov1alpha1.StageSpec{
 					{Name: "canary", Selector: map[string]string{"tier": "canary"}},
 					{Name: "prod", Selector: map[string]string{"tier": "prod"},
-						DependsOn: []kaprov1alpha2.StageDependency{{Stage: "canary"}}},
+						DependsOn: []kaprov1alpha1.StageDependency{{Stage: "canary"}}},
 				},
 			},
 		},
@@ -237,28 +237,28 @@ func TestBuildPromotionPlan(t *testing.T) {
 	}
 }
 
-func TestFleetReconcilerSkipsResourceSetForNativeBackends(t *testing.T) {
+func TestFleetReconcilerSkipsResourceSetForNativeSubstrates(t *testing.T) {
 	ctx := context.Background()
 	scheme := runtime.NewScheme()
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	fleet := &kaprov1alpha2.Fleet{
+	fleet := &kaprov1alpha1.Fleet{
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
-		Spec: kaprov1alpha2.FleetSpec{
-			Source: &kaprov1alpha2.SourceSpec{
-				Units: []kaprov1alpha2.Unit{{Name: "checkout", Version: "ghcr.io/example/checkout:0.1.0"}},
+		Spec: kaprov1alpha1.FleetSpec{
+			Source: &kaprov1alpha1.SourceSpec{
+				Units: []kaprov1alpha1.Unit{{Name: "checkout", Version: "ghcr.io/example/checkout:0.1.0"}},
 			},
-			Delivery: kaprov1alpha2.DeliverySpec{
-				Mode:       kaprov1alpha2.DeliveryModePush,
-				BackendRef: "direct",
+			Delivery: kaprov1alpha1.DeliverySpec{
+				Mode:         kaprov1alpha1.DeliveryModePush,
+				SubstrateRef: "direct",
 			},
-			Clusters: []kaprov1alpha2.ClusterRef{{Name: "canary-eu", Labels: map[string]string{"kapro.io/stage": "canary"}}},
-			Plan: kaprov1alpha2.KaproPlan{
-				Stages: []kaprov1alpha2.StageSpec{{Name: "canary", Selector: map[string]string{"kapro.io/stage": "canary"}}},
+			Clusters: []kaprov1alpha1.ClusterRef{{Name: "canary-eu", Labels: map[string]string{"kapro.io/stage": "canary"}}},
+			Plan: kaprov1alpha1.KaproPlan{
+				Stages: []kaprov1alpha1.StageSpec{{Name: "canary", Selector: map[string]string{"kapro.io/stage": "canary"}}},
 			},
 		},
 	}
@@ -266,7 +266,7 @@ func TestFleetReconcilerSkipsResourceSetForNativeBackends(t *testing.T) {
 		Client: fake.NewClientBuilder().
 			WithScheme(scheme).
 			WithObjects(fleet).
-			WithStatusSubresource(&kaprov1alpha2.Fleet{}, &kaprov1alpha2.Cluster{}).
+			WithStatusSubresource(&kaprov1alpha1.Fleet{}, &kaprov1alpha1.Cluster{}).
 			Build(),
 	}
 
@@ -274,23 +274,23 @@ func TestFleetReconcilerSkipsResourceSetForNativeBackends(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var got kaprov1alpha2.Fleet
+	var got kaprov1alpha1.Fleet
 	if err := r.Get(ctx, client.ObjectKey{Name: "checkout"}, &got); err != nil {
 		t.Fatal(err)
 	}
 	for _, item := range got.Status.Inventory {
 		if item == "ResourceSet/checkout-workloads" {
-			t.Fatalf("native backend should not generate ResourceSet inventory: %v", got.Status.Inventory)
+			t.Fatalf("native substrate should not generate ResourceSet inventory: %v", got.Status.Inventory)
 		}
 	}
 	if len(got.Status.Inventory) == 0 {
 		t.Fatal("expected generated inventory")
 	}
-	var cluster kaprov1alpha2.Cluster
+	var cluster kaprov1alpha1.Cluster
 	if err := r.Get(ctx, client.ObjectKey{Name: "canary-eu"}, &cluster); err != nil {
 		t.Fatal(err)
 	}
-	if cluster.Spec.Delivery.BackendRef != "direct" || cluster.Spec.Delivery.Mode != kaprov1alpha2.DeliveryModePush {
+	if cluster.Spec.Delivery.SubstrateRef != "direct" || cluster.Spec.Delivery.Mode != kaprov1alpha1.DeliveryModePush {
 		t.Fatalf("cluster delivery = %#v", cluster.Spec.Delivery)
 	}
 }

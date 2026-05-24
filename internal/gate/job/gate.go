@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	pkggate "kapro.io/kapro/pkg/gate"
 )
 
@@ -102,7 +102,7 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 		}
 		log.Info("created gate job", "job", name, "namespace", namespace)
 		return pkggate.Result{
-			Phase:      kaprov1alpha2.GatePhaseRunning,
+			Phase:      kaprov1alpha1.GatePhaseRunning,
 			Message:    "gate job created, waiting for completion",
 			RetryAfter: "15s",
 			Evidence: []pkggate.Evidence{{
@@ -118,7 +118,7 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 		// Clean up the completed job.
 		_ = g.Client.Delete(ctx, &existing, client.PropagationPolicy(metav1.DeletePropagationBackground))
 		return pkggate.Result{
-			Phase:   kaprov1alpha2.GatePhasePassed,
+			Phase:   kaprov1alpha1.GatePhasePassed,
 			Message: "gate job completed successfully",
 			Evidence: []pkggate.Evidence{{
 				Type:          "job",
@@ -131,7 +131,7 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 		log.Info("gate job failed", "job", name, "failures", existing.Status.Failed)
 		_ = g.Client.Delete(ctx, &existing, client.PropagationPolicy(metav1.DeletePropagationBackground))
 		return pkggate.Result{
-			Phase:   kaprov1alpha2.GatePhaseFailed,
+			Phase:   kaprov1alpha1.GatePhaseFailed,
 			Message: fmt.Sprintf("gate job failed after %d attempt(s)", existing.Status.Failed),
 			Evidence: []pkggate.Evidence{{
 				Type:          "job",
@@ -143,7 +143,7 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 
 	// Still running.
 	return pkggate.Result{
-		Phase:      kaprov1alpha2.GatePhaseRunning,
+		Phase:      kaprov1alpha1.GatePhaseRunning,
 		Message:    "gate job is still running",
 		RetryAfter: "15s",
 		Evidence: []pkggate.Evidence{{
@@ -160,7 +160,7 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 func buildJob(
 	name, namespace string,
 	gateCtx *pkggate.Context,
-	spec *kaprov1alpha2.JobGateSpec,
+	spec *kaprov1alpha1.JobGateSpec,
 	args map[string]string,
 	timeout string,
 ) (*batchv1.Job, error) {
@@ -211,7 +211,7 @@ func buildJob(
 	// when the PromotionTarget is deleted. Both fields must be present for GC to work.
 	if gateCtx.OwnerUID != "" && gateCtx.OwnerName != "" {
 		job.OwnerReferences = []metav1.OwnerReference{{
-			APIVersion:         kaprov1alpha2.GroupVersion.String(),
+			APIVersion:         kaprov1alpha1.GroupVersion.String(),
 			Kind:               "PromotionTarget",
 			Name:               gateCtx.OwnerName,
 			UID:                gateCtx.OwnerUID,

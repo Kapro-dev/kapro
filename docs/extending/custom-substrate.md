@@ -4,12 +4,12 @@ A substrate is a delivery domain. A `SubstrateClass` names the implementation
 contract, a typed config CRD stores platform wiring, and a substrate
 implementation performs delivery for that class.
 
-Kapro ships built-in substrates for Argo CD, Flux, OCI, Kubernetes direct
-apply, and webhook delivery. The same API lets a platform team register a
+Kapro ships built-in substrates for Argo CD, Flux, OCI, and Kubernetes direct
+apply. The same API lets a platform team register a
 custom substrate without changing Kapro core CRDs.
 
 ```yaml
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: SubstrateClass
 metadata:
   name: hello-world
@@ -25,8 +25,8 @@ metadata:
 spec:
   message: hello from kapro
 ---
-apiVersion: kapro.io/v1alpha2
-kind: Backend
+apiVersion: kapro.io/v1alpha1
+kind: Substrate
 metadata:
   name: hello-world
 spec:
@@ -58,7 +58,7 @@ type Substrate interface {
 }
 ```
 
-KSI requests carry the resolved `SubstrateClass`, `Backend`, typed config
+KSI requests carry the resolved `SubstrateClass`, `Substrate`, typed config
 object, target `Cluster`, desired versions, and compatibility parameters. Use a
 typed config CRD for durable parameters; keep string maps only for demos or
 migration.

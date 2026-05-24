@@ -146,48 +146,11 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - approvals
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
-  - adapterpolicies/status
-  - policies/status
-  - approvals/status
-  - backends/status
-  - decisiontraces/status
-  - fleetdriftreports/status
-  - fleets/status
-  - gateexpressions/status
-  - clusters/status
-  - clustertemplates/status
-  - plugins/status
-  - promotionruns/status
-  - promotions/status
-  - substrateclasses/status
-  - targets/status
-  - triggers/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - kapro.io
-  resources:
-  - adapterpolicies
-  - backends
-  - fleetdriftreports
-  - gateexpressions
+  - substratediscoverypolicies
   - policies
   - sources
   - substrateclasses
+  - substrates
   - triggers
   verbs:
   - get
@@ -196,61 +159,28 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - decisiontraces
+  - substratediscoverypolicies/status
+  - approvals/status
+  - clusters/status
+  - clustertemplates/status
+  - fleets/status
+  - plugins/status
+  - policies/status
+  - promotions/status
+  - substrateclasses/status
+  - substrates/status
+  - triggers/status
   verbs:
-  - create
   - get
-- apiGroups:
-  - kapro.io
-  resources:
-  - clustertemplates
-  - plugins
-  verbs:
-  - get
-  - list
   - patch
   - update
-  - watch
 - apiGroups:
   - kapro.io
   resources:
-  - fleets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
+  - approvals
   - clusters
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
+  - fleets
   - plans
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
-  - promotionruns
   - promotions
   verbs:
   - create
@@ -265,13 +195,41 @@ rules:
   resources:
   - clusters/finalizers
   - clustertemplates/finalizers
-  - promotionruns/finalizers
   - promotions/finalizers
   verbs:
   - update
 - apiGroups:
   - kapro.io
   resources:
+  - clustertemplates
+  - plugins
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - runtime.kapro.io
+  resources:
+  - decisiontraces
+  verbs:
+  - create
+  - get
+- apiGroups:
+  - runtime.kapro.io
+  resources:
+  - decisiontraces/status
+  - promotionruns/status
+  - targets/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - runtime.kapro.io
+  resources:
+  - promotionruns
   - targets
   verbs:
   - create
@@ -281,6 +239,12 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - runtime.kapro.io
+  resources:
+  - promotionruns/finalizers
+  verbs:
+  - update
 - apiGroups:
   - kubernetes.substrate.kapro.io
   resources:
@@ -324,14 +288,6 @@ rules:
   - buckets
   - gitrepositories
   - ocirepositories
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - webhook.substrate.kapro.io
-  resources:
-  - webhooksubstrateconfigs
   verbs:
   - get
   - list

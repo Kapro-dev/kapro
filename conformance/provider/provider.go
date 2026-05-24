@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"kapro.io/kapro/api/v1alpha2"
+	"kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/conformance"
 	"kapro.io/kapro/pkg/spokeprovider"
 )
@@ -21,10 +21,10 @@ type Scenario struct {
 func DefaultScenario() Scenario {
 	return Scenario{
 		Request: spokeprovider.ReconcileRequest{
-			Cluster: &v1alpha2.Cluster{},
+			Cluster: &v1alpha1.Cluster{},
 			AppKey:  "conformance",
-			BackendProfile: &v1alpha2.Backend{
-				Spec: v1alpha2.BackendSpec{},
+			SubstrateProfile: &v1alpha1.Substrate{
+				Spec: v1alpha1.SubstrateSpec{},
 			},
 			DesiredVersion: "v1.0.0",
 			Parameters:     map[string]string{"conformance": "true"},
@@ -68,11 +68,14 @@ func normalizeScenario(p spokeprovider.Provider, scenario Scenario) Scenario {
 	if p == nil {
 		return scenario
 	}
-	if scenario.Request.BackendProfile == nil {
-		scenario.Request.BackendProfile = &v1alpha2.Backend{}
+	if scenario.Request.SubstrateProfile == nil {
+		scenario.Request.SubstrateProfile = &v1alpha1.Substrate{}
 	}
-	if scenario.Request.BackendProfile.Spec.Driver == "" {
-		scenario.Request.BackendProfile.Spec.Driver = p.Driver()
+	if scenario.Request.SubstrateProfile.Spec.Substrate == nil || scenario.Request.SubstrateProfile.Spec.Substrate.Kind == "" {
+		scenario.Request.SubstrateProfile.Spec.Substrate = &v1alpha1.SubstrateImplementationSpec{
+			Kind:     string(p.SubstrateKind()),
+			Actuator: string(p.SubstrateKind()),
+		}
 	}
 	return scenario
 }
@@ -86,8 +89,8 @@ func checkCapabilities(p spokeprovider.Provider, scenario Scenario) conformance.
 	if caps.ContractVersion != spokeprovider.ContractVersionV1Alpha1 {
 		return conformance.Fail(name, "contract_version=%q, want %q", caps.ContractVersion, spokeprovider.ContractVersionV1Alpha1)
 	}
-	if caps.Driver == "" {
-		return conformance.Fail(name, "driver is empty")
+	if caps.SubstrateKind == "" {
+		return conformance.Fail(name, "substrate kind is empty")
 	}
 	if missing := missingCapabilities(caps, requiredCapabilities(scenario)); len(missing) > 0 {
 		return conformance.Fail(name, "missing required capabilities %v", missing)

@@ -1,7 +1,11 @@
 # ADR-0016: Substrate Class And Typed Config Contract
 
 ## Status
-Accepted
+Superseded in part by [ADR-0018](0018-public-runtime-api-split.md)
+
+ADR-0018 completes the rename from `Backend` to `Substrate` and resets the
+public-preview API to `kapro.io/v1alpha1`. The class/config contract below
+remains the basis for 0.6 substrates; `Backend` references are historical.
 
 ## Context
 
@@ -29,12 +33,11 @@ We introduce a Phase-1 substrate contract:
   `spec.controllerName` and reports accepted config kinds, supported execution
   modes, and capabilities in status.
 - `Backend` remains the configured delivery instance in v1alpha2. It gains
-  `spec.classRef` and `spec.configRef` while retaining existing
-  `substrate`, `driver`, `adapter`, `runtime`, and `parameters` compatibility
-  fields.
+  `spec.classRef` and `spec.configRef` while retaining the open
+  `spec.substrate`, `spec.execution`, and `spec.parameters` fields.
 - Each substrate package owns its typed config CRD, for example
   `ArgoCDSubstrateConfig`, `FluxSubstrateConfig`, `KubernetesApplyConfig`,
-  `OCIBundleApplyConfig`, or `WebhookSubstrateConfig`.
+  or `OCIBundleApplyConfig`.
 - The `substrateclass` controller writes status for Kapro-owned classes
   (`kapro.io/*` controller names). External substrate controllers own status
   for their own domain-prefixed controller names.
@@ -70,7 +73,7 @@ Typed config CRDs owned by substrate packages are clearer.
 ### Rename `Backend` to `Substrate` immediately
 
 The repository already has `Backend` references in `Fleet`, `Cluster`,
-`Source`, `AdapterPolicy`, examples, docs, admission, and runtime controllers.
+`Source`, `SubstrateDiscoveryPolicy`, examples, docs, admission, and runtime controllers.
 Renaming now would be a large migration with little immediate runtime value.
 The Phase-1 contract is additive and leaves the rename decision for a later API
 transition.

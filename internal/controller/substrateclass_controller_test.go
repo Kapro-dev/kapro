@@ -12,7 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 func TestSubstrateClassReconcilerPublishesBuiltInArgoContract(t *testing.T) {
@@ -20,28 +20,28 @@ func TestSubstrateClassReconcilerPublishesBuiltInArgoContract(t *testing.T) {
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	class := &kaprov1alpha2.SubstrateClass{
-		ObjectMeta: metav1.ObjectMeta{Name: "argo-cd", Generation: 2},
-		Spec: kaprov1alpha2.SubstrateClassSpec{
-			ControllerName: "kapro.io/argo-cd",
+	class := &kaprov1alpha1.SubstrateClass{
+		ObjectMeta: metav1.ObjectMeta{Name: "argo", Generation: 2},
+		Spec: kaprov1alpha1.SubstrateClassSpec{
+			ControllerName: "kapro.io/argo",
 		},
 	}
 	r := &SubstrateClassReconciler{
 		Client: fake.NewClientBuilder().
 			WithScheme(scheme).
 			WithObjects(class).
-			WithStatusSubresource(&kaprov1alpha2.SubstrateClass{}).
+			WithStatusSubresource(&kaprov1alpha1.SubstrateClass{}).
 			Build(),
 	}
 
-	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: client.ObjectKey{Name: "argo-cd"}}); err != nil {
+	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: client.ObjectKey{Name: "argo"}}); err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	var got kaprov1alpha2.SubstrateClass
-	if err := r.Get(context.Background(), client.ObjectKey{Name: "argo-cd"}, &got); err != nil {
+	var got kaprov1alpha1.SubstrateClass
+	if err := r.Get(context.Background(), client.ObjectKey{Name: "argo"}, &got); err != nil {
 		t.Fatal(err)
 	}
 	accepted := apimeta.FindStatusCondition(got.Status.Conditions, "Accepted")
@@ -79,8 +79,8 @@ func TestSubstrateClassReconcilerPublishesPublicPreviewContracts(t *testing.T) {
 			inputType:  "raw-yaml",
 		},
 		{
-			name:       "argo-cd",
-			controller: "kapro.io/argo-cd",
+			name:       "argo",
+			controller: "kapro.io/argo",
 			configKind: "ArgoCDSubstrateConfig",
 			configAPI:  "argocd.substrate.kapro.io/v1alpha1",
 			inputType:  "git-revision",
@@ -102,12 +102,12 @@ func TestSubstrateClassReconcilerPublishesPublicPreviewContracts(t *testing.T) {
 			if err := clientgoscheme.AddToScheme(scheme); err != nil {
 				t.Fatal(err)
 			}
-			if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+			if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 				t.Fatal(err)
 			}
-			class := &kaprov1alpha2.SubstrateClass{
+			class := &kaprov1alpha1.SubstrateClass{
 				ObjectMeta: metav1.ObjectMeta{Name: tt.name, Generation: 3},
-				Spec: kaprov1alpha2.SubstrateClassSpec{
+				Spec: kaprov1alpha1.SubstrateClassSpec{
 					ControllerName: tt.controller,
 				},
 			}
@@ -115,14 +115,14 @@ func TestSubstrateClassReconcilerPublishesPublicPreviewContracts(t *testing.T) {
 				Client: fake.NewClientBuilder().
 					WithScheme(scheme).
 					WithObjects(class).
-					WithStatusSubresource(&kaprov1alpha2.SubstrateClass{}).
+					WithStatusSubresource(&kaprov1alpha1.SubstrateClass{}).
 					Build(),
 			}
 
 			if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: client.ObjectKey{Name: tt.name}}); err != nil {
 				t.Fatalf("Reconcile: %v", err)
 			}
-			var got kaprov1alpha2.SubstrateClass
+			var got kaprov1alpha1.SubstrateClass
 			if err := r.Get(context.Background(), client.ObjectKey{Name: tt.name}, &got); err != nil {
 				t.Fatal(err)
 			}
@@ -158,12 +158,12 @@ func TestSubstrateClassReconcilerRejectsUnknownKaproController(t *testing.T) {
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	class := &kaprov1alpha2.SubstrateClass{
+	class := &kaprov1alpha1.SubstrateClass{
 		ObjectMeta: metav1.ObjectMeta{Name: "unknown", Generation: 1},
-		Spec: kaprov1alpha2.SubstrateClassSpec{
+		Spec: kaprov1alpha1.SubstrateClassSpec{
 			ControllerName: "kapro.io/unknown",
 		},
 	}
@@ -171,14 +171,14 @@ func TestSubstrateClassReconcilerRejectsUnknownKaproController(t *testing.T) {
 		Client: fake.NewClientBuilder().
 			WithScheme(scheme).
 			WithObjects(class).
-			WithStatusSubresource(&kaprov1alpha2.SubstrateClass{}).
+			WithStatusSubresource(&kaprov1alpha1.SubstrateClass{}).
 			Build(),
 	}
 
 	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: client.ObjectKey{Name: "unknown"}}); err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	var got kaprov1alpha2.SubstrateClass
+	var got kaprov1alpha1.SubstrateClass
 	if err := r.Get(context.Background(), client.ObjectKey{Name: "unknown"}, &got); err != nil {
 		t.Fatal(err)
 	}

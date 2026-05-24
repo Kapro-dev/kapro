@@ -6,11 +6,13 @@ import (
 	"sort"
 	"strings"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/cli"
 )
 
@@ -49,22 +51,22 @@ func renderTreeWithClient(ctx context.Context, c client.Client, promotionName st
 }
 
 type promotionTree struct {
-	Promotion kaprov1alpha2.Promotion `json:"promotion"`
+	Promotion kaprov1alpha1.Promotion `json:"promotion"`
 	Runs      []promotionTreeRun      `json:"runs"`
 }
 
 type promotionTreeRun struct {
-	Run     kaprov1alpha2.PromotionRun `json:"run"`
-	Targets []kaprov1alpha2.Target     `json:"targets"`
+	Run     kaproruntimev1alpha1.PromotionRun `json:"run"`
+	Targets []kaproruntimev1alpha1.Target     `json:"targets"`
 }
 
 func collectPromotionTree(ctx context.Context, c client.Client, promotionName string) (*promotionTree, error) {
-	var promo kaprov1alpha2.Promotion
+	var promo kaprov1alpha1.Promotion
 	if err := c.Get(ctx, client.ObjectKey{Name: promotionName}, &promo); err != nil {
 		return nil, fmt.Errorf("get promotion %q: %w", promotionName, err)
 	}
 
-	var runs kaprov1alpha2.PromotionRunList
+	var runs kaproruntimev1alpha1.PromotionRunList
 	if err := c.List(ctx, &runs, client.MatchingLabels{promotionLabelKey: promotionName}); err != nil {
 		return nil, fmt.Errorf("list promotionruns: %w", err)
 	}
@@ -72,7 +74,7 @@ func collectPromotionTree(ctx context.Context, c client.Client, promotionName st
 
 	tree := &promotionTree{Promotion: promo}
 	for _, r := range runs.Items {
-		var targetList kaprov1alpha2.TargetList
+		var targetList kaproruntimev1alpha1.TargetList
 		if err := c.List(ctx, &targetList, client.MatchingLabels{promotionRunLabelKey: r.Name}); err != nil {
 			return nil, fmt.Errorf("list targets for promotionrun %q: %w", r.Name, err)
 		}
@@ -123,7 +125,7 @@ func renderPromotionTree(tree *promotionTree) {
 	}
 }
 
-func sortPromotionRuns(items []kaprov1alpha2.PromotionRun) {
+func sortPromotionRuns(items []kaproruntimev1alpha1.PromotionRun) {
 	sort.Slice(items, func(i, j int) bool {
 		if !items[i].CreationTimestamp.Equal(&items[j].CreationTimestamp) {
 			return items[i].CreationTimestamp.After(items[j].CreationTimestamp.Time)
@@ -132,7 +134,7 @@ func sortPromotionRuns(items []kaprov1alpha2.PromotionRun) {
 	})
 }
 
-func sortTargets(items []kaprov1alpha2.Target) {
+func sortTargets(items []kaproruntimev1alpha1.Target) {
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].Spec.Stage != items[j].Spec.Stage {
 			return items[i].Spec.Stage < items[j].Spec.Stage
@@ -144,7 +146,7 @@ func sortTargets(items []kaprov1alpha2.Target) {
 	})
 }
 
-func promotionRunTargetsText(run *kaprov1alpha2.PromotionRun) string {
+func promotionRunTargetsText(run *kaproruntimev1alpha1.PromotionRun) string {
 	if run.Status.Summary == nil {
 		return "-"
 	}

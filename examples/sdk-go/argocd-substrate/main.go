@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/pkg/kapro/adapter"
 	"kapro.io/kapro/pkg/kapro/adapter/argocd"
 )
@@ -16,23 +16,23 @@ func main() {
 		log.Fatalf("register Argo CD adapter: %v", err)
 	}
 
-	argo, err := registry.Resolve(kaprov1alpha2.BackendDriverArgo)
+	argo, err := registry.Resolve(kaprov1alpha1.SubstrateKindArgo)
 	if err != nil {
 		log.Fatalf("resolve Argo CD adapter: %v", err)
 	}
 
 	result, err := argo.Discover(context.Background(), adapter.DiscoveryRequest{
-		Driver:    kaprov1alpha2.BackendDriverArgo,
-		Runtime:   kaprov1alpha2.BackendRuntimeHub,
-		Namespace: "argocd",
+		SubstrateKind:  kaprov1alpha1.SubstrateKindArgo,
+		ExecutionScope: kaprov1alpha1.ExecutionScopeHub,
+		Namespace:      "argocd",
 	})
 	if err != nil {
 		log.Fatalf("discover Argo CD substrate: %v", err)
 	}
 
 	fmt.Printf("driver=%s runtime=%s ready=%t selected=%d skipped=%d unsupported=%d\n",
-		result.Driver,
-		result.Runtime,
+		result.SubstrateKind,
+		result.ExecutionScope,
 		result.Ready,
 		len(result.SelectedObjects),
 		len(result.SkippedObjects),

@@ -54,12 +54,12 @@ Use these labels consistently:
 
 | Label | Meaning |
 |---|---|
-| Kapro-compatible plugin | The plugin implements a supported contract version, passes the relevant base conformance suite, and documents backend assumptions. |
+| Kapro-compatible plugin | The plugin implements a supported contract version, passes the relevant base conformance suite, and documents substrate assumptions. |
 | Certified Kapro plugin | Reserved for a future governed certification process. Do not use this label yet. |
 
 Conformance proves the base Kapro contract: idempotency, deterministic response
 shape, capabilities, context cancellation, and request immutability where
-applicable. It does not certify backend-specific production readiness.
+applicable. It does not certify substrate-specific production readiness.
 
 ## Badge Model
 
@@ -104,7 +104,7 @@ Before publishing a plugin:
 - return the supported `contract_version` from `GetCapabilities`;
 - return a clear plugin implementation version in `plugin_version`;
 - run `kapro-conformance` or the Go conformance harness in CI;
-- document required backend permissions and Kubernetes RBAC;
+- document required substrate permissions and Kubernetes RBAC;
 - document timeout, retry, and failure behavior;
 - publish a tested `Plugin` manifest;
 - avoid creating or mutating Kapro CRDs directly.

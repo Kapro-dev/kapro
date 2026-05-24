@@ -17,7 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/provider"
 )
 
@@ -27,7 +27,7 @@ const (
 
 // DiscovererFactory returns a Discoverer for a given template source. Pluggable
 // so tests can inject fakes without hitting live cloud APIs.
-type DiscovererFactory func(kaprov1alpha2.ClusterTemplateSource) (provider.Discoverer, error)
+type DiscovererFactory func(kaprov1alpha1.ClusterTemplateSource) (provider.Discoverer, error)
 
 // ClusterTemplateReconciler is the universal fleet auto-import reconciler.
 //
@@ -66,13 +66,13 @@ type ClusterTemplateReconciler struct {
 func (r *ClusterTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues("clustertemplate", req.Name)
 
-	var tmpl kaprov1alpha2.ClusterTemplate
+	var tmpl kaprov1alpha1.ClusterTemplate
 	if err := r.Get(ctx, req.NamespacedName, &tmpl); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	// Capture the base for a strategic-merge status patch at the end.
 	// Mutate tmpl.Status freely throughout reconcile — only the diff against
-	// statusBase is shipped to the apiserver. Matches BackendReconciler.
+	// statusBase is shipped to the apiserver. Matches SubstrateReconciler.
 	statusBase := tmpl.DeepCopy()
 
 	requeue := r.intervalOrDefault(&tmpl)
@@ -85,13 +85,13 @@ func (r *ClusterTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		// Suspended is intentional pause — Ready stays False but Stalled
 		// is not set (it would falsely alert that the controller is stuck).
 		apimeta.SetStatusCondition(&tmpl.Status.Conditions, metav1.Condition{
-			Type:               kaprov1alpha2.ConditionTypeReady,
+			Type:               kaprov1alpha1.ConditionTypeReady,
 			Status:             metav1.ConditionFalse,
 			Reason:             "Suspended",
 			Message:            "reconciliation suspended by spec.suspend",
 			ObservedGeneration: tmpl.Generation,
 		})
-		apimeta.RemoveStatusCondition(&tmpl.Status.Conditions, kaprov1alpha2.ConditionTypeStalled)
+		apimeta.RemoveStatusCondition(&tmpl.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
 		if err := r.patchStatus(ctx, statusBase, &tmpl); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -179,7 +179,7 @@ func (r *ClusterTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	return ctrl.Result{RequeueAfter: requeue}, nil
 }
 
-func providerForCluster(base kaprov1alpha2.ClusterProvider, c provider.ClusterInfo) kaprov1alpha2.ClusterProvider {
+func providerForCluster(base kaprov1alpha1.ClusterProvider, c provider.ClusterInfo) kaprov1alpha1.ClusterProvider {
 	out := *base.DeepCopy()
 	if c.Provider != "" {
 		out.Kind = c.Provider
@@ -200,7 +200,7 @@ func (r *ClusterTemplateReconciler) factory() DiscovererFactory {
 	return provider.NewDiscoverer
 }
 
-func (r *ClusterTemplateReconciler) intervalOrDefault(tmpl *kaprov1alpha2.ClusterTemplate) time.Duration {
+func (r *ClusterTemplateReconciler) intervalOrDefault(tmpl *kaprov1alpha1.ClusterTemplate) time.Duration {
 	if tmpl.Spec.Interval == "" {
 		return defaultFleetTemplateInterval
 	}
@@ -215,7 +215,7 @@ func (r *ClusterTemplateReconciler) intervalOrDefault(tmpl *kaprov1alpha2.Cluste
 // is set on the template. Used to populate status.sourceKind even when the
 // discoverer for that branch isn't implemented yet (otherwise the printcolumn
 // would render empty for in-flight stubs).
-func sourceKindFromSpec(src kaprov1alpha2.ClusterTemplateSource) string {
+func sourceKindFromSpec(src kaprov1alpha1.ClusterTemplateSource) string {
 	switch {
 	case src.GCP != nil:
 		return "gcp"
@@ -247,16 +247,16 @@ func labelSelectorOrAll(sel *metav1.LabelSelector) (labels.Selector, error) {
 // touched.
 func (r *ClusterTemplateReconciler) upsertFleetCluster(
 	ctx context.Context,
-	tmpl *kaprov1alpha2.ClusterTemplate,
+	tmpl *kaprov1alpha1.ClusterTemplate,
 	c provider.ClusterInfo,
-	providerSpec kaprov1alpha2.ClusterProvider,
+	providerSpec kaprov1alpha1.ClusterProvider,
 	name string,
 ) error {
-	var fc kaprov1alpha2.Cluster
+	var fc kaprov1alpha1.Cluster
 	err := r.Get(ctx, client.ObjectKey{Name: name}, &fc)
 	switch {
 	case apierrors.IsNotFound(err):
-		fc = kaprov1alpha2.Cluster{
+		fc = kaprov1alpha1.Cluster{
 			ObjectMeta: metav1.ObjectMeta{Name: name},
 		}
 		r.applyManagedMetadata(tmpl, &fc, c)
@@ -277,7 +277,7 @@ func (r *ClusterTemplateReconciler) upsertFleetCluster(
 		return fmt.Errorf("get FleetCluster: %w", err)
 	}
 
-	if fc.Labels[kaprov1alpha2.ClusterTemplateManagedByLabel] != kaprov1alpha2.ClusterTemplateManagedByValue {
+	if fc.Labels[kaprov1alpha1.ClusterTemplateManagedByLabel] != kaprov1alpha1.ClusterTemplateManagedByValue {
 		r.eventf(tmpl, "Warning", "FleetClusterUnmanaged",
 			"FleetCluster %q exists but is not managed by a FleetClusterTemplate — skipping", name)
 		return nil
@@ -303,8 +303,8 @@ func (r *ClusterTemplateReconciler) upsertFleetCluster(
 //  2. Template's metadata.labels.
 //  3. The managed-by markers (always win).
 func (r *ClusterTemplateReconciler) applyManagedMetadata(
-	tmpl *kaprov1alpha2.ClusterTemplate,
-	fc *kaprov1alpha2.Cluster,
+	tmpl *kaprov1alpha1.ClusterTemplate,
+	fc *kaprov1alpha1.Cluster,
 	c provider.ClusterInfo,
 ) {
 	if fc.Labels == nil {
@@ -316,8 +316,8 @@ func (r *ClusterTemplateReconciler) applyManagedMetadata(
 	for k, v := range tmpl.Spec.Template.Metadata.Labels {
 		fc.Labels[k] = v
 	}
-	fc.Labels[kaprov1alpha2.ClusterTemplateManagedByLabel] = kaprov1alpha2.ClusterTemplateManagedByValue
-	fc.Labels[kaprov1alpha2.ClusterTemplateNameLabel] = tmpl.Name
+	fc.Labels[kaprov1alpha1.ClusterTemplateManagedByLabel] = kaprov1alpha1.ClusterTemplateManagedByValue
+	fc.Labels[kaprov1alpha1.ClusterTemplateNameLabel] = tmpl.Name
 
 	if len(tmpl.Spec.Template.Metadata.Annotations) > 0 {
 		if fc.Annotations == nil {
@@ -333,13 +333,13 @@ func (r *ClusterTemplateReconciler) applyManagedMetadata(
 // has disappeared from the source. Only fires when spec.prune=true.
 func (r *ClusterTemplateReconciler) pruneOrphans(
 	ctx context.Context,
-	tmpl *kaprov1alpha2.ClusterTemplate,
+	tmpl *kaprov1alpha1.ClusterTemplate,
 	kept map[string]struct{},
 ) error {
-	var owned kaprov1alpha2.ClusterList
+	var owned kaprov1alpha1.ClusterList
 	if err := r.List(ctx, &owned, client.MatchingLabels{
-		kaprov1alpha2.ClusterTemplateManagedByLabel: kaprov1alpha2.ClusterTemplateManagedByValue,
-		kaprov1alpha2.ClusterTemplateNameLabel:      tmpl.Name,
+		kaprov1alpha1.ClusterTemplateManagedByLabel: kaprov1alpha1.ClusterTemplateManagedByValue,
+		kaprov1alpha1.ClusterTemplateNameLabel:      tmpl.Name,
 	}); err != nil {
 		return fmt.Errorf("list owned FleetClusters: %w", err)
 	}
@@ -371,24 +371,24 @@ func sanitiseClusterName(name string) string {
 }
 
 // setReady writes the Ready condition and the paired Stalled condition.
-// Pattern matches BackendReconciler: when Ready=False the controller
+// Pattern matches SubstrateReconciler: when Ready=False the controller
 // is also Stalled (cannot progress without operator action — invalid source,
 // not-yet-implemented branch, label-selector parse error, etc.). When
 // Ready=True the Stalled condition is removed.
-func (r *ClusterTemplateReconciler) setReady(tmpl *kaprov1alpha2.ClusterTemplate, status metav1.ConditionStatus, reason, message string) {
+func (r *ClusterTemplateReconciler) setReady(tmpl *kaprov1alpha1.ClusterTemplate, status metav1.ConditionStatus, reason, message string) {
 	apimeta.SetStatusCondition(&tmpl.Status.Conditions, metav1.Condition{
-		Type:               kaprov1alpha2.ConditionTypeReady,
+		Type:               kaprov1alpha1.ConditionTypeReady,
 		Status:             status,
 		Reason:             reason,
 		Message:            message,
 		ObservedGeneration: tmpl.Generation,
 	})
 	if status == metav1.ConditionTrue {
-		apimeta.RemoveStatusCondition(&tmpl.Status.Conditions, kaprov1alpha2.ConditionTypeStalled)
+		apimeta.RemoveStatusCondition(&tmpl.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
 		return
 	}
 	apimeta.SetStatusCondition(&tmpl.Status.Conditions, metav1.Condition{
-		Type:               kaprov1alpha2.ConditionTypeStalled,
+		Type:               kaprov1alpha1.ConditionTypeStalled,
 		Status:             metav1.ConditionTrue,
 		Reason:             reason,
 		Message:            message,
@@ -398,9 +398,9 @@ func (r *ClusterTemplateReconciler) setReady(tmpl *kaprov1alpha2.ClusterTemplate
 
 // patchStatus ships a strategic-merge status patch derived from the
 // base+mutated pair. Using MergeFrom+Patch (rather than Status().Update) is
-// the convention in the codebase (see BackendReconciler) — it's
+// the convention in the codebase (see SubstrateReconciler) — it's
 // less conflict-prone and only the diff is transmitted.
-func (r *ClusterTemplateReconciler) patchStatus(ctx context.Context, base, tmpl *kaprov1alpha2.ClusterTemplate) error {
+func (r *ClusterTemplateReconciler) patchStatus(ctx context.Context, base, tmpl *kaprov1alpha1.ClusterTemplate) error {
 	tmpl.Status.ObservedGeneration = tmpl.Generation
 	if err := r.Status().Patch(ctx, tmpl, client.MergeFrom(base)); err != nil {
 		return fmt.Errorf("patch FleetClusterTemplate status: %w", err)
@@ -408,7 +408,7 @@ func (r *ClusterTemplateReconciler) patchStatus(ctx context.Context, base, tmpl 
 	return nil
 }
 
-func (r *ClusterTemplateReconciler) eventf(tmpl *kaprov1alpha2.ClusterTemplate, eventType, reason, format string, args ...any) {
+func (r *ClusterTemplateReconciler) eventf(tmpl *kaprov1alpha1.ClusterTemplate, eventType, reason, format string, args ...any) {
 	if r.Recorder == nil {
 		return
 	}
@@ -417,7 +417,7 @@ func (r *ClusterTemplateReconciler) eventf(tmpl *kaprov1alpha2.ClusterTemplate, 
 
 func (r *ClusterTemplateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kaprov1alpha2.ClusterTemplate{}).
-		Owns(&kaprov1alpha2.Cluster{}).
+		For(&kaprov1alpha1.ClusterTemplate{}).
+		Owns(&kaprov1alpha1.Cluster{}).
 		Complete(r)
 }

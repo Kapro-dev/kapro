@@ -1,8 +1,8 @@
 # Recommended Kapro RBAC split for a shared hub cluster.
 #
 # Bind these ClusterRoles to identity-provider groups with ClusterRoleBinding.
-# Keep Secret management in platform namespaces and bind the Secret Role only
-# where the referenced Secrets live.
+# Runtime objects are intentionally read-only for humans; controllers own writes
+# to runtime.kapro.io.
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -11,97 +11,65 @@ metadata:
 rules:
   - apiGroups: ["kapro.io"]
     resources:
-      - policies
-      - backends
-      - sources
-      - fleets
-      - gateexpressions
-      - decisiontraces
+      - substratediscoverypolicies
+      - approvals
       - clusters
+      - clustertemplates
+      - fleets
       - plans
       - plugins
-      - promotionruns
+      - policies
+      - promotions
+      - sources
       - substrateclasses
+      - substrates
       - triggers
     verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
   - apiGroups: ["kapro.io"]
     resources:
-      - approvals
-      - targets
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["kapro.io"]
-    resources:
-      - policies/status
+      - substratediscoverypolicies/status
       - approvals/status
-      - backends/status
-      - fleets/status
-      - gateexpressions/status
       - clusters/status
-      - decisiontraces/status
+      - clustertemplates/status
+      - fleets/status
       - plugins/status
-      - promotionruns/status
+      - policies/status
+      - promotions/status
       - substrateclasses/status
-      - targets/status
+      - substrates/status
       - triggers/status
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["runtime.kapro.io"]
+    resources:
+      - decisiontraces
+      - promotionruns
+      - targets
+      - decisiontraces/status
+      - promotionruns/status
+      - targets/status
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: kapro-promotion-engineer
-  # Renamed from kapro-promotionrun-engineer: users author Promotion;
-  # PromotionRun is controller-managed and read-only for normal users.
 rules:
   - apiGroups: ["kapro.io"]
     resources:
+      - clusters
+      - plans
       - promotions
       - sources
-      - clusters
-      - gateexpressions
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["kapro.io"]
+    resources:
+      - promotions
+    verbs: ["create", "delete", "patch", "update"]
+  - apiGroups: ["runtime.kapro.io"]
+    resources:
       - decisiontraces
-      - plans
       - promotionruns
       - targets
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["kapro.io"]
-    resources:
-      - promotions
-    verbs: ["create", "delete", "patch", "update"]
-  - apiGroups: ["kapro.io"]
-    resources:
-      - promotions/status
-      - gateexpressions/status
-      - decisiontraces/status
-      - promotionruns/status
-      - targets/status
-    verbs: ["get", "list", "watch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: kapro-promotion-trigger-admin
-rules:
-  - apiGroups: ["kapro.io"]
-    resources:
-      - sources
-      - clusters
-      - gateexpressions
-      - decisiontraces
-      - plans
-      - promotionruns
-      - triggers
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["kapro.io"]
-    resources:
-      - triggers
-    verbs: ["create", "delete", "patch", "update"]
-  - apiGroups: ["kapro.io"]
-    resources:
-      - promotionruns/status
-      - decisiontraces/status
-      - gateexpressions/status
-      - targets/status
-      - triggers/status
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -112,25 +80,18 @@ rules:
   - apiGroups: ["kapro.io"]
     resources:
       - approvals
-      - sources
       - clusters
-      - gateexpressions
-      - decisiontraces
       - plans
-      - promotionruns
-      - targets
+      - promotions
     verbs: ["get", "list", "watch"]
   - apiGroups: ["kapro.io"]
     resources:
       - approvals
     verbs: ["create"]
-  - apiGroups: ["kapro.io"]
+  - apiGroups: ["runtime.kapro.io"]
     resources:
-      - approvals/status
-      - gateexpressions/status
-      - decisiontraces/status
-      - promotionruns/status
-      - targets/status
+      - promotionruns
+      - targets
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -138,49 +99,28 @@ kind: ClusterRole
 metadata:
   name: kapro-auditor
 rules:
-  # Explicit allow-list (no wildcard) so the auditor cannot infer
-  # Policy decision rate / cooldown state from counters in
-  # `policies/status` (DecisionsToday, ActiveDecisions,
-  # LastDecisionAt). Production audit treats those counters as a
-  # timing-inference side channel; auditors get the policy spec but not
-  # the live decision stream. Bind kapro-platform-admin (which DOES
-  # include policies/status) to security incident response
-  # principals instead.
   - apiGroups: ["kapro.io"]
     resources:
-      - policies
+      - substratediscoverypolicies
       - approvals
-      - backends
       - clusters
       - clustertemplates
       - fleets
-      - gateexpressions
-      - decisiontraces
-      - plugins
       - plans
-      - promotionruns
+      - plugins
+      - policies
+      - promotions
       - sources
       - substrateclasses
-      - targets
+      - substrates
       - triggers
     verbs: ["get", "list", "watch"]
-  - apiGroups: ["kapro.io"]
+  - apiGroups: ["runtime.kapro.io"]
     resources:
-      - approvals/status
-      - backends/status
-      - clusters/status
-      - clustertemplates/status
-      - fleets/status
-      - gateexpressions/status
-      - decisiontraces/status
-      - plugins/status
-      - promotionruns/status
-      - substrateclasses/status
-      - targets/status
-      - triggers/status
+      - decisiontraces
+      - promotionruns
+      - targets
     verbs: ["get", "list", "watch"]
-  # Intentionally OMITTED from the auditor:
-  #   - policies/status   (DecisionsToday / cooldown timing leak)
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["get", "list", "watch"]

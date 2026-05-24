@@ -94,7 +94,7 @@ generate: $(CONTROLLER_GEN) ## Generate DeepCopy methods
 .PHONY: check-deepcopy
 check-deepcopy: $(CONTROLLER_GEN) ## Verify zz_generated.deepcopy.go is up to date
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
-	@git diff --exit-code api/v1alpha2/zz_generated.deepcopy.go || \
+	@git diff --exit-code -- $$(find api -name zz_generated.deepcopy.go -print) || \
 		(echo "ERROR: zz_generated.deepcopy.go is out of date. Run 'make generate'." && exit 1)
 
 .PHONY: manifests

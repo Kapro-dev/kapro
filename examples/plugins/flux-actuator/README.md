@@ -6,7 +6,7 @@ Flux-specific code to the Kapro operator.
 
 ## Behavior
 
-The plugin applies exactly one backend mutation:
+The plugin applies exactly one substrate mutation:
 
 ```text
 HelmRelease.spec.chart.spec.version = <requested version>
@@ -80,7 +80,7 @@ KAPRO_ENABLE_PLUGIN_GATEWAY=true
 go test ./examples/plugins/flux-actuator
 ```
 
-The test suite runs the shared KAI conformance harness and backend-specific
+The test suite runs the shared KAI conformance harness and substrate-specific
 tests against a fake Kubernetes API.
 
 You can also run the external conformance binary against a live plugin server:

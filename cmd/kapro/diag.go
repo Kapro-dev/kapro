@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -14,25 +16,25 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/cli"
 )
 
 // promotionDiag is the JSON payload shape for `kapro diag -o json`.
-// It is intentionally a thin envelope around the live v1alpha2 /
+// It is intentionally a thin envelope around the live v1alpha1 /
 // corev1 types — scripts that key on `.promotion.spec.version` or
 // `.events[0].reason` get the full Kubernetes object shape they
 // already know. The envelope keys (`promotion`, `promotionRuns`,
 // `targets`, `events`, `blockedOn`, `suggestedNextActions`)
 // are the stable contract; the embedded types track their own
-// versioning policy (api/v1alpha2 stability via ADRs).
+// versioning policy (api/v1alpha1 stability via ADRs).
 type promotionDiag struct {
-	Promotion *kaprov1alpha2.Promotion     `json:"promotion"`
-	Runs      []kaprov1alpha2.PromotionRun `json:"promotionRuns"`
-	Targets   []kaprov1alpha2.Target       `json:"targets"`
-	Events    []corev1.Event               `json:"events"`
-	BlockedOn []string                     `json:"blockedOn,omitempty"`
-	Next      []string                     `json:"suggestedNextActions,omitempty"`
+	Promotion *kaprov1alpha1.Promotion            `json:"promotion"`
+	Runs      []kaproruntimev1alpha1.PromotionRun `json:"promotionRuns"`
+	Targets   []kaproruntimev1alpha1.Target       `json:"targets"`
+	Events    []corev1.Event                      `json:"events"`
+	BlockedOn []string                            `json:"blockedOn,omitempty"`
+	Next      []string                            `json:"suggestedNextActions,omitempty"`
 }
 
 func newDiagCmd() *cobra.Command {
@@ -87,7 +89,7 @@ func runDiagWithClient(ctx context.Context, c client.Client, name string, events
 }
 
 func collectDiag(ctx context.Context, c client.Client, name string, eventsLimit int) (*promotionDiag, error) {
-	var promo kaprov1alpha2.Promotion
+	var promo kaprov1alpha1.Promotion
 	if err := c.Get(ctx, client.ObjectKey{Name: name}, &promo); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, fmt.Errorf("promotion %q not found", name)
@@ -95,7 +97,7 @@ func collectDiag(ctx context.Context, c client.Client, name string, eventsLimit 
 		return nil, fmt.Errorf("get promotion: %w", err)
 	}
 
-	var runs kaprov1alpha2.PromotionRunList
+	var runs kaproruntimev1alpha1.PromotionRunList
 	if err := c.List(ctx, &runs, client.MatchingLabels{"kapro.io/promotion": name}); err != nil {
 		return nil, fmt.Errorf("list promotionruns: %w", err)
 	}
@@ -118,7 +120,7 @@ func collectDiag(ctx context.Context, c client.Client, name string, eventsLimit 
 		// scoped run list produced.
 		relevantRunName = runs.Items[0].Name
 	}
-	var targets []kaprov1alpha2.Target
+	var targets []kaproruntimev1alpha1.Target
 	if relevantRunName != "" {
 		t, err := listTargetsForPromotionRun(ctx, c, relevantRunName)
 		if err != nil {
@@ -162,8 +164,8 @@ func collectDiag(ctx context.Context, c client.Client, name string, eventsLimit 
 // Each list is best-effort: failures are accumulated into a single
 // warning log but never block the rest of diag — events are
 // context, not load-bearing for the rollout state diagnosis.
-func collectScopedEvents(ctx context.Context, c client.Client, p *kaprov1alpha2.Promotion,
-	runs []kaprov1alpha2.PromotionRun, targets []kaprov1alpha2.Target) []corev1.Event {
+func collectScopedEvents(ctx context.Context, c client.Client, p *kaprov1alpha1.Promotion,
+	runs []kaproruntimev1alpha1.PromotionRun, targets []kaproruntimev1alpha1.Target) []corev1.Event {
 
 	names := []string{p.Name}
 	for _, r := range runs {
@@ -197,8 +199,8 @@ func collectScopedEvents(ctx context.Context, c client.Client, p *kaprov1alpha2.
 // (notably the controller-runtime fake client without a registered
 // index). It is intentionally only reachable from collectScopedEvents
 // — production clients use the scoped path.
-func fallbackUnscopedEvents(ctx context.Context, c client.Client, p *kaprov1alpha2.Promotion,
-	runs []kaprov1alpha2.PromotionRun, targets []kaprov1alpha2.Target) []corev1.Event {
+func fallbackUnscopedEvents(ctx context.Context, c client.Client, p *kaprov1alpha1.Promotion,
+	runs []kaproruntimev1alpha1.PromotionRun, targets []kaproruntimev1alpha1.Target) []corev1.Event {
 	var list corev1.EventList
 	if err := c.List(ctx, &list); err != nil {
 		return nil
@@ -206,8 +208,8 @@ func fallbackUnscopedEvents(ctx context.Context, c client.Client, p *kaprov1alph
 	return filterPromotionEvents(list.Items, p, runs, targets)
 }
 
-func filterPromotionEvents(all []corev1.Event, p *kaprov1alpha2.Promotion,
-	runs []kaprov1alpha2.PromotionRun, targets []kaprov1alpha2.Target) []corev1.Event {
+func filterPromotionEvents(all []corev1.Event, p *kaprov1alpha1.Promotion,
+	runs []kaproruntimev1alpha1.PromotionRun, targets []kaproruntimev1alpha1.Target) []corev1.Event {
 
 	wanted := map[string]bool{}
 	add := func(kind, name string) {
@@ -225,7 +227,8 @@ func filterPromotionEvents(all []corev1.Event, p *kaprov1alpha2.Promotion,
 
 	out := make([]corev1.Event, 0, len(all))
 	for _, e := range all {
-		if strings.HasPrefix(e.InvolvedObject.APIVersion, "kapro.io/") &&
+		if (strings.HasPrefix(e.InvolvedObject.APIVersion, "kapro.io/") ||
+			strings.HasPrefix(e.InvolvedObject.APIVersion, "runtime.kapro.io/")) &&
 			wanted[e.InvolvedObject.Kind+"/"+e.InvolvedObject.Name] {
 			out = append(out, e)
 		}
@@ -243,17 +246,17 @@ func eventTime(e corev1.Event) time.Time {
 	return e.CreationTimestamp.Time
 }
 
-func computeBlockedOn(p *kaprov1alpha2.Promotion, targets []kaprov1alpha2.Target) []string {
+func computeBlockedOn(p *kaprov1alpha1.Promotion, targets []kaproruntimev1alpha1.Target) []string {
 	var blocked []string
 	if p.Spec.Suspended {
 		blocked = append(blocked, "Promotion is suspended (spec.suspended=true)")
 	}
 	for _, t := range targets {
 		switch t.Status.Phase {
-		case kaprov1alpha2.TargetPhaseWaitingApproval:
+		case kaprov1alpha1.TargetPhaseWaitingApproval:
 			blocked = append(blocked, fmt.Sprintf("Target %q waiting for approval (stage=%s)",
 				t.Spec.Target, t.Spec.Stage))
-		case kaprov1alpha2.TargetPhaseFailed:
+		case kaprov1alpha1.TargetPhaseFailed:
 			msg := t.Status.Message
 			if msg == "" {
 				msg = "no message"
@@ -265,18 +268,18 @@ func computeBlockedOn(p *kaprov1alpha2.Promotion, targets []kaprov1alpha2.Target
 	return blocked
 }
 
-func computeNextActions(p *kaprov1alpha2.Promotion, targets []kaprov1alpha2.Target) []string {
+func computeNextActions(p *kaprov1alpha1.Promotion, targets []kaproruntimev1alpha1.Target) []string {
 	var next []string
 	active := p.Status.ActiveAttemptRef
 	for _, t := range targets {
-		if t.Status.Phase == kaprov1alpha2.TargetPhaseWaitingApproval && active != nil {
+		if t.Status.Phase == kaprov1alpha1.TargetPhaseWaitingApproval && active != nil {
 			next = append(next, fmt.Sprintf("kapro approve %s/%s", active.Name, t.Spec.Target))
 		}
 	}
 	if p.Spec.Suspended {
 		next = append(next, fmt.Sprintf("kubectl patch promotion %s --type=merge -p '{\"spec\":{\"suspended\":false}}'", p.Name))
 	}
-	if p.Status.Phase == kaprov1alpha2.PromotionPhaseFailed {
+	if p.Status.Phase == kaprov1alpha1.PromotionPhaseFailed {
 		next = append(next, fmt.Sprintf("kubectl describe promotion %s   # inspect failure conditions", p.Name))
 		// Only suggest a rollback command when we have a concrete
 		// PromotionRun name to roll back. Emitting "kapro rollback
@@ -291,7 +294,7 @@ func computeNextActions(p *kaprov1alpha2.Promotion, targets []kaprov1alpha2.Targ
 
 // attemptName returns the most recent concrete PromotionRun name for
 // this Promotion, or "" if no attempt has been stamped yet.
-func attemptName(p *kaprov1alpha2.Promotion) string {
+func attemptName(p *kaprov1alpha1.Promotion) string {
 	if p.Status.ActiveAttemptRef != nil {
 		return p.Status.ActiveAttemptRef.Name
 	}
@@ -345,7 +348,7 @@ func renderConditions(conds []metav1.Condition) {
 	tbl.Render()
 }
 
-func renderAttempts(attempts []kaprov1alpha2.PromotionAttemptRef) {
+func renderAttempts(attempts []kaprov1alpha1.PromotionAttemptRef) {
 	if len(attempts) == 0 {
 		return
 	}
@@ -366,7 +369,7 @@ func renderAttempts(attempts []kaprov1alpha2.PromotionAttemptRef) {
 	tbl.Render()
 }
 
-func renderTargets(targets []kaprov1alpha2.Target) {
+func renderTargets(targets []kaproruntimev1alpha1.Target) {
 	if len(targets) == 0 {
 		return
 	}
@@ -421,19 +424,19 @@ func renderNext(items []string) {
 	}
 }
 
-func styledPromotionPhase(phase kaprov1alpha2.PromotionPhase) string {
+func styledPromotionPhase(phase kaprov1alpha1.PromotionPhase) string {
 	s := string(phase)
 	switch phase {
-	case kaprov1alpha2.PromotionPhaseSucceeded:
+	case kaprov1alpha1.PromotionPhaseSucceeded:
 		return cli.Theme.PhaseComplete.Render(s)
-	case kaprov1alpha2.PromotionPhaseProgressing, kaprov1alpha2.PromotionPhaseRestarting:
+	case kaprov1alpha1.PromotionPhaseProgressing, kaprov1alpha1.PromotionPhaseRestarting:
 		return cli.Theme.PhaseProgressing.Render(s)
-	case kaprov1alpha2.PromotionPhaseFailed:
+	case kaprov1alpha1.PromotionPhaseFailed:
 		return cli.Theme.PhaseFailed.Render(s)
-	case kaprov1alpha2.PromotionPhasePaused:
+	case kaprov1alpha1.PromotionPhasePaused:
 		return cli.Theme.PhaseWaiting.Render(s)
-	case kaprov1alpha2.PromotionPhasePending, kaprov1alpha2.PromotionPhaseTerminating,
-		kaprov1alpha2.PromotionPhaseRollingBack:
+	case kaprov1alpha1.PromotionPhasePending, kaprov1alpha1.PromotionPhaseTerminating,
+		kaprov1alpha1.PromotionPhaseRollingBack:
 		return cli.Theme.PhasePending.Render(s)
 	}
 	if s == "" {
