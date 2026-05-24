@@ -302,7 +302,7 @@ spec:
                               ServiceAccount `kapro-bootstrap-<cluster>` in kapro-system with a
                               narrowly-scoped ClusterRole (CSR-create only, for this signer
                               name). It issues a TokenRequest for that SA (default 1h TTL,
-                              audience `kapro-bootstrap`) and writes the rendered kubeconfig
+                              default kube-apiserver audience) and writes the rendered kubeconfig
                               into Secret `kapro-bootstrap-kubeconfig-<cluster>`. The Secret
                               name is recorded in `status.bootstrap.issuedBootstrapKubeconfig`.
 
