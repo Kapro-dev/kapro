@@ -277,7 +277,11 @@ func (r *PromotionRunReconciler) triggerTargetRollback(ctx context.Context, prom
 				caps := actuatorCapabilitiesFor(r.ActuatorRegistry, key)
 				if len(target.PreviousVersions) > 0 {
 					if !supportsActuatorDelta(caps) {
-						log.Info("actuator does not support delta rollback — rollback target will re-apply it", "actuator", key)
+						msg := fmt.Sprintf("actuator %q does not support delta rollback; rollback target will re-apply", key)
+						log.Info(msg)
+						r.emitCapabilityUnsupportedTracePR(ctx, promotionrun, target,
+							kaprov1alpha2.DecisionTraceEventRollback,
+							DecisionTraceReasonRollbackUnsupported, msg)
 					} else if _, rbErr := act.ApplyDelta(ctx, actuator.DeltaApplyRequest{
 						Cluster:         &mc,
 						DesiredVersions: target.PreviousVersions,
@@ -290,7 +294,11 @@ func (r *PromotionRunReconciler) triggerTargetRollback(ctx context.Context, prom
 						)
 					}
 				} else if !supportsActuatorRollback(caps) {
-					log.Info("actuator does not support direct rollback — rollback target will re-apply it", "actuator", key)
+					msg := fmt.Sprintf("actuator %q does not support rollback; rollback target will re-apply", key)
+					log.Info(msg)
+					r.emitCapabilityUnsupportedTracePR(ctx, promotionrun, target,
+						kaprov1alpha2.DecisionTraceEventRollback,
+						DecisionTraceReasonRollbackUnsupported, msg)
 				} else if rbErr := act.Rollback(ctx, &mc, target.PreviousVersion, targetAppKey(target)); rbErr != nil {
 					log.Error(rbErr, "actuator Rollback() failed — rollback target will re-apply it")
 				} else {
