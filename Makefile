@@ -127,6 +127,11 @@ conformance: ## Run plugin/provider conformance suites against local reference i
 	go test ./cmd/kapro-conformance
 	go run ./cmd/kapro-conformance all -o json >/tmp/kapro-conformance-report.json
 
+.PHONY: conformance-hello-world
+conformance-hello-world: ## Verify the hello-world custom-substrate example passes the public-SDK contract
+	go test ./examples/actuator-hello-world/...
+	go run ./examples/actuator-hello-world
+
 ##@ Build
 
 .PHONY: build

@@ -50,3 +50,17 @@ Use the gRPC KAI contract when the actuator should ship or scale independently
 from the Kapro operator. The public service includes capability discovery,
 apply, observe/convergence, and rollback methods. See
 [Actuator Plugin Contract](actuator-plugin-contract.md).
+
+## Working example
+
+A live, CI-verified hello-world substrate ships in the repo:
+
+- [`examples/actuator-hello-world/`](https://github.com/Kapro-dev/kapro/tree/main/examples/actuator-hello-world)
+- README: walk-through of `substrate.kind`, `substrate.actuator`,
+  `execution.mode`, and `BoolFunc`.
+- `hello_test.go`: registers the substrate via the public registry path,
+  asserts `Apply` succeeds, and pins the capability profile so changes are
+  deliberate.
+- Verified on every PR via `make conformance-hello-world` in the Conformance
+  CI job — if a change to `pkg/kapro/actuator` breaks the authoring shape
+  used by hello-world, CI fails before merge.

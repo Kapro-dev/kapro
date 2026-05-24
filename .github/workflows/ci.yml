@@ -108,6 +108,8 @@ jobs:
           cache: true
       - name: Run reference conformance suites
         run: make conformance
+      - name: Verify hello-world custom-substrate proof
+        run: make conformance-hello-world
 
   install-render:
     name: Install Render
