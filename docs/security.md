@@ -7,6 +7,10 @@ webhook gates are privileged operations.
 
 For role design, see `docs/rbac-tenancy.md`.
 
+For verifying released charts, container signatures, SBOM attestations, and
+provenance before installation, see
+[Release Verification](release-verification.md).
+
 ## Decision API Authentication
 
 The machine-facing Decision API is opt-in and must not be exposed without

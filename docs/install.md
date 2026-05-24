@@ -3,8 +3,8 @@
 The recommended public-preview install path is the Helm chart package attached
 to the GitHub Release. It installs the CRDs, controller Deployment,
 ServiceAccount, RBAC, admission webhooks, and baseline approval service
-together. The `0.5.6` chart defaults to
-`ghcr.io/kapro-dev/kapro-operator:v0.5.6`.
+together. The `0.5.7` chart defaults to
+`ghcr.io/kapro-dev/kapro-operator:v0.5.7`.
 
 ## Prerequisites
 
@@ -17,10 +17,14 @@ uses an auto-generated self-signed serving certificate, so cert-manager
 is not required to install. Production clusters that already run
 cert-manager can opt back in (see below).
 
+For production change windows, verify the pinned chart, image signatures,
+SBOM attestations, and provenance before installing. See
+[Release Verification](release-verification.md).
+
 ## Install
 
 ```bash
-KAPRO_VERSION=0.5.6
+KAPRO_VERSION=0.5.7
 KAPRO_CHART="https://github.com/Kapro-dev/kapro/releases/download/v${KAPRO_VERSION}/kapro-operator-${KAPRO_VERSION}.tgz"
 
 helm upgrade --install kapro \
@@ -252,7 +256,7 @@ For a release image that is not the chart default:
 
 ```bash
 KAPRO_IMAGE_REPOSITORY=ghcr.io/kapro-dev/kapro-operator \
-KAPRO_IMAGE_TAG=v0.5.6 \
+KAPRO_IMAGE_TAG=v0.5.7 \
 scripts/verify-install.sh cluster
 ```
 
@@ -261,6 +265,9 @@ For a render-only check against the published chart artifact:
 ```bash
 scripts/verify-install.sh release-render
 ```
+
+For cryptographic artifact checks before installation, use the
+[Release Verification](release-verification.md) workflow.
 
 For a disposable Kind install check against the published chart artifact:
 
@@ -355,7 +362,7 @@ For a packaged release install without a source checkout, pull the chart before
 deleting CRDs:
 
 ```bash
-helm pull https://github.com/Kapro-dev/kapro/releases/download/v0.5.6/kapro-operator-0.5.6.tgz --untar
+helm pull https://github.com/Kapro-dev/kapro/releases/download/v0.5.7/kapro-operator-0.5.7.tgz --untar
 kubectl delete -f kapro-operator/crds
 kubectl delete namespace kapro-system
 ```

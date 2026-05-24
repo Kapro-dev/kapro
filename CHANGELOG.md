@@ -7,6 +7,12 @@ record for each tag.
 
 ## Unreleased
 
+### Added — release verification guide
+
+Added a release verification guide with checksum, Sigstore chart signature,
+container signature, SBOM attestation, GitHub provenance, fresh-install,
+upgrade, and rollback smoke commands for pinned `v0.x.y` releases.
+
 ### Changed — immutable release image tags
 
 Tag release workflows now publish only immutable versioned GHCR image tags.
@@ -88,12 +94,12 @@ step fails before image scanning.
 
 Clarified release-train guidance so patch increments are treated as a planning
 budget and review trigger while still allowing concrete milestones such as
-`v0.5.6` under the project’s `0.x.y` pre-stable strategy.
+`v0.5.7` under the project’s `0.x.y` pre-stable strategy.
 
-### Changed — release metadata for v0.5.6
+### Changed — release metadata for v0.5.7
 
 Updated Helm chart versions, install examples, and release smoke defaults so
-the next release tag packages `0.5.6` artifacts consistently.
+the next release tag packages `0.5.7` artifacts consistently.
 
 ### Added — reference adapter package tests
 
@@ -370,7 +376,7 @@ compatibility.
 Documented that Kapro stays in the `0.x.x` release series until public API,
 SDK, conformance, upgrade, and operational contracts are ready for stability
 graduation. Active GitHub milestones use exact feature-release names such as
-`v0.2.4`, `v0.4.7`, or `v0.5.6` rather than broad train buckets or a `1.0.0`
+`v0.2.4`, `v0.4.7`, or `v0.5.7` rather than broad train buckets or a `1.0.0`
 planning bucket. The pre-stable strategy is `0.<capability-line>.<feature-increment>`,
 so both remaining digits carry product meaning.
 
