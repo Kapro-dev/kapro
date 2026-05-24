@@ -55,6 +55,6 @@ These plans are flat DAGs of `Stage` nodes. Each stage declares:
 Validation runs at admission time: stage names must be unique, `dependsOn`
 entries must reference real stages, and the DAG must be acyclic.
 
-See [`docs/concepts.md`](../../docs/concepts.md) for the full field
-reference and [`docs/first-promotion-10min.md`](../../docs/first-promotion-10min.md)
+See [`docs/concepts.md`](../../docs/concepts/concepts.md) for the full field
+reference and [`docs/first-promotion-10min.md`](../../docs/getting-started/first-promotion-10min.md)
 for an end-to-end walkthrough.

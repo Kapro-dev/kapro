@@ -6,8 +6,8 @@ serve `v1alpha1`, and there is no automatic conversion for stored legacy
 objects.
 
 Use this guide only if you applied prototype manifests from an older branch or
-pre-release snapshot. New installs should start with [Install](install.md) and
-[First Promotion in 10 Minutes](first-promotion-10min.md).
+pre-release snapshot. New installs should start with [Install](../getting-started/install.md) and
+[First Promotion in 10 Minutes](../getting-started/first-promotion-10min.md).
 
 ## What Changed
 

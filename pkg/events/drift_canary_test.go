@@ -12,7 +12,7 @@ import (
 
 // TestEventTypesDocumentedInEventsMd is the drift canary: every
 // EventType constant exported from pkg/events MUST appear verbatim
-// somewhere in docs/events.md. Adding a new constant without
+// somewhere in docs/concepts/events.md. Adding a new constant without
 // adding a row to the vocabulary table will fail this test, which is
 // the single line of CI defence against the docs↔code drift bugs that
 // cost PRs #80 and #81 a combined 20 review comments.
@@ -21,13 +21,13 @@ import (
 // literal must appear). False negatives — "I documented it under a
 // slightly different spelling" — are wins for the canary.
 func TestEventTypesDocumentedInEventsMd(t *testing.T) {
-	docs, err := readDocsFile("events.md")
+	docs, err := readDocsFile("concepts/events.md")
 	if err != nil {
-		t.Fatalf("read docs/events.md: %v", err)
+		t.Fatalf("read docs/concepts/events.md: %v", err)
 	}
 	for _, et := range events.AllEventTypes() {
 		if !strings.Contains(docs, string(et)) {
-			t.Errorf("EventType %q is exported from pkg/events but not documented in docs/events.md.\n"+
+			t.Errorf("EventType %q is exported from pkg/events but not documented in docs/concepts/events.md.\n"+
 				"Add a row to the matching scope table; see .github/CONTRIBUTING_EVENTS.md.",
 				string(et))
 		}

@@ -82,8 +82,8 @@ check_live_release_pointers() {
 
   grep -RInF "v${expected_version}" \
     "${ROOT}/README.md" \
-    "${ROOT}/docs/install.md" \
-    "${ROOT}/docs/first-promotion-10min.md" \
+    "${ROOT}/docs/getting-started/install.md" \
+    "${ROOT}/docs/getting-started/first-promotion-10min.md" \
     "${ROOT}/charts/kapro-operator/README.md" \
     "${ROOT}/scripts/verify-install.sh" >/dev/null
 }

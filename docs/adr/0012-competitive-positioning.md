@@ -99,7 +99,7 @@ backend coupling, multi-cluster model, audit model, plugin model, and event API.
   promotion layer, not whether they turn Kapro into a replacement reconciler.
 
 ## References
-- [Concepts](../concepts.md)
-- [Backends](../backends.md)
+- [Concepts](../concepts/concepts.md)
+- [Backends](../concepts/backends.md)
 - [CloudEvents publisher posture](0003-cloudevents-publisher-posture.md)
 - [Sveltos ClusterPromotion](https://projectsveltos.io/v1.2.0/deployment_order/progressive_rollout/)

@@ -19,7 +19,7 @@ cert-manager can opt back in (see below).
 
 For production change windows, verify the pinned chart, image signatures,
 SBOM attestations, and provenance before installing. See
-[Release Verification](release-verification.md).
+[Release Verification](../operations/release-verification.md).
 
 ## Install
 
@@ -140,7 +140,7 @@ exposed deliberately:
 | Fleet auto-import providers | GCP and static lists implemented | Add `clustertemplate` to `controllers` when using `ClusterTemplate`; AWS, Azure, RHACM, and CAPI sources report `SourceNotImplemented` until their discoverers land. |
 | Inline gate notifications | Runtime | Notification routing is configured inside gate/stage policy; there is no separate public notification provider/policy CRD. |
 
-See [Preview Controllers](preview-controllers.md) for the full controller key
+See [Preview Controllers](../concepts/preview-controllers.md) for the full controller key
 map and compatibility aliases.
 
 ## Quickstart Paths
@@ -302,7 +302,7 @@ scripts/verify-install.sh release-render
 ```
 
 For cryptographic artifact checks before installation, use the
-[Release Verification](release-verification.md) workflow.
+[Release Verification](../operations/release-verification.md) workflow.
 
 For a disposable Kind install check against the published chart artifact:
 
@@ -354,7 +354,7 @@ kubectl kustomize config/default
 
 !!! warning "Upgrading from v1alpha1"
     The v1alpha1 to v1alpha2 move is a clean break. Follow the
-    [v1alpha1 to v1alpha2 migration guide](migration-v1alpha1-to-v1alpha2.md)
+    [v1alpha1 to v1alpha2 migration guide](../migration/migration-v1alpha1-to-v1alpha2.md)
     before applying v1alpha2 CRDs; the chart does not serve v1alpha1 or run
     automatic conversion.
 
@@ -376,7 +376,7 @@ equivalent CRD apply path.
 
 Kapro supports a pull-mode spoke agent (`kapro-cluster-controller`) that
 runs inside each workload cluster and reports back to the hub. To register a
-new spoke see [cluster-bootstrap.md](cluster-bootstrap.md). The existing push-
+new spoke see [cluster-bootstrap.md](../operations/cluster-bootstrap.md). The existing push-
 mode flow (`kapro spoke add`) is unchanged.
 
 ## Uninstall

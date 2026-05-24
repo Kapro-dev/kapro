@@ -317,7 +317,7 @@ func TestControllerSelectionUsesRegisteredPublicNames(t *testing.T) {
 	}
 
 	for _, relPath := range []string{
-		filepath.Join("docs", "install.md"),
+		filepath.Join("docs", "getting-started", "install.md"),
 		filepath.Join("examples", "kind-demo", "operator", "manager-env-patch.yaml"),
 		filepath.Join("scripts", "argo-e2e.sh"),
 	} {
@@ -655,8 +655,8 @@ func TestReleaseVersionMarkersStayInSync(t *testing.T) {
 
 	for _, relPath := range []string{
 		"README.md",
-		filepath.Join("docs", "api-stability.md"),
-		filepath.Join("docs", "install.md"),
+		filepath.Join("docs", "concepts", "api-stability.md"),
+		filepath.Join("docs", "getting-started", "install.md"),
 	} {
 		path := filepath.Join(root, relPath)
 		if !strings.Contains(readText(t, path), releaseTag) {
@@ -667,29 +667,29 @@ func TestReleaseVersionMarkersStayInSync(t *testing.T) {
 
 func TestPreStableReleaseTrainMarkersStayDocumented(t *testing.T) {
 	root := repoRoot(t)
-	releaseTrain := readText(t, filepath.Join(root, "docs", "release-train.md"))
-	roadmap := readText(t, filepath.Join(root, "docs", "pre-stable-roadmap.md"))
-	v023Scope := readText(t, filepath.Join(root, "docs", "v0.2.3-scope.md"))
-	apiStability := readText(t, filepath.Join(root, "docs", "api-stability.md"))
+	releaseTrain := readText(t, filepath.Join(root, "docs", "concepts", "release-train.md"))
+	roadmap := readText(t, filepath.Join(root, "docs", "concepts", "pre-stable-roadmap.md"))
+	v023Scope := readText(t, filepath.Join(root, "docs", "concepts", "v0.2.3-scope.md"))
+	apiStability := readText(t, filepath.Join(root, "docs", "concepts", "api-stability.md"))
 	sdkVersioning := readText(t, filepath.Join(root, "docs", "adr", "0013-sdk-versioning-policy.md"))
 
 	for _, want := range []string{"0.x.x", "v0.2.4", "v0.4.7", "v0.4.20"} {
 		if !strings.Contains(releaseTrain, want) {
-			t.Fatalf("docs/release-train.md does not mention %s", want)
+			t.Fatalf("docs/concepts/release-train.md does not mention %s", want)
 		}
 		if !strings.Contains(roadmap, want) {
-			t.Fatalf("docs/pre-stable-roadmap.md does not mention %s", want)
+			t.Fatalf("docs/concepts/pre-stable-roadmap.md does not mention %s", want)
 		}
 	}
 	if !strings.Contains(roadmap, "The first version digit remains\n`0` for roadmap work.") {
-		t.Fatalf("docs/pre-stable-roadmap.md does not keep roadmap work on the 0.x.x train")
+		t.Fatalf("docs/concepts/pre-stable-roadmap.md does not keep roadmap work on the 0.x.x train")
 	}
 	for _, want := range []string{"v0.2.4", "v0.4.7", "v0.4.20"} {
 		if !strings.Contains(releaseTrain, want) {
-			t.Fatalf("docs/release-train.md does not mention exact milestone example %s", want)
+			t.Fatalf("docs/concepts/release-train.md does not mention exact milestone example %s", want)
 		}
 		if !strings.Contains(roadmap, want) {
-			t.Fatalf("docs/pre-stable-roadmap.md does not mention exact milestone example %s", want)
+			t.Fatalf("docs/concepts/pre-stable-roadmap.md does not mention exact milestone example %s", want)
 		}
 	}
 	for _, bad := range []string{"`v0.6`", "`v0.10.0`"} {
@@ -699,7 +699,7 @@ func TestPreStableReleaseTrainMarkersStayDocumented(t *testing.T) {
 	}
 	for _, want := range []string{"v0.2.3", "0.x.x", "ClusterClassifier", "delivery promotion"} {
 		if !strings.Contains(v023Scope, want) {
-			t.Fatalf("docs/v0.2.3-scope.md does not mention %s", want)
+			t.Fatalf("docs/concepts/v0.2.3-scope.md does not mention %s", want)
 		}
 	}
 	for _, body := range []string{releaseTrain, roadmap, apiStability, sdkVersioning} {
@@ -708,7 +708,7 @@ func TestPreStableReleaseTrainMarkersStayDocumented(t *testing.T) {
 		}
 	}
 	for path, body := range map[string]string{
-		"docs/api-stability.md":                  apiStability,
+		"docs/concepts/api-stability.md":         apiStability,
 		"docs/adr/0013-sdk-versioning-policy.md": sdkVersioning,
 	} {
 		for _, want := range []string{"0.x.x", "1.0.0"} {

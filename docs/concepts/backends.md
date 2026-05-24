@@ -75,7 +75,7 @@ kapro bootstrap greenfield ./promotion-repo --backend argo --mode push --name ch
 kapro bootstrap greenfield ./promotion-repo --backend oci --mode pull --name checkout
 ```
 
-See [Adoption Guide](adoption.md) for the full decision tree.
+See [Adoption Guide](../getting-started/adoption.md) for the full decision tree.
 
 ## Plugins
 
@@ -86,4 +86,4 @@ When built-in behavior is not enough, `Plugin` can load external:
 - planners for target ordering.
 
 Plugins should pass the matching conformance suite before use in production.
-See [Extension Model](extension-model.md) and [Plugin Authoring](plugin-authoring.md).
+See [Extension Model](../extending/extension-model.md) and [Plugin Authoring](../extending/plugin-authoring.md).

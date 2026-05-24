@@ -69,4 +69,4 @@ the naming, cycle detection, and status model before `v0.2.0`.
 ## References
 
 - [ADR-0010: Core and preview controller tier](0010-core-and-preview-controller-tier.md)
-- [Composable gates guide](../composable-gates.md)
+- [Composable gates guide](../concepts/composable-gates.md)

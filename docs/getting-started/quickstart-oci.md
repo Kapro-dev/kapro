@@ -9,7 +9,7 @@ Prerequisites:
 - Kapro operator installed on the hub with the `cluster-bootstrap` controller
   enabled and `hubAPIURL` set for spoke reachability.
 - `kapro-cluster-controller` installed on each spoke. See
-  [Registering a Cluster (Pull Mode)](cluster-bootstrap.md) for the bootstrap
+  [Registering a Cluster (Pull Mode)](../operations/cluster-bootstrap.md) for the bootstrap
   flow and required chart values.
 - OCI artifacts published for each promoted unit.
 - A clone of this repository, because the commands below apply manifests from

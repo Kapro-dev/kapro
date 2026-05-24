@@ -137,5 +137,5 @@ types in `pkg/events` are exercised automatically.
 
 ## See also
 
-- [`docs/events.md`](../../../docs/events.md) — vocabulary spec
+- [`docs/events.md`](../../../docs/concepts/events.md) — vocabulary spec
 - [`docs/adr/0003-cloudevents-publisher-posture.md`](../../../docs/adr/0003-cloudevents-publisher-posture.md) — why Kapro doesn't ship Slack backends

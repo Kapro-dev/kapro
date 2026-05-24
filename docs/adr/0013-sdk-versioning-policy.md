@@ -76,4 +76,4 @@ validation authoritative.
 ## References
 
 - [ADR-0007: Kapro programmatic SDK](0007-programmatic-sdk.md)
-- [Go SDK guide](../sdk.md)
+- [Go SDK guide](../extending/sdk.md)
