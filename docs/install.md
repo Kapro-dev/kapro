@@ -3,8 +3,8 @@
 The recommended public-preview install path is the Helm chart package attached
 to the GitHub Release. It installs the CRDs, controller Deployment,
 ServiceAccount, RBAC, admission webhooks, and baseline approval service
-together. The `0.5.7` chart defaults to
-`ghcr.io/kapro-dev/kapro-operator:v0.5.7`.
+together. The `0.5.8` chart defaults to
+`ghcr.io/kapro-dev/kapro-operator:v0.5.8`.
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ SBOM attestations, and provenance before installing. See
 ## Install
 
 ```bash
-KAPRO_VERSION=0.5.7
+KAPRO_VERSION=0.5.8
 KAPRO_CHART="https://github.com/Kapro-dev/kapro/releases/download/v${KAPRO_VERSION}/kapro-operator-${KAPRO_VERSION}.tgz"
 
 helm upgrade --install kapro \
@@ -137,7 +137,7 @@ exposed deliberately:
 | Plugin gateway runtime dispatch | Disabled | `pluginGateway.enabled=true` plus `plugin` in `controllers`, installed plugin services, and `Plugin` objects. |
 | Hub Gateway service exposure | Internal only | `hubGateway.service.enabled=true`; place Kubernetes authn/authz or an identity-aware proxy in front of production exposure. |
 | Spoke CSR bootstrap controller | Disabled | Add `cluster-bootstrap` to `controllers` and set `hubAPIURL` to the hub API server URL reachable from spokes. |
-| Fleet auto-import providers beyond GCP | Stubbed | Add `clustertemplate` to `controllers` when using `ClusterTemplate`; unsupported sources report `SourceNotImplemented`. |
+| Fleet auto-import providers | GCP and static lists implemented | Add `clustertemplate` to `controllers` when using `ClusterTemplate`; AWS, Azure, RHACM, and CAPI sources report `SourceNotImplemented` until their discoverers land. |
 | Inline gate notifications | Runtime | Notification routing is configured inside gate/stage policy; there is no separate public notification provider/policy CRD. |
 
 See [Preview Controllers](preview-controllers.md) for the full controller key
@@ -162,6 +162,41 @@ kapro bootstrap guide
 
 The same paths are documented in the [Adoption Guide](adoption.md), including
 observe-first Argo CD and Flux brownfield onboarding.
+
+## Static Fleet Import
+
+Use `ClusterTemplate.spec.source.static` when clusters are already known and
+represented by kubeconfig Secrets instead of a cloud fleet API. This is the
+lowest-friction path for on-prem, edge, and brownfield environments while AWS,
+Azure, RHACM, and CAPI discoverers remain preview stubs.
+
+```bash
+kubectl apply -f examples/static-clustertemplate.yaml
+```
+
+Each imported `Cluster` gets `spec.provider.kind=kubeconfig` plus
+`secretName` and `secretNamespace` provider parameters from the static entry.
+The template still owns only the objects carrying Kapro's managed-by labels;
+hand-authored `Cluster` objects with the same name are left untouched.
+
+## NetworkPolicy
+
+The operator chart can render an opt-in `NetworkPolicy` for locked-down
+clusters:
+
+```bash
+helm upgrade --install kapro \
+  "${KAPRO_CHART}" \
+  --namespace kapro-system \
+  --create-namespace \
+  --set networkPolicy.enabled=true
+```
+
+By default the policy limits ingress to the operator's health, metrics,
+webhook, approval, and hub-gateway ports. Set `networkPolicy.ingress.from`
+to restrict source namespaces or pods. Enable
+`networkPolicy.egress.enabled=true` only after confirming the cluster's
+NetworkPolicy implementation and API-server/DNS reachability requirements.
 
 ## Optional Decision API
 
@@ -256,7 +291,7 @@ For a release image that is not the chart default:
 
 ```bash
 KAPRO_IMAGE_REPOSITORY=ghcr.io/kapro-dev/kapro-operator \
-KAPRO_IMAGE_TAG=v0.5.7 \
+KAPRO_IMAGE_TAG=v0.5.8 \
 scripts/verify-install.sh cluster
 ```
 
@@ -362,7 +397,7 @@ For a packaged release install without a source checkout, pull the chart before
 deleting CRDs:
 
 ```bash
-helm pull https://github.com/Kapro-dev/kapro/releases/download/v0.5.7/kapro-operator-0.5.7.tgz --untar
+helm pull https://github.com/Kapro-dev/kapro/releases/download/v0.5.8/kapro-operator-0.5.8.tgz --untar
 kubectl delete -f kapro-operator/crds
 kubectl delete namespace kapro-system
 ```

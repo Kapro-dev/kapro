@@ -5,7 +5,7 @@ lifecycle events, and language-neutral plugin contracts. The maturity level
 describes compatibility expectations for users and plugin authors; it does not
 change Kubernetes API version strings by itself.
 
-The current release line is pre-stable; `v0.5.7` is the current public preview
+The current release line is pre-stable; `v0.5.8` is the current public preview
 release, and Kapro releases stay in the `0.x.x` series until the project
 explicitly graduates its public contracts. `v0.1.0` was the first public
 release for the full promotion-domain API, not a promise that all
@@ -13,7 +13,7 @@ release for the full promotion-domain API, not a promise that all
 the binding upgrade record for each tag.
 
 Pre-stable milestones use exact `v0.x.y` names, for example `v0.2.4`,
-`v0.4.20`, or `v0.5.7`, once the feature increment is concrete enough to pick
+`v0.4.20`, or `v0.5.8`, once the feature increment is concrete enough to pick
 the third digit. The project uses `0.<capability-line>.<feature-increment>`:
 the second digit groups the capability line and the third digit names the
 actual shipped increment. `1.0.0` is reserved for a future stability
@@ -41,7 +41,7 @@ Preview. The table below is the source of truth for the current contract level.
 | GateExpression CRD | `api/v1alpha2` `GateExpression` | Preview; full algebra enabled in `v0.2.x` |
 | DecisionTrace CRD | `api/v1alpha2` `DecisionTrace` | Preview |
 | Agent decision APIs | `api/v1alpha2` `Policy`, `Target.status.decisionTrace`, Decision API HTTP routes | Preview |
-| Fleet auto-import CRD | `api/v1alpha2` `ClusterTemplate` | Preview; only implemented sources are runtime features |
+| Fleet auto-import CRD | `api/v1alpha2` `ClusterTemplate` | Preview; GCP and static sources are runtime features |
 | In-process actuator interface | `pkg/actuator` | Preview |
 | In-process gate predicate interface | `pkg/kapro/gate` (`pkg/gate` compatibility alias) | Preview |
 | In-process planner interface | `pkg/planner` | Preview |
@@ -77,8 +77,9 @@ controller audit stream. `Policy`, `Target.status.decisionTrace`, and the
 Decision API are opt-in surfaces for machine assistance, not required for
 deterministic promotion execution.
 `ClusterTemplate` auto-import sources are only runtime features when the
-source is implemented by the controller; unsupported sources must be documented
-as future work rather than claimed as supported behavior.
+source is implemented by the controller. GCP Fleet and static kubeconfig lists
+are implemented; AWS, Azure, RHACM, and CAPI remain preview stubs and must be
+documented as future work rather than claimed as supported behavior.
 
 ## Compatibility Rules
 

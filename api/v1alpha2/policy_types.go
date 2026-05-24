@@ -149,7 +149,7 @@ type AgentRateLimits struct {
 	// MaxApprovalsPerDay is the maximum approve decisions per day.
 	// +optional
 	MaxApprovalsPerDay int32 `json:"maxApprovalsPerDay,omitempty"`
-	// MaxConcurrent is the maximum in-flight approvals at any time.
+	// MaxConcurrent is the maximum in-flight Decision API submissions at any time.
 	// +optional
 	MaxConcurrent int32 `json:"maxConcurrent,omitempty"`
 	// Cooldown is the minimum duration between consecutive approvals.
@@ -214,7 +214,7 @@ type AgentTimeWindow struct {
 type PolicyStatus struct {
 	ObservedGeneration int64              `json:"observedGeneration,omitempty"`
 	Conditions         []metav1.Condition `json:"conditions,omitempty"`
-	// ActiveDecisions is the count of in-flight decisions by this agent.
+	// ActiveDecisions is the count of in-flight Decision API submissions by this agent.
 	ActiveDecisions int32 `json:"activeDecisions,omitempty"`
 	// DecisionsToday is the count of decisions made in the current UTC day.
 	DecisionsToday int32 `json:"decisionsToday,omitempty"`

@@ -1,0 +1,56 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "kapro-operator.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kapro-operator.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "kapro-operator.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    {{- if .Values.networkPolicy.egress.enabled }}
+    - Egress
+    {{- end }}
+  ingress:
+    - ports:
+        - port: 8081
+          protocol: TCP
+        {{- if .Values.metrics.enabled }}
+        - port: {{ .Values.metrics.port }}
+          protocol: TCP
+        {{- end }}
+        {{- if .Values.webhook.enabled }}
+        - port: {{ .Values.webhook.port }}
+          protocol: TCP
+        {{- end }}
+        {{- if .Values.approvalServer.enabled }}
+        - port: {{ .Values.approvalServer.port }}
+          protocol: TCP
+        {{- end }}
+        {{- if .Values.hubGateway.enabled }}
+        - port: {{ .Values.hubGateway.port }}
+          protocol: TCP
+        {{- end }}
+      {{- with .Values.networkPolicy.ingress.from }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if .Values.networkPolicy.egress.enabled }}
+  egress:
+    {{- if .Values.networkPolicy.egress.rules }}
+    {{- toYaml .Values.networkPolicy.egress.rules | nindent 4 }}
+    {{- else }}
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+        - port: 443
+          protocol: TCP
+    {{- end }}
+  {{- end }}
+{{- end }}

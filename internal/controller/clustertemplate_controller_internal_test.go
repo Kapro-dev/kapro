@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -53,6 +54,77 @@ func newGCPStubFactory(memberships []provider.ClusterInfo) DiscovererFactory {
 			},
 			source: "gcp",
 		}, nil
+	}
+}
+
+func TestFleetClusterTemplate_StaticSourceImportsKubeconfigRefs(t *testing.T) {
+	ctx := context.Background()
+	scheme := newTestScheme(t)
+
+	tmpl := &kaprov1alpha2.ClusterTemplate{
+		ObjectMeta: metav1.ObjectMeta{Name: "static-sites"},
+		Spec: kaprov1alpha2.ClusterTemplateSpec{
+			Source: kaprov1alpha2.ClusterTemplateSource{
+				Static: &kaprov1alpha2.StaticFleetSource{Clusters: []kaprov1alpha2.StaticClusterEntry{
+					{
+						Name: "edge-berlin",
+						KubeconfigSecretRef: &corev1.SecretReference{
+							Namespace: "kapro-system",
+							Name:      "edge-berlin-kubeconfig",
+						},
+						Labels: map[string]string{"site": "berlin", "env": "prod"},
+					},
+				}},
+			},
+			Template: kaprov1alpha2.ClusterTemplateBody{
+				Metadata: kaprov1alpha2.ClusterTemplateMetadata{
+					Labels: map[string]string{"owner": "platform"},
+				},
+				Spec: kaprov1alpha2.ClusterSpec{
+					Delivery: kaprov1alpha2.DeliverySpec{Mode: kaprov1alpha2.DeliveryModePull, BackendRef: "oci"},
+				},
+			},
+		},
+	}
+
+	c := fake.NewClientBuilder().WithScheme(scheme).
+		WithStatusSubresource(&kaprov1alpha2.ClusterTemplate{}).
+		WithObjects(tmpl).Build()
+
+	r := &ClusterTemplateReconciler{Client: c, Scheme: scheme}
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: tmpl.Name}}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	var got kaprov1alpha2.Cluster
+	if err := c.Get(ctx, client.ObjectKey{Name: "edge-berlin"}, &got); err != nil {
+		t.Fatalf("get imported cluster: %v", err)
+	}
+	if got.Spec.Provider == nil {
+		t.Fatal("expected derived provider")
+	}
+	if got.Spec.Provider.Kind != "kubeconfig" {
+		t.Fatalf("provider kind = %q, want kubeconfig", got.Spec.Provider.Kind)
+	}
+	if got.Spec.Provider.Parameters["secretName"] != "edge-berlin-kubeconfig" {
+		t.Errorf("secretName = %q, want edge-berlin-kubeconfig", got.Spec.Provider.Parameters["secretName"])
+	}
+	if got.Spec.Provider.Parameters["secretNamespace"] != "kapro-system" {
+		t.Errorf("secretNamespace = %q, want kapro-system", got.Spec.Provider.Parameters["secretNamespace"])
+	}
+	if got.Labels["site"] != "berlin" || got.Labels["owner"] != "platform" {
+		t.Errorf("labels were not merged correctly: %v", got.Labels)
+	}
+
+	var refreshed kaprov1alpha2.ClusterTemplate
+	if err := c.Get(ctx, client.ObjectKey{Name: tmpl.Name}, &refreshed); err != nil {
+		t.Fatal(err)
+	}
+	if refreshed.Status.SourceKind != "static" {
+		t.Errorf("status.SourceKind = %q, want static", refreshed.Status.SourceKind)
+	}
+	if refreshed.Status.ImportedClusters != 1 {
+		t.Errorf("status.ImportedClusters = %d, want 1", refreshed.Status.ImportedClusters)
 	}
 }
 

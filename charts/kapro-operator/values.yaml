@@ -39,6 +39,18 @@ securityContext:
   readOnlyRootFilesystem: true
   runAsNonRoot: true
 
+# NetworkPolicy is opt-in so existing clusters are not surprised during
+# upgrade. When enabled, ingress to the operator pod is limited to the known
+# health, metrics, webhook, approval, and hub-gateway ports. Set
+# networkPolicy.ingress.from to narrow allowed sources further.
+networkPolicy:
+  enabled: false
+  ingress:
+    from: []
+  egress:
+    enabled: false
+    rules: []
+
 # Leader election — required when replicaCount > 1
 leaderElection:
   enabled: true

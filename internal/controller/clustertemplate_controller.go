@@ -33,7 +33,7 @@ type DiscovererFactory func(kaprov1alpha2.ClusterTemplateSource) (provider.Disco
 //
 // It is discoverer-agnostic: every cloud or platform is one Discoverer
 // implementation behind the same interface. The public preview ships the GCP
-// Fleet discoverer; AWS / Azure / RHACM / CAPI / static are preview stubs and
+// Fleet and static-list discoverers; AWS / Azure / RHACM / CAPI are preview stubs and
 // surface a Stalled condition until their discoverers land.
 //
 // Ownership model:
@@ -144,7 +144,7 @@ func (r *ClusterTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			continue
 		}
 		kept[name] = struct{}{}
-		if err := r.upsertFleetCluster(ctx, &tmpl, c, providerSpec, name); err != nil {
+		if err := r.upsertFleetCluster(ctx, &tmpl, c, providerForCluster(providerSpec, c), name); err != nil {
 			logger.Error(err, "upsert FleetCluster", "name", name)
 			upsertErrs = append(upsertErrs, fmt.Sprintf("%s: %v", name, err))
 			continue
@@ -177,6 +177,20 @@ func (r *ClusterTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{RequeueAfter: requeue}, nil
+}
+
+func providerForCluster(base kaprov1alpha2.ClusterProvider, c provider.ClusterInfo) kaprov1alpha2.ClusterProvider {
+	out := *base.DeepCopy()
+	if c.Provider != "" {
+		out.Kind = c.Provider
+	}
+	for k, v := range c.ProviderParameters {
+		if out.Parameters == nil {
+			out.Parameters = map[string]string{}
+		}
+		out.Parameters[k] = v
+	}
+	return out
 }
 
 func (r *ClusterTemplateReconciler) factory() DiscovererFactory {

@@ -40,7 +40,7 @@ type ErrSourceNotImplemented struct {
 }
 
 func (e ErrSourceNotImplemented) Error() string {
-	return fmt.Sprintf("fleet source branch %q is reserved for a future release (currently implemented: gcp)", e.Branch)
+	return fmt.Sprintf("fleet source branch %q is reserved for a future release (currently implemented: gcp, static)", e.Branch)
 }
 
 // IsSourceNotImplemented reports whether err is ErrSourceNotImplemented.
@@ -96,7 +96,7 @@ func NewDiscoverer(src kaprov1alpha2.ClusterTemplateSource) (Discoverer, error) 
 	case "capi":
 		return nil, ErrSourceNotImplemented{Branch: "capi"}
 	case "static":
-		return nil, ErrSourceNotImplemented{Branch: "static"}
+		return &staticFleetDiscoverer{clusters: src.Static.Clusters}, nil
 	default:
 		return nil, fmt.Errorf("unknown source branch %q", set[0])
 	}
@@ -121,3 +121,50 @@ func (d *gcpFleetDiscoverer) Provider() kaprov1alpha2.ClusterProvider {
 }
 
 func (d *gcpFleetDiscoverer) SourceKind() string { return "gcp" }
+
+// staticFleetDiscoverer imports an operator-authored cluster list. It gives
+// on-prem and brownfield users a production path before cloud/RHACM/CAPI
+// discoverers are available, while still flowing through the same
+// ClusterTemplate reconciliation contract as dynamic providers.
+type staticFleetDiscoverer struct {
+	clusters []kaprov1alpha2.StaticClusterEntry
+}
+
+func (d *staticFleetDiscoverer) List(_ context.Context) ([]ClusterInfo, error) {
+	out := make([]ClusterInfo, 0, len(d.clusters))
+	for _, c := range d.clusters {
+		info := ClusterInfo{
+			Name:               c.Name,
+			Labels:             cloneStringMap(c.Labels),
+			Provider:           "kubeconfig",
+			ProviderParameters: map[string]string{},
+		}
+		if ref := c.KubeconfigSecretRef; ref != nil {
+			if ref.Name != "" {
+				info.ProviderParameters["secretName"] = ref.Name
+			}
+			if ref.Namespace != "" {
+				info.ProviderParameters["secretNamespace"] = ref.Namespace
+			}
+		}
+		out = append(out, info)
+	}
+	return out, nil
+}
+
+func (d *staticFleetDiscoverer) Provider() kaprov1alpha2.ClusterProvider {
+	return kaprov1alpha2.ClusterProvider{Kind: "kubeconfig"}
+}
+
+func (d *staticFleetDiscoverer) SourceKind() string { return "static" }
+
+func cloneStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
