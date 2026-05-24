@@ -63,6 +63,7 @@ nav:
       - Operator SLOs: operator-slos.md
       - Industry Requirements: industry-requirements.md
       - Security: security.md
+      - Release Verification: release-verification.md
       - RBAC and Tenancy: rbac-tenancy.md
       - Cluster Bootstrap: cluster-bootstrap.md
   - Migration:

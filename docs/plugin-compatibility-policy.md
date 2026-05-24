@@ -66,13 +66,13 @@ applicable. It does not certify backend-specific production readiness.
 Plugin authors may add a badge or README line after running the relevant suite:
 
 ```text
-Kapro-compatible: KAI v1alpha1, tested with kapro-conformance v0.5.6
+Kapro-compatible: KAI v1alpha1, tested with kapro-conformance v0.5.7
 ```
 
 For a Go provider:
 
 ```text
-Kapro-compatible: KSP v1alpha1, tested with kapro.io/kapro/conformance/provider v0.5.6
+Kapro-compatible: KSP v1alpha1, tested with kapro.io/kapro/conformance/provider v0.5.7
 ```
 
 Do not use "certified" language unless Kapro later publishes a certification
