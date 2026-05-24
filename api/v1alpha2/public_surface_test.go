@@ -708,7 +708,7 @@ func TestPreStableReleaseTrainMarkersStayDocumented(t *testing.T) {
 		}
 	}
 	for path, body := range map[string]string{
-		"docs/concepts/api-stability.md":                  apiStability,
+		"docs/concepts/api-stability.md":         apiStability,
 		"docs/adr/0013-sdk-versioning-policy.md": sdkVersioning,
 	} {
 		for _, want := range []string{"0.x.x", "1.0.0"} {
