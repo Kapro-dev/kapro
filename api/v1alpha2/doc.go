@@ -21,6 +21,7 @@
 //   - ClusterTemplate — fleet auto-import template (ApplicationSet-shaped);
 //     the controller generates Cluster objects from it.
 //   - Backend — delivery backend configuration referenced by Fleet.spec.delivery.backendRef.
+//   - SubstrateClass — delivery substrate class and typed config contract.
 //
 // Controller-managed runtime (observe; do not author directly):
 //   - PromotionRun    — one execution attempt of a Promotion; the PromotionController

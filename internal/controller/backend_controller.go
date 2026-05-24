@@ -57,7 +57,13 @@ type BackendReconciler struct {
 
 // +kubebuilder:rbac:groups=kapro.io,resources=backends,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kapro.io,resources=backends/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=kapro.io,resources=substrateclasses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kapro.io,resources=plugins,verbs=get;list;watch
+// +kubebuilder:rbac:groups=argocd.substrate.kapro.io,resources=argocdsubstrateconfigs,verbs=get;list;watch
+// +kubebuilder:rbac:groups=flux.substrate.kapro.io,resources=fluxsubstrateconfigs,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kubernetes.substrate.kapro.io,resources=kubernetesapplyconfigs,verbs=get;list;watch
+// +kubebuilder:rbac:groups=oci.substrate.kapro.io,resources=ocibundleapplyconfigs,verbs=get;list;watch
+// +kubebuilder:rbac:groups=webhook.substrate.kapro.io,resources=webhooksubstrateconfigs,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=argoproj.io,resources=applications,verbs=get;list;watch
 // +kubebuilder:rbac:groups=argoproj.io,resources=applicationsets,verbs=get;list;watch
@@ -81,7 +87,16 @@ func (r *BackendReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	profile.Status.ObservedGeneration = profile.Generation
 	profile.Status.Ready = ready
 	profile.Status.Substrate = profile.Spec.CanonicalSubstrate()
-	profile.Status.Execution = profile.Spec.CanonicalExecution()
+	profile.Status.Execution = r.backendCanonicalExecution(ctx, &profile)
+	profile.Status.ClassName = ""
+	profile.Status.ConfigRef = nil
+	if profile.Spec.ClassRef != nil {
+		profile.Status.ClassName = profile.Spec.ClassRef.Name
+	}
+	if profile.Spec.ConfigRef != nil {
+		configRef := *profile.Spec.ConfigRef
+		profile.Status.ConfigRef = &configRef
+	}
 	profile.Status.Driver = profile.Spec.Driver
 	profile.Status.Runtime = profile.Spec.Runtime
 	if profile.Status.Runtime == "" {
@@ -113,6 +128,7 @@ func (r *BackendReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		ObservedGeneration: profile.Generation,
 		LastTransitionTime: now,
 	})
+	r.setBackendClassConditions(ctx, &profile, now)
 	if profile.Spec.Discovery != nil && profile.Spec.Discovery.Enabled {
 		apimeta.SetStatusCondition(&profile.Status.Conditions, metav1.Condition{
 			Type:               "DiscoveryReady",
@@ -410,7 +426,21 @@ func fluxSourceVersionField(obj *unstructured.Unstructured) string {
 	return "spec.ref.tag"
 }
 
+func (r *BackendReconciler) backendCanonicalExecution(ctx context.Context, profile *kaprov1alpha2.Backend) *kaprov1alpha2.BackendExecutionSpec {
+	if profile.Spec.ClassRef == nil || profile.Spec.ClassRef.Name == "" {
+		return profile.Spec.CanonicalExecution()
+	}
+	class, ok, _, _ := r.resolveBackendClass(ctx, profile)
+	if !ok {
+		return profile.Spec.CanonicalExecution()
+	}
+	return &kaprov1alpha2.BackendExecutionSpec{Mode: backendExecutionModeForClass(profile, class)}
+}
+
 func (r *BackendReconciler) profileReadiness(ctx context.Context, profile *kaprov1alpha2.Backend) (bool, string, string) {
+	if profile.Spec.ClassRef != nil && profile.Spec.ClassRef.Name != "" {
+		return r.profileClassReadiness(ctx, profile)
+	}
 	kind := profile.Spec.SubstrateKind()
 	switch kind {
 	case string(kaprov1alpha2.BackendDriverFlux), string(kaprov1alpha2.BackendDriverArgo), string(kaprov1alpha2.BackendDriverOCI):
@@ -434,6 +464,173 @@ func (r *BackendReconciler) profileReadiness(ctx context.Context, profile *kapro
 	}
 }
 
+func (r *BackendReconciler) profileClassReadiness(ctx context.Context, profile *kaprov1alpha2.Backend) (bool, string, string) {
+	class, ok, reason, message := r.resolveBackendClass(ctx, profile)
+	if !ok {
+		return false, reason, message
+	}
+	if ready, reason, message := substrateClassAccepted(class); !ready {
+		return false, reason, message
+	}
+	mode := backendExecutionModeForClass(profile, class)
+	if !substrateClassSupportsExecutionMode(class, mode) {
+		return false, "ExecutionModeUnsupported", fmt.Sprintf("SubstrateClass %q does not support execution mode %q", class.Name, mode)
+	}
+	if profile.Spec.ConfigRef == nil {
+		if len(class.Status.AcceptedConfigKinds) > 0 {
+			return false, "MissingConfigRef", fmt.Sprintf("SubstrateClass %q requires Backend.spec.configRef", class.Name)
+		}
+		return true, "SubstrateClassBackendReady", fmt.Sprintf("SubstrateClass %q is ready", class.Name)
+	}
+	if ok, reason, message := r.backendConfigAccepted(ctx, class, profile.Spec.ConfigRef); !ok {
+		return false, reason, message
+	}
+	return true, "SubstrateClassBackendReady", fmt.Sprintf("SubstrateClass %q and config %s/%s are ready", class.Name, profile.Spec.ConfigRef.APIVersion, profile.Spec.ConfigRef.Kind)
+}
+
+func (r *BackendReconciler) setBackendClassConditions(ctx context.Context, profile *kaprov1alpha2.Backend, now metav1.Time) {
+	if profile.Spec.ClassRef == nil || profile.Spec.ClassRef.Name == "" {
+		apimeta.RemoveStatusCondition(&profile.Status.Conditions, "ClassAccepted")
+		apimeta.RemoveStatusCondition(&profile.Status.Conditions, "ConfigAccepted")
+		return
+	}
+	class, classOK, reason, message := r.resolveBackendClass(ctx, profile)
+	if classOK {
+		classOK, reason, message = substrateClassAccepted(class)
+	}
+	classStatus := metav1.ConditionFalse
+	if classOK {
+		classStatus = metav1.ConditionTrue
+	}
+	apimeta.SetStatusCondition(&profile.Status.Conditions, metav1.Condition{
+		Type:               "ClassAccepted",
+		Status:             classStatus,
+		Reason:             reason,
+		Message:            message,
+		ObservedGeneration: profile.Generation,
+		LastTransitionTime: now,
+	})
+
+	if profile.Spec.ConfigRef == nil {
+		if classOK && len(class.Status.AcceptedConfigKinds) > 0 {
+			apimeta.SetStatusCondition(&profile.Status.Conditions, metav1.Condition{
+				Type:               "ConfigAccepted",
+				Status:             metav1.ConditionFalse,
+				Reason:             "MissingConfigRef",
+				Message:            fmt.Sprintf("SubstrateClass %q requires Backend.spec.configRef", class.Name),
+				ObservedGeneration: profile.Generation,
+				LastTransitionTime: now,
+			})
+			return
+		}
+		apimeta.RemoveStatusCondition(&profile.Status.Conditions, "ConfigAccepted")
+		return
+	}
+	configOK := false
+	configReason := "ClassNotAccepted"
+	configMessage := "SubstrateClass must be accepted before configRef can be validated"
+	if classOK {
+		configOK, configReason, configMessage = r.backendConfigAccepted(ctx, class, profile.Spec.ConfigRef)
+	}
+	configStatus := metav1.ConditionFalse
+	if configOK {
+		configStatus = metav1.ConditionTrue
+	}
+	apimeta.SetStatusCondition(&profile.Status.Conditions, metav1.Condition{
+		Type:               "ConfigAccepted",
+		Status:             configStatus,
+		Reason:             configReason,
+		Message:            configMessage,
+		ObservedGeneration: profile.Generation,
+		LastTransitionTime: now,
+	})
+}
+
+func (r *BackendReconciler) resolveBackendClass(ctx context.Context, profile *kaprov1alpha2.Backend) (*kaprov1alpha2.SubstrateClass, bool, string, string) {
+	if profile.Spec.ClassRef == nil || profile.Spec.ClassRef.Name == "" {
+		return nil, false, "MissingClassRef", "Backend.spec.classRef.name is required"
+	}
+	var class kaprov1alpha2.SubstrateClass
+	if err := r.Get(ctx, client.ObjectKey{Name: profile.Spec.ClassRef.Name}, &class); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, false, "SubstrateClassNotFound", fmt.Sprintf("SubstrateClass %q was not found", profile.Spec.ClassRef.Name)
+		}
+		return nil, false, "SubstrateClassLookupFailed", err.Error()
+	}
+	return &class, true, "SubstrateClassAccepted", fmt.Sprintf("SubstrateClass %q was found", class.Name)
+}
+
+func substrateClassAccepted(class *kaprov1alpha2.SubstrateClass) (bool, string, string) {
+	if class.Status.ObservedGeneration != class.Generation {
+		return false, "SubstrateClassNotObserved", fmt.Sprintf("SubstrateClass %q has not observed generation %d", class.Name, class.Generation)
+	}
+	accepted := apimeta.FindStatusCondition(class.Status.Conditions, "Accepted")
+	if accepted == nil {
+		return false, "SubstrateClassNotAccepted", fmt.Sprintf("SubstrateClass %q has no Accepted condition", class.Name)
+	}
+	if accepted.Status != metav1.ConditionTrue {
+		reason := accepted.Reason
+		if reason == "" {
+			reason = "SubstrateClassNotAccepted"
+		}
+		return false, reason, accepted.Message
+	}
+	return true, "SubstrateClassAccepted", fmt.Sprintf("SubstrateClass %q is accepted", class.Name)
+}
+
+func backendExecutionModeForClass(profile *kaprov1alpha2.Backend, class *kaprov1alpha2.SubstrateClass) kaprov1alpha2.ExecutionMode {
+	if profile.Spec.Execution != nil && profile.Spec.Execution.Mode != "" {
+		return profile.Spec.Execution.Mode
+	}
+	if class != nil && class.Spec.ExecutionModes != nil && class.Spec.ExecutionModes.Default != "" {
+		return class.Spec.ExecutionModes.Default
+	}
+	return profile.Spec.ExecutionMode()
+}
+
+func substrateClassSupportsExecutionMode(class *kaprov1alpha2.SubstrateClass, mode kaprov1alpha2.ExecutionMode) bool {
+	if class.Status.ExecutionModes == nil || len(class.Status.ExecutionModes.Supported) == 0 {
+		return true
+	}
+	for _, supported := range class.Status.ExecutionModes.Supported {
+		if supported == mode {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *BackendReconciler) backendConfigAccepted(ctx context.Context, class *kaprov1alpha2.SubstrateClass, ref *kaprov1alpha2.SubstrateObjectReference) (bool, string, string) {
+	if ref == nil {
+		return true, "ConfigRefNotRequired", "Backend does not reference a typed substrate config"
+	}
+	if !substrateClassAcceptsConfigKind(class, ref) {
+		return false, "ConfigKindNotAccepted", fmt.Sprintf("SubstrateClass %q does not accept %s/%s", class.Name, ref.APIVersion, ref.Kind)
+	}
+	gv, err := schema.ParseGroupVersion(ref.APIVersion)
+	if err != nil {
+		return false, "InvalidConfigRef", err.Error()
+	}
+	config := &unstructured.Unstructured{}
+	config.SetGroupVersionKind(gv.WithKind(ref.Kind))
+	if err := r.Get(ctx, client.ObjectKey{Namespace: ref.Namespace, Name: ref.Name}, config); err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, "ConfigNotFound", fmt.Sprintf("%s/%s %q was not found", ref.APIVersion, ref.Kind, ref.Name)
+		}
+		return false, "ConfigLookupFailed", err.Error()
+	}
+	return true, "ConfigAccepted", fmt.Sprintf("%s/%s %q is accepted", ref.APIVersion, ref.Kind, ref.Name)
+}
+
+func substrateClassAcceptsConfigKind(class *kaprov1alpha2.SubstrateClass, ref *kaprov1alpha2.SubstrateObjectReference) bool {
+	for _, accepted := range class.Status.AcceptedConfigKinds {
+		if accepted.APIVersion == ref.APIVersion && accepted.Kind == ref.Kind {
+			return true
+		}
+	}
+	return false
+}
+
 func backendDiscoveryListLimit(profile *kaprov1alpha2.Backend) int64 {
 	if profile.Spec.Discovery != nil && profile.Spec.Discovery.MaxObjects > 0 {
 		return int64(profile.Spec.Discovery.MaxObjects)
@@ -449,16 +646,33 @@ func (r *BackendReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&kaprov1alpha2.Backend{}).
 		Watches(
+			&kaprov1alpha2.SubstrateClass{},
+			handler.EnqueueRequestsFromMapFunc(r.backendProfilesForSubstrateClass),
+		).
+		Watches(
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.backendProfilesForBackendObject),
 			builder.WithPredicates(argoClusterSecretPredicate),
 		)
+	for _, gvk := range typedSubstrateConfigWatchKinds() {
+		b = b.Watches(backendDiscoveryWatchObject(gvk), handler.EnqueueRequestsFromMapFunc(r.backendProfilesForTypedConfig))
+	}
 	if os.Getenv("KAPRO_ENABLE_BACKEND_OBJECT_WATCHES") == "true" {
 		for _, gvk := range backendDiscoveryWatchKinds() {
 			b = b.Watches(backendDiscoveryWatchObject(gvk), handler.EnqueueRequestsFromMapFunc(r.backendProfilesForBackendObject))
 		}
 	}
 	return b.Complete(r)
+}
+
+func typedSubstrateConfigWatchKinds() []schema.GroupVersionKind {
+	return []schema.GroupVersionKind{
+		{Group: "argocd.substrate.kapro.io", Version: "v1alpha1", Kind: "ArgoCDSubstrateConfig"},
+		{Group: "flux.substrate.kapro.io", Version: "v1alpha1", Kind: "FluxSubstrateConfig"},
+		{Group: "kubernetes.substrate.kapro.io", Version: "v1alpha1", Kind: "KubernetesApplyConfig"},
+		{Group: "oci.substrate.kapro.io", Version: "v1alpha1", Kind: "OCIBundleApplyConfig"},
+		{Group: "webhook.substrate.kapro.io", Version: "v1alpha1", Kind: "WebhookSubstrateConfig"},
+	}
 }
 
 func backendDiscoveryWatchKinds() []schema.GroupVersionKind {
@@ -488,6 +702,42 @@ func (r *BackendReconciler) backendProfilesForBackendObject(ctx context.Context,
 	for i := range profiles.Items {
 		profile := &profiles.Items[i]
 		if backendProfileMatchesObject(profile, obj) {
+			requests = append(requests, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(profile)})
+		}
+	}
+	return requests
+}
+
+func (r *BackendReconciler) backendProfilesForSubstrateClass(ctx context.Context, obj client.Object) []reconcile.Request {
+	var profiles kaprov1alpha2.BackendList
+	if err := r.List(ctx, &profiles); err != nil {
+		return nil
+	}
+	requests := make([]reconcile.Request, 0, len(profiles.Items))
+	for i := range profiles.Items {
+		profile := &profiles.Items[i]
+		if profile.Spec.ClassRef != nil && profile.Spec.ClassRef.Name == obj.GetName() {
+			requests = append(requests, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(profile)})
+		}
+	}
+	return requests
+}
+
+func (r *BackendReconciler) backendProfilesForTypedConfig(ctx context.Context, obj client.Object) []reconcile.Request {
+	var profiles kaprov1alpha2.BackendList
+	if err := r.List(ctx, &profiles); err != nil {
+		return nil
+	}
+	requests := make([]reconcile.Request, 0, len(profiles.Items))
+	gvk := obj.GetObjectKind().GroupVersionKind()
+	apiVersion := gvk.GroupVersion().String()
+	for i := range profiles.Items {
+		profile := &profiles.Items[i]
+		ref := profile.Spec.ConfigRef
+		if ref == nil {
+			continue
+		}
+		if ref.APIVersion == apiVersion && ref.Kind == gvk.Kind && ref.Namespace == obj.GetNamespace() && ref.Name == obj.GetName() {
 			requests = append(requests, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(profile)})
 		}
 	}

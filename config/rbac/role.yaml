@@ -40,6 +40,14 @@ rules:
   verbs:
   - create
 - apiGroups:
+  - argocd.substrate.kapro.io
+  resources:
+  - argocdsubstrateconfigs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - argoproj.io
   resources:
   - applications
@@ -106,6 +114,14 @@ rules:
   - update
   - watch
 - apiGroups:
+  - flux.substrate.kapro.io
+  resources:
+  - fluxsubstrateconfigs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - fluxcd.controlplane.io
   resources:
   - resourcesets
@@ -134,6 +150,7 @@ rules:
   - gateexpressions
   - policies
   - sources
+  - substrateclasses
   - triggers
   verbs:
   - get
@@ -155,6 +172,7 @@ rules:
   - policies/status
   - promotionruns/status
   - promotions/status
+  - substrateclasses/status
   - targets/status
   - triggers/status
   verbs:
@@ -207,9 +225,25 @@ rules:
   - create
   - get
 - apiGroups:
+  - kubernetes.substrate.kapro.io
+  resources:
+  - kubernetesapplyconfigs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - kustomize.toolkit.fluxcd.io
   resources:
   - kustomizations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - oci.substrate.kapro.io
+  resources:
+  - ocibundleapplyconfigs
   verbs:
   - get
   - list
@@ -233,6 +267,14 @@ rules:
   - buckets
   - gitrepositories
   - ocirepositories
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - webhook.substrate.kapro.io
+  resources:
+  - webhooksubstrateconfigs
   verbs:
   - get
   - list

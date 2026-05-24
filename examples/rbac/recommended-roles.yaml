@@ -12,6 +12,7 @@ rules:
   - apiGroups: ["kapro.io"]
     resources:
       - policies
+      - backends
       - sources
       - fleets
       - gateexpressions
@@ -20,6 +21,7 @@ rules:
       - plans
       - plugins
       - promotionruns
+      - substrateclasses
       - triggers
     verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
   - apiGroups: ["kapro.io"]
@@ -31,12 +33,14 @@ rules:
     resources:
       - policies/status
       - approvals/status
+      - backends/status
       - fleets/status
       - gateexpressions/status
       - clusters/status
       - decisiontraces/status
       - plugins/status
       - promotionruns/status
+      - substrateclasses/status
       - targets/status
       - triggers/status
     verbs: ["get", "list", "watch"]
@@ -156,6 +160,7 @@ rules:
       - plans
       - promotionruns
       - sources
+      - substrateclasses
       - targets
       - triggers
     verbs: ["get", "list", "watch"]
@@ -170,6 +175,7 @@ rules:
       - decisiontraces/status
       - plugins/status
       - promotionruns/status
+      - substrateclasses/status
       - targets/status
       - triggers/status
     verbs: ["get", "list", "watch"]

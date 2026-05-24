@@ -35,7 +35,8 @@ Preview. The table below is the source of truth for the current contract level.
 
 | Surface | Path | Level |
 |---|---|---|
-| Core promotion CRDs | `api/v1alpha2` `Fleet`, `Promotion`, `PromotionRun`, `Target`, `Plan`, `Source`, `Unit`, `Cluster`, `Backend`, `Approval` | Alpha |
+| Core promotion CRDs | `api/v1alpha2` `Fleet`, `Promotion`, `PromotionRun`, `Target`, `Plan`, `Source`, `Unit`, `Cluster`, `Backend`, `SubstrateClass`, `Approval` | Alpha |
+| Reference substrate config CRDs | `api/substrate/*/v1alpha1` `ArgoCDSubstrateConfig`, `FluxSubstrateConfig`, `KubernetesApplyConfig`, `OCIBundleApplyConfig`, `WebhookSubstrateConfig` | Alpha |
 | Trigger CRD | `api/v1alpha2` `Trigger` | Preview |
 | Plugin CRD | `api/v1alpha2` `Plugin` | Preview |
 | GateExpression CRD | `api/v1alpha2` `GateExpression` | Preview; full algebra enabled in `v0.2.x` |
@@ -45,6 +46,7 @@ Preview. The table below is the source of truth for the current contract level.
 | In-process actuator interface | `pkg/actuator` | Preview |
 | In-process gate predicate interface | `pkg/kapro/gate` (`pkg/gate` compatibility alias) | Preview |
 | In-process planner interface | `pkg/planner` | Preview |
+| KSI substrate interface | `pkg/kapro/substrate` | Alpha |
 | KAI actuator plugin contract | `spec/kai/v1alpha1` | Preview |
 | KGI gate plugin contract | `spec/kgi/v1alpha1` | Preview |
 | KPI planner plugin contract | `spec/kpi/v1alpha1` | Preview |

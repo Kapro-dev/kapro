@@ -1,0 +1,256 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: substrateclasses.kapro.io
+spec:
+  group: kapro.io
+  names:
+    categories:
+    - kapro-all
+    kind: SubstrateClass
+    listKind: SubstrateClassList
+    plural: substrateclasses
+    shortNames:
+    - subclass
+    singular: substrateclass
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.controllerName
+      name: Controller
+      type: string
+    - jsonPath: .spec.executionModes.default
+      name: Default
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Accepted")].status
+      name: Accepted
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha2
+    schema:
+      openAPIV3Schema:
+        description: |-
+          SubstrateClass declares one Kapro substrate class. Platform teams author or
+          install classes; controllers report accepted config kinds, execution modes,
+          and capabilities in status.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: SubstrateClassSpec declares the controller binding for one
+              substrate class.
+            properties:
+              controllerName:
+                description: |-
+                  ControllerName identifies the controller or plugin responsible for
+                  Backends that select this class. It follows the GatewayClass
+                  controllerName convention: a domain-prefixed path such as
+                  kapro.io/argo-cd or example.com/company-deployer.
+                maxLength: 253
+                minLength: 1
+                type: string
+              executionModes:
+                description: |-
+                  ExecutionModes declares admin intent for this class. Supported modes are
+                  reported by the responsible controller in status.executionModes.supported.
+                properties:
+                  default:
+                    default: hub-push
+                    description: |-
+                      Default is the execution mode used when a Backend selecting this class
+                      omits spec.execution.mode. The controller must report support for this
+                      mode in status before Backends can become Ready.
+                    enum:
+                    - hub-push
+                    - spoke-pull
+                    - external-pull
+                    type: string
+                type: object
+            required:
+            - controllerName
+            type: object
+          status:
+            description: SubstrateClassStatus reports controller-observed substrate
+              capabilities.
+            properties:
+              acceptedConfigKinds:
+                description: |-
+                  AcceptedConfigKinds lists typed substrate configuration kinds this class
+                  accepts through Backend.spec.configRef.
+                items:
+                  description: |-
+                    SubstrateObjectKindReference identifies a typed substrate-owned CRD kind
+                    without naming one concrete object instance.
+                  properties:
+                    apiVersion:
+                      description: |-
+                        APIVersion is the referenced API version, for example
+                        argocd.substrate.kapro.io/v1alpha1.
+                      minLength: 1
+                      type: string
+                    kind:
+                      description: |-
+                        Kind is the referenced Kubernetes kind, for example
+                        ArgoCDSubstrateConfig.
+                      minLength: 1
+                      type: string
+                  required:
+                  - apiVersion
+                  - kind
+                  type: object
+                type: array
+              capabilities:
+                description: Capabilities reports what the responsible controller
+                  can do.
+                properties:
+                  inputTypes:
+                    description: |-
+                      InputTypes names accepted version input shapes such as git-revision,
+                      raw-yaml, kustomize, helm-chart, model-uri, or webhook-payload.
+                    items:
+                      type: string
+                    type: array
+                  operations:
+                    description: Operations reports supported delivery operations.
+                    properties:
+                      apply:
+                        description: Apply means the substrate can move a target toward
+                          desired versions.
+                        type: boolean
+                      discover:
+                        description: |-
+                          Discover means the substrate can discover backend-native objects for
+                          brownfield adoption.
+                        type: boolean
+                      dryRun:
+                        description: |-
+                          DryRun means the substrate can validate an operation without persisting
+                          backend changes.
+                        type: boolean
+                      observe:
+                        description: |-
+                          Observe means the substrate can report convergence without changing
+                          backend state.
+                        type: boolean
+                      rollback:
+                        description: Rollback means the substrate has a direct rollback
+                          operation.
+                        type: boolean
+                    type: object
+                  staging:
+                    description: Staging reports supported staging semantics.
+                    properties:
+                      twoPhase:
+                        description: TwoPhase means the substrate can prepare, commit,
+                          and discard staged work.
+                        type: boolean
+                    type: object
+                type: object
+              conditions:
+                description: Conditions summarize class acceptance and controller
+                  health.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              executionModes:
+                description: |-
+                  ExecutionModes reports the execution modes the controller actually
+                  supports for this class.
+                properties:
+                  supported:
+                    description: Supported contains the execution modes the controller
+                      can actually run.
+                    items:
+                      description: ExecutionMode identifies where and how Kapro invokes
+                        delivery.
+                      enum:
+                      - hub-push
+                      - spoke-pull
+                      - external-pull
+                      type: string
+                    type: array
+                type: object
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the SubstrateClass generation last processed by the
+                  responsible controller.
+                format: int64
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

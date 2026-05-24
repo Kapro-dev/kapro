@@ -26,6 +26,7 @@ runtime child state for each execution attempt. You do not need to list
 | `promotionrun` | Yes | Orchestrates run execution and creates `Target` children. |
 | `target` | Implicit | Executes per-cluster or per-stage runtime state for a run. |
 | `cluster` | Yes | Maintains cluster heartbeat and readiness status. |
+| `substrateclass` | No | Publishes status and capabilities for Kapro-owned `SubstrateClass` objects. |
 | `backend` | No | Writes external backend readiness and backend-native discovery status. Built-in `flux`, `argo`, and `oci` Backend specs are usable without this controller. |
 | `approval` | No | Reconciles `Approval` objects that unblock approval gates. |
 | `gateexpression` | No | Reconciles `GateExpression` preview composition status. |
@@ -74,6 +75,7 @@ they do not start duplicate controllers:
 | `promotion-target` | `target` |
 | `fleetcluster-heartbeat` | `cluster` |
 | `gate-expression` | `gateexpression` |
+| `substrate-class` | `substrateclass` |
 | `backend-profile` | `backend` |
 | `fleet-drift-report` | `fleetdriftreport` |
 | `plugin-registration` | `plugin` |

@@ -7,11 +7,13 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -85,6 +87,132 @@ func TestBackendProfileReadinessExternalRequiresReadyPlugin(t *testing.T) {
 	}
 	if reason != "ExternalBackendReady" {
 		t.Fatalf("reason=%s", reason)
+	}
+}
+
+func TestBackendProfileReadinessSubstrateClassConfigRef(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	class := acceptedSubstrateClass("argo-cd", "kapro.io/argo-cd",
+		[]kaprov1alpha2.ExecutionMode{kaprov1alpha2.ExecutionModeHubPush},
+		kaprov1alpha2.SubstrateObjectKindReference{
+			APIVersion: "argocd.substrate.kapro.io/v1alpha1",
+			Kind:       "ArgoCDSubstrateConfig",
+		},
+	)
+	config := typedSubstrateConfig("argocd.substrate.kapro.io/v1alpha1", "ArgoCDSubstrateConfig", "", "prod-argo")
+	profile := &kaprov1alpha2.Backend{
+		ObjectMeta: metav1.ObjectMeta{Name: "prod-argo"},
+		Spec: kaprov1alpha2.BackendSpec{
+			ClassRef: &kaprov1alpha2.SubstrateClassReference{Name: "argo-cd"},
+			ConfigRef: &kaprov1alpha2.SubstrateObjectReference{
+				APIVersion: "argocd.substrate.kapro.io/v1alpha1",
+				Kind:       "ArgoCDSubstrateConfig",
+				Name:       "prod-argo",
+			},
+		},
+	}
+	r := &BackendReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(profile, class, config).Build(),
+	}
+
+	ready, reason, message := r.profileReadiness(context.Background(), profile)
+	if !ready || reason != "SubstrateClassBackendReady" {
+		t.Fatalf("ready=%v reason=%s message=%s", ready, reason, message)
+	}
+}
+
+func TestBackendProfileReadinessSubstrateClassRejectsMissingConfig(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	class := acceptedSubstrateClass("argo-cd", "kapro.io/argo-cd",
+		[]kaprov1alpha2.ExecutionMode{kaprov1alpha2.ExecutionModeHubPush},
+		kaprov1alpha2.SubstrateObjectKindReference{
+			APIVersion: "argocd.substrate.kapro.io/v1alpha1",
+			Kind:       "ArgoCDSubstrateConfig",
+		},
+	)
+	profile := &kaprov1alpha2.Backend{
+		ObjectMeta: metav1.ObjectMeta{Name: "prod-argo"},
+		Spec: kaprov1alpha2.BackendSpec{
+			ClassRef: &kaprov1alpha2.SubstrateClassReference{Name: "argo-cd"},
+			ConfigRef: &kaprov1alpha2.SubstrateObjectReference{
+				APIVersion: "argocd.substrate.kapro.io/v1alpha1",
+				Kind:       "ArgoCDSubstrateConfig",
+				Name:       "missing",
+			},
+		},
+	}
+	r := &BackendReconciler{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(profile, class).Build(),
+	}
+
+	ready, reason, _ := r.profileReadiness(context.Background(), profile)
+	if ready || reason != "ConfigNotFound" {
+		t.Fatalf("ready=%v reason=%s, want ConfigNotFound", ready, reason)
+	}
+}
+
+func TestBackendReconcilerWritesClassAndConfigConditions(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	class := acceptedSubstrateClass("argo-cd", "kapro.io/argo-cd",
+		[]kaprov1alpha2.ExecutionMode{kaprov1alpha2.ExecutionModeHubPush},
+		kaprov1alpha2.SubstrateObjectKindReference{
+			APIVersion: "argocd.substrate.kapro.io/v1alpha1",
+			Kind:       "ArgoCDSubstrateConfig",
+		},
+	)
+	config := typedSubstrateConfig("argocd.substrate.kapro.io/v1alpha1", "ArgoCDSubstrateConfig", "", "prod-argo")
+	profile := &kaprov1alpha2.Backend{
+		ObjectMeta: metav1.ObjectMeta{Name: "prod-argo"},
+		Spec: kaprov1alpha2.BackendSpec{
+			ClassRef: &kaprov1alpha2.SubstrateClassReference{Name: "argo-cd"},
+			ConfigRef: &kaprov1alpha2.SubstrateObjectReference{
+				APIVersion: "argocd.substrate.kapro.io/v1alpha1",
+				Kind:       "ArgoCDSubstrateConfig",
+				Name:       "prod-argo",
+			},
+		},
+	}
+	r := &BackendReconciler{
+		Client: fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(profile, class, config).
+			WithStatusSubresource(&kaprov1alpha2.Backend{}).
+			Build(),
+	}
+
+	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: client.ObjectKey{Name: "prod-argo"}}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	var got kaprov1alpha2.Backend
+	if err := r.Get(context.Background(), client.ObjectKey{Name: "prod-argo"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Status.ClassName != "argo-cd" || got.Status.ConfigRef == nil {
+		t.Fatalf("status class/config not mirrored: %#v", got.Status)
+	}
+	for _, condType := range []string{"Ready", "ClassAccepted", "ConfigAccepted"} {
+		cond := apimeta.FindStatusCondition(got.Status.Conditions, condType)
+		if cond == nil || cond.Status != metav1.ConditionTrue {
+			t.Fatalf("%s condition = %#v, want True", condType, cond)
+		}
 	}
 }
 
@@ -434,6 +562,42 @@ func newApplicationSet(namespace, name string, labels map[string]string) *unstru
 	appSet.SetName(name)
 	appSet.SetLabels(labels)
 	return appSet
+}
+
+func acceptedSubstrateClass(name, controllerName string, modes []kaprov1alpha2.ExecutionMode, configKind kaprov1alpha2.SubstrateObjectKindReference) *kaprov1alpha2.SubstrateClass {
+	class := &kaprov1alpha2.SubstrateClass{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Generation: 1},
+		Spec: kaprov1alpha2.SubstrateClassSpec{
+			ControllerName: controllerName,
+		},
+		Status: kaprov1alpha2.SubstrateClassStatus{
+			ObservedGeneration: 1,
+			ExecutionModes:     &kaprov1alpha2.SubstrateClassExecutionModesStatus{Supported: modes},
+			AcceptedConfigKinds: []kaprov1alpha2.SubstrateObjectKindReference{
+				configKind,
+			},
+			Conditions: []metav1.Condition{{
+				Type:               "Accepted",
+				Status:             metav1.ConditionTrue,
+				Reason:             "BuiltInClassAccepted",
+				Message:            "accepted for test",
+				ObservedGeneration: 1,
+			}},
+		},
+	}
+	return class
+}
+
+func typedSubstrateConfig(apiVersion, kind, namespace, name string) *unstructured.Unstructured {
+	gv, err := schema.ParseGroupVersion(apiVersion)
+	if err != nil {
+		panic(err)
+	}
+	config := &unstructured.Unstructured{}
+	config.SetGroupVersionKind(gv.WithKind(kind))
+	config.SetNamespace(namespace)
+	config.SetName(name)
+	return config
 }
 
 func hasDiscoveryPattern(objects []kaprov1alpha2.DiscoveredBackendObject, pattern string) bool {

@@ -7,6 +7,17 @@ record for each tag.
 
 ## Unreleased
 
+### Added — SubstrateClass and typed config contract
+
+Added the v1alpha2 substrate class/config foundation: `SubstrateClass`,
+`Backend.spec.classRef`, `Backend.spec.configRef`, the KSI Go package at
+`pkg/kapro/substrate`, and typed reference config CRDs for Argo CD, Flux,
+Kubernetes direct apply, OCI bundle apply, and webhook delivery. The
+`substrateclass` controller publishes capabilities for Kapro-owned classes, and
+the `backend` controller validates class/config references before marking typed
+backends ready. Existing `Backend.spec.substrate`, `driver`, `adapter`,
+`runtime`, and parameter-map paths remain accepted for migration.
+
 ### Added — capability-skip DecisionTraces (#317)
 
 When an actuator declares an operation unsupported via its `Capabilities()`

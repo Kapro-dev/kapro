@@ -38,6 +38,7 @@ KAPRO_KINDS = %w[
   Promotion
   PromotionRun
   Source
+  SubstrateClass
   Target
   Trigger
 ].freeze
