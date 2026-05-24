@@ -26,6 +26,9 @@ func TestRunInitScaffoldArgo(t *testing.T) {
 		"plans/checkout.yaml",
 		"fleets/checkout.yaml",
 		"argo/applications/checkout.yaml",
+		"apps/checkout/00-namespace.yaml",
+		"apps/checkout/deployment.yaml",
+		"apps/checkout/service.yaml",
 	} {
 		if _, err := os.Stat(filepath.Join(dir, relPath)); err != nil {
 			t.Fatalf("%s not generated: %v", relPath, err)
@@ -53,6 +56,81 @@ func TestRunInitScaffoldArgo(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "sources/checkout.yaml")); !os.IsNotExist(err) {
 		t.Fatalf("sources/checkout.yaml should not be generated for the default inline-source scaffold")
+	}
+	deployment := readFile(t, filepath.Join(dir, "apps/checkout/deployment.yaml"))
+	if !strings.Contains(deployment, "namespace: checkout") || strings.Contains(deployment, "namespace: argocd") {
+		t.Fatalf("argo starter workload should use app namespace checkout, got:\n%s", deployment)
+	}
+	service := readFile(t, filepath.Join(dir, "apps/checkout/service.yaml"))
+	if !strings.Contains(service, "namespace: checkout") || strings.Contains(service, "namespace: argocd") {
+		t.Fatalf("argo starter service should use app namespace checkout, got:\n%s", service)
+	}
+	app := readFile(t, filepath.Join(dir, "argo/applications/checkout.yaml"))
+	for _, want := range []string{
+		"namespace: argocd",
+		"namespace: checkout",
+		"path: apps/checkout",
+	} {
+		if !strings.Contains(app, want) {
+			t.Fatalf("argo application missing %q:\n%s", want, app)
+		}
+	}
+}
+
+func TestRunInitScaffoldFluxWritesCompleteApp(t *testing.T) {
+	dir := t.TempDir()
+	err := runInitScaffold(scaffoldOptions{
+		Path:              dir,
+		Name:              "checkout",
+		Substrate:         "flux",
+		Mode:              "pull",
+		Registry:          "oci://registry.example.com/platform",
+		UseSubstrateClass: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, relPath := range []string{
+		"substrates/flux.yaml",
+		"plans/checkout.yaml",
+		"fleets/checkout.yaml",
+		"flux/kustomizations/checkout.yaml",
+		"apps/checkout/00-namespace.yaml",
+		"apps/checkout/deployment.yaml",
+		"apps/checkout/service.yaml",
+		"apps/checkout/kustomization.yaml",
+	} {
+		if _, err := os.Stat(filepath.Join(dir, relPath)); err != nil {
+			t.Fatalf("%s not generated: %v", relPath, err)
+		}
+	}
+	deployment := readFile(t, filepath.Join(dir, "apps/checkout/deployment.yaml"))
+	if !strings.Contains(deployment, "namespace: checkout") || strings.Contains(deployment, "namespace: flux-system") {
+		t.Fatalf("flux starter workload should use app namespace checkout, got:\n%s", deployment)
+	}
+	service := readFile(t, filepath.Join(dir, "apps/checkout/service.yaml"))
+	if !strings.Contains(service, "namespace: checkout") || strings.Contains(service, "namespace: flux-system") {
+		t.Fatalf("flux starter service should use app namespace checkout, got:\n%s", service)
+	}
+	kustomization := readFile(t, filepath.Join(dir, "apps/checkout/kustomization.yaml"))
+	for _, want := range []string{
+		"  - 00-namespace.yaml",
+		"  - deployment.yaml",
+		"  - service.yaml",
+	} {
+		if !strings.Contains(kustomization, want) {
+			t.Fatalf("flux app kustomization missing %q:\n%s", want, kustomization)
+		}
+	}
+	native := readFile(t, filepath.Join(dir, "flux/kustomizations/checkout.yaml"))
+	for _, want := range []string{
+		"namespace: flux-system",
+		"path: ./apps/checkout",
+		"name: checkout",
+	} {
+		if !strings.Contains(native, want) {
+			t.Fatalf("flux native kustomization missing %q:\n%s", want, native)
+		}
 	}
 }
 
@@ -172,6 +250,42 @@ func TestRunInitScaffoldOCIRejectsPushMode(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "--substrate oci requires --mode pull") {
 		t.Fatalf("err=%v, want oci pull-mode error", err)
+	}
+}
+
+func TestRunInitScaffoldRejectsUnsafeName(t *testing.T) {
+	err := runInitScaffold(scaffoldOptions{
+		Path:      t.TempDir(),
+		Name:      "../../outside",
+		Substrate: "direct",
+		Mode:      "push",
+		Registry:  "oci://registry.example.com/platform",
+	})
+	if err == nil || !strings.Contains(err.Error(), "--name must match") {
+		t.Fatalf("err=%v, want unsafe name validation error", err)
+	}
+}
+
+func TestRunInitScaffoldRejectsUnsafeClusterName(t *testing.T) {
+	err := runInitScaffold(scaffoldOptions{
+		Path:      t.TempDir(),
+		Name:      "checkout",
+		Substrate: "direct",
+		Mode:      "push",
+		Registry:  "oci://registry.example.com/platform",
+		Clusters:  "canary/../../outside:canary",
+	})
+	if err == nil || !strings.Contains(err.Error(), "--clusters name must match") {
+		t.Fatalf("err=%v, want unsafe cluster validation error", err)
+	}
+}
+
+func TestWriteScaffoldFilesRejectsEscapedPath(t *testing.T) {
+	err := writeScaffoldFiles(t.TempDir(), map[string]string{
+		filepath.Join("apps", "..", "..", "outside.yaml"): "pwn",
+	}, false)
+	if err == nil || !strings.Contains(err.Error(), "outside scaffold root") {
+		t.Fatalf("err=%v, want path escape validation error", err)
 	}
 }
 

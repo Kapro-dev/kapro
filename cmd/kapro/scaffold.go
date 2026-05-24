@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -18,6 +19,8 @@ const (
 	kubernetesSubstrateConfigAPIVersion = "kubernetes.substrate.kapro.io/" + "v1alpha1"
 	ociSubstrateConfigAPIVersion        = "oci.substrate.kapro.io/" + "v1alpha1"
 )
+
+var scaffoldNamePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
 
 func newInitCmd() *cobra.Command {
 	var opts scaffoldOptions
@@ -120,13 +123,17 @@ type connectOptions struct {
 }
 
 func runInitScaffold(opts scaffoldOptions) error {
+	opts.Name = strings.TrimSpace(opts.Name)
 	if opts.Name == "" {
 		return fmt.Errorf("--name is required")
 	}
+	if err := validateScaffoldName("--name", opts.Name); err != nil {
+		return err
+	}
 	opts.UseSubstrateClass = true
-	opts.Substrate = strings.ToLower(opts.Substrate)
+	opts.Substrate = strings.ToLower(strings.TrimSpace(opts.Substrate))
 	if opts.Profile != "" {
-		opts.Profile = strings.ToLower(opts.Profile)
+		opts.Profile = strings.ToLower(strings.TrimSpace(opts.Profile))
 	}
 	if opts.UseSubstrateClass {
 		switch scaffoldProfile(opts) {
@@ -152,6 +159,9 @@ func runInitScaffold(opts scaffoldOptions) error {
 	if opts.Clusters == "" {
 		opts.Clusters = "canary-eu:canary,prod-eu:production"
 	}
+	if err := validateScaffoldClusters(opts.Clusters); err != nil {
+		return err
+	}
 	opts.Team = strings.TrimSpace(opts.Team)
 	if opts.Team == "" {
 		opts.Team = "platform"
@@ -166,12 +176,16 @@ func runInitScaffold(opts scaffoldOptions) error {
 }
 
 func runConnectScaffold(opts connectOptions) error {
-	opts.Substrate = strings.ToLower(opts.Substrate)
+	opts.Substrate = strings.ToLower(strings.TrimSpace(opts.Substrate))
 	if opts.Substrate != "argo" && opts.Substrate != "flux" {
 		return fmt.Errorf("substrate must be argo or flux")
 	}
+	opts.Name = strings.TrimSpace(opts.Name)
 	if opts.Name == "" {
 		opts.Name = opts.Substrate
+	}
+	if err := validateScaffoldName("--name", opts.Name); err != nil {
+		return err
 	}
 	if opts.Namespace == "" {
 		opts.Namespace = defaultSubstrateNamespace(opts.Substrate)
@@ -211,7 +225,13 @@ func writeScaffoldFiles(root string, files map[string]string, force bool) error 
 			sp.Update("Writing " + relPath)
 		}
 		content := files[relPath]
-		absPath := filepath.Join(root, relPath)
+		absPath, err := safeScaffoldAbsPath(root, relPath)
+		if err != nil {
+			if sp != nil {
+				sp.StopFail("Could not write starter files")
+			}
+			return err
+		}
 		if !force {
 			if _, err := os.Stat(absPath); err == nil {
 				if sp != nil {
@@ -245,6 +265,28 @@ func writeScaffoldFiles(root string, files map[string]string, force bool) error 
 		sp.StopSuccess(fmt.Sprintf("Wrote %d files into %s", len(relPaths), root))
 	}
 	return nil
+}
+
+func safeScaffoldAbsPath(root, relPath string) (string, error) {
+	if filepath.IsAbs(relPath) {
+		return "", fmt.Errorf("refusing absolute scaffold path %q", relPath)
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve scaffold root %q: %w", root, err)
+	}
+	absPath, err := filepath.Abs(filepath.Join(absRoot, relPath))
+	if err != nil {
+		return "", fmt.Errorf("resolve scaffold path %q: %w", relPath, err)
+	}
+	rel, err := filepath.Rel(absRoot, absPath)
+	if err != nil {
+		return "", fmt.Errorf("check scaffold path %q: %w", relPath, err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return "", fmt.Errorf("refusing to write outside scaffold root: %q", relPath)
+	}
+	return absPath, nil
 }
 
 func printInitNextSteps(opts scaffoldOptions, count int) {
@@ -315,17 +357,29 @@ func greenfieldFiles(opts scaffoldOptions) map[string]string {
 	switch opts.Substrate {
 	case "argo":
 		files[filepath.Join("argo", "applications", opts.Name+".yaml")] = renderArgoApplications(opts, clusters)
+		addWorkloadNamespaceFile(files, opts)
 		files[filepath.Join("apps", opts.Name, "deployment.yaml")] = renderDirectDeployment(opts)
 		files[filepath.Join("apps", opts.Name, "service.yaml")] = renderDirectService(opts)
 	case "flux":
+		addWorkloadNamespaceFile(files, opts)
 		files[filepath.Join("apps", opts.Name, "deployment.yaml")] = renderDirectDeployment(opts)
+		files[filepath.Join("apps", opts.Name, "service.yaml")] = renderDirectService(opts)
 		files[filepath.Join("apps", opts.Name, "kustomization.yaml")] = renderAppKustomization(opts)
 		files[filepath.Join("flux", "kustomizations", opts.Name+".yaml")] = renderFluxKustomization(opts)
 	case "direct":
+		addWorkloadNamespaceFile(files, opts)
 		files[filepath.Join("apps", opts.Name, "deployment.yaml")] = renderDirectDeployment(opts)
 		files[filepath.Join("apps", opts.Name, "service.yaml")] = renderDirectService(opts)
 	}
 	return files
+}
+
+func addWorkloadNamespaceFile(files map[string]string, opts scaffoldOptions) {
+	namespace := workloadNamespace(opts)
+	if namespace == "" || namespace == "default" {
+		return
+	}
+	files[filepath.Join("apps", opts.Name, "00-namespace.yaml")] = renderNamespace(namespace)
 }
 
 type scaffoldCluster struct {
@@ -350,6 +404,28 @@ func parseClusterScaffold(raw string) []scaffoldCluster {
 		clusters = append(clusters, scaffoldCluster{Name: strings.TrimSpace(name), Tier: strings.TrimSpace(tier)})
 	}
 	return clusters
+}
+
+func validateScaffoldClusters(raw string) error {
+	if strings.EqualFold(strings.TrimSpace(raw), "none") {
+		return nil
+	}
+	for _, cluster := range parseClusterScaffold(raw) {
+		if err := validateScaffoldName("--clusters name", cluster.Name); err != nil {
+			return err
+		}
+		if strings.TrimSpace(cluster.Tier) == "" {
+			return fmt.Errorf("--clusters stage is required for %q", cluster.Name)
+		}
+	}
+	return nil
+}
+
+func validateScaffoldName(field, value string) error {
+	if !scaffoldNamePattern.MatchString(value) {
+		return fmt.Errorf("%s must match %s", field, scaffoldNamePattern.String())
+	}
+	return nil
 }
 
 func defaultSubstrateNamespace(substrate string) string {
@@ -763,6 +839,7 @@ spec:
 }
 
 func renderDirectDeployment(opts scaffoldOptions) string {
+	namespace := workloadNamespace(opts)
 	return fmt.Sprintf(`apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -785,10 +862,11 @@ spec:
           image: %s
           ports:
             - containerPort: 8080
-`, opts.Name, opts.Namespace, opts.Name, opts.Name, opts.Name, defaultScaffoldVersion(opts))
+`, opts.Name, namespace, opts.Name, opts.Name, opts.Name, defaultScaffoldVersion(opts))
 }
 
 func renderDirectService(opts scaffoldOptions) string {
+	namespace := workloadNamespace(opts)
 	return fmt.Sprintf(`apiVersion: v1
 kind: Service
 metadata:
@@ -803,7 +881,15 @@ spec:
     - name: http
       port: 80
       targetPort: 8080
-`, opts.Name, opts.Namespace, opts.Name, opts.Name)
+`, opts.Name, namespace, opts.Name, opts.Name)
+}
+
+func renderNamespace(namespace string) string {
+	return fmt.Sprintf(`apiVersion: v1
+kind: Namespace
+metadata:
+  name: %s
+`, namespace)
 }
 
 func renderArgoApplications(opts scaffoldOptions, clusters []scaffoldCluster) string {
@@ -878,12 +964,19 @@ spec:
 }
 
 func renderAppKustomization(opts scaffoldOptions) string {
-	return `apiVersion: kustomize.config.k8s.io/v1beta1
+	resources := []string{"deployment.yaml", "service.yaml"}
+	if namespace := workloadNamespace(opts); namespace != "" && namespace != "default" {
+		resources = append([]string{"00-namespace.yaml"}, resources...)
+	}
+	var b strings.Builder
+	b.WriteString(`apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - deployment.yaml
-  - service.yaml
-`
+`)
+	for _, resource := range resources {
+		fmt.Fprintf(&b, "  - %s\n", resource)
+	}
+	return b.String()
 }
 
 func renderGreenfieldReadme(opts scaffoldOptions) string {
@@ -1062,6 +1155,13 @@ func defaultScaffoldVersion(opts scaffoldOptions) string {
 		return fmt.Sprintf("ghcr.io/example/%s:0.1.0", opts.Name)
 	}
 	return "0.1.0"
+}
+
+func workloadNamespace(opts scaffoldOptions) string {
+	if scaffoldProfile(opts) == "direct" {
+		return opts.Namespace
+	}
+	return opts.Name
 }
 
 func nextScaffoldVersion(opts scaffoldOptions) string {
