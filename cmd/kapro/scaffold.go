@@ -31,6 +31,7 @@ This bootstraps the promotion layer. Argo, Flux, Helm, and Kubernetes still own
 local sync and rollout mechanics.
 
 Examples:
+  kapro init ./promotion-repo --substrate direct --name checkout
   kapro init ./promotion-repo --substrate flux --mode pull --name checkout
   kapro init ./promotion-repo --substrate argo --name checkout
   kapro init ./promotion-repo --substrate argo --name checkout --clusters none`,
@@ -46,7 +47,7 @@ Examples:
 		},
 	}
 	cmd.Flags().StringVar(&opts.Name, "name", "checkout", "Application or fleet name")
-	cmd.Flags().StringVar(&opts.Substrate, "substrate", "argo", "Delivery substrate: argo, flux, or oci")
+	cmd.Flags().StringVar(&opts.Substrate, "substrate", "direct", "Delivery substrate: direct, argo, flux, or oci")
 	cmd.Flags().StringVar(&opts.Mode, "mode", "push", "Delivery mode: push or pull")
 	cmd.Flags().StringVar(&opts.Registry, "registry", "oci://registry.example.com/platform", "OCI registry URL for bundles")
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Substrate namespace (default: argocd for argo, flux-system for flux, kapro-system for oci)")
@@ -133,8 +134,8 @@ func runInitScaffold(opts scaffoldOptions) error {
 		default:
 			return fmt.Errorf("--profile must be direct, argo, flux, or oci")
 		}
-	} else if opts.Substrate != "argo" && opts.Substrate != "flux" && opts.Substrate != "oci" {
-		return fmt.Errorf("--substrate must be argo, flux, or oci")
+	} else if opts.Substrate != "direct" && opts.Substrate != "argo" && opts.Substrate != "flux" && opts.Substrate != "oci" {
+		return fmt.Errorf("--substrate must be direct, argo, flux, or oci")
 	}
 	if opts.Mode != "push" && opts.Mode != "pull" {
 		return fmt.Errorf("--mode must be push or pull")

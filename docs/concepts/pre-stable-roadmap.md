@@ -133,24 +133,27 @@ The first public preview should ship a focused matrix:
 | `direct` | raw YAML | `SubstrateClass`, `Substrate`, `Cluster`, `Fleet`, `Plan`, `Promotion` |
 | `argo` | rendered manifests/Application | `SubstrateClass`, `Substrate`, `Cluster`, `Fleet`, `Plan`, `Promotion` |
 | `flux` | Kustomize | `SubstrateClass`, `Substrate`, `Cluster`, `Fleet`, `Plan`, `Promotion` |
+| `oci` | OCI artifact reference | `SubstrateClass`, `Substrate`, `Cluster`, `Fleet`, `Plan`, `Promotion` |
 
-Additional app templates are allowed after the canonical three pass smoke tests.
+Additional app templates are allowed after the canonical four pass smoke tests.
 Do not create the full profile x app-template cross-product before `0.6.0`.
 
 The substrate conformance suite is part of `0.6.0`, even if the public
 `kapro substrate conformance <class>` wrapper is not. The `kapro-conformance
-all` reference run includes the three launch classes; runtime delivery remains
-covered by direct, Argo CD, and Flux actuator/controller tests until standalone
-KSI packages are promoted.
+all` reference run includes the four launch classes; runtime delivery remains
+covered by direct, Argo CD, Flux, and OCI actuator/controller tests until
+standalone KSI packages are promoted.
 
 Each generated repo should include minimal CI that runs YAML validation,
-`kapro plan` or the nearest available static planner, and optional policy tests
-when a policy pack is enabled.
+`kapro lint` or the nearest available static planner, and optional policy tests
+when a policy pack is enabled. A standalone `kapro plan` command is follow-up
+work only after it has a real dry-run/runtime contract.
 
 Existing GitOps adoption output must use the same repo shape where possible and
-remain observe-first by default. The public CLI should use `connect`,
-`discover`, and `adopt`; existing-GitOps adoption is the user-facing vocabulary and
-should not be the marketed command name.
+remain observe-first by default. The public CLI should use `quickstart` for new
+repos, `adopt` for existing GitOps repositories, and `connect`/`discover` for
+lower-level substrate-only or inventory workflows. Avoid legacy-estate jargon
+as public command names.
 
 Generated repos are frozen at generation time in milestone 1. Upgrade tooling
 such as `kapro bootstrap diff` or `kapro bootstrap upgrade` is Phase 2.

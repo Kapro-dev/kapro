@@ -6,6 +6,9 @@ and verify the artifacts before installing them in production change windows.
 
 The current public preview release is `v0.6.0`.
 
+Use [Public Preview 0.6 Checklist](public-preview-0.6-checklist.md) before
+cutting the tag; this page verifies already-published artifacts.
+
 ## Prerequisites
 
 Install these tools on the verification host:

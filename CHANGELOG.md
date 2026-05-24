@@ -19,6 +19,19 @@ production users depend on the prototype shape. Delete old prototype CRDs and
 recreate desired state from generated 0.6 manifests. Do not commit
 `PromotionRun`, `Target`, or `DecisionTrace` runtime objects to Git.
 
+### Changed — 0.6 public-preview quickstart contract
+
+`kapro quickstart` now treats direct Kubernetes apply as the default no-extra
+dependency path, with explicit `direct`, `argo`, `flux`, and `oci` launch
+profiles. `kapro bootstrap generate` supports the same profile matrix, and
+`kapro bootstrap greenfield` now defaults to direct push mode instead of Flux
+pull mode. Existing GitOps onboarding remains `kapro adopt argo` and
+`kapro adopt flux`.
+
+The CI Kind smoke now exercises all four public-preview profiles. Direct apply
+installs include the Deployment RBAC needed by the direct actuator, and
+`kapro doctor` checks that permission.
+
 ### Added — SubstrateClass and typed config contract
 
 Added the substrate class/config foundation: `SubstrateClass`,

@@ -12,14 +12,30 @@ func TestBootstrapGuideExplainsAdoptionPaths(t *testing.T) {
 	printBootstrapGuide(&buf)
 	got := buf.String()
 	for _, want := range []string{
-		"kapro bootstrap generate ./promotion-repo --profile flux --name checkout",
-		"kapro bootstrap generate ./promotion-repo --profile direct --name checkout",
+		"kapro quickstart flux ./promotion-repo --name checkout",
+		"kapro quickstart direct ./promotion-repo --name checkout",
+		"kapro bootstrap generate ./promotion-repo --profile direct|argo|flux|oci --name checkout",
 		"kapro adopt argo . --out ./kapro-connect --name checkout",
 		"pull: each cluster pulls desired state",
 		"existing GitOps adoption starts in Observe mode",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("guide missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestBootstrapDirectAliasDefaults(t *testing.T) {
+	dir := t.TempDir()
+	cmd := newBootstrapSubstrateCmd("direct")
+	cmd.SetArgs([]string{dir, "--name", "checkout"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	cluster := readFile(t, filepath.Join(dir, "clusters/canary-eu.yaml"))
+	for _, want := range []string{"mode: push", "substrateRef: direct", "manifestPath: apps/checkout"} {
+		if !strings.Contains(cluster, want) {
+			t.Fatalf("cluster missing %q:\n%s", want, cluster)
 		}
 	}
 }
@@ -39,7 +55,7 @@ func TestBootstrapSubstrateAliasDefaults(t *testing.T) {
 	}
 }
 
-func TestBootstrapGreenfieldCommandDefaultsToFluxPull(t *testing.T) {
+func TestBootstrapGreenfieldCommandDefaultsToDirectPush(t *testing.T) {
 	dir := t.TempDir()
 	cmd := newBootstrapGreenfieldCmd()
 	cmd.SetArgs([]string{dir, "--name", "checkout"})
@@ -47,14 +63,14 @@ func TestBootstrapGreenfieldCommandDefaultsToFluxPull(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	substrate := readFile(t, filepath.Join(dir, "substrates/flux.yaml"))
-	for _, want := range []string{"kind: FluxSubstrateConfig", "namespace: flux-system", "classRef:"} {
+	substrate := readFile(t, filepath.Join(dir, "substrates/direct.yaml"))
+	for _, want := range []string{"kind: KubernetesApplyConfig", "namespace: default", "classRef:"} {
 		if !strings.Contains(substrate, want) {
 			t.Fatalf("substrate missing %q:\n%s", want, substrate)
 		}
 	}
 	cluster := readFile(t, filepath.Join(dir, "clusters/canary-eu.yaml"))
-	for _, want := range []string{"mode: pull", "substrateRef: flux", "ociRepository: checkout-bundle"} {
+	for _, want := range []string{"mode: push", "substrateRef: direct", "manifestPath: apps/checkout"} {
 		if !strings.Contains(cluster, want) {
 			t.Fatalf("cluster missing %q:\n%s", want, cluster)
 		}
@@ -175,11 +191,39 @@ func TestBootstrapGenerateFluxProfileWritesClassConfigAndWorkload(t *testing.T) 
 	_ = readFile(t, filepath.Join(dir, "apps/checkout/kustomization.yaml"))
 }
 
+func TestBootstrapGenerateOCIProfileWritesClassConfig(t *testing.T) {
+	dir := t.TempDir()
+	cmd := newBootstrapGenerateCmd()
+	cmd.SetArgs([]string{dir, "--profile", "oci", "--name", "checkout"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	substrate := readFile(t, filepath.Join(dir, "substrates/oci.yaml"))
+	for _, want := range []string{
+		"name: oci",
+		"kind: OCIBundleApplyConfig",
+		"namespace: kapro-system",
+		"classRef:",
+		"mode: spoke-pull",
+	} {
+		if !strings.Contains(substrate, want) {
+			t.Fatalf("oci substrate missing %q:\n%s", want, substrate)
+		}
+	}
+	cluster := readFile(t, filepath.Join(dir, "clusters/canary-eu.yaml"))
+	for _, want := range []string{"mode: pull", "substrateRef: oci"} {
+		if !strings.Contains(cluster, want) {
+			t.Fatalf("oci cluster missing %q:\n%s", want, cluster)
+		}
+	}
+}
+
 func TestBootstrapGenerateRejectsUnknownProfile(t *testing.T) {
 	cmd := newBootstrapGenerateCmd()
 	cmd.SetArgs([]string{t.TempDir(), "--profile", "tekton"})
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "--profile must be direct, argo, or flux") {
+	if err == nil || !strings.Contains(err.Error(), "--profile must be direct, argo, flux, or oci") {
 		t.Fatalf("err=%v, want profile validation", err)
 	}
 }

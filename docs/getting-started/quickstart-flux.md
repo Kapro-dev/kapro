@@ -15,9 +15,7 @@ helm upgrade --install kapro "$KAPRO_CHART" \
 Generate a Flux profile repo:
 
 ```bash
-kapro bootstrap generate ./promotion-repo \
-  --profile flux \
-  --name checkout
+kapro quickstart flux ./promotion-repo --name checkout
 cd promotion-repo
 kubectl apply -f substrates/flux.yaml
 kubectl wait --for=condition=Ready substrate/flux --timeout=90s
@@ -43,7 +41,7 @@ For fully local scripted convergence, run the Kind smoke fixture from the repo
 root:
 
 ```bash
-KAPRO_CI_QUICKSTARTS=flux scripts/ci-kind-smoke.sh
+KAPRO_CI_QUICKSTARTS=direct,flux,argo,oci scripts/ci-kind-smoke.sh
 ```
 
 For real Flux controller adoption against an existing repo, use

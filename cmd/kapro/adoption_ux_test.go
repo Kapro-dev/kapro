@@ -1,10 +1,69 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestQuickstartDefaultCreatesDirectRepo(t *testing.T) {
+	dir := t.TempDir()
+	cmd := newQuickstartCmd()
+	cmd.SetArgs([]string{dir, "--name", "checkout"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	cluster := readFile(t, filepath.Join(dir, "clusters/canary-eu.yaml"))
+	for _, want := range []string{"mode: push", "substrateRef: direct", "manifestPath: apps/checkout"} {
+		if !strings.Contains(cluster, want) {
+			t.Fatalf("cluster missing %q:\n%s", want, cluster)
+		}
+	}
+}
+
+func TestQuickstartBareDirectoryCreatesDirectRepo(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp := t.TempDir()
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(cwd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	})
+
+	cmd := newQuickstartCmd()
+	cmd.SetArgs([]string{"promotion-repo", "--name", "checkout"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	cluster := readFile(t, filepath.Join(tmp, "promotion-repo/clusters/canary-eu.yaml"))
+	for _, want := range []string{"mode: push", "substrateRef: direct"} {
+		if !strings.Contains(cluster, want) {
+			t.Fatalf("cluster missing %q:\n%s", want, cluster)
+		}
+	}
+}
+
+func TestQuickstartDirectCreatesPushRepo(t *testing.T) {
+	dir := t.TempDir()
+	cmd := newQuickstartCmd()
+	cmd.SetArgs([]string{"direct", dir, "--name", "checkout"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	substrate := readFile(t, filepath.Join(dir, "substrates/direct.yaml"))
+	for _, want := range []string{"kind: KubernetesApplyConfig", "mode: hub-push"} {
+		if !strings.Contains(substrate, want) {
+			t.Fatalf("substrate missing %q:\n%s", want, substrate)
+		}
+	}
+}
 
 func TestQuickstartFluxCreatesPullRepo(t *testing.T) {
 	dir := t.TempDir()
@@ -33,6 +92,15 @@ func TestQuickstartArgoCreatesPushRepo(t *testing.T) {
 		if !strings.Contains(cluster, want) {
 			t.Fatalf("cluster missing %q:\n%s", want, cluster)
 		}
+	}
+}
+
+func TestQuickstartRejectsUnknownProfile(t *testing.T) {
+	cmd := newQuickstartCmd()
+	cmd.SetArgs([]string{"tekton", t.TempDir()})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "quickstart profile must be direct, argo, flux, oci, or demo") {
+		t.Fatalf("err=%v, want quickstart validation", err)
 	}
 }
 

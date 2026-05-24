@@ -107,6 +107,7 @@ wait_for_substrate_ready() {
 
 mark_cluster_converged() {
   local name="$1"
+  local version="${2:-v1.2.3}"
   local now
   now="$(date -u +"%Y-%m-%dT%H:%M:%S.000000Z")"
 
@@ -125,10 +126,10 @@ EOF
 {
   "status": {
     "phase": "Converged",
-    "version": "v1.2.3",
+    "version": "${version}",
     "currentVersions": {
-      "default": "v1.2.3",
-      "checkout": "v1.2.3"
+      "default": "${version}",
+      "checkout": "${version}"
     },
     "health": {
       "allWorkloadsReady": true,
@@ -168,6 +169,79 @@ start_cluster_convergence_refresher() {
         mark_cluster_converged "${cluster}" >/dev/null 2>&1 || true
       done
       sleep 30
+    done
+  ) &
+  REFRESH_PIDS+=("$!")
+}
+
+start_cluster_convergence_refresher_for_version() {
+  local version="$1"
+  shift
+  local clusters=("$@")
+  (
+    while true; do
+      local cluster
+      for cluster in "${clusters[@]}"; do
+        mark_cluster_converged "${cluster}" "${version}" >/dev/null 2>&1 || true
+      done
+      sleep 30
+    done
+  ) &
+  REFRESH_PIDS+=("$!")
+}
+
+mark_deployment_available() {
+  local namespace="$1"
+  local name="$2"
+  local now generation replicas
+  now="$(date -u +"%Y-%m-%dT%H:%M:%S.000000Z")"
+  generation="$(kubectl --context "${CTX}" -n "${namespace}" get "deployment/${name}" -o jsonpath='{.metadata.generation}')"
+  replicas="$(kubectl --context "${CTX}" -n "${namespace}" get "deployment/${name}" -o jsonpath='{.spec.replicas}')"
+  if [ -z "${replicas}" ]; then
+    replicas=1
+  fi
+
+  kubectl --context "${CTX}" -n "${namespace}" patch "deployment/${name}" --subresource=status --type=merge -p "$(cat <<EOF
+{
+  "status": {
+    "observedGeneration": ${generation},
+    "replicas": ${replicas},
+    "updatedReplicas": ${replicas},
+    "readyReplicas": ${replicas},
+    "availableReplicas": ${replicas},
+    "conditions": [
+      {
+        "type": "Available",
+        "status": "True",
+        "lastTransitionTime": "${now}",
+        "reason": "MinimumReplicasAvailable",
+        "message": "ci-kind-smoke synthetic direct workload availability"
+      },
+      {
+        "type": "Progressing",
+        "status": "True",
+        "lastTransitionTime": "${now}",
+        "reason": "NewReplicaSetAvailable",
+        "message": "ci-kind-smoke synthetic direct workload rollout"
+      }
+    ]
+  }
+}
+EOF
+)"
+}
+
+start_deployment_availability_refresher() {
+  local namespace="$1"
+  shift
+  local deployments=("$@")
+  (
+    while true; do
+      local deployment
+      for deployment in "${deployments[@]}"; do
+        mark_deployment_available "${namespace}" "${deployment}" >/dev/null 2>&1 || true
+      done
+      sleep 5
     done
   ) &
   REFRESH_PIDS+=("$!")
@@ -254,6 +328,37 @@ run_flux_quickstart() {
   wait_for_quickstart checkout-v1-2-3 2
 }
 
+run_direct_quickstart() {
+  echo "running direct quickstart"
+  local version previous_version
+  version="$(awk '/^[[:space:]]+version:/ {print $2; exit}' examples/quickstart-direct/promotions/checkout-direct-promotion.yaml)"
+  previous_version="ghcr.io/example/checkout-direct:previous"
+  kubectl --context "${CTX}" apply -f examples/quickstart-direct/substrates/direct.yaml
+  wait_for_substrate_ready direct
+  kubectl --context "${CTX}" apply --recursive \
+    -f examples/quickstart-direct/apps \
+    -f examples/quickstart-direct/clusters \
+    -f examples/quickstart-direct/plans \
+    -f examples/quickstart-direct/fleets
+  wait_for_clusters canary-eu prod-eu
+  kubectl --context "${CTX}" -n default set image deployment/checkout-direct "app=${previous_version}"
+  mark_deployment_available default checkout-direct
+  start_deployment_availability_refresher default checkout-direct
+  mark_cluster_converged canary-eu "${previous_version}"
+  mark_cluster_converged prod-eu "${previous_version}"
+  kubectl --context "${CTX}" apply -f examples/quickstart-direct/promotions/checkout-direct-promotion.yaml
+  mark_cluster_converged canary-eu "${version}"
+  mark_cluster_converged prod-eu "${version}"
+  start_cluster_convergence_refresher_for_version "${version}" canary-eu prod-eu
+  wait_for_quickstart checkout-direct-0-1-0 2
+  local applied_version
+  applied_version="$(kubectl --context "${CTX}" -n default get deployment/checkout-direct -o jsonpath='{.spec.template.spec.containers[?(@.name=="app")].image}')"
+  if [[ "${applied_version}" != "${version}" ]]; then
+    echo "direct quickstart Deployment image ${applied_version} did not match promoted version ${version}" >&2
+    exit 1
+  fi
+}
+
 run_argo_quickstart() {
   echo "running Argo CD quickstart"
   install_fake_argo_applications
@@ -282,17 +387,18 @@ run_oci_quickstart() {
 }
 
 run_configured_quickstarts() {
-  local quickstarts="${KAPRO_CI_QUICKSTARTS:-flux}"
+  local quickstarts="${KAPRO_CI_QUICKSTARTS:-direct}"
   local quickstart
   IFS=',' read -r -a selected <<<"${quickstarts}"
   for quickstart in "${selected[@]}"; do
     case "${quickstart}" in
+      direct) run_direct_quickstart ;;
       flux) run_flux_quickstart ;;
       argo) run_argo_quickstart ;;
       oci) run_oci_quickstart ;;
       "") ;;
       *)
-        echo "unknown quickstart ${quickstart}; expected flux, argo, or oci" >&2
+        echo "unknown quickstart ${quickstart}; expected direct, flux, argo, or oci" >&2
         exit 1
         ;;
     esac
@@ -342,7 +448,7 @@ main() {
   wait_for_crds
   run_upgrade_smoke
 
-  echo "running configured quickstarts: ${KAPRO_CI_QUICKSTARTS:-flux}"
+  echo "running configured quickstarts: ${KAPRO_CI_QUICKSTARTS:-direct}"
   run_configured_quickstarts
 
   echo "kind install and quickstart smoke passed"

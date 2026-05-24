@@ -117,7 +117,7 @@ For a fully automated local proof that reaches `PromotionRun=Complete` and
 `Target=Converged`, run the CI Kind fixture from the repository root:
 
 ```bash
-KAPRO_CI_QUICKSTARTS=flux,argo,oci scripts/ci-kind-smoke.sh
+KAPRO_CI_QUICKSTARTS=direct,flux,argo,oci scripts/ci-kind-smoke.sh
 ```
 
 ## Next

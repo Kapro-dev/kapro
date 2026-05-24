@@ -22,6 +22,7 @@ observe-first mode with reviewable mappings.`,
 	cmd.AddCommand(newBootstrapGuideCmd())
 	cmd.AddCommand(newBootstrapGenerateCmd())
 	cmd.AddCommand(newBootstrapGreenfieldCmd())
+	cmd.AddCommand(newBootstrapSubstrateCmd("direct"))
 	cmd.AddCommand(newBootstrapSubstrateCmd("argo"))
 	cmd.AddCommand(newBootstrapSubstrateCmd("flux"))
 	cmd.AddCommand(newBootstrapSubstrateCmd("oci"))
@@ -51,7 +52,8 @@ func newBootstrapGenerateCmd() *cobra.Command {
 Profiles:
   direct  Kubernetes direct apply with raw YAML and no OCI registry requirement
   argo    Argo CD remains the reconciler; Kapro promotes Argo-managed intent
-  flux    Flux remains the reconciler; Kapro promotes Flux-managed intent`,
+  flux    Flux remains the reconciler; Kapro promotes Flux-managed intent
+  oci     Spokes pull OCI artifacts directly without Argo CD or Flux`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			opts.Path = "."
@@ -64,7 +66,7 @@ Profiles:
 			return runInitScaffold(opts)
 		},
 	}
-	cmd.Flags().StringVar(&profile, "profile", profile, "Bootstrap profile: direct, argo, or flux")
+	cmd.Flags().StringVar(&profile, "profile", profile, "Bootstrap profile: direct, argo, flux, or oci")
 	cmd.Flags().StringVar(&opts.Name, "name", "checkout", "Application or fleet name")
 	cmd.Flags().StringVar(&opts.Mode, "mode", "", "Delivery mode: push or pull (defaults per profile)")
 	cmd.Flags().StringVar(&opts.Registry, "registry", "oci://registry.example.com/platform", "OCI registry URL for GitOps bundle examples")
@@ -105,8 +107,17 @@ func applyBootstrapGenerateProfile(opts *scaffoldOptions, profile string) error 
 		if opts.Namespace == "" {
 			opts.Namespace = "flux-system"
 		}
+	case "oci":
+		opts.Profile = "oci"
+		opts.Substrate = "oci"
+		if opts.Mode == "" {
+			opts.Mode = "pull"
+		}
+		if opts.Namespace == "" {
+			opts.Namespace = "kapro-system"
+		}
 	default:
-		return fmt.Errorf("--profile must be direct, argo, or flux")
+		return fmt.Errorf("--profile must be direct, argo, flux, or oci")
 	}
 	if opts.Name == "" {
 		opts.Name = "checkout"
@@ -127,14 +138,14 @@ func applyBootstrapGenerateProfile(opts *scaffoldOptions, profile string) error 
 func printBootstrapGuide(out io.Writer) {
 	fmt.Fprintln(out, `Kapro adoption paths:
 
-1. Try Kapro in a new Flux pull-mode repo
-   kapro bootstrap generate ./promotion-repo --profile flux --name checkout
+1. Try Kapro with direct Kubernetes apply
+   kapro quickstart direct ./promotion-repo --name checkout
 
-2. Try Kapro in a new Argo CD repo
-   kapro bootstrap generate ./promotion-repo --profile argo --name checkout
+2. Try Kapro in a new Flux pull-mode repo
+   kapro quickstart flux ./promotion-repo --name checkout
 
-3. Try Kapro with direct Kubernetes apply
-   kapro bootstrap generate ./promotion-repo --profile direct --name checkout
+3. Try Kapro in a new Argo CD repo
+   kapro quickstart argo ./promotion-repo --name checkout
 
 4. Existing Argo CD repository
    kapro adopt argo . --out ./kapro-connect --name checkout
@@ -144,6 +155,9 @@ func printBootstrapGuide(out io.Writer) {
 
 6. Outbound-only clusters that must pull OCI artifacts
    kapro quickstart oci ./promotion-repo --name checkout
+
+Lower-level generator:
+  kapro bootstrap generate ./promotion-repo --profile direct|argo|flux|oci --name checkout
 
 Safe default:
   existing GitOps adoption starts in Observe mode. Review generated Substrate,
@@ -157,12 +171,15 @@ Delivery modes in plain language:
 func newBootstrapSubstrateCmd(substrate string) *cobra.Command {
 	var opts scaffoldOptions
 	defaultMode := "pull"
-	if substrate == "argo" {
+	if substrate == "argo" || substrate == "direct" {
 		defaultMode = "push"
 	}
 	existingHint := "For an existing GitOps repository, use:\n  kapro adopt " + substrate + " . --out ./kapro-connect --name checkout"
+	if substrate == "direct" {
+		existingHint = "Direct is the smallest greenfield path. It does not require Argo CD, Flux, or an OCI registry."
+	}
 	if substrate == "oci" {
-		existingHint = "OCI is the existing spoke-side pull helper, not one of the new 0.6 launch profiles. Use it when you do not want Argo CD or Flux on spokes."
+		existingHint = "OCI is the spoke-side pull helper. Use it when you do not want Argo CD or Flux on spokes."
 	}
 	cmd := &cobra.Command{
 		Use:   substrate + " [directory]",
@@ -170,10 +187,10 @@ func newBootstrapSubstrateCmd(substrate string) *cobra.Command {
 		Long: fmt.Sprintf(`Generate a new Kapro promotion repository for %s.
 
 This is a shorter, adoption-friendly alias for:
-  kapro bootstrap greenfield [directory] --substrate %s
+  kapro bootstrap generate [directory] --profile %s
 
 The 0.6 public-preview profile matrix is exposed through:
-  kapro bootstrap generate [directory] --profile direct|argo|flux
+  kapro bootstrap generate [directory] --profile direct|argo|flux|oci
 
 Use this command when you are starting fresh with an existing substrate-specific
 helper. %s`, substrate, substrate, existingHint),
@@ -184,6 +201,7 @@ helper. %s`, substrate, substrate, existingHint),
 				opts.Path = args[0]
 			}
 			opts.Substrate = substrate
+			opts.Profile = substrate
 			opts.UseSubstrateClass = true
 			return runInitScaffold(opts)
 		},
@@ -206,9 +224,9 @@ func newBootstrapGreenfieldCmd() *cobra.Command {
 		Long: `Generate Substrate, Fleet, Plan, Promotion, and substrate-native starter
 files for a new promotion lifecycle repository.
 
-This is a friendly wrapper around kapro init. It defaults to Flux pull mode
-because that is the safest first path for platform teams that want spokes to
-pull from inside their network boundary.`,
+This is a friendly wrapper around kapro init. It defaults to direct push mode
+because that is the smallest first path and does not require Flux, Argo CD, or
+an OCI registry.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			opts.Path = "."
@@ -220,8 +238,8 @@ pull from inside their network boundary.`,
 		},
 	}
 	cmd.Flags().StringVar(&opts.Name, "name", "checkout", "Application or fleet name")
-	cmd.Flags().StringVar(&opts.Substrate, "substrate", "flux", "Delivery substrate: argo, flux, or oci")
-	cmd.Flags().StringVar(&opts.Mode, "mode", "pull", "Delivery mode: push or pull")
+	cmd.Flags().StringVar(&opts.Substrate, "substrate", "direct", "Delivery substrate: direct, argo, flux, or oci")
+	cmd.Flags().StringVar(&opts.Mode, "mode", "push", "Delivery mode: push or pull")
 	cmd.Flags().StringVar(&opts.Registry, "registry", "oci://registry.example.com/platform", "OCI registry URL for bundles")
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Substrate namespace (default: argocd for argo, flux-system for flux, kapro-system for oci)")
 	cmd.Flags().StringVar(&opts.Clusters, "clusters", "canary-eu:canary,prod-eu:production", "Cluster scaffold list as name:stage pairs, or none for repo-only setup")

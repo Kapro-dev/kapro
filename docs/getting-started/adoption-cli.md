@@ -8,23 +8,31 @@ but do not want to learn every Kapro object before trying promotion workflows.
 For a new repo, start with:
 
 ```bash
-kapro bootstrap generate ./promotion-repo --profile direct --name checkout
+kapro quickstart direct ./promotion-repo --name checkout
 ```
+
+`direct` is the smallest no-extra-dependency path: no OCI registry, Flux
+install, or Argo CD install is required for the generated repo shape.
 
 Use Flux when clusters should pull desired state from inside their own network
 boundary. Use Argo CD when Argo already owns Applications and Kapro should
-promote versions through that existing control plane:
+promote versions through that existing control plane. Use OCI only when spokes
+must pull OCI artifacts directly without Argo CD or Flux:
 
 ```bash
-kapro bootstrap generate ./promotion-repo --profile flux --name checkout
-kapro bootstrap generate ./promotion-repo --profile argo --name checkout
+kapro quickstart flux ./promotion-repo --name checkout
+kapro quickstart argo ./promotion-repo --name checkout
+kapro quickstart oci ./promotion-repo --name checkout
 ```
 
-Use OCI only when spokes must pull OCI artifacts directly without Argo CD or
-Flux:
+`kapro bootstrap generate` is the lower-level generator command behind the
+same profile matrix:
 
 ```bash
-kapro quickstart oci ./promotion-repo --name checkout
+kapro bootstrap generate ./promotion-repo --profile direct --name checkout
+kapro bootstrap generate ./promotion-repo --profile argo --name checkout
+kapro bootstrap generate ./promotion-repo --profile flux --name checkout
+kapro bootstrap generate ./promotion-repo --profile oci --name checkout
 ```
 
 ## Existing GitOps repos
@@ -83,3 +91,13 @@ Kapro exposes only one delivery distinction during onboarding:
 
 Argo CD and Flux still own local sync and rollout mechanics. Kapro adds the
 promotion intent, gates, approvals, and audit trail across clusters.
+
+## Command Map
+
+| Goal | Public command | Notes |
+|---|---|---|
+| Try Kapro in a new repo | `kapro quickstart direct|argo|flux|oci` | Fast path with opinionated defaults. |
+| Generate from an explicit profile | `kapro bootstrap generate --profile direct|argo|flux|oci` | Generator/framework surface used by docs, CI, and future template targets. |
+| Connect an existing GitOps repo | `kapro adopt argo|flux` | Observe-first output with `Source` mappings and discovery reports. |
+| Create only observe-mode Substrate files | `kapro connect argo|flux` | Substrate-only scaffold for platform teams that want to wire discovery by hand. |
+| Inventory without adopting | `kapro discover argo|flux` | Lower-level diagnostic command used by `adopt`. |

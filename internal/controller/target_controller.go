@@ -96,6 +96,7 @@ type TargetReconciler struct {
 // +kubebuilder:rbac:groups=runtime.kapro.io,resources=targets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=runtime.kapro.io,resources=targets/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=runtime.kapro.io,resources=promotionruns,verbs=get
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;patch;update
 // +kubebuilder:rbac:groups=kapro.io,resources=clusters,verbs=get
 // +kubebuilder:rbac:groups=kapro.io,resources=clusters/status,verbs=get;patch
 // +kubebuilder:rbac:groups=runtime.kapro.io,resources=decisiontraces,verbs=create;get

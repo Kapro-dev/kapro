@@ -31,7 +31,8 @@ cluster provisioner, or secret store.
   working path.
 - [Direct Apply Quickstart](getting-started/quickstart-direct.md),
   [Flux Quickstart](getting-started/quickstart-flux.md), and
-  [Argo CD Quickstart](getting-started/quickstart-argo.md) cover the 0.6 public
+  [Argo CD Quickstart](getting-started/quickstart-argo.md), and
+  [OCI Quickstart](getting-started/quickstart-oci.md) cover the 0.6 public
   preview profiles.
 - [Substrates](concepts/substrates.md) explains Flux, Argo CD, OCI, and plugin delivery
   options.
