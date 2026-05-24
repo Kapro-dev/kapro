@@ -16,6 +16,7 @@ import (
 )
 
 const maxArgoDiscoveryFileSize = 1024 * 1024
+const maxArgoDiscoveryCacheSize = 10 * 1024 * 1024
 const defaultArgoDiscoveryMaxFiles = 10000
 const defaultArgoDiscoveryMaxUnits = 1000
 
@@ -248,6 +249,11 @@ func gitWorktreeRoot(path string) (string, error) {
 }
 
 func gitWorktreeRootFor(commandName, path string) (string, error) {
+	resolvedPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve git path %s: %w", path, err)
+	}
+	path = resolvedPath
 	cmd := exec.Command("git", "-C", path, "rev-parse", "--show-toplevel")
 	cmd.Env = cleanGitEnv()
 	out, err := cmd.CombinedOutput()
@@ -258,7 +264,12 @@ func gitWorktreeRootFor(commandName, path string) (string, error) {
 		}
 		return "", fmt.Errorf("%s is not a Git worktree; %s\n%s", path, action, strings.TrimSpace(string(out)))
 	}
-	return strings.TrimSpace(string(out)), nil
+	root := strings.TrimSpace(string(out))
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve git root %s: %w", root, err)
+	}
+	return resolvedRoot, nil
 }
 
 func discoverArgoRepo(root string, opts argoDiscoveryScanOptions) (argoDiscoveryResult, error) {
@@ -436,7 +447,7 @@ func replayArgoCachedFile(result *argoDiscoveryResult, cached argoCachedFile) {
 
 func loadArgoDiscoveryCache(path string) *argoDiscoveryCache {
 	cache := &argoDiscoveryCache{Version: 1, Files: map[string]argoCachedFile{}}
-	data, err := os.ReadFile(path)
+	data, err := readFileLimited(path, maxArgoDiscoveryCacheSize)
 	if err != nil {
 		return cache
 	}
@@ -474,7 +485,7 @@ func isDiscoveryCandidate(path string) bool {
 }
 
 func readYAMLOrJSONDocuments(path string) ([]map[string]any, error) {
-	data, err := os.ReadFile(path)
+	data, err := readFileLimited(path, maxArgoDiscoveryFileSize)
 	if err != nil {
 		return nil, err
 	}

@@ -15,6 +15,8 @@ import (
 	"kapro.io/kapro/internal/writetarget"
 )
 
+const maxSourceApplyFileSize = 10 * 1024 * 1024
+
 type sourceApplyOptions struct {
 	RepoPath   string
 	SourcePath string
@@ -175,7 +177,7 @@ type sourceWrite struct {
 }
 
 func readPromotionSourceFile(path string) (*kaprov1alpha1.Source, error) {
-	data, err := os.ReadFile(path)
+	data, err := readFileLimited(path, maxSourceApplyFileSize)
 	if err != nil {
 		return nil, fmt.Errorf("read source %s: %w", path, err)
 	}
@@ -361,7 +363,7 @@ func applySourceWritesAtomically(writes []sourceWrite) error {
 		if err != nil {
 			return fmt.Errorf("stat %s: %w", write.Path, err)
 		}
-		data, err := os.ReadFile(write.AbsPath)
+		data, err := readFileLimited(write.AbsPath, maxSourceApplyFileSize)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", write.Path, err)
 		}
@@ -386,7 +388,7 @@ func applySourceWritesAtomically(writes []sourceWrite) error {
 		if tmpPath == "" {
 			continue
 		}
-		data, err := os.ReadFile(tmpPath)
+		data, err := readFileLimited(tmpPath, maxSourceApplyFileSize)
 		if err != nil {
 			return fmt.Errorf("read staged %s: %w", write.Path, err)
 		}
