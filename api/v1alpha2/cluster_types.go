@@ -291,9 +291,10 @@ type ClusterSpec struct {
 	Bootstrap *ClusterBootstrapSpec `json:"bootstrap,omitempty"`
 
 	// Provider declares how the hub discovers this cluster and reaches it.
-	// The kind is one of the registered providers (outbound-agent,
-	// gcp-fleet, eks, aks-arc, rhacm, capi, kubeconfig). Parameters are
-	// provider-specific and opaque to Fleet core (StorageClass-style).
+	// The kind is an open provider name. Well-known built-ins include
+	// outbound-agent, gcp-fleet, gcp-connect-gateway, eks, aks-arc, rhacm,
+	// capi, and kubeconfig. Parameters are provider-specific and opaque to
+	// Fleet core (StorageClass-style).
 	//
 	// When unset, the hub falls back to the legacy behaviour of looking up
 	// a Secret-referenced kubeconfig from cluster annotations — kept for
@@ -305,8 +306,11 @@ type ClusterSpec struct {
 // ClusterProvider identifies the connectivity & identity model for a
 // cluster. See projects/kapro/specs/fleet-and-oci-delivery-core-spec §3.2.
 type ClusterProvider struct {
-	// Kind selects a registered provider implementation.
-	// +kubebuilder:validation:Enum=outbound-agent;gcp-fleet;gcp-connect-gateway;eks;aks-arc;rhacm;capi;kubeconfig
+	// Kind selects a registered provider implementation. The value space is
+	// intentionally open so platform teams can add discovery/auth providers
+	// without Kapro adding enum values.
+	// +kubebuilder:validation:Pattern=`^[a-z][a-z0-9-]{0,62}$`
+	// +kubebuilder:validation:MaxLength=63
 	Kind string `json:"kind"`
 	// Parameters are opaque, provider-specific key/value settings. Fleet
 	// core does not interpret them.

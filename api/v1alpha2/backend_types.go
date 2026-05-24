@@ -10,15 +10,34 @@ import (
 
 // BackendSpec registers a delivery backend profile that can be selected
 // by Fleet or Cluster delivery.backendRef.
-// +kubebuilder:validation:XValidation:rule="self.driver == \"external\" ? (has(self.pluginRef) && self.pluginRef != \"\") : (!has(self.pluginRef) || self.pluginRef == \"\")",message="pluginRef must be set when driver is external, and must be omitted otherwise"
+// +kubebuilder:validation:XValidation:rule="!(has(self.driver) && has(self.substrate))",message="set either deprecated driver/adapter/runtime or new substrate/execution, not both"
+// +kubebuilder:validation:XValidation:rule="has(self.driver) || has(self.substrate)",message="one of deprecated driver or substrate is required"
+// +kubebuilder:validation:XValidation:rule="(has(self.driver) && self.driver == \"external\") ? (has(self.pluginRef) && self.pluginRef != \"\") : true",message="pluginRef must be set when deprecated driver is external"
 type BackendSpec struct {
+	// Substrate identifies the open delivery domain and actuator implementation.
+	// New Backend objects should use substrate instead of driver/adapter.
+	// +optional
+	Substrate *BackendSubstrateSpec `json:"substrate,omitempty"`
+	// Execution selects the delivery topology for this backend profile.
+	// New Backend objects should use execution instead of runtime.
+	// +optional
+	Execution *BackendExecutionSpec `json:"execution,omitempty"`
 	// Driver identifies the backend implementation family.
-	Driver BackendDriver `json:"driver"`
-	// Adapter explicitly names the adapter implementation. When empty, Kapro
-	// derives the built-in adapter name from driver for compatibility.
+	//
+	// Deprecated compatibility field: use spec.substrate.kind. This field will
+	// be removed in v0.5.20.
+	// +optional
+	Driver BackendDriver `json:"driver,omitempty"`
+	// Adapter explicitly names the adapter implementation.
+	//
+	// Deprecated compatibility field: use spec.substrate.actuator. This field
+	// will be removed in v0.5.20.
 	// +optional
 	Adapter string `json:"adapter,omitempty"`
 	// Runtime identifies where this backend can run.
+	//
+	// Deprecated compatibility field: use spec.execution.mode. This field will
+	// be removed in v0.5.20.
 	// +kubebuilder:default="Both"
 	Runtime BackendRuntime `json:"runtime,omitempty"`
 	// PluginRef references a Plugin when driver=external.
@@ -61,10 +80,18 @@ type BackendDiscoverySpec struct {
 
 // BackendStatus records backend discovery and compatibility.
 type BackendStatus struct {
-	ObservedGeneration int64          `json:"observedGeneration,omitempty"`
-	Ready              bool           `json:"ready,omitempty"`
-	Driver             BackendDriver  `json:"driver,omitempty"`
-	Runtime            BackendRuntime `json:"runtime,omitempty"`
+	ObservedGeneration int64                 `json:"observedGeneration,omitempty"`
+	Ready              bool                  `json:"ready,omitempty"`
+	Substrate          *BackendSubstrateSpec `json:"substrate,omitempty"`
+	Execution          *BackendExecutionSpec `json:"execution,omitempty"`
+	// Driver mirrors the deprecated spec.driver compatibility field.
+	//
+	// Deprecated compatibility field: use status.substrate.kind.
+	Driver BackendDriver `json:"driver,omitempty"`
+	// Runtime mirrors the deprecated spec.runtime compatibility field.
+	//
+	// Deprecated compatibility field: use status.execution.mode.
+	Runtime BackendRuntime `json:"runtime,omitempty"`
 	// LastDiscoveryTime records when backend-native discovery last completed or
 	// failed for this profile.
 	// +optional
@@ -136,8 +163,8 @@ type DiscoveredBackendObject struct {
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=be,categories=kapro-all
-// +kubebuilder:printcolumn:name="Driver",type=string,JSONPath=`.spec.driver`
-// +kubebuilder:printcolumn:name="Runtime",type=string,JSONPath=`.spec.runtime`
+// +kubebuilder:printcolumn:name="Substrate",type=string,JSONPath=`.spec.substrate.kind`
+// +kubebuilder:printcolumn:name="Execution",type=string,JSONPath=`.spec.execution.mode`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
@@ -155,4 +182,77 @@ type BackendList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Backend `json:"items"`
+}
+
+// SubstrateKind returns the canonical delivery domain for this Backend.
+func (s BackendSpec) SubstrateKind() string {
+	if s.Substrate != nil && s.Substrate.Kind != "" {
+		return s.Substrate.Kind
+	}
+	return string(s.Driver)
+}
+
+// ActuatorName returns the canonical actuator implementation name.
+func (s BackendSpec) ActuatorName() string {
+	if s.Substrate != nil && s.Substrate.Actuator != "" {
+		return s.Substrate.Actuator
+	}
+	if s.Adapter != "" {
+		return s.Adapter
+	}
+	return DefaultActuatorForSubstrate(s.SubstrateKind())
+}
+
+// ExecutionMode returns the canonical delivery topology.
+func (s BackendSpec) ExecutionMode() ExecutionMode {
+	if s.Execution != nil && s.Execution.Mode != "" {
+		return s.Execution.Mode
+	}
+	switch s.Runtime {
+	case BackendRuntimeSpoke:
+		return ExecutionModeSpokePull
+	case BackendRuntimeHub:
+		return ExecutionModeHubPush
+	}
+	switch s.SubstrateKind() {
+	case string(BackendDriverFlux), string(BackendDriverOCI):
+		return ExecutionModeSpokePull
+	case string(BackendDriverExternal):
+		return ExecutionModeExternalPull
+	default:
+		return ExecutionModeHubPush
+	}
+}
+
+// CanonicalSubstrate returns a normalized substrate view for spec or status.
+func (s BackendSpec) CanonicalSubstrate() *BackendSubstrateSpec {
+	kind := s.SubstrateKind()
+	if kind == "" {
+		return nil
+	}
+	return &BackendSubstrateSpec{Kind: kind, Actuator: s.ActuatorName()}
+}
+
+// CanonicalExecution returns a normalized execution view for spec or status.
+func (s BackendSpec) CanonicalExecution() *BackendExecutionSpec {
+	mode := s.ExecutionMode()
+	if mode == "" {
+		return nil
+	}
+	return &BackendExecutionSpec{Mode: mode}
+}
+
+// DefaultActuatorForSubstrate returns the built-in actuator default for a
+// documented substrate kind. Unknown custom substrates resolve to their kind.
+func DefaultActuatorForSubstrate(kind string) string {
+	switch kind {
+	case string(BackendDriverArgo):
+		return "argo-cd"
+	case string(BackendDriverFlux):
+		return "flux"
+	case string(BackendDriverOCI):
+		return "oci"
+	default:
+		return kind
+	}
 }

@@ -49,6 +49,22 @@ const (
 	BackendRuntimeBoth  BackendRuntime = "Both"
 )
 
+// ExecutionMode identifies where and how Kapro invokes delivery.
+//
+// +kubebuilder:validation:Enum=hub-push;spoke-pull;external-pull
+type ExecutionMode string
+
+const (
+	// ExecutionModeHubPush means the Kapro hub invokes the actuator directly.
+	ExecutionModeHubPush ExecutionMode = "hub-push"
+	// ExecutionModeSpokePull means a cluster-side spoke pulls approved work and
+	// invokes the actuator near the target cluster.
+	ExecutionModeSpokePull ExecutionMode = "spoke-pull"
+	// ExecutionModeExternalPull means an external platform or plugin pulls
+	// approved Kapro decisions and reports status back.
+	ExecutionModeExternalPull ExecutionMode = "external-pull"
+)
+
 // BackendDriver identifies the backend implementation family.
 // +kubebuilder:validation:Enum=flux;argo;oci;external
 type BackendDriver string
@@ -64,6 +80,35 @@ const (
 	BackendDriverOCI      BackendDriver = "oci"
 	BackendDriverExternal BackendDriver = "external"
 )
+
+// OpenSubstrateKindPattern documents the DNS-style validation used for open
+// substrate and provider names. Kubebuilder markers carry the actual CRD rule.
+const OpenSubstrateKindPattern = `^[a-z][a-z0-9-]{0,62}$`
+
+// BackendSubstrateSpec identifies a delivery domain and the actuator that
+// implements it. Kind is intentionally open: built-ins such as argo, flux, oci,
+// and webhook are documented well-known values, while platform teams can
+// register their own kinds such as hello-world or company-paas.
+type BackendSubstrateSpec struct {
+	// Kind is the open delivery domain/category.
+	// +kubebuilder:validation:Pattern=`^[a-z][a-z0-9-]{0,62}$`
+	// +kubebuilder:validation:MaxLength=63
+	Kind string `json:"kind"`
+	// Actuator names the concrete Kapro actuator/plugin implementation. When
+	// empty, Kapro derives the default actuator for well-known built-ins from
+	// kind; custom substrates normally set this explicitly.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^[a-z][a-z0-9-]{0,62}$`
+	// +kubebuilder:validation:MaxLength=63
+	Actuator string `json:"actuator,omitempty"`
+}
+
+// BackendExecutionSpec selects the topology for this backend profile.
+type BackendExecutionSpec struct {
+	// Mode identifies where and how delivery is invoked.
+	// +kubebuilder:default="hub-push"
+	Mode ExecutionMode `json:"mode"`
+}
 
 // DeliverySpec selects a backend-neutral delivery profile for a cluster or fleet.
 // Backend-specific resource names live in parameters and are interpreted only by

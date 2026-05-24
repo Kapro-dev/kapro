@@ -522,25 +522,22 @@ spec:
                       provider:
                         description: |-
                           Provider declares how the hub discovers this cluster and reaches it.
-                          The kind is one of the registered providers (outbound-agent,
-                          gcp-fleet, eks, aks-arc, rhacm, capi, kubeconfig). Parameters are
-                          provider-specific and opaque to Fleet core (StorageClass-style).
+                          The kind is an open provider name. Well-known built-ins include
+                          outbound-agent, gcp-fleet, gcp-connect-gateway, eks, aks-arc, rhacm,
+                          capi, and kubeconfig. Parameters are provider-specific and opaque to
+                          Fleet core (StorageClass-style).
 
                           When unset, the hub falls back to the legacy behaviour of looking up
                           a Secret-referenced kubeconfig from cluster annotations — kept for
                           backwards compatibility while existing Cluster objects migrate.
                         properties:
                           kind:
-                            description: Kind selects a registered provider implementation.
-                            enum:
-                            - outbound-agent
-                            - gcp-fleet
-                            - gcp-connect-gateway
-                            - eks
-                            - aks-arc
-                            - rhacm
-                            - capi
-                            - kubeconfig
+                            description: |-
+                              Kind selects a registered provider implementation. The value space is
+                              intentionally open so platform teams can add discovery/auth providers
+                              without Kapro adding enum values.
+                            maxLength: 63
+                            pattern: ^[a-z][a-z0-9-]{0,62}$
                             type: string
                           parameters:
                             additionalProperties:

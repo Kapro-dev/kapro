@@ -7,6 +7,28 @@ record for each tag.
 
 ## Unreleased
 
+### Added — open substrate Backend API foundation
+
+`Backend.spec.substrate` and `Backend.spec.execution` introduce the
+backend-neutral public shape for custom delivery substrates. `substrate.kind`
+is an open DNS-style string so platform teams can register domains such as
+`hello-world` or `company-paas` without Kapro adding enum values. The older
+`driver`, `adapter`, and `runtime` fields remain accepted as deprecated
+compatibility aliases during the v0.x migration window.
+
+### Added — minimal actuator BoolFunc
+
+`pkg/kapro/actuator.NewBoolFunc` adapts a tiny
+`(ctx, req) -> (bool, message, error)` function to the in-process actuator
+interface for examples and tests. A new `examples/actuator-hello-world` sample
+shows a custom substrate Backend and matching Go actuator.
+
+### Changed — Cluster provider kinds are open strings
+
+`Cluster.spec.provider.kind` now uses the same DNS-style open string validation
+as substrates instead of a closed enum, preserving built-in values while
+allowing platform-owned provider plugins.
+
 ### Added — static ClusterTemplate discovery
 
 `ClusterTemplate.spec.source.static` now imports operator-supplied kubeconfig

@@ -90,6 +90,7 @@ For existing GitOps repositories:
 	root.AddCommand(newReconstructCmd())
 	root.AddCommand(newVerifyCmd())
 	root.AddCommand(newDoctorCmd())
+	root.AddCommand(newMigrateCmd())
 	root.AddCommand(newApproveCmd())
 	root.AddCommand(newRejectCmd())
 	root.AddCommand(newRollbackCmd())
