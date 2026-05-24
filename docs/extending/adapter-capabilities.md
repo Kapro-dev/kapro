@@ -13,7 +13,7 @@ operations should be explicit metadata, not routine runtime errors.
 | `SupportsApply` | The adapter can move a target toward a requested version. |
 | `SupportsObserve` | The adapter can report convergence without changing backend state. |
 | `SupportsRollback` | The adapter has a direct rollback operation. |
-| `SupportsDiscover` | The adapter can discover backend-native objects for brownfield adoption. |
+| `SupportsDiscover` | The adapter can discover backend-native objects for existing GitOps adoption. |
 | `SupportsDryRun` | The adapter can validate an operation without persisting changes. |
 | `SupportsBackendIO` | The adapter can surface backend-native object status for Target status. |
 

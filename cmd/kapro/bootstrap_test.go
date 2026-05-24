@@ -15,7 +15,7 @@ func TestBootstrapGuideExplainsAdoptionPaths(t *testing.T) {
 		"kapro quickstart flux ./promotion-repo --name checkout",
 		"kapro adopt argo . --out ./kapro-connect --name checkout",
 		"pull: each cluster pulls desired state",
-		"brownfield starts in Observe mode",
+		"existing GitOps adoption starts in Observe mode",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("guide missing %q:\n%s", want, got)

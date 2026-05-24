@@ -281,5 +281,8 @@ A conformant substrate should pass tests that verify:
   state.
 
 The conformance suite is the enforcement mechanism for this spec. The first
-reference classes are `kubernetes-apply`, `argo-cd`, `flux`, `oci`, and
-`webhook`.
+`0.6.0` reference classes are `kubernetes-apply`, `argo-cd`, and `flux`.
+The suite may start as an internal Go test contract; a public
+`kapro substrate conformance <class>` CLI is later `0.7.x` work. OCI, webhook,
+pipeline, platform, and custom API classes remain valid extension families once
+they can pass the same contract.

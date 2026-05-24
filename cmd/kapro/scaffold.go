@@ -51,7 +51,7 @@ Examples:
 func newConnectCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "connect",
-		Short: "Scaffold brownfield connect manifests",
+		Short: "Scaffold observe-first connect manifests",
 		Long: `Scaffolds observe-first Backend manifests for existing Argo CD
 or Flux installations. Observe mode discovers existing backend objects without
 taking over writes.
@@ -598,7 +598,7 @@ Kapro coordinates promotion. The %s backend owns local sync and rollout mechanic
 }
 
 func renderConnectReadme(opts connectOptions) string {
-	return fmt.Sprintf(`# Kapro %s Brownfield Connection
+	return fmt.Sprintf(`# Kapro %s Existing GitOps Connection
 
 This scaffold starts in observe mode. Kapro discovers existing %s objects and
 reports them through Backend status without taking over writes.

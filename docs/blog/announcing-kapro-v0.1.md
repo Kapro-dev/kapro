@@ -57,10 +57,10 @@ Kapro is backend-neutral. A fleet can use Flux, Argo CD, OCI pull delivery, or a
 custom plugin. That lets a platform team adopt Kapro without forcing every
 application team to change its local deployment controller first.
 
-For brownfield environments, Kapro should be introduced as the promotion layer
-around what already works. Keep existing GitOps reconciliation where it is.
-Start by modeling the fleet, plan, and promotion intent. Then connect delivery
-drivers where they provide value.
+For existing platform environments, Kapro should be introduced as the promotion
+layer around what already works. Keep existing GitOps reconciliation where it
+is. Start by modeling the fleet, plan, and promotion intent. Then connect
+delivery drivers where they provide value.
 
 ## What v0.1 includes
 

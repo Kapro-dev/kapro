@@ -60,6 +60,9 @@ or implement in-cluster traffic shifting. Those jobs stay with CI, Helm,
 Kustomize, Flux, Argo CD, Argo Rollouts, service mesh controllers, or custom
 platform tooling.
 
+Permanent non-goals: Kapro is not a Helm registry, CI runner, manifest store,
+cluster provisioner, or secret store.
+
 ## Core Concepts
 
 | Kind | Role |
@@ -88,7 +91,7 @@ for the architectural comparison.
 
 Kapro is backend-neutral. A fleet can mix delivery styles by cluster:
 
-- **Flux or Argo CD brownfield:** discover existing apps first, review the
+- **Existing Flux or Argo CD:** discover existing apps first, review the
   generated mappings, then opt selected objects into managed promotion.
 - **OCI pull mode:** spoke clusters pull artifacts from inside their own network
   boundary and report status back to the hub.
@@ -115,12 +118,12 @@ kapro bootstrap guide
 kapro quickstart flux ./promotion-repo --name checkout
 kapro quickstart argo ./promotion-repo --name checkout
 kapro bootstrap greenfield ./promotion-repo --backend flux --mode pull --name checkout
-kapro bootstrap brownfield argo . --out ./kapro-connect --name checkout
-kapro bootstrap brownfield flux . --out ./kapro-connect --name checkout
+kapro adopt argo . --out ./kapro-connect --name checkout
+kapro adopt flux . --out ./kapro-connect --name checkout
 ```
 
-See the [Adoption Guide](docs/getting-started/adoption.md) for the greenfield and brownfield
-decision tree.
+See the [Adoption Guide](docs/getting-started/adoption.md) for the greenfield
+and existing GitOps decision tree.
 
 ## Quick Start
 
@@ -183,8 +186,8 @@ Start at [kapro.dev](https://kapro.dev) or use these repo docs:
 
 Deeper references:
 
-- [Argo Brownfield Migration](docs/migration/argo-migration.md)
-- [Flux Brownfield Migration](docs/migration/flux-migration.md)
+- [Argo CD Existing GitOps Migration](docs/migration/argo-migration.md)
+- [Flux Existing GitOps Migration](docs/migration/flux-migration.md)
 - [RBAC and Tenancy](docs/operations/rbac-tenancy.md)
 - [Monitoring](docs/operations/monitoring.md)
 - [Extension Model](docs/extending/extension-model.md)

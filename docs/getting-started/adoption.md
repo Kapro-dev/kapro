@@ -12,8 +12,8 @@ agents, or plugins still own local reconciliation.
 |---|---|---|
 | New platform repo, Flux or spoke pull delivery | `kapro quickstart flux ./promotion-repo --name checkout` | Backend, clusters, Fleet, Plan, Promotion, and Flux starter files. |
 | New platform repo, Argo CD Applications already planned | `kapro quickstart argo ./promotion-repo --name checkout` | Backend, clusters, Fleet, Plan, Promotion, and Argo starter Application. |
-| Existing Argo CD repo | `kapro bootstrap brownfield argo . --out ./kapro-connect --name checkout` | Observe-mode Backend, Source mappings, and discovery reports. |
-| Existing Flux repo | `kapro bootstrap brownfield flux . --out ./kapro-connect --name checkout` | Observe-mode Backend, Source mappings, and discovery reports. |
+| Existing Argo CD repo | `kapro adopt argo . --out ./kapro-connect --name checkout` | Observe-mode Backend, Source mappings, and discovery reports. |
+| Existing Flux repo | `kapro adopt flux . --out ./kapro-connect --name checkout` | Observe-mode Backend, Source mappings, and discovery reports. |
 | Outbound-only clusters without Flux or Argo CD | `kapro quickstart oci ./promotion-repo --name checkout` | OCI Backend, clusters, Fleet, Plan, and Promotion skeleton. |
 
 Use `kapro bootstrap guide` when you want the same decision tree in the
@@ -70,14 +70,14 @@ kubectl get fleets,plans,promotions,promotionruns,targets
 The user-authored object is `Promotion`. The controller creates
 `PromotionRun` and `Target` records.
 
-## Brownfield Flow
+## Existing GitOps Adoption Flow
 
-Brownfield means Argo CD or Flux already owns applications, credentials, and
+Use this when Argo CD or Flux already owns applications, credentials, and
 reconciliation. Kapro should start by observing and producing reviewable
-mappings.
+mappings; it should not take over writes during the first command.
 
 ```bash
-kapro bootstrap brownfield argo . \
+kapro adopt argo . \
   --out ./kapro-connect \
   --name checkout \
   --namespace argocd \
@@ -87,7 +87,7 @@ kapro bootstrap brownfield argo . \
 or:
 
 ```bash
-kapro bootstrap brownfield flux . \
+kapro adopt flux . \
   --out ./kapro-connect \
   --name checkout \
   --namespace flux-system \
@@ -116,8 +116,8 @@ registered adapter cannot complete discovery. Use `--dry-run=client` with
 
 ## Promotion Flow
 
-After greenfield scaffolding or brownfield mapping review, promotion looks the
-same:
+After greenfield scaffolding or existing GitOps mapping review, promotion looks
+the same:
 
 ```bash
 kapro promote checkout --version v1.2.3
@@ -130,7 +130,7 @@ stamps immutable `PromotionRun` attempts and per-target `Target` records.
 
 ## Safety Defaults
 
-- Brownfield output starts in `Observe`, not `Adopt`.
+- Existing GitOps adoption output starts in `Observe`, not `Adopt`.
 - Discovery scans tracked Git files and is bounded by file and unit limits.
 - Git-native writes require explicit `kapro source apply`; Kapro does not push
   unless `--commit --push` is set.
@@ -166,4 +166,4 @@ scripts/verify-install.sh flux-e2e
 ```
 
 The E2E scripts are heavier than the first 10-minute path. Use them before
-claiming a production brownfield mapping is ready.
+claiming a production existing-GitOps mapping is ready.

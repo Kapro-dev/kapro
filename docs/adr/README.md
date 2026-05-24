@@ -22,6 +22,7 @@ relitigating it.
 | [0014](0014-composable-gates.md) | Composable gates scaffold | Accepted |
 | [0015](0015-promotionrun-retention.md) | PromotionRun retention | Accepted |
 | [0016](0016-substrate-class-config-contract.md) | Substrate class and typed config contract | Accepted |
+| [0017](0017-promotion-control-plane-for-any-delivery-substrate.md) | Promotion control plane for any delivery substrate | Accepted |
 
 ## Adding a new ADR
 

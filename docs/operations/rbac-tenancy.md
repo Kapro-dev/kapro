@@ -150,7 +150,7 @@ them with admission checks for team and environment ownership.
 
 ## Backend Observe and Adopt RBAC
 
-Brownfield backends should use different permissions for discovery and
+Existing GitOps backends should use different permissions for discovery and
 promotion writes. The example roles in
 `examples/rbac/backend-observe-adopt-roles.yaml` split those surfaces:
 

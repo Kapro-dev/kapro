@@ -72,8 +72,8 @@ nav:
   - Migration:
       - v1alpha1 to v1alpha2 Migration: migration/migration-v1alpha1-to-v1alpha2.md
       - v0.4 to v0.5 Field Migration: migration/v0.4-to-v0.5-fields.md
-      - Argo Brownfield Migration: migration/argo-migration.md
-      - Flux Brownfield Migration: migration/flux-migration.md
+      - Argo CD Existing GitOps Migration: migration/argo-migration.md
+      - Flux Existing GitOps Migration: migration/flux-migration.md
       - Discovery Troubleshooting: migration/discovery-troubleshooting.md
   - Extending Kapro:
       - Extension Model: extending/extension-model.md
@@ -108,3 +108,4 @@ nav:
       - Composable Gates: adr/0014-composable-gates.md
       - PromotionRun Retention: adr/0015-promotionrun-retention.md
       - Substrate Class And Config: adr/0016-substrate-class-config-contract.md
+      - Promotion Control Plane: adr/0017-promotion-control-plane-for-any-delivery-substrate.md

@@ -6,8 +6,8 @@ you want a fully local scripted environment; use this page when you already
 have a Kubernetes cluster and want to apply the smallest useful hub
 configuration yourself. For a fully scripted local cluster, use the
 [Kind demo](https://github.com/Kapro-dev/kapro/tree/main/examples/kind-demo).
-If you are deciding between Flux, Argo CD, OCI, or brownfield adoption first,
-start with the [Adoption Guide](adoption.md).
+If you are deciding between Flux, Argo CD, OCI, or existing GitOps adoption
+first, start with the [Adoption Guide](adoption.md).
 
 ## 1. Install The Operator
 
@@ -124,6 +124,6 @@ KAPRO_CI_QUICKSTARTS=flux,argo,oci scripts/ci-kind-smoke.sh
 
 - Argo CD greenfield path: [Argo CD Quickstart](quickstart-argo.md).
 - OCI-only greenfield path: [OCI Quickstart](quickstart-oci.md).
-- Existing Argo CD users: [Argo Brownfield Migration](../migration/argo-migration.md).
-- Existing Flux users: [Flux Brownfield Migration](../migration/flux-migration.md).
+- Existing Argo CD users: [Argo CD Existing GitOps Migration](../migration/argo-migration.md).
+- Existing Flux users: [Flux Existing GitOps Migration](../migration/flux-migration.md).
 - Discovery or needs-review issues: [Discovery Troubleshooting](../migration/discovery-troubleshooting.md).

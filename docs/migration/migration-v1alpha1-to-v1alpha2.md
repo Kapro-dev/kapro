@@ -217,4 +217,4 @@ kubectl get fleets,clusters,plans,promotions,promotionruns,targets
   and `spec/kpi/v1alpha1` are separate extension contracts. They did not move
   with the Kapro CRD API.
 - Discovery map `schemaVersion: kapro.io/git-adoption/v1alpha1` is a separate
-  brownfield import file format, not a Kapro CRD `apiVersion`.
+  existing-repo import file format, not a Kapro CRD `apiVersion`.

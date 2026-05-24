@@ -256,7 +256,7 @@ func run() error {
 	//            applies them via the two-phase apply engine. Greenfield.
 	//   - flux — internal/spokeprovider/flux: observes local Flux
 	//            OCIRepository / HelmRelease status and reports back to the
-	//            hub. Brownfield (Flux already installed on the spoke).
+	//            hub when Flux is already installed on the spoke.
 	// External drivers are loaded via PluginRegistration + the plugin
 	// gateway when KAPRO_ENABLE_PLUGIN_GATEWAY=true.
 	registry := spokeprovider.NewRegistry()

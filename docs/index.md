@@ -14,8 +14,8 @@ Which clusters are allowed to receive this artifact version now, and why?
 
 - [Concepts](concepts/concepts.md) explains the API objects and lifecycle.
 - [Install](getting-started/install.md) shows the supported operator install paths.
-- [Adoption Guide](getting-started/adoption.md) helps choose greenfield, Argo brownfield,
-  Flux brownfield, or OCI pull mode.
+- [Adoption Guide](getting-started/adoption.md) helps choose greenfield,
+  existing Argo CD, existing Flux, or OCI pull mode.
 - [Adoption CLI](getting-started/adoption-cli.md) shows the guided `kapro quickstart`,
   `kapro sample`, `kapro doctor`, and `kapro explain` paths.
 - [First Promotion in 10 Minutes](getting-started/first-promotion-10min.md) is the shortest

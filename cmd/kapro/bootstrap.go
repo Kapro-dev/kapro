@@ -16,8 +16,8 @@ func newBootstrapCmd() *cobra.Command {
 		Long: `Bootstrap is the guided entrypoint for adopting Kapro.
 
 Use greenfield when Kapro should create a new promotion repository shape.
-Use brownfield when Argo CD or Flux already owns delivery and Kapro should
-start in observe-first mode with reviewable mappings.`,
+Use adopt when Argo CD or Flux already owns delivery and Kapro should start in
+observe-first mode with reviewable mappings.`,
 	}
 	cmd.AddCommand(newBootstrapGuideCmd())
 	cmd.AddCommand(newBootstrapGreenfieldCmd())
@@ -59,8 +59,8 @@ func printBootstrapGuide(out io.Writer) {
    kapro quickstart oci ./promotion-repo --name checkout
 
 Safe default:
-  brownfield starts in Observe mode. Review generated Backend, Source, and
-  discovery reports before switching any Backend to Adopt.
+  existing GitOps adoption starts in Observe mode. Review generated Backend,
+  Source, and discovery reports before switching any Backend to Adopt.
 
 Delivery modes in plain language:
   pull: each cluster pulls desired state from inside its own network boundary.
@@ -148,7 +148,8 @@ for an existing Argo CD or Flux repository.
 The command does not mutate live backend objects and does not push Git changes.
 Review the generated files before granting Adopt permissions or running
 kapro source apply.`,
-		Args: cobra.RangeArgs(1, 2),
+		Deprecated: "use 'kapro adopt argo' or 'kapro adopt flux' instead",
+		Args:       cobra.RangeArgs(1, 2),
 		RunE: func(_ *cobra.Command, args []string) error {
 			opts.Backend = strings.ToLower(args[0])
 			opts.RepoPath = "."

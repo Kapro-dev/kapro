@@ -1,4 +1,4 @@
-# Flux Brownfield Migration
+# Flux Existing GitOps Migration
 
 This guide is for teams that already run Flux with GitRepository,
 OCIRepository, Kustomization, and HelmRelease objects.
@@ -28,9 +28,9 @@ platform-gitops/
     promotions/
 ```
 
-Greenfield users can still use `kapro init --backend flux`. Brownfield users
-should label existing Flux objects and add only the Kapro metadata needed for
-promotion.
+Greenfield users can still use `kapro init --backend flux`. Existing-estate
+users should label existing Flux objects and add only the Kapro metadata needed
+for promotion.
 
 ## Step 1: Label Selected Flux Objects
 
@@ -50,10 +50,10 @@ GitRepository or OCIRepository too. Kapro does not need source credentials.
 
 ## Step 2: Generate An Observe Profile
 
-Use the guided brownfield bootstrap first:
+Use observe-first adoption first:
 
 ```bash
-kapro bootstrap brownfield flux . \
+kapro adopt flux . \
   --out ./kapro-connect \
   --name checkout \
   --namespace flux-system \
@@ -198,7 +198,7 @@ generates the mapping before applying it.
 
 ## Live Flux Controller E2E
 
-Before calling a Flux brownfield path release-ready, also run:
+Before calling a Flux existing-repo path release-ready, also run:
 
 ```bash
 scripts/verify-install.sh flux-e2e

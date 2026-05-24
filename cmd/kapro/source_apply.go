@@ -35,7 +35,7 @@ func newSourceApplyCmd() *cobra.Command {
 		Short: "Apply Source version mappings to a Git checkout",
 		Long: `Updates repo-native YAML or JSON version fields from a Source.
 
-This is the Git-native brownfield path: Kapro writes only explicitly mapped
+This is the Git-native existing-repo path: Kapro writes only explicitly mapped
 fields, then users review and commit the Git diff. If a mapping expands to
 multiple files, pass --include for the intended file(s), or --all when the same
 revision must be applied to every matched file.`,

@@ -28,7 +28,7 @@ type adoptAdapterOptions struct {
 func newAdoptCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "adopt",
-		Short: "Generate brownfield adoption mappings",
+		Short: "Generate existing GitOps adoption mappings",
 		Long: `Adoption commands generate observe-first Kapro mappings from
 existing backend-native GitOps repositories: a read-only Backend, Source units,
 and discovery reports. They do not mutate live backend objects; switching a

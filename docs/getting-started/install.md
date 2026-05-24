@@ -45,7 +45,7 @@ The remaining Helm examples use the same `KAPRO_CHART` value.
 ## CLI
 
 The operator can be used with `kubectl` alone. Install the CLI when you want
-guided repository scaffolding, brownfield discovery, promotion creation, or
+guided repository scaffolding, existing-repo discovery, promotion creation, or
 diagnostics:
 
 ```bash
@@ -162,14 +162,14 @@ kapro bootstrap guide
 ```
 
 The same paths are documented in the [Adoption Guide](adoption.md), including
-observe-first Argo CD and Flux brownfield onboarding.
+observe-first Argo CD and Flux existing-repo onboarding.
 
 ## Static Fleet Import
 
 Use `ClusterTemplate.spec.source.static` when clusters are already known and
 represented by kubeconfig Secrets instead of a cloud fleet API. This is the
-lowest-friction path for on-prem, edge, and brownfield environments while AWS,
-Azure, RHACM, and CAPI discoverers remain preview stubs.
+lowest-friction path for on-prem, edge, and existing platform environments
+while AWS, Azure, RHACM, and CAPI discoverers remain preview stubs.
 
 ```bash
 kubectl apply -f examples/static-clustertemplate.yaml
