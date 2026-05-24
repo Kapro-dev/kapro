@@ -10,14 +10,17 @@ agents, or plugins still own local reconciliation.
 
 | Situation | Start with | What Kapro creates |
 |---|---|---|
-| New platform repo, Flux or spoke pull delivery | `kapro bootstrap greenfield ./promotion-repo --backend flux --mode pull --name checkout` | Backend, clusters, Fleet, Plan, Promotion, and Flux starter files. |
-| New platform repo, Argo CD Applications already planned | `kapro bootstrap greenfield ./promotion-repo --backend argo --mode push --name checkout` | Backend, clusters, Fleet, Plan, Promotion, and Argo starter Application. |
+| New platform repo, Flux or spoke pull delivery | `kapro quickstart flux ./promotion-repo --name checkout` | Backend, clusters, Fleet, Plan, Promotion, and Flux starter files. |
+| New platform repo, Argo CD Applications already planned | `kapro quickstart argo ./promotion-repo --name checkout` | Backend, clusters, Fleet, Plan, Promotion, and Argo starter Application. |
 | Existing Argo CD repo | `kapro bootstrap brownfield argo . --out ./kapro-connect --name checkout` | Observe-mode Backend, Source mappings, and discovery reports. |
 | Existing Flux repo | `kapro bootstrap brownfield flux . --out ./kapro-connect --name checkout` | Observe-mode Backend, Source mappings, and discovery reports. |
-| Outbound-only clusters without Flux or Argo CD | `kapro bootstrap greenfield ./promotion-repo --backend oci --mode pull --name checkout` | OCI Backend, clusters, Fleet, Plan, and Promotion skeleton. |
+| Outbound-only clusters without Flux or Argo CD | `kapro quickstart oci ./promotion-repo --name checkout` | OCI Backend, clusters, Fleet, Plan, and Promotion skeleton. |
 
 Use `kapro bootstrap guide` when you want the same decision tree in the
 terminal.
+
+For the adoption-first CLI tour, including `kapro sample`, `kapro doctor`, and
+`kapro explain`, see [Adoption CLI](adoption-cli.md).
 
 Install the source-built CLI first when you are not working from a local
 checkout. Bootstrap is available on `main`; use a tagged CLI release here once
@@ -39,6 +42,12 @@ kapro bootstrap greenfield ./promotion-repo \
   --backend flux \
   --mode pull \
   --name checkout
+```
+
+The shorter equivalent is:
+
+```bash
+kapro quickstart flux ./promotion-repo --name checkout
 ```
 
 The generated repository has the first-use objects in dependency order:

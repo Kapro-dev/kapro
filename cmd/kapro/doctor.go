@@ -115,6 +115,7 @@ func collectDoctorReport(ctx context.Context, c client.Client, opts doctorOption
 	findings = append(findings, checkConversionWebhookConfig(ctx, c))
 	findings = append(findings, checkPullSecrets(ctx, c, opts.Namespace))
 	findings = append(findings, checkDeprecatedAPIFields(ctx, c))
+	findings = append(findings, checkGitOpsBackends(ctx, c))
 	report := doctorReport{Overall: doctorStatusPass, Checks: findings}
 	if countDoctorFailures(report) > 0 {
 		report.Overall = doctorStatusFail
@@ -472,6 +473,66 @@ func checkPullSecrets(ctx context.Context, c client.Client, namespace string) do
 		return doctorFinding{Name: "pull-secrets", Status: doctorStatusFail, Message: "referenced private registry pull secrets are missing", Details: missing}
 	}
 	return doctorFinding{Name: "pull-secrets", Status: doctorStatusPass, Message: fmt.Sprintf("%d referenced pull secret(s) exist", len(refs))}
+}
+
+func checkGitOpsBackends(ctx context.Context, c client.Client) doctorFinding {
+	var backends kaprov1alpha2.BackendList
+	if err := c.List(ctx, &backends); err != nil && !apierrors.IsNotFound(err) {
+		return doctorFinding{Name: "gitops-backends", Status: doctorStatusWarn, Message: "could not list Kapro Backend objects", Details: []string{err.Error()}}
+	}
+	if len(backends.Items) == 0 {
+		return doctorFinding{
+			Name:    "gitops-backends",
+			Status:  doctorStatusSkip,
+			Message: "no Backend objects found yet; start with `kapro quickstart flux` or `kapro adopt argo|flux`",
+		}
+	}
+	var details, namespaceWarnings []string
+	for _, backend := range backends.Items {
+		driver := string(backend.Spec.Driver)
+		runtime := string(backend.Spec.Runtime)
+		if runtime == "" {
+			runtime = string(kaprov1alpha2.BackendRuntimeBoth)
+		}
+		mode := "configured"
+		if backend.Spec.Discovery != nil && backend.Spec.Discovery.Enabled {
+			mode = "observe"
+			if backend.Spec.Discovery.ManagementPolicy != "" {
+				mode = strings.ToLower(backend.Spec.Discovery.ManagementPolicy)
+			}
+		}
+		namespace := strings.TrimSpace(backend.Spec.Parameters["namespace"])
+		if namespace == "" {
+			namespace = defaultBackendNamespace(driver)
+		}
+		details = append(details, fmt.Sprintf("%s driver=%s runtime=%s mode=%s namespace=%s", backend.Name, driver, runtime, mode, namespace))
+		if driver == string(kaprov1alpha2.BackendDriverArgo) || driver == string(kaprov1alpha2.BackendDriverFlux) {
+			var ns corev1.Namespace
+			if err := c.Get(ctx, types.NamespacedName{Name: namespace}, &ns); err != nil {
+				if apierrors.IsNotFound(err) {
+					namespaceWarnings = append(namespaceWarnings, fmt.Sprintf("%s references missing namespace %s", backend.Name, namespace))
+				} else {
+					namespaceWarnings = append(namespaceWarnings, fmt.Sprintf("%s namespace check failed: %v", backend.Name, err))
+				}
+			}
+		}
+	}
+	sort.Strings(details)
+	sort.Strings(namespaceWarnings)
+	if len(namespaceWarnings) > 0 {
+		return doctorFinding{
+			Name:    "gitops-backends",
+			Status:  doctorStatusWarn,
+			Message: "some Argo/Flux backend namespaces are not present",
+			Details: append(limitDetails(namespaceWarnings, 8), limitDetails(details, 8)...),
+		}
+	}
+	return doctorFinding{
+		Name:    "gitops-backends",
+		Status:  doctorStatusPass,
+		Message: fmt.Sprintf("%d Backend object(s) configured", len(backends.Items)),
+		Details: limitDetails(details, 12),
+	}
 }
 
 type doctorSecretRef struct {

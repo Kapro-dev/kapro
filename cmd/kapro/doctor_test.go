@@ -116,6 +116,53 @@ func TestDoctorReportHonorsTriggerSecretNamespace(t *testing.T) {
 	}
 }
 
+func TestDoctorReportSummarizesGitOpsBackends(t *testing.T) {
+	backend := &kaprov1alpha2.Backend{
+		ObjectMeta: metav1.ObjectMeta{Name: "flux"},
+		Spec: kaprov1alpha2.BackendSpec{
+			Driver:  kaprov1alpha2.BackendDriverFlux,
+			Runtime: kaprov1alpha2.BackendRuntimeHub,
+			Parameters: map[string]string{
+				"namespace": "flux-system",
+			},
+			Discovery: &kaprov1alpha2.BackendDiscoverySpec{Enabled: true, ManagementPolicy: "Observe"},
+		},
+	}
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "flux-system"}}
+	c := fakeDoctorClient(t, append(append(healthyDoctorObjects(), validatingWebhookObjects()...), backend, ns)...)
+	report := collectDoctorReport(context.Background(), c, doctorOptions{
+		Namespace:  "kapro-system",
+		Deployment: "kapro-kapro-operator",
+	}, allowAllSAR)
+
+	backends := findDoctorCheck(report, "gitops-backends")
+	if backends.Status != doctorStatusPass || !strings.Contains(strings.Join(backends.Details, ","), "driver=flux") {
+		t.Fatalf("expected passing gitops backend summary, got %#v", backends)
+	}
+}
+
+func TestDoctorReportWarnsOnMissingGitOpsNamespace(t *testing.T) {
+	backend := &kaprov1alpha2.Backend{
+		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
+		Spec: kaprov1alpha2.BackendSpec{
+			Driver: kaprov1alpha2.BackendDriverArgo,
+			Parameters: map[string]string{
+				"namespace": "argocd",
+			},
+		},
+	}
+	c := fakeDoctorClient(t, append(append(healthyDoctorObjects(), validatingWebhookObjects()...), backend)...)
+	report := collectDoctorReport(context.Background(), c, doctorOptions{
+		Namespace:  "kapro-system",
+		Deployment: "kapro-kapro-operator",
+	}, allowAllSAR)
+
+	backends := findDoctorCheck(report, "gitops-backends")
+	if backends.Status != doctorStatusWarn || !strings.Contains(strings.Join(backends.Details, ","), "missing namespace argocd") {
+		t.Fatalf("expected missing namespace warning, got %#v", backends)
+	}
+}
+
 func TestDoctorReportFailsTriggerSecretWithoutNamespace(t *testing.T) {
 	trigger := &kaprov1alpha2.Trigger{
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout-trigger"},

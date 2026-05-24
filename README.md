@@ -98,8 +98,10 @@ Kapro is backend-neutral. A fleet can mix delivery styles by cluster:
   `Plugin` after they pass the conformance harness.
 
 Run [First Promotion in 10 Minutes](docs/getting-started/first-promotion-10min.md) first to
-see the API lifecycle, then use [Backends](docs/concepts/backends.md) when deciding how
-Kapro should connect to existing delivery systems.
+see the API lifecycle, or start with the [Adoption CLI](docs/getting-started/adoption-cli.md)
+when you want `kapro quickstart`, `kapro sample`, `kapro doctor`, and
+`kapro explain` as the guided path. Use [Backends](docs/concepts/backends.md) when
+deciding how Kapro should connect to existing delivery systems.
 
 For guided repository setup, use the source-built bootstrap CLI from `main`
 until the bootstrap command is included in a tagged CLI release:
@@ -110,6 +112,8 @@ cd kapro
 make build
 export PATH="$PWD/bin:$PATH"
 kapro bootstrap guide
+kapro quickstart flux ./promotion-repo --name checkout
+kapro quickstart argo ./promotion-repo --name checkout
 kapro bootstrap greenfield ./promotion-repo --backend flux --mode pull --name checkout
 kapro bootstrap brownfield argo . --out ./kapro-connect --name checkout
 kapro bootstrap brownfield flux . --out ./kapro-connect --name checkout
@@ -166,6 +170,7 @@ Start at [kapro.dev](https://kapro.dev) or use these repo docs:
 - [Concepts](docs/concepts/concepts.md)
 - [Install](docs/getting-started/install.md)
 - [Adoption Guide](docs/getting-started/adoption.md)
+- [Adoption CLI](docs/getting-started/adoption-cli.md)
 - [First Promotion in 10 Minutes](docs/getting-started/first-promotion-10min.md)
 - [Kind Demo](examples/kind-demo/README.md)
 - [Backends](docs/concepts/backends.md)

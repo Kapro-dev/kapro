@@ -3,11 +3,14 @@
 // Usage:
 //
 //	kapro bootstrap guide
+//	kapro quickstart flux ./promotion-repo --name checkout
 //	kapro bootstrap greenfield ./promotion-repo --backend flux --mode pull --name checkout
+//	kapro bootstrap argo ./promotion-repo --name checkout
 //	kapro bootstrap brownfield argo . --out ./kapro-connect --name checkout
 //	kapro init ./promotion-repo --backend flux --mode pull --name checkout
 //	kapro promote <fleet> --version <version>
 //	kapro diag <promotion>
+//	kapro explain <promotionrun>
 //	kapro get promotionruns
 //	kapro get targets
 //	kapro approve <promotionrun>/<target> [--comment text]
@@ -59,19 +62,26 @@ func main() {
 Pass versions forward across targets, clusters, and waves.
 
 Start here:
+  kapro quickstart flux ./promotion-repo --name checkout
   kapro bootstrap guide
+  kapro doctor
   kapro bootstrap greenfield ./promotion-repo --backend flux --mode pull --name checkout
   kapro promote checkout --version v1.2.3
-  kapro diag checkout-v1-2-3
+  kapro explain checkout-v1-2-3
 
 For existing GitOps repositories:
-  kapro bootstrap brownfield argo . --out ./kapro-connect --name checkout
-  kapro bootstrap brownfield flux . --out ./kapro-connect --name checkout`,
+  kapro adopt argo . --out ./kapro-connect --name checkout
+  kapro adopt flux . --out ./kapro-connect --name checkout
+
+Kapro keeps Argo CD and Flux in charge of local sync. Kapro adds promotion
+intent, gates, approvals, and audit traces across clusters.`,
 	}
 
 	root.PersistentFlags().StringVarP(&cli.OutputFormat, "output", "o", "", "Output format (json for machine-readable)")
 
 	root.AddCommand(newInitCmd())
+	root.AddCommand(newQuickstartCmd())
+	root.AddCommand(newSampleCmd())
 	root.AddCommand(newBootstrapCmd())
 	root.AddCommand(newConnectCmd())
 	root.AddCommand(newDiscoverCmd())
@@ -87,6 +97,7 @@ For existing GitOps repositories:
 	root.AddCommand(newTreeCmd())
 	root.AddCommand(newEventsCmd())
 	root.AddCommand(newWhyCmd())
+	root.AddCommand(newExplainCmd())
 	root.AddCommand(newReconstructCmd())
 	root.AddCommand(newVerifyCmd())
 	root.AddCommand(newDoctorCmd())

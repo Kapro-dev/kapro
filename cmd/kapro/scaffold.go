@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"kapro.io/kapro/internal/cli"
 )
 
 func newInitCmd() *cobra.Command {
@@ -173,23 +175,50 @@ func writeScaffoldFiles(root string, files map[string]string, force bool) error 
 		relPaths = append(relPaths, relPath)
 	}
 	sort.Strings(relPaths)
+
+	var sp *cli.Spinner
+	showSpinner := cli.IsInteractive() && !cli.IsJSON()
+	if showSpinner {
+		sp = cli.NewSpinner(fmt.Sprintf("Writing %d files into %s", len(relPaths), root))
+		sp.Start()
+	}
 	for _, relPath := range relPaths {
+		if sp != nil {
+			sp.Update("Writing " + relPath)
+		}
 		content := files[relPath]
 		absPath := filepath.Join(root, relPath)
 		if !force {
 			if _, err := os.Stat(absPath); err == nil {
+				if sp != nil {
+					sp.StopFail("Could not write starter files")
+				}
 				return fmt.Errorf("%s already exists; use --force to overwrite", absPath)
 			} else if !os.IsNotExist(err) {
+				if sp != nil {
+					sp.StopFail("Could not inspect starter files")
+				}
 				return err
 			}
 		}
 		if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
+			if sp != nil {
+				sp.StopFail("Could not create starter directories")
+			}
 			return err
 		}
 		if err := os.WriteFile(absPath, []byte(content), 0644); err != nil {
+			if sp != nil {
+				sp.StopFail("Could not write starter files")
+			}
 			return err
 		}
-		fmt.Fprintf(os.Stderr, "  created %s\n", absPath)
+		if !showSpinner {
+			fmt.Fprintf(os.Stderr, "  created %s\n", absPath)
+		}
+	}
+	if sp != nil {
+		sp.StopSuccess(fmt.Sprintf("Wrote %d files into %s", len(relPaths), root))
 	}
 	return nil
 }
@@ -201,12 +230,14 @@ func printInitNextSteps(opts scaffoldOptions, count int) {
 		fmt.Fprintf(os.Stderr, "Shape: Backend, Source, and backend-native sample manifests. Add clusters before creating Fleet and Promotion files.\n")
 		fmt.Fprintf(os.Stderr, "  kubectl apply --recursive -f %s\n", opts.Path)
 		fmt.Fprintf(os.Stderr, "  add clusters/, then create fleets/%s.yaml and promotions/%s-promotion.yaml\n", opts.Name, opts.Name)
+		printAdoptionFooter(opts.Path)
 		return
 	}
 	fmt.Fprintf(os.Stderr, "Shape: Backend, Fleet, Plan, Promotion, and backend-native sample manifests.\n")
 	fmt.Fprintf(os.Stderr, "  kubectl apply --recursive -f %s\n", opts.Path)
 	fmt.Fprintf(os.Stderr, "  kapro promote %s --version 0.1.1  # creates/updates Promotion intent; controller stamps PromotionRun\n", opts.Name)
 	fmt.Fprintf(os.Stderr, "  kapro diag %s\n", defaultPromotionRunName(opts.Name, "0.1.1", nil))
+	printAdoptionFooter(opts.Path)
 }
 
 func greenfieldFiles(opts scaffoldOptions) map[string]string {
