@@ -163,7 +163,7 @@ func newBootstrapBackendCmd(backend string) *cobra.Command {
 	}
 	existingHint := "For an existing GitOps repository, use:\n  kapro adopt " + backend + " . --out ./kapro-connect --name checkout"
 	if backend == "oci" {
-		existingHint = "OCI is for spoke-side pull delivery. Use this when you do not want Argo CD or Flux on spokes."
+		existingHint = "OCI is the existing spoke-side pull helper, not one of the new 0.6 launch profiles. Use it when you do not want Argo CD or Flux on spokes."
 	}
 	cmd := &cobra.Command{
 		Use:   backend + " [directory]",
@@ -173,7 +173,11 @@ func newBootstrapBackendCmd(backend string) *cobra.Command {
 This is a shorter, adoption-friendly alias for:
   kapro bootstrap greenfield [directory] --backend %s
 
-Use this when you are starting fresh. %s`, backend, backend, existingHint),
+The 0.6 public-preview profile matrix is exposed through:
+  kapro bootstrap generate [directory] --profile direct|argocd|flux
+
+Use this command when you are starting fresh with an existing backend-specific
+helper. %s`, backend, backend, existingHint),
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			opts.Path = "."

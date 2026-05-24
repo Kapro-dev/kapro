@@ -267,8 +267,11 @@ func (s BackendSpec) CanonicalExecution() *BackendExecutionSpec {
 	return &BackendExecutionSpec{Mode: mode}
 }
 
-// DefaultActuatorForSubstrate returns the built-in actuator default for a
-// documented substrate kind. Unknown custom substrates resolve to their kind.
+// DefaultActuatorForSubstrate returns the legacy built-in actuator default for
+// documented substrate kinds. Unknown custom substrates resolve to their kind
+// for compatibility, but third-party classRef substrates should use
+// SubstrateClass.spec.controllerName plus their own controller status instead
+// of relying on this helper as a registry.
 func DefaultActuatorForSubstrate(kind string) string {
 	switch kind {
 	case "kubernetes-apply":

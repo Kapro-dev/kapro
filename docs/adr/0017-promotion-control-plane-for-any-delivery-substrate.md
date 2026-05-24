@@ -199,6 +199,10 @@ still be invoked externally, but they are not conformant Kapro substrates.
 - The `0.6.0` launch set must pass an internal Go substrate conformance suite.
   A public `kapro substrate conformance <class>` CLI can follow in `0.7.x`
   after the reference contract has proved itself.
+- The `0.6.0` launch set is a transition state: KSI reference scenarios prove
+  the public substrate contract, while the current in-tree direct, Argo CD, and
+  Flux runtime paths are still covered by actuator/controller tests until those
+  adapters expose native KSI implementations or tested KSI bridges.
 - OCI proves artifact-backed Gitless delivery, but it is not required for the
   default direct path. Helm and raw manifests should be able to work without an
   OCI registry when the selected substrate supports another source.

@@ -10,6 +10,15 @@ Kapro answers one operational question:
 Which clusters are allowed to receive this artifact version now, and why?
 ```
 
+## Product Boundaries
+
+Kapro owns promotion policy, ordering, approvals, decision traces, and delivery
+evidence. It does not own artifact builds, cluster lifecycle, secret storage,
+or the local reconciler that actually rolls out workloads.
+
+Permanent non-goals: Kapro is not a Helm registry, CI runner, manifest store,
+cluster provisioner, or secret store.
+
 ## Start Here
 
 - [Concepts](concepts/concepts.md) explains the API objects and lifecycle.

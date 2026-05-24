@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sort"
 	"testing"
 	"time"
 
@@ -318,7 +319,7 @@ func sameApplyShape(first, second *ksisubstrate.ApplyResult) bool {
 		first.Applied == second.Applied &&
 		first.Reason == second.Reason &&
 		first.Message == second.Message &&
-		len(first.BackendObjects) == len(second.BackendObjects)
+		reflect.DeepEqual(sortedBackendObjects(first.BackendObjects), sortedBackendObjects(second.BackendObjects))
 }
 
 func sameObserveShape(first, second *ksisubstrate.ObserveResult) bool {
@@ -329,7 +330,29 @@ func sameObserveShape(first, second *ksisubstrate.ObserveResult) bool {
 		first.Phase == second.Phase &&
 		first.Reason == second.Reason &&
 		first.Message == second.Message &&
-		len(first.BackendObjects) == len(second.BackendObjects)
+		reflect.DeepEqual(sortedBackendObjects(first.BackendObjects), sortedBackendObjects(second.BackendObjects))
+}
+
+func sortedBackendObjects(in []kaprov1alpha2.BackendObjectStatus) []kaprov1alpha2.BackendObjectStatus {
+	out := append([]kaprov1alpha2.BackendObjectStatus(nil), in...)
+	sort.SliceStable(out, func(i, j int) bool {
+		return backendObjectKey(out[i]) < backendObjectKey(out[j])
+	})
+	return out
+}
+
+func backendObjectKey(in kaprov1alpha2.BackendObjectStatus) string {
+	return in.APIVersion + "\x00" +
+		in.Kind + "\x00" +
+		in.Namespace + "\x00" +
+		in.Name + "\x00" +
+		in.Unit + "\x00" +
+		in.DesiredVersion + "\x00" +
+		in.CurrentVersion + "\x00" +
+		in.SyncStatus + "\x00" +
+		in.HealthStatus + "\x00" +
+		in.Phase + "\x00" +
+		in.Message
 }
 
 func cloneApplyRequest(req *ksisubstrate.ApplyRequest) *ksisubstrate.ApplyRequest {

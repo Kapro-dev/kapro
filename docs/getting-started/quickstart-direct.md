@@ -10,6 +10,19 @@ Kubernetes API. It is intentionally narrow for `0.6.0`: bootstrap applies the
 initial raw manifests, and Kapro owns promotion-time image changes and
 convergence observation.
 
+## Workload Constraints
+
+The direct profile is deliberately boring in the first public preview. It
+supports generated `Deployment` workloads by patching the image on a named
+container and waiting for updated, ready, and available replicas. The generated
+repo records the target Deployment and container through delivery parameters.
+
+StatefulSets, DaemonSets, Jobs, CronJobs, custom workload CRDs, generic
+server-side apply of arbitrary object sets, and Helm release-state ownership are
+not direct-runtime features in this profile yet. Use Argo CD, Flux, OCI pull
+delivery, or a custom substrate when those systems already own the richer
+rollout behavior.
+
 Prerequisites:
 
 - Kapro operator installed with the preview `substrateclass` and `backend`

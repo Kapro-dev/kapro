@@ -2,6 +2,7 @@ package substrate
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -54,6 +55,32 @@ func TestCheckReportsRequestObjectMutation(t *testing.T) {
 		}
 	}
 	t.Fatalf("request object mutation failure not reported: %#v", report.Failed())
+}
+
+func TestCheckReportsNonIdempotentApplyBackendObjects(t *testing.T) {
+	report := Check(context.Background(), &changingApplyObjectsSubstrate{}, validScenario())
+	if report.Passed() {
+		t.Fatalf("Check passed for non-idempotent apply objects: %#v", report)
+	}
+	for _, result := range report.Failed() {
+		if result.Name == "ApplyIsIdempotent" {
+			return
+		}
+	}
+	t.Fatalf("non-idempotent apply object failure not reported: %#v", report.Failed())
+}
+
+func TestCheckReportsNonDeterministicObserveBackendObjects(t *testing.T) {
+	report := Check(context.Background(), &changingObserveObjectsSubstrate{}, validScenario())
+	if report.Passed() {
+		t.Fatalf("Check passed for non-deterministic observe objects: %#v", report)
+	}
+	for _, result := range report.Failed() {
+		if result.Name == "ObserveIsDeterministic" {
+			return
+		}
+	}
+	t.Fatalf("non-deterministic observe object failure not reported: %#v", report.Failed())
 }
 
 func validScenario() Scenario {
@@ -130,4 +157,46 @@ type mutatingObjectSubstrate struct {
 func (mutatingObjectSubstrate) Apply(_ context.Context, req *substrate.ApplyRequest) (*substrate.ApplyResult, error) {
 	req.Backend.Spec.Parameters = map[string]string{"mutated": "true"}
 	return &substrate.ApplyResult{Accepted: true, Applied: 1, Reason: "Applied", Message: "applied"}, nil
+}
+
+type changingApplyObjectsSubstrate struct {
+	fakeSubstrate
+	n int
+}
+
+func (s *changingApplyObjectsSubstrate) Apply(_ context.Context, _ *substrate.ApplyRequest) (*substrate.ApplyResult, error) {
+	s.n++
+	return &substrate.ApplyResult{
+		Accepted: true,
+		Applied:  1,
+		Reason:   "Applied",
+		Message:  "applied",
+		BackendObjects: []kaprov1alpha2.BackendObjectStatus{{
+			Kind:           "Deployment",
+			Name:           "checkout",
+			CurrentVersion: "v1.0." + strconv.Itoa(s.n),
+			Phase:          string(kaprov1alpha2.DeliveryPhaseApplying),
+		}},
+	}, nil
+}
+
+type changingObserveObjectsSubstrate struct {
+	fakeSubstrate
+	n int
+}
+
+func (s *changingObserveObjectsSubstrate) Observe(_ context.Context, _ *substrate.ObserveRequest) (*substrate.ObserveResult, error) {
+	s.n++
+	return &substrate.ObserveResult{
+		Converged: true,
+		Phase:     kaprov1alpha2.DeliveryPhaseConverged,
+		Reason:    "Converged",
+		Message:   "ready",
+		BackendObjects: []kaprov1alpha2.BackendObjectStatus{{
+			Kind:           "Deployment",
+			Name:           "checkout",
+			CurrentVersion: "v1.0." + strconv.Itoa(s.n),
+			Phase:          string(kaprov1alpha2.DeliveryPhaseConverged),
+		}},
+	}, nil
 }
