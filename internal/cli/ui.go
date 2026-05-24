@@ -134,11 +134,12 @@ func Header(title string) {
 
 // --- Spinners ---
 
-// Braille dot spinner frames — smooth and modern.
-var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+// Circle spinner frames keep long-running CLI steps visible without drawing a
+// heavy progress UI.
+var spinnerFrames = []string{"◐", "◓", "◑", "◒"}
 
 // Spinner wraps briandowns/spinner with kapro styling.
-// Shows ✔ on success, ✗ on failure, with colors.
+// Shows a compact status marker on completion.
 type Spinner struct {
 	s   *spinner.Spinner
 	msg string
@@ -146,16 +147,18 @@ type Spinner struct {
 
 // NewSpinner creates a styled spinner with the given message.
 func NewSpinner(msg string) *Spinner {
-	s := spinner.New(spinnerFrames, 80*time.Millisecond)
+	s := spinner.New(spinnerFrames, 110*time.Millisecond)
+	s.Prefix = "  "
 	s.Suffix = "  " + msg
 	_ = s.Color("cyan", "bold")
 	s.Writer = os.Stderr
+	s.HideCursor = true
 	return &Spinner{s: s, msg: msg}
 }
 
 // Start begins the spinner animation.
 func (sp *Spinner) Start() {
-	if IsJSON() || !isInteractive() {
+	if IsJSON() || !IsInteractive() {
 		fmt.Fprintf(os.Stderr, "  … %s\n", sp.msg)
 		return
 	}
@@ -179,34 +182,48 @@ func (sp *Spinner) StopWith(msg string) {
 func (sp *Spinner) StopSuccess(msg string) {
 	sp.Stop()
 	green := color.New(color.FgGreen, color.Bold)
-	fmt.Fprintf(os.Stderr, "  %s %s\n", green.Sprint("✔"), msg)
+	fmt.Fprintf(os.Stderr, "  %s %s\n", green.Sprint("✓"), msg)
 }
 
-// StopFail stops the spinner with a red ✗ and error message.
+// StopFail stops the spinner with a red failure marker and error message.
 func (sp *Spinner) StopFail(msg string) {
 	sp.Stop()
 	red := color.New(color.FgRed, color.Bold)
-	fmt.Fprintf(os.Stderr, "  %s %s\n", red.Sprint("✗"), msg)
+	fmt.Fprintf(os.Stderr, "  %s %s\n", red.Sprint("✕"), msg)
 }
 
-// StopWarn stops the spinner with a yellow ⚠ and warning message.
+// StopWarn stops the spinner with a yellow warning marker and warning message.
 func (sp *Spinner) StopWarn(msg string) {
 	sp.Stop()
 	yellow := color.New(color.FgYellow, color.Bold)
-	fmt.Fprintf(os.Stderr, "  %s %s\n", yellow.Sprint("⚠"), msg)
+	fmt.Fprintf(os.Stderr, "  %s %s\n", yellow.Sprint("!"), msg)
 }
 
-// StopInfo stops the spinner with a blue ℹ and info message.
+// StopInfo stops the spinner with a blue info marker and info message.
 func (sp *Spinner) StopInfo(msg string) {
 	sp.Stop()
 	blue := color.New(color.FgCyan, color.Bold)
-	fmt.Fprintf(os.Stderr, "  %s %s\n", blue.Sprint("ℹ"), msg)
+	fmt.Fprintf(os.Stderr, "  %s %s\n", blue.Sprint("i"), msg)
 }
 
 // Update changes the spinner suffix message.
 func (sp *Spinner) Update(msg string) {
 	sp.msg = msg
 	sp.s.Suffix = "  " + msg
+}
+
+// WithSpinner runs fn while rendering a spinner for interactive users. The
+// completion line is still printed in non-interactive mode so CI logs and pipes
+// show the same high-level steps.
+func WithSpinner(msg, done string, fn func() error) error {
+	sp := NewSpinner(msg)
+	sp.Start()
+	if err := fn(); err != nil {
+		sp.StopFail(msg + " failed")
+		return err
+	}
+	sp.StopSuccess(done)
+	return nil
 }
 
 // --- Tables ---
@@ -353,7 +370,8 @@ func styleCell(header, cell string) string {
 	}
 }
 
-func isInteractive() bool {
+// IsInteractive reports whether styled progress output should be shown.
+func IsInteractive() bool {
 	if os.Getenv("NO_COLOR") != "" || os.Getenv("CI") != "" {
 		return false
 	}

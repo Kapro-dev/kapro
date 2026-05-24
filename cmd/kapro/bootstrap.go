@@ -22,6 +22,9 @@ start in observe-first mode with reviewable mappings.`,
 	cmd.AddCommand(newBootstrapGuideCmd())
 	cmd.AddCommand(newBootstrapGreenfieldCmd())
 	cmd.AddCommand(newBootstrapBrownfieldCmd())
+	cmd.AddCommand(newBootstrapBackendCmd("argo"))
+	cmd.AddCommand(newBootstrapBackendCmd("flux"))
+	cmd.AddCommand(newBootstrapBackendCmd("oci"))
 	return cmd
 }
 
@@ -40,24 +43,67 @@ func newBootstrapGuideCmd() *cobra.Command {
 func printBootstrapGuide(out io.Writer) {
 	fmt.Fprintln(out, `Kapro adoption paths:
 
-1. New promotion repo, Flux or pull-mode delivery
-   kapro bootstrap greenfield ./promotion-repo --backend flux --mode pull --name checkout
+1. Try Kapro in a new Flux pull-mode repo
+   kapro quickstart flux ./promotion-repo --name checkout
 
-2. New promotion repo, Argo CD owns Applications
-   kapro bootstrap greenfield ./promotion-repo --backend argo --mode push --name checkout
+2. Try Kapro in a new Argo CD repo
+   kapro quickstart argo ./promotion-repo --name checkout
 
 3. Existing Argo CD repository
-   kapro bootstrap brownfield argo . --out ./kapro-connect --name checkout
+   kapro adopt argo . --out ./kapro-connect --name checkout
 
 4. Existing Flux repository
-   kapro bootstrap brownfield flux . --out ./kapro-connect --name checkout
+   kapro adopt flux . --out ./kapro-connect --name checkout
 
 5. Outbound-only clusters without Flux or Argo CD
-   kapro bootstrap greenfield ./promotion-repo --backend oci --mode pull --name checkout
+   kapro quickstart oci ./promotion-repo --name checkout
 
 Safe default:
   brownfield starts in Observe mode. Review generated Backend, Source, and
-  discovery reports before switching any Backend to Adopt.`)
+  discovery reports before switching any Backend to Adopt.
+
+Delivery modes in plain language:
+  pull: each cluster pulls desired state from inside its own network boundary.
+  push: the hub tells a backend such as Argo CD what version to promote.`)
+}
+
+func newBootstrapBackendCmd(backend string) *cobra.Command {
+	var opts scaffoldOptions
+	defaultMode := "pull"
+	if backend == "argo" {
+		defaultMode = "push"
+	}
+	existingHint := "For an existing GitOps repository, use:\n  kapro adopt " + backend + " . --out ./kapro-connect --name checkout"
+	if backend == "oci" {
+		existingHint = "OCI is for spoke-side pull delivery. Use this when you do not want Argo CD or Flux on spokes."
+	}
+	cmd := &cobra.Command{
+		Use:   backend + " [directory]",
+		Short: fmt.Sprintf("Generate a new %s-backed promotion repo", backend),
+		Long: fmt.Sprintf(`Generate a new Kapro promotion repository for %s.
+
+This is a shorter, adoption-friendly alias for:
+  kapro bootstrap greenfield [directory] --backend %s
+
+Use this when you are starting fresh. %s`, backend, backend, existingHint),
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			opts.Path = "."
+			if len(args) > 0 {
+				opts.Path = args[0]
+			}
+			opts.Backend = backend
+			return runInitScaffold(opts)
+		},
+	}
+	cmd.Flags().StringVar(&opts.Name, "name", "checkout", "Application or fleet name")
+	cmd.Flags().StringVar(&opts.Mode, "mode", defaultMode, "Delivery mode: push or pull")
+	cmd.Flags().StringVar(&opts.Registry, "registry", "oci://registry.example.com/platform", "OCI registry URL for bundles")
+	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Backend namespace (default: argocd for argo, flux-system for flux, kapro-system for oci)")
+	cmd.Flags().StringVar(&opts.Clusters, "clusters", "canary-eu:canary,prod-eu:production", "Cluster scaffold list as name:stage pairs, or none for repo-only setup")
+	cmd.Flags().StringVar(&opts.Team, "team", "platform", "Value for metadata.labels[kapro.io/team]")
+	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
+	return cmd
 }
 
 func newBootstrapGreenfieldCmd() *cobra.Command {

@@ -12,12 +12,28 @@ func TestBootstrapGuideExplainsAdoptionPaths(t *testing.T) {
 	printBootstrapGuide(&buf)
 	got := buf.String()
 	for _, want := range []string{
-		"kapro bootstrap greenfield ./promotion-repo --backend flux --mode pull --name checkout",
-		"kapro bootstrap brownfield argo . --out ./kapro-connect --name checkout",
+		"kapro quickstart flux ./promotion-repo --name checkout",
+		"kapro adopt argo . --out ./kapro-connect --name checkout",
+		"pull: each cluster pulls desired state",
 		"brownfield starts in Observe mode",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("guide missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestBootstrapBackendAliasDefaults(t *testing.T) {
+	dir := t.TempDir()
+	cmd := newBootstrapBackendCmd("argo")
+	cmd.SetArgs([]string{dir, "--name", "checkout"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	cluster := readFile(t, filepath.Join(dir, "clusters/canary-eu.yaml"))
+	for _, want := range []string{"mode: push", "backendRef: argo"} {
+		if !strings.Contains(cluster, want) {
+			t.Fatalf("cluster missing %q:\n%s", want, cluster)
 		}
 	}
 }

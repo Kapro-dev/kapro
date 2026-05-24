@@ -29,6 +29,18 @@ shows a custom substrate Backend and matching Go actuator.
 as substrates instead of a closed enum, preserving built-in values while
 allowing platform-owned provider plugins.
 
+### Added — adoption-first CLI UX
+
+Added `kapro quickstart`, `kapro sample`, and `kapro explain` so first-time
+users can generate Flux, Argo CD, or OCI promotion repos and inspect blocked
+promotions without learning the lower-level command map first. `kapro bootstrap`
+now exposes direct `argo`, `flux`, and `oci` aliases for greenfield setup.
+
+`kapro doctor` now summarizes configured GitOps backends and warns when
+referenced Argo CD or Flux namespaces are missing. CLI spinners now use a
+cleaner circular progress indicator and collapse scaffold generation into one
+interactive progress line while keeping CI and piped output deterministic.
+
 ### Added — static ClusterTemplate discovery
 
 `ClusterTemplate.spec.source.static` now imports operator-supplied kubeconfig
