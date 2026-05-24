@@ -42,6 +42,7 @@ nav:
   - Concepts:
       - Object Model: concepts/concepts.md
       - Backends: concepts/backends.md
+      - API Naming: concepts/api-naming.md
       - Composable Gates: concepts/composable-gates.md
       - Events: concepts/events.md
       - API Stability: concepts/api-stability.md
@@ -51,6 +52,7 @@ nav:
       - Changelog: https://github.com/Kapro-dev/kapro/blob/main/CHANGELOG.md
       - Preview Controllers: concepts/preview-controllers.md
       - Competitive Positioning: adr/0012-competitive-positioning.md
+      - Kapro and Kargo: concepts/kargo-comparison.md
   - Blog:
       - Announcing Kapro v0.1: blog/announcing-kapro-v0.1.md
   - Operations:
@@ -68,6 +70,7 @@ nav:
       - Cluster Bootstrap: operations/cluster-bootstrap.md
   - Migration:
       - v1alpha1 to v1alpha2 Migration: migration/migration-v1alpha1-to-v1alpha2.md
+      - v0.4 to v0.5 Field Migration: migration/v0.4-to-v0.5-fields.md
       - Argo Brownfield Migration: migration/argo-migration.md
       - Flux Brownfield Migration: migration/flux-migration.md
       - Discovery Troubleshooting: migration/discovery-troubleshooting.md
@@ -77,6 +80,7 @@ nav:
       - Server SDK: extending/sdk-server.md
       - Programmable Gates: extending/programmable-gates.md
       - Gate Request SDK Guide: extending/sdk-gate-request.md
+      - Custom Substrates: extending/custom-substrate.md
       - Adapters: extending/adapters.md
       - Adapter Capabilities: extending/adapter-capabilities.md
       - Actuator Plugin Contract: extending/actuator-plugin-contract.md

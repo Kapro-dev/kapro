@@ -80,6 +80,8 @@ func (r *BackendReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	profile.Status.ObservedGeneration = profile.Generation
 	profile.Status.Ready = ready
+	profile.Status.Substrate = profile.Spec.CanonicalSubstrate()
+	profile.Status.Execution = profile.Spec.CanonicalExecution()
 	profile.Status.Driver = profile.Spec.Driver
 	profile.Status.Runtime = profile.Spec.Runtime
 	if profile.Status.Runtime == "" {
@@ -162,20 +164,20 @@ func (r *BackendReconciler) observeDiscovery(ctx context.Context, profile *kapro
 		return counts, "DiscoveryDisabled", "backend discovery is disabled"
 	}
 	namespace := "argocd"
-	if profile.Spec.Driver == kaprov1alpha2.BackendDriverFlux {
+	if profile.Spec.SubstrateKind() == string(kaprov1alpha2.BackendDriverFlux) {
 		namespace = "flux-system"
 	}
 	if profile.Spec.Parameters["namespace"] != "" {
 		namespace = profile.Spec.Parameters["namespace"]
 	}
 
-	switch profile.Spec.Driver {
-	case kaprov1alpha2.BackendDriverArgo:
+	switch profile.Spec.SubstrateKind() {
+	case string(kaprov1alpha2.BackendDriverArgo):
 		return r.observeArgoDiscovery(ctx, profile, namespace)
-	case kaprov1alpha2.BackendDriverFlux:
+	case string(kaprov1alpha2.BackendDriverFlux):
 		return r.observeFluxDiscovery(ctx, profile, namespace)
 	default:
-		return counts, "DiscoveryUnsupported", fmt.Sprintf("discovery is not implemented for %s backends", profile.Spec.Driver)
+		return counts, "DiscoveryUnsupported", fmt.Sprintf("discovery is not implemented for %s substrates", profile.Spec.SubstrateKind())
 	}
 }
 
@@ -409,12 +411,13 @@ func fluxSourceVersionField(obj *unstructured.Unstructured) string {
 }
 
 func (r *BackendReconciler) profileReadiness(ctx context.Context, profile *kaprov1alpha2.Backend) (bool, string, string) {
-	switch profile.Spec.Driver {
-	case kaprov1alpha2.BackendDriverFlux, kaprov1alpha2.BackendDriverArgo, kaprov1alpha2.BackendDriverOCI:
-		return true, "BuiltInBackendReady", fmt.Sprintf("built-in %s backend is available", profile.Spec.Driver)
-	case kaprov1alpha2.BackendDriverExternal:
+	kind := profile.Spec.SubstrateKind()
+	switch kind {
+	case string(kaprov1alpha2.BackendDriverFlux), string(kaprov1alpha2.BackendDriverArgo), string(kaprov1alpha2.BackendDriverOCI):
+		return true, "BuiltInBackendReady", fmt.Sprintf("built-in %s substrate is available", kind)
+	case string(kaprov1alpha2.BackendDriverExternal):
 		if profile.Spec.PluginRef == "" {
-			return false, "MissingPluginRef", "external backend requires spec.pluginRef"
+			return false, "MissingPluginRef", "external substrate requires spec.pluginRef"
 		}
 		var reg kaprov1alpha2.Plugin
 		if err := r.Get(ctx, client.ObjectKey{Name: profile.Spec.PluginRef}, &reg); err != nil {
@@ -423,9 +426,11 @@ func (r *BackendReconciler) profileReadiness(ctx context.Context, profile *kapro
 		if !reg.Status.Ready || reg.Status.ObservedGeneration != reg.Generation {
 			return false, "PluginRegistrationNotReady", fmt.Sprintf("plugin registration %q is not ready", profile.Spec.PluginRef)
 		}
-		return true, "ExternalBackendReady", fmt.Sprintf("external backend plugin %q is ready", profile.Spec.PluginRef)
+		return true, "ExternalBackendReady", fmt.Sprintf("external substrate plugin %q is ready", profile.Spec.PluginRef)
 	default:
-		return false, "UnsupportedDriver", fmt.Sprintf("backend driver %q is unsupported", profile.Spec.Driver)
+		// Open substrates are admitted before their actuator exists so GitOps
+		// users can commit Backend YAML ahead of deploying plugin code.
+		return false, "ActuatorNotRegistered", fmt.Sprintf("substrate.kind=%s has no registered built-in actuator; create the actuator binding before promotion", kind)
 	}
 }
 
@@ -508,11 +513,11 @@ func backendProfileMatchesObject(profile *kaprov1alpha2.Backend, obj client.Obje
 	default:
 		return false
 	}
-	if profile.Spec.Driver != objectDriver {
+	if profile.Spec.SubstrateKind() != string(objectDriver) {
 		return false
 	}
 	namespace := "argocd"
-	if profile.Spec.Driver == kaprov1alpha2.BackendDriverFlux {
+	if profile.Spec.SubstrateKind() == string(kaprov1alpha2.BackendDriverFlux) {
 		namespace = "flux-system"
 	}
 	if profile.Spec.Parameters["namespace"] != "" {

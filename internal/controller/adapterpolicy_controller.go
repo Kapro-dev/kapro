@@ -129,7 +129,7 @@ func (r *AdapterPolicyReconciler) discover(ctx context.Context, policy *kaprov1a
 		// mirror anything from here.
 		return adapterPolicyDiscoveryOutcome{reason: "DiscoveryDisabled", message: fmt.Sprintf("backend %s does not have spec.discovery.enabled=true", backend.Name)}, nil
 	}
-	a, err := r.adapterRegistry().Resolve(backend.Spec.Driver)
+	a, err := r.adapterRegistry().ResolveKind(backend.Spec.SubstrateKind())
 	if err != nil {
 		return adapterPolicyDiscoveryOutcome{reason: "AdapterResolveFailed", message: err.Error()}, nil
 	}
@@ -202,20 +202,15 @@ func adapterPolicyBackendAdapterName(backend *kaprov1alpha2.Backend) string {
 	if backend.Spec.Adapter != "" {
 		return backend.Spec.Adapter
 	}
-	switch backend.Spec.Driver {
-	case kaprov1alpha2.BackendDriverArgo:
-		return "argo-cd"
-	default:
-		return string(backend.Spec.Driver)
-	}
+	return backend.Spec.ActuatorName()
 }
 
 func adapterPolicyMirrorsBackendStatus(backend *kaprov1alpha2.Backend, policy *kaprov1alpha2.AdapterPolicy) bool {
 	if policy.Spec.Selector != nil {
 		return false
 	}
-	switch backend.Spec.Driver {
-	case kaprov1alpha2.BackendDriverArgo, kaprov1alpha2.BackendDriverFlux:
+	switch backend.Spec.SubstrateKind() {
+	case string(kaprov1alpha2.BackendDriverArgo), string(kaprov1alpha2.BackendDriverFlux):
 		return true
 	default:
 		return false
@@ -266,7 +261,7 @@ func adapterPolicyDiscoveryRequest(backend *kaprov1alpha2.Backend, policy *kapro
 	}
 	req := kaproadapter.DiscoveryRequest{
 		Backend:    backend,
-		Driver:     backend.Spec.Driver,
+		Driver:     kaprov1alpha2.BackendDriver(backend.Spec.SubstrateKind()),
 		Runtime:    runtime,
 		Namespace:  backend.Spec.Parameters["namespace"],
 		Parameters: backend.Spec.Parameters,

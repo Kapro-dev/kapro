@@ -114,6 +114,7 @@ func collectDoctorReport(ctx context.Context, c client.Client, opts doctorOption
 	findings = append(findings, checkValidatingWebhook(ctx, c))
 	findings = append(findings, checkConversionWebhookConfig(ctx, c))
 	findings = append(findings, checkPullSecrets(ctx, c, opts.Namespace))
+	findings = append(findings, checkDeprecatedAPIFields(ctx, c))
 	report := doctorReport{Overall: doctorStatusPass, Checks: findings}
 	if countDoctorFailures(report) > 0 {
 		report.Overall = doctorStatusFail
@@ -126,6 +127,31 @@ func collectDoctorReport(ctx context.Context, c client.Client, opts doctorOption
 		}
 	}
 	return report
+}
+
+func checkDeprecatedAPIFields(ctx context.Context, c client.Client) doctorFinding {
+	var details []string
+	var count int
+	var backends kaprov1alpha2.BackendList
+	if err := c.List(ctx, &backends); err != nil && !apierrors.IsNotFound(err) {
+		return doctorFinding{Name: "api-migration", Status: doctorStatusWarn, Message: "could not inspect Backend API fields", Details: []string{err.Error()}}
+	}
+	for _, backend := range backends.Items {
+		if backend.Spec.Driver == "" && backend.Spec.Adapter == "" && backend.Spec.Runtime == "" {
+			continue
+		}
+		count++
+		details = append(details,
+			fmt.Sprintf("Backend/%s uses deprecated driver/adapter/runtime; migrate to substrate.kind=%s, substrate.actuator=%s, execution.mode=%s",
+				backend.Name, backend.Spec.SubstrateKind(), backend.Spec.ActuatorName(), backend.Spec.ExecutionMode()),
+			fmt.Sprintf("  Command: kapro migrate backend %s -o yaml > %s.new.yaml", backend.Name, backend.Name),
+		)
+	}
+	if len(details) == 0 {
+		return doctorFinding{Name: "api-migration", Status: doctorStatusPass, Message: "no deprecated Backend API fields found"}
+	}
+	details = append(details, "Removal version: v0.5.20. See docs/migration/v0.4-to-v0.5-fields.md")
+	return doctorFinding{Name: "api-migration", Status: doctorStatusFail, Message: fmt.Sprintf("%d object(s) use deprecated API fields", count), Details: limitDetails(details, 20)}
 }
 
 func checkKaproCRDs(ctx context.Context, c client.Client) doctorFinding {

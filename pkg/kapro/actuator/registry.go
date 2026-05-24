@@ -184,9 +184,11 @@ func normalizeRegistration(reg Registration) (string, Registration, error) {
 
 func capabilitiesEmpty(c Capabilities) bool {
 	return c.ContractVersion == "" &&
+		c.SubstrateKind == "" &&
 		c.Driver == "" &&
 		c.Adapter == "" &&
 		c.Runtime == "" &&
+		len(c.ExecutionModes) == 0 &&
 		len(c.Modes) == 0 &&
 		!c.SupportsApply &&
 		!c.SupportsObserve &&
@@ -195,5 +197,8 @@ func capabilitiesEmpty(c Capabilities) bool {
 		!c.SupportsDelta &&
 		!c.SupportsTwoPhase &&
 		!c.SupportsBackendObjects &&
-		!c.SupportsDryRun
+		!c.SupportsDryRun &&
+		!c.SupportsHubExecution &&
+		!c.SupportsSpokeExecution &&
+		!c.SupportsExternalPull
 }

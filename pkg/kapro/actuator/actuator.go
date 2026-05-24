@@ -47,9 +47,11 @@ type BackendObjectReporter interface {
 // implements and how it maps to Backend.spec fields.
 type Capabilities struct {
 	ContractVersion string
+	SubstrateKind   string
 	Driver          kaprov1alpha2.BackendDriver
 	Adapter         string
 	Runtime         kaprov1alpha2.BackendRuntime
+	ExecutionModes  []kaprov1alpha2.ExecutionMode
 	Modes           []kaprov1alpha2.DeliveryMode
 
 	SupportsApply          bool
@@ -60,6 +62,9 @@ type Capabilities struct {
 	SupportsTwoPhase       bool
 	SupportsBackendObjects bool
 	SupportsDryRun         bool
+	SupportsHubExecution   bool
+	SupportsSpokeExecution bool
+	SupportsExternalPull   bool
 }
 
 // Normalize returns a copy with stable defaults applied.
@@ -70,8 +75,21 @@ func (c Capabilities) Normalize() Capabilities {
 	if c.Runtime == "" {
 		c.Runtime = kaprov1alpha2.BackendRuntimeBoth
 	}
+	if c.SubstrateKind == "" {
+		c.SubstrateKind = string(c.Driver)
+	}
 	if c.Adapter == "" {
 		c.Adapter = string(c.Driver)
+	}
+	for _, mode := range c.ExecutionModes {
+		switch mode {
+		case kaprov1alpha2.ExecutionModeHubPush:
+			c.SupportsHubExecution = true
+		case kaprov1alpha2.ExecutionModeSpokePull:
+			c.SupportsSpokeExecution = true
+		case kaprov1alpha2.ExecutionModeExternalPull:
+			c.SupportsExternalPull = true
+		}
 	}
 	return c
 }
@@ -86,6 +104,22 @@ func (c Capabilities) SupportsMode(mode kaprov1alpha2.DeliveryMode) bool {
 		}
 	}
 	return false
+}
+
+// SupportsExecutionMode reports whether this actuator supports a canonical
+// backend execution mode. Empty execution metadata means the registration did
+// not publish topology metadata.
+func (c Capabilities) SupportsExecutionMode(mode kaprov1alpha2.ExecutionMode) bool {
+	switch mode {
+	case kaprov1alpha2.ExecutionModeHubPush:
+		return c.SupportsHubExecution
+	case kaprov1alpha2.ExecutionModeSpokePull:
+		return c.SupportsSpokeExecution
+	case kaprov1alpha2.ExecutionModeExternalPull:
+		return c.SupportsExternalPull
+	default:
+		return false
+	}
 }
 
 // Substrate is an actuator that can also describe its backend capabilities.

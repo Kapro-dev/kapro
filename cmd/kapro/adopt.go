@@ -156,16 +156,18 @@ func runAdoptAdapter(ctx context.Context, opts adoptAdapterOptions) error {
 	if err != nil {
 		return err
 	}
-	driver := kaprov1alpha2.BackendDriverFlux
+	substrateKind := "flux"
 	if opts.Adapter == "argo-cd" {
-		driver = kaprov1alpha2.BackendDriverArgo
+		substrateKind = "argo"
 	}
 	backend := &kaprov1alpha2.Backend{
 		ObjectMeta: metav1.ObjectMeta{Name: opts.BackendName},
 		Spec: kaprov1alpha2.BackendSpec{
-			Driver:  driver,
-			Adapter: opts.Adapter,
-			Runtime: kaprov1alpha2.BackendRuntimeBoth,
+			Substrate: &kaprov1alpha2.BackendSubstrateSpec{
+				Kind:     substrateKind,
+				Actuator: opts.Adapter,
+			},
+			Execution: &kaprov1alpha2.BackendExecutionSpec{Mode: kaprov1alpha2.ExecutionModeHubPush},
 			Discovery: &kaprov1alpha2.BackendDiscoverySpec{
 				Enabled:          true,
 				ManagementPolicy: "Observe",

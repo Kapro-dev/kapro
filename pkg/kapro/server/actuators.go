@@ -124,11 +124,17 @@ func registerBuiltInActuator(registry *actuator.Registry, reg actuator.Registrat
 }
 
 func builtInCapabilities(driver kaprov1alpha2.BackendDriver, runtime kaprov1alpha2.BackendRuntime, mode kaprov1alpha2.DeliveryMode, backendObjects bool) actuator.Capabilities {
+	executionMode := kaprov1alpha2.ExecutionModeHubPush
+	if mode == kaprov1alpha2.DeliveryModePull {
+		executionMode = kaprov1alpha2.ExecutionModeSpokePull
+	}
 	return actuator.Capabilities{
 		ContractVersion:        actuator.ContractVersionV1Alpha1,
+		SubstrateKind:          string(driver),
 		Driver:                 driver,
-		Adapter:                string(driver),
+		Adapter:                kaprov1alpha2.DefaultActuatorForSubstrate(string(driver)),
 		Runtime:                runtime,
+		ExecutionModes:         []kaprov1alpha2.ExecutionMode{executionMode},
 		Modes:                  []kaprov1alpha2.DeliveryMode{mode},
 		SupportsApply:          true,
 		SupportsObserve:        true,
@@ -136,5 +142,7 @@ func builtInCapabilities(driver kaprov1alpha2.BackendDriver, runtime kaprov1alph
 		SupportsConvergence:    true,
 		SupportsDelta:          true,
 		SupportsBackendObjects: backendObjects,
+		SupportsHubExecution:   executionMode == kaprov1alpha2.ExecutionModeHubPush,
+		SupportsSpokeExecution: executionMode == kaprov1alpha2.ExecutionModeSpokePull,
 	}
 }

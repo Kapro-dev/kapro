@@ -35,6 +35,17 @@ spec:
 | `Stage` | Stage entry, completion, failure policy, skip, or halt decision. |
 | `Delivery` | Hub-observed spoke delivery status, including OCI staging and commit diagnostics. |
 
+Common delivery capability reasons:
+
+| Reason | Meaning |
+| --- | --- |
+| `ActuatorNotRegistered` | A Backend references an open substrate kind that has no registered actuator yet. |
+| `ApplyUnsupported` | The resolved actuator does not advertise apply support. |
+| `ObserveUnsupported` | The resolved actuator does not advertise observe/convergence support. |
+| `RollbackUnsupported` | The resolved actuator does not advertise rollback support. |
+| `DiscoverUnsupported` | The adapter discovery path does not support discovery for this substrate. |
+| `DryRunUnsupported` | The adapter discovery path was asked to dry-run a substrate that does not support dry-run. |
+
 Each trace includes `promotionRun`, `source`, `eventType`, `phase`, `reason`,
 `message`, and optional `plan`, `stage`, `target`, and bounded `evidence`.
 Evidence is intentionally small and non-secret. Long-term archive integrations

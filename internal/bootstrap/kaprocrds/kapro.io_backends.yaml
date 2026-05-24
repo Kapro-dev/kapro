@@ -19,11 +19,11 @@ spec:
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.driver
-      name: Driver
+    - jsonPath: .spec.substrate.kind
+      name: Substrate
       type: string
-    - jsonPath: .spec.runtime
-      name: Runtime
+    - jsonPath: .spec.execution.mode
+      name: Execution
       type: string
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
@@ -62,8 +62,10 @@ spec:
             properties:
               adapter:
                 description: |-
-                  Adapter explicitly names the adapter implementation. When empty, Kapro
-                  derives the built-in adapter name from driver for compatibility.
+                  Adapter explicitly names the adapter implementation.
+
+                  Deprecated compatibility field: use spec.substrate.actuator. This field
+                  will be removed in v0.5.20.
                 type: string
               discovery:
                 description: |-
@@ -142,13 +144,33 @@ spec:
                     x-kubernetes-map-type: atomic
                 type: object
               driver:
-                description: Driver identifies the backend implementation family.
+                description: |-
+                  Driver identifies the backend implementation family.
+
+                  Deprecated compatibility field: use spec.substrate.kind. This field will
+                  be removed in v0.5.20.
                 enum:
                 - flux
                 - argo
                 - oci
                 - external
                 type: string
+              execution:
+                description: |-
+                  Execution selects the delivery topology for this backend profile.
+                  New Backend objects should use execution instead of runtime.
+                properties:
+                  mode:
+                    default: hub-push
+                    description: Mode identifies where and how delivery is invoked.
+                    enum:
+                    - hub-push
+                    - spoke-pull
+                    - external-pull
+                    type: string
+                required:
+                - mode
+                type: object
               parameters:
                 additionalProperties:
                   type: string
@@ -161,20 +183,47 @@ spec:
                 type: string
               runtime:
                 default: Both
-                description: Runtime identifies where this backend can run.
+                description: |-
+                  Runtime identifies where this backend can run.
+
+                  Deprecated compatibility field: use spec.execution.mode. This field will
+                  be removed in v0.5.20.
                 enum:
                 - Hub
                 - Spoke
                 - Both
                 type: string
-            required:
-            - driver
+              substrate:
+                description: |-
+                  Substrate identifies the open delivery domain and actuator implementation.
+                  New Backend objects should use substrate instead of driver/adapter.
+                properties:
+                  actuator:
+                    description: |-
+                      Actuator names the concrete Kapro actuator/plugin implementation. When
+                      empty, Kapro derives the default actuator for well-known built-ins from
+                      kind; custom substrates normally set this explicitly.
+                    maxLength: 63
+                    pattern: ^[a-z][a-z0-9-]{0,62}$
+                    type: string
+                  kind:
+                    description: Kind is the open delivery domain/category.
+                    maxLength: 63
+                    pattern: ^[a-z][a-z0-9-]{0,62}$
+                    type: string
+                required:
+                - kind
+                type: object
             type: object
             x-kubernetes-validations:
-            - message: pluginRef must be set when driver is external, and must be
-                omitted otherwise
-              rule: 'self.driver == "external" ? (has(self.pluginRef) && self.pluginRef
-                != "") : (!has(self.pluginRef) || self.pluginRef == "")'
+            - message: set either deprecated driver/adapter/runtime or new substrate/execution,
+                not both
+              rule: '!(has(self.driver) && has(self.substrate))'
+            - message: one of deprecated driver or substrate is required
+              rule: has(self.driver) || has(self.substrate)
+            - message: pluginRef must be set when deprecated driver is external
+              rule: '(has(self.driver) && self.driver == "external") ? (has(self.pluginRef)
+                && self.pluginRef != "") : true'
           status:
             description: BackendStatus records backend discovery and compatibility.
             properties:
@@ -260,13 +309,31 @@ spec:
                   type: string
                 type: array
               driver:
-                description: BackendDriver identifies the backend implementation family.
+                description: |-
+                  Driver mirrors the deprecated spec.driver compatibility field.
+
+                  Deprecated compatibility field: use status.substrate.kind.
                 enum:
                 - flux
                 - argo
                 - oci
                 - external
                 type: string
+              execution:
+                description: BackendExecutionSpec selects the topology for this backend
+                  profile.
+                properties:
+                  mode:
+                    default: hub-push
+                    description: Mode identifies where and how delivery is invoked.
+                    enum:
+                    - hub-push
+                    - spoke-pull
+                    - external-pull
+                    type: string
+                required:
+                - mode
+                type: object
               lastDiscoveryTime:
                 description: |-
                   LastDiscoveryTime records when backend-native discovery last completed or
@@ -279,8 +346,10 @@ spec:
               ready:
                 type: boolean
               runtime:
-                description: BackendRuntime identifies where a backend adapter is
-                  allowed to run.
+                description: |-
+                  Runtime mirrors the deprecated spec.runtime compatibility field.
+
+                  Deprecated compatibility field: use status.execution.mode.
                 enum:
                 - Hub
                 - Spoke
@@ -368,6 +437,29 @@ spec:
                       type: string
                   type: object
                 type: array
+              substrate:
+                description: |-
+                  BackendSubstrateSpec identifies a delivery domain and the actuator that
+                  implements it. Kind is intentionally open: built-ins such as argo, flux, oci,
+                  and webhook are documented well-known values, while platform teams can
+                  register their own kinds such as hello-world or company-paas.
+                properties:
+                  actuator:
+                    description: |-
+                      Actuator names the concrete Kapro actuator/plugin implementation. When
+                      empty, Kapro derives the default actuator for well-known built-ins from
+                      kind; custom substrates normally set this explicitly.
+                    maxLength: 63
+                    pattern: ^[a-z][a-z0-9-]{0,62}$
+                    type: string
+                  kind:
+                    description: Kind is the open delivery domain/category.
+                    maxLength: 63
+                    pattern: ^[a-z][a-z0-9-]{0,62}$
+                    type: string
+                required:
+                - kind
+                type: object
               unsupportedPatterns:
                 description: |-
                   UnsupportedPatterns is a bounded sample of objects that matched discovery

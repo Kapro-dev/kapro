@@ -33,6 +33,9 @@ KAI v1alpha1 publishes canonical capability names in
 | `delta` | Plugin can apply multi-artifact desired-version deltas directly. |
 | `backendobjects` | Plugin can report backend-native object status. |
 | `dry-run` | Plugin can validate without persisting backend changes. |
+| `hub-push` | Plugin can be invoked by the Kapro hub. |
+| `spoke-pull` | Plugin can run behind a cluster-side spoke pull loop. |
+| `external-pull` | Plugin can pull approved Kapro decisions from outside the hub. |
 
 Capability names may be plain or vendor-qualified. For example, both `apply`
 and `argocd.application.targetRevision.apply` satisfy the base apply
@@ -87,6 +90,12 @@ Register in-process substrates with explicit `actuator.Capabilities` through
 `server.RegisterActuator` or `Registry.RegisterRegistration`. Legacy
 registrations without capability bits still work, but new substrates should
 declare support bits so controllers can avoid unsupported calls.
+
+For tiny examples and tests, `actuator.NewBoolFunc` adapts a
+`(ctx, req) -> (bool, message, error)` function to the full in-process
+interface. It publishes conservative capabilities: apply and observe are
+supported, rollback is not. Production substrates should implement the full
+interface instead of using `BoolFunc`.
 
 ## Conformance
 
