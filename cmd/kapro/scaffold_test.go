@@ -264,6 +264,17 @@ func TestRunInitScaffoldRejectsUnsafeName(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "--name must match") {
 		t.Fatalf("err=%v, want unsafe name validation error", err)
 	}
+
+	err = runInitScaffold(scaffoldOptions{
+		Path:      t.TempDir(),
+		Name:      "checkout-",
+		Substrate: "direct",
+		Mode:      "push",
+		Registry:  "oci://registry.example.com/platform",
+	})
+	if err == nil || !strings.Contains(err.Error(), "--name must match") {
+		t.Fatalf("err=%v, want trailing hyphen validation error", err)
+	}
 }
 
 func TestRunInitScaffoldRejectsUnsafeClusterName(t *testing.T) {
@@ -278,6 +289,32 @@ func TestRunInitScaffoldRejectsUnsafeClusterName(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "--clusters name must match") {
 		t.Fatalf("err=%v, want unsafe cluster validation error", err)
 	}
+
+	err = runInitScaffold(scaffoldOptions{
+		Path:      t.TempDir(),
+		Name:      "checkout",
+		Substrate: "direct",
+		Mode:      "push",
+		Registry:  "oci://registry.example.com/platform",
+		Clusters:  "canary-:canary",
+	})
+	if err == nil || !strings.Contains(err.Error(), "--clusters name must match") {
+		t.Fatalf("err=%v, want trailing hyphen cluster validation error", err)
+	}
+}
+
+func TestRunInitScaffoldRejectsEmptyClusterList(t *testing.T) {
+	err := runInitScaffold(scaffoldOptions{
+		Path:      t.TempDir(),
+		Name:      "checkout",
+		Substrate: "direct",
+		Mode:      "push",
+		Registry:  "oci://registry.example.com/platform",
+		Clusters:  ",",
+	})
+	if err == nil || !strings.Contains(err.Error(), "--clusters must be name:stage pairs") {
+		t.Fatalf("err=%v, want empty cluster list validation error", err)
+	}
 }
 
 func TestWriteScaffoldFilesRejectsEscapedPath(t *testing.T) {
@@ -286,6 +323,23 @@ func TestWriteScaffoldFilesRejectsEscapedPath(t *testing.T) {
 	}, false)
 	if err == nil || !strings.Contains(err.Error(), "outside scaffold root") {
 		t.Fatalf("err=%v, want path escape validation error", err)
+	}
+}
+
+func TestWriteScaffoldFilesRejectsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "apps")); err != nil {
+		t.Fatal(err)
+	}
+	err := writeScaffoldFiles(root, map[string]string{
+		filepath.Join("apps", "checkout", "deployment.yaml"): "pwn",
+	}, false)
+	if err == nil || !strings.Contains(err.Error(), "through symlink outside scaffold root") {
+		t.Fatalf("err=%v, want symlink escape validation error", err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "checkout", "deployment.yaml")); !os.IsNotExist(err) {
+		t.Fatalf("outside file should not be written, stat err=%v", err)
 	}
 }
 
