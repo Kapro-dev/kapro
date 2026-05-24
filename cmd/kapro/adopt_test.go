@@ -75,6 +75,44 @@ func TestImportTakeRendersAdoptModeSubstrates(t *testing.T) {
 	}
 }
 
+func TestImportTakeReadmeReferencesAdoptSubstrate(t *testing.T) {
+	argo := renderArgoDiscoverReadme(argoDiscoverOptions{Name: "checkout", Take: true}, argoDiscoveryResult{})
+	for _, want := range []string{
+		"After review, apply adopt mode:",
+		"kubectl apply -f substrates/checkout-adopt.yaml",
+		"deliveryunits/checkout.yaml",
+		"before running the Adopt-mode apply command below",
+	} {
+		if !strings.Contains(argo, want) {
+			t.Fatalf("argo README missing %q:\n%s", want, argo)
+		}
+	}
+	if strings.Contains(argo, "checkout-observe.yaml") {
+		t.Fatalf("argo README should not reference observe substrate in take mode:\n%s", argo)
+	}
+	if strings.Contains(argo, "sources/checkout.yaml") {
+		t.Fatalf("argo README should reference DeliveryUnit source mapping in take mode:\n%s", argo)
+	}
+
+	flux := renderFluxDiscoverReadme(fluxDiscoverOptions{Name: "checkout", Take: true}, fluxDiscoveryResult{})
+	for _, want := range []string{
+		"After review, apply adopt mode:",
+		"kubectl apply -f substrates/checkout-adopt.yaml",
+		"deliveryunits/checkout.yaml",
+		"before running the Adopt-mode apply command below",
+	} {
+		if !strings.Contains(flux, want) {
+			t.Fatalf("flux README missing %q:\n%s", want, flux)
+		}
+	}
+	if strings.Contains(flux, "checkout-observe.yaml") {
+		t.Fatalf("flux README should not reference observe substrate in take mode:\n%s", flux)
+	}
+	if strings.Contains(flux, "sources/checkout.yaml") {
+		t.Fatalf("flux README should reference DeliveryUnit source mapping in take mode:\n%s", flux)
+	}
+}
+
 func TestCreateOrUpdateObjectPatchPreservesExistingMetadata(t *testing.T) {
 	ctx := context.Background()
 	existing := &kaprov1alpha1.Substrate{
