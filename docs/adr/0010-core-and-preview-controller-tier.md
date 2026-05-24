@@ -1,7 +1,12 @@
 # ADR-0010: Core And Preview Controller Tier
 
 ## Status
-Accepted
+Superseded in part by [ADR-0018](0018-public-runtime-api-split.md)
+
+ADR-0018 resets the API version to `kapro.io/v1alpha1`, renames `Backend` to
+`Substrate`, removes the `GateExpression` public-preview CRD, and makes
+`PromotionRun`/`Target` runtime CRDs. The controller-tier decision below is
+historical context for why default installs stay conservative.
 
 ## Context
 

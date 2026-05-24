@@ -12,7 +12,7 @@ first, start with the [Adoption Guide](adoption.md).
 ## 1. Install The Operator
 
 ```bash
-KAPRO_VERSION=0.5.8
+KAPRO_VERSION=0.6.0
 git clone --branch "v${KAPRO_VERSION}" https://github.com/Kapro-dev/kapro.git
 cd kapro
 helm upgrade --install kapro \
@@ -20,7 +20,7 @@ helm upgrade --install kapro \
   --namespace kapro-system \
   --create-namespace \
   --wait
-kubectl wait crd/promotions.kapro.io crd/promotionruns.kapro.io crd/targets.kapro.io \
+kubectl wait crd/promotions.kapro.io crd/promotionruns.runtime.kapro.io crd/targets.runtime.kapro.io \
   --for=condition=Established \
   --timeout=60s
 kubectl -n kapro-system rollout status deployment/kapro-kapro-operator
@@ -49,23 +49,23 @@ When working from a local checkout before the release is published, use
 
 ## 2. Apply A Minimal Hub Config
 
-The quickstart proves the hub API path: Backend, Fleet, generated Cluster and
+The quickstart proves the hub API path: Substrate, Fleet, generated Cluster and
 Plan records, Promotion intent, and controller-owned runtime objects. Pull-mode
 examples still need reachable registries and spoke delivery wiring before they
 can prove real workload convergence.
 
 ```bash
-kubectl apply -f examples/quickstart/backend-flux.yaml
+kubectl apply -f examples/quickstart/substrates/flux.yaml
 kubectl apply -f examples/quickstart/kapro.yaml
 ```
 
 Expected:
 
 ```bash
-kubectl get backends,fleets,plans
+kubectl get substrates,fleets,plans
 ```
 
-shows one `Backend`, one `Fleet`, and one generated `Plan`. The example
+shows one `Substrate`, one `Fleet`, and one generated `Plan`. The example
 `Fleet` also generates two synthetic `Cluster` objects
 from `spec.clusters`.
 
@@ -85,7 +85,7 @@ fully scripted hub/spoke setup.
 
 ```bash
 kubectl apply -f examples/quickstart/promotion.yaml
-kubectl get promotions,promotionruns,targets
+kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
 ```
 
 Expected:
@@ -99,7 +99,7 @@ Target         created for each selected target
 ## 5. Watch The Evidence
 
 ```bash
-kubectl get promotions,promotionruns,targets -w
+kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io -w
 kubectl describe target <target-name>
 ```
 
@@ -108,8 +108,8 @@ Look for:
 - target phase progression;
 - aggregate target counts in `PromotionRun.status.summary`;
 - per-target detail in child `Target` objects;
-- backend convergence messages, when spoke delivery is wired. Without a real
-  Flux/Argo/OCI backend reporting health, this quickstart can stop at
+- substrate convergence messages, when spoke delivery is wired. Without a real
+  Flux/Argo/OCI substrate reporting health, this quickstart can stop at
   `Progressing` after proving that PromotionRun and Target records are stamped;
 - gate evidence or approval wait state, if you later add gates to the Plan.
 

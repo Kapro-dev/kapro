@@ -25,7 +25,7 @@ type RefResolver interface {
 	Resolve(ctx context.Context, req spokeprovider.ReconcileRequest) (delivery.ArtifactRef, error)
 }
 
-// Recognised parameter keys on BackendProfile.Spec.Parameters /
+// Recognised parameter keys on SubstrateProfile.Spec.Parameters /
 // FleetCluster.Spec.Delivery.Parameters. Kept exported so tests and the
 // scaffolding CLI can reference them by name rather than re-typing strings.
 const (

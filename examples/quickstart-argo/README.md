@@ -6,10 +6,10 @@ and Kapro should promote by updating `spec.source.targetRevision`.
 ```bash
 git clone --branch main https://github.com/Kapro-dev/kapro.git
 cd kapro
-kubectl apply -f examples/quickstart-argo/backend-argo.yaml
+kubectl apply -f examples/quickstart-argo/substrates/argo.yaml
 kubectl apply -f examples/quickstart-argo/fleet.yaml
 kubectl apply -f examples/quickstart-argo/promotion.yaml
-kubectl get promotions,promotionruns,targets
+kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
 ```
 
 The example expects Argo CD `Application` objects named

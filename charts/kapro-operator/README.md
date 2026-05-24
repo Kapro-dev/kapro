@@ -18,7 +18,7 @@ Release:
 
 ```bash
 helm upgrade --install kapro \
-  https://github.com/Kapro-dev/kapro/releases/download/v0.5.8/kapro-operator-0.5.8.tgz \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.6.0/kapro-operator-0.6.0.tgz \
   --namespace kapro-system \
   --create-namespace
 ```
@@ -32,7 +32,7 @@ operator policy:
 
 ```bash
 helm upgrade --install kapro \
-  https://github.com/Kapro-dev/kapro/releases/download/v0.5.8/kapro-operator-0.5.8.tgz \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.6.0/kapro-operator-0.6.0.tgz \
   --namespace kapro-system \
   --create-namespace \
   --set networkPolicy.enabled=true
@@ -44,10 +44,10 @@ and hub-gateway ports. Use `networkPolicy.ingress.from` and
 
 ## Upgrade
 
-If the cluster still has legacy `kapro.io/v1alpha1` objects or CRDs, follow the
-[v1alpha1 to v1alpha2 migration guide](https://github.com/Kapro-dev/kapro/blob/main/docs/migration-v1alpha1-to-v1alpha2.md)
-before applying this chart's CRDs. The chart does not serve v1alpha1 or perform
-automatic conversion.
+The `v0.6.x` chart is a clean pre-stable break: user-authored CRDs are served
+from `kapro.io/v1alpha1` and controller-owned runtime CRDs are served from
+`runtime.kapro.io/v1alpha1`. The chart does not perform automatic conversion
+from older alpha manifests.
 
 ```bash
 helm upgrade kapro charts/kapro-operator \
@@ -95,11 +95,11 @@ install demo plugins. To opt in:
 
 ```bash
 helm upgrade --install kapro \
-  https://github.com/Kapro-dev/kapro/releases/download/v0.5.8/kapro-operator-0.5.8.tgz \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.6.0/kapro-operator-0.6.0.tgz \
   --namespace kapro-system \
   --create-namespace \
   --set pluginGateway.enabled=true \
-  --set controllers='{fleet,plan,promotion,promotionrun,cluster,plugin}'
+  --set controllers='{fleet,plan,promotion,promotionrun,cluster,substrateclass,substrate,plugin}'
 ```
 
 Then install your plugin service and apply a registration, for example:
@@ -110,21 +110,21 @@ kubectl apply -f examples/plugins/slo-gate-registration.yaml
 
 ## Preview Features
 
-The default install runs the ADR-0010 core controllers: `fleet`, `plan`,
-`promotion`, `promotionrun`, and `cluster`. The `target` controller starts
-implicitly whenever `promotionrun` is enabled.
+The default install runs the ADR-0010 core controllers plus the 0.6 substrate
+readiness controllers: `fleet`, `plan`, `promotion`, `promotionrun`, `cluster`,
+`substrateclass`, and `substrate`. The `target` controller starts implicitly
+whenever `promotionrun` is enabled.
 
 Preview surfaces are explicit opt-ins or spec-only APIs:
 
 | Surface | Default | Opt-in |
 |---|---|---|
 | Decision API and `Policy` | Disabled | `--set decisionAPI.enabled=true` plus Kubernetes RBAC |
-| SubstrateClass status controller | Disabled | Add `substrateclass` to `controllers` |
-| Backend readiness controller | Disabled | Add `backend` to `controllers`; required for generated `Backend.spec.classRef` profiles |
+| SubstrateClass status controller | Enabled | Keep `substrateclass` in `controllers` for generated `Substrate.spec.classRef` profiles |
+| Substrate readiness controller | Enabled | Keep `substrate` in `controllers` so generated `Cluster` objects can reference Ready substrates |
 | AdapterPolicy discovery controller | Disabled | Add `adapterpolicy` to `controllers` for live `kapro adopt --apply` discovery |
 | Approval controller | Disabled | Add `approval` to `controllers` |
 | Trigger controller | Disabled | Add `trigger` to `controllers` |
-| GateExpression controller | Disabled | Add `gateexpression` to `controllers` |
 | Plugin controller | Disabled | Add `plugin` to `controllers` |
 | Runtime plugin gateway | Disabled | `--set pluginGateway.enabled=true` plus `plugin` in `controllers` |
 | Hub Gateway Service | Internal listener only | `--set hubGateway.service.enabled=true` and place Kubernetes authn/authz or an identity proxy in front |

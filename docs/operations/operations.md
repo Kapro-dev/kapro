@@ -31,9 +31,6 @@ Operator metrics use the `kapro_` namespace:
 | `kapro_plugin_runtime_calls_total` | counter | Runtime plugin call result counts |
 | `kapro_plugin_runtime_call_duration_seconds` | histogram | Runtime plugin latency |
 | `kapro_plugin_runtime_registered` | gauge | Startup-time registered plugin adapters |
-| `kapro_fleetdriftreport_targets` | gauge | FleetDriftReport target counts by report and state |
-| `kapro_fleetdriftreport_backend_objects` | gauge | FleetDriftReport backend object counts by report and state |
-| `kapro_fleetdriftreport_phase` | gauge | One-hot FleetDriftReport phase by report |
 
 Controller-runtime and Go runtime metrics are also exposed from the same
 endpoint.
@@ -43,7 +40,7 @@ Spoke metrics use the same namespace but are emitted by each
 
 | Metric | Type | Use |
 |---|---|---|
-| `kapro_spoke_delivery_reconciles_total` | counter | Spoke delivery outcomes by cluster, backend, phase, and result |
+| `kapro_spoke_delivery_reconciles_total` | counter | Spoke delivery outcomes by cluster, substrate, phase, and result |
 | `kapro_spoke_delivery_reconcile_duration_seconds` | histogram | Spoke delivery reconcile duration |
 
 ## Dashboard and Alerts
@@ -72,7 +69,6 @@ The dashboard covers:
 - plugin probe failures and readiness;
 - trigger blocked symptoms through Trigger reconcile errors;
 - rollout duration p95 via stage duration histogram.
-- FleetDriftReport phase and drift count panels.
 
 The alert rules cover:
 
@@ -85,10 +81,6 @@ The alert rules cover:
 | `KaproRolloutDurationP95High` | Stage duration p95 exceeds the configured threshold |
 | `KaproLifecycleSinkP99High` | CloudEvents sink dispatch p99 exceeds the configured threshold |
 | `KaproControllerReconcileErrors` | Any controller has sustained reconcile errors |
-| `KaproFleetDriftDetected` | A FleetDriftReport stays `Drifted` beyond the allowed window |
-| `KaproFleetDriftSignalsIncomplete` | A FleetDriftReport stays `Unknown` because cluster/version signals are missing |
-| `KaproFleetDriftReportFailed` | A FleetDriftReport stays `Failed` |
-| `KaproFleetDriftReportPending` | A FleetDriftReport stays `Pending` beyond the rollout window |
 | `KaproSpokeDeliveryErrors` | A spoke reports sustained delivery reconcile errors |
 | `KaproSpokeDeliveryLatencyHigh` | Spoke delivery p95 exceeds the configured threshold |
 
@@ -113,8 +105,8 @@ Operational guidance:
 
 Tune rollout inputs before changing worker counts:
 
-- Use stage `strategy.maxParallel` to bound backend write pressure.
-- Prefer more stages over one wide stage when backend APIs have tenant or
+- Use stage `strategy.maxParallel` to bound substrate write pressure.
+- Prefer more stages over one wide stage when substrate APIs have tenant or
   region quotas.
 - Keep actuator `Apply` idempotent and cheap when the desired version is already
   present.
@@ -156,11 +148,11 @@ promotion state and spoke controllers or GitOps backends converge local
 workloads.
 
 For multi-cloud and air-gapped fleets, prefer
-`Cluster.spec.delivery.mode: pull` with a `Backend` selected by
-`spec.delivery.backendRef`. In pull mode the hub writes desired versions to
+`Cluster.spec.delivery.mode: pull` with a `Substrate` selected by
+`spec.delivery.substrateRef`. In pull mode the hub writes desired versions to
 `Cluster.spec` and does not patch spoke workloads directly during a
 promotionrun. Each spoke applies the desired state locally through its selected
-backend, reports `status.currentVersions` and `status.health`, and renews
+substrate, reports `status.currentVersions` and `status.health`, and renews
 `Lease/kapro-heartbeat-<cluster>` in the operator namespace. The Target
 controller defers pull-mode targets while that heartbeat is stale. A
 PromotionRun can still fail on its global timeout while individual Targets
@@ -216,7 +208,7 @@ kapro top
 kapro tree <promotion>
 kapro events --promotion <promotion> --since=30m
 kapro why <promotionrun>
-kubectl get promotionruns,targets,triggers,plugins
+kubectl get promotionruns.runtime.kapro.io,targets.runtime.kapro.io,triggers.kapro.io,plugins.kapro.io
 kubectl describe promotionrun <promotionrun>
 kubectl get targets -l kapro.io/promotionrun=<promotionrun> -o wide
 kubectl get decisiontraces -l kapro.io/promotionrun=<promotionrun>
@@ -227,7 +219,7 @@ kubectl logs -n kapro-system deploy/kapro-operator --since=30m
 If the deployment uses sharding, include the shard label in every query:
 
 ```bash
-kubectl get promotionruns,targets -l kapro.io/shard=<shard>
+kubectl get promotionruns.runtime.kapro.io,targets.runtime.kapro.io -l kapro.io/shard=<shard>
 ```
 
 For dashboard triage, start with active promotionrun count, controller reconcile
@@ -277,7 +269,7 @@ Triage:
 | `Soaking` | Normal soak delay | `status.phaseEnteredAt` and configured soak duration |
 | `MetricsCheck` | Prometheus query false, inconclusive, or unreachable | Gate results, `kapro_gate_evaluations_total`, Prometheus target health |
 | `WaitingApproval` | Approval not created or rejected | `kubectl get approvals` and approval webhook logs |
-| `Applying` | Actuator backend not converging | `Cluster.status.currentVersions`, actuator/plugin logs |
+| `Applying` | Actuator substrate not converging | `Cluster.status.currentVersions`, actuator/plugin logs |
 | `Failed` | Failure policy halted or rollback failed | Target message and Events |
 
 4. Check whether this is isolated or systemic:
@@ -297,64 +289,13 @@ Mitigation:
   kubectl patch promotionrun <promotionrun> --type=merge -p '{"spec":{"suspended":false}}'
   ```
 
-- If one target is blocked by a known transient backend issue, fix the backend
+- If one target is blocked by a known transient substrate issue, fix the substrate
   and let the Target reconcile. Avoid patching status by hand.
-- If a stage is too wide for the backend, suspend the PromotionRun, reduce future
+- If a stage is too wide for the substrate, suspend the PromotionRun, reduce future
   stage `strategy.maxParallel`, and let the current target set drain or
   fail according to policy.
 - If the promotionrun is failed and the artifact should not continue, use the
   rollback runbook below.
-
-## Runbook: Fleet Drift
-
-Symptoms:
-
-- `KaproFleetDriftDetected`, `KaproFleetDriftSignalsIncomplete`,
-  `KaproFleetDriftReportFailed`, or `KaproFleetDriftReportPending` fires.
-- `kapro_fleetdriftreport_phase{phase!="Current"} == 1` returns an active
-  non-current phase.
-- A `max-drift` gate is repeatedly `Inconclusive`.
-
-Triage:
-
-1. Inspect the report summary and bounded evidence:
-
-   ```bash
-   kubectl get fleetdriftreport <report> -o yaml
-   kubectl describe fleetdriftreport <report>
-   ```
-
-   Start with `status.phase`, `status.summary`, and `status.targets[]`.
-   Current targets are intentionally omitted from `status.targets`; use summary
-   counts to understand fleet-wide impact.
-
-2. Map the report phase to the likely source:
-
-| Phase | Likely source | Next check |
-|---|---|---|
-| `Drifted` | Converged target or backend-native object differs from desired state | `status.targets[].appVersions`, `status.targets[].objects`, backend controller status |
-| `Unknown` | Missing Cluster object or incomplete version signal | `kubectl get cluster <cluster> -o yaml`, spoke heartbeat and delivery status |
-| `Failed` | Target or delivery loop reports failure | Target status, `Cluster.status.delivery`, backend/plugin logs |
-| `Pending` | Rollout is still converging | PromotionRun/Target progress and stage maxParallel |
-
-3. Check whether the problem is one target or the full slice:
-
-   ```promql
-   kapro_fleetdriftreport_targets{report="<report>"}
-   kapro_fleetdriftreport_backend_objects{report="<report>"}
-   kapro_fleetdriftreport_phase{report="<report>"} == 1
-   ```
-
-Mitigation:
-
-- For `Drifted`, fix the backend source of truth or allow the backend to
-  reconcile; do not patch report status.
-- For `Unknown`, restore the missing Cluster/status signal before relaxing a
-  `max-drift` gate.
-- For `Failed`, follow the Target or backend failure first, then let the report
-  refresh.
-- Use `allowMissing=true` or `allowStale=true` on `max-drift` only for
-  deliberate bootstrap windows; remove it after the report controller is healthy.
 
 ## Runbook: Spoke Delivery
 
@@ -379,33 +320,33 @@ Triage:
    server-side dry-run failed before live mutation, while `Applying` means the
    commit phase started and may have partially applied objects before failing.
 
-2. Inspect the spoke pod and local backend:
+2. Inspect the spoke pod and local substrate:
 
    ```bash
    kubectl -n kapro-system logs -l app.kubernetes.io/component=spoke-agent --since=30m
    kubectl -n kapro-system get svc -l app.kubernetes.io/component=spoke-agent
    ```
 
-3. Check whether errors are backend-specific:
+3. Check whether errors are substrate-specific:
 
    ```promql
-   sum by (cluster, backend, result) (rate(kapro_spoke_delivery_reconciles_total[10m]))
-   histogram_quantile(0.95, sum by (cluster, backend, le) (rate(kapro_spoke_delivery_reconcile_duration_seconds_bucket[10m])))
-   sum by (cluster, backend, phase, result) (rate(kapro_spoke_delivery_staging_results_total[10m]))
+   sum by (cluster, substrate, result) (rate(kapro_spoke_delivery_reconciles_total[10m]))
+   histogram_quantile(0.95, sum by (cluster, substrate, le) (rate(kapro_spoke_delivery_reconcile_duration_seconds_bucket[10m])))
+   sum by (cluster, substrate, phase, result) (rate(kapro_spoke_delivery_staging_results_total[10m]))
    ```
 
 Mitigation:
 
-- For `backend="oci"`, verify artifact pull credentials, artifact existence,
+- For `substrate="oci"`, verify artifact pull credentials, artifact existence,
   renderer output, and server-side apply conflicts in the spoke logs. A
   `Staging` failure is safe to retry after fixing the artifact or invalid object
   because no commit ran. An `Applying` failure should be compared against the
   local cluster state because Kubernetes does not provide multi-object rollback
   after commit starts.
-- For `backend="flux"`, inspect local `OCIRepository` and `HelmRelease`
+- For `substrate="flux"`, inspect local `OCIRepository` and `HelmRelease`
   readiness.
 - If latency rises without errors, check spoke API server throttling and plugin
-  or backend controller response time before increasing delivery interval.
+  or substrate controller response time before increasing delivery interval.
 
 ## Runbook: Gate Failure
 
@@ -437,7 +378,7 @@ Triage:
    non-zero pass value for the same window.
 
 4. For template gates, check `Target.status.gates[].attempts`,
-   `failurePolicy`, `inconclusivePolicy`, `timeout`, and backend logs for job,
+   `failurePolicy`, `inconclusivePolicy`, `timeout`, and substrate logs for job,
    webhook, or plugin implementations.
 
 Mitigation:
@@ -536,7 +477,7 @@ deleted, the operator refreshes the runtime adapter without requiring a restart.
 
 Mitigation:
 
-- Restore the plugin Service, DNS, TLS Secret, or backend dependency.
+- Restore the plugin Service, DNS, TLS Secret, or substrate dependency.
 - Increase `spec.timeout` only when the plugin is healthy but its normal call
   latency exceeds the current deadline.
 - If the plugin is optional, remove or change future Plan gate templates or
@@ -580,7 +521,7 @@ Automatic rollback path:
 Manual corrective rollback path:
 
 1. Identify the last known good digest from `Target.status.previousVersion`,
-   `previousVersions`, artifact inventory, or backend deployment records.
+   `previousVersions`, artifact inventory, or substrate deployment records.
 2. Create or update a Promotion pinned to that immutable digest and scoped to
    the affected targets. Let the controller stamp the rollback attempt.
 3. Use conservative stage `maxParallel` and approval gates for production
@@ -591,7 +532,7 @@ Manual corrective rollback path:
 Post-rollback checks:
 
 ```bash
-kubectl get promotionruns,targets
+kubectl get promotionruns.runtime.kapro.io,targets.runtime.kapro.io
 kubectl get clusters -o yaml
 ```
 

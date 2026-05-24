@@ -18,10 +18,10 @@ Prerequisites:
 ```bash
 git clone --branch main https://github.com/Kapro-dev/kapro.git
 cd kapro
-kubectl apply -f examples/quickstart-oci/backend-oci.yaml
+kubectl apply -f examples/quickstart-oci/substrates/oci.yaml
 kubectl apply -f examples/quickstart-oci/fleet.yaml
 kubectl apply -f examples/quickstart-oci/promotion.yaml
-kubectl get promotions,promotionruns,targets
+kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
 ```
 
 Replace the placeholder `ghcr.io/example/...` repositories with your workload

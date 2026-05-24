@@ -1,4 +1,4 @@
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Approval
 metadata:
   name: checkout-kind-checkout-kind-953053e2

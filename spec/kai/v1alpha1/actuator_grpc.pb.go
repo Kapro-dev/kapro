@@ -8,7 +8,6 @@ package kaiv1alpha1
 
 import (
 	context "context"
-
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -32,9 +31,9 @@ const (
 //
 // ActuatorService is the Kapro Actuator Interface (KAI).
 //
-// An actuator applies one artifact version to one target and reports backend
+// An actuator applies one artifact version to one target and reports substrate
 // convergence. Kapro owns promotion_run ordering, retries, rollback intent, and
-// status; the actuator owns backend-specific mutation and readiness checks.
+// status; the actuator owns substrate-specific mutation and readiness checks.
 type ActuatorServiceClient interface {
 	GetCapabilities(ctx context.Context, in *GetCapabilitiesRequest, opts ...grpc.CallOption) (*GetCapabilitiesResponse, error)
 	Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error)
@@ -96,9 +95,9 @@ func (c *actuatorServiceClient) Rollback(ctx context.Context, in *RollbackReques
 //
 // ActuatorService is the Kapro Actuator Interface (KAI).
 //
-// An actuator applies one artifact version to one target and reports backend
+// An actuator applies one artifact version to one target and reports substrate
 // convergence. Kapro owns promotion_run ordering, retries, rollback intent, and
-// status; the actuator owns backend-specific mutation and readiness checks.
+// status; the actuator owns substrate-specific mutation and readiness checks.
 type ActuatorServiceServer interface {
 	GetCapabilities(context.Context, *GetCapabilitiesRequest) (*GetCapabilitiesResponse, error)
 	Apply(context.Context, *ApplyRequest) (*ApplyResponse, error)

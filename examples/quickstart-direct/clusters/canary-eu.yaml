@@ -1,4 +1,4 @@
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Cluster
 metadata:
   name: canary-eu
@@ -7,7 +7,7 @@ metadata:
 spec:
   delivery:
     mode: push
-    backendRef: direct
+    substrateRef: direct
     parameters:
       namespace: default
       deployment: checkout-direct

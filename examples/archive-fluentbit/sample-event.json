@@ -1,7 +1,7 @@
 {
   "specversion": "1.0",
   "id": "example-fluentbit-1",
-  "source": "/apis/kapro.io/v1alpha2/promotions/demo",
+  "source": "/apis/kapro.io/v1alpha1/promotions/demo",
   "type": "kapro.io/promotion.stage.succeeded",
   "subject": "demo",
   "time": "2026-05-22T10:00:00Z",

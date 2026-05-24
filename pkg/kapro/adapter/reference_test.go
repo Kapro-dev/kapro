@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/pkg/kapro/adapter"
 	"kapro.io/kapro/pkg/kapro/adapter/argocd"
 	"kapro.io/kapro/pkg/kapro/adapter/flux"
@@ -14,14 +14,14 @@ import (
 func TestReferenceAdaptersExposeDriversAndDiscoveryModels(t *testing.T) {
 	tests := []struct {
 		name         string
-		driver       kaprov1alpha2.BackendDriver
+		driver       kaprov1alpha1.SubstrateDriver
 		wantReady    bool
 		wantSelected int
 		discover     func(context.Context) (bool, int, string, error)
 	}{
 		{
 			name:         "argocd",
-			driver:       kaprov1alpha2.BackendDriverArgo,
+			driver:       kaprov1alpha1.SubstrateDriverArgo,
 			wantReady:    true,
 			wantSelected: 2,
 			discover: func(ctx context.Context) (bool, int, string, error) {
@@ -32,7 +32,7 @@ func TestReferenceAdaptersExposeDriversAndDiscoveryModels(t *testing.T) {
 		},
 		{
 			name:         "flux",
-			driver:       kaprov1alpha2.BackendDriverFlux,
+			driver:       kaprov1alpha1.SubstrateDriverFlux,
 			wantReady:    true,
 			wantSelected: 5,
 			discover: func(ctx context.Context) (bool, int, string, error) {
@@ -43,7 +43,7 @@ func TestReferenceAdaptersExposeDriversAndDiscoveryModels(t *testing.T) {
 		},
 		{
 			name:         "oci",
-			driver:       kaprov1alpha2.BackendDriverOCI,
+			driver:       kaprov1alpha1.SubstrateDriverOCI,
 			wantReady:    false,
 			wantSelected: 0,
 			discover: func(ctx context.Context) (bool, int, string, error) {
@@ -79,12 +79,12 @@ func TestReferenceAdaptersExposeCapabilities(t *testing.T) {
 		if caps.SupportsApply || caps.SupportsObserve || caps.SupportsRollback {
 			t.Fatalf("%s reference adapter should not advertise side-effect capabilities: %#v", a.Driver(), caps)
 		}
-		if caps.SupportsDiscover != (a.Driver() != kaprov1alpha2.BackendDriverOCI) {
+		if caps.SupportsDiscover != (a.Driver() != kaprov1alpha1.SubstrateDriverOCI) {
 			t.Fatalf("%s SupportsDiscover = %v", a.Driver(), caps.SupportsDiscover)
 		}
 	}
 }
 
-func discoveryRequest(driver kaprov1alpha2.BackendDriver) adapter.DiscoveryRequest {
+func discoveryRequest(driver kaprov1alpha1.SubstrateDriver) adapter.DiscoveryRequest {
 	return adapter.DiscoveryRequest{Driver: driver}
 }

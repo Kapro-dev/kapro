@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	promtestutil "github.com/prometheus/client_golang/prometheus/testutil"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -14,14 +16,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/controller"
 	kaprometrics "kapro.io/kapro/internal/metrics"
 )
 
 // fixture helper — builds a PromotionRun child of a Promotion at a given age.
-func mkRun(name, parent string, phase kaprov1alpha2.PromotionRunPhase, ageMinutes int) *kaprov1alpha2.PromotionRun {
-	return &kaprov1alpha2.PromotionRun{
+func mkRun(name, parent string, phase kaprov1alpha1.PromotionRunPhase, ageMinutes int) *kaproruntimev1alpha1.PromotionRun {
+	return &kaproruntimev1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              name,
 			CreationTimestamp: metav1.NewTime(time.Now().Add(-time.Duration(ageMinutes) * time.Minute)),
@@ -29,15 +31,18 @@ func mkRun(name, parent string, phase kaprov1alpha2.PromotionRunPhase, ageMinute
 				"kapro.io/promotion": parent,
 			},
 		},
-		Status: kaprov1alpha2.PromotionRunStatus{Phase: phase},
+		Status: kaprov1alpha1.PromotionRunStatus{Phase: phase},
 	}
 }
 
 func gcTestClient(t *testing.T, objs ...client.Object) (client.Client, *runtime.Scheme) {
 	t.Helper()
 	s := runtime.NewScheme()
-	if err := kaprov1alpha2.AddToScheme(s); err != nil {
+	if err := kaprov1alpha1.AddToScheme(s); err != nil {
 		t.Fatalf("AddToScheme: %v", err)
+	}
+	if err := kaproruntimev1alpha1.AddToScheme(s); err != nil {
+		t.Fatalf("Add runtime scheme: %v", err)
 	}
 	return fake.NewClientBuilder().WithScheme(s).WithObjects(objs...).Build(), s
 }
@@ -45,11 +50,11 @@ func gcTestClient(t *testing.T, objs ...client.Object) (client.Client, *runtime.
 // TestGC_BelowCap_NothingDeleted asserts the controller is a no-op when the
 // total retained count is at or under the cap.
 func TestGC_BelowCap_NothingDeleted(t *testing.T) {
-	promo := &kaprov1alpha2.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "checkout"}}
+	promo := &kaprov1alpha1.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "checkout"}}
 	runs := []client.Object{
-		mkRun("rel-1", "checkout", kaprov1alpha2.PromotionRunPhaseComplete, 60),
-		mkRun("rel-2", "checkout", kaprov1alpha2.PromotionRunPhaseComplete, 50),
-		mkRun("rel-3", "checkout", kaprov1alpha2.PromotionRunPhaseFailed, 40),
+		mkRun("rel-1", "checkout", kaprov1alpha1.PromotionRunPhaseComplete, 60),
+		mkRun("rel-2", "checkout", kaprov1alpha1.PromotionRunPhaseComplete, 50),
+		mkRun("rel-3", "checkout", kaprov1alpha1.PromotionRunPhaseFailed, 40),
 	}
 	c, s := gcTestClient(t, append(runs, promo)...)
 	r := &controller.PromotionRunGCReconciler{
@@ -62,7 +67,7 @@ func TestGC_BelowCap_NothingDeleted(t *testing.T) {
 	if _, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: client.ObjectKeyFromObject(promo)}); err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	var remaining kaprov1alpha2.PromotionRunList
+	var remaining kaproruntimev1alpha1.PromotionRunList
 	_ = c.List(context.Background(), &remaining)
 	if len(remaining.Items) != 3 {
 		t.Fatalf("expected 3 PromotionRuns retained, got %d", len(remaining.Items))
@@ -72,7 +77,7 @@ func TestGC_BelowCap_NothingDeleted(t *testing.T) {
 // TestGC_ActiveNeverDeleted asserts non-terminal PromotionRuns survive even
 // when the total exceeds the cap.
 func TestGC_ActiveNeverDeleted(t *testing.T) {
-	promo := &kaprov1alpha2.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "checkout"}}
+	promo := &kaprov1alpha1.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "checkout"}}
 
 	// 5 cap, 1 floor → very tight to force pressure.
 	// 3 active (always survive) + 5 terminal Complete = 8 total. Budget = 5-3=2 terminal.
@@ -80,10 +85,10 @@ func TestGC_ActiveNeverDeleted(t *testing.T) {
 	var objs []client.Object
 	objs = append(objs, promo)
 	for i := 1; i <= 3; i++ {
-		objs = append(objs, mkRun(fmt.Sprintf("active-%d", i), "checkout", kaprov1alpha2.PromotionRunPhaseProgressing, 30-i))
+		objs = append(objs, mkRun(fmt.Sprintf("active-%d", i), "checkout", kaprov1alpha1.PromotionRunPhaseProgressing, 30-i))
 	}
 	for i := 1; i <= 5; i++ {
-		objs = append(objs, mkRun(fmt.Sprintf("done-%d", i), "checkout", kaprov1alpha2.PromotionRunPhaseComplete, 100-i*5))
+		objs = append(objs, mkRun(fmt.Sprintf("done-%d", i), "checkout", kaprov1alpha1.PromotionRunPhaseComplete, 100-i*5))
 	}
 
 	c, s := gcTestClient(t, objs...)
@@ -98,7 +103,7 @@ func TestGC_ActiveNeverDeleted(t *testing.T) {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	var remaining kaprov1alpha2.PromotionRunList
+	var remaining kaproruntimev1alpha1.PromotionRunList
 	_ = c.List(context.Background(), &remaining)
 	if len(remaining.Items) != 5 {
 		t.Fatalf("expected 5 retained (3 active + 2 newest Complete), got %d", len(remaining.Items))
@@ -118,17 +123,17 @@ func TestGC_ActiveNeverDeleted(t *testing.T) {
 // least MinRetainedPerOutcome — old Failures are not auto-pruned just
 // because Successes filled the cap.
 func TestGC_PerOutcomeFloorRespected(t *testing.T) {
-	promo := &kaprov1alpha2.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "checkout"}}
+	promo := &kaprov1alpha1.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "checkout"}}
 	var objs []client.Object
 	objs = append(objs, promo)
 	// 20 Successes (recent), 5 Failed (much older), 0 active.
 	// Cap=10, floor-per-outcome=3.
 	// Expected: keep 3 Failed (floor) + 7 Successes (recent) = 10.
 	for i := 1; i <= 20; i++ {
-		objs = append(objs, mkRun(fmt.Sprintf("succ-%d", i), "checkout", kaprov1alpha2.PromotionRunPhaseComplete, 100-i))
+		objs = append(objs, mkRun(fmt.Sprintf("succ-%d", i), "checkout", kaprov1alpha1.PromotionRunPhaseComplete, 100-i))
 	}
 	for i := 1; i <= 5; i++ {
-		objs = append(objs, mkRun(fmt.Sprintf("fail-%d", i), "checkout", kaprov1alpha2.PromotionRunPhaseFailed, 500-i))
+		objs = append(objs, mkRun(fmt.Sprintf("fail-%d", i), "checkout", kaprov1alpha1.PromotionRunPhaseFailed, 500-i))
 	}
 	c, s := gcTestClient(t, objs...)
 	r := &controller.PromotionRunGCReconciler{
@@ -141,7 +146,7 @@ func TestGC_PerOutcomeFloorRespected(t *testing.T) {
 	if _, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: client.ObjectKeyFromObject(promo)}); err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	var remaining kaprov1alpha2.PromotionRunList
+	var remaining kaproruntimev1alpha1.PromotionRunList
 	_ = c.List(context.Background(), &remaining)
 	if len(remaining.Items) != 10 {
 		t.Fatalf("expected 10 retained, got %d", len(remaining.Items))
@@ -149,9 +154,9 @@ func TestGC_PerOutcomeFloorRespected(t *testing.T) {
 	var failed, succ int
 	for _, run := range remaining.Items {
 		switch run.Status.Phase {
-		case kaprov1alpha2.PromotionRunPhaseFailed:
+		case kaprov1alpha1.PromotionRunPhaseFailed:
 			failed++
-		case kaprov1alpha2.PromotionRunPhaseComplete:
+		case kaprov1alpha1.PromotionRunPhaseComplete:
 			succ++
 		}
 	}
@@ -186,7 +191,7 @@ func TestGC_MissingPromotionNoOp(t *testing.T) {
 // excess-above-floor candidates; the oldest entries — wherever they live —
 // must be picked first regardless of map iteration order.
 func TestGC_GlobalOldestFirst(t *testing.T) {
-	promo := &kaprov1alpha2.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "checkout"}}
+	promo := &kaprov1alpha1.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "checkout"}}
 	var objs []client.Object
 	objs = append(objs, promo)
 
@@ -195,11 +200,11 @@ func TestGC_GlobalOldestFirst(t *testing.T) {
 	// after floor for Complete: 3, for Failed: 3; budget=4-0=4; excess=4).
 	// Globally oldest 4: complete-40, failed-35, complete-30, failed-25.
 	for i, age := range []int{10, 20, 30, 40} {
-		objs = append(objs, mkRun(fmt.Sprintf("complete-%d", age), "checkout", kaprov1alpha2.PromotionRunPhaseComplete, age))
+		objs = append(objs, mkRun(fmt.Sprintf("complete-%d", age), "checkout", kaprov1alpha1.PromotionRunPhaseComplete, age))
 		_ = i
 	}
 	for _, age := range []int{5, 15, 25, 35} {
-		objs = append(objs, mkRun(fmt.Sprintf("failed-%d", age), "checkout", kaprov1alpha2.PromotionRunPhaseFailed, age))
+		objs = append(objs, mkRun(fmt.Sprintf("failed-%d", age), "checkout", kaprov1alpha1.PromotionRunPhaseFailed, age))
 	}
 
 	c, s := gcTestClient(t, objs...)
@@ -213,7 +218,7 @@ func TestGC_GlobalOldestFirst(t *testing.T) {
 	if _, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: client.ObjectKeyFromObject(promo)}); err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	var remaining kaprov1alpha2.PromotionRunList
+	var remaining kaproruntimev1alpha1.PromotionRunList
 	_ = c.List(context.Background(), &remaining)
 
 	survivors := map[string]bool{}
@@ -238,14 +243,14 @@ func TestGC_GlobalOldestFirst(t *testing.T) {
 // multiple reconciles instead of one mega-pass that could saturate the API
 // server or event broadcaster.
 func TestGC_BoundedDeletesPerReconcile(t *testing.T) {
-	promo := &kaprov1alpha2.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "checkout"}}
+	promo := &kaprov1alpha1.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "checkout"}}
 	var objs []client.Object
 	objs = append(objs, promo)
 	// 30 terminal Completes, cap=5 → 25 to delete. With per-reconcile
 	// cap=10 the first reconcile deletes 10 and requeues; we don't drain
 	// the rest here, we just assert the cap held + RequeueAfter set.
 	for i := 1; i <= 30; i++ {
-		objs = append(objs, mkRun(fmt.Sprintf("succ-%d", i), "checkout", kaprov1alpha2.PromotionRunPhaseComplete, 100-i))
+		objs = append(objs, mkRun(fmt.Sprintf("succ-%d", i), "checkout", kaprov1alpha1.PromotionRunPhaseComplete, 100-i))
 	}
 	c, s := gcTestClient(t, objs...)
 	r := &controller.PromotionRunGCReconciler{
@@ -265,7 +270,7 @@ func TestGC_BoundedDeletesPerReconcile(t *testing.T) {
 	if res.RequeueAfter != time.Second {
 		t.Fatalf("expected RequeueAfter=1s to drain remaining backlog, got %+v", res)
 	}
-	var remaining kaprov1alpha2.PromotionRunList
+	var remaining kaproruntimev1alpha1.PromotionRunList
 	_ = c.List(context.Background(), &remaining)
 	// Started at 30, deleted exactly 10 this pass → 20 remain.
 	if len(remaining.Items) != 20 {
@@ -282,11 +287,11 @@ func TestGC_BoundedDeletesPerReconcile(t *testing.T) {
 // TestGC_MetricsRecordRetentionPass asserts ADR-0015 pruning emits stable
 // Prometheus counters for alerting before adopters enable retention.
 func TestGC_MetricsRecordRetentionPass(t *testing.T) {
-	promo := &kaprov1alpha2.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "checkout"}}
+	promo := &kaprov1alpha1.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "checkout"}}
 	var objs []client.Object
 	objs = append(objs, promo)
 	for i := 1; i <= 8; i++ {
-		objs = append(objs, mkRun(fmt.Sprintf("succ-%d", i), "checkout", kaprov1alpha2.PromotionRunPhaseComplete, 100-i))
+		objs = append(objs, mkRun(fmt.Sprintf("succ-%d", i), "checkout", kaprov1alpha1.PromotionRunPhaseComplete, 100-i))
 	}
 
 	beforeDeleted := promtestutil.ToFloat64(kaprometrics.PromotionRunPruned.WithLabelValues("deleted"))
@@ -316,14 +321,14 @@ func TestGC_MetricsRecordRetentionPass(t *testing.T) {
 }
 
 // TestGC_DefaultsApplied asserts zero overrides resolve to the
-// kaprov1alpha2.Default* constants.
+// kaprov1alpha1.Default* constants.
 func TestGC_DefaultsApplied(t *testing.T) {
-	promo := &kaprov1alpha2.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "checkout"}}
+	promo := &kaprov1alpha1.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "checkout"}}
 	var objs []client.Object
 	objs = append(objs, promo)
 	// At default cap=50 and floor=10, 30 Completes should all survive.
 	for i := 1; i <= 30; i++ {
-		objs = append(objs, mkRun(fmt.Sprintf("succ-%d", i), "checkout", kaprov1alpha2.PromotionRunPhaseComplete, 100-i))
+		objs = append(objs, mkRun(fmt.Sprintf("succ-%d", i), "checkout", kaprov1alpha1.PromotionRunPhaseComplete, 100-i))
 	}
 	c, s := gcTestClient(t, objs...)
 	r := &controller.PromotionRunGCReconciler{
@@ -335,10 +340,10 @@ func TestGC_DefaultsApplied(t *testing.T) {
 	if _, err := r.Reconcile(context.Background(), reconcile.Request{NamespacedName: client.ObjectKeyFromObject(promo)}); err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
-	var remaining kaprov1alpha2.PromotionRunList
+	var remaining kaproruntimev1alpha1.PromotionRunList
 	_ = c.List(context.Background(), &remaining)
 	if len(remaining.Items) != 30 {
 		t.Fatalf("expected 30 retained (under default cap of %d), got %d",
-			kaprov1alpha2.DefaultMaxRetainedPerPromotion, len(remaining.Items))
+			kaprov1alpha1.DefaultMaxRetainedPerPromotion, len(remaining.Items))
 	}
 }

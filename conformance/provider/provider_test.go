@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"kapro.io/kapro/api/v1alpha2"
+	"kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/pkg/spokeprovider"
 )
 
@@ -15,7 +15,7 @@ type fakeProvider struct {
 	res  spokeprovider.ReconcileResult
 }
 
-func (p fakeProvider) Driver() v1alpha2.BackendDriver { return p.caps.Driver }
+func (p fakeProvider) Driver() v1alpha1.SubstrateDriver { return p.caps.Driver }
 func (p fakeProvider) Capabilities() spokeprovider.Capabilities {
 	return p.caps
 }
@@ -26,11 +26,11 @@ func (p fakeProvider) Reconcile(context.Context, spokeprovider.ReconcileRequest)
 func TestCheckPasses(t *testing.T) {
 	report := Check(context.Background(), fakeProvider{
 		caps: spokeprovider.Capabilities{
-			Driver:            v1alpha2.BackendDriverOCI,
+			Driver:            v1alpha1.SubstrateDriverOCI,
 			SupportsReconcile: true,
 			SupportsObserve:   true,
 		},
-		res: spokeprovider.ReconcileResult{Phase: v1alpha2.DeliveryPhaseConverged},
+		res: spokeprovider.ReconcileResult{Phase: v1alpha1.DeliveryPhaseConverged},
 	}, DefaultScenario())
 	if !report.Passed() {
 		t.Fatalf("report failed: %#v", report.Failed())
@@ -39,7 +39,7 @@ func TestCheckPasses(t *testing.T) {
 
 func TestCheckDefaultsScenarioDriverFromProvider(t *testing.T) {
 	report := Check(context.Background(), driverCheckingProvider{
-		driver: v1alpha2.BackendDriverFlux,
+		driver: v1alpha1.SubstrateDriverFlux,
 	}, DefaultScenario())
 	if !report.Passed() {
 		t.Fatalf("report failed: %#v", report.Failed())
@@ -48,8 +48,8 @@ func TestCheckDefaultsScenarioDriverFromProvider(t *testing.T) {
 
 func TestCheckReportsMissingCapability(t *testing.T) {
 	report := Check(context.Background(), fakeProvider{
-		caps: spokeprovider.Capabilities{Driver: v1alpha2.BackendDriverOCI},
-		res:  spokeprovider.ReconcileResult{Phase: v1alpha2.DeliveryPhaseConverged},
+		caps: spokeprovider.Capabilities{Driver: v1alpha1.SubstrateDriverOCI},
+		res:  spokeprovider.ReconcileResult{Phase: v1alpha1.DeliveryPhaseConverged},
 	}, DefaultScenario())
 	if report.Passed() {
 		t.Fatalf("report passed unexpectedly")
@@ -80,11 +80,11 @@ type togglingProvider struct {
 	calls int
 }
 
-func (p *togglingProvider) Driver() v1alpha2.BackendDriver { return v1alpha2.BackendDriverOCI }
+func (p *togglingProvider) Driver() v1alpha1.SubstrateDriver { return v1alpha1.SubstrateDriverOCI }
 
 func (p *togglingProvider) Capabilities() spokeprovider.Capabilities {
 	return spokeprovider.Capabilities{
-		Driver:            v1alpha2.BackendDriverOCI,
+		Driver:            v1alpha1.SubstrateDriverOCI,
 		SupportsReconcile: true,
 	}
 }
@@ -92,16 +92,16 @@ func (p *togglingProvider) Capabilities() spokeprovider.Capabilities {
 func (p *togglingProvider) Reconcile(context.Context, spokeprovider.ReconcileRequest) spokeprovider.ReconcileResult {
 	p.calls++
 	if p.calls%2 == 0 {
-		return spokeprovider.ReconcileResult{Phase: v1alpha2.DeliveryPhaseFailed, Err: errors.New("changed")}
+		return spokeprovider.ReconcileResult{Phase: v1alpha1.DeliveryPhaseFailed, Err: errors.New("changed")}
 	}
-	return spokeprovider.ReconcileResult{Phase: v1alpha2.DeliveryPhaseConverged}
+	return spokeprovider.ReconcileResult{Phase: v1alpha1.DeliveryPhaseConverged}
 }
 
 type driverCheckingProvider struct {
-	driver v1alpha2.BackendDriver
+	driver v1alpha1.SubstrateDriver
 }
 
-func (p driverCheckingProvider) Driver() v1alpha2.BackendDriver { return p.driver }
+func (p driverCheckingProvider) Driver() v1alpha1.SubstrateDriver { return p.driver }
 
 func (p driverCheckingProvider) Capabilities() spokeprovider.Capabilities {
 	return spokeprovider.Capabilities{
@@ -111,8 +111,8 @@ func (p driverCheckingProvider) Capabilities() spokeprovider.Capabilities {
 }
 
 func (p driverCheckingProvider) Reconcile(_ context.Context, req spokeprovider.ReconcileRequest) spokeprovider.ReconcileResult {
-	if req.BackendProfile == nil || req.BackendProfile.Spec.Driver != p.driver {
+	if req.SubstrateProfile == nil || req.SubstrateProfile.Spec.SubstrateKind() != string(p.driver) {
 		panic("scenario driver did not match provider")
 	}
-	return spokeprovider.ReconcileResult{Phase: v1alpha2.DeliveryPhaseConverged}
+	return spokeprovider.ReconcileResult{Phase: v1alpha1.DeliveryPhaseConverged}
 }

@@ -10,7 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/pkg/actuator"
 )
 
@@ -26,7 +26,7 @@ type Actuator struct {
 }
 
 var _ actuator.Actuator = (*Actuator)(nil)
-var _ actuator.BackendObjectReporter = (*Actuator)(nil)
+var _ actuator.SubstrateObjectReporter = (*Actuator)(nil)
 
 func (a *Actuator) Apply(ctx context.Context, req actuator.ApplyRequest) error {
 	if req.Cluster == nil {
@@ -59,7 +59,7 @@ func (a *Actuator) ApplyDelta(ctx context.Context, req actuator.DeltaApplyReques
 	return count, nil
 }
 
-func (a *Actuator) IsConverged(ctx context.Context, mc *kaprov1alpha2.Cluster, appKey, version string) (bool, error) {
+func (a *Actuator) IsConverged(ctx context.Context, mc *kaprov1alpha1.Cluster, appKey, version string) (bool, error) {
 	if mc == nil {
 		return false, fmt.Errorf("cluster is nil")
 	}
@@ -82,7 +82,7 @@ func (a *Actuator) IsConverged(ctx context.Context, mc *kaprov1alpha2.Cluster, a
 	return true, nil
 }
 
-func (a *Actuator) IsAllConverged(ctx context.Context, mc *kaprov1alpha2.Cluster, desiredVersions map[string]string) (bool, error) {
+func (a *Actuator) IsAllConverged(ctx context.Context, mc *kaprov1alpha1.Cluster, desiredVersions map[string]string) (bool, error) {
 	for appKey, version := range desiredVersions {
 		ok, err := a.IsConverged(ctx, mc, appKey, version)
 		if err != nil || !ok {
@@ -92,7 +92,7 @@ func (a *Actuator) IsAllConverged(ctx context.Context, mc *kaprov1alpha2.Cluster
 	return true, nil
 }
 
-func (a *Actuator) Rollback(ctx context.Context, mc *kaprov1alpha2.Cluster, previousVersion, appKey string) error {
+func (a *Actuator) Rollback(ctx context.Context, mc *kaprov1alpha1.Cluster, previousVersion, appKey string) error {
 	return a.Apply(ctx, actuator.ApplyRequest{
 		Cluster: mc,
 		Version: previousVersion,
@@ -100,7 +100,7 @@ func (a *Actuator) Rollback(ctx context.Context, mc *kaprov1alpha2.Cluster, prev
 	})
 }
 
-func (a *Actuator) setTargetRevision(ctx context.Context, mc *kaprov1alpha2.Cluster, appKey, version string) error {
+func (a *Actuator) setTargetRevision(ctx context.Context, mc *kaprov1alpha1.Cluster, appKey, version string) error {
 	apps, err := a.getApplications(ctx, mc, appKey)
 	if err != nil {
 		return err
@@ -154,7 +154,7 @@ func stringSliceToAny(values []string) []any {
 	return out
 }
 
-func (a *Actuator) getApplications(ctx context.Context, mc *kaprov1alpha2.Cluster, appKey string) ([]unstructured.Unstructured, error) {
+func (a *Actuator) getApplications(ctx context.Context, mc *kaprov1alpha1.Cluster, appKey string) ([]unstructured.Unstructured, error) {
 	if a.Client == nil {
 		return nil, fmt.Errorf("client is nil")
 	}
@@ -184,7 +184,7 @@ func (a *Actuator) getApplications(ctx context.Context, mc *kaprov1alpha2.Cluste
 	return []unstructured.Unstructured{*app}, nil
 }
 
-func applicationName(mc *kaprov1alpha2.Cluster, appKey string) string {
+func applicationName(mc *kaprov1alpha1.Cluster, appKey string) string {
 	if appKey != "" && appKey != "default" {
 		if name := mc.Spec.Delivery.Param("application."+appKey, ""); name != "" {
 			return name
@@ -199,7 +199,7 @@ func applicationName(mc *kaprov1alpha2.Cluster, appKey string) string {
 	return mc.Name
 }
 
-func applicationSelector(mc *kaprov1alpha2.Cluster, appKey string) string {
+func applicationSelector(mc *kaprov1alpha1.Cluster, appKey string) string {
 	if appKey != "" && appKey != "default" {
 		if selector := mc.Spec.Delivery.Param("applicationSelector."+appKey, ""); selector != "" {
 			return selector
@@ -208,7 +208,7 @@ func applicationSelector(mc *kaprov1alpha2.Cluster, appKey string) string {
 	return mc.Spec.Delivery.Param("applicationSelector", "")
 }
 
-func argoVersionField(mc *kaprov1alpha2.Cluster, appKey string) string {
+func argoVersionField(mc *kaprov1alpha1.Cluster, appKey string) string {
 	if appKey != "" && appKey != "default" {
 		if field := mc.Spec.Delivery.Param("versionField."+appKey, ""); field != "" {
 			return field
@@ -271,7 +271,7 @@ func sourceIndexField(field string) (int, bool) {
 	return 0, false
 }
 
-func authorizeApplicationWrite(mc *kaprov1alpha2.Cluster, app *unstructured.Unstructured, appKey string) error {
+func authorizeApplicationWrite(mc *kaprov1alpha1.Cluster, app *unstructured.Unstructured, appKey string) error {
 	if mc.Spec.Delivery.Param("authorization", "required") == "disabled" ||
 		mc.Spec.Delivery.Param("requireAuthorization", "true") == "false" {
 		return nil
@@ -311,8 +311,8 @@ func authorizeApplicationWrite(mc *kaprov1alpha2.Cluster, app *unstructured.Unst
 		app.GetNamespace(), app.GetName())
 }
 
-func (a *Actuator) BackendObjects(ctx context.Context, mc *kaprov1alpha2.Cluster, desiredVersions map[string]string) ([]kaprov1alpha2.BackendObjectStatus, error) {
-	var statuses []kaprov1alpha2.BackendObjectStatus
+func (a *Actuator) SubstrateObjects(ctx context.Context, mc *kaprov1alpha1.Cluster, desiredVersions map[string]string) ([]kaprov1alpha1.SubstrateObjectStatus, error) {
+	var statuses []kaprov1alpha1.SubstrateObjectStatus
 	for appKey, version := range desiredVersions {
 		apps, err := a.getApplications(ctx, mc, appKey)
 		if err != nil {
@@ -330,7 +330,7 @@ func (a *Actuator) BackendObjects(ctx context.Context, mc *kaprov1alpha2.Cluster
 				phase = "Converged"
 				message = "Argo CD Application is Synced and Healthy at desired revision"
 			}
-			statuses = append(statuses, kaprov1alpha2.BackendObjectStatus{
+			statuses = append(statuses, kaprov1alpha1.SubstrateObjectStatus{
 				APIVersion:     "argoproj.io/v1alpha1",
 				Kind:           "Application",
 				Namespace:      app.GetNamespace(),

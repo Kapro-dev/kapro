@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // ValidationError holds multiple validation errors.
@@ -18,7 +18,7 @@ func (e *ValidationError) Error() string {
 
 // Validate checks a PromotionSource for common mistakes before source packaging.
 // Returns nil if valid, or a *ValidationError with all issues found.
-func Validate(app *kaprov1alpha2.Source) error {
+func Validate(app *kaprov1alpha1.Source) error {
 	var errs []string
 
 	if len(app.Spec.Units) == 0 {

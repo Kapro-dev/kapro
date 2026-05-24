@@ -14,7 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/pkg/actuator"
 )
 
@@ -26,7 +26,7 @@ type Actuator struct {
 }
 
 var _ actuator.Actuator = (*Actuator)(nil)
-var _ actuator.BackendObjectReporter = (*Actuator)(nil)
+var _ actuator.SubstrateObjectReporter = (*Actuator)(nil)
 
 func (a *Actuator) Apply(ctx context.Context, req actuator.ApplyRequest) error {
 	if req.Cluster == nil {
@@ -75,7 +75,7 @@ func (a *Actuator) ApplyDelta(ctx context.Context, req actuator.DeltaApplyReques
 	return changed, nil
 }
 
-func (a *Actuator) IsConverged(ctx context.Context, cluster *kaprov1alpha2.Cluster, version, appKey string) (bool, error) {
+func (a *Actuator) IsConverged(ctx context.Context, cluster *kaprov1alpha1.Cluster, version, appKey string) (bool, error) {
 	if cluster == nil {
 		return false, fmt.Errorf("cluster is nil")
 	}
@@ -115,7 +115,7 @@ func (a *Actuator) IsConverged(ctx context.Context, cluster *kaprov1alpha2.Clust
 	return true, nil
 }
 
-func (a *Actuator) IsAllConverged(ctx context.Context, cluster *kaprov1alpha2.Cluster, desiredVersions map[string]string) (bool, error) {
+func (a *Actuator) IsAllConverged(ctx context.Context, cluster *kaprov1alpha1.Cluster, desiredVersions map[string]string) (bool, error) {
 	for _, appKey := range sortedVersionKeys(desiredVersions) {
 		ok, err := a.IsConverged(ctx, cluster, desiredVersions[appKey], appKey)
 		if err != nil || !ok {
@@ -125,7 +125,7 @@ func (a *Actuator) IsAllConverged(ctx context.Context, cluster *kaprov1alpha2.Cl
 	return true, nil
 }
 
-func (a *Actuator) Rollback(ctx context.Context, cluster *kaprov1alpha2.Cluster, previousVersion, appKey string) error {
+func (a *Actuator) Rollback(ctx context.Context, cluster *kaprov1alpha1.Cluster, previousVersion, appKey string) error {
 	return a.Apply(ctx, actuator.ApplyRequest{
 		Cluster: cluster,
 		Version: previousVersion,
@@ -133,16 +133,16 @@ func (a *Actuator) Rollback(ctx context.Context, cluster *kaprov1alpha2.Cluster,
 	})
 }
 
-func (a *Actuator) BackendObjects(ctx context.Context, cluster *kaprov1alpha2.Cluster, desiredVersions map[string]string) ([]kaprov1alpha2.BackendObjectStatus, error) {
-	statuses := make([]kaprov1alpha2.BackendObjectStatus, 0, len(desiredVersions))
+func (a *Actuator) SubstrateObjects(ctx context.Context, cluster *kaprov1alpha1.Cluster, desiredVersions map[string]string) ([]kaprov1alpha1.SubstrateObjectStatus, error) {
+	statuses := make([]kaprov1alpha1.SubstrateObjectStatus, 0, len(desiredVersions))
 	for _, appKey := range sortedVersionKeys(desiredVersions) {
 		deployment, containerName, err := a.getDeployment(ctx, cluster, appKey)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
-				statuses = append(statuses, kaprov1alpha2.BackendObjectStatus{
+				statuses = append(statuses, kaprov1alpha1.SubstrateObjectStatus{
 					Kind:    "Deployment",
 					Name:    directDeploymentName(cluster, appKey),
-					Phase:   string(kaprov1alpha2.DeliveryPhasePending),
+					Phase:   string(kaprov1alpha1.DeliveryPhasePending),
 					Message: "Deployment not found",
 				})
 				continue
@@ -153,14 +153,14 @@ func (a *Actuator) BackendObjects(ctx context.Context, cluster *kaprov1alpha2.Cl
 		if index, err := containerIndex(deployment, containerName); err == nil {
 			image = deployment.Spec.Template.Spec.Containers[index].Image
 		}
-		phase := string(kaprov1alpha2.DeliveryPhasePending)
+		phase := string(kaprov1alpha1.DeliveryPhasePending)
 		if image == desiredVersions[appKey] {
-			phase = string(kaprov1alpha2.DeliveryPhaseApplying)
+			phase = string(kaprov1alpha1.DeliveryPhaseApplying)
 			if ok, _ := a.IsConverged(ctx, cluster, desiredVersions[appKey], appKey); ok {
-				phase = string(kaprov1alpha2.DeliveryPhaseConverged)
+				phase = string(kaprov1alpha1.DeliveryPhaseConverged)
 			}
 		}
-		statuses = append(statuses, kaprov1alpha2.BackendObjectStatus{
+		statuses = append(statuses, kaprov1alpha1.SubstrateObjectStatus{
 			Kind:           "Deployment",
 			Namespace:      deployment.Namespace,
 			Name:           deployment.Name,
@@ -172,7 +172,7 @@ func (a *Actuator) BackendObjects(ctx context.Context, cluster *kaprov1alpha2.Cl
 	return statuses, nil
 }
 
-func (a *Actuator) getDeployment(ctx context.Context, cluster *kaprov1alpha2.Cluster, appKey string) (*appsv1.Deployment, string, error) {
+func (a *Actuator) getDeployment(ctx context.Context, cluster *kaprov1alpha1.Cluster, appKey string) (*appsv1.Deployment, string, error) {
 	if a.Client == nil {
 		return nil, "", fmt.Errorf("client is nil")
 	}
@@ -190,14 +190,14 @@ func (a *Actuator) getDeployment(ctx context.Context, cluster *kaprov1alpha2.Clu
 	return deployment, directContainerName(cluster, appKey), nil
 }
 
-func directNamespace(cluster *kaprov1alpha2.Cluster) string {
+func directNamespace(cluster *kaprov1alpha1.Cluster) string {
 	if cluster == nil {
 		return "default"
 	}
 	return cluster.Spec.Delivery.Param("namespace", "default")
 }
 
-func directDeploymentName(cluster *kaprov1alpha2.Cluster, appKey string) string {
+func directDeploymentName(cluster *kaprov1alpha1.Cluster, appKey string) string {
 	appKey = normalizeAppKey(appKey)
 	if cluster == nil {
 		return appKey
@@ -221,7 +221,7 @@ func directDeploymentName(cluster *kaprov1alpha2.Cluster, appKey string) string 
 	return cluster.Name
 }
 
-func directContainerName(cluster *kaprov1alpha2.Cluster, appKey string) string {
+func directContainerName(cluster *kaprov1alpha1.Cluster, appKey string) string {
 	appKey = normalizeAppKey(appKey)
 	if cluster != nil && appKey != "default" {
 		if name := cluster.Spec.Delivery.Param("container."+appKey, ""); name != "" {

@@ -56,7 +56,7 @@ type Provider interface {
 	// For gcp-fleet: generates kubeconfig with Connect Gateway URL + exec auth.
 	GenerateKubeConfig(ctx context.Context, clusterName string) ([]byte, error)
 
-	// ListClusters discovers clusters from the backend.
+	// ListClusters discovers clusters from the substrate.
 	// Only gcp-fleet implements real discovery.
 	// kubeconfig and gcp-basic return an error (manual registration only).
 	ListClusters(ctx context.Context) ([]ClusterInfo, error)

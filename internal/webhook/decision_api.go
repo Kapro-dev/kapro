@@ -28,6 +28,8 @@ import (
 	"strings"
 	"time"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	authnv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -35,7 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 const (
@@ -148,9 +150,9 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 		ctx,
 		s.decisionReader(),
 		opts,
-		func() client.ObjectList { return &kaprov1alpha2.ClusterList{} },
-		func(list client.ObjectList) []kaprov1alpha2.Cluster {
-			return list.(*kaprov1alpha2.ClusterList).Items
+		func() client.ObjectList { return &kaprov1alpha1.ClusterList{} },
+		func(list client.ObjectList) []kaprov1alpha1.Cluster {
+			return list.(*kaprov1alpha1.ClusterList).Items
 		},
 		filterDecisionClustersByPhase,
 	)
@@ -163,9 +165,9 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 		ctx,
 		s.decisionReader(),
 		opts,
-		func() client.ObjectList { return &kaprov1alpha2.PromotionRunList{} },
-		func(list client.ObjectList) []kaprov1alpha2.PromotionRun {
-			return list.(*kaprov1alpha2.PromotionRunList).Items
+		func() client.ObjectList { return &kaproruntimev1alpha1.PromotionRunList{} },
+		func(list client.ObjectList) []kaproruntimev1alpha1.PromotionRun {
+			return list.(*kaproruntimev1alpha1.PromotionRunList).Items
 		},
 		filterDecisionPromotionRunsByPhase,
 	)
@@ -174,9 +176,9 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var targets []kaprov1alpha2.Target
+	var targets []kaproruntimev1alpha1.Target
 	pendingDecisionCount, pendingDecisionsTruncated := 0, false
-	if opts.phase == "" || strings.EqualFold(string(kaprov1alpha2.TargetPhaseWaitingApproval), opts.phase) {
+	if opts.phase == "" || strings.EqualFold(string(kaprov1alpha1.TargetPhaseWaitingApproval), opts.phase) {
 		// Count pending decisions through the same bounded read path so one large
 		// fleet cannot force the Decision API to materialize every target.
 		var err error
@@ -184,9 +186,9 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 			ctx,
 			s.decisionReader(),
 			opts,
-			func() client.ObjectList { return &kaprov1alpha2.TargetList{} },
-			func(list client.ObjectList) []kaprov1alpha2.Target {
-				return list.(*kaprov1alpha2.TargetList).Items
+			func() client.ObjectList { return &kaproruntimev1alpha1.TargetList{} },
+			func(list client.ObjectList) []kaproruntimev1alpha1.Target {
+				return list.(*kaproruntimev1alpha1.TargetList).Items
 			},
 			filterDecisionPendingTargetsByPhase,
 		)
@@ -205,7 +207,7 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	for _, t := range targets {
-		if t.Status.Phase == kaprov1alpha2.TargetPhaseWaitingApproval {
+		if t.Status.Phase == kaprov1alpha1.TargetPhaseWaitingApproval {
 			pendingDecisions++
 		}
 	}
@@ -225,7 +227,7 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 	activePromotionRuns := 0
 	promotionrunSummaries := make([]PromotionRunSummary, 0, len(promotionruns))
 	for _, rel := range promotionruns {
-		if rel.Status.Phase == kaprov1alpha2.PromotionRunPhaseProgressing {
+		if rel.Status.Phase == kaprov1alpha1.PromotionRunPhaseProgressing {
 			activePromotionRuns++
 		}
 		plan := ""
@@ -267,22 +269,22 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 
 // PromotionRunContext is the response for GET /api/v1/promotionruns/{name}/context.
 type PromotionRunContext struct {
-	GeneratedAt  string                     `json:"generatedAt"`
-	PromotionRun kaprov1alpha2.PromotionRun `json:"promotionrun"`
-	Plan         *kaprov1alpha2.Plan        `json:"plan,omitempty"`
-	Targets      []kaprov1alpha2.Target     `json:"targets"`
-	Page         DecisionAPIPage            `json:"page"`
+	GeneratedAt  string                            `json:"generatedAt"`
+	PromotionRun kaproruntimev1alpha1.PromotionRun `json:"promotionrun"`
+	Plan         *kaprov1alpha1.Plan               `json:"plan,omitempty"`
+	Targets      []kaproruntimev1alpha1.Target     `json:"targets"`
+	Page         DecisionAPIPage                   `json:"page"`
 }
 
 // --- Gate Context ---
 
 // GateContext is the response for GET /api/v1/promotionruns/{name}/targets/{key}/gate.
 type GateContext struct {
-	GeneratedAt  string                     `json:"generatedAt"`
-	Target       kaprov1alpha2.Target       `json:"target"`
-	PromotionRun kaprov1alpha2.PromotionRun `json:"promotionrun"`
-	Cluster      *kaprov1alpha2.Cluster     `json:"cluster,omitempty"`
-	Precedents   []DecisionPrecedent        `json:"precedents,omitempty"`
+	GeneratedAt  string                            `json:"generatedAt"`
+	Target       kaproruntimev1alpha1.Target       `json:"target"`
+	PromotionRun kaproruntimev1alpha1.PromotionRun `json:"promotionrun"`
+	Cluster      *kaprov1alpha1.Cluster            `json:"cluster,omitempty"`
+	Precedents   []DecisionPrecedent               `json:"precedents,omitempty"`
 }
 
 // DecisionPrecedent is a historical decision on this target for agent learning.
@@ -301,8 +303,8 @@ type DecisionRequest struct {
 	Decision       string                            `json:"decision"`
 	Confidence     float64                           `json:"confidence"`
 	Reasoning      string                            `json:"reasoning"`
-	Factors        []kaprov1alpha2.DecisionFactor    `json:"factors,omitempty"`
-	Conditions     []kaprov1alpha2.DecisionCondition `json:"conditions,omitempty"`
+	Factors        []kaprov1alpha1.DecisionFactor    `json:"factors,omitempty"`
+	Conditions     []kaprov1alpha1.DecisionCondition `json:"conditions,omitempty"`
 	IdempotencyKey string                            `json:"idempotencyKey"`
 	ExpiresAt      string                            `json:"expiresAt,omitempty"`
 }
@@ -367,16 +369,16 @@ func (s *Server) handlePromotionRunContext(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	var promotionrun kaprov1alpha2.PromotionRun
+	var promotionrun kaproruntimev1alpha1.PromotionRun
 	if err := s.decisionReader().Get(ctx, client.ObjectKey{Name: promotionrunName}, &promotionrun); err != nil {
 		http.Error(w, "promotionrun not found", http.StatusNotFound)
 		return
 	}
 
 	// Resolve the first plan for context.
-	var plan *kaprov1alpha2.Plan
+	var plan *kaprov1alpha1.Plan
 	if len(promotionrun.Spec.Plans) > 0 {
-		var pl kaprov1alpha2.Plan
+		var pl kaprov1alpha1.Plan
 		if err := s.decisionReader().Get(ctx, client.ObjectKey{Name: promotionrun.Spec.Plans[0].Plan}, &pl); err == nil {
 			plan = &pl
 		}
@@ -386,11 +388,11 @@ func (s *Server) handlePromotionRunContext(w http.ResponseWriter, r *http.Reques
 		ctx,
 		s.decisionReader(),
 		decisionOptionsWithPromotionRunSelector(opts, promotionrunName),
-		func() client.ObjectList { return &kaprov1alpha2.TargetList{} },
-		func(list client.ObjectList) []kaprov1alpha2.Target {
-			return list.(*kaprov1alpha2.TargetList).Items
+		func() client.ObjectList { return &kaproruntimev1alpha1.TargetList{} },
+		func(list client.ObjectList) []kaproruntimev1alpha1.Target {
+			return list.(*kaproruntimev1alpha1.TargetList).Items
 		},
-		func(items []kaprov1alpha2.Target, phase string) []kaprov1alpha2.Target {
+		func(items []kaproruntimev1alpha1.Target, phase string) []kaproruntimev1alpha1.Target {
 			return filterDecisionTargetsForRunByPhase(items, promotionrunName, phase)
 		},
 	)
@@ -509,7 +511,7 @@ func listDecisionItems[T any](
 	}
 }
 
-func filterDecisionClustersByPhase(items []kaprov1alpha2.Cluster, phase string) []kaprov1alpha2.Cluster {
+func filterDecisionClustersByPhase(items []kaprov1alpha1.Cluster, phase string) []kaprov1alpha1.Cluster {
 	if phase == "" {
 		return items
 	}
@@ -522,7 +524,7 @@ func filterDecisionClustersByPhase(items []kaprov1alpha2.Cluster, phase string) 
 	return out
 }
 
-func filterDecisionPromotionRunsByPhase(items []kaprov1alpha2.PromotionRun, phase string) []kaprov1alpha2.PromotionRun {
+func filterDecisionPromotionRunsByPhase(items []kaproruntimev1alpha1.PromotionRun, phase string) []kaproruntimev1alpha1.PromotionRun {
 	if phase == "" {
 		return items
 	}
@@ -535,7 +537,7 @@ func filterDecisionPromotionRunsByPhase(items []kaprov1alpha2.PromotionRun, phas
 	return out
 }
 
-func filterDecisionTargetsForRunByPhase(items []kaprov1alpha2.Target, promotionrunName, phase string) []kaprov1alpha2.Target {
+func filterDecisionTargetsForRunByPhase(items []kaproruntimev1alpha1.Target, promotionrunName, phase string) []kaproruntimev1alpha1.Target {
 	out := items[:0]
 	for _, item := range items {
 		if item.Spec.PromotionRunRef != promotionrunName {
@@ -549,13 +551,13 @@ func filterDecisionTargetsForRunByPhase(items []kaprov1alpha2.Target, promotionr
 	return out
 }
 
-func filterDecisionPendingTargetsByPhase(items []kaprov1alpha2.Target, phase string) []kaprov1alpha2.Target {
-	if phase != "" && !strings.EqualFold(string(kaprov1alpha2.TargetPhaseWaitingApproval), phase) {
+func filterDecisionPendingTargetsByPhase(items []kaproruntimev1alpha1.Target, phase string) []kaproruntimev1alpha1.Target {
+	if phase != "" && !strings.EqualFold(string(kaprov1alpha1.TargetPhaseWaitingApproval), phase) {
 		return nil
 	}
 	out := items[:0]
 	for _, item := range items {
-		if item.Status.Phase == kaprov1alpha2.TargetPhaseWaitingApproval {
+		if item.Status.Phase == kaprov1alpha1.TargetPhaseWaitingApproval {
 			out = append(out, item)
 		}
 	}
@@ -576,13 +578,13 @@ func (s *Server) handleGateContext(w http.ResponseWriter, r *http.Request, promo
 		return
 	}
 
-	var promotionrun kaprov1alpha2.PromotionRun
+	var promotionrun kaproruntimev1alpha1.PromotionRun
 	if err := s.decisionReader().Get(ctx, client.ObjectKey{Name: promotionrunName}, &promotionrun); err != nil {
 		http.Error(w, "promotionrun not found", http.StatusNotFound)
 		return
 	}
 
-	var target kaprov1alpha2.Target
+	var target kaproruntimev1alpha1.Target
 	if err := s.decisionReader().Get(ctx, client.ObjectKey{Name: targetKey}, &target); err != nil {
 		http.Error(w, "target not found", http.StatusNotFound)
 		return
@@ -593,8 +595,8 @@ func (s *Server) handleGateContext(w http.ResponseWriter, r *http.Request, promo
 	}
 
 	// Fetch cluster health.
-	var cluster *kaprov1alpha2.Cluster
-	var mc kaprov1alpha2.Cluster
+	var cluster *kaprov1alpha1.Cluster
+	var mc kaprov1alpha1.Cluster
 	if err := s.decisionReader().Get(ctx, client.ObjectKey{Name: target.Spec.Target}, &mc); err == nil {
 		cluster = &mc
 	}
@@ -627,7 +629,7 @@ func (s *Server) handleClusterHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var mc kaprov1alpha2.Cluster
+	var mc kaprov1alpha1.Cluster
 	if err := s.decisionReader().Get(ctx, client.ObjectKey{Name: clusterName}, &mc); err != nil {
 		http.Error(w, "cluster not found", http.StatusNotFound)
 		return
@@ -701,7 +703,7 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 	}
 
 	// Look up promotionrun and target.
-	var promotionrun kaprov1alpha2.PromotionRun
+	var promotionrun kaproruntimev1alpha1.PromotionRun
 	if err := s.Client.Get(ctx, client.ObjectKey{Name: promotionrunName}, &promotionrun); err != nil {
 		http.Error(w, "promotionrun not found", http.StatusNotFound)
 		return
@@ -711,7 +713,7 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 		return
 	}
 
-	var target kaprov1alpha2.Target
+	var target kaproruntimev1alpha1.Target
 	if err := s.Client.Get(ctx, client.ObjectKey{Name: targetKey}, &target); err != nil {
 		http.Error(w, "target not found", http.StatusNotFound)
 		return
@@ -722,7 +724,7 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 	}
 
 	// Target must be in WaitingApproval to accept a decision.
-	if target.Status.Phase != kaprov1alpha2.TargetPhaseWaitingApproval {
+	if target.Status.Phase != kaprov1alpha1.TargetPhaseWaitingApproval {
 		writeJSON(w, http.StatusUnprocessableEntity, DecisionResponse{
 			Accepted: false,
 			Reason:   fmt.Sprintf("target is in %s, not WaitingApproval", target.Status.Phase),
@@ -777,8 +779,8 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 	}
 	if policy != nil {
 		// Fetch cluster for label-based checks.
-		var mc kaprov1alpha2.Cluster
-		var cluster *kaprov1alpha2.Cluster
+		var mc kaprov1alpha1.Cluster
+		var cluster *kaprov1alpha1.Cluster
 		if err := s.Client.Get(ctx, client.ObjectKey{Name: target.Spec.Target}, &mc); err == nil {
 			cluster = &mc
 		}
@@ -791,7 +793,7 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 			return
 		}
 		trustLevel = string(pd.EffectiveMode)
-		if pd.EffectiveMode == kaprov1alpha2.PolicyModeRecommend {
+		if pd.EffectiveMode == kaprov1alpha1.PolicyModeRecommend {
 			effectiveDecision = "Recommended"
 		}
 		if pd.RequireHumanCosign && req.Decision == "Approve" {
@@ -851,11 +853,11 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 	}
 	_ = released // assigned in happy path below
 
-	entry := kaprov1alpha2.DecisionEntry{
+	entry := kaprov1alpha1.DecisionEntry{
 		DecisionID:        req.IdempotencyKey,
 		Decision:          req.Decision,
 		EffectiveDecision: effectiveDecision,
-		Identity: kaprov1alpha2.DecisionIdentity{
+		Identity: kaprov1alpha1.DecisionIdentity{
 			Name:           agentName,
 			Type:           decisionIdentityType(user),
 			TrustLevel:     trustLevel,
@@ -873,7 +875,7 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 	// to avoid conflicting with TargetReconciler's status writes.
 	patch := client.MergeFrom(target.DeepCopy())
 	if target.Status.DecisionTrace == nil {
-		target.Status.DecisionTrace = &kaprov1alpha2.TargetDecisionTrace{}
+		target.Status.DecisionTrace = &kaprov1alpha1.TargetDecisionTrace{}
 	}
 
 	// Move current to history if exists.
@@ -902,11 +904,11 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request, promotionr
 	// If decision is Approve and effective mode allows it, create an Approval CR.
 	// Recommend mode and PendingHumanConfirm do NOT auto-create Approvals.
 	if req.Decision == "Approve" && effectiveDecision == "Approve" {
-		approval := &kaprov1alpha2.Approval{
+		approval := &kaprov1alpha1.Approval{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: fmt.Sprintf("%s-%s", promotionrunName, targetKey),
 			},
-			Spec: kaprov1alpha2.ApprovalSpec{
+			Spec: kaprov1alpha1.ApprovalSpec{
 				PromotionRun: promotionrunName,
 				Target:       target.Spec.Target,
 				Ref:          targetKey,
@@ -979,7 +981,7 @@ func (s *Server) handleOverride(w http.ResponseWriter, r *http.Request, promotio
 		return
 	}
 
-	var target kaprov1alpha2.Target
+	var target kaproruntimev1alpha1.Target
 	if err := s.Client.Get(ctx, client.ObjectKey{Name: targetKey}, &target); err != nil {
 		http.Error(w, "target not found", http.StatusNotFound)
 		return
@@ -1001,7 +1003,7 @@ func (s *Server) handleOverride(w http.ResponseWriter, r *http.Request, promotio
 		overriddenDecisionID = target.Status.DecisionTrace.Current.DecisionID
 	}
 
-	override := kaprov1alpha2.HumanOverride{
+	override := kaprov1alpha1.HumanOverride{
 		OverrideID:           fmt.Sprintf("o-%s-%s", time.Now().Format("20060102-150405"), targetKey),
 		OverriddenDecisionID: overriddenDecisionID,
 		Action:               req.Action,
@@ -1012,7 +1014,7 @@ func (s *Server) handleOverride(w http.ResponseWriter, r *http.Request, promotio
 
 	patch := client.MergeFrom(target.DeepCopy())
 	if target.Status.DecisionTrace == nil {
-		target.Status.DecisionTrace = &kaprov1alpha2.TargetDecisionTrace{}
+		target.Status.DecisionTrace = &kaprov1alpha1.TargetDecisionTrace{}
 	}
 	target.Status.DecisionTrace.HumanOverrides = append(target.Status.DecisionTrace.HumanOverrides, override)
 
@@ -1023,11 +1025,11 @@ func (s *Server) handleOverride(w http.ResponseWriter, r *http.Request, promotio
 
 	// If override action is Approve, create Approval CR.
 	if req.Action == "Approve" {
-		approval := &kaprov1alpha2.Approval{
+		approval := &kaprov1alpha1.Approval{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: fmt.Sprintf("%s-%s", promotionrunName, targetKey),
 			},
-			Spec: kaprov1alpha2.ApprovalSpec{
+			Spec: kaprov1alpha1.ApprovalSpec{
 				PromotionRun: promotionrunName,
 				Target:       target.Spec.Target,
 				Ref:          targetKey,

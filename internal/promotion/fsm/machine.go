@@ -28,7 +28,7 @@ type Transition[Phase comparable, Env any] struct {
 }
 
 // Machine is a per-phase dispatch table generic over the phase enum
-// (kaprov1alpha2.TargetPhase, kaprov1alpha2.PromotionRunPhase, or any
+// (kaprov1alpha1.TargetPhase, kaprov1alpha1.PromotionRunPhase, or any
 // other comparable phase type) and the per-call environment.
 //
 // Construct one at controller setup, Register every supported phase, then

@@ -3,10 +3,10 @@ package kapro
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
-// PromotionBuilder constructs a kapro.io/v1alpha2 Promotion intent.
+// PromotionBuilder constructs a kapro.io/v1alpha1 Promotion intent.
 type PromotionBuilder struct {
 	name, fleetRef, version string
 }
@@ -29,14 +29,14 @@ func (b *PromotionBuilder) AtVersion(version string) *PromotionBuilder {
 }
 
 // Build returns a new Promotion object.
-func (b *PromotionBuilder) Build() *kaprov1alpha2.Promotion {
-	return &kaprov1alpha2.Promotion{
+func (b *PromotionBuilder) Build() *kaprov1alpha1.Promotion {
+	return &kaprov1alpha1.Promotion{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: kaprov1alpha2.GroupVersion.String(),
+			APIVersion: kaprov1alpha1.GroupVersion.String(),
 			Kind:       "Promotion",
 		},
 		ObjectMeta: metav1.ObjectMeta{Name: b.name},
-		Spec: kaprov1alpha2.PromotionSpec{
+		Spec: kaprov1alpha1.PromotionSpec{
 			FleetRef: b.fleetRef,
 			Version:  b.version,
 		},

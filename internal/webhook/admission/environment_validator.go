@@ -9,21 +9,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // FleetClusterValidator validates Cluster objects on CREATE and UPDATE.
 //
 // Rules enforced:
-//  1. delivery.mode and delivery.backendRef must be set.
-//  2. built-in Flux profiles must include the backend-specific parameter needed
-//     by the selected mode.
-//  3. When Reader is non-nil, the Backend named by delivery.backendRef
-//     must exist AND have status.Ready=True. This closes the gap where a
-//     Cluster could be admitted referencing a missing or NotReady backend.
+//  1. delivery.mode and delivery.substrateRef must be set.
+//  2. When Reader is non-nil, the Substrate named by delivery.substrateRef
+//     is checked opportunistically and reported as a warning if absent.
+//     Existence and readiness are controller lifecycle state, not admission
+//     requirements, so GitOps/bootstrap flows can apply Substrate and Cluster
+//     objects together in any order and let controllers converge them.
 type FleetClusterValidator struct {
 	decoder admission.Decoder
-	// Reader is used to look up Backend objects for reference resolution.
+	// Reader is used to look up Substrate objects for reference resolution.
 	// When nil, only syntactic checks run (preserves prior behavior for unit
 	// tests that construct the validator without a manager).
 	Reader client.Reader
@@ -31,14 +31,14 @@ type FleetClusterValidator struct {
 
 // NewFleetClusterValidator returns a configured FleetClusterValidator. The
 // reader is optional; pass mgr.GetClient() in production to enable
-// Backend reference resolution, or nil for syntactic-only validation.
+// Substrate reference resolution, or nil for syntactic-only validation.
 func NewFleetClusterValidator(decoder admission.Decoder, reader client.Reader) *FleetClusterValidator {
 	return &FleetClusterValidator{decoder: decoder, Reader: reader}
 }
 
 // Handle implements admission.Handler.
 func (v *FleetClusterValidator) Handle(ctx context.Context, req admission.Request) admission.Response {
-	var mc kaprov1alpha2.Cluster
+	var mc kaprov1alpha1.Cluster
 	if err := v.decoder.DecodeRaw(req.Object, &mc); err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
 	}
@@ -46,81 +46,71 @@ func (v *FleetClusterValidator) Handle(ctx context.Context, req admission.Reques
 		return admission.Denied(err.Error())
 	}
 	if v.Reader != nil {
-		if err := validateFleetClusterBackendRef(ctx, v.Reader, &mc); err != nil {
+		warnings, err := validateFleetClusterSubstrateRef(ctx, v.Reader, &mc)
+		if err != nil {
 			return admission.Denied(err.Error())
+		}
+		if len(warnings) > 0 {
+			return admission.Allowed("").WithWarnings(warnings...)
 		}
 	}
 	return admission.Allowed("")
 }
 
-// validateFleetClusterBackendRef rejects Clusters whose delivery.backendRef
-// names a Backend that does not exist or is not Ready. It is intentionally
-// strict so misconfigurations surface at admission time rather than reconcile.
-func validateFleetClusterBackendRef(ctx context.Context, reader client.Reader, mc *kaprov1alpha2.Cluster) error {
-	name := mc.Spec.Delivery.BackendRef
+// validateFleetClusterSubstrateRef reports missing or temporarily unreadable
+// Substrates as warnings, not denials. Admission stays structural; the Target
+// reconciler waits for Substrate existence/readiness before it applies.
+func validateFleetClusterSubstrateRef(ctx context.Context, reader client.Reader, mc *kaprov1alpha1.Cluster) ([]string, error) {
+	name := mc.Spec.Delivery.SubstrateRef
 	if name == "" {
-		return nil // syntactic validator already rejected the empty case
+		return nil, nil // syntactic validator already rejected the empty case
 	}
-	var profile kaprov1alpha2.Backend
+	var profile kaprov1alpha1.Substrate
 	if err := reader.Get(ctx, client.ObjectKey{Name: name}, &profile); err != nil {
 		if apierrors.IsNotFound(err) {
-			return fmt.Errorf("cluster.spec.delivery.backendRef=%q: backend not found; create the Backend CR before referencing it", name)
+			return []string{fmt.Sprintf("cluster.spec.delivery.substrateRef=%q: substrate not found yet; Target execution will wait for it", name)}, nil
 		}
-		return fmt.Errorf("cluster.spec.delivery.backendRef=%q: lookup failed: %w", name, err)
+		return []string{fmt.Sprintf("cluster.spec.delivery.substrateRef=%q: substrate lookup failed; Target execution will retry: %v", name, err)}, nil
 	}
-	if !backendUsableForCluster(profile) {
-		return fmt.Errorf("cluster.spec.delivery.backendRef=%q: backend is not Ready; resolve its Ready condition before referencing", name)
-	}
-	return nil
+	return validateResolvedSubstrateParameters(mc, profile.Spec.SubstrateKind()), nil
 }
 
-// ValidateFleetClusterBackendRef is an exported test helper for the new
+// ValidateFleetClusterSubstrateRef is an exported test helper for the new
 // reference-resolution check.
-func ValidateFleetClusterBackendRef(ctx context.Context, reader client.Reader, mc *kaprov1alpha2.Cluster) error {
-	return validateFleetClusterBackendRef(ctx, reader, mc)
+func ValidateFleetClusterSubstrateRef(ctx context.Context, reader client.Reader, mc *kaprov1alpha1.Cluster) ([]string, error) {
+	return validateFleetClusterSubstrateRef(ctx, reader, mc)
 }
 
-func backendUsableForCluster(profile kaprov1alpha2.Backend) bool {
-	if profile.Status.Ready {
-		return true
-	}
-	switch profile.Spec.Driver {
-	case kaprov1alpha2.BackendDriverFlux, kaprov1alpha2.BackendDriverArgo, kaprov1alpha2.BackendDriverOCI:
-		return true
-	default:
-		return false
-	}
-}
-
-func validateFleetCluster(mc *kaprov1alpha2.Cluster) error {
+func validateFleetCluster(mc *kaprov1alpha1.Cluster) error {
 	return validateActuator(mc)
 }
 
-func validateActuator(mc *kaprov1alpha2.Cluster) error {
+func validateActuator(mc *kaprov1alpha1.Cluster) error {
 	act := mc.Spec.Delivery
 	if act.Mode == "" {
 		return fmt.Errorf("cluster.spec.delivery.mode must be set")
 	}
-	if act.BackendRef == "" {
-		return fmt.Errorf("cluster.spec.delivery.backendRef must be set")
+	if act.SubstrateRef == "" {
+		return fmt.Errorf("cluster.spec.delivery.substrateRef must be set")
 	}
-	switch act.BackendRef {
-	case "flux":
-		if act.Mode == kaprov1alpha2.DeliveryModePull && act.Param("ociRepository", "") == "" {
-			return fmt.Errorf("cluster.spec.delivery.parameters.ociRepository must be set when mode=pull and backendRef=flux")
+	return nil
+}
+
+func validateResolvedSubstrateParameters(mc *kaprov1alpha1.Cluster, substrateKind string) []string {
+	act := mc.Spec.Delivery
+	switch substrateKind {
+	case string(kaprov1alpha1.SubstrateDriverFlux):
+		if act.Mode == kaprov1alpha1.DeliveryModePull && act.Param("ociRepository", "") == "" {
+			return []string{"cluster.spec.delivery.parameters.ociRepository is required by flux pull delivery; Target execution will fail until it is set"}
 		}
-		if act.Mode == kaprov1alpha2.DeliveryModePush && act.Param("resourceSet", "") == "" {
-			return fmt.Errorf("cluster.spec.delivery.parameters.resourceSet must be set when mode=push and backendRef=flux")
+		if act.Mode == kaprov1alpha1.DeliveryModePush && act.Param("resourceSet", "") == "" {
+			return []string{"cluster.spec.delivery.parameters.resourceSet is required by flux push delivery; Target execution will fail until it is set"}
 		}
-	case "argo":
-		return nil
-	default:
-		return nil
 	}
 	return nil
 }
 
 // ValidateFleetCluster is an exported test helper that exposes the internal validation logic.
-func ValidateFleetCluster(mc *kaprov1alpha2.Cluster) error {
+func ValidateFleetCluster(mc *kaprov1alpha1.Cluster) error {
 	return validateFleetCluster(mc)
 }

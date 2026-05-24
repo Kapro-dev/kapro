@@ -13,44 +13,44 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 func TestStatusUpdateWithRetry_SuccessFirstTry(t *testing.T) {
 	scheme := runtime.NewScheme()
-	_ = kaprov1alpha2.AddToScheme(scheme)
-	fc := &kaprov1alpha2.Cluster{
+	_ = kaprov1alpha1.AddToScheme(scheme)
+	fc := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "c-a"},
 	}
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha2.Cluster{}).
+		WithStatusSubresource(&kaprov1alpha1.Cluster{}).
 		WithObjects(fc).Build()
 
-	err := StatusUpdateWithRetry(context.Background(), c, fc, func(f *kaprov1alpha2.Cluster) error {
-		f.Status.Phase = kaprov1alpha2.ClusterPhaseConverged
+	err := StatusUpdateWithRetry(context.Background(), c, fc, func(f *kaprov1alpha1.Cluster) error {
+		f.Status.Phase = kaprov1alpha1.ClusterPhaseConverged
 		return nil
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	var refreshed kaprov1alpha2.Cluster
+	var refreshed kaprov1alpha1.Cluster
 	_ = c.Get(context.Background(), client.ObjectKey{Name: "c-a"}, &refreshed)
-	if refreshed.Status.Phase != kaprov1alpha2.ClusterPhaseConverged {
+	if refreshed.Status.Phase != kaprov1alpha1.ClusterPhaseConverged {
 		t.Fatalf("Phase = %q, want Converged", refreshed.Status.Phase)
 	}
 }
 
 func TestStatusUpdateWithRetry_RetriesOnConflict(t *testing.T) {
 	scheme := runtime.NewScheme()
-	_ = kaprov1alpha2.AddToScheme(scheme)
-	fc := &kaprov1alpha2.Cluster{
+	_ = kaprov1alpha1.AddToScheme(scheme)
+	fc := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "c-b"},
 	}
 	calls := 0
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha2.Cluster{}).
+		WithStatusSubresource(&kaprov1alpha1.Cluster{}).
 		WithObjects(fc).
 		WithInterceptorFuncs(interceptor.Funcs{
 			SubResourceUpdate: func(ctx context.Context, cli client.Client, sub string, o client.Object, opts ...client.SubResourceUpdateOption) error {
@@ -66,8 +66,8 @@ func TestStatusUpdateWithRetry_RetriesOnConflict(t *testing.T) {
 			},
 		}).Build()
 
-	err := StatusUpdateWithRetry(context.Background(), c, fc, func(f *kaprov1alpha2.Cluster) error {
-		f.Status.Phase = kaprov1alpha2.ClusterPhaseConverged
+	err := StatusUpdateWithRetry(context.Background(), c, fc, func(f *kaprov1alpha1.Cluster) error {
+		f.Status.Phase = kaprov1alpha1.ClusterPhaseConverged
 		return nil
 	})
 	if err != nil {
@@ -80,13 +80,13 @@ func TestStatusUpdateWithRetry_RetriesOnConflict(t *testing.T) {
 
 func TestStatusUpdateWithRetry_GivesUpAfterMaxRetries(t *testing.T) {
 	scheme := runtime.NewScheme()
-	_ = kaprov1alpha2.AddToScheme(scheme)
-	fc := &kaprov1alpha2.Cluster{
+	_ = kaprov1alpha1.AddToScheme(scheme)
+	fc := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "c-c"},
 	}
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha2.Cluster{}).
+		WithStatusSubresource(&kaprov1alpha1.Cluster{}).
 		WithObjects(fc).
 		WithInterceptorFuncs(interceptor.Funcs{
 			SubResourceUpdate: func(ctx context.Context, cli client.Client, sub string, o client.Object, opts ...client.SubResourceUpdateOption) error {
@@ -98,8 +98,8 @@ func TestStatusUpdateWithRetry_GivesUpAfterMaxRetries(t *testing.T) {
 			},
 		}).Build()
 
-	err := StatusUpdateWithRetry(context.Background(), c, fc, func(f *kaprov1alpha2.Cluster) error {
-		f.Status.Phase = kaprov1alpha2.ClusterPhaseConverged
+	err := StatusUpdateWithRetry(context.Background(), c, fc, func(f *kaprov1alpha1.Cluster) error {
+		f.Status.Phase = kaprov1alpha1.ClusterPhaseConverged
 		return nil
 	})
 	if err == nil {

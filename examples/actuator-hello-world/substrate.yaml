@@ -1,0 +1,12 @@
+apiVersion: kapro.io/v1alpha1
+kind: Substrate
+metadata:
+  name: hello-world
+spec:
+  substrate:
+    kind: hello-world
+    actuator: hello-world
+  execution:
+    mode: hub-push
+  parameters:
+    message: hello from kapro

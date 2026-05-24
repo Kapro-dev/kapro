@@ -7,7 +7,7 @@ import (
 	"github.com/go-logr/logr"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	argoactuator "kapro.io/kapro/internal/actuator/argo"
 	directactuator "kapro.io/kapro/internal/actuator/direct"
 	fluxopactuator "kapro.io/kapro/internal/actuator/fluxoperator"
@@ -57,22 +57,22 @@ func RegisterDirect() ActuatorRegistrar {
 	return func(_ context.Context, cc ActuatorRegistrationContext) error {
 		return registerBuiltInActuator(cc.Registry, actuator.Registration{
 			Name: "push/direct",
-			Mode: kaprov1alpha2.DeliveryModePush,
+			Mode: kaprov1alpha1.DeliveryModePush,
 			Capabilities: actuator.Capabilities{
-				ContractVersion:        actuator.ContractVersionV1Alpha1,
-				SubstrateKind:          "kubernetes-apply",
-				Adapter:                "direct",
-				Runtime:                kaprov1alpha2.BackendRuntimeHub,
-				ExecutionModes:         []kaprov1alpha2.ExecutionMode{kaprov1alpha2.ExecutionModeHubPush},
-				Modes:                  []kaprov1alpha2.DeliveryMode{kaprov1alpha2.DeliveryModePush},
-				SupportsApply:          true,
-				SupportsObserve:        true,
-				SupportsRollback:       true,
-				SupportsConvergence:    true,
-				SupportsDelta:          true,
-				SupportsBackendObjects: true,
-				SupportsDryRun:         true,
-				SupportsHubExecution:   true,
+				ContractVersion:          actuator.ContractVersionV1Alpha1,
+				SubstrateKind:            "kubernetes-apply",
+				Adapter:                  "direct",
+				Runtime:                  kaprov1alpha1.SubstrateRuntimeHub,
+				ExecutionModes:           []kaprov1alpha1.ExecutionMode{kaprov1alpha1.ExecutionModeHubPush},
+				Modes:                    []kaprov1alpha1.DeliveryMode{kaprov1alpha1.DeliveryModePush},
+				SupportsApply:            true,
+				SupportsObserve:          true,
+				SupportsRollback:         true,
+				SupportsConvergence:      true,
+				SupportsDelta:            true,
+				SupportsSubstrateObjects: true,
+				SupportsDryRun:           true,
+				SupportsHubExecution:     true,
 			},
 			Actuator: &directactuator.Actuator{Client: cc.Manager.GetClient()},
 		})
@@ -87,18 +87,18 @@ func RegisterFlux() ActuatorRegistrar {
 		pull := &pullactuator.PullActuator{HubClient: client}
 		if err := registerBuiltInActuator(cc.Registry, actuator.Registration{
 			Name: "push/flux",
-			Mode: kaprov1alpha2.DeliveryModePush,
-			Capabilities: builtInCapabilities(kaprov1alpha2.BackendDriverFlux, kaprov1alpha2.BackendRuntimeHub,
-				kaprov1alpha2.DeliveryModePush, false),
+			Mode: kaprov1alpha1.DeliveryModePush,
+			Capabilities: builtInCapabilities(kaprov1alpha1.SubstrateDriverFlux, kaprov1alpha1.SubstrateRuntimeHub,
+				kaprov1alpha1.DeliveryModePush, false),
 			Actuator: flux,
 		}); err != nil {
 			return err
 		}
 		return registerBuiltInActuator(cc.Registry, actuator.Registration{
 			Name: "pull/flux",
-			Mode: kaprov1alpha2.DeliveryModePull,
-			Capabilities: builtInCapabilities(kaprov1alpha2.BackendDriverFlux, kaprov1alpha2.BackendRuntimeSpoke,
-				kaprov1alpha2.DeliveryModePull, false),
+			Mode: kaprov1alpha1.DeliveryModePull,
+			Capabilities: builtInCapabilities(kaprov1alpha1.SubstrateDriverFlux, kaprov1alpha1.SubstrateRuntimeSpoke,
+				kaprov1alpha1.DeliveryModePull, false),
 			Actuator: pull,
 		})
 	}
@@ -110,9 +110,9 @@ func RegisterOCI() ActuatorRegistrar {
 		pull := &pullactuator.PullActuator{HubClient: cc.Manager.GetClient()}
 		return registerBuiltInActuator(cc.Registry, actuator.Registration{
 			Name: "pull/oci",
-			Mode: kaprov1alpha2.DeliveryModePull,
-			Capabilities: builtInCapabilities(kaprov1alpha2.BackendDriverOCI, kaprov1alpha2.BackendRuntimeSpoke,
-				kaprov1alpha2.DeliveryModePull, false),
+			Mode: kaprov1alpha1.DeliveryModePull,
+			Capabilities: builtInCapabilities(kaprov1alpha1.SubstrateDriverOCI, kaprov1alpha1.SubstrateRuntimeSpoke,
+				kaprov1alpha1.DeliveryModePull, false),
 			Actuator: pull,
 		})
 	}
@@ -125,18 +125,18 @@ func RegisterArgoCD() ActuatorRegistrar {
 		pull := &pullactuator.PullActuator{HubClient: client}
 		if err := registerBuiltInActuator(cc.Registry, actuator.Registration{
 			Name: "push/argo",
-			Mode: kaprov1alpha2.DeliveryModePush,
-			Capabilities: builtInCapabilities(kaprov1alpha2.BackendDriverArgo, kaprov1alpha2.BackendRuntimeHub,
-				kaprov1alpha2.DeliveryModePush, true),
+			Mode: kaprov1alpha1.DeliveryModePush,
+			Capabilities: builtInCapabilities(kaprov1alpha1.SubstrateDriverArgo, kaprov1alpha1.SubstrateRuntimeHub,
+				kaprov1alpha1.DeliveryModePush, true),
 			Actuator: &argoactuator.Actuator{Client: client},
 		}); err != nil {
 			return err
 		}
 		return registerBuiltInActuator(cc.Registry, actuator.Registration{
 			Name: "pull/argo",
-			Mode: kaprov1alpha2.DeliveryModePull,
-			Capabilities: builtInCapabilities(kaprov1alpha2.BackendDriverArgo, kaprov1alpha2.BackendRuntimeSpoke,
-				kaprov1alpha2.DeliveryModePull, false),
+			Mode: kaprov1alpha1.DeliveryModePull,
+			Capabilities: builtInCapabilities(kaprov1alpha1.SubstrateDriverArgo, kaprov1alpha1.SubstrateRuntimeSpoke,
+				kaprov1alpha1.DeliveryModePull, false),
 			Actuator: pull,
 		})
 	}
@@ -152,26 +152,39 @@ func registerBuiltInActuator(registry *actuator.Registry, reg actuator.Registrat
 	return nil
 }
 
-func builtInCapabilities(driver kaprov1alpha2.BackendDriver, runtime kaprov1alpha2.BackendRuntime, mode kaprov1alpha2.DeliveryMode, backendObjects bool) actuator.Capabilities {
-	executionMode := kaprov1alpha2.ExecutionModeHubPush
-	if mode == kaprov1alpha2.DeliveryModePull {
-		executionMode = kaprov1alpha2.ExecutionModeSpokePull
+func builtInCapabilities(driver kaprov1alpha1.SubstrateDriver, runtime kaprov1alpha1.SubstrateRuntime, mode kaprov1alpha1.DeliveryMode, substrateObjects bool) actuator.Capabilities {
+	executionMode := kaprov1alpha1.ExecutionModeHubPush
+	if mode == kaprov1alpha1.DeliveryModePull {
+		executionMode = kaprov1alpha1.ExecutionModeSpokePull
 	}
 	return actuator.Capabilities{
-		ContractVersion:        actuator.ContractVersionV1Alpha1,
-		SubstrateKind:          string(driver),
-		Driver:                 driver,
-		Adapter:                kaprov1alpha2.DefaultActuatorForSubstrate(string(driver)),
-		Runtime:                runtime,
-		ExecutionModes:         []kaprov1alpha2.ExecutionMode{executionMode},
-		Modes:                  []kaprov1alpha2.DeliveryMode{mode},
-		SupportsApply:          true,
-		SupportsObserve:        true,
-		SupportsRollback:       true,
-		SupportsConvergence:    true,
-		SupportsDelta:          true,
-		SupportsBackendObjects: backendObjects,
-		SupportsHubExecution:   executionMode == kaprov1alpha2.ExecutionModeHubPush,
-		SupportsSpokeExecution: executionMode == kaprov1alpha2.ExecutionModeSpokePull,
+		ContractVersion:          actuator.ContractVersionV1Alpha1,
+		SubstrateKind:            string(driver),
+		Driver:                   driver,
+		Adapter:                  builtInActuatorName(driver),
+		Runtime:                  runtime,
+		ExecutionModes:           []kaprov1alpha1.ExecutionMode{executionMode},
+		Modes:                    []kaprov1alpha1.DeliveryMode{mode},
+		SupportsApply:            true,
+		SupportsObserve:          true,
+		SupportsRollback:         true,
+		SupportsConvergence:      true,
+		SupportsDelta:            true,
+		SupportsSubstrateObjects: substrateObjects,
+		SupportsHubExecution:     executionMode == kaprov1alpha1.ExecutionModeHubPush,
+		SupportsSpokeExecution:   executionMode == kaprov1alpha1.ExecutionModeSpokePull,
+	}
+}
+
+func builtInActuatorName(driver kaprov1alpha1.SubstrateDriver) string {
+	switch driver {
+	case kaprov1alpha1.SubstrateDriverArgo:
+		return "argo"
+	case kaprov1alpha1.SubstrateDriverFlux:
+		return "flux"
+	case kaprov1alpha1.SubstrateDriverOCI:
+		return "oci"
+	default:
+		return string(driver)
 	}
 }

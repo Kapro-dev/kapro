@@ -1,24 +1,22 @@
 package admission_test
 
 import (
-	"context"
 	"strings"
 	"testing"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/webhook/admission"
 )
 
 // deps converts a list of stage names into StageDependency values for test brevity.
-func deps(names ...string) []kaprov1alpha2.StageDependency {
-	out := make([]kaprov1alpha2.StageDependency, len(names))
+func deps(names ...string) []kaprov1alpha1.StageDependency {
+	out := make([]kaprov1alpha1.StageDependency, len(names))
 	for i, n := range names {
-		out[i] = kaprov1alpha2.StageDependency{Stage: n}
+		out[i] = kaprov1alpha1.StageDependency{Stage: n}
 	}
 	return out
 }
@@ -26,9 +24,9 @@ func deps(names ...string) []kaprov1alpha2.StageDependency {
 // ---- FleetClusterValidator ---------------------------------------------------
 
 func TestValidateFleetCluster_MissingMode(t *testing.T) {
-	mc := &kaprov1alpha2.Cluster{
-		Spec: kaprov1alpha2.ClusterSpec{
-			Delivery: kaprov1alpha2.DeliverySpec{Mode: "", BackendRef: "flux"},
+	mc := &kaprov1alpha1.Cluster{
+		Spec: kaprov1alpha1.ClusterSpec{
+			Delivery: kaprov1alpha1.DeliverySpec{Mode: "", SubstrateRef: "flux"},
 		},
 	}
 	if err := mcValidate(mc); err == nil {
@@ -36,33 +34,33 @@ func TestValidateFleetCluster_MissingMode(t *testing.T) {
 	}
 }
 
-func TestValidateFleetCluster_MissingBackend(t *testing.T) {
-	mc := &kaprov1alpha2.Cluster{
-		Spec: kaprov1alpha2.ClusterSpec{
-			Delivery: kaprov1alpha2.DeliverySpec{Mode: "pull", BackendRef: ""},
+func TestValidateFleetCluster_MissingSubstrate(t *testing.T) {
+	mc := &kaprov1alpha1.Cluster{
+		Spec: kaprov1alpha1.ClusterSpec{
+			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", SubstrateRef: ""},
 		},
 	}
 	if err := mcValidate(mc); err == nil {
-		t.Fatal("expected error for missing actuator backend")
+		t.Fatal("expected error for missing actuator substrate")
 	}
 }
 
 func TestValidateFleetCluster_FluxMissingSubSpec(t *testing.T) {
-	mc := &kaprov1alpha2.Cluster{
-		Spec: kaprov1alpha2.ClusterSpec{
-			Delivery: kaprov1alpha2.DeliverySpec{Mode: "pull", BackendRef: "flux"},
+	mc := &kaprov1alpha1.Cluster{
+		Spec: kaprov1alpha1.ClusterSpec{
+			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", SubstrateRef: "flux"},
 		},
 	}
-	if err := mcValidate(mc); err == nil {
-		t.Fatal("expected error for pull/flux without ociRepository parameter")
+	if err := mcValidate(mc); err != nil {
+		t.Fatalf("substrate-specific parameter checks must not deny structural Cluster admission: %v", err)
 	}
 }
 
 func TestValidateFleetCluster_FluxValid(t *testing.T) {
-	mc := &kaprov1alpha2.Cluster{
-		Spec: kaprov1alpha2.ClusterSpec{
-			Delivery: kaprov1alpha2.DeliverySpec{
-				Mode: "pull", BackendRef: "flux",
+	mc := &kaprov1alpha1.Cluster{
+		Spec: kaprov1alpha1.ClusterSpec{
+			Delivery: kaprov1alpha1.DeliverySpec{
+				Mode: "pull", SubstrateRef: "flux",
 				Parameters: map[string]string{"namespace": "flux-system", "ociRepository": "cluster-a"},
 			},
 		},
@@ -72,24 +70,24 @@ func TestValidateFleetCluster_FluxValid(t *testing.T) {
 	}
 }
 
-func TestValidateFleetCluster_CustomBackendAllowed(t *testing.T) {
-	mc := &kaprov1alpha2.Cluster{
-		Spec: kaprov1alpha2.ClusterSpec{
-			Delivery: kaprov1alpha2.DeliverySpec{Mode: "pull", BackendRef: "kserve"},
+func TestValidateFleetCluster_CustomSubstrateAllowed(t *testing.T) {
+	mc := &kaprov1alpha1.Cluster{
+		Spec: kaprov1alpha1.ClusterSpec{
+			Delivery: kaprov1alpha1.DeliverySpec{Mode: "pull", SubstrateRef: "kserve"},
 		},
 	}
 	if err := mcValidate(mc); err != nil {
-		t.Fatalf("unexpected error for external backendRef: %v", err)
+		t.Fatalf("unexpected error for external substrateRef: %v", err)
 	}
 }
 
 // ---- PromotionRunValidator -------------------------------------------------------
 
 func TestValidatePromotionRun_MissingVersion(t *testing.T) {
-	r := &kaprov1alpha2.PromotionRun{
-		Spec: kaprov1alpha2.PromotionRunSpec{
+	r := &kaproruntimev1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "",
-			Plans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha1.PlanRef{
 				{Name: "initial", Plan: "pipe-1"},
 			},
 		},
@@ -100,13 +98,13 @@ func TestValidatePromotionRun_MissingVersion(t *testing.T) {
 }
 
 func TestValidatePromotionRun_ValidVersionsMap(t *testing.T) {
-	r := &kaprov1alpha2.PromotionRun{
-		Spec: kaprov1alpha2.PromotionRunSpec{
+	r := &kaproruntimev1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Versions: map[string]string{
 				"api":    "main@sha256:abc",
 				"worker": "main@sha256:def",
 			},
-			Plans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha1.PlanRef{
 				{Name: "initial", Plan: "pipe-1"},
 			},
 		},
@@ -117,8 +115,8 @@ func TestValidatePromotionRun_ValidVersionsMap(t *testing.T) {
 }
 
 func TestValidatePromotionRun_MissingPlans(t *testing.T) {
-	r := &kaprov1alpha2.PromotionRun{
-		Spec: kaprov1alpha2.PromotionRunSpec{
+	r := &kaproruntimev1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
 			Plans:   nil,
 		},
@@ -129,10 +127,10 @@ func TestValidatePromotionRun_MissingPlans(t *testing.T) {
 }
 
 func TestValidatePromotionRun_PromotionPlanRefMissingName(t *testing.T) {
-	r := &kaprov1alpha2.PromotionRun{
-		Spec: kaprov1alpha2.PromotionRunSpec{
+	r := &kaproruntimev1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Plans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha1.PlanRef{
 				{Name: "", Plan: "standard-rollout"},
 			},
 		},
@@ -143,10 +141,10 @@ func TestValidatePromotionRun_PromotionPlanRefMissingName(t *testing.T) {
 }
 
 func TestValidatePromotionRun_PromotionPlanRefMissingPromotionPlan(t *testing.T) {
-	r := &kaprov1alpha2.PromotionRun{
-		Spec: kaprov1alpha2.PromotionRunSpec{
+	r := &kaproruntimev1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Plans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha1.PlanRef{
 				{Name: "initial", Plan: ""},
 			},
 		},
@@ -157,10 +155,10 @@ func TestValidatePromotionRun_PromotionPlanRefMissingPromotionPlan(t *testing.T)
 }
 
 func TestValidatePromotionRun_Valid(t *testing.T) {
-	r := &kaprov1alpha2.PromotionRun{
-		Spec: kaprov1alpha2.PromotionRunSpec{
+	r := &kaproruntimev1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Plans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha1.PlanRef{
 				{Name: "initial", Plan: "standard-rollout"},
 			},
 		},
@@ -171,10 +169,10 @@ func TestValidatePromotionRun_Valid(t *testing.T) {
 }
 
 func TestValidatePromotionRun_ValidMultiPromotionPlanDAG(t *testing.T) {
-	r := &kaprov1alpha2.PromotionRun{
-		Spec: kaprov1alpha2.PromotionRunSpec{
+	r := &kaproruntimev1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Plans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha1.PlanRef{
 				{Name: "canary", Plan: "canary-rollout"},
 				{Name: "stable", Plan: "stable-rollout", DependsOn: []string{"canary"}},
 			},
@@ -186,10 +184,10 @@ func TestValidatePromotionRun_ValidMultiPromotionPlanDAG(t *testing.T) {
 }
 
 func TestValidatePromotionRun_DuplicatePromotionPlanName(t *testing.T) {
-	r := &kaprov1alpha2.PromotionRun{
-		Spec: kaprov1alpha2.PromotionRunSpec{
+	r := &kaproruntimev1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Plans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha1.PlanRef{
 				{Name: "wave1", Plan: "rollout"},
 				{Name: "wave1", Plan: "rollout"},
 			},
@@ -201,10 +199,10 @@ func TestValidatePromotionRun_DuplicatePromotionPlanName(t *testing.T) {
 }
 
 func TestValidatePromotionRun_UnknownDependency(t *testing.T) {
-	r := &kaprov1alpha2.PromotionRun{
-		Spec: kaprov1alpha2.PromotionRunSpec{
+	r := &kaproruntimev1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Plans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha1.PlanRef{
 				{Name: "wave1", Plan: "rollout", DependsOn: []string{"does-not-exist"}},
 			},
 		},
@@ -215,10 +213,10 @@ func TestValidatePromotionRun_UnknownDependency(t *testing.T) {
 }
 
 func TestValidatePromotionRun_PromotionPlanCycle(t *testing.T) {
-	r := &kaprov1alpha2.PromotionRun{
-		Spec: kaprov1alpha2.PromotionRunSpec{
+	r := &kaproruntimev1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Plans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha1.PlanRef{
 				{Name: "a", Plan: "rollout", DependsOn: []string{"b"}},
 				{Name: "b", Plan: "rollout", DependsOn: []string{"a"}},
 			},
@@ -230,10 +228,10 @@ func TestValidatePromotionRun_PromotionPlanCycle(t *testing.T) {
 }
 
 func TestValidatePromotionRun_SelfCycle(t *testing.T) {
-	r := &kaprov1alpha2.PromotionRun{
-		Spec: kaprov1alpha2.PromotionRunSpec{
+	r := &kaproruntimev1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Plans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha1.PlanRef{
 				{Name: "wave1", Plan: "rollout", DependsOn: []string{"wave1"}},
 			},
 		},
@@ -244,10 +242,10 @@ func TestValidatePromotionRun_SelfCycle(t *testing.T) {
 }
 
 func TestValidatePromotionRunUpdate_VersionImmutable(t *testing.T) {
-	old := &kaprov1alpha2.PromotionRun{
-		Spec: kaprov1alpha2.PromotionRunSpec{
+	old := &kaproruntimev1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Plans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha1.PlanRef{
 				{Name: "wave1", Plan: "rollout"},
 			},
 		},
@@ -260,10 +258,10 @@ func TestValidatePromotionRunUpdate_VersionImmutable(t *testing.T) {
 }
 
 func TestValidatePromotionRunUpdate_VersionsImmutable(t *testing.T) {
-	old := &kaprov1alpha2.PromotionRun{
-		Spec: kaprov1alpha2.PromotionRunSpec{
+	old := &kaproruntimev1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Versions: map[string]string{"api": "main@sha256:abc"},
-			Plans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha1.PlanRef{
 				{Name: "wave1", Plan: "rollout"},
 			},
 		},
@@ -276,43 +274,43 @@ func TestValidatePromotionRunUpdate_VersionsImmutable(t *testing.T) {
 }
 
 func TestValidatePromotionRunUpdate_PlansImmutable(t *testing.T) {
-	old := &kaprov1alpha2.PromotionRun{
-		Spec: kaprov1alpha2.PromotionRunSpec{
+	old := &kaproruntimev1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Plans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha1.PlanRef{
 				{Name: "wave1", Plan: "rollout"},
 			},
 		},
 	}
 	new := old.DeepCopy()
-	new.Spec.Plans = append(new.Spec.Plans, kaprov1alpha2.PlanRef{Name: "wave2", Plan: "rollout-2"})
+	new.Spec.Plans = append(new.Spec.Plans, kaprov1alpha1.PlanRef{Name: "wave2", Plan: "rollout-2"})
 	if err := admission.ValidatePromotionRunUpdate(old, new); err == nil {
 		t.Fatal("expected error for immutable promotionplans update")
 	}
 }
 
 func TestValidatePromotionRunUpdate_ScopeImmutable(t *testing.T) {
-	old := &kaprov1alpha2.PromotionRun{
-		Spec: kaprov1alpha2.PromotionRunSpec{
+	old := &kaproruntimev1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Plans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha1.PlanRef{
 				{Name: "wave1", Plan: "rollout"},
 			},
-			Scope: &kaprov1alpha2.PromotionRunScope{Targets: []string{"cluster-a"}},
+			Scope: &kaprov1alpha1.PromotionRunScope{Targets: []string{"cluster-a"}},
 		},
 	}
 	new := old.DeepCopy()
-	new.Spec.Scope = &kaprov1alpha2.PromotionRunScope{Targets: []string{"cluster-b"}}
+	new.Spec.Scope = &kaprov1alpha1.PromotionRunScope{Targets: []string{"cluster-b"}}
 	if err := admission.ValidatePromotionRunUpdate(old, new); err == nil {
 		t.Fatal("expected error for immutable scope update")
 	}
 }
 
 func TestValidatePromotionRunUpdate_SuspendedMutable(t *testing.T) {
-	old := &kaprov1alpha2.PromotionRun{
-		Spec: kaprov1alpha2.PromotionRunSpec{
+	old := &kaproruntimev1alpha1.PromotionRun{
+		Spec: kaprov1alpha1.PromotionRunSpec{
 			Version: "art-v1",
-			Plans: []kaprov1alpha2.PlanRef{
+			Plans: []kaprov1alpha1.PlanRef{
 				{Name: "wave1", Plan: "rollout"},
 			},
 		},
@@ -334,7 +332,7 @@ func TestValidatePromotionPlan_EmptyStages(t *testing.T) {
 }
 
 func TestValidatePromotionPlan_UnknownDependency(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha2.Stage{
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}, DependsOn: deps("does-not-exist")},
 	})
 	if err := promotionplanValidate(p); err == nil {
@@ -343,12 +341,12 @@ func TestValidatePromotionPlan_UnknownDependency(t *testing.T) {
 }
 
 func TestValidatePromotionPlan_InvalidDependencyStrategy(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha2.Stage{
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}},
 		{
 			Name:     "s2",
 			Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}},
-			DependsOn: []kaprov1alpha2.StageDependency{
+			DependsOn: []kaprov1alpha1.StageDependency{
 				{Stage: "s1", Strategy: "some"},
 			},
 		},
@@ -359,12 +357,12 @@ func TestValidatePromotionPlan_InvalidDependencyStrategy(t *testing.T) {
 }
 
 func TestValidatePromotionPlan_NegativeDependencySoak(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha2.Stage{
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}},
 		{
 			Name:     "s2",
 			Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}},
-			DependsOn: []kaprov1alpha2.StageDependency{
+			DependsOn: []kaprov1alpha1.StageDependency{
 				{Stage: "s1", RequiredSoakTime: &metav1.Duration{Duration: -1}},
 			},
 		},
@@ -375,7 +373,7 @@ func TestValidatePromotionPlan_NegativeDependencySoak(t *testing.T) {
 }
 
 func TestValidatePromotionPlan_StageCycle(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha2.Stage{
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}, DependsOn: deps("s2")},
 		{Name: "s2", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}}, DependsOn: deps("s1")},
 	})
@@ -385,7 +383,7 @@ func TestValidatePromotionPlan_StageCycle(t *testing.T) {
 }
 
 func TestValidatePromotionPlan_SelfCycle(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha2.Stage{
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}, DependsOn: deps("s1")},
 	})
 	if err := promotionplanValidate(p); err == nil {
@@ -394,7 +392,7 @@ func TestValidatePromotionPlan_SelfCycle(t *testing.T) {
 }
 
 func TestValidatePromotionPlan_ValidLinearDAG(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha2.Stage{
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}},
 		{Name: "s2", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "staging"}}, DependsOn: deps("s1")},
 		{Name: "s3", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}}, DependsOn: deps("s2")},
@@ -405,16 +403,16 @@ func TestValidatePromotionPlan_ValidLinearDAG(t *testing.T) {
 }
 
 func TestValidatePromotionPlan_MetricPresetReference(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha2.Stage{{
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{{
 		Name:     "s1",
 		Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
-		Gate: &kaprov1alpha2.GatePolicySpec{
-			Gate: kaprov1alpha2.GateSpec{
-				Metrics: []kaprov1alpha2.MetricGate{{Preset: "error-rate"}},
+		Gate: &kaprov1alpha1.GatePolicySpec{
+			Gate: kaprov1alpha1.GateSpec{
+				Metrics: []kaprov1alpha1.MetricGate{{Preset: "error-rate"}},
 			},
 		},
 	}})
-	p.Spec.MetricPresets = map[string]kaprov1alpha2.MetricGate{
+	p.Spec.MetricPresets = map[string]kaprov1alpha1.MetricGate{
 		"error-rate": {Provider: "prometheus", Query: "up", Threshold: float64Ptr(0.01)},
 	}
 	if err := promotionplanValidate(p); err != nil {
@@ -423,12 +421,12 @@ func TestValidatePromotionPlan_MetricPresetReference(t *testing.T) {
 }
 
 func TestValidatePromotionPlan_MetricWithoutPresetRequiresProviderAndQuery(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha2.Stage{{
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{{
 		Name:     "s1",
 		Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
-		Gate: &kaprov1alpha2.GatePolicySpec{
-			Gate: kaprov1alpha2.GateSpec{
-				Metrics: []kaprov1alpha2.MetricGate{{Provider: "prometheus"}},
+		Gate: &kaprov1alpha1.GatePolicySpec{
+			Gate: kaprov1alpha1.GateSpec{
+				Metrics: []kaprov1alpha1.MetricGate{{Provider: "prometheus"}},
 			},
 		},
 	}})
@@ -437,13 +435,13 @@ func TestValidatePromotionPlan_MetricWithoutPresetRequiresProviderAndQuery(t *te
 	}
 }
 
-func TestValidatePromotionPlan_GateExpressionRefMutualExclusive(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha2.Stage{{
+func TestValidatePromotionPlan_ExpressionRefMutualExclusive(t *testing.T) {
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{{
 		Name:     "s1",
 		Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
-		Gate: &kaprov1alpha2.GatePolicySpec{
+		Gate: &kaprov1alpha1.GatePolicySpec{
 			ExpressionRef: "all-of",
-			Mode:          kaprov1alpha2.GateModeAuto,
+			Mode:          kaprov1alpha1.GateModeAuto,
 		},
 	}})
 	if err := promotionplanValidate(p); err == nil {
@@ -451,23 +449,23 @@ func TestValidatePromotionPlan_GateExpressionRefMutualExclusive(t *testing.T) {
 	}
 }
 
-func TestValidatePromotionPlan_GateExpressionRefOnlyIsReserved(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha2.Stage{{
+func TestValidatePromotionPlan_ExpressionRefOnlyIsReserved(t *testing.T) {
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{{
 		Name:     "s1",
 		Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
-		Gate:     &kaprov1alpha2.GatePolicySpec{ExpressionRef: "all-of"},
+		Gate:     &kaprov1alpha1.GatePolicySpec{ExpressionRef: "all-of"},
 	}})
 	err := promotionplanValidate(p)
-	if err == nil || !strings.Contains(err.Error(), "reserved until GateExpression runtime resolution is implemented") {
+	if err == nil || !strings.Contains(err.Error(), "reserved until external gate expression resolution is implemented") {
 		t.Fatalf("error = %v, want runtime-resolution reserved error", err)
 	}
 }
 
-func TestValidatePromotionPlan_GateExpressionRefRejectsWhitespace(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha2.Stage{{
+func TestValidatePromotionPlan_ExpressionRefRejectsWhitespace(t *testing.T) {
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{{
 		Name:     "s1",
 		Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
-		Gate:     &kaprov1alpha2.GatePolicySpec{ExpressionRef: " all-of "},
+		Gate:     &kaprov1alpha1.GatePolicySpec{ExpressionRef: " all-of "},
 	}})
 	err := promotionplanValidate(p)
 	if err == nil || !strings.Contains(err.Error(), "must not contain surrounding whitespace") {
@@ -476,12 +474,12 @@ func TestValidatePromotionPlan_GateExpressionRefRejectsWhitespace(t *testing.T) 
 }
 
 func TestValidatePromotionPlan_UnknownMetricPresetReference(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha2.Stage{{
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{{
 		Name:     "s1",
 		Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}},
-		Gate: &kaprov1alpha2.GatePolicySpec{
-			Gate: kaprov1alpha2.GateSpec{
-				Metrics: []kaprov1alpha2.MetricGate{{Preset: "missing"}},
+		Gate: &kaprov1alpha1.GatePolicySpec{
+			Gate: kaprov1alpha1.GateSpec{
+				Metrics: []kaprov1alpha1.MetricGate{{Preset: "missing"}},
 			},
 		},
 	}})
@@ -492,7 +490,7 @@ func TestValidatePromotionPlan_UnknownMetricPresetReference(t *testing.T) {
 
 func TestValidatePromotionPlan_ValidDiamondDAG(t *testing.T) {
 	// s1 → s2, s1 → s3, s2+s3 → s4
-	p := buildPromotionPlan([]kaprov1alpha2.Stage{
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "canary"}}},
 		{Name: "s2", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"region": "eu"}}, DependsOn: deps("s1")},
 		{Name: "s3", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"region": "us"}}, DependsOn: deps("s1")},
@@ -504,7 +502,7 @@ func TestValidatePromotionPlan_ValidDiamondDAG(t *testing.T) {
 }
 
 func TestValidatePromotionPlan_DuplicateStageName(t *testing.T) {
-	p := buildPromotionPlan([]kaprov1alpha2.Stage{
+	p := buildPromotionPlan([]kaprov1alpha1.Stage{
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "dev"}}},
 		{Name: "s1", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}}},
 	})
@@ -514,9 +512,9 @@ func TestValidatePromotionPlan_DuplicateStageName(t *testing.T) {
 }
 
 func TestValidateApproval_RefRequired(t *testing.T) {
-	approval := &kaprov1alpha2.Approval{
+	approval := &kaprov1alpha1.Approval{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1-target-a"},
-		Spec: kaprov1alpha2.ApprovalSpec{
+		Spec: kaprov1alpha1.ApprovalSpec{
 			PromotionRun: "rel-1",
 			Target:       "target-a",
 			ApprovedBy:   "alice",
@@ -528,9 +526,9 @@ func TestValidateApproval_RefRequired(t *testing.T) {
 }
 
 func TestValidateApproval_NameMatchesPromotionRunAndRef(t *testing.T) {
-	approval := &kaprov1alpha2.Approval{
+	approval := &kaprov1alpha1.Approval{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1-ref-a"},
-		Spec: kaprov1alpha2.ApprovalSpec{
+		Spec: kaprov1alpha1.ApprovalSpec{
 			PromotionRun: "rel-1",
 			Target:       "target-a",
 			Ref:          "ref-a",
@@ -542,376 +540,30 @@ func TestValidateApproval_NameMatchesPromotionRunAndRef(t *testing.T) {
 	}
 }
 
-// ---- GateExpressionValidator ------------------------------------------------
-
-func TestValidateGateExpression_ValidAll(t *testing.T) {
-	expr := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "all-of"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator: "ALL",
-			Operands: []kaprov1alpha2.GateExpressionOperand{
-				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-			},
-		},
-	}
-	if err := gateexpressionValidate(expr); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestValidateGateExpression_ValidAny(t *testing.T) {
-	expr := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "any-of"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator: "ANY",
-			Operands: []kaprov1alpha2.GateExpressionOperand{
-				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-			},
-		},
-	}
-	if err := gateexpressionValidate(expr); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestValidateGateExpression_AllRejectsWeightsAndThreshold(t *testing.T) {
-	threshold := int32(1)
-	weights := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "all-with-weights"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator: "ALL",
-			Weights:  []int32{1},
-			Operands: []kaprov1alpha2.GateExpressionOperand{
-				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-			},
-		},
-	}
-	if err := gateexpressionValidate(weights); err == nil || !strings.Contains(err.Error(), "does not accept spec.weights") {
-		t.Fatalf("ALL with weights err = %v", err)
-	}
-	thresh := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "any-with-threshold"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator:  "ANY",
-			Threshold: &threshold,
-			Operands: []kaprov1alpha2.GateExpressionOperand{
-				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-			},
-		},
-	}
-	if err := gateexpressionValidate(thresh); err == nil || !strings.Contains(err.Error(), "does not accept spec.threshold") {
-		t.Fatalf("ANY with threshold err = %v", err)
-	}
-}
-
-func TestValidateGateExpression_RejectsUnsatisfiableWeightedThreshold(t *testing.T) {
-	// passedSum > threshold is strict; threshold == sum(weights) can
-	// never pass. Admission must reject it instead of admitting a
-	// configuration that can only Fail.
-	threshold := int32(3)
-	expr := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "weighted-unsat"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator:  "WEIGHTED_SUM",
-			Weights:   []int32{1, 2},
-			Threshold: &threshold,
-			Operands: []kaprov1alpha2.GateExpressionOperand{
-				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-			},
-		},
-	}
-	if err := gateexpressionValidate(expr); err == nil || !strings.Contains(err.Error(), "threshold < sum(weights)") {
-		t.Fatalf("err = %v, want unsatisfiable threshold rejection", err)
-	}
-}
-
-func TestValidateGateExpression_RejectsInvalidWeightedFields(t *testing.T) {
-	threshold := int32(2)
-	expr := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "weighted"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator:  "WEIGHTED_SUM",
-			Weights:   []int32{1},
-			Threshold: &threshold,
-			Operands: []kaprov1alpha2.GateExpressionOperand{
-				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-				{ExpressionRef: "other"},
-			},
-		},
-	}
-	err := gateexpressionValidate(expr)
-	if err == nil || !strings.Contains(err.Error(), "len(weights) == len(operands)") {
-		t.Fatalf("error = %v, want weights length message", err)
-	}
-}
-
-func TestValidateGateExpression_RejectsWeightedOverflow(t *testing.T) {
-	threshold := int32(1)
-	expr := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "weighted"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator:  "WEIGHTED_SUM",
-			Weights:   []int32{1<<30 + 1, 1 << 30},
-			Threshold: &threshold,
-			Operands: []kaprov1alpha2.GateExpressionOperand{
-				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-				{ExpressionRef: "other"},
-			},
-		},
-	}
-	err := gateexpressionValidate(expr)
-	if err == nil || !strings.Contains(err.Error(), "total weight") {
-		t.Fatalf("error = %v, want total weight message", err)
-	}
-}
-
-func TestValidateGateExpression_RejectsTooManyOperands(t *testing.T) {
-	operands := make([]kaprov1alpha2.GateExpressionOperand, 129)
-	for i := range operands {
-		operands[i] = kaprov1alpha2.GateExpressionOperand{ExpressionRef: "child"}
-	}
-	expr := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "too-many"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator: "ALL",
-			Operands: operands,
-		},
-	}
-	err := gateexpressionValidate(expr)
-	if err == nil || !strings.Contains(err.Error(), "at most") {
-		t.Fatalf("error = %v, want max operands message", err)
-	}
-}
-
-func TestValidateGateExpression_ValidDelay(t *testing.T) {
-	expr := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "delay"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator:   "DELAY",
-			Parameters: map[string]string{"duration": "30m"},
-			Operands: []kaprov1alpha2.GateExpressionOperand{
-				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-			},
-		},
-	}
-	if err := gateexpressionValidate(expr); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestValidateGateExpression_RejectsNonPositiveDelayDuration(t *testing.T) {
-	for _, duration := range []string{"0s", "-1s"} {
-		t.Run(duration, func(t *testing.T) {
-			expr := &kaprov1alpha2.GateExpression{
-				ObjectMeta: metav1.ObjectMeta{Name: "delay"},
-				Spec: kaprov1alpha2.GateExpressionSpec{
-					Operator:   "DELAY",
-					Parameters: map[string]string{"duration": duration},
-					Operands: []kaprov1alpha2.GateExpressionOperand{
-						{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-					},
-				},
-			}
-			err := gateexpressionValidate(expr)
-			if err == nil || !strings.Contains(err.Error(), "duration > 0") {
-				t.Fatalf("error = %v, want positive duration rejection", err)
-			}
-		})
-	}
-}
-
-func TestValidateGateExpression_RejectsReferencedDelay(t *testing.T) {
-	ctx := context.Background()
-	delay := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "delay-child"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator:   "DELAY",
-			Parameters: map[string]string{"duration": "30m"},
-			Operands: []kaprov1alpha2.GateExpressionOperand{
-				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-			},
-		},
-	}
-	root := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "root"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator: "ALL",
-			Operands: []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "delay-child"}},
-		},
-	}
-	err := admission.ValidateGateExpressionWithReader(ctx, gateExpressionReader(t, delay), root)
-	if err == nil || !strings.Contains(err.Error(), "cannot reference DELAY GateExpression: root→delay-child") {
-		t.Fatalf("error = %v, want referenced DELAY rejection", err)
-	}
-}
-
-func TestValidateGateExpression_RejectsReferencedObjectBecomingDelay(t *testing.T) {
-	ctx := context.Background()
-	parent := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "parent"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator: "ALL",
-			Operands: []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "child"}},
-		},
-	}
-	child := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "child"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator:   "DELAY",
-			Parameters: map[string]string{"duration": "30m"},
-			Operands: []kaprov1alpha2.GateExpressionOperand{
-				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-			},
-		},
-	}
-	err := admission.ValidateGateExpressionWithReader(ctx, gateExpressionReader(t, parent), child)
-	if err == nil || !strings.Contains(err.Error(), `referenced by "parent"`) {
-		t.Fatalf("error = %v, want reverse referenced DELAY rejection", err)
-	}
-}
-
-func TestValidateGateExpression_RejectsIndirectReferencedDelay(t *testing.T) {
-	ctx := context.Background()
-	delay := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "delay-child"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator:   "DELAY",
-			Parameters: map[string]string{"duration": "30m"},
-			Operands: []kaprov1alpha2.GateExpressionOperand{
-				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-			},
-		},
-	}
-	middle := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "middle"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator: "ALL",
-			Operands: []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "delay-child"}},
-		},
-	}
-	root := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "root"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator: "ALL",
-			Operands: []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "middle"}},
-		},
-	}
-	err := admission.ValidateGateExpressionWithReader(ctx, gateExpressionReader(t, delay, middle), root)
-	if err == nil || !strings.Contains(err.Error(), "root→middle→delay-child") {
-		t.Fatalf("error = %v, want indirect referenced DELAY rejection", err)
-	}
-}
-
-func TestValidateGateExpression_OperandExactlyOne(t *testing.T) {
-	expr := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "bad"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator: "ALL",
-			Operands: []kaprov1alpha2.GateExpressionOperand{{
-				InlineGate:    &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto},
-				ExpressionRef: "other",
-			}},
-		},
-	}
-	if err := gateexpressionValidate(expr); err == nil {
-		t.Fatal("expected exactly-one operand error")
-	}
-}
-
-func TestValidateGateExpression_RejectsNestedInlineExpressionRef(t *testing.T) {
-	expr := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "bad"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator: "ALL",
-			Operands: []kaprov1alpha2.GateExpressionOperand{{
-				InlineGate: &kaprov1alpha2.GatePolicySpec{ExpressionRef: "nested"},
-			}},
-		},
-	}
-	err := gateexpressionValidate(expr)
-	if err == nil || !strings.Contains(err.Error(), "inlineGate.expressionRef") {
-		t.Fatalf("error = %v, want nested expressionRef rejection", err)
-	}
-}
-
-func TestValidateGateExpression_DetectsCycle(t *testing.T) {
-	ctx := context.Background()
-	child := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "b"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator: "ALL",
-			Operands: []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "a"}},
-		},
-	}
-	reader := gateExpressionReader(t, child)
-	root := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "a"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator: "ALL",
-			Operands: []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "b"}},
-		},
-	}
-	err := admission.ValidateGateExpressionWithReader(ctx, reader, root)
-	if err == nil || !strings.Contains(err.Error(), "a→b→a") {
-		t.Fatalf("error = %v, want cycle path", err)
-	}
-}
-
-func TestValidateGateExpression_UnknownReference(t *testing.T) {
-	ctx := context.Background()
-	root := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "a"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator: "ALL",
-			Operands: []kaprov1alpha2.GateExpressionOperand{{ExpressionRef: "missing"}},
-		},
-	}
-	err := admission.ValidateGateExpressionWithReader(ctx, gateExpressionReader(t), root)
-	if err == nil || !strings.Contains(err.Error(), "unknown GateExpression") {
-		t.Fatalf("error = %v, want unknown reference", err)
-	}
-}
-
-// ---- helpers ----------------------------------------------------------------
-
-func mcValidate(mc *kaprov1alpha2.Cluster) error {
+func mcValidate(mc *kaprov1alpha1.Cluster) error {
 	return admission.ValidateFleetCluster(mc)
 }
 
-func promotionrunValidate(r *kaprov1alpha2.PromotionRun) error {
+func promotionrunValidate(r *kaproruntimev1alpha1.PromotionRun) error {
 	return admission.ValidatePromotionRun(r)
 }
 
-func promotionplanValidate(p *kaprov1alpha2.Plan) error {
+func promotionplanValidate(p *kaprov1alpha1.Plan) error {
 	return admission.ValidatePromotionPlan(p)
 }
 
-func approvalValidate(a *kaprov1alpha2.Approval) error {
+func approvalValidate(a *kaprov1alpha1.Approval) error {
 	return admission.ValidateApproval(a)
-}
-
-func gateexpressionValidate(e *kaprov1alpha2.GateExpression) error {
-	return admission.ValidateGateExpression(e)
-}
-
-func gateExpressionReader(t *testing.T, objects ...client.Object) client.Reader {
-	t.Helper()
-	scheme := runtime.NewScheme()
-	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
-		t.Fatalf("add scheme: %v", err)
-	}
-	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 }
 
 func float64Ptr(v float64) *float64 {
 	return &v
 }
 
-func buildPromotionPlan(stages []kaprov1alpha2.Stage) *kaprov1alpha2.Plan {
-	return &kaprov1alpha2.Plan{
+func buildPromotionPlan(stages []kaprov1alpha1.Stage) *kaprov1alpha1.Plan {
+	return &kaprov1alpha1.Plan{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-promotionplan"},
-		Spec: kaprov1alpha2.PlanSpec{
+		Spec: kaprov1alpha1.PlanSpec{
 			Stages: stages,
 		},
 	}

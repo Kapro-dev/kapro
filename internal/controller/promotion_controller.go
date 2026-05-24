@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,7 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/webhook/admission"
 )
 
@@ -61,8 +63,8 @@ type PromotionReconciler struct {
 // so the dispatcher implementation and the controller can be tested in
 // isolation without import cycles.
 type PhaseTransitionDispatcher interface {
-	OnPhaseTransition(ctx context.Context, promotion *kaprov1alpha2.Promotion,
-		prev, next kaprov1alpha2.PromotionPhase)
+	OnPhaseTransition(ctx context.Context, promotion *kaprov1alpha1.Promotion,
+		prev, next kaprov1alpha1.PromotionPhase)
 }
 
 // StageEventPublisher is the optional interface that the PromotionRun /
@@ -75,23 +77,24 @@ type PhaseTransitionDispatcher interface {
 // part of this interface today; the v1alpha1 handler filter is phase-
 // scoped only. Adding `onTypes:` filter support is a separate follow-up.
 type StageEventPublisher interface {
-	PublishWaveEvent(ctx context.Context, run *kaprov1alpha2.PromotionRun,
+	PublishWaveEvent(ctx context.Context, run *kaproruntimev1alpha1.PromotionRun,
 		wave, kind, phase, reason string)
-	PublishStageEvent(ctx context.Context, run *kaprov1alpha2.PromotionRun,
+	PublishStageEvent(ctx context.Context, run *kaproruntimev1alpha1.PromotionRun,
 		wave, stage, kind, phase, reason string)
-	PublishGateEvent(ctx context.Context, run *kaprov1alpha2.PromotionRun,
+	PublishGateEvent(ctx context.Context, run *kaproruntimev1alpha1.PromotionRun,
 		wave, stage, gate, target, kind, phase, reason, message string)
 }
 
 // +kubebuilder:rbac:groups=kapro.io,resources=promotions,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kapro.io,resources=promotions/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=promotions/finalizers,verbs=update
-// +kubebuilder:rbac:groups=kapro.io,resources=promotionruns,verbs=get;list;watch;create;update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=promotionruns/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=runtime.kapro.io,resources=promotionruns,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=runtime.kapro.io,resources=promotionruns/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=runtime.kapro.io,resources=targets,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=fleets,verbs=get;list;watch
 
 func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	var promotion kaprov1alpha2.Promotion
+	var promotion kaprov1alpha1.Promotion
 	if err := r.Get(ctx, req.NamespacedName, &promotion); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -99,12 +102,12 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// Docker-lifecycle analogue: removing. Owned PromotionRuns are
 		// garbage-collected by ownerReference; we just publish the phase so
 		// observers see the transition.
-		return r.patchStatus(ctx, &promotion, kaprov1alpha2.PromotionPhaseTerminating,
+		return r.patchStatus(ctx, &promotion, kaprov1alpha1.PromotionPhaseTerminating,
 			"", "Terminating", "deletionTimestamp set; child PromotionRuns will be garbage-collected")
 	}
 
 	// Resolve parent Fleet (cluster-scoped, looked up by name).
-	var parent kaprov1alpha2.Fleet
+	var parent kaprov1alpha1.Fleet
 	if err := r.Get(ctx, client.ObjectKey{Name: promotion.Spec.FleetRef}, &parent); err != nil {
 		if apierrors.IsNotFound(err) {
 			return r.patchUnresolved(ctx, &promotion, "FleetNotFound",
@@ -119,7 +122,7 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if err := r.suspendOwnedRuns(ctx, &promotion); err != nil {
 			return ctrl.Result{}, err
 		}
-		return r.patchStatus(ctx, &promotion, kaprov1alpha2.PromotionPhasePaused,
+		return r.patchStatus(ctx, &promotion, kaprov1alpha1.PromotionPhasePaused,
 			specHash, "Suspended", "Promotion or parent Fleet is suspended")
 	}
 
@@ -129,7 +132,7 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// List existing attempts (PromotionRuns owned by this Promotion).
-	var runs kaprov1alpha2.PromotionRunList
+	var runs kaproruntimev1alpha1.PromotionRunList
 	if err := r.List(ctx, &runs, client.MatchingLabels{promotionOwnerLabel: promotion.Name}); err != nil {
 		return ctrl.Result{}, fmt.Errorf("list owned PromotionRuns: %w", err)
 	}
@@ -138,7 +141,7 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	})
 
 	// If the newest attempt matches the current spec hash, just mirror status.
-	var activeRun *kaprov1alpha2.PromotionRun
+	var activeRun *kaproruntimev1alpha1.PromotionRun
 	for i := range runs.Items {
 		run := &runs.Items[i]
 		if run.Labels[promotionSpecHashLabel] == specHash {
@@ -196,9 +199,9 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 // emitAttemptStamped publishes a kapro.io/promotion.attempt.stamped
 // CloudEvent. Nil-safe: a no-op when the controller runs without a
 // Lifecycle dispatcher (e.g. older tests).
-func (r *PromotionReconciler) emitAttemptStamped(ctx context.Context, p *kaprov1alpha2.Promotion, runName string) {
+func (r *PromotionReconciler) emitAttemptStamped(ctx context.Context, p *kaprov1alpha1.Promotion, runName string) {
 	publisher, ok := r.Lifecycle.(interface {
-		PublishAttemptEvent(context.Context, *kaprov1alpha2.Promotion, string, string)
+		PublishAttemptEvent(context.Context, *kaprov1alpha1.Promotion, string, string)
 	})
 	if !ok {
 		return
@@ -206,9 +209,9 @@ func (r *PromotionReconciler) emitAttemptStamped(ctx context.Context, p *kaprov1
 	publisher.PublishAttemptEvent(ctx, p, runName, "stamped")
 }
 
-func (r *PromotionReconciler) emitAttemptSuperseded(ctx context.Context, p *kaprov1alpha2.Promotion, runName string) {
+func (r *PromotionReconciler) emitAttemptSuperseded(ctx context.Context, p *kaprov1alpha1.Promotion, runName string) {
 	publisher, ok := r.Lifecycle.(interface {
-		PublishAttemptEvent(context.Context, *kaprov1alpha2.Promotion, string, string)
+		PublishAttemptEvent(context.Context, *kaprov1alpha1.Promotion, string, string)
 	})
 	if !ok {
 		return
@@ -217,8 +220,8 @@ func (r *PromotionReconciler) emitAttemptSuperseded(ctx context.Context, p *kapr
 }
 
 // stampAttempt creates a new PromotionRun for this Promotion attempt.
-func (r *PromotionReconciler) stampAttempt(ctx context.Context, p *kaprov1alpha2.Promotion,
-	spec kaprov1alpha2.PromotionRunSpec, specHash string) (*kaprov1alpha2.PromotionRun, error) {
+func (r *PromotionReconciler) stampAttempt(ctx context.Context, p *kaprov1alpha1.Promotion,
+	spec kaprov1alpha1.PromotionRunSpec, specHash string) (*kaproruntimev1alpha1.PromotionRun, error) {
 
 	name := attemptName(p.Name, specHash)
 	labels := map[string]string{
@@ -238,7 +241,7 @@ func (r *PromotionReconciler) stampAttempt(ctx context.Context, p *kaprov1alpha2
 	if team := p.Labels[admission.LabelKaproTeam]; team != "" {
 		labels[admission.LabelKaproTeam] = team
 	}
-	run := &kaprov1alpha2.PromotionRun{
+	run := &kaproruntimev1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
 			Labels:      labels,
@@ -281,7 +284,7 @@ func (r *PromotionReconciler) stampAttempt(ctx context.Context, p *kaprov1alpha2
 // Idempotent: a no-op when both labels are already set or when the
 // parent Promotion has no spec.fleetRef / UID to copy.
 func (r *PromotionReconciler) backfillRunLabels(ctx context.Context,
-	run *kaprov1alpha2.PromotionRun, p *kaprov1alpha2.Promotion) error {
+	run *kaproruntimev1alpha1.PromotionRun, p *kaprov1alpha1.Promotion) error {
 	wantKapro := p.Spec.FleetRef
 	wantUID := string(p.UID)
 	haveKapro := run.Labels[promotionFleetLabel]
@@ -308,7 +311,7 @@ func (r *PromotionReconciler) backfillRunLabels(ctx context.Context,
 // Promotion as Superseded with reason SupersededByNewPromotionAttempt.
 // Returns the names of runs it actually superseded so the caller can
 // emit one kapro.io/promotion.attempt.superseded CloudEvent per name.
-func (r *PromotionReconciler) supersedePrevious(ctx context.Context, runs []kaprov1alpha2.PromotionRun) ([]string, error) {
+func (r *PromotionReconciler) supersedePrevious(ctx context.Context, runs []kaproruntimev1alpha1.PromotionRun) ([]string, error) {
 	now := metav1.Now()
 	var superseded []string
 	for i := range runs {
@@ -317,7 +320,7 @@ func (r *PromotionReconciler) supersedePrevious(ctx context.Context, runs []kapr
 			continue
 		}
 		patch := client.MergeFrom(run.DeepCopy())
-		run.Status.Phase = kaprov1alpha2.PromotionRunPhaseSuperseded
+		run.Status.Phase = kaprov1alpha1.PromotionRunPhaseSuperseded
 		run.Status.CompletedAt = now.Format(time.RFC3339)
 		meta.SetStatusCondition(&run.Status.Conditions, metav1.Condition{
 			Type:               "Ready",
@@ -339,7 +342,7 @@ func (r *PromotionReconciler) supersedePrevious(ctx context.Context, runs []kapr
 }
 
 func (r *PromotionReconciler) cancelSupersededRunTargets(ctx context.Context, runName string) error {
-	var targets kaprov1alpha2.TargetList
+	var targets kaproruntimev1alpha1.TargetList
 	if err := r.List(ctx, &targets); err != nil {
 		return fmt.Errorf("list targets for superseded PromotionRun %s: %w", runName, err)
 	}
@@ -349,7 +352,7 @@ func (r *PromotionReconciler) cancelSupersededRunTargets(ctx context.Context, ru
 			continue
 		}
 		switch target.Status.Phase {
-		case kaprov1alpha2.TargetPhaseConverged, kaprov1alpha2.TargetPhaseFailed, kaprov1alpha2.TargetPhaseSkipped:
+		case kaprov1alpha1.TargetPhaseConverged, kaprov1alpha1.TargetPhaseFailed, kaprov1alpha1.TargetPhaseSkipped:
 			continue
 		}
 		if target.Spec.Cancelled {
@@ -371,7 +374,7 @@ func (r *PromotionReconciler) clearSupersededActiveClaim(ctx context.Context, ru
 	if clusterName == "" {
 		return nil
 	}
-	var cluster kaprov1alpha2.Cluster
+	var cluster kaprov1alpha1.Cluster
 	if err := r.Get(ctx, client.ObjectKey{Name: clusterName}, &cluster); err != nil {
 		return client.IgnoreNotFound(err)
 	}
@@ -387,8 +390,8 @@ func (r *PromotionReconciler) clearSupersededActiveClaim(ctx context.Context, ru
 }
 
 // suspendOwnedRuns flips spec.suspended=true on every owned non-terminal run.
-func (r *PromotionReconciler) suspendOwnedRuns(ctx context.Context, p *kaprov1alpha2.Promotion) error {
-	var runs kaprov1alpha2.PromotionRunList
+func (r *PromotionReconciler) suspendOwnedRuns(ctx context.Context, p *kaprov1alpha1.Promotion) error {
+	var runs kaproruntimev1alpha1.PromotionRunList
 	if err := r.List(ctx, &runs, client.MatchingLabels{promotionOwnerLabel: p.Name}); err != nil {
 		return fmt.Errorf("list owned PromotionRuns: %w", err)
 	}
@@ -406,8 +409,8 @@ func (r *PromotionReconciler) suspendOwnedRuns(ctx context.Context, p *kaprov1al
 	return nil
 }
 
-func (r *PromotionReconciler) patchStatusFromRun(ctx context.Context, p *kaprov1alpha2.Promotion,
-	run *kaprov1alpha2.PromotionRun, specHash string, priorTerminalExists bool) (ctrl.Result, error) {
+func (r *PromotionReconciler) patchStatusFromRun(ctx context.Context, p *kaprov1alpha1.Promotion,
+	run *kaproruntimev1alpha1.PromotionRun, specHash string, priorTerminalExists bool) (ctrl.Result, error) {
 
 	prevPhase := p.Status.Phase
 	patch := client.MergeFrom(p.DeepCopy())
@@ -424,7 +427,7 @@ func (r *PromotionReconciler) patchStatusFromRun(ctx context.Context, p *kaprov1
 		}
 	}
 
-	current := kaprov1alpha2.PromotionAttemptRef{
+	current := kaprov1alpha1.PromotionAttemptRef{
 		Name:        run.Name,
 		SpecHash:    specHash,
 		Version:     run.Spec.Version,
@@ -457,18 +460,18 @@ func (r *PromotionReconciler) patchStatusFromRun(ctx context.Context, p *kaprov1
 	return ctrl.Result{RequeueAfter: requeueForPhase(p.Status.Phase)}, nil
 }
 
-func (r *PromotionReconciler) patchStatus(ctx context.Context, p *kaprov1alpha2.Promotion,
-	phase kaprov1alpha2.PromotionPhase, _ /*specHash retained for symmetry*/, reason, msg string) (ctrl.Result, error) {
+func (r *PromotionReconciler) patchStatus(ctx context.Context, p *kaprov1alpha1.Promotion,
+	phase kaprov1alpha1.PromotionPhase, _ /*specHash retained for symmetry*/, reason, msg string) (ctrl.Result, error) {
 
 	prevPhase := p.Status.Phase
 	patch := client.MergeFrom(p.DeepCopy())
 	p.Status.Phase = phase
 	p.Status.ObservedGeneration = p.Generation
-	if phase == kaprov1alpha2.PromotionPhasePaused || phase == kaprov1alpha2.PromotionPhaseTerminating {
+	if phase == kaprov1alpha1.PromotionPhasePaused || phase == kaprov1alpha1.PromotionPhaseTerminating {
 		p.Status.ActiveAttemptRef = nil
 	}
 	condStatus := metav1.ConditionFalse
-	if phase == kaprov1alpha2.PromotionPhaseSucceeded {
+	if phase == kaprov1alpha1.PromotionPhaseSucceeded {
 		condStatus = metav1.ConditionTrue
 	}
 	meta.SetStatusCondition(&p.Status.Conditions, metav1.Condition{
@@ -480,7 +483,7 @@ func (r *PromotionReconciler) patchStatus(ctx context.Context, p *kaprov1alpha2.
 	})
 	// Surface Suspended condition explicitly so users can filter on it.
 	suspendedStatus := metav1.ConditionFalse
-	if phase == kaprov1alpha2.PromotionPhasePaused {
+	if phase == kaprov1alpha1.PromotionPhasePaused {
 		suspendedStatus = metav1.ConditionTrue
 	}
 	meta.SetStatusCondition(&p.Status.Conditions, metav1.Condition{
@@ -503,7 +506,7 @@ func (r *PromotionReconciler) patchStatus(ctx context.Context, p *kaprov1alpha2.
 // dispatcher wired (legacy tests, test doubles), this is a no-op. The
 // dispatcher itself is fire-and-forget — failures never propagate here.
 func (r *PromotionReconciler) dispatchLifecycle(ctx context.Context,
-	p *kaprov1alpha2.Promotion, prev, next kaprov1alpha2.PromotionPhase) {
+	p *kaprov1alpha1.Promotion, prev, next kaprov1alpha1.PromotionPhase) {
 	if r.Lifecycle == nil || prev == next {
 		return
 	}
@@ -516,39 +519,39 @@ func (r *PromotionReconciler) dispatchLifecycle(ctx context.Context,
 // watches drive reconciliation when meaningful state changes. Active phases
 // keep the existing 15s cadence as a belt-and-braces for cases where a
 // watch event is lost.
-func requeueForPhase(phase kaprov1alpha2.PromotionPhase) time.Duration {
+func requeueForPhase(phase kaprov1alpha1.PromotionPhase) time.Duration {
 	switch phase {
-	case kaprov1alpha2.PromotionPhaseSucceeded,
-		kaprov1alpha2.PromotionPhaseFailed,
-		kaprov1alpha2.PromotionPhasePaused,
-		kaprov1alpha2.PromotionPhaseTerminating:
+	case kaprov1alpha1.PromotionPhaseSucceeded,
+		kaprov1alpha1.PromotionPhaseFailed,
+		kaprov1alpha1.PromotionPhasePaused,
+		kaprov1alpha1.PromotionPhaseTerminating:
 		return 0
 	}
 	return promotionIntentRequeue
 }
 
-func (r *PromotionReconciler) patchUnresolved(ctx context.Context, p *kaprov1alpha2.Promotion,
+func (r *PromotionReconciler) patchUnresolved(ctx context.Context, p *kaprov1alpha1.Promotion,
 	reason, msg string) (ctrl.Result, error) {
 	r.Recorder.Event(p, "Warning", reason, msg)
-	return r.patchStatus(ctx, p, kaprov1alpha2.PromotionPhasePending, "", reason, msg)
+	return r.patchStatus(ctx, p, kaprov1alpha1.PromotionPhasePending, "", reason, msg)
 }
 
 // buildRunSpec derives a PromotionRunSpec from a Promotion + parent Fleet.
-func buildRunSpec(p *kaprov1alpha2.Promotion, parent *kaprov1alpha2.Fleet) (kaprov1alpha2.PromotionRunSpec, error) {
-	plans := append([]kaprov1alpha2.PlanRef(nil), p.Spec.Plans...)
+func buildRunSpec(p *kaprov1alpha1.Promotion, parent *kaprov1alpha1.Fleet) (kaprov1alpha1.PromotionRunSpec, error) {
+	plans := append([]kaprov1alpha1.PlanRef(nil), p.Spec.Plans...)
 	if len(plans) == 0 {
 		// FleetReconciler materializes Kapro.spec.promotionplan as a separate
 		// Plan CR named via InlinePromotionPlanName; reference that
 		// generated object, not the bare Kapro name.
-		plans = []kaprov1alpha2.PlanRef{{
+		plans = []kaprov1alpha1.PlanRef{{
 			Name: "inline",
 			Plan: InlinePromotionPlanName(parent.Name),
 		}}
 	}
 	if p.Spec.Version == "" && len(p.Spec.Versions) == 0 {
-		return kaprov1alpha2.PromotionRunSpec{}, fmt.Errorf("either spec.version or spec.versions must be set")
+		return kaprov1alpha1.PromotionRunSpec{}, fmt.Errorf("either spec.version or spec.versions must be set")
 	}
-	return kaprov1alpha2.PromotionRunSpec{
+	return kaprov1alpha1.PromotionRunSpec{
 		Version:  p.Spec.Version,
 		Versions: copyStringMap(p.Spec.Versions),
 		Plans:    plans,
@@ -566,7 +569,7 @@ func buildRunSpec(p *kaprov1alpha2.Promotion, parent *kaprov1alpha2.Fleet) (kapr
 // detect drift and trigger a new attempt. Excludes Suspended (suspending
 // should not create a new attempt) and includes the fleetRef so cross-fleet
 // retargeting also stamps a fresh run.
-func promotionSpecHash(s *kaprov1alpha2.PromotionSpec) string {
+func promotionSpecHash(s *kaprov1alpha1.PromotionSpec) string {
 	h := sha256.New()
 	fmt.Fprintf(h, "k=%s|", s.FleetRef)
 	fmt.Fprintf(h, "v=%s|", s.Version)
@@ -604,7 +607,7 @@ func attemptName(promotionName, specHash string) string {
 // upsertAttempt replaces an existing entry with the same name+specHash
 // (updating phase/timestamps), or prepends a new entry. The list is
 // capped at MaxPromotionAttempts; older attempts fall off.
-func upsertAttempt(list []kaprov1alpha2.PromotionAttemptRef, current kaprov1alpha2.PromotionAttemptRef) []kaprov1alpha2.PromotionAttemptRef {
+func upsertAttempt(list []kaprov1alpha1.PromotionAttemptRef, current kaprov1alpha1.PromotionAttemptRef) []kaprov1alpha1.PromotionAttemptRef {
 	for i := range list {
 		if list[i].Name == current.Name {
 			// Preserve original StartedAt; update mutable fields.
@@ -618,9 +621,9 @@ func upsertAttempt(list []kaprov1alpha2.PromotionAttemptRef, current kaprov1alph
 			return list
 		}
 	}
-	out := append([]kaprov1alpha2.PromotionAttemptRef{current}, list...)
-	if len(out) > kaprov1alpha2.MaxPromotionAttempts {
-		out = out[:kaprov1alpha2.MaxPromotionAttempts]
+	out := append([]kaprov1alpha1.PromotionAttemptRef{current}, list...)
+	if len(out) > kaprov1alpha1.MaxPromotionAttempts {
+		out = out[:kaprov1alpha1.MaxPromotionAttempts]
 	}
 	return out
 }
@@ -632,26 +635,26 @@ func upsertAttempt(list []kaprov1alpha2.PromotionAttemptRef, current kaprov1alph
 // attempt has reached a terminal state is reported as Restarting (Docker's
 // "restarting" between exited and running). Otherwise Pending bubbles up
 // as Pending so first-attempt latency stays visible.
-func computePromotionPhase(rp kaprov1alpha2.PromotionRunPhase, priorTerminalExists bool) kaprov1alpha2.PromotionPhase {
+func computePromotionPhase(rp kaprov1alpha1.PromotionRunPhase, priorTerminalExists bool) kaprov1alpha1.PromotionPhase {
 	switch rp {
-	case kaprov1alpha2.PromotionRunPhaseComplete:
-		return kaprov1alpha2.PromotionPhaseSucceeded
-	case kaprov1alpha2.PromotionRunPhaseFailed:
-		return kaprov1alpha2.PromotionPhaseFailed
-	case kaprov1alpha2.PromotionRunPhaseProgressing:
-		return kaprov1alpha2.PromotionPhaseProgressing
-	case kaprov1alpha2.PromotionRunPhaseSuperseded:
+	case kaprov1alpha1.PromotionRunPhaseComplete:
+		return kaprov1alpha1.PromotionPhaseSucceeded
+	case kaprov1alpha1.PromotionRunPhaseFailed:
+		return kaprov1alpha1.PromotionPhaseFailed
+	case kaprov1alpha1.PromotionRunPhaseProgressing:
+		return kaprov1alpha1.PromotionPhaseProgressing
+	case kaprov1alpha1.PromotionRunPhaseSuperseded:
 		// The activeRun selection prefers the newest matching-hash run, so
 		// this branch only fires when nothing newer exists for the current
 		// hash — treat it as Pending pending a fresh stamp.
-		return kaprov1alpha2.PromotionPhasePending
-	case kaprov1alpha2.PromotionRunPhasePending, "":
+		return kaprov1alpha1.PromotionPhasePending
+	case kaprov1alpha1.PromotionRunPhasePending, "":
 		if priorTerminalExists {
-			return kaprov1alpha2.PromotionPhaseRestarting
+			return kaprov1alpha1.PromotionPhaseRestarting
 		}
-		return kaprov1alpha2.PromotionPhasePending
+		return kaprov1alpha1.PromotionPhasePending
 	default:
-		return kaprov1alpha2.PromotionPhase(rp)
+		return kaprov1alpha1.PromotionPhase(rp)
 	}
 }
 
@@ -659,7 +662,7 @@ func computePromotionPhase(rp kaprov1alpha2.PromotionRunPhase, priorTerminalExis
 // Ready, Progressing, Suspended, Stalled (reserved), RollbackAvailable.
 // Stalled is left unset here — it is owned by the PromotionRun timeout
 // machinery and aggregated into Promotion by future work.
-func setPromotionConditions(p *kaprov1alpha2.Promotion, run *kaprov1alpha2.PromotionRun) {
+func setPromotionConditions(p *kaprov1alpha1.Promotion, run *kaproruntimev1alpha1.PromotionRun) {
 	phase := p.Status.Phase
 	now := metav1.Now()
 
@@ -667,11 +670,11 @@ func setPromotionConditions(p *kaprov1alpha2.Promotion, run *kaprov1alpha2.Promo
 	readyReason := "Reconciled"
 	readyMsg := fmt.Sprintf("Active attempt %s in phase %s", run.Name, run.Status.Phase)
 	switch phase {
-	case kaprov1alpha2.PromotionPhaseSucceeded:
+	case kaprov1alpha1.PromotionPhaseSucceeded:
 		ready = metav1.ConditionTrue
 		readyReason = "Succeeded"
 		readyMsg = fmt.Sprintf("Attempt %s completed", run.Name)
-	case kaprov1alpha2.PromotionPhaseFailed:
+	case kaprov1alpha1.PromotionPhaseFailed:
 		readyReason = "Failed"
 		readyMsg = fmt.Sprintf("Attempt %s failed", run.Name)
 	}
@@ -686,9 +689,9 @@ func setPromotionConditions(p *kaprov1alpha2.Promotion, run *kaprov1alpha2.Promo
 
 	progressing := metav1.ConditionFalse
 	progressingReason := "Idle"
-	if phase == kaprov1alpha2.PromotionPhaseProgressing ||
-		phase == kaprov1alpha2.PromotionPhaseRestarting ||
-		phase == kaprov1alpha2.PromotionPhasePending {
+	if phase == kaprov1alpha1.PromotionPhaseProgressing ||
+		phase == kaprov1alpha1.PromotionPhaseRestarting ||
+		phase == kaprov1alpha1.PromotionPhasePending {
 		progressing = metav1.ConditionTrue
 		progressingReason = "AttemptInFlight"
 	}
@@ -702,7 +705,7 @@ func setPromotionConditions(p *kaprov1alpha2.Promotion, run *kaprov1alpha2.Promo
 	})
 
 	suspended := metav1.ConditionFalse
-	if phase == kaprov1alpha2.PromotionPhasePaused {
+	if phase == kaprov1alpha1.PromotionPhasePaused {
 		suspended = metav1.ConditionTrue
 	}
 	meta.SetStatusCondition(&p.Status.Conditions, metav1.Condition{
@@ -718,7 +721,7 @@ func setPromotionConditions(p *kaprov1alpha2.Promotion, run *kaprov1alpha2.Promo
 	// (observability — wires up to spec.rollbackTo once that field lands).
 	rollback := metav1.ConditionFalse
 	for _, a := range p.Status.Attempts {
-		if a.Phase == kaprov1alpha2.PromotionRunPhaseComplete {
+		if a.Phase == kaprov1alpha1.PromotionRunPhaseComplete {
 			rollback = metav1.ConditionTrue
 			break
 		}
@@ -736,14 +739,14 @@ func setPromotionConditions(p *kaprov1alpha2.Promotion, run *kaprov1alpha2.Promo
 // emitPhaseTransitionEvent records a Kubernetes Event whenever the coarse
 // Promotion phase changes. Events are best-effort; the controller does not
 // fail reconcile if the recorder buffer is full.
-func (r *PromotionReconciler) emitPhaseTransitionEvent(p *kaprov1alpha2.Promotion,
-	prevPhase kaprov1alpha2.PromotionPhase, runName string) {
+func (r *PromotionReconciler) emitPhaseTransitionEvent(p *kaprov1alpha1.Promotion,
+	prevPhase kaprov1alpha1.PromotionPhase, runName string) {
 	if prevPhase == p.Status.Phase {
 		return
 	}
 	eventType := "Normal"
 	switch p.Status.Phase {
-	case kaprov1alpha2.PromotionPhaseFailed:
+	case kaprov1alpha1.PromotionPhaseFailed:
 		eventType = "Warning"
 	}
 	reason := string(p.Status.Phase)
@@ -763,10 +766,10 @@ const promotionFleetRefIndex = "spec.fleetRef"
 func (r *PromotionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err := mgr.GetFieldIndexer().IndexField(
 		context.Background(),
-		&kaprov1alpha2.Promotion{},
+		&kaprov1alpha1.Promotion{},
 		promotionFleetRefIndex,
 		func(obj client.Object) []string {
-			p, ok := obj.(*kaprov1alpha2.Promotion)
+			p, ok := obj.(*kaprov1alpha1.Promotion)
 			if !ok || p.Spec.FleetRef == "" {
 				return nil
 			}
@@ -777,21 +780,21 @@ func (r *PromotionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kaprov1alpha2.Promotion{}).
-		Owns(&kaprov1alpha2.PromotionRun{}).
+		For(&kaprov1alpha1.Promotion{}).
+		Owns(&kaproruntimev1alpha1.PromotionRun{}).
 		Watches(
-			&kaprov1alpha2.Fleet{},
+			&kaprov1alpha1.Fleet{},
 			handler.EnqueueRequestsFromMapFunc(r.promotionsForKapro),
 		).
 		Complete(r)
 }
 
 func (r *PromotionReconciler) promotionsForKapro(ctx context.Context, obj client.Object) []reconcile.Request {
-	kapro, ok := obj.(*kaprov1alpha2.Fleet)
+	kapro, ok := obj.(*kaprov1alpha1.Fleet)
 	if !ok {
 		return nil
 	}
-	var list kaprov1alpha2.PromotionList
+	var list kaprov1alpha1.PromotionList
 	if err := r.List(ctx, &list,
 		client.MatchingFields{promotionFleetRefIndex: kapro.Name},
 	); err != nil {

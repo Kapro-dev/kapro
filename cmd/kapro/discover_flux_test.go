@@ -53,11 +53,11 @@ func TestRunFluxDiscoverWritesMapping(t *testing.T) {
 	for _, want := range []string{
 		"kind: Source",
 		"name: api",
-		"backendKind: GitYAMLField",
+		"substrateKind: GitYAMLField",
 		"sourcePath: flux/sources/api-gitrepository.yaml",
 		"versionField: spec.ref.tag",
 		"name: web-image",
-		"backendKind: KustomizeImage",
+		"substrateKind: KustomizeImage",
 		"versionField: ghcr.io/example/checkout-web",
 	} {
 		if !strings.Contains(source, want) {
@@ -235,13 +235,13 @@ spec:
 `)
 }
 
-func assertFluxUnit(t *testing.T, units map[string]argoDiscoveredUnit, name, backendKind, sourcePath, versionField string) {
+func assertFluxUnit(t *testing.T, units map[string]argoDiscoveredUnit, name, substrateKind, sourcePath, versionField string) {
 	t.Helper()
 	unit, ok := units[name]
 	if !ok {
 		t.Fatalf("missing unit %q in %#v", name, units)
 	}
-	if unit.BackendKind != backendKind || unit.SourcePath != sourcePath || unit.VersionField != versionField {
-		t.Fatalf("unit %q = %#v, want backendKind=%q sourcePath=%q versionField=%q", name, unit, backendKind, sourcePath, versionField)
+	if unit.SubstrateKind != substrateKind || unit.SourcePath != sourcePath || unit.VersionField != versionField {
+		t.Fatalf("unit %q = %#v, want substrateKind=%q sourcePath=%q versionField=%q", name, unit, substrateKind, sourcePath, versionField)
 	}
 }

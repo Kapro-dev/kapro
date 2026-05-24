@@ -8,7 +8,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 const actuatorTracerName = "kapro.io/kapro/pkg/kapro/actuator"
@@ -19,9 +19,9 @@ type tracedActuator struct {
 	capabilities Capabilities
 }
 
-type tracedBackendObjectReporter struct {
+type tracedSubstrateObjectReporter struct {
 	*tracedActuator
-	reporter BackendObjectReporter
+	reporter SubstrateObjectReporter
 }
 
 type tracedTwoPhaseActuator struct {
@@ -29,9 +29,9 @@ type tracedTwoPhaseActuator struct {
 	staging TwoPhaseStaging
 }
 
-type tracedBackendObjectReporterTwoPhase struct {
+type tracedSubstrateObjectReporterTwoPhase struct {
 	*tracedActuator
-	reporter BackendObjectReporter
+	reporter SubstrateObjectReporter
 	staging  TwoPhaseStaging
 }
 
@@ -49,13 +49,13 @@ func withTracingCapabilities(name string, a Actuator, capabilities Capabilities)
 	if _, ok := a.(*tracedActuator); ok {
 		return a
 	}
-	if _, ok := a.(*tracedBackendObjectReporter); ok {
+	if _, ok := a.(*tracedSubstrateObjectReporter); ok {
 		return a
 	}
 	if _, ok := a.(*tracedTwoPhaseActuator); ok {
 		return a
 	}
-	if _, ok := a.(*tracedBackendObjectReporterTwoPhase); ok {
+	if _, ok := a.(*tracedSubstrateObjectReporterTwoPhase); ok {
 		return a
 	}
 	if substrate, ok := a.(Substrate); ok && capabilitiesEmpty(capabilities) {
@@ -66,10 +66,10 @@ func withTracingCapabilities(name string, a Actuator, capabilities Capabilities)
 		delegate:     a,
 		capabilities: capabilities.Normalize(),
 	}
-	reporter, hasReporter := a.(BackendObjectReporter)
+	reporter, hasReporter := a.(SubstrateObjectReporter)
 	staging, hasStaging := a.(TwoPhaseStaging)
 	if hasReporter && hasStaging {
-		return &tracedBackendObjectReporterTwoPhase{
+		return &tracedSubstrateObjectReporterTwoPhase{
 			tracedActuator: traced,
 			reporter:       reporter,
 			staging:        staging,
@@ -78,8 +78,8 @@ func withTracingCapabilities(name string, a Actuator, capabilities Capabilities)
 	if hasStaging {
 		return &tracedTwoPhaseActuator{tracedActuator: traced, staging: staging}
 	}
-	if reporter, ok := a.(BackendObjectReporter); ok {
-		return &tracedBackendObjectReporter{tracedActuator: traced, reporter: reporter}
+	if reporter, ok := a.(SubstrateObjectReporter); ok {
+		return &tracedSubstrateObjectReporter{tracedActuator: traced, reporter: reporter}
 	}
 	return traced
 }
@@ -97,7 +97,7 @@ func (a *tracedActuator) Apply(ctx context.Context, req ApplyRequest) error {
 	return err
 }
 
-func (a *tracedActuator) IsConverged(ctx context.Context, cluster *kaprov1alpha2.Cluster, version, appKey string) (bool, error) {
+func (a *tracedActuator) IsConverged(ctx context.Context, cluster *kaprov1alpha1.Cluster, version, appKey string) (bool, error) {
 	ctx, span := a.start(ctx, "kapro.actuator.observe",
 		attribute.String("kapro.cluster", clusterName(cluster)),
 		attribute.String("kapro.app_key", appKey),
@@ -110,7 +110,7 @@ func (a *tracedActuator) IsConverged(ctx context.Context, cluster *kaprov1alpha2
 	return converged, err
 }
 
-func (a *tracedActuator) Rollback(ctx context.Context, cluster *kaprov1alpha2.Cluster, previousVersion, appKey string) error {
+func (a *tracedActuator) Rollback(ctx context.Context, cluster *kaprov1alpha1.Cluster, previousVersion, appKey string) error {
 	ctx, span := a.start(ctx, "kapro.actuator.rollback",
 		attribute.String("kapro.cluster", clusterName(cluster)),
 		attribute.String("kapro.app_key", appKey),
@@ -134,7 +134,7 @@ func (a *tracedActuator) ApplyDelta(ctx context.Context, req DeltaApplyRequest) 
 	return applied, err
 }
 
-func (a *tracedActuator) IsAllConverged(ctx context.Context, cluster *kaprov1alpha2.Cluster, desiredVersions map[string]string) (bool, error) {
+func (a *tracedActuator) IsAllConverged(ctx context.Context, cluster *kaprov1alpha1.Cluster, desiredVersions map[string]string) (bool, error) {
 	ctx, span := a.start(ctx, "kapro.actuator.observe_all",
 		attribute.String("kapro.cluster", clusterName(cluster)),
 		attribute.Int("kapro.actuator.desired_versions", len(desiredVersions)),
@@ -153,14 +153,14 @@ func (a *tracedActuator) Capabilities() Capabilities {
 	return a.capabilities.Normalize()
 }
 
-func (a *tracedBackendObjectReporter) BackendObjects(ctx context.Context, cluster *kaprov1alpha2.Cluster, desiredVersions map[string]string) ([]kaprov1alpha2.BackendObjectStatus, error) {
-	ctx, span := a.start(ctx, "kapro.actuator.backend_objects",
+func (a *tracedSubstrateObjectReporter) SubstrateObjects(ctx context.Context, cluster *kaprov1alpha1.Cluster, desiredVersions map[string]string) ([]kaprov1alpha1.SubstrateObjectStatus, error) {
+	ctx, span := a.start(ctx, "kapro.actuator.substrate_objects",
 		attribute.String("kapro.cluster", clusterName(cluster)),
 		attribute.Int("kapro.actuator.desired_versions", len(desiredVersions)),
 	)
 	defer span.End()
-	objects, err := a.reporter.BackendObjects(ctx, cluster, desiredVersions)
-	span.SetAttributes(attribute.Int("kapro.actuator.backend_objects", len(objects)))
+	objects, err := a.reporter.SubstrateObjects(ctx, cluster, desiredVersions)
+	span.SetAttributes(attribute.Int("kapro.actuator.substrate_objects", len(objects)))
 	recordActuatorError(span, err)
 	return objects, err
 }
@@ -177,27 +177,27 @@ func (a *tracedTwoPhaseActuator) Discard(ctx context.Context, handle StageHandle
 	return a.discard(ctx, handle, a.staging)
 }
 
-func (a *tracedBackendObjectReporterTwoPhase) BackendObjects(ctx context.Context, cluster *kaprov1alpha2.Cluster, desiredVersions map[string]string) ([]kaprov1alpha2.BackendObjectStatus, error) {
-	ctx, span := a.start(ctx, "kapro.actuator.backend_objects",
+func (a *tracedSubstrateObjectReporterTwoPhase) SubstrateObjects(ctx context.Context, cluster *kaprov1alpha1.Cluster, desiredVersions map[string]string) ([]kaprov1alpha1.SubstrateObjectStatus, error) {
+	ctx, span := a.start(ctx, "kapro.actuator.substrate_objects",
 		attribute.String("kapro.cluster", clusterName(cluster)),
 		attribute.Int("kapro.actuator.desired_versions", len(desiredVersions)),
 	)
 	defer span.End()
-	objects, err := a.reporter.BackendObjects(ctx, cluster, desiredVersions)
-	span.SetAttributes(attribute.Int("kapro.actuator.backend_objects", len(objects)))
+	objects, err := a.reporter.SubstrateObjects(ctx, cluster, desiredVersions)
+	span.SetAttributes(attribute.Int("kapro.actuator.substrate_objects", len(objects)))
 	recordActuatorError(span, err)
 	return objects, err
 }
 
-func (a *tracedBackendObjectReporterTwoPhase) Prepare(ctx context.Context, req StageRequest) (StageHandle, error) {
+func (a *tracedSubstrateObjectReporterTwoPhase) Prepare(ctx context.Context, req StageRequest) (StageHandle, error) {
 	return a.prepare(ctx, req, a.staging)
 }
 
-func (a *tracedBackendObjectReporterTwoPhase) Commit(ctx context.Context, handle StageHandle) (CommitResult, error) {
+func (a *tracedSubstrateObjectReporterTwoPhase) Commit(ctx context.Context, handle StageHandle) (CommitResult, error) {
 	return a.commit(ctx, handle, a.staging)
 }
 
-func (a *tracedBackendObjectReporterTwoPhase) Discard(ctx context.Context, handle StageHandle) error {
+func (a *tracedSubstrateObjectReporterTwoPhase) Discard(ctx context.Context, handle StageHandle) error {
 	return a.discard(ctx, handle, a.staging)
 }
 
@@ -211,7 +211,7 @@ func (a *tracedActuator) prepare(ctx context.Context, req StageRequest, staging 
 	handle, err := staging.Prepare(ctx, req)
 	span.SetAttributes(
 		attribute.String("kapro.actuator.stage_handle", handle.ID),
-		attribute.String("kapro.actuator.backend", string(handle.Backend)),
+		attribute.String("kapro.actuator.substrate", string(handle.Substrate)),
 		attribute.Int("kapro.actuator.app_keys", len(handle.AppKeys)),
 	)
 	recordActuatorError(span, err)
@@ -221,7 +221,7 @@ func (a *tracedActuator) prepare(ctx context.Context, req StageRequest, staging 
 func (a *tracedActuator) commit(ctx context.Context, handle StageHandle, staging TwoPhaseStaging) (CommitResult, error) {
 	ctx, span := a.start(ctx, "kapro.actuator.commit",
 		attribute.String("kapro.actuator.stage_handle", handle.ID),
-		attribute.String("kapro.actuator.backend", string(handle.Backend)),
+		attribute.String("kapro.actuator.substrate", string(handle.Substrate)),
 		attribute.Int("kapro.actuator.app_keys", len(handle.AppKeys)),
 	)
 	defer span.End()
@@ -237,7 +237,7 @@ func (a *tracedActuator) commit(ctx context.Context, handle StageHandle, staging
 func (a *tracedActuator) discard(ctx context.Context, handle StageHandle, staging TwoPhaseStaging) error {
 	ctx, span := a.start(ctx, "kapro.actuator.discard",
 		attribute.String("kapro.actuator.stage_handle", handle.ID),
-		attribute.String("kapro.actuator.backend", string(handle.Backend)),
+		attribute.String("kapro.actuator.substrate", string(handle.Substrate)),
 		attribute.Int("kapro.actuator.app_keys", len(handle.AppKeys)),
 	)
 	defer span.End()
@@ -257,7 +257,7 @@ func (a *tracedActuator) start(ctx context.Context, spanName string, attrs ...at
 	return otel.Tracer(actuatorTracerName).Start(ctx, spanName, trace.WithAttributes(append(baseAttrs, attrs...)...))
 }
 
-func clusterName(cluster *kaprov1alpha2.Cluster) string {
+func clusterName(cluster *kaprov1alpha1.Cluster) string {
 	if cluster == nil {
 		return ""
 	}

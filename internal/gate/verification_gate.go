@@ -3,7 +3,7 @@ package gate
 import (
 	"context"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // VerificationGate is a pass-through gate. Artifact signature verification
@@ -15,11 +15,11 @@ var _ Gate = &VerificationGate{}
 
 func (g *VerificationGate) Evaluate(_ context.Context, _ Request) (Result, error) {
 	return Result{
-		Phase:   kaprov1alpha2.GatePhasePassed,
+		Phase:   kaprov1alpha1.GatePhasePassed,
 		Message: "verification delegated to Flux Operator",
 		Evidence: []Evidence{{
 			Type:   "verification",
-			Reason: "artifact verification is delegated to the configured backend",
+			Reason: "artifact verification is delegated to the configured substrate",
 		}},
 	}, nil
 }

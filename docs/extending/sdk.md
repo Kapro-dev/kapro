@@ -6,7 +6,7 @@ custom gate evaluators without importing controller internals.
 
 The SDK is deliberately thin:
 
-- builders return normal `kapro.io/v1alpha2` Kubernetes objects
+- builders return normal `kapro.io/v1alpha1` Kubernetes objects
 - subscribers consume the preview-compatible `pkg/events` CloudEvents vocabulary
 - gates use a minimal `Evaluate(ctx, request)` interface
 
@@ -54,17 +54,17 @@ on the returned object before sending it to a client.
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	v1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	kapro "kapro.io/kapro/pkg/kapro"
 )
 
 fleet := kapro.NewFleet("checkout").
-	WithBackend("flux").
+	WithSubstrate("flux").
 	WithCluster("dev-us", map[string]string{"env": "dev"}).
 	Build()
 
 plan := kapro.NewPlan("progressive").
-	WithStage(v1alpha2.Stage{
+	WithStage(kaprov1alpha1.Stage{
 		Name: "dev",
 		Selector: metav1.LabelSelector{
 			MatchLabels: map[string]string{"env": "dev"},
@@ -117,7 +117,7 @@ registration and plugin process management stay outside this package.
 
 ## Versioning
 
-During Kapro `v0.1.x`, `pkg/kapro` targets `kapro.io/v1alpha2`. Existing
+During Kapro `v0.1.x`, `pkg/kapro` targets `kapro.io/v1alpha1`. Existing
 exported names are treated as preview-compatible within the release line unless
 a security or correctness fix requires a documented break. See
 [ADR-0013](../adr/0013-sdk-versioning-policy.md) for the policy.

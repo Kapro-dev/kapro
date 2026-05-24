@@ -66,6 +66,8 @@ controllers:
   - promotion
   - promotionrun
   - cluster
+  - substrateclass
+  - substrate
 
 shard: ""
 shardDefault: false

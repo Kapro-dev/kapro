@@ -8,7 +8,7 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 const labelAccelerator = "kapro.io/accelerator"
@@ -33,7 +33,7 @@ func NewFleetClusterMutator(decoder admission.Decoder) *FleetClusterMutator {
 
 // Handle implements admission.Handler.
 func (m *FleetClusterMutator) Handle(_ context.Context, req admission.Request) admission.Response {
-	var mc kaprov1alpha2.Cluster
+	var mc kaprov1alpha1.Cluster
 	if err := m.decoder.DecodeRaw(req.Object, &mc); err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
 	}
@@ -45,7 +45,7 @@ func (m *FleetClusterMutator) Handle(_ context.Context, req admission.Request) a
 	if mc.Spec.Topology != nil && mc.Spec.Topology.Accelerator != "" {
 		mc.Labels[labelAccelerator] = mc.Spec.Topology.Accelerator
 	} else if req.Operation == admissionv1.Update {
-		var old kaprov1alpha2.Cluster
+		var old kaprov1alpha1.Cluster
 		if err := m.decoder.DecodeRaw(req.OldObject, &old); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}

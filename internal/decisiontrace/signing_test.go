@@ -10,9 +10,9 @@ import (
 	"os"
 	"testing"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestEd25519SignerSignsAndVerifiesCanonicalPayload(t *testing.T) {
@@ -67,13 +67,13 @@ func TestEd25519VerifyRejectsTamperedTrace(t *testing.T) {
 
 func TestCanonicalPayloadStableAcrossMapOrdering(t *testing.T) {
 	specA := signingTestSpec()
-	specA.Evidence = []kaprov1alpha2.DecisionTraceEvidence{{
+	specA.Evidence = []kaproruntimev1alpha1.DecisionTraceEvidence{{
 		Type:   "gate",
 		Source: "slo",
 		Detail: map[string]string{"b": "2", "a": "1"},
 	}}
 	specB := signingTestSpec()
-	specB.Evidence = []kaprov1alpha2.DecisionTraceEvidence{{
+	specB.Evidence = []kaproruntimev1alpha1.DecisionTraceEvidence{{
 		Type:   "gate",
 		Source: "slo",
 		Detail: map[string]string{"a": "1", "b": "2"},
@@ -163,13 +163,13 @@ func TestSignerFromEnvDisabledWhenKeyFileUnset(t *testing.T) {
 	}
 }
 
-func signingTestSpec() kaprov1alpha2.DecisionTraceSpec {
-	return kaprov1alpha2.DecisionTraceSpec{
+func signingTestSpec() kaproruntimev1alpha1.DecisionTraceSpec {
+	return kaproruntimev1alpha1.DecisionTraceSpec{
 		PromotionRun: "run-a",
 		Plan:         "canary",
 		Stage:        "prod",
 		Target:       "cluster-a",
-		EventType:    kaprov1alpha2.DecisionTraceEventGateEvaluate,
+		EventType:    kaproruntimev1alpha1.DecisionTraceEventGateEvaluate,
 		Source:       "slo",
 		Phase:        "Failed",
 		Reason:       "SLOViolation",

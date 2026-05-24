@@ -9,7 +9,7 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // ApprovalMutator is a mutating admission webhook for Approval objects.
@@ -38,7 +38,7 @@ func NewApprovalMutator(decoder admission.Decoder, trustedSA string) *ApprovalMu
 	return &ApprovalMutator{decoder: decoder, trustedServiceAcc: trustedSA}
 }
 
-func validateApprovalBypassComment(approval *kaprov1alpha2.Approval) admission.Response {
+func validateApprovalBypassComment(approval *kaprov1alpha1.Approval) admission.Response {
 	if approval != nil && approval.Spec.Bypass && approval.Spec.Comment == "" {
 		return admission.Denied("approval.spec.bypass requires a non-empty spec.comment (P0 justification)")
 	}
@@ -49,7 +49,7 @@ func validateApprovalBypassComment(approval *kaprov1alpha2.Approval) admission.R
 // On CREATE: overwrites spec.approvedBy with the actual Kubernetes username.
 // On UPDATE: rejects attempts to change approvedBy (immutable after creation).
 func (m *ApprovalMutator) Handle(ctx context.Context, req admission.Request) admission.Response {
-	var approval kaprov1alpha2.Approval
+	var approval kaprov1alpha1.Approval
 	if err := m.decoder.DecodeRaw(req.Object, &approval); err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
 	}
@@ -69,7 +69,7 @@ func (m *ApprovalMutator) Handle(ctx context.Context, req admission.Request) adm
 		}
 
 	case admissionv1.Update:
-		var old kaprov1alpha2.Approval
+		var old kaprov1alpha1.Approval
 		if err := m.decoder.DecodeRaw(req.OldObject, &old); err != nil {
 			return admission.Errored(http.StatusBadRequest, err)
 		}

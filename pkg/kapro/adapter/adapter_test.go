@@ -4,13 +4,13 @@ import (
 	"context"
 	"testing"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 func TestReferenceAdapterDiscoveryAndUnsupportedOperations(t *testing.T) {
-	a := NewReferenceAdapter(kaprov1alpha2.BackendDriverArgo, kaprov1alpha2.BackendRuntimeHub, DiscoveryModel{
+	a := NewReferenceAdapter(kaprov1alpha1.SubstrateDriverArgo, kaprov1alpha1.SubstrateRuntimeHub, DiscoveryModel{
 		Supported: true,
-		SelectedObjects: []kaprov1alpha2.DiscoveredBackendObject{{
+		SelectedObjects: []kaprov1alpha1.DiscoveredSubstrateObject{{
 			Kind: "Application",
 			Name: "checkout",
 		}},
@@ -32,7 +32,7 @@ func TestReferenceAdapterDiscoveryAndUnsupportedOperations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("apply returned error: %v", err)
 	}
-	if result.Phase != kaprov1alpha2.DeliveryPhaseFailed || result.Reason != "OperationUnsupported" {
+	if result.Phase != kaprov1alpha1.DeliveryPhaseFailed || result.Reason != "OperationUnsupported" {
 		t.Fatalf("apply result = %#v, want failed OperationUnsupported", result)
 	}
 }

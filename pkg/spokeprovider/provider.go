@@ -4,7 +4,7 @@
 // kapro-cluster-controller) and any concrete delivery implementation. It is
 // the spoke-side analogue of pkg/actuator (KAI), which faces the hub side.
 //
-// One Provider services one BackendDriver. The first-party providers are:
+// One Provider services one SubstrateDriver. The first-party providers are:
 //   - "oci"      — internal/spokeprovider/outbound (PR-5): the outbound-agent.
 //     Pulls OCI artifacts directly and applies them via the
 //     two-phase apply engine from internal/delivery.
@@ -14,7 +14,7 @@
 //   - "external" — gRPC-dispatched out-of-tree plugin via PluginRegistration.
 //
 // Providers are registered into a *Registry at spoke binary startup and
-// resolved per-reconcile from BackendProfile.spec.driver. The spoke binary
+// resolved per-reconcile from the selected Substrate kind. The spoke binary
 // never imports a concrete provider type directly past the wire-up site, so
 // adding a new driver does not perturb the loop or the status writer.
 package spokeprovider
@@ -23,7 +23,7 @@ import (
 	"context"
 	"time"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 const ContractVersionV1Alpha1 = "v1alpha1"
@@ -36,14 +36,14 @@ const (
 )
 
 // ReconcileRequest carries the inputs the loop hands to a Provider once per
-// (cluster, app, version) tick. Cluster and BackendProfile are non-nil;
+// (cluster, app, version) tick. Cluster and SubstrateProfile are non-nil;
 // callers guarantee this before calling Reconcile.
 type ReconcileRequest struct {
-	Cluster        *kaprov1alpha2.Cluster
-	AppKey         string
-	DesiredVersion string
-	BackendProfile *kaprov1alpha2.Backend
-	// Parameters is the merged parameter map: BackendProfile.Spec.Parameters
+	Cluster          *kaprov1alpha1.Cluster
+	AppKey           string
+	DesiredVersion   string
+	SubstrateProfile *kaprov1alpha1.Substrate
+	// Parameters is the merged parameter map: SubstrateProfile.Spec.Parameters
 	// overlaid with FleetCluster.Spec.Delivery.Parameters (cluster wins).
 	Parameters map[string]string
 }
@@ -52,10 +52,10 @@ type ReconcileRequest struct {
 // after one Provider.Reconcile call. All fields are populated even on the
 // failure paths so the caller can write a single coherent status update.
 type ReconcileResult struct {
-	Phase           kaprov1alpha2.DeliveryPhase
+	Phase           kaprov1alpha1.DeliveryPhase
 	Format          string
 	ObservedDigest  string
-	Staging         *kaprov1alpha2.DeliveryStagingStatus
+	Staging         *kaprov1alpha1.DeliveryStagingStatus
 	AppliedObjects  int32
 	LastAttemptedAt time.Time
 	LastAppliedAt   time.Time
@@ -65,7 +65,7 @@ type ReconcileResult struct {
 // Capabilities describes the KSP contract and operations a provider supports.
 type Capabilities struct {
 	ContractVersion   string
-	Driver            kaprov1alpha2.BackendDriver
+	Driver            kaprov1alpha1.SubstrateDriver
 	SupportsReconcile bool
 	SupportsObserve   bool
 	SupportsApply     bool
@@ -80,14 +80,14 @@ func (c Capabilities) Normalize() Capabilities {
 	return c
 }
 
-// Provider services one BackendDriver.
+// Provider services one SubstrateDriver.
 //
 // Implementations MUST be safe for concurrent use. Reconcile MUST NOT panic
 // on any input: malformed Parameters, unreachable registry, or zero-length
 // DesiredVersion all map to a populated ReconcileResult{Phase: Failed, Err:…}.
 type Provider interface {
-	// Driver returns the BackendDriver value this provider services.
-	Driver() kaprov1alpha2.BackendDriver
+	// Driver returns the SubstrateDriver value this provider services.
+	Driver() kaprov1alpha1.SubstrateDriver
 	// Capabilities returns the KSP contract metadata for this provider.
 	Capabilities() Capabilities
 	// Reconcile reconciles ONE (cluster, app, version) tuple on the local

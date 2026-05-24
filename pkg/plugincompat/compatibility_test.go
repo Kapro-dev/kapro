@@ -3,18 +3,18 @@ package plugincompat
 import (
 	"testing"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 func TestSupportedContractVersions(t *testing.T) {
 	tests := []struct {
 		name       string
-		pluginType kaprov1alpha2.PluginType
+		pluginType kaprov1alpha1.PluginType
 		want       string
 	}{
-		{name: "kai", pluginType: kaprov1alpha2.PluginTypeActuator, want: VersionV1Alpha1},
-		{name: "kgi", pluginType: kaprov1alpha2.PluginTypeGate, want: VersionV1Alpha1},
-		{name: "kpi", pluginType: kaprov1alpha2.PluginTypePlanner, want: VersionV1Alpha1},
+		{name: "kai", pluginType: kaprov1alpha1.PluginTypeActuator, want: VersionV1Alpha1},
+		{name: "kgi", pluginType: kaprov1alpha1.PluginTypeGate, want: VersionV1Alpha1},
+		{name: "kpi", pluginType: kaprov1alpha1.PluginTypePlanner, want: VersionV1Alpha1},
 	}
 
 	for _, tt := range tests {
@@ -36,12 +36,12 @@ func TestSupportedContractVersions(t *testing.T) {
 func TestContractPolicies(t *testing.T) {
 	tests := []struct {
 		name       string
-		pluginType kaprov1alpha2.PluginType
+		pluginType kaprov1alpha1.PluginType
 		contract   string
 	}{
-		{name: "kai", pluginType: kaprov1alpha2.PluginTypeActuator, contract: "KAI"},
-		{name: "kgi", pluginType: kaprov1alpha2.PluginTypeGate, contract: "KGI"},
-		{name: "kpi", pluginType: kaprov1alpha2.PluginTypePlanner, contract: "KPI"},
+		{name: "kai", pluginType: kaprov1alpha1.PluginTypeActuator, contract: "KAI"},
+		{name: "kgi", pluginType: kaprov1alpha1.PluginTypeGate, contract: "KGI"},
+		{name: "kpi", pluginType: kaprov1alpha1.PluginTypePlanner, contract: "KPI"},
 	}
 
 	for _, tt := range tests {
@@ -74,15 +74,15 @@ func TestContractPolicies(t *testing.T) {
 }
 
 func TestContractPoliciesAreDefensiveCopies(t *testing.T) {
-	versions := SupportedContractVersions(kaprov1alpha2.PluginTypeActuator)
+	versions := SupportedContractVersions(kaprov1alpha1.PluginTypeActuator)
 	versions[0] = "mutated"
-	if got := SupportedContractVersionsString(kaprov1alpha2.PluginTypeActuator); got != VersionV1Alpha1 {
+	if got := SupportedContractVersionsString(kaprov1alpha1.PluginTypeActuator); got != VersionV1Alpha1 {
 		t.Fatalf("SupportedContractVersionsString = %q, want %q", got, VersionV1Alpha1)
 	}
 
-	policies := ContractPolicies(kaprov1alpha2.PluginTypeActuator)
+	policies := ContractPolicies(kaprov1alpha1.PluginTypeActuator)
 	policies[0].Version = "mutated"
-	if got, ok := SupportedContractPolicy(kaprov1alpha2.PluginTypeActuator, VersionV1Alpha1); !ok || got.Version != VersionV1Alpha1 {
+	if got, ok := SupportedContractPolicy(kaprov1alpha1.PluginTypeActuator, VersionV1Alpha1); !ok || got.Version != VersionV1Alpha1 {
 		t.Fatalf("SupportedContractPolicy after mutation = (%#v, %v)", got, ok)
 	}
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // BoolFunc is minimal sugar for trivial custom substrates and tests.
@@ -41,7 +41,7 @@ func (b boolSubstrate) Apply(ctx context.Context, req ApplyRequest) error {
 	return nil
 }
 
-func (b boolSubstrate) IsConverged(ctx context.Context, cluster *kaprov1alpha2.Cluster, version, appKey string) (bool, error) {
+func (b boolSubstrate) IsConverged(ctx context.Context, cluster *kaprov1alpha1.Cluster, version, appKey string) (bool, error) {
 	ok, _, err := b.evaluate(ctx, ApplyRequest{Cluster: cluster, Version: version, AppKey: appKey})
 	if err != nil {
 		return false, fmt.Errorf("ObserveError: %w", err)
@@ -49,7 +49,7 @@ func (b boolSubstrate) IsConverged(ctx context.Context, cluster *kaprov1alpha2.C
 	return ok, nil
 }
 
-func (b boolSubstrate) Rollback(context.Context, *kaprov1alpha2.Cluster, string, string) error {
+func (b boolSubstrate) Rollback(context.Context, *kaprov1alpha1.Cluster, string, string) error {
 	return fmt.Errorf("RollbackUnsupported: BoolFunc actuators do not support rollback")
 }
 
@@ -64,7 +64,7 @@ func (b boolSubstrate) ApplyDelta(ctx context.Context, req DeltaApplyRequest) (i
 	return applied, nil
 }
 
-func (b boolSubstrate) IsAllConverged(ctx context.Context, cluster *kaprov1alpha2.Cluster, desiredVersions map[string]string) (bool, error) {
+func (b boolSubstrate) IsAllConverged(ctx context.Context, cluster *kaprov1alpha1.Cluster, desiredVersions map[string]string) (bool, error) {
 	for appKey, version := range desiredVersions {
 		converged, err := b.IsConverged(ctx, cluster, version, appKey)
 		if err != nil || !converged {
@@ -78,11 +78,11 @@ func (b boolSubstrate) Capabilities() Capabilities {
 	return Capabilities{
 		ContractVersion:      ContractVersionV1Alpha1,
 		SubstrateKind:        b.kind,
-		Driver:               kaprov1alpha2.BackendDriver(b.kind),
+		Driver:               kaprov1alpha1.SubstrateDriver(b.kind),
 		Adapter:              b.kind,
-		Runtime:              kaprov1alpha2.BackendRuntimeHub,
-		ExecutionModes:       []kaprov1alpha2.ExecutionMode{kaprov1alpha2.ExecutionModeHubPush},
-		Modes:                []kaprov1alpha2.DeliveryMode{kaprov1alpha2.DeliveryModePush},
+		Runtime:              kaprov1alpha1.SubstrateRuntimeHub,
+		ExecutionModes:       []kaprov1alpha1.ExecutionMode{kaprov1alpha1.ExecutionModeHubPush},
+		Modes:                []kaprov1alpha1.DeliveryMode{kaprov1alpha1.DeliveryModePush},
 		SupportsApply:        true,
 		SupportsObserve:      true,
 		SupportsConvergence:  true,

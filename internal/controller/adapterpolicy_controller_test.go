@@ -13,7 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	kaproadapter "kapro.io/kapro/pkg/kapro/adapter"
 )
 
@@ -21,9 +21,9 @@ func TestAdapterPolicyReconcilerRecordsDiscoveryResult(t *testing.T) {
 	ctx := context.Background()
 	discovered := false
 	c := adapterPolicyClient(t,
-		&kaprov1alpha2.Backend{
+		&kaprov1alpha1.Substrate{
 			ObjectMeta: metav1.ObjectMeta{Name: "argo"},
-			Status: kaprov1alpha2.BackendStatus{
+			Status: kaprov1alpha1.SubstrateStatus{
 				DiscoveredClusters:     1,
 				DiscoveredApplications: 1,
 				Conditions: []metav1.Condition{{
@@ -33,36 +33,33 @@ func TestAdapterPolicyReconcilerRecordsDiscoveryResult(t *testing.T) {
 					Message: "discovered 2 Argo objects",
 				}},
 			},
-			Spec: kaprov1alpha2.BackendSpec{
-				Driver:  kaprov1alpha2.BackendDriverArgo,
-				Adapter: "argo-cd",
-				Runtime: kaprov1alpha2.BackendRuntimeHub,
-				Discovery: &kaprov1alpha2.BackendDiscoverySpec{
+			Spec: adapterPolicySubstrateSpec("argo", kaprov1alpha1.ExecutionModeHubPush,
+				withDiscovery(&kaprov1alpha1.SubstrateDiscoverySpec{
 					Enabled:    true,
 					MaxObjects: 50,
 					Selector:   &metav1.LabelSelector{MatchLabels: map[string]string{"kapro.io/import": "true"}},
-				},
-				Parameters: map[string]string{"namespace": "argocd"},
-			},
+				}),
+				withParameters(map[string]string{"namespace": "argocd"}),
+			),
 		},
-		&kaprov1alpha2.AdapterPolicy{
+		&kaprov1alpha1.AdapterPolicy{
 			ObjectMeta: metav1.ObjectMeta{Name: "adopt-argo", Generation: 1},
-			Spec: kaprov1alpha2.AdapterPolicySpec{
-				Adapter:    "argo-cd",
-				BackendRef: "argo",
-				Selector:   &metav1.LabelSelector{MatchLabels: map[string]string{"team": "payments"}},
+			Spec: kaprov1alpha1.AdapterPolicySpec{
+				Adapter:      "argo",
+				SubstrateRef: "argo",
+				Selector:     &metav1.LabelSelector{MatchLabels: map[string]string{"team": "payments"}},
 			},
 		},
 	)
 	reg := adapterPolicyTestRegistry(t, &fakeDiscoveryAdapter{
-		driver:  kaprov1alpha2.BackendDriverArgo,
-		runtime: kaprov1alpha2.BackendRuntimeHub,
+		driver:  kaprov1alpha1.SubstrateDriverArgo,
+		runtime: kaprov1alpha1.SubstrateRuntimeHub,
 		discover: func(_ context.Context, req kaproadapter.DiscoveryRequest) (kaproadapter.DiscoveryResult, error) {
 			discovered = true
-			if req.Backend == nil || req.Backend.Name != "argo" {
-				t.Fatalf("discovery backend = %#v, want argo", req.Backend)
+			if req.Substrate == nil || req.Substrate.Name != "argo" {
+				t.Fatalf("discovery substrate = %#v, want argo", req.Substrate)
 			}
-			if req.Driver != kaprov1alpha2.BackendDriverArgo || req.Runtime != kaprov1alpha2.BackendRuntimeHub {
+			if req.Driver != kaprov1alpha1.SubstrateDriverArgo || req.Runtime != kaprov1alpha1.SubstrateRuntimeHub {
 				t.Fatalf("discovery driver/runtime = %s/%s", req.Driver, req.Runtime)
 			}
 			if req.Namespace != "argocd" || req.MaxObjects != 50 {
@@ -80,7 +77,7 @@ func TestAdapterPolicyReconcilerRecordsDiscoveryResult(t *testing.T) {
 				Message:                "discovered 2 Argo objects",
 				DiscoveredClusters:     1,
 				DiscoveredApplications: 1,
-				SelectedObjects: []kaprov1alpha2.DiscoveredBackendObject{
+				SelectedObjects: []kaprov1alpha1.DiscoveredSubstrateObject{
 					{APIVersion: "argoproj.io/v1alpha1", Kind: "Application", Namespace: "argocd", Name: "payments"},
 				},
 			}, nil
@@ -95,7 +92,7 @@ func TestAdapterPolicyReconcilerRecordsDiscoveryResult(t *testing.T) {
 		t.Fatalf("adapter discovery was not called")
 	}
 
-	var got kaprov1alpha2.AdapterPolicy
+	var got kaprov1alpha1.AdapterPolicy
 	if err := c.Get(ctx, client.ObjectKey{Name: "adopt-argo"}, &got); err != nil {
 		t.Fatalf("get policy: %v", err)
 	}
@@ -113,32 +110,32 @@ func TestAdapterPolicyReconcilerRecordsDiscoveryResult(t *testing.T) {
 		t.Fatalf("LastSyncTime was not set")
 	}
 
-	// AdapterPolicyReconciler is no longer the writer for Backend.status
-	// discovery fields — BackendReconciler owns them. Confirm here that
-	// running a single AdapterPolicy reconcile does NOT touch Backend
+	// AdapterPolicyReconciler is no longer the writer for Substrate.status
+	// discovery fields — SubstrateReconciler owns them. Confirm here that
+	// running a single AdapterPolicy reconcile does NOT touch Substrate
 	// status (the assertion that previously expected LastDiscoveryTime
 	// to be set is the inverse of this invariant).
-	var backend kaprov1alpha2.Backend
-	if err := c.Get(ctx, client.ObjectKey{Name: "argo"}, &backend); err != nil {
-		t.Fatalf("get backend: %v", err)
+	var substrate kaprov1alpha1.Substrate
+	if err := c.Get(ctx, client.ObjectKey{Name: "argo"}, &substrate); err != nil {
+		t.Fatalf("get substrate: %v", err)
 	}
-	if backend.Status.LastDiscoveryTime != nil {
-		t.Fatalf("AdapterPolicyReconciler must not write Backend.status.lastDiscoveryTime; got %v", backend.Status.LastDiscoveryTime)
+	if substrate.Status.LastDiscoveryTime != nil {
+		t.Fatalf("AdapterPolicyReconciler must not write Substrate.status.lastDiscoveryTime; got %v", substrate.Status.LastDiscoveryTime)
 	}
-	if backend.Status.DiscoveredClusters != 1 || backend.Status.DiscoveredApplications != 1 || len(backend.Status.SelectedObjects) != 0 {
-		t.Fatalf("AdapterPolicyReconciler must not change Backend.status discovery counts; got %#v", backend.Status)
+	if substrate.Status.DiscoveredClusters != 1 || substrate.Status.DiscoveredApplications != 1 || len(substrate.Status.SelectedObjects) != 0 {
+		t.Fatalf("AdapterPolicyReconciler must not change Substrate.status discovery counts; got %#v", substrate.Status)
 	}
-	if cond := apimeta.FindStatusCondition(backend.Status.Conditions, "DiscoveryReady"); cond == nil || cond.Reason != "DiscoverySucceeded" {
-		t.Fatalf("AdapterPolicyReconciler must not change Backend.DiscoveryReady; got %#v", cond)
+	if cond := apimeta.FindStatusCondition(substrate.Status.Conditions, "DiscoveryReady"); cond == nil || cond.Reason != "DiscoverySucceeded" {
+		t.Fatalf("AdapterPolicyReconciler must not change Substrate.DiscoveryReady; got %#v", cond)
 	}
 }
 
-func TestAdapterPolicyReconcilerMirrorsBackendDiscoveryStatusWithoutPolicySelector(t *testing.T) {
+func TestAdapterPolicyReconcilerMirrorsSubstrateDiscoveryStatusWithoutPolicySelector(t *testing.T) {
 	ctx := context.Background()
 	c := adapterPolicyClient(t,
-		&kaprov1alpha2.Backend{
+		&kaprov1alpha1.Substrate{
 			ObjectMeta: metav1.ObjectMeta{Name: "argo"},
-			Status: kaprov1alpha2.BackendStatus{
+			Status: kaprov1alpha1.SubstrateStatus{
 				DiscoveredClusters:        2,
 				DiscoveredApplications:    3,
 				DiscoveredApplicationSets: 1,
@@ -146,27 +143,25 @@ func TestAdapterPolicyReconcilerMirrorsBackendDiscoveryStatusWithoutPolicySelect
 					Type:    "DiscoveryReady",
 					Status:  metav1.ConditionTrue,
 					Reason:  "DiscoverySucceeded",
-					Message: "backend discovery completed",
+					Message: "substrate discovery completed",
 				}},
 			},
-			Spec: kaprov1alpha2.BackendSpec{
-				Driver:    kaprov1alpha2.BackendDriverArgo,
-				Adapter:   "argo-cd",
-				Discovery: &kaprov1alpha2.BackendDiscoverySpec{Enabled: true},
-			},
+			Spec: adapterPolicySubstrateSpec("argo", kaprov1alpha1.ExecutionModeHubPush,
+				withDiscovery(&kaprov1alpha1.SubstrateDiscoverySpec{Enabled: true}),
+			),
 		},
-		&kaprov1alpha2.AdapterPolicy{
+		&kaprov1alpha1.AdapterPolicy{
 			ObjectMeta: metav1.ObjectMeta{Name: "adopt-argo", Generation: 1},
-			Spec: kaprov1alpha2.AdapterPolicySpec{
-				Adapter:    "argo-cd",
-				BackendRef: "argo",
+			Spec: kaprov1alpha1.AdapterPolicySpec{
+				Adapter:      "argo",
+				SubstrateRef: "argo",
 			},
 		},
 	)
 	reg := adapterPolicyTestRegistry(t, &fakeDiscoveryAdapter{
-		driver: kaprov1alpha2.BackendDriverArgo,
+		driver: kaprov1alpha1.SubstrateDriverArgo,
 		discover: func(context.Context, kaproadapter.DiscoveryRequest) (kaproadapter.DiscoveryResult, error) {
-			t.Fatalf("built-in AdapterPolicy without policy selector must mirror Backend.status without running reference discovery")
+			t.Fatalf("built-in AdapterPolicy without policy selector must mirror Substrate.status without running reference discovery")
 			return kaproadapter.DiscoveryResult{}, nil
 		},
 	})
@@ -176,12 +171,12 @@ func TestAdapterPolicyReconcilerMirrorsBackendDiscoveryStatusWithoutPolicySelect
 		t.Fatalf("reconcile: %v", err)
 	}
 
-	var got kaprov1alpha2.AdapterPolicy
+	var got kaprov1alpha1.AdapterPolicy
 	if err := c.Get(ctx, client.ObjectKey{Name: "adopt-argo"}, &got); err != nil {
 		t.Fatalf("get policy: %v", err)
 	}
-	if !got.Status.Ready || got.Status.Reason != "DiscoverySucceeded" || got.Status.Message != "backend discovery completed" {
-		t.Fatalf("status = %#v, want mirrored Backend DiscoveryReady", got.Status)
+	if !got.Status.Ready || got.Status.Reason != "DiscoverySucceeded" || got.Status.Message != "substrate discovery completed" {
+		t.Fatalf("status = %#v, want mirrored Substrate DiscoveryReady", got.Status)
 	}
 	if got.Status.DiscoveredObjects != 6 {
 		t.Fatalf("discoveredObjects=%d, want 6", got.Status.DiscoveredObjects)
@@ -191,25 +186,23 @@ func TestAdapterPolicyReconcilerMirrorsBackendDiscoveryStatusWithoutPolicySelect
 func TestAdapterPolicyReconcilerDryRunSkipsAdapterDiscovery(t *testing.T) {
 	ctx := context.Background()
 	c := adapterPolicyClient(t,
-		&kaprov1alpha2.Backend{
+		&kaprov1alpha1.Substrate{
 			ObjectMeta: metav1.ObjectMeta{Name: "argo"},
-			Spec: kaprov1alpha2.BackendSpec{
-				Driver:    kaprov1alpha2.BackendDriverArgo,
-				Adapter:   "argo-cd",
-				Discovery: &kaprov1alpha2.BackendDiscoverySpec{Enabled: true},
-			},
+			Spec: adapterPolicySubstrateSpec("argo", kaprov1alpha1.ExecutionModeHubPush,
+				withDiscovery(&kaprov1alpha1.SubstrateDiscoverySpec{Enabled: true}),
+			),
 		},
-		&kaprov1alpha2.AdapterPolicy{
+		&kaprov1alpha1.AdapterPolicy{
 			ObjectMeta: metav1.ObjectMeta{Name: "adopt-argo", Generation: 1},
-			Spec: kaprov1alpha2.AdapterPolicySpec{
-				Adapter:    "argo-cd",
-				BackendRef: "argo",
-				DryRun:     true,
+			Spec: kaprov1alpha1.AdapterPolicySpec{
+				Adapter:      "argo",
+				SubstrateRef: "argo",
+				DryRun:       true,
 			},
 		},
 	)
 	reg := adapterPolicyTestRegistry(t, &fakeDiscoveryAdapter{
-		driver: kaprov1alpha2.BackendDriverArgo,
+		driver: kaprov1alpha1.SubstrateDriverArgo,
 		discover: func(context.Context, kaproadapter.DiscoveryRequest) (kaproadapter.DiscoveryResult, error) {
 			t.Fatalf("dry-run policy must not call adapter discovery")
 			return kaproadapter.DiscoveryResult{}, nil
@@ -221,7 +214,7 @@ func TestAdapterPolicyReconcilerDryRunSkipsAdapterDiscovery(t *testing.T) {
 		t.Fatalf("reconcile: %v", err)
 	}
 
-	var got kaprov1alpha2.AdapterPolicy
+	var got kaprov1alpha1.AdapterPolicy
 	if err := c.Get(ctx, client.ObjectKey{Name: "adopt-argo"}, &got); err != nil {
 		t.Fatalf("get policy: %v", err)
 	}
@@ -236,20 +229,18 @@ func TestAdapterPolicyReconcilerDryRunSkipsAdapterDiscovery(t *testing.T) {
 func TestAdapterPolicyReconcilerDryRunValidatesAdapterAndSelector(t *testing.T) {
 	ctx := context.Background()
 	c := adapterPolicyClient(t,
-		&kaprov1alpha2.Backend{
+		&kaprov1alpha1.Substrate{
 			ObjectMeta: metav1.ObjectMeta{Name: "argo"},
-			Spec: kaprov1alpha2.BackendSpec{
-				Driver:    kaprov1alpha2.BackendDriverArgo,
-				Adapter:   "argo-cd",
-				Discovery: &kaprov1alpha2.BackendDiscoverySpec{Enabled: true},
-			},
+			Spec: adapterPolicySubstrateSpec("argo", kaprov1alpha1.ExecutionModeHubPush,
+				withDiscovery(&kaprov1alpha1.SubstrateDiscoverySpec{Enabled: true}),
+			),
 		},
-		&kaprov1alpha2.AdapterPolicy{
+		&kaprov1alpha1.AdapterPolicy{
 			ObjectMeta: metav1.ObjectMeta{Name: "adopt-argo", Generation: 1},
-			Spec: kaprov1alpha2.AdapterPolicySpec{
-				Adapter:    "argo-cd",
-				BackendRef: "argo",
-				DryRun:     true,
+			Spec: kaprov1alpha1.AdapterPolicySpec{
+				Adapter:      "argo",
+				SubstrateRef: "argo",
+				DryRun:       true,
 				Selector: &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{{
 					Key:      "team",
 					Operator: metav1.LabelSelectorOpIn,
@@ -258,7 +249,7 @@ func TestAdapterPolicyReconcilerDryRunValidatesAdapterAndSelector(t *testing.T) 
 		},
 	)
 	reg := adapterPolicyTestRegistry(t, &fakeDiscoveryAdapter{
-		driver: kaprov1alpha2.BackendDriverArgo,
+		driver: kaprov1alpha1.SubstrateDriverArgo,
 		discover: func(context.Context, kaproadapter.DiscoveryRequest) (kaproadapter.DiscoveryResult, error) {
 			t.Fatalf("invalid dry-run policy must not call adapter discovery")
 			return kaproadapter.DiscoveryResult{}, nil
@@ -270,7 +261,7 @@ func TestAdapterPolicyReconcilerDryRunValidatesAdapterAndSelector(t *testing.T) 
 		t.Fatalf("reconcile: %v", err)
 	}
 
-	var got kaprov1alpha2.AdapterPolicy
+	var got kaprov1alpha1.AdapterPolicy
 	if err := c.Get(ctx, client.ObjectKey{Name: "adopt-argo"}, &got); err != nil {
 		t.Fatalf("get policy: %v", err)
 	}
@@ -282,31 +273,29 @@ func TestAdapterPolicyReconcilerDryRunValidatesAdapterAndSelector(t *testing.T) 
 func TestAdapterPolicyReconcilerAndsSelectorConflicts(t *testing.T) {
 	ctx := context.Background()
 	c := adapterPolicyClient(t,
-		&kaprov1alpha2.Backend{
+		&kaprov1alpha1.Substrate{
 			ObjectMeta: metav1.ObjectMeta{Name: "external"},
-			Spec: kaprov1alpha2.BackendSpec{
-				Driver:  kaprov1alpha2.BackendDriverExternal,
-				Adapter: "external",
-				Discovery: &kaprov1alpha2.BackendDiscoverySpec{
+			Spec: adapterPolicySubstrateSpec("external", kaprov1alpha1.ExecutionModeExternalPull,
+				withDiscovery(&kaprov1alpha1.SubstrateDiscoverySpec{
 					Enabled:  true,
 					Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"team": "payments"}},
-				},
-			},
+				}),
+			),
 		},
-		&kaprov1alpha2.AdapterPolicy{
+		&kaprov1alpha1.AdapterPolicy{
 			ObjectMeta: metav1.ObjectMeta{Name: "adopt-external", Generation: 1},
-			Spec: kaprov1alpha2.AdapterPolicySpec{
-				Adapter:    "external",
-				BackendRef: "external",
-				Selector:   &metav1.LabelSelector{MatchLabels: map[string]string{"team": "platform"}},
+			Spec: kaprov1alpha1.AdapterPolicySpec{
+				Adapter:      "external",
+				SubstrateRef: "external",
+				Selector:     &metav1.LabelSelector{MatchLabels: map[string]string{"team": "platform"}},
 			},
 		},
 	)
 	reg := adapterPolicyTestRegistry(t, &fakeDiscoveryAdapter{
-		driver: kaprov1alpha2.BackendDriverExternal,
+		driver: kaprov1alpha1.SubstrateDriverExternal,
 		discover: func(_ context.Context, req kaproadapter.DiscoveryRequest) (kaproadapter.DiscoveryResult, error) {
 			if req.Selector == nil || req.Selector.MatchLabels["team"] != "payments" {
-				t.Fatalf("backend selector not preserved: %#v", req.Selector)
+				t.Fatalf("substrate selector not preserved: %#v", req.Selector)
 			}
 			if len(req.Selector.MatchExpressions) != 1 ||
 				req.Selector.MatchExpressions[0].Key != "team" ||
@@ -324,7 +313,7 @@ func TestAdapterPolicyReconcilerAndsSelectorConflicts(t *testing.T) {
 		t.Fatalf("reconcile: %v", err)
 	}
 
-	var got kaprov1alpha2.AdapterPolicy
+	var got kaprov1alpha1.AdapterPolicy
 	if err := c.Get(ctx, client.ObjectKey{Name: "adopt-external"}, &got); err != nil {
 		t.Fatalf("get policy: %v", err)
 	}
@@ -336,17 +325,15 @@ func TestAdapterPolicyReconcilerAndsSelectorConflicts(t *testing.T) {
 func TestAdapterPolicyReconcilerReportsDiscoveryDisabled(t *testing.T) {
 	ctx := context.Background()
 	c := adapterPolicyClient(t,
-		&kaprov1alpha2.Backend{
+		&kaprov1alpha1.Substrate{
 			ObjectMeta: metav1.ObjectMeta{Name: "flux"},
-			Spec: kaprov1alpha2.BackendSpec{
-				Driver: kaprov1alpha2.BackendDriverFlux,
-			},
+			Spec:       adapterPolicySubstrateSpec("flux", kaprov1alpha1.ExecutionModeSpokePull),
 		},
-		&kaprov1alpha2.AdapterPolicy{
+		&kaprov1alpha1.AdapterPolicy{
 			ObjectMeta: metav1.ObjectMeta{Name: "adopt-flux", Generation: 1},
-			Spec: kaprov1alpha2.AdapterPolicySpec{
-				Adapter:    "flux",
-				BackendRef: "flux",
+			Spec: kaprov1alpha1.AdapterPolicySpec{
+				Adapter:      "flux",
+				SubstrateRef: "flux",
 			},
 		},
 	)
@@ -356,7 +343,7 @@ func TestAdapterPolicyReconcilerReportsDiscoveryDisabled(t *testing.T) {
 		t.Fatalf("reconcile: %v", err)
 	}
 
-	var got kaprov1alpha2.AdapterPolicy
+	var got kaprov1alpha1.AdapterPolicy
 	if err := c.Get(ctx, client.ObjectKey{Name: "adopt-flux"}, &got); err != nil {
 		t.Fatalf("get policy: %v", err)
 	}
@@ -368,18 +355,17 @@ func TestAdapterPolicyReconcilerReportsDiscoveryDisabled(t *testing.T) {
 func TestAdapterPolicyReconcilerReportsAdapterMismatch(t *testing.T) {
 	ctx := context.Background()
 	c := adapterPolicyClient(t,
-		&kaprov1alpha2.Backend{
+		&kaprov1alpha1.Substrate{
 			ObjectMeta: metav1.ObjectMeta{Name: "argo"},
-			Spec: kaprov1alpha2.BackendSpec{
-				Driver:    kaprov1alpha2.BackendDriverArgo,
-				Discovery: &kaprov1alpha2.BackendDiscoverySpec{Enabled: true},
-			},
+			Spec: adapterPolicySubstrateSpec("argo", kaprov1alpha1.ExecutionModeHubPush,
+				withDiscovery(&kaprov1alpha1.SubstrateDiscoverySpec{Enabled: true}),
+			),
 		},
-		&kaprov1alpha2.AdapterPolicy{
+		&kaprov1alpha1.AdapterPolicy{
 			ObjectMeta: metav1.ObjectMeta{Name: "adopt-argo", Generation: 1},
-			Spec: kaprov1alpha2.AdapterPolicySpec{
-				Adapter:    "flux",
-				BackendRef: "argo",
+			Spec: kaprov1alpha1.AdapterPolicySpec{
+				Adapter:      "flux",
+				SubstrateRef: "argo",
 			},
 		},
 	)
@@ -389,7 +375,7 @@ func TestAdapterPolicyReconcilerReportsAdapterMismatch(t *testing.T) {
 		t.Fatalf("reconcile: %v", err)
 	}
 
-	var got kaprov1alpha2.AdapterPolicy
+	var got kaprov1alpha1.AdapterPolicy
 	if err := c.Get(ctx, client.ObjectKey{Name: "adopt-argo"}, &got); err != nil {
 		t.Fatalf("get policy: %v", err)
 	}
@@ -401,26 +387,24 @@ func TestAdapterPolicyReconcilerReportsAdapterMismatch(t *testing.T) {
 func TestAdapterPolicyReconcilerReportsDiscoveryError(t *testing.T) {
 	ctx := context.Background()
 	c := adapterPolicyClient(t,
-		&kaprov1alpha2.Backend{
+		&kaprov1alpha1.Substrate{
 			ObjectMeta: metav1.ObjectMeta{Name: "external"},
-			Spec: kaprov1alpha2.BackendSpec{
-				Driver:    kaprov1alpha2.BackendDriverExternal,
-				Adapter:   "external",
-				Discovery: &kaprov1alpha2.BackendDiscoverySpec{Enabled: true},
-			},
+			Spec: adapterPolicySubstrateSpec("external", kaprov1alpha1.ExecutionModeExternalPull,
+				withDiscovery(&kaprov1alpha1.SubstrateDiscoverySpec{Enabled: true}),
+			),
 		},
-		&kaprov1alpha2.AdapterPolicy{
+		&kaprov1alpha1.AdapterPolicy{
 			ObjectMeta: metav1.ObjectMeta{Name: "adopt-external", Generation: 1},
-			Spec: kaprov1alpha2.AdapterPolicySpec{
-				Adapter:    "external",
-				BackendRef: "external",
+			Spec: kaprov1alpha1.AdapterPolicySpec{
+				Adapter:      "external",
+				SubstrateRef: "external",
 			},
 		},
 	)
 	reg := adapterPolicyTestRegistry(t, &fakeDiscoveryAdapter{
-		driver: kaprov1alpha2.BackendDriverExternal,
+		driver: kaprov1alpha1.SubstrateDriverExternal,
 		discover: func(context.Context, kaproadapter.DiscoveryRequest) (kaproadapter.DiscoveryResult, error) {
-			return kaproadapter.DiscoveryResult{}, errors.New("backend API unavailable")
+			return kaproadapter.DiscoveryResult{}, errors.New("substrate API unavailable")
 		},
 	})
 	r := &AdapterPolicyReconciler{Client: c, AdapterRegistry: reg}
@@ -429,28 +413,28 @@ func TestAdapterPolicyReconcilerReportsDiscoveryError(t *testing.T) {
 		t.Fatalf("reconcile: %v", err)
 	}
 
-	var got kaprov1alpha2.AdapterPolicy
+	var got kaprov1alpha1.AdapterPolicy
 	if err := c.Get(ctx, client.ObjectKey{Name: "adopt-external"}, &got); err != nil {
 		t.Fatalf("get policy: %v", err)
 	}
-	if got.Status.Ready || got.Status.Reason != "DiscoveryFailed" || got.Status.Message != "backend API unavailable" {
+	if got.Status.Ready || got.Status.Reason != "DiscoveryFailed" || got.Status.Message != "substrate API unavailable" {
 		t.Fatalf("status = %#v, want not ready DiscoveryFailed", got.Status)
 	}
 }
 
-func TestAdapterPolicyReconcilerMapsBackendToPolicies(t *testing.T) {
-	backend := &kaprov1alpha2.Backend{ObjectMeta: metav1.ObjectMeta{Name: "argo"}}
-	policy := &kaprov1alpha2.AdapterPolicy{
+func TestAdapterPolicyReconcilerMapsSubstrateToPolicies(t *testing.T) {
+	substrate := &kaprov1alpha1.Substrate{ObjectMeta: metav1.ObjectMeta{Name: "argo"}}
+	policy := &kaprov1alpha1.AdapterPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: "adopt-argo"},
-		Spec: kaprov1alpha2.AdapterPolicySpec{
-			Adapter:    "argo-cd",
-			BackendRef: "argo",
+		Spec: kaprov1alpha1.AdapterPolicySpec{
+			Adapter:      "argo",
+			SubstrateRef: "argo",
 		},
 	}
-	c := adapterPolicyClient(t, backend, policy)
+	c := adapterPolicyClient(t, substrate, policy)
 	r := &AdapterPolicyReconciler{Client: c}
 
-	got := r.policiesForBackend(context.Background(), backend)
+	got := r.policiesForSubstrate(context.Background(), substrate)
 	if len(got) != 1 || got[0].Name != "adopt-argo" {
 		t.Fatalf("requests = %#v, want adopt-argo", got)
 	}
@@ -459,31 +443,54 @@ func TestAdapterPolicyReconcilerMapsBackendToPolicies(t *testing.T) {
 func adapterPolicyClient(t *testing.T, objects ...client.Object) client.Client {
 	t.Helper()
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatalf("add scheme: %v", err)
 	}
 	return fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objects...).
-		WithStatusSubresource(&kaprov1alpha2.AdapterPolicy{}, &kaprov1alpha2.Backend{}).
-		WithIndex(&kaprov1alpha2.AdapterPolicy{}, adapterPolicyBackendRefIndex, func(obj client.Object) []string {
-			policy, ok := obj.(*kaprov1alpha2.AdapterPolicy)
-			if !ok || policy.Spec.BackendRef == "" {
+		WithStatusSubresource(&kaprov1alpha1.AdapterPolicy{}, &kaprov1alpha1.Substrate{}).
+		WithIndex(&kaprov1alpha1.AdapterPolicy{}, adapterPolicySubstrateRefIndex, func(obj client.Object) []string {
+			policy, ok := obj.(*kaprov1alpha1.AdapterPolicy)
+			if !ok || policy.Spec.SubstrateRef == "" {
 				return nil
 			}
-			return []string{policy.Spec.BackendRef}
+			return []string{policy.Spec.SubstrateRef}
 		}).
 		Build()
 }
 
+func adapterPolicySubstrateSpec(kind string, mode kaprov1alpha1.ExecutionMode, opts ...func(*kaprov1alpha1.SubstrateSpec)) kaprov1alpha1.SubstrateSpec {
+	spec := kaprov1alpha1.SubstrateSpec{
+		Substrate: &kaprov1alpha1.SubstrateImplementationSpec{Kind: kind, Actuator: kind},
+		Execution: &kaprov1alpha1.SubstrateExecutionSpec{Mode: mode},
+	}
+	for _, opt := range opts {
+		opt(&spec)
+	}
+	return spec
+}
+
+func withDiscovery(discovery *kaprov1alpha1.SubstrateDiscoverySpec) func(*kaprov1alpha1.SubstrateSpec) {
+	return func(spec *kaprov1alpha1.SubstrateSpec) {
+		spec.Discovery = discovery
+	}
+}
+
+func withParameters(parameters map[string]string) func(*kaprov1alpha1.SubstrateSpec) {
+	return func(spec *kaprov1alpha1.SubstrateSpec) {
+		spec.Parameters = parameters
+	}
+}
+
 type fakeDiscoveryAdapter struct {
-	driver   kaprov1alpha2.BackendDriver
-	runtime  kaprov1alpha2.BackendRuntime
+	driver   kaprov1alpha1.SubstrateDriver
+	runtime  kaprov1alpha1.SubstrateRuntime
 	discover func(context.Context, kaproadapter.DiscoveryRequest) (kaproadapter.DiscoveryResult, error)
 }
 
-func (a *fakeDiscoveryAdapter) Driver() kaprov1alpha2.BackendDriver { return a.driver }
-func (a *fakeDiscoveryAdapter) Runtime() kaprov1alpha2.BackendRuntime {
+func (a *fakeDiscoveryAdapter) Driver() kaprov1alpha1.SubstrateDriver { return a.driver }
+func (a *fakeDiscoveryAdapter) Runtime() kaprov1alpha1.SubstrateRuntime {
 	return a.runtime
 }
 func (a *fakeDiscoveryAdapter) Capabilities() kaproadapter.Capabilities {
@@ -522,7 +529,7 @@ func adapterPolicyTestRegistry(t *testing.T, adapters ...kaproadapter.Adapter) *
 
 func adapterPolicyReadyCondition(t *testing.T, conditions []metav1.Condition) metav1.Condition {
 	t.Helper()
-	return adapterPolicyConditionByType(t, conditions, kaprov1alpha2.ConditionTypeReady)
+	return adapterPolicyConditionByType(t, conditions, kaprov1alpha1.ConditionTypeReady)
 }
 
 func adapterPolicyConditionByType(t *testing.T, conditions []metav1.Condition, typ string) metav1.Condition {

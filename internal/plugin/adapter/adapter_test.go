@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -16,7 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	kaprometrics "kapro.io/kapro/internal/metrics"
 	"kapro.io/kapro/pkg/actuator"
 	"kapro.io/kapro/pkg/gate"
@@ -31,12 +33,12 @@ func TestActuatorAdapterApplyMapsRequest(t *testing.T) {
 	client, stop := actuatorClient(t, server)
 	defer stop()
 
-	adapter, err := NewActuatorAdapter(pluginReg(kaprov1alpha2.PluginTypeActuator, "argo/pull"), client)
+	adapter, err := NewActuatorAdapter(pluginReg(kaprov1alpha1.PluginTypeActuator, "argo/pull"), client)
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = adapter.Apply(context.Background(), actuator.ApplyRequest{
-		Cluster:         &kaprov1alpha2.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "de-prod"}},
+		Cluster:         &kaprov1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "de-prod"}},
 		Version:         "1.2.3",
 		PreviousVersion: "1.2.2",
 		AppKey:          "api",
@@ -54,7 +56,7 @@ func TestActuatorAdapterApplyMapsRequest(t *testing.T) {
 }
 
 func TestActuatorAdapterCapabilitiesFromPluginStatus(t *testing.T) {
-	reg := pluginReg(kaprov1alpha2.PluginTypeActuator, "argo/pull")
+	reg := pluginReg(kaprov1alpha1.PluginTypeActuator, "argo/pull")
 	reg.Status.ContractVersion = "v1alpha1"
 	reg.Status.Capabilities = []string{
 		"argocd.application.targetRevision.apply",
@@ -75,12 +77,12 @@ func TestActuatorAdapterReturnsGRPCError(t *testing.T) {
 	client, stop := actuatorClient(t, &recordingActuatorServer{applyErr: status.Error(codes.Unavailable, "down")})
 	defer stop()
 
-	adapter, err := NewActuatorAdapter(pluginReg(kaprov1alpha2.PluginTypeActuator, "argo/pull"), client)
+	adapter, err := NewActuatorAdapter(pluginReg(kaprov1alpha1.PluginTypeActuator, "argo/pull"), client)
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = adapter.Apply(context.Background(), actuator.ApplyRequest{
-		Cluster: &kaprov1alpha2.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "de-prod"}},
+		Cluster: &kaprov1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "de-prod"}},
 		Version: "1.2.3",
 	})
 	if err == nil || !strings.Contains(err.Error(), "Apply RPC to \"bufnet\" failed") || !strings.Contains(err.Error(), "down") {
@@ -93,14 +95,14 @@ func TestActuatorAdapterApplyObservesRuntimeMetrics(t *testing.T) {
 	client, stop := actuatorClient(t, server)
 	defer stop()
 
-	adapter, err := NewActuatorAdapter(pluginReg(kaprov1alpha2.PluginTypeActuator, "metrics/apply"), client)
+	adapter, err := NewActuatorAdapter(pluginReg(kaprov1alpha1.PluginTypeActuator, "metrics/apply"), client)
 	if err != nil {
 		t.Fatal(err)
 	}
 	counter := kaprometrics.PluginRuntimeCalls.WithLabelValues("actuator", "metrics/apply", "Apply", "success")
 	before := testutil.ToFloat64(counter)
 	err = adapter.Apply(context.Background(), actuator.ApplyRequest{
-		Cluster: &kaprov1alpha2.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "de-prod"}},
+		Cluster: &kaprov1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "de-prod"}},
 		Version: "1.2.3",
 	})
 	if err != nil {
@@ -112,7 +114,7 @@ func TestActuatorAdapterApplyObservesRuntimeMetrics(t *testing.T) {
 }
 
 func TestActuatorAdapterValidationErrorsObserveRuntimeMetrics(t *testing.T) {
-	adapter, err := NewActuatorAdapter(pluginReg(kaprov1alpha2.PluginTypeActuator, "metrics/validation"), fakeActuatorClient{})
+	adapter, err := NewActuatorAdapter(pluginReg(kaprov1alpha1.PluginTypeActuator, "metrics/validation"), fakeActuatorClient{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +129,7 @@ func TestActuatorAdapterValidationErrorsObserveRuntimeMetrics(t *testing.T) {
 }
 
 func TestGateAdapterValidationErrorsObserveRuntimeMetrics(t *testing.T) {
-	adapter, err := NewGateAdapter(pluginReg(kaprov1alpha2.PluginTypeGate, "metrics/gate-validation"), fakeGateClient{})
+	adapter, err := NewGateAdapter(pluginReg(kaprov1alpha1.PluginTypeGate, "metrics/gate-validation"), fakeGateClient{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,12 +147,12 @@ func TestGateAdapterMapsPhases(t *testing.T) {
 	tests := []struct {
 		name string
 		in   kgiv1alpha1.GatePhase
-		want kaprov1alpha2.GatePhase
+		want kaprov1alpha1.GatePhase
 	}{
-		{name: "passed", in: kgiv1alpha1.GatePhase_GATE_PHASE_PASSED, want: kaprov1alpha2.GatePhasePassed},
-		{name: "failed", in: kgiv1alpha1.GatePhase_GATE_PHASE_FAILED, want: kaprov1alpha2.GatePhaseFailed},
-		{name: "running", in: kgiv1alpha1.GatePhase_GATE_PHASE_RUNNING, want: kaprov1alpha2.GatePhaseRunning},
-		{name: "inconclusive", in: kgiv1alpha1.GatePhase_GATE_PHASE_INCONCLUSIVE, want: kaprov1alpha2.GatePhaseInconclusive},
+		{name: "passed", in: kgiv1alpha1.GatePhase_GATE_PHASE_PASSED, want: kaprov1alpha1.GatePhasePassed},
+		{name: "failed", in: kgiv1alpha1.GatePhase_GATE_PHASE_FAILED, want: kaprov1alpha1.GatePhaseFailed},
+		{name: "running", in: kgiv1alpha1.GatePhase_GATE_PHASE_RUNNING, want: kaprov1alpha1.GatePhaseRunning},
+		{name: "inconclusive", in: kgiv1alpha1.GatePhase_GATE_PHASE_INCONCLUSIVE, want: kaprov1alpha1.GatePhaseInconclusive},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -158,7 +160,7 @@ func TestGateAdapterMapsPhases(t *testing.T) {
 			client, stop := gateClient(t, server)
 			defer stop()
 
-			adapter, err := NewGateAdapter(pluginReg(kaprov1alpha2.PluginTypeGate, "slo"), client)
+			adapter, err := NewGateAdapter(pluginReg(kaprov1alpha1.PluginTypeGate, "slo"), client)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -170,7 +172,7 @@ func TestGateAdapterMapsPhases(t *testing.T) {
 					Stage:           "canary",
 					Version:         "1.2.3",
 				},
-				Template: &kaprov1alpha2.GateTemplateSpec{Name: "error-budget"},
+				Template: &kaprov1alpha1.GateTemplateSpec{Name: "error-budget"},
 				Args:     map[string]string{"window": "5m"},
 			})
 			if err != nil {
@@ -196,19 +198,19 @@ func TestPlannerAdapterMapsPlanDecisions(t *testing.T) {
 	client, stop := plannerClient(t, server)
 	defer stop()
 
-	adapter, err := NewPlannerAdapter(pluginReg(kaprov1alpha2.PluginTypePlanner, "fleet-capacity"), client)
+	adapter, err := NewPlannerAdapter(pluginReg(kaprov1alpha1.PluginTypePlanner, "fleet-capacity"), client)
 	if err != nil {
 		t.Fatal(err)
 	}
 	framework := planner.NewFramework(adapter)
 	result, err := framework.PlanWithResult(context.Background(), planner.Request{
-		PromotionRun: &kaprov1alpha2.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}, Spec: kaprov1alpha2.PromotionRunSpec{Version: "1.2.3"}},
+		PromotionRun: &kaproruntimev1alpha1.PromotionRun{ObjectMeta: metav1.ObjectMeta{Name: "rel-1"}, Spec: kaprov1alpha1.PromotionRunSpec{Version: "1.2.3"}},
 		PlanRefName:  "checkout",
-		Stage: kaprov1alpha2.Stage{
+		Stage: kaprov1alpha1.Stage{
 			Name:     "prod",
-			Strategy: &kaprov1alpha2.StageStrategySpec{MaxParallel: 5},
+			Strategy: &kaprov1alpha1.StageStrategySpec{MaxParallel: 5},
 		},
-	}, []kaprov1alpha2.Cluster{
+	}, []kaprov1alpha1.Cluster{
 		{ObjectMeta: metav1.ObjectMeta{Name: "cluster-a", Labels: map[string]string{"region": "eu"}}},
 		{ObjectMeta: metav1.ObjectMeta{Name: "cluster-b", Labels: map[string]string{"region": "us"}}},
 	})
@@ -236,24 +238,24 @@ func TestRegisterReadyPluginsSkipsStaleAndRegistersReady(t *testing.T) {
 	_ = client
 
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	ready := pluginReg(kaprov1alpha2.PluginTypeActuator, "argo/pull")
+	ready := pluginReg(kaprov1alpha1.PluginTypeActuator, "argo/pull")
 	ready.Name = "ready"
 	ready.Generation = 3
 	ready.Spec.Endpoint = "bufnet"
 	ready.Status.Ready = true
 	ready.Status.ObservedGeneration = 3
 	ready.Status.Capabilities = []string{"apply", "convergence", "rollback"}
-	stale := pluginReg(kaprov1alpha2.PluginTypeActuator, "stale/pull")
+	stale := pluginReg(kaprov1alpha1.PluginTypeActuator, "stale/pull")
 	stale.Name = "stale"
 	stale.Generation = 4
 	stale.Spec.Endpoint = "bufnet"
 	stale.Status.Ready = true
 	stale.Status.ObservedGeneration = 3
 
-	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(&ready, &stale).WithStatusSubresource(&kaprov1alpha2.Plugin{}).Build()
+	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(&ready, &stale).WithStatusSubresource(&kaprov1alpha1.Plugin{}).Build()
 	actuatorReg := actuator.NewRegistry()
 	gateReg := gate.NewRegistry()
 	plannerFramework := planner.NewDefaultFramework()
@@ -295,18 +297,18 @@ func TestEnabledFromEnv(t *testing.T) {
 	}
 }
 
-func pluginReg(pluginType kaprov1alpha2.PluginType, name string) kaprov1alpha2.Plugin {
-	return kaprov1alpha2.Plugin{
+func pluginReg(pluginType kaprov1alpha1.PluginType, name string) kaprov1alpha1.Plugin {
+	return kaprov1alpha1.Plugin{
 		ObjectMeta: metav1.ObjectMeta{Name: strings.ReplaceAll(name, "/", "-"), Generation: 1},
-		Spec: kaprov1alpha2.PluginSpec{
+		Spec: kaprov1alpha1.PluginSpec{
 			Type:       pluginType,
 			Name:       name,
-			Protocol:   kaprov1alpha2.PluginProtocolGRPC,
+			Protocol:   kaprov1alpha1.PluginProtocolGRPC,
 			Endpoint:   "bufnet",
 			Timeout:    "1s",
 			Parameters: map[string]string{"tenant": "payments"},
 		},
-		Status: kaprov1alpha2.PluginStatus{Ready: true, ObservedGeneration: 1},
+		Status: kaprov1alpha1.PluginStatus{Ready: true, ObservedGeneration: 1},
 	}
 }
 

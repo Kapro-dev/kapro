@@ -5,7 +5,7 @@ import (
 	"sort"
 	"sync"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // Registry resolves public delivery adapters by open substrate kind.
@@ -49,7 +49,7 @@ func (r *Registry) Upsert(a Adapter) (Adapter, error) {
 }
 
 // Unregister removes the adapter for driver.
-func (r *Registry) Unregister(driver kaprov1alpha2.BackendDriver) (Adapter, bool) {
+func (r *Registry) Unregister(driver kaprov1alpha1.SubstrateDriver) (Adapter, bool) {
 	return r.UnregisterKind(string(driver))
 }
 
@@ -63,7 +63,7 @@ func (r *Registry) UnregisterKind(kind string) (Adapter, bool) {
 }
 
 // Resolve returns the adapter registered for driver.
-func (r *Registry) Resolve(driver kaprov1alpha2.BackendDriver) (Adapter, error) {
+func (r *Registry) Resolve(driver kaprov1alpha1.SubstrateDriver) (Adapter, error) {
 	return r.ResolveKind(string(driver))
 }
 
@@ -79,12 +79,12 @@ func (r *Registry) ResolveKind(kind string) (Adapter, error) {
 }
 
 // Drivers returns registered drivers in stable lexical order.
-func (r *Registry) Drivers() []kaprov1alpha2.BackendDriver {
+func (r *Registry) Drivers() []kaprov1alpha1.SubstrateDriver {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	drivers := make([]kaprov1alpha2.BackendDriver, 0, len(r.adapters))
+	drivers := make([]kaprov1alpha1.SubstrateDriver, 0, len(r.adapters))
 	for driver := range r.adapters {
-		drivers = append(drivers, kaprov1alpha2.BackendDriver(driver))
+		drivers = append(drivers, kaprov1alpha1.SubstrateDriver(driver))
 	}
 	sort.Slice(drivers, func(i, j int) bool { return drivers[i] < drivers[j] })
 	return drivers
@@ -102,7 +102,7 @@ func (r *Registry) Kinds() []string {
 	return kinds
 }
 
-func validateAdapter(a Adapter) (kaprov1alpha2.BackendDriver, error) {
+func validateAdapter(a Adapter) (kaprov1alpha1.SubstrateDriver, error) {
 	if a == nil {
 		return "", fmt.Errorf("adapter is nil")
 	}

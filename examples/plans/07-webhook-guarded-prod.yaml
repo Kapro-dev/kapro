@@ -1,0 +1,40 @@
+# webhook-guarded-prod
+# ------------------
+# Prod promotes only after a platform-owned webhook accepts the production
+# change. Use this for CMDB, ticketing, policy, or custom API checks that do not
+# deserve their own Kapro CRD.
+apiVersion: kapro.io/v1alpha1
+kind: Plan
+metadata:
+  name: webhook-guarded-prod
+spec:
+  stages:
+    - name: canary
+      selector:
+        matchLabels:
+          kapro.io/tier: canary
+      gate:
+        mode: auto
+        gate:
+          soakTime: 10m
+    - name: prod
+      selector:
+        matchLabels:
+          kapro.io/tier: production
+      dependsOn:
+        - stage: canary
+          requiredSoakTime: 10m
+          strategy: all
+      gate:
+        mode: auto
+        gate:
+          templates:
+            - name: prod-platform-policy
+              type: webhook
+              args:
+                - name: url
+                  value: https://policy.example.com/kapro/prod
+                - name: method
+                  value: POST
+                - name: timeout
+                  value: 10s

@@ -37,13 +37,13 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    name: v1alpha2
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: |-
           Fleet is the single entry point for fleet delivery. Users define or reference
-          source units, select a backend profile, and define clusters and promotion
-          stages. Backend adapters own Flux, Argo, or other delivery-system details.
+          source units, select a substrate profile, and define clusters and promotion
+          stages. Substrate adapters own Flux, Argo, or other delivery-system details.
         properties:
           apiVersion:
             description: |-
@@ -121,13 +121,9 @@ spec:
                 minItems: 1
                 type: array
               delivery:
-                description: Delivery selects the backend-neutral fleet delivery profile.
+                description: Delivery selects the substrate-neutral fleet delivery
+                  profile.
                 properties:
-                  backendRef:
-                    description: |-
-                      BackendRef is the Backend name. Built-in profiles commonly use
-                      "flux" or "argo"; external profiles may use any platform-defined name.
-                    type: string
                   mode:
                     default: pull
                     description: Mode controls who performs delivery.
@@ -139,14 +135,14 @@ spec:
                     additionalProperties:
                       type: string
                     description: |-
-                      Parameters are opaque backend-specific settings, following the
+                      Parameters are opaque substrate-specific settings, following the
                       StorageClass.parameters pattern. Fleet core does not interpret them.
                     type: object
                   staging:
                     description: |-
-                      Staging declares optional pre-commit safety semantics for backends that
-                      support staging. When omitted, existing backend defaults are preserved.
-                      The built-in OCI pull backend already uses TwoPhase/Abort behavior.
+                      Staging declares optional pre-commit safety semantics for substrates that
+                      support staging. When omitted, existing substrate defaults are preserved.
+                      The built-in OCI pull substrate already uses TwoPhase/Abort behavior.
                     properties:
                       failurePolicy:
                         default: Abort
@@ -165,9 +161,14 @@ spec:
                         - TwoPhase
                         type: string
                     type: object
+                  substrateRef:
+                    description: |-
+                      SubstrateRef is the Substrate name. Built-in profiles commonly use
+                      "flux" or "argo"; external profiles may use any platform-defined name.
+                    type: string
                 required:
-                - backendRef
                 - mode
+                - substrateRef
                 type: object
               plan:
                 description: Plan defines the progressive delivery stages.
@@ -236,7 +237,7 @@ spec:
                               type: object
                             expressionRef:
                               description: |-
-                                ExpressionRef is reserved for future GateExpression runtime resolution.
+                                ExpressionRef is reserved for future external gate expression resolution.
                                 v0.1.2 rejects this field so referenced gates cannot become a silent no-op.
                               minLength: 1
                               type: string
@@ -357,7 +358,7 @@ spec:
                                         type: string
                                       provider:
                                         description: Provider selects the metrics
-                                          backend. Required when preset is empty.
+                                          substrate. Required when preset is empty.
                                         type: string
                                       query:
                                         description: |-
@@ -661,11 +662,11 @@ spec:
                                 verification:
                                   description: |-
                                     VerificationGateSpec configures verification policy that Kapro delegates to
-                                    the configured delivery backend.
+                                    the configured delivery substrate.
                                   properties:
                                     cosignPolicy:
                                       description: |-
-                                        CosignPolicySpec records the cosign policy the delivery backend should
+                                        CosignPolicySpec records the cosign policy the delivery substrate should
                                         enforce for the artifact.
                                       properties:
                                         key:
@@ -788,7 +789,7 @@ spec:
                                     - channel
                                     type: object
                                   type:
-                                    description: Type selects the notification backend.
+                                    description: Type selects the notification substrate.
                                     enum:
                                     - webhook
                                     - slack
@@ -838,8 +839,8 @@ spec:
                           x-kubernetes-validations:
                           - message: mode is required
                             rule: has(self.mode)
-                          - message: expressionRef is reserved until GateExpression
-                              runtime resolution is implemented
+                          - message: expressionRef is reserved until external gate
+                              expression resolution is implemented
                             rule: '!has(self.expressionRef)'
                         name:
                           description: Name of the stage.
@@ -883,12 +884,6 @@ spec:
                 description: Source defines deployable units inline for the single-object
                   quickstart path.
                 properties:
-                  backendRef:
-                    description: |-
-                      BackendRef is the Backend this source is normally discovered from
-                      or packaged for. Fleet uses it as metadata; delivery still comes from
-                      Fleet.spec.delivery and Cluster.spec.delivery.
-                    type: string
                   defaults:
                     description: Defaults are inherited by every unit unless overridden.
                     properties:
@@ -1009,20 +1004,20 @@ spec:
                       - url
                       type: object
                     type: array
+                  substrateRef:
+                    description: |-
+                      SubstrateRef is the Substrate this source is normally discovered from
+                      or packaged for. Fleet uses it as metadata; delivery still comes from
+                      Fleet.spec.delivery and Cluster.spec.delivery.
+                    type: string
                   units:
                     description: Units defines the native deployable units Fleet promotes.
                     items:
                       description: |-
                         Unit is one deployable unit within a Source.
                         It can describe a generated Helm unit for greenfield scaffolds or an existing
-                        backend-native object discovered from Argo/Flux.
+                        substrate-native object discovered from Argo/Flux.
                       properties:
-                        backendKind:
-                          description: |-
-                            BackendKind identifies the backend-native object kind when this unit maps
-                            to an existing object, for example Application, ApplicationSet,
-                            Kustomization, or HelmRelease.
-                          type: string
                         chartName:
                           description: |-
                             ChartName overrides the Helm chart name when different from unit name.
@@ -1047,7 +1042,7 @@ spec:
                           description: Name is the stable Fleet unit identifier.
                           type: string
                         namespace:
-                          description: Namespace is the backend-native object namespace
+                          description: Namespace is the substrate-native object namespace
                             when applicable.
                           type: string
                         prune:
@@ -1066,9 +1061,15 @@ spec:
                           type: integer
                         sourcePath:
                           description: |-
-                            SourcePath is the repo-relative file path Fleet updates for Git-native
-                            brownfield promotion. It is required for file-backed units whose
+                            SourcePath is the repo-relative file path Fleet updates for existing
+                            GitOps promotion. It is required for file-backed units whose
                             VersionField does not already include a file path.
+                          type: string
+                        substrateKind:
+                          description: |-
+                            SubstrateKind identifies the substrate-native object kind when this unit maps
+                            to an existing object, for example Application, ApplicationSet,
+                            Kustomization, or HelmRelease.
                           type: string
                         suspend:
                           description: Suspend pauses reconciliation for this unit.
@@ -1123,7 +1124,7 @@ spec:
                           type: string
                         versionField:
                           description: |-
-                            VersionField is the backend-native field Fleet changes for this unit,
+                            VersionField is the substrate-native field Fleet changes for this unit,
                             for example spec.source.targetRevision for Argo CD Applications.
                           type: string
                         wave:

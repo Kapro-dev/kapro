@@ -100,6 +100,6 @@ backend coupling, multi-cluster model, audit model, plugin model, and event API.
 
 ## References
 - [Concepts](../concepts/concepts.md)
-- [Backends](../concepts/backends.md)
+- [Substrates](../concepts/substrates.md)
 - [CloudEvents publisher posture](0003-cloudevents-publisher-posture.md)
 - [Sveltos ClusterPromotion](https://projectsveltos.io/v1.2.0/deployment_order/progressive_rollout/)

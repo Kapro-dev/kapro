@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/pkg/actuator"
 	kaiv1alpha1 "kapro.io/kapro/spec/kai/v1alpha1"
 
@@ -24,9 +24,9 @@ type ActuatorAdapter struct {
 }
 
 // NewActuatorAdapter returns an actuator adapter backed by a KAI client.
-func NewActuatorAdapter(reg kaprov1alpha2.Plugin, client kaiv1alpha1.ActuatorServiceClient) (*ActuatorAdapter, error) {
-	if reg.Spec.Type != kaprov1alpha2.PluginTypeActuator {
-		return nil, fmt.Errorf("plugin %q is %q, expected %q", reg.Name, reg.Spec.Type, kaprov1alpha2.PluginTypeActuator)
+func NewActuatorAdapter(reg kaprov1alpha1.Plugin, client kaiv1alpha1.ActuatorServiceClient) (*ActuatorAdapter, error) {
+	if reg.Spec.Type != kaprov1alpha1.PluginTypeActuator {
+		return nil, fmt.Errorf("plugin %q is %q, expected %q", reg.Name, reg.Spec.Type, kaprov1alpha1.PluginTypeActuator)
 	}
 	if client == nil {
 		return nil, fmt.Errorf("actuator plugin client is nil")
@@ -67,7 +67,7 @@ func (a *ActuatorAdapter) Close() error {
 func (a *ActuatorAdapter) Apply(ctx context.Context, req actuator.ApplyRequest) error {
 	start := time.Now()
 	result := "success"
-	defer func() { observeRuntimeCall(kaprov1alpha2.PluginTypeActuator, a.name, "Apply", result, start) }()
+	defer func() { observeRuntimeCall(kaprov1alpha1.PluginTypeActuator, a.name, "Apply", result, start) }()
 
 	clusterName, err := clusterName(req.Cluster)
 	if err != nil {
@@ -95,10 +95,10 @@ func (a *ActuatorAdapter) Apply(ctx context.Context, req actuator.ApplyRequest) 
 }
 
 // IsConverged asks the external plugin whether a target has converged.
-func (a *ActuatorAdapter) IsConverged(ctx context.Context, cluster *kaprov1alpha2.Cluster, version, appKey string) (bool, error) {
+func (a *ActuatorAdapter) IsConverged(ctx context.Context, cluster *kaprov1alpha1.Cluster, version, appKey string) (bool, error) {
 	start := time.Now()
 	result := "success"
-	defer func() { observeRuntimeCall(kaprov1alpha2.PluginTypeActuator, a.name, "IsConverged", result, start) }()
+	defer func() { observeRuntimeCall(kaprov1alpha1.PluginTypeActuator, a.name, "IsConverged", result, start) }()
 
 	clusterName, err := clusterName(cluster)
 	if err != nil {
@@ -121,10 +121,10 @@ func (a *ActuatorAdapter) IsConverged(ctx context.Context, cluster *kaprov1alpha
 }
 
 // Rollback instructs the external plugin to roll back to a previous version.
-func (a *ActuatorAdapter) Rollback(ctx context.Context, cluster *kaprov1alpha2.Cluster, previousVersion, appKey string) error {
+func (a *ActuatorAdapter) Rollback(ctx context.Context, cluster *kaprov1alpha1.Cluster, previousVersion, appKey string) error {
 	start := time.Now()
 	result := "success"
-	defer func() { observeRuntimeCall(kaprov1alpha2.PluginTypeActuator, a.name, "Rollback", result, start) }()
+	defer func() { observeRuntimeCall(kaprov1alpha1.PluginTypeActuator, a.name, "Rollback", result, start) }()
 
 	clusterName, err := clusterName(cluster)
 	if err != nil {
@@ -173,7 +173,7 @@ func (a *ActuatorAdapter) ApplyDelta(ctx context.Context, req actuator.DeltaAppl
 }
 
 // IsAllConverged returns true only when every desired app/version has converged.
-func (a *ActuatorAdapter) IsAllConverged(ctx context.Context, cluster *kaprov1alpha2.Cluster, desiredVersions map[string]string) (bool, error) {
+func (a *ActuatorAdapter) IsAllConverged(ctx context.Context, cluster *kaprov1alpha1.Cluster, desiredVersions map[string]string) (bool, error) {
 	for appKey, version := range desiredVersions {
 		converged, err := a.IsConverged(ctx, cluster, version, appKey)
 		if err != nil || !converged {
@@ -191,7 +191,7 @@ func (a *ActuatorAdapter) parametersWithAppKey(appKey string) map[string]string 
 	return params
 }
 
-func clusterName(cluster *kaprov1alpha2.Cluster) (string, error) {
+func clusterName(cluster *kaprov1alpha1.Cluster) (string, error) {
 	if cluster == nil {
 		return "", fmt.Errorf("target cluster is required")
 	}
@@ -208,11 +208,11 @@ func responseMessage(message string) string {
 	return message
 }
 
-func actuatorCapabilitiesForPlugin(reg kaprov1alpha2.Plugin) actuator.Capabilities {
+func actuatorCapabilitiesForPlugin(reg kaprov1alpha1.Plugin) actuator.Capabilities {
 	caps := actuator.Capabilities{
 		ContractVersion: reg.Status.ContractVersion,
 		Adapter:         reg.Spec.Name,
-		Runtime:         kaprov1alpha2.BackendRuntimeBoth,
+		Runtime:         kaprov1alpha1.SubstrateRuntimeBoth,
 	}
 	for _, capability := range reg.Status.Capabilities {
 		switch {
@@ -225,8 +225,8 @@ func actuatorCapabilitiesForPlugin(reg kaprov1alpha2.Plugin) actuator.Capabiliti
 			caps.SupportsConvergence = true
 		case kaiv1alpha1.HasCapability([]string{capability}, kaiv1alpha1.CapabilityDelta):
 			caps.SupportsDelta = true
-		case kaiv1alpha1.HasCapability([]string{capability}, kaiv1alpha1.CapabilityBackendObjects):
-			caps.SupportsBackendObjects = true
+		case kaiv1alpha1.HasCapability([]string{capability}, kaiv1alpha1.CapabilitySubstrateObjects):
+			caps.SupportsSubstrateObjects = true
 		case kaiv1alpha1.HasCapability([]string{capability}, kaiv1alpha1.CapabilityDryRun):
 			caps.SupportsDryRun = true
 		}

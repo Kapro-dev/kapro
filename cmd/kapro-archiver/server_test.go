@@ -168,7 +168,7 @@ func validEnvelopeBody(t *testing.T) []byte {
 	envelope := events.Envelope{
 		SpecVersion:     "1.0",
 		ID:              "event-1",
-		Source:          "/apis/kapro.io/v1alpha2/promotions/demo",
+		Source:          "/apis/kapro.io/v1alpha1/promotions/demo",
 		Type:            events.EventType("kapro.io/promotion.succeeded"),
 		Subject:         "demo",
 		Time:            time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC).Format(time.RFC3339Nano),

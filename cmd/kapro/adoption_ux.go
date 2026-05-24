@@ -31,21 +31,21 @@ Examples:
   kapro quickstart demo`,
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			backend := "flux"
+			substrate := "flux"
 			dir := "./kapro-quickstart"
 			if len(args) > 0 {
-				backend = strings.ToLower(args[0])
+				substrate = strings.ToLower(args[0])
 			}
-			if backend == "demo" {
+			if substrate == "demo" {
 				return runDemo(cmd.Context())
 			}
 			if len(args) > 1 {
 				dir = args[1]
 			}
 			opts.Path = dir
-			opts.Backend = backend
+			opts.Substrate = substrate
 			if opts.Mode == "" {
-				opts.Mode = quickstartDefaultMode(backend)
+				opts.Mode = quickstartDefaultMode(substrate)
 			}
 			if opts.Name == "" {
 				opts.Name = "checkout"
@@ -59,30 +59,31 @@ Examples:
 			if opts.Team == "" {
 				opts.Team = "platform"
 			}
+			opts.UseSubstrateClass = true
 			cli.Header("Kapro quickstart")
-			cli.Info(quickstartBackendSummary(backend, opts.Mode))
+			cli.Info(quickstartSubstrateSummary(substrate, opts.Mode))
 			return runInitScaffold(opts)
 		},
 	}
 	cmd.Flags().StringVar(&opts.Name, "name", "checkout", "Application or fleet name")
-	cmd.Flags().StringVar(&opts.Mode, "mode", "", "Delivery mode: push or pull (defaults per backend)")
+	cmd.Flags().StringVar(&opts.Mode, "mode", "", "Delivery mode: push or pull (defaults per substrate)")
 	cmd.Flags().StringVar(&opts.Registry, "registry", "oci://registry.example.com/platform", "OCI registry URL for bundles")
-	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Backend namespace")
+	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "Substrate namespace")
 	cmd.Flags().StringVar(&opts.Clusters, "clusters", "canary-eu:canary,prod-eu:production", "Cluster scaffold list as name:stage pairs, or none")
 	cmd.Flags().StringVar(&opts.Team, "team", "platform", "Value for metadata.labels[kapro.io/team]")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
 	return cmd
 }
 
-func quickstartDefaultMode(backend string) string {
-	if backend == "argo" {
+func quickstartDefaultMode(substrate string) string {
+	if substrate == "argo" {
 		return "push"
 	}
 	return "pull"
 }
 
-func quickstartBackendSummary(backend, mode string) string {
-	switch backend {
+func quickstartSubstrateSummary(substrate, mode string) string {
+	switch substrate {
 	case "argo":
 		return "Argo CD remains the application reconciler; Kapro promotes versions and records the decision path."
 	case "flux":
@@ -90,7 +91,7 @@ func quickstartBackendSummary(backend, mode string) string {
 	case "oci":
 		return "Kapro spokes pull OCI artifacts directly; no Argo CD or Flux installation is required on spokes."
 	default:
-		return fmt.Sprintf("%s backend using %s delivery", backend, mode)
+		return fmt.Sprintf("%s substrate using %s delivery", substrate, mode)
 	}
 }
 
@@ -101,9 +102,9 @@ type sampleLayout struct {
 
 func newSampleCmd() *cobra.Command {
 	var (
-		backendOverride string
-		modeOverride    string
-		force           bool
+		substrateOverride string
+		modeOverride      string
+		force             bool
 	)
 	cmd := &cobra.Command{
 		Use:   "sample <layout> [directory]",
@@ -123,8 +124,8 @@ Layouts:
 				return fmt.Errorf("unknown sample layout %q (available: %s)", args[0], strings.Join(sampleLayoutNames(), ", "))
 			}
 			opts := layout.Options
-			if backendOverride != "" {
-				opts.Backend = strings.ToLower(backendOverride)
+			if substrateOverride != "" {
+				opts.Substrate = strings.ToLower(substrateOverride)
 			}
 			if modeOverride != "" {
 				opts.Mode = strings.ToLower(modeOverride)
@@ -133,12 +134,13 @@ Layouts:
 				opts.Path = args[1]
 			}
 			opts.Force = force
+			opts.UseSubstrateClass = true
 			cli.Header("Kapro sample: " + args[0])
 			cli.Info(layout.Description)
 			return runInitScaffold(opts)
 		},
 	}
-	cmd.Flags().StringVar(&backendOverride, "backend", "", "Override backend: argo, flux, or oci")
+	cmd.Flags().StringVar(&substrateOverride, "substrate", "", "Override substrate: argo, flux, or oci")
 	cmd.Flags().StringVar(&modeOverride, "mode", "", "Override delivery mode: push or pull")
 	cmd.Flags().BoolVar(&force, "force", false, "Overwrite existing generated files")
 	return cmd
@@ -169,15 +171,15 @@ func sampleLayouts() map[string]sampleLayout {
 	}
 }
 
-func sampleOptions(path, name, backend, mode, clusters string) scaffoldOptions {
+func sampleOptions(path, name, substrate, mode, clusters string) scaffoldOptions {
 	return scaffoldOptions{
-		Path:     path,
-		Name:     name,
-		Backend:  backend,
-		Mode:     mode,
-		Registry: "oci://registry.example.com/platform",
-		Clusters: clusters,
-		Team:     "platform",
+		Path:      path,
+		Name:      name,
+		Substrate: substrate,
+		Mode:      mode,
+		Registry:  "oci://registry.example.com/platform",
+		Clusters:  clusters,
+		Team:      "platform",
 	}
 }
 

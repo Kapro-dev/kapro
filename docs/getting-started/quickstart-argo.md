@@ -6,8 +6,7 @@ each target cluster, then waits for Argo to report `Synced` and `Healthy`.
 
 Prerequisites:
 
-- Kapro operator installed with the preview `substrateclass` and `backend`
-  controllers enabled.
+- Kapro operator installed with the default public-preview controllers.
 - Argo CD installed in the `argocd` namespace.
 
 For a local preview install:
@@ -15,23 +14,22 @@ For a local preview install:
 ```bash
 helm upgrade --install kapro "$KAPRO_CHART" \
   --namespace kapro-system \
-  --create-namespace \
-  --set controllers='{fleet,plan,promotion,promotionrun,cluster,substrateclass,backend}'
+  --create-namespace
 ```
 
 ```bash
 kapro bootstrap generate ./promotion-repo \
-  --profile argocd \
+  --profile argo \
   --name checkout
 cd promotion-repo
-kubectl apply -f backends/argo.yaml
-kubectl wait --for=condition=Ready backend/argo --timeout=90s
+kubectl apply -f substrates/argo.yaml
+kubectl wait --for=condition=Ready substrate/argo --timeout=90s
 kubectl apply --recursive -f apps -f argo -f clusters -f plans -f fleets -f promotions
-kubectl get promotions,promotionruns,targets
+kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
 ```
 
 The generated repo includes a `SubstrateClass`, typed `ArgoCDSubstrateConfig`,
-`Backend`, target-specific Argo CD `Application` objects, starter workload
+`Substrate`, target-specific Argo CD `Application` objects, starter workload
 manifests under `apps/`, and Kapro `Fleet`, `Plan`, and `Promotion` objects.
 Push the generated repo and replace the placeholder `repoURL` values before
 expecting Argo CD to sync. If your Argo Applications already exist with

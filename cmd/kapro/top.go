@@ -10,11 +10,13 @@ import (
 	"syscall"
 	"time"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	"github.com/spf13/cobra"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/cli"
 )
 
@@ -77,7 +79,7 @@ func renderTopWithClient(ctx context.Context, c client.Client, namespace string)
 	if namespace != "" && namespace != "all" {
 		return fmt.Errorf("promotions are cluster-scoped; --namespace only supports \"all\"")
 	}
-	var list kaprov1alpha2.PromotionList
+	var list kaprov1alpha1.PromotionList
 	if err := c.List(ctx, &list); err != nil {
 		return fmt.Errorf("list promotions: %w", err)
 	}
@@ -111,8 +113,8 @@ func renderTopWithClient(ctx context.Context, c client.Client, namespace string)
 	return nil
 }
 
-func activePromotionRuns(ctx context.Context, c client.Client, promotions []kaprov1alpha2.Promotion) (map[string]kaprov1alpha2.PromotionRun, error) {
-	runByName := map[string]kaprov1alpha2.PromotionRun{}
+func activePromotionRuns(ctx context.Context, c client.Client, promotions []kaprov1alpha1.Promotion) (map[string]kaproruntimev1alpha1.PromotionRun, error) {
+	runByName := map[string]kaproruntimev1alpha1.PromotionRun{}
 	for _, p := range promotions {
 		if p.Status.ActiveAttemptRef == nil || p.Status.ActiveAttemptRef.Name == "" {
 			continue
@@ -121,7 +123,7 @@ func activePromotionRuns(ctx context.Context, c client.Client, promotions []kapr
 		if _, ok := runByName[name]; ok {
 			continue
 		}
-		var run kaprov1alpha2.PromotionRun
+		var run kaproruntimev1alpha1.PromotionRun
 		err := c.Get(ctx, client.ObjectKey{Name: name}, &run)
 		if apierrors.IsNotFound(err) {
 			continue
@@ -134,7 +136,7 @@ func activePromotionRuns(ctx context.Context, c client.Client, promotions []kapr
 	return runByName, nil
 }
 
-func sortPromotions(items []kaprov1alpha2.Promotion) {
+func sortPromotions(items []kaprov1alpha1.Promotion) {
 	sort.Slice(items, func(i, j int) bool {
 		if !items[i].CreationTimestamp.Equal(&items[j].CreationTimestamp) {
 			return items[i].CreationTimestamp.After(items[j].CreationTimestamp.Time)
@@ -143,7 +145,7 @@ func sortPromotions(items []kaprov1alpha2.Promotion) {
 	})
 }
 
-func promotionTargetsText(p *kaprov1alpha2.Promotion, runByName map[string]kaprov1alpha2.PromotionRun) string {
+func promotionTargetsText(p *kaprov1alpha1.Promotion, runByName map[string]kaproruntimev1alpha1.PromotionRun) string {
 	if p.Status.ActiveAttemptRef == nil {
 		return "-"
 	}
@@ -154,7 +156,7 @@ func promotionTargetsText(p *kaprov1alpha2.Promotion, runByName map[string]kapro
 	return fmt.Sprintf("%d/%d", run.Status.Summary.SyncedTargets, run.Status.Summary.TotalTargets)
 }
 
-func promotionDisplayVersion(p *kaprov1alpha2.Promotion) string {
+func promotionDisplayVersion(p *kaprov1alpha1.Promotion) string {
 	if p.Status.ResolvedVersion != "" {
 		return p.Status.ResolvedVersion
 	}

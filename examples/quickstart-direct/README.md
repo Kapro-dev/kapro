@@ -4,7 +4,7 @@ This repo is a greenfield Kapro scaffold for direct Kubernetes apply.
 
 Apply order:
 
-1. backends/
+1. substrates/
 2. apps/
 3. clusters/
 4. plans/
@@ -14,8 +14,8 @@ Apply order:
 Apply with:
 
 ```bash
-kubectl apply -f backends/direct.yaml
-kubectl wait --for=condition=Ready backend/direct --timeout=90s
+kubectl apply -f substrates/direct.yaml
+kubectl wait --for=condition=Ready substrate/direct --timeout=90s
 kubectl apply --recursive -f apps -f clusters -f plans -f fleets -f promotions
 ```
 

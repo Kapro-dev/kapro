@@ -5,13 +5,13 @@ import (
 	"sort"
 	"sync"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // Registration binds one runtime registry key to an actuator implementation.
 type Registration struct {
 	Name         string
-	Mode         kaprov1alpha2.DeliveryMode
+	Mode         kaprov1alpha1.DeliveryMode
 	Capabilities Capabilities
 	Actuator     Actuator
 }
@@ -164,7 +164,7 @@ func normalizeRegistration(reg Registration) (string, Registration, error) {
 	}
 	reg.Capabilities = reg.Capabilities.Normalize()
 	if reg.Mode != "" && len(reg.Capabilities.Modes) == 0 {
-		reg.Capabilities.Modes = []kaprov1alpha2.DeliveryMode{reg.Mode}
+		reg.Capabilities.Modes = []kaprov1alpha1.DeliveryMode{reg.Mode}
 	}
 	key := reg.RegistryKey()
 	if key == "" || key == "/" {
@@ -196,7 +196,7 @@ func capabilitiesEmpty(c Capabilities) bool {
 		!c.SupportsConvergence &&
 		!c.SupportsDelta &&
 		!c.SupportsTwoPhase &&
-		!c.SupportsBackendObjects &&
+		!c.SupportsSubstrateObjects &&
 		!c.SupportsDryRun &&
 		!c.SupportsHubExecution &&
 		!c.SupportsSpokeExecution &&

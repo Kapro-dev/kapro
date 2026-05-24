@@ -26,12 +26,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 func TestCredentialsRequireNamespacedTLSSecretRef(t *testing.T) {
-	_, err := Credentials(context.Background(), nil, kaprov1alpha2.Plugin{
-		Spec: kaprov1alpha2.PluginSpec{
+	_, err := Credentials(context.Background(), nil, kaprov1alpha1.Plugin{
+		Spec: kaprov1alpha1.PluginSpec{
 			TLSSecretRef: &corev1.SecretReference{Name: "plugin-tls"},
 		},
 	})
@@ -44,8 +44,8 @@ func TestCredentialsRequireNamespacedTLSSecretRef(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
-	_, err = Credentials(context.Background(), c, kaprov1alpha2.Plugin{
-		Spec: kaprov1alpha2.PluginSpec{
+	_, err = Credentials(context.Background(), c, kaprov1alpha1.Plugin{
+		Spec: kaprov1alpha1.PluginSpec{
 			TLSSecretRef: &corev1.SecretReference{Name: "plugin-tls"},
 		},
 	})
@@ -67,8 +67,8 @@ func TestCredentialsLoadsTLSSecret(t *testing.T) {
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(secret).Build()
 
-	creds, err := Credentials(context.Background(), c, kaprov1alpha2.Plugin{
-		Spec: kaprov1alpha2.PluginSpec{
+	creds, err := Credentials(context.Background(), c, kaprov1alpha1.Plugin{
+		Spec: kaprov1alpha1.PluginSpec{
 			TLSSecretRef: &corev1.SecretReference{Name: "plugin-tls", Namespace: "kapro-system"},
 			Parameters:   map[string]string{ParameterTLSServerName: "plugin.test"},
 		},
@@ -97,7 +97,7 @@ func TestDialOptionsInstallOTelClientStatsHandler(t *testing.T) {
 	}()
 	defer server.Stop()
 
-	opts, err := DialOptions(context.Background(), nil, kaprov1alpha2.Plugin{})
+	opts, err := DialOptions(context.Background(), nil, kaprov1alpha1.Plugin{})
 	if err != nil {
 		t.Fatalf("DialOptions: %v", err)
 	}

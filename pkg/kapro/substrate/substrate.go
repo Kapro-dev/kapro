@@ -2,7 +2,7 @@
 //
 // KSI is the public Go contract for delivery substrates. Kapro core owns
 // promotion ordering, gate evaluation, retries, and status. A substrate owns
-// backend-specific validation, mutation, and convergence observation.
+// substrate-specific validation, mutation, and convergence observation.
 package substrate
 
 import (
@@ -11,7 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 const ContractVersionV1Alpha1 = "v1alpha1"
@@ -19,19 +19,19 @@ const ContractVersionV1Alpha1 = "v1alpha1"
 // RequestEnvelope contains common identity and typed substrate data passed to
 // KSI calls.
 type RequestEnvelope struct {
-	// Class is the resolved SubstrateClass selected by Backend.spec.classRef.
-	Class *kaprov1alpha2.SubstrateClass
-	// Backend is the configured backend instance that selected the class.
-	Backend *kaprov1alpha2.Backend
+	// Class is the resolved SubstrateClass selected by Substrate.spec.classRef.
+	Class *kaprov1alpha1.SubstrateClass
+	// Substrate is the configured substrate instance that selected the class.
+	Substrate *kaprov1alpha1.Substrate
 	// Config is the typed substrate-owned config object from
-	// Backend.spec.configRef.
+	// Substrate.spec.configRef.
 	Config runtime.Object
 	// Binding is reserved for typed app/workload bindings. It is nil in the
 	// Phase-1 class/config path while delivery.parameters remains the app-level
 	// compatibility surface.
 	Binding runtime.Object
 	// Cluster is the target cluster Kapro is promoting to.
-	Cluster *kaprov1alpha2.Cluster
+	Cluster *kaprov1alpha1.Cluster
 	// Parameters are merged opaque compatibility parameters. Substrate-specific
 	// typed config should prefer Config; Parameters exists for migration and
 	// small demo substrates.
@@ -42,7 +42,7 @@ type RequestEnvelope struct {
 	Credentials *corev1.Secret
 }
 
-// ValidateRequest asks a substrate to validate class/config/backend wiring.
+// ValidateRequest asks a substrate to validate class/config/substrate wiring.
 type ValidateRequest struct {
 	RequestEnvelope
 	DryRun bool
@@ -64,11 +64,11 @@ type ApplyRequest struct {
 
 // ApplyResult reports the mutation attempt outcome.
 type ApplyResult struct {
-	Accepted       bool
-	Applied        int
-	Reason         string
-	Message        string
-	BackendObjects []kaprov1alpha2.BackendObjectStatus
+	Accepted         bool
+	Applied          int
+	Reason           string
+	Message          string
+	SubstrateObjects []kaprov1alpha1.SubstrateObjectStatus
 }
 
 // ObserveRequest asks a substrate to report current convergence for desired versions.
@@ -77,20 +77,20 @@ type ObserveRequest struct {
 	DesiredVersions map[string]string
 }
 
-// ObserveResult reports convergence without mutating backend state.
+// ObserveResult reports convergence without mutating substrate state.
 type ObserveResult struct {
-	Converged      bool
-	Phase          kaprov1alpha2.DeliveryPhase
-	Reason         string
-	Message        string
-	BackendObjects []kaprov1alpha2.BackendObjectStatus
+	Converged        bool
+	Phase            kaprov1alpha1.DeliveryPhase
+	Reason           string
+	Message          string
+	SubstrateObjects []kaprov1alpha1.SubstrateObjectStatus
 }
 
 // Capabilities describes the operations and execution modes a substrate supports.
 type Capabilities struct {
 	ContractVersion         string
-	SupportedExecutionModes []kaprov1alpha2.ExecutionMode
-	Capabilities            kaprov1alpha2.SubstrateCapabilities
+	SupportedExecutionModes []kaprov1alpha1.ExecutionMode
+	Capabilities            kaprov1alpha1.SubstrateCapabilities
 }
 
 // Substrate is KSI: the Kapro Substrate Interface.
@@ -149,7 +149,7 @@ type CommitRequest struct {
 // CommitResult reports staged commit outcome.
 type CommitResult struct {
 	Applied int
-	Phase   kaprov1alpha2.DeliveryPhase
+	Phase   kaprov1alpha1.DeliveryPhase
 	Reason  string
 	Message string
 }
@@ -167,21 +167,21 @@ type DiscardResult struct {
 	Message   string
 }
 
-// Discoverer is the optional KSI brownfield discovery extension.
+// Discoverer is the optional KSI existing-substrate discovery extension.
 type Discoverer interface {
 	Discover(ctx context.Context, req *DiscoverRequest) (*DiscoverResult, error)
 }
 
-// DiscoverRequest asks a substrate to discover backend-native objects.
+// DiscoverRequest asks a substrate to discover substrate-native objects.
 type DiscoverRequest struct {
 	RequestEnvelope
 }
 
 // DiscoverResult reports bounded discovery evidence.
 type DiscoverResult struct {
-	SelectedObjects        []kaprov1alpha2.DiscoveredBackendObject
-	SkippedObjects         []kaprov1alpha2.DiscoveredBackendObject
-	UnsupportedPatterns    []kaprov1alpha2.DiscoveredBackendObject
+	SelectedObjects        []kaprov1alpha1.DiscoveredSubstrateObject
+	SkippedObjects         []kaprov1alpha1.DiscoveredSubstrateObject
+	UnsupportedPatterns    []kaprov1alpha1.DiscoveredSubstrateObject
 	DiscoveredClusters     int32
 	DiscoveredApplications int32
 	Errors                 []string

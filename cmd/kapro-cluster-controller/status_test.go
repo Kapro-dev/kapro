@@ -10,7 +10,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 func newStatusScheme(t *testing.T) *runtime.Scheme {
@@ -19,7 +19,7 @@ func newStatusScheme(t *testing.T) *runtime.Scheme {
 	if err := corev1.AddToScheme(s); err != nil {
 		t.Fatalf("core AddToScheme: %v", err)
 	}
-	if err := kaprov1alpha2.AddToScheme(s); err != nil {
+	if err := kaprov1alpha1.AddToScheme(s); err != nil {
 		t.Fatalf("kapro AddToScheme: %v", err)
 	}
 	return s
@@ -130,12 +130,12 @@ func TestMostFrequent_DeterministicTieBreak(t *testing.T) {
 
 func TestStatusTick_PatchesCapabilities(t *testing.T) {
 	scheme := newStatusScheme(t)
-	fc := &kaprov1alpha2.Cluster{
+	fc := &kaprov1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "de-prod-01"},
-		Spec:       kaprov1alpha2.ClusterSpec{},
+		Spec:       kaprov1alpha1.ClusterSpec{},
 	}
 	hub := fake.NewClientBuilder().WithScheme(scheme).WithObjects(fc).
-		WithStatusSubresource(&kaprov1alpha2.Cluster{}).Build()
+		WithStatusSubresource(&kaprov1alpha1.Cluster{}).Build()
 	local := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
 		makeNode("n1", "v1.30.0", "europe-west1", "europe-west1-b", "gce://x"),
 	).Build()
@@ -149,7 +149,7 @@ func TestStatusTick_PatchesCapabilities(t *testing.T) {
 	if err := sr.tick(context.Background()); err != nil {
 		t.Fatalf("tick: %v", err)
 	}
-	got := &kaprov1alpha2.Cluster{}
+	got := &kaprov1alpha1.Cluster{}
 	if err := hub.Get(context.Background(), client.ObjectKey{Name: "de-prod-01"}, got); err != nil {
 		t.Fatalf("get Cluster: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestStatusTick_PatchesCapabilities(t *testing.T) {
 func TestStatusTick_HandlesMissingCluster(t *testing.T) {
 	scheme := newStatusScheme(t)
 	hub := fake.NewClientBuilder().WithScheme(scheme).
-		WithStatusSubresource(&kaprov1alpha2.Cluster{}).Build()
+		WithStatusSubresource(&kaprov1alpha1.Cluster{}).Build()
 	local := fake.NewClientBuilder().WithScheme(scheme).Build()
 	sr := &statusReporter{Hub: newHubClientFromStatic(hub), Local: local, ClusterName: "nope"}
 	if err := sr.tick(context.Background()); err == nil {

@@ -25,7 +25,7 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    name: v1alpha2
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: |-
@@ -53,15 +53,9 @@ spec:
             description: |-
               SourceSpec defines the native promotion units Fleet can move
               through a fleet. Units may map to generated Flux resources in greenfield mode
-              or to backend-native objects discovered from Argo/Flux in native mode.
+              or to substrate-native objects discovered from Argo/Flux in native mode.
               Used inline by Fleet.spec.source or referenced by Fleet.spec.sourceRef.
             properties:
-              backendRef:
-                description: |-
-                  BackendRef is the Backend this source is normally discovered from
-                  or packaged for. Fleet uses it as metadata; delivery still comes from
-                  Fleet.spec.delivery and Cluster.spec.delivery.
-                type: string
               defaults:
                 description: Defaults are inherited by every unit unless overridden.
                 properties:
@@ -180,20 +174,20 @@ spec:
                   - url
                   type: object
                 type: array
+              substrateRef:
+                description: |-
+                  SubstrateRef is the Substrate this source is normally discovered from
+                  or packaged for. Fleet uses it as metadata; delivery still comes from
+                  Fleet.spec.delivery and Cluster.spec.delivery.
+                type: string
               units:
                 description: Units defines the native deployable units Fleet promotes.
                 items:
                   description: |-
                     Unit is one deployable unit within a Source.
                     It can describe a generated Helm unit for greenfield scaffolds or an existing
-                    backend-native object discovered from Argo/Flux.
+                    substrate-native object discovered from Argo/Flux.
                   properties:
-                    backendKind:
-                      description: |-
-                        BackendKind identifies the backend-native object kind when this unit maps
-                        to an existing object, for example Application, ApplicationSet,
-                        Kustomization, or HelmRelease.
-                      type: string
                     chartName:
                       description: |-
                         ChartName overrides the Helm chart name when different from unit name.
@@ -218,7 +212,7 @@ spec:
                       description: Name is the stable Fleet unit identifier.
                       type: string
                     namespace:
-                      description: Namespace is the backend-native object namespace
+                      description: Namespace is the substrate-native object namespace
                         when applicable.
                       type: string
                     prune:
@@ -237,9 +231,15 @@ spec:
                       type: integer
                     sourcePath:
                       description: |-
-                        SourcePath is the repo-relative file path Fleet updates for Git-native
-                        brownfield promotion. It is required for file-backed units whose
+                        SourcePath is the repo-relative file path Fleet updates for existing
+                        GitOps promotion. It is required for file-backed units whose
                         VersionField does not already include a file path.
+                      type: string
+                    substrateKind:
+                      description: |-
+                        SubstrateKind identifies the substrate-native object kind when this unit maps
+                        to an existing object, for example Application, ApplicationSet,
+                        Kustomization, or HelmRelease.
                       type: string
                     suspend:
                       description: Suspend pauses reconciliation for this unit.
@@ -293,7 +293,7 @@ spec:
                       type: string
                     versionField:
                       description: |-
-                        VersionField is the backend-native field Fleet changes for this unit,
+                        VersionField is the substrate-native field Fleet changes for this unit,
                         for example spec.source.targetRevision for Argo CD Applications.
                       type: string
                     wave:

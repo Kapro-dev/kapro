@@ -6,7 +6,7 @@ ApplicationSets. It is the `argo/push` counterpart to the Application-based
 
 ## Behavior
 
-The plugin applies exactly one backend mutation:
+The plugin applies exactly one substrate mutation:
 
 ```text
 ApplicationSet.spec.template.spec.source.targetRevision = <requested version>
@@ -55,7 +55,7 @@ The standalone manifest is
 `examples/plugins/argocd-applicationset-actuator-registration.yaml`.
 
 ```yaml
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Plugin
 metadata:
   name: argocd-applicationset-actuator
@@ -85,5 +85,5 @@ The operator loads ready actuator registrations at startup.
 go test ./examples/plugins/argocd-applicationset-actuator
 ```
 
-The test suite runs the shared KAI conformance harness and backend-specific
+The test suite runs the shared KAI conformance harness and substrate-specific
 tests against a fake Kubernetes API.

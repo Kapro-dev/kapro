@@ -1,6 +1,6 @@
 # User-authored rollout intent. The controller creates PromotionRun and Target
 # records after this Promotion reconciles.
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Promotion
 metadata:
   name: checkout-argo-v1-2-3

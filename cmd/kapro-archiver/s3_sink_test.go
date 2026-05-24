@@ -71,7 +71,7 @@ func sampleRecord() ArchiveRecord {
 		Body: []byte(`{"id":"event-1"}`),
 		Metadata: ArchiveMetadata{
 			ID:         "event-1",
-			Source:     "/apis/kapro.io/v1alpha2/promotions/demo",
+			Source:     "/apis/kapro.io/v1alpha1/promotions/demo",
 			Type:       "kapro.io/promotion.succeeded",
 			Time:       "2026-05-22T10:00:00Z",
 			BodySHA256: "abc",

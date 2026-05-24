@@ -26,12 +26,12 @@ All `kapro.actuator.*` spans include the standard actuator identity attributes:
 | `kapro.actuator.rollback` | `pkg/kapro/actuator` | `kapro.actuator.name`, `kapro.cluster`, `kapro.app_key`, `kapro.previous_version` |
 | `kapro.actuator.apply_delta` | `pkg/kapro/actuator` | `kapro.actuator.name`, `kapro.cluster`, `kapro.actuator.desired_versions`, `kapro.actuator.applied` |
 | `kapro.actuator.observe_all` | `pkg/kapro/actuator` | `kapro.actuator.name`, `kapro.cluster`, `kapro.actuator.desired_versions`, `kapro.actuator.converged` |
-| `kapro.actuator.backend_objects` | `pkg/kapro/actuator` | `kapro.actuator.name`, `kapro.cluster`, `kapro.actuator.desired_versions`, `kapro.actuator.backend_objects` |
-| `kapro.actuator.prepare` | `pkg/kapro/actuator` | `kapro.actuator.name`, `kapro.cluster`, `kapro.actuator.desired_versions`, `kapro.actuator.dry_run`, `kapro.actuator.stage_handle`, `kapro.actuator.backend`, `kapro.actuator.app_keys` |
-| `kapro.actuator.commit` | `pkg/kapro/actuator` | `kapro.actuator.name`, `kapro.actuator.stage_handle`, `kapro.actuator.backend`, `kapro.actuator.app_keys`, `kapro.actuator.applied`, `kapro.delivery.phase` |
-| `kapro.actuator.discard` | `pkg/kapro/actuator` | `kapro.actuator.name`, `kapro.actuator.stage_handle`, `kapro.actuator.backend`, `kapro.actuator.app_keys` |
-| `kapro.spoke.delivery.tick` | `cmd/kapro-cluster-controller` | `kapro.cluster`, `kapro.desired_version_count`, `kapro.delivery.backend_ref`, `kapro.cluster.suspended`, `kapro.spoke.delivery.status_write` |
-| `kapro.spoke.delivery.reconcile` | `cmd/kapro-cluster-controller` | `kapro.cluster`, `kapro.app_key`, `kapro.version`, `kapro.delivery.backend_ref`, `kapro.delivery.backend`, `kapro.delivery.driver`, `kapro.delivery.phase`, `kapro.delivery.result`, `kapro.delivery.format`, `kapro.delivery.observed_digest`, `kapro.delivery.applied_objects` |
+| `kapro.actuator.substrate_objects` | `pkg/kapro/actuator` | `kapro.actuator.name`, `kapro.cluster`, `kapro.actuator.desired_versions`, `kapro.actuator.substrate_objects` |
+| `kapro.actuator.prepare` | `pkg/kapro/actuator` | `kapro.actuator.name`, `kapro.cluster`, `kapro.actuator.desired_versions`, `kapro.actuator.dry_run`, `kapro.actuator.stage_handle`, `kapro.actuator.substrate`, `kapro.actuator.app_keys` |
+| `kapro.actuator.commit` | `pkg/kapro/actuator` | `kapro.actuator.name`, `kapro.actuator.stage_handle`, `kapro.actuator.substrate`, `kapro.actuator.app_keys`, `kapro.actuator.applied`, `kapro.delivery.phase` |
+| `kapro.actuator.discard` | `pkg/kapro/actuator` | `kapro.actuator.name`, `kapro.actuator.stage_handle`, `kapro.actuator.substrate`, `kapro.actuator.app_keys` |
+| `kapro.spoke.delivery.tick` | `cmd/kapro-cluster-controller` | `kapro.cluster`, `kapro.desired_version_count`, `kapro.delivery.substrate_ref`, `kapro.cluster.suspended`, `kapro.spoke.delivery.status_write` |
+| `kapro.spoke.delivery.reconcile` | `cmd/kapro-cluster-controller` | `kapro.cluster`, `kapro.app_key`, `kapro.version`, `kapro.delivery.substrate_ref`, `kapro.delivery.substrate`, `kapro.delivery.driver`, `kapro.delivery.phase`, `kapro.delivery.result`, `kapro.delivery.format`, `kapro.delivery.observed_digest`, `kapro.delivery.applied_objects` |
 | gRPC client spans | plugin transport | Standard `otelgrpc` client attributes for plugin probe and runtime calls. |
 
 DecisionTrace emission spans are marked error when validation, object creation,

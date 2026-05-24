@@ -1,4 +1,4 @@
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Cluster
 metadata:
   name: checkout-canary
@@ -8,14 +8,14 @@ metadata:
 spec:
   delivery:
     mode: push
-    backendRef: flux
+    substrateRef: flux
     parameters:
       resourceSet: checkout-demo
       namespace: flux-system
       inputField: tag
       tenantField: tenant
 ---
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Cluster
 metadata:
   name: checkout-prod-eu
@@ -25,14 +25,14 @@ metadata:
 spec:
   delivery:
     mode: push
-    backendRef: flux
+    substrateRef: flux
     parameters:
       resourceSet: checkout-demo
       namespace: flux-system
       inputField: tag
       tenantField: tenant
 ---
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Cluster
 metadata:
   name: checkout-prod-us
@@ -42,7 +42,7 @@ metadata:
 spec:
   delivery:
     mode: push
-    backendRef: flux
+    substrateRef: flux
     parameters:
       resourceSet: checkout-demo
       namespace: flux-system

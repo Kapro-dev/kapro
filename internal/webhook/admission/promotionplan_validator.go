@@ -9,7 +9,7 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // PromotionPlanValidator validates Plan objects on CREATE and UPDATE.
@@ -31,7 +31,7 @@ func NewPromotionPlanValidator(decoder admission.Decoder) *PromotionPlanValidato
 
 // Handle implements admission.Handler.
 func (v *PromotionPlanValidator) Handle(_ context.Context, req admission.Request) admission.Response {
-	var promotionplan kaprov1alpha2.Plan
+	var promotionplan kaprov1alpha1.Plan
 	if err := v.decoder.DecodeRaw(req.Object, &promotionplan); err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
 	}
@@ -46,8 +46,8 @@ func (v *PromotionPlanValidator) Handle(_ context.Context, req admission.Request
 	return admission.Allowed("")
 }
 
-func validatePromotionPlan(p *kaprov1alpha2.Plan) error {
-	if err := validateStageGateExpressionRefs(p); err != nil {
+func validatePromotionPlan(p *kaprov1alpha1.Plan) error {
+	if err := validateStageExpressionRefs(p); err != nil {
 		return err
 	}
 	if err := validateMetricPresets(p); err != nil {
@@ -56,7 +56,7 @@ func validatePromotionPlan(p *kaprov1alpha2.Plan) error {
 	return validateStageDAG(p.Spec.Stages)
 }
 
-func validateStageGateExpressionRefs(p *kaprov1alpha2.Plan) error {
+func validateStageExpressionRefs(p *kaprov1alpha1.Plan) error {
 	for i, stage := range p.Spec.Stages {
 		if stage.Gate == nil || stage.Gate.ExpressionRef == "" {
 			continue
@@ -67,12 +67,12 @@ func validateStageGateExpressionRefs(p *kaprov1alpha2.Plan) error {
 		if gatePolicyHasInlineFields(stage.Gate) {
 			return fmt.Errorf("plan.spec.stages[%d].gate.expressionRef is mutually exclusive with inline gate fields", i)
 		}
-		return fmt.Errorf("plan.spec.stages[%d].gate.expressionRef is reserved until GateExpression runtime resolution is implemented; keep enforceable gates inline", i)
+		return fmt.Errorf("plan.spec.stages[%d].gate.expressionRef is reserved until external gate expression resolution is implemented; keep enforceable gates inline", i)
 	}
 	return nil
 }
 
-func gatePolicyHasInlineFields(gate *kaprov1alpha2.GatePolicySpec) bool {
+func gatePolicyHasInlineFields(gate *kaprov1alpha1.GatePolicySpec) bool {
 	if gate == nil {
 		return false
 	}
@@ -90,7 +90,7 @@ func gatePolicyHasInlineFields(gate *kaprov1alpha2.GatePolicySpec) bool {
 		gate.Gate.Verification != nil
 }
 
-func validateMetricPresets(p *kaprov1alpha2.Plan) error {
+func validateMetricPresets(p *kaprov1alpha1.Plan) error {
 	for name, preset := range p.Spec.MetricPresets {
 		if preset.Provider == "" {
 			return fmt.Errorf("plan.spec.metricPresets[%q].provider must be set", name)
@@ -122,7 +122,7 @@ func validateMetricPresets(p *kaprov1alpha2.Plan) error {
 }
 
 // validateStageDAG checks that the flat Stage DAG is a valid directed acyclic graph.
-func validateStageDAG(stages []kaprov1alpha2.Stage) error {
+func validateStageDAG(stages []kaprov1alpha1.Stage) error {
 	if len(stages) == 0 {
 		return fmt.Errorf("plan.spec.stages must contain at least one stage")
 	}
@@ -147,7 +147,7 @@ func validateStageDAG(stages []kaprov1alpha2.Stage) error {
 			if _, exists := index[dep.Stage]; !exists {
 				return fmt.Errorf("plan.spec.stages[%q].dependsOn: unknown stage %q", s.Name, dep.Stage)
 			}
-			if dep.Strategy != "" && dep.Strategy != kaprov1alpha2.StageDependencyAll && dep.Strategy != kaprov1alpha2.StageDependencyAny {
+			if dep.Strategy != "" && dep.Strategy != kaprov1alpha1.StageDependencyAll && dep.Strategy != kaprov1alpha1.StageDependencyAny {
 				return fmt.Errorf("plan.spec.stages[%q].dependsOn[%q].strategy: unsupported value %q", s.Name, dep.Stage, dep.Strategy)
 			}
 			if dep.RequiredSoakTime != nil && dep.RequiredSoakTime.Duration < 0 {
@@ -211,7 +211,7 @@ func detectCycle(nodes map[string]int, deps func(string) []string) string {
 }
 
 // stageDependencyNames extracts stage names from StageDependency for DAG traversal.
-func stageDependencyNames(deps []kaprov1alpha2.StageDependency) []string {
+func stageDependencyNames(deps []kaprov1alpha1.StageDependency) []string {
 	names := make([]string, len(deps))
 	for i, d := range deps {
 		names[i] = d.Stage
@@ -220,6 +220,6 @@ func stageDependencyNames(deps []kaprov1alpha2.StageDependency) []string {
 }
 
 // ValidatePromotionPlan is an exported test helper that exposes the internal validation logic.
-func ValidatePromotionPlan(p *kaprov1alpha2.Plan) error {
+func ValidatePromotionPlan(p *kaprov1alpha1.Plan) error {
 	return validatePromotionPlan(p)
 }

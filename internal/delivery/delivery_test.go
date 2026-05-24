@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // fakePuller serves a hand-crafted PulledArtifact, optionally erroring.
@@ -83,7 +83,7 @@ func TestDelivery_Reconcile_HappyPath(t *testing.T) {
 	if res.Err != nil {
 		t.Fatalf("err: %v", res.Err)
 	}
-	if res.Phase != string(kaprov1alpha2.DeliveryPhaseConverged) {
+	if res.Phase != string(kaprov1alpha1.DeliveryPhaseConverged) {
 		t.Fatalf("phase=%s, want Converged", res.Phase)
 	}
 	if res.Format != FormatRawYAML {
@@ -118,13 +118,13 @@ func TestDelivery_Reconcile_PullErrorIsTerminal(t *testing.T) {
 	if res.Err == nil {
 		t.Fatal("expected error")
 	}
-	if res.Phase != string(kaprov1alpha2.DeliveryPhaseFailed) {
+	if res.Phase != string(kaprov1alpha1.DeliveryPhaseFailed) {
 		t.Fatalf("phase=%s, want Failed", res.Phase)
 	}
 	if !res.LastAppliedAt.IsZero() {
 		t.Fatal("LastAppliedAt should NOT be set on pull error")
 	}
-	if res.Staging == nil || res.Staging.FailurePhase != kaprov1alpha2.DeliveryPhasePulling {
+	if res.Staging == nil || res.Staging.FailurePhase != kaprov1alpha1.DeliveryPhasePulling {
 		t.Fatalf("staging failurePhase = %+v, want Pulling", res.Staging)
 	}
 }
@@ -145,13 +145,13 @@ func TestDelivery_Reconcile_StagingFailureReportsDiagnostics(t *testing.T) {
 	if res.Err == nil {
 		t.Fatal("expected staging error")
 	}
-	if res.Phase != string(kaprov1alpha2.DeliveryPhaseFailed) {
+	if res.Phase != string(kaprov1alpha1.DeliveryPhaseFailed) {
 		t.Fatalf("phase=%s, want Failed", res.Phase)
 	}
 	if res.Staging == nil {
 		t.Fatal("staging status not populated")
 	}
-	if res.Staging.FailurePhase != kaprov1alpha2.DeliveryPhaseStaging {
+	if res.Staging.FailurePhase != kaprov1alpha1.DeliveryPhaseStaging {
 		t.Fatalf("failurePhase=%q, want Staging", res.Staging.FailurePhase)
 	}
 	if res.Staging.StagedObjects != 1 || res.Staging.StagingFailedObjects != 1 || res.Staging.CommittedObjects != 0 {
@@ -181,7 +181,7 @@ func TestDelivery_Reconcile_CommitFailureReportsDiagnostics(t *testing.T) {
 	if res.Staging == nil {
 		t.Fatal("staging status not populated")
 	}
-	if res.Staging.FailurePhase != kaprov1alpha2.DeliveryPhaseApplying {
+	if res.Staging.FailurePhase != kaprov1alpha1.DeliveryPhaseApplying {
 		t.Fatalf("failurePhase=%q, want Applying", res.Staging.FailurePhase)
 	}
 	if res.Staging.StagedObjects != 2 || res.Staging.CommittedObjects != 1 || res.Staging.CommitFailedObjects != 1 {
@@ -203,7 +203,7 @@ func TestDelivery_Reconcile_ApplyEngineSetupErrorReportsFailurePhase(t *testing.
 	if res.Staging == nil {
 		t.Fatal("staging status not populated")
 	}
-	if res.Staging.FailurePhase != kaprov1alpha2.DeliveryPhaseStaging {
+	if res.Staging.FailurePhase != kaprov1alpha1.DeliveryPhaseStaging {
 		t.Fatalf("failurePhase=%q, want Staging", res.Staging.FailurePhase)
 	}
 }
@@ -263,10 +263,10 @@ func TestDelivery_Reconcile_ZeroObjectsIsFailure(t *testing.T) {
 	if res.Err == nil {
 		t.Fatal("expected error for zero-object render")
 	}
-	if res.Phase != string(kaprov1alpha2.DeliveryPhaseFailed) {
+	if res.Phase != string(kaprov1alpha1.DeliveryPhaseFailed) {
 		t.Fatalf("phase=%s, want Failed", res.Phase)
 	}
-	if res.Staging == nil || res.Staging.FailurePhase != kaprov1alpha2.DeliveryPhaseStaging {
+	if res.Staging == nil || res.Staging.FailurePhase != kaprov1alpha1.DeliveryPhaseStaging {
 		t.Fatalf("staging = %+v, want Staging failure", res.Staging)
 	}
 }
@@ -288,7 +288,7 @@ func TestDelivery_Reconcile_PartiallyConstructedNoPanic(t *testing.T) {
 			if res.Err == nil {
 				t.Fatal("expected error")
 			}
-			if res.Phase != string(kaprov1alpha2.DeliveryPhaseFailed) {
+			if res.Phase != string(kaprov1alpha1.DeliveryPhaseFailed) {
 				t.Fatalf("phase=%s, want Failed", res.Phase)
 			}
 			if !contains(res.Err.Error(), tc.want) {

@@ -1,4 +1,4 @@
-# Kapro Substrate Parameter Spec v1alpha2
+# Kapro Substrate Parameter Spec v1alpha1
 
 This document defines the contract for typed substrate configuration in Kapro.
 It is a public extension contract, not an ADR. ADRs explain why the project
@@ -11,14 +11,14 @@ Kapro core must stay substrate-neutral. It should not import Argo CD, Flux,
 Helm, KServe, webhook, Terraform, or platform-specific API types. A substrate
 implementation owns those details through typed CRDs and a KSI implementation.
 
-The v1alpha2 contract introduces the config side first:
+The v1alpha1 contract introduces the config side first:
 
 - `SubstrateClass`: cluster-scoped class and controller binding. The
   `substrateclass` controller writes status for Kapro-owned classes; external
   substrate controllers write status for their own `controllerName`.
-- `Backend.spec.classRef`: selects a `SubstrateClass`.
-- `Backend.spec.configRef`: points at a typed substrate config object.
-- `Backend.spec.parameters`: retained as a compatibility and demo escape hatch.
+- `Substrate.spec.classRef`: selects a `SubstrateClass`.
+- `Substrate.spec.configRef`: points at a typed substrate config object.
+- `Substrate.spec.parameters`: retained as a compatibility and demo escape hatch.
 - `delivery.parameters`: retained as the app-level binding surface until typed
   binding CRDs are introduced.
 
@@ -33,15 +33,15 @@ the config contract has proved stable.
 typed config kinds and capabilities.
 
 ```yaml
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: SubstrateClass
 metadata:
-  name: argo-cd
+  name: argo
   labels:
     kapro.io/family: gitops
     kapro.io/ledger: git
 spec:
-  controllerName: kapro.io/argo-cd
+  controllerName: kapro.io/argo
   executionModes:
     default: hub-push
 status:
@@ -77,19 +77,19 @@ class.
 because admins should not be able to declare support the implementation does
 not actually have.
 
-### Backend Config Selection
+### Substrate Config Selection
 
-`Backend` remains the configured delivery instance in v1alpha2. New backends
+`Substrate` remains the configured delivery instance in v1alpha1. New substrates
 should use `classRef` plus `configRef`.
 
 ```yaml
-apiVersion: kapro.io/v1alpha2
-kind: Backend
+apiVersion: kapro.io/v1alpha1
+kind: Substrate
 metadata:
   name: prod-argo
 spec:
   classRef:
-    name: argo-cd
+    name: argo
   configRef:
     apiVersion: argocd.substrate.kapro.io/v1alpha1
     kind: ArgoCDSubstrateConfig
@@ -98,9 +98,9 @@ spec:
     mode: hub-push
 ```
 
-`Backend.spec.substrate`, `Backend.spec.driver`, `Backend.spec.adapter`, and
-`Backend.spec.runtime` remain compatibility paths during the pre-stable
-migration window.
+`Substrate.spec.substrate` and `Substrate.spec.execution` are the open,
+non-typed path. The old prototype `driver`, `adapter`, and `runtime` fields are
+not part of the 0.6 public-preview CRD.
 
 ## Typed Config CRDs
 
@@ -161,26 +161,13 @@ spec:
     namespace: kapro-system
 ```
 
-```yaml
-apiVersion: webhook.substrate.kapro.io/v1alpha1
-kind: WebhookSubstrateConfig
-metadata:
-  name: internal-deployer
-spec:
-  endpoint: https://deploy.example.com/kapro
-  method: POST
-  credentialsRef:
-    name: deployer-token
-    namespace: kapro-system
-```
-
 ## App Binding Phase
 
-For v1alpha2, app/workload mapping remains in `delivery.parameters`:
+For v1alpha1, app/workload mapping remains in `delivery.parameters`:
 
 ```yaml
 delivery:
-  backendRef: prod-argo
+  substrateRef: prod-argo
   parameters:
     application: payments-prod
     versionField: spec.source.targetRevision
@@ -196,8 +183,7 @@ field and class status for accepted binding kinds in the same release:
 
 ```yaml
 delivery:
-  substrateRef:
-    name: prod-argo
+  substrateRef: prod-argo
   bindingRef:
     apiVersion: argocd.substrate.kapro.io/v1alpha1
     kind: ArgoCDApplicationBinding
@@ -217,9 +203,9 @@ type Substrate interface {
 }
 ```
 
-KSI requests carry the resolved `SubstrateClass`, `Backend`, typed `Config`,
+KSI requests carry the resolved `SubstrateClass`, `Substrate`, typed `Config`,
 target `Cluster`, desired versions, and compatibility parameters. The typed
-`Binding` field is nil in v1alpha2 Phase 1.
+`Binding` field is nil in v1alpha1 Phase 1.
 
 Optional extensions are advertised through capabilities and Go type assertion:
 
@@ -244,10 +230,10 @@ authors.
 
 The `0.6.0` conformance gate therefore has two parts:
 
-- KSI reference class scenarios for `kubernetes-apply`, `argo-cd`, and `flux`
+- KSI reference class scenarios for `kubernetes-apply`, `argo`, `flux`, and `oci`
   prove the public request/result contract.
 - Runtime actuator/controller tests prove the current in-tree direct, Argo CD,
-  and Flux delivery paths.
+  Flux, and OCI delivery paths.
 
 Before KSI is promoted beyond alpha, each launch substrate should either expose
 a native KSI implementation or an explicit, tested bridge from the legacy
@@ -255,14 +241,14 @@ actuator path into KSI.
 
 ## Status Contract
 
-Substrate controllers should write these core `Backend.status.conditions`
+Substrate controllers should write these core `Substrate.status.conditions`
 where applicable:
 
 | Condition | Meaning |
 | --- | --- |
 | `Ready` | Overall configured substrate health. |
-| `ClassAccepted` | `Backend.spec.classRef` resolved to an accepted class. |
-| `ConfigAccepted` | `Backend.spec.configRef` resolved and matched an accepted config kind. |
+| `ClassAccepted` | `Substrate.spec.classRef` resolved to an accepted class. |
+| `ConfigAccepted` | `Substrate.spec.configRef` resolved and matched an accepted config kind. |
 | `Reachable` | The substrate endpoint or Kubernetes API path is reachable. |
 | `Authorized` | Credentials were validated or auth is not required. |
 
@@ -272,10 +258,10 @@ Argo CD binding can report Application sync and health state.
 
 ## Lifecycle Rules
 
-- Deleting a `Backend` must not cascade-delete substrate-native resources.
-  Orphan is the v1alpha2 default.
-- Deleting a `SubstrateClass` with referencing Backends must result in
-  `ClassAccepted=False` on those Backends.
+- Deleting a `Substrate` must not cascade-delete substrate-native resources.
+  Orphan is the v1alpha1 default.
+- Deleting a `SubstrateClass` with referencing Substrates must result in
+  `ClassAccepted=False` on those Substrates.
 - Kapro core reads typed config through Kubernetes dynamic clients. It must not
   import substrate-specific Go packages.
 - Substrate packages own their config CRDs, validation, controllers, docs, and
@@ -286,9 +272,9 @@ Argo CD binding can report Application sync and health state.
 - Config API group: `<substrate>.substrate.kapro.io`.
 - Config kind suffix: `SubstrateConfig` or a precise substrate name such as
   `KubernetesApplyConfig`.
-- Class name: kebab-case package name such as `argo-cd`, `kubernetes-apply`,
-  or `webhook`.
-- Controller name: domain-prefixed path such as `kapro.io/argo-cd`.
+- Class name: kebab-case package name such as `argo`, `kubernetes-apply`,
+  or `oci`.
+- Controller name: domain-prefixed path such as `kapro.io/argo`.
 
 ## Conformance
 
@@ -304,8 +290,8 @@ A conformant substrate should pass tests that verify:
   state.
 
 The conformance suite is the enforcement mechanism for this spec. The first
-`0.6.0` reference classes are `kubernetes-apply`, `argo-cd`, and `flux`.
+`0.6.0` reference classes are `kubernetes-apply`, `argo`, `flux`, and `oci`.
 The suite may start as an internal Go test contract; a public
-`kapro substrate conformance <class>` CLI is later `0.7.x` work. OCI, webhook,
+`kapro substrate conformance <class>` CLI is later `0.7.x` work. Webhook,
 pipeline, platform, and custom API classes remain valid extension families once
 they can pass the same contract.

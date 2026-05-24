@@ -5,11 +5,11 @@ lifecycle events, and language-neutral plugin contracts. The maturity level
 describes compatibility expectations for users and plugin authors; it does not
 change Kubernetes API version strings by itself.
 
-The current release line is pre-stable; `v0.5.8` is the current public preview
-release, and Kapro releases stay in the `0.x.x` series until the project
+The current release line is pre-stable; `v0.6.x` is the public-preview
+hardening line, and Kapro releases stay in the `0.x.x` series until the project
 explicitly graduates its public contracts. `v0.1.0` was the first public
 release for the full promotion-domain API, not a promise that all
-`kapro.io/v1alpha2` fields are stable. `CHANGELOG.md` and the release notes are
+`kapro.io/v1alpha1` fields are stable. `CHANGELOG.md` and the release notes are
 the binding upgrade record for each tag.
 
 Pre-stable milestones use exact `v0.x.y` names, for example `v0.2.4`,
@@ -35,14 +35,11 @@ Preview. The table below is the source of truth for the current contract level.
 
 | Surface | Path | Level |
 |---|---|---|
-| Core promotion CRDs | `api/v1alpha2` `Fleet`, `Promotion`, `PromotionRun`, `Target`, `Plan`, `Source`, `Unit`, `Cluster`, `Backend`, `SubstrateClass`, `Approval` | Alpha |
-| Reference substrate config CRDs | `api/substrate/*/v1alpha1` `ArgoCDSubstrateConfig`, `FluxSubstrateConfig`, `KubernetesApplyConfig`, `OCIBundleApplyConfig`, `WebhookSubstrateConfig` | Alpha |
-| Trigger CRD | `api/v1alpha2` `Trigger` | Preview |
-| Plugin CRD | `api/v1alpha2` `Plugin` | Preview |
-| GateExpression CRD | `api/v1alpha2` `GateExpression` | Preview; full algebra enabled in `v0.2.x` |
-| DecisionTrace CRD | `api/v1alpha2` `DecisionTrace` | Preview |
-| Agent decision APIs | `api/v1alpha2` `Policy`, `Target.status.decisionTrace`, Decision API HTTP routes | Preview |
-| Fleet auto-import CRD | `api/v1alpha2` `ClusterTemplate` | Preview; GCP and static sources are runtime features |
+| Public promotion CRDs | `api/kapro/v1alpha1` `Fleet`, `Promotion`, `Plan`, `Source`, `Cluster`, `ClusterTemplate`, `Substrate`, `SubstrateClass`, `Approval`, `Policy`, `AdapterPolicy`, `Trigger`, `Plugin` | Alpha |
+| Runtime CRDs | `api/kaproruntime/v1alpha1` `PromotionRun`, `Target`, `DecisionTrace` | Alpha; controller-owned, not for Git |
+| Reference substrate config CRDs | `api/substrate/*/v1alpha1` `ArgoCDSubstrateConfig`, `FluxSubstrateConfig`, `KubernetesApplyConfig`, `OCIBundleApplyConfig` | Alpha |
+| Agent decision APIs | `api/kapro/v1alpha1` `Policy`, `api/kaproruntime/v1alpha1` `Target.status.decisionTrace`, Decision API HTTP routes | Preview |
+| Fleet auto-import CRD | `api/kapro/v1alpha1` `ClusterTemplate` | Preview; GCP and static sources are runtime features |
 | In-process actuator interface | `pkg/actuator` | Preview |
 | In-process gate predicate interface | `pkg/kapro/gate` (`pkg/gate` compatibility alias) | Preview |
 | In-process planner interface | `pkg/planner` | Preview |
@@ -57,27 +54,26 @@ Plugin-specific compatibility, conformance labels, status conditions, and
 future contract-version deprecation rules are defined in the
 [plugin compatibility policy](../extending/plugin-compatibility-policy.md).
 
-All `v1alpha2` APIs remain below stable maturity until Kapro publishes a
+All `v1alpha1` APIs remain below stable maturity until Kapro publishes a
 stable API version. A surface can be Preview while the Kubernetes version is
-still `v1alpha2`; the table above is the source of truth for compatibility
+still `v1alpha1`; the table above is the source of truth for compatibility
 expectations.
 
 No public surface is Stable in the `v0.1.x` line.
 
 ## Stable Core Versus Preview
 
-The core runtime path is the promotion execution model: `Promotion`,
-`PromotionRun`, `Target`, `Plan`, `Cluster`, `Backend`,
-`Source`, and `Approval`. These APIs are still versioned
-`v1alpha2`, but they are the durable product center and are exercised by the
-operator runtime.
+The core runtime path is the promotion execution model: user-authored
+`Promotion`, `Plan`, `Cluster`, `Substrate`, `Source`, and `Approval`, plus
+controller-owned `PromotionRun` and `Target`. These APIs are still alpha, but
+they are the durable product center and are exercised by the operator runtime.
 
 Preview APIs are intentionally separated from that core. Inline gate
 notifications remain the active runtime path; there is no public notification
 provider/policy CRD in the KISS API. `DecisionTrace` records the durable
-controller audit stream. `Policy`, `Target.status.decisionTrace`, and the
-Decision API are opt-in surfaces for machine assistance, not required for
-deterministic promotion execution.
+controller audit stream in `runtime.kapro.io`. `Policy`,
+`Target.status.decisionTrace`, and the Decision API are opt-in surfaces for
+machine assistance, not required for deterministic promotion execution.
 `ClusterTemplate` auto-import sources are only runtime features when the
 source is implemented by the controller. GCP Fleet and static kubeconfig lists
 are implemented; AWS, Azure, RHACM, and CAPI remain preview stubs and must be
@@ -151,22 +147,21 @@ tests still include migration notes.
 
 ## Schema Compatibility Expectations
 
-Kapro includes the ADR-0011 `/convert` handler scaffold, but `v0.1.x` does not
-enable CRD conversion strategy or rely on it for any automatic upgrade path.
-Operators should therefore assume that the storage schema in a tagged release
-must be readable by that same operator version and by any downgrade version
-named in release notes.
+Kapro does not ship a conversion webhook in the 0.6 public-preview reset.
+Operators should assume that the storage schema in a tagged release must be
+readable by that same operator version and by any downgrade version named in
+release notes.
 
 There is no automatic legacy conversion for unreleased prototype objects. The
-ADR-0011 scaffold is infrastructure for future served-version transitions, not a
-compatibility promise for old prototype schemas. Users testing old branches
-should recreate objects from the generated examples instead of relying on
-controller-side migration code. The first tagged release that documents a CRD as
-Preview must include explicit migration notes before removing or renaming that
+0.6 reset is a clean break for pre-public-preview schemas, not a compatibility
+promise for old prototype objects. Users testing old branches should recreate
+objects from the generated examples instead of relying on controller-side
+migration code. Future served-version transitions need explicit conversion
+design and migration notes before removing or renaming a documented Preview
 surface.
 
-For concrete cleanup and manifest rewrite steps, see the
-[v1alpha1 to v1alpha2 migration guide](../migration/migration-v1alpha1-to-v1alpha2.md).
+For concrete cleanup and manifest rewrite steps from older prototype builds,
+see the [pre-0.6 API reset guide](../migration/pre-0.6-api-reset.md).
 
 CRD schema changes should follow these rules:
 
@@ -251,11 +246,11 @@ plugin. The path is:
 1. Implement the published proto contract.
 2. Pass the matching conformance harness.
 3. Publish tested `Plugin` manifests and operational defaults.
-4. Document backend permissions, idempotency behavior, timeout behavior, and
+4. Document substrate permissions, idempotency behavior, timeout behavior, and
    failure modes.
 5. Publish a compatibility matrix listing Kapro versions, contract versions,
-   backend versions, and conformance evidence.
+   substrate versions, and conformance evidence.
 
 Certification, when introduced, will identify plugins that meet Kapro's
 published contract and documentation requirements. It will not transfer support
-ownership of third-party backends to the Kapro core maintainers.
+ownership of third-party substrates to the Kapro core maintainers.

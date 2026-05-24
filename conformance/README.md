@@ -31,8 +31,8 @@ go run ./cmd/kapro-conformance substrate
 KSP provider and KSI substrate conformance are currently Go harnesses because
 they are in-process SDK contracts. `kapro-conformance provider` runs the same
 provider suite against Kapro's reference provider. `kapro-conformance
-substrate` runs reference scenarios for `kubernetes-apply`, `argo-cd`, and
-`flux`; custom substrates should still import
+substrate` runs reference scenarios for `kubernetes-apply`, `argo`, `flux`,
+and `oci`; custom substrates should still import
 `kapro.io/kapro/conformance/substrate` from their own tests until a public
 `kapro substrate conformance <class>` CLI is promoted.
 

@@ -3,8 +3,8 @@
 The recommended public-preview install path is the Helm chart package attached
 to the GitHub Release. It installs the CRDs, controller Deployment,
 ServiceAccount, RBAC, admission webhooks, and baseline approval service
-together. The `0.5.8` chart defaults to
-`ghcr.io/kapro-dev/kapro-operator:v0.5.8`.
+together. The `0.6.0` chart defaults to
+`ghcr.io/kapro-dev/kapro-operator:v0.6.0`.
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ SBOM attestations, and provenance before installing. See
 ## Install
 
 ```bash
-KAPRO_VERSION=0.5.8
+KAPRO_VERSION=0.6.0
 KAPRO_CHART="https://github.com/Kapro-dev/kapro/releases/download/v${KAPRO_VERSION}/kapro-operator-${KAPRO_VERSION}.tgz"
 
 helm upgrade --install kapro \
@@ -117,11 +117,12 @@ helm upgrade --install kapro \
 
 ## Core and Preview Surfaces
 
-The default install runs the ADR-0010 core controllers: `fleet`, `plan`,
-`promotion`, `promotionrun`, and `cluster`. The `target` controller is an
-implicit dependency of `promotionrun` and starts with it. Users normally author
-`Fleet`, `Source`, and `Promotion`; controllers generate or update `Cluster`,
-`Plan`, `PromotionRun`, and `Target` records.
+The default install runs the ADR-0010 core controllers plus the 0.6 substrate
+readiness controllers: `fleet`, `plan`, `promotion`, `promotionrun`, `cluster`,
+`substrateclass`, and `substrate`. The `target` controller is an implicit
+dependency of `promotionrun` and starts with it. Users normally author `Fleet`,
+`Source`, and `Promotion`; controllers generate or update `Cluster`, `Plan`,
+`PromotionRun`, and `Target` records.
 
 Preview surfaces are available for early adopters but should be enabled or
 exposed deliberately:
@@ -129,25 +130,24 @@ exposed deliberately:
 | Surface | Default | Enablement |
 |---|---|---|
 | Decision API and `Policy` | Disabled | `decisionAPI.enabled=true` and explicit Kubernetes RBAC. |
-| SubstrateClass status controller | Disabled | Add `substrateclass` to `controllers` when using `Backend.spec.classRef` and typed substrate config CRDs. |
-| Backend readiness controller | Disabled | Built-in legacy `flux`, `argo`, and `oci` Backend specs can be referenced without this controller. Generated `bootstrap generate` profiles use `classRef`; add `backend` and wait for `Backend` Ready before applying generated `Cluster` objects. |
+| SubstrateClass status controller | Enabled | Keep `substrateclass` in `controllers` when using `Substrate.spec.classRef` and typed substrate config CRDs. |
+| Substrate readiness controller | Enabled | Keep `substrate` in `controllers` and wait for `Substrate` Ready before applying generated `Cluster` objects. |
 | Approval controller | Disabled | Add `approval` to `controllers` when human approval objects should unblock gates. |
-| GateExpression controller | Disabled | Add `gateexpression` to `controllers` when preview gate composition status should be reconciled. |
 | Trigger controller | Disabled | Add `trigger` to `controllers` for autonomous artifact-driven promotions. |
 | Plugin controller | Disabled | Add `plugin` to `controllers` so `Plugin.status` readiness is reconciled. |
 | Plugin gateway runtime dispatch | Disabled | `pluginGateway.enabled=true` plus `plugin` in `controllers`, installed plugin services, and `Plugin` objects. |
 | Hub Gateway service exposure | Internal only | `hubGateway.service.enabled=true`; place Kubernetes authn/authz or an identity-aware proxy in front of production exposure. |
 | Spoke CSR bootstrap controller | Disabled | Add `cluster-bootstrap` to `controllers` and set `hubAPIURL` to the hub API server URL reachable from spokes. |
 
-For the `0.6` bootstrap profiles, use the core controllers plus
-`substrateclass` and `backend`:
+If you override `controllers`, include the default substrate readiness
+controllers:
 
 ```bash
 helm upgrade --install kapro \
   "${KAPRO_CHART}" \
   --namespace kapro-system \
   --create-namespace \
-  --set controllers='{fleet,plan,promotion,promotionrun,cluster,substrateclass,backend}'
+  --set controllers='{fleet,plan,promotion,promotionrun,cluster,substrateclass,substrate}'
 ```
 | Fleet auto-import providers | GCP and static lists implemented | Add `clustertemplate` to `controllers` when using `ClusterTemplate`; AWS, Azure, RHACM, and CAPI sources report `SourceNotImplemented` until their discoverers land. |
 | Inline gate notifications | Runtime | Notification routing is configured inside gate/stage policy; there is no separate public notification provider/policy CRD. |
@@ -157,7 +157,7 @@ map and compatibility aliases.
 
 ## Quickstart Paths
 
-Choose the smallest backend path that matches the delivery system you already
+Choose the smallest substrate path that matches the delivery system you already
 run:
 
 | Path | Use when | Example |
@@ -246,10 +246,10 @@ kind: ClusterRole
 metadata:
   name: kapro-decision-approver
 rules:
-  - apiGroups: ["kapro.io"]
+  - apiGroups: ["runtime.kapro.io"]
     resources: ["promotionruns", "targets"]
     verbs: ["get"]
-  - apiGroups: ["kapro.io"]
+  - apiGroups: ["runtime.kapro.io"]
     resources: ["targets/status"]
     verbs: ["update", "patch"]
   - apiGroups: ["kapro.io"]
@@ -266,7 +266,7 @@ to decide or override promotions.
 kubectl -n kapro-system rollout status deployment/kapro-kapro-operator
 kubectl get crd | grep kapro.io
 kubectl -n kapro-system get deploy,svc,sa
-kubectl auth can-i get promotionruns.kapro.io \
+kubectl auth can-i get promotionruns.runtime.kapro.io \
   --as=system:serviceaccount:kapro-system:kapro-kapro-operator
 ```
 
@@ -304,7 +304,7 @@ For a release image that is not the chart default:
 
 ```bash
 KAPRO_IMAGE_REPOSITORY=ghcr.io/kapro-dev/kapro-operator \
-KAPRO_IMAGE_TAG=v0.5.8 \
+KAPRO_IMAGE_TAG=v0.6.0 \
 scripts/verify-install.sh cluster
 ```
 
@@ -334,18 +334,18 @@ checkout:
 kind create cluster --name kapro-release-quickstart
 kubectl config use-context kind-kapro-release-quickstart
 KAPRO_VERIFY_CLEANUP=false scripts/verify-install.sh release-cluster
-kubectl apply -f examples/quickstart/backend-flux.yaml
+kubectl apply -f examples/quickstart/substrates/flux.yaml
 kubectl apply -f examples/quickstart/kapro.yaml
 kubectl apply -f examples/quickstart/promotion.yaml
-kubectl get promotions,promotionruns,targets
+kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
 kind delete cluster --name kapro-release-quickstart
 ```
 
 That proves the released chart can install the current public quickstart API
 shape. Full `PromotionRun=Complete` and `Target=Converged` checks are covered by
-the Kind smoke fixture below, which injects synthetic backend health.
+the Kind smoke fixture below, which injects synthetic substrate health.
 
-Heavier validation targets are available when you need backend coverage:
+Heavier validation targets are available when you need substrate coverage:
 
 ```bash
 KAPRO_CI_QUICKSTARTS=flux,argo,oci scripts/ci-kind-smoke.sh
@@ -365,11 +365,11 @@ kubectl kustomize config/default
 
 ## Upgrade
 
-!!! warning "Upgrading from v1alpha1"
-    The v1alpha1 to v1alpha2 move is a clean break. Follow the
-    [v1alpha1 to v1alpha2 migration guide](../migration/migration-v1alpha1-to-v1alpha2.md)
-    before applying v1alpha2 CRDs; the chart does not serve v1alpha1 or run
-    automatic conversion.
+!!! warning "Upgrading from prototype builds"
+    The 0.6 API is a clean public-preview reset. Follow the
+    [pre-0.6 API reset guide](../migration/pre-0.6-api-reset.md)
+    before applying 0.6 CRDs; the chart does not serve older prototype schemas
+    or run automatic conversion.
 
 Apply CRD changes first, then upgrade the chart. For the release package,
 pull and unpack the chart before applying CRDs:
@@ -410,7 +410,7 @@ For a packaged release install without a source checkout, pull the chart before
 deleting CRDs:
 
 ```bash
-helm pull https://github.com/Kapro-dev/kapro/releases/download/v0.5.8/kapro-operator-0.5.8.tgz --untar
+helm pull https://github.com/Kapro-dev/kapro/releases/download/v0.6.0/kapro-operator-0.6.0.tgz --untar
 kubectl delete -f kapro-operator/crds
 kubectl delete namespace kapro-system
 ```
@@ -448,7 +448,7 @@ kubectl get plugins.kapro.io
 ## Optional Hub Gateway
 
 The Hub Gateway is a lightweight facade for UI and CLI clients. It reads and
-creates Kapro CRDs; it does not mutate delivery backends directly. The graph
+creates Kapro CRDs; it does not mutate delivery substrates directly. The graph
 endpoint is bounded and supports `resource`, `labelSelector`, `phase`, and
 `limit` query parameters.
 

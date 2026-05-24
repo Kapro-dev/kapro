@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // Discoverer enumerates clusters from one fleet source. Implementations are
@@ -23,7 +23,7 @@ type Discoverer interface {
 	// FleetCluster's spec.provider. Kind is fixed per discoverer (gcp →
 	// gcp-fleet, rhacm → rhacm, etc.); parameters may include source
 	// identifiers that downstream actuators need (e.g. GCP project).
-	Provider() kaprov1alpha2.ClusterProvider
+	Provider() kaprov1alpha1.ClusterProvider
 
 	// SourceKind returns the short identifier echoed on
 	// FleetClusterTemplate.status.sourceKind (gcp, aws, rhacm, ...).
@@ -55,7 +55,7 @@ func IsSourceNotImplemented(err error) bool {
 // will reject these at admission time once wired (PR-7+); this function is
 // defensive so the reconciler never imports from an unintended source even
 // if a webhook bypass exists.
-func NewDiscoverer(src kaprov1alpha2.ClusterTemplateSource) (Discoverer, error) {
+func NewDiscoverer(src kaprov1alpha1.ClusterTemplateSource) (Discoverer, error) {
 	var set []string
 	if src.GCP != nil {
 		set = append(set, "gcp")
@@ -113,8 +113,8 @@ func (d *gcpFleetDiscoverer) List(ctx context.Context) ([]ClusterInfo, error) {
 	return (&GCPFleetProvider{Project: d.project}).ListClusters(ctx)
 }
 
-func (d *gcpFleetDiscoverer) Provider() kaprov1alpha2.ClusterProvider {
-	return kaprov1alpha2.ClusterProvider{
+func (d *gcpFleetDiscoverer) Provider() kaprov1alpha1.ClusterProvider {
+	return kaprov1alpha1.ClusterProvider{
 		Kind:       "gcp-fleet",
 		Parameters: map[string]string{"project": d.project},
 	}
@@ -123,11 +123,11 @@ func (d *gcpFleetDiscoverer) Provider() kaprov1alpha2.ClusterProvider {
 func (d *gcpFleetDiscoverer) SourceKind() string { return "gcp" }
 
 // staticFleetDiscoverer imports an operator-authored cluster list. It gives
-// on-prem and brownfield users a production path before cloud/RHACM/CAPI
+// on-prem and existing-GitOps users a production path before cloud/RHACM/CAPI
 // discoverers are available, while still flowing through the same
 // ClusterTemplate reconciliation contract as dynamic providers.
 type staticFleetDiscoverer struct {
-	clusters []kaprov1alpha2.StaticClusterEntry
+	clusters []kaprov1alpha1.StaticClusterEntry
 }
 
 func (d *staticFleetDiscoverer) List(_ context.Context) ([]ClusterInfo, error) {
@@ -152,8 +152,8 @@ func (d *staticFleetDiscoverer) List(_ context.Context) ([]ClusterInfo, error) {
 	return out, nil
 }
 
-func (d *staticFleetDiscoverer) Provider() kaprov1alpha2.ClusterProvider {
-	return kaprov1alpha2.ClusterProvider{Kind: "kubeconfig"}
+func (d *staticFleetDiscoverer) Provider() kaprov1alpha1.ClusterProvider {
+	return kaprov1alpha1.ClusterProvider{Kind: "kubeconfig"}
 }
 
 func (d *staticFleetDiscoverer) SourceKind() string { return "static" }

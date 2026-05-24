@@ -94,10 +94,10 @@ pre-release for the `v0.x` public preview line.
 4. Run a happy path against the released image:
 
    ```bash
-   kubectl apply -f examples/quickstart/backend-flux.yaml
+   kubectl apply -f examples/quickstart/substrates/flux.yaml
    kubectl apply -f examples/quickstart/kapro.yaml
    kubectl apply -f examples/quickstart/promotion.yaml
-   kubectl get promotions,promotionruns,targets
+   kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
    ```
 
 5. Run the Kind demo against the released image.

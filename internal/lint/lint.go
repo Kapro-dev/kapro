@@ -15,8 +15,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
-	admissionvalidation "kapro.io/kapro/internal/webhook/admission"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // Severity ranks an Issue. ERROR fails the lint; WARN is advisory
@@ -77,7 +76,6 @@ func LintFile(file string, data []byte) []Issue {
 		}
 		issues = append(issues, docIssues...)
 	}
-	issues = append(issues, lintGateExpressionBundle(file, docs)...)
 	return issues
 }
 
@@ -121,43 +119,37 @@ func lintOneDoc(data []byte) []Issue {
 	}
 	// Same apiVersion family but wrong version is still a Kapro
 	// manifest the user probably wants flagged.
-	if meta.APIVersion != "kapro.io/v1alpha2" {
+	if meta.APIVersion != "kapro.io/v1alpha1" {
 		return []Issue{{
 			Severity: SeverityWarn,
 			Kind:     meta.Kind,
 			Name:     meta.Metadata.Name,
 			Path:     "apiVersion",
-			Message:  fmt.Sprintf("expected kapro.io/v1alpha2, got %q", meta.APIVersion),
+			Message:  fmt.Sprintf("expected kapro.io/v1alpha1, got %q", meta.APIVersion),
 		}}
 	}
 
 	switch meta.Kind {
 	case "Kapro":
-		var k kaprov1alpha2.Fleet
+		var k kaprov1alpha1.Fleet
 		if err := yaml.Unmarshal(data, &k); err != nil {
 			return parseFail(meta.Kind, meta.Metadata.Name, err)
 		}
 		return tagIssues(LintKapro(&k), meta.Kind, k.Name)
 	case "Promotion":
-		var p kaprov1alpha2.Promotion
+		var p kaprov1alpha1.Promotion
 		if err := yaml.Unmarshal(data, &p); err != nil {
 			return parseFail(meta.Kind, meta.Metadata.Name, err)
 		}
 		return tagIssues(LintPromotion(&p), meta.Kind, p.Name)
 	case "Plan":
-		var pp kaprov1alpha2.Plan
+		var pp kaprov1alpha1.Plan
 		if err := yaml.Unmarshal(data, &pp); err != nil {
 			return parseFail(meta.Kind, meta.Metadata.Name, err)
 		}
 		return tagIssues(LintPromotionPlan(&pp), meta.Kind, pp.Name)
-	case "GateExpression":
-		var expr kaprov1alpha2.GateExpression
-		if err := yaml.Unmarshal(data, &expr); err != nil {
-			return parseFail(meta.Kind, meta.Metadata.Name, err)
-		}
-		return tagIssues(LintGateExpression(&expr), meta.Kind, expr.Name)
 	default:
-		// Other Kapro kinds (BackendProfile, FleetCluster, Approval,
+		// Other Kapro kinds (SubstrateProfile, FleetCluster, Approval,
 		// PromotionRun, PromotionTrigger, etc.) are out of scope for
 		// this version of the linter. Skip silently — running
 		// `kapro lint examples/**/*.yaml` should not flag manifests
@@ -189,7 +181,7 @@ func tagIssues(issues []Issue, kind, name string) []Issue {
 
 // LintKapro checks a Kapro custom resource for required fields and
 // common foot-guns. It does not validate cluster connectivity.
-func LintKapro(k *kaprov1alpha2.Fleet) []Issue {
+func LintKapro(k *kaprov1alpha1.Fleet) []Issue {
 	var out []Issue
 	if k.Name == "" {
 		out = append(out, errAt("metadata.name", "Kapro requires a name"))
@@ -206,9 +198,9 @@ func LintKapro(k *kaprov1alpha2.Fleet) []Issue {
 		out = append(out, errAt("spec.source / spec.sourceRef",
 			"only one of spec.source or spec.sourceRef may be set"))
 	}
-	if k.Spec.Delivery.BackendRef == "" {
-		out = append(out, errAt("spec.delivery.backendRef",
-			"delivery backend is required (e.g. flux, argocd)"))
+	if k.Spec.Delivery.SubstrateRef == "" {
+		out = append(out, errAt("spec.delivery.substrateRef",
+			"delivery substrate is required (e.g. flux, argocd)"))
 	}
 	if len(k.Spec.Clusters) == 0 {
 		out = append(out, warnAt("spec.clusters",
@@ -222,7 +214,7 @@ func LintKapro(k *kaprov1alpha2.Fleet) []Issue {
 }
 
 // LintPromotion checks a Promotion for required fields and shape problems.
-func LintPromotion(p *kaprov1alpha2.Promotion) []Issue {
+func LintPromotion(p *kaprov1alpha1.Promotion) []Issue {
 	var out []Issue
 	if p.Name == "" {
 		out = append(out, errAt("metadata.name", "Promotion requires a name"))
@@ -266,115 +258,10 @@ func LintPromotion(p *kaprov1alpha2.Promotion) []Issue {
 	return out
 }
 
-// LintGateExpression checks the offline shape of a GateExpression. It mirrors
-// admission rules that do not require API lookups; reference existence, cycles,
-// and referenced DELAY ancestry still require the admission webhook.
-func LintGateExpression(expr *kaprov1alpha2.GateExpression) []Issue {
-	var out []Issue
-	if expr.Name == "" {
-		out = append(out, errAt("metadata.name", "GateExpression requires a name"))
-	}
-	if err := admissionvalidation.ValidateGateExpression(expr); err != nil {
-		out = append(out, errAt(gateExpressionIssuePath(err.Error()), err.Error()))
-	}
-	return out
-}
-
-func gateExpressionIssuePath(message string) string {
-	switch {
-	case strings.Contains(message, "duration"):
-		return "spec.parameters.duration"
-	case strings.Contains(message, "threshold"):
-		return "spec.threshold"
-	case strings.Contains(message, "weights"), strings.Contains(message, "weight"):
-		return "spec.weights"
-	case strings.Contains(message, "spec.operands"):
-		return "spec.operands"
-	case strings.Contains(message, "operator"):
-		return "spec.operator"
-	default:
-		return "spec"
-	}
-}
-
-type gateExpressionLintDoc struct {
-	docIndex int
-	expr     kaprov1alpha2.GateExpression
-}
-
-func lintGateExpressionBundle(file string, docs [][]byte) []Issue {
-	byName := map[string]gateExpressionLintDoc{}
-	for i, doc := range docs {
-		if len(bytes.TrimSpace(doc)) == 0 {
-			continue
-		}
-		var meta struct {
-			APIVersion string `json:"apiVersion"`
-			Kind       string `json:"kind"`
-		}
-		if err := yaml.Unmarshal(doc, &meta); err != nil || meta.APIVersion != "kapro.io/v1alpha2" || meta.Kind != "GateExpression" {
-			continue
-		}
-		var expr kaprov1alpha2.GateExpression
-		if err := yaml.Unmarshal(doc, &expr); err != nil || expr.Name == "" {
-			continue
-		}
-		byName[expr.Name] = gateExpressionLintDoc{docIndex: i, expr: expr}
-	}
-	if len(byName) == 0 {
-		return nil
-	}
-
-	var issues []Issue
-	for name, root := range byName {
-		if path := referencedDelayLintPath(name, byName, nil, map[string]bool{}); path != "" {
-			issues = append(issues, Issue{
-				Severity: SeverityError,
-				File:     file,
-				DocIndex: root.docIndex,
-				Kind:     "GateExpression",
-				Name:     root.expr.Name,
-				Path:     "spec.operands",
-				Message:  fmt.Sprintf("expressionRef cannot reference DELAY GateExpression: %s", path),
-			})
-		}
-	}
-	return issues
-}
-
-func referencedDelayLintPath(name string, byName map[string]gateExpressionLintDoc, path []string, seen map[string]bool) string {
-	if seen[name] {
-		return ""
-	}
-	seen[name] = true
-	root, ok := byName[name]
-	if !ok {
-		return ""
-	}
-	path = append(path, name)
-	for _, operand := range root.expr.Spec.Operands {
-		if operand.ExpressionRef == "" {
-			continue
-		}
-		child, ok := byName[operand.ExpressionRef]
-		if !ok {
-			continue
-		}
-		childPath := append(append([]string{}, path...), child.expr.Name)
-		if child.expr.Spec.Operator == "DELAY" {
-			return strings.Join(childPath, "→")
-		}
-		if found := referencedDelayLintPath(child.expr.Name, byName, path, seen); found != "" {
-			return found
-		}
-	}
-	return ""
-}
-
 // LintPromotionPlan checks a Plan DAG for the most common
 // schema and structural violations (duplicate stage names, dangling
 // dependsOn references, cycles, manual gates without approvers, etc.).
-func LintPromotionPlan(pp *kaprov1alpha2.Plan) []Issue {
+func LintPromotionPlan(pp *kaprov1alpha1.Plan) []Issue {
 	var out []Issue
 	if pp.Name == "" {
 		out = append(out, errAt("metadata.name", "Plan requires a name"))
@@ -412,7 +299,7 @@ func LintPromotionPlan(pp *kaprov1alpha2.Plan) []Issue {
 			}
 		}
 		if s.Gate != nil {
-			if s.Gate.Mode == kaprov1alpha2.GateModeManual {
+			if s.Gate.Mode == kaprov1alpha1.GateModeManual {
 				if s.Gate.Approval == nil || !s.Gate.Approval.Required {
 					// Materially breaks the user's stated intent ("wait
 					// for a human") — the stage will silently auto-advance.
@@ -453,13 +340,13 @@ func LintPromotionPlan(pp *kaprov1alpha2.Plan) []Issue {
 // detectCycles runs a DFS over the stage DAG and reports the first
 // cycle found, if any. The admission webhook also blocks cycles, but
 // catching them at lint time is much cheaper.
-func detectCycles(pp *kaprov1alpha2.Plan) []Issue {
+func detectCycles(pp *kaprov1alpha1.Plan) []Issue {
 	const (
 		unseen = 0
 		open   = 1
 		closed = 2
 	)
-	stages := map[string]kaprov1alpha2.Stage{}
+	stages := map[string]kaprov1alpha1.Stage{}
 	state := map[string]int{}
 	for _, s := range pp.Spec.Stages {
 		if s.Name != "" {

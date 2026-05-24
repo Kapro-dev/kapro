@@ -8,13 +8,15 @@ import (
 	"testing"
 	"time"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/cli"
 )
 
@@ -24,8 +26,11 @@ func diagTestScheme(t *testing.T) *runtime.Scheme {
 	if err := clientgoscheme.AddToScheme(s); err != nil {
 		t.Fatalf("clientgoscheme: %v", err)
 	}
-	if err := kaprov1alpha2.AddToScheme(s); err != nil {
+	if err := kaprov1alpha1.AddToScheme(s); err != nil {
 		t.Fatalf("kapro scheme: %v", err)
+	}
+	if err := kaproruntimev1alpha1.AddToScheme(s); err != nil {
+		t.Fatalf("kapro runtime scheme: %v", err)
 	}
 	return s
 }
@@ -58,25 +63,25 @@ func TestRunDiag_PromotionNotFound(t *testing.T) {
 }
 
 func TestRunDiag_HappyPathRendersExpectedSections(t *testing.T) {
-	promo := &kaprov1alpha2.Promotion{
+	promo := &kaprov1alpha1.Promotion{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              "checkout-v1.2.3",
 			CreationTimestamp: mustTime("2026-05-19T10:00:00Z"),
 		},
-		Spec: kaprov1alpha2.PromotionSpec{
+		Spec: kaprov1alpha1.PromotionSpec{
 			FleetRef: "checkout",
 			Version:  "v1.2.3",
 		},
-		Status: kaprov1alpha2.PromotionStatus{
-			Phase: kaprov1alpha2.PromotionPhaseProgressing,
-			ActiveAttemptRef: &kaprov1alpha2.PromotionAttemptRef{
+		Status: kaprov1alpha1.PromotionStatus{
+			Phase: kaprov1alpha1.PromotionPhaseProgressing,
+			ActiveAttemptRef: &kaprov1alpha1.PromotionAttemptRef{
 				Name:    "checkout-v1.2.3-001",
 				Version: "v1.2.3",
-				Phase:   kaprov1alpha2.PromotionRunPhaseProgressing,
+				Phase:   kaprov1alpha1.PromotionRunPhaseProgressing,
 			},
-			Attempts: []kaprov1alpha2.PromotionAttemptRef{
+			Attempts: []kaprov1alpha1.PromotionAttemptRef{
 				{Name: "checkout-v1.2.3-001", Version: "v1.2.3",
-					Phase: kaprov1alpha2.PromotionRunPhaseProgressing},
+					Phase: kaprov1alpha1.PromotionRunPhaseProgressing},
 			},
 			Conditions: []metav1.Condition{{
 				Type:               "Progressing",
@@ -87,29 +92,29 @@ func TestRunDiag_HappyPathRendersExpectedSections(t *testing.T) {
 			}},
 		},
 	}
-	run := &kaprov1alpha2.PromotionRun{
+	run := &kaproruntimev1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "checkout-v1.2.3-001",
 			Labels: map[string]string{"kapro.io/promotion": "checkout-v1.2.3"},
 		},
-		Spec: kaprov1alpha2.PromotionRunSpec{Version: "v1.2.3"},
+		Spec: kaprov1alpha1.PromotionRunSpec{Version: "v1.2.3"},
 	}
-	target := &kaprov1alpha2.Target{
+	target := &kaproruntimev1alpha1.Target{
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout-v1.2.3-001-de-prod"},
-		Spec: kaprov1alpha2.TargetSpec{
+		Spec: kaprov1alpha1.TargetSpec{
 			PromotionRunRef: "checkout-v1.2.3-001",
 			Target:          "de-prod",
 			Stage:           "canary",
 			Plan:            "checkout-progressive",
 			Version:         "v1.2.3",
 		},
-		Status: kaprov1alpha2.TargetStatus{
-			TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseWaitingApproval},
+		Status: kaprov1alpha1.TargetStatus{
+			TargetExecutionState: kaprov1alpha1.TargetExecutionState{Phase: kaprov1alpha1.TargetPhaseWaitingApproval},
 		},
 	}
 	event := &corev1.Event{
 		ObjectMeta:     metav1.ObjectMeta{Name: "evt-1", Namespace: "default"},
-		InvolvedObject: corev1.ObjectReference{APIVersion: "kapro.io/v1alpha2", Kind: "Promotion", Name: "checkout-v1.2.3"},
+		InvolvedObject: corev1.ObjectReference{APIVersion: "kapro.io/v1alpha1", Kind: "Promotion", Name: "checkout-v1.2.3"},
 		Type:           corev1.EventTypeNormal,
 		Reason:         "AttemptStamped",
 		Message:        "stamped attempt 1",
@@ -152,10 +157,10 @@ func TestRunDiag_HappyPathRendersExpectedSections(t *testing.T) {
 }
 
 func TestRunDiag_JSONOutputIsStable(t *testing.T) {
-	promo := &kaprov1alpha2.Promotion{
+	promo := &kaprov1alpha1.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: "p1"},
-		Spec:       kaprov1alpha2.PromotionSpec{FleetRef: "k1", Version: "v1", Suspended: true},
-		Status:     kaprov1alpha2.PromotionStatus{Phase: kaprov1alpha2.PromotionPhasePaused},
+		Spec:       kaprov1alpha1.PromotionSpec{FleetRef: "k1", Version: "v1", Suspended: true},
+		Status:     kaprov1alpha1.PromotionStatus{Phase: kaprov1alpha1.PromotionPhasePaused},
 	}
 	c := fake.NewClientBuilder().WithScheme(diagTestScheme(t)).WithObjects(promo).Build()
 
@@ -188,11 +193,11 @@ func TestRunDiag_JSONOutputIsStable(t *testing.T) {
 }
 
 func TestComputeBlockedOn_FailedTarget(t *testing.T) {
-	promo := &kaprov1alpha2.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "p"}}
-	targets := []kaprov1alpha2.Target{{
-		Spec: kaprov1alpha2.TargetSpec{Target: "de-prod", Stage: "canary"},
-		Status: kaprov1alpha2.TargetStatus{
-			TargetExecutionState: kaprov1alpha2.TargetExecutionState{Phase: kaprov1alpha2.TargetPhaseFailed, Message: "gate timeout"},
+	promo := &kaprov1alpha1.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "p"}}
+	targets := []kaproruntimev1alpha1.Target{{
+		Spec: kaprov1alpha1.TargetSpec{Target: "de-prod", Stage: "canary"},
+		Status: kaprov1alpha1.TargetStatus{
+			TargetExecutionState: kaprov1alpha1.TargetExecutionState{Phase: kaprov1alpha1.TargetPhaseFailed, Message: "gate timeout"},
 		},
 	}}
 	got := computeBlockedOn(promo, targets)
@@ -202,14 +207,14 @@ func TestComputeBlockedOn_FailedTarget(t *testing.T) {
 }
 
 func TestFilterPromotionEvents_OnlyMatchingObjects(t *testing.T) {
-	promo := &kaprov1alpha2.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "p"}}
-	runs := []kaprov1alpha2.PromotionRun{{ObjectMeta: metav1.ObjectMeta{Name: "r1"}}}
-	targets := []kaprov1alpha2.Target{{ObjectMeta: metav1.ObjectMeta{Name: "t1"}}}
+	promo := &kaprov1alpha1.Promotion{ObjectMeta: metav1.ObjectMeta{Name: "p"}}
+	runs := []kaproruntimev1alpha1.PromotionRun{{ObjectMeta: metav1.ObjectMeta{Name: "r1"}}}
+	targets := []kaproruntimev1alpha1.Target{{ObjectMeta: metav1.ObjectMeta{Name: "t1"}}}
 	all := []corev1.Event{
-		{InvolvedObject: corev1.ObjectReference{APIVersion: "kapro.io/v1alpha2", Kind: "Promotion", Name: "p"}, Reason: "A"},
-		{InvolvedObject: corev1.ObjectReference{APIVersion: "kapro.io/v1alpha2", Kind: "PromotionRun", Name: "r1"}, Reason: "B"},
-		{InvolvedObject: corev1.ObjectReference{APIVersion: "kapro.io/v1alpha2", Kind: "Target", Name: "t1"}, Reason: "C"},
-		{InvolvedObject: corev1.ObjectReference{APIVersion: "kapro.io/v1alpha2", Kind: "Promotion", Name: "other"}, Reason: "C"},
+		{InvolvedObject: corev1.ObjectReference{APIVersion: "kapro.io/v1alpha1", Kind: "Promotion", Name: "p"}, Reason: "A"},
+		{InvolvedObject: corev1.ObjectReference{APIVersion: "runtime.kapro.io/v1alpha1", Kind: "PromotionRun", Name: "r1"}, Reason: "B"},
+		{InvolvedObject: corev1.ObjectReference{APIVersion: "runtime.kapro.io/v1alpha1", Kind: "Target", Name: "t1"}, Reason: "C"},
+		{InvolvedObject: corev1.ObjectReference{APIVersion: "kapro.io/v1alpha1", Kind: "Promotion", Name: "other"}, Reason: "C"},
 		{InvolvedObject: corev1.ObjectReference{Kind: "Pod", Name: "noise"}, Reason: "D"},
 	}
 	got := filterPromotionEvents(all, promo, runs, targets)

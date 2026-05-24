@@ -194,15 +194,16 @@ still be invoked externally, but they are not conformant Kapro substrates.
   class/config contract; it explains why that contract exists.
 - Reference substrates should continue to prove multiple families over time,
   but the `0.6.0` launch set is intentionally narrow: `kubernetes-apply`,
-  `argo-cd`, and `flux`. OCI and webhook remain valid substrate families after
-  the direct/GitOps bootstrap preview is credible.
+  `argo`, `flux`, and `oci`. Webhook/custom API delivery remains a valid
+  substrate family after a concrete actuator, status model, and conformance
+  profile exist; 0.6 should not ship empty webhook delivery CRDs.
 - The `0.6.0` launch set must pass an internal Go substrate conformance suite.
   A public `kapro substrate conformance <class>` CLI can follow in `0.7.x`
   after the reference contract has proved itself.
 - The `0.6.0` launch set is a transition state: KSI reference scenarios prove
-  the public substrate contract, while the current in-tree direct, Argo CD, and
-  Flux runtime paths are still covered by actuator/controller tests until those
-  adapters expose native KSI implementations or tested KSI bridges.
+  the public substrate contract, while the current in-tree direct, Argo CD,
+  Flux, and OCI runtime paths are still covered by actuator/controller tests
+  until those adapters expose native KSI implementations or tested KSI bridges.
 - OCI proves artifact-backed Gitless delivery, but it is not required for the
   default direct path. Helm and raw manifests should be able to work without an
   OCI registry when the selected substrate supports another source.
@@ -212,8 +213,10 @@ still be invoked externally, but they are not conformant Kapro substrates.
   adapter can preserve Kapro's authority over the Kapro-managed promotion flow.
 - Sveltos can be an optional substrate for fleet add-on and application
   delivery, but Kapro's default delivery path remains Kapro-native direct apply.
-- Custom APIs are first-class through `webhook` for simple cases and
-  domain-specific substrate packages for richer semantics.
+- Custom APIs remain first-class in the model, but 0.6 implements them through
+  domain-specific substrate packages first. A generic webhook substrate should
+  ship only after it can report deterministic status, evidence, cancellation,
+  rollback, and conformance results.
 
 ## References
 

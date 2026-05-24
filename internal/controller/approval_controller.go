@@ -13,7 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // ApprovalReconciler records an audit Event when an Approval is created or
@@ -34,7 +34,7 @@ type ApprovalReconciler struct {
 func (r *ApprovalReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	var approval kaprov1alpha2.Approval
+	var approval kaprov1alpha1.Approval
 	if err := r.Get(ctx, req.NamespacedName, &approval); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -53,9 +53,9 @@ func (r *ApprovalReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		fmt.Sprintf("approved by %s for promotionrun=%s target=%s",
 			approval.Spec.ApprovedBy, approval.Spec.PromotionRun, approval.Spec.Target))
 
-	if approval.Status.Phase != kaprov1alpha2.ApprovalPhaseRecorded || approval.Status.ObservedGeneration != approval.Generation {
+	if approval.Status.Phase != kaprov1alpha1.ApprovalPhaseRecorded || approval.Status.ObservedGeneration != approval.Generation {
 		patch := client.MergeFrom(approval.DeepCopy())
-		approval.Status.Phase = kaprov1alpha2.ApprovalPhaseRecorded
+		approval.Status.Phase = kaprov1alpha1.ApprovalPhaseRecorded
 		approval.Status.ProcessedAt = metav1.Now().UTC().Format(time.RFC3339)
 		approval.Status.ObservedGeneration = approval.Generation
 		apimeta.SetStatusCondition(&approval.Status.Conditions, metav1.Condition{
@@ -68,14 +68,14 @@ func (r *ApprovalReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		})
 		// Flux three-condition: Reconciling=False (one-shot, done), Stalled removed.
 		apimeta.SetStatusCondition(&approval.Status.Conditions, metav1.Condition{
-			Type:               kaprov1alpha2.ConditionTypeReconciling,
+			Type:               kaprov1alpha1.ConditionTypeReconciling,
 			Status:             metav1.ConditionFalse,
 			Reason:             "Recorded",
 			Message:            "approval processed",
 			ObservedGeneration: approval.Generation,
 			LastTransitionTime: metav1.Now(),
 		})
-		apimeta.RemoveStatusCondition(&approval.Status.Conditions, kaprov1alpha2.ConditionTypeStalled)
+		apimeta.RemoveStatusCondition(&approval.Status.Conditions, kaprov1alpha1.ConditionTypeStalled)
 		if err := r.Status().Patch(ctx, &approval, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("patch approval status: %w", err)
 		}
@@ -86,6 +86,6 @@ func (r *ApprovalReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 func (r *ApprovalReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kaprov1alpha2.Approval{}).
+		For(&kaprov1alpha1.Approval{}).
 		Complete(r)
 }

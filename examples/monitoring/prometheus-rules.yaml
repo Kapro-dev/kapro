@@ -39,26 +39,17 @@ spec:
         - record: kapro:slo_plugin_probe_failure_rate10m
           expr: |
             sum by (type, reason) (rate(kapro_plugin_probe_results_total{result!="success"}[10m]))
-        - record: kapro:slo_fleetdriftreport_non_current
-          expr: |
-            sum by (report, phase) (kapro_fleetdriftreport_phase{phase!="Current"} == 1)
-        - record: kapro:slo_fleetdriftreport_drifted_targets
-          expr: |
-            kapro_fleetdriftreport_targets{state="drifted"}
-        - record: kapro:slo_fleetdriftreport_drifted_backend_objects
-          expr: |
-            kapro_fleetdriftreport_backend_objects{state="drifted"}
         - record: kapro:slo_spoke_delivery_error_rate10m
           expr: |
-            sum by (cluster, backend) (rate(kapro_spoke_delivery_reconciles_total{result="error"}[10m]))
+            sum by (cluster, substrate) (rate(kapro_spoke_delivery_reconciles_total{result="error"}[10m]))
         - record: kapro:slo_spoke_delivery_staging_error_rate10m
           expr: |
-            sum by (cluster, backend, phase) (rate(kapro_spoke_delivery_staging_results_total{result="error"}[10m]))
+            sum by (cluster, substrate, phase) (rate(kapro_spoke_delivery_staging_results_total{result="error"}[10m]))
         - record: kapro:slo_spoke_delivery_p95_seconds10m
           expr: |
             histogram_quantile(
               0.95,
-              sum by (cluster, backend, le) (rate(kapro_spoke_delivery_reconcile_duration_seconds_bucket[10m]))
+              sum by (cluster, substrate, le) (rate(kapro_spoke_delivery_reconcile_duration_seconds_bucket[10m]))
             )
     - name: kapro.controller
       rules:
@@ -132,48 +123,6 @@ spec:
             summary: "Kapro CloudEvents sink dispatch p99 is high"
             description: "CloudEvents sink dispatch p99 has been above 5 seconds for 10 minutes. Check sink endpoint health, retries, and lifecycle hook backoff."
             runbook: "docs/operations/operations.md#first-response"
-    - name: kapro.drift
-      rules:
-        - alert: KaproFleetDriftDetected
-          expr: |
-            kapro_fleetdriftreport_phase{phase="Drifted"} == 1
-          for: 30m
-          labels:
-            severity: warning
-          annotations:
-            summary: "Kapro drift report {{ $labels.report }} has sustained drift"
-            description: "FleetDriftReport {{ $labels.report }} has remained Drifted for 30 minutes. Inspect status.summary and status.targets, then check backend object evidence and Cluster status."
-            runbook: "docs/operations/operations.md#runbook-fleet-drift"
-        - alert: KaproFleetDriftSignalsIncomplete
-          expr: |
-            kapro_fleetdriftreport_phase{phase="Unknown"} == 1
-          for: 20m
-          labels:
-            severity: warning
-          annotations:
-            summary: "Kapro drift report {{ $labels.report }} has incomplete signals"
-            description: "FleetDriftReport {{ $labels.report }} has remained Unknown for 20 minutes. A Cluster may be missing, stale, or not reporting current versions."
-            runbook: "docs/operations/operations.md#runbook-fleet-drift"
-        - alert: KaproFleetDriftReportFailed
-          expr: |
-            kapro_fleetdriftreport_phase{phase="Failed"} == 1
-          for: 10m
-          labels:
-            severity: critical
-          annotations:
-            summary: "Kapro drift report {{ $labels.report }} is failed"
-            description: "FleetDriftReport {{ $labels.report }} has remained Failed for 10 minutes. One or more targets or delivery loops report failure."
-            runbook: "docs/operations/operations.md#runbook-fleet-drift"
-        - alert: KaproFleetDriftReportPending
-          expr: |
-            kapro_fleetdriftreport_phase{phase="Pending"} == 1
-          for: 2h
-          labels:
-            severity: warning
-          annotations:
-            summary: "Kapro drift report {{ $labels.report }} is pending for too long"
-            description: "FleetDriftReport {{ $labels.report }} has remained Pending for 2 hours. Check rollout progress and whether Targets are still converging."
-            runbook: "docs/operations/operations.md#runbook-fleet-drift"
     - name: kapro.spokes
       rules:
         - alert: KaproSpokeDeliveryErrors
@@ -184,7 +133,7 @@ spec:
             severity: warning
           annotations:
             summary: "Kapro spoke {{ $labels.cluster }} delivery errors detected"
-            description: "Cluster {{ $labels.cluster }} backend {{ $labels.backend }} has had delivery reconcile errors for 15 minutes."
+            description: "Cluster {{ $labels.cluster }} substrate {{ $labels.substrate }} has had delivery reconcile errors for 15 minutes."
             runbook: "docs/operations/operations.md#runbook-spoke-delivery"
         - alert: KaproSpokeDeliveryStagingErrors
           expr: |
@@ -194,7 +143,7 @@ spec:
             severity: warning
           annotations:
             summary: "Kapro spoke {{ $labels.cluster }} {{ $labels.phase }} failures detected"
-            description: "Cluster {{ $labels.cluster }} backend {{ $labels.backend }} has had OCI staged delivery {{ $labels.phase }} failures for 10 minutes."
+            description: "Cluster {{ $labels.cluster }} substrate {{ $labels.substrate }} has had OCI staged delivery {{ $labels.phase }} failures for 10 minutes."
             runbook: "docs/operations/operations.md#runbook-spoke-delivery"
         - alert: KaproSpokeDeliveryLatencyHigh
           expr: |
@@ -204,7 +153,7 @@ spec:
             severity: warning
           annotations:
             summary: "Kapro spoke {{ $labels.cluster }} delivery p95 is high"
-            description: "Cluster {{ $labels.cluster }} backend {{ $labels.backend }} delivery reconcile p95 has been above 30 seconds for 20 minutes."
+            description: "Cluster {{ $labels.cluster }} substrate {{ $labels.substrate }} delivery reconcile p95 has been above 30 seconds for 20 minutes."
             runbook: "docs/operations/operations.md#runbook-spoke-delivery"
     - name: kapro.plugins
       rules:

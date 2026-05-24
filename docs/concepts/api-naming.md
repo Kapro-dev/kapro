@@ -3,19 +3,19 @@
 Kapro's public delivery API separates class, configured instance, and
 execution topology.
 
-The preferred v1alpha2 shape is:
+The preferred v1alpha1 shape is:
 
 | Field | Meaning |
 | --- | --- |
-| `Backend.spec.classRef.name` | The cluster-scoped `SubstrateClass` selected by this backend instance. |
-| `Backend.spec.configRef` | A typed substrate-owned config object such as `ArgoCDSubstrateConfig` or `KubernetesApplyConfig`. |
-| `Backend.spec.execution.mode` | Where and how delivery runs. |
+| `Substrate.spec.classRef.name` | The cluster-scoped `SubstrateClass` selected by this substrate instance. |
+| `Substrate.spec.configRef` | A typed substrate-owned config object such as `ArgoCDSubstrateConfig` or `KubernetesApplyConfig`. |
+| `Substrate.spec.execution.mode` | Where and how delivery runs. |
 
 Example:
 
 ```yaml
-apiVersion: kapro.io/v1alpha2
-kind: Backend
+apiVersion: kapro.io/v1alpha1
+kind: Substrate
 metadata:
   name: local-direct
 spec:
@@ -46,8 +46,8 @@ The older open-string shape remains accepted during the migration window:
 Compatibility example:
 
 ```yaml
-apiVersion: kapro.io/v1alpha2
-kind: Backend
+apiVersion: kapro.io/v1alpha1
+kind: Substrate
 metadata:
   name: hello-world
 spec:
@@ -75,16 +75,15 @@ small demos, and migration.
 Kapro uses one enum instead of separate `location` and `mode` fields because
 combinations such as "hub pulls" are not meaningful for the public API.
 
-## Deprecated Compatibility Fields
+## Removed Prototype Fields
 
-Older manifests may still use:
+Kapro 0.6 removes the old prototype fields:
 
-| Deprecated field | New field |
+| Removed field | 0.6 field |
 | --- | --- |
 | `spec.driver` | `spec.substrate.kind` |
 | `spec.adapter` | `spec.substrate.actuator` |
 | `spec.runtime` | `spec.execution.mode` |
 
-Both shapes are accepted during the v0.x migration window, but one object must
-not set both shapes. The deprecated fields are scheduled for removal in
-`v0.5.20`.
+New manifests must use the 0.6 fields. This is a pre-public-preview reset, so
+Kapro does not carry both field shapes in the public CRD.

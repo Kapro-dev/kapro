@@ -15,7 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
 )
 
 const (
@@ -23,7 +23,7 @@ const (
 	SigningKeyIDEnv   = "KAPRO_DECISIONTRACE_SIGNING_KEY_ID"
 
 	signatureAlgorithmEd25519 = "Ed25519"
-	signatureContext          = "kapro.io/DecisionTrace/v1alpha2\n"
+	signatureContext          = "kapro.io/DecisionTrace/v1alpha1\n"
 )
 
 // Signature is a detached signature over a canonical DecisionTrace spec.
@@ -36,7 +36,7 @@ type Signature struct {
 
 // Signer signs canonical DecisionTrace spec payloads.
 type Signer interface {
-	SignDecisionTrace(ctx context.Context, spec kaprov1alpha2.DecisionTraceSpec) (Signature, error)
+	SignDecisionTrace(ctx context.Context, spec kaproruntimev1alpha1.DecisionTraceSpec) (Signature, error)
 }
 
 // Ed25519Signer signs DecisionTrace records with a local Ed25519 private key.
@@ -57,7 +57,7 @@ func NewEd25519Signer(keyID string, privateKey ed25519.PrivateKey) (Ed25519Signe
 }
 
 // SignDecisionTrace signs the canonical representation of spec.
-func (s Ed25519Signer) SignDecisionTrace(_ context.Context, spec kaprov1alpha2.DecisionTraceSpec) (Signature, error) {
+func (s Ed25519Signer) SignDecisionTrace(_ context.Context, spec kaproruntimev1alpha1.DecisionTraceSpec) (Signature, error) {
 	payload, digest, err := CanonicalPayload(spec)
 	if err != nil {
 		return Signature{}, err
@@ -71,7 +71,7 @@ func (s Ed25519Signer) SignDecisionTrace(_ context.Context, spec kaprov1alpha2.D
 }
 
 // VerifyEd25519 verifies a detached DecisionTrace signature.
-func VerifyEd25519(spec kaprov1alpha2.DecisionTraceSpec, sig Signature, publicKey ed25519.PublicKey) error {
+func VerifyEd25519(spec kaproruntimev1alpha1.DecisionTraceSpec, sig Signature, publicKey ed25519.PublicKey) error {
 	if sig.Algorithm != signatureAlgorithmEd25519 {
 		return fmt.Errorf("unsupported decision trace signature algorithm %q", sig.Algorithm)
 	}
@@ -97,7 +97,7 @@ func VerifyEd25519(spec kaprov1alpha2.DecisionTraceSpec, sig Signature, publicKe
 
 // CanonicalPayload returns the stable JSON payload and sha256 digest used for
 // signing. It intentionally excludes Kubernetes metadata and status.
-func CanonicalPayload(spec kaprov1alpha2.DecisionTraceSpec) ([]byte, string, error) {
+func CanonicalPayload(spec kaproruntimev1alpha1.DecisionTraceSpec) ([]byte, string, error) {
 	payload, err := json.Marshal(spec)
 	if err != nil {
 		return nil, "", fmt.Errorf("marshal canonical decision trace payload: %w", err)
@@ -176,8 +176,8 @@ func LoadEd25519PublicKeyFile(path string) (ed25519.PublicKey, error) {
 	return nil, fmt.Errorf("decision trace public key must be Ed25519")
 }
 
-func statusForSignature(sig Signature) kaprov1alpha2.DecisionTraceStatus {
-	return kaprov1alpha2.DecisionTraceStatus{
+func statusForSignature(sig Signature) kaproruntimev1alpha1.DecisionTraceStatus {
+	return kaproruntimev1alpha1.DecisionTraceStatus{
 		Signed:             true,
 		SignatureAlgorithm: sig.Algorithm,
 		SignatureKeyID:     sig.KeyID,

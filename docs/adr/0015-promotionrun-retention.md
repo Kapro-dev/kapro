@@ -1,7 +1,11 @@
 # ADR-0015: PromotionRun Retention
 
 ## Status
-Accepted
+Superseded in part by [ADR-0018](0018-public-runtime-api-split.md)
+
+ADR-0018 moves `PromotionRun` into `runtime.kapro.io/v1alpha1`. Retention
+semantics below still apply to the runtime CRD; file-path and API-version
+references are historical.
 
 ## Context
 

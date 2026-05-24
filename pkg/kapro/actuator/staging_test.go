@@ -11,7 +11,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 type stagedActuator struct {
@@ -24,15 +24,15 @@ func (a stagedActuator) Prepare(context.Context, StageRequest) (StageHandle, err
 		return StageHandle{}, a.prepareErr
 	}
 	return StageHandle{
-		ID:      "stage-1",
-		Backend: kaprov1alpha2.BackendDriverOCI,
-		AppKeys: []string{"api", "web"},
-		Expiry:  metav1.Now(),
+		ID:        "stage-1",
+		Substrate: kaprov1alpha1.SubstrateDriverOCI,
+		AppKeys:   []string{"api", "web"},
+		Expiry:    metav1.Now(),
 	}, nil
 }
 
 func (a stagedActuator) Commit(context.Context, StageHandle) (CommitResult, error) {
-	return CommitResult{Applied: 2, Phase: kaprov1alpha2.DeliveryPhaseConverged}, nil
+	return CommitResult{Applied: 2, Phase: kaprov1alpha1.DeliveryPhaseConverged}, nil
 }
 
 func (a stagedActuator) Discard(context.Context, StageHandle) error {
@@ -48,7 +48,7 @@ func TestAsTwoPhaseDetectsExtension(t *testing.T) {
 		t.Fatal("stagedActuator did not report TwoPhaseStaging support")
 	}
 	handle, err := staging.Prepare(context.Background(), StageRequest{
-		Cluster:         &kaprov1alpha2.Cluster{ObjectMeta: objectMeta("cluster-a")},
+		Cluster:         &kaprov1alpha1.Cluster{ObjectMeta: objectMeta("cluster-a")},
 		DesiredVersions: map[string]string{"api": "1.2.3"},
 	})
 	if err != nil {
@@ -72,7 +72,7 @@ func TestWithTracingPreservesTwoPhaseStaging(t *testing.T) {
 		t.Fatal("WithTracing dropped TwoPhaseStaging support")
 	}
 	handle, err := staging.Prepare(context.Background(), StageRequest{
-		Cluster:         &kaprov1alpha2.Cluster{ObjectMeta: objectMeta("cluster-a")},
+		Cluster:         &kaprov1alpha1.Cluster{ObjectMeta: objectMeta("cluster-a")},
 		DesiredVersions: map[string]string{"api": "1.2.3", "web": "2.0.0"},
 		DryRun:          true,
 	})

@@ -8,7 +8,7 @@ inventory, health, drift correction, and workload rollout. Kapro adds `Fleet`,
 `Source`, `Plan`, and `Promotion` intent around the Flux estate.
 
 The migration path is observe, review, then adopt. Discovery generates a
-read-only `Backend`, inferred `Source` units, and review reports. Adoption
+read-only `Substrate`, inferred `Source` units, and review reports. Adoption
 should only enable the specific version writes the owning team has reviewed.
 
 ## Repository Shape
@@ -22,13 +22,13 @@ platform-gitops/
     kustomizations/
     helmreleases/
   fleets/
-    backends/checkout-observe.yaml
+    substrates/checkout-observe.yaml
     sources/checkout.yaml
     plans/checkout.yaml
     promotions/
 ```
 
-Greenfield users can still use `kapro init --backend flux`. Existing-estate
+Greenfield users can still use `kapro init --substrate flux`. Existing-estate
 users should label existing Flux objects and add only the Kapro metadata needed
 for promotion.
 
@@ -88,11 +88,11 @@ kapro discover flux https://github.com/example/platform.git \
 Apply the observe profile:
 
 ```bash
-kubectl apply -f ./kapro-connect/backends/checkout-observe.yaml
-kubectl get backend checkout -o yaml
+kubectl apply -f ./kapro-connect/substrates/checkout-observe.yaml
+kubectl get substrate checkout -o yaml
 ```
 
-Check `Backend.status.selectedObjects`, `discovery/review-summary.yaml`,
+Check `Substrate.status.selectedObjects`, `discovery/review-summary.yaml`,
 `discovery/flux-discovery.yaml`, and `discovery/kapro-git-map.yaml` before
 enabling adoption. Observe mode does not patch Flux objects.
 
@@ -117,20 +117,20 @@ fields, not a universal promotion version. Use the referenced source object,
 the Kustomize image file, or an explicit field you add to `Source`.
 
 ```yaml
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Source
 metadata:
   name: checkout
 spec:
-  backendRef: checkout
+  substrateRef: checkout
   units:
     - name: api
-      backendKind: GitYAMLField
+      substrateKind: GitYAMLField
       namespace: flux-system
       sourcePath: flux/helmreleases/api.yaml
       versionField: spec.chart.spec.version
     - name: web
-      backendKind: KustomizeImage
+      substrateKind: KustomizeImage
       namespace: flux-system
       sourcePath: apps/web/kustomization.yaml
       versionField: ghcr.io/example/web
@@ -139,7 +139,7 @@ spec:
 The exact field depends on how the Flux repo models versions. Generated units
 with `confidence: needs-review` should be edited or removed before adoption.
 The canonical list of automatic, skipped, and review-required patterns is
-[Backends](../concepts/backends.md).
+[Substrates](../concepts/substrates.md).
 For concrete failure modes and editing guidance, see
 [Discovery Troubleshooting](discovery-troubleshooting.md).
 
@@ -154,7 +154,7 @@ Switch to `managementPolicy: Adopt` only when:
 
 Flux continues to reconcile the resulting desired state. Kapro does not write
 repository Secrets, workload manifests, traffic resources, or health status.
-`Adopt` only changes what the backend is allowed to patch; rollout order still
+`Adopt` only changes what the substrate is allowed to patch; rollout order still
 comes from the `Plan`, and each rollout starts from a reviewed `Promotion`.
 
 ## Step 5: Promote
@@ -163,7 +163,7 @@ Create a `Promotion` for one or more units. The controller stamps immutable
 `PromotionRun` attempts from that intent:
 
 ```yaml
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Promotion
 metadata:
   name: checkout-2026-05-15

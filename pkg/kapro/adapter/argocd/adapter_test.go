@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	kaproadapter "kapro.io/kapro/pkg/kapro/adapter"
 	"kapro.io/kapro/pkg/kapro/adapter/argocd"
 )
@@ -19,10 +19,10 @@ type objectShape struct {
 func TestModelDescribesArgoDiscoveryTopology(t *testing.T) {
 	model := argocd.Model()
 
-	if model.Driver != kaprov1alpha2.BackendDriverArgo {
+	if model.Driver != kaprov1alpha1.SubstrateDriverArgo {
 		t.Fatalf("driver = %q, want argo", model.Driver)
 	}
-	if model.Runtime != kaprov1alpha2.BackendRuntimeHub {
+	if model.Runtime != kaprov1alpha1.SubstrateRuntimeHub {
 		t.Fatalf("runtime = %q, want Hub", model.Runtime)
 	}
 	if model.DefaultNamespace != "argocd" {
@@ -53,7 +53,7 @@ func TestDiscoverReturnsArgoModeledResult(t *testing.T) {
 	if !result.Ready || result.Reason != "DiscoveryModeled" {
 		t.Fatalf("discovery readiness = %t/%q, want ready DiscoveryModeled", result.Ready, result.Reason)
 	}
-	if result.Driver != kaprov1alpha2.BackendDriverArgo || result.Runtime != kaprov1alpha2.BackendRuntimeHub {
+	if result.Driver != kaprov1alpha1.SubstrateDriverArgo || result.Runtime != kaprov1alpha1.SubstrateRuntimeHub {
 		t.Fatalf("driver/runtime = %q/%q, want argo/Hub", result.Driver, result.Runtime)
 	}
 	if result.DiscoveredApplications != 5 {
@@ -70,21 +70,21 @@ func TestDiscoverReturnsArgoModeledResult(t *testing.T) {
 	assertObjectShapes(t, "unsupported", result.UnsupportedPatterns, []objectShape{
 		{apiVersion: "argoproj.io/v1alpha1", kind: "Application", pattern: "app-of-apps-root", versionPath: "spec.source.targetRevision"},
 	})
-	if len(result.BackendObjectStatusExamples) != len(result.SelectedObjects) {
-		t.Fatalf("backend examples = %d, want %d", len(result.BackendObjectStatusExamples), len(result.SelectedObjects))
+	if len(result.SubstrateObjectStatusExamples) != len(result.SelectedObjects) {
+		t.Fatalf("substrate examples = %d, want %d", len(result.SubstrateObjectStatusExamples), len(result.SelectedObjects))
 	}
-	for i, example := range result.BackendObjectStatusExamples {
+	for i, example := range result.SubstrateObjectStatusExamples {
 		selected := result.SelectedObjects[i]
 		if example.APIVersion != selected.APIVersion || example.Kind != selected.Kind {
 			t.Fatalf("example[%d] = %#v, selected = %#v", i, example, selected)
 		}
-		if example.Phase != string(kaprov1alpha2.DeliveryPhasePending) || example.Message != selected.Reason {
+		if example.Phase != string(kaprov1alpha1.DeliveryPhasePending) || example.Message != selected.Reason {
 			t.Fatalf("example[%d] phase/message = %q/%q", i, example.Phase, example.Message)
 		}
 	}
 }
 
-func assertObjectShapes(t *testing.T, name string, got []kaprov1alpha2.DiscoveredBackendObject, want []objectShape) {
+func assertObjectShapes(t *testing.T, name string, got []kaprov1alpha1.DiscoveredSubstrateObject, want []objectShape) {
 	t.Helper()
 	if len(got) != len(want) {
 		t.Fatalf("%s objects = %d, want %d: %#v", name, len(got), len(want), got)

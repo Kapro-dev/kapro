@@ -65,7 +65,7 @@ The demo manifests are split by role:
 - `checkout-prod-eu`
 - `checkout-prod-us`
 
-Each target uses `spec.delivery.mode: push` with `backendRef: flux`, pointed at
+Each target uses `spec.delivery.mode: push` with `substrateRef: flux`, pointed at
 the local fixture `ResourceSet` named `checkout-demo` through
 `spec.delivery.parameters.resourceSet`.
 
@@ -87,7 +87,7 @@ keeps the demo deterministic because its approval names are precomputed.
 ## Observe
 
 ```bash
-kubectl --context kind-kapro-kind-demo get promotionruns,targets,clusters
+kubectl --context kind-kapro-kind-demo get promotionruns.runtime.kapro.io,targets.runtime.kapro.io,clusters.kapro.io
 kubectl --context kind-kapro-kind-demo get promotionrun checkout-kind -o yaml
 kubectl --context kind-kapro-kind-demo get targets -o yaml
 kubectl --context kind-kapro-kind-demo -n flux-system get resourceset checkout-demo -o yaml
@@ -106,7 +106,7 @@ to advance.
   workloads.
 - `Plugin` objects point at static demo endpoints. The plugin
   readiness controller is expected to mark them not ready unless you run
-  matching gRPC plugin servers. The built-in planner, gates, and Flux backend
+  matching gRPC plugin servers. The built-in planner, gates, and Flux substrate
   adapter drive the rollout.
 - The `Trigger` is suspended and dry-run because the demo does not
   start a local OCI registry or signature verifier.

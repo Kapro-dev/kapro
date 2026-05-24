@@ -1,0 +1,32 @@
+apiVersion: kapro.io/v1alpha1
+kind: SubstrateClass
+metadata:
+  name: flux
+  labels:
+    kapro.io/family: gitops
+    kapro.io/ledger: git
+spec:
+  controllerName: kapro.io/flux
+  executionModes:
+    default: spoke-pull
+---
+apiVersion: flux.substrate.kapro.io/v1alpha1
+kind: FluxSubstrateConfig
+metadata:
+  name: flux
+spec:
+  namespace: flux-system
+---
+apiVersion: kapro.io/v1alpha1
+kind: Substrate
+metadata:
+  name: flux
+spec:
+  classRef:
+    name: flux
+  configRef:
+    apiVersion: flux.substrate.kapro.io/v1alpha1
+    kind: FluxSubstrateConfig
+    name: flux
+  execution:
+    mode: spoke-pull

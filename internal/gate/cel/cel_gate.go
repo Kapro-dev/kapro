@@ -26,7 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	pkggate "kapro.io/kapro/pkg/gate"
 )
 
@@ -63,7 +63,7 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 	}
 
 	// Resolve the FleetCluster object for context variables.
-	var mcObj kaprov1alpha2.Cluster
+	var mcObj kaprov1alpha1.Cluster
 	if req.Context != nil && req.Context.Target != "" && g.Client != nil {
 		if err := g.Client.Get(ctx, client.ObjectKey{Name: req.Context.Target}, &mcObj); err != nil {
 			log.Info("cel gate: could not fetch FleetCluster, proceeding with empty cluster context", "name", req.Context.Target)
@@ -78,7 +78,7 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 	passed, msg, err := evaluate(expr, activation)
 	if err != nil {
 		return pkggate.Result{
-			Phase:   kaprov1alpha2.GatePhaseFailed,
+			Phase:   kaprov1alpha1.GatePhaseFailed,
 			Message: fmt.Sprintf("CEL evaluation error: %v", err),
 			Evidence: []pkggate.Evidence{{
 				Type:   "cel",
@@ -90,7 +90,7 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 
 	if passed {
 		return pkggate.Result{
-			Phase:   kaprov1alpha2.GatePhasePassed,
+			Phase:   kaprov1alpha1.GatePhasePassed,
 			Message: fmt.Sprintf("CEL expression passed: %s", expr),
 			Evidence: []pkggate.Evidence{{
 				Type:          "cel",
@@ -102,7 +102,7 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 	}
 
 	return pkggate.Result{
-		Phase:   kaprov1alpha2.GatePhaseFailed,
+		Phase:   kaprov1alpha1.GatePhaseFailed,
 		Message: fmt.Sprintf("CEL expression failed: %s — %s", expr, msg),
 		Evidence: []pkggate.Evidence{{
 			Type:          "cel",
@@ -114,7 +114,7 @@ func (g *Gate) Evaluate(ctx context.Context, req pkggate.Request) (pkggate.Resul
 }
 
 // buildActivation constructs the CEL variable map from resolved args + cluster + gate context.
-func buildActivation(args map[string]string, mc *kaprov1alpha2.Cluster, gateCtx *pkggate.Context) (map[string]any, error) {
+func buildActivation(args map[string]string, mc *kaprov1alpha1.Cluster, gateCtx *pkggate.Context) (map[string]any, error) {
 	// args: map[string]string — directly accessible as args.key
 	argsMap := map[string]any{}
 	for k, v := range args {

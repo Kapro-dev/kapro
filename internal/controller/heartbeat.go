@@ -5,13 +5,15 @@ import (
 	"fmt"
 	"time"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 const (
@@ -56,19 +58,19 @@ func heartbeatLeaseName(clusterName string) string {
 // dashboards and runbooks but are no longer load-bearing.
 func (r *TargetReconciler) requireFreshHeartbeat(
 	ctx context.Context,
-	promotionrun *kaprov1alpha2.PromotionRun,
-	target *kaprov1alpha2.TargetExecutionState,
-	mc *kaprov1alpha2.Cluster,
+	promotionrun *kaproruntimev1alpha1.PromotionRun,
+	target *kaprov1alpha1.TargetExecutionState,
+	mc *kaprov1alpha1.Cluster,
 ) (ctrl.Result, bool, error) {
 	_ = ctx // ctx retained for future use (status patches, list calls)
-	if mc.Spec.Delivery.Mode != kaprov1alpha2.DeliveryModePull {
+	if mc.Spec.Delivery.Mode != kaprov1alpha1.DeliveryModePull {
 		target.HeartbeatStaleSince = ""
 		target.HeartbeatStaleCount = 0
 		return ctrl.Result{}, true, nil
 	}
 
 	now := time.Now().UTC()
-	ready := apimeta.FindStatusCondition(mc.Status.Conditions, kaprov1alpha2.ConditionTypeReady)
+	ready := apimeta.FindStatusCondition(mc.Status.Conditions, kaprov1alpha1.ConditionTypeReady)
 	switch {
 	case ready != nil && ready.Status == metav1.ConditionTrue:
 		// Heartbeat fresh per the reconciler. Clear per-target staleness state.
@@ -76,7 +78,7 @@ func (r *TargetReconciler) requireFreshHeartbeat(
 		target.HeartbeatStaleCount = 0
 		return ctrl.Result{}, true, nil
 
-	case ready != nil && ready.Status == metav1.ConditionFalse && ready.Reason == kaprov1alpha2.ReasonUnreachable:
+	case ready != nil && ready.Status == metav1.ConditionFalse && ready.Reason == kaprov1alpha1.ReasonUnreachable:
 		target.HeartbeatStaleCount++
 		if target.HeartbeatStaleSince == "" {
 			target.HeartbeatStaleSince = now.Format(time.RFC3339)

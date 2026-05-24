@@ -22,8 +22,8 @@ spec:
     - jsonPath: .spec.adapter
       name: Adapter
       type: string
-    - jsonPath: .spec.backendRef
-      name: Backend
+    - jsonPath: .spec.substrateRef
+      name: Substrate
       type: string
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
@@ -34,7 +34,7 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    name: v1alpha2
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         properties:
@@ -56,31 +56,26 @@ spec:
           metadata:
             type: object
           spec:
-            description: AdapterPolicySpec configures continuous brownfield adapter
-              discovery.
+            description: AdapterPolicySpec configures continuous existing-substrate
+              adapter discovery.
             properties:
               adapter:
                 description: |-
-                  Adapter names the adapter expected for BackendRef, for example argo-cd
-                  or flux. The controller resolves the backend driver through the public
+                  Adapter names the adapter expected for SubstrateRef, for example argo
+                  or flux. The controller resolves the substrate driver through the public
                   adapter registry and fails closed when this value does not match the
-                  referenced Backend's adapter.
-                minLength: 1
-                type: string
-              backendRef:
-                description: BackendRef names the Backend profile this policy keeps
-                  in sync.
+                  referenced Substrate's adapter.
                 minLength: 1
                 type: string
               dryRun:
                 description: |-
-                  DryRun validates the policy and referenced Backend without invoking
+                  DryRun validates the policy and referenced Substrate without invoking
                   adapter discovery.
                 type: boolean
               selector:
                 description: |-
-                  Selector further narrows Backend.spec.discovery.selector for this
-                  continuous adoption policy. It is ANDed with the Backend selector before
+                  Selector further narrows Substrate.spec.discovery.selector for this
+                  continuous adoption policy. It is ANDed with the Substrate selector before
                   reaching the adapter.
                 properties:
                   matchExpressions:
@@ -126,6 +121,11 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
+              substrateRef:
+                description: SubstrateRef names the Substrate profile this policy
+                  keeps in sync.
+                minLength: 1
+                type: string
               syncInterval:
                 default: 5m
                 description: SyncInterval controls how often discovery runs. Defaults
@@ -133,7 +133,7 @@ spec:
                 type: string
             required:
             - adapter
-            - backendRef
+            - substrateRef
             type: object
           status:
             description: AdapterPolicyStatus records the latest continuous adapter
@@ -199,7 +199,7 @@ spec:
                 description: |-
                   DiscoveredObjects reports the latest aggregate discovery count for quick
                   status inspection. Built-in Argo CD and Flux policies without their own
-                  selector mirror Backend.status counts; policies with their own selector
+                  selector mirror Substrate.status counts; policies with their own selector
                   and other adapters report the adapter discovery result.
                 format: int32
                 type: integer

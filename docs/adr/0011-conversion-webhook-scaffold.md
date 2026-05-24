@@ -1,7 +1,12 @@
 # ADR-0011: Conversion Webhook Scaffold
 
 ## Status
-Accepted
+Superseded by [ADR-0018](0018-public-runtime-api-split.md)
+
+ADR-0018 rejects conversion webhooks for the pre-0.6 public-preview reset. The
+identity conversion handler described below was removed; future served-version
+transitions need a fresh ADR with explicit conversion functions and chart CA
+injection design.
 
 ## Context
 Kapro made the pre-stable `kapro.io/v1alpha1` to `kapro.io/v1alpha2`

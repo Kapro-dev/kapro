@@ -106,7 +106,8 @@ func collectKaproEvents(ctx context.Context, c client.Client, promotion string, 
 }
 
 func isKaproEvent(e corev1.Event) bool {
-	if !strings.HasPrefix(e.InvolvedObject.APIVersion, "kapro.io/") {
+	if !strings.HasPrefix(e.InvolvedObject.APIVersion, "kapro.io/") &&
+		!strings.HasPrefix(e.InvolvedObject.APIVersion, "runtime.kapro.io/") {
 		return false
 	}
 	switch e.InvolvedObject.Kind {

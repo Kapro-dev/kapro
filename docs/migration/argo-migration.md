@@ -9,7 +9,7 @@ health checks, and local rollout behavior. Kapro adds `Fleet`, `Source`, `Plan`,
 and `Promotion` intent around the Argo estate.
 
 The migration path is observe, review, then adopt. Discovery generates a
-read-only `Backend`, inferred `Source` units, and review reports. Adoption
+read-only `Substrate`, inferred `Source` units, and review reports. Adoption
 should only enable the specific version writes the owning team has reviewed.
 
 ## Repository Shape
@@ -24,7 +24,7 @@ platform-gitops/
     applicationsets/
     app-of-apps/
   fleets/
-    backends/checkout-observe.yaml
+    substrates/checkout-observe.yaml
     sources/checkout.yaml
     plans/checkout.yaml
     promotions/
@@ -132,7 +132,7 @@ kapro discover argo https://github.com/example/platform.git \
 
 This generates:
 
-- `backends/checkout-observe.yaml` for observe-first runtime discovery;
+- `substrates/checkout-observe.yaml` for observe-first runtime discovery;
 - `sources/checkout.yaml` with inferred `Source` units;
 - `discovery/review-summary.yaml` with the adoption-readiness checklist and
   next actions;
@@ -152,12 +152,12 @@ source of truth.
 ## Step 3: Apply The Observe Profile
 
 ```bash
-kubectl apply -f ./kapro-connect/backends/checkout-observe.yaml
-kubectl get backend checkout -o yaml
+kubectl apply -f ./kapro-connect/substrates/checkout-observe.yaml
+kubectl get substrate checkout -o yaml
 ```
 
 Observe mode lists selected Argo objects and reports evidence through
-`Backend.status`. It does not patch Applications or ApplicationSets.
+`Substrate.status`. It does not patch Applications or ApplicationSets.
 
 Check:
 
@@ -182,20 +182,20 @@ to either an existing Application source or a Git parameter file that feeds an
 ApplicationSet.
 
 ```yaml
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Source
 metadata:
   name: checkout
 spec:
-  backendRef: checkout
+  substrateRef: checkout
   units:
     - name: api
-      backendKind: ArgoApplicationSource
+      substrateKind: ArgoApplicationSource
       namespace: argocd
       sourcePath: argocd/apps/api.yaml
       versionField: spec.source.targetRevision
     - name: pos-server
-      backendKind: GitJSONField
+      substrateKind: GitJSONField
       namespace: argocd
       sourcePath: argocd/applicationsets/pos-server.yaml
       versionField: argocd/environments/*.json:gkProjectVersion
@@ -260,7 +260,7 @@ The built-in Argo actuator writes only
 requests an Argo sync operation. It does not change traffic, Projects,
 destinations, repo credentials, cluster Secrets, or local rollout policy.
 
-`Adopt` only changes what the backend is allowed to patch. Promotion ordering
+`Adopt` only changes what the substrate is allowed to patch. Promotion ordering
 still comes from the `Plan`, and each rollout still starts from a reviewed
 `Promotion`.
 
@@ -286,7 +286,7 @@ Create a `Promotion` with either one default version or per-unit versions. The
 controller stamps immutable `PromotionRun` attempts from that intent:
 
 ```yaml
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Promotion
 metadata:
   name: checkout-2026-05-15
@@ -302,7 +302,7 @@ spec:
 ```
 
 Kapro creates a `PromotionRun`, then creates `Target` records, runs
-gates and approvals, and calls the Argo backend for selected targets. Argo CD
+gates and approvals, and calls the Argo substrate for selected targets. Argo CD
 remains responsible for reconciling the Application to the cluster.
 
 ## Local E2E Proof

@@ -14,7 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	kaproadapter "kapro.io/kapro/pkg/kapro/adapter"
 	"kapro.io/kapro/pkg/kapro/adapter/argocd"
 	"kapro.io/kapro/pkg/kapro/adapter/flux"
@@ -22,16 +22,16 @@ import (
 )
 
 const defaultAdapterPolicySyncInterval = 5 * time.Minute
-const adapterPolicyBackendRefIndex = ".spec.backendRef"
+const adapterPolicySubstrateRefIndex = ".spec.substrateRef"
 
 var defaultAdapterPolicyRegistry = newDefaultAdapterPolicyRegistry()
 
 // AdapterPolicyReconciler validates that the policy can talk to its
-// referenced Backend through the registered adapter and records the
+// referenced Substrate through the registered adapter and records the
 // outcome on AdapterPolicy.status.
 //
-// The reconciler deliberately does NOT write Backend.status discovery
-// fields. BackendReconciler is the single writer for Backend.status —
+// The reconciler deliberately does NOT write Substrate.status discovery
+// fields. SubstrateReconciler is the single writer for Substrate.status —
 // having both controllers patch the same fields was producing flip-flop
 // updates and merge conflicts. Discovery result details (selected /
 // skipped objects, counts) surface via Kubernetes Events for now;
@@ -45,10 +45,10 @@ type AdapterPolicyReconciler struct {
 
 // +kubebuilder:rbac:groups=kapro.io,resources=adapterpolicies,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kapro.io,resources=adapterpolicies/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=kapro.io,resources=backends,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kapro.io,resources=substrates,verbs=get;list;watch
 
 func (r *AdapterPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	var policy kaprov1alpha2.AdapterPolicy
+	var policy kaprov1alpha1.AdapterPolicy
 	if err := r.Get(ctx, req.NamespacedName, &policy); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -91,7 +91,7 @@ func (r *AdapterPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		status = metav1.ConditionFalse
 	}
 	apimeta.SetStatusCondition(&policy.Status.Conditions, metav1.Condition{
-		Type:               kaprov1alpha2.ConditionTypeReady,
+		Type:               kaprov1alpha1.ConditionTypeReady,
 		Status:             status,
 		Reason:             outcome.reason,
 		Message:            outcome.message,
@@ -111,32 +111,32 @@ type adapterPolicyDiscoveryOutcome struct {
 	discoveredObjects int32
 }
 
-func (r *AdapterPolicyReconciler) discover(ctx context.Context, policy *kaprov1alpha2.AdapterPolicy) (adapterPolicyDiscoveryOutcome, error) {
-	var backend kaprov1alpha2.Backend
-	if err := r.Get(ctx, client.ObjectKey{Name: policy.Spec.BackendRef}, &backend); err != nil {
+func (r *AdapterPolicyReconciler) discover(ctx context.Context, policy *kaprov1alpha1.AdapterPolicy) (adapterPolicyDiscoveryOutcome, error) {
+	var substrate kaprov1alpha1.Substrate
+	if err := r.Get(ctx, client.ObjectKey{Name: policy.Spec.SubstrateRef}, &substrate); err != nil {
 		if !apierrors.IsNotFound(err) {
 			return adapterPolicyDiscoveryOutcome{}, err
 		}
-		return adapterPolicyDiscoveryOutcome{reason: "BackendNotFound", message: fmt.Sprintf("backend %s was not found: %v", policy.Spec.BackendRef, err)}, nil
+		return adapterPolicyDiscoveryOutcome{reason: "SubstrateNotFound", message: fmt.Sprintf("substrate %s was not found: %v", policy.Spec.SubstrateRef, err)}, nil
 	}
-	if expected := adapterPolicyBackendAdapterName(&backend); policy.Spec.Adapter != expected {
-		return adapterPolicyDiscoveryOutcome{reason: "AdapterMismatch", message: fmt.Sprintf("policy adapter %q does not match backend %q adapter %q", policy.Spec.Adapter, backend.Name, expected)}, nil
+	if expected := adapterPolicySubstrateAdapterName(&substrate); policy.Spec.Adapter != expected {
+		return adapterPolicyDiscoveryOutcome{reason: "AdapterMismatch", message: fmt.Sprintf("policy adapter %q does not match substrate %q adapter %q", policy.Spec.Adapter, substrate.Name, expected)}, nil
 	}
-	if backend.Spec.Discovery == nil || !backend.Spec.Discovery.Enabled {
-		// Backend opted out of discovery. BackendReconciler is the
-		// single writer for Backend.status discovery fields; it
+	if substrate.Spec.Discovery == nil || !substrate.Spec.Discovery.Enabled {
+		// Substrate opted out of discovery. SubstrateReconciler is the
+		// single writer for Substrate.status discovery fields; it
 		// already clears them when discovery is disabled. Do not
 		// mirror anything from here.
-		return adapterPolicyDiscoveryOutcome{reason: "DiscoveryDisabled", message: fmt.Sprintf("backend %s does not have spec.discovery.enabled=true", backend.Name)}, nil
+		return adapterPolicyDiscoveryOutcome{reason: "DiscoveryDisabled", message: fmt.Sprintf("substrate %s does not have spec.discovery.enabled=true", substrate.Name)}, nil
 	}
-	a, err := r.adapterRegistry().ResolveKind(backend.Spec.SubstrateKind())
+	a, err := r.adapterRegistry().ResolveKind(substrate.Spec.SubstrateKind())
 	if err != nil {
 		return adapterPolicyDiscoveryOutcome{reason: "AdapterResolveFailed", message: err.Error()}, nil
 	}
 	if !a.Capabilities().SupportsDiscover {
 		return adapterPolicyDiscoveryOutcome{reason: "DiscoveryUnsupported", message: fmt.Sprintf("adapter %s does not support discovery", policy.Spec.Adapter)}, nil
 	}
-	req, err := adapterPolicyDiscoveryRequest(&backend, policy)
+	req, err := adapterPolicyDiscoveryRequest(&substrate, policy)
 	if err != nil {
 		return adapterPolicyDiscoveryOutcome{reason: "InvalidSelector", message: err.Error()}, nil
 	}
@@ -144,11 +144,11 @@ func (r *AdapterPolicyReconciler) discover(ctx context.Context, policy *kaprov1a
 		return adapterPolicyDiscoveryOutcome{
 			ready:   true,
 			reason:  "DiscoveryDryRun",
-			message: fmt.Sprintf("adapter policy %s validated adapter %s for backend %s without running discovery", policy.Name, policy.Spec.Adapter, backend.Name),
+			message: fmt.Sprintf("adapter policy %s validated adapter %s for substrate %s without running discovery", policy.Name, policy.Spec.Adapter, substrate.Name),
 		}, nil
 	}
-	if adapterPolicyMirrorsBackendStatus(&backend, policy) {
-		return adapterPolicyOutcomeFromBackendStatus(&backend, kaproadapter.DiscoveryResult{}), nil
+	if adapterPolicyMirrorsSubstrateStatus(&substrate, policy) {
+		return adapterPolicyOutcomeFromSubstrateStatus(&substrate, kaproadapter.DiscoveryResult{}), nil
 	}
 	result, err := a.Discover(ctx, req)
 	if err != nil {
@@ -160,8 +160,8 @@ func (r *AdapterPolicyReconciler) discover(ctx context.Context, policy *kaprov1a
 	}
 	message := result.Message
 	if message == "" {
-		message = fmt.Sprintf("adapter %s discovery completed for backend %s (clusters=%d, applications=%d, applicationSets=%d)",
-			policy.Spec.Adapter, backend.Name, result.DiscoveredClusters, result.DiscoveredApplications, result.DiscoveredApplicationSets)
+		message = fmt.Sprintf("adapter %s discovery completed for substrate %s (clusters=%d, applications=%d, applicationSets=%d)",
+			policy.Spec.Adapter, substrate.Name, result.DiscoveredClusters, result.DiscoveredApplications, result.DiscoveredApplicationSets)
 	}
 	if r.Recorder != nil {
 		eventType := "Normal"
@@ -198,33 +198,30 @@ func newDefaultAdapterPolicyRegistry() *kaproadapter.Registry {
 	return reg
 }
 
-func adapterPolicyBackendAdapterName(backend *kaprov1alpha2.Backend) string {
-	if backend.Spec.Adapter != "" {
-		return backend.Spec.Adapter
-	}
-	return backend.Spec.ActuatorName()
+func adapterPolicySubstrateAdapterName(substrate *kaprov1alpha1.Substrate) string {
+	return substrate.Spec.ActuatorName()
 }
 
-func adapterPolicyMirrorsBackendStatus(backend *kaprov1alpha2.Backend, policy *kaprov1alpha2.AdapterPolicy) bool {
+func adapterPolicyMirrorsSubstrateStatus(substrate *kaprov1alpha1.Substrate, policy *kaprov1alpha1.AdapterPolicy) bool {
 	if policy.Spec.Selector != nil {
 		return false
 	}
-	switch backend.Spec.SubstrateKind() {
-	case string(kaprov1alpha2.BackendDriverArgo), string(kaprov1alpha2.BackendDriverFlux):
+	switch substrate.Spec.SubstrateKind() {
+	case string(kaprov1alpha1.SubstrateDriverArgo), string(kaprov1alpha1.SubstrateDriverFlux):
 		return true
 	default:
 		return false
 	}
 }
 
-func adapterPolicyOutcomeFromBackendStatus(backend *kaprov1alpha2.Backend, fallback kaproadapter.DiscoveryResult) adapterPolicyDiscoveryOutcome {
-	cond := apimeta.FindStatusCondition(backend.Status.Conditions, "DiscoveryReady")
+func adapterPolicyOutcomeFromSubstrateStatus(substrate *kaprov1alpha1.Substrate, fallback kaproadapter.DiscoveryResult) adapterPolicyDiscoveryOutcome {
+	cond := apimeta.FindStatusCondition(substrate.Status.Conditions, "DiscoveryReady")
 	if cond == nil {
 		return adapterPolicyDiscoveryOutcome{
 			ready:             false,
 			reason:            "DiscoveryPending",
-			message:           fmt.Sprintf("waiting for Backend %s discovery status from BackendReconciler", backend.Name),
-			discoveredObjects: adapterPolicyBackendStatusObjects(backend),
+			message:           fmt.Sprintf("waiting for Substrate %s discovery status from SubstrateReconciler", substrate.Name),
+			discoveredObjects: adapterPolicySubstrateStatusObjects(substrate),
 		}
 	}
 	ready := cond.Status == metav1.ConditionTrue
@@ -240,56 +237,63 @@ func adapterPolicyOutcomeFromBackendStatus(backend *kaprov1alpha2.Backend, fallb
 		message = fallback.Message
 	}
 	if message == "" {
-		message = fmt.Sprintf("Backend %s discovery status observed", backend.Name)
+		message = fmt.Sprintf("Substrate %s discovery status observed", substrate.Name)
 	}
 	return adapterPolicyDiscoveryOutcome{
 		ready:             ready,
 		reason:            reason,
 		message:           message,
-		discoveredObjects: adapterPolicyBackendStatusObjects(backend),
+		discoveredObjects: adapterPolicySubstrateStatusObjects(substrate),
 	}
 }
 
-func adapterPolicyBackendStatusObjects(backend *kaprov1alpha2.Backend) int32 {
-	return backend.Status.DiscoveredClusters + backend.Status.DiscoveredApplications + backend.Status.DiscoveredApplicationSets
+func adapterPolicySubstrateStatusObjects(substrate *kaprov1alpha1.Substrate) int32 {
+	return substrate.Status.DiscoveredClusters + substrate.Status.DiscoveredApplications + substrate.Status.DiscoveredApplicationSets
 }
 
-func adapterPolicyDiscoveryRequest(backend *kaprov1alpha2.Backend, policy *kaprov1alpha2.AdapterPolicy) (kaproadapter.DiscoveryRequest, error) {
-	runtime := backend.Spec.Runtime
-	if runtime == "" {
-		runtime = kaprov1alpha2.BackendRuntimeBoth
-	}
+func adapterPolicyDiscoveryRequest(substrate *kaprov1alpha1.Substrate, policy *kaprov1alpha1.AdapterPolicy) (kaproadapter.DiscoveryRequest, error) {
 	req := kaproadapter.DiscoveryRequest{
-		Backend:    backend,
-		Driver:     kaprov1alpha2.BackendDriver(backend.Spec.SubstrateKind()),
-		Runtime:    runtime,
-		Namespace:  backend.Spec.Parameters["namespace"],
-		Parameters: backend.Spec.Parameters,
+		Substrate:  substrate,
+		Driver:     kaprov1alpha1.SubstrateDriver(substrate.Spec.SubstrateKind()),
+		Runtime:    substrateRuntimeForDiscovery(substrate.Spec.ExecutionMode()),
+		Namespace:  substrate.Spec.Parameters["namespace"],
+		Parameters: substrate.Spec.Parameters,
 	}
-	if backend.Spec.Discovery != nil {
-		selector, err := mergeAdapterPolicySelectors(backend.Spec.Discovery.Selector, policy.Spec.Selector)
+	if substrate.Spec.Discovery != nil {
+		selector, err := mergeAdapterPolicySelectors(substrate.Spec.Discovery.Selector, policy.Spec.Selector)
 		if err != nil {
 			return req, err
 		}
 		req.Selector = selector
-		req.MaxObjects = backend.Spec.Discovery.MaxObjects
+		req.MaxObjects = substrate.Spec.Discovery.MaxObjects
 	} else if policy.Spec.Selector != nil {
 		req.Selector = policy.Spec.Selector.DeepCopy()
 	}
 	if req.MaxObjects <= 0 {
-		req.MaxObjects = int32(defaultBackendDiscoveryMaxObjects)
+		req.MaxObjects = int32(defaultSubstrateDiscoveryMaxObjects)
 	}
 	return req, nil
 }
 
-func mergeAdapterPolicySelectors(backend, policy *metav1.LabelSelector) (*metav1.LabelSelector, error) {
-	if backend == nil && policy == nil {
+func substrateRuntimeForDiscovery(mode kaprov1alpha1.ExecutionMode) kaprov1alpha1.SubstrateRuntime {
+	switch mode {
+	case kaprov1alpha1.ExecutionModeHubPush:
+		return kaprov1alpha1.SubstrateRuntimeHub
+	case kaprov1alpha1.ExecutionModeSpokePull:
+		return kaprov1alpha1.SubstrateRuntimeSpoke
+	default:
+		return kaprov1alpha1.SubstrateRuntimeBoth
+	}
+}
+
+func mergeAdapterPolicySelectors(substrate, policy *metav1.LabelSelector) (*metav1.LabelSelector, error) {
+	if substrate == nil && policy == nil {
 		return nil, nil
 	}
-	if backend == nil {
+	if substrate == nil {
 		return validatedAdapterPolicySelector(policy.DeepCopy())
 	}
-	merged := backend.DeepCopy()
+	merged := substrate.DeepCopy()
 	if policy == nil {
 		return validatedAdapterPolicySelector(merged)
 	}
@@ -331,11 +335,11 @@ func adapterPolicyDiscoveredObjects(result kaproadapter.DiscoveryResult) int32 {
 	return int32(len(result.SelectedObjects) + len(result.SkippedObjects) + len(result.UnsupportedPatterns))
 }
 
-func adapterPolicyStatusCurrent(policy *kaprov1alpha2.AdapterPolicy, outcome adapterPolicyDiscoveryOutcome) bool {
+func adapterPolicyStatusCurrent(policy *kaprov1alpha1.AdapterPolicy, outcome adapterPolicyDiscoveryOutcome) bool {
 	if policy.Status.Ready != outcome.ready || policy.Status.DiscoveredObjects != outcome.discoveredObjects {
 		return false
 	}
-	cond := apimeta.FindStatusCondition(policy.Status.Conditions, kaprov1alpha2.ConditionTypeReady)
+	cond := apimeta.FindStatusCondition(policy.Status.Conditions, kaprov1alpha1.ConditionTypeReady)
 	if cond == nil || cond.Reason != outcome.reason || cond.Message != outcome.message || cond.ObservedGeneration != policy.Generation {
 		return false
 	}
@@ -360,34 +364,34 @@ func adapterPolicySyncInterval(raw string) time.Duration {
 func (r *AdapterPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err := mgr.GetFieldIndexer().IndexField(
 		context.Background(),
-		&kaprov1alpha2.AdapterPolicy{},
-		adapterPolicyBackendRefIndex,
+		&kaprov1alpha1.AdapterPolicy{},
+		adapterPolicySubstrateRefIndex,
 		func(obj client.Object) []string {
-			policy, ok := obj.(*kaprov1alpha2.AdapterPolicy)
-			if !ok || policy.Spec.BackendRef == "" {
+			policy, ok := obj.(*kaprov1alpha1.AdapterPolicy)
+			if !ok || policy.Spec.SubstrateRef == "" {
 				return nil
 			}
-			return []string{policy.Spec.BackendRef}
+			return []string{policy.Spec.SubstrateRef}
 		},
 	); err != nil {
-		return fmt.Errorf("index AdapterPolicy backend refs: %w", err)
+		return fmt.Errorf("index AdapterPolicy substrate refs: %w", err)
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&kaprov1alpha2.AdapterPolicy{}).
+		For(&kaprov1alpha1.AdapterPolicy{}).
 		Watches(
-			&kaprov1alpha2.Backend{},
-			handler.EnqueueRequestsFromMapFunc(r.policiesForBackend),
+			&kaprov1alpha1.Substrate{},
+			handler.EnqueueRequestsFromMapFunc(r.policiesForSubstrate),
 		).
 		Complete(r)
 }
 
-func (r *AdapterPolicyReconciler) policiesForBackend(ctx context.Context, obj client.Object) []reconcile.Request {
+func (r *AdapterPolicyReconciler) policiesForSubstrate(ctx context.Context, obj client.Object) []reconcile.Request {
 	if obj == nil || obj.GetName() == "" {
 		return nil
 	}
-	var policies kaprov1alpha2.AdapterPolicyList
-	if err := r.List(ctx, &policies, client.MatchingFields{adapterPolicyBackendRefIndex: obj.GetName()}); err != nil {
+	var policies kaprov1alpha1.AdapterPolicyList
+	if err := r.List(ctx, &policies, client.MatchingFields{adapterPolicySubstrateRefIndex: obj.GetName()}); err != nil {
 		return nil
 	}
 	reqs := make([]reconcile.Request, 0, len(policies.Items))

@@ -6,8 +6,8 @@ spoke cluster.
 
 KSP is different from cloud discovery providers:
 
-- KSP providers perform spoke-side delivery or observation for a
-  `Backend.spec.driver`.
+- KSP providers perform spoke-side delivery or observation for a substrate
+  kind selected by `Substrate.spec.substrate.kind` or `Substrate.spec.classRef`.
 - Cloud discovery providers enumerate clusters for `ClusterTemplate` import.
 
 Keep those axes separate. Delivery providers must not become broad fleet
@@ -22,7 +22,7 @@ Provider implementations expose metadata through `Capabilities()`:
 
 ```go
 type Provider interface {
-    Driver() v1alpha2.BackendDriver
+    Driver() kaprov1alpha1.SubstrateDriver
     Capabilities() spokeprovider.Capabilities
     Reconcile(context.Context, spokeprovider.ReconcileRequest) spokeprovider.ReconcileResult
 }
@@ -47,16 +47,16 @@ Legacy registration remains valid:
 
 ```go
 reg := spokeprovider.NewRegistry()
-_ = reg.Register(v1alpha2.BackendDriverOCI, provider)
+_ = reg.Register(kaprov1alpha1.SubstrateDriverOCI, provider)
 ```
 
 New providers should register explicit metadata:
 
 ```go
 _ = reg.RegisterRegistration(spokeprovider.Registration{
-    Driver: v1alpha2.BackendDriverExternal,
+    Driver: kaprov1alpha1.SubstrateDriverExternal,
     Capabilities: spokeprovider.Capabilities{
-        Driver: v1alpha2.BackendDriverExternal,
+        Driver: kaprov1alpha1.SubstrateDriverExternal,
         SupportsReconcile: true,
         SupportsObserve: true,
     },

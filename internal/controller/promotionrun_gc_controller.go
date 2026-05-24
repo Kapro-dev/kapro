@@ -48,6 +48,8 @@ import (
 	"sort"
 	"time"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -56,7 +58,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	kaprometrics "kapro.io/kapro/internal/metrics"
 )
 
@@ -68,14 +70,14 @@ type PromotionRunGCReconciler struct {
 	Scheme   *runtime.Scheme
 
 	// MaxRetainedPerPromotion overrides the default total cap. Zero means
-	// use kaprov1alpha2.DefaultMaxRetainedPerPromotion.
+	// use kaprov1alpha1.DefaultMaxRetainedPerPromotion.
 	MaxRetainedPerPromotion int
 	// MinRetainedPerOutcome overrides the default per-outcome floor. Zero
-	// means use kaprov1alpha2.DefaultMinRetainedPerOutcome.
+	// means use kaprov1alpha1.DefaultMinRetainedPerOutcome.
 	MinRetainedPerOutcome int
 	// MaxDeletesPerReconcile bounds the number of PromotionRun deletes
 	// performed in a single reconcile. Zero means use
-	// kaprov1alpha2.DefaultMaxDeletesPerReconcile. When more victims exist
+	// kaprov1alpha1.DefaultMaxDeletesPerReconcile. When more victims exist
 	// than the cap, the controller requeues itself to drain across passes.
 	MaxDeletesPerReconcile int
 	// RequeueAfter overrides how long to wait before draining the next
@@ -86,19 +88,19 @@ type PromotionRunGCReconciler struct {
 const defaultDrainRequeueAfter = 30 * time.Second
 
 // +kubebuilder:rbac:groups=kapro.io,resources=promotions,verbs=get;list;watch
-// +kubebuilder:rbac:groups=kapro.io,resources=promotionruns,verbs=get;list;watch;delete
+// +kubebuilder:rbac:groups=runtime.kapro.io,resources=promotionruns,verbs=get;list;watch;delete
 
 func (r *PromotionRunGCReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues("promotion", req.Name)
 
-	var promotion kaprov1alpha2.Promotion
+	var promotion kaprov1alpha1.Promotion
 	if err := r.Get(ctx, req.NamespacedName, &promotion); err != nil {
 		// Promotion deletion cascades to PromotionRuns via ownerReferences
 		// (set in PromotionReconciler.stampAttempt). No work for us.
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	var runs kaprov1alpha2.PromotionRunList
+	var runs kaproruntimev1alpha1.PromotionRunList
 	if err := r.List(ctx, &runs, client.MatchingLabels{promotionOwnerLabel: promotion.Name}); err != nil {
 		return ctrl.Result{}, fmt.Errorf("list child PromotionRuns: %w", err)
 	}
@@ -169,7 +171,7 @@ func (r *PromotionRunGCReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 // selectVictims returns the PromotionRuns to delete to bring this
 // Promotion's child set within the retention cap. Active (non-terminal)
 // runs are NEVER selected. Per-outcome floor is honoured.
-func (r *PromotionRunGCReconciler) selectVictims(runs []kaprov1alpha2.PromotionRun) []kaprov1alpha2.PromotionRun {
+func (r *PromotionRunGCReconciler) selectVictims(runs []kaproruntimev1alpha1.PromotionRun) []kaproruntimev1alpha1.PromotionRun {
 	if len(runs) == 0 {
 		return nil
 	}
@@ -178,8 +180,8 @@ func (r *PromotionRunGCReconciler) selectVictims(runs []kaprov1alpha2.PromotionR
 	minPerOutcome := r.minPerOutcome()
 
 	// Bucket by terminal vs non-terminal first; non-terminal exempt.
-	var active []kaprov1alpha2.PromotionRun
-	bucketByPhase := map[kaprov1alpha2.PromotionRunPhase][]kaprov1alpha2.PromotionRun{}
+	var active []kaproruntimev1alpha1.PromotionRun
+	bucketByPhase := map[kaprov1alpha1.PromotionRunPhase][]kaproruntimev1alpha1.PromotionRun{}
 	for i := range runs {
 		run := runs[i]
 		if !run.Status.Phase.IsTerminal() {
@@ -220,7 +222,7 @@ func (r *PromotionRunGCReconciler) selectVictims(runs []kaprov1alpha2.PromotionR
 	// bucket contributes its excess-above-floor first; if that's not
 	// enough, walk the buckets oldest-first beyond the floor.
 	excess := totalTerminal - budget
-	var victims []kaprov1alpha2.PromotionRun
+	var victims []kaproruntimev1alpha1.PromotionRun
 
 	// Pass 1: collect every above-floor candidate from all buckets into a
 	// single slice, sort GLOBALLY by CreationTimestamp ascending (name tie-
@@ -230,9 +232,9 @@ func (r *PromotionRunGCReconciler) selectVictims(runs []kaprov1alpha2.PromotionR
 	// A global sort guarantees the same victims for the same backlog
 	// regardless of map iteration order.
 	type candidate struct {
-		phase kaprov1alpha2.PromotionRunPhase
+		phase kaprov1alpha1.PromotionRunPhase
 		idx   int
-		run   kaprov1alpha2.PromotionRun
+		run   kaproruntimev1alpha1.PromotionRun
 	}
 	var candidates []candidate
 	for phase, bucket := range bucketByPhase {
@@ -253,7 +255,7 @@ func (r *PromotionRunGCReconciler) selectVictims(runs []kaprov1alpha2.PromotionR
 		return a.Before(&b)
 	})
 	take := min(len(candidates), excess)
-	donatedPerPhase := map[kaprov1alpha2.PromotionRunPhase]int{}
+	donatedPerPhase := map[kaprov1alpha1.PromotionRunPhase]int{}
 	for i := range take {
 		victims = append(victims, candidates[i].run)
 		donatedPerPhase[candidates[i].phase]++
@@ -275,7 +277,7 @@ func (r *PromotionRunGCReconciler) selectVictims(runs []kaprov1alpha2.PromotionR
 	// only when (numTerminalOutcomes * minPerOutcome) + activeCount >
 	// maxTotal, which is a configuration choice the operator made.
 	type cursor struct {
-		phase kaprov1alpha2.PromotionRunPhase
+		phase kaprov1alpha1.PromotionRunPhase
 		idx   int
 	}
 	allCursors := make([]cursor, 0, 3)
@@ -310,21 +312,21 @@ func (r *PromotionRunGCReconciler) maxRetained() int {
 	if r.MaxRetainedPerPromotion > 0 {
 		return r.MaxRetainedPerPromotion
 	}
-	return kaprov1alpha2.DefaultMaxRetainedPerPromotion
+	return kaprov1alpha1.DefaultMaxRetainedPerPromotion
 }
 
 func (r *PromotionRunGCReconciler) minPerOutcome() int {
 	if r.MinRetainedPerOutcome > 0 {
 		return r.MinRetainedPerOutcome
 	}
-	return kaprov1alpha2.DefaultMinRetainedPerOutcome
+	return kaprov1alpha1.DefaultMinRetainedPerOutcome
 }
 
 func (r *PromotionRunGCReconciler) maxDeletesPerReconcile() int {
 	if r.MaxDeletesPerReconcile > 0 {
 		return r.MaxDeletesPerReconcile
 	}
-	return kaprov1alpha2.DefaultMaxDeletesPerReconcile
+	return kaprov1alpha1.DefaultMaxDeletesPerReconcile
 }
 
 func (r *PromotionRunGCReconciler) drainRequeueAfter() time.Duration {
@@ -342,7 +344,7 @@ func (r *PromotionRunGCReconciler) drainRequeueAfter() time.Duration {
 func (r *PromotionRunGCReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("promotionrun-gc").
-		For(&kaprov1alpha2.Promotion{}).
+		For(&kaprov1alpha1.Promotion{}).
 		Complete(r)
 }
 

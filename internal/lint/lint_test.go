@@ -9,7 +9,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // findIssue returns the first issue whose Path or Message contains
@@ -26,7 +26,7 @@ func findIssue(t *testing.T, issues []Issue, s string) *Issue {
 }
 
 func TestLintPromotion_RejectsMissingRequired(t *testing.T) {
-	p := &kaprov1alpha2.Promotion{}
+	p := &kaprov1alpha1.Promotion{}
 	issues := LintPromotion(p)
 
 	for _, want := range []string{"metadata.name", "fleetRef", "version"} {
@@ -42,9 +42,9 @@ func TestLintPromotion_RejectsMissingRequired(t *testing.T) {
 }
 
 func TestLintPromotion_WarnsOnNoTimeout(t *testing.T) {
-	p := &kaprov1alpha2.Promotion{
+	p := &kaprov1alpha1.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: "p1"},
-		Spec:       kaprov1alpha2.PromotionSpec{FleetRef: "k", Version: "v1"},
+		Spec:       kaprov1alpha1.PromotionSpec{FleetRef: "k", Version: "v1"},
 	}
 	issues := LintPromotion(p)
 	hit := findIssue(t, issues, "timeout")
@@ -57,13 +57,13 @@ func TestLintPromotion_WarnsOnNoTimeout(t *testing.T) {
 }
 
 func TestLintPromotion_DuplicateScopeTargetsWarn(t *testing.T) {
-	p := &kaprov1alpha2.Promotion{
+	p := &kaprov1alpha1.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: "p1"},
-		Spec: kaprov1alpha2.PromotionSpec{
+		Spec: kaprov1alpha1.PromotionSpec{
 			FleetRef: "k",
 			Version:  "v1",
 			Timeout:  "30m",
-			Scope: &kaprov1alpha2.PromotionRunScope{
+			Scope: &kaprov1alpha1.PromotionRunScope{
 				Targets: []string{"de-prod", "de-prod"},
 			},
 		},
@@ -75,10 +75,10 @@ func TestLintPromotion_DuplicateScopeTargetsWarn(t *testing.T) {
 }
 
 func TestLintPromotionPlan_DuplicateStageNamesAreErrors(t *testing.T) {
-	pp := &kaprov1alpha2.Plan{
+	pp := &kaprov1alpha1.Plan{
 		ObjectMeta: metav1.ObjectMeta{Name: "pp"},
-		Spec: kaprov1alpha2.PlanSpec{
-			Stages: []kaprov1alpha2.Stage{
+		Spec: kaprov1alpha1.PlanSpec{
+			Stages: []kaprov1alpha1.Stage{
 				{Name: "canary"},
 				{Name: "canary"},
 			},
@@ -92,12 +92,12 @@ func TestLintPromotionPlan_DuplicateStageNamesAreErrors(t *testing.T) {
 }
 
 func TestLintPromotionPlan_DanglingDependsOn(t *testing.T) {
-	pp := &kaprov1alpha2.Plan{
+	pp := &kaprov1alpha1.Plan{
 		ObjectMeta: metav1.ObjectMeta{Name: "pp"},
-		Spec: kaprov1alpha2.PlanSpec{
-			Stages: []kaprov1alpha2.Stage{
+		Spec: kaprov1alpha1.PlanSpec{
+			Stages: []kaprov1alpha1.Stage{
 				{Name: "canary"},
-				{Name: "prod", DependsOn: []kaprov1alpha2.StageDependency{{Stage: "ghost"}}},
+				{Name: "prod", DependsOn: []kaprov1alpha1.StageDependency{{Stage: "ghost"}}},
 			},
 		},
 	}
@@ -109,11 +109,11 @@ func TestLintPromotionPlan_DanglingDependsOn(t *testing.T) {
 }
 
 func TestLintPromotionPlan_DependsOnSelfIsError(t *testing.T) {
-	pp := &kaprov1alpha2.Plan{
+	pp := &kaprov1alpha1.Plan{
 		ObjectMeta: metav1.ObjectMeta{Name: "pp"},
-		Spec: kaprov1alpha2.PlanSpec{
-			Stages: []kaprov1alpha2.Stage{
-				{Name: "loop", DependsOn: []kaprov1alpha2.StageDependency{{Stage: "loop"}}},
+		Spec: kaprov1alpha1.PlanSpec{
+			Stages: []kaprov1alpha1.Stage{
+				{Name: "loop", DependsOn: []kaprov1alpha1.StageDependency{{Stage: "loop"}}},
 			},
 		},
 	}
@@ -124,13 +124,13 @@ func TestLintPromotionPlan_DependsOnSelfIsError(t *testing.T) {
 }
 
 func TestLintPromotionPlan_CycleDetected(t *testing.T) {
-	pp := &kaprov1alpha2.Plan{
+	pp := &kaprov1alpha1.Plan{
 		ObjectMeta: metav1.ObjectMeta{Name: "pp"},
-		Spec: kaprov1alpha2.PlanSpec{
-			Stages: []kaprov1alpha2.Stage{
-				{Name: "a", DependsOn: []kaprov1alpha2.StageDependency{{Stage: "b"}}},
-				{Name: "b", DependsOn: []kaprov1alpha2.StageDependency{{Stage: "c"}}},
-				{Name: "c", DependsOn: []kaprov1alpha2.StageDependency{{Stage: "a"}}},
+		Spec: kaprov1alpha1.PlanSpec{
+			Stages: []kaprov1alpha1.Stage{
+				{Name: "a", DependsOn: []kaprov1alpha1.StageDependency{{Stage: "b"}}},
+				{Name: "b", DependsOn: []kaprov1alpha1.StageDependency{{Stage: "c"}}},
+				{Name: "c", DependsOn: []kaprov1alpha1.StageDependency{{Stage: "a"}}},
 			},
 		},
 	}
@@ -141,13 +141,13 @@ func TestLintPromotionPlan_CycleDetected(t *testing.T) {
 }
 
 func TestLintPromotionPlan_ManualGateWithoutApproversWarns(t *testing.T) {
-	pp := &kaprov1alpha2.Plan{
+	pp := &kaprov1alpha1.Plan{
 		ObjectMeta: metav1.ObjectMeta{Name: "pp"},
-		Spec: kaprov1alpha2.PlanSpec{
-			Stages: []kaprov1alpha2.Stage{
-				{Name: "prod", Gate: &kaprov1alpha2.GatePolicySpec{
-					Mode:     kaprov1alpha2.GateModeManual,
-					Approval: &kaprov1alpha2.ApprovalConfig{Required: true},
+		Spec: kaprov1alpha1.PlanSpec{
+			Stages: []kaprov1alpha1.Stage{
+				{Name: "prod", Gate: &kaprov1alpha1.GatePolicySpec{
+					Mode:     kaprov1alpha1.GateModeManual,
+					Approval: &kaprov1alpha1.ApprovalConfig{Required: true},
 				}},
 			},
 		},
@@ -159,197 +159,13 @@ func TestLintPromotionPlan_ManualGateWithoutApproversWarns(t *testing.T) {
 	}
 }
 
-func TestLintGateExpression_ValidDelay(t *testing.T) {
-	expr := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "delay"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator:   "DELAY",
-			Parameters: map[string]string{"duration": "30m"},
-			Operands: []kaprov1alpha2.GateExpressionOperand{
-				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-			},
-		},
-	}
-	if issues := LintGateExpression(expr); len(issues) != 0 {
-		t.Fatalf("valid DELAY should be lint-clean; got %+v", issues)
-	}
-}
-
-func TestLintGateExpression_RejectsBadWeightedShape(t *testing.T) {
-	threshold := int32(5)
-	expr := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "weighted"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator:  "WEIGHTED_SUM",
-			Threshold: &threshold,
-			Weights:   []int32{5},
-			Operands: []kaprov1alpha2.GateExpressionOperand{
-				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-			},
-		},
-	}
-	issues := LintGateExpression(expr)
-	hit := findIssue(t, issues, "len(weights) == len(operands)")
-	if hit == nil || hit.Severity != SeverityError {
-		t.Fatalf("expected weighted shape ERROR; got %+v", issues)
-	}
-}
-
-func TestLintGateExpression_AttributesWeightedThresholdAndWeightErrors(t *testing.T) {
-	t.Run("unsatisfiable threshold", func(t *testing.T) {
-		threshold := int32(5)
-		expr := &kaprov1alpha2.GateExpression{
-			ObjectMeta: metav1.ObjectMeta{Name: "weighted"},
-			Spec: kaprov1alpha2.GateExpressionSpec{
-				Operator:  "WEIGHTED_SUM",
-				Threshold: &threshold,
-				Weights:   []int32{2, 3},
-				Operands: []kaprov1alpha2.GateExpressionOperand{
-					{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-					{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-				},
-			},
-		}
-		hit := findIssue(t, LintGateExpression(expr), "threshold < sum(weights)")
-		if hit == nil || hit.Path != "spec.threshold" {
-			t.Fatalf("expected threshold path; got %+v", hit)
-		}
-	})
-
-	t.Run("total weight overflow", func(t *testing.T) {
-		threshold := int32(1)
-		expr := &kaprov1alpha2.GateExpression{
-			ObjectMeta: metav1.ObjectMeta{Name: "weighted"},
-			Spec: kaprov1alpha2.GateExpressionSpec{
-				Operator:  "WEIGHTED_SUM",
-				Threshold: &threshold,
-				Weights:   []int32{1<<30 + 1, 1 << 30},
-				Operands: []kaprov1alpha2.GateExpressionOperand{
-					{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-					{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-				},
-			},
-		}
-		hit := findIssue(t, LintGateExpression(expr), "total weight")
-		if hit == nil || hit.Path != "spec.weights" {
-			t.Fatalf("expected weights path; got %+v", hit)
-		}
-	})
-}
-
-func TestLintGateExpression_RejectsNonPositiveDelayDuration(t *testing.T) {
-	expr := &kaprov1alpha2.GateExpression{
-		ObjectMeta: metav1.ObjectMeta{Name: "delay"},
-		Spec: kaprov1alpha2.GateExpressionSpec{
-			Operator:   "DELAY",
-			Parameters: map[string]string{"duration": "0s"},
-			Operands: []kaprov1alpha2.GateExpressionOperand{
-				{InlineGate: &kaprov1alpha2.GatePolicySpec{Mode: kaprov1alpha2.GateModeAuto}},
-			},
-		},
-	}
-	issues := LintGateExpression(expr)
-	hit := findIssue(t, issues, "duration > 0")
-	if hit == nil || hit.Path != "spec.parameters.duration" {
-		t.Fatalf("expected duration ERROR with duration path; got %+v", issues)
-	}
-}
-
-func TestLintFile_DispatchesGateExpression(t *testing.T) {
-	issues := LintFile("gate.yaml", []byte(`
-apiVersion: kapro.io/v1alpha2
-kind: GateExpression
-metadata:
-  name: bad-not
-spec:
-  operator: NOT
-  operands:
-    - inlineGate:
-        mode: auto
-    - inlineGate:
-        mode: auto
-`))
-	hit := findIssue(t, issues, "operator NOT requires exactly one operand")
-	if hit == nil || hit.Kind != "GateExpression" || hit.Name != "bad-not" {
-		t.Fatalf("expected tagged GateExpression lint issue; got %+v", issues)
-	}
-}
-
-func TestLintFile_RejectsGateExpressionBundleReferencingDelay(t *testing.T) {
-	issues := LintFile("gates.yaml", []byte(`
-apiVersion: kapro.io/v1alpha2
-kind: GateExpression
-metadata:
-  name: parent
-spec:
-  operator: ALL
-  operands:
-    - expressionRef: delay-child
----
-apiVersion: kapro.io/v1alpha2
-kind: GateExpression
-metadata:
-  name: delay-child
-spec:
-  operator: DELAY
-  parameters:
-    duration: 30m
-  operands:
-    - inlineGate:
-        mode: auto
-`))
-	hit := findIssue(t, issues, "parent→delay-child")
-	if hit == nil || hit.Kind != "GateExpression" || hit.Name != "parent" {
-		t.Fatalf("expected referenced DELAY bundle error on parent; got %+v", issues)
-	}
-}
-
-func TestLintFile_RejectsGateExpressionBundleIndirectReferencingDelay(t *testing.T) {
-	issues := LintFile("gates.yaml", []byte(`
-apiVersion: kapro.io/v1alpha2
-kind: GateExpression
-metadata:
-  name: parent
-spec:
-  operator: ALL
-  operands:
-    - expressionRef: middle
----
-apiVersion: kapro.io/v1alpha2
-kind: GateExpression
-metadata:
-  name: middle
-spec:
-  operator: ALL
-  operands:
-    - expressionRef: delay-child
----
-apiVersion: kapro.io/v1alpha2
-kind: GateExpression
-metadata:
-  name: delay-child
-spec:
-  operator: DELAY
-  parameters:
-    duration: 30m
-  operands:
-    - inlineGate:
-        mode: auto
-`))
-	hit := findIssue(t, issues, "parent→middle→delay-child")
-	if hit == nil || hit.Kind != "GateExpression" || hit.Name != "parent" {
-		t.Fatalf("expected indirect referenced DELAY bundle error on parent; got %+v", issues)
-	}
-}
-
 func TestLintFile_UnknownKaproKindSkipsSilently(t *testing.T) {
-	// Other Kapro kinds (FleetCluster, BackendProfile, etc.) have
+	// Other Kapro kinds (FleetCluster, SubstrateProfile, etc.) have
 	// no rules yet; the linter must NOT flag them just because
 	// they passed through. Running `kapro lint **/*.yaml` should
 	// only surface real issues, not noise.
 	issues := LintFile("x.yaml", []byte(`
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: FleetCluster
 metadata:
   name: c
@@ -360,7 +176,7 @@ metadata:
 }
 
 func TestLintFile_MultiDocSplitsCleanly(t *testing.T) {
-	issues := LintFile("multi.yaml", []byte(`apiVersion: kapro.io/v1alpha2
+	issues := LintFile("multi.yaml", []byte(`apiVersion: kapro.io/v1alpha1
 kind: Promotion
 metadata:
   name: a
@@ -369,7 +185,7 @@ spec:
   version: v1
   timeout: 30m
 ---
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Promotion
 metadata:
   name: b
@@ -389,7 +205,7 @@ spec:
 }
 
 func TestLintFile_GarbledYAMLIsAnError(t *testing.T) {
-	issues := LintFile("bad.yaml", []byte(`apiVersion: kapro.io/v1alpha2
+	issues := LintFile("bad.yaml", []byte(`apiVersion: kapro.io/v1alpha1
 kind: Promotion
 metadata:
   name: a
@@ -475,12 +291,12 @@ func TestLintKapro_NilSourceDoesNotPanic(t *testing.T) {
 	// nil whenever the user does not declare an inline source — i.e.
 	// every Kapro that uses sourceRef. An earlier version of LintKapro
 	// dereferenced k.Spec.Source.Units unconditionally and panicked.
-	k := &kaprov1alpha2.Fleet{
+	k := &kaprov1alpha1.Fleet{
 		ObjectMeta: metav1.ObjectMeta{Name: "k1"},
-		Spec: kaprov1alpha2.FleetSpec{
+		Spec: kaprov1alpha1.FleetSpec{
 			SourceRef: "shared-catalog",
-			Delivery:  kaprov1alpha2.DeliverySpec{BackendRef: "flux"},
-			Clusters:  []kaprov1alpha2.ClusterRef{{Name: "c1"}},
+			Delivery:  kaprov1alpha1.DeliverySpec{SubstrateRef: "flux"},
+			Clusters:  []kaprov1alpha1.ClusterRef{{Name: "c1"}},
 		},
 	}
 	defer func() {
@@ -500,37 +316,37 @@ func TestLintKapro_ExactlyOneOfSourceSourceRef(t *testing.T) {
 	cases := []struct {
 		name      string
 		sourceRef string
-		source    *kaprov1alpha2.SourceSpec
+		source    *kaprov1alpha1.SourceSpec
 		wantErr   bool
 	}{
 		{name: "both unset", wantErr: true},
 		{name: "only sourceRef", sourceRef: "shared"},
 		{
 			name:   "only inline source",
-			source: &kaprov1alpha2.SourceSpec{Units: []kaprov1alpha2.Unit{{Name: "u"}}},
+			source: &kaprov1alpha1.SourceSpec{Units: []kaprov1alpha1.Unit{{Name: "u"}}},
 		},
 		{
 			name:      "both set",
 			sourceRef: "shared",
-			source:    &kaprov1alpha2.SourceSpec{Units: []kaprov1alpha2.Unit{{Name: "u"}}},
+			source:    &kaprov1alpha1.SourceSpec{Units: []kaprov1alpha1.Unit{{Name: "u"}}},
 			wantErr:   true,
 		},
 		{
 			name:   "source non-nil but empty units",
-			source: &kaprov1alpha2.SourceSpec{},
+			source: &kaprov1alpha1.SourceSpec{},
 			// No sourceRef, no actual units → still "neither set".
 			wantErr: true,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			k := &kaprov1alpha2.Fleet{
+			k := &kaprov1alpha1.Fleet{
 				ObjectMeta: metav1.ObjectMeta{Name: "k1"},
-				Spec: kaprov1alpha2.FleetSpec{
+				Spec: kaprov1alpha1.FleetSpec{
 					SourceRef: tc.sourceRef,
 					Source:    tc.source,
-					Delivery:  kaprov1alpha2.DeliverySpec{BackendRef: "flux"},
-					Clusters:  []kaprov1alpha2.ClusterRef{{Name: "c1"}},
+					Delivery:  kaprov1alpha1.DeliverySpec{SubstrateRef: "flux"},
+					Clusters:  []kaprov1alpha1.ClusterRef{{Name: "c1"}},
 				},
 			}
 			issues := LintKapro(k)
@@ -546,27 +362,27 @@ func TestLintKapro_ExactlyOneOfSourceSourceRef(t *testing.T) {
 	}
 }
 
-func TestLintKapro_MissingBackendIsError(t *testing.T) {
-	k := &kaprov1alpha2.Fleet{
+func TestLintKapro_MissingSubstrateIsError(t *testing.T) {
+	k := &kaprov1alpha1.Fleet{
 		ObjectMeta: metav1.ObjectMeta{Name: "k1"},
-		Spec: kaprov1alpha2.FleetSpec{
+		Spec: kaprov1alpha1.FleetSpec{
 			SourceRef: "shared",
-			Clusters:  []kaprov1alpha2.ClusterRef{{Name: "c1"}},
+			Clusters:  []kaprov1alpha1.ClusterRef{{Name: "c1"}},
 		},
 	}
 	issues := LintKapro(k)
-	hit := findIssue(t, issues, "backendRef")
+	hit := findIssue(t, issues, "substrateRef")
 	if hit == nil || hit.Severity != SeverityError {
-		t.Fatalf("expected backendRef ERROR; got %+v", issues)
+		t.Fatalf("expected substrateRef ERROR; got %+v", issues)
 	}
 }
 
 func TestLintKapro_NoClustersWarn(t *testing.T) {
-	k := &kaprov1alpha2.Fleet{
+	k := &kaprov1alpha1.Fleet{
 		ObjectMeta: metav1.ObjectMeta{Name: "k1"},
-		Spec: kaprov1alpha2.FleetSpec{
+		Spec: kaprov1alpha1.FleetSpec{
 			SourceRef: "shared",
-			Delivery:  kaprov1alpha2.DeliverySpec{BackendRef: "flux"},
+			Delivery:  kaprov1alpha1.DeliverySpec{SubstrateRef: "flux"},
 		},
 	}
 	issues := LintKapro(k)
@@ -582,13 +398,13 @@ func TestLintPromotionPlan_ManualGateWithRequiredFalseIsError(t *testing.T) {
 	// approval.required=false on a manual gate materially breaks the
 	// user's intent ("wait for a human"). Reviewer flagged this as
 	// CHANGELOG/code drift in PR #96 — upgraded from WARN to ERROR.
-	pp := &kaprov1alpha2.Plan{
+	pp := &kaprov1alpha1.Plan{
 		ObjectMeta: metav1.ObjectMeta{Name: "pp"},
-		Spec: kaprov1alpha2.PlanSpec{
-			Stages: []kaprov1alpha2.Stage{
-				{Name: "prod", Gate: &kaprov1alpha2.GatePolicySpec{
-					Mode:     kaprov1alpha2.GateModeManual,
-					Approval: &kaprov1alpha2.ApprovalConfig{Required: false},
+		Spec: kaprov1alpha1.PlanSpec{
+			Stages: []kaprov1alpha1.Stage{
+				{Name: "prod", Gate: &kaprov1alpha1.GatePolicySpec{
+					Mode:     kaprov1alpha1.GateModeManual,
+					Approval: &kaprov1alpha1.ApprovalConfig{Required: false},
 				}},
 			},
 		},
@@ -634,7 +450,7 @@ func TestLintFile_ExplicitNullDocSkipsSilently(t *testing.T) {
 	// "missing kind" error on the null doc.
 	issues := LintFile("stream.yaml", []byte(`null
 ---
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Promotion
 metadata:
   name: ok

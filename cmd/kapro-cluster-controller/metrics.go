@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/pkg/spokeprovider"
 )
 
@@ -22,28 +22,28 @@ var (
 			Namespace: "kapro",
 			Subsystem: "spoke_delivery",
 			Name:      "reconciles_total",
-			Help:      "Total spoke delivery reconciles by cluster, backend, phase, and result.",
+			Help:      "Total spoke delivery reconciles by cluster, substrate, phase, and result.",
 		},
-		[]string{"cluster", "backend", "phase", "result"},
+		[]string{"cluster", "substrate", "phase", "result"},
 	)
 	spokeDeliveryDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: "kapro",
 			Subsystem: "spoke_delivery",
 			Name:      "reconcile_duration_seconds",
-			Help:      "Spoke delivery reconcile duration by cluster, backend, phase, and result.",
+			Help:      "Spoke delivery reconcile duration by cluster, substrate, phase, and result.",
 			Buckets:   prometheus.DefBuckets,
 		},
-		[]string{"cluster", "backend", "phase", "result"},
+		[]string{"cluster", "substrate", "phase", "result"},
 	)
 	spokeDeliveryStagingResults = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "kapro",
 			Subsystem: "spoke_delivery",
 			Name:      "staging_results_total",
-			Help:      "Total spoke delivery staging/apply phase outcomes by cluster, backend, phase, and result.",
+			Help:      "Total spoke delivery staging/apply phase outcomes by cluster, substrate, phase, and result.",
 		},
-		[]string{"cluster", "backend", "phase", "result"},
+		[]string{"cluster", "substrate", "phase", "result"},
 	)
 )
 
@@ -89,51 +89,51 @@ func metricsDisabled(addr string) bool {
 	}
 }
 
-func observeSpokeDelivery(cluster, backend string, result spokeprovider.ReconcileResult, duration time.Duration) {
+func observeSpokeDelivery(cluster, substrate string, result spokeprovider.ReconcileResult, duration time.Duration) {
 	if cluster == "" {
 		cluster = "unknown"
 	}
-	if backend == "" {
-		backend = "unknown"
+	if substrate == "" {
+		substrate = "unknown"
 	}
 	phase := string(result.Phase)
 	if phase == "" {
 		phase = "Unknown"
 	}
 	outcome := "pending"
-	if result.Err != nil || result.Phase == kaprov1alpha2.DeliveryPhaseFailed {
+	if result.Err != nil || result.Phase == kaprov1alpha1.DeliveryPhaseFailed {
 		outcome = "error"
-	} else if result.Phase == kaprov1alpha2.DeliveryPhaseConverged {
+	} else if result.Phase == kaprov1alpha1.DeliveryPhaseConverged {
 		outcome = "success"
-	} else if result.Phase == kaprov1alpha2.DeliveryPhaseSkipped {
+	} else if result.Phase == kaprov1alpha1.DeliveryPhaseSkipped {
 		outcome = "skipped"
 	}
-	spokeDeliveryReconciles.WithLabelValues(cluster, backend, phase, outcome).Inc()
-	spokeDeliveryDuration.WithLabelValues(cluster, backend, phase, outcome).Observe(duration.Seconds())
-	observeSpokeDeliveryStaging(cluster, backend, result.Staging)
+	spokeDeliveryReconciles.WithLabelValues(cluster, substrate, phase, outcome).Inc()
+	spokeDeliveryDuration.WithLabelValues(cluster, substrate, phase, outcome).Observe(duration.Seconds())
+	observeSpokeDeliveryStaging(cluster, substrate, result.Staging)
 }
 
-func observeSpokeDeliveryStaging(cluster, backend string, staging *kaprov1alpha2.DeliveryStagingStatus) {
+func observeSpokeDeliveryStaging(cluster, substrate string, staging *kaprov1alpha1.DeliveryStagingStatus) {
 	if staging == nil {
 		return
 	}
 	switch staging.FailurePhase {
-	case kaprov1alpha2.DeliveryPhaseStaging:
-		spokeDeliveryStagingResults.WithLabelValues(cluster, backend, string(kaprov1alpha2.DeliveryPhaseStaging), "error").Inc()
-	case kaprov1alpha2.DeliveryPhaseApplying:
-		spokeDeliveryStagingResults.WithLabelValues(cluster, backend, string(kaprov1alpha2.DeliveryPhaseStaging), "success").Inc()
-		spokeDeliveryStagingResults.WithLabelValues(cluster, backend, string(kaprov1alpha2.DeliveryPhaseApplying), "error").Inc()
+	case kaprov1alpha1.DeliveryPhaseStaging:
+		spokeDeliveryStagingResults.WithLabelValues(cluster, substrate, string(kaprov1alpha1.DeliveryPhaseStaging), "error").Inc()
+	case kaprov1alpha1.DeliveryPhaseApplying:
+		spokeDeliveryStagingResults.WithLabelValues(cluster, substrate, string(kaprov1alpha1.DeliveryPhaseStaging), "success").Inc()
+		spokeDeliveryStagingResults.WithLabelValues(cluster, substrate, string(kaprov1alpha1.DeliveryPhaseApplying), "error").Inc()
 	case "":
 		if staging.StagedObjects > 0 || staging.CommittedObjects > 0 {
-			spokeDeliveryStagingResults.WithLabelValues(cluster, backend, string(kaprov1alpha2.DeliveryPhaseStaging), "success").Inc()
-			spokeDeliveryStagingResults.WithLabelValues(cluster, backend, string(kaprov1alpha2.DeliveryPhaseApplying), "success").Inc()
+			spokeDeliveryStagingResults.WithLabelValues(cluster, substrate, string(kaprov1alpha1.DeliveryPhaseStaging), "success").Inc()
+			spokeDeliveryStagingResults.WithLabelValues(cluster, substrate, string(kaprov1alpha1.DeliveryPhaseApplying), "success").Inc()
 		}
 	}
 }
 
-func deliveryBackendMetricLabel(profile *kaprov1alpha2.Backend) string {
-	if profile != nil && profile.Spec.Driver != "" {
-		return string(profile.Spec.Driver)
+func deliverySubstrateMetricLabel(profile *kaprov1alpha1.Substrate) string {
+	if profile != nil && profile.Spec.SubstrateKind() != "" {
+		return profile.Spec.SubstrateKind()
 	}
 	return "unknown"
 }

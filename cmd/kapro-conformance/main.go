@@ -12,10 +12,11 @@ import (
 	"strings"
 	"time"
 
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	argocdsubstratev1alpha1 "kapro.io/kapro/api/substrate/argocd/v1alpha1"
 	fluxsubstratev1alpha1 "kapro.io/kapro/api/substrate/flux/v1alpha1"
 	kubernetessubstratev1alpha1 "kapro.io/kapro/api/substrate/kubernetes/v1alpha1"
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	ocisubstratev1alpha1 "kapro.io/kapro/api/substrate/oci/v1alpha1"
 	"kapro.io/kapro/conformance"
 	actuatorconformance "kapro.io/kapro/conformance/actuator"
 	gateconformance "kapro.io/kapro/conformance/gate"
@@ -501,25 +502,25 @@ func (referencePlannerClient) Plan(ctx context.Context, req *kpiv1alpha1.PlanReq
 
 type referenceProvider struct{}
 
-func (referenceProvider) Driver() kaprov1alpha2.BackendDriver {
-	return kaprov1alpha2.BackendDriverOCI
+func (referenceProvider) Driver() kaprov1alpha1.SubstrateDriver {
+	return kaprov1alpha1.SubstrateDriverOCI
 }
 
 func (referenceProvider) Capabilities() spokeprovider.Capabilities {
 	return spokeprovider.Capabilities{
-		Driver:            kaprov1alpha2.BackendDriverOCI,
+		Driver:            kaprov1alpha1.SubstrateDriverOCI,
 		SupportsReconcile: true,
 		SupportsObserve:   true,
 	}
 }
 
 func (referenceProvider) Reconcile(context.Context, spokeprovider.ReconcileRequest) spokeprovider.ReconcileResult {
-	return spokeprovider.ReconcileResult{Phase: kaprov1alpha2.DeliveryPhaseConverged}
+	return spokeprovider.ReconcileResult{Phase: kaprov1alpha1.DeliveryPhaseConverged}
 }
 
 type referenceSubstrate struct {
 	className string
-	mode      kaprov1alpha2.ExecutionMode
+	mode      kaprov1alpha1.ExecutionMode
 }
 
 func (s referenceSubstrate) Validate(_ context.Context, req *ksisubstrate.ValidateRequest) (*ksisubstrate.ValidateResult, error) {
@@ -529,8 +530,8 @@ func (s referenceSubstrate) Validate(_ context.Context, req *ksisubstrate.Valida
 	if req.Config == nil {
 		return &ksisubstrate.ValidateResult{Valid: false, Reason: "ConfigMissing", Message: "config is required"}, nil
 	}
-	if req.Backend == nil || req.Backend.Spec.ClassRef == nil || req.Backend.Spec.ClassRef.Name != s.className {
-		return &ksisubstrate.ValidateResult{Valid: false, Reason: "ClassMismatch", Message: "backend classRef does not match reference substrate"}, nil
+	if req.Substrate == nil || req.Substrate.Spec.ClassRef == nil || req.Substrate.Spec.ClassRef.Name != s.className {
+		return &ksisubstrate.ValidateResult{Valid: false, Reason: "ClassMismatch", Message: "substrate classRef does not match reference substrate"}, nil
 	}
 	return &ksisubstrate.ValidateResult{Valid: true, Reason: "Valid", Message: "config accepted"}, nil
 }
@@ -540,11 +541,11 @@ func (s referenceSubstrate) Apply(_ context.Context, req *ksisubstrate.ApplyRequ
 		return nil, fmt.Errorf("request is nil")
 	}
 	return &ksisubstrate.ApplyResult{
-		Accepted:       true,
-		Applied:        len(req.DesiredVersions),
-		Reason:         "Accepted",
-		Message:        "reference substrate accepted desired versions",
-		BackendObjects: referenceBackendObjects(req.DesiredVersions, kaprov1alpha2.DeliveryPhaseApplying),
+		Accepted:         true,
+		Applied:          len(req.DesiredVersions),
+		Reason:           "Accepted",
+		Message:          "reference substrate accepted desired versions",
+		SubstrateObjects: referenceSubstrateObjects(req.DesiredVersions, kaprov1alpha1.DeliveryPhaseApplying),
 	}, nil
 }
 
@@ -553,25 +554,25 @@ func (s referenceSubstrate) Observe(_ context.Context, req *ksisubstrate.Observe
 		return nil, fmt.Errorf("request is nil")
 	}
 	return &ksisubstrate.ObserveResult{
-		Converged:      true,
-		Phase:          kaprov1alpha2.DeliveryPhaseConverged,
-		Reason:         "Converged",
-		Message:        "reference substrate reports convergence",
-		BackendObjects: referenceBackendObjects(req.DesiredVersions, kaprov1alpha2.DeliveryPhaseConverged),
+		Converged:        true,
+		Phase:            kaprov1alpha1.DeliveryPhaseConverged,
+		Reason:           "Converged",
+		Message:          "reference substrate reports convergence",
+		SubstrateObjects: referenceSubstrateObjects(req.DesiredVersions, kaprov1alpha1.DeliveryPhaseConverged),
 	}, nil
 }
 
 func (s referenceSubstrate) Capabilities(context.Context) (*ksisubstrate.Capabilities, error) {
 	return &ksisubstrate.Capabilities{
 		ContractVersion:         ksisubstrate.ContractVersionV1Alpha1,
-		SupportedExecutionModes: []kaprov1alpha2.ExecutionMode{s.mode},
-		Capabilities: kaprov1alpha2.SubstrateCapabilities{
-			Operations: &kaprov1alpha2.SubstrateOperationCapabilities{
+		SupportedExecutionModes: []kaprov1alpha1.ExecutionMode{s.mode},
+		Capabilities: kaprov1alpha1.SubstrateCapabilities{
+			Operations: &kaprov1alpha1.SubstrateOperationCapabilities{
 				Apply:   true,
 				Observe: true,
 				DryRun:  true,
 			},
-			Staging: &kaprov1alpha2.SubstrateStagingCapabilities{},
+			Staging: &kaprov1alpha1.SubstrateStagingCapabilities{},
 		},
 	}, nil
 }
@@ -579,13 +580,14 @@ func (s referenceSubstrate) Capabilities(context.Context) (*ksisubstrate.Capabil
 func referenceSubstrateReports(ctx context.Context) []suiteReport {
 	type reference struct {
 		name   string
-		mode   kaprov1alpha2.ExecutionMode
+		mode   kaprov1alpha1.ExecutionMode
 		config runtime.Object
 	}
 	refs := []reference{
-		{name: "kubernetes-apply", mode: kaprov1alpha2.ExecutionModeHubPush, config: &kubernetessubstratev1alpha1.KubernetesApplyConfig{}},
-		{name: "argo-cd", mode: kaprov1alpha2.ExecutionModeHubPush, config: &argocdsubstratev1alpha1.ArgoCDSubstrateConfig{}},
-		{name: "flux", mode: kaprov1alpha2.ExecutionModeSpokePull, config: &fluxsubstratev1alpha1.FluxSubstrateConfig{}},
+		{name: "kubernetes-apply", mode: kaprov1alpha1.ExecutionModeHubPush, config: &kubernetessubstratev1alpha1.KubernetesApplyConfig{}},
+		{name: "argo", mode: kaprov1alpha1.ExecutionModeHubPush, config: &argocdsubstratev1alpha1.ArgoCDSubstrateConfig{}},
+		{name: "flux", mode: kaprov1alpha1.ExecutionModeSpokePull, config: &fluxsubstratev1alpha1.FluxSubstrateConfig{}},
+		{name: "oci", mode: kaprov1alpha1.ExecutionModeSpokePull, config: &ocisubstratev1alpha1.OCIBundleApplyConfig{}},
 	}
 	reports := make([]suiteReport, 0, len(refs))
 	for _, ref := range refs {
@@ -598,12 +600,12 @@ func referenceSubstrateReports(ctx context.Context) []suiteReport {
 
 func referenceSubstrateScenario(className string, config runtime.Object) substrateconformance.Scenario {
 	scenario := substrateconformance.DefaultScenario()
-	class := &kaprov1alpha2.SubstrateClass{ObjectMeta: metav1.ObjectMeta{Name: className}}
-	backend := &kaprov1alpha2.Backend{
+	class := &kaprov1alpha1.SubstrateClass{ObjectMeta: metav1.ObjectMeta{Name: className}}
+	substrate := &kaprov1alpha1.Substrate{
 		ObjectMeta: metav1.ObjectMeta{Name: className},
-		Spec: kaprov1alpha2.BackendSpec{
-			ClassRef: &kaprov1alpha2.SubstrateClassReference{Name: className},
-			ConfigRef: &kaprov1alpha2.SubstrateObjectReference{
+		Spec: kaprov1alpha1.SubstrateSpec{
+			ClassRef: &kaprov1alpha1.SubstrateClassReference{Name: className},
+			ConfigRef: &kaprov1alpha1.SubstrateObjectReference{
 				APIVersion: "substrate.kapro.io/v1alpha1",
 				Kind:       "ReferenceConfig",
 				Name:       className,
@@ -611,24 +613,24 @@ func referenceSubstrateScenario(className string, config runtime.Object) substra
 		},
 	}
 	scenario.Validate.Class = class
-	scenario.Validate.Backend = backend
+	scenario.Validate.Substrate = substrate
 	scenario.Validate.Config = config
 	scenario.MissingConfigValidate.Class = class
-	scenario.MissingConfigValidate.Backend = backend
+	scenario.MissingConfigValidate.Substrate = substrate
 	scenario.Apply.Class = class
-	scenario.Apply.Backend = backend
+	scenario.Apply.Substrate = substrate
 	scenario.Apply.Config = config
 	scenario.Observe.Class = class
-	scenario.Observe.Backend = backend
+	scenario.Observe.Substrate = substrate
 	scenario.Observe.Config = config
 	scenario.RequiredOperations = []string{"apply", "observe", "dryRun"}
 	return scenario
 }
 
-func referenceBackendObjects(versions map[string]string, phase kaprov1alpha2.DeliveryPhase) []kaprov1alpha2.BackendObjectStatus {
-	objects := make([]kaprov1alpha2.BackendObjectStatus, 0, len(versions))
+func referenceSubstrateObjects(versions map[string]string, phase kaprov1alpha1.DeliveryPhase) []kaprov1alpha1.SubstrateObjectStatus {
+	objects := make([]kaprov1alpha1.SubstrateObjectStatus, 0, len(versions))
 	for app, version := range versions {
-		objects = append(objects, kaprov1alpha2.BackendObjectStatus{
+		objects = append(objects, kaprov1alpha1.SubstrateObjectStatus{
 			Kind:           "Reference",
 			Name:           app,
 			DesiredVersion: version,

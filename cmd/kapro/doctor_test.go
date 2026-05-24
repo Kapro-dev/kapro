@@ -21,7 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/cli"
 )
 
@@ -61,16 +61,16 @@ func TestDoctorReportFailsMissingCRD(t *testing.T) {
 }
 
 func TestDoctorReportFailsMissingPullSecret(t *testing.T) {
-	fleet := &kaprov1alpha2.Fleet{
+	fleet := &kaprov1alpha1.Fleet{
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
-		Spec: kaprov1alpha2.FleetSpec{
-			Registry: kaprov1alpha2.KaproRegistry{URL: "oci://registry.example.com/platform", SecretRef: "registry-auth"},
-			Delivery: kaprov1alpha2.DeliverySpec{
-				Mode:       kaprov1alpha2.DeliveryModePull,
-				BackendRef: "oci",
+		Spec: kaprov1alpha1.FleetSpec{
+			Registry: kaprov1alpha1.KaproRegistry{URL: "oci://registry.example.com/platform", SecretRef: "registry-auth"},
+			Delivery: kaprov1alpha1.DeliverySpec{
+				Mode:         kaprov1alpha1.DeliveryModePull,
+				SubstrateRef: "oci",
 			},
-			Clusters: []kaprov1alpha2.ClusterRef{{Name: "dev", Labels: map[string]string{"env": "dev"}}},
-			Plan: kaprov1alpha2.KaproPlan{Stages: []kaprov1alpha2.StageSpec{{
+			Clusters: []kaprov1alpha1.ClusterRef{{Name: "dev", Labels: map[string]string{"env": "dev"}}},
+			Plan: kaprov1alpha1.KaproPlan{Stages: []kaprov1alpha1.StageSpec{{
 				Name:     "dev",
 				Selector: map[string]string{"env": "dev"},
 			}}},
@@ -89,18 +89,18 @@ func TestDoctorReportFailsMissingPullSecret(t *testing.T) {
 }
 
 func TestDoctorReportHonorsTriggerSecretNamespace(t *testing.T) {
-	trigger := &kaprov1alpha2.Trigger{
+	trigger := &kaprov1alpha1.Trigger{
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout-trigger"},
-		Spec: kaprov1alpha2.TriggerSpec{
-			Source: kaprov1alpha2.TriggerSource{
+		Spec: kaprov1alpha1.TriggerSpec{
+			Source: kaprov1alpha1.TriggerSource{
 				Type: "oci",
-				OCI: &kaprov1alpha2.OCITriggerSource{
+				OCI: &kaprov1alpha1.OCITriggerSource{
 					Repository: "oci://registry.example.com/platform",
 					TagPattern: ".*",
 					SecretRef:  &corev1.SecretReference{Namespace: "delivery", Name: "registry-auth"},
 				},
 			},
-			PromotionTemplate: kaprov1alpha2.TriggerTemplate{FleetRef: "checkout"},
+			PromotionTemplate: kaprov1alpha1.TriggerTemplate{FleetRef: "checkout"},
 		},
 	}
 	secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "registry-auth", Namespace: "delivery"}}
@@ -116,66 +116,67 @@ func TestDoctorReportHonorsTriggerSecretNamespace(t *testing.T) {
 	}
 }
 
-func TestDoctorReportSummarizesGitOpsBackends(t *testing.T) {
-	backend := &kaprov1alpha2.Backend{
+func TestDoctorReportSummarizesGitOpsSubstrates(t *testing.T) {
+	substrate := &kaprov1alpha1.Substrate{
 		ObjectMeta: metav1.ObjectMeta{Name: "flux"},
-		Spec: kaprov1alpha2.BackendSpec{
-			Driver:  kaprov1alpha2.BackendDriverFlux,
-			Runtime: kaprov1alpha2.BackendRuntimeHub,
+		Spec: kaprov1alpha1.SubstrateSpec{
+			Substrate: &kaprov1alpha1.SubstrateImplementationSpec{Kind: "flux", Actuator: "flux"},
+			Execution: &kaprov1alpha1.SubstrateExecutionSpec{Mode: kaprov1alpha1.ExecutionModeHubPush},
 			Parameters: map[string]string{
 				"namespace": "flux-system",
 			},
-			Discovery: &kaprov1alpha2.BackendDiscoverySpec{Enabled: true, ManagementPolicy: "Observe"},
+			Discovery: &kaprov1alpha1.SubstrateDiscoverySpec{Enabled: true, ManagementPolicy: "Observe"},
 		},
 	}
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "flux-system"}}
-	c := fakeDoctorClient(t, append(append(healthyDoctorObjects(), validatingWebhookObjects()...), backend, ns)...)
+	c := fakeDoctorClient(t, append(append(healthyDoctorObjects(), validatingWebhookObjects()...), substrate, ns)...)
 	report := collectDoctorReport(context.Background(), c, doctorOptions{
 		Namespace:  "kapro-system",
 		Deployment: "kapro-kapro-operator",
 	}, allowAllSAR)
 
-	backends := findDoctorCheck(report, "gitops-backends")
-	if backends.Status != doctorStatusPass || !strings.Contains(strings.Join(backends.Details, ","), "driver=flux") {
-		t.Fatalf("expected passing gitops backend summary, got %#v", backends)
+	substrates := findDoctorCheck(report, "gitops-substrates")
+	if substrates.Status != doctorStatusPass || !strings.Contains(strings.Join(substrates.Details, ","), "substrate=flux") {
+		t.Fatalf("expected passing gitops substrate summary, got %#v", substrates)
 	}
 }
 
 func TestDoctorReportWarnsOnMissingGitOpsNamespace(t *testing.T) {
-	backend := &kaprov1alpha2.Backend{
+	substrate := &kaprov1alpha1.Substrate{
 		ObjectMeta: metav1.ObjectMeta{Name: "argo"},
-		Spec: kaprov1alpha2.BackendSpec{
-			Driver: kaprov1alpha2.BackendDriverArgo,
+		Spec: kaprov1alpha1.SubstrateSpec{
+			Substrate: &kaprov1alpha1.SubstrateImplementationSpec{Kind: "argo", Actuator: "argo"},
+			Execution: &kaprov1alpha1.SubstrateExecutionSpec{Mode: kaprov1alpha1.ExecutionModeHubPush},
 			Parameters: map[string]string{
 				"namespace": "argocd",
 			},
 		},
 	}
-	c := fakeDoctorClient(t, append(append(healthyDoctorObjects(), validatingWebhookObjects()...), backend)...)
+	c := fakeDoctorClient(t, append(append(healthyDoctorObjects(), validatingWebhookObjects()...), substrate)...)
 	report := collectDoctorReport(context.Background(), c, doctorOptions{
 		Namespace:  "kapro-system",
 		Deployment: "kapro-kapro-operator",
 	}, allowAllSAR)
 
-	backends := findDoctorCheck(report, "gitops-backends")
-	if backends.Status != doctorStatusWarn || !strings.Contains(strings.Join(backends.Details, ","), "missing namespace argocd") {
-		t.Fatalf("expected missing namespace warning, got %#v", backends)
+	substrates := findDoctorCheck(report, "gitops-substrates")
+	if substrates.Status != doctorStatusWarn || !strings.Contains(strings.Join(substrates.Details, ","), "missing namespace argocd") {
+		t.Fatalf("expected missing namespace warning, got %#v", substrates)
 	}
 }
 
 func TestDoctorReportFailsTriggerSecretWithoutNamespace(t *testing.T) {
-	trigger := &kaprov1alpha2.Trigger{
+	trigger := &kaprov1alpha1.Trigger{
 		ObjectMeta: metav1.ObjectMeta{Name: "checkout-trigger"},
-		Spec: kaprov1alpha2.TriggerSpec{
-			Source: kaprov1alpha2.TriggerSource{
+		Spec: kaprov1alpha1.TriggerSpec{
+			Source: kaprov1alpha1.TriggerSource{
 				Type: "oci",
-				OCI: &kaprov1alpha2.OCITriggerSource{
+				OCI: &kaprov1alpha1.OCITriggerSource{
 					Repository: "oci://registry.example.com/platform",
 					TagPattern: ".*",
 					SecretRef:  &corev1.SecretReference{Name: "registry-auth"},
 				},
 			},
-			PromotionTemplate: kaprov1alpha2.TriggerTemplate{FleetRef: "checkout"},
+			PromotionTemplate: kaprov1alpha1.TriggerTemplate{FleetRef: "checkout"},
 		},
 	}
 	c := fakeDoctorClient(t, append(append(healthyDoctorObjects(), validatingWebhookObjects()...), trigger)...)
@@ -238,7 +239,7 @@ func fakeDoctorClient(t *testing.T, objects ...client.Object) client.Client {
 			Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
 				createOpts := &client.CreateOptions{}
 				createOpts.ApplyOptions(opts)
-				if _, ok := obj.(*kaprov1alpha2.Plan); ok && len(createOpts.DryRun) > 0 {
+				if _, ok := obj.(*kaprov1alpha1.Plan); ok && len(createOpts.DryRun) > 0 {
 					return apierrors.NewInvalid(
 						schema.GroupKind{Group: "kapro.io", Kind: "Plan"},
 						obj.GetName(),
@@ -275,18 +276,18 @@ func healthyDoctorObjects() []client.Object {
 }
 
 func establishedDoctorCRD(name string) *apiextensionsv1.CustomResourceDefinition {
-	plural := strings.TrimSuffix(name, ".kapro.io")
+	plural, group, _ := strings.Cut(name, ".")
 	return &apiextensionsv1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
-			Group: "kapro.io",
+			Group: group,
 			Names: apiextensionsv1.CustomResourceDefinitionNames{
 				Plural: plural,
 				Kind:   "DoctorKind",
 			},
 			Scope: apiextensionsv1.ClusterScoped,
 			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{{
-				Name:    "v1alpha2",
+				Name:    "v1alpha1",
 				Served:  true,
 				Storage: true,
 			}},
@@ -320,7 +321,7 @@ func readyDoctorDeployment() *appsv1.Deployment {
 }
 
 func validatingWebhookObjects() []client.Object {
-	path := "/validate-kapro-io-v1alpha2-plan"
+	path := "/validate-kapro-io-v1alpha1-plan"
 	return []client.Object{&admissionv1.ValidatingWebhookConfiguration{
 		ObjectMeta: metav1.ObjectMeta{Name: "kapro-kapro-operator"},
 		Webhooks: []admissionv1.ValidatingWebhook{{
@@ -328,7 +329,7 @@ func validatingWebhookObjects() []client.Object {
 			Rules: []admissionv1.RuleWithOperations{{
 				Rule: admissionv1.Rule{
 					APIGroups:   []string{"kapro.io"},
-					APIVersions: []string{"v1alpha2"},
+					APIVersions: []string{"v1alpha1"},
 					Resources:   []string{"plans"},
 				},
 				Operations: []admissionv1.OperationType{admissionv1.Create, admissionv1.Update},

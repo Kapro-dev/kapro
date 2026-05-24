@@ -4,32 +4,32 @@ import (
 	"fmt"
 	"sync"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
-// Registry resolves Provider implementations by BackendDriver.
+// Registry resolves Provider implementations by SubstrateDriver.
 //
 // Shape mirrors pkg/actuator.Registry on purpose: hub-side actuators and
 // spoke-side providers face opposite directions but follow the same
 // register/resolve discipline so out-of-tree code can reuse the idiom.
 type Registry struct {
 	mu            sync.RWMutex
-	providers     map[kaprov1alpha2.BackendDriver]Provider
-	registrations map[kaprov1alpha2.BackendDriver]Registration
+	providers     map[kaprov1alpha1.SubstrateDriver]Provider
+	registrations map[kaprov1alpha1.SubstrateDriver]Registration
 }
 
 // NewRegistry returns an empty Registry ready to accept Register calls.
 func NewRegistry() *Registry {
 	return &Registry{
-		providers:     make(map[kaprov1alpha2.BackendDriver]Provider),
-		registrations: make(map[kaprov1alpha2.BackendDriver]Registration),
+		providers:     make(map[kaprov1alpha1.SubstrateDriver]Provider),
+		registrations: make(map[kaprov1alpha1.SubstrateDriver]Registration),
 	}
 }
 
-// Registration binds one backend driver to a provider implementation and its
+// Registration binds one substrate driver to a provider implementation and its
 // KSP metadata.
 type Registration struct {
-	Driver       kaprov1alpha2.BackendDriver
+	Driver       kaprov1alpha1.SubstrateDriver
 	Capabilities Capabilities
 	Provider     Provider
 }
@@ -38,7 +38,7 @@ type Registration struct {
 // driver is empty or already registered. Use Upsert when replacement is the
 // intent — Register fails loudly on accidental duplicate registration to
 // surface wire-up bugs at startup, not at the first reconcile.
-func (r *Registry) Register(driver kaprov1alpha2.BackendDriver, p Provider) error {
+func (r *Registry) Register(driver kaprov1alpha1.SubstrateDriver, p Provider) error {
 	driver, reg, err := normalizeRegistration(Registration{Driver: driver, Provider: p})
 	if err != nil {
 		return err
@@ -73,7 +73,7 @@ func (r *Registry) RegisterRegistration(reg Registration) error {
 // implementation when one existed. Rejects empty driver and nil provider
 // for the same reason Register does — a nil entry would let Resolve return
 // (nil, nil) and panic the dispatcher.
-func (r *Registry) Upsert(driver kaprov1alpha2.BackendDriver, p Provider) (Provider, error) {
+func (r *Registry) Upsert(driver kaprov1alpha1.SubstrateDriver, p Provider) (Provider, error) {
 	driver, reg, err := normalizeRegistration(Registration{Driver: driver, Provider: p})
 	if err != nil {
 		return nil, err
@@ -103,7 +103,7 @@ func (r *Registry) UpsertRegistration(reg Registration) (Provider, error) {
 
 // Unregister removes the provider for driver and returns the previous
 // implementation plus an ok flag indicating whether one existed.
-func (r *Registry) Unregister(driver kaprov1alpha2.BackendDriver) (Provider, bool) {
+func (r *Registry) Unregister(driver kaprov1alpha1.SubstrateDriver) (Provider, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	old, ok := r.providers[driver]
@@ -116,25 +116,25 @@ func (r *Registry) Unregister(driver kaprov1alpha2.BackendDriver) (Provider, boo
 // driver. The error is human-readable and goes straight into
 // FleetCluster.status.delivery[app].lastError when an unknown driver is
 // referenced — keep it stable for SRE grep recipes.
-func (r *Registry) Resolve(driver kaprov1alpha2.BackendDriver) (Provider, error) {
+func (r *Registry) Resolve(driver kaprov1alpha1.SubstrateDriver) (Provider, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	p, ok := r.providers[driver]
 	if !ok {
-		return nil, fmt.Errorf("unknown backend driver %q", driver)
+		return nil, fmt.Errorf("unknown substrate driver %q", driver)
 	}
 	return p, nil
 }
 
 // Registration returns provider metadata for driver.
-func (r *Registry) Registration(driver kaprov1alpha2.BackendDriver) (Registration, bool) {
+func (r *Registry) Registration(driver kaprov1alpha1.SubstrateDriver) (Registration, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	reg, ok := r.registrations[driver]
 	return reg, ok
 }
 
-func normalizeRegistration(reg Registration) (kaprov1alpha2.BackendDriver, Registration, error) {
+func normalizeRegistration(reg Registration) (kaprov1alpha1.SubstrateDriver, Registration, error) {
 	if reg.Provider == nil {
 		if reg.Driver != "" {
 			return "", Registration{}, fmt.Errorf("provider for driver %q is nil", reg.Driver)

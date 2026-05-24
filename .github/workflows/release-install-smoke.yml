@@ -9,7 +9,7 @@ on:
       previous_version:
         description: Previous published release tag for upgrade and rollback smoke.
         required: false
-        default: v0.5.7
+        default: v0.5.8
       kind_image:
         description: Kind node image for the smoke cluster.
         required: true
@@ -56,18 +56,18 @@ jobs:
         run: scripts/verify-install.sh release-cluster
 
       - name: Upgrade from previous published release
-        if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.head_branch == 'v0.5.8'
+        if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.head_branch == 'v0.6.0'
         env:
           KAPRO_RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.workflow_run.head_branch }}
-          KAPRO_PREVIOUS_RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.previous_version || 'v0.5.7' }}
+          KAPRO_PREVIOUS_RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.previous_version || 'v0.5.8' }}
           KAPRO_VERIFY_CLEANUP: "true"
         run: scripts/verify-install.sh release-upgrade-cluster
 
       - name: Roll back from current published release
-        if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.head_branch == 'v0.5.8'
+        if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.head_branch == 'v0.6.0'
         env:
           KAPRO_RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.workflow_run.head_branch }}
-          KAPRO_PREVIOUS_RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.previous_version || 'v0.5.7' }}
+          KAPRO_PREVIOUS_RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.previous_version || 'v0.5.8' }}
           KAPRO_VERIFY_CLEANUP: "true"
         run: scripts/verify-install.sh release-rollback-cluster
 
@@ -79,7 +79,7 @@ jobs:
           kubectl --context kind-kapro-release-install get events -A --sort-by=.lastTimestamp > release-install-diagnostics/events.txt || true
           kubectl --context kind-kapro-release-install get all -A -o wide > release-install-diagnostics/all.txt || true
           kubectl --context kind-kapro-release-install get crd -o wide > release-install-diagnostics/crds.txt || true
-          kubectl --context kind-kapro-release-install get backends,fleets,clusters,plans,promotions,promotionruns,targets -A -o yaml > release-install-diagnostics/kapro-resources.yaml || true
+          kubectl --context kind-kapro-release-install get substrates.kapro.io,fleets.kapro.io,clusters.kapro.io,plans.kapro.io,promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io -A -o yaml > release-install-diagnostics/kapro-resources.yaml || true
           kubectl --context kind-kapro-release-install -n kapro-system logs deploy/kapro-kapro-operator --tail=-1 > release-install-diagnostics/operator.log || true
 
       - name: Upload diagnostics

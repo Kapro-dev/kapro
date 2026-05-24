@@ -1,10 +1,10 @@
 // Package flux implements the spoke-side delivery Provider for
-// BackendDriverFlux. The provider OBSERVES local Flux state — it never
+// SubstrateDriverFlux. The provider OBSERVES local Flux state — it never
 // mutates Flux CRs.
 //
 // Division of labour:
 //   - HUB writes the desired version onto FleetCluster.spec.desiredVersions
-//     and (for Flux backends) the hub-side fluxoperator actuator patches
+//     and (for Flux substrates) the hub-side fluxoperator actuator patches
 //     the Flux source's tag/version on the spoke. This is what causes
 //     Flux to actually fetch the new artifact.
 //   - SPOKE (this provider) reads the local OCIRepository (and optionally a
@@ -17,7 +17,7 @@
 // visibility into convergence without dialing into the spoke.
 //
 // Parameters consumed from ReconcileRequest.Parameters (merged from
-// BackendProfile.spec.parameters and FleetCluster.spec.delivery.parameters,
+// SubstrateProfile.spec.parameters and FleetCluster.spec.delivery.parameters,
 // cluster wins):
 //
 //	ociRepositoryName        — name of the Flux OCIRepository on the spoke

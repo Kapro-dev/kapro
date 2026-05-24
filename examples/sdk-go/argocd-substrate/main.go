@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/pkg/kapro/adapter"
 	"kapro.io/kapro/pkg/kapro/adapter/argocd"
 )
@@ -16,14 +16,14 @@ func main() {
 		log.Fatalf("register Argo CD adapter: %v", err)
 	}
 
-	argo, err := registry.Resolve(kaprov1alpha2.BackendDriverArgo)
+	argo, err := registry.Resolve(kaprov1alpha1.SubstrateDriverArgo)
 	if err != nil {
 		log.Fatalf("resolve Argo CD adapter: %v", err)
 	}
 
 	result, err := argo.Discover(context.Background(), adapter.DiscoveryRequest{
-		Driver:    kaprov1alpha2.BackendDriverArgo,
-		Runtime:   kaprov1alpha2.BackendRuntimeHub,
+		Driver:    kaprov1alpha1.SubstrateDriverArgo,
+		Runtime:   kaprov1alpha1.SubstrateRuntimeHub,
 		Namespace: "argocd",
 	})
 	if err != nil {

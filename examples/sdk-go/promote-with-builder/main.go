@@ -8,14 +8,14 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	kapro "kapro.io/kapro/pkg/kapro"
 )
 
 func main() {
 	ctx := context.Background()
 	scheme := runtime.NewScheme()
-	if err := kaprov1alpha2.AddToScheme(scheme); err != nil {
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
 		log.Fatal(err)
 	}
 

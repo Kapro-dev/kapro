@@ -17,11 +17,11 @@ func TestFileSinkWritesOriginalEnvelopeAndMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFileSink: %v", err)
 	}
-	body := []byte(`{"specversion":"1.0","id":"event-1","source":"/apis/kapro.io/v1alpha2/promotions/demo","type":"kapro.io/promotion.succeeded","subject":"demo","time":"2026-05-22T10:00:00Z","datacontenttype":"application/json","data":{"promotion":"demo","phase":"Succeeded"}}`)
+	body := []byte(`{"specversion":"1.0","id":"event-1","source":"/apis/kapro.io/v1alpha1/promotions/demo","type":"kapro.io/promotion.succeeded","subject":"demo","time":"2026-05-22T10:00:00Z","datacontenttype":"application/json","data":{"promotion":"demo","phase":"Succeeded"}}`)
 	envelope := events.Envelope{
 		SpecVersion:     "1.0",
 		ID:              "event-1",
-		Source:          "/apis/kapro.io/v1alpha2/promotions/demo",
+		Source:          "/apis/kapro.io/v1alpha1/promotions/demo",
 		Type:            events.EventType("kapro.io/promotion.succeeded"),
 		Subject:         "demo",
 		Time:            "2026-05-22T10:00:00Z",
@@ -81,7 +81,7 @@ func TestFileSinkTreatsDuplicateDedupeKeyAsAlreadyArchived(t *testing.T) {
 	envelope := events.Envelope{
 		SpecVersion:     "1.0",
 		ID:              "event-1",
-		Source:          "/apis/kapro.io/v1alpha2/promotions/demo",
+		Source:          "/apis/kapro.io/v1alpha1/promotions/demo",
 		Type:            events.EventType("kapro.io/promotion.succeeded"),
 		Time:            "2026-05-22T10:00:00Z",
 		DataContentType: "application/json",
@@ -127,7 +127,7 @@ func TestFileSinkHealsPartialArchive(t *testing.T) {
 	envelope := events.Envelope{
 		SpecVersion: "1.0",
 		ID:          "event-1",
-		Source:      "/apis/kapro.io/v1alpha2/promotions/demo",
+		Source:      "/apis/kapro.io/v1alpha1/promotions/demo",
 		Type:        events.EventType("kapro.io/promotion.succeeded"),
 		Time:        "2026-05-22T10:00:00Z",
 	}

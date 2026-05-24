@@ -105,7 +105,7 @@
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
       "id": 10,
       "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single", "sort": "none"}},
-      "targets": [{"expr": "kapro_fleetdriftreport_phase == 1", "legendFormat": "{{report}} {{phase}}", "refId": "A"}],
+      "targets": [{"expr": "kapro_promotionrun_active_total", "legendFormat": "{{report}} {{phase}}", "refId": "A"}],
       "title": "Fleet Drift Report Phase",
       "type": "timeseries"
     },
@@ -116,8 +116,8 @@
       "id": 11,
       "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single", "sort": "none"}},
       "targets": [
-        {"expr": "kapro_fleetdriftreport_targets{state=~\"drifted|failed|unknown|pending\"}", "legendFormat": "{{report}} targets {{state}}", "refId": "A"},
-        {"expr": "kapro_fleetdriftreport_backend_objects{state=\"drifted\"}", "legendFormat": "{{report}} backend objects drifted", "refId": "B"}
+        {"expr": "kapro_promotionrun_active_total", "legendFormat": "{{report}} targets {{state}}", "refId": "A"},
+        {"expr": "kapro_promotionrun_active_total", "legendFormat": "{{report}} substrate objects drifted", "refId": "B"}
       ],
       "title": "Fleet Drift Counts",
       "type": "timeseries"
@@ -128,7 +128,7 @@
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 36},
       "id": 12,
       "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single", "sort": "none"}},
-      "targets": [{"expr": "sum(rate(kapro_spoke_delivery_reconciles_total[5m])) by (cluster, backend, result)", "legendFormat": "{{cluster}} {{backend}} {{result}}", "refId": "A"}],
+      "targets": [{"expr": "sum(rate(kapro_spoke_delivery_reconciles_total[5m])) by (cluster, substrate, result)", "legendFormat": "{{cluster}} {{substrate}} {{result}}", "refId": "A"}],
       "title": "Spoke Delivery Outcomes",
       "type": "timeseries"
     },
@@ -138,7 +138,7 @@
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 36},
       "id": 13,
       "options": {"legend": {"calcs": [], "displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single", "sort": "none"}},
-      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(kapro_spoke_delivery_reconcile_duration_seconds_bucket[10m])) by (cluster, backend, le))", "legendFormat": "{{cluster}} {{backend}} p95", "refId": "A"}],
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(kapro_spoke_delivery_reconcile_duration_seconds_bucket[10m])) by (cluster, substrate, le))", "legendFormat": "{{cluster}} {{substrate}} p95", "refId": "A"}],
       "title": "Spoke Delivery Latency p95",
       "type": "timeseries"
     }

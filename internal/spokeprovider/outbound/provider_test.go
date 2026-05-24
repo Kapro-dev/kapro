@@ -13,7 +13,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/delivery"
 	"kapro.io/kapro/pkg/spokeprovider"
 )
@@ -51,7 +51,7 @@ func TestProvider_SuspendShortCircuit(t *testing.T) {
 		},
 		Now: func() time.Time { return time.Unix(1700000000, 0) },
 	}
-	cluster := &kaprov1alpha2.Cluster{}
+	cluster := &kaprov1alpha1.Cluster{}
 	cluster.Spec.Suspend = true
 
 	res := p.Reconcile(context.Background(), spokeprovider.ReconcileRequest{
@@ -59,7 +59,7 @@ func TestProvider_SuspendShortCircuit(t *testing.T) {
 		AppKey:         "x",
 		DesiredVersion: "1",
 	})
-	if res.Phase != kaprov1alpha2.DeliveryPhaseSkipped {
+	if res.Phase != kaprov1alpha1.DeliveryPhaseSkipped {
 		t.Fatalf("phase = %q, want Skipped", res.Phase)
 	}
 	if pulled.called != 0 {
@@ -78,12 +78,12 @@ func TestProvider_MissingRepositoryFails(t *testing.T) {
 		Delivery: &delivery.Delivery{Puller: &stubPuller{}},
 	}
 	res := p.Reconcile(context.Background(), spokeprovider.ReconcileRequest{
-		Cluster:        &kaprov1alpha2.Cluster{},
+		Cluster:        &kaprov1alpha1.Cluster{},
 		AppKey:         "x",
 		DesiredVersion: "1",
 		Parameters:     map[string]string{},
 	})
-	if res.Phase != kaprov1alpha2.DeliveryPhaseFailed {
+	if res.Phase != kaprov1alpha1.DeliveryPhaseFailed {
 		t.Fatalf("phase = %q, want Failed", res.Phase)
 	}
 	if res.Err == nil || !strings.Contains(res.Err.Error(), "repository") {
@@ -94,12 +94,12 @@ func TestProvider_MissingRepositoryFails(t *testing.T) {
 func TestProvider_NilDeliveryFails(t *testing.T) {
 	p := &Provider{}
 	res := p.Reconcile(context.Background(), spokeprovider.ReconcileRequest{
-		Cluster:        &kaprov1alpha2.Cluster{},
+		Cluster:        &kaprov1alpha1.Cluster{},
 		AppKey:         "x",
 		DesiredVersion: "1",
 		Parameters:     map[string]string{ParamRepository: "r.io/x"},
 	})
-	if res.Phase != kaprov1alpha2.DeliveryPhaseFailed {
+	if res.Phase != kaprov1alpha1.DeliveryPhaseFailed {
 		t.Fatalf("phase = %q, want Failed", res.Phase)
 	}
 	if res.Err == nil || !strings.Contains(res.Err.Error(), "Delivery is nil") {
@@ -122,10 +122,10 @@ func TestProvider_ResolverErrorForwarded(t *testing.T) {
 		RefResolver: scriptedResolver{err: errors.New("token rotated")},
 	}
 	res := p.Reconcile(context.Background(), spokeprovider.ReconcileRequest{
-		Cluster: &kaprov1alpha2.Cluster{},
+		Cluster: &kaprov1alpha1.Cluster{},
 		AppKey:  "x", DesiredVersion: "1",
 	})
-	if res.Phase != kaprov1alpha2.DeliveryPhaseFailed {
+	if res.Phase != kaprov1alpha1.DeliveryPhaseFailed {
 		t.Fatalf("phase = %q, want Failed", res.Phase)
 	}
 	if res.Err == nil || res.Err.Error() != "token rotated" {
@@ -156,11 +156,11 @@ func TestProvider_DelegatesToDeliveryAndForwardsResult(t *testing.T) {
 	}
 
 	res := p.Reconcile(context.Background(), spokeprovider.ReconcileRequest{
-		Cluster: &kaprov1alpha2.Cluster{},
+		Cluster: &kaprov1alpha1.Cluster{},
 		AppKey:  "x", DesiredVersion: "1.0",
 	})
 
-	if res.Phase != kaprov1alpha2.DeliveryPhaseConverged {
+	if res.Phase != kaprov1alpha1.DeliveryPhaseConverged {
 		t.Fatalf("phase = %q, want Converged; err=%v", res.Phase, res.Err)
 	}
 	if res.ObservedDigest != "sha256:abc123" {
@@ -188,7 +188,7 @@ func TestProvider_DelegatesToDeliveryAndForwardsResult(t *testing.T) {
 
 func TestProvider_Driver(t *testing.T) {
 	p := &Provider{}
-	if p.Driver() != kaprov1alpha2.BackendDriverOCI {
+	if p.Driver() != kaprov1alpha1.SubstrateDriverOCI {
 		t.Fatalf("Driver() = %q, want oci", p.Driver())
 	}
 }

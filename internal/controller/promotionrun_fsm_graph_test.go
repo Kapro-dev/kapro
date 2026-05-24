@@ -4,20 +4,22 @@ import (
 	"strings"
 	"testing"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	"k8s.io/client-go/tools/record"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // TestPromotionRunFSM_GraphCoversAllPhases asserts every
 // PromotionRunPhase constant has either a registered handler or a
 // terminal entry. Companion to D3's TestPromotionTargetFSM_GraphCoversAllPhases.
 func TestPromotionRunFSM_GraphCoversAllPhases(t *testing.T) {
-	allRunPhases := []kaprov1alpha2.PromotionRunPhase{
-		kaprov1alpha2.PromotionRunPhasePending,
-		kaprov1alpha2.PromotionRunPhaseProgressing,
-		kaprov1alpha2.PromotionRunPhaseComplete,
-		kaprov1alpha2.PromotionRunPhaseFailed,
+	allRunPhases := []kaprov1alpha1.PromotionRunPhase{
+		kaprov1alpha1.PromotionRunPhasePending,
+		kaprov1alpha1.PromotionRunPhaseProgressing,
+		kaprov1alpha1.PromotionRunPhaseComplete,
+		kaprov1alpha1.PromotionRunPhaseFailed,
 	}
 
 	r := &PromotionRunReconciler{Recorder: record.NewFakeRecorder(8)}
@@ -35,10 +37,10 @@ func TestPromotionRunFSM_GraphAdjacencyMatchesDocs(t *testing.T) {
 	r.ensureRunFSM()
 	graph := r.runFsmMachine.Graph()
 
-	expectAllowed := func(from kaprov1alpha2.PromotionRunPhase, wantNext ...kaprov1alpha2.PromotionRunPhase) {
+	expectAllowed := func(from kaprov1alpha1.PromotionRunPhase, wantNext ...kaprov1alpha1.PromotionRunPhase) {
 		t.Helper()
 		got := graph[from]
-		gotSet := make(map[kaprov1alpha2.PromotionRunPhase]struct{}, len(got))
+		gotSet := make(map[kaprov1alpha1.PromotionRunPhase]struct{}, len(got))
 		for _, p := range got {
 			gotSet[p] = struct{}{}
 		}
@@ -54,22 +56,22 @@ func TestPromotionRunFSM_GraphAdjacencyMatchesDocs(t *testing.T) {
 	}
 
 	expectAllowed("",
-		kaprov1alpha2.PromotionRunPhaseProgressing,
+		kaprov1alpha1.PromotionRunPhaseProgressing,
 	)
-	expectAllowed(kaprov1alpha2.PromotionRunPhasePending,
-		kaprov1alpha2.PromotionRunPhaseProgressing,
-		kaprov1alpha2.PromotionRunPhaseFailed,
+	expectAllowed(kaprov1alpha1.PromotionRunPhasePending,
+		kaprov1alpha1.PromotionRunPhaseProgressing,
+		kaprov1alpha1.PromotionRunPhaseFailed,
 	)
-	expectAllowed(kaprov1alpha2.PromotionRunPhaseProgressing,
-		kaprov1alpha2.PromotionRunPhaseComplete,
-		kaprov1alpha2.PromotionRunPhaseFailed,
+	expectAllowed(kaprov1alpha1.PromotionRunPhaseProgressing,
+		kaprov1alpha1.PromotionRunPhaseComplete,
+		kaprov1alpha1.PromotionRunPhaseFailed,
 	)
 	// Failed is sticky (no AllowedNext entries — same-phase no-op only).
-	if nexts := graph[kaprov1alpha2.PromotionRunPhaseFailed]; len(nexts) != 0 {
+	if nexts := graph[kaprov1alpha1.PromotionRunPhaseFailed]; len(nexts) != 0 {
 		t.Errorf("Failed → %v, want empty (Failed is sticky)", nexts)
 	}
 	// Complete is the one true terminal — appears in the graph with nil nexts.
-	if _, ok := graph[kaprov1alpha2.PromotionRunPhaseComplete]; !ok {
+	if _, ok := graph[kaprov1alpha1.PromotionRunPhaseComplete]; !ok {
 		t.Error("terminal phase Complete missing from graph")
 	}
 }
@@ -86,11 +88,11 @@ func TestPromotionRunFSM_GraphAdjacencyMatchesDocs(t *testing.T) {
 func TestPromotionRunFSM_SetRunPhaseValidates(t *testing.T) {
 	rec := record.NewFakeRecorder(8)
 	r := &PromotionRunReconciler{Recorder: rec}
-	pr := &kaprov1alpha2.PromotionRun{}
-	pr.Status.Phase = kaprov1alpha2.PromotionRunPhaseProgressing
+	pr := &kaproruntimev1alpha1.PromotionRun{}
+	pr.Status.Phase = kaprov1alpha1.PromotionRunPhaseProgressing
 
-	r.setRunPhase(pr, kaprov1alpha2.PromotionRunPhasePending)
-	if pr.Status.Phase != kaprov1alpha2.PromotionRunPhasePending {
+	r.setRunPhase(pr, kaprov1alpha1.PromotionRunPhasePending)
+	if pr.Status.Phase != kaprov1alpha1.PromotionRunPhasePending {
 		t.Fatalf("phase = %q, want Pending (validation must not block mutation)", pr.Status.Phase)
 	}
 	select {
@@ -108,11 +110,11 @@ func TestPromotionRunFSM_SetRunPhaseValidates(t *testing.T) {
 func TestPromotionRunFSM_SetRunPhaseDeclaredSilent(t *testing.T) {
 	rec := record.NewFakeRecorder(8)
 	r := &PromotionRunReconciler{Recorder: rec}
-	pr := &kaprov1alpha2.PromotionRun{}
-	pr.Status.Phase = kaprov1alpha2.PromotionRunPhasePending
+	pr := &kaproruntimev1alpha1.PromotionRun{}
+	pr.Status.Phase = kaprov1alpha1.PromotionRunPhasePending
 
-	r.setRunPhase(pr, kaprov1alpha2.PromotionRunPhaseProgressing)
-	if pr.Status.Phase != kaprov1alpha2.PromotionRunPhaseProgressing {
+	r.setRunPhase(pr, kaprov1alpha1.PromotionRunPhaseProgressing)
+	if pr.Status.Phase != kaprov1alpha1.PromotionRunPhaseProgressing {
 		t.Fatalf("phase = %q, want Progressing", pr.Status.Phase)
 	}
 	select {

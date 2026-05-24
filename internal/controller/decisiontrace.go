@@ -5,22 +5,24 @@ import (
 	"fmt"
 	"strconv"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/pkg/gate"
 	"kapro.io/kapro/pkg/planner"
 )
 
-func (r *PromotionRunReconciler) emitDecisionTrace(ctx context.Context, spec kaprov1alpha2.DecisionTraceSpec) {
+func (r *PromotionRunReconciler) emitDecisionTrace(ctx context.Context, spec kaproruntimev1alpha1.DecisionTraceSpec) {
 	if err := r.DecisionTraceEmitter.Emit(ctx, spec); err != nil {
 		log.FromContext(ctx).Error(err, "failed to emit DecisionTrace",
 			"promotionrun", spec.PromotionRun, "eventType", spec.EventType, "source", spec.Source)
 	}
 }
 
-func (r *TargetReconciler) emitDecisionTrace(ctx context.Context, spec kaprov1alpha2.DecisionTraceSpec) {
+func (r *TargetReconciler) emitDecisionTrace(ctx context.Context, spec kaproruntimev1alpha1.DecisionTraceSpec) {
 	if err := r.DecisionTraceEmitter.Emit(ctx, spec); err != nil {
 		log.FromContext(ctx).Error(err, "failed to emit DecisionTrace",
 			"promotionrun", spec.PromotionRun, "eventType", spec.EventType, "source", spec.Source)
@@ -29,10 +31,10 @@ func (r *TargetReconciler) emitDecisionTrace(ctx context.Context, spec kaprov1al
 
 func (r *TargetReconciler) emitGateDecisionTrace(
 	ctx context.Context,
-	promotionrun *kaprov1alpha2.PromotionRun,
-	target *kaprov1alpha2.TargetExecutionState,
+	promotionrun *kaproruntimev1alpha1.PromotionRun,
+	target *kaprov1alpha1.TargetExecutionState,
 	gateName string,
-	phase kaprov1alpha2.GatePhase,
+	phase kaprov1alpha1.GatePhase,
 	reason string,
 	message string,
 	evidence []gate.Evidence,
@@ -40,12 +42,12 @@ func (r *TargetReconciler) emitGateDecisionTrace(
 	if promotionrun == nil || target == nil {
 		return
 	}
-	r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+	r.emitDecisionTrace(ctx, kaproruntimev1alpha1.DecisionTraceSpec{
 		PromotionRun: promotionrun.Name,
 		Plan:         target.PlanRef,
 		Stage:        target.Stage,
 		Target:       target.Target,
-		EventType:    kaprov1alpha2.DecisionTraceEventGateEvaluate,
+		EventType:    kaproruntimev1alpha1.DecisionTraceEventGateEvaluate,
 		Source:       gateName,
 		Phase:        string(phase),
 		Reason:       reason,
@@ -56,9 +58,9 @@ func (r *TargetReconciler) emitGateDecisionTrace(
 
 func (r *TargetReconciler) emitDeliveryDecisionTraces(
 	ctx context.Context,
-	promotionrun *kaprov1alpha2.PromotionRun,
-	target *kaprov1alpha2.TargetExecutionState,
-	cluster *kaprov1alpha2.Cluster,
+	promotionrun *kaproruntimev1alpha1.PromotionRun,
+	target *kaprov1alpha1.TargetExecutionState,
+	cluster *kaprov1alpha1.Cluster,
 	desiredVersions map[string]string,
 ) {
 	if promotionrun == nil || target == nil || cluster == nil {
@@ -69,17 +71,17 @@ func (r *TargetReconciler) emitDeliveryDecisionTraces(
 		if !ok || entry.Phase == "" {
 			continue
 		}
-		spec := kaprov1alpha2.DecisionTraceSpec{
+		spec := kaproruntimev1alpha1.DecisionTraceSpec{
 			PromotionRun: promotionrun.Name,
 			Plan:         target.PlanRef,
 			Stage:        target.Stage,
 			Target:       target.Target,
-			EventType:    kaprov1alpha2.DecisionTraceEventDelivery,
+			EventType:    kaproruntimev1alpha1.DecisionTraceEventDelivery,
 			Source:       "cluster-delivery",
 			Phase:        string(entry.Phase),
 			Reason:       deliveryDecisionReason(entry),
 			Message:      deliveryDecisionMessage(target.Target, appKey, entry),
-			Evidence: []kaprov1alpha2.DecisionTraceEvidence{{
+			Evidence: []kaproruntimev1alpha1.DecisionTraceEvidence{{
 				Type:   "cluster-delivery",
 				Source: cluster.Name,
 				Detail: deliveryDecisionEvidence(appKey, desiredVersion, entry),
@@ -94,27 +96,27 @@ func (r *TargetReconciler) emitDeliveryDecisionTraces(
 
 func (r *TargetReconciler) emitTargetPhaseDecisionTrace(
 	ctx context.Context,
-	promotionrun *kaprov1alpha2.PromotionRun,
-	target *kaprov1alpha2.TargetExecutionState,
-	fromPhase kaprov1alpha2.TargetPhase,
-	toPhase kaprov1alpha2.TargetPhase,
+	promotionrun *kaproruntimev1alpha1.PromotionRun,
+	target *kaprov1alpha1.TargetExecutionState,
+	fromPhase kaprov1alpha1.TargetPhase,
+	toPhase kaprov1alpha1.TargetPhase,
 	reason string,
 	message string,
 ) {
 	if promotionrun == nil || target == nil {
 		return
 	}
-	r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+	r.emitDecisionTrace(ctx, kaproruntimev1alpha1.DecisionTraceSpec{
 		PromotionRun: promotionrun.Name,
 		Plan:         target.PlanRef,
 		Stage:        target.Stage,
 		Target:       target.Target,
-		EventType:    kaprov1alpha2.DecisionTraceEventStage,
+		EventType:    kaproruntimev1alpha1.DecisionTraceEventStage,
 		Source:       "target-controller",
 		Phase:        string(toPhase),
 		Reason:       reason,
 		Message:      message,
-		Evidence: []kaprov1alpha2.DecisionTraceEvidence{{
+		Evidence: []kaproruntimev1alpha1.DecisionTraceEvidence{{
 			Type:   "target-fsm",
 			Source: "target-controller",
 			Detail: targetPhaseDecisionEvidence(target, fromPhase, toPhase),
@@ -122,7 +124,7 @@ func (r *TargetReconciler) emitTargetPhaseDecisionTrace(
 	})
 }
 
-func targetPhaseDecisionEvidence(target *kaprov1alpha2.TargetExecutionState, fromPhase, toPhase kaprov1alpha2.TargetPhase) map[string]string {
+func targetPhaseDecisionEvidence(target *kaprov1alpha1.TargetExecutionState, fromPhase, toPhase kaprov1alpha1.TargetPhase) map[string]string {
 	detail := map[string]string{}
 	addDetail(detail, "fromPhase", string(fromPhase))
 	addDetail(detail, "toPhase", string(toPhase))
@@ -136,20 +138,20 @@ func targetPhaseDecisionEvidence(target *kaprov1alpha2.TargetExecutionState, fro
 	return detail
 }
 
-func deliveryDecisionReason(entry kaprov1alpha2.ClusterDeliveryStatus) string {
+func deliveryDecisionReason(entry kaprov1alpha1.ClusterDeliveryStatus) string {
 	switch entry.Phase {
-	case kaprov1alpha2.DeliveryPhaseConverged:
+	case kaprov1alpha1.DeliveryPhaseConverged:
 		return "DeliveryConverged"
-	case kaprov1alpha2.DeliveryPhaseFailed:
+	case kaprov1alpha1.DeliveryPhaseFailed:
 		return "DeliveryFailed"
-	case kaprov1alpha2.DeliveryPhaseSkipped:
+	case kaprov1alpha1.DeliveryPhaseSkipped:
 		return "DeliverySkipped"
 	default:
 		return "DeliveryProgressing"
 	}
 }
 
-func deliveryDecisionMessage(clusterName, appKey string, entry kaprov1alpha2.ClusterDeliveryStatus) string {
+func deliveryDecisionMessage(clusterName, appKey string, entry kaprov1alpha1.ClusterDeliveryStatus) string {
 	msg := fmt.Sprintf("cluster %s app %s delivery %s", clusterName, appKey, entry.Phase)
 	if entry.LastError != "" {
 		return msg + ": " + entry.LastError
@@ -157,7 +159,7 @@ func deliveryDecisionMessage(clusterName, appKey string, entry kaprov1alpha2.Clu
 	return msg
 }
 
-func deliveryDecisionEvidence(appKey, desiredVersion string, entry kaprov1alpha2.ClusterDeliveryStatus) map[string]string {
+func deliveryDecisionEvidence(appKey, desiredVersion string, entry kaprov1alpha1.ClusterDeliveryStatus) map[string]string {
 	detail := map[string]string{}
 	addDetail(detail, "appKey", appKey)
 	addDetail(detail, "desiredVersion", desiredVersion)
@@ -187,8 +189,8 @@ func deliveryDecisionEvidence(appKey, desiredVersion string, entry kaprov1alpha2
 
 const timeRFC3339Nano = "2006-01-02T15:04:05.999999999Z07:00"
 
-func decisionTraceEvidenceFromPlanner(decision planner.Decision) kaprov1alpha2.DecisionTraceEvidence {
-	return kaprov1alpha2.DecisionTraceEvidence{
+func decisionTraceEvidenceFromPlanner(decision planner.Decision) kaproruntimev1alpha1.DecisionTraceEvidence {
+	return kaproruntimev1alpha1.DecisionTraceEvidence{
 		Type:   "planner",
 		Source: decision.Plugin,
 		Detail: map[string]string{
@@ -199,11 +201,11 @@ func decisionTraceEvidenceFromPlanner(decision planner.Decision) kaprov1alpha2.D
 	}
 }
 
-func decisionTraceEvidenceFromGateEvidence(in []gate.Evidence) []kaprov1alpha2.DecisionTraceEvidence {
+func decisionTraceEvidenceFromGateEvidence(in []gate.Evidence) []kaproruntimev1alpha1.DecisionTraceEvidence {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make([]kaprov1alpha2.DecisionTraceEvidence, 0, len(in))
+	out := make([]kaproruntimev1alpha1.DecisionTraceEvidence, 0, len(in))
 	for _, e := range in {
 		detail := map[string]string{}
 		addDetail(detail, "analysisMode", e.AnalysisMode)
@@ -226,7 +228,7 @@ func decisionTraceEvidenceFromGateEvidence(in []gate.Evidence) []kaprov1alpha2.D
 		if e.Score != nil {
 			addDetail(detail, "score", fmt.Sprint(*e.Score))
 		}
-		out = append(out, kaprov1alpha2.DecisionTraceEvidence{
+		out = append(out, kaproruntimev1alpha1.DecisionTraceEvidence{
 			Type:   e.Type,
 			Source: e.Provider,
 			Detail: detail,
@@ -265,16 +267,16 @@ const (
 // actuator key and the operation that was skipped.
 func (r *TargetReconciler) emitCapabilityUnsupportedTrace(
 	ctx context.Context,
-	promotionrun *kaprov1alpha2.PromotionRun,
-	target *kaprov1alpha2.TargetExecutionState,
-	eventType kaprov1alpha2.DecisionTraceEventType,
+	promotionrun *kaproruntimev1alpha1.PromotionRun,
+	target *kaprov1alpha1.TargetExecutionState,
+	eventType kaproruntimev1alpha1.DecisionTraceEventType,
 	reason string,
 	message string,
 ) {
 	if promotionrun == nil || target == nil {
 		return
 	}
-	r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+	r.emitDecisionTrace(ctx, kaproruntimev1alpha1.DecisionTraceSpec{
 		PromotionRun: promotionrun.Name,
 		Plan:         target.PlanRef,
 		Stage:        target.Stage,
@@ -292,16 +294,16 @@ func (r *TargetReconciler) emitCapabilityUnsupportedTrace(
 // used from parent rollback flows in target_fsm.go.
 func (r *PromotionRunReconciler) emitCapabilityUnsupportedTracePR(
 	ctx context.Context,
-	promotionrun *kaprov1alpha2.PromotionRun,
-	target *kaprov1alpha2.TargetExecutionState,
-	eventType kaprov1alpha2.DecisionTraceEventType,
+	promotionrun *kaproruntimev1alpha1.PromotionRun,
+	target *kaprov1alpha1.TargetExecutionState,
+	eventType kaproruntimev1alpha1.DecisionTraceEventType,
 	reason string,
 	message string,
 ) {
 	if promotionrun == nil || target == nil {
 		return
 	}
-	r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+	r.emitDecisionTrace(ctx, kaproruntimev1alpha1.DecisionTraceSpec{
 		PromotionRun: promotionrun.Name,
 		Plan:         target.PlanRef,
 		Stage:        target.Stage,

@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/cli"
 )
 
@@ -103,7 +105,7 @@ func renderPromotionSummaryTargets(diag *promotionDiag) {
 	tbl.Render()
 }
 
-func activePromotionRun(diag *promotionDiag) *kaprov1alpha2.PromotionRun {
+func activePromotionRun(diag *promotionDiag) *kaproruntimev1alpha1.PromotionRun {
 	if diag.Promotion.Status.ActiveAttemptRef == nil {
 		return nil
 	}
@@ -116,7 +118,7 @@ func activePromotionRun(diag *promotionDiag) *kaprov1alpha2.PromotionRun {
 	return nil
 }
 
-func renderLifecycleHandlerResults(results []kaprov1alpha2.PromotionLifecycleHandlerResult) {
+func renderLifecycleHandlerResults(results []kaprov1alpha1.PromotionLifecycleHandlerResult) {
 	if len(results) == 0 {
 		return
 	}

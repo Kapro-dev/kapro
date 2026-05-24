@@ -6,13 +6,16 @@ const (
 	// ContractVersion is the KAI v1alpha1 wire contract version.
 	ContractVersion = "v1alpha1"
 
-	CapabilityApply          = "apply"
-	CapabilityConvergence    = "convergence"
-	CapabilityObserve        = "observe"
-	CapabilityRollback       = "rollback"
-	CapabilityDelta          = "delta"
-	CapabilityBackendObjects = "backendobjects"
-	CapabilityDryRun         = "dry-run"
+	CapabilityApply            = "apply"
+	CapabilityConvergence      = "convergence"
+	CapabilityObserve          = "observe"
+	CapabilityRollback         = "rollback"
+	CapabilityDelta            = "delta"
+	CapabilitySubstrateObjects = "substrateobjects"
+	CapabilityDryRun           = "dry-run"
+
+	// Deprecated: use CapabilitySubstrateObjects.
+	CapabilityBackendObjects = CapabilitySubstrateObjects
 )
 
 // HasCapability reports whether names contains required. Capability names may
@@ -44,9 +47,12 @@ func HasAnyCapability(names []string, required ...string) bool {
 func normalizeCapability(name string) string {
 	name = strings.ToLower(strings.TrimSpace(name))
 	name = strings.ReplaceAll(name, "_", "-")
-	name = strings.ReplaceAll(name, "backend-object", CapabilityBackendObjects)
-	if name == "backendobject" {
-		return CapabilityBackendObjects
+	name = strings.ReplaceAll(name, "backend-objects", CapabilitySubstrateObjects)
+	name = strings.ReplaceAll(name, "backend-object", CapabilitySubstrateObjects)
+	name = strings.ReplaceAll(name, "substrate-objects", CapabilitySubstrateObjects)
+	name = strings.ReplaceAll(name, "substrate-object", CapabilitySubstrateObjects)
+	if name == "backendobject" || name == "backendobjects" || name == "substrateobject" || name == "substrateobjects" {
+		return CapabilitySubstrateObjects
 	}
 	if name == "dryrun" {
 		return CapabilityDryRun

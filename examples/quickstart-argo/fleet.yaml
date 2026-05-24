@@ -1,8 +1,8 @@
-# Apply after backend-argo.yaml and before promotion.yaml.
+# Apply after substrates/argo.yaml and before promotion.yaml.
 # This example expects Argo CD Applications named after each target cluster.
 # Inline plan selectors are simple label maps; standalone Plan objects use
 # selector.matchLabels.
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Fleet
 metadata:
   name: checkout-argo
@@ -11,17 +11,17 @@ metadata:
     app.kubernetes.io/name: checkout
 spec:
   source:
-    backendRef: argo
+    substrateRef: argo
     units:
       - name: checkout
-        backendKind: Application
+        substrateKind: Application
         namespace: argocd
         versionField: spec.source.targetRevision
         # Catalog/default revision. Promotion.spec.version is the rollout input.
         version: v1.2.3
   delivery:
     mode: push
-    backendRef: argo
+    substrateRef: argo
     parameters:
       namespace: argocd
   clusters:

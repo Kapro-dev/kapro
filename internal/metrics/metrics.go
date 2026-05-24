@@ -9,8 +9,6 @@ package metrics
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
-
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
 )
 
 var (
@@ -318,44 +316,6 @@ var (
 		},
 		[]string{"kind", "phase"},
 	)
-
-	// FleetDriftReportTargets reports the latest target-count summary for each
-	// FleetDriftReport. The state label is bounded to:
-	// total|current|drifted|pending|failed|unknown.
-	FleetDriftReportTargets = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: "kapro",
-			Subsystem: "fleetdriftreport",
-			Name:      "targets",
-			Help:      "Latest FleetDriftReport target counts by report and state.",
-		},
-		[]string{"report", "state"},
-	)
-
-	// FleetDriftReportBackendObjects reports backend-native object evidence
-	// counts for each FleetDriftReport. The state label is bounded to:
-	// total|drifted.
-	FleetDriftReportBackendObjects = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: "kapro",
-			Subsystem: "fleetdriftreport",
-			Name:      "backend_objects",
-			Help:      "Latest FleetDriftReport backend object counts by report and state.",
-		},
-		[]string{"report", "state"},
-	)
-
-	// FleetDriftReportPhase reports the latest phase for each FleetDriftReport
-	// as one-hot gauges over the bounded phase set.
-	FleetDriftReportPhase = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: "kapro",
-			Subsystem: "fleetdriftreport",
-			Name:      "phase",
-			Help:      "Latest FleetDriftReport phase as one-hot gauges by report and phase.",
-		},
-		[]string{"report", "phase"},
-	)
 )
 
 func init() {
@@ -384,66 +344,5 @@ func init() {
 		FleetClusterRecoveredTransitions,
 		LifecycleHookInvocations,
 		LifecycleHookDuration,
-		FleetDriftReportTargets,
-		FleetDriftReportBackendObjects,
-		FleetDriftReportPhase,
 	)
-}
-
-// ObserveFleetDriftReport records the latest read-model status for a report.
-func ObserveFleetDriftReport(report string, status kaprov1alpha2.FleetDriftReportStatus) {
-	if report == "" {
-		return
-	}
-	summary := status.Summary
-	targetCounts := map[string]int32{
-		"total":   summary.TotalTargets,
-		"current": summary.CurrentTargets,
-		"drifted": summary.DriftedTargets,
-		"pending": summary.PendingTargets,
-		"failed":  summary.FailedTargets,
-		"unknown": summary.UnknownTargets,
-	}
-	for state, count := range targetCounts {
-		FleetDriftReportTargets.WithLabelValues(report, state).Set(float64(count))
-	}
-	FleetDriftReportBackendObjects.WithLabelValues(report, "total").Set(float64(summary.TotalBackendObjects))
-	FleetDriftReportBackendObjects.WithLabelValues(report, "drifted").Set(float64(summary.DriftedBackendObjects))
-
-	phases := []kaprov1alpha2.FleetDriftReportPhase{
-		kaprov1alpha2.FleetDriftReportPhasePending,
-		kaprov1alpha2.FleetDriftReportPhaseCurrent,
-		kaprov1alpha2.FleetDriftReportPhaseDrifted,
-		kaprov1alpha2.FleetDriftReportPhaseUnknown,
-		kaprov1alpha2.FleetDriftReportPhaseFailed,
-	}
-	for _, phase := range phases {
-		value := 0.0
-		if status.Phase == phase {
-			value = 1
-		}
-		FleetDriftReportPhase.WithLabelValues(report, string(phase)).Set(value)
-	}
-}
-
-// DeleteFleetDriftReport removes metric series for a deleted report.
-func DeleteFleetDriftReport(report string) {
-	if report == "" {
-		return
-	}
-	for _, state := range []string{"total", "current", "drifted", "pending", "failed", "unknown"} {
-		FleetDriftReportTargets.DeleteLabelValues(report, state)
-	}
-	for _, state := range []string{"total", "drifted"} {
-		FleetDriftReportBackendObjects.DeleteLabelValues(report, state)
-	}
-	for _, phase := range []kaprov1alpha2.FleetDriftReportPhase{
-		kaprov1alpha2.FleetDriftReportPhasePending,
-		kaprov1alpha2.FleetDriftReportPhaseCurrent,
-		kaprov1alpha2.FleetDriftReportPhaseDrifted,
-		kaprov1alpha2.FleetDriftReportPhaseUnknown,
-		kaprov1alpha2.FleetDriftReportPhaseFailed,
-	} {
-		FleetDriftReportPhase.DeleteLabelValues(report, string(phase))
-	}
 }

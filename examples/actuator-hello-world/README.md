@@ -5,17 +5,17 @@ every PR so the "you can plug in your own delivery technology" claim doesn't
 bit-rot.
 
 Backed by `actuator.NewBoolFunc`. Real production substrates implement the
-full `actuator.Substrate` interface with explicit capability bits; this example
+full `actuator.Actuator` interface with explicit capability bits; this example
 exists to show the contract and to anchor the CI guarantee.
 
 ## Concepts
 
 | Field | Plain meaning |
 |---|---|
-| `spec.substrate.kind` | The delivery domain. Open string. Built-ins: `argo`, `flux`, `oci`, `webhook`. Custom: anything that matches `^[a-z][a-z0-9-]{0,62}$`. |
+| `spec.substrate.kind` | The delivery domain. Open string. Built-ins: `argo`, `flux`, `oci`, `kubernetes-apply`. Custom: anything that matches `^[a-z][a-z0-9-]{0,62}$`. |
 | `spec.substrate.actuator` | The concrete implementation registered under the kind. Optional for built-ins (defaulted from kind); set explicitly for custom substrates like this one. |
 | `spec.execution.mode` | Where Kapro runs the actuator. `hub-push` for in-process Go actuators like this one; `spoke-pull` for cluster-agent-driven delivery; `external-pull` for systems that consume Kapro decisions out-of-band. |
-| `BoolFunc` | Sugar wrapper that adapts a `(ctx, req) -> (bool, string, error)` function to the full `actuator.Substrate` interface. Use for trivial substrates and tests. |
+| `BoolFunc` | Sugar wrapper that adapts a `(ctx, req) -> (bool, string, error)` function to the full `actuator.Actuator` interface. Use for trivial substrates and tests. |
 
 See [`docs/concepts/api-naming.md`](../../docs/concepts/api-naming.md) for the
 full API naming guide.
@@ -36,11 +36,11 @@ synthetic request. Production usage would wire the substrate into
 ## Apply against a cluster
 
 ```bash
-kubectl apply -f backend.yaml
-kubectl get backend hello-world -o yaml
+kubectl apply -f substrate.yaml
+kubectl get substrate hello-world -o yaml
 ```
 
-After a promotion targets a cluster whose Backend points at this substrate,
+After a promotion targets a cluster whose Substrate points at this substrate,
 inspect the decision trail:
 
 ```bash
@@ -68,10 +68,10 @@ before it merges.
 trivial actuators can't unwind side effects, and it implements `IsConverged`
 trivially. Production substrates should:
 
-1. Implement `actuator.Substrate` directly (not via `BoolFunc`).
+1. Implement `actuator.Actuator` directly (not via `BoolFunc`).
 2. Declare every capability bit explicitly so the controller can route around
    missing capabilities cleanly.
-3. Handle Apply/Observe/Rollback semantics for real, with backend-specific
+3. Handle Apply/Observe/Rollback semantics for real, with substrate-specific
    retry, dry-run, and convergence logic.
 
 Use this example to learn the contract. Don't copy it into production.

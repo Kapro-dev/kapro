@@ -2,7 +2,7 @@
 
 This quickstart uses the `direct` public-preview profile. Kapro generates raw
 Kubernetes YAML plus a `kubernetes-apply` `SubstrateClass`, typed
-`KubernetesApplyConfig`, and `Backend`. No OCI registry, Flux install, or Argo
+`KubernetesApplyConfig`, and `Substrate`. No OCI registry, Flux install, or Argo
 CD install is required for the generated repo shape.
 
 The built-in direct runtime updates the generated Deployment image through the
@@ -25,8 +25,7 @@ rollout behavior.
 
 Prerequisites:
 
-- Kapro operator installed with the preview `substrateclass` and `backend`
-  controllers enabled.
+- Kapro operator installed with the default public-preview controllers.
 - `kapro` built from `main`.
 - A cluster where the Kapro operator can use the Kubernetes API for direct
   apply.
@@ -36,8 +35,7 @@ For a local preview install:
 ```bash
 helm upgrade --install kapro "$KAPRO_CHART" \
   --namespace kapro-system \
-  --create-namespace \
-  --set controllers='{fleet,plan,promotion,promotionrun,cluster,substrateclass,backend}'
+  --create-namespace
 ```
 
 Generate a direct profile repo:
@@ -51,20 +49,20 @@ cd promotion-repo
 
 The generated repo contains:
 
-- `backends/direct.yaml` with `SubstrateClass`, `KubernetesApplyConfig`, and
-  `Backend`;
+- `substrates/direct.yaml` with `SubstrateClass`, `KubernetesApplyConfig`, and
+  `Substrate`;
 - `apps/checkout/` raw Kubernetes manifests;
 - `clusters/`, `fleets/`, `plans/`, and `promotions/` Kapro objects.
 
 Apply the generated repo:
 
 ```bash
-kubectl apply -f backends/direct.yaml
-kubectl wait --for=condition=Ready backend/direct --timeout=90s
+kubectl apply -f substrates/direct.yaml
+kubectl wait --for=condition=Ready substrate/direct --timeout=90s
 kubectl apply --recursive -f apps -f clusters -f plans -f fleets -f promotions
 kubectl get substrateclass kubernetes-apply -o yaml
-kubectl get backend direct -o yaml
-kubectl get fleets,plans,promotions,promotionruns,targets
+kubectl get substrate direct -o yaml
+kubectl get fleets.kapro.io,plans.kapro.io,promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
 ```
 
 Promote a new image:

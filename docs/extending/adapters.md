@@ -3,20 +3,19 @@
 Kapro exposes a public Go adapter package at
 `kapro.io/kapro/pkg/kapro/adapter`.
 
-The package is an SDK boundary for delivery backends. AdapterPolicy discovery
-uses this public registry to resolve `Backend.spec.driver` and call
+The package is an SDK boundary for delivery substrates. AdapterPolicy discovery
+uses this public registry to resolve the selected substrate kind and call
 `Adapter.Discover`. Delivery side effects still use the existing actuator and
 spoke-provider paths until runtime selection moves to the public contract.
 
 ## Public Contract
 
-An adapter owns backend-specific delivery work for one
-`Backend.spec.driver` value:
+An adapter owns substrate-specific delivery work for one substrate kind:
 
 ```go
 type Adapter interface {
-	Driver() v1alpha2.BackendDriver
-	Runtime() v1alpha2.BackendRuntime
+	Driver() v1alpha1.SubstrateDriver
+	Runtime() v1alpha1.SubstrateRuntime
 	Capabilities() adapter.Capabilities
 	Apply(ctx context.Context, req adapter.Request) (adapter.Result, error)
 	Observe(ctx context.Context, req adapter.Request) (adapter.Result, error)
@@ -26,32 +25,32 @@ type Adapter interface {
 ```
 
 `Capabilities` is the first thing controllers should read. It tells callers
-which methods are meaningful for a backend so unsupported operations do not
+which methods are meaningful for a substrate so unsupported operations do not
 become normal error-path control flow. See
 [Adapter Capabilities](adapter-capabilities.md) for each bit.
 
-`Request` carries the PromotionRun identity, target cluster, selected Backend,
+`Request` carries the PromotionRun identity, target cluster, selected Substrate,
 delivery mode, app key, version, previous version, desired version map, and
-merged backend parameters.
+merged substrate parameters.
 
 `Result` normalizes delivery progress into `DeliveryPhase`, convergence,
 changed count, digest, artifact format, applied object count, and optional
-backend object status evidence.
+substrate object status evidence.
 
 `DiscoveryRequest` and `DiscoveryResult` model the observe/adopt discovery
-shape used by `Backend.status.selectedObjects`, `skippedObjects`, and
+shape used by `Substrate.status.selectedObjects`, `skippedObjects`, and
 `unsupportedPatterns`.
 
 ## Registry
 
 `adapter.Registry` is thread-safe and resolves adapters by
-`v1alpha2.BackendDriver`:
+`v1alpha1.SubstrateDriver`:
 
 ```go
 reg := adapter.NewRegistry()
 _ = reg.Register(flux.New())
 
-backend, err := reg.Resolve(v1alpha2.BackendDriverFlux)
+substrate, err := reg.Resolve(v1alpha1.SubstrateDriverFlux)
 ```
 
 `Register` fails on nil, empty driver, or duplicate driver. `Upsert` is
@@ -65,7 +64,7 @@ Reference packages live under `pkg/kapro/adapter`:
 |---|---|---|---|
 | `adapter/argocd` | `argo` | `Hub` | Models Argo CD discovery. |
 | `adapter/flux` | `flux` | `Both` | Models Flux discovery. |
-| `adapter/oci` | `oci` | `Spoke` | Reports discovery unsupported because OCI delivery has no backend-native Kubernetes objects. |
+| `adapter/oci` | `oci` | `Spoke` | Reports discovery unsupported because OCI delivery has no substrate-native Kubernetes objects. |
 
 The constructors are discovery-first and do not expose Kapro's legacy actuator
 or spoke-provider packages through the public SDK:
@@ -86,24 +85,23 @@ increment.
 ## AdapterPolicy Discovery
 
 `AdapterPolicy` runs a continuous discovery/status loop for a referenced
-`Backend`:
+`Substrate`:
 
-- the Backend must exist and have `spec.discovery.enabled=true`;
-- `AdapterPolicy.spec.adapter` must match `Backend.spec.adapter`, or the
-  built-in adapter name derived from `Backend.spec.driver`;
-- `AdapterPolicy.spec.selector` is ANDed with `Backend.spec.discovery.selector`
+- the Substrate must exist and have `spec.discovery.enabled=true`;
+- `AdapterPolicy.spec.adapter` must match `Substrate.spec.substrate.actuator`;
+- `AdapterPolicy.spec.selector` is ANDed with `Substrate.spec.discovery.selector`
   before discovery reaches the adapter;
-- `AdapterPolicy.spec.dryRun=true` validates the policy, Backend reference,
+- `AdapterPolicy.spec.dryRun=true` validates the policy, Substrate reference,
   adapter resolution, and merged selector without invoking adapter discovery;
-- the controller resolves the backend driver through `adapter.Registry`;
-- `Adapter.Discover` receives the Backend, driver, runtime, namespace
-  parameter, selector, max object limit, and backend parameters;
+- the controller resolves the substrate driver through `adapter.Registry`;
+- `Adapter.Discover` receives the Substrate, driver, runtime, namespace
+  parameter, selector, max object limit, and substrate parameters;
 - `AdapterPolicy.status.discoveredObjects` mirrors the latest aggregate object
   count for quick inspection. For built-in Argo CD and Flux discovery this
-  mirrors the live `Backend.status` counts written by `BackendReconciler`; for
+  mirrors the live `Substrate.status` counts written by `SubstrateReconciler`; for
   other registered adapters it uses the adapter discovery result.
 
-`BackendReconciler` remains the single writer for `Backend.status`.
+`SubstrateReconciler` remains the single writer for `Substrate.status`.
 `AdapterPolicy` records its own health and quick counts only. Full
 public-adapter delivery wiring still needs migration from direct
 actuator/spoke-provider registries where appropriate and conformance coverage

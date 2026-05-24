@@ -1,9 +1,9 @@
-# Apply after backend-flux.yaml and before promotion.yaml.
+# Apply after substrates/flux.yaml and before promotion.yaml.
 # These registry.example.com placeholders are fine for reading the hub API
 # shape; replace them before expecting real spoke workload convergence.
 # Inline plan selectors are simple label maps; standalone Plan objects use
 # selector.matchLabels.
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Fleet
 metadata:
   name: checkout
@@ -28,7 +28,7 @@ spec:
         version: 1.2.3
   delivery:
     mode: pull
-    backendRef: flux
+    substrateRef: flux
   clusters:
     - name: checkout-canary-eu
       labels:

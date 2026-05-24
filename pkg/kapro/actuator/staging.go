@@ -6,14 +6,14 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // ErrTwoPhaseUnsupported is the canonical error returned by actuators that do
 // not implement the optional two-phase staging extension.
 var ErrTwoPhaseUnsupported = errors.New("two-phase staging not supported by this actuator")
 
-// TwoPhaseStaging is an optional actuator extension for backends that can stage
+// TwoPhaseStaging is an optional actuator extension for substrates that can stage
 // a write, commit it later, or discard it without mutating live state.
 //
 // Prepare must validate the requested desired versions without committing live
@@ -28,23 +28,23 @@ type TwoPhaseStaging interface {
 
 // StageRequest carries the inputs required to prepare a staged delivery.
 type StageRequest struct {
-	Cluster         *kaprov1alpha2.Cluster
+	Cluster         *kaprov1alpha1.Cluster
 	DesiredVersions map[string]string
 	DryRun          bool
 }
 
-// StageHandle is an opaque backend-issued reference to prepared work.
+// StageHandle is an opaque substrate-issued reference to prepared work.
 type StageHandle struct {
-	ID      string
-	Backend kaprov1alpha2.BackendDriver
-	AppKeys []string
-	Expiry  metav1.Time
+	ID        string
+	Substrate kaprov1alpha1.SubstrateDriver
+	AppKeys   []string
+	Expiry    metav1.Time
 }
 
 // CommitResult summarizes a two-phase commit attempt.
 type CommitResult struct {
 	Applied int
-	Phase   kaprov1alpha2.DeliveryPhase
+	Phase   kaprov1alpha1.DeliveryPhase
 }
 
 // AsTwoPhase returns an actuator's optional two-phase staging extension.

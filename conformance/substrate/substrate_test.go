@@ -9,7 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/pkg/kapro/substrate"
 )
 
@@ -57,7 +57,7 @@ func TestCheckReportsRequestObjectMutation(t *testing.T) {
 	t.Fatalf("request object mutation failure not reported: %#v", report.Failed())
 }
 
-func TestCheckReportsNonIdempotentApplyBackendObjects(t *testing.T) {
+func TestCheckReportsNonIdempotentApplySubstrateObjects(t *testing.T) {
 	report := Check(context.Background(), &changingApplyObjectsSubstrate{}, validScenario())
 	if report.Passed() {
 		t.Fatalf("Check passed for non-idempotent apply objects: %#v", report)
@@ -70,7 +70,7 @@ func TestCheckReportsNonIdempotentApplyBackendObjects(t *testing.T) {
 	t.Fatalf("non-idempotent apply object failure not reported: %#v", report.Failed())
 }
 
-func TestCheckReportsNonDeterministicObserveBackendObjects(t *testing.T) {
+func TestCheckReportsNonDeterministicObserveSubstrateObjects(t *testing.T) {
 	report := Check(context.Background(), &changingObserveObjectsSubstrate{}, validScenario())
 	if report.Passed() {
 		t.Fatalf("Check passed for non-deterministic observe objects: %#v", report)
@@ -106,20 +106,20 @@ func (fakeSubstrate) Apply(_ context.Context, _ *substrate.ApplyRequest) (*subst
 }
 
 func (fakeSubstrate) Observe(_ context.Context, _ *substrate.ObserveRequest) (*substrate.ObserveResult, error) {
-	return &substrate.ObserveResult{Converged: true, Phase: kaprov1alpha2.DeliveryPhaseConverged, Reason: "Converged", Message: "ready"}, nil
+	return &substrate.ObserveResult{Converged: true, Phase: kaprov1alpha1.DeliveryPhaseConverged, Reason: "Converged", Message: "ready"}, nil
 }
 
 func (fakeSubstrate) Capabilities(context.Context) (*substrate.Capabilities, error) {
 	return &substrate.Capabilities{
 		ContractVersion:         substrate.ContractVersionV1Alpha1,
-		SupportedExecutionModes: []kaprov1alpha2.ExecutionMode{kaprov1alpha2.ExecutionModeHubPush},
-		Capabilities: kaprov1alpha2.SubstrateCapabilities{
-			Operations: &kaprov1alpha2.SubstrateOperationCapabilities{
+		SupportedExecutionModes: []kaprov1alpha1.ExecutionMode{kaprov1alpha1.ExecutionModeHubPush},
+		Capabilities: kaprov1alpha1.SubstrateCapabilities{
+			Operations: &kaprov1alpha1.SubstrateOperationCapabilities{
 				Apply:   true,
 				Observe: true,
 				DryRun:  true,
 			},
-			Staging: &kaprov1alpha2.SubstrateStagingCapabilities{},
+			Staging: &kaprov1alpha1.SubstrateStagingCapabilities{},
 		},
 	}, nil
 }
@@ -131,9 +131,9 @@ type missingOperationSubstrate struct {
 func (missingOperationSubstrate) Capabilities(context.Context) (*substrate.Capabilities, error) {
 	return &substrate.Capabilities{
 		ContractVersion:         substrate.ContractVersionV1Alpha1,
-		SupportedExecutionModes: []kaprov1alpha2.ExecutionMode{kaprov1alpha2.ExecutionModeHubPush},
-		Capabilities: kaprov1alpha2.SubstrateCapabilities{
-			Operations: &kaprov1alpha2.SubstrateOperationCapabilities{Apply: true},
+		SupportedExecutionModes: []kaprov1alpha1.ExecutionMode{kaprov1alpha1.ExecutionModeHubPush},
+		Capabilities: kaprov1alpha1.SubstrateCapabilities{
+			Operations: &kaprov1alpha1.SubstrateOperationCapabilities{Apply: true},
 		},
 	}, nil
 }
@@ -155,7 +155,7 @@ type mutatingObjectSubstrate struct {
 }
 
 func (mutatingObjectSubstrate) Apply(_ context.Context, req *substrate.ApplyRequest) (*substrate.ApplyResult, error) {
-	req.Backend.Spec.Parameters = map[string]string{"mutated": "true"}
+	req.Substrate.Spec.Parameters = map[string]string{"mutated": "true"}
 	return &substrate.ApplyResult{Accepted: true, Applied: 1, Reason: "Applied", Message: "applied"}, nil
 }
 
@@ -171,11 +171,11 @@ func (s *changingApplyObjectsSubstrate) Apply(_ context.Context, _ *substrate.Ap
 		Applied:  1,
 		Reason:   "Applied",
 		Message:  "applied",
-		BackendObjects: []kaprov1alpha2.BackendObjectStatus{{
+		SubstrateObjects: []kaprov1alpha1.SubstrateObjectStatus{{
 			Kind:           "Deployment",
 			Name:           "checkout",
 			CurrentVersion: "v1.0." + strconv.Itoa(s.n),
-			Phase:          string(kaprov1alpha2.DeliveryPhaseApplying),
+			Phase:          string(kaprov1alpha1.DeliveryPhaseApplying),
 		}},
 	}, nil
 }
@@ -189,14 +189,14 @@ func (s *changingObserveObjectsSubstrate) Observe(_ context.Context, _ *substrat
 	s.n++
 	return &substrate.ObserveResult{
 		Converged: true,
-		Phase:     kaprov1alpha2.DeliveryPhaseConverged,
+		Phase:     kaprov1alpha1.DeliveryPhaseConverged,
 		Reason:    "Converged",
 		Message:   "ready",
-		BackendObjects: []kaprov1alpha2.BackendObjectStatus{{
+		SubstrateObjects: []kaprov1alpha1.SubstrateObjectStatus{{
 			Kind:           "Deployment",
 			Name:           "checkout",
 			CurrentVersion: "v1.0." + strconv.Itoa(s.n),
-			Phase:          string(kaprov1alpha2.DeliveryPhaseConverged),
+			Phase:          string(kaprov1alpha1.DeliveryPhaseConverged),
 		}},
 	}, nil
 }

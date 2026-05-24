@@ -11,17 +11,18 @@ import (
 func TestRunInitScaffoldArgo(t *testing.T) {
 	dir := t.TempDir()
 	err := runInitScaffold(scaffoldOptions{
-		Path:     dir,
-		Name:     "checkout",
-		Backend:  "argo",
-		Mode:     "push",
-		Registry: "oci://registry.example.com/platform",
+		Path:              dir,
+		Name:              "checkout",
+		Substrate:         "argo",
+		Mode:              "push",
+		Registry:          "oci://registry.example.com/platform",
+		UseSubstrateClass: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, relPath := range []string{
-		"backends/argo.yaml",
+		"substrates/argo.yaml",
 		"plans/checkout.yaml",
 		"fleets/checkout.yaml",
 		"argo/applications/checkout.yaml",
@@ -30,14 +31,14 @@ func TestRunInitScaffoldArgo(t *testing.T) {
 			t.Fatalf("%s not generated: %v", relPath, err)
 		}
 	}
-	content := readFile(t, filepath.Join(dir, "backends/argo.yaml"))
-	if !strings.Contains(content, "driver: argo") {
-		t.Fatalf("backend file missing argo driver:\n%s", content)
+	content := readFile(t, filepath.Join(dir, "substrates/argo.yaml"))
+	if !strings.Contains(content, "kind: ArgoCDSubstrateConfig") || !strings.Contains(content, "classRef:") {
+		t.Fatalf("substrate file missing argo class/config:\n%s", content)
 	}
 	kapro := readFile(t, filepath.Join(dir, "fleets/checkout.yaml"))
 	for _, want := range []string{
 		"source:",
-		"backendRef: argo",
+		"substrateRef: argo",
 		"kapro.io/team: platform",
 		"name: checkout",
 		"kapro.io/stage: canary",
@@ -58,18 +59,19 @@ func TestRunInitScaffoldArgo(t *testing.T) {
 func TestRunInitScaffoldRepoOnly(t *testing.T) {
 	dir := t.TempDir()
 	err := runInitScaffold(scaffoldOptions{
-		Path:     dir,
-		Name:     "checkout",
-		Backend:  "argo",
-		Mode:     "push",
-		Registry: "oci://registry.example.com/platform",
-		Clusters: "none",
+		Path:              dir,
+		Name:              "checkout",
+		Substrate:         "argo",
+		Mode:              "push",
+		Registry:          "oci://registry.example.com/platform",
+		Clusters:          "none",
+		UseSubstrateClass: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, relPath := range []string{
-		"backends/argo.yaml",
+		"substrates/argo.yaml",
 		"sources/checkout.yaml",
 		"plans/checkout.yaml",
 		"argo/applications/checkout.yaml",
@@ -92,17 +94,18 @@ func TestRunInitScaffoldRepoOnly(t *testing.T) {
 func TestRunInitScaffoldOCIPull(t *testing.T) {
 	dir := t.TempDir()
 	err := runInitScaffold(scaffoldOptions{
-		Path:     dir,
-		Name:     "checkout",
-		Backend:  "oci",
-		Mode:     "pull",
-		Registry: "oci://registry.example.com/platform",
+		Path:              dir,
+		Name:              "checkout",
+		Substrate:         "oci",
+		Mode:              "pull",
+		Registry:          "oci://registry.example.com/platform",
+		UseSubstrateClass: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, relPath := range []string{
-		"backends/oci.yaml",
+		"substrates/oci.yaml",
 		"plans/checkout.yaml",
 		"clusters/canary-eu.yaml",
 		"clusters/prod-eu.yaml",
@@ -118,18 +121,19 @@ func TestRunInitScaffoldOCIPull(t *testing.T) {
 		"flux/kustomizations/checkout.yaml",
 	} {
 		if _, err := os.Stat(filepath.Join(dir, relPath)); !os.IsNotExist(err) {
-			t.Fatalf("%s should not be generated for oci backend", relPath)
+			t.Fatalf("%s should not be generated for oci substrate", relPath)
 		}
 	}
-	backend := readFile(t, filepath.Join(dir, "backends/oci.yaml"))
+	substrate := readFile(t, filepath.Join(dir, "substrates/oci.yaml"))
 	for _, want := range []string{
-		"driver: oci",
-		"runtime: Spoke",
+		"kind: OCIBundleApplyConfig",
+		"classRef:",
+		"mode: spoke-pull",
 		"repository: registry.example.com/platform/{appKey}",
 		"tag: \"{version}\"",
 	} {
-		if !strings.Contains(backend, want) {
-			t.Fatalf("backend file missing %q:\n%s", want, backend)
+		if !strings.Contains(substrate, want) {
+			t.Fatalf("substrate file missing %q:\n%s", want, substrate)
 		}
 	}
 	cluster := readFile(t, filepath.Join(dir, "clusters/canary-eu.yaml"))
@@ -137,7 +141,7 @@ func TestRunInitScaffoldOCIPull(t *testing.T) {
 		"name: canary-eu",
 		"kapro.io/stage: canary",
 		"mode: pull",
-		"backendRef: oci",
+		"substrateRef: oci",
 		"namespace: kapro-system",
 	} {
 		if !strings.Contains(cluster, want) {
@@ -160,13 +164,13 @@ func TestRunInitScaffoldOCIPull(t *testing.T) {
 
 func TestRunInitScaffoldOCIRejectsPushMode(t *testing.T) {
 	err := runInitScaffold(scaffoldOptions{
-		Path:     t.TempDir(),
-		Name:     "checkout",
-		Backend:  "oci",
-		Mode:     "push",
-		Registry: "oci://registry.example.com/platform",
+		Path:      t.TempDir(),
+		Name:      "checkout",
+		Substrate: "oci",
+		Mode:      "push",
+		Registry:  "oci://registry.example.com/platform",
 	})
-	if err == nil || !strings.Contains(err.Error(), "--backend oci requires --mode pull") {
+	if err == nil || !strings.Contains(err.Error(), "--substrate oci requires --mode pull") {
 		t.Fatalf("err=%v, want oci pull-mode error", err)
 	}
 }
@@ -176,16 +180,18 @@ func TestRunConnectScaffoldFlux(t *testing.T) {
 	err := runConnectScaffold(connectOptions{
 		Path:      dir,
 		Name:      "flux",
-		Backend:   "flux",
+		Substrate: "flux",
 		Namespace: "flux-system",
 		Selector:  "kapro.io/import=true,team=checkout",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	content := readFile(t, filepath.Join(dir, "backends/flux-observe.yaml"))
+	content := readFile(t, filepath.Join(dir, "substrates/flux-observe.yaml"))
 	for _, want := range []string{
-		"driver: flux",
+		"kind: flux",
+		"actuator: flux",
+		"mode: hub-push",
 		"managementPolicy: Observe",
 		"kapro.io/import: \"true\"",
 		"team: \"checkout\"",

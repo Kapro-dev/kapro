@@ -8,7 +8,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 func TestRegistryWrapsPredicateWithTracing(t *testing.T) {
@@ -42,7 +42,7 @@ func TestRegistryWrapsPredicateWithTracing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("evaluate: %v", err)
 	}
-	if got.Phase != kaprov1alpha2.GatePhasePassed {
+	if got.Phase != kaprov1alpha1.GatePhasePassed {
 		t.Fatalf("phase = %s, want Passed", got.Phase)
 	}
 
@@ -67,7 +67,7 @@ func TestRegistryWrapsPredicateWithTracing(t *testing.T) {
 		"kapro.stage":           "canary",
 		"kapro.target":          "cluster-a",
 		"kapro.version":         "v1.2.3",
-		"kapro.predicate.phase": string(kaprov1alpha2.GatePhasePassed),
+		"kapro.predicate.phase": string(kaprov1alpha1.GatePhasePassed),
 	} {
 		if attrs[key] != want {
 			t.Fatalf("attribute %s = %q, want %q (all attrs %#v)", key, attrs[key], want, attrs)

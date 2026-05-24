@@ -121,7 +121,7 @@ Before publishing a plugin for other teams:
 
 - return `contract_version: v1alpha1` from `GetCapabilities`;
 - run the matching conformance suite in CI;
-- document backend permissions, Kubernetes RBAC, and Secret requirements;
+- document substrate permissions, Kubernetes RBAC, and Secret requirements;
 - document timeout, retry, and failure behavior;
 - publish a tested `Plugin` manifest;
 - avoid creating or mutating Kapro CRDs directly.
@@ -140,15 +140,15 @@ go run ./cmd/kapro-conformance actuator \
 ```
 
 The actuator conformance scenario calls `Apply` twice, `IsConverged` twice, and
-`Rollback` twice. Use isolated backend resources because the plugin may perform
-real backend mutations while proving idempotency.
+`Rollback` twice. Use isolated substrate resources because the plugin may perform
+real substrate mutations while proving idempotency.
 
 ## Plugin Manifests
 
 Plugins are declared with `Plugin`.
 
 ```yaml
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Plugin
 metadata:
   name: argocd-actuator
@@ -168,7 +168,7 @@ loaded into runtime registries.
 Only platform administrators should create or update `Plugin`
 objects. A plugin endpoint can influence deployment execution or gate decisions,
 so plugin ownership is part of the platform trust boundary. Production plugins
-should run behind TLS, use least-privilege Kubernetes RBAC for their backend, and
+should run behind TLS, use least-privilege Kubernetes RBAC for their substrate, and
 store client certificates or CA data in platform-owned Secrets. See
 `docs/rbac-tenancy.md` for the RBAC and tenancy model.
 
@@ -198,17 +198,17 @@ An actuator plugin must:
 - implement `GetCapabilities` and return `contractVersion: v1alpha1`;
 - make `Apply` idempotent for the same version and target;
 - make `Rollback` idempotent for the same previous version and target;
-- return deterministic `IsConverged` results for the same backend state;
+- return deterministic `IsConverged` results for the same substrate state;
 - respect request context cancellation;
-- avoid storing PromotionRun state outside the backend it controls.
+- avoid storing PromotionRun state outside the substrate it controls.
 
 KAI conformance enforces context cancellation for `Apply`, so plugin tests
 should run against isolated resources that can tolerate failed conformance
 attempts.
 
 An in-process actuator substrate should publish matching
-`actuator.Capabilities` metadata for `Backend.spec.driver`,
-`Backend.spec.adapter`, `Backend.spec.runtime`, and supported delivery modes.
+`actuator.Capabilities` metadata for its substrate kind, actuator name,
+execution mode, and supported delivery modes.
 Built-in Argo CD, Flux, OCI, and pull-mode bridges are exposed through the
 server registrar functions, so external authors do not need to import
 `internal/...` packages to compose the reference operator behavior.
@@ -303,8 +303,8 @@ A spoke provider must:
 - return `Capabilities().ContractVersion == v1alpha1`;
 - advertise at least `SupportsReconcile` for the base KSP conformance suite;
 - return a populated `ReconcileResult` on every path;
-- not panic on malformed parameters or missing backend objects;
-- keep result shape deterministic for the same backend state.
+- not panic on malformed parameters or missing substrate objects;
+- keep result shape deterministic for the same substrate state.
 
 Run the base provider conformance harness from provider tests:
 
@@ -332,7 +332,7 @@ cloud discovery providers used by `ClusterTemplate` to import clusters.
 Run the matching conformance harness in the plugin repository before publishing
 a `Plugin`, either through Go tests or with `cmd/kapro-conformance`. Use
 deterministic inputs, immutable versions, stable target names, and isolated
-backend resources. Do not point conformance tests at shared production systems.
+substrate resources. Do not point conformance tests at shared production systems.
 
 The harnesses check the base contract:
 
@@ -343,10 +343,10 @@ The harnesses check the base contract:
 - KSP: capability metadata, supported contract version, panic-safe reconcile,
   and stable repeated reconcile result shapes.
 
-Add plugin-specific tests for authentication, backend permissions, timeouts,
+Add plugin-specific tests for authentication, substrate permissions, timeouts,
 retryable and terminal failures, cleanup, rollback, and concurrency. Passing
 the conformance package means the plugin obeys the Kapro contract; it does not
-prove backend-specific production readiness.
+prove substrate-specific production readiness.
 
 External projects may describe a plugin as "Kapro-compatible" for the contract
 version they test, for example "Kapro-compatible KAI v1alpha1". Avoid

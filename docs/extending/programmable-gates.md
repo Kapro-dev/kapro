@@ -32,7 +32,7 @@ s.Gates.MustRegister("canary-error-rate", gate.Func(func(ctx context.Context, re
 ```
 
 ```yaml
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Plan
 metadata:
   name: canary

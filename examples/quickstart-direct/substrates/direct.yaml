@@ -1,0 +1,34 @@
+apiVersion: kapro.io/v1alpha1
+kind: SubstrateClass
+metadata:
+  name: kubernetes-apply
+  labels:
+    kapro.io/family: direct
+    kapro.io/ledger: kubernetes-api
+spec:
+  controllerName: kapro.io/kubernetes-apply
+  executionModes:
+    default: hub-push
+---
+apiVersion: kubernetes.substrate.kapro.io/v1alpha1
+kind: KubernetesApplyConfig
+metadata:
+  name: direct
+spec:
+  serverSideApply: true
+  fieldManager: kapro
+  namespace: default
+---
+apiVersion: kapro.io/v1alpha1
+kind: Substrate
+metadata:
+  name: direct
+spec:
+  classRef:
+    name: kubernetes-apply
+  configRef:
+    apiVersion: kubernetes.substrate.kapro.io/v1alpha1
+    kind: KubernetesApplyConfig
+    name: direct
+  execution:
+    mode: hub-push

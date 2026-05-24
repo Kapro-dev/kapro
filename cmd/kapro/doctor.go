@@ -18,7 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/cli"
 )
 
@@ -114,8 +114,7 @@ func collectDoctorReport(ctx context.Context, c client.Client, opts doctorOption
 	findings = append(findings, checkValidatingWebhook(ctx, c))
 	findings = append(findings, checkConversionWebhookConfig(ctx, c))
 	findings = append(findings, checkPullSecrets(ctx, c, opts.Namespace))
-	findings = append(findings, checkDeprecatedAPIFields(ctx, c))
-	findings = append(findings, checkGitOpsBackends(ctx, c))
+	findings = append(findings, checkGitOpsSubstrates(ctx, c))
 	report := doctorReport{Overall: doctorStatusPass, Checks: findings}
 	if countDoctorFailures(report) > 0 {
 		report.Overall = doctorStatusFail
@@ -128,31 +127,6 @@ func collectDoctorReport(ctx context.Context, c client.Client, opts doctorOption
 		}
 	}
 	return report
-}
-
-func checkDeprecatedAPIFields(ctx context.Context, c client.Client) doctorFinding {
-	var details []string
-	var count int
-	var backends kaprov1alpha2.BackendList
-	if err := c.List(ctx, &backends); err != nil && !apierrors.IsNotFound(err) {
-		return doctorFinding{Name: "api-migration", Status: doctorStatusWarn, Message: "could not inspect Backend API fields", Details: []string{err.Error()}}
-	}
-	for _, backend := range backends.Items {
-		if backend.Spec.Driver == "" && backend.Spec.Adapter == "" && backend.Spec.Runtime == "" {
-			continue
-		}
-		count++
-		details = append(details,
-			fmt.Sprintf("Backend/%s uses deprecated driver/adapter/runtime; migrate to substrate.kind=%s, substrate.actuator=%s, execution.mode=%s",
-				backend.Name, backend.Spec.SubstrateKind(), backend.Spec.ActuatorName(), backend.Spec.ExecutionMode()),
-			fmt.Sprintf("  Command: kapro migrate backend %s -o yaml > %s.new.yaml", backend.Name, backend.Name),
-		)
-	}
-	if len(details) == 0 {
-		return doctorFinding{Name: "api-migration", Status: doctorStatusPass, Message: "no deprecated Backend API fields found"}
-	}
-	details = append(details, "Removal version: v0.5.20. See docs/migration/v0.4-to-v0.5-fields.md")
-	return doctorFinding{Name: "api-migration", Status: doctorStatusFail, Message: fmt.Sprintf("%d object(s) use deprecated API fields", count), Details: limitDetails(details, 20)}
 }
 
 func checkKaproCRDs(ctx context.Context, c client.Client) doctorFinding {
@@ -172,14 +146,15 @@ func checkKaproCRDs(ctx context.Context, c client.Client) doctorFinding {
 		if !crdNamesAccepted(crd) {
 			problems = append(problems, "names not accepted: "+name)
 		}
-		if crd.Spec.Group != "kapro.io" {
-			problems = append(problems, fmt.Sprintf("wrong group: %s has %q", name, crd.Spec.Group))
+		expectedGroup := expectedCRDGroup(name)
+		if crd.Spec.Group != expectedGroup {
+			problems = append(problems, fmt.Sprintf("wrong group: %s has %q, want %q", name, crd.Spec.Group, expectedGroup))
 		}
 		if crd.Spec.Scope != apiextensionsv1.ClusterScoped {
 			problems = append(problems, fmt.Sprintf("wrong scope: %s has %q", name, crd.Spec.Scope))
 		}
-		if !crdServesVersion(crd, "v1alpha2") {
-			problems = append(problems, "missing served v1alpha2: "+name)
+		if !crdServesVersion(crd, "v1alpha1") {
+			problems = append(problems, "missing served v1alpha1: "+name)
 		}
 	}
 	if len(missing) > 0 || len(problems) > 0 {
@@ -393,7 +368,7 @@ func kaproValidatingWebhookConfigs(ctx context.Context, c client.Client) ([]admi
 func webhookTouchesKapro(rules []admissionv1.RuleWithOperations) bool {
 	for _, rule := range rules {
 		for _, group := range rule.APIGroups {
-			if group == "kapro.io" {
+			if group == "kapro.io" || group == "runtime.kapro.io" {
 				return true
 			}
 		}
@@ -401,16 +376,16 @@ func webhookTouchesKapro(rules []admissionv1.RuleWithOperations) bool {
 	return false
 }
 
-func invalidPlanProbe() *kaprov1alpha2.Plan {
+func invalidPlanProbe() *kaprov1alpha1.Plan {
 	now := time.Now().UnixNano()
-	return &kaprov1alpha2.Plan{
-		TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha2", Kind: "Plan"},
+	return &kaprov1alpha1.Plan{
+		TypeMeta: metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "Plan"},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   fmt.Sprintf("kapro-doctor-webhook-probe-%x", now),
 			Labels: map[string]string{"kapro.io/team": "doctor"},
 		},
-		Spec: kaprov1alpha2.PlanSpec{
-			Stages: []kaprov1alpha2.Stage{
+		Spec: kaprov1alpha1.PlanSpec{
+			Stages: []kaprov1alpha1.Stage{
 				{Name: "duplicate", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"env": "dev"}}},
 				{Name: "duplicate", Selector: metav1.LabelSelector{MatchLabels: map[string]string{"env": "prod"}}},
 			},
@@ -475,44 +450,41 @@ func checkPullSecrets(ctx context.Context, c client.Client, namespace string) do
 	return doctorFinding{Name: "pull-secrets", Status: doctorStatusPass, Message: fmt.Sprintf("%d referenced pull secret(s) exist", len(refs))}
 }
 
-func checkGitOpsBackends(ctx context.Context, c client.Client) doctorFinding {
-	var backends kaprov1alpha2.BackendList
-	if err := c.List(ctx, &backends); err != nil && !apierrors.IsNotFound(err) {
-		return doctorFinding{Name: "gitops-backends", Status: doctorStatusWarn, Message: "could not list Kapro Backend objects", Details: []string{err.Error()}}
+func checkGitOpsSubstrates(ctx context.Context, c client.Client) doctorFinding {
+	var substrates kaprov1alpha1.SubstrateList
+	if err := c.List(ctx, &substrates); err != nil && !apierrors.IsNotFound(err) {
+		return doctorFinding{Name: "gitops-substrates", Status: doctorStatusWarn, Message: "could not list Kapro Substrate objects", Details: []string{err.Error()}}
 	}
-	if len(backends.Items) == 0 {
+	if len(substrates.Items) == 0 {
 		return doctorFinding{
-			Name:    "gitops-backends",
+			Name:    "gitops-substrates",
 			Status:  doctorStatusSkip,
-			Message: "no Backend objects found yet; start with `kapro quickstart flux` or `kapro adopt argo|flux`",
+			Message: "no Substrate objects found yet; start with `kapro quickstart flux` or `kapro adopt argo|flux`",
 		}
 	}
 	var details, namespaceWarnings []string
-	for _, backend := range backends.Items {
-		driver := string(backend.Spec.Driver)
-		runtime := string(backend.Spec.Runtime)
-		if runtime == "" {
-			runtime = string(kaprov1alpha2.BackendRuntimeBoth)
-		}
+	for _, substrate := range substrates.Items {
+		kind := substrate.Spec.SubstrateKind()
+		executionMode := string(substrate.Spec.ExecutionMode())
 		mode := "configured"
-		if backend.Spec.Discovery != nil && backend.Spec.Discovery.Enabled {
+		if substrate.Spec.Discovery != nil && substrate.Spec.Discovery.Enabled {
 			mode = "observe"
-			if backend.Spec.Discovery.ManagementPolicy != "" {
-				mode = strings.ToLower(backend.Spec.Discovery.ManagementPolicy)
+			if substrate.Spec.Discovery.ManagementPolicy != "" {
+				mode = strings.ToLower(substrate.Spec.Discovery.ManagementPolicy)
 			}
 		}
-		namespace := strings.TrimSpace(backend.Spec.Parameters["namespace"])
+		namespace := strings.TrimSpace(substrate.Spec.Parameters["namespace"])
 		if namespace == "" {
-			namespace = defaultBackendNamespace(driver)
+			namespace = defaultSubstrateNamespace(kind)
 		}
-		details = append(details, fmt.Sprintf("%s driver=%s runtime=%s mode=%s namespace=%s", backend.Name, driver, runtime, mode, namespace))
-		if driver == string(kaprov1alpha2.BackendDriverArgo) || driver == string(kaprov1alpha2.BackendDriverFlux) {
+		details = append(details, fmt.Sprintf("%s substrate=%s execution=%s mode=%s namespace=%s", substrate.Name, kind, executionMode, mode, namespace))
+		if kind == string(kaprov1alpha1.SubstrateDriverArgo) || kind == string(kaprov1alpha1.SubstrateDriverFlux) {
 			var ns corev1.Namespace
 			if err := c.Get(ctx, types.NamespacedName{Name: namespace}, &ns); err != nil {
 				if apierrors.IsNotFound(err) {
-					namespaceWarnings = append(namespaceWarnings, fmt.Sprintf("%s references missing namespace %s", backend.Name, namespace))
+					namespaceWarnings = append(namespaceWarnings, fmt.Sprintf("%s references missing namespace %s", substrate.Name, namespace))
 				} else {
-					namespaceWarnings = append(namespaceWarnings, fmt.Sprintf("%s namespace check failed: %v", backend.Name, err))
+					namespaceWarnings = append(namespaceWarnings, fmt.Sprintf("%s namespace check failed: %v", substrate.Name, err))
 				}
 			}
 		}
@@ -521,16 +493,16 @@ func checkGitOpsBackends(ctx context.Context, c client.Client) doctorFinding {
 	sort.Strings(namespaceWarnings)
 	if len(namespaceWarnings) > 0 {
 		return doctorFinding{
-			Name:    "gitops-backends",
+			Name:    "gitops-substrates",
 			Status:  doctorStatusWarn,
-			Message: "some Argo/Flux backend namespaces are not present",
+			Message: "some Argo/Flux substrate namespaces are not present",
 			Details: append(limitDetails(namespaceWarnings, 8), limitDetails(details, 8)...),
 		}
 	}
 	return doctorFinding{
-		Name:    "gitops-backends",
+		Name:    "gitops-substrates",
 		Status:  doctorStatusPass,
-		Message: fmt.Sprintf("%d Backend object(s) configured", len(backends.Items)),
+		Message: fmt.Sprintf("%d Substrate object(s) configured", len(substrates.Items)),
 		Details: limitDetails(details, 12),
 	}
 }
@@ -562,23 +534,23 @@ func collectReferencedPullSecrets(ctx context.Context, c client.Client, defaultN
 		key := types.NamespacedName{Namespace: strings.TrimSpace(ref.Namespace), Name: strings.TrimSpace(ref.Name)}
 		seen[key] = doctorSecretRef{NamespacedName: key, Source: source}
 	}
-	var fleets kaprov1alpha2.FleetList
+	var fleets kaprov1alpha1.FleetList
 	if err := c.List(ctx, &fleets); err != nil && !apierrors.IsNotFound(err) {
 		return nil, nil, err
 	}
 	for _, fleet := range fleets.Items {
 		addDefaultNamespaceRef("Fleet/"+fleet.Name, fleet.Spec.Registry.SecretRef)
 	}
-	var backends kaprov1alpha2.BackendList
-	if err := c.List(ctx, &backends); err != nil && !apierrors.IsNotFound(err) {
+	var substrates kaprov1alpha1.SubstrateList
+	if err := c.List(ctx, &substrates); err != nil && !apierrors.IsNotFound(err) {
 		return nil, nil, err
 	}
-	for _, backend := range backends.Items {
+	for _, substrate := range substrates.Items {
 		for _, key := range []string{"secretRef", "pullSecret", "imagePullSecret"} {
-			addDefaultNamespaceRef("Backend/"+backend.Name+" parameter "+key, backend.Spec.Parameters[key])
+			addDefaultNamespaceRef("Substrate/"+substrate.Name+" parameter "+key, substrate.Spec.Parameters[key])
 		}
 	}
-	var triggers kaprov1alpha2.TriggerList
+	var triggers kaprov1alpha1.TriggerList
 	if err := c.List(ctx, &triggers); err != nil && !apierrors.IsNotFound(err) {
 		return nil, nil, err
 	}
@@ -651,23 +623,41 @@ func accessKey(a authv1.ResourceAttributes) string {
 }
 
 var expectedKaproCRDs = []string{
+	"adapterpolicies.kapro.io",
+	"argocdsubstrateconfigs.argocd.substrate.kapro.io",
 	"approvals.kapro.io",
-	"backends.kapro.io",
 	"clusters.kapro.io",
 	"clustertemplates.kapro.io",
+	"decisiontraces.runtime.kapro.io",
 	"fleets.kapro.io",
-	"gateexpressions.kapro.io",
+	"fluxsubstrateconfigs.flux.substrate.kapro.io",
+	"kubernetesapplyconfigs.kubernetes.substrate.kapro.io",
+	"ocibundleapplyconfigs.oci.substrate.kapro.io",
 	"plans.kapro.io",
 	"plugins.kapro.io",
 	"policies.kapro.io",
-	"promotionruns.kapro.io",
+	"promotionruns.runtime.kapro.io",
 	"promotions.kapro.io",
 	"sources.kapro.io",
-	"targets.kapro.io",
+	"substrateclasses.kapro.io",
+	"substrates.kapro.io",
+	"targets.runtime.kapro.io",
 	"triggers.kapro.io",
 }
 
+func expectedCRDGroup(name string) string {
+	_, group, _ := strings.Cut(name, ".")
+	return group
+}
+
 var requiredOperatorAccess = []authv1.ResourceAttributes{
+	{Group: "kapro.io", Resource: "adapterpolicies", Verb: "get"},
+	{Group: "kapro.io", Resource: "adapterpolicies", Verb: "list"},
+	{Group: "kapro.io", Resource: "adapterpolicies", Verb: "watch"},
+	{Group: "kapro.io", Resource: "adapterpolicies", Subresource: "status", Verb: "update"},
+	{Group: "argocd.substrate.kapro.io", Resource: "argocdsubstrateconfigs", Verb: "get"},
+	{Group: "argocd.substrate.kapro.io", Resource: "argocdsubstrateconfigs", Verb: "list"},
+	{Group: "argocd.substrate.kapro.io", Resource: "argocdsubstrateconfigs", Verb: "watch"},
 	{Group: "kapro.io", Resource: "fleets", Verb: "get"},
 	{Group: "kapro.io", Resource: "fleets", Verb: "list"},
 	{Group: "kapro.io", Resource: "fleets", Verb: "watch"},
@@ -681,22 +671,38 @@ var requiredOperatorAccess = []authv1.ResourceAttributes{
 	{Group: "kapro.io", Resource: "plans", Verb: "get"},
 	{Group: "kapro.io", Resource: "plans", Verb: "list"},
 	{Group: "kapro.io", Resource: "plans", Verb: "watch"},
-	{Group: "kapro.io", Resource: "gateexpressions", Verb: "get"},
-	{Group: "kapro.io", Resource: "gateexpressions", Verb: "list"},
-	{Group: "kapro.io", Resource: "gateexpressions", Verb: "watch"},
-	{Group: "kapro.io", Resource: "gateexpressions", Subresource: "status", Verb: "update"},
+	{Group: "kapro.io", Resource: "substrateclasses", Verb: "get"},
+	{Group: "kapro.io", Resource: "substrateclasses", Verb: "list"},
+	{Group: "kapro.io", Resource: "substrateclasses", Verb: "watch"},
+	{Group: "kapro.io", Resource: "substrateclasses", Subresource: "status", Verb: "update"},
+	{Group: "kapro.io", Resource: "substrates", Verb: "get"},
+	{Group: "kapro.io", Resource: "substrates", Verb: "list"},
+	{Group: "kapro.io", Resource: "substrates", Verb: "watch"},
+	{Group: "kapro.io", Resource: "substrates", Subresource: "status", Verb: "update"},
+	{Group: "flux.substrate.kapro.io", Resource: "fluxsubstrateconfigs", Verb: "get"},
+	{Group: "flux.substrate.kapro.io", Resource: "fluxsubstrateconfigs", Verb: "list"},
+	{Group: "flux.substrate.kapro.io", Resource: "fluxsubstrateconfigs", Verb: "watch"},
+	{Group: "kubernetes.substrate.kapro.io", Resource: "kubernetesapplyconfigs", Verb: "get"},
+	{Group: "kubernetes.substrate.kapro.io", Resource: "kubernetesapplyconfigs", Verb: "list"},
+	{Group: "kubernetes.substrate.kapro.io", Resource: "kubernetesapplyconfigs", Verb: "watch"},
+	{Group: "oci.substrate.kapro.io", Resource: "ocibundleapplyconfigs", Verb: "get"},
+	{Group: "oci.substrate.kapro.io", Resource: "ocibundleapplyconfigs", Verb: "list"},
+	{Group: "oci.substrate.kapro.io", Resource: "ocibundleapplyconfigs", Verb: "watch"},
 	{Group: "kapro.io", Resource: "promotions", Verb: "get"},
 	{Group: "kapro.io", Resource: "promotions", Verb: "list"},
 	{Group: "kapro.io", Resource: "promotions", Verb: "watch"},
 	{Group: "kapro.io", Resource: "promotions", Subresource: "status", Verb: "update"},
-	{Group: "kapro.io", Resource: "promotionruns", Verb: "create"},
-	{Group: "kapro.io", Resource: "promotionruns", Verb: "get"},
-	{Group: "kapro.io", Resource: "promotionruns", Verb: "list"},
-	{Group: "kapro.io", Resource: "promotionruns", Verb: "watch"},
-	{Group: "kapro.io", Resource: "promotionruns", Subresource: "status", Verb: "update"},
-	{Group: "kapro.io", Resource: "targets", Verb: "create"},
-	{Group: "kapro.io", Resource: "targets", Verb: "get"},
-	{Group: "kapro.io", Resource: "targets", Verb: "list"},
-	{Group: "kapro.io", Resource: "targets", Verb: "watch"},
-	{Group: "kapro.io", Resource: "targets", Subresource: "status", Verb: "update"},
+	{Group: "runtime.kapro.io", Resource: "promotionruns", Verb: "create"},
+	{Group: "runtime.kapro.io", Resource: "promotionruns", Verb: "get"},
+	{Group: "runtime.kapro.io", Resource: "promotionruns", Verb: "list"},
+	{Group: "runtime.kapro.io", Resource: "promotionruns", Verb: "watch"},
+	{Group: "runtime.kapro.io", Resource: "promotionruns", Subresource: "status", Verb: "update"},
+	{Group: "runtime.kapro.io", Resource: "decisiontraces", Verb: "create"},
+	{Group: "runtime.kapro.io", Resource: "decisiontraces", Verb: "get"},
+	{Group: "runtime.kapro.io", Resource: "decisiontraces", Subresource: "status", Verb: "update"},
+	{Group: "runtime.kapro.io", Resource: "targets", Verb: "create"},
+	{Group: "runtime.kapro.io", Resource: "targets", Verb: "get"},
+	{Group: "runtime.kapro.io", Resource: "targets", Verb: "list"},
+	{Group: "runtime.kapro.io", Resource: "targets", Verb: "watch"},
+	{Group: "runtime.kapro.io", Resource: "targets", Subresource: "status", Verb: "update"},
 }

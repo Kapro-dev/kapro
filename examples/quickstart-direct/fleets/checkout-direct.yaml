@@ -1,4 +1,4 @@
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Fleet
 metadata:
   name: checkout-direct
@@ -6,18 +6,18 @@ metadata:
     kapro.io/team: platform
 spec:
   source:
-    backendRef: direct
+    substrateRef: direct
     defaults:
       targetNamespace: default
     units:
       - name: checkout-direct
-        backendKind: KubernetesManifest
+        substrateKind: KubernetesManifest
         sourcePath: apps/checkout-direct/deployment.yaml
         versionField: spec.template.spec.containers[0].image
         version: ghcr.io/example/checkout-direct:0.1.0
   delivery:
     mode: push
-    backendRef: direct
+    substrateRef: direct
     parameters:
       deployment: checkout-direct
       container: app

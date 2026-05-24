@@ -16,6 +16,8 @@ import (
 	"fmt"
 	"sort"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -23,18 +25,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 func (r *PromotionRunReconciler) upsertTarget(
 	ctx context.Context,
-	targets *[]kaprov1alpha2.TargetExecutionState,
-	promotionrun *kaprov1alpha2.PromotionRun,
+	targets *[]kaprov1alpha1.TargetExecutionState,
+	promotionrun *kaproruntimev1alpha1.PromotionRun,
 	promotionplanRefName string,
-	promotionplan *kaprov1alpha2.Plan,
-	stage kaprov1alpha2.Stage,
-	mc kaprov1alpha2.Cluster,
-	resolvedGate *kaprov1alpha2.GatePolicySpec,
+	promotionplan *kaprov1alpha1.Plan,
+	stage kaprov1alpha1.Stage,
+	mc kaprov1alpha1.Cluster,
+	resolvedGate *kaprov1alpha1.GatePolicySpec,
 ) (int, error) {
 	desiredVersions := promotionrunDesiredVersions(promotionrun)
 	version, appKey := primaryDesiredVersion(desiredVersions, promotionrun.Status.ResolvedVersion, promotionrunAppKey(promotionrun))
@@ -49,7 +51,7 @@ func (r *PromotionRunReconciler) upsertTarget(
 			return i, nil
 		}
 	}
-	newTarget := kaprov1alpha2.TargetExecutionState{
+	newTarget := kaprov1alpha1.TargetExecutionState{
 		PromotionRunRef: promotionrun.Name,
 		Target:          mc.Name,
 		PlanRef:         promotionplanRefName,
@@ -61,17 +63,17 @@ func (r *PromotionRunReconciler) upsertTarget(
 		DesiredVersions: copyStringMap(desiredVersions),
 	}
 	*targets = append(*targets, newTarget)
-	r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+	r.emitDecisionTrace(ctx, kaproruntimev1alpha1.DecisionTraceSpec{
 		PromotionRun: promotionrun.Name,
 		Plan:         promotionplanRefName,
 		Stage:        stage.Name,
 		Target:       mc.Name,
-		EventType:    kaprov1alpha2.DecisionTraceEventBatchProgress,
+		EventType:    kaproruntimev1alpha1.DecisionTraceEventBatchProgress,
 		Source:       "promotionrun-controller",
 		Phase:        "Bind",
 		Reason:       "TargetBound",
 		Message:      fmt.Sprintf("target %s bound to stage %s", mc.Name, stage.Name),
-		Evidence: []kaprov1alpha2.DecisionTraceEvidence{{
+		Evidence: []kaproruntimev1alpha1.DecisionTraceEvidence{{
 			Type:   "target-bind",
 			Source: "promotionrun-controller",
 			Detail: targetBindDecisionEvidence(newTarget),
@@ -80,7 +82,7 @@ func (r *PromotionRunReconciler) upsertTarget(
 	return len(*targets) - 1, nil
 }
 
-func (r *PromotionRunReconciler) triggerRollbackTargets(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, targets *[]kaprov1alpha2.TargetExecutionState, promotionplanRefName string, promotionplan *kaprov1alpha2.Plan, stageName string) {
+func (r *PromotionRunReconciler) triggerRollbackTargets(ctx context.Context, promotionrun *kaproruntimev1alpha1.PromotionRun, targets *[]kaprov1alpha1.TargetExecutionState, promotionplanRefName string, promotionplan *kaprov1alpha1.Plan, stageName string) {
 	eligibleStages := make(map[string]struct{}, len(promotionplan.Spec.Stages))
 	for _, stage := range promotionplan.Spec.Stages {
 		eligibleStages[stage.Name] = struct{}{}
@@ -97,20 +99,20 @@ func (r *PromotionRunReconciler) triggerRollbackTargets(ctx context.Context, pro
 		if _, ok := eligibleStages[target.Stage]; !ok {
 			continue
 		}
-		if target.Phase != kaprov1alpha2.TargetPhaseConverged {
+		if target.Phase != kaprov1alpha1.TargetPhaseConverged {
 			continue
 		}
 		r.triggerTargetRollback(ctx, promotionrun, targets, i)
 	}
 }
 
-func hasActiveRollbackTargets(targets []kaprov1alpha2.TargetExecutionState) bool {
+func hasActiveRollbackTargets(targets []kaprov1alpha1.TargetExecutionState) bool {
 	for _, target := range targets {
 		if !target.Rollback {
 			continue
 		}
 		switch target.Phase {
-		case kaprov1alpha2.TargetPhaseConverged, kaprov1alpha2.TargetPhaseFailed, kaprov1alpha2.TargetPhaseSkipped:
+		case kaprov1alpha1.TargetPhaseConverged, kaprov1alpha1.TargetPhaseFailed, kaprov1alpha1.TargetPhaseSkipped:
 			continue
 		default:
 			return true
@@ -119,11 +121,11 @@ func hasActiveRollbackTargets(targets []kaprov1alpha2.TargetExecutionState) bool
 	return false
 }
 
-func (r *PromotionRunReconciler) cancelPendingStageTargets(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, targets []kaprov1alpha2.TargetExecutionState, promotionplanRefName, stageName string) {
+func (r *PromotionRunReconciler) cancelPendingStageTargets(ctx context.Context, promotionrun *kaproruntimev1alpha1.PromotionRun, targets []kaprov1alpha1.TargetExecutionState, promotionplanRefName, stageName string) {
 	log := log.FromContext(ctx)
 
 	// List PromotionTarget objects for this promotionrun (indexed, not full scan).
-	var list kaprov1alpha2.TargetList
+	var list kaproruntimev1alpha1.TargetList
 	if err := r.List(ctx, &list, client.MatchingFields{IndexKeyPromotionTargetPromotionRun: promotionrun.Name}); err != nil {
 		log.Error(err, "cancel: failed to list PromotionTargets")
 		return
@@ -136,7 +138,7 @@ func (r *PromotionRunReconciler) cancelPendingStageTargets(ctx context.Context, 
 		}
 		// Skip terminal targets.
 		switch rt.Status.Phase {
-		case kaprov1alpha2.TargetPhaseConverged, kaprov1alpha2.TargetPhaseFailed, kaprov1alpha2.TargetPhaseSkipped:
+		case kaprov1alpha1.TargetPhaseConverged, kaprov1alpha1.TargetPhaseFailed, kaprov1alpha1.TargetPhaseSkipped:
 			continue
 		}
 		if rt.Spec.Cancelled {
@@ -154,14 +156,14 @@ func (r *PromotionRunReconciler) cancelPendingStageTargets(ctx context.Context, 
 			continue
 		}
 		log.Info("cancel: signalled cancellation", "target", rt.Name)
-		r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+		r.emitDecisionTrace(ctx, kaproruntimev1alpha1.DecisionTraceSpec{
 			PromotionRun: promotionrun.Name,
 			Plan:         promotionplanRefName,
 			Stage:        stageName,
 			Target:       rt.Spec.Target,
-			EventType:    kaprov1alpha2.DecisionTraceEventStage,
+			EventType:    kaproruntimev1alpha1.DecisionTraceEventStage,
 			Source:       "promotionrun-controller",
-			Phase:        string(kaprov1alpha2.TargetPhaseFailed),
+			Phase:        string(kaprov1alpha1.TargetPhaseFailed),
 			Reason:       "StageHalted",
 			Message:      "stage halted due to peer failure (failurePolicy: halt)",
 		})
@@ -171,7 +173,7 @@ func (r *PromotionRunReconciler) cancelPendingStageTargets(ctx context.Context, 
 		for j := range targets {
 			t := &targets[j]
 			if t.Target == rt.Spec.Target && t.PlanRef == promotionplanRefName && t.Stage == stageName {
-				t.Phase = kaprov1alpha2.TargetPhaseFailed
+				t.Phase = kaprov1alpha1.TargetPhaseFailed
 				t.Message = "cancelled: " + rt.Spec.CancelledReason
 				break
 			}
@@ -179,8 +181,8 @@ func (r *PromotionRunReconciler) cancelPendingStageTargets(ctx context.Context, 
 	}
 }
 
-func (r *PromotionRunReconciler) markFailedStageTargetsSkipped(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, promotionplanRefName, stageName string) error {
-	var list kaprov1alpha2.TargetList
+func (r *PromotionRunReconciler) markFailedStageTargetsSkipped(ctx context.Context, promotionrun *kaproruntimev1alpha1.PromotionRun, promotionplanRefName, stageName string) error {
+	var list kaproruntimev1alpha1.TargetList
 	if err := r.List(ctx, &list, client.MatchingFields{IndexKeyPromotionTargetPromotionRun: promotionrun.Name}); err != nil {
 		return err
 	}
@@ -189,10 +191,10 @@ func (r *PromotionRunReconciler) markFailedStageTargetsSkipped(ctx context.Conte
 		if rt.Spec.PlanRef != promotionplanRefName || rt.Spec.Stage != stageName {
 			continue
 		}
-		if rt.Status.Phase != kaprov1alpha2.TargetPhaseFailed {
+		if rt.Status.Phase != kaprov1alpha1.TargetPhaseFailed {
 			continue
 		}
-		if rt.Spec.Cancelled && rt.Spec.CancelledPhase == kaprov1alpha2.TargetPhaseSkipped {
+		if rt.Spec.Cancelled && rt.Spec.CancelledPhase == kaprov1alpha1.TargetPhaseSkipped {
 			continue
 		}
 		rawPatch := client.RawPatch(types.MergePatchType,
@@ -200,14 +202,14 @@ func (r *PromotionRunReconciler) markFailedStageTargetsSkipped(ctx context.Conte
 		if err := r.Patch(ctx, rt, rawPatch); err != nil {
 			return fmt.Errorf("mark failed PromotionTarget %s skipped: %w", rt.Name, err)
 		}
-		r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+		r.emitDecisionTrace(ctx, kaproruntimev1alpha1.DecisionTraceSpec{
 			PromotionRun: promotionrun.Name,
 			Plan:         promotionplanRefName,
 			Stage:        stageName,
 			Target:       rt.Spec.Target,
-			EventType:    kaprov1alpha2.DecisionTraceEventStage,
+			EventType:    kaproruntimev1alpha1.DecisionTraceEventStage,
 			Source:       "promotionrun-controller",
-			Phase:        string(kaprov1alpha2.TargetPhaseSkipped),
+			Phase:        string(kaprov1alpha1.TargetPhaseSkipped),
 			Reason:       "SkippedAfterFailurePolicy",
 			Message:      "skipped after failure policy",
 		})
@@ -216,14 +218,18 @@ func (r *PromotionRunReconciler) markFailedStageTargetsSkipped(ctx context.Conte
 }
 
 func (r *PromotionRunReconciler) cancelPromotionRunTargets(ctx context.Context, promotionrunName, reason string) error {
-	var list kaprov1alpha2.TargetList
+	return r.cancelPromotionRunTargetsWithTraceReason(ctx, promotionrunName, reason, "PromotionRunTimeoutCancelled")
+}
+
+func (r *PromotionRunReconciler) cancelPromotionRunTargetsWithTraceReason(ctx context.Context, promotionrunName, reason, traceReason string) error {
+	var list kaproruntimev1alpha1.TargetList
 	if err := r.List(ctx, &list, client.MatchingFields{IndexKeyPromotionTargetPromotionRun: promotionrunName}); err != nil {
 		return err
 	}
 	for i := range list.Items {
 		rt := &list.Items[i]
 		switch rt.Status.Phase {
-		case kaprov1alpha2.TargetPhaseConverged, kaprov1alpha2.TargetPhaseFailed, kaprov1alpha2.TargetPhaseSkipped:
+		case kaprov1alpha1.TargetPhaseConverged, kaprov1alpha1.TargetPhaseFailed, kaprov1alpha1.TargetPhaseSkipped:
 			continue
 		}
 		if rt.Spec.Cancelled {
@@ -234,21 +240,21 @@ func (r *PromotionRunReconciler) cancelPromotionRunTargets(ctx context.Context, 
 		if err := r.Patch(ctx, rt, rawPatch); err != nil {
 			return fmt.Errorf("cancel PromotionTarget %s: %w", rt.Name, err)
 		}
-		r.emitDecisionTrace(ctx, kaprov1alpha2.DecisionTraceSpec{
+		r.emitDecisionTrace(ctx, kaproruntimev1alpha1.DecisionTraceSpec{
 			PromotionRun: promotionrunName,
 			Plan:         rt.Spec.PlanRef,
 			Stage:        rt.Spec.Stage,
 			Target:       rt.Spec.Target,
-			EventType:    kaprov1alpha2.DecisionTraceEventStage,
+			EventType:    kaproruntimev1alpha1.DecisionTraceEventStage,
 			Source:       "promotionrun-controller",
-			Phase:        string(kaprov1alpha2.TargetPhaseFailed),
-			Reason:       "PromotionRunTimeoutCancelled",
+			Phase:        string(kaprov1alpha1.TargetPhaseFailed),
+			Reason:       traceReason,
 			Message:      reason,
-			Evidence: []kaprov1alpha2.DecisionTraceEvidence{{
+			Evidence: []kaproruntimev1alpha1.DecisionTraceEvidence{{
 				Type:   "target-cancel",
 				Source: "promotionrun-controller",
 				Detail: map[string]string{
-					"cancelledPhase":  string(kaprov1alpha2.TargetPhaseFailed),
+					"cancelledPhase":  string(kaprov1alpha1.TargetPhaseFailed),
 					"cancelledReason": reason,
 					"fromPhase":       string(rt.Status.Phase),
 				},
@@ -258,7 +264,7 @@ func (r *PromotionRunReconciler) cancelPromotionRunTargets(ctx context.Context, 
 	return nil
 }
 
-func targetBindDecisionEvidence(target kaprov1alpha2.TargetExecutionState) map[string]string {
+func targetBindDecisionEvidence(target kaprov1alpha1.TargetExecutionState) map[string]string {
 	detail := map[string]string{}
 	addDetail(detail, "plan", target.PlanRef)
 	addDetail(detail, "stage", target.Stage)
@@ -269,7 +275,7 @@ func targetBindDecisionEvidence(target kaprov1alpha2.TargetExecutionState) map[s
 	return detail
 }
 
-func (r *PromotionRunReconciler) clearActivePromotionRun(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, targets []kaprov1alpha2.TargetExecutionState) {
+func (r *PromotionRunReconciler) clearActivePromotionRun(ctx context.Context, promotionrun *kaproruntimev1alpha1.PromotionRun, targets []kaprov1alpha1.TargetExecutionState) {
 	log := log.FromContext(ctx)
 	if len(targets) == 0 {
 		loadedTargets, err := r.loadPromotionTargets(ctx, promotionrun)
@@ -286,7 +292,7 @@ func (r *PromotionRunReconciler) clearActivePromotionRun(ctx context.Context, pr
 			continue
 		}
 		seen[mcName] = true
-		var mc kaprov1alpha2.Cluster
+		var mc kaprov1alpha1.Cluster
 		if err := r.Get(ctx, client.ObjectKey{Name: mcName}, &mc); err != nil {
 			continue
 		}
@@ -300,8 +306,8 @@ func (r *PromotionRunReconciler) clearActivePromotionRun(ctx context.Context, pr
 	}
 }
 
-func (r *PromotionRunReconciler) promotionTargetFromStatus(promotionrun *kaprov1alpha2.PromotionRun, target kaprov1alpha2.TargetExecutionState) *kaprov1alpha2.Target {
-	rt := &kaprov1alpha2.Target{
+func (r *PromotionRunReconciler) promotionTargetFromStatus(promotionrun *kaproruntimev1alpha1.PromotionRun, target kaprov1alpha1.TargetExecutionState) *kaproruntimev1alpha1.Target {
+	rt := &kaproruntimev1alpha1.Target{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: promotionTargetObjectName(target),
 			Labels: map[string]string{
@@ -311,7 +317,7 @@ func (r *PromotionRunReconciler) promotionTargetFromStatus(promotionrun *kaprov1
 				"kapro.io/stage":         target.Stage,
 			},
 		},
-		Spec: kaprov1alpha2.TargetSpec{
+		Spec: kaprov1alpha1.TargetSpec{
 			PromotionRunRef: target.PromotionRunRef,
 			Target:          target.Target,
 			PlanRef:         target.PlanRef,
@@ -323,7 +329,7 @@ func (r *PromotionRunReconciler) promotionTargetFromStatus(promotionrun *kaprov1
 			DesiredVersions: copyStringMap(target.DesiredVersions),
 			Rollback:        target.Rollback,
 		},
-		Status: kaprov1alpha2.TargetStatus{TargetExecutionState: target},
+		Status: kaprov1alpha1.TargetStatus{TargetExecutionState: target},
 	}
 	if err := ctrl.SetControllerReference(promotionrun, rt, r.Scheme); err == nil {
 		return rt
@@ -331,14 +337,14 @@ func (r *PromotionRunReconciler) promotionTargetFromStatus(promotionrun *kaprov1
 	return rt
 }
 
-func (r *PromotionRunReconciler) loadPromotionTargets(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun) ([]kaprov1alpha2.TargetExecutionState, error) {
-	var list kaprov1alpha2.TargetList
+func (r *PromotionRunReconciler) loadPromotionTargets(ctx context.Context, promotionrun *kaproruntimev1alpha1.PromotionRun) ([]kaprov1alpha1.TargetExecutionState, error) {
+	var list kaproruntimev1alpha1.TargetList
 	if err := r.List(ctx, &list,
 		client.MatchingFields{IndexKeyPromotionTargetPromotionRun: promotionrun.Name},
 	); err != nil {
 		return nil, err
 	}
-	targets := make([]kaprov1alpha2.TargetExecutionState, 0, len(list.Items))
+	targets := make([]kaprov1alpha1.TargetExecutionState, 0, len(list.Items))
 	for i := range list.Items {
 		rt := &list.Items[i]
 		targets = append(targets, targetStatusFromPromotionTarget(rt))
@@ -351,14 +357,14 @@ func (r *PromotionRunReconciler) loadPromotionTargets(ctx context.Context, promo
 	return targets, nil
 }
 
-func (r *PromotionRunReconciler) persistPromotionTargets(ctx context.Context, promotionrun *kaprov1alpha2.PromotionRun, targets []kaprov1alpha2.TargetExecutionState) error {
-	var existingList kaprov1alpha2.TargetList
+func (r *PromotionRunReconciler) persistPromotionTargets(ctx context.Context, promotionrun *kaproruntimev1alpha1.PromotionRun, targets []kaprov1alpha1.TargetExecutionState) error {
+	var existingList kaproruntimev1alpha1.TargetList
 	if err := r.List(ctx, &existingList,
 		client.MatchingFields{IndexKeyPromotionTargetPromotionRun: promotionrun.Name},
 	); err != nil {
 		return err
 	}
-	existing := make(map[string]*kaprov1alpha2.Target, len(existingList.Items))
+	existing := make(map[string]*kaproruntimev1alpha1.Target, len(existingList.Items))
 	for i := range existingList.Items {
 		rt := existingList.Items[i]
 		existing[rt.Name] = rt.DeepCopy()
@@ -370,7 +376,7 @@ func (r *PromotionRunReconciler) persistPromotionTargets(ctx context.Context, pr
 		if _, ok := existing[name]; !ok {
 			// Create new child — status starts empty, TargetReconciler will drive it.
 			toCreate := desired.DeepCopy()
-			toCreate.Status = kaprov1alpha2.TargetStatus{}
+			toCreate.Status = kaprov1alpha1.TargetStatus{}
 			if err := r.Create(ctx, toCreate); err != nil && !apierrors.IsAlreadyExists(err) {
 				return fmt.Errorf("create PromotionTarget %s: %w", name, err)
 			}

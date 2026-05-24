@@ -1,0 +1,38 @@
+apiVersion: kapro.io/v1alpha1
+kind: SubstrateClass
+metadata:
+  name: oci
+  labels:
+    kapro.io/family: artifact
+    kapro.io/ledger: oci-registry
+spec:
+  controllerName: kapro.io/oci
+  executionModes:
+    default: spoke-pull
+---
+apiVersion: oci.substrate.kapro.io/v1alpha1
+kind: OCIBundleApplyConfig
+metadata:
+  name: oci
+spec:
+  serverSideApply: true
+  fieldManager: kapro
+  namespace: kapro-system
+---
+apiVersion: kapro.io/v1alpha1
+kind: Substrate
+metadata:
+  name: oci
+spec:
+  classRef:
+    name: oci
+  configRef:
+    apiVersion: oci.substrate.kapro.io/v1alpha1
+    kind: OCIBundleApplyConfig
+    name: oci
+  execution:
+    mode: spoke-pull
+  parameters:
+    repository: ghcr.io/example/checkout/{appKey}
+    tag: "{version}"
+    auth: anonymous

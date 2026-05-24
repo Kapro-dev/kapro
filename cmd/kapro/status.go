@@ -6,9 +6,11 @@ import (
 	"sort"
 	"time"
 
+	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
+
 	"github.com/spf13/cobra"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/cli"
 )
 
@@ -49,28 +51,28 @@ func runStatus(ctx context.Context, fleetName, kubeconfigPath string) error {
 	}
 
 	// Load Fleet CRs.
-	var fleets kaprov1alpha2.FleetList
+	var fleets kaprov1alpha1.FleetList
 	if err := c.List(ctx, &fleets); err != nil {
 		sp.StopFail("Failed to list fleets")
 		return err
 	}
 
 	// Load Clusters.
-	var allClusters kaprov1alpha2.ClusterList
+	var allClusters kaprov1alpha1.ClusterList
 	if err := c.List(ctx, &allClusters); err != nil {
 		sp.StopFail("Failed to list clusters")
 		return err
 	}
 
 	// Load active PromotionRuns.
-	var promotionruns kaprov1alpha2.PromotionRunList
+	var promotionruns kaproruntimev1alpha1.PromotionRunList
 	if err := c.List(ctx, &promotionruns); err != nil {
 		sp.StopFail("Failed to list promotionruns")
 		return err
 	}
 
 	// Load Targets.
-	var targets kaprov1alpha2.TargetList
+	var targets kaproruntimev1alpha1.TargetList
 	if err := c.List(ctx, &targets); err != nil {
 		sp.StopFail("Failed to list targets")
 		return err
@@ -87,7 +89,7 @@ func runStatus(ctx context.Context, fleetName, kubeconfigPath string) error {
 	}
 
 	// Filter by fleetName if specified.
-	var filteredFleets []kaprov1alpha2.Fleet
+	var filteredFleets []kaprov1alpha1.Fleet
 	for _, fleet := range fleets.Items {
 		if fleetName == "" || fleet.Name == fleetName {
 			filteredFleets = append(filteredFleets, fleet)
@@ -110,7 +112,7 @@ func runStatus(ctx context.Context, fleetName, kubeconfigPath string) error {
 	return nil
 }
 
-func renderFleetStatus(fleet kaprov1alpha2.Fleet, allClusters []kaprov1alpha2.Cluster, promotionruns []kaprov1alpha2.PromotionRun, targets []kaprov1alpha2.Target) {
+func renderFleetStatus(fleet kaprov1alpha1.Fleet, allClusters []kaprov1alpha1.Cluster, promotionruns []kaproruntimev1alpha1.PromotionRun, targets []kaproruntimev1alpha1.Target) {
 	cli.Header(fmt.Sprintf("fleet/%s", fleet.Name))
 
 	// Summary line.
@@ -120,7 +122,7 @@ func renderFleetStatus(fleet kaprov1alpha2.Fleet, allClusters []kaprov1alpha2.Cl
 	}
 	cli.KV("Source", fleet.Spec.SourceRef)
 	cli.KV("Mode", mode)
-	cli.KV("Backend", fleet.Spec.Delivery.BackendRef)
+	cli.KV("Substrate", fleet.Spec.Delivery.SubstrateRef)
 	cli.KV("Version", fleet.Status.Version)
 	cli.KV("Clusters", fmt.Sprintf("%d total, %d converged",
 		fleet.Status.ClusterCount, fleet.Status.ConvergedCount))
@@ -135,7 +137,7 @@ func renderFleetStatus(fleet kaprov1alpha2.Fleet, allClusters []kaprov1alpha2.Cl
 
 	// Cluster table.
 	fmt.Fprintln(cli.Out)
-	tbl := cli.NewTable("CLUSTER", "VERSION", "PHASE", "HEALTH", "BACKEND", "HEARTBEAT")
+	tbl := cli.NewTable("CLUSTER", "VERSION", "PHASE", "HEALTH", "SUBSTRATE", "HEARTBEAT")
 
 	// Collect clusters that belong to this Fleet.
 	fleetClusters := map[string]bool{}
@@ -153,7 +155,7 @@ func renderFleetStatus(fleet kaprov1alpha2.Fleet, allClusters []kaprov1alpha2.Cl
 			version:   mc.Status.Version,
 			phase:     string(mc.Status.Phase),
 			healthy:   mc.Status.Health.AllWorkloadsReady,
-			backend:   mc.Spec.Delivery.RegistryKey(),
+			substrate: mc.Spec.Delivery.RegistryKey(),
 			heartbeat: mc.Status.LastHeartbeat,
 			ready:     mc.Status.Health.ReadyWorkloads,
 			total:     mc.Status.Health.TotalWorkloads,
@@ -178,14 +180,14 @@ func renderFleetStatus(fleet kaprov1alpha2.Fleet, allClusters []kaprov1alpha2.Cl
 			}
 		}
 
-		tbl.AddRow(r.name, version, phase, health, r.backend, heartbeat)
+		tbl.AddRow(r.name, version, phase, health, r.substrate, heartbeat)
 	}
 	tbl.Render()
 
 	// Pending approvals for this Fleet.
 	pendingApprovals := 0
 	for _, t := range targets {
-		if t.Status.Phase == kaprov1alpha2.TargetPhaseWaitingApproval {
+		if t.Status.Phase == kaprov1alpha1.TargetPhaseWaitingApproval {
 			pendingApprovals++
 		}
 	}
@@ -200,19 +202,19 @@ type clusterRow struct {
 	version   string
 	phase     string
 	healthy   bool
-	backend   string
+	substrate string
 	heartbeat string
 	ready     int
 	total     int
 }
 
 func colorPhase(phase string) string {
-	switch kaprov1alpha2.ClusterPhase(phase) {
-	case kaprov1alpha2.ClusterPhaseConverged:
+	switch kaprov1alpha1.ClusterPhase(phase) {
+	case kaprov1alpha1.ClusterPhaseConverged:
 		return cli.Theme.PhaseComplete.Render("✔ Converged")
-	case kaprov1alpha2.ClusterPhaseConverging:
+	case kaprov1alpha1.ClusterPhaseConverging:
 		return cli.Theme.PhaseProgressing.Render("⠿ Converging")
-	case kaprov1alpha2.ClusterPhaseFailed:
+	case kaprov1alpha1.ClusterPhaseFailed:
 		return cli.Theme.PhaseFailed.Render("✗ Failed")
 	default:
 		if phase == "" {
@@ -235,9 +237,9 @@ func colorHealth(healthy bool, ready, total int) string {
 	return cli.Theme.Muted.Render("—")
 }
 
-func findActivePromotionRun(promotionruns []kaprov1alpha2.PromotionRun) *kaprov1alpha2.PromotionRun {
+func findActivePromotionRun(promotionruns []kaproruntimev1alpha1.PromotionRun) *kaproruntimev1alpha1.PromotionRun {
 	for i := range promotionruns {
-		if promotionruns[i].Status.Phase == kaprov1alpha2.PromotionRunPhaseProgressing {
+		if promotionruns[i].Status.Phase == kaprov1alpha1.PromotionRunPhaseProgressing {
 			return &promotionruns[i]
 		}
 	}

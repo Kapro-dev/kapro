@@ -14,27 +14,27 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
-// Adapter applies or observes one backend family.
+// Adapter applies or observes one substrate family.
 //
 // Implementations must be safe for concurrent use. Apply and Rollback must be
 // idempotent because controllers can retry after restarts or transient errors.
 type Adapter interface {
-	// Driver returns the Backend.spec.driver value handled by this adapter.
-	Driver() kaprov1alpha2.BackendDriver
+	// Driver returns the substrate kind handled by this adapter.
+	Driver() kaprov1alpha1.SubstrateDriver
 	// Runtime returns where the adapter can run.
-	Runtime() kaprov1alpha2.BackendRuntime
+	Runtime() kaprov1alpha1.SubstrateRuntime
 	// Capabilities returns the operations this adapter supports.
 	Capabilities() Capabilities
-	// Apply asks the backend to move one target toward the requested version.
+	// Apply asks the substrate to move one target toward the requested version.
 	Apply(ctx context.Context, req Request) (Result, error)
 	// Observe reports convergence without taking ownership of PromotionRun state.
 	Observe(ctx context.Context, req Request) (Result, error)
-	// Rollback asks the backend to move the target back to PreviousVersion.
+	// Rollback asks the substrate to move the target back to PreviousVersion.
 	Rollback(ctx context.Context, req Request) (Result, error)
-	// Discover reports backend-native objects that can be observed or adopted.
+	// Discover reports substrate-native objects that can be observed or adopted.
 	Discover(ctx context.Context, req DiscoveryRequest) (DiscoveryResult, error)
 }
 
@@ -43,15 +43,15 @@ type Adapter interface {
 // the expected unsupported result as an error path.
 type Capabilities struct {
 	ContractVersion string
-	Driver          kaprov1alpha2.BackendDriver
-	Runtime         kaprov1alpha2.BackendRuntime
+	Driver          kaprov1alpha1.SubstrateDriver
+	Runtime         kaprov1alpha1.SubstrateRuntime
 
-	SupportsApply     bool
-	SupportsObserve   bool
-	SupportsRollback  bool
-	SupportsDiscover  bool
-	SupportsDryRun    bool
-	SupportsBackendIO bool
+	SupportsApply       bool
+	SupportsObserve     bool
+	SupportsRollback    bool
+	SupportsDiscover    bool
+	SupportsDryRun      bool
+	SupportsSubstrateIO bool
 }
 
 // Normalize returns a copy with stable defaults applied.
@@ -60,7 +60,7 @@ func (c Capabilities) Normalize() Capabilities {
 		c.ContractVersion = "v1alpha1"
 	}
 	if c.Runtime == "" {
-		c.Runtime = kaprov1alpha2.BackendRuntimeBoth
+		c.Runtime = kaprov1alpha1.SubstrateRuntimeBoth
 	}
 	return c
 }
@@ -74,12 +74,12 @@ type Request struct {
 	Target       string
 
 	// Mode is the selected delivery mode for this target.
-	Mode kaprov1alpha2.DeliveryMode
+	Mode kaprov1alpha1.DeliveryMode
 	// Cluster is the target FleetCluster object. Implementations must not
 	// mutate it directly unless they own the Kubernetes patch they are issuing.
-	Cluster *kaprov1alpha2.Cluster
-	// Backend is the selected Backend profile, when the caller has one loaded.
-	Backend *kaprov1alpha2.Backend
+	Cluster *kaprov1alpha1.Cluster
+	// Substrate is the selected Substrate profile, when the caller has one loaded.
+	Substrate *kaprov1alpha1.Substrate
 
 	// AppKey identifies one application stream inside a cluster. Empty means
 	// "default".
@@ -90,17 +90,17 @@ type Request struct {
 	PreviousVersion string
 	// DesiredVersions carries multi-artifact delivery intent. Keys are app keys.
 	DesiredVersions map[string]string
-	// Parameters are backend-specific merged settings. Cluster delivery
-	// parameters normally override Backend profile parameters before reaching an
+	// Parameters are substrate-specific merged settings. Cluster delivery
+	// parameters normally override Substrate profile parameters before reaching an
 	// adapter.
 	Parameters map[string]string
 }
 
 // Result is the normalized output from an adapter operation.
 type Result struct {
-	Driver  kaprov1alpha2.BackendDriver
-	Runtime kaprov1alpha2.BackendRuntime
-	Phase   kaprov1alpha2.DeliveryPhase
+	Driver  kaprov1alpha1.SubstrateDriver
+	Runtime kaprov1alpha1.SubstrateRuntime
+	Phase   kaprov1alpha1.DeliveryPhase
 
 	Converged bool
 	Applied   bool
@@ -112,17 +112,17 @@ type Result struct {
 	LastAttemptedAt time.Time
 	LastAppliedAt   time.Time
 
-	BackendObjects []kaprov1alpha2.BackendObjectStatus
-	Reason         string
-	Message        string
+	SubstrateObjects []kaprov1alpha1.SubstrateObjectStatus
+	Reason           string
+	Message          string
 }
 
-// DiscoveryRequest is the public discovery input for brownfield backend
-// adoption. It models Backend.spec.discovery without requiring a controller.
+// DiscoveryRequest is the public discovery input for existing substrate
+// adoption. It models Substrate.spec.discovery without requiring a controller.
 type DiscoveryRequest struct {
-	Backend    *kaprov1alpha2.Backend
-	Driver     kaprov1alpha2.BackendDriver
-	Runtime    kaprov1alpha2.BackendRuntime
+	Substrate  *kaprov1alpha1.Substrate
+	Driver     kaprov1alpha1.SubstrateDriver
+	Runtime    kaprov1alpha1.SubstrateRuntime
 	Namespace  string
 	Selector   *metav1.LabelSelector
 	MaxObjects int32
@@ -132,33 +132,33 @@ type DiscoveryRequest struct {
 // DiscoveryResult is the normalized discovery output used by reference
 // adapters and future controller wiring.
 type DiscoveryResult struct {
-	Driver  kaprov1alpha2.BackendDriver
-	Runtime kaprov1alpha2.BackendRuntime
+	Driver  kaprov1alpha1.SubstrateDriver
+	Runtime kaprov1alpha1.SubstrateRuntime
 
-	Ready                       bool
-	Reason                      string
-	Message                     string
-	DiscoveredClusters          int32
-	DiscoveredApplications      int32
-	DiscoveredApplicationSets   int32
-	SelectedObjects             []kaprov1alpha2.DiscoveredBackendObject
-	SkippedObjects              []kaprov1alpha2.DiscoveredBackendObject
-	UnsupportedPatterns         []kaprov1alpha2.DiscoveredBackendObject
-	DiscoveryErrors             []string
-	BackendObjectStatusExamples []kaprov1alpha2.BackendObjectStatus
+	Ready                         bool
+	Reason                        string
+	Message                       string
+	DiscoveredClusters            int32
+	DiscoveredApplications        int32
+	DiscoveredApplicationSets     int32
+	SelectedObjects               []kaprov1alpha1.DiscoveredSubstrateObject
+	SkippedObjects                []kaprov1alpha1.DiscoveredSubstrateObject
+	UnsupportedPatterns           []kaprov1alpha1.DiscoveredSubstrateObject
+	DiscoveryErrors               []string
+	SubstrateObjectStatusExamples []kaprov1alpha1.SubstrateObjectStatus
 }
 
-// DiscoveryModel is a static description of a built-in backend's discovery
+// DiscoveryModel is a static description of a built-in substrate's discovery
 // shape. It is useful for adapters that only model discovery today while the
 // controller still owns actual list/watch execution.
 type DiscoveryModel struct {
-	Driver             kaprov1alpha2.BackendDriver
-	Runtime            kaprov1alpha2.BackendRuntime
+	Driver             kaprov1alpha1.SubstrateDriver
+	Runtime            kaprov1alpha1.SubstrateRuntime
 	DefaultNamespace   string
 	Supported          bool
-	SelectedObjects    []kaprov1alpha2.DiscoveredBackendObject
-	SkippedObjects     []kaprov1alpha2.DiscoveredBackendObject
-	UnsupportedObjects []kaprov1alpha2.DiscoveredBackendObject
+	SelectedObjects    []kaprov1alpha1.DiscoveredSubstrateObject
+	SkippedObjects     []kaprov1alpha1.DiscoveredSubstrateObject
+	UnsupportedObjects []kaprov1alpha1.DiscoveredSubstrateObject
 	Message            string
 }
 
@@ -173,7 +173,7 @@ func (m DiscoveryModel) Discover(_ context.Context, req DiscoveryRequest) (Disco
 		runtime = req.Runtime
 	}
 	if runtime == "" {
-		runtime = kaprov1alpha2.BackendRuntimeBoth
+		runtime = kaprov1alpha1.SubstrateRuntimeBoth
 	}
 	if !m.Supported {
 		return DiscoveryResult{
@@ -181,7 +181,7 @@ func (m DiscoveryModel) Discover(_ context.Context, req DiscoveryRequest) (Disco
 			Runtime: runtime,
 			Ready:   false,
 			Reason:  "DiscoveryUnsupported",
-			Message: fmt.Sprintf("discovery is not implemented for %s backends", driver),
+			Message: fmt.Sprintf("discovery is not implemented for %s substrates", driver),
 		}, nil
 	}
 	namespace := req.Namespace
@@ -193,33 +193,33 @@ func (m DiscoveryModel) Discover(_ context.Context, req DiscoveryRequest) (Disco
 		message = fmt.Sprintf("modeled %s discovery shape in namespace %q", driver, namespace)
 	}
 	return DiscoveryResult{
-		Driver:                      driver,
-		Runtime:                     runtime,
-		Ready:                       true,
-		Reason:                      "DiscoveryModeled",
-		Message:                     message,
-		DiscoveredApplications:      int32(len(m.SelectedObjects) + len(m.SkippedObjects) + len(m.UnsupportedObjects)),
-		SelectedObjects:             cloneDiscoveredObjects(m.SelectedObjects),
-		SkippedObjects:              cloneDiscoveredObjects(m.SkippedObjects),
-		UnsupportedPatterns:         cloneDiscoveredObjects(m.UnsupportedObjects),
-		BackendObjectStatusExamples: backendObjectExamples(m.SelectedObjects),
+		Driver:                        driver,
+		Runtime:                       runtime,
+		Ready:                         true,
+		Reason:                        "DiscoveryModeled",
+		Message:                       message,
+		DiscoveredApplications:        int32(len(m.SelectedObjects) + len(m.SkippedObjects) + len(m.UnsupportedObjects)),
+		SelectedObjects:               cloneDiscoveredObjects(m.SelectedObjects),
+		SkippedObjects:                cloneDiscoveredObjects(m.SkippedObjects),
+		UnsupportedPatterns:           cloneDiscoveredObjects(m.UnsupportedObjects),
+		SubstrateObjectStatusExamples: substrateObjectExamples(m.SelectedObjects),
 	}, nil
 }
 
 // ReferenceAdapter is a discovery-first adapter implementation for built-in
-// backend families. Apply, Observe, and Rollback report a failed result with a
+// substrate families. Apply, Observe, and Rollback report a failed result with a
 // stable reason because the operator still uses the existing runtime actuators
 // for side effects.
 type ReferenceAdapter struct {
-	driver    kaprov1alpha2.BackendDriver
-	runtime   kaprov1alpha2.BackendRuntime
+	driver    kaprov1alpha1.SubstrateDriver
+	runtime   kaprov1alpha1.SubstrateRuntime
 	discovery DiscoveryModel
 }
 
 // NewReferenceAdapter returns an Adapter backed by a static discovery model.
-func NewReferenceAdapter(driver kaprov1alpha2.BackendDriver, runtime kaprov1alpha2.BackendRuntime, discovery DiscoveryModel) *ReferenceAdapter {
+func NewReferenceAdapter(driver kaprov1alpha1.SubstrateDriver, runtime kaprov1alpha1.SubstrateRuntime, discovery DiscoveryModel) *ReferenceAdapter {
 	if runtime == "" {
-		runtime = kaprov1alpha2.BackendRuntimeBoth
+		runtime = kaprov1alpha1.SubstrateRuntimeBoth
 	}
 	discovery.Driver = driver
 	if discovery.Runtime == "" {
@@ -228,8 +228,8 @@ func NewReferenceAdapter(driver kaprov1alpha2.BackendDriver, runtime kaprov1alph
 	return &ReferenceAdapter{driver: driver, runtime: runtime, discovery: discovery}
 }
 
-func (a *ReferenceAdapter) Driver() kaprov1alpha2.BackendDriver { return a.driver }
-func (a *ReferenceAdapter) Runtime() kaprov1alpha2.BackendRuntime {
+func (a *ReferenceAdapter) Driver() kaprov1alpha1.SubstrateDriver { return a.driver }
+func (a *ReferenceAdapter) Runtime() kaprov1alpha1.SubstrateRuntime {
 	return a.runtime
 }
 
@@ -257,36 +257,36 @@ func (a *ReferenceAdapter) Discover(ctx context.Context, req DiscoveryRequest) (
 	return a.discovery.Discover(ctx, req)
 }
 
-func (a *ReferenceAdapter) baseResult(phase kaprov1alpha2.DeliveryPhase) Result {
+func (a *ReferenceAdapter) baseResult(phase kaprov1alpha1.DeliveryPhase) Result {
 	return Result{Driver: a.driver, Runtime: a.runtime, Phase: phase}
 }
 
 func (a *ReferenceAdapter) unsupported(operation string) Result {
-	result := a.baseResult(kaprov1alpha2.DeliveryPhaseFailed)
+	result := a.baseResult(kaprov1alpha1.DeliveryPhaseFailed)
 	result.Reason = "OperationUnsupported"
 	result.Message = fmt.Sprintf("%s is not implemented by the %s reference adapter; use the operator runtime for side effects", operation, a.driver)
 	return result
 }
 
-func cloneDiscoveredObjects(in []kaprov1alpha2.DiscoveredBackendObject) []kaprov1alpha2.DiscoveredBackendObject {
+func cloneDiscoveredObjects(in []kaprov1alpha1.DiscoveredSubstrateObject) []kaprov1alpha1.DiscoveredSubstrateObject {
 	if in == nil {
 		return nil
 	}
-	out := make([]kaprov1alpha2.DiscoveredBackendObject, len(in))
+	out := make([]kaprov1alpha1.DiscoveredSubstrateObject, len(in))
 	copy(out, in)
 	return out
 }
 
-func backendObjectExamples(in []kaprov1alpha2.DiscoveredBackendObject) []kaprov1alpha2.BackendObjectStatus {
-	out := make([]kaprov1alpha2.BackendObjectStatus, 0, len(in))
+func substrateObjectExamples(in []kaprov1alpha1.DiscoveredSubstrateObject) []kaprov1alpha1.SubstrateObjectStatus {
+	out := make([]kaprov1alpha1.SubstrateObjectStatus, 0, len(in))
 	for _, obj := range in {
-		out = append(out, kaprov1alpha2.BackendObjectStatus{
+		out = append(out, kaprov1alpha1.SubstrateObjectStatus{
 			APIVersion: obj.APIVersion,
 			Kind:       obj.Kind,
 			Namespace:  obj.Namespace,
 			Name:       obj.Name,
 			Unit:       obj.Unit,
-			Phase:      string(kaprov1alpha2.DeliveryPhasePending),
+			Phase:      string(kaprov1alpha1.DeliveryPhasePending),
 			Message:    obj.Reason,
 		})
 	}

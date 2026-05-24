@@ -145,12 +145,10 @@ rules:
   - kapro.io
   resources:
   - adapterpolicies
-  - backends
-  - fleetdriftreports
-  - gateexpressions
   - policies
   - sources
   - substrateclasses
+  - substrates
   - triggers
   verbs:
   - get
@@ -161,19 +159,14 @@ rules:
   resources:
   - adapterpolicies/status
   - approvals/status
-  - backends/status
   - clusters/status
   - clustertemplates/status
-  - decisiontraces/status
-  - fleetdriftreports/status
   - fleets/status
-  - gateexpressions/status
   - plugins/status
   - policies/status
-  - promotionruns/status
   - promotions/status
   - substrateclasses/status
-  - targets/status
+  - substrates/status
   - triggers/status
   verbs:
   - get
@@ -186,9 +179,7 @@ rules:
   - clusters
   - fleets
   - plans
-  - promotionruns
   - promotions
-  - targets
   verbs:
   - create
   - delete
@@ -202,7 +193,6 @@ rules:
   resources:
   - clusters/finalizers
   - clustertemplates/finalizers
-  - promotionruns/finalizers
   - promotions/finalizers
   verbs:
   - update
@@ -217,13 +207,6 @@ rules:
   - patch
   - update
   - watch
-- apiGroups:
-  - kapro.io
-  resources:
-  - decisiontraces
-  verbs:
-  - create
-  - get
 - apiGroups:
   - kubernetes.substrate.kapro.io
   resources:
@@ -262,19 +245,47 @@ rules:
   - update
   - watch
 - apiGroups:
+  - runtime.kapro.io
+  resources:
+  - decisiontraces
+  verbs:
+  - create
+  - get
+- apiGroups:
+  - runtime.kapro.io
+  resources:
+  - decisiontraces/status
+  - promotionruns/status
+  - targets/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - runtime.kapro.io
+  resources:
+  - promotionruns
+  - targets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - runtime.kapro.io
+  resources:
+  - promotionruns/finalizers
+  verbs:
+  - update
+- apiGroups:
   - source.toolkit.fluxcd.io
   resources:
   - buckets
   - gitrepositories
   - ocirepositories
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - webhook.substrate.kapro.io
-  resources:
-  - webhooksubstrateconfigs
   verbs:
   - get
   - list

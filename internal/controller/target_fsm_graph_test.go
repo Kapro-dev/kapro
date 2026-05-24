@@ -5,7 +5,7 @@ import (
 
 	"k8s.io/client-go/tools/record"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // TestPromotionTargetFSM_GraphCoversAllPhases asserts that every
@@ -17,17 +17,17 @@ import (
 // If you add a new TargetPhase, add it to allTargetPhases below AND
 // to buildFSM in promotiontarget_controller.go.
 func TestPromotionTargetFSM_GraphCoversAllPhases(t *testing.T) {
-	allTargetPhases := []kaprov1alpha2.TargetPhase{
-		kaprov1alpha2.TargetPhasePending,
-		kaprov1alpha2.TargetPhaseVerification,
-		kaprov1alpha2.TargetPhaseHealthCheck,
-		kaprov1alpha2.TargetPhaseSoaking,
-		kaprov1alpha2.TargetPhaseMetricsCheck,
-		kaprov1alpha2.TargetPhaseWaitingApproval,
-		kaprov1alpha2.TargetPhaseApplying,
-		kaprov1alpha2.TargetPhaseConverged,
-		kaprov1alpha2.TargetPhaseFailed,
-		kaprov1alpha2.TargetPhaseSkipped,
+	allTargetPhases := []kaprov1alpha1.TargetPhase{
+		kaprov1alpha1.TargetPhasePending,
+		kaprov1alpha1.TargetPhaseVerification,
+		kaprov1alpha1.TargetPhaseHealthCheck,
+		kaprov1alpha1.TargetPhaseSoaking,
+		kaprov1alpha1.TargetPhaseMetricsCheck,
+		kaprov1alpha1.TargetPhaseWaitingApproval,
+		kaprov1alpha1.TargetPhaseApplying,
+		kaprov1alpha1.TargetPhaseConverged,
+		kaprov1alpha1.TargetPhaseFailed,
+		kaprov1alpha1.TargetPhaseSkipped,
 	}
 
 	r := &TargetReconciler{
@@ -48,10 +48,10 @@ func TestPromotionTargetFSM_GraphAdjacencyMatchesDocs(t *testing.T) {
 	r.ensureFSM()
 	graph := r.fsmMachine.Graph()
 
-	expectAllowed := func(from kaprov1alpha2.TargetPhase, wantNext ...kaprov1alpha2.TargetPhase) {
+	expectAllowed := func(from kaprov1alpha1.TargetPhase, wantNext ...kaprov1alpha1.TargetPhase) {
 		t.Helper()
 		got := graph[from]
-		gotSet := make(map[kaprov1alpha2.TargetPhase]struct{}, len(got))
+		gotSet := make(map[kaprov1alpha1.TargetPhase]struct{}, len(got))
 		for _, p := range got {
 			gotSet[p] = struct{}{}
 		}
@@ -67,49 +67,49 @@ func TestPromotionTargetFSM_GraphAdjacencyMatchesDocs(t *testing.T) {
 	}
 
 	expectAllowed("",
-		kaprov1alpha2.TargetPhasePending,
+		kaprov1alpha1.TargetPhasePending,
 	)
-	expectAllowed(kaprov1alpha2.TargetPhasePending,
-		kaprov1alpha2.TargetPhaseVerification,
-		kaprov1alpha2.TargetPhaseFailed,
-		kaprov1alpha2.TargetPhaseSkipped,
+	expectAllowed(kaprov1alpha1.TargetPhasePending,
+		kaprov1alpha1.TargetPhaseVerification,
+		kaprov1alpha1.TargetPhaseFailed,
+		kaprov1alpha1.TargetPhaseSkipped,
 	)
-	expectAllowed(kaprov1alpha2.TargetPhaseVerification,
-		kaprov1alpha2.TargetPhaseHealthCheck,
-		kaprov1alpha2.TargetPhaseFailed,
-		kaprov1alpha2.TargetPhaseSkipped,
+	expectAllowed(kaprov1alpha1.TargetPhaseVerification,
+		kaprov1alpha1.TargetPhaseHealthCheck,
+		kaprov1alpha1.TargetPhaseFailed,
+		kaprov1alpha1.TargetPhaseSkipped,
 	)
-	expectAllowed(kaprov1alpha2.TargetPhaseHealthCheck,
-		kaprov1alpha2.TargetPhaseSoaking,
-		kaprov1alpha2.TargetPhaseMetricsCheck,
-		kaprov1alpha2.TargetPhaseFailed,
-		kaprov1alpha2.TargetPhaseSkipped,
+	expectAllowed(kaprov1alpha1.TargetPhaseHealthCheck,
+		kaprov1alpha1.TargetPhaseSoaking,
+		kaprov1alpha1.TargetPhaseMetricsCheck,
+		kaprov1alpha1.TargetPhaseFailed,
+		kaprov1alpha1.TargetPhaseSkipped,
 	)
-	expectAllowed(kaprov1alpha2.TargetPhaseSoaking,
-		kaprov1alpha2.TargetPhaseMetricsCheck,
-		kaprov1alpha2.TargetPhaseFailed,
-		kaprov1alpha2.TargetPhaseSkipped,
+	expectAllowed(kaprov1alpha1.TargetPhaseSoaking,
+		kaprov1alpha1.TargetPhaseMetricsCheck,
+		kaprov1alpha1.TargetPhaseFailed,
+		kaprov1alpha1.TargetPhaseSkipped,
 	)
-	expectAllowed(kaprov1alpha2.TargetPhaseMetricsCheck,
-		kaprov1alpha2.TargetPhaseWaitingApproval,
-		kaprov1alpha2.TargetPhaseApplying,
-		kaprov1alpha2.TargetPhaseFailed,
-		kaprov1alpha2.TargetPhaseSkipped,
+	expectAllowed(kaprov1alpha1.TargetPhaseMetricsCheck,
+		kaprov1alpha1.TargetPhaseWaitingApproval,
+		kaprov1alpha1.TargetPhaseApplying,
+		kaprov1alpha1.TargetPhaseFailed,
+		kaprov1alpha1.TargetPhaseSkipped,
 	)
-	expectAllowed(kaprov1alpha2.TargetPhaseWaitingApproval,
-		kaprov1alpha2.TargetPhaseApplying,
-		kaprov1alpha2.TargetPhaseFailed,
-		kaprov1alpha2.TargetPhaseSkipped,
+	expectAllowed(kaprov1alpha1.TargetPhaseWaitingApproval,
+		kaprov1alpha1.TargetPhaseApplying,
+		kaprov1alpha1.TargetPhaseFailed,
+		kaprov1alpha1.TargetPhaseSkipped,
 	)
-	expectAllowed(kaprov1alpha2.TargetPhaseApplying,
-		kaprov1alpha2.TargetPhaseConverged,
-		kaprov1alpha2.TargetPhaseFailed,
-		kaprov1alpha2.TargetPhaseSkipped,
+	expectAllowed(kaprov1alpha1.TargetPhaseApplying,
+		kaprov1alpha1.TargetPhaseConverged,
+		kaprov1alpha1.TargetPhaseFailed,
+		kaprov1alpha1.TargetPhaseSkipped,
 	)
-	for _, p := range []kaprov1alpha2.TargetPhase{
-		kaprov1alpha2.TargetPhaseConverged,
-		kaprov1alpha2.TargetPhaseFailed,
-		kaprov1alpha2.TargetPhaseSkipped,
+	for _, p := range []kaprov1alpha1.TargetPhase{
+		kaprov1alpha1.TargetPhaseConverged,
+		kaprov1alpha1.TargetPhaseFailed,
+		kaprov1alpha1.TargetPhaseSkipped,
 	} {
 		if _, ok := graph[p]; !ok {
 			t.Errorf("terminal phase %s missing from graph", p)
@@ -133,9 +133,9 @@ func TestEventTypeForPhase_CoversAllRegisteredPhases(t *testing.T) {
 	r.ensureFSM()
 	phases := r.fsmMachine.Phases()
 	phases = append(phases,
-		kaprov1alpha2.TargetPhaseConverged,
-		kaprov1alpha2.TargetPhaseFailed,
-		kaprov1alpha2.TargetPhaseSkipped,
+		kaprov1alpha1.TargetPhaseConverged,
+		kaprov1alpha1.TargetPhaseFailed,
+		kaprov1alpha1.TargetPhaseSkipped,
 	)
 	const fallback = "kapro.promotionrun.target.unknown"
 	for _, phase := range phases {

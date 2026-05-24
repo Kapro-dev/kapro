@@ -39,7 +39,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8stypes "k8s.io/apimachinery/pkg/types"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // ConditionResult is the per-metric/condition breakdown within a Result.
@@ -47,7 +47,7 @@ import (
 // Prometheus queries in a MetricsGate).
 type ConditionResult struct {
 	Name    string                  `json:"name"`
-	Phase   kaprov1alpha2.GatePhase `json:"phase"`
+	Phase   kaprov1alpha1.GatePhase `json:"phase"`
 	Value   string                  `json:"value,omitempty"`
 	Message string                  `json:"message,omitempty"`
 	// Evidence explains the facts and analysis behind this condition.
@@ -102,7 +102,7 @@ type Projection struct {
 type Result struct {
 	// Phase is the gate outcome. Always set this field.
 	// The controller uses Phase as the authoritative state.
-	Phase kaprov1alpha2.GatePhase
+	Phase kaprov1alpha1.GatePhase
 
 	// Message is a human-readable explanation shown in promotion status and
 	// notifications. Be specific: include metric values, threshold,
@@ -137,18 +137,18 @@ type Result struct {
 // IsPassed returns true when Phase is Passed.
 // This is the canonical way to test a gate result.
 func (r Result) IsPassed() bool {
-	return r.Phase == kaprov1alpha2.GatePhasePassed
+	return r.Phase == kaprov1alpha1.GatePhasePassed
 }
 
 // IsInconclusive returns true when Phase is Inconclusive.
 // The controller requeues after RetryAfter when this returns true.
 func (r Result) IsInconclusive() bool {
-	return r.Phase == kaprov1alpha2.GatePhaseInconclusive
+	return r.Phase == kaprov1alpha1.GatePhaseInconclusive
 }
 
 // IsFailed returns true when Phase is Failed.
 func (r Result) IsFailed() bool {
-	return r.Phase == kaprov1alpha2.GatePhaseFailed
+	return r.Phase == kaprov1alpha1.GatePhaseFailed
 }
 
 // Context is the per-target promotion context passed into gate evaluation.
@@ -183,7 +183,7 @@ type Request struct {
 	// no gate is configured for the stage. Built-in controller paths
 	// (cel/job/webhook/metrics/approval) require Policy; programmable
 	// gates should prefer the ergonomic fields below plus Parameters.
-	Policy *kaprov1alpha2.GatePolicySpec
+	Policy *kaprov1alpha1.GatePolicySpec
 
 	// MetricIndex addresses a specific metric in Policy.Gate.Metrics.
 	// Meaningful only on the built-in Metrics[] evaluation path.
@@ -194,7 +194,7 @@ type Request struct {
 	// path. Built-in cel/job/webhook gates read Template; programmable
 	// gates should prefer Parameters and the ergonomic request identity
 	// fields.
-	Template *kaprov1alpha2.GateTemplateSpec
+	Template *kaprov1alpha1.GateTemplateSpec
 
 	// Args carries the merged template parameters AND runtime-injected
 	// identity (version/target/stage/promotionrun/promotionplan).
@@ -255,12 +255,12 @@ type Gate = Predicate
 type Func = PredicateFunc
 
 // Phase is the public programmable-gate phase type.
-type Phase = kaprov1alpha2.GatePhase
+type Phase = kaprov1alpha1.GatePhase
 
 const (
-	PhasePassed       Phase = kaprov1alpha2.GatePhasePassed
-	PhaseFailed       Phase = kaprov1alpha2.GatePhaseFailed
-	PhaseInconclusive Phase = kaprov1alpha2.GatePhaseInconclusive
+	PhasePassed       Phase = kaprov1alpha1.GatePhasePassed
+	PhaseFailed       Phase = kaprov1alpha1.GatePhaseFailed
+	PhaseInconclusive Phase = kaprov1alpha1.GatePhaseInconclusive
 
 	Passed       = PhasePassed
 	Failed       = PhaseFailed
@@ -269,13 +269,13 @@ const (
 
 // MakePassed returns a passed gate result.
 func MakePassed(msg string) Result {
-	return Result{Phase: kaprov1alpha2.GatePhasePassed, Message: msg}
+	return Result{Phase: kaprov1alpha1.GatePhasePassed, Message: msg}
 }
 
 // MakeFailed returns a failed gate result.
 func MakeFailed(reason, msgFmt string, args ...any) Result {
 	return Result{
-		Phase:   kaprov1alpha2.GatePhaseFailed,
+		Phase:   kaprov1alpha1.GatePhaseFailed,
 		Reason:  reason,
 		Message: fmt.Sprintf(msgFmt, args...),
 	}
@@ -292,7 +292,7 @@ func MakeFailed(reason, msgFmt string, args ...any) Result {
 // controller falls back to its default backoff instead of looping at
 // zero delay under clock skew or caller bugs.
 func MakeInconclusive(reason string, retryAt time.Time) Result {
-	result := Result{Phase: kaprov1alpha2.GatePhaseInconclusive, Reason: reason}
+	result := Result{Phase: kaprov1alpha1.GatePhaseInconclusive, Reason: reason}
 	if !retryAt.IsZero() {
 		if d := time.Until(retryAt); d > 0 {
 			result.RetryAfter = d.String()

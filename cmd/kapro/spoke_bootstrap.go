@@ -17,7 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/cli"
 )
 
@@ -179,13 +179,13 @@ func runSpokeBootstrap(ctx context.Context, opts spokeBootstrapOptions) error {
 }
 
 func ensureClusterBootstrap(ctx context.Context, c client.Client, name string, ttl time.Duration) error {
-	existing := &kaprov1alpha2.Cluster{}
+	existing := &kaprov1alpha1.Cluster{}
 	err := c.Get(ctx, client.ObjectKey{Name: name}, existing)
 	if apierrors.IsNotFound(err) {
-		fc := &kaprov1alpha2.Cluster{
+		fc := &kaprov1alpha1.Cluster{
 			ObjectMeta: metav1.ObjectMeta{Name: name},
-			Spec: kaprov1alpha2.ClusterSpec{
-				Bootstrap: &kaprov1alpha2.ClusterBootstrapSpec{
+			Spec: kaprov1alpha1.ClusterSpec{
+				Bootstrap: &kaprov1alpha1.ClusterBootstrapSpec{
 					TTL: ttl.String(),
 				},
 			},
@@ -197,7 +197,7 @@ func ensureClusterBootstrap(ctx context.Context, c client.Client, name string, t
 	}
 	patch := client.MergeFrom(existing.DeepCopy())
 	if existing.Spec.Bootstrap == nil {
-		existing.Spec.Bootstrap = &kaprov1alpha2.ClusterBootstrapSpec{}
+		existing.Spec.Bootstrap = &kaprov1alpha1.ClusterBootstrapSpec{}
 	}
 	if existing.Spec.Bootstrap.TTL == "" && existing.Spec.Bootstrap.ExpiresAt == nil {
 		existing.Spec.Bootstrap.TTL = ttl.String()
@@ -208,7 +208,7 @@ func ensureClusterBootstrap(ctx context.Context, c client.Client, name string, t
 func waitForBootstrapSecret(ctx context.Context, c client.Client, name string, timeout time.Duration) (string, error) {
 	var secretName string
 	pollErr := wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
-		fc := &kaprov1alpha2.Cluster{}
+		fc := &kaprov1alpha1.Cluster{}
 		if err := c.Get(ctx, client.ObjectKey{Name: name}, fc); err != nil {
 			return false, err
 		}

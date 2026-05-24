@@ -12,30 +12,30 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 type stubActuator struct{}
 
 func (stubActuator) Apply(context.Context, ApplyRequest) error { return nil }
-func (stubActuator) IsConverged(context.Context, *kaprov1alpha2.Cluster, string, string) (bool, error) {
+func (stubActuator) IsConverged(context.Context, *kaprov1alpha1.Cluster, string, string) (bool, error) {
 	return true, nil
 }
-func (stubActuator) Rollback(context.Context, *kaprov1alpha2.Cluster, string, string) error {
+func (stubActuator) Rollback(context.Context, *kaprov1alpha1.Cluster, string, string) error {
 	return nil
 }
 func (stubActuator) ApplyDelta(context.Context, DeltaApplyRequest) (int, error) { return 0, nil }
-func (stubActuator) IsAllConverged(context.Context, *kaprov1alpha2.Cluster, map[string]string) (bool, error) {
+func (stubActuator) IsAllConverged(context.Context, *kaprov1alpha1.Cluster, map[string]string) (bool, error) {
 	return true, nil
 }
 
 func TestRegistryRegisterRegistrationStoresCapabilities(t *testing.T) {
 	registry := NewRegistry()
 	err := registry.RegisterRegistration(Registration{
-		Mode: kaprov1alpha2.DeliveryModePush,
+		Mode: kaprov1alpha1.DeliveryModePush,
 		Capabilities: Capabilities{
-			Driver:              kaprov1alpha2.BackendDriverArgo,
-			Runtime:             kaprov1alpha2.BackendRuntimeHub,
+			Driver:              kaprov1alpha1.SubstrateDriverArgo,
+			Runtime:             kaprov1alpha1.SubstrateRuntimeHub,
 			SupportsApply:       true,
 			SupportsConvergence: true,
 			SupportsTwoPhase:    true,
@@ -56,7 +56,7 @@ func TestRegistryRegisterRegistrationStoresCapabilities(t *testing.T) {
 	if reg.Capabilities.ContractVersion != ContractVersionV1Alpha1 {
 		t.Fatalf("contract version = %q", reg.Capabilities.ContractVersion)
 	}
-	if !reg.Capabilities.SupportsMode(kaprov1alpha2.DeliveryModePush) {
+	if !reg.Capabilities.SupportsMode(kaprov1alpha1.DeliveryModePush) {
 		t.Fatalf("capabilities do not include push mode: %#v", reg.Capabilities)
 	}
 	if !reg.Capabilities.SupportsTwoPhase {
@@ -73,11 +73,11 @@ func TestRegistryResolveWrapsActuatorWithTracing(t *testing.T) {
 
 	registry := NewRegistry()
 	err := registry.RegisterRegistration(Registration{
-		Mode: kaprov1alpha2.DeliveryModePush,
+		Mode: kaprov1alpha1.DeliveryModePush,
 		Capabilities: Capabilities{
-			Driver:              kaprov1alpha2.BackendDriverArgo,
-			Adapter:             "argo-cd",
-			Runtime:             kaprov1alpha2.BackendRuntimeHub,
+			Driver:              kaprov1alpha1.SubstrateDriverArgo,
+			Adapter:             "argo",
+			Runtime:             kaprov1alpha1.SubstrateRuntimeHub,
 			SupportsApply:       true,
 			SupportsConvergence: true,
 		},
@@ -86,18 +86,18 @@ func TestRegistryResolveWrapsActuatorWithTracing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RegisterRegistration: %v", err)
 	}
-	act, err := registry.Resolve("push/argo-cd")
+	act, err := registry.Resolve("push/argo")
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
 
 	if _, err := act.ApplyDelta(context.Background(), DeltaApplyRequest{
-		Cluster:         &kaprov1alpha2.Cluster{ObjectMeta: objectMeta("cluster-a")},
+		Cluster:         &kaprov1alpha1.Cluster{ObjectMeta: objectMeta("cluster-a")},
 		DesiredVersions: map[string]string{"api": "1.2.3", "web": "2.0.0"},
 	}); err != nil {
 		t.Fatalf("ApplyDelta: %v", err)
 	}
-	if _, err := act.IsAllConverged(context.Background(), &kaprov1alpha2.Cluster{ObjectMeta: objectMeta("cluster-a")}, map[string]string{"api": "1.2.3"}); err != nil {
+	if _, err := act.IsAllConverged(context.Background(), &kaprov1alpha1.Cluster{ObjectMeta: objectMeta("cluster-a")}, map[string]string{"api": "1.2.3"}); err != nil {
 		t.Fatalf("IsAllConverged: %v", err)
 	}
 
@@ -111,11 +111,11 @@ func TestRegistryResolveWrapsActuatorWithTracing(t *testing.T) {
 	}
 	attrs := spanAttributes(first)
 	for key, want := range map[string]string{
-		"kapro.actuator.name":             "push/argo-cd",
+		"kapro.actuator.name":             "push/argo",
 		"kapro.actuator.contract_version": ContractVersionV1Alpha1,
-		"kapro.actuator.driver":           string(kaprov1alpha2.BackendDriverArgo),
-		"kapro.actuator.adapter":          "argo-cd",
-		"kapro.actuator.runtime":          string(kaprov1alpha2.BackendRuntimeHub),
+		"kapro.actuator.driver":           string(kaprov1alpha1.SubstrateDriverArgo),
+		"kapro.actuator.adapter":          "argo",
+		"kapro.actuator.runtime":          string(kaprov1alpha1.SubstrateRuntimeHub),
 		"kapro.cluster":                   "cluster-a",
 	} {
 		if got := attrs[key].AsString(); got != want {
@@ -136,7 +136,7 @@ func TestWithTracingMarksErrors(t *testing.T) {
 
 	boom := errors.New("rollback failed")
 	act := WithTracing("failing", failingRollbackActuator{err: boom})
-	err := act.Rollback(context.Background(), &kaprov1alpha2.Cluster{ObjectMeta: objectMeta("cluster-a")}, "1.0.0", "api")
+	err := act.Rollback(context.Background(), &kaprov1alpha1.Cluster{ObjectMeta: objectMeta("cluster-a")}, "1.0.0", "api")
 	if !errors.Is(err, boom) {
 		t.Fatalf("Rollback err = %v, want %v", err, boom)
 	}
@@ -210,7 +210,7 @@ type failingRollbackActuator struct {
 	err error
 }
 
-func (a failingRollbackActuator) Rollback(context.Context, *kaprov1alpha2.Cluster, string, string) error {
+func (a failingRollbackActuator) Rollback(context.Context, *kaprov1alpha1.Cluster, string, string) error {
 	return a.err
 }
 

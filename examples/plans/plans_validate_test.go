@@ -1,7 +1,7 @@
 // Package plans_test ensures the reference Plan library
-// parses cleanly into the v1alpha2 Go types. It is the cheapest
+// parses cleanly into the v1alpha1 Go types. It is the cheapest
 // possible canary that catches schema drift between the documentation
-// (these YAMLs) and the CRD source-of-truth (api/v1alpha2).
+// (these YAMLs) and the CRD source-of-truth (api/v1alpha1).
 package plans_test
 
 import (
@@ -12,7 +12,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	kaprov1alpha2 "kapro.io/kapro/api/v1alpha2"
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
 // plansFileRe matches NN-<slug>.yaml: two leading digits, dash, then a
@@ -34,7 +34,7 @@ func TestEveryPlanParsesAsPlan(t *testing.T) {
 			if err != nil {
 				t.Fatalf("read %s: %v", path, err)
 			}
-			var plan kaprov1alpha2.Plan
+			var plan kaprov1alpha1.Plan
 			if err := yaml.Unmarshal(data, &plan); err != nil {
 				t.Fatalf("unmarshal %s: %v", path, err)
 			}
@@ -43,8 +43,8 @@ func TestEveryPlanParsesAsPlan(t *testing.T) {
 			if plan.Kind != "Plan" {
 				t.Errorf("%s: kind = %q, want Plan", path, plan.Kind)
 			}
-			if plan.APIVersion != "kapro.io/v1alpha2" {
-				t.Errorf("%s: apiVersion = %q, want kapro.io/v1alpha2", path, plan.APIVersion)
+			if plan.APIVersion != "kapro.io/v1alpha1" {
+				t.Errorf("%s: apiVersion = %q, want kapro.io/v1alpha1", path, plan.APIVersion)
 			}
 			if plan.Name == "" {
 				t.Errorf("%s: metadata.name is empty", path)

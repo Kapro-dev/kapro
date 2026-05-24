@@ -1,7 +1,11 @@
 # ADR-0013: Go SDK versioning policy
 
 ## Status
-Accepted
+Superseded in part by [ADR-0018](0018-public-runtime-api-split.md)
+
+ADR-0018 resets the Kubernetes API packages to `api/kapro/v1alpha1` and
+`api/kaproruntime/v1alpha1`. Version references below predate that reset; the
+SDK policy remains, but the current SDK targets `kapro.io/v1alpha1`.
 
 ## Context
 

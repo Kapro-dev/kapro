@@ -7,7 +7,7 @@
 //	GET  /api/v1/graph                  — paginated graph read of fleet resources
 //	                                      (fleets, clusters, promotions,
 //	                                      promotionruns, targets,
-//	                                      backends) with
+//	                                      substrates) with
 //	                                      label selector + phase filter + bounded
 //	                                      limit + truncation flag.
 //	POST /api/v1/promotions             — create a Promotion from a JSON body.

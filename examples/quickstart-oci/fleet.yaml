@@ -1,8 +1,8 @@
-# Apply after backend-oci.yaml and before promotion.yaml.
+# Apply after substrates/oci.yaml and before promotion.yaml.
 # Replace ghcr.io/example with registries your spokes can reach.
 # Inline plan selectors are simple label maps; standalone Plan objects use
 # selector.matchLabels.
-apiVersion: kapro.io/v1alpha2
+apiVersion: kapro.io/v1alpha1
 kind: Fleet
 metadata:
   name: checkout-oci
@@ -27,7 +27,7 @@ spec:
         version: 1.2.3
   delivery:
     mode: pull
-    backendRef: oci
+    substrateRef: oci
     parameters:
       repository: ghcr.io/example/checkout/{appKey}
       tag: "{version}"

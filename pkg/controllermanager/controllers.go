@@ -31,12 +31,10 @@ func init() {
 	Register("promotionrun", startPromotionRunController)
 	Register("target", startPromotionTargetController)
 	Register("cluster", startFleetClusterHeartbeatController)
-	Register("gateexpression", startGateExpressionController)
 	Register("approval", startApprovalController)
 	Register("substrateclass", startSubstrateClassController)
-	Register("backend", startBackendProfileController)
+	Register("substrate", startSubstrateProfileController)
 	Register("adapterpolicy", startAdapterPolicyController)
-	Register("fleetdriftreport", startFleetDriftReportController)
 	Register("plugin", startPluginRegistrationController)
 	Register("trigger", startPromotionTriggerController)
 	Register("cluster-bootstrap", startFleetClusterBootstrapController)
@@ -49,11 +47,9 @@ func init() {
 	RegisterAlias("kapro", "fleet")
 	RegisterAlias("promotion-target", "target")
 	RegisterAlias("fleetcluster-heartbeat", "cluster")
-	RegisterAlias("gate-expression", "gateexpression")
 	RegisterAlias("substrate-class", "substrateclass")
-	RegisterAlias("backend-profile", "backend")
+	RegisterAlias("substrate-profile", "substrate")
 	RegisterAlias("adapter-policy", "adapterpolicy")
-	RegisterAlias("fleet-drift-report", "fleetdriftreport")
 	RegisterAlias("plugin-registration", "plugin")
 	RegisterAlias("promotion-trigger", "trigger")
 	RegisterAlias("fleetcluster-bootstrap", "cluster-bootstrap")
@@ -231,11 +227,9 @@ func RegisterBuiltInGates(reg *pkggate.Registry, c client.Client) error {
 		"approval":     &internalgate.ApprovalGate{Client: c},
 		"verification": &internalgate.VerificationGate{},
 		// Template-dispatch gates (resolved by GateTemplate.spec.type).
-		"cel":       &celgate.Gate{Client: c},
-		"job":       &jobgate.Gate{Client: c},
-		"max-drift": &internalgate.MaxDriftGate{Client: c},
-		"maxdrift":  &internalgate.MaxDriftGate{Client: c},
-		"webhook":   &webhookgate.Gate{},
+		"cel":     &celgate.Gate{Client: c},
+		"job":     &jobgate.Gate{Client: c},
+		"webhook": &webhookgate.Gate{},
 	} {
 		if err := reg.Register(typeName, impl); err != nil {
 			return fmt.Errorf("register built-in gate %q: %w", typeName, err)
@@ -248,16 +242,6 @@ func RegisterBuiltInGates(reg *pkggate.Registry, c client.Client) error {
 // Watches Approval objects and unblocks targets waiting in WaitingApproval phase.
 func startApprovalController(_ context.Context, cc ControllerContext) (bool, error) {
 	if err := (&controller.ApprovalReconciler{
-		Client:   cc.Manager.GetClient(),
-		Recorder: cc.Recorder,
-	}).SetupWithManager(cc.Manager); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-func startGateExpressionController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.GateExpressionReconciler{
 		Client:   cc.Manager.GetClient(),
 		Recorder: cc.Recorder,
 	}).SetupWithManager(cc.Manager); err != nil {
@@ -282,9 +266,9 @@ func startPluginRegistrationController(_ context.Context, cc ControllerContext) 
 	return true, nil
 }
 
-// startBackendProfileController starts the backend readiness reconciler.
-func startBackendProfileController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.BackendReconciler{
+// startSubstrateProfileController starts the substrate readiness reconciler.
+func startSubstrateProfileController(_ context.Context, cc ControllerContext) (bool, error) {
+	if err := (&controller.SubstrateReconciler{
 		Client:   cc.Manager.GetClient(),
 		Recorder: cc.Recorder,
 	}).SetupWithManager(cc.Manager); err != nil {
@@ -309,21 +293,6 @@ func startAdapterPolicyController(_ context.Context, cc ControllerContext) (bool
 		Recorder:        cc.Recorder,
 		AdapterRegistry: cc.AdapterRegistry,
 	}).SetupWithManager(cc.Manager); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-// startFleetDriftReportController starts the opt-in drift report reconciler.
-// It derives FleetDriftReport.status from existing Cluster, PromotionRun, and
-// Target state and does not mutate rollout resources.
-func startFleetDriftReportController(_ context.Context, cc ControllerContext) (bool, error) {
-	r := &controller.FleetDriftReportReconciler{
-		Client:   cc.Manager.GetClient(),
-		Recorder: cc.Recorder,
-		Scheme:   cc.Manager.GetScheme(),
-	}
-	if err := r.SetupWithManager(cc.Manager); err != nil {
 		return false, err
 	}
 	return true, nil
