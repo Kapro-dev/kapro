@@ -16,7 +16,7 @@ func newBootstrapCmd() *cobra.Command {
 		Long: `Bootstrap is the guided entrypoint for adopting Kapro.
 
 Use greenfield when Kapro should create a new promotion repository shape.
-Use adopt when Argo CD or Flux already owns delivery and Kapro should start in
+Use import when Argo CD or Flux already owns delivery and Kapro should start in
 observe-first mode with reviewable mappings.`,
 	}
 	cmd.AddCommand(newBootstrapGuideCmd())
@@ -139,22 +139,22 @@ func printBootstrapGuide(out io.Writer) {
 	fmt.Fprintln(out, `Kapro adoption paths:
 
 1. Try Kapro with direct Kubernetes apply
-   kapro quickstart direct ./promotion-repo --name checkout
+   kapro create direct ./promotion-repo --name checkout
 
 2. Try Kapro in a new Flux pull-mode repo
-   kapro quickstart flux ./promotion-repo --name checkout
+   kapro create flux ./promotion-repo --name checkout
 
 3. Try Kapro in a new Argo CD repo
-   kapro quickstart argo ./promotion-repo --name checkout
+   kapro create argo ./promotion-repo --name checkout
 
 4. Existing Argo CD repository
-   kapro adopt argo . --out ./kapro-connect --name checkout
+   kapro import argo . --out ./kapro-connect --name checkout
 
 5. Existing Flux repository
-   kapro adopt flux . --out ./kapro-connect --name checkout
+   kapro import flux . --out ./kapro-connect --name checkout
 
 6. Outbound-only clusters that must pull OCI artifacts
-   kapro quickstart oci ./promotion-repo --name checkout
+   kapro create oci ./promotion-repo --name checkout
 
 Lower-level generator:
   kapro bootstrap generate ./promotion-repo --profile direct|argo|flux|oci --name checkout
@@ -174,7 +174,7 @@ func newBootstrapSubstrateCmd(substrate string) *cobra.Command {
 	if substrate == "argo" || substrate == "direct" {
 		defaultMode = "push"
 	}
-	existingHint := "For an existing GitOps repository, use:\n  kapro adopt " + substrate + " . --out ./kapro-connect --name checkout"
+	existingHint := "For an existing GitOps repository, use:\n  kapro import " + substrate + " . --out ./kapro-connect --name checkout"
 	if substrate == "direct" {
 		existingHint = "Direct is the smallest greenfield path. It does not require Argo CD, Flux, or an OCI registry."
 	}

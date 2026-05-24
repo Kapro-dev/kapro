@@ -7,15 +7,15 @@ release evidence.
 
 | User goal | Command | Release expectation |
 |---|---|---|
-| New direct apply repo | `kapro quickstart direct ./promotion-repo --name checkout` | Works without Flux, Argo CD, or an OCI registry. |
-| New Argo CD repo | `kapro quickstart argo ./promotion-repo --name checkout` | Generates Argo `Application` starter files and Kapro promotion objects. |
-| New Flux repo | `kapro quickstart flux ./promotion-repo --name checkout` | Generates Flux starter files and Kapro promotion objects. |
-| New OCI pull repo | `kapro quickstart oci ./promotion-repo --name checkout` | Generates OCI pull substrate objects without making OCI the default path. |
-| Existing Argo CD repo | `kapro adopt argo . --out ./kapro-connect --name checkout` | Starts observe-first and writes reviewable discovery files. |
-| Existing Flux repo | `kapro adopt flux . --out ./kapro-connect --name checkout` | Starts observe-first and writes reviewable discovery files. |
-| Generator/framework path | `kapro bootstrap generate --profile direct|argo|flux|oci` | Produces the same launch profile matrix used by quickstart. |
+| New direct apply repo | `kapro create direct ./promotion-repo --name checkout` | Works without Flux, Argo CD, or an OCI registry. |
+| New Argo CD repo | `kapro create argo ./promotion-repo --name checkout` | Generates Argo `Application` starter files and Kapro promotion objects. |
+| New Flux repo | `kapro create flux ./promotion-repo --name checkout` | Generates Flux starter files and Kapro promotion objects. |
+| New OCI pull repo | `kapro create oci ./promotion-repo --name checkout` | Generates OCI pull substrate objects without making OCI the default path. |
+| Existing Argo CD repo | `kapro import argo . --out ./kapro-connect --name checkout` | Starts observe-first and writes reviewable discovery files; `--take` is explicit takeover. |
+| Existing Flux repo | `kapro import flux . --out ./kapro-connect --name checkout` | Starts observe-first and writes reviewable discovery files; `--take` is explicit takeover. |
+| Generator/framework path | `kapro bootstrap generate --profile direct|argo|flux|oci` | Produces the same launch profile matrix used by create. |
 
-`quickstart` is the public greenfield command. `adopt` is the public
+`create` is the public greenfield command. `import` is the public
 existing-GitOps command. `connect` and `discover` remain lower-level commands
 for substrate-only scaffolds and inventory workflows.
 
@@ -23,7 +23,7 @@ for substrate-only scaffolds and inventory workflows.
 
 - `make verify-local` passes on the release branch.
 - `scripts/cli-scaffold-smoke.sh` passes and covers `direct`, `argo`, `flux`,
-  existing Argo adoption, and existing Flux connect/adoption scaffolds.
+  existing Argo import, and existing Flux connect/import scaffolds.
 - `KAPRO_CI_QUICKSTARTS=direct,flux,argo,oci scripts/ci-kind-smoke.sh` passes
   on a disposable kind cluster.
 - `go run ./cmd/kapro-conformance all -o json` reports passing reference

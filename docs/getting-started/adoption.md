@@ -10,12 +10,12 @@ agents, or plugins still own local reconciliation.
 
 | Situation | Start with | What Kapro creates |
 |---|---|---|
-| New repo, direct Kubernetes apply | `kapro quickstart direct ./promotion-repo --name checkout` | `kubernetes-apply` class/config, Substrate, raw YAML, clusters, Fleet, Plan, and Promotion scaffold. |
-| New repo, Flux or spoke pull delivery | `kapro quickstart flux ./promotion-repo --name checkout` | Flux class/config, Substrate, clusters, Fleet, Plan, Promotion, and Flux starter files. |
-| New repo, Argo CD Applications already planned | `kapro quickstart argo ./promotion-repo --name checkout` | Argo CD class/config, Substrate, clusters, Fleet, Plan, Promotion, and Argo starter Application. |
-| Existing Argo CD repo | `kapro adopt argo . --out ./kapro-connect --name checkout` | Observe-mode Substrate, Source mappings, and discovery reports. |
-| Existing Flux repo | `kapro adopt flux . --out ./kapro-connect --name checkout` | Observe-mode Substrate, Source mappings, and discovery reports. |
-| Outbound-only clusters that must pull OCI artifacts | `kapro quickstart oci ./promotion-repo --name checkout` | OCI Substrate, clusters, Fleet, Plan, and Promotion skeleton. |
+| New repo, direct Kubernetes apply | `kapro create direct ./promotion-repo --name checkout` | `kubernetes-apply` class/config, Substrate, raw YAML, clusters, Fleet, Plan, and Promotion scaffold. |
+| New repo, Flux or spoke pull delivery | `kapro create flux ./promotion-repo --name checkout` | Flux class/config, Substrate, clusters, Fleet, Plan, Promotion, and Flux starter files. |
+| New repo, Argo CD Applications already planned | `kapro create argo ./promotion-repo --name checkout` | Argo CD class/config, Substrate, clusters, Fleet, Plan, Promotion, and Argo starter Application. |
+| Existing Argo CD repo | `kapro import argo . --out ./kapro-connect --name checkout` | Observe-mode Substrate, Source mappings, and discovery reports. |
+| Existing Flux repo | `kapro import flux . --out ./kapro-connect --name checkout` | Observe-mode Substrate, Source mappings, and discovery reports. |
+| Outbound-only clusters that must pull OCI artifacts | `kapro create oci ./promotion-repo --name checkout` | OCI Substrate, clusters, Fleet, Plan, and Promotion skeleton. |
 
 Use `kapro bootstrap guide` when you want the same decision tree in the
 terminal.
@@ -39,15 +39,15 @@ export PATH="$PWD/bin:$PATH"
 Greenfield means you want Kapro to scaffold the promotion repository shape.
 
 ```bash
-kapro quickstart direct ./promotion-repo --name checkout
+kapro create direct ./promotion-repo --name checkout
 ```
 
 Other public-preview profiles use the same command:
 
 ```bash
-kapro quickstart argo ./promotion-repo --name checkout
-kapro quickstart flux ./promotion-repo --name checkout
-kapro quickstart oci ./promotion-repo --name checkout
+kapro create argo ./promotion-repo --name checkout
+kapro create flux ./promotion-repo --name checkout
+kapro create oci ./promotion-repo --name checkout
 ```
 
 `kapro bootstrap generate` exposes the same `direct`, `argo`, `flux`, and `oci`
@@ -90,7 +90,7 @@ reconciliation. Kapro should start by observing and producing reviewable
 mappings; it should not take over writes during the first command.
 
 ```bash
-kapro adopt argo . \
+kapro import argo . \
   --out ./kapro-connect \
   --name checkout \
   --namespace argocd \
@@ -100,7 +100,7 @@ kapro adopt argo . \
 or:
 
 ```bash
-kapro adopt flux . \
+kapro import flux . \
   --out ./kapro-connect \
   --name checkout \
   --namespace flux-system \
@@ -116,18 +116,20 @@ This generates:
 - `discovery/*-discovery.yaml` with selected and skipped objects;
 - `discovery/kapro-git-map.yaml` with write-target evidence.
 
-Nothing is adopted yet. Review the generated files first. Switch
-`Substrate.spec.discovery.managementPolicy` from `Observe` to `Adopt` only after
-the owning team approves exactly which fields Kapro may write.
+Nothing is adopted yet. Review the generated files first. After the owning team
+approves exactly which fields Kapro may write, rerun the import with `--take`
+or switch `Substrate.spec.discovery.managementPolicy` from `Observe` to
+`Adopt`.
 
-For continuous in-cluster discovery, `kapro adopt argo --apply` or
-`kapro adopt flux --apply` creates or updates a `Substrate` and matching
+For continuous in-cluster discovery, `kapro import argo --apply` or
+`kapro import flux --apply` creates or updates a `Substrate` and matching
 `SubstrateDiscoveryPolicy`. The policy fails closed when the Substrate is missing, discovery
 is disabled, the policy adapter does not match the Substrate adapter, or the
 registered adapter cannot complete discovery. Use `--dry-run=client` with
-`--apply` to validate the live writes without persisting resources. Run the
-operator with `substrate` and `substratediscoverypolicy` controllers when using this live
-apply path.
+`--apply` to validate the live writes without persisting resources. Add
+`--take` only after review when the live `Substrate` should move to `Adopt`.
+Run the operator with `substrate` and `substratediscoverypolicy` controllers
+when using this live apply path.
 
 ## Promotion Flow
 

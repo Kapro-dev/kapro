@@ -7,7 +7,7 @@ Argo CD on target clusters.
 For a generated repo shape, start with:
 
 ```bash
-kapro quickstart oci ./promotion-repo --name checkout
+kapro create oci ./promotion-repo --name checkout
 cd promotion-repo
 kubectl apply -f substrates/oci.yaml
 kubectl wait --for=condition=Ready substrate/oci --timeout=90s

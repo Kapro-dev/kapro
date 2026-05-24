@@ -41,7 +41,7 @@ helm upgrade --install kapro "$KAPRO_CHART" \
 Generate a direct profile repo:
 
 ```bash
-kapro quickstart direct ./promotion-repo --name checkout
+kapro create direct ./promotion-repo --name checkout
 cd promotion-repo
 ```
 

@@ -19,14 +19,20 @@ production users depend on the prototype shape. Delete old prototype CRDs and
 recreate desired state from generated 0.6 manifests. Do not commit
 `PromotionRun`, `Target`, or `DecisionTrace` runtime objects to Git.
 
-### Changed — 0.6 public-preview quickstart contract
+### Changed — 0.6 public-preview create/import contract
 
-`kapro quickstart` now treats direct Kubernetes apply as the default no-extra
-dependency path, with explicit `direct`, `argo`, `flux`, and `oci` launch
-profiles. `kapro bootstrap generate` supports the same profile matrix, and
+Renamed the pre-release CLI verbs from `quickstart` to `create` and from
+`adopt` to `import` for consistency with Docker, kubectl, Terraform, and Pulumi
+conventions. This is a hard rename with no compatibility aliases because the
+change lands before the public-preview tag.
+
+`kapro create` treats direct Kubernetes apply as the default no-extra dependency
+path, with explicit `direct`, `argo`, `flux`, and `oci` launch profiles. The
+`kapro bootstrap generate` command supports the same profile matrix, and
 `kapro bootstrap greenfield` now defaults to direct push mode instead of Flux
-pull mode. Existing GitOps onboarding remains `kapro adopt argo` and
-`kapro adopt flux`.
+pull mode. Existing GitOps onboarding is `kapro import argo` and
+`kapro import flux`, with observe-only output by default and `--take` for
+explicit takeover.
 
 The CI Kind smoke now exercises all four public-preview profiles. Direct apply
 installs include the Deployment RBAC needed by the direct actuator, and
@@ -83,7 +89,7 @@ allowing platform-owned provider plugins.
 
 ### Added — adoption-first CLI UX
 
-Added `kapro quickstart`, `kapro sample`, and `kapro explain` so first-time
+Added `kapro create`, `kapro sample`, and `kapro explain` so first-time
 users can generate Flux, Argo CD, or OCI promotion repos and inspect blocked
 promotions without learning the lower-level command map first. `kapro bootstrap`
 now exposes direct `argo`, `flux`, and `oci` aliases for greenfield setup.

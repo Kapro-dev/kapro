@@ -30,7 +30,7 @@ runtime child state for each execution attempt. You do not need to list
 | `cluster` | Yes | Maintains cluster heartbeat and readiness status. |
 | `substrateclass` | Yes | Publishes status and capabilities for Kapro-owned `SubstrateClass` objects. |
 | `substrate` | Yes | Writes substrate readiness and substrate-native discovery status. Required by generated `Substrate.spec.classRef` profiles before `Cluster` objects can reference a substrate. |
-| `substratediscoverypolicy` | No | Runs continuous substrate-native discovery for `SubstrateDiscoveryPolicy` objects created by live `kapro adopt --apply` flows. |
+| `substratediscoverypolicy` | No | Runs continuous substrate-native discovery for `SubstrateDiscoveryPolicy` objects created by live `kapro import --apply` flows. |
 | `approval` | No | Reconciles `Approval` objects that unblock approval gates. |
 | `trigger` | No | Creates or updates `Promotion` from artifact changes. |
 | `plugin` | No | Reconciles plugin readiness when the plugin gateway is enabled. |
@@ -56,8 +56,8 @@ helm upgrade --install kapro "$KAPRO_CHART" \
   --set controllers='{fleet,plan,promotion,promotionrun,cluster,trigger,approval}'
 ```
 
-Run live existing-GitOps adoption with `kapro adopt argo --apply` or
-`kapro adopt flux --apply`:
+Run live existing-GitOps adoption with `kapro import argo --apply` or
+`kapro import flux --apply`:
 
 ```bash
 helm upgrade --install kapro "$KAPRO_CHART" \

@@ -46,7 +46,7 @@ controller from user-authored intent.
 3. Install the 0.6 CRDs and operator.
 4. Recreate desired state from the current quickstarts or generated bootstrap
    output.
-5. For existing GitOps installs, run `kapro adopt argo` or `kapro adopt flux`
+5. For existing GitOps installs, run `kapro import argo` or `kapro import flux`
    and review the generated files before enabling write permissions.
 
 There is no automatic conversion path for the prototype APIs because no

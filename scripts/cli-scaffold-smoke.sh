@@ -113,13 +113,13 @@ require_text "${TMPDIR}/generate-oci/substrates/oci.yaml" "kind: OCIBundleApplyC
 require_text "${TMPDIR}/generate-oci/substrates/oci.yaml" "mode: spoke-pull"
 require_text "${TMPDIR}/generate-oci/clusters/canary-eu.yaml" "substrateRef: oci"
 
-echo "smoke: public quickstart direct default"
-kapro quickstart "${TMPDIR}/quickstart-direct" --name checkout --force >/dev/null
-require_file "${TMPDIR}/quickstart-direct/substrates/direct.yaml"
-require_file "${TMPDIR}/quickstart-direct/apps/checkout/deployment.yaml"
-require_text "${TMPDIR}/quickstart-direct/substrates/direct.yaml" "kind: KubernetesApplyConfig"
-require_text "${TMPDIR}/quickstart-direct/clusters/canary-eu.yaml" "mode: push"
-require_text "${TMPDIR}/quickstart-direct/clusters/canary-eu.yaml" "substrateRef: direct"
+echo "smoke: public create direct default"
+kapro create "${TMPDIR}/create-direct" --name checkout --force >/dev/null
+require_file "${TMPDIR}/create-direct/substrates/direct.yaml"
+require_file "${TMPDIR}/create-direct/apps/checkout/deployment.yaml"
+require_text "${TMPDIR}/create-direct/substrates/direct.yaml" "kind: KubernetesApplyConfig"
+require_text "${TMPDIR}/create-direct/clusters/canary-eu.yaml" "mode: push"
+require_text "${TMPDIR}/create-direct/clusters/canary-eu.yaml" "substrateRef: direct"
 
 echo "smoke: existing Argo CD connect"
 kapro connect argo "${TMPDIR}/connect-argo" --namespace argocd --selector kapro.io/import=true,team=checkout --force >/dev/null
@@ -174,16 +174,17 @@ require_file "${TMPDIR}/discover-argo/discovery/argo-discovery.yaml"
 require_file "${TMPDIR}/discover-argo/discovery/kapro-git-map.yaml"
 require_text "${TMPDIR}/discover-argo/sources/checkout.yaml" "substrateKind: GitJSONField"
 require_text "${TMPDIR}/discover-argo/sources/checkout.yaml" "argocd/environments/*.json:gkProjectVersion"
-kapro adopt argo "${TMPDIR}/argo-repo" --out "${TMPDIR}/adopt-argo" --name checkout --force >/dev/null
-require_file "${TMPDIR}/adopt-argo/discovery/kapro-git-map.yaml"
+kapro import argo "${TMPDIR}/argo-repo" --out "${TMPDIR}/import-argo" --name checkout --force >/dev/null
+require_file "${TMPDIR}/import-argo/discovery/kapro-git-map.yaml"
 kapro source apply --repo "${TMPDIR}/argo-repo" --source "${TMPDIR}/discover-argo/sources/checkout.yaml" --set checkout-api=2.0.0 --all >/dev/null
 require_text "${TMPDIR}/argo-repo/argocd/environments/dev.json" '"gkProjectVersion": "2.0.0"'
 
-echo "smoke: existing Argo CD adoption alias"
-kapro adopt argo "${TMPDIR}/argo-repo" --out "${TMPDIR}/bootstrap-argo" --name checkout --force >/dev/null
-require_file "${TMPDIR}/bootstrap-argo/substrates/checkout-observe.yaml"
-require_file "${TMPDIR}/bootstrap-argo/sources/checkout.yaml"
-require_file "${TMPDIR}/bootstrap-argo/discovery/kapro-git-map.yaml"
+echo "smoke: existing Argo CD import takeover"
+kapro import argo "${TMPDIR}/argo-repo" --out "${TMPDIR}/take-argo" --name checkout --take --force >/dev/null
+require_file "${TMPDIR}/take-argo/substrates/checkout-adopt.yaml"
+require_file "${TMPDIR}/take-argo/sources/checkout.yaml"
+require_file "${TMPDIR}/take-argo/discovery/kapro-git-map.yaml"
+require_text "${TMPDIR}/take-argo/substrates/checkout-adopt.yaml" "managementPolicy: Adopt"
 
 echo "smoke: existing Flux connect"
 kapro connect flux "${TMPDIR}/connect-flux" --namespace flux-system --selector kapro.io/import=true,team=checkout --force >/dev/null
@@ -193,7 +194,7 @@ require_text "${TMPDIR}/connect-flux/substrates/flux-observe.yaml" "mode: hub-pu
 require_text "${TMPDIR}/connect-flux/substrates/flux-observe.yaml" "managementPolicy: Observe"
 require_text "${TMPDIR}/connect-flux/substrates/flux-observe.yaml" "team: \"checkout\""
 
-echo "smoke: existing Flux adoption"
+echo "smoke: existing Flux import"
 mkdir -p "${TMPDIR}/flux-repo/flux/sources" "${TMPDIR}/flux-repo/flux/kustomizations" "${TMPDIR}/flux-repo/apps/web"
 cat >"${TMPDIR}/flux-repo/flux/sources/api-gitrepository.yaml" <<'YAML'
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -231,12 +232,12 @@ images:
     newTag: v1
 YAML
 (cd "${TMPDIR}/flux-repo" && git init >/dev/null && git add .)
-kapro adopt flux "${TMPDIR}/flux-repo" --out "${TMPDIR}/adopt-flux" --name checkout --force >/dev/null
-require_file "${TMPDIR}/adopt-flux/substrates/checkout-observe.yaml"
-require_file "${TMPDIR}/adopt-flux/sources/checkout.yaml"
-require_file "${TMPDIR}/adopt-flux/discovery/kapro-git-map.yaml"
-require_text "${TMPDIR}/adopt-flux/sources/checkout.yaml" "sourcePath: flux/sources/api-gitrepository.yaml"
-require_text "${TMPDIR}/adopt-flux/sources/checkout.yaml" "substrateKind: GitYAMLField"
-require_text "${TMPDIR}/adopt-flux/sources/checkout.yaml" "substrateKind: KustomizeImage"
+kapro import flux "${TMPDIR}/flux-repo" --out "${TMPDIR}/import-flux" --name checkout --force >/dev/null
+require_file "${TMPDIR}/import-flux/substrates/checkout-observe.yaml"
+require_file "${TMPDIR}/import-flux/sources/checkout.yaml"
+require_file "${TMPDIR}/import-flux/discovery/kapro-git-map.yaml"
+require_text "${TMPDIR}/import-flux/sources/checkout.yaml" "sourcePath: flux/sources/api-gitrepository.yaml"
+require_text "${TMPDIR}/import-flux/sources/checkout.yaml" "substrateKind: GitYAMLField"
+require_text "${TMPDIR}/import-flux/sources/checkout.yaml" "substrateKind: KustomizeImage"
 
 echo "cli scaffold smoke passed"

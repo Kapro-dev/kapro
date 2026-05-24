@@ -25,7 +25,7 @@ cluster provisioner, or secret store.
 - [Install](getting-started/install.md) shows the supported operator install paths.
 - [Adoption Guide](getting-started/adoption.md) helps choose greenfield,
   existing Argo CD, existing Flux, or OCI pull mode.
-- [Adoption CLI](getting-started/adoption-cli.md) shows the guided `kapro quickstart`,
+- [Adoption CLI](getting-started/adoption-cli.md) shows the guided `kapro create`,
   `kapro sample`, `kapro doctor`, and `kapro explain` paths.
 - [First Promotion in 10 Minutes](getting-started/first-promotion-10min.md) is the shortest
   working path.

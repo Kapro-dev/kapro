@@ -361,8 +361,8 @@ wait_for_config_version() {
 discover_and_promote() {
   local repo="$1"
   local out="${TMPDIR}/kapro-connect"
-  echo "running kapro adopt flux against fixture repo"
-  "${TMPDIR}/bin/kapro" adopt flux "${repo}" --out "${out}" --name flux-e2e --force
+  echo "running kapro import flux against fixture repo"
+  "${TMPDIR}/bin/kapro" import flux "${repo}" --out "${out}" --name flux-e2e --force
 
   "${TMPDIR}/bin/kapro" source apply \
     --repo "${repo}" \
@@ -403,7 +403,7 @@ run() {
   discover_and_promote "${repo}"
   wait_for_config_version v2
 
-  echo "Flux E2E passed: kapro adopt flux generated a mapping, source apply updated Git, and real Flux controllers reconciled v2."
+  echo "Flux E2E passed: kapro import flux generated a mapping, source apply updated Git, and real Flux controllers reconciled v2."
 
   if [ "${KAPRO_FLUX_E2E_CLEANUP:-false}" = "true" ]; then
     kind delete cluster --name "${CLUSTER_NAME}"

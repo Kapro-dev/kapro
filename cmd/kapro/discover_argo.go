@@ -33,6 +33,7 @@ type argoDiscoverOptions struct {
 	Cache        bool
 	MaxFiles     int
 	MaxUnits     int
+	Take         bool
 	Force        bool
 }
 
@@ -183,12 +184,12 @@ func runArgoDiscover(opts argoDiscoverOptions) error {
 	}
 	result.RepoPath = opts.RepoPath
 	files := map[string]string{
-		filepath.Join("substrates", opts.Name+"-observe.yaml"): renderArgoDiscoverSubstrate(opts, matchLabels),
-		filepath.Join("sources", opts.Name+".yaml"):            renderArgoDiscoverSource(opts, result),
-		filepath.Join("discovery", "argo-discovery.yaml"):      renderArgoDiscoveryReport(result),
-		filepath.Join("discovery", "kapro-git-map.yaml"):       renderArgoGitAdoptionMap(opts, result),
-		filepath.Join("discovery", "review-summary.yaml"):      renderDiscoveryReviewSummary("argo", opts.Name, result.RepoPath, result.SelectedUnits, result.SkippedObjects, result.Errors),
-		filepath.Join("README.md"):                             renderArgoDiscoverReadme(opts, result),
+		filepath.Join("substrates", opts.Name+discoverSubstrateFileSuffix(opts.Take)+".yaml"): renderArgoDiscoverSubstrate(opts, matchLabels),
+		filepath.Join("sources", opts.Name+".yaml"):                                           renderArgoDiscoverSource(opts, result),
+		filepath.Join("discovery", "argo-discovery.yaml"):                                     renderArgoDiscoveryReport(result),
+		filepath.Join("discovery", "kapro-git-map.yaml"):                                      renderArgoGitAdoptionMap(opts, result),
+		filepath.Join("discovery", "review-summary.yaml"):                                     renderDiscoveryReviewSummary("argo", opts.Name, result.RepoPath, result.SelectedUnits, result.SkippedObjects, result.Errors),
+		filepath.Join("README.md"):                                                            renderArgoDiscoverReadme(opts, result),
 	}
 	if err := writeScaffoldFiles(opts.OutPath, files, opts.Force); err != nil {
 		return err
@@ -737,6 +738,10 @@ func dedupeUnits(units []argoDiscoveredUnit) []argoDiscoveredUnit {
 }
 
 func renderArgoDiscoverSubstrate(opts argoDiscoverOptions, labels map[string]string) string {
+	managementPolicy := "Observe"
+	if opts.Take {
+		managementPolicy = "Adopt"
+	}
 	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
 kind: Substrate
 metadata:
@@ -751,11 +756,11 @@ spec:
     namespace: %s
   discovery:
     enabled: true
-    managementPolicy: Observe
+    managementPolicy: %s
     maxObjects: 1000
     selector:
       matchLabels:
-%s`, opts.Name, opts.Namespace, renderYAMLMap(labels, 8))
+%s`, opts.Name, opts.Namespace, managementPolicy, renderYAMLMap(labels, 8))
 }
 
 func renderArgoDiscoverSource(opts argoDiscoverOptions, result argoDiscoveryResult) string {

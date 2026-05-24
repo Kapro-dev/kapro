@@ -111,7 +111,7 @@ Kapro is substrate-neutral. A fleet can mix delivery styles by cluster:
 
 Run [First Promotion in 10 Minutes](docs/getting-started/first-promotion-10min.md) first to
 see the API lifecycle, or start with the [Adoption CLI](docs/getting-started/adoption-cli.md)
-when you want `kapro quickstart`, `kapro sample`, `kapro doctor`, and
+when you want `kapro create`, `kapro sample`, `kapro doctor`, and
 `kapro explain` as the guided path. Use [Substrates](docs/concepts/substrates.md) when
 deciding how Kapro should connect to existing delivery systems.
 
@@ -124,13 +124,13 @@ cd kapro
 make build
 export PATH="$PWD/bin:$PATH"
 kapro bootstrap guide
-kapro quickstart direct ./promotion-repo --name checkout
-kapro quickstart flux ./promotion-repo --name checkout
-kapro quickstart argo ./promotion-repo --name checkout
-kapro quickstart oci ./promotion-repo --name checkout
+kapro create direct ./promotion-repo --name checkout
+kapro create flux ./promotion-repo --name checkout
+kapro create argo ./promotion-repo --name checkout
+kapro create oci ./promotion-repo --name checkout
 kapro bootstrap generate ./promotion-repo --profile direct --name checkout
-kapro adopt argo . --out ./kapro-connect --name checkout
-kapro adopt flux . --out ./kapro-connect --name checkout
+kapro import argo . --out ./kapro-connect --name checkout
+kapro import flux . --out ./kapro-connect --name checkout
 ```
 
 See the [Adoption Guide](docs/getting-started/adoption.md) for the greenfield

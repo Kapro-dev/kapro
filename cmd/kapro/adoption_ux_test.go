@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-func TestQuickstartDefaultCreatesDirectRepo(t *testing.T) {
+func TestCreateDefaultCreatesDirectRepo(t *testing.T) {
 	dir := t.TempDir()
-	cmd := newQuickstartCmd()
+	cmd := newCreateCmd()
 	cmd.SetArgs([]string{dir, "--name", "checkout"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
@@ -22,7 +22,7 @@ func TestQuickstartDefaultCreatesDirectRepo(t *testing.T) {
 	}
 }
 
-func TestQuickstartBareDirectoryCreatesDirectRepo(t *testing.T) {
+func TestCreateBareDirectoryCreatesDirectRepo(t *testing.T) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -37,7 +37,7 @@ func TestQuickstartBareDirectoryCreatesDirectRepo(t *testing.T) {
 		}
 	})
 
-	cmd := newQuickstartCmd()
+	cmd := newCreateCmd()
 	cmd.SetArgs([]string{"promotion-repo", "--name", "checkout"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
@@ -50,9 +50,9 @@ func TestQuickstartBareDirectoryCreatesDirectRepo(t *testing.T) {
 	}
 }
 
-func TestQuickstartDirectCreatesPushRepo(t *testing.T) {
+func TestCreateDirectCreatesPushRepo(t *testing.T) {
 	dir := t.TempDir()
-	cmd := newQuickstartCmd()
+	cmd := newCreateCmd()
 	cmd.SetArgs([]string{"direct", dir, "--name", "checkout"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
@@ -65,9 +65,9 @@ func TestQuickstartDirectCreatesPushRepo(t *testing.T) {
 	}
 }
 
-func TestQuickstartFluxCreatesPullRepo(t *testing.T) {
+func TestCreateFluxCreatesPullRepo(t *testing.T) {
 	dir := t.TempDir()
-	cmd := newQuickstartCmd()
+	cmd := newCreateCmd()
 	cmd.SetArgs([]string{"flux", dir, "--name", "checkout"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
@@ -80,9 +80,9 @@ func TestQuickstartFluxCreatesPullRepo(t *testing.T) {
 	}
 }
 
-func TestQuickstartArgoCreatesPushRepo(t *testing.T) {
+func TestCreateArgoCreatesPushRepo(t *testing.T) {
 	dir := t.TempDir()
-	cmd := newQuickstartCmd()
+	cmd := newCreateCmd()
 	cmd.SetArgs([]string{"argo", dir, "--name", "checkout"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
@@ -95,12 +95,12 @@ func TestQuickstartArgoCreatesPushRepo(t *testing.T) {
 	}
 }
 
-func TestQuickstartRejectsUnknownProfile(t *testing.T) {
-	cmd := newQuickstartCmd()
+func TestCreateRejectsUnknownProfile(t *testing.T) {
+	cmd := newCreateCmd()
 	cmd.SetArgs([]string{"tekton", t.TempDir()})
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "quickstart profile must be direct, argo, flux, oci, or demo") {
-		t.Fatalf("err=%v, want quickstart validation", err)
+	if err == nil || !strings.Contains(err.Error(), "create profile must be direct, argo, flux, oci, or demo") {
+		t.Fatalf("err=%v, want create validation", err)
 	}
 }
 

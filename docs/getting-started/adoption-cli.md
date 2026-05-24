@@ -8,7 +8,7 @@ but do not want to learn every Kapro object before trying promotion workflows.
 For a new repo, start with:
 
 ```bash
-kapro quickstart direct ./promotion-repo --name checkout
+kapro create direct ./promotion-repo --name checkout
 ```
 
 `direct` is the smallest no-extra-dependency path: no OCI registry, Flux
@@ -20,9 +20,9 @@ promote versions through that existing control plane. Use OCI only when spokes
 must pull OCI artifacts directly without Argo CD or Flux:
 
 ```bash
-kapro quickstart flux ./promotion-repo --name checkout
-kapro quickstart argo ./promotion-repo --name checkout
-kapro quickstart oci ./promotion-repo --name checkout
+kapro create flux ./promotion-repo --name checkout
+kapro create argo ./promotion-repo --name checkout
+kapro create oci ./promotion-repo --name checkout
 ```
 
 `kapro bootstrap generate` is the lower-level generator command behind the
@@ -40,13 +40,14 @@ kapro bootstrap generate ./promotion-repo --profile oci --name checkout
 For an existing Argo CD or Flux repository, use observe-first adoption:
 
 ```bash
-kapro adopt argo . --out ./kapro-connect --name checkout
-kapro adopt flux . --out ./kapro-connect --name checkout
+kapro import argo . --out ./kapro-connect --name checkout
+kapro import flux . --out ./kapro-connect --name checkout
 ```
 
 Observe-first adoption generates Substrate, Source, and discovery review files.
 It does not mutate live Argo CD or Flux objects and it does not push Git
-changes.
+changes. After review, pass `--take` to generate or apply an Adopt-mode
+Substrate.
 
 ## Samples
 
@@ -96,8 +97,8 @@ promotion intent, gates, approvals, and audit trail across clusters.
 
 | Goal | Public command | Notes |
 |---|---|---|
-| Try Kapro in a new repo | `kapro quickstart direct|argo|flux|oci` | Fast path with opinionated defaults. |
+| Try Kapro in a new repo | `kapro create direct|argo|flux|oci` | Fast path with opinionated defaults. |
 | Generate from an explicit profile | `kapro bootstrap generate --profile direct|argo|flux|oci` | Generator/framework surface used by docs, CI, and future template targets. |
-| Connect an existing GitOps repo | `kapro adopt argo|flux` | Observe-first output with `Source` mappings and discovery reports. |
+| Connect an existing GitOps repo | `kapro import argo|flux` | Observe-first output with `Source` mappings and discovery reports. |
 | Create only observe-mode Substrate files | `kapro connect argo|flux` | Substrate-only scaffold for platform teams that want to wire discovery by hand. |
-| Inventory without adopting | `kapro discover argo|flux` | Lower-level diagnostic command used by `adopt`. |
+| Inventory without importing | `kapro discover argo|flux` | Lower-level diagnostic command used by `import`. |

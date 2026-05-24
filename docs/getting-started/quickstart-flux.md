@@ -15,7 +15,7 @@ helm upgrade --install kapro "$KAPRO_CHART" \
 Generate a Flux profile repo:
 
 ```bash
-kapro quickstart flux ./promotion-repo --name checkout
+kapro create flux ./promotion-repo --name checkout
 cd promotion-repo
 kubectl apply -f substrates/flux.yaml
 kubectl wait --for=condition=Ready substrate/flux --timeout=90s

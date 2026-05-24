@@ -18,7 +18,7 @@ usage() {
 Usage: scripts/argo-e2e.sh <run|up|status|down>
 
 Commands:
-  run     Create everything, verify discover/adopt/promote/converge, then leave the cluster running.
+  run     Create everything, verify discover/import/promote/converge, then leave the cluster running.
   up      Alias for run.
   status  Print Kapro and Argo resources from the current E2E cluster.
   down    Delete the Kind cluster.
@@ -560,8 +560,8 @@ start_git_port_forward() {
 discover_and_apply_kapro_mapping() {
   local repo="$1"
   local out="${TMPDIR}/kapro-connect"
-  echo "running kapro adopt argo against fixture repo"
-  "${TMPDIR}/bin/kapro" adopt argo "${repo}" --out "${out}" --name argo-e2e --force
+  echo "running kapro import argo against fixture repo"
+  "${TMPDIR}/bin/kapro" import argo "${repo}" --out "${out}" --name argo-e2e --force
   "${KUBECTL[@]}" apply -f "${out}/substrates/argo-e2e-observe.yaml"
   "${KUBECTL[@]}" patch substrate argo-e2e --type=merge \
     -p '{"spec":{"discovery":{"managementPolicy":"Adopt"}}}'
@@ -763,7 +763,7 @@ run() {
   assert_substrate_objects_reported
 
   status
-  echo "Argo E2E passed: discover/adopt/source-apply/promote/sync/converge all completed."
+  echo "Argo E2E passed: discover/import/source-apply/promote/sync/converge all completed."
 
   if [ "${KAPRO_ARGO_E2E_CLEANUP:-false}" = "true" ]; then
     down
