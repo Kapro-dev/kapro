@@ -18,7 +18,7 @@ Release:
 
 ```bash
 helm upgrade --install kapro \
-  https://github.com/Kapro-dev/kapro/releases/download/v0.5.4/kapro-operator-0.5.4.tgz \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.5.5/kapro-operator-0.5.5.tgz \
   --namespace kapro-system \
   --create-namespace
 ```
@@ -80,7 +80,7 @@ install demo plugins. To opt in:
 
 ```bash
 helm upgrade --install kapro \
-  https://github.com/Kapro-dev/kapro/releases/download/v0.5.4/kapro-operator-0.5.4.tgz \
+  https://github.com/Kapro-dev/kapro/releases/download/v0.5.5/kapro-operator-0.5.5.tgz \
   --namespace kapro-system \
   --create-namespace \
   --set pluginGateway.enabled=true \
