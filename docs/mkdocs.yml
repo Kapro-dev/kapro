@@ -89,6 +89,8 @@ nav:
       - Plugin Compatibility Policy: extending/plugin-compatibility-policy.md
       - Plugin Authoring: extending/plugin-authoring.md
       - GCP Cloud: extending/cloud-gcp.md
+  - Specs:
+      - Substrate Parameter Spec: specs/substrate-parameter-spec.md
   - ADRs:
       - Overview: adr/README.md
       - Runtime Split: adr/0001-promotion-runtime-split.md
@@ -105,3 +107,4 @@ nav:
       - Competitive Positioning: adr/0012-competitive-positioning.md
       - Composable Gates: adr/0014-composable-gates.md
       - PromotionRun Retention: adr/0015-promotionrun-retention.md
+      - Substrate Class And Config: adr/0016-substrate-class-config-contract.md

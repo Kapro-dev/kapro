@@ -33,6 +33,7 @@ func init() {
 	Register("cluster", startFleetClusterHeartbeatController)
 	Register("gateexpression", startGateExpressionController)
 	Register("approval", startApprovalController)
+	Register("substrateclass", startSubstrateClassController)
 	Register("backend", startBackendProfileController)
 	Register("adapterpolicy", startAdapterPolicyController)
 	Register("fleetdriftreport", startFleetDriftReportController)
@@ -49,6 +50,7 @@ func init() {
 	RegisterAlias("promotion-target", "target")
 	RegisterAlias("fleetcluster-heartbeat", "cluster")
 	RegisterAlias("gate-expression", "gateexpression")
+	RegisterAlias("substrate-class", "substrateclass")
 	RegisterAlias("backend-profile", "backend")
 	RegisterAlias("adapter-policy", "adapterpolicy")
 	RegisterAlias("fleet-drift-report", "fleetdriftreport")
@@ -285,6 +287,16 @@ func startBackendProfileController(_ context.Context, cc ControllerContext) (boo
 	if err := (&controller.BackendReconciler{
 		Client:   cc.Manager.GetClient(),
 		Recorder: cc.Recorder,
+	}).SetupWithManager(cc.Manager); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// startSubstrateClassController starts the built-in SubstrateClass status reconciler.
+func startSubstrateClassController(_ context.Context, cc ControllerContext) (bool, error) {
+	if err := (&controller.SubstrateClassReconciler{
+		Client: cc.Manager.GetClient(),
 	}).SetupWithManager(cc.Manager); err != nil {
 		return false, err
 	}

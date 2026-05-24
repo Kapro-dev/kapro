@@ -20,6 +20,8 @@ relitigating it.
 | [0012](0012-competitive-positioning.md) | Competitive positioning | Accepted |
 | [0013](0013-sdk-versioning-policy.md) | Go SDK versioning policy | Accepted |
 | [0014](0014-composable-gates.md) | Composable gates scaffold | Accepted |
+| [0015](0015-promotionrun-retention.md) | PromotionRun retention | Accepted |
+| [0016](0016-substrate-class-config-contract.md) | Substrate class and typed config contract | Accepted |
 
 ## Adding a new ADR
 

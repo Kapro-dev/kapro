@@ -1,28 +1,69 @@
 # Custom Substrates
 
-A substrate is a delivery domain. An actuator is the program that performs
-delivery for that domain.
+A substrate is a delivery domain. A `SubstrateClass` names the implementation
+contract, a typed config CRD stores platform wiring, and a substrate
+implementation performs delivery for that class.
 
-Kapro ships built-in substrates for Argo CD, Flux, and OCI. The same API also
-allows a platform team to register a custom substrate without changing Kapro's
-CRDs.
+Kapro ships built-in substrates for Argo CD, Flux, OCI, Kubernetes direct
+apply, and webhook delivery. The same API lets a platform team register a
+custom substrate without changing Kapro core CRDs.
 
 ```yaml
+apiVersion: kapro.io/v1alpha2
+kind: SubstrateClass
+metadata:
+  name: hello-world
+spec:
+  controllerName: example.com/hello-world
+  executionModes:
+    default: hub-push
+---
+apiVersion: example.com/v1alpha1
+kind: HelloWorldConfig
+metadata:
+  name: hello-world
+spec:
+  message: hello from kapro
+---
 apiVersion: kapro.io/v1alpha2
 kind: Backend
 metadata:
   name: hello-world
 spec:
-  substrate:
-    kind: hello-world
-    actuator: hello-world
+  classRef:
+    name: hello-world
+  configRef:
+    apiVersion: example.com/v1alpha1
+    kind: HelloWorldConfig
+    name: hello-world
   execution:
     mode: hub-push
-  parameters:
-    message: hello from kapro
 ```
 
-## Minimal Go Actuator
+The substrate's controller owns `SubstrateClass.status` for
+`controllerName=example.com/hello-world` and reports accepted config kinds,
+supported execution modes, and capabilities.
+
+## KSI Contract
+
+New substrate packages should implement KSI, the Kapro Substrate Interface, at
+`kapro.io/kapro/pkg/kapro/substrate`:
+
+```go
+type Substrate interface {
+    Validate(ctx context.Context, req *ValidateRequest) (*ValidateResult, error)
+    Apply(ctx context.Context, req *ApplyRequest) (*ApplyResult, error)
+    Observe(ctx context.Context, req *ObserveRequest) (*ObserveResult, error)
+    Capabilities(ctx context.Context) (*Capabilities, error)
+}
+```
+
+KSI requests carry the resolved `SubstrateClass`, `Backend`, typed config
+object, target `Cluster`, desired versions, and compatibility parameters. Use a
+typed config CRD for durable parameters; keep string maps only for demos or
+migration.
+
+## Minimal Go Actuator Compatibility
 
 `BoolFunc` is the smallest possible actuator shape. It is useful for examples,
 tests, and very small internal checks:

@@ -24,7 +24,7 @@ func TestSchemeRegistersAllNewKinds(t *testing.T) {
 		"Approval", "Backend", "Cluster", "ClusterTemplate",
 		"DecisionTrace", "Fleet", "FleetDriftReport", "GateExpression", "Plan", "Plugin", "Policy",
 		"Promotion", "PromotionRun",
-		"Source", "Target", "Trigger",
+		"Source", "SubstrateClass", "Target", "Trigger",
 	}
 	for _, kind := range wantKinds {
 		gvk := GroupVersion.WithKind(kind)
@@ -59,6 +59,39 @@ func TestFleetRoundTripsThroughYAML(t *testing.T) {
 	}
 	if out.Spec.Delivery.BackendRef != "flux" {
 		t.Errorf("backendRef lost across round-trip: %q", out.Spec.Delivery.BackendRef)
+	}
+}
+
+func TestBackendClassConfigRefsRoundTripThroughYAML(t *testing.T) {
+	in := &Backend{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "kapro.io/v1alpha2", Kind: "Backend"},
+		ObjectMeta: metav1.ObjectMeta{Name: "prod-argo"},
+		Spec: BackendSpec{
+			ClassRef: &SubstrateClassReference{Name: "argo-cd"},
+			ConfigRef: &SubstrateObjectReference{
+				APIVersion: "argocd.substrate.kapro.io/v1alpha1",
+				Kind:       "ArgoCDSubstrateConfig",
+				Name:       "prod-argo",
+			},
+			Execution: &BackendExecutionSpec{Mode: ExecutionModeHubPush},
+		},
+	}
+	data, err := yaml.Marshal(in)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var out Backend
+	if err := yaml.Unmarshal(data, &out); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if out.Spec.ClassRef == nil || out.Spec.ClassRef.Name != "argo-cd" {
+		t.Fatalf("classRef lost across round-trip: %#v", out.Spec.ClassRef)
+	}
+	if out.Spec.ConfigRef == nil || out.Spec.ConfigRef.Kind != "ArgoCDSubstrateConfig" {
+		t.Fatalf("configRef lost across round-trip: %#v", out.Spec.ConfigRef)
+	}
+	if got := out.Spec.SubstrateKind(); got != "argo-cd" {
+		t.Fatalf("SubstrateKind() = %q, want argo-cd", got)
 	}
 }
 

@@ -28,6 +28,7 @@ func init() {
 		&Promotion{}, &PromotionList{},
 		&PromotionRun{}, &PromotionRunList{},
 		&Source{}, &SourceList{},
+		&SubstrateClass{}, &SubstrateClassList{},
 		&Target{}, &TargetList{},
 		&Trigger{}, &TriggerList{},
 	)

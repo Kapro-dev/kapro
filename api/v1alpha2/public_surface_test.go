@@ -23,6 +23,7 @@ type resourceContract struct {
 
 type crdDocument struct {
 	Spec struct {
+		Group string `json:"group"`
 		Names struct {
 			Kind       string   `json:"kind"`
 			Singular   string   `json:"singular"`
@@ -36,6 +37,8 @@ type crdDocument struct {
 
 type crdVersion struct {
 	Name                     string `json:"name"`
+	Served                   bool   `json:"served"`
+	Storage                  bool   `json:"storage"`
 	AdditionalPrinterColumns []struct {
 		Name     string `json:"name"`
 		JSONPath string `json:"jsonPath"`
@@ -62,6 +65,7 @@ var kaproResources = []resourceContract{
 	{Kind: "Promotion", Singular: "promotion", Plural: "promotions"},
 	{Kind: "PromotionRun", Singular: "promotionrun", Plural: "promotionruns"},
 	{Kind: "Source", Singular: "source", Plural: "sources"},
+	{Kind: "SubstrateClass", Singular: "substrateclass", Plural: "substrateclasses"},
 	{Kind: "Target", Singular: "target", Plural: "targets"},
 	{Kind: "Trigger", Singular: "trigger", Plural: "triggers"},
 }
@@ -234,6 +238,9 @@ func TestCRDNamesMatchPublicContract(t *testing.T) {
 
 	got := map[string]resourceContract{}
 	for _, name := range crdBaseNames(t, configDir) {
+		if !strings.HasPrefix(name, "kapro.io_") {
+			continue
+		}
 		path := filepath.Join(configDir, name)
 		var crd struct {
 			Spec struct {
@@ -551,6 +558,7 @@ func TestCRDShortNamesAndCategoriesUseExpectedAliases(t *testing.T) {
 		"kapro.io_promotionruns.yaml":     {"prun"},
 		"kapro.io_promotions.yaml":        {"promo"},
 		"kapro.io_sources.yaml":           {"src"},
+		"kapro.io_substrateclasses.yaml":  {"subclass"},
 		"kapro.io_targets.yaml":           {"tgt"},
 		"kapro.io_triggers.yaml":          {"trig"},
 	}
@@ -788,7 +796,7 @@ func TestExportedDocsDoNotReferenceRemovedPromotionRunTargets(t *testing.T) {
 // TestCRDPropertiesMatchGoJSONTags asserts that every JSON tag declared on a
 // top-level CRD struct's Spec / Status (Fleet, Promotion, PromotionRun,
 // Cluster, Plan, Source, Trigger, Target, Backend, Plugin, Policy,
-// ClusterTemplate, Approval) appears as a property in the corresponding
+// ClusterTemplate, Approval, SubstrateClass) appears as a property in the corresponding
 // CRD's openAPIv3Schema. Catches drift where a Go field was renamed but the
 // CRD wasn't regenerated, or where a JSON tag was hand-edited and the
 // generator wasn't rerun.
@@ -818,6 +826,7 @@ func TestCRDPropertiesMatchGoJSONTags(t *testing.T) {
 		"Promotion":        {"promotion_types.go", "PromotionSpec", "PromotionStatus"},
 		"PromotionRun":     {"promotionrun_types.go", "PromotionRunSpec", "PromotionRunStatus"},
 		"Source":           {"source_types.go", "SourceSpec", ""},
+		"SubstrateClass":   {"substrateclass_types.go", "SubstrateClassSpec", "SubstrateClassStatus"},
 		"Target":           {"promotionrun_types.go", "TargetSpec", "TargetStatus"},
 		"Trigger":          {"trigger_types.go", "TriggerSpec", "TriggerStatus"},
 	}
@@ -1073,6 +1082,17 @@ func readCRD(t *testing.T, path string) crdDocument {
 
 func servedCRDVersion(t *testing.T, path string, crd crdDocument) crdVersion {
 	t.Helper()
+	if crd.Spec.Group != "kapro.io" {
+		for _, version := range crd.Spec.Versions {
+			if version.Served && version.Storage {
+				return version
+			}
+		}
+		if len(crd.Spec.Versions) > 0 {
+			return crd.Spec.Versions[0]
+		}
+		t.Fatalf("%s has no CRD versions", path)
+	}
 	for _, version := range crd.Spec.Versions {
 		if version.Name == "v1alpha2" {
 			return version
@@ -1308,6 +1328,14 @@ func helmChartScalar(t *testing.T, path, data, key string) string {
 
 func checkCRDServedVersion(t *testing.T, path, data string) {
 	t.Helper()
+	if !strings.Contains(data, "group: kapro.io") {
+		for _, want := range []string{"served: true", "storage: true"} {
+			if !strings.Contains(data, want) {
+				t.Fatalf("%s missing CRD version field %q", path, want)
+			}
+		}
+		return
+	}
 	if strings.Contains(data, "name: v1alpha1") {
 		t.Fatalf("%s still contains a v1alpha1 CRD version", path)
 	}

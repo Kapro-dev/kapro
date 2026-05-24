@@ -110,6 +110,47 @@ type BackendExecutionSpec struct {
 	Mode ExecutionMode `json:"mode"`
 }
 
+// SubstrateClassReference names a cluster-scoped SubstrateClass.
+type SubstrateClassReference struct {
+	// Name is the SubstrateClass name.
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+}
+
+// SubstrateObjectKindReference identifies a typed substrate-owned CRD kind
+// without naming one concrete object instance.
+type SubstrateObjectKindReference struct {
+	// APIVersion is the referenced API version, for example
+	// argocd.substrate.kapro.io/v1alpha1.
+	// +kubebuilder:validation:MinLength=1
+	APIVersion string `json:"apiVersion"`
+	// Kind is the referenced Kubernetes kind, for example
+	// ArgoCDSubstrateConfig.
+	// +kubebuilder:validation:MinLength=1
+	Kind string `json:"kind"`
+}
+
+// SubstrateObjectReference points at a typed substrate-owned configuration
+// object. Namespace is optional so cluster-scoped config resources and
+// namespaced config resources can both use the same reference shape.
+type SubstrateObjectReference struct {
+	// APIVersion is the referenced API version, for example
+	// argocd.substrate.kapro.io/v1alpha1.
+	// +kubebuilder:validation:MinLength=1
+	APIVersion string `json:"apiVersion"`
+	// Kind is the referenced Kubernetes kind, for example
+	// ArgoCDSubstrateConfig.
+	// +kubebuilder:validation:MinLength=1
+	Kind string `json:"kind"`
+	// Name is the referenced object name.
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+	// Namespace is the referenced object namespace when the referenced kind is
+	// namespaced. It is empty for cluster-scoped substrate config kinds.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+}
+
 // DeliverySpec selects a backend-neutral delivery profile for a cluster or fleet.
 // Backend-specific resource names live in parameters and are interpreted only by
 // the selected backend adapter.

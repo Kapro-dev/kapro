@@ -11,9 +11,23 @@ import (
 // BackendSpec registers a delivery backend profile that can be selected
 // by Fleet or Cluster delivery.backendRef.
 // +kubebuilder:validation:XValidation:rule="!(has(self.driver) && has(self.substrate))",message="set either deprecated driver/adapter/runtime or new substrate/execution, not both"
-// +kubebuilder:validation:XValidation:rule="has(self.driver) || has(self.substrate)",message="one of deprecated driver or substrate is required"
+// +kubebuilder:validation:XValidation:rule="!(has(self.classRef) && (has(self.driver) || has(self.substrate)))",message="set either classRef, substrate, or deprecated driver, not multiple backend selection shapes"
+// +kubebuilder:validation:XValidation:rule="!(has(self.classRef) && has(self.adapter) && self.adapter != \"\")",message="classRef cannot be combined with deprecated adapter"
+// +kubebuilder:validation:XValidation:rule="!has(self.configRef) || has(self.classRef)",message="configRef requires classRef"
+// +kubebuilder:validation:XValidation:rule="has(self.driver) || has(self.substrate) || has(self.classRef)",message="one of classRef, deprecated driver, or substrate is required"
 // +kubebuilder:validation:XValidation:rule="(has(self.driver) && self.driver == \"external\") ? (has(self.pluginRef) && self.pluginRef != \"\") : true",message="pluginRef must be set when deprecated driver is external"
 type BackendSpec struct {
+	// ClassRef selects the SubstrateClass that owns the typed substrate config
+	// contract for this backend profile. This is the preferred Phase-1
+	// substrate API; existing Backend.spec.substrate and deprecated
+	// driver/adapter/runtime fields remain as compatibility paths.
+	// +optional
+	ClassRef *SubstrateClassReference `json:"classRef,omitempty"`
+	// ConfigRef points at a typed substrate-owned configuration object, such as
+	// ArgoCDSubstrateConfig, KubernetesApplyConfig, or WebhookSubstrateConfig.
+	// The referenced kind must be accepted by the selected SubstrateClass.
+	// +optional
+	ConfigRef *SubstrateObjectReference `json:"configRef,omitempty"`
 	// Substrate identifies the open delivery domain and actuator implementation.
 	// New Backend objects should use substrate instead of driver/adapter.
 	// +optional
@@ -80,10 +94,17 @@ type BackendDiscoverySpec struct {
 
 // BackendStatus records backend discovery and compatibility.
 type BackendStatus struct {
-	ObservedGeneration int64                 `json:"observedGeneration,omitempty"`
-	Ready              bool                  `json:"ready,omitempty"`
-	Substrate          *BackendSubstrateSpec `json:"substrate,omitempty"`
-	Execution          *BackendExecutionSpec `json:"execution,omitempty"`
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+	Ready              bool  `json:"ready,omitempty"`
+	// ClassName mirrors spec.classRef.name when this Backend uses the typed
+	// SubstrateClass path.
+	// +optional
+	ClassName string `json:"className,omitempty"`
+	// ConfigRef mirrors the resolved typed substrate config reference.
+	// +optional
+	ConfigRef *SubstrateObjectReference `json:"configRef,omitempty"`
+	Substrate *BackendSubstrateSpec     `json:"substrate,omitempty"`
+	Execution *BackendExecutionSpec     `json:"execution,omitempty"`
 	// Driver mirrors the deprecated spec.driver compatibility field.
 	//
 	// Deprecated compatibility field: use status.substrate.kind.
@@ -163,6 +184,7 @@ type DiscoveredBackendObject struct {
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=be,categories=kapro-all
+// +kubebuilder:printcolumn:name="Class",type=string,JSONPath=`.spec.classRef.name`
 // +kubebuilder:printcolumn:name="Substrate",type=string,JSONPath=`.spec.substrate.kind`
 // +kubebuilder:printcolumn:name="Execution",type=string,JSONPath=`.spec.execution.mode`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
@@ -188,6 +210,9 @@ type BackendList struct {
 func (s BackendSpec) SubstrateKind() string {
 	if s.Substrate != nil && s.Substrate.Kind != "" {
 		return s.Substrate.Kind
+	}
+	if s.ClassRef != nil && s.ClassRef.Name != "" {
+		return s.ClassRef.Name
 	}
 	return string(s.Driver)
 }

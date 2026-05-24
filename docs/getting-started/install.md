@@ -129,6 +129,7 @@ exposed deliberately:
 | Surface | Default | Enablement |
 |---|---|---|
 | Decision API and `Policy` | Disabled | `decisionAPI.enabled=true` and explicit Kubernetes RBAC. |
+| SubstrateClass status controller | Disabled | Add `substrateclass` to `controllers` when using `Backend.spec.classRef` and typed substrate config CRDs. |
 | Backend readiness controller | Disabled | Built-in `flux`, `argo`, and `oci` Backend specs can be referenced without this controller. Add `backend` to `controllers` when external backend readiness or backend-native discovery status is needed. |
 | Approval controller | Disabled | Add `approval` to `controllers` when human approval objects should unblock gates. |
 | GateExpression controller | Disabled | Add `gateexpression` to `controllers` when preview gate composition status should be reconciled. |
