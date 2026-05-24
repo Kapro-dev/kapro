@@ -13,11 +13,11 @@ import (
 func TestModelDescribesUnsupportedOCIDiscovery(t *testing.T) {
 	model := oci.Model()
 
-	if model.Driver != kaprov1alpha1.SubstrateDriverOCI {
-		t.Fatalf("driver = %q, want oci", model.Driver)
+	if model.SubstrateKind != kaprov1alpha1.SubstrateKindOCI {
+		t.Fatalf("driver = %q, want oci", model.SubstrateKind)
 	}
-	if model.Runtime != kaprov1alpha1.SubstrateRuntimeSpoke {
-		t.Fatalf("runtime = %q, want Spoke", model.Runtime)
+	if model.ExecutionScope != kaprov1alpha1.ExecutionScopeSpoke {
+		t.Fatalf("runtime = %q, want Spoke", model.ExecutionScope)
 	}
 	if model.DefaultNamespace != "" {
 		t.Fatalf("default namespace = %q, want empty", model.DefaultNamespace)
@@ -33,11 +33,11 @@ func TestModelDescribesUnsupportedOCIDiscovery(t *testing.T) {
 func TestNewReturnsDiscoverUnsupportedAdapter(t *testing.T) {
 	adapter := oci.New()
 
-	if adapter.Driver() != kaprov1alpha1.SubstrateDriverOCI {
-		t.Fatalf("driver = %q, want oci", adapter.Driver())
+	if adapter.SubstrateKind() != kaprov1alpha1.SubstrateKindOCI {
+		t.Fatalf("driver = %q, want oci", adapter.SubstrateKind())
 	}
-	if adapter.Runtime() != kaprov1alpha1.SubstrateRuntimeSpoke {
-		t.Fatalf("runtime = %q, want Spoke", adapter.Runtime())
+	if adapter.ExecutionScope() != kaprov1alpha1.ExecutionScopeSpoke {
+		t.Fatalf("runtime = %q, want Spoke", adapter.ExecutionScope())
 	}
 	caps := adapter.Capabilities()
 	if caps.ContractVersion != "v1alpha1" ||
@@ -55,10 +55,10 @@ func TestNewReturnsDiscoverUnsupportedAdapter(t *testing.T) {
 	if result.Ready || result.Reason != "DiscoveryUnsupported" {
 		t.Fatalf("discovery readiness = %t/%q, want unsupported", result.Ready, result.Reason)
 	}
-	if result.Driver != kaprov1alpha1.SubstrateDriverOCI || result.Runtime != kaprov1alpha1.SubstrateRuntimeSpoke {
-		t.Fatalf("driver/runtime = %q/%q, want oci/Spoke", result.Driver, result.Runtime)
+	if result.SubstrateKind != kaprov1alpha1.SubstrateKindOCI || result.ExecutionScope != kaprov1alpha1.ExecutionScopeSpoke {
+		t.Fatalf("driver/runtime = %q/%q, want oci/Spoke", result.SubstrateKind, result.ExecutionScope)
 	}
-	if !strings.Contains(result.Message, string(kaprov1alpha1.SubstrateDriverOCI)) {
+	if !strings.Contains(result.Message, string(kaprov1alpha1.SubstrateKindOCI)) {
 		t.Fatalf("message %q does not mention OCI driver", result.Message)
 	}
 	if len(result.SelectedObjects) != 0 ||

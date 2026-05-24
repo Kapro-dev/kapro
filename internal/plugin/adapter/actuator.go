@@ -211,8 +211,8 @@ func responseMessage(message string) string {
 func actuatorCapabilitiesForPlugin(reg kaprov1alpha1.Plugin) actuator.Capabilities {
 	caps := actuator.Capabilities{
 		ContractVersion: reg.Status.ContractVersion,
-		Adapter:         reg.Spec.Name,
-		Runtime:         kaprov1alpha1.SubstrateRuntimeBoth,
+		Actuator:        reg.Spec.Name,
+		ExecutionScope:  kaprov1alpha1.ExecutionScopeBoth,
 	}
 	for _, capability := range reg.Status.Capabilities {
 		switch {

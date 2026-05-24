@@ -73,8 +73,8 @@ func normalizeScenario(p spokeprovider.Provider, scenario Scenario) Scenario {
 	}
 	if scenario.Request.SubstrateProfile.Spec.Substrate == nil || scenario.Request.SubstrateProfile.Spec.Substrate.Kind == "" {
 		scenario.Request.SubstrateProfile.Spec.Substrate = &v1alpha1.SubstrateImplementationSpec{
-			Kind:     string(p.Driver()),
-			Actuator: string(p.Driver()),
+			Kind:     string(p.SubstrateKind()),
+			Actuator: string(p.SubstrateKind()),
 		}
 	}
 	return scenario
@@ -89,8 +89,8 @@ func checkCapabilities(p spokeprovider.Provider, scenario Scenario) conformance.
 	if caps.ContractVersion != spokeprovider.ContractVersionV1Alpha1 {
 		return conformance.Fail(name, "contract_version=%q, want %q", caps.ContractVersion, spokeprovider.ContractVersionV1Alpha1)
 	}
-	if caps.Driver == "" {
-		return conformance.Fail(name, "driver is empty")
+	if caps.SubstrateKind == "" {
+		return conformance.Fail(name, "substrate kind is empty")
 	}
 	if missing := missingCapabilities(caps, requiredCapabilities(scenario)); len(missing) > 0 {
 		return conformance.Fail(name, "missing required capabilities %v", missing)

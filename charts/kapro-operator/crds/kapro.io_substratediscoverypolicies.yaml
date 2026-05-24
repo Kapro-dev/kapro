@@ -4,26 +4,26 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.21.0
-  name: adapterpolicies.kapro.io
+  name: substratediscoverypolicies.kapro.io
 spec:
   group: kapro.io
   names:
     categories:
     - kapro-all
-    kind: AdapterPolicy
-    listKind: AdapterPolicyList
-    plural: adapterpolicies
+    kind: SubstrateDiscoveryPolicy
+    listKind: SubstrateDiscoveryPolicyList
+    plural: substratediscoverypolicies
     shortNames:
-    - adp
-    singular: adapterpolicy
+    - sdp
+    singular: substratediscoverypolicy
   scope: Cluster
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.adapter
-      name: Adapter
-      type: string
     - jsonPath: .spec.substrateRef
       name: Substrate
+      type: string
+    - jsonPath: .spec.expectedKind
+      name: Expected
       type: string
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
@@ -56,22 +56,23 @@ spec:
           metadata:
             type: object
           spec:
-            description: AdapterPolicySpec configures continuous existing-substrate
-              adapter discovery.
+            description: |-
+              SubstrateDiscoveryPolicySpec configures continuous discovery for an existing
+              substrate profile.
             properties:
-              adapter:
-                description: |-
-                  Adapter names the adapter expected for SubstrateRef, for example argo
-                  or flux. The controller resolves the substrate driver through the public
-                  adapter registry and fails closed when this value does not match the
-                  referenced Substrate's adapter.
-                minLength: 1
-                type: string
               dryRun:
                 description: |-
                   DryRun validates the policy and referenced Substrate without invoking
                   adapter discovery.
                 type: boolean
+              expectedKind:
+                description: |-
+                  ExpectedKind optionally pins the referenced Substrate to a specific
+                  substrate.kind, for example argo or flux. When set and the referenced
+                  Substrate resolves to a different kind, the policy fails closed.
+                maxLength: 63
+                pattern: ^[a-z][a-z0-9-]{0,62}$
+                type: string
               selector:
                 description: |-
                   Selector further narrows Substrate.spec.discovery.selector for this
@@ -132,11 +133,10 @@ spec:
                   to 5m.
                 type: string
             required:
-            - adapter
             - substrateRef
             type: object
           status:
-            description: AdapterPolicyStatus records the latest continuous adapter
+            description: SubstrateDiscoveryPolicyStatus records the latest continuous
               discovery attempt.
             properties:
               conditions:

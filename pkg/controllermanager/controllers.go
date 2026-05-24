@@ -34,7 +34,7 @@ func init() {
 	Register("approval", startApprovalController)
 	Register("substrateclass", startSubstrateClassController)
 	Register("substrate", startSubstrateProfileController)
-	Register("adapterpolicy", startAdapterPolicyController)
+	Register("substratediscoverypolicy", startSubstrateDiscoveryPolicyController)
 	Register("plugin", startPluginRegistrationController)
 	Register("trigger", startPromotionTriggerController)
 	Register("cluster-bootstrap", startFleetClusterBootstrapController)
@@ -49,7 +49,6 @@ func init() {
 	RegisterAlias("fleetcluster-heartbeat", "cluster")
 	RegisterAlias("substrate-class", "substrateclass")
 	RegisterAlias("substrate-profile", "substrate")
-	RegisterAlias("adapter-policy", "adapterpolicy")
 	RegisterAlias("plugin-registration", "plugin")
 	RegisterAlias("promotion-trigger", "trigger")
 	RegisterAlias("fleetcluster-bootstrap", "cluster-bootstrap")
@@ -287,8 +286,8 @@ func startSubstrateClassController(_ context.Context, cc ControllerContext) (boo
 	return true, nil
 }
 
-func startAdapterPolicyController(_ context.Context, cc ControllerContext) (bool, error) {
-	if err := (&controller.AdapterPolicyReconciler{
+func startSubstrateDiscoveryPolicyController(_ context.Context, cc ControllerContext) (bool, error) {
+	if err := (&controller.SubstrateDiscoveryPolicyReconciler{
 		Client:          cc.Manager.GetClient(),
 		Recorder:        cc.Recorder,
 		AdapterRegistry: cc.AdapterRegistry,

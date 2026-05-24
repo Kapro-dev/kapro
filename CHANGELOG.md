@@ -415,12 +415,12 @@ before and after opting in to the controller.
 Added `kapro bootstrap` as the guided CLI entrypoint for first-time adoption:
 `bootstrap guide`, `bootstrap greenfield`, and `bootstrap brownfield`. The
 greenfield path defaults to Flux pull mode, while brownfield Argo CD and Flux
-paths generate observe-first Backend, Source, and discovery review files.
+paths generate observe-first Substrate, Source, and discovery review files.
 
 ### Changed — onboarding documentation
 
 Added an Adoption Guide and linked it from the README, docs home, install,
-backend, first-promotion, Argo migration, and Flux migration pages. CLI install
+substrate, first-promotion, Argo migration, and Flux migration pages. CLI install
 docs now use the verified clone/tag/`make build` path until release binary
 assets or Go vanity import metadata are available.
 
@@ -499,12 +499,12 @@ validation, delay first-observation status, examples, and docs.
 Added the public `pkg/kapro/adapter` SDK surface with a registry and reference
 Argo CD, Flux, and OCI adapter packages.
 
-### Changed — AdapterPolicy discovery loop
+### Changed — SubstrateDiscoveryPolicy discovery loop
 
-Added `AdapterPolicy.spec.selector`, `spec.dryRun`, and
-`status.discoveredObjects`. AdapterPolicy now validates merged discovery
+Added `SubstrateDiscoveryPolicy.spec.selector`, `spec.dryRun`, and
+`status.discoveredObjects`. SubstrateDiscoveryPolicy now validates merged discovery
 selectors, resolves adapters before dry-run success, records quick discovery
-counts, and keeps `Backend.status` ownership with `BackendReconciler`.
+counts, and keeps `Substrate.status` ownership with `SubstrateReconciler`.
 
 ### Added — server adapter registrars
 
@@ -634,10 +634,10 @@ such as `backend`, `approval`, `trigger`, `plugin`, `cluster-bootstrap`, and
 Added `examples/quickstart-argo`, `examples/quickstart-oci`, and matching docs
 so adopters can start from Flux, Argo CD, or Kapro's OCI delivery core without
 reading the brownfield migration guides first.
-Built-in `flux`, `argo`, and `oci` Backend specs remain admissible without the
-backend controller; external/plugin backends still require Ready status.
+Built-in `flux`, `argo`, and `oci` Substrate specs remain admissible without the
+substrate controller; external/plugin substrates still require Ready status.
 
-Older controller keys such as `kapro`, `promotion-target`, `backend-profile`,
+Older controller keys such as `kapro`, `promotion-target`, `substrate-profile`,
 and `promotion-trigger` are still accepted as compatibility aliases, but new
 manifests and Helm values should use the canonical keys.
 

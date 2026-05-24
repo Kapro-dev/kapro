@@ -15,7 +15,7 @@ type fakeProvider struct {
 	res  spokeprovider.ReconcileResult
 }
 
-func (p fakeProvider) Driver() v1alpha1.SubstrateDriver { return p.caps.Driver }
+func (p fakeProvider) SubstrateKind() v1alpha1.SubstrateKind { return p.caps.SubstrateKind }
 func (p fakeProvider) Capabilities() spokeprovider.Capabilities {
 	return p.caps
 }
@@ -26,7 +26,7 @@ func (p fakeProvider) Reconcile(context.Context, spokeprovider.ReconcileRequest)
 func TestCheckPasses(t *testing.T) {
 	report := Check(context.Background(), fakeProvider{
 		caps: spokeprovider.Capabilities{
-			Driver:            v1alpha1.SubstrateDriverOCI,
+			SubstrateKind:     v1alpha1.SubstrateKindOCI,
 			SupportsReconcile: true,
 			SupportsObserve:   true,
 		},
@@ -39,7 +39,7 @@ func TestCheckPasses(t *testing.T) {
 
 func TestCheckDefaultsScenarioDriverFromProvider(t *testing.T) {
 	report := Check(context.Background(), driverCheckingProvider{
-		driver: v1alpha1.SubstrateDriverFlux,
+		driver: v1alpha1.SubstrateKindFlux,
 	}, DefaultScenario())
 	if !report.Passed() {
 		t.Fatalf("report failed: %#v", report.Failed())
@@ -48,7 +48,7 @@ func TestCheckDefaultsScenarioDriverFromProvider(t *testing.T) {
 
 func TestCheckReportsMissingCapability(t *testing.T) {
 	report := Check(context.Background(), fakeProvider{
-		caps: spokeprovider.Capabilities{Driver: v1alpha1.SubstrateDriverOCI},
+		caps: spokeprovider.Capabilities{SubstrateKind: v1alpha1.SubstrateKindOCI},
 		res:  spokeprovider.ReconcileResult{Phase: v1alpha1.DeliveryPhaseConverged},
 	}, DefaultScenario())
 	if report.Passed() {
@@ -80,11 +80,11 @@ type togglingProvider struct {
 	calls int
 }
 
-func (p *togglingProvider) Driver() v1alpha1.SubstrateDriver { return v1alpha1.SubstrateDriverOCI }
+func (p *togglingProvider) SubstrateKind() v1alpha1.SubstrateKind { return v1alpha1.SubstrateKindOCI }
 
 func (p *togglingProvider) Capabilities() spokeprovider.Capabilities {
 	return spokeprovider.Capabilities{
-		Driver:            v1alpha1.SubstrateDriverOCI,
+		SubstrateKind:     v1alpha1.SubstrateKindOCI,
 		SupportsReconcile: true,
 	}
 }
@@ -98,14 +98,14 @@ func (p *togglingProvider) Reconcile(context.Context, spokeprovider.ReconcileReq
 }
 
 type driverCheckingProvider struct {
-	driver v1alpha1.SubstrateDriver
+	driver v1alpha1.SubstrateKind
 }
 
-func (p driverCheckingProvider) Driver() v1alpha1.SubstrateDriver { return p.driver }
+func (p driverCheckingProvider) SubstrateKind() v1alpha1.SubstrateKind { return p.driver }
 
 func (p driverCheckingProvider) Capabilities() spokeprovider.Capabilities {
 	return spokeprovider.Capabilities{
-		Driver:            p.driver,
+		SubstrateKind:     p.driver,
 		SupportsReconcile: true,
 	}
 }

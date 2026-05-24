@@ -260,10 +260,10 @@ func run() error {
 	// External drivers are loaded via PluginRegistration + the plugin
 	// gateway when KAPRO_ENABLE_PLUGIN_GATEWAY=true.
 	registry := spokeprovider.NewRegistry()
-	if err := registry.Register(kaprov1alpha1.SubstrateDriverOCI, outbound.NewProvider(localKubeClient)); err != nil {
+	if err := registry.Register(kaprov1alpha1.SubstrateKindOCI, outbound.NewProvider(localKubeClient)); err != nil {
 		return fmt.Errorf("register oci provider: %w", err)
 	}
-	if err := registry.Register(kaprov1alpha1.SubstrateDriverFlux, fluxspoke.NewProvider(localKubeClient)); err != nil {
+	if err := registry.Register(kaprov1alpha1.SubstrateKindFlux, fluxspoke.NewProvider(localKubeClient)); err != nil {
 		return fmt.Errorf("register flux provider: %w", err)
 	}
 	dl := &deliveryLoop{

@@ -38,7 +38,7 @@ func RegisterAdapter(adapter kaproadapter.Adapter) AdapterRegistrar {
 		}
 		driver := "<nil>"
 		if adapter != nil {
-			driver = string(adapter.Driver())
+			driver = string(adapter.SubstrateKind())
 		}
 		if err := cc.Registry.Register(adapter); err != nil {
 			return fmt.Errorf("register adapter %q: %w", driver, err)

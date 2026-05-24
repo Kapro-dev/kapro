@@ -8,15 +8,15 @@ import (
 
 // New returns a discovery-first OCI reference adapter.
 func New() adapter.Adapter {
-	return adapter.NewReferenceAdapter(kaprov1alpha1.SubstrateDriverOCI, kaprov1alpha1.SubstrateRuntimeSpoke, Model())
+	return adapter.NewReferenceAdapter(kaprov1alpha1.SubstrateKindOCI, kaprov1alpha1.ExecutionScopeSpoke, Model())
 }
 
 // Model returns the OCI delivery-core discovery shape. OCI delivery does not
 // currently expose substrate-native Kubernetes object discovery.
 func Model() adapter.DiscoveryModel {
 	return adapter.DiscoveryModel{
-		Driver:           kaprov1alpha1.SubstrateDriverOCI,
-		Runtime:          kaprov1alpha1.SubstrateRuntimeSpoke,
+		SubstrateKind:    kaprov1alpha1.SubstrateKindOCI,
+		ExecutionScope:   kaprov1alpha1.ExecutionScopeSpoke,
 		DefaultNamespace: "",
 		Supported:        false,
 	}

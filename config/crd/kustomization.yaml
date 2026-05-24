@@ -1,7 +1,7 @@
 resources:
 - bases/argocd.substrate.kapro.io_argocdsubstrateconfigs.yaml
 - bases/flux.substrate.kapro.io_fluxsubstrateconfigs.yaml
-- bases/kapro.io_adapterpolicies.yaml
+- bases/kapro.io_substratediscoverypolicies.yaml
 - bases/kapro.io_approvals.yaml
 - bases/kapro.io_clusters.yaml
 - bases/kapro.io_clustertemplates.yaml

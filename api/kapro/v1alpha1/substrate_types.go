@@ -199,9 +199,9 @@ func (s SubstrateSpec) ExecutionMode() ExecutionMode {
 		return s.Execution.Mode
 	}
 	switch s.SubstrateKind() {
-	case string(SubstrateDriverFlux), string(SubstrateDriverOCI):
+	case string(SubstrateKindFlux), string(SubstrateKindOCI):
 		return ExecutionModeSpokePull
-	case string(SubstrateDriverExternal):
+	case string(SubstrateKindExternal):
 		return ExecutionModeExternalPull
 	default:
 		return ExecutionModeHubPush

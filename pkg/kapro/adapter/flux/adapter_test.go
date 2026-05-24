@@ -20,11 +20,11 @@ type objectShape struct {
 func TestModelDescribesFluxDiscoveryTopology(t *testing.T) {
 	model := flux.Model()
 
-	if model.Driver != kaprov1alpha1.SubstrateDriverFlux {
-		t.Fatalf("driver = %q, want flux", model.Driver)
+	if model.SubstrateKind != kaprov1alpha1.SubstrateKindFlux {
+		t.Fatalf("driver = %q, want flux", model.SubstrateKind)
 	}
-	if model.Runtime != kaprov1alpha1.SubstrateRuntimeBoth {
-		t.Fatalf("runtime = %q, want Both", model.Runtime)
+	if model.ExecutionScope != kaprov1alpha1.ExecutionScopeBoth {
+		t.Fatalf("runtime = %q, want Both", model.ExecutionScope)
 	}
 	if model.DefaultNamespace != "flux-system" {
 		t.Fatalf("default namespace = %q, want flux-system", model.DefaultNamespace)
@@ -53,8 +53,8 @@ func TestDiscoverReturnsFluxModeledResult(t *testing.T) {
 	if !result.Ready || result.Reason != "DiscoveryModeled" {
 		t.Fatalf("discovery readiness = %t/%q, want ready DiscoveryModeled", result.Ready, result.Reason)
 	}
-	if result.Driver != kaprov1alpha1.SubstrateDriverFlux || result.Runtime != kaprov1alpha1.SubstrateRuntimeBoth {
-		t.Fatalf("driver/runtime = %q/%q, want flux/Both", result.Driver, result.Runtime)
+	if result.SubstrateKind != kaprov1alpha1.SubstrateKindFlux || result.ExecutionScope != kaprov1alpha1.ExecutionScopeBoth {
+		t.Fatalf("driver/runtime = %q/%q, want flux/Both", result.SubstrateKind, result.ExecutionScope)
 	}
 	if !strings.Contains(result.Message, "flux-system") {
 		t.Fatalf("message %q does not mention default namespace", result.Message)

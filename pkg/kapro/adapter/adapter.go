@@ -22,10 +22,10 @@ import (
 // Implementations must be safe for concurrent use. Apply and Rollback must be
 // idempotent because controllers can retry after restarts or transient errors.
 type Adapter interface {
-	// Driver returns the substrate kind handled by this adapter.
-	Driver() kaprov1alpha1.SubstrateDriver
-	// Runtime returns where the adapter can run.
-	Runtime() kaprov1alpha1.SubstrateRuntime
+	// SubstrateKind returns the substrate kind handled by this adapter.
+	SubstrateKind() kaprov1alpha1.SubstrateKind
+	// ExecutionScope returns where the adapter can run.
+	ExecutionScope() kaprov1alpha1.ExecutionScope
 	// Capabilities returns the operations this adapter supports.
 	Capabilities() Capabilities
 	// Apply asks the substrate to move one target toward the requested version.
@@ -43,8 +43,8 @@ type Adapter interface {
 // the expected unsupported result as an error path.
 type Capabilities struct {
 	ContractVersion string
-	Driver          kaprov1alpha1.SubstrateDriver
-	Runtime         kaprov1alpha1.SubstrateRuntime
+	SubstrateKind   kaprov1alpha1.SubstrateKind
+	ExecutionScope  kaprov1alpha1.ExecutionScope
 
 	SupportsApply       bool
 	SupportsObserve     bool
@@ -59,8 +59,8 @@ func (c Capabilities) Normalize() Capabilities {
 	if c.ContractVersion == "" {
 		c.ContractVersion = "v1alpha1"
 	}
-	if c.Runtime == "" {
-		c.Runtime = kaprov1alpha1.SubstrateRuntimeBoth
+	if c.ExecutionScope == "" {
+		c.ExecutionScope = kaprov1alpha1.ExecutionScopeBoth
 	}
 	return c
 }
@@ -98,9 +98,9 @@ type Request struct {
 
 // Result is the normalized output from an adapter operation.
 type Result struct {
-	Driver  kaprov1alpha1.SubstrateDriver
-	Runtime kaprov1alpha1.SubstrateRuntime
-	Phase   kaprov1alpha1.DeliveryPhase
+	SubstrateKind  kaprov1alpha1.SubstrateKind
+	ExecutionScope kaprov1alpha1.ExecutionScope
+	Phase          kaprov1alpha1.DeliveryPhase
 
 	Converged bool
 	Applied   bool
@@ -120,20 +120,20 @@ type Result struct {
 // DiscoveryRequest is the public discovery input for existing substrate
 // adoption. It models Substrate.spec.discovery without requiring a controller.
 type DiscoveryRequest struct {
-	Substrate  *kaprov1alpha1.Substrate
-	Driver     kaprov1alpha1.SubstrateDriver
-	Runtime    kaprov1alpha1.SubstrateRuntime
-	Namespace  string
-	Selector   *metav1.LabelSelector
-	MaxObjects int32
-	Parameters map[string]string
+	Substrate      *kaprov1alpha1.Substrate
+	SubstrateKind  kaprov1alpha1.SubstrateKind
+	ExecutionScope kaprov1alpha1.ExecutionScope
+	Namespace      string
+	Selector       *metav1.LabelSelector
+	MaxObjects     int32
+	Parameters     map[string]string
 }
 
 // DiscoveryResult is the normalized discovery output used by reference
 // adapters and future controller wiring.
 type DiscoveryResult struct {
-	Driver  kaprov1alpha1.SubstrateDriver
-	Runtime kaprov1alpha1.SubstrateRuntime
+	SubstrateKind  kaprov1alpha1.SubstrateKind
+	ExecutionScope kaprov1alpha1.ExecutionScope
 
 	Ready                         bool
 	Reason                        string
@@ -152,8 +152,8 @@ type DiscoveryResult struct {
 // shape. It is useful for adapters that only model discovery today while the
 // controller still owns actual list/watch execution.
 type DiscoveryModel struct {
-	Driver             kaprov1alpha1.SubstrateDriver
-	Runtime            kaprov1alpha1.SubstrateRuntime
+	SubstrateKind      kaprov1alpha1.SubstrateKind
+	ExecutionScope     kaprov1alpha1.ExecutionScope
 	DefaultNamespace   string
 	Supported          bool
 	SelectedObjects    []kaprov1alpha1.DiscoveredSubstrateObject
@@ -164,24 +164,24 @@ type DiscoveryModel struct {
 
 // Discover returns the static model as a DiscoveryResult.
 func (m DiscoveryModel) Discover(_ context.Context, req DiscoveryRequest) (DiscoveryResult, error) {
-	driver := m.Driver
+	driver := m.SubstrateKind
 	if driver == "" {
-		driver = req.Driver
+		driver = req.SubstrateKind
 	}
-	runtime := m.Runtime
+	runtime := m.ExecutionScope
 	if runtime == "" {
-		runtime = req.Runtime
+		runtime = req.ExecutionScope
 	}
 	if runtime == "" {
-		runtime = kaprov1alpha1.SubstrateRuntimeBoth
+		runtime = kaprov1alpha1.ExecutionScopeBoth
 	}
 	if !m.Supported {
 		return DiscoveryResult{
-			Driver:  driver,
-			Runtime: runtime,
-			Ready:   false,
-			Reason:  "DiscoveryUnsupported",
-			Message: fmt.Sprintf("discovery is not implemented for %s substrates", driver),
+			SubstrateKind:  driver,
+			ExecutionScope: runtime,
+			Ready:          false,
+			Reason:         "DiscoveryUnsupported",
+			Message:        fmt.Sprintf("discovery is not implemented for %s substrates", driver),
 		}, nil
 	}
 	namespace := req.Namespace
@@ -193,8 +193,8 @@ func (m DiscoveryModel) Discover(_ context.Context, req DiscoveryRequest) (Disco
 		message = fmt.Sprintf("modeled %s discovery shape in namespace %q", driver, namespace)
 	}
 	return DiscoveryResult{
-		Driver:                        driver,
-		Runtime:                       runtime,
+		SubstrateKind:                 driver,
+		ExecutionScope:                runtime,
 		Ready:                         true,
 		Reason:                        "DiscoveryModeled",
 		Message:                       message,
@@ -211,32 +211,32 @@ func (m DiscoveryModel) Discover(_ context.Context, req DiscoveryRequest) (Disco
 // stable reason because the operator still uses the existing runtime actuators
 // for side effects.
 type ReferenceAdapter struct {
-	driver    kaprov1alpha1.SubstrateDriver
-	runtime   kaprov1alpha1.SubstrateRuntime
+	driver    kaprov1alpha1.SubstrateKind
+	runtime   kaprov1alpha1.ExecutionScope
 	discovery DiscoveryModel
 }
 
 // NewReferenceAdapter returns an Adapter backed by a static discovery model.
-func NewReferenceAdapter(driver kaprov1alpha1.SubstrateDriver, runtime kaprov1alpha1.SubstrateRuntime, discovery DiscoveryModel) *ReferenceAdapter {
+func NewReferenceAdapter(driver kaprov1alpha1.SubstrateKind, runtime kaprov1alpha1.ExecutionScope, discovery DiscoveryModel) *ReferenceAdapter {
 	if runtime == "" {
-		runtime = kaprov1alpha1.SubstrateRuntimeBoth
+		runtime = kaprov1alpha1.ExecutionScopeBoth
 	}
-	discovery.Driver = driver
-	if discovery.Runtime == "" {
-		discovery.Runtime = runtime
+	discovery.SubstrateKind = driver
+	if discovery.ExecutionScope == "" {
+		discovery.ExecutionScope = runtime
 	}
 	return &ReferenceAdapter{driver: driver, runtime: runtime, discovery: discovery}
 }
 
-func (a *ReferenceAdapter) Driver() kaprov1alpha1.SubstrateDriver { return a.driver }
-func (a *ReferenceAdapter) Runtime() kaprov1alpha1.SubstrateRuntime {
+func (a *ReferenceAdapter) SubstrateKind() kaprov1alpha1.SubstrateKind { return a.driver }
+func (a *ReferenceAdapter) ExecutionScope() kaprov1alpha1.ExecutionScope {
 	return a.runtime
 }
 
 func (a *ReferenceAdapter) Capabilities() Capabilities {
 	return Capabilities{
-		Driver:           a.driver,
-		Runtime:          a.runtime,
+		SubstrateKind:    a.driver,
+		ExecutionScope:   a.runtime,
 		SupportsDiscover: a.discovery.Supported,
 	}.Normalize()
 }
@@ -258,7 +258,7 @@ func (a *ReferenceAdapter) Discover(ctx context.Context, req DiscoveryRequest) (
 }
 
 func (a *ReferenceAdapter) baseResult(phase kaprov1alpha1.DeliveryPhase) Result {
-	return Result{Driver: a.driver, Runtime: a.runtime, Phase: phase}
+	return Result{SubstrateKind: a.driver, ExecutionScope: a.runtime, Phase: phase}
 }
 
 func (a *ReferenceAdapter) unsupported(operation string) Result {

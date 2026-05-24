@@ -120,11 +120,11 @@ the owning team approves exactly which fields Kapro may write.
 
 For continuous in-cluster discovery, `kapro adopt argo --apply` or
 `kapro adopt flux --apply` creates or updates a `Substrate` and matching
-`AdapterPolicy`. The policy fails closed when the Substrate is missing, discovery
+`SubstrateDiscoveryPolicy`. The policy fails closed when the Substrate is missing, discovery
 is disabled, the policy adapter does not match the Substrate adapter, or the
 registered adapter cannot complete discovery. Use `--dry-run=client` with
 `--apply` to validate the live writes without persisting resources. Run the
-operator with `substrate` and `adapterpolicy` controllers when using this live
+operator with `substrate` and `substratediscoverypolicy` controllers when using this live
 apply path.
 
 ## Promotion Flow

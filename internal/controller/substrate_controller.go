@@ -174,7 +174,7 @@ func (r *SubstrateReconciler) observeDiscovery(ctx context.Context, profile *kap
 		return counts, "DiscoveryDisabled", "substrate discovery is disabled"
 	}
 	namespace := "argocd"
-	if profile.Spec.SubstrateKind() == string(kaprov1alpha1.SubstrateDriverFlux) {
+	if profile.Spec.SubstrateKind() == string(kaprov1alpha1.SubstrateKindFlux) {
 		namespace = "flux-system"
 	}
 	if profile.Spec.Parameters["namespace"] != "" {
@@ -182,9 +182,9 @@ func (r *SubstrateReconciler) observeDiscovery(ctx context.Context, profile *kap
 	}
 
 	switch profile.Spec.SubstrateKind() {
-	case string(kaprov1alpha1.SubstrateDriverArgo):
+	case string(kaprov1alpha1.SubstrateKindArgo):
 		return r.observeArgoDiscovery(ctx, profile, namespace)
-	case string(kaprov1alpha1.SubstrateDriverFlux):
+	case string(kaprov1alpha1.SubstrateKindFlux):
 		return r.observeFluxDiscovery(ctx, profile, namespace)
 	default:
 		return counts, "DiscoveryUnsupported", fmt.Sprintf("discovery is not implemented for %s substrates", profile.Spec.SubstrateKind())
@@ -437,9 +437,9 @@ func (r *SubstrateReconciler) profileReadiness(ctx context.Context, profile *kap
 	}
 	kind := profile.Spec.SubstrateKind()
 	switch kind {
-	case string(kaprov1alpha1.SubstrateDriverFlux), string(kaprov1alpha1.SubstrateDriverArgo), string(kaprov1alpha1.SubstrateDriverOCI):
+	case string(kaprov1alpha1.SubstrateKindFlux), string(kaprov1alpha1.SubstrateKindArgo), string(kaprov1alpha1.SubstrateKindOCI):
 		return true, "BuiltInSubstrateReady", fmt.Sprintf("built-in %s substrate is available", kind)
-	case string(kaprov1alpha1.SubstrateDriverExternal):
+	case string(kaprov1alpha1.SubstrateKindExternal):
 		if profile.Spec.PluginRef == "" {
 			return false, "MissingPluginRef", "external substrate requires spec.pluginRef"
 		}
@@ -742,17 +742,17 @@ func substrateProfileMatchesObject(profile *kaprov1alpha1.Substrate, obj client.
 		return false
 	}
 	gvk := obj.GetObjectKind().GroupVersionKind()
-	var objectDriver kaprov1alpha1.SubstrateDriver
+	var objectDriver kaprov1alpha1.SubstrateKind
 	switch {
 	case isCoreSecretObject(obj):
 		if obj.GetLabels()["argocd.argoproj.io/secret-type"] != "cluster" {
 			return false
 		}
-		objectDriver = kaprov1alpha1.SubstrateDriverArgo
+		objectDriver = kaprov1alpha1.SubstrateKindArgo
 	case gvk.Group == "argoproj.io":
-		objectDriver = kaprov1alpha1.SubstrateDriverArgo
+		objectDriver = kaprov1alpha1.SubstrateKindArgo
 	case strings.HasSuffix(gvk.Group, "toolkit.fluxcd.io"):
-		objectDriver = kaprov1alpha1.SubstrateDriverFlux
+		objectDriver = kaprov1alpha1.SubstrateKindFlux
 	default:
 		return false
 	}
@@ -760,7 +760,7 @@ func substrateProfileMatchesObject(profile *kaprov1alpha1.Substrate, obj client.
 		return false
 	}
 	namespace := "argocd"
-	if profile.Spec.SubstrateKind() == string(kaprov1alpha1.SubstrateDriverFlux) {
+	if profile.Spec.SubstrateKind() == string(kaprov1alpha1.SubstrateKindFlux) {
 		namespace = "flux-system"
 	}
 	if profile.Spec.Parameters["namespace"] != "" {

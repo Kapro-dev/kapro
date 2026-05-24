@@ -25,11 +25,11 @@ func (r Registration) RegistryKey() string {
 	if mode == "" && len(r.Capabilities.Modes) > 0 {
 		mode = r.Capabilities.Modes[0]
 	}
-	adapter := r.Capabilities.Adapter
-	if adapter == "" {
-		adapter = string(r.Capabilities.Driver)
+	actuator := r.Capabilities.Actuator
+	if actuator == "" {
+		actuator = string(r.Capabilities.SubstrateKind)
 	}
-	return string(mode) + "/" + adapter
+	return string(mode) + "/" + actuator
 }
 
 // Registry resolves actuator implementations by runtime key and retains
@@ -185,9 +185,8 @@ func normalizeRegistration(reg Registration) (string, Registration, error) {
 func capabilitiesEmpty(c Capabilities) bool {
 	return c.ContractVersion == "" &&
 		c.SubstrateKind == "" &&
-		c.Driver == "" &&
-		c.Adapter == "" &&
-		c.Runtime == "" &&
+		c.Actuator == "" &&
+		c.ExecutionScope == "" &&
 		len(c.ExecutionModes) == 0 &&
 		len(c.Modes) == 0 &&
 		!c.SupportsApply &&

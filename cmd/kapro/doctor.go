@@ -478,7 +478,7 @@ func checkGitOpsSubstrates(ctx context.Context, c client.Client) doctorFinding {
 			namespace = defaultSubstrateNamespace(kind)
 		}
 		details = append(details, fmt.Sprintf("%s substrate=%s execution=%s mode=%s namespace=%s", substrate.Name, kind, executionMode, mode, namespace))
-		if kind == string(kaprov1alpha1.SubstrateDriverArgo) || kind == string(kaprov1alpha1.SubstrateDriverFlux) {
+		if kind == string(kaprov1alpha1.SubstrateKindArgo) || kind == string(kaprov1alpha1.SubstrateKindFlux) {
 			var ns corev1.Namespace
 			if err := c.Get(ctx, types.NamespacedName{Name: namespace}, &ns); err != nil {
 				if apierrors.IsNotFound(err) {
@@ -623,7 +623,7 @@ func accessKey(a authv1.ResourceAttributes) string {
 }
 
 var expectedKaproCRDs = []string{
-	"adapterpolicies.kapro.io",
+	"substratediscoverypolicies.kapro.io",
 	"argocdsubstrateconfigs.argocd.substrate.kapro.io",
 	"approvals.kapro.io",
 	"clusters.kapro.io",
@@ -651,10 +651,10 @@ func expectedCRDGroup(name string) string {
 }
 
 var requiredOperatorAccess = []authv1.ResourceAttributes{
-	{Group: "kapro.io", Resource: "adapterpolicies", Verb: "get"},
-	{Group: "kapro.io", Resource: "adapterpolicies", Verb: "list"},
-	{Group: "kapro.io", Resource: "adapterpolicies", Verb: "watch"},
-	{Group: "kapro.io", Resource: "adapterpolicies", Subresource: "status", Verb: "update"},
+	{Group: "kapro.io", Resource: "substratediscoverypolicies", Verb: "get"},
+	{Group: "kapro.io", Resource: "substratediscoverypolicies", Verb: "list"},
+	{Group: "kapro.io", Resource: "substratediscoverypolicies", Verb: "watch"},
+	{Group: "kapro.io", Resource: "substratediscoverypolicies", Subresource: "status", Verb: "update"},
 	{Group: "argocd.substrate.kapro.io", Resource: "argocdsubstrateconfigs", Verb: "get"},
 	{Group: "argocd.substrate.kapro.io", Resource: "argocdsubstrateconfigs", Verb: "list"},
 	{Group: "argocd.substrate.kapro.io", Resource: "argocdsubstrateconfigs", Verb: "watch"},

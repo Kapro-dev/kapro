@@ -68,7 +68,7 @@ func (r *ParametersRefResolver) Resolve(ctx context.Context, req spokeprovider.R
 	}
 	repoTpl := strings.TrimSpace(req.Parameters[ParamRepository])
 	if repoTpl == "" {
-		return delivery.ArtifactRef{}, fmt.Errorf("parameter %q required for driver=oci", ParamRepository)
+		return delivery.ArtifactRef{}, fmt.Errorf("parameter %q required for substrate kind=oci", ParamRepository)
 	}
 	tagTpl := req.Parameters[ParamTag]
 	if tagTpl == "" {

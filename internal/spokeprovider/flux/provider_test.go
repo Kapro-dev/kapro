@@ -17,8 +17,8 @@ import (
 
 func TestDriverReturnsFlux(t *testing.T) {
 	p := NewProvider(nil)
-	if got, want := p.Driver(), kaprov1alpha1.SubstrateDriverFlux; got != want {
-		t.Fatalf("Driver() = %q, want %q", got, want)
+	if got, want := p.SubstrateKind(), kaprov1alpha1.SubstrateKindFlux; got != want {
+		t.Fatalf("SubstrateKind() = %q, want %q", got, want)
 	}
 }
 

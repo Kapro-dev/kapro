@@ -9,13 +9,13 @@ import (
 )
 
 type stubProvider struct {
-	driver kaprov1alpha1.SubstrateDriver
+	driver kaprov1alpha1.SubstrateKind
 }
 
-func (s *stubProvider) Driver() kaprov1alpha1.SubstrateDriver { return s.driver }
+func (s *stubProvider) SubstrateKind() kaprov1alpha1.SubstrateKind { return s.driver }
 func (s *stubProvider) Capabilities() Capabilities {
 	return Capabilities{
-		Driver:            s.driver,
+		SubstrateKind:     s.driver,
 		SupportsReconcile: true,
 		SupportsObserve:   true,
 	}
@@ -26,30 +26,30 @@ func (s *stubProvider) Reconcile(ctx context.Context, req ReconcileRequest) Reco
 
 func TestRegistry_RegisterAndResolve(t *testing.T) {
 	r := NewRegistry()
-	p := &stubProvider{driver: kaprov1alpha1.SubstrateDriverOCI}
-	if err := r.Register(kaprov1alpha1.SubstrateDriverOCI, p); err != nil {
+	p := &stubProvider{driver: kaprov1alpha1.SubstrateKindOCI}
+	if err := r.Register(kaprov1alpha1.SubstrateKindOCI, p); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
-	got, err := r.Resolve(kaprov1alpha1.SubstrateDriverOCI)
+	got, err := r.Resolve(kaprov1alpha1.SubstrateKindOCI)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
 	if got != p {
 		t.Fatalf("Resolve returned a different provider instance")
 	}
-	reg, ok := r.Registration(kaprov1alpha1.SubstrateDriverOCI)
-	if !ok || reg.Capabilities.Driver != kaprov1alpha1.SubstrateDriverOCI || !reg.Capabilities.SupportsReconcile {
+	reg, ok := r.Registration(kaprov1alpha1.SubstrateKindOCI)
+	if !ok || reg.Capabilities.SubstrateKind != kaprov1alpha1.SubstrateKindOCI || !reg.Capabilities.SupportsReconcile {
 		t.Fatalf("registration = %#v/%v, want OCI reconcile metadata", reg, ok)
 	}
 }
 
 func TestRegistry_RegisterDuplicate(t *testing.T) {
 	r := NewRegistry()
-	p := &stubProvider{driver: kaprov1alpha1.SubstrateDriverOCI}
-	if err := r.Register(kaprov1alpha1.SubstrateDriverOCI, p); err != nil {
+	p := &stubProvider{driver: kaprov1alpha1.SubstrateKindOCI}
+	if err := r.Register(kaprov1alpha1.SubstrateKindOCI, p); err != nil {
 		t.Fatalf("first Register: %v", err)
 	}
-	err := r.Register(kaprov1alpha1.SubstrateDriverOCI, p)
+	err := r.Register(kaprov1alpha1.SubstrateKindOCI, p)
 	if err == nil || !strings.Contains(err.Error(), "already registered") {
 		t.Fatalf("expected duplicate-registration error, got %v", err)
 	}
@@ -60,31 +60,31 @@ func TestRegistry_RegisterRejectsEmptyAndNil(t *testing.T) {
 	if err := r.Register("", &stubProvider{}); err == nil {
 		t.Fatalf("expected error for empty driver")
 	}
-	if err := r.Register(kaprov1alpha1.SubstrateDriverOCI, nil); err == nil {
+	if err := r.Register(kaprov1alpha1.SubstrateKindOCI, nil); err == nil {
 		t.Fatalf("expected error for nil provider")
 	}
 }
 
 func TestRegistry_UpsertReturnsPrevious(t *testing.T) {
 	r := NewRegistry()
-	first := &stubProvider{driver: kaprov1alpha1.SubstrateDriverOCI}
-	second := &stubProvider{driver: kaprov1alpha1.SubstrateDriverOCI}
+	first := &stubProvider{driver: kaprov1alpha1.SubstrateKindOCI}
+	second := &stubProvider{driver: kaprov1alpha1.SubstrateKindOCI}
 
-	prev, err := r.Upsert(kaprov1alpha1.SubstrateDriverOCI, first)
+	prev, err := r.Upsert(kaprov1alpha1.SubstrateKindOCI, first)
 	if err != nil {
 		t.Fatalf("first Upsert: %v", err)
 	}
 	if prev != nil {
 		t.Fatalf("first Upsert returned non-nil prev: %v", prev)
 	}
-	prev, err = r.Upsert(kaprov1alpha1.SubstrateDriverOCI, second)
+	prev, err = r.Upsert(kaprov1alpha1.SubstrateKindOCI, second)
 	if err != nil {
 		t.Fatalf("second Upsert: %v", err)
 	}
 	if prev != first {
 		t.Fatalf("second Upsert did not return the first provider")
 	}
-	got, err := r.Resolve(kaprov1alpha1.SubstrateDriverOCI)
+	got, err := r.Resolve(kaprov1alpha1.SubstrateKindOCI)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -95,10 +95,10 @@ func TestRegistry_UpsertReturnsPrevious(t *testing.T) {
 
 func TestRegistry_RegisterRegistrationStoresMetadata(t *testing.T) {
 	r := NewRegistry()
-	p := &stubProvider{driver: kaprov1alpha1.SubstrateDriverFlux}
+	p := &stubProvider{driver: kaprov1alpha1.SubstrateKindFlux}
 	if err := r.RegisterRegistration(Registration{
 		Capabilities: Capabilities{
-			Driver:            kaprov1alpha1.SubstrateDriverFlux,
+			SubstrateKind:     kaprov1alpha1.SubstrateKindFlux,
 			SupportsReconcile: true,
 			SupportsObserve:   true,
 		},
@@ -106,7 +106,7 @@ func TestRegistry_RegisterRegistrationStoresMetadata(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("RegisterRegistration: %v", err)
 	}
-	reg, ok := r.Registration(kaprov1alpha1.SubstrateDriverFlux)
+	reg, ok := r.Registration(kaprov1alpha1.SubstrateKindFlux)
 	if !ok || reg.Provider != p || reg.Capabilities.ContractVersion != ContractVersionV1Alpha1 {
 		t.Fatalf("registration = %#v/%v", reg, ok)
 	}
@@ -114,12 +114,12 @@ func TestRegistry_RegisterRegistrationStoresMetadata(t *testing.T) {
 
 func TestRegistry_RegisterRegistrationRejectsMetadataMismatch(t *testing.T) {
 	r := NewRegistry()
-	p := &stubProvider{driver: kaprov1alpha1.SubstrateDriverFlux}
+	p := &stubProvider{driver: kaprov1alpha1.SubstrateKindFlux}
 	err := r.RegisterRegistration(Registration{
-		Driver: kaprov1alpha1.SubstrateDriverFlux,
+		SubstrateKind: kaprov1alpha1.SubstrateKindFlux,
 		Capabilities: Capabilities{
 			ContractVersion:   ContractVersionV1Alpha1,
-			Driver:            kaprov1alpha1.SubstrateDriverOCI,
+			SubstrateKind:     kaprov1alpha1.SubstrateKindOCI,
 			SupportsReconcile: true,
 		},
 		Provider: p,
@@ -131,24 +131,24 @@ func TestRegistry_RegisterRegistrationRejectsMetadataMismatch(t *testing.T) {
 
 func TestRegistry_RegisterRegistrationRejectsProviderDriverMismatch(t *testing.T) {
 	r := NewRegistry()
-	p := &stubProvider{driver: kaprov1alpha1.SubstrateDriverFlux}
+	p := &stubProvider{driver: kaprov1alpha1.SubstrateKindFlux}
 	err := r.RegisterRegistration(Registration{
-		Driver:   kaprov1alpha1.SubstrateDriverOCI,
-		Provider: p,
+		SubstrateKind: kaprov1alpha1.SubstrateKindOCI,
+		Provider:      p,
 	})
-	if err == nil || !strings.Contains(err.Error(), "provider driver") {
+	if err == nil || !strings.Contains(err.Error(), "provider substrate kind") {
 		t.Fatalf("expected provider-driver mismatch error, got %v", err)
 	}
 }
 
 func TestRegistry_RegisterRegistrationRejectsUnknownContract(t *testing.T) {
 	r := NewRegistry()
-	p := &stubProvider{driver: kaprov1alpha1.SubstrateDriverFlux}
+	p := &stubProvider{driver: kaprov1alpha1.SubstrateKindFlux}
 	err := r.RegisterRegistration(Registration{
-		Driver: kaprov1alpha1.SubstrateDriverFlux,
+		SubstrateKind: kaprov1alpha1.SubstrateKindFlux,
 		Capabilities: Capabilities{
 			ContractVersion:   "v9",
-			Driver:            kaprov1alpha1.SubstrateDriverFlux,
+			SubstrateKind:     kaprov1alpha1.SubstrateKindFlux,
 			SupportsReconcile: true,
 		},
 		Provider: p,
@@ -163,33 +163,33 @@ func TestRegistry_UpsertRejectsEmptyAndNil(t *testing.T) {
 	if _, err := r.Upsert("", &stubProvider{}); err == nil {
 		t.Fatalf("expected error for empty driver")
 	}
-	if _, err := r.Upsert(kaprov1alpha1.SubstrateDriverOCI, nil); err == nil {
+	if _, err := r.Upsert(kaprov1alpha1.SubstrateKindOCI, nil); err == nil {
 		t.Fatalf("expected error for nil provider")
 	}
 }
 
 func TestRegistry_Unregister(t *testing.T) {
 	r := NewRegistry()
-	p := &stubProvider{driver: kaprov1alpha1.SubstrateDriverFlux}
-	if err := r.Register(kaprov1alpha1.SubstrateDriverFlux, p); err != nil {
+	p := &stubProvider{driver: kaprov1alpha1.SubstrateKindFlux}
+	if err := r.Register(kaprov1alpha1.SubstrateKindFlux, p); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
-	prev, ok := r.Unregister(kaprov1alpha1.SubstrateDriverFlux)
+	prev, ok := r.Unregister(kaprov1alpha1.SubstrateKindFlux)
 	if !ok || prev != p {
 		t.Fatalf("Unregister returned ok=%v prev=%v", ok, prev)
 	}
-	if _, err := r.Resolve(kaprov1alpha1.SubstrateDriverFlux); err == nil {
+	if _, err := r.Resolve(kaprov1alpha1.SubstrateKindFlux); err == nil {
 		t.Fatalf("expected Resolve to fail after Unregister")
 	}
-	if _, ok := r.Unregister(kaprov1alpha1.SubstrateDriverFlux); ok {
+	if _, ok := r.Unregister(kaprov1alpha1.SubstrateKindFlux); ok {
 		t.Fatalf("expected ok=false on double unregister")
 	}
 }
 
 func TestRegistry_ResolveUnknown(t *testing.T) {
 	r := NewRegistry()
-	_, err := r.Resolve(kaprov1alpha1.SubstrateDriverExternal)
-	if err == nil || !strings.Contains(err.Error(), "unknown substrate driver") {
+	_, err := r.Resolve(kaprov1alpha1.SubstrateKindExternal)
+	if err == nil || !strings.Contains(err.Error(), "unknown substrate kind") {
 		t.Fatalf("expected unknown-driver error, got %v", err)
 	}
 }

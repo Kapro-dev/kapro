@@ -99,7 +99,7 @@ func validateActuator(mc *kaprov1alpha1.Cluster) error {
 func validateResolvedSubstrateParameters(mc *kaprov1alpha1.Cluster, substrateKind string) []string {
 	act := mc.Spec.Delivery
 	switch substrateKind {
-	case string(kaprov1alpha1.SubstrateDriverFlux):
+	case string(kaprov1alpha1.SubstrateKindFlux):
 		if act.Mode == kaprov1alpha1.DeliveryModePull && act.Param("ociRepository", "") == "" {
 			return []string{"cluster.spec.delivery.parameters.ociRepository is required by flux pull delivery; Target execution will fail until it is set"}
 		}

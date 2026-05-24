@@ -25,7 +25,7 @@ func (a stagedActuator) Prepare(context.Context, StageRequest) (StageHandle, err
 	}
 	return StageHandle{
 		ID:        "stage-1",
-		Substrate: kaprov1alpha1.SubstrateDriverOCI,
+		Substrate: kaprov1alpha1.SubstrateKindOCI,
 		AppKeys:   []string{"api", "web"},
 		Expiry:    metav1.Now(),
 	}, nil

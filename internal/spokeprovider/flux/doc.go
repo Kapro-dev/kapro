@@ -1,5 +1,5 @@
 // Package flux implements the spoke-side delivery Provider for
-// SubstrateDriverFlux. The provider OBSERVES local Flux state — it never
+// SubstrateKindFlux. The provider OBSERVES local Flux state — it never
 // mutates Flux CRs.
 //
 // Division of labour:

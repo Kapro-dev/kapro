@@ -35,7 +35,7 @@ Preview. The table below is the source of truth for the current contract level.
 
 | Surface | Path | Level |
 |---|---|---|
-| Public promotion CRDs | `api/kapro/v1alpha1` `Fleet`, `Promotion`, `Plan`, `Source`, `Cluster`, `ClusterTemplate`, `Substrate`, `SubstrateClass`, `Approval`, `Policy`, `AdapterPolicy`, `Trigger`, `Plugin` | Alpha |
+| Public promotion CRDs | `api/kapro/v1alpha1` `Fleet`, `Promotion`, `Plan`, `Source`, `Cluster`, `ClusterTemplate`, `Substrate`, `SubstrateClass`, `Approval`, `Policy`, `SubstrateDiscoveryPolicy`, `Trigger`, `Plugin` | Alpha |
 | Runtime CRDs | `api/kaproruntime/v1alpha1` `PromotionRun`, `Target`, `DecisionTrace` | Alpha; controller-owned, not for Git |
 | Reference substrate config CRDs | `api/substrate/*/v1alpha1` `ArgoCDSubstrateConfig`, `FluxSubstrateConfig`, `KubernetesApplyConfig`, `OCIBundleApplyConfig` | Alpha |
 | Agent decision APIs | `api/kapro/v1alpha1` `Policy`, `api/kaproruntime/v1alpha1` `Target.status.decisionTrace`, Decision API HTTP routes | Preview |

@@ -11,7 +11,7 @@ metadata:
 rules:
   - apiGroups: ["kapro.io"]
     resources:
-      - adapterpolicies
+      - substratediscoverypolicies
       - approvals
       - clusters
       - clustertemplates
@@ -27,7 +27,7 @@ rules:
     verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
   - apiGroups: ["kapro.io"]
     resources:
-      - adapterpolicies/status
+      - substratediscoverypolicies/status
       - approvals/status
       - clusters/status
       - clustertemplates/status
@@ -101,7 +101,7 @@ metadata:
 rules:
   - apiGroups: ["kapro.io"]
     resources:
-      - adapterpolicies
+      - substratediscoverypolicies
       - approvals
       - clusters
       - clustertemplates

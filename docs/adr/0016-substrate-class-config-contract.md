@@ -73,7 +73,7 @@ Typed config CRDs owned by substrate packages are clearer.
 ### Rename `Backend` to `Substrate` immediately
 
 The repository already has `Backend` references in `Fleet`, `Cluster`,
-`Source`, `AdapterPolicy`, examples, docs, admission, and runtime controllers.
+`Source`, `SubstrateDiscoveryPolicy`, examples, docs, admission, and runtime controllers.
 Renaming now would be a large migration with little immediate runtime value.
 The Phase-1 contract is additive and leaves the rename decision for a later API
 transition.

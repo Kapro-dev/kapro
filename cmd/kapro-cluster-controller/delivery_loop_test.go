@@ -24,15 +24,15 @@ import (
 // scriptedProvider records its Reconcile inputs and returns a fixed result
 // keyed by app. Unknown apps yield a Failed result with a sentinel error.
 type scriptedProvider struct {
-	driver  kaprov1alpha1.SubstrateDriver
+	driver  kaprov1alpha1.SubstrateKind
 	results map[string]spokeprovider.ReconcileResult
 	calls   []spokeprovider.ReconcileRequest
 }
 
-func (s *scriptedProvider) Driver() kaprov1alpha1.SubstrateDriver { return s.driver }
+func (s *scriptedProvider) SubstrateKind() kaprov1alpha1.SubstrateKind { return s.driver }
 func (s *scriptedProvider) Capabilities() spokeprovider.Capabilities {
 	return spokeprovider.Capabilities{
-		Driver:            s.driver,
+		SubstrateKind:     s.driver,
 		SupportsReconcile: true,
 		SupportsObserve:   true,
 		SupportsApply:     true,
@@ -61,7 +61,7 @@ func newDeliveryFC(name string, desired map[string]string, suspend bool, substra
 	return fc
 }
 
-func newDeliveryBP(name string, driver kaprov1alpha1.SubstrateDriver) *kaprov1alpha1.Substrate {
+func newDeliveryBP(name string, driver kaprov1alpha1.SubstrateKind) *kaprov1alpha1.Substrate {
 	bp := &kaprov1alpha1.Substrate{}
 	bp.Name = name
 	bp.Spec.Substrate = &kaprov1alpha1.SubstrateImplementationSpec{Kind: string(driver), Actuator: string(driver)}
@@ -84,18 +84,18 @@ func deliveryHub(t *testing.T, fc *kaprov1alpha1.Cluster, bp *kaprov1alpha1.Subs
 
 func TestDeliveryLoop_ConvergedAdvancesCurrentVersions(t *testing.T) {
 	fc := newDeliveryFC("c1", map[string]string{"api": "1.0", "web": "2.0"}, false, "oci-default")
-	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateDriverOCI)
+	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateKindOCI)
 	hub := deliveryHub(t, fc, bp)
 
 	provider := &scriptedProvider{
-		driver: kaprov1alpha1.SubstrateDriverOCI,
+		driver: kaprov1alpha1.SubstrateKindOCI,
 		results: map[string]spokeprovider.ReconcileResult{
 			"api": {Phase: kaprov1alpha1.DeliveryPhaseConverged, ObservedDigest: "sha256:aaa", AppliedObjects: 5, Format: "raw-yaml"},
 			"web": {Phase: kaprov1alpha1.DeliveryPhaseConverged, ObservedDigest: "sha256:bbb", AppliedObjects: 3, Format: "helm"},
 		},
 	}
 	reg := spokeprovider.NewRegistry()
-	if err := reg.Register(kaprov1alpha1.SubstrateDriverOCI, provider); err != nil {
+	if err := reg.Register(kaprov1alpha1.SubstrateKindOCI, provider); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 	l := &deliveryLoop{
@@ -132,17 +132,17 @@ func TestDeliveryLoop_ConvergedAdvancesCurrentVersions(t *testing.T) {
 
 func TestDeliveryLoop_RecordsDeliveryMetrics(t *testing.T) {
 	fc := newDeliveryFC("metrics-c1", map[string]string{"api": "1.0"}, false, "oci-default")
-	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateDriverOCI)
+	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateKindOCI)
 	hub := deliveryHub(t, fc, bp)
 
 	provider := &scriptedProvider{
-		driver: kaprov1alpha1.SubstrateDriverOCI,
+		driver: kaprov1alpha1.SubstrateKindOCI,
 		results: map[string]spokeprovider.ReconcileResult{
 			"api": {Phase: kaprov1alpha1.DeliveryPhaseConverged},
 		},
 	}
 	reg := spokeprovider.NewRegistry()
-	_ = reg.Register(kaprov1alpha1.SubstrateDriverOCI, provider)
+	_ = reg.Register(kaprov1alpha1.SubstrateKindOCI, provider)
 	l := &deliveryLoop{
 		Hub:         newHubClientFromStatic(hub),
 		ClusterName: "metrics-c1",
@@ -168,11 +168,11 @@ func TestDeliveryLoop_EmitsDeliverySpans(t *testing.T) {
 	defer otel.SetTracerProvider(previous)
 
 	fc := newDeliveryFC("trace-c1", map[string]string{"api": "1.0"}, false, "oci-default")
-	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateDriverOCI)
+	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateKindOCI)
 	hub := deliveryHub(t, fc, bp)
 
 	providerImpl := &scriptedProvider{
-		driver: kaprov1alpha1.SubstrateDriverOCI,
+		driver: kaprov1alpha1.SubstrateKindOCI,
 		results: map[string]spokeprovider.ReconcileResult{
 			"api": {
 				Phase:          kaprov1alpha1.DeliveryPhaseConverged,
@@ -183,7 +183,7 @@ func TestDeliveryLoop_EmitsDeliverySpans(t *testing.T) {
 		},
 	}
 	reg := spokeprovider.NewRegistry()
-	_ = reg.Register(kaprov1alpha1.SubstrateDriverOCI, providerImpl)
+	_ = reg.Register(kaprov1alpha1.SubstrateKindOCI, providerImpl)
 	l := &deliveryLoop{
 		Hub:         newHubClientFromStatic(hub),
 		ClusterName: "trace-c1",
@@ -219,7 +219,7 @@ func TestDeliveryLoop_EmitsDeliverySpans(t *testing.T) {
 		"kapro.version":                  "1.0",
 		"kapro.delivery.substrate_ref":   "oci-default",
 		"kapro.delivery.substrate":       "oci-default",
-		"kapro.delivery.driver":          string(kaprov1alpha1.SubstrateDriverOCI),
+		"kapro.delivery.substrate_kind":  string(kaprov1alpha1.SubstrateKindOCI),
 		"kapro.delivery.phase":           string(kaprov1alpha1.DeliveryPhaseConverged),
 		"kapro.delivery.result":          "success",
 		"kapro.delivery.format":          "raw-yaml",
@@ -242,17 +242,17 @@ func TestDeliveryLoop_FailedDeliverySpanIsError(t *testing.T) {
 	defer otel.SetTracerProvider(previous)
 
 	fc := newDeliveryFC("trace-fail", map[string]string{"api": "1.0"}, false, "oci-default")
-	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateDriverOCI)
+	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateKindOCI)
 	hub := deliveryHub(t, fc, bp)
 
 	providerImpl := &scriptedProvider{
-		driver: kaprov1alpha1.SubstrateDriverOCI,
+		driver: kaprov1alpha1.SubstrateKindOCI,
 		results: map[string]spokeprovider.ReconcileResult{
 			"api": {Phase: kaprov1alpha1.DeliveryPhaseFailed, Err: errors.New("registry 503")},
 		},
 	}
 	reg := spokeprovider.NewRegistry()
-	_ = reg.Register(kaprov1alpha1.SubstrateDriverOCI, providerImpl)
+	_ = reg.Register(kaprov1alpha1.SubstrateKindOCI, providerImpl)
 	l := &deliveryLoop{
 		Hub:         newHubClientFromStatic(hub),
 		ClusterName: "trace-fail",
@@ -276,17 +276,17 @@ func TestDeliveryLoop_FailedDeliverySpanIsError(t *testing.T) {
 func TestDeliveryLoop_FailedDoesNotAdvanceCurrentVersions(t *testing.T) {
 	fc := newDeliveryFC("c1", map[string]string{"api": "1.0"}, false, "oci-default")
 	fc.Status.CurrentVersions = map[string]string{"api": "0.9"}
-	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateDriverOCI)
+	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateKindOCI)
 	hub := deliveryHub(t, fc, bp)
 
 	provider := &scriptedProvider{
-		driver: kaprov1alpha1.SubstrateDriverOCI,
+		driver: kaprov1alpha1.SubstrateKindOCI,
 		results: map[string]spokeprovider.ReconcileResult{
 			"api": {Phase: kaprov1alpha1.DeliveryPhaseFailed, Err: errors.New("registry 503")},
 		},
 	}
 	reg := spokeprovider.NewRegistry()
-	_ = reg.Register(kaprov1alpha1.SubstrateDriverOCI, provider)
+	_ = reg.Register(kaprov1alpha1.SubstrateKindOCI, provider)
 	l := &deliveryLoop{
 		Hub:         newHubClientFromStatic(hub),
 		ClusterName: "c1",
@@ -320,11 +320,11 @@ func TestDeliveryLoop_WritesStagingDiagnostics(t *testing.T) {
 		Type:          kaprov1alpha1.DeliveryStagingTwoPhase,
 		FailurePolicy: kaprov1alpha1.DeliveryStagingFailureAbort,
 	}
-	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateDriverOCI)
+	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateKindOCI)
 	hub := deliveryHub(t, fc, bp)
 
 	provider := &scriptedProvider{
-		driver: kaprov1alpha1.SubstrateDriverOCI,
+		driver: kaprov1alpha1.SubstrateKindOCI,
 		results: map[string]spokeprovider.ReconcileResult{
 			"api": {
 				Phase: kaprov1alpha1.DeliveryPhaseFailed,
@@ -338,7 +338,7 @@ func TestDeliveryLoop_WritesStagingDiagnostics(t *testing.T) {
 		},
 	}
 	reg := spokeprovider.NewRegistry()
-	_ = reg.Register(kaprov1alpha1.SubstrateDriverOCI, provider)
+	_ = reg.Register(kaprov1alpha1.SubstrateKindOCI, provider)
 	l := &deliveryLoop{
 		Hub:         newHubClientFromStatic(hub),
 		ClusterName: "c1",
@@ -377,12 +377,12 @@ func TestDeliveryLoop_WritesStagingDiagnostics(t *testing.T) {
 func TestDeliveryLoop_SuspendedWritesSkipped(t *testing.T) {
 	fc := newDeliveryFC("c1", map[string]string{"api": "1.0", "web": "2.0"}, true, "oci-default")
 	fc.Status.CurrentVersions = map[string]string{"api": "0.9"}
-	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateDriverOCI)
+	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateKindOCI)
 	hub := deliveryHub(t, fc, bp)
 
-	provider := &scriptedProvider{driver: kaprov1alpha1.SubstrateDriverOCI}
+	provider := &scriptedProvider{driver: kaprov1alpha1.SubstrateKindOCI}
 	reg := spokeprovider.NewRegistry()
-	_ = reg.Register(kaprov1alpha1.SubstrateDriverOCI, provider)
+	_ = reg.Register(kaprov1alpha1.SubstrateKindOCI, provider)
 	l := &deliveryLoop{
 		Hub:         newHubClientFromStatic(hub),
 		ClusterName: "c1",
@@ -413,12 +413,12 @@ func TestDeliveryLoop_SuspendedWritesSkipped(t *testing.T) {
 
 func TestDeliveryLoop_UnknownDriverFailsLoudly(t *testing.T) {
 	fc := newDeliveryFC("c1", map[string]string{"api": "1.0"}, false, "external-1")
-	bp := newDeliveryBP("external-1", kaprov1alpha1.SubstrateDriverExternal)
+	bp := newDeliveryBP("external-1", kaprov1alpha1.SubstrateKindExternal)
 	hub := deliveryHub(t, fc, bp)
 
 	// Registry has only oci, not external. Resolve will fail.
 	reg := spokeprovider.NewRegistry()
-	_ = reg.Register(kaprov1alpha1.SubstrateDriverOCI, &scriptedProvider{driver: kaprov1alpha1.SubstrateDriverOCI})
+	_ = reg.Register(kaprov1alpha1.SubstrateKindOCI, &scriptedProvider{driver: kaprov1alpha1.SubstrateKindOCI})
 	l := &deliveryLoop{
 		Hub:         newHubClientFromStatic(hub),
 		ClusterName: "c1",
@@ -459,13 +459,13 @@ func TestDeliveryLoop_ClassRefFluxResolvesProvider(t *testing.T) {
 	hub := deliveryHub(t, fc, bp)
 
 	provider := &scriptedProvider{
-		driver: kaprov1alpha1.SubstrateDriverFlux,
+		driver: kaprov1alpha1.SubstrateKindFlux,
 		results: map[string]spokeprovider.ReconcileResult{
 			"api": {Phase: kaprov1alpha1.DeliveryPhaseConverged},
 		},
 	}
 	reg := spokeprovider.NewRegistry()
-	if err := reg.Register(kaprov1alpha1.SubstrateDriverFlux, provider); err != nil {
+	if err := reg.Register(kaprov1alpha1.SubstrateKindFlux, provider); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 	l := &deliveryLoop{
@@ -490,7 +490,7 @@ func TestDeliveryLoop_MissingSubstrateFails(t *testing.T) {
 	hub := deliveryHub(t, fc, nil)
 
 	reg := spokeprovider.NewRegistry()
-	_ = reg.Register(kaprov1alpha1.SubstrateDriverOCI, &scriptedProvider{driver: kaprov1alpha1.SubstrateDriverOCI})
+	_ = reg.Register(kaprov1alpha1.SubstrateKindOCI, &scriptedProvider{driver: kaprov1alpha1.SubstrateKindOCI})
 	l := &deliveryLoop{
 		Hub:         newHubClientFromStatic(hub),
 		ClusterName: "c1",
@@ -515,12 +515,12 @@ func TestDeliveryLoop_MissingSubstrateFails(t *testing.T) {
 
 func TestDeliveryLoop_EmptyDesiredVersionsIsNoOp(t *testing.T) {
 	fc := newDeliveryFC("c1", nil, false, "oci-default")
-	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateDriverOCI)
+	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateKindOCI)
 	hub := deliveryHub(t, fc, bp)
 
-	provider := &scriptedProvider{driver: kaprov1alpha1.SubstrateDriverOCI}
+	provider := &scriptedProvider{driver: kaprov1alpha1.SubstrateKindOCI}
 	reg := spokeprovider.NewRegistry()
-	_ = reg.Register(kaprov1alpha1.SubstrateDriverOCI, provider)
+	_ = reg.Register(kaprov1alpha1.SubstrateKindOCI, provider)
 	l := &deliveryLoop{
 		Hub:         newHubClientFromStatic(hub),
 		ClusterName: "c1",
@@ -546,18 +546,18 @@ func TestDeliveryLoop_EmptyDesiredVersionsIsNoOp(t *testing.T) {
 func TestDeliveryLoop_MergesProfileAndClusterParameters(t *testing.T) {
 	fc := newDeliveryFC("c1", map[string]string{"api": "1.0"}, false, "oci-default")
 	fc.Spec.Delivery.Parameters = map[string]string{"tag": "{version}", "extra": "from-cluster"}
-	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateDriverOCI)
+	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateKindOCI)
 	bp.Spec.Parameters = map[string]string{"repository": "r.io/x", "tag": "PROFILE-default"}
 	hub := deliveryHub(t, fc, bp)
 
 	provider := &scriptedProvider{
-		driver: kaprov1alpha1.SubstrateDriverOCI,
+		driver: kaprov1alpha1.SubstrateKindOCI,
 		results: map[string]spokeprovider.ReconcileResult{
 			"api": {Phase: kaprov1alpha1.DeliveryPhaseConverged},
 		},
 	}
 	reg := spokeprovider.NewRegistry()
-	_ = reg.Register(kaprov1alpha1.SubstrateDriverOCI, provider)
+	_ = reg.Register(kaprov1alpha1.SubstrateKindOCI, provider)
 	l := &deliveryLoop{
 		Hub:         newHubClientFromStatic(hub),
 		ClusterName: "c1",
@@ -619,16 +619,16 @@ func TestDeliveryLoop_TruncateError_DoesNotSplitMultibyteRune(t *testing.T) {
 
 func TestDeliveryLoop_HubRuntimeProfileSkipsSpokeDelivery(t *testing.T) {
 	fc := newDeliveryFC("c1", map[string]string{"api": "1.0"}, false, "flux-hub")
-	bp := newDeliveryBP("flux-hub", kaprov1alpha1.SubstrateDriverFlux)
+	bp := newDeliveryBP("flux-hub", kaprov1alpha1.SubstrateKindFlux)
 	bp.Spec.Execution.Mode = kaprov1alpha1.ExecutionModeHubPush
 	hub := deliveryHub(t, fc, bp)
 
 	// Even though no flux provider is registered, the loop must NOT reach
 	// the registry-resolve step for a hub-only profile — the hub-side
 	// actuator owns delivery.
-	provider := &scriptedProvider{driver: kaprov1alpha1.SubstrateDriverOCI}
+	provider := &scriptedProvider{driver: kaprov1alpha1.SubstrateKindOCI}
 	reg := spokeprovider.NewRegistry()
-	_ = reg.Register(kaprov1alpha1.SubstrateDriverOCI, provider)
+	_ = reg.Register(kaprov1alpha1.SubstrateKindOCI, provider)
 	l := &deliveryLoop{
 		Hub:         newHubClientFromStatic(hub),
 		ClusterName: "c1",
@@ -639,7 +639,7 @@ func TestDeliveryLoop_HubRuntimeProfileSkipsSpokeDelivery(t *testing.T) {
 		t.Fatalf("tick: %v", err)
 	}
 	if len(provider.calls) != 0 {
-		t.Fatalf("provider should not be invoked for Runtime=Hub profile")
+		t.Fatalf("provider should not be invoked for ExecutionScope=Hub profile")
 	}
 
 	var got kaprov1alpha1.Cluster
@@ -657,18 +657,18 @@ func TestDeliveryLoop_HubRuntimeProfileSkipsSpokeDelivery(t *testing.T) {
 
 func TestDeliveryLoop_BothRuntimeProfileRunsOnSpoke(t *testing.T) {
 	fc := newDeliveryFC("c1", map[string]string{"api": "1.0"}, false, "oci-both")
-	bp := newDeliveryBP("oci-both", kaprov1alpha1.SubstrateDriverOCI)
+	bp := newDeliveryBP("oci-both", kaprov1alpha1.SubstrateKindOCI)
 	bp.Spec.Execution.Mode = kaprov1alpha1.ExecutionModeSpokePull
 	hub := deliveryHub(t, fc, bp)
 
 	provider := &scriptedProvider{
-		driver: kaprov1alpha1.SubstrateDriverOCI,
+		driver: kaprov1alpha1.SubstrateKindOCI,
 		results: map[string]spokeprovider.ReconcileResult{
 			"api": {Phase: kaprov1alpha1.DeliveryPhaseConverged},
 		},
 	}
 	reg := spokeprovider.NewRegistry()
-	_ = reg.Register(kaprov1alpha1.SubstrateDriverOCI, provider)
+	_ = reg.Register(kaprov1alpha1.SubstrateKindOCI, provider)
 	l := &deliveryLoop{
 		Hub:         newHubClientFromStatic(hub),
 		ClusterName: "c1",
@@ -679,26 +679,26 @@ func TestDeliveryLoop_BothRuntimeProfileRunsOnSpoke(t *testing.T) {
 		t.Fatalf("tick: %v", err)
 	}
 	if len(provider.calls) != 1 {
-		t.Fatalf("Runtime=Both should run the spoke provider; got %d calls", len(provider.calls))
+		t.Fatalf("ExecutionScope=Both should run the spoke provider; got %d calls", len(provider.calls))
 	}
 }
 
 func TestDeliveryLoop_BackfillsLastAttemptedAtWhenProviderOmitsIt(t *testing.T) {
 	fc := newDeliveryFC("c1", map[string]string{"api": "1.0"}, false, "oci-default")
-	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateDriverOCI)
+	bp := newDeliveryBP("oci-default", kaprov1alpha1.SubstrateKindOCI)
 	hub := deliveryHub(t, fc, bp)
 
 	// A provider that returns a successful result but forgets to stamp
 	// LastAttemptedAt — the loop must fill it from its own clock so SRE
 	// dashboards still get a per-app timestamp.
 	provider := &scriptedProvider{
-		driver: kaprov1alpha1.SubstrateDriverOCI,
+		driver: kaprov1alpha1.SubstrateKindOCI,
 		results: map[string]spokeprovider.ReconcileResult{
 			"api": {Phase: kaprov1alpha1.DeliveryPhaseConverged}, // no LastAttemptedAt
 		},
 	}
 	reg := spokeprovider.NewRegistry()
-	_ = reg.Register(kaprov1alpha1.SubstrateDriverOCI, provider)
+	_ = reg.Register(kaprov1alpha1.SubstrateKindOCI, provider)
 	l := &deliveryLoop{
 		Hub:         newHubClientFromStatic(hub),
 		ClusterName: "c1",

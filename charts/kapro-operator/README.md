@@ -122,7 +122,7 @@ Preview surfaces are explicit opt-ins or spec-only APIs:
 | Decision API and `Policy` | Disabled | `--set decisionAPI.enabled=true` plus Kubernetes RBAC |
 | SubstrateClass status controller | Enabled | Keep `substrateclass` in `controllers` for generated `Substrate.spec.classRef` profiles |
 | Substrate readiness controller | Enabled | Keep `substrate` in `controllers` so generated `Cluster` objects can reference Ready substrates |
-| AdapterPolicy discovery controller | Disabled | Add `adapterpolicy` to `controllers` for live `kapro adopt --apply` discovery |
+| SubstrateDiscoveryPolicy discovery controller | Disabled | Add `substratediscoverypolicy` to `controllers` for live `kapro adopt --apply` discovery |
 | Approval controller | Disabled | Add `approval` to `controllers` |
 | Trigger controller | Disabled | Add `trigger` to `controllers` |
 | Plugin controller | Disabled | Add `plugin` to `controllers` |

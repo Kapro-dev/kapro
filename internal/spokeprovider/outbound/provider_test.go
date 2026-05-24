@@ -188,8 +188,8 @@ func TestProvider_DelegatesToDeliveryAndForwardsResult(t *testing.T) {
 
 func TestProvider_Driver(t *testing.T) {
 	p := &Provider{}
-	if p.Driver() != kaprov1alpha1.SubstrateDriverOCI {
-		t.Fatalf("Driver() = %q, want oci", p.Driver())
+	if p.SubstrateKind() != kaprov1alpha1.SubstrateKindOCI {
+		t.Fatalf("SubstrateKind() = %q, want oci", p.SubstrateKind())
 	}
 }
 

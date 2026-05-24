@@ -4,7 +4,7 @@
 // kapro-cluster-controller) and any concrete delivery implementation. It is
 // the spoke-side analogue of pkg/actuator (KAI), which faces the hub side.
 //
-// One Provider services one SubstrateDriver. The first-party providers are:
+// One Provider services one SubstrateKind. The first-party providers are:
 //   - "oci"      — internal/spokeprovider/outbound (PR-5): the outbound-agent.
 //     Pulls OCI artifacts directly and applies them via the
 //     two-phase apply engine from internal/delivery.
@@ -16,7 +16,7 @@
 // Providers are registered into a *Registry at spoke binary startup and
 // resolved per-reconcile from the selected Substrate kind. The spoke binary
 // never imports a concrete provider type directly past the wire-up site, so
-// adding a new driver does not perturb the loop or the status writer.
+// adding a new substrate kind does not perturb the loop or the status writer.
 package spokeprovider
 
 import (
@@ -65,7 +65,7 @@ type ReconcileResult struct {
 // Capabilities describes the KSP contract and operations a provider supports.
 type Capabilities struct {
 	ContractVersion   string
-	Driver            kaprov1alpha1.SubstrateDriver
+	SubstrateKind     kaprov1alpha1.SubstrateKind
 	SupportsReconcile bool
 	SupportsObserve   bool
 	SupportsApply     bool
@@ -80,14 +80,14 @@ func (c Capabilities) Normalize() Capabilities {
 	return c
 }
 
-// Provider services one SubstrateDriver.
+// Provider services one SubstrateKind.
 //
 // Implementations MUST be safe for concurrent use. Reconcile MUST NOT panic
 // on any input: malformed Parameters, unreachable registry, or zero-length
 // DesiredVersion all map to a populated ReconcileResult{Phase: Failed, Err:…}.
 type Provider interface {
-	// Driver returns the SubstrateDriver value this provider services.
-	Driver() kaprov1alpha1.SubstrateDriver
+	// SubstrateKind returns the SubstrateKind value this provider services.
+	SubstrateKind() kaprov1alpha1.SubstrateKind
 	// Capabilities returns the KSP contract metadata for this provider.
 	Capabilities() Capabilities
 	// Reconcile reconciles ONE (cluster, app, version) tuple on the local

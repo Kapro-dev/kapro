@@ -161,7 +161,7 @@ func (l *deliveryLoop) reconcileOne(
 			attribute.String("kapro.version", version),
 			attribute.String("kapro.delivery.substrate_ref", substrateRef(fc)),
 			attribute.String("kapro.delivery.substrate", substrateName(profile)),
-			attribute.String("kapro.delivery.driver", substrateDriver(profile)),
+			attribute.String("kapro.delivery.substrate_kind", deliverySubstrateKind(profile)),
 		),
 	)
 	defer span.End()
@@ -205,7 +205,7 @@ func (l *deliveryLoop) reconcileOneResult(
 		out.Err = fmt.Errorf("substrate %q not found", fc.Spec.Delivery.SubstrateRef)
 		return out
 	}
-	// Runtime gating: if this Substrate is hub-only, the hub-side actuator owns
+	// ExecutionScope gating: if this Substrate is hub-only, the hub-side actuator owns
 	// delivery and the spoke MUST stay out of the way. External-pull substrates
 	// are owned by an external system, not the Kapro spoke loop.
 	switch profile.Spec.ExecutionMode() {
@@ -247,16 +247,16 @@ func (l *deliveryLoop) reconcileOneResult(
 	return res
 }
 
-func providerDriverForSubstrate(spec kaprov1alpha1.SubstrateSpec) kaprov1alpha1.SubstrateDriver {
+func providerDriverForSubstrate(spec kaprov1alpha1.SubstrateSpec) kaprov1alpha1.SubstrateKind {
 	switch spec.SubstrateKind() {
 	case "flux":
-		return kaprov1alpha1.SubstrateDriverFlux
+		return kaprov1alpha1.SubstrateKindFlux
 	case "oci":
-		return kaprov1alpha1.SubstrateDriverOCI
+		return kaprov1alpha1.SubstrateKindOCI
 	case "argo":
-		return kaprov1alpha1.SubstrateDriverArgo
+		return kaprov1alpha1.SubstrateKindArgo
 	default:
-		return kaprov1alpha1.SubstrateDriverExternal
+		return kaprov1alpha1.SubstrateKindExternal
 	}
 }
 
@@ -481,7 +481,7 @@ func substrateName(profile *kaprov1alpha1.Substrate) string {
 	return profile.Name
 }
 
-func substrateDriver(profile *kaprov1alpha1.Substrate) string {
+func deliverySubstrateKind(profile *kaprov1alpha1.Substrate) string {
 	if profile == nil {
 		return ""
 	}

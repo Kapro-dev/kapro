@@ -8,15 +8,15 @@ import (
 
 // New returns a discovery-first Flux reference adapter.
 func New() adapter.Adapter {
-	return adapter.NewReferenceAdapter(kaprov1alpha1.SubstrateDriverFlux, kaprov1alpha1.SubstrateRuntimeBoth, Model())
+	return adapter.NewReferenceAdapter(kaprov1alpha1.SubstrateKindFlux, kaprov1alpha1.ExecutionScopeBoth, Model())
 }
 
 // Model returns the Flux discovery shape currently modeled by Substrate
 // discovery: source objects plus HelmRelease and Kustomization targets.
 func Model() adapter.DiscoveryModel {
 	return adapter.DiscoveryModel{
-		Driver:           kaprov1alpha1.SubstrateDriverFlux,
-		Runtime:          kaprov1alpha1.SubstrateRuntimeBoth,
+		SubstrateKind:    kaprov1alpha1.SubstrateKindFlux,
+		ExecutionScope:   kaprov1alpha1.ExecutionScopeBoth,
 		DefaultNamespace: "flux-system",
 		Supported:        true,
 		SelectedObjects: []kaprov1alpha1.DiscoveredSubstrateObject{

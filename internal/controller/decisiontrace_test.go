@@ -436,8 +436,8 @@ func TestTriggerTargetRollbackEmitsTraceWhenRollbackUnsupported(t *testing.T) {
 		Mode:     kaprov1alpha1.DeliveryModePull,
 		Actuator: stub,
 		Capabilities: actuator.Capabilities{
-			Driver:           kaprov1alpha1.SubstrateDriverExternal,
-			Adapter:          "rollbackless",
+			SubstrateKind:    kaprov1alpha1.SubstrateKindExternal,
+			Actuator:         "rollbackless",
 			SupportsApply:    true,
 			SupportsRollback: false, // <-- the focus of this test
 			SupportsDelta:    false, // <-- delta path also unavailable

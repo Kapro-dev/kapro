@@ -144,37 +144,6 @@ rules:
 - apiGroups:
   - kapro.io
   resources:
-  - adapterpolicies
-  - policies
-  - sources
-  - substrateclasses
-  - substrates
-  - triggers
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - kapro.io
-  resources:
-  - adapterpolicies/status
-  - approvals/status
-  - clusters/status
-  - clustertemplates/status
-  - fleets/status
-  - plugins/status
-  - policies/status
-  - promotions/status
-  - substrateclasses/status
-  - substrates/status
-  - triggers/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - kapro.io
-  resources:
   - approvals
   - clusters
   - fleets
@@ -188,6 +157,24 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - approvals/status
+  - clusters/status
+  - clustertemplates/status
+  - fleets/status
+  - plugins/status
+  - policies/status
+  - promotions/status
+  - substrateclasses/status
+  - substratediscoverypolicies/status
+  - substrates/status
+  - triggers/status
+  verbs:
+  - get
+  - patch
+  - update
 - apiGroups:
   - kapro.io
   resources:
@@ -206,6 +193,19 @@ rules:
   - list
   - patch
   - update
+  - watch
+- apiGroups:
+  - kapro.io
+  resources:
+  - policies
+  - sources
+  - substrateclasses
+  - substratediscoverypolicies
+  - substrates
+  - triggers
+  verbs:
+  - get
+  - list
   - watch
 - apiGroups:
   - kubernetes.substrate.kapro.io

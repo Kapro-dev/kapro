@@ -20,7 +20,7 @@ increment inside that line.
 
 | Line | Theme | Practical ship criteria |
 | --- | --- | --- |
-| `0.2.x` | Programmable engine hardening | AdapterPolicy discovery is real, programmable gates are documented and tested, release-train policy is enforced, and retention metrics are available before opt-in GC. |
+| `0.2.x` | Programmable engine hardening | SubstrateDiscoveryPolicy discovery is real, programmable gates are documented and tested, release-train policy is enforced, and retention metrics are available before opt-in GC. |
 | `0.4.x` | Adoption and operator ergonomics | `pkg/kapro/server` can be assembled from smaller registrars, CLI adoption paths are observe-first by default, and existing GitOps adopters have clear rollback points. |
 | `0.6.x` | Ecosystem and conformance | External adapter authors can run conformance locally, at least one substrate adapter proves the plugin contract outside the in-tree controller path, and examples compile in CI. |
 | `0.8.x` | Operational scale and security | Upgrade, rollback, observability, tenancy, signing, provenance, and failure-mode tests are strong enough for production change-control review. |

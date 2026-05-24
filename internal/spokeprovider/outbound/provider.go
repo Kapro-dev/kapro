@@ -12,7 +12,7 @@ import (
 	"kapro.io/kapro/pkg/spokeprovider"
 )
 
-// Provider is the first-party spoke Provider for SubstrateDriverOCI. It wraps
+// Provider is the first-party spoke Provider for SubstrateKindOCI. It wraps
 // internal/delivery.Delivery (the OCI Delivery Core from PR-4) and exposes
 // the spokeprovider.Provider contract the delivery loop dispatches against.
 type Provider struct {
@@ -38,14 +38,14 @@ func NewProvider(spoke client.Client) *Provider {
 	}
 }
 
-// Driver returns SubstrateDriverOCI. The Registry key — not this method — is
+// SubstrateKind returns SubstrateKindOCI. The Registry key — not this method — is
 // what determines dispatch.
-func (p *Provider) Driver() kaprov1alpha1.SubstrateDriver { return kaprov1alpha1.SubstrateDriverOCI }
+func (p *Provider) SubstrateKind() kaprov1alpha1.SubstrateKind { return kaprov1alpha1.SubstrateKindOCI }
 
 func (p *Provider) Capabilities() spokeprovider.Capabilities {
 	return spokeprovider.Capabilities{
 		ContractVersion:   spokeprovider.ContractVersionV1Alpha1,
-		Driver:            kaprov1alpha1.SubstrateDriverOCI,
+		SubstrateKind:     kaprov1alpha1.SubstrateKindOCI,
 		SupportsReconcile: true,
 		SupportsObserve:   true,
 		SupportsApply:     true,

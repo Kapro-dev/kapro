@@ -8,7 +8,7 @@ import (
 )
 
 func TestReferenceAdapterDiscoveryAndUnsupportedOperations(t *testing.T) {
-	a := NewReferenceAdapter(kaprov1alpha1.SubstrateDriverArgo, kaprov1alpha1.SubstrateRuntimeHub, DiscoveryModel{
+	a := NewReferenceAdapter(kaprov1alpha1.SubstrateKindArgo, kaprov1alpha1.ExecutionScopeHub, DiscoveryModel{
 		Supported: true,
 		SelectedObjects: []kaprov1alpha1.DiscoveredSubstrateObject{{
 			Kind: "Application",

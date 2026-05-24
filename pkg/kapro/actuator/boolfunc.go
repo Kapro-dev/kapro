@@ -77,10 +77,9 @@ func (b boolSubstrate) IsAllConverged(ctx context.Context, cluster *kaprov1alpha
 func (b boolSubstrate) Capabilities() Capabilities {
 	return Capabilities{
 		ContractVersion:      ContractVersionV1Alpha1,
-		SubstrateKind:        b.kind,
-		Driver:               kaprov1alpha1.SubstrateDriver(b.kind),
-		Adapter:              b.kind,
-		Runtime:              kaprov1alpha1.SubstrateRuntimeHub,
+		SubstrateKind:        kaprov1alpha1.SubstrateKind(b.kind),
+		Actuator:             b.kind,
+		ExecutionScope:       kaprov1alpha1.ExecutionScopeHub,
 		ExecutionModes:       []kaprov1alpha1.ExecutionMode{kaprov1alpha1.ExecutionModeHubPush},
 		Modes:                []kaprov1alpha1.DeliveryMode{kaprov1alpha1.DeliveryModePush},
 		SupportsApply:        true,

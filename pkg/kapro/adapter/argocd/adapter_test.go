@@ -19,11 +19,11 @@ type objectShape struct {
 func TestModelDescribesArgoDiscoveryTopology(t *testing.T) {
 	model := argocd.Model()
 
-	if model.Driver != kaprov1alpha1.SubstrateDriverArgo {
-		t.Fatalf("driver = %q, want argo", model.Driver)
+	if model.SubstrateKind != kaprov1alpha1.SubstrateKindArgo {
+		t.Fatalf("driver = %q, want argo", model.SubstrateKind)
 	}
-	if model.Runtime != kaprov1alpha1.SubstrateRuntimeHub {
-		t.Fatalf("runtime = %q, want Hub", model.Runtime)
+	if model.ExecutionScope != kaprov1alpha1.ExecutionScopeHub {
+		t.Fatalf("runtime = %q, want Hub", model.ExecutionScope)
 	}
 	if model.DefaultNamespace != "argocd" {
 		t.Fatalf("default namespace = %q, want argocd", model.DefaultNamespace)
@@ -53,8 +53,8 @@ func TestDiscoverReturnsArgoModeledResult(t *testing.T) {
 	if !result.Ready || result.Reason != "DiscoveryModeled" {
 		t.Fatalf("discovery readiness = %t/%q, want ready DiscoveryModeled", result.Ready, result.Reason)
 	}
-	if result.Driver != kaprov1alpha1.SubstrateDriverArgo || result.Runtime != kaprov1alpha1.SubstrateRuntimeHub {
-		t.Fatalf("driver/runtime = %q/%q, want argo/Hub", result.Driver, result.Runtime)
+	if result.SubstrateKind != kaprov1alpha1.SubstrateKindArgo || result.ExecutionScope != kaprov1alpha1.ExecutionScopeHub {
+		t.Fatalf("driver/runtime = %q/%q, want argo/Hub", result.SubstrateKind, result.ExecutionScope)
 	}
 	if result.DiscoveredApplications != 5 {
 		t.Fatalf("discovered applications = %d, want 5", result.DiscoveredApplications)

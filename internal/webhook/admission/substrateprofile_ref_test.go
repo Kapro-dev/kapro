@@ -22,7 +22,7 @@ func newSubstrateRefScheme(t *testing.T) *runtime.Scheme {
 	return s
 }
 
-func substrateProfile(name string, driver kaprov1alpha1.SubstrateDriver, ready bool) *kaprov1alpha1.Substrate {
+func substrateProfile(name string, driver kaprov1alpha1.SubstrateKind, ready bool) *kaprov1alpha1.Substrate {
 	p := &kaprov1alpha1.Substrate{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: kaprov1alpha1.SubstrateSpec{
@@ -31,7 +31,7 @@ func substrateProfile(name string, driver kaprov1alpha1.SubstrateDriver, ready b
 		},
 		Status: kaprov1alpha1.SubstrateStatus{Ready: ready},
 	}
-	if driver == kaprov1alpha1.SubstrateDriverExternal {
+	if driver == kaprov1alpha1.SubstrateKindExternal {
 		p.Spec.PluginRef = "external-plugin"
 	}
 	return p
@@ -93,7 +93,7 @@ func TestValidateFleetClusterSubstrateRef_Missing(t *testing.T) {
 func TestValidateFleetClusterSubstrateRef_ExistingSubstrateDoesNotRequireStatusReady(t *testing.T) {
 	scheme := newSubstrateRefScheme(t)
 	reader := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(substrateProfile("flux", kaprov1alpha1.SubstrateDriverFlux, false)).
+		WithObjects(substrateProfile("flux", kaprov1alpha1.SubstrateKindFlux, false)).
 		Build()
 	mc := fleetClusterWithSubstrate("flux")
 	warnings, err := admission.ValidateFleetClusterSubstrateRef(context.Background(), reader, mc)
@@ -108,7 +108,7 @@ func TestValidateFleetClusterSubstrateRef_ExistingSubstrateDoesNotRequireStatusR
 func TestValidateFleetClusterSubstrateRef_FluxParametersWarnAfterResolution(t *testing.T) {
 	scheme := newSubstrateRefScheme(t)
 	reader := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(substrateProfile("team-flux", kaprov1alpha1.SubstrateDriverFlux, true)).
+		WithObjects(substrateProfile("team-flux", kaprov1alpha1.SubstrateKindFlux, true)).
 		Build()
 	mc := fleetClusterWithSubstrate("team-flux")
 	mc.Spec.Delivery.Parameters = nil
@@ -180,7 +180,7 @@ func TestValidateFleetClusterSubstrateRef_UnknownClassRefNotReadyAllowed(t *test
 func TestValidateFleetClusterSubstrateRef_ExternalNotReadyAllowed(t *testing.T) {
 	scheme := newSubstrateRefScheme(t)
 	reader := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(substrateProfile("external", kaprov1alpha1.SubstrateDriverExternal, false)).
+		WithObjects(substrateProfile("external", kaprov1alpha1.SubstrateKindExternal, false)).
 		Build()
 	mc := fleetClusterWithSubstrate("external")
 	warnings, err := admission.ValidateFleetClusterSubstrateRef(context.Background(), reader, mc)
@@ -195,7 +195,7 @@ func TestValidateFleetClusterSubstrateRef_ExternalNotReadyAllowed(t *testing.T) 
 func TestValidateFleetClusterSubstrateRef_Ready(t *testing.T) {
 	scheme := newSubstrateRefScheme(t)
 	reader := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(substrateProfile("flux", kaprov1alpha1.SubstrateDriverFlux, true)).
+		WithObjects(substrateProfile("flux", kaprov1alpha1.SubstrateKindFlux, true)).
 		Build()
 	mc := fleetClusterWithSubstrate("flux")
 	warnings, err := admission.ValidateFleetClusterSubstrateRef(context.Background(), reader, mc)

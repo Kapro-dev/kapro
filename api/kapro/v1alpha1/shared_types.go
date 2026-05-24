@@ -39,14 +39,14 @@ const (
 	DeliveryModePull DeliveryMode = "pull"
 )
 
-// SubstrateRuntime identifies where a substrate adapter is allowed to run.
+// ExecutionScope identifies where a substrate adapter is allowed to run.
 // +kubebuilder:validation:Enum=Hub;Spoke;Both
-type SubstrateRuntime string
+type ExecutionScope string
 
 const (
-	SubstrateRuntimeHub   SubstrateRuntime = "Hub"
-	SubstrateRuntimeSpoke SubstrateRuntime = "Spoke"
-	SubstrateRuntimeBoth  SubstrateRuntime = "Both"
+	ExecutionScopeHub   ExecutionScope = "Hub"
+	ExecutionScopeSpoke ExecutionScope = "Spoke"
+	ExecutionScopeBoth  ExecutionScope = "Both"
 )
 
 // ExecutionMode identifies where and how Kapro invokes delivery.
@@ -65,20 +65,20 @@ const (
 	ExecutionModeExternalPull ExecutionMode = "external-pull"
 )
 
-// SubstrateDriver identifies the substrate implementation family.
+// SubstrateKind identifies the substrate implementation family.
 // +kubebuilder:validation:Enum=flux;argo;oci;external
-type SubstrateDriver string
+type SubstrateKind string
 
 const (
-	SubstrateDriverFlux SubstrateDriver = "flux"
-	SubstrateDriverArgo SubstrateDriver = "argo"
-	// SubstrateDriverOCI is the built-in spoke-side OCI Delivery Core: the
+	SubstrateKindFlux SubstrateKind = "flux"
+	SubstrateKindArgo SubstrateKind = "argo"
+	// SubstrateKindOCI is the built-in spoke-side OCI Delivery Core: the
 	// kapro-cluster-controller pulls OCI artifacts (Helm chart, raw YAML
 	// tarball, or Kustomize tarball) and server-side applies them via the
 	// two-phase staging engine. Available out of the box; requires no Flux,
 	// Argo, or Sveltos installation on the spoke.
-	SubstrateDriverOCI      SubstrateDriver = "oci"
-	SubstrateDriverExternal SubstrateDriver = "external"
+	SubstrateKindOCI      SubstrateKind = "oci"
+	SubstrateKindExternal SubstrateKind = "external"
 )
 
 // OpenSubstrateKindPattern documents the DNS-style validation used for open

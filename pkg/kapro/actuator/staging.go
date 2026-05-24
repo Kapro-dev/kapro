@@ -36,7 +36,7 @@ type StageRequest struct {
 // StageHandle is an opaque substrate-issued reference to prepared work.
 type StageHandle struct {
 	ID        string
-	Substrate kaprov1alpha1.SubstrateDriver
+	Substrate kaprov1alpha1.SubstrateKind
 	AppKeys   []string
 	Expiry    metav1.Time
 }

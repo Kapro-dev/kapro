@@ -13,7 +13,7 @@ var (
 
 func init() {
 	SchemeBuilder.Register(
-		&AdapterPolicy{}, &AdapterPolicyList{},
+		&SubstrateDiscoveryPolicy{}, &SubstrateDiscoveryPolicyList{},
 		&Approval{}, &ApprovalList{},
 		&Substrate{}, &SubstrateList{},
 		&Cluster{}, &ClusterList{},

@@ -29,19 +29,19 @@ type crdDocument struct {
 }
 
 var publicCRDs = map[string]string{
-	"kapro.io_adapterpolicies.yaml":  "AdapterPolicy",
-	"kapro.io_approvals.yaml":        "Approval",
-	"kapro.io_clusters.yaml":         "Cluster",
-	"kapro.io_clustertemplates.yaml": "ClusterTemplate",
-	"kapro.io_fleets.yaml":           "Fleet",
-	"kapro.io_plans.yaml":            "Plan",
-	"kapro.io_plugins.yaml":          "Plugin",
-	"kapro.io_policies.yaml":         "Policy",
-	"kapro.io_promotions.yaml":       "Promotion",
-	"kapro.io_sources.yaml":          "Source",
-	"kapro.io_substrateclasses.yaml": "SubstrateClass",
-	"kapro.io_substrates.yaml":       "Substrate",
-	"kapro.io_triggers.yaml":         "Trigger",
+	"kapro.io_substratediscoverypolicies.yaml": "SubstrateDiscoveryPolicy",
+	"kapro.io_approvals.yaml":                  "Approval",
+	"kapro.io_clusters.yaml":                   "Cluster",
+	"kapro.io_clustertemplates.yaml":           "ClusterTemplate",
+	"kapro.io_fleets.yaml":                     "Fleet",
+	"kapro.io_plans.yaml":                      "Plan",
+	"kapro.io_plugins.yaml":                    "Plugin",
+	"kapro.io_policies.yaml":                   "Policy",
+	"kapro.io_promotions.yaml":                 "Promotion",
+	"kapro.io_sources.yaml":                    "Source",
+	"kapro.io_substrateclasses.yaml":           "SubstrateClass",
+	"kapro.io_substrates.yaml":                 "Substrate",
+	"kapro.io_triggers.yaml":                   "Trigger",
 }
 
 var runtimeCRDs = map[string]string{

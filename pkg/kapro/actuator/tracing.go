@@ -250,9 +250,9 @@ func (a *tracedActuator) start(ctx context.Context, spanName string, attrs ...at
 	baseAttrs := []attribute.KeyValue{
 		attribute.String("kapro.actuator.name", a.name),
 		attribute.String("kapro.actuator.contract_version", a.capabilities.Normalize().ContractVersion),
-		attribute.String("kapro.actuator.driver", string(a.capabilities.Driver)),
-		attribute.String("kapro.actuator.adapter", a.capabilities.Adapter),
-		attribute.String("kapro.actuator.runtime", string(a.capabilities.Runtime)),
+		attribute.String("kapro.actuator.substrate_kind", string(a.capabilities.SubstrateKind)),
+		attribute.String("kapro.actuator.actuator", a.capabilities.Actuator),
+		attribute.String("kapro.actuator.execution_scope", string(a.capabilities.ExecutionScope)),
 	}
 	return otel.Tracer(actuatorTracerName).Start(ctx, spanName, trace.WithAttributes(append(baseAttrs, attrs...)...))
 }

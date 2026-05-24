@@ -8,15 +8,15 @@ import (
 
 // New returns a discovery-first Argo CD reference adapter.
 func New() adapter.Adapter {
-	return adapter.NewReferenceAdapter(kaprov1alpha1.SubstrateDriverArgo, kaprov1alpha1.SubstrateRuntimeHub, Model())
+	return adapter.NewReferenceAdapter(kaprov1alpha1.SubstrateKindArgo, kaprov1alpha1.ExecutionScopeHub, Model())
 }
 
 // Model returns the Argo CD discovery shape currently modeled by Substrate
 // discovery: cluster Secrets, Applications, and ApplicationSets.
 func Model() adapter.DiscoveryModel {
 	return adapter.DiscoveryModel{
-		Driver:           kaprov1alpha1.SubstrateDriverArgo,
-		Runtime:          kaprov1alpha1.SubstrateRuntimeHub,
+		SubstrateKind:    kaprov1alpha1.SubstrateKindArgo,
+		ExecutionScope:   kaprov1alpha1.ExecutionScopeHub,
 		DefaultNamespace: "argocd",
 		Supported:        true,
 		SelectedObjects: []kaprov1alpha1.DiscoveredSubstrateObject{

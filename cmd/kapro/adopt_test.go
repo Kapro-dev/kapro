@@ -238,6 +238,6 @@ func fakeAdoptClient(t *testing.T, objects ...client.Object) client.Client {
 	return fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objects...).
-		WithStatusSubresource(&kaprov1alpha1.Substrate{}, &kaprov1alpha1.AdapterPolicy{}).
+		WithStatusSubresource(&kaprov1alpha1.Substrate{}, &kaprov1alpha1.SubstrateDiscoveryPolicy{}).
 		Build()
 }

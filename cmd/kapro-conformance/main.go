@@ -502,13 +502,13 @@ func (referencePlannerClient) Plan(ctx context.Context, req *kpiv1alpha1.PlanReq
 
 type referenceProvider struct{}
 
-func (referenceProvider) Driver() kaprov1alpha1.SubstrateDriver {
-	return kaprov1alpha1.SubstrateDriverOCI
+func (referenceProvider) SubstrateKind() kaprov1alpha1.SubstrateKind {
+	return kaprov1alpha1.SubstrateKindOCI
 }
 
 func (referenceProvider) Capabilities() spokeprovider.Capabilities {
 	return spokeprovider.Capabilities{
-		Driver:            kaprov1alpha1.SubstrateDriverOCI,
+		SubstrateKind:     kaprov1alpha1.SubstrateKindOCI,
 		SupportsReconcile: true,
 		SupportsObserve:   true,
 	}

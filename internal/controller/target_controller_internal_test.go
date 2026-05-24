@@ -134,7 +134,7 @@ func TestHandleApplyingSkipsConvergenceWhenObserveUnsupported(t *testing.T) {
 	if err := reg.RegisterRegistration(actuator.Registration{
 		Name: "pull/flux",
 		Capabilities: actuator.Capabilities{
-			Adapter:       "flux",
+			Actuator:      "flux",
 			Modes:         []kaprov1alpha1.DeliveryMode{kaprov1alpha1.DeliveryModePull},
 			SupportsApply: true,
 		},
@@ -218,7 +218,7 @@ func TestHandleApplyingResolvesClassRefSubstrateToBuiltInActuator(t *testing.T) 
 	if err := reg.RegisterRegistration(actuator.Registration{
 		Name: "push/direct",
 		Capabilities: actuator.Capabilities{
-			Adapter:         "direct",
+			Actuator:        "direct",
 			Modes:           []kaprov1alpha1.DeliveryMode{kaprov1alpha1.DeliveryModePush},
 			SupportsApply:   true,
 			SupportsObserve: true,

@@ -2,17 +2,19 @@ package v1alpha1
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-// AdapterPolicySpec configures continuous existing-substrate adapter discovery.
-type AdapterPolicySpec struct {
-	// Adapter names the adapter expected for SubstrateRef, for example argo
-	// or flux. The controller resolves the substrate driver through the public
-	// adapter registry and fails closed when this value does not match the
-	// referenced Substrate's adapter.
-	// +kubebuilder:validation:MinLength=1
-	Adapter string `json:"adapter"`
+// SubstrateDiscoveryPolicySpec configures continuous discovery for an existing
+// substrate profile.
+type SubstrateDiscoveryPolicySpec struct {
 	// SubstrateRef names the Substrate profile this policy keeps in sync.
 	// +kubebuilder:validation:MinLength=1
 	SubstrateRef string `json:"substrateRef"`
+	// ExpectedKind optionally pins the referenced Substrate to a specific
+	// substrate.kind, for example argo or flux. When set and the referenced
+	// Substrate resolves to a different kind, the policy fails closed.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^[a-z][a-z0-9-]{0,62}$`
+	// +kubebuilder:validation:MaxLength=63
+	ExpectedKind string `json:"expectedKind,omitempty"`
 	// Selector further narrows Substrate.spec.discovery.selector for this
 	// continuous adoption policy. It is ANDed with the Substrate selector before
 	// reaching the adapter.
@@ -28,8 +30,8 @@ type AdapterPolicySpec struct {
 	SyncInterval string `json:"syncInterval,omitempty"`
 }
 
-// AdapterPolicyStatus records the latest continuous adapter discovery attempt.
-type AdapterPolicyStatus struct {
+// SubstrateDiscoveryPolicyStatus records the latest continuous discovery attempt.
+type SubstrateDiscoveryPolicyStatus struct {
 	ObservedGeneration int64        `json:"observedGeneration,omitempty"`
 	LastSyncTime       *metav1.Time `json:"lastSyncTime,omitempty"`
 	Ready              bool         `json:"ready,omitempty"`
@@ -46,22 +48,22 @@ type AdapterPolicyStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:storageversion
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,shortName=adp,categories=kapro-all
-// +kubebuilder:printcolumn:name="Adapter",type=string,JSONPath=`.spec.adapter`
+// +kubebuilder:resource:scope=Cluster,shortName=sdp,categories=kapro-all
 // +kubebuilder:printcolumn:name="Substrate",type=string,JSONPath=`.spec.substrateRef`
+// +kubebuilder:printcolumn:name="Expected",type=string,JSONPath=`.spec.expectedKind`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Objects",type=integer,JSONPath=`.status.discoveredObjects`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
-type AdapterPolicy struct {
+type SubstrateDiscoveryPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              AdapterPolicySpec   `json:"spec,omitempty"`
-	Status            AdapterPolicyStatus `json:"status,omitempty"`
+	Spec              SubstrateDiscoveryPolicySpec   `json:"spec,omitempty"`
+	Status            SubstrateDiscoveryPolicyStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
-type AdapterPolicyList struct {
+type SubstrateDiscoveryPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []AdapterPolicy `json:"items"`
+	Items           []SubstrateDiscoveryPolicy `json:"items"`
 }

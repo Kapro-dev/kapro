@@ -22,7 +22,7 @@ Provider implementations expose metadata through `Capabilities()`:
 
 ```go
 type Provider interface {
-    Driver() kaprov1alpha1.SubstrateDriver
+    SubstrateKind() kaprov1alpha1.SubstrateKind
     Capabilities() spokeprovider.Capabilities
     Reconcile(context.Context, spokeprovider.ReconcileRequest) spokeprovider.ReconcileResult
 }
@@ -47,16 +47,16 @@ Legacy registration remains valid:
 
 ```go
 reg := spokeprovider.NewRegistry()
-_ = reg.Register(kaprov1alpha1.SubstrateDriverOCI, provider)
+_ = reg.Register(kaprov1alpha1.SubstrateKindOCI, provider)
 ```
 
 New providers should register explicit metadata:
 
 ```go
 _ = reg.RegisterRegistration(spokeprovider.Registration{
-    Driver: kaprov1alpha1.SubstrateDriverExternal,
+    SubstrateKind: kaprov1alpha1.SubstrateKindExternal,
     Capabilities: spokeprovider.Capabilities{
-        Driver: kaprov1alpha1.SubstrateDriverExternal,
+        SubstrateKind: kaprov1alpha1.SubstrateKindExternal,
         SupportsReconcile: true,
         SupportsObserve: true,
     },

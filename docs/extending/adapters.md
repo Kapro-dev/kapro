@@ -3,10 +3,11 @@
 Kapro exposes a public Go adapter package at
 `kapro.io/kapro/pkg/kapro/adapter`.
 
-The package is an SDK boundary for delivery substrates. AdapterPolicy discovery
-uses this public registry to resolve the selected substrate kind and call
-`Adapter.Discover`. Delivery side effects still use the existing actuator and
-spoke-provider paths until runtime selection moves to the public contract.
+The package is an SDK boundary for delivery substrates.
+`SubstrateDiscoveryPolicy` discovery uses this public registry to resolve the
+selected substrate kind and call `Adapter.Discover`. Delivery side effects still
+use the existing actuator and spoke-provider paths until execution selection
+moves to the public contract.
 
 ## Public Contract
 
@@ -14,8 +15,8 @@ An adapter owns substrate-specific delivery work for one substrate kind:
 
 ```go
 type Adapter interface {
-	Driver() v1alpha1.SubstrateDriver
-	Runtime() v1alpha1.SubstrateRuntime
+	SubstrateKind() v1alpha1.SubstrateKind
+	ExecutionScope() v1alpha1.ExecutionScope
 	Capabilities() adapter.Capabilities
 	Apply(ctx context.Context, req adapter.Request) (adapter.Result, error)
 	Observe(ctx context.Context, req adapter.Request) (adapter.Result, error)
@@ -44,23 +45,23 @@ shape used by `Substrate.status.selectedObjects`, `skippedObjects`, and
 ## Registry
 
 `adapter.Registry` is thread-safe and resolves adapters by
-`v1alpha1.SubstrateDriver`:
+`v1alpha1.SubstrateKind`:
 
 ```go
 reg := adapter.NewRegistry()
 _ = reg.Register(flux.New())
 
-substrate, err := reg.Resolve(v1alpha1.SubstrateDriverFlux)
+substrate, err := reg.Resolve(v1alpha1.SubstrateKindFlux)
 ```
 
-`Register` fails on nil, empty driver, or duplicate driver. `Upsert` is
+`Register` fails on nil, empty substrate kind, or duplicate kind. `Upsert` is
 available when replacement is intentional.
 
 ## Reference Adapters
 
 Reference packages live under `pkg/kapro/adapter`:
 
-| Package | Driver | Runtime | Current role |
+| Package | Substrate kind | Execution scope | Current role |
 |---|---|---|---|
 | `adapter/argocd` | `argo` | `Hub` | Models Argo CD discovery. |
 | `adapter/flux` | `flux` | `Both` | Models Flux discovery. |
@@ -82,27 +83,28 @@ operations. The operator continues to use the existing runtime actuators for
 side effects until public adapter runtime selection is wired in a later
 increment.
 
-## AdapterPolicy Discovery
+## SubstrateDiscoveryPolicy Discovery
 
-`AdapterPolicy` runs a continuous discovery/status loop for a referenced
+`SubstrateDiscoveryPolicy` runs a continuous discovery/status loop for a referenced
 `Substrate`:
 
 - the Substrate must exist and have `spec.discovery.enabled=true`;
-- `AdapterPolicy.spec.adapter` must match `Substrate.spec.substrate.actuator`;
-- `AdapterPolicy.spec.selector` is ANDed with `Substrate.spec.discovery.selector`
+- `SubstrateDiscoveryPolicy.spec.expectedKind`, when set, must match
+  `Substrate.spec.substrate.kind`;
+- `SubstrateDiscoveryPolicy.spec.selector` is ANDed with `Substrate.spec.discovery.selector`
   before discovery reaches the adapter;
-- `AdapterPolicy.spec.dryRun=true` validates the policy, Substrate reference,
+- `SubstrateDiscoveryPolicy.spec.dryRun=true` validates the policy, Substrate reference,
   adapter resolution, and merged selector without invoking adapter discovery;
-- the controller resolves the substrate driver through `adapter.Registry`;
-- `Adapter.Discover` receives the Substrate, driver, runtime, namespace
+- the controller resolves the substrate kind through `adapter.Registry`;
+- `Adapter.Discover` receives the Substrate, substrate kind, execution scope, namespace
   parameter, selector, max object limit, and substrate parameters;
-- `AdapterPolicy.status.discoveredObjects` mirrors the latest aggregate object
+- `SubstrateDiscoveryPolicy.status.discoveredObjects` mirrors the latest aggregate object
   count for quick inspection. For built-in Argo CD and Flux discovery this
   mirrors the live `Substrate.status` counts written by `SubstrateReconciler`; for
   other registered adapters it uses the adapter discovery result.
 
 `SubstrateReconciler` remains the single writer for `Substrate.status`.
-`AdapterPolicy` records its own health and quick counts only. Full
+`SubstrateDiscoveryPolicy` records its own health and quick counts only. Full
 public-adapter delivery wiring still needs migration from direct
 actuator/spoke-provider registries where appropriate and conformance coverage
 for out-of-tree adapter authors.

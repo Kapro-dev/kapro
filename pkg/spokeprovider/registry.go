@@ -7,46 +7,46 @@ import (
 	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
-// Registry resolves Provider implementations by SubstrateDriver.
+// Registry resolves Provider implementations by SubstrateKind.
 //
 // Shape mirrors pkg/actuator.Registry on purpose: hub-side actuators and
 // spoke-side providers face opposite directions but follow the same
 // register/resolve discipline so out-of-tree code can reuse the idiom.
 type Registry struct {
 	mu            sync.RWMutex
-	providers     map[kaprov1alpha1.SubstrateDriver]Provider
-	registrations map[kaprov1alpha1.SubstrateDriver]Registration
+	providers     map[kaprov1alpha1.SubstrateKind]Provider
+	registrations map[kaprov1alpha1.SubstrateKind]Registration
 }
 
 // NewRegistry returns an empty Registry ready to accept Register calls.
 func NewRegistry() *Registry {
 	return &Registry{
-		providers:     make(map[kaprov1alpha1.SubstrateDriver]Provider),
-		registrations: make(map[kaprov1alpha1.SubstrateDriver]Registration),
+		providers:     make(map[kaprov1alpha1.SubstrateKind]Provider),
+		registrations: make(map[kaprov1alpha1.SubstrateKind]Registration),
 	}
 }
 
-// Registration binds one substrate driver to a provider implementation and its
+// Registration binds one substrate kind to a provider implementation and its
 // KSP metadata.
 type Registration struct {
-	Driver       kaprov1alpha1.SubstrateDriver
-	Capabilities Capabilities
-	Provider     Provider
+	SubstrateKind kaprov1alpha1.SubstrateKind
+	Capabilities  Capabilities
+	Provider      Provider
 }
 
-// Register adds a Provider under the given driver. Returns an error if the
-// driver is empty or already registered. Use Upsert when replacement is the
+// Register adds a Provider under the given substrate kind. Returns an error if the
+// substrate kind is empty or already registered. Use Upsert when replacement is the
 // intent — Register fails loudly on accidental duplicate registration to
 // surface wire-up bugs at startup, not at the first reconcile.
-func (r *Registry) Register(driver kaprov1alpha1.SubstrateDriver, p Provider) error {
-	driver, reg, err := normalizeRegistration(Registration{Driver: driver, Provider: p})
+func (r *Registry) Register(driver kaprov1alpha1.SubstrateKind, p Provider) error {
+	driver, reg, err := normalizeRegistration(Registration{SubstrateKind: driver, Provider: p})
 	if err != nil {
 		return err
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.providers[driver]; ok {
-		return fmt.Errorf("provider for driver %q already registered", driver)
+		return fmt.Errorf("provider for substrate kind %q already registered", driver)
 	}
 	r.providers[driver] = p
 	r.registrations[driver] = reg
@@ -62,19 +62,19 @@ func (r *Registry) RegisterRegistration(reg Registration) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.providers[driver]; ok {
-		return fmt.Errorf("provider for driver %q already registered", driver)
+		return fmt.Errorf("provider for substrate kind %q already registered", driver)
 	}
 	r.providers[driver] = normalized.Provider
 	r.registrations[driver] = normalized
 	return nil
 }
 
-// Upsert adds or replaces the Provider for driver and returns the previous
-// implementation when one existed. Rejects empty driver and nil provider
+// Upsert adds or replaces the Provider for substrate kind and returns the previous
+// implementation when one existed. Rejects empty substrate kind and nil provider
 // for the same reason Register does — a nil entry would let Resolve return
 // (nil, nil) and panic the dispatcher.
-func (r *Registry) Upsert(driver kaprov1alpha1.SubstrateDriver, p Provider) (Provider, error) {
-	driver, reg, err := normalizeRegistration(Registration{Driver: driver, Provider: p})
+func (r *Registry) Upsert(driver kaprov1alpha1.SubstrateKind, p Provider) (Provider, error) {
+	driver, reg, err := normalizeRegistration(Registration{SubstrateKind: driver, Provider: p})
 	if err != nil {
 		return nil, err
 	}
@@ -101,9 +101,9 @@ func (r *Registry) UpsertRegistration(reg Registration) (Provider, error) {
 	return old, nil
 }
 
-// Unregister removes the provider for driver and returns the previous
+// Unregister removes the provider for substrate kind and returns the previous
 // implementation plus an ok flag indicating whether one existed.
-func (r *Registry) Unregister(driver kaprov1alpha1.SubstrateDriver) (Provider, bool) {
+func (r *Registry) Unregister(driver kaprov1alpha1.SubstrateKind) (Provider, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	old, ok := r.providers[driver]
@@ -112,59 +112,59 @@ func (r *Registry) Unregister(driver kaprov1alpha1.SubstrateDriver) (Provider, b
 	return old, ok
 }
 
-// Resolve returns the Provider for driver or an error naming the unknown
-// driver. The error is human-readable and goes straight into
-// FleetCluster.status.delivery[app].lastError when an unknown driver is
+// Resolve returns the Provider for substrate kind or an error naming the unknown
+// kind. The error is human-readable and goes straight into
+// FleetCluster.status.delivery[app].lastError when an unknown substrate kind is
 // referenced — keep it stable for SRE grep recipes.
-func (r *Registry) Resolve(driver kaprov1alpha1.SubstrateDriver) (Provider, error) {
+func (r *Registry) Resolve(driver kaprov1alpha1.SubstrateKind) (Provider, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	p, ok := r.providers[driver]
 	if !ok {
-		return nil, fmt.Errorf("unknown substrate driver %q", driver)
+		return nil, fmt.Errorf("unknown substrate kind %q", driver)
 	}
 	return p, nil
 }
 
-// Registration returns provider metadata for driver.
-func (r *Registry) Registration(driver kaprov1alpha1.SubstrateDriver) (Registration, bool) {
+// Registration returns provider metadata for substrate kind.
+func (r *Registry) Registration(driver kaprov1alpha1.SubstrateKind) (Registration, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	reg, ok := r.registrations[driver]
 	return reg, ok
 }
 
-func normalizeRegistration(reg Registration) (kaprov1alpha1.SubstrateDriver, Registration, error) {
+func normalizeRegistration(reg Registration) (kaprov1alpha1.SubstrateKind, Registration, error) {
 	if reg.Provider == nil {
-		if reg.Driver != "" {
-			return "", Registration{}, fmt.Errorf("provider for driver %q is nil", reg.Driver)
+		if reg.SubstrateKind != "" {
+			return "", Registration{}, fmt.Errorf("provider for substrate kind %q is nil", reg.SubstrateKind)
 		}
 		return "", Registration{}, fmt.Errorf("provider is nil")
 	}
-	driver := reg.Driver
-	providerDriver := reg.Provider.Driver()
+	driver := reg.SubstrateKind
+	providerDriver := reg.Provider.SubstrateKind()
 	if providerDriver == "" {
-		return "", Registration{}, fmt.Errorf("provider driver is required")
+		return "", Registration{}, fmt.Errorf("provider substrate kind is required")
 	}
 	if driver == "" {
 		driver = providerDriver
 	}
 	if driver != providerDriver {
-		return "", Registration{}, fmt.Errorf("provider driver %q does not match registration driver %q", providerDriver, driver)
+		return "", Registration{}, fmt.Errorf("provider substrate kind %q does not match registration substrate kind %q", providerDriver, driver)
 	}
 	if driver == "" {
-		return "", Registration{}, fmt.Errorf("driver is required")
+		return "", Registration{}, fmt.Errorf("substrate kind is required")
 	}
-	reg.Driver = driver
+	reg.SubstrateKind = driver
 	if capabilitiesEmpty(reg.Capabilities) {
 		reg.Capabilities = reg.Provider.Capabilities()
 	}
 	reg.Capabilities = reg.Capabilities.Normalize()
-	if reg.Capabilities.Driver == "" {
-		reg.Capabilities.Driver = driver
+	if reg.Capabilities.SubstrateKind == "" {
+		reg.Capabilities.SubstrateKind = driver
 	}
-	if reg.Capabilities.Driver != driver {
-		return "", Registration{}, fmt.Errorf("capabilities driver %q does not match registration driver %q", reg.Capabilities.Driver, driver)
+	if reg.Capabilities.SubstrateKind != driver {
+		return "", Registration{}, fmt.Errorf("capabilities substrate kind %q does not match registration substrate kind %q", reg.Capabilities.SubstrateKind, driver)
 	}
 	if reg.Capabilities.ContractVersion != ContractVersionV1Alpha1 {
 		return "", Registration{}, fmt.Errorf("unsupported provider contract version %q", reg.Capabilities.ContractVersion)
@@ -174,7 +174,7 @@ func normalizeRegistration(reg Registration) (kaprov1alpha1.SubstrateDriver, Reg
 
 func capabilitiesEmpty(c Capabilities) bool {
 	return c.ContractVersion == "" &&
-		c.Driver == "" &&
+		c.SubstrateKind == "" &&
 		!c.SupportsReconcile &&
 		!c.SupportsObserve &&
 		!c.SupportsApply &&

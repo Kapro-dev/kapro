@@ -34,8 +34,8 @@ func TestRegistryRegisterRegistrationStoresCapabilities(t *testing.T) {
 	err := registry.RegisterRegistration(Registration{
 		Mode: kaprov1alpha1.DeliveryModePush,
 		Capabilities: Capabilities{
-			Driver:              kaprov1alpha1.SubstrateDriverArgo,
-			Runtime:             kaprov1alpha1.SubstrateRuntimeHub,
+			SubstrateKind:       kaprov1alpha1.SubstrateKindArgo,
+			ExecutionScope:      kaprov1alpha1.ExecutionScopeHub,
 			SupportsApply:       true,
 			SupportsConvergence: true,
 			SupportsTwoPhase:    true,
@@ -75,9 +75,9 @@ func TestRegistryResolveWrapsActuatorWithTracing(t *testing.T) {
 	err := registry.RegisterRegistration(Registration{
 		Mode: kaprov1alpha1.DeliveryModePush,
 		Capabilities: Capabilities{
-			Driver:              kaprov1alpha1.SubstrateDriverArgo,
-			Adapter:             "argo",
-			Runtime:             kaprov1alpha1.SubstrateRuntimeHub,
+			SubstrateKind:       kaprov1alpha1.SubstrateKindArgo,
+			Actuator:            "argo",
+			ExecutionScope:      kaprov1alpha1.ExecutionScopeHub,
 			SupportsApply:       true,
 			SupportsConvergence: true,
 		},
@@ -113,9 +113,9 @@ func TestRegistryResolveWrapsActuatorWithTracing(t *testing.T) {
 	for key, want := range map[string]string{
 		"kapro.actuator.name":             "push/argo",
 		"kapro.actuator.contract_version": ContractVersionV1Alpha1,
-		"kapro.actuator.driver":           string(kaprov1alpha1.SubstrateDriverArgo),
-		"kapro.actuator.adapter":          "argo",
-		"kapro.actuator.runtime":          string(kaprov1alpha1.SubstrateRuntimeHub),
+		"kapro.actuator.substrate_kind":   string(kaprov1alpha1.SubstrateKindArgo),
+		"kapro.actuator.actuator":         "argo",
+		"kapro.actuator.execution_scope":  string(kaprov1alpha1.ExecutionScopeHub),
 		"kapro.cluster":                   "cluster-a",
 	} {
 		if got := attrs[key].AsString(); got != want {
@@ -173,7 +173,7 @@ func TestRegistryRejectsInvalidRegistration(t *testing.T) {
 	// instead of silently registering an unreachable actuator.
 	leadingSlash := Registration{
 		Actuator:     stubActuator{},
-		Capabilities: Capabilities{Adapter: "argo"},
+		Capabilities: Capabilities{Actuator: "argo"},
 	}
 	if err := registry.RegisterRegistration(leadingSlash); err == nil {
 		t.Fatalf("RegisterRegistration accepted leading-slash key from empty Mode+Name")

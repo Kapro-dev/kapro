@@ -14,8 +14,8 @@ import (
 	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 )
 
-type adoptAdapterOptions struct {
-	Adapter       string
+type adoptSubstrateOptions struct {
+	SubstrateKind string
 	SubstrateName string
 	Namespace     string
 	Selector      string
@@ -41,7 +41,7 @@ Substrate to Adopt and applying Git changes are separate, explicit steps.`,
 
 func newAdoptArgoCmd() *cobra.Command {
 	opts := argoDiscoverOptions{Cache: true, MaxFiles: defaultArgoDiscoveryMaxFiles, MaxUnits: defaultArgoDiscoveryMaxUnits}
-	adapterOpts := adoptAdapterOptions{Adapter: "argo", SubstrateName: "argo", Namespace: "argocd", Selector: "kapro.io/import=true", SyncInterval: "5m"}
+	substrateOpts := adoptSubstrateOptions{SubstrateKind: "argo", SubstrateName: "argo", Namespace: "argocd", Selector: "kapro.io/import=true", SyncInterval: "5m"}
 	cmd := &cobra.Command{
 		Use:   "argo [repo]",
 		Short: "Generate Kapro adoption files for an existing Argo CD repo",
@@ -51,11 +51,11 @@ files. Output starts in observe mode so the generated graph can be reviewed
 before any write permissions are granted.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			if adapterOpts.Apply {
-				adapterOpts.SubstrateName = opts.Name
-				adapterOpts.Namespace = opts.Namespace
-				adapterOpts.Selector = opts.Selector
-				return runAdoptAdapter(context.Background(), adapterOpts)
+			if substrateOpts.Apply {
+				substrateOpts.SubstrateName = opts.Name
+				substrateOpts.Namespace = opts.Namespace
+				substrateOpts.Selector = opts.Selector
+				return runAdoptSubstrate(context.Background(), substrateOpts)
 			}
 			opts.RepoPath = "."
 			if len(args) > 0 {
@@ -75,16 +75,16 @@ before any write permissions are granted.`,
 	cmd.Flags().IntVar(&opts.MaxFiles, "max-files", defaultArgoDiscoveryMaxFiles, "Maximum tracked YAML/JSON candidate files to parse (0 = unlimited)")
 	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum Source units to generate (0 = unlimited)")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
-	cmd.Flags().BoolVar(&adapterOpts.Apply, "apply", false, "Create or update Substrate and AdapterPolicy in the current cluster instead of writing files")
-	cmd.Flags().StringVar(&adapterOpts.DryRun, "dry-run", "", "Set to client to validate the live --apply writes without persisting")
-	cmd.Flags().StringVar(&adapterOpts.Kubeconfig, "kubeconfig", "", "Path to kubeconfig")
-	cmd.Flags().StringVar(&adapterOpts.SyncInterval, "sync-interval", adapterOpts.SyncInterval, "AdapterPolicy discovery sync interval")
+	cmd.Flags().BoolVar(&substrateOpts.Apply, "apply", false, "Create or update Substrate and SubstrateDiscoveryPolicy in the current cluster instead of writing files")
+	cmd.Flags().StringVar(&substrateOpts.DryRun, "dry-run", "", "Set to client to validate the live --apply writes without persisting")
+	cmd.Flags().StringVar(&substrateOpts.Kubeconfig, "kubeconfig", "", "Path to kubeconfig")
+	cmd.Flags().StringVar(&substrateOpts.SyncInterval, "sync-interval", substrateOpts.SyncInterval, "SubstrateDiscoveryPolicy discovery sync interval")
 	return cmd
 }
 
 func newAdoptFluxCmd() *cobra.Command {
 	opts := fluxDiscoverOptions{MaxFiles: defaultArgoDiscoveryMaxFiles, MaxUnits: defaultArgoDiscoveryMaxUnits}
-	adapterOpts := adoptAdapterOptions{Adapter: "flux", SubstrateName: "flux", Namespace: "flux-system", Selector: "kapro.io/import=true", SyncInterval: "5m"}
+	substrateOpts := adoptSubstrateOptions{SubstrateKind: "flux", SubstrateName: "flux", Namespace: "flux-system", Selector: "kapro.io/import=true", SyncInterval: "5m"}
 	cmd := &cobra.Command{
 		Use:   "flux [repo]",
 		Short: "Generate Kapro adoption files for an existing Flux repo",
@@ -94,11 +94,11 @@ files. Output starts in observe mode so the generated graph can be reviewed
 before any write permissions are granted.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			if adapterOpts.Apply {
-				adapterOpts.SubstrateName = opts.Name
-				adapterOpts.Namespace = opts.Namespace
-				adapterOpts.Selector = opts.Selector
-				return runAdoptAdapter(context.Background(), adapterOpts)
+			if substrateOpts.Apply {
+				substrateOpts.SubstrateName = opts.Name
+				substrateOpts.Namespace = opts.Namespace
+				substrateOpts.Selector = opts.Selector
+				return runAdoptSubstrate(context.Background(), substrateOpts)
 			}
 			opts.RepoPath = "."
 			if len(args) > 0 {
@@ -116,14 +116,14 @@ before any write permissions are granted.`,
 	cmd.Flags().IntVar(&opts.MaxFiles, "max-files", defaultArgoDiscoveryMaxFiles, "Maximum tracked YAML/JSON candidate files to parse (0 = unlimited)")
 	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum Source units to generate (0 = unlimited)")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
-	cmd.Flags().BoolVar(&adapterOpts.Apply, "apply", false, "Create or update Substrate and AdapterPolicy in the current cluster instead of writing files")
-	cmd.Flags().StringVar(&adapterOpts.DryRun, "dry-run", "", "Set to client to validate the live --apply writes without persisting")
-	cmd.Flags().StringVar(&adapterOpts.Kubeconfig, "kubeconfig", "", "Path to kubeconfig")
-	cmd.Flags().StringVar(&adapterOpts.SyncInterval, "sync-interval", adapterOpts.SyncInterval, "AdapterPolicy discovery sync interval")
+	cmd.Flags().BoolVar(&substrateOpts.Apply, "apply", false, "Create or update Substrate and SubstrateDiscoveryPolicy in the current cluster instead of writing files")
+	cmd.Flags().StringVar(&substrateOpts.DryRun, "dry-run", "", "Set to client to validate the live --apply writes without persisting")
+	cmd.Flags().StringVar(&substrateOpts.Kubeconfig, "kubeconfig", "", "Path to kubeconfig")
+	cmd.Flags().StringVar(&substrateOpts.SyncInterval, "sync-interval", substrateOpts.SyncInterval, "SubstrateDiscoveryPolicy discovery sync interval")
 	return cmd
 }
 
-func runAdoptAdapter(ctx context.Context, opts adoptAdapterOptions) error {
+func runAdoptSubstrate(ctx context.Context, opts adoptSubstrateOptions) error {
 	if opts.DryRun != "" && opts.DryRun != "client" {
 		return fmt.Errorf("--dry-run must be empty or client")
 	}
@@ -139,7 +139,7 @@ func runAdoptAdapter(ctx context.Context, opts adoptAdapterOptions) error {
 		return err
 	}
 	substrateKind := "flux"
-	if opts.Adapter == "argo" {
+	if opts.SubstrateKind == "argo" {
 		substrateKind = "argo"
 	}
 	substrate := &kaprov1alpha1.Substrate{
@@ -147,7 +147,7 @@ func runAdoptAdapter(ctx context.Context, opts adoptAdapterOptions) error {
 		Spec: kaprov1alpha1.SubstrateSpec{
 			Substrate: &kaprov1alpha1.SubstrateImplementationSpec{
 				Kind:     substrateKind,
-				Actuator: opts.Adapter,
+				Actuator: opts.SubstrateKind,
 			},
 			Execution: &kaprov1alpha1.SubstrateExecutionSpec{Mode: kaprov1alpha1.ExecutionModeHubPush},
 			Discovery: &kaprov1alpha1.SubstrateDiscoverySpec{
@@ -158,11 +158,11 @@ func runAdoptAdapter(ctx context.Context, opts adoptAdapterOptions) error {
 			Parameters: map[string]string{"namespace": opts.Namespace},
 		},
 	}
-	policy := &kaprov1alpha1.AdapterPolicy{
+	policy := &kaprov1alpha1.SubstrateDiscoveryPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: opts.SubstrateName + "-adopt"},
-		Spec: kaprov1alpha1.AdapterPolicySpec{
-			Adapter:      opts.Adapter,
+		Spec: kaprov1alpha1.SubstrateDiscoveryPolicySpec{
 			SubstrateRef: opts.SubstrateName,
+			ExpectedKind: opts.SubstrateKind,
 			SyncInterval: opts.SyncInterval,
 		},
 	}
@@ -174,10 +174,10 @@ func runAdoptAdapter(ctx context.Context, opts adoptAdapterOptions) error {
 		return err
 	}
 	if dryRun {
-		fmt.Printf("Validated Substrate %s and AdapterPolicy %s with client-side dry-run\n", substrate.Name, policy.Name)
+		fmt.Printf("Validated Substrate %s and SubstrateDiscoveryPolicy %s with client-side dry-run\n", substrate.Name, policy.Name)
 		return nil
 	}
-	fmt.Printf("Created/updated Substrate %s and AdapterPolicy %s\n", substrate.Name, policy.Name)
+	fmt.Printf("Created/updated Substrate %s and SubstrateDiscoveryPolicy %s\n", substrate.Name, policy.Name)
 	return nil
 }
 

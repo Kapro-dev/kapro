@@ -62,7 +62,7 @@ type ControllerContext struct {
 	GateRegistry *gate.Registry
 
 	// AdapterRegistry resolves public delivery adapters by substrate kind.
-	// AdapterPolicy uses this for continuous existing-cluster discovery. Promotion
+	// SubstrateDiscoveryPolicy uses this for continuous existing-cluster discovery. Promotion
 	// execution continues to use ActuatorRegistry until the substrate plugin
 	// axis fully replaces the legacy actuator bridge.
 	AdapterRegistry *kaproadapter.Registry

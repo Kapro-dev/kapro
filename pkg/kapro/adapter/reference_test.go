@@ -14,41 +14,41 @@ import (
 func TestReferenceAdaptersExposeDriversAndDiscoveryModels(t *testing.T) {
 	tests := []struct {
 		name         string
-		driver       kaprov1alpha1.SubstrateDriver
+		driver       kaprov1alpha1.SubstrateKind
 		wantReady    bool
 		wantSelected int
 		discover     func(context.Context) (bool, int, string, error)
 	}{
 		{
 			name:         "argocd",
-			driver:       kaprov1alpha1.SubstrateDriverArgo,
+			driver:       kaprov1alpha1.SubstrateKindArgo,
 			wantReady:    true,
 			wantSelected: 2,
 			discover: func(ctx context.Context) (bool, int, string, error) {
 				a := argocd.New()
-				result, err := a.Discover(ctx, discoveryRequest(a.Driver()))
+				result, err := a.Discover(ctx, discoveryRequest(a.SubstrateKind()))
 				return result.Ready, len(result.SelectedObjects), result.Reason, err
 			},
 		},
 		{
 			name:         "flux",
-			driver:       kaprov1alpha1.SubstrateDriverFlux,
+			driver:       kaprov1alpha1.SubstrateKindFlux,
 			wantReady:    true,
 			wantSelected: 5,
 			discover: func(ctx context.Context) (bool, int, string, error) {
 				a := flux.New()
-				result, err := a.Discover(ctx, discoveryRequest(a.Driver()))
+				result, err := a.Discover(ctx, discoveryRequest(a.SubstrateKind()))
 				return result.Ready, len(result.SelectedObjects), result.Reason, err
 			},
 		},
 		{
 			name:         "oci",
-			driver:       kaprov1alpha1.SubstrateDriverOCI,
+			driver:       kaprov1alpha1.SubstrateKindOCI,
 			wantReady:    false,
 			wantSelected: 0,
 			discover: func(ctx context.Context) (bool, int, string, error) {
 				a := oci.New()
-				result, err := a.Discover(ctx, discoveryRequest(a.Driver()))
+				result, err := a.Discover(ctx, discoveryRequest(a.SubstrateKind()))
 				return result.Ready, len(result.SelectedObjects), result.Reason, err
 			},
 		},
@@ -73,18 +73,18 @@ func TestReferenceAdaptersExposeDriversAndDiscoveryModels(t *testing.T) {
 func TestReferenceAdaptersExposeCapabilities(t *testing.T) {
 	for _, a := range []adapter.Adapter{argocd.New(), flux.New(), oci.New()} {
 		caps := a.Capabilities()
-		if caps.Driver != a.Driver() || caps.Runtime == "" {
-			t.Fatalf("%s capabilities = %#v", a.Driver(), caps)
+		if caps.SubstrateKind != a.SubstrateKind() || caps.ExecutionScope == "" {
+			t.Fatalf("%s capabilities = %#v", a.SubstrateKind(), caps)
 		}
 		if caps.SupportsApply || caps.SupportsObserve || caps.SupportsRollback {
-			t.Fatalf("%s reference adapter should not advertise side-effect capabilities: %#v", a.Driver(), caps)
+			t.Fatalf("%s reference adapter should not advertise side-effect capabilities: %#v", a.SubstrateKind(), caps)
 		}
-		if caps.SupportsDiscover != (a.Driver() != kaprov1alpha1.SubstrateDriverOCI) {
-			t.Fatalf("%s SupportsDiscover = %v", a.Driver(), caps.SupportsDiscover)
+		if caps.SupportsDiscover != (a.SubstrateKind() != kaprov1alpha1.SubstrateKindOCI) {
+			t.Fatalf("%s SupportsDiscover = %v", a.SubstrateKind(), caps.SupportsDiscover)
 		}
 	}
 }
 
-func discoveryRequest(driver kaprov1alpha1.SubstrateDriver) adapter.DiscoveryRequest {
-	return adapter.DiscoveryRequest{Driver: driver}
+func discoveryRequest(driver kaprov1alpha1.SubstrateKind) adapter.DiscoveryRequest {
+	return adapter.DiscoveryRequest{SubstrateKind: driver}
 }

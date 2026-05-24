@@ -47,10 +47,9 @@ type SubstrateObjectReporter interface {
 // implements and how it maps to Substrate.spec fields.
 type Capabilities struct {
 	ContractVersion string
-	SubstrateKind   string
-	Driver          kaprov1alpha1.SubstrateDriver
-	Adapter         string
-	Runtime         kaprov1alpha1.SubstrateRuntime
+	SubstrateKind   kaprov1alpha1.SubstrateKind
+	Actuator        string
+	ExecutionScope  kaprov1alpha1.ExecutionScope
 	ExecutionModes  []kaprov1alpha1.ExecutionMode
 	Modes           []kaprov1alpha1.DeliveryMode
 
@@ -72,14 +71,11 @@ func (c Capabilities) Normalize() Capabilities {
 	if c.ContractVersion == "" {
 		c.ContractVersion = ContractVersionV1Alpha1
 	}
-	if c.Runtime == "" {
-		c.Runtime = kaprov1alpha1.SubstrateRuntimeBoth
+	if c.ExecutionScope == "" {
+		c.ExecutionScope = kaprov1alpha1.ExecutionScopeBoth
 	}
-	if c.SubstrateKind == "" {
-		c.SubstrateKind = string(c.Driver)
-	}
-	if c.Adapter == "" {
-		c.Adapter = string(c.Driver)
+	if c.Actuator == "" {
+		c.Actuator = string(c.SubstrateKind)
 	}
 	for _, mode := range c.ExecutionModes {
 		switch mode {

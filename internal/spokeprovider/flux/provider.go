@@ -40,7 +40,7 @@ var (
 	}
 )
 
-// Provider is the spoke-side observer for SubstrateDriverFlux. It is
+// Provider is the spoke-side observer for SubstrateKindFlux. It is
 // read-only: it never patches Flux objects. Mutation happens via the
 // hub-side fluxoperator actuator (internal/actuator/fluxoperator) which
 // already runs against the hub-held FluxInstance or against a hub-managed
@@ -57,14 +57,16 @@ func NewProvider(spoke client.Client) *Provider {
 	return &Provider{Local: spoke}
 }
 
-// Driver returns SubstrateDriverFlux. The Registry key — not this method —
+// SubstrateKind returns SubstrateKindFlux. The Registry key — not this method —
 // determines dispatch.
-func (p *Provider) Driver() kaprov1alpha1.SubstrateDriver { return kaprov1alpha1.SubstrateDriverFlux }
+func (p *Provider) SubstrateKind() kaprov1alpha1.SubstrateKind {
+	return kaprov1alpha1.SubstrateKindFlux
+}
 
 func (p *Provider) Capabilities() spokeprovider.Capabilities {
 	return spokeprovider.Capabilities{
 		ContractVersion:   spokeprovider.ContractVersionV1Alpha1,
-		Driver:            kaprov1alpha1.SubstrateDriverFlux,
+		SubstrateKind:     kaprov1alpha1.SubstrateKindFlux,
 		SupportsReconcile: true,
 		SupportsObserve:   true,
 	}

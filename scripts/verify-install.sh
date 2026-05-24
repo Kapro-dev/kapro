@@ -82,7 +82,7 @@ check_crd_sync() {
 
 expected_kapro_crds() {
   cat <<'EOF'
-adapterpolicies.kapro.io
+substratediscoverypolicies.kapro.io
 argocdsubstrateconfigs.argocd.substrate.kapro.io
 approvals.kapro.io
 clusters.kapro.io

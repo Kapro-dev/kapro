@@ -30,7 +30,7 @@ The Go package paths are Kapro-qualified to avoid colliding with Kubernetes'
 
 The public group keeps the meaningful authoring CRDs:
 
-- `AdapterPolicy`
+- `SubstrateDiscoveryPolicy`
 - `Approval`
 - `Cluster`
 - `ClusterTemplate`
