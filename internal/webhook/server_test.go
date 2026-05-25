@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	"kapro.io/kapro/internal/webhook/token"
@@ -129,7 +131,7 @@ func TestApprovalWebhookRendersFragmentBackedDecisionPage(t *testing.T) {
 	}
 }
 
-func TestHandleApproveRejectsReplayToken(t *testing.T) {
+func TestHandleApproveReplayReturnsAlreadyApproved(t *testing.T) {
 	scheme := webhookTestScheme(t)
 	promotionrun := &kaproruntimev1alpha1.PromotionRun{
 		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default", UID: "uid-1"},
@@ -172,8 +174,8 @@ func TestHandleApproveRejectsReplayToken(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+tokenStr)
 	req.SetPathValue("name", target.Name)
 	s.handleApprove(rec, req)
-	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "token_already_redeemed") {
-		t.Fatalf("replay code/body = %d/%s, want token_already_redeemed conflict", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "already_approved") {
+		t.Fatalf("replay code/body = %d/%s, want already_approved conflict", rec.Code, rec.Body.String())
 	}
 
 	var got kaproruntimev1alpha1.Target
@@ -182,6 +184,64 @@ func TestHandleApproveRejectsReplayToken(t *testing.T) {
 	}
 	if got.Annotations[approvalDecisionTokenJTIAnnotation] != "approve-jti" {
 		t.Fatalf("redeemed token annotation = %q", got.Annotations[approvalDecisionTokenJTIAnnotation])
+	}
+}
+
+func TestHandleApproveRetriesSameClaimAfterCreateFailure(t *testing.T) {
+	scheme := webhookTestScheme(t)
+	promotionrun := &kaproruntimev1alpha1.PromotionRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "rel-1", Namespace: "default", UID: "uid-1"},
+	}
+	target := &kaproruntimev1alpha1.Target{
+		ObjectMeta: metav1.ObjectMeta{Name: "rel-1-wave-prod-cluster-a"},
+		Spec: kaprov1alpha1.TargetSpec{
+			PromotionRunRef: "rel-1",
+			Target:          "cluster-a",
+			Version:         "v1",
+		},
+	}
+	baseClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(promotionrun, target).Build()
+	failApprovalCreate := true
+	s := &Server{
+		Client: interceptor.NewClient(baseClient, interceptor.Funcs{
+			Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+				if _, ok := obj.(*kaprov1alpha1.Approval); ok && failApprovalCreate {
+					failApprovalCreate = false
+					return errors.New("temporary approval create failure")
+				}
+				return c.Create(ctx, obj, opts...)
+			},
+		}),
+		TokenSecret: []byte("secret"),
+	}
+	tokenStr := signApprovalTestToken(t, s.TokenSecret, token.Claims{
+		SyncName:     target.Name,
+		Action:       "approve",
+		Namespace:    "default",
+		PromotionRun: "rel-1",
+		Target:       "cluster-a",
+		Version:      "v1",
+		UID:          "uid-1/" + target.Name,
+		JTI:          "approve-jti",
+		Exp:          1 << 62,
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/approve/"+target.Name, nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	req.SetPathValue("name", target.Name)
+	s.handleApprove(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("first approve code = %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/approve/"+target.Name, nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	req.SetPathValue("name", target.Name)
+	s.handleApprove(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("retry approve code = %d, body=%s", rec.Code, rec.Body.String())
 	}
 }
 
