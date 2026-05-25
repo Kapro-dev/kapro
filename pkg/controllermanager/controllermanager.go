@@ -128,7 +128,7 @@ var controllerAliases = map[string]string{}
 // defaultControllers is the public-preview core controller set. Target is
 // intentionally omitted from user-facing defaults and selected implicitly
 // whenever promotionrun is enabled.
-var defaultControllers = []string{"fleet", "plan", "promotion", "promotionrun", "cluster", "substrateclass", "substrate"}
+var defaultControllers = []string{"deliveryunit", "fleet", "plan", "promotion", "promotionrun", "cluster", "substrateclass", "substrate"}
 
 var implicitControllerDependencies = map[string][]string{
 	"promotionrun": {"target"},

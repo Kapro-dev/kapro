@@ -1,0 +1,24 @@
+apiVersion: kapro.io/v1alpha1
+kind: DeliveryUnit
+metadata:
+  name: checkout-oci
+  labels:
+    kapro.io/unit: checkout-oci
+    kapro.io/team: platform
+    app.kubernetes.io/name: checkout
+spec:
+  defaultFleetRef: checkout-oci
+  defaultPlanRef: checkout-oci
+  source:
+    substrateRef: oci
+    registries:
+      - name: app
+        url: oci://ghcr.io/example/charts
+        type: oci
+    defaults:
+      repo: app
+      targetNamespace: checkout
+    units:
+      - name: checkout
+        chartName: checkout
+        version: 1.2.3

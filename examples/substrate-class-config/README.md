@@ -14,7 +14,7 @@ Git. Apply the class and config manifests, enable the `substrateclass` and
 ```sh
 helm upgrade --install kapro charts/kapro-operator \
   --namespace kapro-system --create-namespace \
-  --set controllers='{fleet,plan,promotion,promotionrun,cluster,substrateclass,substrate}'
+  --set controllers='{deliveryunit,fleet,plan,promotion,promotionrun,cluster,substrateclass,substrate}'
 ```
 
 Start small with `kubernetes-apply` for Gitless local testing, then move to

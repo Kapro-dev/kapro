@@ -11,7 +11,7 @@ kapro create oci ./promotion-repo --name checkout
 cd promotion-repo
 kubectl apply -f substrates/oci.yaml
 kubectl wait --for=condition=Ready substrate/oci --timeout=90s
-kubectl apply --recursive -f clusters -f plans -f fleets -f promotions
+kubectl apply --recursive -f clusters -f deliveryunits -f plans -f fleets -f promotions
 ```
 
 The checked-in static example below is useful for smoke tests and release
@@ -32,6 +32,8 @@ Prerequisites for a real OCI pull deployment:
 git clone --branch main https://github.com/Kapro-dev/kapro.git
 cd kapro
 kubectl apply -f examples/quickstart-oci/substrates/oci.yaml
+kubectl apply -f examples/quickstart-oci/deliveryunit.yaml
+kubectl apply -f examples/quickstart-oci/plan.yaml
 kubectl apply -f examples/quickstart-oci/fleet.yaml
 kubectl apply -f examples/quickstart-oci/promotion.yaml
 kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io

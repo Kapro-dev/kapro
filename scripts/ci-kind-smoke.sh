@@ -319,6 +319,8 @@ run_flux_quickstart() {
   echo "running Flux quickstart"
   kubectl --context "${CTX}" apply -f examples/quickstart/substrates/flux.yaml
   wait_for_substrate_ready flux
+  kubectl --context "${CTX}" apply -f examples/quickstart/deliveryunit.yaml
+  kubectl --context "${CTX}" apply -f examples/quickstart/plan.yaml
   kubectl --context "${CTX}" apply -f examples/quickstart/kapro.yaml
   wait_for_clusters checkout-canary-eu checkout-production-eu
   mark_cluster_converged checkout-canary-eu
@@ -338,6 +340,7 @@ run_direct_quickstart() {
   kubectl --context "${CTX}" apply --recursive \
     -f examples/quickstart-direct/apps \
     -f examples/quickstart-direct/clusters \
+    -f examples/quickstart-direct/deliveryunits \
     -f examples/quickstart-direct/plans \
     -f examples/quickstart-direct/fleets
   wait_for_clusters canary-eu prod-eu
@@ -364,6 +367,8 @@ run_argo_quickstart() {
   install_fake_argo_applications
   kubectl --context "${CTX}" apply -f examples/quickstart-argo/substrates/argo.yaml
   wait_for_substrate_ready argo
+  kubectl --context "${CTX}" apply -f examples/quickstart-argo/deliveryunit.yaml
+  kubectl --context "${CTX}" apply -f examples/quickstart-argo/plan.yaml
   kubectl --context "${CTX}" apply -f examples/quickstart-argo/fleet.yaml
   wait_for_clusters checkout-argo-canary checkout-argo-production
   mark_cluster_converged checkout-argo-canary
@@ -377,6 +382,8 @@ run_oci_quickstart() {
   echo "running OCI quickstart"
   kubectl --context "${CTX}" apply -f examples/quickstart-oci/substrates/oci.yaml
   wait_for_substrate_ready oci
+  kubectl --context "${CTX}" apply -f examples/quickstart-oci/deliveryunit.yaml
+  kubectl --context "${CTX}" apply -f examples/quickstart-oci/plan.yaml
   kubectl --context "${CTX}" apply -f examples/quickstart-oci/fleet.yaml
   wait_for_clusters checkout-oci-canary checkout-oci-production
   mark_cluster_converged checkout-oci-canary

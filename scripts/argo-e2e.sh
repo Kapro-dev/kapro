@@ -565,7 +565,7 @@ discover_and_apply_kapro_mapping() {
   "${KUBECTL[@]}" apply -f "${out}/substrates/argo-e2e-observe.yaml"
   "${KUBECTL[@]}" patch substrate argo-e2e --type=merge \
     -p '{"spec":{"discovery":{"managementPolicy":"Adopt"}}}'
-  "${KUBECTL[@]}" apply -f "${out}/sources/argo-e2e.yaml"
+  "${KUBECTL[@]}" apply -f "${out}/deliveryunits/argo-e2e.yaml"
 }
 
 apply_argo_roots() {
@@ -581,7 +581,7 @@ apply_argo_roots() {
 
 promote_git_mapping_to_v2() {
   local repo="$1"
-  local source="${TMPDIR}/kapro-connect/sources/argo-e2e.yaml"
+  local source="${TMPDIR}/kapro-connect/deliveryunits/argo-e2e.yaml"
   echo "using kapro source apply to update Git-native Argo mappings"
   "${TMPDIR}/bin/kapro" source apply \
     --repo "${repo}" \
@@ -604,7 +604,7 @@ promote_git_mapping_to_v2() {
 }
 
 apply_kapro_rollout() {
-  echo "creating Kapro Cluster and Plan"
+  echo "creating Kapro Cluster, Fleet, Plan, and Promotion"
   cat <<YAML | "${KUBECTL[@]}" apply -f -
 apiVersion: kapro.io/v1alpha1
 kind: Cluster
@@ -627,9 +627,36 @@ spec:
       versionField.multi-source: spec.sources[0].targetRevision
 ---
 apiVersion: kapro.io/v1alpha1
+kind: Fleet
+metadata:
+  name: argo-e2e
+  labels:
+    kapro.io/team: platform
+    kapro.io/unit: argo-e2e
+spec:
+  delivery:
+    mode: push
+    substrateRef: argo
+    parameters:
+      namespace: ${ARGO_NAMESPACE}
+      authorizedSource: argo-e2e
+      applicationSelector.plain: kapro.io/unit=plain
+      applicationSelector.appset: kapro.io/unit=appset
+      applicationSelector.root-child: kapro.io/unit=root-child
+      applicationSelector.multi-source: kapro.io/unit=multi-source
+      applicationSelector.yaml-appset: kapro.io/unit=yaml-appset
+      versionField.multi-source: spec.sources[0].targetRevision
+  clusters:
+    - name: argo-e2e
+      labels:
+        kapro.io/e2e: argo
+---
+apiVersion: kapro.io/v1alpha1
 kind: Plan
 metadata:
   name: argo-e2e
+  labels:
+    kapro.io/team: platform
 spec:
   stages:
     - name: deploy
@@ -641,14 +668,20 @@ YAML
   "${KUBECTL[@]}" patch cluster argo-e2e --subresource=status --type=merge \
     -p '{"status":{"health":{"allWorkloadsReady":true,"readyWorkloads":5,"totalWorkloads":5,"message":"Argo E2E fixture reports ready"}}}'
 
-  echo "creating Kapro PromotionRun"
+  echo "creating Kapro Promotion"
   cat <<YAML | "${KUBECTL[@]}" apply -f -
 ---
 apiVersion: kapro.io/v1alpha1
-kind: PromotionRun
+kind: Promotion
 metadata:
   name: argo-e2e
+  labels:
+    kapro.io/team: platform
+    kapro.io/unit: argo-e2e
 spec:
+  deliveryUnitRef: argo-e2e
+  fleetRef: argo-e2e
+  planRef: argo-e2e
   versions:
     plain: v2
     appset: v2
@@ -688,20 +721,24 @@ wait_for_application() {
 wait_for_promotionrun_complete() {
   echo "waiting for Kapro PromotionRun to complete"
   for _ in $(seq 1 180); do
-    local phase
-    phase="$("${KUBECTL[@]}" get promotionrun argo-e2e -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+    local run phase
+    run="$("${KUBECTL[@]}" get promotionrun -l kapro.io/promotion=argo-e2e -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+    phase=""
+    if [ -n "${run}" ]; then
+      phase="$("${KUBECTL[@]}" get "promotionrun/${run}" -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+    fi
     if [ "${phase}" = "Complete" ]; then
       return
     fi
     if [ "${phase}" = "Failed" ]; then
-      "${KUBECTL[@]}" get promotionrun argo-e2e -o yaml || true
+      "${KUBECTL[@]}" get "promotionrun/${run}" -o yaml || true
       "${KUBECTL[@]}" get targets -o yaml || true
       echo "Kapro PromotionRun failed" >&2
       exit 1
     fi
     sleep 2
   done
-  "${KUBECTL[@]}" get promotionrun argo-e2e -o yaml || true
+  "${KUBECTL[@]}" get promotionrun -l kapro.io/promotion=argo-e2e -o yaml || true
   "${KUBECTL[@]}" get targets -o yaml || true
   echo "timed out waiting for Kapro PromotionRun to complete" >&2
   exit 1
@@ -773,7 +810,7 @@ run() {
 status() {
   echo
   echo "Kapro resources"
-  "${KUBECTL[@]}" get substrates.kapro.io,sources.kapro.io,clusters.kapro.io,plans.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io -o wide || true
+  "${KUBECTL[@]}" get substrates.kapro.io,deliveryunits.kapro.io,sources.kapro.io,clusters.kapro.io,fleets.kapro.io,plans.kapro.io,promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io -o wide || true
   echo
   echo "Argo Applications"
   "${KUBECTL[@]}" -n "${ARGO_NAMESPACE}" get applications,applicationsets -o wide || true

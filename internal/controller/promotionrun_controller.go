@@ -1199,6 +1199,23 @@ func (r *PromotionRunReconciler) listRawTargetsForStage(ctx context.Context, sta
 		return nil, err
 	}
 	clusters := mcList.Items
+	if promotionrun.Spec.FleetRef != "" {
+		var fleet kaprov1alpha1.Fleet
+		if err := r.Get(ctx, client.ObjectKey{Name: promotionrun.Spec.FleetRef}, &fleet); err != nil {
+			return nil, fmt.Errorf("get Fleet %s for PromotionRun target scope: %w", promotionrun.Spec.FleetRef, err)
+		}
+		allowedByFleet := make(map[string]struct{}, len(fleet.Spec.Clusters))
+		for _, ref := range fleet.Spec.Clusters {
+			allowedByFleet[ref.Name] = struct{}{}
+		}
+		fleetFiltered := clusters[:0]
+		for _, mc := range clusters {
+			if _, ok := allowedByFleet[mc.Name]; ok {
+				fleetFiltered = append(fleetFiltered, mc)
+			}
+		}
+		clusters = fleetFiltered
+	}
 
 	// Filter out suspended clusters — spec.suspend means "do not deploy to this cluster".
 	filtered := clusters[:0]

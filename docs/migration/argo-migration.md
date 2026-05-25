@@ -5,11 +5,11 @@ ApplicationSets, app-of-apps, and registered clusters.
 
 Kapro should be introduced as a promotion layer, not as a replacement for Argo
 CD. Argo keeps cluster credentials, Projects, repo credentials, sync policy,
-health checks, and local rollout behavior. Kapro adds `Fleet`, `Source`, `Plan`,
-and `Promotion` intent around the Argo estate.
+health checks, and local rollout behavior. Kapro adds `DeliveryUnit`, `Fleet`,
+`Plan`, and explicit `Promotion` intent around the Argo estate.
 
 The migration path is observe, review, then adopt. Discovery generates a
-read-only `Substrate`, inferred `Source` units, and review reports. Adoption
+read-only `Substrate`, a `DeliveryUnit` with inferred source mappings, and review reports. Adoption
 should only enable the specific version writes the owning team has reviewed.
 
 ## Repository Shape
@@ -25,7 +25,7 @@ platform-gitops/
     app-of-apps/
   fleets/
     substrates/checkout-observe.yaml
-    sources/checkout.yaml
+    deliveryunits/checkout.yaml
     plans/checkout.yaml
     promotions/
 ```
@@ -116,7 +116,7 @@ follow those prefixes. Repeat runs use `discovery/argo-cache.json` to skip
 unchanged Git blobs.
 
 Discovery is bounded by default: at most 10,000 tracked YAML/JSON candidate
-files and 1,000 generated `Source` units. Use `--max-files` or `--max-units`
+files and 1,000 generated source mapping units. Use `--max-files` or `--max-units`
 only after narrowing `--path-prefix` is not enough. This keeps monorepos from
 turning onboarding into an unreviewable import.
 
@@ -133,7 +133,7 @@ kapro discover argo https://github.com/example/platform.git \
 This generates:
 
 - `substrates/checkout-observe.yaml` for observe-first runtime discovery;
-- `sources/checkout.yaml` with inferred `Source` units;
+- `deliveryunits/checkout.yaml` with inferred source mappings;
 - `discovery/review-summary.yaml` with the adoption-readiness checklist and
   next actions;
 - `discovery/argo-discovery.yaml` with selected, skipped, and unsupported
@@ -175,42 +175,43 @@ marked `confidence: needs-review`, use
 [Discovery Troubleshooting](discovery-troubleshooting.md) before adopting
 writes.
 
-## Step 4: Review Source Units
+## Step 4: Review DeliveryUnit Source Mappings
 
-Review the generated `Source`. In existing Argo CD adoption mode, a unit points
-to either an existing Application source or a Git parameter file that feeds an
-ApplicationSet.
+Review the generated `DeliveryUnit`. In existing Argo CD adoption mode, a source
+mapping unit points to either an existing Application source or a Git parameter
+file that feeds an ApplicationSet.
 
 ```yaml
 apiVersion: kapro.io/v1alpha1
-kind: Source
+kind: DeliveryUnit
 metadata:
   name: checkout
 spec:
-  substrateRef: checkout
-  units:
-    - name: api
-      substrateKind: ArgoApplicationSource
-      namespace: argocd
-      sourcePath: argocd/apps/api.yaml
-      versionField: spec.source.targetRevision
-    - name: pos-server
-      substrateKind: GitJSONField
-      namespace: argocd
-      sourcePath: argocd/applicationsets/pos-server.yaml
-      versionField: argocd/environments/*.json:gkProjectVersion
+  source:
+    substrateRef: checkout
+    units:
+      - name: api
+        substrateKind: ArgoApplicationSource
+        namespace: argocd
+        sourcePath: argocd/apps/api.yaml
+        versionField: spec.source.targetRevision
+      - name: pos-server
+        substrateKind: GitJSONField
+        namespace: argocd
+        sourcePath: argocd/applicationsets/pos-server.yaml
+        versionField: argocd/environments/*.json:gkProjectVersion
 ```
 
 ## Step 5: Apply Git-Native Promotion Writes
 
-For Git-file backed `Source` units, Kapro updates the mapped JSON/YAML field in
-a local checkout. It does not push automatically; review and commit the diff
-with your normal Git workflow.
+For Git-file backed DeliveryUnit source mapping units, Kapro updates the mapped
+JSON/YAML field in a local checkout. It does not push automatically; review and
+commit the diff with your normal Git workflow.
 
 ```bash
 kapro source apply \
   --repo . \
-  --source kapro-connect/sources/checkout.yaml \
+  --source kapro-connect/deliveryunits/checkout.yaml \
   --set pos-server=1.2.3 \
   --include argocd/environments/dev.json
 ```
@@ -228,7 +229,7 @@ explicitly:
 ```bash
 kapro source apply \
   --repo . \
-  --source kapro-connect/sources/checkout.yaml \
+  --source kapro-connect/deliveryunits/checkout.yaml \
   --set pos-server=1.2.3 \
   --include argocd/environments/dev.json \
   --commit \
@@ -245,8 +246,8 @@ kapro source apply \
 | ApplicationSet generated apps | The generated Application only when the team explicitly wants live Application adoption. |
 | App-of-apps | Child Applications. Root Applications should normally remain observe-only packaging objects. |
 
-After the discovered graph and generated `Source` match intent, switch the
-profile:
+After the discovered graph and generated `DeliveryUnit` source mappings match
+intent, switch the profile:
 
 ```yaml
 spec:
@@ -291,6 +292,7 @@ kind: Promotion
 metadata:
   name: checkout-2026-05-15
 spec:
+  deliveryUnitRef: checkout
   fleetRef: checkout
   version: 1.5.0
   plans:

@@ -2,6 +2,8 @@ apiVersion: kapro.io/v1alpha1
 kind: Plan
 metadata:
   name: checkout-cosign-keyless
+  labels:
+    kapro.io/team: checkout
 spec:
   stages:
     - name: canary
@@ -21,6 +23,8 @@ apiVersion: kapro.io/v1alpha1
 kind: Trigger
 metadata:
   name: checkout-oci-keyless
+  labels:
+    kapro.io/team: checkout
 spec:
   suspended: true
   source:
@@ -31,6 +35,7 @@ spec:
       requireSignature: true
       pollInterval: 5m
   promotionTemplate:
+    deliveryUnitRef: checkout
     fleetRef: checkout
     nameTemplate: "checkout-cosign"
     plans:

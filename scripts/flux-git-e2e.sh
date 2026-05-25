@@ -168,19 +168,19 @@ run() {
     --name checkout-flux \
     --force
 
-  assert_contains "${repo}/kapro-connect/sources/checkout-flux.yaml" "name: api"
-  assert_contains "${repo}/kapro-connect/sources/checkout-flux.yaml" "versionField: spec.ref.tag"
-  assert_contains "${repo}/kapro-connect/sources/checkout-flux.yaml" "name: worker"
-  assert_contains "${repo}/kapro-connect/sources/checkout-flux.yaml" "versionField: spec.chart.spec.version"
-  assert_contains "${repo}/kapro-connect/sources/checkout-flux.yaml" "name: payments-image"
-  assert_contains "${repo}/kapro-connect/sources/checkout-flux.yaml" "name: web-image"
-  assert_contains "${repo}/kapro-connect/sources/checkout-flux.yaml" "name: checkout-chart"
+  assert_contains "${repo}/kapro-connect/deliveryunits/checkout-flux.yaml" "name: api"
+  assert_contains "${repo}/kapro-connect/deliveryunits/checkout-flux.yaml" "versionField: spec.ref.tag"
+  assert_contains "${repo}/kapro-connect/deliveryunits/checkout-flux.yaml" "name: worker"
+  assert_contains "${repo}/kapro-connect/deliveryunits/checkout-flux.yaml" "versionField: spec.chart.spec.version"
+  assert_contains "${repo}/kapro-connect/deliveryunits/checkout-flux.yaml" "name: payments-image"
+  assert_contains "${repo}/kapro-connect/deliveryunits/checkout-flux.yaml" "name: web-image"
+  assert_contains "${repo}/kapro-connect/deliveryunits/checkout-flux.yaml" "name: checkout-chart"
   assert_contains "${repo}/kapro-connect/discovery/flux-discovery.yaml" "skippedObjects:"
   assert_contains "${repo}/kapro-connect/discovery/flux-discovery.yaml" "Flux Kustomization has no canonical version field"
 
   "${kapro}" source apply \
     --repo "${repo}" \
-    --source "${repo}/kapro-connect/sources/checkout-flux.yaml" \
+    --source "${repo}/kapro-connect/deliveryunits/checkout-flux.yaml" \
     --set api=v2 \
     --set worker=2.0.0 \
     --set payments=2.0.0 \

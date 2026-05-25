@@ -25,6 +25,7 @@ import (
 )
 
 func init() {
+	Register("deliveryunit", startDeliveryUnitController)
 	Register("fleet", startKaproController)
 	Register("plan", startPlanController)
 	Register("promotion", startPromotionController)
@@ -53,6 +54,17 @@ func init() {
 	RegisterAlias("promotion-trigger", "trigger")
 	RegisterAlias("fleetcluster-bootstrap", "cluster-bootstrap")
 	RegisterAlias("fleetcluster-template", "clustertemplate")
+}
+
+func startDeliveryUnitController(_ context.Context, cc ControllerContext) (bool, error) {
+	if err := (&controller.DeliveryUnitReconciler{
+		Client:   cc.Manager.GetClient(),
+		Recorder: cc.Recorder,
+		Scheme:   cc.Manager.GetScheme(),
+	}).SetupWithManager(cc.Manager); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // startPlanController exists so controller selection can name the ADR-0010

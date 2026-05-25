@@ -8,9 +8,11 @@ durable intent; controllers create execution records and per-target state.
 | Object | Authored by | Purpose |
 |---|---|---|
 | `Substrate` | Platform team | Registers a delivery adapter and its default settings. |
-| `Fleet` | Platform team | Defines the fleet root: source, delivery defaults, clusters, and stage plan. |
-| `Source` | Platform or app team | Declares deployable units and the substrate-native fields Kapro may update. |
-| `Promotion` | App team or automation | Requests that a version move through a Fleet. |
+| `DeliveryUnit` | App or platform team | Declares the app/workload source mappings, trigger intent, and default fleet/plan. |
+| `Fleet` | Platform team | Defines the target set: clusters and delivery defaults. |
+| `Source` | Kapro controller | Derived source mapping object created from `DeliveryUnit.spec.source`. |
+| `Trigger` | Kapro controller | Derived automation object created from `DeliveryUnit.spec.triggers[]`. |
+| `Promotion` | App team or automation | Explicitly requests that a version move through a Fleet. |
 | `PromotionRun` | Controller | Records one execution attempt stamped from a Promotion. |
 | `Target` | Controller | Tracks one cluster/stage execution inside a run. |
 | `Cluster` | Platform team or bootstrap controller | Represents one workload cluster and its delivery settings. |
@@ -18,12 +20,13 @@ durable intent; controllers create execution records and per-target state.
 
 ## Authored YAML Shape
 
-The first user-authored path is three objects:
+The first user-authored path is four objects:
 
 ```text
 Substrate    names the delivery adapter, for example flux
-Fleet      names the app/fleet, declares clusters, and defines the stage plan
-Promotion  points at the Fleet and asks for one version to move through it
+DeliveryUnit names the app/workload and source mappings
+Fleet        names the target clusters and delivery defaults
+Promotion    points at the DeliveryUnit and Fleet, then asks for one version to move
 ```
 
 In the quickstart `Fleet`, clusters carry intent labels such as
@@ -90,18 +93,20 @@ See [Substrates](substrates.md) for the supported modes.
 For the quickstart path, users normally write:
 
 - `Substrate`
+- `DeliveryUnit`
+- `Plan`
 - `Fleet`
 - `Promotion`
 - `Approval` when a manual gate blocks
 
-`Source` can be authored separately when multiple fleets share the same
-deployable-unit catalog. The quickstart keeps source units inline on the
-`Fleet` so the first YAML stays in one place.
+`Source` and `Trigger` are visible Kubernetes objects, but the normal
+public-preview path is to let the DeliveryUnit controller derive them from
+`DeliveryUnit.spec.source` and `DeliveryUnit.spec.triggers[]`.
 
 Kapro or its controllers generate and update:
 
-- `Cluster` entries from `Fleet.spec.clusters`
-- `Plan` entries from `Fleet.spec.plan`
+- `Source` from `DeliveryUnit.spec.source`
+- `Trigger` from `DeliveryUnit.spec.triggers[]`
 - `PromotionRun`
 - `Target`
 
@@ -123,15 +128,15 @@ Typical layout:
 hub-config/
   clusters/
   substrates/
+  deliveryunits/
   fleets/
-  sources/
   plans/
   promotions/
   .github/workflows/
 ```
 
 Apply objects in dependency order: substrates and any standalone clusters,
-sources, or plans first; fleets next; promotions last. Direct `promotionruns/`
+delivery units or plans first; fleets next; promotions last. Direct `promotionruns/`
 can exist as an advanced compatibility path, but first-use repositories should
 prefer `promotions/`.
 

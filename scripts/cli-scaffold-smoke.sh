@@ -46,7 +46,7 @@ kapro() {
 echo "smoke: greenfield argo repo-first"
 kapro init "${TMPDIR}/repo-first" --substrate argo --name checkout --clusters none --force >/dev/null
 require_file "${TMPDIR}/repo-first/substrates/argo.yaml"
-require_file "${TMPDIR}/repo-first/sources/checkout.yaml"
+require_file "${TMPDIR}/repo-first/deliveryunits/checkout.yaml"
 require_file "${TMPDIR}/repo-first/plans/checkout.yaml"
 require_file "${TMPDIR}/repo-first/argo/applications/checkout.yaml"
 reject_path "${TMPDIR}/repo-first/clusters"
@@ -86,9 +86,9 @@ require_file "${TMPDIR}/generate-direct/fleets/checkout.yaml"
 require_text "${TMPDIR}/generate-direct/substrates/direct.yaml" "kind: KubernetesApplyConfig"
 require_text "${TMPDIR}/generate-direct/substrates/direct.yaml" "name: kubernetes-apply"
 require_text "${TMPDIR}/generate-direct/clusters/canary-eu.yaml" "substrateRef: direct"
-require_text "${TMPDIR}/generate-direct/fleets/checkout.yaml" "substrateKind: KubernetesManifest"
+require_text "${TMPDIR}/generate-direct/deliveryunits/checkout.yaml" "substrateKind: KubernetesManifest"
 
-echo "smoke: bootstrap generate Argo CD profile"
+echo "smoke: bootstrap generate argo profile"
 kapro bootstrap generate "${TMPDIR}/generate-argo" --profile argo --name checkout --force >/dev/null
 require_file "${TMPDIR}/generate-argo/substrates/argo.yaml"
 require_file "${TMPDIR}/generate-argo/argo/applications/checkout.yaml"
@@ -219,20 +219,21 @@ JSON
 (cd "${TMPDIR}/argo-repo" && git init >/dev/null && git add .)
 kapro discover argo "${TMPDIR}/argo-repo" --out "${TMPDIR}/discover-argo" --name checkout --force >/dev/null
 require_file "${TMPDIR}/discover-argo/substrates/checkout-observe.yaml"
-require_file "${TMPDIR}/discover-argo/sources/checkout.yaml"
+require_file "${TMPDIR}/discover-argo/deliveryunits/checkout.yaml"
 require_file "${TMPDIR}/discover-argo/discovery/argo-discovery.yaml"
 require_file "${TMPDIR}/discover-argo/discovery/kapro-git-map.yaml"
-require_text "${TMPDIR}/discover-argo/sources/checkout.yaml" "substrateKind: GitJSONField"
-require_text "${TMPDIR}/discover-argo/sources/checkout.yaml" "argocd/environments/*.json:gkProjectVersion"
+require_text "${TMPDIR}/discover-argo/deliveryunits/checkout.yaml" "kind: DeliveryUnit"
+require_text "${TMPDIR}/discover-argo/deliveryunits/checkout.yaml" "substrateKind: GitJSONField"
+require_text "${TMPDIR}/discover-argo/deliveryunits/checkout.yaml" "argocd/environments/*.json:gkProjectVersion"
 kapro import argo "${TMPDIR}/argo-repo" --out "${TMPDIR}/import-argo" --name checkout --force >/dev/null
 require_file "${TMPDIR}/import-argo/discovery/kapro-git-map.yaml"
-kapro source apply --repo "${TMPDIR}/argo-repo" --source "${TMPDIR}/discover-argo/sources/checkout.yaml" --set checkout-api=2.0.0 --all >/dev/null
+kapro source apply --repo "${TMPDIR}/argo-repo" --source "${TMPDIR}/discover-argo/deliveryunits/checkout.yaml" --set checkout-api=2.0.0 --all >/dev/null
 require_text "${TMPDIR}/argo-repo/argocd/environments/dev.json" '"gkProjectVersion": "2.0.0"'
 
 echo "smoke: existing Argo CD import takeover"
 kapro import argo "${TMPDIR}/argo-repo" --out "${TMPDIR}/take-argo" --name checkout --take --force >/dev/null
 require_file "${TMPDIR}/take-argo/substrates/checkout-adopt.yaml"
-require_file "${TMPDIR}/take-argo/sources/checkout.yaml"
+require_file "${TMPDIR}/take-argo/deliveryunits/checkout.yaml"
 require_file "${TMPDIR}/take-argo/discovery/kapro-git-map.yaml"
 require_text "${TMPDIR}/take-argo/substrates/checkout-adopt.yaml" "managementPolicy: Adopt"
 
@@ -284,10 +285,10 @@ YAML
 (cd "${TMPDIR}/flux-repo" && git init >/dev/null && git add .)
 kapro import flux "${TMPDIR}/flux-repo" --out "${TMPDIR}/import-flux" --name checkout --force >/dev/null
 require_file "${TMPDIR}/import-flux/substrates/checkout-observe.yaml"
-require_file "${TMPDIR}/import-flux/sources/checkout.yaml"
+require_file "${TMPDIR}/import-flux/deliveryunits/checkout.yaml"
 require_file "${TMPDIR}/import-flux/discovery/kapro-git-map.yaml"
-require_text "${TMPDIR}/import-flux/sources/checkout.yaml" "sourcePath: flux/sources/api-gitrepository.yaml"
-require_text "${TMPDIR}/import-flux/sources/checkout.yaml" "substrateKind: GitYAMLField"
-require_text "${TMPDIR}/import-flux/sources/checkout.yaml" "substrateKind: KustomizeImage"
+require_text "${TMPDIR}/import-flux/deliveryunits/checkout.yaml" "sourcePath: flux/sources/api-gitrepository.yaml"
+require_text "${TMPDIR}/import-flux/deliveryunits/checkout.yaml" "substrateKind: GitYAMLField"
+require_text "${TMPDIR}/import-flux/deliveryunits/checkout.yaml" "substrateKind: KustomizeImage"
 
 echo "cli scaffold smoke passed"

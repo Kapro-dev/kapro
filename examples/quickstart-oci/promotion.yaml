@@ -5,9 +5,12 @@ kind: Promotion
 metadata:
   name: checkout-oci-v1-2-3
   labels:
+    kapro.io/unit: checkout-oci
     kapro.io/team: platform
     app.kubernetes.io/name: checkout
 spec:
+  deliveryUnitRef: checkout-oci
   fleetRef: checkout-oci
+  planRef: checkout-oci
   version: v1.2.3
   timeout: 30m

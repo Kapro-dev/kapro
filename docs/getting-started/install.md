@@ -119,10 +119,11 @@ helm upgrade --install kapro \
 
 The default install runs the ADR-0010 core controllers plus the 0.6 substrate
 readiness controllers: `fleet`, `plan`, `promotion`, `promotionrun`, `cluster`,
-`substrateclass`, and `substrate`. The `target` controller is an implicit
-dependency of `promotionrun` and starts with it. Users normally author `Fleet`,
-`Source`, and `Promotion`; controllers generate or update `Cluster`, `Plan`,
-`PromotionRun`, and `Target` records.
+`deliveryunit`, `substrateclass`, and `substrate`. The `target` controller is an implicit
+dependency of `promotionrun` and starts with it. Users normally author
+`DeliveryUnit`, `Fleet`, `Plan`, and `Promotion`; controllers derive `Source`
+and `Trigger` objects and generate or update `Cluster`, `PromotionRun`, and
+`Target` records.
 
 Preview surfaces are available for early adopters but should be enabled or
 exposed deliberately:
@@ -147,7 +148,7 @@ helm upgrade --install kapro \
   "${KAPRO_CHART}" \
   --namespace kapro-system \
   --create-namespace \
-  --set controllers='{fleet,plan,promotion,promotionrun,cluster,substrateclass,substrate}'
+  --set controllers='{deliveryunit,fleet,plan,promotion,promotionrun,cluster,substrateclass,substrate}'
 ```
 | Fleet auto-import providers | GCP and static lists implemented | Add `clustertemplate` to `controllers` when using `ClusterTemplate`; AWS, Azure, RHACM, and CAPI sources report `SourceNotImplemented` until their discoverers land. |
 | Inline gate notifications | Runtime | Notification routing is configured inside gate/stage policy; there is no separate public notification provider/policy CRD. |
@@ -335,6 +336,8 @@ kind create cluster --name kapro-release-quickstart
 kubectl config use-context kind-kapro-release-quickstart
 KAPRO_VERIFY_CLEANUP=false scripts/verify-install.sh release-cluster
 kubectl apply -f examples/quickstart/substrates/flux.yaml
+kubectl apply -f examples/quickstart/deliveryunit.yaml
+kubectl apply -f examples/quickstart/plan.yaml
 kubectl apply -f examples/quickstart/kapro.yaml
 kubectl apply -f examples/quickstart/promotion.yaml
 kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
@@ -427,7 +430,7 @@ helm upgrade --install kapro \
   --namespace kapro-system \
   --create-namespace \
   --set pluginGateway.enabled=true \
-  --set controllers='{fleet,plan,promotion,promotionrun,cluster,plugin}'
+  --set controllers='{deliveryunit,fleet,plan,promotion,promotionrun,cluster,plugin}'
 ```
 
 Install your plugin service, then apply a `Plugin` manifest such as:

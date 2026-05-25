@@ -23,6 +23,7 @@ func TestRunInitScaffoldArgo(t *testing.T) {
 	}
 	for _, relPath := range []string{
 		"substrates/argo.yaml",
+		"deliveryunits/checkout.yaml",
 		"plans/checkout.yaml",
 		"fleets/checkout.yaml",
 		"argo/applications/checkout.yaml",
@@ -38,24 +39,35 @@ func TestRunInitScaffoldArgo(t *testing.T) {
 	if !strings.Contains(content, "kind: ArgoCDSubstrateConfig") || !strings.Contains(content, "classRef:") {
 		t.Fatalf("substrate file missing argo class/config:\n%s", content)
 	}
-	kapro := readFile(t, filepath.Join(dir, "fleets/checkout.yaml"))
+	unit := readFile(t, filepath.Join(dir, "deliveryunits/checkout.yaml"))
 	for _, want := range []string{
 		"source:",
+		"defaultFleetRef: checkout",
+		"defaultPlanRef: checkout",
 		"substrateRef: argo",
 		"kapro.io/team: platform",
 		"name: checkout",
+	} {
+		if !strings.Contains(unit, want) {
+			t.Fatalf("delivery unit file missing %q:\n%s", want, unit)
+		}
+	}
+	kapro := readFile(t, filepath.Join(dir, "fleets/checkout.yaml"))
+	for _, want := range []string{
+		"substrateRef: argo",
+		"kapro.io/team: platform",
 		"kapro.io/stage: canary",
 		"kapro.io/stage: production",
 	} {
 		if !strings.Contains(kapro, want) {
-			t.Fatalf("kapro file missing %q:\n%s", want, kapro)
+			t.Fatalf("fleet file missing %q:\n%s", want, kapro)
 		}
 	}
-	if strings.Contains(kapro, "sourceRef:") {
-		t.Fatalf("kapro scaffold should use inline source, got:\n%s", kapro)
+	if strings.Contains(kapro, "source:") || strings.Contains(kapro, "sourceRef:") {
+		t.Fatalf("fleet scaffold should not own source intent, got:\n%s", kapro)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "sources/checkout.yaml")); !os.IsNotExist(err) {
-		t.Fatalf("sources/checkout.yaml should not be generated for the default inline-source scaffold")
+		t.Fatalf("sources/checkout.yaml should not be generated because DeliveryUnit owns source intent")
 	}
 	deployment := readFile(t, filepath.Join(dir, "apps/checkout/deployment.yaml"))
 	if !strings.Contains(deployment, "namespace: checkout") || strings.Contains(deployment, "namespace: argocd") {
@@ -150,7 +162,7 @@ func TestRunInitScaffoldRepoOnly(t *testing.T) {
 	}
 	for _, relPath := range []string{
 		"substrates/argo.yaml",
-		"sources/checkout.yaml",
+		"deliveryunits/checkout.yaml",
 		"plans/checkout.yaml",
 		"argo/applications/checkout.yaml",
 	} {

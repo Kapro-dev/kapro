@@ -32,7 +32,7 @@ Check these status fields first:
 | ApplicationSet children skipped | The ApplicationSet owns generated Applications | Adopt the ApplicationSet template or generator input file, not the generated child Application. |
 | App-of-apps root unsupported | Root app packages child Applications | Select child Applications for writes; keep the root as topology. |
 | Flux Kustomization has no write target | `spec.path` is topology, not a universal version | Promote the referenced source object, Kustomize image field, or explicit YAML/JSON field. |
-| `confidence: needs-review` | Kapro found a plausible but not canonical version field | Edit or remove the generated `Source` unit before switching to Adopt. |
+| `confidence: needs-review` | Kapro found a plausible but not canonical version field | Edit or remove the generated DeliveryUnit source mapping unit before switching to Adopt. |
 | Large repo scan stops early | File or unit limits were reached | Narrow `--path-prefix`; only raise `--max-files` or `--max-units` after narrowing. |
 
 ## Editing Needs-Review Units
@@ -41,7 +41,7 @@ Generated mappings live under the discovery output directory:
 
 ```text
 kapro-connect/
-  sources/<name>.yaml
+  deliveryunits/<name>.yaml
   discovery/kapro-git-map.yaml
 ```
 

@@ -26,6 +26,7 @@ func newPromotionReconciler(t *testing.T, objects ...client.Object) (*PromotionR
 	if err := kaproruntimev1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatalf("Add runtime scheme: %v", err)
 	}
+	objects = appendMissingDeliveryUnits(objects)
 	c := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objects...).
@@ -63,10 +64,40 @@ func newPromotion(name, fleetRef, version string) *kaprov1alpha1.Promotion {
 	return &kaprov1alpha1.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Generation: 1},
 		Spec: kaprov1alpha1.PromotionSpec{
-			FleetRef: fleetRef,
-			Version:  version,
+			DeliveryUnitRef: fleetRef,
+			FleetRef:        fleetRef,
+			Version:         version,
 		},
 	}
+}
+
+func appendMissingDeliveryUnits(objects []client.Object) []client.Object {
+	seen := map[string]struct{}{}
+	for _, obj := range objects {
+		if unit, ok := obj.(*kaprov1alpha1.DeliveryUnit); ok {
+			seen[unit.Name] = struct{}{}
+		}
+	}
+	for _, obj := range objects {
+		p, ok := obj.(*kaprov1alpha1.Promotion)
+		if !ok || p.Spec.DeliveryUnitRef == "" {
+			continue
+		}
+		if _, ok := seen[p.Spec.DeliveryUnitRef]; ok {
+			continue
+		}
+		objects = append(objects, &kaprov1alpha1.DeliveryUnit{
+			ObjectMeta: metav1.ObjectMeta{Name: p.Spec.DeliveryUnitRef},
+			Spec: kaprov1alpha1.DeliveryUnitSpec{
+				DefaultFleetRef: p.Spec.FleetRef,
+				Source: kaprov1alpha1.SourceSpec{
+					Units: []kaprov1alpha1.Unit{{Name: p.Spec.DeliveryUnitRef}},
+				},
+			},
+		})
+		seen[p.Spec.DeliveryUnitRef] = struct{}{}
+	}
+	return objects
 }
 
 func TestPromotionMissingKaproIsPending(t *testing.T) {
@@ -438,31 +469,29 @@ func TestPromotionDeletionTransitionsToTerminating(t *testing.T) {
 	}
 }
 
-// advanceRun patches the (single) PromotionRun owned by the named Promotion
-// to the given phase and optional CompletedAt timestamp.
+// advanceRun patches the Promotion's active attempt to the given phase and
+// optional CompletedAt timestamp.
 func advanceRun(t *testing.T, ctx context.Context, c client.Client, promotionName string,
 	phase kaprov1alpha1.PromotionRunPhase, completedAt string) {
 	t.Helper()
-	var runs kaproruntimev1alpha1.PromotionRunList
-	if err := c.List(ctx, &runs, client.MatchingLabels{promotionOwnerLabel: promotionName}); err != nil {
+	var promotion kaprov1alpha1.Promotion
+	if err := c.Get(ctx, client.ObjectKey{Name: promotionName}, &promotion); err != nil {
 		t.Fatal(err)
 	}
-	if len(runs.Items) == 0 {
-		t.Fatalf("no PromotionRun owned by %q", promotionName)
+	if promotion.Status.ActiveAttemptRef == nil || promotion.Status.ActiveAttemptRef.Name == "" {
+		t.Fatalf("Promotion %q has no active attempt", promotionName)
 	}
-	// Newest first.
-	newest := &runs.Items[0]
-	for i := range runs.Items {
-		if runs.Items[i].CreationTimestamp.After(newest.CreationTimestamp.Time) {
-			newest = &runs.Items[i]
-		}
+
+	var run kaproruntimev1alpha1.PromotionRun
+	if err := c.Get(ctx, client.ObjectKey{Name: promotion.Status.ActiveAttemptRef.Name}, &run); err != nil {
+		t.Fatal(err)
 	}
-	patch := client.MergeFrom(newest.DeepCopy())
-	newest.Status.Phase = phase
+	patch := client.MergeFrom(run.DeepCopy())
+	run.Status.Phase = phase
 	if completedAt != "" {
-		newest.Status.CompletedAt = completedAt
+		run.Status.CompletedAt = completedAt
 	}
-	if err := c.Status().Patch(ctx, newest, patch); err != nil {
+	if err := c.Status().Patch(ctx, &run, patch); err != nil {
 		t.Fatal(err)
 	}
 }

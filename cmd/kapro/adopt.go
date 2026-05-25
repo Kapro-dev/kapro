@@ -31,8 +31,8 @@ func newImportCmd() *cobra.Command {
 		Use:   "import",
 		Short: "Import existing GitOps repositories into Kapro",
 		Long: `Import commands generate observe-first Kapro mappings from
-existing substrate-native GitOps repositories: a read-only Substrate, Source units,
-and discovery reports. They do not mutate live substrate objects unless --take
+existing substrate-native GitOps repositories: a read-only Substrate, a DeliveryUnit
+with source mappings, and discovery reports. They do not mutate live substrate objects unless --take
 is set; --take switches the generated or live Substrate discovery policy to
 Adopt after review.`,
 	}
@@ -48,7 +48,7 @@ func newImportArgoCmd() *cobra.Command {
 		Use:   "argo [repo]",
 		Short: "Import an existing Argo CD repo into Kapro",
 		Long: `Scans an existing Argo CD Git repository using git ls-files and
-generates Substrate, Source, and reviewable Git adoption mapping
+generates Substrate, DeliveryUnit source mappings, and reviewable Git adoption mapping
 files. Output starts in observe mode so the generated graph can be reviewed
 before any write permissions are granted. Pass --take only after review to
 generate or apply an Adopt-mode Substrate.`,
@@ -69,7 +69,7 @@ generate or apply an Adopt-mode Substrate.`,
 		},
 	}
 	cmd.Flags().StringVar(&opts.OutPath, "out", "kapro-connect", "Output directory for generated Kapro files")
-	cmd.Flags().StringVar(&opts.Name, "name", "argo", "Substrate and Source name")
+	cmd.Flags().StringVar(&opts.Name, "name", "argo", "Substrate and DeliveryUnit name")
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "argocd", "Argo CD namespace")
 	cmd.Flags().StringVar(&opts.Selector, "selector", "kapro.io/import=true", "Label selector for imported substrate objects")
 	cmd.Flags().StringVar(&opts.Revision, "revision", "", "Git branch/tag/SHA when discovering a remote repository URL")
@@ -77,7 +77,7 @@ generate or apply an Adopt-mode Substrate.`,
 	cmd.Flags().BoolVar(&opts.ScanAll, "scan-all", false, "Scan all tracked YAML/JSON files instead of GitOps path prefixes")
 	cmd.Flags().BoolVar(&opts.Cache, "cache", true, "Reuse discovery cache for unchanged Git blobs")
 	cmd.Flags().IntVar(&opts.MaxFiles, "max-files", defaultArgoDiscoveryMaxFiles, "Maximum tracked YAML/JSON candidate files to parse (0 = unlimited)")
-	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum Source units to generate (0 = unlimited)")
+	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum source mapping units to generate (0 = unlimited)")
 	cmd.Flags().BoolVar(&opts.Take, "take", false, "Generate or apply Adopt-mode substrate discovery after review")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
 	cmd.Flags().BoolVar(&substrateOpts.Apply, "apply", false, "Create or update Substrate and SubstrateDiscoveryPolicy in the current cluster instead of writing files")
@@ -94,7 +94,7 @@ func newImportFluxCmd() *cobra.Command {
 		Use:   "flux [repo]",
 		Short: "Import an existing Flux repo into Kapro",
 		Long: `Scans an existing Flux Git repository using git ls-files and
-generates Substrate, Source, and reviewable Git adoption mapping
+generates Substrate, DeliveryUnit source mappings, and reviewable Git adoption mapping
 files. Output starts in observe mode so the generated graph can be reviewed
 before any write permissions are granted. Pass --take only after review to
 generate or apply an Adopt-mode Substrate.`,
@@ -115,13 +115,13 @@ generate or apply an Adopt-mode Substrate.`,
 		},
 	}
 	cmd.Flags().StringVar(&opts.OutPath, "out", "kapro-connect", "Output directory for generated Kapro files")
-	cmd.Flags().StringVar(&opts.Name, "name", "flux", "Substrate and Source name")
+	cmd.Flags().StringVar(&opts.Name, "name", "flux", "Substrate and DeliveryUnit name")
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "flux-system", "Flux namespace")
 	cmd.Flags().StringVar(&opts.Selector, "selector", "kapro.io/import=true", "Label selector for imported substrate objects")
 	cmd.Flags().StringSliceVar(&opts.PathPrefixes, "path-prefix", nil, "Repo path prefix to scan (repeatable; default: common Flux/GitOps paths)")
 	cmd.Flags().BoolVar(&opts.ScanAll, "scan-all", false, "Scan all tracked YAML/JSON files instead of GitOps path prefixes")
 	cmd.Flags().IntVar(&opts.MaxFiles, "max-files", defaultArgoDiscoveryMaxFiles, "Maximum tracked YAML/JSON candidate files to parse (0 = unlimited)")
-	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum Source units to generate (0 = unlimited)")
+	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum source mapping units to generate (0 = unlimited)")
 	cmd.Flags().BoolVar(&opts.Take, "take", false, "Generate or apply Adopt-mode substrate discovery after review")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
 	cmd.Flags().BoolVar(&substrateOpts.Apply, "apply", false, "Create or update Substrate and SubstrateDiscoveryPolicy in the current cluster instead of writing files")

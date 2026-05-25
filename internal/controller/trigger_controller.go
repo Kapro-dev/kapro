@@ -425,10 +425,14 @@ func normalizeRegistryHost(host string) string {
 // PromotionRun under it.
 func buildTriggeredPromotion(trigger *kaprov1alpha1.Trigger, artifact TriggerArtifactObservation, version, managedName, templateHash string, scheme *runtime.Scheme, now time.Time) (*kaprov1alpha1.Promotion, error) {
 	tmpl := &trigger.Spec.PromotionTemplate
+	if tmpl.DeliveryUnitRef == "" {
+		return nil, fmt.Errorf("spec.promotionTemplate.deliveryUnitRef is required")
+	}
 	if tmpl.FleetRef == "" {
 		return nil, fmt.Errorf("spec.promotionTemplate.fleetRef is required")
 	}
 	labels := copyTriggerStringMap(tmpl.Labels)
+	labels[kaprov1alpha1.LabelUnit] = tmpl.DeliveryUnitRef
 	labels[promotionTriggerLabel] = trigger.Name
 	labels[promotionTriggerTemplateHashLabel] = templateHash
 	annotations := copyTriggerStringMap(tmpl.Annotations)
@@ -444,16 +448,18 @@ func buildTriggeredPromotion(trigger *kaprov1alpha1.Trigger, artifact TriggerArt
 			Annotations: annotations,
 		},
 		Spec: kaprov1alpha1.PromotionSpec{
-			FleetRef:  tmpl.FleetRef,
-			Version:   version,
-			Plans:     append([]kaprov1alpha1.PlanRef(nil), tmpl.Plans...),
-			Suspended: triggerSuspended(tmpl.Suspended),
-			Scope:     tmpl.Scope.DeepCopy(),
-			Timeout:   tmpl.Timeout,
+			DeliveryUnitRef: tmpl.DeliveryUnitRef,
+			FleetRef:        tmpl.FleetRef,
+			PlanRef:         tmpl.PlanRef,
+			Version:         version,
+			Plans:           append([]kaprov1alpha1.PlanRef(nil), tmpl.Plans...),
+			Suspended:       triggerSuspended(tmpl.Suspended),
+			Scope:           tmpl.Scope.DeepCopy(),
+			Timeout:         tmpl.Timeout,
 		},
 	}
 	if scheme != nil {
-		gvk := schema.GroupVersionKind{Group: kaprov1alpha1.GroupVersion.Group, Version: kaprov1alpha1.GroupVersion.Version, Kind: "PromotionTrigger"}
+		gvk := schema.GroupVersionKind{Group: kaprov1alpha1.GroupVersion.Group, Version: kaprov1alpha1.GroupVersion.Version, Kind: "Trigger"}
 		promo.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(trigger, gvk)}
 	}
 	return promo, nil
@@ -483,15 +489,17 @@ func applyTriggerToPromotion(existing, desired *kaprov1alpha1.Promotion) {
 func triggerTemplateHash(trigger *kaprov1alpha1.Trigger) string {
 	t := trigger.Spec.PromotionTemplate
 	buf, _ := json.Marshal(struct {
-		FleetRef    string                           `json:"fleetRef"`
-		Plans       []kaprov1alpha1.PlanRef          `json:"plans"`
-		Suspended   bool                             `json:"suspended"`
-		Scope       *kaprov1alpha1.PromotionRunScope `json:"scope"`
-		Timeout     string                           `json:"timeout"`
-		Labels      map[string]string                `json:"labels"`
-		Annotations map[string]string                `json:"annotations"`
+		DeliveryUnitRef string                           `json:"deliveryUnitRef"`
+		FleetRef        string                           `json:"fleetRef"`
+		PlanRef         string                           `json:"planRef"`
+		Plans           []kaprov1alpha1.PlanRef          `json:"plans"`
+		Suspended       bool                             `json:"suspended"`
+		Scope           *kaprov1alpha1.PromotionRunScope `json:"scope"`
+		Timeout         string                           `json:"timeout"`
+		Labels          map[string]string                `json:"labels"`
+		Annotations     map[string]string                `json:"annotations"`
 	}{
-		FleetRef: t.FleetRef, Plans: t.Plans, Suspended: triggerSuspended(t.Suspended),
+		DeliveryUnitRef: t.DeliveryUnitRef, FleetRef: t.FleetRef, PlanRef: t.PlanRef, Plans: t.Plans, Suspended: triggerSuspended(t.Suspended),
 		Scope: t.Scope, Timeout: t.Timeout, Labels: t.Labels, Annotations: t.Annotations,
 	})
 	h := sha256.Sum256(buf)

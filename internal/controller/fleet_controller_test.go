@@ -295,6 +295,64 @@ func TestFleetReconcilerSkipsResourceSetForNativeSubstrates(t *testing.T) {
 	}
 }
 
+func TestFleetReconcilerAcceptsTargetSetWithoutSourceOrInlinePlan(t *testing.T) {
+	ctx := context.Background()
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := kaprov1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	fleet := &kaprov1alpha1.Fleet{
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
+		Spec: kaprov1alpha1.FleetSpec{
+			Delivery: kaprov1alpha1.DeliverySpec{
+				Mode:         kaprov1alpha1.DeliveryModePush,
+				SubstrateRef: "argo",
+				Parameters: map[string]string{
+					"namespace": "argocd",
+				},
+			},
+			Clusters: []kaprov1alpha1.ClusterRef{
+				{Name: "canary-eu", Labels: map[string]string{"kapro.io/stage": "canary"}},
+			},
+		},
+	}
+	r := &FleetReconciler{
+		Client: fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithObjects(fleet).
+			WithStatusSubresource(&kaprov1alpha1.Fleet{}, &kaprov1alpha1.Cluster{}).
+			Build(),
+	}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Name: "checkout"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var got kaprov1alpha1.Fleet
+	if err := r.Get(ctx, client.ObjectKey{Name: "checkout"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Status.ClusterCount != 1 {
+		t.Fatalf("clusterCount = %d, want 1", got.Status.ClusterCount)
+	}
+	if got.Status.UnitCount != 0 {
+		t.Fatalf("unitCount = %d, want 0 for target-set Fleet without legacy source", got.Status.UnitCount)
+	}
+	if len(got.Status.Inventory) != 2 {
+		t.Fatalf("inventory = %v, want Cluster and Substrate entries", got.Status.Inventory)
+	}
+	var cluster kaprov1alpha1.Cluster
+	if err := r.Get(ctx, client.ObjectKey{Name: "canary-eu"}, &cluster); err != nil {
+		t.Fatal(err)
+	}
+	if cluster.Spec.Delivery.SubstrateRef != "argo" || cluster.Spec.Delivery.Param("namespace", "") != "argocd" {
+		t.Fatalf("cluster delivery = %#v", cluster.Spec.Delivery)
+	}
+}
+
 func TestDeepMerge(t *testing.T) {
 	dst := map[string]interface{}{
 		"a": "1",

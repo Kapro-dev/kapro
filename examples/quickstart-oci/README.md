@@ -7,6 +7,8 @@ spoke-side OCI delivery core, without requiring Flux or Argo CD on the spoke.
 git clone --branch main https://github.com/Kapro-dev/kapro.git
 cd kapro
 kubectl apply -f examples/quickstart-oci/substrates/oci.yaml
+kubectl apply -f examples/quickstart-oci/deliveryunit.yaml
+kubectl apply -f examples/quickstart-oci/plan.yaml
 kubectl apply -f examples/quickstart-oci/fleet.yaml
 kubectl apply -f examples/quickstart-oci/promotion.yaml
 kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
@@ -18,6 +20,5 @@ your spokes can reach.
 
 OCI fields have different jobs:
 
-- `Fleet.spec.source.registries` is where chart or source units come from.
-- `Fleet.spec.registry` is where Kapro-generated bundles can be published.
+- `DeliveryUnit.spec.source.registries` is where chart or source units come from.
 - `delivery.parameters.repository` is what spoke-side OCI delivery pulls.

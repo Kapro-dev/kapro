@@ -22,13 +22,16 @@ kapro create argo ./promotion-repo --name checkout
 cd promotion-repo
 kubectl apply -f substrates/argo.yaml
 kubectl wait --for=condition=Ready substrate/argo --timeout=90s
-kubectl apply --recursive -f apps -f argo -f clusters -f plans -f fleets -f promotions
-kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
+kubectl apply --recursive -f apps -f argo -f clusters -f deliveryunits -f plans -f fleets -f promotions
+kubectl get deliveryunits.kapro.io,promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
 ```
 
 The generated repo includes a `SubstrateClass`, typed `ArgoCDSubstrateConfig`,
 `Substrate`, target-specific Argo CD `Application` objects, starter workload
-manifests under `apps/`, and Kapro `Fleet`, `Plan`, and `Promotion` objects.
+manifests under `apps/`, and Kapro `DeliveryUnit`, `Fleet`, `Plan`, and
+`Promotion` objects.
+The `DeliveryUnit` owns source mapping intent; `Promotion` remains the explicit
+rollout action.
 Push the generated repo and replace the placeholder `repoURL` values before
 expecting Argo CD to sync. If your Argo Applications already exist with
 different names, set `spec.delivery.parameters.application` for one shared

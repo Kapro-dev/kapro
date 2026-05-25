@@ -19,14 +19,14 @@ kapro create flux ./promotion-repo --name checkout
 cd promotion-repo
 kubectl apply -f substrates/flux.yaml
 kubectl wait --for=condition=Ready substrate/flux --timeout=90s
-kubectl apply --recursive -f apps -f flux -f clusters -f plans -f fleets -f promotions
+kubectl apply --recursive -f apps -f flux -f clusters -f deliveryunits -f plans -f fleets -f promotions
 kubectl get substrate flux -o yaml
-kubectl get fleets.kapro.io,plans.kapro.io,promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
+kubectl get deliveryunits.kapro.io,fleets.kapro.io,plans.kapro.io,promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
 ```
 
 The generated repo includes a Flux-shaped starter under `flux/`, workload
 manifests under `apps/`, and Kapro `Substrate`, `Fleet`, `Plan`, and `Promotion`
-objects. Push the generated repo and replace the placeholder `GitRepository`
+objects plus a `DeliveryUnit`. Push the generated repo and replace the placeholder `GitRepository`
 URL before expecting Flux to sync. For the older checked-in minimal hub API
 example, use `examples/quickstart/`.
 

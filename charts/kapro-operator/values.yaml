@@ -61,6 +61,7 @@ leaderElection:
 # spoke bootstrap URL, fleet auto-import provider configuration, or preview
 # extension runtime.
 controllers:
+  - deliveryunit
   - fleet
   - plan
   - promotion

@@ -2,6 +2,8 @@ apiVersion: kapro.io/v1alpha1
 kind: Trigger
 metadata:
   name: checkout-oci
+  labels:
+    kapro.io/team: checkout
 spec:
   suspended: true
   source:
@@ -12,6 +14,7 @@ spec:
       requireSignature: true
       pollInterval: 5m
   promotionTemplate:
+    deliveryUnitRef: checkout
     fleetRef: checkout
     plans:
       - name: production

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
@@ -33,19 +34,20 @@ Kapro promotes revisions. The selected substrate owns local sync and rollout.`,
 
 func newSourcePackageCmd() *cobra.Command {
 	var (
-		sourceRef  string
-		fleetName  string
-		version    string
-		registry   string
-		outputDir  string
-		push       bool
-		kubeconfig string
+		deliveryUnitRef string
+		sourceRef       string
+		fleetName       string
+		version         string
+		registry        string
+		outputDir       string
+		push            bool
+		kubeconfig      string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "package",
 		Short: "Package Kapro source units for pull-mode spokes",
-		Long: `Reads source units from a Fleet CR or advanced Source CR and
+		Long: `Reads source units from a DeliveryUnit, Fleet, or advanced Source CR and
 packages them into an OCI artifact containing per-wave directories with
 HelmReleases and HelmRepositories.
 
@@ -56,7 +58,7 @@ Examples:
   kapro source package --fleet checkout --version 2.0.0 --output /tmp/kapro-source
 
   # Package and push to GAR
-  kapro source package --fleet checkout --version 2.0.0 \
+  kapro source package --delivery-unit checkout --fleet checkout --version 2.0.0 \
     --registry oci://europe-west1-docker.pkg.dev/project/repo --push
 
   # Advanced: package a reusable Source CR
@@ -66,12 +68,16 @@ Examples:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := fleetName
 			if name == "" {
+				name = deliveryUnitRef
+			}
+			if name == "" {
 				name = sourceRef
 			}
-			return runSourcePackage(cmd.Context(), sourceRef, name, version, registry, outputDir, push, kubeconfig)
+			return runSourcePackage(cmd.Context(), deliveryUnitRef, sourceRef, name, version, registry, outputDir, push, kubeconfig)
 		},
 	}
 
+	cmd.Flags().StringVar(&deliveryUnitRef, "delivery-unit", "", "DeliveryUnit CR name to package")
 	cmd.Flags().StringVar(&sourceRef, "source", "", "Advanced Source CR name")
 	cmd.Flags().StringVar(&fleetName, "fleet", "", "Fleet artifact name; when --source is omitted, also the Fleet CR name")
 	cmd.Flags().StringVar(&version, "version", "", "Artifact version / OCI tag (required)")
@@ -83,9 +89,9 @@ Examples:
 	return cmd
 }
 
-func runSourcePackage(ctx context.Context, sourceRef, fleetName, version, registry, outputDir string, push bool, kubeconfigPath string) error {
-	if sourceRef == "" && fleetName == "" {
-		return fmt.Errorf("one of --fleet or --source is required")
+func runSourcePackage(ctx context.Context, deliveryUnitRef, sourceRef, fleetName, version, registry, outputDir string, push bool, kubeconfigPath string) error {
+	if deliveryUnitRef == "" && sourceRef == "" && fleetName == "" {
+		return fmt.Errorf("one of --delivery-unit, --fleet, or --source is required")
 	}
 	if registry == "" {
 		cfg, _ := kaproconfig.Load()
@@ -95,13 +101,13 @@ func runSourcePackage(ctx context.Context, sourceRef, fleetName, version, regist
 		return fmt.Errorf("--registry is required when using --push")
 	}
 
-	// Build client to read PromotionSource from hub.
+	// Build client to read DeliveryUnit/Source catalog from hub.
 	hubClient, err := buildHubClient(kubeconfigPath)
 	if err != nil {
 		return fmt.Errorf("connect to hub: %w", err)
 	}
 
-	app, err := readPackageSource(ctx, hubClient, sourceRef, fleetName)
+	app, err := readPackageSource(ctx, hubClient, deliveryUnitRef, sourceRef, fleetName)
 	if err != nil {
 		return err
 	}
@@ -164,7 +170,17 @@ func runSourcePackage(ctx context.Context, sourceRef, fleetName, version, regist
 	return nil
 }
 
-func readPackageSource(ctx context.Context, hubClient client.Client, sourceRef, fleetName string) (*kaprov1alpha1.Source, error) {
+func readPackageSource(ctx context.Context, hubClient client.Client, deliveryUnitRef, sourceRef, fleetName string) (*kaprov1alpha1.Source, error) {
+	if deliveryUnitRef != "" {
+		var unit kaprov1alpha1.DeliveryUnit
+		if err := hubClient.Get(ctx, client.ObjectKey{Name: deliveryUnitRef}, &unit); err != nil {
+			return nil, fmt.Errorf("get DeliveryUnit %q: %w", deliveryUnitRef, err)
+		}
+		return &kaprov1alpha1.Source{
+			ObjectMeta: metav1.ObjectMeta{Name: unit.Name, Labels: unit.Labels, Annotations: unit.Annotations},
+			Spec:       unit.Spec.Source,
+		}, nil
+	}
 	if sourceRef != "" {
 		var source kaprov1alpha1.Source
 		if err := hubClient.Get(ctx, client.ObjectKey{Name: sourceRef}, &source); err != nil {
@@ -181,7 +197,14 @@ func readPackageSource(ctx context.Context, hubClient client.Client, sourceRef, 
 		if fleet.Spec.SourceRef != "" {
 			return nil, fmt.Errorf("fleet %q references source %q; pass --source %s", fleetName, fleet.Spec.SourceRef, fleet.Spec.SourceRef)
 		}
-		return nil, fmt.Errorf("fleet %q has neither spec.source nor spec.sourceRef set", fleetName)
+		var unit kaprov1alpha1.DeliveryUnit
+		if err := hubClient.Get(ctx, client.ObjectKey{Name: fleetName}, &unit); err == nil {
+			return &kaprov1alpha1.Source{
+				ObjectMeta: metav1.ObjectMeta{Name: unit.Name, Labels: unit.Labels, Annotations: unit.Annotations},
+				Spec:       unit.Spec.Source,
+			}, nil
+		}
+		return nil, fmt.Errorf("fleet %q has neither legacy spec.source nor spec.sourceRef set; pass --delivery-unit %s for the public-preview authoring path", fleetName, fleetName)
 	}
 	return &kaprov1alpha1.Source{
 		ObjectMeta: fleet.ObjectMeta,

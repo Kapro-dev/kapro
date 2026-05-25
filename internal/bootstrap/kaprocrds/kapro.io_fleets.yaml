@@ -41,9 +41,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Fleet is the single entry point for fleet delivery. Users define or reference
-          source units, select a substrate profile, and define clusters and promotion
-          stages. Substrate adapters own Flux, Argo, or other delivery-system details.
+          Fleet is the target-set entry point for fleet delivery. Users select delivery
+          defaults and define clusters. DeliveryUnit owns source shape, Plan owns
+          rollout strategy, and Promotion remains the explicit action boundary.
         properties:
           apiVersion:
             description: |-
@@ -63,9 +63,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: |-
-              FleetSpec defines the desired source, delivery, target clusters, and stage
-              plan for one fleet.
+            description: FleetSpec defines delivery defaults and target clusters for
+              one fleet.
             properties:
               clusters:
                 description: Clusters defines the target clusters in the fleet.
@@ -121,8 +120,9 @@ spec:
                 minItems: 1
                 type: array
               delivery:
-                description: Delivery selects the substrate-neutral fleet delivery
-                  profile.
+                description: |-
+                  Delivery selects the substrate-neutral delivery defaults copied to
+                  generated Cluster objects.
                 properties:
                   mode:
                     default: pull
@@ -171,7 +171,10 @@ spec:
                 - substrateRef
                 type: object
               plan:
-                description: Plan defines the progressive delivery stages.
+                description: |-
+                  Plan is a compatibility hook for legacy inline rollout stages. New
+                  manifests should use a standalone Plan and reference it from Promotion or
+                  DeliveryUnit defaults.
                 properties:
                   stages:
                     description: Stages defines the progressive delivery wave ordering.
@@ -881,8 +884,9 @@ spec:
                 - url
                 type: object
               source:
-                description: Source defines deployable units inline for the single-object
-                  quickstart path.
+                description: |-
+                  Source is a compatibility hook for legacy single-object packaging
+                  workflows. New manifests should use DeliveryUnit.spec.source instead.
                 properties:
                   defaults:
                     description: Defaults are inherited by every unit unless overridden.
@@ -1011,7 +1015,8 @@ spec:
                       Fleet.spec.delivery and Cluster.spec.delivery.
                     type: string
                   units:
-                    description: Units defines the native deployable units Fleet promotes.
+                    description: Units defines the native deployable units DeliveryUnit/Promotion
+                      moves.
                     items:
                       description: |-
                         Unit is one deployable unit within a Source.
@@ -1039,7 +1044,7 @@ spec:
                             type: string
                           type: array
                         name:
-                          description: Name is the stable Fleet unit identifier.
+                          description: Name is the stable delivery unit identifier.
                           type: string
                         namespace:
                           description: Namespace is the substrate-native object namespace
@@ -1061,7 +1066,7 @@ spec:
                           type: integer
                         sourcePath:
                           description: |-
-                            SourcePath is the repo-relative file path Fleet updates for existing
+                            SourcePath is the repo-relative file path Kapro updates for existing
                             GitOps promotion. It is required for file-backed units whose
                             VersionField does not already include a file path.
                           type: string
@@ -1124,7 +1129,7 @@ spec:
                           type: string
                         versionField:
                           description: |-
-                            VersionField is the substrate-native field Fleet changes for this unit,
+                            VersionField is the substrate-native field Kapro changes for this unit,
                             for example spec.source.targetRevision for Argo CD Applications.
                           type: string
                         wave:
@@ -1144,9 +1149,9 @@ spec:
                 type: object
               sourceRef:
                 description: |-
-                  SourceRef is the optional name of a separate Source that defines units to
-                  deploy. Use Source for the inline single-object path; use SourceRef when
-                  teams share a source catalog across multiple Fleet objects.
+                  SourceRef is a compatibility hook for legacy Fleet-packaged workflows.
+                  The public-preview authoring path puts source intent on DeliveryUnit and
+                  lets Kapro derive Source objects from that layer.
                 type: string
               suspended:
                 default: false
@@ -1155,11 +1160,7 @@ spec:
             required:
             - clusters
             - delivery
-            - plan
             type: object
-            x-kubernetes-validations:
-            - message: exactly one of sourceRef or source is required
-              rule: (has(self.sourceRef) && size(self.sourceRef) > 0) != has(self.source)
           status:
             description: FleetStatus defines the observed state of Fleet.
             properties:

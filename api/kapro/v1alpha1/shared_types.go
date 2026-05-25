@@ -2,6 +2,20 @@
 // the DeliverySpec consumed by Cluster, Fleet, and Substrate.
 package v1alpha1
 
+const (
+	// LabelUnit is the canonical cross-layer identity label for the logical
+	// delivery unit. User-authored, controller-derived, and runtime objects use
+	// this label to make the Kubernetes API browsable by app/workload boundary.
+	LabelUnit = "kapro.io/unit"
+	// LabelManagedBy marks objects generated or managed by Kapro.
+	LabelManagedBy = "kapro.io/managed-by"
+	// LabelTeam is the tenancy ownership label required on promotion-affecting
+	// resources by the default admission policy.
+	LabelTeam = "kapro.io/team"
+	// ManagedByKapro is the standard value for LabelManagedBy.
+	ManagedByKapro = "kapro"
+)
+
 // ---- Shared cluster types ---------------------------------------------------
 
 type TargetTopology struct {

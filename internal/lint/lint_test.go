@@ -29,7 +29,7 @@ func TestLintPromotion_RejectsMissingRequired(t *testing.T) {
 	p := &kaprov1alpha1.Promotion{}
 	issues := LintPromotion(p)
 
-	for _, want := range []string{"metadata.name", "fleetRef", "version"} {
+	for _, want := range []string{"metadata.name", "fleetRef", "deliveryUnitRef", "version"} {
 		hit := findIssue(t, issues, want)
 		if hit == nil {
 			t.Errorf("missing expected issue for %q; got %+v", want, issues)
@@ -44,7 +44,7 @@ func TestLintPromotion_RejectsMissingRequired(t *testing.T) {
 func TestLintPromotion_WarnsOnNoTimeout(t *testing.T) {
 	p := &kaprov1alpha1.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: "p1"},
-		Spec:       kaprov1alpha1.PromotionSpec{FleetRef: "k", Version: "v1"},
+		Spec:       kaprov1alpha1.PromotionSpec{DeliveryUnitRef: "du", FleetRef: "k", Version: "v1"},
 	}
 	issues := LintPromotion(p)
 	hit := findIssue(t, issues, "timeout")
@@ -60,9 +60,10 @@ func TestLintPromotion_DuplicateScopeTargetsWarn(t *testing.T) {
 	p := &kaprov1alpha1.Promotion{
 		ObjectMeta: metav1.ObjectMeta{Name: "p1"},
 		Spec: kaprov1alpha1.PromotionSpec{
-			FleetRef: "k",
-			Version:  "v1",
-			Timeout:  "30m",
+			FleetRef:        "k",
+			DeliveryUnitRef: "du",
+			Version:         "v1",
+			Timeout:         "30m",
 			Scope: &kaprov1alpha1.PromotionRunScope{
 				Targets: []string{"de-prod", "de-prod"},
 			},
@@ -181,6 +182,7 @@ kind: Promotion
 metadata:
   name: a
 spec:
+  deliveryUnitRef: du
   fleetRef: k
   version: v1
   timeout: 30m
@@ -190,6 +192,7 @@ kind: Promotion
 metadata:
   name: b
 spec:
+  deliveryUnitRef: du
   fleetRef: k
   # missing version
 `))
@@ -287,7 +290,7 @@ func TestQuickstartYAMLIsStrictLintClean(t *testing.T) {
 // ---- LintKapro -------------------------------------------------------------
 
 func TestLintKapro_NilSourceDoesNotPanic(t *testing.T) {
-	// Regression guard. KaproSpec.Source is *PromotionSourceSpec and is
+	// Regression guard. FleetSpec.Source is *SourceSpec and is
 	// nil whenever the user does not declare an inline source — i.e.
 	// every Kapro that uses sourceRef. An earlier version of LintKapro
 	// dereferenced k.Spec.Source.Units unconditionally and panicked.
@@ -312,14 +315,14 @@ func TestLintKapro_NilSourceDoesNotPanic(t *testing.T) {
 	}
 }
 
-func TestLintKapro_ExactlyOneOfSourceSourceRef(t *testing.T) {
+func TestLintKapro_SourceAndSourceRefCompatibility(t *testing.T) {
 	cases := []struct {
 		name      string
 		sourceRef string
 		source    *kaprov1alpha1.SourceSpec
 		wantErr   bool
 	}{
-		{name: "both unset", wantErr: true},
+		{name: "target-set fleet without legacy source"},
 		{name: "only sourceRef", sourceRef: "shared"},
 		{
 			name:   "only inline source",
@@ -334,8 +337,6 @@ func TestLintKapro_ExactlyOneOfSourceSourceRef(t *testing.T) {
 		{
 			name:   "source non-nil but empty units",
 			source: &kaprov1alpha1.SourceSpec{},
-			// No sourceRef, no actual units → still "neither set".
-			wantErr: true,
 		},
 	}
 	for _, tc := range cases {
@@ -455,6 +456,7 @@ kind: Promotion
 metadata:
   name: ok
 spec:
+  deliveryUnitRef: du
   fleetRef: k
   version: v1
   timeout: 30m

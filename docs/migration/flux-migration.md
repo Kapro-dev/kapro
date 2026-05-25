@@ -4,11 +4,12 @@ This guide is for teams that already run Flux with GitRepository,
 OCIRepository, Kustomization, and HelmRelease objects.
 
 Kapro should not replace Flux reconciliation. Flux keeps source credentials,
-inventory, health, drift correction, and workload rollout. Kapro adds `Fleet`,
-`Source`, `Plan`, and `Promotion` intent around the Flux estate.
+inventory, health, drift correction, and workload rollout. Kapro adds
+`DeliveryUnit`, `Fleet`, `Plan`, and explicit `Promotion` intent around the Flux
+estate.
 
 The migration path is observe, review, then adopt. Discovery generates a
-read-only `Substrate`, inferred `Source` units, and review reports. Adoption
+read-only `Substrate`, a `DeliveryUnit` with inferred source mappings, and review reports. Adoption
 should only enable the specific version writes the owning team has reviewed.
 
 ## Repository Shape
@@ -23,7 +24,7 @@ platform-gitops/
     helmreleases/
   fleets/
     substrates/checkout-observe.yaml
-    sources/checkout.yaml
+    deliveryunits/checkout.yaml
     plans/checkout.yaml
     promotions/
 ```
@@ -96,10 +97,10 @@ Check `Substrate.status.selectedObjects`, `discovery/review-summary.yaml`,
 `discovery/flux-discovery.yaml`, and `discovery/kapro-git-map.yaml` before
 enabling adoption. Observe mode does not patch Flux objects.
 
-## Step 3: Review Source Units
+## Step 3: Review DeliveryUnit Source Mappings
 
-The discovery command generates `kapro-connect/sources/<name>.yaml` from common
-Flux Git-native patterns:
+The discovery command generates `kapro-connect/deliveryunits/<name>.yaml` from
+common Flux Git-native patterns:
 
 - `GitRepository.spec.ref.tag`, `semver`, `digest`, or reviewed `branch`
 - `OCIRepository.spec.ref.tag`, `semver`, `digest`, or reviewed `branch`
@@ -114,26 +115,27 @@ Flux Git-native patterns:
 Flux `Kustomization` objects are reported but not treated as direct version
 write targets because `spec.path` and `spec.sourceRef` are topology/configuration
 fields, not a universal promotion version. Use the referenced source object,
-the Kustomize image file, or an explicit field you add to `Source`.
+the Kustomize image file, or an explicit field you add to the `DeliveryUnit`.
 
 ```yaml
 apiVersion: kapro.io/v1alpha1
-kind: Source
+kind: DeliveryUnit
 metadata:
   name: checkout
 spec:
-  substrateRef: checkout
-  units:
-    - name: api
-      substrateKind: GitYAMLField
-      namespace: flux-system
-      sourcePath: flux/helmreleases/api.yaml
-      versionField: spec.chart.spec.version
-    - name: web
-      substrateKind: KustomizeImage
-      namespace: flux-system
-      sourcePath: apps/web/kustomization.yaml
-      versionField: ghcr.io/example/web
+  source:
+    substrateRef: checkout
+    units:
+      - name: api
+        substrateKind: GitYAMLField
+        namespace: flux-system
+        sourcePath: flux/helmreleases/api.yaml
+        versionField: spec.chart.spec.version
+      - name: web
+        substrateKind: KustomizeImage
+        namespace: flux-system
+        sourcePath: apps/web/kustomization.yaml
+        versionField: ghcr.io/example/web
 ```
 
 The exact field depends on how the Flux repo models versions. Generated units
@@ -149,7 +151,7 @@ Switch to `managementPolicy: Adopt` only when:
 
 - the selected objects are the intended Flux objects;
 - the team has chosen exactly which version field Kapro may write;
-- the `Source` is referenced by the intended `Fleet` and `Plan`;
+- the `DeliveryUnit` has the intended source mappings and default fleet/plan;
 - Flux RBAC grants patch rights only in the target namespace.
 
 Flux continues to reconcile the resulting desired state. Kapro does not write
@@ -168,10 +170,9 @@ kind: Promotion
 metadata:
   name: checkout-2026-05-15
 spec:
+  deliveryUnitRef: checkout
   fleetRef: checkout
-  plans:
-    - name: main
-      plan: checkout
+  planRef: checkout
   versions:
     api: 1.5.0
     web: main-20260515
@@ -206,6 +207,6 @@ scripts/verify-install.sh flux-e2e
 
 This creates a disposable Kind cluster, installs real Flux controllers, serves a
 Git fixture inside the cluster, bootstraps Flux from that repo, runs
-`kapro import flux`, applies the generated `Source` mapping from `v1`
+`kapro import flux`, applies the generated `DeliveryUnit` source mapping from `v1`
 to `v2`, pushes the Git change, and waits for Flux to reconcile the workload
 ConfigMap to `v2`.

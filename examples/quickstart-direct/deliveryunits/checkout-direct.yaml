@@ -1,0 +1,20 @@
+apiVersion: kapro.io/v1alpha1
+kind: DeliveryUnit
+metadata:
+  name: checkout-direct
+  labels:
+    kapro.io/unit: checkout-direct
+    kapro.io/team: platform
+spec:
+  defaultFleetRef: checkout-direct
+  defaultPlanRef: checkout-direct
+  source:
+    substrateRef: direct
+    defaults:
+      targetNamespace: default
+    units:
+      - name: checkout-direct
+        substrateKind: KubernetesManifest
+        sourcePath: apps/checkout-direct/deployment.yaml
+        versionField: spec.template.spec.containers[0].image
+        version: ghcr.io/example/checkout-direct:0.1.0

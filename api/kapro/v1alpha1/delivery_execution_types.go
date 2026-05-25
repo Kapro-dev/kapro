@@ -246,6 +246,12 @@ type PromotionRunScope struct {
 // Uniqueness and dependency-reference validation is enforced by the admission webhook,
 // which can perform DAG checks without the quadratic CEL cost budget constraints.
 type PromotionRunSpec struct {
+	// DeliveryUnitRef is the logical unit this execution attempt belongs to.
+	// +optional
+	DeliveryUnitRef string `json:"deliveryUnitRef,omitempty"`
+	// FleetRef scopes target selection to the referenced Fleet's clusters.
+	// +optional
+	FleetRef string `json:"fleetRef,omitempty"`
 	// Version is the default revision to deliver across the fleet.
 	// For existing substrate-native sources this is the revision for every unit that is
 	// not explicitly listed in versions.

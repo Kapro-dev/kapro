@@ -7,6 +7,8 @@ and Kapro should promote by updating `spec.source.targetRevision`.
 git clone --branch main https://github.com/Kapro-dev/kapro.git
 cd kapro
 kubectl apply -f examples/quickstart-argo/substrates/argo.yaml
+kubectl apply -f examples/quickstart-argo/deliveryunit.yaml
+kubectl apply -f examples/quickstart-argo/plan.yaml
 kubectl apply -f examples/quickstart-argo/fleet.yaml
 kubectl apply -f examples/quickstart-argo/promotion.yaml
 kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
@@ -21,7 +23,7 @@ these labels or annotations:
 ```yaml
 kapro.io/managed-by: kapro
 kapro.io/authorized-source: "*"
-kapro.io/authorized-unit: checkout
+kapro.io/authorized-unit: checkout-argo
 ```
 
 Use a global `spec.delivery.parameters.application` only for single-target

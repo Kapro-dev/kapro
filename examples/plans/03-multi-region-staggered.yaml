@@ -13,6 +13,8 @@ apiVersion: kapro.io/v1alpha1
 kind: Plan
 metadata:
   name: multi-region-staggered
+  labels:
+    kapro.io/team: platform
 spec:
   stages:
     - name: eu

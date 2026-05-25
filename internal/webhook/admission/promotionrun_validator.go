@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 
+	kaprov1alpha1 "kapro.io/kapro/api/kapro/v1alpha1"
 	kaproruntimev1alpha1 "kapro.io/kapro/api/kaproruntime/v1alpha1"
 
 	admissionv1 "k8s.io/api/admission/v1"
@@ -62,7 +63,7 @@ func isAllowedPromotionRunWriter(user authenticationv1.UserInfo) bool {
 // carry. Enforced at CREATE by the admission validators per
 // docs/operations/rbac-tenancy.md. Use a constant so adding the same check to a new
 // CRD validator is a one-line change.
-const LabelKaproTeam = "kapro.io/team"
+const LabelKaproTeam = kaprov1alpha1.LabelTeam
 
 // requireTeamLabel returns a field.Error when the supplied labels map does
 // not contain a non-empty kapro.io/team value. Use on CREATE only — UPDATE

@@ -1,0 +1,21 @@
+apiVersion: kapro.io/v1alpha1
+kind: Plan
+metadata:
+  name: checkout
+  labels:
+    kapro.io/unit: checkout
+    kapro.io/team: platform
+spec:
+  stages:
+    - name: canary
+      selector:
+        matchLabels:
+          kapro.io/stage: canary
+          kapro.io/quickstart: flux
+    - name: production
+      selector:
+        matchLabels:
+          kapro.io/stage: production
+          kapro.io/quickstart: flux
+      dependsOn:
+        - stage: canary

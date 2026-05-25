@@ -69,7 +69,7 @@ or Flux installations. Observe mode discovers existing substrate objects without
 taking over writes.
 
 This command is Substrate-only. Use kapro discover or kapro import when you also
-want generated Source units and discovery review reports.`,
+want generated DeliveryUnit source mappings and discovery review reports.`,
 	}
 	cmd.AddCommand(newConnectSubstrateCmd("argo"))
 	cmd.AddCommand(newConnectSubstrateCmd("flux"))
@@ -354,13 +354,13 @@ func printInitNextSteps(opts scaffoldOptions, count int) {
 	fmt.Fprintf(os.Stderr, "\nGenerated %d Kapro starter files in %s\n", count, opts.Path)
 	fmt.Fprintf(os.Stderr, "\nNext steps:\n")
 	if len(parseClusterScaffold(opts.Clusters)) == 0 {
-		fmt.Fprintf(os.Stderr, "Shape: Substrate, Source, and substrate-native sample manifests. Add clusters before creating Fleet and Promotion files.\n")
+		fmt.Fprintf(os.Stderr, "Shape: Substrate, DeliveryUnit, Plan, and substrate-native sample manifests. Add clusters before creating Fleet and Promotion files.\n")
 		printIndentedApplyInstructions(opts)
 		fmt.Fprintf(os.Stderr, "  add clusters/, then create fleets/%s.yaml and promotions/%s-promotion.yaml\n", opts.Name, opts.Name)
 		printScaffoldFooter(opts)
 		return
 	}
-	fmt.Fprintf(os.Stderr, "Shape: Substrate, Fleet, Plan, Promotion, and substrate-native sample manifests.\n")
+	fmt.Fprintf(os.Stderr, "Shape: Substrate, DeliveryUnit, Fleet, Plan, Promotion, and substrate-native sample manifests.\n")
 	printIndentedApplyInstructions(opts)
 	nextVersion := nextScaffoldVersion(opts)
 	fmt.Fprintf(os.Stderr, "  kapro promote %s --version %s  # creates/updates Promotion intent; controller stamps PromotionRun\n", opts.Name, nextVersion)
@@ -400,6 +400,7 @@ func prefixKubectlFileArgs(line, root string) string {
 func greenfieldFiles(opts scaffoldOptions, clusters []scaffoldCluster) map[string]string {
 	files := map[string]string{
 		filepath.Join("substrates", opts.Substrate+".yaml"):          renderGreenfieldSubstrate(opts),
+		filepath.Join("deliveryunits", opts.Name+".yaml"):            renderDeliveryUnit(opts),
 		filepath.Join("plans", opts.Name+".yaml"):                    renderPlan(opts),
 		filepath.Join("README.md"):                                   renderGreenfieldReadme(opts),
 		filepath.Join(".github", "workflows", "kapro-validate.yaml"): renderValidationWorkflow(),
@@ -411,8 +412,6 @@ func greenfieldFiles(opts scaffoldOptions, clusters []scaffoldCluster) map[strin
 	if len(clusters) > 0 {
 		files[filepath.Join("fleets", opts.Name+".yaml")] = renderKapro(opts, clusters)
 		files[filepath.Join("promotions", opts.Name+"-promotion.yaml")] = renderPromotion(opts)
-	} else {
-		files[filepath.Join("sources", opts.Name+".yaml")] = renderPromotionSource(opts)
 	}
 	switch opts.Substrate {
 	case "argo":
@@ -704,6 +703,7 @@ kind: Cluster
 metadata:
   name: %s
   labels:
+    kapro.io/unit: %s
     kapro.io/stage: %s
 spec:
   delivery:
@@ -711,7 +711,7 @@ spec:
     substrateRef: %s
     parameters:
       namespace: %s
-%s`, suffix, stage, opts.Mode, opts.Substrate, opts.Namespace, renderDeliveryParameters(opts, suffix))
+%s`, suffix, opts.Name, stage, opts.Mode, opts.Substrate, opts.Namespace, renderDeliveryParameters(opts, suffix))
 }
 
 func renderDeliveryParameters(opts scaffoldOptions, suffix string) string {
@@ -730,46 +730,56 @@ func renderDeliveryParameters(opts scaffoldOptions, suffix string) string {
 	}
 }
 
-func renderPromotionSource(opts scaffoldOptions) string {
+func renderDeliveryUnit(opts scaffoldOptions) string {
 	if scaffoldProfile(opts) == "direct" {
 		return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
-kind: Source
+kind: DeliveryUnit
 metadata:
   name: %s
   labels:
+    kapro.io/unit: %s
+    kapro.io/managed-by: kapro
     kapro.io/team: %s
 spec:
-  substrateRef: %s
-  defaults:
-    targetNamespace: %s
-  units:
-    - name: %s
-      substrateKind: KubernetesManifest
-      sourcePath: apps/%s/deployment.yaml
-      versionField: spec.template.spec.containers[0].image
-      version: %s
-`, opts.Name, opts.Team, opts.Substrate, opts.Namespace, opts.Name, opts.Name, defaultScaffoldVersion(opts))
+%s
+  defaultPlanRef: %s
+  source:
+    substrateRef: %s
+    defaults:
+      targetNamespace: %s
+    units:
+      - name: %s
+        substrateKind: KubernetesManifest
+        sourcePath: apps/%s/deployment.yaml
+        versionField: spec.template.spec.containers[0].image
+        version: %s
+`, opts.Name, opts.Name, opts.Team, renderDefaultFleetRefLine(opts), opts.Name, opts.Substrate, opts.Namespace, opts.Name, opts.Name, defaultScaffoldVersion(opts))
 	}
 	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
-kind: Source
+kind: DeliveryUnit
 metadata:
   name: %s
   labels:
+    kapro.io/unit: %s
+    kapro.io/managed-by: kapro
     kapro.io/team: %s
 spec:
-  substrateRef: %s
-  registries:
-    - name: app
-      url: %s
-      type: %s
-  defaults:
-    repo: app
-    targetNamespace: %s
-  units:
-    - name: %s
-      version: 0.1.0
-      chartName: %s
-`, opts.Name, opts.Team, opts.Substrate, opts.Registry, registryType(opts.Registry), opts.Name, opts.Name, opts.Name)
+%s
+  defaultPlanRef: %s
+  source:
+    substrateRef: %s
+    registries:
+      - name: app
+        url: %s
+        type: %s
+    defaults:
+      repo: app
+      targetNamespace: %s
+    units:
+      - name: %s
+        version: 0.1.0
+        chartName: %s
+`, opts.Name, opts.Name, opts.Team, renderDefaultFleetRefLine(opts), opts.Name, opts.Substrate, opts.Registry, registryType(opts.Registry), opts.Name, opts.Name, opts.Name)
 }
 
 func renderPlan(opts scaffoldOptions) string {
@@ -778,6 +788,8 @@ kind: Plan
 metadata:
   name: %s
   labels:
+    kapro.io/unit: %s
+    kapro.io/managed-by: kapro
     kapro.io/team: %s
 spec:
   stages:
@@ -795,7 +807,7 @@ spec:
         - stage: canary
       strategy:
         maxParallel: 1
-`, opts.Name, opts.Team)
+`, opts.Name, opts.Name, opts.Team)
 }
 
 func renderKapro(opts scaffoldOptions, clusters []scaffoldCluster) string {
@@ -812,18 +824,10 @@ kind: Fleet
 metadata:
   name: %s
   labels:
+    kapro.io/unit: %s
+    kapro.io/managed-by: kapro
     kapro.io/team: %s
 spec:
-  source:
-    substrateRef: %s
-    defaults:
-      targetNamespace: %s
-    units:
-      - name: %s
-        substrateKind: KubernetesManifest
-        sourcePath: apps/%s/deployment.yaml
-        versionField: spec.template.spec.containers[0].image
-        version: %s
   delivery:
     mode: %s
     substrateRef: %s
@@ -834,40 +838,17 @@ spec:
       namespace: %s
   clusters:
 %s
-  plan:
-    stages:
-      - name: canary
-        selector:
-          kapro.io/stage: canary
-      - name: production
-        selector:
-          kapro.io/stage: production
-        dependsOn:
-          - stage: canary
-`, opts.Name, opts.Team, opts.Substrate, opts.Namespace, opts.Name, opts.Name, defaultScaffoldVersion(opts), opts.Mode, opts.Substrate, opts.Name, opts.Name, opts.Namespace, clusterItems.String())
+`, opts.Name, opts.Name, opts.Team, opts.Mode, opts.Substrate, opts.Name, opts.Name, opts.Namespace, clusterItems.String())
 	}
 	return fmt.Sprintf(`apiVersion: kapro.io/v1alpha1
 kind: Fleet
 metadata:
   name: %s
   labels:
+    kapro.io/unit: %s
+    kapro.io/managed-by: kapro
     kapro.io/team: %s
 spec:
-  registry:
-    url: %s
-  source:
-    substrateRef: %s
-    registries:
-      - name: app
-        url: %s
-        type: %s
-    defaults:
-      repo: app
-      targetNamespace: %s
-    units:
-      - name: %s
-        version: 0.1.0
-        chartName: %s
   delivery:
     mode: %s
     substrateRef: %s
@@ -875,17 +856,7 @@ spec:
       namespace: %s
   clusters:
 %s
-  plan:
-    stages:
-      - name: canary
-        selector:
-          kapro.io/stage: canary
-      - name: production
-        selector:
-          kapro.io/stage: production
-        dependsOn:
-          - stage: canary
-`, opts.Name, opts.Team, opts.Registry, opts.Substrate, opts.Registry, registryType(opts.Registry), opts.Name, opts.Name, opts.Name, opts.Mode, opts.Substrate, opts.Namespace, clusterItems.String())
+`, opts.Name, opts.Name, opts.Team, opts.Mode, opts.Substrate, opts.Namespace, clusterItems.String())
 }
 
 func renderPromotion(opts scaffoldOptions) string {
@@ -894,12 +865,16 @@ kind: Promotion
 metadata:
   name: %s-0-1-0
   labels:
+    kapro.io/unit: %s
+    kapro.io/managed-by: kapro
     kapro.io/team: %s
 spec:
+  deliveryUnitRef: %s
   fleetRef: %s
+  planRef: %s
   version: %s
   timeout: 30m
-`, opts.Name, opts.Team, opts.Name, defaultScaffoldVersion(opts))
+`, opts.Name, opts.Name, opts.Team, opts.Name, opts.Name, opts.Name, defaultScaffoldVersion(opts))
 }
 
 func renderDirectDeployment(opts scaffoldOptions) string {
@@ -1056,7 +1031,7 @@ This repo is a repo-first Kapro scaffold for the %s substrate.
 Apply order:
 
 1. substrates/
-2. sources/
+2. deliveryunits/
 3. plans/
 %s
 Apply with:
@@ -1084,9 +1059,10 @@ Apply order:
 1. substrates/
 2. apps/
 3. clusters/
-4. plans/
-5. fleets/
-6. promotions/
+4. deliveryunits/
+5. plans/
+6. fleets/
+7. promotions/
 
 Apply with:
 
@@ -1107,9 +1083,10 @@ Apply order:
 
 1. substrates/
 2. clusters/
-3. plans/
-4. fleets/
-5. promotions/
+3. deliveryunits/
+4. plans/
+5. fleets/
+6. promotions/
 
 Apply with:
 
@@ -1140,9 +1117,9 @@ func renderApplyInstructions(opts scaffoldOptions) string {
 		paths = append(paths, "flux")
 	}
 	if len(parseClusterScaffold(opts.Clusters)) == 0 {
-		paths = append(paths, "sources", "plans")
+		paths = append(paths, "deliveryunits", "plans")
 	} else {
-		paths = append(paths, "clusters", "plans", "fleets", "promotions")
+		paths = append(paths, "clusters", "deliveryunits", "plans", "fleets", "promotions")
 	}
 	args := make([]string, 0, len(paths)*2)
 	for _, path := range paths {
@@ -1228,6 +1205,13 @@ func workloadNamespace(opts scaffoldOptions) string {
 	return opts.Name
 }
 
+func renderDefaultFleetRefLine(opts scaffoldOptions) string {
+	if len(parseClusterScaffold(opts.Clusters)) == 0 {
+		return ""
+	}
+	return "  defaultFleetRef: " + opts.Name
+}
+
 func nextScaffoldVersion(opts scaffoldOptions) string {
 	if scaffoldProfile(opts) == "direct" {
 		return fmt.Sprintf("ghcr.io/example/%s:0.1.1", opts.Name)
@@ -1242,7 +1226,7 @@ This scaffold starts in observe mode. Kapro discovers existing %s objects and
 reports them through Substrate status without taking over writes.
 
 This is a Substrate-only scaffold. Use `+"`kapro discover %s`"+` or
-`+"`kapro import %s`"+` when you want generated Source units and discovery review
+`+"`kapro import %s`"+` when you want generated DeliveryUnit source mappings and discovery review
 reports.
 
 Apply:

@@ -6,8 +6,12 @@ kind: PromotionRun
 metadata:
   name: checkout-kind
   labels:
+    kapro.io/team: checkout
+    kapro.io/unit: checkout
     kapro.io/demo: kind
 spec:
+  deliveryUnitRef: checkout
+  fleetRef: checkout
   version: v1.2.3-kind
   plans:
     - name: main

@@ -21,7 +21,7 @@ func TestSchemeRegistersAllNewKinds(t *testing.T) {
 	}
 	// Every CRD's singular Kind we care about.
 	wantKinds := []string{
-		"Approval", "Substrate", "Cluster", "ClusterTemplate",
+		"Approval", "Substrate", "Cluster", "ClusterTemplate", "DeliveryUnit",
 		"Fleet", "Plan", "Plugin", "Policy",
 		"Promotion", "Source", "SubstrateClass", "Trigger",
 	}
@@ -30,6 +30,38 @@ func TestSchemeRegistersAllNewKinds(t *testing.T) {
 		if _, err := scheme.New(gvk); err != nil {
 			t.Errorf("Kind %q not registered in v1alpha1 scheme: %v", kind, err)
 		}
+	}
+}
+
+func TestDeliveryUnitRoundTripsThroughYAML(t *testing.T) {
+	in := &DeliveryUnit{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "kapro.io/v1alpha1", Kind: "DeliveryUnit"},
+		ObjectMeta: metav1.ObjectMeta{Name: "checkout"},
+		Spec: DeliveryUnitSpec{
+			DefaultFleetRef: "prod",
+			DefaultPlanRef:  "progressive",
+			Source: SourceSpec{
+				Units: []Unit{{Name: "api", Version: "1.2.3"}},
+			},
+			Triggers: []DeliveryUnitTrigger{{
+				Name: "tags",
+				Source: TriggerSource{
+					Type: "oci",
+					OCI:  &OCITriggerSource{Repository: "oci://example/checkout", TagPattern: "v.*"},
+				},
+			}},
+		},
+	}
+	data, err := yaml.Marshal(in)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var out DeliveryUnit
+	if err := yaml.Unmarshal(data, &out); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if out.Spec.DefaultFleetRef != "prod" || out.Spec.Source.Units[0].Name != "api" {
+		t.Fatalf("DeliveryUnit roundtrip = %#v", out.Spec)
 	}
 }
 

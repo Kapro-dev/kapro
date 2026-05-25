@@ -30,6 +30,7 @@ KAPRO_KINDS = %w[
   Approval
   Cluster
   ClusterTemplate
+  DeliveryUnit
   Fleet
   Plan
   Plugin

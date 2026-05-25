@@ -179,21 +179,17 @@ func tagIssues(issues []Issue, kind, name string) []Issue {
 	return issues
 }
 
-// LintKapro checks a Kapro custom resource for required fields and
+// LintKapro checks a Fleet custom resource for required fields and
 // common foot-guns. It does not validate cluster connectivity.
 func LintKapro(k *kaprov1alpha1.Fleet) []Issue {
 	var out []Issue
 	if k.Name == "" {
-		out = append(out, errAt("metadata.name", "Kapro requires a name"))
+		out = append(out, errAt("metadata.name", "Fleet requires a name"))
 	}
-	// FleetSpec.Source is *SourceSpec — nil when the inline
-	// source path is not used. Treat "source is set" as "non-nil with
-	// at least one unit" so the exactly-one-of check is panic-safe.
+	// FleetSpec.Source is a legacy compatibility hook. Target-set Fleets are
+	// valid with neither source nor sourceRef because DeliveryUnit owns source
+	// intent in the public-preview authoring path.
 	inlineSourceSet := k.Spec.Source != nil && len(k.Spec.Source.Units) > 0
-	if k.Spec.SourceRef == "" && !inlineSourceSet {
-		out = append(out, errAt("spec.source / spec.sourceRef",
-			"exactly one of spec.source or spec.sourceRef must be set"))
-	}
 	if k.Spec.SourceRef != "" && inlineSourceSet {
 		out = append(out, errAt("spec.source / spec.sourceRef",
 			"only one of spec.source or spec.sourceRef may be set"))
@@ -206,10 +202,6 @@ func LintKapro(k *kaprov1alpha1.Fleet) []Issue {
 		out = append(out, warnAt("spec.clusters",
 			"no clusters configured; the Fleet will not roll anything until a Cluster matches"))
 	}
-	if k.Spec.Plan.Stages == nil && k.Spec.SourceRef == "" {
-		out = append(out, warnAt("spec.plan",
-			"no inline plan; ensure a Plan CR exists and is referenced from Promotion.spec.plans[]"))
-	}
 	return out
 }
 
@@ -221,6 +213,9 @@ func LintPromotion(p *kaprov1alpha1.Promotion) []Issue {
 	}
 	if p.Spec.FleetRef == "" {
 		out = append(out, errAt("spec.fleetRef", "fleetRef is required"))
+	}
+	if p.Spec.DeliveryUnitRef == "" {
+		out = append(out, errAt("spec.deliveryUnitRef", "deliveryUnitRef is required"))
 	}
 	if p.Spec.Version == "" && len(p.Spec.Versions) == 0 {
 		out = append(out, errAt("spec.version / spec.versions",

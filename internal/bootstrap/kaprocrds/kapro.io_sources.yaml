@@ -29,8 +29,8 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          Source defines the units Fleet promotes. It is the source/app-unit
-          contract for both generated greenfield layouts and native Argo/Flux layouts.
+          Source is the controller-derived source/app-unit contract for both generated
+          greenfield layouts and native Argo/Flux layouts.
         properties:
           apiVersion:
             description: |-
@@ -51,10 +51,11 @@ spec:
             type: object
           spec:
             description: |-
-              SourceSpec defines the native promotion units Fleet can move
-              through a fleet. Units may map to generated Flux resources in greenfield mode
-              or to substrate-native objects discovered from Argo/Flux in native mode.
-              Used inline by Fleet.spec.source or referenced by Fleet.spec.sourceRef.
+              SourceSpec defines the native promotion units a DeliveryUnit can move through
+              a fleet. Units may map to generated Flux resources in greenfield mode or to
+              substrate-native objects discovered from Argo/Flux in native mode.
+              The public-preview authoring path embeds this in DeliveryUnit.spec.source;
+              Fleet.spec.source and Fleet.spec.sourceRef remain compatibility inputs.
             properties:
               defaults:
                 description: Defaults are inherited by every unit unless overridden.
@@ -181,7 +182,8 @@ spec:
                   Fleet.spec.delivery and Cluster.spec.delivery.
                 type: string
               units:
-                description: Units defines the native deployable units Fleet promotes.
+                description: Units defines the native deployable units DeliveryUnit/Promotion
+                  moves.
                 items:
                   description: |-
                     Unit is one deployable unit within a Source.
@@ -209,7 +211,7 @@ spec:
                         type: string
                       type: array
                     name:
-                      description: Name is the stable Fleet unit identifier.
+                      description: Name is the stable delivery unit identifier.
                       type: string
                     namespace:
                       description: Namespace is the substrate-native object namespace
@@ -231,7 +233,7 @@ spec:
                       type: integer
                     sourcePath:
                       description: |-
-                        SourcePath is the repo-relative file path Fleet updates for existing
+                        SourcePath is the repo-relative file path Kapro updates for existing
                         GitOps promotion. It is required for file-backed units whose
                         VersionField does not already include a file path.
                       type: string
@@ -293,7 +295,7 @@ spec:
                       type: string
                     versionField:
                       description: |-
-                        VersionField is the substrate-native field Fleet changes for this unit,
+                        VersionField is the substrate-native field Kapro changes for this unit,
                         for example spec.source.targetRevision for Argo CD Applications.
                       type: string
                     wave:

@@ -10,7 +10,7 @@
 //	kapro bootstrap generate ./promotion-repo --profile direct --name checkout
 //	kapro import argo . --out ./kapro-connect --name checkout
 //	kapro init ./promotion-repo --substrate flux --mode pull --name checkout
-//	kapro promote <fleet> --version <version>
+//	kapro promote <delivery-unit> --version <version>
 //	kapro diag <promotion>
 //	kapro explain <promotionrun>
 //	kapro get promotionruns
@@ -863,6 +863,7 @@ func listTargetsForPromotionRun(ctx context.Context, c client.Client, promotionr
 func newPromoteCmd() *cobra.Command {
 	var (
 		name       string
+		fleetRef   string
 		version    string
 		versions   []string
 		plans      []string
@@ -870,9 +871,9 @@ func newPromoteCmd() *cobra.Command {
 		kubeconfig string
 	)
 	cmd := &cobra.Command{
-		Use:   "promote <fleet>",
-		Short: "Promote a version through a Fleet",
-		Long: `Create a Promotion intent to roll a version through the named Fleet.
+		Use:   "promote <delivery-unit>",
+		Short: "Promote a DeliveryUnit version through a Fleet",
+		Long: `Create an explicit Promotion action to roll a DeliveryUnit version through a Fleet.
 
 The controller materializes each Promotion into one or more PromotionRun
 attempts. Start with this command, then use "kapro diag" when you need the
@@ -880,7 +881,7 @@ single-screen explanation of what is happening.
 
 Examples:
   kapro promote checkout --version v1.2.3
-  kapro promote checkout --version v1.2.4 --scope canary-eu
+  kapro promote checkout --fleet prod --version v1.2.4 --scope canary-eu
   kapro promote checkout --set api=v1.2.3 --set worker=v1.2.2
   kapro promote checkout --version v1.2.3 --plan checkout-progressive`,
 		Args: cobra.ExactArgs(1),
@@ -892,13 +893,14 @@ Examples:
 			if promotionName == "" {
 				promotionName = defaultPromotionRunName(args[0], version, versions)
 			}
-			return runPromotionCreate(cmd.Context(), promotionName, args[0], version, versions, plans, scope, kubeconfig)
+			return runPromotionCreate(cmd.Context(), promotionName, args[0], fleetRef, version, versions, plans, scope, kubeconfig)
 		},
 	}
-	cmd.Flags().StringVar(&name, "name", "", "Promotion name; defaults to <fleet>-<version>")
+	cmd.Flags().StringVar(&name, "name", "", "Promotion name; defaults to <delivery-unit>-<version>")
+	cmd.Flags().StringVar(&fleetRef, "fleet", "", "Fleet to target; defaults to DeliveryUnit.spec.defaultFleetRef")
 	cmd.Flags().StringVar(&version, "version", "", "Default revision to deliver")
 	cmd.Flags().StringArrayVar(&versions, "set", nil, "Per-unit revision (repeatable: --set api=sha256:abc)")
-	cmd.Flags().StringArrayVar(&plans, "plan", nil, "Plan override (repeatable); defaults to the parent Fleet's inline plan")
+	cmd.Flags().StringArrayVar(&plans, "plan", nil, "Plan override (repeatable); defaults to DeliveryUnit.spec.defaultPlanRef")
 	cmd.Flags().StringArrayVar(&scope, "scope", nil, "Restrict to target cluster (repeatable: --scope canary-eu --scope prod-eu)")
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to kubeconfig")
 	return cmd
@@ -907,7 +909,7 @@ Examples:
 // runPromotionCreate creates or updates a Promotion intent. The
 // PromotionController materializes each effective spec change into a
 // PromotionRun attempt.
-func runPromotionCreate(ctx context.Context, name, fleetRef, version string,
+func runPromotionCreate(ctx context.Context, name, deliveryUnitRef, fleetRef, version string,
 	versionPairs, plans, scope []string, kubeconfigPath string) error {
 
 	versions, err := parsePromotionRunVersions(versionPairs)
@@ -917,6 +919,16 @@ func runPromotionCreate(ctx context.Context, name, fleetRef, version string,
 	c, err := buildClient(kubeconfigPath)
 	if err != nil {
 		return err
+	}
+	var unit kaprov1alpha1.DeliveryUnit
+	if err := c.Get(ctx, client.ObjectKey{Name: deliveryUnitRef}, &unit); err != nil {
+		return fmt.Errorf("get DeliveryUnit %q: %w", deliveryUnitRef, err)
+	}
+	if fleetRef == "" {
+		fleetRef = unit.Spec.DefaultFleetRef
+	}
+	if fleetRef == "" {
+		return fmt.Errorf("--fleet is required when DeliveryUnit %q has no spec.defaultFleetRef", deliveryUnitRef)
 	}
 
 	var planRefs []kaprov1alpha1.PlanRef
@@ -930,10 +942,14 @@ func runPromotionCreate(ctx context.Context, name, fleetRef, version string,
 	}
 
 	spec := kaprov1alpha1.PromotionSpec{
-		FleetRef: fleetRef,
-		Version:  version,
-		Versions: versions,
-		Plans:    planRefs,
+		DeliveryUnitRef: deliveryUnitRef,
+		FleetRef:        fleetRef,
+		Version:         version,
+		Versions:        versions,
+		Plans:           planRefs,
+	}
+	if len(planRefs) == 1 {
+		spec.PlanRef = planRefs[0].Plan
 	}
 	if len(scope) > 0 {
 		spec.Scope = &kaprov1alpha1.PromotionRunScope{Targets: scope}
@@ -946,8 +962,11 @@ func runPromotionCreate(ctx context.Context, name, fleetRef, version string,
 			return fmt.Errorf("get Promotion: %w", err)
 		}
 		promo = &kaprov1alpha1.Promotion{
-			ObjectMeta: metav1.ObjectMeta{Name: name},
-			Spec:       spec,
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   name,
+				Labels: promotionIntentLabels(deliveryUnitRef, unit.Labels),
+			},
+			Spec: spec,
 		}
 		if err := c.Create(ctx, promo); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
@@ -957,19 +976,20 @@ func runPromotionCreate(ctx context.Context, name, fleetRef, version string,
 			if err := c.Get(ctx, client.ObjectKey{Name: name}, promo); err != nil {
 				return fmt.Errorf("get existing Promotion after create race: %w", err)
 			}
-			if err := updatePromotionSpec(ctx, c, promo, spec); err != nil {
+			if err := updatePromotionSpec(ctx, c, promo, spec, unit.Labels); err != nil {
 				return err
 			}
 			op = "updated"
 		}
 	} else {
-		if err := updatePromotionSpec(ctx, c, promo, spec); err != nil {
+		if err := updatePromotionSpec(ctx, c, promo, spec, unit.Labels); err != nil {
 			return err
 		}
 		op = "updated"
 	}
 
 	fmt.Printf("Promotion intent %s: %s\n", op, name)
+	fmt.Printf("   Unit:      %s\n", deliveryUnitRef)
 	fmt.Printf("   Fleet:     %s\n", fleetRef)
 	if version != "" {
 		fmt.Printf("   Version:   %s\n", version)
@@ -988,13 +1008,31 @@ func runPromotionCreate(ctx context.Context, name, fleetRef, version string,
 	return nil
 }
 
-func updatePromotionSpec(ctx context.Context, c client.Client, promo *kaprov1alpha1.Promotion, spec kaprov1alpha1.PromotionSpec) error {
+func updatePromotionSpec(ctx context.Context, c client.Client, promo *kaprov1alpha1.Promotion, spec kaprov1alpha1.PromotionSpec, unitLabels map[string]string) error {
 	patch := client.MergeFrom(promo.DeepCopy())
 	promo.Spec = spec
+	if promo.Labels == nil {
+		promo.Labels = map[string]string{}
+	}
+	for k, v := range promotionIntentLabels(spec.DeliveryUnitRef, unitLabels) {
+		promo.Labels[k] = v
+	}
 	if err := c.Patch(ctx, promo, patch); err != nil {
 		return fmt.Errorf("update Promotion: %w", err)
 	}
 	return nil
+}
+
+func promotionIntentLabels(deliveryUnitRef string, unitLabels map[string]string) map[string]string {
+	labels := cloneStringMap(unitLabels)
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	if deliveryUnitRef != "" {
+		labels[kaprov1alpha1.LabelUnit] = deliveryUnitRef
+	}
+	labels[kaprov1alpha1.LabelManagedBy] = kaprov1alpha1.ManagedByKapro
+	return labels
 }
 
 func defaultPromotionRunName(app, version string, versions []string) string {

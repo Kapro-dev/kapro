@@ -33,6 +33,7 @@ var publicCRDs = map[string]string{
 	"kapro.io_approvals.yaml":                  "Approval",
 	"kapro.io_clusters.yaml":                   "Cluster",
 	"kapro.io_clustertemplates.yaml":           "ClusterTemplate",
+	"kapro.io_deliveryunits.yaml":              "DeliveryUnit",
 	"kapro.io_fleets.yaml":                     "Fleet",
 	"kapro.io_plans.yaml":                      "Plan",
 	"kapro.io_plugins.yaml":                    "Plugin",
@@ -95,6 +96,7 @@ func TestRemovedPreviewCRDsDoNotShip(t *testing.T) {
 	for _, rel := range []string{
 		"config/crd/bases/kapro.io_backends.yaml",
 		"config/crd/bases/kapro.io_gateexpressions.yaml",
+		"config/crd/bases/kapro.io_promotionunits.yaml",
 		"config/crd/bases/kapro.io_fleetdriftreports.yaml",
 		"config/crd/bases/kapro.io_promotionruns.yaml",
 		"config/crd/bases/kapro.io_targets.yaml",

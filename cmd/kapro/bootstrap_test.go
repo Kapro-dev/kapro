@@ -108,15 +108,16 @@ func TestBootstrapGenerateDirectProfileWritesSubstrateClassRepo(t *testing.T) {
 	if !strings.Contains(deployment, "image: ghcr.io/example/checkout:0.1.0") {
 		t.Fatalf("direct deployment did not include default image:\n%s", deployment)
 	}
-	fleet := readFile(t, filepath.Join(dir, "fleets/checkout.yaml"))
+	unit := readFile(t, filepath.Join(dir, "deliveryunits/checkout.yaml"))
 	for _, want := range []string{
+		"kind: DeliveryUnit",
 		"substrateKind: KubernetesManifest",
 		"sourcePath: apps/checkout/deployment.yaml",
 		"versionField: spec.template.spec.containers[0].image",
 		"version: ghcr.io/example/checkout:0.1.0",
 	} {
-		if !strings.Contains(fleet, want) {
-			t.Fatalf("direct fleet missing %q:\n%s", want, fleet)
+		if !strings.Contains(unit, want) {
+			t.Fatalf("direct delivery unit missing %q:\n%s", want, unit)
 		}
 	}
 	workflow := readFile(t, filepath.Join(dir, ".github/workflows/kapro-validate.yaml"))
@@ -252,10 +253,10 @@ func TestBootstrapExistingGitOpsFluxWritesObserveMapping(t *testing.T) {
 			t.Fatalf("substrate missing %q:\n%s", want, substrate)
 		}
 	}
-	source := readFile(t, filepath.Join(out, "sources/checkout.yaml"))
-	for _, want := range []string{"kind: Source", "substrateKind: GitYAMLField", "versionField: spec.ref.tag"} {
+	source := readFile(t, filepath.Join(out, "deliveryunits/checkout.yaml"))
+	for _, want := range []string{"kind: DeliveryUnit", "source:", "substrateKind: GitYAMLField", "versionField: spec.ref.tag"} {
 		if !strings.Contains(source, want) {
-			t.Fatalf("source missing %q:\n%s", want, source)
+			t.Fatalf("delivery unit missing %q:\n%s", want, source)
 		}
 	}
 }

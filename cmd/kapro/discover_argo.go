@@ -111,7 +111,7 @@ func newDiscoverCmd() *cobra.Command {
 		Use:   "discover",
 		Short: "Discover existing GitOps repositories",
 		Long: `Discovers existing substrate-native GitOps layout and generates an
-observe-first Kapro mapping: a read-only Substrate, Source units, and discovery
+observe-first Kapro mapping: a read-only Substrate, DeliveryUnit source mappings, and discovery
 reports. Supported paths include existing Argo CD repositories using
 Applications, ApplicationSets, app-of-apps, and Git parameter files, plus Flux
 repositories using Source, HelmRelease, and Kustomize image patterns.`,
@@ -136,7 +136,7 @@ func newDiscoverArgoCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&opts.OutPath, "out", "kapro-connect", "Output directory for generated Kapro files")
-	cmd.Flags().StringVar(&opts.Name, "name", "argo", "Substrate and Source name")
+	cmd.Flags().StringVar(&opts.Name, "name", "argo", "Substrate and DeliveryUnit name")
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "argocd", "Argo CD namespace")
 	cmd.Flags().StringVar(&opts.Selector, "selector", "kapro.io/import=true", "Label selector for imported substrate objects")
 	cmd.Flags().StringVar(&opts.Revision, "revision", "", "Git branch/tag/SHA when discovering a remote repository URL")
@@ -144,7 +144,7 @@ func newDiscoverArgoCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.ScanAll, "scan-all", false, "Scan all tracked YAML/JSON files instead of GitOps path prefixes")
 	cmd.Flags().BoolVar(&opts.Cache, "cache", true, "Reuse discovery cache for unchanged Git blobs")
 	cmd.Flags().IntVar(&opts.MaxFiles, "max-files", defaultArgoDiscoveryMaxFiles, "Maximum tracked YAML/JSON candidate files to parse (0 = unlimited)")
-	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum Source units to generate (0 = unlimited)")
+	cmd.Flags().IntVar(&opts.MaxUnits, "max-units", defaultArgoDiscoveryMaxUnits, "Maximum source mapping units to generate (0 = unlimited)")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "Overwrite existing generated files")
 	return cmd
 }
@@ -186,7 +186,7 @@ func runArgoDiscover(opts argoDiscoverOptions) error {
 	result.RepoPath = opts.RepoPath
 	files := map[string]string{
 		filepath.Join("substrates", opts.Name+discoverSubstrateFileSuffix(opts.Take)+".yaml"): renderArgoDiscoverSubstrate(opts, matchLabels),
-		filepath.Join("sources", opts.Name+".yaml"):                                           renderArgoDiscoverSource(opts, result),
+		filepath.Join("deliveryunits", opts.Name+".yaml"):                                     renderArgoDiscoverDeliveryUnit(opts, result),
 		filepath.Join("discovery", "argo-discovery.yaml"):                                     renderArgoDiscoveryReport(result),
 		filepath.Join("discovery", "kapro-git-map.yaml"):                                      renderArgoGitAdoptionMap(opts, result),
 		filepath.Join("discovery", "review-summary.yaml"):                                     renderDiscoveryReviewSummary("argo", opts.Name, result.RepoPath, result.SelectedUnits, result.SkippedObjects, result.Errors),
@@ -202,7 +202,7 @@ func runArgoDiscover(opts argoDiscoverOptions) error {
 		}
 	}
 	summary := confidenceSummary(result.SelectedUnits)
-	fmt.Fprintf(os.Stderr, "Discovered %d Argo Applications, %d ApplicationSets, and %d Source units from %s (confidence: high=%d medium=%d needs-review=%d)\n",
+	fmt.Fprintf(os.Stderr, "Discovered %d Argo Applications, %d ApplicationSets, and %d source mapping units from %s (confidence: high=%d medium=%d needs-review=%d)\n",
 		len(result.Applications), len(result.ApplicationSets), len(result.SelectedUnits), opts.RepoPath, summary.High, summary.Medium, summary.NeedsReview)
 	return nil
 }
@@ -296,7 +296,7 @@ func discoverArgoRepo(root string, opts argoDiscoveryScanOptions) (argoDiscovery
 	}
 	result.SelectedUnits = dedupeUnits(result.SelectedUnits)
 	if opts.MaxUnits > 0 && len(result.SelectedUnits) > opts.MaxUnits {
-		return result, fmt.Errorf("discovery found %d Source units, above --max-units=%d; narrow --path-prefix or review with a higher limit", len(result.SelectedUnits), opts.MaxUnits)
+		return result, fmt.Errorf("discovery found %d source mapping units, above --max-units=%d; narrow --path-prefix or review with a higher limit", len(result.SelectedUnits), opts.MaxUnits)
 	}
 	sort.Slice(result.Applications, func(i, j int) bool { return result.Applications[i].Name < result.Applications[j].Name })
 	sort.Slice(result.ApplicationSets, func(i, j int) bool { return result.ApplicationSets[i].Name < result.ApplicationSets[j].Name })
@@ -774,26 +774,30 @@ spec:
 %s`, opts.Name, opts.Namespace, managementPolicy, renderYAMLMap(labels, 8))
 }
 
-func renderArgoDiscoverSource(opts argoDiscoverOptions, result argoDiscoveryResult) string {
+func renderArgoDiscoverDeliveryUnit(opts argoDiscoverOptions, result argoDiscoveryResult) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, `apiVersion: kapro.io/v1alpha1
-kind: Source
+kind: DeliveryUnit
 metadata:
   name: %s
+  labels:
+    kapro.io/unit: %s
+    kapro.io/managed-by: kapro
 spec:
-  substrateRef: %s
-  units:
-`, opts.Name, opts.Name)
+  source:
+    substrateRef: %s
+    units:
+`, opts.Name, opts.Name, opts.Name)
 	for _, unit := range result.SelectedUnits {
-		fmt.Fprintf(&b, `    - name: %s
-      substrateKind: %s
-      namespace: %s
-      sourcePath: %s
-      versionField: %s
+		fmt.Fprintf(&b, `      - name: %s
+        substrateKind: %s
+        namespace: %s
+        sourcePath: %s
+        versionField: %s
 `, unit.Name, unit.SubstrateKind, unit.Namespace, unit.SourcePath, unit.VersionField)
 	}
 	if len(result.SelectedUnits) == 0 {
-		b.WriteString("    - name: TODO\n      substrateKind: ArgoApplicationSource\n      namespace: argocd\n      sourcePath: path/to/application.yaml\n      versionField: spec.source.targetRevision\n")
+		b.WriteString("      - name: TODO\n        substrateKind: ArgoApplicationSource\n        namespace: argocd\n        sourcePath: path/to/application.yaml\n        versionField: spec.source.targetRevision\n")
 	}
 	return b.String()
 }
@@ -844,7 +848,7 @@ func renderArgoGitAdoptionMap(opts argoDiscoverOptions, result argoDiscoveryResu
 	fmt.Fprintf(&b, `schemaVersion: kapro.io/git-adoption/v1alpha1
 name: %s
 repoPath: %s
-sourceRef: %s
+deliveryUnitRef: %s
 units:
 `, opts.Name, result.RepoPath, opts.Name)
 	if len(result.SelectedUnits) == 0 {
@@ -899,13 +903,13 @@ nextActions:
 		b.WriteString("  - Spot-check medium-confidence units against the owning GitOps controller before first promotion.\n")
 	}
 	if len(skipped) > 0 {
-		b.WriteString("  - Inspect skippedObjects in the discovery report and decide whether any need manual Source units.\n")
+		b.WriteString("  - Inspect skippedObjects in the discovery report and decide whether any need manual DeliveryUnit source mappings.\n")
 	}
 	if len(errors) > 0 {
 		b.WriteString("  - Resolve discovery errors and rerun discovery before adoption.\n")
 	}
 	b.WriteString("  - Apply the observe Substrate first and compare Substrate.status.selectedObjects with this review summary.\n")
-	b.WriteString("  - Commit sources/*.yaml and discovery/*.yaml for review before changing managementPolicy to Adopt.\n")
+	b.WriteString("  - Commit deliveryunits/*.yaml and discovery/*.yaml for review before changing managementPolicy to Adopt.\n")
 	return b.String()
 }
 
@@ -950,16 +954,16 @@ kubectl get substrate %s -o yaml
 `+"```"+`
 
 Review `+"`discovery/review-summary.yaml`"+`, `+"`discovery/argo-discovery.yaml`"+`,
-`+"`discovery/kapro-git-map.yaml`"+`, and `+"`sources/%s.yaml`"+` before switching the Substrate from
+`+"`discovery/kapro-git-map.yaml`"+`, and `+"`deliveryunits/%s.yaml`"+` before switching the Substrate from
 `+"`Observe`"+` to `+"`Adopt`"+`.
 
 Use the generated source mapping to update Git-native version fields:
 
 `+"```bash"+`
-kapro source apply --repo . --source sources/%s.yaml --set unit=revision
+kapro source apply --repo . --source deliveryunits/%s.yaml --set unit=revision
 `+"```"+`
 
-Kapro discovered %d Applications, %d ApplicationSets, and %d Source units.
+Kapro discovered %d Applications, %d ApplicationSets, and %d source mapping units.
 Argo CD remains the owner of cluster credentials, repository credentials, sync
 policy, and local rollout behavior.
 `, opts.Name, opts.Name, opts.Name, opts.Name, len(result.Applications), len(result.ApplicationSets), len(result.SelectedUnits))

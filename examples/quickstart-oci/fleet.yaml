@@ -1,30 +1,14 @@
-# Apply after substrates/oci.yaml and before promotion.yaml.
+# Apply after substrates/oci.yaml, deliveryunit.yaml, and plan.yaml.
 # Replace ghcr.io/example with registries your spokes can reach.
-# Inline plan selectors are simple label maps; standalone Plan objects use
-# selector.matchLabels.
 apiVersion: kapro.io/v1alpha1
 kind: Fleet
 metadata:
   name: checkout-oci
   labels:
+    kapro.io/unit: checkout-oci
     kapro.io/team: platform
     app.kubernetes.io/name: checkout
 spec:
-  registry:
-    url: oci://ghcr.io/example/checkout-bundles
-  source:
-    registries:
-      - name: app
-        url: oci://ghcr.io/example/charts
-        type: oci
-    defaults:
-      repo: app
-      targetNamespace: checkout
-    units:
-      - name: checkout
-        chartName: checkout
-        # Catalog/default version. Promotion.spec.version is the rollout input.
-        version: 1.2.3
   delivery:
     mode: pull
     substrateRef: oci
@@ -43,15 +27,3 @@ spec:
         kapro.io/stage: production
         kapro.io/region: eu
         kapro.io/quickstart: oci
-  plan:
-    stages:
-      - name: canary
-        selector:
-          kapro.io/stage: canary
-          kapro.io/quickstart: oci
-      - name: production
-        selector:
-          kapro.io/stage: production
-          kapro.io/quickstart: oci
-        dependsOn:
-          - stage: canary

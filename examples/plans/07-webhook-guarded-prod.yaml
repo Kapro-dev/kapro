@@ -7,6 +7,8 @@ apiVersion: kapro.io/v1alpha1
 kind: Plan
 metadata:
   name: webhook-guarded-prod
+  labels:
+    kapro.io/team: platform
 spec:
   stages:
     - name: canary

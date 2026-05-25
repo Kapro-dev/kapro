@@ -111,11 +111,16 @@ spec:
                       type: string
                     description: Annotations are added to the managed Promotion.
                     type: object
+                  deliveryUnitRef:
+                    description: DeliveryUnitRef is the unit promoted by created Promotion
+                      actions.
+                    minLength: 1
+                    type: string
                   fleetRef:
                     description: |-
-                      FleetRef is the name of the parent Fleet the managed Promotion
-                      targets. Required; the PromotionController uses it to resolve the
-                      inline plan and clusters.
+                      FleetRef is the name of the Fleet the managed Promotion targets.
+                      Required; the PromotionController uses it to resolve clusters and
+                      delivery defaults.
                     minLength: 1
                     type: string
                   labels:
@@ -128,10 +133,12 @@ spec:
                       NameTemplate controls the managed Promotion name. Empty means the
                       controller derives a deterministic name from the trigger name.
                     type: string
+                  planRef:
+                    description: PlanRef is copied to Promotion.spec.planRef.
+                    type: string
                   plans:
-                    description: |-
-                      Plans optionally overrides Fleet.spec.plan on the
-                      managed Promotion.
+                    description: Plans optionally defines the plan DAG on the managed
+                      Promotion.
                     items:
                       description: |-
                         PlanRef is one node in the PromotionRun's plan DAG.
@@ -179,6 +186,7 @@ spec:
                     description: Timeout is copied into Promotion.spec.timeout.
                     type: string
                 required:
+                - deliveryUnitRef
                 - fleetRef
                 type: object
               source:

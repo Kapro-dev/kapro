@@ -112,7 +112,7 @@ run() {
     --max-files 0 \
     --max-units 0 \
     --force >/dev/null
-  require_min_count "${argo_out}/sources/argo-stress.yaml" "substrateKind: ArgoApplicationSource" "${COUNT}"
+  require_min_count "${argo_out}/deliveryunits/argo-stress.yaml" "substrateKind: ArgoApplicationSource" "${COUNT}"
   require_text "${argo_out}/discovery/argo-discovery.yaml" "promotionUnits: ${COUNT}"
   require_text "${argo_out}/discovery/review-summary.yaml" "selectedUnits: ${COUNT}"
 
@@ -138,7 +138,7 @@ run() {
     --max-files 0 \
     --max-units 0 \
     --force >/dev/null
-  require_min_count "${flux_out}/sources/flux-stress.yaml" "substrateKind: KustomizeImage" "${COUNT}"
+  require_min_count "${flux_out}/deliveryunits/flux-stress.yaml" "substrateKind: KustomizeImage" "${COUNT}"
   require_text "${flux_out}/discovery/flux-discovery.yaml" "promotionUnits: ${COUNT}"
   require_text "${flux_out}/discovery/review-summary.yaml" "selectedUnits: ${COUNT}"
 

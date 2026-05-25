@@ -1,5 +1,4 @@
-// Fleet CRD: the single fleet entry point that ties source units, a delivery
-// profile, clusters, and a promotion plan together.
+// Fleet CRD: target set and delivery defaults for one group of clusters.
 package v1alpha1
 
 import (
@@ -8,29 +7,32 @@ import (
 
 // ---- Fleet ------------------------------------------------------------------
 
-// FleetSpec defines the desired source, delivery, target clusters, and stage
-// plan for one fleet.
-// +kubebuilder:validation:XValidation:rule="(has(self.sourceRef) && size(self.sourceRef) > 0) != has(self.source)",message="exactly one of sourceRef or source is required"
+// FleetSpec defines delivery defaults and target clusters for one fleet.
 type FleetSpec struct {
 	// Registry is the OCI registry URL for generated pull-mode artifacts.
 	// Native Argo/Flux sources may omit it when no Fleet-packaged artifact is used.
 	// +optional
 	Registry KaproRegistry `json:"registry,omitempty"`
-	// SourceRef is the optional name of a separate Source that defines units to
-	// deploy. Use Source for the inline single-object path; use SourceRef when
-	// teams share a source catalog across multiple Fleet objects.
+	// SourceRef is a compatibility hook for legacy Fleet-packaged workflows.
+	// The public-preview authoring path puts source intent on DeliveryUnit and
+	// lets Kapro derive Source objects from that layer.
 	// +optional
 	SourceRef string `json:"sourceRef,omitempty"`
-	// Source defines deployable units inline for the single-object quickstart path.
+	// Source is a compatibility hook for legacy single-object packaging
+	// workflows. New manifests should use DeliveryUnit.spec.source instead.
 	// +optional
 	Source *SourceSpec `json:"source,omitempty"`
-	// Delivery selects the substrate-neutral fleet delivery profile.
+	// Delivery selects the substrate-neutral delivery defaults copied to
+	// generated Cluster objects.
 	Delivery DeliverySpec `json:"delivery"`
 	// Clusters defines the target clusters in the fleet.
 	// +kubebuilder:validation:MinItems=1
 	Clusters []ClusterRef `json:"clusters"`
-	// Plan defines the progressive delivery stages.
-	Plan KaproPlan `json:"plan"`
+	// Plan is a compatibility hook for legacy inline rollout stages. New
+	// manifests should use a standalone Plan and reference it from Promotion or
+	// DeliveryUnit defaults.
+	// +optional
+	Plan KaproPlan `json:"plan,omitempty"`
 	// Suspended pauses Fleet reconciliation.
 	// +kubebuilder:default=false
 	Suspended bool `json:"suspended,omitempty"`
@@ -82,10 +84,7 @@ type ClusterGCP struct {
 }
 
 // KaproPlan defines progressive delivery stages inline on a single Fleet
-// object. For reuse across multiple Fleet objects or per-Promotion overrides,
-// define stages on a standalone Plan CRD and reference it through
-// Promotion.spec.plans; the controller copies that choice into the stamped
-// PromotionRun.
+// object for compatibility. Prefer standalone Plan CRDs for new manifests.
 type KaproPlan struct {
 	// Stages defines the progressive delivery wave ordering.
 	Stages []StageSpec `json:"stages"`
@@ -135,9 +134,9 @@ type FleetStatus struct {
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.version`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// Fleet is the single entry point for fleet delivery. Users define or reference
-// source units, select a substrate profile, and define clusters and promotion
-// stages. Substrate adapters own Flux, Argo, or other delivery-system details.
+// Fleet is the target-set entry point for fleet delivery. Users select delivery
+// defaults and define clusters. DeliveryUnit owns source shape, Plan owns
+// rollout strategy, and Promotion remains the explicit action boundary.
 type Fleet struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

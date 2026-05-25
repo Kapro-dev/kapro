@@ -1,0 +1,553 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: deliveryunits.kapro.io
+spec:
+  group: kapro.io
+  names:
+    categories:
+    - kapro-all
+    kind: DeliveryUnit
+    listKind: DeliveryUnitList
+    plural: deliveryunits
+    shortNames:
+    - du
+    singular: deliveryunit
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.defaultFleetRef
+      name: Fleet
+      type: string
+    - jsonPath: .spec.defaultPlanRef
+      name: Plan
+      type: string
+    - jsonPath: .status.sourceRef
+      name: Source
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: DeliveryUnit is the canonical user-authored app/workload delivery
+          identity.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: DeliveryUnitSpec defines the durable app/workload delivery
+              identity.
+            properties:
+              defaultFleetRef:
+                description: |-
+                  DefaultFleetRef is used by CLI and derived triggers when a Promotion
+                  action does not explicitly pick a Fleet.
+                type: string
+              defaultPlanRef:
+                description: |-
+                  DefaultPlanRef is used by CLI and derived triggers when a Promotion
+                  action does not explicitly pick a Plan.
+                type: string
+              policies:
+                description: |-
+                  Policies names reusable governance policies that apply to this unit.
+                  Enforcement is intentionally owned by policy/gate controllers; this field
+                  is the stable attachment point.
+                items:
+                  type: string
+                maxItems: 64
+                type: array
+              source:
+                description: |-
+                  Source is the source catalog Kapro derives into a controller-managed
+                  Source object. Users edit source shape here, not in the derived Source.
+                properties:
+                  defaults:
+                    description: Defaults are inherited by every unit unless overridden.
+                    properties:
+                      repo:
+                        description: Repo is the default registry name (from spec.registries).
+                        type: string
+                      retries:
+                        default: 3
+                        description: Retries is the number of install/upgrade retry
+                          attempts.
+                        format: int32
+                        type: integer
+                      targetNamespace:
+                        description: TargetNamespace is where workload pods run. Supports
+                          ${variable} substitution.
+                        type: string
+                      timeout:
+                        default: 10m
+                        description: Timeout for install and upgrade operations.
+                        type: string
+                      values:
+                        description: Values are base Helm values applied to every
+                          unit (deep-merged with unit values).
+                        x-kubernetes-preserve-unknown-fields: true
+                      valuesFrom:
+                        description: ValuesFrom references ConfigMaps/Secrets with
+                          Helm values applied to all units.
+                        items:
+                          description: ValuesReference references a ConfigMap or Secret
+                            for Helm values.
+                          properties:
+                            kind:
+                              default: ConfigMap
+                              description: Kind is "ConfigMap" (default) or "Secret".
+                              type: string
+                            name:
+                              description: Name of the ConfigMap or Secret.
+                              type: string
+                            optional:
+                              description: Optional marks this values source as non-required.
+                              type: boolean
+                            valuesKey:
+                              description: 'ValuesKey is the data key to use. Default:
+                                "values.yaml".'
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                    type: object
+                  helmReleaseNamespace:
+                    default: flux-system
+                    description: HelmReleaseNamespace is where HelmRelease CRs live
+                      on spokes (not the workloads).
+                    type: string
+                  overrides:
+                    description: Overrides are per-cluster or per-label value patches
+                      layered on top of defaults.
+                    items:
+                      description: SourceOverride patches Helm values for a subset
+                        of clusters.
+                      properties:
+                        clusters:
+                          description: Clusters is an explicit list of cluster names.
+                            Takes precedence over selector.
+                          items:
+                            type: string
+                          type: array
+                        selector:
+                          additionalProperties:
+                            type: string
+                          description: Selector matches clusters by labels. Applied
+                            to all matching clusters.
+                          type: object
+                        unit:
+                          description: Unit restricts this override to a single unit.
+                            Empty means all.
+                          type: string
+                        values:
+                          description: Values are Helm value patches merged on top
+                            of defaults.
+                          x-kubernetes-preserve-unknown-fields: true
+                      type: object
+                    type: array
+                  registries:
+                    description: Registries defines HelmRepository sources for generated
+                      Flux resources.
+                    items:
+                      description: SourceRegistry defines a Helm chart source. Generates
+                        a HelmRepository on spoke.
+                      properties:
+                        interval:
+                          default: 5m
+                          description: Interval is how often to check for new chart
+                            versions.
+                          type: string
+                        name:
+                          description: Name is the registry identifier referenced
+                            by units via repo field.
+                          type: string
+                        provider:
+                          default: generic
+                          description: |-
+                            Provider is the auth provider: "generic" (default), "gcp", "aws", "azure".
+                            "gcp" uses Workload Identity — no credentials needed.
+                          type: string
+                        type:
+                          description: Type is "oci" (auto-detected for oci:// URLs)
+                            or "default" (HTTPS).
+                          type: string
+                        url:
+                          description: |-
+                            URL is the Helm repository URL (OCI or HTTPS).
+                            Supports ${variable} substitution (e.g. oci://${gcpArtifactRegistry}/helm/ldl).
+                          type: string
+                      required:
+                      - name
+                      - url
+                      type: object
+                    type: array
+                  substrateRef:
+                    description: |-
+                      SubstrateRef is the Substrate this source is normally discovered from
+                      or packaged for. Fleet uses it as metadata; delivery still comes from
+                      Fleet.spec.delivery and Cluster.spec.delivery.
+                    type: string
+                  units:
+                    description: Units defines the native deployable units DeliveryUnit/Promotion
+                      moves.
+                    items:
+                      description: |-
+                        Unit is one deployable unit within a Source.
+                        It can describe a generated Helm unit for greenfield scaffolds or an existing
+                        substrate-native object discovered from Argo/Flux.
+                      properties:
+                        chartName:
+                          description: |-
+                            ChartName overrides the Helm chart name when different from unit name.
+                            Example: unit "keycloak" uses chart "keycloakx".
+                          type: string
+                        crds:
+                          description: 'CRDs controls CRD install policy: "Skip" (default),
+                            "Create", "CreateReplace".'
+                          enum:
+                          - Skip
+                          - Create
+                          - CreateReplace
+                          type: string
+                        dependsOn:
+                          description: |-
+                            DependsOn lists unit names that must be Ready before this one starts.
+                            Creates HelmRelease-level dependsOn within the same wave.
+                          items:
+                            type: string
+                          type: array
+                        name:
+                          description: Name is the stable delivery unit identifier.
+                          type: string
+                        namespace:
+                          description: Namespace is the substrate-native object namespace
+                            when applicable.
+                          type: string
+                        prune:
+                          description: |-
+                            Prune controls whether Flux deletes resources when removed. Default: true.
+                            Set to false for databases, Kafka, PVCs.
+                          type: boolean
+                        repo:
+                          description: Repo references a registry from spec.registries
+                            by name. Inherits from defaults if empty.
+                          type: string
+                        retries:
+                          description: Retries for install/upgrade remediation. Inherits
+                            from defaults if empty.
+                          format: int32
+                          type: integer
+                        sourcePath:
+                          description: |-
+                            SourcePath is the repo-relative file path Kapro updates for existing
+                            GitOps promotion. It is required for file-backed units whose
+                            VersionField does not already include a file path.
+                          type: string
+                        substrateKind:
+                          description: |-
+                            SubstrateKind identifies the substrate-native object kind when this unit maps
+                            to an existing object, for example Application, ApplicationSet,
+                            Kustomization, or HelmRelease.
+                          type: string
+                        suspend:
+                          description: Suspend pauses reconciliation for this unit.
+                          type: boolean
+                        targetNamespace:
+                          description: |-
+                            TargetNamespace is where workload pods run on spoke. Inherits from defaults if empty.
+                            Supports ${variable} substitution.
+                          type: string
+                        timeout:
+                          description: Timeout for install and upgrade. Inherits from
+                            defaults if empty.
+                          type: string
+                        values:
+                          description: Values are inline Helm values. Deep-merged
+                            with defaults.values (unit wins on conflict).
+                          x-kubernetes-preserve-unknown-fields: true
+                        valuesFrom:
+                          description: |-
+                            ValuesFrom references ConfigMaps/Secrets with Helm values.
+                            When set, REPLACES defaults.valuesFrom (not appended).
+                          items:
+                            description: ValuesReference references a ConfigMap or
+                              Secret for Helm values.
+                            properties:
+                              kind:
+                                default: ConfigMap
+                                description: Kind is "ConfigMap" (default) or "Secret".
+                                type: string
+                              name:
+                                description: Name of the ConfigMap or Secret.
+                                type: string
+                              optional:
+                                description: Optional marks this values source as
+                                  non-required.
+                                type: boolean
+                              valuesKey:
+                                description: 'ValuesKey is the data key to use. Default:
+                                  "values.yaml".'
+                                type: string
+                            required:
+                            - name
+                            type: object
+                          type: array
+                        version:
+                          description: |-
+                            Version is the default chart/revision for the unit at install time. This is
+                            the package/catalog default; the per-rollout target version comes from
+                            Promotion.spec.version (or --version on `kapro promote`) and is copied
+                            into the controller-owned PromotionRun.
+                            Supports ${VARIABLE} substitution from cluster-vars.
+                          type: string
+                        versionField:
+                          description: |-
+                            VersionField is the substrate-native field Kapro changes for this unit,
+                            for example spec.source.targetRevision for Argo CD Applications.
+                          type: string
+                        wave:
+                          description: |-
+                            Wave controls deployment ordering (lower = earlier). Units in the same wave
+                            deploy in parallel. Wave N waits for wave N-1 to be Ready.
+                          format: int32
+                          minimum: 0
+                          type: integer
+                      required:
+                      - name
+                      type: object
+                    minItems: 1
+                    type: array
+                required:
+                - units
+                type: object
+              suspended:
+                default: false
+                description: Suspended pauses derivation of Source and Trigger machinery.
+                type: boolean
+              triggers:
+                description: |-
+                  Triggers declares optional automatic promotion watchers. Kapro derives
+                  one Trigger per entry; those Trigger objects create explicit Promotion
+                  action objects when their source observes a matching artifact.
+                items:
+                  description: |-
+                    DeliveryUnitTrigger is the user-authored trigger intent embedded in a
+                    DeliveryUnit. The controller derives a Trigger CR from this shape.
+                  properties:
+                    annotations:
+                      additionalProperties:
+                        type: string
+                      description: Annotations are added to Promotions created by
+                        the derived Trigger.
+                      type: object
+                    cooldown:
+                      description: Cooldown is copied to the derived Trigger.
+                      type: string
+                    dryRun:
+                      description: DryRun records what would be promoted without creating
+                        a Promotion.
+                      type: boolean
+                    fleetRef:
+                      description: |-
+                        FleetRef overrides spec.defaultFleetRef for Promotions created by this
+                        trigger.
+                      type: string
+                    labels:
+                      additionalProperties:
+                        type: string
+                      description: Labels are added to Promotions created by the derived
+                        Trigger.
+                      type: object
+                    maxActive:
+                      description: MaxActive is copied to the derived Trigger.
+                      format: int32
+                      minimum: 1
+                      type: integer
+                    name:
+                      description: |-
+                        Name is the stable suffix for the derived Trigger. When empty, "default"
+                        is used.
+                      maxLength: 63
+                      type: string
+                    parameters:
+                      additionalProperties:
+                        type: string
+                      description: Parameters are copied to the derived Trigger.
+                      type: object
+                    planRef:
+                      description: |-
+                        PlanRef overrides spec.defaultPlanRef for Promotions created by this
+                        trigger.
+                      type: string
+                    source:
+                      description: Source configures where artifact changes are observed.
+                      properties:
+                        oci:
+                          description: OCI configures OCI registry tag observation.
+                          properties:
+                            pollInterval:
+                              default: 5m
+                              description: PollInterval controls how often the source
+                                is checked.
+                              type: string
+                            repository:
+                              description: Repository is the OCI repository to observe.
+                              type: string
+                            requireSignature:
+                              default: false
+                              description: |-
+                                RequireSignature requires a configured verifier to pass before creating or
+                                updating Promotion intent. Defaults to false so triggers do not fail closed
+                                unless a signature policy is intentionally enabled.
+                              type: boolean
+                            secretRef:
+                              description: |-
+                                SecretRef references registry credentials.
+                                Cluster-scoped triggers must include the Secret namespace.
+                              properties:
+                                name:
+                                  description: name is unique within a namespace to
+                                    reference a secret resource.
+                                  type: string
+                                namespace:
+                                  description: namespace defines the space within
+                                    which the secret name must be unique.
+                                  type: string
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            tagPattern:
+                              description: |-
+                                TagPattern is a regular expression. Only matching tags can create or update
+                                Promotions.
+                              minLength: 1
+                              type: string
+                          required:
+                          - repository
+                          - tagPattern
+                          type: object
+                        type:
+                          description: Type selects the source substrate.
+                          enum:
+                          - oci
+                          type: string
+                      required:
+                      - type
+                      type: object
+                    suspended:
+                      description: |-
+                        Suspended pauses this derived watcher. Defaults follow Trigger behavior:
+                        safe by default unless explicitly enabled.
+                      type: boolean
+                  required:
+                  - source
+                  type: object
+                  x-kubernetes-validations:
+                  - message: source.oci is required when source.type=oci
+                    rule: self.source.type != 'oci' || has(self.source.oci)
+                maxItems: 32
+                type: array
+            required:
+            - source
+            type: object
+          status:
+            description: DeliveryUnitStatus records the derived machinery owned by
+              this unit.
+            properties:
+              conditions:
+                description: Conditions summarize derivation readiness.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              observedGeneration:
+                format: int64
+                type: integer
+              sourceRef:
+                description: SourceRef is the controller-derived Source name.
+                type: string
+              triggerRefs:
+                description: TriggerRefs are the controller-derived Trigger names.
+                items:
+                  type: string
+                type: array
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

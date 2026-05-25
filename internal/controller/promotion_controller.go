@@ -88,6 +88,7 @@ type StageEventPublisher interface {
 // +kubebuilder:rbac:groups=kapro.io,resources=promotions,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kapro.io,resources=promotions/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kapro.io,resources=promotions/finalizers,verbs=update
+// +kubebuilder:rbac:groups=kapro.io,resources=deliveryunits,verbs=get;list;watch
 // +kubebuilder:rbac:groups=runtime.kapro.io,resources=promotionruns,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=runtime.kapro.io,resources=promotionruns/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=runtime.kapro.io,resources=targets,verbs=get;list;watch;update;patch
@@ -105,6 +106,10 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.patchStatus(ctx, &promotion, kaprov1alpha1.PromotionPhaseTerminating,
 			"", "Terminating", "deletionTimestamp set; child PromotionRuns will be garbage-collected")
 	}
+	if promotion.Spec.DeliveryUnitRef == "" {
+		return r.patchUnresolved(ctx, &promotion, "DeliveryUnitRefRequired",
+			"spec.deliveryUnitRef is required; Promotion is the explicit action for a DeliveryUnit")
+	}
 
 	// Resolve parent Fleet (cluster-scoped, looked up by name).
 	var parent kaprov1alpha1.Fleet
@@ -114,6 +119,14 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				fmt.Sprintf("referenced Fleet %q does not exist", promotion.Spec.FleetRef))
 		}
 		return ctrl.Result{}, fmt.Errorf("get parent Fleet %q: %w", promotion.Spec.FleetRef, err)
+	}
+	var unit kaprov1alpha1.DeliveryUnit
+	if err := r.Get(ctx, client.ObjectKey{Name: promotion.Spec.DeliveryUnitRef}, &unit); err != nil {
+		if apierrors.IsNotFound(err) {
+			return r.patchUnresolved(ctx, &promotion, "DeliveryUnitNotFound",
+				fmt.Sprintf("referenced DeliveryUnit %q does not exist", promotion.Spec.DeliveryUnitRef))
+		}
+		return ctrl.Result{}, fmt.Errorf("get DeliveryUnit %q: %w", promotion.Spec.DeliveryUnitRef, err)
 	}
 
 	specHash := promotionSpecHash(&promotion.Spec)
@@ -126,7 +139,7 @@ func (r *PromotionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			specHash, "Suspended", "Promotion or parent Fleet is suspended")
 	}
 
-	runSpec, err := buildRunSpec(&promotion, &parent)
+	runSpec, err := buildRunSpec(&promotion, &parent, &unit)
 	if err != nil {
 		return r.patchUnresolved(ctx, &promotion, "BuildRunSpecFailed", err.Error())
 	}
@@ -231,6 +244,9 @@ func (r *PromotionReconciler) stampAttempt(ctx context.Context, p *kaprov1alpha1
 	if p.Spec.FleetRef != "" {
 		labels[promotionFleetLabel] = p.Spec.FleetRef
 	}
+	if p.Spec.DeliveryUnitRef != "" {
+		labels[kaprov1alpha1.LabelUnit] = p.Spec.DeliveryUnitRef
+	}
 	if p.UID != "" {
 		labels[promotionUIDLabel] = string(p.UID)
 	}
@@ -273,7 +289,8 @@ func (r *PromotionReconciler) stampAttempt(ctx context.Context, p *kaprov1alpha1
 	return run, nil
 }
 
-// backfillRunLabels patches kapro.io/kapro and kapro.io/promotion-uid
+// backfillRunLabels patches kapro.io/kapro, kapro.io/unit and
+// kapro.io/promotion-uid
 // onto an existing PromotionRun when they're missing. This covers the
 // upgrade path: runs stamped by an older PromotionController had only
 // kapro.io/promotion and kapro.io/promotion-spec-hash labels. Without
@@ -286,12 +303,15 @@ func (r *PromotionReconciler) stampAttempt(ctx context.Context, p *kaprov1alpha1
 func (r *PromotionReconciler) backfillRunLabels(ctx context.Context,
 	run *kaproruntimev1alpha1.PromotionRun, p *kaprov1alpha1.Promotion) error {
 	wantKapro := p.Spec.FleetRef
+	wantUnit := p.Spec.DeliveryUnitRef
 	wantUID := string(p.UID)
 	haveKapro := run.Labels[promotionFleetLabel]
+	haveUnit := run.Labels[kaprov1alpha1.LabelUnit]
 	haveUID := run.Labels[promotionUIDLabel]
 	missingKapro := wantKapro != "" && haveKapro == ""
+	missingUnit := wantUnit != "" && haveUnit == ""
 	missingUID := wantUID != "" && haveUID == ""
-	if !missingKapro && !missingUID {
+	if !missingKapro && !missingUnit && !missingUID {
 		return nil
 	}
 	patch := client.MergeFrom(run.DeepCopy())
@@ -300,6 +320,9 @@ func (r *PromotionReconciler) backfillRunLabels(ctx context.Context,
 	}
 	if missingKapro {
 		run.Labels[promotionFleetLabel] = wantKapro
+	}
+	if missingUnit {
+		run.Labels[kaprov1alpha1.LabelUnit] = wantUnit
 	}
 	if missingUID {
 		run.Labels[promotionUIDLabel] = wantUID
@@ -537,26 +560,37 @@ func (r *PromotionReconciler) patchUnresolved(ctx context.Context, p *kaprov1alp
 }
 
 // buildRunSpec derives a PromotionRunSpec from a Promotion + parent Fleet.
-func buildRunSpec(p *kaprov1alpha1.Promotion, parent *kaprov1alpha1.Fleet) (kaprov1alpha1.PromotionRunSpec, error) {
+func buildRunSpec(p *kaprov1alpha1.Promotion, parent *kaprov1alpha1.Fleet, unit *kaprov1alpha1.DeliveryUnit) (kaprov1alpha1.PromotionRunSpec, error) {
 	plans := append([]kaprov1alpha1.PlanRef(nil), p.Spec.Plans...)
-	if len(plans) == 0 {
-		// FleetReconciler materializes Kapro.spec.promotionplan as a separate
-		// Plan CR named via InlinePromotionPlanName; reference that
-		// generated object, not the bare Kapro name.
+	if len(plans) == 0 && p.Spec.PlanRef != "" {
+		plans = []kaprov1alpha1.PlanRef{{Name: "default", Plan: p.Spec.PlanRef}}
+	}
+	if len(plans) == 0 && unit != nil && unit.Spec.DefaultPlanRef != "" {
+		plans = []kaprov1alpha1.PlanRef{{Name: "default", Plan: unit.Spec.DefaultPlanRef}}
+	}
+	if len(plans) == 0 && len(parent.Spec.Plan.Stages) > 0 {
+		// FleetReconciler materializes legacy Fleet.spec.plan as a separate
+		// Plan CR named via InlinePromotionPlanName; reference that generated
+		// object, not the bare Fleet name.
 		plans = []kaprov1alpha1.PlanRef{{
 			Name: "inline",
 			Plan: InlinePromotionPlanName(parent.Name),
 		}}
 	}
+	if len(plans) == 0 {
+		return kaprov1alpha1.PromotionRunSpec{}, fmt.Errorf("set spec.planRef, spec.plans, DeliveryUnit.spec.defaultPlanRef, or legacy Fleet.spec.plan")
+	}
 	if p.Spec.Version == "" && len(p.Spec.Versions) == 0 {
 		return kaprov1alpha1.PromotionRunSpec{}, fmt.Errorf("either spec.version or spec.versions must be set")
 	}
 	return kaprov1alpha1.PromotionRunSpec{
-		Version:  p.Spec.Version,
-		Versions: copyStringMap(p.Spec.Versions),
-		Plans:    plans,
-		Scope:    p.Spec.Scope,
-		Timeout:  p.Spec.Timeout,
+		DeliveryUnitRef: p.Spec.DeliveryUnitRef,
+		FleetRef:        p.Spec.FleetRef,
+		Version:         p.Spec.Version,
+		Versions:        copyStringMap(p.Spec.Versions),
+		Plans:           plans,
+		Scope:           p.Spec.Scope,
+		Timeout:         p.Spec.Timeout,
 		// Bug A fix: suspend state must propagate from Promotion intent to
 		// the freshly stamped PromotionRun at t=0. Without this, a Promotion
 		// created with spec.suspended=true would stamp a non-suspended run;
@@ -571,7 +605,9 @@ func buildRunSpec(p *kaprov1alpha1.Promotion, parent *kaprov1alpha1.Fleet) (kapr
 // retargeting also stamps a fresh run.
 func promotionSpecHash(s *kaprov1alpha1.PromotionSpec) string {
 	h := sha256.New()
+	fmt.Fprintf(h, "du=%s|", s.DeliveryUnitRef)
 	fmt.Fprintf(h, "k=%s|", s.FleetRef)
+	fmt.Fprintf(h, "pr=%s|", s.PlanRef)
 	fmt.Fprintf(h, "v=%s|", s.Version)
 	keys := make([]string, 0, len(s.Versions))
 	for k := range s.Versions {
@@ -762,6 +798,7 @@ func (r *PromotionReconciler) emitPhaseTransitionEvent(p *kaprov1alpha1.Promotio
 // set of Promotions that actually reference that fleet, instead of listing
 // every Promotion and filtering in memory.
 const promotionFleetRefIndex = "spec.fleetRef"
+const promotionDeliveryUnitRefIndex = "spec.deliveryUnitRef"
 
 func (r *PromotionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	ctx, cancel := fieldIndexerSetupContext()
@@ -781,6 +818,20 @@ func (r *PromotionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	); err != nil {
 		return fmt.Errorf("index Promotion.spec.fleetRef: %w", err)
 	}
+	if err := mgr.GetFieldIndexer().IndexField(
+		ctx,
+		&kaprov1alpha1.Promotion{},
+		promotionDeliveryUnitRefIndex,
+		func(obj client.Object) []string {
+			p, ok := obj.(*kaprov1alpha1.Promotion)
+			if !ok || p.Spec.DeliveryUnitRef == "" {
+				return nil
+			}
+			return []string{p.Spec.DeliveryUnitRef}
+		},
+	); err != nil {
+		return fmt.Errorf("index Promotion.spec.deliveryUnitRef: %w", err)
+	}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&kaprov1alpha1.Promotion{}).
@@ -788,6 +839,10 @@ func (r *PromotionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&kaprov1alpha1.Fleet{},
 			handler.EnqueueRequestsFromMapFunc(r.promotionsForKapro),
+		).
+		Watches(
+			&kaprov1alpha1.DeliveryUnit{},
+			handler.EnqueueRequestsFromMapFunc(r.promotionsForDeliveryUnit),
 		).
 		Complete(r)
 }
@@ -800,6 +855,26 @@ func (r *PromotionReconciler) promotionsForKapro(ctx context.Context, obj client
 	var list kaprov1alpha1.PromotionList
 	if err := r.List(ctx, &list,
 		client.MatchingFields{promotionFleetRefIndex: kapro.Name},
+	); err != nil {
+		return nil
+	}
+	requests := make([]reconcile.Request, 0, len(list.Items))
+	for _, p := range list.Items {
+		requests = append(requests, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: p.Name},
+		})
+	}
+	return requests
+}
+
+func (r *PromotionReconciler) promotionsForDeliveryUnit(ctx context.Context, obj client.Object) []reconcile.Request {
+	unit, ok := obj.(*kaprov1alpha1.DeliveryUnit)
+	if !ok {
+		return nil
+	}
+	var list kaprov1alpha1.PromotionList
+	if err := r.List(ctx, &list,
+		client.MatchingFields{promotionDeliveryUnitRefIndex: unit.Name},
 	); err != nil {
 		return nil
 	}

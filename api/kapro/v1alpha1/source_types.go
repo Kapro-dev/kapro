@@ -1,5 +1,6 @@
-// Source CRD: native promotion unit catalog Fleet can move through
-// the fleet (greenfield Helm units or discovered Argo/Flux objects).
+// Source CRD: controller-derived promotion unit catalog. Users normally author
+// DeliveryUnit.spec.source; Kapro derives Source for compatibility, packaging,
+// and inspection.
 package v1alpha1
 
 import (
@@ -9,10 +10,11 @@ import (
 
 // ---- Source ---------------------------------------------------------------
 
-// SourceSpec defines the native promotion units Fleet can move
-// through a fleet. Units may map to generated Flux resources in greenfield mode
-// or to substrate-native objects discovered from Argo/Flux in native mode.
-// Used inline by Fleet.spec.source or referenced by Fleet.spec.sourceRef.
+// SourceSpec defines the native promotion units a DeliveryUnit can move through
+// a fleet. Units may map to generated Flux resources in greenfield mode or to
+// substrate-native objects discovered from Argo/Flux in native mode.
+// The public-preview authoring path embeds this in DeliveryUnit.spec.source;
+// Fleet.spec.source and Fleet.spec.sourceRef remain compatibility inputs.
 type SourceSpec struct {
 	// SubstrateRef is the Substrate this source is normally discovered from
 	// or packaged for. Fleet uses it as metadata; delivery still comes from
@@ -22,7 +24,7 @@ type SourceSpec struct {
 	// Registries defines HelmRepository sources for generated Flux resources.
 	// +optional
 	Registries []SourceRegistry `json:"registries,omitempty"`
-	// Units defines the native deployable units Fleet promotes.
+	// Units defines the native deployable units DeliveryUnit/Promotion moves.
 	// +kubebuilder:validation:MinItems=1
 	Units []Unit `json:"units"`
 	// Defaults are inherited by every unit unless overridden.
@@ -86,7 +88,7 @@ type SourceDefaults struct {
 // It can describe a generated Helm unit for greenfield scaffolds or an existing
 // substrate-native object discovered from Argo/Flux.
 type Unit struct {
-	// Name is the stable Fleet unit identifier.
+	// Name is the stable delivery unit identifier.
 	Name string `json:"name"`
 	// SubstrateKind identifies the substrate-native object kind when this unit maps
 	// to an existing object, for example Application, ApplicationSet,
@@ -96,11 +98,11 @@ type Unit struct {
 	// Namespace is the substrate-native object namespace when applicable.
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
-	// VersionField is the substrate-native field Fleet changes for this unit,
+	// VersionField is the substrate-native field Kapro changes for this unit,
 	// for example spec.source.targetRevision for Argo CD Applications.
 	// +optional
 	VersionField string `json:"versionField,omitempty"`
-	// SourcePath is the repo-relative file path Fleet updates for existing
+	// SourcePath is the repo-relative file path Kapro updates for existing
 	// GitOps promotion. It is required for file-backed units whose
 	// VersionField does not already include a file path.
 	// +optional
@@ -198,8 +200,8 @@ type SourceOverride struct {
 // +kubebuilder:printcolumn:name="Units",type=integer,JSONPath=`.metadata.annotations.kapro\.io/unit-count`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// Source defines the units Fleet promotes. It is the source/app-unit
-// contract for both generated greenfield layouts and native Argo/Flux layouts.
+// Source is the controller-derived source/app-unit contract for both generated
+// greenfield layouts and native Argo/Flux layouts.
 type Source struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

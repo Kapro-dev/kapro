@@ -112,21 +112,24 @@ spec:
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := readFile(t, filepath.Join(out, "sources/checkout.yaml"))
+	source := readFile(t, filepath.Join(out, "deliveryunits/checkout.yaml"))
 	for _, want := range []string{
-		"kind: Source",
+		"kind: DeliveryUnit",
+		"kapro.io/unit: checkout",
+		"source:",
 		"name: checkout-api",
 		"substrateKind: ArgoApplicationSource",
 		"sourcePath: apps/api.yaml",
 		"versionField: spec.source.targetRevision",
 	} {
 		if !strings.Contains(source, want) {
-			t.Fatalf("source missing %q:\n%s", want, source)
+			t.Fatalf("delivery unit missing %q:\n%s", want, source)
 		}
 	}
 	gitMap := readFile(t, filepath.Join(out, "discovery/kapro-git-map.yaml"))
 	for _, want := range []string{
 		"schemaVersion: kapro.io/git-adoption/v1alpha1",
+		"deliveryUnitRef: checkout",
 		"confidence: high",
 		"sourcePath: apps/api.yaml",
 	} {

@@ -7,16 +7,17 @@ Apply order:
 1. substrates/
 2. apps/
 3. clusters/
-4. plans/
-5. fleets/
-6. promotions/
+4. deliveryunits/
+5. plans/
+6. fleets/
+7. promotions/
 
 Apply with:
 
 ```bash
 kubectl apply -f substrates/direct.yaml
 kubectl wait --for=condition=Ready substrate/direct --timeout=90s
-kubectl apply --recursive -f apps -f clusters -f plans -f fleets -f promotions
+kubectl apply --recursive -f apps -f clusters -f deliveryunits -f plans -f fleets -f promotions
 ```
 
 Kapro coordinates promotion. The direct profile applies the starter workload
