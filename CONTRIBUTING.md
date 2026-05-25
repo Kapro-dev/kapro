@@ -30,7 +30,7 @@ scripts/verify-install.sh render
 - `docs/` contains user-facing concepts, operations, and provider setup docs.
 - `examples/` contains runnable examples and optional provider-specific helpers.
 - `scripts/` contains repository development, CI, and verification scripts.
-- `build/` contains build-time metadata used by generators and release tooling.
+- `build/package/` contains container image Dockerfiles used by CI and releases.
 - Provider-specific onboarding helpers should live under `examples/04-substrates/02-cloud/`; core
   Kapro APIs and controllers should stay cloud-neutral unless a provider
   integration requires dedicated code.
@@ -61,7 +61,7 @@ scripts/verify-install.sh render
 - All CRD changes require a `+kubebuilder:` marker update
 - Run `make manifests` to regenerate CRD YAMLs after type changes
 - Breaking API changes are not allowed in the public preview API without a new API version
-  or an explicit migration plan. See [API Stability](docs/api-stability.md).
+  or an explicit migration plan. See [API Stability](docs/concepts/api-stability.md).
 
 ## Reporting Issues
 

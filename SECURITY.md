@@ -8,15 +8,18 @@ production-change authority.
 
 | Version | Supported |
 |---------|-----------|
-| 0.1.x   | ✅ |
-| main    | ✅ |
-| < 0.1   | ❌ |
+| 0.6.x   | ✅ |
+| main    | Best effort before the next tag |
+| < 0.6.0 | ❌ |
 
 ## Reporting a Vulnerability
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Please report security vulnerabilities by emailing: **vinnxcapital@gmail.com**
+Please report security vulnerabilities with GitHub private vulnerability
+reporting:
+
+<https://github.com/Kapro-dev/kapro/security/advisories/new>
 
 Include:
 - Description of the vulnerability
@@ -24,11 +27,13 @@ Include:
 - Potential impact
 - Suggested fix (if any)
 
-You will receive a response within 72 hours. We follow responsible disclosure — we ask for 90 days to address the issue before public disclosure.
+You will receive a response within 72 hours. We follow responsible disclosure
+and ask for 90 days to address the issue before public disclosure.
 
 ## Security Design Principles
 
-- `kapro-cluster-controller` uses **outbound-only** HTTPS connections to the control plane
+- Pull-mode spokes use `kapro-cluster-controller` with outbound-only HTTPS
+  connections to the control plane.
 - No static credentials — uses Kubernetes ServiceAccount tokens (OIDC/Workload Identity)
 - CRDs are the only cross-cluster communication channel
 - The control plane never initiates connections to workload clusters
@@ -43,7 +48,9 @@ You will receive a response within 72 hours. We follow responsible disclosure �
 
 Kapro's RBAC, multi-tenancy, plugin trust boundary, OCI signature model,
 webhook security, Secret handling, and threat model are documented in
-[docs/security.md](docs/security.md) and
-[docs/rbac-tenancy.md](docs/rbac-tenancy.md). Plugin trust details are in
-[docs/plugin-authoring.md](docs/plugin-authoring.md), and autonomous PromotionRun
-creation policy is in [docs/adr/0001-promotion-runtime-split.md](docs/adr/0001-promotion-runtime-split.md), which restricts PromotionRun writes to the controller's service account.
+[docs/operations/security.md](docs/operations/security.md) and
+[docs/operations/rbac-tenancy.md](docs/operations/rbac-tenancy.md). Plugin
+trust details are in [docs/extending/plugin-authoring.md](docs/extending/plugin-authoring.md),
+and autonomous PromotionRun creation policy is in
+[docs/adr/0001-promotion-runtime-split.md](docs/adr/0001-promotion-runtime-split.md),
+which restricts PromotionRun writes to the controller's service account.

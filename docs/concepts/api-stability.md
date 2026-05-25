@@ -59,7 +59,7 @@ stable API version. A surface can be Preview while the Kubernetes version is
 still `v1alpha1`; the table above is the source of truth for compatibility
 expectations.
 
-No public surface is Stable in the `v0.1.x` line.
+No public surface is Stable in the `v0.6.x` line.
 
 ## Stable Core Versus Preview
 
