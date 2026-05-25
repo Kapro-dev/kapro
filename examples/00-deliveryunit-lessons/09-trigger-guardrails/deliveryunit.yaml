@@ -1,0 +1,38 @@
+apiVersion: kapro.io/v1alpha1
+kind: DeliveryUnit
+metadata:
+  name: hello-world
+  labels:
+    kapro.io/unit: hello-world
+    kapro.io/team: tutorial
+  annotations:
+    kapro.io/change-window: business-hours
+spec:
+  defaultFleetRef: hello-world
+  defaultPlanRef: hello-world
+  source:
+    substrateRef: oci
+    units:
+      - name: web
+        substrateKind: OCIBundle
+        versionField: image.tag
+        version: 0.4.0
+  triggers:
+    - name: tags
+      suspended: true
+      dryRun: true
+      cooldown: 30m
+      maxActive: 1
+      source:
+        type: oci
+        oci:
+          repository: oci://registry.example.com/tutorial/hello-world
+          tagPattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+          requireSignature: true
+          pollInterval: 5m
+      parameters:
+        channel: stable
+      labels:
+        promotion.kapro.io/source: oci
+      annotations:
+        kapro.io/audit-note: public-preview-safe-trigger

@@ -62,7 +62,7 @@ the discovery path.
 
 ### Added — CI-verified hello-world custom substrate (#318)
 
-`examples/actuator-hello-world` now ships with a README walkthrough,
+`examples/07-actuator-hello-world` now ships with a README walkthrough,
 public-SDK-only `hello_test.go`, and a `make conformance-hello-world`
 target run on every PR. A change to `pkg/kapro/actuator` that breaks the
 authoring shape used by custom substrates fails CI before merge.
@@ -78,7 +78,7 @@ is an open DNS-style string so platform teams can register domains such as
 
 `pkg/kapro/actuator.NewBoolFunc` adapts a tiny
 `(ctx, req) -> (bool, message, error)` function to the in-process actuator
-interface for examples and tests. A new `examples/actuator-hello-world` sample
+interface for examples and tests. A new `examples/07-actuator-hello-world` sample
 shows a custom `Substrate` and matching Go actuator.
 
 ### Changed — Cluster provider kinds are open strings
@@ -650,7 +650,7 @@ such as `backend`, `approval`, `trigger`, `plugin`, `cluster-bootstrap`, and
 
 ### Added — Argo CD and OCI quickstarts
 
-Added `examples/quickstart-argo`, `examples/quickstart-oci`, and matching docs
+Added `examples/01-quickstarts/02-argo`, `examples/01-quickstarts/03-oci`, and matching docs
 so adopters can start from Flux, Argo CD, or Kapro's OCI delivery core without
 reading the brownfield migration guides first.
 Built-in `flux`, `argo`, and `oci` Substrate specs remain admissible without the
@@ -673,7 +673,7 @@ Static analysis for Kapro YAML manifests. Runs without a cluster
 connection so it is safe in CI pipelines and pre-commit hooks.
 
 ```
-kapro lint examples/quickstart/*.yaml
+kapro lint examples/01-quickstarts/00-flux/*.yaml
 kapro lint --strict promotion.yaml plan.yaml
 cat promotion.yaml | kapro lint -
 kapro lint -o json promotion.yaml
@@ -737,7 +737,7 @@ subcommand; it is now called out in `--help`. Example:
 kapro completion zsh > "${fpath[1]}/_kapro"
 ```
 
-### Added — reference `Plan` library (`examples/plans/`)
+### Added — reference `Plan` library (`examples/02-plans/`)
 
 Six copy-paste-ready Plans covering the most common shapes:
 
@@ -748,14 +748,14 @@ Six copy-paste-ready Plans covering the most common shapes:
 5. `05-ring-deployment.yaml` — concentric rings with increasing parallelism.
 6. `06-metrics-gated.yaml` — canary holds error_rate + p99_latency below thresholds.
 
-A unit test (`examples/plans/plans_validate_test.go`) parses each YAML
+A unit test (`examples/02-plans/plans_validate_test.go`) parses each YAML
 into `kapro.io/v1alpha2.Plan` and checks DAG references, so
 schema drift between the docs and the CRD source-of-truth fails the
 build.
 
 ### Added — Grafana lifecycle + fleet-health dashboard
 
-`examples/monitoring/kapro-lifecycle-dashboard.json` is a focused
+`examples/08-monitoring/kapro-lifecycle-dashboard.json` is a focused
 companion to the existing operations dashboard. It visualises the gap
 the older dashboards did not cover:
 
@@ -780,7 +780,7 @@ Import alongside `kapro-operations-dashboard.json`.
 ### Fixed — README quickstart now works on a fresh cluster, no prereqs
 
 Five fixes that, together, make `helm upgrade --install kapro ...`
-followed by `kubectl apply -f examples/quickstart/*.yaml` reach
+followed by `kubectl apply -f examples/01-quickstarts/00-flux/*.yaml` reach
 `Promotion: Succeeded` on a vanilla `kind` cluster with nothing
 pre-installed.
 
@@ -854,9 +854,9 @@ the API. Decision rationale and rejected alternatives (compatibility
 shim, defer to v1beta1) are captured in
 [ADR-0004](docs/adr/0004-camelcase-field-harmonization.md).
 
-Examples (`examples/quickstart/`, `examples/kind-demo/`,
-`examples/brownfield/`, `examples/promotion-trigger/`,
-`examples/monitoring/`, and `examples/rbac/`), the CLI scaffold
+Examples (`examples/01-quickstarts/00-flux/`, `examples/10-kind-demo/`,
+`examples/brownfield/`, `examples/03-triggers/`,
+`examples/08-monitoring/`, and `examples/11-rbac/`), the CLI scaffold
 (`cmd/kapro/scaffold.go`), and migration/security/ADR docs
 (`docs/flux-migration.md`, `docs/argo-migration.md`,
 `docs/security.md`, and `docs/adr/`) all use the new keys.

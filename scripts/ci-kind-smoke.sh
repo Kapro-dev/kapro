@@ -318,39 +318,39 @@ wait_for_quickstart() {
 
 run_flux_quickstart() {
   echo "running Flux quickstart"
-  kubectl --context "${CTX}" apply -f examples/quickstart/substrates/flux.yaml
+  kubectl --context "${CTX}" apply -f examples/01-quickstarts/00-flux/substrates/flux.yaml
   wait_for_substrate_ready flux
-  kubectl --context "${CTX}" apply -f examples/quickstart/deliveryunit.yaml
-  kubectl --context "${CTX}" apply -f examples/quickstart/plan.yaml
-  kubectl --context "${CTX}" apply -f examples/quickstart/kapro.yaml
+  kubectl --context "${CTX}" apply -f examples/01-quickstarts/00-flux/deliveryunit.yaml
+  kubectl --context "${CTX}" apply -f examples/01-quickstarts/00-flux/plan.yaml
+  kubectl --context "${CTX}" apply -f examples/01-quickstarts/00-flux/kapro.yaml
   wait_for_clusters checkout-canary-eu checkout-production-eu
   mark_cluster_converged checkout-canary-eu
   mark_cluster_converged checkout-production-eu
   start_cluster_convergence_refresher checkout-canary-eu checkout-production-eu
-  kubectl --context "${CTX}" apply -f examples/quickstart/promotion.yaml
+  kubectl --context "${CTX}" apply -f examples/01-quickstarts/00-flux/promotion.yaml
   wait_for_quickstart checkout-v1-2-3 2
 }
 
 run_direct_quickstart() {
   echo "running direct quickstart"
   local version previous_version
-  version="$(awk '/^[[:space:]]+version:/ {print $2; exit}' examples/quickstart-direct/promotions/checkout-direct-promotion.yaml)"
+  version="$(awk '/^[[:space:]]+version:/ {print $2; exit}' examples/01-quickstarts/01-direct/promotions/checkout-direct-promotion.yaml)"
   previous_version="ghcr.io/example/checkout-direct:previous"
-  kubectl --context "${CTX}" apply -f examples/quickstart-direct/substrates/direct.yaml
+  kubectl --context "${CTX}" apply -f examples/01-quickstarts/01-direct/substrates/direct.yaml
   wait_for_substrate_ready direct
   kubectl --context "${CTX}" apply --recursive \
-    -f examples/quickstart-direct/apps \
-    -f examples/quickstart-direct/clusters \
-    -f examples/quickstart-direct/deliveryunits \
-    -f examples/quickstart-direct/plans \
-    -f examples/quickstart-direct/fleets
+    -f examples/01-quickstarts/01-direct/apps \
+    -f examples/01-quickstarts/01-direct/clusters \
+    -f examples/01-quickstarts/01-direct/deliveryunits \
+    -f examples/01-quickstarts/01-direct/plans \
+    -f examples/01-quickstarts/01-direct/fleets
   wait_for_clusters canary-eu prod-eu
   kubectl --context "${CTX}" -n default set image deployment/checkout-direct "app=${previous_version}"
   mark_deployment_available default checkout-direct
   start_deployment_availability_refresher default checkout-direct
   mark_cluster_converged canary-eu "${previous_version}"
   mark_cluster_converged prod-eu "${previous_version}"
-  kubectl --context "${CTX}" apply -f examples/quickstart-direct/promotions/checkout-direct-promotion.yaml
+  kubectl --context "${CTX}" apply -f examples/01-quickstarts/01-direct/promotions/checkout-direct-promotion.yaml
   mark_cluster_converged canary-eu "${version}"
   mark_cluster_converged prod-eu "${version}"
   start_cluster_convergence_refresher_for_version "${version}" canary-eu prod-eu
@@ -366,31 +366,31 @@ run_direct_quickstart() {
 run_argo_quickstart() {
   echo "running Argo CD quickstart"
   install_fake_argo_applications
-  kubectl --context "${CTX}" apply -f examples/quickstart-argo/substrates/argo.yaml
+  kubectl --context "${CTX}" apply -f examples/01-quickstarts/02-argo/substrates/argo.yaml
   wait_for_substrate_ready argo
-  kubectl --context "${CTX}" apply -f examples/quickstart-argo/deliveryunit.yaml
-  kubectl --context "${CTX}" apply -f examples/quickstart-argo/plan.yaml
-  kubectl --context "${CTX}" apply -f examples/quickstart-argo/fleet.yaml
+  kubectl --context "${CTX}" apply -f examples/01-quickstarts/02-argo/deliveryunit.yaml
+  kubectl --context "${CTX}" apply -f examples/01-quickstarts/02-argo/plan.yaml
+  kubectl --context "${CTX}" apply -f examples/01-quickstarts/02-argo/fleet.yaml
   wait_for_clusters checkout-argo-canary checkout-argo-production
   mark_cluster_converged checkout-argo-canary
   mark_cluster_converged checkout-argo-production
   start_cluster_convergence_refresher checkout-argo-canary checkout-argo-production
-  kubectl --context "${CTX}" apply -f examples/quickstart-argo/promotion.yaml
+  kubectl --context "${CTX}" apply -f examples/01-quickstarts/02-argo/promotion.yaml
   wait_for_quickstart checkout-argo-v1-2-3 2
 }
 
 run_oci_quickstart() {
   echo "running OCI quickstart"
-  kubectl --context "${CTX}" apply -f examples/quickstart-oci/substrates/oci.yaml
+  kubectl --context "${CTX}" apply -f examples/01-quickstarts/03-oci/substrates/oci.yaml
   wait_for_substrate_ready oci
-  kubectl --context "${CTX}" apply -f examples/quickstart-oci/deliveryunit.yaml
-  kubectl --context "${CTX}" apply -f examples/quickstart-oci/plan.yaml
-  kubectl --context "${CTX}" apply -f examples/quickstart-oci/fleet.yaml
+  kubectl --context "${CTX}" apply -f examples/01-quickstarts/03-oci/deliveryunit.yaml
+  kubectl --context "${CTX}" apply -f examples/01-quickstarts/03-oci/plan.yaml
+  kubectl --context "${CTX}" apply -f examples/01-quickstarts/03-oci/fleet.yaml
   wait_for_clusters checkout-oci-canary checkout-oci-production
   mark_cluster_converged checkout-oci-canary
   mark_cluster_converged checkout-oci-production
   start_cluster_convergence_refresher checkout-oci-canary checkout-oci-production
-  kubectl --context "${CTX}" apply -f examples/quickstart-oci/promotion.yaml
+  kubectl --context "${CTX}" apply -f examples/01-quickstarts/03-oci/promotion.yaml
   wait_for_quickstart checkout-oci-v1-2-3 2
 }
 

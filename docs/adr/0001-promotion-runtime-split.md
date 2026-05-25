@@ -28,7 +28,7 @@ is a controller-authored, immutable execution attempt. Humans, CI, and
 sole writer of `PromotionRun` (enforced by a validating admission
 webhook). Human-user RBAC should grant `Promotion` authoring and
 read-only `PromotionRun` access; the operator does not install those
-end-user bindings by default. `examples/rbac/recommended-roles.yaml`
+end-user bindings by default. `examples/11-rbac/recommended-roles.yaml`
 shows the recommended posture. Each spec change on a Promotion stamps a
 new PromotionRun; the prior non-terminal run is marked `Superseded`.
 
@@ -79,7 +79,7 @@ state.
 - The `Superseded` terminal phase semantic.
 - Recommended human-user RBAC posture: `promotions:CRUD`,
   `promotionruns:RO`, as illustrated in
-  `examples/rbac/recommended-roles.yaml`.
+  `examples/11-rbac/recommended-roles.yaml`.
 
 ## References
 

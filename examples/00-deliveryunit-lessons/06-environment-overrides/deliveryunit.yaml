@@ -1,0 +1,33 @@
+apiVersion: kapro.io/v1alpha1
+kind: DeliveryUnit
+metadata:
+  name: hello-world
+  labels:
+    kapro.io/unit: hello-world
+    kapro.io/team: tutorial
+spec:
+  defaultFleetRef: hello-world
+  defaultPlanRef: hello-world
+  source:
+    substrateRef: flux
+    registries:
+      - name: app
+        url: oci://registry.example.com/tutorial/charts
+        type: oci
+    defaults:
+      repo: app
+      targetNamespace: hello-world
+      values:
+        web:
+          replicas: 1
+    units:
+      - name: web
+        chartName: hello-world-web
+        version: 0.3.0
+    overrides:
+      - selector:
+          kapro.io/stage: production
+        unit: web
+        values:
+          web:
+            replicas: 3

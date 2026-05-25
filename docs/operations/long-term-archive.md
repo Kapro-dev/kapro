@@ -29,13 +29,13 @@ retry sink delivery after a non-2xx response.
 
 ### Vector to Elasticsearch, Loki, or Splunk
 
-Use `examples/archive-vector/` when Vector already fronts your log archive:
+Use `examples/09-archive/03-vector/` when Vector already fronts your log archive:
 
 ```sh
-vector --config examples/archive-vector/vector.yaml
+vector --config examples/09-archive/03-vector/vector.yaml
 curl -sS -X POST http://127.0.0.1:8080/ \
   -H 'Content-Type: application/cloudevents+json' \
-  --data @examples/archive-vector/sample-event.json
+  --data @examples/09-archive/03-vector/sample-event.json
 ```
 
 In cluster, expose Vector as a Service and set:
@@ -46,38 +46,38 @@ KAPRO_EVENTS_SINK_URL=http://vector.kapro-events.svc:8080/
 
 ### Fluent Bit to CloudWatch or Google Cloud Logging
 
-Use `examples/archive-fluentbit/` when Fluent Bit is your standard log router:
+Use `examples/09-archive/02-fluentbit/` when Fluent Bit is your standard log router:
 
 ```sh
-fluent-bit -c examples/archive-fluentbit/fluent-bit.conf
+fluent-bit -c examples/09-archive/02-fluentbit/fluent-bit.conf
 curl -sS -X POST http://127.0.0.1:8080/ \
   -H 'Content-Type: application/cloudevents+json' \
-  --data @examples/archive-fluentbit/sample-event.json
+  --data @examples/09-archive/02-fluentbit/sample-event.json
 ```
 
 Enable the CloudWatch or Stackdriver output block in the example for production.
 
 ### Argo Events or Knative Eventing
 
-Use `examples/archive-eventing/` when the cluster already has event-router
+Use `examples/09-archive/01-eventing/` when the cluster already has event-router
 infrastructure:
 
 ```sh
-kubectl apply -n kapro-events -f examples/archive-eventing/knative-broker.yaml
-kubectl apply -n kapro-events -f examples/archive-eventing/argo-events-webhook.yaml
+kubectl apply -n kapro-events -f examples/09-archive/01-eventing/knative-broker.yaml
+kubectl apply -n kapro-events -f examples/09-archive/01-eventing/argo-events-webhook.yaml
 ```
 
 Route the trigger to your archive writer, queue, workflow, or data platform.
 
 ### Custom Go subscriber
 
-Use `examples/archive-go-subscriber/` as the smallest bespoke archive receiver:
+Use `examples/09-archive/00-go-subscriber/` as the smallest bespoke archive receiver:
 
 ```sh
-go run ./examples/archive-go-subscriber
+go run ./examples/09-archive/00-go-subscriber
 curl -sS -X POST http://127.0.0.1:8080/ \
   -H 'Content-Type: application/cloudevents+json' \
-  --data @examples/archive-go-subscriber/sample-event.json
+  --data @examples/09-archive/00-go-subscriber/sample-event.json
 ```
 
 The example uses `kapro.io/kapro/pkg/kapro.Subscriber`; replace the stdout

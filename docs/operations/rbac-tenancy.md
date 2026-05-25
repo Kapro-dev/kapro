@@ -152,7 +152,7 @@ them with admission checks for team and environment ownership.
 
 Existing GitOps substrates should use different permissions for discovery and
 promotion writes. The example roles in
-`examples/rbac/substrate-observe-adopt-roles.yaml` split those surfaces:
+`examples/11-rbac/substrate-observe-adopt-roles.yaml` split those surfaces:
 
 | Mode | Required access | Notes |
 |---|---|---|

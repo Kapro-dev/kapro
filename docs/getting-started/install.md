@@ -185,7 +185,7 @@ lowest-friction path for on-prem, edge, and existing platform environments
 while AWS, Azure, RHACM, and CAPI discoverers remain preview stubs.
 
 ```bash
-kubectl apply -f examples/static-clustertemplate.yaml
+kubectl apply -f examples/04-substrates/03-clustertemplate/clustertemplate.yaml
 ```
 
 Each imported `Cluster` gets `spec.provider.kind=kubeconfig` plus
@@ -335,11 +335,11 @@ checkout:
 kind create cluster --name kapro-release-quickstart
 kubectl config use-context kind-kapro-release-quickstart
 KAPRO_VERIFY_CLEANUP=false scripts/verify-install.sh release-cluster
-kubectl apply -f examples/quickstart/substrates/flux.yaml
-kubectl apply -f examples/quickstart/deliveryunit.yaml
-kubectl apply -f examples/quickstart/plan.yaml
-kubectl apply -f examples/quickstart/kapro.yaml
-kubectl apply -f examples/quickstart/promotion.yaml
+kubectl apply -f examples/01-quickstarts/00-flux/substrates/flux.yaml
+kubectl apply -f examples/01-quickstarts/00-flux/deliveryunit.yaml
+kubectl apply -f examples/01-quickstarts/00-flux/plan.yaml
+kubectl apply -f examples/01-quickstarts/00-flux/kapro.yaml
+kubectl apply -f examples/01-quickstarts/00-flux/promotion.yaml
 kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
 kind delete cluster --name kapro-release-quickstart
 ```
@@ -436,7 +436,7 @@ helm upgrade --install kapro \
 Install your plugin service, then apply a `Plugin` manifest such as:
 
 ```bash
-kubectl apply -f examples/plugins/slo-gate-registration.yaml
+kubectl apply -f examples/05-plugins/03-slo-gate/registration.yaml
 ```
 
 The `plugin` controller probes `Plugin` objects continuously. Ready plugins

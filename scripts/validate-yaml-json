@@ -16,7 +16,7 @@ YAML_PATTERNS = [
 ].freeze
 
 GRAFANA_JSON_PATTERNS = [
-  "examples/monitoring/*.json"
+  "examples/08-monitoring/*.json"
 ].freeze
 
 SCRIPT_PATTERNS = [
@@ -191,7 +191,7 @@ def check_script_kubectl_resources(path)
 end
 
 def check_monitoring_public_names(path)
-  return [] unless path.start_with?("examples/monitoring/")
+  return [] unless path.start_with?("examples/08-monitoring/")
 
   text = File.read(path)
   failures = []

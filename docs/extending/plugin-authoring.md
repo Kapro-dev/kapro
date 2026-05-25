@@ -60,9 +60,9 @@ Register in-process substrates with `server.RegisterActuator(...)` or append to
 
 | Plugin type | Contract | Supported versions | Conformance package | Example |
 |---|---|---|---|---|
-| `actuator` | KAI | `v1alpha1` | `conformance/actuator` | `examples/plugins/argocd-actuator` |
-| `gate` | KGI | `v1alpha1` | `conformance/gate` | `examples/plugins/slo-gate` |
-| `planner` | KPI | `v1alpha1` | `conformance/planner` | `examples/plugins/capacity-planner` |
+| `actuator` | KAI | `v1alpha1` | `conformance/actuator` | `examples/05-plugins/00-argocd-actuator` |
+| `gate` | KGI | `v1alpha1` | `conformance/gate` | `examples/05-plugins/03-slo-gate` |
+| `planner` | KPI | `v1alpha1` | `conformance/planner` | `examples/05-plugins/04-capacity-planner` |
 
 The supported versions are also defined in
 `pkg/plugincompat/compatibility.go`.
@@ -224,15 +224,15 @@ func TestKAIConformance(t *testing.T) {
 ```
 
 A complete external actuator example is available in
-`examples/plugins/argocd-actuator`, with a sample `Plugin` manifest at
-`examples/plugins/argocd-actuator-registration.yaml`. It implements KAI for
+`examples/05-plugins/00-argocd-actuator`, with a sample `Plugin` manifest at
+`examples/05-plugins/00-argocd-actuator/registration.yaml`. It implements KAI for
 Argo CD Applications by patching `spec.source.targetRevision` and checking
 Argo CD sync and health status for convergence. Argo CD is the first external
 substrate proof for the actuator plugin axis.
 The example uses only public Kapro packages: `spec/kai/v1alpha1`,
 `pkg/plugincompat`, and the test-only `conformance/actuator` harness.
-`examples/plugins/argocd-applicationset-actuator`, with a sample `Plugin`
-manifest at `examples/plugins/argocd-applicationset-actuator-registration.yaml`,
+`examples/05-plugins/01-argocd-applicationset-actuator`, with a sample `Plugin`
+manifest at `examples/05-plugins/01-argocd-applicationset-actuator/registration.yaml`,
 implements the ApplicationSet-based `argo/push` variant by patching
 `spec.template.spec.source.targetRevision` and checking a generated
 Application's sync and health status.
@@ -259,8 +259,8 @@ func TestKGIConformance(t *testing.T) {
 ```
 
 A gate plugin implementation example is available in
-`examples/plugins/slo-gate`, with a sample `Plugin` manifest at
-`examples/plugins/slo-gate-registration.yaml`. It implements KGI for SLO checks
+`examples/05-plugins/03-slo-gate`, with a sample `Plugin` manifest at
+`examples/05-plugins/03-slo-gate/registration.yaml`. It implements KGI for SLO checks
 using static values or Prometheus instant queries. Reference a runtime gate
 plugin from a gate template with `type: plugin` and `plugin.name` set to
 `Plugin.spec.name`.
@@ -291,8 +291,8 @@ func TestKPIConformance(t *testing.T) {
 ```
 
 A planner plugin implementation example is available in
-`examples/plugins/capacity-planner`, with a sample `Plugin` manifest at
-`examples/plugins/capacity-planner-registration.yaml`. It implements KPI for
+`examples/05-plugins/04-capacity-planner`, with a sample `Plugin` manifest at
+`examples/05-plugins/04-capacity-planner/registration.yaml`. It implements KPI for
 capacity-aware filtering, ordering, and deferring promotion targets.
 
 ## Provider Requirements
@@ -321,11 +321,11 @@ cloud discovery providers used by `ClusterTemplate` to import clusters.
 
 | Example | Contract | `Plugin` manifest | Runtime status |
 |---|---|---|---|
-| `examples/plugins/argocd-actuator` | KAI actuator | `examples/plugins/argocd-actuator-registration.yaml` + `examples/plugins/argocd-actuator/manifests/deployment.yaml` | Deployable external substrate proof |
-| `examples/plugins/argocd-applicationset-actuator` | KAI actuator | `examples/plugins/argocd-applicationset-actuator-registration.yaml` | Hot-loaded dispatch preview |
-| `examples/plugins/flux-actuator` | KAI actuator | `examples/plugins/flux-actuator-registration.yaml` + `examples/plugins/flux-actuator/manifests/deployment.yaml` | Deployable external substrate proof |
-| `examples/plugins/slo-gate` | KGI gate | `examples/plugins/slo-gate-registration.yaml` | Hot-loaded dispatch preview |
-| `examples/plugins/capacity-planner` | KPI planner | `examples/plugins/capacity-planner-registration.yaml` | Hot-loaded planner dispatch preview |
+| `examples/05-plugins/00-argocd-actuator` | KAI actuator | `examples/05-plugins/00-argocd-actuator/registration.yaml` + `examples/05-plugins/00-argocd-actuator/manifests/deployment.yaml` | Deployable external substrate proof |
+| `examples/05-plugins/01-argocd-applicationset-actuator` | KAI actuator | `examples/05-plugins/01-argocd-applicationset-actuator/registration.yaml` | Hot-loaded dispatch preview |
+| `examples/05-plugins/02-flux-actuator` | KAI actuator | `examples/05-plugins/02-flux-actuator/registration.yaml` + `examples/05-plugins/02-flux-actuator/manifests/deployment.yaml` | Deployable external substrate proof |
+| `examples/05-plugins/03-slo-gate` | KGI gate | `examples/05-plugins/03-slo-gate/registration.yaml` | Hot-loaded dispatch preview |
+| `examples/05-plugins/04-capacity-planner` | KPI planner | `examples/05-plugins/04-capacity-planner/registration.yaml` | Hot-loaded planner dispatch preview |
 
 ## Conformance Rules
 

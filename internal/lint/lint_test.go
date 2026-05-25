@@ -328,7 +328,7 @@ func TestExampleYAMLHasNoKaproLintErrors(t *testing.T) {
 
 func TestQuickstartYAMLIsStrictLintClean(t *testing.T) {
 	root := lintRepoRoot(t)
-	files, err := filepath.Glob(filepath.Join(root, "examples", "quickstart", "*.yaml"))
+	files, err := filepath.Glob(filepath.Join(root, "examples", "01-quickstarts", "00-flux", "*.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}

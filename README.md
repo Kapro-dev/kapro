@@ -155,11 +155,11 @@ kubectl wait crd/promotions.kapro.io crd/promotionruns.runtime.kapro.io crd/targ
   --for=condition=Established \
   --timeout=60s
 kubectl -n kapro-system rollout status deployment/kapro-kapro-operator
-kubectl apply -f examples/quickstart/substrates/flux.yaml
-kubectl apply -f examples/quickstart/deliveryunit.yaml
-kubectl apply -f examples/quickstart/plan.yaml
-kubectl apply -f examples/quickstart/kapro.yaml
-kubectl apply -f examples/quickstart/promotion.yaml
+kubectl apply -f examples/01-quickstarts/00-flux/substrates/flux.yaml
+kubectl apply -f examples/01-quickstarts/00-flux/deliveryunit.yaml
+kubectl apply -f examples/01-quickstarts/00-flux/plan.yaml
+kubectl apply -f examples/01-quickstarts/00-flux/kapro.yaml
+kubectl apply -f examples/01-quickstarts/00-flux/promotion.yaml
 kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
 ```
 
@@ -178,7 +178,7 @@ KAPRO_CI_QUICKSTARTS=direct,flux,argo,oci scripts/ci-kind-smoke.sh
 ```
 
 For a step-by-step minimal path, use [First Promotion in 10 Minutes](docs/getting-started/first-promotion-10min.md).
-For a complete local walkthrough, use the [Kind demo](examples/kind-demo/README.md).
+For a complete local walkthrough, use the [Kind demo](examples/10-kind-demo/README.md).
 [Install](docs/getting-started/install.md) has local-checkout and release-asset variants.
 
 ## Documentation
@@ -190,7 +190,7 @@ Start at [kapro.dev](https://kapro.dev) or use these repo docs:
 - [Adoption Guide](docs/getting-started/adoption.md)
 - [Adoption CLI](docs/getting-started/adoption-cli.md)
 - [First Promotion in 10 Minutes](docs/getting-started/first-promotion-10min.md)
-- [Kind Demo](examples/kind-demo/README.md)
+- [Kind Demo](examples/10-kind-demo/README.md)
 - [Substrates](docs/concepts/substrates.md)
 - [Operations](docs/operations/operations.md)
 - [Security](docs/operations/security.md)

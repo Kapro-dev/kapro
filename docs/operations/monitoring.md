@@ -1,20 +1,20 @@
 # Monitoring Kapro
 
 Kapro exposes Prometheus metrics from the controller-runtime metrics endpoint on
-`:8080`. The examples in `examples/monitoring` are intentionally generic: they
+`:8080`. The examples in `examples/08-monitoring` are intentionally generic: they
 do not contain real endpoints, credentials, or cluster-specific labels.
 
 ## Asset Locations
 
-Kapro keeps monitoring examples under `examples/monitoring`:
+Kapro keeps monitoring examples under `examples/08-monitoring`:
 
 | Path | Purpose |
 | --- | --- |
-| `examples/monitoring/kapro-alerts.yaml` | Generic Prometheus alert groups for direct import or adaptation. |
-| `examples/monitoring/kapro-operations-dashboard.json` | Compact operations dashboard for the core Kapro metrics endpoint. |
-| `examples/monitoring/prometheus-rules.yaml` | Prometheus Operator `PrometheusRule` example that combines Kapro metrics with kube-state-metrics CRD state metrics. |
-| `examples/monitoring/grafana-dashboard.json` | Full example Grafana dashboard using Kapro metrics, CRD state metrics, and recording rules from `prometheus-rules.yaml`. |
-| `examples/monitoring/kube-state-metrics-crd-config.yaml` | Example kube-state-metrics custom-resource state config for PromotionRuns, Triggers, and Plugins. |
+| `examples/08-monitoring/kapro-alerts.yaml` | Generic Prometheus alert groups for direct import or adaptation. |
+| `examples/08-monitoring/kapro-operations-dashboard.json` | Compact operations dashboard for the core Kapro metrics endpoint. |
+| `examples/08-monitoring/prometheus-rules.yaml` | Prometheus Operator `PrometheusRule` example that combines Kapro metrics with kube-state-metrics CRD state metrics. |
+| `examples/08-monitoring/grafana-dashboard.json` | Full example Grafana dashboard using Kapro metrics, CRD state metrics, and recording rules from `prometheus-rules.yaml`. |
+| `examples/08-monitoring/kube-state-metrics-crd-config.yaml` | Example kube-state-metrics custom-resource state config for PromotionRuns, Triggers, and Plugins. |
 
 Use `kapro-alerts.yaml` and `kapro-operations-dashboard.json` when you want
 small, generic assets. Use the Prometheus Operator and kube-state-metrics
@@ -23,16 +23,16 @@ alerts.
 
 ## Examples
 
-- `examples/monitoring/grafana-dashboard.json` provides a Grafana dashboard for
+- `examples/08-monitoring/grafana-dashboard.json` provides a Grafana dashboard for
   controller health, reconcile latency, status writes, gate results, target
   transitions, stage duration, active promotionruns, promotionrun stuck candidates,
   blocked triggers, CloudEvents sink p99, and
   plugin probe failures. Import `prometheus-rules.yaml` first so panels backed
   by `kapro:slo_*` recording rules have data.
-- `examples/monitoring/prometheus-rules.yaml` provides PrometheusRule-style
+- `examples/08-monitoring/prometheus-rules.yaml` provides PrometheusRule-style
   alert examples for emitted Kapro metric names and kube-state-metrics custom
   resource state metrics.
-- `examples/monitoring/kube-state-metrics-crd-config.yaml` provides a
+- `examples/08-monitoring/kube-state-metrics-crd-config.yaml` provides a
   kube-state-metrics `CustomResourceStateMetrics` example for Kapro `PromotionRun`,
   `Trigger`, and `Plugin` status fields.
 
@@ -100,7 +100,7 @@ and a metrics Service by default.
 Kapro does not currently emit first-class counters or gauges for every
 operational state needed by the alert examples. For those gaps, use
 kube-state-metrics custom-resource state metrics with the config in
-`examples/monitoring/kube-state-metrics-crd-config.yaml`.
+`examples/08-monitoring/kube-state-metrics-crd-config.yaml`.
 
 That config emits these example metric names:
 

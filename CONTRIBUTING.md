@@ -31,7 +31,7 @@ scripts/verify-install.sh render
 - `examples/` contains runnable examples and optional provider-specific helpers.
 - `scripts/` contains repository development, CI, and verification scripts.
 - `build/` contains build-time metadata used by generators and release tooling.
-- Provider-specific onboarding helpers should live under `examples/cloud/`; core
+- Provider-specific onboarding helpers should live under `examples/04-substrates/02-cloud/`; core
   Kapro APIs and controllers should stay cloud-neutral unless a provider
   integration requires dedicated code.
 

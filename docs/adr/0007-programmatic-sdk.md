@@ -18,7 +18,7 @@ one of three things:
 1. Hand-rolls verbose Go struct literals against `api/v1alpha1`.
 2. Templates YAML and calls `kubectl apply`.
 3. Re-implements the CloudEvents subscriber pattern from
-   `examples/plugins/cloudevents-printer` (PR #91) inside their app.
+   `examples/05-plugins/05-cloudevents-printer` (PR #91) inside their app.
 
 None of these scale. The struct-literal path is correct but
 ergonomically harsh. YAML templating loses type safety. Re-inventing
@@ -112,7 +112,7 @@ import (
 )
 
 // KAPRO_PRINTER_AUTH_HEADER is the env-var name the reference
-// subscriber (examples/plugins/cloudevents-printer) uses. The SDK
+// subscriber (examples/05-plugins/05-cloudevents-printer) uses. The SDK
 // is unopinionated — pick whichever name fits your binary.
 sub := subscriber.New(":8080",
     subscriber.WithAuthHeader(os.Getenv("KAPRO_SUBSCRIBER_AUTH_HEADER")),
@@ -289,5 +289,5 @@ that match how operators *think*, not how the schema *renders*.
   predicate side).
 - `pkg/events` — already-public CloudEvents vocabulary.
 - `api/v1alpha1` — already-public CRD types.
-- PR #91 — `examples/plugins/cloudevents-printer` (the reference
+- PR #91 — `examples/05-plugins/05-cloudevents-printer` (the reference
   subscriber `sdk/subscriber` productises).

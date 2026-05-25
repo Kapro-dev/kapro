@@ -28,11 +28,11 @@ cardinality and failure semantics are specified.
 
 ## PrometheusRule Coverage
 
-`examples/monitoring/prometheus-rules.yaml` includes recording rules for the
+`examples/08-monitoring/prometheus-rules.yaml` includes recording rules for the
 core SLI queries above and alert rules that route to `docs/operations.md`.
 Rules that inspect PromotionRun, Trigger, or Plugin object state require the
 kube-state-metrics custom-resource configuration in
-`examples/monitoring/kube-state-metrics-crd-config.yaml`.
+`examples/08-monitoring/kube-state-metrics-crd-config.yaml`.
 
 Validate monitoring examples with `make validate-yaml-json`. The check extracts
 `spec.groups` from Prometheus Operator `PrometheusRule` manifests before running

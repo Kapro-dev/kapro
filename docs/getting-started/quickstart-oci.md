@@ -26,16 +26,16 @@ Prerequisites for a real OCI pull deployment:
   flow and required chart values.
 - OCI artifacts published for each promoted unit.
 - A clone of this repository, because the commands below apply manifests from
-  `examples/quickstart-oci/`.
+  `examples/01-quickstarts/03-oci/`.
 
 ```bash
 git clone --branch main https://github.com/Kapro-dev/kapro.git
 cd kapro
-kubectl apply -f examples/quickstart-oci/substrates/oci.yaml
-kubectl apply -f examples/quickstart-oci/deliveryunit.yaml
-kubectl apply -f examples/quickstart-oci/plan.yaml
-kubectl apply -f examples/quickstart-oci/fleet.yaml
-kubectl apply -f examples/quickstart-oci/promotion.yaml
+kubectl apply -f examples/01-quickstarts/03-oci/substrates/oci.yaml
+kubectl apply -f examples/01-quickstarts/03-oci/deliveryunit.yaml
+kubectl apply -f examples/01-quickstarts/03-oci/plan.yaml
+kubectl apply -f examples/01-quickstarts/03-oci/fleet.yaml
+kubectl apply -f examples/01-quickstarts/03-oci/promotion.yaml
 kubectl get promotions.kapro.io,promotionruns.runtime.kapro.io,targets.runtime.kapro.io
 ```
 
