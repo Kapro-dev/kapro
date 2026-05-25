@@ -79,7 +79,11 @@ case "$command_name" in
     if [[ "$has_go" == true ]]; then
       (cd "$repo_root" && go test "./$rel_dir")
     elif [[ "$has_yaml" == true ]]; then
-      (cd "$repo_root" && scripts/validate-yaml-json)
+      if [[ "${KAPRO_EXAMPLE_SKIP_GLOBAL_VALIDATE:-}" == "true" ]]; then
+        printf 'checked %s; global YAML/JSON validation handled by run-all.sh\n' "$rel_dir"
+      else
+        (cd "$repo_root" && scripts/validate-yaml-json)
+      fi
     else
       printf 'checked %s\n' "$rel_dir"
     fi
@@ -106,7 +110,11 @@ case "$command_name" in
     if [[ "$has_go" == true ]]; then
       (cd "$repo_root" && go test "./$rel_dir")
     elif [[ "$has_yaml" == true ]]; then
-      (cd "$repo_root" && scripts/validate-yaml-json)
+      if [[ "${KAPRO_EXAMPLE_SKIP_GLOBAL_VALIDATE:-}" == "true" ]]; then
+        printf 'checked %s; global YAML/JSON validation handled by run-all.sh\n' "$rel_dir"
+      else
+        (cd "$repo_root" && scripts/validate-yaml-json)
+      fi
     else
       "$repo_root/examples/run-example.sh" "$example_dir" check
     fi
