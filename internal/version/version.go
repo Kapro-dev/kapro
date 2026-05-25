@@ -2,7 +2,7 @@
 package version
 
 var (
-	// Version is the semantic version (e.g. v0.1.0).
+	// Version is the semantic version (e.g. v0.6.0).
 	Version = "dev"
 	// Commit is the git commit SHA.
 	Commit = "unknown"

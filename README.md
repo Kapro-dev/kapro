@@ -137,7 +137,56 @@ kapro import flux . --out ./kapro-connect --name checkout
 See the [Adoption Guide](docs/getting-started/adoption.md) for the greenfield
 and existing GitOps decision tree.
 
-## Quick Start
+## Local Hello World With Kind
+
+Use this path when you want to try Kapro from a clean laptop before touching a
+real cluster.
+
+Install these tools first:
+
+- Docker or another container runtime supported by Kind.
+- [Kind](https://kind.sigs.k8s.io/) for a disposable local Kubernetes cluster.
+- `kubectl`.
+- Helm 3.
+- Go 1.25+ only if you want to build the optional `kapro` CLI from source.
+- ORAS only for OCI artifact examples; the hello-world example does not need it.
+
+Run the smallest example:
+
+```bash
+KAPRO_VERSION=0.6.0
+
+kind create cluster --name kapro-hello
+kubectl config use-context kind-kapro-hello
+
+git clone --branch "v${KAPRO_VERSION}" https://github.com/Kapro-dev/kapro.git
+cd kapro
+
+helm upgrade --install kapro \
+  "https://github.com/Kapro-dev/kapro/releases/download/v${KAPRO_VERSION}/kapro-operator-${KAPRO_VERSION}.tgz" \
+  --namespace kapro-system \
+  --create-namespace \
+  --wait
+
+kubectl -n kapro-system rollout status deployment/kapro-kapro-operator
+examples/00-deliveryunit-lessons/00-hello-world/run.sh
+examples/00-deliveryunit-lessons/00-hello-world/run.sh apply
+kubectl get deliveryunits.kapro.io,sources.kapro.io
+```
+
+Clean up:
+
+```bash
+kubectl delete -f examples/00-deliveryunit-lessons/00-hello-world --ignore-not-found
+helm uninstall kapro --namespace kapro-system
+kind delete cluster --name kapro-hello
+```
+
+Every folder under `examples/` has the same `run.sh` entrypoint. Start at
+`examples/README.md` for the indexed learning path from hello world to Flux,
+Argo CD, OCI, plugins, monitoring, and the full Kind demo.
+
+## Released Chart Quick Start
 
 Install the released operator, apply the starter fleet from a source clone, and
 inspect the controller-owned runtime records:

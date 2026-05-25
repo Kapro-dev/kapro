@@ -274,7 +274,7 @@ spec:
                         expressionRef:
                           description: |-
                             ExpressionRef is reserved for future external gate expression resolution.
-                            v0.1.2 rejects this field so referenced gates cannot become a silent no-op.
+                            v0.6.0 rejects this field so referenced gates cannot become a silent no-op.
                           minLength: 1
                           type: string
                         gate:

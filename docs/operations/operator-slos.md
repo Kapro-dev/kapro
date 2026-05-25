@@ -1,6 +1,6 @@
 # Operator SLOs
 
-This page defines the SLI signals Kapro operators can alert on in `v0.1.2`.
+This page defines the SLI signals Kapro operators can alert on in `v0.6.0`.
 It intentionally separates first-class Kapro metrics from inferred signals that
 come from kube-state-metrics or the Kubernetes API server. Do not alert on a
 metric name unless it is listed in `internal/metrics/metrics.go` or exported by
@@ -21,7 +21,7 @@ your platform stack.
 | Plugin probe failure rate | Kapro metric | `sum by (type, reason) (rate(kapro_plugin_probe_results_total{result!="success"}[10m]))` | Warn on sustained failures; inspect Plugin readiness and endpoint health. |
 | Cluster heartbeat misses | Kapro metric | `max_over_time(kapro_cluster_heartbeat_misses[5m])` | Warn when a spoke cluster exceeds its configured miss threshold. |
 
-Webhook admission handshakes do not have a Kapro-specific metric in `v0.1.2`.
+Webhook admission handshakes do not have a Kapro-specific metric in `v0.6.0`.
 For webhook availability, use Kubernetes API server admission metrics, webhook
 configuration status, and operator logs. Add a Kapro metric only after its label
 cardinality and failure semantics are specified.
@@ -54,7 +54,7 @@ rather than Kubernetes CRD YAML.
 ## Metric Gaps
 
 These are useful future metrics, but they are not exported as first-class Kapro
-metrics in `v0.1.2`:
+metrics in `v0.6.0`:
 
 | Gap | Current workaround |
 | --- | --- |

@@ -59,8 +59,8 @@ check_live_release_pointers() {
 
   local expected_version old_release_regex old_chart_regex found
   expected_version="$(expected_chart_version)"
-  old_release_regex='v0\.1\.(0|1)'
-  old_chart_regex='0\.1\.(0|1)'
+  old_release_regex='v0\.1\.(0|1|2)'
+  old_chart_regex='0\.1\.(0|1|2)'
   found="$(grep -RInE "${old_release_regex}|${old_chart_regex}" \
     "${ROOT}/README.md" \
     "${ROOT}/docs" \
@@ -75,7 +75,7 @@ check_live_release_pointers() {
     || true)"
 
   if [[ -n "${found}" ]]; then
-    echo "live release docs/config still reference old v0.1.0/v0.1.1 artifacts:" >&2
+    echo "live release docs/config still reference old v0.1.x artifacts:" >&2
     echo "${found}" >&2
     exit 1
   fi
@@ -241,7 +241,8 @@ require_workflow_line "name: Generate checksums for release assets"
 require_workflow_line "shasum -a 256 dist/* kapro-operator.spdx.json kapro-cluster-controller.spdx.json \\"
 require_workflow_line "> dist/checksums.txt"
 require_workflow_line "dist/*"
-require_workflow_line "startsWith(github.ref_name, 'v0.')"
+require_workflow_line "prerelease: \${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}"
+reject_workflow_line "startsWith(github.ref_name, 'v0.')"
 require_workflow_line "generate_release_notes: true"
 reject_workflow_line "body_path: docs/release-v0.1.0-alpha.md"
 reject_workflow_line "kapro-operator-0.1.0.tgz"

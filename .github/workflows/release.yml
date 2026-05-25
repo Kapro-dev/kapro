@@ -222,7 +222,7 @@ jobs:
         # softprops/action-gh-release@v3
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda
         with:
-          prerelease: ${{ startsWith(github.ref_name, 'v0.') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
           # Body is auto-generated using .github/release.yml category config,
           # which groups merged PRs since the previous tag.
           generate_release_notes: true

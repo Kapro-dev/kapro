@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Published release tag to install (e.g. v0.1.2).
+        description: Published release tag to install (e.g. v0.6.0).
         required: true
       previous_version:
         description: Previous published release tag for upgrade and rollback smoke.
         required: false
-        default: v0.5.8
+        default: v0.5.7
       kind_image:
         description: Kind node image for the smoke cluster.
         required: true
@@ -59,7 +59,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.head_branch == 'v0.6.0'
         env:
           KAPRO_RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.workflow_run.head_branch }}
-          KAPRO_PREVIOUS_RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.previous_version || 'v0.5.8' }}
+          KAPRO_PREVIOUS_RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.previous_version || 'v0.5.7' }}
           KAPRO_VERIFY_CLEANUP: "true"
         run: scripts/verify-install.sh release-upgrade-cluster
 
@@ -67,7 +67,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.head_branch == 'v0.6.0'
         env:
           KAPRO_RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.workflow_run.head_branch }}
-          KAPRO_PREVIOUS_RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.previous_version || 'v0.5.8' }}
+          KAPRO_PREVIOUS_RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.previous_version || 'v0.5.7' }}
           KAPRO_VERIFY_CLEANUP: "true"
         run: scripts/verify-install.sh release-rollback-cluster
 

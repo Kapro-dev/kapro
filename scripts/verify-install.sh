@@ -33,7 +33,7 @@ Environment for cluster mode:
 Environment for release-render and release-cluster modes:
   KAPRO_RELEASE_VERSION       Release tag to verify (default: v0.6.0)
   KAPRO_RELEASE_CHART_URL     Optional chart package URL override
-  KAPRO_PREVIOUS_RELEASE_VERSION Previous release tag for upgrade/rollback modes (default: v0.5.8)
+  KAPRO_PREVIOUS_RELEASE_VERSION Previous release tag for upgrade/rollback modes (default: v0.5.7)
   KAPRO_PREVIOUS_RELEASE_CHART_URL Optional previous chart package URL override
 EOF
 }
@@ -235,6 +235,22 @@ install_chart() {
   echo "cluster install verification passed"
 }
 
+apply_chart_crds() {
+  local chart_ref="$1"
+  need helm
+  need kubectl
+
+  local crds
+  crds="$(mktemp)"
+  helm show crds "${chart_ref}" >"${crds}"
+  if [ -s "${crds}" ]; then
+    kubectl apply -f "${crds}"
+  else
+    echo "chart ${chart_ref} has no CRDs to apply before upgrade"
+  fi
+  rm -f "${crds}"
+}
+
 cluster() {
   install_chart "${CHART}"
 }
@@ -250,7 +266,7 @@ release_cluster() (
 release_upgrade_cluster() (
   local current previous current_chart previous_chart cleanup
   current="${KAPRO_RELEASE_VERSION:-v0.6.0}"
-  previous="${KAPRO_PREVIOUS_RELEASE_VERSION:-v0.5.8}"
+  previous="${KAPRO_PREVIOUS_RELEASE_VERSION:-v0.5.7}"
   cleanup="${KAPRO_VERIFY_CLEANUP:-false}"
 
   previous_chart="$(download_chart_version "${previous}" "${KAPRO_PREVIOUS_RELEASE_CHART_URL:-}")" || exit 1
@@ -261,6 +277,8 @@ release_upgrade_cluster() (
   KAPRO_VERIFY_CLEANUP=false KAPRO_VERIFY_EXPECTED_CRDS=false KAPRO_VERIFY_WEBHOOKS="${KAPRO_PREVIOUS_VERIFY_WEBHOOKS:-false}" KAPRO_IMAGE_TAG="${KAPRO_PREVIOUS_IMAGE_TAG:-${previous}}" install_chart "${previous_chart}"
 
   echo "upgrading ${previous} to ${current}"
+  echo "applying ${current} CRDs before Helm upgrade"
+  apply_chart_crds "${current_chart}"
   KAPRO_VERIFY_CLEANUP="${cleanup}" KAPRO_IMAGE_TAG="${KAPRO_IMAGE_TAG:-${current}}" install_chart "${current_chart}"
   echo "release upgrade verification passed"
 )
@@ -268,7 +286,7 @@ release_upgrade_cluster() (
 release_rollback_cluster() (
   local current previous current_chart previous_chart cleanup namespace release
   current="${KAPRO_RELEASE_VERSION:-v0.6.0}"
-  previous="${KAPRO_PREVIOUS_RELEASE_VERSION:-v0.5.8}"
+  previous="${KAPRO_PREVIOUS_RELEASE_VERSION:-v0.5.7}"
   cleanup="${KAPRO_VERIFY_CLEANUP:-false}"
   namespace="${KAPRO_VERIFY_NAMESPACE:-kapro-system}"
   release="${KAPRO_VERIFY_RELEASE:-kapro}"
@@ -281,6 +299,8 @@ release_rollback_cluster() (
   KAPRO_VERIFY_CLEANUP=false KAPRO_VERIFY_EXPECTED_CRDS=false KAPRO_VERIFY_WEBHOOKS="${KAPRO_PREVIOUS_VERIFY_WEBHOOKS:-false}" KAPRO_IMAGE_TAG="${KAPRO_PREVIOUS_IMAGE_TAG:-${previous}}" install_chart "${previous_chart}"
 
   echo "upgrading ${previous} to ${current} before rollback"
+  echo "applying ${current} CRDs before Helm upgrade"
+  apply_chart_crds "${current_chart}"
   KAPRO_VERIFY_CLEANUP=false KAPRO_IMAGE_TAG="${KAPRO_IMAGE_TAG:-${current}}" install_chart "${current_chart}"
 
   echo "rolling back ${release} in namespace ${namespace} to previous Helm revision"
