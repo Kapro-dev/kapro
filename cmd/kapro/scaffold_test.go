@@ -252,6 +252,79 @@ func TestRunInitScaffoldOCIPull(t *testing.T) {
 	}
 }
 
+func TestRunInitScaffoldPublicPreviewContractForAllProfiles(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		substrate string
+		mode      string
+	}{
+		{name: "direct", substrate: "direct", mode: "push"},
+		{name: "argo", substrate: "argo", mode: "push"},
+		{name: "flux", substrate: "flux", mode: "pull"},
+		{name: "oci", substrate: "oci", mode: "pull"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := runInitScaffold(scaffoldOptions{
+				Path:      dir,
+				Name:      "checkout",
+				Substrate: tc.substrate,
+				Mode:      tc.mode,
+				Registry:  "oci://registry.example.com/platform",
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			for _, relPath := range []string{
+				"deliveryunits/checkout.yaml",
+				"plans/checkout.yaml",
+				"fleets/checkout.yaml",
+				"promotions/checkout-promotion.yaml",
+			} {
+				if _, err := os.Stat(filepath.Join(dir, relPath)); err != nil {
+					t.Fatalf("%s not generated: %v", relPath, err)
+				}
+			}
+			if _, err := os.Stat(filepath.Join(dir, "sources", "checkout.yaml")); !os.IsNotExist(err) {
+				t.Fatalf("legacy sources/checkout.yaml should not be generated for public-preview scaffold")
+			}
+
+			unit := readFile(t, filepath.Join(dir, "deliveryunits/checkout.yaml"))
+			for _, want := range []string{
+				"kind: DeliveryUnit",
+				"defaultFleetRef: checkout",
+				"defaultPlanRef: checkout",
+				"source:",
+				"substrateRef: " + tc.substrate,
+				"kapro.io/team: platform",
+			} {
+				if !strings.Contains(unit, want) {
+					t.Fatalf("delivery unit missing %q:\n%s", want, unit)
+				}
+			}
+
+			fleet := readFile(t, filepath.Join(dir, "fleets/checkout.yaml"))
+			if strings.Contains(fleet, "sourceRef:") || strings.Contains(fleet, "\n  source:") {
+				t.Fatalf("fleet should not own source intent in public-preview scaffold:\n%s", fleet)
+			}
+
+			promotion := readFile(t, filepath.Join(dir, "promotions/checkout-promotion.yaml"))
+			for _, want := range []string{
+				"kind: Promotion",
+				"deliveryUnitRef: checkout",
+				"fleetRef: checkout",
+				"planRef: checkout",
+				"version:",
+				"timeout: 30m",
+			} {
+				if !strings.Contains(promotion, want) {
+					t.Fatalf("promotion missing %q:\n%s", want, promotion)
+				}
+			}
+		})
+	}
+}
+
 func TestRunInitScaffoldOCIRejectsPushMode(t *testing.T) {
 	err := runInitScaffold(scaffoldOptions{
 		Path:      t.TempDir(),

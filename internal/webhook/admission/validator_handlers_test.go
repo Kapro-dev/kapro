@@ -183,6 +183,54 @@ func TestDeliveryUnitValidatorHandleRequiresTeamLabelWhenTriggersDeclared(t *tes
 	}
 }
 
+func TestDeliveryUnitValidatorHandleAllowsSourceOnlyWithoutTeamLabel(t *testing.T) {
+	validator := admission.NewDeliveryUnitValidator(newKaproAdmissionDecoder(t), nil)
+	unit := kaproAdmissionDeliveryUnit()
+	unit.Labels = nil
+	unit.Spec.Triggers = nil
+
+	resp := validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, unit))
+	if !resp.Allowed {
+		t.Fatalf("expected source-only deliveryunit without team label to be allowed, got %s", responseMessage(resp))
+	}
+}
+
+func TestDeliveryUnitValidatorHandleDeniesDuplicateDefaultTriggerNames(t *testing.T) {
+	validator := admission.NewDeliveryUnitValidator(newKaproAdmissionDecoder(t), nil)
+	unit := kaproAdmissionDeliveryUnit()
+	unit.Spec.Triggers = []kaprov1alpha1.DeliveryUnitTrigger{
+		{
+			Source: kaprov1alpha1.TriggerSource{
+				Type: "oci",
+				OCI:  &kaprov1alpha1.OCITriggerSource{Repository: "oci://registry.example.com/checkout", TagPattern: "v.*"},
+			},
+		},
+		{
+			Source: kaprov1alpha1.TriggerSource{
+				Type: "oci",
+				OCI:  &kaprov1alpha1.OCITriggerSource{Repository: "oci://registry.example.com/checkout", TagPattern: "v.*"},
+			},
+		},
+	}
+
+	resp := validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, unit))
+	if resp.Allowed || !strings.Contains(responseMessage(resp), "derives duplicate Trigger") {
+		t.Fatalf("expected duplicate default-trigger denial, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
+	}
+}
+
+func TestDeliveryUnitValidatorHandleDeniesTriggerWithoutFleetDefault(t *testing.T) {
+	validator := admission.NewDeliveryUnitValidator(newKaproAdmissionDecoder(t), nil)
+	unit := kaproAdmissionDeliveryUnit()
+	unit.Spec.DefaultFleetRef = ""
+	unit.Spec.Triggers[0].FleetRef = ""
+
+	resp := validator.Handle(context.Background(), admissionRequest(t, admissionv1.Create, unit))
+	if resp.Allowed || !strings.Contains(responseMessage(resp), "requires fleetRef or spec.defaultFleetRef") {
+		t.Fatalf("expected missing trigger fleet denial, allowed=%t message=%q", resp.Allowed, responseMessage(resp))
+	}
+}
+
 func TestDeliveryUnitValidatorHandle(t *testing.T) {
 	validator := admission.NewDeliveryUnitValidator(newKaproAdmissionDecoder(t), nil)
 	unit := kaproAdmissionDeliveryUnit()

@@ -1,0 +1,15 @@
+apiVersion: kapro.io/v1alpha1
+kind: Promotion
+metadata:
+  name: hello-world-0-2-1
+  labels:
+    kapro.io/unit: hello-world
+    kapro.io/team: tutorial
+spec:
+  deliveryUnitRef: hello-world
+  fleetRef: hello-world
+  planRef: hello-world
+  versions:
+    web: 0.2.1
+    worker: 0.2.1
+  timeout: 30m
