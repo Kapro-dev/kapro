@@ -43,10 +43,10 @@ vet: ## Run go vet
 	go vet ./...
 
 .PHONY: verify
-verify: validate-yaml-json check-markdown-links check-release-train fmt vet lint build test conformance ## Run full checks with coverage (use before pushing)
+verify: validate-yaml-json check-markdown-links check-release-train fmt vet lint build test conformance cli-smoke cli-stress ## Run full checks with coverage (use before pushing)
 
 .PHONY: verify-local
-verify-local: validate-yaml-json check-markdown-links check-release-train fmt vet lint build test-no-cover conformance ## Run local checks without coverage tooling
+verify-local: validate-yaml-json check-markdown-links check-release-train fmt vet lint build test-no-cover conformance cli-smoke cli-stress ## Run local checks without coverage tooling
 
 .PHONY: lint
 lint: $(GOLANGCI_LINT) ## Run golangci-lint
@@ -131,6 +131,14 @@ conformance: ## Run plugin/provider conformance suites against local reference i
 conformance-hello-world: ## Verify the hello-world custom-substrate example passes the public-SDK contract
 	go test ./examples/actuator-hello-world/...
 	go run ./examples/actuator-hello-world
+
+.PHONY: cli-smoke
+cli-smoke: ## Run fast CLI smoke coverage for create/import/bootstrap/source-apply flows
+	scripts/cli-scaffold-smoke.sh
+
+.PHONY: cli-stress
+cli-stress: ## Run large GitOps discovery/source mapping stress coverage
+	scripts/cli-gitops-stress.sh
 
 ##@ Build
 

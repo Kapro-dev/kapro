@@ -532,7 +532,7 @@ func TestEnsureBootstrapProvisionedRequestsDefaultAPIServerAudience(t *testing.T
 	var captured *authv1.TokenRequest
 	tokenExpiry := metav1.NewTime(time.Now().Add(bootstrapTokenLifetime))
 	kubeClient := k8sfake.NewClientset()
-	kubeClient.Fake.PrependReactor("create", "serviceaccounts", func(action k8stesting.Action) (bool, runtime.Object, error) {
+	kubeClient.PrependReactor("create", "serviceaccounts", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		if action.GetSubresource() != "token" {
 			return false, nil, nil
 		}

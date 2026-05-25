@@ -5,9 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "${TMPDIR}"' EXIT
 
-kapro() {
-  go run ./cmd/kapro "$@"
-}
+KAPRO_BIN="${KAPRO_BIN:-${TMPDIR}/kapro}"
 
 require_file() {
   local path="$1"
@@ -35,6 +33,15 @@ require_text() {
 }
 
 cd "${ROOT}"
+
+if [[ ! -x "${KAPRO_BIN}" ]]; then
+  echo "building kapro CLI smoke binary"
+  go build -trimpath -o "${KAPRO_BIN}" ./cmd/kapro
+fi
+
+kapro() {
+  "${KAPRO_BIN}" "$@"
+}
 
 echo "smoke: greenfield argo repo-first"
 kapro init "${TMPDIR}/repo-first" --substrate argo --name checkout --clusters none --force >/dev/null
@@ -120,6 +127,49 @@ require_file "${TMPDIR}/create-direct/apps/checkout/deployment.yaml"
 require_text "${TMPDIR}/create-direct/substrates/direct.yaml" "kind: KubernetesApplyConfig"
 require_text "${TMPDIR}/create-direct/clusters/canary-eu.yaml" "mode: push"
 require_text "${TMPDIR}/create-direct/clusters/canary-eu.yaml" "substrateRef: direct"
+
+echo "smoke: public create argo"
+kapro create argo "${TMPDIR}/create-argo" --name checkout --force >/dev/null
+require_file "${TMPDIR}/create-argo/substrates/argo.yaml"
+require_file "${TMPDIR}/create-argo/apps/checkout/00-namespace.yaml"
+require_file "${TMPDIR}/create-argo/apps/checkout/deployment.yaml"
+require_file "${TMPDIR}/create-argo/apps/checkout/service.yaml"
+require_file "${TMPDIR}/create-argo/argo/applications/checkout.yaml"
+require_text "${TMPDIR}/create-argo/apps/checkout/deployment.yaml" "namespace: checkout"
+require_text "${TMPDIR}/create-argo/argo/applications/checkout.yaml" "namespace: argocd"
+require_text "${TMPDIR}/create-argo/argo/applications/checkout.yaml" "namespace: checkout"
+
+echo "smoke: public create flux"
+kapro create flux "${TMPDIR}/create-flux" --name checkout --force >/dev/null
+require_file "${TMPDIR}/create-flux/substrates/flux.yaml"
+require_file "${TMPDIR}/create-flux/apps/checkout/00-namespace.yaml"
+require_file "${TMPDIR}/create-flux/apps/checkout/deployment.yaml"
+require_file "${TMPDIR}/create-flux/apps/checkout/service.yaml"
+require_file "${TMPDIR}/create-flux/apps/checkout/kustomization.yaml"
+require_file "${TMPDIR}/create-flux/flux/kustomizations/checkout.yaml"
+require_text "${TMPDIR}/create-flux/apps/checkout/kustomization.yaml" "  - 00-namespace.yaml"
+require_text "${TMPDIR}/create-flux/apps/checkout/kustomization.yaml" "  - service.yaml"
+require_text "${TMPDIR}/create-flux/apps/checkout/deployment.yaml" "namespace: checkout"
+require_text "${TMPDIR}/create-flux/flux/kustomizations/checkout.yaml" "namespace: flux-system"
+
+echo "smoke: public create oci"
+kapro create oci "${TMPDIR}/create-oci" --name checkout --force >/dev/null
+require_file "${TMPDIR}/create-oci/substrates/oci.yaml"
+require_file "${TMPDIR}/create-oci/fleets/checkout.yaml"
+require_file "${TMPDIR}/create-oci/promotions/checkout-promotion.yaml"
+reject_path "${TMPDIR}/create-oci/apps"
+require_text "${TMPDIR}/create-oci/substrates/oci.yaml" "kind: OCIBundleApplyConfig"
+require_text "${TMPDIR}/create-oci/substrates/oci.yaml" "mode: spoke-pull"
+
+echo "smoke: scaffold input validation"
+if kapro create "${TMPDIR}/bad-name" --name "../escape" --force >/dev/null 2>&1; then
+  echo "unsafe scaffold name should be rejected" >&2
+  exit 1
+fi
+if kapro create "${TMPDIR}/bad-clusters" --name checkout --clusters "," --force >/dev/null 2>&1; then
+  echo "empty malformed cluster list should be rejected" >&2
+  exit 1
+fi
 
 echo "smoke: existing Argo CD connect"
 kapro connect argo "${TMPDIR}/connect-argo" --namespace argocd --selector kapro.io/import=true,team=checkout --force >/dev/null
