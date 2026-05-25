@@ -434,7 +434,7 @@ main() {
   trap 'cleanup "$?"' EXIT
 
   echo "building ${IMAGE_REPOSITORY}:${IMAGE_TAG}"
-  docker build -t "${IMAGE_REPOSITORY}:${IMAGE_TAG}" -f Dockerfile .
+  docker build -t "${IMAGE_REPOSITORY}:${IMAGE_TAG}" -f build/package/Dockerfile.operator .
 
   echo "creating kind cluster ${CLUSTER} with ${KIND_IMAGE}"
   kind create cluster --name "${CLUSTER}" --image "${KIND_IMAGE}"

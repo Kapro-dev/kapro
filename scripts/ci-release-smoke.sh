@@ -59,8 +59,8 @@ check_live_release_pointers() {
 
   local expected_version old_release_regex old_chart_regex found
   expected_version="$(expected_chart_version)"
-  old_release_regex='v0\.1\.(0|1|2)'
-  old_chart_regex='0\.1\.(0|1|2)'
+  old_release_regex='v0\.1\.(x|0|1|2)'
+  old_chart_regex='0\.1\.(x|0|1|2)'
   found="$(grep -RInE "${old_release_regex}|${old_chart_regex}" \
     "${ROOT}/README.md" \
     "${ROOT}/docs" \
@@ -249,8 +249,8 @@ reject_workflow_line "kapro-operator-0.1.0.tgz"
 reject_workflow_line "kapro-cluster-controller-0.1.0.tgz"
 
 echo "checking release workflow builds and signs both images"
-require_workflow_line "file: Dockerfile"
-require_workflow_line "file: Dockerfile.cluster-controller"
+require_workflow_line "file: build/package/Dockerfile.operator"
+require_workflow_line "file: build/package/Dockerfile.cluster-controller"
 require_workflow_line "ghcr.io/kapro-dev/kapro-operator:"
 require_workflow_line "ghcr.io/kapro-dev/kapro-cluster-controller:"
 require_workflow_occurrences "# aquasecurity/trivy-action@v0.24.0" 2

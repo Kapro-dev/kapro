@@ -60,7 +60,7 @@ jobs:
         id: build-operator
         with:
           context: .
-          file: Dockerfile
+          file: build/package/Dockerfile.operator
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
@@ -127,7 +127,7 @@ jobs:
         id: build-cluster-controller
         with:
           context: .
-          file: Dockerfile.cluster-controller
+          file: build/package/Dockerfile.cluster-controller
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |

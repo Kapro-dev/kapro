@@ -36,6 +36,9 @@ kubeconfig
 /operator-core
 /kapro-operator
 /cluster-controller
+/kapro-cluster-controller
+/kapro-conformance
+/kapro-archiver
 /kapro
 
 # AI agent workspaces (never commit)

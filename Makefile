@@ -162,6 +162,7 @@ release-smoke: ## Smoke-test Helm packaging and release workflow chart artifacts
 helm-lint: ## Run `helm lint` on all charts
 	helm lint charts/kapro-operator
 	helm lint charts/kapro-cluster-controller
+	helm lint charts/kapro-archiver
 
 .PHONY: sync-crds
 sync-crds: manifests ## Sync generated CRDs into Helm chart crds/ and internal/bootstrap/kaprocrds/ (used by hub init)
@@ -171,13 +172,13 @@ sync-crds: manifests ## Sync generated CRDs into Helm chart crds/ and internal/b
 
 .PHONY: docker-build
 docker-build: ## Build multi-arch Docker images (no push)
-	docker buildx build --platform linux/amd64,linux/arm64 -t $(OPERATOR_IMG) -f Dockerfile .
-	docker buildx build --platform linux/amd64,linux/arm64 -t $(CLUSTER_CONTROLLER_IMG) -f Dockerfile.cluster-controller .
+	docker buildx build --platform linux/amd64,linux/arm64 -t $(OPERATOR_IMG) -f build/package/Dockerfile.operator .
+	docker buildx build --platform linux/amd64,linux/arm64 -t $(CLUSTER_CONTROLLER_IMG) -f build/package/Dockerfile.cluster-controller .
 
 .PHONY: docker-push
 docker-push: ## Push Docker images
-	docker buildx build --platform linux/amd64,linux/arm64 -t $(OPERATOR_IMG) -f Dockerfile . --push
-	docker buildx build --platform linux/amd64,linux/arm64 -t $(CLUSTER_CONTROLLER_IMG) -f Dockerfile.cluster-controller . --push
+	docker buildx build --platform linux/amd64,linux/arm64 -t $(OPERATOR_IMG) -f build/package/Dockerfile.operator . --push
+	docker buildx build --platform linux/amd64,linux/arm64 -t $(CLUSTER_CONTROLLER_IMG) -f build/package/Dockerfile.cluster-controller . --push
 
 ##@ Cluster
 

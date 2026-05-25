@@ -8,8 +8,7 @@ home: https://github.com/Kapro-dev/kapro
 sources:
   - https://github.com/Kapro-dev/kapro
 maintainers:
-  - name: Vinayaka Krishnamurthy
-    email: vinnxcapital@gmail.com
+  - name: Kapro Maintainers
     url: https://github.com/Kapro-dev
 icon: https://raw.githubusercontent.com/Kapro-dev/kapro/main/docs/logo.png
 keywords:

@@ -73,7 +73,7 @@ plan := kapro.NewPlan("progressive").
 	Build()
 ```
 
-The v0.1.x SDK intentionally covers the happy path first. Full builder coverage
+The v0.6.x SDK intentionally covers the happy path first. Full builder coverage
 for every CRD field is planned after the public preview API settles.
 
 ## Receive CloudEvents
@@ -93,7 +93,7 @@ Kapro posts CloudEvents v1.0 structured JSON to the subscriber. Successful
 handlers return HTTP 204. Decode errors and handler panics return a non-2xx
 response so the upstream sink can retry according to its own delivery policy.
 
-In `v0.1.x`, `On` handlers do not return errors and do not receive a request
+In `v0.6.x`, `On` handlers do not return errors and do not receive a request
 context. If handler code calls Slack, PagerDuty, a database, or another external
 system, handle that system's retry/idempotency contract inside the handler.
 Multiple handlers registered for the same event type run in order; if a later
@@ -117,7 +117,7 @@ registration and plugin process management stay outside this package.
 
 ## Versioning
 
-During Kapro `v0.1.x`, `pkg/kapro` targets `kapro.io/v1alpha1`. Existing
+During Kapro `v0.6.x`, `pkg/kapro` targets `kapro.io/v1alpha1`. Existing
 exported names are treated as preview-compatible within the release line unless
 a security or correctness fix requires a documented break. See
 [ADR-0013](../adr/0013-sdk-versioning-policy.md) for the policy.

@@ -208,7 +208,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: Dockerfile
+          file: build/package/Dockerfile.operator
           platforms: linux/amd64
           push: false
           tags: ghcr.io/kapro-dev/kapro-operator:pr-${{ github.event.number }}
@@ -216,7 +216,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: Dockerfile.cluster-controller
+          file: build/package/Dockerfile.cluster-controller
           platforms: linux/amd64
           push: false
           tags: ghcr.io/kapro-dev/kapro-cluster-controller:pr-${{ github.event.number }}
